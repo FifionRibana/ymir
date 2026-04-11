@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ymir-core",
+    "crates/ymir-viz",
+]
+ 
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "LicenseRef-Proprietary"
+authors = ["Olivier BRUNEAU"]
+ 
+# Pin shared dependencies at workspace level for version consistency.
+# Crate Cargo.toml files reference these with `dep.workspace = true`.
+[workspace.dependencies]
+ymir-core = { path = "crates/ymir-core" }
+rayon = "1.10"
+rand = "0.9"
+rand_chacha = "0.9"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+image = { version = "0.25", default-features = false, features = ["png"] }
+bevy = { version = "0.18.1", default-features = false, features = [
+    "bevy_asset",
+    "bevy_winit",
+    "bevy_render",
+    "bevy_sprite",
+    "bevy_ui",
+    "bevy_text",
+    "bevy_input_focus",
+    "bevy_window",
+    "bevy_log",
+    "bevy_core_pipeline",
+    "default_font",
+    "x11",
+    "wayland",
+] }
