@@ -1,0 +1,3 @@
+[alias]
+viz = "run --release --bin ymir-viz"
+test-core = "test -p ymir-core"
