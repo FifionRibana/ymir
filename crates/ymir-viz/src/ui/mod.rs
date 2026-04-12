@@ -95,20 +95,22 @@ fn ui_right_panel(
     egui::SidePanel::right("right_panel")
         .exact_width(260.0)
         .show(ctx, |ui| {
-            pipeline_panel::draw(ui, &mut view_state, &pipeline_state);
-            ui.separator();
-            parameter_panel::draw(
-                ui,
-                &view_state,
-                &mut erosion,
-                &mut climate,
-                &mut gen_params,
-                tectonic_state,
-                &mut solver_config,
-                &mut bridge,
-            );
-            ui.separator();
-            statistics_panel::draw(ui, &stats);
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                pipeline_panel::draw(ui, &mut view_state, &pipeline_state);
+                ui.separator();
+                parameter_panel::draw(
+                    ui,
+                    &view_state,
+                    &mut erosion,
+                    &mut climate,
+                    &mut gen_params,
+                    tectonic_state,
+                    &mut solver_config,
+                    &mut bridge,
+                );
+                ui.separator();
+                statistics_panel::draw(ui, &stats);
+            });
         });
 }
 

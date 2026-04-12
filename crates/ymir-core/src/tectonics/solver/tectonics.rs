@@ -145,8 +145,13 @@ fn solve_velocity_direct(
 ) -> (bool, usize, usize) {
     match config.nonlinear_solver {
         NonlinearSolver::Picard => {
-            let r =
-                solve_velocity_picard(grid, plates, config.gravity_factor, &config.picard, workspace);
+            let r = solve_velocity_picard(
+                grid,
+                plates,
+                config.gravity_factor,
+                &config.picard,
+                workspace,
+            );
             (r.converged, r.iterations, r.total_cg_iterations)
         }
         NonlinearSolver::Newton => {
@@ -179,11 +184,7 @@ fn solve_with_continuation(
 
     for (i, &n_exp) in steps.iter().enumerate() {
         // Interpolate ε_min from eps_start to target_eps
-        let t = if steps.len() > 1 {
-            i as f64 / (steps.len() - 1) as f64
-        } else {
-            1.0
-        };
+        let t = if steps.len() > 1 { i as f64 / (steps.len() - 1) as f64 } else { 1.0 };
         let eps_min = eps_start * (1.0 - t) + target_eps * t;
 
         // Adapt relaxation to nonlinearity level
@@ -201,13 +202,32 @@ fn solve_with_continuation(
         step_config.relaxation = relaxation;
 
         // Warm start: grid.vx/vy retain the solution from the previous step
-        let result =
-            solve_velocity_picard(grid, plates, config.gravity_factor, &step_config, workspace);
-
-        total_nl += result.iterations;
-        total_linear += result.total_cg_iterations;
-
-        if !result.converged {
+        let (converged, iters, linear_iters) = match config.nonlinear_solver {
+            NonlinearSolver::Picard => {
+                let r = solve_velocity_picard(
+                    grid,
+                    plates,
+                    config.gravity_factor,
+                    &step_config,
+                    workspace,
+                );
+                (r.converged, r.iterations, r.total_cg_iterations)
+            }
+            NonlinearSolver::Newton => {
+                let r = solve_velocity_newton(
+                    grid,
+                    plates,
+                    config.gravity_factor,
+                    &step_config,
+                    &config.newton,
+                    workspace,
+                );
+                (r.converged, r.iterations, r.total_linear_iterations)
+            }
+        };
+        total_nl += iters;
+        total_linear += linear_iters;
+        if !converged {
             return (false, total_nl, total_linear);
         }
     }
@@ -399,11 +419,7 @@ mod tests {
 
         let mut ws = SolverWorkspace::new(n);
         let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _, _| true);
-        assert!(
-            result.is_ok(),
-            "Continuation should enable convergence: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "Continuation should enable convergence: {:?}", result.err());
         assert!(
             ws.stats.max_thickness > 1.0,
             "Convergent plates should thicken with power-law: max_s={}",
@@ -427,11 +443,7 @@ mod tests {
 
         compute_viscosity(&strain, 3.0, 1e-6, 1e-3, 1e3, &mut eta);
 
-        assert!(
-            eta.get(0, 0) <= 1e3 + 1e-10,
-            "Should be clamped to eta_max: {}",
-            eta.get(0, 0)
-        );
+        assert!(eta.get(0, 0) <= 1e3 + 1e-10, "Should be clamped to eta_max: {}", eta.get(0, 0));
         assert!(eta.get(1, 0) >= 1e-3, "Normal cell below eta_min");
         assert!(eta.get(1, 0) <= 1e3, "Normal cell above eta_max");
     }
