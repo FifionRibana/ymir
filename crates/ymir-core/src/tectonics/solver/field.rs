@@ -1,6 +1,7 @@
 //! Core 2D field and periodic indexing for the thin viscous sheet solver.
 
 /// Row-major N×N field of f64 values.
+#[derive(Clone)]
 pub struct Field2D {
     data: Vec<f64>,
     n: usize,

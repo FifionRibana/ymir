@@ -5,6 +5,7 @@ use super::grid::StaggeredGrid;
 use super::linear_solve::{BiCgStabWorkspace, CgWorkspace};
 
 /// Statistics collected after each timestep.
+#[derive(Clone, Debug)]
 pub struct StepStats {
     pub max_velocity: f64,
     pub max_thickness: f64,
