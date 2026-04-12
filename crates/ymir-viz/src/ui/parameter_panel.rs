@@ -161,6 +161,7 @@ fn regenerate(state: &mut TectonicState) {
     let seed = WorldSeed::new(state.seed);
     state.init = generate_plates(&state.config, &seed);
     state.dirty = true;
+    state.generation = state.generation.wrapping_add(1);
 }
 
 // ── Erosion & climate panels ──────────────────────────────────────────────

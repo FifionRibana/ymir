@@ -88,7 +88,7 @@ fn setup_tectonic(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     ));
 
     commands.insert_resource(TectonicImageHandle(image_handle));
-    commands.insert_resource(TectonicState { init, config, seed: seed_val, dirty: true });
+    commands.insert_resource(TectonicState { init, config, seed: seed_val, dirty: true, generation: 0 });
 }
 
 fn alloc_image(images: &mut Assets<Image>, width: u32, height: u32) -> Handle<Image> {

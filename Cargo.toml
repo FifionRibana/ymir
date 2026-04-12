@@ -37,6 +37,7 @@ bevy = { version = "0.18.1", default-features = false, features = [
     "bevy_picking",
     "bevy_core_pipeline",
     "bevy_gizmos",
+    "bevy_gizmos_render",
     "default_font",
     "x11",
     "wayland",
