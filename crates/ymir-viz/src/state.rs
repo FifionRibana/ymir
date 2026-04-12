@@ -282,6 +282,40 @@ pub struct TectonicState {
     pub generation: u64,
 }
 
+// ── Isostasy ─────────────────────────────────────────────────────────
+
+#[derive(Resource, Clone, Debug)]
+pub struct IsostasyParams {
+    pub sea_level_fraction: f32,
+    pub max_elevation_m: f32,
+    pub max_depth_m: f32,
+}
+
+impl Default for IsostasyParams {
+    fn default() -> Self {
+        Self {
+            sea_level_fraction: 0.4,
+            max_elevation_m: 4000.0,
+            max_depth_m: 500.0,
+        }
+    }
+}
+
+/// Cache for the isostasy result — recomputed when the source changes
+/// or the sea level slider moves.
+#[derive(Resource, Default)]
+pub struct IsostasyCache {
+    /// The computed land ratio, peak altitude, depth.
+    pub land_ratio: f32,
+    pub peak_altitude_m: f32,
+    pub max_depth_m: f32,
+    pub sea_level_normalized: f32,
+    /// Sea level that was used for the last computation.
+    pub computed_sea_level: f32,
+    /// Whether valid data is available.
+    pub valid: bool,
+}
+
 // ── Cursor ───────────────────────────────────────────────────────────────
 
 #[derive(Resource, Default)]
