@@ -1,6 +1,7 @@
 //! Picard (fixed-point) iteration for nonlinear Stokes with power-law viscosity.
 
 use rayon::prelude::*;
+use tracing::debug;
 
 use super::config::PicardConfig;
 use super::field::Field2D;
@@ -186,6 +187,14 @@ pub fn solve_velocity_picard(
             v_sq += ws.v_packed[i] * ws.v_packed[i];
         }
         let rel_change = diff_sq.sqrt() / v_sq.sqrt().max(1e-30);
+
+        debug!(
+            picard_iter = k,
+            rel_change,
+            cg_iters = cg_result.iterations,
+            cg_converged = cg_result.converged,
+            "picard iteration"
+        );
 
         if rel_change < config.tolerance {
             super::workspace::unpack_velocity(&ws.v_packed, grid);
