@@ -8,7 +8,7 @@ use super::field::Field2D;
 use super::grid::StaggeredGrid;
 use super::linear_solve::solve_bicgstab;
 use super::picard::{compute_strain_rate, compute_viscosity};
-use super::plates::PlateField;
+use super::traction::TractionField;
 use super::stokes::{apply_stokes, compute_jacobi_precond, compute_rhs};
 use super::workspace::{pack_velocity, unpack_velocity, SolverWorkspace};
 
@@ -52,7 +52,7 @@ fn compute_nonlinear_residual(
 /// by finite-difference directional derivatives.
 pub fn solve_velocity_newton(
     grid: &mut StaggeredGrid,
-    plates: &PlateField,
+    plates: &TractionField,
     gravity_factor: f64,
     picard_config: &PicardConfig,
     newton_config: &NewtonConfig,
@@ -198,8 +198,8 @@ pub fn solve_velocity_newton(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::grid::StaggeredGrid;
-    use crate::solver::plates::PlateField;
+    use crate::tectonics::solver::grid::StaggeredGrid;
+    use crate::tectonics::solver::traction::TractionField;
 
     #[test]
     fn newton_linear_viscosity_converges_in_one() {
@@ -214,7 +214,7 @@ mod tests {
             }
         }
 
-        let plates = PlateField::uniform(n, 0.1, 0.0);
+        let plates = TractionField::uniform(n, 0.1, 0.0);
         let picard_config = PicardConfig {
             power_law_n: 1.0,
             strain_rate_min: 1e-6,
@@ -253,7 +253,7 @@ mod tests {
             }
         }
 
-        let plates = PlateField::two_plates_convergent(n, 0.5);
+        let plates = TractionField::two_plates_convergent(n, 0.5);
         let picard_config = PicardConfig {
             power_law_n: 3.0,
             strain_rate_min: 1e-6,
@@ -284,7 +284,7 @@ mod tests {
 
     #[test]
     fn newton_and_picard_agree() {
-        use crate::solver::picard::solve_velocity_picard;
+        use crate::tectonics::solver::picard::solve_velocity_picard;
 
         let n = 16;
         let dx = 1.0 / n as f64;
@@ -307,7 +307,7 @@ mod tests {
                 grid_p.s.set(i, j, 1.0);
             }
         }
-        let plates = PlateField::two_plates_convergent(n, 0.5);
+        let plates = TractionField::two_plates_convergent(n, 0.5);
         let mut ws_p = SolverWorkspace::new(n);
         let picard_result =
             solve_velocity_picard(&mut grid_p, &plates, 1.0, &picard_config, &mut ws_p);
@@ -368,7 +368,7 @@ mod tests {
             }
         }
 
-        let plates = PlateField::two_plates_convergent(n, 0.5);
+        let plates = TractionField::two_plates_convergent(n, 0.5);
         let picard_config = PicardConfig {
             power_law_n: 3.0,
             strain_rate_min: 1e-6,

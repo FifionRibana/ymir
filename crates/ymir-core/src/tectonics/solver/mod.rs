@@ -11,7 +11,7 @@ pub mod grid;
 pub mod linear_solve;
 pub mod newton;
 pub mod picard;
-pub mod plates;
+pub mod traction;
 pub mod stokes;
 pub mod tectonics;
 pub mod workspace;

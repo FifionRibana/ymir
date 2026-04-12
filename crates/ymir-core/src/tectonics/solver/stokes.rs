@@ -6,7 +6,7 @@
 
 use super::field::Field2D;
 use super::grid::StaggeredGrid;
-use super::plates::PlateField;
+use super::traction::TractionField;
 
 /// Apply the Stokes operator A·v in matrix-free fashion.
 ///
@@ -100,7 +100,7 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
 /// The gradient of S² is evaluated at the staggered face positions.
 pub fn compute_rhs(
     grid: &StaggeredGrid,
-    plates: &PlateField,
+    plates: &TractionField,
     gravity_factor: f64,
     rhs: &mut [f64],
 ) {

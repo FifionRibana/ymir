@@ -4,7 +4,7 @@ use super::config::PicardConfig;
 use super::field::Field2D;
 use super::grid::StaggeredGrid;
 use super::linear_solve::solve_cg;
-use super::plates::PlateField;
+use super::traction::TractionField;
 use super::stokes::{apply_stokes, compute_jacobi_precond, compute_rhs};
 use super::workspace::SolverWorkspace;
 
@@ -78,7 +78,7 @@ pub fn compute_viscosity(
 /// Solve for velocity using Picard iteration.
 pub fn solve_velocity_picard(
     grid: &mut StaggeredGrid,
-    plates: &PlateField,
+    plates: &TractionField,
     gravity_factor: f64,
     config: &PicardConfig,
     ws: &mut SolverWorkspace,
@@ -195,7 +195,7 @@ mod tests {
             }
         }
 
-        let plates = PlateField::uniform(n, 0.1, 0.0);
+        let plates = TractionField::uniform(n, 0.1, 0.0);
         let config = PicardConfig {
             max_iterations: 50,
             tolerance: 1e-10,
@@ -231,7 +231,7 @@ mod tests {
             }
         }
 
-        let plates = PlateField::two_plates_convergent(n, 0.5);
+        let plates = TractionField::two_plates_convergent(n, 0.5);
         let config = PicardConfig {
             max_iterations: 50,
             tolerance: 1e-4,
