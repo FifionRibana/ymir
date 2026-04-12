@@ -40,14 +40,23 @@ impl Default for PicardConfig {
     }
 }
 
-/// Configuration for Newton-Krylov (JFNK) iteration.
+/// Preconditioner type for linear solves.
+#[derive(Clone, Copy, Debug, Default)]
+pub enum Preconditioner {
+    #[default]
+    Jacobi,
+    /// Symmetric Successive Over-Relaxation with parameter omega in (0, 2).
+    Ssor { omega: f64 },
+}
+
+/// Configuration for quasi-Newton iteration.
 #[derive(Clone)]
 pub struct NewtonConfig {
     pub max_iterations: usize,
     pub tolerance: f64,
-    pub bicgstab_max_iter: usize,
-    pub bicgstab_tolerance: f64,
-    pub fd_epsilon_scale: f64,
+    pub cg_max_iter: usize,
+    pub cg_tolerance: f64,
+    pub preconditioner: Preconditioner,
 }
 
 impl Default for NewtonConfig {
@@ -55,9 +64,9 @@ impl Default for NewtonConfig {
         Self {
             max_iterations: 15,
             tolerance: 1e-4,
-            bicgstab_max_iter: 500,
-            bicgstab_tolerance: 1e-6,
-            fd_epsilon_scale: 1e-7,
+            cg_max_iter: 500,
+            cg_tolerance: 1e-6,
+            preconditioner: Preconditioner::default(),
         }
     }
 }

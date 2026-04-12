@@ -229,6 +229,142 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
     }
 }
 
+/// Stencil coefficients for the 5-point Stokes operator, stored per DOF.
+///
+/// For each DOF, stores [center, left, right, bottom, top] — the absolute
+/// values of the matrix entries. The center (diagonal) is positive; the
+/// neighbors appear with a negative sign in the operator.
+pub struct StencilCoeffs {
+    pub vx: Vec<[f64; 5]>,
+    pub vy: Vec<[f64; 5]>,
+}
+
+impl StencilCoeffs {
+    /// Extract stencil coefficients from the current viscosity field.
+    pub fn compute(eta: &Field2D, grid: &StaggeredGrid) -> Self {
+        let n = grid.n;
+        let n2 = n * n;
+        let idx = &grid.idx;
+        let inv_dx2 = 1.0 / (grid.dx * grid.dx);
+
+        let mut vx_coeffs = vec![[0.0; 5]; n2];
+        let mut vy_coeffs = vec![[0.0; 5]; n2];
+
+        for j in 0..n {
+            let nj = idx.next(j);
+            let pj = idx.prev(j);
+
+            for i in 0..n {
+                let ni = idx.next(i);
+                let pi = idx.prev(i);
+                let k = j * n + i;
+
+                // vx stencil (same η interpolation as apply_stokes)
+                let eta_right = eta.get(i, j);
+                let eta_left = eta.get(pi, j);
+                let eta_top =
+                    0.25 * (eta.get(pi, j) + eta.get(i, j) + eta.get(pi, nj) + eta.get(i, nj));
+                let eta_bot =
+                    0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
+
+                let diag = inv_dx2 * (2.0 * (eta_right + eta_left) + eta_top + eta_bot);
+                let c_left = inv_dx2 * 2.0 * eta_left;
+                let c_right = inv_dx2 * 2.0 * eta_right;
+                let c_bot = inv_dx2 * eta_bot;
+                let c_top = inv_dx2 * eta_top;
+
+                vx_coeffs[k] = [diag, c_left, c_right, c_bot, c_top];
+
+                // vy stencil
+                let eta_top_vy = eta.get(i, j);
+                let eta_bot_vy = eta.get(i, pj);
+                let eta_right_vy =
+                    0.25 * (eta.get(i, pj) + eta.get(ni, pj) + eta.get(i, j) + eta.get(ni, j));
+                let eta_left_vy =
+                    0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
+
+                let diag_vy =
+                    inv_dx2 * (eta_right_vy + eta_left_vy + 2.0 * (eta_top_vy + eta_bot_vy));
+                let c_left_vy = inv_dx2 * eta_left_vy;
+                let c_right_vy = inv_dx2 * eta_right_vy;
+                let c_bot_vy = inv_dx2 * 2.0 * eta_bot_vy;
+                let c_top_vy = inv_dx2 * 2.0 * eta_top_vy;
+
+                vy_coeffs[k] = [diag_vy, c_left_vy, c_right_vy, c_bot_vy, c_top_vy];
+            }
+        }
+
+        Self {
+            vx: vx_coeffs,
+            vy: vy_coeffs,
+        }
+    }
+}
+
+/// Apply SSOR (Symmetric Gauss-Seidel) preconditioner: z = M_SSOR⁻¹ · r.
+///
+/// Block-diagonal: sweeps vx and vy independently on the 5-point stencil.
+/// Forward sweep (row-major order), then backward sweep (reverse order).
+/// With periodic BCs, all neighbors use the latest available z values
+/// (symmetric Gauss-Seidel, not strict triangular SSOR).
+pub fn apply_ssor(r: &[f64], coeffs: &StencilCoeffs, n: usize, omega: f64, z: &mut [f64]) {
+    let n2 = n * n;
+    let scale = omega * (2.0 - omega);
+
+    // Process vx block, then vy block independently
+    ssor_sweep(&r[..n2], &coeffs.vx, n, omega, &mut z[..n2]);
+    ssor_sweep(&r[n2..], &coeffs.vy, n, omega, &mut z[n2..]);
+
+    // Scale by ω(2-ω)
+    for val in z.iter_mut() {
+        *val *= scale;
+    }
+}
+
+fn ssor_sweep(r: &[f64], coeffs: &[[f64; 5]], n: usize, omega: f64, z: &mut [f64]) {
+    let wrap = |i: i32| -> usize { ((i % n as i32) + n as i32) as usize % n };
+
+    // Initialize z = 0
+    z.iter_mut().for_each(|v| *v = 0.0);
+
+    // Forward sweep (Gauss-Seidel, row by row, left to right)
+    for j in 0..n {
+        for i in 0..n {
+            let k = j * n + i;
+            let [diag, c_left, c_right, c_bot, c_top] = coeffs[k];
+
+            let pi = wrap(i as i32 - 1);
+            let ni = wrap(i as i32 + 1);
+            let pj = wrap(j as i32 - 1);
+            let nj = wrap(j as i32 + 1);
+
+            // Use latest z values for all neighbors (symmetric GS on periodic grid)
+            let neighbor_sum =
+                c_left * z[j * n + pi] + c_right * z[j * n + ni] + c_bot * z[pj * n + i] + c_top * z[nj * n + i];
+
+            z[k] = (omega / diag) * (r[k] + neighbor_sum);
+        }
+    }
+
+    // Backward sweep (reverse order)
+    for j in (0..n).rev() {
+        for i in (0..n).rev() {
+            let k = j * n + i;
+            let [diag, c_left, c_right, c_bot, c_top] = coeffs[k];
+
+            let pi = wrap(i as i32 - 1);
+            let ni = wrap(i as i32 + 1);
+            let pj = wrap(j as i32 - 1);
+            let nj = wrap(j as i32 + 1);
+
+            let neighbor_sum =
+                c_left * z[j * n + pi] + c_right * z[j * n + ni] + c_bot * z[pj * n + i] + c_top * z[nj * n + i];
+
+            z[k] = (omega / diag) * (r[k] + neighbor_sum);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
