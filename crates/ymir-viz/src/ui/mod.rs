@@ -88,6 +88,7 @@ fn ui_right_panel(
     mut climate: ResMut<crate::state::ClimateParams>,
     mut gen_params: ResMut<GenerationParamsUi>,
     stats: Res<crate::state::TerrainStats>,
+    tectonic_state: Option<ResMut<crate::state::TectonicState>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::SidePanel::right("right_panel")
@@ -102,6 +103,7 @@ fn ui_right_panel(
                 &mut tectonics,
                 &mut climate,
                 &mut gen_params,
+                tectonic_state,
             );
             ui.separator();
             statistics_panel::draw(ui, &stats);
