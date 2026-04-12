@@ -1,11 +1,11 @@
 //! Picard (fixed-point) iteration for nonlinear Stokes with power-law viscosity.
 
-use super::cg::solve_cg;
 use super::config::PicardConfig;
 use super::field::Field2D;
 use super::grid::StaggeredGrid;
+use super::linear_solve::solve_cg;
 use super::plates::PlateField;
-use super::stokes::{compute_jacobi_precond, compute_rhs};
+use super::stokes::{apply_stokes, compute_jacobi_precond, compute_rhs};
 use super::workspace::SolverWorkspace;
 
 /// Result of a Picard solve.
@@ -119,11 +119,12 @@ pub fn solve_velocity_picard(
         compute_jacobi_precond(&ws.eta, grid, &mut ws.cg.precond);
 
         // Solve A(η) v = b
+        let eta_ref = &ws.eta;
+        let grid_ref = &*grid;
         let cg_result = solve_cg(
             &mut ws.v_packed,
             &ws.rhs,
-            &ws.eta,
-            grid,
+            |v_in, v_out| apply_stokes(v_in, eta_ref, grid_ref, v_out),
             &mut ws.cg,
             config.cg_max_iter,
             config.cg_tolerance,
