@@ -1,8 +1,8 @@
 //! Pre-allocated workspace buffers for the solver.
 
-use super::cg::CgWorkspace;
 use super::field::Field2D;
 use super::grid::StaggeredGrid;
+use super::linear_solve::{BiCgStabWorkspace, CgWorkspace};
 
 /// Statistics collected after each timestep.
 pub struct StepStats {
@@ -35,6 +35,11 @@ pub struct SolverWorkspace {
     pub v_prev: Vec<f64>,
     pub rhs: Vec<f64>,
     pub cg: CgWorkspace,
+    pub bicgstab: BiCgStabWorkspace,
+    pub jfnk_v_pert: Vec<f64>,
+    pub jfnk_f_v: Vec<f64>,
+    pub jfnk_neg_f: Vec<f64>,
+    pub jfnk_delta_v: Vec<f64>,
     pub stats: StepStats,
 }
 
@@ -50,6 +55,11 @@ impl SolverWorkspace {
             v_prev: vec![0.0; nn2],
             rhs: vec![0.0; nn2],
             cg: CgWorkspace::new(nn2),
+            bicgstab: BiCgStabWorkspace::new(nn2),
+            jfnk_v_pert: vec![0.0; nn2],
+            jfnk_f_v: vec![0.0; nn2],
+            jfnk_neg_f: vec![0.0; nn2],
+            jfnk_delta_v: vec![0.0; nn2],
             stats: StepStats::default(),
         }
     }

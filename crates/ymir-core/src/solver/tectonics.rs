@@ -1,8 +1,9 @@
 //! Top-level orchestration of the thin viscous sheet simulation.
 
 use super::advection::{compute_cfl_dt, compute_divergence_flux};
-use super::config::TectonicsConfig;
+use super::config::{NonlinearSolver, TectonicsConfig};
 use super::grid::StaggeredGrid;
+use super::newton::solve_velocity_newton;
 use super::picard::solve_velocity_picard;
 use super::plates::PlateField;
 use super::workspace::{SolverWorkspace, StepStats};
@@ -10,8 +11,8 @@ use super::workspace::{SolverWorkspace, StepStats};
 /// Errors that can occur during a tectonic simulation run.
 #[derive(Debug)]
 pub enum SolverError {
-    /// Picard iteration did not converge at the given timestep.
-    PicardDidNotConverge { step: usize },
+    /// Nonlinear solver did not converge at the given timestep.
+    NonlinearSolverDidNotConverge { step: usize },
     /// A NaN or Inf was detected in the solution.
     NumericalInstability { step: usize, field: &'static str },
 }
@@ -19,8 +20,8 @@ pub enum SolverError {
 impl std::fmt::Display for SolverError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SolverError::PicardDidNotConverge { step } => {
-                write!(f, "Picard did not converge at step {step}")
+            SolverError::NonlinearSolverDidNotConverge { step } => {
+                write!(f, "Nonlinear solver did not converge at step {step}")
             }
             SolverError::NumericalInstability { step, field } => {
                 write!(f, "NaN/Inf detected in {field} at step {step}")
@@ -47,12 +48,33 @@ where
     let n = grid.n;
 
     for step in 0..config.num_timesteps {
-        // 1. Solve velocity via Picard
-        let picard_result =
-            solve_velocity_picard(grid, plates, config.gravity_factor, &config.picard, workspace);
+        // 1. Solve velocity via selected nonlinear solver
+        let (converged, nl_iterations, linear_iterations) = match config.nonlinear_solver {
+            NonlinearSolver::Picard => {
+                let r = solve_velocity_picard(
+                    grid,
+                    plates,
+                    config.gravity_factor,
+                    &config.picard,
+                    workspace,
+                );
+                (r.converged, r.iterations, r.total_cg_iterations)
+            }
+            NonlinearSolver::Newton => {
+                let r = solve_velocity_newton(
+                    grid,
+                    plates,
+                    config.gravity_factor,
+                    &config.picard,
+                    &config.newton,
+                    workspace,
+                );
+                (r.converged, r.iterations, r.total_linear_iterations)
+            }
+        };
 
-        if !picard_result.converged {
-            return Err(SolverError::PicardDidNotConverge { step });
+        if !converged {
+            return Err(SolverError::NonlinearSolverDidNotConverge { step });
         }
 
         // 2. CFL timestep (after velocity is known)
@@ -95,8 +117,8 @@ where
             max_velocity: max_v,
             max_thickness: max_s,
             min_thickness: min_s,
-            picard_iterations: picard_result.iterations,
-            cg_iterations_last: picard_result.total_cg_iterations,
+            picard_iterations: nl_iterations,
+            cg_iterations_last: linear_iterations,
         };
 
         // 7. Callback
@@ -109,7 +131,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::config::PicardConfig;
+    use crate::solver::config::{NewtonConfig, PicardConfig};
 
     fn make_config(num_timesteps: usize) -> TectonicsConfig {
         TectonicsConfig {
@@ -118,6 +140,7 @@ mod tests {
             cfl_factor: 0.1,
             s_min: 0.1,
             s_max: 2.5,
+            nonlinear_solver: NonlinearSolver::Picard,
             picard: PicardConfig {
                 max_iterations: 30,
                 tolerance: 1e-3,
@@ -125,8 +148,9 @@ mod tests {
                 cg_max_iter: 500,
                 cg_tolerance: 1e-8,
                 strain_rate_min: 1e-6,
-                power_law_n: 1.0, // Linear viscosity for cleaner physics tests
+                power_law_n: 1.0,
             },
+            newton: NewtonConfig::default(),
         }
     }
 
