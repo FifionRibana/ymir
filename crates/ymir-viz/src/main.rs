@@ -1,5 +1,11 @@
 use bevy::prelude::*;
 
+mod camera;
+mod cursor_inspector;
+mod state;
+mod terrain_view;
+mod ui;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -10,12 +16,18 @@ fn main() {
             }),
             ..default()
         }))
-        .add_systems(Startup, setup)
+        .init_resource::<state::ViewState>()
+        .init_resource::<state::PipelineState>()
+        .init_resource::<state::ErosionParams>()
+        .init_resource::<state::TectonicsParams>()
+        .init_resource::<state::ClimateParams>()
+        .init_resource::<state::GenerationParamsUi>()
+        .init_resource::<state::CursorWorldPos>()
+        .add_plugins((
+            camera::CameraPlugin,
+            terrain_view::TerrainViewPlugin,
+            ui::UiPlugin,
+            cursor_inspector::CursorInspectorPlugin,
+        ))
         .run();
-}
-
-fn setup(mut commands: Commands) {
-    commands.spawn(Camera2d);
-
-    info!("Ymir visualization started. Terrain views will be added in issue #5.");
 }

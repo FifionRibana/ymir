@@ -21,18 +21,25 @@ rand_chacha = "0.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
+bevy_egui = "0.39"
+noise = "0.9"
 bevy = { version = "0.18.1", default-features = false, features = [
     "bevy_asset",
     "bevy_winit",
     "bevy_render",
     "bevy_sprite",
+    "bevy_sprite_render",
     "bevy_ui",
     "bevy_text",
     "bevy_input_focus",
     "bevy_window",
     "bevy_log",
+    "bevy_picking",
     "bevy_core_pipeline",
     "default_font",
     "x11",
     "wayland",
+    "picking",
+    "mouse",
+    "keyboard",
 ] }
