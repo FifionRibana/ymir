@@ -55,13 +55,22 @@ where
     let n = grid.n;
 
     for step in 0..config.num_timesteps {
-        // 1. Solve velocity — with continuation if enabled and n > 1
-        let (converged, nl_iterations, linear_iterations) =
-            if config.continuation.enabled && config.picard.power_law_n > 1.0 {
+        // 1. Solve velocity — continuation only on first step (cold start)
+        let need_continuation = config.continuation.enabled
+            && config.picard.power_law_n > 1.0
+            && step == 0;
+
+        let (converged, nl_iterations, linear_iterations) = if need_continuation {
+            solve_with_continuation(grid, plates, config, workspace)
+        } else {
+            let result = solve_velocity_direct(grid, plates, config, workspace);
+            // Fallback: if direct solve fails, try continuation as recovery
+            if !result.0 && config.continuation.enabled && config.picard.power_law_n > 1.0 {
                 solve_with_continuation(grid, plates, config, workspace)
             } else {
-                solve_velocity_direct(grid, plates, config, workspace)
-            };
+                result
+            }
+        };
 
         if !converged {
             return Err(SolverError::NonlinearSolverDidNotConverge { step });

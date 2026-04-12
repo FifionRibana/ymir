@@ -1,8 +1,12 @@
 //! Linear solvers: Preconditioned CG and BiCGSTAB.
 //!
-//! Both solvers take a closure `apply_operator: impl Fn(&[f64], &mut [f64])`
+//! Both solvers take a closure `apply_operator: impl FnMut(&[f64], &mut [f64])`
 //! for the matrix-vector product, making them reusable for Stokes (Picard)
 //! and Jacobian-free Newton-Krylov (JFNK).
+
+use rayon::prelude::*;
+
+const PAR_THRESHOLD_DOF: usize = 8192; // 2 * 64² = 8192
 
 /// Workspace buffers for the CG solver.
 pub struct CgWorkspace {
@@ -62,7 +66,11 @@ pub struct LinearSolveResult {
 }
 
 fn dot(a: &[f64], b: &[f64]) -> f64 {
-    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+    if a.len() >= PAR_THRESHOLD_DOF {
+        a.par_iter().zip(b.par_iter()).map(|(x, y)| x * y).sum()
+    } else {
+        a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+    }
 }
 
 fn norm(a: &[f64]) -> f64 {

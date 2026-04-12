@@ -4,9 +4,14 @@
 //! A negative sign convention is used so the operator is symmetric positive definite,
 //! enabling solution by conjugate gradient.
 
+use rayon::prelude::*;
+
 use super::field::Field2D;
 use super::grid::StaggeredGrid;
 use super::traction::TractionField;
+
+/// Minimum grid dimension for parallel execution. Below this, sequential is faster.
+const PAR_THRESHOLD: usize = 64;
 
 /// Apply the Stokes operator A·v in matrix-free fashion.
 ///
@@ -18,20 +23,21 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
     let idx = &grid.idx;
     let inv_dx2 = 1.0 / (grid.dx * grid.dx);
 
-    // Helper: index into flat arrays
-    let li = |i: usize, j: usize| -> usize { j * n + i };
+    let (out_vx, out_vy) = out.split_at_mut(n2);
 
     // η at cell center (i,j) is eta.get(i,j).
     // We need η interpolated to various staggered positions.
     // η at vertical face midpoint between cells (i,j) and (i, j-1) for the cross term:
     //   averaged from the 4 surrounding cell centers.
 
-    for j in 0..n {
+    let process_row = |j: usize, row_vx: &mut [f64], row_vy: &mut [f64]| {
+        let nj = idx.next(j);
+        let pj = idx.prev(j);
+
         for i in 0..n {
             let ni = idx.next(i);
             let pi = idx.prev(i);
-            let nj = idx.next(j);
-            let pj = idx.prev(j);
+            let li = |ii: usize, jj: usize| -> usize { jj * n + ii };
 
             // --- vx component at face (i, j) ---
             // ∂/∂x(2η ∂vx/∂x): uses η at cell centers (i,j) and (prev(i),j)
@@ -51,17 +57,15 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
                 0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
 
             let dvx_dy_top = (v[li(i, nj)] - v[li(i, j)]) * inv_dx2;
-            let dvy_dx_top =
-                (v[n2 + li(i, nj)] - v[n2 + li(pi, nj)]) * inv_dx2;
+            let dvy_dx_top = (v[n2 + li(i, nj)] - v[n2 + li(pi, nj)]) * inv_dx2;
             let dvx_dy_bot = (v[li(i, j)] - v[li(i, pj)]) * inv_dx2;
-            let dvy_dx_bot =
-                (v[n2 + li(i, j)] - v[n2 + li(pi, j)]) * inv_dx2;
+            let dvy_dx_bot = (v[n2 + li(i, j)] - v[n2 + li(pi, j)]) * inv_dx2;
 
             let term_xy =
                 eta_top * (dvx_dy_top + dvy_dx_top) - eta_bot * (dvx_dy_bot + dvy_dx_bot);
 
             // Negative sign for SPD
-            out[li(i, j)] = -(term_xx + term_xy);
+            row_vx[i] = -(term_xx + term_xy);
 
             // --- vy component at face (i, j) ---
             // ∂/∂y(2η ∂vy/∂y): uses η at cell centers (i,j) and (i, prev(j))
@@ -81,21 +85,41 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
                 0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
 
             let dvy_dx_right_vy = (v[n2 + li(ni, j)] - v[n2 + li(i, j)]) * inv_dx2;
-            let dvx_dy_right_vy =
-                (v[li(ni, j)] - v[li(ni, pj)]) * inv_dx2;
+            let dvx_dy_right_vy = (v[li(ni, j)] - v[li(ni, pj)]) * inv_dx2;
             let dvy_dx_left_vy = (v[n2 + li(i, j)] - v[n2 + li(pi, j)]) * inv_dx2;
-            let dvx_dy_left_vy =
-                (v[li(i, j)] - v[li(i, pj)]) * inv_dx2;
+            let dvx_dy_left_vy = (v[li(i, j)] - v[li(i, pj)]) * inv_dx2;
 
             let term_yx = eta_right_vy * (dvy_dx_right_vy + dvx_dy_right_vy)
                 - eta_left_vy * (dvy_dx_left_vy + dvx_dy_left_vy);
 
-            out[n2 + li(i, j)] = -(term_yy + term_yx);
+            row_vy[i] = -(term_yy + term_yx);
+        }
+    };
+
+    if n >= PAR_THRESHOLD {
+        out_vx
+            .par_chunks_mut(n)
+            .zip(out_vy.par_chunks_mut(n))
+            .enumerate()
+            .for_each(|(j, (row_vx, row_vy))| {
+                process_row(j, row_vx, row_vy);
+            });
+    } else {
+        for j in 0..n {
+            let vx_start = j * n;
+            let (row_vx, row_vy) = (
+                &mut out_vx[vx_start..vx_start + n],
+                &mut out_vy[vx_start..vx_start + n],
+            );
+            // SAFETY: we need non-overlapping mutable borrows of the two halves
+            // which split_at_mut already guarantees. The sequential inner slices
+            // are also non-overlapping because we index by j*n.
+            process_row(j, row_vx, row_vy);
         }
     }
 }
 
-/// Compute the right-hand side: b = ∇(gravity_factor · S²) + T_plates.
+/// Compute the right-hand side: b = -∇(gravity_factor · S²) + T_plates.
 ///
 /// The gradient of S² is evaluated at the staggered face positions.
 pub fn compute_rhs(
@@ -108,32 +132,44 @@ pub fn compute_rhs(
     let n2 = n * n;
     let idx = &grid.idx;
     let inv_dx = 1.0 / grid.dx;
-    let li = |i: usize, j: usize| -> usize { j * n + i };
 
-    for j in 0..n {
+    let (rhs_vx, rhs_vy) = rhs.split_at_mut(n2);
+
+    let process_row = |j: usize, row_vx: &mut [f64], row_vy: &mut [f64]| {
+        let pj = idx.prev(j);
         for i in 0..n {
             let pi = idx.prev(i);
-            let pj = idx.prev(j);
 
             // vx face (i,j): gradient of S² in x between cells (i,j) and (prev(i),j)
             let s2_right = grid.s.get(i, j) * grid.s.get(i, j);
             let s2_left = grid.s.get(pi, j) * grid.s.get(pi, j);
             // Negative sign: A has -∇·τ, so rhs gets -∇(gS²) to balance
             let dpdx = -gravity_factor * (s2_right - s2_left) * inv_dx;
-
             // Traction: average of the two adjacent cells
             let tx = 0.5 * (plates.tx.get(pi, j) + plates.tx.get(i, j));
-
-            rhs[li(i, j)] = dpdx + tx;
+            row_vx[i] = dpdx + tx;
 
             // vy face (i,j): gradient of S² in y between cells (i,j) and (i, prev(j))
             let s2_top = grid.s.get(i, j) * grid.s.get(i, j);
             let s2_bot = grid.s.get(i, pj) * grid.s.get(i, pj);
             let dpdy = -gravity_factor * (s2_top - s2_bot) * inv_dx;
-
             let ty = 0.5 * (plates.ty.get(i, pj) + plates.ty.get(i, j));
+            row_vy[i] = dpdy + ty;
+        }
+    };
 
-            rhs[n2 + li(i, j)] = dpdy + ty;
+    if n >= PAR_THRESHOLD {
+        rhs_vx
+            .par_chunks_mut(n)
+            .zip(rhs_vy.par_chunks_mut(n))
+            .enumerate()
+            .for_each(|(j, (row_vx, row_vy))| {
+                process_row(j, row_vx, row_vy);
+            });
+    } else {
+        for j in 0..n {
+            let s = j * n;
+            process_row(j, &mut rhs_vx[s..s + n], &mut rhs_vy[s..s + n]);
         }
     }
 }
@@ -144,14 +180,15 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
     let n2 = n * n;
     let idx = &grid.idx;
     let inv_dx2 = 1.0 / (grid.dx * grid.dx);
-    let li = |i: usize, j: usize| -> usize { j * n + i };
 
-    for j in 0..n {
+    let (pre_vx, pre_vy) = precond.split_at_mut(n2);
+
+    let process_row = |j: usize, row_vx: &mut [f64], row_vy: &mut [f64]| {
+        let nj = idx.next(j);
+        let pj = idx.prev(j);
         for i in 0..n {
             let ni = idx.next(i);
             let pi = idx.prev(i);
-            let nj = idx.next(j);
-            let pj = idx.prev(j);
 
             // vx diagonal: 2(η_right + η_left) + η_top_corner + η_bot_corner
             let eta_right = eta.get(i, j);
@@ -161,11 +198,7 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
             let eta_bot =
                 0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
             let diag_vx = inv_dx2 * (2.0 * (eta_right + eta_left) + eta_top + eta_bot);
-            precond[li(i, j)] = if diag_vx.abs() > 1e-30 {
-                1.0 / diag_vx
-            } else {
-                0.0
-            };
+            row_vx[i] = if diag_vx.abs() > 1e-30 { 1.0 / diag_vx } else { 0.0 };
 
             // vy diagonal: η_right_corner + η_left_corner + 2(η_top + η_bot)
             let eta_top_vy = eta.get(i, j);
@@ -174,12 +207,24 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
                 0.25 * (eta.get(i, pj) + eta.get(ni, pj) + eta.get(i, j) + eta.get(ni, j));
             let eta_left_vy =
                 0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
-            let diag_vy = inv_dx2 * (eta_right_vy + eta_left_vy + 2.0 * (eta_top_vy + eta_bot_vy));
-            precond[n2 + li(i, j)] = if diag_vy.abs() > 1e-30 {
-                1.0 / diag_vy
-            } else {
-                0.0
-            };
+            let diag_vy =
+                inv_dx2 * (eta_right_vy + eta_left_vy + 2.0 * (eta_top_vy + eta_bot_vy));
+            row_vy[i] = if diag_vy.abs() > 1e-30 { 1.0 / diag_vy } else { 0.0 };
+        }
+    };
+
+    if n >= PAR_THRESHOLD {
+        pre_vx
+            .par_chunks_mut(n)
+            .zip(pre_vy.par_chunks_mut(n))
+            .enumerate()
+            .for_each(|(j, (row_vx, row_vy))| {
+                process_row(j, row_vx, row_vy);
+            });
+    } else {
+        for j in 0..n {
+            let s = j * n;
+            process_row(j, &mut pre_vx[s..s + n], &mut pre_vy[s..s + n]);
         }
     }
 }
@@ -291,13 +336,12 @@ mod tests {
         let eta = Field2D::filled(n, 1.0);
         let nn2 = 2 * n * n;
 
-        let k = 2.0 * std::f64::consts::PI; // wavenumber for mode fitting in [0,1]
+        let k = 2.0 * std::f64::consts::PI;
 
         let mut v = vec![0.0; nn2];
-        // vx = sin(k * x_face), vy = 0
         for j in 0..n {
             for i in 0..n {
-                let x = i as f64 * dx; // vx face position
+                let x = i as f64 * dx;
                 v[j * n + i] = (k * x).sin();
             }
         }
@@ -305,13 +349,9 @@ mod tests {
         let mut av = vec![0.0; nn2];
         apply_stokes(&v, &eta, &grid, &mut av);
 
-        // Expected eigenvalue for -∂/∂x(2η ∂vx/∂x) with η=1: 2k²
-        // But discrete FD has eigenvalue 2 * (2/dx²) * sin²(k*dx/2)
-        // For the ∂/∂y terms, vx doesn't vary in y so that contribution ≈ 0.
         // -∂/∂x(2η·∂vx/∂x) with η=1 has discrete eigenvalue 2·(2/dx²)·2sin²(k·dx/2)
         let expected_eigenvalue = 2.0 * (4.0 / (dx * dx)) * (k * dx / 2.0).sin().powi(2);
 
-        // Check that Av ≈ λ * v for the vx component
         let mut max_err = 0.0_f64;
         let mut max_val = 0.0_f64;
         for j in 0..n {
@@ -329,5 +369,88 @@ mod tests {
             rel_err < 0.05,
             "Sine eigenvalue test: rel_err = {rel_err}, expected λ = {expected_eigenvalue}"
         );
+    }
+
+    #[test]
+    fn parallel_apply_stokes_matches_sequential() {
+        let n = 64; // Above PAR_THRESHOLD to test parallel path
+        let dx = 1.0 / n as f64;
+        let grid = StaggeredGrid::new(n, dx);
+        let eta = Field2D::filled(n, 1.0);
+        let nn2 = 2 * n * n;
+
+        let mut state = 42u64;
+        let v: Vec<f64> = (0..nn2).map(|_| deterministic_rand(&mut state)).collect();
+
+        // Sequential reference
+        let mut out_seq = vec![0.0; nn2];
+        apply_stokes_sequential(&v, &eta, &grid, &mut out_seq);
+
+        // Parallel (default apply_stokes with n >= PAR_THRESHOLD)
+        let mut out_par = vec![0.0; nn2];
+        apply_stokes(&v, &eta, &grid, &mut out_par);
+
+        for i in 0..nn2 {
+            let err = (out_seq[i] - out_par[i]).abs();
+            assert!(
+                err < 1e-14,
+                "Mismatch at {i}: seq={}, par={}, diff={err}",
+                out_seq[i], out_par[i]
+            );
+        }
+    }
+
+    /// Sequential reference implementation for regression testing.
+    fn apply_stokes_sequential(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f64]) {
+        let n = grid.n;
+        let n2 = n * n;
+        let idx = &grid.idx;
+        let inv_dx2 = 1.0 / (grid.dx * grid.dx);
+        let li = |i: usize, j: usize| -> usize { j * n + i };
+
+        for j in 0..n {
+            for i in 0..n {
+                let ni = idx.next(i);
+                let pi = idx.prev(i);
+                let nj = idx.next(j);
+                let pj = idx.prev(j);
+
+                let eta_right = eta.get(i, j);
+                let eta_left = eta.get(pi, j);
+                let dvx_dx_right = (v[li(ni, j)] - v[li(i, j)]) * inv_dx2;
+                let dvx_dx_left = (v[li(i, j)] - v[li(pi, j)]) * inv_dx2;
+                let term_xx = 2.0 * eta_right * dvx_dx_right - 2.0 * eta_left * dvx_dx_left;
+
+                let eta_top =
+                    0.25 * (eta.get(pi, j) + eta.get(i, j) + eta.get(pi, nj) + eta.get(i, nj));
+                let eta_bot =
+                    0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
+                let dvx_dy_top = (v[li(i, nj)] - v[li(i, j)]) * inv_dx2;
+                let dvy_dx_top = (v[n2 + li(i, nj)] - v[n2 + li(pi, nj)]) * inv_dx2;
+                let dvx_dy_bot = (v[li(i, j)] - v[li(i, pj)]) * inv_dx2;
+                let dvy_dx_bot = (v[n2 + li(i, j)] - v[n2 + li(pi, j)]) * inv_dx2;
+                let term_xy =
+                    eta_top * (dvx_dy_top + dvy_dx_top) - eta_bot * (dvx_dy_bot + dvy_dx_bot);
+                out[li(i, j)] = -(term_xx + term_xy);
+
+                let eta_top_vy = eta.get(i, j);
+                let eta_bot_vy = eta.get(i, pj);
+                let dvy_dy_top = (v[n2 + li(i, nj)] - v[n2 + li(i, j)]) * inv_dx2;
+                let dvy_dy_bot = (v[n2 + li(i, j)] - v[n2 + li(i, pj)]) * inv_dx2;
+                let term_yy = 2.0 * eta_top_vy * dvy_dy_top - 2.0 * eta_bot_vy * dvy_dy_bot;
+
+                let eta_right_vy =
+                    0.25 * (eta.get(i, pj) + eta.get(ni, pj) + eta.get(i, j) + eta.get(ni, j));
+                let eta_left_vy =
+                    0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
+                let dvy_dx_right_vy = (v[n2 + li(ni, j)] - v[n2 + li(i, j)]) * inv_dx2;
+                let dvx_dy_right_vy = (v[li(ni, j)] - v[li(ni, pj)]) * inv_dx2;
+                let dvy_dx_left_vy = (v[n2 + li(i, j)] - v[n2 + li(pi, j)]) * inv_dx2;
+                let dvx_dy_left_vy = (v[li(i, j)] - v[li(i, pj)]) * inv_dx2;
+                let term_yx = eta_right_vy * (dvy_dx_right_vy + dvx_dy_right_vy)
+                    - eta_left_vy * (dvy_dx_left_vy + dvx_dy_left_vy);
+                out[n2 + li(i, j)] = -(term_yy + term_yx);
+            }
+        }
     }
 }
