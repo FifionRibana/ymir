@@ -18,6 +18,7 @@ pub mod seed;
 // by its corresponding milestone issue.
 pub mod climate;
 pub mod erosion;
+pub mod solver;
 pub mod export;
 pub mod lakes;
 pub mod tectonics;
