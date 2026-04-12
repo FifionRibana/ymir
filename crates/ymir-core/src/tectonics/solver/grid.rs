@@ -1,5 +1,6 @@
 //! Staggered (MAC) grid for the thin viscous sheet solver.
 
+use crate::grid::GridF32;
 use super::field::{Field2D, PeriodicIndex};
 
 /// Marker-And-Cell staggered grid with periodic boundary conditions.
@@ -28,5 +29,11 @@ impl StaggeredGrid {
             vy: Field2D::new(n),
             idx: PeriodicIndex::new(n),
         }
+    }
+
+    /// Extract the crustal thickness field as a GridF32 (f64 → f32).
+    pub fn thickness_to_grid_f32(&self) -> GridF32 {
+        let data: Vec<f32> = self.s.data().iter().map(|&v| v as f32).collect();
+        GridF32::from_vec(self.n, self.n, data)
     }
 }
