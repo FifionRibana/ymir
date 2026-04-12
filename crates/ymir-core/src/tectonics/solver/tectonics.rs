@@ -5,7 +5,7 @@ use super::config::{NonlinearSolver, TectonicsConfig};
 use super::grid::StaggeredGrid;
 use super::newton::solve_velocity_newton;
 use super::picard::solve_velocity_picard;
-use super::plates::PlateField;
+use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, StepStats};
 
 /// Errors that can occur during a tectonic simulation run.
@@ -37,7 +37,7 @@ impl std::error::Error for SolverError {}
 /// The `progress` callback is invoked after each timestep with (step, total, stats).
 pub fn run_tectonics<F>(
     config: &TectonicsConfig,
-    plates: &PlateField,
+    plates: &TractionField,
     grid: &mut StaggeredGrid,
     workspace: &mut SolverWorkspace,
     progress: F,
@@ -131,7 +131,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::config::{NewtonConfig, PicardConfig};
+    use crate::tectonics::solver::config::{NewtonConfig, PicardConfig};
 
     fn make_config(num_timesteps: usize) -> TectonicsConfig {
         TectonicsConfig {
@@ -166,7 +166,7 @@ mod tests {
             }
         }
 
-        let plates = PlateField::two_plates_convergent(n, 1.0);
+        let plates = TractionField::two_plates_convergent(n, 1.0);
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
@@ -192,7 +192,7 @@ mod tests {
             }
         }
 
-        let plates = PlateField::two_plates_divergent(n, 1.0);
+        let plates = TractionField::two_plates_divergent(n, 1.0);
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
@@ -228,7 +228,7 @@ mod tests {
             grid.s.data().iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n * n) as f64
         };
 
-        let plates = PlateField::zero(n);
+        let plates = TractionField::zero(n);
         let config = make_config(100);
         let mut ws = SolverWorkspace::new(n);
 
@@ -257,7 +257,7 @@ mod tests {
             }
         }
 
-        let plates = PlateField::two_plates_convergent(n, 0.5);
+        let plates = TractionField::two_plates_convergent(n, 0.5);
         let config = make_config(30);
         let mut ws = SolverWorkspace::new(n);
 

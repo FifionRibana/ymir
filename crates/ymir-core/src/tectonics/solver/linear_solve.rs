@@ -106,11 +106,7 @@ pub fn solve_cg(
     for iter in 0..max_iter {
         let r_norm = norm(&ws.r);
         if r_norm < tol {
-            return LinearSolveResult {
-                iterations: iter,
-                residual_norm: r_norm,
-                converged: true,
-            };
+            return LinearSolveResult { iterations: iter, residual_norm: r_norm, converged: true };
         }
 
         // ap = A*p
@@ -146,11 +142,7 @@ pub fn solve_cg(
         }
     }
 
-    LinearSolveResult {
-        iterations: max_iter,
-        residual_norm: norm(&ws.r),
-        converged: false,
-    }
+    LinearSolveResult { iterations: max_iter, residual_norm: norm(&ws.r), converged: false }
 }
 
 /// Solve A·x = b using preconditioned BiCGSTAB.
@@ -191,20 +183,12 @@ pub fn solve_bicgstab(
     for iter in 0..max_iter {
         let r_norm = norm(&ws.r);
         if r_norm < tol {
-            return LinearSolveResult {
-                iterations: iter,
-                residual_norm: r_norm,
-                converged: true,
-            };
+            return LinearSolveResult { iterations: iter, residual_norm: r_norm, converged: true };
         }
 
         let rho_new = dot(&ws.r_hat, &ws.r);
         if rho_new.abs() < 1e-30 {
-            return LinearSolveResult {
-                iterations: iter,
-                residual_norm: r_norm,
-                converged: false,
-            };
+            return LinearSolveResult { iterations: iter, residual_norm: r_norm, converged: false };
         }
 
         let beta = (rho_new / rho) * (alpha / omega);
@@ -225,11 +209,7 @@ pub fn solve_bicgstab(
 
         let r_hat_v = dot(&ws.r_hat, &ws.v);
         if r_hat_v.abs() < 1e-30 {
-            return LinearSolveResult {
-                iterations: iter,
-                residual_norm: r_norm,
-                converged: false,
-            };
+            return LinearSolveResult { iterations: iter, residual_norm: r_norm, converged: false };
         }
         alpha = rho / r_hat_v;
 
@@ -293,24 +273,19 @@ pub fn solve_bicgstab(
         }
     }
 
-    LinearSolveResult {
-        iterations: max_iter,
-        residual_norm: norm(&ws.r),
-        converged: false,
-    }
+    LinearSolveResult { iterations: max_iter, residual_norm: norm(&ws.r), converged: false }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::field::Field2D;
-    use crate::solver::grid::StaggeredGrid;
-    use crate::solver::stokes::{apply_stokes, compute_jacobi_precond};
+    use crate::tectonics::solver::field::Field2D;
+    use crate::tectonics::solver::grid::StaggeredGrid;
+    use crate::tectonics::solver::stokes::{apply_stokes, compute_jacobi_precond};
 
     fn deterministic_rand(state: &mut u64) -> f64 {
-        *state = state
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1_442_695_040_888_963_407);
+        *state =
+            state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
         (*state >> 33) as f64 / (1u64 << 31) as f64 - 0.5
     }
 
@@ -350,14 +325,8 @@ mod tests {
         let mut ws = CgWorkspace::new(nn2);
         compute_jacobi_precond(&eta, &grid, &mut ws.precond);
 
-        let result = solve_cg(
-            &mut x,
-            &b,
-            |v, out| apply_stokes(v, &eta, &grid, out),
-            &mut ws,
-            1000,
-            1e-8,
-        );
+        let result =
+            solve_cg(&mut x, &b, |v, out| apply_stokes(v, &eta, &grid, out), &mut ws, 1000, 1e-8);
         assert!(
             result.converged,
             "CG did not converge: {} iters, residual={}",
@@ -470,10 +439,7 @@ mod tests {
         let err: f64 = ax.iter().zip(&b).map(|(a, b)| (a - b).powi(2)).sum();
         let b_sq: f64 = b.iter().map(|v| v * v).sum();
         let rel_err = (err / b_sq).sqrt();
-        assert!(
-            rel_err < 1e-8,
-            "BiCGSTAB solution inaccurate: rel_err={rel_err}"
-        );
+        assert!(rel_err < 1e-8, "BiCGSTAB solution inaccurate: rel_err={rel_err}");
     }
 
     #[test]

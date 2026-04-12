@@ -3,12 +3,12 @@
 use super::field::Field2D;
 
 /// Traction field imposed by plate motions.
-pub struct PlateField {
+pub struct TractionField {
     pub tx: Field2D,
     pub ty: Field2D,
 }
 
-impl PlateField {
+impl TractionField {
     /// No traction — for testing GPE-only dynamics.
     pub fn zero(n: usize) -> Self {
         Self {
