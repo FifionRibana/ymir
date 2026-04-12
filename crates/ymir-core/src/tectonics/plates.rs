@@ -9,6 +9,9 @@ use rand::Rng;
 
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
+use super::solver::field::Field2D;
+use super::solver::grid::StaggeredGrid;
+use super::solver::traction::TractionField;
 
 // ── Plate types and structs ───────────────────────────────────────────────
 
@@ -194,6 +197,52 @@ fn toroidal_distance_sq(x1: f32, y1: f32, x2: f32, y2: f32, size: f32) -> f32 {
     let dx = dx.min(size - dx);
     let dy = dy.min(size - dy);
     dx * dx + dy * dy
+}
+
+impl PlateInitResult {
+    /// Build the traction field for the thin sheet solver.
+    ///
+    /// For each cell on the grid, looks up which plate it belongs to
+    /// (via `plate_ids`) and assigns that plate's velocity as the
+    /// traction force at that cell. This is how the Voronoï plate
+    /// configuration drives the physics simulation.
+    pub fn to_traction_field(&self) -> TractionField {
+        let n = self.grid_size;
+        let mut tx = Field2D::new(n);
+        let mut ty = Field2D::new(n);
+
+        for j in 0..n {
+            for i in 0..n {
+                let plate_id = self.plate_ids[j * n + i];
+                let plate = &self.plates[plate_id];
+                tx.set(i, j, plate.velocity.0 as f64);
+                ty.set(i, j, plate.velocity.1 as f64);
+            }
+        }
+
+        TractionField { tx, ty }
+    }
+
+    /// Initialize a StaggeredGrid with the crustal thickness from
+    /// the Voronoï plate generation.
+    ///
+    /// Creates the grid with the correct size and dx, copies the
+    /// thickness field (f32 → f64), and returns the grid ready
+    /// for the solver.
+    pub fn to_staggered_grid(&self) -> StaggeredGrid {
+        let n = self.grid_size;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, dx);
+
+        for j in 0..n {
+            for i in 0..n {
+                let s = self.thickness.data[j * n + i] as f64;
+                grid.s.set(i, j, s);
+            }
+        }
+
+        grid
+    }
 }
 
 /// Separable Gaussian blur on a GridF32 with toroidal (wrapping) boundary conditions.

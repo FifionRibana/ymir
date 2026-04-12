@@ -84,29 +84,33 @@ fn ui_right_panel(
     mut view_state: ResMut<ViewState>,
     pipeline_state: Res<crate::state::PipelineState>,
     mut erosion: ResMut<crate::state::ErosionParams>,
-    mut tectonics: ResMut<crate::state::TectonicsParams>,
     mut climate: ResMut<crate::state::ClimateParams>,
     mut gen_params: ResMut<GenerationParamsUi>,
     stats: Res<crate::state::TerrainStats>,
     tectonic_state: Option<ResMut<crate::state::TectonicState>>,
+    mut solver_config: ResMut<crate::state::SolverConfig>,
+    mut bridge: ResMut<crate::bridge::SolverBridge>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::SidePanel::right("right_panel")
         .exact_width(260.0)
         .show(ctx, |ui| {
-            pipeline_panel::draw(ui, &mut view_state, &pipeline_state);
-            ui.separator();
-            parameter_panel::draw(
-                ui,
-                &view_state,
-                &mut erosion,
-                &mut tectonics,
-                &mut climate,
-                &mut gen_params,
-                tectonic_state,
-            );
-            ui.separator();
-            statistics_panel::draw(ui, &stats);
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                pipeline_panel::draw(ui, &mut view_state, &pipeline_state);
+                ui.separator();
+                parameter_panel::draw(
+                    ui,
+                    &view_state,
+                    &mut erosion,
+                    &mut climate,
+                    &mut gen_params,
+                    tectonic_state,
+                    &mut solver_config,
+                    &mut bridge,
+                );
+                ui.separator();
+                statistics_panel::draw(ui, &stats);
+            });
         });
 }
 

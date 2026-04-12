@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics::plates::{PlateConfig, PlateInitResult};
+use ymir_core::tectonics::solver::config::{NonlinearSolver, Preconditioner};
 
 // ── View ─────────────────────────────────────────────────────────────────
 
@@ -173,25 +174,36 @@ impl Default for ErosionParams {
     }
 }
 
+/// Configuration for the thin viscous sheet solver (UI-facing).
 #[derive(Resource, Clone, Debug)]
-pub struct TectonicsParams {
-    pub viscosity: f32,
-    pub gravity_factor: f32,
-    pub num_timesteps: u32,
-    pub power_law_exponent: u32,
-    pub plate_count: u32,
-    pub continental_ratio: f32,
+pub struct SolverConfig {
+    pub num_timesteps: usize,
+    pub gravity_factor: f64,
+    pub cfl_factor: f64,
+    pub power_law_n: f64,
+    pub picard_relaxation: f64,
+    pub nonlinear_solver: NonlinearSolver,
+    pub continuation_enabled: bool,
+    pub strain_rate_min: f64,
+    pub eta_max: f64,
+    pub preconditioner: Preconditioner,
+    pub inexact_newton: bool,
 }
 
-impl Default for TectonicsParams {
+impl Default for SolverConfig {
     fn default() -> Self {
         Self {
-            viscosity: 1.0,
-            gravity_factor: 1.0,
             num_timesteps: 300,
-            power_law_exponent: 3,
-            plate_count: 8,
-            continental_ratio: 0.3,
+            gravity_factor: 1.0,
+            cfl_factor: 0.5,
+            power_law_n: 3.0,
+            picard_relaxation: 0.7,
+            nonlinear_solver: NonlinearSolver::Picard,
+            continuation_enabled: true,
+            strain_rate_min: 1e-3,
+            eta_max: 1e4,
+            preconditioner: Preconditioner::default(),
+            inexact_newton: true,
         }
     }
 }
