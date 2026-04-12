@@ -130,6 +130,10 @@ struct MinimapTexture {
     grid_height: usize,
     /// The view mode the texture was built for — triggers a rebuild on mode change.
     mode: ViewMode,
+    /// Generation counter copied from TectonicState — triggers a rebuild when plates
+    /// are regenerated while already in Tectonics mode (avoids relying on the
+    /// single-frame `is_changed()` window which can be missed due to system ordering).
+    tectonic_generation: u64,
 }
 
 fn minimap_overlay(
@@ -155,15 +159,18 @@ fn minimap_overlay(
         (ter.heightmap.width, ter.heightmap.height)
     };
 
-    // Rebuild when: first run, mode changed, grid size changed, or underlying data changed
+    // Rebuild when: first run, mode changed, grid size changed, or underlying data changed.
+    // For tectonic data we compare generation counters rather than relying on
+    // is_changed() which only fires for one frame and can be missed.
+    let tectonic_gen = tectonic.as_ref().map(|t| t.generation).unwrap_or(0);
     let needs_rebuild = minimap.is_none()
         || minimap.as_ref().is_some_and(|m| {
-            m.mode != mode || m.grid_width != grid_w || m.grid_height != grid_h
+            m.mode != mode
+                || m.grid_width != grid_w
+                || m.grid_height != grid_h
+                || (mode == ViewMode::Tectonics && m.tectonic_generation != tectonic_gen)
         })
-        || (mode == ViewMode::Tectonics
-            && tectonic.as_ref().is_some_and(|t| t.is_changed()))
-        || (mode != ViewMode::Tectonics
-            && terrain.as_ref().is_some_and(|t| t.dirty));
+        || (mode != ViewMode::Tectonics && terrain.as_ref().is_some_and(|t| t.dirty));
 
     let texture_ref;
     let minimap_texture: &MinimapTexture;
@@ -210,12 +217,14 @@ fn minimap_overlay(
             grid_width: grid_w,
             grid_height: grid_h,
             mode,
+            tectonic_generation: tectonic_gen,
         };
         commands.insert_resource(MinimapTexture {
             texture: texture_ref.texture.clone(),
             grid_width: grid_w,
             grid_height: grid_h,
             mode,
+            tectonic_generation: tectonic_gen,
         });
         minimap_texture = &texture_ref;
     } else {

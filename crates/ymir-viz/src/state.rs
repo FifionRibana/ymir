@@ -262,6 +262,9 @@ pub struct TectonicState {
     pub seed: u64,
     /// True when the GPU texture needs to be rebuilt from `init`.
     pub dirty: bool,
+    /// Incremented on every regeneration — lets other systems detect stale caches
+    /// without relying on Bevy's single-frame `is_changed()` window.
+    pub generation: u64,
 }
 
 // ── Cursor ───────────────────────────────────────────────────────────────
