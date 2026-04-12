@@ -242,6 +242,7 @@ fn draw_tectonics(
     if let Preconditioner::Ssor { ref mut omega } = solver_config.preconditioner {
         ui.add(egui::Slider::new(omega, 0.5..=1.9).text("omega"));
     }
+    ui.checkbox(&mut solver_config.inexact_newton, "Inexact Newton");
 
     ui.add_space(4.0);
 
@@ -331,6 +332,7 @@ fn launch_solver(
         },
         newton: NewtonConfig {
             preconditioner: solver_config.preconditioner,
+            inexact: solver_config.inexact_newton,
             ..NewtonConfig::default()
         },
         continuation: ContinuationConfig {

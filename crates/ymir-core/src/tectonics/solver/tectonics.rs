@@ -1,5 +1,7 @@
 //! Top-level orchestration of the thin viscous sheet simulation.
 
+use tracing::{info, info_span, warn};
+
 use super::advection::{compute_cfl_dt, compute_divergence_flux};
 use super::config::{NonlinearSolver, TectonicsConfig};
 use super::field::Field2D;
@@ -60,26 +62,26 @@ where
             && config.picard.power_law_n > 1.0
             && step == 0;
 
-        let t0 = std::time::Instant::now();
+        let _step_span = info_span!("solver_step", step, n = grid.n).entered();
+
         let (converged, nl_iterations, linear_iterations) = if need_continuation {
             solve_with_continuation(grid, plates, config, workspace)
         } else {
             let result = solve_velocity_direct(grid, plates, config, workspace);
             // Fallback: if direct solve fails, try continuation as recovery
             if !result.0 && config.continuation.enabled && config.picard.power_law_n > 1.0 {
+                warn!(step, "direct solve failed, falling back to continuation");
                 solve_with_continuation(grid, plates, config, workspace)
             } else {
                 result
             }
         };
-        let solve_ms = t0.elapsed().as_millis();
 
         if !converged {
             return Err(SolverError::NonlinearSolverDidNotConverge { step });
         }
 
         // 2. CFL timestep (after velocity is known)
-        let t1 = std::time::Instant::now();
         let dt_cfl = compute_cfl_dt(grid, config.cfl_factor);
 
         // 3. Adaptive timestep with retry on excessive clamping
@@ -114,8 +116,7 @@ where
             dt *= 0.5;
             grid.s.data_mut().copy_from_slice(&s_backup);
         }
-        let advect_ms = t1.elapsed().as_millis();
-        println!("Step {step}: solve={solve_ms}ms advect={advect_ms}ms nl={nl_iterations} lin={linear_iterations}");
+
         // 4. Update stats
         let mut max_v = 0.0_f64;
         let mut max_s = f64::NEG_INFINITY;
@@ -139,6 +140,27 @@ where
             dt,
             clamp_ratio,
         };
+
+        info!(
+            step,
+            dt,
+            nl_iters = nl_iterations,
+            lin_iters = linear_iterations,
+            max_velocity = max_v,
+            min_thickness = min_s,
+            max_thickness = max_s,
+            clamp_ratio,
+            "tectonic step"
+        );
+
+        if clamp_ratio > 0.05 {
+            warn!(
+                step,
+                clamp_ratio,
+                dt,
+                "excessive clamping — consider reducing CFL or timestep"
+            );
+        }
 
         // 5. Callback — returns false to cancel
         if !progress(step, config.num_timesteps, &workspace.stats, &grid.s) {

@@ -187,6 +187,7 @@ pub struct SolverConfig {
     pub strain_rate_min: f64,
     pub eta_max: f64,
     pub preconditioner: Preconditioner,
+    pub inexact_newton: bool,
 }
 
 impl Default for SolverConfig {
@@ -202,6 +203,7 @@ impl Default for SolverConfig {
             strain_rate_min: 1e-3,
             eta_max: 1e4,
             preconditioner: Preconditioner::default(),
+            inexact_newton: true,
         }
     }
 }

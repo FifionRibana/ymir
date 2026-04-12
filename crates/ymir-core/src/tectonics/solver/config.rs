@@ -49,14 +49,18 @@ pub enum Preconditioner {
     Ssor { omega: f64 },
 }
 
-/// Configuration for quasi-Newton iteration.
+/// Configuration for JFNK (Jacobian-Free Newton-Krylov) iteration.
 #[derive(Clone)]
 pub struct NewtonConfig {
     pub max_iterations: usize,
     pub tolerance: f64,
     pub cg_max_iter: usize,
     pub cg_tolerance: f64,
+    /// Scale factor for the finite-difference step in the JFNK operator.
+    pub fd_epsilon_scale: f64,
     pub preconditioner: Preconditioner,
+    /// Use inexact Newton (Eisenstat-Walker adaptive inner tolerance).
+    pub inexact: bool,
 }
 
 impl Default for NewtonConfig {
@@ -66,7 +70,9 @@ impl Default for NewtonConfig {
             tolerance: 1e-4,
             cg_max_iter: 500,
             cg_tolerance: 1e-6,
+            fd_epsilon_scale: 1e-7,
             preconditioner: Preconditioner::default(),
+            inexact: true,
         }
     }
 }
