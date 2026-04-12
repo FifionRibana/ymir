@@ -60,6 +60,7 @@ where
             && config.picard.power_law_n > 1.0
             && step == 0;
 
+        let t0 = std::time::Instant::now();
         let (converged, nl_iterations, linear_iterations) = if need_continuation {
             solve_with_continuation(grid, plates, config, workspace)
         } else {
@@ -71,12 +72,14 @@ where
                 result
             }
         };
+        let solve_ms = t0.elapsed().as_millis();
 
         if !converged {
             return Err(SolverError::NonlinearSolverDidNotConverge { step });
         }
 
         // 2. CFL timestep (after velocity is known)
+        let t1 = std::time::Instant::now();
         let dt_cfl = compute_cfl_dt(grid, config.cfl_factor);
 
         // 3. Adaptive timestep with retry on excessive clamping
@@ -111,7 +114,8 @@ where
             dt *= 0.5;
             grid.s.data_mut().copy_from_slice(&s_backup);
         }
-
+        let advect_ms = t1.elapsed().as_millis();
+        println!("Step {step}: solve={solve_ms}ms advect={advect_ms}ms nl={nl_iterations} lin={linear_iterations}");
         // 4. Update stats
         let mut max_v = 0.0_f64;
         let mut max_s = f64::NEG_INFINITY;

@@ -1,8 +1,8 @@
 //! Linear solvers: Preconditioned CG and BiCGSTAB.
 //!
-//! Both solvers take a closure `apply_operator: impl FnMut(&[f64], &mut [f64])`
-//! for the matrix-vector product, making them reusable for Stokes (Picard)
-//! and Jacobian-free Newton-Krylov (JFNK).
+//! Both solvers take closures for the matrix-vector product and the
+//! preconditioner application, making them reusable for Stokes (Picard),
+//! quasi-Newton, and any future operator.
 
 use rayon::prelude::*;
 
@@ -14,7 +14,6 @@ pub struct CgWorkspace {
     pub p: Vec<f64>,
     pub ap: Vec<f64>,
     pub z: Vec<f64>,
-    pub precond: Vec<f64>,
 }
 
 impl CgWorkspace {
@@ -24,7 +23,6 @@ impl CgWorkspace {
             p: vec![0.0; size],
             ap: vec![0.0; size],
             z: vec![0.0; size],
-            precond: vec![1.0; size],
         }
     }
 }
@@ -39,7 +37,6 @@ pub struct BiCgStabWorkspace {
     pub t: Vec<f64>,
     pub p_hat: Vec<f64>,
     pub s_hat: Vec<f64>,
-    pub precond: Vec<f64>,
 }
 
 impl BiCgStabWorkspace {
@@ -53,7 +50,6 @@ impl BiCgStabWorkspace {
             t: vec![0.0; size],
             p_hat: vec![0.0; size],
             s_hat: vec![0.0; size],
-            precond: vec![1.0; size],
         }
     }
 }
@@ -79,13 +75,14 @@ fn norm(a: &[f64]) -> f64 {
 
 /// Solve A·x = b using preconditioned Conjugate Gradient.
 ///
-/// `apply_operator` computes A·v → out. The Jacobi preconditioner
-/// `ws.precond` (= 1/diag(A)) must be set before calling.
+/// `apply_operator` computes A·v → out.
+/// `apply_precond` computes M⁻¹·r → z (preconditioner application).
 #[allow(clippy::needless_range_loop)]
 pub fn solve_cg(
     x: &mut [f64],
     b: &[f64],
     mut apply_operator: impl FnMut(&[f64], &mut [f64]),
+    mut apply_precond: impl FnMut(&[f64], &mut [f64]),
     ws: &mut CgWorkspace,
     max_iter: usize,
     tolerance: f64,
@@ -102,9 +99,7 @@ pub fn solve_cg(
     let tol = tolerance * b_norm;
 
     // z = M^{-1} r
-    for i in 0..n {
-        ws.z[i] = ws.precond[i] * ws.r[i];
-    }
+    apply_precond(&ws.r, &mut ws.z);
 
     // p = z
     ws.p.copy_from_slice(&ws.z);
@@ -114,7 +109,11 @@ pub fn solve_cg(
     for iter in 0..max_iter {
         let r_norm = norm(&ws.r);
         if r_norm < tol {
-            return LinearSolveResult { iterations: iter, residual_norm: r_norm, converged: true };
+            return LinearSolveResult {
+                iterations: iter,
+                residual_norm: r_norm,
+                converged: true,
+            };
         }
 
         // ap = A*p
@@ -137,9 +136,7 @@ pub fn solve_cg(
         }
 
         // z = M^{-1} r
-        for i in 0..n {
-            ws.z[i] = ws.precond[i] * ws.r[i];
-        }
+        apply_precond(&ws.r, &mut ws.z);
 
         let rz_new = dot(&ws.r, &ws.z);
         let beta = rz_new / rz.max(1e-30);
@@ -150,19 +147,24 @@ pub fn solve_cg(
         }
     }
 
-    LinearSolveResult { iterations: max_iter, residual_norm: norm(&ws.r), converged: false }
+    LinearSolveResult {
+        iterations: max_iter,
+        residual_norm: norm(&ws.r),
+        converged: false,
+    }
 }
 
 /// Solve A·x = b using preconditioned BiCGSTAB.
 ///
-/// Works for non-symmetric operators (e.g. JFNK Jacobian approximation).
-/// `apply_operator` computes A·v → out. The Jacobi preconditioner
-/// `ws.precond` must be set before calling.
+/// Works for non-symmetric operators.
+/// `apply_operator` computes A·v → out.
+/// `apply_precond` computes M⁻¹·r → z.
 #[allow(clippy::needless_range_loop)]
 pub fn solve_bicgstab(
     x: &mut [f64],
     b: &[f64],
     mut apply_operator: impl FnMut(&[f64], &mut [f64]),
+    mut apply_precond: impl FnMut(&[f64], &mut [f64]),
     ws: &mut BiCgStabWorkspace,
     max_iter: usize,
     tolerance: f64,
@@ -170,12 +172,11 @@ pub fn solve_bicgstab(
     let n = x.len();
 
     // r₀ = b - A·x₀
-    apply_operator(x, &mut ws.t); // use t as temp
+    apply_operator(x, &mut ws.t);
     for i in 0..n {
         ws.r[i] = b[i] - ws.t[i];
     }
 
-    // r̂₀ = r₀
     ws.r_hat.copy_from_slice(&ws.r);
 
     let b_norm = norm(b).max(1e-14);
@@ -191,42 +192,49 @@ pub fn solve_bicgstab(
     for iter in 0..max_iter {
         let r_norm = norm(&ws.r);
         if r_norm < tol {
-            return LinearSolveResult { iterations: iter, residual_norm: r_norm, converged: true };
+            return LinearSolveResult {
+                iterations: iter,
+                residual_norm: r_norm,
+                converged: true,
+            };
         }
 
         let rho_new = dot(&ws.r_hat, &ws.r);
         if rho_new.abs() < 1e-30 {
-            return LinearSolveResult { iterations: iter, residual_norm: r_norm, converged: false };
+            return LinearSolveResult {
+                iterations: iter,
+                residual_norm: r_norm,
+                converged: false,
+            };
         }
 
         let beta = (rho_new / rho) * (alpha / omega);
         rho = rho_new;
 
-        // p = r + β(p - ω·v)
         for i in 0..n {
             ws.p[i] = ws.r[i] + beta * (ws.p[i] - omega * ws.v[i]);
         }
 
         // p̂ = M⁻¹·p
-        for i in 0..n {
-            ws.p_hat[i] = ws.precond[i] * ws.p[i];
-        }
+        apply_precond(&ws.p, &mut ws.p_hat);
 
         // v = A·p̂
         apply_operator(&ws.p_hat, &mut ws.v);
 
         let r_hat_v = dot(&ws.r_hat, &ws.v);
         if r_hat_v.abs() < 1e-30 {
-            return LinearSolveResult { iterations: iter, residual_norm: r_norm, converged: false };
+            return LinearSolveResult {
+                iterations: iter,
+                residual_norm: r_norm,
+                converged: false,
+            };
         }
         alpha = rho / r_hat_v;
 
-        // s = r - α·v
         for i in 0..n {
             ws.s[i] = ws.r[i] - alpha * ws.v[i];
         }
 
-        // Early convergence check on s
         let s_norm = norm(&ws.s);
         if s_norm < tol {
             for i in 0..n {
@@ -240,17 +248,13 @@ pub fn solve_bicgstab(
         }
 
         // ŝ = M⁻¹·s
-        for i in 0..n {
-            ws.s_hat[i] = ws.precond[i] * ws.s[i];
-        }
+        apply_precond(&ws.s, &mut ws.s_hat);
 
         // t = A·ŝ
         apply_operator(&ws.s_hat, &mut ws.t);
 
-        // ω = <t, s> / <t, t>
         let tt = dot(&ws.t, &ws.t);
         if tt < 1e-30 {
-            // t ≈ 0 means A·ŝ ≈ 0 — accept current step
             for i in 0..n {
                 x[i] += alpha * ws.p_hat[i];
             }
@@ -270,18 +274,28 @@ pub fn solve_bicgstab(
             };
         }
 
-        // x = x + α·p̂ + ω·ŝ
         for i in 0..n {
             x[i] += alpha * ws.p_hat[i] + omega * ws.s_hat[i];
         }
 
-        // r = s - ω·t
         for i in 0..n {
             ws.r[i] = ws.s[i] - omega * ws.t[i];
         }
     }
 
-    LinearSolveResult { iterations: max_iter, residual_norm: norm(&ws.r), converged: false }
+    LinearSolveResult {
+        iterations: max_iter,
+        residual_norm: norm(&ws.r),
+        converged: false,
+    }
+}
+
+/// Apply Jacobi (diagonal) preconditioner: z[i] = diag[i] * r[i].
+#[inline]
+pub fn apply_jacobi(diag: &[f64], r: &[f64], z: &mut [f64]) {
+    for i in 0..r.len() {
+        z[i] = diag[i] * r[i];
+    }
 }
 
 #[cfg(test)]
@@ -292,8 +306,9 @@ mod tests {
     use crate::tectonics::solver::stokes::{apply_stokes, compute_jacobi_precond};
 
     fn deterministic_rand(state: &mut u64) -> f64 {
-        *state =
-            state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        *state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         (*state >> 33) as f64 / (1u64 << 31) as f64 - 0.5
     }
 
@@ -331,17 +346,24 @@ mod tests {
 
         let mut x = vec![0.0; nn2];
         let mut ws = CgWorkspace::new(nn2);
-        compute_jacobi_precond(&eta, &grid, &mut ws.precond);
+        let mut precond = vec![0.0; nn2];
+        compute_jacobi_precond(&eta, &grid, &mut precond);
 
-        let result =
-            solve_cg(&mut x, &b, |v, out| apply_stokes(v, &eta, &grid, out), &mut ws, 1000, 1e-8);
+        let result = solve_cg(
+            &mut x,
+            &b,
+            |v, out| apply_stokes(v, &eta, &grid, out),
+            |r, z| apply_jacobi(&precond, r, z),
+            &mut ws,
+            1000,
+            1e-8,
+        );
         assert!(
             result.converged,
             "CG did not converge: {} iters, residual={}",
             result.iterations, result.residual_norm
         );
 
-        // Verify: ||Ax - b|| / ||b|| < 1e-8
         let mut ax = vec![0.0; nn2];
         apply_stokes(&x, &eta, &grid, &mut ax);
         let err: f64 = ax.iter().zip(&b).map(|(a, b)| (a - b).powi(2)).sum();
@@ -369,13 +391,14 @@ mod tests {
         let mut b: Vec<f64> = (0..nn2).map(|_| deterministic_rand(&mut state)).collect();
         project_null_space(&mut b, n);
 
-        // Without preconditioner
+        // Without preconditioner (identity)
         let mut x_no_prec = vec![0.0; nn2];
         let mut ws_no_prec = CgWorkspace::new(nn2);
         let res_no_prec = solve_cg(
             &mut x_no_prec,
             &b,
             |v, out| apply_stokes(v, &eta, &grid, out),
+            |r, z| z.copy_from_slice(r), // identity preconditioner
             &mut ws_no_prec,
             2000,
             1e-6,
@@ -384,11 +407,13 @@ mod tests {
         // With Jacobi
         let mut x_jac = vec![0.0; nn2];
         let mut ws_jac = CgWorkspace::new(nn2);
-        compute_jacobi_precond(&eta, &grid, &mut ws_jac.precond);
+        let mut precond = vec![0.0; nn2];
+        compute_jacobi_precond(&eta, &grid, &mut precond);
         let res_jac = solve_cg(
             &mut x_jac,
             &b,
             |v, out| apply_stokes(v, &eta, &grid, out),
+            |r, z| apply_jacobi(&precond, r, z),
             &mut ws_jac,
             2000,
             1e-6,
@@ -425,12 +450,14 @@ mod tests {
 
         let mut x = vec![0.0; nn2];
         let mut ws = BiCgStabWorkspace::new(nn2);
-        compute_jacobi_precond(&eta, &grid, &mut ws.precond);
+        let mut precond = vec![0.0; nn2];
+        compute_jacobi_precond(&eta, &grid, &mut precond);
 
         let result = solve_bicgstab(
             &mut x,
             &b,
             |v, out| apply_stokes(v, &eta, &grid, out),
+            |r, z| apply_jacobi(&precond, r, z),
             &mut ws,
             1000,
             1e-8,
@@ -441,13 +468,15 @@ mod tests {
             result.iterations, result.residual_norm
         );
 
-        // Verify: ||Ax - b|| / ||b|| < 1e-8
         let mut ax = vec![0.0; nn2];
         apply_stokes(&x, &eta, &grid, &mut ax);
         let err: f64 = ax.iter().zip(&b).map(|(a, b)| (a - b).powi(2)).sum();
         let b_sq: f64 = b.iter().map(|v| v * v).sum();
         let rel_err = (err / b_sq).sqrt();
-        assert!(rel_err < 1e-8, "BiCGSTAB solution inaccurate: rel_err={rel_err}");
+        assert!(
+            rel_err < 1e-8,
+            "BiCGSTAB solution inaccurate: rel_err={rel_err}"
+        );
     }
 
     #[test]
@@ -462,7 +491,6 @@ mod tests {
         let mut b: Vec<f64> = (0..nn2).map(|_| deterministic_rand(&mut state)).collect();
         project_null_space(&mut b, n);
 
-        // Non-symmetric operator: Stokes + asymmetric perturbation
         let nonsym_op = |v_in: &[f64], v_out: &mut [f64]| {
             apply_stokes(v_in, &eta, &grid, v_out);
             for i in 0..nn2 {
@@ -472,9 +500,18 @@ mod tests {
 
         let mut x = vec![0.0; nn2];
         let mut ws = BiCgStabWorkspace::new(nn2);
-        compute_jacobi_precond(&eta, &grid, &mut ws.precond);
+        let mut precond = vec![0.0; nn2];
+        compute_jacobi_precond(&eta, &grid, &mut precond);
 
-        let result = solve_bicgstab(&mut x, &b, nonsym_op, &mut ws, 2000, 1e-6);
+        let result = solve_bicgstab(
+            &mut x,
+            &b,
+            nonsym_op,
+            |r, z| apply_jacobi(&precond, r, z),
+            &mut ws,
+            2000,
+            1e-6,
+        );
         assert!(
             result.converged,
             "BiCGSTAB should converge on non-symmetric system: {} iters, residual={}",

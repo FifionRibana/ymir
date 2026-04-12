@@ -5,7 +5,8 @@ use bevy_egui::egui;
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::plates::{PlateConfig, generate_plates};
 use ymir_core::tectonics::solver::config::{
-    ContinuationConfig, NewtonConfig, NonlinearSolver, PicardConfig, TectonicsConfig,
+    ContinuationConfig, NewtonConfig, NonlinearSolver, PicardConfig, Preconditioner,
+    TectonicsConfig,
 };
 
 use crate::bridge::commands::SolverCommand;
@@ -224,6 +225,24 @@ fn draw_tectonics(
             .logarithmic(true),
     );
 
+    ui.horizontal(|ui| {
+        ui.label("Precond.");
+        let mut is_ssor = matches!(solver_config.preconditioner, Preconditioner::Ssor { .. });
+        egui::ComboBox::from_id_salt("precond")
+            .selected_text(if is_ssor { "SSOR" } else { "Jacobi" })
+            .show_ui(ui, |ui| {
+                if ui.selectable_value(&mut is_ssor, false, "Jacobi").changed() && !is_ssor {
+                    solver_config.preconditioner = Preconditioner::Jacobi;
+                }
+                if ui.selectable_value(&mut is_ssor, true, "SSOR").changed() && is_ssor {
+                    solver_config.preconditioner = Preconditioner::Ssor { omega: 1.2 };
+                }
+            });
+    });
+    if let Preconditioner::Ssor { ref mut omega } = solver_config.preconditioner {
+        ui.add(egui::Slider::new(omega, 0.5..=1.9).text("omega"));
+    }
+
     ui.add_space(4.0);
 
     let is_running = matches!(bridge.state, SolverState::Running { .. });
@@ -310,7 +329,10 @@ fn launch_solver(
             eta_max: solver_config.eta_max,
             ..PicardConfig::default()
         },
-        newton: NewtonConfig::default(),
+        newton: NewtonConfig {
+            preconditioner: solver_config.preconditioner,
+            ..NewtonConfig::default()
+        },
         continuation: ContinuationConfig {
             enabled: solver_config.continuation_enabled,
             ..ContinuationConfig::default()

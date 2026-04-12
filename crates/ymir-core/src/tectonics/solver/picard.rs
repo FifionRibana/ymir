@@ -143,16 +143,18 @@ pub fn solve_velocity_picard(
             &mut ws.eta,
         );
 
-        // Update preconditioner
-        compute_jacobi_precond(&ws.eta, grid, &mut ws.cg.precond);
+        // Update Jacobi preconditioner
+        compute_jacobi_precond(&ws.eta, grid, &mut ws.jacobi_precond);
 
         // Solve A(η) v = b
         let eta_ref = &ws.eta;
         let grid_ref = &*grid;
+        let precond_ref = &ws.jacobi_precond;
         let cg_result = solve_cg(
             &mut ws.v_packed,
             &ws.rhs,
             |v_in, v_out| apply_stokes(v_in, eta_ref, grid_ref, v_out),
+            |r, z| super::linear_solve::apply_jacobi(precond_ref, r, z),
             &mut ws.cg,
             config.cg_max_iter,
             config.cg_tolerance,
