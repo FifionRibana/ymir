@@ -111,6 +111,7 @@ pub struct TectonicsConfig {
     pub picard: PicardConfig,
     pub newton: NewtonConfig,
     pub continuation: ContinuationConfig,
+    pub boundaries: super::super::boundaries::BoundaryConfig,
 }
 
 impl Default for TectonicsConfig {
@@ -125,6 +126,7 @@ impl Default for TectonicsConfig {
             picard: PicardConfig::default(),
             newton: NewtonConfig::default(),
             continuation: ContinuationConfig::default(),
+            boundaries: Default::default(),
         }
     }
 }

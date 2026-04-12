@@ -7,7 +7,7 @@ use std::time::Instant;
 use crossbeam_channel::{Receiver, Sender};
 
 use ymir_core::tectonics::solver::grid::StaggeredGrid;
-use ymir_core::tectonics::solver::tectonics::run_tectonics;
+use ymir_core::tectonics::solver::tectonics::{run_tectonics, PlateContext};
 use ymir_core::tectonics::solver::workspace::SolverWorkspace;
 
 use super::commands::SolverCommand;
@@ -28,6 +28,8 @@ pub fn spawn_solver_thread(
                     SolverCommand::RunTectonics {
                         config,
                         plates,
+                        plate_ids,
+                        plate_info,
                         initial_s,
                         grid_size,
                         dx,
@@ -50,9 +52,19 @@ pub fn spawn_solver_thread(
                         let tx = events_tx.clone();
                         let start = Instant::now();
 
+                        let plate_ctx = if config.boundaries.enabled {
+                            Some(PlateContext {
+                                ids: &plate_ids,
+                                plates: &plate_info,
+                            })
+                        } else {
+                            None
+                        };
+
                         let result = run_tectonics(
                             &config,
                             &plates,
+                            plate_ctx.as_ref(),
                             &mut grid,
                             ws,
                             |step, total, stats, s_field| {

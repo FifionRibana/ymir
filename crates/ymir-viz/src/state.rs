@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics::plates::{PlateConfig, PlateInitResult};
+use ymir_core::tectonics::boundaries::BoundaryConfig;
 use ymir_core::tectonics::solver::config::{NonlinearSolver, Preconditioner};
 
 // ── View ─────────────────────────────────────────────────────────────────
@@ -188,6 +189,7 @@ pub struct SolverConfig {
     pub eta_max: f64,
     pub preconditioner: Preconditioner,
     pub inexact_newton: bool,
+    pub boundaries: BoundaryConfig,
 }
 
 impl Default for SolverConfig {
@@ -204,6 +206,7 @@ impl Default for SolverConfig {
             eta_max: 1e4,
             preconditioner: Preconditioner::default(),
             inexact_newton: true,
+            boundaries: BoundaryConfig::default(),
         }
     }
 }

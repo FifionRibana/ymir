@@ -245,6 +245,44 @@ fn draw_tectonics(
     ui.checkbox(&mut solver_config.inexact_newton, "Inexact Newton");
 
     ui.add_space(4.0);
+    ui.separator();
+    ui.strong("Boundary processes");
+
+    ui.checkbox(&mut solver_config.boundaries.enabled, "Enabled");
+    if solver_config.boundaries.enabled {
+        slider_row_f64(
+            ui,
+            "Subduction rate",
+            &mut solver_config.boundaries.subduction_rate,
+            0.0..=2.0,
+        );
+        slider_row_f64(
+            ui,
+            "Volcanic arc rate",
+            &mut solver_config.boundaries.volcanic_arc_rate,
+            0.0..=1.0,
+        );
+        slider_row_f64(
+            ui,
+            "Spreading rate",
+            &mut solver_config.boundaries.spreading_rate,
+            0.0..=2.0,
+        );
+        slider_row_f64(
+            ui,
+            "Rift threshold",
+            &mut solver_config.boundaries.rift_thickness_threshold,
+            0.1..=0.8,
+        );
+        slider_row_f64(
+            ui,
+            "Source smooth. σ",
+            &mut solver_config.boundaries.source_smoothing_sigma,
+            0.0..=5.0,
+        );
+    }
+
+    ui.add_space(4.0);
 
     let is_running = matches!(bridge.state, SolverState::Running { .. });
 
@@ -339,11 +377,14 @@ fn launch_solver(
             enabled: solver_config.continuation_enabled,
             ..ContinuationConfig::default()
         },
+        boundaries: solver_config.boundaries.clone(),
     };
 
     let _ = bridge.commands_tx.send(SolverCommand::RunTectonics {
         config,
         plates: traction,
+        plate_ids: init.plate_ids.clone(),
+        plate_info: init.plates.clone(),
         initial_s,
         grid_size,
         dx,

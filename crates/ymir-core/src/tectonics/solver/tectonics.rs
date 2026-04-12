@@ -10,6 +10,8 @@ use super::newton::solve_velocity_newton;
 use super::picard::solve_velocity_picard;
 use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, StepStats};
+use crate::tectonics::boundaries::{compute_boundary_sources_into, gaussian_blur_f64};
+use crate::tectonics::plates::Plate;
 
 /// Errors that can occur during a tectonic simulation run.
 #[derive(Debug)]
@@ -44,9 +46,16 @@ impl std::error::Error for SolverError {}
 /// `(step, total, stats, s_field)`. The `s_field` is a reference to the
 /// current crustal thickness field (safe to clone for snapshots).
 /// Return `true` to continue, `false` to cancel.
+/// Context for plate boundary processes (optional).
+pub struct PlateContext<'a> {
+    pub ids: &'a [usize],
+    pub plates: &'a [Plate],
+}
+
 pub fn run_tectonics<F>(
     config: &TectonicsConfig,
     plates: &TractionField,
+    plate_ctx: Option<&PlateContext<'_>>,
     grid: &mut StaggeredGrid,
     workspace: &mut SolverWorkspace,
     mut progress: F,
@@ -90,12 +99,41 @@ where
         let dt_min = dt * 0.01;
         let mut clamp_ratio = 0.0;
 
+        // Compute boundary source terms if enabled
+        let boundaries_active = config.boundaries.enabled && plate_ctx.is_some();
+        if boundaries_active {
+            let ctx = plate_ctx.unwrap();
+            compute_boundary_sources_into(
+                grid,
+                ctx.ids,
+                ctx.plates,
+                &config.boundaries,
+                &mut workspace.source_rate,
+            );
+            if config.boundaries.source_smoothing_sigma > 0.0 {
+                let smoothed = gaussian_blur_f64(
+                    &workspace.source_rate,
+                    config.boundaries.source_smoothing_sigma,
+                );
+                workspace
+                    .source_rate
+                    .data_mut()
+                    .copy_from_slice(smoothed.data());
+            }
+        }
+
         for _retry in 0..5 {
             compute_divergence_flux(grid, &mut workspace.div_flux);
 
             for j in 0..n {
                 for i in 0..n {
-                    let s = grid.s.get(i, j) - dt * workspace.div_flux.get(i, j);
+                    let div = workspace.div_flux.get(i, j);
+                    let q = if boundaries_active {
+                        workspace.source_rate.get(i, j)
+                    } else {
+                        0.0
+                    };
+                    let s = grid.s.get(i, j) - dt * div + dt * q;
                     grid.s.set(i, j, s.clamp(config.s_min, config.s_max));
                 }
             }
@@ -296,6 +334,7 @@ mod tests {
             },
             newton: NewtonConfig::default(),
             continuation: ContinuationConfig { enabled: false, ..Default::default() },
+            boundaries: Default::default(),
         }
     }
 
@@ -315,7 +354,7 @@ mod tests {
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         assert!(
@@ -341,7 +380,7 @@ mod tests {
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         assert!(
@@ -377,7 +416,7 @@ mod tests {
         let config = make_config(100);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         let final_var: f64 = {
@@ -406,7 +445,7 @@ mod tests {
         let config = make_config(30);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok());
 
         for val in grid.s.data() {
@@ -450,10 +489,11 @@ mod tests {
             },
             newton: NewtonConfig::default(),
             continuation: ContinuationConfig::default(),
+            boundaries: Default::default(),
         };
 
         let mut ws = SolverWorkspace::new(n);
-        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Continuation should enable convergence: {:?}", result.err());
         assert!(
             ws.stats.max_thickness > 1.0,
