@@ -3,6 +3,7 @@ use bevy::prelude::*;
 mod camera;
 mod cursor_inspector;
 mod state;
+mod tectonic_view;
 mod terrain_view;
 mod ui;
 
@@ -26,6 +27,7 @@ fn main() {
         .add_plugins((
             camera::CameraPlugin,
             terrain_view::TerrainViewPlugin,
+            tectonic_view::TectonicViewPlugin,
             ui::UiPlugin,
             cursor_inspector::CursorInspectorPlugin,
         ))

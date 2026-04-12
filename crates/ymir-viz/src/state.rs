@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use ymir_core::grid::GridF32;
+use ymir_core::tectonics::plates::{PlateConfig, PlateInitResult};
 
 // ── View ─────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ impl ViewMode {
     }
 
     pub fn is_enabled(self) -> bool {
-        matches!(self, ViewMode::Altitude | ViewMode::Slope)
+        matches!(self, ViewMode::Altitude | ViewMode::Slope | ViewMode::Tectonics)
     }
 }
 
@@ -248,6 +249,22 @@ pub struct TerrainStats {
     pub land_ratio: f32,
     pub river_segments: usize,
     pub lake_count: usize,
+}
+
+// ── Tectonic state ────────────────────────────────────────────────────────
+
+/// Live state for the tectonic plate visualization.
+/// Regenerated on demand via the "Generate plates" UI button.
+#[derive(Resource)]
+pub struct TectonicState {
+    pub init: PlateInitResult,
+    pub config: PlateConfig,
+    pub seed: u64,
+    /// True when the GPU texture needs to be rebuilt from `init`.
+    pub dirty: bool,
+    /// Incremented on every regeneration — lets other systems detect stale caches
+    /// without relying on Bevy's single-frame `is_changed()` window.
+    pub generation: u64,
 }
 
 // ── Cursor ───────────────────────────────────────────────────────────────

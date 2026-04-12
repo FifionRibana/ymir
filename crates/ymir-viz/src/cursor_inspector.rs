@@ -2,7 +2,8 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
 use crate::camera::MainCamera;
-use crate::state::{CursorWorldPos, GenerationParamsUi, TerrainData};
+use crate::state::{CursorWorldPos, GenerationParamsUi, TerrainData, TectonicState, ViewMode, ViewState};
+use crate::tectonic_view::thickness_color;
 use crate::terrain_view::hypsometric_color;
 
 pub struct CursorInspectorPlugin;
@@ -20,10 +21,10 @@ fn cursor_inspector_overlay(
     mut contexts: EguiContexts,
     cursor_pos: Res<CursorWorldPos>,
     terrain: Option<Res<TerrainData>>,
+    tectonic: Option<Res<TectonicState>>,
+    view_state: Res<ViewState>,
 ) {
-    let Some(terrain) = terrain else { return };
     let Ok(ctx) = contexts.ctx_mut() else { return };
-    let hm = &terrain.heightmap;
 
     egui::Area::new(egui::Id::new("cursor_inspector"))
         .anchor(egui::Align2::LEFT_BOTTOM, [10.0, -32.0])
@@ -33,35 +34,91 @@ fn cursor_inspector_overlay(
                 .corner_radius(4.0)
                 .inner_margin(6.0)
                 .show(ui, |ui| {
-                    if let Some(world) = cursor_pos.pos {
-                        let gx = world.x + hm.width as f32 / 2.0;
-                        let gy = -world.y + hm.height as f32 / 2.0;
-
-                        let ix = gx as i32;
-                        let iy = gy as i32;
-
-                        if ix >= 0
-                            && iy >= 0
-                            && (ix as usize) < hm.width
-                            && (iy as usize) < hm.height
-                        {
-                            let alt = hm.get(ix, iy);
-                            let (grad_x, grad_y) = hm.gradient_at(ix as usize, iy as usize);
-                            let slope_rad = (grad_x * grad_x + grad_y * grad_y).sqrt().atan();
-                            let slope_deg = slope_rad.to_degrees();
-
-                            ui.monospace(format!(
-                                "x: {}  y: {}  alt: {:.0}m  slope: {:.1}°",
-                                ix, iy, alt, slope_deg
-                            ));
-                        } else {
-                            ui.monospace("x: ---  y: ---  alt: ---  slope: ---");
-                        }
+                    if view_state.mode == ViewMode::Tectonics {
+                        draw_tectonic_info(ui, &cursor_pos, tectonic.as_deref());
                     } else {
-                        ui.monospace("x: ---  y: ---  alt: ---  slope: ---");
+                        draw_terrain_info(ui, &cursor_pos, terrain.as_deref());
                     }
                 });
         });
+}
+
+fn draw_terrain_info(
+    ui: &mut bevy_egui::egui::Ui,
+    cursor_pos: &CursorWorldPos,
+    terrain: Option<&TerrainData>,
+) {
+    let Some(terrain) = terrain else {
+        ui.monospace("x: ---  y: ---  alt: ---  slope: ---");
+        return;
+    };
+    let hm = &terrain.heightmap;
+
+    if let Some(world) = cursor_pos.pos {
+        let gx = world.x + hm.width as f32 / 2.0;
+        let gy = -world.y + hm.height as f32 / 2.0;
+        let ix = gx as i32;
+        let iy = gy as i32;
+
+        if ix >= 0 && iy >= 0 && (ix as usize) < hm.width && (iy as usize) < hm.height {
+            let alt = hm.get(ix, iy);
+            let (grad_x, grad_y) = hm.gradient_at(ix as usize, iy as usize);
+            let slope_deg = (grad_x * grad_x + grad_y * grad_y).sqrt().atan().to_degrees();
+            ui.monospace(format!(
+                "x: {}  y: {}  alt: {:.0}m  slope: {:.1}°",
+                ix, iy, alt, slope_deg
+            ));
+        } else {
+            ui.monospace("x: ---  y: ---  alt: ---  slope: ---");
+        }
+    } else {
+        ui.monospace("x: ---  y: ---  alt: ---  slope: ---");
+    }
+}
+
+fn draw_tectonic_info(
+    ui: &mut bevy_egui::egui::Ui,
+    cursor_pos: &CursorWorldPos,
+    tectonic: Option<&TectonicState>,
+) {
+    use ymir_core::tectonics::plates::PlateType;
+
+    let Some(tectonic) = tectonic else {
+        ui.monospace("x: ---  plate: ---  thickness: ---");
+        return;
+    };
+    let init = &tectonic.init;
+    let size = init.grid_size;
+
+    if let Some(world) = cursor_pos.pos {
+        let gx = world.x + size as f32 / 2.0;
+        let gy = -world.y + size as f32 / 2.0;
+        let ix = gx as i32;
+        let iy = gy as i32;
+
+        if ix >= 0 && iy >= 0 && (ix as usize) < size && (iy as usize) < size {
+            let x = ix as usize;
+            let y = iy as usize;
+            let plate_id = init.plate_ids[y * size + x];
+            let plate = &init.plates[plate_id];
+            let thickness = init.thickness.data[y * size + x];
+            let ptype = match plate.plate_type {
+                PlateType::Continental => "Cont",
+                PlateType::Oceanic => "Oce",
+            };
+            let speed = (plate.velocity.0 * plate.velocity.0
+                + plate.velocity.1 * plate.velocity.1)
+                .sqrt();
+            ui.monospace(format!(
+                "x: {}  y: {}  plate: {} ({})  t: {:.2}  v: {:.2}",
+                x, y, plate_id, ptype, thickness, speed
+            ));
+        } else {
+            ui.monospace("x: ---  plate: ---  thickness: ---");
+        }
+    } else {
+        ui.monospace("x: ---  plate: ---  thickness: ---");
+    }
 }
 
 // ── Minimap ──────────────────────────────────────────────────────────────
@@ -71,40 +128,81 @@ struct MinimapTexture {
     texture: egui::TextureHandle,
     grid_width: usize,
     grid_height: usize,
+    /// The view mode the texture was built for — triggers a rebuild on mode change.
+    mode: ViewMode,
+    /// Generation counter copied from TectonicState — triggers a rebuild when plates
+    /// are regenerated while already in Tectonics mode (avoids relying on the
+    /// single-frame `is_changed()` window which can be missed due to system ordering).
+    tectonic_generation: u64,
 }
 
 fn minimap_overlay(
     mut contexts: EguiContexts,
     terrain: Option<Res<TerrainData>>,
+    tectonic: Option<Res<TectonicState>>,
+    view_state: Res<ViewState>,
     minimap: Option<Res<MinimapTexture>>,
     mut commands: Commands,
     camera_q: Query<(&Transform, &Projection), With<MainCamera>>,
     windows: Query<&Window>,
 ) {
-    let Some(terrain) = terrain else { return };
-    let hm = &terrain.heightmap;
-
     let Ok(ctx) = contexts.ctx_mut() else { return };
+    let mode = view_state.mode;
 
-    // Build minimap texture on first use or when terrain changes
+    // Determine the grid dimensions to draw the viewport rectangle correctly
+    let (grid_w, grid_h) = if mode == ViewMode::Tectonics {
+        let Some(ref tec) = tectonic else { return };
+        let s = tec.init.grid_size;
+        (s, s)
+    } else {
+        let Some(ref ter) = terrain else { return };
+        (ter.heightmap.width, ter.heightmap.height)
+    };
+
+    // Rebuild when: first run, mode changed, grid size changed, or underlying data changed.
+    // For tectonic data we compare generation counters rather than relying on
+    // is_changed() which only fires for one frame and can be missed.
+    let tectonic_gen = tectonic.as_ref().map(|t| t.generation).unwrap_or(0);
     let needs_rebuild = minimap.is_none()
-        || minimap.as_ref().is_some_and(|m| m.grid_width != hm.width || m.grid_height != hm.height)
-        || terrain.dirty;
+        || minimap.as_ref().is_some_and(|m| {
+            m.mode != mode
+                || m.grid_width != grid_w
+                || m.grid_height != grid_h
+                || (mode == ViewMode::Tectonics && m.tectonic_generation != tectonic_gen)
+        })
+        || (mode != ViewMode::Tectonics && terrain.as_ref().is_some_and(|t| t.dirty));
 
     let texture_ref;
     let minimap_texture: &MinimapTexture;
 
     if needs_rebuild {
-        let mini_size = 128;
+        let mini_size = 128usize;
         let mut pixels = vec![egui::Color32::BLACK; mini_size * mini_size];
 
-        for my in 0..mini_size {
-            for mx in 0..mini_size {
-                let sx = mx as f32 / mini_size as f32 * (hm.width - 1) as f32;
-                let sy = my as f32 / mini_size as f32 * (hm.height - 1) as f32;
-                let alt = hm.sample_bilinear(sx, sy);
-                let [r, g, b] = hypsometric_color(alt);
-                pixels[my * mini_size + mx] = egui::Color32::from_rgb(r, g, b);
+        if mode == ViewMode::Tectonics {
+            let Some(ref tec) = tectonic else { return };
+            let init = &tec.init;
+            let s = init.grid_size;
+            for my in 0..mini_size {
+                for mx in 0..mini_size {
+                    let sx = (mx as f32 / mini_size as f32 * (s - 1) as f32) as usize;
+                    let sy = (my as f32 / mini_size as f32 * (s - 1) as f32) as usize;
+                    let thickness = init.thickness.data[sy * s + sx];
+                    let [r, g, b] = thickness_color(thickness);
+                    pixels[my * mini_size + mx] = egui::Color32::from_rgb(r, g, b);
+                }
+            }
+        } else {
+            let Some(ref ter) = terrain else { return };
+            let hm = &ter.heightmap;
+            for my in 0..mini_size {
+                for mx in 0..mini_size {
+                    let sx = mx as f32 / mini_size as f32 * (hm.width - 1) as f32;
+                    let sy = my as f32 / mini_size as f32 * (hm.height - 1) as f32;
+                    let alt = hm.sample_bilinear(sx, sy);
+                    let [r, g, b] = hypsometric_color(alt);
+                    pixels[my * mini_size + mx] = egui::Color32::from_rgb(r, g, b);
+                }
             }
         }
 
@@ -114,11 +212,19 @@ fn minimap_overlay(
             source_size: egui::Vec2::new(mini_size as f32, mini_size as f32),
         };
         let texture = ctx.load_texture("minimap", image, egui::TextureOptions::LINEAR);
-        texture_ref = MinimapTexture { texture, grid_width: hm.width, grid_height: hm.height };
+        texture_ref = MinimapTexture {
+            texture,
+            grid_width: grid_w,
+            grid_height: grid_h,
+            mode,
+            tectonic_generation: tectonic_gen,
+        };
         commands.insert_resource(MinimapTexture {
             texture: texture_ref.texture.clone(),
-            grid_width: hm.width,
-            grid_height: hm.height,
+            grid_width: grid_w,
+            grid_height: grid_h,
+            mode,
+            tectonic_generation: tectonic_gen,
         });
         minimap_texture = &texture_ref;
     } else {
@@ -162,8 +268,8 @@ fn minimap_overlay(
                         let cam_x = cam_transform.translation.x;
                         let cam_y = cam_transform.translation.y;
 
-                        let gw = hm.width as f32;
-                        let gh = hm.height as f32;
+                        let gw = grid_w as f32;
+                        let gh = grid_h as f32;
 
                         // Camera world coords → minimap coords
                         let nx = (cam_x + gw / 2.0) / gw;
