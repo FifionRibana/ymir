@@ -60,18 +60,21 @@ pub fn compute_strain_rate(grid: &StaggeredGrid, out: &mut Field2D) {
     }
 }
 
-/// Compute viscosity from strain rate: η = (ε̇_II + ε_min)^(1/n - 1).
+/// Compute viscosity from strain rate: η = clamp((ε̇_II + ε_min)^(1/n - 1), η_min, η_max).
 pub fn compute_viscosity(
     strain_rate: &Field2D,
     n_exp: f64,
     eps_min: f64,
+    eta_min: f64,
+    eta_max: f64,
     eta: &mut Field2D,
 ) {
     let exponent = 1.0 / n_exp - 1.0;
     let n = strain_rate.n();
     for k in 0..n * n {
         let sr = strain_rate.data()[k];
-        eta.data_mut()[k] = (sr + eps_min).powf(exponent);
+        let raw = (sr + eps_min).powf(exponent);
+        eta.data_mut()[k] = raw.clamp(eta_min, eta_max);
     }
 }
 
@@ -113,7 +116,14 @@ pub fn solve_velocity_picard(
 
         // Compute strain rate and viscosity
         compute_strain_rate(grid, &mut ws.strain_rate);
-        compute_viscosity(&ws.strain_rate, config.power_law_n, config.strain_rate_min, &mut ws.eta);
+        compute_viscosity(
+            &ws.strain_rate,
+            config.power_law_n,
+            config.strain_rate_min,
+            config.eta_min,
+            config.eta_max,
+            &mut ws.eta,
+        );
 
         // Update preconditioner
         compute_jacobi_precond(&ws.eta, grid, &mut ws.cg.precond);
@@ -199,11 +209,12 @@ mod tests {
         let config = PicardConfig {
             max_iterations: 50,
             tolerance: 1e-10,
-            relaxation: 1.0, // no relaxation for linear case
+            relaxation: 1.0,
             cg_max_iter: 500,
             cg_tolerance: 1e-10,
             strain_rate_min: 1e-6,
-            power_law_n: 1.0, // LINEAR — η doesn't depend on v
+            power_law_n: 1.0,
+            ..PicardConfig::default()
         };
         let mut ws = SolverWorkspace::new(n);
 
@@ -238,8 +249,9 @@ mod tests {
             relaxation: 0.7,
             cg_max_iter: 500,
             cg_tolerance: 1e-8,
-            strain_rate_min: 1e-6,
+            strain_rate_min: 1e-3,
             power_law_n: 3.0,
+            ..PicardConfig::default()
         };
         let mut ws = SolverWorkspace::new(n);
 
