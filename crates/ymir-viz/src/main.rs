@@ -1,11 +1,13 @@
 use bevy::prelude::*;
 
+mod bridge;
 mod camera;
 mod cursor_inspector;
 mod state;
 mod tectonic_view;
 mod terrain_view;
 mod ui;
+mod visualization;
 
 fn main() {
     App::new()
@@ -30,6 +32,8 @@ fn main() {
             tectonic_view::TectonicViewPlugin,
             ui::UiPlugin,
             cursor_inspector::CursorInspectorPlugin,
+            bridge::TectonicsBridgePlugin,
+            visualization::SolverVisualizationPlugin,
         ))
         .run();
 }

@@ -11,3 +11,4 @@ ymir-core = { workspace = true }
 bevy = { workspace = true }
 bevy_egui = { workspace = true }
 noise = { workspace = true }
+crossbeam-channel = { workspace = true }

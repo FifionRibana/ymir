@@ -9,6 +9,7 @@ pub enum NonlinearSolver {
 }
 
 /// Configuration for Picard (fixed-point) iteration of the nonlinear Stokes solve.
+#[derive(Clone)]
 pub struct PicardConfig {
     pub max_iterations: usize,
     pub tolerance: f64,
@@ -34,6 +35,7 @@ impl Default for PicardConfig {
 }
 
 /// Configuration for Newton-Krylov (JFNK) iteration.
+#[derive(Clone)]
 pub struct NewtonConfig {
     pub max_iterations: usize,
     pub tolerance: f64,
@@ -55,6 +57,7 @@ impl Default for NewtonConfig {
 }
 
 /// Top-level configuration for the tectonic simulation.
+#[derive(Clone)]
 pub struct TectonicsConfig {
     pub num_timesteps: usize,
     pub gravity_factor: f64,

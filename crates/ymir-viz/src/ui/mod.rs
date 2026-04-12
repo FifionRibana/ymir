@@ -1,5 +1,6 @@
 pub mod parameter_panel;
 pub mod pipeline_panel;
+pub mod solver_panel;
 pub mod statistics_panel;
 
 use bevy::prelude::*;
@@ -12,12 +13,24 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EguiPlugin::default())
+            .init_resource::<SolverUiStateRes>()
             .add_systems(
                 EguiPrimaryContextPass,
-                (configure_egui_style, ui_top_bar, ui_right_panel, ui_bottom_bar).chain(),
+                (
+                    configure_egui_style,
+                    ui_top_bar,
+                    ui_solver_panel,
+                    ui_right_panel,
+                    ui_bottom_bar,
+                )
+                    .chain(),
             );
     }
 }
+
+/// Newtype wrapper to make SolverUiState a Bevy Resource.
+#[derive(Resource, Default)]
+pub struct SolverUiStateRes(pub solver_panel::SolverUiState);
 
 fn configure_egui_style(mut contexts: EguiContexts, mut done: Local<bool>) {
     if *done {
@@ -76,6 +89,22 @@ fn ui_top_bar(
             });
         });
     });
+}
+
+fn ui_solver_panel(
+    mut contexts: EguiContexts,
+    mut ui_state: ResMut<SolverUiStateRes>,
+    mut bridge: ResMut<crate::bridge::SolverBridge>,
+    mut terrain_display: ResMut<crate::visualization::render::TerrainDisplay>,
+) {
+    let Ok(ctx) = contexts.ctx_mut() else { return };
+    egui::SidePanel::left("solver_panel")
+        .default_width(280.0)
+        .show(ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                solver_panel::draw(ui, &mut ui_state.0, &mut bridge, &mut terrain_display);
+            });
+        });
 }
 
 #[allow(clippy::too_many_arguments)]

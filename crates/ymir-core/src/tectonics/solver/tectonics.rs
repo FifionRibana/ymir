@@ -15,6 +15,8 @@ pub enum SolverError {
     NonlinearSolverDidNotConverge { step: usize },
     /// A NaN or Inf was detected in the solution.
     NumericalInstability { step: usize, field: &'static str },
+    /// The simulation was cancelled via the progress callback.
+    Cancelled,
 }
 
 impl std::fmt::Display for SolverError {
@@ -26,6 +28,7 @@ impl std::fmt::Display for SolverError {
             SolverError::NumericalInstability { step, field } => {
                 write!(f, "NaN/Inf detected in {field} at step {step}")
             }
+            SolverError::Cancelled => write!(f, "Simulation cancelled"),
         }
     }
 }
@@ -35,6 +38,7 @@ impl std::error::Error for SolverError {}
 /// Run a full tectonic simulation.
 ///
 /// The `progress` callback is invoked after each timestep with (step, total, stats).
+/// Return `true` to continue, `false` to cancel.
 pub fn run_tectonics<F>(
     config: &TectonicsConfig,
     plates: &TractionField,
@@ -43,7 +47,7 @@ pub fn run_tectonics<F>(
     progress: F,
 ) -> Result<(), SolverError>
 where
-    F: Fn(usize, usize, &StepStats),
+    F: Fn(usize, usize, &StepStats) -> bool,
 {
     let n = grid.n;
 
@@ -121,8 +125,10 @@ where
             cg_iterations_last: linear_iterations,
         };
 
-        // 7. Callback
-        progress(step, config.num_timesteps, &workspace.stats);
+        // 7. Callback — returns false to cancel
+        if !progress(step, config.num_timesteps, &workspace.stats) {
+            return Err(SolverError::Cancelled);
+        }
     }
 
     Ok(())
@@ -170,7 +176,7 @@ mod tests {
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _| {});
+        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         assert!(
@@ -196,7 +202,7 @@ mod tests {
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _| {});
+        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         assert!(
@@ -232,7 +238,7 @@ mod tests {
         let config = make_config(100);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _| {});
+        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         let final_var: f64 = {
@@ -261,7 +267,7 @@ mod tests {
         let config = make_config(30);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _| {});
+        let result = run_tectonics(&config, &plates, &mut grid, &mut ws, |_, _, _| true);
         assert!(result.is_ok());
 
         for val in grid.s.data() {
