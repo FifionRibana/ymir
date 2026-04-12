@@ -46,6 +46,7 @@ pub struct SolverWorkspace {
     pub jfnk_f_v: Vec<f64>,
     pub jfnk_neg_f: Vec<f64>,
     pub jfnk_delta_v: Vec<f64>,
+    pub source_rate: Field2D,
     pub stats: StepStats,
 }
 
@@ -67,6 +68,7 @@ impl SolverWorkspace {
             jfnk_f_v: vec![0.0; nn2],
             jfnk_neg_f: vec![0.0; nn2],
             jfnk_delta_v: vec![0.0; nn2],
+            source_rate: Field2D::new(n),
             stats: StepStats::default(),
         }
     }
