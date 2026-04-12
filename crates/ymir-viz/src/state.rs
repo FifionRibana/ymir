@@ -183,6 +183,9 @@ pub struct SolverConfig {
     pub power_law_n: f64,
     pub picard_relaxation: f64,
     pub nonlinear_solver: NonlinearSolver,
+    pub continuation_enabled: bool,
+    pub strain_rate_min: f64,
+    pub eta_max: f64,
 }
 
 impl Default for SolverConfig {
@@ -194,6 +197,9 @@ impl Default for SolverConfig {
             power_law_n: 3.0,
             picard_relaxation: 0.7,
             nonlinear_solver: NonlinearSolver::Picard,
+            continuation_enabled: true,
+            strain_rate_min: 1e-3,
+            eta_max: 1e4,
         }
     }
 }

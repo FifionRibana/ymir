@@ -45,8 +45,7 @@ pub fn spawn_solver_thread(
                             }
                         }
 
-                        let snapshot_interval =
-                            (config.num_timesteps / 50).max(1);
+                        let snapshot_interval = 10;
                         let cancel_ref = cancel.clone();
                         let tx = events_tx.clone();
                         let start = Instant::now();
@@ -62,22 +61,22 @@ pub fn spawn_solver_thread(
                                     total_steps: total,
                                     stats: stats.clone(),
                                 });
-
                                 if step % snapshot_interval == 0 || step == total - 1 {
                                     let _ = tx.send(SolverEvent::Snapshot {
                                         step,
                                         s_field: s_field.clone(),
                                     });
                                 }
-
                                 !cancel_ref.load(Ordering::Relaxed)
                             },
                         );
 
+                        let final_s = grid.s.clone();
+
                         match result {
                             Ok(()) => {
                                 let _ = events_tx.send(SolverEvent::Completed {
-                                    s_field: grid.s.clone(),
+                                    s_field: final_s,
                                     elapsed: start.elapsed(),
                                     total_steps: config.num_timesteps,
                                 });
@@ -86,7 +85,7 @@ pub fn spawn_solver_thread(
                                 let msg = e.to_string();
                                 if msg == "Simulation cancelled" {
                                     let _ = events_tx.send(SolverEvent::Completed {
-                                        s_field: grid.s.clone(),
+                                        s_field: final_s,
                                         elapsed: start.elapsed(),
                                         total_steps: config.num_timesteps,
                                     });
@@ -105,3 +104,4 @@ pub fn spawn_solver_thread(
         })
         .expect("failed to spawn solver thread")
 }
+

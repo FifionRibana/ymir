@@ -18,6 +18,10 @@ pub struct PicardConfig {
     pub cg_tolerance: f64,
     pub strain_rate_min: f64,
     pub power_law_n: f64,
+    /// Minimum viscosity (prevents zero-viscosity zones).
+    pub eta_min: f64,
+    /// Maximum viscosity (prevents infinitely rigid zones).
+    pub eta_max: f64,
 }
 
 impl Default for PicardConfig {
@@ -28,8 +32,10 @@ impl Default for PicardConfig {
             relaxation: 0.7,
             cg_max_iter: 500,
             cg_tolerance: 1e-8,
-            strain_rate_min: 1e-6,
+            strain_rate_min: 1e-3,
             power_law_n: 3.0,
+            eta_min: 1e-3,
+            eta_max: 1e4,
         }
     }
 }
@@ -56,6 +62,28 @@ impl Default for NewtonConfig {
     }
 }
 
+/// Configuration for viscosity continuation (ramp-up from linear to power-law).
+#[derive(Clone, Debug)]
+pub struct ContinuationConfig {
+    /// Whether to use continuation. If false, solve directly with power_law_n.
+    pub enabled: bool,
+    /// Sequence of n exponents to solve through.
+    pub n_steps: Vec<f64>,
+    /// Ramp ε_min from this high value (easy) down to PicardConfig::strain_rate_min.
+    /// If None, use PicardConfig::strain_rate_min for all steps.
+    pub eps_min_start: Option<f64>,
+}
+
+impl Default for ContinuationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            n_steps: vec![1.0, 1.5, 2.0, 2.5, 3.0],
+            eps_min_start: Some(1e-2),
+        }
+    }
+}
+
 /// Top-level configuration for the tectonic simulation.
 #[derive(Clone)]
 pub struct TectonicsConfig {
@@ -67,6 +95,7 @@ pub struct TectonicsConfig {
     pub nonlinear_solver: NonlinearSolver,
     pub picard: PicardConfig,
     pub newton: NewtonConfig,
+    pub continuation: ContinuationConfig,
 }
 
 impl Default for TectonicsConfig {
@@ -80,6 +109,7 @@ impl Default for TectonicsConfig {
             nonlinear_solver: NonlinearSolver::default(),
             picard: PicardConfig::default(),
             newton: NewtonConfig::default(),
+            continuation: ContinuationConfig::default(),
         }
     }
 }

@@ -5,7 +5,7 @@ use bevy_egui::egui;
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::plates::{PlateConfig, generate_plates};
 use ymir_core::tectonics::solver::config::{
-    NewtonConfig, NonlinearSolver, PicardConfig, TectonicsConfig,
+    ContinuationConfig, NewtonConfig, NonlinearSolver, PicardConfig, TectonicsConfig,
 };
 
 use crate::bridge::commands::SolverCommand;
@@ -209,6 +209,21 @@ fn draw_tectonics(
         };
     });
 
+    ui.separator();
+    ui.strong("Convergence");
+
+    ui.checkbox(&mut solver_config.continuation_enabled, "Viscosity continuation");
+    ui.add(
+        egui::Slider::new(&mut solver_config.strain_rate_min, 1e-6..=1e-1)
+            .text("ε_min")
+            .logarithmic(true),
+    );
+    ui.add(
+        egui::Slider::new(&mut solver_config.eta_max, 1e2..=1e6)
+            .text("η_max")
+            .logarithmic(true),
+    );
+
     ui.add_space(4.0);
 
     let is_running = matches!(bridge.state, SolverState::Running { .. });
@@ -247,8 +262,8 @@ fn draw_solver_status(ui: &mut egui::Ui, state: &SolverState) {
             ui.add(egui::ProgressBar::new(frac).show_percentage());
             if let Some(s) = stats {
                 ui.small(format!(
-                    "max_v={:.4}  S=[{:.3}, {:.3}]  picard={}",
-                    s.max_velocity, s.min_thickness, s.max_thickness, s.picard_iterations
+                    "max_v={:.4}  S=[{:.3}, {:.3}]  picard={}  dt={:.2e}",
+                    s.max_velocity, s.min_thickness, s.max_thickness, s.picard_iterations, s.dt
                 ));
             }
         }
@@ -291,9 +306,15 @@ fn launch_solver(
         picard: PicardConfig {
             power_law_n: solver_config.power_law_n,
             relaxation: solver_config.picard_relaxation,
+            strain_rate_min: solver_config.strain_rate_min,
+            eta_max: solver_config.eta_max,
             ..PicardConfig::default()
         },
         newton: NewtonConfig::default(),
+        continuation: ContinuationConfig {
+            enabled: solver_config.continuation_enabled,
+            ..ContinuationConfig::default()
+        },
     };
 
     let _ = bridge.commands_tx.send(SolverCommand::RunTectonics {

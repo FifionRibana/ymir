@@ -12,6 +12,8 @@ pub struct StepStats {
     pub min_thickness: f64,
     pub picard_iterations: usize,
     pub cg_iterations_last: usize,
+    pub dt: f64,
+    pub clamp_ratio: f64,
 }
 
 impl Default for StepStats {
@@ -22,6 +24,8 @@ impl Default for StepStats {
             min_thickness: 0.0,
             picard_iterations: 0,
             cg_iterations_last: 0,
+            dt: 0.0,
+            clamp_ratio: 0.0,
         }
     }
 }

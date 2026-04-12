@@ -38,6 +38,8 @@ fn compute_nonlinear_residual(
         strain_rate_out,
         picard_config.power_law_n,
         picard_config.strain_rate_min,
+        picard_config.eta_min,
+        picard_config.eta_max,
         eta_out,
     );
     apply_stokes(v_packed, eta_out, grid, residual);
@@ -298,6 +300,7 @@ mod tests {
             cg_tolerance: 1e-10,
             strain_rate_min: 1e-6,
             power_law_n: 3.0,
+            ..PicardConfig::default()
         };
 
         // Run Picard
