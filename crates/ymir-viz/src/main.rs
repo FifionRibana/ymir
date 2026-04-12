@@ -22,7 +22,7 @@ fn main() {
         .init_resource::<state::ViewState>()
         .init_resource::<state::PipelineState>()
         .init_resource::<state::ErosionParams>()
-        .init_resource::<state::TectonicsParams>()
+        .init_resource::<state::SolverConfig>()
         .init_resource::<state::ClimateParams>()
         .init_resource::<state::GenerationParamsUi>()
         .init_resource::<state::CursorWorldPos>()

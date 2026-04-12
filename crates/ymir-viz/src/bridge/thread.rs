@@ -45,41 +45,39 @@ pub fn spawn_solver_thread(
                             }
                         }
 
-                        let snapshot_interval = 10;
+                        let snapshot_interval =
+                            (config.num_timesteps / 50).max(1);
                         let cancel_ref = cancel.clone();
                         let tx = events_tx.clone();
                         let start = Instant::now();
-
-                        // Track steps for snapshot sending after callback returns
-                        let last_snapshot_step: Option<usize> = None;
 
                         let result = run_tectonics(
                             &config,
                             &plates,
                             &mut grid,
                             ws,
-                            |step, total, stats| {
+                            |step, total, stats, s_field| {
                                 let _ = tx.send(SolverEvent::Progress {
                                     step,
                                     total_steps: total,
                                     stats: stats.clone(),
                                 });
-                                // We can't clone grid.s here (borrow conflict), so we
-                                // record which step needs a snapshot, then send it after
-                                // the callback returns (not possible in this pattern).
-                                // Instead, we'll send snapshots from the step callback
-                                // by recording the step number.
+
+                                if step % snapshot_interval == 0 || step == total - 1 {
+                                    let _ = tx.send(SolverEvent::Snapshot {
+                                        step,
+                                        s_field: s_field.clone(),
+                                    });
+                                }
+
                                 !cancel_ref.load(Ordering::Relaxed)
                             },
                         );
 
-                        // Send final snapshot (grid is no longer borrowed)
-                        let final_s = grid.s.clone();
-
                         match result {
                             Ok(()) => {
                                 let _ = events_tx.send(SolverEvent::Completed {
-                                    s_field: final_s,
+                                    s_field: grid.s.clone(),
                                     elapsed: start.elapsed(),
                                     total_steps: config.num_timesteps,
                                 });
@@ -88,7 +86,7 @@ pub fn spawn_solver_thread(
                                 let msg = e.to_string();
                                 if msg == "Simulation cancelled" {
                                     let _ = events_tx.send(SolverEvent::Completed {
-                                        s_field: final_s,
+                                        s_field: grid.s.clone(),
                                         elapsed: start.elapsed(),
                                         total_steps: config.num_timesteps,
                                     });
@@ -97,12 +95,6 @@ pub fn spawn_solver_thread(
                                 }
                             }
                         }
-
-                        // Now that grid is no longer borrowed, we can rethink snapshots.
-                        // For mid-run snapshots, we'll use a different approach in a
-                        // future PR (e.g. a shared Arc<Mutex<Field2D>> updated by the solver).
-                        let _ = last_snapshot_step;
-                        let _ = snapshot_interval;
                     }
                     SolverCommand::Cancel => {
                         cancel.store(true, Ordering::Relaxed);
@@ -113,4 +105,3 @@ pub fn spawn_solver_thread(
         })
         .expect("failed to spawn solver thread")
 }
-
