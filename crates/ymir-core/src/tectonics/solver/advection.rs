@@ -1,25 +1,32 @@
 //! Upwind advection scheme for crustal thickness transport.
 
+use rayon::prelude::*;
+
 use super::field::Field2D;
 use super::grid::StaggeredGrid;
+
+const PAR_THRESHOLD: usize = 64;
 
 /// Compute the divergence of the flux ∇·(S·v) using first-order upwind.
 ///
 /// Each flux uses the value of S from the upwind side, ensuring stability
 /// and discrete conservation (sum of div over the periodic grid is exactly 0).
+#[allow(clippy::needless_range_loop)]
 pub fn compute_divergence_flux(grid: &StaggeredGrid, div: &mut Field2D) {
     let n = grid.n;
     let idx = &grid.idx;
     let inv_dx = 1.0 / grid.dx;
 
-    for j in 0..n {
-        for i in 0..n {
-            let ni = idx.next(i);
-            let pi = idx.prev(i);
-            let nj = idx.next(j);
-            let pj = idx.prev(j);
+    let process_row = |j: usize, row: &mut [f64]| {
+        let ni_fn = |i: usize| idx.next(i);
+        let pi_fn = |i: usize| idx.prev(i);
+        let nj = idx.next(j);
+        let pj = idx.prev(j);
 
-            // Right face: vx at (next(i), j)
+        for i in 0..n {
+            let ni = ni_fn(i);
+            let pi = pi_fn(i);
+
             let vx_right = grid.vx.get(ni, j);
             let f_right = if vx_right >= 0.0 {
                 vx_right * grid.s.get(i, j)
@@ -27,7 +34,6 @@ pub fn compute_divergence_flux(grid: &StaggeredGrid, div: &mut Field2D) {
                 vx_right * grid.s.get(ni, j)
             };
 
-            // Left face: vx at (i, j)
             let vx_left = grid.vx.get(i, j);
             let f_left = if vx_left >= 0.0 {
                 vx_left * grid.s.get(pi, j)
@@ -35,7 +41,6 @@ pub fn compute_divergence_flux(grid: &StaggeredGrid, div: &mut Field2D) {
                 vx_left * grid.s.get(i, j)
             };
 
-            // Top face: vy at (i, next(j))
             let vy_top = grid.vy.get(i, nj);
             let f_top = if vy_top >= 0.0 {
                 vy_top * grid.s.get(i, j)
@@ -43,7 +48,6 @@ pub fn compute_divergence_flux(grid: &StaggeredGrid, div: &mut Field2D) {
                 vy_top * grid.s.get(i, nj)
             };
 
-            // Bottom face: vy at (i, j)
             let vy_bot = grid.vy.get(i, j);
             let f_bot = if vy_bot >= 0.0 {
                 vy_bot * grid.s.get(i, pj)
@@ -51,7 +55,19 @@ pub fn compute_divergence_flux(grid: &StaggeredGrid, div: &mut Field2D) {
                 vy_bot * grid.s.get(i, j)
             };
 
-            div.set(i, j, (f_right - f_left) * inv_dx + (f_top - f_bot) * inv_dx);
+            row[i] = (f_right - f_left) * inv_dx + (f_top - f_bot) * inv_dx;
+        }
+    };
+
+    if n >= PAR_THRESHOLD {
+        div.data_mut()
+            .par_chunks_mut(n)
+            .enumerate()
+            .for_each(|(j, row)| process_row(j, row));
+    } else {
+        for j in 0..n {
+            let s = j * n;
+            process_row(j, &mut div.data_mut()[s..s + n]);
         }
     }
 }

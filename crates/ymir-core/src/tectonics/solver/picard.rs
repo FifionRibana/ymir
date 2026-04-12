@@ -1,12 +1,16 @@
 //! Picard (fixed-point) iteration for nonlinear Stokes with power-law viscosity.
 
+use rayon::prelude::*;
+
 use super::config::PicardConfig;
 use super::field::Field2D;
 use super::grid::StaggeredGrid;
 use super::linear_solve::solve_cg;
-use super::traction::TractionField;
 use super::stokes::{apply_stokes, compute_jacobi_precond, compute_rhs};
+use super::traction::TractionField;
 use super::workspace::SolverWorkspace;
+
+const PAR_THRESHOLD: usize = 64;
 
 /// Result of a Picard solve.
 pub struct PicardResult {
@@ -17,27 +21,21 @@ pub struct PicardResult {
 }
 
 /// Compute the second invariant of strain rate at cell centers.
+#[allow(clippy::needless_range_loop)]
 pub fn compute_strain_rate(grid: &StaggeredGrid, out: &mut Field2D) {
     let n = grid.n;
     let idx = &grid.idx;
     let inv_dx = 1.0 / grid.dx;
 
-    for j in 0..n {
+    let process_row = |j: usize, row: &mut [f64]| {
+        let nj = idx.next(j);
+        let pj = idx.prev(j);
         for i in 0..n {
             let ni = idx.next(i);
-            let nj = idx.next(j);
-
-            // ∂vx/∂x at cell center: (vx[next(i),j] - vx[i,j]) / dx
-            let dvx_dx = (grid.vx.get(ni, j) - grid.vx.get(i, j)) * inv_dx;
-
-            // ∂vy/∂y at cell center: (vy[i,next(j)] - vy[i,j]) / dx
-            let dvy_dy = (grid.vy.get(i, nj) - grid.vy.get(i, j)) * inv_dx;
-
-            // ∂vx/∂y + ∂vy/∂x at cell center: average from 4 surrounding corners
-            // Corner (i,j): ∂vx/∂y = (vx[i,j] - vx[i,prev(j)])/dx
-            //                ∂vy/∂x = (vy[i,j] - vy[prev(i),j])/dx
             let pi = idx.prev(i);
-            let pj = idx.prev(j);
+
+            let dvx_dx = (grid.vx.get(ni, j) - grid.vx.get(i, j)) * inv_dx;
+            let dvy_dy = (grid.vy.get(i, nj) - grid.vy.get(i, j)) * inv_dx;
 
             let c00 = (grid.vx.get(i, j) - grid.vx.get(i, pj)) * inv_dx
                 + (grid.vy.get(i, j) - grid.vy.get(pi, j)) * inv_dx;
@@ -50,12 +48,22 @@ pub fn compute_strain_rate(grid: &StaggeredGrid, out: &mut Field2D) {
 
             let dvx_dy_plus_dvy_dx = 0.25 * (c00 + c10 + c01 + c11);
 
-            let e_ii = (0.5 * dvx_dx * dvx_dx
+            row[i] = (0.5 * dvx_dx * dvx_dx
                 + 0.5 * dvy_dy * dvy_dy
                 + 0.25 * dvx_dy_plus_dvy_dx * dvx_dy_plus_dvy_dx)
                 .sqrt();
+        }
+    };
 
-            out.set(i, j, e_ii);
+    if n >= PAR_THRESHOLD {
+        out.data_mut()
+            .par_chunks_mut(n)
+            .enumerate()
+            .for_each(|(j, row)| process_row(j, row));
+    } else {
+        for j in 0..n {
+            let s = j * n;
+            process_row(j, &mut out.data_mut()[s..s + n]);
         }
     }
 }
@@ -71,10 +79,20 @@ pub fn compute_viscosity(
 ) {
     let exponent = 1.0 / n_exp - 1.0;
     let n = strain_rate.n();
-    for k in 0..n * n {
-        let sr = strain_rate.data()[k];
-        let raw = (sr + eps_min).powf(exponent);
-        eta.data_mut()[k] = raw.clamp(eta_min, eta_max);
+
+    if n >= PAR_THRESHOLD {
+        strain_rate
+            .data()
+            .par_iter()
+            .zip(eta.data_mut().par_iter_mut())
+            .for_each(|(&sr, eta_val)| {
+                *eta_val = (sr + eps_min).powf(exponent).clamp(eta_min, eta_max);
+            });
+    } else {
+        for k in 0..n * n {
+            let sr = strain_rate.data()[k];
+            eta.data_mut()[k] = (sr + eps_min).powf(exponent).clamp(eta_min, eta_max);
+        }
     }
 }
 
