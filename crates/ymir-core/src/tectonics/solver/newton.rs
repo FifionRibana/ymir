@@ -64,6 +64,7 @@ pub fn solve_velocity_newton(
     grid: &mut StaggeredGrid,
     plates: &TractionField,
     gravity_factor: f64,
+    rho_mantle: f64,
     picard_config: &PicardConfig,
     newton_config: &NewtonConfig,
     ws: &mut SolverWorkspace,
@@ -74,7 +75,7 @@ pub fn solve_velocity_newton(
     let mut total_linear = 0usize;
 
     // Compute RHS (constant during Newton)
-    compute_rhs(grid, plates, gravity_factor, &mut ws.rhs);
+    compute_rhs(grid, plates, gravity_factor, rho_mantle, &mut ws.rhs);
 
     // Project out null space
     let mean_vx: f64 = ws.rhs[..n2].iter().sum::<f64>() / n2 as f64;
@@ -301,8 +302,15 @@ mod tests {
             NewtonConfig { max_iterations: 15, tolerance: 1e-8, ..NewtonConfig::default() };
         let mut ws = SolverWorkspace::new(n);
 
-        let result =
-            solve_velocity_newton(&mut grid, &plates, 1.0, &picard_config, &newton_config, &mut ws);
+        let result = solve_velocity_newton(
+            &mut grid,
+            &plates,
+            1.0,
+            0.0,
+            &picard_config,
+            &newton_config,
+            &mut ws,
+        );
         assert!(result.converged, "Newton should converge for linear viscosity");
         assert!(
             result.iterations <= 2,
@@ -330,8 +338,15 @@ mod tests {
             NewtonConfig { max_iterations: 30, tolerance: 1e-4, ..NewtonConfig::default() };
         let mut ws = SolverWorkspace::new(n);
 
-        let result =
-            solve_velocity_newton(&mut grid, &plates, 1.0, &picard_config, &newton_config, &mut ws);
+        let result = solve_velocity_newton(
+            &mut grid,
+            &plates,
+            1.0,
+            0.0,
+            &picard_config,
+            &newton_config,
+            &mut ws,
+        );
         assert!(
             result.converged,
             "Newton should converge for power-law, got {} iterations",
@@ -368,7 +383,7 @@ mod tests {
         let plates = TractionField::two_plates_convergent(n, 0.5);
         let mut ws_p = SolverWorkspace::new(n);
         let picard_result =
-            solve_velocity_picard(&mut grid_p, &plates, 1.0, &picard_config, &mut ws_p);
+            solve_velocity_picard(&mut grid_p, &plates, 1.0, 0.0, &picard_config, &mut ws_p);
         assert!(picard_result.converged, "Picard should converge");
         let mut v_picard = vec![0.0; n_dof];
         pack_velocity(&grid_p, &mut v_picard);
@@ -387,6 +402,7 @@ mod tests {
             &mut grid_n,
             &plates,
             1.0,
+            0.0,
             &picard_config,
             &newton_config,
             &mut ws_n,
@@ -433,6 +449,7 @@ mod tests {
             &mut grid_exact,
             &plates,
             1.0,
+            0.0,
             &picard_config,
             &config_exact,
             &mut ws_exact,
@@ -456,6 +473,7 @@ mod tests {
             &mut grid_inexact,
             &plates,
             1.0,
+            0.0,
             &picard_config,
             &config_inexact,
             &mut ws_inexact,

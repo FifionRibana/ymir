@@ -16,6 +16,9 @@ pub struct StaggeredGrid {
     pub s: Field2D,
     pub vx: Field2D,
     pub vy: Field2D,
+    /// Crustal density at each cell center (kg/m³).
+    /// Continental ≈ 2750, Oceanic ≈ 3000.
+    pub rho: Field2D,
     pub idx: PeriodicIndex,
 }
 
@@ -27,6 +30,7 @@ impl StaggeredGrid {
             s: Field2D::new(n),
             vx: Field2D::new(n),
             vy: Field2D::new(n),
+            rho: Field2D::new(n),
             idx: PeriodicIndex::new(n),
         }
     }

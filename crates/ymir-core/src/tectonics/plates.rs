@@ -38,6 +38,10 @@ pub struct Plate {
     /// Whether this plate is still active (has cells assigned to it).
     /// Plates consumed by subduction become inactive.
     pub active: bool,
+    /// Cumulative subducted material. Increases when oceanic crust
+    /// is consumed at this plate's convergent boundaries. Used to
+    /// compute dynamic slab pull traction.
+    pub subducted_mass: f64,
 }
 
 /// Configuration for plate generation.
@@ -139,7 +143,15 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
             config.velocity_min + rng.random::<f32>() * (config.velocity_max - config.velocity_min);
         let velocity = (angle.cos() * speed, angle.sin() * speed);
 
-        plates.push(Plate { id, plate_type, velocity, seed_x, seed_y, active: true });
+        plates.push(Plate {
+            id,
+            plate_type,
+            velocity,
+            seed_x,
+            seed_y,
+            active: true,
+            subducted_mass: 0.0,
+        });
     }
 
     // 2. Assign each cell to the nearest plate seed (toroidal distance)
@@ -509,6 +521,7 @@ mod tests {
             seed_x: 10.0,
             seed_y: 16.0,
             active: true,
+            subducted_mass: 0.0,
         }];
 
         advect_seeds(&mut plates, &grid, 0.1);
@@ -536,6 +549,7 @@ mod tests {
             seed_x: 31.5,
             seed_y: 16.0,
             active: true,
+            subducted_mass: 0.0,
         }];
 
         advect_seeds(&mut plates, &grid, 1.0);
@@ -560,6 +574,7 @@ mod tests {
                 seed_x: 8.0,
                 seed_y: 8.0,
                 active: true,
+                subducted_mass: 0.0,
             },
             Plate {
                 id: 1,
@@ -568,6 +583,7 @@ mod tests {
                 seed_x: 8.0, // same as plate 0
                 seed_y: 8.0,
                 active: true,
+                subducted_mass: 0.0,
             },
         ];
 
@@ -608,6 +624,7 @@ mod tests {
                 seed_x: 4.0,
                 seed_y: 8.0,
                 active: true,
+                subducted_mass: 0.0,
             },
             Plate {
                 id: 1,
@@ -615,7 +632,8 @@ mod tests {
                 velocity: (0.0, 0.0),
                 seed_x: 12.0,
                 seed_y: 8.0,
-                active: false, // inactive
+                active: false,
+                subducted_mass: 0.0, // inactive
             },
         ];
 
