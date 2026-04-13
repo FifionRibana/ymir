@@ -216,5 +216,6 @@ fn build_tectonics_config(sc: &SolverConfig) -> TectonicsConfig {
         boundaries: sc.boundaries.clone(),
         dynamic_boundaries: sc.dynamic_boundaries,
         cratonic: sc.cratonic.clone(),
+        yielding: sc.yielding.clone(),
     }
 }

@@ -335,6 +335,29 @@ fn draw_tectonics(
     }
 
     ui.add_space(4.0);
+    ui.separator();
+    ui.strong("Plastic yielding");
+    ui.checkbox(&mut solver_config.yielding.enabled, "Enabled");
+    if solver_config.yielding.enabled {
+        slider_row_f64(ui, "Yield stress", &mut solver_config.yielding.yield_stress, 1.0..=500.0);
+        ui.checkbox(&mut solver_config.yielding.weakening_enabled, "Strain weakening");
+        if solver_config.yielding.weakening_enabled {
+            slider_row_f64(
+                ui,
+                "Weakening frac.",
+                &mut solver_config.yielding.weakening_fraction,
+                0.0..=0.9,
+            );
+            slider_row_f64(
+                ui,
+                "Weakening ε_ref",
+                &mut solver_config.yielding.weakening_strain_ref,
+                0.1..=10.0,
+            );
+        }
+    }
+
+    ui.add_space(4.0);
 
     let is_running = matches!(bridge.state, SolverState::Running { .. });
 
@@ -450,6 +473,7 @@ fn launch_solver(
         boundaries: solver_config.boundaries.clone(),
         dynamic_boundaries: solver_config.dynamic_boundaries,
         cratonic: solver_config.cratonic.clone(),
+        yielding: solver_config.yielding.clone(),
     };
 
     let plate_ctx =

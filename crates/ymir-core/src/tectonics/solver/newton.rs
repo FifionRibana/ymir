@@ -8,11 +8,12 @@
 
 use tracing::{debug, warn};
 
+use super::config::YieldingConfig;
 use super::config::{NewtonConfig, PicardConfig, Preconditioner};
 use super::field::Field2D;
 use super::grid::StaggeredGrid;
 use super::linear_solve::{apply_jacobi, solve_bicgstab};
-use super::picard::{apply_eta_multiplier, compute_strain_rate, compute_viscosity};
+use super::picard::{apply_eta_multiplier, apply_yielding, compute_strain_rate, compute_viscosity};
 use super::stokes::{StencilCoeffs, apply_ssor, apply_stokes, compute_jacobi_precond, compute_rhs};
 use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, pack_velocity, unpack_velocity};
@@ -35,6 +36,8 @@ fn compute_nonlinear_residual(
     grid: &mut StaggeredGrid,
     picard_config: &PicardConfig,
     eta_multiplier: &Field2D,
+    plastic_strain: &Field2D,
+    yielding: &YieldingConfig,
     eta_out: &mut Field2D,
     strain_rate_out: &mut Field2D,
     residual: &mut [f64],
@@ -50,6 +53,10 @@ fn compute_nonlinear_residual(
         eta_out,
     );
     apply_eta_multiplier(eta_multiplier, picard_config.eta_max, eta_out);
+    apply_yielding(strain_rate_out, plastic_strain, yielding, eta_out);
+    for val in eta_out.data_mut().iter_mut() {
+        *val = val.clamp(picard_config.eta_min, picard_config.eta_max);
+    }
     apply_stokes(v_packed, eta_out, grid, residual);
     for i in 0..residual.len() {
         residual[i] -= b[i];
@@ -71,6 +78,7 @@ pub fn solve_velocity_newton(
     rho_continental: f64,
     rho_mantle: f64,
     picard_config: &PicardConfig,
+    yielding: &YieldingConfig,
     newton_config: &NewtonConfig,
     ws: &mut SolverWorkspace,
 ) -> NewtonResult {
@@ -97,6 +105,7 @@ pub fn solve_velocity_newton(
 
     // Clone eta_multiplier so we can pass grid mutably while reading the multiplier
     let eta_mult = grid.eta_multiplier.clone();
+    let ps_snap = grid.plastic_strain.clone();
 
     let mut prev_f_norm = f64::MAX;
 
@@ -108,6 +117,8 @@ pub fn solve_velocity_newton(
             grid,
             picard_config,
             &eta_mult,
+            &ps_snap,
+            yielding,
             &mut ws.eta,
             &mut ws.strain_rate,
             &mut ws.jfnk_f_v,
@@ -186,6 +197,8 @@ pub fn solve_velocity_newton(
                             grid,
                             picard_config,
                             &eta_mult,
+                            &ps_snap,
+                            yielding,
                             &mut jfnk_eta,
                             &mut jfnk_sr,
                             &mut jfnk_residual,
@@ -224,6 +237,8 @@ pub fn solve_velocity_newton(
                             grid,
                             picard_config,
                             &eta_mult,
+                            &ps_snap,
+                            yielding,
                             &mut jfnk_eta,
                             &mut jfnk_sr,
                             &mut jfnk_residual,
@@ -320,6 +335,7 @@ mod tests {
             0.0,
             0.0,
             &picard_config,
+            &Default::default(),
             &newton_config,
             &mut ws,
         );
@@ -357,6 +373,7 @@ mod tests {
             0.0,
             0.0,
             &picard_config,
+            &Default::default(),
             &newton_config,
             &mut ws,
         );
@@ -395,8 +412,16 @@ mod tests {
         }
         let plates = TractionField::two_plates_convergent(n, 0.5);
         let mut ws_p = SolverWorkspace::new(n);
-        let picard_result =
-            solve_velocity_picard(&mut grid_p, &plates, 1.0, 0.0, 0.0, &picard_config, &mut ws_p);
+        let picard_result = solve_velocity_picard(
+            &mut grid_p,
+            &plates,
+            1.0,
+            0.0,
+            0.0,
+            &picard_config,
+            &Default::default(),
+            &mut ws_p,
+        );
         assert!(picard_result.converged, "Picard should converge");
         let mut v_picard = vec![0.0; n_dof];
         pack_velocity(&grid_p, &mut v_picard);
@@ -418,6 +443,7 @@ mod tests {
             0.0,
             0.0,
             &picard_config,
+            &Default::default(),
             &newton_config,
             &mut ws_n,
         );
@@ -466,6 +492,7 @@ mod tests {
             0.0,
             0.0,
             &picard_config,
+            &Default::default(),
             &config_exact,
             &mut ws_exact,
         );
@@ -491,6 +518,7 @@ mod tests {
             0.0,
             0.0,
             &picard_config,
+            &Default::default(),
             &config_inexact,
             &mut ws_inexact,
         );

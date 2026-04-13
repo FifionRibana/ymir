@@ -113,6 +113,17 @@ where
         // 2. CFL timestep (after velocity is known)
         let dt_cfl = compute_cfl_dt(grid, config.cfl_factor);
 
+        // 2b. Accumulate plastic strain (after solve, with known dt)
+        if config.yielding.enabled {
+            super::picard::accumulate_plastic_strain(
+                &workspace.strain_rate,
+                &workspace.eta,
+                &config.yielding,
+                dt_cfl,
+                &mut grid.plastic_strain,
+            );
+        }
+
         // ── Dynamic boundary update ────────────────────────────────────
         if config.dynamic_boundaries {
             advect_seeds(&mut plate_ctx.plates, grid, dt_cfl);
@@ -328,6 +339,7 @@ fn solve_velocity_direct(
                 rho_c,
                 rho_m,
                 &config.picard,
+                &config.yielding,
                 workspace,
             );
             (r.converged, r.iterations, r.total_cg_iterations)
@@ -340,6 +352,7 @@ fn solve_velocity_direct(
                 rho_c,
                 rho_m,
                 &config.picard,
+                &config.yielding,
                 &config.newton,
                 workspace,
             );
@@ -393,6 +406,7 @@ fn solve_with_continuation(
                     rho_c,
                     rho_m,
                     &step_config,
+                    &config.yielding,
                     workspace,
                 );
                 (r.converged, r.iterations, r.total_cg_iterations)
@@ -405,6 +419,7 @@ fn solve_with_continuation(
                     rho_c,
                     rho_m,
                     &step_config,
+                    &config.yielding,
                     &config.newton,
                     workspace,
                 );
@@ -450,6 +465,7 @@ mod tests {
             boundaries: Default::default(),
             dynamic_boundaries: false,
             cratonic: Default::default(),
+            yielding: Default::default(),
         }
     }
 
@@ -628,6 +644,7 @@ mod tests {
             boundaries: Default::default(),
             dynamic_boundaries: false,
             cratonic: Default::default(),
+            yielding: Default::default(),
         };
 
         let mut ctx = make_static_ctx(n, traction);
@@ -682,6 +699,7 @@ mod tests {
             },
             dynamic_boundaries: false,
             cratonic: Default::default(),
+            yielding: Default::default(),
             ..make_config(50)
         };
 
