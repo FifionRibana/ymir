@@ -11,18 +11,12 @@ pub struct TractionField {
 impl TractionField {
     /// No traction — for testing GPE-only dynamics.
     pub fn zero(n: usize) -> Self {
-        Self {
-            tx: Field2D::new(n),
-            ty: Field2D::new(n),
-        }
+        Self { tx: Field2D::new(n), ty: Field2D::new(n) }
     }
 
     /// Uniform traction everywhere.
     pub fn uniform(n: usize, tx: f64, ty: f64) -> Self {
-        Self {
-            tx: Field2D::filled(n, tx),
-            ty: Field2D::filled(n, ty),
-        }
+        Self { tx: Field2D::filled(n, tx), ty: Field2D::filled(n, ty) }
     }
 
     /// Two plates converging: left half pushes right (+speed), right half pushes left (-speed).

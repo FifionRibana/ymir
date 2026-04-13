@@ -3,7 +3,7 @@
 
 use bevy::prelude::*;
 
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 
 use super::colormap::hypsometric_colormap;
 use super::render::TerrainDisplay;
@@ -64,11 +64,7 @@ pub fn update_isostasy(
     if image.width() != n as u32 || image.height() != n as u32 {
         use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
         *image = Image::new(
-            Extent3d {
-                width: n as u32,
-                height: n as u32,
-                depth_or_array_layers: 1,
-            },
+            Extent3d { width: n as u32, height: n as u32, depth_or_array_layers: 1 },
             TextureDimension::D2,
             vec![0u8; n * n * 4],
             TextureFormat::Rgba8UnormSrgb,
@@ -94,11 +90,7 @@ pub fn update_isostasy(
                 hypsometric_colormap(0.4 + t * 0.6)
             };
             // Y-flip: image row 0 is top, grid row 0 is bottom
-            let _ = image.set_color_at(
-                x as u32,
-                (n - 1 - y) as u32,
-                Color::srgba_u8(r, g, b, a),
-            );
+            let _ = image.set_color_at(x as u32, (n - 1 - y) as u32, Color::srgba_u8(r, g, b, a));
         }
     }
 }

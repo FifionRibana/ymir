@@ -28,11 +28,7 @@ pub fn draw(
         // Progress bar for running phase
         for (_, status, _) in &pipeline.phases {
             if let PhaseStatus::Running(pct) = status {
-                ui.add(
-                    egui::ProgressBar::new(*pct as f32 / 100.0)
-                        .show_percentage()
-                        .animate(true),
-                );
+                ui.add(egui::ProgressBar::new(*pct as f32 / 100.0).show_percentage().animate(true));
                 break;
             }
         }
@@ -42,13 +38,13 @@ pub fn draw(
             if ui.button("Run all").clicked() {
                 bevy::log::info!("Run all clicked");
             }
+            if ui.button("Step").clicked() {
+                bevy::log::info!("Step clicked");
+            }
             if ui.button("Stop").clicked() {
                 bevy::log::info!("Stop clicked");
             }
-            if ui
-                .add_enabled(has_terrain, egui::Button::new("Export"))
-                .clicked()
-            {
+            if ui.add_enabled(has_terrain, egui::Button::new("Export")).clicked() {
                 ui_actions.export_requested = true;
             }
         });
@@ -56,11 +52,7 @@ pub fn draw(
         // Feedback message
         if let Some((ref msg, when, success)) = ui_actions.last_message {
             if when.elapsed().as_secs() < 4 {
-                let color = if success {
-                    egui::Color32::GREEN
-                } else {
-                    egui::Color32::RED
-                };
+                let color = if success { egui::Color32::GREEN } else { egui::Color32::RED };
                 ui.colored_label(color, msg);
             } else {
                 ui_actions.last_message = None;
@@ -70,9 +62,8 @@ pub fn draw(
         // Load section
         ui.add_space(4.0);
         egui::CollapsingHeader::new("Load saved").show(ui, |ui| {
-            let dirs = ui_actions
-                .cached_dirs
-                .get_or_insert_with(|| list_export_dirs(Path::new("output")));
+            let dirs =
+                ui_actions.cached_dirs.get_or_insert_with(|| list_export_dirs(Path::new("output")));
 
             if dirs.is_empty() {
                 ui.label("No saved exports in output/");

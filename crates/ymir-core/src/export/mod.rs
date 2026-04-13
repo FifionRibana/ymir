@@ -70,20 +70,12 @@ pub struct PipelineExport {
 
 impl PipelineExport {
     /// Create a new export directory for the given seed and grid size.
-    pub fn new(
-        output_root: &Path,
-        seed: u64,
-        grid_size: usize,
-        plates: &PlateConfig,
-    ) -> Self {
+    pub fn new(output_root: &Path, seed: u64, grid_size: usize, plates: &PlateConfig) -> Self {
         let dir_name = format!("seed{}_{}", seed, grid_size);
         let dir = output_root.join(dir_name);
         fs::create_dir_all(&dir).ok();
 
-        Self {
-            dir,
-            metadata: PipelineMetadata::new(seed, grid_size, plates),
-        }
+        Self { dir, metadata: PipelineMetadata::new(seed, grid_size, plates) }
     }
 
     /// Save the crustal thickness field after tectonics.
@@ -97,9 +89,7 @@ impl PipelineExport {
         result: &IsostasyResult,
         config: &IsostasyConfig,
     ) -> Result<(), String> {
-        result
-            .heightmap
-            .save_png_u16(&self.dir.join("02_altitude.png"))?;
+        result.heightmap.save_png_u16(&self.dir.join("02_altitude.png"))?;
 
         self.metadata.isostasy = Some(IsostasyMetadata {
             config: config.clone(),
@@ -114,10 +104,9 @@ impl PipelineExport {
 
     /// Write metadata.json to disk.
     pub fn save_metadata(&self) -> Result<(), String> {
-        let json = serde_json::to_string_pretty(&self.metadata)
-            .map_err(|e| format!("JSON error: {e}"))?;
-        fs::write(self.dir.join("metadata.json"), json)
-            .map_err(|e| format!("Write error: {e}"))?;
+        let json =
+            serde_json::to_string_pretty(&self.metadata).map_err(|e| format!("JSON error: {e}"))?;
+        fs::write(self.dir.join("metadata.json"), json).map_err(|e| format!("Write error: {e}"))?;
         Ok(())
     }
 
@@ -127,10 +116,7 @@ impl PipelineExport {
             .map_err(|e| format!("Read error: {e}"))?;
         let metadata: PipelineMetadata =
             serde_json::from_str(&json).map_err(|e| format!("JSON parse error: {e}"))?;
-        Ok(Self {
-            dir: dir.to_path_buf(),
-            metadata,
-        })
+        Ok(Self { dir: dir.to_path_buf(), metadata })
     }
 
     /// Load the thickness field from a previously saved export.

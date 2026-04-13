@@ -91,11 +91,7 @@ pub struct ContinuationConfig {
 
 impl Default for ContinuationConfig {
     fn default() -> Self {
-        Self {
-            enabled: true,
-            n_steps: vec![1.0, 1.5, 2.0, 2.5, 3.0],
-            eps_min_start: Some(1e-2),
-        }
+        Self { enabled: true, n_steps: vec![1.0, 1.5, 2.0, 2.5, 3.0], eps_min_start: Some(1e-2) }
     }
 }
 
@@ -112,6 +108,10 @@ pub struct TectonicsConfig {
     pub newton: NewtonConfig,
     pub continuation: ContinuationConfig,
     pub boundaries: super::super::boundaries::BoundaryConfig,
+    /// Whether plate boundaries are dynamically recomputed each timestep.
+    /// When true, plate seeds are advected with the velocity field and the
+    /// Voronoï partition is rebuilt, allowing plates to shrink and disappear.
+    pub dynamic_boundaries: bool,
 }
 
 impl Default for TectonicsConfig {
@@ -127,6 +127,7 @@ impl Default for TectonicsConfig {
             newton: NewtonConfig::default(),
             continuation: ContinuationConfig::default(),
             boundaries: Default::default(),
+            dynamic_boundaries: true,
         }
     }
 }

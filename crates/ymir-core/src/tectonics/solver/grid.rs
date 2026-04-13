@@ -1,7 +1,7 @@
 //! Staggered (MAC) grid for the thin viscous sheet solver.
 
-use crate::grid::GridF32;
 use super::field::{Field2D, PeriodicIndex};
+use crate::grid::GridF32;
 
 /// Marker-And-Cell staggered grid with periodic boundary conditions.
 ///
