@@ -326,6 +326,15 @@ fn draw_tectonics(
     }
 
     ui.add_space(4.0);
+    ui.separator();
+    ui.strong("Cratonic rigidity");
+    ui.checkbox(&mut solver_config.cratonic.enabled, "Enabled");
+    if solver_config.cratonic.enabled {
+        slider_row_f64(ui, "Max factor", &mut solver_config.cratonic.max_factor, 1.0..=100.0);
+        slider_row_f64(ui, "Decay power", &mut solver_config.cratonic.decay_power, 0.5..=4.0);
+    }
+
+    ui.add_space(4.0);
 
     let is_running = matches!(bridge.state, SolverState::Running { .. });
 
@@ -440,6 +449,7 @@ fn launch_solver(
         },
         boundaries: solver_config.boundaries.clone(),
         dynamic_boundaries: solver_config.dynamic_boundaries,
+        cratonic: solver_config.cratonic.clone(),
     };
 
     let plate_ctx =

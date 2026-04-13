@@ -92,6 +92,17 @@ pub fn compute_viscosity(
     }
 }
 
+/// Apply spatial viscosity multiplier (cratonic rigidity) and re-clamp.
+pub fn apply_eta_multiplier(multiplier: &Field2D, eta_max: f64, eta: &mut Field2D) {
+    let n = multiplier.n();
+    for k in 0..n * n {
+        let m = multiplier.data()[k];
+        if m != 1.0 {
+            eta.data_mut()[k] = (eta.data()[k] * m).min(eta_max);
+        }
+    }
+}
+
 /// Solve for velocity using Picard iteration.
 pub fn solve_velocity_picard(
     grid: &mut StaggeredGrid,
@@ -140,6 +151,9 @@ pub fn solve_velocity_picard(
             config.eta_max,
             &mut ws.eta,
         );
+
+        // Apply spatial viscosity multiplier (cratonic rigidity)
+        apply_eta_multiplier(&grid.eta_multiplier, config.eta_max, &mut ws.eta);
 
         // Update Jacobi preconditioner
         compute_jacobi_precond(&ws.eta, grid, &mut ws.jacobi_precond);

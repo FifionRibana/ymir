@@ -192,6 +192,7 @@ pub struct SolverConfig {
     pub inexact_newton: bool,
     pub boundaries: BoundaryConfig,
     pub dynamic_boundaries: bool,
+    pub cratonic: ymir_core::tectonics::solver::config::CratonicConfig,
 }
 
 impl Default for SolverConfig {
@@ -210,6 +211,7 @@ impl Default for SolverConfig {
             inexact_newton: true,
             boundaries: BoundaryConfig::default(),
             dynamic_boundaries: true,
+            cratonic: Default::default(),
         }
     }
 }

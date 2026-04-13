@@ -202,6 +202,11 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
 
 // ── Distance and blur helpers ─────────────────────────────────────────────
 
+/// Toroidal distance between two points on a grid that wraps in both x and y.
+pub fn toroidal_distance(x1: f32, y1: f32, x2: f32, y2: f32, size: f32) -> f32 {
+    toroidal_distance_sq(x1, y1, x2, y2, size).sqrt()
+}
+
 /// Squared toroidal distance between two points on a grid that wraps in both x and y.
 ///
 /// For each axis, takes the shorter path: direct or through the wrap.
@@ -399,6 +404,76 @@ pub fn rebuild_traction(plate_ids: &[usize], plates: &[Plate], grid_size: usize)
     }
 
     TractionField { tx, ty }
+}
+
+// ── Cratonic rigidity ────────────────────────────────────────────────────
+
+use super::solver::config::CratonicConfig;
+
+/// Compute a spatial viscosity multiplier based on distance to plate seed.
+///
+/// Continental cells near their plate seed receive a high multiplier
+/// (rigid craton). Cells far from the seed (near boundaries) receive 1.0.
+/// Oceanic cells always receive 1.0.
+pub fn compute_viscosity_multiplier(
+    grid: &mut StaggeredGrid,
+    plate_ids: &[usize],
+    plates: &[Plate],
+    config: &CratonicConfig,
+) {
+    let n = grid.n;
+
+    if !config.enabled || config.max_factor <= 1.0 {
+        for k in 0..n * n {
+            grid.eta_multiplier.data_mut()[k] = 1.0;
+        }
+        return;
+    }
+
+    let size = n as f32;
+
+    // Step 1: Find maximum Voronoï radius for each continental plate.
+    let mut max_radius = vec![0.0_f32; plates.len()];
+    for j in 0..n {
+        for i in 0..n {
+            let pid = plate_ids[j * n + i];
+            let plate = &plates[pid];
+            if plate.plate_type != PlateType::Continental || !plate.active {
+                continue;
+            }
+            let dist = toroidal_distance(i as f32, j as f32, plate.seed_x, plate.seed_y, size);
+            if dist > max_radius[pid] {
+                max_radius[pid] = dist;
+            }
+        }
+    }
+
+    // Step 2: Compute multiplier per cell.
+    for j in 0..n {
+        for i in 0..n {
+            let pid = plate_ids[j * n + i];
+            let plate = &plates[pid];
+
+            if plate.plate_type != PlateType::Continental || !plate.active {
+                grid.eta_multiplier.set(i, j, 1.0);
+                continue;
+            }
+
+            let radius = max_radius[pid];
+            if radius < 1e-6 {
+                grid.eta_multiplier.set(i, j, config.max_factor);
+                continue;
+            }
+
+            let dist = toroidal_distance(i as f32, j as f32, plate.seed_x, plate.seed_y, size);
+            let d_norm = (dist / radius).min(1.0);
+
+            // Decay: f = (1 - d^p), from 1 at center to 0 at edge
+            let f = (1.0 - d_norm.powf(config.decay_power as f32)).max(0.0) as f64;
+            let mult = 1.0 + (config.max_factor - 1.0) * f;
+            grid.eta_multiplier.set(i, j, mult);
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
@@ -642,5 +717,89 @@ mod tests {
 
         // All cells should belong to plate 0 since plate 1 is inactive
         assert!(plate_ids.iter().all(|&id| id == 0));
+    }
+
+    // ── Cratonic rigidity tests ──────────────────────────────────────
+
+    #[test]
+    fn cratonic_multiplier_is_highest_at_seed() {
+        let n = 32;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, dx);
+
+        let plate_ids: Vec<usize> = vec![0; n * n];
+        let plates = vec![Plate {
+            id: 0,
+            plate_type: PlateType::Continental,
+            velocity: (0.0, 0.0),
+            seed_x: 16.0,
+            seed_y: 16.0,
+            active: true,
+            subducted_mass: 0.0,
+        }];
+
+        let config = CratonicConfig { enabled: true, max_factor: 20.0, decay_power: 2.0 };
+        compute_viscosity_multiplier(&mut grid, &plate_ids, &plates, &config);
+
+        let center = grid.eta_multiplier.get(16, 16);
+        assert!(center > 15.0, "Center should be near max: {center}");
+
+        let edge = grid.eta_multiplier.get(0, 0);
+        assert!(edge < 5.0, "Edge should be near 1.0: {edge}");
+
+        assert!(center > edge, "Center should be more rigid than edge");
+    }
+
+    #[test]
+    fn oceanic_plates_have_no_rigidity() {
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, dx);
+
+        let plate_ids: Vec<usize> = vec![0; n * n];
+        let plates = vec![Plate {
+            id: 0,
+            plate_type: PlateType::Oceanic,
+            velocity: (0.0, 0.0),
+            seed_x: 8.0,
+            seed_y: 8.0,
+            active: true,
+            subducted_mass: 0.0,
+        }];
+
+        let config = CratonicConfig { enabled: true, max_factor: 50.0, decay_power: 2.0 };
+        compute_viscosity_multiplier(&mut grid, &plate_ids, &plates, &config);
+
+        for k in 0..n * n {
+            assert!(
+                (grid.eta_multiplier.data()[k] - 1.0).abs() < 1e-10,
+                "Oceanic cell should have mult=1.0"
+            );
+        }
+    }
+
+    #[test]
+    fn disabled_gives_uniform_multiplier() {
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, dx);
+
+        let plate_ids: Vec<usize> = vec![0; n * n];
+        let plates = vec![Plate {
+            id: 0,
+            plate_type: PlateType::Continental,
+            velocity: (0.0, 0.0),
+            seed_x: 8.0,
+            seed_y: 8.0,
+            active: true,
+            subducted_mass: 0.0,
+        }];
+
+        let config = CratonicConfig { enabled: false, ..Default::default() };
+        compute_viscosity_multiplier(&mut grid, &plate_ids, &plates, &config);
+
+        for k in 0..n * n {
+            assert!((grid.eta_multiplier.data()[k] - 1.0).abs() < 1e-10);
+        }
     }
 }

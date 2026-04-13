@@ -19,6 +19,9 @@ pub struct StaggeredGrid {
     /// Crustal density at each cell center (kg/m³).
     /// Continental ≈ 2750, Oceanic ≈ 3000.
     pub rho: Field2D,
+    /// Spatial viscosity multiplier (cratonic rigidity).
+    /// 1.0 = normal, >1.0 = more rigid (continental interior).
+    pub eta_multiplier: Field2D,
     pub idx: PeriodicIndex,
 }
 
@@ -31,6 +34,7 @@ impl StaggeredGrid {
             vx: Field2D::new(n),
             vy: Field2D::new(n),
             rho: Field2D::new(n),
+            eta_multiplier: Field2D::filled(n, 1.0),
             idx: PeriodicIndex::new(n),
         }
     }

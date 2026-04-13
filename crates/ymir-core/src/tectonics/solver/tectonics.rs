@@ -14,7 +14,8 @@ use crate::tectonics::boundaries::{
     accumulate_subducted_mass, apply_slab_pull, compute_boundary_sources_into, gaussian_blur_f64,
 };
 use crate::tectonics::plates::{
-    Plate, PlateType, advect_seeds, detect_disappeared_plates, rebuild_traction, recompute_voronoi,
+    Plate, PlateType, advect_seeds, compute_viscosity_multiplier, detect_disappeared_plates,
+    rebuild_traction, recompute_voronoi,
 };
 
 /// Errors that can occur during a tectonic simulation run.
@@ -80,8 +81,9 @@ where
 {
     let n = grid.n;
 
-    // Initialize density field from plate types
+    // Initialize density field and cratonic viscosity multiplier from plate types
     assign_density_from_plates(grid, &plate_ctx.ids, &plate_ctx.plates, &config.boundaries);
+    compute_viscosity_multiplier(grid, &plate_ctx.ids, &plate_ctx.plates, &config.cratonic);
 
     for step in 0..config.num_timesteps {
         // 1. Solve velocity — continuation only on first step (cold start)
@@ -121,8 +123,9 @@ where
                 info!(plate_id = pid, step, "plate disappeared");
             }
 
-            // Reassign density from updated plate partition
+            // Reassign density and viscosity multiplier from updated plate partition
             assign_density_from_plates(grid, &plate_ctx.ids, &plate_ctx.plates, &config.boundaries);
+            compute_viscosity_multiplier(grid, &plate_ctx.ids, &plate_ctx.plates, &config.cratonic);
         }
         // ──────────────────────────────────────────────────────────────
 
@@ -446,6 +449,7 @@ mod tests {
             continuation: ContinuationConfig { enabled: false, ..Default::default() },
             boundaries: Default::default(),
             dynamic_boundaries: false,
+            cratonic: Default::default(),
         }
     }
 
@@ -623,6 +627,7 @@ mod tests {
             continuation: ContinuationConfig::default(),
             boundaries: Default::default(),
             dynamic_boundaries: false,
+            cratonic: Default::default(),
         };
 
         let mut ctx = make_static_ctx(n, traction);
@@ -671,11 +676,12 @@ mod tests {
             boundaries: BoundaryConfig {
                 enabled: true,
                 oceanic_reference_thickness: 0.25,
-                oceanic_restore_threshold: 0.4,
+                oceanic_restore_threshold: 1.0, // high enough to cover test's initial S=0.8
                 oceanic_restore_rate: 0.3,
                 ..Default::default()
             },
             dynamic_boundaries: false,
+            cratonic: Default::default(),
             ..make_config(50)
         };
 
