@@ -97,6 +97,7 @@ pub fn solve_velocity_picard(
     grid: &mut StaggeredGrid,
     plates: &TractionField,
     gravity_factor: f64,
+    rho_continental: f64,
     rho_mantle: f64,
     config: &PicardConfig,
     ws: &mut SolverWorkspace,
@@ -109,7 +110,7 @@ pub fn solve_velocity_picard(
     super::workspace::pack_velocity(grid, &mut ws.v_packed);
 
     // Compute RHS (does not change during Picard iteration)
-    compute_rhs(grid, plates, gravity_factor, rho_mantle, &mut ws.rhs);
+    compute_rhs(grid, plates, gravity_factor, rho_continental, rho_mantle, &mut ws.rhs);
 
     // Project out null space (constant mode) — periodic Stokes has a rank-2 null space
     let n2 = n * n;
@@ -243,7 +244,7 @@ mod tests {
         };
         let mut ws = SolverWorkspace::new(n);
 
-        let result = solve_velocity_picard(&mut grid, &plates, 1.0, 0.0, &config, &mut ws);
+        let result = solve_velocity_picard(&mut grid, &plates, 1.0, 0.0, 0.0, &config, &mut ws);
         assert!(result.converged, "Should converge for linear viscosity");
         assert!(
             result.iterations <= 2,
@@ -277,7 +278,7 @@ mod tests {
         };
         let mut ws = SolverWorkspace::new(n);
 
-        let result = solve_velocity_picard(&mut grid, &plates, 1.0, 0.0, &config, &mut ws);
+        let result = solve_velocity_picard(&mut grid, &plates, 1.0, 0.0, 0.0, &config, &mut ws);
         assert!(
             result.converged,
             "Power-law Picard should converge, got {} iterations",

@@ -64,6 +64,7 @@ pub fn solve_velocity_newton(
     grid: &mut StaggeredGrid,
     plates: &TractionField,
     gravity_factor: f64,
+    rho_continental: f64,
     rho_mantle: f64,
     picard_config: &PicardConfig,
     newton_config: &NewtonConfig,
@@ -75,7 +76,7 @@ pub fn solve_velocity_newton(
     let mut total_linear = 0usize;
 
     // Compute RHS (constant during Newton)
-    compute_rhs(grid, plates, gravity_factor, rho_mantle, &mut ws.rhs);
+    compute_rhs(grid, plates, gravity_factor, rho_continental, rho_mantle, &mut ws.rhs);
 
     // Project out null space
     let mean_vx: f64 = ws.rhs[..n2].iter().sum::<f64>() / n2 as f64;
@@ -307,6 +308,7 @@ mod tests {
             &plates,
             1.0,
             0.0,
+            0.0,
             &picard_config,
             &newton_config,
             &mut ws,
@@ -342,6 +344,7 @@ mod tests {
             &mut grid,
             &plates,
             1.0,
+            0.0,
             0.0,
             &picard_config,
             &newton_config,
@@ -383,7 +386,7 @@ mod tests {
         let plates = TractionField::two_plates_convergent(n, 0.5);
         let mut ws_p = SolverWorkspace::new(n);
         let picard_result =
-            solve_velocity_picard(&mut grid_p, &plates, 1.0, 0.0, &picard_config, &mut ws_p);
+            solve_velocity_picard(&mut grid_p, &plates, 1.0, 0.0, 0.0, &picard_config, &mut ws_p);
         assert!(picard_result.converged, "Picard should converge");
         let mut v_picard = vec![0.0; n_dof];
         pack_velocity(&grid_p, &mut v_picard);
@@ -402,6 +405,7 @@ mod tests {
             &mut grid_n,
             &plates,
             1.0,
+            0.0,
             0.0,
             &picard_config,
             &newton_config,
@@ -450,6 +454,7 @@ mod tests {
             &plates,
             1.0,
             0.0,
+            0.0,
             &picard_config,
             &config_exact,
             &mut ws_exact,
@@ -473,6 +478,7 @@ mod tests {
             &mut grid_inexact,
             &plates,
             1.0,
+            0.0,
             0.0,
             &picard_config,
             &config_inexact,
