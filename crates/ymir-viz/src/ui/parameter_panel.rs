@@ -12,8 +12,8 @@ use ymir_core::tectonics::solver::config::{
 use crate::bridge::commands::SolverCommand;
 use crate::bridge::plugin::{SolverBridge, SolverState};
 use crate::state::{
-    ClimateParams, ErosionParams, GenerationParamsUi, PipelinePhase, SolverConfig, TectonicState,
-    ViewState,
+    ClimateParams, ErosionParams, GenerationParamsUi, IsostasyCache, IsostasyParams,
+    PipelinePhase, SolverConfig, TectonicState, ViewState,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -26,12 +26,21 @@ pub fn draw(
     tectonic_state: Option<ResMut<TectonicState>>,
     solver_config: &mut SolverConfig,
     bridge: &mut SolverBridge,
+    isostasy_params: &mut IsostasyParams,
+    isostasy_cache: &IsostasyCache,
 ) {
     egui::CollapsingHeader::new("Parameters").default_open(true).show(ui, |ui| {
         match view_state.selected_phase {
             PipelinePhase::Erosion => draw_erosion(ui, erosion),
             PipelinePhase::Tectonics => {
-                draw_tectonics(ui, tectonic_state, solver_config, bridge);
+                draw_tectonics(
+                    ui,
+                    tectonic_state,
+                    solver_config,
+                    bridge,
+                    isostasy_params,
+                    isostasy_cache,
+                );
             }
             PipelinePhase::Climate => draw_climate(ui, climate),
             _ => {
@@ -56,6 +65,8 @@ fn draw_tectonics(
     tectonic_state: Option<ResMut<TectonicState>>,
     solver_config: &mut SolverConfig,
     bridge: &mut SolverBridge,
+    isostasy_params: &mut IsostasyParams,
+    isostasy_cache: &IsostasyCache,
 ) {
     let Some(mut state) = tectonic_state else {
         ui.label("Tectonic state not ready");
@@ -303,6 +314,51 @@ fn draw_tectonics(
 
     // ── Solver status ──
     draw_solver_status(ui, &bridge.state);
+
+    ui.add_space(6.0);
+    ui.separator();
+
+    // ── Isostasy ──
+    ui.strong("Isostasy");
+    slider_row(
+        ui,
+        "Sea level",
+        &mut isostasy_params.sea_level_fraction,
+        0.0..=1.0,
+    );
+    slider_row(
+        ui,
+        "Max elev (m)",
+        &mut isostasy_params.max_elevation_m,
+        1000.0..=6000.0,
+    );
+    slider_row(
+        ui,
+        "Max depth (m)",
+        &mut isostasy_params.max_depth_m,
+        100.0..=1000.0,
+    );
+    slider_row(
+        ui,
+        "Smoothing σ",
+        &mut isostasy_params.altitude_smoothing_sigma,
+        0.0..=5.0,
+    );
+
+    if isostasy_cache.valid {
+        ui.add_space(4.0);
+        egui::Grid::new("isostasy_info").num_columns(2).show(ui, |ui| {
+            ui.label("Land ratio");
+            ui.monospace(format!("{:.1}%", isostasy_cache.land_ratio * 100.0));
+            ui.end_row();
+            ui.label("Peak");
+            ui.monospace(format!("{:.0} m", isostasy_cache.peak_altitude_m));
+            ui.end_row();
+            ui.label("Deepest");
+            ui.monospace(format!("-{:.0} m", isostasy_cache.max_depth_m));
+            ui.end_row();
+        });
+    }
 }
 
 fn draw_solver_status(ui: &mut egui::Ui, state: &SolverState) {

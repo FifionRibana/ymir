@@ -90,13 +90,24 @@ fn ui_right_panel(
     tectonic_state: Option<ResMut<crate::state::TectonicState>>,
     mut solver_config: ResMut<crate::state::SolverConfig>,
     mut bridge: ResMut<crate::bridge::SolverBridge>,
+    mut isostasy_params: ResMut<crate::state::IsostasyParams>,
+    isostasy_cache: Res<crate::state::IsostasyCache>,
+    mut ui_actions: ResMut<crate::state::UiActions>,
+    terrain_display: Res<crate::visualization::render::TerrainDisplay>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::SidePanel::right("right_panel")
         .exact_width(260.0)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                pipeline_panel::draw(ui, &mut view_state, &pipeline_state);
+                let has_terrain = terrain_display.s_field.is_some();
+                pipeline_panel::draw(
+                    ui,
+                    &mut view_state,
+                    &pipeline_state,
+                    &mut ui_actions,
+                    has_terrain,
+                );
                 ui.separator();
                 parameter_panel::draw(
                     ui,
@@ -107,6 +118,8 @@ fn ui_right_panel(
                     tectonic_state,
                     &mut solver_config,
                     &mut bridge,
+                    &mut isostasy_params,
+                    &isostasy_cache,
                 );
                 ui.separator();
                 statistics_panel::draw(ui, &stats);

@@ -247,55 +247,9 @@ impl PlateInitResult {
 
 /// Separable Gaussian blur on a GridF32 with toroidal (wrapping) boundary conditions.
 ///
-/// Sigma is in grid cells. Kernel radius = ceil(3 × sigma).
-/// Uses `rem_euclid` so cells at the border wrap to the opposite side — required
-/// for the toroidal domain.
+/// Delegates to [`GridF32::gaussian_blur`]. Kept for backward compatibility.
 pub fn gaussian_blur(grid: &GridF32, sigma: f32) -> GridF32 {
-    let radius = (3.0 * sigma).ceil() as usize;
-    let kernel_size = 2 * radius + 1;
-
-    // Build normalized 1D Gaussian kernel
-    let mut kernel = vec![0.0f32; kernel_size];
-    let mut sum = 0.0f32;
-    for i in 0..kernel_size {
-        let x = i as f32 - radius as f32;
-        let val = (-x * x / (2.0 * sigma * sigma)).exp();
-        kernel[i] = val;
-        sum += val;
-    }
-    for k in kernel.iter_mut() {
-        *k /= sum;
-    }
-
-    // Horizontal pass
-    let mut temp = GridF32::new(grid.width, grid.height, 0.0);
-    for y in 0..grid.height {
-        for x in 0..grid.width {
-            let mut val = 0.0f32;
-            for i in 0..kernel_size {
-                let sx = (x as i32 + i as i32 - radius as i32)
-                    .rem_euclid(grid.width as i32) as usize;
-                val += grid.data[y * grid.width + sx] * kernel[i];
-            }
-            temp.data[y * grid.width + x] = val;
-        }
-    }
-
-    // Vertical pass
-    let mut result = GridF32::new(grid.width, grid.height, 0.0);
-    for y in 0..grid.height {
-        for x in 0..grid.width {
-            let mut val = 0.0f32;
-            for i in 0..kernel_size {
-                let sy = (y as i32 + i as i32 - radius as i32)
-                    .rem_euclid(grid.height as i32) as usize;
-                val += temp.data[sy * grid.width + x] * kernel[i];
-            }
-            result.data[y * grid.width + x] = val;
-        }
-    }
-
-    result
+    grid.gaussian_blur(sigma)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
