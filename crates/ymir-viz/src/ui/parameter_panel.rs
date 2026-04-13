@@ -299,7 +299,7 @@ fn draw_tectonics(
             ui,
             "Ocean restore",
             &mut solver_config.boundaries.oceanic_restore_rate,
-            0.0..=1.0,
+            0.0..=0.5,
         );
 
         ui.separator();
@@ -330,7 +330,7 @@ fn draw_tectonics(
     ui.strong("Cratonic rigidity");
     ui.checkbox(&mut solver_config.cratonic.enabled, "Enabled");
     if solver_config.cratonic.enabled {
-        slider_row_f64(ui, "Max factor", &mut solver_config.cratonic.max_factor, 1.0..=100.0);
+        slider_row_f64(ui, "Max factor", &mut solver_config.cratonic.max_factor, 1.0..=20.0);
         slider_row_f64(ui, "Decay power", &mut solver_config.cratonic.decay_power, 0.5..=4.0);
     }
 

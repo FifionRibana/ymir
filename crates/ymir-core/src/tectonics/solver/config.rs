@@ -132,7 +132,7 @@ pub struct CratonicConfig {
 
 impl Default for CratonicConfig {
     fn default() -> Self {
-        Self { enabled: true, max_factor: 20.0, decay_power: 2.0 }
+        Self { enabled: true, max_factor: 5.0, decay_power: 1.3 }
     }
 }
 
