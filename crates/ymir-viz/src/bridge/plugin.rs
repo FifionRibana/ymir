@@ -58,7 +58,12 @@ impl Plugin for TectonicsBridgePlugin {
             cancel_flag: cancel,
         });
 
-        app.add_systems(Update, poll_solver_events);
+        app.init_resource::<crate::state::UiActions>();
+        app.add_systems(Update, (
+            poll_solver_events,
+            super::export_system::handle_export,
+            super::export_system::handle_load,
+        ));
     }
 }
 
