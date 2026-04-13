@@ -10,7 +10,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::plates::{PlateConfig, PlateType, generate_plates};
 
-use crate::state::{TectonicState, ViewMode, ViewState};
+use crate::state::{DynamicPlateIds, TectonicState, ViewMode, ViewState};
 
 pub struct TectonicViewPlugin;
 
@@ -18,7 +18,12 @@ impl Plugin for TectonicViewPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_tectonic).add_systems(
             Update,
-            (rebuild_tectonic_texture, toggle_tectonic_visibility, draw_velocity_arrows),
+            (
+                rebuild_tectonic_texture,
+                toggle_tectonic_visibility,
+                draw_velocity_arrows,
+                draw_plate_boundaries,
+            ),
         );
     }
 }
@@ -88,7 +93,13 @@ fn setup_tectonic(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     ));
 
     commands.insert_resource(TectonicImageHandle(image_handle));
-    commands.insert_resource(TectonicState { init, config, seed: seed_val, dirty: true, generation: 0 });
+    commands.insert_resource(TectonicState {
+        init,
+        config,
+        seed: seed_val,
+        dirty: true,
+        generation: 0,
+    });
 }
 
 fn alloc_image(images: &mut Assets<Image>, width: u32, height: u32) -> Handle<Image> {
@@ -219,5 +230,87 @@ fn draw_velocity_arrows(
         };
 
         gizmos.arrow_2d(start, end, color);
+    }
+}
+
+// ── Plate boundary overlay (gizmos) ──────────────────────────────────────
+
+fn draw_plate_boundaries(
+    mut gizmos: Gizmos,
+    plate_ids_res: Res<DynamicPlateIds>,
+    view_state: Res<ViewState>,
+    tectonic: Option<Res<TectonicState>>,
+) {
+    if !view_state.overlays.plates {
+        return;
+    }
+
+    // Use dynamic plate_ids if available, otherwise fall back to static
+    let (ids, n, plates_opt) = if let Some(ref ids) = plate_ids_res.ids {
+        let n = plate_ids_res.grid_size;
+        if n == 0 || ids.len() != n * n {
+            return;
+        }
+        (ids.as_slice(), n, plate_ids_res.plates.as_deref())
+    } else if let Some(ref tecto) = tectonic {
+        let n = tecto.init.grid_size;
+        (tecto.init.plate_ids.as_slice(), n, Some(tecto.init.plates.as_slice()))
+    } else {
+        return;
+    };
+
+    let half = n as f32 / 2.0;
+    let boundary_color = Color::srgba(1.0, 1.0, 1.0, 0.6);
+
+    // Draw boundary lines between cells of different plates
+    for j in 0..n {
+        for i in 0..n {
+            let my_id = ids[j * n + i];
+
+            // Check right neighbor
+            let ni = (i + 1) % n;
+            if ids[j * n + ni] != my_id {
+                let x = (i as f32 + 1.0) - half;
+                let y1 = -(j as f32 - half);
+                let y2 = -((j as f32 + 1.0) - half);
+                gizmos.line_2d(Vec2::new(x, y1), Vec2::new(x, y2), boundary_color);
+            }
+
+            // Check bottom neighbor
+            let nj = (j + 1) % n;
+            if ids[nj * n + i] != my_id {
+                let y = -((j as f32 + 1.0) - half);
+                let x1 = i as f32 - half;
+                let x2 = (i as f32 + 1.0) - half;
+                gizmos.line_2d(Vec2::new(x1, y), Vec2::new(x2, y), boundary_color);
+            }
+        }
+    }
+
+    // Draw seed markers
+    let plates = plates_opt.or_else(|| tectonic.as_ref().map(|t| t.init.plates.as_slice()));
+    if let Some(plates) = plates {
+        for plate in plates {
+            if !plate.active {
+                continue;
+            }
+
+            let wx = plate.seed_x - half;
+            let wy = -(plate.seed_y - half);
+            let pos = Vec2::new(wx, wy);
+
+            let color = match plate.plate_type {
+                PlateType::Continental => Color::srgb(0.72, 0.45, 0.20),
+                PlateType::Oceanic => Color::srgb(0.35, 0.55, 0.75),
+            };
+
+            gizmos.circle_2d(Isometry2d::from_translation(pos), 2.0, color);
+
+            // Velocity arrow
+            let arrow_scale = 5.0_f32;
+            let arrow_end =
+                pos + Vec2::new(plate.velocity.0 * arrow_scale, -plate.velocity.1 * arrow_scale);
+            gizmos.arrow_2d(pos, arrow_end, color);
+        }
     }
 }

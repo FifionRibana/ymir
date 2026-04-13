@@ -57,10 +57,7 @@ pub fn compute_strain_rate(grid: &StaggeredGrid, out: &mut Field2D) {
     };
 
     if n >= PAR_THRESHOLD {
-        out.data_mut()
-            .par_chunks_mut(n)
-            .enumerate()
-            .for_each(|(j, row)| process_row(j, row));
+        out.data_mut().par_chunks_mut(n).enumerate().for_each(|(j, row)| process_row(j, row));
     } else {
         for j in 0..n {
             let s = j * n;
@@ -82,13 +79,11 @@ pub fn compute_viscosity(
     let n = strain_rate.n();
 
     if n >= PAR_THRESHOLD {
-        strain_rate
-            .data()
-            .par_iter()
-            .zip(eta.data_mut().par_iter_mut())
-            .for_each(|(&sr, eta_val)| {
+        strain_rate.data().par_iter().zip(eta.data_mut().par_iter_mut()).for_each(
+            |(&sr, eta_val)| {
                 *eta_val = (sr + eps_min).powf(exponent).clamp(eta_min, eta_max);
-            });
+            },
+        );
     } else {
         for k in 0..n * n {
             let sr = strain_rate.data()[k];
@@ -248,10 +243,7 @@ mod tests {
         let mut ws = SolverWorkspace::new(n);
 
         let result = solve_velocity_picard(&mut grid, &plates, 1.0, &config, &mut ws);
-        assert!(
-            result.converged,
-            "Should converge for linear viscosity"
-        );
+        assert!(result.converged, "Should converge for linear viscosity");
         assert!(
             result.iterations <= 2,
             "Linear viscosity (n=1) should converge in ≤ 2 Picard iterations, got {}",

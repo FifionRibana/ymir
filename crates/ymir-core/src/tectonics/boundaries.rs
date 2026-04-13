@@ -106,12 +106,8 @@ pub fn compute_boundary_sources(
             let my_plate = plate_ids[k];
             let my_type = plates[my_plate].plate_type;
 
-            let neighbors = [
-                (idx.next(i), j),
-                (idx.prev(i), j),
-                (i, idx.next(j)),
-                (i, idx.prev(j)),
-            ];
+            let neighbors =
+                [(idx.next(i), j), (idx.prev(i), j), (i, idx.next(j)), (i, idx.prev(j))];
 
             let mut is_boundary = false;
             let mut convergence_sum = 0.0_f64;
@@ -142,20 +138,15 @@ pub fn compute_boundary_sources(
                     };
 
                     // Velocity at cell center (average of staggered faces)
-                    let vx_here =
-                        0.5 * (grid.vx.get(i, j) + grid.vx.get(idx.next(i), j));
-                    let vy_here =
-                        0.5 * (grid.vy.get(i, j) + grid.vy.get(i, idx.next(j)));
+                    let vx_here = 0.5 * (grid.vx.get(i, j) + grid.vx.get(idx.next(i), j));
+                    let vy_here = 0.5 * (grid.vy.get(i, j) + grid.vy.get(i, idx.next(j)));
 
-                    let vx_there =
-                        0.5 * (grid.vx.get(ni, nj) + grid.vx.get(idx.next(ni), nj));
-                    let vy_there =
-                        0.5 * (grid.vy.get(ni, nj) + grid.vy.get(ni, idx.next(nj)));
+                    let vx_there = 0.5 * (grid.vx.get(ni, nj) + grid.vx.get(idx.next(ni), nj));
+                    let vy_there = 0.5 * (grid.vy.get(ni, nj) + grid.vy.get(ni, idx.next(nj)));
 
                     // Relative velocity in normal direction
                     // Positive = diverging, Negative = converging
-                    let v_rel =
-                        (vx_there - vx_here) * nx + (vy_there - vy_here) * ny;
+                    let v_rel = (vx_there - vx_here) * nx + (vy_there - vy_here) * ny;
                     convergence_sum += v_rel;
                 }
             }
@@ -170,15 +161,11 @@ pub fn compute_boundary_sources(
             let btype = if is_converging {
                 match (my_type, neighbor_plate_type) {
                     (PlateType::Oceanic, PlateType::Continental)
-                    | (PlateType::Continental, PlateType::Oceanic) => {
-                        BoundaryType::Subduction
-                    }
+                    | (PlateType::Continental, PlateType::Oceanic) => BoundaryType::Subduction,
                     (PlateType::Continental, PlateType::Continental) => {
                         BoundaryType::ContinentalCollision
                     }
-                    (PlateType::Oceanic, PlateType::Oceanic) => {
-                        BoundaryType::OceanicSubduction
-                    }
+                    (PlateType::Oceanic, PlateType::Oceanic) => BoundaryType::OceanicSubduction,
                 }
             } else {
                 BoundaryType::Rift
@@ -270,8 +257,7 @@ pub fn gaussian_blur_f64(field: &Field2D, sigma: f64) -> Field2D {
         for i in 0..n {
             let mut val = 0.0_f64;
             for (ki, &w) in kernel.iter().enumerate() {
-                let si = (i as i32 + ki as i32 - radius as i32)
-                    .rem_euclid(n as i32) as usize;
+                let si = (i as i32 + ki as i32 - radius as i32).rem_euclid(n as i32) as usize;
                 val += field.get(si, j) * w;
             }
             temp.set(i, j, val);
@@ -284,8 +270,7 @@ pub fn gaussian_blur_f64(field: &Field2D, sigma: f64) -> Field2D {
         for i in 0..n {
             let mut val = 0.0_f64;
             for (ki, &w) in kernel.iter().enumerate() {
-                let sj = (j as i32 + ki as i32 - radius as i32)
-                    .rem_euclid(n as i32) as usize;
+                let sj = (j as i32 + ki as i32 - radius as i32).rem_euclid(n as i32) as usize;
                 val += temp.get(i, sj) * w;
             }
             result.set(i, j, val);
@@ -321,6 +306,7 @@ mod tests {
                 velocity: (0.5, 0.0),
                 seed_x: (n / 4) as f32,
                 seed_y: (n / 2) as f32,
+                active: true,
             },
             Plate {
                 id: 1,
@@ -328,6 +314,7 @@ mod tests {
                 velocity: (-0.5, 0.0),
                 seed_x: (3 * n / 4) as f32,
                 seed_y: (n / 2) as f32,
+                active: true,
             },
         ];
 
@@ -355,10 +342,7 @@ mod tests {
         let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
 
         let oceanic_boundary = result.source_rate.get(n / 2 - 1, n / 2);
-        assert!(
-            oceanic_boundary < 0.0,
-            "Oceanic side should be a sink: Q = {oceanic_boundary}"
-        );
+        assert!(oceanic_boundary < 0.0, "Oceanic side should be a sink: Q = {oceanic_boundary}");
 
         let continental_boundary = result.source_rate.get(n / 2, n / 2);
         assert!(
@@ -388,10 +372,7 @@ mod tests {
         let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
 
         let boundary_q = result.source_rate.get(n / 2, n / 2);
-        assert!(
-            boundary_q > 0.0,
-            "Rift should create crust: Q = {boundary_q}"
-        );
+        assert!(boundary_q > 0.0, "Rift should create crust: Q = {boundary_q}");
     }
 
     #[test]
@@ -409,10 +390,7 @@ mod tests {
         let config = BoundaryConfig::default();
         let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
 
-        assert!(
-            result.source_rate.get(0, 0).abs() < 1e-10,
-            "Interior cell should have no source"
-        );
+        assert!(result.source_rate.get(0, 0).abs() < 1e-10, "Interior cell should have no source");
         assert!(
             result.source_rate.get(n - 1, n / 2).abs() < 1e-10,
             "Interior cell should have no source"
@@ -436,17 +414,10 @@ mod tests {
         let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
 
         let total_q: f64 = result.source_rate.data().iter().sum();
-        let max_q: f64 = result
-            .source_rate
-            .data()
-            .iter()
-            .map(|x| x.abs())
-            .fold(0.0, f64::max);
+        let max_q: f64 = result.source_rate.data().iter().map(|x| x.abs()).fold(0.0, f64::max);
         let relative = total_q.abs() / (max_q * n as f64).max(1e-10);
 
-        eprintln!(
-            "Total Q = {total_q:.6}, max |Q| = {max_q:.6}, relative = {relative:.6}"
-        );
+        eprintln!("Total Q = {total_q:.6}, max |Q| = {max_q:.6}, relative = {relative:.6}");
     }
 
     #[test]

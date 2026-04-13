@@ -4,12 +4,12 @@
 /// `t` is normalized in [0, 1]. Returns [r, g, b, a] in u8.
 pub fn hypsometric_colormap(t: f64) -> [u8; 4] {
     const STOPS: &[(f64, [u8; 3])] = &[
-        (0.0, [20, 50, 120]),    // deep blue — thin oceanic
-        (0.2, [40, 120, 160]),   // blue-green — thick oceanic
-        (0.4, [60, 160, 80]),    // green — continental plains
-        (0.6, [180, 140, 60]),   // light brown — hills
-        (0.8, [140, 80, 40]),    // dark brown — mountains
-        (1.0, [240, 240, 240]),  // white — max thickening
+        (0.0, [20, 50, 120]),   // deep blue — thin oceanic
+        (0.2, [40, 120, 160]),  // blue-green — thick oceanic
+        (0.4, [60, 160, 80]),   // green — continental plains
+        (0.6, [180, 140, 60]),  // light brown — hills
+        (0.8, [140, 80, 40]),   // dark brown — mountains
+        (1.0, [240, 240, 240]), // white — max thickening
     ];
 
     let t = t.clamp(0.0, 1.0);

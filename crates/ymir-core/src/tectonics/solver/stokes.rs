@@ -61,8 +61,7 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
             let dvx_dy_bot = (v[li(i, j)] - v[li(i, pj)]) * inv_dx2;
             let dvy_dx_bot = (v[n2 + li(i, j)] - v[n2 + li(pi, j)]) * inv_dx2;
 
-            let term_xy =
-                eta_top * (dvx_dy_top + dvy_dx_top) - eta_bot * (dvx_dy_bot + dvy_dx_bot);
+            let term_xy = eta_top * (dvx_dy_top + dvy_dx_top) - eta_bot * (dvx_dy_bot + dvy_dx_bot);
 
             // Negative sign for SPD
             row_vx[i] = -(term_xx + term_xy);
@@ -97,20 +96,16 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
     };
 
     if n >= PAR_THRESHOLD {
-        out_vx
-            .par_chunks_mut(n)
-            .zip(out_vy.par_chunks_mut(n))
-            .enumerate()
-            .for_each(|(j, (row_vx, row_vy))| {
+        out_vx.par_chunks_mut(n).zip(out_vy.par_chunks_mut(n)).enumerate().for_each(
+            |(j, (row_vx, row_vy))| {
                 process_row(j, row_vx, row_vy);
-            });
+            },
+        );
     } else {
         for j in 0..n {
             let vx_start = j * n;
-            let (row_vx, row_vy) = (
-                &mut out_vx[vx_start..vx_start + n],
-                &mut out_vy[vx_start..vx_start + n],
-            );
+            let (row_vx, row_vy) =
+                (&mut out_vx[vx_start..vx_start + n], &mut out_vy[vx_start..vx_start + n]);
             // SAFETY: we need non-overlapping mutable borrows of the two halves
             // which split_at_mut already guarantees. The sequential inner slices
             // are also non-overlapping because we index by j*n.
@@ -159,13 +154,11 @@ pub fn compute_rhs(
     };
 
     if n >= PAR_THRESHOLD {
-        rhs_vx
-            .par_chunks_mut(n)
-            .zip(rhs_vy.par_chunks_mut(n))
-            .enumerate()
-            .for_each(|(j, (row_vx, row_vy))| {
+        rhs_vx.par_chunks_mut(n).zip(rhs_vy.par_chunks_mut(n)).enumerate().for_each(
+            |(j, (row_vx, row_vy))| {
                 process_row(j, row_vx, row_vy);
-            });
+            },
+        );
     } else {
         for j in 0..n {
             let s = j * n;
@@ -207,20 +200,17 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
                 0.25 * (eta.get(i, pj) + eta.get(ni, pj) + eta.get(i, j) + eta.get(ni, j));
             let eta_left_vy =
                 0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
-            let diag_vy =
-                inv_dx2 * (eta_right_vy + eta_left_vy + 2.0 * (eta_top_vy + eta_bot_vy));
+            let diag_vy = inv_dx2 * (eta_right_vy + eta_left_vy + 2.0 * (eta_top_vy + eta_bot_vy));
             row_vy[i] = if diag_vy.abs() > 1e-30 { 1.0 / diag_vy } else { 0.0 };
         }
     };
 
     if n >= PAR_THRESHOLD {
-        pre_vx
-            .par_chunks_mut(n)
-            .zip(pre_vy.par_chunks_mut(n))
-            .enumerate()
-            .for_each(|(j, (row_vx, row_vy))| {
+        pre_vx.par_chunks_mut(n).zip(pre_vy.par_chunks_mut(n)).enumerate().for_each(
+            |(j, (row_vx, row_vy))| {
                 process_row(j, row_vx, row_vy);
-            });
+            },
+        );
     } else {
         for j in 0..n {
             let s = j * n;
@@ -294,10 +284,7 @@ impl StencilCoeffs {
             }
         }
 
-        Self {
-            vx: vx_coeffs,
-            vy: vy_coeffs,
-        }
+        Self { vx: vx_coeffs, vy: vy_coeffs }
     }
 }
 
@@ -339,8 +326,10 @@ fn ssor_sweep(r: &[f64], coeffs: &[[f64; 5]], n: usize, omega: f64, z: &mut [f64
             let nj = wrap(j as i32 + 1);
 
             // Use latest z values for all neighbors (symmetric GS on periodic grid)
-            let neighbor_sum =
-                c_left * z[j * n + pi] + c_right * z[j * n + ni] + c_bot * z[pj * n + i] + c_top * z[nj * n + i];
+            let neighbor_sum = c_left * z[j * n + pi]
+                + c_right * z[j * n + ni]
+                + c_bot * z[pj * n + i]
+                + c_top * z[nj * n + i];
 
             z[k] = (omega / diag) * (r[k] + neighbor_sum);
         }
@@ -357,8 +346,10 @@ fn ssor_sweep(r: &[f64], coeffs: &[[f64; 5]], n: usize, omega: f64, z: &mut [f64
             let pj = wrap(j as i32 - 1);
             let nj = wrap(j as i32 + 1);
 
-            let neighbor_sum =
-                c_left * z[j * n + pi] + c_right * z[j * n + ni] + c_bot * z[pj * n + i] + c_top * z[nj * n + i];
+            let neighbor_sum = c_left * z[j * n + pi]
+                + c_right * z[j * n + ni]
+                + c_bot * z[pj * n + i]
+                + c_top * z[nj * n + i];
 
             z[k] = (omega / diag) * (r[k] + neighbor_sum);
         }
@@ -370,9 +361,8 @@ mod tests {
     use super::*;
 
     fn deterministic_rand(state: &mut u64) -> f64 {
-        *state = state
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1_442_695_040_888_963_407);
+        *state =
+            state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
         (*state >> 33) as f64 / (1u64 << 31) as f64 - 0.5
     }
 
@@ -422,7 +412,8 @@ mod tests {
                 eta.set(
                     i,
                     j,
-                    1.0 + 0.5 * (2.0 * std::f64::consts::PI * x).sin()
+                    1.0 + 0.5
+                        * (2.0 * std::f64::consts::PI * x).sin()
                         * (2.0 * std::f64::consts::PI * y).cos(),
                 );
             }
@@ -441,10 +432,7 @@ mod tests {
         let u_av = dot(&u, &av);
         let au_v = dot(&au, &v);
         let rel_err = (u_av - au_v).abs() / u_av.abs().max(1e-14);
-        assert!(
-            rel_err < 1e-10,
-            "Symmetry violated with variable η: rel_err={rel_err}"
-        );
+        assert!(rel_err < 1e-10, "Symmetry violated with variable η: rel_err={rel_err}");
     }
 
     #[test]
@@ -531,7 +519,8 @@ mod tests {
             assert!(
                 err < 1e-14,
                 "Mismatch at {i}: seq={}, par={}, diff={err}",
-                out_seq[i], out_par[i]
+                out_seq[i],
+                out_par[i]
             );
         }
     }

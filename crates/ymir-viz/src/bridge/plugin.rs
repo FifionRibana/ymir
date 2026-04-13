@@ -12,6 +12,7 @@ use ymir_core::tectonics::solver::workspace::StepStats;
 use super::commands::SolverCommand;
 use super::events::SolverEvent;
 use super::thread::spawn_solver_thread;
+use crate::state::DynamicPlateIds;
 use crate::visualization::render::TerrainDisplay;
 
 /// Current state of the solver.
@@ -59,11 +60,15 @@ impl Plugin for TectonicsBridgePlugin {
         });
 
         app.init_resource::<crate::state::UiActions>();
-        app.add_systems(Update, (
-            poll_solver_events,
-            super::export_system::handle_export,
-            super::export_system::handle_load,
-        ));
+        app.init_resource::<DynamicPlateIds>();
+        app.add_systems(
+            Update,
+            (
+                poll_solver_events,
+                super::export_system::handle_export,
+                super::export_system::handle_load,
+            ),
+        );
     }
 }
 
@@ -71,20 +76,41 @@ fn poll_solver_events(
     mut bridge: ResMut<SolverBridge>,
     mut terrain_display: ResMut<TerrainDisplay>,
     mut isostasy_cache: ResMut<crate::state::IsostasyCache>,
+    mut dynamic_plates: ResMut<DynamicPlateIds>,
 ) {
     while let Ok(event) = bridge.events_rx.try_recv() {
         match event {
             SolverEvent::Progress { step, total_steps, stats } => {
                 bridge.state = SolverState::Running { step, total_steps, stats: Some(stats) };
             }
-            SolverEvent::Snapshot { s_field, .. } => {
+            SolverEvent::Snapshot { s_field, plate_ids, plates, .. } => {
+                let grid_size = s_field.n();
                 terrain_display.update_field(s_field);
                 isostasy_cache.valid = false;
+
+                if let Some(ids) = plate_ids {
+                    dynamic_plates.grid_size = grid_size;
+                    dynamic_plates.ids = Some(ids);
+                }
+                if let Some(pl) = plates {
+                    dynamic_plates.active_count = pl.iter().filter(|p| p.active).count();
+                    dynamic_plates.plates = Some(pl);
+                }
             }
-            SolverEvent::Completed { s_field, elapsed, .. } => {
+            SolverEvent::Completed { s_field, plate_ids, plates, elapsed, .. } => {
+                let grid_size = s_field.n();
                 terrain_display.update_field(s_field);
                 isostasy_cache.valid = false;
                 bridge.state = SolverState::Completed { elapsed };
+
+                if let Some(ids) = plate_ids {
+                    dynamic_plates.grid_size = grid_size;
+                    dynamic_plates.ids = Some(ids);
+                }
+                if let Some(pl) = plates {
+                    dynamic_plates.active_count = pl.iter().filter(|p| p.active).count();
+                    dynamic_plates.plates = Some(pl);
+                }
             }
             SolverEvent::Failed { error } => {
                 bridge.state = SolverState::Failed { error };

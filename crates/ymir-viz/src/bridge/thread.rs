@@ -1,13 +1,13 @@
 //! Solver thread: runs the thin viscous sheet simulation off the main thread.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crossbeam_channel::{Receiver, Sender};
 
 use ymir_core::tectonics::solver::grid::StaggeredGrid;
-use ymir_core::tectonics::solver::tectonics::{run_tectonics, PlateContext};
+use ymir_core::tectonics::solver::tectonics::run_tectonics;
 use ymir_core::tectonics::solver::workspace::SolverWorkspace;
 
 use super::commands::SolverCommand;
@@ -27,9 +27,7 @@ pub fn spawn_solver_thread(
                 match cmd {
                     SolverCommand::RunTectonics {
                         config,
-                        plates,
-                        plate_ids,
-                        plate_info,
+                        mut plate_ctx,
                         initial_s,
                         grid_size,
                         dx,
@@ -51,23 +49,14 @@ pub fn spawn_solver_thread(
                         let cancel_ref = cancel.clone();
                         let tx = events_tx.clone();
                         let start = Instant::now();
-
-                        let plate_ctx = if config.boundaries.enabled {
-                            Some(PlateContext {
-                                ids: &plate_ids,
-                                plates: &plate_info,
-                            })
-                        } else {
-                            None
-                        };
+                        let dynamic = config.dynamic_boundaries;
 
                         let result = run_tectonics(
                             &config,
-                            &plates,
-                            plate_ctx.as_ref(),
+                            &mut plate_ctx,
                             &mut grid,
                             ws,
-                            |step, total, stats, s_field| {
+                            |step, total, stats, s_field, plate_ids| {
                                 let _ = tx.send(SolverEvent::Progress {
                                     step,
                                     total_steps: total,
@@ -77,6 +66,8 @@ pub fn spawn_solver_thread(
                                     let _ = tx.send(SolverEvent::Snapshot {
                                         step,
                                         s_field: s_field.clone(),
+                                        plate_ids: plate_ids.map(|ids| ids.to_vec()),
+                                        plates: None, // sent only on completion to save bandwidth
                                     });
                                 }
                                 !cancel_ref.load(Ordering::Relaxed)
@@ -84,11 +75,17 @@ pub fn spawn_solver_thread(
                         );
 
                         let final_s = grid.s.clone();
+                        let final_plate_ids =
+                            if dynamic { Some(plate_ctx.ids.clone()) } else { None };
+                        let final_plates =
+                            if dynamic { Some(plate_ctx.plates.clone()) } else { None };
 
                         match result {
                             Ok(()) => {
                                 let _ = events_tx.send(SolverEvent::Completed {
                                     s_field: final_s,
+                                    plate_ids: final_plate_ids,
+                                    plates: final_plates,
                                     elapsed: start.elapsed(),
                                     total_steps: config.num_timesteps,
                                 });
@@ -98,6 +95,8 @@ pub fn spawn_solver_thread(
                                 if msg == "Simulation cancelled" {
                                     let _ = events_tx.send(SolverEvent::Completed {
                                         s_field: final_s,
+                                        plate_ids: final_plate_ids,
+                                        plates: final_plates,
                                         elapsed: start.elapsed(),
                                         total_steps: config.num_timesteps,
                                     });
@@ -116,4 +115,3 @@ pub fn spawn_solver_thread(
         })
         .expect("failed to spawn solver thread")
 }
-

@@ -11,7 +11,9 @@ use super::picard::solve_velocity_picard;
 use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, StepStats};
 use crate::tectonics::boundaries::{compute_boundary_sources_into, gaussian_blur_f64};
-use crate::tectonics::plates::Plate;
+use crate::tectonics::plates::{
+    Plate, advect_seeds, detect_disappeared_plates, rebuild_traction, recompute_voronoi,
+};
 
 /// Errors that can occur during a tectonic simulation run.
 #[derive(Debug)]
@@ -46,41 +48,45 @@ impl std::error::Error for SolverError {}
 /// `(step, total, stats, s_field)`. The `s_field` is a reference to the
 /// current crustal thickness field (safe to clone for snapshots).
 /// Return `true` to continue, `false` to cancel.
-/// Context for plate boundary processes (optional).
-pub struct PlateContext<'a> {
-    pub ids: &'a [usize],
-    pub plates: &'a [Plate],
+/// Mutable plate context for dynamic boundary simulation.
+///
+/// Contains owned plate data that may be updated each timestep when
+/// `dynamic_boundaries` is enabled (seeds advected, Voronoï recomputed,
+/// traction rebuilt).
+pub struct DynamicPlateContext {
+    pub ids: Vec<usize>,
+    pub plates: Vec<Plate>,
+    pub traction: TractionField,
 }
 
 pub fn run_tectonics<F>(
     config: &TectonicsConfig,
-    plates: &TractionField,
-    plate_ctx: Option<&PlateContext<'_>>,
+    plate_ctx: &mut DynamicPlateContext,
     grid: &mut StaggeredGrid,
     workspace: &mut SolverWorkspace,
     mut progress: F,
 ) -> Result<(), SolverError>
 where
-    F: FnMut(usize, usize, &StepStats, &Field2D) -> bool,
+    F: FnMut(usize, usize, &StepStats, &Field2D, Option<&[usize]>) -> bool,
 {
     let n = grid.n;
 
     for step in 0..config.num_timesteps {
         // 1. Solve velocity — continuation only on first step (cold start)
-        let need_continuation = config.continuation.enabled
-            && config.picard.power_law_n > 1.0
-            && step == 0;
+        let need_continuation =
+            config.continuation.enabled && config.picard.power_law_n > 1.0 && step == 0;
 
         let _step_span = info_span!("solver_step", step, n = grid.n).entered();
 
+        let traction = &plate_ctx.traction;
         let (converged, nl_iterations, linear_iterations) = if need_continuation {
-            solve_with_continuation(grid, plates, config, workspace)
+            solve_with_continuation(grid, traction, config, workspace)
         } else {
-            let result = solve_velocity_direct(grid, plates, config, workspace);
+            let result = solve_velocity_direct(grid, traction, config, workspace);
             // Fallback: if direct solve fails, try continuation as recovery
             if !result.0 && config.continuation.enabled && config.picard.power_law_n > 1.0 {
                 warn!(step, "direct solve failed, falling back to continuation");
-                solve_with_continuation(grid, plates, config, workspace)
+                solve_with_continuation(grid, traction, config, workspace)
             } else {
                 result
             }
@@ -93,6 +99,20 @@ where
         // 2. CFL timestep (after velocity is known)
         let dt_cfl = compute_cfl_dt(grid, config.cfl_factor);
 
+        // ── Dynamic boundary update ────────────────────────────────────
+        if config.dynamic_boundaries {
+            advect_seeds(&mut plate_ctx.plates, grid, dt_cfl);
+            recompute_voronoi(&mut plate_ctx.ids, &plate_ctx.plates, grid.n);
+
+            let disappeared = detect_disappeared_plates(&plate_ctx.ids, &mut plate_ctx.plates);
+            for pid in &disappeared {
+                info!(plate_id = pid, step, "plate disappeared");
+            }
+
+            plate_ctx.traction = rebuild_traction(&plate_ctx.ids, &plate_ctx.plates, grid.n);
+        }
+        // ──────────────────────────────────────────────────────────────
+
         // 3. Adaptive timestep with retry on excessive clamping
         let s_backup: Vec<f64> = grid.s.data().to_vec();
         let mut dt = dt_cfl;
@@ -100,13 +120,12 @@ where
         let mut clamp_ratio = 0.0;
 
         // Compute boundary source terms if enabled
-        let boundaries_active = config.boundaries.enabled && plate_ctx.is_some();
+        let boundaries_active = config.boundaries.enabled;
         if boundaries_active {
-            let ctx = plate_ctx.unwrap();
             compute_boundary_sources_into(
                 grid,
-                ctx.ids,
-                ctx.plates,
+                &plate_ctx.ids,
+                &plate_ctx.plates,
                 &config.boundaries,
                 &mut workspace.source_rate,
             );
@@ -115,10 +134,7 @@ where
                     &workspace.source_rate,
                     config.boundaries.source_smoothing_sigma,
                 );
-                workspace
-                    .source_rate
-                    .data_mut()
-                    .copy_from_slice(smoothed.data());
+                workspace.source_rate.data_mut().copy_from_slice(smoothed.data());
             }
         }
 
@@ -128,11 +144,7 @@ where
             for j in 0..n {
                 for i in 0..n {
                     let div = workspace.div_flux.get(i, j);
-                    let q = if boundaries_active {
-                        workspace.source_rate.get(i, j)
-                    } else {
-                        0.0
-                    };
+                    let q = if boundaries_active { workspace.source_rate.get(i, j) } else { 0.0 };
                     let s = grid.s.get(i, j) - dt * div + dt * q;
                     grid.s.set(i, j, s.clamp(config.s_min, config.s_max));
                 }
@@ -192,16 +204,13 @@ where
         );
 
         if clamp_ratio > 0.05 {
-            warn!(
-                step,
-                clamp_ratio,
-                dt,
-                "excessive clamping — consider reducing CFL or timestep"
-            );
+            warn!(step, clamp_ratio, dt, "excessive clamping — consider reducing CFL or timestep");
         }
 
         // 5. Callback — returns false to cancel
-        if !progress(step, config.num_timesteps, &workspace.stats, &grid.s) {
+        let plate_ids_snapshot =
+            if config.dynamic_boundaries { Some(plate_ctx.ids.as_slice()) } else { None };
+        if !progress(step, config.num_timesteps, &workspace.stats, &grid.s, plate_ids_snapshot) {
             return Err(SolverError::Cancelled);
         }
     }
@@ -335,6 +344,23 @@ mod tests {
             newton: NewtonConfig::default(),
             continuation: ContinuationConfig { enabled: false, ..Default::default() },
             boundaries: Default::default(),
+            dynamic_boundaries: false,
+        }
+    }
+
+    fn make_static_ctx(n: usize, traction: TractionField) -> DynamicPlateContext {
+        use crate::tectonics::plates::{Plate, PlateType};
+        DynamicPlateContext {
+            ids: vec![0; n * n],
+            plates: vec![Plate {
+                id: 0,
+                plate_type: PlateType::Continental,
+                velocity: (0.0, 0.0),
+                seed_x: (n / 2) as f32,
+                seed_y: (n / 2) as f32,
+                active: true,
+            }],
+            traction,
         }
     }
 
@@ -350,11 +376,12 @@ mod tests {
             }
         }
 
-        let plates = TractionField::two_plates_convergent(n, 1.0);
+        let traction = TractionField::two_plates_convergent(n, 1.0);
+        let mut ctx = make_static_ctx(n, traction);
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         assert!(
@@ -376,11 +403,12 @@ mod tests {
             }
         }
 
-        let plates = TractionField::two_plates_divergent(n, 1.0);
+        let traction = TractionField::two_plates_divergent(n, 1.0);
+        let mut ctx = make_static_ctx(n, traction);
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         assert!(
@@ -412,11 +440,12 @@ mod tests {
             grid.s.data().iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n * n) as f64
         };
 
-        let plates = TractionField::zero(n);
+        let traction = TractionField::zero(n);
+        let mut ctx = make_static_ctx(n, traction);
         let config = make_config(100);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         let final_var: f64 = {
@@ -441,11 +470,12 @@ mod tests {
             }
         }
 
-        let plates = TractionField::two_plates_convergent(n, 0.5);
+        let traction = TractionField::two_plates_convergent(n, 0.5);
+        let mut ctx = make_static_ctx(n, traction);
         let config = make_config(30);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _, _| true);
         assert!(result.is_ok());
 
         for val in grid.s.data() {
@@ -470,7 +500,7 @@ mod tests {
             }
         }
 
-        let plates = TractionField::two_plates_convergent(n, 0.5);
+        let traction = TractionField::two_plates_convergent(n, 0.5);
         let config = TectonicsConfig {
             num_timesteps: 20,
             gravity_factor: 1.0,
@@ -490,10 +520,12 @@ mod tests {
             newton: NewtonConfig::default(),
             continuation: ContinuationConfig::default(),
             boundaries: Default::default(),
+            dynamic_boundaries: false,
         };
 
+        let mut ctx = make_static_ctx(n, traction);
         let mut ws = SolverWorkspace::new(n);
-        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _, _| true);
         assert!(result.is_ok(), "Continuation should enable convergence: {:?}", result.err());
         assert!(
             ws.stats.max_thickness > 1.0,

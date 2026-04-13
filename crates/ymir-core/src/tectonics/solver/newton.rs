@@ -13,9 +13,9 @@ use super::field::Field2D;
 use super::grid::StaggeredGrid;
 use super::linear_solve::{apply_jacobi, solve_bicgstab};
 use super::picard::{compute_strain_rate, compute_viscosity};
-use super::stokes::{apply_ssor, apply_stokes, compute_jacobi_precond, compute_rhs, StencilCoeffs};
+use super::stokes::{StencilCoeffs, apply_ssor, apply_stokes, compute_jacobi_precond, compute_rhs};
 use super::traction::TractionField;
-use super::workspace::{pack_velocity, unpack_velocity, SolverWorkspace};
+use super::workspace::{SolverWorkspace, pack_velocity, unpack_velocity};
 
 /// Result of a Newton solve.
 pub struct NewtonResult {
@@ -295,16 +295,10 @@ mod tests {
         }
 
         let plates = TractionField::uniform(n, 0.1, 0.0);
-        let picard_config = PicardConfig {
-            power_law_n: 1.0,
-            strain_rate_min: 1e-6,
-            ..PicardConfig::default()
-        };
-        let newton_config = NewtonConfig {
-            max_iterations: 15,
-            tolerance: 1e-8,
-            ..NewtonConfig::default()
-        };
+        let picard_config =
+            PicardConfig { power_law_n: 1.0, strain_rate_min: 1e-6, ..PicardConfig::default() };
+        let newton_config =
+            NewtonConfig { max_iterations: 15, tolerance: 1e-8, ..NewtonConfig::default() };
         let mut ws = SolverWorkspace::new(n);
 
         let result =
@@ -330,16 +324,10 @@ mod tests {
         }
 
         let plates = TractionField::two_plates_convergent(n, 0.5);
-        let picard_config = PicardConfig {
-            power_law_n: 3.0,
-            strain_rate_min: 1e-3,
-            ..PicardConfig::default()
-        };
-        let newton_config = NewtonConfig {
-            max_iterations: 30,
-            tolerance: 1e-4,
-            ..NewtonConfig::default()
-        };
+        let picard_config =
+            PicardConfig { power_law_n: 3.0, strain_rate_min: 1e-3, ..PicardConfig::default() };
+        let newton_config =
+            NewtonConfig { max_iterations: 30, tolerance: 1e-4, ..NewtonConfig::default() };
         let mut ws = SolverWorkspace::new(n);
 
         let result =
@@ -392,11 +380,8 @@ mod tests {
                 grid_n.s.set(i, j, 1.0);
             }
         }
-        let newton_config = NewtonConfig {
-            max_iterations: 30,
-            tolerance: 1e-6,
-            ..NewtonConfig::default()
-        };
+        let newton_config =
+            NewtonConfig { max_iterations: 30, tolerance: 1e-6, ..NewtonConfig::default() };
         let mut ws_n = SolverWorkspace::new(n);
         let newton_result = solve_velocity_newton(
             &mut grid_n,
@@ -418,10 +403,7 @@ mod tests {
             norm_sq += v_picard[i].powi(2);
         }
         let rel_err = (diff_sq / norm_sq.max(1e-30)).sqrt();
-        assert!(
-            rel_err < 1e-2,
-            "Picard and Newton should agree: rel_err = {rel_err}"
-        );
+        assert!(rel_err < 1e-2, "Picard and Newton should agree: rel_err = {rel_err}");
     }
 
     #[test]
@@ -429,11 +411,8 @@ mod tests {
         let n = 16;
         let dx = 1.0 / n as f64;
 
-        let picard_config = PicardConfig {
-            power_law_n: 3.0,
-            strain_rate_min: 1e-3,
-            ..PicardConfig::default()
-        };
+        let picard_config =
+            PicardConfig { power_law_n: 3.0, strain_rate_min: 1e-3, ..PicardConfig::default() };
         let plates = TractionField::two_plates_convergent(n, 0.5);
 
         // Exact Newton (tight inner tolerance)
