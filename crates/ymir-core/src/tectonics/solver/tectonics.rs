@@ -59,6 +59,13 @@ pub struct DynamicPlateContext {
     pub traction: TractionField,
 }
 
+/// Data passed to the progress callback after each timestep.
+pub struct StepSnapshot<'a> {
+    pub s_field: &'a Field2D,
+    pub plate_ids: Option<&'a [usize]>,
+    pub plates: Option<&'a [Plate]>,
+}
+
 pub fn run_tectonics<F>(
     config: &TectonicsConfig,
     plate_ctx: &mut DynamicPlateContext,
@@ -67,7 +74,7 @@ pub fn run_tectonics<F>(
     mut progress: F,
 ) -> Result<(), SolverError>
 where
-    F: FnMut(usize, usize, &StepStats, &Field2D, Option<&[usize]>) -> bool,
+    F: FnMut(usize, usize, &StepStats, StepSnapshot<'_>) -> bool,
 {
     let n = grid.n;
 
@@ -208,9 +215,16 @@ where
         }
 
         // 5. Callback — returns false to cancel
-        let plate_ids_snapshot =
-            if config.dynamic_boundaries { Some(plate_ctx.ids.as_slice()) } else { None };
-        if !progress(step, config.num_timesteps, &workspace.stats, &grid.s, plate_ids_snapshot) {
+        let snapshot = StepSnapshot {
+            s_field: &grid.s,
+            plate_ids: if config.dynamic_boundaries {
+                Some(plate_ctx.ids.as_slice())
+            } else {
+                None
+            },
+            plates: if config.dynamic_boundaries { Some(&plate_ctx.plates) } else { None },
+        };
+        if !progress(step, config.num_timesteps, &workspace.stats, snapshot) {
             return Err(SolverError::Cancelled);
         }
     }
@@ -381,7 +395,7 @@ mod tests {
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         assert!(
@@ -408,7 +422,7 @@ mod tests {
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         assert!(
@@ -445,7 +459,7 @@ mod tests {
         let config = make_config(100);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         let final_var: f64 = {
@@ -475,7 +489,7 @@ mod tests {
         let config = make_config(30);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok());
 
         for val in grid.s.data() {
@@ -525,7 +539,7 @@ mod tests {
 
         let mut ctx = make_static_ctx(n, traction);
         let mut ws = SolverWorkspace::new(n);
-        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Continuation should enable convergence: {:?}", result.err());
         assert!(
             ws.stats.max_thickness > 1.0,

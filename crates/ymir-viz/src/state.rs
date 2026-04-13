@@ -334,6 +334,8 @@ pub struct UiActions {
     pub last_message: Option<(String, std::time::Instant, bool)>,
     /// Cached list of export directories (invalidated after export).
     pub cached_dirs: Option<Vec<std::path::PathBuf>>,
+    /// Set to true when the user clicks "Step" (single timestep).
+    pub step_requested: bool,
 }
 
 // ── Dynamic plate boundaries ─────────────────────────────────────────────
