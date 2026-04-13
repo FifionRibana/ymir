@@ -102,7 +102,7 @@ impl Default for BoundaryConfig {
             source_smoothing_sigma: 2.0,
             oceanic_reference_thickness: 0.25,
             oceanic_restore_threshold: 0.4,
-            oceanic_restore_rate: 0.3,
+            oceanic_restore_rate: 0.05,
             slab_pull_enabled: true,
             slab_pull_factor: 0.05,
             max_plate_velocity: 5.0,

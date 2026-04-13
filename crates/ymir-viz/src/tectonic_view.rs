@@ -85,7 +85,7 @@ fn setup_tectonic(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     commands.spawn((
         Sprite {
             image: image_handle.clone(),
-            custom_size: Some(Vec2::new(size as f32, size as f32)),
+            custom_size: Some(Vec2::new(600.0, 600.0)),
             ..default()
         },
         TectonicSprite,
@@ -140,7 +140,7 @@ fn rebuild_tectonic_texture(
         let new_handle = alloc_image(&mut images, size, size);
         for mut sprite in sprite_q.iter_mut() {
             sprite.image = new_handle.clone();
-            sprite.custom_size = Some(Vec2::new(size as f32, size as f32));
+            sprite.custom_size = Some(Vec2::new(600.0, 600.0));
         }
         handle_res.0 = new_handle;
     }
@@ -153,7 +153,7 @@ fn rebuild_tectonic_texture(
 
     for y in 0..s {
         for x in 0..s {
-            let idx = (y * s + x) * 4;
+            let idx = ((s - 1 - y) * s + x) * 4; // Y-flip: match terrain renderer
             let thickness = init.thickness.data[y * s + x];
             let plate_id = init.plate_ids[y * s + x];
 
@@ -212,17 +212,18 @@ fn draw_velocity_arrows(
     }
     let Some(tectonic) = tectonic else { return };
     let init = &tectonic.init;
-    let half = init.grid_size as f32 / 2.0;
+    let n = init.grid_size as f32;
+    let sprite_size = 600.0_f32;
+    let cell_size = sprite_size / n;
+    let half = sprite_size / 2.0;
 
     for plate in &init.plates {
-        // Convert grid coords to world coords (grid centre = world origin, Y flipped)
-        let wx = plate.seed_x - half;
-        let wy = -(plate.seed_y - half);
+        let wx = plate.seed_x * cell_size - half;
+        let wy = plate.seed_y * cell_size - half;
         let start = Vec2::new(wx, wy);
 
-        // Scale velocity so arrows span ~8 grid cells
-        let scale = 8.0_f32;
-        let end = start + Vec2::new(plate.velocity.0 * scale, -plate.velocity.1 * scale);
+        let scale = cell_size * 8.0;
+        let end = start + Vec2::new(plate.velocity.0 * scale, plate.velocity.1 * scale);
 
         let color = match plate.plate_type {
             PlateType::Continental => Color::WHITE,
@@ -274,15 +275,15 @@ fn draw_plate_boundaries(
             let ni = (i + 1) % n;
             if ids[j * n + ni] != my_id {
                 let x = (i as f32 + 1.0) * cell_size - half;
-                let y1 = -(j as f32 * cell_size - half);
-                let y2 = -((j as f32 + 1.0) * cell_size - half);
+                let y1 = j as f32 * cell_size - half;
+                let y2 = (j as f32 + 1.0) * cell_size - half;
                 gizmos.line_2d(Vec2::new(x, y1), Vec2::new(x, y2), boundary_color);
             }
 
             // Check bottom neighbor
             let nj = (j + 1) % n;
             if ids[nj * n + i] != my_id {
-                let y = -((j as f32 + 1.0) * cell_size - half);
+                let y = (j as f32 + 1.0) * cell_size - half;
                 let x1 = i as f32 * cell_size - half;
                 let x2 = (i as f32 + 1.0) * cell_size - half;
                 gizmos.line_2d(Vec2::new(x1, y), Vec2::new(x2, y), boundary_color);
@@ -299,7 +300,7 @@ fn draw_plate_boundaries(
             }
 
             let wx = plate.seed_x * cell_size - half;
-            let wy = -(plate.seed_y * cell_size - half);
+            let wy = plate.seed_y * cell_size - half;
             let pos = Vec2::new(wx, wy);
 
             let color = match plate.plate_type {
@@ -312,7 +313,7 @@ fn draw_plate_boundaries(
             // Velocity arrow scaled to world units
             let arrow_scale = cell_size * 5.0;
             let arrow_end =
-                pos + Vec2::new(plate.velocity.0 * arrow_scale, -plate.velocity.1 * arrow_scale);
+                pos + Vec2::new(plate.velocity.0 * arrow_scale, plate.velocity.1 * arrow_scale);
             gizmos.arrow_2d(pos, arrow_end, color);
         }
     }
