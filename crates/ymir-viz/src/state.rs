@@ -193,6 +193,7 @@ pub struct SolverConfig {
     pub boundaries: BoundaryConfig,
     pub dynamic_boundaries: bool,
     pub cratonic: ymir_core::tectonics::solver::config::CratonicConfig,
+    pub yielding: ymir_core::tectonics::solver::config::YieldingConfig,
 }
 
 impl Default for SolverConfig {
@@ -212,6 +213,7 @@ impl Default for SolverConfig {
             boundaries: BoundaryConfig::default(),
             dynamic_boundaries: true,
             cratonic: Default::default(),
+            yielding: Default::default(),
         }
     }
 }

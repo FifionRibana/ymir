@@ -114,6 +114,8 @@ pub struct TectonicsConfig {
     pub dynamic_boundaries: bool,
     /// Cratonic rigidity: spatial viscosity variation within continental plates.
     pub cratonic: CratonicConfig,
+    /// Plastic yielding with strain weakening.
+    pub yielding: YieldingConfig,
 }
 
 /// Configuration for cratonic rigidity (spatial viscosity variation).
@@ -136,6 +138,39 @@ impl Default for CratonicConfig {
     }
 }
 
+/// Configuration for plastic yielding (Drucker-Prager-like).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct YieldingConfig {
+    /// Enable plastic yielding. Default: true.
+    pub enabled: bool,
+    /// Base yield stress (solver units). When τ = 2ηε̇ exceeds this,
+    /// viscosity is reduced so τ = τ_yield. Range: 1.0-500.0, default: 50.0
+    pub yield_stress: f64,
+    /// Enable strain weakening. Default: true.
+    pub weakening_enabled: bool,
+    /// Max fractional reduction of yield stress from accumulated plastic strain.
+    /// 0.0 = none, 0.8 = yield stress can drop to 20%. Range: 0.0-0.9, default: 0.5
+    pub weakening_fraction: f64,
+    /// Reference plastic strain for full weakening. Range: 0.1-10.0, default: 1.0
+    pub weakening_strain_ref: f64,
+    /// Healing rate: plastic strain decreases over time (thermal recovery).
+    /// 0.0 = no healing. Rate per timestep (scaled by dt). Default: 0.0
+    pub healing_rate: f64,
+}
+
+impl Default for YieldingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            yield_stress: 50.0,
+            weakening_enabled: true,
+            weakening_fraction: 0.5,
+            weakening_strain_ref: 1.0,
+            healing_rate: 0.0,
+        }
+    }
+}
+
 impl Default for TectonicsConfig {
     fn default() -> Self {
         Self {
@@ -151,6 +186,7 @@ impl Default for TectonicsConfig {
             boundaries: Default::default(),
             dynamic_boundaries: true,
             cratonic: CratonicConfig::default(),
+            yielding: YieldingConfig::default(),
         }
     }
 }

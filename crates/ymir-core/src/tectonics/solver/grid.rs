@@ -22,6 +22,9 @@ pub struct StaggeredGrid {
     /// Spatial viscosity multiplier (cratonic rigidity).
     /// 1.0 = normal, >1.0 = more rigid (continental interior).
     pub eta_multiplier: Field2D,
+    /// Accumulated plastic strain at each cell.
+    /// Grows when a cell yields; used for strain weakening.
+    pub plastic_strain: Field2D,
     pub idx: PeriodicIndex,
 }
 
@@ -35,6 +38,7 @@ impl StaggeredGrid {
             vy: Field2D::new(n),
             rho: Field2D::new(n),
             eta_multiplier: Field2D::filled(n, 1.0),
+            plastic_strain: Field2D::new(n),
             idx: PeriodicIndex::new(n),
         }
     }
