@@ -55,6 +55,28 @@ pub struct BoundaryConfig {
     /// Gaussian smoothing sigma (in grid cells) applied to the source field.
     /// 0.0 = no smoothing. Default: 2.0
     pub source_smoothing_sigma: f64,
+    /// Reference thickness for oceanic crust (dimensionless).
+    /// Oceanic cells thicker than this are subject to gravitational restoring.
+    /// Default: 0.25 (slightly above initial oceanic thickness of 0.2).
+    pub oceanic_reference_thickness: f64,
+    /// Rate at which excess oceanic thickness is removed per timestep.
+    /// Models dense oceanic crust sinking back into the mantle.
+    /// 0.0 = no restoring, 1.0 = excess removed in one step.
+    /// Range: 0.0-1.0, default: 0.3
+    pub oceanic_restore_rate: f64,
+    /// Enable dynamic slab pull. Default: true.
+    pub slab_pull_enabled: bool,
+    /// Slab pull traction increase per unit of subducted mass.
+    /// Range: 0.001-0.5, default: 0.05
+    pub slab_pull_factor: f64,
+    /// Maximum plate velocity magnitude (prevents runaway). Default: 5.0
+    pub max_plate_velocity: f32,
+    /// Crustal density for continental plates (kg/m³). Default: 2750.
+    pub rho_continental: f64,
+    /// Crustal density for oceanic plates (kg/m³). Default: 3000.
+    pub rho_oceanic: f64,
+    /// Mantle density (kg/m³). Default: 3300.
+    pub rho_mantle: f64,
 }
 
 impl Default for BoundaryConfig {
@@ -68,6 +90,14 @@ impl Default for BoundaryConfig {
             collision_volcanism_rate: 0.05,
             rift_volcanism_rate: 0.02,
             source_smoothing_sigma: 2.0,
+            oceanic_reference_thickness: 0.25,
+            oceanic_restore_rate: 0.3,
+            slab_pull_enabled: true,
+            slab_pull_factor: 0.05,
+            max_plate_velocity: 5.0,
+            rho_continental: 2750.0,
+            rho_oceanic: 3000.0,
+            rho_mantle: 3300.0,
         }
     }
 }
@@ -224,6 +254,60 @@ pub fn compute_boundary_sources_into(
     target.data_mut().copy_from_slice(result.source_rate.data());
 }
 
+// ── Slab pull ───────────────────────────────────────────────────────────
+
+/// Accumulate subducted mass into plates for slab pull computation.
+///
+/// Where source_rate is negative (subduction sink), the removed mass is
+/// attributed to the plate owning that cell. The slab pull then acts on
+/// that plate, pulling it toward the trench.
+pub fn accumulate_subducted_mass(
+    source_rate: &Field2D,
+    plate_ids: &[usize],
+    plates: &mut [Plate],
+    dt: f64,
+    n: usize,
+) {
+    for j in 0..n {
+        for i in 0..n {
+            let q = source_rate.get(i, j);
+            if q < 0.0 {
+                let pid = plate_ids[j * n + i];
+                plates[pid].subducted_mass += (-q * dt).abs();
+            }
+        }
+    }
+}
+
+/// Apply slab pull: increase plate velocity proportional to cumulative
+/// subducted mass, capped at `max_velocity`.
+pub fn apply_slab_pull(plates: &mut [Plate], slab_pull_factor: f64, max_velocity: f32) {
+    for plate in plates.iter_mut() {
+        if !plate.active {
+            continue;
+        }
+
+        let pull_magnitude = slab_pull_factor * plate.subducted_mass;
+        if pull_magnitude < 1e-30 {
+            continue;
+        }
+
+        let vx = plate.velocity.0 as f64;
+        let vy = plate.velocity.1 as f64;
+        let v_mag = (vx * vx + vy * vy).sqrt().max(1e-30);
+
+        plate.velocity.0 += (pull_magnitude * vx / v_mag) as f32;
+        plate.velocity.1 += (pull_magnitude * vy / v_mag) as f32;
+
+        // Cap total velocity
+        let new_mag = (plate.velocity.0.powi(2) + plate.velocity.1.powi(2)).sqrt();
+        if new_mag > max_velocity {
+            plate.velocity.0 *= max_velocity / new_mag;
+            plate.velocity.1 *= max_velocity / new_mag;
+        }
+    }
+}
+
 // ── Gaussian blur for f64 Field2D ────────────────────────────────────────
 
 /// Separable Gaussian blur on a Field2D with periodic (toroidal) wrapping.
@@ -307,6 +391,7 @@ mod tests {
                 seed_x: (n / 4) as f32,
                 seed_y: (n / 2) as f32,
                 active: true,
+                subducted_mass: 0.0,
             },
             Plate {
                 id: 1,
@@ -315,6 +400,7 @@ mod tests {
                 seed_x: (3 * n / 4) as f32,
                 seed_y: (n / 2) as f32,
                 active: true,
+                subducted_mass: 0.0,
             },
         ];
 

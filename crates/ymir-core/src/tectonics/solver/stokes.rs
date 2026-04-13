@@ -114,40 +114,50 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
     }
 }
 
-/// Compute the right-hand side: b = -∇(gravity_factor · S²) + T_plates.
+/// Compute the right-hand side: b = -∇(GPE) + T_plates.
 ///
-/// The gradient of S² is evaluated at the staggered face positions.
+/// The GPE is density-corrected: `Φ = ρ × (1 - ρ/ρ_mantle) × S²`.
+/// When `rho_mantle` is 0 (or rho field is all zeros), falls back to the
+/// simple `S²` formulation for backward compatibility.
 pub fn compute_rhs(
     grid: &StaggeredGrid,
     plates: &TractionField,
     gravity_factor: f64,
+    rho_mantle: f64,
     rhs: &mut [f64],
 ) {
     let n = grid.n;
     let n2 = n * n;
     let idx = &grid.idx;
     let inv_dx = 1.0 / grid.dx;
+    let use_density = rho_mantle > 0.0;
 
     let (rhs_vx, rhs_vy) = rhs.split_at_mut(n2);
+
+    // GPE potential at a cell: ρ × (1 - ρ/ρ_m) × S², or just S² if no density
+    let gpe = |i: usize, j: usize| -> f64 {
+        let s = grid.s.get(i, j);
+        if use_density {
+            let rho = grid.rho.get(i, j);
+            let buoyancy = rho * (1.0 - rho / rho_mantle);
+            buoyancy * s * s
+        } else {
+            s * s
+        }
+    };
 
     let process_row = |j: usize, row_vx: &mut [f64], row_vy: &mut [f64]| {
         let pj = idx.prev(j);
         for i in 0..n {
             let pi = idx.prev(i);
 
-            // vx face (i,j): gradient of S² in x between cells (i,j) and (prev(i),j)
-            let s2_right = grid.s.get(i, j) * grid.s.get(i, j);
-            let s2_left = grid.s.get(pi, j) * grid.s.get(pi, j);
-            // Negative sign: A has -∇·τ, so rhs gets -∇(gS²) to balance
-            let dpdx = -gravity_factor * (s2_right - s2_left) * inv_dx;
-            // Traction: average of the two adjacent cells
+            // vx face (i,j): gradient of GPE in x
+            let dpdx = -gravity_factor * (gpe(i, j) - gpe(pi, j)) * inv_dx;
             let tx = 0.5 * (plates.tx.get(pi, j) + plates.tx.get(i, j));
             row_vx[i] = dpdx + tx;
 
-            // vy face (i,j): gradient of S² in y between cells (i,j) and (i, prev(j))
-            let s2_top = grid.s.get(i, j) * grid.s.get(i, j);
-            let s2_bot = grid.s.get(i, pj) * grid.s.get(i, pj);
-            let dpdy = -gravity_factor * (s2_top - s2_bot) * inv_dx;
+            // vy face (i,j): gradient of GPE in y
+            let dpdy = -gravity_factor * (gpe(i, j) - gpe(i, pj)) * inv_dx;
             let ty = 0.5 * (plates.ty.get(i, pj) + plates.ty.get(i, j));
             row_vy[i] = dpdy + ty;
         }

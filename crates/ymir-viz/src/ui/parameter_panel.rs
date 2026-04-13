@@ -283,6 +283,40 @@ fn draw_tectonics(
             &mut solver_config.boundaries.source_smoothing_sigma,
             0.0..=5.0,
         );
+        slider_row_f64(
+            ui,
+            "Ocean ref. S",
+            &mut solver_config.boundaries.oceanic_reference_thickness,
+            0.1..=0.5,
+        );
+        slider_row_f64(
+            ui,
+            "Ocean restore",
+            &mut solver_config.boundaries.oceanic_restore_rate,
+            0.0..=1.0,
+        );
+
+        ui.separator();
+        ui.strong("Density & slab pull");
+
+        slider_row_f64(
+            ui,
+            "ρ continental",
+            &mut solver_config.boundaries.rho_continental,
+            2500.0..=3000.0,
+        );
+        slider_row_f64(ui, "ρ oceanic", &mut solver_config.boundaries.rho_oceanic, 2800.0..=3200.0);
+        slider_row_f64(ui, "ρ mantle", &mut solver_config.boundaries.rho_mantle, 3100.0..=3500.0);
+
+        ui.checkbox(&mut solver_config.boundaries.slab_pull_enabled, "Slab pull");
+        if solver_config.boundaries.slab_pull_enabled {
+            slider_row_f64(
+                ui,
+                "Pull factor",
+                &mut solver_config.boundaries.slab_pull_factor,
+                0.001..=0.5,
+            );
+        }
     }
 
     ui.add_space(4.0);
