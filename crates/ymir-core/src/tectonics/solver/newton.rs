@@ -12,7 +12,7 @@ use super::config::{NewtonConfig, PicardConfig, Preconditioner};
 use super::field::Field2D;
 use super::grid::StaggeredGrid;
 use super::linear_solve::{apply_jacobi, solve_bicgstab};
-use super::picard::{compute_strain_rate, compute_viscosity};
+use super::picard::{apply_eta_multiplier, compute_strain_rate, compute_viscosity};
 use super::stokes::{StencilCoeffs, apply_ssor, apply_stokes, compute_jacobi_precond, compute_rhs};
 use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, pack_velocity, unpack_velocity};
@@ -28,11 +28,13 @@ pub struct NewtonResult {
 /// Compute the nonlinear residual F(v) = A(η(v))·v - b.
 ///
 /// Side effects: updates `eta_out` and `strain_rate_out` from the velocity field.
+#[allow(clippy::too_many_arguments)]
 fn compute_nonlinear_residual(
     v_packed: &[f64],
     b: &[f64],
     grid: &mut StaggeredGrid,
     picard_config: &PicardConfig,
+    eta_multiplier: &Field2D,
     eta_out: &mut Field2D,
     strain_rate_out: &mut Field2D,
     residual: &mut [f64],
@@ -47,6 +49,7 @@ fn compute_nonlinear_residual(
         picard_config.eta_max,
         eta_out,
     );
+    apply_eta_multiplier(eta_multiplier, picard_config.eta_max, eta_out);
     apply_stokes(v_packed, eta_out, grid, residual);
     for i in 0..residual.len() {
         residual[i] -= b[i];
@@ -60,6 +63,7 @@ fn compute_nonlinear_residual(
 /// 2. Build preconditioner from A(η_frozen)
 /// 3. Solve J·δv = -F(vᵏ) via BiCGSTAB with JFNK operator
 /// 4. Update v ← v + δv
+#[allow(clippy::too_many_arguments)]
 pub fn solve_velocity_newton(
     grid: &mut StaggeredGrid,
     plates: &TractionField,
@@ -91,6 +95,9 @@ pub fn solve_velocity_newton(
     // Pack current velocity as initial guess
     pack_velocity(grid, &mut ws.v_packed);
 
+    // Clone eta_multiplier so we can pass grid mutably while reading the multiplier
+    let eta_mult = grid.eta_multiplier.clone();
+
     let mut prev_f_norm = f64::MAX;
 
     for k in 0..newton_config.max_iterations {
@@ -100,6 +107,7 @@ pub fn solve_velocity_newton(
             &ws.rhs,
             grid,
             picard_config,
+            &eta_mult,
             &mut ws.eta,
             &mut ws.strain_rate,
             &mut ws.jfnk_f_v,
@@ -177,6 +185,7 @@ pub fn solve_velocity_newton(
                             &rhs_ref,
                             grid,
                             picard_config,
+                            &eta_mult,
                             &mut jfnk_eta,
                             &mut jfnk_sr,
                             &mut jfnk_residual,
@@ -214,6 +223,7 @@ pub fn solve_velocity_newton(
                             &rhs_ref,
                             grid,
                             picard_config,
+                            &eta_mult,
                             &mut jfnk_eta,
                             &mut jfnk_sr,
                             &mut jfnk_residual,

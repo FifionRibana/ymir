@@ -112,6 +112,28 @@ pub struct TectonicsConfig {
     /// When true, plate seeds are advected with the velocity field and the
     /// Voronoï partition is rebuilt, allowing plates to shrink and disappear.
     pub dynamic_boundaries: bool,
+    /// Cratonic rigidity: spatial viscosity variation within continental plates.
+    pub cratonic: CratonicConfig,
+}
+
+/// Configuration for cratonic rigidity (spatial viscosity variation).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CratonicConfig {
+    /// Enable spatial viscosity variation. Default: true.
+    pub enabled: bool,
+    /// Maximum viscosity multiplier at the center of continental plates.
+    /// 1.0 = no effect. Range: 1.0-100.0, default: 20.0
+    pub max_factor: f64,
+    /// Controls how fast rigidity decays from center to edge.
+    /// 1.0 = linear, 2.0 = quadratic, 3.0 = cubic.
+    /// Range: 0.5-4.0, default: 2.0
+    pub decay_power: f64,
+}
+
+impl Default for CratonicConfig {
+    fn default() -> Self {
+        Self { enabled: true, max_factor: 20.0, decay_power: 2.0 }
+    }
 }
 
 impl Default for TectonicsConfig {
@@ -128,6 +150,7 @@ impl Default for TectonicsConfig {
             continuation: ContinuationConfig::default(),
             boundaries: Default::default(),
             dynamic_boundaries: true,
+            cratonic: CratonicConfig::default(),
         }
     }
 }
