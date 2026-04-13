@@ -59,6 +59,16 @@ pub struct BoundaryConfig {
     /// Oceanic cells thicker than this are subject to gravitational restoring.
     /// Default: 0.25 (slightly above initial oceanic thickness of 0.2).
     pub oceanic_reference_thickness: f64,
+    /// Thickness above which oceanic cells are NOT subject to restoring.
+    /// Cells on oceanic plates can thicken beyond their reference value
+    /// either because genuine oceanic crust piled up (should be restored)
+    /// or because continental material spilled over by advection (should
+    /// be left alone). This threshold distinguishes the two cases:
+    /// below it, the material is treated as thickened oceanic crust and
+    /// pulled back toward `oceanic_reference_thickness`; above it, the
+    /// material is presumed continental in origin and left untouched.
+    /// Default: 0.4 (midpoint between oceanic ~0.2 and thin continental ~0.6).
+    pub oceanic_restore_threshold: f64,
     /// Rate at which excess oceanic thickness is removed per timestep.
     /// Models dense oceanic crust sinking back into the mantle.
     /// 0.0 = no restoring, 1.0 = excess removed in one step.
@@ -91,6 +101,7 @@ impl Default for BoundaryConfig {
             rift_volcanism_rate: 0.02,
             source_smoothing_sigma: 2.0,
             oceanic_reference_thickness: 0.25,
+            oceanic_restore_threshold: 0.4,
             oceanic_restore_rate: 0.3,
             slab_pull_enabled: true,
             slab_pull_factor: 0.05,

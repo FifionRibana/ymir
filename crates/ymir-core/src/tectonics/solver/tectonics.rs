@@ -201,19 +201,27 @@ where
             grid.s.data_mut().copy_from_slice(&s_backup);
         }
 
-        // 3b. Oceanic restoring force — applied after advection as a direct
-        // relaxation (not dt-scaled) so it works even when velocity is near zero.
-        // Dense oceanic crust that thickens beyond its reference sinks into the mantle.
+        // 3b. Oceanic restoring force — dense oceanic crust (ρ ≈ 3000 kg/m³)
+        // that thickens beyond its equilibrium value becomes gravitationally
+        // unstable relative to the underlying mantle, and sinks back down.
+        // This is a proxy for thermogravitational instability (cold, dense
+        // lithosphere subducting spontaneously) which the thin sheet cannot
+        // model directly due to the absence of a vertical dimension.
+        // The rate is scaled by dt for physical consistency across different
+        // timestep sizes. Only applies to cells below the thickness threshold
+        // to avoid eroding legitimate continental margins that happen to sit
+        // on an oceanic plate_id.
         if config.boundaries.enabled && config.boundaries.oceanic_restore_rate > 0.0 {
             let rate = config.boundaries.oceanic_restore_rate;
             let s_ref = config.boundaries.oceanic_reference_thickness;
+            let s_thr = config.boundaries.oceanic_restore_threshold;
             for j in 0..n {
                 for i in 0..n {
                     let pid = plate_ctx.ids[j * n + i];
                     if plate_ctx.plates[pid].plate_type == PlateType::Oceanic {
                         let s_current = grid.s.get(i, j);
-                        if s_current > s_ref {
-                            let s_new = s_current - rate * (s_current - s_ref);
+                        if s_current > s_ref && s_current < s_thr {
+                            let s_new = s_current - dt * rate * (s_current - s_ref);
                             grid.s.set(i, j, s_new.max(config.s_min));
                         }
                     }
@@ -306,6 +314,7 @@ fn solve_velocity_direct(
     config: &TectonicsConfig,
     workspace: &mut SolverWorkspace,
 ) -> (bool, usize, usize) {
+    let rho_c = config.boundaries.rho_continental;
     let rho_m = config.boundaries.rho_mantle;
     match config.nonlinear_solver {
         NonlinearSolver::Picard => {
@@ -313,6 +322,7 @@ fn solve_velocity_direct(
                 grid,
                 plates,
                 config.gravity_factor,
+                rho_c,
                 rho_m,
                 &config.picard,
                 workspace,
@@ -324,6 +334,7 @@ fn solve_velocity_direct(
                 grid,
                 plates,
                 config.gravity_factor,
+                rho_c,
                 rho_m,
                 &config.picard,
                 &config.newton,
@@ -367,6 +378,7 @@ fn solve_with_continuation(
         step_config.strain_rate_min = eps_min;
         step_config.relaxation = relaxation;
 
+        let rho_c = config.boundaries.rho_continental;
         let rho_m = config.boundaries.rho_mantle;
         // Warm start: grid.vx/vy retain the solution from the previous step
         let (converged, iters, linear_iters) = match config.nonlinear_solver {
@@ -375,6 +387,7 @@ fn solve_with_continuation(
                     grid,
                     plates,
                     config.gravity_factor,
+                    rho_c,
                     rho_m,
                     &step_config,
                     workspace,
@@ -386,6 +399,7 @@ fn solve_with_continuation(
                     grid,
                     plates,
                     config.gravity_factor,
+                    rho_c,
                     rho_m,
                     &step_config,
                     &config.newton,
@@ -657,6 +671,7 @@ mod tests {
             boundaries: BoundaryConfig {
                 enabled: true,
                 oceanic_reference_thickness: 0.25,
+                oceanic_restore_threshold: 0.4,
                 oceanic_restore_rate: 0.3,
                 ..Default::default()
             },
@@ -703,6 +718,7 @@ mod tests {
 
         let n = 16;
         let dx = 1.0 / n as f64;
+        let rho_c = 2750.0;
         let rho_m = 3300.0;
 
         // Setup 1: all continental density
@@ -728,8 +744,8 @@ mod tests {
         let mut rhs_c = vec![0.0; nn2];
         let mut rhs_o = vec![0.0; nn2];
 
-        compute_rhs(&grid_c, &plates, 1.0, rho_m, &mut rhs_c);
-        compute_rhs(&grid_o, &plates, 1.0, rho_m, &mut rhs_o);
+        compute_rhs(&grid_c, &plates, 1.0, rho_c, rho_m, &mut rhs_c);
+        compute_rhs(&grid_o, &plates, 1.0, rho_c, rho_m, &mut rhs_o);
 
         let mag_c: f64 = rhs_c.iter().map(|x| x * x).sum::<f64>().sqrt();
         let mag_o: f64 = rhs_o.iter().map(|x| x * x).sum::<f64>().sqrt();

@@ -291,6 +291,12 @@ fn draw_tectonics(
         );
         slider_row_f64(
             ui,
+            "Ocean restore. Thr",
+            &mut solver_config.boundaries.oceanic_restore_threshold,
+            0.2..=0.6,
+        );
+        slider_row_f64(
+            ui,
             "Ocean restore",
             &mut solver_config.boundaries.oceanic_restore_rate,
             0.0..=1.0,

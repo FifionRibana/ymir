@@ -123,6 +123,7 @@ pub fn compute_rhs(
     grid: &StaggeredGrid,
     plates: &TractionField,
     gravity_factor: f64,
+    rho_continental: f64,
     rho_mantle: f64,
     rhs: &mut [f64],
 ) {
@@ -140,7 +141,11 @@ pub fn compute_rhs(
         if use_density {
             let rho = grid.rho.get(i, j);
             let buoyancy = rho * (1.0 - rho / rho_mantle);
-            buoyancy * s * s
+            // Normalize by continental reference so that continental cells
+            // have GPE ≈ S² (same as the non-density-corrected formula).
+            // Oceanic cells get GPE ≈ 0.60 × S² (40% less spreading pressure).
+            let ref_buoyancy = rho_continental * (1.0 - rho_continental / rho_mantle);
+            (buoyancy / ref_buoyancy) * s * s
         } else {
             s * s
         }
