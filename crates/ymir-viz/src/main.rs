@@ -25,6 +25,8 @@ fn main() {
         .init_resource::<state::SolverConfig>()
         .init_resource::<state::ClimateParams>()
         .init_resource::<state::GenerationParamsUi>()
+        .init_resource::<state::IsostasyParams>()
+        .init_resource::<state::IsostasyCache>()
         .init_resource::<state::CursorWorldPos>()
         .add_plugins((
             camera::CameraPlugin,

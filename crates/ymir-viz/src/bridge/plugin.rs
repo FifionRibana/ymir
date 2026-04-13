@@ -58,13 +58,19 @@ impl Plugin for TectonicsBridgePlugin {
             cancel_flag: cancel,
         });
 
-        app.add_systems(Update, poll_solver_events);
+        app.init_resource::<crate::state::UiActions>();
+        app.add_systems(Update, (
+            poll_solver_events,
+            super::export_system::handle_export,
+            super::export_system::handle_load,
+        ));
     }
 }
 
 fn poll_solver_events(
     mut bridge: ResMut<SolverBridge>,
     mut terrain_display: ResMut<TerrainDisplay>,
+    mut isostasy_cache: ResMut<crate::state::IsostasyCache>,
 ) {
     while let Ok(event) = bridge.events_rx.try_recv() {
         match event {
@@ -73,9 +79,11 @@ fn poll_solver_events(
             }
             SolverEvent::Snapshot { s_field, .. } => {
                 terrain_display.update_field(s_field);
+                isostasy_cache.valid = false;
             }
             SolverEvent::Completed { s_field, elapsed, .. } => {
                 terrain_display.update_field(s_field);
+                isostasy_cache.valid = false;
                 bridge.state = SolverState::Completed { elapsed };
             }
             SolverEvent::Failed { error } => {

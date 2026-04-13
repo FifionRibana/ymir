@@ -282,6 +282,57 @@ pub struct TectonicState {
     pub generation: u64,
 }
 
+// ── Isostasy ─────────────────────────────────────────────────────────
+
+#[derive(Resource, Clone, Debug)]
+pub struct IsostasyParams {
+    pub sea_level_fraction: f32,
+    pub max_elevation_m: f32,
+    pub max_depth_m: f32,
+    pub altitude_smoothing_sigma: f32,
+}
+
+impl Default for IsostasyParams {
+    fn default() -> Self {
+        Self {
+            sea_level_fraction: 0.4,
+            max_elevation_m: 4000.0,
+            max_depth_m: 500.0,
+            altitude_smoothing_sigma: 2.0,
+        }
+    }
+}
+
+/// Cache for the isostasy result — recomputed when the source changes
+/// or the sea level slider moves.
+#[derive(Resource, Default)]
+pub struct IsostasyCache {
+    /// The computed land ratio, peak altitude, depth.
+    pub land_ratio: f32,
+    pub peak_altitude_m: f32,
+    pub max_depth_m: f32,
+    pub sea_level_normalized: f32,
+    /// Sea level that was used for the last computation.
+    pub computed_sea_level: f32,
+    /// Whether valid data is available.
+    pub valid: bool,
+}
+
+// ── UI Actions ──────────────────────────────────────────────────────────
+
+/// Flags set by UI draw functions, consumed by Bevy systems.
+#[derive(Resource, Default)]
+pub struct UiActions {
+    /// Set to true when the user clicks "Export".
+    pub export_requested: bool,
+    /// Set to a directory path when the user clicks "Load".
+    pub load_requested: Option<std::path::PathBuf>,
+    /// Feedback message displayed temporarily after export/load.
+    pub last_message: Option<(String, std::time::Instant, bool)>,
+    /// Cached list of export directories (invalidated after export).
+    pub cached_dirs: Option<Vec<std::path::PathBuf>>,
+}
+
 // ── Cursor ───────────────────────────────────────────────────────────────
 
 #[derive(Resource, Default)]
