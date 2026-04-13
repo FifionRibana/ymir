@@ -67,6 +67,7 @@ pub fn handle_export(
         sea_level_fraction: isostasy_params.sea_level_fraction,
         max_elevation_m: isostasy_params.max_elevation_m,
         max_depth_m: isostasy_params.max_depth_m,
+        altitude_smoothing_sigma: isostasy_params.altitude_smoothing_sigma,
         ..Default::default()
     };
     let iso_result = compute_isostasy(s_field, &iso_config);

@@ -289,6 +289,7 @@ pub struct IsostasyParams {
     pub sea_level_fraction: f32,
     pub max_elevation_m: f32,
     pub max_depth_m: f32,
+    pub altitude_smoothing_sigma: f32,
 }
 
 impl Default for IsostasyParams {
@@ -297,6 +298,7 @@ impl Default for IsostasyParams {
             sea_level_fraction: 0.4,
             max_elevation_m: 4000.0,
             max_depth_m: 500.0,
+            altitude_smoothing_sigma: 2.0,
         }
     }
 }

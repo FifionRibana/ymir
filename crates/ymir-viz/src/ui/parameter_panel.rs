@@ -338,6 +338,12 @@ fn draw_tectonics(
         &mut isostasy_params.max_depth_m,
         100.0..=1000.0,
     );
+    slider_row(
+        ui,
+        "Smoothing σ",
+        &mut isostasy_params.altitude_smoothing_sigma,
+        0.0..=5.0,
+    );
 
     if isostasy_cache.valid {
         ui.add_space(4.0);
