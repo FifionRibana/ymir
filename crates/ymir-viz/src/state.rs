@@ -316,6 +316,21 @@ pub struct IsostasyCache {
     pub valid: bool,
 }
 
+// ── UI Actions ──────────────────────────────────────────────────────────
+
+/// Flags set by UI draw functions, consumed by Bevy systems.
+#[derive(Resource, Default)]
+pub struct UiActions {
+    /// Set to true when the user clicks "Export".
+    pub export_requested: bool,
+    /// Set to a directory path when the user clicks "Load".
+    pub load_requested: Option<std::path::PathBuf>,
+    /// Feedback message displayed temporarily after export/load.
+    pub last_message: Option<(String, std::time::Instant, bool)>,
+    /// Cached list of export directories (invalidated after export).
+    pub cached_dirs: Option<Vec<std::path::PathBuf>>,
+}
+
 // ── Cursor ───────────────────────────────────────────────────────────────
 
 #[derive(Resource, Default)]
