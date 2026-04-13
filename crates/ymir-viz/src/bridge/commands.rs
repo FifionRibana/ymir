@@ -13,6 +13,13 @@ pub enum SolverCommand {
         grid_size: usize,
         dx: f64,
     },
+    SingleStep {
+        config: TectonicsConfig,
+        plate_ctx: DynamicPlateContext,
+        s_field: Field2D,
+        grid_size: usize,
+        dx: f64,
+    },
     Cancel,
     Shutdown,
 }

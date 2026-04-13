@@ -259,7 +259,10 @@ fn draw_plate_boundaries(
         return;
     };
 
-    let half = n as f32 / 2.0;
+    // Scale: grid coords → world coords. Sprite is 600×600, centered at origin.
+    let sprite_size = 600.0_f32;
+    let cell_size = sprite_size / n as f32;
+    let half = sprite_size / 2.0;
     let boundary_color = Color::srgba(1.0, 1.0, 1.0, 0.6);
 
     // Draw boundary lines between cells of different plates
@@ -270,18 +273,18 @@ fn draw_plate_boundaries(
             // Check right neighbor
             let ni = (i + 1) % n;
             if ids[j * n + ni] != my_id {
-                let x = (i as f32 + 1.0) - half;
-                let y1 = -(j as f32 - half);
-                let y2 = -((j as f32 + 1.0) - half);
+                let x = (i as f32 + 1.0) * cell_size - half;
+                let y1 = -(j as f32 * cell_size - half);
+                let y2 = -((j as f32 + 1.0) * cell_size - half);
                 gizmos.line_2d(Vec2::new(x, y1), Vec2::new(x, y2), boundary_color);
             }
 
             // Check bottom neighbor
             let nj = (j + 1) % n;
             if ids[nj * n + i] != my_id {
-                let y = -((j as f32 + 1.0) - half);
-                let x1 = i as f32 - half;
-                let x2 = (i as f32 + 1.0) - half;
+                let y = -((j as f32 + 1.0) * cell_size - half);
+                let x1 = i as f32 * cell_size - half;
+                let x2 = (i as f32 + 1.0) * cell_size - half;
                 gizmos.line_2d(Vec2::new(x1, y), Vec2::new(x2, y), boundary_color);
             }
         }
@@ -295,8 +298,8 @@ fn draw_plate_boundaries(
                 continue;
             }
 
-            let wx = plate.seed_x - half;
-            let wy = -(plate.seed_y - half);
+            let wx = plate.seed_x * cell_size - half;
+            let wy = -(plate.seed_y * cell_size - half);
             let pos = Vec2::new(wx, wy);
 
             let color = match plate.plate_type {
@@ -304,10 +307,10 @@ fn draw_plate_boundaries(
                 PlateType::Oceanic => Color::srgb(0.35, 0.55, 0.75),
             };
 
-            gizmos.circle_2d(Isometry2d::from_translation(pos), 2.0, color);
+            gizmos.circle_2d(Isometry2d::from_translation(pos), cell_size * 1.5, color);
 
-            // Velocity arrow
-            let arrow_scale = 5.0_f32;
+            // Velocity arrow scaled to world units
+            let arrow_scale = cell_size * 5.0;
             let arrow_end =
                 pos + Vec2::new(plate.velocity.0 * arrow_scale, -plate.velocity.1 * arrow_scale);
             gizmos.arrow_2d(pos, arrow_end, color);

@@ -56,7 +56,7 @@ pub fn spawn_solver_thread(
                             &mut plate_ctx,
                             &mut grid,
                             ws,
-                            |step, total, stats, s_field, plate_ids| {
+                            |step, total, stats, snap| {
                                 let _ = tx.send(SolverEvent::Progress {
                                     step,
                                     total_steps: total,
@@ -65,9 +65,9 @@ pub fn spawn_solver_thread(
                                 if step % snapshot_interval == 0 || step == total - 1 {
                                     let _ = tx.send(SolverEvent::Snapshot {
                                         step,
-                                        s_field: s_field.clone(),
-                                        plate_ids: plate_ids.map(|ids| ids.to_vec()),
-                                        plates: None, // sent only on completion to save bandwidth
+                                        s_field: snap.s_field.clone(),
+                                        plate_ids: snap.plate_ids.map(|ids| ids.to_vec()),
+                                        plates: snap.plates.map(|p| p.to_vec()),
                                     });
                                 }
                                 !cancel_ref.load(Ordering::Relaxed)
@@ -105,6 +105,52 @@ pub fn spawn_solver_thread(
                                 }
                             }
                         }
+                    }
+                    SolverCommand::SingleStep { config, mut plate_ctx, s_field, grid_size, dx } => {
+                        cancel.store(false, Ordering::Relaxed);
+
+                        let ws = workspace.get_or_insert_with(|| SolverWorkspace::new(grid_size));
+                        ws.resize_if_needed(grid_size);
+
+                        let mut grid = StaggeredGrid::new(grid_size, dx);
+                        for j in 0..grid_size {
+                            for i in 0..grid_size {
+                                grid.s.set(i, j, s_field.get(i, j));
+                            }
+                        }
+
+                        let mut one_step = config.clone();
+                        one_step.num_timesteps = 1;
+
+                        let tx = events_tx.clone();
+                        let _ = run_tectonics(
+                            &one_step,
+                            &mut plate_ctx,
+                            &mut grid,
+                            ws,
+                            |_, _, stats, snap| {
+                                let _ = tx.send(SolverEvent::Snapshot {
+                                    step: 0,
+                                    s_field: snap.s_field.clone(),
+                                    plate_ids: snap.plate_ids.map(|i| i.to_vec()),
+                                    plates: snap.plates.map(|p| p.to_vec()),
+                                });
+                                let _ = tx.send(SolverEvent::Progress {
+                                    step: 0,
+                                    total_steps: 1,
+                                    stats: stats.clone(),
+                                });
+                                true
+                            },
+                        );
+
+                        let _ = events_tx.send(SolverEvent::Completed {
+                            s_field: grid.s.clone(),
+                            plate_ids: Some(plate_ctx.ids.clone()),
+                            plates: Some(plate_ctx.plates.clone()),
+                            elapsed: std::time::Duration::ZERO,
+                            total_steps: 1,
+                        });
                     }
                     SolverCommand::Cancel => {
                         cancel.store(true, Ordering::Relaxed);

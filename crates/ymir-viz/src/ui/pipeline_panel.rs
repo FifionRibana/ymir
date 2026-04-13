@@ -39,7 +39,7 @@ pub fn draw(
                 bevy::log::info!("Run all clicked");
             }
             if ui.button("Step").clicked() {
-                bevy::log::info!("Step clicked");
+                ui_actions.step_requested = true;
             }
             if ui.button("Stop").clicked() {
                 bevy::log::info!("Stop clicked");
