@@ -27,6 +27,10 @@ pub struct IsostasyConfig {
     /// 0.0 = everything is land, 1.0 = everything is ocean.
     /// Default: 0.4 (roughly ~30% land / 70% ocean).
     pub sea_level_fraction: f32,
+    /// Gaussian blur sigma applied to the altitude heightmap after
+    /// isostatic computation. Smooths sharp tectonic transitions.
+    /// Default: 2.0. Set to 0.0 to disable.
+    pub altitude_smoothing_sigma: f32,
 }
 
 impl Default for IsostasyConfig {
@@ -38,6 +42,7 @@ impl Default for IsostasyConfig {
             max_elevation_m: 4000.0,
             max_depth_m: 500.0,
             sea_level_fraction: 0.4,
+            altitude_smoothing_sigma: 2.0,
         }
     }
 }
@@ -112,8 +117,15 @@ pub fn compute_isostasy(thickness: &Field2D, config: &IsostasyConfig) -> Isostas
     let actual_depth_m =
         (h_sea - h_min) / (h_max - h_min).max(1e-10) * config.max_depth_m;
 
+    let heightmap = GridF32::from_vec(n, n, data);
+    let heightmap = if config.altitude_smoothing_sigma > 0.0 {
+        heightmap.gaussian_blur(config.altitude_smoothing_sigma)
+    } else {
+        heightmap
+    };
+
     IsostasyResult {
-        heightmap: GridF32::from_vec(n, n, data),
+        heightmap,
         sea_level_normalized: sea_norm,
         peak_altitude_m,
         max_depth_m: actual_depth_m,
@@ -260,6 +272,51 @@ mod tests {
             "Lower sea level should give more land: {} vs {}",
             r_low.land_ratio,
             r_high.land_ratio
+        );
+    }
+
+    #[test]
+    fn smoothing_reduces_max_gradient() {
+        let n = 32;
+        let mut s = Field2D::new(n);
+        for j in 0..n {
+            for i in 0..n {
+                s.set(i, j, if i < n / 2 { 0.2 } else { 1.0 });
+            }
+        }
+
+        let config_sharp = IsostasyConfig {
+            altitude_smoothing_sigma: 0.0,
+            ..Default::default()
+        };
+        let config_smooth = IsostasyConfig {
+            altitude_smoothing_sigma: 2.0,
+            ..Default::default()
+        };
+
+        let result_sharp = compute_isostasy(&s, &config_sharp);
+        let result_smooth = compute_isostasy(&s, &config_smooth);
+
+        let max_grad = |hm: &GridF32| -> f32 {
+            let mut max = 0.0f32;
+            for j in 0..hm.height {
+                for i in 1..hm.width {
+                    let g =
+                        (hm.data[j * hm.width + i] - hm.data[j * hm.width + i - 1]).abs();
+                    max = max.max(g);
+                }
+            }
+            max
+        };
+
+        let grad_sharp = max_grad(&result_sharp.heightmap);
+        let grad_smooth = max_grad(&result_smooth.heightmap);
+
+        assert!(
+            grad_smooth < grad_sharp,
+            "Smoothing should reduce max gradient: sharp={}, smooth={}",
+            grad_sharp,
+            grad_smooth
         );
     }
 }

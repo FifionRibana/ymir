@@ -235,6 +235,60 @@ impl GridF32 {
 
         img.save(path).map_err(|e| format!("Failed to save {}: {}", path.display(), e))
     }
+
+    /// Separable Gaussian blur with toroidal (wrapping) boundary conditions.
+    ///
+    /// Sigma is in grid cells. Kernel radius = ceil(3 * sigma).
+    /// Returns a new grid; the original is unchanged.
+    pub fn gaussian_blur(&self, sigma: f32) -> Self {
+        if sigma <= 0.0 {
+            return self.clone();
+        }
+
+        let radius = (3.0 * sigma).ceil() as usize;
+        let kernel_size = 2 * radius + 1;
+
+        let mut kernel: Vec<f32> = (0..kernel_size)
+            .map(|i| {
+                let x = i as f32 - radius as f32;
+                (-x * x / (2.0 * sigma * sigma)).exp()
+            })
+            .collect();
+        let sum: f32 = kernel.iter().sum();
+        for k in kernel.iter_mut() {
+            *k /= sum;
+        }
+
+        // Horizontal pass
+        let mut temp = Self::new(self.width, self.height, 0.0);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let mut val = 0.0f32;
+                for (ki, &w) in kernel.iter().enumerate() {
+                    let sx = (x as i32 + ki as i32 - radius as i32)
+                        .rem_euclid(self.width as i32) as usize;
+                    val += self.data[y * self.width + sx] * w;
+                }
+                temp.data[y * self.width + x] = val;
+            }
+        }
+
+        // Vertical pass
+        let mut result = Self::new(self.width, self.height, 0.0);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let mut val = 0.0f32;
+                for (ki, &w) in kernel.iter().enumerate() {
+                    let sy = (y as i32 + ki as i32 - radius as i32)
+                        .rem_euclid(self.height as i32) as usize;
+                    val += temp.data[sy * self.width + x] * w;
+                }
+                result.data[y * self.width + x] = val;
+            }
+        }
+
+        result
+    }
 }
 
 impl std::fmt::Debug for GridF32 {
