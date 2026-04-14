@@ -27,6 +27,7 @@ tracing = "0.1"
 noise = "0.9"
 bevy = { version = "0.18.1", default-features = false, features = [
     "bevy_asset",
+    "bevy_state",
     "bevy_winit",
     "bevy_render",
     "bevy_sprite",

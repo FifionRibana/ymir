@@ -5,7 +5,7 @@ pub mod statistics_panel;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
-use crate::state::{GenerationParamsUi, ViewMode, ViewState};
+use crate::state::{GenerationParamsUi, PipelinePhase, ViewMode, ViewState};
 
 pub struct UiPlugin;
 
@@ -13,7 +13,7 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EguiPlugin::default()).add_systems(
             EguiPrimaryContextPass,
-            (configure_egui_style, ui_top_bar, ui_right_panel, ui_bottom_bar).chain(),
+            (configure_egui_style, ui_top_bar, ui_right_panel, ui_bottom_bar),
         );
     }
 }
@@ -41,18 +41,20 @@ fn configure_egui_style(mut contexts: EguiContexts, mut done: Local<bool>) {
 fn ui_top_bar(
     mut contexts: EguiContexts,
     mut view_state: ResMut<ViewState>,
+    view_mode: Res<State<ViewMode>>,
+    mut next_view_mode: ResMut<NextState<ViewMode>>,
     gen_params: Res<GenerationParamsUi>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
         ui.horizontal(|ui| {
             for &mode in ViewMode::ALL {
-                let active = view_state.mode == mode;
+                let active = *view_mode.get() == mode;
                 let enabled = mode.is_enabled();
                 let response =
                     ui.add_enabled(enabled, egui::Button::new(mode.label()).selected(active));
                 if enabled && response.clicked() {
-                    view_state.mode = mode;
+                    next_view_mode.set(mode);
                 }
             }
 
@@ -82,49 +84,59 @@ fn ui_top_bar(
     });
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(bevy::ecs::system::SystemParam)]
+struct UiRightPanelParams<'w> {
+    erosion: ResMut<'w, crate::state::ErosionParams>,
+    climate: ResMut<'w, crate::state::ClimateParams>,
+    gen_params: ResMut<'w, GenerationParamsUi>,
+    stats: Res<'w, crate::state::TerrainStats>,
+    tectonic_state: Option<ResMut<'w, crate::state::TectonicState>>,
+    solver_config: ResMut<'w, crate::state::SolverConfig>,
+    bridge: ResMut<'w, crate::bridge::SolverBridge>,
+    isostasy_params: ResMut<'w, crate::state::IsostasyParams>,
+    isostasy_cache: Res<'w, crate::state::IsostasyCache>,
+    fbm_params: ResMut<'w, crate::state::FbmParams>,
+    upscale_cache: ResMut<'w, crate::state::UpscaleCache>,
+    ui_actions: ResMut<'w, crate::state::UiActions>,
+    terrain_display: Res<'w, crate::visualization::render::TerrainDisplay>,
+}
+
 fn ui_right_panel(
     mut contexts: EguiContexts,
-    mut view_state: ResMut<ViewState>,
+    current_phase: Res<State<PipelinePhase>>,
+    mut next_phase: ResMut<NextState<PipelinePhase>>,
     pipeline_state: Res<crate::state::PipelineState>,
-    mut erosion: ResMut<crate::state::ErosionParams>,
-    mut climate: ResMut<crate::state::ClimateParams>,
-    mut gen_params: ResMut<GenerationParamsUi>,
-    stats: Res<crate::state::TerrainStats>,
-    tectonic_state: Option<ResMut<crate::state::TectonicState>>,
-    mut solver_config: ResMut<crate::state::SolverConfig>,
-    mut bridge: ResMut<crate::bridge::SolverBridge>,
-    mut isostasy_params: ResMut<crate::state::IsostasyParams>,
-    isostasy_cache: Res<crate::state::IsostasyCache>,
-    mut ui_actions: ResMut<crate::state::UiActions>,
-    terrain_display: Res<crate::visualization::render::TerrainDisplay>,
+    mut params: UiRightPanelParams,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::SidePanel::right("right_panel").exact_width(260.0).show(ctx, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            let has_terrain = terrain_display.s_field.is_some();
+            let has_terrain = params.terrain_display.s_field.is_some();
             pipeline_panel::draw(
                 ui,
-                &mut view_state,
+                current_phase.get(),
+                &mut next_phase,
                 &pipeline_state,
-                &mut ui_actions,
+                &mut params.ui_actions,
                 has_terrain,
             );
             ui.separator();
             parameter_panel::draw(
                 ui,
-                &view_state,
-                &mut erosion,
-                &mut climate,
-                &mut gen_params,
-                tectonic_state,
-                &mut solver_config,
-                &mut bridge,
-                &mut isostasy_params,
-                &isostasy_cache,
+                current_phase.get(),
+                &mut params.erosion,
+                &mut params.climate,
+                &mut params.gen_params,
+                params.tectonic_state,
+                &mut params.solver_config,
+                &mut params.bridge,
+                &mut params.isostasy_params,
+                &params.isostasy_cache,
+                &mut params.fbm_params,
+                &mut params.upscale_cache,
             );
             ui.separator();
-            statistics_panel::draw(ui, &stats);
+            statistics_panel::draw(ui, &params.stats);
         });
     });
 }

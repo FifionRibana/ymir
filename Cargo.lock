@@ -782,6 +782,7 @@ dependencies = [
  "bevy_shader",
  "bevy_sprite",
  "bevy_sprite_render",
+ "bevy_state",
  "bevy_tasks",
  "bevy_text",
  "bevy_time",
@@ -1091,6 +1092,33 @@ dependencies = [
  "fixedbitset",
  "nonmax",
  "tracing",
+]
+
+[[package]]
+name = "bevy_state"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ae0682968e97d29c1eccc8c6bb6283f2678d362779bc03f1bb990967059473b"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_platform",
+ "bevy_reflect",
+ "bevy_state_macros",
+ "bevy_utils",
+ "log",
+ "variadics_please",
+]
+
+[[package]]
+name = "bevy_state_macros"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73d32f90f9cfcef5a44401db7ce206770daaa1707b0fb95eb7a96a6933f54f1b"
+dependencies = [
+ "bevy_macro_utils",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -5420,6 +5448,7 @@ name = "ymir-core"
 version = "0.1.0"
 dependencies = [
  "image",
+ "noise",
  "rand 0.9.3",
  "rand_chacha",
  "rayon",

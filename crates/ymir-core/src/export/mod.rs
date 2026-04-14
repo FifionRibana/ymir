@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::grid::GridF32;
 use crate::tectonics::isostasy::{IsostasyConfig, IsostasyResult};
 use crate::tectonics::plates::PlateConfig;
+use crate::terrain::upscale::FbmUpscaleConfig;
 
 // pub mod raw;     // Native binary format (u16/f32 raw + JSON metadata)
 // pub mod png;     // PNG export for compatibility and debugging
@@ -19,6 +20,7 @@ use crate::tectonics::plates::PlateConfig;
 
 /// Metadata for a complete generation run, saved alongside the output files.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PipelineMetadata {
     /// Ymir version (for compatibility checking).
     pub version: String,
@@ -33,6 +35,8 @@ pub struct PipelineMetadata {
     /// Isostasy config and results.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub isostasy: Option<IsostasyMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upscale: Option<FbmUpscaleConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +48,20 @@ pub struct IsostasyMetadata {
     pub land_ratio: f32,
 }
 
+impl Default for PipelineMetadata {
+    fn default() -> Self {
+        Self {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            seed: 0,
+            grid_size: 128,
+            meters_per_pixel: 40.0,
+            plates: PlateConfig::default(),
+            isostasy: None,
+            upscale: None,
+        }
+    }
+}
+
 impl PipelineMetadata {
     pub fn new(seed: u64, grid_size: usize, plates: &PlateConfig) -> Self {
         Self {
@@ -53,6 +71,7 @@ impl PipelineMetadata {
             meters_per_pixel: 40.0,
             plates: plates.clone(),
             isostasy: None,
+            upscale: None,
         }
     }
 }
@@ -110,6 +129,17 @@ impl PipelineExport {
         Ok(())
     }
 
+    /// Save the upscaled heightmap.
+    pub fn save_upscaled(
+        &mut self,
+        heightmap: &GridF32,
+        config: &FbmUpscaleConfig,
+    ) -> Result<(), String> {
+        heightmap.save_png_u16(&self.dir.join("03_upscaled.png"))?;
+        self.metadata.upscale = Some(config.clone());
+        self.save_metadata()
+    }
+
     /// Load an existing pipeline export from a directory.
     pub fn load(dir: &Path) -> Result<Self, String> {
         let json = fs::read_to_string(dir.join("metadata.json"))
@@ -127,5 +157,75 @@ impl PipelineExport {
     /// Load the altitude heightmap from a previously saved export.
     pub fn load_altitude(&self) -> Result<GridF32, String> {
         GridF32::load_png(&self.dir.join("02_altitude.png"))
+    }
+
+    /// Load the upscaled heightmap from a previously saved export.
+    pub fn load_upscaled(&self) -> Result<GridF32, String> {
+        GridF32::load_png(&self.dir.join("03_upscaled.png"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialize_legacy_metadata_without_upscale() {
+        let json = r#"{
+            "version": "0.1.0",
+            "seed": 42,
+            "grid_size": 128,
+            "meters_per_pixel": 40.0,
+            "plates": {
+                "num_plates": 8,
+                "continental_ratio": 0.35,
+                "velocity_min": 0.5,
+                "velocity_max": 2.5,
+                "grid_size": 128,
+                "boundary_smoothing_sigma": 2.0
+            },
+            "isostasy": {
+                "config": {
+                    "rho_crust": 2750.0,
+                    "rho_mantle": 3300.0,
+                    "rho_water": 1025.0,
+                    "max_elevation_m": 4000.0,
+                    "max_depth_m": 500.0,
+                    "sea_level_fraction": 0.4,
+                    "altitude_smoothing_sigma": 2.0
+                },
+                "sea_level_normalized": 0.11,
+                "peak_altitude_m": 2400.0,
+                "max_depth_m": 200.0,
+                "land_ratio": 0.35
+            }
+        }"#;
+
+        let meta: PipelineMetadata = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.seed, 42);
+        assert!(meta.upscale.is_none());
+    }
+
+    #[test]
+    fn deserialize_upscale_config_without_domain_warp() {
+        // An upscale config saved before domain warp fields were added
+        let json = r#"{
+            "target_size": 1024,
+            "octaves": 7,
+            "lacunarity": 2.0,
+            "persistence": 0.5,
+            "amplitude_base": 0.08,
+            "amplitude_slope_factor": 3.0,
+            "max_anisotropy": 3.0,
+            "submarine_damping": 0.3,
+            "base_frequency": 1.0
+        }"#;
+
+        let config: FbmUpscaleConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.target_size, 1024);
+        // New fields should have their defaults
+        assert!((config.domain_warp_strength - 0.0).abs() < 1e-10);
+        assert!((config.domain_warp_frequency - 0.5).abs() < 1e-10);
+        assert_eq!(config.domain_warp_octaves, 3);
     }
 }

@@ -189,11 +189,12 @@ fn setup_terrain(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
 fn rebuild_terrain_texture(
     mut terrain: ResMut<TerrainData>,
     view_state: Res<ViewState>,
+    view_mode: Res<State<ViewMode>>,
     image_handle: Option<Res<TerrainImageHandle>>,
     mut images: ResMut<Assets<Image>>,
 ) {
     let Some(handle) = image_handle else { return };
-    if !terrain.dirty && !view_state.is_changed() {
+    if !terrain.dirty && !view_state.is_changed() && !view_mode.is_changed() {
         return;
     }
 
@@ -203,14 +204,15 @@ fn rebuild_terrain_texture(
     let w = hm.width;
     let h = hm.height;
     let data = image.data.as_mut().unwrap();
-    let apply_hillshade = view_state.overlays.hillshade && view_state.mode == ViewMode::Altitude;
+    let mode = *view_mode.get();
+    let apply_hillshade = view_state.overlays.hillshade && mode == ViewMode::Altitude;
 
     for y in 0..h {
         for x in 0..w {
             let alt = hm.data[y * w + x];
             let idx = (y * w + x) * 4;
 
-            let [r, g, b] = match view_state.mode {
+            let [r, g, b] = match mode {
                 ViewMode::Altitude => hypsometric_color(alt),
                 ViewMode::Slope => {
                     let (gx, gy) = hm.gradient_at(x, y);

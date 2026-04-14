@@ -7,16 +7,14 @@ use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 
 use super::colormap::hypsometric_colormap;
 use super::render::TerrainDisplay;
-use crate::state::{IsostasyCache, IsostasyParams, ViewMode, ViewState};
+use crate::state::{IsostasyCache, IsostasyParams};
 
-/// Recompute isostasy when the source field or parameters change,
-/// and update the terrain texture when in Altitude view mode.
-pub fn update_isostasy(
+/// Recompute the isostasy cache when parameters change.
+/// Runs in ALL phases — the cache is needed by FBM, erosion, etc.
+pub fn recompute_isostasy_cache(
     terrain_display: Res<TerrainDisplay>,
     isostasy_params: Res<IsostasyParams>,
     mut isostasy_cache: ResMut<IsostasyCache>,
-    view_state: Res<ViewState>,
-    mut images: ResMut<Assets<Image>>,
 ) {
     let Some(field) = &terrain_display.s_field else {
         return;
@@ -45,11 +43,23 @@ pub fn update_isostasy(
     isostasy_cache.sea_level_normalized = result.sea_level_normalized;
     isostasy_cache.computed_sea_level = isostasy_params.sea_level_fraction;
     isostasy_cache.valid = true;
+    isostasy_cache.heightmap = Some(result.heightmap);
+}
 
-    // Update the texture when in Altitude view mode
-    if view_state.mode != ViewMode::Altitude {
+/// Render the isostasy heightmap to the terrain texture.
+/// Only runs when the active phase is Tectonics or Isostasy
+/// (controlled by run_if in the scheduler).
+pub fn render_isostasy_texture(
+    isostasy_cache: Res<IsostasyCache>,
+    terrain_display: Res<TerrainDisplay>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    if !isostasy_cache.is_changed() {
         return;
     }
+    let Some(ref heightmap) = isostasy_cache.heightmap else {
+        return;
+    };
     let Some(handle) = &terrain_display.texture_handle else {
         return;
     };
@@ -57,8 +67,8 @@ pub fn update_isostasy(
         return;
     };
 
-    let n = result.heightmap.width;
-    let sea = result.sea_level_normalized as f64;
+    let n = heightmap.width;
+    let sea = isostasy_cache.sea_level_normalized as f64;
 
     // Resize if needed
     if image.width() != n as u32 || image.height() != n as u32 {
@@ -76,7 +86,7 @@ pub fn update_isostasy(
 
     for y in 0..n {
         for x in 0..n {
-            let h = result.heightmap.data[y * n + x] as f64;
+            let h = heightmap.data[y * n + x] as f64;
             let [r, g, b, a] = if h < sea {
                 // Ocean: blue gradient
                 let depth = 1.0 - (h / sea).max(0.0);
