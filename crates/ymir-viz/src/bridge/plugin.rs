@@ -7,6 +7,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use crossbeam_channel::{Receiver, Sender, bounded};
 
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics::solver::config::{
     ContinuationConfig, NewtonConfig, PicardConfig, TectonicsConfig,
 };
@@ -16,7 +17,9 @@ use ymir_core::tectonics::solver::workspace::StepStats;
 use super::commands::SolverCommand;
 use super::events::SolverEvent;
 use super::thread::spawn_solver_thread;
-use crate::state::{DynamicPlateIds, SolverConfig, TectonicState, UiActions};
+use crate::state::{
+    DynamicPlateIds, FbmState, IsostasyParams, SolverConfig, TectonicState, UiActions, UpscaleCache,
+};
 use crate::visualization::render::TerrainDisplay;
 
 /// Current state of the solver.
@@ -70,6 +73,7 @@ impl Plugin for TectonicsBridgePlugin {
             (
                 poll_solver_events,
                 handle_step,
+                dispatch_fbm_upscale,
                 super::export_system::handle_export,
                 super::export_system::handle_load,
             ),
@@ -82,6 +86,7 @@ fn poll_solver_events(
     mut terrain_display: ResMut<TerrainDisplay>,
     mut isostasy_cache: ResMut<crate::state::IsostasyCache>,
     mut dynamic_plates: ResMut<DynamicPlateIds>,
+    mut upscale_cache: ResMut<UpscaleCache>,
 ) {
     while let Ok(event) = bridge.events_rx.try_recv() {
         match event {
@@ -116,6 +121,11 @@ fn poll_solver_events(
                     dynamic_plates.active_count = pl.iter().filter(|p| p.active).count();
                     dynamic_plates.plates = Some(pl);
                 }
+            }
+            SolverEvent::FbmCompleted { heightmap, slope, elapsed } => {
+                upscale_cache.heightmap = Some(heightmap);
+                upscale_cache.slope = Some(slope);
+                upscale_cache.state = FbmState::Completed { elapsed };
             }
             SolverEvent::Failed { error } => {
                 bridge.state = SolverState::Failed { error };
@@ -218,4 +228,46 @@ fn build_tectonics_config(sc: &SolverConfig) -> TectonicsConfig {
         cratonic: sc.cratonic.clone(),
         yielding: sc.yielding.clone(),
     }
+}
+
+/// Dispatch a pending FBM upscale command to the solver thread.
+///
+/// The UI sets `upscale_cache.pending_config` when the user clicks "Run FBM".
+/// This system picks it up, recomputes the isostasy heightmap from the current
+/// thickness field, and sends the command to the background thread.
+fn dispatch_fbm_upscale(
+    mut upscale_cache: ResMut<UpscaleCache>,
+    bridge: ResMut<SolverBridge>,
+    terrain_display: Res<TerrainDisplay>,
+    isostasy_params: Res<IsostasyParams>,
+) {
+    let (Some(config), Some(seed), Some(sea_level)) = (
+        upscale_cache.pending_config.take(),
+        upscale_cache.pending_seed.take(),
+        upscale_cache.pending_sea_level.take(),
+    ) else {
+        return;
+    };
+
+    let Some(ref s_field) = terrain_display.s_field else {
+        upscale_cache.state = FbmState::Idle;
+        return;
+    };
+
+    // Recompute isostasy to get the coarse heightmap
+    let iso_config = IsostasyConfig {
+        sea_level_fraction: isostasy_params.sea_level_fraction,
+        max_elevation_m: isostasy_params.max_elevation_m,
+        max_depth_m: isostasy_params.max_depth_m,
+        altitude_smoothing_sigma: isostasy_params.altitude_smoothing_sigma,
+        ..Default::default()
+    };
+    let iso_result = compute_isostasy(s_field, &iso_config);
+
+    let _ = bridge.commands_tx.send(SolverCommand::RunFbmUpscale {
+        coarse: iso_result.heightmap,
+        sea_level,
+        seed,
+        config,
+    });
 }

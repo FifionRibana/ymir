@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::grid::GridF32;
 use crate::tectonics::isostasy::{IsostasyConfig, IsostasyResult};
 use crate::tectonics::plates::PlateConfig;
+use crate::terrain::upscale::FbmUpscaleConfig;
 
 // pub mod raw;     // Native binary format (u16/f32 raw + JSON metadata)
 // pub mod png;     // PNG export for compatibility and debugging
@@ -33,6 +34,8 @@ pub struct PipelineMetadata {
     /// Isostasy config and results.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub isostasy: Option<IsostasyMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upscale: Option<FbmUpscaleConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +56,7 @@ impl PipelineMetadata {
             meters_per_pixel: 40.0,
             plates: plates.clone(),
             isostasy: None,
+            upscale: None,
         }
     }
 }
@@ -108,6 +112,17 @@ impl PipelineExport {
             serde_json::to_string_pretty(&self.metadata).map_err(|e| format!("JSON error: {e}"))?;
         fs::write(self.dir.join("metadata.json"), json).map_err(|e| format!("Write error: {e}"))?;
         Ok(())
+    }
+
+    /// Save the upscaled heightmap.
+    pub fn save_upscaled(
+        &mut self,
+        heightmap: &GridF32,
+        config: &FbmUpscaleConfig,
+    ) -> Result<(), String> {
+        heightmap.save_png_u16(&self.dir.join("03_upscaled.png"))?;
+        self.metadata.upscale = Some(config.clone());
+        self.save_metadata()
     }
 
     /// Load an existing pipeline export from a directory.

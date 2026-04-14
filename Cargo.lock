@@ -5420,6 +5420,7 @@ name = "ymir-core"
 version = "0.1.0"
 dependencies = [
  "image",
+ "noise",
  "rand 0.9.3",
  "rand_chacha",
  "rayon",

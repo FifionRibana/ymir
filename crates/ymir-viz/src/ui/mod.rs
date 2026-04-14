@@ -96,6 +96,8 @@ fn ui_right_panel(
     mut bridge: ResMut<crate::bridge::SolverBridge>,
     mut isostasy_params: ResMut<crate::state::IsostasyParams>,
     isostasy_cache: Res<crate::state::IsostasyCache>,
+    mut fbm_params: ResMut<crate::state::FbmParams>,
+    mut upscale_cache: ResMut<crate::state::UpscaleCache>,
     mut ui_actions: ResMut<crate::state::UiActions>,
     terrain_display: Res<crate::visualization::render::TerrainDisplay>,
 ) {
@@ -122,6 +124,8 @@ fn ui_right_panel(
                 &mut bridge,
                 &mut isostasy_params,
                 &isostasy_cache,
+                &mut fbm_params,
+                &mut upscale_cache,
             );
             ui.separator();
             statistics_panel::draw(ui, &stats);
