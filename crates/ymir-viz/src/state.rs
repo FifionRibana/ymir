@@ -6,7 +6,7 @@ use ymir_core::tectonics::solver::config::{NonlinearSolver, Preconditioner};
 
 // ── View ─────────────────────────────────────────────────────────────────
 
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug)]
+#[derive(States, PartialEq, Eq, Clone, Copy, Default, Debug, Hash)]
 pub enum ViewMode {
     #[default]
     Altitude,
@@ -58,26 +58,14 @@ impl Default for OverlayFlags {
     }
 }
 
-#[derive(Resource, Clone, Debug)]
+#[derive(Resource, Clone, Debug, Default)]
 pub struct ViewState {
-    pub mode: ViewMode,
     pub overlays: OverlayFlags,
-    pub selected_phase: PipelinePhase,
-}
-
-impl Default for ViewState {
-    fn default() -> Self {
-        Self {
-            mode: ViewMode::Altitude,
-            overlays: OverlayFlags::default(),
-            selected_phase: PipelinePhase::Erosion,
-        }
-    }
 }
 
 // ── Pipeline ─────────────────────────────────────────────────────────────
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
+#[derive(States, PartialEq, Eq, Clone, Copy, Debug, Default, Hash)]
 pub enum PipelinePhase {
     Tectonics,
     Isostasy,
@@ -323,6 +311,8 @@ pub struct IsostasyCache {
     pub computed_sea_level: f32,
     /// Whether valid data is available.
     pub valid: bool,
+    /// The computed isostasy heightmap (stored for rendering and FBM input).
+    pub heightmap: Option<GridF32>,
 }
 
 // ── UI Actions ──────────────────────────────────────────────────────────

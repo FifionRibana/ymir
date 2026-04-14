@@ -20,6 +20,8 @@ fn main() {
             ..default()
         }))
         .init_resource::<state::ViewState>()
+        .init_state::<state::ViewMode>()
+        .init_state::<state::PipelinePhase>()
         .init_resource::<state::PipelineState>()
         .init_resource::<state::ErosionParams>()
         .init_resource::<state::SolverConfig>()

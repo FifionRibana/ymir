@@ -7,7 +7,6 @@ use std::time::Duration;
 use bevy::prelude::*;
 use crossbeam_channel::{Receiver, Sender, bounded};
 
-use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics::solver::config::{
     ContinuationConfig, NewtonConfig, PicardConfig, TectonicsConfig,
 };
@@ -18,7 +17,7 @@ use super::commands::SolverCommand;
 use super::events::SolverEvent;
 use super::thread::spawn_solver_thread;
 use crate::state::{
-    DynamicPlateIds, FbmState, IsostasyParams, SolverConfig, TectonicState, UiActions, UpscaleCache,
+    DynamicPlateIds, FbmState, SolverConfig, TectonicState, UiActions, UpscaleCache,
 };
 use crate::visualization::render::TerrainDisplay;
 
@@ -233,13 +232,12 @@ fn build_tectonics_config(sc: &SolverConfig) -> TectonicsConfig {
 /// Dispatch a pending FBM upscale command to the solver thread.
 ///
 /// The UI sets `upscale_cache.pending_config` when the user clicks "Run FBM".
-/// This system picks it up, recomputes the isostasy heightmap from the current
-/// thickness field, and sends the command to the background thread.
+/// This system picks it up, grabs the isostasy heightmap from the cache,
+/// and sends the command to the background thread.
 fn dispatch_fbm_upscale(
     mut upscale_cache: ResMut<UpscaleCache>,
     bridge: ResMut<SolverBridge>,
-    terrain_display: Res<TerrainDisplay>,
-    isostasy_params: Res<IsostasyParams>,
+    isostasy_cache: Res<crate::state::IsostasyCache>,
 ) {
     let (Some(config), Some(seed), Some(sea_level)) = (
         upscale_cache.pending_config.take(),
@@ -249,23 +247,13 @@ fn dispatch_fbm_upscale(
         return;
     };
 
-    let Some(ref s_field) = terrain_display.s_field else {
+    let Some(ref heightmap) = isostasy_cache.heightmap else {
         upscale_cache.state = FbmState::Idle;
         return;
     };
 
-    // Recompute isostasy to get the coarse heightmap
-    let iso_config = IsostasyConfig {
-        sea_level_fraction: isostasy_params.sea_level_fraction,
-        max_elevation_m: isostasy_params.max_elevation_m,
-        max_depth_m: isostasy_params.max_depth_m,
-        altitude_smoothing_sigma: isostasy_params.altitude_smoothing_sigma,
-        ..Default::default()
-    };
-    let iso_result = compute_isostasy(s_field, &iso_config);
-
     let _ = bridge.commands_tx.send(SolverCommand::RunFbmUpscale {
-        coarse: iso_result.heightmap,
+        coarse: heightmap.clone(),
         sea_level,
         seed,
         config,

@@ -2,9 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
 use crate::camera::MainCamera;
-use crate::state::{
-    CursorWorldPos, GenerationParamsUi, TectonicState, TerrainData, ViewMode, ViewState,
-};
+use crate::state::{CursorWorldPos, GenerationParamsUi, TectonicState, TerrainData, ViewMode};
 use crate::tectonic_view::thickness_color;
 use crate::terrain_view::hypsometric_color;
 
@@ -24,7 +22,7 @@ fn cursor_inspector_overlay(
     cursor_pos: Res<CursorWorldPos>,
     terrain: Option<Res<TerrainData>>,
     tectonic: Option<Res<TectonicState>>,
-    view_state: Res<ViewState>,
+    view_mode: Res<State<ViewMode>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
 
@@ -36,7 +34,7 @@ fn cursor_inspector_overlay(
                 .corner_radius(4.0)
                 .inner_margin(6.0)
                 .show(ui, |ui| {
-                    if view_state.mode == ViewMode::Tectonics {
+                    if *view_mode.get() == ViewMode::Tectonics {
                         draw_tectonic_info(ui, &cursor_pos, tectonic.as_deref());
                     } else {
                         draw_terrain_info(ui, &cursor_pos, terrain.as_deref());
@@ -132,23 +130,23 @@ struct MinimapTexture {
     /// The view mode the texture was built for — triggers a rebuild on mode change.
     mode: ViewMode,
     /// Generation counter copied from TectonicState — triggers a rebuild when plates
-    /// are regenerated while already in Tectonics mode (avoids relying on the
-    /// single-frame `is_changed()` window which can be missed due to system ordering).
+    /// are regenerated while already in Tectonics mode.
     tectonic_generation: u64,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn minimap_overlay(
     mut contexts: EguiContexts,
     terrain: Option<Res<TerrainData>>,
     tectonic: Option<Res<TectonicState>>,
-    view_state: Res<ViewState>,
+    view_mode: Res<State<ViewMode>>,
     minimap: Option<Res<MinimapTexture>>,
     mut commands: Commands,
     camera_q: Query<(&Transform, &Projection), With<MainCamera>>,
     windows: Query<&Window>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
-    let mode = view_state.mode;
+    let mode = *view_mode.get();
 
     // Determine the grid dimensions to draw the viewport rectangle correctly
     let (grid_w, grid_h) = if mode == ViewMode::Tectonics {
@@ -161,8 +159,6 @@ fn minimap_overlay(
     };
 
     // Rebuild when: first run, mode changed, grid size changed, or underlying data changed.
-    // For tectonic data we compare generation counters rather than relying on
-    // is_changed() which only fires for one frame and can be missed.
     let tectonic_gen = tectonic.as_ref().map(|t| t.generation).unwrap_or(0);
     let needs_rebuild = minimap.is_none()
         || minimap.as_ref().is_some_and(|m| {
