@@ -181,17 +181,17 @@ fn rebuild_tectonic_texture(
 // ── Visibility toggle ─────────────────────────────────────────────────────
 
 fn toggle_tectonic_visibility(
-    view_state: Res<ViewState>,
+    view_mode: Res<State<ViewMode>>,
     mut tectonic_q: Query<&mut Visibility, With<TectonicSprite>>,
     mut terrain_q: Query<
         &mut Visibility,
         (With<crate::terrain_view::TerrainSprite>, Without<TectonicSprite>),
     >,
 ) {
-    if !view_state.is_changed() {
+    if !view_mode.is_changed() {
         return;
     }
-    let show_tectonic = view_state.mode == ViewMode::Tectonics;
+    let show_tectonic = *view_mode.get() == ViewMode::Tectonics;
     for mut vis in tectonic_q.iter_mut() {
         *vis = if show_tectonic { Visibility::Visible } else { Visibility::Hidden };
     }
@@ -205,9 +205,9 @@ fn toggle_tectonic_visibility(
 fn draw_velocity_arrows(
     mut gizmos: Gizmos,
     tectonic: Option<Res<TectonicState>>,
-    view_state: Res<ViewState>,
+    view_mode: Res<State<ViewMode>>,
 ) {
-    if view_state.mode != ViewMode::Tectonics {
+    if *view_mode.get() != ViewMode::Tectonics {
         return;
     }
     let Some(tectonic) = tectonic else { return };

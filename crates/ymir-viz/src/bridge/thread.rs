@@ -9,6 +9,7 @@ use crossbeam_channel::{Receiver, Sender};
 use ymir_core::tectonics::solver::grid::StaggeredGrid;
 use ymir_core::tectonics::solver::tectonics::run_tectonics;
 use ymir_core::tectonics::solver::workspace::SolverWorkspace;
+use ymir_core::terrain::upscale::upscale_with_fbm;
 
 use super::commands::SolverCommand;
 use super::events::SolverEvent;
@@ -150,6 +151,15 @@ pub fn spawn_solver_thread(
                             plates: Some(plate_ctx.plates.clone()),
                             elapsed: std::time::Duration::ZERO,
                             total_steps: 1,
+                        });
+                    }
+                    SolverCommand::RunFbmUpscale { coarse, sea_level, seed, config } => {
+                        let start = Instant::now();
+                        let result = upscale_with_fbm(&coarse, sea_level, &seed, &config);
+                        let _ = events_tx.send(SolverEvent::FbmCompleted {
+                            heightmap: result.heightmap,
+                            slope: result.slope,
+                            elapsed: start.elapsed(),
                         });
                     }
                     SolverCommand::Cancel => {

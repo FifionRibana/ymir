@@ -6,7 +6,7 @@ use ymir_core::tectonics::solver::config::{NonlinearSolver, Preconditioner};
 
 // ── View ─────────────────────────────────────────────────────────────────
 
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug)]
+#[derive(States, PartialEq, Eq, Clone, Copy, Default, Debug, Hash)]
 pub enum ViewMode {
     #[default]
     Altitude,
@@ -58,26 +58,14 @@ impl Default for OverlayFlags {
     }
 }
 
-#[derive(Resource, Clone, Debug)]
+#[derive(Resource, Clone, Debug, Default)]
 pub struct ViewState {
-    pub mode: ViewMode,
     pub overlays: OverlayFlags,
-    pub selected_phase: PipelinePhase,
-}
-
-impl Default for ViewState {
-    fn default() -> Self {
-        Self {
-            mode: ViewMode::Altitude,
-            overlays: OverlayFlags::default(),
-            selected_phase: PipelinePhase::Erosion,
-        }
-    }
 }
 
 // ── Pipeline ─────────────────────────────────────────────────────────────
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
+#[derive(States, PartialEq, Eq, Clone, Copy, Debug, Default, Hash)]
 pub enum PipelinePhase {
     Tectonics,
     Isostasy,
@@ -323,6 +311,8 @@ pub struct IsostasyCache {
     pub computed_sea_level: f32,
     /// Whether valid data is available.
     pub valid: bool,
+    /// The computed isostasy heightmap (stored for rendering and FBM input).
+    pub heightmap: Option<GridF32>,
 }
 
 // ── UI Actions ──────────────────────────────────────────────────────────
@@ -356,6 +346,69 @@ pub struct DynamicPlateIds {
     pub active_count: usize,
     /// Grid size (for indexing into ids).
     pub grid_size: usize,
+}
+
+// ── FBM Upscaling ───────────────────────────────────────────────────────
+
+/// Current state of the FBM upscale computation.
+#[derive(Default, Debug, Clone)]
+pub enum FbmState {
+    #[default]
+    Idle,
+    Running,
+    Completed {
+        elapsed: std::time::Duration,
+    },
+}
+
+/// Cache for the FBM upscale result.
+#[derive(Resource, Default)]
+pub struct UpscaleCache {
+    /// The upscaled heightmap (high resolution).
+    pub heightmap: Option<GridF32>,
+    /// The slope field at target resolution.
+    pub slope: Option<GridF32>,
+    /// Current computation state.
+    pub state: FbmState,
+    /// Pending command data — set by the UI, consumed by the dispatch system.
+    pub pending_config: Option<ymir_core::terrain::upscale::FbmUpscaleConfig>,
+    pub pending_seed: Option<ymir_core::seed::WorldSeed>,
+    pub pending_sea_level: Option<f32>,
+}
+
+#[derive(Resource, Clone, Debug)]
+pub struct FbmParams {
+    pub target_size: usize,
+    pub octaves: usize,
+    pub lacunarity: f64,
+    pub persistence: f64,
+    pub amplitude_base: f64,
+    pub amplitude_slope_factor: f64,
+    pub max_anisotropy: f64,
+    pub submarine_damping: f64,
+    pub domain_warp_enabled: bool,
+    pub domain_warp_strength: f64,
+    pub domain_warp_frequency: f64,
+    pub domain_warp_octaves: usize,
+}
+
+impl Default for FbmParams {
+    fn default() -> Self {
+        Self {
+            target_size: 1024,
+            octaves: 7,
+            lacunarity: 2.0,
+            persistence: 0.5,
+            amplitude_base: 0.08,
+            amplitude_slope_factor: 3.0,
+            max_anisotropy: 3.0,
+            submarine_damping: 0.3,
+            domain_warp_enabled: false,
+            domain_warp_strength: 0.4,
+            domain_warp_frequency: 0.5,
+            domain_warp_octaves: 3,
+        }
+    }
 }
 
 // ── Cursor ───────────────────────────────────────────────────────────────

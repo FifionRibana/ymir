@@ -13,14 +13,14 @@ use ymir_core::tectonics::solver::tectonics::DynamicPlateContext;
 use crate::bridge::commands::SolverCommand;
 use crate::bridge::plugin::{SolverBridge, SolverState};
 use crate::state::{
-    ClimateParams, ErosionParams, GenerationParamsUi, IsostasyCache, IsostasyParams, PipelinePhase,
-    SolverConfig, TectonicState, ViewState,
+    ClimateParams, ErosionParams, FbmParams, FbmState, GenerationParamsUi, IsostasyCache,
+    IsostasyParams, PipelinePhase, SolverConfig, TectonicState, UpscaleCache,
 };
 
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
     ui: &mut egui::Ui,
-    view_state: &ViewState,
+    current_phase: &PipelinePhase,
     erosion: &mut ErosionParams,
     climate: &mut ClimateParams,
     generation: &mut GenerationParamsUi,
@@ -29,9 +29,11 @@ pub fn draw(
     bridge: &mut SolverBridge,
     isostasy_params: &mut IsostasyParams,
     isostasy_cache: &IsostasyCache,
+    fbm_params: &mut FbmParams,
+    upscale_cache: &mut UpscaleCache,
 ) {
     egui::CollapsingHeader::new("Parameters").default_open(true).show(ui, |ui| {
-        match view_state.selected_phase {
+        match *current_phase {
             PipelinePhase::Erosion => draw_erosion(ui, erosion),
             PipelinePhase::Tectonics => {
                 draw_tectonics(
@@ -44,6 +46,9 @@ pub fn draw(
                 );
             }
             PipelinePhase::Climate => draw_climate(ui, climate),
+            PipelinePhase::UpscaleFbm => {
+                draw_fbm(ui, fbm_params, isostasy_cache, upscale_cache, generation);
+            }
             _ => {
                 ui.label("No parameters for this phase");
             }
@@ -515,6 +520,145 @@ fn draw_erosion(ui: &mut egui::Ui, p: &mut ErosionParams) {
     slider_row(ui, "Droplets (M)", &mut p.droplets_millions, 0.5..=20.0);
     slider_row_u32(ui, "Coastal dep.", &mut p.coastal_deposition, 0..=30);
     slider_row(ui, "Min slope", &mut p.min_slope, 0.001..=0.1);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_fbm(
+    ui: &mut egui::Ui,
+    p: &mut FbmParams,
+    isostasy_cache: &IsostasyCache,
+    upscale_cache: &mut UpscaleCache,
+    generation: &GenerationParamsUi,
+) {
+    ui.strong("FBM Upscaling");
+
+    let sizes = [256usize, 512, 1024, 2048];
+    ui.horizontal(|ui| {
+        ui.label("Target size");
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            for &sz in &sizes {
+                if ui
+                    .add(egui::Button::new(format!("{sz}")).selected(p.target_size == sz))
+                    .clicked()
+                {
+                    p.target_size = sz;
+                }
+            }
+        });
+    });
+
+    slider_row_usize(ui, "Octaves", &mut p.octaves, 1..=10);
+    slider_row_f64(ui, "Lacunarity", &mut p.lacunarity, 1.5..=3.0);
+    slider_row_f64(ui, "Persistence", &mut p.persistence, 0.3..=0.7);
+    slider_row_f64(ui, "Amplitude", &mut p.amplitude_base, 0.01..=0.3);
+    slider_row_f64(ui, "Slope factor", &mut p.amplitude_slope_factor, 0.0..=10.0);
+    slider_row_f64(ui, "Anisotropy", &mut p.max_anisotropy, 1.0..=5.0);
+    slider_row_f64(ui, "Sub. damping", &mut p.submarine_damping, 0.0..=1.0);
+
+    ui.add_space(4.0);
+    ui.checkbox(&mut p.domain_warp_enabled, "Domain warp");
+    if p.domain_warp_enabled {
+        slider_row_f64(ui, "Warp strength", &mut p.domain_warp_strength, 0.0..=1.0);
+        slider_row_f64(ui, "Warp frequency", &mut p.domain_warp_frequency, 0.1..=2.0);
+        slider_row_usize(ui, "Warp octaves", &mut p.domain_warp_octaves, 1..=5);
+    }
+
+    ui.add_space(6.0);
+
+    let is_running = matches!(upscale_cache.state, FbmState::Running);
+    let has_isostasy = isostasy_cache.valid;
+
+    ui.horizontal(|ui| {
+        let run_btn = ui.add_enabled(has_isostasy && !is_running, egui::Button::new("▶ Run FBM"));
+        if run_btn.clicked() {
+            launch_fbm(p, isostasy_cache, upscale_cache, generation);
+        }
+    });
+
+    if !has_isostasy {
+        ui.small("Run the tectonic solver first to produce an isostasy heightmap.");
+    }
+
+    // Status
+    match &upscale_cache.state {
+        FbmState::Idle => {
+            ui.small("⚪ Ready");
+        }
+        FbmState::Running => {
+            ui.small("🟡 Running…");
+        }
+        FbmState::Completed { elapsed } => {
+            ui.small(format!("🟢 Done in {:.2}s", elapsed.as_secs_f64()));
+            if let Some(ref hm) = upscale_cache.heightmap {
+                ui.small(format!("Output: {}×{}", hm.width, hm.height));
+            }
+        }
+    }
+}
+
+fn launch_fbm(
+    params: &FbmParams,
+    isostasy_cache: &IsostasyCache,
+    upscale_cache: &mut UpscaleCache,
+    generation: &GenerationParamsUi,
+) {
+    // Build the coarse heightmap from the isostasy result.
+    // The isostasy system stores the result in the texture, but we need the
+    // actual GridF32. We re-run isostasy to get it. However, the isostasy
+    // cache only stores stats, not the heightmap. We need to get it from the
+    // terrain display's s_field via the bridge. Instead, we'll send the command
+    // and let the thread handle it.
+    //
+    // Actually, we need the isostasy heightmap. The simplest path: the solver
+    // thread receives the s_field (thickness), re-runs isostasy, then upscales.
+    // But that couples the commands. Instead, let's grab the altitude from the
+    // existing isostasy computation — but it's not stored as a resource.
+    //
+    // For now: we'll recompute isostasy in the thread from the thickness field.
+    // This is cheap (~ms) compared to the FBM upscale (~seconds).
+    //
+    // HOWEVER, we don't have access to the s_field here. Let's use UiActions
+    // pattern instead, or pass it differently.
+    //
+    // The cleanest approach: store the isostasy heightmap in IsostasyCache.
+    // But that's a bigger refactor. For now, we'll send the coarse heightmap
+    // via a different path.
+    //
+    // SIMPLEST: we already have the isostasy system that recomputes every frame.
+    // Let's store the heightmap in UpscaleCache as the "source" when isostasy
+    // updates, OR we add the heightmap to IsostasyCache.
+    //
+    // Let me just add the heightmap to IsostasyCache — it's the right thing.
+
+    // For now this is wired as a flag; the actual command is sent from a system
+    // that has access to the terrain display.
+    upscale_cache.state = FbmState::Running;
+
+    let config = ymir_core::terrain::upscale::FbmUpscaleConfig {
+        target_size: params.target_size,
+        octaves: params.octaves,
+        lacunarity: params.lacunarity,
+        persistence: params.persistence,
+        amplitude_base: params.amplitude_base,
+        amplitude_slope_factor: params.amplitude_slope_factor,
+        max_anisotropy: params.max_anisotropy,
+        submarine_damping: params.submarine_damping,
+        base_frequency: 1.0,
+        domain_warp_strength: if params.domain_warp_enabled {
+            params.domain_warp_strength
+        } else {
+            0.0
+        },
+        domain_warp_frequency: params.domain_warp_frequency,
+        domain_warp_octaves: params.domain_warp_octaves,
+    };
+
+    let seed = WorldSeed::new(generation.seed);
+
+    // Store pending command data in the cache for the system to pick up
+    upscale_cache.pending_config = Some(config);
+    upscale_cache.pending_seed = Some(seed);
+    upscale_cache.pending_sea_level = Some(isostasy_cache.sea_level_normalized);
 }
 
 fn draw_climate(ui: &mut egui::Ui, p: &mut ClimateParams) {
