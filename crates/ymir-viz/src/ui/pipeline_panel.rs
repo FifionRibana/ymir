@@ -1,24 +1,26 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use bevy::prelude::*;
 use bevy_egui::egui;
 
-use crate::state::{PhaseStatus, PipelineState, UiActions, ViewState};
+use crate::state::{PhaseStatus, PipelinePhase, PipelineState, UiActions};
 
 pub fn draw(
     ui: &mut egui::Ui,
-    view_state: &mut ViewState,
+    current_phase: &PipelinePhase,
+    next_phase: &mut NextState<PipelinePhase>,
     pipeline: &PipelineState,
     ui_actions: &mut UiActions,
     has_terrain: bool,
 ) {
     egui::CollapsingHeader::new("Pipeline").default_open(true).show(ui, |ui| {
         for (phase, status, timing) in &pipeline.phases {
-            let selected = view_state.selected_phase == *phase;
+            let selected = *current_phase == *phase;
             let text = format!("{} {}", status.icon(), phase.label());
             let response = ui.selectable_label(selected, &text);
             if response.clicked() {
-                view_state.selected_phase = *phase;
+                next_phase.set(*phase);
             }
             if !timing.is_empty() {
                 response.on_hover_text(timing);

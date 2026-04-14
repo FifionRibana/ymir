@@ -14,13 +14,13 @@ use crate::bridge::commands::SolverCommand;
 use crate::bridge::plugin::{SolverBridge, SolverState};
 use crate::state::{
     ClimateParams, ErosionParams, FbmParams, FbmState, GenerationParamsUi, IsostasyCache,
-    IsostasyParams, PipelinePhase, SolverConfig, TectonicState, UpscaleCache, ViewState,
+    IsostasyParams, PipelinePhase, SolverConfig, TectonicState, UpscaleCache,
 };
 
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
     ui: &mut egui::Ui,
-    view_state: &ViewState,
+    current_phase: &PipelinePhase,
     erosion: &mut ErosionParams,
     climate: &mut ClimateParams,
     generation: &mut GenerationParamsUi,
@@ -33,7 +33,7 @@ pub fn draw(
     upscale_cache: &mut UpscaleCache,
 ) {
     egui::CollapsingHeader::new("Parameters").default_open(true).show(ui, |ui| {
-        match view_state.selected_phase {
+        match *current_phase {
             PipelinePhase::Erosion => draw_erosion(ui, erosion),
             PipelinePhase::Tectonics => {
                 draw_tectonics(
@@ -561,10 +561,7 @@ fn draw_fbm(
     let has_isostasy = isostasy_cache.valid;
 
     ui.horizontal(|ui| {
-        let run_btn = ui.add_enabled(
-            has_isostasy && !is_running,
-            egui::Button::new("▶ Run FBM"),
-        );
+        let run_btn = ui.add_enabled(has_isostasy && !is_running, egui::Button::new("▶ Run FBM"));
         if run_btn.clicked() {
             launch_fbm(p, isostasy_cache, upscale_cache, generation);
         }

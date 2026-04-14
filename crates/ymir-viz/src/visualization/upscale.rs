@@ -1,33 +1,26 @@
 //! Upscale visualization: renders the FBM-upscaled heightmap to the terrain
 //! texture when the UpscaleFbm phase is active and a result is available.
+//!
+//! This system is conditioned by `run_if(in_state(...))` in the plugin —
+//! no manual guards needed.
 
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use super::colormap::hypsometric_colormap;
 use super::render::TerrainDisplay;
-use crate::state::{FbmState, IsostasyCache, PipelinePhase, UpscaleCache, ViewMode, ViewState};
+use crate::state::{FbmState, IsostasyCache, UpscaleCache};
 
-/// Update the terrain texture with the upscaled heightmap when the
-/// UpscaleFbm phase is selected and a result is available.
+/// Update the terrain texture with the upscaled heightmap.
 pub fn update_upscale_texture(
     upscale_cache: Res<UpscaleCache>,
     isostasy_cache: Res<IsostasyCache>,
     terrain_display: Res<TerrainDisplay>,
-    view_state: Res<ViewState>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    // Only render when in Altitude mode and UpscaleFbm phase
-    if view_state.mode != ViewMode::Altitude {
-        return;
-    }
-    if view_state.selected_phase != PipelinePhase::UpscaleFbm {
-        return;
-    }
     if !matches!(upscale_cache.state, FbmState::Completed { .. }) {
         return;
     }
-    // Only re-render when the cache actually changed
     if !upscale_cache.is_changed() {
         return;
     }
