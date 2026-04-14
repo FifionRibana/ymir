@@ -10,6 +10,7 @@ use crate::seed::WorldSeed;
 
 /// Configuration for anisotropic FBM upscaling.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FbmUpscaleConfig {
     /// Target resolution (side length in pixels). Default: 1024.
     pub target_size: usize,
@@ -29,6 +30,13 @@ pub struct FbmUpscaleConfig {
     pub submarine_damping: f64,
     /// Base frequency of the first octave, in cycles per source pixel. Default: 1.0.
     pub base_frequency: f64,
+    /// Domain warp strength as fraction of base noise frequency. Default: 0.4.
+    /// 0.0 = no warping, 0.5 = moderate, 1.0 = heavy distortion.
+    pub domain_warp_strength: f64,
+    /// Frequency of the warp noise relative to base frequency. Default: 0.5.
+    pub domain_warp_frequency: f64,
+    /// Number of FBM octaves for the warp noise itself. Default: 3.
+    pub domain_warp_octaves: usize,
 }
 
 impl Default for FbmUpscaleConfig {
@@ -43,6 +51,9 @@ impl Default for FbmUpscaleConfig {
             max_anisotropy: 3.0,
             submarine_damping: 0.3,
             base_frequency: 1.0,
+            domain_warp_strength: 0.0,
+            domain_warp_frequency: 0.5,
+            domain_warp_octaves: 3,
         }
     }
 }
@@ -94,6 +105,9 @@ pub fn upscale_with_fbm(
     let noise = SeededNoise::new(noise_seed, config.octaves);
     // Separate single-octave source for angle perturbation (different seed)
     let angle_noise = SeededNoise::new(noise_seed.wrapping_add(99991), 1);
+    // Domain warp: two independent FBM fields for X and Y displacement
+    let warp_noise_x = SeededNoise::new(noise_seed.wrapping_add(55555), config.domain_warp_octaves);
+    let warp_noise_y = SeededNoise::new(noise_seed.wrapping_add(77777), config.domain_warp_octaves);
 
     // Precompute slope and direction on the coarse grid
     let (slope_map, direction_map) = compute_terrain_analysis(coarse);
@@ -144,10 +158,35 @@ pub fn upscale_with_fbm(
                 ) * ANGLE_PERTURBATION_MAX;
                 let perturbed_dir = slope_dir as f64 + angle_offset;
 
-                // 7. Sample FBM
-                let nx = i as f64 * freq;
-                let ny = j as f64 * freq;
+                // 7. Domain warping: distort noise coordinates to break regular patterns
+                let raw_nx = i as f64 * freq;
+                let raw_ny = j as f64 * freq;
 
+                let (nx, ny) = if config.domain_warp_strength > 0.0 {
+                    let warp_freq = freq * config.domain_warp_frequency;
+                    let wx = i as f64 * warp_freq;
+                    let wy = j as f64 * warp_freq;
+                    let inv_freq = config.domain_warp_strength / freq;
+                    let warp_dx = warp_noise_x.fbm(
+                        wx,
+                        wy,
+                        config.domain_warp_octaves,
+                        config.lacunarity,
+                        config.persistence,
+                    ) * inv_freq;
+                    let warp_dy = warp_noise_y.fbm(
+                        wx,
+                        wy,
+                        config.domain_warp_octaves,
+                        config.lacunarity,
+                        config.persistence,
+                    ) * inv_freq;
+                    (raw_nx + warp_dx, raw_ny + warp_dy)
+                } else {
+                    (raw_nx, raw_ny)
+                };
+
+                // 8. Sample FBM
                 let noise_val = if aniso_blend < 0.001 {
                     // Pure isotropic — skip aniso sample
                     noise.fbm(nx, ny, config.octaves, config.lacunarity, config.persistence)
@@ -178,7 +217,7 @@ pub fn upscale_with_fbm(
                     fbm_iso + (fbm_aniso - fbm_iso) * aniso_blend
                 };
 
-                // 8. Combine: base + noise
+                // 9. Combine: base + noise
                 let final_height = (base_height as f64 + amplitude * noise_val).clamp(0.0, 1.0);
 
                 h_row[i] = final_height as f32;

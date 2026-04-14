@@ -86,6 +86,13 @@ pub fn handle_export(
             max_anisotropy: fbm_params.max_anisotropy,
             submarine_damping: fbm_params.submarine_damping,
             base_frequency: 1.0,
+            domain_warp_strength: if fbm_params.domain_warp_enabled {
+                fbm_params.domain_warp_strength
+            } else {
+                0.0
+            },
+            domain_warp_frequency: fbm_params.domain_warp_frequency,
+            domain_warp_octaves: fbm_params.domain_warp_octaves,
         };
         if let Err(e) = export.save_upscaled(heightmap, &fbm_config) {
             ui_actions.last_message =
@@ -152,6 +159,10 @@ pub fn handle_load(
         fbm_params.amplitude_slope_factor = upscale.amplitude_slope_factor;
         fbm_params.max_anisotropy = upscale.max_anisotropy;
         fbm_params.submarine_damping = upscale.submarine_damping;
+        fbm_params.domain_warp_enabled = upscale.domain_warp_strength > 0.0;
+        fbm_params.domain_warp_strength = upscale.domain_warp_strength;
+        fbm_params.domain_warp_frequency = upscale.domain_warp_frequency;
+        fbm_params.domain_warp_octaves = upscale.domain_warp_octaves;
     }
 
     // ── Load thickness → TerrainDisplay ──────────────────────────────────
@@ -204,8 +215,7 @@ pub fn handle_load(
         state.dirty = true;
         state.generation = state.generation.wrapping_add(1);
     } else {
-        commands
-            .insert_resource(TectonicState { init, config, seed, dirty: true, generation: 1 });
+        commands.insert_resource(TectonicState { init, config, seed, dirty: true, generation: 1 });
     }
 
     let dir_name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();

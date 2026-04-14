@@ -386,6 +386,10 @@ pub struct FbmParams {
     pub amplitude_slope_factor: f64,
     pub max_anisotropy: f64,
     pub submarine_damping: f64,
+    pub domain_warp_enabled: bool,
+    pub domain_warp_strength: f64,
+    pub domain_warp_frequency: f64,
+    pub domain_warp_octaves: usize,
 }
 
 impl Default for FbmParams {
@@ -399,6 +403,10 @@ impl Default for FbmParams {
             amplitude_slope_factor: 3.0,
             max_anisotropy: 3.0,
             submarine_damping: 0.3,
+            domain_warp_enabled: false,
+            domain_warp_strength: 0.4,
+            domain_warp_frequency: 0.5,
+            domain_warp_octaves: 3,
         }
     }
 }
