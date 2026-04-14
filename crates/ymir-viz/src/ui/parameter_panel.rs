@@ -555,6 +555,14 @@ fn draw_fbm(
     slider_row_f64(ui, "Anisotropy", &mut p.max_anisotropy, 1.0..=5.0);
     slider_row_f64(ui, "Sub. damping", &mut p.submarine_damping, 0.0..=1.0);
 
+    ui.add_space(4.0);
+    ui.checkbox(&mut p.domain_warp_enabled, "Domain warp");
+    if p.domain_warp_enabled {
+        slider_row_f64(ui, "Warp strength", &mut p.domain_warp_strength, 0.0..=1.0);
+        slider_row_f64(ui, "Warp frequency", &mut p.domain_warp_frequency, 0.1..=2.0);
+        slider_row_usize(ui, "Warp octaves", &mut p.domain_warp_octaves, 1..=5);
+    }
+
     ui.add_space(6.0);
 
     let is_running = matches!(upscale_cache.state, FbmState::Running);
@@ -636,6 +644,13 @@ fn launch_fbm(
         max_anisotropy: params.max_anisotropy,
         submarine_damping: params.submarine_damping,
         base_frequency: 1.0,
+        domain_warp_strength: if params.domain_warp_enabled {
+            params.domain_warp_strength
+        } else {
+            0.0
+        },
+        domain_warp_frequency: params.domain_warp_frequency,
+        domain_warp_octaves: params.domain_warp_octaves,
     };
 
     let seed = WorldSeed::new(generation.seed);
