@@ -55,6 +55,21 @@ pub struct UpscaleResult {
     pub slope: GridF32,
 }
 
+/// Hermite smoothstep: 0 at lo, 1 at hi, smooth transition.
+fn smoothstep(x: f64, lo: f64, hi: f64) -> f64 {
+    let t = ((x - lo) / (hi - lo)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+// Thresholds for isotropic/anisotropic blending (slope magnitude).
+const ISOTROPY_LOW: f64 = 0.01;
+const ISOTROPY_HIGH: f64 = 0.05;
+
+// Maximum angular perturbation (radians, ~17 degrees).
+const ANGLE_PERTURBATION_MAX: f64 = 0.3;
+// Frequency of the angle perturbation noise (low = spatially coherent).
+const ANGLE_PERTURBATION_FREQ: f64 = 0.02;
+
 /// Upscale a coarse heightmap using anisotropic FBM.
 ///
 /// The coarse heightmap (from isostasy, typically 64-128) is bilinearly
@@ -74,9 +89,11 @@ pub fn upscale_with_fbm(
     let scale_x = (src_w - 1) as f64 / (dst - 1) as f64;
     let scale_y = (src_h - 1) as f64 / (dst - 1) as f64;
 
-    // Create noise generator
+    // Create noise generators
     let noise_seed = seed.derive_seed("fbm_upscale") as u32;
     let noise = SeededNoise::new(noise_seed, config.octaves);
+    // Separate single-octave source for angle perturbation (different seed)
+    let angle_noise = SeededNoise::new(noise_seed.wrapping_add(99991), 1);
 
     // Precompute slope and direction on the coarse grid
     let (slope_map, direction_map) = compute_terrain_analysis(coarse);
@@ -111,28 +128,57 @@ pub fn upscale_with_fbm(
                     * (1.0 + slope_mag as f64 * config.amplitude_slope_factor)
                     * altitude_factor;
 
-                // 4. Compute anisotropy ratio (proportional to slope)
-                let anisotropy = 1.0 + (config.max_anisotropy - 1.0) * (slope_mag as f64).min(1.0);
+                // 4. Compute anisotropy ratio with sigmoid rolloff
+                let slope_f64 = slope_mag as f64;
+                let aniso_t = smoothstep(slope_f64, 0.0, 1.0);
+                let anisotropy = 1.0 + (config.max_anisotropy - 1.0) * aniso_t;
 
-                // 5. Sample anisotropic FBM
+                // 5. Blend factor: isotropic at low slopes, anisotropic at high slopes
+                let aniso_blend = smoothstep(slope_f64, ISOTROPY_LOW, ISOTROPY_HIGH);
+
+                // 6. Angular perturbation to break long-range parallelism
+                let angle_offset = angle_noise.sample(
+                    0,
+                    i as f64 * ANGLE_PERTURBATION_FREQ,
+                    j as f64 * ANGLE_PERTURBATION_FREQ,
+                ) * ANGLE_PERTURBATION_MAX;
+                let perturbed_dir = slope_dir as f64 + angle_offset;
+
+                // 7. Sample FBM
                 let nx = i as f64 * freq;
                 let ny = j as f64 * freq;
 
-                let noise_val = if anisotropy > 1.01 {
+                let noise_val = if aniso_blend < 0.001 {
+                    // Pure isotropic — skip aniso sample
+                    noise.fbm(nx, ny, config.octaves, config.lacunarity, config.persistence)
+                } else if aniso_blend > 0.999 {
+                    // Pure anisotropic — skip iso sample
                     noise.fbm_anisotropic(
                         nx,
                         ny,
-                        slope_dir as f64,
+                        perturbed_dir,
                         anisotropy,
                         config.octaves,
                         config.lacunarity,
                         config.persistence,
                     )
                 } else {
-                    noise.fbm(nx, ny, config.octaves, config.lacunarity, config.persistence)
+                    // Blend both
+                    let fbm_iso =
+                        noise.fbm(nx, ny, config.octaves, config.lacunarity, config.persistence);
+                    let fbm_aniso = noise.fbm_anisotropic(
+                        nx,
+                        ny,
+                        perturbed_dir,
+                        anisotropy,
+                        config.octaves,
+                        config.lacunarity,
+                        config.persistence,
+                    );
+                    fbm_iso + (fbm_aniso - fbm_iso) * aniso_blend
                 };
 
-                // 6. Combine: base + noise
+                // 8. Combine: base + noise
                 let final_height = (base_height as f64 + amplitude * noise_val).clamp(0.0, 1.0);
 
                 h_row[i] = final_height as f32;
@@ -255,5 +301,40 @@ mod tests {
         for &v in &result.heightmap.data {
             assert!((0.0..=1.0).contains(&v), "Height out of range: {v}");
         }
+    }
+
+    #[test]
+    fn flat_interior_uses_isotropic_noise() {
+        // On a flat heightmap, the interior pixels (away from edges) should produce
+        // identical noise regardless of max_anisotropy, because slope_mag ≈ 0
+        // and the blend factor forces pure isotropic sampling.
+        // Edge pixels may differ because GridF32::gradient_at returns non-zero
+        // gradients at boundaries (clamp behavior).
+        let coarse = GridF32::new(16, 16, 0.5);
+        let seed = WorldSeed::new(42);
+
+        let config_iso =
+            FbmUpscaleConfig { target_size: 64, max_anisotropy: 1.0, ..Default::default() };
+        let config_aniso =
+            FbmUpscaleConfig { target_size: 64, max_anisotropy: 3.0, ..Default::default() };
+
+        let r_iso = upscale_with_fbm(&coarse, 0.1, &seed, &config_iso);
+        let r_aniso = upscale_with_fbm(&coarse, 0.1, &seed, &config_aniso);
+
+        // Check interior pixels only (skip outer 25% to avoid edge effects)
+        let margin = 16; // 25% of 64
+        let mut max_diff = 0.0f32;
+        for j in margin..(64 - margin) {
+            for i in margin..(64 - margin) {
+                let idx = j * 64 + i;
+                let diff = (r_iso.heightmap.data[idx] - r_aniso.heightmap.data[idx]).abs();
+                max_diff = max_diff.max(diff);
+            }
+        }
+
+        assert!(
+            max_diff < 1e-6,
+            "Flat interior should be isotropic regardless of max_anisotropy, max_diff={max_diff}"
+        );
     }
 }

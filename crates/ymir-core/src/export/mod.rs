@@ -143,4 +143,9 @@ impl PipelineExport {
     pub fn load_altitude(&self) -> Result<GridF32, String> {
         GridF32::load_png(&self.dir.join("02_altitude.png"))
     }
+
+    /// Load the upscaled heightmap from a previously saved export.
+    pub fn load_upscaled(&self) -> Result<GridF32, String> {
+        GridF32::load_png(&self.dir.join("03_upscaled.png"))
+    }
 }
