@@ -2,7 +2,9 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
 use crate::camera::MainCamera;
-use crate::state::{CursorWorldPos, GenerationParamsUi, TerrainData, TectonicState, ViewMode, ViewState};
+use crate::state::{
+    CursorWorldPos, GenerationParamsUi, TectonicState, TerrainData, ViewMode, ViewState,
+};
 use crate::tectonic_view::thickness_color;
 use crate::terrain_view::hypsometric_color;
 
@@ -106,9 +108,8 @@ fn draw_tectonic_info(
                 PlateType::Continental => "Cont",
                 PlateType::Oceanic => "Oce",
             };
-            let speed = (plate.velocity.0 * plate.velocity.0
-                + plate.velocity.1 * plate.velocity.1)
-                .sqrt();
+            let speed =
+                (plate.velocity.0 * plate.velocity.0 + plate.velocity.1 * plate.velocity.1).sqrt();
             ui.monospace(format!(
                 "x: {}  y: {}  plate: {} ({})  t: {:.2}  v: {:.2}",
                 x, y, plate_id, ptype, thickness, speed

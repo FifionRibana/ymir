@@ -91,11 +91,7 @@ pub struct ContinuationConfig {
 
 impl Default for ContinuationConfig {
     fn default() -> Self {
-        Self {
-            enabled: true,
-            n_steps: vec![1.0, 1.5, 2.0, 2.5, 3.0],
-            eps_min_start: Some(1e-2),
-        }
+        Self { enabled: true, n_steps: vec![1.0, 1.5, 2.0, 2.5, 3.0], eps_min_start: Some(1e-2) }
     }
 }
 
@@ -112,6 +108,67 @@ pub struct TectonicsConfig {
     pub newton: NewtonConfig,
     pub continuation: ContinuationConfig,
     pub boundaries: super::super::boundaries::BoundaryConfig,
+    /// Whether plate boundaries are dynamically recomputed each timestep.
+    /// When true, plate seeds are advected with the velocity field and the
+    /// Voronoï partition is rebuilt, allowing plates to shrink and disappear.
+    pub dynamic_boundaries: bool,
+    /// Cratonic rigidity: spatial viscosity variation within continental plates.
+    pub cratonic: CratonicConfig,
+    /// Plastic yielding with strain weakening.
+    pub yielding: YieldingConfig,
+}
+
+/// Configuration for cratonic rigidity (spatial viscosity variation).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CratonicConfig {
+    /// Enable spatial viscosity variation. Default: true.
+    pub enabled: bool,
+    /// Maximum viscosity multiplier at the center of continental plates.
+    /// 1.0 = no effect. Range: 1.0-100.0, default: 20.0
+    pub max_factor: f64,
+    /// Controls how fast rigidity decays from center to edge.
+    /// 1.0 = linear, 2.0 = quadratic, 3.0 = cubic.
+    /// Range: 0.5-4.0, default: 2.0
+    pub decay_power: f64,
+}
+
+impl Default for CratonicConfig {
+    fn default() -> Self {
+        Self { enabled: true, max_factor: 5.0, decay_power: 1.3 }
+    }
+}
+
+/// Configuration for plastic yielding (Drucker-Prager-like).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct YieldingConfig {
+    /// Enable plastic yielding. Default: true.
+    pub enabled: bool,
+    /// Base yield stress (solver units). When τ = 2ηε̇ exceeds this,
+    /// viscosity is reduced so τ = τ_yield. Range: 1.0-500.0, default: 50.0
+    pub yield_stress: f64,
+    /// Enable strain weakening. Default: true.
+    pub weakening_enabled: bool,
+    /// Max fractional reduction of yield stress from accumulated plastic strain.
+    /// 0.0 = none, 0.8 = yield stress can drop to 20%. Range: 0.0-0.9, default: 0.5
+    pub weakening_fraction: f64,
+    /// Reference plastic strain for full weakening. Range: 0.1-10.0, default: 1.0
+    pub weakening_strain_ref: f64,
+    /// Healing rate: plastic strain decreases over time (thermal recovery).
+    /// 0.0 = no healing. Rate per timestep (scaled by dt). Default: 0.0
+    pub healing_rate: f64,
+}
+
+impl Default for YieldingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            yield_stress: 50.0,
+            weakening_enabled: true,
+            weakening_fraction: 0.5,
+            weakening_strain_ref: 1.0,
+            healing_rate: 0.0,
+        }
+    }
 }
 
 impl Default for TectonicsConfig {
@@ -127,6 +184,9 @@ impl Default for TectonicsConfig {
             newton: NewtonConfig::default(),
             continuation: ContinuationConfig::default(),
             boundaries: Default::default(),
+            dynamic_boundaries: true,
+            cratonic: CratonicConfig::default(),
+            yielding: YieldingConfig::default(),
         }
     }
 }

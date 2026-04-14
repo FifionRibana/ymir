@@ -11,11 +11,10 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(EguiPlugin::default())
-            .add_systems(
-                EguiPrimaryContextPass,
-                (configure_egui_style, ui_top_bar, ui_right_panel, ui_bottom_bar).chain(),
-            );
+        app.add_plugins(EguiPlugin::default()).add_systems(
+            EguiPrimaryContextPass,
+            (configure_egui_style, ui_top_bar, ui_right_panel, ui_bottom_bar).chain(),
+        );
     }
 }
 
@@ -71,6 +70,11 @@ fn ui_top_bar(
                 view_state.overlays.grid = grid;
             }
 
+            let mut plates = view_state.overlays.plates;
+            if ui.checkbox(&mut plates, "Plates").changed() {
+                view_state.overlays.plates = plates;
+            }
+
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.monospace(format!("Seed: {}", gen_params.seed));
             });
@@ -96,35 +100,33 @@ fn ui_right_panel(
     terrain_display: Res<crate::visualization::render::TerrainDisplay>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
-    egui::SidePanel::right("right_panel")
-        .exact_width(260.0)
-        .show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                let has_terrain = terrain_display.s_field.is_some();
-                pipeline_panel::draw(
-                    ui,
-                    &mut view_state,
-                    &pipeline_state,
-                    &mut ui_actions,
-                    has_terrain,
-                );
-                ui.separator();
-                parameter_panel::draw(
-                    ui,
-                    &view_state,
-                    &mut erosion,
-                    &mut climate,
-                    &mut gen_params,
-                    tectonic_state,
-                    &mut solver_config,
-                    &mut bridge,
-                    &mut isostasy_params,
-                    &isostasy_cache,
-                );
-                ui.separator();
-                statistics_panel::draw(ui, &stats);
-            });
+    egui::SidePanel::right("right_panel").exact_width(260.0).show(ctx, |ui| {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            let has_terrain = terrain_display.s_field.is_some();
+            pipeline_panel::draw(
+                ui,
+                &mut view_state,
+                &pipeline_state,
+                &mut ui_actions,
+                has_terrain,
+            );
+            ui.separator();
+            parameter_panel::draw(
+                ui,
+                &view_state,
+                &mut erosion,
+                &mut climate,
+                &mut gen_params,
+                tectonic_state,
+                &mut solver_config,
+                &mut bridge,
+                &mut isostasy_params,
+                &isostasy_cache,
+            );
+            ui.separator();
+            statistics_panel::draw(ui, &stats);
         });
+    });
 }
 
 fn ui_bottom_bar(mut contexts: EguiContexts, time: Res<Time>) {

@@ -8,14 +8,15 @@
 
 use tracing::{debug, warn};
 
+use super::config::YieldingConfig;
 use super::config::{NewtonConfig, PicardConfig, Preconditioner};
 use super::field::Field2D;
 use super::grid::StaggeredGrid;
 use super::linear_solve::{apply_jacobi, solve_bicgstab};
-use super::picard::{compute_strain_rate, compute_viscosity};
-use super::stokes::{apply_ssor, apply_stokes, compute_jacobi_precond, compute_rhs, StencilCoeffs};
+use super::picard::{apply_eta_multiplier, apply_yielding, compute_strain_rate, compute_viscosity};
+use super::stokes::{StencilCoeffs, apply_ssor, apply_stokes, compute_jacobi_precond, compute_rhs};
 use super::traction::TractionField;
-use super::workspace::{pack_velocity, unpack_velocity, SolverWorkspace};
+use super::workspace::{SolverWorkspace, pack_velocity, unpack_velocity};
 
 /// Result of a Newton solve.
 pub struct NewtonResult {
@@ -28,11 +29,15 @@ pub struct NewtonResult {
 /// Compute the nonlinear residual F(v) = A(η(v))·v - b.
 ///
 /// Side effects: updates `eta_out` and `strain_rate_out` from the velocity field.
+#[allow(clippy::too_many_arguments)]
 fn compute_nonlinear_residual(
     v_packed: &[f64],
     b: &[f64],
     grid: &mut StaggeredGrid,
     picard_config: &PicardConfig,
+    eta_multiplier: &Field2D,
+    plastic_strain: &Field2D,
+    yielding: &YieldingConfig,
     eta_out: &mut Field2D,
     strain_rate_out: &mut Field2D,
     residual: &mut [f64],
@@ -47,6 +52,11 @@ fn compute_nonlinear_residual(
         picard_config.eta_max,
         eta_out,
     );
+    apply_eta_multiplier(eta_multiplier, picard_config.eta_max, eta_out);
+    apply_yielding(strain_rate_out, plastic_strain, yielding, eta_out);
+    for val in eta_out.data_mut().iter_mut() {
+        *val = val.clamp(picard_config.eta_min, picard_config.eta_max);
+    }
     apply_stokes(v_packed, eta_out, grid, residual);
     for i in 0..residual.len() {
         residual[i] -= b[i];
@@ -60,11 +70,15 @@ fn compute_nonlinear_residual(
 /// 2. Build preconditioner from A(η_frozen)
 /// 3. Solve J·δv = -F(vᵏ) via BiCGSTAB with JFNK operator
 /// 4. Update v ← v + δv
+#[allow(clippy::too_many_arguments)]
 pub fn solve_velocity_newton(
     grid: &mut StaggeredGrid,
     plates: &TractionField,
     gravity_factor: f64,
+    rho_continental: f64,
+    rho_mantle: f64,
     picard_config: &PicardConfig,
+    yielding: &YieldingConfig,
     newton_config: &NewtonConfig,
     ws: &mut SolverWorkspace,
 ) -> NewtonResult {
@@ -74,7 +88,7 @@ pub fn solve_velocity_newton(
     let mut total_linear = 0usize;
 
     // Compute RHS (constant during Newton)
-    compute_rhs(grid, plates, gravity_factor, &mut ws.rhs);
+    compute_rhs(grid, plates, gravity_factor, rho_continental, rho_mantle, &mut ws.rhs);
 
     // Project out null space
     let mean_vx: f64 = ws.rhs[..n2].iter().sum::<f64>() / n2 as f64;
@@ -89,6 +103,10 @@ pub fn solve_velocity_newton(
     // Pack current velocity as initial guess
     pack_velocity(grid, &mut ws.v_packed);
 
+    // Clone eta_multiplier so we can pass grid mutably while reading the multiplier
+    let eta_mult = grid.eta_multiplier.clone();
+    let ps_snap = grid.plastic_strain.clone();
+
     let mut prev_f_norm = f64::MAX;
 
     for k in 0..newton_config.max_iterations {
@@ -98,6 +116,9 @@ pub fn solve_velocity_newton(
             &ws.rhs,
             grid,
             picard_config,
+            &eta_mult,
+            &ps_snap,
+            yielding,
             &mut ws.eta,
             &mut ws.strain_rate,
             &mut ws.jfnk_f_v,
@@ -175,6 +196,9 @@ pub fn solve_velocity_newton(
                             &rhs_ref,
                             grid,
                             picard_config,
+                            &eta_mult,
+                            &ps_snap,
+                            yielding,
                             &mut jfnk_eta,
                             &mut jfnk_sr,
                             &mut jfnk_residual,
@@ -212,6 +236,9 @@ pub fn solve_velocity_newton(
                             &rhs_ref,
                             grid,
                             picard_config,
+                            &eta_mult,
+                            &ps_snap,
+                            yielding,
                             &mut jfnk_eta,
                             &mut jfnk_sr,
                             &mut jfnk_residual,
@@ -295,20 +322,23 @@ mod tests {
         }
 
         let plates = TractionField::uniform(n, 0.1, 0.0);
-        let picard_config = PicardConfig {
-            power_law_n: 1.0,
-            strain_rate_min: 1e-6,
-            ..PicardConfig::default()
-        };
-        let newton_config = NewtonConfig {
-            max_iterations: 15,
-            tolerance: 1e-8,
-            ..NewtonConfig::default()
-        };
+        let picard_config =
+            PicardConfig { power_law_n: 1.0, strain_rate_min: 1e-6, ..PicardConfig::default() };
+        let newton_config =
+            NewtonConfig { max_iterations: 15, tolerance: 1e-8, ..NewtonConfig::default() };
         let mut ws = SolverWorkspace::new(n);
 
-        let result =
-            solve_velocity_newton(&mut grid, &plates, 1.0, &picard_config, &newton_config, &mut ws);
+        let result = solve_velocity_newton(
+            &mut grid,
+            &plates,
+            1.0,
+            0.0,
+            0.0,
+            &picard_config,
+            &Default::default(),
+            &newton_config,
+            &mut ws,
+        );
         assert!(result.converged, "Newton should converge for linear viscosity");
         assert!(
             result.iterations <= 2,
@@ -330,20 +360,23 @@ mod tests {
         }
 
         let plates = TractionField::two_plates_convergent(n, 0.5);
-        let picard_config = PicardConfig {
-            power_law_n: 3.0,
-            strain_rate_min: 1e-3,
-            ..PicardConfig::default()
-        };
-        let newton_config = NewtonConfig {
-            max_iterations: 30,
-            tolerance: 1e-4,
-            ..NewtonConfig::default()
-        };
+        let picard_config =
+            PicardConfig { power_law_n: 3.0, strain_rate_min: 1e-3, ..PicardConfig::default() };
+        let newton_config =
+            NewtonConfig { max_iterations: 30, tolerance: 1e-4, ..NewtonConfig::default() };
         let mut ws = SolverWorkspace::new(n);
 
-        let result =
-            solve_velocity_newton(&mut grid, &plates, 1.0, &picard_config, &newton_config, &mut ws);
+        let result = solve_velocity_newton(
+            &mut grid,
+            &plates,
+            1.0,
+            0.0,
+            0.0,
+            &picard_config,
+            &Default::default(),
+            &newton_config,
+            &mut ws,
+        );
         assert!(
             result.converged,
             "Newton should converge for power-law, got {} iterations",
@@ -379,8 +412,16 @@ mod tests {
         }
         let plates = TractionField::two_plates_convergent(n, 0.5);
         let mut ws_p = SolverWorkspace::new(n);
-        let picard_result =
-            solve_velocity_picard(&mut grid_p, &plates, 1.0, &picard_config, &mut ws_p);
+        let picard_result = solve_velocity_picard(
+            &mut grid_p,
+            &plates,
+            1.0,
+            0.0,
+            0.0,
+            &picard_config,
+            &Default::default(),
+            &mut ws_p,
+        );
         assert!(picard_result.converged, "Picard should converge");
         let mut v_picard = vec![0.0; n_dof];
         pack_velocity(&grid_p, &mut v_picard);
@@ -392,17 +433,17 @@ mod tests {
                 grid_n.s.set(i, j, 1.0);
             }
         }
-        let newton_config = NewtonConfig {
-            max_iterations: 30,
-            tolerance: 1e-6,
-            ..NewtonConfig::default()
-        };
+        let newton_config =
+            NewtonConfig { max_iterations: 30, tolerance: 1e-6, ..NewtonConfig::default() };
         let mut ws_n = SolverWorkspace::new(n);
         let newton_result = solve_velocity_newton(
             &mut grid_n,
             &plates,
             1.0,
+            0.0,
+            0.0,
             &picard_config,
+            &Default::default(),
             &newton_config,
             &mut ws_n,
         );
@@ -418,10 +459,7 @@ mod tests {
             norm_sq += v_picard[i].powi(2);
         }
         let rel_err = (diff_sq / norm_sq.max(1e-30)).sqrt();
-        assert!(
-            rel_err < 1e-2,
-            "Picard and Newton should agree: rel_err = {rel_err}"
-        );
+        assert!(rel_err < 1e-2, "Picard and Newton should agree: rel_err = {rel_err}");
     }
 
     #[test]
@@ -429,11 +467,8 @@ mod tests {
         let n = 16;
         let dx = 1.0 / n as f64;
 
-        let picard_config = PicardConfig {
-            power_law_n: 3.0,
-            strain_rate_min: 1e-3,
-            ..PicardConfig::default()
-        };
+        let picard_config =
+            PicardConfig { power_law_n: 3.0, strain_rate_min: 1e-3, ..PicardConfig::default() };
         let plates = TractionField::two_plates_convergent(n, 0.5);
 
         // Exact Newton (tight inner tolerance)
@@ -454,7 +489,10 @@ mod tests {
             &mut grid_exact,
             &plates,
             1.0,
+            0.0,
+            0.0,
             &picard_config,
+            &Default::default(),
             &config_exact,
             &mut ws_exact,
         );
@@ -477,7 +515,10 @@ mod tests {
             &mut grid_inexact,
             &plates,
             1.0,
+            0.0,
+            0.0,
             &picard_config,
+            &Default::default(),
             &config_inexact,
             &mut ws_inexact,
         );

@@ -55,6 +55,38 @@ pub struct BoundaryConfig {
     /// Gaussian smoothing sigma (in grid cells) applied to the source field.
     /// 0.0 = no smoothing. Default: 2.0
     pub source_smoothing_sigma: f64,
+    /// Reference thickness for oceanic crust (dimensionless).
+    /// Oceanic cells thicker than this are subject to gravitational restoring.
+    /// Default: 0.25 (slightly above initial oceanic thickness of 0.2).
+    pub oceanic_reference_thickness: f64,
+    /// Thickness above which oceanic cells are NOT subject to restoring.
+    /// Cells on oceanic plates can thicken beyond their reference value
+    /// either because genuine oceanic crust piled up (should be restored)
+    /// or because continental material spilled over by advection (should
+    /// be left alone). This threshold distinguishes the two cases:
+    /// below it, the material is treated as thickened oceanic crust and
+    /// pulled back toward `oceanic_reference_thickness`; above it, the
+    /// material is presumed continental in origin and left untouched.
+    /// Default: 0.4 (midpoint between oceanic ~0.2 and thin continental ~0.6).
+    pub oceanic_restore_threshold: f64,
+    /// Rate at which excess oceanic thickness is removed per timestep.
+    /// Models dense oceanic crust sinking back into the mantle.
+    /// 0.0 = no restoring, 1.0 = excess removed in one step.
+    /// Range: 0.0-1.0, default: 0.3
+    pub oceanic_restore_rate: f64,
+    /// Enable dynamic slab pull. Default: true.
+    pub slab_pull_enabled: bool,
+    /// Slab pull traction increase per unit of subducted mass.
+    /// Range: 0.001-0.5, default: 0.05
+    pub slab_pull_factor: f64,
+    /// Maximum plate velocity magnitude (prevents runaway). Default: 5.0
+    pub max_plate_velocity: f32,
+    /// Crustal density for continental plates (kg/m³). Default: 2750.
+    pub rho_continental: f64,
+    /// Crustal density for oceanic plates (kg/m³). Default: 3000.
+    pub rho_oceanic: f64,
+    /// Mantle density (kg/m³). Default: 3300.
+    pub rho_mantle: f64,
 }
 
 impl Default for BoundaryConfig {
@@ -68,6 +100,15 @@ impl Default for BoundaryConfig {
             collision_volcanism_rate: 0.05,
             rift_volcanism_rate: 0.02,
             source_smoothing_sigma: 2.0,
+            oceanic_reference_thickness: 0.25,
+            oceanic_restore_threshold: 0.4,
+            oceanic_restore_rate: 0.05,
+            slab_pull_enabled: true,
+            slab_pull_factor: 0.05,
+            max_plate_velocity: 5.0,
+            rho_continental: 2750.0,
+            rho_oceanic: 3000.0,
+            rho_mantle: 3300.0,
         }
     }
 }
@@ -106,12 +147,8 @@ pub fn compute_boundary_sources(
             let my_plate = plate_ids[k];
             let my_type = plates[my_plate].plate_type;
 
-            let neighbors = [
-                (idx.next(i), j),
-                (idx.prev(i), j),
-                (i, idx.next(j)),
-                (i, idx.prev(j)),
-            ];
+            let neighbors =
+                [(idx.next(i), j), (idx.prev(i), j), (i, idx.next(j)), (i, idx.prev(j))];
 
             let mut is_boundary = false;
             let mut convergence_sum = 0.0_f64;
@@ -142,20 +179,15 @@ pub fn compute_boundary_sources(
                     };
 
                     // Velocity at cell center (average of staggered faces)
-                    let vx_here =
-                        0.5 * (grid.vx.get(i, j) + grid.vx.get(idx.next(i), j));
-                    let vy_here =
-                        0.5 * (grid.vy.get(i, j) + grid.vy.get(i, idx.next(j)));
+                    let vx_here = 0.5 * (grid.vx.get(i, j) + grid.vx.get(idx.next(i), j));
+                    let vy_here = 0.5 * (grid.vy.get(i, j) + grid.vy.get(i, idx.next(j)));
 
-                    let vx_there =
-                        0.5 * (grid.vx.get(ni, nj) + grid.vx.get(idx.next(ni), nj));
-                    let vy_there =
-                        0.5 * (grid.vy.get(ni, nj) + grid.vy.get(ni, idx.next(nj)));
+                    let vx_there = 0.5 * (grid.vx.get(ni, nj) + grid.vx.get(idx.next(ni), nj));
+                    let vy_there = 0.5 * (grid.vy.get(ni, nj) + grid.vy.get(ni, idx.next(nj)));
 
                     // Relative velocity in normal direction
                     // Positive = diverging, Negative = converging
-                    let v_rel =
-                        (vx_there - vx_here) * nx + (vy_there - vy_here) * ny;
+                    let v_rel = (vx_there - vx_here) * nx + (vy_there - vy_here) * ny;
                     convergence_sum += v_rel;
                 }
             }
@@ -170,15 +202,11 @@ pub fn compute_boundary_sources(
             let btype = if is_converging {
                 match (my_type, neighbor_plate_type) {
                     (PlateType::Oceanic, PlateType::Continental)
-                    | (PlateType::Continental, PlateType::Oceanic) => {
-                        BoundaryType::Subduction
-                    }
+                    | (PlateType::Continental, PlateType::Oceanic) => BoundaryType::Subduction,
                     (PlateType::Continental, PlateType::Continental) => {
                         BoundaryType::ContinentalCollision
                     }
-                    (PlateType::Oceanic, PlateType::Oceanic) => {
-                        BoundaryType::OceanicSubduction
-                    }
+                    (PlateType::Oceanic, PlateType::Oceanic) => BoundaryType::OceanicSubduction,
                 }
             } else {
                 BoundaryType::Rift
@@ -237,6 +265,60 @@ pub fn compute_boundary_sources_into(
     target.data_mut().copy_from_slice(result.source_rate.data());
 }
 
+// ── Slab pull ───────────────────────────────────────────────────────────
+
+/// Accumulate subducted mass into plates for slab pull computation.
+///
+/// Where source_rate is negative (subduction sink), the removed mass is
+/// attributed to the plate owning that cell. The slab pull then acts on
+/// that plate, pulling it toward the trench.
+pub fn accumulate_subducted_mass(
+    source_rate: &Field2D,
+    plate_ids: &[usize],
+    plates: &mut [Plate],
+    dt: f64,
+    n: usize,
+) {
+    for j in 0..n {
+        for i in 0..n {
+            let q = source_rate.get(i, j);
+            if q < 0.0 {
+                let pid = plate_ids[j * n + i];
+                plates[pid].subducted_mass += (-q * dt).abs();
+            }
+        }
+    }
+}
+
+/// Apply slab pull: increase plate velocity proportional to cumulative
+/// subducted mass, capped at `max_velocity`.
+pub fn apply_slab_pull(plates: &mut [Plate], slab_pull_factor: f64, max_velocity: f32) {
+    for plate in plates.iter_mut() {
+        if !plate.active {
+            continue;
+        }
+
+        let pull_magnitude = slab_pull_factor * plate.subducted_mass;
+        if pull_magnitude < 1e-30 {
+            continue;
+        }
+
+        let vx = plate.velocity.0 as f64;
+        let vy = plate.velocity.1 as f64;
+        let v_mag = (vx * vx + vy * vy).sqrt().max(1e-30);
+
+        plate.velocity.0 += (pull_magnitude * vx / v_mag) as f32;
+        plate.velocity.1 += (pull_magnitude * vy / v_mag) as f32;
+
+        // Cap total velocity
+        let new_mag = (plate.velocity.0.powi(2) + plate.velocity.1.powi(2)).sqrt();
+        if new_mag > max_velocity {
+            plate.velocity.0 *= max_velocity / new_mag;
+            plate.velocity.1 *= max_velocity / new_mag;
+        }
+    }
+}
+
 // ── Gaussian blur for f64 Field2D ────────────────────────────────────────
 
 /// Separable Gaussian blur on a Field2D with periodic (toroidal) wrapping.
@@ -270,8 +352,7 @@ pub fn gaussian_blur_f64(field: &Field2D, sigma: f64) -> Field2D {
         for i in 0..n {
             let mut val = 0.0_f64;
             for (ki, &w) in kernel.iter().enumerate() {
-                let si = (i as i32 + ki as i32 - radius as i32)
-                    .rem_euclid(n as i32) as usize;
+                let si = (i as i32 + ki as i32 - radius as i32).rem_euclid(n as i32) as usize;
                 val += field.get(si, j) * w;
             }
             temp.set(i, j, val);
@@ -284,8 +365,7 @@ pub fn gaussian_blur_f64(field: &Field2D, sigma: f64) -> Field2D {
         for i in 0..n {
             let mut val = 0.0_f64;
             for (ki, &w) in kernel.iter().enumerate() {
-                let sj = (j as i32 + ki as i32 - radius as i32)
-                    .rem_euclid(n as i32) as usize;
+                let sj = (j as i32 + ki as i32 - radius as i32).rem_euclid(n as i32) as usize;
                 val += temp.get(i, sj) * w;
             }
             result.set(i, j, val);
@@ -321,6 +401,8 @@ mod tests {
                 velocity: (0.5, 0.0),
                 seed_x: (n / 4) as f32,
                 seed_y: (n / 2) as f32,
+                active: true,
+                subducted_mass: 0.0,
             },
             Plate {
                 id: 1,
@@ -328,6 +410,8 @@ mod tests {
                 velocity: (-0.5, 0.0),
                 seed_x: (3 * n / 4) as f32,
                 seed_y: (n / 2) as f32,
+                active: true,
+                subducted_mass: 0.0,
             },
         ];
 
@@ -355,10 +439,7 @@ mod tests {
         let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
 
         let oceanic_boundary = result.source_rate.get(n / 2 - 1, n / 2);
-        assert!(
-            oceanic_boundary < 0.0,
-            "Oceanic side should be a sink: Q = {oceanic_boundary}"
-        );
+        assert!(oceanic_boundary < 0.0, "Oceanic side should be a sink: Q = {oceanic_boundary}");
 
         let continental_boundary = result.source_rate.get(n / 2, n / 2);
         assert!(
@@ -388,10 +469,7 @@ mod tests {
         let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
 
         let boundary_q = result.source_rate.get(n / 2, n / 2);
-        assert!(
-            boundary_q > 0.0,
-            "Rift should create crust: Q = {boundary_q}"
-        );
+        assert!(boundary_q > 0.0, "Rift should create crust: Q = {boundary_q}");
     }
 
     #[test]
@@ -409,10 +487,7 @@ mod tests {
         let config = BoundaryConfig::default();
         let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
 
-        assert!(
-            result.source_rate.get(0, 0).abs() < 1e-10,
-            "Interior cell should have no source"
-        );
+        assert!(result.source_rate.get(0, 0).abs() < 1e-10, "Interior cell should have no source");
         assert!(
             result.source_rate.get(n - 1, n / 2).abs() < 1e-10,
             "Interior cell should have no source"
@@ -436,17 +511,10 @@ mod tests {
         let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
 
         let total_q: f64 = result.source_rate.data().iter().sum();
-        let max_q: f64 = result
-            .source_rate
-            .data()
-            .iter()
-            .map(|x| x.abs())
-            .fold(0.0, f64::max);
+        let max_q: f64 = result.source_rate.data().iter().map(|x| x.abs()).fold(0.0, f64::max);
         let relative = total_q.abs() / (max_q * n as f64).max(1e-10);
 
-        eprintln!(
-            "Total Q = {total_q:.6}, max |Q| = {max_q:.6}, relative = {relative:.6}"
-        );
+        eprintln!("Total Q = {total_q:.6}, max |Q| = {max_q:.6}, relative = {relative:.6}");
     }
 
     #[test]

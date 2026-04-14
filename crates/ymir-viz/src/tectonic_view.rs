@@ -10,7 +10,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::plates::{PlateConfig, PlateType, generate_plates};
 
-use crate::state::{TectonicState, ViewMode, ViewState};
+use crate::state::{DynamicPlateIds, TectonicState, ViewMode, ViewState};
 
 pub struct TectonicViewPlugin;
 
@@ -18,7 +18,12 @@ impl Plugin for TectonicViewPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_tectonic).add_systems(
             Update,
-            (rebuild_tectonic_texture, toggle_tectonic_visibility, draw_velocity_arrows),
+            (
+                rebuild_tectonic_texture,
+                toggle_tectonic_visibility,
+                draw_velocity_arrows,
+                draw_plate_boundaries,
+            ),
         );
     }
 }
@@ -80,7 +85,7 @@ fn setup_tectonic(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     commands.spawn((
         Sprite {
             image: image_handle.clone(),
-            custom_size: Some(Vec2::new(size as f32, size as f32)),
+            custom_size: Some(Vec2::new(600.0, 600.0)),
             ..default()
         },
         TectonicSprite,
@@ -88,7 +93,13 @@ fn setup_tectonic(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     ));
 
     commands.insert_resource(TectonicImageHandle(image_handle));
-    commands.insert_resource(TectonicState { init, config, seed: seed_val, dirty: true, generation: 0 });
+    commands.insert_resource(TectonicState {
+        init,
+        config,
+        seed: seed_val,
+        dirty: true,
+        generation: 0,
+    });
 }
 
 fn alloc_image(images: &mut Assets<Image>, width: u32, height: u32) -> Handle<Image> {
@@ -129,7 +140,7 @@ fn rebuild_tectonic_texture(
         let new_handle = alloc_image(&mut images, size, size);
         for mut sprite in sprite_q.iter_mut() {
             sprite.image = new_handle.clone();
-            sprite.custom_size = Some(Vec2::new(size as f32, size as f32));
+            sprite.custom_size = Some(Vec2::new(600.0, 600.0));
         }
         handle_res.0 = new_handle;
     }
@@ -142,7 +153,7 @@ fn rebuild_tectonic_texture(
 
     for y in 0..s {
         for x in 0..s {
-            let idx = (y * s + x) * 4;
+            let idx = ((s - 1 - y) * s + x) * 4; // Y-flip: match terrain renderer
             let thickness = init.thickness.data[y * s + x];
             let plate_id = init.plate_ids[y * s + x];
 
@@ -201,17 +212,18 @@ fn draw_velocity_arrows(
     }
     let Some(tectonic) = tectonic else { return };
     let init = &tectonic.init;
-    let half = init.grid_size as f32 / 2.0;
+    let n = init.grid_size as f32;
+    let sprite_size = 600.0_f32;
+    let cell_size = sprite_size / n;
+    let half = sprite_size / 2.0;
 
     for plate in &init.plates {
-        // Convert grid coords to world coords (grid centre = world origin, Y flipped)
-        let wx = plate.seed_x - half;
-        let wy = -(plate.seed_y - half);
+        let wx = plate.seed_x * cell_size - half;
+        let wy = plate.seed_y * cell_size - half;
         let start = Vec2::new(wx, wy);
 
-        // Scale velocity so arrows span ~8 grid cells
-        let scale = 8.0_f32;
-        let end = start + Vec2::new(plate.velocity.0 * scale, -plate.velocity.1 * scale);
+        let scale = cell_size * 8.0;
+        let end = start + Vec2::new(plate.velocity.0 * scale, plate.velocity.1 * scale);
 
         let color = match plate.plate_type {
             PlateType::Continental => Color::WHITE,
@@ -219,5 +231,90 @@ fn draw_velocity_arrows(
         };
 
         gizmos.arrow_2d(start, end, color);
+    }
+}
+
+// ── Plate boundary overlay (gizmos) ──────────────────────────────────────
+
+fn draw_plate_boundaries(
+    mut gizmos: Gizmos,
+    plate_ids_res: Res<DynamicPlateIds>,
+    view_state: Res<ViewState>,
+    tectonic: Option<Res<TectonicState>>,
+) {
+    if !view_state.overlays.plates {
+        return;
+    }
+
+    // Use dynamic plate_ids if available, otherwise fall back to static
+    let (ids, n, plates_opt) = if let Some(ref ids) = plate_ids_res.ids {
+        let n = plate_ids_res.grid_size;
+        if n == 0 || ids.len() != n * n {
+            return;
+        }
+        (ids.as_slice(), n, plate_ids_res.plates.as_deref())
+    } else if let Some(ref tecto) = tectonic {
+        let n = tecto.init.grid_size;
+        (tecto.init.plate_ids.as_slice(), n, Some(tecto.init.plates.as_slice()))
+    } else {
+        return;
+    };
+
+    // Scale: grid coords → world coords. Sprite is 600×600, centered at origin.
+    let sprite_size = 600.0_f32;
+    let cell_size = sprite_size / n as f32;
+    let half = sprite_size / 2.0;
+    let boundary_color = Color::srgba(1.0, 1.0, 1.0, 0.6);
+
+    // Draw boundary lines between cells of different plates
+    for j in 0..n {
+        for i in 0..n {
+            let my_id = ids[j * n + i];
+
+            // Check right neighbor
+            let ni = (i + 1) % n;
+            if ids[j * n + ni] != my_id {
+                let x = (i as f32 + 1.0) * cell_size - half;
+                let y1 = j as f32 * cell_size - half;
+                let y2 = (j as f32 + 1.0) * cell_size - half;
+                gizmos.line_2d(Vec2::new(x, y1), Vec2::new(x, y2), boundary_color);
+            }
+
+            // Check bottom neighbor
+            let nj = (j + 1) % n;
+            if ids[nj * n + i] != my_id {
+                let y = (j as f32 + 1.0) * cell_size - half;
+                let x1 = i as f32 * cell_size - half;
+                let x2 = (i as f32 + 1.0) * cell_size - half;
+                gizmos.line_2d(Vec2::new(x1, y), Vec2::new(x2, y), boundary_color);
+            }
+        }
+    }
+
+    // Draw seed markers
+    let plates = plates_opt.or_else(|| tectonic.as_ref().map(|t| t.init.plates.as_slice()));
+    if let Some(plates) = plates {
+        for plate in plates {
+            if !plate.active {
+                continue;
+            }
+
+            let wx = plate.seed_x * cell_size - half;
+            let wy = plate.seed_y * cell_size - half;
+            let pos = Vec2::new(wx, wy);
+
+            let color = match plate.plate_type {
+                PlateType::Continental => Color::srgb(0.72, 0.45, 0.20),
+                PlateType::Oceanic => Color::srgb(0.35, 0.55, 0.75),
+            };
+
+            gizmos.circle_2d(Isometry2d::from_translation(pos), cell_size * 1.5, color);
+
+            // Velocity arrow scaled to world units
+            let arrow_scale = cell_size * 5.0;
+            let arrow_end =
+                pos + Vec2::new(plate.velocity.0 * arrow_scale, plate.velocity.1 * arrow_scale);
+            gizmos.arrow_2d(pos, arrow_end, color);
+        }
     }
 }

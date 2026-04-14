@@ -62,11 +62,7 @@ pub fn setup_solver_terrain_sprite(
     let n = terrain_display.grid_size;
 
     let mut image = Image::new_fill(
-        Extent3d {
-            width: n as u32,
-            height: n as u32,
-            depth_or_array_layers: 1,
-        },
+        Extent3d { width: n as u32, height: n as u32, depth_or_array_layers: 1 },
         TextureDimension::D2,
         &[40, 120, 160, 255],
         TextureFormat::Rgba8UnormSrgb,
@@ -78,11 +74,7 @@ pub fn setup_solver_terrain_sprite(
     terrain_display.texture_handle = Some(handle.clone());
 
     commands.spawn((
-        Sprite {
-            image: handle,
-            custom_size: Some(Vec2::new(600.0, 600.0)),
-            ..default()
-        },
+        Sprite { image: handle, custom_size: Some(Vec2::new(600.0, 600.0)), ..default() },
         SolverTerrainSprite,
     ));
 }
@@ -111,15 +103,12 @@ pub fn update_terrain_texture(
     // Resize the image if grid size changed
     if image.width() != n as u32 || image.height() != n as u32 {
         *image = Image::new(
-            Extent3d {
-                width: n as u32,
-                height: n as u32,
-                depth_or_array_layers: 1,
-            },
+            Extent3d { width: n as u32, height: n as u32, depth_or_array_layers: 1 },
             TextureDimension::D2,
             vec![0u8; n * n * 4], // RGBA8 = 4 bytes per pixel
             TextureFormat::Rgba8UnormSrgb,
-            bevy::asset::RenderAssetUsages::MAIN_WORLD | bevy::asset::RenderAssetUsages::RENDER_WORLD,
+            bevy::asset::RenderAssetUsages::MAIN_WORLD
+                | bevy::asset::RenderAssetUsages::RENDER_WORLD,
         );
         image.sampler = ImageSampler::nearest();
     }

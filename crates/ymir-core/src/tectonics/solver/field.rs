@@ -9,17 +9,11 @@ pub struct Field2D {
 
 impl Field2D {
     pub fn new(n: usize) -> Self {
-        Self {
-            data: vec![0.0; n * n],
-            n,
-        }
+        Self { data: vec![0.0; n * n], n }
     }
 
     pub fn filled(n: usize, value: f64) -> Self {
-        Self {
-            data: vec![value; n * n],
-            n,
-        }
+        Self { data: vec![value; n * n], n }
     }
 
     #[inline(always)]
