@@ -1,7 +1,7 @@
 //! Staggered (MAC) grid for the thin viscous sheet solver.
 
-use crate::grid::GridF32;
 use super::field::{Field2D, PeriodicIndex};
+use crate::grid::GridF32;
 
 /// Marker-And-Cell staggered grid with periodic boundary conditions.
 ///
@@ -16,6 +16,15 @@ pub struct StaggeredGrid {
     pub s: Field2D,
     pub vx: Field2D,
     pub vy: Field2D,
+    /// Crustal density at each cell center (kg/m³).
+    /// Continental ≈ 2750, Oceanic ≈ 3000.
+    pub rho: Field2D,
+    /// Spatial viscosity multiplier (cratonic rigidity).
+    /// 1.0 = normal, >1.0 = more rigid (continental interior).
+    pub eta_multiplier: Field2D,
+    /// Accumulated plastic strain at each cell.
+    /// Grows when a cell yields; used for strain weakening.
+    pub plastic_strain: Field2D,
     pub idx: PeriodicIndex,
 }
 
@@ -27,6 +36,9 @@ impl StaggeredGrid {
             s: Field2D::new(n),
             vx: Field2D::new(n),
             vy: Field2D::new(n),
+            rho: Field2D::new(n),
+            eta_multiplier: Field2D::filled(n, 1.0),
+            plastic_strain: Field2D::new(n),
             idx: PeriodicIndex::new(n),
         }
     }

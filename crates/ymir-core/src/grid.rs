@@ -265,8 +265,8 @@ impl GridF32 {
             for x in 0..self.width {
                 let mut val = 0.0f32;
                 for (ki, &w) in kernel.iter().enumerate() {
-                    let sx = (x as i32 + ki as i32 - radius as i32)
-                        .rem_euclid(self.width as i32) as usize;
+                    let sx = (x as i32 + ki as i32 - radius as i32).rem_euclid(self.width as i32)
+                        as usize;
                     val += self.data[y * self.width + sx] * w;
                 }
                 temp.data[y * self.width + x] = val;
@@ -279,8 +279,8 @@ impl GridF32 {
             for x in 0..self.width {
                 let mut val = 0.0f32;
                 for (ki, &w) in kernel.iter().enumerate() {
-                    let sy = (y as i32 + ki as i32 - radius as i32)
-                        .rem_euclid(self.height as i32) as usize;
+                    let sy = (y as i32 + ki as i32 - radius as i32).rem_euclid(self.height as i32)
+                        as usize;
                     val += temp.data[sy * self.width + x] * w;
                 }
                 result.data[y * self.width + x] = val;

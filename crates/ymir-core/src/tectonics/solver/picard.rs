@@ -57,10 +57,7 @@ pub fn compute_strain_rate(grid: &StaggeredGrid, out: &mut Field2D) {
     };
 
     if n >= PAR_THRESHOLD {
-        out.data_mut()
-            .par_chunks_mut(n)
-            .enumerate()
-            .for_each(|(j, row)| process_row(j, row));
+        out.data_mut().par_chunks_mut(n).enumerate().for_each(|(j, row)| process_row(j, row));
     } else {
         for j in 0..n {
             let s = j * n;
@@ -82,13 +79,11 @@ pub fn compute_viscosity(
     let n = strain_rate.n();
 
     if n >= PAR_THRESHOLD {
-        strain_rate
-            .data()
-            .par_iter()
-            .zip(eta.data_mut().par_iter_mut())
-            .for_each(|(&sr, eta_val)| {
+        strain_rate.data().par_iter().zip(eta.data_mut().par_iter_mut()).for_each(
+            |(&sr, eta_val)| {
                 *eta_val = (sr + eps_min).powf(exponent).clamp(eta_min, eta_max);
-            });
+            },
+        );
     } else {
         for k in 0..n * n {
             let sr = strain_rate.data()[k];
@@ -97,12 +92,109 @@ pub fn compute_viscosity(
     }
 }
 
+/// Apply plastic yielding (read-only on plastic_strain).
+/// Caps viscosity where deviatoric stress τ = 2ηε̇ would exceed the local yield stress.
+pub fn apply_yielding(
+    strain_rate: &Field2D,
+    plastic_strain: &Field2D,
+    config: &super::config::YieldingConfig,
+    eta: &mut Field2D,
+) {
+    if !config.enabled || config.yield_stress <= 0.0 {
+        return;
+    }
+
+    let n = strain_rate.n();
+    let eps_min = 1e-20;
+
+    for k in 0..n * n {
+        let sr = strain_rate.data()[k];
+        if sr < eps_min {
+            continue;
+        }
+
+        let local_yield = if config.weakening_enabled {
+            let accumulated = plastic_strain.data()[k];
+            let w =
+                (accumulated / config.weakening_strain_ref).min(1.0) * config.weakening_fraction;
+            config.yield_stress * (1.0 - w)
+        } else {
+            config.yield_stress
+        };
+
+        let eta_plastic = local_yield / (2.0 * sr);
+        if eta_plastic < eta.data()[k] {
+            eta.data_mut()[k] = eta_plastic;
+        }
+    }
+}
+
+/// Accumulate plastic strain in cells that are currently yielding.
+/// Call once per timestep, after the velocity solve, with the known dt.
+pub fn accumulate_plastic_strain(
+    strain_rate: &Field2D,
+    eta: &Field2D,
+    config: &super::config::YieldingConfig,
+    dt: f64,
+    plastic_strain: &mut Field2D,
+) {
+    if !config.enabled {
+        return;
+    }
+
+    let n = strain_rate.n();
+    let eps_min = 1e-20;
+
+    for k in 0..n * n {
+        let sr = strain_rate.data()[k];
+        if sr < eps_min {
+            continue;
+        }
+
+        // Check if this cell is yielding
+        let local_yield = if config.weakening_enabled {
+            let accumulated = plastic_strain.data()[k];
+            let w =
+                (accumulated / config.weakening_strain_ref).min(1.0) * config.weakening_fraction;
+            config.yield_stress * (1.0 - w)
+        } else {
+            config.yield_stress
+        };
+
+        let eta_plastic = local_yield / (2.0 * sr);
+        if eta.data()[k] <= eta_plastic * 1.01 {
+            plastic_strain.data_mut()[k] += sr * dt;
+        }
+
+        // Healing
+        if config.healing_rate > 0.0 {
+            plastic_strain.data_mut()[k] =
+                (plastic_strain.data()[k] - config.healing_rate * dt).max(0.0);
+        }
+    }
+}
+
+/// Apply spatial viscosity multiplier (cratonic rigidity) and re-clamp.
+pub fn apply_eta_multiplier(multiplier: &Field2D, eta_max: f64, eta: &mut Field2D) {
+    let n = multiplier.n();
+    for k in 0..n * n {
+        let m = multiplier.data()[k];
+        if m != 1.0 {
+            eta.data_mut()[k] = (eta.data()[k] * m).min(eta_max);
+        }
+    }
+}
+
 /// Solve for velocity using Picard iteration.
+#[allow(clippy::too_many_arguments)]
 pub fn solve_velocity_picard(
     grid: &mut StaggeredGrid,
     plates: &TractionField,
     gravity_factor: f64,
+    rho_continental: f64,
+    rho_mantle: f64,
     config: &PicardConfig,
+    yielding: &super::config::YieldingConfig,
     ws: &mut SolverWorkspace,
 ) -> PicardResult {
     let n = grid.n;
@@ -113,7 +205,7 @@ pub fn solve_velocity_picard(
     super::workspace::pack_velocity(grid, &mut ws.v_packed);
 
     // Compute RHS (does not change during Picard iteration)
-    compute_rhs(grid, plates, gravity_factor, &mut ws.rhs);
+    compute_rhs(grid, plates, gravity_factor, rho_continental, rho_mantle, &mut ws.rhs);
 
     // Project out null space (constant mode) — periodic Stokes has a rank-2 null space
     let n2 = n * n;
@@ -143,6 +235,17 @@ pub fn solve_velocity_picard(
             config.eta_max,
             &mut ws.eta,
         );
+
+        // Apply spatial viscosity multiplier (cratonic rigidity)
+        apply_eta_multiplier(&grid.eta_multiplier, config.eta_max, &mut ws.eta);
+
+        // Apply plastic yielding (caps stress at yield threshold)
+        apply_yielding(&ws.strain_rate, &grid.plastic_strain, yielding, &mut ws.eta);
+
+        // Final safety clamp
+        for val in ws.eta.data_mut().iter_mut() {
+            *val = val.clamp(config.eta_min, config.eta_max);
+        }
 
         // Update Jacobi preconditioner
         compute_jacobi_precond(&ws.eta, grid, &mut ws.jacobi_precond);
@@ -247,11 +350,17 @@ mod tests {
         };
         let mut ws = SolverWorkspace::new(n);
 
-        let result = solve_velocity_picard(&mut grid, &plates, 1.0, &config, &mut ws);
-        assert!(
-            result.converged,
-            "Should converge for linear viscosity"
+        let result = solve_velocity_picard(
+            &mut grid,
+            &plates,
+            1.0,
+            0.0,
+            0.0,
+            &config,
+            &Default::default(),
+            &mut ws,
         );
+        assert!(result.converged, "Should converge for linear viscosity");
         assert!(
             result.iterations <= 2,
             "Linear viscosity (n=1) should converge in ≤ 2 Picard iterations, got {}",
@@ -284,7 +393,16 @@ mod tests {
         };
         let mut ws = SolverWorkspace::new(n);
 
-        let result = solve_velocity_picard(&mut grid, &plates, 1.0, &config, &mut ws);
+        let result = solve_velocity_picard(
+            &mut grid,
+            &plates,
+            1.0,
+            0.0,
+            0.0,
+            &config,
+            &Default::default(),
+            &mut ws,
+        );
         assert!(
             result.converged,
             "Power-law Picard should converge, got {} iterations",
@@ -295,5 +413,126 @@ mod tests {
             "Should converge in ≤ 50 iterations, got {}",
             result.iterations
         );
+    }
+
+    #[test]
+    fn yielding_caps_viscosity_at_high_strain_rate() {
+        use crate::tectonics::solver::config::YieldingConfig;
+
+        let n = 16;
+        let mut sr = Field2D::new(n);
+        let mut eta = Field2D::new(n);
+        let ps = Field2D::new(n);
+
+        for k in 0..n * n {
+            sr.data_mut()[k] = 1.0;
+            eta.data_mut()[k] = 100.0;
+        }
+
+        let config = YieldingConfig {
+            enabled: true,
+            yield_stress: 10.0,
+            weakening_enabled: false,
+            ..Default::default()
+        };
+
+        apply_yielding(&sr, &ps, &config, &mut eta);
+
+        // η_plastic = τ_yield / (2 × ε̇) = 10 / (2 × 1) = 5
+        for k in 0..n * n {
+            assert!(
+                (eta.data()[k] - 5.0).abs() < 1e-10,
+                "Yielded eta should be 5.0, got {}",
+                eta.data()[k]
+            );
+        }
+    }
+
+    #[test]
+    fn no_yielding_at_low_strain_rate() {
+        use crate::tectonics::solver::config::YieldingConfig;
+
+        let n = 16;
+        let mut sr = Field2D::new(n);
+        let mut eta = Field2D::new(n);
+        let ps = Field2D::new(n);
+
+        for k in 0..n * n {
+            sr.data_mut()[k] = 0.001;
+            eta.data_mut()[k] = 100.0;
+        }
+
+        let config = YieldingConfig { enabled: true, yield_stress: 10.0, ..Default::default() };
+
+        apply_yielding(&sr, &ps, &config, &mut eta);
+
+        // η_plastic = 10 / (2 × 0.001) = 5000 >> 100, so no yielding
+        for k in 0..n * n {
+            assert!(
+                (eta.data()[k] - 100.0).abs() < 1e-10,
+                "Low strain should not yield: {}",
+                eta.data()[k]
+            );
+        }
+    }
+
+    #[test]
+    fn strain_weakening_reduces_yield_stress() {
+        use crate::tectonics::solver::config::YieldingConfig;
+
+        let n = 16;
+        let mut sr = Field2D::new(n);
+        let mut eta_fresh = Field2D::new(n);
+        let mut eta_weak = Field2D::new(n);
+        let ps_fresh = Field2D::new(n);
+        let mut ps_weak = Field2D::new(n);
+
+        for k in 0..n * n {
+            sr.data_mut()[k] = 0.5;
+            eta_fresh.data_mut()[k] = 1000.0;
+            eta_weak.data_mut()[k] = 1000.0;
+            ps_weak.data_mut()[k] = 2.0;
+        }
+
+        let config = YieldingConfig {
+            enabled: true,
+            yield_stress: 50.0,
+            weakening_enabled: true,
+            weakening_fraction: 0.5,
+            weakening_strain_ref: 1.0,
+            healing_rate: 0.0,
+        };
+
+        apply_yielding(&sr, &ps_fresh, &config, &mut eta_fresh);
+        apply_yielding(&sr, &ps_weak, &config, &mut eta_weak);
+
+        let eta_f = eta_fresh.data()[0];
+        let eta_w = eta_weak.data()[0];
+
+        assert!(eta_w < eta_f, "Weakened should yield more: fresh={eta_f}, weak={eta_w}");
+        assert!((eta_f - 50.0).abs() < 1e-6, "Fresh yield: {eta_f}");
+        assert!((eta_w - 25.0).abs() < 1e-6, "Weak yield: {eta_w}");
+    }
+
+    #[test]
+    fn disabled_yielding_is_noop() {
+        use crate::tectonics::solver::config::YieldingConfig;
+
+        let n = 8;
+        let mut sr = Field2D::new(n);
+        let mut eta = Field2D::new(n);
+        let ps = Field2D::new(n);
+
+        for k in 0..n * n {
+            sr.data_mut()[k] = 10.0;
+            eta.data_mut()[k] = 500.0;
+        }
+
+        let config = YieldingConfig { enabled: false, ..Default::default() };
+        apply_yielding(&sr, &ps, &config, &mut eta);
+
+        for k in 0..n * n {
+            assert!((eta.data()[k] - 500.0).abs() < 1e-10);
+        }
     }
 }

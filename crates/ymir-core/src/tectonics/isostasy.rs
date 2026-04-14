@@ -112,10 +112,8 @@ pub fn compute_isostasy(thickness: &Field2D, config: &IsostasyConfig) -> Isostas
     let land_ratio = land_count as f32 / (n * n) as f32;
 
     // 4. Compute actual peak altitude and depth for metadata
-    let peak_altitude_m =
-        (h_max - h_sea) / (h_max - h_min).max(1e-10) * config.max_elevation_m;
-    let actual_depth_m =
-        (h_sea - h_min) / (h_max - h_min).max(1e-10) * config.max_depth_m;
+    let peak_altitude_m = (h_max - h_sea) / (h_max - h_min).max(1e-10) * config.max_elevation_m;
+    let actual_depth_m = (h_sea - h_min) / (h_max - h_min).max(1e-10) * config.max_depth_m;
 
     let heightmap = GridF32::from_vec(n, n, data);
     let heightmap = if config.altitude_smoothing_sigma > 0.0 {
@@ -144,10 +142,7 @@ mod tests {
             *val = 1.0;
         }
 
-        let config = IsostasyConfig {
-            sea_level_fraction: 0.0,
-            ..Default::default()
-        };
+        let config = IsostasyConfig { sea_level_fraction: 0.0, ..Default::default() };
         let result = compute_isostasy(&s, &config);
         // sea_level_fraction=0 → h_sea = h_min, all cells have h > h_sea
         // But when all values are equal, h_min == h_max, so h_sea == h_min == h_max
@@ -166,16 +161,9 @@ mod tests {
             }
         }
 
-        let config = IsostasyConfig {
-            sea_level_fraction: 1.0,
-            ..Default::default()
-        };
+        let config = IsostasyConfig { sea_level_fraction: 1.0, ..Default::default() };
         let result = compute_isostasy(&s, &config);
-        assert!(
-            result.land_ratio < 1e-6,
-            "All ocean expected, got {}",
-            result.land_ratio
-        );
+        assert!(result.land_ratio < 1e-6, "All ocean expected, got {}", result.land_ratio);
     }
 
     #[test]
@@ -192,12 +180,7 @@ mod tests {
 
         let h_ocean = result.heightmap.get(0, 0);
         let h_land = result.heightmap.get(n as i32 - 1, 0);
-        assert!(
-            h_land > h_ocean,
-            "Continental should be higher: {} vs {}",
-            h_land,
-            h_ocean
-        );
+        assert!(h_land > h_ocean, "Continental should be higher: {} vs {}", h_land, h_ocean);
     }
 
     #[test]
@@ -213,8 +196,7 @@ mod tests {
         let config = IsostasyConfig::default();
         let result = compute_isostasy(&s, &config);
 
-        let expected =
-            config.max_depth_m / (config.max_depth_m + config.max_elevation_m);
+        let expected = config.max_depth_m / (config.max_depth_m + config.max_elevation_m);
         assert!(
             (result.sea_level_normalized - expected).abs() < 1e-6,
             "sea_level_normalized: {} vs expected {}",
@@ -233,11 +215,7 @@ mod tests {
 
         let result = compute_isostasy(&s, &IsostasyConfig::default());
         for val in &result.heightmap.data {
-            assert!(
-                *val >= 0.0 && *val <= 1.0,
-                "Height out of range: {}",
-                val
-            );
+            assert!(*val >= 0.0 && *val <= 1.0, "Height out of range: {}", val);
         }
     }
 
@@ -252,20 +230,10 @@ mod tests {
             }
         }
 
-        let r_high = compute_isostasy(
-            &s,
-            &IsostasyConfig {
-                sea_level_fraction: 0.7,
-                ..Default::default()
-            },
-        );
-        let r_low = compute_isostasy(
-            &s,
-            &IsostasyConfig {
-                sea_level_fraction: 0.3,
-                ..Default::default()
-            },
-        );
+        let r_high =
+            compute_isostasy(&s, &IsostasyConfig { sea_level_fraction: 0.7, ..Default::default() });
+        let r_low =
+            compute_isostasy(&s, &IsostasyConfig { sea_level_fraction: 0.3, ..Default::default() });
 
         assert!(
             r_low.land_ratio > r_high.land_ratio,
@@ -285,14 +253,8 @@ mod tests {
             }
         }
 
-        let config_sharp = IsostasyConfig {
-            altitude_smoothing_sigma: 0.0,
-            ..Default::default()
-        };
-        let config_smooth = IsostasyConfig {
-            altitude_smoothing_sigma: 2.0,
-            ..Default::default()
-        };
+        let config_sharp = IsostasyConfig { altitude_smoothing_sigma: 0.0, ..Default::default() };
+        let config_smooth = IsostasyConfig { altitude_smoothing_sigma: 2.0, ..Default::default() };
 
         let result_sharp = compute_isostasy(&s, &config_sharp);
         let result_smooth = compute_isostasy(&s, &config_smooth);
@@ -301,8 +263,7 @@ mod tests {
             let mut max = 0.0f32;
             for j in 0..hm.height {
                 for i in 1..hm.width {
-                    let g =
-                        (hm.data[j * hm.width + i] - hm.data[j * hm.width + i - 1]).abs();
+                    let g = (hm.data[j * hm.width + i] - hm.data[j * hm.width + i - 1]).abs();
                     max = max.max(g);
                 }
             }

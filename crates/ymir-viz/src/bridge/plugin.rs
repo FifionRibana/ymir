@@ -7,11 +7,16 @@ use std::time::Duration;
 use bevy::prelude::*;
 use crossbeam_channel::{Receiver, Sender, bounded};
 
+use ymir_core::tectonics::solver::config::{
+    ContinuationConfig, NewtonConfig, PicardConfig, TectonicsConfig,
+};
+use ymir_core::tectonics::solver::tectonics::DynamicPlateContext;
 use ymir_core::tectonics::solver::workspace::StepStats;
 
 use super::commands::SolverCommand;
 use super::events::SolverEvent;
 use super::thread::spawn_solver_thread;
+use crate::state::{DynamicPlateIds, SolverConfig, TectonicState, UiActions};
 use crate::visualization::render::TerrainDisplay;
 
 /// Current state of the solver.
@@ -59,11 +64,16 @@ impl Plugin for TectonicsBridgePlugin {
         });
 
         app.init_resource::<crate::state::UiActions>();
-        app.add_systems(Update, (
-            poll_solver_events,
-            super::export_system::handle_export,
-            super::export_system::handle_load,
-        ));
+        app.init_resource::<DynamicPlateIds>();
+        app.add_systems(
+            Update,
+            (
+                poll_solver_events,
+                handle_step,
+                super::export_system::handle_export,
+                super::export_system::handle_load,
+            ),
+        );
     }
 }
 
@@ -71,24 +81,141 @@ fn poll_solver_events(
     mut bridge: ResMut<SolverBridge>,
     mut terrain_display: ResMut<TerrainDisplay>,
     mut isostasy_cache: ResMut<crate::state::IsostasyCache>,
+    mut dynamic_plates: ResMut<DynamicPlateIds>,
 ) {
     while let Ok(event) = bridge.events_rx.try_recv() {
         match event {
             SolverEvent::Progress { step, total_steps, stats } => {
                 bridge.state = SolverState::Running { step, total_steps, stats: Some(stats) };
             }
-            SolverEvent::Snapshot { s_field, .. } => {
+            SolverEvent::Snapshot { s_field, plate_ids, plates, .. } => {
+                let grid_size = s_field.n();
                 terrain_display.update_field(s_field);
                 isostasy_cache.valid = false;
+
+                if let Some(ids) = plate_ids {
+                    dynamic_plates.grid_size = grid_size;
+                    dynamic_plates.ids = Some(ids);
+                }
+                if let Some(pl) = plates {
+                    dynamic_plates.active_count = pl.iter().filter(|p| p.active).count();
+                    dynamic_plates.plates = Some(pl);
+                }
             }
-            SolverEvent::Completed { s_field, elapsed, .. } => {
+            SolverEvent::Completed { s_field, plate_ids, plates, elapsed, .. } => {
+                let grid_size = s_field.n();
                 terrain_display.update_field(s_field);
                 isostasy_cache.valid = false;
                 bridge.state = SolverState::Completed { elapsed };
+
+                if let Some(ids) = plate_ids {
+                    dynamic_plates.grid_size = grid_size;
+                    dynamic_plates.ids = Some(ids);
+                }
+                if let Some(pl) = plates {
+                    dynamic_plates.active_count = pl.iter().filter(|p| p.active).count();
+                    dynamic_plates.plates = Some(pl);
+                }
             }
             SolverEvent::Failed { error } => {
                 bridge.state = SolverState::Failed { error };
             }
         }
+    }
+}
+
+fn handle_step(
+    mut ui_actions: ResMut<UiActions>,
+    mut bridge: ResMut<SolverBridge>,
+    terrain_display: Res<TerrainDisplay>,
+    dynamic_plates: Res<DynamicPlateIds>,
+    tectonic_state: Option<Res<TectonicState>>,
+    solver_config: Res<SolverConfig>,
+) {
+    if !ui_actions.step_requested {
+        return;
+    }
+    ui_actions.step_requested = false;
+
+    // Don't send if solver is already running
+    if matches!(bridge.state, SolverState::Running { .. }) {
+        return;
+    }
+
+    let Some(ref tecto) = tectonic_state else {
+        return;
+    };
+
+    let grid_size = tecto.init.grid_size;
+    let dx = 1.0 / grid_size as f64;
+
+    // Get current s_field from terrain display (last snapshot), or from initial thickness
+    let s_field = if let Some(ref field) = terrain_display.s_field {
+        field.clone()
+    } else {
+        let mut field = ymir_core::tectonics::solver::field::Field2D::new(grid_size);
+        for j in 0..grid_size {
+            for i in 0..grid_size {
+                field.set(i, j, tecto.init.thickness.data[j * grid_size + i] as f64);
+            }
+        }
+        field
+    };
+
+    // Get current plate context from dynamic state, or from initial
+    let plate_ctx = if let (Some(ids), Some(plates)) = (&dynamic_plates.ids, &dynamic_plates.plates)
+    {
+        let traction = ymir_core::tectonics::plates::rebuild_traction(ids, plates, grid_size);
+        DynamicPlateContext { ids: ids.clone(), plates: plates.clone(), traction }
+    } else {
+        let traction = tecto.init.to_traction_field();
+        DynamicPlateContext {
+            ids: tecto.init.plate_ids.clone(),
+            plates: tecto.init.plates.clone(),
+            traction,
+        }
+    };
+
+    let config = build_tectonics_config(&solver_config);
+
+    let _ = bridge.commands_tx.send(SolverCommand::SingleStep {
+        config,
+        plate_ctx,
+        s_field,
+        grid_size,
+        dx,
+    });
+
+    bridge.state = SolverState::Running { step: 0, total_steps: 1, stats: None };
+}
+
+fn build_tectonics_config(sc: &SolverConfig) -> TectonicsConfig {
+    TectonicsConfig {
+        num_timesteps: sc.num_timesteps,
+        gravity_factor: sc.gravity_factor,
+        cfl_factor: sc.cfl_factor,
+        s_min: 0.1,
+        s_max: 2.5,
+        nonlinear_solver: sc.nonlinear_solver,
+        picard: PicardConfig {
+            power_law_n: sc.power_law_n,
+            relaxation: sc.picard_relaxation,
+            strain_rate_min: sc.strain_rate_min,
+            eta_max: sc.eta_max,
+            ..PicardConfig::default()
+        },
+        newton: NewtonConfig {
+            preconditioner: sc.preconditioner,
+            inexact: sc.inexact_newton,
+            ..NewtonConfig::default()
+        },
+        continuation: ContinuationConfig {
+            enabled: sc.continuation_enabled,
+            ..ContinuationConfig::default()
+        },
+        boundaries: sc.boundaries.clone(),
+        dynamic_boundaries: sc.dynamic_boundaries,
+        cratonic: sc.cratonic.clone(),
+        yielding: sc.yielding.clone(),
     }
 }

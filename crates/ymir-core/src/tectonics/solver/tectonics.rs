@@ -10,8 +10,13 @@ use super::newton::solve_velocity_newton;
 use super::picard::solve_velocity_picard;
 use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, StepStats};
-use crate::tectonics::boundaries::{compute_boundary_sources_into, gaussian_blur_f64};
-use crate::tectonics::plates::Plate;
+use crate::tectonics::boundaries::{
+    accumulate_subducted_mass, apply_slab_pull, compute_boundary_sources_into, gaussian_blur_f64,
+};
+use crate::tectonics::plates::{
+    Plate, PlateType, advect_seeds, compute_viscosity_multiplier, detect_disappeared_plates,
+    rebuild_traction, recompute_voronoi,
+};
 
 /// Errors that can occur during a tectonic simulation run.
 #[derive(Debug)]
@@ -46,41 +51,56 @@ impl std::error::Error for SolverError {}
 /// `(step, total, stats, s_field)`. The `s_field` is a reference to the
 /// current crustal thickness field (safe to clone for snapshots).
 /// Return `true` to continue, `false` to cancel.
-/// Context for plate boundary processes (optional).
-pub struct PlateContext<'a> {
-    pub ids: &'a [usize],
-    pub plates: &'a [Plate],
+/// Mutable plate context for dynamic boundary simulation.
+///
+/// Contains owned plate data that may be updated each timestep when
+/// `dynamic_boundaries` is enabled (seeds advected, Voronoï recomputed,
+/// traction rebuilt).
+pub struct DynamicPlateContext {
+    pub ids: Vec<usize>,
+    pub plates: Vec<Plate>,
+    pub traction: TractionField,
+}
+
+/// Data passed to the progress callback after each timestep.
+pub struct StepSnapshot<'a> {
+    pub s_field: &'a Field2D,
+    pub plate_ids: Option<&'a [usize]>,
+    pub plates: Option<&'a [Plate]>,
 }
 
 pub fn run_tectonics<F>(
     config: &TectonicsConfig,
-    plates: &TractionField,
-    plate_ctx: Option<&PlateContext<'_>>,
+    plate_ctx: &mut DynamicPlateContext,
     grid: &mut StaggeredGrid,
     workspace: &mut SolverWorkspace,
     mut progress: F,
 ) -> Result<(), SolverError>
 where
-    F: FnMut(usize, usize, &StepStats, &Field2D) -> bool,
+    F: FnMut(usize, usize, &StepStats, StepSnapshot<'_>) -> bool,
 {
     let n = grid.n;
 
+    // Initialize density field and cratonic viscosity multiplier from plate types
+    assign_density_from_plates(grid, &plate_ctx.ids, &plate_ctx.plates, &config.boundaries);
+    compute_viscosity_multiplier(grid, &plate_ctx.ids, &plate_ctx.plates, &config.cratonic);
+
     for step in 0..config.num_timesteps {
         // 1. Solve velocity — continuation only on first step (cold start)
-        let need_continuation = config.continuation.enabled
-            && config.picard.power_law_n > 1.0
-            && step == 0;
+        let need_continuation =
+            config.continuation.enabled && config.picard.power_law_n > 1.0 && step == 0;
 
         let _step_span = info_span!("solver_step", step, n = grid.n).entered();
 
+        let traction = &plate_ctx.traction;
         let (converged, nl_iterations, linear_iterations) = if need_continuation {
-            solve_with_continuation(grid, plates, config, workspace)
+            solve_with_continuation(grid, traction, config, workspace)
         } else {
-            let result = solve_velocity_direct(grid, plates, config, workspace);
+            let result = solve_velocity_direct(grid, traction, config, workspace);
             // Fallback: if direct solve fails, try continuation as recovery
             if !result.0 && config.continuation.enabled && config.picard.power_law_n > 1.0 {
                 warn!(step, "direct solve failed, falling back to continuation");
-                solve_with_continuation(grid, plates, config, workspace)
+                solve_with_continuation(grid, traction, config, workspace)
             } else {
                 result
             }
@@ -93,6 +113,33 @@ where
         // 2. CFL timestep (after velocity is known)
         let dt_cfl = compute_cfl_dt(grid, config.cfl_factor);
 
+        // 2b. Accumulate plastic strain (after solve, with known dt)
+        if config.yielding.enabled {
+            super::picard::accumulate_plastic_strain(
+                &workspace.strain_rate,
+                &workspace.eta,
+                &config.yielding,
+                dt_cfl,
+                &mut grid.plastic_strain,
+            );
+        }
+
+        // ── Dynamic boundary update ────────────────────────────────────
+        if config.dynamic_boundaries {
+            advect_seeds(&mut plate_ctx.plates, grid, dt_cfl);
+            recompute_voronoi(&mut plate_ctx.ids, &plate_ctx.plates, grid.n);
+
+            let disappeared = detect_disappeared_plates(&plate_ctx.ids, &mut plate_ctx.plates);
+            for pid in &disappeared {
+                info!(plate_id = pid, step, "plate disappeared");
+            }
+
+            // Reassign density and viscosity multiplier from updated plate partition
+            assign_density_from_plates(grid, &plate_ctx.ids, &plate_ctx.plates, &config.boundaries);
+            compute_viscosity_multiplier(grid, &plate_ctx.ids, &plate_ctx.plates, &config.cratonic);
+        }
+        // ──────────────────────────────────────────────────────────────
+
         // 3. Adaptive timestep with retry on excessive clamping
         let s_backup: Vec<f64> = grid.s.data().to_vec();
         let mut dt = dt_cfl;
@@ -100,13 +147,12 @@ where
         let mut clamp_ratio = 0.0;
 
         // Compute boundary source terms if enabled
-        let boundaries_active = config.boundaries.enabled && plate_ctx.is_some();
+        let boundaries_active = config.boundaries.enabled;
         if boundaries_active {
-            let ctx = plate_ctx.unwrap();
             compute_boundary_sources_into(
                 grid,
-                ctx.ids,
-                ctx.plates,
+                &plate_ctx.ids,
+                &plate_ctx.plates,
                 &config.boundaries,
                 &mut workspace.source_rate,
             );
@@ -115,11 +161,29 @@ where
                     &workspace.source_rate,
                     config.boundaries.source_smoothing_sigma,
                 );
-                workspace
-                    .source_rate
-                    .data_mut()
-                    .copy_from_slice(smoothed.data());
+                workspace.source_rate.data_mut().copy_from_slice(smoothed.data());
             }
+
+            // Slab pull: accumulate subducted mass and update plate velocities
+            if config.boundaries.slab_pull_enabled {
+                accumulate_subducted_mass(
+                    &workspace.source_rate,
+                    &plate_ctx.ids,
+                    &mut plate_ctx.plates,
+                    dt_cfl,
+                    n,
+                );
+                apply_slab_pull(
+                    &mut plate_ctx.plates,
+                    config.boundaries.slab_pull_factor,
+                    config.boundaries.max_plate_velocity,
+                );
+            }
+        }
+
+        // Rebuild traction once (after slab pull may have updated velocities)
+        if config.boundaries.enabled || config.dynamic_boundaries {
+            plate_ctx.traction = rebuild_traction(&plate_ctx.ids, &plate_ctx.plates, n);
         }
 
         for _retry in 0..5 {
@@ -128,11 +192,7 @@ where
             for j in 0..n {
                 for i in 0..n {
                     let div = workspace.div_flux.get(i, j);
-                    let q = if boundaries_active {
-                        workspace.source_rate.get(i, j)
-                    } else {
-                        0.0
-                    };
+                    let q = if boundaries_active { workspace.source_rate.get(i, j) } else { 0.0 };
                     let s = grid.s.get(i, j) - dt * div + dt * q;
                     grid.s.set(i, j, s.clamp(config.s_min, config.s_max));
                 }
@@ -153,6 +213,34 @@ where
             // Too many cells clamped — retry with smaller dt
             dt *= 0.5;
             grid.s.data_mut().copy_from_slice(&s_backup);
+        }
+
+        // 3b. Oceanic restoring force — dense oceanic crust (ρ ≈ 3000 kg/m³)
+        // that thickens beyond its equilibrium value becomes gravitationally
+        // unstable relative to the underlying mantle, and sinks back down.
+        // This is a proxy for thermogravitational instability (cold, dense
+        // lithosphere subducting spontaneously) which the thin sheet cannot
+        // model directly due to the absence of a vertical dimension.
+        // The rate is scaled by dt for physical consistency across different
+        // timestep sizes. Only applies to cells below the thickness threshold
+        // to avoid eroding legitimate continental margins that happen to sit
+        // on an oceanic plate_id.
+        if config.boundaries.enabled && config.boundaries.oceanic_restore_rate > 0.0 {
+            let rate = config.boundaries.oceanic_restore_rate;
+            let s_ref = config.boundaries.oceanic_reference_thickness;
+            let s_thr = config.boundaries.oceanic_restore_threshold;
+            for j in 0..n {
+                for i in 0..n {
+                    let pid = plate_ctx.ids[j * n + i];
+                    if plate_ctx.plates[pid].plate_type == PlateType::Oceanic {
+                        let s_current = grid.s.get(i, j);
+                        if s_current > s_ref && s_current < s_thr {
+                            let s_new = s_current - dt * rate * (s_current - s_ref);
+                            grid.s.set(i, j, s_new.max(config.s_min));
+                        }
+                    }
+                }
+            }
         }
 
         // 4. Update stats
@@ -192,21 +280,45 @@ where
         );
 
         if clamp_ratio > 0.05 {
-            warn!(
-                step,
-                clamp_ratio,
-                dt,
-                "excessive clamping — consider reducing CFL or timestep"
-            );
+            warn!(step, clamp_ratio, dt, "excessive clamping — consider reducing CFL or timestep");
         }
 
         // 5. Callback — returns false to cancel
-        if !progress(step, config.num_timesteps, &workspace.stats, &grid.s) {
+        let snapshot = StepSnapshot {
+            s_field: &grid.s,
+            plate_ids: if config.dynamic_boundaries {
+                Some(plate_ctx.ids.as_slice())
+            } else {
+                None
+            },
+            plates: if config.dynamic_boundaries { Some(&plate_ctx.plates) } else { None },
+        };
+        if !progress(step, config.num_timesteps, &workspace.stats, snapshot) {
             return Err(SolverError::Cancelled);
         }
     }
 
     Ok(())
+}
+
+/// Assign density to each grid cell based on its plate type.
+fn assign_density_from_plates(
+    grid: &mut StaggeredGrid,
+    ids: &[usize],
+    plates: &[Plate],
+    bc: &crate::tectonics::boundaries::BoundaryConfig,
+) {
+    let n = grid.n;
+    for j in 0..n {
+        for i in 0..n {
+            let pid = ids[j * n + i];
+            let rho = match plates[pid].plate_type {
+                PlateType::Continental => bc.rho_continental,
+                PlateType::Oceanic => bc.rho_oceanic,
+            };
+            grid.rho.set(i, j, rho);
+        }
+    }
 }
 
 /// Solve velocity directly (no continuation).
@@ -216,13 +328,18 @@ fn solve_velocity_direct(
     config: &TectonicsConfig,
     workspace: &mut SolverWorkspace,
 ) -> (bool, usize, usize) {
+    let rho_c = config.boundaries.rho_continental;
+    let rho_m = config.boundaries.rho_mantle;
     match config.nonlinear_solver {
         NonlinearSolver::Picard => {
             let r = solve_velocity_picard(
                 grid,
                 plates,
                 config.gravity_factor,
+                rho_c,
+                rho_m,
                 &config.picard,
+                &config.yielding,
                 workspace,
             );
             (r.converged, r.iterations, r.total_cg_iterations)
@@ -232,7 +349,10 @@ fn solve_velocity_direct(
                 grid,
                 plates,
                 config.gravity_factor,
+                rho_c,
+                rho_m,
                 &config.picard,
+                &config.yielding,
                 &config.newton,
                 workspace,
             );
@@ -274,6 +394,8 @@ fn solve_with_continuation(
         step_config.strain_rate_min = eps_min;
         step_config.relaxation = relaxation;
 
+        let rho_c = config.boundaries.rho_continental;
+        let rho_m = config.boundaries.rho_mantle;
         // Warm start: grid.vx/vy retain the solution from the previous step
         let (converged, iters, linear_iters) = match config.nonlinear_solver {
             NonlinearSolver::Picard => {
@@ -281,7 +403,10 @@ fn solve_with_continuation(
                     grid,
                     plates,
                     config.gravity_factor,
+                    rho_c,
+                    rho_m,
                     &step_config,
+                    &config.yielding,
                     workspace,
                 );
                 (r.converged, r.iterations, r.total_cg_iterations)
@@ -291,7 +416,10 @@ fn solve_with_continuation(
                     grid,
                     plates,
                     config.gravity_factor,
+                    rho_c,
+                    rho_m,
                     &step_config,
+                    &config.yielding,
                     &config.newton,
                     workspace,
                 );
@@ -335,6 +463,26 @@ mod tests {
             newton: NewtonConfig::default(),
             continuation: ContinuationConfig { enabled: false, ..Default::default() },
             boundaries: Default::default(),
+            dynamic_boundaries: false,
+            cratonic: Default::default(),
+            yielding: Default::default(),
+        }
+    }
+
+    fn make_static_ctx(n: usize, traction: TractionField) -> DynamicPlateContext {
+        use crate::tectonics::plates::{Plate, PlateType};
+        DynamicPlateContext {
+            ids: vec![0; n * n],
+            plates: vec![Plate {
+                id: 0,
+                plate_type: PlateType::Continental,
+                velocity: (0.0, 0.0),
+                seed_x: (n / 2) as f32,
+                seed_y: (n / 2) as f32,
+                active: true,
+                subducted_mass: 0.0,
+            }],
+            traction,
         }
     }
 
@@ -350,11 +498,12 @@ mod tests {
             }
         }
 
-        let plates = TractionField::two_plates_convergent(n, 1.0);
+        let traction = TractionField::two_plates_convergent(n, 1.0);
+        let mut ctx = make_static_ctx(n, traction);
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         assert!(
@@ -376,11 +525,12 @@ mod tests {
             }
         }
 
-        let plates = TractionField::two_plates_divergent(n, 1.0);
+        let traction = TractionField::two_plates_divergent(n, 1.0);
+        let mut ctx = make_static_ctx(n, traction);
         let config = make_config(50);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         assert!(
@@ -412,11 +562,12 @@ mod tests {
             grid.s.data().iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n * n) as f64
         };
 
-        let plates = TractionField::zero(n);
+        let traction = TractionField::zero(n);
+        let mut ctx = make_static_ctx(n, traction);
         let config = make_config(100);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
         let final_var: f64 = {
@@ -441,11 +592,12 @@ mod tests {
             }
         }
 
-        let plates = TractionField::two_plates_convergent(n, 0.5);
+        let traction = TractionField::two_plates_convergent(n, 0.5);
+        let mut ctx = make_static_ctx(n, traction);
         let config = make_config(30);
         let mut ws = SolverWorkspace::new(n);
 
-        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok());
 
         for val in grid.s.data() {
@@ -470,7 +622,7 @@ mod tests {
             }
         }
 
-        let plates = TractionField::two_plates_convergent(n, 0.5);
+        let traction = TractionField::two_plates_convergent(n, 0.5);
         let config = TectonicsConfig {
             num_timesteps: 20,
             gravity_factor: 1.0,
@@ -490,15 +642,76 @@ mod tests {
             newton: NewtonConfig::default(),
             continuation: ContinuationConfig::default(),
             boundaries: Default::default(),
+            dynamic_boundaries: false,
+            cratonic: Default::default(),
+            yielding: Default::default(),
         };
 
+        let mut ctx = make_static_ctx(n, traction);
         let mut ws = SolverWorkspace::new(n);
-        let result = run_tectonics(&config, &plates, None, &mut grid, &mut ws, |_, _, _, _| true);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Continuation should enable convergence: {:?}", result.err());
         assert!(
             ws.stats.max_thickness > 1.0,
             "Convergent plates should thicken with power-law: max_s={}",
             ws.stats.max_thickness
+        );
+    }
+
+    #[test]
+    fn oceanic_restoring_prevents_thickening() {
+        use crate::tectonics::boundaries::BoundaryConfig;
+
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, dx);
+
+        // All oceanic, initially thick (as if advection has thickened them)
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, 0.8);
+            }
+        }
+
+        let traction = TractionField::zero(n);
+        let mut ctx = DynamicPlateContext {
+            ids: vec![0; n * n],
+            plates: vec![Plate {
+                id: 0,
+                plate_type: PlateType::Oceanic,
+                velocity: (0.0, 0.0),
+                seed_x: 8.0,
+                seed_y: 8.0,
+                active: true,
+                subducted_mass: 0.0,
+            }],
+            traction,
+        };
+
+        let config = TectonicsConfig {
+            num_timesteps: 50,
+            boundaries: BoundaryConfig {
+                enabled: true,
+                oceanic_reference_thickness: 0.25,
+                oceanic_restore_threshold: 1.0, // high enough to cover test's initial S=0.8
+                oceanic_restore_rate: 0.3,
+                ..Default::default()
+            },
+            dynamic_boundaries: false,
+            cratonic: Default::default(),
+            yielding: Default::default(),
+            ..make_config(50)
+        };
+
+        let mut ws = SolverWorkspace::new(n);
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
+        assert!(result.is_ok(), "Run failed: {:?}", result.err());
+
+        let final_mean = grid.s.data().iter().sum::<f64>() / (n * n) as f64;
+        assert!(
+            final_mean < 0.5,
+            "Oceanic crust should thin toward reference: mean={}",
+            final_mean
         );
     }
 
@@ -521,5 +734,97 @@ mod tests {
         assert!(eta.get(0, 0) <= 1e3 + 1e-10, "Should be clamped to eta_max: {}", eta.get(0, 0));
         assert!(eta.get(1, 0) >= 1e-3, "Normal cell below eta_min");
         assert!(eta.get(1, 0) <= 1e3, "Normal cell above eta_max");
+    }
+
+    #[test]
+    fn density_corrected_gpe_oceanic_spreads_less() {
+        use crate::tectonics::solver::stokes::compute_rhs;
+
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let rho_c = 2750.0;
+        let rho_m = 3300.0;
+
+        // Setup 1: all continental density
+        let mut grid_c = StaggeredGrid::new(n, dx);
+        for j in 0..n {
+            for i in 0..n {
+                grid_c.s.set(i, j, if i < n / 2 { 1.0 } else { 0.5 });
+                grid_c.rho.set(i, j, 2750.0);
+            }
+        }
+
+        // Setup 2: same thickness, all oceanic density
+        let mut grid_o = StaggeredGrid::new(n, dx);
+        for j in 0..n {
+            for i in 0..n {
+                grid_o.s.set(i, j, if i < n / 2 { 1.0 } else { 0.5 });
+                grid_o.rho.set(i, j, 3000.0);
+            }
+        }
+
+        let plates = TractionField::zero(n);
+        let nn2 = 2 * n * n;
+        let mut rhs_c = vec![0.0; nn2];
+        let mut rhs_o = vec![0.0; nn2];
+
+        compute_rhs(&grid_c, &plates, 1.0, rho_c, rho_m, &mut rhs_c);
+        compute_rhs(&grid_o, &plates, 1.0, rho_c, rho_m, &mut rhs_o);
+
+        let mag_c: f64 = rhs_c.iter().map(|x| x * x).sum::<f64>().sqrt();
+        let mag_o: f64 = rhs_o.iter().map(|x| x * x).sum::<f64>().sqrt();
+
+        assert!(
+            mag_o < mag_c,
+            "Oceanic GPE should be weaker: continental={mag_c}, oceanic={mag_o}"
+        );
+
+        let ratio = mag_o / mag_c;
+        assert!(ratio < 0.7, "Ratio should be significantly less than 1: {ratio}");
+    }
+
+    #[test]
+    fn slab_pull_increases_plate_velocity() {
+        use crate::tectonics::boundaries::apply_slab_pull;
+
+        let mut plates = vec![Plate {
+            id: 0,
+            plate_type: PlateType::Oceanic,
+            velocity: (1.0, 0.0),
+            seed_x: 8.0,
+            seed_y: 8.0,
+            active: true,
+            subducted_mass: 10.0,
+        }];
+
+        let initial_vx = plates[0].velocity.0;
+        apply_slab_pull(&mut plates, 0.1, 5.0);
+
+        assert!(
+            plates[0].velocity.0 > initial_vx,
+            "Slab pull should increase velocity: {} -> {}",
+            initial_vx,
+            plates[0].velocity.0
+        );
+    }
+
+    #[test]
+    fn slab_pull_capped() {
+        use crate::tectonics::boundaries::apply_slab_pull;
+
+        let mut plates = vec![Plate {
+            id: 0,
+            plate_type: PlateType::Oceanic,
+            velocity: (1.0, 0.0),
+            seed_x: 8.0,
+            seed_y: 8.0,
+            active: true,
+            subducted_mass: 1000.0,
+        }];
+
+        apply_slab_pull(&mut plates, 0.5, 5.0);
+
+        let speed = (plates[0].velocity.0.powi(2) + plates[0].velocity.1.powi(2)).sqrt();
+        assert!(speed <= 5.1, "Velocity should be capped: {speed}");
     }
 }

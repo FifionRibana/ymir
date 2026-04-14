@@ -8,12 +8,13 @@ use ymir_core::tectonics::solver::config::{
     ContinuationConfig, NewtonConfig, NonlinearSolver, PicardConfig, Preconditioner,
     TectonicsConfig,
 };
+use ymir_core::tectonics::solver::tectonics::DynamicPlateContext;
 
 use crate::bridge::commands::SolverCommand;
 use crate::bridge::plugin::{SolverBridge, SolverState};
 use crate::state::{
-    ClimateParams, ErosionParams, GenerationParamsUi, IsostasyCache, IsostasyParams,
-    PipelinePhase, SolverConfig, TectonicState, ViewState,
+    ClimateParams, ErosionParams, GenerationParamsUi, IsostasyCache, IsostasyParams, PipelinePhase,
+    SolverConfig, TectonicState, ViewState,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -100,12 +101,7 @@ fn draw_tectonics(
     slider_row(ui, "Cont. ratio", &mut state.config.continental_ratio, 0.1..=0.6);
     slider_row(ui, "Vel. min", &mut state.config.velocity_min, 0.1..=3.0);
     slider_row(ui, "Vel. max", &mut state.config.velocity_max, 0.5..=5.0);
-    slider_row(
-        ui,
-        "Smoothing σ",
-        &mut state.config.boundary_smoothing_sigma,
-        0.0..=5.0,
-    );
+    slider_row(ui, "Smoothing σ", &mut state.config.boundary_smoothing_sigma, 0.0..=5.0);
 
     let grid_sizes = [64usize, 128, 256, 512];
     ui.horizontal(|ui| {
@@ -214,11 +210,8 @@ fn draw_tectonics(
                 ui.selectable_value(&mut idx, 0, "Picard");
                 ui.selectable_value(&mut idx, 1, "Newton (JFNK)");
             });
-        solver_config.nonlinear_solver = if idx == 0 {
-            NonlinearSolver::Picard
-        } else {
-            NonlinearSolver::Newton
-        };
+        solver_config.nonlinear_solver =
+            if idx == 0 { NonlinearSolver::Picard } else { NonlinearSolver::Newton };
     });
 
     ui.separator();
@@ -231,9 +224,7 @@ fn draw_tectonics(
             .logarithmic(true),
     );
     ui.add(
-        egui::Slider::new(&mut solver_config.eta_max, 1e2..=1e6)
-            .text("η_max")
-            .logarithmic(true),
+        egui::Slider::new(&mut solver_config.eta_max, 1e2..=1e6).text("η_max").logarithmic(true),
     );
 
     ui.horizontal(|ui| {
@@ -260,6 +251,7 @@ fn draw_tectonics(
     ui.strong("Boundary processes");
 
     ui.checkbox(&mut solver_config.boundaries.enabled, "Enabled");
+    ui.checkbox(&mut solver_config.dynamic_boundaries, "Dynamic boundaries");
     if solver_config.boundaries.enabled {
         slider_row_f64(
             ui,
@@ -291,6 +283,78 @@ fn draw_tectonics(
             &mut solver_config.boundaries.source_smoothing_sigma,
             0.0..=5.0,
         );
+        slider_row_f64(
+            ui,
+            "Ocean ref. S",
+            &mut solver_config.boundaries.oceanic_reference_thickness,
+            0.1..=0.5,
+        );
+        slider_row_f64(
+            ui,
+            "Ocean restore. Thr",
+            &mut solver_config.boundaries.oceanic_restore_threshold,
+            0.2..=0.6,
+        );
+        slider_row_f64(
+            ui,
+            "Ocean restore",
+            &mut solver_config.boundaries.oceanic_restore_rate,
+            0.0..=0.5,
+        );
+
+        ui.separator();
+        ui.strong("Density & slab pull");
+
+        slider_row_f64(
+            ui,
+            "ρ continental",
+            &mut solver_config.boundaries.rho_continental,
+            2500.0..=3000.0,
+        );
+        slider_row_f64(ui, "ρ oceanic", &mut solver_config.boundaries.rho_oceanic, 2800.0..=3200.0);
+        slider_row_f64(ui, "ρ mantle", &mut solver_config.boundaries.rho_mantle, 3100.0..=3500.0);
+
+        ui.checkbox(&mut solver_config.boundaries.slab_pull_enabled, "Slab pull");
+        if solver_config.boundaries.slab_pull_enabled {
+            slider_row_f64(
+                ui,
+                "Pull factor",
+                &mut solver_config.boundaries.slab_pull_factor,
+                0.001..=0.5,
+            );
+        }
+    }
+
+    ui.add_space(4.0);
+    ui.separator();
+    ui.strong("Cratonic rigidity");
+    ui.checkbox(&mut solver_config.cratonic.enabled, "Enabled");
+    if solver_config.cratonic.enabled {
+        slider_row_f64(ui, "Max factor", &mut solver_config.cratonic.max_factor, 1.0..=20.0);
+        slider_row_f64(ui, "Decay power", &mut solver_config.cratonic.decay_power, 0.5..=4.0);
+    }
+
+    ui.add_space(4.0);
+    ui.separator();
+    ui.strong("Plastic yielding");
+    ui.checkbox(&mut solver_config.yielding.enabled, "Enabled");
+    if solver_config.yielding.enabled {
+        slider_row_f64(ui, "Yield stress", &mut solver_config.yielding.yield_stress, 1.0..=500.0);
+        ui.checkbox(&mut solver_config.yielding.weakening_enabled, "Strain weakening");
+        if solver_config.yielding.weakening_enabled {
+            slider_row_f64(
+                ui,
+                "Weakening frac.",
+                &mut solver_config.yielding.weakening_fraction,
+                0.0..=0.9,
+            );
+            slider_row_f64(
+                ui,
+                "Weakening ε_ref",
+                &mut solver_config.yielding.weakening_strain_ref,
+                0.1..=10.0,
+            );
+        }
     }
 
     ui.add_space(4.0);
@@ -302,10 +366,7 @@ fn draw_tectonics(
         if run_btn.clicked() {
             launch_solver(&state, solver_config, bridge);
         }
-        if ui
-            .add_enabled(is_running, egui::Button::new("⏹ Cancel"))
-            .clicked()
-        {
+        if ui.add_enabled(is_running, egui::Button::new("⏹ Cancel")).clicked() {
             bridge.cancel_flag.store(true, Ordering::Relaxed);
         }
     });
@@ -320,30 +381,10 @@ fn draw_tectonics(
 
     // ── Isostasy ──
     ui.strong("Isostasy");
-    slider_row(
-        ui,
-        "Sea level",
-        &mut isostasy_params.sea_level_fraction,
-        0.0..=1.0,
-    );
-    slider_row(
-        ui,
-        "Max elev (m)",
-        &mut isostasy_params.max_elevation_m,
-        1000.0..=6000.0,
-    );
-    slider_row(
-        ui,
-        "Max depth (m)",
-        &mut isostasy_params.max_depth_m,
-        100.0..=1000.0,
-    );
-    slider_row(
-        ui,
-        "Smoothing σ",
-        &mut isostasy_params.altitude_smoothing_sigma,
-        0.0..=5.0,
-    );
+    slider_row(ui, "Sea level", &mut isostasy_params.sea_level_fraction, 0.0..=1.0);
+    slider_row(ui, "Max elev (m)", &mut isostasy_params.max_elevation_m, 1000.0..=6000.0);
+    slider_row(ui, "Max depth (m)", &mut isostasy_params.max_depth_m, 100.0..=1000.0);
+    slider_row(ui, "Smoothing σ", &mut isostasy_params.altitude_smoothing_sigma, 0.0..=5.0);
 
     if isostasy_cache.valid {
         ui.add_space(4.0);
@@ -366,11 +407,7 @@ fn draw_solver_status(ui: &mut egui::Ui, state: &SolverState) {
         SolverState::Idle => {
             ui.small("⚪ Ready");
         }
-        SolverState::Running {
-            step,
-            total_steps,
-            stats,
-        } => {
+        SolverState::Running { step, total_steps, stats } => {
             let frac = *step as f32 / (*total_steps).max(1) as f32;
             ui.small(format!("🟡 Running… step {}/{}", step, total_steps));
             ui.add(egui::ProgressBar::new(frac).show_percentage());
@@ -434,23 +471,24 @@ fn launch_solver(
             ..ContinuationConfig::default()
         },
         boundaries: solver_config.boundaries.clone(),
+        dynamic_boundaries: solver_config.dynamic_boundaries,
+        cratonic: solver_config.cratonic.clone(),
+        yielding: solver_config.yielding.clone(),
     };
+
+    let plate_ctx =
+        DynamicPlateContext { ids: init.plate_ids.clone(), plates: init.plates.clone(), traction };
 
     let _ = bridge.commands_tx.send(SolverCommand::RunTectonics {
         config,
-        plates: traction,
-        plate_ids: init.plate_ids.clone(),
-        plate_info: init.plates.clone(),
+        plate_ctx,
         initial_s,
         grid_size,
         dx,
     });
 
-    bridge.state = SolverState::Running {
-        step: 0,
-        total_steps: solver_config.num_timesteps,
-        stats: None,
-    };
+    bridge.state =
+        SolverState::Running { step: 0, total_steps: solver_config.num_timesteps, stats: None };
 }
 
 fn apply_preset(state: &mut TectonicState, config: PlateConfig) {
@@ -483,22 +521,12 @@ fn draw_climate(ui: &mut egui::Ui, p: &mut ClimateParams) {
     slider_row(ui, "Base temp (C)", &mut p.base_temperature, -10.0..=30.0);
     slider_row(ui, "Wind dir (deg)", &mut p.wind_direction_deg, 0.0..=360.0);
     slider_row(ui, "Orographic factor", &mut p.orographic_factor, 1.0..=5.0);
-    slider_row(
-        ui,
-        "Moisture decay (km)",
-        &mut p.moisture_decay_km,
-        100.0..=800.0,
-    );
+    slider_row(ui, "Moisture decay (km)", &mut p.moisture_decay_km, 100.0..=800.0);
 }
 
 // ── Slider helpers ────────────────────────────────────────────────────────
 
-fn slider_row(
-    ui: &mut egui::Ui,
-    label: &str,
-    val: &mut f32,
-    range: std::ops::RangeInclusive<f32>,
-) {
+fn slider_row(ui: &mut egui::Ui, label: &str, val: &mut f32, range: std::ops::RangeInclusive<f32>) {
     ui.horizontal(|ui| {
         ui.label(label);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

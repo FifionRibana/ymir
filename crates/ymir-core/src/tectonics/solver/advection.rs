@@ -42,28 +42,19 @@ pub fn compute_divergence_flux(grid: &StaggeredGrid, div: &mut Field2D) {
             };
 
             let vy_top = grid.vy.get(i, nj);
-            let f_top = if vy_top >= 0.0 {
-                vy_top * grid.s.get(i, j)
-            } else {
-                vy_top * grid.s.get(i, nj)
-            };
+            let f_top =
+                if vy_top >= 0.0 { vy_top * grid.s.get(i, j) } else { vy_top * grid.s.get(i, nj) };
 
             let vy_bot = grid.vy.get(i, j);
-            let f_bot = if vy_bot >= 0.0 {
-                vy_bot * grid.s.get(i, pj)
-            } else {
-                vy_bot * grid.s.get(i, j)
-            };
+            let f_bot =
+                if vy_bot >= 0.0 { vy_bot * grid.s.get(i, pj) } else { vy_bot * grid.s.get(i, j) };
 
             row[i] = (f_right - f_left) * inv_dx + (f_top - f_bot) * inv_dx;
         }
     };
 
     if n >= PAR_THRESHOLD {
-        div.data_mut()
-            .par_chunks_mut(n)
-            .enumerate()
-            .for_each(|(j, row)| process_row(j, row));
+        div.data_mut().par_chunks_mut(n).enumerate().for_each(|(j, row)| process_row(j, row));
     } else {
         for j in 0..n {
             let s = j * n;
@@ -93,9 +84,8 @@ mod tests {
     use super::*;
 
     fn deterministic_rand(state: &mut u64) -> f64 {
-        *state = state
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1_442_695_040_888_963_407);
+        *state =
+            state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
         (*state >> 33) as f64 / (1u64 << 31) as f64 - 0.5
     }
 
@@ -118,10 +108,7 @@ mod tests {
         compute_divergence_flux(&grid, &mut div);
 
         let total: f64 = div.data().iter().sum();
-        assert!(
-            total.abs() < 1e-10,
-            "Total divergence should be ~0, got {total}"
-        );
+        assert!(total.abs() < 1e-10, "Total divergence should be ~0, got {total}");
     }
 
     #[test]
@@ -156,10 +143,7 @@ mod tests {
 
         let final_mass: f64 = grid.s.data().iter().sum();
         let rel_err = (final_mass - initial_mass).abs() / initial_mass;
-        assert!(
-            rel_err < 1e-12,
-            "Mass not conserved: relative error = {rel_err}"
-        );
+        assert!(rel_err < 1e-12, "Mass not conserved: relative error = {rel_err}");
     }
 
     #[test]
@@ -190,10 +174,7 @@ mod tests {
         }
 
         for val in grid.s.data() {
-            assert!(
-                *val >= -1e-14,
-                "Negative thickness: {val}"
-            );
+            assert!(*val >= -1e-14, "Negative thickness: {val}");
         }
     }
 }

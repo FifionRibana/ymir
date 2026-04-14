@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use ymir_core::export::PipelineExport;
 use ymir_core::grid::GridF32;
 use ymir_core::seed::WorldSeed;
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics::plates::generate_plates;
 use ymir_core::tectonics::solver::field::Field2D;
 
@@ -26,20 +26,14 @@ pub fn handle_export(
     ui_actions.export_requested = false;
 
     let Some(tecto) = tectonic_state else {
-        ui_actions.last_message = Some((
-            "No tectonic state to export".into(),
-            std::time::Instant::now(),
-            false,
-        ));
+        ui_actions.last_message =
+            Some(("No tectonic state to export".into(), std::time::Instant::now(), false));
         return;
     };
 
     let Some(ref s_field) = terrain_display.s_field else {
-        ui_actions.last_message = Some((
-            "No solver result to export".into(),
-            std::time::Instant::now(),
-            false,
-        ));
+        ui_actions.last_message =
+            Some(("No solver result to export".into(), std::time::Instant::now(), false));
         return;
     };
 
@@ -54,11 +48,8 @@ pub fn handle_export(
     let data: Vec<f32> = s_field.data().iter().map(|&v| v as f32).collect();
     let thickness = GridF32::from_vec(n, n, data);
     if let Err(e) = export.save_thickness(&thickness) {
-        ui_actions.last_message = Some((
-            format!("Export failed: {e}"),
-            std::time::Instant::now(),
-            false,
-        ));
+        ui_actions.last_message =
+            Some((format!("Export failed: {e}"), std::time::Instant::now(), false));
         return;
     }
 
@@ -72,24 +63,15 @@ pub fn handle_export(
     };
     let iso_result = compute_isostasy(s_field, &iso_config);
     if let Err(e) = export.save_altitude(&iso_result, &iso_config) {
-        ui_actions.last_message = Some((
-            format!("Export failed: {e}"),
-            std::time::Instant::now(),
-            false,
-        ));
+        ui_actions.last_message =
+            Some((format!("Export failed: {e}"), std::time::Instant::now(), false));
         return;
     }
 
-    let dir_name = export
-        .dir
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    ui_actions.last_message = Some((
-        format!("Exported to {dir_name}"),
-        std::time::Instant::now(),
-        true,
-    ));
+    let dir_name =
+        export.dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    ui_actions.last_message =
+        Some((format!("Exported to {dir_name}"), std::time::Instant::now(), true));
     // Invalidate cached dir list so Load section sees the new export
     ui_actions.cached_dirs = None;
 
@@ -110,11 +92,8 @@ pub fn handle_load(
     let export = match PipelineExport::load(&dir) {
         Ok(e) => e,
         Err(e) => {
-            ui_actions.last_message = Some((
-                format!("Load failed: {e}"),
-                std::time::Instant::now(),
-                false,
-            ));
+            ui_actions.last_message =
+                Some((format!("Load failed: {e}"), std::time::Instant::now(), false));
             return;
         }
     };
@@ -143,23 +122,10 @@ pub fn handle_load(
         let seed = export.metadata.seed;
         let config = export.metadata.plates.clone();
         let init = generate_plates(&config, &WorldSeed::new(seed));
-        commands.insert_resource(TectonicState {
-            init,
-            config,
-            seed,
-            dirty: true,
-            generation: 1,
-        });
+        commands.insert_resource(TectonicState { init, config, seed, dirty: true, generation: 1 });
     }
 
-    let dir_name = dir
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    ui_actions.last_message = Some((
-        format!("Loaded {dir_name}"),
-        std::time::Instant::now(),
-        true,
-    ));
+    let dir_name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    ui_actions.last_message = Some((format!("Loaded {dir_name}"), std::time::Instant::now(), true));
     ui_actions.cached_dirs = None;
 }

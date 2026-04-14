@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use ymir_core::grid::GridF32;
-use ymir_core::tectonics::plates::{PlateConfig, PlateInitResult};
 use ymir_core::tectonics::boundaries::BoundaryConfig;
+use ymir_core::tectonics::plates::{PlateConfig, PlateInitResult};
 use ymir_core::tectonics::solver::config::{NonlinearSolver, Preconditioner};
 
 // ── View ─────────────────────────────────────────────────────────────────
@@ -49,11 +49,12 @@ pub struct OverlayFlags {
     pub rivers: bool,
     pub hillshade: bool,
     pub grid: bool,
+    pub plates: bool,
 }
 
 impl Default for OverlayFlags {
     fn default() -> Self {
-        Self { rivers: false, hillshade: true, grid: false }
+        Self { rivers: false, hillshade: true, grid: false, plates: false }
     }
 }
 
@@ -190,6 +191,9 @@ pub struct SolverConfig {
     pub preconditioner: Preconditioner,
     pub inexact_newton: bool,
     pub boundaries: BoundaryConfig,
+    pub dynamic_boundaries: bool,
+    pub cratonic: ymir_core::tectonics::solver::config::CratonicConfig,
+    pub yielding: ymir_core::tectonics::solver::config::YieldingConfig,
 }
 
 impl Default for SolverConfig {
@@ -200,13 +204,16 @@ impl Default for SolverConfig {
             cfl_factor: 0.5,
             power_law_n: 3.0,
             picard_relaxation: 0.7,
-            nonlinear_solver: NonlinearSolver::Picard,
+            nonlinear_solver: NonlinearSolver::Newton,
             continuation_enabled: true,
             strain_rate_min: 1e-3,
             eta_max: 1e4,
-            preconditioner: Preconditioner::default(),
+            preconditioner: Preconditioner::Ssor { omega: 1.2 },
             inexact_newton: true,
             boundaries: BoundaryConfig::default(),
+            dynamic_boundaries: true,
+            cratonic: Default::default(),
+            yielding: Default::default(),
         }
     }
 }
@@ -331,6 +338,24 @@ pub struct UiActions {
     pub last_message: Option<(String, std::time::Instant, bool)>,
     /// Cached list of export directories (invalidated after export).
     pub cached_dirs: Option<Vec<std::path::PathBuf>>,
+    /// Set to true when the user clicks "Step" (single timestep).
+    pub step_requested: bool,
+}
+
+// ── Dynamic plate boundaries ─────────────────────────────────────────────
+
+/// Live state of plate boundaries during a dynamic simulation.
+/// Updated from solver snapshots when `dynamic_boundaries` is enabled.
+#[derive(Resource, Default)]
+pub struct DynamicPlateIds {
+    /// Current plate_ids (updated by solver snapshots).
+    pub ids: Option<Vec<usize>>,
+    /// Current plate seed positions and active flags.
+    pub plates: Option<Vec<ymir_core::tectonics::plates::Plate>>,
+    /// Number of active plates remaining.
+    pub active_count: usize,
+    /// Grid size (for indexing into ids).
+    pub grid_size: usize,
 }
 
 // ── Cursor ───────────────────────────────────────────────────────────────

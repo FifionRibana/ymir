@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use super::isostasy::update_isostasy;
-use super::render::{setup_solver_terrain_sprite, update_terrain_texture, TerrainDisplay};
+use super::render::{TerrainDisplay, setup_solver_terrain_sprite, update_terrain_texture};
 
 pub struct SolverVisualizationPlugin;
 
