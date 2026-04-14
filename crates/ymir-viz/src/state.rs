@@ -358,6 +358,61 @@ pub struct DynamicPlateIds {
     pub grid_size: usize,
 }
 
+// ── FBM Upscaling ───────────────────────────────────────────────────────
+
+/// Current state of the FBM upscale computation.
+#[derive(Default, Debug, Clone)]
+pub enum FbmState {
+    #[default]
+    Idle,
+    Running,
+    Completed {
+        elapsed: std::time::Duration,
+    },
+}
+
+/// Cache for the FBM upscale result.
+#[derive(Resource, Default)]
+pub struct UpscaleCache {
+    /// The upscaled heightmap (high resolution).
+    pub heightmap: Option<GridF32>,
+    /// The slope field at target resolution.
+    pub slope: Option<GridF32>,
+    /// Current computation state.
+    pub state: FbmState,
+    /// Pending command data — set by the UI, consumed by the dispatch system.
+    pub pending_config: Option<ymir_core::terrain::upscale::FbmUpscaleConfig>,
+    pub pending_seed: Option<ymir_core::seed::WorldSeed>,
+    pub pending_sea_level: Option<f32>,
+}
+
+#[derive(Resource, Clone, Debug)]
+pub struct FbmParams {
+    pub target_size: usize,
+    pub octaves: usize,
+    pub lacunarity: f64,
+    pub persistence: f64,
+    pub amplitude_base: f64,
+    pub amplitude_slope_factor: f64,
+    pub max_anisotropy: f64,
+    pub submarine_damping: f64,
+}
+
+impl Default for FbmParams {
+    fn default() -> Self {
+        Self {
+            target_size: 1024,
+            octaves: 7,
+            lacunarity: 2.0,
+            persistence: 0.5,
+            amplitude_base: 0.08,
+            amplitude_slope_factor: 3.0,
+            max_anisotropy: 3.0,
+            submarine_damping: 0.3,
+        }
+    }
+}
+
 // ── Cursor ───────────────────────────────────────────────────────────────
 
 #[derive(Resource, Default)]

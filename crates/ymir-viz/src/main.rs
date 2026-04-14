@@ -27,6 +27,8 @@ fn main() {
         .init_resource::<state::GenerationParamsUi>()
         .init_resource::<state::IsostasyParams>()
         .init_resource::<state::IsostasyCache>()
+        .init_resource::<state::FbmParams>()
+        .init_resource::<state::UpscaleCache>()
         .init_resource::<state::CursorWorldPos>()
         .init_resource::<state::DynamicPlateIds>()
         .add_plugins((
