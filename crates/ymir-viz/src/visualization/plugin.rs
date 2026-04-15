@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 
+use super::erosion::update_erosion_texture;
 use super::isostasy::{recompute_isostasy_cache, render_isostasy_texture};
 use super::render::{TerrainDisplay, setup_solver_terrain_sprite, update_terrain_texture};
 use super::upscale::update_upscale_texture;
@@ -36,6 +37,14 @@ impl Plugin for SolverVisualizationPlugin {
             Update,
             update_upscale_texture
                 .run_if(in_state(PipelinePhase::UpscaleFbm))
+                .run_if(in_state(ViewMode::Altitude)),
+        );
+
+        // Erosion texture rendering: only when Erosion phase + Altitude mode
+        app.add_systems(
+            Update,
+            update_erosion_texture
+                .run_if(in_state(PipelinePhase::Erosion))
                 .run_if(in_state(ViewMode::Altitude)),
         );
     }
