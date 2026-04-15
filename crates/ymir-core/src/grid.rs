@@ -6,6 +6,12 @@
 
 use std::path::Path;
 
+/// Wrap coordinate to [0, size) range (toroidal).
+#[inline]
+fn wrap(x: i32, size: usize) -> usize {
+    ((x % size as i32) + size as i32) as usize % size
+}
+
 /// A 2D grid of f32 values, stored in row-major order (y * width + x).
 ///
 /// Convention: (0,0) is the top-left corner. X increases rightward, Y increases
@@ -152,6 +158,75 @@ impl GridF32 {
             (self.sample_bilinear(fx + eps, fy) - self.sample_bilinear(fx - eps, fy)) / (2.0 * eps);
         let gy =
             (self.sample_bilinear(fx, fy + eps) - self.sample_bilinear(fx, fy - eps)) / (2.0 * eps);
+        (gx, gy)
+    }
+
+    // ── Periodic (toroidal) methods ────────────────────────────────────
+
+    /// Get value with toroidal wrapping.
+    #[inline]
+    pub fn get_periodic(&self, x: i32, y: i32) -> f32 {
+        let wx = wrap(x, self.width);
+        let wy = wrap(y, self.height);
+        self.data[wy * self.width + wx]
+    }
+
+    /// Set value with toroidal wrapping.
+    #[inline]
+    pub fn set_periodic(&mut self, x: i32, y: i32, value: f32) {
+        let wx = wrap(x, self.width);
+        let wy = wrap(y, self.height);
+        self.data[wy * self.width + wx] = value;
+    }
+
+    /// Bilinear interpolation with toroidal wrapping.
+    pub fn sample_bilinear_periodic(&self, fx: f32, fy: f32) -> f32 {
+        let w = self.width as f32;
+        let h = self.height as f32;
+
+        let fx = ((fx % w) + w) % w;
+        let fy = ((fy % h) + h) % h;
+
+        let x0 = fx.floor() as usize;
+        let y0 = fy.floor() as usize;
+        let x1 = (x0 + 1) % self.width;
+        let y1 = (y0 + 1) % self.height;
+
+        let tx = fx - x0 as f32;
+        let ty = fy - y0 as f32;
+
+        let c00 = self.data[y0 * self.width + x0];
+        let c10 = self.data[y0 * self.width + x1];
+        let c01 = self.data[y1 * self.width + x0];
+        let c11 = self.data[y1 * self.width + x1];
+
+        let top = c00 + (c10 - c00) * tx;
+        let bot = c01 + (c11 - c01) * tx;
+        top + (bot - top) * ty
+    }
+
+    /// Gradient at integer coordinates with periodic wrapping.
+    pub fn gradient_at_periodic(&self, x: usize, y: usize) -> (f32, f32) {
+        let w = self.width;
+        let h = self.height;
+        let xp = if x + 1 < w { x + 1 } else { 0 };
+        let xm = if x > 0 { x - 1 } else { w - 1 };
+        let yp = if y + 1 < h { y + 1 } else { 0 };
+        let ym = if y > 0 { y - 1 } else { h - 1 };
+
+        let gx = (self.data[y * w + xp] - self.data[y * w + xm]) * 0.5;
+        let gy = (self.data[yp * w + x] - self.data[ym * w + x]) * 0.5;
+        (gx, gy)
+    }
+
+    /// Gradient at fractional coordinates with periodic wrapping.
+    pub fn gradient_at_f_periodic(&self, fx: f32, fy: f32, eps: f32) -> (f32, f32) {
+        let gx = (self.sample_bilinear_periodic(fx + eps, fy)
+            - self.sample_bilinear_periodic(fx - eps, fy))
+            / (2.0 * eps);
+        let gy = (self.sample_bilinear_periodic(fx, fy + eps)
+            - self.sample_bilinear_periodic(fx, fy - eps))
+            / (2.0 * eps);
         (gx, gy)
     }
 
@@ -377,5 +452,34 @@ mod tests {
     #[should_panic(expected = "data length")]
     fn test_from_vec_wrong_size() {
         GridF32::from_vec(3, 3, vec![0.0; 10]);
+    }
+
+    #[test]
+    fn periodic_wrapping() {
+        let mut g = GridF32::new(4, 4, 0.0);
+        g.set(0, 0, 1.0);
+        assert_eq!(g.get_periodic(-4, 0), 1.0);
+        assert_eq!(g.get_periodic(4, 0), 1.0);
+        assert_eq!(g.get_periodic(0, -4), 1.0);
+    }
+
+    #[test]
+    fn periodic_bilinear_wraps() {
+        let mut g = GridF32::new(8, 8, 0.0);
+        g.set(7, 7, 1.0);
+        g.set(0, 0, 1.0);
+        let v = g.sample_bilinear_periodic(7.5, 7.5);
+        assert!((v - 0.5).abs() < 0.01, "Periodic bilinear across boundary: {v}");
+    }
+
+    #[test]
+    fn periodic_gradient_wraps() {
+        let mut g = GridF32::new(8, 8, 0.0);
+        g.set(0, 0, 1.0);
+        g.set(1, 0, 0.0);
+        g.set(7, 0, 0.5);
+        let (gx, _) = g.gradient_at_periodic(0, 0);
+        // gx = (val[1] - val[7]) / 2 = (0.0 - 0.5) / 2 = -0.25
+        assert!((gx - (-0.25)).abs() < 1e-6, "Periodic gradient: {gx}");
     }
 }

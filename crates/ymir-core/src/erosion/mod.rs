@@ -4,7 +4,7 @@
 //! heightmap. Hydraulic erosion (M0) is the foundation; other modes are added in
 //! later milestones.
 
-// pub mod hydraulic;   // M0 — Beyer particle-based erosion
+pub mod hydraulic;
 // pub mod thermal;     // M5 — rockfall on steep slopes
 // pub mod coastal;     // M5 — wave erosion at shorelines
 // pub mod aeolian;     // M6 — wind erosion for arid continents

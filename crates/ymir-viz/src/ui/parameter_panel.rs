@@ -13,8 +13,9 @@ use ymir_core::tectonics::solver::tectonics::DynamicPlateContext;
 use crate::bridge::commands::SolverCommand;
 use crate::bridge::plugin::{SolverBridge, SolverState};
 use crate::state::{
-    ClimateParams, ErosionParams, FbmParams, FbmState, GenerationParamsUi, IsostasyCache,
-    IsostasyParams, PipelinePhase, SolverConfig, TectonicState, UpscaleCache,
+    ClimateParams, ErosionCache, ErosionParams, ErosionState, FbmParams, FbmState,
+    GenerationParamsUi, IsostasyCache, IsostasyParams, PipelinePhase, SolverConfig, TectonicState,
+    UpscaleCache,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -31,10 +32,21 @@ pub fn draw(
     isostasy_cache: &IsostasyCache,
     fbm_params: &mut FbmParams,
     upscale_cache: &mut UpscaleCache,
+    erosion_cache: &mut ErosionCache,
 ) {
     egui::CollapsingHeader::new("Parameters").default_open(true).show(ui, |ui| {
         match *current_phase {
-            PipelinePhase::Erosion => draw_erosion(ui, erosion),
+            PipelinePhase::Erosion => {
+                draw_erosion(
+                    ui,
+                    erosion,
+                    bridge,
+                    isostasy_cache,
+                    upscale_cache,
+                    erosion_cache,
+                    generation,
+                );
+            }
             PipelinePhase::Tectonics => {
                 draw_tectonics(
                     ui,
@@ -510,16 +522,108 @@ fn regenerate(state: &mut TectonicState) {
 
 // ── Erosion & climate panels ──────────────────────────────────────────────
 
-fn draw_erosion(ui: &mut egui::Ui, p: &mut ErosionParams) {
+#[allow(clippy::too_many_arguments)]
+fn draw_erosion(
+    ui: &mut egui::Ui,
+    p: &mut ErosionParams,
+    bridge: &mut SolverBridge,
+    isostasy_cache: &IsostasyCache,
+    upscale_cache: &UpscaleCache,
+    erosion_cache: &mut ErosionCache,
+    generation: &GenerationParamsUi,
+) {
+    ui.strong("Hydraulic erosion");
     slider_row(ui, "Erosion rate", &mut p.erosion_rate, 0.0..=1.0);
     slider_row(ui, "Deposition rate", &mut p.deposition_rate, 0.0..=1.0);
     slider_row(ui, "Inertia", &mut p.inertia, 0.0..=0.5);
-    slider_row(ui, "Gravity", &mut p.gravity, 1.0..=15.0);
+    slider_row(ui, "Gravity", &mut p.gravity, 1.0..=20.0);
     slider_row(ui, "Evaporation", &mut p.evaporation_rate, 0.001..=0.05);
     slider_row_u32(ui, "Max lifetime", &mut p.max_lifetime, 50..=300);
     slider_row(ui, "Droplets (M)", &mut p.droplets_millions, 0.5..=20.0);
     slider_row_u32(ui, "Coastal dep.", &mut p.coastal_deposition, 0..=30);
     slider_row(ui, "Min slope", &mut p.min_slope, 0.001..=0.1);
+
+    ui.add_space(6.0);
+
+    let is_running = matches!(erosion_cache.state, ErosionState::Running { .. });
+    let has_upscale = upscale_cache.heightmap.is_some();
+
+    ui.horizontal(|ui| {
+        let run_btn =
+            ui.add_enabled(has_upscale && !is_running, egui::Button::new("▶ Run Erosion"));
+        if run_btn.clicked() {
+            launch_erosion(p, isostasy_cache, erosion_cache, generation);
+        }
+        if ui.add_enabled(is_running, egui::Button::new("⏹ Cancel")).clicked() {
+            bridge.cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    });
+
+    if !has_upscale {
+        ui.small("Run FBM upscaling first to produce a high-res heightmap.");
+    }
+
+    // Progress / status
+    match &erosion_cache.state {
+        ErosionState::Idle => {
+            ui.small("⚪ Ready");
+        }
+        ErosionState::Running { completed, total } => {
+            let frac = *completed as f32 / (*total).max(1) as f32;
+            ui.small(format!(
+                "🟡 Running… {:.1}M / {:.1}M droplets",
+                *completed as f64 / 1e6,
+                *total as f64 / 1e6
+            ));
+            ui.add(egui::ProgressBar::new(frac).show_percentage());
+        }
+        ErosionState::Completed { elapsed } => {
+            ui.small(format!("🟢 Done in {:.1}s", elapsed.as_secs_f64()));
+            if let Some(ref stats) = erosion_cache.stats {
+                ui.small(format!(
+                    "Eroded: {:.1}  Deposited: {:.1}  Avg life: {:.0}",
+                    stats.total_eroded, stats.total_deposited, stats.avg_lifetime
+                ));
+            }
+        }
+    }
+}
+
+fn launch_erosion(
+    params: &ErosionParams,
+    isostasy_cache: &IsostasyCache,
+    erosion_cache: &mut ErosionCache,
+    generation: &GenerationParamsUi,
+) {
+    use ymir_core::erosion::hydraulic::ErosionConfig;
+
+    // Clear previous result so the view falls back to the upscale heightmap
+    // until the first erosion snapshot arrives.
+    erosion_cache.heightmap = None;
+    erosion_cache.sediment = None;
+    erosion_cache.stats = None;
+    erosion_cache.state = ErosionState::Running { completed: 0, total: 0 };
+
+    let config = ErosionConfig {
+        num_droplets: (params.droplets_millions * 1_000_000.0) as usize,
+        deposition_rate: params.deposition_rate,
+        erosion_rate: params.erosion_rate,
+        inertia: params.inertia,
+        gravity: params.gravity,
+        evaporation_rate: params.evaporation_rate,
+        max_lifetime: params.max_lifetime as usize,
+        min_slope: params.min_slope,
+        erosion_radius: 3,
+        coastal_deposition_range: params.coastal_deposition as usize,
+        sea_level: isostasy_cache.sea_level_normalized,
+        batch_size: 50_000,
+        reference_size: 256,
+    };
+
+    let seed = WorldSeed::new(generation.seed);
+
+    erosion_cache.pending_config = Some(config);
+    erosion_cache.pending_seed = Some(seed);
 }
 
 #[allow(clippy::too_many_arguments)]

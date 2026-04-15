@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::erosion::hydraulic::{ErosionConfig, ErosionResult, ErosionStats};
 use crate::grid::GridF32;
 use crate::tectonics::isostasy::{IsostasyConfig, IsostasyResult};
 use crate::tectonics::plates::PlateConfig;
@@ -37,6 +38,8 @@ pub struct PipelineMetadata {
     pub isostasy: Option<IsostasyMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upscale: Option<FbmUpscaleConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub erosion: Option<ErosionMetadataEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +49,12 @@ pub struct IsostasyMetadata {
     pub peak_altitude_m: f32,
     pub max_depth_m: f32,
     pub land_ratio: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErosionMetadataEntry {
+    pub config: ErosionConfig,
+    pub stats: ErosionStats,
 }
 
 impl Default for PipelineMetadata {
@@ -58,6 +67,7 @@ impl Default for PipelineMetadata {
             plates: PlateConfig::default(),
             isostasy: None,
             upscale: None,
+            erosion: None,
         }
     }
 }
@@ -72,6 +82,7 @@ impl PipelineMetadata {
             plates: plates.clone(),
             isostasy: None,
             upscale: None,
+            erosion: None,
         }
     }
 }
@@ -162,6 +173,29 @@ impl PipelineExport {
     /// Load the upscaled heightmap from a previously saved export.
     pub fn load_upscaled(&self) -> Result<GridF32, String> {
         GridF32::load_png(&self.dir.join("03_upscaled.png"))
+    }
+
+    /// Save the eroded heightmap and sediment map.
+    pub fn save_eroded(
+        &mut self,
+        result: &ErosionResult,
+        config: &ErosionConfig,
+    ) -> Result<(), String> {
+        result.heightmap.save_png_u16(&self.dir.join("04_eroded.png"))?;
+        result.sediment.save_png_u16(&self.dir.join("04_sediment.png"))?;
+        self.metadata.erosion =
+            Some(ErosionMetadataEntry { config: config.clone(), stats: result.stats.clone() });
+        self.save_metadata()
+    }
+
+    /// Load the eroded heightmap from a previously saved export.
+    pub fn load_eroded(&self) -> Result<GridF32, String> {
+        GridF32::load_png(&self.dir.join("04_eroded.png"))
+    }
+
+    /// Load the sediment map from a previously saved export.
+    pub fn load_sediment(&self) -> Result<GridF32, String> {
+        GridF32::load_png(&self.dir.join("04_sediment.png"))
     }
 }
 
