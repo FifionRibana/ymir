@@ -17,8 +17,8 @@ use super::commands::SolverCommand;
 use super::events::SolverEvent;
 use super::thread::spawn_solver_thread;
 use crate::state::{
-    DynamicPlateIds, ErosionCache, ErosionState, FbmState, FlowCache, FlowState, LakeCache,
-    SolverConfig, TectonicState, UiActions, UpscaleCache,
+    CenteringState, DynamicPlateIds, ErosionCache, ErosionState, FbmState, FlowCache, FlowState,
+    LakeCache, SolverConfig, TectonicState, UiActions, UpscaleCache,
 };
 use crate::visualization::render::TerrainDisplay;
 
@@ -78,6 +78,7 @@ impl Plugin for TectonicsBridgePlugin {
                 dispatch_flow,
                 update_river_extraction,
                 update_lake_detection,
+                handle_center_map,
                 super::export_system::handle_export,
                 super::export_system::handle_load,
             ),
@@ -381,4 +382,72 @@ fn update_lake_detection(
         &lake_cache.config,
     ));
     lake_cache.dirty = false;
+}
+
+/// Center the continent on the map via circular shift.
+fn handle_center_map(
+    mut ui_actions: ResMut<UiActions>,
+    mut terrain_display: ResMut<TerrainDisplay>,
+    mut dynamic_plates: ResMut<DynamicPlateIds>,
+    mut isostasy_cache: ResMut<crate::state::IsostasyCache>,
+    mut centering: ResMut<CenteringState>,
+) {
+    let auto_requested = ui_actions.center_requested;
+    let offset_changed = ui_actions.center_offset_changed;
+
+    if !auto_requested && !offset_changed {
+        return;
+    }
+    ui_actions.center_requested = false;
+    ui_actions.center_offset_changed = false;
+
+    use ymir_core::tectonics::centering::*;
+
+    // On first center: save originals
+    if auto_requested && centering.original_field.is_none() {
+        if let Some(ref field) = terrain_display.s_field {
+            centering.original_field = Some(field.clone());
+            centering.original_plate_ids = dynamic_plates.ids.clone();
+            centering.original_plates = dynamic_plates.plates.clone();
+            centering.original_grid_size = dynamic_plates.grid_size;
+        }
+    }
+
+    if centering.original_field.is_none() {
+        return;
+    }
+
+    // Recompute auto shift if requested (before borrowing original)
+    if auto_requested {
+        let auto = compute_centering_shift(centering.original_field.as_ref().unwrap(), 0.4);
+        centering.auto_shift = auto;
+        centering.offset_x = 0;
+        centering.offset_y = 0;
+    }
+
+    // Total shift
+    let dx = centering.auto_shift.0 + centering.offset_x;
+    let dy = centering.auto_shift.1 + centering.offset_y;
+    let n = centering.original_grid_size;
+
+    // Apply to field
+    let shifted = shift_field(centering.original_field.as_ref().unwrap(), dx, dy);
+    terrain_display.update_field(shifted);
+
+    // Apply to plate IDs
+    if let Some(ref ids) = centering.original_plate_ids {
+        dynamic_plates.ids = Some(shift_ids(ids, n, dx, dy));
+    }
+
+    // Apply to plate seeds
+    if let Some(ref orig_plates) = centering.original_plates {
+        let mut plates = orig_plates.clone();
+        shift_plates(&mut plates, n, dx, dy);
+        dynamic_plates.plates = Some(plates);
+    }
+
+    isostasy_cache.valid = false;
+
+    ui_actions.last_message =
+        Some((format!("Shift: ({dx}, {dy})"), std::time::Instant::now(), true));
 }

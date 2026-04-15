@@ -34,6 +34,7 @@ fn main() {
         .init_resource::<state::ErosionCache>()
         .init_resource::<state::FlowCache>()
         .init_resource::<state::LakeCache>()
+        .init_resource::<state::CenteringState>()
         .init_resource::<state::CursorWorldPos>()
         .init_resource::<state::DynamicPlateIds>()
         .add_plugins((
