@@ -15,8 +15,8 @@ use ymir_core::terrain::upscale::FbmUpscaleConfig;
 use ymir_core::terrain::flow::FlowConfig;
 
 use crate::state::{
-    ErosionCache, ErosionState, FbmParams, FbmState, FlowCache, FlowState, GenerationParamsUi,
-    IsostasyCache, IsostasyParams, TectonicState, UiActions, UpscaleCache,
+    ErosionCache, ErosionParams, ErosionState, FbmParams, FbmState, FlowCache, FlowState,
+    GenerationParamsUi, IsostasyCache, IsostasyParams, TectonicState, UiActions, UpscaleCache,
 };
 use crate::visualization::render::TerrainDisplay;
 
@@ -29,6 +29,7 @@ pub fn handle_export(
     erosion_cache: Res<ErosionCache>,
     flow_cache: Res<FlowCache>,
     isostasy_cache: Res<IsostasyCache>,
+    erosion_params: Res<ErosionParams>,
     fbm_params: Res<FbmParams>,
 ) {
     if !ui_actions.export_requested {
@@ -115,9 +116,19 @@ pub fn handle_export(
             sediment: sediment.clone(),
             stats: stats.clone(),
         };
-        // Use default config for metadata — the exact params aren't stored in ErosionCache
-        // but the stats are the important part for reproducibility info
-        let erosion_config = ymir_core::erosion::hydraulic::ErosionConfig::default();
+        let erosion_config = ymir_core::erosion::hydraulic::ErosionConfig {
+            num_droplets: (erosion_params.droplets_millions * 1_000_000.0) as usize,
+            deposition_rate: erosion_params.deposition_rate,
+            erosion_rate: erosion_params.erosion_rate,
+            inertia: erosion_params.inertia,
+            gravity: erosion_params.gravity,
+            evaporation_rate: erosion_params.evaporation_rate,
+            max_lifetime: erosion_params.max_lifetime as usize,
+            min_slope: erosion_params.min_slope,
+            coastal_deposition_range: erosion_params.coastal_deposition as usize,
+            sea_level: isostasy_cache.sea_level_normalized,
+            ..Default::default()
+        };
         if let Err(e) = export.save_eroded(&erosion_result, &erosion_config) {
             ui_actions.last_message =
                 Some((format!("Export failed: {e}"), std::time::Instant::now(), false));
@@ -155,6 +166,7 @@ pub fn handle_load(
     mut isostasy_params: ResMut<IsostasyParams>,
     mut fbm_params: ResMut<FbmParams>,
     mut erosion_cache: ResMut<ErosionCache>,
+    mut erosion_params: ResMut<ErosionParams>,
     mut flow_cache: ResMut<FlowCache>,
     tectonic_state: Option<ResMut<TectonicState>>,
     mut commands: Commands,
@@ -258,6 +270,20 @@ pub fn handle_load(
             erosion_cache.stats = None;
             erosion_cache.state = ErosionState::Idle;
         }
+    }
+
+    // ── Restore erosion params ─────────────────────────────────────────────
+    if let Some(ref erosion_meta) = meta.erosion {
+        let cfg = &erosion_meta.config;
+        erosion_params.erosion_rate = cfg.erosion_rate;
+        erosion_params.deposition_rate = cfg.deposition_rate;
+        erosion_params.inertia = cfg.inertia;
+        erosion_params.gravity = cfg.gravity;
+        erosion_params.evaporation_rate = cfg.evaporation_rate;
+        erosion_params.max_lifetime = cfg.max_lifetime as u32;
+        erosion_params.droplets_millions = cfg.num_droplets as f32 / 1_000_000.0;
+        erosion_params.coastal_deposition = cfg.coastal_deposition_range as u32;
+        erosion_params.min_slope = cfg.min_slope;
     }
 
     // ── Load flow data ────────────────────────────────────────────────────
