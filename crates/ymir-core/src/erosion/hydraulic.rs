@@ -208,7 +208,7 @@ fn simulate_droplet(
     for _ in 0..100 {
         x = rng.random::<f32>() * (w - 1.0);
         y = rng.random::<f32>() * (h - 1.0);
-        if hmap.sample_bilinear(x, y) > config.sea_level {
+        if hmap.sample_bilinear_periodic(x, y) > config.sea_level {
             found_land = true;
             break;
         }
@@ -225,7 +225,7 @@ fn simulate_droplet(
 
     for step in 0..config.max_lifetime {
         // i. Gradient
-        let (gx, gy) = hmap.gradient_at_f(x, y, step_size);
+        let (gx, gy) = hmap.gradient_at_f_periodic(x, y, step_size);
 
         // ii. Update direction with inertia
         dir_x = dir_x * config.inertia - gx * (1.0 - config.inertia);
@@ -240,16 +240,13 @@ fn simulate_droplet(
             dir_y /= len;
         }
 
-        // iii. Move
-        let new_x = x + dir_x * step_size;
-        let new_y = y + dir_y * step_size;
-        if new_x < 0.0 || new_x >= w - 1.0 || new_y < 0.0 || new_y >= h - 1.0 {
-            return step;
-        }
+        // iii. Move (periodic wrapping)
+        let new_x = ((x + dir_x * step_size) % w + w) % w;
+        let new_y = ((y + dir_y * step_size) % h + h) % h;
 
         // iv. Height difference
-        let h_old = hmap.sample_bilinear(x, y);
-        let h_new = hmap.sample_bilinear(new_x, new_y);
+        let h_old = hmap.sample_bilinear_periodic(x, y);
+        let h_new = hmap.sample_bilinear_periodic(new_x, new_y);
         let delta_h = h_new - h_old;
 
         // v. Deposit or erode
@@ -287,7 +284,7 @@ fn simulate_droplet(
         water *= 1.0 - config.evaporation_rate;
 
         // ix. Coastal check
-        if hmap.sample_bilinear(new_x, new_y) <= config.sea_level {
+        if hmap.sample_bilinear_periodic(new_x, new_y) <= config.sea_level {
             below_sea_steps += 1;
             if below_sea_steps > config.coastal_deposition_range {
                 if sediment > 0.0 {
@@ -325,12 +322,12 @@ fn apply_brush(
         let by = iy + dy;
         let delta = amount * brush.weights[k];
 
-        let old = hmap.get(bx, by);
-        hmap.set(bx as usize, by as usize, old + delta);
+        let old = hmap.get_periodic(bx, by);
+        hmap.set_periodic(bx, by, old + delta);
 
         if delta > 0.0 {
-            let old_sed = sediment_map.get(bx, by);
-            sediment_map.set(bx as usize, by as usize, old_sed + delta);
+            let old_sed = sediment_map.get_periodic(bx, by);
+            sediment_map.set_periodic(bx, by, old_sed + delta);
         }
     }
 }
