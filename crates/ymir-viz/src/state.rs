@@ -160,7 +160,7 @@ impl Default for ErosionParams {
             max_lifetime: 150,
             droplets_millions: 5.0,
             coastal_deposition: 12,
-            min_slope: 0.01,
+            min_slope: 0.001,
         }
     }
 }

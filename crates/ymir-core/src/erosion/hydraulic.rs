@@ -26,6 +26,9 @@ pub struct ErosionConfig {
     pub coastal_deposition_range: usize,
     pub sea_level: f32,
     pub batch_size: usize,
+    /// Reference grid size for parameter calibration. The algorithm scales
+    /// step size automatically for larger or smaller grids. Default: 256.
+    pub reference_size: usize,
 }
 
 impl Default for ErosionConfig {
@@ -38,11 +41,12 @@ impl Default for ErosionConfig {
             gravity: 6.0,
             evaporation_rate: 0.015,
             max_lifetime: 150,
-            min_slope: 0.01,
+            min_slope: 0.001,
             erosion_radius: 3,
             coastal_deposition_range: 12,
             sea_level: 0.1,
             batch_size: 50_000,
+            reference_size: 256,
         }
     }
 }
@@ -120,7 +124,12 @@ pub fn run_erosion(
     let mut stats = ErosionStats::default();
     let mut total_lifetime: u64 = 0;
 
-    info!("Erosion: {} droplets on {}x{} grid ({} batches)", total, w, h, num_batches);
+    let step_size = (w.max(h) as f32 / config.reference_size as f32).max(1.0);
+
+    info!(
+        "Erosion: {} droplets on {}x{} grid ({} batches, step_size={:.1})",
+        total, w, h, num_batches, step_size
+    );
 
     for batch in 0..num_batches {
         let batch_start = batch * config.batch_size;
@@ -135,6 +144,7 @@ pub fn run_erosion(
                 &mut sediment_map,
                 &brush,
                 config,
+                step_size,
                 &mut rng,
                 &mut stats,
             );
@@ -184,6 +194,7 @@ fn simulate_droplet(
     sediment_map: &mut GridF32,
     brush: &ErosionBrush,
     config: &ErosionConfig,
+    step_size: f32,
     rng: &mut impl Rng,
     stats: &mut ErosionStats,
 ) -> usize {
@@ -201,7 +212,7 @@ fn simulate_droplet(
 
     for step in 0..config.max_lifetime {
         // i. Gradient
-        let (gx, gy) = hmap.gradient_at_f(x, y, 1.0);
+        let (gx, gy) = hmap.gradient_at_f(x, y, step_size);
 
         // ii. Update direction with inertia
         dir_x = dir_x * config.inertia - gx * (1.0 - config.inertia);
@@ -217,8 +228,8 @@ fn simulate_droplet(
         }
 
         // iii. Move
-        let new_x = x + dir_x;
-        let new_y = y + dir_y;
+        let new_x = x + dir_x * step_size;
+        let new_y = y + dir_y * step_size;
         if new_x < 0.0 || new_x >= w - 1.0 || new_y < 0.0 || new_y >= h - 1.0 {
             return step;
         }
