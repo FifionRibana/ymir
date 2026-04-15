@@ -16,7 +16,8 @@ use ymir_core::terrain::flow::FlowConfig;
 
 use crate::state::{
     ErosionCache, ErosionParams, ErosionState, FbmParams, FbmState, FlowCache, FlowState,
-    GenerationParamsUi, IsostasyCache, IsostasyParams, TectonicState, UiActions, UpscaleCache,
+    GenerationParamsUi, IsostasyCache, IsostasyParams, LakeCache, TectonicState, UiActions,
+    UpscaleCache,
 };
 use crate::visualization::render::TerrainDisplay;
 
@@ -28,6 +29,7 @@ pub fn handle_export(
     upscale_cache: Res<UpscaleCache>,
     erosion_cache: Res<ErosionCache>,
     flow_cache: Res<FlowCache>,
+    lake_cache: Res<LakeCache>,
     isostasy_cache: Res<IsostasyCache>,
     erosion_params: Res<ErosionParams>,
     fbm_params: Res<FbmParams>,
@@ -147,6 +149,15 @@ pub fn handle_export(
         }
     }
 
+    // Save lake data if available
+    if let Some(ref result) = lake_cache.result {
+        if let Err(e) = export.save_lakes(result, &lake_cache.config) {
+            ui_actions.last_message =
+                Some((format!("Export failed: {e}"), std::time::Instant::now(), false));
+            return;
+        }
+    }
+
     let dir_name =
         export.dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     ui_actions.last_message =
@@ -168,6 +179,7 @@ pub fn handle_load(
     mut erosion_cache: ResMut<ErosionCache>,
     mut erosion_params: ResMut<ErosionParams>,
     mut flow_cache: ResMut<FlowCache>,
+    mut lake_cache: ResMut<LakeCache>,
     tectonic_state: Option<ResMut<TectonicState>>,
     mut commands: Commands,
 ) {
@@ -314,6 +326,22 @@ pub fn handle_load(
             flow_cache.result = None;
             flow_cache.rivers = None;
             flow_cache.state = FlowState::Idle;
+        }
+    }
+
+    // ── Load lake data ────────────────────────────────────────────────────
+    match export.load_lakes() {
+        Ok(result) => {
+            info!("Loaded {} lakes from {}", result.lakes.len(), dir.display());
+            if let Some(ref lm) = meta.lakes {
+                lake_cache.config = lm.config.clone();
+            }
+            lake_cache.result = Some(result);
+            lake_cache.dirty = false;
+        }
+        Err(_) => {
+            lake_cache.result = None;
+            lake_cache.dirty = flow_cache.result.is_some(); // auto-detect if flow is available
         }
     }
 

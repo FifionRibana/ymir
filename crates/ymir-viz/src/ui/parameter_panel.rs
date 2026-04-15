@@ -14,8 +14,8 @@ use crate::bridge::commands::SolverCommand;
 use crate::bridge::plugin::{SolverBridge, SolverState};
 use crate::state::{
     ClimateParams, ErosionCache, ErosionParams, ErosionState, FbmParams, FbmState, FlowCache,
-    FlowState, GenerationParamsUi, IsostasyCache, IsostasyParams, PipelinePhase, SolverConfig,
-    TectonicState, UpscaleCache,
+    FlowState, GenerationParamsUi, IsostasyCache, IsostasyParams, LakeCache, PipelinePhase,
+    SolverConfig, TectonicState, UpscaleCache,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -34,6 +34,7 @@ pub fn draw(
     upscale_cache: &mut UpscaleCache,
     erosion_cache: &mut ErosionCache,
     flow_cache: &mut FlowCache,
+    lake_cache: &mut LakeCache,
 ) {
     egui::CollapsingHeader::new("Parameters").default_open(true).show(ui, |ui| {
         match *current_phase {
@@ -46,6 +47,7 @@ pub fn draw(
                     upscale_cache,
                     erosion_cache,
                     flow_cache,
+                    lake_cache,
                     generation,
                 );
             }
@@ -533,6 +535,7 @@ fn draw_erosion(
     upscale_cache: &UpscaleCache,
     erosion_cache: &mut ErosionCache,
     flow_cache: &mut FlowCache,
+    lake_cache: &mut LakeCache,
     generation: &GenerationParamsUi,
 ) {
     ui.strong("Hydraulic erosion");
@@ -686,6 +689,52 @@ fn draw_erosion(
 
         if changed {
             flow_cache.rivers_dirty = true;
+        }
+    }
+
+    // ── Lakes ──
+    if flow_cache.result.is_some() {
+        ui.add_space(4.0);
+        ui.strong("Lakes");
+
+        let lc = &mut lake_cache.config;
+        let mut lake_changed = false;
+
+        ui.horizontal(|ui| {
+            ui.label("Min depth");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.monospace(format!("{:.4}", lc.min_depth));
+            });
+        });
+        if ui
+            .add(
+                egui::Slider::new(&mut lc.min_depth, 0.0001..=0.01)
+                    .show_value(false)
+                    .logarithmic(true),
+            )
+            .changed()
+        {
+            lake_changed = true;
+        }
+
+        slider_row_usize(ui, "Min area", &mut lc.min_area, 5..=200);
+        if ui.ctx().input(|i| i.pointer.any_released()) {
+            // Only trigger on release to avoid re-detecting every frame
+            lake_changed = true;
+        }
+
+        if lake_changed {
+            lake_cache.dirty = true;
+        }
+
+        if let Some(ref result) = lake_cache.result {
+            let total_area: usize = result.lakes.iter().map(|l| l.area).sum();
+            let n = result.width * result.height;
+            ui.small(format!(
+                "{} lakes, total area {:.1}%",
+                result.lakes.len(),
+                total_area as f64 / n as f64 * 100.0
+            ));
         }
     }
 }
