@@ -8,34 +8,13 @@ use crate::state::{PhaseStatus, PipelinePhase, PipelineState, UiActions};
 
 pub fn draw(
     ui: &mut egui::Ui,
-    current_phase: &PipelinePhase,
-    next_phase: &mut NextState<PipelinePhase>,
+    _current_phase: &PipelinePhase,
+    _next_phase: &mut NextState<PipelinePhase>,
     pipeline: &PipelineState,
     ui_actions: &mut UiActions,
     has_terrain: bool,
 ) {
     egui::CollapsingHeader::new("Pipeline").default_open(true).show(ui, |ui| {
-        for (phase, status, timing) in &pipeline.phases {
-            let selected = *current_phase == *phase;
-            let text = format!("{} {}", status.icon(), phase.label());
-            let response = ui.selectable_label(selected, &text);
-            if response.clicked() {
-                next_phase.set(*phase);
-            }
-            if !timing.is_empty() {
-                response.on_hover_text(timing);
-            }
-        }
-
-        // Progress bar for running phase
-        for (_, status, _) in &pipeline.phases {
-            if let PhaseStatus::Running(pct) = status {
-                ui.add(egui::ProgressBar::new(*pct as f32 / 100.0).show_percentage().animate(true));
-                break;
-            }
-        }
-
-        ui.add_space(4.0);
         ui.horizontal(|ui| {
             if ui.button("Run all").clicked() {
                 bevy::log::info!("Run all clicked");
