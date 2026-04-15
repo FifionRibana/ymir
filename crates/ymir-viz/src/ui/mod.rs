@@ -70,6 +70,11 @@ fn ui_top_bar(
                 view_state.overlays.rivers = rivers;
             }
 
+            let mut lakes = view_state.overlays.lakes;
+            if ui.checkbox(&mut lakes, "Lakes").changed() {
+                view_state.overlays.lakes = lakes;
+            }
+
             let mut grid = view_state.overlays.grid;
             if ui.checkbox(&mut grid, "Grid").changed() {
                 view_state.overlays.grid = grid;
@@ -102,6 +107,7 @@ struct UiRightPanelParams<'w> {
     upscale_cache: ResMut<'w, crate::state::UpscaleCache>,
     erosion_cache: ResMut<'w, crate::state::ErosionCache>,
     flow_cache: ResMut<'w, crate::state::FlowCache>,
+    lake_cache: ResMut<'w, crate::state::LakeCache>,
     ui_actions: ResMut<'w, crate::state::UiActions>,
     terrain_display: Res<'w, crate::visualization::render::TerrainDisplay>,
 }
@@ -141,6 +147,7 @@ fn ui_right_panel(
                 &mut params.upscale_cache,
                 &mut params.erosion_cache,
                 &mut params.flow_cache,
+                &mut params.lake_cache,
             );
             ui.separator();
             statistics_panel::draw(ui, &params.stats);

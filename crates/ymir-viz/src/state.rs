@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use ymir_core::erosion::hydraulic::{ErosionConfig, ErosionStats};
 use ymir_core::grid::GridF32;
+use ymir_core::lakes::detection::{LakeConfig, LakeResult};
 use ymir_core::tectonics::boundaries::BoundaryConfig;
 use ymir_core::tectonics::plates::{PlateConfig, PlateInitResult};
 use ymir_core::tectonics::solver::config::{NonlinearSolver, Preconditioner};
@@ -49,6 +50,7 @@ impl ViewMode {
 #[allow(dead_code)]
 pub struct OverlayFlags {
     pub rivers: bool,
+    pub lakes: bool,
     pub hillshade: bool,
     pub grid: bool,
     pub plates: bool,
@@ -56,7 +58,7 @@ pub struct OverlayFlags {
 
 impl Default for OverlayFlags {
     fn default() -> Self {
-        Self { rivers: false, hillshade: true, grid: false, plates: false }
+        Self { rivers: false, lakes: false, hillshade: true, grid: false, plates: false }
     }
 }
 
@@ -458,6 +460,15 @@ pub struct FlowCache {
     pub rivers: Option<RiverNetwork>,
     pub river_config: RiverConfig,
     pub rivers_dirty: bool,
+}
+
+// ── Lakes ────────────────────────────────────────────────────────────────
+
+#[derive(Resource, Default)]
+pub struct LakeCache {
+    pub result: Option<LakeResult>,
+    pub config: LakeConfig,
+    pub dirty: bool,
 }
 
 // ── Cursor ───────────────────────────────────────────────────────────────

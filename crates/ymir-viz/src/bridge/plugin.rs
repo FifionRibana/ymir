@@ -17,8 +17,8 @@ use super::commands::SolverCommand;
 use super::events::SolverEvent;
 use super::thread::spawn_solver_thread;
 use crate::state::{
-    DynamicPlateIds, ErosionCache, ErosionState, FbmState, FlowCache, FlowState, SolverConfig,
-    TectonicState, UiActions, UpscaleCache,
+    DynamicPlateIds, ErosionCache, ErosionState, FbmState, FlowCache, FlowState, LakeCache,
+    SolverConfig, TectonicState, UiActions, UpscaleCache,
 };
 use crate::visualization::render::TerrainDisplay;
 
@@ -77,6 +77,7 @@ impl Plugin for TectonicsBridgePlugin {
                 dispatch_erosion,
                 dispatch_flow,
                 update_river_extraction,
+                update_lake_detection,
                 super::export_system::handle_export,
                 super::export_system::handle_load,
             ),
@@ -92,6 +93,7 @@ fn poll_solver_events(
     mut upscale_cache: ResMut<UpscaleCache>,
     mut erosion_cache: ResMut<ErosionCache>,
     mut flow_cache: ResMut<FlowCache>,
+    mut lake_cache: ResMut<LakeCache>,
 ) {
     while let Ok(event) = bridge.events_rx.try_recv() {
         match event {
@@ -149,6 +151,7 @@ fn poll_solver_events(
                 flow_cache.result = Some(result);
                 flow_cache.state = FlowState::Completed { elapsed };
                 flow_cache.rivers_dirty = true;
+                lake_cache.dirty = true;
             }
             SolverEvent::Failed { error } => {
                 bridge.state = SolverState::Failed { error };
@@ -349,4 +352,33 @@ fn update_river_extraction(mut flow_cache: ResMut<FlowCache>) {
     let rivers = ymir_core::terrain::flow::extract_rivers(result, &config, w, h);
     flow_cache.rivers = Some(rivers);
     flow_cache.rivers_dirty = false;
+}
+
+/// Detect lakes when flow data is available and config changed.
+fn update_lake_detection(
+    mut lake_cache: ResMut<LakeCache>,
+    flow_cache: Res<FlowCache>,
+    erosion_cache: Res<ErosionCache>,
+    upscale_cache: Res<UpscaleCache>,
+) {
+    if !lake_cache.dirty {
+        return;
+    }
+    let Some(ref flow) = flow_cache.result else {
+        return;
+    };
+    // Use eroded heightmap, fall back to upscale
+    let eroded = erosion_cache.heightmap.as_ref().or(upscale_cache.heightmap.as_ref());
+    let Some(eroded) = eroded else {
+        return;
+    };
+
+    lake_cache.result = Some(ymir_core::lakes::detection::detect_lakes(
+        eroded,
+        &flow.filled,
+        &flow.direction,
+        &flow.basins,
+        &lake_cache.config,
+    ));
+    lake_cache.dirty = false;
 }

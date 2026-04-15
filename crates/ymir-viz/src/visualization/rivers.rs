@@ -1,13 +1,18 @@
 //! River overlay: blends flow accumulation as blue pixels onto a terrain image.
 
 use bevy::prelude::*;
+use ymir_core::lakes::detection::LakeResult;
 
 use crate::state::FlowCache;
 use crate::state::FlowState;
 
 /// Blend river overlay onto an already-rendered terrain image.
-/// Called from within the erosion/upscale texture systems.
-pub fn render_river_overlay_on_image(flow_cache: &FlowCache, image: &mut Image) {
+/// Lake cells are skipped to avoid drawing rivers inside lakes.
+pub fn render_river_overlay_on_image(
+    flow_cache: &FlowCache,
+    lake_result: Option<&LakeResult>,
+    image: &mut Image,
+) {
     if !matches!(flow_cache.state, FlowState::Completed { .. }) {
         return;
     }
@@ -37,6 +42,13 @@ pub fn render_river_overlay_on_image(flow_cache: &FlowCache, image: &mut Image) 
                 continue;
             }
 
+            // Skip lake cells
+            if let Some(lr) = lake_result {
+                if lr.lake_map[y * w + x] > 0 {
+                    continue;
+                }
+            }
+
             let t = ((flow.ln() - log_lo) / log_range).clamp(0.0, 1.0);
             let alpha = 0.3 + t * 0.7;
 
@@ -46,6 +58,31 @@ pub fn render_river_overlay_on_image(flow_cache: &FlowCache, image: &mut Image) 
             data[idx] = lerp_u8(data[idx], 30, alpha);
             data[idx + 1] = lerp_u8(data[idx + 1], 80, alpha);
             data[idx + 2] = lerp_u8(data[idx + 2], 200, alpha);
+        }
+    }
+}
+
+/// Render lake cells as flat blue-green water on the terrain image.
+pub fn render_lake_overlay_on_image(lake_result: &LakeResult, image: &mut Image) {
+    let w = lake_result.width;
+    let h = lake_result.height;
+
+    if image.width() != w as u32 || image.height() != h as u32 {
+        return;
+    }
+
+    let data = image.data.as_mut().unwrap();
+
+    for y in 0..h {
+        for x in 0..w {
+            if lake_result.lake_map[y * w + x] == 0 {
+                continue;
+            }
+            // Y-flip for Bevy
+            let idx = ((h - 1 - y) * w + x) * 4;
+            data[idx] = 40;
+            data[idx + 1] = 90;
+            data[idx + 2] = 140;
         }
     }
 }
