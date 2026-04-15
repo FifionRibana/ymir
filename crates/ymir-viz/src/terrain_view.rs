@@ -89,9 +89,8 @@ fn hillshade_factor(gx: f32, gy: f32) -> f32 {
 // ── Slope heatmap ────────────────────────────────────────────────────────
 
 fn slope_color(gx: f32, gy: f32) -> [u8; 3] {
-    let mag = (gx * gx + gy * gy).sqrt();
-    let t = (mag / 0.5).clamp(0.0, 1.0);
-    [(t * 220.0) as u8, ((1.0 - t) * 180.0 + 40.0) as u8, 30]
+    let [r, g, b, _] = crate::visualization::colormap::slope_color(gx, gy);
+    [r, g, b]
 }
 
 // ── Test terrain generation ──────────────────────────────────────────────

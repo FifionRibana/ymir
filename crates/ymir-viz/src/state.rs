@@ -77,7 +77,7 @@ pub enum PipelinePhase {
     #[default]
     Erosion,
     Climate,
-    Lakes,
+    Hydrology,
 }
 
 impl PipelinePhase {
@@ -86,8 +86,8 @@ impl PipelinePhase {
         PipelinePhase::Isostasy,
         PipelinePhase::UpscaleFbm,
         PipelinePhase::Erosion,
+        PipelinePhase::Hydrology,
         PipelinePhase::Climate,
-        PipelinePhase::Lakes,
     ];
 
     pub fn label(self) -> &'static str {
@@ -96,8 +96,19 @@ impl PipelinePhase {
             PipelinePhase::Isostasy => "Isostasy",
             PipelinePhase::UpscaleFbm => "Upscale + FBM",
             PipelinePhase::Erosion => "Erosion",
+            PipelinePhase::Hydrology => "Hydrology",
             PipelinePhase::Climate => "Climate",
-            PipelinePhase::Lakes => "Lakes",
+        }
+    }
+
+    pub fn short_label(self) -> &'static str {
+        match self {
+            PipelinePhase::Tectonics => "TEC",
+            PipelinePhase::Isostasy => "ISO",
+            PipelinePhase::UpscaleFbm => "FBM",
+            PipelinePhase::Erosion => "ERO",
+            PipelinePhase::Hydrology => "HYD",
+            PipelinePhase::Climate => "CLI",
         }
     }
 }
@@ -337,6 +348,11 @@ pub struct UiActions {
     /// Set to true when the user clicks "Center Map".
     pub center_requested: bool,
     pub center_offset_changed: bool,
+    /// Top-bar run button dispatches — consumed by parameter_panel / bridge systems.
+    pub run_solver_requested: bool,
+    pub run_fbm_requested: bool,
+    pub run_erosion_requested: bool,
+    pub run_hydrology_requested: bool,
 }
 
 // ── Centering ───────────────────────────────────────────────────────────
@@ -479,6 +495,34 @@ pub struct FlowCache {
     pub rivers: Option<RiverNetwork>,
     pub river_config: RiverConfig,
     pub rivers_dirty: bool,
+}
+
+// ── Run timer ────────────────────────────────────────────────────────────
+
+/// Tracks the start time of the current pipeline operation for the status bar timer.
+#[derive(Resource, Default)]
+pub struct RunTimer {
+    pub started_at: Option<std::time::Instant>,
+    /// Elapsed time of the last completed operation (shown until next run).
+    pub last_elapsed: Option<std::time::Duration>,
+}
+
+// ── Toasts ───────────────────────────────────────────────────────────────
+
+#[derive(Resource, Default)]
+pub struct Toasts {
+    pub messages: Vec<(String, std::time::Instant, bool)>,
+}
+
+impl Toasts {
+    pub fn add(&mut self, msg: String, success: bool) {
+        self.messages.push((msg, std::time::Instant::now(), success));
+    }
+
+    pub fn prune(&mut self) {
+        let now = std::time::Instant::now();
+        self.messages.retain(|(_, t, _)| now.duration_since(*t).as_secs() < 5);
+    }
 }
 
 // ── Lakes ────────────────────────────────────────────────────────────────

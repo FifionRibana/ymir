@@ -403,8 +403,8 @@ fn handle_center_map(
 
     use ymir_core::tectonics::centering::*;
 
-    // On first center: save originals
-    if auto_requested && centering.original_field.is_none() {
+    // On center request: always (re-)save originals from the current field
+    if auto_requested {
         if let Some(ref field) = terrain_display.s_field {
             centering.original_field = Some(field.clone());
             centering.original_plate_ids = dynamic_plates.ids.clone();

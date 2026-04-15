@@ -36,6 +36,8 @@ fn main() {
         .init_resource::<state::LakeCache>()
         .init_resource::<state::CenteringState>()
         .init_resource::<state::CursorWorldPos>()
+        .init_resource::<state::Toasts>()
+        .init_resource::<state::RunTimer>()
         .init_resource::<state::DynamicPlateIds>()
         .add_plugins((
             camera::CameraPlugin,

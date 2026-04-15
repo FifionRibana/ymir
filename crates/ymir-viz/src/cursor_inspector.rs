@@ -2,7 +2,10 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
 use crate::camera::MainCamera;
-use crate::state::{CursorWorldPos, GenerationParamsUi, TectonicState, TerrainData, ViewMode};
+use crate::state::{
+    CursorWorldPos, ErosionCache, FlowCache, GenerationParamsUi, IsostasyCache, IsostasyParams,
+    PipelinePhase, TectonicState, UpscaleCache, ViewMode,
+};
 use crate::tectonic_view::thickness_color;
 use crate::terrain_view::hypsometric_color;
 
@@ -17,17 +20,24 @@ impl Plugin for CursorInspectorPlugin {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cursor_inspector_overlay(
     mut contexts: EguiContexts,
     cursor_pos: Res<CursorWorldPos>,
-    terrain: Option<Res<TerrainData>>,
     tectonic: Option<Res<TectonicState>>,
     view_mode: Res<State<ViewMode>>,
+    current_phase: Res<State<PipelinePhase>>,
+    isostasy_cache: Res<IsostasyCache>,
+    isostasy_params: Res<IsostasyParams>,
+    upscale_cache: Res<UpscaleCache>,
+    erosion_cache: Res<ErosionCache>,
+    flow_cache: Res<FlowCache>,
+    gen_params: Res<GenerationParamsUi>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
 
     egui::Area::new(egui::Id::new("cursor_inspector"))
-        .anchor(egui::Align2::LEFT_BOTTOM, [10.0, -32.0])
+        .anchor(egui::Align2::LEFT_BOTTOM, [65.0, -32.0])
         .show(ctx, |ui| {
             egui::Frame::new()
                 .fill(egui::Color32::from_black_alpha(180))
@@ -37,43 +47,92 @@ fn cursor_inspector_overlay(
                     if *view_mode.get() == ViewMode::Tectonics {
                         draw_tectonic_info(ui, &cursor_pos, tectonic.as_deref());
                     } else {
-                        draw_terrain_info(ui, &cursor_pos, terrain.as_deref());
+                        draw_pipeline_terrain_info(
+                            ui,
+                            &cursor_pos,
+                            current_phase.get(),
+                            &isostasy_cache,
+                            &isostasy_params,
+                            &upscale_cache,
+                            &erosion_cache,
+                            &flow_cache,
+                            &gen_params,
+                        );
                     }
                 });
         });
 }
 
-fn draw_terrain_info(
+#[allow(clippy::too_many_arguments)]
+fn draw_pipeline_terrain_info(
     ui: &mut bevy_egui::egui::Ui,
     cursor_pos: &CursorWorldPos,
-    terrain: Option<&TerrainData>,
+    phase: &PipelinePhase,
+    isostasy_cache: &IsostasyCache,
+    isostasy_params: &IsostasyParams,
+    upscale_cache: &UpscaleCache,
+    erosion_cache: &ErosionCache,
+    flow_cache: &FlowCache,
+    gen_params: &GenerationParamsUi,
 ) {
-    let Some(terrain) = terrain else {
+    // Select active heightmap based on pipeline phase
+    let heightmap = match *phase {
+        PipelinePhase::Tectonics | PipelinePhase::Isostasy => isostasy_cache.heightmap.as_ref(),
+        PipelinePhase::UpscaleFbm => upscale_cache.heightmap.as_ref(),
+        PipelinePhase::Erosion | PipelinePhase::Hydrology => {
+            erosion_cache.heightmap.as_ref().or(upscale_cache.heightmap.as_ref())
+        }
+        _ => None,
+    };
+
+    let Some(hm) = heightmap else {
         ui.monospace("x: ---  y: ---  alt: ---  slope: ---");
         return;
     };
-    let hm = &terrain.heightmap;
 
-    if let Some(world) = cursor_pos.pos {
-        let gx = world.x + hm.width as f32 / 2.0;
-        let gy = -world.y + hm.height as f32 / 2.0;
-        let ix = gx as i32;
-        let iy = gy as i32;
-
-        if ix >= 0 && iy >= 0 && (ix as usize) < hm.width && (iy as usize) < hm.height {
-            let alt = hm.get(ix, iy);
-            let (grad_x, grad_y) = hm.gradient_at(ix as usize, iy as usize);
-            let slope_deg = (grad_x * grad_x + grad_y * grad_y).sqrt().atan().to_degrees();
-            ui.monospace(format!(
-                "x: {}  y: {}  alt: {:.0}m  slope: {:.1}°",
-                ix, iy, alt, slope_deg
-            ));
-        } else {
-            ui.monospace("x: ---  y: ---  alt: ---  slope: ---");
-        }
-    } else {
+    let Some(world) = cursor_pos.pos else {
         ui.monospace("x: ---  y: ---  alt: ---  slope: ---");
+        return;
+    };
+
+    let gx = world.x + hm.width as f32 / 2.0;
+    let gy = -world.y + hm.height as f32 / 2.0;
+    let ix = gx as i32;
+    let iy = gy as i32;
+
+    if ix < 0 || iy < 0 || (ix as usize) >= hm.width || (iy as usize) >= hm.height {
+        ui.monospace("x: ---  y: ---  alt: ---  slope: ---");
+        return;
     }
+
+    let x = ix as usize;
+    let y = iy as usize;
+    let h = hm.data[y * hm.width + x];
+    let sea = isostasy_cache.sea_level_normalized;
+    let max_elev = isostasy_params.max_elevation_m;
+    let max_depth = isostasy_params.max_depth_m;
+
+    let alt_m =
+        if h >= sea { (h - sea) / (1.0 - sea) * max_elev } else { -((sea - h) / sea * max_depth) };
+
+    let (grad_x, grad_y) = hm.gradient_at(x, y);
+    let mpp = gen_params.meters_per_pixel;
+    let slope_deg = ((grad_x * grad_x + grad_y * grad_y).sqrt() * mpp).atan().to_degrees();
+
+    let mut text = format!("x:{x}  y:{y}  alt:{alt_m:.0}m  slope:{slope_deg:.1}°");
+
+    // Flow accumulation if available
+    if let Some(ref result) = flow_cache.result {
+        let fw = result.accumulation.width;
+        let fh = result.accumulation.height;
+        if x < fw && y < fh {
+            let flow = result.accumulation.data[y * fw + x] as u32;
+            let basin = result.basins[y * fw + x];
+            text.push_str(&format!("  flow:{flow}  basin:{basin}"));
+        }
+    }
+
+    ui.monospace(text);
 }
 
 fn draw_tectonic_info(
@@ -137,9 +196,13 @@ struct MinimapTexture {
 #[allow(clippy::too_many_arguments)]
 fn minimap_overlay(
     mut contexts: EguiContexts,
-    terrain: Option<Res<TerrainData>>,
     tectonic: Option<Res<TectonicState>>,
     view_mode: Res<State<ViewMode>>,
+    current_phase: Res<State<PipelinePhase>>,
+    isostasy_cache: Res<IsostasyCache>,
+    upscale_cache: Res<UpscaleCache>,
+    erosion_cache: Res<ErosionCache>,
+    flow_cache: Res<FlowCache>,
     minimap: Option<Res<MinimapTexture>>,
     mut commands: Commands,
     camera_q: Query<(&Transform, &Projection), With<MainCamera>>,
@@ -147,6 +210,21 @@ fn minimap_overlay(
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     let mode = *view_mode.get();
+    let phase = *current_phase.get();
+
+    // Select the active heightmap based on pipeline phase
+    let active_heightmap = if mode == ViewMode::Tectonics {
+        None // handled separately via tectonic state
+    } else {
+        match phase {
+            PipelinePhase::Tectonics | PipelinePhase::Isostasy => isostasy_cache.heightmap.as_ref(),
+            PipelinePhase::UpscaleFbm => upscale_cache.heightmap.as_ref(),
+            PipelinePhase::Erosion | PipelinePhase::Hydrology => {
+                erosion_cache.heightmap.as_ref().or(upscale_cache.heightmap.as_ref())
+            }
+            _ => None,
+        }
+    };
 
     // Determine the grid dimensions to draw the viewport rectangle correctly
     let (grid_w, grid_h) = if mode == ViewMode::Tectonics {
@@ -154,8 +232,8 @@ fn minimap_overlay(
         let s = tec.init.grid_size;
         (s, s)
     } else {
-        let Some(ref ter) = terrain else { return };
-        (ter.heightmap.width, ter.heightmap.height)
+        let Some(ref hm) = active_heightmap else { return };
+        (hm.width, hm.height)
     };
 
     // Rebuild when: first run, mode changed, grid size changed, or underlying data changed.
@@ -167,7 +245,10 @@ fn minimap_overlay(
                 || m.grid_height != grid_h
                 || (mode == ViewMode::Tectonics && m.tectonic_generation != tectonic_gen)
         })
-        || (mode != ViewMode::Tectonics && terrain.as_ref().is_some_and(|t| t.dirty));
+        || isostasy_cache.is_changed()
+        || upscale_cache.is_changed()
+        || erosion_cache.is_changed()
+        || flow_cache.is_changed();
 
     let texture_ref;
     let minimap_texture: &MinimapTexture;
@@ -189,9 +270,7 @@ fn minimap_overlay(
                     pixels[my * mini_size + mx] = egui::Color32::from_rgb(r, g, b);
                 }
             }
-        } else {
-            let Some(ref ter) = terrain else { return };
-            let hm = &ter.heightmap;
+        } else if let Some(ref hm) = active_heightmap {
             for my in 0..mini_size {
                 for mx in 0..mini_size {
                     let sx = mx as f32 / mini_size as f32 * (hm.width - 1) as f32;
@@ -314,7 +393,7 @@ fn scale_bar_overlay(
     let (nice_meters, label) = nice_distance(raw_meters);
     let actual_bar_px = nice_meters / meters_per_screen_px;
 
-    egui::Area::new(egui::Id::new("scale_bar")).anchor(egui::Align2::LEFT_TOP, [10.0, 32.0]).show(
+    egui::Area::new(egui::Id::new("scale_bar")).anchor(egui::Align2::LEFT_TOP, [65.0, 32.0]).show(
         ctx,
         |ui| {
             egui::Frame::new()

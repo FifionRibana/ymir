@@ -21,31 +21,39 @@ impl Plugin for SolverVisualizationPlugin {
         // Isostasy cache recomputation: runs in ALL phases
         app.add_systems(Update, recompute_isostasy_cache);
 
-        // Isostasy texture rendering: only when Altitude mode AND
+        // Isostasy texture rendering: Altitude or Slope mode AND
         // Tectonics or Isostasy phase is selected
         app.add_systems(
             Update,
-            render_isostasy_texture.run_if(in_state(ViewMode::Altitude)).run_if(
-                |phase: Res<State<PipelinePhase>>| {
+            render_isostasy_texture
+                .run_if(|mode: Res<State<ViewMode>>| {
+                    matches!(mode.get(), ViewMode::Altitude | ViewMode::Slope)
+                })
+                .run_if(|phase: Res<State<PipelinePhase>>| {
                     matches!(phase.get(), PipelinePhase::Tectonics | PipelinePhase::Isostasy)
+                }),
+        );
+
+        // Upscale texture rendering: UpscaleFbm phase + Altitude or Slope mode
+        app.add_systems(
+            Update,
+            update_upscale_texture.run_if(in_state(PipelinePhase::UpscaleFbm)).run_if(
+                |mode: Res<State<ViewMode>>| {
+                    matches!(mode.get(), ViewMode::Altitude | ViewMode::Slope)
                 },
             ),
         );
 
-        // Upscale texture rendering: only when UpscaleFbm phase + Altitude mode
-        app.add_systems(
-            Update,
-            update_upscale_texture
-                .run_if(in_state(PipelinePhase::UpscaleFbm))
-                .run_if(in_state(ViewMode::Altitude)),
-        );
-
-        // Erosion texture rendering: only when Erosion phase + Altitude mode
+        // Erosion texture rendering: Erosion or Hydrology phase + Altitude or Slope mode
         app.add_systems(
             Update,
             update_erosion_texture
-                .run_if(in_state(PipelinePhase::Erosion))
-                .run_if(in_state(ViewMode::Altitude)),
+                .run_if(|phase: Res<State<PipelinePhase>>| {
+                    matches!(phase.get(), PipelinePhase::Erosion | PipelinePhase::Hydrology)
+                })
+                .run_if(|mode: Res<State<ViewMode>>| {
+                    matches!(mode.get(), ViewMode::Altitude | ViewMode::Slope)
+                }),
         );
     }
 }
