@@ -15,9 +15,9 @@ use ymir_core::terrain::upscale::FbmUpscaleConfig;
 use ymir_core::terrain::flow::FlowConfig;
 
 use crate::state::{
-    ErosionCache, ErosionParams, ErosionState, FbmParams, FbmState, FlowCache, FlowState,
-    GenerationParamsUi, IsostasyCache, IsostasyParams, LakeCache, TectonicState, UiActions,
-    UpscaleCache,
+    CenteringState, ErosionCache, ErosionParams, ErosionState, FbmParams, FbmState, FlowCache,
+    FlowState, GenerationParamsUi, IsostasyCache, IsostasyParams, LakeCache, TectonicState,
+    UiActions, UpscaleCache,
 };
 use crate::visualization::render::TerrainDisplay;
 
@@ -32,6 +32,7 @@ pub fn handle_export(
     lake_cache: Res<LakeCache>,
     isostasy_cache: Res<IsostasyCache>,
     erosion_params: Res<ErosionParams>,
+    centering_state: Res<CenteringState>,
     fbm_params: Res<FbmParams>,
 ) {
     if !ui_actions.export_requested {
@@ -56,6 +57,11 @@ pub fn handle_export(
     let seed = tecto.seed;
 
     let mut export = PipelineExport::new(output_root, seed, grid_size, &tecto.config);
+    if centering_state.original_field.is_some() {
+        let dx = centering_state.auto_shift.0 + centering_state.offset_x;
+        let dy = centering_state.auto_shift.1 + centering_state.offset_y;
+        export.metadata.centering_shift = Some((dx, dy));
+    }
 
     // Save thickness (Field2D → GridF32)
     let n = s_field.n();
