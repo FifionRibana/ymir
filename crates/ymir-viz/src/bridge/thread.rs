@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use crossbeam_channel::{Receiver, Sender};
 
+use ymir_core::erosion::hydraulic::run_erosion;
 use ymir_core::tectonics::solver::grid::StaggeredGrid;
 use ymir_core::tectonics::solver::tectonics::run_tectonics;
 use ymir_core::tectonics::solver::workspace::SolverWorkspace;
@@ -159,6 +160,24 @@ pub fn spawn_solver_thread(
                         let _ = events_tx.send(SolverEvent::FbmCompleted {
                             heightmap: result.heightmap,
                             slope: result.slope,
+                            elapsed: start.elapsed(),
+                        });
+                    }
+                    SolverCommand::RunErosion { heightmap, config, seed } => {
+                        cancel.store(false, Ordering::Relaxed);
+                        let start = Instant::now();
+                        let tx = events_tx.clone();
+                        let cancel_ref = cancel.clone();
+
+                        let result = run_erosion(&heightmap, &config, &seed, |completed, total| {
+                            let _ = tx.send(SolverEvent::ErosionProgress { completed, total });
+                            !cancel_ref.load(Ordering::Relaxed)
+                        });
+
+                        let _ = events_tx.send(SolverEvent::ErosionCompleted {
+                            heightmap: result.heightmap,
+                            sediment: result.sediment,
+                            stats: result.stats,
                             elapsed: start.elapsed(),
                         });
                     }

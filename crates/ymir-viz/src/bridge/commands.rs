@@ -1,5 +1,6 @@
 //! Commands sent from the Bevy main thread to the solver thread.
 
+use ymir_core::erosion::hydraulic::ErosionConfig;
 use ymir_core::grid::GridF32;
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::solver::config::TectonicsConfig;
@@ -28,6 +29,11 @@ pub enum SolverCommand {
         sea_level: f32,
         seed: WorldSeed,
         config: FbmUpscaleConfig,
+    },
+    RunErosion {
+        heightmap: GridF32,
+        config: ErosionConfig,
+        seed: WorldSeed,
     },
     Cancel,
     Shutdown,

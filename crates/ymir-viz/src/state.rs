@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use ymir_core::erosion::hydraulic::{ErosionConfig, ErosionStats};
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics::boundaries::BoundaryConfig;
 use ymir_core::tectonics::plates::{PlateConfig, PlateInitResult};
@@ -409,6 +410,31 @@ impl Default for FbmParams {
             domain_warp_octaves: 3,
         }
     }
+}
+
+// ── Erosion ─────────────────────────────────────────────────────────────
+
+#[derive(Default, Debug, Clone)]
+pub enum ErosionState {
+    #[default]
+    Idle,
+    Running {
+        completed: usize,
+        total: usize,
+    },
+    Completed {
+        elapsed: std::time::Duration,
+    },
+}
+
+#[derive(Resource, Default)]
+pub struct ErosionCache {
+    pub heightmap: Option<GridF32>,
+    pub sediment: Option<GridF32>,
+    pub stats: Option<ErosionStats>,
+    pub state: ErosionState,
+    pub pending_config: Option<ErosionConfig>,
+    pub pending_seed: Option<ymir_core::seed::WorldSeed>,
 }
 
 // ── Cursor ───────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use ymir_core::erosion::hydraulic::ErosionStats;
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics::plates::Plate;
 use ymir_core::tectonics::solver::field::Field2D;
@@ -30,6 +31,16 @@ pub enum SolverEvent {
     FbmCompleted {
         heightmap: GridF32,
         slope: GridF32,
+        elapsed: Duration,
+    },
+    ErosionProgress {
+        completed: usize,
+        total: usize,
+    },
+    ErosionCompleted {
+        heightmap: GridF32,
+        sediment: GridF32,
+        stats: ErosionStats,
         elapsed: Duration,
     },
     Failed {
