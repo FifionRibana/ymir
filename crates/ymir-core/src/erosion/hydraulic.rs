@@ -201,8 +201,21 @@ fn simulate_droplet(
     let w = hmap.width as f32;
     let h = hmap.height as f32;
 
-    let mut x: f32 = rng.random::<f32>() * (w - 1.0);
-    let mut y: f32 = rng.random::<f32>() * (h - 1.0);
+    // Spawn only on land — rejection sampling
+    let mut x: f32 = 0.0;
+    let mut y: f32 = 0.0;
+    let mut found_land = false;
+    for _ in 0..100 {
+        x = rng.random::<f32>() * (w - 1.0);
+        y = rng.random::<f32>() * (h - 1.0);
+        if hmap.sample_bilinear(x, y) > config.sea_level {
+            found_land = true;
+            break;
+        }
+    }
+    if !found_land {
+        return 0;
+    }
     let mut dir_x: f32 = 0.0;
     let mut dir_y: f32 = 0.0;
     let mut speed: f32 = 1.0;
