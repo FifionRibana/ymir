@@ -1,32 +1,17 @@
-//! River overlay: renders flow accumulation as blue pixels on the terrain texture.
+//! River overlay: blends flow accumulation as blue pixels onto a terrain image.
 
 use bevy::prelude::*;
 
-use super::render::TerrainDisplay;
-use crate::state::{FlowCache, FlowState, ViewState};
+use crate::state::FlowCache;
+use crate::state::FlowState;
 
-/// Render river overlay on the terrain texture.
-/// Runs after terrain/erosion texture rendering, blends blue over existing pixels.
-pub fn render_river_overlay(
-    flow_cache: Res<FlowCache>,
-    view_state: Res<ViewState>,
-    terrain_display: Res<TerrainDisplay>,
-    mut images: ResMut<Assets<Image>>,
-) {
-    if !view_state.overlays.rivers {
-        return;
-    }
+/// Blend river overlay onto an already-rendered terrain image.
+/// Called from within the erosion/upscale texture systems.
+pub fn render_river_overlay_on_image(flow_cache: &FlowCache, image: &mut Image) {
     if !matches!(flow_cache.state, FlowState::Completed { .. }) {
         return;
     }
     let Some(ref result) = flow_cache.result else {
-        return;
-    };
-
-    let Some(handle) = &terrain_display.texture_handle else {
-        return;
-    };
-    let Some(image) = images.get_mut(handle) else {
         return;
     };
 

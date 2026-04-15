@@ -65,7 +65,10 @@ fn ui_top_bar(
                 view_state.overlays.hillshade = hillshade;
             }
 
-            ui.add_enabled(false, egui::Checkbox::new(&mut false, "Rivers"));
+            let mut rivers = view_state.overlays.rivers;
+            if ui.checkbox(&mut rivers, "Rivers").changed() {
+                view_state.overlays.rivers = rivers;
+            }
 
             let mut grid = view_state.overlays.grid;
             if ui.checkbox(&mut grid, "Grid").changed() {
