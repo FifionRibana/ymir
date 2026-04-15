@@ -6,25 +6,26 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use super::colormap::hypsometric_colormap;
 use super::render::TerrainDisplay;
-use crate::state::{ErosionCache, ErosionState, IsostasyCache, UpscaleCache};
+use crate::state::{ErosionCache, ErosionState, FlowCache, IsostasyCache, UpscaleCache, ViewState};
 
 /// Update the terrain texture with the eroded heightmap.
 pub fn update_erosion_texture(
     erosion_cache: Res<ErosionCache>,
     upscale_cache: Res<UpscaleCache>,
     isostasy_cache: Res<IsostasyCache>,
+    flow_cache: Res<FlowCache>,
+    view_state: Res<ViewState>,
     terrain_display: Res<TerrainDisplay>,
     mut images: ResMut<Assets<Image>>,
 ) {
     if matches!(erosion_cache.state, ErosionState::Idle) {
         return;
     }
-    if !erosion_cache.is_changed() {
+    if !erosion_cache.is_changed() && !flow_cache.is_changed() && !view_state.is_changed() {
         return;
     }
 
     // Use erosion heightmap if available, otherwise fall back to upscale
-    // (happens right after "Run Erosion" before the first snapshot arrives)
     let heightmap = match erosion_cache.heightmap.as_ref() {
         Some(hm) => hm,
         None => match upscale_cache.heightmap.as_ref() {
@@ -69,5 +70,10 @@ pub fn update_erosion_texture(
             };
             let _ = image.set_color_at(x as u32, (n - 1 - y) as u32, Color::srgba_u8(r, g, b, a));
         }
+    }
+
+    // River overlay (if enabled)
+    if view_state.overlays.rivers {
+        super::rivers::render_river_overlay_on_image(&flow_cache, image);
     }
 }

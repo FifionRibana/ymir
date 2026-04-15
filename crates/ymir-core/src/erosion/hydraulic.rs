@@ -224,8 +224,11 @@ fn simulate_droplet(
     let mut below_sea_steps: usize = 0;
 
     for step in 0..config.max_lifetime {
+        // Use 1px steps underwater for smooth coastal deposition
+        let effective_step = if below_sea_steps > 0 { 1.0 } else { step_size };
+
         // i. Gradient
-        let (gx, gy) = hmap.gradient_at_f_periodic(x, y, step_size);
+        let (gx, gy) = hmap.gradient_at_f_periodic(x, y, effective_step);
 
         // ii. Update direction with inertia
         dir_x = dir_x * config.inertia - gx * (1.0 - config.inertia);
@@ -241,8 +244,8 @@ fn simulate_droplet(
         }
 
         // iii. Move (periodic wrapping)
-        let new_x = ((x + dir_x * step_size) % w + w) % w;
-        let new_y = ((y + dir_y * step_size) % h + h) % h;
+        let new_x = ((x + dir_x * effective_step) % w + w) % w;
+        let new_y = ((y + dir_y * effective_step) % h + h) % h;
 
         // iv. Height difference
         let h_old = hmap.sample_bilinear_periodic(x, y);

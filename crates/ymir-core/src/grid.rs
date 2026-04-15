@@ -250,6 +250,42 @@ impl GridF32 {
         self.data.iter().sum::<f32>() / self.data.len() as f32
     }
 
+    // ── Raw binary I/O ────────────────────────────────────────────────────
+
+    /// Save the grid as raw little-endian f32 bytes. Lossless.
+    pub fn save_raw(&self, path: &Path) -> Result<(), String> {
+        let bytes: Vec<u8> = self.data.iter().flat_map(|f| f.to_le_bytes()).collect();
+        std::fs::write(path, bytes).map_err(|e| format!("Write error: {e}"))
+    }
+
+    /// Load a grid from raw little-endian f32 bytes.
+    pub fn load_raw(path: &Path, width: usize, height: usize) -> Result<Self, String> {
+        let bytes = std::fs::read(path).map_err(|e| format!("Read error: {e}"))?;
+        let expected = width * height * 4;
+        if bytes.len() != expected {
+            return Err(format!("Size mismatch: expected {expected} bytes, got {}", bytes.len()));
+        }
+        let data: Vec<f32> =
+            bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+        Ok(Self { width, height, data })
+    }
+
+    /// Load from raw f32 if available, otherwise fall back to 16-bit PNG.
+    pub fn load_raw_or_png(
+        raw_path: &Path,
+        png_path: &Path,
+        width: usize,
+        height: usize,
+    ) -> Result<Self, String> {
+        if raw_path.exists() {
+            Self::load_raw(raw_path, width, height)
+        } else if png_path.exists() {
+            Self::load_png(png_path)
+        } else {
+            Err(format!("Neither {} nor {} found", raw_path.display(), png_path.display()))
+        }
+    }
+
     // ── PNG I/O ──────────────────────────────────────────────────────────
 
     /// Load a grayscale PNG as a GridF32.

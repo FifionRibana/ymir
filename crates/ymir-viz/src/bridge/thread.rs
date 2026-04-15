@@ -10,6 +10,7 @@ use ymir_core::erosion::hydraulic::run_erosion;
 use ymir_core::tectonics::solver::grid::StaggeredGrid;
 use ymir_core::tectonics::solver::tectonics::run_tectonics;
 use ymir_core::tectonics::solver::workspace::SolverWorkspace;
+use ymir_core::terrain::flow::compute_flow;
 use ymir_core::terrain::upscale::upscale_with_fbm;
 
 use super::commands::SolverCommand;
@@ -192,6 +193,12 @@ pub fn spawn_solver_thread(
                             stats: result.stats,
                             elapsed: start.elapsed(),
                         });
+                    }
+                    SolverCommand::RunFlowComputation { heightmap, config } => {
+                        let start = Instant::now();
+                        let result = compute_flow(&heightmap, &config);
+                        let _ = events_tx
+                            .send(SolverEvent::FlowCompleted { result, elapsed: start.elapsed() });
                     }
                     SolverCommand::Cancel => {
                         cancel.store(true, Ordering::Relaxed);

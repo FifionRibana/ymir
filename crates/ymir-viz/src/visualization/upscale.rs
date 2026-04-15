@@ -9,19 +9,21 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use super::colormap::hypsometric_colormap;
 use super::render::TerrainDisplay;
-use crate::state::{FbmState, IsostasyCache, UpscaleCache};
+use crate::state::{FbmState, FlowCache, IsostasyCache, UpscaleCache, ViewState};
 
 /// Update the terrain texture with the upscaled heightmap.
 pub fn update_upscale_texture(
     upscale_cache: Res<UpscaleCache>,
     isostasy_cache: Res<IsostasyCache>,
+    flow_cache: Res<FlowCache>,
+    view_state: Res<ViewState>,
     terrain_display: Res<TerrainDisplay>,
     mut images: ResMut<Assets<Image>>,
 ) {
     if !matches!(upscale_cache.state, FbmState::Completed { .. }) {
         return;
     }
-    if !upscale_cache.is_changed() {
+    if !upscale_cache.is_changed() && !flow_cache.is_changed() && !view_state.is_changed() {
         return;
     }
 
@@ -66,5 +68,10 @@ pub fn update_upscale_texture(
             };
             let _ = image.set_color_at(x as u32, (n - 1 - y) as u32, Color::srgba_u8(r, g, b, a));
         }
+    }
+
+    // River overlay (if enabled)
+    if view_state.overlays.rivers {
+        super::rivers::render_river_overlay_on_image(&flow_cache, image);
     }
 }
