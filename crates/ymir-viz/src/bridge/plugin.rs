@@ -17,7 +17,8 @@ use super::commands::SolverCommand;
 use super::events::SolverEvent;
 use super::thread::spawn_solver_thread;
 use crate::state::{
-    DynamicPlateIds, FbmState, SolverConfig, TectonicState, UiActions, UpscaleCache,
+    DynamicPlateIds, ErosionCache, ErosionState, FbmState, SolverConfig, TectonicState, UiActions,
+    UpscaleCache,
 };
 use crate::visualization::render::TerrainDisplay;
 
@@ -73,6 +74,7 @@ impl Plugin for TectonicsBridgePlugin {
                 poll_solver_events,
                 handle_step,
                 dispatch_fbm_upscale,
+                dispatch_erosion,
                 super::export_system::handle_export,
                 super::export_system::handle_load,
             ),
@@ -86,6 +88,7 @@ fn poll_solver_events(
     mut isostasy_cache: ResMut<crate::state::IsostasyCache>,
     mut dynamic_plates: ResMut<DynamicPlateIds>,
     mut upscale_cache: ResMut<UpscaleCache>,
+    mut erosion_cache: ResMut<ErosionCache>,
 ) {
     while let Ok(event) = bridge.events_rx.try_recv() {
         match event {
@@ -125,6 +128,19 @@ fn poll_solver_events(
                 upscale_cache.heightmap = Some(heightmap);
                 upscale_cache.slope = Some(slope);
                 upscale_cache.state = FbmState::Completed { elapsed };
+            }
+            SolverEvent::ErosionProgress { completed, total } => {
+                erosion_cache.state = ErosionState::Running { completed, total };
+            }
+            SolverEvent::ErosionSnapshot { heightmap, completed, total } => {
+                erosion_cache.heightmap = Some(heightmap);
+                erosion_cache.state = ErosionState::Running { completed, total };
+            }
+            SolverEvent::ErosionCompleted { heightmap, sediment, stats, elapsed } => {
+                erosion_cache.heightmap = Some(heightmap);
+                erosion_cache.sediment = Some(sediment);
+                erosion_cache.stats = Some(stats);
+                erosion_cache.state = ErosionState::Completed { elapsed };
             }
             SolverEvent::Failed { error } => {
                 bridge.state = SolverState::Failed { error };
@@ -257,5 +273,29 @@ fn dispatch_fbm_upscale(
         sea_level,
         seed,
         config,
+    });
+}
+
+/// Dispatch a pending erosion command to the solver thread.
+fn dispatch_erosion(
+    mut erosion_cache: ResMut<ErosionCache>,
+    bridge: ResMut<SolverBridge>,
+    upscale_cache: Res<UpscaleCache>,
+) {
+    let (Some(config), Some(seed)) =
+        (erosion_cache.pending_config.take(), erosion_cache.pending_seed.take())
+    else {
+        return;
+    };
+
+    let Some(ref heightmap) = upscale_cache.heightmap else {
+        erosion_cache.state = ErosionState::Idle;
+        return;
+    };
+
+    let _ = bridge.commands_tx.send(SolverCommand::RunErosion {
+        heightmap: heightmap.clone(),
+        config,
+        seed,
     });
 }

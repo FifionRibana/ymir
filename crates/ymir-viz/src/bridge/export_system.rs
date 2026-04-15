@@ -13,8 +13,8 @@ use ymir_core::tectonics::solver::field::Field2D;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
 use crate::state::{
-    FbmParams, FbmState, GenerationParamsUi, IsostasyCache, IsostasyParams, TectonicState,
-    UiActions, UpscaleCache,
+    ErosionCache, ErosionState, FbmParams, FbmState, GenerationParamsUi, IsostasyCache,
+    IsostasyParams, TectonicState, UiActions, UpscaleCache,
 };
 use crate::visualization::render::TerrainDisplay;
 
@@ -24,6 +24,7 @@ pub fn handle_export(
     isostasy_params: Res<IsostasyParams>,
     terrain_display: Res<TerrainDisplay>,
     upscale_cache: Res<UpscaleCache>,
+    erosion_cache: Res<ErosionCache>,
     fbm_params: Res<FbmParams>,
 ) {
     if !ui_actions.export_requested {
@@ -101,6 +102,25 @@ pub fn handle_export(
         }
     }
 
+    // Save eroded heightmap if available
+    if let (Some(heightmap), Some(sediment), Some(stats)) =
+        (&erosion_cache.heightmap, &erosion_cache.sediment, &erosion_cache.stats)
+    {
+        let erosion_result = ymir_core::erosion::hydraulic::ErosionResult {
+            heightmap: heightmap.clone(),
+            sediment: sediment.clone(),
+            stats: stats.clone(),
+        };
+        // Use default config for metadata — the exact params aren't stored in ErosionCache
+        // but the stats are the important part for reproducibility info
+        let erosion_config = ymir_core::erosion::hydraulic::ErosionConfig::default();
+        if let Err(e) = export.save_eroded(&erosion_result, &erosion_config) {
+            ui_actions.last_message =
+                Some((format!("Export failed: {e}"), std::time::Instant::now(), false));
+            return;
+        }
+    }
+
     let dir_name =
         export.dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     ui_actions.last_message =
@@ -119,6 +139,7 @@ pub fn handle_load(
     mut gen_params: ResMut<GenerationParamsUi>,
     mut isostasy_params: ResMut<IsostasyParams>,
     mut fbm_params: ResMut<FbmParams>,
+    mut erosion_cache: ResMut<ErosionCache>,
     tectonic_state: Option<ResMut<TectonicState>>,
     mut commands: Commands,
 ) {
@@ -201,6 +222,25 @@ pub fn handle_load(
             upscale_cache.heightmap = None;
             upscale_cache.slope = None;
             upscale_cache.state = FbmState::Idle;
+        }
+    }
+
+    // ── Load eroded heightmap ──────────────────────────────────────────────
+    match export.load_eroded() {
+        Ok(heightmap) => {
+            info!("Loaded eroded {}x{} from {}", heightmap.width, heightmap.height, dir.display());
+            let sediment = export.load_sediment().ok();
+            let stats = meta.erosion.as_ref().map(|e| e.stats.clone());
+            erosion_cache.heightmap = Some(heightmap);
+            erosion_cache.sediment = sediment;
+            erosion_cache.stats = stats;
+            erosion_cache.state = ErosionState::Completed { elapsed: std::time::Duration::ZERO };
+        }
+        Err(_) => {
+            erosion_cache.heightmap = None;
+            erosion_cache.sediment = None;
+            erosion_cache.stats = None;
+            erosion_cache.state = ErosionState::Idle;
         }
     }
 
