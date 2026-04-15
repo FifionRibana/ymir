@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use bevy::prelude::ResMut;
 use bevy_egui::egui;
 use ymir_core::seed::WorldSeed;
@@ -37,14 +35,35 @@ pub fn draw(
     lake_cache: &mut LakeCache,
     ui_actions: &mut crate::state::UiActions,
     centering: &mut crate::state::CenteringState,
+    run_timer: &mut crate::state::RunTimer,
 ) {
+    // Consume run_solver_requested before the match moves tectonic_state
+    if ui_actions.run_solver_requested {
+        ui_actions.run_solver_requested = false;
+        if let Some(ref state) = tectonic_state {
+            launch_solver(state, solver_config, bridge);
+            run_timer.started_at = Some(std::time::Instant::now());
+        }
+    }
+
     egui::CollapsingHeader::new("Parameters").default_open(true).show(ui, |ui| {
         match *current_phase {
             PipelinePhase::Erosion => {
-                draw_erosion(
+                draw_erosion(ui, erosion, isostasy_cache, upscale_cache, erosion_cache, generation);
+            }
+            PipelinePhase::Tectonics => {
+                draw_tectonics(ui, tectonic_state, solver_config, bridge);
+            }
+            PipelinePhase::Isostasy => {
+                draw_isostasy(ui, isostasy_params, isostasy_cache, ui_actions, centering);
+            }
+            PipelinePhase::Climate => draw_climate(ui, climate),
+            PipelinePhase::UpscaleFbm => {
+                draw_fbm(ui, fbm_params, isostasy_cache, upscale_cache, generation);
+            }
+            PipelinePhase::Hydrology => {
+                draw_hydrology(
                     ui,
-                    erosion,
-                    bridge,
                     isostasy_cache,
                     upscale_cache,
                     erosion_cache,
@@ -52,25 +71,6 @@ pub fn draw(
                     lake_cache,
                     generation,
                 );
-            }
-            PipelinePhase::Tectonics => {
-                draw_tectonics(
-                    ui,
-                    tectonic_state,
-                    solver_config,
-                    bridge,
-                    isostasy_params,
-                    isostasy_cache,
-                    ui_actions,
-                    centering,
-                );
-            }
-            PipelinePhase::Climate => draw_climate(ui, climate),
-            PipelinePhase::UpscaleFbm => {
-                draw_fbm(ui, fbm_params, isostasy_cache, upscale_cache, generation);
-            }
-            _ => {
-                ui.label("No parameters for this phase");
             }
         }
 
@@ -82,6 +82,59 @@ pub fn draw(
         slider_row(ui, "Size (km)", &mut generation.continent_size_km, 50.0..=500.0);
         slider_row(ui, "Max elev (m)", &mut generation.max_elevation_m, 1000.0..=6000.0);
     });
+
+    // ── Consume top-bar run actions ──
+    consume_top_bar_actions(
+        ui_actions,
+        solver_config,
+        bridge,
+        isostasy_cache,
+        fbm_params,
+        upscale_cache,
+        erosion,
+        erosion_cache,
+        flow_cache,
+        generation,
+        run_timer,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn consume_top_bar_actions(
+    ui_actions: &mut crate::state::UiActions,
+    _solver_config: &mut SolverConfig,
+    _bridge: &mut SolverBridge,
+    isostasy_cache: &IsostasyCache,
+    fbm_params: &mut FbmParams,
+    upscale_cache: &mut UpscaleCache,
+    erosion_params: &mut ErosionParams,
+    erosion_cache: &mut ErosionCache,
+    flow_cache: &mut FlowCache,
+    generation: &mut GenerationParamsUi,
+    run_timer: &mut crate::state::RunTimer,
+) {
+    let mut started = false;
+    if ui_actions.run_fbm_requested {
+        ui_actions.run_fbm_requested = false;
+        launch_fbm(fbm_params, isostasy_cache, upscale_cache, generation);
+        started = true;
+    }
+    if ui_actions.run_erosion_requested {
+        ui_actions.run_erosion_requested = false;
+        launch_erosion(erosion_params, isostasy_cache, erosion_cache, generation);
+        started = true;
+    }
+    if ui_actions.run_hydrology_requested {
+        ui_actions.run_hydrology_requested = false;
+        flow_cache.state = FlowState::Running;
+        flow_cache.pending_config = Some(ymir_core::terrain::flow::FlowConfig {
+            sea_level: isostasy_cache.sea_level_normalized,
+        });
+        started = true;
+    }
+    if started {
+        run_timer.started_at = Some(std::time::Instant::now());
+    }
 }
 
 // ── Tectonics panel ───────────────────────────────────────────────────────
@@ -91,10 +144,6 @@ fn draw_tectonics(
     tectonic_state: Option<ResMut<TectonicState>>,
     solver_config: &mut SolverConfig,
     bridge: &mut SolverBridge,
-    isostasy_params: &mut IsostasyParams,
-    isostasy_cache: &IsostasyCache,
-    ui_actions: &mut crate::state::UiActions,
-    centering: &mut crate::state::CenteringState,
 ) {
     let Some(mut state) = tectonic_state else {
         ui.label("Tectonic state not ready");
@@ -386,27 +435,19 @@ fn draw_tectonics(
 
     ui.add_space(4.0);
 
-    let is_running = matches!(bridge.state, SolverState::Running { .. });
-
-    ui.horizontal(|ui| {
-        let run_btn = ui.add_enabled(!is_running, egui::Button::new("▶ Run solver"));
-        if run_btn.clicked() {
-            launch_solver(&state, solver_config, bridge);
-        }
-        if ui.add_enabled(is_running, egui::Button::new("⏹ Cancel")).clicked() {
-            bridge.cancel_flag.store(true, Ordering::Relaxed);
-        }
-    });
-
-    ui.add_space(4.0);
-
     // ── Solver status ──
     draw_solver_status(ui, &bridge.state);
+}
 
-    ui.add_space(6.0);
-    ui.separator();
+// ── Isostasy panel ───────────────────────────────────────────────────────
 
-    // ── Isostasy ──
+fn draw_isostasy(
+    ui: &mut egui::Ui,
+    isostasy_params: &mut IsostasyParams,
+    isostasy_cache: &IsostasyCache,
+    ui_actions: &mut crate::state::UiActions,
+    centering: &mut crate::state::CenteringState,
+) {
     ui.strong("Isostasy");
 
     if ui.button("⊕ Center Map").clicked() {
@@ -457,13 +498,9 @@ fn draw_tectonics(
 
 fn draw_solver_status(ui: &mut egui::Ui, state: &SolverState) {
     match state {
-        SolverState::Idle => {
-            ui.small("⚪ Ready");
-        }
-        SolverState::Running { step, total_steps, stats } => {
-            let frac = *step as f32 / (*total_steps).max(1) as f32;
-            ui.small(format!("🟡 Running… step {}/{}", step, total_steps));
-            ui.add(egui::ProgressBar::new(frac).show_percentage());
+        SolverState::Idle => {}
+        SolverState::Running { stats, .. } => {
+            // Diagnostic stats only (progress bar is in the top bar)
             if let Some(s) = stats {
                 ui.small(format!(
                     "max_v={:.4}  S=[{:.3}, {:.3}]  picard={}  dt={:.2e}",
@@ -562,13 +599,10 @@ fn regenerate(state: &mut TectonicState) {
 fn draw_erosion(
     ui: &mut egui::Ui,
     p: &mut ErosionParams,
-    bridge: &mut SolverBridge,
-    isostasy_cache: &IsostasyCache,
-    upscale_cache: &UpscaleCache,
+    _isostasy_cache: &IsostasyCache,
+    _upscale_cache: &UpscaleCache,
     erosion_cache: &mut ErosionCache,
-    flow_cache: &mut FlowCache,
-    lake_cache: &mut LakeCache,
-    generation: &GenerationParamsUi,
+    _generation: &GenerationParamsUi,
 ) {
     ui.strong("Hydraulic erosion");
     slider_row(ui, "Erosion rate", &mut p.erosion_rate, 0.0..=1.0);
@@ -583,83 +617,39 @@ fn draw_erosion(
 
     ui.add_space(6.0);
 
-    let is_running = matches!(erosion_cache.state, ErosionState::Running { .. });
-    let has_upscale = upscale_cache.heightmap.is_some();
-
-    ui.horizontal(|ui| {
-        let run_btn =
-            ui.add_enabled(has_upscale && !is_running, egui::Button::new("▶ Run Erosion"));
-        if run_btn.clicked() {
-            launch_erosion(p, isostasy_cache, erosion_cache, generation);
-        }
-        if ui.add_enabled(is_running, egui::Button::new("⏹ Cancel")).clicked() {
-            bridge.cancel_flag.store(true, std::sync::atomic::Ordering::Relaxed);
-        }
-    });
-
-    if !has_upscale {
-        ui.small("Run FBM upscaling first to produce a high-res heightmap.");
-    }
-
-    // Progress / status
-    match &erosion_cache.state {
-        ErosionState::Idle => {
-            ui.small("⚪ Ready");
-        }
-        ErosionState::Running { completed, total } => {
-            let frac = *completed as f32 / (*total).max(1) as f32;
+    // Completion stats only (progress is shown in the top bar)
+    if let ErosionState::Completed { elapsed } = &erosion_cache.state {
+        ui.small(format!("🟢 Done in {:.1}s", elapsed.as_secs_f64()));
+        if let Some(ref stats) = erosion_cache.stats {
             ui.small(format!(
-                "🟡 Running… {:.1}M / {:.1}M droplets",
-                *completed as f64 / 1e6,
-                *total as f64 / 1e6
+                "Eroded: {:.1}  Deposited: {:.1}  Avg life: {:.0}",
+                stats.total_eroded, stats.total_deposited, stats.avg_lifetime
             ));
-            ui.add(egui::ProgressBar::new(frac).show_percentage());
-        }
-        ErosionState::Completed { elapsed } => {
-            ui.small(format!("🟢 Done in {:.1}s", elapsed.as_secs_f64()));
-            if let Some(ref stats) = erosion_cache.stats {
-                ui.small(format!(
-                    "Eroded: {:.1}  Deposited: {:.1}  Avg life: {:.0}",
-                    stats.total_eroded, stats.total_deposited, stats.avg_lifetime
-                ));
-            }
         }
     }
+}
 
-    // ── Flow & Rivers ──
-    ui.add_space(6.0);
-    ui.separator();
+// ── Hydrology panel ──────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+fn draw_hydrology(
+    ui: &mut egui::Ui,
+    _isostasy_cache: &IsostasyCache,
+    _upscale_cache: &UpscaleCache,
+    _erosion_cache: &mut ErosionCache,
+    flow_cache: &mut FlowCache,
+    lake_cache: &mut LakeCache,
+    _generation: &GenerationParamsUi,
+) {
     ui.strong("Flow & Rivers");
 
-    let has_heightmap = erosion_cache.heightmap.is_some() || upscale_cache.heightmap.is_some();
-    let flow_running = matches!(flow_cache.state, FlowState::Running);
-
-    ui.horizontal(|ui| {
-        let btn =
-            ui.add_enabled(has_heightmap && !flow_running, egui::Button::new("▶ Compute Flow"));
-        if btn.clicked() {
-            flow_cache.state = FlowState::Running;
-            flow_cache.pending_config = Some(ymir_core::terrain::flow::FlowConfig {
-                sea_level: isostasy_cache.sea_level_normalized,
-            });
+    if let FlowState::Completed { elapsed } = &flow_cache.state {
+        ui.small(format!("🟢 Done in {:.2}s", elapsed.as_secs_f64()));
+        if let Some(ref result) = flow_cache.result {
+            ui.small(format!("{} basins", result.num_basins));
         }
-    });
-
-    match &flow_cache.state {
-        FlowState::Idle => {
-            ui.small("⚪ Ready");
-        }
-        FlowState::Running => {
-            ui.small("🟡 Computing flow…");
-        }
-        FlowState::Completed { elapsed } => {
-            ui.small(format!("🟢 Done in {:.2}s", elapsed.as_secs_f64()));
-            if let Some(ref result) = flow_cache.result {
-                ui.small(format!("{} basins", result.num_basins));
-            }
-            if let Some(ref rivers) = flow_cache.rivers {
-                ui.small(format!("{} river segments", rivers.segments.len()));
-            }
+        if let Some(ref rivers) = flow_cache.rivers {
+            ui.small(format!("{} river segments", rivers.segments.len()));
         }
     }
 
@@ -727,6 +717,7 @@ fn draw_erosion(
     // ── Lakes ──
     if flow_cache.result.is_some() {
         ui.add_space(4.0);
+        ui.separator();
         ui.strong("Lakes");
 
         let lc = &mut lake_cache.config;
@@ -751,7 +742,6 @@ fn draw_erosion(
 
         slider_row_usize(ui, "Min area", &mut lc.min_area, 5..=200);
         if ui.ctx().input(|i| i.pointer.any_released()) {
-            // Only trigger on release to avoid re-detecting every frame
             lake_changed = true;
         }
 
@@ -812,9 +802,9 @@ fn launch_erosion(
 fn draw_fbm(
     ui: &mut egui::Ui,
     p: &mut FbmParams,
-    isostasy_cache: &IsostasyCache,
+    _isostasy_cache: &IsostasyCache,
     upscale_cache: &mut UpscaleCache,
-    generation: &GenerationParamsUi,
+    _generation: &GenerationParamsUi,
 ) {
     ui.strong("FBM Upscaling");
 
@@ -851,33 +841,11 @@ fn draw_fbm(
 
     ui.add_space(6.0);
 
-    let is_running = matches!(upscale_cache.state, FbmState::Running);
-    let has_isostasy = isostasy_cache.valid;
-
-    ui.horizontal(|ui| {
-        let run_btn = ui.add_enabled(has_isostasy && !is_running, egui::Button::new("▶ Run FBM"));
-        if run_btn.clicked() {
-            launch_fbm(p, isostasy_cache, upscale_cache, generation);
-        }
-    });
-
-    if !has_isostasy {
-        ui.small("Run the tectonic solver first to produce an isostasy heightmap.");
-    }
-
-    // Status
-    match &upscale_cache.state {
-        FbmState::Idle => {
-            ui.small("⚪ Ready");
-        }
-        FbmState::Running => {
-            ui.small("🟡 Running…");
-        }
-        FbmState::Completed { elapsed } => {
-            ui.small(format!("🟢 Done in {:.2}s", elapsed.as_secs_f64()));
-            if let Some(ref hm) = upscale_cache.heightmap {
-                ui.small(format!("Output: {}×{}", hm.width, hm.height));
-            }
+    // Completion info only (progress is in the top bar)
+    if let FbmState::Completed { elapsed } = &upscale_cache.state {
+        ui.small(format!("🟢 Done in {:.2}s", elapsed.as_secs_f64()));
+        if let Some(ref hm) = upscale_cache.heightmap {
+            ui.small(format!("Output: {}×{}", hm.width, hm.height));
         }
     }
 }

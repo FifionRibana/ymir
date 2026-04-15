@@ -5,9 +5,9 @@ use bevy::prelude::*;
 
 use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 
-use super::colormap::hypsometric_colormap;
+use super::colormap::{hypsometric_colormap, slope_color};
 use super::render::TerrainDisplay;
-use crate::state::{IsostasyCache, IsostasyParams};
+use crate::state::{IsostasyCache, IsostasyParams, ViewMode};
 
 /// Recompute the isostasy cache when parameters change.
 /// Runs in ALL phases — the cache is needed by FBM, erosion, etc.
@@ -52,9 +52,10 @@ pub fn recompute_isostasy_cache(
 pub fn render_isostasy_texture(
     isostasy_cache: Res<IsostasyCache>,
     terrain_display: Res<TerrainDisplay>,
+    view_mode: Res<State<ViewMode>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    if !isostasy_cache.is_changed() {
+    if !isostasy_cache.is_changed() && !view_mode.is_changed() {
         return;
     }
     let Some(ref heightmap) = isostasy_cache.heightmap else {
@@ -84,22 +85,26 @@ pub fn render_isostasy_texture(
         image.sampler = bevy::image::ImageSampler::nearest();
     }
 
+    let is_slope = *view_mode.get() == ViewMode::Slope;
+
     for y in 0..n {
         for x in 0..n {
-            let h = heightmap.data[y * n + x] as f64;
-            let [r, g, b, a] = if h < sea {
-                // Ocean: blue gradient
-                let depth = 1.0 - (h / sea).max(0.0);
-                let r = (20.0 + (1.0 - depth) * 30.0) as u8;
-                let g = (50.0 + (1.0 - depth) * 80.0) as u8;
-                let b = (120.0 + (1.0 - depth) * 50.0) as u8;
-                [r, g, b, 255u8]
+            let [r, g, b, a] = if is_slope {
+                let (gx, gy) = heightmap.gradient_at(x, y);
+                slope_color(gx, gy)
             } else {
-                // Land: hypsometric ramp
-                let t = ((h - sea) / (1.0 - sea)).clamp(0.0, 1.0);
-                hypsometric_colormap(0.4 + t * 0.6)
+                let h = heightmap.data[y * n + x] as f64;
+                if h < sea {
+                    let depth = 1.0 - (h / sea).max(0.0);
+                    let r = (20.0 + (1.0 - depth) * 30.0) as u8;
+                    let g = (50.0 + (1.0 - depth) * 80.0) as u8;
+                    let b = (120.0 + (1.0 - depth) * 50.0) as u8;
+                    [r, g, b, 255u8]
+                } else {
+                    let t = ((h - sea) / (1.0 - sea)).clamp(0.0, 1.0);
+                    hypsometric_colormap(0.4 + t * 0.6)
+                }
             };
-            // Y-flip: image row 0 is top, grid row 0 is bottom
             let _ = image.set_color_at(x as u32, (n - 1 - y) as u32, Color::srgba_u8(r, g, b, a));
         }
     }

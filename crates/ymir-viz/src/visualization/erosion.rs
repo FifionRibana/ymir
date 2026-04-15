@@ -4,10 +4,11 @@
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use super::colormap::hypsometric_colormap;
+use super::colormap::{hypsometric_colormap, slope_color};
 use super::render::TerrainDisplay;
 use crate::state::{
-    ErosionCache, ErosionState, FlowCache, IsostasyCache, LakeCache, UpscaleCache, ViewState,
+    ErosionCache, ErosionState, FlowCache, IsostasyCache, LakeCache, UpscaleCache, ViewMode,
+    ViewState,
 };
 
 /// Update the terrain texture with the eroded heightmap.
@@ -18,6 +19,7 @@ pub fn update_erosion_texture(
     flow_cache: Res<FlowCache>,
     lake_cache: Res<LakeCache>,
     view_state: Res<ViewState>,
+    view_mode: Res<State<ViewMode>>,
     terrain_display: Res<TerrainDisplay>,
     mut images: ResMut<Assets<Image>>,
 ) {
@@ -28,6 +30,7 @@ pub fn update_erosion_texture(
         && !flow_cache.is_changed()
         && !lake_cache.is_changed()
         && !view_state.is_changed()
+        && !view_mode.is_changed()
     {
         return;
     }
@@ -62,18 +65,25 @@ pub fn update_erosion_texture(
         image.sampler = bevy::image::ImageSampler::nearest();
     }
 
+    let is_slope = *view_mode.get() == ViewMode::Slope;
+
     for y in 0..n {
         for x in 0..n {
-            let h = heightmap.data[y * n + x] as f64;
-            let [r, g, b, a] = if h < sea {
-                let depth = 1.0 - (h / sea).max(0.0);
-                let r = (20.0 + (1.0 - depth) * 30.0) as u8;
-                let g = (50.0 + (1.0 - depth) * 80.0) as u8;
-                let b = (120.0 + (1.0 - depth) * 50.0) as u8;
-                [r, g, b, 255u8]
+            let [r, g, b, a] = if is_slope {
+                let (gx, gy) = heightmap.gradient_at(x, y);
+                slope_color(gx, gy)
             } else {
-                let t = ((h - sea) / (1.0 - sea)).clamp(0.0, 1.0);
-                hypsometric_colormap(0.4 + t * 0.6)
+                let h = heightmap.data[y * n + x] as f64;
+                if h < sea {
+                    let depth = 1.0 - (h / sea).max(0.0);
+                    let r = (20.0 + (1.0 - depth) * 30.0) as u8;
+                    let g = (50.0 + (1.0 - depth) * 80.0) as u8;
+                    let b = (120.0 + (1.0 - depth) * 50.0) as u8;
+                    [r, g, b, 255u8]
+                } else {
+                    let t = ((h - sea) / (1.0 - sea)).clamp(0.0, 1.0);
+                    hypsometric_colormap(0.4 + t * 0.6)
+                }
             };
             let _ = image.set_color_at(x as u32, (n - 1 - y) as u32, Color::srgba_u8(r, g, b, a));
         }
