@@ -17,8 +17,8 @@ use super::commands::SolverCommand;
 use super::events::SolverEvent;
 use super::thread::spawn_solver_thread;
 use crate::state::{
-    DynamicPlateIds, ErosionCache, ErosionState, FbmState, SolverConfig, TectonicState, UiActions,
-    UpscaleCache,
+    DynamicPlateIds, ErosionCache, ErosionState, FbmState, FlowCache, FlowState, SolverConfig,
+    TectonicState, UiActions, UpscaleCache,
 };
 use crate::visualization::render::TerrainDisplay;
 
@@ -75,6 +75,8 @@ impl Plugin for TectonicsBridgePlugin {
                 handle_step,
                 dispatch_fbm_upscale,
                 dispatch_erosion,
+                dispatch_flow,
+                update_river_extraction,
                 super::export_system::handle_export,
                 super::export_system::handle_load,
             ),
@@ -89,6 +91,7 @@ fn poll_solver_events(
     mut dynamic_plates: ResMut<DynamicPlateIds>,
     mut upscale_cache: ResMut<UpscaleCache>,
     mut erosion_cache: ResMut<ErosionCache>,
+    mut flow_cache: ResMut<FlowCache>,
 ) {
     while let Ok(event) = bridge.events_rx.try_recv() {
         match event {
@@ -141,6 +144,11 @@ fn poll_solver_events(
                 erosion_cache.sediment = Some(sediment);
                 erosion_cache.stats = Some(stats);
                 erosion_cache.state = ErosionState::Completed { elapsed };
+            }
+            SolverEvent::FlowCompleted { result, elapsed } => {
+                flow_cache.result = Some(result);
+                flow_cache.state = FlowState::Completed { elapsed };
+                flow_cache.rivers_dirty = true;
             }
             SolverEvent::Failed { error } => {
                 bridge.state = SolverState::Failed { error };
@@ -298,4 +306,47 @@ fn dispatch_erosion(
         config,
         seed,
     });
+}
+
+/// Dispatch a pending flow computation to the solver thread.
+fn dispatch_flow(
+    mut flow_cache: ResMut<FlowCache>,
+    bridge: ResMut<SolverBridge>,
+    erosion_cache: Res<ErosionCache>,
+    upscale_cache: Res<UpscaleCache>,
+) {
+    let Some(config) = flow_cache.pending_config.take() else {
+        return;
+    };
+
+    // Prefer eroded heightmap, fall back to upscale
+    let heightmap = erosion_cache.heightmap.as_ref().or(upscale_cache.heightmap.as_ref());
+
+    let Some(heightmap) = heightmap else {
+        flow_cache.state = FlowState::Idle;
+        return;
+    };
+
+    let _ = bridge
+        .commands_tx
+        .send(SolverCommand::RunFlowComputation { heightmap: heightmap.clone(), config });
+}
+
+/// Re-extract rivers when thresholds change (runs on main thread, fast).
+fn update_river_extraction(mut flow_cache: ResMut<FlowCache>) {
+    if !flow_cache.rivers_dirty {
+        return;
+    }
+
+    let Some(ref result) = flow_cache.result else {
+        return;
+    };
+
+    let w = result.accumulation.width;
+    let h = result.accumulation.height;
+    let config = flow_cache.river_config.clone();
+
+    let rivers = ymir_core::terrain::flow::extract_rivers(result, &config, w, h);
+    flow_cache.rivers = Some(rivers);
+    flow_cache.rivers_dirty = false;
 }
