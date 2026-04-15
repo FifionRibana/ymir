@@ -13,9 +13,9 @@ use ymir_core::tectonics::solver::tectonics::DynamicPlateContext;
 use crate::bridge::commands::SolverCommand;
 use crate::bridge::plugin::{SolverBridge, SolverState};
 use crate::state::{
-    ClimateParams, ErosionCache, ErosionParams, ErosionState, FbmParams, FbmState,
-    GenerationParamsUi, IsostasyCache, IsostasyParams, PipelinePhase, SolverConfig, TectonicState,
-    UpscaleCache,
+    ClimateParams, ErosionCache, ErosionParams, ErosionState, FbmParams, FbmState, FlowCache,
+    FlowState, GenerationParamsUi, IsostasyCache, IsostasyParams, PipelinePhase, SolverConfig,
+    TectonicState, UpscaleCache,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -33,6 +33,7 @@ pub fn draw(
     fbm_params: &mut FbmParams,
     upscale_cache: &mut UpscaleCache,
     erosion_cache: &mut ErosionCache,
+    flow_cache: &mut FlowCache,
 ) {
     egui::CollapsingHeader::new("Parameters").default_open(true).show(ui, |ui| {
         match *current_phase {
@@ -44,6 +45,7 @@ pub fn draw(
                     isostasy_cache,
                     upscale_cache,
                     erosion_cache,
+                    flow_cache,
                     generation,
                 );
             }
@@ -530,6 +532,7 @@ fn draw_erosion(
     isostasy_cache: &IsostasyCache,
     upscale_cache: &UpscaleCache,
     erosion_cache: &mut ErosionCache,
+    flow_cache: &mut FlowCache,
     generation: &GenerationParamsUi,
 ) {
     ui.strong("Hydraulic erosion");
@@ -585,6 +588,104 @@ fn draw_erosion(
                     stats.total_eroded, stats.total_deposited, stats.avg_lifetime
                 ));
             }
+        }
+    }
+
+    // ── Flow & Rivers ──
+    ui.add_space(6.0);
+    ui.separator();
+    ui.strong("Flow & Rivers");
+
+    let has_heightmap = erosion_cache.heightmap.is_some() || upscale_cache.heightmap.is_some();
+    let flow_running = matches!(flow_cache.state, FlowState::Running);
+
+    ui.horizontal(|ui| {
+        let btn =
+            ui.add_enabled(has_heightmap && !flow_running, egui::Button::new("▶ Compute Flow"));
+        if btn.clicked() {
+            flow_cache.state = FlowState::Running;
+            flow_cache.pending_config = Some(ymir_core::terrain::flow::FlowConfig {
+                sea_level: isostasy_cache.sea_level_normalized,
+            });
+        }
+    });
+
+    match &flow_cache.state {
+        FlowState::Idle => {
+            ui.small("⚪ Ready");
+        }
+        FlowState::Running => {
+            ui.small("🟡 Computing flow…");
+        }
+        FlowState::Completed { elapsed } => {
+            ui.small(format!("🟢 Done in {:.2}s", elapsed.as_secs_f64()));
+            if let Some(ref result) = flow_cache.result {
+                ui.small(format!("{} basins", result.num_basins));
+            }
+            if let Some(ref rivers) = flow_cache.rivers {
+                ui.small(format!("{} river segments", rivers.segments.len()));
+            }
+        }
+    }
+
+    if flow_cache.result.is_some() {
+        let rc = &mut flow_cache.river_config;
+        let mut changed = false;
+
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.label("Stream thr.");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.monospace(format!("{:.0}", rc.stream_threshold));
+            });
+        });
+        if ui
+            .add(
+                egui::Slider::new(&mut rc.stream_threshold, 100.0..=5000.0)
+                    .show_value(false)
+                    .logarithmic(true),
+            )
+            .changed()
+        {
+            changed = true;
+        }
+
+        ui.horizontal(|ui| {
+            ui.label("River thr.");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.monospace(format!("{:.0}", rc.river_threshold));
+            });
+        });
+        if ui
+            .add(
+                egui::Slider::new(&mut rc.river_threshold, 500.0..=20000.0)
+                    .show_value(false)
+                    .logarithmic(true),
+            )
+            .changed()
+        {
+            changed = true;
+        }
+
+        ui.horizontal(|ui| {
+            ui.label("Major thr.");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.monospace(format!("{:.0}", rc.major_river_threshold));
+            });
+        });
+        if ui
+            .add(
+                egui::Slider::new(&mut rc.major_river_threshold, 2000.0..=100000.0)
+                    .show_value(false)
+                    .logarithmic(true),
+            )
+            .changed()
+        {
+            changed = true;
+        }
+
+        if changed {
+            flow_cache.rivers_dirty = true;
         }
     }
 }

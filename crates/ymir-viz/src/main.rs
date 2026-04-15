@@ -32,6 +32,7 @@ fn main() {
         .init_resource::<state::FbmParams>()
         .init_resource::<state::UpscaleCache>()
         .init_resource::<state::ErosionCache>()
+        .init_resource::<state::FlowCache>()
         .init_resource::<state::CursorWorldPos>()
         .init_resource::<state::DynamicPlateIds>()
         .add_plugins((

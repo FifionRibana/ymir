@@ -4,6 +4,7 @@ use ymir_core::grid::GridF32;
 use ymir_core::tectonics::boundaries::BoundaryConfig;
 use ymir_core::tectonics::plates::{PlateConfig, PlateInitResult};
 use ymir_core::tectonics::solver::config::{NonlinearSolver, Preconditioner};
+use ymir_core::terrain::flow::{FlowConfig, FlowResult, RiverConfig, RiverNetwork};
 
 // ── View ─────────────────────────────────────────────────────────────────
 
@@ -435,6 +436,28 @@ pub struct ErosionCache {
     pub state: ErosionState,
     pub pending_config: Option<ErosionConfig>,
     pub pending_seed: Option<ymir_core::seed::WorldSeed>,
+}
+
+// ── Flow / Rivers ───────────────────────────────────────────────────────
+
+#[derive(Default, Debug, Clone)]
+pub enum FlowState {
+    #[default]
+    Idle,
+    Running,
+    Completed {
+        elapsed: std::time::Duration,
+    },
+}
+
+#[derive(Resource, Default)]
+pub struct FlowCache {
+    pub result: Option<FlowResult>,
+    pub state: FlowState,
+    pub pending_config: Option<FlowConfig>,
+    pub rivers: Option<RiverNetwork>,
+    pub river_config: RiverConfig,
+    pub rivers_dirty: bool,
 }
 
 // ── Cursor ───────────────────────────────────────────────────────────────
