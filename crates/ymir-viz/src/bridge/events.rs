@@ -7,6 +7,7 @@ use ymir_core::grid::GridF32;
 use ymir_core::tectonics::plates::Plate;
 use ymir_core::tectonics::solver::field::Field2D;
 use ymir_core::tectonics::solver::workspace::StepStats;
+use ymir_core::terrain::flow::FlowResult;
 
 #[allow(dead_code)]
 pub enum SolverEvent {
@@ -46,6 +47,10 @@ pub enum SolverEvent {
         heightmap: GridF32,
         sediment: GridF32,
         stats: ErosionStats,
+        elapsed: Duration,
+    },
+    FlowCompleted {
+        result: FlowResult,
         elapsed: Duration,
     },
     Failed {

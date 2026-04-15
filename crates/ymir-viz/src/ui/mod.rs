@@ -98,6 +98,7 @@ struct UiRightPanelParams<'w> {
     fbm_params: ResMut<'w, crate::state::FbmParams>,
     upscale_cache: ResMut<'w, crate::state::UpscaleCache>,
     erosion_cache: ResMut<'w, crate::state::ErosionCache>,
+    flow_cache: ResMut<'w, crate::state::FlowCache>,
     ui_actions: ResMut<'w, crate::state::UiActions>,
     terrain_display: Res<'w, crate::visualization::render::TerrainDisplay>,
 }
@@ -136,6 +137,7 @@ fn ui_right_panel(
                 &mut params.fbm_params,
                 &mut params.upscale_cache,
                 &mut params.erosion_cache,
+                &mut params.flow_cache,
             );
             ui.separator();
             statistics_panel::draw(ui, &params.stats);
