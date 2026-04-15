@@ -124,6 +124,7 @@ impl PipelineExport {
 
     /// Save the crustal thickness field after tectonics.
     pub fn save_thickness(&self, thickness: &GridF32) -> Result<(), String> {
+        thickness.save_raw(&self.dir.join("01_thickness.raw"))?;
         thickness.save_png_u16(&self.dir.join("01_thickness.png"))
     }
 
@@ -133,6 +134,7 @@ impl PipelineExport {
         result: &IsostasyResult,
         config: &IsostasyConfig,
     ) -> Result<(), String> {
+        result.heightmap.save_raw(&self.dir.join("02_altitude.raw"))?;
         result.heightmap.save_png_u16(&self.dir.join("02_altitude.png"))?;
 
         self.metadata.isostasy = Some(IsostasyMetadata {
@@ -160,6 +162,7 @@ impl PipelineExport {
         heightmap: &GridF32,
         config: &FbmUpscaleConfig,
     ) -> Result<(), String> {
+        heightmap.save_raw(&self.dir.join("03_upscaled.raw"))?;
         heightmap.save_png_u16(&self.dir.join("03_upscaled.png"))?;
         self.metadata.upscale = Some(config.clone());
         self.save_metadata()
@@ -176,17 +179,40 @@ impl PipelineExport {
 
     /// Load the thickness field from a previously saved export.
     pub fn load_thickness(&self) -> Result<GridF32, String> {
-        GridF32::load_png(&self.dir.join("01_thickness.png"))
+        let n = self.metadata.grid_size;
+        GridF32::load_raw_or_png(
+            &self.dir.join("01_thickness.raw"),
+            &self.dir.join("01_thickness.png"),
+            n,
+            n,
+        )
     }
 
     /// Load the altitude heightmap from a previously saved export.
     pub fn load_altitude(&self) -> Result<GridF32, String> {
-        GridF32::load_png(&self.dir.join("02_altitude.png"))
+        let n = self.metadata.grid_size;
+        GridF32::load_raw_or_png(
+            &self.dir.join("02_altitude.raw"),
+            &self.dir.join("02_altitude.png"),
+            n,
+            n,
+        )
     }
 
     /// Load the upscaled heightmap from a previously saved export.
     pub fn load_upscaled(&self) -> Result<GridF32, String> {
-        GridF32::load_png(&self.dir.join("03_upscaled.png"))
+        let size = self
+            .metadata
+            .upscale
+            .as_ref()
+            .map(|u| u.target_size)
+            .unwrap_or(self.metadata.grid_size);
+        GridF32::load_raw_or_png(
+            &self.dir.join("03_upscaled.raw"),
+            &self.dir.join("03_upscaled.png"),
+            size,
+            size,
+        )
     }
 
     /// Save the eroded heightmap and sediment map.
@@ -195,7 +221,9 @@ impl PipelineExport {
         result: &ErosionResult,
         config: &ErosionConfig,
     ) -> Result<(), String> {
+        result.heightmap.save_raw(&self.dir.join("04_eroded.raw"))?;
         result.heightmap.save_png_u16(&self.dir.join("04_eroded.png"))?;
+        result.sediment.save_raw(&self.dir.join("04_sediment.raw"))?;
         result.sediment.save_png_u16(&self.dir.join("04_sediment.png"))?;
         self.metadata.erosion =
             Some(ErosionMetadataEntry { config: config.clone(), stats: result.stats.clone() });
@@ -204,12 +232,34 @@ impl PipelineExport {
 
     /// Load the eroded heightmap from a previously saved export.
     pub fn load_eroded(&self) -> Result<GridF32, String> {
-        GridF32::load_png(&self.dir.join("04_eroded.png"))
+        let size = self
+            .metadata
+            .upscale
+            .as_ref()
+            .map(|u| u.target_size)
+            .unwrap_or(self.metadata.grid_size);
+        GridF32::load_raw_or_png(
+            &self.dir.join("04_eroded.raw"),
+            &self.dir.join("04_eroded.png"),
+            size,
+            size,
+        )
     }
 
     /// Load the sediment map from a previously saved export.
     pub fn load_sediment(&self) -> Result<GridF32, String> {
-        GridF32::load_png(&self.dir.join("04_sediment.png"))
+        let size = self
+            .metadata
+            .upscale
+            .as_ref()
+            .map(|u| u.target_size)
+            .unwrap_or(self.metadata.grid_size);
+        GridF32::load_raw_or_png(
+            &self.dir.join("04_sediment.raw"),
+            &self.dir.join("04_sediment.png"),
+            size,
+            size,
+        )
     }
 
     /// Save all flow computation results (lossless).
@@ -223,10 +273,23 @@ impl PipelineExport {
         let w = result.accumulation.width;
         let h = result.accumulation.height;
 
+        result.filled.save_raw(&self.dir.join("05_filled.raw"))?;
         result.filled.save_png_u16(&self.dir.join("05_filled.png"))?;
         save_raw_f32(&self.dir.join("05_flow_accumulation.raw"), &result.accumulation.data)?;
         save_raw_u8(&self.dir.join("05_flow_direction.raw"), &result.direction)?;
         save_raw_u32(&self.dir.join("05_basins.raw"), &result.basins)?;
+
+        // Visual-only: log-scaled accumulation PNG
+        let max_flow = result.accumulation.data.iter().cloned().fold(0.0f32, f32::max);
+        if max_flow > 0.0 {
+            let log_max = (1.0 + max_flow).ln();
+            let viz = GridF32::from_vec(
+                w,
+                h,
+                result.accumulation.data.iter().map(|&v| (1.0 + v).ln() / log_max).collect(),
+            );
+            let _ = viz.save_png_u16(&self.dir.join("05_flow_accumulation_viz.png"));
+        }
 
         if let Some(network) = rivers {
             let json =
@@ -252,7 +315,12 @@ impl PipelineExport {
         let h = meta.grid_height;
         let n = w * h;
 
-        let filled = GridF32::load_png(&self.dir.join("05_filled.png"))?;
+        let filled = GridF32::load_raw_or_png(
+            &self.dir.join("05_filled.raw"),
+            &self.dir.join("05_filled.png"),
+            w,
+            h,
+        )?;
         let acc_data = load_raw_f32(&self.dir.join("05_flow_accumulation.raw"), n)?;
         let direction = load_raw_u8(&self.dir.join("05_flow_direction.raw"))?;
         let basins = load_raw_u32(&self.dir.join("05_basins.raw"), n)?;
