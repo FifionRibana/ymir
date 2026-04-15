@@ -9,13 +9,14 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use super::colormap::hypsometric_colormap;
 use super::render::TerrainDisplay;
-use crate::state::{FbmState, FlowCache, IsostasyCache, UpscaleCache, ViewState};
+use crate::state::{FbmState, FlowCache, IsostasyCache, LakeCache, UpscaleCache, ViewState};
 
 /// Update the terrain texture with the upscaled heightmap.
 pub fn update_upscale_texture(
     upscale_cache: Res<UpscaleCache>,
     isostasy_cache: Res<IsostasyCache>,
     flow_cache: Res<FlowCache>,
+    lake_cache: Res<LakeCache>,
     view_state: Res<ViewState>,
     terrain_display: Res<TerrainDisplay>,
     mut images: ResMut<Assets<Image>>,
@@ -23,7 +24,11 @@ pub fn update_upscale_texture(
     if !matches!(upscale_cache.state, FbmState::Completed { .. }) {
         return;
     }
-    if !upscale_cache.is_changed() && !flow_cache.is_changed() && !view_state.is_changed() {
+    if !upscale_cache.is_changed()
+        && !flow_cache.is_changed()
+        && !lake_cache.is_changed()
+        && !view_state.is_changed()
+    {
         return;
     }
 
@@ -70,8 +75,16 @@ pub fn update_upscale_texture(
         }
     }
 
-    // River overlay (if enabled)
+    // Lake overlay
+    if view_state.overlays.lakes {
+        if let Some(ref lr) = lake_cache.result {
+            super::rivers::render_lake_overlay_on_image(lr, image);
+        }
+    }
+
+    // River overlay (skips lake cells)
     if view_state.overlays.rivers {
-        super::rivers::render_river_overlay_on_image(&flow_cache, image);
+        let lr = lake_cache.result.as_ref();
+        super::rivers::render_river_overlay_on_image(&flow_cache, lr, image);
     }
 }
