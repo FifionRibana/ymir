@@ -30,3 +30,11 @@ pub fn hypsometric_colormap(t: f64) -> [u8; 4] {
 
     [r, g, b, 255]
 }
+
+/// Slope heatmap: red (steep) to green-yellow (flat).
+/// `gx`, `gy` are gradient components from `GridF32::gradient_at`.
+pub fn slope_color(gx: f32, gy: f32) -> [u8; 4] {
+    let mag = (gx * gx + gy * gy).sqrt();
+    let t = (mag / 0.5).clamp(0.0, 1.0);
+    [(t * 220.0) as u8, ((1.0 - t) * 180.0 + 40.0) as u8, 30, 255]
+}
