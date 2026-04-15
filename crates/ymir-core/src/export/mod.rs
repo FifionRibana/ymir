@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::erosion::hydraulic::{ErosionConfig, ErosionResult, ErosionStats};
 use crate::grid::GridF32;
+use crate::lakes::detection::{Lake, LakeConfig, LakeResult};
 use crate::tectonics::isostasy::{IsostasyConfig, IsostasyResult};
 use crate::tectonics::plates::PlateConfig;
 use crate::terrain::flow::{FlowConfig, FlowResult, RiverConfig, RiverNetwork};
@@ -43,6 +44,8 @@ pub struct PipelineMetadata {
     pub erosion: Option<ErosionMetadataEntry>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flow: Option<FlowMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lakes: Option<LakeMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +72,15 @@ pub struct FlowMetadata {
     pub river_config: RiverConfig,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LakeMetadata {
+    pub config: LakeConfig,
+    pub num_lakes: usize,
+    pub total_lake_area: usize,
+    pub grid_width: usize,
+    pub grid_height: usize,
+}
+
 impl Default for PipelineMetadata {
     fn default() -> Self {
         Self {
@@ -81,6 +93,7 @@ impl Default for PipelineMetadata {
             upscale: None,
             erosion: None,
             flow: None,
+            lakes: None,
         }
     }
 }
@@ -97,6 +110,7 @@ impl PipelineMetadata {
             upscale: None,
             erosion: None,
             flow: None,
+            lakes: None,
         }
     }
 }
@@ -344,6 +358,42 @@ impl PipelineExport {
         let json = fs::read_to_string(self.dir.join("05_rivers.json"))
             .map_err(|e| format!("Read error: {e}"))?;
         serde_json::from_str(&json).map_err(|e| format!("JSON parse error: {e}"))
+    }
+
+    /// Save lake detection results.
+    pub fn save_lakes(&mut self, result: &LakeResult, config: &LakeConfig) -> Result<(), String> {
+        save_raw_u32(&self.dir.join("06_lakes.raw"), &result.lake_map)?;
+
+        let json =
+            serde_json::to_string_pretty(&result.lakes).map_err(|e| format!("JSON error: {e}"))?;
+        fs::write(self.dir.join("06_lakes.json"), json).map_err(|e| format!("Write error: {e}"))?;
+
+        let total_area: usize = result.lakes.iter().map(|l| l.area).sum();
+        self.metadata.lakes = Some(LakeMetadata {
+            config: config.clone(),
+            num_lakes: result.lakes.len(),
+            total_lake_area: total_area,
+            grid_width: result.width,
+            grid_height: result.height,
+        });
+        self.save_metadata()
+    }
+
+    /// Load lake detection results.
+    pub fn load_lakes(&self) -> Result<LakeResult, String> {
+        let meta = self.metadata.lakes.as_ref().ok_or("No lake metadata")?;
+        let w = meta.grid_width;
+        let h = meta.grid_height;
+        let n = w * h;
+
+        let lake_map = load_raw_u32(&self.dir.join("06_lakes.raw"), n)?;
+
+        let json = fs::read_to_string(self.dir.join("06_lakes.json"))
+            .map_err(|e| format!("Read error: {e}"))?;
+        let lakes: Vec<Lake> =
+            serde_json::from_str(&json).map_err(|e| format!("JSON parse error: {e}"))?;
+
+        Ok(LakeResult { lake_map, lakes, width: w, height: h })
     }
 }
 
