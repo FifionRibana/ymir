@@ -12,6 +12,7 @@ use crate::erosion::hydraulic::{ErosionConfig, ErosionResult, ErosionStats};
 use crate::grid::GridF32;
 use crate::tectonics::isostasy::{IsostasyConfig, IsostasyResult};
 use crate::tectonics::plates::PlateConfig;
+use crate::terrain::flow::{FlowConfig, FlowResult, RiverConfig, RiverNetwork};
 use crate::terrain::upscale::FbmUpscaleConfig;
 
 // pub mod raw;     // Native binary format (u16/f32 raw + JSON metadata)
@@ -40,6 +41,8 @@ pub struct PipelineMetadata {
     pub upscale: Option<FbmUpscaleConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub erosion: Option<ErosionMetadataEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flow: Option<FlowMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +60,15 @@ pub struct ErosionMetadataEntry {
     pub stats: ErosionStats,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowMetadata {
+    pub sea_level: f32,
+    pub num_basins: u32,
+    pub grid_width: usize,
+    pub grid_height: usize,
+    pub river_config: RiverConfig,
+}
+
 impl Default for PipelineMetadata {
     fn default() -> Self {
         Self {
@@ -68,6 +80,7 @@ impl Default for PipelineMetadata {
             isostasy: None,
             upscale: None,
             erosion: None,
+            flow: None,
         }
     }
 }
@@ -83,6 +96,7 @@ impl PipelineMetadata {
             isostasy: None,
             upscale: None,
             erosion: None,
+            flow: None,
         }
     }
 }
@@ -197,6 +211,116 @@ impl PipelineExport {
     pub fn load_sediment(&self) -> Result<GridF32, String> {
         GridF32::load_png(&self.dir.join("04_sediment.png"))
     }
+
+    /// Save all flow computation results (lossless).
+    pub fn save_flow(
+        &mut self,
+        result: &FlowResult,
+        config: &FlowConfig,
+        river_config: &RiverConfig,
+        rivers: Option<&RiverNetwork>,
+    ) -> Result<(), String> {
+        let w = result.accumulation.width;
+        let h = result.accumulation.height;
+
+        result.filled.save_png_u16(&self.dir.join("05_filled.png"))?;
+        save_raw_f32(&self.dir.join("05_flow_accumulation.raw"), &result.accumulation.data)?;
+        save_raw_u8(&self.dir.join("05_flow_direction.raw"), &result.direction)?;
+        save_raw_u32(&self.dir.join("05_basins.raw"), &result.basins)?;
+
+        if let Some(network) = rivers {
+            let json =
+                serde_json::to_string_pretty(network).map_err(|e| format!("JSON error: {e}"))?;
+            fs::write(self.dir.join("05_rivers.json"), json)
+                .map_err(|e| format!("Write error: {e}"))?;
+        }
+
+        self.metadata.flow = Some(FlowMetadata {
+            sea_level: config.sea_level,
+            num_basins: result.num_basins,
+            grid_width: w,
+            grid_height: h,
+            river_config: river_config.clone(),
+        });
+        self.save_metadata()
+    }
+
+    /// Load flow computation results.
+    pub fn load_flow(&self) -> Result<(FlowResult, RiverConfig), String> {
+        let meta = self.metadata.flow.as_ref().ok_or("No flow metadata")?;
+        let w = meta.grid_width;
+        let h = meta.grid_height;
+        let n = w * h;
+
+        let filled = GridF32::load_png(&self.dir.join("05_filled.png"))?;
+        let acc_data = load_raw_f32(&self.dir.join("05_flow_accumulation.raw"), n)?;
+        let direction = load_raw_u8(&self.dir.join("05_flow_direction.raw"))?;
+        let basins = load_raw_u32(&self.dir.join("05_basins.raw"), n)?;
+
+        if direction.len() != n {
+            return Err(format!("Direction size mismatch: expected {n}, got {}", direction.len()));
+        }
+        if basins.len() != n {
+            return Err(format!("Basins size mismatch: expected {n}, got {}", basins.len()));
+        }
+
+        let accumulation = GridF32::from_vec(w, h, acc_data);
+        let result =
+            FlowResult { filled, direction, accumulation, basins, num_basins: meta.num_basins };
+
+        Ok((result, meta.river_config.clone()))
+    }
+
+    /// Load the pre-extracted river network.
+    pub fn load_rivers(&self) -> Result<RiverNetwork, String> {
+        let json = fs::read_to_string(self.dir.join("05_rivers.json"))
+            .map_err(|e| format!("Read error: {e}"))?;
+        serde_json::from_str(&json).map_err(|e| format!("JSON parse error: {e}"))
+    }
+}
+
+// ── Raw binary helpers ──────────────────────────────────────────────────
+
+fn save_raw_f32(path: &Path, data: &[f32]) -> Result<(), String> {
+    let bytes: Vec<u8> = data.iter().flat_map(|f| f.to_le_bytes()).collect();
+    fs::write(path, bytes).map_err(|e| format!("Write error: {e}"))
+}
+
+fn load_raw_f32(path: &Path, expected_len: usize) -> Result<Vec<f32>, String> {
+    let bytes = fs::read(path).map_err(|e| format!("Read error: {e}"))?;
+    if bytes.len() != expected_len * 4 {
+        return Err(format!(
+            "Size mismatch: expected {} bytes, got {}",
+            expected_len * 4,
+            bytes.len()
+        ));
+    }
+    Ok(bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())
+}
+
+fn save_raw_u8(path: &Path, data: &[u8]) -> Result<(), String> {
+    fs::write(path, data).map_err(|e| format!("Write error: {e}"))
+}
+
+fn load_raw_u8(path: &Path) -> Result<Vec<u8>, String> {
+    fs::read(path).map_err(|e| format!("Read error: {e}"))
+}
+
+fn save_raw_u32(path: &Path, data: &[u32]) -> Result<(), String> {
+    let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+    fs::write(path, bytes).map_err(|e| format!("Write error: {e}"))
+}
+
+fn load_raw_u32(path: &Path, expected_len: usize) -> Result<Vec<u32>, String> {
+    let bytes = fs::read(path).map_err(|e| format!("Read error: {e}"))?;
+    if bytes.len() != expected_len * 4 {
+        return Err(format!(
+            "Size mismatch: expected {} bytes, got {}",
+            expected_len * 4,
+            bytes.len()
+        ));
+    }
+    Ok(bytes.chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())
 }
 
 #[cfg(test)]

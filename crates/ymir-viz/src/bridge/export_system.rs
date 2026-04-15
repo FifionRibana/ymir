@@ -12,9 +12,11 @@ use ymir_core::tectonics::plates::generate_plates;
 use ymir_core::tectonics::solver::field::Field2D;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
+use ymir_core::terrain::flow::FlowConfig;
+
 use crate::state::{
-    ErosionCache, ErosionState, FbmParams, FbmState, GenerationParamsUi, IsostasyCache,
-    IsostasyParams, TectonicState, UiActions, UpscaleCache,
+    ErosionCache, ErosionState, FbmParams, FbmState, FlowCache, FlowState, GenerationParamsUi,
+    IsostasyCache, IsostasyParams, TectonicState, UiActions, UpscaleCache,
 };
 use crate::visualization::render::TerrainDisplay;
 
@@ -25,6 +27,8 @@ pub fn handle_export(
     terrain_display: Res<TerrainDisplay>,
     upscale_cache: Res<UpscaleCache>,
     erosion_cache: Res<ErosionCache>,
+    flow_cache: Res<FlowCache>,
+    isostasy_cache: Res<IsostasyCache>,
     fbm_params: Res<FbmParams>,
 ) {
     if !ui_actions.export_requested {
@@ -121,6 +125,17 @@ pub fn handle_export(
         }
     }
 
+    // Save flow data if available
+    if let Some(ref result) = flow_cache.result {
+        let flow_config = FlowConfig { sea_level: isostasy_cache.sea_level_normalized };
+        let rivers = flow_cache.rivers.as_ref();
+        if let Err(e) = export.save_flow(result, &flow_config, &flow_cache.river_config, rivers) {
+            ui_actions.last_message =
+                Some((format!("Export failed: {e}"), std::time::Instant::now(), false));
+            return;
+        }
+    }
+
     let dir_name =
         export.dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     ui_actions.last_message =
@@ -140,6 +155,7 @@ pub fn handle_load(
     mut isostasy_params: ResMut<IsostasyParams>,
     mut fbm_params: ResMut<FbmParams>,
     mut erosion_cache: ResMut<ErosionCache>,
+    mut flow_cache: ResMut<FlowCache>,
     tectonic_state: Option<ResMut<TectonicState>>,
     mut commands: Commands,
 ) {
@@ -241,6 +257,37 @@ pub fn handle_load(
             erosion_cache.sediment = None;
             erosion_cache.stats = None;
             erosion_cache.state = ErosionState::Idle;
+        }
+    }
+
+    // ── Load flow data ────────────────────────────────────────────────────
+    match export.load_flow() {
+        Ok((result, river_config)) => {
+            info!(
+                "Loaded flow {}x{}, {} basins from {}",
+                result.accumulation.width,
+                result.accumulation.height,
+                result.num_basins,
+                dir.display()
+            );
+            flow_cache.result = Some(result);
+            flow_cache.river_config = river_config;
+            flow_cache.state = FlowState::Completed { elapsed: std::time::Duration::ZERO };
+
+            match export.load_rivers() {
+                Ok(network) => {
+                    flow_cache.rivers = Some(network);
+                    flow_cache.rivers_dirty = false;
+                }
+                Err(_) => {
+                    flow_cache.rivers_dirty = true;
+                }
+            }
+        }
+        Err(_) => {
+            flow_cache.result = None;
+            flow_cache.rivers = None;
+            flow_cache.state = FlowState::Idle;
         }
     }
 
