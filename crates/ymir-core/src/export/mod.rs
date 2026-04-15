@@ -46,6 +46,8 @@ pub struct PipelineMetadata {
     pub flow: Option<FlowMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lakes: Option<LakeMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub centering_shift: Option<(i32, i32)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,6 +96,7 @@ impl Default for PipelineMetadata {
             erosion: None,
             flow: None,
             lakes: None,
+            centering_shift: None,
         }
     }
 }
@@ -111,6 +114,7 @@ impl PipelineMetadata {
             erosion: None,
             flow: None,
             lakes: None,
+            centering_shift: None,
         }
     }
 }
