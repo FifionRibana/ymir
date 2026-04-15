@@ -6,24 +6,31 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use super::colormap::hypsometric_colormap;
 use super::render::TerrainDisplay;
-use crate::state::{ErosionCache, ErosionState, IsostasyCache};
+use crate::state::{ErosionCache, ErosionState, IsostasyCache, UpscaleCache};
 
 /// Update the terrain texture with the eroded heightmap.
 pub fn update_erosion_texture(
     erosion_cache: Res<ErosionCache>,
+    upscale_cache: Res<UpscaleCache>,
     isostasy_cache: Res<IsostasyCache>,
     terrain_display: Res<TerrainDisplay>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    if !matches!(erosion_cache.state, ErosionState::Completed { .. }) {
+    if matches!(erosion_cache.state, ErosionState::Idle) {
         return;
     }
     if !erosion_cache.is_changed() {
         return;
     }
 
-    let Some(ref heightmap) = erosion_cache.heightmap else {
-        return;
+    // Use erosion heightmap if available, otherwise fall back to upscale
+    // (happens right after "Run Erosion" before the first snapshot arrives)
+    let heightmap = match erosion_cache.heightmap.as_ref() {
+        Some(hm) => hm,
+        None => match upscale_cache.heightmap.as_ref() {
+            Some(hm) => hm,
+            None => return,
+        },
     };
     let Some(handle) = &terrain_display.texture_handle else {
         return;

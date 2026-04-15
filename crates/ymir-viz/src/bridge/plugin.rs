@@ -132,6 +132,10 @@ fn poll_solver_events(
             SolverEvent::ErosionProgress { completed, total } => {
                 erosion_cache.state = ErosionState::Running { completed, total };
             }
+            SolverEvent::ErosionSnapshot { heightmap, completed, total } => {
+                erosion_cache.heightmap = Some(heightmap);
+                erosion_cache.state = ErosionState::Running { completed, total };
+            }
             SolverEvent::ErosionCompleted { heightmap, sediment, stats, elapsed } => {
                 erosion_cache.heightmap = Some(heightmap);
                 erosion_cache.sediment = Some(sediment);
