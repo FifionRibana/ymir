@@ -97,8 +97,8 @@ pub fn upscale_with_fbm(
     let src_w = coarse.width;
     let src_h = coarse.height;
     let dst = config.target_size;
-    let scale_x = (src_w - 1) as f64 / (dst - 1) as f64;
-    let scale_y = (src_h - 1) as f64 / (dst - 1) as f64;
+    let scale_x = src_w as f64 / dst as f64;
+    let scale_y = src_h as f64 / dst as f64;
 
     // Create noise generators
     let noise_seed = seed.derive_seed("fbm_upscale") as u32;
@@ -128,11 +128,11 @@ pub fn upscale_with_fbm(
                 let sy = j as f64 * scale_y;
 
                 // 1. Bilinear interpolation of the coarse heightmap
-                let base_height = coarse.sample_bilinear(sx as f32, sy as f32);
+                let base_height = coarse.sample_bilinear_periodic(sx as f32, sy as f32);
 
                 // 2. Sample terrain properties from coarse analysis
-                let slope_mag = slope_map.sample_bilinear(sx as f32, sy as f32);
-                let slope_dir = direction_map.sample_bilinear(sx as f32, sy as f32);
+                let slope_mag = slope_map.sample_bilinear_periodic(sx as f32, sy as f32);
+                let slope_dir = direction_map.sample_bilinear_periodic(sx as f32, sy as f32);
 
                 // 3. Compute amplitude modulation
                 let altitude_factor =
@@ -251,7 +251,7 @@ fn compute_terrain_analysis(heightmap: &GridF32) -> (GridF32, GridF32) {
 
     for j in 0..h {
         for i in 0..w {
-            let (gx, gy) = heightmap.gradient_at(i, j);
+            let (gx, gy) = heightmap.gradient_at_periodic(i, j);
             let mag = (gx * gx + gy * gy).sqrt();
             let dir = gy.atan2(gx);
             slope.set(i, j, mag);
