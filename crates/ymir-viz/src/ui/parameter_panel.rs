@@ -379,6 +379,27 @@ fn draw_tectonics(
         );
 
         ui.separator();
+        ui.strong("Continental restore");
+        slider_row_f64(
+            ui,
+            "Cont. min S",
+            &mut solver_config.boundaries.continental_min_thickness,
+            0.3..=0.8,
+        );
+        slider_row_f64(
+            ui,
+            "Cont. restore Thr",
+            &mut solver_config.boundaries.continental_restore_threshold,
+            0.05..=0.3,
+        );
+        slider_row_f64(
+            ui,
+            "Cont. restore",
+            &mut solver_config.boundaries.continental_restore_rate,
+            0.0..=0.1,
+        );
+
+        ui.separator();
         ui.strong("Density & slab pull");
 
         slider_row_f64(

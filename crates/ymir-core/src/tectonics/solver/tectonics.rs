@@ -243,6 +243,28 @@ where
             }
         }
 
+        // 3c. Continental minimum thickness protection.
+        // Prevents continental crust from thinning to oblivion by modeling
+        // buoyancy-driven resistance. Cells below continental_restore_threshold
+        // are considered fully rifted (new ocean floor) and not restored.
+        if config.boundaries.enabled && config.boundaries.continental_restore_rate > 0.0 {
+            let rate = config.boundaries.continental_restore_rate;
+            let s_min = config.boundaries.continental_min_thickness;
+            let s_thr = config.boundaries.continental_restore_threshold;
+            for j in 0..n {
+                for i in 0..n {
+                    let pid = plate_ctx.ids[j * n + i];
+                    if plate_ctx.plates[pid].plate_type == PlateType::Continental {
+                        let s_current = grid.s.get(i, j);
+                        if s_current < s_min && s_current > s_thr {
+                            let s_new = s_current + dt * rate * (s_min - s_current);
+                            grid.s.set(i, j, s_new);
+                        }
+                    }
+                }
+            }
+        }
+
         // 4. Update stats
         let mut max_v = 0.0_f64;
         let mut max_s = f64::NEG_INFINITY;
