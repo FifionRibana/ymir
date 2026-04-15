@@ -74,6 +74,18 @@ pub struct BoundaryConfig {
     /// 0.0 = no restoring, 1.0 = excess removed in one step.
     /// Range: 0.0-1.0, default: 0.3
     pub oceanic_restore_rate: f64,
+    /// Minimum stable thickness for continental crust. Continental cells
+    /// thinner than this are gently restored upward, modeling buoyancy.
+    /// Default: 0.5 (thinned but still buoyant continental crust).
+    pub continental_min_thickness: f64,
+    /// Thickness below which continental restoring gives up — the crust
+    /// has been fully rifted and effectively becomes oceanic.
+    /// Default: 0.15 (below oceanic reference, enabling Wilson cycles).
+    pub continental_restore_threshold: f64,
+    /// Rate at which thinned continental crust is restored per timestep.
+    /// 0.0 = no restoring, 1.0 = restored in one step.
+    /// Default: 0.03 (gentle, allows temporary thinning during rifting).
+    pub continental_restore_rate: f64,
     /// Enable dynamic slab pull. Default: true.
     pub slab_pull_enabled: bool,
     /// Slab pull traction increase per unit of subducted mass.
@@ -103,6 +115,9 @@ impl Default for BoundaryConfig {
             oceanic_reference_thickness: 0.25,
             oceanic_restore_threshold: 0.4,
             oceanic_restore_rate: 0.05,
+            continental_min_thickness: 0.5,
+            continental_restore_threshold: 0.15,
+            continental_restore_rate: 0.03,
             slab_pull_enabled: true,
             slab_pull_factor: 0.05,
             max_plate_velocity: 5.0,
