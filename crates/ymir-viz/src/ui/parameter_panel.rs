@@ -612,6 +612,7 @@ fn launch_erosion(
         coastal_deposition_range: params.coastal_deposition as usize,
         sea_level: isostasy_cache.sea_level_normalized,
         batch_size: 50_000,
+        reference_size: 256,
     };
 
     let seed = WorldSeed::new(generation.seed);
