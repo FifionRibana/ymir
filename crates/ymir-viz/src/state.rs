@@ -334,6 +334,25 @@ pub struct UiActions {
     pub cached_dirs: Option<Vec<std::path::PathBuf>>,
     /// Set to true when the user clicks "Step" (single timestep).
     pub step_requested: bool,
+    /// Set to true when the user clicks "Center Map".
+    pub center_requested: bool,
+    pub center_offset_changed: bool,
+}
+
+// ── Centering ───────────────────────────────────────────────────────────
+
+#[derive(Resource, Default)]
+pub struct CenteringState {
+    /// The original (unshifted) field, saved on first center operation.
+    pub original_field: Option<ymir_core::tectonics::solver::field::Field2D>,
+    pub original_plate_ids: Option<Vec<usize>>,
+    pub original_plates: Option<Vec<ymir_core::tectonics::plates::Plate>>,
+    pub original_grid_size: usize,
+    /// Auto-centering shift (from circular mean).
+    pub auto_shift: (i32, i32),
+    /// Manual offset on top of auto shift.
+    pub offset_x: i32,
+    pub offset_y: i32,
 }
 
 // ── Dynamic plate boundaries ─────────────────────────────────────────────

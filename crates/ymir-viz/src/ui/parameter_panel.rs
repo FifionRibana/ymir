@@ -35,6 +35,8 @@ pub fn draw(
     erosion_cache: &mut ErosionCache,
     flow_cache: &mut FlowCache,
     lake_cache: &mut LakeCache,
+    ui_actions: &mut crate::state::UiActions,
+    centering: &mut crate::state::CenteringState,
 ) {
     egui::CollapsingHeader::new("Parameters").default_open(true).show(ui, |ui| {
         match *current_phase {
@@ -59,6 +61,8 @@ pub fn draw(
                     bridge,
                     isostasy_params,
                     isostasy_cache,
+                    ui_actions,
+                    centering,
                 );
             }
             PipelinePhase::Climate => draw_climate(ui, climate),
@@ -89,6 +93,8 @@ fn draw_tectonics(
     bridge: &mut SolverBridge,
     isostasy_params: &mut IsostasyParams,
     isostasy_cache: &IsostasyCache,
+    ui_actions: &mut crate::state::UiActions,
+    centering: &mut crate::state::CenteringState,
 ) {
     let Some(mut state) = tectonic_state else {
         ui.label("Tectonic state not ready");
@@ -402,6 +408,32 @@ fn draw_tectonics(
 
     // ── Isostasy ──
     ui.strong("Isostasy");
+
+    if ui.button("⊕ Center Map").clicked() {
+        ui_actions.center_requested = true;
+    }
+
+    if centering.original_field.is_some() {
+        ui.horizontal(|ui| {
+            ui.label("Offset X");
+            if ui
+                .add(egui::DragValue::new(&mut centering.offset_x).speed(1).range(-64..=64))
+                .changed()
+            {
+                ui_actions.center_offset_changed = true;
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Offset Y");
+            if ui
+                .add(egui::DragValue::new(&mut centering.offset_y).speed(1).range(-64..=64))
+                .changed()
+            {
+                ui_actions.center_offset_changed = true;
+            }
+        });
+    }
+
     slider_row(ui, "Sea level", &mut isostasy_params.sea_level_fraction, 0.0..=1.0);
     slider_row(ui, "Max elev (m)", &mut isostasy_params.max_elevation_m, 1000.0..=6000.0);
     slider_row(ui, "Max depth (m)", &mut isostasy_params.max_depth_m, 100.0..=1000.0);

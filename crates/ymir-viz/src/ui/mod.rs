@@ -108,6 +108,7 @@ struct UiRightPanelParams<'w> {
     erosion_cache: ResMut<'w, crate::state::ErosionCache>,
     flow_cache: ResMut<'w, crate::state::FlowCache>,
     lake_cache: ResMut<'w, crate::state::LakeCache>,
+    centering: ResMut<'w, crate::state::CenteringState>,
     ui_actions: ResMut<'w, crate::state::UiActions>,
     terrain_display: Res<'w, crate::visualization::render::TerrainDisplay>,
 }
@@ -148,6 +149,8 @@ fn ui_right_panel(
                 &mut params.erosion_cache,
                 &mut params.flow_cache,
                 &mut params.lake_cache,
+                &mut params.ui_actions,
+                &mut params.centering,
             );
             ui.separator();
             statistics_panel::draw(ui, &params.stats);
