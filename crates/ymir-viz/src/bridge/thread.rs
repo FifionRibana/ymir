@@ -169,10 +169,22 @@ pub fn spawn_solver_thread(
                         let tx = events_tx.clone();
                         let cancel_ref = cancel.clone();
 
-                        let result = run_erosion(&heightmap, &config, &seed, |completed, total| {
-                            let _ = tx.send(SolverEvent::ErosionProgress { completed, total });
-                            !cancel_ref.load(Ordering::Relaxed)
-                        });
+                        let snapshot_interval = 3;
+                        let mut batch_counter = 0usize;
+
+                        let result =
+                            run_erosion(&heightmap, &config, &seed, |completed, total, hmap| {
+                                batch_counter += 1;
+                                let _ = tx.send(SolverEvent::ErosionProgress { completed, total });
+                                if batch_counter % snapshot_interval == 0 {
+                                    let _ = tx.send(SolverEvent::ErosionSnapshot {
+                                        heightmap: hmap.clone(),
+                                        completed,
+                                        total,
+                                    });
+                                }
+                                !cancel_ref.load(Ordering::Relaxed)
+                            });
 
                         let _ = events_tx.send(SolverEvent::ErosionCompleted {
                             heightmap: result.heightmap,

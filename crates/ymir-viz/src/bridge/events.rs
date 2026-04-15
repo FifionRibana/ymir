@@ -37,6 +37,11 @@ pub enum SolverEvent {
         completed: usize,
         total: usize,
     },
+    ErosionSnapshot {
+        heightmap: GridF32,
+        completed: usize,
+        total: usize,
+    },
     ErosionCompleted {
         heightmap: GridF32,
         sediment: GridF32,

@@ -104,13 +104,13 @@ impl ErosionBrush {
 
 /// Run the hydraulic erosion simulation.
 ///
-/// `progress_callback(completed, total)` is called after each batch.
+/// `progress_callback(completed, total, heightmap)` is called after each batch.
 /// Return `false` from it to cancel early.
 pub fn run_erosion(
     heightmap: &GridF32,
     config: &ErosionConfig,
     seed: &WorldSeed,
-    progress_callback: impl Fn(usize, usize) -> bool,
+    mut progress_callback: impl FnMut(usize, usize, &GridF32) -> bool,
 ) -> ErosionResult {
     let w = heightmap.width;
     let h = heightmap.height;
@@ -162,7 +162,7 @@ pub fn run_erosion(
             );
         }
 
-        if !progress_callback(batch_end, total) {
+        if !progress_callback(batch_end, total, &hmap) {
             info!("Erosion cancelled at batch {}/{}", batch, num_batches);
             break;
         }
@@ -363,8 +363,8 @@ mod tests {
         let config =
             ErosionConfig { num_droplets: 10_000, batch_size: 5_000, ..Default::default() };
 
-        let r1 = run_erosion(&hmap, &config, &seed, |_, _| true);
-        let r2 = run_erosion(&hmap, &config, &seed, |_, _| true);
+        let r1 = run_erosion(&hmap, &config, &seed, |_, _, _| true);
+        let r2 = run_erosion(&hmap, &config, &seed, |_, _, _| true);
         assert_eq!(r1.heightmap.data, r2.heightmap.data, "Erosion must be deterministic");
     }
 
@@ -392,7 +392,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = run_erosion(&hmap, &config, &seed, |_, _| true);
+        let result = run_erosion(&hmap, &config, &seed, |_, _, _| true);
 
         assert!(result.heightmap.mean() < original_mean, "Erosion should lower mean altitude");
 
@@ -415,7 +415,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = run_erosion(&hmap, &config, &seed, |_, _| true);
+        let result = run_erosion(&hmap, &config, &seed, |_, _, _| true);
         let max_diff =
             result.heightmap.data.iter().map(|&v| (v - 0.5).abs()).fold(0.0f32, f32::max);
 
@@ -442,7 +442,7 @@ mod tests {
             ..Default::default()
         };
 
-        let result = run_erosion(&hmap, &config, &seed, |_, _| true);
+        let result = run_erosion(&hmap, &config, &seed, |_, _, _| true);
         let max_sed = result.sediment.data.iter().cloned().fold(0.0f32, f32::max);
         assert!(max_sed > 0.0, "Should have coastal sediment deposits");
     }

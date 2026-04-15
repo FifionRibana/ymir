@@ -597,6 +597,11 @@ fn launch_erosion(
 ) {
     use ymir_core::erosion::hydraulic::ErosionConfig;
 
+    // Clear previous result so the view falls back to the upscale heightmap
+    // until the first erosion snapshot arrives.
+    erosion_cache.heightmap = None;
+    erosion_cache.sediment = None;
+    erosion_cache.stats = None;
     erosion_cache.state = ErosionState::Running { completed: 0, total: 0 };
 
     let config = ErosionConfig {
