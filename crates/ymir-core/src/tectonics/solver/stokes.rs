@@ -22,6 +22,7 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
     let n2 = n * n;
     let idx = &grid.idx;
     let inv_dx2 = 1.0 / (grid.dx * grid.dx);
+    let friction_scaled = grid.basal_friction * inv_dx2;
 
     let (out_vx, out_vy) = out.split_at_mut(n2);
 
@@ -66,6 +67,13 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
             // Negative sign for SPD
             row_vx[i] = -(term_xx + term_xy);
 
+            // Basal friction: C_b/dx² × S × vx (S interpolated to vx face)
+            if friction_scaled > 0.0 {
+                let s_face = 0.5 * (grid.s.get(pi, j) + grid.s.get(i, j));
+                let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                row_vx[i] += friction_scaled * s_excess * v[li(i, j)];
+            }
+
             // --- vy component at face (i, j) ---
             // ∂/∂y(2η ∂vy/∂y): uses η at cell centers (i,j) and (i, prev(j))
             let eta_top_vy = eta.get(i, j);
@@ -92,6 +100,13 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
                 - eta_left_vy * (dvy_dx_left_vy + dvx_dy_left_vy);
 
             row_vy[i] = -(term_yy + term_yx);
+
+            // Basal friction: C_b/dx² × S × vy (S interpolated to vy face)
+            if friction_scaled > 0.0 {
+                let s_face = 0.5 * (grid.s.get(i, pj) + grid.s.get(i, j));
+                let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                row_vy[i] += friction_scaled * s_excess * v[n2 + li(i, j)];
+            }
         }
     };
 
@@ -188,6 +203,7 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
     let n2 = n * n;
     let idx = &grid.idx;
     let inv_dx2 = 1.0 / (grid.dx * grid.dx);
+    let friction_scaled = grid.basal_friction * inv_dx2;
 
     let (pre_vx, pre_vy) = precond.split_at_mut(n2);
 
@@ -205,7 +221,12 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
                 0.25 * (eta.get(pi, j) + eta.get(i, j) + eta.get(pi, nj) + eta.get(i, nj));
             let eta_bot =
                 0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
-            let diag_vx = inv_dx2 * (2.0 * (eta_right + eta_left) + eta_top + eta_bot);
+            let mut diag_vx = inv_dx2 * (2.0 * (eta_right + eta_left) + eta_top + eta_bot);
+            if friction_scaled > 0.0 {
+                let s_face = 0.5 * (grid.s.get(pi, j) + grid.s.get(i, j));
+                let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                diag_vx += friction_scaled * s_excess;
+            }
             row_vx[i] = if diag_vx.abs() > 1e-30 { 1.0 / diag_vx } else { 0.0 };
 
             // vy diagonal: η_right_corner + η_left_corner + 2(η_top + η_bot)
@@ -215,7 +236,13 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
                 0.25 * (eta.get(i, pj) + eta.get(ni, pj) + eta.get(i, j) + eta.get(ni, j));
             let eta_left_vy =
                 0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
-            let diag_vy = inv_dx2 * (eta_right_vy + eta_left_vy + 2.0 * (eta_top_vy + eta_bot_vy));
+            let mut diag_vy =
+                inv_dx2 * (eta_right_vy + eta_left_vy + 2.0 * (eta_top_vy + eta_bot_vy));
+            if friction_scaled > 0.0 {
+                let s_face = 0.5 * (grid.s.get(i, pj) + grid.s.get(i, j));
+                let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                diag_vy += friction_scaled * s_excess;
+            }
             row_vy[i] = if diag_vy.abs() > 1e-30 { 1.0 / diag_vy } else { 0.0 };
         }
     };
@@ -251,6 +278,7 @@ impl StencilCoeffs {
         let n2 = n * n;
         let idx = &grid.idx;
         let inv_dx2 = 1.0 / (grid.dx * grid.dx);
+        let friction_scaled = grid.basal_friction * inv_dx2;
 
         let mut vx_coeffs = vec![[0.0; 5]; n2];
         let mut vy_coeffs = vec![[0.0; 5]; n2];
@@ -272,7 +300,12 @@ impl StencilCoeffs {
                 let eta_bot =
                     0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
 
-                let diag = inv_dx2 * (2.0 * (eta_right + eta_left) + eta_top + eta_bot);
+                let mut diag = inv_dx2 * (2.0 * (eta_right + eta_left) + eta_top + eta_bot);
+                if friction_scaled > 0.0 {
+                    let s_face = 0.5 * (grid.s.get(pi, j) + grid.s.get(i, j));
+                    let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                    diag += friction_scaled * s_excess;
+                }
                 let c_left = inv_dx2 * 2.0 * eta_left;
                 let c_right = inv_dx2 * 2.0 * eta_right;
                 let c_bot = inv_dx2 * eta_bot;
@@ -288,8 +321,13 @@ impl StencilCoeffs {
                 let eta_left_vy =
                     0.25 * (eta.get(pi, pj) + eta.get(i, pj) + eta.get(pi, j) + eta.get(i, j));
 
-                let diag_vy =
+                let mut diag_vy =
                     inv_dx2 * (eta_right_vy + eta_left_vy + 2.0 * (eta_top_vy + eta_bot_vy));
+                if friction_scaled > 0.0 {
+                    let s_face = 0.5 * (grid.s.get(i, pj) + grid.s.get(i, j));
+                    let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                    diag_vy += friction_scaled * s_excess;
+                }
                 let c_left_vy = inv_dx2 * eta_left_vy;
                 let c_right_vy = inv_dx2 * eta_right_vy;
                 let c_bot_vy = inv_dx2 * 2.0 * eta_bot_vy;
@@ -591,6 +629,73 @@ mod tests {
                     - eta_left_vy * (dvy_dx_left_vy + dvx_dy_left_vy);
                 out[n2 + li(i, j)] = -(term_yy + term_yx);
             }
+        }
+    }
+
+    #[test]
+    fn operator_with_friction_is_symmetric() {
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, dx);
+        grid.basal_friction = 2.0;
+
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, 0.5 + 0.3 * ((i + j) as f64 / n as f64));
+            }
+        }
+
+        let eta = Field2D::filled(n, 1.0);
+        let n_dof = 2 * n * n;
+
+        let mut u = vec![0.0; n_dof];
+        let mut w = vec![0.0; n_dof];
+        let mut au = vec![0.0; n_dof];
+        let mut aw = vec![0.0; n_dof];
+
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        for i in 0..n_dof {
+            u[i] = rng.r#gen::<f64>() - 0.5;
+            w[i] = rng.r#gen::<f64>() - 0.5;
+        }
+
+        apply_stokes(&u, &eta, &grid, &mut au);
+        apply_stokes(&w, &eta, &grid, &mut aw);
+
+        let u_dot_aw: f64 = u.iter().zip(aw.iter()).map(|(a, b)| a * b).sum();
+        let au_dot_w: f64 = au.iter().zip(w.iter()).map(|(a, b)| a * b).sum();
+
+        let rel_diff = (u_dot_aw - au_dot_w).abs() / (u_dot_aw.abs() + au_dot_w.abs()).max(1e-30);
+        assert!(rel_diff < 1e-12, "Operator with friction should be symmetric: {rel_diff}");
+    }
+
+    #[test]
+    fn zero_friction_is_backward_compatible() {
+        let n = 8;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, dx);
+        grid.basal_friction = 0.0;
+
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, 1.0);
+            }
+        }
+
+        let eta = Field2D::filled(n, 1.0);
+        let n_dof = 2 * n * n;
+
+        let mut v = vec![0.0; n_dof];
+        for i in 0..n_dof {
+            v[i] = (i as f64) * 0.01;
+        }
+
+        let mut out = vec![0.0; n_dof];
+        apply_stokes(&v, &eta, &grid, &mut out);
+
+        for &val in &out {
+            assert!(val.is_finite(), "Output should be finite");
         }
     }
 }

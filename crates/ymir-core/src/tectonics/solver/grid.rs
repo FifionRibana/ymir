@@ -26,6 +26,8 @@ pub struct StaggeredGrid {
     /// Grows when a cell yields; used for strain weakening.
     pub plastic_strain: Field2D,
     pub idx: PeriodicIndex,
+    /// Basal friction coefficient (mantle drag). Set once before solving.
+    pub basal_friction: f64,
 }
 
 impl StaggeredGrid {
@@ -40,6 +42,7 @@ impl StaggeredGrid {
             eta_multiplier: Field2D::filled(n, 1.0),
             plastic_strain: Field2D::new(n),
             idx: PeriodicIndex::new(n),
+            basal_friction: 0.0,
         }
     }
 
