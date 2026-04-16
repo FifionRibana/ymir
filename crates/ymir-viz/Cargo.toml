@@ -12,3 +12,4 @@ bevy = { workspace = true }
 bevy_egui = { workspace = true }
 noise = { workspace = true }
 crossbeam-channel = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
