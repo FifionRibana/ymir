@@ -684,10 +684,10 @@ pub fn rebuild_traction(plate_ids: &[usize], plates: &[Plate], grid_size: usize)
         for i in 0..grid_size {
             let pid = plate_ids[j * grid_size + i];
             let plate = &plates[pid];
-            let vx = if plate.cell_count > 0 { plate.mean_velocity.0 } else { plate.velocity.0 };
-            let vy = if plate.cell_count > 0 { plate.mean_velocity.1 } else { plate.velocity.1 };
-            tx.set(i, j, vx as f64);
-            ty.set(i, j, vy as f64);
+            // Use plate.velocity (initial + slab pull), NOT mean_velocity (solved response).
+            // The traction is the driving force from mantle convection, not the resulting flow.
+            tx.set(i, j, plate.velocity.0 as f64);
+            ty.set(i, j, plate.velocity.1 as f64);
         }
     }
 
