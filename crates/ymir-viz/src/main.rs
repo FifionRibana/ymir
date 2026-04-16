@@ -11,14 +11,36 @@ mod visualization;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Ymir — Continent Generator".to_string(),
-                resolution: (1280, 720).into(),
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Ymir — Continent Generator".to_string(),
+                        resolution: (1280, 720).into(),
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(bevy::log::LogPlugin {
+                    filter: "warn,ymir_core=info,ymir_viz=info".to_string(),
+                    level: bevy::log::Level::DEBUG,
+                    custom_layer: |_app| {
+                        let file = std::fs::OpenOptions::new()
+                            .create(true)
+                            .write(true)
+                            .truncate(true)
+                            .open("ymir.log")
+                            .expect("Failed to open ymir.log");
+
+                        Some(Box::new(
+                            tracing_subscriber::fmt::layer()
+                                .with_writer(std::sync::Mutex::new(file))
+                                .with_ansi(false),
+                        ))
+                    },
+                    ..default()
+                }),
+        )
         .init_resource::<state::ViewState>()
         .init_state::<state::ViewMode>()
         .init_state::<state::PipelinePhase>()

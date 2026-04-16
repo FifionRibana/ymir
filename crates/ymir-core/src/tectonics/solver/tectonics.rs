@@ -1,6 +1,6 @@
 //! Top-level orchestration of the thin viscous sheet simulation.
 
-use tracing::{info, info_span, warn};
+use tracing::{debug, info, info_span, warn};
 
 use super::advection::{compute_cfl_dt, compute_divergence_flux};
 use super::config::{NonlinearSolver, TectonicsConfig};
@@ -11,11 +11,12 @@ use super::picard::solve_velocity_picard;
 use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, StepStats};
 use crate::tectonics::boundaries::{
-    accumulate_subducted_mass, apply_slab_pull, compute_boundary_sources_into, gaussian_blur_f64,
+    BoundaryType, accumulate_subducted_mass, apply_slab_pull, compute_boundary_sources,
+    gaussian_blur_f64,
 };
 use crate::tectonics::plates::{
-    Plate, PlateType, advect_seeds, compute_viscosity_multiplier, detect_disappeared_plates,
-    rebuild_traction, recompute_voronoi,
+    Plate, PlateType, advect_plate_ids, apply_subduction_consumption, compute_viscosity_multiplier,
+    detect_disappeared_plates, detect_fragmentation, rebuild_traction, update_plate_stats,
 };
 
 /// Errors that can occur during a tectonic simulation run.
@@ -60,6 +61,8 @@ pub struct DynamicPlateContext {
     pub ids: Vec<usize>,
     pub plates: Vec<Plate>,
     pub traction: TractionField,
+    /// Counter for creating new plates (rift creation, fragmentation).
+    pub next_id: usize,
 }
 
 /// Data passed to the progress callback after each timestep.
@@ -127,16 +130,19 @@ where
 
         // ── Dynamic boundary update ────────────────────────────────────
         if config.dynamic_boundaries {
-            advect_seeds(&mut plate_ctx.plates, grid, dt_cfl);
-            recompute_voronoi(&mut plate_ctx.ids, &plate_ctx.plates, grid.n);
+            // Advect plate IDs as material property (replaces seed advection + Voronoï)
+            advect_plate_ids(&mut plate_ctx.ids, grid, dt_cfl);
 
             let disappeared = detect_disappeared_plates(&plate_ctx.ids, &mut plate_ctx.plates);
             for pid in &disappeared {
                 info!(plate_id = pid, step, "plate disappeared");
             }
 
-            // Reassign density and viscosity multiplier from updated plate partition
-            assign_density_from_plates(grid, &plate_ctx.ids, &plate_ctx.plates, &config.boundaries);
+            // Recompute plate statistics from advected IDs
+            update_plate_stats(&plate_ctx.ids, &mut plate_ctx.plates, grid);
+
+            // Assign density from material thickness, not plate type
+            assign_density_from_material(grid, &config.boundaries);
             compute_viscosity_multiplier(grid, &plate_ctx.ids, &plate_ctx.plates, &config.cratonic);
         }
         // ──────────────────────────────────────────────────────────────
@@ -150,13 +156,14 @@ where
         // Compute boundary source terms if enabled
         let boundaries_active = config.boundaries.enabled;
         if boundaries_active {
-            compute_boundary_sources_into(
+            let bf = compute_boundary_sources(
                 grid,
                 &plate_ctx.ids,
                 &plate_ctx.plates,
                 &config.boundaries,
-                &mut workspace.source_rate,
             );
+            workspace.source_rate.data_mut().copy_from_slice(bf.source_rate.data());
+            workspace.boundary_field = Some(bf);
             if config.boundaries.source_smoothing_sigma > 0.0 {
                 let smoothed = gaussian_blur_f64(
                     &workspace.source_rate,
@@ -180,6 +187,32 @@ where
                     config.boundaries.max_plate_velocity,
                 );
             }
+        }
+
+        // Subduction consumption + fragmentation detection
+        if config.dynamic_boundaries {
+            if let Some(ref bf) = workspace.boundary_field {
+                apply_subduction_consumption(
+                    &mut plate_ctx.ids,
+                    grid,
+                    bf,
+                    config.boundaries.subduction_consumption_threshold,
+                );
+            }
+            // Detect continental breakup: check if any plate has been split
+            // into disconnected components by a rift zone (thin band of S < threshold).
+            if step % 10 == 0 {
+                detect_fragmentation(
+                    &mut plate_ctx.ids,
+                    &mut plate_ctx.plates,
+                    &mut plate_ctx.next_id,
+                    n,
+                    grid,
+                    0.25, // Only truly oceanic-thin rift zones break continental connectivity
+                );
+            }
+            // Recompute stats after ID changes
+            update_plate_stats(&plate_ctx.ids, &mut plate_ctx.plates, grid);
         }
 
         // Rebuild traction once (after slab pull may have updated velocities)
@@ -306,6 +339,102 @@ where
             warn!(step, clamp_ratio, dt, "excessive clamping — consider reducing CFL or timestep");
         }
 
+        // ── Diagnostic: per-step plate & boundary summary ──────────────
+        if config.dynamic_boundaries {
+            let total_cells = n * n;
+            let num_active =
+                plate_ctx.plates.iter().filter(|p| p.active && p.cell_count > 0).count();
+
+            // Per-plate summary
+            let mut plate_summary = String::new();
+            for plate in plate_ctx.plates.iter().filter(|p| p.active && p.cell_count > 0) {
+                let mat = if plate.mean_thickness > 0.4 { "C" } else { "O" };
+                use std::fmt::Write;
+                let _ = write!(
+                    plate_summary,
+                    " [{}:{} n={} S={:.3} v=({:.4},{:.4})]",
+                    plate.id,
+                    mat,
+                    plate.cell_count,
+                    plate.mean_thickness,
+                    plate.mean_velocity.0,
+                    plate.mean_velocity.1,
+                );
+            }
+
+            // Boundary type counts
+            let (mut n_sub, mut n_osub, mut n_coll, mut n_rift, mut n_boundary) =
+                (0usize, 0usize, 0usize, 0usize, 0usize);
+            if let Some(ref bf) = workspace.boundary_field {
+                for bt in &bf.boundary_type {
+                    match bt {
+                        BoundaryType::Subduction => {
+                            n_sub += 1;
+                            n_boundary += 1;
+                        }
+                        BoundaryType::OceanicSubduction => {
+                            n_osub += 1;
+                            n_boundary += 1;
+                        }
+                        BoundaryType::ContinentalCollision => {
+                            n_coll += 1;
+                            n_boundary += 1;
+                        }
+                        BoundaryType::Rift => {
+                            n_rift += 1;
+                            n_boundary += 1;
+                        }
+                        BoundaryType::None => {}
+                    }
+                }
+            }
+
+            // Source term summary
+            let mut q_pos = 0.0_f64;
+            let mut q_neg = 0.0_f64;
+            for &q in workspace.source_rate.data().iter() {
+                if q > 0.0 {
+                    q_pos += q;
+                } else {
+                    q_neg += q;
+                }
+            }
+
+            // Thickness distribution
+            let mut n_continental = 0usize;
+            let mut n_oceanic = 0usize;
+            let mut n_transitional = 0usize;
+            for &s in grid.s.data().iter() {
+                if s > 0.4 {
+                    n_continental += 1;
+                } else if s < 0.3 {
+                    n_oceanic += 1;
+                } else {
+                    n_transitional += 1;
+                }
+            }
+
+            debug!(
+                step,
+                active_plates = num_active,
+                total_plates = plate_ctx.plates.len(),
+                next_id = plate_ctx.next_id,
+                boundary_cells = n_boundary,
+                subduction = n_sub,
+                oceanic_sub = n_osub,
+                collision = n_coll,
+                rift = n_rift,
+                q_positive = format!("{:.4}", q_pos),
+                q_negative = format!("{:.4}", q_neg),
+                cells_continental = n_continental,
+                cells_oceanic = n_oceanic,
+                cells_transitional = n_transitional,
+                "plate diagnostics"
+            );
+            debug!(step, plates = %plate_summary, "plate details");
+        }
+        // ──────────────────────────────────────────────────────────────
+
         // 5. Callback — returns false to cancel
         let snapshot = StepSnapshot {
             s_field: &grid.s,
@@ -338,6 +467,30 @@ fn assign_density_from_plates(
             let rho = match plates[pid].plate_type {
                 PlateType::Continental => bc.rho_continental,
                 PlateType::Oceanic => bc.rho_oceanic,
+            };
+            grid.rho.set(i, j, rho);
+        }
+    }
+}
+
+/// Assign crustal density based on local thickness, not plate type.
+/// S > 0.4 → continental density, S < 0.3 → oceanic density,
+/// 0.3–0.4 → linear interpolation (transitional).
+fn assign_density_from_material(
+    grid: &mut StaggeredGrid,
+    config: &crate::tectonics::boundaries::BoundaryConfig,
+) {
+    let n = grid.n;
+    for j in 0..n {
+        for i in 0..n {
+            let s = grid.s.get(i, j);
+            let rho = if s > 0.4 {
+                config.rho_continental
+            } else if s < 0.3 {
+                config.rho_oceanic
+            } else {
+                let t = (s - 0.3) / 0.1;
+                config.rho_oceanic + t * (config.rho_continental - config.rho_oceanic)
             };
             grid.rho.set(i, j, rho);
         }
@@ -581,8 +734,14 @@ mod tests {
                 seed_y: (n / 2) as f32,
                 active: true,
                 subducted_mass: 0.0,
+                cell_count: 0,
+                mean_thickness: 0.0,
+                mean_velocity: (0.0, 0.0),
+                centroid_x: 0.0,
+                centroid_y: 0.0,
             }],
             traction,
+            next_id: 1,
         }
     }
 
@@ -785,8 +944,14 @@ mod tests {
                 seed_y: 8.0,
                 active: true,
                 subducted_mass: 0.0,
+                cell_count: 0,
+                mean_thickness: 0.0,
+                mean_velocity: (0.0, 0.0),
+                centroid_x: 0.0,
+                centroid_y: 0.0,
             }],
             traction,
+            next_id: 1,
         };
 
         let config = TectonicsConfig {
@@ -896,6 +1061,11 @@ mod tests {
             seed_y: 8.0,
             active: true,
             subducted_mass: 10.0,
+            cell_count: 0,
+            mean_thickness: 0.0,
+            mean_velocity: (0.0, 0.0),
+            centroid_x: 0.0,
+            centroid_y: 0.0,
         }];
 
         let initial_vx = plates[0].velocity.0;
@@ -921,6 +1091,11 @@ mod tests {
             seed_y: 8.0,
             active: true,
             subducted_mass: 1000.0,
+            cell_count: 0,
+            mean_thickness: 0.0,
+            mean_velocity: (0.0, 0.0),
+            centroid_x: 0.0,
+            centroid_y: 0.0,
         }];
 
         apply_slab_pull(&mut plates, 0.5, 5.0);
