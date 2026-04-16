@@ -15,9 +15,8 @@ use crate::tectonics::boundaries::{
     gaussian_blur_f64,
 };
 use crate::tectonics::plates::{
-    Plate, PlateType, advect_plate_ids, apply_rift_creation, apply_subduction_consumption,
-    compute_viscosity_multiplier, detect_disappeared_plates, detect_fragmentation,
-    rebuild_traction, update_plate_stats,
+    Plate, PlateType, advect_plate_ids, apply_subduction_consumption, compute_viscosity_multiplier,
+    detect_disappeared_plates, detect_fragmentation, rebuild_traction, update_plate_stats,
 };
 
 /// Errors that can occur during a tectonic simulation run.
@@ -190,7 +189,7 @@ where
             }
         }
 
-        // Subduction consumption + rift creation + fragmentation
+        // Subduction consumption + fragmentation detection
         if config.dynamic_boundaries {
             if let Some(ref bf) = workspace.boundary_field {
                 apply_subduction_consumption(
@@ -199,21 +198,17 @@ where
                     bf,
                     config.boundaries.subduction_consumption_threshold,
                 );
-                apply_rift_creation(
-                    &mut plate_ctx.ids,
-                    &mut plate_ctx.plates,
-                    grid,
-                    bf,
-                    &mut plate_ctx.next_id,
-                    config.boundaries.rift_creation_threshold,
-                );
             }
+            // Detect continental breakup: check if any plate has been split
+            // into disconnected components by a rift zone (thin band of S < threshold).
             if step % 10 == 0 {
                 detect_fragmentation(
                     &mut plate_ctx.ids,
                     &mut plate_ctx.plates,
                     &mut plate_ctx.next_id,
                     n,
+                    grid,
+                    0.25, // Only truly oceanic-thin rift zones break continental connectivity
                 );
             }
             // Recompute stats after ID changes
