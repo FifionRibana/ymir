@@ -99,6 +99,11 @@ pub struct BoundaryConfig {
     pub rho_oceanic: f64,
     /// Mantle density (kg/m³). Default: 3300.
     pub rho_mantle: f64,
+    /// Thickness below which a cell at a convergent boundary is consumed
+    /// (reassigned to the overriding plate). Default: 0.15.
+    pub subduction_consumption_threshold: f64,
+    /// Thickness below which a cell at a rift boundary spawns a new plate. Default: 0.15.
+    pub rift_creation_threshold: f64,
 }
 
 impl Default for BoundaryConfig {
@@ -114,16 +119,18 @@ impl Default for BoundaryConfig {
             source_smoothing_sigma: 2.0,
             oceanic_reference_thickness: 0.25,
             oceanic_restore_threshold: 0.4,
-            oceanic_restore_rate: 0.05,
+            oceanic_restore_rate: 0.0,
             continental_min_thickness: 0.5,
             continental_restore_threshold: 0.15,
-            continental_restore_rate: 0.03,
+            continental_restore_rate: 0.0,
             slab_pull_enabled: true,
             slab_pull_factor: 0.05,
             max_plate_velocity: 5.0,
             rho_continental: 2750.0,
             rho_oceanic: 3000.0,
             rho_mantle: 3300.0,
+            subduction_consumption_threshold: 0.15,
+            rift_creation_threshold: 0.15,
         }
     }
 }
@@ -143,6 +150,11 @@ pub struct BoundaryField {
 // ── Core computation ─────────────────────────────────────────────────────
 
 /// Detect boundaries and compute source/sink rates.
+/// Classify material by local thickness.
+fn material_type(s: f64) -> PlateType {
+    if s > 0.4 { PlateType::Continental } else { PlateType::Oceanic }
+}
+
 pub fn compute_boundary_sources(
     grid: &StaggeredGrid,
     plate_ids: &[usize],
@@ -160,7 +172,7 @@ pub fn compute_boundary_sources(
         for i in 0..n {
             let k = j * n + i;
             let my_plate = plate_ids[k];
-            let my_type = plates[my_plate].plate_type;
+            let my_type = material_type(grid.s.get(i, j));
 
             let neighbors =
                 [(idx.next(i), j), (idx.prev(i), j), (i, idx.next(j)), (i, idx.prev(j))];
@@ -175,7 +187,7 @@ pub fn compute_boundary_sources(
 
                 if other_plate != my_plate {
                     is_boundary = true;
-                    neighbor_plate_type = plates[other_plate].plate_type;
+                    neighbor_plate_type = material_type(grid.s.get(ni, nj));
 
                     // Normal direction from (i,j) to (ni,nj), handling wrapping
                     let nx = if ni == idx.next(i) && ni < i {
@@ -418,6 +430,11 @@ mod tests {
                 seed_y: (n / 2) as f32,
                 active: true,
                 subducted_mass: 0.0,
+                cell_count: 0,
+                mean_thickness: 0.0,
+                mean_velocity: (0.0, 0.0),
+                centroid_x: 0.0,
+                centroid_y: 0.0,
             },
             Plate {
                 id: 1,
@@ -427,6 +444,11 @@ mod tests {
                 seed_y: (n / 2) as f32,
                 active: true,
                 subducted_mass: 0.0,
+                cell_count: 0,
+                mean_thickness: 0.0,
+                mean_velocity: (0.0, 0.0),
+                centroid_x: 0.0,
+                centroid_y: 0.0,
             },
         ];
 

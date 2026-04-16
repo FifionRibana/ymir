@@ -589,8 +589,13 @@ fn launch_solver(
         basal_friction: solver_config.basal_friction,
     };
 
-    let plate_ctx =
-        DynamicPlateContext { ids: init.plate_ids.clone(), plates: init.plates.clone(), traction };
+    let next_id = init.plates.len();
+    let plate_ctx = DynamicPlateContext {
+        ids: init.plate_ids.clone(),
+        plates: init.plates.clone(),
+        traction,
+        next_id,
+    };
 
     let _ = bridge.commands_tx.send(SolverCommand::RunTectonics {
         config,

@@ -203,13 +203,16 @@ fn handle_step(
     let plate_ctx = if let (Some(ids), Some(plates)) = (&dynamic_plates.ids, &dynamic_plates.plates)
     {
         let traction = ymir_core::tectonics::plates::rebuild_traction(ids, plates, grid_size);
-        DynamicPlateContext { ids: ids.clone(), plates: plates.clone(), traction }
+        let next_id = plates.len();
+        DynamicPlateContext { ids: ids.clone(), plates: plates.clone(), traction, next_id }
     } else {
         let traction = tecto.init.to_traction_field();
+        let next_id = tecto.init.plates.len();
         DynamicPlateContext {
             ids: tecto.init.plate_ids.clone(),
             plates: tecto.init.plates.clone(),
             traction,
+            next_id,
         }
     };
 
