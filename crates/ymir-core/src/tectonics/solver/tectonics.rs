@@ -14,6 +14,7 @@ use crate::tectonics::boundaries::{
     BoundaryType, accumulate_subducted_mass, apply_slab_pull, compute_boundary_sources,
     gaussian_blur_f64,
 };
+use crate::tectonics::mantle::MantleFlow;
 use crate::tectonics::plates::{
     Plate, PlateType, advect_plate_ids, apply_subduction_consumption, compute_viscosity_multiplier,
     detect_disappeared_plates, detect_fragmentation, rebuild_traction, update_plate_stats,
@@ -89,6 +90,15 @@ where
     assign_density_from_plates(grid, &plate_ctx.ids, &plate_ctx.plates, &config.boundaries);
     compute_viscosity_multiplier(grid, &plate_ctx.ids, &plate_ctx.plates, &config.cratonic);
     grid.basal_friction = config.basal_friction;
+
+    // Generate mantle convection flow field (static pattern, optionally evolving)
+    let mut mantle_flow = if config.mantle.enabled {
+        let mantle_seed =
+            grid.s.data().iter().take(8).fold(0u64, |acc, &v| acc.wrapping_add((v * 1e10) as u64));
+        Some(MantleFlow::generate(n, mantle_seed, &config.mantle))
+    } else {
+        None
+    };
 
     for step in 0..config.num_timesteps {
         // 1. Solve velocity — continuation only on first step (cold start)
@@ -219,6 +229,27 @@ where
         // Rebuild traction once (after slab pull may have updated velocities)
         if config.boundaries.enabled || config.dynamic_boundaries {
             plate_ctx.traction = rebuild_traction(&plate_ctx.ids, &plate_ctx.plates, n);
+        }
+
+        // Add mantle convection flow to traction (continuous driving force)
+        if let Some(ref mut mf) = mantle_flow {
+            let coupling = config.mantle.coupling;
+            for j in 0..n {
+                for i in 0..n {
+                    // Thickness-dependent coupling: thick continental roots
+                    // couple more strongly than thin oceanic lithosphere.
+                    let s = grid.s.get(i, j);
+                    let c = coupling * (s - 0.15).max(0.0);
+                    let tx = plate_ctx.traction.tx.get(i, j) + c * mf.vx.get(i, j);
+                    let ty = plate_ctx.traction.ty.get(i, j) + c * mf.vy.get(i, j);
+                    plate_ctx.traction.tx.set(i, j, tx);
+                    plate_ctx.traction.ty.set(i, j, ty);
+                }
+            }
+
+            if config.mantle.evolution_rate > 0.0 {
+                mf.evolve(config.mantle.evolution_rate, step);
+            }
         }
 
         // ── Mass balance tracking ──────────────────────────────────
@@ -761,6 +792,7 @@ mod tests {
             cratonic: Default::default(),
             yielding: Default::default(),
             basal_friction: 0.0,
+            mantle: Default::default(),
         }
     }
 
@@ -947,6 +979,7 @@ mod tests {
             cratonic: Default::default(),
             yielding: Default::default(),
             basal_friction: 1.0,
+            mantle: Default::default(),
         };
 
         let mut ctx = make_static_ctx(n, traction);

@@ -6,6 +6,7 @@
 
 pub mod boundaries; // M1 — subduction, rifting, volcanism source terms
 pub mod centering;
+pub mod mantle; // M1 — mantle convection proxy for continuous plate driving
 pub mod plates; // M1 — plate initialization, Voronoi partitioning
 pub mod solver; // M1 — thin viscous sheet velocity solver
 // pub mod advection;   // M1 — crustal thickness advection
