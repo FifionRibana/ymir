@@ -149,10 +149,11 @@ pub struct BoundaryField {
 
 // ── Core computation ─────────────────────────────────────────────────────
 
-/// Detect boundaries and compute source/sink rates.
-/// Classify material by local thickness.
-fn material_type(s: f64) -> PlateType {
-    if s > 0.4 { PlateType::Continental } else { PlateType::Oceanic }
+/// Classify a plate's type based on its mean thickness.
+/// More stable than per-cell classification because mean_thickness
+/// averages over hundreds of cells and changes slowly.
+fn plate_type_from_mean_thickness(mean_thickness: f32) -> PlateType {
+    if mean_thickness > 0.4 { PlateType::Continental } else { PlateType::Oceanic }
 }
 
 pub fn compute_boundary_sources(
@@ -172,7 +173,7 @@ pub fn compute_boundary_sources(
         for i in 0..n {
             let k = j * n + i;
             let my_plate = plate_ids[k];
-            let my_type = material_type(grid.s.get(i, j));
+            let my_type = plate_type_from_mean_thickness(plates[my_plate].mean_thickness);
 
             let neighbors =
                 [(idx.next(i), j), (idx.prev(i), j), (i, idx.next(j)), (i, idx.prev(j))];
@@ -187,7 +188,8 @@ pub fn compute_boundary_sources(
 
                 if other_plate != my_plate {
                     is_boundary = true;
-                    neighbor_plate_type = material_type(grid.s.get(ni, nj));
+                    neighbor_plate_type =
+                        plate_type_from_mean_thickness(plates[other_plate].mean_thickness);
 
                     // Normal direction from (i,j) to (ni,nj), handling wrapping
                     let nx = if ni == idx.next(i) && ni < i {
