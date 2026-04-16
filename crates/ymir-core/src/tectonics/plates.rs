@@ -803,6 +803,74 @@ pub fn detect_disappeared_plates(plate_ids: &[usize], plates: &mut [Plate]) -> V
     disappeared
 }
 
+/// Build traction field with smooth interpolation from the displacement field.
+///
+/// Instead of assigning each cell the discrete velocity of its plate ID,
+/// blend the traction based on the accumulated sub-pixel displacement.
+/// As `disp` approaches ±0.5 (the shift threshold), the cell's traction
+/// smoothly transitions toward the neighboring plate's velocity. The
+/// transition is continuous — no discrete jump occurs when the ID shifts.
+pub fn rebuild_traction_smooth(
+    plate_ids: &[usize],
+    plates: &[Plate],
+    disp_x: &Field2D,
+    disp_y: &Field2D,
+    grid_size: usize,
+) -> TractionField {
+    let mut tx = Field2D::new(grid_size);
+    let mut ty = Field2D::new(grid_size);
+    let n = grid_size;
+
+    for j in 0..n {
+        for i in 0..n {
+            let k = j * n + i;
+            let pid = plate_ids[k];
+            let plate = &plates[pid];
+
+            let base_tx = plate.velocity.0 as f64;
+            let base_ty = plate.velocity.1 as f64;
+
+            let dx = disp_x.get(i, j);
+            let dy = disp_y.get(i, j);
+
+            // Weight: smoothly rises from 0 at disp=0 to 1 at |disp|=0.5
+            let wx = smoothstep(dx.abs() * 2.0);
+            let wy = smoothstep(dy.abs() * 2.0);
+
+            let ni_x = if dx > 0.0 { (i + 1) % n } else { (i + n - 1) % n };
+            let ni_y = if dy > 0.0 { (j + 1) % n } else { (j + n - 1) % n };
+
+            let pid_nx = plate_ids[j * n + ni_x];
+            let pid_ny = plate_ids[ni_y * n + i];
+
+            let neighbor_tx_x = plates[pid_nx].velocity.0 as f64;
+            let neighbor_ty_x = plates[pid_nx].velocity.1 as f64;
+            let neighbor_tx_y = plates[pid_ny].velocity.0 as f64;
+            let neighbor_ty_y = plates[pid_ny].velocity.1 as f64;
+
+            let blended_tx = base_tx * (1.0 - wx) * (1.0 - wy)
+                + neighbor_tx_x * wx * (1.0 - wy)
+                + neighbor_tx_y * (1.0 - wx) * wy
+                + neighbor_tx_x * wx * wy;
+            let blended_ty = base_ty * (1.0 - wx) * (1.0 - wy)
+                + neighbor_ty_x * wx * (1.0 - wy)
+                + neighbor_ty_y * (1.0 - wx) * wy
+                + neighbor_ty_y * wx * wy;
+
+            tx.set(i, j, blended_tx);
+            ty.set(i, j, blended_ty);
+        }
+    }
+
+    TractionField { tx, ty }
+}
+
+/// Smooth hermite interpolation. Maps [0,1] → [0,1] with zero derivative at endpoints.
+fn smoothstep(t: f64) -> f64 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 /// Rebuild the traction field from current plate_ids and plate velocities.
 pub fn rebuild_traction(plate_ids: &[usize], plates: &[Plate], grid_size: usize) -> TractionField {
     let mut tx = Field2D::new(grid_size);
