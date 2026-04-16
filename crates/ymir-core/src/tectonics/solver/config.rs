@@ -120,6 +120,10 @@ pub struct TectonicsConfig {
     /// crustal motion proportionally to velocity × thickness.
     /// 0.0 = no friction. Typical range: 0.1-10.0. Default: 1.0.
     pub basal_friction: f64,
+    /// Mantle convection flow configuration (continuous plate driving).
+    pub mantle: super::super::mantle::MantleConfig,
+    /// Conservative mass recycling configuration.
+    pub recycling: super::super::recycling::RecyclingConfig,
 }
 
 /// Configuration for cratonic rigidity (spatial viscosity variation).
@@ -192,6 +196,8 @@ impl Default for TectonicsConfig {
             cratonic: CratonicConfig::default(),
             yielding: YieldingConfig::default(),
             basal_friction: 0.05,
+            mantle: Default::default(),
+            recycling: Default::default(),
         }
     }
 }

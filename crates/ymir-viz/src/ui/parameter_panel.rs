@@ -263,6 +263,25 @@ fn draw_tectonics(
     slider_row_f64(ui, "Relaxation", &mut solver_config.picard_relaxation, 0.3..=1.0);
     slider_row_f64(ui, "Basal friction", &mut solver_config.basal_friction, 0.0..=1.0);
 
+    ui.checkbox(&mut solver_config.recycling.enabled, "Conservative recycling");
+    if solver_config.recycling.enabled {
+        slider_row_f64(ui, "Arc fraction", &mut solver_config.recycling.arc_fraction, 0.0..=0.5);
+        slider_row_f64(ui, "Loss fraction", &mut solver_config.recycling.loss_fraction, 0.0..=0.3);
+        ui.horizontal(|ui| {
+            ui.label("Mantle delay");
+            let mut delay = solver_config.recycling.mantle_delay as f32;
+            if ui.add(egui::Slider::new(&mut delay, 1.0..=100.0)).changed() {
+                solver_config.recycling.mantle_delay = delay as usize;
+            }
+        });
+    }
+
+    ui.checkbox(&mut solver_config.mantle.enabled, "Mantle flow");
+    if solver_config.mantle.enabled {
+        slider_row_f64(ui, "Mantle amplitude", &mut solver_config.mantle.amplitude, 0.0..=3.0);
+        slider_row_f64(ui, "Mantle coupling", &mut solver_config.mantle.coupling, 0.0..=5.0);
+    }
+
     ui.horizontal(|ui| {
         ui.label("Viscosity");
         let mut idx = if solver_config.power_law_n < 2.0 { 0 } else { 1 };
@@ -587,6 +606,8 @@ fn launch_solver(
         cratonic: solver_config.cratonic.clone(),
         yielding: solver_config.yielding.clone(),
         basal_friction: solver_config.basal_friction,
+        mantle: solver_config.mantle.clone(),
+        recycling: solver_config.recycling.clone(),
     };
 
     let next_id = init.plates.len();
@@ -595,6 +616,8 @@ fn launch_solver(
         plates: init.plates.clone(),
         traction,
         next_id,
+        disp_x: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
+        disp_y: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
     };
 
     let _ = bridge.commands_tx.send(SolverCommand::RunTectonics {
