@@ -206,6 +206,7 @@ pub struct SolverConfig {
     pub cratonic: ymir_core::tectonics::solver::config::CratonicConfig,
     pub yielding: ymir_core::tectonics::solver::config::YieldingConfig,
     pub basal_friction: f64,
+    pub mantle: ymir_core::tectonics::mantle::MantleConfig,
 }
 
 impl Default for SolverConfig {
@@ -227,6 +228,7 @@ impl Default for SolverConfig {
             cratonic: Default::default(),
             yielding: Default::default(),
             basal_friction: 0.05,
+            mantle: Default::default(),
         }
     }
 }
