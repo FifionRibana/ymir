@@ -6,6 +6,7 @@
 //! The resulting crustal thickness field is smoothed with a separable Gaussian blur.
 
 use rand::Rng;
+use tracing::info;
 
 use super::solver::field::Field2D;
 use super::solver::grid::StaggeredGrid;
@@ -532,6 +533,7 @@ pub fn apply_subduction_consumption(
 /// At divergent boundaries, very thin cells that are receiving material
 /// from spreading become new plates. Only cells whose parent plate has
 /// mean_thickness > 0.4 (continental being rifted apart) get new IDs.
+/// Contiguous candidate cells are grouped into a single plate via BFS.
 pub fn apply_rift_creation(
     ids: &mut [usize],
     plates: &mut Vec<Plate>,
@@ -543,6 +545,8 @@ pub fn apply_rift_creation(
     use crate::tectonics::boundaries::BoundaryType;
     let n = grid.n;
 
+    // Pass 1: collect all cells that qualify for rift creation
+    let mut candidates = vec![false; n * n];
     for j in 0..n {
         for i in 0..n {
             let k = j * n + i;
@@ -556,40 +560,104 @@ pub fn apply_rift_creation(
             if parent_id >= plates.len() || plates[parent_id].mean_thickness <= 0.4 {
                 continue;
             }
+            candidates[k] = true;
+        }
+    }
 
-            let new_id = *next_id;
-            *next_id += 1;
-            plates.push(Plate::new(new_id, PlateType::Oceanic, (0.0, 0.0), i as f32, j as f32));
+    // Pass 2: connected component labeling (4-connectivity, periodic)
+    let mut visited = vec![false; n * n];
+    let mut components: Vec<Vec<usize>> = Vec::new();
+
+    for k in 0..n * n {
+        if !candidates[k] || visited[k] {
+            continue;
+        }
+        let mut group = Vec::new();
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(k);
+        visited[k] = true;
+
+        while let Some(ck) = queue.pop_front() {
+            group.push(ck);
+            let ci = ck % n;
+            let cj = ck / n;
+            let neighbors = [
+                ((ci + 1) % n, cj),
+                ((ci + n - 1) % n, cj),
+                (ci, (cj + 1) % n),
+                (ci, (cj + n - 1) % n),
+            ];
+            for &(ni, nj) in &neighbors {
+                let nk = nj * n + ni;
+                if candidates[nk] && !visited[nk] {
+                    visited[nk] = true;
+                    queue.push_back(nk);
+                }
+            }
+        }
+        components.push(group);
+    }
+
+    // Pass 3: one new plate per connected component
+    for component in &components {
+        let new_id = *next_id;
+        *next_id += 1;
+
+        let ci = component[0] % n;
+        let cj = component[0] / n;
+        plates.push(Plate::new(new_id, PlateType::Oceanic, (0.0, 0.0), ci as f32, cj as f32));
+
+        for &k in component {
             ids[k] = new_id;
         }
     }
 }
 
 /// Detect plates that have been fragmented into disconnected components.
+///
+/// Connectivity uses a thickness threshold: cells with S below `connectivity_threshold`
+/// do not propagate connectivity. This allows a thin rift zone to "break" a continent
+/// into two pieces even though the thin cells still carry the same plate_id.
+///
 /// The largest component keeps the original ID, smaller ones get new IDs.
+/// Thin cells in the rift zone are reassigned to the nearest fragment by adjacency.
 pub fn detect_fragmentation(
     ids: &mut [usize],
     plates: &mut Vec<Plate>,
     next_id: &mut usize,
     n: usize,
+    grid: &StaggeredGrid,
+    connectivity_threshold: f64,
 ) {
     let active_ids: Vec<usize> =
         plates.iter().filter(|p| p.active && p.cell_count > 0).map(|p| p.id).collect();
 
     for &pid in &active_ids {
         let cells: Vec<usize> = (0..n * n).filter(|&k| ids[k] == pid).collect();
-        if cells.len() < 2 {
+        if cells.len() < 4 {
+            continue;
+        }
+        // Only continental plates can fragment by rifting.
+        if plates[pid].mean_thickness <= 0.5 {
             continue;
         }
 
-        // BFS flood fill to find connected components (4-connectivity, periodic)
+        // BFS flood fill with thickness-aware connectivity
         let mut visited = vec![false; n * n];
         let mut components: Vec<Vec<usize>> = Vec::new();
+        let mut thin_cells: Vec<usize> = Vec::new();
 
         for &start in &cells {
             if visited[start] {
                 continue;
             }
+            // Thin cells don't start components
+            if grid.s.get(start % n, start / n) < connectivity_threshold {
+                thin_cells.push(start);
+                visited[start] = true;
+                continue;
+            }
+
             let mut component = Vec::new();
             let mut queue = std::collections::VecDeque::new();
             queue.push_back(start);
@@ -607,48 +675,82 @@ pub fn detect_fragmentation(
                 ];
                 for &(ni, nj) in &neighbors {
                     let nk = nj * n + ni;
-                    if !visited[nk] && ids[nk] == pid {
-                        visited[nk] = true;
-                        queue.push_back(nk);
+                    if visited[nk] || ids[nk] != pid {
+                        continue;
                     }
+                    if grid.s.get(ni, nj) < connectivity_threshold {
+                        thin_cells.push(nk);
+                        visited[nk] = true;
+                        continue;
+                    }
+                    visited[nk] = true;
+                    queue.push_back(nk);
                 }
             }
-            components.push(component);
+
+            if !component.is_empty() {
+                components.push(component);
+            }
         }
 
         if components.len() <= 1 {
             continue;
         }
 
-        // Largest keeps original ID
+        // Sort by size descending — largest keeps original ID
         components.sort_by(|a, b| b.len().cmp(&a.len()));
 
         for component in components.iter().skip(1) {
             let new_id = *next_id;
             *next_id += 1;
 
-            let cx =
-                component.iter().map(|&k| (k % n) as f32).sum::<f32>() / component.len() as f32;
-            let cy =
-                component.iter().map(|&k| (k / n) as f32).sum::<f32>() / component.len() as f32;
-
-            plates.push(Plate {
-                id: new_id,
-                plate_type: plates[pid].plate_type,
-                velocity: plates[pid].velocity,
-                seed_x: cx,
-                seed_y: cy,
-                active: true,
-                subducted_mass: 0.0,
-                cell_count: component.len(),
-                mean_thickness: 0.0,
-                mean_velocity: (0.0, 0.0),
-                centroid_x: cx,
-                centroid_y: cy,
-            });
+            let parent_vel = plates[pid].velocity;
+            let ci = component[0] % n;
+            let cj = component[0] / n;
+            plates.push(Plate::new(
+                new_id,
+                plates[pid].plate_type,
+                parent_vel,
+                ci as f32,
+                cj as f32,
+            ));
 
             for &k in component {
                 ids[k] = new_id;
+            }
+
+            info!(
+                old_plate = pid,
+                new_plate = new_id,
+                cells = component.len(),
+                "plate fragmented — continental breakup"
+            );
+        }
+
+        // Reassign thin rift cells to nearest fragment by flood-fill from thick components
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for &k in &thin_cells {
+                if ids[k] != pid {
+                    continue;
+                }
+                let ci = k % n;
+                let cj = k / n;
+                let neighbors = [
+                    ((ci + 1) % n, cj),
+                    ((ci + n - 1) % n, cj),
+                    (ci, (cj + 1) % n),
+                    (ci, (cj + n - 1) % n),
+                ];
+                for &(ni, nj) in &neighbors {
+                    let nk = nj * n + ni;
+                    if ids[nk] != pid {
+                        ids[k] = ids[nk];
+                        changed = true;
+                        break;
+                    }
+                }
             }
         }
     }
