@@ -71,6 +71,7 @@ pub fn spawn_solver_thread(
                                         s_field: snap.s_field.clone(),
                                         plate_ids: snap.plate_ids.map(|ids| ids.to_vec()),
                                         plates: snap.plates.map(|p| p.to_vec()),
+                                        boundary_types: snap.boundary_types.map(|bt| bt.to_vec()),
                                     });
                                 }
                                 !cancel_ref.load(Ordering::Relaxed)
@@ -82,6 +83,9 @@ pub fn spawn_solver_thread(
                             if dynamic { Some(plate_ctx.ids.clone()) } else { None };
                         let final_plates =
                             if dynamic { Some(plate_ctx.plates.clone()) } else { None };
+                        let final_boundary_types = workspace.as_ref().and_then(|w| {
+                            w.boundary_field.as_ref().map(|bf| bf.boundary_type.clone())
+                        });
 
                         match result {
                             Ok(()) => {
@@ -89,6 +93,7 @@ pub fn spawn_solver_thread(
                                     s_field: final_s,
                                     plate_ids: final_plate_ids,
                                     plates: final_plates,
+                                    boundary_types: final_boundary_types,
                                     elapsed: start.elapsed(),
                                     total_steps: config.num_timesteps,
                                 });
@@ -100,6 +105,7 @@ pub fn spawn_solver_thread(
                                         s_field: final_s,
                                         plate_ids: final_plate_ids,
                                         plates: final_plates,
+                                        boundary_types: final_boundary_types,
                                         elapsed: start.elapsed(),
                                         total_steps: config.num_timesteps,
                                     });
@@ -137,6 +143,7 @@ pub fn spawn_solver_thread(
                                     s_field: snap.s_field.clone(),
                                     plate_ids: snap.plate_ids.map(|i| i.to_vec()),
                                     plates: snap.plates.map(|p| p.to_vec()),
+                                    boundary_types: snap.boundary_types.map(|bt| bt.to_vec()),
                                 });
                                 let _ = tx.send(SolverEvent::Progress {
                                     step: 0,
@@ -147,10 +154,14 @@ pub fn spawn_solver_thread(
                             },
                         );
 
+                        let final_boundary_types = workspace.as_ref().and_then(|w| {
+                            w.boundary_field.as_ref().map(|bf| bf.boundary_type.clone())
+                        });
                         let _ = events_tx.send(SolverEvent::Completed {
                             s_field: grid.s.clone(),
                             plate_ids: Some(plate_ctx.ids.clone()),
                             plates: Some(plate_ctx.plates.clone()),
+                            boundary_types: final_boundary_types,
                             elapsed: std::time::Duration::ZERO,
                             total_steps: 1,
                         });

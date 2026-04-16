@@ -22,7 +22,7 @@ fn main() {
                     ..default()
                 })
                 .set(bevy::log::LogPlugin {
-                    filter: "warn,ymir_core=info,ymir_viz=info".to_string(),
+                    filter: "warn,ymir_core::tectonics=debug".to_string(),
                     level: bevy::log::Level::DEBUG,
                     custom_layer: |_app| {
                         let file = std::fs::OpenOptions::new()
