@@ -16,9 +16,9 @@ use crate::tectonics::boundaries::{
 };
 use crate::tectonics::mantle::MantleFlow;
 use crate::tectonics::plates::{
-    Plate, PlateType, advect_plate_ids, apply_subduction_consumption, compute_viscosity_multiplier,
-    detect_disappeared_plates, detect_fragmentation, rebuild_traction, rebuild_traction_smooth,
-    update_plate_stats,
+    Plate, PlateType, advect_plate_ids, apply_subduction_consumption, cleanup_plate_ids,
+    compute_viscosity_multiplier, detect_disappeared_plates, detect_fragmentation,
+    rebuild_traction, rebuild_traction_smooth, update_plate_stats,
 };
 use crate::tectonics::recycling::RecyclingBuffer;
 
@@ -161,6 +161,19 @@ where
                 grid,
                 dt_cfl,
             );
+
+            // Morphological cleanup: remove isolated cells and thin protrusions
+            // so plate boundaries stay at 1-cell width.
+            let ids_before_cleanup: Vec<usize> = plate_ctx.ids.clone();
+            cleanup_plate_ids(&mut plate_ctx.ids, n);
+            for k in 0..n * n {
+                if plate_ctx.ids[k] != ids_before_cleanup[k] {
+                    let i = k % n;
+                    let j = k / n;
+                    plate_ctx.disp_x.set(i, j, 0.0);
+                    plate_ctx.disp_y.set(i, j, 0.0);
+                }
+            }
 
             let disappeared = detect_disappeared_plates(&plate_ctx.ids, &mut plate_ctx.plates);
             for pid in &disappeared {
