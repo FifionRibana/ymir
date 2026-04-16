@@ -116,6 +116,10 @@ pub struct TectonicsConfig {
     pub cratonic: CratonicConfig,
     /// Plastic yielding with strain weakening.
     pub yielding: YieldingConfig,
+    /// Basal friction coefficient (mantle drag). Resists horizontal
+    /// crustal motion proportionally to velocity × thickness.
+    /// 0.0 = no friction. Typical range: 0.1-10.0. Default: 1.0.
+    pub basal_friction: f64,
 }
 
 /// Configuration for cratonic rigidity (spatial viscosity variation).
@@ -187,6 +191,7 @@ impl Default for TectonicsConfig {
             dynamic_boundaries: true,
             cratonic: CratonicConfig::default(),
             yielding: YieldingConfig::default(),
+            basal_friction: 1.0,
         }
     }
 }

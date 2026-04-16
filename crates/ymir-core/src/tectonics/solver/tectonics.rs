@@ -84,6 +84,7 @@ where
     // Initialize density field and cratonic viscosity multiplier from plate types
     assign_density_from_plates(grid, &plate_ctx.ids, &plate_ctx.plates, &config.boundaries);
     compute_viscosity_multiplier(grid, &plate_ctx.ids, &plate_ctx.plates, &config.cratonic);
+    grid.basal_friction = config.basal_friction;
 
     for step in 0..config.num_timesteps {
         // 1. Solve velocity — continuation only on first step (cold start)
@@ -488,6 +489,7 @@ mod tests {
             dynamic_boundaries: false,
             cratonic: Default::default(),
             yielding: Default::default(),
+            basal_friction: 0.0,
         }
     }
 
@@ -667,6 +669,7 @@ mod tests {
             dynamic_boundaries: false,
             cratonic: Default::default(),
             yielding: Default::default(),
+            basal_friction: 1.0,
         };
 
         let mut ctx = make_static_ctx(n, traction);

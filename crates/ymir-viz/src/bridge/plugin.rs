@@ -254,6 +254,7 @@ fn build_tectonics_config(sc: &SolverConfig) -> TectonicsConfig {
         dynamic_boundaries: sc.dynamic_boundaries,
         cratonic: sc.cratonic.clone(),
         yielding: sc.yielding.clone(),
+        basal_friction: sc.basal_friction,
     }
 }
 
