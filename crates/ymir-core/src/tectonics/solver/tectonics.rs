@@ -1,6 +1,6 @@
 //! Top-level orchestration of the thin viscous sheet simulation.
 
-use tracing::{info, info_span, warn};
+use tracing::{debug, info, info_span, warn};
 
 use super::advection::{compute_cfl_dt, compute_divergence_flux};
 use super::config::{NonlinearSolver, TectonicsConfig};
@@ -11,7 +11,8 @@ use super::picard::solve_velocity_picard;
 use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, StepStats};
 use crate::tectonics::boundaries::{
-    accumulate_subducted_mass, apply_slab_pull, compute_boundary_sources, gaussian_blur_f64,
+    BoundaryType, accumulate_subducted_mass, apply_slab_pull, compute_boundary_sources,
+    gaussian_blur_f64,
 };
 use crate::tectonics::plates::{
     Plate, PlateType, advect_plate_ids, apply_rift_creation, apply_subduction_consumption,
@@ -342,6 +343,102 @@ where
         if clamp_ratio > 0.05 {
             warn!(step, clamp_ratio, dt, "excessive clamping — consider reducing CFL or timestep");
         }
+
+        // ── Diagnostic: per-step plate & boundary summary ──────────────
+        if config.dynamic_boundaries {
+            let total_cells = n * n;
+            let num_active =
+                plate_ctx.plates.iter().filter(|p| p.active && p.cell_count > 0).count();
+
+            // Per-plate summary
+            let mut plate_summary = String::new();
+            for plate in plate_ctx.plates.iter().filter(|p| p.active && p.cell_count > 0) {
+                let mat = if plate.mean_thickness > 0.4 { "C" } else { "O" };
+                use std::fmt::Write;
+                let _ = write!(
+                    plate_summary,
+                    " [{}:{} n={} S={:.3} v=({:.4},{:.4})]",
+                    plate.id,
+                    mat,
+                    plate.cell_count,
+                    plate.mean_thickness,
+                    plate.mean_velocity.0,
+                    plate.mean_velocity.1,
+                );
+            }
+
+            // Boundary type counts
+            let (mut n_sub, mut n_osub, mut n_coll, mut n_rift, mut n_boundary) =
+                (0usize, 0usize, 0usize, 0usize, 0usize);
+            if let Some(ref bf) = workspace.boundary_field {
+                for bt in &bf.boundary_type {
+                    match bt {
+                        BoundaryType::Subduction => {
+                            n_sub += 1;
+                            n_boundary += 1;
+                        }
+                        BoundaryType::OceanicSubduction => {
+                            n_osub += 1;
+                            n_boundary += 1;
+                        }
+                        BoundaryType::ContinentalCollision => {
+                            n_coll += 1;
+                            n_boundary += 1;
+                        }
+                        BoundaryType::Rift => {
+                            n_rift += 1;
+                            n_boundary += 1;
+                        }
+                        BoundaryType::None => {}
+                    }
+                }
+            }
+
+            // Source term summary
+            let mut q_pos = 0.0_f64;
+            let mut q_neg = 0.0_f64;
+            for &q in workspace.source_rate.data().iter() {
+                if q > 0.0 {
+                    q_pos += q;
+                } else {
+                    q_neg += q;
+                }
+            }
+
+            // Thickness distribution
+            let mut n_continental = 0usize;
+            let mut n_oceanic = 0usize;
+            let mut n_transitional = 0usize;
+            for &s in grid.s.data().iter() {
+                if s > 0.4 {
+                    n_continental += 1;
+                } else if s < 0.3 {
+                    n_oceanic += 1;
+                } else {
+                    n_transitional += 1;
+                }
+            }
+
+            debug!(
+                step,
+                active_plates = num_active,
+                total_plates = plate_ctx.plates.len(),
+                next_id = plate_ctx.next_id,
+                boundary_cells = n_boundary,
+                subduction = n_sub,
+                oceanic_sub = n_osub,
+                collision = n_coll,
+                rift = n_rift,
+                q_positive = format!("{:.4}", q_pos),
+                q_negative = format!("{:.4}", q_neg),
+                cells_continental = n_continental,
+                cells_oceanic = n_oceanic,
+                cells_transitional = n_transitional,
+                "plate diagnostics"
+            );
+            debug!(step, plates = %plate_summary, "plate details");
+        }
+        // ──────────────────────────────────────────────────────────────
 
         // 5. Callback — returns false to cancel
         let snapshot = StepSnapshot {

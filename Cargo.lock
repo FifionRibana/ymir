@@ -5465,6 +5465,7 @@ dependencies = [
  "bevy_egui",
  "crossbeam-channel",
  "noise",
+ "tracing-subscriber",
  "ymir-core",
 ]
 
