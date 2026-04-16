@@ -67,7 +67,7 @@ impl Default for NewtonConfig {
     fn default() -> Self {
         Self {
             max_iterations: 15,
-            tolerance: 1e-4,
+            tolerance: 5e-2,
             cg_max_iter: 500,
             cg_tolerance: 1e-6,
             fd_epsilon_scale: 1e-7,

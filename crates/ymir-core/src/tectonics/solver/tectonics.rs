@@ -345,6 +345,8 @@ fn assign_density_from_plates(
 }
 
 /// Solve velocity directly (no continuation).
+/// If friction is enabled and the direct solve fails, falls back to
+/// solving without friction first, then re-solving with friction.
 fn solve_velocity_direct(
     grid: &mut StaggeredGrid,
     plates: &TractionField,
@@ -353,38 +355,55 @@ fn solve_velocity_direct(
 ) -> (bool, usize, usize) {
     let rho_c = config.boundaries.rho_continental;
     let rho_m = config.boundaries.rho_mantle;
-    match config.nonlinear_solver {
-        NonlinearSolver::Picard => {
-            let r = solve_velocity_picard(
-                grid,
-                plates,
-                config.gravity_factor,
-                rho_c,
-                rho_m,
-                &config.picard,
-                &config.yielding,
-                workspace,
-            );
-            (r.converged, r.iterations, r.total_cg_iterations)
-        }
-        NonlinearSolver::Newton => {
-            let r = solve_velocity_newton(
-                grid,
-                plates,
-                config.gravity_factor,
-                rho_c,
-                rho_m,
-                &config.picard,
-                &config.yielding,
-                &config.newton,
-                workspace,
-            );
-            (r.converged, r.iterations, r.total_linear_iterations)
-        }
+
+    let do_solve =
+        |grid: &mut StaggeredGrid, ws: &mut SolverWorkspace| match config.nonlinear_solver {
+            NonlinearSolver::Picard => {
+                let r = solve_velocity_picard(
+                    grid,
+                    plates,
+                    config.gravity_factor,
+                    rho_c,
+                    rho_m,
+                    &config.picard,
+                    &config.yielding,
+                    ws,
+                );
+                (r.converged, r.iterations, r.total_cg_iterations)
+            }
+            NonlinearSolver::Newton => {
+                let r = solve_velocity_newton(
+                    grid,
+                    plates,
+                    config.gravity_factor,
+                    rho_c,
+                    rho_m,
+                    &config.picard,
+                    &config.yielding,
+                    &config.newton,
+                    ws,
+                );
+                (r.converged, r.iterations, r.total_linear_iterations)
+            }
+        };
+
+    let (converged, nl, linear) = do_solve(grid, workspace);
+
+    if !converged && grid.basal_friction > 0.0 {
+        // Fallback: solve without friction, then with friction
+        let target_friction = grid.basal_friction;
+        grid.basal_friction = 0.0;
+        let (_, nl2, lin2) = do_solve(grid, workspace);
+        grid.basal_friction = target_friction;
+        let (conv2, nl3, lin3) = do_solve(grid, workspace);
+        return (conv2, nl + nl2 + nl3, linear + lin2 + lin3);
     }
+
+    (converged, nl, linear)
 }
 
-/// Solve velocity using viscosity continuation: ramp n from 1 → target.
+/// Solve velocity using viscosity continuation: ramp n from 1 → target,
+/// then optionally add a friction continuation step.
 fn solve_with_continuation(
     grid: &mut StaggeredGrid,
     plates: &TractionField,
@@ -394,9 +413,13 @@ fn solve_with_continuation(
     let target_eps = config.picard.strain_rate_min;
     let steps = &config.continuation.n_steps;
     let eps_start = config.continuation.eps_min_start.unwrap_or(target_eps);
+    let target_friction = grid.basal_friction;
 
     let mut total_nl = 0usize;
     let mut total_linear = 0usize;
+
+    // Phase 1: power-law ramp WITHOUT friction
+    grid.basal_friction = 0.0;
 
     for (i, &n_exp) in steps.iter().enumerate() {
         // Interpolate ε_min from eps_start to target_eps
@@ -452,8 +475,61 @@ fn solve_with_continuation(
         total_nl += iters;
         total_linear += linear_iters;
         if !converged {
+            grid.basal_friction = target_friction;
             return (false, total_nl, total_linear);
         }
+    }
+
+    // Phase 2: final solve WITH friction at target power-law
+    if target_friction > 0.0 {
+        grid.basal_friction = target_friction;
+
+        let mut step_config = config.picard.clone();
+        step_config.power_law_n = config.picard.power_law_n;
+        step_config.strain_rate_min = target_eps;
+        step_config.relaxation = 0.4;
+
+        let rho_c = config.boundaries.rho_continental;
+        let rho_m = config.boundaries.rho_mantle;
+
+        let (converged, iters, linear_iters) = match config.nonlinear_solver {
+            NonlinearSolver::Picard => {
+                let r = solve_velocity_picard(
+                    grid,
+                    plates,
+                    config.gravity_factor,
+                    rho_c,
+                    rho_m,
+                    &step_config,
+                    &config.yielding,
+                    workspace,
+                );
+                (r.converged, r.iterations, r.total_cg_iterations)
+            }
+            NonlinearSolver::Newton => {
+                let r = solve_velocity_newton(
+                    grid,
+                    plates,
+                    config.gravity_factor,
+                    rho_c,
+                    rho_m,
+                    &step_config,
+                    &config.yielding,
+                    &config.newton,
+                    workspace,
+                );
+                (r.converged, r.iterations, r.total_linear_iterations)
+            }
+        };
+
+        total_nl += iters;
+        total_linear += linear_iters;
+
+        if !converged {
+            return (false, total_nl, total_linear);
+        }
+    } else {
+        grid.basal_friction = target_friction;
     }
 
     (true, total_nl, total_linear)
