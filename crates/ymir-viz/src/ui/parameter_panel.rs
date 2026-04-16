@@ -261,6 +261,7 @@ fn draw_tectonics(
     slider_row_f64(ui, "Gravity", &mut solver_config.gravity_factor, 0.1..=5.0);
     slider_row_f64(ui, "CFL", &mut solver_config.cfl_factor, 0.05..=0.9);
     slider_row_f64(ui, "Relaxation", &mut solver_config.picard_relaxation, 0.3..=1.0);
+    slider_row_f64(ui, "Basal friction", &mut solver_config.basal_friction, 0.0..=1.0);
 
     ui.horizontal(|ui| {
         ui.label("Viscosity");
@@ -585,6 +586,7 @@ fn launch_solver(
         dynamic_boundaries: solver_config.dynamic_boundaries,
         cratonic: solver_config.cratonic.clone(),
         yielding: solver_config.yielding.clone(),
+        basal_friction: solver_config.basal_friction,
     };
 
     let plate_ctx =
