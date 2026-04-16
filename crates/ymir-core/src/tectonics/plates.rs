@@ -413,6 +413,54 @@ pub fn advect_plate_ids(
     }
 }
 
+/// Morphological cleanup of plate IDs after advection.
+///
+/// At convergent boundaries, advection can create thick "mixed zones" where
+/// plate IDs alternate in a checkerboard pattern. This function reassigns
+/// cells that are isolated or in thin protrusions to the majority plate
+/// among their 8-connected neighbors, keeping boundaries sharp at 1-cell width.
+pub fn cleanup_plate_ids(ids: &mut [usize], n: usize) {
+    let old_ids = ids.to_vec();
+
+    for j in 0..n {
+        for i in 0..n {
+            let k = j * n + i;
+            let my_id = old_ids[k];
+
+            // Count neighbors per plate ID; supports up to 256 plates
+            let mut counts = [0u8; 256];
+            let mut same_count = 0u8;
+
+            for &(di, dj) in
+                &[(-1isize, -1isize), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+            {
+                let ni = ((i as isize + di).rem_euclid(n as isize)) as usize;
+                let nj = ((j as isize + dj).rem_euclid(n as isize)) as usize;
+                let nid = old_ids[nj * n + ni];
+                if nid < counts.len() {
+                    counts[nid] += 1;
+                }
+                if nid == my_id {
+                    same_count += 1;
+                }
+            }
+
+            // Isolated cells (≤1 same) or thin protrusions (2 same) → reassign
+            if same_count <= 2 {
+                let mut best_id = my_id;
+                let mut best_count = 0u8;
+                for (pid, &c) in counts.iter().enumerate() {
+                    if c > best_count {
+                        best_count = c;
+                        best_id = pid;
+                    }
+                }
+                ids[k] = best_id;
+            }
+        }
+    }
+}
+
 /// Compute per-plate runtime statistics from the cell data.
 ///
 /// Updates `cell_count`, `mean_thickness`, `mean_velocity`, and

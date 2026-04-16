@@ -278,9 +278,45 @@ pub fn solve_velocity_newton(
             );
         }
 
-        // 4. Update: vᵏ⁺¹ = vᵏ + δv
-        for i in 0..n_dof {
-            ws.v_packed[i] += ws.jfnk_delta_v[i];
+        // 4. Update: vᵏ⁺¹ = vᵏ + α·δv with backtracking line search.
+        // Ensure the residual decreases by halving α up to 5 times.
+        let v_old = ws.v_packed.clone();
+        let mut alpha = 1.0_f64;
+        let mut trial_eta = Field2D::new(n);
+        let mut trial_sr = Field2D::new(n);
+        let mut trial_residual = vec![0.0; n_dof];
+        let max_backtracks = 5usize;
+        let mut final_alpha = alpha;
+
+        for _bt in 0..=max_backtracks {
+            for i in 0..n_dof {
+                ws.v_packed[i] = v_old[i] + alpha * ws.jfnk_delta_v[i];
+            }
+
+            compute_nonlinear_residual(
+                &ws.v_packed,
+                &ws.rhs,
+                grid,
+                picard_config,
+                &eta_mult,
+                &ps_snap,
+                yielding,
+                &mut trial_eta,
+                &mut trial_sr,
+                &mut trial_residual,
+            );
+            let f_trial: f64 = trial_residual.iter().map(|x| x * x).sum::<f64>().sqrt();
+
+            final_alpha = alpha;
+            if f_trial < f_norm || alpha <= 0.0625 {
+                // Accept: residual decreased, or we've backtracked far enough.
+                break;
+            }
+            alpha *= 0.5;
+        }
+
+        if final_alpha < 1.0 {
+            debug!(newton_iter = k, alpha = final_alpha, "newton line search backtracked");
         }
 
         // 5. Project out null space from solution
