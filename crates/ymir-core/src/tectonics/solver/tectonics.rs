@@ -17,7 +17,8 @@ use crate::tectonics::boundaries::{
 use crate::tectonics::mantle::MantleFlow;
 use crate::tectonics::plates::{
     Plate, PlateType, advect_plate_ids, apply_subduction_consumption, compute_viscosity_multiplier,
-    detect_disappeared_plates, detect_fragmentation, rebuild_traction, update_plate_stats,
+    detect_disappeared_plates, detect_fragmentation, rebuild_traction, rebuild_traction_smooth,
+    update_plate_stats,
 };
 use crate::tectonics::recycling::RecyclingBuffer;
 
@@ -259,7 +260,17 @@ where
 
         // Rebuild traction once (after slab pull may have updated velocities)
         if config.boundaries.enabled || config.dynamic_boundaries {
-            plate_ctx.traction = rebuild_traction(&plate_ctx.ids, &plate_ctx.plates, n);
+            plate_ctx.traction = if config.dynamic_boundaries {
+                rebuild_traction_smooth(
+                    &plate_ctx.ids,
+                    &plate_ctx.plates,
+                    &plate_ctx.disp_x,
+                    &plate_ctx.disp_y,
+                    n,
+                )
+            } else {
+                rebuild_traction(&plate_ctx.ids, &plate_ctx.plates, n)
+            };
         }
 
         // Add mantle convection flow to traction (continuous driving force)
