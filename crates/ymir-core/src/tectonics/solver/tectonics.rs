@@ -19,6 +19,7 @@ use crate::tectonics::plates::{
     Plate, PlateType, advect_plate_ids, apply_subduction_consumption, compute_viscosity_multiplier,
     detect_disappeared_plates, detect_fragmentation, rebuild_traction, update_plate_stats,
 };
+use crate::tectonics::recycling::RecyclingBuffer;
 
 /// Errors that can occur during a tectonic simulation run.
 #[derive(Debug)]
@@ -64,6 +65,10 @@ pub struct DynamicPlateContext {
     pub traction: TractionField,
     /// Counter for creating new plates (rift creation, fragmentation).
     pub next_id: usize,
+    /// Accumulated fractional X displacement per cell (sub-pixel ID advection).
+    pub disp_x: Field2D,
+    /// Accumulated fractional Y displacement per cell (sub-pixel ID advection).
+    pub disp_y: Field2D,
 }
 
 /// Data passed to the progress callback after each timestep.
@@ -90,6 +95,12 @@ where
     assign_density_from_plates(grid, &plate_ctx.ids, &plate_ctx.plates, &config.boundaries);
     compute_viscosity_multiplier(grid, &plate_ctx.ids, &plate_ctx.plates, &config.cratonic);
     grid.basal_friction = config.basal_friction;
+
+    let mut recycling_buffer = if config.recycling.enabled {
+        Some(RecyclingBuffer::new(config.recycling.mantle_delay))
+    } else {
+        None
+    };
 
     // Generate mantle convection flow field (static pattern, optionally evolving)
     let mut mantle_flow = if config.mantle.enabled {
@@ -142,7 +153,13 @@ where
         // ── Dynamic boundary update ────────────────────────────────────
         if config.dynamic_boundaries {
             // Advect plate IDs as material property (replaces seed advection + Voronoï)
-            advect_plate_ids(&mut plate_ctx.ids, grid, dt_cfl);
+            advect_plate_ids(
+                &mut plate_ctx.ids,
+                &mut plate_ctx.disp_x,
+                &mut plate_ctx.disp_y,
+                grid,
+                dt_cfl,
+            );
 
             let disappeared = detect_disappeared_plates(&plate_ctx.ids, &mut plate_ctx.plates);
             for pid in &disappeared {
@@ -172,6 +189,7 @@ where
                 &plate_ctx.ids,
                 &plate_ctx.plates,
                 &config.boundaries,
+                config.recycling.enabled,
             );
             workspace.source_rate.data_mut().copy_from_slice(bf.source_rate.data());
             workspace.boundary_field = Some(bf);
@@ -202,6 +220,8 @@ where
 
         // Subduction consumption + fragmentation detection
         if config.dynamic_boundaries {
+            let ids_before: Vec<usize> = plate_ctx.ids.clone();
+
             if let Some(ref bf) = workspace.boundary_field {
                 apply_subduction_consumption(
                     &mut plate_ctx.ids,
@@ -222,6 +242,17 @@ where
                     0.25, // Only truly oceanic-thin rift zones break continental connectivity
                 );
             }
+
+            // Reset displacement accumulators for cells whose ID just changed
+            for k in 0..n * n {
+                if plate_ctx.ids[k] != ids_before[k] {
+                    let i = k % n;
+                    let j = k / n;
+                    plate_ctx.disp_x.set(i, j, 0.0);
+                    plate_ctx.disp_y.set(i, j, 0.0);
+                }
+            }
+
             // Recompute stats after ID changes
             update_plate_stats(&plate_ctx.ids, &mut plate_ctx.plates, grid);
         }
@@ -250,6 +281,93 @@ where
             if config.mantle.evolution_rate > 0.0 {
                 mf.evolve(config.mantle.evolution_rate, step);
             }
+        }
+
+        // ── Conservative mass recycling ────────────────────────────
+        if let Some(ref mut recycler) = recycling_buffer
+            && let Some(ref bf) = workspace.boundary_field
+        {
+            // Step A: total mass destroyed by subduction this step
+            let mut total_subducted = 0.0_f64;
+            for j in 0..n {
+                for i in 0..n {
+                    let q = workspace.source_rate.get(i, j);
+                    if q < 0.0 {
+                        total_subducted += (-q) * dt_cfl;
+                    }
+                }
+            }
+
+            let arc_mass = total_subducted * config.recycling.arc_fraction;
+            let loss_mass = total_subducted * config.recycling.loss_fraction;
+            let buffer_mass = total_subducted - arc_mass - loss_mass;
+
+            // Step B: distribute arc_mass to arc cells (overriding side of subduction)
+            let mut arc_cells: Vec<(usize, usize)> = Vec::new();
+            for j in 0..n {
+                for i in 0..n {
+                    let k = j * n + i;
+                    let btype = bf.boundary_type[k];
+                    let is_arc = match btype {
+                        BoundaryType::Subduction => {
+                            plate_ctx.plates[plate_ctx.ids[k]].mean_thickness > 0.4
+                        }
+                        BoundaryType::OceanicSubduction => grid.s.get(i, j) > 0.22,
+                        _ => false,
+                    };
+                    if is_arc {
+                        arc_cells.push((i, j));
+                    }
+                }
+            }
+
+            if !arc_cells.is_empty() && arc_mass > 0.0 {
+                let per_cell = arc_mass / arc_cells.len() as f64;
+                for &(i, j) in &arc_cells {
+                    let current = workspace.source_rate.get(i, j);
+                    workspace.source_rate.set(i, j, current + per_cell / dt_cfl);
+                }
+            }
+
+            // Step C: deposit remaining mass into delayed buffer
+            if buffer_mass > 0.0 {
+                recycler.deposit(buffer_mass);
+            }
+
+            // Step D: retrieve available mass from buffer (deposited `delay` steps ago)
+            let spread_mass = recycler.advance();
+
+            // Step E: distribute spread_mass to rift cells
+            let mut rift_cells: Vec<(usize, usize)> = Vec::new();
+            for j in 0..n {
+                for i in 0..n {
+                    let k = j * n + i;
+                    if bf.boundary_type[k] == BoundaryType::Rift
+                        && grid.s.get(i, j) < config.boundaries.rift_thickness_threshold
+                    {
+                        rift_cells.push((i, j));
+                    }
+                }
+            }
+
+            if !rift_cells.is_empty() && spread_mass > 0.0 {
+                let per_cell = spread_mass / rift_cells.len() as f64;
+                for &(i, j) in &rift_cells {
+                    let current = workspace.source_rate.get(i, j);
+                    workspace.source_rate.set(i, j, current + per_cell / dt_cfl);
+                }
+            }
+
+            debug!(
+                step,
+                subducted = %format!("{:.4}", total_subducted),
+                arc = %format!("{:.4}", arc_mass),
+                buffered = %format!("{:.4}", buffer_mass),
+                spread_available = %format!("{:.4}", spread_mass),
+                arc_cells = arc_cells.len(),
+                rift_cells = rift_cells.len(),
+                "mass recycling"
+            );
         }
 
         // ── Mass balance tracking ──────────────────────────────────
@@ -793,6 +911,7 @@ mod tests {
             yielding: Default::default(),
             basal_friction: 0.0,
             mantle: Default::default(),
+            recycling: Default::default(),
         }
     }
 
@@ -816,6 +935,8 @@ mod tests {
             }],
             traction,
             next_id: 1,
+            disp_x: Field2D::new(n),
+            disp_y: Field2D::new(n),
         }
     }
 
@@ -980,6 +1101,7 @@ mod tests {
             yielding: Default::default(),
             basal_friction: 1.0,
             mantle: Default::default(),
+            recycling: Default::default(),
         };
 
         let mut ctx = make_static_ctx(n, traction);
@@ -1027,6 +1149,8 @@ mod tests {
             }],
             traction,
             next_id: 1,
+            disp_x: Field2D::new(n),
+            disp_y: Field2D::new(n),
         };
 
         let config = TectonicsConfig {

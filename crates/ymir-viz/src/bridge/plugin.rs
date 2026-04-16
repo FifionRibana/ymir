@@ -212,7 +212,14 @@ fn handle_step(
     {
         let traction = ymir_core::tectonics::plates::rebuild_traction(ids, plates, grid_size);
         let next_id = plates.len();
-        DynamicPlateContext { ids: ids.clone(), plates: plates.clone(), traction, next_id }
+        DynamicPlateContext {
+            ids: ids.clone(),
+            plates: plates.clone(),
+            traction,
+            next_id,
+            disp_x: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
+            disp_y: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
+        }
     } else {
         let traction = tecto.init.to_traction_field();
         let next_id = tecto.init.plates.len();
@@ -221,6 +228,8 @@ fn handle_step(
             plates: tecto.init.plates.clone(),
             traction,
             next_id,
+            disp_x: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
+            disp_y: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
         }
     };
 
@@ -267,6 +276,7 @@ fn build_tectonics_config(sc: &SolverConfig) -> TectonicsConfig {
         yielding: sc.yielding.clone(),
         basal_friction: sc.basal_friction,
         mantle: sc.mantle.clone(),
+        recycling: sc.recycling.clone(),
     }
 }
 
