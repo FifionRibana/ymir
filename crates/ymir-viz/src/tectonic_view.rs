@@ -23,6 +23,7 @@ impl Plugin for TectonicViewPlugin {
                 toggle_tectonic_visibility,
                 draw_velocity_arrows,
                 draw_plate_boundaries,
+                draw_boundary_types,
             ),
         );
     }
@@ -315,6 +316,53 @@ fn draw_plate_boundaries(
             let arrow_end =
                 pos + Vec2::new(plate.velocity.0 * arrow_scale, plate.velocity.1 * arrow_scale);
             gizmos.arrow_2d(pos, arrow_end, color);
+        }
+    }
+}
+
+fn draw_boundary_types(
+    mut gizmos: Gizmos,
+    plate_ids_res: Res<DynamicPlateIds>,
+    view_state: Res<ViewState>,
+) {
+    if !view_state.overlays.boundary_types {
+        return;
+    }
+
+    let Some(ref bt) = plate_ids_res.boundary_types else {
+        return;
+    };
+    let n = plate_ids_res.grid_size;
+    if n == 0 || bt.len() != n * n {
+        return;
+    }
+
+    use ymir_core::tectonics::boundaries::BoundaryType;
+
+    let sprite_size = 600.0_f32;
+    let cell_size = sprite_size / n as f32;
+    let half = sprite_size / 2.0;
+    let half_cell = cell_size * 0.5;
+
+    for j in 0..n {
+        for i in 0..n {
+            let btype = bt[j * n + i];
+            let color = match btype {
+                BoundaryType::None => continue,
+                BoundaryType::Subduction => Color::srgba(1.0, 0.15, 0.15, 0.7),
+                BoundaryType::OceanicSubduction => Color::srgba(0.0, 0.9, 0.9, 0.7),
+                BoundaryType::ContinentalCollision => Color::srgba(0.9, 0.2, 0.7, 0.7),
+                BoundaryType::Rift => Color::srgba(0.2, 0.5, 1.0, 0.7),
+            };
+
+            let x = i as f32 * cell_size - half + half_cell;
+            let y = j as f32 * cell_size - half + half_cell;
+
+            gizmos.rect_2d(
+                Isometry2d::from_translation(Vec2::new(x, y)),
+                Vec2::splat(cell_size * 0.8),
+                color,
+            );
         }
     }
 }

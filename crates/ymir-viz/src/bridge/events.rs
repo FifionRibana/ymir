@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use ymir_core::erosion::hydraulic::ErosionStats;
 use ymir_core::grid::GridF32;
+use ymir_core::tectonics::boundaries::BoundaryType;
 use ymir_core::tectonics::plates::Plate;
 use ymir_core::tectonics::solver::field::Field2D;
 use ymir_core::tectonics::solver::workspace::StepStats;
@@ -21,11 +22,13 @@ pub enum SolverEvent {
         s_field: Field2D,
         plate_ids: Option<Vec<usize>>,
         plates: Option<Vec<Plate>>,
+        boundary_types: Option<Vec<BoundaryType>>,
     },
     Completed {
         s_field: Field2D,
         plate_ids: Option<Vec<usize>>,
         plates: Option<Vec<Plate>>,
+        boundary_types: Option<Vec<BoundaryType>>,
         elapsed: Duration,
         total_steps: usize,
     },

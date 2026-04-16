@@ -101,7 +101,7 @@ fn poll_solver_events(
             SolverEvent::Progress { step, total_steps, stats } => {
                 bridge.state = SolverState::Running { step, total_steps, stats: Some(stats) };
             }
-            SolverEvent::Snapshot { s_field, plate_ids, plates, .. } => {
+            SolverEvent::Snapshot { s_field, plate_ids, plates, boundary_types, .. } => {
                 let grid_size = s_field.n();
                 terrain_display.update_field(s_field);
                 isostasy_cache.valid = false;
@@ -114,8 +114,13 @@ fn poll_solver_events(
                     dynamic_plates.active_count = pl.iter().filter(|p| p.active).count();
                     dynamic_plates.plates = Some(pl);
                 }
+                if let Some(bt) = boundary_types {
+                    dynamic_plates.boundary_types = Some(bt);
+                }
             }
-            SolverEvent::Completed { s_field, plate_ids, plates, elapsed, .. } => {
+            SolverEvent::Completed {
+                s_field, plate_ids, plates, boundary_types, elapsed, ..
+            } => {
                 let grid_size = s_field.n();
                 terrain_display.update_field(s_field);
                 isostasy_cache.valid = false;
@@ -128,6 +133,9 @@ fn poll_solver_events(
                 if let Some(pl) = plates {
                     dynamic_plates.active_count = pl.iter().filter(|p| p.active).count();
                     dynamic_plates.plates = Some(pl);
+                }
+                if let Some(bt) = boundary_types {
+                    dynamic_plates.boundary_types = Some(bt);
                 }
             }
             SolverEvent::FbmCompleted { heightmap, slope, elapsed } => {
