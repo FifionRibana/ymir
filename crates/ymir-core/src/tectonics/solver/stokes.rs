@@ -70,7 +70,8 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
             // Basal friction: C_b/dx² × S × vx (S interpolated to vx face)
             if friction_scaled > 0.0 {
                 let s_face = 0.5 * (grid.s.get(pi, j) + grid.s.get(i, j));
-                row_vx[i] += friction_scaled * s_face * v[li(i, j)];
+                let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                row_vx[i] += friction_scaled * s_excess * v[li(i, j)];
             }
 
             // --- vy component at face (i, j) ---
@@ -103,7 +104,8 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
             // Basal friction: C_b/dx² × S × vy (S interpolated to vy face)
             if friction_scaled > 0.0 {
                 let s_face = 0.5 * (grid.s.get(i, pj) + grid.s.get(i, j));
-                row_vy[i] += friction_scaled * s_face * v[n2 + li(i, j)];
+                let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                row_vy[i] += friction_scaled * s_excess * v[n2 + li(i, j)];
             }
         }
     };
@@ -222,7 +224,8 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
             let mut diag_vx = inv_dx2 * (2.0 * (eta_right + eta_left) + eta_top + eta_bot);
             if friction_scaled > 0.0 {
                 let s_face = 0.5 * (grid.s.get(pi, j) + grid.s.get(i, j));
-                diag_vx += friction_scaled * s_face;
+                let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                diag_vx += friction_scaled * s_excess;
             }
             row_vx[i] = if diag_vx.abs() > 1e-30 { 1.0 / diag_vx } else { 0.0 };
 
@@ -237,7 +240,8 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
                 inv_dx2 * (eta_right_vy + eta_left_vy + 2.0 * (eta_top_vy + eta_bot_vy));
             if friction_scaled > 0.0 {
                 let s_face = 0.5 * (grid.s.get(i, pj) + grid.s.get(i, j));
-                diag_vy += friction_scaled * s_face;
+                let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                diag_vy += friction_scaled * s_excess;
             }
             row_vy[i] = if diag_vy.abs() > 1e-30 { 1.0 / diag_vy } else { 0.0 };
         }
@@ -299,7 +303,8 @@ impl StencilCoeffs {
                 let mut diag = inv_dx2 * (2.0 * (eta_right + eta_left) + eta_top + eta_bot);
                 if friction_scaled > 0.0 {
                     let s_face = 0.5 * (grid.s.get(pi, j) + grid.s.get(i, j));
-                    diag += friction_scaled * s_face;
+                    let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                    diag += friction_scaled * s_excess;
                 }
                 let c_left = inv_dx2 * 2.0 * eta_left;
                 let c_right = inv_dx2 * 2.0 * eta_right;
@@ -320,7 +325,8 @@ impl StencilCoeffs {
                     inv_dx2 * (eta_right_vy + eta_left_vy + 2.0 * (eta_top_vy + eta_bot_vy));
                 if friction_scaled > 0.0 {
                     let s_face = 0.5 * (grid.s.get(i, pj) + grid.s.get(i, j));
-                    diag_vy += friction_scaled * s_face;
+                    let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
+                    diag_vy += friction_scaled * s_excess;
                 }
                 let c_left_vy = inv_dx2 * eta_left_vy;
                 let c_right_vy = inv_dx2 * eta_right_vy;
