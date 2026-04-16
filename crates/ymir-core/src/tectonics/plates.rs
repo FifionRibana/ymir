@@ -6,6 +6,7 @@
 //! The resulting crustal thickness field is smoothed with a separable Gaussian blur.
 
 use rand::Rng;
+use tracing::info;
 
 use super::solver::field::Field2D;
 use super::solver::grid::StaggeredGrid;
@@ -42,6 +43,42 @@ pub struct Plate {
     /// is consumed at this plate's convergent boundaries. Used to
     /// compute dynamic slab pull traction.
     pub subducted_mass: f64,
+    // ── Runtime stats (updated by update_plate_stats) ──
+    /// Number of cells belonging to this plate.
+    pub cell_count: usize,
+    /// Mean crustal thickness across all cells.
+    pub mean_thickness: f32,
+    /// Mean velocity across all cells.
+    pub mean_velocity: (f32, f32),
+    /// Centroid position (circular mean on torus).
+    pub centroid_x: f32,
+    pub centroid_y: f32,
+}
+
+impl Plate {
+    /// Create a new plate with zero runtime stats.
+    pub fn new(
+        id: usize,
+        plate_type: PlateType,
+        velocity: (f32, f32),
+        seed_x: f32,
+        seed_y: f32,
+    ) -> Self {
+        Self {
+            id,
+            plate_type,
+            velocity,
+            seed_x,
+            seed_y,
+            active: true,
+            subducted_mass: 0.0,
+            cell_count: 0,
+            mean_thickness: 0.0,
+            mean_velocity: (0.0, 0.0),
+            centroid_x: seed_x,
+            centroid_y: seed_y,
+        }
+    }
 }
 
 /// Configuration for plate generation.
@@ -143,15 +180,7 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
             config.velocity_min + rng.random::<f32>() * (config.velocity_max - config.velocity_min);
         let velocity = (angle.cos() * speed, angle.sin() * speed);
 
-        plates.push(Plate {
-            id,
-            plate_type,
-            velocity,
-            seed_x,
-            seed_y,
-            active: true,
-            subducted_mass: 0.0,
-        });
+        plates.push(Plate::new(id, plate_type, velocity, seed_x, seed_y));
     }
 
     // 2. Assign each cell to the nearest plate seed (toroidal distance)
@@ -326,9 +355,100 @@ pub fn advect_seeds(plates: &mut [Plate], grid: &StaggeredGrid, dt: f64) {
     }
 }
 
+/// Advect plate IDs using semi-Lagrangian nearest-neighbor.
+///
+/// For each cell (i,j), trace back along the velocity field by -dt*v
+/// to find the departure point, then assign the plate_id from the
+/// nearest integer cell at the departure point. This preserves integer
+/// IDs without interpolation.
+pub fn advect_plate_ids(ids: &mut [usize], grid: &StaggeredGrid, dt: f64) {
+    let n = grid.n;
+    let nf = n as f64;
+    let new_ids: Vec<usize> = (0..n * n)
+        .map(|k| {
+            let i = k % n;
+            let j = k / n;
+
+            let vx = interpolate_vx(grid, i as f64, j as f64);
+            let vy = interpolate_vy(grid, i as f64, j as f64);
+
+            // Trace back: departure point
+            let dep_x = i as f64 - dt * vx;
+            let dep_y = j as f64 - dt * vy;
+
+            // Wrap periodically and round to nearest integer cell
+            let si = ((dep_x.round() as i64 % n as i64) + n as i64) as usize % n;
+            let sj = ((dep_y.round() as i64 % n as i64) + n as i64) as usize % n;
+
+            ids[sj * n + si]
+        })
+        .collect();
+
+    ids.copy_from_slice(&new_ids);
+}
+
+/// Compute per-plate runtime statistics from the cell data.
+///
+/// Updates `cell_count`, `mean_thickness`, `mean_velocity`, and
+/// `centroid_x`/`centroid_y` (circular mean on the torus) for each plate.
+pub fn update_plate_stats(ids: &[usize], plates: &mut [Plate], grid: &StaggeredGrid) {
+    let n = grid.n;
+    let tau = std::f64::consts::TAU;
+
+    // Circular mean accumulators (local, not stored in Plate)
+    let mut sin_x = vec![0.0_f64; plates.len()];
+    let mut cos_x = vec![0.0_f64; plates.len()];
+    let mut sin_y = vec![0.0_f64; plates.len()];
+    let mut cos_y = vec![0.0_f64; plates.len()];
+
+    for plate in plates.iter_mut() {
+        plate.cell_count = 0;
+        plate.mean_thickness = 0.0;
+        plate.mean_velocity = (0.0, 0.0);
+    }
+
+    for j in 0..n {
+        for i in 0..n {
+            let pid = ids[j * n + i];
+            if pid >= plates.len() {
+                continue;
+            }
+            let plate = &mut plates[pid];
+            plate.cell_count += 1;
+            plate.mean_thickness += grid.s.get(i, j) as f32;
+
+            let vx = interpolate_vx(grid, i as f64, j as f64);
+            let vy = interpolate_vy(grid, i as f64, j as f64);
+            plate.mean_velocity.0 += vx as f32;
+            plate.mean_velocity.1 += vy as f32;
+
+            let theta_x = tau * i as f64 / n as f64;
+            let theta_y = tau * j as f64 / n as f64;
+            sin_x[pid] += theta_x.sin();
+            cos_x[pid] += theta_x.cos();
+            sin_y[pid] += theta_y.sin();
+            cos_y[pid] += theta_y.cos();
+        }
+    }
+
+    for (pid, plate) in plates.iter_mut().enumerate() {
+        if plate.cell_count > 0 {
+            let c = plate.cell_count as f32;
+            plate.mean_thickness /= c;
+            plate.mean_velocity.0 /= c;
+            plate.mean_velocity.1 /= c;
+            plate.centroid_x = (sin_x[pid].atan2(cos_x[pid]) * n as f64 / tau) as f32;
+            plate.centroid_y = (sin_y[pid].atan2(cos_y[pid]) * n as f64 / tau) as f32;
+            // Wrap to [0, n)
+            plate.centroid_x = ((plate.centroid_x % n as f32) + n as f32) % n as f32;
+            plate.centroid_y = ((plate.centroid_y % n as f32) + n as f32) % n as f32;
+        }
+    }
+}
+
 /// Bilinear interpolation of vx at an arbitrary point (px, py).
 /// vx lives at left vertical faces: vx[i,j] is at position (i, j+0.5).
-fn interpolate_vx(grid: &StaggeredGrid, px: f64, py: f64) -> f64 {
+pub fn interpolate_vx(grid: &StaggeredGrid, px: f64, py: f64) -> f64 {
     let fx = px;
     let fy = py - 0.5;
     bilinear_sample_field(&grid.vx, grid.n, fx, fy)
@@ -336,7 +456,7 @@ fn interpolate_vx(grid: &StaggeredGrid, px: f64, py: f64) -> f64 {
 
 /// Bilinear interpolation of vy at an arbitrary point (px, py).
 /// vy lives at bottom horizontal faces: vy[i,j] is at position (i+0.5, j).
-fn interpolate_vy(grid: &StaggeredGrid, px: f64, py: f64) -> f64 {
+pub fn interpolate_vy(grid: &StaggeredGrid, px: f64, py: f64) -> f64 {
     let fx = px - 0.5;
     let fy = py;
     bilinear_sample_field(&grid.vy, grid.n, fx, fy)
@@ -370,6 +490,274 @@ fn bilinear_sample_field(field: &Field2D, n: usize, fx: f64, fy: f64) -> f64 {
 
 /// Check for plates that have lost all their cells and mark them inactive.
 /// Returns the IDs of plates that just disappeared.
+/// At convergent boundaries, cells thin enough on the subducting side
+/// are reassigned to the overriding plate's ID.
+pub fn apply_subduction_consumption(
+    ids: &mut [usize],
+    grid: &StaggeredGrid,
+    boundary_field: &crate::tectonics::boundaries::BoundaryField,
+    threshold: f64,
+) {
+    use crate::tectonics::boundaries::BoundaryType;
+    let n = grid.n;
+    let idx = &grid.idx;
+
+    for j in 0..n {
+        for i in 0..n {
+            let k = j * n + i;
+            let btype = &boundary_field.boundary_type[k];
+
+            let is_subducting =
+                matches!(btype, BoundaryType::Subduction | BoundaryType::OceanicSubduction)
+                    && grid.s.get(i, j) < threshold;
+
+            if !is_subducting {
+                continue;
+            }
+
+            let my_id = ids[k];
+            let neighbors =
+                [(idx.next(i), j), (idx.prev(i), j), (i, idx.next(j)), (i, idx.prev(j))];
+
+            for &(ni, nj) in &neighbors {
+                let nk = nj * n + ni;
+                if ids[nk] != my_id && grid.s.get(ni, nj) > grid.s.get(i, j) {
+                    ids[k] = ids[nk];
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// At divergent boundaries, very thin cells that are receiving material
+/// from spreading become new plates. Only cells whose parent plate has
+/// mean_thickness > 0.4 (continental being rifted apart) get new IDs.
+/// Contiguous candidate cells are grouped into a single plate via BFS.
+pub fn apply_rift_creation(
+    ids: &mut [usize],
+    plates: &mut Vec<Plate>,
+    grid: &StaggeredGrid,
+    boundary_field: &crate::tectonics::boundaries::BoundaryField,
+    next_id: &mut usize,
+    threshold: f64,
+) {
+    use crate::tectonics::boundaries::BoundaryType;
+    let n = grid.n;
+
+    // Pass 1: collect all cells that qualify for rift creation
+    let mut candidates = vec![false; n * n];
+    for j in 0..n {
+        for i in 0..n {
+            let k = j * n + i;
+            if boundary_field.boundary_type[k] != BoundaryType::Rift {
+                continue;
+            }
+            if grid.s.get(i, j) > threshold {
+                continue;
+            }
+            let parent_id = ids[k];
+            if parent_id >= plates.len() || plates[parent_id].mean_thickness <= 0.4 {
+                continue;
+            }
+            candidates[k] = true;
+        }
+    }
+
+    // Pass 2: connected component labeling (4-connectivity, periodic)
+    let mut visited = vec![false; n * n];
+    let mut components: Vec<Vec<usize>> = Vec::new();
+
+    for k in 0..n * n {
+        if !candidates[k] || visited[k] {
+            continue;
+        }
+        let mut group = Vec::new();
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(k);
+        visited[k] = true;
+
+        while let Some(ck) = queue.pop_front() {
+            group.push(ck);
+            let ci = ck % n;
+            let cj = ck / n;
+            let neighbors = [
+                ((ci + 1) % n, cj),
+                ((ci + n - 1) % n, cj),
+                (ci, (cj + 1) % n),
+                (ci, (cj + n - 1) % n),
+            ];
+            for &(ni, nj) in &neighbors {
+                let nk = nj * n + ni;
+                if candidates[nk] && !visited[nk] {
+                    visited[nk] = true;
+                    queue.push_back(nk);
+                }
+            }
+        }
+        components.push(group);
+    }
+
+    // Pass 3: one new plate per connected component
+    for component in &components {
+        let new_id = *next_id;
+        *next_id += 1;
+
+        let ci = component[0] % n;
+        let cj = component[0] / n;
+        plates.push(Plate::new(new_id, PlateType::Oceanic, (0.0, 0.0), ci as f32, cj as f32));
+
+        for &k in component {
+            ids[k] = new_id;
+        }
+    }
+}
+
+/// Detect plates that have been fragmented into disconnected components.
+///
+/// Connectivity uses a thickness threshold: cells with S below `connectivity_threshold`
+/// do not propagate connectivity. This allows a thin rift zone to "break" a continent
+/// into two pieces even though the thin cells still carry the same plate_id.
+///
+/// The largest component keeps the original ID, smaller ones get new IDs.
+/// Thin cells in the rift zone are reassigned to the nearest fragment by adjacency.
+pub fn detect_fragmentation(
+    ids: &mut [usize],
+    plates: &mut Vec<Plate>,
+    next_id: &mut usize,
+    n: usize,
+    grid: &StaggeredGrid,
+    connectivity_threshold: f64,
+) {
+    let active_ids: Vec<usize> =
+        plates.iter().filter(|p| p.active && p.cell_count > 0).map(|p| p.id).collect();
+
+    for &pid in &active_ids {
+        let cells: Vec<usize> = (0..n * n).filter(|&k| ids[k] == pid).collect();
+        if cells.len() < 4 {
+            continue;
+        }
+        // Only continental plates can fragment by rifting.
+        if plates[pid].mean_thickness <= 0.5 {
+            continue;
+        }
+
+        // BFS flood fill with thickness-aware connectivity
+        let mut visited = vec![false; n * n];
+        let mut components: Vec<Vec<usize>> = Vec::new();
+        let mut thin_cells: Vec<usize> = Vec::new();
+
+        for &start in &cells {
+            if visited[start] {
+                continue;
+            }
+            // Thin cells don't start components
+            if grid.s.get(start % n, start / n) < connectivity_threshold {
+                thin_cells.push(start);
+                visited[start] = true;
+                continue;
+            }
+
+            let mut component = Vec::new();
+            let mut queue = std::collections::VecDeque::new();
+            queue.push_back(start);
+            visited[start] = true;
+
+            while let Some(k) = queue.pop_front() {
+                component.push(k);
+                let ci = k % n;
+                let cj = k / n;
+                let neighbors = [
+                    ((ci + 1) % n, cj),
+                    ((ci + n - 1) % n, cj),
+                    (ci, (cj + 1) % n),
+                    (ci, (cj + n - 1) % n),
+                ];
+                for &(ni, nj) in &neighbors {
+                    let nk = nj * n + ni;
+                    if visited[nk] || ids[nk] != pid {
+                        continue;
+                    }
+                    if grid.s.get(ni, nj) < connectivity_threshold {
+                        thin_cells.push(nk);
+                        visited[nk] = true;
+                        continue;
+                    }
+                    visited[nk] = true;
+                    queue.push_back(nk);
+                }
+            }
+
+            if !component.is_empty() {
+                components.push(component);
+            }
+        }
+
+        if components.len() <= 1 {
+            continue;
+        }
+
+        // Sort by size descending — largest keeps original ID
+        components.sort_by(|a, b| b.len().cmp(&a.len()));
+
+        for component in components.iter().skip(1) {
+            let new_id = *next_id;
+            *next_id += 1;
+
+            let parent_vel = plates[pid].velocity;
+            let ci = component[0] % n;
+            let cj = component[0] / n;
+            plates.push(Plate::new(
+                new_id,
+                plates[pid].plate_type,
+                parent_vel,
+                ci as f32,
+                cj as f32,
+            ));
+
+            for &k in component {
+                ids[k] = new_id;
+            }
+
+            info!(
+                old_plate = pid,
+                new_plate = new_id,
+                cells = component.len(),
+                "plate fragmented — continental breakup"
+            );
+        }
+
+        // Reassign thin rift cells to nearest fragment by flood-fill from thick components
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for &k in &thin_cells {
+                if ids[k] != pid {
+                    continue;
+                }
+                let ci = k % n;
+                let cj = k / n;
+                let neighbors = [
+                    ((ci + 1) % n, cj),
+                    ((ci + n - 1) % n, cj),
+                    (ci, (cj + 1) % n),
+                    (ci, (cj + n - 1) % n),
+                ];
+                for &(ni, nj) in &neighbors {
+                    let nk = nj * n + ni;
+                    if ids[nk] != pid {
+                        ids[k] = ids[nk];
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Check for plates that have lost all their cells and mark them inactive.
+/// Returns the IDs of plates that just disappeared.
 pub fn detect_disappeared_plates(plate_ids: &[usize], plates: &mut [Plate]) -> Vec<usize> {
     let mut cell_counts = vec![0usize; plates.len()];
     for &id in plate_ids {
@@ -398,6 +786,8 @@ pub fn rebuild_traction(plate_ids: &[usize], plates: &[Plate], grid_size: usize)
         for i in 0..grid_size {
             let pid = plate_ids[j * grid_size + i];
             let plate = &plates[pid];
+            // Use plate.velocity (initial + slab pull), NOT mean_velocity (solved response).
+            // The traction is the driving force from mantle convection, not the resulting flow.
             tx.set(i, j, plate.velocity.0 as f64);
             ty.set(i, j, plate.velocity.1 as f64);
         }
@@ -597,6 +987,11 @@ mod tests {
             seed_y: 16.0,
             active: true,
             subducted_mass: 0.0,
+            cell_count: 0,
+            mean_thickness: 0.0,
+            mean_velocity: (0.0, 0.0),
+            centroid_x: 0.0,
+            centroid_y: 0.0,
         }];
 
         advect_seeds(&mut plates, &grid, 0.1);
@@ -625,6 +1020,11 @@ mod tests {
             seed_y: 16.0,
             active: true,
             subducted_mass: 0.0,
+            cell_count: 0,
+            mean_thickness: 0.0,
+            mean_velocity: (0.0, 0.0),
+            centroid_x: 0.0,
+            centroid_y: 0.0,
         }];
 
         advect_seeds(&mut plates, &grid, 1.0);
@@ -650,6 +1050,11 @@ mod tests {
                 seed_y: 8.0,
                 active: true,
                 subducted_mass: 0.0,
+                cell_count: 0,
+                mean_thickness: 0.0,
+                mean_velocity: (0.0, 0.0),
+                centroid_x: 0.0,
+                centroid_y: 0.0,
             },
             Plate {
                 id: 1,
@@ -659,6 +1064,11 @@ mod tests {
                 seed_y: 8.0,
                 active: true,
                 subducted_mass: 0.0,
+                cell_count: 0,
+                mean_thickness: 0.0,
+                mean_velocity: (0.0, 0.0),
+                centroid_x: 0.0,
+                centroid_y: 0.0,
             },
         ];
 
@@ -700,6 +1110,11 @@ mod tests {
                 seed_y: 8.0,
                 active: true,
                 subducted_mass: 0.0,
+                cell_count: 0,
+                mean_thickness: 0.0,
+                mean_velocity: (0.0, 0.0),
+                centroid_x: 0.0,
+                centroid_y: 0.0,
             },
             Plate {
                 id: 1,
@@ -709,6 +1124,11 @@ mod tests {
                 seed_y: 8.0,
                 active: false,
                 subducted_mass: 0.0, // inactive
+                cell_count: 0,
+                mean_thickness: 0.0,
+                mean_velocity: (0.0, 0.0),
+                centroid_x: 0.0,
+                centroid_y: 0.0,
             },
         ];
 
@@ -736,6 +1156,11 @@ mod tests {
             seed_y: 16.0,
             active: true,
             subducted_mass: 0.0,
+            cell_count: 0,
+            mean_thickness: 0.0,
+            mean_velocity: (0.0, 0.0),
+            centroid_x: 0.0,
+            centroid_y: 0.0,
         }];
 
         let config = CratonicConfig { enabled: true, max_factor: 20.0, decay_power: 2.0 };
@@ -765,6 +1190,11 @@ mod tests {
             seed_y: 8.0,
             active: true,
             subducted_mass: 0.0,
+            cell_count: 0,
+            mean_thickness: 0.0,
+            mean_velocity: (0.0, 0.0),
+            centroid_x: 0.0,
+            centroid_y: 0.0,
         }];
 
         let config = CratonicConfig { enabled: true, max_factor: 50.0, decay_power: 2.0 };
@@ -793,6 +1223,11 @@ mod tests {
             seed_y: 8.0,
             active: true,
             subducted_mass: 0.0,
+            cell_count: 0,
+            mean_thickness: 0.0,
+            mean_velocity: (0.0, 0.0),
+            centroid_x: 0.0,
+            centroid_y: 0.0,
         }];
 
         let config = CratonicConfig { enabled: false, ..Default::default() };
