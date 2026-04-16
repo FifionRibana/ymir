@@ -70,6 +70,7 @@ pub struct StepSnapshot<'a> {
     pub s_field: &'a Field2D,
     pub plate_ids: Option<&'a [usize]>,
     pub plates: Option<&'a [Plate]>,
+    pub boundary_types: Option<&'a [BoundaryType]>,
 }
 
 pub fn run_tectonics<F>(
@@ -220,15 +221,35 @@ where
             plate_ctx.traction = rebuild_traction(&plate_ctx.ids, &plate_ctx.plates, n);
         }
 
+        // ── Mass balance tracking ──────────────────────────────────
+        let mass_before: f64 = grid.s.data().iter().sum();
+        let mut mass_after_advection = 0.0_f64;
+        let mut mass_clamp_delta = 0.0_f64;
+        let mut total_div_flux = 0.0_f64;
+        let mut total_source = 0.0_f64;
+
         for _retry in 0..5 {
             compute_divergence_flux(grid, &mut workspace.div_flux);
+
+            mass_after_advection = 0.0;
+            mass_clamp_delta = 0.0;
+            total_div_flux = 0.0;
+            total_source = 0.0;
 
             for j in 0..n {
                 for i in 0..n {
                     let div = workspace.div_flux.get(i, j);
                     let q = if boundaries_active { workspace.source_rate.get(i, j) } else { 0.0 };
-                    let s = grid.s.get(i, j) - dt * div + dt * q;
-                    grid.s.set(i, j, s.clamp(config.s_min, config.s_max));
+                    let s_old = grid.s.get(i, j);
+                    let s_raw = s_old - dt * div + dt * q;
+                    let s_clamped = s_raw.clamp(config.s_min, config.s_max);
+
+                    total_div_flux += dt * div;
+                    total_source += dt * q;
+                    mass_clamp_delta += s_clamped - s_raw;
+                    mass_after_advection += s_clamped;
+
+                    grid.s.set(i, j, s_clamped);
                 }
             }
 
@@ -277,6 +298,9 @@ where
             }
         }
 
+        let mass_after_oceanic_restore: f64 = grid.s.data().iter().sum();
+        let oceanic_restore_delta = mass_after_oceanic_restore - mass_after_advection;
+
         // 3c. Continental minimum thickness protection.
         // Prevents continental crust from thinning to oblivion by modeling
         // buoyancy-driven resistance. Cells below continental_restore_threshold
@@ -298,6 +322,10 @@ where
                 }
             }
         }
+
+        let mass_after_continental_restore: f64 = grid.s.data().iter().sum();
+        let continental_restore_delta = mass_after_continental_restore - mass_after_oceanic_restore;
+        let mass_after = mass_after_continental_restore;
 
         // 4. Update stats
         let mut max_v = 0.0_f64;
@@ -338,6 +366,19 @@ where
         if clamp_ratio > 0.05 {
             warn!(step, clamp_ratio, dt, "excessive clamping — consider reducing CFL or timestep");
         }
+
+        // ── Mass balance diagnostic (always runs) ──────────────────
+        debug!(
+            step,
+            mass_total = %format!("{:.4}", mass_after),
+            mass_delta = %format!("{:.6}", mass_after - mass_before),
+            advection_div = %format!("{:.6}", -total_div_flux),
+            sources_q = %format!("{:.6}", total_source),
+            clamping = %format!("{:.6}", mass_clamp_delta),
+            oceanic_restore = %format!("{:.6}", oceanic_restore_delta),
+            continental_restore = %format!("{:.6}", continental_restore_delta),
+            "mass balance"
+        );
 
         // ── Diagnostic: per-step plate & boundary summary ──────────────
         if config.dynamic_boundaries {
@@ -444,6 +485,7 @@ where
                 None
             },
             plates: if config.dynamic_boundaries { Some(&plate_ctx.plates) } else { None },
+            boundary_types: workspace.boundary_field.as_ref().map(|bf| bf.boundary_type.as_slice()),
         };
         if !progress(step, config.num_timesteps, &workspace.stats, snapshot) {
             return Err(SolverError::Cancelled);

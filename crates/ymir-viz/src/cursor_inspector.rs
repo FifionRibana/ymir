@@ -33,6 +33,7 @@ fn cursor_inspector_overlay(
     erosion_cache: Res<ErosionCache>,
     flow_cache: Res<FlowCache>,
     gen_params: Res<GenerationParamsUi>,
+    dynamic_plates: Res<crate::state::DynamicPlateIds>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
 
@@ -45,7 +46,7 @@ fn cursor_inspector_overlay(
                 .inner_margin(6.0)
                 .show(ui, |ui| {
                     if *view_mode.get() == ViewMode::Tectonics {
-                        draw_tectonic_info(ui, &cursor_pos, tectonic.as_deref());
+                        draw_tectonic_info(ui, &cursor_pos, tectonic.as_deref(), &dynamic_plates);
                     } else {
                         draw_pipeline_terrain_info(
                             ui,
@@ -139,7 +140,9 @@ fn draw_tectonic_info(
     ui: &mut bevy_egui::egui::Ui,
     cursor_pos: &CursorWorldPos,
     tectonic: Option<&TectonicState>,
+    dynamic_plates: &crate::state::DynamicPlateIds,
 ) {
+    use ymir_core::tectonics::boundaries::BoundaryType;
     use ymir_core::tectonics::plates::PlateType;
 
     let Some(tectonic) = tectonic else {
@@ -171,6 +174,23 @@ fn draw_tectonic_info(
                 "x: {}  y: {}  plate: {} ({})  t: {:.2}  v: {:.2}",
                 x, y, plate_id, ptype, thickness, speed
             ));
+
+            // Show boundary type if available
+            if let Some(ref bt) = dynamic_plates.boundary_types {
+                let bt_size = dynamic_plates.grid_size;
+                if bt_size == size
+                    && let Some(&btype) = bt.get(y * size + x)
+                {
+                    let bt_name = match btype {
+                        BoundaryType::None => "Interior",
+                        BoundaryType::Subduction => "Subduction",
+                        BoundaryType::OceanicSubduction => "Ocean. Subduction",
+                        BoundaryType::ContinentalCollision => "Collision",
+                        BoundaryType::Rift => "Rift",
+                    };
+                    ui.monospace(format!("boundary: {}", bt_name));
+                }
+            }
         } else {
             ui.monospace("x: ---  plate: ---  thickness: ---");
         }

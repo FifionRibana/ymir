@@ -54,11 +54,19 @@ pub struct OverlayFlags {
     pub hillshade: bool,
     pub grid: bool,
     pub plates: bool,
+    pub boundary_types: bool,
 }
 
 impl Default for OverlayFlags {
     fn default() -> Self {
-        Self { rivers: false, lakes: false, hillshade: true, grid: false, plates: false }
+        Self {
+            rivers: false,
+            lakes: false,
+            hillshade: true,
+            grid: false,
+            plates: false,
+            boundary_types: false,
+        }
     }
 }
 
@@ -218,7 +226,7 @@ impl Default for SolverConfig {
             dynamic_boundaries: true,
             cratonic: Default::default(),
             yielding: Default::default(),
-            basal_friction: 0.5,
+            basal_friction: 0.05,
         }
     }
 }
@@ -383,6 +391,8 @@ pub struct DynamicPlateIds {
     pub ids: Option<Vec<usize>>,
     /// Current plate seed positions and active flags.
     pub plates: Option<Vec<ymir_core::tectonics::plates::Plate>>,
+    /// Boundary type at each cell (for visualization).
+    pub boundary_types: Option<Vec<ymir_core::tectonics::boundaries::BoundaryType>>,
     /// Number of active plates remaining.
     pub active_count: usize,
     /// Grid size (for indexing into ids).

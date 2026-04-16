@@ -14,7 +14,14 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EguiPlugin::default()).add_systems(
             EguiPrimaryContextPass,
-            (configure_egui_style, ui_top_bar, ui_right_panel, ui_bottom_bar, ui_toasts),
+            (
+                configure_egui_style,
+                ui_top_bar,
+                ui_right_panel,
+                ui_bottom_bar,
+                ui_toasts,
+                draw_boundary_legend,
+            ),
         );
     }
 }
@@ -74,6 +81,7 @@ fn ui_top_bar(
                 ui.checkbox(&mut view_state.overlays.lakes, "Lakes");
                 ui.checkbox(&mut view_state.overlays.grid, "Grid");
                 ui.checkbox(&mut view_state.overlays.plates, "Plates");
+                ui.checkbox(&mut view_state.overlays.boundary_types, "Boundary types");
             });
 
             // ── Right side: Seed + Run / Step / Cancel + Progress ──
@@ -434,6 +442,40 @@ fn ui_toasts(
                     );
                 });
                 ui.add_space(2.0);
+            }
+        });
+}
+
+fn draw_boundary_legend(mut contexts: EguiContexts, view_state: Res<ViewState>) {
+    if !view_state.overlays.boundary_types {
+        return;
+    }
+
+    let Ok(ctx) = contexts.ctx_mut() else { return };
+
+    egui::Window::new("Boundary Types")
+        .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(65.0, -50.0))
+        .resizable(false)
+        .collapsible(false)
+        .title_bar(false)
+        .frame(
+            egui::Frame::window(&egui::Style::default()).fill(egui::Color32::from_black_alpha(180)),
+        )
+        .show(ctx, |ui| {
+            let entries = [
+                (egui::Color32::from_rgb(255, 38, 38), "Subduction"),
+                (egui::Color32::from_rgb(0, 230, 230), "Oceanic Subduction"),
+                (egui::Color32::from_rgb(230, 51, 179), "Continental Collision"),
+                (egui::Color32::from_rgb(51, 128, 255), "Rift / Spreading"),
+            ];
+
+            for (color, label) in &entries {
+                ui.horizontal(|ui| {
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                    ui.painter().rect_filled(rect, 2.0, *color);
+                    ui.label(*label);
+                });
             }
         });
 }
