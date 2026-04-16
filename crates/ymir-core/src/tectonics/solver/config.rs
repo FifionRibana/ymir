@@ -191,7 +191,7 @@ impl Default for TectonicsConfig {
             dynamic_boundaries: true,
             cratonic: CratonicConfig::default(),
             yielding: YieldingConfig::default(),
-            basal_friction: 1.0,
+            basal_friction: 0.05,
         }
     }
 }

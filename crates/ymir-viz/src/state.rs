@@ -218,7 +218,7 @@ impl Default for SolverConfig {
             dynamic_boundaries: true,
             cratonic: Default::default(),
             yielding: Default::default(),
-            basal_friction: 1.0,
+            basal_friction: 0.5,
         }
     }
 }
