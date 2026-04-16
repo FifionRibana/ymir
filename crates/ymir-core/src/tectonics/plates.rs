@@ -355,36 +355,62 @@ pub fn advect_seeds(plates: &mut [Plate], grid: &StaggeredGrid, dt: f64) {
     }
 }
 
-/// Advect plate IDs using semi-Lagrangian nearest-neighbor.
+/// Advect plate IDs using accumulated sub-pixel displacement.
 ///
-/// For each cell (i,j), trace back along the velocity field by -dt*v
-/// to find the departure point, then assign the plate_id from the
-/// nearest integer cell at the departure point. This preserves integer
-/// IDs without interpolation.
-pub fn advect_plate_ids(ids: &mut [usize], grid: &StaggeredGrid, dt: f64) {
+/// Each cell accumulates its forward displacement (dt × v) in `disp_x` and
+/// `disp_y`. When the integer part of the accumulator is non-zero, the cell's
+/// plate ID is replaced by tracing backward by that integer shift, and the
+/// fractional remainder is kept in the accumulator for the next step.
+///
+/// This allows boundaries to move even when per-step displacement is a small
+/// fraction of a pixel (e.g. 0.008 px/step → 1-pixel shift every ~125 steps).
+pub fn advect_plate_ids(
+    ids: &mut [usize],
+    disp_x: &mut Field2D,
+    disp_y: &mut Field2D,
+    grid: &StaggeredGrid,
+    dt: f64,
+) {
     let n = grid.n;
-    let nf = n as f64;
-    let new_ids: Vec<usize> = (0..n * n)
-        .map(|k| {
-            let i = k % n;
-            let j = k / n;
 
+    // Phase 1: accumulate forward displacement (dt × v) at each cell
+    for j in 0..n {
+        for i in 0..n {
             let vx = interpolate_vx(grid, i as f64, j as f64);
             let vy = interpolate_vy(grid, i as f64, j as f64);
 
-            // Trace back: departure point
-            let dep_x = i as f64 - dt * vx;
-            let dep_y = j as f64 - dt * vy;
+            disp_x.set(i, j, disp_x.get(i, j) + dt * vx);
+            disp_y.set(i, j, disp_y.get(i, j) + dt * vy);
+        }
+    }
 
-            // Wrap periodically and round to nearest integer cell
-            let si = ((dep_x.round() as i64 % n as i64) + n as i64) as usize % n;
-            let sj = ((dep_y.round() as i64 % n as i64) + n as i64) as usize % n;
+    // Phase 2: shift IDs where the integer part of the accumulator is non-zero.
+    // disp_x > 0 means material moved right, so the new ID at (i,j) comes from
+    // the cell to the LEFT (i - shift_x). Work on a copy to avoid order artifacts.
+    let old_ids = ids.to_vec();
 
-            ids[sj * n + si]
-        })
-        .collect();
+    for j in 0..n {
+        for i in 0..n {
+            let dx = disp_x.get(i, j);
+            let dy = disp_y.get(i, j);
 
-    ids.copy_from_slice(&new_ids);
+            let shift_x = dx.round() as i64;
+            let shift_y = dy.round() as i64;
+
+            if shift_x == 0 && shift_y == 0 {
+                continue;
+            }
+
+            let src_i = ((i as i64 - shift_x).rem_euclid(n as i64)) as usize;
+            let src_j = ((j as i64 - shift_y).rem_euclid(n as i64)) as usize;
+
+            ids[j * n + i] = old_ids[src_j * n + src_i];
+
+            // Keep the fractional remainder
+            disp_x.set(i, j, dx - shift_x as f64);
+            disp_y.set(i, j, dy - shift_y as f64);
+        }
+    }
 }
 
 /// Compute per-plate runtime statistics from the cell data.

@@ -161,6 +161,7 @@ pub fn compute_boundary_sources(
     plate_ids: &[usize],
     plates: &[Plate],
     config: &BoundaryConfig,
+    recycling_enabled: bool,
 ) -> BoundaryField {
     let n = grid.n;
     let idx = &grid.idx;
@@ -247,6 +248,8 @@ pub fn compute_boundary_sources(
                 BoundaryType::Subduction => {
                     if my_type == PlateType::Oceanic {
                         -config.subduction_rate * convergence_rate
+                    } else if recycling_enabled {
+                        0.0 // Arc handled by recycling system
                     } else {
                         config.volcanic_arc_rate * convergence_rate
                     }
@@ -256,20 +259,30 @@ pub fn compute_boundary_sources(
                     let s_ocean_ref = 0.2;
                     if my_s <= s_ocean_ref * 1.1 {
                         -config.subduction_rate * convergence_rate * 0.5
+                    } else if recycling_enabled {
+                        0.0 // Arc handled by recycling system
                     } else {
                         config.volcanic_arc_rate * convergence_rate * 0.3
                     }
                 }
                 BoundaryType::ContinentalCollision => {
-                    config.collision_volcanism_rate * convergence_rate
+                    if recycling_enabled {
+                        0.0 // No creation from nothing in conservative mode
+                    } else {
+                        config.collision_volcanism_rate * convergence_rate
+                    }
                 }
                 BoundaryType::Rift => {
-                    let my_s = grid.s.get(i, j);
-                    let divergence_rate = convergence_sum.abs() * inv_dx;
-                    if my_s < config.rift_thickness_threshold {
-                        config.spreading_rate * divergence_rate
+                    if recycling_enabled {
+                        0.0 // Spreading handled by recycling system
                     } else {
-                        config.rift_volcanism_rate * divergence_rate
+                        let my_s = grid.s.get(i, j);
+                        let divergence_rate = convergence_sum.abs() * inv_dx;
+                        if my_s < config.rift_thickness_threshold {
+                            config.spreading_rate * divergence_rate
+                        } else {
+                            config.rift_volcanism_rate * divergence_rate
+                        }
                     }
                 }
                 BoundaryType::None => 0.0,
@@ -290,7 +303,7 @@ pub fn compute_boundary_sources_into(
     config: &BoundaryConfig,
     target: &mut Field2D,
 ) {
-    let result = compute_boundary_sources(grid, plate_ids, plates, config);
+    let result = compute_boundary_sources(grid, plate_ids, plates, config, false);
     target.data_mut().copy_from_slice(result.source_rate.data());
 }
 
@@ -475,7 +488,7 @@ mod tests {
         }
 
         let config = BoundaryConfig::default();
-        let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
+        let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config, false);
 
         let oceanic_boundary = result.source_rate.get(n / 2 - 1, n / 2);
         assert!(oceanic_boundary < 0.0, "Oceanic side should be a sink: Q = {oceanic_boundary}");
@@ -505,7 +518,7 @@ mod tests {
         }
 
         let config = BoundaryConfig::default();
-        let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
+        let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config, false);
 
         let boundary_q = result.source_rate.get(n / 2, n / 2);
         assert!(boundary_q > 0.0, "Rift should create crust: Q = {boundary_q}");
@@ -524,7 +537,7 @@ mod tests {
         }
 
         let config = BoundaryConfig::default();
-        let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
+        let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config, false);
 
         assert!(result.source_rate.get(0, 0).abs() < 1e-10, "Interior cell should have no source");
         assert!(
@@ -547,7 +560,7 @@ mod tests {
         }
 
         let config = BoundaryConfig::default();
-        let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config);
+        let result = compute_boundary_sources(&grid, &plate_ids, &plates, &config, false);
 
         let total_q: f64 = result.source_rate.data().iter().sum();
         let max_q: f64 = result.source_rate.data().iter().map(|x| x.abs()).fold(0.0, f64::max);

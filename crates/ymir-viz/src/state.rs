@@ -207,6 +207,7 @@ pub struct SolverConfig {
     pub yielding: ymir_core::tectonics::solver::config::YieldingConfig,
     pub basal_friction: f64,
     pub mantle: ymir_core::tectonics::mantle::MantleConfig,
+    pub recycling: ymir_core::tectonics::recycling::RecyclingConfig,
 }
 
 impl Default for SolverConfig {
@@ -229,6 +230,7 @@ impl Default for SolverConfig {
             yielding: Default::default(),
             basal_friction: 0.05,
             mantle: Default::default(),
+            recycling: Default::default(),
         }
     }
 }
