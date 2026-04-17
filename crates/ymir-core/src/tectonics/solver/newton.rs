@@ -145,6 +145,8 @@ pub fn solve_velocity_newton(
 
     let mut prev_f_norm = f64::MAX;
     let mut residual_history: Vec<f64> = Vec::with_capacity(newton_config.max_iterations + 1);
+    let mut prev_delta_v: Option<Vec<f64>> = None;
+    let mut consecutive_anti_aligned = 0usize;
 
     for k in 0..newton_config.max_iterations {
         // 1. Compute F(vᵏ) → jfnk_f_v, also updates eta and strain_rate
@@ -362,6 +364,41 @@ pub fn solve_velocity_newton(
         // oscillation detector.
         let actual_step: Vec<f64> =
             ws.jfnk_delta_v.iter().map(|x| final_alpha * x).collect();
+
+        // Oscillation detection: two consecutive Newton steps with a
+        // strongly negative cosine signal back-and-forth motion. Skip the
+        // check when either step is effectively zero (e.g. line search
+        // gave up with α = 0) to avoid spurious NaN.
+        if k >= newton_config.min_iterations_before_classification {
+            if let Some(ref prev) = prev_delta_v {
+                let dot: f64 =
+                    actual_step.iter().zip(prev.iter()).map(|(a, b)| a * b).sum();
+                let n_curr: f64 =
+                    actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
+                let n_prev: f64 = prev.iter().map(|x| x * x).sum::<f64>().sqrt();
+                let denom = n_curr * n_prev;
+                if denom > 1e-30 {
+                    let cos_theta = dot / denom;
+                    debug!(newton_iter = k, cos_theta, "newton step alignment");
+                    if cos_theta < newton_config.oscillation_cosine_threshold {
+                        consecutive_anti_aligned += 1;
+                        if consecutive_anti_aligned >= 2 {
+                            debug!(newton_iter = k, "oscillation detected, exiting");
+                            unpack_velocity(&ws.v_packed, grid);
+                            return NewtonResult {
+                                outcome: NewtonOutcome::Oscillation,
+                                iterations: k + 1,
+                                final_residual: f_norm / b_norm,
+                                total_linear_iterations: total_linear,
+                            };
+                        }
+                    } else {
+                        consecutive_anti_aligned = 0;
+                    }
+                }
+            }
+        }
+        prev_delta_v = Some(actual_step.clone());
 
         // State-based convergence: accept if the relative velocity increment
         // is tiny AND the residual trend over the last trend_window
