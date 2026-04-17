@@ -834,6 +834,53 @@ mod tests {
     }
 
     #[test]
+    fn newton_accepts_state_when_residual_stagnates_near_tolerance() {
+        // Configured so the residual-only criterion is unreachable and the
+        // state_tolerance too tight for the moving-but-stable case: the
+        // near-tolerance pathway is the only way out before max_iterations.
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, n, dx);
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, 1.0);
+            }
+        }
+        let plates = TractionField::two_plates_convergent(n, n, 0.5);
+        let picard_config =
+            PicardConfig { power_law_n: 3.0, strain_rate_min: 1e-3, ..PicardConfig::default() };
+        let newton_config = NewtonConfig {
+            max_iterations: 25,
+            tolerance: 1e-6,
+            state_tolerance: 1e-6,
+            stagnation_residual_multiplier: 10.0,
+            stagnation_spread_threshold: 0.15,
+            trend_window: 3,
+            min_iterations_before_classification: 3,
+            ..NewtonConfig::default()
+        };
+        let mut ws = SolverWorkspace::new(n, n);
+        let result = solve_velocity_newton(
+            &mut grid,
+            &plates,
+            1.0,
+            0.0,
+            0.0,
+            &picard_config,
+            &Default::default(),
+            &newton_config,
+            &mut ws,
+        );
+        assert!(
+            result.is_converged(),
+            "expected convergence (residual or state), got {:?} at iter {}",
+            result.outcome,
+            result.iterations
+        );
+        assert!(result.iterations < 25, "should converge before exhausting iterations");
+    }
+
+    #[test]
     fn newton_outcome_is_converged_helper() {
         let r1 = NewtonResult {
             outcome: NewtonOutcome::ConvergedOnResidual,
