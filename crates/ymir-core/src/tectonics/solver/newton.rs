@@ -185,10 +185,17 @@ pub fn solve_velocity_newton(
 
         if f_norm < newton_config.tolerance * b_norm {
             unpack_velocity(&ws.v_packed, grid);
+            let final_residual = f_norm / b_norm;
+            debug!(
+                outcome = ?NewtonOutcome::ConvergedOnResidual,
+                iterations = k,
+                final_residual,
+                "newton solve completed"
+            );
             return NewtonResult {
                 outcome: NewtonOutcome::ConvergedOnResidual,
                 iterations: k,
-                final_residual: f_norm / b_norm,
+                final_residual,
                 total_linear_iterations: total_linear,
             };
         }
@@ -401,10 +408,17 @@ pub fn solve_velocity_newton(
                         if consecutive_anti_aligned >= 2 {
                             debug!(newton_iter = k, "oscillation detected, exiting");
                             unpack_velocity(&ws.v_packed, grid);
+                            let final_residual = f_norm / b_norm;
+                            debug!(
+                                outcome = ?NewtonOutcome::Oscillation,
+                                iterations = k + 1,
+                                final_residual,
+                                "newton solve completed"
+                            );
                             return NewtonResult {
                                 outcome: NewtonOutcome::Oscillation,
                                 iterations: k + 1,
-                                final_residual: f_norm / b_norm,
+                                final_residual,
                                 total_linear_iterations: total_linear,
                             };
                         }
@@ -441,10 +455,17 @@ pub fn solve_velocity_newton(
                     "state-based convergence"
                 );
                 unpack_velocity(&ws.v_packed, grid);
+                let final_residual = f_norm / b_norm;
+                debug!(
+                    outcome = ?NewtonOutcome::ConvergedOnState,
+                    iterations = k + 1,
+                    final_residual,
+                    "newton solve completed"
+                );
                 return NewtonResult {
                     outcome: NewtonOutcome::ConvergedOnState,
                     iterations: k + 1,
-                    final_residual: f_norm / b_norm,
+                    final_residual,
                     total_linear_iterations: total_linear,
                 };
             }
@@ -487,6 +508,13 @@ pub fn solve_velocity_newton(
         .copied()
         .map(|r| r / b_norm_global)
         .unwrap_or(f64::NAN);
+
+    debug!(
+        outcome = ?final_outcome,
+        iterations = newton_config.max_iterations,
+        final_residual,
+        "newton solve completed"
+    );
 
     NewtonResult {
         outcome: final_outcome,
