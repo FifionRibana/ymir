@@ -81,13 +81,28 @@ impl Plate {
     }
 }
 
+/// Reduction factor applied to the raw continental/total plate ratio when
+/// computing initial continental area. Without this factor, a 2/12 ratio
+/// would give 16.7% continental area, which grows too large after mass
+/// accumulates during simulation. 0.6 keeps initial continents compact
+/// enough that the final area stays in a geologically reasonable range
+/// after several hundred time steps.
+pub const BASE_CONTINENTAL_RATIO: f64 = 0.6;
+
 /// Configuration for plate generation.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PlateConfig {
     /// Number of tectonic plates (5–15).
     pub num_plates: usize,
-    /// Fraction of plates that are continental (0.1–0.6).
-    pub continental_ratio: f32,
+    /// Number of continental plates (0..=num_plates/2). The continental
+    /// area fraction is derived as
+    /// `(num_continental_plates / num_plates) * continental_area_factor`.
+    pub num_continental_plates: usize,
+    /// Land/sea ratio on continental plates: fraction of a continental
+    /// plate's Voronoï region that becomes landmass (continental thickness).
+    /// Remaining cells on the plate keep oceanic thickness (continental shelf).
+    /// Range 0.1–1.0, default 0.6.
+    pub continental_area_factor: f32,
     /// Minimum velocity magnitude (grid units / timestep).
     pub velocity_min: f32,
     /// Maximum velocity magnitude (grid units / timestep).
@@ -102,7 +117,8 @@ impl Default for PlateConfig {
     fn default() -> Self {
         Self {
             num_plates: 8,
-            continental_ratio: 0.3,
+            num_continental_plates: 2,
+            continental_area_factor: BASE_CONTINENTAL_RATIO as f32,
             velocity_min: 0.5,
             velocity_max: 2.5,
             grid_size: 128,
@@ -115,24 +131,24 @@ impl PlateConfig {
     /// Single large continent surrounded by ocean.
     /// Good starting point for a typical game continent.
     pub fn preset_single_continent() -> Self {
-        Self { num_plates: 8, continental_ratio: 0.25, ..Default::default() }
+        Self { num_plates: 8, num_continental_plates: 1, ..Default::default() }
     }
 
     /// Two continental masses converging — produces a Himalaya-type collision belt.
     pub fn preset_collision() -> Self {
-        Self { num_plates: 6, continental_ratio: 0.4, ..Default::default() }
+        Self { num_plates: 6, num_continental_plates: 2, ..Default::default() }
     }
 
     /// Many small continental plates — creates an archipelago with multiple islands.
     pub fn preset_archipelago() -> Self {
-        Self { num_plates: 12, continental_ratio: 0.35, velocity_max: 3.0, ..Default::default() }
+        Self { num_plates: 12, num_continental_plates: 3, velocity_max: 3.0, ..Default::default() }
     }
 
     /// One plate splitting apart — produces a rift valley with volcanism and graben basins.
     pub fn preset_rift() -> Self {
         Self {
             num_plates: 6,
-            continental_ratio: 0.3,
+            num_continental_plates: 2,
             velocity_min: 0.3,
             velocity_max: 1.5,
             ..Default::default()
@@ -164,9 +180,12 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
     let mut rng = seed.rng_for("plates");
     let size = config.grid_size;
 
-    // 1. Place Voronoï seeds randomly on the grid
+    // 1. Place Voronoï seeds randomly on the grid.
+    // Clamp the continental plate count defensively. UI enforces
+    // num_continental_plates <= num_plates / 2, but we guard here in case
+    // the config was constructed programmatically.
     let mut plates = Vec::with_capacity(config.num_plates);
-    let num_continental = (config.num_plates as f32 * config.continental_ratio).round() as usize;
+    let num_continental = config.num_continental_plates.min(config.num_plates / 2);
 
     for id in 0..config.num_plates {
         let seed_x = rng.random::<f32>() * size as f32;
@@ -208,16 +227,53 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
         }
     }
 
-    // 3. Initialize crustal thickness field
-    let mut thickness = GridF32::new(size, size, 0.0);
-    for y in 0..size {
-        for x in 0..size {
-            let plate = &plates[plate_ids[y * size + x]];
-            let t = match plate.plate_type {
-                PlateType::Continental => 1.0,
-                PlateType::Oceanic => 0.2,
-            };
-            thickness.set(x, y, t);
+    // 3. Initialize crustal thickness field.
+    // Derive the total continental cell fraction from the plate ratio.
+    // This scales naturally: doubling num_plates while keeping
+    // num_continental_plates fixed halves the continental area.
+    let continental_fraction = if config.num_plates > 0 {
+        (num_continental as f64 / config.num_plates as f64) * config.continental_area_factor as f64
+    } else {
+        0.0
+    };
+    let total_cells = size * size;
+    let target_total = (continental_fraction * total_cells as f64) as usize;
+    let cells_per_continent = if num_continental > 0 { target_total / num_continental } else { 0 };
+
+    // Default every cell to oceanic thickness.
+    let mut thickness = GridF32::new(size, size, 0.2);
+
+    // For each continental plate, find all cells in its Voronoï region,
+    // sort them by toroidal distance to the seed, and give continental
+    // thickness only to the closest `cells_per_continent`. Remaining cells
+    // in the same region stay on the plate but receive oceanic thickness,
+    // effectively forming the continental shelf around the landmass.
+    for plate_idx in 0..num_continental {
+        let sx = plates[plate_idx].seed_x;
+        let sy = plates[plate_idx].seed_y;
+
+        let mut plate_cells: Vec<(usize, f32)> = Vec::new();
+        for y in 0..size {
+            for x in 0..size {
+                let k = y * size + x;
+                if plate_ids[k] == plate_idx {
+                    let dist_sq = toroidal_distance_sq(x as f32, y as f32, sx, sy, size as f32);
+                    plate_cells.push((k, dist_sq));
+                }
+            }
+        }
+
+        // Closest cells first — these form the compact continental core.
+        plate_cells.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        let n_core = cells_per_continent.min(plate_cells.len());
+        for (idx, &(k, _)) in plate_cells.iter().enumerate() {
+            if idx < n_core {
+                let y = k / size;
+                let x = k % size;
+                thickness.set(x, y, 1.0);
+            }
+            // else: already 0.2 from the default fill — continental shelf.
         }
     }
 
@@ -1042,7 +1098,7 @@ mod tests {
     fn test_plate_count_and_types() {
         let config = PlateConfig {
             num_plates: 10,
-            continental_ratio: 0.3,
+            num_continental_plates: 3,
             grid_size: 64,
             ..Default::default()
         };
