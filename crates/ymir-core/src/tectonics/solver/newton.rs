@@ -18,12 +18,47 @@ use super::stokes::{StencilCoeffs, apply_ssor, apply_stokes, compute_jacobi_prec
 use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, pack_velocity, unpack_velocity};
 
+/// Outcome of a Newton solve, with semantic distinction between success and
+/// failure modes. Downstream code (e.g. adaptive dt sub-stepping) uses this
+/// to choose appropriate recovery strategies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewtonOutcome {
+    /// Converged on the residual criterion: f_norm < tolerance * b_norm.
+    ConvergedOnResidual,
+    /// Converged on the state criterion: residual stagnated with descending
+    /// trend and the velocity increment is below the state tolerance.
+    /// The residual may still be slightly above the residual tolerance,
+    /// but the physical state is effectively stable.
+    ConvergedOnState,
+    /// Failed by stagnation: the residual stopped decreasing without
+    /// reaching tolerance, but did not oscillate or diverge.
+    Stagnation,
+    /// Failed by oscillation: detected via cosine of consecutive Newton
+    /// steps below threshold for two iterations.
+    Oscillation,
+    /// Failed by divergence: f_norm increased significantly over recent
+    /// iterations.
+    Divergence,
+    /// Failed by exhausting max_iterations without classification.
+    MaxIterations,
+}
+
 /// Result of a Newton solve.
 pub struct NewtonResult {
-    pub converged: bool,
+    pub outcome: NewtonOutcome,
     pub iterations: usize,
     pub final_residual: f64,
     pub total_linear_iterations: usize,
+}
+
+impl NewtonResult {
+    /// Returns true for any successful convergence (residual or state).
+    pub fn is_converged(&self) -> bool {
+        matches!(
+            self.outcome,
+            NewtonOutcome::ConvergedOnResidual | NewtonOutcome::ConvergedOnState
+        )
+    }
 }
 
 /// Compute the nonlinear residual F(v) = A(η(v))·v - b.
@@ -131,7 +166,7 @@ pub fn solve_velocity_newton(
         if f_norm < newton_config.tolerance * b_norm {
             unpack_velocity(&ws.v_packed, grid);
             return NewtonResult {
-                converged: true,
+                outcome: NewtonOutcome::ConvergedOnResidual,
                 iterations: k,
                 final_residual: f_norm / b_norm,
                 total_linear_iterations: total_linear,
@@ -333,7 +368,7 @@ pub fn solve_velocity_newton(
 
     unpack_velocity(&ws.v_packed, grid);
     NewtonResult {
-        converged: false,
+        outcome: NewtonOutcome::MaxIterations,
         iterations: newton_config.max_iterations,
         final_residual: f64::NAN,
         total_linear_iterations: total_linear,
@@ -377,7 +412,7 @@ mod tests {
             &newton_config,
             &mut ws,
         );
-        assert!(result.converged, "Newton should converge for linear viscosity");
+        assert!(result.is_converged(), "Newton should converge for linear viscosity");
         assert!(
             result.iterations <= 2,
             "Linear problem should converge in <= 2 Newton iterations, got {}",
@@ -416,7 +451,7 @@ mod tests {
             &mut ws,
         );
         assert!(
-            result.converged,
+            result.is_converged(),
             "Newton should converge for power-law, got {} iterations",
             result.iterations
         );
@@ -485,7 +520,7 @@ mod tests {
             &newton_config,
             &mut ws_n,
         );
-        assert!(newton_result.converged, "Newton should converge");
+        assert!(newton_result.is_converged(), "Newton should converge");
         let mut v_newton = vec![0.0; n_dof];
         pack_velocity(&grid_n, &mut v_newton);
 
@@ -561,8 +596,8 @@ mod tests {
             &mut ws_inexact,
         );
 
-        assert!(r_exact.converged, "Exact Newton should converge");
-        assert!(r_inexact.converged, "Inexact Newton should converge");
+        assert!(r_exact.is_converged(), "Exact Newton should converge");
+        assert!(r_inexact.is_converged(), "Inexact Newton should converge");
 
         // Inexact should use fewer total linear iterations
         assert!(
