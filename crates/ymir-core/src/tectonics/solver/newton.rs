@@ -728,4 +728,78 @@ mod tests {
             r_exact.total_linear_iterations
         );
     }
+
+    #[test]
+    fn newton_state_convergence_on_stagnant_residual() {
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, n, dx);
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, 1.0);
+            }
+        }
+        let plates = TractionField::two_plates_convergent(n, n, 0.5);
+        let picard_config =
+            PicardConfig { power_law_n: 3.0, strain_rate_min: 1e-3, ..PicardConfig::default() };
+        let newton_config = NewtonConfig {
+            max_iterations: 25,
+            tolerance: 1e-10,
+            state_tolerance: 1e-3,
+            trend_window: 3,
+            ..NewtonConfig::default()
+        };
+        let mut ws = SolverWorkspace::new(n, n);
+        let result = solve_velocity_newton(
+            &mut grid,
+            &plates,
+            1.0,
+            0.0,
+            0.0,
+            &picard_config,
+            &Default::default(),
+            &newton_config,
+            &mut ws,
+        );
+        assert_eq!(
+            result.outcome,
+            NewtonOutcome::ConvergedOnState,
+            "expected state-based convergence, got {:?} at iter {}",
+            result.outcome,
+            result.iterations
+        );
+        assert!(result.iterations < 25);
+    }
+
+    #[test]
+    fn newton_outcome_is_converged_helper() {
+        let r1 = NewtonResult {
+            outcome: NewtonOutcome::ConvergedOnResidual,
+            iterations: 5,
+            final_residual: 0.001,
+            total_linear_iterations: 50,
+        };
+        let r2 = NewtonResult {
+            outcome: NewtonOutcome::ConvergedOnState,
+            iterations: 8,
+            final_residual: 0.06,
+            total_linear_iterations: 80,
+        };
+        let r3 = NewtonResult {
+            outcome: NewtonOutcome::Stagnation,
+            iterations: 15,
+            final_residual: 0.06,
+            total_linear_iterations: 150,
+        };
+        let r4 = NewtonResult {
+            outcome: NewtonOutcome::Oscillation,
+            iterations: 7,
+            final_residual: 0.08,
+            total_linear_iterations: 70,
+        };
+        assert!(r1.is_converged());
+        assert!(r2.is_converged());
+        assert!(!r3.is_converged());
+        assert!(!r4.is_converged());
+    }
 }
