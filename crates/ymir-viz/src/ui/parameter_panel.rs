@@ -552,7 +552,7 @@ fn draw_solver_status(ui: &mut egui::Ui, state: &SolverState) {
                 ));
             }
         }
-        SolverState::Completed { elapsed } => {
+        SolverState::Completed { elapsed, .. } => {
             ui.small(format!("🟢 Done in {:.1}s", elapsed.as_secs_f64()));
         }
         SolverState::Failed { error } => {
@@ -637,8 +637,12 @@ fn launch_solver(
         dx,
     });
 
-    bridge.state =
-        SolverState::Running { step: 0, total_steps: solver_config.num_timesteps, stats: None };
+    bridge.state = SolverState::Running {
+        step: 0,
+        total_steps: solver_config.num_timesteps,
+        stats: None,
+        cumulative_dt: 0.0,
+    };
 }
 
 /// Render the grid-dimension section (default mode = resolution + aspect
