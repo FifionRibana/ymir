@@ -174,7 +174,19 @@ fn draw_tectonics(
     ui.separator();
 
     slider_row_usize(ui, "Plates", &mut state.config.num_plates, 3..=15);
-    slider_row(ui, "Cont. ratio", &mut state.config.continental_ratio, 0.1..=0.6);
+    // Continental plates capped at num_plates/2. Clamp if num_plates shrank.
+    let max_continental = state.config.num_plates / 2;
+    if state.config.num_continental_plates > max_continental {
+        state.config.num_continental_plates = max_continental;
+    }
+    slider_row_usize(
+        ui,
+        "Cont. plates",
+        &mut state.config.num_continental_plates,
+        0..=max_continental.max(1),
+    );
+    slider_row(ui, "Land ratio", &mut state.config.continental_area_factor, 0.1..=1.0);
+    ui.small("(applied on Generate / Randomize)");
     slider_row(ui, "Vel. min", &mut state.config.velocity_min, 0.1..=3.0);
     slider_row(ui, "Vel. max", &mut state.config.velocity_max, 0.5..=5.0);
     slider_row(ui, "Smoothing σ", &mut state.config.boundary_smoothing_sigma, 0.0..=5.0);
