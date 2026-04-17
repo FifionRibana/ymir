@@ -528,7 +528,7 @@ pub fn solve_velocity_newton(
         let max_recent = recent.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let min_recent = recent.iter().cloned().fold(f64::INFINITY, f64::min);
         let spread = (max_recent - min_recent) / max_recent.max(1e-30);
-        if spread < 0.05 {
+        if spread < newton_config.stagnation_spread_threshold {
             NewtonOutcome::Stagnation
         } else {
             NewtonOutcome::MaxIterations
