@@ -147,6 +147,11 @@ pub fn solve_velocity_newton(
     let mut residual_history: Vec<f64> = Vec::with_capacity(newton_config.max_iterations + 1);
     let mut prev_delta_v: Option<Vec<f64>> = None;
     let mut consecutive_anti_aligned = 0usize;
+    let mut diverging = false;
+
+    // b_norm is invariant over Newton iterations (rhs is constant), so
+    // compute it once for the exhaustion-branch final_residual reporting.
+    let b_norm_global: f64 = ws.rhs.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-14);
 
     for k in 0..newton_config.max_iterations {
         // 1. Compute F(vᵏ) → jfnk_f_v, also updates eta and strain_rate
@@ -166,6 +171,17 @@ pub fn solve_velocity_newton(
         let f_norm: f64 = ws.jfnk_f_v.iter().map(|x| x * x).sum::<f64>().sqrt();
         let b_norm: f64 = ws.rhs.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-14);
         residual_history.push(f_norm);
+
+        // Divergence tracker: residual grew by more than 1.5× over the
+        // last trend_window iterations. Latches true once tripped so
+        // the exhaustion classifier can report Divergence.
+        if residual_history.len() > newton_config.trend_window {
+            let trend_idx = residual_history.len() - 1 - newton_config.trend_window;
+            let r_old = residual_history[trend_idx];
+            if r_old > 0.0 && f_norm > r_old * 1.5 {
+                diverging = true;
+            }
+        }
 
         if f_norm < newton_config.tolerance * b_norm {
             unpack_velocity(&ws.v_packed, grid);
@@ -446,10 +462,36 @@ pub fn solve_velocity_newton(
     }
 
     unpack_velocity(&ws.v_packed, grid);
+
+    // Classify the exhaustion outcome so downstream recovery logic can
+    // react differently to Divergence vs Stagnation vs a generic
+    // MaxIterations failure.
+    let final_outcome = if diverging {
+        NewtonOutcome::Divergence
+    } else if residual_history.len() >= 3 {
+        let recent: Vec<f64> = residual_history.iter().rev().take(3).copied().collect();
+        let max_recent = recent.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let min_recent = recent.iter().cloned().fold(f64::INFINITY, f64::min);
+        let spread = (max_recent - min_recent) / max_recent.max(1e-30);
+        if spread < 0.05 {
+            NewtonOutcome::Stagnation
+        } else {
+            NewtonOutcome::MaxIterations
+        }
+    } else {
+        NewtonOutcome::MaxIterations
+    };
+
+    let final_residual = residual_history
+        .last()
+        .copied()
+        .map(|r| r / b_norm_global)
+        .unwrap_or(f64::NAN);
+
     NewtonResult {
-        outcome: NewtonOutcome::MaxIterations,
+        outcome: final_outcome,
         iterations: newton_config.max_iterations,
-        final_residual: f64::NAN,
+        final_residual,
         total_linear_iterations: total_linear,
     }
 }
