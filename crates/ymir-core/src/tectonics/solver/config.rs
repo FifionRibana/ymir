@@ -79,6 +79,21 @@ pub struct NewtonConfig {
     /// criterion or oscillation detection can fire. Prevents premature
     /// classification on the first few iterations where signals are noisy.
     pub min_iterations_before_classification: usize,
+    /// Multiplier applied to `tolerance` to define the "near-tolerance"
+    /// band used by the second state-convergence pathway. If the residual
+    /// is within `tolerance * b_norm * stagnation_residual_multiplier`
+    /// AND the residual history is flat over the trend window, the
+    /// solver accepts convergence on state even when `relative_step`
+    /// does not pass its own threshold. Catches the case where Newton
+    /// descends quickly to near-tolerance then stagnates due to
+    /// non-smoothness of F(v).
+    pub stagnation_residual_multiplier: f64,
+    /// Spread threshold (relative) used both by the stagnation-based
+    /// state-convergence pathway and by the end-of-loop Stagnation vs
+    /// MaxIterations classification. A residual history is "flat" when
+    /// `(max - min) / max < stagnation_spread_threshold` over the last
+    /// `trend_window + 1` iterations.
+    pub stagnation_spread_threshold: f64,
 }
 
 impl Default for NewtonConfig {
@@ -95,6 +110,8 @@ impl Default for NewtonConfig {
             trend_window: 3,
             oscillation_cosine_threshold: -0.5,
             min_iterations_before_classification: 3,
+            stagnation_residual_multiplier: 2.0,
+            stagnation_spread_threshold: 0.10,
         }
     }
 }
