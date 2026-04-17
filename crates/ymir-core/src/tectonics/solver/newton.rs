@@ -89,8 +89,12 @@ fn compute_nonlinear_residual(
     );
     apply_eta_multiplier(eta_multiplier, picard_config.eta_max, eta_out);
     apply_yielding(strain_rate_out, plastic_strain, yielding, eta_out);
+    // The upper bound is now enforced smoothly inside compute_viscosity
+    // and apply_eta_multiplier, so the only residual safety net is the
+    // η_min floor (apply_yielding can drive eta arbitrarily low when the
+    // local strain rate is large enough).
     for val in eta_out.data_mut().iter_mut() {
-        *val = val.clamp(picard_config.eta_min, picard_config.eta_max);
+        *val = val.max(picard_config.eta_min);
     }
     apply_stokes(v_packed, eta_out, grid, residual);
     for i in 0..residual.len() {
