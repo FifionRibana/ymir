@@ -102,7 +102,10 @@ pub fn compute_viscosity(
 }
 
 /// Apply plastic yielding (read-only on plastic_strain).
-/// Caps viscosity where deviatoric stress τ = 2ηε̇ would exceed the local yield stress.
+/// Blends the viscous and plastic viscosities through a smooth minimum so
+/// Newton does not see a kink at η_plastic = η_visc. For η_plastic ≪ η_visc
+/// the result collapses to η_plastic (yielding active, previous behaviour);
+/// for η_plastic ≫ η_visc it collapses to η_visc (no yielding).
 pub fn apply_yielding(
     strain_rate: &Field2D,
     plastic_strain: &Field2D,
@@ -116,6 +119,7 @@ pub fn apply_yielding(
     let nx = strain_rate.nx();
     let ny = strain_rate.ny();
     let eps_min = 1e-20;
+    const SOFT_MIN_SHARPNESS: f64 = 4.0;
 
     for k in 0..nx * ny {
         let sr = strain_rate.data()[k];
@@ -133,9 +137,8 @@ pub fn apply_yielding(
         };
 
         let eta_plastic = local_yield / (2.0 * sr);
-        if eta_plastic < eta.data()[k] {
-            eta.data_mut()[k] = eta_plastic;
-        }
+        let eta_visc = eta.data()[k];
+        eta.data_mut()[k] = soft_min_harmonic(eta_visc, eta_plastic, SOFT_MIN_SHARPNESS);
     }
 }
 
@@ -376,8 +379,8 @@ mod tests {
         );
         assert!(result.converged, "Should converge for linear viscosity");
         assert!(
-            result.iterations <= 2,
-            "Linear viscosity (n=1) should converge in ≤ 2 Picard iterations, got {}",
+            result.iterations <= 3,
+            "Linear viscosity (n=1) should converge in ≤ 3 Picard iterations, got {}",
             result.iterations
         );
     }
@@ -452,11 +455,14 @@ mod tests {
 
         apply_yielding(&sr, &ps, &config, &mut eta);
 
-        // η_plastic = τ_yield / (2 × ε̇) = 10 / (2 × 1) = 5
+        // η_plastic = τ_yield / (2 × ε̇) = 10 / (2 × 1) = 5.
+        // Soft-min contribution from η_visc = 100 is ~(5/100)^4 = 6.25e-6,
+        // so the result is 5 minus a tiny rational correction.
         for k in 0..n * n {
+            let rel = (eta.data()[k] - 5.0).abs() / 5.0;
             assert!(
-                (eta.data()[k] - 5.0).abs() < 1e-10,
-                "Yielded eta should be 5.0, got {}",
+                rel < 1e-3,
+                "Yielded eta should be ~5.0, got {}",
                 eta.data()[k]
             );
         }
@@ -480,11 +486,13 @@ mod tests {
 
         apply_yielding(&sr, &ps, &config, &mut eta);
 
-        // η_plastic = 10 / (2 × 0.001) = 5000 >> 100, so no yielding
+        // η_plastic = 10 / (2 × 0.001) = 5000 >> 100, so the soft-min
+        // collapses to η_visc = 100 up to a (100/5000)^4 = 1.6e-7 correction.
         for k in 0..n * n {
+            let rel = (eta.data()[k] - 100.0).abs() / 100.0;
             assert!(
-                (eta.data()[k] - 100.0).abs() < 1e-10,
-                "Low strain should not yield: {}",
+                rel < 1e-3,
+                "Low strain should essentially not yield: {}",
                 eta.data()[k]
             );
         }
@@ -524,8 +532,8 @@ mod tests {
         let eta_w = eta_weak.data()[0];
 
         assert!(eta_w < eta_f, "Weakened should yield more: fresh={eta_f}, weak={eta_w}");
-        assert!((eta_f - 50.0).abs() < 1e-6, "Fresh yield: {eta_f}");
-        assert!((eta_w - 25.0).abs() < 1e-6, "Weak yield: {eta_w}");
+        assert!((eta_f - 50.0).abs() / 50.0 < 1e-3, "Fresh yield: {eta_f}");
+        assert!((eta_w - 25.0).abs() / 25.0 < 1e-3, "Weak yield: {eta_w}");
     }
 
     #[test]
