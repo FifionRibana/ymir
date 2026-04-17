@@ -405,7 +405,10 @@ where
         let mut total_div_flux = 0.0_f64;
         let mut total_source = 0.0_f64;
 
-        for _retry in 0..5 {
+        const MAX_RETRIES: usize = 5;
+        let mut retry_succeeded = false;
+
+        for retry_index in 0..MAX_RETRIES {
             compute_divergence_flux(grid, &mut workspace.div_flux);
 
             mass_after_advection = 0.0;
@@ -439,12 +442,29 @@ where
             clamp_ratio = clamp_count as f64 / (nx * ny) as f64;
 
             if clamp_ratio < 0.05 || dt <= dt_min {
+                retry_succeeded = true;
                 break;
             }
 
-            // Too many cells clamped — retry with smaller dt
-            dt *= 0.5;
-            grid.s.data_mut().copy_from_slice(&s_backup);
+            // Too many cells clamped — prepare another attempt with a halved dt,
+            // restoring grid.s from the backup. Only restore if we still have a
+            // retry left: on the final iteration we keep the current grid.s so
+            // the step commits the last attempt instead of silently reverting
+            // to the pre-step state.
+            if retry_index + 1 < MAX_RETRIES {
+                dt *= 0.5;
+                grid.s.data_mut().copy_from_slice(&s_backup);
+            }
+        }
+
+        if !retry_succeeded {
+            warn!(
+                step,
+                clamp_ratio,
+                dt,
+                attempts = MAX_RETRIES,
+                "CFL retry exhausted — accepting degraded step"
+            );
         }
 
         // 3b. Oceanic restoring force — dense oceanic crust (ρ ≈ 3000 kg/m³)
@@ -526,6 +546,7 @@ where
             cg_iterations_last: linear_iterations,
             dt,
             clamp_ratio,
+            cfl_retry_exhausted: !retry_succeeded,
         };
 
         info!(
