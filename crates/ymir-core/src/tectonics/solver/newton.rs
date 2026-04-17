@@ -18,12 +18,47 @@ use super::stokes::{StencilCoeffs, apply_ssor, apply_stokes, compute_jacobi_prec
 use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, pack_velocity, unpack_velocity};
 
+/// Outcome of a Newton solve, with semantic distinction between success and
+/// failure modes. Downstream code (e.g. adaptive dt sub-stepping) uses this
+/// to choose appropriate recovery strategies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewtonOutcome {
+    /// Converged on the residual criterion: f_norm < tolerance * b_norm.
+    ConvergedOnResidual,
+    /// Converged on the state criterion: residual stagnated with descending
+    /// trend and the velocity increment is below the state tolerance.
+    /// The residual may still be slightly above the residual tolerance,
+    /// but the physical state is effectively stable.
+    ConvergedOnState,
+    /// Failed by stagnation: the residual stopped decreasing without
+    /// reaching tolerance, but did not oscillate or diverge.
+    Stagnation,
+    /// Failed by oscillation: detected via cosine of consecutive Newton
+    /// steps below threshold for two iterations.
+    Oscillation,
+    /// Failed by divergence: f_norm increased significantly over recent
+    /// iterations.
+    Divergence,
+    /// Failed by exhausting max_iterations without classification.
+    MaxIterations,
+}
+
 /// Result of a Newton solve.
 pub struct NewtonResult {
-    pub converged: bool,
+    pub outcome: NewtonOutcome,
     pub iterations: usize,
     pub final_residual: f64,
     pub total_linear_iterations: usize,
+}
+
+impl NewtonResult {
+    /// Returns true for any successful convergence (residual or state).
+    pub fn is_converged(&self) -> bool {
+        matches!(
+            self.outcome,
+            NewtonOutcome::ConvergedOnResidual | NewtonOutcome::ConvergedOnState
+        )
+    }
 }
 
 /// Compute the nonlinear residual F(v) = A(η(v))·v - b.
@@ -109,6 +144,14 @@ pub fn solve_velocity_newton(
     let ps_snap = grid.plastic_strain.clone();
 
     let mut prev_f_norm = f64::MAX;
+    let mut residual_history: Vec<f64> = Vec::with_capacity(newton_config.max_iterations + 1);
+    let mut prev_delta_v: Option<Vec<f64>> = None;
+    let mut consecutive_anti_aligned = 0usize;
+    let mut diverging = false;
+
+    // b_norm is invariant over Newton iterations (rhs is constant), so
+    // compute it once for the exhaustion-branch final_residual reporting.
+    let b_norm_global: f64 = ws.rhs.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-14);
 
     for k in 0..newton_config.max_iterations {
         // 1. Compute F(vᵏ) → jfnk_f_v, also updates eta and strain_rate
@@ -127,13 +170,32 @@ pub fn solve_velocity_newton(
 
         let f_norm: f64 = ws.jfnk_f_v.iter().map(|x| x * x).sum::<f64>().sqrt();
         let b_norm: f64 = ws.rhs.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-14);
+        residual_history.push(f_norm);
+
+        // Divergence tracker: residual grew by more than 1.5× over the
+        // last trend_window iterations. Latches true once tripped so
+        // the exhaustion classifier can report Divergence.
+        if residual_history.len() > newton_config.trend_window {
+            let trend_idx = residual_history.len() - 1 - newton_config.trend_window;
+            let r_old = residual_history[trend_idx];
+            if r_old > 0.0 && f_norm > r_old * 1.5 {
+                diverging = true;
+            }
+        }
 
         if f_norm < newton_config.tolerance * b_norm {
             unpack_velocity(&ws.v_packed, grid);
+            let final_residual = f_norm / b_norm;
+            debug!(
+                outcome = ?NewtonOutcome::ConvergedOnResidual,
+                iterations = k,
+                final_residual,
+                "newton solve completed"
+            );
             return NewtonResult {
-                converged: true,
+                outcome: NewtonOutcome::ConvergedOnResidual,
                 iterations: k,
-                final_residual: f_norm / b_norm,
+                final_residual,
                 total_linear_iterations: total_linear,
             };
         }
@@ -320,6 +382,129 @@ pub fn solve_velocity_newton(
             debug!(newton_iter = k, alpha = final_alpha, "newton line search backtracked");
         }
 
+        // Compute the effective Newton step actually applied (α·δv), used
+        // below for the state-based convergence criterion and the
+        // oscillation detector.
+        let actual_step: Vec<f64> =
+            ws.jfnk_delta_v.iter().map(|x| final_alpha * x).collect();
+
+        // Oscillation detection: two consecutive Newton steps with a
+        // strongly negative cosine signal back-and-forth motion. Skip the
+        // check when either step is effectively zero (e.g. line search
+        // gave up with α = 0) to avoid spurious NaN.
+        if k >= newton_config.min_iterations_before_classification {
+            if let Some(ref prev) = prev_delta_v {
+                let dot: f64 =
+                    actual_step.iter().zip(prev.iter()).map(|(a, b)| a * b).sum();
+                let n_curr: f64 =
+                    actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
+                let n_prev: f64 = prev.iter().map(|x| x * x).sum::<f64>().sqrt();
+                let denom = n_curr * n_prev;
+                if denom > 1e-30 {
+                    let cos_theta = dot / denom;
+                    debug!(newton_iter = k, cos_theta, "newton step alignment");
+                    if cos_theta < newton_config.oscillation_cosine_threshold {
+                        consecutive_anti_aligned += 1;
+                        if consecutive_anti_aligned >= 2 {
+                            debug!(newton_iter = k, "oscillation detected, exiting");
+                            unpack_velocity(&ws.v_packed, grid);
+                            let final_residual = f_norm / b_norm;
+                            debug!(
+                                outcome = ?NewtonOutcome::Oscillation,
+                                iterations = k + 1,
+                                final_residual,
+                                "newton solve completed"
+                            );
+                            return NewtonResult {
+                                outcome: NewtonOutcome::Oscillation,
+                                iterations: k + 1,
+                                final_residual,
+                                total_linear_iterations: total_linear,
+                            };
+                        }
+                    } else {
+                        consecutive_anti_aligned = 0;
+                    }
+                }
+            }
+        }
+        prev_delta_v = Some(actual_step.clone());
+
+        // State-based convergence has two independent acceptance paths:
+        //   1. Physical state is frozen AND the residual trend is
+        //      descending: Newton has found a true local minimum of |F|.
+        //   2. Residual is near tolerance AND the recent history is flat:
+        //      Newton cannot descend further through a non-smooth barrier
+        //      in F(v) but the residual is effectively stable.
+        if k >= newton_config.min_iterations_before_classification
+            && residual_history.len() > newton_config.trend_window
+        {
+            let v_state_norm: f64 =
+                v_old.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-30);
+            let step_norm: f64 =
+                actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
+            let relative_step = step_norm / v_state_norm;
+
+            let trend_idx = residual_history.len() - 1 - newton_config.trend_window;
+            let trend_descending = f_norm < residual_history[trend_idx];
+
+            // Window covers (trend_window + 1) most recent residuals.
+            let window = &residual_history[trend_idx..];
+            let window_max = window.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let window_min = window.iter().cloned().fold(f64::INFINITY, f64::min);
+            let window_spread = (window_max - window_min) / window_max.max(1e-30);
+
+            debug!(
+                newton_iter = k,
+                relative_step,
+                step_norm,
+                v_state_norm,
+                trend_descending,
+                window_spread,
+                f_norm_window_head = residual_history[trend_idx],
+                "newton state criterion diagnostics"
+            );
+
+            let path_state_frozen =
+                relative_step < newton_config.state_tolerance && trend_descending;
+            let near_tolerance = f_norm
+                < newton_config.tolerance
+                    * b_norm
+                    * newton_config.stagnation_residual_multiplier;
+            let path_residual_stagnant = near_tolerance
+                && window_spread < newton_config.stagnation_spread_threshold;
+
+            if path_state_frozen || path_residual_stagnant {
+                let reason = if path_state_frozen {
+                    "state frozen with descending trend"
+                } else {
+                    "residual near tolerance with flat history"
+                };
+                debug!(
+                    newton_iter = k,
+                    relative_step,
+                    f_norm,
+                    window_spread,
+                    reason,
+                    "state-based convergence"
+                );
+                unpack_velocity(&ws.v_packed, grid);
+                let final_residual = f_norm / b_norm;
+                debug!(
+                    outcome = ?NewtonOutcome::ConvergedOnState,
+                    iterations = k + 1,
+                    final_residual,
+                    "newton solve completed"
+                );
+                return NewtonResult {
+                    outcome: NewtonOutcome::ConvergedOnState,
+                    iterations: k + 1,
+                    final_residual,
+                    total_linear_iterations: total_linear,
+                };
+            }
+        }
+
         // 5. Project out null space from solution
         let mean_vx: f64 = ws.v_packed[..n2].iter().sum::<f64>() / n2 as f64;
         let mean_vy: f64 = ws.v_packed[n2..n_dof].iter().sum::<f64>() / n2 as f64;
@@ -332,10 +517,43 @@ pub fn solve_velocity_newton(
     }
 
     unpack_velocity(&ws.v_packed, grid);
+
+    // Classify the exhaustion outcome so downstream recovery logic can
+    // react differently to Divergence vs Stagnation vs a generic
+    // MaxIterations failure.
+    let final_outcome = if diverging {
+        NewtonOutcome::Divergence
+    } else if residual_history.len() >= 3 {
+        let recent: Vec<f64> = residual_history.iter().rev().take(3).copied().collect();
+        let max_recent = recent.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let min_recent = recent.iter().cloned().fold(f64::INFINITY, f64::min);
+        let spread = (max_recent - min_recent) / max_recent.max(1e-30);
+        if spread < newton_config.stagnation_spread_threshold {
+            NewtonOutcome::Stagnation
+        } else {
+            NewtonOutcome::MaxIterations
+        }
+    } else {
+        NewtonOutcome::MaxIterations
+    };
+
+    let final_residual = residual_history
+        .last()
+        .copied()
+        .map(|r| r / b_norm_global)
+        .unwrap_or(f64::NAN);
+
+    debug!(
+        outcome = ?final_outcome,
+        iterations = newton_config.max_iterations,
+        final_residual,
+        "newton solve completed"
+    );
+
     NewtonResult {
-        converged: false,
+        outcome: final_outcome,
         iterations: newton_config.max_iterations,
-        final_residual: f64::NAN,
+        final_residual,
         total_linear_iterations: total_linear,
     }
 }
@@ -377,7 +595,7 @@ mod tests {
             &newton_config,
             &mut ws,
         );
-        assert!(result.converged, "Newton should converge for linear viscosity");
+        assert!(result.is_converged(), "Newton should converge for linear viscosity");
         assert!(
             result.iterations <= 2,
             "Linear problem should converge in <= 2 Newton iterations, got {}",
@@ -416,7 +634,7 @@ mod tests {
             &mut ws,
         );
         assert!(
-            result.converged,
+            result.is_converged(),
             "Newton should converge for power-law, got {} iterations",
             result.iterations
         );
@@ -485,7 +703,7 @@ mod tests {
             &newton_config,
             &mut ws_n,
         );
-        assert!(newton_result.converged, "Newton should converge");
+        assert!(newton_result.is_converged(), "Newton should converge");
         let mut v_newton = vec![0.0; n_dof];
         pack_velocity(&grid_n, &mut v_newton);
 
@@ -561,8 +779,8 @@ mod tests {
             &mut ws_inexact,
         );
 
-        assert!(r_exact.converged, "Exact Newton should converge");
-        assert!(r_inexact.converged, "Inexact Newton should converge");
+        assert!(r_exact.is_converged(), "Exact Newton should converge");
+        assert!(r_inexact.is_converged(), "Inexact Newton should converge");
 
         // Inexact should use fewer total linear iterations
         assert!(
@@ -571,5 +789,126 @@ mod tests {
             r_inexact.total_linear_iterations,
             r_exact.total_linear_iterations
         );
+    }
+
+    #[test]
+    fn newton_state_convergence_on_stagnant_residual() {
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, n, dx);
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, 1.0);
+            }
+        }
+        let plates = TractionField::two_plates_convergent(n, n, 0.5);
+        let picard_config =
+            PicardConfig { power_law_n: 3.0, strain_rate_min: 1e-3, ..PicardConfig::default() };
+        let newton_config = NewtonConfig {
+            max_iterations: 25,
+            tolerance: 1e-10,
+            state_tolerance: 1e-3,
+            trend_window: 3,
+            ..NewtonConfig::default()
+        };
+        let mut ws = SolverWorkspace::new(n, n);
+        let result = solve_velocity_newton(
+            &mut grid,
+            &plates,
+            1.0,
+            0.0,
+            0.0,
+            &picard_config,
+            &Default::default(),
+            &newton_config,
+            &mut ws,
+        );
+        assert_eq!(
+            result.outcome,
+            NewtonOutcome::ConvergedOnState,
+            "expected state-based convergence, got {:?} at iter {}",
+            result.outcome,
+            result.iterations
+        );
+        assert!(result.iterations < 25);
+    }
+
+    #[test]
+    fn newton_accepts_state_when_residual_stagnates_near_tolerance() {
+        // Configured so the residual-only criterion is unreachable and the
+        // state_tolerance too tight for the moving-but-stable case: the
+        // near-tolerance pathway is the only way out before max_iterations.
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, n, dx);
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, 1.0);
+            }
+        }
+        let plates = TractionField::two_plates_convergent(n, n, 0.5);
+        let picard_config =
+            PicardConfig { power_law_n: 3.0, strain_rate_min: 1e-3, ..PicardConfig::default() };
+        let newton_config = NewtonConfig {
+            max_iterations: 25,
+            tolerance: 1e-6,
+            state_tolerance: 1e-6,
+            stagnation_residual_multiplier: 10.0,
+            stagnation_spread_threshold: 0.15,
+            trend_window: 3,
+            min_iterations_before_classification: 3,
+            ..NewtonConfig::default()
+        };
+        let mut ws = SolverWorkspace::new(n, n);
+        let result = solve_velocity_newton(
+            &mut grid,
+            &plates,
+            1.0,
+            0.0,
+            0.0,
+            &picard_config,
+            &Default::default(),
+            &newton_config,
+            &mut ws,
+        );
+        assert!(
+            result.is_converged(),
+            "expected convergence (residual or state), got {:?} at iter {}",
+            result.outcome,
+            result.iterations
+        );
+        assert!(result.iterations < 25, "should converge before exhausting iterations");
+    }
+
+    #[test]
+    fn newton_outcome_is_converged_helper() {
+        let r1 = NewtonResult {
+            outcome: NewtonOutcome::ConvergedOnResidual,
+            iterations: 5,
+            final_residual: 0.001,
+            total_linear_iterations: 50,
+        };
+        let r2 = NewtonResult {
+            outcome: NewtonOutcome::ConvergedOnState,
+            iterations: 8,
+            final_residual: 0.06,
+            total_linear_iterations: 80,
+        };
+        let r3 = NewtonResult {
+            outcome: NewtonOutcome::Stagnation,
+            iterations: 15,
+            final_residual: 0.06,
+            total_linear_iterations: 150,
+        };
+        let r4 = NewtonResult {
+            outcome: NewtonOutcome::Oscillation,
+            iterations: 7,
+            final_residual: 0.08,
+            total_linear_iterations: 70,
+        };
+        assert!(r1.is_converged());
+        assert!(r2.is_converged());
+        assert!(!r3.is_converged());
+        assert!(!r4.is_converged());
     }
 }
