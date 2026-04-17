@@ -61,6 +61,39 @@ pub struct NewtonConfig {
     pub preconditioner: Preconditioner,
     /// Use inexact Newton (Eisenstat-Walker adaptive inner tolerance).
     pub inexact: bool,
+    /// Tolerance on the relative velocity increment for the state-based
+    /// convergence criterion. Convergence is accepted on state if
+    /// |Δv| / |v| < state_tolerance AND the residual is on a downward
+    /// trend.
+    pub state_tolerance: f64,
+    /// Number of recent iterations to consider for the residual trend
+    /// analysis. The trend is descending if the residual at iteration k
+    /// is less than the residual at iteration k - trend_window.
+    pub trend_window: usize,
+    /// Cosine threshold below which two consecutive Newton steps are
+    /// considered anti-aligned (oscillation indicator). Range (-1, 0).
+    /// Two consecutive iterations below this threshold trigger the
+    /// Oscillation outcome.
+    pub oscillation_cosine_threshold: f64,
+    /// Minimum number of Newton iterations before the state-based
+    /// criterion or oscillation detection can fire. Prevents premature
+    /// classification on the first few iterations where signals are noisy.
+    pub min_iterations_before_classification: usize,
+    /// Multiplier applied to `tolerance` to define the "near-tolerance"
+    /// band used by the second state-convergence pathway. If the residual
+    /// is within `tolerance * b_norm * stagnation_residual_multiplier`
+    /// AND the residual history is flat over the trend window, the
+    /// solver accepts convergence on state even when `relative_step`
+    /// does not pass its own threshold. Catches the case where Newton
+    /// descends quickly to near-tolerance then stagnates due to
+    /// non-smoothness of F(v).
+    pub stagnation_residual_multiplier: f64,
+    /// Spread threshold (relative) used both by the stagnation-based
+    /// state-convergence pathway and by the end-of-loop Stagnation vs
+    /// MaxIterations classification. A residual history is "flat" when
+    /// `(max - min) / max < stagnation_spread_threshold` over the last
+    /// `trend_window + 1` iterations.
+    pub stagnation_spread_threshold: f64,
 }
 
 impl Default for NewtonConfig {
@@ -73,6 +106,12 @@ impl Default for NewtonConfig {
             fd_epsilon_scale: 1e-7,
             preconditioner: Preconditioner::default(),
             inexact: true,
+            state_tolerance: 1e-4,
+            trend_window: 3,
+            oscillation_cosine_threshold: -0.5,
+            min_iterations_before_classification: 3,
+            stagnation_residual_multiplier: 2.0,
+            stagnation_spread_threshold: 0.10,
         }
     }
 }
