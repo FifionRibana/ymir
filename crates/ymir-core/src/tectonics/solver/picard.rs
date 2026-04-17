@@ -7,6 +7,7 @@ use super::config::PicardConfig;
 use super::field::Field2D;
 use super::grid::StaggeredGrid;
 use super::linear_solve::solve_cg;
+use super::smooth::{smooth_saturate, soft_min_harmonic};
 use super::stokes::{apply_stokes, compute_jacobi_precond, compute_rhs};
 use super::traction::TractionField;
 use super::workspace::SolverWorkspace;
@@ -68,7 +69,10 @@ pub fn compute_strain_rate(grid: &StaggeredGrid, out: &mut Field2D) {
     }
 }
 
-/// Compute viscosity from strain rate: η = clamp((ε̇_II + ε_min)^(1/n - 1), η_min, η_max).
+/// Compute viscosity from strain rate: η = smooth_saturate((ε̇_II + ε_min)^(1/n - 1), η_max)
+/// with a hard floor at η_min. The upper saturation is smooth so Newton
+/// does not see a kink at the η_max corner; the lower bound stays hard
+/// because realistic values never approach it.
 pub fn compute_viscosity(
     strain_rate: &Field2D,
     n_exp: f64,
@@ -84,13 +88,15 @@ pub fn compute_viscosity(
     if nx >= PAR_THRESHOLD {
         strain_rate.data().par_iter().zip(eta.data_mut().par_iter_mut()).for_each(
             |(&sr, eta_val)| {
-                *eta_val = (sr + eps_min).powf(exponent).clamp(eta_min, eta_max);
+                let raw = (sr + eps_min).powf(exponent);
+                *eta_val = smooth_saturate(raw, eta_max).max(eta_min);
             },
         );
     } else {
         for k in 0..nx * ny {
             let sr = strain_rate.data()[k];
-            eta.data_mut()[k] = (sr + eps_min).powf(exponent).clamp(eta_min, eta_max);
+            let raw = (sr + eps_min).powf(exponent);
+            eta.data_mut()[k] = smooth_saturate(raw, eta_max).max(eta_min);
         }
     }
 }
@@ -179,15 +185,16 @@ pub fn accumulate_plastic_strain(
     }
 }
 
-/// Apply spatial viscosity multiplier (cratonic rigidity) and re-clamp.
+/// Apply spatial viscosity multiplier (cratonic rigidity) and re-saturate.
+/// The smooth saturation is applied unconditionally so the Newton Jacobian
+/// sees the same function shape regardless of the local multiplier value.
 pub fn apply_eta_multiplier(multiplier: &Field2D, eta_max: f64, eta: &mut Field2D) {
     let nx = multiplier.nx();
     let ny = multiplier.ny();
     for k in 0..nx * ny {
         let m = multiplier.data()[k];
-        if m != 1.0 {
-            eta.data_mut()[k] = (eta.data()[k] * m).min(eta_max);
-        }
+        let raw = eta.data()[k] * m;
+        eta.data_mut()[k] = smooth_saturate(raw, eta_max);
     }
 }
 
