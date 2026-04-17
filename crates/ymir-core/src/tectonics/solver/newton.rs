@@ -82,8 +82,9 @@ pub fn solve_velocity_newton(
     newton_config: &NewtonConfig,
     ws: &mut SolverWorkspace,
 ) -> NewtonResult {
-    let n = grid.n;
-    let n2 = n * n;
+    let nx = grid.nx();
+    let ny = grid.ny();
+    let n2 = nx * ny;
     let n_dof = 2 * n2;
     let mut total_linear = 0usize;
 
@@ -165,8 +166,8 @@ pub fn solve_velocity_newton(
 
         // Separate mini-workspace for the JFNK matvec (avoids borrow conflicts
         // with ws.bicgstab which is also borrowed mutably by solve_bicgstab)
-        let mut jfnk_eta = Field2D::new(n);
-        let mut jfnk_sr = Field2D::new(n);
+        let mut jfnk_eta = Field2D::new(nx, ny);
+        let mut jfnk_sr = Field2D::new(nx, ny);
         let mut jfnk_residual = vec![0.0; n_dof];
 
         // Build preconditioner from frozen η (computed once per Newton step)
@@ -250,7 +251,7 @@ pub fn solve_velocity_newton(
                             out[i] = (jfnk_residual[i] - f_v_base[i]) * inv_eps;
                         }
                     },
-                    |r, z| apply_ssor(r, &stencil, n, omega, z),
+                    |r, z| apply_ssor(r, &stencil, nx, ny, omega, z),
                     &mut ws.bicgstab,
                     newton_config.cg_max_iter,
                     linear_tol,
@@ -282,8 +283,8 @@ pub fn solve_velocity_newton(
         // Ensure the residual decreases by halving α up to 5 times.
         let v_old = ws.v_packed.clone();
         let mut alpha = 1.0_f64;
-        let mut trial_eta = Field2D::new(n);
-        let mut trial_sr = Field2D::new(n);
+        let mut trial_eta = Field2D::new(nx, ny);
+        let mut trial_sr = Field2D::new(nx, ny);
         let mut trial_residual = vec![0.0; n_dof];
         let max_backtracks = 5usize;
         let mut final_alpha = alpha;
@@ -349,7 +350,7 @@ mod tests {
     fn newton_linear_viscosity_converges_in_one() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         for j in 0..n {
             for i in 0..n {
@@ -358,12 +359,12 @@ mod tests {
             }
         }
 
-        let plates = TractionField::uniform(n, 0.1, 0.0);
+        let plates = TractionField::uniform(n, n, 0.1, 0.0);
         let picard_config =
             PicardConfig { power_law_n: 1.0, strain_rate_min: 1e-6, ..PicardConfig::default() };
         let newton_config =
             NewtonConfig { max_iterations: 15, tolerance: 1e-8, ..NewtonConfig::default() };
-        let mut ws = SolverWorkspace::new(n);
+        let mut ws = SolverWorkspace::new(n, n);
 
         let result = solve_velocity_newton(
             &mut grid,
@@ -388,7 +389,7 @@ mod tests {
     fn newton_power_law_converges() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         for j in 0..n {
             for i in 0..n {
@@ -396,12 +397,12 @@ mod tests {
             }
         }
 
-        let plates = TractionField::two_plates_convergent(n, 0.5);
+        let plates = TractionField::two_plates_convergent(n, n, 0.5);
         let picard_config =
             PicardConfig { power_law_n: 3.0, strain_rate_min: 1e-3, ..PicardConfig::default() };
         let newton_config =
             NewtonConfig { max_iterations: 30, tolerance: 1e-4, ..NewtonConfig::default() };
-        let mut ws = SolverWorkspace::new(n);
+        let mut ws = SolverWorkspace::new(n, n);
 
         let result = solve_velocity_newton(
             &mut grid,
@@ -441,14 +442,14 @@ mod tests {
         };
 
         // Run Picard
-        let mut grid_p = StaggeredGrid::new(n, dx);
+        let mut grid_p = StaggeredGrid::new(n, n, dx);
         for j in 0..n {
             for i in 0..n {
                 grid_p.s.set(i, j, 1.0);
             }
         }
-        let plates = TractionField::two_plates_convergent(n, 0.5);
-        let mut ws_p = SolverWorkspace::new(n);
+        let plates = TractionField::two_plates_convergent(n, n, 0.5);
+        let mut ws_p = SolverWorkspace::new(n, n);
         let picard_result = solve_velocity_picard(
             &mut grid_p,
             &plates,
@@ -464,7 +465,7 @@ mod tests {
         pack_velocity(&grid_p, &mut v_picard);
 
         // Run Newton
-        let mut grid_n = StaggeredGrid::new(n, dx);
+        let mut grid_n = StaggeredGrid::new(n, n, dx);
         for j in 0..n {
             for i in 0..n {
                 grid_n.s.set(i, j, 1.0);
@@ -472,7 +473,7 @@ mod tests {
         }
         let newton_config =
             NewtonConfig { max_iterations: 30, tolerance: 1e-6, ..NewtonConfig::default() };
-        let mut ws_n = SolverWorkspace::new(n);
+        let mut ws_n = SolverWorkspace::new(n, n);
         let newton_result = solve_velocity_newton(
             &mut grid_n,
             &plates,
@@ -506,10 +507,10 @@ mod tests {
 
         let picard_config =
             PicardConfig { power_law_n: 3.0, strain_rate_min: 1e-3, ..PicardConfig::default() };
-        let plates = TractionField::two_plates_convergent(n, 0.5);
+        let plates = TractionField::two_plates_convergent(n, n, 0.5);
 
         // Exact Newton (tight inner tolerance)
-        let mut grid_exact = StaggeredGrid::new(n, dx);
+        let mut grid_exact = StaggeredGrid::new(n, n, dx);
         for j in 0..n {
             for i in 0..n {
                 grid_exact.s.set(i, j, 1.0);
@@ -521,7 +522,7 @@ mod tests {
             inexact: false,
             ..NewtonConfig::default()
         };
-        let mut ws_exact = SolverWorkspace::new(n);
+        let mut ws_exact = SolverWorkspace::new(n, n);
         let r_exact = solve_velocity_newton(
             &mut grid_exact,
             &plates,
@@ -535,7 +536,7 @@ mod tests {
         );
 
         // Inexact Newton
-        let mut grid_inexact = StaggeredGrid::new(n, dx);
+        let mut grid_inexact = StaggeredGrid::new(n, n, dx);
         for j in 0..n {
             for i in 0..n {
                 grid_inexact.s.set(i, j, 1.0);
@@ -547,7 +548,7 @@ mod tests {
             inexact: true,
             ..NewtonConfig::default()
         };
-        let mut ws_inexact = SolverWorkspace::new(n);
+        let mut ws_inexact = SolverWorkspace::new(n, n);
         let r_inexact = solve_velocity_newton(
             &mut grid_inexact,
             &plates,

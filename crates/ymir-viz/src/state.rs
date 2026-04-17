@@ -377,7 +377,8 @@ pub struct CenteringState {
     pub original_field: Option<ymir_core::tectonics::solver::field::Field2D>,
     pub original_plate_ids: Option<Vec<usize>>,
     pub original_plates: Option<Vec<ymir_core::tectonics::plates::Plate>>,
-    pub original_grid_size: usize,
+    pub original_grid_width: usize,
+    pub original_grid_height: usize,
     /// Auto-centering shift (from circular mean).
     pub auto_shift: (i32, i32),
     /// Manual offset on top of auto shift.
@@ -399,8 +400,10 @@ pub struct DynamicPlateIds {
     pub boundary_types: Option<Vec<ymir_core::tectonics::boundaries::BoundaryType>>,
     /// Number of active plates remaining.
     pub active_count: usize,
-    /// Grid size (for indexing into ids).
-    pub grid_size: usize,
+    /// Grid width (for indexing into ids as `j * grid_width + i`).
+    pub grid_width: usize,
+    /// Grid height (number of rows in the ids buffer).
+    pub grid_height: usize,
 }
 
 // ── FBM Upscaling ───────────────────────────────────────────────────────
@@ -555,4 +558,96 @@ pub struct LakeCache {
 #[derive(Resource, Default)]
 pub struct CursorWorldPos {
     pub pos: Option<Vec2>,
+}
+
+// ── Grid UI state ────────────────────────────────────────────────────────
+
+/// Named aspect ratio presets for the grid dimensions UI.
+///
+/// These are input-time choices only — they are consumed by the parameter
+/// panel to compute `(grid_width, grid_height)` and never persisted to
+/// `PlateConfig` or `TectonicState`. `Custom(ratio)` is used when the
+/// advanced-mode dimensions don't match any preset.
+#[derive(Default, PartialEq, Clone, Copy, Debug)]
+pub enum AspectPreset {
+    #[default]
+    Square,
+    ThreeTwo,
+    FourThree,
+    SixteenNine,
+    Custom(f32),
+}
+
+impl AspectPreset {
+    pub fn to_ratio(&self) -> f32 {
+        match self {
+            AspectPreset::Square => 1.0,
+            AspectPreset::ThreeTwo => 3.0 / 2.0,
+            AspectPreset::FourThree => 4.0 / 3.0,
+            AspectPreset::SixteenNine => 16.0 / 9.0,
+            AspectPreset::Custom(r) => *r,
+        }
+    }
+
+    pub fn label(&self) -> String {
+        match self {
+            AspectPreset::Square => "1:1".to_string(),
+            AspectPreset::ThreeTwo => "3:2".to_string(),
+            AspectPreset::FourThree => "4:3".to_string(),
+            AspectPreset::SixteenNine => "16:9".to_string(),
+            AspectPreset::Custom(r) => format!("Custom ({:.2})", r),
+        }
+    }
+
+    /// Snap an arbitrary width/height ratio to the nearest named preset.
+    /// Returns `Custom(ratio)` only when the input doesn't closely match
+    /// any preset — otherwise prefers the closest named entry.
+    pub fn snap_nearest(width: usize, height: usize) -> Self {
+        let current = width as f32 / height as f32;
+        let candidates = [
+            AspectPreset::Square,
+            AspectPreset::ThreeTwo,
+            AspectPreset::FourThree,
+            AspectPreset::SixteenNine,
+        ];
+        let nearest = candidates
+            .iter()
+            .min_by(|a, b| {
+                let da = (a.to_ratio() - current).abs();
+                let db = (b.to_ratio() - current).abs();
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .copied()
+            .unwrap_or(AspectPreset::Square);
+        // Accept the named preset only when within ~2% of the user's ratio;
+        // otherwise remember the exact value so the user sees what they set.
+        if (nearest.to_ratio() - current).abs() / current.max(1e-6) < 0.02 {
+            nearest
+        } else {
+            AspectPreset::Custom(current)
+        }
+    }
+}
+
+/// UI-only state remembering the user's grid-size input choices.
+///
+/// The canonical truth is `PlateConfig::grid_width` / `grid_height`. This
+/// resource only tracks the *intent* (resolution + aspect in default mode,
+/// or the mode toggle itself) so that switching between modes feels
+/// continuous. Never read this struct as the simulation's grid size.
+#[derive(Resource)]
+pub struct GridUiState {
+    pub advanced_mode: bool,
+    pub resolution: usize,
+    pub aspect_preset: AspectPreset,
+}
+
+impl Default for GridUiState {
+    fn default() -> Self {
+        Self {
+            advanced_mode: false,
+            resolution: 128,
+            aspect_preset: AspectPreset::Square,
+        }
+    }
 }

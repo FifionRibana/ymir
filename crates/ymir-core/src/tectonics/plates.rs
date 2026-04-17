@@ -107,8 +107,10 @@ pub struct PlateConfig {
     pub velocity_min: f32,
     /// Maximum velocity magnitude (grid units / timestep).
     pub velocity_max: f32,
-    /// Grid size for the tectonic simulation.
-    pub grid_size: usize,
+    /// Grid width (x-axis cell count) for the tectonic simulation.
+    pub grid_width: usize,
+    /// Grid height (y-axis cell count) for the tectonic simulation.
+    pub grid_height: usize,
     /// Gaussian blur sigma applied to initial thickness field to smooth plate boundaries.
     pub boundary_smoothing_sigma: f32,
 }
@@ -121,7 +123,8 @@ impl Default for PlateConfig {
             continental_area_factor: BASE_CONTINENTAL_RATIO as f32,
             velocity_min: 0.5,
             velocity_max: 2.5,
-            grid_size: 128,
+            grid_width: 128,
+            grid_height: 128,
             boundary_smoothing_sigma: 2.0,
         }
     }
@@ -154,19 +157,45 @@ impl PlateConfig {
             ..Default::default()
         }
     }
+
+    /// Set grid dimensions from a resolution (treated as width) and an aspect
+    /// ratio. Height is derived as `round(resolution / aspect_ratio)`, clamped
+    /// to at least 1. Examples:
+    ///
+    /// - `resolution=128, aspect=1.0`      → 128 × 128 (square)
+    /// - `resolution=128, aspect=1.5`      → 128 × 85  (3:2)
+    /// - `resolution=128, aspect=16.0/9.0` → 128 × 72  (16:9)
+    ///
+    /// The aspect ratio is consumed at construction time and not stored.
+    pub fn with_resolution_aspect(mut self, resolution: usize, aspect_ratio: f32) -> Self {
+        self.grid_width = resolution;
+        self.grid_height =
+            ((resolution as f32) / aspect_ratio).round().max(1.0) as usize;
+        self
+    }
+
+    /// Set explicit grid width and height. Advanced mode — use this when the
+    /// desired shape does not match a named aspect ratio.
+    pub fn with_dimensions(mut self, width: usize, height: usize) -> Self {
+        self.grid_width = width;
+        self.grid_height = height;
+        self
+    }
 }
 
 /// Result of plate initialization — everything needed to start the tectonic simulation.
 #[derive(Clone)]
 pub struct PlateInitResult {
-    /// Which plate each cell belongs to (grid_size × grid_size).
+    /// Which plate each cell belongs to (grid_width × grid_height cells, row-major).
     pub plate_ids: Vec<usize>,
     /// Initial crustal thickness field. Continental ≈ 1.0, Oceanic ≈ 0.2.
     pub thickness: GridF32,
     /// The plates themselves with their properties.
     pub plates: Vec<Plate>,
-    /// Grid dimensions.
-    pub grid_size: usize,
+    /// Grid width (x-axis cell count).
+    pub grid_width: usize,
+    /// Grid height (y-axis cell count).
+    pub grid_height: usize,
 }
 
 // ── Core algorithm ────────────────────────────────────────────────────────
@@ -178,7 +207,8 @@ pub struct PlateInitResult {
 /// in both directions to find the shortest path.
 pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResult {
     let mut rng = seed.rng_for("plates");
-    let size = config.grid_size;
+    let nx = config.grid_width;
+    let ny = config.grid_height;
 
     // 1. Place Voronoï seeds randomly on the grid.
     // Clamp the continental plate count defensively. UI enforces
@@ -188,8 +218,8 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
     let num_continental = config.num_continental_plates.min(config.num_plates / 2);
 
     for id in 0..config.num_plates {
-        let seed_x = rng.random::<f32>() * size as f32;
-        let seed_y = rng.random::<f32>() * size as f32;
+        let seed_x = rng.random::<f32>() * nx as f32;
+        let seed_y = rng.random::<f32>() * ny as f32;
 
         let plate_type =
             if id < num_continental { PlateType::Continental } else { PlateType::Oceanic };
@@ -203,19 +233,20 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
     }
 
     // 2. Assign each cell to the nearest plate seed (toroidal distance)
-    let mut plate_ids = vec![0usize; size * size];
-    for y in 0..size {
-        for x in 0..size {
+    let mut plate_ids = vec![0usize; nx * ny];
+    for y in 0..ny {
+        for x in 0..nx {
             let mut best_dist = f32::MAX;
             let mut best_id = 0;
 
             for plate in &plates {
-                let dist = toroidal_distance_sq(
+                let dist = toroidal_distance_sq_2d(
                     x as f32,
                     y as f32,
                     plate.seed_x,
                     plate.seed_y,
-                    size as f32,
+                    nx as f32,
+                    ny as f32,
                 );
                 if dist < best_dist {
                     best_dist = dist;
@@ -223,7 +254,7 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
                 }
             }
 
-            plate_ids[y * size + x] = best_id;
+            plate_ids[y * nx + x] = best_id;
         }
     }
 
@@ -236,12 +267,12 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
     } else {
         0.0
     };
-    let total_cells = size * size;
+    let total_cells = nx * ny;
     let target_total = (continental_fraction * total_cells as f64) as usize;
     let cells_per_continent = if num_continental > 0 { target_total / num_continental } else { 0 };
 
     // Default every cell to oceanic thickness.
-    let mut thickness = GridF32::new(size, size, 0.2);
+    let mut thickness = GridF32::new(nx, ny, 0.2);
 
     // For each continental plate, find all cells in its Voronoï region,
     // sort them by toroidal distance to the seed, and give continental
@@ -253,11 +284,18 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
         let sy = plates[plate_idx].seed_y;
 
         let mut plate_cells: Vec<(usize, f32)> = Vec::new();
-        for y in 0..size {
-            for x in 0..size {
-                let k = y * size + x;
+        for y in 0..ny {
+            for x in 0..nx {
+                let k = y * nx + x;
                 if plate_ids[k] == plate_idx {
-                    let dist_sq = toroidal_distance_sq(x as f32, y as f32, sx, sy, size as f32);
+                    let dist_sq = toroidal_distance_sq_2d(
+                        x as f32,
+                        y as f32,
+                        sx,
+                        sy,
+                        nx as f32,
+                        ny as f32,
+                    );
                     plate_cells.push((k, dist_sq));
                 }
             }
@@ -269,8 +307,8 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
         let n_core = cells_per_continent.min(plate_cells.len());
         for (idx, &(k, _)) in plate_cells.iter().enumerate() {
             if idx < n_core {
-                let y = k / size;
-                let x = k % size;
+                let y = k / nx;
+                let x = k % nx;
                 thickness.set(x, y, 1.0);
             }
             // else: already 0.2 from the default fill — continental shelf.
@@ -282,24 +320,39 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
         thickness = gaussian_blur(&thickness, config.boundary_smoothing_sigma);
     }
 
-    PlateInitResult { plate_ids, thickness, plates, grid_size: size }
+    PlateInitResult { plate_ids, thickness, plates, grid_width: nx, grid_height: ny }
 }
 
 // ── Distance and blur helpers ─────────────────────────────────────────────
 
-/// Toroidal distance between two points on a grid that wraps in both x and y.
-pub fn toroidal_distance(x1: f32, y1: f32, x2: f32, y2: f32, size: f32) -> f32 {
-    toroidal_distance_sq(x1, y1, x2, y2, size).sqrt()
+/// Toroidal distance between two points on a rectangular grid that wraps
+/// in both x and y. `period_x` is the x-axis wrap (grid_width), `period_y`
+/// is the y-axis wrap (grid_height).
+pub fn toroidal_distance_2d(
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    period_x: f32,
+    period_y: f32,
+) -> f32 {
+    toroidal_distance_sq_2d(x1, y1, x2, y2, period_x, period_y).sqrt()
 }
 
-/// Squared toroidal distance between two points on a grid that wraps in both x and y.
-///
+/// Squared toroidal distance between two points on a rectangular grid.
 /// For each axis, takes the shorter path: direct or through the wrap.
-pub fn toroidal_distance_sq(x1: f32, y1: f32, x2: f32, y2: f32, size: f32) -> f32 {
+pub fn toroidal_distance_sq_2d(
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    period_x: f32,
+    period_y: f32,
+) -> f32 {
     let dx = (x1 - x2).abs();
     let dy = (y1 - y2).abs();
-    let dx = dx.min(size - dx);
-    let dy = dy.min(size - dy);
+    let dx = dx.min(period_x - dx);
+    let dy = dy.min(period_y - dy);
     dx * dx + dy * dy
 }
 
@@ -311,13 +364,14 @@ impl PlateInitResult {
     /// traction force at that cell. This is how the Voronoï plate
     /// configuration drives the physics simulation.
     pub fn to_traction_field(&self) -> TractionField {
-        let n = self.grid_size;
-        let mut tx = Field2D::new(n);
-        let mut ty = Field2D::new(n);
+        let nx = self.grid_width;
+        let ny = self.grid_height;
+        let mut tx = Field2D::new(nx, ny);
+        let mut ty = Field2D::new(nx, ny);
 
-        for j in 0..n {
-            for i in 0..n {
-                let plate_id = self.plate_ids[j * n + i];
+        for j in 0..ny {
+            for i in 0..nx {
+                let plate_id = self.plate_ids[j * nx + i];
                 let plate = &self.plates[plate_id];
                 tx.set(i, j, plate.velocity.0 as f64);
                 ty.set(i, j, plate.velocity.1 as f64);
@@ -330,17 +384,20 @@ impl PlateInitResult {
     /// Initialize a StaggeredGrid with the crustal thickness from
     /// the Voronoï plate generation.
     ///
-    /// Creates the grid with the correct size and dx, copies the
-    /// thickness field (f32 → f64), and returns the grid ready
-    /// for the solver.
+    /// Creates the grid with the correct dimensions and dx, copies the
+    /// thickness field (f32 → f64), and returns the grid ready for the
+    /// solver. Cell spacing `dx` is derived from the grid width so that
+    /// the horizontal domain length stays at 1.0 regardless of aspect
+    /// ratio.
     pub fn to_staggered_grid(&self) -> StaggeredGrid {
-        let n = self.grid_size;
-        let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let nx = self.grid_width;
+        let ny = self.grid_height;
+        let dx = 1.0 / nx as f64;
+        let mut grid = StaggeredGrid::new(nx, ny, dx);
 
-        for j in 0..n {
-            for i in 0..n {
-                let s = self.thickness.data[j * n + i] as f64;
+        for j in 0..ny {
+            for i in 0..nx {
+                let s = self.thickness.data[j * nx + i] as f64;
                 grid.s.set(i, j, s);
             }
         }
@@ -362,10 +419,16 @@ pub fn gaussian_blur(grid: &GridF32, sigma: f32) -> GridF32 {
 ///
 /// For each cell, find the nearest active seed. Seeds of inactive
 /// (disappeared) plates are skipped. Ties are broken by lowest plate ID.
-pub fn recompute_voronoi(plate_ids: &mut [usize], plates: &[Plate], grid_size: usize) {
-    let size = grid_size as f32;
-    for y in 0..grid_size {
-        for x in 0..grid_size {
+pub fn recompute_voronoi(
+    plate_ids: &mut [usize],
+    plates: &[Plate],
+    grid_width: usize,
+    grid_height: usize,
+) {
+    let w = grid_width as f32;
+    let h = grid_height as f32;
+    for y in 0..grid_height {
+        for x in 0..grid_width {
             let mut best_dist = f32::MAX;
             let mut best_id = 0;
 
@@ -373,15 +436,21 @@ pub fn recompute_voronoi(plate_ids: &mut [usize], plates: &[Plate], grid_size: u
                 if !plate.active {
                     continue;
                 }
-                let dist =
-                    toroidal_distance_sq(x as f32, y as f32, plate.seed_x, plate.seed_y, size);
+                let dist = toroidal_distance_sq_2d(
+                    x as f32,
+                    y as f32,
+                    plate.seed_x,
+                    plate.seed_y,
+                    w,
+                    h,
+                );
                 if dist < best_dist || (dist == best_dist && plate.id < best_id) {
                     best_dist = dist;
                     best_id = plate.id;
                 }
             }
 
-            plate_ids[y * grid_size + x] = best_id;
+            plate_ids[y * grid_width + x] = best_id;
         }
     }
 }
@@ -391,8 +460,10 @@ pub fn recompute_voronoi(plate_ids: &mut [usize], plates: &[Plate], grid_size: u
 /// Each seed is moved by `dt * v(seed_position)`, where v is bilinearly
 /// interpolated from the staggered grid. Positions wrap periodically.
 pub fn advect_seeds(plates: &mut [Plate], grid: &StaggeredGrid, dt: f64) {
-    let n = grid.n;
-    let n_f = n as f64;
+    let nx = grid.nx();
+    let ny = grid.ny();
+    let nx_f = nx as f64;
+    let ny_f = ny as f64;
 
     for plate in plates.iter_mut() {
         if !plate.active {
@@ -406,8 +477,8 @@ pub fn advect_seeds(plates: &mut [Plate], grid: &StaggeredGrid, dt: f64) {
         let vy = interpolate_vy(grid, sx, sy);
 
         // Move seed with periodic wrapping
-        plate.seed_x = ((sx + dt * vx) % n_f + n_f) as f32 % n as f32;
-        plate.seed_y = ((sy + dt * vy) % n_f + n_f) as f32 % n as f32;
+        plate.seed_x = ((sx + dt * vx) % nx_f + nx_f) as f32 % nx as f32;
+        plate.seed_y = ((sy + dt * vy) % ny_f + ny_f) as f32 % ny as f32;
     }
 }
 
@@ -427,11 +498,12 @@ pub fn advect_plate_ids(
     grid: &StaggeredGrid,
     dt: f64,
 ) {
-    let n = grid.n;
+    let nx = grid.nx();
+    let ny = grid.ny();
 
     // Phase 1: accumulate forward displacement (dt × v) at each cell
-    for j in 0..n {
-        for i in 0..n {
+    for j in 0..ny {
+        for i in 0..nx {
             let vx = interpolate_vx(grid, i as f64, j as f64);
             let vy = interpolate_vy(grid, i as f64, j as f64);
 
@@ -445,8 +517,8 @@ pub fn advect_plate_ids(
     // the cell to the LEFT (i - shift_x). Work on a copy to avoid order artifacts.
     let old_ids = ids.to_vec();
 
-    for j in 0..n {
-        for i in 0..n {
+    for j in 0..ny {
+        for i in 0..nx {
             let dx = disp_x.get(i, j);
             let dy = disp_y.get(i, j);
 
@@ -457,10 +529,10 @@ pub fn advect_plate_ids(
                 continue;
             }
 
-            let src_i = ((i as i64 - shift_x).rem_euclid(n as i64)) as usize;
-            let src_j = ((j as i64 - shift_y).rem_euclid(n as i64)) as usize;
+            let src_i = ((i as i64 - shift_x).rem_euclid(nx as i64)) as usize;
+            let src_j = ((j as i64 - shift_y).rem_euclid(ny as i64)) as usize;
 
-            ids[j * n + i] = old_ids[src_j * n + src_i];
+            ids[j * nx + i] = old_ids[src_j * nx + src_i];
 
             // Keep the fractional remainder
             disp_x.set(i, j, dx - shift_x as f64);
@@ -475,12 +547,12 @@ pub fn advect_plate_ids(
 /// plate IDs alternate in a checkerboard pattern. This function reassigns
 /// cells that are isolated or in thin protrusions to the majority plate
 /// among their 8-connected neighbors, keeping boundaries sharp at 1-cell width.
-pub fn cleanup_plate_ids(ids: &mut [usize], n: usize) {
+pub fn cleanup_plate_ids(ids: &mut [usize], nx: usize, ny: usize) {
     let old_ids = ids.to_vec();
 
-    for j in 0..n {
-        for i in 0..n {
-            let k = j * n + i;
+    for j in 0..ny {
+        for i in 0..nx {
+            let k = j * nx + i;
             let my_id = old_ids[k];
 
             // Count neighbors per plate ID; supports up to 256 plates
@@ -490,9 +562,9 @@ pub fn cleanup_plate_ids(ids: &mut [usize], n: usize) {
             for &(di, dj) in
                 &[(-1isize, -1isize), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
             {
-                let ni = ((i as isize + di).rem_euclid(n as isize)) as usize;
-                let nj = ((j as isize + dj).rem_euclid(n as isize)) as usize;
-                let nid = old_ids[nj * n + ni];
+                let ni = ((i as isize + di).rem_euclid(nx as isize)) as usize;
+                let nj = ((j as isize + dj).rem_euclid(ny as isize)) as usize;
+                let nid = old_ids[nj * nx + ni];
                 if nid < counts.len() {
                     counts[nid] += 1;
                 }
@@ -522,7 +594,8 @@ pub fn cleanup_plate_ids(ids: &mut [usize], n: usize) {
 /// Updates `cell_count`, `mean_thickness`, `mean_velocity`, and
 /// `centroid_x`/`centroid_y` (circular mean on the torus) for each plate.
 pub fn update_plate_stats(ids: &[usize], plates: &mut [Plate], grid: &StaggeredGrid) {
-    let n = grid.n;
+    let nx = grid.nx();
+    let ny = grid.ny();
     let tau = std::f64::consts::TAU;
 
     // Circular mean accumulators (local, not stored in Plate)
@@ -537,9 +610,9 @@ pub fn update_plate_stats(ids: &[usize], plates: &mut [Plate], grid: &StaggeredG
         plate.mean_velocity = (0.0, 0.0);
     }
 
-    for j in 0..n {
-        for i in 0..n {
-            let pid = ids[j * n + i];
+    for j in 0..ny {
+        for i in 0..nx {
+            let pid = ids[j * nx + i];
             if pid >= plates.len() {
                 continue;
             }
@@ -552,8 +625,8 @@ pub fn update_plate_stats(ids: &[usize], plates: &mut [Plate], grid: &StaggeredG
             plate.mean_velocity.0 += vx as f32;
             plate.mean_velocity.1 += vy as f32;
 
-            let theta_x = tau * i as f64 / n as f64;
-            let theta_y = tau * j as f64 / n as f64;
+            let theta_x = tau * i as f64 / nx as f64;
+            let theta_y = tau * j as f64 / ny as f64;
             sin_x[pid] += theta_x.sin();
             cos_x[pid] += theta_x.cos();
             sin_y[pid] += theta_y.sin();
@@ -567,11 +640,11 @@ pub fn update_plate_stats(ids: &[usize], plates: &mut [Plate], grid: &StaggeredG
             plate.mean_thickness /= c;
             plate.mean_velocity.0 /= c;
             plate.mean_velocity.1 /= c;
-            plate.centroid_x = (sin_x[pid].atan2(cos_x[pid]) * n as f64 / tau) as f32;
-            plate.centroid_y = (sin_y[pid].atan2(cos_y[pid]) * n as f64 / tau) as f32;
-            // Wrap to [0, n)
-            plate.centroid_x = ((plate.centroid_x % n as f32) + n as f32) % n as f32;
-            plate.centroid_y = ((plate.centroid_y % n as f32) + n as f32) % n as f32;
+            plate.centroid_x = (sin_x[pid].atan2(cos_x[pid]) * nx as f64 / tau) as f32;
+            plate.centroid_y = (sin_y[pid].atan2(cos_y[pid]) * ny as f64 / tau) as f32;
+            // Wrap to [0, nx) and [0, ny)
+            plate.centroid_x = ((plate.centroid_x % nx as f32) + nx as f32) % nx as f32;
+            plate.centroid_y = ((plate.centroid_y % ny as f32) + ny as f32) % ny as f32;
         }
     }
 }
@@ -581,7 +654,7 @@ pub fn update_plate_stats(ids: &[usize], plates: &mut [Plate], grid: &StaggeredG
 pub fn interpolate_vx(grid: &StaggeredGrid, px: f64, py: f64) -> f64 {
     let fx = px;
     let fy = py - 0.5;
-    bilinear_sample_field(&grid.vx, grid.n, fx, fy)
+    bilinear_sample_field(&grid.vx, grid.nx(), grid.ny(), fx, fy)
 }
 
 /// Bilinear interpolation of vy at an arbitrary point (px, py).
@@ -589,21 +662,22 @@ pub fn interpolate_vx(grid: &StaggeredGrid, px: f64, py: f64) -> f64 {
 pub fn interpolate_vy(grid: &StaggeredGrid, px: f64, py: f64) -> f64 {
     let fx = px - 0.5;
     let fy = py;
-    bilinear_sample_field(&grid.vy, grid.n, fx, fy)
+    bilinear_sample_field(&grid.vy, grid.nx(), grid.ny(), fx, fy)
 }
 
 /// Bilinear interpolation on a periodic Field2D.
-fn bilinear_sample_field(field: &Field2D, n: usize, fx: f64, fy: f64) -> f64 {
-    let nf = n as f64;
+fn bilinear_sample_field(field: &Field2D, nx: usize, ny: usize, fx: f64, fy: f64) -> f64 {
+    let nxf = nx as f64;
+    let nyf = ny as f64;
 
-    // Wrap to [0, n)
-    let fx = ((fx % nf) + nf) % nf;
-    let fy = ((fy % nf) + nf) % nf;
+    // Wrap to [0, nx) × [0, ny)
+    let fx = ((fx % nxf) + nxf) % nxf;
+    let fy = ((fy % nyf) + nyf) % nyf;
 
-    let x0 = fx.floor() as usize % n;
-    let y0 = fy.floor() as usize % n;
-    let x1 = (x0 + 1) % n;
-    let y1 = (y0 + 1) % n;
+    let x0 = fx.floor() as usize % nx;
+    let y0 = fy.floor() as usize % ny;
+    let x1 = (x0 + 1) % nx;
+    let y1 = (y0 + 1) % ny;
 
     let tx = fx - fx.floor();
     let ty = fy - fy.floor();
@@ -629,12 +703,14 @@ pub fn apply_subduction_consumption(
     threshold: f64,
 ) {
     use crate::tectonics::boundaries::BoundaryType;
-    let n = grid.n;
-    let idx = &grid.idx;
+    let nx = grid.nx();
+    let ny = grid.ny();
+    let idx_x = grid.idx_x();
+    let idx_y = grid.idx_y();
 
-    for j in 0..n {
-        for i in 0..n {
-            let k = j * n + i;
+    for j in 0..ny {
+        for i in 0..nx {
+            let k = j * nx + i;
             let btype = &boundary_field.boundary_type[k];
 
             let is_subducting =
@@ -646,11 +722,15 @@ pub fn apply_subduction_consumption(
             }
 
             let my_id = ids[k];
-            let neighbors =
-                [(idx.next(i), j), (idx.prev(i), j), (i, idx.next(j)), (i, idx.prev(j))];
+            let neighbors = [
+                (idx_x.next(i), j),
+                (idx_x.prev(i), j),
+                (i, idx_y.next(j)),
+                (i, idx_y.prev(j)),
+            ];
 
             for &(ni, nj) in &neighbors {
-                let nk = nj * n + ni;
+                let nk = nj * nx + ni;
                 if ids[nk] != my_id && grid.s.get(ni, nj) > grid.s.get(i, j) {
                     ids[k] = ids[nk];
                     break;
@@ -673,13 +753,14 @@ pub fn apply_rift_creation(
     threshold: f64,
 ) {
     use crate::tectonics::boundaries::BoundaryType;
-    let n = grid.n;
+    let nx = grid.nx();
+    let ny = grid.ny();
 
     // Pass 1: collect all cells that qualify for rift creation
-    let mut candidates = vec![false; n * n];
-    for j in 0..n {
-        for i in 0..n {
-            let k = j * n + i;
+    let mut candidates = vec![false; nx * ny];
+    for j in 0..ny {
+        for i in 0..nx {
+            let k = j * nx + i;
             if boundary_field.boundary_type[k] != BoundaryType::Rift {
                 continue;
             }
@@ -695,10 +776,10 @@ pub fn apply_rift_creation(
     }
 
     // Pass 2: connected component labeling (4-connectivity, periodic)
-    let mut visited = vec![false; n * n];
+    let mut visited = vec![false; nx * ny];
     let mut components: Vec<Vec<usize>> = Vec::new();
 
-    for k in 0..n * n {
+    for k in 0..nx * ny {
         if !candidates[k] || visited[k] {
             continue;
         }
@@ -709,16 +790,16 @@ pub fn apply_rift_creation(
 
         while let Some(ck) = queue.pop_front() {
             group.push(ck);
-            let ci = ck % n;
-            let cj = ck / n;
+            let ci = ck % nx;
+            let cj = ck / nx;
             let neighbors = [
-                ((ci + 1) % n, cj),
-                ((ci + n - 1) % n, cj),
-                (ci, (cj + 1) % n),
-                (ci, (cj + n - 1) % n),
+                ((ci + 1) % nx, cj),
+                ((ci + nx - 1) % nx, cj),
+                (ci, (cj + 1) % ny),
+                (ci, (cj + ny - 1) % ny),
             ];
             for &(ni, nj) in &neighbors {
-                let nk = nj * n + ni;
+                let nk = nj * nx + ni;
                 if candidates[nk] && !visited[nk] {
                     visited[nk] = true;
                     queue.push_back(nk);
@@ -733,8 +814,8 @@ pub fn apply_rift_creation(
         let new_id = *next_id;
         *next_id += 1;
 
-        let ci = component[0] % n;
-        let cj = component[0] / n;
+        let ci = component[0] % nx;
+        let cj = component[0] / nx;
         plates.push(Plate::new(new_id, PlateType::Oceanic, (0.0, 0.0), ci as f32, cj as f32));
 
         for &k in component {
@@ -755,7 +836,8 @@ pub fn detect_fragmentation(
     ids: &mut [usize],
     plates: &mut Vec<Plate>,
     next_id: &mut usize,
-    n: usize,
+    nx: usize,
+    ny: usize,
     grid: &StaggeredGrid,
     connectivity_threshold: f64,
 ) {
@@ -763,7 +845,7 @@ pub fn detect_fragmentation(
         plates.iter().filter(|p| p.active && p.cell_count > 0).map(|p| p.id).collect();
 
     for &pid in &active_ids {
-        let cells: Vec<usize> = (0..n * n).filter(|&k| ids[k] == pid).collect();
+        let cells: Vec<usize> = (0..nx * ny).filter(|&k| ids[k] == pid).collect();
         if cells.len() < 4 {
             continue;
         }
@@ -773,7 +855,7 @@ pub fn detect_fragmentation(
         }
 
         // BFS flood fill with thickness-aware connectivity
-        let mut visited = vec![false; n * n];
+        let mut visited = vec![false; nx * ny];
         let mut components: Vec<Vec<usize>> = Vec::new();
         let mut thin_cells: Vec<usize> = Vec::new();
 
@@ -782,7 +864,7 @@ pub fn detect_fragmentation(
                 continue;
             }
             // Thin cells don't start components
-            if grid.s.get(start % n, start / n) < connectivity_threshold {
+            if grid.s.get(start % nx, start / nx) < connectivity_threshold {
                 thin_cells.push(start);
                 visited[start] = true;
                 continue;
@@ -795,16 +877,16 @@ pub fn detect_fragmentation(
 
             while let Some(k) = queue.pop_front() {
                 component.push(k);
-                let ci = k % n;
-                let cj = k / n;
+                let ci = k % nx;
+                let cj = k / nx;
                 let neighbors = [
-                    ((ci + 1) % n, cj),
-                    ((ci + n - 1) % n, cj),
-                    (ci, (cj + 1) % n),
-                    (ci, (cj + n - 1) % n),
+                    ((ci + 1) % nx, cj),
+                    ((ci + nx - 1) % nx, cj),
+                    (ci, (cj + 1) % ny),
+                    (ci, (cj + ny - 1) % ny),
                 ];
                 for &(ni, nj) in &neighbors {
-                    let nk = nj * n + ni;
+                    let nk = nj * nx + ni;
                     if visited[nk] || ids[nk] != pid {
                         continue;
                     }
@@ -835,8 +917,8 @@ pub fn detect_fragmentation(
             *next_id += 1;
 
             let parent_vel = plates[pid].velocity;
-            let ci = component[0] % n;
-            let cj = component[0] / n;
+            let ci = component[0] % nx;
+            let cj = component[0] / nx;
             plates.push(Plate::new(
                 new_id,
                 plates[pid].plate_type,
@@ -865,16 +947,16 @@ pub fn detect_fragmentation(
                 if ids[k] != pid {
                     continue;
                 }
-                let ci = k % n;
-                let cj = k / n;
+                let ci = k % nx;
+                let cj = k / nx;
                 let neighbors = [
-                    ((ci + 1) % n, cj),
-                    ((ci + n - 1) % n, cj),
-                    (ci, (cj + 1) % n),
-                    (ci, (cj + n - 1) % n),
+                    ((ci + 1) % nx, cj),
+                    ((ci + nx - 1) % nx, cj),
+                    (ci, (cj + 1) % ny),
+                    (ci, (cj + ny - 1) % ny),
                 ];
                 for &(ni, nj) in &neighbors {
-                    let nk = nj * n + ni;
+                    let nk = nj * nx + ni;
                     if ids[nk] != pid {
                         ids[k] = ids[nk];
                         changed = true;
@@ -919,15 +1001,17 @@ pub fn rebuild_traction_smooth(
     plates: &[Plate],
     disp_x: &Field2D,
     disp_y: &Field2D,
-    grid_size: usize,
+    grid_width: usize,
+    grid_height: usize,
 ) -> TractionField {
-    let mut tx = Field2D::new(grid_size);
-    let mut ty = Field2D::new(grid_size);
-    let n = grid_size;
+    let nx = grid_width;
+    let ny = grid_height;
+    let mut tx = Field2D::new(nx, ny);
+    let mut ty = Field2D::new(nx, ny);
 
-    for j in 0..n {
-        for i in 0..n {
-            let k = j * n + i;
+    for j in 0..ny {
+        for i in 0..nx {
+            let k = j * nx + i;
             let pid = plate_ids[k];
             let plate = &plates[pid];
 
@@ -941,11 +1025,11 @@ pub fn rebuild_traction_smooth(
             let wx = smoothstep(dx.abs() * 2.0);
             let wy = smoothstep(dy.abs() * 2.0);
 
-            let ni_x = if dx > 0.0 { (i + 1) % n } else { (i + n - 1) % n };
-            let ni_y = if dy > 0.0 { (j + 1) % n } else { (j + n - 1) % n };
+            let ni_x = if dx > 0.0 { (i + 1) % nx } else { (i + nx - 1) % nx };
+            let ni_y = if dy > 0.0 { (j + 1) % ny } else { (j + ny - 1) % ny };
 
-            let pid_nx = plate_ids[j * n + ni_x];
-            let pid_ny = plate_ids[ni_y * n + i];
+            let pid_nx = plate_ids[j * nx + ni_x];
+            let pid_ny = plate_ids[ni_y * nx + i];
 
             let neighbor_tx_x = plates[pid_nx].velocity.0 as f64;
             let neighbor_ty_x = plates[pid_nx].velocity.1 as f64;
@@ -976,13 +1060,20 @@ fn smoothstep(t: f64) -> f64 {
 }
 
 /// Rebuild the traction field from current plate_ids and plate velocities.
-pub fn rebuild_traction(plate_ids: &[usize], plates: &[Plate], grid_size: usize) -> TractionField {
-    let mut tx = Field2D::new(grid_size);
-    let mut ty = Field2D::new(grid_size);
+pub fn rebuild_traction(
+    plate_ids: &[usize],
+    plates: &[Plate],
+    grid_width: usize,
+    grid_height: usize,
+) -> TractionField {
+    let nx = grid_width;
+    let ny = grid_height;
+    let mut tx = Field2D::new(nx, ny);
+    let mut ty = Field2D::new(nx, ny);
 
-    for j in 0..grid_size {
-        for i in 0..grid_size {
-            let pid = plate_ids[j * grid_size + i];
+    for j in 0..ny {
+        for i in 0..nx {
+            let pid = plate_ids[j * nx + i];
             let plate = &plates[pid];
             // Use plate.velocity (initial + slab pull), NOT mean_velocity (solved response).
             // The traction is the driving force from mantle convection, not the resulting flow.
@@ -1009,27 +1100,36 @@ pub fn compute_viscosity_multiplier(
     plates: &[Plate],
     config: &CratonicConfig,
 ) {
-    let n = grid.n;
+    let nx = grid.nx();
+    let ny = grid.ny();
 
     if !config.enabled || config.max_factor <= 1.0 {
-        for k in 0..n * n {
+        for k in 0..nx * ny {
             grid.eta_multiplier.data_mut()[k] = 1.0;
         }
         return;
     }
 
-    let size = n as f32;
+    let w = nx as f32;
+    let h = ny as f32;
 
     // Step 1: Find maximum Voronoï radius for each continental plate.
     let mut max_radius = vec![0.0_f32; plates.len()];
-    for j in 0..n {
-        for i in 0..n {
-            let pid = plate_ids[j * n + i];
+    for j in 0..ny {
+        for i in 0..nx {
+            let pid = plate_ids[j * nx + i];
             let plate = &plates[pid];
             if plate.plate_type != PlateType::Continental || !plate.active {
                 continue;
             }
-            let dist = toroidal_distance(i as f32, j as f32, plate.seed_x, plate.seed_y, size);
+            let dist = toroidal_distance_2d(
+                i as f32,
+                j as f32,
+                plate.seed_x,
+                plate.seed_y,
+                w,
+                h,
+            );
             if dist > max_radius[pid] {
                 max_radius[pid] = dist;
             }
@@ -1037,9 +1137,9 @@ pub fn compute_viscosity_multiplier(
     }
 
     // Step 2: Compute multiplier per cell.
-    for j in 0..n {
-        for i in 0..n {
-            let pid = plate_ids[j * n + i];
+    for j in 0..ny {
+        for i in 0..nx {
+            let pid = plate_ids[j * nx + i];
             let plate = &plates[pid];
 
             if plate.plate_type != PlateType::Continental || !plate.active {
@@ -1053,7 +1153,14 @@ pub fn compute_viscosity_multiplier(
                 continue;
             }
 
-            let dist = toroidal_distance(i as f32, j as f32, plate.seed_x, plate.seed_y, size);
+            let dist = toroidal_distance_2d(
+                i as f32,
+                j as f32,
+                plate.seed_x,
+                plate.seed_y,
+                w,
+                h,
+            );
             let d_norm = (dist / radius).min(1.0);
 
             // Decay: f = (1 - d^p), from 1 at center to 0 at edge
@@ -1074,12 +1181,57 @@ mod tests {
     #[test]
     fn test_toroidal_distance() {
         // Adjacent points: distance² = 1
-        let d = toroidal_distance_sq(1.0, 1.0, 2.0, 1.0, 10.0);
+        let d = toroidal_distance_sq_2d(1.0, 1.0, 2.0, 1.0, 10.0, 10.0);
         assert!((d - 1.0).abs() < 1e-6, "expected 1.0, got {d}");
 
         // x=1 and x=9 on a size=10 grid: direct=8, wrap=2, min=2 → d²=4
-        let d = toroidal_distance_sq(1.0, 0.0, 9.0, 0.0, 10.0);
+        let d = toroidal_distance_sq_2d(1.0, 0.0, 9.0, 0.0, 10.0, 10.0);
         assert!((d - 4.0).abs() < 1e-6, "expected 4.0, got {d}");
+    }
+
+    /// The 2D toroidal distance must use `period_x` for the x-difference
+    /// and `period_y` for the y-difference. Swapping them goes unnoticed
+    /// on square grids but produces the wrong distance — and so the
+    /// wrong Voronoï assignment — on rectangular tori.
+    #[test]
+    fn test_toroidal_distance_rectangular() {
+        // 10×4 grid. x-wrap period = 10, y-wrap period = 4.
+
+        // x wraps: (9, 0) → (0, 0) is 1 cell via x-wrap (10 - 9 = 1).
+        let d = toroidal_distance_2d(9.0, 0.0, 0.0, 0.0, 10.0, 4.0);
+        assert!((d - 1.0).abs() < 1e-6, "x-wrap on 10×4: expected 1.0, got {d}");
+
+        // y wraps: (0, 3) → (0, 0) is 1 cell via y-wrap (4 - 3 = 1).
+        let d = toroidal_distance_2d(0.0, 3.0, 0.0, 0.0, 10.0, 4.0);
+        assert!((d - 1.0).abs() < 1e-6, "y-wrap on 10×4: expected 1.0, got {d}");
+
+        // No wrap needed in x (3 < 10/2): direct distance 3.
+        let d = toroidal_distance_2d(3.0, 0.0, 0.0, 0.0, 10.0, 4.0);
+        assert!((d - 3.0).abs() < 1e-6, "direct x on 10×4: expected 3.0, got {d}");
+
+        // Axis-asymmetry: (5, 2) → (0, 0).
+        //   - On a 10×4 torus: dx = min(5, 10-5) = 5, dy = min(2, 4-2) = 2 → √29
+        //   - On a 4×10 torus: dx = min(5, 4-5) ... here 5 > 4/2 so dx = |4-5| = 1,
+        //     dy = min(2, 10-2) = 2 → √5
+        // A bug swapping period_x and period_y would return the same value
+        // for both orientations; the correct implementation gives √29 vs √5.
+        let d_wide = toroidal_distance_2d(5.0, 2.0, 0.0, 0.0, 10.0, 4.0);
+        let d_tall = toroidal_distance_2d(5.0, 2.0, 0.0, 0.0, 4.0, 10.0);
+        let expected_wide = (5.0_f32.powi(2) + 2.0_f32.powi(2)).sqrt();
+        let expected_tall = (1.0_f32.powi(2) + 2.0_f32.powi(2)).sqrt();
+        assert!(
+            (d_wide - expected_wide).abs() < 1e-6,
+            "10×4 (5,2)→(0,0): expected {expected_wide}, got {d_wide}"
+        );
+        assert!(
+            (d_tall - expected_tall).abs() < 1e-6,
+            "4×10 (5,2)→(0,0): expected {expected_tall}, got {d_tall}"
+        );
+        assert!(
+            (d_wide - d_tall).abs() > 1e-3,
+            "Distance should differ on 10×4 vs 4×10; a period swap would \
+             make them identical. wide={d_wide}, tall={d_tall}"
+        );
     }
 
     #[test]
@@ -1094,12 +1246,78 @@ mod tests {
         assert_eq!(result1.thickness.data, result2.thickness.data);
     }
 
+    /// Blur a delta function on a coprime rectangular grid and verify
+    /// energy wraps correctly on both axes. Coprime dimensions ensure a
+    /// horizontal-pass bug that uses `ny` for modulo instead of `nx`
+    /// puts the wrapped energy at a different cell, which we can detect
+    /// by sampling the expected wrap position.
+    #[test]
+    fn gaussian_blur_rectangular_wrap() {
+        let nx = 13;
+        let ny = 7;
+        let mut field = GridF32::new(nx, ny, 0.0);
+        // Delta at the right edge, middle row.
+        field.set(nx - 1, 3, 1.0);
+
+        let blurred = gaussian_blur(&field, 1.5);
+
+        // Total mass is preserved (blur normalises the kernel).
+        let total: f32 = blurred.data.iter().sum();
+        assert!((total - 1.0).abs() < 1e-5, "blur mass drift: {total}");
+
+        // The delta is at the RIGHT edge, so x-wrap carries energy to
+        // column 0 in the SAME row. A mistake that wraps with `ny=7`
+        // instead of `nx=13` would deposit energy at column (nx-1) % ny
+        // = 12 % 7 = 5, not at column 0.
+        let wrapped_x = blurred.data[3 * nx + 0]; // (0, 3) via x-wrap
+        let bogus_wrap = blurred.data[3 * nx + 5]; // (5, 3) — wrap-with-ny bug
+        assert!(
+            wrapped_x > 1e-3,
+            "x-wrap should deposit energy at (0, 3) but got {wrapped_x}"
+        );
+        assert!(
+            wrapped_x > bogus_wrap * 5.0,
+            "x-wrap landed at wrong cell: (0,3)={wrapped_x} vs (5,3)={bogus_wrap}. \
+             Likely the blur used ny instead of nx for horizontal wrap."
+        );
+
+        // The delta is in the middle row (j=3), so the vertical pass
+        // spreads energy into j=2 and j=4 in the same column.
+        let up = blurred.data[2 * nx + (nx - 1)];
+        let down = blurred.data[4 * nx + (nx - 1)];
+        assert!(up > 1e-3 && down > 1e-3, "vertical spread missing: up={up}, down={down}");
+    }
+
+    /// Both PlateConfig input modes must agree on canonical storage.
+    /// `with_resolution_aspect(w, r)` sets (w, round(w/r)); a manual
+    /// `with_dimensions(w, h)` with the same h must produce an equivalent
+    /// config (same grid_width, grid_height, and all other fields).
+    #[test]
+    fn plateconfig_input_modes_agree() {
+        let r = 1.5_f32;
+        let w = 128usize;
+        let h = ((w as f32) / r).round() as usize;
+
+        let a = PlateConfig::default().with_resolution_aspect(w, r);
+        let b = PlateConfig::default().with_dimensions(w, h);
+
+        assert_eq!(a.grid_width, b.grid_width);
+        assert_eq!(a.grid_height, b.grid_height);
+        assert_eq!(a.grid_width, 128);
+        assert_eq!(a.grid_height, 85);
+
+        // Non-dimensional fields also match (both came from default()).
+        assert_eq!(a.num_plates, b.num_plates);
+        assert_eq!(a.num_continental_plates, b.num_continental_plates);
+    }
+
     #[test]
     fn test_plate_count_and_types() {
         let config = PlateConfig {
             num_plates: 10,
             num_continental_plates: 3,
-            grid_size: 64,
+            grid_width: 64,
+            grid_height: 64,
             ..Default::default()
         };
         let seed = WorldSeed::new(123);
@@ -1113,7 +1331,7 @@ mod tests {
 
     #[test]
     fn test_all_cells_assigned() {
-        let config = PlateConfig { grid_size: 32, ..Default::default() };
+        let config = PlateConfig { grid_width: 32, grid_height: 32, ..Default::default() };
         let seed = WorldSeed::new(99);
         let result = generate_plates(&config, &seed);
 
@@ -1125,7 +1343,8 @@ mod tests {
     #[test]
     fn test_thickness_values() {
         let config = PlateConfig {
-            grid_size: 64,
+            grid_width: 64,
+            grid_height: 64,
             boundary_smoothing_sigma: 0.0, // no blur → exact values
             ..Default::default()
         };
@@ -1148,7 +1367,8 @@ mod tests {
         // sides of the grid can belong to the same plate.
         let config = PlateConfig {
             num_plates: 2,
-            grid_size: 32,
+            grid_width: 32,
+            grid_height: 32,
             boundary_smoothing_sigma: 0.0,
             ..Default::default()
         };
@@ -1158,7 +1378,8 @@ mod tests {
         // At least some cell at x=0 and x=31 should exist — just verify no panic
         let _id_left = result.plate_ids[0];
         let _id_right = result.plate_ids[31];
-        assert_eq!(result.grid_size, 32);
+        assert_eq!(result.grid_width, 32);
+        assert_eq!(result.grid_height, 32);
     }
 
     // ── Dynamic boundary tests ───────────────────────────────────────────
@@ -1167,7 +1388,7 @@ mod tests {
     fn seeds_move_with_velocity() {
         let n = 32;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         // Uniform rightward velocity
         for j in 0..n {
@@ -1202,7 +1423,7 @@ mod tests {
     fn seed_wraps_periodically() {
         let n = 32;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         for j in 0..n {
             for i in 0..n {
@@ -1270,7 +1491,7 @@ mod tests {
             },
         ];
 
-        recompute_voronoi(&mut plate_ids, &plates, n);
+        recompute_voronoi(&mut plate_ids, &plates, n, n);
         let disappeared = detect_disappeared_plates(&plate_ids, &mut plates);
 
         // When two seeds are at the same position, the one with lower ID wins
@@ -1282,7 +1503,8 @@ mod tests {
     fn recompute_voronoi_matches_generate_plates() {
         let config = PlateConfig {
             num_plates: 4,
-            grid_size: 32,
+            grid_width: 32,
+            grid_height: 32,
             boundary_smoothing_sigma: 0.0,
             ..Default::default()
         };
@@ -1291,7 +1513,7 @@ mod tests {
 
         // Recompute from the same seeds
         let mut plate_ids = vec![0usize; 32 * 32];
-        recompute_voronoi(&mut plate_ids, &result.plates, 32);
+        recompute_voronoi(&mut plate_ids, &result.plates, 32, 32);
 
         assert_eq!(plate_ids, result.plate_ids);
     }
@@ -1331,7 +1553,7 @@ mod tests {
         ];
 
         let mut plate_ids = vec![0usize; n * n];
-        recompute_voronoi(&mut plate_ids, &plates, n);
+        recompute_voronoi(&mut plate_ids, &plates, n, n);
 
         // All cells should belong to plate 0 since plate 1 is inactive
         assert!(plate_ids.iter().all(|&id| id == 0));
@@ -1343,7 +1565,7 @@ mod tests {
     fn cratonic_multiplier_is_highest_at_seed() {
         let n = 32;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         let plate_ids: Vec<usize> = vec![0; n * n];
         let plates = vec![Plate {
@@ -1377,7 +1599,7 @@ mod tests {
     fn oceanic_plates_have_no_rigidity() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         let plate_ids: Vec<usize> = vec![0; n * n];
         let plates = vec![Plate {
@@ -1410,7 +1632,7 @@ mod tests {
     fn disabled_gives_uniform_multiplier() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         let plate_ids: Vec<usize> = vec![0; n * n];
         let plates = vec![Plate {

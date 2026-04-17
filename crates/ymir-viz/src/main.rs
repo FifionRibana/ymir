@@ -61,6 +61,7 @@ fn main() {
         .init_resource::<state::Toasts>()
         .init_resource::<state::RunTimer>()
         .init_resource::<state::DynamicPlateIds>()
+        .init_resource::<state::GridUiState>()
         .add_plugins((
             camera::CameraPlugin,
             terrain_view::TerrainViewPlugin,
