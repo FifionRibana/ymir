@@ -1,29 +1,31 @@
 //! Core 2D field and periodic indexing for the thin viscous sheet solver.
 
-/// Row-major N×N field of f64 values.
+/// Row-major nx-by-ny field of f64 values. Row stride is `nx` (number of
+/// columns per row). Indexing convention: `data[j * nx + i]`.
 #[derive(Clone)]
 pub struct Field2D {
     data: Vec<f64>,
-    n: usize,
+    nx: usize,
+    ny: usize,
 }
 
 impl Field2D {
-    pub fn new(n: usize) -> Self {
-        Self { data: vec![0.0; n * n], n }
+    pub fn new(nx: usize, ny: usize) -> Self {
+        Self { data: vec![0.0; nx * ny], nx, ny }
     }
 
-    pub fn filled(n: usize, value: f64) -> Self {
-        Self { data: vec![value; n * n], n }
+    pub fn filled(nx: usize, ny: usize, value: f64) -> Self {
+        Self { data: vec![value; nx * ny], nx, ny }
     }
 
     #[inline(always)]
     pub fn get(&self, i: usize, j: usize) -> f64 {
-        self.data[j * self.n + i]
+        self.data[j * self.nx + i]
     }
 
     #[inline(always)]
     pub fn set(&mut self, i: usize, j: usize, val: f64) {
-        self.data[j * self.n + i] = val;
+        self.data[j * self.nx + i] = val;
     }
 
     #[inline(always)]
@@ -37,8 +39,13 @@ impl Field2D {
     }
 
     #[inline(always)]
-    pub fn n(&self) -> usize {
-        self.n
+    pub fn nx(&self) -> usize {
+        self.nx
+    }
+
+    #[inline(always)]
+    pub fn ny(&self) -> usize {
+        self.ny
     }
 }
 
@@ -99,17 +106,18 @@ mod tests {
 
     #[test]
     fn field2d_basic() {
-        let mut f = Field2D::new(4);
+        let mut f = Field2D::new(4, 4);
         f.set(2, 3, 42.0);
         assert_eq!(f.get(2, 3), 42.0);
         assert_eq!(f.get(0, 0), 0.0);
-        assert_eq!(f.n(), 4);
+        assert_eq!(f.nx(), 4);
+        assert_eq!(f.ny(), 4);
         assert_eq!(f.data().len(), 16);
     }
 
     #[test]
     fn field2d_filled() {
-        let f = Field2D::filled(8, 1.5);
+        let f = Field2D::filled(8, 8, 1.5);
         for val in f.data() {
             assert_eq!(*val, 1.5);
         }

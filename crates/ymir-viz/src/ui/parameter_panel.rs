@@ -1,5 +1,7 @@
 use bevy::prelude::ResMut;
 use bevy_egui::egui;
+
+use crate::state::{AspectPreset, GridUiState};
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::plates::{PlateConfig, generate_plates};
 use ymir_core::tectonics::solver::config::{
@@ -36,6 +38,7 @@ pub fn draw(
     ui_actions: &mut crate::state::UiActions,
     centering: &mut crate::state::CenteringState,
     run_timer: &mut crate::state::RunTimer,
+    grid_ui: &mut GridUiState,
 ) {
     // Consume run_solver_requested before the match moves tectonic_state
     if ui_actions.run_solver_requested {
@@ -52,7 +55,7 @@ pub fn draw(
                 draw_erosion(ui, erosion, isostasy_cache, upscale_cache, erosion_cache, generation);
             }
             PipelinePhase::Tectonics => {
-                draw_tectonics(ui, tectonic_state, solver_config, bridge);
+                draw_tectonics(ui, tectonic_state, solver_config, bridge, grid_ui);
             }
             PipelinePhase::Isostasy => {
                 draw_isostasy(ui, isostasy_params, isostasy_cache, ui_actions, centering);
@@ -144,6 +147,7 @@ fn draw_tectonics(
     tectonic_state: Option<ResMut<TectonicState>>,
     solver_config: &mut SolverConfig,
     bridge: &mut SolverBridge,
+    grid_ui: &mut GridUiState,
 ) {
     let Some(mut state) = tectonic_state else {
         ui.label("Tectonic state not ready");
@@ -191,20 +195,7 @@ fn draw_tectonics(
     slider_row(ui, "Vel. max", &mut state.config.velocity_max, 0.5..=5.0);
     slider_row(ui, "Smoothing σ", &mut state.config.boundary_smoothing_sigma, 0.0..=5.0);
 
-    let grid_sizes = [64usize, 128, 256, 512];
-    ui.horizontal(|ui| {
-        ui.label("Grid size");
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            for &sz in &grid_sizes {
-                if ui
-                    .add(egui::Button::new(format!("{sz}")).selected(state.config.grid_size == sz))
-                    .clicked()
-                {
-                    state.config.grid_size = sz;
-                }
-            }
-        });
-    });
+    draw_grid_dimensions(ui, &mut state.config, grid_ui);
 
     ui.add_space(4.0);
 
@@ -577,14 +568,19 @@ fn launch_solver(
 ) {
     let init = &tectonic_state.init;
     let traction = init.to_traction_field();
-    let grid_size = init.grid_size;
-    let dx = 1.0 / grid_size as f64;
+    let grid_width = init.grid_width;
+    let grid_height = init.grid_height;
+    // dx is derived from the x-axis so the physical domain width stays 1.0
+    // regardless of aspect ratio. Cells stay square; the y-axis length is
+    // `grid_height * dx = grid_height / grid_width`.
+    let dx = 1.0 / grid_width as f64;
 
     let initial_s = {
-        let mut field = ymir_core::tectonics::solver::field::Field2D::new(grid_size);
-        for j in 0..grid_size {
-            for i in 0..grid_size {
-                field.set(i, j, init.thickness.data[j * grid_size + i] as f64);
+        let mut field =
+            ymir_core::tectonics::solver::field::Field2D::new(grid_width, grid_height);
+        for j in 0..grid_height {
+            for i in 0..grid_width {
+                field.set(i, j, init.thickness.data[j * grid_width + i] as f64);
             }
         }
         field
@@ -628,20 +624,114 @@ fn launch_solver(
         plates: init.plates.clone(),
         traction,
         next_id,
-        disp_x: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
-        disp_y: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
+        disp_x: ymir_core::tectonics::solver::field::Field2D::new(grid_width, grid_height),
+        disp_y: ymir_core::tectonics::solver::field::Field2D::new(grid_width, grid_height),
     };
 
     let _ = bridge.commands_tx.send(SolverCommand::RunTectonics {
         config,
         plate_ctx,
         initial_s,
-        grid_size,
+        grid_width,
+        grid_height,
         dx,
     });
 
     bridge.state =
         SolverState::Running { step: 0, total_steps: solver_config.num_timesteps, stats: None };
+}
+
+/// Render the grid-dimension section (default mode = resolution + aspect
+/// preset, advanced mode = independent width/height sliders). Both modes
+/// write to `config.grid_width` / `config.grid_height`. The user applies
+/// the change by clicking Generate.
+fn draw_grid_dimensions(
+    ui: &mut egui::Ui,
+    config: &mut PlateConfig,
+    grid_ui: &mut GridUiState,
+) {
+    // Detect a transition from advanced → default and snap the UI choices
+    // to the closest named preset before drawing. Without this snap the
+    // default-mode inputs would re-derive height from a stale aspect.
+    let advanced_before = grid_ui.advanced_mode;
+
+    ui.checkbox(&mut grid_ui.advanced_mode, "Advanced (independent width/height)");
+
+    if advanced_before && !grid_ui.advanced_mode {
+        grid_ui.resolution = config.grid_width;
+        grid_ui.aspect_preset =
+            AspectPreset::snap_nearest(config.grid_width, config.grid_height);
+    }
+
+    ui.separator();
+
+    if !grid_ui.advanced_mode {
+        // Default mode: resolution slider + aspect preset dropdown.
+        let sizes = [64usize, 128, 256, 512];
+        ui.horizontal(|ui| {
+            ui.label("Resolution");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                for &sz in &sizes {
+                    if ui
+                        .add(egui::Button::new(format!("{sz}")).selected(grid_ui.resolution == sz))
+                        .clicked()
+                    {
+                        grid_ui.resolution = sz;
+                    }
+                }
+            });
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("Aspect ratio");
+            egui::ComboBox::from_id_salt("aspect_ratio_combo")
+                .selected_text(grid_ui.aspect_preset.label())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut grid_ui.aspect_preset,
+                        AspectPreset::Square,
+                        "1:1",
+                    );
+                    ui.selectable_value(
+                        &mut grid_ui.aspect_preset,
+                        AspectPreset::ThreeTwo,
+                        "3:2",
+                    );
+                    ui.selectable_value(
+                        &mut grid_ui.aspect_preset,
+                        AspectPreset::FourThree,
+                        "4:3",
+                    );
+                    ui.selectable_value(
+                        &mut grid_ui.aspect_preset,
+                        AspectPreset::SixteenNine,
+                        "16:9",
+                    );
+                });
+        });
+
+        // Derive canonical dimensions from resolution + aspect.
+        let w = grid_ui.resolution;
+        let h = ((w as f32) / grid_ui.aspect_preset.to_ratio()).round().max(1.0) as usize;
+        config.grid_width = w;
+        config.grid_height = h;
+        ui.label(format!("Effective: {} × {}", w, h));
+    } else {
+        // Advanced mode: independent width and height.
+        ui.horizontal(|ui| {
+            ui.label("Width");
+            ui.add(egui::DragValue::new(&mut config.grid_width).range(16..=1024));
+        });
+        ui.horizontal(|ui| {
+            ui.label("Height");
+            ui.add(egui::DragValue::new(&mut config.grid_height).range(16..=1024));
+        });
+        let ratio = config.grid_width.max(1) as f32 / config.grid_height.max(1) as f32;
+        ui.label(format!("Effective: {} × {}  (aspect {:.3})",
+            config.grid_width, config.grid_height, ratio));
+    }
+
+    ui.small("Applies on Generate / Randomize");
 }
 
 fn apply_preset(state: &mut TectonicState, config: PlateConfig) {

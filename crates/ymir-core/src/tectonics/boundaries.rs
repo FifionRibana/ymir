@@ -163,28 +163,34 @@ pub fn compute_boundary_sources(
     config: &BoundaryConfig,
     recycling_enabled: bool,
 ) -> BoundaryField {
-    let n = grid.n;
-    let idx = &grid.idx;
+    let nx = grid.nx();
+    let ny = grid.ny();
+    let idx_x = grid.idx_x();
+    let idx_y = grid.idx_y();
     let inv_dx = 1.0 / grid.dx;
 
-    let mut boundary_type = vec![BoundaryType::None; n * n];
-    let mut source_rate = Field2D::new(n);
+    let mut boundary_type = vec![BoundaryType::None; nx * ny];
+    let mut source_rate = Field2D::new(nx, ny);
 
-    for j in 0..n {
-        for i in 0..n {
-            let k = j * n + i;
+    for j in 0..ny {
+        for i in 0..nx {
+            let k = j * nx + i;
             let my_plate = plate_ids[k];
             let my_type = plate_type_from_mean_thickness(plates[my_plate].mean_thickness);
 
-            let neighbors =
-                [(idx.next(i), j), (idx.prev(i), j), (i, idx.next(j)), (i, idx.prev(j))];
+            let neighbors = [
+                (idx_x.next(i), j),
+                (idx_x.prev(i), j),
+                (i, idx_y.next(j)),
+                (i, idx_y.prev(j)),
+            ];
 
             let mut is_boundary = false;
             let mut convergence_sum = 0.0_f64;
             let mut neighbor_plate_type = my_type;
 
             for &(ni, nj) in &neighbors {
-                let nk = nj * n + ni;
+                let nk = nj * nx + ni;
                 let other_plate = plate_ids[nk];
 
                 if other_plate != my_plate {
@@ -193,31 +199,33 @@ pub fn compute_boundary_sources(
                         plate_type_from_mean_thickness(plates[other_plate].mean_thickness);
 
                     // Normal direction from (i,j) to (ni,nj), handling wrapping
-                    let nx = if ni == idx.next(i) && ni < i {
+                    let normal_x = if ni == idx_x.next(i) && ni < i {
                         1.0 // wrapped right
-                    } else if ni == idx.prev(i) && ni > i {
+                    } else if ni == idx_x.prev(i) && ni > i {
                         -1.0 // wrapped left
                     } else {
                         (ni as f64 - i as f64).signum()
                     };
-                    let ny = if nj == idx.next(j) && nj < j {
+                    let normal_y = if nj == idx_y.next(j) && nj < j {
                         1.0 // wrapped down
-                    } else if nj == idx.prev(j) && nj > j {
+                    } else if nj == idx_y.prev(j) && nj > j {
                         -1.0 // wrapped up
                     } else {
                         (nj as f64 - j as f64).signum()
                     };
 
                     // Velocity at cell center (average of staggered faces)
-                    let vx_here = 0.5 * (grid.vx.get(i, j) + grid.vx.get(idx.next(i), j));
-                    let vy_here = 0.5 * (grid.vy.get(i, j) + grid.vy.get(i, idx.next(j)));
+                    let vx_here = 0.5 * (grid.vx.get(i, j) + grid.vx.get(idx_x.next(i), j));
+                    let vy_here = 0.5 * (grid.vy.get(i, j) + grid.vy.get(i, idx_y.next(j)));
 
-                    let vx_there = 0.5 * (grid.vx.get(ni, nj) + grid.vx.get(idx.next(ni), nj));
-                    let vy_there = 0.5 * (grid.vy.get(ni, nj) + grid.vy.get(ni, idx.next(nj)));
+                    let vx_there =
+                        0.5 * (grid.vx.get(ni, nj) + grid.vx.get(idx_x.next(ni), nj));
+                    let vy_there =
+                        0.5 * (grid.vy.get(ni, nj) + grid.vy.get(ni, idx_y.next(nj)));
 
                     // Relative velocity in normal direction
                     // Positive = diverging, Negative = converging
-                    let v_rel = (vx_there - vx_here) * nx + (vy_there - vy_here) * ny;
+                    let v_rel = (vx_there - vx_here) * normal_x + (vy_there - vy_here) * normal_y;
                     convergence_sum += v_rel;
                 }
             }
@@ -292,7 +300,7 @@ pub fn compute_boundary_sources(
         }
     }
 
-    BoundaryField { boundary_type, source_rate, n }
+    BoundaryField { boundary_type, source_rate, n: nx }
 }
 
 /// Compute boundary sources directly into a pre-allocated Field2D buffer.
@@ -319,13 +327,14 @@ pub fn accumulate_subducted_mass(
     plate_ids: &[usize],
     plates: &mut [Plate],
     dt: f64,
-    n: usize,
+    nx: usize,
+    ny: usize,
 ) {
-    for j in 0..n {
-        for i in 0..n {
+    for j in 0..ny {
+        for i in 0..nx {
             let q = source_rate.get(i, j);
             if q < 0.0 {
-                let pid = plate_ids[j * n + i];
+                let pid = plate_ids[j * nx + i];
                 plates[pid].subducted_mass += (-q * dt).abs();
             }
         }
@@ -366,9 +375,10 @@ pub fn apply_slab_pull(plates: &mut [Plate], slab_pull_factor: f64, max_velocity
 /// Separable Gaussian blur on a Field2D with periodic (toroidal) wrapping.
 /// Sigma is in grid cells. Kernel radius = ceil(3 * sigma).
 pub fn gaussian_blur_f64(field: &Field2D, sigma: f64) -> Field2D {
-    let n = field.n();
+    let nx = field.nx();
+    let ny = field.ny();
     if sigma <= 0.0 {
-        let mut out = Field2D::new(n);
+        let mut out = Field2D::new(nx, ny);
         out.data_mut().copy_from_slice(field.data());
         return out;
     }
@@ -389,12 +399,12 @@ pub fn gaussian_blur_f64(field: &Field2D, sigma: f64) -> Field2D {
     }
 
     // Horizontal pass
-    let mut temp = Field2D::new(n);
-    for j in 0..n {
-        for i in 0..n {
+    let mut temp = Field2D::new(nx, ny);
+    for j in 0..ny {
+        for i in 0..nx {
             let mut val = 0.0_f64;
             for (ki, &w) in kernel.iter().enumerate() {
-                let si = (i as i32 + ki as i32 - radius as i32).rem_euclid(n as i32) as usize;
+                let si = (i as i32 + ki as i32 - radius as i32).rem_euclid(nx as i32) as usize;
                 val += field.get(si, j) * w;
             }
             temp.set(i, j, val);
@@ -402,12 +412,12 @@ pub fn gaussian_blur_f64(field: &Field2D, sigma: f64) -> Field2D {
     }
 
     // Vertical pass
-    let mut result = Field2D::new(n);
-    for j in 0..n {
-        for i in 0..n {
+    let mut result = Field2D::new(nx, ny);
+    for j in 0..ny {
+        for i in 0..nx {
             let mut val = 0.0_f64;
             for (ki, &w) in kernel.iter().enumerate() {
-                let sj = (j as i32 + ki as i32 - radius as i32).rem_euclid(n as i32) as usize;
+                let sj = (j as i32 + ki as i32 - radius as i32).rem_euclid(ny as i32) as usize;
                 val += temp.get(i, sj) * w;
             }
             result.set(i, j, val);
@@ -426,7 +436,7 @@ mod tests {
 
     fn make_two_plate_setup(n: usize) -> (StaggeredGrid, Vec<usize>, Vec<Plate>) {
         let dx = 1.0 / n as f64;
-        let grid = StaggeredGrid::new(n, dx);
+        let grid = StaggeredGrid::new(n, n, dx);
 
         // Left half = plate 0 (oceanic), right half = plate 1 (continental)
         let mut plate_ids = vec![0usize; n * n];
@@ -572,7 +582,7 @@ mod tests {
     #[test]
     fn gaussian_blur_preserves_total() {
         let n = 16;
-        let mut field = Field2D::new(n);
+        let mut field = Field2D::new(n, n);
         field.set(n / 2, n / 2, 1.0);
 
         let blurred = gaussian_blur_f64(&field, 2.0);

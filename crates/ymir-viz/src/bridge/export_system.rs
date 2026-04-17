@@ -53,10 +53,12 @@ pub fn handle_export(
     };
 
     let output_root = Path::new("output");
-    let grid_size = tecto.init.grid_size;
+    let grid_width = tecto.init.grid_width;
+    let grid_height = tecto.init.grid_height;
     let seed = tecto.seed;
 
-    let mut export = PipelineExport::new(output_root, seed, grid_size, &tecto.config);
+    let mut export =
+        PipelineExport::new(output_root, seed, grid_width, grid_height, &tecto.config);
     if centering_state.original_field.is_some() {
         let dx = centering_state.auto_shift.0 + centering_state.offset_x;
         let dy = centering_state.auto_shift.1 + centering_state.offset_y;
@@ -64,9 +66,10 @@ pub fn handle_export(
     }
 
     // Save thickness (Field2D → GridF32)
-    let n = s_field.n();
+    let nx = s_field.nx();
+    let ny = s_field.ny();
     let data: Vec<f32> = s_field.data().iter().map(|&v| v as f32).collect();
-    let thickness = GridF32::from_vec(n, n, data);
+    let thickness = GridF32::from_vec(nx, ny, data);
     if let Err(e) = export.save_thickness(&thickness) {
         ui_actions.last_message =
             Some((format!("Export failed: {e}"), std::time::Instant::now(), false));
@@ -235,15 +238,16 @@ pub fn handle_load(
     // ── Load thickness → TerrainDisplay ──────────────────────────────────
     match export.load_thickness() {
         Ok(thickness_grid) => {
-            let n = thickness_grid.width;
-            let mut field = Field2D::new(n);
-            for j in 0..n {
-                for i in 0..n {
-                    field.set(i, j, thickness_grid.data[j * n + i] as f64);
+            let nx = thickness_grid.width;
+            let ny = thickness_grid.height;
+            let mut field = Field2D::new(nx, ny);
+            for j in 0..ny {
+                for i in 0..nx {
+                    field.set(i, j, thickness_grid.data[j * nx + i] as f64);
                 }
             }
             terrain_display.update_field(field);
-            info!("Loaded thickness {}x{} from {}", n, n, dir.display());
+            info!("Loaded thickness {}x{} from {}", nx, ny, dir.display());
         }
         Err(e) => warn!("No thickness to load: {e}"),
     }

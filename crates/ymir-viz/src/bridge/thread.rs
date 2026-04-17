@@ -32,18 +32,19 @@ pub fn spawn_solver_thread(
                         config,
                         mut plate_ctx,
                         initial_s,
-                        grid_size,
+                        grid_width,
+                        grid_height,
                         dx,
                     } => {
                         cancel.store(false, Ordering::Relaxed);
 
-                        let ws = workspace.get_or_insert_with(|| SolverWorkspace::new(grid_size));
-                        ws.resize_if_needed(grid_size);
+                        let ws = workspace
+                            .get_or_insert_with(|| SolverWorkspace::new(grid_width, grid_height));
+                        ws.resize_if_needed(grid_width, grid_height);
 
-                        let mut grid = StaggeredGrid::new(grid_size, dx);
-                        let n = grid_size;
-                        for j in 0..n {
-                            for i in 0..n {
+                        let mut grid = StaggeredGrid::new(grid_width, grid_height, dx);
+                        for j in 0..grid_height {
+                            for i in 0..grid_width {
                                 grid.s.set(i, j, initial_s.get(i, j));
                             }
                         }
@@ -115,15 +116,23 @@ pub fn spawn_solver_thread(
                             }
                         }
                     }
-                    SolverCommand::SingleStep { config, mut plate_ctx, s_field, grid_size, dx } => {
+                    SolverCommand::SingleStep {
+                        config,
+                        mut plate_ctx,
+                        s_field,
+                        grid_width,
+                        grid_height,
+                        dx,
+                    } => {
                         cancel.store(false, Ordering::Relaxed);
 
-                        let ws = workspace.get_or_insert_with(|| SolverWorkspace::new(grid_size));
-                        ws.resize_if_needed(grid_size);
+                        let ws = workspace
+                            .get_or_insert_with(|| SolverWorkspace::new(grid_width, grid_height));
+                        ws.resize_if_needed(grid_width, grid_height);
 
-                        let mut grid = StaggeredGrid::new(grid_size, dx);
-                        for j in 0..grid_size {
-                            for i in 0..grid_size {
+                        let mut grid = StaggeredGrid::new(grid_width, grid_height, dx);
+                        for j in 0..grid_height {
+                            for i in 0..grid_width {
                                 grid.s.set(i, j, s_field.get(i, j));
                             }
                         }

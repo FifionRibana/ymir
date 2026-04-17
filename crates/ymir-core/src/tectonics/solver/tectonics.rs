@@ -90,7 +90,8 @@ pub fn run_tectonics<F>(
 where
     F: FnMut(usize, usize, &StepStats, StepSnapshot<'_>) -> bool,
 {
-    let n = grid.n;
+    let nx = grid.nx();
+    let ny = grid.ny();
 
     // Initialize density field and cratonic viscosity multiplier from plate types
     assign_density_from_plates(grid, &plate_ctx.ids, &plate_ctx.plates, &config.boundaries);
@@ -107,7 +108,7 @@ where
     let mut mantle_flow = if config.mantle.enabled {
         let mantle_seed =
             grid.s.data().iter().take(8).fold(0u64, |acc, &v| acc.wrapping_add((v * 1e10) as u64));
-        Some(MantleFlow::generate(n, mantle_seed, &config.mantle))
+        Some(MantleFlow::generate(nx, ny, mantle_seed, &config.mantle))
     } else {
         None
     };
@@ -117,7 +118,7 @@ where
         let need_continuation =
             config.continuation.enabled && config.picard.power_law_n > 1.0 && step == 0;
 
-        let _step_span = info_span!("solver_step", step, n = grid.n).entered();
+        let _step_span = info_span!("solver_step", step, nx = grid.nx(), ny = grid.ny()).entered();
 
         let traction = &plate_ctx.traction;
         let (converged, nl_iterations, linear_iterations) = if need_continuation {
@@ -165,11 +166,11 @@ where
             // Morphological cleanup: remove isolated cells and thin protrusions
             // so plate boundaries stay at 1-cell width.
             let ids_before_cleanup: Vec<usize> = plate_ctx.ids.clone();
-            cleanup_plate_ids(&mut plate_ctx.ids, n);
-            for k in 0..n * n {
+            cleanup_plate_ids(&mut plate_ctx.ids, nx, ny);
+            for k in 0..nx * ny {
                 if plate_ctx.ids[k] != ids_before_cleanup[k] {
-                    let i = k % n;
-                    let j = k / n;
+                    let i = k % nx;
+                    let j = k / nx;
                     plate_ctx.disp_x.set(i, j, 0.0);
                     plate_ctx.disp_y.set(i, j, 0.0);
                 }
@@ -222,7 +223,8 @@ where
                     &plate_ctx.ids,
                     &mut plate_ctx.plates,
                     dt_cfl,
-                    n,
+                    nx,
+                    ny,
                 );
                 apply_slab_pull(
                     &mut plate_ctx.plates,
@@ -251,17 +253,18 @@ where
                     &mut plate_ctx.ids,
                     &mut plate_ctx.plates,
                     &mut plate_ctx.next_id,
-                    n,
+                    nx,
+                    ny,
                     grid,
                     0.25, // Only truly oceanic-thin rift zones break continental connectivity
                 );
             }
 
             // Reset displacement accumulators for cells whose ID just changed
-            for k in 0..n * n {
+            for k in 0..nx * ny {
                 if plate_ctx.ids[k] != ids_before[k] {
-                    let i = k % n;
-                    let j = k / n;
+                    let i = k % nx;
+                    let j = k / nx;
                     plate_ctx.disp_x.set(i, j, 0.0);
                     plate_ctx.disp_y.set(i, j, 0.0);
                 }
@@ -279,18 +282,19 @@ where
                     &plate_ctx.plates,
                     &plate_ctx.disp_x,
                     &plate_ctx.disp_y,
-                    n,
+                    nx,
+                    ny,
                 )
             } else {
-                rebuild_traction(&plate_ctx.ids, &plate_ctx.plates, n)
+                rebuild_traction(&plate_ctx.ids, &plate_ctx.plates, nx, ny)
             };
         }
 
         // Add mantle convection flow to traction (continuous driving force)
         if let Some(ref mut mf) = mantle_flow {
             let coupling = config.mantle.coupling;
-            for j in 0..n {
-                for i in 0..n {
+            for j in 0..ny {
+                for i in 0..nx {
                     // Thickness-dependent coupling: thick continental roots
                     // couple more strongly than thin oceanic lithosphere.
                     let s = grid.s.get(i, j);
@@ -313,8 +317,8 @@ where
         {
             // Step A: total mass destroyed by subduction this step
             let mut total_subducted = 0.0_f64;
-            for j in 0..n {
-                for i in 0..n {
+            for j in 0..ny {
+                for i in 0..nx {
                     let q = workspace.source_rate.get(i, j);
                     if q < 0.0 {
                         total_subducted += (-q) * dt_cfl;
@@ -328,9 +332,9 @@ where
 
             // Step B: distribute arc_mass to arc cells (overriding side of subduction)
             let mut arc_cells: Vec<(usize, usize)> = Vec::new();
-            for j in 0..n {
-                for i in 0..n {
-                    let k = j * n + i;
+            for j in 0..ny {
+                for i in 0..nx {
+                    let k = j * nx + i;
                     let btype = bf.boundary_type[k];
                     let is_arc = match btype {
                         BoundaryType::Subduction => {
@@ -363,9 +367,9 @@ where
 
             // Step E: distribute spread_mass to rift cells
             let mut rift_cells: Vec<(usize, usize)> = Vec::new();
-            for j in 0..n {
-                for i in 0..n {
-                    let k = j * n + i;
+            for j in 0..ny {
+                for i in 0..nx {
+                    let k = j * nx + i;
                     if bf.boundary_type[k] == BoundaryType::Rift
                         && grid.s.get(i, j) < config.boundaries.rift_thickness_threshold
                     {
@@ -409,8 +413,8 @@ where
             total_div_flux = 0.0;
             total_source = 0.0;
 
-            for j in 0..n {
-                for i in 0..n {
+            for j in 0..ny {
+                for i in 0..nx {
                     let div = workspace.div_flux.get(i, j);
                     let q = if boundaries_active { workspace.source_rate.get(i, j) } else { 0.0 };
                     let s_old = grid.s.get(i, j);
@@ -432,7 +436,7 @@ where
                 .iter()
                 .filter(|&&s| s <= config.s_min * 1.01 || s >= config.s_max * 0.99)
                 .count();
-            clamp_ratio = clamp_count as f64 / (n * n) as f64;
+            clamp_ratio = clamp_count as f64 / (nx * ny) as f64;
 
             if clamp_ratio < 0.05 || dt <= dt_min {
                 break;
@@ -457,9 +461,9 @@ where
             let rate = config.boundaries.oceanic_restore_rate;
             let s_ref = config.boundaries.oceanic_reference_thickness;
             let s_thr = config.boundaries.oceanic_restore_threshold;
-            for j in 0..n {
-                for i in 0..n {
-                    let pid = plate_ctx.ids[j * n + i];
+            for j in 0..ny {
+                for i in 0..nx {
+                    let pid = plate_ctx.ids[j * nx + i];
                     if plate_ctx.plates[pid].plate_type == PlateType::Oceanic {
                         let s_current = grid.s.get(i, j);
                         if s_current > s_ref && s_current < s_thr {
@@ -482,9 +486,9 @@ where
             let rate = config.boundaries.continental_restore_rate;
             let s_min = config.boundaries.continental_min_thickness;
             let s_thr = config.boundaries.continental_restore_threshold;
-            for j in 0..n {
-                for i in 0..n {
-                    let pid = plate_ctx.ids[j * n + i];
+            for j in 0..ny {
+                for i in 0..nx {
+                    let pid = plate_ctx.ids[j * nx + i];
                     if plate_ctx.plates[pid].plate_type == PlateType::Continental {
                         let s_current = grid.s.get(i, j);
                         if s_current < s_min && s_current > s_thr {
@@ -504,8 +508,8 @@ where
         let mut max_v = 0.0_f64;
         let mut max_s = f64::NEG_INFINITY;
         let mut min_s = f64::INFINITY;
-        for j in 0..n {
-            for i in 0..n {
+        for j in 0..ny {
+            for i in 0..nx {
                 let vx = grid.vx.get(i, j);
                 let vy = grid.vy.get(i, j);
                 max_v = max_v.max((vx * vx + vy * vy).sqrt());
@@ -555,7 +559,7 @@ where
 
         // ── Diagnostic: per-step plate & boundary summary ──────────────
         if config.dynamic_boundaries {
-            let total_cells = n * n;
+            let total_cells = nx * ny;
             let num_active =
                 plate_ctx.plates.iter().filter(|p| p.active && p.cell_count > 0).count();
 
@@ -675,10 +679,11 @@ fn assign_density_from_plates(
     plates: &[Plate],
     bc: &crate::tectonics::boundaries::BoundaryConfig,
 ) {
-    let n = grid.n;
-    for j in 0..n {
-        for i in 0..n {
-            let pid = ids[j * n + i];
+    let nx = grid.nx();
+    let ny = grid.ny();
+    for j in 0..ny {
+        for i in 0..nx {
+            let pid = ids[j * nx + i];
             let rho = match plates[pid].plate_type {
                 PlateType::Continental => bc.rho_continental,
                 PlateType::Oceanic => bc.rho_oceanic,
@@ -695,9 +700,10 @@ fn assign_density_from_material(
     grid: &mut StaggeredGrid,
     config: &crate::tectonics::boundaries::BoundaryConfig,
 ) {
-    let n = grid.n;
-    for j in 0..n {
-        for i in 0..n {
+    let nx = grid.nx();
+    let ny = grid.ny();
+    for j in 0..ny {
+        for i in 0..nx {
             let s = grid.s.get(i, j);
             let rho = if s > 0.4 {
                 config.rho_continental
@@ -959,8 +965,8 @@ mod tests {
             }],
             traction,
             next_id: 1,
-            disp_x: Field2D::new(n),
-            disp_y: Field2D::new(n),
+            disp_x: Field2D::new(n, n),
+            disp_y: Field2D::new(n, n),
         }
     }
 
@@ -968,7 +974,7 @@ mod tests {
     fn convergent_plates_thicken() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
         let s_initial = 1.0;
         for j in 0..n {
             for i in 0..n {
@@ -976,10 +982,10 @@ mod tests {
             }
         }
 
-        let traction = TractionField::two_plates_convergent(n, 1.0);
+        let traction = TractionField::two_plates_convergent(n, n, 1.0);
         let mut ctx = make_static_ctx(n, traction);
         let config = make_config(50);
-        let mut ws = SolverWorkspace::new(n);
+        let mut ws = SolverWorkspace::new(n, n);
 
         let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
@@ -995,7 +1001,7 @@ mod tests {
     fn divergent_plates_thin() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
         let s_initial = 1.0;
         for j in 0..n {
             for i in 0..n {
@@ -1003,10 +1009,10 @@ mod tests {
             }
         }
 
-        let traction = TractionField::two_plates_divergent(n, 1.0);
+        let traction = TractionField::two_plates_divergent(n, n, 1.0);
         let mut ctx = make_static_ctx(n, traction);
         let config = make_config(50);
-        let mut ws = SolverWorkspace::new(n);
+        let mut ws = SolverWorkspace::new(n, n);
 
         let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
@@ -1022,7 +1028,7 @@ mod tests {
     fn gpe_flattens_bump() {
         let n = 32;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         // Background + broad Gaussian bump (σ²=0.02, well-resolved at 32²)
         let center = 0.5;
@@ -1040,10 +1046,10 @@ mod tests {
             grid.s.data().iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n * n) as f64
         };
 
-        let traction = TractionField::zero(n);
+        let traction = TractionField::zero(n, n);
         let mut ctx = make_static_ctx(n, traction);
         let config = make_config(100);
-        let mut ws = SolverWorkspace::new(n);
+        let mut ws = SolverWorkspace::new(n, n);
 
         let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
@@ -1063,17 +1069,17 @@ mod tests {
     fn no_nan_no_inf() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
         for j in 0..n {
             for i in 0..n {
                 grid.s.set(i, j, 1.0);
             }
         }
 
-        let traction = TractionField::two_plates_convergent(n, 0.5);
+        let traction = TractionField::two_plates_convergent(n, n, 0.5);
         let mut ctx = make_static_ctx(n, traction);
         let config = make_config(30);
-        let mut ws = SolverWorkspace::new(n);
+        let mut ws = SolverWorkspace::new(n, n);
 
         let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok());
@@ -1093,14 +1099,14 @@ mod tests {
     fn continuation_enables_power_law_convergence() {
         let n = 32;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
         for j in 0..n {
             for i in 0..n {
                 grid.s.set(i, j, 1.0);
             }
         }
 
-        let traction = TractionField::two_plates_convergent(n, 0.5);
+        let traction = TractionField::two_plates_convergent(n, n, 0.5);
         let config = TectonicsConfig {
             num_timesteps: 20,
             gravity_factor: 1.0,
@@ -1129,7 +1135,7 @@ mod tests {
         };
 
         let mut ctx = make_static_ctx(n, traction);
-        let mut ws = SolverWorkspace::new(n);
+        let mut ws = SolverWorkspace::new(n, n);
         let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Continuation should enable convergence: {:?}", result.err());
         assert!(
@@ -1145,7 +1151,7 @@ mod tests {
 
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         // All oceanic, initially thick (as if advection has thickened them)
         for j in 0..n {
@@ -1154,7 +1160,7 @@ mod tests {
             }
         }
 
-        let traction = TractionField::zero(n);
+        let traction = TractionField::zero(n, n);
         let mut ctx = DynamicPlateContext {
             ids: vec![0; n * n],
             plates: vec![Plate {
@@ -1173,8 +1179,8 @@ mod tests {
             }],
             traction,
             next_id: 1,
-            disp_x: Field2D::new(n),
-            disp_y: Field2D::new(n),
+            disp_x: Field2D::new(n, n),
+            disp_y: Field2D::new(n, n),
         };
 
         let config = TectonicsConfig {
@@ -1192,7 +1198,7 @@ mod tests {
             ..make_config(50)
         };
 
-        let mut ws = SolverWorkspace::new(n);
+        let mut ws = SolverWorkspace::new(n, n);
         let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
@@ -1210,8 +1216,8 @@ mod tests {
         use crate::tectonics::solver::picard::compute_viscosity;
 
         let n = 8;
-        let mut strain = Field2D::new(n);
-        let mut eta = Field2D::new(n);
+        let mut strain = Field2D::new(n, n);
+        let mut eta = Field2D::new(n, n);
 
         // Very low strain rate → very high viscosity without clamp
         strain.set(0, 0, 0.0);
@@ -1235,7 +1241,7 @@ mod tests {
         let rho_m = 3300.0;
 
         // Setup 1: all continental density
-        let mut grid_c = StaggeredGrid::new(n, dx);
+        let mut grid_c = StaggeredGrid::new(n, n, dx);
         for j in 0..n {
             for i in 0..n {
                 grid_c.s.set(i, j, if i < n / 2 { 1.0 } else { 0.5 });
@@ -1244,7 +1250,7 @@ mod tests {
         }
 
         // Setup 2: same thickness, all oceanic density
-        let mut grid_o = StaggeredGrid::new(n, dx);
+        let mut grid_o = StaggeredGrid::new(n, n, dx);
         for j in 0..n {
             for i in 0..n {
                 grid_o.s.set(i, j, if i < n / 2 { 1.0 } else { 0.5 });
@@ -1252,7 +1258,7 @@ mod tests {
             }
         }
 
-        let plates = TractionField::zero(n);
+        let plates = TractionField::zero(n, n);
         let nn2 = 2 * n * n;
         let mut rhs_c = vec![0.0; nn2];
         let mut rhs_o = vec![0.0; nn2];

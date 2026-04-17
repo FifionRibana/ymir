@@ -298,8 +298,8 @@ mod tests {
     fn cg_converges() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let grid = StaggeredGrid::new(n, dx);
-        let eta = Field2D::filled(n, 1.0);
+        let grid = StaggeredGrid::new(n, n, dx);
+        let eta = Field2D::filled(n, n, 1.0);
         let nn2 = 2 * n * n;
 
         let k = 2.0 * std::f64::consts::PI;
@@ -346,10 +346,10 @@ mod tests {
     fn jacobi_reduces_iterations() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let grid = StaggeredGrid::new(n, dx);
+        let grid = StaggeredGrid::new(n, n, dx);
         let nn2 = 2 * n * n;
 
-        let mut eta = Field2D::new(n);
+        let mut eta = Field2D::new(n, n);
         for j in 0..n {
             for i in 0..n {
                 let x = (i as f64 + 0.5) * dx;
@@ -402,8 +402,8 @@ mod tests {
     fn bicgstab_converges_symmetric() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let grid = StaggeredGrid::new(n, dx);
-        let eta = Field2D::filled(n, 1.0);
+        let grid = StaggeredGrid::new(n, n, dx);
+        let eta = Field2D::filled(n, n, 1.0);
         let nn2 = 2 * n * n;
 
         let k = 2.0 * std::f64::consts::PI;
@@ -450,8 +450,8 @@ mod tests {
     fn bicgstab_converges_nonsymmetric() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let grid = StaggeredGrid::new(n, dx);
-        let eta = Field2D::filled(n, 1.0);
+        let grid = StaggeredGrid::new(n, n, dx);
+        let eta = Field2D::filled(n, n, 1.0);
         let nn2 = 2 * n * n;
 
         let mut state = 42u64;
