@@ -144,6 +144,7 @@ pub fn solve_velocity_newton(
     let ps_snap = grid.plastic_strain.clone();
 
     let mut prev_f_norm = f64::MAX;
+    let mut residual_history: Vec<f64> = Vec::with_capacity(newton_config.max_iterations + 1);
 
     for k in 0..newton_config.max_iterations {
         // 1. Compute F(vᵏ) → jfnk_f_v, also updates eta and strain_rate
@@ -162,6 +163,7 @@ pub fn solve_velocity_newton(
 
         let f_norm: f64 = ws.jfnk_f_v.iter().map(|x| x * x).sum::<f64>().sqrt();
         let b_norm: f64 = ws.rhs.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-14);
+        residual_history.push(f_norm);
 
         if f_norm < newton_config.tolerance * b_norm {
             unpack_velocity(&ws.v_packed, grid);
@@ -353,6 +355,46 @@ pub fn solve_velocity_newton(
 
         if final_alpha < 1.0 {
             debug!(newton_iter = k, alpha = final_alpha, "newton line search backtracked");
+        }
+
+        // Compute the effective Newton step actually applied (α·δv), used
+        // below for the state-based convergence criterion and the
+        // oscillation detector.
+        let actual_step: Vec<f64> =
+            ws.jfnk_delta_v.iter().map(|x| final_alpha * x).collect();
+
+        // State-based convergence: accept if the relative velocity increment
+        // is tiny AND the residual trend over the last trend_window
+        // iterations is descending. This catches the case where f_norm
+        // stagnates just above tolerance while the physical state is stable.
+        if k >= newton_config.min_iterations_before_classification
+            && residual_history.len() > newton_config.trend_window
+        {
+            let v_state_norm: f64 =
+                v_old.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-30);
+            let step_norm: f64 =
+                actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
+            let relative_step = step_norm / v_state_norm;
+
+            let trend_idx = residual_history.len() - 1 - newton_config.trend_window;
+            let trend_descending = f_norm < residual_history[trend_idx];
+
+            if relative_step < newton_config.state_tolerance && trend_descending {
+                debug!(
+                    newton_iter = k,
+                    relative_step,
+                    f_norm,
+                    f_norm_window = residual_history[trend_idx],
+                    "state-based convergence"
+                );
+                unpack_velocity(&ws.v_packed, grid);
+                return NewtonResult {
+                    outcome: NewtonOutcome::ConvergedOnState,
+                    iterations: k + 1,
+                    final_residual: f_norm / b_norm,
+                    total_linear_iterations: total_linear,
+                };
+            }
         }
 
         // 5. Project out null space from solution
