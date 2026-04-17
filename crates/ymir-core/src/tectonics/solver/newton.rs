@@ -430,10 +430,12 @@ pub fn solve_velocity_newton(
         }
         prev_delta_v = Some(actual_step.clone());
 
-        // State-based convergence: accept if the relative velocity increment
-        // is tiny AND the residual trend over the last trend_window
-        // iterations is descending. This catches the case where f_norm
-        // stagnates just above tolerance while the physical state is stable.
+        // State-based convergence has two independent acceptance paths:
+        //   1. Physical state is frozen AND the residual trend is
+        //      descending: Newton has found a true local minimum of |F|.
+        //   2. Residual is near tolerance AND the recent history is flat:
+        //      Newton cannot descend further through a non-smooth barrier
+        //      in F(v) but the residual is effectively stable.
         if k >= newton_config.min_iterations_before_classification
             && residual_history.len() > newton_config.trend_window
         {
@@ -446,12 +448,44 @@ pub fn solve_velocity_newton(
             let trend_idx = residual_history.len() - 1 - newton_config.trend_window;
             let trend_descending = f_norm < residual_history[trend_idx];
 
-            if relative_step < newton_config.state_tolerance && trend_descending {
+            // Window covers (trend_window + 1) most recent residuals.
+            let window = &residual_history[trend_idx..];
+            let window_max = window.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            let window_min = window.iter().cloned().fold(f64::INFINITY, f64::min);
+            let window_spread = (window_max - window_min) / window_max.max(1e-30);
+
+            debug!(
+                newton_iter = k,
+                relative_step,
+                step_norm,
+                v_state_norm,
+                trend_descending,
+                window_spread,
+                f_norm_window_head = residual_history[trend_idx],
+                "newton state criterion diagnostics"
+            );
+
+            let path_state_frozen =
+                relative_step < newton_config.state_tolerance && trend_descending;
+            let near_tolerance = f_norm
+                < newton_config.tolerance
+                    * b_norm
+                    * newton_config.stagnation_residual_multiplier;
+            let path_residual_stagnant = near_tolerance
+                && window_spread < newton_config.stagnation_spread_threshold;
+
+            if path_state_frozen || path_residual_stagnant {
+                let reason = if path_state_frozen {
+                    "state frozen with descending trend"
+                } else {
+                    "residual near tolerance with flat history"
+                };
                 debug!(
                     newton_iter = k,
                     relative_step,
                     f_norm,
-                    f_norm_window = residual_history[trend_idx],
+                    window_spread,
+                    reason,
                     "state-based convergence"
                 );
                 unpack_velocity(&ws.v_packed, grid);
