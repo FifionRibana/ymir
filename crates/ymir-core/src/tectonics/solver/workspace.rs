@@ -14,6 +14,12 @@ pub struct StepStats {
     pub cg_iterations_last: usize,
     pub dt: f64,
     pub clamp_ratio: f64,
+    /// True when the CFL retry loop exhausted all attempts without
+    /// satisfying `clamp_ratio < 0.05`. The step is still accepted with
+    /// the last attempted dt (smaller than the initial dt_cfl by up to
+    /// `2^(MAX_RETRIES - 1)`) — the flag surfaces the degradation so
+    /// the UI and callers can react.
+    pub cfl_retry_exhausted: bool,
 }
 
 impl Default for StepStats {
@@ -26,6 +32,7 @@ impl Default for StepStats {
             cg_iterations_last: 0,
             dt: 0.0,
             clamp_ratio: 0.0,
+            cfl_retry_exhausted: false,
         }
     }
 }
