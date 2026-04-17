@@ -511,6 +511,70 @@ mod tests {
         assert!(rel_err < 1e-10, "Symmetry violated with variable η: rel_err={rel_err}");
     }
 
+    /// Symmetry must hold on rectangular grids too. With nx != ny, any
+    /// bug that confuses idx_x with idx_y in the stencil, or uses the
+    /// wrong stride for linear indexing, breaks <Lu, v> = <u, Lv>.
+    /// A variable viscosity field is used so coefficient handling is
+    /// exercised on both axes.
+    #[test]
+    fn operator_is_symmetric_rectangular_variable_eta() {
+        let nx = 16;
+        let ny = 12;
+        let dx = 1.0 / nx as f64;
+        let grid = StaggeredGrid::new(nx, ny, dx);
+        let mut eta = Field2D::new(nx, ny);
+        for j in 0..ny {
+            for i in 0..nx {
+                let x = (i as f64 + 0.5) * dx;
+                let y = (j as f64 + 0.5) * dx;
+                eta.set(
+                    i,
+                    j,
+                    1.0 + 0.5
+                        * (2.0 * std::f64::consts::PI * x).sin()
+                        * (2.0 * std::f64::consts::PI * y).cos(),
+                );
+            }
+        }
+
+        let n2 = nx * ny;
+        let nn2 = 2 * n2;
+        let mut state = 4242u64;
+        let mut u = make_random_vec(nn2, &mut state);
+        let mut v = make_random_vec(nn2, &mut state);
+
+        // Null-space projection: Stokes with periodic BCs has a rank-2
+        // null space (constant mode per velocity component). Project it
+        // out of both vectors so the symmetry check isn't dominated by
+        // numerical noise in the null direction.
+        let project = |w: &mut [f64]| {
+            let (wx, wy) = w.split_at_mut(n2);
+            let mean_x: f64 = wx.iter().sum::<f64>() / n2 as f64;
+            let mean_y: f64 = wy.iter().sum::<f64>() / n2 as f64;
+            for a in wx.iter_mut() {
+                *a -= mean_x;
+            }
+            for a in wy.iter_mut() {
+                *a -= mean_y;
+            }
+        };
+        project(&mut u);
+        project(&mut v);
+
+        let mut au = vec![0.0; nn2];
+        let mut av = vec![0.0; nn2];
+        apply_stokes(&u, &eta, &grid, &mut au);
+        apply_stokes(&v, &eta, &grid, &mut av);
+
+        let u_av = dot(&u, &av);
+        let au_v = dot(&au, &v);
+        let rel_err = (u_av - au_v).abs() / u_av.abs().max(1e-14);
+        assert!(
+            rel_err < 1e-10,
+            "Symmetry violated on {nx}×{ny} grid: <u,Lv>={u_av}, <Lu,v>={au_v}, rel_err={rel_err}"
+        );
+    }
+
     #[test]
     fn operator_is_positive_definite() {
         let n = 16;

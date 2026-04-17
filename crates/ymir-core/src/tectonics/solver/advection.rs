@@ -149,6 +149,58 @@ mod tests {
         assert!(rel_err < 1e-12, "Mass not conserved: relative error = {rel_err}");
     }
 
+    /// On a rectangular grid, the flux-form advection must still conserve
+    /// mass exactly (modulo floating-point round-off). A bug that wraps
+    /// both axes with the same period would leak mass in the direction
+    /// where the assumed period doesn't match the grid dimension.
+    ///
+    /// Uniform velocity is trivially divergence-free on any grid, so the
+    /// expected behavior is zero mass drift.
+    #[test]
+    fn advection_conserves_mass_rectangular() {
+        let nx = 24;
+        let ny = 16;
+        let dx = 1.0;
+        let mut grid = StaggeredGrid::new(nx, ny, dx);
+
+        // Non-uniform initial thickness so the flux computation actually
+        // moves something.
+        for j in 0..ny {
+            for i in 0..nx {
+                grid.s.set(i, j, if i < nx / 2 { 0.8 } else { 0.2 });
+            }
+        }
+        // Uniform velocity → divergence-free → mass must be preserved.
+        for j in 0..ny {
+            for i in 0..nx {
+                grid.vx.set(i, j, 0.01);
+                grid.vy.set(i, j, 0.005);
+            }
+        }
+
+        let initial_mass: f64 = grid.s.data().iter().sum();
+        assert!(initial_mass > 0.0);
+        let mut div = Field2D::new(nx, ny);
+
+        let dt = compute_cfl_dt(&grid, 0.5);
+        for _ in 0..100 {
+            compute_divergence_flux(&grid, &mut div);
+            for j in 0..ny {
+                for i in 0..nx {
+                    let s = grid.s.get(i, j) - dt * div.get(i, j);
+                    grid.s.set(i, j, s);
+                }
+            }
+        }
+
+        let final_mass: f64 = grid.s.data().iter().sum();
+        let rel_err = (final_mass - initial_mass).abs() / initial_mass;
+        assert!(
+            rel_err < 1e-10,
+            "Mass drift on {nx}×{ny} grid: initial={initial_mass}, final={final_mass}, rel_err={rel_err}"
+        );
+    }
+
     #[test]
     fn no_negative_thickness() {
         let n = 16;

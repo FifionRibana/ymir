@@ -96,9 +96,24 @@ pub fn upscale_with_fbm(
 ) -> UpscaleResult {
     let src_w = coarse.width;
     let src_h = coarse.height;
-    let dst = config.target_size;
-    let scale_x = src_w as f64 / dst as f64;
-    let scale_y = src_h as f64 / dst as f64;
+    let target = config.target_size;
+
+    // Output dimensions: `target_size` is applied to the longer source
+    // axis; the other axis is derived to preserve the source aspect ratio.
+    // Must stay in sync with `export::upscale_dims`, which documents the
+    // same contract for the exported artefacts.
+    let (dst_w, dst_h) = if src_w == src_h {
+        (target, target)
+    } else if src_w >= src_h {
+        let h = ((target as f64) * src_h as f64 / src_w as f64).round() as usize;
+        (target, h.max(1))
+    } else {
+        let w = ((target as f64) * src_w as f64 / src_h as f64).round() as usize;
+        (w.max(1), target)
+    };
+
+    let scale_x = src_w as f64 / dst_w as f64;
+    let scale_y = src_h as f64 / dst_h as f64;
 
     // Create noise generators
     let noise_seed = seed.derive_seed("fbm_upscale") as u32;
@@ -112,17 +127,20 @@ pub fn upscale_with_fbm(
     // Precompute slope and direction on the coarse grid
     let (slope_map, direction_map) = compute_terrain_analysis(coarse);
 
-    // Base frequency: one cycle per source cell mapped to target coords
-    let freq = config.base_frequency / (src_w as f64);
+    // Base frequency: one cycle per source cell, calibrated against the
+    // longer source axis so the noise wavelength in physical units is
+    // identical on both axes regardless of orientation (on a square grid
+    // this is unchanged since src_w == src_h).
+    let freq = config.base_frequency / (src_w.max(src_h) as f64);
 
     // Process each output row in parallel
-    let row_data: Vec<(Vec<f32>, Vec<f32>)> = (0..dst)
+    let row_data: Vec<(Vec<f32>, Vec<f32>)> = (0..dst_h)
         .into_par_iter()
         .map(|j| {
-            let mut h_row = vec![0.0f32; dst];
-            let mut s_row = vec![0.0f32; dst];
+            let mut h_row = vec![0.0f32; dst_w];
+            let mut s_row = vec![0.0f32; dst_w];
 
-            for i in 0..dst {
+            for i in 0..dst_w {
                 // Source coordinates in coarse pixel space
                 let sx = i as f64 * scale_x;
                 let sy = j as f64 * scale_y;
@@ -229,8 +247,8 @@ pub fn upscale_with_fbm(
         .collect();
 
     // Copy into GridF32
-    let mut heightmap = GridF32::new(dst, dst, 0.0);
-    let mut slope_out = GridF32::new(dst, dst, 0.0);
+    let mut heightmap = GridF32::new(dst_w, dst_h, 0.0);
+    let mut slope_out = GridF32::new(dst_w, dst_h, 0.0);
 
     for (j, (h_row, s_row)) in row_data.into_iter().enumerate() {
         for (i, (h, s)) in h_row.into_iter().zip(s_row).enumerate() {
@@ -340,6 +358,42 @@ mod tests {
         for &v in &result.heightmap.data {
             assert!((0.0..=1.0).contains(&v), "Height out of range: {v}");
         }
+    }
+
+    /// The upscale must preserve the source aspect ratio: target_size
+    /// becomes the longer output axis, the shorter axis is derived.
+    /// Source 16×10 (landscape, 8:5) → 128×80 at target_size=128.
+    #[test]
+    fn upscale_preserves_aspect_ratio_landscape() {
+        let mut coarse = GridF32::new(16, 10, 0.5);
+        for j in 0..10 {
+            for i in 0..16 {
+                coarse.set(i, j, (i + j) as f32 / 26.0);
+            }
+        }
+        let seed = WorldSeed::new(42);
+        let config = FbmUpscaleConfig { target_size: 128, ..Default::default() };
+        let result = upscale_with_fbm(&coarse, 0.1, &seed, &config);
+
+        assert_eq!(result.heightmap.width, 128);
+        assert_eq!(result.heightmap.height, 80);
+        assert_eq!(result.slope.width, 128);
+        assert_eq!(result.slope.height, 80);
+        assert_eq!(result.heightmap.data.len(), 128 * 80);
+    }
+
+    /// Same as above with a portrait source: 10×16 → 80×128.
+    #[test]
+    fn upscale_preserves_aspect_ratio_portrait() {
+        let coarse = GridF32::new(10, 16, 0.5);
+        let seed = WorldSeed::new(42);
+        let config = FbmUpscaleConfig { target_size: 128, ..Default::default() };
+        let result = upscale_with_fbm(&coarse, 0.1, &seed, &config);
+
+        assert_eq!(result.heightmap.width, 80);
+        assert_eq!(result.heightmap.height, 128);
+        assert_eq!(result.slope.width, 80);
+        assert_eq!(result.slope.height, 128);
     }
 
     #[test]
