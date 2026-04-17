@@ -217,6 +217,18 @@ fn current_progress(
     }
 }
 
+/// Format cumulative geological time (solver units) with precision chosen
+/// from the magnitude so the status bar stays readable across dt regimes.
+fn format_geo_time(t: f64) -> String {
+    if t < 10.0 {
+        format!("{t:.2}")
+    } else if t < 1000.0 {
+        format!("{t:.1}")
+    } else {
+        format!("{t:.0}")
+    }
+}
+
 fn completed_elapsed(
     phase: PipelinePhase,
     bridge: &crate::bridge::SolverBridge,
@@ -229,7 +241,7 @@ fn completed_elapsed(
 
     match phase {
         PipelinePhase::Tectonics => {
-            if let SolverState::Completed { elapsed } = &bridge.state {
+            if let SolverState::Completed { elapsed, .. } = &bridge.state {
                 Some(*elapsed)
             } else {
                 None
@@ -398,6 +410,21 @@ fn ui_bottom_bar(
             } else if let Some(elapsed) = completed_elapsed {
                 ui.separator();
                 ui.monospace(format!("\u{2713} {:.1}s", elapsed.as_secs_f64()));
+            }
+
+            // Cumulative geological time (sum of solver dt). Only meaningful
+            // on the Tectonics phase, so we only read bridge.state here.
+            if matches!(phase, PipelinePhase::Tectonics) {
+                use crate::bridge::plugin::SolverState;
+                let geo_time = match &bridge.state {
+                    SolverState::Running { cumulative_dt, .. } => Some(*cumulative_dt),
+                    SolverState::Completed { cumulative_dt, .. } => Some(*cumulative_dt),
+                    _ => None,
+                };
+                if let Some(t) = geo_time {
+                    ui.separator();
+                    ui.monospace(format!("t = {}", format_geo_time(t)));
+                }
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

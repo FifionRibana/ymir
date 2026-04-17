@@ -405,7 +405,10 @@ where
         let mut total_div_flux = 0.0_f64;
         let mut total_source = 0.0_f64;
 
-        for _retry in 0..5 {
+        const MAX_RETRIES: usize = 5;
+        let mut retry_succeeded = false;
+
+        for retry_index in 0..MAX_RETRIES {
             compute_divergence_flux(grid, &mut workspace.div_flux);
 
             mass_after_advection = 0.0;
@@ -439,12 +442,29 @@ where
             clamp_ratio = clamp_count as f64 / (nx * ny) as f64;
 
             if clamp_ratio < 0.05 || dt <= dt_min {
+                retry_succeeded = true;
                 break;
             }
 
-            // Too many cells clamped — retry with smaller dt
-            dt *= 0.5;
-            grid.s.data_mut().copy_from_slice(&s_backup);
+            // Too many cells clamped — prepare another attempt with a halved dt,
+            // restoring grid.s from the backup. Only restore if we still have a
+            // retry left: on the final iteration we keep the current grid.s so
+            // the step commits the last attempt instead of silently reverting
+            // to the pre-step state.
+            if retry_index + 1 < MAX_RETRIES {
+                dt *= 0.5;
+                grid.s.data_mut().copy_from_slice(&s_backup);
+            }
+        }
+
+        if !retry_succeeded {
+            warn!(
+                step,
+                clamp_ratio,
+                dt,
+                attempts = MAX_RETRIES,
+                "CFL retry exhausted — accepting degraded step"
+            );
         }
 
         // 3b. Oceanic restoring force — dense oceanic crust (ρ ≈ 3000 kg/m³)
@@ -526,6 +546,7 @@ where
             cg_iterations_last: linear_iterations,
             dt,
             clamp_ratio,
+            cfl_retry_exhausted: !retry_succeeded,
         };
 
         info!(
@@ -1331,5 +1352,95 @@ mod tests {
 
         let speed = (plates[0].velocity.0.powi(2) + plates[0].velocity.1.powi(2)).sqrt();
         assert!(speed <= 5.1, "Velocity should be capped: {speed}");
+    }
+
+    #[test]
+    fn cfl_retry_succeeds_on_standard_configuration() {
+        // Gentle uniform field, modest convergent traction, single step: the
+        // CFL retry loop should converge on the first try (retry 0) with a
+        // clamp_ratio well below the 5% threshold.
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, n, dx);
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, 1.0);
+            }
+        }
+
+        let traction = TractionField::two_plates_convergent(n, n, 0.5);
+        let mut ctx = make_static_ctx(n, traction);
+        let mut config = make_config(1);
+        config.boundaries.oceanic_restore_rate = 0.0;
+        config.boundaries.continental_restore_rate = 0.0;
+        let mut ws = SolverWorkspace::new(n, n);
+
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
+        assert!(result.is_ok(), "Run failed: {:?}", result.err());
+
+        assert!(
+            !ws.stats.cfl_retry_exhausted,
+            "CFL retry should succeed on gentle configuration"
+        );
+        assert!(
+            ws.stats.clamp_ratio < 0.05,
+            "clamp_ratio should stay below threshold on success path, got {}",
+            ws.stats.clamp_ratio
+        );
+    }
+
+    #[test]
+    fn cfl_retry_exhausted_commits_last_attempt() {
+        // Extremely tight clamp window around a uniform initial thickness:
+        // every cell sits inside both clamp-proximity thresholds
+        // (s <= s_min * 1.01 AND s >= s_max * 0.99) so clamp_ratio is 100%
+        // at every attempted dt. The retry loop therefore exhausts its
+        // budget — but grid.s MUST still evolve rather than silently
+        // reverting to the pre-step state (the bug this fix addresses).
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, n, dx);
+        let s_initial = 1.0;
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, s_initial);
+            }
+        }
+        let s_before: Vec<f64> = grid.s.data().to_vec();
+
+        let traction = TractionField::two_plates_convergent(n, n, 0.5);
+        let mut ctx = make_static_ctx(n, traction);
+        let mut config = make_config(1);
+        // Window width 0.002 straddling s_initial = 1.0. The proximity
+        // tests `s <= s_min * 1.01` (= 1.00899) and `s >= s_max * 0.99`
+        // (= 0.99099) both cover the entire [s_min, s_max] range, so
+        // any value grid.s can hold after clamping will be counted.
+        config.s_min = 0.999;
+        config.s_max = 1.001;
+        config.boundaries.oceanic_restore_rate = 0.0;
+        config.boundaries.continental_restore_rate = 0.0;
+        let mut ws = SolverWorkspace::new(n, n);
+
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
+        assert!(result.is_ok(), "Run failed: {:?}", result.err());
+
+        assert!(
+            ws.stats.cfl_retry_exhausted,
+            "Expected retry exhaustion on pathological config, got clamp_ratio = {}",
+            ws.stats.clamp_ratio
+        );
+
+        // Core regression: grid.s must have evolved — the previous code
+        // silently restored s_backup on exhaustion, leaving this diff at 0.
+        let s_after = grid.s.data();
+        let max_diff = s_before
+            .iter()
+            .zip(s_after.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            max_diff > 1e-6,
+            "grid.s must have evolved even on CFL retry exhaustion, got max_diff = {max_diff}"
+        );
     }
 }
