@@ -122,4 +122,44 @@ mod tests {
             assert_eq!(*val, 1.5);
         }
     }
+
+    /// On a rectangular field the row stride is `nx`, so `(i, j)` lives at
+    /// raw index `j * nx + i`. A bug that uses `ny` as the stride is
+    /// invisible on square grids but corrupts data here.
+    #[test]
+    fn field2d_rectangular_stride() {
+        let mut f = Field2D::new(8, 4);
+        assert_eq!(f.nx(), 8);
+        assert_eq!(f.ny(), 4);
+        assert_eq!(f.data().len(), 32);
+
+        f.set(7, 3, 42.0);
+        f.set(5, 2, 7.5);
+        assert_eq!(f.get(7, 3), 42.0);
+        assert_eq!(f.get(5, 2), 7.5);
+
+        // The stride must be nx=8, so (7, 3) is at flat index 3*8 + 7 = 31
+        // and (5, 2) is at 2*8 + 5 = 21. The corresponding stride-swap
+        // indices (7*4 + 3 = 31, 5*4 + 2 = 22) happen to coincide or
+        // collide elsewhere — verifying the raw buffer catches both.
+        assert_eq!(f.data()[3 * 8 + 7], 42.0);
+        assert_eq!(f.data()[2 * 8 + 5], 7.5);
+    }
+
+    /// Coprime dimensions so that swapping the stride lands at a different
+    /// (but still valid) buffer position. A stride-swap bug would put the
+    /// value somewhere other than `j * nx + i` and this test would catch it.
+    #[test]
+    fn field2d_coprime_dimensions_stride() {
+        let mut f = Field2D::new(7, 3);
+        assert_eq!(f.data().len(), 21);
+
+        // Writing to (5, 1) with correct stride lands at 1*7 + 5 = 12.
+        // A buggy `i * ny + j` would compute 5*3 + 1 = 16, a distinct
+        // index that is also in bounds.
+        f.set(5, 1, 99.0);
+        assert_eq!(f.get(5, 1), 99.0);
+        assert_eq!(f.data()[12], 99.0);
+        assert_eq!(f.data()[16], 0.0);
+    }
 }

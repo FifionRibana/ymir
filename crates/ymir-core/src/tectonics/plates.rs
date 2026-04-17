@@ -1189,6 +1189,51 @@ mod tests {
         assert!((d - 4.0).abs() < 1e-6, "expected 4.0, got {d}");
     }
 
+    /// The 2D toroidal distance must use `period_x` for the x-difference
+    /// and `period_y` for the y-difference. Swapping them goes unnoticed
+    /// on square grids but produces the wrong distance — and so the
+    /// wrong Voronoï assignment — on rectangular tori.
+    #[test]
+    fn test_toroidal_distance_rectangular() {
+        // 10×4 grid. x-wrap period = 10, y-wrap period = 4.
+
+        // x wraps: (9, 0) → (0, 0) is 1 cell via x-wrap (10 - 9 = 1).
+        let d = toroidal_distance_2d(9.0, 0.0, 0.0, 0.0, 10.0, 4.0);
+        assert!((d - 1.0).abs() < 1e-6, "x-wrap on 10×4: expected 1.0, got {d}");
+
+        // y wraps: (0, 3) → (0, 0) is 1 cell via y-wrap (4 - 3 = 1).
+        let d = toroidal_distance_2d(0.0, 3.0, 0.0, 0.0, 10.0, 4.0);
+        assert!((d - 1.0).abs() < 1e-6, "y-wrap on 10×4: expected 1.0, got {d}");
+
+        // No wrap needed in x (3 < 10/2): direct distance 3.
+        let d = toroidal_distance_2d(3.0, 0.0, 0.0, 0.0, 10.0, 4.0);
+        assert!((d - 3.0).abs() < 1e-6, "direct x on 10×4: expected 3.0, got {d}");
+
+        // Axis-asymmetry: (5, 2) → (0, 0).
+        //   - On a 10×4 torus: dx = min(5, 10-5) = 5, dy = min(2, 4-2) = 2 → √29
+        //   - On a 4×10 torus: dx = min(5, 4-5) ... here 5 > 4/2 so dx = |4-5| = 1,
+        //     dy = min(2, 10-2) = 2 → √5
+        // A bug swapping period_x and period_y would return the same value
+        // for both orientations; the correct implementation gives √29 vs √5.
+        let d_wide = toroidal_distance_2d(5.0, 2.0, 0.0, 0.0, 10.0, 4.0);
+        let d_tall = toroidal_distance_2d(5.0, 2.0, 0.0, 0.0, 4.0, 10.0);
+        let expected_wide = (5.0_f32.powi(2) + 2.0_f32.powi(2)).sqrt();
+        let expected_tall = (1.0_f32.powi(2) + 2.0_f32.powi(2)).sqrt();
+        assert!(
+            (d_wide - expected_wide).abs() < 1e-6,
+            "10×4 (5,2)→(0,0): expected {expected_wide}, got {d_wide}"
+        );
+        assert!(
+            (d_tall - expected_tall).abs() < 1e-6,
+            "4×10 (5,2)→(0,0): expected {expected_tall}, got {d_tall}"
+        );
+        assert!(
+            (d_wide - d_tall).abs() > 1e-3,
+            "Distance should differ on 10×4 vs 4×10; a period swap would \
+             make them identical. wide={d_wide}, tall={d_tall}"
+        );
+    }
+
     #[test]
     fn test_generate_plates_deterministic() {
         let config = PlateConfig::default();
@@ -1199,6 +1244,71 @@ mod tests {
 
         assert_eq!(result1.plate_ids, result2.plate_ids);
         assert_eq!(result1.thickness.data, result2.thickness.data);
+    }
+
+    /// Blur a delta function on a coprime rectangular grid and verify
+    /// energy wraps correctly on both axes. Coprime dimensions ensure a
+    /// horizontal-pass bug that uses `ny` for modulo instead of `nx`
+    /// puts the wrapped energy at a different cell, which we can detect
+    /// by sampling the expected wrap position.
+    #[test]
+    fn gaussian_blur_rectangular_wrap() {
+        let nx = 13;
+        let ny = 7;
+        let mut field = GridF32::new(nx, ny, 0.0);
+        // Delta at the right edge, middle row.
+        field.set(nx - 1, 3, 1.0);
+
+        let blurred = gaussian_blur(&field, 1.5);
+
+        // Total mass is preserved (blur normalises the kernel).
+        let total: f32 = blurred.data.iter().sum();
+        assert!((total - 1.0).abs() < 1e-5, "blur mass drift: {total}");
+
+        // The delta is at the RIGHT edge, so x-wrap carries energy to
+        // column 0 in the SAME row. A mistake that wraps with `ny=7`
+        // instead of `nx=13` would deposit energy at column (nx-1) % ny
+        // = 12 % 7 = 5, not at column 0.
+        let wrapped_x = blurred.data[3 * nx + 0]; // (0, 3) via x-wrap
+        let bogus_wrap = blurred.data[3 * nx + 5]; // (5, 3) — wrap-with-ny bug
+        assert!(
+            wrapped_x > 1e-3,
+            "x-wrap should deposit energy at (0, 3) but got {wrapped_x}"
+        );
+        assert!(
+            wrapped_x > bogus_wrap * 5.0,
+            "x-wrap landed at wrong cell: (0,3)={wrapped_x} vs (5,3)={bogus_wrap}. \
+             Likely the blur used ny instead of nx for horizontal wrap."
+        );
+
+        // The delta is in the middle row (j=3), so the vertical pass
+        // spreads energy into j=2 and j=4 in the same column.
+        let up = blurred.data[2 * nx + (nx - 1)];
+        let down = blurred.data[4 * nx + (nx - 1)];
+        assert!(up > 1e-3 && down > 1e-3, "vertical spread missing: up={up}, down={down}");
+    }
+
+    /// Both PlateConfig input modes must agree on canonical storage.
+    /// `with_resolution_aspect(w, r)` sets (w, round(w/r)); a manual
+    /// `with_dimensions(w, h)` with the same h must produce an equivalent
+    /// config (same grid_width, grid_height, and all other fields).
+    #[test]
+    fn plateconfig_input_modes_agree() {
+        let r = 1.5_f32;
+        let w = 128usize;
+        let h = ((w as f32) / r).round() as usize;
+
+        let a = PlateConfig::default().with_resolution_aspect(w, r);
+        let b = PlateConfig::default().with_dimensions(w, h);
+
+        assert_eq!(a.grid_width, b.grid_width);
+        assert_eq!(a.grid_height, b.grid_height);
+        assert_eq!(a.grid_width, 128);
+        assert_eq!(a.grid_height, 85);
+
+        // Non-dimensional fields also match (both came from default()).
+        assert_eq!(a.num_plates, b.num_plates);
+        assert_eq!(a.num_continental_plates, b.num_continental_plates);
     }
 
     #[test]
