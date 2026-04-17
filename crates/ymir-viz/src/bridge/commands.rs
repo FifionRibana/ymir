@@ -15,14 +15,16 @@ pub enum SolverCommand {
         config: TectonicsConfig,
         plate_ctx: DynamicPlateContext,
         initial_s: Field2D,
-        grid_size: usize,
+        grid_width: usize,
+        grid_height: usize,
         dx: f64,
     },
     SingleStep {
         config: TectonicsConfig,
         plate_ctx: DynamicPlateContext,
         s_field: Field2D,
-        grid_size: usize,
+        grid_width: usize,
+        grid_height: usize,
         dx: f64,
     },
     RunFbmUpscale {

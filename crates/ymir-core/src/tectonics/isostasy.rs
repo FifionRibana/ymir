@@ -67,11 +67,12 @@ pub struct IsostasyResult {
 /// The input is the Field2D from the solver (f64, dimensionless).
 /// The output is a normalized GridF32 heightmap suitable for erosion and export.
 pub fn compute_isostasy(thickness: &Field2D, config: &IsostasyConfig) -> IsostasyResult {
-    let n = thickness.n();
+    let nx = thickness.nx();
+    let ny = thickness.ny();
     let buoyancy = 1.0 - config.rho_crust / config.rho_mantle;
 
     // 1. Compute raw isostatic elevation
-    let mut h_raw = vec![0.0f32; n * n];
+    let mut h_raw = vec![0.0f32; nx * ny];
     let mut h_min = f32::INFINITY;
     let mut h_max = f32::NEG_INFINITY;
 
@@ -90,10 +91,10 @@ pub fn compute_isostasy(thickness: &Field2D, config: &IsostasyConfig) -> Isostas
     // sea_norm = max_depth / (max_depth + max_elevation)
     let sea_norm = config.max_depth_m / (config.max_depth_m + config.max_elevation_m);
 
-    let mut data = vec![0.0f32; n * n];
+    let mut data = vec![0.0f32; nx * ny];
     let mut land_count = 0usize;
 
-    for k in 0..n * n {
+    for k in 0..nx * ny {
         let h = h_raw[k];
         let normalized = if h <= h_sea {
             let t = (h - h_min) / (h_sea - h_min).max(1e-10);
@@ -109,13 +110,13 @@ pub fn compute_isostasy(thickness: &Field2D, config: &IsostasyConfig) -> Isostas
         }
     }
 
-    let land_ratio = land_count as f32 / (n * n) as f32;
+    let land_ratio = land_count as f32 / (nx * ny) as f32;
 
     // 4. Compute actual peak altitude and depth for metadata
     let peak_altitude_m = (h_max - h_sea) / (h_max - h_min).max(1e-10) * config.max_elevation_m;
     let actual_depth_m = (h_sea - h_min) / (h_max - h_min).max(1e-10) * config.max_depth_m;
 
-    let heightmap = GridF32::from_vec(n, n, data);
+    let heightmap = GridF32::from_vec(nx, ny, data);
     let heightmap = if config.altitude_smoothing_sigma > 0.0 {
         heightmap.gaussian_blur(config.altitude_smoothing_sigma)
     } else {
@@ -137,7 +138,7 @@ mod tests {
 
     #[test]
     fn uniform_continental_gives_all_land() {
-        let mut s = Field2D::new(16);
+        let mut s = Field2D::new(16, 16);
         for val in s.data_mut() {
             *val = 1.0;
         }
@@ -154,7 +155,7 @@ mod tests {
     #[test]
     fn all_ocean_when_sea_level_at_max() {
         let n = 16;
-        let mut s = Field2D::new(n);
+        let mut s = Field2D::new(n, n);
         for j in 0..n {
             for i in 0..n {
                 s.set(i, j, if i < n / 2 { 0.2 } else { 1.0 });
@@ -169,7 +170,7 @@ mod tests {
     #[test]
     fn thicker_crust_gives_higher_altitude() {
         let n = 32;
-        let mut s = Field2D::new(n);
+        let mut s = Field2D::new(n, n);
         for j in 0..n {
             for i in 0..n {
                 s.set(i, j, if i < n / 2 { 0.2 } else { 1.0 });
@@ -186,7 +187,7 @@ mod tests {
     #[test]
     fn sea_level_normalized_is_consistent() {
         let n = 16;
-        let mut s = Field2D::new(n);
+        let mut s = Field2D::new(n, n);
         for j in 0..n {
             for i in 0..n {
                 s.set(i, j, if i < n / 2 { 0.2 } else { 1.0 });
@@ -208,7 +209,7 @@ mod tests {
     #[test]
     fn heightmap_values_in_range() {
         let n = 32;
-        let mut s = Field2D::new(n);
+        let mut s = Field2D::new(n, n);
         for (k, val) in s.data_mut().iter_mut().enumerate() {
             *val = 0.2 + (k as f64 / (n * n) as f64) * 1.8;
         }
@@ -222,7 +223,7 @@ mod tests {
     #[test]
     fn land_ratio_increases_as_sea_level_drops() {
         let n = 32;
-        let mut s = Field2D::new(n);
+        let mut s = Field2D::new(n, n);
         // Use a gradient so that the sea level threshold splits at different points
         for j in 0..n {
             for i in 0..n {
@@ -246,7 +247,7 @@ mod tests {
     #[test]
     fn smoothing_reduces_max_gradient() {
         let n = 32;
-        let mut s = Field2D::new(n);
+        let mut s = Field2D::new(n, n);
         for j in 0..n {
             for i in 0..n {
                 s.set(i, j, if i < n / 2 { 0.2 } else { 1.0 });

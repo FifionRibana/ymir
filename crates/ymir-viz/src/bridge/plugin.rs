@@ -102,12 +102,14 @@ fn poll_solver_events(
                 bridge.state = SolverState::Running { step, total_steps, stats: Some(stats) };
             }
             SolverEvent::Snapshot { s_field, plate_ids, plates, boundary_types, .. } => {
-                let grid_size = s_field.n();
+                let grid_width = s_field.nx();
+                let grid_height = s_field.ny();
                 terrain_display.update_field(s_field);
                 isostasy_cache.valid = false;
 
                 if let Some(ids) = plate_ids {
-                    dynamic_plates.grid_size = grid_size;
+                    dynamic_plates.grid_width = grid_width;
+                    dynamic_plates.grid_height = grid_height;
                     dynamic_plates.ids = Some(ids);
                 }
                 if let Some(pl) = plates {
@@ -121,13 +123,15 @@ fn poll_solver_events(
             SolverEvent::Completed {
                 s_field, plate_ids, plates, boundary_types, elapsed, ..
             } => {
-                let grid_size = s_field.n();
+                let grid_width = s_field.nx();
+                let grid_height = s_field.ny();
                 terrain_display.update_field(s_field);
                 isostasy_cache.valid = false;
                 bridge.state = SolverState::Completed { elapsed };
 
                 if let Some(ids) = plate_ids {
-                    dynamic_plates.grid_size = grid_size;
+                    dynamic_plates.grid_width = grid_width;
+                    dynamic_plates.grid_height = grid_height;
                     dynamic_plates.ids = Some(ids);
                 }
                 if let Some(pl) = plates {
@@ -191,17 +195,19 @@ fn handle_step(
         return;
     };
 
-    let grid_size = tecto.init.grid_size;
-    let dx = 1.0 / grid_size as f64;
+    let grid_width = tecto.init.grid_width;
+    let grid_height = tecto.init.grid_height;
+    let dx = 1.0 / grid_width as f64;
 
     // Get current s_field from terrain display (last snapshot), or from initial thickness
     let s_field = if let Some(ref field) = terrain_display.s_field {
         field.clone()
     } else {
-        let mut field = ymir_core::tectonics::solver::field::Field2D::new(grid_size);
-        for j in 0..grid_size {
-            for i in 0..grid_size {
-                field.set(i, j, tecto.init.thickness.data[j * grid_size + i] as f64);
+        let mut field =
+            ymir_core::tectonics::solver::field::Field2D::new(grid_width, grid_height);
+        for j in 0..grid_height {
+            for i in 0..grid_width {
+                field.set(i, j, tecto.init.thickness.data[j * grid_width + i] as f64);
             }
         }
         field
@@ -210,15 +216,16 @@ fn handle_step(
     // Get current plate context from dynamic state, or from initial
     let plate_ctx = if let (Some(ids), Some(plates)) = (&dynamic_plates.ids, &dynamic_plates.plates)
     {
-        let traction = ymir_core::tectonics::plates::rebuild_traction(ids, plates, grid_size);
+        let traction =
+            ymir_core::tectonics::plates::rebuild_traction(ids, plates, grid_width, grid_height);
         let next_id = plates.len();
         DynamicPlateContext {
             ids: ids.clone(),
             plates: plates.clone(),
             traction,
             next_id,
-            disp_x: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
-            disp_y: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
+            disp_x: ymir_core::tectonics::solver::field::Field2D::new(grid_width, grid_height),
+            disp_y: ymir_core::tectonics::solver::field::Field2D::new(grid_width, grid_height),
         }
     } else {
         let traction = tecto.init.to_traction_field();
@@ -228,8 +235,8 @@ fn handle_step(
             plates: tecto.init.plates.clone(),
             traction,
             next_id,
-            disp_x: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
-            disp_y: ymir_core::tectonics::solver::field::Field2D::new(grid_size),
+            disp_x: ymir_core::tectonics::solver::field::Field2D::new(grid_width, grid_height),
+            disp_y: ymir_core::tectonics::solver::field::Field2D::new(grid_width, grid_height),
         }
     };
 
@@ -239,7 +246,8 @@ fn handle_step(
         config,
         plate_ctx,
         s_field,
-        grid_size,
+        grid_width,
+        grid_height,
         dx,
     });
 
@@ -432,7 +440,8 @@ fn handle_center_map(
             centering.original_field = Some(field.clone());
             centering.original_plate_ids = dynamic_plates.ids.clone();
             centering.original_plates = dynamic_plates.plates.clone();
-            centering.original_grid_size = dynamic_plates.grid_size;
+            centering.original_grid_width = dynamic_plates.grid_width;
+            centering.original_grid_height = dynamic_plates.grid_height;
         }
     }
 
@@ -451,7 +460,8 @@ fn handle_center_map(
     // Total shift
     let dx = centering.auto_shift.0 + centering.offset_x;
     let dy = centering.auto_shift.1 + centering.offset_y;
-    let n = centering.original_grid_size;
+    let nx = centering.original_grid_width;
+    let ny = centering.original_grid_height;
 
     // Apply to field
     let shifted = shift_field(centering.original_field.as_ref().unwrap(), dx, dy);
@@ -459,13 +469,13 @@ fn handle_center_map(
 
     // Apply to plate IDs
     if let Some(ref ids) = centering.original_plate_ids {
-        dynamic_plates.ids = Some(shift_ids(ids, n, dx, dy));
+        dynamic_plates.ids = Some(shift_ids(ids, nx, ny, dx, dy));
     }
 
     // Apply to plate seeds
     if let Some(ref orig_plates) = centering.original_plates {
         let mut plates = orig_plates.clone();
-        shift_plates(&mut plates, n, dx, dy);
+        shift_plates(&mut plates, nx, ny, dx, dy);
         dynamic_plates.plates = Some(plates);
     }
 

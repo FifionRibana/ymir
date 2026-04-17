@@ -32,7 +32,8 @@ impl Default for StepStats {
 
 /// All temporary buffers needed by the solver, pre-allocated to avoid per-step allocation.
 pub struct SolverWorkspace {
-    pub n: usize,
+    nx: usize,
+    ny: usize,
     pub div_flux: Field2D,
     pub eta: Field2D,
     pub strain_rate: Field2D,
@@ -52,13 +53,14 @@ pub struct SolverWorkspace {
 }
 
 impl SolverWorkspace {
-    pub fn new(n: usize) -> Self {
-        let nn2 = 2 * n * n;
+    pub fn new(nx: usize, ny: usize) -> Self {
+        let nn2 = 2 * nx * ny;
         Self {
-            n,
-            div_flux: Field2D::new(n),
-            eta: Field2D::new(n),
-            strain_rate: Field2D::new(n),
+            nx,
+            ny,
+            div_flux: Field2D::new(nx, ny),
+            eta: Field2D::new(nx, ny),
+            strain_rate: Field2D::new(nx, ny),
             v_packed: vec![0.0; nn2],
             v_prev: vec![0.0; nn2],
             rhs: vec![0.0; nn2],
@@ -69,30 +71,40 @@ impl SolverWorkspace {
             jfnk_f_v: vec![0.0; nn2],
             jfnk_neg_f: vec![0.0; nn2],
             jfnk_delta_v: vec![0.0; nn2],
-            source_rate: Field2D::new(n),
+            source_rate: Field2D::new(nx, ny),
             boundary_field: None,
             stats: StepStats::default(),
         }
     }
 
-    pub fn resize_if_needed(&mut self, n: usize) {
-        if self.n != n {
-            *self = Self::new(n);
+    pub fn resize_if_needed(&mut self, nx: usize, ny: usize) {
+        if self.nx != nx || self.ny != ny {
+            *self = Self::new(nx, ny);
         }
+    }
+
+    #[inline]
+    pub fn nx(&self) -> usize {
+        self.nx
+    }
+
+    #[inline]
+    pub fn ny(&self) -> usize {
+        self.ny
     }
 }
 
 /// Pack grid velocity fields (vx, vy) into a single flat vector.
-/// Layout: first N² elements = vx, next N² = vy.
+/// Layout: first nx*ny elements = vx, next nx*ny = vy.
 pub fn pack_velocity(grid: &StaggeredGrid, buf: &mut [f64]) {
-    let n2 = grid.n * grid.n;
+    let n2 = grid.nx() * grid.ny();
     buf[..n2].copy_from_slice(grid.vx.data());
     buf[n2..2 * n2].copy_from_slice(grid.vy.data());
 }
 
 /// Unpack a flat vector into grid velocity fields.
 pub fn unpack_velocity(buf: &[f64], grid: &mut StaggeredGrid) {
-    let n2 = grid.n * grid.n;
+    let n2 = grid.nx() * grid.ny();
     grid.vx.data_mut().copy_from_slice(&buf[..n2]);
     grid.vy.data_mut().copy_from_slice(&buf[n2..2 * n2]);
 }

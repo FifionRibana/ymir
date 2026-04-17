@@ -24,16 +24,18 @@ pub struct PicardResult {
 /// Compute the second invariant of strain rate at cell centers.
 #[allow(clippy::needless_range_loop)]
 pub fn compute_strain_rate(grid: &StaggeredGrid, out: &mut Field2D) {
-    let n = grid.n;
-    let idx = &grid.idx;
+    let nx = grid.nx();
+    let ny = grid.ny();
+    let idx_x = grid.idx_x();
+    let idx_y = grid.idx_y();
     let inv_dx = 1.0 / grid.dx;
 
     let process_row = |j: usize, row: &mut [f64]| {
-        let nj = idx.next(j);
-        let pj = idx.prev(j);
-        for i in 0..n {
-            let ni = idx.next(i);
-            let pi = idx.prev(i);
+        let nj = idx_y.next(j);
+        let pj = idx_y.prev(j);
+        for i in 0..nx {
+            let ni = idx_x.next(i);
+            let pi = idx_x.prev(i);
 
             let dvx_dx = (grid.vx.get(ni, j) - grid.vx.get(i, j)) * inv_dx;
             let dvy_dy = (grid.vy.get(i, nj) - grid.vy.get(i, j)) * inv_dx;
@@ -56,12 +58,12 @@ pub fn compute_strain_rate(grid: &StaggeredGrid, out: &mut Field2D) {
         }
     };
 
-    if n >= PAR_THRESHOLD {
-        out.data_mut().par_chunks_mut(n).enumerate().for_each(|(j, row)| process_row(j, row));
+    if nx >= PAR_THRESHOLD {
+        out.data_mut().par_chunks_mut(nx).enumerate().for_each(|(j, row)| process_row(j, row));
     } else {
-        for j in 0..n {
-            let s = j * n;
-            process_row(j, &mut out.data_mut()[s..s + n]);
+        for j in 0..ny {
+            let s = j * nx;
+            process_row(j, &mut out.data_mut()[s..s + nx]);
         }
     }
 }
@@ -76,16 +78,17 @@ pub fn compute_viscosity(
     eta: &mut Field2D,
 ) {
     let exponent = 1.0 / n_exp - 1.0;
-    let n = strain_rate.n();
+    let nx = strain_rate.nx();
+    let ny = strain_rate.ny();
 
-    if n >= PAR_THRESHOLD {
+    if nx >= PAR_THRESHOLD {
         strain_rate.data().par_iter().zip(eta.data_mut().par_iter_mut()).for_each(
             |(&sr, eta_val)| {
                 *eta_val = (sr + eps_min).powf(exponent).clamp(eta_min, eta_max);
             },
         );
     } else {
-        for k in 0..n * n {
+        for k in 0..nx * ny {
             let sr = strain_rate.data()[k];
             eta.data_mut()[k] = (sr + eps_min).powf(exponent).clamp(eta_min, eta_max);
         }
@@ -104,10 +107,11 @@ pub fn apply_yielding(
         return;
     }
 
-    let n = strain_rate.n();
+    let nx = strain_rate.nx();
+    let ny = strain_rate.ny();
     let eps_min = 1e-20;
 
-    for k in 0..n * n {
+    for k in 0..nx * ny {
         let sr = strain_rate.data()[k];
         if sr < eps_min {
             continue;
@@ -142,10 +146,11 @@ pub fn accumulate_plastic_strain(
         return;
     }
 
-    let n = strain_rate.n();
+    let nx = strain_rate.nx();
+    let ny = strain_rate.ny();
     let eps_min = 1e-20;
 
-    for k in 0..n * n {
+    for k in 0..nx * ny {
         let sr = strain_rate.data()[k];
         if sr < eps_min {
             continue;
@@ -176,8 +181,9 @@ pub fn accumulate_plastic_strain(
 
 /// Apply spatial viscosity multiplier (cratonic rigidity) and re-clamp.
 pub fn apply_eta_multiplier(multiplier: &Field2D, eta_max: f64, eta: &mut Field2D) {
-    let n = multiplier.n();
-    for k in 0..n * n {
+    let nx = multiplier.nx();
+    let ny = multiplier.ny();
+    for k in 0..nx * ny {
         let m = multiplier.data()[k];
         if m != 1.0 {
             eta.data_mut()[k] = (eta.data()[k] * m).min(eta_max);
@@ -197,8 +203,10 @@ pub fn solve_velocity_picard(
     yielding: &super::config::YieldingConfig,
     ws: &mut SolverWorkspace,
 ) -> PicardResult {
-    let n = grid.n;
-    let nn2 = 2 * n * n;
+    let nx = grid.nx();
+    let ny = grid.ny();
+    let n2 = nx * ny;
+    let nn2 = 2 * n2;
     let mut total_cg = 0usize;
 
     // Pack current velocity as initial guess
@@ -208,7 +216,6 @@ pub fn solve_velocity_picard(
     compute_rhs(grid, plates, gravity_factor, rho_continental, rho_mantle, &mut ws.rhs);
 
     // Project out null space (constant mode) — periodic Stokes has a rank-2 null space
-    let n2 = n * n;
     let mean_vx: f64 = ws.rhs[..n2].iter().sum::<f64>() / n2 as f64;
     let mean_vy: f64 = ws.rhs[n2..nn2].iter().sum::<f64>() / n2 as f64;
     for val in &mut ws.rhs[..n2] {
@@ -327,7 +334,7 @@ mod tests {
     fn linear_viscosity_one_iteration() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         // Set up a non-trivial S field
         for j in 0..n {
@@ -337,7 +344,7 @@ mod tests {
             }
         }
 
-        let plates = TractionField::uniform(n, 0.1, 0.0);
+        let plates = TractionField::uniform(n, n, 0.1, 0.0);
         let config = PicardConfig {
             max_iterations: 50,
             tolerance: 1e-10,
@@ -348,7 +355,7 @@ mod tests {
             power_law_n: 1.0,
             ..PicardConfig::default()
         };
-        let mut ws = SolverWorkspace::new(n);
+        let mut ws = SolverWorkspace::new(n, n);
 
         let result = solve_velocity_picard(
             &mut grid,
@@ -372,7 +379,7 @@ mod tests {
     fn power_law_converges() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         for j in 0..n {
             for i in 0..n {
@@ -380,7 +387,7 @@ mod tests {
             }
         }
 
-        let plates = TractionField::two_plates_convergent(n, 0.5);
+        let plates = TractionField::two_plates_convergent(n, n, 0.5);
         let config = PicardConfig {
             max_iterations: 50,
             tolerance: 1e-4,
@@ -391,7 +398,7 @@ mod tests {
             power_law_n: 3.0,
             ..PicardConfig::default()
         };
-        let mut ws = SolverWorkspace::new(n);
+        let mut ws = SolverWorkspace::new(n, n);
 
         let result = solve_velocity_picard(
             &mut grid,
@@ -420,9 +427,9 @@ mod tests {
         use crate::tectonics::solver::config::YieldingConfig;
 
         let n = 16;
-        let mut sr = Field2D::new(n);
-        let mut eta = Field2D::new(n);
-        let ps = Field2D::new(n);
+        let mut sr = Field2D::new(n, n);
+        let mut eta = Field2D::new(n, n);
+        let ps = Field2D::new(n, n);
 
         for k in 0..n * n {
             sr.data_mut()[k] = 1.0;
@@ -453,9 +460,9 @@ mod tests {
         use crate::tectonics::solver::config::YieldingConfig;
 
         let n = 16;
-        let mut sr = Field2D::new(n);
-        let mut eta = Field2D::new(n);
-        let ps = Field2D::new(n);
+        let mut sr = Field2D::new(n, n);
+        let mut eta = Field2D::new(n, n);
+        let ps = Field2D::new(n, n);
 
         for k in 0..n * n {
             sr.data_mut()[k] = 0.001;
@@ -481,11 +488,11 @@ mod tests {
         use crate::tectonics::solver::config::YieldingConfig;
 
         let n = 16;
-        let mut sr = Field2D::new(n);
-        let mut eta_fresh = Field2D::new(n);
-        let mut eta_weak = Field2D::new(n);
-        let ps_fresh = Field2D::new(n);
-        let mut ps_weak = Field2D::new(n);
+        let mut sr = Field2D::new(n, n);
+        let mut eta_fresh = Field2D::new(n, n);
+        let mut eta_weak = Field2D::new(n, n);
+        let ps_fresh = Field2D::new(n, n);
+        let mut ps_weak = Field2D::new(n, n);
 
         for k in 0..n * n {
             sr.data_mut()[k] = 0.5;
@@ -519,9 +526,9 @@ mod tests {
         use crate::tectonics::solver::config::YieldingConfig;
 
         let n = 8;
-        let mut sr = Field2D::new(n);
-        let mut eta = Field2D::new(n);
-        let ps = Field2D::new(n);
+        let mut sr = Field2D::new(n, n);
+        let mut eta = Field2D::new(n, n);
+        let ps = Field2D::new(n, n);
 
         for k in 0..n * n {
             sr.data_mut()[k] = 10.0;

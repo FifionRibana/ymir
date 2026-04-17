@@ -18,9 +18,11 @@ const PAR_THRESHOLD: usize = 64;
 /// `v` and `out` are packed vectors: first N² entries = vx component, next N² = vy.
 /// The operator includes a negative sign so that A is SPD when η > 0.
 pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f64]) {
-    let n = grid.n;
-    let n2 = n * n;
-    let idx = &grid.idx;
+    let nx = grid.nx();
+    let ny = grid.ny();
+    let n2 = nx * ny;
+    let idx_x = grid.idx_x();
+    let idx_y = grid.idx_y();
     let inv_dx2 = 1.0 / (grid.dx * grid.dx);
     let friction_scaled = grid.basal_friction * inv_dx2;
 
@@ -32,13 +34,13 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
     //   averaged from the 4 surrounding cell centers.
 
     let process_row = |j: usize, row_vx: &mut [f64], row_vy: &mut [f64]| {
-        let nj = idx.next(j);
-        let pj = idx.prev(j);
+        let nj = idx_y.next(j);
+        let pj = idx_y.prev(j);
 
-        for i in 0..n {
-            let ni = idx.next(i);
-            let pi = idx.prev(i);
-            let li = |ii: usize, jj: usize| -> usize { jj * n + ii };
+        for i in 0..nx {
+            let ni = idx_x.next(i);
+            let pi = idx_x.prev(i);
+            let li = |ii: usize, jj: usize| -> usize { jj * nx + ii };
 
             // --- vx component at face (i, j) ---
             // ∂/∂x(2η ∂vx/∂x): uses η at cell centers (i,j) and (prev(i),j)
@@ -110,20 +112,20 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
         }
     };
 
-    if n >= PAR_THRESHOLD {
-        out_vx.par_chunks_mut(n).zip(out_vy.par_chunks_mut(n)).enumerate().for_each(
+    if nx >= PAR_THRESHOLD {
+        out_vx.par_chunks_mut(nx).zip(out_vy.par_chunks_mut(nx)).enumerate().for_each(
             |(j, (row_vx, row_vy))| {
                 process_row(j, row_vx, row_vy);
             },
         );
     } else {
-        for j in 0..n {
-            let vx_start = j * n;
+        for j in 0..ny {
+            let vx_start = j * nx;
             let (row_vx, row_vy) =
-                (&mut out_vx[vx_start..vx_start + n], &mut out_vy[vx_start..vx_start + n]);
+                (&mut out_vx[vx_start..vx_start + nx], &mut out_vy[vx_start..vx_start + nx]);
             // SAFETY: we need non-overlapping mutable borrows of the two halves
             // which split_at_mut already guarantees. The sequential inner slices
-            // are also non-overlapping because we index by j*n.
+            // are also non-overlapping because we index by j*nx.
             process_row(j, row_vx, row_vy);
         }
     }
@@ -142,9 +144,11 @@ pub fn compute_rhs(
     rho_mantle: f64,
     rhs: &mut [f64],
 ) {
-    let n = grid.n;
-    let n2 = n * n;
-    let idx = &grid.idx;
+    let nx = grid.nx();
+    let ny = grid.ny();
+    let n2 = nx * ny;
+    let idx_x = grid.idx_x();
+    let idx_y = grid.idx_y();
     let inv_dx = 1.0 / grid.dx;
     let use_density = rho_mantle > 0.0;
 
@@ -167,9 +171,9 @@ pub fn compute_rhs(
     };
 
     let process_row = |j: usize, row_vx: &mut [f64], row_vy: &mut [f64]| {
-        let pj = idx.prev(j);
-        for i in 0..n {
-            let pi = idx.prev(i);
+        let pj = idx_y.prev(j);
+        for i in 0..nx {
+            let pi = idx_x.prev(i);
 
             // vx face (i,j): gradient of GPE in x
             let dpdx = -gravity_factor * (gpe(i, j) - gpe(pi, j)) * inv_dx;
@@ -183,36 +187,38 @@ pub fn compute_rhs(
         }
     };
 
-    if n >= PAR_THRESHOLD {
-        rhs_vx.par_chunks_mut(n).zip(rhs_vy.par_chunks_mut(n)).enumerate().for_each(
+    if nx >= PAR_THRESHOLD {
+        rhs_vx.par_chunks_mut(nx).zip(rhs_vy.par_chunks_mut(nx)).enumerate().for_each(
             |(j, (row_vx, row_vy))| {
                 process_row(j, row_vx, row_vy);
             },
         );
     } else {
-        for j in 0..n {
-            let s = j * n;
-            process_row(j, &mut rhs_vx[s..s + n], &mut rhs_vy[s..s + n]);
+        for j in 0..ny {
+            let s = j * nx;
+            process_row(j, &mut rhs_vx[s..s + nx], &mut rhs_vy[s..s + nx]);
         }
     }
 }
 
 /// Compute the Jacobi preconditioner: 1/diag(A) for each DOF.
 pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut [f64]) {
-    let n = grid.n;
-    let n2 = n * n;
-    let idx = &grid.idx;
+    let nx = grid.nx();
+    let ny = grid.ny();
+    let n2 = nx * ny;
+    let idx_x = grid.idx_x();
+    let idx_y = grid.idx_y();
     let inv_dx2 = 1.0 / (grid.dx * grid.dx);
     let friction_scaled = grid.basal_friction * inv_dx2;
 
     let (pre_vx, pre_vy) = precond.split_at_mut(n2);
 
     let process_row = |j: usize, row_vx: &mut [f64], row_vy: &mut [f64]| {
-        let nj = idx.next(j);
-        let pj = idx.prev(j);
-        for i in 0..n {
-            let ni = idx.next(i);
-            let pi = idx.prev(i);
+        let nj = idx_y.next(j);
+        let pj = idx_y.prev(j);
+        for i in 0..nx {
+            let ni = idx_x.next(i);
+            let pi = idx_x.prev(i);
 
             // vx diagonal: 2(η_right + η_left) + η_top_corner + η_bot_corner
             let eta_right = eta.get(i, j);
@@ -247,16 +253,16 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
         }
     };
 
-    if n >= PAR_THRESHOLD {
-        pre_vx.par_chunks_mut(n).zip(pre_vy.par_chunks_mut(n)).enumerate().for_each(
+    if nx >= PAR_THRESHOLD {
+        pre_vx.par_chunks_mut(nx).zip(pre_vy.par_chunks_mut(nx)).enumerate().for_each(
             |(j, (row_vx, row_vy))| {
                 process_row(j, row_vx, row_vy);
             },
         );
     } else {
-        for j in 0..n {
-            let s = j * n;
-            process_row(j, &mut pre_vx[s..s + n], &mut pre_vy[s..s + n]);
+        for j in 0..ny {
+            let s = j * nx;
+            process_row(j, &mut pre_vx[s..s + nx], &mut pre_vy[s..s + nx]);
         }
     }
 }
@@ -274,23 +280,25 @@ pub struct StencilCoeffs {
 impl StencilCoeffs {
     /// Extract stencil coefficients from the current viscosity field.
     pub fn compute(eta: &Field2D, grid: &StaggeredGrid) -> Self {
-        let n = grid.n;
-        let n2 = n * n;
-        let idx = &grid.idx;
+        let nx = grid.nx();
+        let ny = grid.ny();
+        let n2 = nx * ny;
+        let idx_x = grid.idx_x();
+        let idx_y = grid.idx_y();
         let inv_dx2 = 1.0 / (grid.dx * grid.dx);
         let friction_scaled = grid.basal_friction * inv_dx2;
 
         let mut vx_coeffs = vec![[0.0; 5]; n2];
         let mut vy_coeffs = vec![[0.0; 5]; n2];
 
-        for j in 0..n {
-            let nj = idx.next(j);
-            let pj = idx.prev(j);
+        for j in 0..ny {
+            let nj = idx_y.next(j);
+            let pj = idx_y.prev(j);
 
-            for i in 0..n {
-                let ni = idx.next(i);
-                let pi = idx.prev(i);
-                let k = j * n + i;
+            for i in 0..nx {
+                let ni = idx_x.next(i);
+                let pi = idx_x.prev(i);
+                let k = j * nx + i;
 
                 // vx stencil (same η interpolation as apply_stokes)
                 let eta_right = eta.get(i, j);
@@ -347,13 +355,20 @@ impl StencilCoeffs {
 /// Forward sweep (row-major order), then backward sweep (reverse order).
 /// With periodic BCs, all neighbors use the latest available z values
 /// (symmetric Gauss-Seidel, not strict triangular SSOR).
-pub fn apply_ssor(r: &[f64], coeffs: &StencilCoeffs, n: usize, omega: f64, z: &mut [f64]) {
-    let n2 = n * n;
+pub fn apply_ssor(
+    r: &[f64],
+    coeffs: &StencilCoeffs,
+    nx: usize,
+    ny: usize,
+    omega: f64,
+    z: &mut [f64],
+) {
+    let n2 = nx * ny;
     let scale = omega * (2.0 - omega);
 
     // Process vx block, then vy block independently
-    ssor_sweep(&r[..n2], &coeffs.vx, n, omega, &mut z[..n2]);
-    ssor_sweep(&r[n2..], &coeffs.vy, n, omega, &mut z[n2..]);
+    ssor_sweep(&r[..n2], &coeffs.vx, nx, ny, omega, &mut z[..n2]);
+    ssor_sweep(&r[n2..], &coeffs.vy, nx, ny, omega, &mut z[n2..]);
 
     // Scale by ω(2-ω)
     for val in z.iter_mut() {
@@ -361,48 +376,56 @@ pub fn apply_ssor(r: &[f64], coeffs: &StencilCoeffs, n: usize, omega: f64, z: &m
     }
 }
 
-fn ssor_sweep(r: &[f64], coeffs: &[[f64; 5]], n: usize, omega: f64, z: &mut [f64]) {
-    let wrap = |i: i32| -> usize { ((i % n as i32) + n as i32) as usize % n };
+fn ssor_sweep(
+    r: &[f64],
+    coeffs: &[[f64; 5]],
+    nx: usize,
+    ny: usize,
+    omega: f64,
+    z: &mut [f64],
+) {
+    let wrap_x = |i: i32| -> usize { ((i % nx as i32) + nx as i32) as usize % nx };
+    let wrap_y = |j: i32| -> usize { ((j % ny as i32) + ny as i32) as usize % ny };
 
     // Initialize z = 0
     z.iter_mut().for_each(|v| *v = 0.0);
 
     // Forward sweep (Gauss-Seidel, row by row, left to right)
-    for j in 0..n {
-        for i in 0..n {
-            let k = j * n + i;
+    for j in 0..ny {
+        for i in 0..nx {
+            let k = j * nx + i;
             let [diag, c_left, c_right, c_bot, c_top] = coeffs[k];
 
-            let pi = wrap(i as i32 - 1);
-            let ni = wrap(i as i32 + 1);
-            let pj = wrap(j as i32 - 1);
-            let nj = wrap(j as i32 + 1);
+            let pi = wrap_x(i as i32 - 1);
+            let ni = wrap_x(i as i32 + 1);
+            let pj = wrap_y(j as i32 - 1);
+            let nj = wrap_y(j as i32 + 1);
 
             // Use latest z values for all neighbors (symmetric GS on periodic grid)
-            let neighbor_sum = c_left * z[j * n + pi]
-                + c_right * z[j * n + ni]
-                + c_bot * z[pj * n + i]
-                + c_top * z[nj * n + i];
+            let neighbor_sum = c_left * z[j * nx + pi]
+                + c_right * z[j * nx + ni]
+                + c_bot * z[pj * nx + i]
+                + c_top * z[nj * nx + i];
 
             z[k] = (omega / diag) * (r[k] + neighbor_sum);
         }
     }
 
     // Backward sweep (reverse order)
-    for j in (0..n).rev() {
-        for i in (0..n).rev() {
-            let k = j * n + i;
+    for j in (0..ny).rev() {
+        for i in (0..nx).rev() {
+            let k = j * nx + i;
             let [diag, c_left, c_right, c_bot, c_top] = coeffs[k];
 
-            let pi = wrap(i as i32 - 1);
-            let ni = wrap(i as i32 + 1);
-            let pj = wrap(j as i32 - 1);
-            let nj = wrap(j as i32 + 1);
+            let pi = wrap_x(i as i32 - 1);
+            let ni = wrap_x(i as i32 + 1);
+            let pj = wrap_y(j as i32 - 1);
+            let nj = wrap_y(j as i32 + 1);
 
-            let neighbor_sum = c_left * z[j * n + pi]
-                + c_right * z[j * n + ni]
-                + c_bot * z[pj * n + i]
-                + c_top * z[nj * n + i];
+            let neighbor_sum = c_left * z[j * nx + pi]
+                + c_right * z[j * nx + ni]
+                + c_bot * z[pj * nx + i]
+                + c_top * z[nj * nx + i];
 
             z[k] = (omega / diag) * (r[k] + neighbor_sum);
         }
@@ -430,8 +453,8 @@ mod tests {
     #[test]
     fn operator_is_symmetric_uniform_eta() {
         let n = 16;
-        let grid = StaggeredGrid::new(n, 1.0 / n as f64);
-        let eta = Field2D::filled(n, 1.0);
+        let grid = StaggeredGrid::new(n, n, 1.0 / n as f64);
+        let eta = Field2D::filled(n, n, 1.0);
         let nn2 = 2 * n * n;
 
         let mut state = 99u64;
@@ -456,8 +479,8 @@ mod tests {
     fn operator_is_symmetric_variable_eta() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let grid = StaggeredGrid::new(n, dx);
-        let mut eta = Field2D::new(n);
+        let grid = StaggeredGrid::new(n, n, dx);
+        let mut eta = Field2D::new(n, n);
         for j in 0..n {
             for i in 0..n {
                 let x = (i as f64 + 0.5) * dx;
@@ -491,8 +514,8 @@ mod tests {
     #[test]
     fn operator_is_positive_definite() {
         let n = 16;
-        let grid = StaggeredGrid::new(n, 1.0 / n as f64);
-        let eta = Field2D::filled(n, 1.0);
+        let grid = StaggeredGrid::new(n, n, 1.0 / n as f64);
+        let eta = Field2D::filled(n, n, 1.0);
         let nn2 = 2 * n * n;
 
         let mut state = 1234u64;
@@ -509,8 +532,8 @@ mod tests {
     fn eigenvalue_of_sine_mode() {
         let n = 32;
         let dx = 1.0 / n as f64;
-        let grid = StaggeredGrid::new(n, dx);
-        let eta = Field2D::filled(n, 1.0);
+        let grid = StaggeredGrid::new(n, n, dx);
+        let eta = Field2D::filled(n, n, 1.0);
         let nn2 = 2 * n * n;
 
         let k = 2.0 * std::f64::consts::PI;
@@ -552,8 +575,8 @@ mod tests {
     fn parallel_apply_stokes_matches_sequential() {
         let n = 64; // Above PAR_THRESHOLD to test parallel path
         let dx = 1.0 / n as f64;
-        let grid = StaggeredGrid::new(n, dx);
-        let eta = Field2D::filled(n, 1.0);
+        let grid = StaggeredGrid::new(n, n, dx);
+        let eta = Field2D::filled(n, n, 1.0);
         let nn2 = 2 * n * n;
 
         let mut state = 42u64;
@@ -580,18 +603,20 @@ mod tests {
 
     /// Sequential reference implementation for regression testing.
     fn apply_stokes_sequential(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f64]) {
-        let n = grid.n;
-        let n2 = n * n;
-        let idx = &grid.idx;
+        let nx = grid.nx();
+        let ny = grid.ny();
+        let n2 = nx * ny;
+        let idx_x = grid.idx_x();
+        let idx_y = grid.idx_y();
         let inv_dx2 = 1.0 / (grid.dx * grid.dx);
-        let li = |i: usize, j: usize| -> usize { j * n + i };
+        let li = |i: usize, j: usize| -> usize { j * nx + i };
 
-        for j in 0..n {
-            for i in 0..n {
-                let ni = idx.next(i);
-                let pi = idx.prev(i);
-                let nj = idx.next(j);
-                let pj = idx.prev(j);
+        for j in 0..ny {
+            for i in 0..nx {
+                let ni = idx_x.next(i);
+                let pi = idx_x.prev(i);
+                let nj = idx_y.next(j);
+                let pj = idx_y.prev(j);
 
                 let eta_right = eta.get(i, j);
                 let eta_left = eta.get(pi, j);
@@ -636,7 +661,7 @@ mod tests {
     fn operator_with_friction_is_symmetric() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
         grid.basal_friction = 2.0;
 
         for j in 0..n {
@@ -645,7 +670,7 @@ mod tests {
             }
         }
 
-        let eta = Field2D::filled(n, 1.0);
+        let eta = Field2D::filled(n, n, 1.0);
         let n_dof = 2 * n * n;
 
         let mut u = vec![0.0; n_dof];
@@ -674,7 +699,7 @@ mod tests {
     fn zero_friction_is_backward_compatible() {
         let n = 8;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
         grid.basal_friction = 0.0;
 
         for j in 0..n {
@@ -683,7 +708,7 @@ mod tests {
             }
         }
 
-        let eta = Field2D::filled(n, 1.0);
+        let eta = Field2D::filled(n, n, 1.0);
         let n_dof = 2 * n * n;
 
         let mut v = vec![0.0; n_dof];

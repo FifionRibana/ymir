@@ -11,6 +11,7 @@ use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::plates::{PlateConfig, PlateType, generate_plates};
 
 use crate::state::{DynamicPlateIds, TectonicState, ViewMode, ViewState};
+use crate::visualization::render::{SPRITE_BASE_SIZE, sprite_size_for};
 
 pub struct TectonicViewPlugin;
 
@@ -80,13 +81,14 @@ fn setup_tectonic(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let seed_val: u64 = 42;
     let init = generate_plates(&config, &WorldSeed::new(seed_val));
 
-    let size = init.grid_size as u32;
-    let image_handle = alloc_image(&mut images, size, size);
+    let nx = init.grid_width as u32;
+    let ny = init.grid_height as u32;
+    let image_handle = alloc_image(&mut images, nx, ny);
 
     commands.spawn((
         Sprite {
             image: image_handle.clone(),
-            custom_size: Some(Vec2::new(600.0, 600.0)),
+            custom_size: Some(sprite_size_for(init.grid_width, init.grid_height)),
             ..default()
         },
         TectonicSprite,
@@ -129,19 +131,23 @@ fn rebuild_tectonic_texture(
     }
     let Some(mut handle_res) = image_handle else { return };
 
-    let size = tectonic.init.grid_size as u32;
+    let nx = tectonic.init.grid_width;
+    let ny = tectonic.init.grid_height;
+    let tex_w = nx as u32;
+    let tex_h = ny as u32;
 
     // Recreate the GPU image if grid dimensions changed
     let needs_resize = images
         .get(&handle_res.0)
-        .map(|img| img.width() != size || img.height() != size)
+        .map(|img| img.width() != tex_w || img.height() != tex_h)
         .unwrap_or(true);
 
     if needs_resize {
-        let new_handle = alloc_image(&mut images, size, size);
+        let new_handle = alloc_image(&mut images, tex_w, tex_h);
+        let new_sprite_size = sprite_size_for(nx, ny);
         for mut sprite in sprite_q.iter_mut() {
             sprite.image = new_handle.clone();
-            sprite.custom_size = Some(Vec2::new(600.0, 600.0));
+            sprite.custom_size = Some(new_sprite_size);
         }
         handle_res.0 = new_handle;
     }
@@ -150,17 +156,17 @@ fn rebuild_tectonic_texture(
     let data = image.data.as_mut().unwrap();
 
     let init = &tectonic.init;
-    let s = init.grid_size;
 
-    for y in 0..s {
-        for x in 0..s {
-            let idx = ((s - 1 - y) * s + x) * 4; // Y-flip: match terrain renderer
-            let thickness = init.thickness.data[y * s + x];
-            let plate_id = init.plate_ids[y * s + x];
+    for y in 0..ny {
+        for x in 0..nx {
+            // Y-flip: texture row 0 is top of screen, grid row 0 is bottom.
+            let idx = ((ny - 1 - y) * nx + x) * 4;
+            let thickness = init.thickness.data[y * nx + x];
+            let plate_id = init.plate_ids[y * nx + x];
 
             // Mark cell as boundary if any of its toroidal neighbors differ
-            let right = init.plate_ids[y * s + (x + 1) % s];
-            let down = init.plate_ids[((y + 1) % s) * s + x];
+            let right = init.plate_ids[y * nx + (x + 1) % nx];
+            let down = init.plate_ids[((y + 1) % ny) * nx + x];
             let is_boundary = plate_id != right || plate_id != down;
 
             let [r, g, b] = if is_boundary {
@@ -213,14 +219,17 @@ fn draw_velocity_arrows(
     }
     let Some(tectonic) = tectonic else { return };
     let init = &tectonic.init;
-    let n = init.grid_size as f32;
-    let sprite_size = 600.0_f32;
-    let cell_size = sprite_size / n;
-    let half = sprite_size / 2.0;
+    let nx = init.grid_width;
+    let ny = init.grid_height;
+    let sprite = sprite_size_for(nx, ny);
+    // With aspect preserved, cell size is isotropic on screen.
+    let cell_size = SPRITE_BASE_SIZE / nx.max(ny) as f32;
+    let half_x = sprite.x / 2.0;
+    let half_y = sprite.y / 2.0;
 
     for plate in &init.plates {
-        let wx = plate.seed_x * cell_size - half;
-        let wy = plate.seed_y * cell_size - half;
+        let wx = plate.seed_x * cell_size - half_x;
+        let wy = plate.seed_y * cell_size - half_y;
         let start = Vec2::new(wx, wy);
 
         let scale = cell_size * 8.0;
@@ -248,45 +257,49 @@ fn draw_plate_boundaries(
     }
 
     // Use dynamic plate_ids if available, otherwise fall back to static
-    let (ids, n, plates_opt) = if let Some(ref ids) = plate_ids_res.ids {
-        let n = plate_ids_res.grid_size;
-        if n == 0 || ids.len() != n * n {
+    let (ids, nx, ny, plates_opt) = if let Some(ref ids) = plate_ids_res.ids {
+        let nx = plate_ids_res.grid_width;
+        let ny = plate_ids_res.grid_height;
+        if nx == 0 || ny == 0 || ids.len() != nx * ny {
             return;
         }
-        (ids.as_slice(), n, plate_ids_res.plates.as_deref())
+        (ids.as_slice(), nx, ny, plate_ids_res.plates.as_deref())
     } else if let Some(ref tecto) = tectonic {
-        let n = tecto.init.grid_size;
-        (tecto.init.plate_ids.as_slice(), n, Some(tecto.init.plates.as_slice()))
+        let nx = tecto.init.grid_width;
+        let ny = tecto.init.grid_height;
+        (tecto.init.plate_ids.as_slice(), nx, ny, Some(tecto.init.plates.as_slice()))
     } else {
         return;
     };
 
-    // Scale: grid coords → world coords. Sprite is 600×600, centered at origin.
-    let sprite_size = 600.0_f32;
-    let cell_size = sprite_size / n as f32;
-    let half = sprite_size / 2.0;
+    // Scale: grid coords → world coords. Sprite preserves aspect so cells
+    // are isotropic on screen (cell_size same on both axes).
+    let sprite = sprite_size_for(nx, ny);
+    let cell_size = SPRITE_BASE_SIZE / nx.max(ny) as f32;
+    let half_x = sprite.x / 2.0;
+    let half_y = sprite.y / 2.0;
     let boundary_color = Color::srgba(1.0, 1.0, 1.0, 0.6);
 
     // Draw boundary lines between cells of different plates
-    for j in 0..n {
-        for i in 0..n {
-            let my_id = ids[j * n + i];
+    for j in 0..ny {
+        for i in 0..nx {
+            let my_id = ids[j * nx + i];
 
             // Check right neighbor
-            let ni = (i + 1) % n;
-            if ids[j * n + ni] != my_id {
-                let x = (i as f32 + 1.0) * cell_size - half;
-                let y1 = j as f32 * cell_size - half;
-                let y2 = (j as f32 + 1.0) * cell_size - half;
+            let ni = (i + 1) % nx;
+            if ids[j * nx + ni] != my_id {
+                let x = (i as f32 + 1.0) * cell_size - half_x;
+                let y1 = j as f32 * cell_size - half_y;
+                let y2 = (j as f32 + 1.0) * cell_size - half_y;
                 gizmos.line_2d(Vec2::new(x, y1), Vec2::new(x, y2), boundary_color);
             }
 
             // Check bottom neighbor
-            let nj = (j + 1) % n;
-            if ids[nj * n + i] != my_id {
-                let y = (j as f32 + 1.0) * cell_size - half;
-                let x1 = i as f32 * cell_size - half;
-                let x2 = (i as f32 + 1.0) * cell_size - half;
+            let nj = (j + 1) % ny;
+            if ids[nj * nx + i] != my_id {
+                let y = (j as f32 + 1.0) * cell_size - half_y;
+                let x1 = i as f32 * cell_size - half_x;
+                let x2 = (i as f32 + 1.0) * cell_size - half_x;
                 gizmos.line_2d(Vec2::new(x1, y), Vec2::new(x2, y), boundary_color);
             }
         }
@@ -300,8 +313,8 @@ fn draw_plate_boundaries(
                 continue;
             }
 
-            let wx = plate.seed_x * cell_size - half;
-            let wy = plate.seed_y * cell_size - half;
+            let wx = plate.seed_x * cell_size - half_x;
+            let wy = plate.seed_y * cell_size - half_y;
             let pos = Vec2::new(wx, wy);
 
             let color = match plate.plate_type {
@@ -332,21 +345,23 @@ fn draw_boundary_types(
     let Some(ref bt) = plate_ids_res.boundary_types else {
         return;
     };
-    let n = plate_ids_res.grid_size;
-    if n == 0 || bt.len() != n * n {
+    let nx = plate_ids_res.grid_width;
+    let ny = plate_ids_res.grid_height;
+    if nx == 0 || ny == 0 || bt.len() != nx * ny {
         return;
     }
 
     use ymir_core::tectonics::boundaries::BoundaryType;
 
-    let sprite_size = 600.0_f32;
-    let cell_size = sprite_size / n as f32;
-    let half = sprite_size / 2.0;
+    let sprite = sprite_size_for(nx, ny);
+    let cell_size = SPRITE_BASE_SIZE / nx.max(ny) as f32;
+    let half_x = sprite.x / 2.0;
+    let half_y = sprite.y / 2.0;
     let half_cell = cell_size * 0.5;
 
-    for j in 0..n {
-        for i in 0..n {
-            let btype = bt[j * n + i];
+    for j in 0..ny {
+        for i in 0..nx {
+            let btype = bt[j * nx + i];
             let color = match btype {
                 BoundaryType::None => continue,
                 BoundaryType::Subduction => Color::srgba(1.0, 0.15, 0.15, 0.7),
@@ -355,8 +370,8 @@ fn draw_boundary_types(
                 BoundaryType::Rift => Color::srgba(0.2, 0.5, 1.0, 0.7),
             };
 
-            let x = i as f32 * cell_size - half + half_cell;
-            let y = j as f32 * cell_size - half + half_cell;
+            let x = i as f32 * cell_size - half_x + half_cell;
+            let y = j as f32 * cell_size - half_y + half_cell;
 
             gizmos.rect_2d(
                 Isometry2d::from_translation(Vec2::new(x, y)),

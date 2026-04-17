@@ -5,10 +5,9 @@
 //! no manual guards needed.
 
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use super::colormap::{hypsometric_colormap, slope_color};
-use super::render::TerrainDisplay;
+use super::render::{SolverTerrainSprite, TerrainDisplay, resize_terrain_image};
 use crate::state::{
     FbmState, FlowCache, IsostasyCache, LakeCache, UpscaleCache, ViewMode, ViewState,
 };
@@ -23,6 +22,7 @@ pub fn update_upscale_texture(
     view_mode: Res<State<ViewMode>>,
     terrain_display: Res<TerrainDisplay>,
     mut images: ResMut<Assets<Image>>,
+    mut sprite_q: Query<&mut Sprite, With<SolverTerrainSprite>>,
 ) {
     if !matches!(upscale_cache.state, FbmState::Completed { .. }) {
         return;
@@ -46,31 +46,21 @@ pub fn update_upscale_texture(
         return;
     };
 
-    let n = heightmap.width;
+    let nx = heightmap.width;
+    let ny = heightmap.height;
     let sea = isostasy_cache.sea_level_normalized as f64;
 
-    // Resize if needed
-    if image.width() != n as u32 || image.height() != n as u32 {
-        *image = Image::new(
-            Extent3d { width: n as u32, height: n as u32, depth_or_array_layers: 1 },
-            TextureDimension::D2,
-            vec![0u8; n * n * 4],
-            TextureFormat::Rgba8UnormSrgb,
-            bevy::asset::RenderAssetUsages::MAIN_WORLD
-                | bevy::asset::RenderAssetUsages::RENDER_WORLD,
-        );
-        image.sampler = bevy::image::ImageSampler::nearest();
-    }
+    resize_terrain_image(image, nx, ny, &mut sprite_q);
 
     let is_slope = *view_mode.get() == ViewMode::Slope;
 
-    for y in 0..n {
-        for x in 0..n {
+    for y in 0..ny {
+        for x in 0..nx {
             let [r, g, b, a] = if is_slope {
                 let (gx, gy) = heightmap.gradient_at(x, y);
                 slope_color(gx, gy)
             } else {
-                let h = heightmap.data[y * n + x] as f64;
+                let h = heightmap.data[y * nx + x] as f64;
                 if h < sea {
                     let depth = 1.0 - (h / sea).max(0.0);
                     let r = (20.0 + (1.0 - depth) * 30.0) as u8;
@@ -82,7 +72,8 @@ pub fn update_upscale_texture(
                     hypsometric_colormap(0.4 + t * 0.6)
                 }
             };
-            let _ = image.set_color_at(x as u32, (n - 1 - y) as u32, Color::srgba_u8(r, g, b, a));
+            let _ =
+                image.set_color_at(x as u32, (ny - 1 - y) as u32, Color::srgba_u8(r, g, b, a));
         }
     }
 

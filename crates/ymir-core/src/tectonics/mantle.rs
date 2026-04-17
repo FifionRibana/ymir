@@ -45,7 +45,8 @@ pub struct MantleFlow {
     modes: Vec<MantleMode>,
     pub vx: Field2D,
     pub vy: Field2D,
-    n: usize,
+    nx: usize,
+    ny: usize,
 }
 
 impl MantleFlow {
@@ -54,7 +55,7 @@ impl MantleFlow {
     /// Uses low-frequency Fourier modes (wave numbers 1-3) to create
     /// large-scale convection cells. The stream function ensures the
     /// resulting velocity field is divergence-free.
-    pub fn generate(n: usize, seed: u64, config: &MantleConfig) -> Self {
+    pub fn generate(nx: usize, ny: usize, seed: u64, config: &MantleConfig) -> Self {
         use std::f64::consts::TAU;
 
         // xorshift64-like RNG mapped to [-1, 1]
@@ -84,7 +85,13 @@ impl MantleFlow {
             modes.push(MantleMode { kx, ky, amplitude, phase });
         }
 
-        let mut flow = MantleFlow { modes, vx: Field2D::new(n), vy: Field2D::new(n), n };
+        let mut flow = MantleFlow {
+            modes,
+            vx: Field2D::new(nx, ny),
+            vy: Field2D::new(nx, ny),
+            nx,
+            ny,
+        };
         flow.recompute_field();
         flow
     }
@@ -95,13 +102,15 @@ impl MantleFlow {
     /// Velocity:        vx = ∂ψ/∂y,  vy = -∂ψ/∂x  (div-free)
     fn recompute_field(&mut self) {
         use std::f64::consts::TAU;
-        let n = self.n;
-        let nf = n as f64;
+        let nx = self.nx;
+        let ny = self.ny;
+        let nxf = nx as f64;
+        let nyf = ny as f64;
 
-        for j in 0..n {
-            for i in 0..n {
-                let x = TAU * i as f64 / nf;
-                let y = TAU * j as f64 / nf;
+        for j in 0..ny {
+            for i in 0..nx {
+                let x = TAU * i as f64 / nxf;
+                let y = TAU * j as f64 / nyf;
 
                 let mut vx_sum = 0.0;
                 let mut vy_sum = 0.0;

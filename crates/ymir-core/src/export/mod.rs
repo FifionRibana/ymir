@@ -29,8 +29,10 @@ pub struct PipelineMetadata {
     pub version: String,
     /// Master seed.
     pub seed: u64,
-    /// Grid resolution.
-    pub grid_size: usize,
+    /// Grid width (x-axis cell count).
+    pub grid_width: usize,
+    /// Grid height (y-axis cell count).
+    pub grid_height: usize,
     /// Meters per pixel.
     pub meters_per_pixel: f32,
     /// Plate generation config.
@@ -88,7 +90,8 @@ impl Default for PipelineMetadata {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
             seed: 0,
-            grid_size: 128,
+            grid_width: 128,
+            grid_height: 128,
             meters_per_pixel: 40.0,
             plates: PlateConfig::default(),
             isostasy: None,
@@ -102,11 +105,12 @@ impl Default for PipelineMetadata {
 }
 
 impl PipelineMetadata {
-    pub fn new(seed: u64, grid_size: usize, plates: &PlateConfig) -> Self {
+    pub fn new(seed: u64, grid_width: usize, grid_height: usize, plates: &PlateConfig) -> Self {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
             seed,
-            grid_size,
+            grid_width,
+            grid_height,
             meters_per_pixel: 40.0,
             plates: plates.clone(),
             isostasy: None,
@@ -131,13 +135,23 @@ pub struct PipelineExport {
 }
 
 impl PipelineExport {
-    /// Create a new export directory for the given seed and grid size.
-    pub fn new(output_root: &Path, seed: u64, grid_size: usize, plates: &PlateConfig) -> Self {
-        let dir_name = format!("seed{}_{}", seed, grid_size);
+    /// Create a new export directory for the given seed and grid dimensions.
+    pub fn new(
+        output_root: &Path,
+        seed: u64,
+        grid_width: usize,
+        grid_height: usize,
+        plates: &PlateConfig,
+    ) -> Self {
+        let dir_name = if grid_width == grid_height {
+            format!("seed{}_{}", seed, grid_width)
+        } else {
+            format!("seed{}_{}x{}", seed, grid_width, grid_height)
+        };
         let dir = output_root.join(dir_name);
         fs::create_dir_all(&dir).ok();
 
-        Self { dir, metadata: PipelineMetadata::new(seed, grid_size, plates) }
+        Self { dir, metadata: PipelineMetadata::new(seed, grid_width, grid_height, plates) }
     }
 
     /// Save the crustal thickness field after tectonics.
@@ -197,39 +211,32 @@ impl PipelineExport {
 
     /// Load the thickness field from a previously saved export.
     pub fn load_thickness(&self) -> Result<GridF32, String> {
-        let n = self.metadata.grid_size;
         GridF32::load_raw_or_png(
             &self.dir.join("01_thickness.raw"),
             &self.dir.join("01_thickness.png"),
-            n,
-            n,
+            self.metadata.grid_width,
+            self.metadata.grid_height,
         )
     }
 
     /// Load the altitude heightmap from a previously saved export.
     pub fn load_altitude(&self) -> Result<GridF32, String> {
-        let n = self.metadata.grid_size;
         GridF32::load_raw_or_png(
             &self.dir.join("02_altitude.raw"),
             &self.dir.join("02_altitude.png"),
-            n,
-            n,
+            self.metadata.grid_width,
+            self.metadata.grid_height,
         )
     }
 
     /// Load the upscaled heightmap from a previously saved export.
     pub fn load_upscaled(&self) -> Result<GridF32, String> {
-        let size = self
-            .metadata
-            .upscale
-            .as_ref()
-            .map(|u| u.target_size)
-            .unwrap_or(self.metadata.grid_size);
+        let (w, h) = upscale_dims(&self.metadata);
         GridF32::load_raw_or_png(
             &self.dir.join("03_upscaled.raw"),
             &self.dir.join("03_upscaled.png"),
-            size,
-            size,
+            w,
+            h,
         )
     }
 
@@ -250,33 +257,23 @@ impl PipelineExport {
 
     /// Load the eroded heightmap from a previously saved export.
     pub fn load_eroded(&self) -> Result<GridF32, String> {
-        let size = self
-            .metadata
-            .upscale
-            .as_ref()
-            .map(|u| u.target_size)
-            .unwrap_or(self.metadata.grid_size);
+        let (w, h) = upscale_dims(&self.metadata);
         GridF32::load_raw_or_png(
             &self.dir.join("04_eroded.raw"),
             &self.dir.join("04_eroded.png"),
-            size,
-            size,
+            w,
+            h,
         )
     }
 
     /// Load the sediment map from a previously saved export.
     pub fn load_sediment(&self) -> Result<GridF32, String> {
-        let size = self
-            .metadata
-            .upscale
-            .as_ref()
-            .map(|u| u.target_size)
-            .unwrap_or(self.metadata.grid_size);
+        let (w, h) = upscale_dims(&self.metadata);
         GridF32::load_raw_or_png(
             &self.dir.join("04_sediment.raw"),
             &self.dir.join("04_sediment.png"),
-            size,
-            size,
+            w,
+            h,
         )
     }
 
@@ -398,6 +395,30 @@ impl PipelineExport {
             serde_json::from_str(&json).map_err(|e| format!("JSON parse error: {e}"))?;
 
         Ok(LakeResult { lake_map, lakes, width: w, height: h })
+    }
+}
+
+/// Effective output dimensions after upscaling. If an upscale pass was run,
+/// its `target_size` is applied to the longer axis and the shorter axis is
+/// scaled proportionally to preserve the aspect ratio of the source grid.
+/// Square grids keep the previous square behavior exactly.
+fn upscale_dims(meta: &PipelineMetadata) -> (usize, usize) {
+    match meta.upscale.as_ref() {
+        Some(u) => {
+            let t = u.target_size;
+            if meta.grid_width == meta.grid_height {
+                (t, t)
+            } else if meta.grid_width >= meta.grid_height {
+                let h = ((t as f64) * meta.grid_height as f64 / meta.grid_width as f64).round()
+                    as usize;
+                (t, h.max(1))
+            } else {
+                let w = ((t as f64) * meta.grid_width as f64 / meta.grid_height as f64).round()
+                    as usize;
+                (w.max(1), t)
+            }
+        }
+        None => (meta.grid_width, meta.grid_height),
     }
 }
 
