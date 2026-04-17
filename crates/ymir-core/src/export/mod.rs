@@ -458,7 +458,7 @@ mod tests {
             "meters_per_pixel": 40.0,
             "plates": {
                 "num_plates": 8,
-                "continental_ratio": 0.35,
+                "num_continental_plates": 2,
                 "velocity_min": 0.5,
                 "velocity_max": 2.5,
                 "grid_size": 128,
