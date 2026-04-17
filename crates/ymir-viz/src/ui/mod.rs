@@ -279,6 +279,7 @@ struct UiRightPanelParams<'w> {
     ui_actions: ResMut<'w, crate::state::UiActions>,
     terrain_display: Res<'w, crate::visualization::render::TerrainDisplay>,
     run_timer: ResMut<'w, crate::state::RunTimer>,
+    grid_ui: ResMut<'w, crate::state::GridUiState>,
 }
 
 fn ui_right_panel(
@@ -325,6 +326,7 @@ fn ui_right_panel(
                 &mut params.ui_actions,
                 &mut params.centering,
                 &mut params.run_timer,
+                &mut params.grid_ui,
             );
         });
     });

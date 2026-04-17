@@ -150,20 +150,21 @@ fn draw_tectonic_info(
         return;
     };
     let init = &tectonic.init;
-    let size = init.grid_size;
+    let nx = init.grid_width;
+    let ny = init.grid_height;
 
     if let Some(world) = cursor_pos.pos {
-        let gx = world.x + size as f32 / 2.0;
-        let gy = -world.y + size as f32 / 2.0;
+        let gx = world.x + nx as f32 / 2.0;
+        let gy = -world.y + ny as f32 / 2.0;
         let ix = gx as i32;
         let iy = gy as i32;
 
-        if ix >= 0 && iy >= 0 && (ix as usize) < size && (iy as usize) < size {
+        if ix >= 0 && iy >= 0 && (ix as usize) < nx && (iy as usize) < ny {
             let x = ix as usize;
             let y = iy as usize;
-            let plate_id = init.plate_ids[y * size + x];
+            let plate_id = init.plate_ids[y * nx + x];
             let plate = &init.plates[plate_id];
-            let thickness = init.thickness.data[y * size + x];
+            let thickness = init.thickness.data[y * nx + x];
             let ptype = match plate.plate_type {
                 PlateType::Continental => "Cont",
                 PlateType::Oceanic => "Oce",
@@ -177,9 +178,11 @@ fn draw_tectonic_info(
 
             // Show boundary type if available
             if let Some(ref bt) = dynamic_plates.boundary_types {
-                let bt_size = dynamic_plates.grid_size;
-                if bt_size == size
-                    && let Some(&btype) = bt.get(y * size + x)
+                let bt_nx = dynamic_plates.grid_width;
+                let bt_ny = dynamic_plates.grid_height;
+                if bt_nx == nx
+                    && bt_ny == ny
+                    && let Some(&btype) = bt.get(y * nx + x)
                 {
                     let bt_name = match btype {
                         BoundaryType::None => "Interior",
@@ -249,8 +252,7 @@ fn minimap_overlay(
     // Determine the grid dimensions to draw the viewport rectangle correctly
     let (grid_w, grid_h) = if mode == ViewMode::Tectonics {
         let Some(ref tec) = tectonic else { return };
-        let s = tec.init.grid_size;
-        (s, s)
+        (tec.init.grid_width, tec.init.grid_height)
     } else {
         let Some(ref hm) = active_heightmap else { return };
         (hm.width, hm.height)
@@ -280,12 +282,13 @@ fn minimap_overlay(
         if mode == ViewMode::Tectonics {
             let Some(ref tec) = tectonic else { return };
             let init = &tec.init;
-            let s = init.grid_size;
+            let nx = init.grid_width;
+            let ny = init.grid_height;
             for my in 0..mini_size {
                 for mx in 0..mini_size {
-                    let sx = (mx as f32 / mini_size as f32 * (s - 1) as f32) as usize;
-                    let sy = (my as f32 / mini_size as f32 * (s - 1) as f32) as usize;
-                    let thickness = init.thickness.data[sy * s + sx];
+                    let sx = (mx as f32 / mini_size as f32 * (nx - 1) as f32) as usize;
+                    let sy = (my as f32 / mini_size as f32 * (ny - 1) as f32) as usize;
+                    let thickness = init.thickness.data[sy * nx + sx];
                     let [r, g, b] = thickness_color(thickness);
                     pixels[my * mini_size + mx] = egui::Color32::from_rgb(r, g, b);
                 }

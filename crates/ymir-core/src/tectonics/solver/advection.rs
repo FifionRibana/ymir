@@ -13,17 +13,19 @@ const PAR_THRESHOLD: usize = 64;
 /// and discrete conservation (sum of div over the periodic grid is exactly 0).
 #[allow(clippy::needless_range_loop)]
 pub fn compute_divergence_flux(grid: &StaggeredGrid, div: &mut Field2D) {
-    let n = grid.n;
-    let idx = &grid.idx;
+    let nx = grid.nx();
+    let ny = grid.ny();
+    let idx_x = grid.idx_x();
+    let idx_y = grid.idx_y();
     let inv_dx = 1.0 / grid.dx;
 
     let process_row = |j: usize, row: &mut [f64]| {
-        let ni_fn = |i: usize| idx.next(i);
-        let pi_fn = |i: usize| idx.prev(i);
-        let nj = idx.next(j);
-        let pj = idx.prev(j);
+        let ni_fn = |i: usize| idx_x.next(i);
+        let pi_fn = |i: usize| idx_x.prev(i);
+        let nj = idx_y.next(j);
+        let pj = idx_y.prev(j);
 
-        for i in 0..n {
+        for i in 0..nx {
             let ni = ni_fn(i);
             let pi = pi_fn(i);
 
@@ -53,12 +55,12 @@ pub fn compute_divergence_flux(grid: &StaggeredGrid, div: &mut Field2D) {
         }
     };
 
-    if n >= PAR_THRESHOLD {
-        div.data_mut().par_chunks_mut(n).enumerate().for_each(|(j, row)| process_row(j, row));
+    if nx >= PAR_THRESHOLD {
+        div.data_mut().par_chunks_mut(nx).enumerate().for_each(|(j, row)| process_row(j, row));
     } else {
-        for j in 0..n {
-            let s = j * n;
-            process_row(j, &mut div.data_mut()[s..s + n]);
+        for j in 0..ny {
+            let s = j * nx;
+            process_row(j, &mut div.data_mut()[s..s + nx]);
         }
     }
 }
@@ -66,9 +68,10 @@ pub fn compute_divergence_flux(grid: &StaggeredGrid, div: &mut Field2D) {
 /// Compute CFL-limited timestep: dt = cfl_factor * dx / max(|v|).
 pub fn compute_cfl_dt(grid: &StaggeredGrid, cfl_factor: f64) -> f64 {
     let mut max_v = 0.0_f64;
-    let n = grid.n;
-    for j in 0..n {
-        for i in 0..n {
+    let nx = grid.nx();
+    let ny = grid.ny();
+    for j in 0..ny {
+        for i in 0..nx {
             max_v = max_v.max(grid.vx.get(i, j).abs());
             max_v = max_v.max(grid.vy.get(i, j).abs());
         }
@@ -92,7 +95,7 @@ mod tests {
     #[test]
     fn total_divergence_is_zero() {
         let n = 32;
-        let mut grid = StaggeredGrid::new(n, 1.0);
+        let mut grid = StaggeredGrid::new(n, n, 1.0);
         let mut state = 12345u64;
 
         // Fill with arbitrary S and v
@@ -104,7 +107,7 @@ mod tests {
             }
         }
 
-        let mut div = Field2D::new(n);
+        let mut div = Field2D::new(n, n);
         compute_divergence_flux(&grid, &mut div);
 
         let total: f64 = div.data().iter().sum();
@@ -115,7 +118,7 @@ mod tests {
     fn advection_conserves_mass() {
         let n = 32;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
         let mut state = 42u64;
 
         // Initial S > 0
@@ -128,7 +131,7 @@ mod tests {
         }
 
         let initial_mass: f64 = grid.s.data().iter().sum();
-        let mut div = Field2D::new(n);
+        let mut div = Field2D::new(n, n);
 
         for _ in 0..100 {
             let dt = compute_cfl_dt(&grid, 0.5);
@@ -146,11 +149,63 @@ mod tests {
         assert!(rel_err < 1e-12, "Mass not conserved: relative error = {rel_err}");
     }
 
+    /// On a rectangular grid, the flux-form advection must still conserve
+    /// mass exactly (modulo floating-point round-off). A bug that wraps
+    /// both axes with the same period would leak mass in the direction
+    /// where the assumed period doesn't match the grid dimension.
+    ///
+    /// Uniform velocity is trivially divergence-free on any grid, so the
+    /// expected behavior is zero mass drift.
+    #[test]
+    fn advection_conserves_mass_rectangular() {
+        let nx = 24;
+        let ny = 16;
+        let dx = 1.0;
+        let mut grid = StaggeredGrid::new(nx, ny, dx);
+
+        // Non-uniform initial thickness so the flux computation actually
+        // moves something.
+        for j in 0..ny {
+            for i in 0..nx {
+                grid.s.set(i, j, if i < nx / 2 { 0.8 } else { 0.2 });
+            }
+        }
+        // Uniform velocity → divergence-free → mass must be preserved.
+        for j in 0..ny {
+            for i in 0..nx {
+                grid.vx.set(i, j, 0.01);
+                grid.vy.set(i, j, 0.005);
+            }
+        }
+
+        let initial_mass: f64 = grid.s.data().iter().sum();
+        assert!(initial_mass > 0.0);
+        let mut div = Field2D::new(nx, ny);
+
+        let dt = compute_cfl_dt(&grid, 0.5);
+        for _ in 0..100 {
+            compute_divergence_flux(&grid, &mut div);
+            for j in 0..ny {
+                for i in 0..nx {
+                    let s = grid.s.get(i, j) - dt * div.get(i, j);
+                    grid.s.set(i, j, s);
+                }
+            }
+        }
+
+        let final_mass: f64 = grid.s.data().iter().sum();
+        let rel_err = (final_mass - initial_mass).abs() / initial_mass;
+        assert!(
+            rel_err < 1e-10,
+            "Mass drift on {nx}×{ny} grid: initial={initial_mass}, final={final_mass}, rel_err={rel_err}"
+        );
+    }
+
     #[test]
     fn no_negative_thickness() {
         let n = 16;
         let dx = 1.0 / n as f64;
-        let mut grid = StaggeredGrid::new(n, dx);
+        let mut grid = StaggeredGrid::new(n, n, dx);
 
         // Small positive S, moderate velocity
         for j in 0..n {
@@ -161,7 +216,7 @@ mod tests {
             }
         }
 
-        let mut div = Field2D::new(n);
+        let mut div = Field2D::new(n, n);
         for _ in 0..20 {
             let dt = compute_cfl_dt(&grid, 0.4);
             compute_divergence_flux(&grid, &mut div);
