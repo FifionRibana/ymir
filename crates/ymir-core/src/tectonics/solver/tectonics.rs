@@ -757,7 +757,7 @@ fn solve_velocity_direct(
                     &config.newton,
                     ws,
                 );
-                (r.converged, r.iterations, r.total_linear_iterations)
+                (r.is_converged(), r.iterations, r.total_linear_iterations)
             }
         };
 
@@ -843,7 +843,7 @@ fn solve_with_continuation(
                     &config.newton,
                     workspace,
                 );
-                (r.converged, r.iterations, r.total_linear_iterations)
+                (r.is_converged(), r.iterations, r.total_linear_iterations)
             }
         };
         total_nl += iters;
@@ -892,7 +892,7 @@ fn solve_with_continuation(
                     &config.newton,
                     workspace,
                 );
-                (r.converged, r.iterations, r.total_linear_iterations)
+                (r.is_converged(), r.iterations, r.total_linear_iterations)
             }
         };
 
