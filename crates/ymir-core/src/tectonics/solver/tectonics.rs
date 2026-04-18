@@ -1891,4 +1891,135 @@ mod tests {
             "adaptive mass {adaptive_mass} vs legacy {legacy_mass} diverged beyond 2x"
         );
     }
+
+    #[test]
+    fn adaptive_mode_falls_back_gracefully_when_config_is_unsolvable() {
+        // Unsolvable setup: an extremely tight s_min/s_max window around the
+        // initial thickness combined with strong convergent flow. Every
+        // sub-step attempt clamps > 5% of cells no matter what dt_sub is
+        // tried, so SubstepResult::is_successful() is false on every
+        // iteration. The sub-step loop should shrink dt_current until it
+        // crosses the min_dt_fraction floor, emit the "sub-step floor
+        // reached" warning, and either (a) return an error if no sub-step
+        // ever committed or (b) return a degraded StepStats if at least
+        // one did — either way, without panicking or corrupting state.
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, n, dx);
+        let s_initial = 1.0;
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, s_initial);
+            }
+        }
+
+        let traction = TractionField::two_plates_convergent(n, n, 0.5);
+        let mut ctx = make_static_ctx(n, traction);
+        let mut config = make_config(1);
+        config.adaptive_dt.enabled = true;
+        config.adaptive_dt.dt_target = 2.0;
+        // Clamp-proximity thresholds (s <= s_min * 1.01 AND s >= s_max * 0.99)
+        // both cover the full [s_min, s_max] range, so 100% of cells always
+        // count as clamped and no sub-step can ever succeed.
+        config.s_min = 0.999;
+        config.s_max = 1.001;
+        config.boundaries.oceanic_restore_rate = 0.0;
+        config.boundaries.continental_restore_rate = 0.0;
+        let mut ws = SolverWorkspace::new(n, n);
+
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
+        // The run must terminate — either with Ok (floor committed last
+        // successful sub-step) or NonlinearSolverDidNotConverge (no sub-step
+        // ever committed). Panics, infinite loops, or NaN states are bugs.
+        match result {
+            Ok(_) => {
+                // If any sub-step committed, dt_consumed is strictly less
+                // than dt_target because the floor aborted the remainder.
+                assert!(
+                    ws.stats.dt <= config.adaptive_dt.dt_target + 1e-9,
+                    "dt_consumed {} should not exceed dt_target {}",
+                    ws.stats.dt,
+                    config.adaptive_dt.dt_target
+                );
+                // State must be coherent (no NaN / Inf).
+                for &s in grid.s.data().iter() {
+                    assert!(s.is_finite(), "grid.s contains non-finite value {s}");
+                    assert!(
+                        s >= config.s_min * 0.99 && s <= config.s_max * 1.01,
+                        "grid.s value {s} drifted outside clamp window after rollback"
+                    );
+                }
+            }
+            Err(SolverError::NonlinearSolverDidNotConverge { step: 0 }) => {
+                // Acceptable exit: no sub-step committed. State is the
+                // pre-step snapshot because the snapshot scope is per-sub-step.
+            }
+            Err(other) => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adaptive_mode_evolves_state_under_tight_clamp_window() {
+        // A slightly wider clamp window than the floor test, so sub-steps
+        // *can* succeed if dt is small enough. The adaptive loop should
+        // engage multiple sub-steps (substep_count > 1) to cover the full
+        // dt_target while keeping clamp_ratio below 5% on each committed
+        // attempt. This is the central scenario the issue targets: a
+        // configuration where the single-step path would fail but the
+        // sub-step loop finds a working sequence.
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, n, dx);
+        let s_initial = 1.0;
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, s_initial);
+            }
+        }
+        let s_before: Vec<f64> = grid.s.data().to_vec();
+
+        let traction = TractionField::two_plates_convergent(n, n, 0.5);
+        let mut ctx = make_static_ctx(n, traction);
+        let mut config = make_config(1);
+        config.adaptive_dt.enabled = true;
+        // Generous dt_target so the sub-step loop has room to shrink dt
+        // several times before hitting the floor.
+        config.adaptive_dt.dt_target = 4.0;
+        // Wider window than the floor test — clamp_ratio is < 100% so
+        // small-enough sub-steps can actually succeed.
+        config.s_min = 0.5;
+        config.s_max = 1.5;
+        config.boundaries.oceanic_restore_rate = 0.0;
+        config.boundaries.continental_restore_rate = 0.0;
+        let mut ws = SolverWorkspace::new(n, n);
+
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
+        assert!(result.is_ok(), "adaptive run failed: {:?}", result.err());
+
+        // State evolved from initial uniform field.
+        let s_after = grid.s.data();
+        let max_diff = s_before
+            .iter()
+            .zip(s_after.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            max_diff > 1e-6,
+            "grid.s should have evolved under adaptive sub-stepping, max_diff = {max_diff}"
+        );
+
+        // The sub-step loop should have covered meaningful progress toward
+        // dt_target, even if it didn't reach it fully.
+        assert!(
+            ws.stats.dt > 0.0,
+            "adaptive dt_consumed must be positive, got {}",
+            ws.stats.dt
+        );
+        assert!(
+            ws.stats.dt <= config.adaptive_dt.dt_target + 1e-9,
+            "adaptive dt_consumed {} should not exceed dt_target {}",
+            ws.stats.dt,
+            config.adaptive_dt.dt_target
+        );
+    }
 }
