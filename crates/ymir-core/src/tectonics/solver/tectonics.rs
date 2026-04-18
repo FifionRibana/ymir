@@ -409,12 +409,18 @@ fn solve_velocity_direct(
     plates: &TractionField,
     config: &TectonicsConfig,
     workspace: &mut SolverWorkspace,
-) -> (bool, usize, usize) {
+) -> (NewtonOutcome, usize, usize) {
     let rho_c = config.boundaries.rho_continental;
     let rho_m = config.boundaries.rho_mantle;
 
-    let do_solve =
-        |grid: &mut StaggeredGrid, ws: &mut SolverWorkspace| match config.nonlinear_solver {
+    // Picard maps to a synthetic NewtonOutcome — it does not surface the
+    // same failure modes, so we conflate all Picard failures onto
+    // MaxIterations which selects the default_reduction factor in the
+    // adaptive sub-step policy.
+    let do_solve = |grid: &mut StaggeredGrid,
+                    ws: &mut SolverWorkspace|
+     -> (NewtonOutcome, usize, usize) {
+        match config.nonlinear_solver {
             NonlinearSolver::Picard => {
                 let r = solve_velocity_picard(
                     grid,
@@ -426,7 +432,12 @@ fn solve_velocity_direct(
                     &config.yielding,
                     ws,
                 );
-                (r.converged, r.iterations, r.total_cg_iterations)
+                let outcome = if r.converged {
+                    NewtonOutcome::ConvergedOnResidual
+                } else {
+                    NewtonOutcome::MaxIterations
+                };
+                (outcome, r.iterations, r.total_cg_iterations)
             }
             NonlinearSolver::Newton => {
                 let r = solve_velocity_newton(
@@ -440,23 +451,24 @@ fn solve_velocity_direct(
                     &config.newton,
                     ws,
                 );
-                (r.is_converged(), r.iterations, r.total_linear_iterations)
+                (r.outcome, r.iterations, r.total_linear_iterations)
             }
-        };
+        }
+    };
 
-    let (converged, nl, linear) = do_solve(grid, workspace);
+    let (outcome, nl, linear) = do_solve(grid, workspace);
 
-    if !converged && grid.basal_friction > 0.0 {
+    if !outcome.is_converged() && grid.basal_friction > 0.0 {
         // Fallback: solve without friction, then with friction
         let target_friction = grid.basal_friction;
         grid.basal_friction = 0.0;
         let (_, nl2, lin2) = do_solve(grid, workspace);
         grid.basal_friction = target_friction;
-        let (conv2, nl3, lin3) = do_solve(grid, workspace);
-        return (conv2, nl + nl2 + nl3, linear + lin2 + lin3);
+        let (outcome2, nl3, lin3) = do_solve(grid, workspace);
+        return (outcome2, nl + nl2 + nl3, linear + lin2 + lin3);
     }
 
-    (converged, nl, linear)
+    (outcome, nl, linear)
 }
 
 /// Solve velocity using viscosity continuation: ramp n from 1 → target,
@@ -466,7 +478,7 @@ fn solve_with_continuation(
     plates: &TractionField,
     config: &TectonicsConfig,
     workspace: &mut SolverWorkspace,
-) -> (bool, usize, usize) {
+) -> (NewtonOutcome, usize, usize) {
     let target_eps = config.picard.strain_rate_min;
     let steps = &config.continuation.n_steps;
     let eps_start = config.continuation.eps_min_start.unwrap_or(target_eps);
@@ -500,40 +512,46 @@ fn solve_with_continuation(
         let rho_c = config.boundaries.rho_continental;
         let rho_m = config.boundaries.rho_mantle;
         // Warm start: grid.vx/vy retain the solution from the previous step
-        let (converged, iters, linear_iters) = match config.nonlinear_solver {
-            NonlinearSolver::Picard => {
-                let r = solve_velocity_picard(
-                    grid,
-                    plates,
-                    config.gravity_factor,
-                    rho_c,
-                    rho_m,
-                    &step_config,
-                    &config.yielding,
-                    workspace,
-                );
-                (r.converged, r.iterations, r.total_cg_iterations)
-            }
-            NonlinearSolver::Newton => {
-                let r = solve_velocity_newton(
-                    grid,
-                    plates,
-                    config.gravity_factor,
-                    rho_c,
-                    rho_m,
-                    &step_config,
-                    &config.yielding,
-                    &config.newton,
-                    workspace,
-                );
-                (r.is_converged(), r.iterations, r.total_linear_iterations)
-            }
-        };
+        let (outcome, iters, linear_iters): (NewtonOutcome, usize, usize) =
+            match config.nonlinear_solver {
+                NonlinearSolver::Picard => {
+                    let r = solve_velocity_picard(
+                        grid,
+                        plates,
+                        config.gravity_factor,
+                        rho_c,
+                        rho_m,
+                        &step_config,
+                        &config.yielding,
+                        workspace,
+                    );
+                    let o = if r.converged {
+                        NewtonOutcome::ConvergedOnResidual
+                    } else {
+                        NewtonOutcome::MaxIterations
+                    };
+                    (o, r.iterations, r.total_cg_iterations)
+                }
+                NonlinearSolver::Newton => {
+                    let r = solve_velocity_newton(
+                        grid,
+                        plates,
+                        config.gravity_factor,
+                        rho_c,
+                        rho_m,
+                        &step_config,
+                        &config.yielding,
+                        &config.newton,
+                        workspace,
+                    );
+                    (r.outcome, r.iterations, r.total_linear_iterations)
+                }
+            };
         total_nl += iters;
         total_linear += linear_iters;
-        if !converged {
+        if !outcome.is_converged() {
             grid.basal_friction = target_friction;
-            return (false, total_nl, total_linear);
+            return (outcome, total_nl, total_linear);
         }
     }
 
@@ -549,47 +567,53 @@ fn solve_with_continuation(
         let rho_c = config.boundaries.rho_continental;
         let rho_m = config.boundaries.rho_mantle;
 
-        let (converged, iters, linear_iters) = match config.nonlinear_solver {
-            NonlinearSolver::Picard => {
-                let r = solve_velocity_picard(
-                    grid,
-                    plates,
-                    config.gravity_factor,
-                    rho_c,
-                    rho_m,
-                    &step_config,
-                    &config.yielding,
-                    workspace,
-                );
-                (r.converged, r.iterations, r.total_cg_iterations)
-            }
-            NonlinearSolver::Newton => {
-                let r = solve_velocity_newton(
-                    grid,
-                    plates,
-                    config.gravity_factor,
-                    rho_c,
-                    rho_m,
-                    &step_config,
-                    &config.yielding,
-                    &config.newton,
-                    workspace,
-                );
-                (r.is_converged(), r.iterations, r.total_linear_iterations)
-            }
-        };
+        let (outcome, iters, linear_iters): (NewtonOutcome, usize, usize) =
+            match config.nonlinear_solver {
+                NonlinearSolver::Picard => {
+                    let r = solve_velocity_picard(
+                        grid,
+                        plates,
+                        config.gravity_factor,
+                        rho_c,
+                        rho_m,
+                        &step_config,
+                        &config.yielding,
+                        workspace,
+                    );
+                    let o = if r.converged {
+                        NewtonOutcome::ConvergedOnResidual
+                    } else {
+                        NewtonOutcome::MaxIterations
+                    };
+                    (o, r.iterations, r.total_cg_iterations)
+                }
+                NonlinearSolver::Newton => {
+                    let r = solve_velocity_newton(
+                        grid,
+                        plates,
+                        config.gravity_factor,
+                        rho_c,
+                        rho_m,
+                        &step_config,
+                        &config.yielding,
+                        &config.newton,
+                        workspace,
+                    );
+                    (r.outcome, r.iterations, r.total_linear_iterations)
+                }
+            };
 
         total_nl += iters;
         total_linear += linear_iters;
 
-        if !converged {
-            return (false, total_nl, total_linear);
+        if !outcome.is_converged() {
+            return (outcome, total_nl, total_linear);
         }
     } else {
         grid.basal_friction = target_friction;
     }
 
-    (true, total_nl, total_linear)
+    (NewtonOutcome::ConvergedOnResidual, total_nl, total_linear)
 }
 
 /// One "pass" of the tectonic step body: velocity solve + plate/boundary
@@ -619,11 +643,12 @@ fn execute_tectonic_pass(
         allow_continuation && config.continuation.enabled && config.picard.power_law_n > 1.0;
 
     let traction = &plate_ctx.traction;
-    let (converged, nl_iterations, linear_iterations) = if need_continuation {
+    let (solve_outcome, nl_iterations, linear_iterations) = if need_continuation {
         solve_with_continuation(grid, traction, config, workspace)
     } else {
         let result = solve_velocity_direct(grid, traction, config, workspace);
-        if !result.0 && config.continuation.enabled && config.picard.power_law_n > 1.0 {
+        if !result.0.is_converged() && config.continuation.enabled && config.picard.power_law_n > 1.0
+        {
             warn!(step, "direct solve failed, falling back to continuation");
             solve_with_continuation(grid, traction, config, workspace)
         } else {
@@ -631,7 +656,7 @@ fn execute_tectonic_pass(
         }
     };
 
-    if !converged {
+    if !solve_outcome.is_converged() {
         // Legacy mode preserves the pre-#52 error-on-non-convergence
         // semantics. Adaptive mode returns a failure outcome so the outer
         // loop can retry with a smaller dt instead of aborting the run.
@@ -642,7 +667,7 @@ fn execute_tectonic_pass(
             DtMode::Explicit(_) => {
                 let mass = grid.s.data().iter().sum();
                 return Ok(PassResult {
-                    outcome: NewtonOutcome::MaxIterations,
+                    outcome: solve_outcome,
                     nl_iterations,
                     linear_iterations,
                     dt_consumed: 0.0,
@@ -1073,16 +1098,11 @@ fn execute_tectonic_pass(
         }
     }
 
-    // solve_velocity_direct currently only exposes a converged bool, not
-    // the full NewtonOutcome. We mapped `!converged` above to an early
-    // Explicit-mode failure return; here we reached a converged solve so
-    // the outcome is at least ConvergedOnResidual. A future commit can
-    // plumb the real outcome through to let reduction_for pick between
-    // Stagnation / Oscillation / Divergence factors.
-    let outcome = NewtonOutcome::ConvergedOnResidual;
-
+    // We reached here only after `solve_outcome.is_converged()` passed, so
+    // solve_outcome is guaranteed to be ConvergedOnResidual or ConvergedOnState.
+    // Pass it through so the sub-step loop can distinguish the two.
     Ok(PassResult {
-        outcome,
+        outcome: solve_outcome,
         nl_iterations,
         linear_iterations,
         dt_consumed: dt_final,

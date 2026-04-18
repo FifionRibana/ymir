@@ -43,6 +43,13 @@ pub enum NewtonOutcome {
     MaxIterations,
 }
 
+impl NewtonOutcome {
+    /// True for the two successful-convergence variants.
+    pub fn is_converged(&self) -> bool {
+        matches!(self, NewtonOutcome::ConvergedOnResidual | NewtonOutcome::ConvergedOnState)
+    }
+}
+
 /// Result of a Newton solve.
 pub struct NewtonResult {
     pub outcome: NewtonOutcome,
