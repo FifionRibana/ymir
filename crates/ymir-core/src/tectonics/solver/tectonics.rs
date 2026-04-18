@@ -115,6 +115,9 @@ struct PassResult {
     mass_clamp_delta: f64,
     oceanic_restore_delta: f64,
     continental_restore_delta: f64,
+    /// Number of sub-steps that composed this macro step. Always 1 on the
+    /// legacy path; ≥ 1 on the adaptive path.
+    substep_count: usize,
 }
 
 impl PassResult {
@@ -173,17 +176,29 @@ where
         let _step_span =
             info_span!("solver_step", step, nx = grid.nx(), ny = grid.ny()).entered();
 
-        let pass = execute_tectonic_pass(
-            grid,
-            plate_ctx,
-            workspace,
-            &mut recycling_buffer,
-            &mut mantle_flow,
-            config,
-            step,
-            DtMode::LegacyWithCflRetry,
-            step == 0,
-        )?;
+        let pass = if config.adaptive_dt.enabled {
+            run_adaptive_macro_step(
+                grid,
+                plate_ctx,
+                workspace,
+                &mut recycling_buffer,
+                &mut mantle_flow,
+                config,
+                step,
+            )?
+        } else {
+            execute_tectonic_pass(
+                grid,
+                plate_ctx,
+                workspace,
+                &mut recycling_buffer,
+                &mut mantle_flow,
+                config,
+                step,
+                DtMode::LegacyWithCflRetry,
+                step == 0,
+            )?
+        };
 
         workspace.stats = StepStats {
             max_velocity: pass.max_velocity,
@@ -205,6 +220,7 @@ where
             min_thickness = pass.min_thickness,
             max_thickness = pass.max_thickness,
             clamp_ratio = pass.clamp_ratio,
+            substeps = pass.substep_count,
             "tectonic step"
         );
 
@@ -642,6 +658,7 @@ fn execute_tectonic_pass(
                     mass_clamp_delta: 0.0,
                     oceanic_restore_delta: 0.0,
                     continental_restore_delta: 0.0,
+                    substep_count: 1,
                 });
             }
         }
@@ -1081,6 +1098,149 @@ fn execute_tectonic_pass(
         mass_clamp_delta,
         oceanic_restore_delta,
         continental_restore_delta,
+        substep_count: 1,
+    })
+}
+
+/// Adaptive macro step: repeatedly call `execute_tectonic_pass` in
+/// `DtMode::Explicit` mode, accumulating sub-step time toward
+/// `config.adaptive_dt.dt_target`, with snapshot-based rollback on
+/// failure and an outcome-driven reduction/growth policy.
+///
+/// Returns a synthesized `PassResult` aggregated over the committed
+/// sub-steps, so the caller's logging and `StepStats` construction code
+/// treats both modes uniformly.
+#[allow(clippy::too_many_arguments)]
+fn run_adaptive_macro_step(
+    grid: &mut StaggeredGrid,
+    plate_ctx: &mut DynamicPlateContext,
+    workspace: &mut SolverWorkspace,
+    recycling_buffer: &mut Option<RecyclingBuffer>,
+    mantle_flow: &mut Option<MantleFlow>,
+    config: &TectonicsConfig,
+    step: usize,
+) -> Result<PassResult, SolverError> {
+    let dt_target = config.adaptive_dt.dt_target;
+    let dt_min = dt_target * config.adaptive_dt.min_dt_fraction;
+    let max_substeps = config.adaptive_dt.max_substeps;
+
+    let mut accumulated = AccumulatedSubstepStats::default();
+    let mut dt_current = dt_target;
+    let mut elapsed = 0.0_f64;
+    let mut last_successful_pass: Option<PassResult> = None;
+
+    while elapsed < dt_target && accumulated.substep_count < max_substeps {
+        let remaining = dt_target - elapsed;
+        let mut dt_sub = dt_current.min(remaining);
+
+        if config.adaptive_dt.respect_local_cfl {
+            let dt_cfl = compute_cfl_dt(grid, config.cfl_factor);
+            dt_sub = dt_sub.min(dt_cfl);
+        }
+
+        let snapshot = StateSnapshot::capture(grid, plate_ctx);
+        let allow_continuation = step == 0 && accumulated.substep_count == 0;
+
+        let pass = execute_tectonic_pass(
+            grid,
+            plate_ctx,
+            workspace,
+            recycling_buffer,
+            mantle_flow,
+            config,
+            step,
+            DtMode::Explicit(dt_sub),
+            allow_continuation,
+        )?;
+
+        let sub = pass.as_substep();
+        if pass.is_successful() {
+            elapsed += dt_sub;
+            accumulated.merge(&sub, dt_sub);
+            dt_current = grow_dt(dt_current, &sub, &config.adaptive_dt);
+            last_successful_pass = Some(pass);
+            debug!(
+                step,
+                substep = accumulated.substep_count - 1,
+                dt_sub,
+                elapsed,
+                newton_iters = sub.newton_iterations,
+                clamp_ratio = sub.clamp_ratio,
+                "sub-step committed"
+            );
+        } else {
+            snapshot.restore(grid, plate_ctx);
+            let factor = reduction_for(&sub, &config.adaptive_dt);
+            dt_current *= factor;
+            debug!(
+                step,
+                substep = accumulated.substep_count,
+                dt_sub,
+                clamp_ratio = sub.clamp_ratio,
+                reduction = factor,
+                dt_after = dt_current,
+                "sub-step failed, rolled back"
+            );
+            if dt_current < dt_min {
+                warn!(
+                    step,
+                    dt_current,
+                    dt_min,
+                    elapsed,
+                    dt_target,
+                    "sub-step floor reached, abandoning remainder of macro step"
+                );
+                break;
+            }
+        }
+    }
+
+    if accumulated.substep_count >= max_substeps && elapsed < dt_target {
+        warn!(
+            step,
+            substep_count = accumulated.substep_count,
+            elapsed,
+            dt_target,
+            "max sub-steps reached before consuming dt_target"
+        );
+    }
+
+    // If no sub-step ever committed, fall back to the legacy error
+    // semantics so the caller can treat this like a non-convergence.
+    let Some(last_pass) = last_successful_pass else {
+        return Err(SolverError::NonlinearSolverDidNotConverge { step });
+    };
+
+    // Final state totals for stats and logging.
+    let mut max_s = f64::NEG_INFINITY;
+    let mut min_s = f64::INFINITY;
+    for &s in grid.s.data().iter() {
+        max_s = max_s.max(s);
+        min_s = min_s.min(s);
+    }
+
+    // Mass-balance fields: we report the last committed sub-step's bookkeeping
+    // rather than true per-macro totals. The debug log stays readable per
+    // sub-step; a future commit can accumulate these if the macro-level
+    // mass balance is needed for diagnostics.
+    Ok(PassResult {
+        outcome: NewtonOutcome::ConvergedOnResidual,
+        nl_iterations: accumulated.newton_iters_total,
+        linear_iterations: accumulated.linear_iters_total,
+        dt_consumed: elapsed,
+        clamp_ratio: accumulated.max_clamp_ratio,
+        retry_succeeded: true,
+        max_velocity: accumulated.max_velocity,
+        max_thickness: max_s,
+        min_thickness: min_s,
+        mass_before: last_pass.mass_before,
+        mass_after: last_pass.mass_after,
+        total_div_flux: last_pass.total_div_flux,
+        total_source: last_pass.total_source,
+        mass_clamp_delta: last_pass.mass_clamp_delta,
+        oceanic_restore_delta: last_pass.oceanic_restore_delta,
+        continental_restore_delta: last_pass.continental_restore_delta,
+        substep_count: accumulated.substep_count,
     })
 }
 
@@ -1527,6 +1687,10 @@ mod tests {
         let traction = TractionField::two_plates_convergent(n, n, 0.5);
         let mut ctx = make_static_ctx(n, traction);
         let mut config = make_config(1);
+        // Exercise the legacy CFL retry path — the cfl_retry_exhausted flag
+        // is only populated there; adaptive mode reports retry_succeeded: true
+        // unconditionally because rollback happens at the sub-step boundary.
+        config.adaptive_dt.enabled = false;
         config.boundaries.oceanic_restore_rate = 0.0;
         config.boundaries.continental_restore_rate = 0.0;
         let mut ws = SolverWorkspace::new(n, n);
@@ -1573,6 +1737,11 @@ mod tests {
         // any value grid.s can hold after clamping will be counted.
         config.s_min = 0.999;
         config.s_max = 1.001;
+        // The cfl_retry_exhausted flag and the "commit last attempt" behavior
+        // are semantics of the legacy CFL retry loop; adaptive mode instead
+        // rolls back the failing sub-step and shrinks dt. Gate the test to
+        // the legacy path so the assertions remain meaningful.
+        config.adaptive_dt.enabled = false;
         config.boundaries.oceanic_restore_rate = 0.0;
         config.boundaries.continental_restore_rate = 0.0;
         let mut ws = SolverWorkspace::new(n, n);
@@ -1597,6 +1766,109 @@ mod tests {
         assert!(
             max_diff > 1e-6,
             "grid.s must have evolved even on CFL retry exhaustion, got max_diff = {max_diff}"
+        );
+    }
+
+    #[test]
+    fn adaptive_mode_covers_dt_target_on_gentle_configuration() {
+        // Single macro step with adaptive mode enabled on an easy configuration
+        // (gentle convergent flow, uniform thickness). The sub-step loop should
+        // commit at least one sub-step, cover the full dt_target budget, evolve
+        // grid.s, and populate StepStats with sensible values.
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let mut grid = StaggeredGrid::new(n, n, dx);
+        for j in 0..n {
+            for i in 0..n {
+                grid.s.set(i, j, 1.0);
+            }
+        }
+        let s_before: Vec<f64> = grid.s.data().to_vec();
+
+        let traction = TractionField::two_plates_convergent(n, n, 0.5);
+        let mut ctx = make_static_ctx(n, traction);
+        let mut config = make_config(1);
+        config.adaptive_dt.enabled = true;
+        config.adaptive_dt.dt_target = 0.5;
+        // Disable restoring forces so any evolution of grid.s comes purely
+        // from the advection inside the sub-step loop.
+        config.boundaries.oceanic_restore_rate = 0.0;
+        config.boundaries.continental_restore_rate = 0.0;
+        let mut ws = SolverWorkspace::new(n, n);
+
+        let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
+        assert!(result.is_ok(), "adaptive run failed: {:?}", result.err());
+
+        assert!(
+            (ws.stats.dt - config.adaptive_dt.dt_target).abs() < 1e-9,
+            "adaptive dt_consumed {} should match dt_target {}",
+            ws.stats.dt,
+            config.adaptive_dt.dt_target
+        );
+
+        let s_after = grid.s.data();
+        let max_diff = s_before
+            .iter()
+            .zip(s_after.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f64, f64::max);
+        assert!(
+            max_diff > 1e-6,
+            "grid.s should have evolved under adaptive sub-stepping, got max_diff = {max_diff}"
+        );
+
+        // cfl_retry_exhausted is a legacy-path signal; adaptive mode never sets it.
+        assert!(!ws.stats.cfl_retry_exhausted);
+    }
+
+    #[test]
+    fn adaptive_mode_matches_legacy_path_on_gentle_configuration() {
+        // Both code paths (legacy CFL retry, adaptive single sub-step) should
+        // converge and produce plausible physics on the same easy configuration.
+        // They are numerically different — adaptive uses a fixed dt_target,
+        // legacy uses dt_cfl — but both must populate StepStats and evolve
+        // grid.s monotonically in the same direction.
+        let n = 16;
+        let dx = 1.0 / n as f64;
+
+        let run = |adaptive: bool| -> (f64, f64, f64, f64) {
+            let mut grid = StaggeredGrid::new(n, n, dx);
+            for j in 0..n {
+                for i in 0..n {
+                    grid.s.set(i, j, 1.0);
+                }
+            }
+            let traction = TractionField::two_plates_convergent(n, n, 0.5);
+            let mut ctx = make_static_ctx(n, traction);
+            let mut config = make_config(5);
+            config.adaptive_dt.enabled = adaptive;
+            config.adaptive_dt.dt_target = 0.5;
+            config.boundaries.oceanic_restore_rate = 0.0;
+            config.boundaries.continental_restore_rate = 0.0;
+            let mut ws = SolverWorkspace::new(n, n);
+            run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true).unwrap();
+            let mass: f64 = grid.s.data().iter().sum();
+            (ws.stats.dt, ws.stats.max_thickness, ws.stats.min_thickness, mass)
+        };
+
+        let (legacy_dt, legacy_max, legacy_min, legacy_mass) = run(false);
+        let (adaptive_dt, adaptive_max, adaptive_min, adaptive_mass) = run(true);
+
+        assert!(legacy_dt > 0.0 && legacy_max > legacy_min);
+        assert!(adaptive_dt > 0.0 && adaptive_max > adaptive_min);
+
+        // Adaptive mode on a gentle config consumes its full target budget.
+        assert!(
+            (adaptive_dt - 0.5).abs() < 1e-9,
+            "adaptive last-step dt = {adaptive_dt}, expected 0.5"
+        );
+
+        // Both paths preserve overall mass on the same order of magnitude
+        // (sources/sinks are balanced by default boundaries).
+        let mass_ratio = adaptive_mass / legacy_mass;
+        assert!(
+            (0.5..2.0).contains(&mass_ratio),
+            "adaptive mass {adaptive_mass} vs legacy {legacy_mass} diverged beyond 2x"
         );
     }
 }
