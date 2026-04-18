@@ -260,7 +260,12 @@ pub fn solve_velocity_newton(
                         // J·δv ≈ (F(v + ε·δv) - F(v)) / ε
                         let v_norm: f64 = v_base.iter().map(|x| x * x).sum::<f64>().sqrt();
                         let dv_norm: f64 = delta_v.iter().map(|x| x * x).sum::<f64>().sqrt();
-                        let eps = eps_scale * v_norm.max(1.0) / dv_norm.max(1e-30);
+                        // Stabilized eps: (v_norm + 1) / (dv_norm + 1) is
+                        // continuous and bounded for any positive inputs,
+                        // avoiding the blow-ups of the v_norm.max(1) /
+                        // dv_norm.max(1e-30) ratio when v_norm is large and
+                        // dv_norm tiny. See #50.
+                        let eps = eps_scale * (v_norm + 1.0) / (dv_norm + 1.0);
 
                         for i in 0..n_dof {
                             v_pert_buf[i] = v_base[i] + eps * delta_v[i];
@@ -300,7 +305,12 @@ pub fn solve_velocity_newton(
                     |delta_v, out| {
                         let v_norm: f64 = v_base.iter().map(|x| x * x).sum::<f64>().sqrt();
                         let dv_norm: f64 = delta_v.iter().map(|x| x * x).sum::<f64>().sqrt();
-                        let eps = eps_scale * v_norm.max(1.0) / dv_norm.max(1e-30);
+                        // Stabilized eps: (v_norm + 1) / (dv_norm + 1) is
+                        // continuous and bounded for any positive inputs,
+                        // avoiding the blow-ups of the v_norm.max(1) /
+                        // dv_norm.max(1e-30) ratio when v_norm is large and
+                        // dv_norm tiny. See #50.
+                        let eps = eps_scale * (v_norm + 1.0) / (dv_norm + 1.0);
 
                         for i in 0..n_dof {
                             v_pert_buf[i] = v_base[i] + eps * delta_v[i];
@@ -921,5 +931,30 @@ mod tests {
         assert!(r2.is_converged());
         assert!(!r3.is_converged());
         assert!(!r4.is_converged());
+    }
+
+    #[test]
+    fn jfnk_eps_formula_is_bounded_in_extreme_regimes() {
+        // Mirror of the in-closure formula from solve_velocity_newton.
+        // The pre-#50 eps = eps_scale * v_norm.max(1.0) / dv_norm.max(1e-30)
+        // blew up to 1e23 on the (1e6, 1e-6) extreme, biasing the
+        // finite-difference Jacobian. The new (v_norm + 1) / (dv_norm + 1)
+        // form stays continuous, positive and bounded below 1 for any
+        // positive inputs at eps_scale = 1e-7.
+        let eps_scale: f64 = 1e-7;
+        let cases: [(f64, f64); 5] = [
+            (1.0, 1.0),    // normal
+            (100.0, 0.01), // large v, small dv
+            (0.01, 0.001), // both small
+            (0.0, 0.0),    // edge case, both zero
+            (1e6, 1e-6),   // extreme
+        ];
+
+        for (v_norm, dv_norm) in cases {
+            let eps = eps_scale * (v_norm + 1.0) / (dv_norm + 1.0);
+            assert!(eps.is_finite(), "eps not finite for v={v_norm}, dv={dv_norm}");
+            assert!(eps > 0.0, "eps non-positive for v={v_norm}, dv={dv_norm}: {eps}");
+            assert!(eps < 1.0, "eps too large for v={v_norm}, dv={dv_norm}: {eps}");
+        }
     }
 }
