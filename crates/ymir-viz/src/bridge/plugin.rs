@@ -306,6 +306,7 @@ fn build_tectonics_config(sc: &SolverConfig) -> TectonicsConfig {
         basal_friction: sc.basal_friction,
         mantle: sc.mantle.clone(),
         recycling: sc.recycling.clone(),
+        adaptive_dt: Default::default(),
     }
 }
 

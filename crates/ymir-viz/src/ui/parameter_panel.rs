@@ -621,6 +621,7 @@ fn launch_solver(
         basal_friction: solver_config.basal_friction,
         mantle: solver_config.mantle.clone(),
         recycling: solver_config.recycling.clone(),
+        adaptive_dt: Default::default(),
     };
 
     let next_id = init.plates.len();
