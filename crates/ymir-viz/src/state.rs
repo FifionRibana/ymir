@@ -216,6 +216,9 @@ pub struct SolverConfig {
     /// Target geological duration per macro step (solver units). Only
     /// used when `adaptive_dt_enabled` is true.
     pub adaptive_dt_target: f64,
+    /// Maximum clamp_ratio at which a sub-step is committed. Raise this
+    /// when a run logs repeated sub-step abandons on structural clamping.
+    pub adaptive_max_clamp_ratio_success: f64,
 }
 
 impl Default for SolverConfig {
@@ -242,6 +245,7 @@ impl Default for SolverConfig {
             recycling: Default::default(),
             adaptive_dt_enabled: true,
             adaptive_dt_target: 2.0,
+            adaptive_max_clamp_ratio_success: 0.10,
         }
     }
 }

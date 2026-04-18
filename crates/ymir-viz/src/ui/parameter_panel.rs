@@ -339,6 +339,15 @@ fn draw_tectonics(
             .text("dt target")
             .logarithmic(true),
     );
+    ui.add_enabled(
+        solver_config.adaptive_dt_enabled,
+        egui::Slider::new(&mut solver_config.adaptive_max_clamp_ratio_success, 0.05..=0.30)
+            .text("Sub-step max clamp"),
+    )
+    .on_hover_text(
+        "Max clamp_ratio at which a sub-step is committed. Increase cautiously; \
+         values above 0.15 may hide convergence issues.",
+    );
 
     ui.horizontal(|ui| {
         ui.label("Precond.");
@@ -634,6 +643,7 @@ fn launch_solver(
         adaptive_dt: AdaptiveDtConfig {
             enabled: solver_config.adaptive_dt_enabled,
             dt_target: solver_config.adaptive_dt_target,
+            max_clamp_ratio_success: solver_config.adaptive_max_clamp_ratio_success,
             ..AdaptiveDtConfig::default()
         },
     };
