@@ -3,6 +3,7 @@
 use super::field::Field2D;
 
 /// Traction field imposed by plate motions.
+#[derive(Clone)]
 pub struct TractionField {
     pub tx: Field2D,
     pub ty: Field2D,
