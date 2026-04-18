@@ -209,6 +209,16 @@ pub struct SolverConfig {
     pub basal_friction: f64,
     pub mantle: ymir_core::tectonics::mantle::MantleConfig,
     pub recycling: ymir_core::tectonics::recycling::RecyclingConfig,
+    /// Adaptive time-stepping: when true, each macro step targets a fixed
+    /// `adaptive_dt_target` consumed via one or more sub-steps; when false
+    /// the solver runs the pre-#52 single-step-per-macro CFL retry path.
+    pub adaptive_dt_enabled: bool,
+    /// Target geological duration per macro step (solver units). Only
+    /// used when `adaptive_dt_enabled` is true.
+    pub adaptive_dt_target: f64,
+    /// Maximum clamp_ratio at which a sub-step is committed. Raise this
+    /// when a run logs repeated sub-step abandons on structural clamping.
+    pub adaptive_max_clamp_ratio_success: f64,
 }
 
 impl Default for SolverConfig {
@@ -233,6 +243,9 @@ impl Default for SolverConfig {
             basal_friction: 0.05,
             mantle: Default::default(),
             recycling: Default::default(),
+            adaptive_dt_enabled: true,
+            adaptive_dt_target: 2.0,
+            adaptive_max_clamp_ratio_success: 0.10,
         }
     }
 }

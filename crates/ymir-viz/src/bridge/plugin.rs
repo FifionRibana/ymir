@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use crossbeam_channel::{Receiver, Sender, bounded};
 
 use ymir_core::tectonics::solver::config::{
-    ContinuationConfig, NewtonConfig, PicardConfig, TectonicsConfig,
+    AdaptiveDtConfig, ContinuationConfig, NewtonConfig, PicardConfig, TectonicsConfig,
 };
 use ymir_core::tectonics::solver::tectonics::DynamicPlateContext;
 use ymir_core::tectonics::solver::workspace::StepStats;
@@ -306,6 +306,12 @@ fn build_tectonics_config(sc: &SolverConfig) -> TectonicsConfig {
         basal_friction: sc.basal_friction,
         mantle: sc.mantle.clone(),
         recycling: sc.recycling.clone(),
+        adaptive_dt: AdaptiveDtConfig {
+            enabled: sc.adaptive_dt_enabled,
+            dt_target: sc.adaptive_dt_target,
+            max_clamp_ratio_success: sc.adaptive_max_clamp_ratio_success,
+            ..AdaptiveDtConfig::default()
+        },
     }
 }
 

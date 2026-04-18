@@ -134,6 +134,88 @@ impl Default for ContinuationConfig {
     }
 }
 
+/// Configuration for adaptive time-stepping via sub-stepping.
+///
+/// When enabled, each macro tectonic step targets a fixed geological
+/// duration `dt_target`. The solver consumes this budget via one or
+/// more sub-steps of adaptive size, retrying with smaller `dt` on
+/// failure and growing `dt` after easy successes. The result is that
+/// a given number of macro steps covers a predictable amount of
+/// geological time regardless of configuration.
+#[derive(Clone, Debug)]
+pub struct AdaptiveDtConfig {
+    /// Master enable. When false, fall back to the pre-#52 single-step-per-macro
+    /// behaviour (CFL-dt with in-loop retry).
+    pub enabled: bool,
+    /// Target geological duration per macro step. The UI step counter
+    /// represents one occurrence of this budget. The default is a
+    /// calibration placeholder; it will be driven from a physical target
+    /// (Myr) once issue #10 lands.
+    pub dt_target: f64,
+    /// Factor applied to `dt_current` after a sub-step failure of kind
+    /// `Stagnation`. Default: 0.7 (mild reduction).
+    pub stagnation_reduction: f64,
+    /// Factor applied after `Oscillation`. Default: 0.5.
+    pub oscillation_reduction: f64,
+    /// Factor applied after `Divergence`. Default: 0.25 (aggressive).
+    pub divergence_reduction: f64,
+    /// Factor applied after other failures (MaxIterations, excessive
+    /// advective clamping). Default: 0.5.
+    pub default_reduction: f64,
+    /// Factor to grow `dt_current` after a sub-step that converged in
+    /// few iterations (`n_iters < easy_iters`). Default: 2.0.
+    pub easy_growth: f64,
+    /// Factor to grow `dt_current` after a normal success
+    /// (`easy_iters <= n_iters < normal_iters`). Default: 1.3.
+    pub normal_growth: f64,
+    /// Threshold for an "easy" Newton success. Default: 3.
+    pub easy_iters: usize,
+    /// Threshold for a "normal" Newton success. Default: 8.
+    pub normal_iters: usize,
+    /// Floor on `dt_current` as a fraction of `dt_target`. Below this,
+    /// the macro step abandons the remaining budget. Default: 1/64.
+    pub min_dt_fraction: f64,
+    /// Maximum number of sub-steps per macro step. Default: 64.
+    pub max_substeps: usize,
+    /// If true, each sub-step is also limited by the local CFL condition
+    /// so `dt_sub = min(dt_current, dt_cfl_local, remaining_budget)`.
+    /// This preserves advection stability. Default: true.
+    pub respect_local_cfl: bool,
+    /// Maximum acceptable `clamp_ratio` for a sub-step to be committed.
+    /// A sub-step succeeds only if Newton converged AND `clamp_ratio`
+    /// is strictly below this threshold.
+    ///
+    /// Higher values tolerate structural clamping (cells stuck at
+    /// `s_min` or `s_max` because of relief saturation, independent of
+    /// dt), which does not decrease with smaller sub-steps and would
+    /// otherwise force the adaptive loop to hit the floor with
+    /// `elapsed == 0`. Default: 0.10. Increase cautiously above 0.15 —
+    /// the step-final "excessive clamping" warning still triggers at
+    /// 0.05 on the legacy-compatible path, independent of this knob.
+    pub max_clamp_ratio_success: f64,
+}
+
+impl Default for AdaptiveDtConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            dt_target: 2.0,
+            stagnation_reduction: 0.7,
+            oscillation_reduction: 0.5,
+            divergence_reduction: 0.25,
+            default_reduction: 0.5,
+            easy_growth: 2.0,
+            normal_growth: 1.3,
+            easy_iters: 3,
+            normal_iters: 8,
+            min_dt_fraction: 1.0 / 64.0,
+            max_substeps: 64,
+            respect_local_cfl: true,
+            max_clamp_ratio_success: 0.10,
+        }
+    }
+}
+
 /// Top-level configuration for the tectonic simulation.
 #[derive(Clone)]
 pub struct TectonicsConfig {
@@ -163,6 +245,8 @@ pub struct TectonicsConfig {
     pub mantle: super::super::mantle::MantleConfig,
     /// Conservative mass recycling configuration.
     pub recycling: super::super::recycling::RecyclingConfig,
+    /// Adaptive time-stepping configuration (sub-stepping per macro step).
+    pub adaptive_dt: AdaptiveDtConfig,
 }
 
 /// Configuration for cratonic rigidity (spatial viscosity variation).
@@ -237,6 +321,7 @@ impl Default for TectonicsConfig {
             basal_friction: 0.05,
             mantle: Default::default(),
             recycling: Default::default(),
+            adaptive_dt: AdaptiveDtConfig::default(),
         }
     }
 }
