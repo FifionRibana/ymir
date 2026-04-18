@@ -5,8 +5,8 @@ use crate::state::{AspectPreset, GridUiState};
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::plates::{PlateConfig, generate_plates};
 use ymir_core::tectonics::solver::config::{
-    ContinuationConfig, NewtonConfig, NonlinearSolver, PicardConfig, Preconditioner,
-    TectonicsConfig,
+    AdaptiveDtConfig, ContinuationConfig, NewtonConfig, NonlinearSolver, PicardConfig,
+    Preconditioner, TectonicsConfig,
 };
 use ymir_core::tectonics::solver::tectonics::DynamicPlateContext;
 
@@ -330,6 +330,16 @@ fn draw_tectonics(
         egui::Slider::new(&mut solver_config.eta_max, 1e2..=1e6).text("η_max").logarithmic(true),
     );
 
+    ui.separator();
+    ui.strong("Adaptive time-stepping");
+    ui.checkbox(&mut solver_config.adaptive_dt_enabled, "Sub-step per macro step");
+    ui.add_enabled(
+        solver_config.adaptive_dt_enabled,
+        egui::Slider::new(&mut solver_config.adaptive_dt_target, 0.1..=10.0)
+            .text("dt target")
+            .logarithmic(true),
+    );
+
     ui.horizontal(|ui| {
         ui.label("Precond.");
         let mut is_ssor = matches!(solver_config.preconditioner, Preconditioner::Ssor { .. });
@@ -621,7 +631,11 @@ fn launch_solver(
         basal_friction: solver_config.basal_friction,
         mantle: solver_config.mantle.clone(),
         recycling: solver_config.recycling.clone(),
-        adaptive_dt: Default::default(),
+        adaptive_dt: AdaptiveDtConfig {
+            enabled: solver_config.adaptive_dt_enabled,
+            dt_target: solver_config.adaptive_dt_target,
+            ..AdaptiveDtConfig::default()
+        },
     };
 
     let next_id = init.plates.len();
