@@ -315,7 +315,11 @@ fn draw_tectonics(
 
     ui.separator();
     ui.strong("Convergence");
-
+    ui.add(
+        egui::Slider::new(&mut solver_config.newton_tolerance, 1e-3..=1e-1)
+            .text("Tolerance")
+            .logarithmic(true),
+    );
     ui.checkbox(&mut solver_config.continuation_enabled, "Viscosity continuation");
     ui.add(
         egui::Slider::new(&mut solver_config.strain_rate_min, 1e-6..=1e-1)
@@ -602,6 +606,7 @@ fn launch_solver(
         },
         newton: NewtonConfig {
             preconditioner: solver_config.preconditioner,
+            tolerance: solver_config.newton_tolerance,
             inexact: solver_config.inexact_newton,
             ..NewtonConfig::default()
         },
