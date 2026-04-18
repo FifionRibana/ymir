@@ -181,6 +181,18 @@ pub struct AdaptiveDtConfig {
     /// so `dt_sub = min(dt_current, dt_cfl_local, remaining_budget)`.
     /// This preserves advection stability. Default: true.
     pub respect_local_cfl: bool,
+    /// Maximum acceptable `clamp_ratio` for a sub-step to be committed.
+    /// A sub-step succeeds only if Newton converged AND `clamp_ratio`
+    /// is strictly below this threshold.
+    ///
+    /// Higher values tolerate structural clamping (cells stuck at
+    /// `s_min` or `s_max` because of relief saturation, independent of
+    /// dt), which does not decrease with smaller sub-steps and would
+    /// otherwise force the adaptive loop to hit the floor with
+    /// `elapsed == 0`. Default: 0.10. Increase cautiously above 0.15 —
+    /// the step-final "excessive clamping" warning still triggers at
+    /// 0.05 on the legacy-compatible path, independent of this knob.
+    pub max_clamp_ratio_success: f64,
 }
 
 impl Default for AdaptiveDtConfig {
@@ -199,6 +211,7 @@ impl Default for AdaptiveDtConfig {
             min_dt_fraction: 1.0 / 64.0,
             max_substeps: 64,
             respect_local_cfl: true,
+            max_clamp_ratio_success: 0.10,
         }
     }
 }
