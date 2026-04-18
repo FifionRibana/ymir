@@ -13,6 +13,15 @@ use super::traction::TractionField;
 /// Minimum grid dimension for parallel execution. Below this, sequential is faster.
 const PAR_THRESHOLD: usize = 64;
 
+/// Lower bound on the absolute value of a Jacobi diagonal before we take
+/// its reciprocal. Cells with smaller absolute diagonals are clamped to
+/// this floor with their sign preserved, yielding large but finite
+/// preconditioner entries. This avoids annihilating information about
+/// near-singular cells, which would otherwise force BiCGSTAB to
+/// reconstruct their residual contribution indirectly via neighbor
+/// coupling.
+const JACOBI_DIAG_FLOOR: f64 = 1e-20;
+
 /// Apply the Stokes operator A·v in matrix-free fashion.
 ///
 /// `v` and `out` are packed vectors: first N² entries = vx component, next N² = vy.
@@ -233,7 +242,10 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
                 let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
                 diag_vx += friction_scaled * s_excess;
             }
-            row_vx[i] = if diag_vx.abs() > 1e-30 { 1.0 / diag_vx } else { 0.0 };
+            // Sign-preserving reciprocal with a floor. Near-singular cells
+            // produce a large but finite preconditioner entry instead of
+            // the annihilating 0.0 the old ternary yielded — see #50.
+            row_vx[i] = diag_vx.signum() / diag_vx.abs().max(JACOBI_DIAG_FLOOR);
 
             // vy diagonal: η_right_corner + η_left_corner + 2(η_top + η_bot)
             let eta_top_vy = eta.get(i, j);
@@ -249,7 +261,7 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
                 let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
                 diag_vy += friction_scaled * s_excess;
             }
-            row_vy[i] = if diag_vy.abs() > 1e-30 { 1.0 / diag_vy } else { 0.0 };
+            row_vy[i] = diag_vy.signum() / diag_vy.abs().max(JACOBI_DIAG_FLOOR);
         }
     };
 
@@ -785,6 +797,67 @@ mod tests {
 
         for &val in &out {
             assert!(val.is_finite(), "Output should be finite");
+        }
+    }
+
+    #[test]
+    fn jacobi_precond_handles_near_singular_cells() {
+        // Uniform η at 1e-25 simulates an early-continuation or
+        // pathological cratonic-core state where the whole vx stencil
+        // collapses. With dx = 0.1 and the 2·(η_R + η_L) + η_T + η_B
+        // stencil that gives a raw diagonal of ~6e-23, well below the
+        // 1e-20 JACOBI_DIAG_FLOOR. Under the old ternary (abs > 1e-30)
+        // the reciprocal would survive unclamped and blow up to ~1.6e+22,
+        // but a slightly smaller η (1e-40) would have fallen below 1e-30
+        // and been annihilated to 0.0. The new floored reciprocal always
+        // yields a finite, sign-preserving, bounded-magnitude entry.
+        let n = 8;
+        let dx = 0.1;
+        let grid = StaggeredGrid::new(n, n, dx);
+        let mut eta = Field2D::new(n, n);
+        for k in 0..n * n {
+            eta.data_mut()[k] = 1e-40;
+        }
+
+        let mut precond = vec![0.0; 2 * n * n];
+        compute_jacobi_precond(&eta, &grid, &mut precond);
+
+        for (i, &val) in precond.iter().enumerate() {
+            assert!(val.is_finite(), "non-finite preconditioner entry at index {i}: {val}");
+        }
+
+        // Every entry should saturate to 1/JACOBI_DIAG_FLOOR = 1e20
+        // instead of the old code's silent 0.0.
+        for (i, &val) in precond.iter().enumerate() {
+            assert!(
+                val.abs() > 1e10,
+                "expected near-singular cell to produce large preconditioner entry at {i}, got {val}"
+            );
+        }
+    }
+
+    #[test]
+    fn jacobi_precond_unchanged_on_normal_cells() {
+        // On a uniform well-conditioned η field every Jacobi entry should
+        // be a finite positive number of reasonable magnitude — the floor
+        // change from #50 must not perturb the normal regime.
+        let n = 4;
+        let dx = 0.25;
+        let grid = StaggeredGrid::new(n, n, dx);
+        let mut eta = Field2D::new(n, n);
+        for k in 0..n * n {
+            eta.data_mut()[k] = 1.0;
+        }
+
+        let mut precond = vec![0.0; 2 * n * n];
+        compute_jacobi_precond(&eta, &grid, &mut precond);
+
+        for &val in precond.iter() {
+            assert!(val.is_finite());
+            assert!(
+                val > 0.0 && val < 10.0,
+                "expected normal preconditioner magnitude, got {val}"
+            );
         }
     }
 }

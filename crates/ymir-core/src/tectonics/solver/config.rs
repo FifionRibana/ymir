@@ -61,18 +61,57 @@ pub struct NewtonConfig {
     pub preconditioner: Preconditioner,
     /// Use inexact Newton (Eisenstat-Walker adaptive inner tolerance).
     pub inexact: bool,
+    /// Tolerance on the relative velocity increment for the state-based
+    /// convergence criterion. Convergence is accepted on state if
+    /// |Δv| / |v| < state_tolerance AND the residual is on a downward
+    /// trend.
+    pub state_tolerance: f64,
+    /// Number of recent iterations to consider for the residual trend
+    /// analysis. The trend is descending if the residual at iteration k
+    /// is less than the residual at iteration k - trend_window.
+    pub trend_window: usize,
+    /// Cosine threshold below which two consecutive Newton steps are
+    /// considered anti-aligned (oscillation indicator). Range (-1, 0).
+    /// Two consecutive iterations below this threshold trigger the
+    /// Oscillation outcome.
+    pub oscillation_cosine_threshold: f64,
+    /// Minimum number of Newton iterations before the state-based
+    /// criterion or oscillation detection can fire. Prevents premature
+    /// classification on the first few iterations where signals are noisy.
+    pub min_iterations_before_classification: usize,
+    /// Multiplier applied to `tolerance` to define the "near-tolerance"
+    /// band used by the second state-convergence pathway. If the residual
+    /// is within `tolerance * b_norm * stagnation_residual_multiplier`
+    /// AND the residual history is flat over the trend window, the
+    /// solver accepts convergence on state even when `relative_step`
+    /// does not pass its own threshold. Catches the case where Newton
+    /// descends quickly to near-tolerance then stagnates due to
+    /// non-smoothness of F(v).
+    pub stagnation_residual_multiplier: f64,
+    /// Spread threshold (relative) used both by the stagnation-based
+    /// state-convergence pathway and by the end-of-loop Stagnation vs
+    /// MaxIterations classification. A residual history is "flat" when
+    /// `(max - min) / max < stagnation_spread_threshold` over the last
+    /// `trend_window + 1` iterations.
+    pub stagnation_spread_threshold: f64,
 }
 
 impl Default for NewtonConfig {
     fn default() -> Self {
         Self {
             max_iterations: 15,
-            tolerance: 5e-2,
+            tolerance: 3e-2,
             cg_max_iter: 500,
             cg_tolerance: 1e-6,
             fd_epsilon_scale: 1e-7,
             preconditioner: Preconditioner::default(),
             inexact: true,
+            state_tolerance: 1e-4,
+            trend_window: 3,
+            oscillation_cosine_threshold: -0.5,
+            min_iterations_before_classification: 3,
+            stagnation_residual_multiplier: 2.0,
+            stagnation_spread_threshold: 0.10,
         }
     }
 }
@@ -92,6 +131,88 @@ pub struct ContinuationConfig {
 impl Default for ContinuationConfig {
     fn default() -> Self {
         Self { enabled: true, n_steps: vec![1.0, 1.5, 2.0, 2.5, 3.0], eps_min_start: Some(1e-2) }
+    }
+}
+
+/// Configuration for adaptive time-stepping via sub-stepping.
+///
+/// When enabled, each macro tectonic step targets a fixed geological
+/// duration `dt_target`. The solver consumes this budget via one or
+/// more sub-steps of adaptive size, retrying with smaller `dt` on
+/// failure and growing `dt` after easy successes. The result is that
+/// a given number of macro steps covers a predictable amount of
+/// geological time regardless of configuration.
+#[derive(Clone, Debug)]
+pub struct AdaptiveDtConfig {
+    /// Master enable. When false, fall back to the pre-#52 single-step-per-macro
+    /// behaviour (CFL-dt with in-loop retry).
+    pub enabled: bool,
+    /// Target geological duration per macro step. The UI step counter
+    /// represents one occurrence of this budget. The default is a
+    /// calibration placeholder; it will be driven from a physical target
+    /// (Myr) once issue #10 lands.
+    pub dt_target: f64,
+    /// Factor applied to `dt_current` after a sub-step failure of kind
+    /// `Stagnation`. Default: 0.7 (mild reduction).
+    pub stagnation_reduction: f64,
+    /// Factor applied after `Oscillation`. Default: 0.5.
+    pub oscillation_reduction: f64,
+    /// Factor applied after `Divergence`. Default: 0.25 (aggressive).
+    pub divergence_reduction: f64,
+    /// Factor applied after other failures (MaxIterations, excessive
+    /// advective clamping). Default: 0.5.
+    pub default_reduction: f64,
+    /// Factor to grow `dt_current` after a sub-step that converged in
+    /// few iterations (`n_iters < easy_iters`). Default: 2.0.
+    pub easy_growth: f64,
+    /// Factor to grow `dt_current` after a normal success
+    /// (`easy_iters <= n_iters < normal_iters`). Default: 1.3.
+    pub normal_growth: f64,
+    /// Threshold for an "easy" Newton success. Default: 3.
+    pub easy_iters: usize,
+    /// Threshold for a "normal" Newton success. Default: 8.
+    pub normal_iters: usize,
+    /// Floor on `dt_current` as a fraction of `dt_target`. Below this,
+    /// the macro step abandons the remaining budget. Default: 1/64.
+    pub min_dt_fraction: f64,
+    /// Maximum number of sub-steps per macro step. Default: 64.
+    pub max_substeps: usize,
+    /// If true, each sub-step is also limited by the local CFL condition
+    /// so `dt_sub = min(dt_current, dt_cfl_local, remaining_budget)`.
+    /// This preserves advection stability. Default: true.
+    pub respect_local_cfl: bool,
+    /// Maximum acceptable `clamp_ratio` for a sub-step to be committed.
+    /// A sub-step succeeds only if Newton converged AND `clamp_ratio`
+    /// is strictly below this threshold.
+    ///
+    /// Higher values tolerate structural clamping (cells stuck at
+    /// `s_min` or `s_max` because of relief saturation, independent of
+    /// dt), which does not decrease with smaller sub-steps and would
+    /// otherwise force the adaptive loop to hit the floor with
+    /// `elapsed == 0`. Default: 0.10. Increase cautiously above 0.15 —
+    /// the step-final "excessive clamping" warning still triggers at
+    /// 0.05 on the legacy-compatible path, independent of this knob.
+    pub max_clamp_ratio_success: f64,
+}
+
+impl Default for AdaptiveDtConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            dt_target: 2.0,
+            stagnation_reduction: 0.7,
+            oscillation_reduction: 0.5,
+            divergence_reduction: 0.25,
+            default_reduction: 0.5,
+            easy_growth: 2.0,
+            normal_growth: 1.3,
+            easy_iters: 3,
+            normal_iters: 8,
+            min_dt_fraction: 1.0 / 64.0,
+            max_substeps: 64,
+            respect_local_cfl: true,
+            max_clamp_ratio_success: 0.10,
+        }
     }
 }
 
@@ -124,6 +245,8 @@ pub struct TectonicsConfig {
     pub mantle: super::super::mantle::MantleConfig,
     /// Conservative mass recycling configuration.
     pub recycling: super::super::recycling::RecyclingConfig,
+    /// Adaptive time-stepping configuration (sub-stepping per macro step).
+    pub adaptive_dt: AdaptiveDtConfig,
 }
 
 /// Configuration for cratonic rigidity (spatial viscosity variation).
@@ -198,6 +321,7 @@ impl Default for TectonicsConfig {
             basal_friction: 0.05,
             mantle: Default::default(),
             recycling: Default::default(),
+            adaptive_dt: AdaptiveDtConfig::default(),
         }
     }
 }
