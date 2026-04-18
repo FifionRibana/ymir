@@ -83,6 +83,7 @@ fn rectangular_simulation_smoke_test() {
         basal_friction: 0.0,
         mantle: Default::default(),
         recycling: Default::default(),
+        adaptive_dt: Default::default(),
     };
     let mut ws = SolverWorkspace::new(nx, ny);
 

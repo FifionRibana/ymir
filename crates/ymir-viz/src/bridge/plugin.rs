@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use crossbeam_channel::{Receiver, Sender, bounded};
 
 use ymir_core::tectonics::solver::config::{
-    ContinuationConfig, NewtonConfig, PicardConfig, TectonicsConfig,
+    AdaptiveDtConfig, ContinuationConfig, NewtonConfig, PicardConfig, TectonicsConfig,
 };
 use ymir_core::tectonics::solver::tectonics::DynamicPlateContext;
 use ymir_core::tectonics::solver::workspace::StepStats;
@@ -31,9 +31,15 @@ pub enum SolverState {
         step: usize,
         total_steps: usize,
         stats: Option<StepStats>,
+        /// Cumulative geological time simulated so far (sum of dt over all
+        /// completed steps in solver units). Reset to 0 when a new run starts.
+        cumulative_dt: f64,
     },
     Completed {
         elapsed: Duration,
+        /// Total geological time simulated (sum of dt). Preserved after the
+        /// run completes so the status bar can keep displaying it.
+        cumulative_dt: f64,
     },
     Failed {
         error: String,
@@ -99,7 +105,17 @@ fn poll_solver_events(
     while let Ok(event) = bridge.events_rx.try_recv() {
         match event {
             SolverEvent::Progress { step, total_steps, stats } => {
-                bridge.state = SolverState::Running { step, total_steps, stats: Some(stats) };
+                let previous_cumulative = match &bridge.state {
+                    SolverState::Running { cumulative_dt, .. } => *cumulative_dt,
+                    _ => 0.0,
+                };
+                let cumulative_dt = previous_cumulative + stats.dt;
+                bridge.state = SolverState::Running {
+                    step,
+                    total_steps,
+                    stats: Some(stats),
+                    cumulative_dt,
+                };
             }
             SolverEvent::Snapshot { s_field, plate_ids, plates, boundary_types, .. } => {
                 let grid_width = s_field.nx();
@@ -127,7 +143,11 @@ fn poll_solver_events(
                 let grid_height = s_field.ny();
                 terrain_display.update_field(s_field);
                 isostasy_cache.valid = false;
-                bridge.state = SolverState::Completed { elapsed };
+                let cumulative_dt = match &bridge.state {
+                    SolverState::Running { cumulative_dt, .. } => *cumulative_dt,
+                    _ => 0.0,
+                };
+                bridge.state = SolverState::Completed { elapsed, cumulative_dt };
 
                 if let Some(ids) = plate_ids {
                     dynamic_plates.grid_width = grid_width;
@@ -251,7 +271,8 @@ fn handle_step(
         dx,
     });
 
-    bridge.state = SolverState::Running { step: 0, total_steps: 1, stats: None };
+    bridge.state =
+        SolverState::Running { step: 0, total_steps: 1, stats: None, cumulative_dt: 0.0 };
 }
 
 fn build_tectonics_config(sc: &SolverConfig) -> TectonicsConfig {
@@ -285,6 +306,12 @@ fn build_tectonics_config(sc: &SolverConfig) -> TectonicsConfig {
         basal_friction: sc.basal_friction,
         mantle: sc.mantle.clone(),
         recycling: sc.recycling.clone(),
+        adaptive_dt: AdaptiveDtConfig {
+            enabled: sc.adaptive_dt_enabled,
+            dt_target: sc.adaptive_dt_target,
+            max_clamp_ratio_success: sc.adaptive_max_clamp_ratio_success,
+            ..AdaptiveDtConfig::default()
+        },
     }
 }
 
