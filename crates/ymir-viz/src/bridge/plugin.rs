@@ -309,6 +309,7 @@ fn build_tectonics_config(sc: &SolverConfig) -> TectonicsConfig {
         adaptive_dt: AdaptiveDtConfig {
             enabled: sc.adaptive_dt_enabled,
             dt_target: sc.adaptive_dt_target,
+            max_clamp_ratio_success: sc.adaptive_max_clamp_ratio_success,
             ..AdaptiveDtConfig::default()
         },
     }
