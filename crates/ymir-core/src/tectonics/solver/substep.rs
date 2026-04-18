@@ -48,13 +48,14 @@ impl SubstepResult {
     /// * Newton reached a converged outcome
     ///   ([`NewtonOutcome::ConvergedOnResidual`] or
     ///   [`NewtonOutcome::ConvergedOnState`]).
-    /// * Advective clamping stayed below 5% of cells — otherwise the
-    ///   sub-step was too aggressive for the CFL regime and must be retried.
-    pub fn is_successful(&self) -> bool {
-        matches!(
-            self.outcome,
-            NewtonOutcome::ConvergedOnResidual | NewtonOutcome::ConvergedOnState
-        ) && self.clamp_ratio < 0.05
+    /// * Advective clamping stayed below `max_clamp_ratio` — otherwise
+    ///   the sub-step either hit the CFL limit and needs a smaller dt,
+    ///   or it is saturating structurally (cells pinned at `s_min` /
+    ///   `s_max` regardless of dt); the caller picks a threshold that
+    ///   keeps genuinely CFL-limited attempts retryable without forcing
+    ///   structural clamping into a spurious abandon.
+    pub fn is_successful(&self, max_clamp_ratio: f64) -> bool {
+        self.outcome.is_converged() && self.clamp_ratio < max_clamp_ratio
     }
 }
 
@@ -204,15 +205,26 @@ mod tests {
 
     #[test]
     fn is_successful_requires_convergence_and_low_clamp() {
-        assert!(fake_result(NewtonOutcome::ConvergedOnResidual, 4, 0.01).is_successful());
-        assert!(fake_result(NewtonOutcome::ConvergedOnState, 10, 0.03).is_successful());
+        let thr = 0.10;
+        assert!(fake_result(NewtonOutcome::ConvergedOnResidual, 4, 0.01).is_successful(thr));
+        assert!(fake_result(NewtonOutcome::ConvergedOnState, 10, 0.03).is_successful(thr));
         // Newton converged but advection clamped too many cells
-        assert!(!fake_result(NewtonOutcome::ConvergedOnResidual, 4, 0.12).is_successful());
+        assert!(!fake_result(NewtonOutcome::ConvergedOnResidual, 4, 0.12).is_successful(thr));
         // Newton failed
-        assert!(!fake_result(NewtonOutcome::Stagnation, 15, 0.01).is_successful());
-        assert!(!fake_result(NewtonOutcome::Oscillation, 7, 0.01).is_successful());
-        assert!(!fake_result(NewtonOutcome::Divergence, 9, 0.01).is_successful());
-        assert!(!fake_result(NewtonOutcome::MaxIterations, 15, 0.01).is_successful());
+        assert!(!fake_result(NewtonOutcome::Stagnation, 15, 0.01).is_successful(thr));
+        assert!(!fake_result(NewtonOutcome::Oscillation, 7, 0.01).is_successful(thr));
+        assert!(!fake_result(NewtonOutcome::Divergence, 9, 0.01).is_successful(thr));
+        assert!(!fake_result(NewtonOutcome::MaxIterations, 15, 0.01).is_successful(thr));
+    }
+
+    #[test]
+    fn substep_success_threshold_is_configurable() {
+        // A clamp ratio of 0.07 is acceptable under the default threshold
+        // (0.10) but rejected under a stricter one (0.05). This exercises
+        // the degree-of-freedom the clamp-ratio knob introduces.
+        let result = fake_result(NewtonOutcome::ConvergedOnResidual, 3, 0.07);
+        assert!(result.is_successful(0.10));
+        assert!(!result.is_successful(0.05));
     }
 
     #[test]

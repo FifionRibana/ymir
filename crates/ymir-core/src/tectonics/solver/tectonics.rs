@@ -121,11 +121,8 @@ struct PassResult {
 }
 
 impl PassResult {
-    fn is_successful(&self) -> bool {
-        matches!(
-            self.outcome,
-            NewtonOutcome::ConvergedOnResidual | NewtonOutcome::ConvergedOnState
-        ) && self.clamp_ratio < 0.05
+    fn is_successful(&self, max_clamp_ratio: f64) -> bool {
+        self.outcome.is_converged() && self.clamp_ratio < max_clamp_ratio
     }
 
     fn as_substep(&self) -> SubstepResult {
@@ -1174,7 +1171,8 @@ fn run_adaptive_macro_step(
         )?;
 
         let sub = pass.as_substep();
-        if pass.is_successful() {
+        let max_clamp = config.adaptive_dt.max_clamp_ratio_success;
+        if pass.is_successful(max_clamp) {
             elapsed += dt_sub;
             accumulated.merge(&sub, dt_sub);
             dt_current = grow_dt(dt_current, &sub, &config.adaptive_dt);
@@ -1192,11 +1190,23 @@ fn run_adaptive_macro_step(
             snapshot.restore(grid, plate_ctx);
             let factor = reduction_for(&sub, &config.adaptive_dt);
             dt_current *= factor;
+            // Distinguish the two distinct failure modes. Newton non-
+            // convergence is a solver issue that may yield to smaller dt;
+            // excessive clamping is often structural (cells pinned at a
+            // boundary by relief saturation) and does not respond to dt
+            // shrinkage — it is the signal that `max_clamp_ratio_success`
+            // may need to be raised.
+            let reason = if !sub.outcome.is_converged() {
+                "newton_failed"
+            } else {
+                "excessive_clamping"
+            };
             debug!(
                 step,
                 substep = accumulated.substep_count,
                 dt_sub,
                 clamp_ratio = sub.clamp_ratio,
+                reason,
                 reduction = factor,
                 dt_after = dt_current,
                 "sub-step failed, rolled back"
