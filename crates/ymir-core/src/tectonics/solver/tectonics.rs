@@ -963,6 +963,7 @@ mod tests {
             basal_friction: 0.0,
             mantle: Default::default(),
             recycling: Default::default(),
+            adaptive_dt: Default::default(),
         }
     }
 
@@ -1153,6 +1154,7 @@ mod tests {
             basal_friction: 1.0,
             mantle: Default::default(),
             recycling: Default::default(),
+            adaptive_dt: Default::default(),
         };
 
         let mut ctx = make_static_ctx(n, traction);
