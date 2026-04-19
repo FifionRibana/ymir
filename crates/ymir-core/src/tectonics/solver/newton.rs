@@ -14,7 +14,9 @@ use super::field::Field2D;
 use super::grid::StaggeredGrid;
 use super::linear_solve::{apply_jacobi, solve_bicgstab};
 use super::picard::{apply_eta_multiplier, apply_yielding, compute_strain_rate, compute_viscosity};
-use super::stokes::{StencilCoeffs, apply_ssor, apply_stokes, compute_jacobi_precond, compute_rhs};
+use super::stokes::{
+    SlabPullField, StencilCoeffs, apply_ssor, apply_stokes, compute_jacobi_precond, compute_rhs,
+};
 use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, pack_velocity, unpack_velocity};
 
@@ -61,10 +63,7 @@ pub struct NewtonResult {
 impl NewtonResult {
     /// Returns true for any successful convergence (residual or state).
     pub fn is_converged(&self) -> bool {
-        matches!(
-            self.outcome,
-            NewtonOutcome::ConvergedOnResidual | NewtonOutcome::ConvergedOnState
-        )
+        matches!(self.outcome, NewtonOutcome::ConvergedOnResidual | NewtonOutcome::ConvergedOnState)
     }
 }
 
@@ -80,6 +79,7 @@ fn compute_nonlinear_residual(
     eta_multiplier: &Field2D,
     plastic_strain: &Field2D,
     yielding: &YieldingConfig,
+    slab: Option<&SlabPullField>,
     eta_out: &mut Field2D,
     strain_rate_out: &mut Field2D,
     residual: &mut [f64],
@@ -103,7 +103,7 @@ fn compute_nonlinear_residual(
     for val in eta_out.data_mut().iter_mut() {
         *val = val.max(picard_config.eta_min);
     }
-    apply_stokes(v_packed, eta_out, grid, residual);
+    apply_stokes(v_packed, eta_out, grid, slab, residual);
     for i in 0..residual.len() {
         residual[i] -= b[i];
     }
@@ -126,6 +126,7 @@ pub fn solve_velocity_newton(
     picard_config: &PicardConfig,
     yielding: &YieldingConfig,
     newton_config: &NewtonConfig,
+    slab: Option<&SlabPullField>,
     ws: &mut SolverWorkspace,
 ) -> NewtonResult {
     let nx = grid.nx();
@@ -174,6 +175,7 @@ pub fn solve_velocity_newton(
             &eta_mult,
             &ps_snap,
             yielding,
+            slab,
             &mut ws.eta,
             &mut ws.strain_rate,
             &mut ws.jfnk_f_v,
@@ -258,7 +260,7 @@ pub fn solve_velocity_newton(
 
         let linear_result = match newton_config.preconditioner {
             Preconditioner::Jacobi => {
-                compute_jacobi_precond(eta_ref, grid_ref, &mut ws.jacobi_precond);
+                compute_jacobi_precond(eta_ref, grid_ref, slab, &mut ws.jacobi_precond);
                 let precond_ref = &ws.jacobi_precond;
                 let v_pert_buf = &mut ws.jfnk_v_pert;
 
@@ -288,6 +290,7 @@ pub fn solve_velocity_newton(
                             &eta_mult,
                             &ps_snap,
                             yielding,
+                            slab,
                             &mut jfnk_eta,
                             &mut jfnk_sr,
                             &mut jfnk_residual,
@@ -305,7 +308,7 @@ pub fn solve_velocity_newton(
                 )
             }
             Preconditioner::Ssor { omega } => {
-                let stencil = StencilCoeffs::compute(eta_ref, grid_ref);
+                let stencil = StencilCoeffs::compute(eta_ref, grid_ref, slab);
                 let v_pert_buf = &mut ws.jfnk_v_pert;
 
                 solve_bicgstab(
@@ -333,6 +336,7 @@ pub fn solve_velocity_newton(
                             &eta_mult,
                             &ps_snap,
                             yielding,
+                            slab,
                             &mut jfnk_eta,
                             &mut jfnk_sr,
                             &mut jfnk_residual,
@@ -394,6 +398,7 @@ pub fn solve_velocity_newton(
                 &eta_mult,
                 &ps_snap,
                 yielding,
+                slab,
                 &mut trial_eta,
                 &mut trial_sr,
                 &mut trial_residual,
@@ -415,8 +420,7 @@ pub fn solve_velocity_newton(
         // Compute the effective Newton step actually applied (α·δv), used
         // below for the state-based convergence criterion and the
         // oscillation detector.
-        let actual_step: Vec<f64> =
-            ws.jfnk_delta_v.iter().map(|x| final_alpha * x).collect();
+        let actual_step: Vec<f64> = ws.jfnk_delta_v.iter().map(|x| final_alpha * x).collect();
 
         // Oscillation detection: two consecutive Newton steps with a
         // strongly negative cosine signal back-and-forth motion. Skip the
@@ -424,10 +428,8 @@ pub fn solve_velocity_newton(
         // gave up with α = 0) to avoid spurious NaN.
         if k >= newton_config.min_iterations_before_classification {
             if let Some(ref prev) = prev_delta_v {
-                let dot: f64 =
-                    actual_step.iter().zip(prev.iter()).map(|(a, b)| a * b).sum();
-                let n_curr: f64 =
-                    actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
+                let dot: f64 = actual_step.iter().zip(prev.iter()).map(|(a, b)| a * b).sum();
+                let n_curr: f64 = actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
                 let n_prev: f64 = prev.iter().map(|x| x * x).sum::<f64>().sqrt();
                 let denom = n_curr * n_prev;
                 if denom > 1e-30 {
@@ -469,10 +471,8 @@ pub fn solve_velocity_newton(
         if k >= newton_config.min_iterations_before_classification
             && residual_history.len() > newton_config.trend_window
         {
-            let v_state_norm: f64 =
-                v_old.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-30);
-            let step_norm: f64 =
-                actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
+            let v_state_norm: f64 = v_old.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-30);
+            let step_norm: f64 = actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
             let relative_step = step_norm / v_state_norm;
 
             let trend_idx = residual_history.len() - 1 - newton_config.trend_window;
@@ -498,11 +498,9 @@ pub fn solve_velocity_newton(
             let path_state_frozen =
                 relative_step < newton_config.state_tolerance && trend_descending;
             let near_tolerance = f_norm
-                < newton_config.tolerance
-                    * b_norm
-                    * newton_config.stagnation_residual_multiplier;
-            let path_residual_stagnant = near_tolerance
-                && window_spread < newton_config.stagnation_spread_threshold;
+                < newton_config.tolerance * b_norm * newton_config.stagnation_residual_multiplier;
+            let path_residual_stagnant =
+                near_tolerance && window_spread < newton_config.stagnation_spread_threshold;
 
             if path_state_frozen || path_residual_stagnant {
                 let reason = if path_state_frozen {
@@ -512,11 +510,7 @@ pub fn solve_velocity_newton(
                 };
                 debug!(
                     newton_iter = k,
-                    relative_step,
-                    f_norm,
-                    window_spread,
-                    reason,
-                    "state-based convergence"
+                    relative_step, f_norm, window_spread, reason, "state-based convergence"
                 );
                 unpack_velocity(&ws.v_packed, grid);
                 let final_residual = f_norm / b_norm;
@@ -567,11 +561,8 @@ pub fn solve_velocity_newton(
         NewtonOutcome::MaxIterations
     };
 
-    let final_residual = residual_history
-        .last()
-        .copied()
-        .map(|r| r / b_norm_global)
-        .unwrap_or(f64::NAN);
+    let final_residual =
+        residual_history.last().copied().map(|r| r / b_norm_global).unwrap_or(f64::NAN);
 
     debug!(
         outcome = ?final_outcome,
@@ -623,6 +614,7 @@ mod tests {
             &picard_config,
             &Default::default(),
             &newton_config,
+            None,
             &mut ws,
         );
         assert!(result.is_converged(), "Newton should converge for linear viscosity");
@@ -661,6 +653,7 @@ mod tests {
             &picard_config,
             &Default::default(),
             &newton_config,
+            None,
             &mut ws,
         );
         assert!(
@@ -706,6 +699,7 @@ mod tests {
             0.0,
             &picard_config,
             &Default::default(),
+            None,
             &mut ws_p,
         );
         assert!(picard_result.converged, "Picard should converge");
@@ -731,6 +725,7 @@ mod tests {
             &picard_config,
             &Default::default(),
             &newton_config,
+            None,
             &mut ws_n,
         );
         assert!(newton_result.is_converged(), "Newton should converge");
@@ -780,6 +775,7 @@ mod tests {
             &picard_config,
             &Default::default(),
             &config_exact,
+            None,
             &mut ws_exact,
         );
 
@@ -806,6 +802,7 @@ mod tests {
             &picard_config,
             &Default::default(),
             &config_inexact,
+            None,
             &mut ws_inexact,
         );
 
@@ -851,6 +848,7 @@ mod tests {
             &picard_config,
             &Default::default(),
             &newton_config,
+            None,
             &mut ws,
         );
         assert_eq!(
@@ -899,6 +897,7 @@ mod tests {
             &picard_config,
             &Default::default(),
             &newton_config,
+            None,
             &mut ws,
         );
         assert!(

@@ -16,8 +16,7 @@ use super::substep::{
 use super::traction::TractionField;
 use super::workspace::{SolverWorkspace, StepStats};
 use crate::tectonics::boundaries::{
-    BoundaryType, accumulate_subducted_mass, apply_slab_pull, compute_boundary_sources,
-    gaussian_blur_f64,
+    BoundaryType, accumulate_subducted_mass, compute_boundary_sources, gaussian_blur_f64,
 };
 use crate::tectonics::mantle::MantleFlow;
 use crate::tectonics::plates::{
@@ -172,8 +171,7 @@ where
     };
 
     for step in 0..config.num_timesteps {
-        let _step_span =
-            info_span!("solver_step", step, nx = grid.nx(), ny = grid.ny()).entered();
+        let _step_span = info_span!("solver_step", step, nx = grid.nx(), ny = grid.ny()).entered();
 
         let pass = if config.adaptive_dt.enabled {
             run_adaptive_macro_step(
@@ -341,10 +339,7 @@ where
                 None
             },
             plates: if config.dynamic_boundaries { Some(&plate_ctx.plates) } else { None },
-            boundary_types: workspace
-                .boundary_field
-                .as_ref()
-                .map(|bf| bf.boundary_type.as_slice()),
+            boundary_types: workspace.boundary_field.as_ref().map(|bf| bf.boundary_type.as_slice()),
         };
         if !progress(step, config.num_timesteps, &workspace.stats, snapshot) {
             return Err(SolverError::Cancelled);
@@ -407,6 +402,7 @@ fn solve_velocity_direct(
     grid: &mut StaggeredGrid,
     plates: &TractionField,
     config: &TectonicsConfig,
+    slab: Option<&super::stokes::SlabPullField>,
     workspace: &mut SolverWorkspace,
 ) -> (NewtonOutcome, usize, usize) {
     let rho_c = config.boundaries.rho_continental;
@@ -416,44 +412,45 @@ fn solve_velocity_direct(
     // same failure modes, so we conflate all Picard failures onto
     // MaxIterations which selects the default_reduction factor in the
     // adaptive sub-step policy.
-    let do_solve = |grid: &mut StaggeredGrid,
-                    ws: &mut SolverWorkspace|
-     -> (NewtonOutcome, usize, usize) {
-        match config.nonlinear_solver {
-            NonlinearSolver::Picard => {
-                let r = solve_velocity_picard(
-                    grid,
-                    plates,
-                    config.gravity_factor,
-                    rho_c,
-                    rho_m,
-                    &config.picard,
-                    &config.yielding,
-                    ws,
-                );
-                let outcome = if r.converged {
-                    NewtonOutcome::ConvergedOnResidual
-                } else {
-                    NewtonOutcome::MaxIterations
-                };
-                (outcome, r.iterations, r.total_cg_iterations)
+    let do_solve =
+        |grid: &mut StaggeredGrid, ws: &mut SolverWorkspace| -> (NewtonOutcome, usize, usize) {
+            match config.nonlinear_solver {
+                NonlinearSolver::Picard => {
+                    let r = solve_velocity_picard(
+                        grid,
+                        plates,
+                        config.gravity_factor,
+                        rho_c,
+                        rho_m,
+                        &config.picard,
+                        &config.yielding,
+                        slab,
+                        ws,
+                    );
+                    let outcome = if r.converged {
+                        NewtonOutcome::ConvergedOnResidual
+                    } else {
+                        NewtonOutcome::MaxIterations
+                    };
+                    (outcome, r.iterations, r.total_cg_iterations)
+                }
+                NonlinearSolver::Newton => {
+                    let r = solve_velocity_newton(
+                        grid,
+                        plates,
+                        config.gravity_factor,
+                        rho_c,
+                        rho_m,
+                        &config.picard,
+                        &config.yielding,
+                        &config.newton,
+                        slab,
+                        ws,
+                    );
+                    (r.outcome, r.iterations, r.total_linear_iterations)
+                }
             }
-            NonlinearSolver::Newton => {
-                let r = solve_velocity_newton(
-                    grid,
-                    plates,
-                    config.gravity_factor,
-                    rho_c,
-                    rho_m,
-                    &config.picard,
-                    &config.yielding,
-                    &config.newton,
-                    ws,
-                );
-                (r.outcome, r.iterations, r.total_linear_iterations)
-            }
-        }
-    };
+        };
 
     let (outcome, nl, linear) = do_solve(grid, workspace);
 
@@ -476,6 +473,7 @@ fn solve_with_continuation(
     grid: &mut StaggeredGrid,
     plates: &TractionField,
     config: &TectonicsConfig,
+    slab: Option<&super::stokes::SlabPullField>,
     workspace: &mut SolverWorkspace,
 ) -> (NewtonOutcome, usize, usize) {
     let target_eps = config.picard.strain_rate_min;
@@ -522,6 +520,7 @@ fn solve_with_continuation(
                         rho_m,
                         &step_config,
                         &config.yielding,
+                        slab,
                         workspace,
                     );
                     let o = if r.converged {
@@ -541,6 +540,7 @@ fn solve_with_continuation(
                         &step_config,
                         &config.yielding,
                         &config.newton,
+                        slab,
                         workspace,
                     );
                     (r.outcome, r.iterations, r.total_linear_iterations)
@@ -577,6 +577,7 @@ fn solve_with_continuation(
                         rho_m,
                         &step_config,
                         &config.yielding,
+                        slab,
                         workspace,
                     );
                     let o = if r.converged {
@@ -596,6 +597,7 @@ fn solve_with_continuation(
                         &step_config,
                         &config.yielding,
                         &config.newton,
+                        slab,
                         workspace,
                     );
                     (r.outcome, r.iterations, r.total_linear_iterations)
@@ -645,18 +647,34 @@ fn execute_tectonic_pass(
         allow_continuation && config.continuation.enabled && config.picard.power_law_n > 1.0;
 
     let traction = &plate_ctx.traction;
+    // Split-borrow workaround: `workspace.boundary_field` (read-only, for
+    // γ_slab and n̂) and the rest of `workspace` (written by the linear
+    // solve) can't be borrowed simultaneously via field access on
+    // `*workspace`. Take the Option out, build the SlabPullField borrow
+    // from the owned value, run the solve, then put it back.
+    let bf_taken = workspace.boundary_field.take();
+    let slab = bf_taken.as_ref().map(|bf| super::stokes::SlabPullField {
+        gamma: &bf.gamma_slab,
+        n_x: &bf.normal_x,
+        n_y: &bf.normal_y,
+    });
+    let slab_ref = slab.as_ref();
     let (solve_outcome, nl_iterations, linear_iterations) = if need_continuation {
-        solve_with_continuation(grid, traction, config, workspace)
+        solve_with_continuation(grid, traction, config, slab_ref, workspace)
     } else {
-        let result = solve_velocity_direct(grid, traction, config, workspace);
-        if !result.0.is_converged() && config.continuation.enabled && config.picard.power_law_n > 1.0
+        let result = solve_velocity_direct(grid, traction, config, slab_ref, workspace);
+        if !result.0.is_converged()
+            && config.continuation.enabled
+            && config.picard.power_law_n > 1.0
         {
             warn!(step, "direct solve failed, falling back to continuation");
-            solve_with_continuation(grid, traction, config, workspace)
+            solve_with_continuation(grid, traction, config, slab_ref, workspace)
         } else {
             result
         }
     };
+    drop(slab);
+    workspace.boundary_field = bf_taken;
 
     let t_solve_us = t_solve_start.elapsed().as_micros() as u64;
 
@@ -666,9 +684,7 @@ fn execute_tectonic_pass(
     // choice. The boundary_field for this step is not yet computed here
     // (that happens below), so we pass the previous step's field (held
     // in workspace.boundary_field since the last macro step).
-    if solve_outcome.is_converged()
-        && matches!(config.nonlinear_solver, NonlinearSolver::Newton)
-    {
+    if solve_outcome.is_converged() && matches!(config.nonlinear_solver, NonlinearSolver::Newton) {
         super::diagnostics::emit_residual_spatial(
             &workspace.jfnk_f_v,
             workspace.boundary_field.as_ref(),
@@ -775,14 +791,18 @@ fn execute_tectonic_pass(
         workspace.source_rate.data_mut().copy_from_slice(bf.source_rate.data());
         workspace.boundary_field = Some(bf);
         if config.boundaries.source_smoothing_sigma > 0.0 {
-            let smoothed = gaussian_blur_f64(
-                &workspace.source_rate,
-                config.boundaries.source_smoothing_sigma,
-            );
+            let smoothed =
+                gaussian_blur_f64(&workspace.source_rate, config.boundaries.source_smoothing_sigma);
             workspace.source_rate.data_mut().copy_from_slice(smoothed.data());
         }
 
         if config.boundaries.slab_pull_enabled {
+            // Issue #75: the per-plate velocity boost
+            // (`apply_slab_pull`) is replaced by the operator term
+            // `γ_slab · (v·n̂) · n̂` computed in `compute_boundary_sources`
+            // and applied in `apply_stokes`. We keep accumulating
+            // `plate.subducted_mass` because downstream diagnostics
+            // and the recycling buffer may still consult it.
             accumulate_subducted_mass(
                 &workspace.source_rate,
                 &plate_ctx.ids,
@@ -790,11 +810,6 @@ fn execute_tectonic_pass(
                 dt_rates,
                 nx,
                 ny,
-            );
-            apply_slab_pull(
-                &mut plate_ctx.plates,
-                config.boundaries.slab_pull_factor,
-                config.boundaries.max_plate_velocity,
             );
         }
     }
@@ -985,11 +1000,8 @@ fn execute_tectonic_pass(
                 for j in 0..ny {
                     for i in 0..nx {
                         let div = workspace.div_flux.get(i, j);
-                        let q = if boundaries_active {
-                            workspace.source_rate.get(i, j)
-                        } else {
-                            0.0
-                        };
+                        let q =
+                            if boundaries_active { workspace.source_rate.get(i, j) } else { 0.0 };
                         let s_old = grid.s.get(i, j);
                         let s_raw = s_old - dt * div + dt * q;
                         let s_clamped = s_raw.clamp(config.s_min, config.s_max);
@@ -1042,11 +1054,7 @@ fn execute_tectonic_pass(
             for j in 0..ny {
                 for i in 0..nx {
                     let div = workspace.div_flux.get(i, j);
-                    let q = if boundaries_active {
-                        workspace.source_rate.get(i, j)
-                    } else {
-                        0.0
-                    };
+                    let q = if boundaries_active { workspace.source_rate.get(i, j) } else { 0.0 };
                     let s_old = grid.s.get(i, j);
                     let s_raw = s_old - dt_sub * div + dt_sub * q;
                     let s_clamped = s_raw.clamp(config.s_min, config.s_max);
@@ -1242,11 +1250,8 @@ fn run_adaptive_macro_step(
             // boundary by relief saturation) and does not respond to dt
             // shrinkage — it is the signal that `max_clamp_ratio_success`
             // may need to be raised.
-            let reason = if !sub.outcome.is_converged() {
-                "newton_failed"
-            } else {
-                "excessive_clamping"
-            };
+            let reason =
+                if !sub.outcome.is_converged() { "newton_failed" } else { "excessive_clamping" };
             debug!(
                 step,
                 substep = accumulated.substep_count,
@@ -1692,6 +1697,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "obsolete since issue #75: slab-pull is no longer a per-plate velocity boost; see follow-up cleanup issue #79"]
     fn slab_pull_increases_plate_velocity() {
         use crate::tectonics::boundaries::apply_slab_pull;
 
@@ -1722,6 +1728,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "obsolete since issue #75: slab-pull no longer reads max_plate_velocity; see follow-up cleanup issue #79"]
     fn slab_pull_capped() {
         use crate::tectonics::boundaries::apply_slab_pull;
 
@@ -1774,10 +1781,7 @@ mod tests {
         let result = run_tectonics(&config, &mut ctx, &mut grid, &mut ws, |_, _, _, _| true);
         assert!(result.is_ok(), "Run failed: {:?}", result.err());
 
-        assert!(
-            !ws.stats.cfl_retry_exhausted,
-            "CFL retry should succeed on gentle configuration"
-        );
+        assert!(!ws.stats.cfl_retry_exhausted, "CFL retry should succeed on gentle configuration");
         assert!(
             ws.stats.clamp_ratio < 0.05,
             "clamp_ratio should stay below threshold on success path, got {}",
@@ -1834,11 +1838,8 @@ mod tests {
         // Core regression: grid.s must have evolved — the previous code
         // silently restored s_backup on exhaustion, leaving this diff at 0.
         let s_after = grid.s.data();
-        let max_diff = s_before
-            .iter()
-            .zip(s_after.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0_f64, f64::max);
+        let max_diff =
+            s_before.iter().zip(s_after.iter()).map(|(a, b)| (a - b).abs()).fold(0.0_f64, f64::max);
         assert!(
             max_diff > 1e-6,
             "grid.s must have evolved even on CFL retry exhaustion, got max_diff = {max_diff}"
@@ -1883,11 +1884,8 @@ mod tests {
         );
 
         let s_after = grid.s.data();
-        let max_diff = s_before
-            .iter()
-            .zip(s_after.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0_f64, f64::max);
+        let max_diff =
+            s_before.iter().zip(s_after.iter()).map(|(a, b)| (a - b).abs()).fold(0.0_f64, f64::max);
         assert!(
             max_diff > 1e-6,
             "grid.s should have evolved under adaptive sub-stepping, got max_diff = {max_diff}"
@@ -2054,11 +2052,8 @@ mod tests {
 
         // State evolved from initial uniform field.
         let s_after = grid.s.data();
-        let max_diff = s_before
-            .iter()
-            .zip(s_after.iter())
-            .map(|(a, b)| (a - b).abs())
-            .fold(0.0_f64, f64::max);
+        let max_diff =
+            s_before.iter().zip(s_after.iter()).map(|(a, b)| (a - b).abs()).fold(0.0_f64, f64::max);
         assert!(
             max_diff > 1e-6,
             "grid.s should have evolved under adaptive sub-stepping, max_diff = {max_diff}"
@@ -2066,11 +2061,7 @@ mod tests {
 
         // The sub-step loop should have covered meaningful progress toward
         // dt_target, even if it didn't reach it fully.
-        assert!(
-            ws.stats.dt > 0.0,
-            "adaptive dt_consumed must be positive, got {}",
-            ws.stats.dt
-        );
+        assert!(ws.stats.dt > 0.0, "adaptive dt_consumed must be positive, got {}", ws.stats.dt);
         assert!(
             ws.stats.dt <= config.adaptive_dt.dt_target + 1e-9,
             "adaptive dt_consumed {} should not exceed dt_target {}",

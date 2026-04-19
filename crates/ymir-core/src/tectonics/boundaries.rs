@@ -88,11 +88,23 @@ pub struct BoundaryConfig {
     pub continental_restore_rate: f64,
     /// Enable dynamic slab pull. Default: true.
     pub slab_pull_enabled: bool,
-    /// Slab pull traction increase per unit of subducted mass.
+    /// Slab pull strength per unit of local convergence rate.
+    /// Since #75 this is the coefficient of the cell-local operator
+    /// term `γ · (v·n̂) · n̂` (was: the per-plate velocity boost
+    /// coefficient in the pre-#75 RHS-injection formulation).
     /// Range: 0.001-0.5, default: 0.05
     pub slab_pull_factor: f64,
-    /// Maximum plate velocity magnitude (prevents runaway). Default: 5.0
+    /// Maximum plate velocity magnitude (pre-#75 safety cap; retained
+    /// as a parameter so configs stay deserialisable, but no longer
+    /// enforced by the solver — the operator term auto-regulates).
+    /// Default: 5.0
     pub max_plate_velocity: f32,
+    /// Characteristic Benioff-zone decay length (in grid cells) for
+    /// spreading γ_slab inward from the margin on the subducting plate.
+    /// The seed value at the margin decays as `exp(-d_cells / L)` and
+    /// is masked to the subducting plate's cells only. Range: 1.0-10.0,
+    /// default: 3.0. See issue #75 §5.
+    pub benioff_decay_cells: f64,
     /// Crustal density for continental plates (kg/m³). Default: 2750.
     pub rho_continental: f64,
     /// Crustal density for oceanic plates (kg/m³). Default: 3000.
@@ -126,6 +138,7 @@ impl Default for BoundaryConfig {
             slab_pull_enabled: true,
             slab_pull_factor: 0.05,
             max_plate_velocity: 5.0,
+            benioff_decay_cells: 3.0,
             rho_continental: 2750.0,
             rho_oceanic: 3000.0,
             rho_mantle: 3300.0,
@@ -145,6 +158,18 @@ pub struct BoundaryField {
     /// negative = crust consumption.
     pub source_rate: Field2D,
     pub n: usize,
+    /// Slab-pull coefficient field for the operator-form term
+    /// `γ_slab · (v·n̂) · n̂` (issue #75). Non-zero only on the
+    /// subducting side of convergent margins and on the Benioff
+    /// decay band extending inward on that plate. Zero elsewhere.
+    pub gamma_slab: Field2D,
+    /// x-component of the margin normal n̂ at cell centers, pointing
+    /// from the subducting cell toward its foreign-plate neighbour(s).
+    /// Zero on cells with zero γ_slab.
+    pub normal_x: Field2D,
+    /// y-component of the margin normal n̂. Same convention as
+    /// `normal_x`.
+    pub normal_y: Field2D,
 }
 
 // ── Core computation ─────────────────────────────────────────────────────
@@ -171,6 +196,8 @@ pub fn compute_boundary_sources(
 
     let mut boundary_type = vec![BoundaryType::None; nx * ny];
     let mut source_rate = Field2D::new(nx, ny);
+    let mut normal_x = Field2D::new(nx, ny);
+    let mut normal_y = Field2D::new(nx, ny);
 
     for j in 0..ny {
         for i in 0..nx {
@@ -178,16 +205,16 @@ pub fn compute_boundary_sources(
             let my_plate = plate_ids[k];
             let my_type = plate_type_from_mean_thickness(plates[my_plate].mean_thickness);
 
-            let neighbors = [
-                (idx_x.next(i), j),
-                (idx_x.prev(i), j),
-                (i, idx_y.next(j)),
-                (i, idx_y.prev(j)),
-            ];
+            let neighbors =
+                [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))];
 
             let mut is_boundary = false;
             let mut convergence_sum = 0.0_f64;
             let mut neighbor_plate_type = my_type;
+            // Accumulated raw normal from per-neighbor contributions.
+            // Normalized below after the neighbor loop (#75).
+            let mut n_acc_x = 0.0_f64;
+            let mut n_acc_y = 0.0_f64;
 
             for &(ni, nj) in &neighbors {
                 let nk = nj * nx + ni;
@@ -213,15 +240,15 @@ pub fn compute_boundary_sources(
                     } else {
                         (nj as f64 - j as f64).signum()
                     };
+                    n_acc_x += normal_x;
+                    n_acc_y += normal_y;
 
                     // Velocity at cell center (average of staggered faces)
                     let vx_here = 0.5 * (grid.vx.get(i, j) + grid.vx.get(idx_x.next(i), j));
                     let vy_here = 0.5 * (grid.vy.get(i, j) + grid.vy.get(i, idx_y.next(j)));
 
-                    let vx_there =
-                        0.5 * (grid.vx.get(ni, nj) + grid.vx.get(idx_x.next(ni), nj));
-                    let vy_there =
-                        0.5 * (grid.vy.get(ni, nj) + grid.vy.get(ni, idx_y.next(nj)));
+                    let vx_there = 0.5 * (grid.vx.get(ni, nj) + grid.vx.get(idx_x.next(ni), nj));
+                    let vy_there = 0.5 * (grid.vy.get(ni, nj) + grid.vy.get(ni, idx_y.next(nj)));
 
                     // Relative velocity in normal direction
                     // Positive = diverging, Negative = converging
@@ -251,6 +278,15 @@ pub fn compute_boundary_sources(
             };
 
             boundary_type[k] = btype;
+
+            // Persist the unit normal at margin cells. Sign convention:
+            // points from this cell toward the foreign-plate neighbour(s)
+            // (i.e. toward the trench on the subducting side).
+            let nmag = (n_acc_x * n_acc_x + n_acc_y * n_acc_y).sqrt();
+            if nmag > 1e-12 {
+                normal_x.set(i, j, n_acc_x / nmag);
+                normal_y.set(i, j, n_acc_y / nmag);
+            }
 
             let q = match btype {
                 BoundaryType::Subduction => {
@@ -300,7 +336,94 @@ pub fn compute_boundary_sources(
         }
     }
 
-    BoundaryField { boundary_type, source_rate, n: nx }
+    // Compute γ_slab on the subducting side of convergent margins, then
+    // spread inward on the same plate with an exponential Benioff decay
+    // of characteristic length `benioff_decay_cells`. Issue #75 §5.
+    let mut gamma_slab = Field2D::new(nx, ny);
+    if config.slab_pull_enabled && config.slab_pull_factor > 0.0 && config.benioff_decay_cells > 0.0
+    {
+        let mut seeds: Vec<(usize, usize, f64)> = Vec::new();
+        for j in 0..ny {
+            for i in 0..nx {
+                let k = j * nx + i;
+                let q = source_rate.get(i, j);
+                let btype = boundary_type[k];
+                let is_subducting_side = q < 0.0
+                    && matches!(btype, BoundaryType::Subduction | BoundaryType::OceanicSubduction);
+                if is_subducting_side {
+                    seeds.push((i, j, config.slab_pull_factor * q.abs()));
+                }
+            }
+        }
+        if !seeds.is_empty() {
+            spread_gamma_benioff(
+                &mut gamma_slab,
+                plate_ids,
+                &seeds,
+                config.benioff_decay_cells,
+                nx,
+                ny,
+                idx_x,
+                idx_y,
+            );
+        }
+    }
+
+    BoundaryField { boundary_type, source_rate, n: nx, gamma_slab, normal_x, normal_y }
+}
+
+/// Spread γ_seed values outward from each seed cell along the subducting
+/// plate with an exponential decay `exp(-d/L)` (d = Chebyshev distance
+/// in cells, stays on the same plate). Each destination cell receives
+/// the max over all seeds that can reach it. See issue #75 §5.
+fn spread_gamma_benioff(
+    gamma_slab: &mut Field2D,
+    plate_ids: &[usize],
+    seeds: &[(usize, usize, f64)],
+    decay_cells: f64,
+    nx: usize,
+    ny: usize,
+    idx_x: &super::solver::field::PeriodicIndex,
+    idx_y: &super::solver::field::PeriodicIndex,
+) {
+    // 3 × L captures >95 % of the tail; beyond that γ ≈ 0.05 · γ_seed.
+    let max_radius = (3.0 * decay_cells).ceil() as i32;
+    let mut visited = vec![u32::MAX; nx * ny];
+
+    for (seed_idx, &(si, sj, g_seed)) in seeds.iter().enumerate() {
+        let plate = plate_ids[sj * nx + si];
+        let stamp = seed_idx as u32;
+        // Multi-source BFS would be slightly cheaper but per-seed BFS is
+        // simpler and the cost (O(seeds × max_radius²)) is acceptable at
+        // the grid sizes we run (64²–256²).
+        let mut queue: std::collections::VecDeque<(usize, usize, i32)> =
+            std::collections::VecDeque::new();
+        queue.push_back((si, sj, 0));
+        visited[sj * nx + si] = stamp;
+        while let Some((i, j, d)) = queue.pop_front() {
+            if plate_ids[j * nx + i] != plate {
+                continue;
+            }
+            let contribution = g_seed * (-(d as f64) / decay_cells).exp();
+            let k = j * nx + i;
+            let current = gamma_slab.data()[k];
+            if contribution > current {
+                gamma_slab.data_mut()[k] = contribution;
+            }
+            if d + 1 > max_radius {
+                continue;
+            }
+            let next_cells =
+                [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))];
+            for &(ni, nj) in &next_cells {
+                let nk = nj * nx + ni;
+                if visited[nk] != stamp && plate_ids[nk] == plate {
+                    visited[nk] = stamp;
+                    queue.push_back((ni, nj, d + 1));
+                }
+            }
+        }
+    }
 }
 
 /// Compute boundary sources directly into a pre-allocated Field2D buffer.

@@ -8,7 +8,7 @@ use super::field::Field2D;
 use super::grid::StaggeredGrid;
 use super::linear_solve::solve_cg;
 use super::smooth::{smooth_saturate, soft_min_harmonic};
-use super::stokes::{apply_stokes, compute_jacobi_precond, compute_rhs};
+use super::stokes::{SlabPullField, apply_stokes, compute_jacobi_precond, compute_rhs};
 use super::traction::TractionField;
 use super::workspace::SolverWorkspace;
 
@@ -211,6 +211,7 @@ pub fn solve_velocity_picard(
     rho_mantle: f64,
     config: &PicardConfig,
     yielding: &super::config::YieldingConfig,
+    slab: Option<&SlabPullField>,
     ws: &mut SolverWorkspace,
 ) -> PicardResult {
     let nx = grid.nx();
@@ -265,7 +266,7 @@ pub fn solve_velocity_picard(
         }
 
         // Update Jacobi preconditioner
-        compute_jacobi_precond(&ws.eta, grid, &mut ws.jacobi_precond);
+        compute_jacobi_precond(&ws.eta, grid, slab, &mut ws.jacobi_precond);
 
         // Solve A(η) v = b
         let eta_ref = &ws.eta;
@@ -274,7 +275,7 @@ pub fn solve_velocity_picard(
         let cg_result = solve_cg(
             &mut ws.v_packed,
             &ws.rhs,
-            |v_in, v_out| apply_stokes(v_in, eta_ref, grid_ref, v_out),
+            |v_in, v_out| apply_stokes(v_in, eta_ref, grid_ref, slab, v_out),
             |r, z| super::linear_solve::apply_jacobi(precond_ref, r, z),
             &mut ws.cg,
             config.cg_max_iter,
@@ -375,6 +376,7 @@ mod tests {
             0.0,
             &config,
             &Default::default(),
+            None,
             &mut ws,
         );
         assert!(result.converged, "Should converge for linear viscosity");
@@ -418,6 +420,7 @@ mod tests {
             0.0,
             &config,
             &Default::default(),
+            None,
             &mut ws,
         );
         assert!(
@@ -460,11 +463,7 @@ mod tests {
         // so the result is 5 minus a tiny rational correction.
         for k in 0..n * n {
             let rel = (eta.data()[k] - 5.0).abs() / 5.0;
-            assert!(
-                rel < 1e-3,
-                "Yielded eta should be ~5.0, got {}",
-                eta.data()[k]
-            );
+            assert!(rel < 1e-3, "Yielded eta should be ~5.0, got {}", eta.data()[k]);
         }
     }
 
@@ -490,11 +489,7 @@ mod tests {
         // collapses to η_visc = 100 up to a (100/5000)^4 = 1.6e-7 correction.
         for k in 0..n * n {
             let rel = (eta.data()[k] - 100.0).abs() / 100.0;
-            assert!(
-                rel < 1e-3,
-                "Low strain should essentially not yield: {}",
-                eta.data()[k]
-            );
+            assert!(rel < 1e-3, "Low strain should essentially not yield: {}", eta.data()[k]);
         }
     }
 

@@ -13,6 +13,20 @@ use super::traction::TractionField;
 /// Minimum grid dimension for parallel execution. Below this, sequential is faster.
 const PAR_THRESHOLD: usize = 64;
 
+/// Borrow of the slab-pull operator fields that live on `BoundaryField`.
+///
+/// Passing `Some(&SlabPullField { ... })` enables the
+/// `γ_slab · n̂ · (v·n̂)` operator contribution — a cell-local,
+/// velocity-coupled, symmetric positive-semi-definite term that damps
+/// motion along the subduction normal on the subducting side of a
+/// margin. Passing `None` recovers the bare Stokes operator exactly
+/// (no allocation, no added work per cell). See issue #75 §5.
+pub struct SlabPullField<'a> {
+    pub gamma: &'a Field2D,
+    pub n_x: &'a Field2D,
+    pub n_y: &'a Field2D,
+}
+
 /// Lower bound on the absolute value of a Jacobi diagonal before we take
 /// its reciprocal. Cells with smaller absolute diagonals are clamped to
 /// this floor with their sign preserved, yielding large but finite
@@ -26,7 +40,15 @@ const JACOBI_DIAG_FLOOR: f64 = 1e-20;
 ///
 /// `v` and `out` are packed vectors: first N² entries = vx component, next N² = vy.
 /// The operator includes a negative sign so that A is SPD when η > 0.
-pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f64]) {
+/// When `slab` is `Some`, adds the cell-local γ·n̂⊗n̂ contribution
+/// (issue #75); passing `None` keeps the pre-#75 operator verbatim.
+pub fn apply_stokes(
+    v: &[f64],
+    eta: &Field2D,
+    grid: &StaggeredGrid,
+    slab: Option<&SlabPullField>,
+    out: &mut [f64],
+) {
     let nx = grid.nx();
     let ny = grid.ny();
     let n2 = nx * ny;
@@ -117,6 +139,30 @@ pub fn apply_stokes(v: &[f64], eta: &Field2D, grid: &StaggeredGrid, out: &mut [f
                 let s_face = 0.5 * (grid.s.get(i, pj) + grid.s.get(i, j));
                 let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
                 row_vy[i] += friction_scaled * s_excess * v[n2 + li(i, j)];
+            }
+
+            // Slab-pull operator term: γ_slab(x,y) · n̂(x,y) · (v·n̂)(x,y).
+            // Cell-local, rank-1 PSD tensor per cell — no new stencil
+            // coupling beyond the viscous stencil. Discretization: compute
+            // γ · (v·n̂) at cell centers, then average γ·n̂·m to each face
+            // from the two adjacent cells. See issue #75 §5 and
+            // `ymir-slab-pull-phase1-diagnostic.md` for derivation.
+            if let Some(slab) = slab {
+                let m_center = |ii: usize, jj: usize| -> f64 {
+                    let njj = idx_y.next(jj);
+                    let nii = idx_x.next(ii);
+                    let vxc = 0.5 * (v[li(ii, jj)] + v[li(nii, jj)]);
+                    let vyc = 0.5 * (v[n2 + li(ii, jj)] + v[n2 + li(ii, njj)]);
+                    let nx_c = slab.n_x.get(ii, jj);
+                    let ny_c = slab.n_y.get(ii, jj);
+                    let g = slab.gamma.get(ii, jj);
+                    g * (nx_c * vxc + ny_c * vyc)
+                };
+                let m_here = m_center(i, j);
+                let m_left = m_center(pi, j);
+                let m_bot = m_center(i, pj);
+                row_vx[i] += 0.5 * (slab.n_x.get(pi, j) * m_left + slab.n_x.get(i, j) * m_here);
+                row_vy[i] += 0.5 * (slab.n_y.get(i, pj) * m_bot + slab.n_y.get(i, j) * m_here);
             }
         }
     };
@@ -219,7 +265,15 @@ pub fn compute_rhs(
 }
 
 /// Compute the Jacobi preconditioner: 1/diag(A) for each DOF.
-pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut [f64]) {
+///
+/// When `slab` is `Some`, the γ-contribution to the diagonal is
+/// included so Jacobi stays consistent with `apply_stokes`.
+pub fn compute_jacobi_precond(
+    eta: &Field2D,
+    grid: &StaggeredGrid,
+    slab: Option<&SlabPullField>,
+    precond: &mut [f64],
+) {
     let nx = grid.nx();
     let ny = grid.ny();
     let n2 = nx * ny;
@@ -250,6 +304,15 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
                 let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
                 diag_vx += friction_scaled * s_excess;
             }
+            // Slab-pull diagonal: 0.25·(γ·n̂_x²)(pi,j) + 0.25·(γ·n̂_x²)(i,j).
+            // Derived from setting vx(i,j)=1 and tracing through the
+            // cell-center projection + face averaging in `apply_stokes`.
+            if let Some(slab) = slab {
+                let nxl = slab.n_x.get(pi, j);
+                let nxr = slab.n_x.get(i, j);
+                diag_vx +=
+                    0.25 * (slab.gamma.get(pi, j) * nxl * nxl + slab.gamma.get(i, j) * nxr * nxr);
+            }
             // Sign-preserving reciprocal with a floor. Near-singular cells
             // produce a large but finite preconditioner entry instead of
             // the annihilating 0.0 the old ternary yielded — see #50.
@@ -268,6 +331,12 @@ pub fn compute_jacobi_precond(eta: &Field2D, grid: &StaggeredGrid, precond: &mut
                 let s_face = 0.5 * (grid.s.get(i, pj) + grid.s.get(i, j));
                 let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
                 diag_vy += friction_scaled * s_excess;
+            }
+            if let Some(slab) = slab {
+                let nyb = slab.n_y.get(i, pj);
+                let nyt = slab.n_y.get(i, j);
+                diag_vy +=
+                    0.25 * (slab.gamma.get(i, pj) * nyb * nyb + slab.gamma.get(i, j) * nyt * nyt);
             }
             row_vy[i] = diag_vy.signum() / diag_vy.abs().max(JACOBI_DIAG_FLOOR);
         }
@@ -299,7 +368,9 @@ pub struct StencilCoeffs {
 
 impl StencilCoeffs {
     /// Extract stencil coefficients from the current viscosity field.
-    pub fn compute(eta: &Field2D, grid: &StaggeredGrid) -> Self {
+    /// The γ-contribution (when `slab` is `Some`) is added to the diagonal,
+    /// matching `compute_jacobi_precond` so SSOR sees the same operator.
+    pub fn compute(eta: &Field2D, grid: &StaggeredGrid, slab: Option<&SlabPullField>) -> Self {
         let nx = grid.nx();
         let ny = grid.ny();
         let n2 = nx * ny;
@@ -334,6 +405,12 @@ impl StencilCoeffs {
                     let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
                     diag += friction_scaled * s_excess;
                 }
+                if let Some(slab) = slab {
+                    let nxl = slab.n_x.get(pi, j);
+                    let nxr = slab.n_x.get(i, j);
+                    diag += 0.25
+                        * (slab.gamma.get(pi, j) * nxl * nxl + slab.gamma.get(i, j) * nxr * nxr);
+                }
                 let c_left = inv_dx2 * 2.0 * eta_left;
                 let c_right = inv_dx2 * 2.0 * eta_right;
                 let c_bot = inv_dx2 * eta_bot;
@@ -355,6 +432,12 @@ impl StencilCoeffs {
                     let s_face = 0.5 * (grid.s.get(i, pj) + grid.s.get(i, j));
                     let s_excess = (s_face - 0.3).max(0.0); // no friction below S=0.3 (thin oceanic)
                     diag_vy += friction_scaled * s_excess;
+                }
+                if let Some(slab) = slab {
+                    let nyb = slab.n_y.get(i, pj);
+                    let nyt = slab.n_y.get(i, j);
+                    diag_vy += 0.25
+                        * (slab.gamma.get(i, pj) * nyb * nyb + slab.gamma.get(i, j) * nyt * nyt);
                 }
                 let c_left_vy = inv_dx2 * eta_left_vy;
                 let c_right_vy = inv_dx2 * eta_right_vy;
@@ -396,14 +479,7 @@ pub fn apply_ssor(
     }
 }
 
-fn ssor_sweep(
-    r: &[f64],
-    coeffs: &[[f64; 5]],
-    nx: usize,
-    ny: usize,
-    omega: f64,
-    z: &mut [f64],
-) {
+fn ssor_sweep(r: &[f64], coeffs: &[[f64; 5]], nx: usize, ny: usize, omega: f64, z: &mut [f64]) {
     let wrap_x = |i: i32| -> usize { ((i % nx as i32) + nx as i32) as usize % nx };
     let wrap_y = |j: i32| -> usize { ((j % ny as i32) + ny as i32) as usize % ny };
 
@@ -483,8 +559,8 @@ mod tests {
 
         let mut au = vec![0.0; nn2];
         let mut av = vec![0.0; nn2];
-        apply_stokes(&u, &eta, &grid, &mut au);
-        apply_stokes(&v, &eta, &grid, &mut av);
+        apply_stokes(&u, &eta, &grid, None, &mut au);
+        apply_stokes(&v, &eta, &grid, None, &mut av);
 
         let u_av = dot(&u, &av);
         let au_v = dot(&au, &v);
@@ -522,8 +598,8 @@ mod tests {
 
         let mut au = vec![0.0; nn2];
         let mut av = vec![0.0; nn2];
-        apply_stokes(&u, &eta, &grid, &mut au);
-        apply_stokes(&v, &eta, &grid, &mut av);
+        apply_stokes(&u, &eta, &grid, None, &mut au);
+        apply_stokes(&v, &eta, &grid, None, &mut av);
 
         let u_av = dot(&u, &av);
         let au_v = dot(&au, &v);
@@ -583,8 +659,8 @@ mod tests {
 
         let mut au = vec![0.0; nn2];
         let mut av = vec![0.0; nn2];
-        apply_stokes(&u, &eta, &grid, &mut au);
-        apply_stokes(&v, &eta, &grid, &mut av);
+        apply_stokes(&u, &eta, &grid, None, &mut au);
+        apply_stokes(&v, &eta, &grid, None, &mut av);
 
         let u_av = dot(&u, &av);
         let au_v = dot(&au, &v);
@@ -606,7 +682,7 @@ mod tests {
         for _ in 0..10 {
             let v = make_random_vec(nn2, &mut state);
             let mut av = vec![0.0; nn2];
-            apply_stokes(&v, &eta, &grid, &mut av);
+            apply_stokes(&v, &eta, &grid, None, &mut av);
             let vav = dot(&v, &av);
             assert!(vav > 0.0, "<v, Av> = {vav} should be > 0");
         }
@@ -631,7 +707,7 @@ mod tests {
         }
 
         let mut av = vec![0.0; nn2];
-        apply_stokes(&v, &eta, &grid, &mut av);
+        apply_stokes(&v, &eta, &grid, None, &mut av);
 
         // -∂/∂x(2η·∂vx/∂x) with η=1 has discrete eigenvalue 2·(2/dx²)·2sin²(k·dx/2)
         let expected_eigenvalue = 2.0 * (4.0 / (dx * dx)) * (k * dx / 2.0).sin().powi(2);
@@ -672,7 +748,7 @@ mod tests {
 
         // Parallel (default apply_stokes with n >= PAR_THRESHOLD)
         let mut out_par = vec![0.0; nn2];
-        apply_stokes(&v, &eta, &grid, &mut out_par);
+        apply_stokes(&v, &eta, &grid, None, &mut out_par);
 
         for i in 0..nn2 {
             let err = (out_seq[i] - out_par[i]).abs();
@@ -769,8 +845,8 @@ mod tests {
             w[i] = rng.r#gen::<f64>() - 0.5;
         }
 
-        apply_stokes(&u, &eta, &grid, &mut au);
-        apply_stokes(&w, &eta, &grid, &mut aw);
+        apply_stokes(&u, &eta, &grid, None, &mut au);
+        apply_stokes(&w, &eta, &grid, None, &mut aw);
 
         let u_dot_aw: f64 = u.iter().zip(aw.iter()).map(|(a, b)| a * b).sum();
         let au_dot_w: f64 = au.iter().zip(w.iter()).map(|(a, b)| a * b).sum();
@@ -801,7 +877,7 @@ mod tests {
         }
 
         let mut out = vec![0.0; n_dof];
-        apply_stokes(&v, &eta, &grid, &mut out);
+        apply_stokes(&v, &eta, &grid, None, &mut out);
 
         for &val in &out {
             assert!(val.is_finite(), "Output should be finite");
@@ -828,7 +904,7 @@ mod tests {
         }
 
         let mut precond = vec![0.0; 2 * n * n];
-        compute_jacobi_precond(&eta, &grid, &mut precond);
+        compute_jacobi_precond(&eta, &grid, None, &mut precond);
 
         for (i, &val) in precond.iter().enumerate() {
             assert!(val.is_finite(), "non-finite preconditioner entry at index {i}: {val}");
@@ -858,14 +934,117 @@ mod tests {
         }
 
         let mut precond = vec![0.0; 2 * n * n];
-        compute_jacobi_precond(&eta, &grid, &mut precond);
+        compute_jacobi_precond(&eta, &grid, None, &mut precond);
 
         for &val in precond.iter() {
             assert!(val.is_finite());
-            assert!(
-                val > 0.0 && val < 10.0,
-                "expected normal preconditioner magnitude, got {val}"
-            );
+            assert!(val > 0.0 && val < 10.0, "expected normal preconditioner magnitude, got {val}");
         }
+    }
+
+    // ── Issue #75 slab-pull operator term ──────────────────────────
+
+    /// Build a trivial slab-pull field: a vertical band at column `n/2`
+    /// with γ > 0 and a unit normal pointing in +x.
+    fn make_slab_band(n: usize, gamma_value: f64) -> (Field2D, Field2D, Field2D) {
+        let mut gamma = Field2D::new(n, n);
+        let mut n_x = Field2D::new(n, n);
+        let n_y = Field2D::new(n, n);
+        let mid = n / 2;
+        for j in 0..n {
+            for di in 0..3 {
+                let i = (mid + di) % n;
+                gamma.set(i, j, gamma_value);
+                n_x.set(i, j, 1.0);
+            }
+        }
+        (gamma, n_x, n_y)
+    }
+
+    /// Issue #75: with γ_slab > 0 on a strip, the operator stays
+    /// symmetric (⟨u, A·w⟩ == ⟨A·u, w⟩ within rounding).
+    #[test]
+    fn operator_with_slab_pull_is_symmetric() {
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let grid = StaggeredGrid::new(n, n, dx);
+        let eta = Field2D::filled(n, n, 1.0);
+        let (gamma, n_x, n_y) = make_slab_band(n, 0.5);
+        let slab = SlabPullField { gamma: &gamma, n_x: &n_x, n_y: &n_y };
+
+        let n_dof = 2 * n * n;
+        let mut state = 1729u64;
+        let u = make_random_vec(n_dof, &mut state);
+        let w = make_random_vec(n_dof, &mut state);
+
+        let mut au = vec![0.0; n_dof];
+        let mut aw = vec![0.0; n_dof];
+        apply_stokes(&u, &eta, &grid, Some(&slab), &mut au);
+        apply_stokes(&w, &eta, &grid, Some(&slab), &mut aw);
+
+        let u_aw = dot(&u, &aw);
+        let au_w = dot(&au, &w);
+        let rel_diff = (u_aw - au_w).abs() / u_aw.abs().max(1e-14);
+        assert!(
+            rel_diff < 1e-10,
+            "Operator with slab-pull must stay symmetric: <u,Aw>={u_aw}, <Au,w>={au_w}, rel_diff={rel_diff}"
+        );
+    }
+
+    /// Issue #75: the slab-pull term alone is positive-semi-definite —
+    /// `⟨v, A_slab·v⟩ ≥ 0` for every v, because γ · (v·n̂)² ≥ 0.
+    /// Exercised by zeroing η and friction so only γ·n̂⊗n̂ contributes.
+    #[test]
+    fn slab_pull_term_is_semi_definite() {
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let grid = StaggeredGrid::new(n, n, dx);
+        // η = 0 leaves only the slab-pull PSD contribution; the viscous
+        // stencil vanishes.
+        let eta = Field2D::filled(n, n, 0.0);
+        let (gamma, n_x, n_y) = make_slab_band(n, 1.0);
+        let slab = SlabPullField { gamma: &gamma, n_x: &n_x, n_y: &n_y };
+
+        let n_dof = 2 * n * n;
+        let mut state = 31415u64;
+        for _ in 0..10 {
+            let v = make_random_vec(n_dof, &mut state);
+            let mut av = vec![0.0; n_dof];
+            apply_stokes(&v, &eta, &grid, Some(&slab), &mut av);
+            let vav = dot(&v, &av);
+            assert!(vav >= -1e-12, "slab-pull term should be PSD, got <v,Av> = {vav}");
+        }
+    }
+
+    /// Issue #75: convergent velocity across a vertical margin with
+    /// n̂ = +x̂ produces `v·n̂ ≠ 0` and therefore `⟨v, A_slab·v⟩ > 0`.
+    /// A positive quadratic form means the force `-A_slab·v` opposes
+    /// v along n̂ — the sign convention damps (does not excite)
+    /// convergent motion. If this test ever fails, the sign of n̂ is
+    /// wrong and needs flipping in `compute_boundary_sources`.
+    #[test]
+    fn slab_pull_damps_convergent_motion() {
+        let n = 16;
+        let dx = 1.0 / n as f64;
+        let grid = StaggeredGrid::new(n, n, dx);
+        let eta = Field2D::filled(n, n, 0.0);
+        let (gamma, n_x, n_y) = make_slab_band(n, 1.0);
+        let slab = SlabPullField { gamma: &gamma, n_x: &n_x, n_y: &n_y };
+
+        let n_dof = 2 * n * n;
+        let mut v = vec![0.0; n_dof];
+        // Convergent motion: left half pushes right (+v_x), right half
+        // pushes left (-v_x). Zero vy.
+        let mid = n / 2;
+        for j in 0..n {
+            for i in 0..n {
+                v[j * n + i] = if i < mid { 1.0 } else { -1.0 };
+            }
+        }
+
+        let mut av = vec![0.0; n_dof];
+        apply_stokes(&v, &eta, &grid, Some(&slab), &mut av);
+        let vav = dot(&v, &av);
+        assert!(vav > 0.0, "slab-pull must produce <v,Av> > 0 on convergent motion: got {vav}");
     }
 }

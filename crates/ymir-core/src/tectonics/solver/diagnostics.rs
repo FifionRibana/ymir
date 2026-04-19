@@ -60,13 +60,7 @@ fn scalar_dist(values: &[f64]) -> ScalarDist {
         abs[idx.min(abs.len() - 1)]
     };
 
-    ScalarDist {
-        norm: norm_sq.sqrt(),
-        max_abs,
-        max_cell,
-        p50: pick(0.50),
-        p95: pick(0.95),
-    }
+    ScalarDist { norm: norm_sq.sqrt(), max_abs, max_cell, p50: pick(0.50), p95: pick(0.95) }
 }
 
 /// RHS breakdown: recompute GPE and T_plates contributions separately
@@ -220,8 +214,8 @@ pub fn emit_eta_breakdown(
                 continue;
             }
             let local_yield = if yielding.weakening_enabled {
-                let w = (ps[k] / yielding.weakening_strain_ref).min(1.0)
-                    * yielding.weakening_fraction;
+                let w =
+                    (ps[k] / yielding.weakening_strain_ref).min(1.0) * yielding.weakening_fraction;
                 yielding.yield_stress * (1.0 - w)
             } else {
                 yielding.yield_stress
@@ -310,11 +304,8 @@ pub fn emit_residual_spatial(
         None => (0.0, 0),
     };
 
-    let localization = if total_energy > DENOM_FLOOR {
-        boundary_energy / total_energy
-    } else {
-        0.0
-    };
+    let localization =
+        if total_energy > DENOM_FLOOR { boundary_energy / total_energy } else { 0.0 };
 
     let boundary_fraction = (boundary_cell_count as f64) / (n2 as f64);
 

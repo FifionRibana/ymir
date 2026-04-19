@@ -66,13 +66,13 @@ impl Scenario {
     }
 }
 
-fn build_config(scenario: Scenario) -> TectonicsConfig {
+fn build_config(scenario: Scenario, num_steps: usize) -> TectonicsConfig {
     // Start from the full-featured default, then strip per scenario.
     let mut cfg = TectonicsConfig::default();
 
     // Harmonize with the regime used in the Phase 1 reference logs
-    // (Newton solver, 300 macro steps, adaptive dt on, dt_target = 2.0).
-    cfg.num_timesteps = 300;
+    // (Newton solver, adaptive dt on, dt_target = 2.0).
+    cfg.num_timesteps = num_steps;
     cfg.nonlinear_solver = NonlinearSolver::Newton;
 
     match scenario {
@@ -123,7 +123,8 @@ fn install_subscriber(log_path: &PathBuf) {
         "phase_timings=info",
     ]
     .join(",");
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter));
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -153,9 +154,13 @@ fn main() {
     });
 
     let log_dir = args.get(3).cloned().unwrap_or_else(|| "logs".to_string());
+    // Optional 4th arg: number of macro steps (Phase 1-bis uses 300 for
+    // the full sweep; Phase 2 validation uses 120 for the reduced-scope
+    // rerun described in issue #75).
+    let num_steps: usize = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(300);
     std::fs::create_dir_all(&log_dir).expect("failed to create log dir");
-    let log_path: PathBuf = PathBuf::from(&log_dir)
-        .join(format!("phase1bis_{}_{:02}.log", scenario.tag(), rep));
+    let log_path: PathBuf =
+        PathBuf::from(&log_dir).join(format!("phase1bis_{}_{:02}.log", scenario.tag(), rep));
 
     install_subscriber(&log_path);
 
@@ -186,7 +191,7 @@ fn main() {
         disp_y: Field2D::new(nx, ny),
     };
 
-    let config = build_config(scenario);
+    let config = build_config(scenario, num_steps);
     grid.basal_friction = config.basal_friction;
 
     let mut ws = SolverWorkspace::new(nx, ny);

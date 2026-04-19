@@ -317,12 +317,12 @@ mod tests {
         let mut x = vec![0.0; nn2];
         let mut ws = CgWorkspace::new(nn2);
         let mut precond = vec![0.0; nn2];
-        compute_jacobi_precond(&eta, &grid, &mut precond);
+        compute_jacobi_precond(&eta, &grid, None, &mut precond);
 
         let result = solve_cg(
             &mut x,
             &b,
-            |v, out| apply_stokes(v, &eta, &grid, out),
+            |v, out| apply_stokes(v, &eta, &grid, None, out),
             |r, z| apply_jacobi(&precond, r, z),
             &mut ws,
             1000,
@@ -335,7 +335,7 @@ mod tests {
         );
 
         let mut ax = vec![0.0; nn2];
-        apply_stokes(&x, &eta, &grid, &mut ax);
+        apply_stokes(&x, &eta, &grid, None, &mut ax);
         let err: f64 = ax.iter().zip(&b).map(|(a, b)| (a - b).powi(2)).sum();
         let b_sq: f64 = b.iter().map(|v| v * v).sum();
         let rel_err = (err / b_sq).sqrt();
@@ -367,7 +367,7 @@ mod tests {
         let res_no_prec = solve_cg(
             &mut x_no_prec,
             &b,
-            |v, out| apply_stokes(v, &eta, &grid, out),
+            |v, out| apply_stokes(v, &eta, &grid, None, out),
             |r, z| z.copy_from_slice(r), // identity preconditioner
             &mut ws_no_prec,
             2000,
@@ -378,11 +378,11 @@ mod tests {
         let mut x_jac = vec![0.0; nn2];
         let mut ws_jac = CgWorkspace::new(nn2);
         let mut precond = vec![0.0; nn2];
-        compute_jacobi_precond(&eta, &grid, &mut precond);
+        compute_jacobi_precond(&eta, &grid, None, &mut precond);
         let res_jac = solve_cg(
             &mut x_jac,
             &b,
-            |v, out| apply_stokes(v, &eta, &grid, out),
+            |v, out| apply_stokes(v, &eta, &grid, None, out),
             |r, z| apply_jacobi(&precond, r, z),
             &mut ws_jac,
             2000,
@@ -421,12 +421,12 @@ mod tests {
         let mut x = vec![0.0; nn2];
         let mut ws = BiCgStabWorkspace::new(nn2);
         let mut precond = vec![0.0; nn2];
-        compute_jacobi_precond(&eta, &grid, &mut precond);
+        compute_jacobi_precond(&eta, &grid, None, &mut precond);
 
         let result = solve_bicgstab(
             &mut x,
             &b,
-            |v, out| apply_stokes(v, &eta, &grid, out),
+            |v, out| apply_stokes(v, &eta, &grid, None, out),
             |r, z| apply_jacobi(&precond, r, z),
             &mut ws,
             1000,
@@ -439,7 +439,7 @@ mod tests {
         );
 
         let mut ax = vec![0.0; nn2];
-        apply_stokes(&x, &eta, &grid, &mut ax);
+        apply_stokes(&x, &eta, &grid, None, &mut ax);
         let err: f64 = ax.iter().zip(&b).map(|(a, b)| (a - b).powi(2)).sum();
         let b_sq: f64 = b.iter().map(|v| v * v).sum();
         let rel_err = (err / b_sq).sqrt();
@@ -459,7 +459,7 @@ mod tests {
         project_null_space(&mut b, n);
 
         let nonsym_op = |v_in: &[f64], v_out: &mut [f64]| {
-            apply_stokes(v_in, &eta, &grid, v_out);
+            apply_stokes(v_in, &eta, &grid, None, v_out);
             for i in 0..nn2 {
                 v_out[i] += 0.1 * v_in[(i + 7) % nn2];
             }
@@ -468,7 +468,7 @@ mod tests {
         let mut x = vec![0.0; nn2];
         let mut ws = BiCgStabWorkspace::new(nn2);
         let mut precond = vec![0.0; nn2];
-        compute_jacobi_precond(&eta, &grid, &mut precond);
+        compute_jacobi_precond(&eta, &grid, None, &mut precond);
 
         let result = solve_bicgstab(
             &mut x,
