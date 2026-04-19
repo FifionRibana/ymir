@@ -15,3 +15,13 @@ serde_json = { workspace = true }
 image = { workspace = true }
 noise = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+# Phase 1-bis diagnostic example (`phase1bis_scenarios`) needs a subscriber
+# to route the instrumentation events to a log file. Production library
+# code stays subscriber-agnostic.
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[example]]
+name = "phase1bis_scenarios"
+path = "examples/phase1bis_scenarios.rs"

@@ -208,6 +208,14 @@ pub fn compute_rhs(
             process_row(j, &mut rhs_vx[s..s + nx], &mut rhs_vy[s..s + nx]);
         }
     }
+
+    super::diagnostics::emit_rhs_breakdown(
+        grid,
+        plates,
+        gravity_factor,
+        rho_continental,
+        rho_mantle,
+    );
 }
 
 /// Compute the Jacobi preconditioner: 1/diag(A) for each DOF.

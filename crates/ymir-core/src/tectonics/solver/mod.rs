@@ -6,6 +6,7 @@
 
 pub mod advection;
 pub mod config;
+pub mod diagnostics;
 pub mod field;
 pub mod grid;
 pub mod linear_solve;

@@ -179,6 +179,15 @@ pub fn solve_velocity_newton(
             &mut ws.jfnk_f_v,
         );
 
+        super::diagnostics::emit_eta_breakdown(
+            k,
+            &ws.eta,
+            &ws.strain_rate,
+            &ps_snap,
+            yielding,
+            picard_config.eta_max,
+        );
+
         let f_norm: f64 = ws.jfnk_f_v.iter().map(|x| x * x).sum::<f64>().sqrt();
         let b_norm: f64 = ws.rhs.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-14);
         residual_history.push(f_norm);

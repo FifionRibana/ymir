@@ -1,5 +1,7 @@
 //! Top-level orchestration of the thin viscous sheet simulation.
 
+use std::time::Instant;
+
 use tracing::{debug, info, info_span, warn};
 
 use super::advection::{compute_cfl_dt, compute_divergence_flux};
@@ -635,6 +637,9 @@ fn execute_tectonic_pass(
     let nx = grid.nx();
     let ny = grid.ny();
 
+    // Phase 1-bis instrumentation (#75) — per-phase wallclock timers.
+    let t_solve_start = Instant::now();
+
     // 1. Solve velocity — continuation only on first pass (cold start).
     let need_continuation =
         allow_continuation && config.continuation.enabled && config.picard.power_law_n > 1.0;
@@ -652,6 +657,25 @@ fn execute_tectonic_pass(
             result
         }
     };
+
+    let t_solve_us = t_solve_start.elapsed().as_micros() as u64;
+
+    // Emit residual_spatial diagnostic after a successful Newton solve.
+    // `workspace.jfnk_f_v` holds `F(v_converged)` from the last Newton
+    // iteration; it is unpopulated for Picard, so we guard on solver
+    // choice. The boundary_field for this step is not yet computed here
+    // (that happens below), so we pass the previous step's field (held
+    // in workspace.boundary_field since the last macro step).
+    if solve_outcome.is_converged()
+        && matches!(config.nonlinear_solver, NonlinearSolver::Newton)
+    {
+        super::diagnostics::emit_residual_spatial(
+            &workspace.jfnk_f_v,
+            workspace.boundary_field.as_ref(),
+            nx,
+            ny,
+        );
+    }
 
     if !solve_outcome.is_converged() {
         // Legacy mode preserves the pre-#52 error-on-non-convergence
@@ -738,6 +762,7 @@ fn execute_tectonic_pass(
     }
 
     // Compute boundary source terms if enabled
+    let t_boundaries_start = Instant::now();
     let boundaries_active = config.boundaries.enabled;
     if boundaries_active {
         let bf = compute_boundary_sources(
@@ -773,8 +798,11 @@ fn execute_tectonic_pass(
             );
         }
     }
+    let t_boundaries_us = t_boundaries_start.elapsed().as_micros() as u64;
 
-    // Subduction consumption + fragmentation detection
+    // Subduction consumption + fragmentation detection + traction rebuild
+    // are grouped as "plate bookkeeping" for the phase_timings breakdown.
+    let t_plates_start = Instant::now();
     if config.dynamic_boundaries {
         let ids_before: Vec<usize> = plate_ctx.ids.clone();
 
@@ -843,8 +871,10 @@ fn execute_tectonic_pass(
             mf.evolve(config.mantle.evolution_rate, step);
         }
     }
+    let t_plates_us = t_plates_start.elapsed().as_micros() as u64;
 
     // ── Conservative mass recycling ────────────────────────────
+    let t_recycling_start = Instant::now();
     if let Some(recycler) = recycling_buffer.as_mut()
         && let Some(bf) = workspace.boundary_field.as_ref()
     {
@@ -925,6 +955,8 @@ fn execute_tectonic_pass(
         );
     }
 
+    let t_recycling_us = t_recycling_start.elapsed().as_micros() as u64;
+
     // ── Mass balance tracking ──────────────────────────────────
     let mass_before: f64 = grid.s.data().iter().sum();
     let mut mass_after_advection = 0.0_f64;
@@ -933,6 +965,7 @@ fn execute_tectonic_pass(
     let mut total_source = 0.0_f64;
 
     // ── Advection with legacy CFL retry or a single explicit attempt.
+    let t_advection_start = Instant::now();
     let (retry_succeeded, clamp_ratio, dt_final) = match dt_mode {
         DtMode::LegacyWithCflRetry => {
             let s_backup: Vec<f64> = grid.s.data().to_vec();
@@ -1094,6 +1127,19 @@ fn execute_tectonic_pass(
             min_s = min_s.min(s);
         }
     }
+
+    let t_advection_us = t_advection_start.elapsed().as_micros() as u64;
+
+    info!(
+        target: "phase_timings",
+        step,
+        t_boundaries_us,
+        t_solve_us,
+        t_advection_us,
+        t_recycling_us,
+        t_plates_us,
+        "phase timings"
+    );
 
     // We reached here only after `solve_outcome.is_converged()` passed, so
     // solve_outcome is guaranteed to be ConvergedOnResidual or ConvergedOnState.
