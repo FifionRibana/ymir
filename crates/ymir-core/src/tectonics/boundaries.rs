@@ -92,7 +92,16 @@ pub struct BoundaryConfig {
     /// Since #75 this is the coefficient of the cell-local operator
     /// term `γ · (v·n̂) · n̂` (was: the per-plate velocity boost
     /// coefficient in the pre-#75 RHS-injection formulation).
-    /// Range: 0.001-0.5, default: 0.05
+    ///
+    /// **Known inertness (issue #80, Phase 2-bis calibration sweep):**
+    /// this value has no measurable effect on plate velocities at
+    /// any tested factor between 0.05 and 5000 on 64²/seed 42/120
+    /// steps. The operator form `γ · n̂⊗n̂` is SPD — it only damps
+    /// motion along n̂, it cannot accelerate plates — so no scalar
+    /// tuning can recover pre-#75 slab-pull behaviour. Physics-
+    /// meaningful slab-pull is tracked in follow-up #80 as a
+    /// redesign, not a calibration, task.
+    /// Range: 0.001-0.5, default: 0.05.
     pub slab_pull_factor: f64,
     /// Maximum plate velocity magnitude (pre-#75 safety cap; retained
     /// as a parameter so configs stay deserialisable, but no longer

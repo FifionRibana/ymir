@@ -812,6 +812,13 @@ fn execute_tectonic_pass(
                 ny,
             );
         }
+
+        // Phase 2-bis calibration diagnostic: γ_slab field stats on
+        // margin cells + max velocity samples. Runs only when the
+        // `slab_pull_sweep` tracing target is enabled (#75).
+        if let Some(bf) = workspace.boundary_field.as_ref() {
+            super::diagnostics::emit_slab_pull_sweep(bf, grid);
+        }
     }
     let t_boundaries_us = t_boundaries_start.elapsed().as_micros() as u64;
 

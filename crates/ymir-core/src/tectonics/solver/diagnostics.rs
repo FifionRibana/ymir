@@ -19,6 +19,72 @@ use super::grid::StaggeredGrid;
 use super::traction::TractionField;
 use crate::tectonics::boundaries::{BoundaryField, BoundaryType};
 
+/// Phase 2-bis gamma_slab field stats (#75): min, max, mean of γ on
+/// margin cells (where `boundary_type ∈ Subduction|OceanicSubduction`),
+/// plus the plain-grid max velocity and max velocity restricted to
+/// those same margin cells. Fires at debug level on target
+/// `slab_pull_sweep` once per macro step; cheap enough to leave on.
+pub fn emit_slab_pull_sweep(boundary_field: &BoundaryField, grid: &StaggeredGrid) {
+    if !tracing::enabled!(target: "slab_pull_sweep", tracing::Level::DEBUG) {
+        return;
+    }
+    let n2 = boundary_field.n * boundary_field.n;
+    let mut g_min = f64::INFINITY;
+    let mut g_max = 0.0_f64;
+    let mut g_sum = 0.0_f64;
+    let mut g_count = 0usize;
+    let mut margin_v_max = 0.0_f64;
+    let mut v_global_max = 0.0_f64;
+
+    let nx = grid.nx();
+    let ny = grid.ny();
+    let idx_x = grid.idx_x();
+    let idx_y = grid.idx_y();
+
+    for k in 0..n2.min(boundary_field.gamma_slab.data().len()) {
+        let j = k / nx;
+        let i = k % nx;
+        let vxc = 0.5 * (grid.vx.get(i, j) + grid.vx.get(idx_x.next(i), j));
+        let vyc = 0.5 * (grid.vy.get(i, j) + grid.vy.get(i, idx_y.next(j)));
+        let v_mag = (vxc * vxc + vyc * vyc).sqrt();
+        if v_mag > v_global_max {
+            v_global_max = v_mag;
+        }
+        let is_margin = matches!(
+            boundary_field.boundary_type[k],
+            BoundaryType::Subduction | BoundaryType::OceanicSubduction
+        );
+        if is_margin {
+            let g = boundary_field.gamma_slab.data()[k];
+            if g > g_max {
+                g_max = g;
+            }
+            if g < g_min {
+                g_min = g;
+            }
+            g_sum += g;
+            g_count += 1;
+            if v_mag > margin_v_max {
+                margin_v_max = v_mag;
+            }
+        }
+    }
+
+    let g_mean = if g_count > 0 { g_sum / g_count as f64 } else { 0.0 };
+    let g_min_out = if g_count > 0 { g_min } else { 0.0 };
+
+    debug!(
+        target: "slab_pull_sweep",
+        gamma_margin_min = g_min_out,
+        gamma_margin_max = g_max,
+        gamma_margin_mean = g_mean,
+        margin_cells = g_count,
+        margin_v_max,
+        v_global_max,
+        "slab-pull sweep"
+    );
+}
+
 /// Floor for ratio denominators. Keeps spike_ratio finite when the
 /// median of a field is identically zero (e.g. `T_plates` on a
 /// scenario where boundaries are disabled).

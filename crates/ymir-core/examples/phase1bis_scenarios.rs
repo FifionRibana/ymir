@@ -75,6 +75,15 @@ fn build_config(scenario: Scenario, num_steps: usize) -> TectonicsConfig {
     cfg.num_timesteps = num_steps;
     cfg.nonlinear_solver = NonlinearSolver::Newton;
 
+    // Phase 2-bis calibration sweep (#75): allow overriding the γ
+    // coefficient from the shell so we can sweep
+    // `slab_pull_factor` ∈ {0.05, 5, 50, 500, 5000} without rebuilding.
+    if let Ok(s) = std::env::var("YMIR_SLAB_PULL_FACTOR")
+        && let Ok(v) = s.parse::<f64>()
+    {
+        cfg.boundaries.slab_pull_factor = v;
+    }
+
     match scenario {
         Scenario::A => {
             // Bare thin-sheet: every extension off. `boundaries.enabled =
@@ -121,6 +130,7 @@ fn install_subscriber(log_path: &PathBuf) {
         "eta_breakdown=debug",
         "residual_spatial=debug",
         "phase_timings=info",
+        "slab_pull_sweep=debug",
     ]
     .join(",");
     let filter =
