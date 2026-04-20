@@ -1,98 +1,126 @@
 # tectonics_v2 — Step 0
 
 Incremental rebuild of the tectonic solver. Step 0 ships a linear,
-constant-viscosity Stokes solver coupled to a passive advected
-thickness field `S̃` on a fully periodic toroidal domain, plus the
+constant-viscosity **thin viscous sheet** solver (England & McKenzie
+1982) coupled to a conservative upwind advection of the crustal
+thickness `S̃` on a fully periodic toroidal domain, plus the
 diagnostics framework the rest of the milestone extends.
 
 Physical reference: [`docs/solver-scaling.md`](../../../../docs/solver-scaling.md).
 Milestone tracker: [`docs/solver-reconstruction-roadmap.md`](../../../../docs/solver-reconstruction-roadmap.md).
 
+## Formulation: thin viscous sheet, NOT incompressible Stokes
+
+The equations are:
+
+```
+Momentum:   -∇·(2 η̃ ε̇̃(ṽ)) = Ar·∇Φ̃ + f̃_ext       (1) [elliptic, SPD]
+Thickness:  ∂_t̃ S̃ + ∇·(S̃ ṽ) = Q̃                  (2) [mass balance]
+```
+
+Two properties that distinguish this from incompressible Stokes and
+are foundational for every Step 1–10 that follows:
+
+- **No incompressibility constraint.** `∇·ṽ ≠ 0` in 2-D is physically
+  meaningful — it is the rate at which the crustal column thickens
+  (plug it into (2) and it becomes the source of `∂_t̃ S̃`). Enforcing
+  `∇·ṽ = 0` would make it impossible for orogens to thicken under
+  convergence or for rifts to thin under divergence.
+- **No pressure unknown.** `Φ̃` is the gravitational potential
+  energy and enters (1) as a physical driving term weighted by the
+  Argand number `Ar` — not as a Lagrange multiplier dual to a
+  constraint. Nothing in the solver carries a pressure field.
+
+Consequence for the linear algebra: (1) assembles an SPD operator on
+the velocity. A **single preconditioned conjugate-gradient solve per
+time step** suffices — no saddle point, no Schur complement, no
+nested iteration.
+
+### Early faux-départ note
+
+The first Step 0 commit (`a8c8f3a`) shipped an incompressible-Stokes
+saddle-point solver (pressure Schur complement with nested CG). That
+was an implementation error, not a design choice: the spec never
+called for incompressibility. It passed the original unit tests
+because the placeholder forcing happened to produce a div-free
+velocity (so the constraint did not bite) and the original MMS
+manufactured solution was div-free by construction. The current tree
+replaces that solver with the correct thin-sheet elliptic operator;
+the faux-départ commit remains in the history as documentation of
+the correction trajectory.
+
 ## Entry-condition decisions (archived for the milestone)
 
-1. **Viscosity scale `η*`.** The design note's formula
-   `η* = ρ*·g·τ*·S*` evaluated at default primary scales
-   (`ρ* = 3300 kg/m³`, `g = 9.81 m/s²`, `τ* = 30 Myr`, `S* = 35 km`)
-   gives
-   `η* = 3300 × 9.81 × (30·3.156·10¹³) × 3.5·10⁴ ≈ 1.07·10²⁴ Pa·s`.
-   The previous handoff's `~10²³` figure was an arithmetic slip.
-   Adopted value: **`η* = 1.073·10²⁴ Pa·s`** (rounded display `~10²⁴`).
-   Used everywhere in `scales.rs`; reported at solver startup.
+1. **Viscosity scale `η*`.**
+   `η* = ρ*·g·τ*·S* = 3300 × 9.81 × (30·3.156·10¹³) × 3.5·10⁴
+   ≈ 1.073·10²⁴ Pa·s`. The previous handoff's `~10²³` was an
+   arithmetic slip. Adopted value: **`η* = 1.073·10²⁴ Pa·s`** (rounded
+   display `~10²⁴`). Reported at solver startup.
 
 2. **`Field2D` / `PeriodicIndex` audit.** The legacy types in
    `crates/ymir-core/src/tectonics/solver/field.rs` are self-contained
-   (zero imports into `tectonics/`), covered by stride- and
-   wrap-aware unit tests (square, rectangular, coprime), and carry no
-   tectonic state. **Decision: re-export directly** via
-   [`field.rs`](./field.rs) (`pub use` only). No duplication until
-   the legacy module is retired at milestone end. No other symbol is
-   imported from `tectonics/`.
+   (zero external imports), tested for stride and wrap (square,
+   rectangular, coprime), and carry no tectonic state. **Decision:
+   re-export directly** via [`field.rs`](./field.rs) (`pub use` only).
+   No other symbol is imported from `tectonics/`.
 
-3. **Gauge-fixing strategy.** The periodic torus admits a 1-D
-   pressure null space (constant mode) and a 2-D velocity null space
-   (constant `vx` and `vy`). The strategy is: **mean-subtract
-   `P`, `vx`, `vy` both before and after every preconditioner
-   application (`M⁻¹`), plus once more on the final iterate.**
-   Implemented in [`stokes/nullspace.rs`](./stokes/nullspace.rs) and
-   wrapped by [`stokes/precond.rs`](./stokes/precond.rs). Verified by
-   `tests/v2_nullspace.rs` — a solve with RHS deliberately carrying
-   nonzero mean in every component returns `|mean(P)|`,
-   `|mean(vx)|`, `|mean(vy)| < 1·10⁻¹⁰`.
+3. **Gauge-fixing strategy.** The fully periodic torus admits a **2-D
+   velocity null space** (constant `vx` and `vy`, rigid-body
+   translation). The strategy is: **mean-subtract `vx` and `vy`
+   before and after every preconditioner application `M⁻¹`, plus once
+   more on the final iterate.** Verified by `tests/v2_nullspace.rs`
+   with RHS deliberately carrying a nonzero mean in each component.
 
 ## Discretization choice
 
-MAC (staggered) grid with periodic BCs, following the legacy layout:
-- `p`, `η`, `S` at cell centres `((i+0.5)dx, (j+0.5)dy)`.
+MAC (staggered) grid with periodic BCs:
+- `η`, `S` at cell centres `((i+0.5)dx, (j+0.5)dy)`.
 - `vx` at left vertical faces `(i dx, (j+0.5)dy)`.
 - `vy` at bottom horizontal faces `((i+0.5)dx, j dy)`.
-- `ε̇_xy` and `σ_xy` at nodal corners `(i dx, j dy)`, with η there
-  computed by **harmonic 4-point averaging** of the surrounding cell
-  centres. Harmonic averaging reduces trivially to `η` for constant
-  fields, so the assembly is identical at Step 0 and Step 1 — the
-  variable-η rheology in Step 1 is a data change, not an assembly
-  change.
+- `ε̇_xy` at nodal corners `(i dx, j dy)`, with η there by
+  **harmonic 4-point averaging** of surrounding cells. Harmonic
+  averaging reduces to `η` for constant fields, so the assembly is
+  identical at Step 0 and Step 1 — the power-law rheology in Step 1
+  is a data change on `η`, not an assembly change.
 
-The MMS convergence test verifies this discretization is 2nd-order in
-`v`:
+For constant η the discrete operator reduces to
+`A v = -η (∇² v + ∇(∇·v))`. The grad-div part is essential: it
+couples `vx` and `vy` through normal strain, and dropping it would
+reduce the 2-D thin-sheet to two decoupled scalar Laplacians — wrong
+physics. The MMS test uses a deliberately non-div-free manufactured
+solution (`v = (sin(2πx), sin(2πy))`) so that both terms are
+exercised.
+
+MMS convergence (rel tol 1e-12, manufactured non-div-free solution):
+
 ```
-N=16:  v_err=6.475e-3
-N=32:  v_err=1.609e-3  (slope 2.008)
-N=64:  v_err=4.018e-4  (slope 2.002)
-N=128: v_err=1.004e-4  (slope 2.001)
+N=16:  v_err=9.16e-3
+N=32:  v_err=2.28e-3  (slope 2.008)
+N=64:  v_err=5.68e-4  (slope 2.002)
+N=128: v_err=1.42e-4  (slope 2.001)
 ```
 
 ## Linear solver
 
-Pressure Schur-complement with nested **conjugate gradient**
-(`ConjugateGradient` implementing the [`LinearSolver`][trait] trait).
-The outer CG applies `S = B·A⁻¹·B^T` to pressure iterates; each
-application invokes an inner CG on the momentum block `A`. Both blocks
-are SPD on their respective zero-mean subspaces; CG is mathematically
-appropriate throughout.
+Preconditioned **conjugate gradient** (`ConjugateGradient`
+implementing the [`LinearSolver`][trait] trait). The trait is the
+integration point for BiCGSTAB at Step 3 when plastic yielding makes
+the system non-symmetric. Direct calls to `ConjugateGradient::solve`
+outside the trait are forbidden by convention.
 
-The `LinearSolver` trait is the integration point for BiCGSTAB at
-Step 3 when plastic yielding makes the global system non-symmetric.
-Direct calls to `ConjugateGradient::solve` outside this trait are
-forbidden by convention.
+Preconditioner: `M = diag(A)⁻¹` (Jacobi), wrapped with the velocity
+mean-projection (see [`precond.rs`](./stokes/precond.rs)). A
+configurable floor on `|diag|` protects against degenerate-η cells.
 
 [trait]: ./stokes/solver.rs
-
-### Preconditioner
-
-Block-diagonal:
-- **Velocity block** `M_v = diag(A)⁻¹` (Jacobi) with a configurable
-  floor on the diagonal (`cfg.diag_floor`, default `1e-20`).
-- **Pressure block** `M_p = diag(1/η)` (viscosity-scaled mass matrix).
-
-Both wrap the mean-projection in the `apply` entry points.
 
 ## Transverse T1 — absorbed
 
 The roadmap previously listed "T1 — Null-space-aware preconditioner"
-as an independent transverse task. Step 0 now ships the null-space-
-aware preconditioner as part of the core solver, so T1 is absorbed.
+as an independent transverse task. Step 0 ships the null-space-aware
+preconditioner as part of the core solver, so T1 is absorbed.
 [`docs/solver-reconstruction-roadmap.md`](../../../../docs/solver-reconstruction-roadmap.md)
-is updated to remove T1 from the open transverse list.
+reflects this.
 
 ## Dormant metrics
 
@@ -120,10 +148,10 @@ tectonics_v2/
 ├── forcing.rs                ← BodyForce trait + ZeroForce + SinusoidalForce
 ├── advection.rs              ← conservative first-order upwind S advection
 ├── stokes/
-│   ├── mod.rs                ← pressure Schur-complement coordinator
-│   ├── nullspace.rs          ← mean projectors for P, vx, vy
-│   ├── operator.rs           ← MAC momentum + divergence + adjoint
-│   ├── precond.rs            ← block-diag preconditioners with null-space wrapping
+│   ├── mod.rs                ← thin-sheet solver entry point
+│   ├── nullspace.rs          ← mean projectors for vx, vy
+│   ├── operator.rs           ← MAC momentum operator
+│   ├── precond.rs            ← velocity Jacobi with null-space wrapping
 │   └── solver.rs             ← LinearSolver trait + CG
 └── diagnostics/
     ├── mod.rs                ← re-exports
@@ -148,14 +176,12 @@ Writes the markdown report and a heightmap set under
 
 ## Note on the placeholder body force
 
-The Step 0 spec names `f̃ = ε · sin(2π x̃ / L̃x) ê_x`. That force is a
-pure gradient, so under incompressible Stokes it is balanced entirely
-by pressure and produces `ṽ ≡ 0`. With `ṽ = 0`, the advection step is
-a no-op and the coupled smoke test is trivial. This crate ships the
-**rotational variant** `f̃ = ε · sin(2π ỹ / L̃y) · ê_x` instead,
-which drives a simple Kolmogorov-like shear flow (analytic steady
-solution `ṽx = ε · sin(2π ỹ) / (2π/L̃y)²`), still periodic, with
-non-trivial motion and non-zero `peak |ṽ|`. The deviation is
-documented in [`forcing.rs`](./forcing.rs); the spec's intent
-("~3% S displacement over 300 steps, measurable but small") is
-preserved.
+`f̃ = ε · sin(2π x̃ / L̃x) · ê_x` per the Step 0 spec. In the
+thin-sheet formulation this force **produces flow** (no pressure
+available to absorb it as a gradient); the analytic steady solution
+with constant η is `ṽx = ε · sin(2π x̃ / L̃x) / (8 π² η / L̃x²)`,
+`ṽy = 0`, giving `peak|ṽ| ≈ 1.27·10⁻³` at `ε = 0.1`, `L̃x = 1`,
+`η = 1`. The single-Fourier-mode character of this solution is why
+CG converges in very few iterations at Step 0; the iteration count
+becomes meaningful once Step 1 (power-law η) and Step 2 (GPE)
+introduce real structure in the solution.

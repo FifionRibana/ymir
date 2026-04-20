@@ -1,11 +1,11 @@
-# Step 0 — Nondim Stokes core + S advection (baseline)
+# Step 0 — Thin viscous sheet core + S advection (baseline)
 
 > **Baseline reference for milestone "Solver reconstruction".**
 > Do NOT compare against earlier reports — this is the first report.
 > Subsequent steps' reports will diff against this one.
 
 - Seed: `42`
-- Entry-condition decisions archived in `tectonics_v2/README.md`.
+- Formulation: thin viscous sheet (England & McKenzie 1982); pure elliptic momentum, no pressure unknown, no incompressibility constraint. See `tectonics_v2/README.md`.
 
 ## Physical scales
 
@@ -31,14 +31,13 @@ Scales:
 
 | field | value |
 |---|---|
-| discretization | MAC staggered (v face / P η S cell-centre) |
+| formulation | thin viscous sheet (elliptic: -∇·(2η ε̇(v)) = f; no pressure, no ∇·v=0 constraint) |
+| discretization | MAC staggered (v face / η S cell-centre / ε̇_xy corner) |
 | harmonic averaging | harmonic 4-point for η at corners |
-| preconditioner | block-diag Jacobi (v) + diag(1/η) mass (P), null-space wrapped |
-| gauge fixing | mean(P), mean(vx), mean(vy) projected before & after every M^-1 and once post-solve |
-| outer CG tolerance | 1.0e-8 |
-| inner CG tolerance | 1.0e-10 |
-| outer CG max iter | 200 |
-| inner CG max iter | 500 |
+| preconditioner | velocity Jacobi (diag(A)⁻¹), null-space wrapped |
+| gauge fixing | mean(vx), mean(vy) projected before & after every M⁻¹ and once post-solve |
+| CG tolerance | 1.0e-8 |
+| CG max iter | 1000 |
 | CFL factor | 0.30 |
 | grid spacing (nondim) | 0.015625 |
 | body force | SinusoidalForce(ε=0.1) |
@@ -46,42 +45,39 @@ Scales:
 
 ### Timing
 
-- wallclock total: `0.382 s`
-- wallclock per step (mean): `1.273 ms`
+- wallclock total: `0.152 s`
+- wallclock per step (mean): `0.505 ms`
 - steps: `300`
 
 ### Solver health
 
-- κ(A) estimate: N/A — outer CG converged in 0 iterations (the Kolmogorov-like placeholder forcing produces an exactly divergence-free velocity from A⁻¹f, so the Schur complement problem is trivially satisfied by p=0). The framework slot is exercised; real κ estimates come online at Step 2 when GPE spreading makes the Schur-complement nontrivial.
+- κ(A) estimate: N/A — CG converged on the initial guess (no iterations).
 - effective η_max/η_min over run: `1.000` (placeholder; trivially 1.0 at Step 0)
-- outer CG iterations — mean: `0.0`, max: `0`
-- outer CG iteration histogram (5 bins):
+- CG iterations per sheet solve — mean: `0.0`, max: `1`
+- CG iteration histogram (5 bins):
 
   | bin ≤ | count |
   |---|---|
-  | 0 | 300 |
+  | 0 | 299 |
   | 0 | 0 |
   | 0 | 0 |
   | 0 | 0 |
-  | 0 | 0 |
-
-- inner CG iterations (per inner solve) — mean: `1.0`, max: `1`
+  | 1 | 1 |
 
 ### Mass conservation of S
 
 - initial mass: `4.096000000e3`
 - final mass: `4.096000000e3`
-- relative drift: `3.331e-16`
+- relative drift: `2.331e-15`
 
 ### Null-space health (post-solve means)
 
-- max |mean(P)| across solves: `0.000e0`
-- max |mean(vx)|: `3.895e-20`
+- max |mean(vx)| across solves: `2.647e-23`
 - max |mean(vy)|: `0.000e0`
 
 ### Velocity magnitude
 
-- peak |v|: `2.532e-3`
+- peak |v|: `1.268e-3`
 
 ### Heightmaps of S
 
@@ -106,14 +102,13 @@ Scales:
 
 | field | value |
 |---|---|
-| discretization | MAC staggered (v face / P η S cell-centre) |
+| formulation | thin viscous sheet (elliptic: -∇·(2η ε̇(v)) = f; no pressure, no ∇·v=0 constraint) |
+| discretization | MAC staggered (v face / η S cell-centre / ε̇_xy corner) |
 | harmonic averaging | harmonic 4-point for η at corners |
-| preconditioner | block-diag Jacobi (v) + diag(1/η) mass (P), null-space wrapped |
-| gauge fixing | mean(P), mean(vx), mean(vy) projected before & after every M^-1 and once post-solve |
-| outer CG tolerance | 1.0e-8 |
-| inner CG tolerance | 1.0e-10 |
-| outer CG max iter | 200 |
-| inner CG max iter | 500 |
+| preconditioner | velocity Jacobi (diag(A)⁻¹), null-space wrapped |
+| gauge fixing | mean(vx), mean(vy) projected before & after every M⁻¹ and once post-solve |
+| CG tolerance | 1.0e-8 |
+| CG max iter | 1000 |
 | CFL factor | 0.30 |
 | grid spacing (nondim) | 0.007812 |
 | body force | SinusoidalForce(ε=0.1) |
@@ -121,42 +116,39 @@ Scales:
 
 ### Timing
 
-- wallclock total: `1.376 s`
-- wallclock per step (mean): `4.586 ms`
+- wallclock total: `0.527 s`
+- wallclock per step (mean): `1.758 ms`
 - steps: `300`
 
 ### Solver health
 
-- κ(A) estimate: N/A — outer CG converged in 0 iterations (the Kolmogorov-like placeholder forcing produces an exactly divergence-free velocity from A⁻¹f, so the Schur complement problem is trivially satisfied by p=0). The framework slot is exercised; real κ estimates come online at Step 2 when GPE spreading makes the Schur-complement nontrivial.
+- κ(A) estimate: N/A — CG converged on the initial guess (no iterations).
 - effective η_max/η_min over run: `1.000` (placeholder; trivially 1.0 at Step 0)
-- outer CG iterations — mean: `0.0`, max: `0`
-- outer CG iteration histogram (5 bins):
+- CG iterations per sheet solve — mean: `0.0`, max: `1`
+- CG iteration histogram (5 bins):
 
   | bin ≤ | count |
   |---|---|
-  | 0 | 300 |
+  | 0 | 299 |
   | 0 | 0 |
   | 0 | 0 |
   | 0 | 0 |
-  | 0 | 0 |
-
-- inner CG iterations (per inner solve) — mean: `1.0`, max: `1`
+  | 1 | 1 |
 
 ### Mass conservation of S
 
 - initial mass: `1.638400000e4`
 - final mass: `1.638400000e4`
-- relative drift: `0.000e0`
+- relative drift: `-3.553e-15`
 
 ### Null-space health (post-solve means)
 
-- max |mean(P)| across solves: `0.000e0`
-- max |mean(vx)|: `2.626e-20`
+- max |mean(vx)| across solves: `1.423e-22`
 - max |mean(vy)|: `0.000e0`
 
 ### Velocity magnitude
 
-- peak |v|: `2.533e-3`
+- peak |v|: `1.267e-3`
 
 ### Heightmaps of S
 

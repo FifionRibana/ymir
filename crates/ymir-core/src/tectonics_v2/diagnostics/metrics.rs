@@ -10,8 +10,7 @@ use std::time::Duration;
 /// Histogram of iteration counts bucketed into 5 bins.
 #[derive(Clone, Debug, Default)]
 pub struct IterationHistogram {
-    /// Upper bounds of each bin (inclusive). The 5 bins are determined
-    /// dynamically from the min/max observed iteration counts.
+    /// Upper bounds of each bin (inclusive).
     pub bin_edges: [usize; 5],
     /// Number of solves landing in each bin.
     pub counts: [usize; 5],
@@ -35,7 +34,6 @@ impl IterationHistogram {
         for (k, e) in edges.iter_mut().enumerate() {
             *e = min + ((k + 1) * span) / 5;
         }
-        // Guarantee the last edge is the observed max (floating rounding above can leave a gap at boundaries).
         edges[4] = max;
         let mut counts = [0usize; 5];
         for &s in samples {
@@ -60,14 +58,13 @@ impl IterationHistogram {
 /// wallclock without solver config is not a comparable metric.
 #[derive(Clone, Debug)]
 pub struct SolverConfigDump {
+    pub formulation: String,
     pub discretization: String,
     pub harmonic_averaging: String,
     pub preconditioner: String,
     pub gauge_fixing: String,
-    pub outer_tol: f64,
-    pub inner_tol: f64,
-    pub outer_max_iter: usize,
-    pub inner_max_iter: usize,
+    pub cg_tol: f64,
+    pub cg_max_iter: usize,
     pub cfl_factor: f64,
     pub grid_spacing_nondim: f64,
     pub body_force: String,
@@ -80,26 +77,24 @@ impl SolverConfigDump {
             "### Solver configuration\n\n\
              | field | value |\n\
              |---|---|\n\
+             | formulation | {} |\n\
              | discretization | {} |\n\
              | harmonic averaging | {} |\n\
              | preconditioner | {} |\n\
              | gauge fixing | {} |\n\
-             | outer CG tolerance | {:.1e} |\n\
-             | inner CG tolerance | {:.1e} |\n\
-             | outer CG max iter | {} |\n\
-             | inner CG max iter | {} |\n\
+             | CG tolerance | {:.1e} |\n\
+             | CG max iter | {} |\n\
              | CFL factor | {:.2} |\n\
              | grid spacing (nondim) | {:.6} |\n\
              | body force | {} |\n\
              | seed | {} |\n",
+            self.formulation,
             self.discretization,
             self.harmonic_averaging,
             self.preconditioner,
             self.gauge_fixing,
-            self.outer_tol,
-            self.inner_tol,
-            self.outer_max_iter,
-            self.inner_max_iter,
+            self.cg_tol,
+            self.cg_max_iter,
             self.cfl_factor,
             self.grid_spacing_nondim,
             self.body_force,
@@ -120,24 +115,23 @@ pub struct Metrics {
     pub wallclock_per_step_mean: Duration,
 
     // ---- Solver health (Step 0 active) ----
-    /// Condition-number estimate derived from outer CG iteration count.
-    /// `κ_est ≈ (2·iter / ln(2/tol))²`, rounded to a nearest power of
-    /// ten for reporting. Cheap single-scalar proxy; power-iteration
-    /// κ is a future T2 extension.
+    /// Condition-number estimate from CG iteration count: with a
+    /// tolerance `tol` and `k` CG iterations to converge from a zero
+    /// initial guess, one has (Saad, *Iterative Methods*, §6.7)
+    /// `k ≈ ½ √κ · ln(2/tol)`, so `κ ≈ (2 k / ln(2/tol))²`. For
+    /// `tol = 1e-8`, `ln(2/tol) ≈ 19.1`, hence the simplified
+    /// `κ ≈ (k / 9.6)² ~ 0.01 k²` commonly used as a reporting proxy.
+    /// Reported directly from the mean CG iteration count over the run.
     pub kappa_estimate: f64,
 
-    /// Trivially 1.0 at Step 0 (constant η). Kept in the struct so the
-    /// framework slot exists for Step 1 onward.
+    /// Trivially 1.0 at Step 0 (constant η). Kept as framework slot
+    /// for Step 1 onward.
     pub eta_contrast: f64,
 
-    /// Outer CG iterations: mean, max, histogram.
-    pub outer_iter_mean: f64,
-    pub outer_iter_max: usize,
-    pub outer_iter_histogram: IterationHistogram,
-
-    /// Inner CG iterations (per inner solve): mean, max.
-    pub inner_iter_mean: f64,
-    pub inner_iter_max: usize,
+    /// CG iterations per sheet solve: mean, max, histogram.
+    pub cg_iter_mean: f64,
+    pub cg_iter_max: usize,
+    pub cg_iter_histogram: IterationHistogram,
 
     // ---- Mass conservation (Step 0 active) ----
     pub mass_s_initial: f64,
@@ -145,7 +139,6 @@ pub struct Metrics {
     pub mass_drift_relative: f64,
 
     // ---- Null-space health after every solve (Step 0 active) ----
-    pub max_abs_mean_p: f64,
     pub max_abs_mean_vx: f64,
     pub max_abs_mean_vy: f64,
 
@@ -153,10 +146,9 @@ pub struct Metrics {
     pub vmax_peak: f64,
 
     // ---- Heightmap snapshots (Step 0 active) ----
-    /// Relative paths, reported in the markdown for hand inspection.
     pub heightmap_paths: Vec<String>,
 
-    // ---- Dormant metrics (Option<> until their step introduces them) ----
+    // ---- Dormant metrics ----
     pub s_eq: Option<f64>,
     pub boundary_type_diversity: Option<BoundaryTypeCounts>,
     pub yielding_cell_fraction: Option<f64>,
@@ -197,15 +189,12 @@ impl Metrics {
             wallclock_per_step_mean: Duration::ZERO,
             kappa_estimate: 0.0,
             eta_contrast: 1.0,
-            outer_iter_mean: 0.0,
-            outer_iter_max: 0,
-            outer_iter_histogram: IterationHistogram::default(),
-            inner_iter_mean: 0.0,
-            inner_iter_max: 0,
+            cg_iter_mean: 0.0,
+            cg_iter_max: 0,
+            cg_iter_histogram: IterationHistogram::default(),
             mass_s_initial: 0.0,
             mass_s_final: 0.0,
             mass_drift_relative: 0.0,
-            max_abs_mean_p: 0.0,
             max_abs_mean_vx: 0.0,
             max_abs_mean_vy: 0.0,
             vmax_peak: 0.0,
@@ -220,11 +209,10 @@ impl Metrics {
     }
 }
 
-/// `κ_est ≈ (2·iter / ln(2/tol))²` — CG convergence is roughly
-/// geometric with rate `(√κ - 1)/(√κ + 1)`, giving the above relation
-/// at convergence. Returns `f64::INFINITY` when `iter == 0` (solver
-/// converged on the initial guess) so the estimate degrades
-/// gracefully rather than producing a misleading low κ.
+/// `κ ≈ (2·iter / ln(2/tol))²` — CG converges geometrically at rate
+/// `(√κ - 1)/(√κ + 1)`; matching against the residual reduction
+/// `tol/2` gives the formula above. Returns `NaN` for degenerate
+/// inputs rather than a misleading small κ.
 pub fn condition_number_estimate(iterations: usize, tol: f64) -> f64 {
     if iterations == 0 || tol <= 0.0 || tol >= 1.0 {
         return f64::NAN;

@@ -18,7 +18,7 @@ use ymir_core::tectonics_v2::diagnostics::{
     run_baseline, write_markdown_report, BaselineConfig,
 };
 use ymir_core::tectonics_v2::scales::Scales;
-use ymir_core::tectonics_v2::stokes::StokesConfig;
+use ymir_core::tectonics_v2::stokes::SheetConfig;
 
 fn parse_args() -> Result<(u64, Vec<(usize, usize)>, usize, PathBuf), String> {
     let mut seed: u64 = 42;
@@ -102,7 +102,7 @@ fn main() -> ExitCode {
     let mut configs = Vec::new();
     let mut metrics = Vec::new();
 
-    let stokes_cfg = StokesConfig::default();
+    let sheet_cfg = SheetConfig::default();
 
     // Heightmaps directory sits next to the report.
     let heightmap_dir = output
@@ -121,16 +121,16 @@ fn main() -> ExitCode {
             steps,
             cfl_factor: 0.3,
             forcing_amplitude: 0.1,
-            stokes: stokes_cfg,
+            sheet: sheet_cfg,
             heightmap_fractions: vec![0.0, 0.5, 1.0],
             output_dir: heightmap_dir.clone(),
         };
         let result = run_baseline(&cfg);
         println!(
-            "  wallclock: {:.3}s; outer iters mean/max: {:.1}/{}; mass drift: {:.3e}",
+            "  wallclock: {:.3}s; CG iters mean/max: {:.1}/{}; mass drift: {:.3e}",
             result.metrics.wallclock_total.as_secs_f64(),
-            result.metrics.outer_iter_mean,
-            result.metrics.outer_iter_max,
+            result.metrics.cg_iter_mean,
+            result.metrics.cg_iter_max,
             result.metrics.mass_drift_relative,
         );
         configs.push(result.config_dump);
