@@ -8,7 +8,7 @@ a nondimensional core. It is the implementation companion to
 
 | Step | Description | Status | PR | Report |
 |---|---|---|---|---|
-| 0 | Nondim Stokes core + S advection | not started | — | — |
+| 0 | Nondim Stokes core + S advection (incl. null-space precond) | shipped | #79 | `docs/reports/step0_report.md` |
 | 1 | Power-law rheology | blocked by 0 | — | — |
 | 2 | GPE spreading | blocked by 1 | — | — |
 | 3 | Plastic yielding | blocked by 2 | — | — |
@@ -22,9 +22,9 @@ a nondimensional core. It is the implementation companion to
 
 | Transverse | Description | Status |
 |---|---|---|
-| T1 | Null-space-aware preconditioner | not started |
-| T2 | Diagnostics framework extension | introduced step 0 |
-| T3 | Stochastic validation harness | not started |
+| ~~T1~~ | ~~Null-space-aware preconditioner~~ | **absorbed into Step 0** — shipped as part of `stokes/precond.rs` + `stokes/nullspace.rs` with verification in `tests/v2_nullspace.rs` |
+| T2 | Diagnostics framework extension | MVP introduced step 0; extended each subsequent step |
+| T3 | Stochastic validation harness | not started (introduced after step 4) |
 
 ## Conventions
 
