@@ -40,9 +40,10 @@ impl SolverStats {
 /// Abstraction over iterative linear solvers.
 ///
 /// The closures take slices rather than a dedicated operator type to
-/// keep the trait object-safe and to let callers assemble ad-hoc
-/// composite operators (e.g. the pressure Schur complement) without
-/// introducing extra trait-implementor types.
+/// keep the trait object-safe and to let callers assemble composite
+/// operators without introducing extra trait-implementor types. This
+/// is the integration point for BiCGSTAB at Step 3 (non-symmetric
+/// system introduced by plastic yielding).
 pub trait LinearSolver {
     fn solve(
         &self,

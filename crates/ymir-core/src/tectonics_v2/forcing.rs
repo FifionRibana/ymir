@@ -31,43 +31,40 @@ impl BodyForce for ZeroForce {
     fn fy(&self, _x: f64, _y: f64, _s: f64) -> f64 { 0.0 }
 }
 
-/// Sinusoidal placeholder forcing driving a Kolmogorov-like shear
-/// flow: `f̃ = ε · sin(2π ỹ / L̃y) · ê_x`.
+/// Sinusoidal placeholder forcing per Step 0 spec:
+/// `f̃ = ε · sin(2π x̃ / L̃x) · ê_x`.
 ///
-/// **Deviation from prompt literal.** The Step 0 spec names
-/// `ε·sin(2πx̃/L̃x)·ê_x`, but that force is a pure gradient
-/// (`∇(-ε·cos(2πx̃/L̃x)/(2π/L̃x))`), so under incompressible Stokes
-/// the momentum balance is satisfied with `ṽ = 0` and `p̃` absorbing
-/// the force. The smoke test would then be trivial and the advection
-/// coupling would not be exercised. The y-periodic variant is a
-/// minimal, rotational force (`∇×f ≠ 0`) that still produces a simple
-/// analytic flow and the prompt-specified "~3% S displacement over
-/// 300 steps" behaviour.
+/// In the thin-sheet formulation this force **produces flow** — there
+/// is no pressure unknown available to balance it as a gradient, so
+/// the momentum operator must deform the velocity field to cancel it.
+/// The analytic steady response with constant η is
+/// `ṽx = ε · sin(2π x̃ / L̃x) / (8 π² η / L̃x²)`, `ṽy = 0`, giving
+/// `peak|ṽ| ≈ 1.27·10⁻³` at `ε = 0.1`, `L̃x = 1`, `η = 1`.
 ///
-/// Analytic reference: with η = 1 and domain `[0, L̃y]`, the steady
-/// solution is `ṽx = ε · sin(2π ỹ / L̃y) / (2π/L̃y)²`, `ṽy = 0`,
-/// `p̃ = 0`. Peak `|ṽ|` with `ε = 0.1`, `L̃y = 1` is `≈ 2.5e-3`.
+/// (Note: in an incompressible-Stokes reading, the same force is a
+/// pure gradient and produces `ṽ = 0` — one of the reasons the
+/// architecture distinction matters.)
 #[derive(Clone, Copy, Debug)]
 pub struct SinusoidalForce {
     pub amplitude: f64,
-    pub ly: f64,
+    pub lx: f64,
 }
 
 impl SinusoidalForce {
-    pub fn new(amplitude: f64, ly: f64) -> Self {
-        Self { amplitude, ly }
+    pub fn new(amplitude: f64, lx: f64) -> Self {
+        Self { amplitude, lx }
     }
 }
 
 impl Default for SinusoidalForce {
     fn default() -> Self {
-        Self { amplitude: 0.1, ly: 1.0 }
+        Self { amplitude: 0.1, lx: 1.0 }
     }
 }
 
 impl BodyForce for SinusoidalForce {
-    fn fx(&self, _x: f64, y: f64, _s: f64) -> f64 {
-        self.amplitude * (2.0 * PI * y / self.ly).sin()
+    fn fx(&self, x: f64, _y: f64, _s: f64) -> f64 {
+        self.amplitude * (2.0 * PI * x / self.lx).sin()
     }
     fn fy(&self, _x: f64, _y: f64, _s: f64) -> f64 {
         0.0

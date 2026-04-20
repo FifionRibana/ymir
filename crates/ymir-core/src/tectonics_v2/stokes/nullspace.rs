@@ -1,24 +1,18 @@
-//! Null-space projection for the periodic Stokes operator.
+//! Null-space projection for the periodic thin-sheet momentum operator.
 //!
-//! On a fully periodic torus the continuous Stokes system has:
-//! - a 1D pressure null space (the constant mode) — any p + c is a
-//!   solution because only ∇p enters the momentum balance;
-//! - a 2D velocity null space (constant per component: (a, 0) and
-//!   (0, b)) — net rigid-body translation of the entire torus, which
-//!   the incompressibility constraint does not forbid since ∇·const = 0.
+//! On a fully periodic torus the discrete operator `A = -∇·(2η ε̇(·))`
+//! has a **2-D null space**: constant velocity per component
+//! (`(a, 0)` and `(0, b)`) — rigid-body translation of the entire
+//! torus, which the momentum balance does not penalise.
 //!
-//! Every preconditioner application must kill these modes BEFORE and
-//! AFTER applying M⁻¹. Killing them only at the end of each outer
-//! Krylov step is insufficient because intermediate search directions
-//! contaminated by the null space degrade orthogonality.
+//! There is **no pressure null space**: pressure is not an unknown of
+//! the thin-sheet formulation.
 //!
-//! These projectors are used by [`super::precond`] to wrap preconditioner
-//! applications, and by [`super::solver`] to clean the final iterates.
+//! Every preconditioner application must kill the velocity null-space
+//! modes BEFORE and AFTER `M⁻¹`. Two array-wide means per application
+//! is O(N) and negligible against the stencil cost.
 
 /// Subtract the arithmetic mean of `data` from every element.
-///
-/// For periodic pressure/cell-centered fields, this is the orthogonal
-/// projector onto the zero-mean subspace.
 pub fn subtract_mean(data: &mut [f64]) {
     if data.is_empty() {
         return;
@@ -38,15 +32,9 @@ pub fn mean(data: &[f64]) -> f64 {
     }
 }
 
-/// Project a pressure iterate onto the zero-mean subspace.
-pub fn project_pressure(p: &mut [f64]) {
-    subtract_mean(p);
-}
-
-/// Project a velocity pair (vx, vy) onto the zero-mean-per-component subspace.
-///
-/// The two components are orthogonal in the periodic null space
-/// decomposition, so they project independently.
+/// Project a velocity pair (vx, vy) onto the zero-mean-per-component
+/// subspace. The two components are orthogonal in the null-space
+/// decomposition and project independently.
 pub fn project_velocity(vx: &mut [f64], vy: &mut [f64]) {
     subtract_mean(vx);
     subtract_mean(vy);

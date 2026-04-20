@@ -1,20 +1,39 @@
-//! Discrete Stokes operator on a MAC (staggered) grid with periodic BCs.
+//! Discrete thin-viscous-sheet momentum operator on a MAC (staggered)
+//! grid with periodic BCs.
 //!
-//! Layout (same convention as the legacy `tectonics/solver/grid.rs`):
-//! - p, η, S at cell centers (i, j) — physical position `((i+0.5)dx, (j+0.5)dy)`.
-//! - vx at left vertical face of cell (i, j) — position `(i dx, (j+0.5)dy)`.
-//! - vy at bottom horizontal face of cell (i, j) — position `((i+0.5)dx, j dy)`.
-//! - ε̇_xy and σ_xy live at corners (i·dx, j·dy); η there is computed by
-//!   **harmonic averaging** of the four surrounding cell centers, so
-//!   Step 1's variable-η rheology is a data change, not an assembly change.
+//! Following England & McKenzie (1982): the depth-integrated
+//! horizontal momentum balance reads
+//! ```text
+//!   -∇·(2 η ε̇(v)) = f_ext
+//! ```
+//! where `v` is the 2-D horizontal velocity and `f_ext` gathers GPE,
+//! plate traction, slab pull, and basal drag. **The 2-D velocity is
+//! NOT divergence-free**: `∇·v ≠ 0` is physically meaningful — it is
+//! the rate at which the column thickens (`∂_t S + ∇·(Sv) = 0`).
+//! There is no incompressibility constraint and no pressure unknown.
 //!
-//! Indexing uses [`PeriodicIndex`] for wraparound. All flat arrays are
-//! row-major with stride `nx`: `arr[j * nx + i]`.
+//! The discrete operator is
+//! ```text
+//!   A v ≡ -∇·(2 η ε̇(v))
+//! ```
+//! expanded per component. For constant η this reduces to
+//! `-η (∇² v + ∇(∇·v))`, i.e. Laplacian + grad-div. The grad-div term
+//! is real and must be in the discretization — a "pure Laplacian"
+//! approximation would drop the physics that couples `v_x` and `v_y`
+//! through normal strain.
+//!
+//! Layout (same as legacy `tectonics/solver/grid.rs`):
+//! - `η`, `S` at cell centres `((i+0.5)dx, (j+0.5)dy)`.
+//! - `vx` at left vertical face of cell (i, j) — `(i dx, (j+0.5)dy)`.
+//! - `vy` at bottom horizontal face of cell (i, j) — `((i+0.5)dx, j dy)`.
+//! - `ε̇_xy` and `σ_xy` at nodal corners `(i dx, j dy)`, with η there
+//!   computed by **harmonic 4-point averaging** of the four
+//!   surrounding cell centres.
 
 use super::super::field::{Field2D, PeriodicIndex};
 
-/// Geometry and viscosity field needed by the momentum and divergence
-/// operators. Borrows η non-mutably — callers update η out of band.
+/// Geometry needed by the momentum operator. Borrows nothing; η is
+/// passed as an argument to the apply/diagonal routines.
 pub struct StokesGrid {
     pub nx: usize,
     pub ny: usize,
@@ -42,11 +61,6 @@ impl StokesGrid {
     }
 }
 
-/// Harmonic average of four positive quantities.
-///
-/// Reduces to the arithmetic value when all four inputs are equal
-/// (constant-η case at Step 0). Guards against division by zero if any
-/// argument is non-positive by falling back to the arithmetic mean.
 #[inline]
 fn harmonic4(a: f64, b: f64, c: f64, d: f64) -> f64 {
     if a > 0.0 && b > 0.0 && c > 0.0 && d > 0.0 {
@@ -56,18 +70,19 @@ fn harmonic4(a: f64, b: f64, c: f64, d: f64) -> f64 {
     }
 }
 
-/// η at the four corners surrounding cell face/center, harmonic-averaged.
 #[inline]
 fn eta_corner(eta: &Field2D, im: usize, i: usize, jm: usize, j: usize) -> f64 {
     harmonic4(eta.get(im, jm), eta.get(i, jm), eta.get(im, j), eta.get(i, j))
 }
 
-/// Apply the momentum operator `A v = -∇·(2η ε̇(v))` on the MAC grid.
+/// Apply `A v = -∇·(2 η ε̇(v))` on the MAC grid.
 ///
-/// Inputs are flat arrays of length `nx*ny` each; outputs are the same
-/// shape. Uses `(grid.dx, grid.dy)` spacing and the supplied η field.
-/// The sign convention makes A symmetric positive semi-definite (SPD
-/// modulo the 2-D null space of constant velocities per component).
+/// The discretization assembles normal stresses `σ_αα = 2η ∂_α v_α`
+/// at cell centres and shear stresses `σ_xy = η (∂_y v_x + ∂_x v_y)`
+/// at corners (η harmonic-averaged over the four surrounding cells).
+/// The stress divergence is then differenced into face-centred
+/// outputs. The sign convention makes `A` SPD on the zero-mean
+/// velocity subspace.
 pub fn apply_momentum(
     grid: &StokesGrid,
     eta: &Field2D,
@@ -94,8 +109,6 @@ pub fn apply_momentum(
             let lin = |ii: usize, jj: usize| jj * nx + ii;
 
             // ---------- x-momentum at vx(i, j) ----------
-            //   A_x v = -∂x(2 η ∂x vx) - ∂y(η (∂y vx + ∂x vy))
-            // Normal-stress flux at cell centers (i, j) and (im, j):
             let eta_cc_right = eta.get(i, j);
             let eta_cc_left = eta.get(im, j);
             let dvx_dx_right = (vx[lin(ip, j)] - vx[lin(i, j)]) * inv_dx;
@@ -104,7 +117,6 @@ pub fn apply_momentum(
             let sigma_xx_left = 2.0 * eta_cc_left * dvx_dx_left;
             let d_sigma_xx_dx = (sigma_xx_right - sigma_xx_left) * inv_dx;
 
-            // Shear-stress flux at corners (i, j) and (i, jp):
             let eta_corner_top = eta_corner(eta, im, i, j, jp);
             let eta_corner_bot = eta_corner(eta, im, i, jm, j);
             let dvx_dy_top = (vx[lin(i, jp)] - vx[lin(i, j)]) * inv_dy;
@@ -118,8 +130,6 @@ pub fn apply_momentum(
             out_vx[lin(i, j)] = -(d_sigma_xx_dx + d_sigma_xy_dy);
 
             // ---------- y-momentum at vy(i, j) ----------
-            //   A_y v = -∂x(η (∂y vx + ∂x vy)) - ∂y(2 η ∂y vy)
-            // Normal-stress flux at cell centers (i, j) and (i, jm):
             let eta_cc_top = eta.get(i, j);
             let eta_cc_bot = eta.get(i, jm);
             let dvy_dy_top = (vy[lin(i, jp)] - vy[lin(i, j)]) * inv_dy;
@@ -128,7 +138,6 @@ pub fn apply_momentum(
             let sigma_yy_bot = 2.0 * eta_cc_bot * dvy_dy_bot;
             let d_sigma_yy_dy = (sigma_yy_top - sigma_yy_bot) * inv_dy;
 
-            // Shear-stress flux at corners (ip, j) and (i, j):
             let eta_corner_right = eta_corner(eta, i, ip, jm, j);
             let eta_corner_left = eta_corner(eta, im, i, jm, j);
             let dvx_dy_right = (vx[lin(ip, j)] - vx[lin(ip, jm)]) * inv_dy;
@@ -144,14 +153,11 @@ pub fn apply_momentum(
     }
 }
 
-/// Diagonal of the momentum operator for Jacobi preconditioning.
+/// Diagonal of `A` at each velocity DOF, for Jacobi preconditioning.
 ///
-/// For the vx(i, j) DOF the diagonal coefficient reads
-/// `2(η[i-1,j]+η[i,j])/dx² + (η_c[i,j]+η_c[i,jp])/dy²` (and symmetrically
-/// for vy), where `η_c` are harmonic-corner viscosities. Reduces to
-/// `4η/dx² + 2η/dy²` (= 6 for η=dx=dy=1) when η is constant — the
-/// expected value for the discrete variable-coefficient Stokes momentum
-/// operator on this MAC layout.
+/// For η constant and dx = dy = 1 this returns 6 at every DOF — the
+/// expected diagonal of the discrete thin-sheet momentum operator
+/// (`4 η/dx² + 2 η/dy²` for `vx`, symmetric for `vy`).
 pub fn momentum_diagonal(
     grid: &StokesGrid,
     eta: &Field2D,
@@ -190,58 +196,6 @@ pub fn momentum_diagonal(
     }
 }
 
-/// Discrete divergence `(B v)[i,j] = (vx[ip,j] - vx[i,j])/dx + (vy[i,jp] - vy[i,j])/dy`.
-pub fn apply_divergence(
-    grid: &StokesGrid,
-    vx: &[f64],
-    vy: &[f64],
-    out_p: &mut [f64],
-) {
-    let nx = grid.nx;
-    let ny = grid.ny;
-    let inv_dx = 1.0 / grid.dx;
-    let inv_dy = 1.0 / grid.dy;
-
-    for j in 0..ny {
-        let jp = grid.idx_y.next(j);
-        for i in 0..nx {
-            let ip = grid.idx_x.next(i);
-            let lin = |ii: usize, jj: usize| jj * nx + ii;
-            out_p[lin(i, j)] = (vx[lin(ip, j)] - vx[lin(i, j)]) * inv_dx
-                + (vy[lin(i, jp)] - vy[lin(i, j)]) * inv_dy;
-        }
-    }
-}
-
-/// Discrete adjoint of `apply_divergence`: `B^T p` lives at velocity faces.
-///
-/// Derived from `⟨B v, p⟩ = ⟨v, B^T p⟩` under the dot product that
-/// weights every DOF uniformly (no volume factors, per standard MAC
-/// Stokes convention). The adjoint acts as a discrete negative gradient.
-pub fn apply_divergence_transpose(
-    grid: &StokesGrid,
-    p: &[f64],
-    out_vx: &mut [f64],
-    out_vy: &mut [f64],
-) {
-    let nx = grid.nx;
-    let ny = grid.ny;
-    let inv_dx = 1.0 / grid.dx;
-    let inv_dy = 1.0 / grid.dy;
-
-    for j in 0..ny {
-        let jm = grid.idx_y.prev(j);
-        for i in 0..nx {
-            let im = grid.idx_x.prev(i);
-            let lin = |ii: usize, jj: usize| jj * nx + ii;
-            // (B^T p) at vx(i,j) = (p[im,j] - p[i,j]) / dx
-            out_vx[lin(i, j)] = (p[lin(im, j)] - p[lin(i, j)]) * inv_dx;
-            // (B^T p) at vy(i,j) = (p[i,jm] - p[i,j]) / dy
-            out_vy[lin(i, j)] = (p[lin(i, jm)] - p[lin(i, j)]) * inv_dy;
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,7 +226,6 @@ mod tests {
 
     #[test]
     fn momentum_diagonal_for_constant_eta_is_6() {
-        // With η = dx = dy = 1, the diagonal of A at every velocity DOF is 6.
         let grid = StokesGrid::new(8, 8, 1.0, 1.0);
         let eta = Field2D::filled(8, 8, 1.0);
         let mut dvx = vec![0.0; 64];
@@ -286,11 +239,11 @@ mod tests {
 
     #[test]
     fn momentum_is_symmetric() {
-        // A symmetric ⇒ ⟨A u, w⟩ = ⟨u, A w⟩ for all u, w.
+        // A symmetric ⇒ ⟨A u, w⟩ = ⟨u, A w⟩ for all u, w. This is the
+        // property that justifies CG on the thin-sheet operator.
         let nx = 8;
         let ny = 8;
         let grid = StokesGrid::new(nx, ny, 0.13, 0.17);
-        // Non-uniform but positive η to exercise harmonic averaging.
         let mut eta = Field2D::new(nx, ny);
         for j in 0..ny {
             for i in 0..nx {
@@ -321,41 +274,30 @@ mod tests {
         assert!(rel < 1e-12, "symmetry broken: |lhs-rhs|/max = {}", rel);
     }
 
+    /// A non-divergence-free test input must produce a non-zero output
+    /// through the grad-div term. This catches the common bug of
+    /// discretizing only the Laplacian and dropping the coupling
+    /// introduced by `∇(∇·v)`.
     #[test]
-    fn divergence_transpose_is_adjoint_of_divergence() {
-        // ⟨B v, p⟩ = ⟨v, B^T p⟩ for random v and p.
-        let nx = 7;
-        let ny = 5;
-        let grid = StokesGrid::new(nx, ny, 0.19, 0.23);
-        let n2 = nx * ny;
-        let mut vx = vec![0.0; n2];
-        let mut vy = vec![0.0; n2];
-        let mut p = vec![0.0; n2];
-        for k in 0..n2 {
-            vx[k] = ((k as f64 * 1.1).sin()) * 1.3;
-            vy[k] = ((k as f64 * 1.7).cos()) * 0.9;
-            p[k] = ((k as f64 * 2.1).sin()) * 1.7;
+    fn momentum_includes_grad_div_coupling() {
+        let nx = 8;
+        let ny = 8;
+        let grid = StokesGrid::new(nx, ny, 1.0, 1.0);
+        let eta = Field2D::filled(nx, ny, 1.0);
+        // vx = +1 on left half, -1 on right half — cell-wise
+        // deliberately divergent flow. The normal-strain contribution
+        // drives the nonzero diagonal response.
+        let mut vx = vec![0.0; nx * ny];
+        let vy = vec![0.0; nx * ny];
+        for j in 0..ny {
+            for i in 0..nx {
+                vx[j * nx + i] = if i < nx / 2 { 1.0 } else { -1.0 };
+            }
         }
-        let mut div_v = vec![0.0; n2];
-        apply_divergence(&grid, &vx, &vy, &mut div_v);
-        let mut bt_x = vec![0.0; n2];
-        let mut bt_y = vec![0.0; n2];
-        apply_divergence_transpose(&grid, &p, &mut bt_x, &mut bt_y);
-        let lhs = dot(&div_v, &p);
-        let rhs = dot(&vx, &bt_x) + dot(&vy, &bt_y);
-        let rel = (lhs - rhs).abs() / lhs.abs().max(rhs.abs()).max(1.0);
-        assert!(rel < 1e-12, "B^T not adjoint of B: rel = {}", rel);
-    }
-
-    #[test]
-    fn divergence_of_constant_is_zero() {
-        let grid = StokesGrid::new(6, 6, 0.25, 0.25);
-        let vx = vec![3.14; 36];
-        let vy = vec![-2.71; 36];
-        let mut d = vec![9.9; 36];
-        apply_divergence(&grid, &vx, &vy, &mut d);
-        for v in d {
-            assert!(v.abs() < 1e-14);
-        }
+        let mut out_vx = vec![0.0; nx * ny];
+        let mut out_vy = vec![0.0; nx * ny];
+        apply_momentum(&grid, &eta, &vx, &vy, &mut out_vx, &mut out_vy);
+        let peak = out_vx.iter().fold(0.0_f64, |a, &v| a.max(v.abs()));
+        assert!(peak > 0.1, "grad-div coupling missing: peak={}", peak);
     }
 }
