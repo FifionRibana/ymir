@@ -9,6 +9,7 @@
 use std::io::Write;
 use std::path::Path;
 
+use super::ar_sweep::ArSweepResults;
 use super::comparison::{render_grid_comparison, StepReference};
 use super::metrics::{Metrics, SolverConfigDump};
 use super::mms_bench::MmsResults;
@@ -32,6 +33,8 @@ pub struct ReportInputs<'a> {
     pub previous: Option<&'a StepReference>,
     pub suspect_justifications: &'a [String],
     pub mms: Option<&'a MmsResults>,
+    /// Ar sweep (physics report only).
+    pub ar_sweep: Option<&'a ArSweepResults>,
 }
 
 pub fn write_markdown_report(
@@ -72,6 +75,15 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
 
     if let Some(mms) = inputs.mms {
         out.push_str(&super::mms_bench::render_markdown(mms));
+    }
+
+    if matches!(inputs.kind, ReportKind::Step2Physics) {
+        if let Some(sweep) = inputs.ar_sweep {
+            out.push_str(&super::ar_sweep::render_markdown(
+                sweep,
+                inputs.scales.argand_number(),
+            ));
+        }
     }
 
     if matches!(inputs.kind, ReportKind::Step2Regression) {
@@ -343,6 +355,7 @@ mod tests {
             previous: None,
             suspect_justifications: &[String::new()],
             mms: None,
+            ar_sweep: None,
         });
         assert!(s.contains("GPE spreading"));
         assert!(s.contains("Ar (Argand)"));
@@ -361,6 +374,7 @@ mod tests {
             previous: None,
             suspect_justifications: &[String::new()],
             mms: None,
+            ar_sweep: None,
         });
         assert!(s.contains("Sinusoidal forcing"));
         assert!(s.contains("Setup parity with Step 1"));

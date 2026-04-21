@@ -19,6 +19,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use ymir_core::tectonics_v2::diagnostics::ar_sweep::{self, ArSweepResults};
 use ymir_core::tectonics_v2::diagnostics::comparison::{parse_step_report, StepReference};
 use ymir_core::tectonics_v2::diagnostics::harness::{
     build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
@@ -136,6 +137,7 @@ fn run_scenario(
     scales: &Scales,
     previous: Option<&StepReference>,
     mms: &mms_bench::MmsResults,
+    ar_sweep_results: Option<&ArSweepResults>,
 ) -> Result<(), String> {
     let heightmap_subdir = args.output_dir.join(match kind {
         ForceKind::Gpe => "step2_physics_heightmaps",
@@ -150,6 +152,13 @@ fn run_scenario(
         kind.label(),
         report_file,
     );
+
+    // Physics: amplified perturbation so GPE response is visible at
+    // Ar = 0.1. Regression: 0.02 to preserve the Step-1 mirror.
+    let s_amp = match kind {
+        ForceKind::Gpe => 0.2,
+        ForceKind::Sinusoidal => 0.02,
+    };
 
     for (nx, ny) in &args.grids {
         let domain_lx = 1.0;
@@ -172,6 +181,7 @@ fn run_scenario(
             force,
             force_kind: kind,
             sinusoidal_amplitude: args.sinusoidal_amplitude,
+            s_perturbation_amplitude: s_amp,
         };
         println!("-- running {}×{} for {} steps --", nx, ny, args.steps);
         let result = run_baseline(&base);
@@ -207,6 +217,7 @@ fn run_scenario(
         previous,
         suspect_justifications: &justifications,
         mms: Some(mms),
+        ar_sweep: ar_sweep_results,
     };
     write_markdown_report(&output, &inputs)
         .map_err(|e| format!("failed to write report {:?}: {}", output, e))?;
@@ -253,10 +264,28 @@ fn main() -> ExitCode {
     let run_gpe = matches!(args.forcing, ForcingSelection::Gpe | ForcingSelection::Both);
     let run_sin = matches!(args.forcing, ForcingSelection::Sinusoidal | ForcingSelection::Both);
 
+    let ar_sweep_res = if run_gpe {
+        println!("-- running Ar sweep (64²·{} steps × 5 points) --", args.steps);
+        let ar_values = [0.1_f64, 0.5, 1.0, 2.0, 5.0];
+        let res = ar_sweep::run_ar_sweep(
+            args.seed, args.steps, &args.preset, 0.2, &ar_values,
+        );
+        for p in &res.points {
+            println!(
+                "  Ar={:.2}: Var ratio = {:.3}, peak|v| = {:.3e}, wallclock {:.3}s",
+                p.ar, p.var_ratio, p.peak_v, p.wallclock_s,
+            );
+        }
+        Some(res)
+    } else {
+        None
+    };
+
     if run_gpe {
         if let Err(e) = run_scenario(
             &args, ForceKind::Gpe, ReportKind::Step2Physics,
             "step2_physics_report.md", &scales, previous.as_ref(), &mms,
+            ar_sweep_res.as_ref(),
         ) {
             eprintln!("physics run failed: {}", e);
             return ExitCode::from(1);
@@ -266,6 +295,7 @@ fn main() -> ExitCode {
         if let Err(e) = run_scenario(
             &args, ForceKind::Sinusoidal, ReportKind::Step2Regression,
             "step2_regression_report.md", &scales, previous.as_ref(), &mms,
+            None,
         ) {
             eprintln!("regression run failed: {}", e);
             return ExitCode::from(1);
