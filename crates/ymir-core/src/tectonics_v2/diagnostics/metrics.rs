@@ -172,6 +172,16 @@ pub struct Metrics {
 
     // ---- Heightmap snapshots (Step 0 active) ----
     pub heightmap_paths: Vec<String>,
+    /// Step-2 addition: per-snapshot metadata (min, max, mean,
+    /// colorbar path). Parallel to `heightmap_paths`.
+    pub heightmap_metas: Vec<super::heightmap::HeightmapMetadata>,
+
+    // ---- Physical series (Step 2) ----
+    /// Variance of S at every macro step (`steps + 1` entries,
+    /// including the initial state before the first solve).
+    pub variance_series: Vec<f64>,
+    /// Max of `|∇S|` at every macro step (same layout).
+    pub max_grad_s_series: Vec<f64>,
 
     // ---- Step 1 active: Newton aggregate. None at Step 0 (no nonlinear solve). ----
     pub newton: Option<super::newton_metrics::NewtonAggregate>,
@@ -227,6 +237,9 @@ impl Metrics {
             max_abs_mean_vy: 0.0,
             vmax_peak: 0.0,
             heightmap_paths: Vec::new(),
+            heightmap_metas: Vec::new(),
+            variance_series: Vec::new(),
+            max_grad_s_series: Vec::new(),
             newton: None,
             s_eq: None,
             boundary_type_diversity: None,

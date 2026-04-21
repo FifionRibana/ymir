@@ -32,6 +32,8 @@ pub struct MmsResults {
     /// Nonlinear Newton convergence test on a target-generated RHS
     /// at `n = 3` (single grid; reports the iteration trace tail).
     pub newton_tail: NewtonTail,
+    /// Step-2 addition: GPE staggered-flux convergence on smooth S.
+    pub gpe: MmsSeries,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -55,14 +57,73 @@ pub struct NewtonTail {
     pub converged: bool,
 }
 
-/// Run both MMS series and the Newton-tail check. All computations
+/// Run all MMS series and the Newton-tail check. All computations
 /// are small (128² max) and deterministic.
 pub fn run_all() -> MmsResults {
     MmsResults {
         const_eta: mms_const_eta(&[16, 32, 64, 128]),
         variable_eta: mms_variable_eta(&[32, 64, 128]),
         newton_tail: newton_tail_at_n3(32),
+        gpe: mms_gpe(&[32, 64, 128]),
     }
+}
+
+fn mms_gpe(sizes: &[usize]) -> MmsSeries {
+    let mut series = MmsSeries::default();
+    series.sizes = sizes.to_vec();
+    for &n in sizes {
+        series.errors.push(gpe_smooth_error(n));
+    }
+    for w in series.errors.windows(2) {
+        series.slopes.push((w[0] / w[1]).log2());
+    }
+    series
+}
+
+fn gpe_smooth_error(n: usize) -> f64 {
+    use std::f64::consts::TAU;
+    use crate::tectonics_v2::field::PeriodicIndex;
+    use crate::tectonics_v2::forcing::{BodyForce, GpeForce, SimulationState, VectorField};
+
+    let nx = n;
+    let ny = n;
+    let dx = 1.0 / nx as f64;
+    let idx_x = PeriodicIndex::new(nx);
+    let idx_y = PeriodicIndex::new(ny);
+    let ar = 2.0;
+    let alpha = 0.1;
+    let k = TAU;
+
+    let mut s = Field2D::new(nx, ny);
+    for j in 0..ny {
+        for i in 0..nx {
+            let x = (i as f64 + 0.5) * dx;
+            let y = (j as f64 + 0.5) * dx;
+            s.set(i, j, 1.0 + alpha * (k * x).sin() * (k * y).cos());
+        }
+    }
+    let mut fx = Field2D::new(nx, ny);
+    let mut fy = Field2D::new(nx, ny);
+    let st = SimulationState { nx, ny, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+    GpeForce::with_ar(ar).accumulate(
+        &st,
+        &mut VectorField { fx: &mut fx, fy: &mut fy },
+    );
+
+    let mut sq = 0.0_f64;
+    let mut count = 0_usize;
+    for j in 0..ny {
+        for i in 0..nx {
+            let xf = i as f64 * dx;
+            let yf = (j as f64 + 0.5) * dx;
+            let s_at = 1.0 + alpha * (k * xf).sin() * (k * yf).cos();
+            let dsdx = alpha * k * (k * xf).cos() * (k * yf).cos();
+            let analytic = -ar * s_at * dsdx;
+            sq += (fx.data()[j * nx + i] - analytic).powi(2);
+            count += 1;
+        }
+    }
+    (sq / count as f64).sqrt()
 }
 
 fn mms_const_eta(sizes: &[usize]) -> MmsSeries {
@@ -91,14 +152,11 @@ fn const_eta_error(n: usize) -> f64 {
     for j in 0..ny {
         for i in 0..nx {
             let xfx = i as f64 * dx;
-            let yfx = (j as f64 + 0.5) * dy;
             fx[j * nx + i] = 8.0 * PI * PI * (2.0 * PI * xfx).sin();
             vx_ex[j * nx + i] = (2.0 * PI * xfx).sin();
-            let xfy = (i as f64 + 0.5) * dx;
             let yfy = j as f64 * dy;
             fy[j * nx + i] = 8.0 * PI * PI * (2.0 * PI * yfy).sin();
             vy_ex[j * nx + i] = (2.0 * PI * yfy).sin();
-            let _ = xfy;
         }
     }
     let mut vx = vec![0.0; nx * ny];
@@ -265,6 +323,26 @@ pub fn render_markdown(results: &MmsResults) -> String {
     s.push_str(&format!(
         "\nFinal slope: `{:.3}` (expected ≥ 1.7).\n\n",
         results.variable_eta.final_slope().unwrap_or(f64::NAN),
+    ));
+
+    s.push_str("### GPE force (staggered `-Ar·∇(½S²)`, smooth S)\n\n");
+    s.push_str("Smooth manufactured `S = 1 + 0.1·sin(2πx)·cos(2πy)` at `Ar = 2`. Validates the GPE discretisation introduced at Step 2 against the analytic `-Ar·S·∇S`.\n\n");
+    s.push_str("| N | v_err RMS | slope to next |\n|---|---|---|\n");
+    for (k, n) in results.gpe.sizes.iter().enumerate() {
+        let slope_str = results
+            .gpe
+            .slopes
+            .get(k)
+            .map(|s| format!("{:.3}", s))
+            .unwrap_or_else(|| "—".into());
+        s.push_str(&format!(
+            "| {} | {:.3e} | {} |\n",
+            n, results.gpe.errors[k], slope_str,
+        ));
+    }
+    s.push_str(&format!(
+        "\nFinal slope: `{:.3}` (expected ≥ 1.7).\n\n",
+        results.gpe.final_slope().unwrap_or(f64::NAN),
     ));
 
     s.push_str("### Nonlinear Newton tail (n = 3)\n\n");
