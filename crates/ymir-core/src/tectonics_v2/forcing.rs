@@ -31,19 +31,36 @@ impl BodyForce for ZeroForce {
     fn fy(&self, _x: f64, _y: f64, _s: f64) -> f64 { 0.0 }
 }
 
-/// Sinusoidal placeholder forcing per Step 0 spec:
-/// `f̃ = ε · sin(2π x̃ / L̃x) · ê_x`.
+/// Sinusoidal placeholder forcing: `f̃ = ε · sin(2π x̃ / L̃x) · ê_x`.
 ///
 /// In the thin-sheet formulation this force **produces flow** — there
 /// is no pressure unknown available to balance it as a gradient, so
 /// the momentum operator must deform the velocity field to cancel it.
-/// The analytic steady response with constant η is
-/// `ṽx = ε · sin(2π x̃ / L̃x) / (8 π² η / L̃x²)`, `ṽy = 0`, giving
-/// `peak|ṽ| ≈ 1.27·10⁻³` at `ε = 0.1`, `L̃x = 1`, `η = 1`.
+///
+/// # Amplitude calibration
+///
+/// Step 0 used `ε = 0.1`, giving `peak|ṽ| ≈ 1.3·10⁻³` and
+/// `peak ε̇_II ≈ 8·10⁻³` — well above the default `ε̇_min = 10⁻³`
+/// in Step 1's rheology, which matters because at Step 1 `ε̇_II` has
+/// to clear that floor to activate the power-law regime. For
+/// Step 1 the rheology-saturated effective viscosity pushes the
+/// linear response down by a factor `η_eff(ε̇≈0) ≈ 100`, so an
+/// equivalent Step-0 amplitude of 0.1 yields `peak|ṽ| ≈ 1.3·10⁻⁵`
+/// and `peak ε̇ ≈ 10⁻⁴` — **below** `ε̇_min`. The floor dominates,
+/// `η_max/η_min → 1`, and the power-law is never exercised.
+///
+/// To keep the placeholder diagnostic at Step 1 (`η_max/η_min` in
+/// the single-digit-to-~30 range, Newton genuinely iterating), we
+/// raise the default amplitude to `ε = 10.0`. That restores the
+/// Step-0-equivalent `ε̇` range once the ~100× viscosity drag from
+/// the floor is applied. The placeholder disappears at Step 2 when
+/// GPE provides the physical driving term; amplitude is a
+/// step-local knob, not a milestone-wide parameter.
 ///
 /// (Note: in an incompressible-Stokes reading, the same force is a
 /// pure gradient and produces `ṽ = 0` — one of the reasons the
-/// architecture distinction matters.)
+/// thin-sheet vs incompressible-Stokes architecture distinction
+/// matters.)
 #[derive(Clone, Copy, Debug)]
 pub struct SinusoidalForce {
     pub amplitude: f64,
@@ -58,7 +75,7 @@ impl SinusoidalForce {
 
 impl Default for SinusoidalForce {
     fn default() -> Self {
-        Self { amplitude: 0.1, lx: 1.0 }
+        Self { amplitude: 10.0, lx: 1.0 }
     }
 }
 

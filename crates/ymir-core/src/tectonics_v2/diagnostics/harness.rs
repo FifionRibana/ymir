@@ -77,7 +77,7 @@ impl BaselineConfig {
             domain_ly: 1.0,
             steps: 300,
             cfl_factor: 0.3,
-            forcing_amplitude: 0.1,
+            forcing_amplitude: 10.0,
             preset: Preset::dynamic_accidented(),
             nonlinear: NonlinearChoice::Newton,
             newton_cfg: NewtonConfig::default(),

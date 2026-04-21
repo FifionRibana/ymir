@@ -25,6 +25,55 @@ Scales:
 - 2π check (not used, informational): 6.283185
 ```
 
+## Discretisation validation (MMS convergence at report time)
+
+The baseline run at Step 1 does not fully exercise power-law behaviour (the placeholder forcing saturates against `ε̇_min`). The following MMS convergence checks are run **every time the report is generated** so the discretisation remains visibly verified.
+
+### Constant η (Picard path, Step 0 operator)
+
+Manufactured solution `v = (sin(2πx), sin(2πy))`, `η = 1`.
+
+| N | v_err RMS | slope to next |
+|---|---|---|
+| 16 | 9.158e-3 | 2.008 |
+| 32 | 2.276e-3 | 2.002 |
+| 64 | 5.682e-4 | 2.001 |
+| 128 | 1.420e-4 | — |
+
+Final slope: `2.001` (expected ≥ 1.7; quadratic target = 2.0).
+
+### Variable η (linear, prescribed η field)
+
+Manufactured solution `v = (sin(2πx)cos(2πy), -cos(2πx)sin(2πy))`, `η(x,y) = 1 + 0.5·sin(2πx)·cos(2πy)`. Validates the η-variable Picard path used under Newton.
+
+| N | v_err RMS | slope to next |
+|---|---|---|
+| 32 | 1.545e-3 | 2.002 |
+| 64 | 3.857e-4 | 2.001 |
+| 128 | 9.640e-5 | — |
+
+Final slope: `2.001` (expected ≥ 1.7).
+
+### Nonlinear Newton tail (n = 3)
+
+Target-generated RHS on 32² grid. Newton outer iterations: `8`.
+
+Residual trail:
+
+```
+  8.695e2
+  6.847e2
+  4.629e2
+  2.082e2
+  4.584e1
+  2.598e0
+  1.338e-2
+  4.310e-5
+  1.759e-7
+```
+
+Tail reductions: `310.4×` then `244.9×` (super-linear target: both ≥ 100×; strict quadratic requires an exact inner solve).
+
 ## Grid 64×64
 
 ### Solver configuration
@@ -48,34 +97,34 @@ Scales:
 | CG max iter | 2000 |
 | CFL factor | 0.30 |
 | grid spacing (nondim) | 0.015625 |
-| body force | SinusoidalForce(ε=0.1) |
+| body force | SinusoidalForce(ε=10) |
 | seed | 42 |
 
 ### Timing
 
-- wallclock total: `0.408 s`
-- wallclock per step (mean): `1.361 ms`
+- wallclock total: `0.501 s`
+- wallclock per step (mean): `1.669 ms`
 - steps: `300`
 
 ### Linear-solver health (CG inside Newton)
 
-- κ(A) estimate from CG iterations (per Newton step): `2.46e0`
-- CG iterations per Newton step — mean: `15.2`, max: `17`
+- κ(A) estimate from CG iterations (per Newton step): `5.79e0`
+- CG iterations per Newton step — mean: `22.8`, max: `38`
 - CG iteration histogram (5 bins):
 
   | bin ≤ | count |
   |---|---|
-  | 4 | 1 |
-  | 7 | 0 |
-  | 10 | 0 |
-  | 13 | 0 |
-  | 17 | 22 |
+  | 8 | 2 |
+  | 15 | 1 |
+  | 23 | 18 |
+  | 30 | 8 |
+  | 38 | 9 |
 
 ### Newton (nonlinear) health
 
 - outcome distribution — Converged: `100.0%`, Stalled: `0.0%`, Diverged: `0.0%`, CappedIters: `0.0%`
-- Newton outer iters per timestep — mean: `0.1`, max: `6`
-- effective η_max/η_min over run — mean: `1.04`, max: `1.04`
+- Newton outer iters per timestep — mean: `0.1`, max: `9`
+- effective η_max/η_min over run — mean: `26.37`, max: `26.37`
 - cap-activation fraction (η_eff > 0.9·η_max) — during ramp: `0.000%`; steady state: `0.000%` (spec target < 1%)
 - continuation ramp: ✅ all 5 sub-solves converged
 
@@ -83,16 +132,16 @@ Scales:
 
 - initial mass: `4.096000000e3`
 - final mass: `4.096000000e3`
-- relative drift: `-8.882e-16`
+- relative drift: `1.665e-15`
 
 ### Null-space health
 
-- max |mean(vx)| across solves: `3.102e-25`
+- max |mean(vx)| across solves: `2.435e-20`
 - max |mean(vy)|: `0.000e0`
 
 ### Velocity magnitude
 
-- peak |v|: `1.306e-5`
+- peak |v|: `2.738e-2`
 
 ### Heightmaps of S
 
@@ -106,10 +155,10 @@ Scales:
 
 | metric | previous | current | ratio / note |
 |---|---|---|---|
-| wallclock (s) | 0.152 | 0.408 | ×2.69 |
-| CG iters / linear solve (mean) | 0.0 (solver-trivial) | 15.2 | N/A — no denominator; report absolute |
-| S mass drift (relative) | 2.331e-15 | -8.882e-16 | gate 1e-10 |
-| max \|mean(vx)\| | 2.647e-23 | 3.102e-25 | bruit machine |
+| wallclock (s) | 0.152 | 0.501 | ×3.29 |
+| CG iters / linear solve (mean) | 0.0 (solver-trivial) | 22.8 | N/A — no denominator; report absolute |
+| S mass drift (relative) | 2.331e-15 | 1.665e-15 | gate 1e-10 |
+| max \|mean(vx)\| | 2.647e-23 | 2.435e-20 | bruit machine |
 | max \|mean(vy)\| | 0.000e0 | 0.000e0 | bruit machine |
 
 ### Dormant metrics (inactive at Step 1)
@@ -145,34 +194,34 @@ Scales:
 | CG max iter | 2000 |
 | CFL factor | 0.30 |
 | grid spacing (nondim) | 0.007812 |
-| body force | SinusoidalForce(ε=0.1) |
+| body force | SinusoidalForce(ε=10) |
 | seed | 42 |
 
 ### Timing
 
-- wallclock total: `1.655 s`
-- wallclock per step (mean): `5.518 ms`
+- wallclock total: `2.442 s`
+- wallclock per step (mean): `8.140 ms`
 - steps: `300`
 
 ### Linear-solver health (CG inside Newton)
 
-- κ(A) estimate from CG iterations (per Newton step): `1.05e1`
-- CG iterations per Newton step — mean: `30.6`, max: `34`
+- κ(A) estimate from CG iterations (per Newton step): `2.52e1`
+- CG iterations per Newton step — mean: `48.2`, max: `77`
 - CG iteration histogram (5 bins):
 
   | bin ≤ | count |
   |---|---|
-  | 7 | 1 |
-  | 14 | 0 |
-  | 20 | 0 |
-  | 27 | 0 |
-  | 34 | 22 |
+  | 16 | 1 |
+  | 31 | 0 |
+  | 46 | 19 |
+  | 61 | 11 |
+  | 77 | 9 |
 
 ### Newton (nonlinear) health
 
 - outcome distribution — Converged: `100.0%`, Stalled: `0.0%`, Diverged: `0.0%`, CappedIters: `0.0%`
-- Newton outer iters per timestep — mean: `0.1`, max: `6`
-- effective η_max/η_min over run — mean: `1.04`, max: `1.04`
+- Newton outer iters per timestep — mean: `0.1`, max: `9`
+- effective η_max/η_min over run — mean: `29.13`, max: `29.13`
 - cap-activation fraction (η_eff > 0.9·η_max) — during ramp: `0.000%`; steady state: `0.000%` (spec target < 1%)
 - continuation ramp: ✅ all 5 sub-solves converged
 
@@ -180,16 +229,16 @@ Scales:
 
 - initial mass: `1.638400000e4`
 - final mass: `1.638400000e4`
-- relative drift: `-1.221e-15`
+- relative drift: `-1.998e-15`
 
 ### Null-space health
 
-- max |mean(vx)| across solves: `8.484e-22`
+- max |mean(vx)| across solves: `1.784e-20`
 - max |mean(vy)|: `0.000e0`
 
 ### Velocity magnitude
 
-- peak |v|: `1.305e-5`
+- peak |v|: `2.736e-2`
 
 ### Heightmaps of S
 
@@ -203,10 +252,10 @@ Scales:
 
 | metric | previous | current | ratio / note |
 |---|---|---|---|
-| wallclock (s) | 0.527 | 1.655 | ×3.14 |
-| CG iters / linear solve (mean) | 0.0 (solver-trivial) | 30.6 | N/A — no denominator; report absolute |
-| S mass drift (relative) | -3.553e-15 | -1.221e-15 | gate 1e-10 |
-| max \|mean(vx)\| | 1.423e-22 | 8.484e-22 | bruit machine |
+| wallclock (s) | 0.527 | 2.442 | ×4.63 |
+| CG iters / linear solve (mean) | 0.0 (solver-trivial) | 48.2 | N/A — no denominator; report absolute |
+| S mass drift (relative) | -3.553e-15 | -1.998e-15 | gate 1e-10 |
+| max \|mean(vx)\| | 1.423e-22 | 1.784e-20 | bruit machine |
 | max \|mean(vy)\| | 0.000e0 | 0.000e0 | bruit machine |
 
 ### Dormant metrics (inactive at Step 1)

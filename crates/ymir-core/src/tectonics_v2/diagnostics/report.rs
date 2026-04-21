@@ -14,6 +14,7 @@ use std::path::Path;
 
 use super::comparison::{render_grid_comparison, StepReference};
 use super::metrics::{Metrics, SolverConfigDump};
+use super::mms_bench::MmsResults;
 use crate::tectonics_v2::scales::Scales;
 
 pub struct ReportInputs<'a> {
@@ -25,6 +26,8 @@ pub struct ReportInputs<'a> {
     /// One justification string per grid entry, for suspect-tier
     /// CG-iter ratios. Pass `""` to leave empty.
     pub suspect_justifications: &'a [String],
+    /// Discretisation validation results (MMS slopes + Newton tail).
+    pub mms: Option<&'a MmsResults>,
 }
 
 pub fn write_markdown_report(
@@ -51,6 +54,10 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
     out.push_str("```\n");
     out.push_str(&inputs.scales.report());
     out.push_str("\n```\n\n");
+
+    if let Some(mms) = inputs.mms {
+        out.push_str(&super::mms_bench::render_markdown(mms));
+    }
 
     for (idx, (cfg, m)) in inputs.configs.iter().zip(inputs.metrics.iter()).enumerate() {
         out.push_str(&format!("## Grid {}×{}\n\n", m.grid_nx, m.grid_ny));

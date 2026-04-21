@@ -14,6 +14,7 @@
 pub mod comparison;
 pub mod harness;
 pub mod metrics;
+pub mod mms_bench;
 pub mod newton_metrics;
 pub mod report;
 
