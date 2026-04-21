@@ -18,6 +18,7 @@ use ymir_core::tectonics_v2::diagnostics::comparison::{parse_step_report, StepRe
 use ymir_core::tectonics_v2::diagnostics::harness::{
     run_baseline, BaselineConfig, NonlinearChoice,
 };
+use ymir_core::tectonics_v2::diagnostics::mms_bench;
 use ymir_core::tectonics_v2::diagnostics::report::{write_markdown_report, ReportInputs};
 use ymir_core::tectonics_v2::presets::Preset;
 use ymir_core::tectonics_v2::scales::Scales;
@@ -176,6 +177,15 @@ fn main() -> ExitCode {
         metrics.push(result.metrics);
     }
 
+    println!("-- running MMS bench for the report --");
+    let mms = mms_bench::run_all();
+    println!(
+        "  const-η final slope: {:.3}; variable-η final slope: {:.3}; Newton tail iters: {}",
+        mms.const_eta.final_slope().unwrap_or(f64::NAN),
+        mms.variable_eta.final_slope().unwrap_or(f64::NAN),
+        mms.newton_tail.outer_iters,
+    );
+
     let justifications: Vec<String> = vec![String::new(); metrics.len()];
     let inputs = ReportInputs {
         seed,
@@ -184,6 +194,7 @@ fn main() -> ExitCode {
         metrics: &metrics,
         previous: previous.as_ref(),
         suspect_justifications: &justifications,
+        mms: Some(&mms),
     };
     if let Err(e) = write_markdown_report(&output, &inputs) {
         eprintln!("failed to write report: {}", e);
