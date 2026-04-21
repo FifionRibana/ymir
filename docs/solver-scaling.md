@@ -108,7 +108,13 @@ p^\* &= \rho^\* g S^\* &&\text{lithostatic pressure scale}
 \end{aligned}
 $$
 
-The definition $\eta^\* = \rho^\* g \tau^\* S^\*$ is chosen so that the Argand number (§4.1) is $O(1)$ by construction. This matches the standard convention of England & McKenzie (1982) and aligns with the accepted order of magnitude for effective lithospheric viscosity at long wavelengths.
+The definition $\eta^\* = \rho^\* g \tau^\* S^\*$ matches the standard convention of England & McKenzie (1982) and aligns with the accepted order of magnitude for effective lithospheric viscosity at long wavelengths. Combined with $v^\* = L^\*/\tau^\*$, it has a direct consequence for the Argand number derived in §4.1:
+
+$$
+\mathrm{Ar} \;=\; \frac{\rho^\* g (S^\*)^2}{\eta^\* v^\*} \;=\; \frac{\rho^\* g (S^\*)^2}{\rho^\* g \tau^\* S^\* \cdot L^\*/\tau^\*} \;=\; \frac{S^\*}{L^\*}.
+$$
+
+In thin-sheet geometry ($S^\* \ll L^\*$), $\mathrm{Ar}$ is therefore **necessarily small** — with the default primary scales, $\mathrm{Ar} = 35/350 = 0.1$. The statement that $\mathrm{Ar}$ is "$O(1)$ by construction" is only true if one adopts non-thin-sheet scales ($S^\* \sim L^\*$), which contradicts the model's own geometric assumption. This document's earlier drafts had an inconsistency between §3.2 (scales that force $\mathrm{Ar} = S^\*/L^\*$) and §5.1 (target range $\mathrm{Ar} \in [1, 5]$); §5.1 has been corrected.
 
 $v^\* \approx 1.2$ cm/yr is deliberately at the low end of observed plate velocities (1–10 cm/yr). The continent is quiescent on average; peaks of $\tilde v \sim 5$–$10$ are allowed in active boundary zones. Choosing $v^\*$ at the low end keeps $\tilde v$ near unity most of the time and preserves the physical meaning of "one" as "typical motion".
 
@@ -199,7 +205,9 @@ $$
 \mathrm{Ar} \;=\; \frac{\rho^\* g (S^\*)^2 / L^\*}{\eta^\* \dot\varepsilon^\*} \;=\; \frac{\rho^\* g (S^\*)^2}{\eta^\* v^\*}.
 $$
 
-With the scales of §3, $\mathrm{Ar} = O(1)$ by construction. $\mathrm{Ar}$ measures the competition between gravitational spreading of thickened crust and viscous resistance. Crucially, $\mathrm{Ar}$ **sets the equilibrium thickness** at which GPE spreading balances convergent input: a higher $\mathrm{Ar}$ means crust spreads more readily and equilibrates at lower $\tilde S_\text{eq}$; a lower $\mathrm{Ar}$ allows thicker equilibrium orogens. The value of $\tilde S_\text{eq}$ emerging from the solver is therefore a direct diagnostic of whether $\mathrm{Ar}$ is correctly calibrated — see §7 Q1.
+**Numerical value under the default scales.** With the derived $\eta^\* = \rho^\* g \tau^\* S^\*$ and $v^\* = L^\*/\tau^\*$ of §3.2, this expression simplifies to $\mathrm{Ar} = S^\*/L^\*$, i.e. the aspect ratio of the thin viscous sheet. For the default primary scales ($S^\* = 35$ km, $L^\* = 350$ km), $\mathrm{Ar} = 0.1$. This is **not $O(1)$ as earlier drafts claimed** — in thin-sheet geometry $\mathrm{Ar}$ is necessarily small. The consequences for the time-scale hierarchy of the full system are discussed in §5.4.
+
+$\mathrm{Ar}$ measures the competition between gravitational spreading of thickened crust and viscous resistance. Crucially, $\mathrm{Ar}$ **sets the equilibrium thickness** at which GPE spreading balances convergent input: a higher $\mathrm{Ar}$ means crust spreads more readily and equilibrates at lower $\tilde S_\text{eq}$; a lower $\mathrm{Ar}$ allows thicker equilibrium orogens. The value of $\tilde S_\text{eq}$ emerging from the solver is therefore a direct diagnostic of whether $\mathrm{Ar}$ is correctly calibrated — see §7 Q1.
 
 The GPE potential nondimensionalizes as $\tilde\Phi = \tilde\rho (1 - \tilde\rho/\tilde\rho_m) \tilde S^2$ (or simply $\tilde S^2$ in the uniform-density limit).
 
@@ -428,7 +436,7 @@ The age field is a universal descriptor that unifies "this zone is a young Alpin
 
 | Symbol | Name | Definition | Target range |
 |---|---|---|---|
-| $\mathrm{Ar}$ | Argand | $\rho^\* g (S^\*)^2 / (\eta^\* v^\*) = S^\*/L^\*$ | **derived** (see note below) |
+| $\mathrm{Ar}$ | Argand | $\rho^\* g (S^\*)^2 / (\eta^\* v^\*) = S^\*/L^\*$ | derived, thin-sheet $\ll 1$ |
 | $\mathrm{Bi}$ | Bingham | $\tau_Y / \sigma^\*$ | $0.05$–$0.5$ |
 | $\mathrm{De}_p$ | Plastic Deborah | $\tau^\* \cdot r_\text{healing}$ | $0.1$–$0.5$ |
 | $\mathrm{Br}$ | Basal drag | $C_b \rho^\* g (S^\*)^2/(\eta^\* v^\*/L^\*)$ | $0.01$–$0.3$ |
@@ -443,46 +451,21 @@ The age field is a universal descriptor that unifies "this zone is a young Alpin
 | $n$ | Power-law exponent | — | $1 \to 3$ via continuation |
 | $T/\tau^\*$ | Simulation duration | user choice | $1$–$15+$ |
 
-**Note on Ar (correction 2026-04-22).** With the derived viscosity scale $\eta^\* = \rho^\* g \tau^\* S^\*$ and velocity scale $v^\* = L^\*/\tau^\*$, substituting into the Argand definition collapses to
-$$
-\mathrm{Ar} \;=\; \frac{\rho^\* g (S^\*)^2}{\eta^\* v^\*} \;=\; \frac{\rho^\* g (S^\*)^2}{\rho^\* g \tau^\* S^\* \cdot L^\*/\tau^\*} \;=\; \frac{S^\*}{L^\*}.
-$$
-For any thin-sheet choice of scales, $S^\* \ll L^\*$ **forces** $\mathrm{Ar} \ll 1$. With the defaults ($S^\* = 35$ km, $L^\* = 350$ km) the honest value is $\mathrm{Ar} = 0.1$. The previous "target range $1$–$5$" in this column was incompatible with the primary-scale choices of §3.1 — a doc-internal inconsistency carried over from pre-derivation notes. The `tectonics_v2/scales.rs` implementation returns the derived value; the doc column above has been updated to reflect that $\mathrm{Ar}$ is **not** a tunable. The earlier "1–5" band described the qualitative regime a hypothetical non-thin-sheet solver could probe, kept for reference in §5.3 presets but no longer claimed as a viable target for this solver.
-
-### 5.1.bis Characteristic time scales and mechanism ordering
-
-At $\tau^\* = 30$ Myr the ordering of mechanism time scales (`τ_mech = τ*/dimensionless_number`) is:
-
-| Mechanism | Nondim number | Target | Characteristic time |
-|---|---|---|---|
-| GPE spreading | $\mathrm{Ar}$ | $0.1$ (derived) | $\tau^\*/\mathrm{Ar} \approx 300$ Myr |
-| Plate convergence / advection | — | $O(1)$ | $\tau^\* \approx 30$ Myr |
-| Yielding (Step 3+) | $\mathrm{Bi}$ | $0.05$–$0.5$ | $\tau^\* \cdot \mathrm{Bi}^{-1} \approx 60$–$600$ Myr (time to accumulate yield) |
-| Plastic healing | $\mathrm{De}_p$ | $0.1$–$0.5$ | $\tau^\*/\mathrm{De}_p \approx 60$–$300$ Myr |
-| Basal drag (Step 4+) | $\mathrm{Br}$ | $0.01$–$0.3$ | $\tau^\*/\mathrm{Br} \approx 100$–$3000$ Myr |
-| Slab pull (Step 7+) | $\mathrm{Sp}$ | $0.5$–$3$ | $\tau^\*/\mathrm{Sp} \approx 10$–$60$ Myr |
-| Mantle forcing (Step 8+) | $\mathrm{Mf}$ | $0.3$–$2.0$ | $\tau^\*/\mathrm{Mf} \approx 15$–$100$ Myr |
-
-Consequences for the narrative dynamics (continents built and broken on a 300-step run $\approx 6\tau^\* = 180$ Myr):
-
-- **GPE alone is too slow** to produce visible dynamics on the default window. The $6\tau^\*$ run covers only $0.6 \times \mathrm{Ar}^{-1}$ characteristic GPE times with $\mathrm{Ar} = 0.1$. Step-2 `step2_physics_report.md` confirms this: without boundary sources or convergence, `Var(S̃)` decreases by a fraction of a percent.
-- The **narrative driver** comes from **advection by plate motion** (already active, $\tau^\* = 30$ Myr) plus **slab pull**, **mantle flow**, and **yielding** added at Steps 3, 7 and 8 respectively. These act on time scales comparable to or faster than $\tau^\*$.
-- **If, after Steps 3–4, the observed dynamics still fail to match the narrative intent** ("continents build and relax within one run"), three honest knobs remain, each with their trade-offs:
-  1. **Shorten $\tau^\*$** (e.g. 10 Myr). Mechanically increases $\mathrm{Ar} = S^\*/L^\*$ if $S^\*$ is raised in parallel, but cascades into every other nondim number and requires recalibrating all presets.
-  2. **Decouple GPE amplitude from $\mathrm{Ar}$** via an explicit `gpe_factor` knob. Preserves the scales but introduces a narrative-tuning parameter that is no longer "derived".
-  3. **Accept a slower narrative** and design the consuming application around $6$-$12\tau^\*$ runs (180–360 Myr) rather than 300 steps.
-
-The choice between these is deferred until Steps 3–5 have shown the full mechanism stack. The data point to log now: the honest thin-sheet $\mathrm{Ar} = 0.1$ and the resulting 300 Myr GPE time scale.
-
-$\mathrm{Ar}$ is derived, not set. It is reported as a diagnostic at solver startup; changing any of the four primary scales moves it, but the user has no direct lever on it short of re-deriving $\eta^\*$ from a different formula.
+$\mathrm{Ar}$ is **derived** from the four primary scales, not a free knob: $\mathrm{Ar} = S^\*/L^\*$. With default scales ($S^\* = 35$ km, $L^\* = 350$ km) this gives $\mathrm{Ar} = 0.1$, and any thin-sheet geometry ($S^\* \ll L^\*$) forces $\mathrm{Ar} \ll 1$. It must be reported as a diagnostic at solver startup; the user adjusts it only indirectly, by changing the primary scales. See §5.4 for the consequences of $\mathrm{Ar} \ll 1$ on the relative dynamics of the system.
 
 ### 5.2 Qualitative effects on continental character
 
 For each of the highest-leverage numbers, what varying it does to the *character* of continents produced by the solver (averaged over seeds — individual outputs always vary with the Voronoï seed):
 
-**Argand $\mathrm{Ar}$** — "can thickened crust stay thick?" (Caveat per §5.1 correction: $\mathrm{Ar}$ is **derived** and for thin-sheet scales lands at $\mathrm{Ar} = S^\*/L^\* \approx 0.1$. The "low / high" qualitative ranges below are retained as **regime descriptors** — they describe how the continent character would qualitatively move if $\mathrm{Ar}$ were nudged independently of the scales, not operating points reachable by choosing primary scales.)
-- Low ($\lesssim 0.5$): crust accumulates without spreading → **tall, narrow orogens**, sharp altitude peaks, deep collision roots. This is the regime the thin-sheet default lands in.
-- High ($\gtrsim 2$): crust spreads under its own weight → **wide, flat plateaus**, softer topography, broader deformation zones. Not reachable in thin-sheet without abandoning the derived $\eta^\*$.
+**Argand $\mathrm{Ar}$** — "how fast does thickened crust spread?"
+
+With $\mathrm{Ar} = S^\*/L^\*$ fixed by the primary scales (§3.2), Ar is not a direct character knob but a diagnostic of the GPE time scale relative to the tectonic one: $\tau_\text{GPE}/\tau^\* = 1/\mathrm{Ar}$. In thin-sheet geometry $\mathrm{Ar} \ll 1$, meaning GPE spreading is the **slow** mechanism of the system (see §5.4).
+
+To tune "how rapidly crust spreads" within the model, adjust the primary scales rather than $\mathrm{Ar}$ itself:
+- **Thinner crust or wider domain** ($S^\*$ down, $L^\*$ up): $\mathrm{Ar}$ smaller → GPE slower, other mechanisms dominate more clearly.
+- **Thicker crust or narrower domain**: $\mathrm{Ar}$ larger → GPE faster relative to tectonic motion, spreading more visible on short runs.
+
+Earlier drafts of this note listed $\mathrm{Ar} \in [1, 5]$ as a target range; this was inconsistent with the thin-sheet geometry fixed by §3.2 and has been retired.
 
 **Bingham $\mathrm{Bi}$** — "does deformation localize or distribute?"
 - Low ($0.05$–$0.1$): easy yielding, deformation localizes in faults and shear zones → **sharp tectonic boundaries**, narrow deformed belts separating rigid blocks.
@@ -541,6 +524,42 @@ Low-relief world: broad orogens, smoother topography, gentle diffuse deformation
 | 4 | 0.3 | 0.4 | 0.03 | 3 | off | 0.8 | 1.2 |
 
 **Important caveat.** These tables are *hypotheses* about which parameter combinations produce coherent mental pictures. They are not validated. §6 Phase E is the experiment that turns hypotheses into known working presets. If a preset fails to produce the claimed character across its seed sample (or produces numerical instability), the table is wrong and gets revised.
+
+### 5.4 Time-scale hierarchy and the "slow GPE" regime
+
+A practical consequence of $\mathrm{Ar} = S^\*/L^\* \approx 0.1$ deserves to be made explicit because it governs the balance of the whole model.
+
+Each physical mechanism in the solver has a characteristic time. Dividing them by $\tau^\*$ gives their dimensionless clock:
+
+| Mechanism | Dimensional time | $/\tau^\*$ | Default value |
+|---|---|---|---|
+| Tectonic baseline | $\tau^\*$ (definition) | $1$ | 30 Myr |
+| GPE spreading | $\tau^\*/\mathrm{Ar}$ | $1/\mathrm{Ar}$ | 300 Myr at $\mathrm{Ar} = 0.1$ |
+| Plastic yielding onset | $\tau^\* \cdot \mathrm{Bi}$ | $\mathrm{Bi}$ | 1.5–15 Myr at $\mathrm{Bi} \in [0.05, 0.5]$ |
+| Scar healing | $\tau^\*/\mathrm{De}_p$ | $1/\mathrm{De}_p$ | 60–300 Myr at $\mathrm{De}_p \in [0.1, 0.5]$ |
+| Basal drag response | $\tau^\*/\mathrm{Br}$ | $1/\mathrm{Br}$ | 100–3000 Myr at $\mathrm{Br} \in [0.01, 0.3]$ |
+| Slab-pull acceleration | $\tau^\*/\mathrm{Sp}$ | $1/\mathrm{Sp}$ | 10–60 Myr at $\mathrm{Sp} \in [0.5, 3]$ |
+| Mantle forcing cycle | $\tau^\*/\mathrm{Mf}$ | $1/\mathrm{Mf}$ | 15–100 Myr at $\mathrm{Mf} \in [0.3, 2]$ |
+
+**Key observation**: GPE spreading at $\mathrm{Ar} = 0.1$ is one of the slowest mechanisms (alongside basal drag and scar healing). It is **dominated** on short runs ($T < 3\,\tau^\*$) by yielding, slab-pull, and mantle forcing, which all operate on time scales close to or shorter than $\tau^\*$ itself.
+
+**Why this matters:**
+
+- Earlier versions of the solver (before this milestone) produced rapid GPE-driven collapse of thick crust in roughly 20 macro steps. That dynamic required an implicit $\mathrm{Ar} \sim 1$–$10$, which is inconsistent with thin-sheet scaling. The fast spreading that "looked right" was symptomatic of a miscalibrated force balance in which GPE overwhelmed subduction, collision, and slab-pull. Correcting $\mathrm{Ar}$ to its scale-derived value $0.1$ is part of the reconstruction milestone's objective.
+
+- With the corrected $\mathrm{Ar}$, a thick-crust anomaly requires $O(10\,\tau^\*) \approx 300$ Myr to diffuse away by GPE alone. Over a typical mature continent run ($T = 6\,\tau^\*$), GPE does about $60\%$ of one spreading time scale — significant smoothing of long-wavelength features, but not a collapse. This matches geological observations of persistent orogenic roots over hundreds of Myr.
+
+- **Dynamics on short runs must come from the fast mechanisms**: yielding localizes, slab-pull accelerates subducting plates, mantle forcing introduces continental motion, boundary sources create and destroy crust. GPE operates as a long-timescale relaxation over all of this.
+
+**Implications for calibration:**
+
+- If $T$ in a run is short and visible GPE dynamics are desired, the honest move is to extend $T$ rather than inflate $\mathrm{Ar}$.
+- If, after all mechanisms are in place (Steps 3–10), the visible dynamics of runs at $T = 6\,\tau^\*$ are judged insufficient for the narrative purpose (Living Landz "playability"), the options are, in order of physical honesty:
+  1. Shorten $\tau^\*$ (e.g., from 30 Myr to 10 Myr), which mechanically increases all dimensionless numbers that depend on it ($\mathrm{Ar}$, $\mathrm{De}_p$, etc.). Most honest — it acknowledges the user is running a "fast-forward" world.
+  2. Decouple the GPE coefficient from $\mathrm{Ar}$ by introducing an explicit amplification factor. Less honest — it breaks the nondimensional self-consistency — but may be necessary if time compression alone does not suffice.
+  3. Accept long $T$ (e.g., $T = 20\,\tau^\*$) as the default and design the pipeline to handle it. Cleanest physically; costs wallclock.
+
+This decision is deferred to post-Step 4, when all fast mechanisms except slab-pull and mantle are in place and the short-run dynamics can be evaluated empirically.
 
 ---
 
@@ -686,4 +705,4 @@ Retain (b) and (c) in the backlog for the case where cratonic stability is insuf
 
 ---
 
-*Working document. §5.3 presets and §5.1 target ranges will be refined empirically through Phase E. §6 migration order may be adjusted based on practical coupling between modules. §7 Q1 and Q3 explicitly wait for Phase D diagnostics before being decided.*
+*Working document. §5.1 Ar target range corrected 2026-04-21 after discovery of inconsistency with §3.2 thin-sheet scales (see §5.4 for the derivation and its implications). §5.3 presets remaining values will be refined empirically through Phase E. §6 migration order may be adjusted based on practical coupling between modules. §7 Q1 and Q3 explicitly wait for Phase D diagnostics before being decided.*
