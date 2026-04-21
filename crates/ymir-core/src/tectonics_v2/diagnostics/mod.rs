@@ -11,10 +11,14 @@
 //! `None` — the framework slot exists so that subsequent steps can
 //! populate it without touching the report layout.
 
+pub mod comparison;
 pub mod harness;
 pub mod metrics;
+pub mod mms_bench;
+pub mod newton_metrics;
 pub mod report;
 
 pub use harness::{BaselineConfig, BaselineResult, run_baseline};
 pub use metrics::{IterationHistogram, Metrics, SolverConfigDump};
+pub use newton_metrics::NewtonAggregate;
 pub use report::write_markdown_report;
