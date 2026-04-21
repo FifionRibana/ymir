@@ -102,6 +102,26 @@ impl Scales {
     pub fn to_nondim_body_force(&self, f: f64) -> f64 { f / self.body_force }
     pub fn to_dim_body_force(&self, ft: f64) -> f64 { ft * self.body_force }
 
+    /// Argand number `Ar = ρ*·g·(S*)²/(η*·v*)`.
+    ///
+    /// With the derived viscosity scale `η* = ρ*·g·τ*·S*` and
+    /// velocity scale `v* = L*/τ*` this simplifies to `Ar = S*/L*`
+    /// — the aspect ratio of the thin viscous sheet.
+    ///
+    /// **Note on the design-note target range.** `solver-scaling.md`
+    /// §5.1 lists `Ar ∈ [1, 5]` as the target, but the default
+    /// primary scales (`S* = 35 km`, `L* = 350 km`) give `Ar = 0.1`.
+    /// The two statements are jointly inconsistent: any choice of
+    /// primary scales with `S* ≪ L*` (the defining property of a
+    /// thin sheet) gives `Ar ≪ 1`. The concrete value returned here
+    /// is the one derived from the scales — the doc target range is
+    /// a calibration aspiration that would require dropping the
+    /// thin-sheet assumption to reach. Flagged for
+    /// `solver-scaling.md` reconciliation; not a blocker for Step 2.
+    pub fn argand_number(&self) -> f64 {
+        self.argand
+    }
+
     /// Emit a human-readable summary used as a solver-startup fingerprint
     /// and in the Step 0 diagnostics report.
     pub fn report(&self) -> String {

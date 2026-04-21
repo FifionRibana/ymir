@@ -10,10 +10,12 @@
 use std::path::PathBuf;
 
 use ymir_core::tectonics_v2::diagnostics::harness::{run_baseline, BaselineConfig};
+use ymir_core::tectonics_v2::scales::Scales;
 
 #[test]
 fn coupled_loop_is_finite_and_mass_conserved() {
-    let mut cfg = BaselineConfig::dynamic_accidented_defaults();
+    let scales = Scales::default();
+    let mut cfg = BaselineConfig::dynamic_accidented_defaults(&scales);
     cfg.grid_nx = 32;
     cfg.grid_ny = 32;
     cfg.steps = 50;

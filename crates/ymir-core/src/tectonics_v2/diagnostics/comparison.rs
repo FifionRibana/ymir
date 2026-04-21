@@ -66,6 +66,14 @@ pub fn parse_step_report(path: &Path) -> Result<StepReference, String> {
             if let Some(g) = current.as_mut() {
                 g.cg_iters_mean = val;
             }
+        } else if let Some(rest) =
+            line.strip_prefix("- CG iterations per Newton step — mean: `")
+        {
+            // Step 1+ format (Newton wraps every linear solve).
+            let val = extract_backtick_f64_leading(rest);
+            if let Some(g) = current.as_mut() {
+                g.cg_iters_mean = val;
+            }
         } else if let Some(rest) = line.strip_prefix("- relative drift: `") {
             let val = extract_backtick_f64(rest, "`");
             if let Some(g) = current.as_mut() {

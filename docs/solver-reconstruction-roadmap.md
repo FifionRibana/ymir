@@ -10,7 +10,7 @@ a nondimensional core. It is the implementation companion to
 |---|---|---|---|---|
 | 0 | Nondim Stokes core + S advection (incl. null-space precond) | shipped | #79 | `docs/reports/step0_report.md` |
 | 1 | Power-law rheology + Newton solver + continuation | shipped | #81 | `docs/reports/step1_report.md` |
-| 2 | GPE spreading | blocked by 1 | — | — |
+| 2 | GPE spreading (Ar·∇(½S²), staggered flux form) | shipped | #83 | `docs/reports/step2_physics_report.md` (physics) + `docs/reports/step2_regression_report.md` (Step-1 mirror). **#78 remains open** — the GPE gradient spike concerns sharp material interfaces introduced at Steps 5/6, not this step. |
 | 3 | Plastic yielding | blocked by 2 | — | — |
 | 4 | Basal drag | blocked by 3 | — | — |
 | 5 | Boundary sources/sinks | blocked by 4 | — | — |
