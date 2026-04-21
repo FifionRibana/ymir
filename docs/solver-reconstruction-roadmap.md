@@ -9,7 +9,7 @@ a nondimensional core. It is the implementation companion to
 | Step | Description | Status | PR | Report |
 |---|---|---|---|---|
 | 0 | Nondim Stokes core + S advection (incl. null-space precond) | shipped | #79 | `docs/reports/step0_report.md` |
-| 1 | Power-law rheology | blocked by 0 | — | — |
+| 1 | Power-law rheology + Newton solver + continuation | shipped | #81 | `docs/reports/step1_report.md` |
 | 2 | GPE spreading | blocked by 1 | — | — |
 | 3 | Plastic yielding | blocked by 2 | — | — |
 | 4 | Basal drag | blocked by 3 | — | — |
