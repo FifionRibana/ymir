@@ -11,8 +11,10 @@
 //! `None` — the framework slot exists so that subsequent steps can
 //! populate it without touching the report layout.
 
+pub mod ar_sweep;
 pub mod comparison;
 pub mod harness;
+pub mod heightmap;
 pub mod metrics;
 pub mod mms_bench;
 pub mod newton_metrics;
