@@ -27,10 +27,13 @@
 //! - `vx` at left vertical face of cell (i, j) — `(i dx, (j+0.5)dy)`.
 //! - `vy` at bottom horizontal face of cell (i, j) — `((i+0.5)dx, j dy)`.
 //! - `ε̇_xy` and `σ_xy` at nodal corners `(i dx, j dy)`, with η there
-//!   computed by **harmonic 4-point averaging** of the four
-//!   surrounding cell centres.
+//!   computed by **arithmetic 4-point averaging** of the four
+//!   surrounding cell centres. (Step 0 documented harmonic averaging;
+//!   Step 1 switched to arithmetic so the Newton Jacobian is exactly
+//!   symmetric — see the `eta_corner` doc-comment.)
 
 use super::super::field::{Field2D, PeriodicIndex};
+use super::super::rheology::{StrainRate, ViscosityLaw};
 
 /// Geometry needed by the momentum operator. Borrows nothing; η is
 /// passed as an argument to the apply/diagonal routines.
@@ -61,18 +64,33 @@ impl StokesGrid {
     }
 }
 
-#[inline]
-fn harmonic4(a: f64, b: f64, c: f64, d: f64) -> f64 {
-    if a > 0.0 && b > 0.0 && c > 0.0 && d > 0.0 {
-        4.0 / (1.0 / a + 1.0 / b + 1.0 / c + 1.0 / d)
-    } else {
-        0.25 * (a + b + c + d)
-    }
-}
-
+/// Arithmetic 4-point average of `η` at a node (corner), built from
+/// the four surrounding cell centres.
+///
+/// # Why not harmonic averaging?
+///
+/// Step 0 documented "harmonic 4-point averaging" — appropriate for
+/// the thin viscous sheet against sharp material contrasts (Gerya
+/// 2010 §14.3). Step 1 introduces power-law rheology, which makes
+/// `η` a smooth function of `ε̇_II(v)`. The Newton Jacobian of
+/// `apply_momentum` w.r.t. `v` then carries a
+/// `dη_corner / dη_cell` chain-rule factor; for harmonic averaging
+/// this factor is `η_corner² / (4 η_cell²)`, which breaks the
+/// natural symmetry of the Newton-extra stress when assembled at
+/// mismatched staggered locations.
+///
+/// With arithmetic averaging, `dη_corner / dη_cell = ¼`, a constant.
+/// The Newton-extra stress at the corner becomes
+/// `⟨c·contract⟩_cc→co · ε̇_xy(v_k)`, which is the adjoint of the
+/// cell-centre contribution and makes the full Jacobian exactly
+/// symmetric at discrete level.
+///
+/// For Step 1's smooth η fields the two averagings are
+/// indistinguishable at O(dx²); for sharp viscosity contrasts
+/// (cratonic rigidity, Step 9) the choice may be revisited.
 #[inline]
 fn eta_corner(eta: &Field2D, im: usize, i: usize, jm: usize, j: usize) -> f64 {
-    harmonic4(eta.get(im, jm), eta.get(i, jm), eta.get(im, j), eta.get(i, j))
+    0.25 * (eta.get(im, jm) + eta.get(i, jm) + eta.get(im, j) + eta.get(i, j))
 }
 
 /// Apply `A v = -∇·(2 η ε̇(v))` on the MAC grid.
@@ -196,6 +214,207 @@ pub fn momentum_diagonal(
     }
 }
 
+/// Cached pieces of the current Newton iterate used to form the
+/// tangent Jacobian. Built once per Newton iteration so the linear
+/// solver (CG) reuses it across matrix-vector products.
+///
+/// # Symmetric-preserving discretisation
+///
+/// Arithmetic averaging of `η` to corners (see `eta_corner`) gives
+/// `dη_corner / dη_cell = ¼`. With this choice the Newton-extra
+/// stress can be written using a **single cell-centred scalar**
+/// `S(δv) = c · contract` (contract evaluated at cell centres) and
+/// an averaging to corners for the shear component:
+/// ```text
+///   σ^N_xx[cc] = S(δv) · ε̇_xx(v_k)
+///   σ^N_yy[cc] = S(δv) · ε̇_yy(v_k)
+///   σ^N_xy[co] = ⟨S(δv)⟩_co · ε̇_xy(v_k)
+/// ```
+/// where `⟨·⟩_co` averages the four cells around a corner.
+/// The pairing of cell-centre stress with `ε̇_{xx,yy}(w)|_cc` and
+/// corner stress with `ε̇_xy(w)|_co` then collapses (via the
+/// adjoint of the averaging operator) to
+/// `∑_cc c·contract(u)·contract(w)` — symmetric in `(u, w)`.
+///
+/// `contract(δv)` at cell centre is
+/// ```text
+///   (ε̇(v_k):ε̇(δv))|_cc = ε̇_xx(v_k)·ε̇_xx(δv) + ε̇_yy(v_k)·ε̇_yy(δv)
+///                      + 2·⟨ε̇_xy(v_k)·ε̇_xy(δv)⟩_cc
+/// ```
+/// where the shear product is averaged **after** multiplication (not
+/// before) — this consistency with the discrete definition of `ε̇_II`
+/// is what lets the tangent be the exact Jacobian of the discrete
+/// residual.
+///
+/// The Newton extra is negative semi-definite for shear-thinning
+/// (`n > 1`, η' < 0), so the full Jacobian `J = A_picard + A_tangent`
+/// is symmetric but **not necessarily SPD** in zones of strong
+/// localisation (Gerya §14.4). Symmetry is verified by unit test;
+/// positive-definiteness is not required and not tested.
+pub struct TangentContext {
+    /// η(ε̇_II(v_k)) at cell centres. Also feeds the Picard part via
+    /// `apply_momentum` (with the same arithmetic corner averaging).
+    pub eta_center: Field2D,
+    /// Scalar prefactor `c_cc = η'(ε̇_II_cc) / (ε̇_II_cc + ε̇_min)` at
+    /// cell centres.
+    pub c_center: Field2D,
+    /// Native strain-rate components of `v_k`.
+    pub exx_center: Field2D,
+    pub eyy_center: Field2D,
+    pub exy_corner: Field2D,
+}
+
+impl TangentContext {
+    pub fn from_strain_rate(
+        grid: &StokesGrid,
+        law: &ViscosityLaw,
+        sr: &StrainRate,
+    ) -> Self {
+        let nx = grid.nx;
+        let ny = grid.ny;
+        let mut eta_center = Field2D::new(nx, ny);
+        let mut c_center = Field2D::new(nx, ny);
+        for j in 0..ny {
+            for i in 0..nx {
+                let eps = sr.eps_ii_center.get(i, j);
+                eta_center.set(i, j, law.eta_effective(eps));
+                c_center.set(
+                    i,
+                    j,
+                    law.d_eta_effective_d_eps_ii(eps) / (eps + law.strain_rate_floor),
+                );
+            }
+        }
+        Self {
+            eta_center,
+            c_center,
+            exx_center: sr.exx_center.clone(),
+            eyy_center: sr.eyy_center.clone(),
+            exy_corner: sr.exy_corner.clone(),
+        }
+    }
+}
+
+/// Apply **only the Newton-extra** part of the Jacobian:
+/// `δv ↦ -∇·[c · (ε̇(v_k):ε̇(δv)) · ε̇(v_k)]`.
+///
+/// For shear-thinning (`n > 1`) this operator is negative
+/// semi-definite — consequently the full Jacobian
+/// `J = A_picard + apply_tangent` is symmetric but not necessarily
+/// positive-definite in zones of strong localisation (Gerya §14.4).
+/// Tests that probe structure check **symmetry only**.
+pub fn apply_tangent(
+    grid: &StokesGrid,
+    ctx: &TangentContext,
+    dvx: &[f64],
+    dvy: &[f64],
+    out_vx: &mut [f64],
+    out_vy: &mut [f64],
+) {
+    let nx = grid.nx;
+    let ny = grid.ny;
+    let dx = grid.dx;
+    let dy = grid.dy;
+    let inv_dx = 1.0 / dx;
+    let inv_dy = 1.0 / dy;
+    let idx_x = &grid.idx_x;
+    let idx_y = &grid.idx_y;
+    let lin = |ii: usize, jj: usize| jj * nx + ii;
+
+    // --- 1. δv's native strain-rate components ---
+    let mut dexx_cc = Field2D::new(nx, ny);
+    let mut deyy_cc = Field2D::new(nx, ny);
+    let mut dexy_co = Field2D::new(nx, ny);
+    for j in 0..ny {
+        let jp = idx_y.next(j);
+        let jm = idx_y.prev(j);
+        for i in 0..nx {
+            let ip = idx_x.next(i);
+            let im = idx_x.prev(i);
+            dexx_cc.set(i, j, (dvx[lin(ip, j)] - dvx[lin(i, j)]) * inv_dx);
+            deyy_cc.set(i, j, (dvy[lin(i, jp)] - dvy[lin(i, j)]) * inv_dy);
+            let dvx_dy = (dvx[lin(i, j)] - dvx[lin(i, jm)]) * inv_dy;
+            let dvy_dx = (dvy[lin(i, j)] - dvy[lin(im, j)]) * inv_dx;
+            dexy_co.set(i, j, 0.5 * (dvx_dy + dvy_dx));
+        }
+    }
+
+    // --- 2. Cell-centre scalar S(δv) = c_cc · contract_cc(δv) ---
+    //     contract_cc(δv) = ε̇_xx(v_k)·ε̇_xx(δv) + ε̇_yy(v_k)·ε̇_yy(δv)
+    //                     + 2·⟨ε̇_xy(v_k)·ε̇_xy(δv)⟩_cc
+    // Average-of-products on the shear term keeps it consistent with
+    // the definition of `ε̇_II_cc`.
+    let mut s_cc = Field2D::new(nx, ny);
+    for j in 0..ny {
+        let jp = idx_y.next(j);
+        for i in 0..nx {
+            let ip = idx_x.next(i);
+            let pxy_avg = 0.25
+                * (ctx.exy_corner.get(i, j) * dexy_co.get(i, j)
+                    + ctx.exy_corner.get(ip, j) * dexy_co.get(ip, j)
+                    + ctx.exy_corner.get(i, jp) * dexy_co.get(i, jp)
+                    + ctx.exy_corner.get(ip, jp) * dexy_co.get(ip, jp));
+            let contract = ctx.exx_center.get(i, j) * dexx_cc.get(i, j)
+                + ctx.eyy_center.get(i, j) * deyy_cc.get(i, j)
+                + 2.0 * pxy_avg;
+            s_cc.set(i, j, ctx.c_center.get(i, j) * contract);
+        }
+    }
+
+    // --- 3. Newton-extra stress components ---
+    //   σ^N_xx[cc] = S(δv) · ε̇_xx(v_k)
+    //   σ^N_yy[cc] = S(δv) · ε̇_yy(v_k)
+    //   σ^N_xy[co] = ⟨S(δv)⟩_co · ε̇_xy(v_k)  (adjoint-consistent
+    //                averaging from 4 surrounding cells)
+    let mut sigma_xx_cc = Field2D::new(nx, ny);
+    let mut sigma_yy_cc = Field2D::new(nx, ny);
+    let mut sigma_xy_co = Field2D::new(nx, ny);
+    for j in 0..ny {
+        let jm = idx_y.prev(j);
+        for i in 0..nx {
+            let im = idx_x.prev(i);
+            sigma_xx_cc.set(i, j, s_cc.get(i, j) * ctx.exx_center.get(i, j));
+            sigma_yy_cc.set(i, j, s_cc.get(i, j) * ctx.eyy_center.get(i, j));
+            let s_avg = 0.25
+                * (s_cc.get(im, jm) + s_cc.get(i, jm) + s_cc.get(im, j) + s_cc.get(i, j));
+            sigma_xy_co.set(i, j, s_avg * ctx.exy_corner.get(i, j));
+        }
+    }
+
+    // --- 4. Divergence: adds to existing out (caller placed Picard there). ---
+    for j in 0..ny {
+        let jp = idx_y.next(j);
+        let jm = idx_y.prev(j);
+        for i in 0..nx {
+            let ip = idx_x.next(i);
+            let im = idx_x.prev(i);
+            let d_sigma_xx_dx = (sigma_xx_cc.get(i, j) - sigma_xx_cc.get(im, j)) * inv_dx;
+            let d_sigma_xy_dy = (sigma_xy_co.get(i, jp) - sigma_xy_co.get(i, j)) * inv_dy;
+            out_vx[lin(i, j)] += -(d_sigma_xx_dx + d_sigma_xy_dy);
+            let d_sigma_xy_dx = (sigma_xy_co.get(ip, j) - sigma_xy_co.get(i, j)) * inv_dx;
+            let d_sigma_yy_dy = (sigma_yy_cc.get(i, j) - sigma_yy_cc.get(i, jm)) * inv_dy;
+            out_vy[lin(i, j)] += -(d_sigma_xy_dx + d_sigma_yy_dy);
+        }
+    }
+}
+
+/// Apply the full Newton Jacobian `J δv = A_picard δv + A_tangent δv`.
+///
+/// `ctx.eta_center` is used for the Picard part via harmonic averaging
+/// at corners, so both pieces share the same η field and the operator
+/// collapses to a single symmetric (possibly indefinite) linear map.
+pub fn apply_jacobian(
+    grid: &StokesGrid,
+    ctx: &TangentContext,
+    dvx: &[f64],
+    dvy: &[f64],
+    out_vx: &mut [f64],
+    out_vy: &mut [f64],
+) {
+    apply_momentum(grid, &ctx.eta_center, dvx, dvy, out_vx, out_vy);
+    apply_tangent(grid, ctx, dvx, dvy, out_vx, out_vy);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,9 +424,15 @@ mod tests {
     }
 
     #[test]
-    fn harmonic_of_equal_values_equals_the_value() {
-        assert!((harmonic4(2.5, 2.5, 2.5, 2.5) - 2.5).abs() < 1e-14);
-        assert!((harmonic4(1.0, 1.0, 1.0, 1.0) - 1.0).abs() < 1e-14);
+    fn eta_corner_is_arithmetic_average() {
+        let mut eta = Field2D::new(4, 4);
+        eta.set(0, 0, 1.0);
+        eta.set(1, 0, 2.0);
+        eta.set(0, 1, 3.0);
+        eta.set(1, 1, 4.0);
+        // Corner (1, 1) averages cells (0, 0), (1, 0), (0, 1), (1, 1).
+        let v = eta_corner(&eta, 0, 1, 0, 1);
+        assert!((v - 2.5).abs() < 1e-14, "arithmetic average at corner = {}", v);
     }
 
     #[test]

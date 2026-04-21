@@ -15,5 +15,7 @@ pub mod advection;
 pub mod diagnostics;
 pub mod field;
 pub mod forcing;
+pub mod presets;
+pub mod rheology;
 pub mod scales;
 pub mod stokes;

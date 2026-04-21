@@ -60,7 +60,7 @@ impl IterationHistogram {
 pub struct SolverConfigDump {
     pub formulation: String,
     pub discretization: String,
-    pub harmonic_averaging: String,
+    pub eta_averaging: String,
     pub preconditioner: String,
     pub gauge_fixing: String,
     pub cg_tol: f64,
@@ -69,6 +69,15 @@ pub struct SolverConfigDump {
     pub grid_spacing_nondim: f64,
     pub body_force: String,
     pub seed: u64,
+    // --- Step 1 additions ---
+    pub preset_name: String,
+    pub nonlinear_solver: String,
+    pub rheology_n: f64,
+    pub strain_rate_floor: f64,
+    pub eta_max_cap: f64,
+    pub continuation_schedule: String,
+    pub newton_rel_tol: f64,
+    pub newton_max_outer_iters: u32,
 }
 
 impl SolverConfigDump {
@@ -79,9 +88,17 @@ impl SolverConfigDump {
              |---|---|\n\
              | formulation | {} |\n\
              | discretization | {} |\n\
-             | harmonic averaging | {} |\n\
+             | η averaging to corners | {} |\n\
              | preconditioner | {} |\n\
              | gauge fixing | {} |\n\
+             | preset | `{}` |\n\
+             | nonlinear solver | `{}` |\n\
+             | rheology `n` (after continuation) | {:.2} |\n\
+             | rheology `ε̇_min` | {:.1e} |\n\
+             | rheology `η_max` (soft cap) | {:.1e} |\n\
+             | continuation schedule | `{}` |\n\
+             | Newton rel tol | {:.1e} |\n\
+             | Newton max outer iters | {} |\n\
              | CG tolerance | {:.1e} |\n\
              | CG max iter | {} |\n\
              | CFL factor | {:.2} |\n\
@@ -90,9 +107,17 @@ impl SolverConfigDump {
              | seed | {} |\n",
             self.formulation,
             self.discretization,
-            self.harmonic_averaging,
+            self.eta_averaging,
             self.preconditioner,
             self.gauge_fixing,
+            self.preset_name,
+            self.nonlinear_solver,
+            self.rheology_n,
+            self.strain_rate_floor,
+            self.eta_max_cap,
+            self.continuation_schedule,
+            self.newton_rel_tol,
+            self.newton_max_outer_iters,
             self.cg_tol,
             self.cg_max_iter,
             self.cfl_factor,
@@ -148,6 +173,9 @@ pub struct Metrics {
     // ---- Heightmap snapshots (Step 0 active) ----
     pub heightmap_paths: Vec<String>,
 
+    // ---- Step 1 active: Newton aggregate. None at Step 0 (no nonlinear solve). ----
+    pub newton: Option<super::newton_metrics::NewtonAggregate>,
+
     // ---- Dormant metrics ----
     pub s_eq: Option<f64>,
     pub boundary_type_diversity: Option<BoundaryTypeCounts>,
@@ -199,6 +227,7 @@ impl Metrics {
             max_abs_mean_vy: 0.0,
             vmax_peak: 0.0,
             heightmap_paths: Vec::new(),
+            newton: None,
             s_eq: None,
             boundary_type_diversity: None,
             yielding_cell_fraction: None,
