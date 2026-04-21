@@ -8,10 +8,12 @@ use std::path::PathBuf;
 use ymir_core::tectonics_v2::diagnostics::harness::{
     run_baseline, BaselineConfig, NonlinearChoice,
 };
+use ymir_core::tectonics_v2::scales::Scales;
 
 #[test]
 fn picard_short_run_is_stable_on_dynamic_accidented() {
-    let mut cfg = BaselineConfig::dynamic_accidented_defaults();
+    let scales = Scales::default();
+    let mut cfg = BaselineConfig::dynamic_accidented_defaults(&scales);
     cfg.grid_nx = 64;
     cfg.grid_ny = 64;
     cfg.steps = 15;
