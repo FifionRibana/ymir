@@ -134,8 +134,8 @@ No additional Step-2 fields (ρ̃, anomaly templates, etc.) are introduced — t
 
 ### Timing
 
-- wallclock total: `0.388 s`
-- wallclock per step (mean): `1.292 ms`
+- wallclock total: `0.416 s`
+- wallclock per step (mean): `1.387 ms`
 - steps: `300`
 
 ### Linear-solver health (CG inside Newton)
@@ -196,7 +196,7 @@ Same forcing, same preset, same setup as Step 1. Ratio targets: wallclock and CG
 
 | metric | previous | current | ratio / note |
 |---|---|---|---|
-| wallclock (s) | 0.501 | 0.388 | ×0.77 |
+| wallclock (s) | 0.501 | 0.416 | ×0.83 |
 | CG iters / linear solve (mean) | 22.8 | 22.8 | ×1.00 [idéal] |
 | S mass drift (relative) | 1.665e-15 | 2.331e-15 | gate 1e-10 |
 | max \|mean(vx)\| | 2.435e-20 | 2.435e-20 | bruit machine |
@@ -240,8 +240,8 @@ Same forcing, same preset, same setup as Step 1. Ratio targets: wallclock and CG
 
 ### Timing
 
-- wallclock total: `2.304 s`
-- wallclock per step (mean): `7.681 ms`
+- wallclock total: `2.410 s`
+- wallclock per step (mean): `8.032 ms`
 - steps: `300`
 
 ### Linear-solver health (CG inside Newton)
@@ -302,7 +302,7 @@ Same forcing, same preset, same setup as Step 1. Ratio targets: wallclock and CG
 
 | metric | previous | current | ratio / note |
 |---|---|---|---|
-| wallclock (s) | 2.442 | 2.304 | ×0.94 |
+| wallclock (s) | 2.442 | 2.410 | ×0.99 |
 | CG iters / linear solve (mean) | 48.2 | 48.2 | ×1.00 [idéal] |
 | S mass drift (relative) | -1.998e-15 | -5.551e-16 | gate 1e-10 |
 | max \|mean(vx)\| | 1.784e-20 | 1.784e-20 | bruit machine |

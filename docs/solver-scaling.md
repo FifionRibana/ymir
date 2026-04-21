@@ -428,7 +428,7 @@ The age field is a universal descriptor that unifies "this zone is a young Alpin
 
 | Symbol | Name | Definition | Target range |
 |---|---|---|---|
-| $\mathrm{Ar}$ | Argand | $\rho^\* g (S^\*)^2 / (\eta^\* v^\*)$ | $1$–$5$ |
+| $\mathrm{Ar}$ | Argand | $\rho^\* g (S^\*)^2 / (\eta^\* v^\*) = S^\*/L^\*$ | **derived** (see note below) |
 | $\mathrm{Bi}$ | Bingham | $\tau_Y / \sigma^\*$ | $0.05$–$0.5$ |
 | $\mathrm{De}_p$ | Plastic Deborah | $\tau^\* \cdot r_\text{healing}$ | $0.1$–$0.5$ |
 | $\mathrm{Br}$ | Basal drag | $C_b \rho^\* g (S^\*)^2/(\eta^\* v^\*/L^\*)$ | $0.01$–$0.3$ |
@@ -443,15 +443,46 @@ The age field is a universal descriptor that unifies "this zone is a young Alpin
 | $n$ | Power-law exponent | — | $1 \to 3$ via continuation |
 | $T/\tau^\*$ | Simulation duration | user choice | $1$–$15+$ |
 
-$\mathrm{Ar}$ ends up near $1$ by the construction of $\eta^\*$. It is listed here because the user does not directly set $\eta^\*$ — they set $\rho^\*$, $L^\*$, $S^\*$, $\tau^\*$, and the viscosity scale follows. Changing any of the four primary scales moves $\mathrm{Ar}$, so it must be reported as a diagnostic at solver startup.
+**Note on Ar (correction 2026-04-22).** With the derived viscosity scale $\eta^\* = \rho^\* g \tau^\* S^\*$ and velocity scale $v^\* = L^\*/\tau^\*$, substituting into the Argand definition collapses to
+$$
+\mathrm{Ar} \;=\; \frac{\rho^\* g (S^\*)^2}{\eta^\* v^\*} \;=\; \frac{\rho^\* g (S^\*)^2}{\rho^\* g \tau^\* S^\* \cdot L^\*/\tau^\*} \;=\; \frac{S^\*}{L^\*}.
+$$
+For any thin-sheet choice of scales, $S^\* \ll L^\*$ **forces** $\mathrm{Ar} \ll 1$. With the defaults ($S^\* = 35$ km, $L^\* = 350$ km) the honest value is $\mathrm{Ar} = 0.1$. The previous "target range $1$–$5$" in this column was incompatible with the primary-scale choices of §3.1 — a doc-internal inconsistency carried over from pre-derivation notes. The `tectonics_v2/scales.rs` implementation returns the derived value; the doc column above has been updated to reflect that $\mathrm{Ar}$ is **not** a tunable. The earlier "1–5" band described the qualitative regime a hypothetical non-thin-sheet solver could probe, kept for reference in §5.3 presets but no longer claimed as a viable target for this solver.
+
+### 5.1.bis Characteristic time scales and mechanism ordering
+
+At $\tau^\* = 30$ Myr the ordering of mechanism time scales (`τ_mech = τ*/dimensionless_number`) is:
+
+| Mechanism | Nondim number | Target | Characteristic time |
+|---|---|---|---|
+| GPE spreading | $\mathrm{Ar}$ | $0.1$ (derived) | $\tau^\*/\mathrm{Ar} \approx 300$ Myr |
+| Plate convergence / advection | — | $O(1)$ | $\tau^\* \approx 30$ Myr |
+| Yielding (Step 3+) | $\mathrm{Bi}$ | $0.05$–$0.5$ | $\tau^\* \cdot \mathrm{Bi}^{-1} \approx 60$–$600$ Myr (time to accumulate yield) |
+| Plastic healing | $\mathrm{De}_p$ | $0.1$–$0.5$ | $\tau^\*/\mathrm{De}_p \approx 60$–$300$ Myr |
+| Basal drag (Step 4+) | $\mathrm{Br}$ | $0.01$–$0.3$ | $\tau^\*/\mathrm{Br} \approx 100$–$3000$ Myr |
+| Slab pull (Step 7+) | $\mathrm{Sp}$ | $0.5$–$3$ | $\tau^\*/\mathrm{Sp} \approx 10$–$60$ Myr |
+| Mantle forcing (Step 8+) | $\mathrm{Mf}$ | $0.3$–$2.0$ | $\tau^\*/\mathrm{Mf} \approx 15$–$100$ Myr |
+
+Consequences for the narrative dynamics (continents built and broken on a 300-step run $\approx 6\tau^\* = 180$ Myr):
+
+- **GPE alone is too slow** to produce visible dynamics on the default window. The $6\tau^\*$ run covers only $0.6 \times \mathrm{Ar}^{-1}$ characteristic GPE times with $\mathrm{Ar} = 0.1$. Step-2 `step2_physics_report.md` confirms this: without boundary sources or convergence, `Var(S̃)` decreases by a fraction of a percent.
+- The **narrative driver** comes from **advection by plate motion** (already active, $\tau^\* = 30$ Myr) plus **slab pull**, **mantle flow**, and **yielding** added at Steps 3, 7 and 8 respectively. These act on time scales comparable to or faster than $\tau^\*$.
+- **If, after Steps 3–4, the observed dynamics still fail to match the narrative intent** ("continents build and relax within one run"), three honest knobs remain, each with their trade-offs:
+  1. **Shorten $\tau^\*$** (e.g. 10 Myr). Mechanically increases $\mathrm{Ar} = S^\*/L^\*$ if $S^\*$ is raised in parallel, but cascades into every other nondim number and requires recalibrating all presets.
+  2. **Decouple GPE amplitude from $\mathrm{Ar}$** via an explicit `gpe_factor` knob. Preserves the scales but introduces a narrative-tuning parameter that is no longer "derived".
+  3. **Accept a slower narrative** and design the consuming application around $6$-$12\tau^\*$ runs (180–360 Myr) rather than 300 steps.
+
+The choice between these is deferred until Steps 3–5 have shown the full mechanism stack. The data point to log now: the honest thin-sheet $\mathrm{Ar} = 0.1$ and the resulting 300 Myr GPE time scale.
+
+$\mathrm{Ar}$ is derived, not set. It is reported as a diagnostic at solver startup; changing any of the four primary scales moves it, but the user has no direct lever on it short of re-deriving $\eta^\*$ from a different formula.
 
 ### 5.2 Qualitative effects on continental character
 
 For each of the highest-leverage numbers, what varying it does to the *character* of continents produced by the solver (averaged over seeds — individual outputs always vary with the Voronoï seed):
 
-**Argand $\mathrm{Ar}$** — "can thickened crust stay thick?"
-- Low ($1$–$2$): crust accumulates without spreading → **tall, narrow orogens**, sharp altitude peaks, deep collision roots.
-- High ($4$–$5$): crust spreads under its own weight → **wide, flat plateaus**, softer topography, broader deformation zones.
+**Argand $\mathrm{Ar}$** — "can thickened crust stay thick?" (Caveat per §5.1 correction: $\mathrm{Ar}$ is **derived** and for thin-sheet scales lands at $\mathrm{Ar} = S^\*/L^\* \approx 0.1$. The "low / high" qualitative ranges below are retained as **regime descriptors** — they describe how the continent character would qualitatively move if $\mathrm{Ar}$ were nudged independently of the scales, not operating points reachable by choosing primary scales.)
+- Low ($\lesssim 0.5$): crust accumulates without spreading → **tall, narrow orogens**, sharp altitude peaks, deep collision roots. This is the regime the thin-sheet default lands in.
+- High ($\gtrsim 2$): crust spreads under its own weight → **wide, flat plateaus**, softer topography, broader deformation zones. Not reachable in thin-sheet without abandoning the derived $\eta^\*$.
 
 **Bingham $\mathrm{Bi}$** — "does deformation localize or distribute?"
 - Low ($0.05$–$0.1$): easy yielding, deformation localizes in faults and shear zones → **sharp tectonic boundaries**, narrow deformed belts separating rigid blocks.

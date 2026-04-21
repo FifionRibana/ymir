@@ -116,6 +116,13 @@ pub struct BaselineConfig {
     /// through to the config dump so the report stays
     /// self-descriptive).
     pub sinusoidal_amplitude: f64,
+    /// Initial `S̃` perturbation amplitude around the `1.0` mean.
+    /// Step 0/1 used `0.02`; Step 2 bumps the physics scenario to
+    /// `0.2` so GPE drives an observable response on the 300-step
+    /// window even at the honest thin-sheet `Ar = S*/L* = 0.1`. The
+    /// regression scenario keeps `0.02` to preserve the mirror-of-
+    /// Step-1 contract.
+    pub s_perturbation_amplitude: f64,
 }
 
 impl BaselineConfig {
@@ -141,6 +148,7 @@ impl BaselineConfig {
             force: build_force(force_kind, scales, sin_amplitude, domain_lx),
             force_kind,
             sinusoidal_amplitude: sin_amplitude,
+            s_perturbation_amplitude: 0.2,
         }
     }
 }
@@ -151,7 +159,7 @@ pub struct BaselineResult {
     pub config_dump: SolverConfigDump,
 }
 
-fn init_thickness(nx: usize, ny: usize, seed: u64) -> Field2D {
+fn init_thickness(nx: usize, ny: usize, seed: u64, amplitude: f64) -> Field2D {
     use std::f64::consts::PI;
     let phase = ((seed.wrapping_mul(2654435761u64)) as f64) / (u64::MAX as f64) * 2.0 * PI;
     let mut s = Field2D::new(nx, ny);
@@ -159,7 +167,7 @@ fn init_thickness(nx: usize, ny: usize, seed: u64) -> Field2D {
         for i in 0..nx {
             let x = (i as f64 + 0.5) / nx as f64;
             let y = (j as f64 + 0.5) / ny as f64;
-            let bump = 1.0 + 0.02 * ((2.0 * PI * x + phase).sin() * (2.0 * PI * y).cos());
+            let bump = 1.0 + amplitude * ((2.0 * PI * x + phase).sin() * (2.0 * PI * y).cos());
             s.set(i, j, bump);
         }
     }
@@ -238,7 +246,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let dy = cfg.domain_ly / ny as f64;
     let grid = Grid::new(nx, ny, dx, dy);
 
-    let mut s = init_thickness(nx, ny, cfg.seed);
+    let mut s = init_thickness(nx, ny, cfg.seed, cfg.s_perturbation_amplitude);
     let mut s_next = Field2D::new(nx, ny);
     let mut vx = vec![0.0; nx * ny];
     let mut vy = vec![0.0; nx * ny];
