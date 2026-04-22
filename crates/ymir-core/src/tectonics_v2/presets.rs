@@ -49,6 +49,44 @@ impl RheologyParams {
     }
 }
 
+/// Plastic-yielding configuration.
+///
+/// `Disabled` by-passes the plastic branch structurally in the
+/// viscosity-field assembly: the harness builds `η_eff = η_visc`
+/// directly, with no call to `build_eta_plastic_field` or
+/// `blend_eta_fields`. This is what the Step-3 regression test
+/// relies on to stay bit-comparable (±5% wallclock / CG iter count)
+/// with the Step-2 baseline.
+///
+/// `Enabled(law)` runs the three-field path
+/// (`η_visc`, `η_plastic`, `η_eff = soft_min_harmonic(η_visc, η_plastic, p)`).
+/// The plastic viscosity uses `law.bi` as the nondim yield stress
+/// and `law.sharpness` as the `soft_min_harmonic` exponent.
+#[derive(Clone, Copy, Debug)]
+pub enum YieldingConfig {
+    Disabled,
+    Enabled(crate::tectonics_v2::rheology::YieldingLaw),
+}
+
+impl YieldingConfig {
+    pub fn label(&self) -> &'static str {
+        match self {
+            YieldingConfig::Disabled => "disabled",
+            YieldingConfig::Enabled(_) => "enabled",
+        }
+    }
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s {
+            "disabled" | "off" => Ok(YieldingConfig::Disabled),
+            "enabled" | "on" => Ok(YieldingConfig::Enabled(Default::default())),
+            other => Err(format!(
+                "unknown --yielding-config value '{}'; expected disabled|enabled",
+                other,
+            )),
+        }
+    }
+}
+
 /// Startup-only continuation schedule on `n`.
 ///
 /// At `t = 0` the nonlinear solver is run once for each value in

@@ -35,6 +35,27 @@ pub struct NewtonAggregate {
     /// `None` if continuation wasn't run (no step in this run).
     pub continuation_all_converged: Option<bool>,
     pub continuation_iters_used: u32,
+
+    /// Step 3 — plastic yielding metrics. `None` when yielding is
+    /// `Disabled`. When `Enabled`, `bi_diagnostic` carries the run's
+    /// Bi value and the two cell-fraction / intensity aggregates are
+    /// max-over-timestep values (peaks picked over the run).
+    pub bi_diagnostic: Option<f64>,
+    /// Fraction of cells where `η_eff < 0.5 · η_visc`. Max over the run.
+    pub yielding_cell_fraction_max: Option<f64>,
+    /// Mean of `(η_visc / η_eff − 1)` over cells where
+    /// `η_eff < 0.9 · η_visc`. Max over the run; zero if no cell
+    /// meets the threshold during the run.
+    pub yielding_intensity_max: Option<f64>,
+    /// Domain-level `ε̇_II` aggregates at the **final timestep**,
+    /// intended for the floor-dominated-regime diagnostic in the
+    /// Step 3 physics report. `None` when yielding is Disabled.
+    pub eps_ii_mean_final: Option<f64>,
+    pub eps_ii_max_final: Option<f64>,
+    /// Fraction of cells where `ε̇_II < 10·ε̇_min` at the final
+    /// timestep — "how much of the domain sits in the floor-
+    /// dominated band at the end of the run".
+    pub eps_ii_floor_dominated_fraction_final: Option<f64>,
 }
 
 impl NewtonAggregate {
@@ -100,6 +121,51 @@ pub fn cap_activation_fraction(eta_cc: &crate::tectonics_v2::field::Field2D, eta
     let threshold = 0.9 * eta_max_cap;
     let count = eta_cc.data().iter().filter(|&&v| v > threshold).count();
     count as f64 / n as f64
+}
+
+/// Fraction of cells where `η_eff < 0.5 · η_visc`.
+///
+/// Step 3 primary yielding metric (issue #85). This definition
+/// captures "yielding is the dominant branch" rather than
+/// "yielding is present anywhere" — the legacy `η_p < η_v`
+/// criterion saturated to ~1.0 as soon as the plastic branch was
+/// defined, carrying no diagnostic signal. See the `#75`
+/// discussion.
+pub fn yielding_cell_fraction(
+    eta_visc: &crate::tectonics_v2::field::Field2D,
+    eta_eff: &crate::tectonics_v2::field::Field2D,
+) -> f64 {
+    let n = eta_visc.data().len();
+    if n == 0 {
+        return 0.0;
+    }
+    let mut count = 0usize;
+    for (&ev, &ee) in eta_visc.data().iter().zip(eta_eff.data().iter()) {
+        if ee < 0.5 * ev {
+            count += 1;
+        }
+    }
+    count as f64 / n as f64
+}
+
+/// Mean of `(η_visc / η_eff − 1)` over cells where
+/// `η_eff < 0.9 · η_visc`. Zero if no cell meets the threshold.
+/// Captures "how much the yielding softens the already-yielding
+/// zones", orthogonal to `yielding_cell_fraction` which captures
+/// "how widespread the yielding is".
+pub fn yielding_intensity(
+    eta_visc: &crate::tectonics_v2::field::Field2D,
+    eta_eff: &crate::tectonics_v2::field::Field2D,
+) -> f64 {
+    let mut sum = 0.0_f64;
+    let mut count = 0usize;
+    for (&ev, &ee) in eta_visc.data().iter().zip(eta_eff.data().iter()) {
+        if ee < 0.9 * ev && ee > 0.0 {
+            sum += ev / ee - 1.0;
+            count += 1;
+        }
+    }
+    if count == 0 { 0.0 } else { sum / count as f64 }
 }
 
 /// Compute `η_max / η_min` from an η field.
