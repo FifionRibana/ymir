@@ -13,6 +13,7 @@
 //! submodule for the plastic-branch blend introduced at Step 3).
 
 pub mod advection;
+pub mod basal_drag;
 pub mod diagnostics;
 pub mod field;
 pub mod forcing;

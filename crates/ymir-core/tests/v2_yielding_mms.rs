@@ -96,8 +96,8 @@ fn jacobian_symmetric_with_yielding() {
     let mut juy = vec![0.0; n2];
     let mut jwx = vec![0.0; n2];
     let mut jwy = vec![0.0; n2];
-    apply_jacobian(&grid, &ctx, &ux, &uy, &mut jux, &mut juy);
-    apply_jacobian(&grid, &ctx, &wx, &wy, &mut jwx, &mut jwy);
+    apply_jacobian(&grid, &ctx, None, &ux, &uy, &mut jux, &mut juy);
+    apply_jacobian(&grid, &ctx, None, &wx, &wy, &mut jwx, &mut jwy);
     let lhs = dot(&jux, &wx) + dot(&juy, &wy);
     let rhs = dot(&ux, &jwx) + dot(&uy, &jwy);
     let rel = (lhs - rhs).abs() / lhs.abs().max(rhs.abs()).max(1.0);
@@ -162,8 +162,8 @@ fn picard_block_symmetric_with_yielding_eta() {
     let mut aux_y = vec![0.0; n2];
     let mut awx = vec![0.0; n2];
     let mut awy = vec![0.0; n2];
-    apply_momentum(&grid, &eta, &ux, &uy, &mut aux_x, &mut aux_y);
-    apply_momentum(&grid, &eta, &wx, &wy, &mut awx, &mut awy);
+    apply_momentum(&grid, &eta, None, &ux, &uy, &mut aux_x, &mut aux_y);
+    apply_momentum(&grid, &eta, None, &wx, &wy, &mut awx, &mut awy);
     let lhs = dot(&aux_x, &wx) + dot(&aux_y, &wy);
     let rhs = dot(&ux, &awx) + dot(&uy, &awy);
     let rel = (lhs - rhs).abs() / lhs.abs().max(rhs.abs()).max(1.0);

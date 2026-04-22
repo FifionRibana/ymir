@@ -28,7 +28,7 @@
 //! stall detection over 3 successive iterations, divergence at 10×
 //! initial residual, or the outer-iteration cap.
 
-use super::super::field::PeriodicIndex;
+use super::super::field::{Field2D, PeriodicIndex};
 use super::super::rheology::{self, StrainRate, ViscosityLaw};
 use super::nullspace;
 use super::operator::{apply_momentum, momentum_diagonal, StokesGrid, TangentContext};
@@ -126,11 +126,16 @@ impl NonlinearOutcome {
 
 /// Nonlinear-solver trait. Implementations: [`NewtonSolver`] and
 /// [`super::picard::PicardSolver`].
+///
+/// `drag_diag` is the optional Step-4 basal-drag diagonal field
+/// (cell-centered `Br · S̃^exp`). `None` disables drag; `Some(&field)`
+/// augments the operator and the preconditioner diagonal consistently.
 pub trait NonlinearSolver {
     fn solve(
         &self,
         grid: &StokesGrid,
         law: &ViscosityLaw,
+        drag_diag: Option<&Field2D>,
         rhs_x: &[f64],
         rhs_y: &[f64],
         vx: &mut [f64],
@@ -155,12 +160,14 @@ impl Default for NewtonSolver {
     }
 }
 
-/// Compute the nonlinear residual `r = A(v; η(ε̇_II(v))) - rhs`. The
-/// null-space components are **not** projected here — caller is
-/// expected to supply a gauge-fixed rhs and initial guess.
+/// Compute the nonlinear residual
+/// `r = A(v; η(ε̇_II(v))) + Br·S̃²·v - rhs`. The null-space components
+/// are **not** projected here — caller is expected to supply a
+/// gauge-fixed rhs and initial guess.
 fn compute_residual(
     grid: &StokesGrid,
     law: &ViscosityLaw,
+    drag_diag: Option<&Field2D>,
     vx: &[f64],
     vy: &[f64],
     rhs_x: &[f64],
@@ -181,7 +188,7 @@ fn compute_residual(
         vy,
     );
     let eta = rheology::build_eta_field(law, &sr.eps_ii_center);
-    apply_momentum(grid, &eta, vx, vy, out_x, out_y);
+    apply_momentum(grid, &eta, drag_diag, vx, vy, out_x, out_y);
     for k in 0..out_x.len() {
         out_x[k] -= rhs_x[k];
         out_y[k] -= rhs_y[k];
@@ -203,6 +210,7 @@ impl NonlinearSolver for NewtonSolver {
         &self,
         grid: &StokesGrid,
         law: &ViscosityLaw,
+        drag_diag: Option<&Field2D>,
         rhs_x: &[f64],
         rhs_y: &[f64],
         vx: &mut [f64],
@@ -217,7 +225,7 @@ impl NonlinearSolver for NewtonSolver {
         let mut r_y = vec![0.0; n];
         let mut sr_k: Option<StrainRate> = None;
         let mut eta_k: Option<super::super::field::Field2D> = None;
-        compute_residual(grid, law, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y, &mut sr_k, &mut eta_k);
+        compute_residual(grid, law, drag_diag, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y, &mut sr_k, &mut eta_k);
         let r0_norm = vec_norm(&r_x, &r_y);
         trace.residuals.push(r0_norm);
         // Effective absolute tolerance: the Newton residual cannot go
@@ -270,9 +278,11 @@ impl NonlinearSolver for NewtonSolver {
 
             // Preconditioner diagonal from the Picard block (SPD
             // approximation, adequate for our mildly-indefinite J).
+            // Basal drag adds `Br·S̃²` to the diagonal via drag_diag,
+            // matching `apply_momentum`'s augmentation (Case B).
             let mut diag_vx = vec![0.0; n];
             let mut diag_vy = vec![0.0; n];
-            momentum_diagonal(grid, &ctx.eta_center, &mut diag_vx, &mut diag_vy);
+            momentum_diagonal(grid, &ctx.eta_center, drag_diag, &mut diag_vx, &mut diag_vy);
             let vjac = VelocityJacobi::from_diagonal(&diag_vx, &diag_vy, self.cfg.diag_floor);
 
             // Solve J δv = -r_k.
@@ -291,8 +301,11 @@ impl NonlinearSolver for NewtonSolver {
             let mut matvec = |v: &[f64], out: &mut [f64]| {
                 let (vx_in, vy_in) = v.split_at(n);
                 let (out_x, out_y) = out.split_at_mut(n);
-                // J δv = apply_momentum(η_k) + apply_tangent(ctx)
-                apply_momentum(grid, &ctx.eta_center, vx_in, vy_in, &mut tmp_ax, &mut tmp_ay);
+                // J δv = apply_momentum(η_k, drag) + apply_tangent(ctx)
+                // Basal drag's Jacobian is diagonal (Br·S̃²·I) and
+                // therefore lives entirely in the Picard block; no
+                // extra contribution from apply_tangent.
+                apply_momentum(grid, &ctx.eta_center, drag_diag, vx_in, vy_in, &mut tmp_ax, &mut tmp_ay);
                 out_x.copy_from_slice(&tmp_ax);
                 out_y.copy_from_slice(&tmp_ay);
                 super::operator::apply_tangent(grid, &ctx, vx_in, vy_in, out_x, out_y);
@@ -324,7 +337,7 @@ impl NonlinearSolver for NewtonSolver {
                 let mut sr_trial: Option<StrainRate> = None;
                 let mut eta_trial: Option<super::super::field::Field2D> = None;
                 compute_residual(
-                    grid, law, &v_trial_x, &v_trial_y, rhs_x, rhs_y,
+                    grid, law, drag_diag, &v_trial_x, &v_trial_y, rhs_x, rhs_y,
                     &mut r_trial_x, &mut r_trial_y, &mut sr_trial, &mut eta_trial,
                 );
                 let r_trial_norm = vec_norm(&r_trial_x, &r_trial_y);
@@ -437,8 +450,8 @@ mod tests {
         let mut juy = vec![0.0; n2];
         let mut jwx = vec![0.0; n2];
         let mut jwy = vec![0.0; n2];
-        super::super::operator::apply_jacobian(&grid, &ctx, &ux, &uy, &mut jux, &mut juy);
-        super::super::operator::apply_jacobian(&grid, &ctx, &wx, &wy, &mut jwx, &mut jwy);
+        super::super::operator::apply_jacobian(&grid, &ctx, None, &ux, &uy, &mut jux, &mut juy);
+        super::super::operator::apply_jacobian(&grid, &ctx, None, &wx, &wy, &mut jwx, &mut jwy);
         let lhs = dot(&jux, &wx) + dot(&juy, &wy);
         let rhs = dot(&ux, &jwx) + dot(&uy, &jwy);
         let rel = (lhs - rhs).abs() / lhs.abs().max(rhs.abs()).max(1.0);
@@ -467,7 +480,7 @@ mod tests {
         let mut vy = vec![0.0; nx * ny];
         let solver = NewtonSolver::default();
         let cg = ConjugateGradient::new(1.0e-10, 2000);
-        let outcome = solver.solve(&grid, &law, &fx, &fy, &mut vx, &mut vy, &cg);
+        let outcome = solver.solve(&grid, &law, None, &fx, &fy, &mut vx, &mut vy, &cg);
         let trace = outcome.trace();
         eprintln!("residuals (len={}): {:?}", trace.residuals.len(), trace.residuals);
         eprintln!("alphas: {:?}", trace.alphas);
@@ -508,7 +521,7 @@ mod tests {
         let eta = Field2D::filled(nx, ny, 1.0);
         let mut rhs_x = vec![0.0; nx * ny];
         let mut rhs_y = vec![0.0; nx * ny];
-        apply_momentum(&grid, &eta, &vx_target, &vy_target, &mut rhs_x, &mut rhs_y);
+        apply_momentum(&grid, &eta, None, &vx_target, &vy_target, &mut rhs_x, &mut rhs_y);
         crate::tectonics_v2::stokes::nullspace::project_velocity(&mut rhs_x, &mut rhs_y);
 
         let mut vx = vec![0.0; nx * ny];
@@ -516,7 +529,7 @@ mod tests {
         let mut solver = NewtonSolver::default();
         solver.cfg.rel_tol = 1.0e-8;
         let cg = ConjugateGradient::new(1.0e-10, 2000);
-        let outcome = solver.solve(&grid, &law, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
+        let outcome = solver.solve(&grid, &law, None, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
         assert!(outcome.converged(), "trivial problem failed: {:?}", outcome);
     }
 }

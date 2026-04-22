@@ -8,6 +8,7 @@
 use std::path::PathBuf;
 
 use super::harness::{run_baseline, BaselineConfig, BaselineResult, ForceKind, NonlinearChoice};
+use crate::tectonics_v2::basal_drag::BasalDragConfig;
 use crate::tectonics_v2::forcing::{ForceSum, GpeForce};
 use crate::tectonics_v2::presets::{Preset, YieldingConfig};
 use crate::tectonics_v2::rheology::YieldingLaw;
@@ -68,6 +69,7 @@ pub fn run_bi_sweep(
             sinusoidal_amplitude: 0.0,
             s_perturbation_amplitude,
             yielding: YieldingConfig::Enabled(YieldingLaw { bi, ..Default::default() }),
+            basal_drag: BasalDragConfig::Disabled,
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(bi, &r));

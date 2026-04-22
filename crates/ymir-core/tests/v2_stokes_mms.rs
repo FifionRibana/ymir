@@ -70,7 +70,7 @@ fn solve_and_error(n: usize) -> f64 {
     let mut cfg = SheetConfig::default();
     cfg.tol = 1e-12;
     cfg.max_iter = 5000;
-    let stats = solve_sheet(&grid, &eta, &fx, &fy, &mut vx, &mut vy, &cfg);
+    let stats = solve_sheet(&grid, &eta, None, &fx, &fy, &mut vx, &mut vy, &cfg);
     assert!(stats.converged, "CG did not converge at N={}: {:?}", n, stats);
 
     let v_err: Vec<f64> = vx

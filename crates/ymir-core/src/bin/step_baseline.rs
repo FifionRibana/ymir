@@ -21,6 +21,7 @@ use std::process::ExitCode;
 
 use ymir_core::tectonics_v2::diagnostics::ar_sweep::{self, ArSweepResults};
 use ymir_core::tectonics_v2::diagnostics::bi_sweep::{self, BiSweepResults};
+use ymir_core::tectonics_v2::diagnostics::br_sweep::{self, BrSweepResults};
 use ymir_core::tectonics_v2::diagnostics::comparison::{parse_step_report, StepReference};
 use ymir_core::tectonics_v2::diagnostics::harness::{
     build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
@@ -29,6 +30,7 @@ use ymir_core::tectonics_v2::diagnostics::mms_bench;
 use ymir_core::tectonics_v2::diagnostics::report::{
     write_markdown_report, ReportInputs, ReportKind,
 };
+use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
 use ymir_core::tectonics_v2::rheology::YieldingLaw;
 use ymir_core::tectonics_v2::scales::Scales;
@@ -65,10 +67,16 @@ struct Args {
     forcing: ForcingSelection,
     sinusoidal_amplitude: f64,
     /// `None` → default per scenario (physics Enabled, regression
-    /// Disabled). `Some(cfg)` → explicit override from CLI.
+    /// Disabled). `Some(cfg)` → explicit override from CLI. The
+    /// `--bi` flag is baked into the Enabled variant here so the
+    /// scenario layer doesn't need to re-plumb it.
     yielding_override: Option<YieldingConfig>,
-    /// Bi value used when yielding is Enabled (default 0.15).
-    bi: f64,
+    /// `None` → default per scenario (Step-4 physics Enabled with
+    /// `Br`, regression Disabled). `Some(cfg)` → explicit override.
+    basal_drag_override: Option<BasalDragConfig>,
+    /// Br value used when basal drag is Enabled (default 0.05). Read
+    /// by `run_scenario` to inject into the per-scenario default.
+    br: f64,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -83,6 +91,8 @@ fn parse_args() -> Result<Args, String> {
     let mut sin_amp: f64 = 10.0;
     let mut yielding_str: Option<String> = None;
     let mut bi: f64 = YieldingLaw::default().bi;
+    let mut basal_drag_str: Option<String> = None;
+    let mut br: f64 = BasalDragLaw::default().br;
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -99,12 +109,15 @@ fn parse_args() -> Result<Args, String> {
             "--sinusoidal-amplitude" => { i += 1; sin_amp = args[i].parse().map_err(|e| format!("bad --sinusoidal-amplitude: {e}"))?; }
             "--yielding-config" => { i += 1; yielding_str = Some(args[i].clone()); }
             "--bi" => { i += 1; bi = args[i].parse().map_err(|e| format!("bad --bi: {e}"))?; }
+            "--basal-drag-config" => { i += 1; basal_drag_str = Some(args[i].clone()); }
+            "--br" => { i += 1; br = args[i].parse().map_err(|e| format!("bad --br: {e}"))?; }
             "--help" | "-h" => {
                 println!(
                     "Usage: step_baseline [--seed N] [--grids N1,N2,...] [--steps N] \
                      [--preset NAME] [--nonlinear-solver newton|picard] \
                      [--forcing gpe|sinusoidal|both] [--sinusoidal-amplitude F] \
                      [--yielding-config enabled|disabled] [--bi F] \
+                     [--basal-drag-config enabled|disabled] [--br F] \
                      [--compare-to PATH] [--output-dir PATH]"
                 );
                 std::process::exit(0);
@@ -145,6 +158,19 @@ fn parse_args() -> Result<Args, String> {
         }
         None => None,
     };
+    let basal_drag_override = match basal_drag_str {
+        Some(s) => {
+            // Mirror of yielding: parse the variant, then re-inject
+            // --br into the Enabled arm.
+            Some(match BasalDragConfig::parse(&s)? {
+                BasalDragConfig::Disabled => BasalDragConfig::Disabled,
+                BasalDragConfig::Enabled(_) => {
+                    BasalDragConfig::Enabled(BasalDragLaw { br, ..BasalDragLaw::default() })
+                }
+            })
+        }
+        None => None,
+    };
     Ok(Args {
         seed, grids, steps, output_dir,
         preset: Preset::by_name(&preset_name)?,
@@ -153,7 +179,8 @@ fn parse_args() -> Result<Args, String> {
         forcing: ForcingSelection::parse(&forcing_str)?,
         sinusoidal_amplitude: sin_amp,
         yielding_override,
-        bi,
+        basal_drag_override,
+        br,
     })
 }
 
@@ -167,10 +194,12 @@ fn run_scenario(
     mms: &mms_bench::MmsResults,
     ar_sweep_results: Option<&ArSweepResults>,
     bi_sweep_results: Option<&BiSweepResults>,
-) -> Result<(), String> {
+    br_sweep_results: Option<&BrSweepResults>,
+    regression_vmax_peak: Option<f64>,
+) -> Result<f64, String> {
     let heightmap_subdir = args.output_dir.join(match kind {
-        ForceKind::Gpe => "step3_physics_heightmaps",
-        ForceKind::Sinusoidal => "step3_regression_heightmaps",
+        ForceKind::Gpe => "step4_physics_heightmaps",
+        ForceKind::Sinusoidal => "step4_regression_heightmaps",
     });
 
     let mut configs = Vec::new();
@@ -189,13 +218,24 @@ fn run_scenario(
         ForceKind::Sinusoidal => 0.02,
     };
 
-    // Yielding default per-scenario: physics Enabled(Bi), regression Disabled.
-    // Explicit `--yielding-config` overrides for either.
-    let yielding = args.yielding_override.unwrap_or_else(|| match kind {
-        ForceKind::Gpe => {
-            YieldingConfig::Enabled(YieldingLaw { bi: args.bi, ..Default::default() })
-        }
-        ForceKind::Sinusoidal => YieldingConfig::Disabled,
+    // Step 4: physics isolates the Br effect with yielding Disabled
+    // (see issue #87 / prompt §Physique attendue). Regression stays
+    // Disabled, as in Steps 2/3, to keep the mirror-of-previous-step
+    // contract.
+    //
+    // The CLI's `--yielding-config` still overrides if provided —
+    // it lets us re-run the Step-3 physics scenario for regression
+    // comparison if needed.
+    let yielding = args.yielding_override.unwrap_or(YieldingConfig::Disabled);
+
+    // Basal drag default per-scenario: physics Enabled(Br),
+    // regression Disabled. `--basal-drag-config` overrides.
+    let basal_drag = args.basal_drag_override.unwrap_or_else(|| match kind {
+        ForceKind::Gpe => BasalDragConfig::Enabled(BasalDragLaw {
+            br: args.br,
+            ..BasalDragLaw::default()
+        }),
+        ForceKind::Sinusoidal => BasalDragConfig::Disabled,
     });
 
     for (nx, ny) in &args.grids {
@@ -221,6 +261,7 @@ fn run_scenario(
             sinusoidal_amplitude: args.sinusoidal_amplitude,
             s_perturbation_amplitude: s_amp,
             yielding,
+            basal_drag,
         };
         println!("-- running {}×{} for {} steps --", nx, ny, args.steps);
         let result = run_baseline(&base);
@@ -258,11 +299,17 @@ fn run_scenario(
         mms: Some(mms),
         ar_sweep: ar_sweep_results,
         bi_sweep: bi_sweep_results,
+        br_sweep: br_sweep_results,
+        regression_vmax_peak,
     };
     write_markdown_report(&output, &inputs)
         .map_err(|e| format!("failed to write report {:?}: {}", output, e))?;
     println!("report written to {}", output.display());
-    Ok(())
+    // Max peak|v| across the scenario's grids — piped back into the
+    // physics run as the regression reference for
+    // `peak_v_damping_ratio`.
+    let max_vmax = metrics.iter().map(|m| m.vmax_peak).fold(0.0_f64, f64::max);
+    Ok(max_vmax)
 }
 
 fn main() -> ExitCode {
@@ -304,22 +351,23 @@ fn main() -> ExitCode {
     let run_gpe = matches!(args.forcing, ForcingSelection::Gpe | ForcingSelection::Both);
     let run_sin = matches!(args.forcing, ForcingSelection::Sinusoidal | ForcingSelection::Both);
 
-    // Step 3 baseline: GPE+yielding physics, SinusoidalForce mirror
-    // for regression. Ar sweep is retained from Step 2 machinery but
-    // not run by default (it was the Step 2 diagnostic artefact);
-    // Step 3 produces the Bi sweep instead.
+    // Step 4: GPE+basal-drag physics (yielding disabled to isolate
+    // the Br effect), SinusoidalForce mirror for regression
+    // (basal drag + yielding both disabled). Ar and Bi sweeps are
+    // retained but not run by default — Step 4 runs the Br sweep.
     let _ = ar_sweep::run_ar_sweep; // keep symbol reachable without running the Step 2 sweep.
-    let bi_sweep_res: Option<BiSweepResults> = if run_gpe {
-        println!("-- running Bi sweep (64²·{} steps × 5 points) --", args.steps);
-        let bi_values = [0.05_f64, 0.10, 0.15, 0.30, 0.50];
-        let res = bi_sweep::run_bi_sweep(
-            args.seed, args.steps, &args.preset, 0.2, &bi_values,
+    let _ = bi_sweep::run_bi_sweep; // keep symbol reachable without running the Step 3 sweep.
+    let br_sweep_res: Option<BrSweepResults> = if run_gpe {
+        println!("-- running Br sweep (64²·{} steps × 5 points) --", args.steps);
+        let br_values = [0.01_f64, 0.05, 0.10, 0.20, 0.30];
+        let res = br_sweep::run_br_sweep(
+            args.seed, args.steps, &args.preset, 0.2, &br_values,
         );
         for p in &res.points {
             println!(
-                "  Bi={:.2}: yf={:.3} yi={:.3} conv={:.0}% CG={:.1} wallclock {:.3}s",
-                p.bi, p.yielding_cell_fraction_max, p.yielding_intensity_max,
-                p.newton_converged_pct, p.cg_iter_mean, p.wallclock_s,
+                "  Br={:.3}: peak|v|={:.3e} CG={:.1} Newton_iter={:.1} conv={:.0}% wallclock {:.3}s",
+                p.br, p.peak_v, p.cg_iter_mean, p.newton_iter_mean,
+                p.newton_converged_pct, p.wallclock_s,
             );
         }
         Some(res)
@@ -327,26 +375,39 @@ fn main() -> ExitCode {
         None
     };
     let ar_sweep_res: Option<ArSweepResults> = None;
+    let bi_sweep_res: Option<BiSweepResults> = None;
 
+    // Run regression BEFORE physics so we can pipe its vmax_peak
+    // into the physics report as the reference for
+    // `peak_v_damping_ratio`.
+    let regression_vmax: Option<f64> = if run_sin {
+        match run_scenario(
+            &args, ForceKind::Sinusoidal, ReportKind::Step4Regression,
+            "step4_regression_report.md", &scales, previous.as_ref(), &mms,
+            None,
+            None,
+            None,
+            None,
+        ) {
+            Ok(vmax) => Some(vmax),
+            Err(e) => {
+                eprintln!("regression run failed: {}", e);
+                return ExitCode::from(1);
+            }
+        }
+    } else {
+        None
+    };
     if run_gpe {
         if let Err(e) = run_scenario(
-            &args, ForceKind::Gpe, ReportKind::Step3Physics,
-            "step3_physics_report.md", &scales, previous.as_ref(), &mms,
+            &args, ForceKind::Gpe, ReportKind::Step4Physics,
+            "step4_physics_report.md", &scales, previous.as_ref(), &mms,
             ar_sweep_res.as_ref(),
             bi_sweep_res.as_ref(),
+            br_sweep_res.as_ref(),
+            regression_vmax,
         ) {
             eprintln!("physics run failed: {}", e);
-            return ExitCode::from(1);
-        }
-    }
-    if run_sin {
-        if let Err(e) = run_scenario(
-            &args, ForceKind::Sinusoidal, ReportKind::Step3Regression,
-            "step3_regression_report.md", &scales, previous.as_ref(), &mms,
-            None,
-            None,
-        ) {
-            eprintln!("regression run failed: {}", e);
             return ExitCode::from(1);
         }
     }

@@ -37,7 +37,7 @@ fn solve_returns_zero_mean_velocity() {
     let mut vx = vec![0.0; nx * ny];
     let mut vy = vec![0.0; nx * ny];
     let cfg = SheetConfig::default();
-    let stats = solve_sheet(&grid, &eta, &fx, &fy, &mut vx, &mut vy, &cfg);
+    let stats = solve_sheet(&grid, &eta, None, &fx, &fy, &mut vx, &mut vy, &cfg);
 
     assert!(stats.converged, "CG did not converge: {:?}", stats);
 
@@ -62,7 +62,7 @@ fn zero_forcing_yields_zero_velocity() {
     let mut vx = vec![0.0; nx * ny];
     let mut vy = vec![0.0; nx * ny];
     let cfg = SheetConfig::default();
-    solve_sheet(&grid, &eta, &fx, &fy, &mut vx, &mut vy, &cfg);
+    solve_sheet(&grid, &eta, None, &fx, &fy, &mut vx, &mut vy, &cfg);
     let peak = vx.iter().chain(vy.iter()).fold(0.0_f64, |a, &v| a.max(v.abs()));
     assert!(peak < 1e-12, "nonzero velocity from zero RHS: peak = {}", peak);
 }
