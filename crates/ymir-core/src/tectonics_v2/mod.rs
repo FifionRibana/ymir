@@ -8,8 +8,9 @@
 //! immunity, and a geological age field, in that order.
 //!
 //! The module is strictly isolated from the legacy `tectonics/` module;
-//! the only whitelisted imports are `Field2D` and `PeriodicIndex`, which
-//! this crate re-exports from the local [`field`] submodule.
+//! the whitelisted imports are `Field2D`, `PeriodicIndex`, and
+//! `soft_min_harmonic` (the latter re-exported by the [`rheology`]
+//! submodule for the plastic-branch blend introduced at Step 3).
 
 pub mod advection;
 pub mod diagnostics;
@@ -19,3 +20,5 @@ pub mod presets;
 pub mod rheology;
 pub mod scales;
 pub mod stokes;
+
+pub use rheology::soft_min_harmonic;

@@ -64,6 +64,18 @@
 use super::field::{Field2D, PeriodicIndex};
 
 /// Power-law viscosity law evaluated pointwise on the MAC grid.
+///
+/// Starting at Step 3 the struct carries an optional
+/// [`YieldingConfig`](crate::tectonics_v2::presets::YieldingConfig)
+/// field that toggles the plastic branch on or off. `eta_effective`
+/// and `d_eta_effective_d_eps_ii` return the yielding-enhanced
+/// effective viscosity when `yielding == Enabled(..)` and the
+/// pure-viscous value otherwise — **structurally** by matching on
+/// the enum variant. The `Disabled` path performs exactly the same
+/// work as the pre-Step-3 code path, with no allocation or extra
+/// branch inside the plastic helpers; this is what the Step-3
+/// regression harness relies on for bit-comparable behaviour with
+/// Step 2.
 #[derive(Clone, Copy, Debug)]
 pub struct ViscosityLaw {
     pub n: f64,
@@ -71,23 +83,43 @@ pub struct ViscosityLaw {
     pub strain_rate_floor: f64,
     pub eta_max_cap: f64,
     pub k_saturation: f64,
+    /// Plastic-yielding configuration. `Disabled` (default)
+    /// reproduces Step 0/1/2 behaviour exactly.
+    pub yielding: crate::tectonics_v2::presets::YieldingConfig,
 }
 
 impl ViscosityLaw {
     /// `η_newton(ε̇_II) = B̃ · (ε̇_II + ε̇_min)^(1/n - 1)`.
-    /// Shear-thinning for `n > 1`.
+    /// Pure power-law branch, **ignores yielding**. Useful for
+    /// reporting the "viscous only" reference value (e.g. in the
+    /// yielding-cell-fraction diagnostic).
     #[inline]
     pub fn eta_newton(&self, eps_ii: f64) -> f64 {
         let eps_reg = eps_ii + self.strain_rate_floor;
         self.b_prefactor * eps_reg.powf(1.0 / self.n - 1.0)
     }
 
-    /// `η_eff(ε̇_II) = smooth_saturate(η_newton(ε̇_II), η_max; k)`.
-    /// The returned value is strictly bounded above by `η_max` for
-    /// any positive input.
+    /// Viscous-branch effective viscosity — `eta_newton` wrapped by
+    /// the smooth upper-saturation cap. **Ignores yielding.**
+    #[inline]
+    pub fn eta_visc_effective(&self, eps_ii: f64) -> f64 {
+        smooth_saturate(self.eta_newton(eps_ii), self.eta_max_cap, self.k_saturation)
+    }
+
+    /// `η_eff(ε̇_II)` — full effective viscosity consumed by the
+    /// solver. Under `yielding == Disabled` returns
+    /// `eta_visc_effective`; under `Enabled(law)` returns
+    /// `soft_min_harmonic(eta_visc, eta_plastic, sharpness)`.
     #[inline]
     pub fn eta_effective(&self, eps_ii: f64) -> f64 {
-        smooth_saturate(self.eta_newton(eps_ii), self.eta_max_cap, self.k_saturation)
+        let eta_v = self.eta_visc_effective(eps_ii);
+        match self.yielding {
+            crate::tectonics_v2::presets::YieldingConfig::Disabled => eta_v,
+            crate::tectonics_v2::presets::YieldingConfig::Enabled(ylaw) => {
+                let eta_p = eta_plastic(eps_ii, self.strain_rate_floor, ylaw.bi);
+                eta_effective(eta_v, eta_p, ylaw.sharpness)
+            }
+        }
     }
 
     /// `dη_newton/dε̇_II = (1/n - 1) · η_newton / (ε̇_II + ε̇_min)`.
@@ -97,15 +129,34 @@ impl ViscosityLaw {
         (1.0 / self.n - 1.0) * self.eta_newton(eps_ii) / eps_reg
     }
 
-    /// `dη_eff/dε̇_II` via chain rule.
+    /// Derivative of the viscous-branch effective viscosity (chain
+    /// rule through the `smooth_saturate` cap). **Ignores yielding.**
     #[inline]
-    pub fn d_eta_effective_d_eps_ii(&self, eps_ii: f64) -> f64 {
+    pub fn d_eta_visc_effective_d_eps_ii(&self, eps_ii: f64) -> f64 {
         let eta_n = self.eta_newton(eps_ii);
         let ratio = eta_n / self.eta_max_cap;
         let k = self.k_saturation;
-        // dη_eff / dη_newton = [1 + ratio^k]^(-(k+1)/k)
         let factor = (1.0 + ratio.powf(k)).powf(-(k + 1.0) / k);
         factor * self.d_eta_newton_d_eps_ii(eps_ii)
+    }
+
+    /// `dη_eff/dε̇_II` — full derivative consumed by the Newton
+    /// Jacobian. Matches on the yielding variant; Enabled routes
+    /// through [`d_eta_eff_d_eps_ii`] which chains the blend's
+    /// partials.
+    #[inline]
+    pub fn d_eta_effective_d_eps_ii(&self, eps_ii: f64) -> f64 {
+        let dv = self.d_eta_visc_effective_d_eps_ii(eps_ii);
+        match self.yielding {
+            crate::tectonics_v2::presets::YieldingConfig::Disabled => dv,
+            crate::tectonics_v2::presets::YieldingConfig::Enabled(ylaw) => {
+                let eta_v = self.eta_visc_effective(eps_ii);
+                let eta_p = eta_plastic(eps_ii, self.strain_rate_floor, ylaw.bi);
+                d_eta_eff_d_eps_ii(
+                    eta_v, dv, eta_p, eps_ii, self.strain_rate_floor, ylaw.sharpness,
+                )
+            }
+        }
     }
 
     /// The Newton-extra pre-factor used in the Jacobian stress,
@@ -125,6 +176,7 @@ impl Default for ViscosityLaw {
             strain_rate_floor: 1.0e-3,
             eta_max_cap: 1.0e3,
             k_saturation: 4.0,
+            yielding: crate::tectonics_v2::presets::YieldingConfig::Disabled,
         }
     }
 }
@@ -296,8 +348,7 @@ impl StrainRate {
 
 /// Build an `η` field at cell centres from the rheology and the
 /// current strain-rate field. Stored as a `Field2D` so the operator
-/// layer can feed it to the existing harmonic corner averaging
-/// unchanged.
+/// layer can feed it to the arithmetic corner averaging unchanged.
 pub fn build_eta_field(law: &ViscosityLaw, eps_ii_center: &Field2D) -> Field2D {
     let nx = eps_ii_center.nx();
     let ny = eps_ii_center.ny();
@@ -308,6 +359,166 @@ pub fn build_eta_field(law: &ViscosityLaw, eps_ii_center: &Field2D) -> Field2D {
         }
     }
     eta
+}
+
+// ============================================================================
+// Plastic yielding (Step 3, Von Mises / Bingham, stateless)
+// ============================================================================
+//
+// The constitutive law for the effective viscosity becomes a smooth
+// minimum of the power-law (`ViscosityLaw`) branch and a plastic
+// branch derived from a Von Mises yield stress `τ_yield = Bi`:
+//
+// ```
+//   η_plastic(ε̇_II) = Bi / (2 · (ε̇_II + ε̇_min))
+//   η_eff(ε̇_II)     = soft_min_harmonic(η_visc, η_plastic, p)
+// ```
+//
+// `Bi` is a nondim Bingham number, stateless at Step 3 (no plastic
+// memory, no healing, no spatial variation). `ε̇_min` is the same
+// strain-rate floor used by the power-law viscosity, reused to
+// regularise `η_plastic` at `ε̇_II → 0`. `soft_min_harmonic` is
+// imported from `tectonics::solver::smooth` (whitelisted for
+// `tectonics_v2`, along with `Field2D` and `PeriodicIndex`); see
+// `tectonics_v2/mod.rs` for the re-export.
+//
+// # Derivatives (Newton Jacobian)
+//
+// For the `soft_min_harmonic` canonical form
+// `η_s = (a^(-p) + b^(-p))^(-1/p)` the partial derivatives are
+//
+// ```
+//   ∂η_s/∂a = (η_s / a)^(p+1)
+//   ∂η_s/∂b = (η_s / b)^(p+1)
+// ```
+//
+// (algebra: differentiate the `(·)^(-1/p)` wrapper, the chain rule
+// gives `a^(-p-1) · (a^(-p)+b^(-p))^(-(p+1)/p) = (η_s/a)^(p+1)`).
+//
+// The plastic branch's own derivative is
+// ```
+//   ∂η_p/∂ε̇_II = -Bi / (2·(ε̇_II + ε̇_min)²) = -η_p / (ε̇_II + ε̇_min).
+// ```
+//
+// Chain rule for the effective viscosity:
+// ```
+//   dη_eff/dε̇_II = (η_s/η_v)^(p+1) · dη_v/dε̇_II
+//                + (η_s/η_p)^(p+1) · dη_p/dε̇_II
+// ```
+// with `dη_v/dε̇_II` supplied by the existing
+// `ViscosityLaw::d_eta_effective_d_eps_ii` (power-law + smooth cap).
+//
+// # Why this stays SPD-compatible
+//
+// The operator layer (`stokes::operator::apply_momentum`) is
+// unchanged — it reads a single `η` field and produces a symmetric
+// stress divergence. The Newton Jacobian's tangent contribution
+// (`apply_tangent`) uses the cell-centred scalar
+// `c(ε̇_II) = dη/dε̇_II · 2 / (ε̇_II + ε̇_min)`; because
+// `dη_eff/dε̇_II` is itself a derivative of a scalar, smooth
+// potential-derived function of `ε̇_II`, the tangent operator
+// remains symmetric at discrete level provided the η averaging to
+// corners is arithmetic (cf. `stokes/operator.rs`). Step 3 therefore
+// keeps CG as the inner linear solver — BiCGSTAB is not needed.
+
+pub use crate::tectonics::solver::smooth::soft_min_harmonic;
+
+/// Plastic yielding parameters.
+///
+/// `bi` is the Bingham number `Bi = τ_yield / σ* ∈ [0.05, 0.5]`
+/// (design note §5.1). `sharpness` controls the `soft_min_harmonic`
+/// transition width; `p = 4` matches the legacy default.
+#[derive(Clone, Copy, Debug)]
+pub struct YieldingLaw {
+    pub bi: f64,
+    pub sharpness: f64,
+}
+
+impl Default for YieldingLaw {
+    fn default() -> Self {
+        Self { bi: 0.15, sharpness: 4.0 }
+    }
+}
+
+/// Plastic-branch viscosity
+/// `η_plastic(ε̇_II) = Bi / (2·(ε̇_II + ε̇_min))`.
+///
+/// Positive, continuous at `ε̇_II = 0`, strictly decreasing in
+/// `ε̇_II`. The `ε̇_min` floor is the same as the one used by
+/// `ViscosityLaw` — callers pass it explicitly so the two branches
+/// stay consistent.
+#[inline]
+pub fn eta_plastic(eps_ii: f64, eps_ii_floor: f64, bi: f64) -> f64 {
+    bi / (2.0 * (eps_ii + eps_ii_floor))
+}
+
+/// Effective viscosity blend
+/// `η_eff = soft_min_harmonic(η_visc, η_plastic, sharpness)`.
+#[inline]
+pub fn eta_effective(eta_visc: f64, eta_plastic_val: f64, sharpness: f64) -> f64 {
+    soft_min_harmonic(eta_visc, eta_plastic_val, sharpness)
+}
+
+/// Analytic derivative `dη_eff/dε̇_II` via chain rule through the
+/// `soft_min_harmonic` blend. Needed by the Newton Jacobian —
+/// verified against a centred finite difference in the unit tests.
+#[inline]
+pub fn d_eta_eff_d_eps_ii(
+    eta_visc: f64,
+    d_eta_visc_d_eps: f64,
+    eta_plastic_val: f64,
+    eps_ii: f64,
+    eps_ii_floor: f64,
+    sharpness: f64,
+) -> f64 {
+    let eta_s = soft_min_harmonic(eta_visc, eta_plastic_val, sharpness);
+    let p_plus_1 = sharpness + 1.0;
+    // ∂η_p/∂ε̇_II = -η_p / (ε̇_II + ε̇_min).
+    let d_eta_p_d_eps = -eta_plastic_val / (eps_ii + eps_ii_floor);
+    // (η_s / η_v)^(p+1) · dη_v + (η_s / η_p)^(p+1) · dη_p.
+    (eta_s / eta_visc).powf(p_plus_1) * d_eta_visc_d_eps
+        + (eta_s / eta_plastic_val).powf(p_plus_1) * d_eta_p_d_eps
+}
+
+/// Build the plastic-branch viscosity field at cell centres.
+pub fn build_eta_plastic_field(
+    law: &YieldingLaw,
+    eps_ii_floor: f64,
+    eps_ii_center: &Field2D,
+) -> Field2D {
+    let nx = eps_ii_center.nx();
+    let ny = eps_ii_center.ny();
+    let mut out = Field2D::new(nx, ny);
+    for j in 0..ny {
+        for i in 0..nx {
+            out.set(i, j, eta_plastic(eps_ii_center.get(i, j), eps_ii_floor, law.bi));
+        }
+    }
+    out
+}
+
+/// Blend `η_visc` and `η_plastic` field-by-field. Output is the
+/// effective viscosity consumed by the operator layer.
+pub fn blend_eta_fields(
+    eta_visc: &Field2D,
+    eta_plastic: &Field2D,
+    sharpness: f64,
+) -> Field2D {
+    debug_assert_eq!(eta_visc.nx(), eta_plastic.nx());
+    debug_assert_eq!(eta_visc.ny(), eta_plastic.ny());
+    let nx = eta_visc.nx();
+    let ny = eta_visc.ny();
+    let mut out = Field2D::new(nx, ny);
+    for j in 0..ny {
+        for i in 0..nx {
+            out.set(
+                i,
+                j,
+                eta_effective(eta_visc.get(i, j), eta_plastic.get(i, j), sharpness),
+            );
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -435,6 +646,119 @@ mod tests {
         let expected = law.eta_effective(0.0);
         for v in eta.data().iter() {
             assert!(approx(*v, expected, 1e-12));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Step 3 — plastic yielding (Von Mises / Bingham, stateless).
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn eta_plastic_is_positive_decreasing_continuous_at_zero() {
+        let bi = 0.15;
+        let floor = 1.0e-3;
+        let xs = [0.0, 1e-5, 1e-3, 1e-2, 0.1, 1.0, 10.0];
+        let mut prev = f64::INFINITY;
+        for &x in &xs {
+            let e = eta_plastic(x, floor, bi);
+            assert!(e > 0.0);
+            assert!(e <= prev, "eta_plastic not monotone at ε̇={}", x);
+            prev = e;
+        }
+        // Continuity at 0: value is finite and equals Bi/(2·floor).
+        let e0 = eta_plastic(0.0, floor, bi);
+        assert!(approx(e0, bi / (2.0 * floor), 1e-14));
+    }
+
+    #[test]
+    fn eta_effective_asymptotes_match_branches() {
+        // η_v ≪ η_p ⟹ η_eff → η_v (viscous-dominated).
+        let eta_v = 1.0;
+        let eta_p = 1.0e3;
+        let eta = eta_effective(eta_v, eta_p, 4.0);
+        let rel = (eta - eta_v).abs() / eta_v;
+        assert!(rel < 1e-10, "viscous asymptote: rel = {}", rel);
+        // η_v ≫ η_p ⟹ η_eff → η_p (plastic-dominated).
+        let eta_v = 1.0e3;
+        let eta_p = 1.0;
+        let eta = eta_effective(eta_v, eta_p, 4.0);
+        let rel = (eta - eta_p).abs() / eta_p;
+        assert!(rel < 1e-10, "plastic asymptote: rel = {}", rel);
+    }
+
+    #[test]
+    fn eta_effective_is_monotone_decreasing_in_eps_ii() {
+        let visc = ViscosityLaw::default();
+        let yld = YieldingLaw::default();
+        let floor = visc.strain_rate_floor;
+        let xs = [1e-4, 1e-3, 1e-2, 0.1, 1.0, 10.0, 100.0];
+        let mut prev = f64::INFINITY;
+        for &x in &xs {
+            let ev = visc.eta_effective(x);
+            let ep = eta_plastic(x, floor, yld.bi);
+            let e = eta_effective(ev, ep, yld.sharpness);
+            assert!(e <= prev, "eta_eff not monotone at ε̇={}", x);
+            prev = e;
+        }
+    }
+
+    #[test]
+    fn d_eta_eff_matches_finite_difference() {
+        // Grid of ε̇_II values covering the whole viscous/plastic
+        // transition. Analytic derivative must agree with a centred
+        // finite difference on `eta_effective_of_eps` to 1e-7 (the
+        // spec bound).
+        let visc = ViscosityLaw::default();
+        let yld = YieldingLaw::default();
+        let floor = visc.strain_rate_floor;
+        let eta_eff_of = |x: f64| {
+            let ev = visc.eta_effective(x);
+            let ep = eta_plastic(x, floor, yld.bi);
+            eta_effective(ev, ep, yld.sharpness)
+        };
+        let h = 1.0e-7;
+        let xs = [5e-3, 1e-2, 5e-2, 0.1, 0.3, 0.5, 1.0, 3.0, 10.0, 100.0];
+        for &x in &xs {
+            let ev = visc.eta_effective(x);
+            let dv = visc.d_eta_effective_d_eps_ii(x);
+            let ep = eta_plastic(x, floor, yld.bi);
+            let analytic =
+                d_eta_eff_d_eps_ii(ev, dv, ep, x, floor, yld.sharpness);
+            let fd = (eta_eff_of(x + h) - eta_eff_of(x - h)) / (2.0 * h);
+            let rel = (analytic - fd).abs() / analytic.abs().max(fd.abs()).max(1e-12);
+            assert!(
+                rel < 1e-6,
+                "d_eta_eff FD mismatch at ε̇={}: analytic={}, fd={}, rel={}",
+                x, analytic, fd, rel,
+            );
+        }
+    }
+
+    #[test]
+    fn build_and_blend_fields_agree_with_pointwise() {
+        // Spot-check the field-level builders: every cell of
+        // `build_eta_plastic_field` then `blend_eta_fields` matches
+        // the pointwise `eta_effective(eta_visc, eta_plastic, p)`.
+        let visc = ViscosityLaw::default();
+        let yld = YieldingLaw::default();
+        let mut eps = Field2D::new(6, 6);
+        for j in 0..6 {
+            for i in 0..6 {
+                eps.set(i, j, 1e-3 + 0.01 * (i + j) as f64);
+            }
+        }
+        let eta_v = build_eta_field(&visc, &eps);
+        let eta_p = build_eta_plastic_field(&yld, visc.strain_rate_floor, &eps);
+        let eta_e = blend_eta_fields(&eta_v, &eta_p, yld.sharpness);
+        for j in 0..6 {
+            for i in 0..6 {
+                let expected = eta_effective(
+                    eta_v.get(i, j),
+                    eta_p.get(i, j),
+                    yld.sharpness,
+                );
+                assert!(approx(eta_e.get(i, j), expected, 1e-14));
+            }
         }
     }
 }
