@@ -93,7 +93,7 @@ fn eta_corner(eta: &Field2D, im: usize, i: usize, jm: usize, j: usize) -> f64 {
     0.25 * (eta.get(im, jm) + eta.get(i, jm) + eta.get(im, j) + eta.get(i, j))
 }
 
-/// Apply `A v = -∇·(2 η ε̇(v))` on the MAC grid.
+/// Apply `A v = -∇·(2 η ε̇(v))  (+ Br · S̃² · v)` on the MAC grid.
 ///
 /// The discretization assembles normal stresses `σ_αα = 2η ∂_α v_α`
 /// at cell centres and shear stresses `σ_xy = η (∂_y v_x + ∂_x v_y)`
@@ -101,9 +101,28 @@ fn eta_corner(eta: &Field2D, im: usize, i: usize, jm: usize, j: usize) -> f64 {
 /// The stress divergence is then differenced into face-centred
 /// outputs. The sign convention makes `A` SPD on the zero-mean
 /// velocity subspace.
+///
+/// # Basal drag (Step 4)
+///
+/// If `drag_diag` is `Some(&Br·S̃²)` (a cell-centered field, built
+/// by [`crate::tectonics_v2::basal_drag::build_drag_diagonal_field`]),
+/// a positive diagonal contribution is added **after** the viscous
+/// stencil:
+/// ```text
+///   out_vx[i, j] += drag_face_x(i, j) · vx[i, j]
+///   out_vy[i, j] += drag_face_y(i, j) · vy[i, j]
+/// ```
+/// where `drag_face_*` is the arithmetic 2-point cell-to-face average
+/// of the cell-centered `drag_diag` — the same convention the viscous
+/// stencil uses for η at vx/vy faces (see the `d_sigma_xx_dx` block
+/// above: `eta_cc_right/left` are cells `(i,j)` and `(im,j)` averaged
+/// across the vx face). When `drag_diag` is `None` (basal drag
+/// disabled) the augmentation loop is skipped entirely — the fast
+/// path matches the Step 0/1/2/3 behaviour bit-for-bit.
 pub fn apply_momentum(
     grid: &StokesGrid,
     eta: &Field2D,
+    drag_diag: Option<&Field2D>,
     vx: &[f64],
     vy: &[f64],
     out_vx: &mut [f64],
@@ -169,16 +188,58 @@ pub fn apply_momentum(
             out_vy[lin(i, j)] = -(d_sigma_xy_dx + d_sigma_yy_dy);
         }
     }
+
+    // ---------- Basal drag augmentation (Step 4) ----------
+    //
+    // `drag_diag` is cell-centered `Br · S̃^exp`. Augment by `drag ·
+    // v` on both components, with the drag coefficient averaged from
+    // cells to faces by the same arithmetic 2-point convention that
+    // the viscous stencil uses for η across the vx/vy faces.
+    //
+    // Done as a separate pass so the viscous code above stays
+    // verbatim from Step 0 — this preserves readability and lets
+    // `momentum_diagonal` extract the drag-augmented diagonal with
+    // the matching arithmetic.
+    if let Some(drag) = drag_diag {
+        debug_assert_eq!(drag.nx(), nx);
+        debug_assert_eq!(drag.ny(), ny);
+        for j in 0..ny {
+            let jm = grid.idx_y.prev(j);
+            for i in 0..nx {
+                let im = grid.idx_x.prev(i);
+                let lin = |ii: usize, jj: usize| jj * nx + ii;
+                let drag_x = 0.5 * (drag.get(im, j) + drag.get(i, j));
+                let drag_y = 0.5 * (drag.get(i, jm) + drag.get(i, j));
+                out_vx[lin(i, j)] += drag_x * vx[lin(i, j)];
+                out_vy[lin(i, j)] += drag_y * vy[lin(i, j)];
+            }
+        }
+    }
 }
 
 /// Diagonal of `A` at each velocity DOF, for Jacobi preconditioning.
 ///
-/// For η constant and dx = dy = 1 this returns 6 at every DOF — the
-/// expected diagonal of the discrete thin-sheet momentum operator
-/// (`4 η/dx² + 2 η/dy²` for `vx`, symmetric for `vy`).
+/// For η constant and `drag_diag = None` and `dx = dy = 1` this
+/// returns 6 at every DOF — the expected diagonal of the discrete
+/// thin-sheet momentum operator (`4 η/dx² + 2 η/dy²` for `vx`,
+/// symmetric for `vy`).
+///
+/// # Case (B) — analytical reconstruction
+///
+/// This function is an **analytical rewrite** of the viscous stencil
+/// in [`apply_momentum`] — `stokes/precond.rs` consumes the diagonal
+/// as an external slice and does NOT rebuild it. Therefore any new
+/// diagonal contribution (Step 4 basal drag, future Step 7/8 spike
+/// operators, …) must be added **explicitly** here with the same
+/// cell-to-face averaging that `apply_momentum` uses, or CG's
+/// preconditioner drifts silently from the assembled operator.
+/// Consistency with `apply_momentum` is enforced by the unit test
+/// `v2_precond_drag_diagonal` which probes `A · e_k[k]` against the
+/// analytical diagonal at 1e-14.
 pub fn momentum_diagonal(
     grid: &StokesGrid,
     eta: &Field2D,
+    drag_diag: Option<&Field2D>,
     diag_vx: &mut [f64],
     diag_vy: &mut [f64],
 ) {
@@ -210,6 +271,26 @@ pub fn momentum_diagonal(
             let eta_c_left = eta_corner(eta, im, i, jm, j);
             diag_vy[lin(i, j)] =
                 (eta_c_right + eta_c_left) * inv_dx2 + 2.0 * (eta_top_cc + eta_bot_cc) * inv_dy2;
+        }
+    }
+
+    // Basal drag: augment the diagonal with `drag_face_*` (arithmetic
+    // 2-point cell-to-face average of the cell-centered `drag_diag`),
+    // matching `apply_momentum`'s convention 1-to-1. Disabled path:
+    // no loop, no branch beyond the `if let` at top level.
+    if let Some(drag) = drag_diag {
+        debug_assert_eq!(drag.nx(), nx);
+        debug_assert_eq!(drag.ny(), ny);
+        for j in 0..ny {
+            let jm = grid.idx_y.prev(j);
+            for i in 0..nx {
+                let im = grid.idx_x.prev(i);
+                let lin = |ii: usize, jj: usize| jj * nx + ii;
+                let drag_x = 0.5 * (drag.get(im, j) + drag.get(i, j));
+                let drag_y = 0.5 * (drag.get(i, jm) + drag.get(i, j));
+                diag_vx[lin(i, j)] += drag_x;
+                diag_vy[lin(i, j)] += drag_y;
+            }
         }
     }
 }
@@ -403,15 +484,23 @@ pub fn apply_tangent(
 /// `ctx.eta_center` is used for the Picard part via harmonic averaging
 /// at corners, so both pieces share the same η field and the operator
 /// collapses to a single symmetric (possibly indefinite) linear map.
+///
+/// # Basal drag
+///
+/// Basal drag's Jacobian is `+Br · S̃² · I` (identity-scaled,
+/// diagonal), which lives entirely in the Picard block. Forwarding
+/// `drag_diag` to [`apply_momentum`] is sufficient; [`apply_tangent`]
+/// stays unaware of drag since `S̃` is frozen during a Newton solve.
 pub fn apply_jacobian(
     grid: &StokesGrid,
     ctx: &TangentContext,
+    drag_diag: Option<&Field2D>,
     dvx: &[f64],
     dvy: &[f64],
     out_vx: &mut [f64],
     out_vy: &mut [f64],
 ) {
-    apply_momentum(grid, &ctx.eta_center, dvx, dvy, out_vx, out_vy);
+    apply_momentum(grid, &ctx.eta_center, drag_diag, dvx, dvy, out_vx, out_vy);
     apply_tangent(grid, ctx, dvx, dvy, out_vx, out_vy);
 }
 
@@ -443,7 +532,7 @@ mod tests {
         let vy = vec![0.0; 64];
         let mut out_vx = vec![9.9; 64];
         let mut out_vy = vec![9.9; 64];
-        apply_momentum(&grid, &eta, &vx, &vy, &mut out_vx, &mut out_vy);
+        apply_momentum(&grid, &eta, None, &vx, &vy, &mut out_vx, &mut out_vy);
         for v in out_vx.iter().chain(out_vy.iter()) {
             assert_eq!(*v, 0.0);
         }
@@ -455,7 +544,7 @@ mod tests {
         let eta = Field2D::filled(8, 8, 1.0);
         let mut dvx = vec![0.0; 64];
         let mut dvy = vec![0.0; 64];
-        momentum_diagonal(&grid, &eta, &mut dvx, &mut dvy);
+        momentum_diagonal(&grid, &eta, None, &mut dvx, &mut dvy);
         for (k, (&a, &b)) in dvx.iter().zip(dvy.iter()).enumerate() {
             assert!((a - 6.0).abs() < 1e-12, "diag_vx[{}] = {}", k, a);
             assert!((b - 6.0).abs() < 1e-12, "diag_vy[{}] = {}", k, b);
@@ -491,8 +580,8 @@ mod tests {
         let mut aux_y = vec![0.0; n2];
         let mut awx = vec![0.0; n2];
         let mut awy = vec![0.0; n2];
-        apply_momentum(&grid, &eta, &ux, &uy, &mut aux_x, &mut aux_y);
-        apply_momentum(&grid, &eta, &wx, &wy, &mut awx, &mut awy);
+        apply_momentum(&grid, &eta, None, &ux, &uy, &mut aux_x, &mut aux_y);
+        apply_momentum(&grid, &eta, None, &wx, &wy, &mut awx, &mut awy);
         let lhs = dot(&aux_x, &wx) + dot(&aux_y, &wy);
         let rhs = dot(&ux, &awx) + dot(&uy, &awy);
         let rel = (lhs - rhs).abs() / lhs.abs().max(rhs.abs()).max(1.0);
@@ -521,7 +610,7 @@ mod tests {
         }
         let mut out_vx = vec![0.0; nx * ny];
         let mut out_vy = vec![0.0; nx * ny];
-        apply_momentum(&grid, &eta, &vx, &vy, &mut out_vx, &mut out_vy);
+        apply_momentum(&grid, &eta, None, &vx, &vy, &mut out_vx, &mut out_vy);
         let peak = out_vx.iter().fold(0.0_f64, |a, &v| a.max(v.abs()));
         assert!(peak > 0.1, "grad-div coupling missing: peak={}", peak);
     }

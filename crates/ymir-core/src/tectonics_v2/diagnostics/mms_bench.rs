@@ -164,7 +164,7 @@ fn const_eta_error(n: usize) -> f64 {
     let mut cfg = SheetConfig::default();
     cfg.tol = 1.0e-12;
     cfg.max_iter = 10_000;
-    let _ = solve_sheet(&grid, &eta, &fx, &fy, &mut vx, &mut vy, &cfg);
+    let _ = solve_sheet(&grid, &eta, None, &fx, &fy, &mut vx, &mut vy, &cfg);
     rms_err(&vx, &vy, &vx_ex, &vy_ex)
 }
 
@@ -216,7 +216,7 @@ fn variable_eta_error(n: usize) -> f64 {
     let mut cfg = SheetConfig::default();
     cfg.tol = 1.0e-12;
     cfg.max_iter = 10_000;
-    let _ = solve_sheet(&grid, &eta, &fx, &fy, &mut vx, &mut vy, &cfg);
+    let _ = solve_sheet(&grid, &eta, None, &fx, &fy, &mut vx, &mut vy, &cfg);
     rms_err(&vx, &vy, &vx_ex, &vy_ex)
 }
 
@@ -248,7 +248,7 @@ fn newton_tail_at_n3(n: usize) -> NewtonTail {
     let eta = rheology::build_eta_field(&law, &sr.eps_ii_center);
     let mut rhs_x = vec![0.0; nx * ny];
     let mut rhs_y = vec![0.0; nx * ny];
-    apply_momentum(&grid, &eta, &vx_t, &vy_t, &mut rhs_x, &mut rhs_y);
+    apply_momentum(&grid, &eta, None, &vx_t, &vy_t, &mut rhs_x, &mut rhs_y);
     crate::tectonics_v2::stokes::nullspace::project_velocity(&mut rhs_x, &mut rhs_y);
 
     let mut vx = vec![0.0; nx * ny];
@@ -259,7 +259,7 @@ fn newton_tail_at_n3(n: usize) -> NewtonTail {
     cfg.max_outer_iters = 15;
     let newton = NewtonSolver::new(cfg);
     let cg = ConjugateGradient::new(cfg.linear_tol, cfg.linear_max_iter);
-    let outcome = newton.solve(&grid, &law, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
+    let outcome = newton.solve(&grid, &law, None, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
     NewtonTail {
         size: n,
         residuals: outcome.trace().residuals.clone(),

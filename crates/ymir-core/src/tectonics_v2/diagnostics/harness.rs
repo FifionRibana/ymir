@@ -18,6 +18,7 @@ use super::newton_metrics::{
     NewtonAggregate,
 };
 use crate::tectonics_v2::advection::{cfl_dt, integrated_mass, step_upwind};
+use crate::tectonics_v2::basal_drag::{build_drag_diagonal_field, BasalDragConfig};
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use crate::tectonics_v2::forcing::{BodyForce, ForceSum, GpeForce, SimulationState, SinusoidalForce, VectorField};
 use crate::tectonics_v2::presets::{Preset, YieldingConfig};
@@ -131,6 +132,12 @@ pub struct BaselineConfig {
     /// pre-Step-3 behaviour without edits. The physics baseline and
     /// the Bi sweep pass `YieldingConfig::Enabled(..)` explicitly.
     pub yielding: YieldingConfig,
+    /// Basal-drag configuration (Step 4). Default is
+    /// [`BasalDragConfig::Disabled`] so Step 0/1/2/3 harness callers
+    /// remain structurally unchanged. Step 4 physics passes
+    /// `BasalDragConfig::Enabled(BasalDragLaw { br, .. })`; the Br
+    /// sweep varies the `br` field.
+    pub basal_drag: BasalDragConfig,
 }
 
 impl BaselineConfig {
@@ -158,6 +165,7 @@ impl BaselineConfig {
             sinusoidal_amplitude: sin_amplitude,
             s_perturbation_amplitude: 0.2,
             yielding: YieldingConfig::Disabled,
+            basal_drag: BasalDragConfig::Disabled,
         }
     }
 }
@@ -226,6 +234,7 @@ fn max_abs_grad_s(
 fn solve_nonlinear(
     grid: &Grid,
     law: &ViscosityLaw,
+    drag_diag: Option<&Field2D>,
     rhs_x: &[f64],
     rhs_y: &[f64],
     vx: &mut [f64],
@@ -238,11 +247,11 @@ fn solve_nonlinear(
     match choice {
         NonlinearChoice::Newton => {
             let solver = NewtonSolver::new(newton_cfg);
-            solver.solve(grid, law, rhs_x, rhs_y, vx, vy, cg)
+            solver.solve(grid, law, drag_diag, rhs_x, rhs_y, vx, vy, cg)
         }
         NonlinearChoice::Picard => {
             let solver = PicardSolver::new(picard_cfg);
-            solver.solve(grid, law, rhs_x, rhs_y, vx, vy, cg)
+            solver.solve(grid, law, drag_diag, rhs_x, rhs_y, vx, vy, cg)
         }
     }
 }
@@ -323,10 +332,15 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
 
     // --- Startup continuation (t = 0 only) ---
     sample_force(&mut fx, &mut fy, &s);
+    // Build the basal-drag diagonal field from the initial S̃. It is
+    // constant throughout the continuation ramp (S̃ does not evolve at
+    // t = 0).
+    let drag_diag_init = build_drag_diagonal_field(&cfg.basal_drag, &s);
     let newton_solver = NewtonSolver::new(cfg.newton_cfg);
     let cont = run_continuation(
         &grid,
         &law_final,
+        drag_diag_init.as_ref(),
         &cfg.preset.continuation,
         fx.data(),
         fy.data(),
@@ -348,11 +362,24 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         .max(cap_activation_fraction(&eta_after_ramp, law_final.eta_max_cap));
 
     // --- Steady-state loop ---
+    // Accumulators for the two Step-4 per-cell diagonal ratios. We
+    // average per-step means (not raw per-cell ratios across steps),
+    // which matches how the physics report describes the quantities
+    // — "mean over cells, averaged across the run".
+    let mut basal_drag_energy_ratio_sum = 0.0_f64;
+    let mut drag_vs_visc_diagonal_ratio_sum = 0.0_f64;
+    let mut drag_ratio_sample_count: usize = 0;
+
     for step in 0..cfg.steps {
         sample_force(&mut fx, &mut fy, &s);
+        // Rebuild the drag-diagonal field from the freshly-advected
+        // S̃ (or from the initial S̃ on step 0). Disabled → None, no
+        // allocation.
+        let drag_diag_step = build_drag_diagonal_field(&cfg.basal_drag, &s);
         let outcome = solve_nonlinear(
             &grid,
             &law_final,
+            drag_diag_step.as_ref(),
             fx.data(),
             fy.data(),
             &mut vx,
@@ -370,6 +397,36 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             .cap_fraction_steady_max
             .max(cap_activation_fraction(&eta_cc, law_final.eta_max_cap));
         newton_agg.eta_contrast_samples.push(eta_contrast(&eta_cc));
+
+        // Step 4 diagnostics — basal-drag ratios vs the viscous
+        // diagonal η/Δx². Computed at cell centres (before
+        // face-averaging) which is enough for an order-of-magnitude
+        // diagnostic; the `build_drag_diagonal_field` output already
+        // is Br · S̃^exp at cell centres.
+        if let (BasalDragConfig::Enabled(law), Some(drag)) =
+            (&cfg.basal_drag, drag_diag_step.as_ref())
+        {
+            let inv_dx2 = 1.0 / (dx * dx);
+            let n_cells = eta_cc.data().len().max(1) as f64;
+            let mut step_energy_ratio_sum = 0.0_f64;
+            let mut step_ratio_sum = 0.0_f64;
+            for j in 0..ny {
+                for i in 0..nx {
+                    let visc = eta_cc.get(i, j) * inv_dx2;
+                    let drag_v = drag.get(i, j);
+                    let denom = drag_v + visc;
+                    let energy_ratio = if denom > 0.0 { drag_v / denom } else { 0.0 };
+                    let ratio = if visc > 0.0 { drag_v / visc } else { 0.0 };
+                    step_energy_ratio_sum += energy_ratio;
+                    step_ratio_sum += ratio;
+                }
+            }
+            basal_drag_energy_ratio_sum += step_energy_ratio_sum / n_cells;
+            drag_vs_visc_diagonal_ratio_sum += step_ratio_sum / n_cells;
+            drag_ratio_sample_count += 1;
+            // Record the Br value once (constant over the run).
+            newton_agg.br_diagnostic = Some(law.br);
+        }
 
         // Step 3 — yielding diagnostics. Structural by-pass for
         // Disabled: no extra field build, no blend, counters stay
@@ -461,6 +518,14 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let mass_final = integrated_mass(&s);
     let drift = (mass_final - mass_initial) / mass_initial.abs().max(1.0);
 
+    // Commit the Step-4 drag ratio averages (only populated under
+    // `BasalDragConfig::Enabled`).
+    if drag_ratio_sample_count > 0 {
+        let n = drag_ratio_sample_count as f64;
+        newton_agg.basal_drag_energy_ratio = Some(basal_drag_energy_ratio_sum / n);
+        newton_agg.drag_vs_visc_diagonal_ratio = Some(drag_vs_visc_diagonal_ratio_sum / n);
+    }
+
     let cg_iter_mean = newton_agg.cg_iters_per_newton_mean();
     let cg_iter_max = newton_agg.cg_iters_per_newton_max();
     let kappa = condition_number_estimate(
@@ -538,6 +603,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         continuation_schedule: continuation_str,
         newton_rel_tol: cfg.newton_cfg.rel_tol,
         newton_max_outer_iters: cfg.newton_cfg.max_outer_iters,
+        basal_drag_config: cfg.basal_drag.describe(),
     };
 
     BaselineResult { metrics, config_dump }

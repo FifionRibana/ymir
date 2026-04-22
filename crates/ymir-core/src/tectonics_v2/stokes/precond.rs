@@ -5,6 +5,33 @@
 //! for Step 0's constant-η regime. Wrapping with the 2-D velocity
 //! projector before and after `M⁻¹` keeps CG search directions
 //! orthogonal to the null space at every iteration.
+//!
+//! # Case (B) — diagonal supplied, not reconstructed here
+//!
+//! Step 4 (basal drag) codified the observation that this module is
+//! case (B) of the Step 4 spec:
+//!
+//! - [`VelocityJacobi::from_diagonal`] takes `diag_vx` and `diag_vy`
+//!   as **external slices**. No symbolic rewrite of the viscous
+//!   stencil happens in this file; the module is a pure consumer.
+//! - The analytical reconstruction lives in
+//!   [`stokes::operator::momentum_diagonal`][md] — a symbolic rewrite
+//!   of [`stokes::operator::apply_momentum`][am]'s stencil. Any new
+//!   operator contribution (Step 4 basal drag's `Br · S̃²` diagonal;
+//!   future Step 7/8 spike operators) must be added in both
+//!   [`apply_momentum`][am] and [`momentum_diagonal`][md] with
+//!   matching cell-to-face averaging conventions, or CG's
+//!   preconditioner drifts silently from the assembled operator.
+//!
+//! Therefore basal drag does **not** modify `precond.rs`: it is
+//! injected into the diagonal slice at construction time by the
+//! caller (usually the solver harness). The
+//! `tests/v2_precond_drag_diagonal` integration test pins the
+//! consistency between the analytical diagonal and a unit-vector
+//! probe of the assembled operator at 1e-14.
+//!
+//! [md]: crate::tectonics_v2::stokes::operator::momentum_diagonal
+//! [am]: crate::tectonics_v2::stokes::operator::apply_momentum
 
 use super::nullspace::project_velocity;
 

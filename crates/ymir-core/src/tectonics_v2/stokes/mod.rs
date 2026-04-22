@@ -82,9 +82,16 @@ pub struct SheetStats {
 /// Inputs `fx`, `fy` are body-force components at velocity faces.
 /// Outputs `vx`, `vy` are overwritten with the solution; they also
 /// serve as the initial guess.
+///
+/// `drag_diag` carries the optional Step-4 basal-drag contribution
+/// `Br · S̃^exp` as a cell-centered field. `None` disables drag
+/// entirely (zero-cost); `Some(&field)` is augmented onto both the
+/// matvec and the preconditioner diagonal, with face averaging done
+/// inside [`apply_momentum`] and [`momentum_diagonal`].
 pub fn solve_sheet(
     grid: &StokesGrid,
     eta: &Field2D,
+    drag_diag: Option<&Field2D>,
     fx: &[f64],
     fy: &[f64],
     vx: &mut [f64],
@@ -97,10 +104,10 @@ pub fn solve_sheet(
     assert_eq!(vx.len(), n);
     assert_eq!(vy.len(), n);
 
-    // --- Preconditioner (η is frozen during the solve) ---
+    // --- Preconditioner (η and drag_diag are frozen during the solve) ---
     let mut diag_vx = vec![0.0; n];
     let mut diag_vy = vec![0.0; n];
-    momentum_diagonal(grid, eta, &mut diag_vx, &mut diag_vy);
+    momentum_diagonal(grid, eta, drag_diag, &mut diag_vx, &mut diag_vy);
     let vjac = VelocityJacobi::from_diagonal(&diag_vx, &diag_vy, cfg.diag_floor);
 
     // --- Pack RHS and initial guess into [vx; vy] layout ---
@@ -124,7 +131,7 @@ pub fn solve_sheet(
     let mut matvec = |v: &[f64], out: &mut [f64]| {
         let (vx_in, vy_in) = v.split_at(n);
         let (out_x, out_y) = out.split_at_mut(n);
-        apply_momentum(grid, eta, vx_in, vy_in, &mut tmp_ax, &mut tmp_ay);
+        apply_momentum(grid, eta, drag_diag, vx_in, vy_in, &mut tmp_ax, &mut tmp_ay);
         out_x.copy_from_slice(&tmp_ax);
         out_y.copy_from_slice(&tmp_ay);
     };
