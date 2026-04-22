@@ -13,7 +13,6 @@
 
 use std::f64::consts::PI;
 
-use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::rheology::{self, StrainRate, ViscosityLaw};
 use ymir_core::tectonics_v2::stokes::nonlinear_solver::{
     NewtonConfig, NewtonSolver, NonlinearOutcome, NonlinearSolver,
@@ -50,7 +49,7 @@ fn build_rhs_from_target(
     let eta = rheology::build_eta_field(law, &sr.eps_ii_center);
     let mut rhs_x = vec![0.0; nx * ny];
     let mut rhs_y = vec![0.0; nx * ny];
-    apply_momentum(&grid, &eta, &vx_target, &vy_target, &mut rhs_x, &mut rhs_y);
+    apply_momentum(&grid, &eta, None, &vx_target, &vy_target, &mut rhs_x, &mut rhs_y);
     ymir_core::tectonics_v2::stokes::nullspace::project_velocity(&mut rhs_x, &mut rhs_y);
     (rhs_x, rhs_y, vx_target, vy_target)
 }
@@ -73,7 +72,7 @@ fn run_newton_for_n(n_val: f64) -> (NonlinearOutcome, Vec<f64>, Vec<f64>, Vec<f6
     newton_cfg.max_outer_iters = 20;
     let solver = NewtonSolver::new(newton_cfg);
     let cg = ConjugateGradient::new(newton_cfg.linear_tol, newton_cfg.linear_max_iter);
-    let outcome = solver.solve(&grid, &law, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
+    let outcome = solver.solve(&grid, &law, None, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
     (outcome, vx, vy, vx_target, vy_target)
 }
 

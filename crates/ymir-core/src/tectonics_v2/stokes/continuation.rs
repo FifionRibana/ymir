@@ -13,6 +13,7 @@
 //! adaptive retry are out of scope for Step 1 — the fallback for
 //! mid-run Newton trouble is the dual-track Picard path.
 
+use super::super::field::Field2D;
 use super::super::presets::ContinuationConfig;
 use super::super::rheology::ViscosityLaw;
 use super::nonlinear_solver::{NewtonSolver, NonlinearOutcome, NonlinearSolver};
@@ -41,6 +42,7 @@ pub struct ContinuationOutcome {
 pub fn run_continuation(
     grid: &StokesGrid,
     law_final: &ViscosityLaw,
+    drag_diag: Option<&Field2D>,
     schedule: &ContinuationConfig,
     rhs_x: &[f64],
     rhs_y: &[f64],
@@ -56,7 +58,7 @@ pub fn run_continuation(
     for &n_current in &schedule.n_steps {
         let mut law_k = *law_final;
         law_k.n = n_current;
-        let outcome = newton.solve(grid, &law_k, rhs_x, rhs_y, vx, vy, linear_solver);
+        let outcome = newton.solve(grid, &law_k, drag_diag, rhs_x, rhs_y, vx, vy, linear_solver);
         if let NonlinearOutcome::Converged { linear_iters_total: lit, .. } = &outcome {
             linear_iters_total = linear_iters_total.saturating_add(*lit);
         }
