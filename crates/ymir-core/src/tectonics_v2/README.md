@@ -78,10 +78,21 @@ MAC (staggered) grid with periodic BCs:
 - `vx` at left vertical faces `(i dx, (j+0.5)dy)`.
 - `vy` at bottom horizontal faces `((i+0.5)dx, j dy)`.
 - `ε̇_xy` at nodal corners `(i dx, j dy)`, with η there by
-  **harmonic 4-point averaging** of surrounding cells. Harmonic
-  averaging reduces to `η` for constant fields, so the assembly is
-  identical at Step 0 and Step 1 — the power-law rheology in Step 1
-  is a data change on `η`, not an assembly change.
+  **arithmetic 4-point averaging** of surrounding cells. Step 0
+  initially used harmonic averaging (standard for staggered Stokes
+  with sharp viscosity contrasts); Step 1 switched to arithmetic
+  because the Newton Jacobian of the variable-η operator is only
+  exactly symmetric at discrete level when
+  `dη_corner / dη_cell = ¼` (arithmetic), not when it is
+  `(η_corner / η_cell)²/4` (harmonic). CG relies on operator
+  symmetry. The switch was code-only (Step 1) — this README section
+  was updated to reflect it at Step 3. See the `eta_corner`
+  doc-comment in `stokes/operator.rs` for the full derivation, and
+  the test `eta_corner_is_arithmetic_average` for the runtime
+  contract. Step 0 / Step 1 MMS convergence is preserved at order 2
+  under arithmetic averaging since the averaging rule is
+  consistent between `apply_momentum` (Picard part of the Jacobian)
+  and `apply_tangent` (Newton-extra).
 
 For constant η the discrete operator reduces to
 `A v = -η (∇² v + ∇(∇·v))`. The grad-div part is essential: it

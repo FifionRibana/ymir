@@ -12,6 +12,7 @@
 //! populate it without touching the report layout.
 
 pub mod ar_sweep;
+pub mod bi_sweep;
 pub mod comparison;
 pub mod harness;
 pub mod heightmap;
