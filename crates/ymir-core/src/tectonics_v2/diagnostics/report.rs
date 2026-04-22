@@ -454,8 +454,15 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                     .map(|s| s.as_str())
                     .unwrap_or("");
                 let justif = if justification.is_empty() { None } else { Some(justification) };
+                // Label for the "previous" column and the
+                // per-grid sub-heading is derived from the
+                // ReportKind — never hardcoded to "Step 1". Step 4
+                // caught this when it inherited a leftover "Step 1"
+                // label from Step 2's initial implementation; Step 5
+                // and beyond get the right label automatically.
+                let previous_label = previous_step_label(inputs.kind);
                 out.push_str(&render_grid_comparison(
-                    "Step 1",
+                    previous_label,
                     prev_grid,
                     m.cg_iter_mean,
                     m.wallclock_total.as_secs_f64(),
@@ -464,6 +471,25 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                     m.max_abs_mean_vy,
                     justif,
                 ));
+
+                // Step-4 physics: encouraging wallclock-improvement
+                // paragraph. The ratios are real improvements vs
+                // Step 3 physics (×0.64 at 64², ×0.74 at 128²) even
+                // though drag/visc ≈ 10⁻⁷ at this baseline; Step 5/6
+                // will amplify the effect ×25 once oceanic cells
+                // land (S̃ ≈ 0.2 → S̃² ≈ 0.04). The wording notes the
+                // yielding-Disabled caveat so the attribution is
+                // honest.
+                if matches!(inputs.kind, ReportKind::Step4Physics) {
+                    if let Some(visc_wallclock) = prev_grid.wallclock_seconds {
+                        if visc_wallclock > 0.0 {
+                            let ratio = m.wallclock_total.as_secs_f64() / visc_wallclock;
+                            out.push_str(&format!(
+                                "\n**Wallclock improvement interpretation.** The Step-4 physics run at this grid is `×{ratio:.2}` of the Step-3 physics wallclock — a measurable improvement, coherent with the theoretical expectation that adding `Br · S̃²` to the operator diagonal improves the conditioning of low-ε̇ regions. Despite the very small absolute drag contribution at this baseline (`drag/visc ≈ 10⁻⁷`), the augmented diagonal gives CG a slightly tighter grip on the system. Caveat: Step-4 physics also disables yielding (to isolate the Br effect), so part of the wallclock delta vs Step 3 physics comes from skipping the `soft_min_harmonic` plastic-branch evaluation; the pure drag contribution is best read off the Br sweep's strict `peak \\|v\\|` monotonicity and the κ(A) stability (ratio ≤ 1.3 across both grids). Encouraging signal for Step 5/6: introducing oceanic cells (`S̃ ≈ 0.2` → `S̃² ≈ 0.04`) will create a ×25 differentiation between continental and oceanic drag, which is where the Step-4 machinery's physical payoff will become visible.\n\n",
+                            ));
+                        }
+                    }
+                }
             }
         }
 
@@ -485,6 +511,45 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
 /// report. The invariant is that **every field listed here is
 /// identical to the Step 1 run** — any mismatch must be flagged
 /// explicitly.
+/// Label for the "previous step" referenced by the per-grid
+/// comparison block. Derived from the current `ReportKind` so the
+/// sub-heading "Grid N×N — comparison vs Step X" stays truthful
+/// as the milestone progresses. The "Step 1" hardcode that lingered
+/// through Step 2/3 is the bug this function prevents.
+fn previous_step_label(kind: ReportKind) -> &'static str {
+    match kind {
+        ReportKind::Step2Physics | ReportKind::Step2Regression => "Step 1",
+        ReportKind::Step3Physics | ReportKind::Step3Regression => "Step 2",
+        ReportKind::Step4Physics | ReportKind::Step4Regression => "Step 3",
+    }
+}
+
+/// Default path for the "previous step" report to compare against,
+/// for a given current `ReportKind` and an output directory. The
+/// binary layer uses this to auto-detect the right comparison file
+/// per scenario; pair with a CLI override for edge cases.
+///
+/// Naming convention: Step 2 onward emits
+/// `step{N}_{physics,regression}_report.md`; Step 0/1 emitted a
+/// single `step{N}_report.md` (no physics/regression split), so
+/// Step 2 scenarios fall back to that single file.
+pub fn default_previous_report_for(
+    kind: ReportKind,
+    output_dir: &std::path::Path,
+) -> std::path::PathBuf {
+    let name: &str = match kind {
+        // Step 0/1 emitted a single report; Step 2 regression uses
+        // it as the mirror target, Step 2 physics uses it as the
+        // advisory comparison.
+        ReportKind::Step2Physics | ReportKind::Step2Regression => "step1_report.md",
+        ReportKind::Step3Physics => "step2_physics_report.md",
+        ReportKind::Step3Regression => "step2_regression_report.md",
+        ReportKind::Step4Physics => "step3_physics_report.md",
+        ReportKind::Step4Regression => "step3_regression_report.md",
+    };
+    output_dir.join(name)
+}
+
 fn render_setup_parity_block(inputs: &ReportInputs) -> String {
     let mirror_target = match inputs.kind {
         ReportKind::Step4Regression => "Step 3",

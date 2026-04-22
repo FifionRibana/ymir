@@ -63,7 +63,18 @@ struct Args {
     output_dir: PathBuf,
     preset: Preset,
     nonlinear: NonlinearChoice,
+    /// Legacy shared-override for both scenarios. Still honoured for
+    /// back-compat, but per-scenario flags below take precedence.
     compare_to: Option<PathBuf>,
+    /// Physics-scenario comparison target. When `None`, the binary
+    /// auto-detects via [`report::default_previous_report_for`], e.g.
+    /// Step-4 physics → `step3_physics_report.md`. This is what
+    /// prevents Step N from inheriting a leftover regression-mirror
+    /// comparison that points at the wrong scenario's numbers.
+    compare_to_physics: Option<PathBuf>,
+    /// Regression-scenario comparison target. Same auto-detect
+    /// fallback as `compare_to_physics`.
+    compare_to_regression: Option<PathBuf>,
     forcing: ForcingSelection,
     sinusoidal_amplitude: f64,
     /// `None` → default per scenario (physics Enabled, regression
@@ -87,6 +98,8 @@ fn parse_args() -> Result<Args, String> {
     let mut preset_name: String = "dynamic-accidented".into();
     let mut nonlinear_str: String = "newton".into();
     let mut compare_to: Option<PathBuf> = None;
+    let mut compare_to_physics: Option<PathBuf> = None;
+    let mut compare_to_regression: Option<PathBuf> = None;
     let mut forcing_str: String = "both".into();
     let mut sin_amp: f64 = 10.0;
     let mut yielding_str: Option<String> = None;
@@ -105,6 +118,8 @@ fn parse_args() -> Result<Args, String> {
             "--preset" => { i += 1; preset_name = args[i].clone(); }
             "--nonlinear-solver" => { i += 1; nonlinear_str = args[i].clone(); }
             "--compare-to" => { i += 1; compare_to = Some(PathBuf::from(&args[i])); }
+            "--compare-to-physics" => { i += 1; compare_to_physics = Some(PathBuf::from(&args[i])); }
+            "--compare-to-regression" => { i += 1; compare_to_regression = Some(PathBuf::from(&args[i])); }
             "--forcing" => { i += 1; forcing_str = args[i].clone(); }
             "--sinusoidal-amplitude" => { i += 1; sin_amp = args[i].parse().map_err(|e| format!("bad --sinusoidal-amplitude: {e}"))?; }
             "--yielding-config" => { i += 1; yielding_str = Some(args[i].clone()); }
@@ -118,7 +133,9 @@ fn parse_args() -> Result<Args, String> {
                      [--forcing gpe|sinusoidal|both] [--sinusoidal-amplitude F] \
                      [--yielding-config enabled|disabled] [--bi F] \
                      [--basal-drag-config enabled|disabled] [--br F] \
-                     [--compare-to PATH] [--output-dir PATH]"
+                     [--compare-to PATH] \
+                     [--compare-to-physics PATH] [--compare-to-regression PATH] \
+                     [--output-dir PATH]"
                 );
                 std::process::exit(0);
             }
@@ -176,6 +193,8 @@ fn parse_args() -> Result<Args, String> {
         preset: Preset::by_name(&preset_name)?,
         nonlinear: NonlinearChoice::parse(&nonlinear_str)?,
         compare_to,
+        compare_to_physics,
+        compare_to_regression,
         forcing: ForcingSelection::parse(&forcing_str)?,
         sinusoidal_amplitude: sin_amp,
         yielding_override,
@@ -329,15 +348,42 @@ fn main() -> ExitCode {
         args.steps,
     );
 
-    let previous: Option<StepReference> = args.compare_to.as_ref().and_then(|p| {
-        match parse_step_report(p) {
+    // Resolve the "previous step" report to compare against, per
+    // scenario. Priority:
+    //   1. Explicit CLI override (`--compare-to-physics` /
+    //      `--compare-to-regression`).
+    //   2. Legacy shared `--compare-to` (applied to both scenarios).
+    //   3. Auto-detect via `report::default_previous_report_for`,
+    //      which for Step N {Physics,Regression} returns
+    //      `{output}/step{N-1}_{physics,regression}_report.md`.
+    //
+    // The auto-detect step is what prevents future Step 5 from
+    // inheriting a leftover regression-mirror comparison that
+    // points at the wrong scenario (the bug Step 4 caught where
+    // physics was being compared against Step-3 regression).
+    let resolve_previous = |kind: ReportKind, override_path: Option<&PathBuf>| -> Option<StepReference> {
+        let path = override_path
+            .cloned()
+            .or_else(|| args.compare_to.clone())
+            .unwrap_or_else(|| ymir_core::tectonics_v2::diagnostics::report::default_previous_report_for(kind, &args.output_dir));
+        if !path.exists() {
+            eprintln!("note: previous-step report not found at {:?} — comparison block will be omitted", path);
+            return None;
+        }
+        match parse_step_report(&path) {
             Ok(r) => {
-                println!("parsed previous report: {:?} ({} grids)", p, r.grids.len());
+                println!(
+                    "{:?} → parsed previous report {:?} ({} grids)",
+                    kind, path, r.grids.len(),
+                );
                 Some(r)
             }
-            Err(e) => { eprintln!("warning: could not parse {:?}: {}", p, e); None }
+            Err(e) => {
+                eprintln!("warning: could not parse {:?}: {}", path, e);
+                None
+            }
         }
-    });
+    };
 
     println!("-- running MMS bench for the reports --");
     let mms = mms_bench::run_all();
@@ -379,11 +425,18 @@ fn main() -> ExitCode {
 
     // Run regression BEFORE physics so we can pipe its vmax_peak
     // into the physics report as the reference for
-    // `peak_v_damping_ratio`.
+    // `peak_v_damping_ratio`. Each scenario resolves its own
+    // previous-step report (auto-detect or CLI override) — the
+    // physics run is compared against step{N-1}_physics_report.md,
+    // the regression run against step{N-1}_regression_report.md.
     let regression_vmax: Option<f64> = if run_sin {
+        let previous_regression = resolve_previous(
+            ReportKind::Step4Regression,
+            args.compare_to_regression.as_ref(),
+        );
         match run_scenario(
             &args, ForceKind::Sinusoidal, ReportKind::Step4Regression,
-            "step4_regression_report.md", &scales, previous.as_ref(), &mms,
+            "step4_regression_report.md", &scales, previous_regression.as_ref(), &mms,
             None,
             None,
             None,
@@ -399,9 +452,13 @@ fn main() -> ExitCode {
         None
     };
     if run_gpe {
+        let previous_physics = resolve_previous(
+            ReportKind::Step4Physics,
+            args.compare_to_physics.as_ref(),
+        );
         if let Err(e) = run_scenario(
             &args, ForceKind::Gpe, ReportKind::Step4Physics,
-            "step4_physics_report.md", &scales, previous.as_ref(), &mms,
+            "step4_physics_report.md", &scales, previous_physics.as_ref(), &mms,
             ar_sweep_res.as_ref(),
             bi_sweep_res.as_ref(),
             br_sweep_res.as_ref(),
