@@ -14,6 +14,7 @@
 //! [`NewtonSolver`] so the test `picard_parity` can substitute one
 //! for the other transparently.
 
+use super::super::field::Field2D;
 use super::super::rheology::{self, StrainRate, ViscosityLaw};
 use super::nonlinear_solver::{NonlinearOutcome, NonlinearSolver, NonlinearTrace};
 use super::nullspace;
@@ -72,6 +73,7 @@ fn vec_norm(a: &[f64], b: &[f64]) -> f64 {
 fn compute_residual(
     grid: &StokesGrid,
     law: &ViscosityLaw,
+    drag_diag: Option<&Field2D>,
     vx: &[f64],
     vy: &[f64],
     rhs_x: &[f64],
@@ -84,7 +86,7 @@ fn compute_residual(
         &grid.idx_x, &grid.idx_y, vx, vy,
     );
     let eta = rheology::build_eta_field(law, &sr.eps_ii_center);
-    apply_momentum(grid, &eta, vx, vy, out_x, out_y);
+    apply_momentum(grid, &eta, drag_diag, vx, vy, out_x, out_y);
     for k in 0..out_x.len() {
         out_x[k] -= rhs_x[k];
         out_y[k] -= rhs_y[k];
@@ -97,6 +99,7 @@ impl NonlinearSolver for PicardSolver {
         &self,
         grid: &StokesGrid,
         law: &ViscosityLaw,
+        drag_diag: Option<&Field2D>,
         rhs_x: &[f64],
         rhs_y: &[f64],
         vx: &mut [f64],
@@ -107,7 +110,7 @@ impl NonlinearSolver for PicardSolver {
         let mut trace = NonlinearTrace::default();
         let mut r_x = vec![0.0; n];
         let mut r_y = vec![0.0; n];
-        compute_residual(grid, law, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y);
+        compute_residual(grid, law, drag_diag, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y);
         let r0_norm = vec_norm(&r_x, &r_y);
         trace.residuals.push(r0_norm);
         let abs_tol_eff = self.cfg.abs_tol.max(10.0 * self.cfg.linear_tol);
@@ -155,7 +158,7 @@ impl NonlinearSolver for PicardSolver {
             // Solve the Picard problem -∇·(2 η ε̇(v_{k+1})) = rhs.
             let mut diag_vx = vec![0.0; n];
             let mut diag_vy = vec![0.0; n];
-            momentum_diagonal(grid, &eta, &mut diag_vx, &mut diag_vy);
+            momentum_diagonal(grid, &eta, drag_diag, &mut diag_vx, &mut diag_vy);
             let vjac = VelocityJacobi::from_diagonal(&diag_vx, &diag_vy, self.cfg.diag_floor);
 
             let mut rhs_pack = Vec::with_capacity(2 * n);
@@ -176,7 +179,7 @@ impl NonlinearSolver for PicardSolver {
             let mut matvec = |v: &[f64], out: &mut [f64]| {
                 let (vx_in, vy_in) = v.split_at(n);
                 let (out_x, out_y) = out.split_at_mut(n);
-                apply_momentum(grid, &eta, vx_in, vy_in, &mut tmp_ax, &mut tmp_ay);
+                apply_momentum(grid, &eta, drag_diag, vx_in, vy_in, &mut tmp_ax, &mut tmp_ay);
                 out_x.copy_from_slice(&tmp_ax);
                 out_y.copy_from_slice(&tmp_ay);
             };
@@ -196,7 +199,7 @@ impl NonlinearSolver for PicardSolver {
             trace.alphas.push(omega);
 
             // Residual at the new iterate.
-            compute_residual(grid, law, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y);
+            compute_residual(grid, law, drag_diag, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y);
             let r_norm = vec_norm(&r_x, &r_y);
             trace.residuals.push(r_norm);
             prev_resid = r_norm;

@@ -78,6 +78,10 @@ pub struct SolverConfigDump {
     pub continuation_schedule: String,
     pub newton_rel_tol: f64,
     pub newton_max_outer_iters: u32,
+    // --- Step 4 addition ---
+    /// Describes the basal-drag configuration in human form:
+    /// `"Disabled"` or `"Enabled (Br = 0.050, S exponent = 2.0)"`.
+    pub basal_drag_config: String,
 }
 
 impl SolverConfigDump {
@@ -104,6 +108,7 @@ impl SolverConfigDump {
              | CFL factor | {:.2} |\n\
              | grid spacing (nondim) | {:.6} |\n\
              | body force | {} |\n\
+             | basal drag | {} |\n\
              | seed | {} |\n",
             self.formulation,
             self.discretization,
@@ -123,6 +128,7 @@ impl SolverConfigDump {
             self.cfl_factor,
             self.grid_spacing_nondim,
             self.body_force,
+            self.basal_drag_config,
             self.seed,
         )
     }

@@ -56,6 +56,24 @@ pub struct NewtonAggregate {
     /// timestep — "how much of the domain sits in the floor-
     /// dominated band at the end of the run".
     pub eps_ii_floor_dominated_fraction_final: Option<f64>,
+
+    // ---- Step 4 — basal-drag diagnostics ----
+    //
+    // All three fields are `None` when `BasalDragConfig::Disabled`;
+    // under `Enabled(law)`, `br_diagnostic` carries `law.br` and the
+    // two ratios are means across the run (mean per step of per-cell
+    // means). `peak_v_damping_ratio` is NOT computed here — it's a
+    // cross-run quantity (physics vs regression) computed at report
+    // rendering time.
+    pub br_diagnostic: Option<f64>,
+    /// `mean_cells(Br·S̃² / (Br·S̃² + η/Δx²))`, averaged across the
+    /// run. Saturates at 1 when drag dominates; baseline Step-4 value
+    /// is expected `≪ 1` (drag much smaller than viscous diagonal).
+    pub basal_drag_energy_ratio: Option<f64>,
+    /// `mean_cells(Br·S̃² / (η/Δx²))`, averaged across the run.
+    /// Linear in Br; baseline Step-4 target band `[10⁻⁶, 10⁻⁴]` at
+    /// 128² per the Step-4 spec algebra.
+    pub drag_vs_visc_diagonal_ratio: Option<f64>,
 }
 
 impl NewtonAggregate {
