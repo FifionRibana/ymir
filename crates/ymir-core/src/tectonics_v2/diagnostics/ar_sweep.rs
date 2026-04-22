@@ -74,6 +74,7 @@ pub fn run_ar_sweep(
             force_kind: ForceKind::Gpe,
             sinusoidal_amplitude: 0.0,
             s_perturbation_amplitude,
+            yielding: crate::tectonics_v2::presets::YieldingConfig::Disabled,
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(ar, &r));

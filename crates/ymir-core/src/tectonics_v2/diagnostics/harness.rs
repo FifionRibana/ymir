@@ -13,11 +13,14 @@ use super::heightmap::{save_heightmap, HeightmapMetadata};
 use super::metrics::{
     condition_number_estimate, IterationHistogram, Metrics, SolverConfigDump,
 };
-use super::newton_metrics::{cap_activation_fraction, eta_contrast, NewtonAggregate};
+use super::newton_metrics::{
+    cap_activation_fraction, eta_contrast, yielding_cell_fraction, yielding_intensity,
+    NewtonAggregate,
+};
 use crate::tectonics_v2::advection::{cfl_dt, integrated_mass, step_upwind};
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use crate::tectonics_v2::forcing::{BodyForce, ForceSum, GpeForce, SimulationState, SinusoidalForce, VectorField};
-use crate::tectonics_v2::presets::Preset;
+use crate::tectonics_v2::presets::{Preset, YieldingConfig};
 use crate::tectonics_v2::rheology::{self, StrainRate, ViscosityLaw};
 use crate::tectonics_v2::scales::Scales;
 use crate::tectonics_v2::stokes::continuation::run_continuation;
@@ -123,6 +126,11 @@ pub struct BaselineConfig {
     /// regression scenario keeps `0.02` to preserve the mirror-of-
     /// Step-1 contract.
     pub s_perturbation_amplitude: f64,
+    /// Plastic-yielding configuration (Step 3). Default is
+    /// [`YieldingConfig::Disabled`] so Step 0/1/2 tests keep their
+    /// pre-Step-3 behaviour without edits. The physics baseline and
+    /// the Bi sweep pass `YieldingConfig::Enabled(..)` explicitly.
+    pub yielding: YieldingConfig,
 }
 
 impl BaselineConfig {
@@ -149,6 +157,7 @@ impl BaselineConfig {
             force_kind,
             sinusoidal_amplitude: sin_amplitude,
             s_perturbation_amplitude: 0.2,
+            yielding: YieldingConfig::Disabled,
         }
     }
 }
@@ -278,6 +287,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         strain_rate_floor: cfg.preset.rheology.strain_rate_floor,
         eta_max_cap: cfg.preset.rheology.eta_max_cap,
         k_saturation: cfg.preset.rheology.k_saturation,
+        yielding: cfg.yielding,
     };
 
     let cg = ConjugateGradient::new(cfg.newton_cfg.linear_tol, cfg.newton_cfg.linear_max_iter);
@@ -360,6 +370,48 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             .cap_fraction_steady_max
             .max(cap_activation_fraction(&eta_cc, law_final.eta_max_cap));
         newton_agg.eta_contrast_samples.push(eta_contrast(&eta_cc));
+
+        // Step 3 — yielding diagnostics. Structural by-pass for
+        // Disabled: no extra field build, no blend, counters stay
+        // `None`. For Enabled we build a per-timestep `η_visc`
+        // companion field to evaluate the "yielding is dominant"
+        // and "yielding intensity" aggregates.
+        if let crate::tectonics_v2::presets::YieldingConfig::Enabled(ylaw) = cfg.yielding {
+            // Pure-viscous reference at the same ε̇: matches
+            // `law_final.eta_effective` with yielding flipped off.
+            let mut eta_visc_only = law_final;
+            eta_visc_only.yielding =
+                crate::tectonics_v2::presets::YieldingConfig::Disabled;
+            let eta_visc_cc = rheology::build_eta_field(&eta_visc_only, &sr.eps_ii_center);
+            let frac = yielding_cell_fraction(&eta_visc_cc, &eta_cc);
+            let intensity = yielding_intensity(&eta_visc_cc, &eta_cc);
+            newton_agg.bi_diagnostic = Some(ylaw.bi);
+            newton_agg.yielding_cell_fraction_max = Some(
+                newton_agg.yielding_cell_fraction_max.unwrap_or(0.0).max(frac),
+            );
+            newton_agg.yielding_intensity_max = Some(
+                newton_agg.yielding_intensity_max.unwrap_or(0.0).max(intensity),
+            );
+
+            // Floor-domination diagnostic: domain-level ε̇_II
+            // aggregates at the **final** timestep (overwritten
+            // each step; only the last one survives).
+            let eps_data = sr.eps_ii_center.data();
+            let mut sum = 0.0_f64;
+            let mut max = 0.0_f64;
+            let mut below = 0usize;
+            let floor_band = 10.0 * law_final.strain_rate_floor;
+            for &v in eps_data {
+                sum += v;
+                if v > max { max = v; }
+                if v < floor_band { below += 1; }
+            }
+            let n = eps_data.len() as f64;
+            newton_agg.eps_ii_mean_final = Some(sum / n);
+            newton_agg.eps_ii_max_final = Some(max);
+            newton_agg.eps_ii_floor_dominated_fraction_final =
+                Some(below as f64 / n);
+        }
 
         let m_vx: f64 = vx.iter().sum::<f64>() / vx.len() as f64;
         let m_vy: f64 = vy.iter().sum::<f64>() / vy.len() as f64;
