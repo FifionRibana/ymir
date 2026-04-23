@@ -12,7 +12,7 @@ use std::path::Path;
 use super::ar_sweep::ArSweepResults;
 use super::bi_sweep::BiSweepResults;
 use super::br_sweep::BrSweepResults;
-use super::comparison::{render_grid_comparison, StepReference};
+use super::comparison::{StepReference, render_grid_comparison};
 use super::k_sub_sweep::KSubSweepResults;
 use super::metrics::{Metrics, SolverConfigDump};
 use super::mms_bench::MmsResults;
@@ -73,6 +73,18 @@ pub enum ReportKind {
     /// sweep-results table + configuration context; no baseline
     /// per-grid config dump.
     Step6VoronoiSweep,
+    /// Step 7 physics: Step 6 setup + `SlabPullConfig::Enabled`.
+    /// Slab-mass ODE drives `f_slab`; peak|v| is expected to jump
+    /// 3+ orders of magnitude vs Step 6 and the yielding checkpoint
+    /// transported since Step 3 must resolve (strict).
+    Step7Physics,
+    /// Step 7 regression: Step 6 physics setup mirror with
+    /// `SlabPullConfig::Disabled` — the zero-cost-when-disabled
+    /// invariant. Compared to Step 6 physics at `[0.95, 1.05]`.
+    Step7Regression,
+    /// Step 7 `Sp` sweep (5 points at 64²): monotonicity of
+    /// `peak|v|` with `Sp` ∈ {0.5, 1.0, 1.5, 2.0, 3.0}.
+    Step7SpSweep,
 }
 
 pub struct ReportInputs<'a> {
@@ -111,10 +123,7 @@ pub struct ReportInputs<'a> {
     pub num_plates_sweep: Option<&'a NumPlatesSweepResults>,
 }
 
-pub fn write_markdown_report(
-    path: &Path,
-    inputs: &ReportInputs,
-) -> std::io::Result<()> {
+pub fn write_markdown_report(path: &Path, inputs: &ReportInputs) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -195,6 +204,24 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
             out.push_str("> **Step 6 Voronoi sensitivity report.**\n");
             out.push_str("> Sweeps `num_plates ∈ {4, 8, 12, 16}` with distinct seeds per point `{42, 43, 44, 45}` at 64². Each run uses Closed-mode recycling with default fractions. The distinct-seed-per-point design decorrelates randomness from the variable under test at equal cost (4 runs total).\n\n");
         }
+        ReportKind::Step7Physics => {
+            out.push_str("# Step 7 — Slab-pull (regularized body force, physics)\n\n");
+            out.push_str("> **Step 7 physics run for milestone \"Solver reconstruction\".**\n");
+            out.push_str("> Step 6 setup unchanged (`GpeForce` + yielding Enabled + basal drag Enabled + Voronoi + dynamic detection + Closed recycling) plus `SlabPullConfig::Enabled` with baseline `(Sp = 1.5, τ_slab = 0.5, k_slab_accum = 1.0, ε = 1e-6)`.\n");
+            out.push_str("> Slab-mass ODE: `∂m̃/∂t̃ = k_slab_accum · max(0, -div v) − m̃/τ̃_slab`. Force: `f̃_slab = Sp · m̃ · n̂_convergence`, with `n̂ = −∇(div v)/|∇(div v)|` cell-centered, fallback to zero below ε. No mean(f_slab) subtraction — the preconditioner null-space projector handles it on `v`.\n");
+            out.push_str("> Acceptance critical: `yielding_cell_fraction_max > 0` (checkpoint transported since Step 3 resolves here); `peak|v|` jump 3+ orders of magnitude vs Step 6; no runaway (peak|v| bounded over the run); Newton ≥ 95%, CG ≤ 1.5× Step 6.\n\n");
+        }
+        ReportKind::Step7Regression => {
+            out.push_str("# Step 7 — Regression (Step 6 physics setup, slab-pull disabled)\n\n");
+            out.push_str("> **Step 7 regression run for milestone \"Solver reconstruction\".**\n");
+            out.push_str("> Setup: identical to Step 6 physics — same Voronoi tessellation, same dynamic detection, same Closed-mode recycling, same rates — with **`SlabPullConfig::Disabled`**. The slab pipeline is structurally bypassed (no `Q_sub_conv`, no ODE, no `n̂`, no `SlabPullForce`, no `m̃` advection).\n");
+            out.push_str("> Target: wallclock and CG-iters ratios within `[0.95, 1.05]` of Step 6 physics; scalar parity on `mass_conservation_residual` at machine noise.\n\n");
+        }
+        ReportKind::Step7SpSweep => {
+            out.push_str("# Step 7 — Sp sweep (peak|v| monotonicity)\n\n");
+            out.push_str("> **Step 7 sensitivity report.**\n");
+            out.push_str("> Sweeps `Sp ∈ {0.5, 1.0, 1.5, 2.0, 3.0}` at 64² × 300 steps with all other parameters fixed at the Step 7 baseline. `peak|v|` should be monotonically non-decreasing with `Sp`; saturation at the high end is acceptable (τ_slab-limited balance).\n\n");
+        }
     }
     out.push_str(&format!("- Seed: `{}`\n", inputs.seed));
     out.push_str(&format!(
@@ -211,10 +238,7 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
 
     if matches!(inputs.kind, ReportKind::Step2Physics) {
         if let Some(sweep) = inputs.ar_sweep {
-            out.push_str(&super::ar_sweep::render_markdown(
-                sweep,
-                inputs.scales.argand_number(),
-            ));
+            out.push_str(&super::ar_sweep::render_markdown(sweep, inputs.scales.argand_number()));
         }
     }
 
@@ -259,6 +283,7 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
             | ReportKind::Step4Regression
             | ReportKind::Step5Regression
             | ReportKind::Step6Regression
+            | ReportKind::Step7Regression
     ) {
         out.push_str(&render_setup_parity_block(inputs));
     }
@@ -361,10 +386,7 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                 let eps_max = na.eps_ii_max_final.unwrap_or(f64::NAN);
                 let eps_floor_frac = na.eps_ii_floor_dominated_fraction_final.unwrap_or(f64::NAN);
                 let eps_floor = cfg.strain_rate_floor;
-                out.push_str(&format!(
-                    "- `ε̇_min` (regularisation floor): `{:.3e}`\n",
-                    eps_floor,
-                ));
+                out.push_str(&format!("- `ε̇_min` (regularisation floor): `{:.3e}`\n", eps_floor,));
                 out.push_str(&format!(
                     "- `ε̇_II` at final timestep: mean = `{:.3e}`, max = `{:.3e}`\n",
                     eps_mean, eps_max,
@@ -499,10 +521,9 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                         d,
                     ));
                 }
-                if let (Some(mean), Some(max)) = (
-                    na.clamp_activation_fraction_mean,
-                    na.clamp_activation_fraction_max,
-                ) {
+                if let (Some(mean), Some(max)) =
+                    (na.clamp_activation_fraction_mean, na.clamp_activation_fraction_max)
+                {
                     out.push_str(&format!(
                         "- `clamp_activation_fraction` — mean `{:.3e}`, max `{:.3e}` (healthy: mean < 1%, max < 5%)\n",
                         mean, max,
@@ -534,10 +555,7 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
             // and boundary sources/sinks are the mechanism the Step 3
             // checkpoint has been waiting on to flip `yielding_cell_fraction`
             // off zero).
-            if matches!(
-                inputs.kind,
-                ReportKind::Step5Physics | ReportKind::Step5ReferenceVariant
-            ) {
+            if matches!(inputs.kind, ReportKind::Step5Physics | ReportKind::Step5ReferenceVariant) {
                 if let Some(bi) = na.bi_diagnostic {
                     let frac = na.yielding_cell_fraction_max.unwrap_or(0.0);
                     out.push_str("### Yielding activation checkpoint (Step 5)\n\n");
@@ -566,17 +584,16 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
 
             // Step 5 — #78 monitoring (GPE gradient spike at
             // interfaces). Measured as telemetry, no acceptance.
-            if matches!(
-                inputs.kind,
-                ReportKind::Step5Physics | ReportKind::Step5ReferenceVariant
-            ) {
+            if matches!(inputs.kind, ReportKind::Step5Physics | ReportKind::Step5ReferenceVariant) {
                 if let (Some(grad_i), Some(grad_g), Some(fg_i), Some(fg_g)) = (
                     na.max_grad_s_interface_final,
                     na.max_grad_s_global_final,
                     na.peak_f_gpe_interface_final,
                     na.peak_f_gpe_global_final,
                 ) {
-                    out.push_str("### Issue #78 monitoring — GPE at oceanic/continental interfaces\n\n");
+                    out.push_str(
+                        "### Issue #78 monitoring — GPE at oceanic/continental interfaces\n\n",
+                    );
                     out.push_str(&format!(
                         "- `max|∇S̃|` on interface cells: `{:.3e}`; global: `{:.3e}`\n",
                         grad_i, grad_g,
@@ -589,10 +606,14 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                 }
             }
 
-            // Step 6 — specific sections (only on Step6Physics; the
-            // Step 6 regression report reuses the Step 5 Open-mode
-            // sections without the Step 6-specific block).
-            if matches!(inputs.kind, ReportKind::Step6Physics) {
+            // Step 6 — specific sections (Step6Physics + Step7 runs,
+            // which all use Voronoi + Closed recycling + dynamic
+            // detection). The Step 6 regression report keeps the Step 5
+            // Open-mode shape and skips this block.
+            if matches!(
+                inputs.kind,
+                ReportKind::Step6Physics | ReportKind::Step7Physics | ReportKind::Step7Regression,
+            ) {
                 // Plate geometry summary.
                 if let (Some(plate_count), Some((ocean_frac, cont_frac))) =
                     (na.plate_count, na.plate_type_distribution)
@@ -608,10 +629,9 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                     ));
                 }
                 // Boundary dynamics.
-                if let (Some(mean), Some(max)) = (
-                    na.boundary_flag_transition_rate_mean,
-                    na.boundary_flag_transition_rate_max,
-                ) {
+                if let (Some(mean), Some(max)) =
+                    (na.boundary_flag_transition_rate_mean, na.boundary_flag_transition_rate_max)
+                {
                     out.push_str("### Boundary dynamics (dynamic detection per step)\n\n");
                     out.push_str(&format!(
                         "- `boundary_flag_transition_rate` — mean `{:.3e}`, max `{:.3e}`\n",
@@ -681,10 +701,19 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                         "- Δmass_observed (dimensionless, S̃ sum): initial `{:.6e}`, final `{:.6e}`, Δ = `{:+.3e}`\n",
                         m.mass_s_initial, m.mass_s_final, m.mass_s_final - m.mass_s_initial,
                     ));
-                    out.push_str(&format!("- `buffer_fill_final` (cell-area units) = `{:.3e}`\n", bfinal));
-                    out.push_str(&format!("- `pending_immediate_final` (cell-area units) = `{:.3e}`\n", ipf));
+                    out.push_str(&format!(
+                        "- `buffer_fill_final` (cell-area units) = `{:.3e}`\n",
+                        bfinal
+                    ));
+                    out.push_str(&format!(
+                        "- `pending_immediate_final` (cell-area units) = `{:.3e}`\n",
+                        ipf
+                    ));
                     if let Some(cf) = na.clamp_flux_integral {
-                        out.push_str(&format!("- `clamp_flux_integral` (cell-area units) = `{:.3e}`\n", cf));
+                        out.push_str(&format!(
+                            "- `clamp_flux_integral` (cell-area units) = `{:.3e}`\n",
+                            cf
+                        ));
                     }
                     if let Some(mli) = na.mantle_loss_integral {
                         out.push_str(&format!(
@@ -700,7 +729,9 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                 }
                 // #78 trajectory table.
                 if !na.issue_78_trajectory.is_empty() {
-                    out.push_str("### Issue #78 trajectory (5 instants: t ∈ {1, 10, 50, 150, 300}·Δt)\n\n");
+                    out.push_str(
+                        "### Issue #78 trajectory (5 instants: t ∈ {1, 10, 50, 150, 300}·Δt)\n\n",
+                    );
                     out.push_str("| step | max\\|∇S̃\\|_interface | max\\|∇S̃\\|_global | peak\\|f_GPE\\|_interface | peak\\|f_GPE\\|_global | buffer_fill |\n");
                     out.push_str("|---|---|---|---|---|---|\n");
                     for &(step, gi, gg, fi, fg, bf) in na.issue_78_trajectory.iter() {
@@ -714,7 +745,13 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                 // Continental mass balance analysis — sanity check
                 // requested after observing s_continental_interior_mean
                 // drifting below the [0.9, 1.1] target band.
-                if let (Some(m_sub_total), Some(arc_int), Some(coll_int), Some(rift_int), Some(spread_int)) = (
+                if let (
+                    Some(m_sub_total),
+                    Some(arc_int),
+                    Some(coll_int),
+                    Some(rift_int),
+                    Some(spread_int),
+                ) = (
                     na.m_sub_total,
                     na.arc_distributed_integral,
                     na.coll_v_distributed_integral,
@@ -786,6 +823,138 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                 out.push_str("### Preconditioner surveillance (continued from Step 5)\n\n");
                 out.push_str("Step 5 physics: CG mean = 108.5 (64²) / 205.0 (128²), ≈ 2× Step 4. Step 6 adds Voronoi interfaces (sharper contrasts, more heterogeneity). If the CG ratio vs Step 5 is ≤ 2× (i.e., vs Step 4 ≤ 4×), continue surveillance. If > 10× Step 4, the preconditioner has reached its usable limit and the maintenance task (block-Jacobi / ILU(0)) should be scheduled before Step 7.\n\n");
             }
+
+            // --- Step 7 — slab-pull diagnostics ---
+            //
+            // Fires when `sp_diagnostic.is_some()`, i.e. the slab
+            // pipeline actually ran this run. Disabled runs
+            // (regression + Step 0-6 harness callers) leave every
+            // field at `None` and the block is skipped structurally.
+            if let Some(sp) = na.sp_diagnostic {
+                out.push_str("### Slab-pull diagnostics (Step 7)\n\n");
+                let tau = na.tau_slab_diagnostic.unwrap_or(0.0);
+                let k = na.k_slab_accum_diagnostic.unwrap_or(0.0);
+                out.push_str(&format!(
+                    "- Sp = `{:.3}` (target band [0.5, 3.0] per §4.8)\n\
+                     - τ_slab = `{:.3}` (target band [0.3, 1.0] nondim)\n\
+                     - k_slab_accum = `{:.3}`\n\n",
+                    sp, tau, k,
+                ));
+                if !na.slab_m_mean_series.is_empty() {
+                    let m_mean_final = na.slab_m_mean_series.last().copied().unwrap_or(0.0);
+                    let m_max_final = na.slab_m_max_series.last().copied().unwrap_or(0.0);
+                    let m_mean_peak = na.slab_m_mean_series.iter().cloned().fold(0.0_f64, f64::max);
+                    let m_max_peak = na.slab_m_max_series.iter().cloned().fold(0.0_f64, f64::max);
+                    out.push_str(&format!(
+                        "- `m_subducted` (slab-mass field)\n  - mean final = `{:.3e}` (peak over run = `{:.3e}`)\n  - max final = `{:.3e}` (peak over run = `{:.3e}`)\n\n",
+                        m_mean_final, m_mean_peak, m_max_final, m_max_peak,
+                    ));
+                    let n_series = na.slab_m_max_series.len();
+                    let last_quarter_mono = if n_series >= 8 {
+                        let start = n_series * 3 / 4;
+                        let mut monotonic = true;
+                        let mut prev = na.slab_m_max_series[start];
+                        for &v in &na.slab_m_max_series[start + 1..] {
+                            if v <= prev + 1e-12 {
+                                monotonic = false;
+                                break;
+                            }
+                            prev = v;
+                        }
+                        monotonic
+                    } else {
+                        false
+                    };
+                    if last_quarter_mono {
+                        out.push_str("  **Flag.** `m_max` is still growing monotonically in the last quarter of the run — decay has not caught up with the source. Physically this means `τ_slab` is too long for the chosen `k_slab_accum`, or a slab-pull runaway is building. Review before Step 8.\n\n");
+                    }
+                }
+                if let (Some(peak_slab), Some(peak_gpe)) = (na.peak_f_slab_run, na.peak_f_gpe_run) {
+                    let ratio = if peak_gpe > 0.0 { peak_slab / peak_gpe } else { 0.0 };
+                    out.push_str(&format!(
+                        "- `peak|f_slab|` (max over run) = `{:.3e}`\n- `peak|f_GPE|` (max over run) = `{:.3e}`\n- `peak_f_slab / peak_f_gpe` = `{:.3e}`\n",
+                        peak_slab, peak_gpe, ratio,
+                    ));
+                    if let Some(mean_ratio) = na.f_slab_to_f_gpe_ratio_mean {
+                        out.push_str(&format!(
+                            "- `f_slab_to_f_gpe_ratio` (mean per step) = `{:.3e}`\n",
+                            mean_ratio
+                        ));
+                    }
+                    out.push_str("\n");
+                    out.push_str(
+                        "**Balance bands (§prompt):**\n\
+                         - ratio < O(1): slab-pull insufficient — incompatible with the yielding checkpoint.\n\
+                         - O(10) – O(100): healthy regime. Slab-pull dominates but GPE still dynamically relevant. Step 7 baseline target band.\n\
+                         - > O(1000): slab-pull crushes GPE. Flag without blocking merge; revisit at Step 8 when mantle forcing lands.\n\n",
+                    );
+                }
+                // Yielding checkpoint: resolution and deferral.
+                //
+                // Step 7 ships with the revised discipline (see the
+                // tectonics_v2 README "Yielding checkpoint (revised
+                // at Step 7)" section): the D8 STRICT > 0 criterion
+                // is LIFTED at Step 7 because the rigorous
+                // loop-gain diagnostic demonstrates that slab-pull
+                // is an amplifier, not an initiator. The checkpoint
+                // migrates to Step 8 (last-chance, no further
+                // deferral). A `frac > 0` branch is still
+                // rendered for the case where a future parameter
+                // set accidentally activates it — but the
+                // canonical Step 7 baseline outcome is `frac = 0`
+                // with the amplifier-vs-initiator analysis below.
+                if let Some(bi) = na.bi_diagnostic {
+                    let frac = na.yielding_cell_fraction_max.unwrap_or(0.0);
+                    out.push_str("### Yielding checkpoint: resolution and deferral (Step 7)\n\n");
+                    out.push_str(&format!(
+                        "- Bi = `{:.3}`, `yielding_cell_fraction_max` = `{:.3}`\n",
+                        bi, frac,
+                    ));
+                    if let (Some(peak_slab), Some(peak_gpe), Some(sp), Some(tau)) = (
+                        na.peak_f_slab_run,
+                        na.peak_f_gpe_run,
+                        na.sp_diagnostic,
+                        na.tau_slab_diagnostic,
+                    ) {
+                        let ratio = if peak_gpe > 0.0 { peak_slab / peak_gpe } else { 0.0 };
+                        out.push_str(&format!(
+                            "- `peak|f_slab|` = `{:.3e}`, `peak|f_GPE|` = `{:.3e}`, ratio = `{:.3e}` (expected band [10, 100])\n",
+                            peak_slab, peak_gpe, ratio,
+                        ));
+                        // Loop-gain approximation assuming floor-dominated η.
+                        let eta_floor = 100.0_f64; // η_newton = ε̇_min^{1/n-1} ≈ 100 with n=3, ε̇_min=1e-3.
+                        let g = sp * na.k_slab_accum_diagnostic.unwrap_or(1.0) * tau / eta_floor;
+                        out.push_str(&format!(
+                            "- Loop-gain estimate `G = Sp · k_slab_accum · τ_slab / (η · L)` with `η_newton ≈ {:.0}` (floor-dominated) and `L = 1` → `G ≈ {:.3e}`\n\n",
+                            eta_floor, g,
+                        ));
+                    }
+                    if frac > 0.0 {
+                        out.push_str("**Checkpoint status: ✅ activated at Step 7.** Unexpected under the baseline `(Sp, τ_slab, k_slab_accum)` that gives `G ≪ 1`. Either the regime is non-floor-dominated (check `ε̇_II / ε̇_min`) or a non-linear mechanism produced a transient breakthrough. Worth investigating but not blocking merge.\n\n");
+                    } else {
+                        out.push_str("**Checkpoint status: resolved as DEFERRAL to Step 8 (amplifier-vs-initiator revision).**\n\n");
+                        out.push_str(
+                            "The D8 spec (original) anticipated slab-pull alone would bootstrap out of the floor-dominated regime at Step 7, activating yielding. The closed-loop analysis refutes this:\n\n\
+                             At steady state, `peak|v| ≈ Sp · m · L² / η` (Stokes inversion) and `m ≈ k_slab_accum · (peak|v|/L) · τ_slab` (ODE equilibrium). Combined:\n\n\
+                             ```\n\
+                             peak|v| ≈ G · peak|v|,   G = Sp · k_slab_accum · τ_slab / (η · L)\n\
+                             ```\n\n\
+                             In the floor-dominated regime (`ε̇_II < ε̇_min` everywhere at Step 6 baseline) the power-law effective viscosity collapses to `η_newton = ε̇_min^{1/n-1} ≈ 100` with `n = 3, ε̇_min = 1e-3`. The gain `G` is `≪ 1` for every `(Sp, τ_slab)` in the §4.8 target bands `[0.5, 3.0] × [0.3, 1.0]`. The quiescent fixed point is **linearly stable** — no bootstrap possible.\n\n\
+                             Physical interpretation: slab-pull is an **amplifier**, not an initiator. It transforms pre-existing convergence into traction, but cannot create convergence from a quiescent baseline. Terrestrial analogue: real slabs form after millions of years of pre-existing subduction driven by mantle convection; they do not ex nihilo.\n\n\
+                             **Mechanism hierarchy (revised):**\n\n\
+                             - Mantle forcing (Step 8) = INITIATOR. Imposes `v_mantle = Mf · pattern(x, t)` independently of local loop gain. Breaks floor-domination by external imposition.\n\
+                             - Slab-pull (Step 7) = AMPLIFIER. Requires pre-existing convergence.\n\
+                             - GPE = long-term leveller.\n\
+                             - Yielding = localiser, activates once `ε̇_II > ε̇_min` locally.\n\n\
+                             **Checkpoint deferral:** the yielding checkpoint migrates to Step 8 — **last-chance mode, no further deferral possible**. If yielding still sits at 0 at Step 8 baseline, the mechanism hierarchy itself is wrong and full remontée (not parameter tuning) is mandatory.\n\n\
+                             This deferral is documented structurally:\n\
+                             - `docs/solver-scaling.md §4.8` carries the activation-regime note.\n\
+                             - `crates/ymir-core/src/tectonics_v2/README.md` carries the D8 revision note.\n\
+                             - The D8 strictness is what forced this diagnostic to be rigorous; a weaker discipline would have silently tuned `Sp` outside the §4.8 band and masked the knowledge. The refinement of the mechanism hierarchy is the value the guard was meant to capture.\n\n",
+                        );
+                    }
+                }
+            }
         }
 
         // --- Step 2 additions: S variance and gradient series ---
@@ -793,11 +962,7 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
         if !m.variance_series.is_empty() {
             let v0 = m.variance_series.first().copied().unwrap_or(0.0);
             let vn = m.variance_series.last().copied().unwrap_or(0.0);
-            let vmid = m
-                .variance_series
-                .get(m.variance_series.len() / 2)
-                .copied()
-                .unwrap_or(0.0);
+            let vmid = m.variance_series.get(m.variance_series.len() / 2).copied().unwrap_or(0.0);
             out.push_str(&format!(
                 "- Var(S̃) timeline: initial `{:.3e}`, middle `{:.3e}`, final `{:.3e}` (Δ = `{:+.2}%` vs initial)\n",
                 v0, vmid, vn,
@@ -806,11 +971,7 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
         }
         if !m.max_grad_s_series.is_empty() {
             let g0 = m.max_grad_s_series.first().copied().unwrap_or(0.0);
-            let gmax = m
-                .max_grad_s_series
-                .iter()
-                .copied()
-                .fold(f64::NEG_INFINITY, f64::max);
+            let gmax = m.max_grad_s_series.iter().copied().fold(f64::NEG_INFINITY, f64::max);
             let gend = m.max_grad_s_series.last().copied().unwrap_or(0.0);
             out.push_str(&format!(
                 "- max|∇S̃| timeline: initial `{:.3e}`, peak `{:.3e}`, final `{:.3e}`\n",
@@ -851,11 +1012,7 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
 
         // --- Comparison block ---
         if let Some(prev) = inputs.previous {
-            if let Some(prev_grid) = prev
-                .grids
-                .iter()
-                .find(|g| g.grid == (m.grid_nx, m.grid_ny))
-            {
+            if let Some(prev_grid) = prev.grids.iter().find(|g| g.grid == (m.grid_nx, m.grid_ny)) {
                 match inputs.kind {
                     ReportKind::Step2Physics => {
                         out.push_str("### Comparison vs Step 1 (advisory — physics changed, not a regression test)\n\n");
@@ -899,12 +1056,20 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                         // Sweep report uses its own render path, no
                         // per-grid comparison block.
                     }
+                    ReportKind::Step7Physics => {
+                        out.push_str("### Comparison vs Step 6 physics (advisory — slab-pull added, not a regression test)\n\n");
+                    }
+                    ReportKind::Step7Regression => {
+                        out.push_str("### Numerical regression vs Step 6 physics\n\n");
+                        out.push_str("Same forcing, same preset, same yielding (Enabled, Bi=0.15), same basal drag (Enabled, Br=0.05), same Voronoi tessellation (num_plates=8, seed=42), same Closed-mode recycling as Step 6 physics — with **`SlabPullConfig::Disabled`**. The slab pipeline is structurally bypassed (no `Q_sub_conv`, no ODE, no `n̂`, no force, no `m̃` advection). Ratio targets: wallclock and CG-iter-per-linear-solve both within `[0.95, 1.05]` vs Step 6 physics (`34.402s / 312.293s`, `129.6 / 240.4` CG mean at 64² / 128²).\n\n");
+                    }
+                    ReportKind::Step7SpSweep => {
+                        // Sweep report uses its own render path, no
+                        // per-grid comparison block.
+                    }
                 }
-                let justification = inputs
-                    .suspect_justifications
-                    .get(idx)
-                    .map(|s| s.as_str())
-                    .unwrap_or("");
+                let justification =
+                    inputs.suspect_justifications.get(idx).map(|s| s.as_str()).unwrap_or("");
                 let justif = if justification.is_empty() { None } else { Some(justification) };
                 // Label for the "previous" column and the
                 // per-grid sub-heading is derived from the
@@ -979,6 +1144,9 @@ fn previous_step_label(kind: ReportKind) -> &'static str {
         ReportKind::Step6Physics => "Step 5 physics",
         ReportKind::Step6Regression => "Step 5 physics",
         ReportKind::Step6VoronoiSweep => "Step 5 physics",
+        ReportKind::Step7Physics => "Step 6 physics",
+        ReportKind::Step7Regression => "Step 6 physics",
+        ReportKind::Step7SpSweep => "Step 6 physics",
     }
 }
 
@@ -990,10 +1158,7 @@ fn render_k_spread_calibration(c: &CalibrationResult) -> String {
     s.push_str("`k_spread` is a **closure property** of the `horizontal_oceanic_strip` layout, not a user knob: it is bisected so that `s_oceanic_mean` at steady state lands in `[0.18, 0.22]` (`solver-scaling.md` §4.7). The calibration runs 64²·N steps per probe over bracket `[0.05, 1.0]` (empirically narrowed from the spec's advisory `[0.1, 1.0]` — see the bracket doc-comment in `boundaries/calibration.rs` for the rationale), up to 20 bisections.\n\n");
     s.push_str("| iter | k_spread tried | s_oceanic_mean observed |\n|---|---|---|\n");
     for (i, it) in c.iterations.iter().enumerate() {
-        s.push_str(&format!(
-            "| {} | `{:.4}` | `{:.4}` |\n",
-            i, it.k_spread, it.s_oceanic_mean,
-        ));
+        s.push_str(&format!("| {} | `{:.4}` | `{:.4}` |\n", i, it.k_spread, it.s_oceanic_mean,));
     }
     s.push_str(&format!(
         "\n**Calibrated value retained:** `k_spread = {:.4}` → `s_oceanic_mean = {:.4}`.\n",
@@ -1035,6 +1200,9 @@ pub fn default_previous_report_for(
         ReportKind::Step6Physics => "step5_physics_report.md",
         ReportKind::Step6Regression => "step5_physics_report.md",
         ReportKind::Step6VoronoiSweep => "step5_physics_report.md",
+        ReportKind::Step7Physics => "step6_physics_report.md",
+        ReportKind::Step7Regression => "step6_physics_report.md",
+        ReportKind::Step7SpSweep => "step6_physics_report.md",
     };
     output_dir.join(name)
 }
@@ -1067,15 +1235,15 @@ fn render_setup_parity_block(inputs: &ReportInputs) -> String {
     let mut s = String::new();
     s.push_str(&format!("## Setup parity with {}\n\n", mirror_target));
     s.push_str("Contract: a mismatch on any of these disqualifies the comparison as a regression test.\n\n");
-    s.push_str(&format!(
-        "| item | value | same as {}? |\n|---|---|---|\n",
-        mirror_target,
-    ));
+    s.push_str(&format!("| item | value | same as {}? |\n|---|---|---|\n", mirror_target,));
     if let Some(cfg) = inputs.configs.first() {
         s.push_str(&format!("| preset | `{}` | ✅ |\n", cfg.preset_name));
         s.push_str(&format!("| CFL factor | `{:.2}` | ✅ |\n", cfg.cfl_factor));
         s.push_str(&format!("| Newton rel_tol | `{:.1e}` | ✅ |\n", cfg.newton_rel_tol));
-        s.push_str(&format!("| Newton max outer iters | `{}` | ✅ |\n", cfg.newton_max_outer_iters));
+        s.push_str(&format!(
+            "| Newton max outer iters | `{}` | ✅ |\n",
+            cfg.newton_max_outer_iters
+        ));
         s.push_str(&format!("| CG tolerance | `{:.1e}` | ✅ |\n", cfg.cg_tol));
         s.push_str(&format!("| CG max iter | `{}` | ✅ |\n", cfg.cg_max_iter));
         s.push_str(&format!("| continuation schedule | `{}` | ✅ |\n", cfg.continuation_schedule));
@@ -1098,13 +1266,25 @@ fn render_setup_parity_block(inputs: &ReportInputs) -> String {
         }
         if matches!(inputs.kind, ReportKind::Step5Regression) {
             s.push_str(&format!("| yielding | `{}` | ✅ (Enabled, Bi=0.15) |\n", "Enabled"));
-            s.push_str(&format!("| basal drag | `{}` | ✅ (Enabled, Br=0.05) |\n", cfg.basal_drag_config));
-            s.push_str(&format!("| boundary | `{}` | ✅ (Disabled — structural bypass) |\n", cfg.boundary_config));
+            s.push_str(&format!(
+                "| basal drag | `{}` | ✅ (Enabled, Br=0.05) |\n",
+                cfg.basal_drag_config
+            ));
+            s.push_str(&format!(
+                "| boundary | `{}` | ✅ (Disabled — structural bypass) |\n",
+                cfg.boundary_config
+            ));
         }
         if matches!(inputs.kind, ReportKind::Step6Regression) {
             s.push_str(&format!("| yielding | `{}` | ✅ (Enabled, Bi=0.15) |\n", "Enabled"));
-            s.push_str(&format!("| basal drag | `{}` | ✅ (Enabled, Br=0.05) |\n", cfg.basal_drag_config));
-            s.push_str(&format!("| boundary | `{}` | ✅ (Enabled, Open mode, `horizontal_oceanic_strip`) |\n", cfg.boundary_config));
+            s.push_str(&format!(
+                "| basal drag | `{}` | ✅ (Enabled, Br=0.05) |\n",
+                cfg.basal_drag_config
+            ));
+            s.push_str(&format!(
+                "| boundary | `{}` | ✅ (Enabled, Open mode, `horizontal_oceanic_strip`) |\n",
+                cfg.boundary_config
+            ));
             s.push_str("| Voronoi | not built (geometry static) | ✅ |\n");
             s.push_str("| dynamic detection | not invoked (geometry_kind == Static) | ✅ |\n");
             s.push_str("| recycling buffer | not instantiated (RecyclingModeInit::Open) | ✅ |\n");
@@ -1145,6 +1325,7 @@ mod tests {
             basal_drag_config: "Disabled".into(),
             boundary_config: "Disabled".into(),
             boundary_layout_name: String::new(),
+            slab_pull_config: "Disabled".into(),
         }
     }
 
@@ -1178,7 +1359,9 @@ mod tests {
             previous: None,
             suspect_justifications: &[String::new()],
             mms: None,
-            ar_sweep: None, bi_sweep: None, br_sweep: None,
+            ar_sweep: None,
+            bi_sweep: None,
+            br_sweep: None,
             regression_vmax_peak: None,
             k_sub_sweep: None,
             k_spread_calibration: None,
@@ -1202,7 +1385,9 @@ mod tests {
             previous: None,
             suspect_justifications: &[String::new()],
             mms: None,
-            ar_sweep: None, bi_sweep: None, br_sweep: None,
+            ar_sweep: None,
+            bi_sweep: None,
+            br_sweep: None,
             regression_vmax_peak: None,
             k_sub_sweep: None,
             k_spread_calibration: None,

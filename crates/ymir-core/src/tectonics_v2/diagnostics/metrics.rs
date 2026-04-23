@@ -90,6 +90,10 @@ pub struct SolverConfigDump {
     /// config is Enabled. Empty string when Disabled or when the
     /// caller didn't attach a layout name.
     pub boundary_layout_name: String,
+    // --- Step 7 addition ---
+    /// Describes the slab-pull configuration: `"Disabled"` or
+    /// `"Enabled (Sp = 1.500, τ_slab = 0.500, k_slab_accum = 1.000, ε = 1.0e-6)"`.
+    pub slab_pull_config: String,
 }
 
 impl SolverConfigDump {
@@ -119,6 +123,7 @@ impl SolverConfigDump {
              | basal drag | {} |\n\
              | boundary config | {} |\n\
              | boundary layout | {} |\n\
+             | slab-pull | {} |\n\
              | seed | {} |\n",
             self.formulation,
             self.discretization,
@@ -145,6 +150,7 @@ impl SolverConfigDump {
             } else {
                 self.boundary_layout_name.as_str()
             },
+            self.slab_pull_config,
             self.seed,
         )
     }

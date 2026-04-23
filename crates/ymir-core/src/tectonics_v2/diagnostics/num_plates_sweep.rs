@@ -100,6 +100,7 @@ pub fn run_num_plates_sweep(
             basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
             boundary,
             boundary_layout_name: format!("voronoi_seed{}_n{}", sd, n),
+            slab_pull: crate::tectonics_v2::slab::SlabPullConfig::Disabled,
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(n, sd, &r));
