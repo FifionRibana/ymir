@@ -76,6 +76,8 @@ pub fn run_ar_sweep(
             s_perturbation_amplitude,
             yielding: crate::tectonics_v2::presets::YieldingConfig::Disabled,
             basal_drag: crate::tectonics_v2::basal_drag::BasalDragConfig::Disabled,
+            boundary: crate::tectonics_v2::boundaries::BoundaryConfig::Disabled,
+            boundary_layout_name: String::new(),
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(ar, &r));

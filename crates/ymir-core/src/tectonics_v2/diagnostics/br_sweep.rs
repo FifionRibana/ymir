@@ -87,6 +87,8 @@ pub fn run_br_sweep(
                 br,
                 s_exponent: 2.0,
             }),
+            boundary: crate::tectonics_v2::boundaries::BoundaryConfig::Disabled,
+            boundary_layout_name: String::new(),
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(br, &r));

@@ -82,6 +82,14 @@ pub struct SolverConfigDump {
     /// Describes the basal-drag configuration in human form:
     /// `"Disabled"` or `"Enabled (Br = 0.050, S exponent = 2.0)"`.
     pub basal_drag_config: String,
+    // --- Step 5 addition ---
+    /// Describes the boundary source/sink configuration:
+    /// `"Disabled"` or `"Enabled (k_sub=..., k_arc=..., k_spread=..., ...)"`.
+    pub boundary_config: String,
+    /// Name of the synthetic boundary layout used, when the boundary
+    /// config is Enabled. Empty string when Disabled or when the
+    /// caller didn't attach a layout name.
+    pub boundary_layout_name: String,
 }
 
 impl SolverConfigDump {
@@ -109,6 +117,8 @@ impl SolverConfigDump {
              | grid spacing (nondim) | {:.6} |\n\
              | body force | {} |\n\
              | basal drag | {} |\n\
+             | boundary config | {} |\n\
+             | boundary layout | {} |\n\
              | seed | {} |\n",
             self.formulation,
             self.discretization,
@@ -129,6 +139,12 @@ impl SolverConfigDump {
             self.grid_spacing_nondim,
             self.body_force,
             self.basal_drag_config,
+            self.boundary_config,
+            if self.boundary_layout_name.is_empty() {
+                "—"
+            } else {
+                self.boundary_layout_name.as_str()
+            },
             self.seed,
         )
     }

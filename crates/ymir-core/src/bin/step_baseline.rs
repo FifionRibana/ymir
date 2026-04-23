@@ -281,6 +281,8 @@ fn run_scenario(
             s_perturbation_amplitude: s_amp,
             yielding,
             basal_drag,
+            boundary: ymir_core::tectonics_v2::boundaries::BoundaryConfig::Disabled,
+            boundary_layout_name: String::new(),
         };
         println!("-- running {}×{} for {} steps --", nx, ny, args.steps);
         let result = run_baseline(&base);
@@ -320,6 +322,9 @@ fn run_scenario(
         bi_sweep: bi_sweep_results,
         br_sweep: br_sweep_results,
         regression_vmax_peak,
+        k_sub_sweep: None,
+        k_spread_calibration: None,
+        boundary_layout_ascii: None,
     };
     write_markdown_report(&output, &inputs)
         .map_err(|e| format!("failed to write report {:?}: {}", output, e))?;
