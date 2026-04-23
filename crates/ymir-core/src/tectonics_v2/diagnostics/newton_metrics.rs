@@ -74,6 +74,52 @@ pub struct NewtonAggregate {
     /// Linear in Br; baseline Step-4 target band `[10⁻⁶, 10⁻⁴]` at
     /// 128² per the Step-4 spec algebra.
     pub drag_vs_visc_diagonal_ratio: Option<f64>,
+
+    // ---- Step 5 — boundary source/sink diagnostics ----
+    //
+    // All fields are `None` under `BoundaryConfig::Disabled`; under
+    // `Enabled` they are populated by the harness at the end of the
+    // run. The mean/std fields are domain-wise stats on the final
+    // `S̃`; the mass-balance residual and clamp activation fraction
+    // are integrated over the whole run.
+    pub boundary_layout_name: Option<&'static str>,
+    pub s_oceanic_mean: Option<f64>,
+    pub s_oceanic_std: Option<f64>,
+    pub s_continental_interior_mean: Option<f64>,
+    pub s_continental_interior_std: Option<f64>,
+    pub s_continental_collision_mean: Option<f64>,
+    /// Count of boundary-flag variants active (Q ≠ 0) during the run.
+    /// Integer 0..=4 (None, plus Subduction|OceanicSubduction counted
+    /// once, Rift, ContinentalCollision).
+    pub boundary_type_diversity: Option<u32>,
+    /// Mean over steps of `clamp_activation_fraction`.
+    pub clamp_activation_fraction_mean: Option<f64>,
+    /// Max over steps of `clamp_activation_fraction`.
+    pub clamp_activation_fraction_max: Option<f64>,
+    /// Relative residual per issue #89 D5:
+    /// `|Δmass_observed − ∫Q − ∫clamp_flux| / max(|∫Q|+|∫clamp_flux|, 1)`.
+    pub mass_balance_residual: Option<f64>,
+    /// Integrated physical source/sink flux `Σ_steps dt·Σ_cells Q(cell,t)`.
+    pub q_integral: Option<f64>,
+    /// Integrated artificial clamp flux
+    /// `Σ_steps dt·Σ_cells (S̃_post_clamp − S̃_pre_clamp)`.
+    pub clamp_flux_integral: Option<f64>,
+    /// `max |∇S̃|` on the interface cells (oceanic cells adjacent to
+    /// continental, or vice versa) at the final timestep. Monitoring
+    /// for issue #78.
+    pub max_grad_s_interface_final: Option<f64>,
+    /// `peak |f_GPE|` on the interface cells at the final timestep.
+    /// Companion to `max_grad_s_interface_final`.
+    pub peak_f_gpe_interface_final: Option<f64>,
+    /// `max |∇S̃|` globally at the final timestep. Reference value
+    /// for the interface number.
+    pub max_grad_s_global_final: Option<f64>,
+    /// `peak |f_GPE|` globally at the final timestep.
+    pub peak_f_gpe_global_final: Option<f64>,
+    /// Calibrated value of `k_spread`. `None` when calibration was
+    /// not run (e.g., Step 5 regression, boundary Disabled, or when
+    /// the CLI supplies an explicit `--k-spread`).
+    pub k_spread_calibrated: Option<f64>,
 }
 
 impl NewtonAggregate {

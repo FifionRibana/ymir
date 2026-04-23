@@ -70,6 +70,8 @@ pub fn run_bi_sweep(
             s_perturbation_amplitude,
             yielding: YieldingConfig::Enabled(YieldingLaw { bi, ..Default::default() }),
             basal_drag: BasalDragConfig::Disabled,
+            boundary: crate::tectonics_v2::boundaries::BoundaryConfig::Disabled,
+            boundary_layout_name: String::new(),
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(bi, &r));
