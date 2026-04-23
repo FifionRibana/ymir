@@ -11,8 +11,10 @@ pub mod body_force;
 pub mod force_sum;
 pub mod gpe;
 pub mod sinusoidal;
+pub mod slab_pull;
 
 pub use body_force::{BodyForce, SimulationState, VectorField};
 pub use force_sum::ForceSum;
 pub use gpe::GpeForce;
 pub use sinusoidal::{SinusoidalForce, ZeroForce};
+pub use slab_pull::SlabPullForce;

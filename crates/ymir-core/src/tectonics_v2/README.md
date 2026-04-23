@@ -225,6 +225,28 @@ isolation), emitted to `docs/reports/step5_reference_variant_report.md`
 and serving as the comparison target for
 `docs/reports/step5_regression_report.md`.
 
+## Yielding checkpoint (revised at Step 7)
+
+The checkpoint installed at Step 3 and carried through Steps 4-6 with the
+expectation that slab-pull at Step 7 would resolve it was based on an
+implicit assumption (slab-pull as initiator). The Step 7 diagnostic (see
+`docs/reports/step7_physics_report.md §Yielding checkpoint: resolution
+and deferral`) demonstrates rigorously that slab-pull is an **amplifier,
+not an initiator**. In the floor-dominated regime `ε̇_II < ε̇_min`
+everywhere, `η_newton ≈ 100`, and the closed-loop gain
+`G = Sp · k_slab_accum · τ_slab / (η · L)` stays `≪ 1` over the entire
+`Sp ∈ [0.5, 3.0]` band; the quiescent fixed point is linearly stable.
+The checkpoint migrates to Step 8 where mantle forcing provides the
+initiator (`v_mantle = Mf · pattern(x, t)` imposes flow independently of
+the local loop gain). **Step 8 is last-chance** — no further deferral
+possible.
+
+This revision was itself a non-trivial result of the D8 strictness
+installed at Step 7. A weaker discipline would have silently tuned `Sp`
+outside the §4.8 band and masked the physical knowledge. Strict
+remontée under rigorous diagnostic produced a refined mechanism
+hierarchy — that is the value the D8 guard was meant to capture.
+
 ## Note on the placeholder body force
 
 `f̃ = ε · sin(2π x̃ / L̃x) · ê_x` per the Step 0 spec. In the

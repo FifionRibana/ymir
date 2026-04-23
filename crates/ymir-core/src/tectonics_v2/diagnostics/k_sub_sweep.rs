@@ -92,6 +92,7 @@ pub fn run_k_sub_sweep(
             basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br, ..BasalDragLaw::default() }),
             boundary,
             boundary_layout_name: layout_name.to_string(),
+            slab_pull: crate::tectonics_v2::slab::SlabPullConfig::Disabled,
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(k_sub, &r));

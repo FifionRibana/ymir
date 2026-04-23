@@ -26,6 +26,7 @@ pub mod presets;
 pub mod recycling;
 pub mod rheology;
 pub mod scales;
+pub mod slab;
 pub mod stokes;
 pub mod voronoi;
 

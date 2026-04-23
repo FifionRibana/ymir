@@ -359,6 +359,8 @@ $$
 
 This eliminates the velocity clamp entirely. Moved to §6.
 
+**Activation regime requires pre-existing non-quiescent flow.** The nondimensional $\mathrm{Sp}$ defined above assumes $\eta \sim O(1)$. In the floor-dominated regime where $\dot\varepsilon_{II} < \dot\varepsilon_\text{min}$ everywhere, the effective viscosity is $\eta_\text{newton} = \dot\varepsilon_\text{min}^{1/n-1} \approx 100$, and the closed-loop gain $G = \mathrm{Sp}\cdot k_\text{slab-accum}\cdot \tau_\text{slab}\,/\,(\eta\cdot L)$ stays $\ll 1$ over the $\mathrm{Sp} \in [0.5, 3]$ range. The quiescent fixed point is linearly stable — slab-pull alone cannot bootstrap the system out of floor-domination. Activation requires an external initiator (mantle forcing §4.9) that imposes flow independently of the local closed-loop gain. Consequence: **slab-pull is an amplifier, not an initiator**; it transforms pre-existing convergence into traction but cannot create convergence where none exists. This was demonstrated empirically at the Step 7 baseline (see `step7_physics_report.md §Yielding checkpoint`) — `peak|v|` unchanged from Step 6 across the full $\mathrm{Sp}$ band, matching the loop-gain prediction $G \sim 7\times 10^{-3}$.
+
 ### 4.9 Mantle convection forcing
 
 The mantle convection proxy applies a continuous velocity bias to plates:

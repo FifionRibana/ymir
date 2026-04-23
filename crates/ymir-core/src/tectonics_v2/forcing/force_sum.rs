@@ -10,14 +10,18 @@
 //! Floating-point addition is not associative, so the order of
 //! terms matters for bit-identical regression. At Step 2 only one
 //! or two terms are ever used, so no canonical order is enforced.
-//! The **projected** canonical order, to be pinned down at Step 7
-//! (slab-pull) when the number of terms grows:
+//! The canonical order is documented below; Step 7 ships slab-pull
+//! as a separate assembly step (harness adds `SlabPullForce`
+//! contributions after `ForceSum` has laid down GPE), so this
+//! ordering is not yet materialised in code.
 //!
-//!     GPE → basal drag → slab-pull → mantle flow
+//! ```text
+//! GPE -> basal drag -> slab-pull -> mantle flow
+//! ```
 //!
-//! Step 7 will (probably) move this to an explicit `Vec<TermKind>`
-//! or a typed tuple; for now the invariant is "the user pushes
-//! terms in whatever order and the runtime preserves it".
+//! Step 8 (mantle flow) may introduce the typed-tuple refactor
+//! mentioned in the original spec, which would also bring
+//! slab-pull into this container.
 
 use super::body_force::{BodyForce, SimulationState, VectorField};
 

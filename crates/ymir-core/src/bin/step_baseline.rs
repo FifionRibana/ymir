@@ -283,6 +283,7 @@ fn run_scenario(
             basal_drag,
             boundary: ymir_core::tectonics_v2::boundaries::BoundaryConfig::Disabled,
             boundary_layout_name: String::new(),
+            slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
         };
         println!("-- running {}×{} for {} steps --", nx, ny, args.steps);
         let result = run_baseline(&base);
