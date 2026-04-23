@@ -288,7 +288,12 @@ mod tests {
 
     #[test]
     fn lower_endpoint_already_in_band_returns_immediately() {
-        // s(0.1) already in target → no bisection needed.
+        // A responder that returns 0.20 for any probe → the
+        // bracket's low endpoint already lands in target, so the
+        // bisection terminates on the first probe. The expected
+        // `k_spread` is whatever `K_SPREAD_BRACKET.0` happens to be
+        // — read it from the constant instead of hardcoding a stale
+        // value.
         let cfg = KSpreadCalibration {
             bracket: K_SPREAD_BRACKET,
             target_range: (0.18, 0.22),
@@ -299,6 +304,6 @@ mod tests {
         let response = |_: f64| 0.20;
         let r = calibrate_k_spread(&cfg, response).unwrap();
         assert_eq!(r.iterations.len(), 1);
-        assert_eq!(r.k_spread, 0.1);
+        assert_eq!(r.k_spread, K_SPREAD_BRACKET.0);
     }
 }

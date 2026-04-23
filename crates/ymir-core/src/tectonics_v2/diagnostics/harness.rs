@@ -416,12 +416,12 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     // reference variant / regression (both `BoundaryConfig::Disabled`)
     // keep the plate-type-agnostic init.
     let mut s = match &cfg.boundary {
-        BoundaryConfig::Enabled { plate_types, .. } => init_thickness_plate_aware(
+        BoundaryConfig::Enabled { geometry, .. } => init_thickness_plate_aware(
             nx,
             ny,
             cfg.seed,
             cfg.s_perturbation_amplitude,
-            plate_types.as_ref(),
+            &geometry.plate_type,
         ),
         BoundaryConfig::Disabled => init_thickness(nx, ny, cfg.seed, cfg.s_perturbation_amplitude),
     };
@@ -436,11 +436,23 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
 
     let mass_initial = integrated_mass(&s);
 
-    // Step 5 — scratch fields + accumulators for the boundary
+    // Step 5/6 — scratch fields + accumulators for the boundary
     // source/sink pipeline. Only allocated when `BoundaryConfig::Enabled`;
     // the `None` arm drops to a structural by-pass and the per-step
     // cost collapses to exactly Step 4's (modulo the scalar match).
+    //
+    // Step 6 additions:
+    //   - `current_flag`: run-local mutable copy of the boundary-flag
+    //     field. For static geometries (Step 5), equals `geometry.boundary_flag`
+    //     forever. For Voronoi geometries (Step 6), updated by
+    //     `detect_boundaries` each step before the source/sink loop.
     let boundary_enabled = matches!(cfg.boundary, BoundaryConfig::Enabled { .. });
+    let mut current_flag: Option<
+        crate::tectonics_v2::boundaries::BoundaryFlagField,
+    > = match &cfg.boundary {
+        BoundaryConfig::Enabled { geometry, .. } => Some(geometry.boundary_flag.clone()),
+        BoundaryConfig::Disabled => None,
+    };
     let mut div_v_scratch = if boundary_enabled { Some(Field2D::new(nx, ny)) } else { None };
     let mut q_field = if boundary_enabled { Some(Field2D::new(nx, ny)) } else { None };
     let mut q_sub_scratch = if boundary_enabled { Some(Field2D::new(nx, ny)) } else { None };
@@ -450,6 +462,73 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let mut clamp_activation_sum = 0.0_f64;
     let mut clamp_activation_max = 0.0_f64;
     let mut clamp_samples: usize = 0;
+
+    // Step 6 Closed-mode state (only populated when the recycling
+    // mode is Closed; Open leaves these at their defaults and the
+    // Open arm in the time loop doesn't read them).
+    let mut closed_state_accumulators =
+        crate::tectonics_v2::recycling::ImmediateAccumulators::default();
+    let mut closed_state_buffer: Option<
+        crate::tectonics_v2::recycling::DelayedRecycler,
+    > = None;
+    let mut closed_state_mantle_loss_integral = 0.0_f64;
+    let mut closed_state_m_sub_total = 0.0_f64;
+    let mut closed_state_arc_distributed = 0.0_f64;
+    let mut closed_state_coll_v_distributed = 0.0_f64;
+    let mut closed_state_rift_v_distributed = 0.0_f64;
+    let mut closed_state_spread_distributed = 0.0_f64;
+    // Flag counts captured at step 1 (after the first
+    // detect_boundaries call) — informative for the Step 6
+    // clarification "did detection fire on step 1?".
+    let mut boundary_flag_counts_step1: Option<(usize, usize, usize, usize, usize)> = None;
+    // Pre-compute the recycling config and build the buffer if
+    // Closed mode. Validation panics at this point are programmer
+    // errors (the builder `enabled_voronoi_closed` already validates
+    // at construction; direct `BoundaryConfig::Enabled { .. }`
+    // construction bypasses the builder and is considered unsafe).
+    if let BoundaryConfig::Enabled { recycling_mode, .. } = &cfg.boundary {
+        if let crate::tectonics_v2::boundaries::RecyclingModeInit::Closed(rcfg) = recycling_mode {
+            rcfg.validate().expect(
+                "RecyclingConfig invalid — use BoundaryConfig::enabled_voronoi_closed \
+                 or validate() before run_baseline",
+            );
+            closed_state_buffer = Some(
+                crate::tectonics_v2::recycling::DelayedRecycler::new(rcfg.mantle_delay_steps),
+            );
+        }
+    }
+    // Tracking for #78 trajectory and other Step 6 samplers.
+    let mut trajectory_samples: Vec<(usize, f64, f64, f64, f64, f64)> = Vec::new();
+    let trajectory_steps: [usize; 5] = [1, 10, 50, 150, 300];
+    let mut buffer_fill_samples: Vec<(usize, f64)> = Vec::new();
+    let mut boundary_flag_transition_rate_series: Vec<f64> = Vec::new();
+    let mut prev_boundary_flag: Option<
+        crate::tectonics_v2::boundaries::BoundaryFlagField,
+    > = None;
+    let mut clamp_activation_during_spinup_max: f64 = 0.0;
+    let mut recycling_buffer_fill_sum: f64 = 0.0;
+    let mut recycling_buffer_fill_max: f64 = 0.0;
+    let mut recycling_buffer_fill_samples: usize = 0;
+    let mut immediate_pending_max_observed: f64 = 0.0;
+    // Step 6 perf: pre-compute per-run flags so the inner loop
+    // avoids repeated `match &cfg.boundary` + `matches!` dispatches.
+    // `is_dynamic` decides whether `detect_boundaries` + flag-clone
+    // run each step; `is_closed` decides whether the recycling
+    // pipeline tracks its buffer/pending stats each step;
+    // `mantle_delay_for_spinup` short-circuits the spinup branch
+    // when in Open mode (unused there).
+    let (is_dynamic, is_closed, mantle_delay_for_spinup) = match &cfg.boundary {
+        BoundaryConfig::Enabled { geometry, recycling_mode, .. } => {
+            let dynamic = geometry.is_dynamic();
+            match recycling_mode {
+                crate::tectonics_v2::boundaries::RecyclingModeInit::Open => (dynamic, false, 0),
+                crate::tectonics_v2::boundaries::RecyclingModeInit::Closed(rcfg) => {
+                    (dynamic, true, rcfg.mantle_delay_steps)
+                }
+            }
+        }
+        BoundaryConfig::Disabled => (false, false, 0),
+    };
 
     std::fs::create_dir_all(&cfg.output_dir).ok();
     let capture_steps: Vec<usize> = cfg
@@ -671,26 +750,140 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         let dt = dt_target.min(dt_cfl).max(0.0);
         if dt.is_finite() && dt > 0.0 {
             step_upwind(nx, ny, dx, dy, dt, &idx_x, &idx_y, &s, &vx, &vy, &mut s_next);
-            // Boundary source/sinks — issue #89 D9: splitting Lie
-            // explicit. `Q` is evaluated on `S̃(t)` and `ṽ(t)` (not
-            // post-advection state) and accumulated into the
-            // advected `s_next` as `s_next += dt·Q`. Clamp afterwards
-            // and track the artificial flux for the mass balance.
-            if let BoundaryConfig::Enabled { plate_types, flags, rates } = &cfg.boundary {
+            // Boundary source/sinks — issue #89 D9 (Lie splitting):
+            // `Q` is evaluated on `S̃(t)` and `ṽ(t)` (not post-
+            // advection state) and accumulated into the advected
+            // `s_next` as `s_next += dt·Q`. Clamp afterwards and
+            // track the artificial flux for the mass balance.
+            //
+            // Step 6 refactor: boundary state is carried by
+            // `CrustGeometry` (plate_type + plate_id + initial
+            // boundary_flag); dynamic geometries update the run-local
+            // `current_flag` before each source/sink call. Static
+            // geometries (Step 5 layouts) leave `current_flag` at its
+            // initial value forever — behaviour identical to Step 5.
+            if let BoundaryConfig::Enabled { geometry, rates, recycling_mode } = &cfg.boundary {
                 let div_v = div_v_scratch.as_mut().expect("boundary enabled → scratch");
                 let q = q_field.as_mut().expect("boundary enabled → q");
                 let q_sub = q_sub_scratch.as_mut().expect("boundary enabled → q_sub");
+                let cur_flag = current_flag
+                    .as_mut()
+                    .expect("boundary enabled → current_flag");
+
+                // Update dynamic geometries' boundary_flag from the
+                // current velocity field.
+                if geometry.is_dynamic() {
+                    crate::tectonics_v2::boundary_detection::detect_boundaries(
+                        nx, ny, dx, dy,
+                        &idx_x, &idx_y,
+                        &vx, &vy,
+                        &geometry.plate_type,
+                        &geometry.plate_id,
+                        &geometry.detection_config,
+                        cur_flag,
+                    );
+                }
+
                 div_v_cell(nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy, div_v);
-                compute_source_sink_terms(
-                    plate_types.as_ref(),
-                    flags.as_ref(),
-                    rates,
-                    div_v,
-                    &idx_x,
-                    &idx_y,
-                    q_sub,
-                    q,
-                );
+
+                match recycling_mode {
+                    crate::tectonics_v2::boundaries::RecyclingModeInit::Open => {
+                        // Step 5 path: per-cell rate-based source/sinks.
+                        // Arithmetic unchanged to preserve bit-parity
+                        // with the committed Step 5 physics baseline.
+                        compute_source_sink_terms(
+                            &geometry.plate_type,
+                            cur_flag,
+                            rates,
+                            div_v,
+                            &idx_x,
+                            &idx_y,
+                            q_sub,
+                            q,
+                        );
+                    }
+                    crate::tectonics_v2::boundaries::RecyclingModeInit::Closed(rcfg) => {
+                        // Step 6 closed-mode recycling. The Q field
+                        // is built as the sum of:
+                        //   Q_sub (per-cell rate, unchanged)
+                        //   Q_arc + Q_coll_v + Q_rift_v (immediate
+                        //     distribution of accumulator budgets
+                        //     on eligible cells, rollover on absence)
+                        //   Q_spread (delayed buffer output,
+                        //     uniformly distributed on oceanic rift)
+                        // Mantle loss never reaches the grid — it is
+                        // a silent fraction of M_sub subtracted from
+                        // the global budget (tracked separately for
+                        // the mass conservation check).
+                        use crate::tectonics_v2::boundaries::closed_mode::{
+                            compute_q_sub_only, distribute_delayed, distribute_immediate,
+                            integrate_sub_mass,
+                        };
+                        // Compute Q_sub only; write into `q` (Q
+                        // field) directly. `q_sub` scratch is reused
+                        // for clarity / mass accounting.
+                        compute_q_sub_only(&geometry.plate_type, cur_flag, rates, div_v, q_sub);
+                        // Copy Q_sub into q (Q starts as Q_sub).
+                        for (qv, &sv) in q.data_mut().iter_mut().zip(q_sub.data().iter()) {
+                            *qv = sv;
+                        }
+                        let m_sub_step = integrate_sub_mass(q_sub, dt, cell_area);
+                        // Update accumulators from this step's budget.
+                        closed_state_accumulators.arc_pending +=
+                            rcfg.arc_fraction * m_sub_step;
+                        closed_state_accumulators.coll_v_pending +=
+                            rcfg.coll_v_fraction * m_sub_step;
+                        closed_state_accumulators.rift_v_pending +=
+                            rcfg.rift_v_fraction * m_sub_step;
+                        // Distribute immediate (adds to Q). Track
+                        // actually-distributed mass per class by
+                        // snapshotting the pending values before/
+                        // after the call — when distribution fires,
+                        // the pending drops to 0 and the difference
+                        // is the mass emitted this step. On rollover
+                        // steps (no eligible cells) the diff is 0
+                        // and pending carries over.
+                        let pre_arc = closed_state_accumulators.arc_pending;
+                        let pre_coll = closed_state_accumulators.coll_v_pending;
+                        let pre_rift = closed_state_accumulators.rift_v_pending;
+                        distribute_immediate(
+                            &geometry.plate_type,
+                            cur_flag,
+                            &mut closed_state_accumulators,
+                            &idx_x,
+                            &idx_y,
+                            dt,
+                            cell_area,
+                            q,
+                        );
+                        closed_state_arc_distributed +=
+                            pre_arc - closed_state_accumulators.arc_pending;
+                        closed_state_coll_v_distributed +=
+                            pre_coll - closed_state_accumulators.coll_v_pending;
+                        closed_state_rift_v_distributed +=
+                            pre_rift - closed_state_accumulators.rift_v_pending;
+                        // Delayed: deposit this step's spread
+                        // fraction, advance-or-rollover, distribute
+                        // the emerging mass.
+                        let buffer = closed_state_buffer
+                            .as_mut()
+                            .expect("Closed mode → buffer initialised");
+                        buffer.deposit(rcfg.spread_fraction * m_sub_step);
+                        let emerged = distribute_delayed(
+                            &geometry.plate_type,
+                            cur_flag,
+                            buffer,
+                            dt,
+                            cell_area,
+                            q,
+                        );
+                        closed_state_spread_distributed += emerged;
+                        // Mantle loss accumulator.
+                        closed_state_mantle_loss_integral +=
+                            rcfg.mantle_loss_fraction * m_sub_step;
+                        closed_state_m_sub_total += m_sub_step;
+                    }
+                }
                 // Integrate Q*dt into s_next and accumulate the
                 // physical flux ∫Q dt dA.
                 let mut q_sum_step = 0.0_f64;
@@ -708,8 +901,88 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                     clamp_activation_max = frac;
                 }
                 clamp_samples += 1;
+
+                // Step 6 — per-step trackers. Gated on pre-computed
+                // `is_dynamic` / `is_closed` to avoid re-matching
+                // `cfg.boundary` each step. For Step 5-shape
+                // regression (static + Open) both are false and
+                // this block short-circuits to zero extra work
+                // beyond the Step 5 path.
+                if is_dynamic {
+                    if let Some(prev) = prev_boundary_flag.as_ref() {
+                        let mut diff = 0usize;
+                        let n = cur_flag.data().len();
+                        for (a, b) in prev.data().iter().zip(cur_flag.data().iter()) {
+                            if a != b { diff += 1; }
+                        }
+                        boundary_flag_transition_rate_series
+                            .push(diff as f64 / n as f64);
+                    }
+                    prev_boundary_flag = Some(cur_flag.clone());
+                    // Capture flag-type counts at the FIRST step
+                    // (after detect_boundaries fired once). Used
+                    // by the physics report to prove detection is
+                    // actually running each step.
+                    if step == 0 && boundary_flag_counts_step1.is_none() {
+                        use crate::tectonics_v2::boundaries::BoundaryFlag;
+                        let (mut n0, mut ns, mut nos, mut nr, mut nc) = (0, 0, 0, 0, 0);
+                        for &f in cur_flag.data() {
+                            match f {
+                                BoundaryFlag::None => n0 += 1,
+                                BoundaryFlag::Subduction => ns += 1,
+                                BoundaryFlag::OceanicSubduction => nos += 1,
+                                BoundaryFlag::Rift => nr += 1,
+                                BoundaryFlag::ContinentalCollision => nc += 1,
+                            }
+                        }
+                        boundary_flag_counts_step1 = Some((n0, ns, nos, nr, nc));
+                    }
+                }
+                if is_closed {
+                    if step < mantle_delay_for_spinup && frac > clamp_activation_during_spinup_max {
+                        clamp_activation_during_spinup_max = frac;
+                    }
+                    if let Some(ref buf) = closed_state_buffer {
+                        let f = buf.fill();
+                        recycling_buffer_fill_sum += f;
+                        if f > recycling_buffer_fill_max {
+                            recycling_buffer_fill_max = f;
+                        }
+                        recycling_buffer_fill_samples += 1;
+                    }
+                    let pending_max = closed_state_accumulators.max_pending();
+                    if pending_max > immediate_pending_max_observed {
+                        immediate_pending_max_observed = pending_max;
+                    }
+                }
             }
             std::mem::swap(&mut s, &mut s_next);
+
+            // Step 6 — #78 trajectory samples at {1, 10, 50, 150, 300}.
+            // Fires at most 5 times per run; the `contains` check
+            // alone is cheap but the inner interface_mask build is
+            // O(n_cells) — so we gate on both `trajectory_steps` and
+            // `boundary_enabled` (cached) to avoid building the mask
+            // on Disabled runs.
+            let completed = step + 1;
+            if boundary_enabled && trajectory_steps.contains(&completed) {
+                if let BoundaryConfig::Enabled { geometry, .. } = &cfg.boundary {
+                    let inter = interface_mask(&geometry.plate_type, &idx_x, &idx_y);
+                    let (grad_i, grad_g) = grad_s_interface_vs_global(
+                        nx, ny, dx, dy, &idx_x, &idx_y, &s, &inter,
+                    );
+                    let (fg_i, fg_g) = f_gpe_interface_vs_global(
+                        nx, ny, dx, dy, &idx_x, &idx_y, &s, &inter,
+                        Scales::default().argand_number(),
+                    );
+                    let buf_fill = closed_state_buffer
+                        .as_ref()
+                        .map(|b| b.fill())
+                        .unwrap_or(0.0);
+                    trajectory_samples.push((completed, grad_i, grad_g, fg_i, fg_g, buf_fill));
+                    buffer_fill_samples.push((completed, buf_fill));
+                }
+            }
         }
 
         variance_series.push(variance(&s));
@@ -743,10 +1016,17 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     // stats. Entire block is skipped under `BoundaryConfig::Disabled`
     // (the Newton-agg Option slots stay `None`, which the report
     // writer treats as "not applicable").
-    if let BoundaryConfig::Enabled { plate_types, flags, rates } = &cfg.boundary {
+    if let BoundaryConfig::Enabled { geometry, rates, .. } = &cfg.boundary {
         newton_agg.boundary_layout_name = None; // set by CLI via a separate hook if needed
-        let pt = plate_types.as_ref();
-        let fl = flags.as_ref();
+        let pt: &crate::tectonics_v2::boundaries::PlateTypeField = &geometry.plate_type;
+        // Post-run stats use the FINAL boundary_flag state. For
+        // static geometries (Step 5) that equals the initial flag;
+        // for Voronoi geometries (Step 6) it reflects the last
+        // `detect_boundaries` call at step N.
+        let fl_final = current_flag
+            .as_ref()
+            .expect("boundary enabled → current_flag set at init");
+        let fl = fl_final;
         let s_ocean = s_oceanic(&s, pt);
         let s_cont = s_continental_interior(&s, pt, fl);
         newton_agg.s_oceanic_mean = if s_ocean.count > 0 {
@@ -770,7 +1050,22 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             None
         };
         newton_agg.s_continental_collision_mean = s_continental_collision_mean(&s, pt, fl);
-        let mech_active = BoundaryMechanismActive::from(rates);
+        // Diversity computation is mode-aware: Open mode reads
+        // rate coefficients, Closed mode reads the recycling config
+        // fractions (rates are typically zeroed for non-sub channels
+        // in Closed mode since they're replaced by distributive
+        // fractions — querying them would hide real activity).
+        let mech_active = match &cfg.boundary {
+            BoundaryConfig::Enabled { recycling_mode, .. } => match recycling_mode {
+                crate::tectonics_v2::boundaries::RecyclingModeInit::Open => {
+                    BoundaryMechanismActive::from(rates)
+                }
+                crate::tectonics_v2::boundaries::RecyclingModeInit::Closed(rcfg) => {
+                    BoundaryMechanismActive::from_closed_mode(rates, rcfg)
+                }
+            },
+            BoundaryConfig::Disabled => BoundaryMechanismActive::from(rates),
+        };
         newton_agg.boundary_type_diversity = Some(
             crate::tectonics_v2::boundaries::boundary_type_diversity(pt, fl, mech_active),
         );
@@ -815,6 +1110,86 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         );
         newton_agg.peak_f_gpe_interface_final = Some(fgpe_interface);
         newton_agg.peak_f_gpe_global_final = Some(fgpe_global);
+
+        // Step 6 — additional aggregates.
+        newton_agg.plate_count = Some(geometry.distinct_plate_count() as u32);
+        let n_cells = pt.data().len() as f64;
+        let n_cont = geometry.continental_cell_count() as f64;
+        newton_agg.plate_type_distribution = Some((
+            1.0 - n_cont / n_cells,
+            n_cont / n_cells,
+        ));
+        if !boundary_flag_transition_rate_series.is_empty() {
+            let sum: f64 = boundary_flag_transition_rate_series.iter().sum();
+            let cnt = boundary_flag_transition_rate_series.len() as f64;
+            let max_val = boundary_flag_transition_rate_series
+                .iter()
+                .copied()
+                .fold(0.0_f64, f64::max);
+            newton_agg.boundary_flag_transition_rate_mean = Some(sum / cnt);
+            newton_agg.boundary_flag_transition_rate_max = Some(max_val);
+        }
+        // Closed-mode aggregates: populated only when closed_state_buffer was built.
+        if let Some(ref buf) = closed_state_buffer {
+            if recycling_buffer_fill_samples > 0 {
+                newton_agg.recycling_buffer_fill_mean =
+                    Some(recycling_buffer_fill_sum / recycling_buffer_fill_samples as f64);
+                newton_agg.recycling_buffer_fill_max = Some(recycling_buffer_fill_max);
+            }
+            newton_agg.recycling_buffer_fill_final = Some(buf.fill());
+            newton_agg.immediate_pending_max = Some(immediate_pending_max_observed);
+            newton_agg.immediate_pending_final = Some(closed_state_accumulators.sum());
+            newton_agg.mantle_loss_integral = Some(closed_state_mantle_loss_integral);
+            newton_agg.m_sub_total = Some(closed_state_m_sub_total);
+            newton_agg.clamp_activation_during_spinup_max =
+                Some(clamp_activation_during_spinup_max);
+            // Absolute mass-conservation residual (Step 6):
+            //   Δmass_obs + mantle_loss + buffer_fill + pending − clamp_flux = 0
+            // We keep the raw integrated values in cell-area units
+            // (q_integral and clamp_flux_integral already carry
+            // `· cell_area`). mass_obs also in cell-area units.
+            let delta_mass_obs = (mass_final - mass_initial) * cell_area;
+            let residual_signed = delta_mass_obs
+                + closed_state_mantle_loss_integral
+                + buf.fill()
+                + closed_state_accumulators.sum()
+                - clamp_flux_integral;
+            let denom = (mass_initial * cell_area).abs().max(1.0);
+            newton_agg.mass_conservation_residual = Some(residual_signed.abs() / denom);
+        }
+        if !trajectory_samples.is_empty() {
+            newton_agg.issue_78_trajectory = trajectory_samples.clone();
+        }
+        let _ = buffer_fill_samples; // superseded by issue_78_trajectory's last column
+
+        // Step 6 final per-flag-type count. Populated whenever
+        // boundary is Enabled; disambiguates `boundary_type_diversity`
+        // by showing which flag types were actually present at end.
+        {
+            use crate::tectonics_v2::boundaries::BoundaryFlag;
+            let mut none = 0usize;
+            let mut sub = 0usize;
+            let mut osub = 0usize;
+            let mut rift = 0usize;
+            let mut coll = 0usize;
+            for &f in fl.data() {
+                match f {
+                    BoundaryFlag::None => none += 1,
+                    BoundaryFlag::Subduction => sub += 1,
+                    BoundaryFlag::OceanicSubduction => osub += 1,
+                    BoundaryFlag::Rift => rift += 1,
+                    BoundaryFlag::ContinentalCollision => coll += 1,
+                }
+            }
+            newton_agg.boundary_flag_counts_final = Some((none, sub, osub, rift, coll));
+            newton_agg.boundary_flag_counts_step1 = boundary_flag_counts_step1;
+        }
+        if is_closed {
+            newton_agg.arc_distributed_integral = Some(closed_state_arc_distributed);
+            newton_agg.coll_v_distributed_integral = Some(closed_state_coll_v_distributed);
+            newton_agg.rift_v_distributed_integral = Some(closed_state_rift_v_distributed);
+            newton_agg.spread_distributed_integral = Some(closed_state_spread_distributed);
+        }
     }
 
     let cg_iter_mean = newton_agg.cg_iters_per_newton_mean();

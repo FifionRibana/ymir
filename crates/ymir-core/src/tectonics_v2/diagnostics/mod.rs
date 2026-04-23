@@ -21,6 +21,7 @@ pub mod k_sub_sweep;
 pub mod metrics;
 pub mod mms_bench;
 pub mod newton_metrics;
+pub mod num_plates_sweep;
 pub mod report;
 
 pub use harness::{BaselineConfig, BaselineResult, run_baseline};

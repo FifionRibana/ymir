@@ -8,19 +8,25 @@
 //! immunity, and a geological age field, in that order.
 //!
 //! The module is strictly isolated from the legacy `tectonics/` module;
-//! the whitelisted imports are `Field2D`, `PeriodicIndex`, and
-//! `soft_min_harmonic` (the latter re-exported by the [`rheology`]
-//! submodule for the plastic-branch blend introduced at Step 3).
+//! the whitelisted imports are `Field2D`, `PeriodicIndex`,
+//! `soft_min_harmonic` (re-exported by the [`rheology`] submodule for
+//! the plastic-branch blend introduced at Step 3), and `RecyclingBuffer`
+//! (re-exported by [`recycling`] for Step 6's delayed mantle
+//! recycling; the wrapper [`recycling::DelayedRecycler`] adds rollover
+//! and fill tracking on top).
 
 pub mod advection;
 pub mod basal_drag;
 pub mod boundaries;
+pub mod boundary_detection;
 pub mod diagnostics;
 pub mod field;
 pub mod forcing;
 pub mod presets;
+pub mod recycling;
 pub mod rheology;
 pub mod scales;
 pub mod stokes;
+pub mod voronoi;
 
 pub use rheology::soft_min_harmonic;

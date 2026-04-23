@@ -325,6 +325,7 @@ fn run_scenario(
         k_sub_sweep: None,
         k_spread_calibration: None,
         boundary_layout_ascii: None,
+        num_plates_sweep: None,
     };
     write_markdown_report(&output, &inputs)
         .map_err(|e| format!("failed to write report {:?}: {}", output, e))?;

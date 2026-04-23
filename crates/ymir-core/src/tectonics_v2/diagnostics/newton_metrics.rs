@@ -120,6 +120,83 @@ pub struct NewtonAggregate {
     /// not run (e.g., Step 5 regression, boundary Disabled, or when
     /// the CLI supplies an explicit `--k-spread`).
     pub k_spread_calibrated: Option<f64>,
+
+    // ---- Step 6 — Voronoi + dynamic detection + Closed recycling ----
+    //
+    // All `None` outside Step 6 or when the relevant path is not
+    // exercised. `plate_count` / `plate_type_distribution` are
+    // populated whenever boundary is Enabled (for both static and
+    // Voronoi geometries). Recycling / buffer fields are populated
+    // only under `RecyclingModeInit::Closed`.
+    pub plate_count: Option<u32>,
+    pub plate_type_distribution: Option<(f64, f64)>, // (oceanic_frac, continental_frac)
+    /// Time series of the fraction of cells whose `boundary_flag`
+    /// changed vs the previous step. Populated under dynamic
+    /// geometries (Voronoi) — for static geometries it would be
+    /// identically zero, so we leave it `None` to signal "not
+    /// applicable".
+    pub boundary_flag_transition_rate_mean: Option<f64>,
+    pub boundary_flag_transition_rate_max: Option<f64>,
+    /// `recycling_buffer_fill` diagnostic: mean and max of the
+    /// buffer's in-transit mass over the run.
+    pub recycling_buffer_fill_mean: Option<f64>,
+    pub recycling_buffer_fill_max: Option<f64>,
+    /// Max observed `max(arc_pending, coll_v_pending, rift_v_pending)`
+    /// over the run. Non-zero means some class had no eligible cell
+    /// at some step and rolled over.
+    pub immediate_pending_max: Option<f64>,
+    /// Final immediate accumulator sum (a component of the
+    /// mass-conservation residual).
+    pub immediate_pending_final: Option<f64>,
+    /// Final buffer fill (in-transit mass at end of run).
+    pub recycling_buffer_fill_final: Option<f64>,
+    /// Integrated mantle loss over the run
+    /// (`Σ_steps mantle_loss_fraction · M_sub_step`). Zero when
+    /// `mantle_loss_fraction = 0`.
+    pub mantle_loss_integral: Option<f64>,
+    /// Total subducted mass over the run — the denominator for the
+    /// mantle_loss observed-fraction diagnostic.
+    pub m_sub_total: Option<f64>,
+    /// Closed-mode absolute mass-conservation residual per the
+    /// Step 6 bilan:
+    ///   `|Δmass_obs + mantle_loss_integral + buffer_fill_final +
+    ///     pending_final - clamp_flux_integral| / initial_mass`
+    /// Distinct from Step 5's `mass_balance_residual`; the Step 6
+    /// version includes the buffer + pending terms. Target < 1e-6
+    /// when `mantle_loss_fraction = 0`.
+    pub mass_conservation_residual: Option<f64>,
+    /// Max `clamp_activation_fraction` during the buffer spin-up
+    /// window (first `mantle_delay_steps` steps). Zero if spin-up
+    /// is safe.
+    pub clamp_activation_during_spinup_max: Option<f64>,
+    /// #78 trajectory samples: `(step, max|∇S̃|_interface,
+    /// max|∇S̃|_global, peak|f_GPE|_interface, peak|f_GPE|_global,
+    /// buffer_fill)` at steps {1, 10, 50, 150, 300}.
+    pub issue_78_trajectory: Vec<(usize, f64, f64, f64, f64, f64)>,
+    /// Per-flag-type cell count at the **final** step. Keys:
+    /// `(none, subduction, oceanic_subduction, rift, continental_collision)`.
+    /// Informative when `boundary_type_diversity` is suspicious —
+    /// e.g. `diversity = 1` could mean either "only subduction
+    /// detected" or "only rift detected"; this breakdown
+    /// disambiguates.
+    pub boundary_flag_counts_final: Option<(usize, usize, usize, usize, usize)>,
+    /// Per-flag-type cell count at the **first** step (post-first
+    /// `detect_boundaries` call). Compared against `_final` to show
+    /// whether detection produced flags at step 1 and how they
+    /// evolved. For static geometries, `_step1` and `_final` are
+    /// identical (no dynamic update).
+    pub boundary_flag_counts_step1: Option<(usize, usize, usize, usize, usize)>,
+    /// Integrated arc return budget: `Σ_steps (arc_fraction · M_sub_step
+    /// actually distributed this step)`. Equal to `arc_fraction ·
+    /// M_sub_total` in the steady state where eligible cells always
+    /// exist; deviates during rollover.
+    pub arc_distributed_integral: Option<f64>,
+    /// Integrated coll_v return budget. Same interpretation.
+    pub coll_v_distributed_integral: Option<f64>,
+    /// Integrated rift_v return budget. Same interpretation.
+    pub rift_v_distributed_integral: Option<f64>,
+    /// Integrated spread return emitted on rift oceanic cells.
+    pub spread_distributed_integral: Option<f64>,
 }
 
 impl NewtonAggregate {
