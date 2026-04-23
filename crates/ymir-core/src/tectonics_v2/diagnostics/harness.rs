@@ -9,33 +9,37 @@
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use super::heightmap::{save_heightmap, HeightmapMetadata};
-use super::metrics::{
-    condition_number_estimate, IterationHistogram, Metrics, SolverConfigDump,
-};
+use super::heightmap::{HeightmapMetadata, save_heightmap};
+use super::metrics::{IterationHistogram, Metrics, SolverConfigDump, condition_number_estimate};
 use super::newton_metrics::{
-    cap_activation_fraction, eta_contrast, yielding_cell_fraction, yielding_intensity,
-    NewtonAggregate,
+    NewtonAggregate, cap_activation_fraction, eta_contrast, yielding_cell_fraction,
+    yielding_intensity,
 };
 use crate::tectonics_v2::advection::{cfl_dt, integrated_mass, step_upwind};
-use crate::tectonics_v2::basal_drag::{build_drag_diagonal_field, BasalDragConfig};
+use crate::tectonics_v2::basal_drag::{BasalDragConfig, build_drag_diagonal_field};
 use crate::tectonics_v2::boundaries::{
-    apply_clamp_with_tracking, compute_source_sink_terms, div_v_cell, interface_mask, s_oceanic,
-    s_continental_collision_mean, s_continental_interior, BoundaryConfig,
-    BoundaryMechanismActive,
+    BoundaryConfig, BoundaryMechanismActive, apply_clamp_with_tracking, compute_source_sink_terms,
+    div_v_cell, interface_mask, s_continental_collision_mean, s_continental_interior, s_oceanic,
 };
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
-use crate::tectonics_v2::forcing::{BodyForce, ForceSum, GpeForce, SimulationState, SinusoidalForce, VectorField};
+use crate::tectonics_v2::forcing::SlabPullForce;
+use crate::tectonics_v2::forcing::{
+    BodyForce, ForceSum, GpeForce, SimulationState, SinusoidalForce, VectorField,
+};
 use crate::tectonics_v2::presets::{Preset, YieldingConfig};
 use crate::tectonics_v2::rheology::{self, StrainRate, ViscosityLaw};
 use crate::tectonics_v2::scales::Scales;
+use crate::tectonics_v2::slab::{
+    AccumulationConfig, ConvergenceDirectionConfig, SlabPullConfig, SlabState,
+    compute_convergence_direction, compute_q_sub_conv,
+};
+use crate::tectonics_v2::stokes::Grid;
 use crate::tectonics_v2::stokes::continuation::run_continuation;
 use crate::tectonics_v2::stokes::nonlinear_solver::{
     NewtonConfig, NewtonSolver, NonlinearOutcome, NonlinearSolver,
 };
 use crate::tectonics_v2::stokes::picard::{PicardConfig, PicardSolver};
 use crate::tectonics_v2::stokes::solver::ConjugateGradient;
-use crate::tectonics_v2::stokes::Grid;
 
 #[derive(Clone, Copy, Debug)]
 pub enum NonlinearChoice {
@@ -82,7 +86,12 @@ impl ForceKind {
 /// This centralises the default amplitudes/Ar choices so the binary
 /// and the tests agree on what "gpe" or "sinusoidal" mean for a
 /// baseline run.
-pub fn build_force(kind: ForceKind, scales: &Scales, sin_amplitude: f64, domain_lx: f64) -> Box<dyn BodyForce> {
+pub fn build_force(
+    kind: ForceKind,
+    scales: &Scales,
+    sin_amplitude: f64,
+    domain_lx: f64,
+) -> Box<dyn BodyForce> {
     match kind {
         ForceKind::Gpe => {
             let mut sum = ForceSum::new();
@@ -154,6 +163,12 @@ pub struct BaselineConfig {
     /// [`crate::tectonics_v2::boundaries::BoundaryLayout`];
     /// otherwise empty.
     pub boundary_layout_name: String,
+    /// Slab-pull configuration (Step 7). Default is
+    /// [`SlabPullConfig::Disabled`]: the full slab pipeline
+    /// (`Q_sub_conv`, ODE, `n̂`, `SlabPullForce`, `m` advection)
+    /// is structurally bypassed and Step 0-6 harness callers stay
+    /// unchanged. The Step 7 regression verifies this invariant.
+    pub slab_pull: SlabPullConfig,
 }
 
 impl BaselineConfig {
@@ -184,6 +199,7 @@ impl BaselineConfig {
             basal_drag: BasalDragConfig::Disabled,
             boundary: BoundaryConfig::Disabled,
             boundary_layout_name: String::new(),
+            slab_pull: SlabPullConfig::Disabled,
         }
     }
 }
@@ -232,8 +248,8 @@ fn init_thickness_plate_aware(
     amplitude: f64,
     plate_types: &crate::tectonics_v2::boundaries::PlateTypeField,
 ) -> Field2D {
-    use std::f64::consts::PI;
     use crate::tectonics_v2::boundaries::PlateType;
+    use std::f64::consts::PI;
     let phase = ((seed.wrapping_mul(2654435761u64)) as f64) / (u64::MAX as f64) * 2.0 * PI;
     let mut s = Field2D::new(nx, ny);
     for j in 0..ny {
@@ -447,12 +463,11 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     //     forever. For Voronoi geometries (Step 6), updated by
     //     `detect_boundaries` each step before the source/sink loop.
     let boundary_enabled = matches!(cfg.boundary, BoundaryConfig::Enabled { .. });
-    let mut current_flag: Option<
-        crate::tectonics_v2::boundaries::BoundaryFlagField,
-    > = match &cfg.boundary {
-        BoundaryConfig::Enabled { geometry, .. } => Some(geometry.boundary_flag.clone()),
-        BoundaryConfig::Disabled => None,
-    };
+    let mut current_flag: Option<crate::tectonics_v2::boundaries::BoundaryFlagField> =
+        match &cfg.boundary {
+            BoundaryConfig::Enabled { geometry, .. } => Some(geometry.boundary_flag.clone()),
+            BoundaryConfig::Disabled => None,
+        };
     let mut div_v_scratch = if boundary_enabled { Some(Field2D::new(nx, ny)) } else { None };
     let mut q_field = if boundary_enabled { Some(Field2D::new(nx, ny)) } else { None };
     let mut q_sub_scratch = if boundary_enabled { Some(Field2D::new(nx, ny)) } else { None };
@@ -468,9 +483,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     // Open arm in the time loop doesn't read them).
     let mut closed_state_accumulators =
         crate::tectonics_v2::recycling::ImmediateAccumulators::default();
-    let mut closed_state_buffer: Option<
-        crate::tectonics_v2::recycling::DelayedRecycler,
-    > = None;
+    let mut closed_state_buffer: Option<crate::tectonics_v2::recycling::DelayedRecycler> = None;
     let mut closed_state_mantle_loss_integral = 0.0_f64;
     let mut closed_state_m_sub_total = 0.0_f64;
     let mut closed_state_arc_distributed = 0.0_f64;
@@ -492,9 +505,8 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                 "RecyclingConfig invalid — use BoundaryConfig::enabled_voronoi_closed \
                  or validate() before run_baseline",
             );
-            closed_state_buffer = Some(
-                crate::tectonics_v2::recycling::DelayedRecycler::new(rcfg.mantle_delay_steps),
-            );
+            closed_state_buffer =
+                Some(crate::tectonics_v2::recycling::DelayedRecycler::new(rcfg.mantle_delay_steps));
         }
     }
     // Tracking for #78 trajectory and other Step 6 samplers.
@@ -502,9 +514,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let trajectory_steps: [usize; 5] = [1, 10, 50, 150, 300];
     let mut buffer_fill_samples: Vec<(usize, f64)> = Vec::new();
     let mut boundary_flag_transition_rate_series: Vec<f64> = Vec::new();
-    let mut prev_boundary_flag: Option<
-        crate::tectonics_v2::boundaries::BoundaryFlagField,
-    > = None;
+    let mut prev_boundary_flag: Option<crate::tectonics_v2::boundaries::BoundaryFlagField> = None;
     let mut clamp_activation_during_spinup_max: f64 = 0.0;
     let mut recycling_buffer_fill_sum: f64 = 0.0;
     let mut recycling_buffer_fill_max: f64 = 0.0;
@@ -529,6 +539,37 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         }
         BoundaryConfig::Disabled => (false, false, 0),
     };
+
+    // Step 7 perf: pre-compute `is_slab_enabled` so the per-step
+    // branches skip the match+dispatch when slab-pull is Disabled.
+    // The scratch buffers are allocated once; `slab_state` is
+    // `Some` only when enabled (zero allocation otherwise).
+    let is_slab_enabled = matches!(cfg.slab_pull, SlabPullConfig::Enabled { .. });
+    let mut slab_state: Option<SlabState> =
+        if is_slab_enabled { Some(SlabState::new_zero(nx, ny)) } else { None };
+    let mut slab_div_scratch: Option<Field2D> =
+        if is_slab_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    let mut slab_conv_scratch: Option<Field2D> =
+        if is_slab_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    let mut slab_q_sub_conv: Option<Field2D> =
+        if is_slab_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    let mut slab_n_x: Option<Field2D> =
+        if is_slab_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    let mut slab_n_y: Option<Field2D> =
+        if is_slab_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    let mut slab_f_x: Option<Field2D> =
+        if is_slab_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    let mut slab_f_y: Option<Field2D> =
+        if is_slab_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    // Step 7 metrics accumulators (only meaningful when enabled).
+    let mut slab_m_mean_series: Vec<f64> =
+        Vec::with_capacity(if is_slab_enabled { cfg.steps } else { 0 });
+    let mut slab_m_max_series: Vec<f64> =
+        Vec::with_capacity(if is_slab_enabled { cfg.steps } else { 0 });
+    let mut peak_f_slab_run: f64 = 0.0;
+    let mut peak_f_gpe_run: f64 = 0.0;
+    let mut f_slab_to_f_gpe_ratio_sum: f64 = 0.0;
+    let mut f_slab_to_f_gpe_ratio_samples: usize = 0;
 
     std::fs::create_dir_all(&cfg.output_dir).ok();
     let capture_steps: Vec<usize> = cfg
@@ -576,11 +617,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let sample_force = |fx: &mut Field2D, fy: &mut Field2D, s: &Field2D| {
         let mut out = VectorField { fx, fy };
         out.zero();
-        let state = SimulationState {
-            nx, ny, dx, dy,
-            idx_x: &idx_x, idx_y: &idx_y,
-            s,
-        };
+        let state = SimulationState { nx, ny, dx, dy, idx_x: &idx_x, idx_y: &idx_y, s };
         cfg.force.accumulate(&state, &mut out);
     };
 
@@ -626,6 +663,147 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
 
     for step in 0..cfg.steps {
         sample_force(&mut fx, &mut fy, &s);
+        // Step 7 — slab pipeline (pre-solve).
+        //
+        // Ordering (prompt §"Ordering de la boucle temporelle"):
+        //   2. Q_sub_conv from current v.
+        //   3. ODE: m(t+Δt) = m(t) + Δt·[Q_sub_conv − m/τ].
+        //   4. n̂_convergence from current v.
+        //   5. Assemble SlabPullForce(m, n̂) on top of GpeForce's
+        //      contribution already in (fx, fy).
+        //
+        // The `current v` at this point is the warm-start from the
+        // previous iter's solve (or the continuation result on
+        // step 0). `Q_sub_conv` needs `plate_type` + `boundary_flag`
+        // from the active `CrustGeometry`; slab-pull without a
+        // `BoundaryConfig::Enabled` is not meaningful so we gate on
+        // that too.
+        //
+        // `dt_target = total_time / steps` is used for the ODE
+        // step — it is the intended step length and matches the
+        // actual `dt` whenever CFL is not binding (the expected
+        // regime at Step 7 target parameters). The defensive cap
+        // `min(Δt_CFL, 0.1·τ_slab)` mentioned in the spec is
+        // enforced here by the `dt_target.min(0.1·τ_slab)`
+        // clamp — it never binds with the Step 7 baseline
+        // parameters (dt_target ≈ 0.02 < 0.05 = 0.1·0.5) but
+        // guards against parameter changes in a sweep.
+        let dt_target = if cfg.steps > 0 {
+            cfg.total_time_nondim / cfg.steps as f64
+        } else {
+            cfg.total_time_nondim
+        };
+        if let (
+            SlabPullConfig::Enabled { sp, tau_slab, k_slab_accum, epsilon },
+            BoundaryConfig::Enabled { geometry, .. },
+        ) = (&cfg.slab_pull, &cfg.boundary)
+        {
+            let slab = slab_state.as_mut().expect("enabled → slab_state");
+            let div_scratch = slab_div_scratch.as_mut().expect("enabled → div_scratch");
+            let conv_scratch = slab_conv_scratch.as_mut().expect("enabled → conv_scratch");
+            let q_sub_conv_buf = slab_q_sub_conv.as_mut().expect("enabled → q_sub_conv");
+            let n_x_buf = slab_n_x.as_mut().expect("enabled → n_x");
+            let n_y_buf = slab_n_y.as_mut().expect("enabled → n_y");
+            let f_slab_x_buf = slab_f_x.as_mut().expect("enabled → f_slab_x");
+            let f_slab_y_buf = slab_f_y.as_mut().expect("enabled → f_slab_y");
+
+            let plate_type = &geometry.plate_type;
+            let boundary_flag =
+                current_flag.as_ref().expect("BoundaryConfig::Enabled → current_flag");
+
+            // 2. Q_sub_conv = k · max(0, -div v) on oceanic subducting cells.
+            compute_q_sub_conv(
+                nx,
+                ny,
+                dx,
+                dy,
+                &idx_x,
+                &idx_y,
+                &vx,
+                &vy,
+                plate_type,
+                boundary_flag,
+                div_scratch,
+                conv_scratch,
+                q_sub_conv_buf,
+                &AccumulationConfig { k_slab_accum: *k_slab_accum },
+            );
+
+            // 3. ODE forward Euler. Stability-capped Δt.
+            let dt_ode = dt_target.min(0.1 * *tau_slab);
+            slab.step_ode(q_sub_conv_buf, dt_ode, *tau_slab);
+
+            // Metric: series of m-field stats.
+            let m_data = slab.m().data();
+            let m_mean: f64 = m_data.iter().sum::<f64>() / m_data.len() as f64;
+            let m_max: f64 = m_data.iter().cloned().fold(0.0_f64, f64::max);
+            slab_m_mean_series.push(m_mean);
+            slab_m_max_series.push(m_max);
+
+            // 4. n̂_convergence from current v.
+            compute_convergence_direction(
+                nx,
+                ny,
+                dx,
+                dy,
+                &idx_x,
+                &idx_y,
+                &vx,
+                &vy,
+                div_scratch,
+                n_x_buf,
+                n_y_buf,
+                &ConvergenceDirectionConfig { epsilon: *epsilon },
+            );
+
+            // 5. Assemble SlabPullForce into a dedicated buffer so
+            //    we can measure `peak|f_slab|` and the ratio to
+            //    `peak|f_GPE|` without aliasing. Then add into the
+            //    main (fx, fy) RHS carrying the GPE contribution.
+            let peak_f_gpe_step = {
+                let mut peak = 0.0_f64;
+                for (a, b) in fx.data().iter().zip(fy.data().iter()) {
+                    peak = peak.max((a * a + b * b).sqrt());
+                }
+                peak
+            };
+            for v in f_slab_x_buf.data_mut().iter_mut() {
+                *v = 0.0;
+            }
+            for v in f_slab_y_buf.data_mut().iter_mut() {
+                *v = 0.0;
+            }
+            let slab_state_sim =
+                SimulationState { nx, ny, dx, dy, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+            SlabPullForce::new(*sp, slab.m(), n_x_buf, n_y_buf).accumulate(
+                &slab_state_sim,
+                &mut VectorField { fx: f_slab_x_buf, fy: f_slab_y_buf },
+            );
+            let peak_f_slab_step = {
+                let mut peak = 0.0_f64;
+                for (a, b) in f_slab_x_buf.data().iter().zip(f_slab_y_buf.data().iter()) {
+                    peak = peak.max((a * a + b * b).sqrt());
+                }
+                peak
+            };
+            peak_f_slab_run = peak_f_slab_run.max(peak_f_slab_step);
+            peak_f_gpe_run = peak_f_gpe_run.max(peak_f_gpe_step);
+            if peak_f_gpe_step > 0.0 {
+                f_slab_to_f_gpe_ratio_sum += peak_f_slab_step / peak_f_gpe_step;
+                f_slab_to_f_gpe_ratio_samples += 1;
+            }
+            // Add f_slab into the main RHS. `BodyForce` contract is
+            // additive, but the harness chose to run them into
+            // different buffers for diagnostic isolation.
+            let fx_slice = fx.data_mut();
+            let fy_slice = fy.data_mut();
+            let fsx = f_slab_x_buf.data();
+            let fsy = f_slab_y_buf.data();
+            for k in 0..nx * ny {
+                fx_slice[k] += fsx[k];
+                fy_slice[k] += fsy[k];
+            }
+        }
         // Rebuild the drag-diagonal field from the freshly-advected
         // S̃ (or from the initial S̃ on step 0). Disabled → None, no
         // allocation.
@@ -691,18 +869,15 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             // Pure-viscous reference at the same ε̇: matches
             // `law_final.eta_effective` with yielding flipped off.
             let mut eta_visc_only = law_final;
-            eta_visc_only.yielding =
-                crate::tectonics_v2::presets::YieldingConfig::Disabled;
+            eta_visc_only.yielding = crate::tectonics_v2::presets::YieldingConfig::Disabled;
             let eta_visc_cc = rheology::build_eta_field(&eta_visc_only, &sr.eps_ii_center);
             let frac = yielding_cell_fraction(&eta_visc_cc, &eta_cc);
             let intensity = yielding_intensity(&eta_visc_cc, &eta_cc);
             newton_agg.bi_diagnostic = Some(ylaw.bi);
-            newton_agg.yielding_cell_fraction_max = Some(
-                newton_agg.yielding_cell_fraction_max.unwrap_or(0.0).max(frac),
-            );
-            newton_agg.yielding_intensity_max = Some(
-                newton_agg.yielding_intensity_max.unwrap_or(0.0).max(intensity),
-            );
+            newton_agg.yielding_cell_fraction_max =
+                Some(newton_agg.yielding_cell_fraction_max.unwrap_or(0.0).max(frac));
+            newton_agg.yielding_intensity_max =
+                Some(newton_agg.yielding_intensity_max.unwrap_or(0.0).max(intensity));
 
             // Floor-domination diagnostic: domain-level ε̇_II
             // aggregates at the **final** timestep (overwritten
@@ -714,14 +889,17 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             let floor_band = 10.0 * law_final.strain_rate_floor;
             for &v in eps_data {
                 sum += v;
-                if v > max { max = v; }
-                if v < floor_band { below += 1; }
+                if v > max {
+                    max = v;
+                }
+                if v < floor_band {
+                    below += 1;
+                }
             }
             let n = eps_data.len() as f64;
             newton_agg.eps_ii_mean_final = Some(sum / n);
             newton_agg.eps_ii_max_final = Some(max);
-            newton_agg.eps_ii_floor_dominated_fraction_final =
-                Some(below as f64 / n);
+            newton_agg.eps_ii_floor_dominated_fraction_final = Some(below as f64 / n);
         }
 
         let m_vx: f64 = vx.iter().sum::<f64>() / vx.len() as f64;
@@ -729,10 +907,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         max_abs_mean_vx = max_abs_mean_vx.max(m_vx.abs());
         max_abs_mean_vy = max_abs_mean_vy.max(m_vy.abs());
 
-        let vmax_step = vx
-            .iter()
-            .chain(vy.iter())
-            .fold(0.0_f64, |acc, &v| acc.max(v.abs()));
+        let vmax_step = vx.iter().chain(vy.iter()).fold(0.0_f64, |acc, &v| acc.max(v.abs()));
         vmax_peak = vmax_peak.max(vmax_step);
 
         // Physical step target from total_time / steps. Clamp the
@@ -742,11 +917,8 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         // the physics cares about the ratio of dt to the dissipation
         // time τ ~ L²·η/(Ar·S²), not about CFL alone).
         let dt_cfl = cfl_dt(dx, dy, &vx, &vy, cfg.cfl_factor);
-        let dt_target = if cfg.steps > 0 {
-            cfg.total_time_nondim / cfg.steps as f64
-        } else {
-            cfg.total_time_nondim
-        };
+        // `dt_target` is computed at the top of the loop body (Step 7
+        // pre-solve needs it for the ODE step). Reuse here.
         let dt = dt_target.min(dt_cfl).max(0.0);
         if dt.is_finite() && dt > 0.0 {
             step_upwind(nx, ny, dx, dy, dt, &idx_x, &idx_y, &s, &vx, &vy, &mut s_next);
@@ -766,17 +938,20 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                 let div_v = div_v_scratch.as_mut().expect("boundary enabled → scratch");
                 let q = q_field.as_mut().expect("boundary enabled → q");
                 let q_sub = q_sub_scratch.as_mut().expect("boundary enabled → q_sub");
-                let cur_flag = current_flag
-                    .as_mut()
-                    .expect("boundary enabled → current_flag");
+                let cur_flag = current_flag.as_mut().expect("boundary enabled → current_flag");
 
                 // Update dynamic geometries' boundary_flag from the
                 // current velocity field.
                 if geometry.is_dynamic() {
                     crate::tectonics_v2::boundary_detection::detect_boundaries(
-                        nx, ny, dx, dy,
-                        &idx_x, &idx_y,
-                        &vx, &vy,
+                        nx,
+                        ny,
+                        dx,
+                        dy,
+                        &idx_x,
+                        &idx_y,
+                        &vx,
+                        &vy,
                         &geometry.plate_type,
                         &geometry.plate_id,
                         &geometry.detection_config,
@@ -829,8 +1004,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                         }
                         let m_sub_step = integrate_sub_mass(q_sub, dt, cell_area);
                         // Update accumulators from this step's budget.
-                        closed_state_accumulators.arc_pending +=
-                            rcfg.arc_fraction * m_sub_step;
+                        closed_state_accumulators.arc_pending += rcfg.arc_fraction * m_sub_step;
                         closed_state_accumulators.coll_v_pending +=
                             rcfg.coll_v_fraction * m_sub_step;
                         closed_state_accumulators.rift_v_pending +=
@@ -865,9 +1039,8 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                         // Delayed: deposit this step's spread
                         // fraction, advance-or-rollover, distribute
                         // the emerging mass.
-                        let buffer = closed_state_buffer
-                            .as_mut()
-                            .expect("Closed mode → buffer initialised");
+                        let buffer =
+                            closed_state_buffer.as_mut().expect("Closed mode → buffer initialised");
                         buffer.deposit(rcfg.spread_fraction * m_sub_step);
                         let emerged = distribute_delayed(
                             &geometry.plate_type,
@@ -879,8 +1052,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                         );
                         closed_state_spread_distributed += emerged;
                         // Mantle loss accumulator.
-                        closed_state_mantle_loss_integral +=
-                            rcfg.mantle_loss_fraction * m_sub_step;
+                        closed_state_mantle_loss_integral += rcfg.mantle_loss_fraction * m_sub_step;
                         closed_state_m_sub_total += m_sub_step;
                     }
                 }
@@ -913,10 +1085,11 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                         let mut diff = 0usize;
                         let n = cur_flag.data().len();
                         for (a, b) in prev.data().iter().zip(cur_flag.data().iter()) {
-                            if a != b { diff += 1; }
+                            if a != b {
+                                diff += 1;
+                            }
                         }
-                        boundary_flag_transition_rate_series
-                            .push(diff as f64 / n as f64);
+                        boundary_flag_transition_rate_series.push(diff as f64 / n as f64);
                     }
                     prev_boundary_flag = Some(cur_flag.clone());
                     // Capture flag-type counts at the FIRST step
@@ -958,6 +1131,16 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             }
             std::mem::swap(&mut s, &mut s_next);
 
+            // Step 7 — advect `m_subducted` with the solved velocity.
+            // Runs AFTER the Stokes solve and AFTER the S advection
+            // swap, using the same `v` and `dt` as S (consistency
+            // requirement of the Lie splitting; see the prompt's
+            // "Advection utilise la velocity post-gauge" note).
+            if is_slab_enabled {
+                let slab = slab_state.as_mut().expect("enabled → slab_state");
+                slab.advect(dx, dy, dt, &idx_x, &idx_y, &vx, &vy);
+            }
+
             // Step 6 — #78 trajectory samples at {1, 10, 50, 150, 300}.
             // Fires at most 5 times per run; the `contains` check
             // alone is cheap but the inner interface_mask build is
@@ -968,17 +1151,20 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             if boundary_enabled && trajectory_steps.contains(&completed) {
                 if let BoundaryConfig::Enabled { geometry, .. } = &cfg.boundary {
                     let inter = interface_mask(&geometry.plate_type, &idx_x, &idx_y);
-                    let (grad_i, grad_g) = grad_s_interface_vs_global(
-                        nx, ny, dx, dy, &idx_x, &idx_y, &s, &inter,
-                    );
+                    let (grad_i, grad_g) =
+                        grad_s_interface_vs_global(nx, ny, dx, dy, &idx_x, &idx_y, &s, &inter);
                     let (fg_i, fg_g) = f_gpe_interface_vs_global(
-                        nx, ny, dx, dy, &idx_x, &idx_y, &s, &inter,
+                        nx,
+                        ny,
+                        dx,
+                        dy,
+                        &idx_x,
+                        &idx_y,
+                        &s,
+                        &inter,
                         Scales::default().argand_number(),
                     );
-                    let buf_fill = closed_state_buffer
-                        .as_ref()
-                        .map(|b| b.fill())
-                        .unwrap_or(0.0);
+                    let buf_fill = closed_state_buffer.as_ref().map(|b| b.fill()).unwrap_or(0.0);
                     trajectory_samples.push((completed, grad_i, grad_g, fg_i, fg_g, buf_fill));
                     buffer_fill_samples.push((completed, buf_fill));
                 }
@@ -990,9 +1176,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
 
         let completed = step + 1;
         if capture_steps.contains(&completed) {
-            let path = cfg
-                .output_dir
-                .join(format!("s_{}x{}_t{:04}.png", nx, ny, completed));
+            let path = cfg.output_dir.join(format!("s_{}x{}_t{:04}.png", nx, ny, completed));
             if let Some(md) = save_snapshot(&s, &path) {
                 heightmap_paths.push(path.display().to_string().replace('\\', "/"));
                 heightmap_metas.push(md);
@@ -1023,32 +1207,16 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         // static geometries (Step 5) that equals the initial flag;
         // for Voronoi geometries (Step 6) it reflects the last
         // `detect_boundaries` call at step N.
-        let fl_final = current_flag
-            .as_ref()
-            .expect("boundary enabled → current_flag set at init");
+        let fl_final = current_flag.as_ref().expect("boundary enabled → current_flag set at init");
         let fl = fl_final;
         let s_ocean = s_oceanic(&s, pt);
         let s_cont = s_continental_interior(&s, pt, fl);
-        newton_agg.s_oceanic_mean = if s_ocean.count > 0 {
-            Some(s_ocean.mean)
-        } else {
-            None
-        };
-        newton_agg.s_oceanic_std = if s_ocean.count > 0 {
-            Some(s_ocean.std)
-        } else {
-            None
-        };
-        newton_agg.s_continental_interior_mean = if s_cont.count > 0 {
-            Some(s_cont.mean)
-        } else {
-            None
-        };
-        newton_agg.s_continental_interior_std = if s_cont.count > 0 {
-            Some(s_cont.std)
-        } else {
-            None
-        };
+        newton_agg.s_oceanic_mean = if s_ocean.count > 0 { Some(s_ocean.mean) } else { None };
+        newton_agg.s_oceanic_std = if s_ocean.count > 0 { Some(s_ocean.std) } else { None };
+        newton_agg.s_continental_interior_mean =
+            if s_cont.count > 0 { Some(s_cont.mean) } else { None };
+        newton_agg.s_continental_interior_std =
+            if s_cont.count > 0 { Some(s_cont.std) } else { None };
         newton_agg.s_continental_collision_mean = s_continental_collision_mean(&s, pt, fl);
         // Diversity computation is mode-aware: Open mode reads
         // rate coefficients, Closed mode reads the recycling config
@@ -1066,9 +1234,8 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             },
             BoundaryConfig::Disabled => BoundaryMechanismActive::from(rates),
         };
-        newton_agg.boundary_type_diversity = Some(
-            crate::tectonics_v2::boundaries::boundary_type_diversity(pt, fl, mech_active),
-        );
+        newton_agg.boundary_type_diversity =
+            Some(crate::tectonics_v2::boundaries::boundary_type_diversity(pt, fl, mech_active));
         if clamp_samples > 0 {
             newton_agg.clamp_activation_fraction_mean =
                 Some(clamp_activation_sum / clamp_samples as f64);
@@ -1105,7 +1272,14 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         newton_agg.max_grad_s_interface_final = Some(grad_interface);
         newton_agg.max_grad_s_global_final = Some(grad_global);
         let (fgpe_interface, fgpe_global) = f_gpe_interface_vs_global(
-            nx, ny, dx, dy, &idx_x, &idx_y, &s, &inter,
+            nx,
+            ny,
+            dx,
+            dy,
+            &idx_x,
+            &idx_y,
+            &s,
+            &inter,
             Scales::default().argand_number(),
         );
         newton_agg.peak_f_gpe_interface_final = Some(fgpe_interface);
@@ -1115,17 +1289,12 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         newton_agg.plate_count = Some(geometry.distinct_plate_count() as u32);
         let n_cells = pt.data().len() as f64;
         let n_cont = geometry.continental_cell_count() as f64;
-        newton_agg.plate_type_distribution = Some((
-            1.0 - n_cont / n_cells,
-            n_cont / n_cells,
-        ));
+        newton_agg.plate_type_distribution = Some((1.0 - n_cont / n_cells, n_cont / n_cells));
         if !boundary_flag_transition_rate_series.is_empty() {
             let sum: f64 = boundary_flag_transition_rate_series.iter().sum();
             let cnt = boundary_flag_transition_rate_series.len() as f64;
-            let max_val = boundary_flag_transition_rate_series
-                .iter()
-                .copied()
-                .fold(0.0_f64, f64::max);
+            let max_val =
+                boundary_flag_transition_rate_series.iter().copied().fold(0.0_f64, f64::max);
             newton_agg.boundary_flag_transition_rate_mean = Some(sum / cnt);
             newton_agg.boundary_flag_transition_rate_max = Some(max_val);
         }
@@ -1192,12 +1361,27 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         }
     }
 
+    // Step 7 — slab-pull diagnostics. Populated only when the
+    // slab pipeline actually fired; `Disabled` leaves every field
+    // at `None` / empty so the report can structurally skip the
+    // Step 7 section.
+    if let SlabPullConfig::Enabled { sp, tau_slab, k_slab_accum, .. } = cfg.slab_pull {
+        newton_agg.sp_diagnostic = Some(sp);
+        newton_agg.tau_slab_diagnostic = Some(tau_slab);
+        newton_agg.k_slab_accum_diagnostic = Some(k_slab_accum);
+        newton_agg.slab_m_mean_series = slab_m_mean_series;
+        newton_agg.slab_m_max_series = slab_m_max_series;
+        newton_agg.peak_f_slab_run = Some(peak_f_slab_run);
+        newton_agg.peak_f_gpe_run = Some(peak_f_gpe_run);
+        if f_slab_to_f_gpe_ratio_samples > 0 {
+            newton_agg.f_slab_to_f_gpe_ratio_mean =
+                Some(f_slab_to_f_gpe_ratio_sum / f_slab_to_f_gpe_ratio_samples as f64);
+        }
+    }
+
     let cg_iter_mean = newton_agg.cg_iters_per_newton_mean();
     let cg_iter_max = newton_agg.cg_iters_per_newton_max();
-    let kappa = condition_number_estimate(
-        cg_iter_mean.round() as usize,
-        cfg.newton_cfg.linear_tol,
-    );
+    let kappa = condition_number_estimate(cg_iter_mean.round() as usize, cfg.newton_cfg.linear_tol);
 
     // Step 5 — bubble the run-level yielding fraction into the top-
     // level Metrics slot, and encode the boundary-type diversity as
@@ -1220,9 +1404,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         eta_contrast: newton_agg.eta_contrast_mean(),
         cg_iter_mean,
         cg_iter_max,
-        cg_iter_histogram: IterationHistogram::from_samples(
-            &newton_agg.cg_iters_per_newton_step,
-        ),
+        cg_iter_histogram: IterationHistogram::from_samples(&newton_agg.cg_iters_per_newton_step),
         mass_s_initial: mass_initial,
         mass_s_final: mass_final,
         mass_drift_relative: drift,
@@ -1245,23 +1427,19 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let continuation_str = format!("{:?}", cfg.preset.continuation.n_steps);
     let force_name = cfg.force.name();
     let force_detail = match cfg.force_kind {
-        ForceKind::Gpe => format!(
-            "GpeForce (Ar = {:.3} from scales)",
-            Scales::default().argand_number(),
-        ),
-        ForceKind::Sinusoidal => format!(
-            "SinusoidalForce(ε = {}, Lx = {})",
-            cfg.sinusoidal_amplitude, cfg.domain_lx,
-        ),
+        ForceKind::Gpe => {
+            format!("GpeForce (Ar = {:.3} from scales)", Scales::default().argand_number(),)
+        }
+        ForceKind::Sinusoidal => {
+            format!("SinusoidalForce(ε = {}, Lx = {})", cfg.sinusoidal_amplitude, cfg.domain_lx,)
+        }
     };
     let config_dump = SolverConfigDump {
-        formulation: "thin viscous sheet (elliptic, no pressure) with power-law rheology"
-            .into(),
+        formulation: "thin viscous sheet (elliptic, no pressure) with power-law rheology".into(),
         discretization: "MAC staggered (v face / η S cell-centre / ε̇_xy corner)".into(),
         eta_averaging: "arithmetic 4-point at corners (see operator.rs)".into(),
         preconditioner: "velocity Jacobi (Picard-block diagonal), null-space wrapped".into(),
-        gauge_fixing: "mean(vx), mean(vy) projected before & after every M⁻¹ + post-solve"
-            .into(),
+        gauge_fixing: "mean(vx), mean(vy) projected before & after every M⁻¹ + post-solve".into(),
         cg_tol: cfg.newton_cfg.linear_tol,
         cg_max_iter: cfg.newton_cfg.linear_max_iter,
         cfl_factor: cfg.cfl_factor,
@@ -1279,6 +1457,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         basal_drag_config: cfg.basal_drag.describe(),
         boundary_config: cfg.boundary.describe(),
         boundary_layout_name: cfg.boundary_layout_name.clone(),
+        slab_pull_config: cfg.slab_pull.describe(),
     };
 
     BaselineResult { metrics, config_dump }

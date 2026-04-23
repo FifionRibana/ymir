@@ -197,6 +197,37 @@ pub struct NewtonAggregate {
     pub rift_v_distributed_integral: Option<f64>,
     /// Integrated spread return emitted on rift oceanic cells.
     pub spread_distributed_integral: Option<f64>,
+
+    // ---- Step 7 — slab-pull diagnostics ----
+    //
+    // All fields are `None` under `SlabPullConfig::Disabled`.
+    // When `Enabled`, the harness populates them per step or per
+    // run as noted.
+    /// `Sp` value (§4.8 coupling), stored once for the report.
+    pub sp_diagnostic: Option<f64>,
+    /// `τ_slab` value (nondim decay time).
+    pub tau_slab_diagnostic: Option<f64>,
+    /// `k_slab_accum` value (mass accumulation rate).
+    pub k_slab_accum_diagnostic: Option<f64>,
+    /// Series of `mean(m_subducted)` per step. Used by the
+    /// markdown report to tell whether `m` plateaus at
+    /// `Q · τ` or grows monotonically (flag: decay too slow).
+    pub slab_m_mean_series: Vec<f64>,
+    /// Series of `max(m_subducted)` per step.
+    pub slab_m_max_series: Vec<f64>,
+    /// Max over the run of the cell-wise `|f_slab|` magnitude.
+    /// Compared to `peak_f_gpe_run` for the balance diagnostic.
+    pub peak_f_slab_run: Option<f64>,
+    /// Max over the run of the cell-wise `|f_GPE|` magnitude
+    /// (sampled on the step's RHS, before slab-pull is added).
+    /// Lives here so the Step 7 report can present
+    /// `peak_f_slab / peak_f_gpe` without fishing for it in a
+    /// different namespace.
+    pub peak_f_gpe_run: Option<f64>,
+    /// Mean over active steps of `peak|f_slab| / peak|f_GPE|`.
+    /// Denominator is step-by-step, so rare large `peak|f_GPE|`
+    /// spikes do not dominate; a `None` sampled peak is skipped.
+    pub f_slab_to_f_gpe_ratio_mean: Option<f64>,
 }
 
 impl NewtonAggregate {
@@ -226,15 +257,11 @@ impl NewtonAggregate {
         if self.eta_contrast_samples.is_empty() {
             1.0
         } else {
-            self.eta_contrast_samples.iter().sum::<f64>()
-                / self.eta_contrast_samples.len() as f64
+            self.eta_contrast_samples.iter().sum::<f64>() / self.eta_contrast_samples.len() as f64
         }
     }
     pub fn eta_contrast_max(&self) -> f64 {
-        self.eta_contrast_samples
-            .iter()
-            .copied()
-            .fold(1.0_f64, f64::max)
+        self.eta_contrast_samples.iter().copied().fold(1.0_f64, f64::max)
     }
 
     /// Percentage outcome distribution; rounds to one decimal place.
@@ -254,7 +281,10 @@ impl NewtonAggregate {
 
 /// Compute the fraction of cells in `eta_cc` where the soft cap is
 /// close to active — `η_eff > 0.9 · η_max_cap`.
-pub fn cap_activation_fraction(eta_cc: &crate::tectonics_v2::field::Field2D, eta_max_cap: f64) -> f64 {
+pub fn cap_activation_fraction(
+    eta_cc: &crate::tectonics_v2::field::Field2D,
+    eta_max_cap: f64,
+) -> f64 {
     let n = eta_cc.data().len();
     if n == 0 {
         return 0.0;
@@ -323,9 +353,5 @@ pub fn eta_contrast(eta_cc: &crate::tectonics_v2::field::Field2D) -> f64 {
             }
         }
     }
-    if min.is_finite() && min > 0.0 {
-        max / min
-    } else {
-        1.0
-    }
+    if min.is_finite() && min > 0.0 { max / min } else { 1.0 }
 }
