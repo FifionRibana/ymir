@@ -460,6 +460,7 @@ fn main() -> ExitCode {
         k_sub_sweep: None,
         k_spread_calibration: None,
         boundary_layout_ascii: None,
+        num_plates_sweep: None,
     };
     if let Err(e) = write_markdown_report(&ref_output, &ref_inputs) {
         eprintln!("failed to write reference variant report: {}", e);
@@ -491,6 +492,7 @@ fn main() -> ExitCode {
         k_sub_sweep: None,
         k_spread_calibration: None,
         boundary_layout_ascii: None,
+        num_plates_sweep: None,
     };
     if let Err(e) = write_markdown_report(&reg_output, &reg_inputs) {
         eprintln!("failed to write regression report: {}", e);
@@ -520,6 +522,7 @@ fn main() -> ExitCode {
         k_sub_sweep: Some(&k_sub_sweep),
         k_spread_calibration: Some(&calibration),
         boundary_layout_ascii: layout_viz,
+        num_plates_sweep: None,
     };
     if let Err(e) = write_markdown_report(&phys_output, &phys_inputs) {
         eprintln!("failed to write physics report: {}", e);

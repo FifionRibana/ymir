@@ -159,13 +159,57 @@ impl BoundaryRates {
 /// Stack-heavy but tolerable. We keep the enum un-boxed for API
 /// simplicity; callers that hold long-lived `BoundaryConfig` values
 /// can wrap it themselves.
+/// Step 6 — recycling mode for the source/sink pipeline.
+///
+/// - `Open` (Step 5 behaviour) applies each rate per-cell:
+///   `Q_arc = k_arc · Σ_voisins_subducting |Q_sub_voisin|`, etc. No
+///   buffer, no cross-step flux accounting beyond the clamp flux.
+/// - `Closed` (Step 6) drives all creation from the subduction
+///   budget via distributive fractions, routing the spread portion
+///   through a delayed ring buffer with rollover. `k_spread` is no
+///   longer a rate — it disappears from [`BoundaryRates`] for this
+///   mode and is replaced by [`super::super::recycling::RecyclingConfig::spread_fraction`].
+#[derive(Clone, Debug)]
+pub enum RecyclingModeInit {
+    Open,
+    Closed(super::super::recycling::RecyclingConfig),
+}
+
+impl RecyclingModeInit {
+    pub fn label(&self) -> &'static str {
+        match self {
+            RecyclingModeInit::Open => "open",
+            RecyclingModeInit::Closed(_) => "closed",
+        }
+    }
+
+    pub fn describe(&self) -> String {
+        match self {
+            RecyclingModeInit::Open => "Open (Step 5 rate-based)".to_string(),
+            RecyclingModeInit::Closed(cfg) => format!(
+                "Closed (arc={:.3}, coll_v={:.3}, rift_v={:.3}, spread={:.3}, mantle_loss={:.3}, delay={} steps)",
+                cfg.arc_fraction, cfg.coll_v_fraction, cfg.rift_v_fraction,
+                cfg.spread_fraction, cfg.mantle_loss_fraction, cfg.mantle_delay_steps,
+            ),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum BoundaryConfig {
     Disabled,
     Enabled {
-        plate_types: PlateTypeFieldShared,
-        flags: BoundaryFlagFieldShared,
+        /// Initial crust geometry (plate_type, plate_id, initial
+        /// boundary_flag, detection_config, geometry_kind). Shared
+        /// via `Arc` so sweep runners don't deep-copy the fields.
+        geometry: super::crust_geometry::CrustGeometryShared,
+        /// Rate coefficients for the Step 5 Open-mode source/sink
+        /// pipeline. In Closed mode, only `k_sub` is used; the other
+        /// rates are ignored in favour of the recycling fractions.
         rates: BoundaryRates,
+        /// Recycling mode — Open (Step 5 per-cell rates) or Closed
+        /// (Step 6 budget-distributive fractions).
+        recycling_mode: RecyclingModeInit,
     },
 }
 
@@ -188,6 +232,50 @@ impl BoundaryConfig {
         }
     }
 
+    /// Step 5 back-compat builder: accept a plate_type field, a
+    /// boundary_flag field, rates, and a layout name; wrap into a
+    /// static `CrustGeometry` and build an Enabled config with
+    /// `RecyclingModeInit::Open`.
+    pub fn enabled_static(
+        plate_type: super::plate_type::PlateTypeField,
+        boundary_flag: BoundaryFlagField,
+        layout_name: impl Into<String>,
+        rates: BoundaryRates,
+    ) -> Self {
+        let geometry = super::crust_geometry::CrustGeometry::from_static(
+            plate_type,
+            boundary_flag,
+            layout_name,
+        );
+        Self::Enabled {
+            geometry: std::sync::Arc::new(geometry),
+            rates,
+            recycling_mode: RecyclingModeInit::Open,
+        }
+    }
+
+    /// Step 6 builder: Voronoi tessellation with Closed-mode
+    /// recycling. Validates the recycling config at construction —
+    /// caller receives an `Err` if the fractions don't sum to 1
+    /// or any other invariant is violated.
+    pub fn enabled_voronoi_closed(
+        nx: usize,
+        ny: usize,
+        voronoi_config: &super::super::voronoi::VoronoiConfig,
+        seed: u64,
+        rates: BoundaryRates,
+        recycling_config: super::super::recycling::RecyclingConfig,
+    ) -> Result<Self, super::super::recycling::RecyclingConfigError> {
+        recycling_config.validate()?;
+        let geometry =
+            super::crust_geometry::CrustGeometry::from_voronoi(nx, ny, voronoi_config, seed);
+        Ok(Self::Enabled {
+            geometry: std::sync::Arc::new(geometry),
+            rates,
+            recycling_mode: RecyclingModeInit::Closed(recycling_config),
+        })
+    }
+
     pub fn parse(s: &str) -> Result<Self, String> {
         match s {
             "disabled" | "off" => Ok(BoundaryConfig::Disabled),
@@ -207,8 +295,14 @@ impl BoundaryConfig {
     pub fn describe(&self) -> String {
         match self {
             BoundaryConfig::Disabled => "Disabled".to_string(),
-            BoundaryConfig::Enabled { rates, .. } => format!(
-                "Enabled (k_sub={:.3}, k_arc={:.3}, k_spread={:.3}, k_coll-v={:.3}, k_rift-v={:.3})",
+            BoundaryConfig::Enabled {
+                rates,
+                recycling_mode,
+                geometry,
+            } => format!(
+                "Enabled [{}] (layout='{}', k_sub={:.3}, k_arc={:.3}, k_spread={:.3}, k_coll-v={:.3}, k_rift-v={:.3})",
+                recycling_mode.describe(),
+                geometry.layout_name,
                 rates.k_sub, rates.k_arc, rates.k_spread, rates.k_coll_v, rates.k_rift_v,
             ),
         }
@@ -236,15 +330,16 @@ mod tests {
 
     #[test]
     fn describe_shows_all_rates_when_enabled() {
-        let plate_types = std::sync::Arc::new(super::super::plate_type::PlateTypeField::filled(
+        let plate_type = super::super::plate_type::PlateTypeField::filled(
             2, 2, super::super::plate_type::PlateType::Continental,
-        ));
-        let flags = std::sync::Arc::new(BoundaryFlagField::filled(2, 2, BoundaryFlag::None));
-        let cfg = BoundaryConfig::Enabled {
-            plate_types,
+        );
+        let flags = BoundaryFlagField::filled(2, 2, BoundaryFlag::None);
+        let cfg = BoundaryConfig::enabled_static(
+            plate_type,
             flags,
-            rates: BoundaryRates::baseline_uncalibrated(),
-        };
+            "test",
+            BoundaryRates::baseline_uncalibrated(),
+        );
         let desc = cfg.describe();
         assert!(desc.contains("k_sub=0.500"));
         assert!(desc.contains("k_arc=0.150"));

@@ -28,6 +28,8 @@
 pub mod boundary_flag;
 pub mod calibration;
 pub mod clamp;
+pub mod closed_mode;
+pub mod crust_geometry;
 pub mod layouts;
 pub mod plate_type;
 pub mod source_sink;
@@ -35,13 +37,18 @@ pub mod stats;
 
 pub use boundary_flag::{
     BoundaryConfig, BoundaryFlag, BoundaryFlagField, BoundaryFlagFieldShared, BoundaryRates,
-    PlateTypeFieldShared,
+    PlateTypeFieldShared, RecyclingModeInit,
 };
 pub use calibration::{
     calibrate_k_spread, CalibrationError, CalibrationResult, KSpreadCalibration,
     K_SPREAD_BRACKET,
 };
 pub use clamp::{apply_clamp_with_tracking, ClampStats, S_MIN};
+pub use closed_mode::{
+    compute_q_sub_only, count_immediate_eligibilities, count_spread_eligibility,
+    distribute_delayed, distribute_immediate, integrate_sub_mass,
+};
+pub use crust_geometry::{CrustGeometry, CrustGeometryShared, GeometryKind};
 pub use layouts::{
     balanced_sub_spread, build_layout, continental_collision_band, horizontal_oceanic_strip,
     vertical_rift_line, BoundaryLayout,

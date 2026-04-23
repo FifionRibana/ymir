@@ -26,15 +26,15 @@ impl BoundaryLayout {
     pub fn nx(&self) -> usize { self.plate_types.nx() }
     pub fn ny(&self) -> usize { self.plate_types.ny() }
 
-    /// Wrap into a [`BoundaryConfig::Enabled`] with the given rates.
-    /// The fields are moved into `Arc` so downstream cloning of the
-    /// `BaselineConfig` is cheap.
+    /// Wrap into a [`BoundaryConfig::Enabled`] with the given rates,
+    /// using the Step 5 back-compat builder
+    /// [`BoundaryConfig::enabled_static`]. The default recycling
+    /// mode is `Open`, preserving the Step 5 per-cell rate-based
+    /// source/sink pipeline. Callers wanting Step 6's Closed mode
+    /// should build via [`BoundaryConfig::enabled_voronoi_closed`]
+    /// or manually swap `recycling_mode` after construction.
     pub fn into_config(self, rates: BoundaryRates) -> BoundaryConfig {
-        BoundaryConfig::Enabled {
-            plate_types: std::sync::Arc::new(self.plate_types),
-            flags: std::sync::Arc::new(self.flags),
-            rates,
-        }
+        BoundaryConfig::enabled_static(self.plate_types, self.flags, self.name, rates)
     }
 }
 
