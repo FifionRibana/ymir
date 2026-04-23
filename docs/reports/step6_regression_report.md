@@ -143,8 +143,8 @@ No additional Step-6 fields (Voronoi tessellation, dynamic boundary detection, d
 
 ### Timing
 
-- wallclock total: `51.242 s`
-- wallclock per step (mean): `170.808 ms`
+- wallclock total: `33.900 s`
+- wallclock per step (mean): `113.000 ms`
 - steps: `300`
 
 ### Linear-solver health (CG inside Newton)
@@ -253,7 +253,7 @@ Same forcing, same preset, same yielding (Enabled, Bi=0.15), same basal drag (En
 
 | metric | previous | current | ratio / note |
 |---|---|---|---|
-| wallclock (s) | 35.058 | 51.242 | ×1.46 |
+| wallclock (s) | 35.058 | 33.900 | ×0.97 |
 | CG iters / linear solve (mean) | 108.5 | 108.5 | ×1.00 [idéal] |
 | S mass drift (relative) | 6.342e-3 | 6.342e-3 | gate 1e-10 |
 | max \|mean(vx)\| | 8.148e-23 | 8.148e-23 | bruit machine |
@@ -300,8 +300,8 @@ Same forcing, same preset, same yielding (Enabled, Bi=0.15), same basal drag (En
 
 ### Timing
 
-- wallclock total: `336.843 s`
-- wallclock per step (mean): `1122.811 ms`
+- wallclock total: `300.407 s`
+- wallclock per step (mean): `1001.358 ms`
 - steps: `300`
 
 ### Linear-solver health (CG inside Newton)
@@ -410,7 +410,7 @@ Same forcing, same preset, same yielding (Enabled, Bi=0.15), same basal drag (En
 
 | metric | previous | current | ratio / note |
 |---|---|---|---|
-| wallclock (s) | 298.899 | 336.843 | ×1.13 |
+| wallclock (s) | 298.899 | 300.407 | ×1.01 |
 | CG iters / linear solve (mean) | 205.0 | 205.0 | ×1.00 [idéal] |
 | S mass drift (relative) | 3.198e-3 | 3.198e-3 | gate 1e-10 |
 | max \|mean(vx)\| | 9.213e-23 | 9.213e-23 | bruit machine |

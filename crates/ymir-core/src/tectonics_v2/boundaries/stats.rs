@@ -177,6 +177,29 @@ impl From<&super::boundary_flag::BoundaryRates> for BoundaryMechanismActive {
     }
 }
 
+impl BoundaryMechanismActive {
+    /// Closed-mode constructor: in Step 6 Closed mode, rate
+    /// coefficients (k_arc, k_spread, k_coll_v, k_rift_v) are
+    /// typically zeroed because creation is driven by the
+    /// recycling budget fractions, not per-cell rates. Use the
+    /// fractions to decide which mechanisms are actually active.
+    ///
+    /// Note: `k_sub` drives the drain budget even in Closed mode,
+    /// so it is taken from rates. The four creation channels
+    /// (arc/spread/coll_v/rift_v) come from the config fractions.
+    pub fn from_closed_mode(
+        rates: &super::boundary_flag::BoundaryRates,
+        recycling: &super::super::recycling::RecyclingConfig,
+    ) -> Self {
+        Self {
+            sub: rates.k_sub != 0.0,
+            spread: recycling.spread_fraction != 0.0,
+            coll_v: recycling.coll_v_fraction != 0.0,
+            rift_v: recycling.rift_v_fraction != 0.0,
+        }
+    }
+}
+
 /// Interface-cell mask: a cell is "on the oceanic/continental
 /// interface" if its plate type differs from at least one 4-neighbour.
 /// Returned as a boolean field the caller can iterate against `S̃`

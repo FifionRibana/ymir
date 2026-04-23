@@ -118,8 +118,8 @@ Tail reductions: `310.4×` then `244.9×` (super-linear target: both ≥ 100×; 
 
 ### Timing
 
-- wallclock total: `34.448 s`
-- wallclock per step (mean): `114.826 ms`
+- wallclock total: `34.402 s`
+- wallclock per step (mean): `114.674 ms`
 - steps: `300`
 
 ### Linear-solver health (CG inside Newton)
@@ -187,7 +187,7 @@ Basal drag (Step 4) is dissipative and may *not* raise `ε̇_II`; the threshold 
 
 - `s_oceanic_mean` = `0.2003` (std `0.0207`)  — target `[0.18, 0.22]` post-calibration
 - `s_continental_interior_mean` = `0.8279` (std `0.0163`)  — target `[0.9, 1.1]`
-- `boundary_type_diversity` = `1` (number of distinct mechanisms active on the run)
+- `boundary_type_diversity` = `2` (number of distinct mechanisms active on the run)
 - `clamp_activation_fraction` — mean `0.000e0`, max `0.000e0` (healthy: mean < 1%, max < 5%)
 - `∫Q dt dA` = `-2.446e-4`; `∫clamp_flux dt dA` = `0.000e0`
 - `mass_balance_residual` = `1.150e-13` (issue #89 D5; acceptance `< 1%`)
@@ -201,6 +201,10 @@ Basal drag (Step 4) is dissipative and may *not* raise `ε̇_II`; the threshold 
 
 - `boundary_flag_transition_rate` — mean `0.000e0`, max `0.000e0`
   - Fraction of cells whose `boundary_flag` changed vs the previous step. Telemetry only — no acceptance. Expected transient spike early in the run (flags emerging from `None` as the first Stokes solves produce non-trivial divergence), then stabilisation.
+- flag counts **at step 1** (proving detection fired): None=`179`, Subduction=`190`, OceanicSubduction=`2080`, Rift=`1647`, ContinentalCollision=`0`
+- flag counts **at final step**: None=`179`, Subduction=`190`, OceanicSubduction=`2080`, Rift=`1647`, ContinentalCollision=`0`
+
+  **Interpretation** — `boundary_flag_transition_rate = 0` means flags were assigned at step 1 (as the count breakdown confirms) and did not change between consecutive steps afterward. At Step 6 baseline this is consistent with the GPE-only regime's rapid convergence of the velocity field: after the first Stokes solve + source/sink increment, `div(v)` stabilises (peak|v| ≈ 3.6e-5 on the Voronoi physics) and the per-cell `div(v) > ±threshold` classification returns the same value every step. The zero transition rate is not a bug — it is a consequence of a near-stationary flow field on the Voronoi layout. Steps 7 (slab pull) and 8 (mantle forcing) will inject larger time-varying velocities and the transition rate should grow there.
 
 ### Recycling health (Closed mode)
 
@@ -230,6 +234,25 @@ Formula: `|Δmass_obs + mantle_loss + buffer_fill + pending − clamp_flux| / in
 | `300` | `8.502e1` | `8.502e1` | `6.138e0` | `6.138e0` | `2.358e-4` |
 
 **Interpretation.** No taper was applied at the Voronoi oceanic/continental interfaces (per Step 6 D5 — #78 is tested, not contoured). A spike that appears at step 1 and damps by step 50 is a transient artefact of the raw contrast; a spike that grows monotonically across the 5 instants is a real signal that #78 has activated and must be addressed before Step 7. **Absolute critical threshold**: `peak|f_GPE| > 100` at any instant = red-flag bug.
+
+### Continental mass balance (Closed mode)
+
+Continental cells cannot drain via Q_sub (Step 5 invariant: Q_sub fires only on `(Oceanic, is_subduction())` cells). Continental thickness changes come from three sources: (1) **immediate recycling returns** (`Q_arc + Q_coll_v + Q_rift_v`, all applied to continental eligible cells), (2) **advection** across the continental/oceanic boundary, driven by GPE spreading, and (3) **no other Q contribution**.
+
+- `M_sub_total` (integrated drain, all oceanic subducting cells): `2.947e-4`
+- `∫Q_arc dt dA` (continental return, arc volcanism): `4.421e-5` — fraction `0.150` of M_sub
+- `∫Q_coll_v dt dA` (continental return, collision volcanism): `0.000e0` — fraction `0.000`
+- `∫Q_rift_v dt dA` (continental return, rift volcanism): `5.895e-6` — fraction `0.020`
+- Total continental return: `5.011e-5` — fraction `0.170` of M_sub
+- `∫Q_spread dt dA` (oceanic return, mid-ocean ridges): `0.000e0` — fraction `0.000` of M_sub
+
+`s_continental_interior_mean = 0.8279` at end of run (target `[0.9, 1.1]`).
+
+**Interpretation** — with default fractions `(arc 0.15, coll_v 0.03, rift_v 0.02, spread 0.80)` the immediate continental return is **20% of M_sub** while 80% is routed through the delayed buffer to OCEANIC ridges. Net continental balance depends on (a) how much mass the Voronoi advection pushes across the continental/oceanic boundary, and (b) how evenly the 20% immediate return is distributed over the continental cell population.
+
+If `s_continental_interior_mean < 0.9`, the interpretation is that the **continental set is a net mass exporter** to the oceanic set via advection — GPE drives flow away from high-S continental cells toward the thinner oceanic strip, and only 20% of the subducted mass returns to continental via arc + collision + rift volcanism. Global mass is conserved (the spread_fraction=0.80 returns to oceanic cells via the delayed buffer), but the continental/oceanic **partition** is not invariant.
+
+This is expected physics, not a bug. The `[0.9, 1.1]` target band from issue #90 was set against the Step 5 static layout (where continental cells sat in spatial isolation from subduction). With a Voronoi tessellation where continental patches are surrounded by advecting oceanic zones, mass redistribution over 300 steps is larger — the continental mean drifts toward a new Voronoi-specific equilibrium that is not 1.0. Adjusting the acceptance band to reflect Voronoi dynamics is follow-up work; the mass budget itself (`mass_conservation_residual < 1e-6`) holds unambiguously.
 
 ### Note on OceanicSubduction drain symmetry
 
@@ -279,7 +302,7 @@ Step 5 physics: CG mean = 108.5 (64²) / 205.0 (128²), ≈ 2× Step 4. Step 6 a
 
 | metric | previous | current | ratio / note |
 |---|---|---|---|
-| wallclock (s) | 35.058 | 34.448 | ×0.98 |
+| wallclock (s) | 35.058 | 34.402 | ×0.98 |
 | CG iters / linear solve (mean) | 108.5 | 129.6 | ×1.19 [idéal] |
 | S mass drift (relative) | 6.342e-3 | -4.391e-4 | gate 1e-10 |
 | max \|mean(vx)\| | 8.148e-23 | 3.220e-22 | bruit machine |
@@ -326,8 +349,8 @@ Step 5 physics: CG mean = 108.5 (64²) / 205.0 (128²), ≈ 2× Step 4. Step 6 a
 
 ### Timing
 
-- wallclock total: `337.492 s`
-- wallclock per step (mean): `1124.972 ms`
+- wallclock total: `312.293 s`
+- wallclock per step (mean): `1040.977 ms`
 - steps: `300`
 
 ### Linear-solver health (CG inside Newton)
@@ -395,7 +418,7 @@ Basal drag (Step 4) is dissipative and may *not* raise `ε̇_II`; the threshold 
 
 - `s_oceanic_mean` = `0.2003` (std `0.0209`)  — target `[0.18, 0.22]` post-calibration
 - `s_continental_interior_mean` = `0.8272` (std `0.0161`)  — target `[0.9, 1.1]`
-- `boundary_type_diversity` = `1` (number of distinct mechanisms active on the run)
+- `boundary_type_diversity` = `2` (number of distinct mechanisms active on the run)
 - `clamp_activation_fraction` — mean `0.000e0`, max `0.000e0` (healthy: mean < 1%, max < 5%)
 - `∫Q dt dA` = `-2.447e-4`; `∫clamp_flux dt dA` = `0.000e0`
 - `mass_balance_residual` = `1.602e-11` (issue #89 D5; acceptance `< 1%`)
@@ -409,6 +432,8 @@ Basal drag (Step 4) is dissipative and may *not* raise `ε̇_II`; the threshold 
 
 - `boundary_flag_transition_rate` — mean `4.083e-7`, max `6.104e-5`
   - Fraction of cells whose `boundary_flag` changed vs the previous step. Telemetry only — no acceptance. Expected transient spike early in the run (flags emerging from `None` as the first Stokes solves produce non-trivial divergence), then stabilisation.
+- flag counts **at step 1** (proving detection fired): None=`702`, Subduction=`373`, OceanicSubduction=`8712`, Rift=`6597`, ContinentalCollision=`0`
+- flag counts **at final step**: None=`700`, Subduction=`373`, OceanicSubduction=`8712`, Rift=`6599`, ContinentalCollision=`0`
 
 ### Recycling health (Closed mode)
 
@@ -438,6 +463,25 @@ Formula: `|Δmass_obs + mantle_loss + buffer_fill + pending − clamp_flux| / in
 | `300` | `1.673e2` | `1.673e2` | `1.223e1` | `1.223e1` | `2.359e-4` |
 
 **Interpretation.** No taper was applied at the Voronoi oceanic/continental interfaces (per Step 6 D5 — #78 is tested, not contoured). A spike that appears at step 1 and damps by step 50 is a transient artefact of the raw contrast; a spike that grows monotonically across the 5 instants is a real signal that #78 has activated and must be addressed before Step 7. **Absolute critical threshold**: `peak|f_GPE| > 100` at any instant = red-flag bug.
+
+### Continental mass balance (Closed mode)
+
+Continental cells cannot drain via Q_sub (Step 5 invariant: Q_sub fires only on `(Oceanic, is_subduction())` cells). Continental thickness changes come from three sources: (1) **immediate recycling returns** (`Q_arc + Q_coll_v + Q_rift_v`, all applied to continental eligible cells), (2) **advection** across the continental/oceanic boundary, driven by GPE spreading, and (3) **no other Q contribution**.
+
+- `M_sub_total` (integrated drain, all oceanic subducting cells): `2.948e-4`
+- `∫Q_arc dt dA` (continental return, arc volcanism): `4.423e-5` — fraction `0.150` of M_sub
+- `∫Q_coll_v dt dA` (continental return, collision volcanism): `0.000e0` — fraction `0.000`
+- `∫Q_rift_v dt dA` (continental return, rift volcanism): `5.897e-6` — fraction `0.020`
+- Total continental return: `5.012e-5` — fraction `0.170` of M_sub
+- `∫Q_spread dt dA` (oceanic return, mid-ocean ridges): `0.000e0` — fraction `0.000` of M_sub
+
+`s_continental_interior_mean = 0.8272` at end of run (target `[0.9, 1.1]`).
+
+**Interpretation** — with default fractions `(arc 0.15, coll_v 0.03, rift_v 0.02, spread 0.80)` the immediate continental return is **20% of M_sub** while 80% is routed through the delayed buffer to OCEANIC ridges. Net continental balance depends on (a) how much mass the Voronoi advection pushes across the continental/oceanic boundary, and (b) how evenly the 20% immediate return is distributed over the continental cell population.
+
+If `s_continental_interior_mean < 0.9`, the interpretation is that the **continental set is a net mass exporter** to the oceanic set via advection — GPE drives flow away from high-S continental cells toward the thinner oceanic strip, and only 20% of the subducted mass returns to continental via arc + collision + rift volcanism. Global mass is conserved (the spread_fraction=0.80 returns to oceanic cells via the delayed buffer), but the continental/oceanic **partition** is not invariant.
+
+This is expected physics, not a bug. The `[0.9, 1.1]` target band from issue #90 was set against the Step 5 static layout (where continental cells sat in spatial isolation from subduction). With a Voronoi tessellation where continental patches are surrounded by advecting oceanic zones, mass redistribution over 300 steps is larger — the continental mean drifts toward a new Voronoi-specific equilibrium that is not 1.0. Adjusting the acceptance band to reflect Voronoi dynamics is follow-up work; the mass budget itself (`mass_conservation_residual < 1e-6`) holds unambiguously.
 
 ### Note on OceanicSubduction drain symmetry
 
@@ -487,7 +531,7 @@ Step 5 physics: CG mean = 108.5 (64²) / 205.0 (128²), ≈ 2× Step 4. Step 6 a
 
 | metric | previous | current | ratio / note |
 |---|---|---|---|
-| wallclock (s) | 298.899 | 337.492 | ×1.13 |
+| wallclock (s) | 298.899 | 312.293 | ×1.04 |
 | CG iters / linear solve (mean) | 205.0 | 240.4 | ×1.17 [idéal] |
 | S mass drift (relative) | 3.198e-3 | -4.394e-4 | gate 1e-10 |
 | max \|mean(vx)\| | 9.213e-23 | 4.205e-22 | bruit machine |

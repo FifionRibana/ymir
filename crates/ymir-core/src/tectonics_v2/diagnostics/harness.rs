@@ -473,6 +473,14 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     > = None;
     let mut closed_state_mantle_loss_integral = 0.0_f64;
     let mut closed_state_m_sub_total = 0.0_f64;
+    let mut closed_state_arc_distributed = 0.0_f64;
+    let mut closed_state_coll_v_distributed = 0.0_f64;
+    let mut closed_state_rift_v_distributed = 0.0_f64;
+    let mut closed_state_spread_distributed = 0.0_f64;
+    // Flag counts captured at step 1 (after the first
+    // detect_boundaries call) — informative for the Step 6
+    // clarification "did detection fire on step 1?".
+    let mut boundary_flag_counts_step1: Option<(usize, usize, usize, usize, usize)> = None;
     // Pre-compute the recycling config and build the buffer if
     // Closed mode. Validation panics at this point are programmer
     // errors (the builder `enabled_voronoi_closed` already validates
@@ -502,6 +510,25 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let mut recycling_buffer_fill_max: f64 = 0.0;
     let mut recycling_buffer_fill_samples: usize = 0;
     let mut immediate_pending_max_observed: f64 = 0.0;
+    // Step 6 perf: pre-compute per-run flags so the inner loop
+    // avoids repeated `match &cfg.boundary` + `matches!` dispatches.
+    // `is_dynamic` decides whether `detect_boundaries` + flag-clone
+    // run each step; `is_closed` decides whether the recycling
+    // pipeline tracks its buffer/pending stats each step;
+    // `mantle_delay_for_spinup` short-circuits the spinup branch
+    // when in Open mode (unused there).
+    let (is_dynamic, is_closed, mantle_delay_for_spinup) = match &cfg.boundary {
+        BoundaryConfig::Enabled { geometry, recycling_mode, .. } => {
+            let dynamic = geometry.is_dynamic();
+            match recycling_mode {
+                crate::tectonics_v2::boundaries::RecyclingModeInit::Open => (dynamic, false, 0),
+                crate::tectonics_v2::boundaries::RecyclingModeInit::Closed(rcfg) => {
+                    (dynamic, true, rcfg.mantle_delay_steps)
+                }
+            }
+        }
+        BoundaryConfig::Disabled => (false, false, 0),
+    };
 
     std::fs::create_dir_all(&cfg.output_dir).ok();
     let capture_steps: Vec<usize> = cfg
@@ -808,7 +835,17 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                             rcfg.coll_v_fraction * m_sub_step;
                         closed_state_accumulators.rift_v_pending +=
                             rcfg.rift_v_fraction * m_sub_step;
-                        // Distribute immediate (adds to Q).
+                        // Distribute immediate (adds to Q). Track
+                        // actually-distributed mass per class by
+                        // snapshotting the pending values before/
+                        // after the call — when distribution fires,
+                        // the pending drops to 0 and the difference
+                        // is the mass emitted this step. On rollover
+                        // steps (no eligible cells) the diff is 0
+                        // and pending carries over.
+                        let pre_arc = closed_state_accumulators.arc_pending;
+                        let pre_coll = closed_state_accumulators.coll_v_pending;
+                        let pre_rift = closed_state_accumulators.rift_v_pending;
                         distribute_immediate(
                             &geometry.plate_type,
                             cur_flag,
@@ -819,6 +856,12 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                             cell_area,
                             q,
                         );
+                        closed_state_arc_distributed +=
+                            pre_arc - closed_state_accumulators.arc_pending;
+                        closed_state_coll_v_distributed +=
+                            pre_coll - closed_state_accumulators.coll_v_pending;
+                        closed_state_rift_v_distributed +=
+                            pre_rift - closed_state_accumulators.rift_v_pending;
                         // Delayed: deposit this step's spread
                         // fraction, advance-or-rollover, distribute
                         // the emerging mass.
@@ -826,7 +869,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                             .as_mut()
                             .expect("Closed mode → buffer initialised");
                         buffer.deposit(rcfg.spread_fraction * m_sub_step);
-                        distribute_delayed(
+                        let emerged = distribute_delayed(
                             &geometry.plate_type,
                             cur_flag,
                             buffer,
@@ -834,6 +877,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                             cell_area,
                             q,
                         );
+                        closed_state_spread_distributed += emerged;
                         // Mantle loss accumulator.
                         closed_state_mantle_loss_integral +=
                             rcfg.mantle_loss_fraction * m_sub_step;
@@ -858,19 +902,13 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                 }
                 clamp_samples += 1;
 
-                // Step 6 — per-step trackers (only meaningful when
-                // boundary is Enabled; in Disabled mode this block
-                // is skipped via the outer `if let`).
-                //
-                // boundary_flag_transition_rate:
-                //   fraction of cells whose flag changed vs previous
-                //   step. Gated on `geometry.is_dynamic()` so the
-                //   static-layout (Step 5-shape) path does NOT pay
-                //   the O(n) diff + clone cost every step; for static
-                //   geometries the transition rate is identically
-                //   zero and left `None` in the aggregate.
-                //   First step has no previous → skipped.
-                if geometry.is_dynamic() {
+                // Step 6 — per-step trackers. Gated on pre-computed
+                // `is_dynamic` / `is_closed` to avoid re-matching
+                // `cfg.boundary` each step. For Step 5-shape
+                // regression (static + Open) both are false and
+                // this block short-circuits to zero extra work
+                // beyond the Step 5 path.
+                if is_dynamic {
                     if let Some(prev) = prev_boundary_flag.as_ref() {
                         let mut diff = 0usize;
                         let n = cur_flag.data().len();
@@ -881,44 +919,53 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                             .push(diff as f64 / n as f64);
                     }
                     prev_boundary_flag = Some(cur_flag.clone());
-                }
-                // clamp_activation_during_spinup: if in Closed mode
-                // and step is before mantle_delay_steps.
-                if let BoundaryConfig::Enabled { recycling_mode, .. } = &cfg.boundary {
-                    if let crate::tectonics_v2::boundaries::RecyclingModeInit::Closed(rcfg) =
-                        recycling_mode
-                    {
-                        if step < rcfg.mantle_delay_steps {
-                            if frac > clamp_activation_during_spinup_max {
-                                clamp_activation_during_spinup_max = frac;
+                    // Capture flag-type counts at the FIRST step
+                    // (after detect_boundaries fired once). Used
+                    // by the physics report to prove detection is
+                    // actually running each step.
+                    if step == 0 && boundary_flag_counts_step1.is_none() {
+                        use crate::tectonics_v2::boundaries::BoundaryFlag;
+                        let (mut n0, mut ns, mut nos, mut nr, mut nc) = (0, 0, 0, 0, 0);
+                        for &f in cur_flag.data() {
+                            match f {
+                                BoundaryFlag::None => n0 += 1,
+                                BoundaryFlag::Subduction => ns += 1,
+                                BoundaryFlag::OceanicSubduction => nos += 1,
+                                BoundaryFlag::Rift => nr += 1,
+                                BoundaryFlag::ContinentalCollision => nc += 1,
                             }
                         }
+                        boundary_flag_counts_step1 = Some((n0, ns, nos, nr, nc));
                     }
                 }
-                // recycling_buffer_fill and immediate_pending_max
-                // (Closed mode only).
-                if let Some(ref buf) = closed_state_buffer {
-                    let f = buf.fill();
-                    recycling_buffer_fill_sum += f;
-                    if f > recycling_buffer_fill_max {
-                        recycling_buffer_fill_max = f;
+                if is_closed {
+                    if step < mantle_delay_for_spinup && frac > clamp_activation_during_spinup_max {
+                        clamp_activation_during_spinup_max = frac;
                     }
-                    recycling_buffer_fill_samples += 1;
-                }
-                let pending_max = closed_state_accumulators.max_pending();
-                if pending_max > immediate_pending_max_observed {
-                    immediate_pending_max_observed = pending_max;
+                    if let Some(ref buf) = closed_state_buffer {
+                        let f = buf.fill();
+                        recycling_buffer_fill_sum += f;
+                        if f > recycling_buffer_fill_max {
+                            recycling_buffer_fill_max = f;
+                        }
+                        recycling_buffer_fill_samples += 1;
+                    }
+                    let pending_max = closed_state_accumulators.max_pending();
+                    if pending_max > immediate_pending_max_observed {
+                        immediate_pending_max_observed = pending_max;
+                    }
                 }
             }
             std::mem::swap(&mut s, &mut s_next);
 
             // Step 6 — #78 trajectory samples at {1, 10, 50, 150, 300}.
+            // Fires at most 5 times per run; the `contains` check
+            // alone is cheap but the inner interface_mask build is
+            // O(n_cells) — so we gate on both `trajectory_steps` and
+            // `boundary_enabled` (cached) to avoid building the mask
+            // on Disabled runs.
             let completed = step + 1;
-            if trajectory_steps.contains(&completed)
-                && matches!(cfg.boundary, BoundaryConfig::Enabled { .. })
-            {
-                // Require the interface mask (oceanic/continental
-                // interfaces); needs plate_type → fetch from config.
+            if boundary_enabled && trajectory_steps.contains(&completed) {
                 if let BoundaryConfig::Enabled { geometry, .. } = &cfg.boundary {
                     let inter = interface_mask(&geometry.plate_type, &idx_x, &idx_y);
                     let (grad_i, grad_g) = grad_s_interface_vs_global(
@@ -1003,7 +1050,22 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             None
         };
         newton_agg.s_continental_collision_mean = s_continental_collision_mean(&s, pt, fl);
-        let mech_active = BoundaryMechanismActive::from(rates);
+        // Diversity computation is mode-aware: Open mode reads
+        // rate coefficients, Closed mode reads the recycling config
+        // fractions (rates are typically zeroed for non-sub channels
+        // in Closed mode since they're replaced by distributive
+        // fractions — querying them would hide real activity).
+        let mech_active = match &cfg.boundary {
+            BoundaryConfig::Enabled { recycling_mode, .. } => match recycling_mode {
+                crate::tectonics_v2::boundaries::RecyclingModeInit::Open => {
+                    BoundaryMechanismActive::from(rates)
+                }
+                crate::tectonics_v2::boundaries::RecyclingModeInit::Closed(rcfg) => {
+                    BoundaryMechanismActive::from_closed_mode(rates, rcfg)
+                }
+            },
+            BoundaryConfig::Disabled => BoundaryMechanismActive::from(rates),
+        };
         newton_agg.boundary_type_diversity = Some(
             crate::tectonics_v2::boundaries::boundary_type_diversity(pt, fl, mech_active),
         );
@@ -1099,6 +1161,35 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             newton_agg.issue_78_trajectory = trajectory_samples.clone();
         }
         let _ = buffer_fill_samples; // superseded by issue_78_trajectory's last column
+
+        // Step 6 final per-flag-type count. Populated whenever
+        // boundary is Enabled; disambiguates `boundary_type_diversity`
+        // by showing which flag types were actually present at end.
+        {
+            use crate::tectonics_v2::boundaries::BoundaryFlag;
+            let mut none = 0usize;
+            let mut sub = 0usize;
+            let mut osub = 0usize;
+            let mut rift = 0usize;
+            let mut coll = 0usize;
+            for &f in fl.data() {
+                match f {
+                    BoundaryFlag::None => none += 1,
+                    BoundaryFlag::Subduction => sub += 1,
+                    BoundaryFlag::OceanicSubduction => osub += 1,
+                    BoundaryFlag::Rift => rift += 1,
+                    BoundaryFlag::ContinentalCollision => coll += 1,
+                }
+            }
+            newton_agg.boundary_flag_counts_final = Some((none, sub, osub, rift, coll));
+            newton_agg.boundary_flag_counts_step1 = boundary_flag_counts_step1;
+        }
+        if is_closed {
+            newton_agg.arc_distributed_integral = Some(closed_state_arc_distributed);
+            newton_agg.coll_v_distributed_integral = Some(closed_state_coll_v_distributed);
+            newton_agg.rift_v_distributed_integral = Some(closed_state_rift_v_distributed);
+            newton_agg.spread_distributed_integral = Some(closed_state_spread_distributed);
+        }
     }
 
     let cg_iter_mean = newton_agg.cg_iters_per_newton_mean();

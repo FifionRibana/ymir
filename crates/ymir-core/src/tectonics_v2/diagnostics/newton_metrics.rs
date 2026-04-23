@@ -173,6 +173,30 @@ pub struct NewtonAggregate {
     /// max|∇S̃|_global, peak|f_GPE|_interface, peak|f_GPE|_global,
     /// buffer_fill)` at steps {1, 10, 50, 150, 300}.
     pub issue_78_trajectory: Vec<(usize, f64, f64, f64, f64, f64)>,
+    /// Per-flag-type cell count at the **final** step. Keys:
+    /// `(none, subduction, oceanic_subduction, rift, continental_collision)`.
+    /// Informative when `boundary_type_diversity` is suspicious —
+    /// e.g. `diversity = 1` could mean either "only subduction
+    /// detected" or "only rift detected"; this breakdown
+    /// disambiguates.
+    pub boundary_flag_counts_final: Option<(usize, usize, usize, usize, usize)>,
+    /// Per-flag-type cell count at the **first** step (post-first
+    /// `detect_boundaries` call). Compared against `_final` to show
+    /// whether detection produced flags at step 1 and how they
+    /// evolved. For static geometries, `_step1` and `_final` are
+    /// identical (no dynamic update).
+    pub boundary_flag_counts_step1: Option<(usize, usize, usize, usize, usize)>,
+    /// Integrated arc return budget: `Σ_steps (arc_fraction · M_sub_step
+    /// actually distributed this step)`. Equal to `arc_fraction ·
+    /// M_sub_total` in the steady state where eligible cells always
+    /// exist; deviates during rollover.
+    pub arc_distributed_integral: Option<f64>,
+    /// Integrated coll_v return budget. Same interpretation.
+    pub coll_v_distributed_integral: Option<f64>,
+    /// Integrated rift_v return budget. Same interpretation.
+    pub rift_v_distributed_integral: Option<f64>,
+    /// Integrated spread return emitted on rift oceanic cells.
+    pub spread_distributed_integral: Option<f64>,
 }
 
 impl NewtonAggregate {
