@@ -30,6 +30,7 @@ use ymir_core::tectonics_v2::diagnostics::harness::{
     build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
 };
 use ymir_core::tectonics_v2::diagnostics::mms_bench;
+use ymir_core::tectonics_v2::diagnostics::num_plates_sweep::run_num_plates_sweep;
 use ymir_core::tectonics_v2::diagnostics::report::{
     default_previous_report_for, write_markdown_report, ReportInputs, ReportKind,
 };
@@ -222,63 +223,6 @@ fn run_regression_config(
     (r.metrics, r.config_dump)
 }
 
-fn run_voronoi_sweep(
-    args: &Args,
-    num_plates_values: &[usize],
-    seeds: &[u64],
-) -> Vec<(usize, u64, ymir_core::tectonics_v2::diagnostics::metrics::Metrics)> {
-    let mut out = Vec::new();
-    let nx = 64;
-    let ny = 64;
-    let scales = Scales::default();
-    for (&n, &sd) in num_plates_values.iter().zip(seeds.iter()) {
-        let vcfg = VoronoiConfig { num_plates: n, continental_ratio: args.continental_ratio };
-        let rates = BoundaryRates {
-            k_sub: 0.5,
-            k_arc: 0.0,
-            k_spread: 0.0,
-            k_coll_v: 0.0,
-            k_rift_v: 0.0,
-        };
-        let recycling_config = RecyclingConfig::default();
-        let boundary = BoundaryConfig::enabled_voronoi_closed(
-            nx, ny, &vcfg, sd, rates, recycling_config,
-        ).expect("recycling valid");
-        let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
-        let cfg = BaselineConfig {
-            seed: sd,
-            grid_nx: nx,
-            grid_ny: ny,
-            domain_lx: 1.0,
-            domain_ly: 1.0,
-            steps: args.steps,
-            cfl_factor: 0.3,
-            total_time_nondim: 6.0,
-            preset: args.preset.clone(),
-            nonlinear: NonlinearChoice::Newton,
-            newton_cfg: Default::default(),
-            picard_cfg: Default::default(),
-            heightmap_fractions: Vec::new(),
-            output_dir: PathBuf::from("target/step6_sweep_scratch"),
-            force,
-            force_kind: ForceKind::Gpe,
-            sinusoidal_amplitude: 0.0,
-            s_perturbation_amplitude: 0.2,
-            yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
-            basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-                br: 0.05,
-                ..BasalDragLaw::default()
-            }),
-            boundary,
-            boundary_layout_name: format!("voronoi_seed{}_n{}", sd, n),
-        };
-        println!("-- sweep num_plates={} seed={} at 64² --", n, sd);
-        let r = run_baseline(&cfg);
-        out.push((n, sd, r.metrics));
-    }
-    out
-}
-
 fn main() -> ExitCode {
     let args = match parse_args() {
         Ok(a) => a,
@@ -317,7 +261,24 @@ fn main() -> ExitCode {
 
     // -------- Voronoi sweep --------
     println!("\n=== Voronoi num_plates × seed sweep ===");
-    let _sweep = run_voronoi_sweep(&args, &[4, 8, 12, 16], &[42, 43, 44, 45]);
+    let sweep = run_num_plates_sweep(
+        &[4, 8, 12, 16],
+        &[42, 43, 44, 45],
+        args.steps,
+        &args.preset,
+        0.2,
+    );
+    for p in &sweep.points {
+        println!(
+            "  num_plates={:>2} seed={}: plate_count={:?} cont_frac={:.3} s_oceanic={:.4} s_cont={:.4} residual={:.3e} wallclock={:.2}s",
+            p.num_plates, p.seed,
+            p.plate_count, p.continental_fraction.unwrap_or(f64::NAN),
+            p.s_oceanic_mean.unwrap_or(f64::NAN),
+            p.s_continental_interior_mean.unwrap_or(f64::NAN),
+            p.mass_conservation_residual.unwrap_or(f64::NAN),
+            p.wallclock_s,
+        );
+    }
 
     // -------- Reports --------
     let resolve_previous = |kind: ReportKind| {
@@ -350,6 +311,7 @@ fn main() -> ExitCode {
         k_sub_sweep: None,
         k_spread_calibration: None,
         boundary_layout_ascii: None,
+        num_plates_sweep: None,
     };
     if let Err(e) = write_markdown_report(&phys_output, &phys_inputs) {
         eprintln!("failed to write physics report: {}", e);
@@ -377,6 +339,7 @@ fn main() -> ExitCode {
         k_sub_sweep: None,
         k_spread_calibration: None,
         boundary_layout_ascii: None,
+        num_plates_sweep: None,
     };
     if let Err(e) = write_markdown_report(&reg_output, &reg_inputs) {
         eprintln!("failed to write regression report: {}", e);
@@ -384,8 +347,31 @@ fn main() -> ExitCode {
     }
     println!("regression report → {}", reg_output.display());
 
-    // Voronoi sweep report (minimal — just a table appended to an
-    // otherwise-empty physics-shape template).
+    // Voronoi sweep report.
+    let sweep_output = args.output_dir.join("step6_voronoi_sweep_report.md");
+    let sweep_inputs = ReportInputs {
+        kind: ReportKind::Step6VoronoiSweep,
+        seed: args.seed,
+        scales: &scales,
+        configs: &[],
+        metrics: &[],
+        previous: None,
+        suspect_justifications: &[],
+        mms: None,
+        ar_sweep: None,
+        bi_sweep: None,
+        br_sweep: None,
+        regression_vmax_peak: None,
+        k_sub_sweep: None,
+        k_spread_calibration: None,
+        boundary_layout_ascii: None,
+        num_plates_sweep: Some(&sweep),
+    };
+    if let Err(e) = write_markdown_report(&sweep_output, &sweep_inputs) {
+        eprintln!("failed to write sweep report: {}", e);
+        return ExitCode::from(1);
+    }
+    println!("sweep report → {}", sweep_output.display());
     // TODO Step 6 follow-up: a dedicated sweep renderer would be cleaner.
     ExitCode::SUCCESS
 }
