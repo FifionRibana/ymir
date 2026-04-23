@@ -185,6 +185,46 @@ cargo run --release --bin step_baseline -- \
 Writes the markdown report and a heightmap set under
 `docs/reports/step0_heightmaps/`.
 
+### Regression run convention (applicable from Step 5 onward)
+
+The regression run of step N activates all mechanisms up to and
+including step N-1 in their canonical configuration, and disables
+only the mechanism newly introduced at step N. It is compared
+against a reference physics run of step N-1 with the same "all
+mechanisms enabled" configuration.
+
+If step N-1's original physics run was executed with a non-
+canonical configuration (e.g., a mechanism disabled to isolate
+the newly-introduced mechanism of that step), step N produces a
+reference variant on its own branch: a physics run with all
+mechanisms through N-1 enabled. This variant is named explicitly
+in the regression report and serves only as the comparison target
+for step N's regression.
+
+Acceptance ratios in [0.95, 1.05] on wallclock and CG iters mean.
+
+Historical note: Steps 0-4 used a looser pattern where the
+regression run disabled all non-linear mechanisms. Step 4
+specifically disabled yielding + basal drag to isolate Br, which
+created an ambiguity on the comparison target (resolved
+retroactively by comparing to Step 3 physics rather than Step 3
+regression). From Step 5 onward, the convention above applies
+uniformly.
+
+Exception clause: if a step N introduces a mechanism that
+functionally presupposes step N-1 (e.g., a mechanism that acts
+on a field created by step N-1), disabling both N-1 and N
+together for the regression run is acceptable if explicitly
+justified in the issue. The default remains "disable only N".
+
+At Step 5 specifically, this is what the "reference variant"
+run in [`bin/step5_baseline.rs`](../../bin/step5_baseline.rs)
+produces: a Step 4 physics configuration with yielding Enabled
+(the merged Step 4 physics ran yielding Disabled for Br
+isolation), emitted to `docs/reports/step5_reference_variant_report.md`
+and serving as the comparison target for
+`docs/reports/step5_regression_report.md`.
+
 ## Note on the placeholder body force
 
 `f̃ = ε · sin(2π x̃ / L̃x) · ê_x` per the Step 0 spec. In the
