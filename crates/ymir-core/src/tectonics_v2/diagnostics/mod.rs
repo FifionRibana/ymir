@@ -17,6 +17,7 @@ pub mod br_sweep;
 pub mod comparison;
 pub mod harness;
 pub mod heightmap;
+pub mod k_sub_sweep;
 pub mod metrics;
 pub mod mms_bench;
 pub mod newton_metrics;

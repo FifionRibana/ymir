@@ -19,6 +19,11 @@ use super::newton_metrics::{
 };
 use crate::tectonics_v2::advection::{cfl_dt, integrated_mass, step_upwind};
 use crate::tectonics_v2::basal_drag::{build_drag_diagonal_field, BasalDragConfig};
+use crate::tectonics_v2::boundaries::{
+    apply_clamp_with_tracking, compute_source_sink_terms, div_v_cell, interface_mask, s_oceanic,
+    s_continental_collision_mean, s_continental_interior, BoundaryConfig,
+    BoundaryMechanismActive,
+};
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use crate::tectonics_v2::forcing::{BodyForce, ForceSum, GpeForce, SimulationState, SinusoidalForce, VectorField};
 use crate::tectonics_v2::presets::{Preset, YieldingConfig};
@@ -138,6 +143,17 @@ pub struct BaselineConfig {
     /// `BasalDragConfig::Enabled(BasalDragLaw { br, .. })`; the Br
     /// sweep varies the `br` field.
     pub basal_drag: BasalDragConfig,
+    /// Boundary source/sink configuration (Step 5). Default is
+    /// [`BoundaryConfig::Disabled`] — no Q evaluation, no clamp, no
+    /// tracking. `Enabled` carries the plate-type field, the
+    /// boundary-flag field, and the rate coefficients; the time loop
+    /// then runs `Advect(S, v) + dt·Q(S, v) → clamp → S̃_next`.
+    pub boundary: BoundaryConfig,
+    /// Human-readable layout name for the report's config dump.
+    /// Set when the boundary config is built from a named
+    /// [`crate::tectonics_v2::boundaries::BoundaryLayout`];
+    /// otherwise empty.
+    pub boundary_layout_name: String,
 }
 
 impl BaselineConfig {
@@ -166,6 +182,8 @@ impl BaselineConfig {
             s_perturbation_amplitude: 0.2,
             yielding: YieldingConfig::Disabled,
             basal_drag: BasalDragConfig::Disabled,
+            boundary: BoundaryConfig::Disabled,
+            boundary_layout_name: String::new(),
         }
     }
 }
@@ -186,6 +204,48 @@ fn init_thickness(nx: usize, ny: usize, seed: u64, amplitude: f64) -> Field2D {
             let y = (j as f64 + 0.5) / ny as f64;
             let bump = 1.0 + amplitude * ((2.0 * PI * x + phase).sin() * (2.0 * PI * y).cos());
             s.set(i, j, bump);
+        }
+    }
+    s
+}
+
+/// Step 5 — initialize `S̃` with per-plate-type means (oceanic = 0.2,
+/// continental = 1.0), each modulated by the same deterministic
+/// sinusoidal perturbation pattern as [`init_thickness`]. Called
+/// only when the run has a prescribed plate-type field via
+/// `BoundaryConfig::Enabled`; Step 0-4 harness callers continue to
+/// use the plate-type-agnostic `init_thickness`.
+///
+/// Physical justification: oceanic crust is ~7 km thick (S* scales
+/// to 0.2 dimensionless), continental ~35 km (1.0). Starting every
+/// cell at 1.0 forces the calibration loop to drain oceanic cells
+/// from 1.0 to 0.2 within the 3·τ* simulation window — which it
+/// cannot do at Step 5 baseline velocities (`peak|v| ≈ 1e-5`,
+/// `|Δv_conv| ≈ 1e-5`, so `Q_sub ≈ 5e-6` per step, drain rate far
+/// below the evolution window). Type-aware init sets the initial
+/// state to the physical reference thickness, and the calibration
+/// then adjusts `k_spread` around this.
+fn init_thickness_plate_aware(
+    nx: usize,
+    ny: usize,
+    seed: u64,
+    amplitude: f64,
+    plate_types: &crate::tectonics_v2::boundaries::PlateTypeField,
+) -> Field2D {
+    use std::f64::consts::PI;
+    use crate::tectonics_v2::boundaries::PlateType;
+    let phase = ((seed.wrapping_mul(2654435761u64)) as f64) / (u64::MAX as f64) * 2.0 * PI;
+    let mut s = Field2D::new(nx, ny);
+    for j in 0..ny {
+        for i in 0..nx {
+            let x = (i as f64 + 0.5) / nx as f64;
+            let y = (j as f64 + 0.5) / ny as f64;
+            let bump_scale = (2.0 * PI * x + phase).sin() * (2.0 * PI * y).cos();
+            let mean = match plate_types.get(i, j) {
+                PlateType::Oceanic => 0.2,
+                PlateType::Continental => 1.0,
+            };
+            s.set(i, j, mean + amplitude * mean * bump_scale);
         }
     }
     s
@@ -231,6 +291,89 @@ fn max_abs_grad_s(
     m
 }
 
+/// Return `(max|∇S̃| over interface cells, max|∇S̃| over the whole
+/// domain)`. Both use the same forward-difference stencil as
+/// [`max_abs_grad_s`]. Interface cells are those flagged by the
+/// companion `interface_mask` field — oceanic cells adjacent to at
+/// least one continental, or vice versa.
+fn grad_s_interface_vs_global(
+    nx: usize,
+    ny: usize,
+    dx: f64,
+    dy: f64,
+    idx_x: &PeriodicIndex,
+    idx_y: &PeriodicIndex,
+    s: &Field2D,
+    interface: &[bool],
+) -> (f64, f64) {
+    let inv_dx = 1.0 / dx;
+    let inv_dy = 1.0 / dy;
+    let mut max_interface = 0.0_f64;
+    let mut max_global = 0.0_f64;
+    for j in 0..ny {
+        let jp = idx_y.next(j);
+        for i in 0..nx {
+            let ip = idx_x.next(i);
+            let gx = (s.get(ip, j) - s.get(i, j)) * inv_dx;
+            let gy = (s.get(i, jp) - s.get(i, j)) * inv_dy;
+            let mag = (gx * gx + gy * gy).sqrt();
+            if mag > max_global {
+                max_global = mag;
+            }
+            if interface[j * nx + i] && mag > max_interface {
+                max_interface = mag;
+            }
+        }
+    }
+    (max_interface, max_global)
+}
+
+/// Return `(peak|f_GPE| over interface cells, peak|f_GPE| over the
+/// whole domain)` at the final timestep. Uses the same staggered
+/// discretisation as `GpeForce::accumulate`. The interface peak is
+/// the quantity monitored against issue #78 — a step-change jump
+/// between steps signals the spike; a progressive rise is the
+/// natural increase in S̃ heterogeneity as later mechanisms land.
+fn f_gpe_interface_vs_global(
+    nx: usize,
+    ny: usize,
+    dx: f64,
+    dy: f64,
+    idx_x: &PeriodicIndex,
+    idx_y: &PeriodicIndex,
+    s: &Field2D,
+    interface: &[bool],
+    ar: f64,
+) -> (f64, f64) {
+    let inv_dx = 1.0 / dx;
+    let inv_dy = 1.0 / dy;
+    let mut peak_interface = 0.0_f64;
+    let mut peak_global = 0.0_f64;
+    for j in 0..ny {
+        for i in 0..nx {
+            let im = idx_x.prev(i);
+            let jm = idx_y.prev(j);
+            let s_right = s.get(i, j);
+            let s_left = s.get(im, j);
+            let s_top = s.get(i, j);
+            let s_bot = s.get(i, jm);
+            let fx = -ar * 0.5 * (s_right + s_left) * (s_right - s_left) * inv_dx;
+            let fy = -ar * 0.5 * (s_top + s_bot) * (s_top - s_bot) * inv_dy;
+            let mag = (fx * fx + fy * fy).sqrt();
+            if mag > peak_global {
+                peak_global = mag;
+            }
+            // A face cell is "on an interface" if either side is
+            // interface-classed — use the cell itself as the proxy
+            // (its left/bottom faces inherit the classification).
+            if interface[j * nx + i] && mag > peak_interface {
+                peak_interface = mag;
+            }
+        }
+    }
+    (peak_interface, peak_global)
+}
+
 fn solve_nonlinear(
     grid: &Grid,
     law: &ViscosityLaw,
@@ -264,7 +407,24 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let dy = cfg.domain_ly / ny as f64;
     let grid = Grid::new(nx, ny, dx, dy);
 
-    let mut s = init_thickness(nx, ny, cfg.seed, cfg.s_perturbation_amplitude);
+    // Step 5: when boundary is Enabled, initialize S̃ per-plate-type
+    // so oceanic cells start near their physical reference (0.2) and
+    // continental cells start near 1.0. Without this, the calibration
+    // loop cannot drain oceanic cells from 1.0 down to 0.2 within
+    // the 3·τ* window (peak|v| ≈ 1e-5 at Step 5 baseline makes
+    // Q_sub ≈ 5e-6 per step). Steps 0-4 callers and the Step 5
+    // reference variant / regression (both `BoundaryConfig::Disabled`)
+    // keep the plate-type-agnostic init.
+    let mut s = match &cfg.boundary {
+        BoundaryConfig::Enabled { plate_types, .. } => init_thickness_plate_aware(
+            nx,
+            ny,
+            cfg.seed,
+            cfg.s_perturbation_amplitude,
+            plate_types.as_ref(),
+        ),
+        BoundaryConfig::Disabled => init_thickness(nx, ny, cfg.seed, cfg.s_perturbation_amplitude),
+    };
     let mut s_next = Field2D::new(nx, ny);
     let mut vx = vec![0.0; nx * ny];
     let mut vy = vec![0.0; nx * ny];
@@ -275,6 +435,21 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let idx_y = PeriodicIndex::new(ny);
 
     let mass_initial = integrated_mass(&s);
+
+    // Step 5 — scratch fields + accumulators for the boundary
+    // source/sink pipeline. Only allocated when `BoundaryConfig::Enabled`;
+    // the `None` arm drops to a structural by-pass and the per-step
+    // cost collapses to exactly Step 4's (modulo the scalar match).
+    let boundary_enabled = matches!(cfg.boundary, BoundaryConfig::Enabled { .. });
+    let mut div_v_scratch = if boundary_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    let mut q_field = if boundary_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    let mut q_sub_scratch = if boundary_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    let cell_area = dx * dy;
+    let mut q_integral = 0.0_f64;
+    let mut clamp_flux_integral = 0.0_f64;
+    let mut clamp_activation_sum = 0.0_f64;
+    let mut clamp_activation_max = 0.0_f64;
+    let mut clamp_samples: usize = 0;
 
     std::fs::create_dir_all(&cfg.output_dir).ok();
     let capture_steps: Vec<usize> = cfg
@@ -496,6 +671,44 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         let dt = dt_target.min(dt_cfl).max(0.0);
         if dt.is_finite() && dt > 0.0 {
             step_upwind(nx, ny, dx, dy, dt, &idx_x, &idx_y, &s, &vx, &vy, &mut s_next);
+            // Boundary source/sinks — issue #89 D9: splitting Lie
+            // explicit. `Q` is evaluated on `S̃(t)` and `ṽ(t)` (not
+            // post-advection state) and accumulated into the
+            // advected `s_next` as `s_next += dt·Q`. Clamp afterwards
+            // and track the artificial flux for the mass balance.
+            if let BoundaryConfig::Enabled { plate_types, flags, rates } = &cfg.boundary {
+                let div_v = div_v_scratch.as_mut().expect("boundary enabled → scratch");
+                let q = q_field.as_mut().expect("boundary enabled → q");
+                let q_sub = q_sub_scratch.as_mut().expect("boundary enabled → q_sub");
+                div_v_cell(nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy, div_v);
+                compute_source_sink_terms(
+                    plate_types.as_ref(),
+                    flags.as_ref(),
+                    rates,
+                    div_v,
+                    &idx_x,
+                    &idx_y,
+                    q_sub,
+                    q,
+                );
+                // Integrate Q*dt into s_next and accumulate the
+                // physical flux ∫Q dt dA.
+                let mut q_sum_step = 0.0_f64;
+                for (s_cell, &q_val) in s_next.data_mut().iter_mut().zip(q.data().iter()) {
+                    *s_cell += dt * q_val;
+                    q_sum_step += q_val;
+                }
+                q_integral += dt * q_sum_step * cell_area;
+                // Apply the hard floor + track the injected flux.
+                let clamp_stats = apply_clamp_with_tracking(&mut s_next);
+                clamp_flux_integral += clamp_stats.injected_flux * cell_area;
+                let frac = clamp_stats.activation_fraction();
+                clamp_activation_sum += frac;
+                if frac > clamp_activation_max {
+                    clamp_activation_max = frac;
+                }
+                clamp_samples += 1;
+            }
             std::mem::swap(&mut s, &mut s_next);
         }
 
@@ -526,6 +739,84 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         newton_agg.drag_vs_visc_diagonal_ratio = Some(drag_vs_visc_diagonal_ratio_sum / n);
     }
 
+    // Step 5 — boundary source/sink aggregates and final-state
+    // stats. Entire block is skipped under `BoundaryConfig::Disabled`
+    // (the Newton-agg Option slots stay `None`, which the report
+    // writer treats as "not applicable").
+    if let BoundaryConfig::Enabled { plate_types, flags, rates } = &cfg.boundary {
+        newton_agg.boundary_layout_name = None; // set by CLI via a separate hook if needed
+        let pt = plate_types.as_ref();
+        let fl = flags.as_ref();
+        let s_ocean = s_oceanic(&s, pt);
+        let s_cont = s_continental_interior(&s, pt, fl);
+        newton_agg.s_oceanic_mean = if s_ocean.count > 0 {
+            Some(s_ocean.mean)
+        } else {
+            None
+        };
+        newton_agg.s_oceanic_std = if s_ocean.count > 0 {
+            Some(s_ocean.std)
+        } else {
+            None
+        };
+        newton_agg.s_continental_interior_mean = if s_cont.count > 0 {
+            Some(s_cont.mean)
+        } else {
+            None
+        };
+        newton_agg.s_continental_interior_std = if s_cont.count > 0 {
+            Some(s_cont.std)
+        } else {
+            None
+        };
+        newton_agg.s_continental_collision_mean = s_continental_collision_mean(&s, pt, fl);
+        let mech_active = BoundaryMechanismActive::from(rates);
+        newton_agg.boundary_type_diversity = Some(
+            crate::tectonics_v2::boundaries::boundary_type_diversity(pt, fl, mech_active),
+        );
+        if clamp_samples > 0 {
+            newton_agg.clamp_activation_fraction_mean =
+                Some(clamp_activation_sum / clamp_samples as f64);
+            newton_agg.clamp_activation_fraction_max = Some(clamp_activation_max);
+        } else {
+            newton_agg.clamp_activation_fraction_mean = Some(0.0);
+            newton_agg.clamp_activation_fraction_max = Some(0.0);
+        }
+        newton_agg.q_integral = Some(q_integral);
+        newton_agg.clamp_flux_integral = Some(clamp_flux_integral);
+        // Mass-balance residual per issue #89 D5:
+        //   |Δmass_obs − ∫Q − ∫clamp_flux| / max(|∫Q|+|∫clamp|, 1)
+        // The `max(_, 1)` (on absolute mass scale) keeps the
+        // denominator away from zero in the balanced layout. The
+        // `reference_scale` is the total "expected traffic"
+        // through the balance, which matches the spec's intent.
+        let delta_mass_obs = (mass_final - mass_initial) * cell_area;
+        let numerator = (delta_mass_obs - q_integral - clamp_flux_integral).abs();
+        let denom_raw = q_integral.abs() + clamp_flux_integral.abs();
+        // Keep the denominator away from zero: floor at the
+        // machine-noise scale of `mass_initial * cell_area` so that
+        // an exactly balanced layout does not divide by an
+        // arbitrarily small "expected flux". The floor only kicks in
+        // when the physical flux is genuinely zero.
+        let denom_floor = 1.0e-12 * (mass_initial * cell_area).abs().max(1.0);
+        let denom = denom_raw.max(denom_floor);
+        newton_agg.mass_balance_residual = Some(numerator / denom);
+
+        // Step 5 — #78 monitoring: max|∇S| and peak|f_GPE| on
+        // oceanic/continental interface cells vs global reference.
+        let inter = interface_mask(pt, &idx_x, &idx_y);
+        let (grad_interface, grad_global) =
+            grad_s_interface_vs_global(nx, ny, dx, dy, &idx_x, &idx_y, &s, &inter);
+        newton_agg.max_grad_s_interface_final = Some(grad_interface);
+        newton_agg.max_grad_s_global_final = Some(grad_global);
+        let (fgpe_interface, fgpe_global) = f_gpe_interface_vs_global(
+            nx, ny, dx, dy, &idx_x, &idx_y, &s, &inter,
+            Scales::default().argand_number(),
+        );
+        newton_agg.peak_f_gpe_interface_final = Some(fgpe_interface);
+        newton_agg.peak_f_gpe_global_final = Some(fgpe_global);
+    }
+
     let cg_iter_mean = newton_agg.cg_iters_per_newton_mean();
     let cg_iter_max = newton_agg.cg_iters_per_newton_max();
     let kappa = condition_number_estimate(
@@ -533,6 +824,13 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         cfg.newton_cfg.linear_tol,
     );
 
+    // Step 5 — bubble the run-level yielding fraction into the top-
+    // level Metrics slot, and encode the boundary-type diversity as
+    // a dormant-metric payload (the `BoundaryTypeCounts` variant
+    // pre-dated the Step-5 design and does not carry the four mech
+    // classes; we encode the diversity as a count under `subduction`
+    // when appropriate and also expose the scalar via `newton_agg`).
+    let yielding_cf_top_level = newton_agg.yielding_cell_fraction_max;
     let metrics = Metrics {
         grid_nx: nx,
         grid_ny: ny,
@@ -563,7 +861,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         newton: Some(newton_agg),
         s_eq: None,
         boundary_type_diversity: None,
-        yielding_cell_fraction: None,
+        yielding_cell_fraction: yielding_cf_top_level,
         cratonic_stability: None,
         newton_outcome_distribution: None,
         age_field_stats: None,
@@ -604,6 +902,8 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         newton_rel_tol: cfg.newton_cfg.rel_tol,
         newton_max_outer_iters: cfg.newton_cfg.max_outer_iters,
         basal_drag_config: cfg.basal_drag.describe(),
+        boundary_config: cfg.boundary.describe(),
+        boundary_layout_name: cfg.boundary_layout_name.clone(),
     };
 
     BaselineResult { metrics, config_dump }

@@ -14,6 +14,7 @@
 
 pub mod advection;
 pub mod basal_drag;
+pub mod boundaries;
 pub mod diagnostics;
 pub mod field;
 pub mod forcing;
