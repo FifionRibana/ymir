@@ -24,6 +24,7 @@ pub mod field;
 pub mod forcing;
 pub mod presets;
 pub mod recycling;
+pub mod mantle;
 pub mod rheology;
 pub mod scales;
 pub mod slab;

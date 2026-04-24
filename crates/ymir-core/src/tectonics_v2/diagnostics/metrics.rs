@@ -94,6 +94,10 @@ pub struct SolverConfigDump {
     /// Describes the slab-pull configuration: `"Disabled"` or
     /// `"Enabled (Sp = 1.500, τ_slab = 0.500, k_slab_accum = 1.000, ε = 1.0e-6)"`.
     pub slab_pull_config: String,
+    // --- Step 8 addition ---
+    /// Describes the mantle forcing configuration: `"Disabled"`
+    /// or `"Enabled (Mf = 1.000, coupling = 1.000, num_modes = 6, seed = 42, evolution_rate = 0.000)"`.
+    pub mantle_config: String,
 }
 
 impl SolverConfigDump {
@@ -124,6 +128,7 @@ impl SolverConfigDump {
              | boundary config | {} |\n\
              | boundary layout | {} |\n\
              | slab-pull | {} |\n\
+             | mantle forcing | {} |\n\
              | seed | {} |\n",
             self.formulation,
             self.discretization,
@@ -151,6 +156,7 @@ impl SolverConfigDump {
                 self.boundary_layout_name.as_str()
             },
             self.slab_pull_config,
+            self.mantle_config,
             self.seed,
         )
     }

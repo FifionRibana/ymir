@@ -234,6 +234,7 @@ fn calibration_probe(
         boundary,
         boundary_layout_name: layout_name,
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
+        mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
     };
     let r = run_baseline(&cfg);
     r.metrics
@@ -287,6 +288,7 @@ fn run_scenario_multi_grid(
             boundary,
             boundary_layout_name: layout_name,
             slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
+            mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
         };
         println!("-- running {}×{} for {} steps --", nx, ny, args.steps);
         let r = run_baseline(&cfg);

@@ -225,6 +225,29 @@ isolation), emitted to `docs/reports/step5_reference_variant_report.md`
 and serving as the comparison target for
 `docs/reports/step5_regression_report.md`.
 
+## Step 8 regression convention exception (pending slab+mantle co-calibration)
+
+The §Regression run convention installed at Step 5 — "regression = Step
+N physics − new-mechanism" — is suspended for Step 8. The nominal
+application would be "Step 7 physics − `MantleConfig::Enabled`", i.e.
+Step 6 physics + `SlabPullConfig::Enabled` + `MantleConfig::Disabled`.
+That configuration is pathological: slab-pull at the §4.8 target band
+produces exponential runaway in the mantle-activated regime (see
+`docs/reports/step8_physics_report.md §Slab+Mantle interaction
+instability finding` for the diagnostic and loop-gain derivation).
+
+**Step 8 exception.** Both the physics baseline and the regression hold
+slab-pull `Disabled`. The physics toggles mantle `Enabled` on a Step 6
+base; the regression toggles it `Disabled`, reducing to Step 6 physics
+bit-identically. Ratios in the regression report compare against
+`step6_physics_report.md`, not `step7_physics_report.md`.
+
+The convention is restored after the slab+mantle co-calibration issue
+is resolved (draft in `docs/followup_slab_mantle_cocalibration.md`).
+The `v2_mantle_runaway_diagnostic` test (currently `#[ignore]`-d) will
+be promoted to a non-ignored regression guard at that point, so any
+future change re-introducing the instability fails CI.
+
 ## Yielding checkpoint (revised at Step 7)
 
 The checkpoint installed at Step 3 and carried through Steps 4-6 with the
