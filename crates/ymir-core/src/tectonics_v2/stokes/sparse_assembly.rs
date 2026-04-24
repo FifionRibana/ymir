@@ -19,13 +19,37 @@
 //! the algebraic rewrite of [`super::operator::apply_momentum`]
 //! — see the doc on [`assemble_picard_csr`] for the per-row layout.
 //!
-//! # Matrix-free parity guarantee
+//! # Matrix-free parity guarantee — relative per-product metric
 //!
-//! The `v2_sparse_assembly_vs_matrix_free` integration test pins
-//! `apply_momentum(eta, drag, x) == Csr·x` to `1e-14` on 10 seeded
-//! test vectors spanning (constant, linear ramps, k=1/k=2 sinusoids,
-//! random). Any sign error or stencil-averaging mistake in the
-//! assembly trips the test.
+//! `CsrMatrix::apply` and `apply_momentum` compute **the same
+//! algebraic expression** — the only difference is the order in
+//! which the per-row products are accumulated. f64 is not
+//! associative under addition, so each output component differs
+//! from its matrix-free counterpart by at most the accumulated
+//! rounding
+//! ```text
+//!   |y_csr[k] − y_mf[k]| ≲ (nnz_per_row) · ε_mach · ‖A_k‖ · ‖x‖
+//! ```
+//! where `ε_mach ≈ 1.1·10⁻¹⁶` and `nnz_per_row = 9` here. On
+//! heterogeneous η (operator row-norm `~ O(η_max / dx²)`) the
+//! operator magnitude dominates and the *absolute* diff can be
+//! `O(10⁻¹⁰)` or larger — not a correctness issue, pure rounding.
+//!
+//! The parity tests therefore use a **relative per-product**
+//! metric:
+//! ```text
+//!   rel_diff = max_k |y_csr[k] − y_mf[k]| / (‖y_mf‖_∞ · nnz_per_row)
+//! ```
+//! which is bounded by `~ε_mach` and is the rigorous
+//! machine-precision parity statement. Thresholds of `< 1e-14`
+//! apply uniformly across uniform η, 100×/10⁴× contrast fields,
+//! basal-drag augmentation, and all real snapshot captures.
+//!
+//! Covered by the 5 lib unit tests (`sparse_assembly::tests`) on
+//! synthetic η and 4 integration tests
+//! (`v2_sparse_assembly_snapshot_parity`) on real captured states
+//! (step0, step3, step6, step7), each exercising 10 seeded zero-
+//! mean test vectors.
 //!
 //! # Determinism
 //!
