@@ -57,6 +57,9 @@ pub struct SheetConfig {
     /// from degenerate η fields without annihilating near-singular
     /// information.
     pub diag_floor: f64,
+    /// Preconditioner dispatch (Phase 4.3). Default is `JacobiCG`
+    /// which preserves the pre-8.5a behaviour byte-for-byte.
+    pub linear_solver: solver::LinearSolverConfig,
 }
 
 impl Default for SheetConfig {
@@ -65,6 +68,7 @@ impl Default for SheetConfig {
             tol: 1e-8,
             max_iter: 1000,
             diag_floor: 1e-20,
+            linear_solver: solver::LinearSolverConfig::default(),
         }
     }
 }
@@ -107,11 +111,21 @@ pub fn solve_sheet(
     assert_eq!(vx.len(), n);
     assert_eq!(vy.len(), n);
 
-    // --- Preconditioner (η and drag_diag are frozen during the solve) ---
+    // --- Preconditioner dispatch (Phase 4.3). Build either a
+    // Jacobi from the momentum diagonal (default, bit-parity
+    // preserved) or an AMG preconditioner from the sparse Picard
+    // block. Both consume the same frozen η and drag_diag. ---
     let mut diag_vx = vec![0.0; n];
     let mut diag_vy = vec![0.0; n];
     momentum_diagonal(grid, eta, drag_diag, &mut diag_vx, &mut diag_vy);
     let vjac = VelocityJacobi::from_diagonal(&diag_vx, &diag_vy, cfg.diag_floor);
+    let amg_precond: Option<amg::AmgPreconditioner> = match cfg.linear_solver {
+        solver::LinearSolverConfig::JacobiCG => None,
+        solver::LinearSolverConfig::AmgCG(amg_cfg) => {
+            let a_picard = sparse_assembly::assemble_picard_csr(grid, eta, drag_diag);
+            Some(amg::AmgPreconditioner::build(&a_picard, n, amg_cfg))
+        }
+    };
 
     // --- Pack RHS and initial guess into [vx; vy] layout ---
     let mut b_pack = Vec::with_capacity(2 * n);
@@ -138,13 +152,15 @@ pub fn solve_sheet(
         out_x.copy_from_slice(&tmp_ax);
         out_y.copy_from_slice(&tmp_ay);
     };
-    let mut precond = |r: &[f64], z: &mut [f64]| {
-        vjac.apply(r, z);
-    };
-
-    // --- Solve ---
+    // --- Solve — dispatch on preconditioner ---
     let cg = ConjugateGradient::new(cfg.tol, cfg.max_iter);
-    let cg_stats: SolverStats = cg.solve(&mut matvec, &mut precond, &b_pack, &mut x_pack);
+    let cg_stats: SolverStats = if let Some(amg) = amg_precond.as_ref() {
+        let mut precond = |r: &[f64], z: &mut [f64]| amg.apply(r, z);
+        cg.solve(&mut matvec, &mut precond, &b_pack, &mut x_pack)
+    } else {
+        let mut precond = |r: &[f64], z: &mut [f64]| vjac.apply(r, z);
+        cg.solve(&mut matvec, &mut precond, &b_pack, &mut x_pack)
+    };
 
     vx.copy_from_slice(&x_pack[..n]);
     vy.copy_from_slice(&x_pack[n..]);

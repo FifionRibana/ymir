@@ -43,7 +43,7 @@ use crate::tectonics_v2::stokes::nonlinear_solver::{
     NewtonConfig, NewtonSolver, NonlinearOutcome, NonlinearSolver, SnapshotSpec,
 };
 use crate::tectonics_v2::stokes::picard::{PicardConfig, PicardSolver};
-use crate::tectonics_v2::stokes::solver::ConjugateGradient;
+use crate::tectonics_v2::stokes::solver::{ConjugateGradient, LinearSolverConfig};
 
 #[derive(Clone, Copy, Debug)]
 pub enum NonlinearChoice {
@@ -200,6 +200,12 @@ pub struct BaselineConfig {
     /// preserves bit-parity with pre-Step-8.5a runs. `Some(spec)`
     /// instruments the Newton solver at the target step.
     pub capture: Option<HarnessCaptureSpec>,
+    /// Step 8.5a Phase 4.3 preconditioner dispatch. Default
+    /// `JacobiCG` preserves the pre-8.5a code path bit-for-bit.
+    /// `AmgCG(cfg)` switches the Newton inner CG + the linear
+    /// `solve_sheet` path to AMG Option B' (Picard block V-cycle,
+    /// matrix-free Newton tangent).
+    pub linear_solver: LinearSolverConfig,
 }
 
 impl BaselineConfig {
@@ -233,6 +239,7 @@ impl BaselineConfig {
             slab_pull: SlabPullConfig::Disabled,
             mantle: MantleConfig::Disabled,
             capture: None,
+            linear_solver: LinearSolverConfig::default(),
         }
     }
 }
@@ -436,13 +443,15 @@ fn solve_nonlinear(
     picard_cfg: PicardConfig,
     cg: &ConjugateGradient,
     capture: Option<SnapshotSpec>,
+    linear_solver: LinearSolverConfig,
 ) -> NonlinearOutcome {
     match choice {
         NonlinearChoice::Newton => {
-            let solver = match capture {
+            let mut solver = match capture {
                 Some(spec) => NewtonSolver::with_capture(newton_cfg, spec),
                 None => NewtonSolver::new(newton_cfg),
             };
+            solver.linear_solver = linear_solver;
             solver.solve(grid, law, drag_diag, rhs_x, rhs_y, vx, vy, cg)
         }
         NonlinearChoice::Picard => {
@@ -450,6 +459,12 @@ fn solve_nonlinear(
                 eprintln!(
                     "[capture] warning: Phase 0 capture hook only implemented on \
                      NewtonChoice; Picard path will not emit a snapshot"
+                );
+            }
+            if !matches!(linear_solver, LinearSolverConfig::JacobiCG) {
+                eprintln!(
+                    "[linear_solver] warning: Picard path does not yet route through \
+                     LinearSolverConfig; continuing with the Picard-internal Jacobi CG"
                 );
             }
             let solver = PicardSolver::new(picard_cfg);
@@ -1019,6 +1034,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             cfg.picard_cfg,
             &cg,
             capture_for_step,
+            cfg.linear_solver,
         );
         record_outcome(&outcome, &mut newton_agg);
 

@@ -165,21 +165,42 @@ pub struct NewtonSolver {
     /// "one-shot" semantics reduce to "capture fires at k=0 of this
     /// solver's single `solve()` call".
     pub capture: Option<SnapshotSpec>,
+    /// Preconditioner dispatch for the inner CG. `JacobiCG` is the
+    /// default and matches the pre-8.5a code path bit-for-bit.
+    /// `AmgCG(cfg)` activates the Step 8.5a Classical-RS V-cycle
+    /// preconditioner on the Picard block.
+    pub linear_solver: super::solver::LinearSolverConfig,
 }
 
 impl NewtonSolver {
     pub fn new(cfg: NewtonConfig) -> Self {
-        Self { cfg, capture: None }
+        Self {
+            cfg,
+            capture: None,
+            linear_solver: super::solver::LinearSolverConfig::default(),
+        }
     }
 
     pub fn with_capture(cfg: NewtonConfig, spec: SnapshotSpec) -> Self {
-        Self { cfg, capture: Some(spec) }
+        Self {
+            cfg,
+            capture: Some(spec),
+            linear_solver: super::solver::LinearSolverConfig::default(),
+        }
+    }
+
+    pub fn with_linear_solver(cfg: NewtonConfig, linear: super::solver::LinearSolverConfig) -> Self {
+        Self { cfg, capture: None, linear_solver: linear }
     }
 }
 
 impl Default for NewtonSolver {
     fn default() -> Self {
-        Self { cfg: NewtonConfig::default(), capture: None }
+        Self {
+            cfg: NewtonConfig::default(),
+            capture: None,
+            linear_solver: super::solver::LinearSolverConfig::default(),
+        }
     }
 }
 
@@ -374,8 +395,29 @@ impl NonlinearSolver for NewtonSolver {
                 out_y.copy_from_slice(&tmp_ay);
                 super::operator::apply_tangent(grid, &ctx, vx_in, vy_in, out_x, out_y);
             };
-            let mut precond = |r: &[f64], z: &mut [f64]| vjac.apply(r, z);
-            let cg_stats: SolverStats = cg.solve(&mut matvec, &mut precond, &rhs_pack, &mut dv_pack);
+            // Preconditioner dispatch (Phase 4.3). `JacobiCG` branch
+            // is the bit-parity-preserved pre-8.5a path: uses the
+            // already-built `vjac` from the diagonal computed above.
+            // `AmgCG(amg_cfg)` assembles the sparse Picard block and
+            // constructs the two-hierarchy preconditioner fresh per
+            // Newton outer iter (η is frozen within the inner CG).
+            let cg_stats: SolverStats = match self.linear_solver {
+                super::solver::LinearSolverConfig::JacobiCG => {
+                    let mut precond = |r: &[f64], z: &mut [f64]| vjac.apply(r, z);
+                    cg.solve(&mut matvec, &mut precond, &rhs_pack, &mut dv_pack)
+                }
+                super::solver::LinearSolverConfig::AmgCG(amg_cfg) => {
+                    let a_picard = super::sparse_assembly::assemble_picard_csr(
+                        grid,
+                        &ctx.eta_center,
+                        drag_diag,
+                    );
+                    let amg_precond =
+                        super::amg::AmgPreconditioner::build(&a_picard, n, amg_cfg);
+                    let mut precond = |r: &[f64], z: &mut [f64]| amg_precond.apply(r, z);
+                    cg.solve(&mut matvec, &mut precond, &rhs_pack, &mut dv_pack)
+                }
+            };
             trace.linear_iters.push(cg_stats.iterations);
             linear_iters_total = linear_iters_total.saturating_add(cg_stats.iterations as u32);
 

@@ -53,6 +53,7 @@ fn build_cfg(
         slab_pull: slab,
         mantle,
         capture: None,
+        linear_solver: Default::default(),
     }
 }
 
