@@ -93,6 +93,7 @@ pub fn run_k_sub_sweep(
             boundary,
             boundary_layout_name: layout_name.to_string(),
             slab_pull: crate::tectonics_v2::slab::SlabPullConfig::Disabled,
+            mantle: crate::tectonics_v2::mantle::MantleConfig::Disabled,
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(k_sub, &r));

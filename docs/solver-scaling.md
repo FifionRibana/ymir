@@ -361,6 +361,14 @@ This eliminates the velocity clamp entirely. Moved to §6.
 
 **Activation regime requires pre-existing non-quiescent flow.** The nondimensional $\mathrm{Sp}$ defined above assumes $\eta \sim O(1)$. In the floor-dominated regime where $\dot\varepsilon_{II} < \dot\varepsilon_\text{min}$ everywhere, the effective viscosity is $\eta_\text{newton} = \dot\varepsilon_\text{min}^{1/n-1} \approx 100$, and the closed-loop gain $G = \mathrm{Sp}\cdot k_\text{slab-accum}\cdot \tau_\text{slab}\,/\,(\eta\cdot L)$ stays $\ll 1$ over the $\mathrm{Sp} \in [0.5, 3]$ range. The quiescent fixed point is linearly stable — slab-pull alone cannot bootstrap the system out of floor-domination. Activation requires an external initiator (mantle forcing §4.9) that imposes flow independently of the local closed-loop gain. Consequence: **slab-pull is an amplifier, not an initiator**; it transforms pre-existing convergence into traction but cannot create convergence where none exists. This was demonstrated empirically at the Step 7 baseline (see `step7_physics_report.md §Yielding checkpoint`) — `peak|v|` unchanged from Step 6 across the full $\mathrm{Sp}$ band, matching the loop-gain prediction $G \sim 7\times 10^{-3}$.
 
+**Activation-regime stability constraint (Step 8 finding).** When activated by mantle forcing (§4.9) with $\mathrm{peak}|v| \sim O(\mathrm{Mf}) = O(1)$, the slab-pull closed-loop gain switches to
+
+$$
+G_\text{activated} \;=\; \frac{\mathrm{Sp}\cdot k_\text{slab-accum}\cdot \tau_\text{slab}\cdot (2/\Delta x)}{2\,\eta_\text{op}\,k^2}.
+$$
+
+The discrete divergence operator in $\tilde Q_\text{sub-conv}$ amplifies $|\mathrm{div}\,v|_\text{max} \sim 2|v|/\Delta x$ at the grid spacing $\Delta x$ (here $1/64$), and $\eta_\text{op}$ in the activated regime descends to $O(1)$ via the power-law. For stability $G_\text{activated} < 1$ is required. At the §4.8 target band $\mathrm{Sp} \in [0.5, 3]$ with baseline $(k_\text{slab-accum}=1,\;\tau_\text{slab}=0.5)$ on a 64² grid, $G_\text{activated} \approx 96/80 > 1$ — runaway exponential instability, verified empirically at Step 8 (see `step8_physics_report.md §Slab+Mantle interaction instability finding`). The §4.8 and §4.9 parameter bands are **not co-calibrated for the activated regime**. Resolution is the subject of a follow-up co-calibration issue (draft in `docs/followup_slab_mantle_cocalibration.md`); until resolved, the Step 8 baseline runs with slab-pull Disabled and the mantle bootstrap is validated in isolation.
+
 ### 4.9 Mantle convection forcing
 
 The mantle convection proxy applies a continuous velocity bias to plates:
