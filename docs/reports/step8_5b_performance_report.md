@@ -221,10 +221,43 @@ a smoother-alone eigenmode.
 
 22 AMG lib tests green, 8 AMG integration tests green.
 
-## Phase 4 — AMG setup parallelised (TBD)
+## Phase 4 — AMG setup parallelised
 
-Galerkin R·A·P, prolongation/restriction row construction, sparse
-assembly.
+Two setup hot-paths rewired:
+
+| Call site | Pattern |
+|---|---|
+| [`sparse_assembly::assemble_picard_csr`](../../crates/ymir-core/src/tectonics_v2/stokes/sparse_assembly.rs) | `(0..n_dofs).into_par_iter().map(per-row build + sort + dedup).collect::<Vec<Vec<(usize, f64)>>>()` then sequential flatten into `row_ptr` / `col_idx` / `values`. Each row is a pure function of the row index, `grid`, `eta`, and optionally `drag_diag`, so the output is bit-identical to the pre-8.5b sequential version. Called once per Newton outer iter on the full 2N×2N matrix. |
+| [`CsrMatrix::apply`](../../crates/ymir-core/src/tectonics_v2/stokes/sparse_assembly.rs) | Sparse matvec `y = A · x` via `y.par_iter_mut().enumerate()`: each row computes a local dot-product and writes to its unique `y[i]`. Called inside every CG iteration on the AMG path. |
+| [`amg::setup::galerkin_coarsen`](../../crates/ymir-core/src/tectonics_v2/stokes/amg/setup.rs) | R·A·P product: `(0..n_coarse_rows).into_par_iter().map(row-local BTreeMap accumulate).collect()` then sequential flatten. BTreeMap is row-local, natural ascending-column iteration preserves the D9 canonical CSR invariant. Called per Newton outer iter per coarse level. |
+
+Prolongation / restriction building and strong-connections scan
+remain sequential — per the issue's guidance ("parallel where
+obvious gain, sequential otherwise; don't over-engineer for
+negligible setup cost"). Those three together amount to a few
+percent of setup time on the hierarchies we measured; the gain
+on them would be dwarfed by the rayon overhead of launching.
+If Phase 6 benchmarks reveal otherwise, they are a quick
+follow-up.
+
+### Validation
+
+| Test | Coverage | Result |
+|---|---|---|
+| `sparse_assembly::csr_is_byte_deterministic` | two independent captures produce byte-identical `row_ptr`/`col_idx`/`values` after parallelisation | ✅ |
+| `sparse_assembly::csr_matches_matrix_free_{uniform,contrast,basal_drag}` | rel-per-product parity vs matrix-free `apply_momentum` at `< 1e-14` across uniform / 100× / 10⁴× / drag-augmented η | ✅ (3/3) |
+| `amg::setup::build_hierarchy_is_deterministic` | hierarchy (including Galerkin levels) byte-identical across repeats | ✅ |
+| `amg::setup::galerkin_preserves_variational_property_on_constants` | coarse operator still annihilates the null-space constant | ✅ |
+| `v2_sparse_assembly_snapshot_parity` | 4 real snapshots × 10 seeded vectors, rel-per-product < 1e-14 | ✅ |
+| `v2_amg_scalar_parity` | step0/3/6/7 reference-based parity within `C · κ · (tol_test + tol_ref)` | ✅ 4/4 |
+| `v2_step8_regression_smoke::disabled_runs_are_bit_deterministic` | two 20-step physics runs produce byte-identical metrics through full AMG-capable pipeline | ✅ |
+
+Bit-determinism invariant holds **end-to-end**: the parallel
+version of `assemble_picard_csr` and `galerkin_coarsen` produce
+byte-for-byte identical CSR tensors to the sequential
+implementation (the map/collect preserves row order, and the
+sequential flatten fixes the concatenation order). Phase 4's
+parallelisation is pure performance — no algebraic drift.
 
 ## Phase 5 — Newton extrapolation order 2 (TBD)
 
