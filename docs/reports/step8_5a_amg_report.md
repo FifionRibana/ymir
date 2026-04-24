@@ -531,11 +531,153 @@ Interpretation (informational only at Phase 2.7):
 - [x] Phase 2 commits landed on issue branch (`7ac616a` through
       Phase 2.7 FEAT).
 
-### Phase 3 — V-cycle on heterogeneous Stokes
+## Phase 3 — step8 investigation and α partial merge
 
-*Not yet started. Picks up the step8 plateau investigation with
-the revised convergence-first gate from
-§"Gate revision — convergence-first formulation (post-Phase-0)".*
+### Phase 3.0 — formal multi-run gates for step0/3/6/7
+
+Re-measured Phase 2.7 bonus numbers with 5-run wallclock and
+asserted iter-count caps per reviewer contract.
+Test: [`v2_amg_phase3_diagnostic::phase3_0_formal_gates_step0_step3_step6_step7`](../../crates/ymir-core/tests/v2_amg_phase3_diagnostic.rs).
+
+| Case | AMG iters (D9) | Wallclock (5-run mean ± std) | Gate | Verdict |
+|---|---|---|---|---|
+| `step0_quiescent`        | 4 | 29.5 ± 2.7 ms | ≤ 10 | ✅ PASS |
+| `step3_floor_yielding`   | 9 | 32.3 ± 2.1 ms | ≤ 15 | ✅ PASS |
+| `step6_voronoi`          | 9 | 33.4 ± 1.3 ms | ≤ 40 | ✅ PASS |
+| `step7_slab_off`         | 8 | 32.2 ± 1.0 ms | ≤ 40 | ✅ PASS |
+
+D9 determinism verified: iter count identical across all 5 runs
+for every case (enforced inside the test via an `assert_eq!`).
+
+### Phase 3.1 — step8 diagnostic "carte du territoire"
+
+Three mandatory measurements per reviewer contract, archived in
+[`v2_amg_phase3_diagnostic::phase3_1_diagnostic_step6_vs_step8`](../../crates/ymir-core/tests/v2_amg_phase3_diagnostic.rs).
+
+**η profile comparison** — step6 is near-homogeneous, step8 is
+four orders of magnitude heterogeneous:
+
+| Case | η min | η max | Contrast (max/min) |
+|---|---|---|---|
+| `step6_voronoi`   | 5.06·10¹ | 6.87·10¹ | **1.36×** |
+| `step8_activated` | 9.44·10⁻⁴ | 3.83·10¹ | **4.06·10⁴×** |
+
+**Hierarchy structure** — not the problem. Both cases coarsen
+similarly (~0.4-0.5 ratio per level), build to ~40-50 unknowns at
+the coarsest, 6 levels on step6 and 7 on step8.
+
+**V-cycle per-level residual trace** (on the u-u scalar block,
+no u-v coupling in the experiment) — THE DIAGNOSTIC FINDING:
+
+```text
+step6_voronoi  (converges, 9 AMG iters total):
+  level 0 before V-cycle:     ‖r‖∞ = 1.05e-3
+  [pre-smooth and restriction keep residuals ≲ 4e-4 across levels]
+  level 0 after V-cycle:      ‖r‖∞ = 2.45e-5
+  reduction ratio:            0.023   (< 0.1 → V-cycle WORKS)
+
+step8_activated  (plateau, 2000 AMG iters, non-converged):
+  level 0 before V-cycle:     ‖r‖∞ = 4.42e-1
+  level 0 after pre-smooth:   ‖r‖∞ = 3.36e-1   (OK, reduces)
+  level 1 after pre-smooth:   ‖r‖∞ = 5.89e-1   ← INCREASES
+  level 2 after pre-smooth:   ‖r‖∞ = 1.07e+0   ← INCREASES
+  level 3 after pre-smooth:   ‖r‖∞ = 1.66e+0   ← INCREASES
+  level 4 after pre-smooth:   ‖r‖∞ = 1.56e+0   (peaks)
+  level 5 after pre-smooth:   ‖r‖∞ = 1.74e-1   (drops)
+  coarse LU:                  solve OK
+  level 0 after V-cycle:      ‖r‖∞ = 2.98e-1
+  reduction ratio:            0.67    (> 0.5 → V-cycle INEFFICIENT)
+```
+
+### Finding — Classical Ruge-Stüben at the limit of η-contrast 4·10⁴
+
+On step8's coarse levels, **SGS pre-smoothing AMPLIFIES the
+residual instead of reducing it**. This is the classical signature
+of a smoother whose iteration matrix `D⁻¹(L+U)` has spectral radius
+> 1 on the Galerkin-coarsened operator — i.e., Classical RS
+coarsening on this η-contrast produces a coarse operator that has
+lost diagonal dominance, and SGS is no longer a valid smoother.
+
+Crucially, **the diagnostic was run on the u-u scalar block with
+no u-v cross-coupling** (via `extract_diagonal_block`). The
+failure is on the scalar problem alone, so **Option A' (point-based
+2×2 block AMG) cannot be the resolution** — it addresses u-v
+coupling, which is not the blocker here.
+
+The issue's §D1 explicitly anticipated this boundary:
+
+> SA-AMG would be more robust for extreme η contrasts (> 10⁶)
+> but our activated-regime contrast is ~10⁴, within Classical's
+> well-behaved range. [...] If Classical proves insufficient,
+> SA-AMG becomes the next step.
+
+Our measured contrast on `step8_activated` is 4·10⁴ — right at
+the boundary where the D1 prediction turns over. The issue was
+mathematically correct; the measurement lands at the exact
+threshold.
+
+### Phase 3 decision — α partial merge, follow-up renamed
+
+- **No Phase 3.2 tuning.** Tuning θ, smooth-sweeps, or
+  max_levels does not address Galerkin loss of diagonal
+  dominance. Pursuing tuning here would be acharnement; the
+  diagnostic is conclusive.
+- **Step 8.5a ships under α** (partial merge per the reviewer
+  contract): `step0/3/6/7` gates pass with margins, Poisson
+  gates pass, JacobiCG bit-parity preserved, `step8` documented
+  as out-of-regime with a pointer to Step 8.5a.2 follow-up.
+- **Follow-up issue renamed from "Option A'" → "Step 8.5a.2 —
+  advanced AMG techniques for extreme η-contrast"**, with
+  SA-AMG (Vanek-Mandel-Brezina 1996) as the primary working
+  hypothesis but **not the sole fallback**. SA-AMG itself starts
+  to struggle in the 10⁴-10⁶ range per the literature; Step
+  8.5a.2 explicitly budgets for alternatives:
+  - Smoother upgrades (Chebyshev polynomial, ILU(0))
+  - Cycle variants (W-cycle, F-cycle)
+  - Hybrid schemes (Jacobi fine + AMG coarse)
+  Framed as "investigation of advanced AMG techniques", not
+  "implement SA-AMG". First phase is a feasibility prototype
+  on the step8 snapshot before full commitment.
+
+### α.1 downstream contract — AmgCG is opt-in per regime
+
+**AMG is recommended for step0-7 regimes (η-contrast ≲ 10²).**
+**For step8-like regimes (η-contrast > 10⁴), remain on Jacobi
+until Step 8.5a.2 delivers SA-AMG (or equivalent).** The AmgCG
+dispatch is **opt-in** via `LinearSolverConfig`; downstream steps
+choose which preconditioner to use based on their regime.
+
+No automatic Jacobi-fallback inside AmgCG:
+- Hiding the failure would mask the problem and defer its
+  correct resolution.
+- Complexity cost is permanent for a case that 8.5a.2 will
+  resolve.
+- Explicit opt-in makes the regime mismatch visible to the user.
+
+### Phase 3 gate
+
+- [x] Phase 3.0 gates asserted, test `v2_amg_phase3_diagnostic`
+      passes.
+- [x] Phase 3.1 diagnostic measurements archived in the test,
+      reproducible at any time via `cargo test
+      v2_amg_phase3_diagnostic -- --nocapture`.
+- [x] Finding documented: Classical RS + η-contrast 4·10⁴ at the
+      D1-predicted boundary, not a u-v coupling issue.
+- [x] Option A' → Step 8.5a.2 "advanced AMG" rename validated
+      by reviewer.
+- [x] α partial merge contract satisfied; downstream regime
+      recommendation clause published.
+- [x] Phase 3 FEAT commit sealed.
+
+## Phase 4 — FMG orchestration + scalar-parity + graduation gate
+
+Phase 4 operates within α scope: step0-7 only, step8 excluded.
+FMG builds on the V-cycle machinery from Phase 2; scalar-parity
+tests verify AmgCG converges to the same solution as JacobiCG
+on Step 0-7 configurations (to 1e-5 relative) without breaking
+JacobiCG's bit-parity on its default path.
+
+*In progress.*
 
 ## Phase 6 — Graduation gate (physics re-runs)
 
