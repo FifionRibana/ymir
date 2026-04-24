@@ -22,9 +22,13 @@ use crate::tectonics_v2::boundaries::{
     div_v_cell, interface_mask, s_continental_collision_mean, s_continental_interior, s_oceanic,
 };
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
-use crate::tectonics_v2::forcing::SlabPullForce;
+use crate::tectonics_v2::forcing::{MantleForce, SlabPullForce};
 use crate::tectonics_v2::forcing::{
     BodyForce, ForceSum, GpeForce, SimulationState, SinusoidalForce, VectorField,
+};
+use crate::tectonics_v2::mantle::{
+    build_mantle_diagonal_field, build_mantle_pattern, generate_stream_function, MantleConfig,
+    MantlePattern, StreamFunctionConfig,
 };
 use crate::tectonics_v2::presets::{Preset, YieldingConfig};
 use crate::tectonics_v2::rheology::{self, StrainRate, ViscosityLaw};
@@ -169,6 +173,16 @@ pub struct BaselineConfig {
     /// is structurally bypassed and Step 0-6 harness callers stay
     /// unchanged. The Step 7 regression verifies this invariant.
     pub slab_pull: SlabPullConfig,
+    /// Mantle forcing configuration (Step 8). Default is
+    /// [`MantleConfig::Disabled`]: the full mantle pipeline
+    /// (stream-function pattern, `MantleForce` RHS term, and the
+    /// `coupling · S̃` diagonal augmentation) is structurally
+    /// bypassed and Step 0-7 harness callers stay unchanged. The
+    /// Step 8 regression verifies this invariant in scalar
+    /// parity with Step 7 physics (exact bit-identity by
+    /// construction — no mantle contribution means the operator
+    /// reproduces Step 7 exactly).
+    pub mantle: MantleConfig,
 }
 
 impl BaselineConfig {
@@ -200,6 +214,7 @@ impl BaselineConfig {
             boundary: BoundaryConfig::Disabled,
             boundary_layout_name: String::new(),
             slab_pull: SlabPullConfig::Disabled,
+            mantle: MantleConfig::Disabled,
         }
     }
 }
@@ -571,6 +586,51 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let mut f_slab_to_f_gpe_ratio_sum: f64 = 0.0;
     let mut f_slab_to_f_gpe_ratio_samples: usize = 0;
 
+    // Step 8 — mantle forcing state, pre-allocated once.
+    // The pattern is static at Step 8 (evolution_rate = 0, D6);
+    // generate it once at run start. The diagonal field is
+    // rebuilt each step because S̃ evolves with advection.
+    let is_mantle_enabled = matches!(cfg.mantle, MantleConfig::Enabled { .. });
+    let mantle_pattern: Option<MantlePattern> = if is_mantle_enabled {
+        if let MantleConfig::Enabled { num_modes, seed, .. } = cfg.mantle {
+            let psi = generate_stream_function(
+                nx, ny,
+                &StreamFunctionConfig { num_modes, seed },
+            );
+            Some(build_mantle_pattern(&psi, dx, dy, &idx_x, &idx_y))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let mut slab_f_buf_mantle_x: Option<Field2D> =
+        if is_mantle_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    let mut slab_f_buf_mantle_y: Option<Field2D> =
+        if is_mantle_enabled { Some(Field2D::new(nx, ny)) } else { None };
+    // Step 8 metric accumulators.
+    let peak_v_mantle_pattern: f64 = mantle_pattern
+        .as_ref()
+        .map(|p| cfg.mantle.mf_or_zero() * p.peak_magnitude())
+        .unwrap_or(0.0);
+    let mut peak_v_solved_run: f64 = 0.0;
+    let mut peak_f_mantle_run: f64 = 0.0;
+    let mut alignment_sum: f64 = 0.0;
+    let mut alignment_samples: usize = 0;
+    let mut f_mantle_to_f_gpe_ratio_sum: f64 = 0.0;
+    let mut f_mantle_to_f_slab_ratio_sum: f64 = 0.0;
+    let mut f_mantle_ratio_samples: usize = 0;
+    let mut eps_ii_max_to_floor_ratio_run: f64 = 0.0;
+    let mut div_v_mantle_max_run: f64 = 0.0;
+    // Sanity: check pattern div once at init — should be
+    // essentially zero by construction. We track the max over
+    // the run as well, though it is constant.
+    if let Some(p) = mantle_pattern.as_ref() {
+        div_v_mantle_max_run = crate::tectonics_v2::mantle::pattern::pattern_div_max(
+            p, dx, dy, &idx_x, &idx_y,
+        );
+    }
+
     std::fs::create_dir_all(&cfg.output_dir).ok();
     let capture_steps: Vec<usize> = cfg
         .heightmap_fractions
@@ -804,14 +864,110 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                 fy_slice[k] += fsy[k];
             }
         }
+        // Step 8 — mantle forcing pre-solve contribution.
+        //
+        // Formulation: f_mantle = coupling · S̃ · (Mf · v_pattern − v_solved).
+        // Split into:
+        //   • constant RHS part (handled by `MantleForce` body force,
+        //     added into (fx, fy) alongside GPE + slab contributions)
+        //   • `coupling · S̃` diagonal augmentation (summed with
+        //     drag_diag into `total_diag`), which produces exact
+        //     self-consistency at every Newton outer iteration by
+        //     linearly coupling `v_solved` back into the operator.
+        //
+        // This mirrors the Step 4 basal-drag approach: the inner CG
+        // sees only `A(v;η) + total_diag · I` — an SPD augmentation
+        // — with no mantle-specific dispatch. `v_solved` converges
+        // to the self-consistent balance via Newton's own outer loop.
+        if is_mantle_enabled {
+            if let MantleConfig::Enabled { mf, coupling, .. } = cfg.mantle {
+                let pattern = mantle_pattern.as_ref().expect("enabled → pattern");
+                let f_mantle_x = slab_f_buf_mantle_x.as_mut().expect("enabled → buf");
+                let f_mantle_y = slab_f_buf_mantle_y.as_mut().expect("enabled → buf");
+                for v in f_mantle_x.data_mut().iter_mut() { *v = 0.0; }
+                for v in f_mantle_y.data_mut().iter_mut() { *v = 0.0; }
+                let mantle_state =
+                    SimulationState { nx, ny, dx, dy, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+                MantleForce::new(mf, coupling, pattern, &s).accumulate(
+                    &mantle_state,
+                    &mut VectorField { fx: f_mantle_x, fy: f_mantle_y },
+                );
+                let peak_f_mantle_step = {
+                    let mut peak = 0.0_f64;
+                    for (a, b) in f_mantle_x.data().iter().zip(f_mantle_y.data().iter()) {
+                        let mag = (a * a + b * b).sqrt();
+                        if mag > peak { peak = mag; }
+                    }
+                    peak
+                };
+                peak_f_mantle_run = peak_f_mantle_run.max(peak_f_mantle_step);
+                // Ratios vs GPE / slab are captured here using the
+                // peaks the slab branch already computed above. If
+                // the slab branch did not run (slab disabled), we
+                // fall back to the plain `peak|f_gpe|` on (fx, fy)
+                // pre-mantle (these carry GPE only).
+                let peak_f_gpe_fallback = {
+                    let mut peak = 0.0_f64;
+                    for (a, b) in fx.data().iter().zip(fy.data().iter()) {
+                        let mag = (a * a + b * b).sqrt();
+                        if mag > peak { peak = mag; }
+                    }
+                    peak
+                };
+                if peak_f_gpe_fallback > 0.0 {
+                    f_mantle_to_f_gpe_ratio_sum += peak_f_mantle_step / peak_f_gpe_fallback;
+                    peak_f_gpe_run = peak_f_gpe_run.max(peak_f_gpe_fallback);
+                }
+                // When slab was enabled, peak_f_slab_run now holds
+                // the slab peak from this step's accumulation. If
+                // both slab and mantle fire in the same step, we
+                // compute the mantle/slab ratio from those peaks.
+                if is_slab_enabled && peak_f_slab_run > 0.0 {
+                    // Use the most recent slab sample — the loop
+                    // already updated `peak_f_slab_run` above; we
+                    // approximate the current slab peak as that
+                    // running max (close enough for a telemetry
+                    // ratio, and conservative in the sense of
+                    // giving the smallest ratio).
+                    f_mantle_to_f_slab_ratio_sum += peak_f_mantle_step / peak_f_slab_run;
+                }
+                f_mantle_ratio_samples += 1;
+                // Add f_mantle into the main RHS.
+                let fx_slice = fx.data_mut();
+                let fy_slice = fy.data_mut();
+                let fmx = f_mantle_x.data();
+                let fmy = f_mantle_y.data();
+                for k in 0..nx * ny {
+                    fx_slice[k] += fmx[k];
+                    fy_slice[k] += fmy[k];
+                }
+            }
+        }
         // Rebuild the drag-diagonal field from the freshly-advected
         // S̃ (or from the initial S̃ on step 0). Disabled → None, no
-        // allocation.
+        // allocation. Step 8: sum with mantle-diagonal contribution
+        // so the Stokes operator sees `A + (drag + mantle) · I`.
         let drag_diag_step = build_drag_diagonal_field(&cfg.basal_drag, &s);
+        let mantle_diag_step = build_mantle_diagonal_field(&cfg.mantle, &s);
+        let total_diag_step: Option<Field2D> = match (drag_diag_step.as_ref(), mantle_diag_step.as_ref()) {
+            (None, None) => None,
+            (Some(d), None) => Some(d.clone()),
+            (None, Some(m)) => Some(m.clone()),
+            (Some(d), Some(m)) => {
+                let mut t = Field2D::new(d.nx(), d.ny());
+                let dd = d.data();
+                let md = m.data();
+                let td = t.data_mut();
+                for k in 0..dd.len() {
+                    td[k] = dd[k] + md[k];
+                }
+                Some(t)
+            }
+        };
         let outcome = solve_nonlinear(
             &grid,
             &law_final,
-            drag_diag_step.as_ref(),
+            total_diag_step.as_ref(),
             fx.data(),
             fy.data(),
             &mut vx,
@@ -823,12 +979,52 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         );
         record_outcome(&outcome, &mut newton_agg);
 
+        // Step 8 metric: peak|v_solved| per step, running max.
+        if is_mantle_enabled {
+            let peak_v_step = vx.iter().zip(vy.iter())
+                .fold(0.0_f64, |acc, (a, b)| {
+                    let m = (a * a + b * b).sqrt();
+                    if m > acc { m } else { acc }
+                });
+            peak_v_solved_run = peak_v_solved_run.max(peak_v_step);
+            // Alignment: <v_solved, Mf·v_pattern> / |Mf·v_pattern|².
+            // Direction-aware magnitude alignment, matches the
+            // contract probed in v2_mantle_relaxation.
+            if let (Some(pat), MantleConfig::Enabled { mf, .. }) = (mantle_pattern.as_ref(), cfg.mantle) {
+                let mut dot = 0.0_f64;
+                let mut norm_m_sq = 0.0_f64;
+                for k in 0..nx * ny {
+                    let vmx = mf * pat.v_mantle_x.data()[k];
+                    let vmy = mf * pat.v_mantle_y.data()[k];
+                    dot += vx[k] * vmx + vy[k] * vmy;
+                    norm_m_sq += vmx * vmx + vmy * vmy;
+                }
+                if norm_m_sq > 0.0 {
+                    alignment_sum += dot / norm_m_sq;
+                    alignment_samples += 1;
+                }
+            }
+        }
+
         let sr = StrainRate::compute(nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy);
         let eta_cc = rheology::build_eta_field(&law_final, &sr.eps_ii_center);
         newton_agg.cap_fraction_steady_max = newton_agg
             .cap_fraction_steady_max
             .max(cap_activation_fraction(&eta_cc, law_final.eta_max_cap));
         newton_agg.eta_contrast_samples.push(eta_contrast(&eta_cc));
+
+        // Step 8 metric — the primary diagnostic that the system
+        // has escaped floor-domination. `max(ε̇_II) / ε̇_min ≥ 1`
+        // is the analytic condition for yielding dominance to be
+        // achievable at Bi = 0.15 (the floor-dominated analysis
+        // in the Step 3 report). We track the max over the run.
+        if is_mantle_enabled {
+            let eps_max = sr.eps_ii_center.data().iter().cloned().fold(0.0_f64, f64::max);
+            let ratio = eps_max / law_final.strain_rate_floor.max(1.0e-300);
+            if ratio > eps_ii_max_to_floor_ratio_run {
+                eps_ii_max_to_floor_ratio_run = ratio;
+            }
+        }
 
         // Step 4 diagnostics — basal-drag ratios vs the viscous
         // diagonal η/Δx². Computed at cell centres (before
@@ -1379,6 +1575,38 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         }
     }
 
+    // Step 8 — mantle forcing diagnostics. Populated only when
+    // the mantle pipeline actually fired.
+    if let MantleConfig::Enabled { mf, coupling, num_modes, seed, .. } = cfg.mantle {
+        newton_agg.mf_diagnostic = Some(mf);
+        newton_agg.coupling_diagnostic = Some(coupling);
+        newton_agg.mantle_num_modes = Some(num_modes);
+        newton_agg.mantle_seed = Some(seed);
+        newton_agg.peak_v_mantle_pattern = Some(peak_v_mantle_pattern);
+        newton_agg.peak_v_solved_mantle_run = Some(peak_v_solved_run);
+        if alignment_samples > 0 {
+            newton_agg.v_solved_to_v_mantle_alignment =
+                Some(alignment_sum / alignment_samples as f64);
+        }
+        newton_agg.peak_f_mantle_run = Some(peak_f_mantle_run);
+        if f_mantle_ratio_samples > 0 {
+            newton_agg.f_mantle_to_f_gpe_ratio_mean =
+                Some(f_mantle_to_f_gpe_ratio_sum / f_mantle_ratio_samples as f64);
+            if is_slab_enabled {
+                newton_agg.f_mantle_to_f_slab_ratio_mean =
+                    Some(f_mantle_to_f_slab_ratio_sum / f_mantle_ratio_samples as f64);
+            }
+        }
+        newton_agg.epsilon_ii_max_to_floor_ratio = Some(eps_ii_max_to_floor_ratio_run);
+        newton_agg.div_v_mantle_max = Some(div_v_mantle_max_run);
+        // peak_f_gpe_run is already populated above when slab ran
+        // this step too. If slab was disabled, populate it here as
+        // a fallback so the Step 8 section can render the ratios.
+        if !is_slab_enabled {
+            newton_agg.peak_f_gpe_run = Some(peak_f_gpe_run);
+        }
+    }
+
     let cg_iter_mean = newton_agg.cg_iters_per_newton_mean();
     let cg_iter_max = newton_agg.cg_iters_per_newton_max();
     let kappa = condition_number_estimate(cg_iter_mean.round() as usize, cfg.newton_cfg.linear_tol);
@@ -1458,6 +1686,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         boundary_config: cfg.boundary.describe(),
         boundary_layout_name: cfg.boundary_layout_name.clone(),
         slab_pull_config: cfg.slab_pull.describe(),
+        mantle_config: cfg.mantle.describe(),
     };
 
     BaselineResult { metrics, config_dump }

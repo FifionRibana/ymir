@@ -202,6 +202,7 @@ fn build_baseline_config(
         boundary,
         boundary_layout_name: format!("voronoi_seed{}_n{}", args.seed, args.num_plates),
         slab_pull: slab,
+        mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
     })
 }
 
