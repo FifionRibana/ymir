@@ -29,6 +29,7 @@
 //! system non-symmetric) can swap in as a drop-in replacement
 //! without reshaping the caller side.
 
+pub mod amg;
 pub mod continuation;
 pub mod nonlinear_solver;
 pub mod nullspace;
