@@ -86,6 +86,35 @@ pub fn par_norm2(a: &[f64]) -> f64 {
     par_dot(a, a).sqrt()
 }
 
+/// Deterministic parallel sum.
+///
+/// Identical chunk-then-sequential-reduce pattern as [`par_dot`].
+/// Bit-identical across thread counts and machines.
+pub fn par_sum(a: &[f64]) -> f64 {
+    let n = a.len();
+    if n == 0 {
+        return 0.0;
+    }
+    let chunk_size = n.div_ceil(CHUNK_COUNT);
+    let partials: Vec<f64> = (0..CHUNK_COUNT)
+        .into_par_iter()
+        .map(|chunk_idx| {
+            let start = chunk_idx * chunk_size;
+            let end = (start + chunk_size).min(n);
+            let mut sum = 0.0_f64;
+            for i in start..end {
+                sum += a[i];
+            }
+            sum
+        })
+        .collect();
+    let mut total = 0.0_f64;
+    for partial in &partials {
+        total += *partial;
+    }
+    total
+}
+
 /// Deterministic parallel AXPY: `y[i] += alpha * x[i]` for all `i`.
 ///
 /// Each cell is computed independently (no reduction), so the
@@ -209,6 +238,24 @@ mod tests {
         assert!((par_max_abs(&[-0.7]) - 0.7).abs() < 1e-14);
         let zeros = vec![0.0; 100];
         assert_eq!(par_max_abs(&zeros), 0.0);
+    }
+
+    #[test]
+    fn par_sum_matches_scalar_within_eps() {
+        let n = 10_000;
+        let a = ramp(n);
+        let par = par_sum(&a);
+        let scalar: f64 = a.iter().sum();
+        let rel = ((par - scalar) / scalar).abs();
+        assert!(rel < 1e-12, "par={par} scalar={scalar}");
+    }
+
+    #[test]
+    fn par_sum_edge_cases() {
+        assert_eq!(par_sum(&[]), 0.0);
+        assert_eq!(par_sum(&[7.5]), 7.5);
+        let ones = vec![1.0; 32];
+        assert!((par_sum(&ones) - 32.0).abs() < 1e-14);
     }
 
     #[test]
