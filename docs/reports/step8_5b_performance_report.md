@@ -60,11 +60,56 @@ thread-count combination.
 
 Cold-build penalty is within the 20–60 s budget of D4.
 
-## Phase 1 — parallel_reduce.rs helpers (TBD)
+## Phase 1 — parallel_reduce.rs helpers
 
-Deterministic chunk-sequential reduction helpers. D1 reference pattern
-(chunk → sequential per chunk → sequential sum of chunks in index
-order) applied to dot product, axpy, norm, and max-abs.
+[`tectonics_v2/stokes/parallel_reduce.rs`](../../crates/ymir-core/src/tectonics_v2/stokes/parallel_reduce.rs)
+ships four deterministic primitives:
+
+| Primitive | Operation | Pattern |
+|---|---|---|
+| `par_dot(a, b)` | `Σ aᵢ bᵢ` | 16-chunk par-map + sequential reduce |
+| `par_norm2(a)` | `√(Σ aᵢ²)` | delegates to `par_dot(a, a)` |
+| `par_axpy(α, x, y)` | `yᵢ += α xᵢ` | cell-independent `par_iter_mut` |
+| `par_max_abs(a)` | `maxᵢ \|aᵢ\|` | 16-chunk par-map + sequential max |
+
+**Chunk pattern** (D1 reference): fixed `CHUNK_COUNT = 16` defines
+the work split, independent of `available_parallelism()`. Each
+chunk accumulates sequentially (ensuring f64 order determinism
+within the chunk); rayon's `IndexedParallelIterator::collect()`
+preserves index order of partials; the final reduce scans
+partials left-to-right. The only freedom rayon has is "which
+worker picks which chunk" — a choice that does not affect the
+numeric result.
+
+Fixing the chunk count (rather than tying it to the core count) is
+what makes the reductions **bit-identical across machines** as
+well as across thread counts; tying to core count would introduce
+cross-machine variance. Scalar-parity across machines at 1e-10
+falls out automatically from the indexed scan.
+
+### Bit-parity relative to Step 8.5a
+
+Switching `dot` from `a.iter().zip(b).map(..).sum()` to `par_dot`
+changes the floating-point accumulation order (one running sum
+→ 16 chunk sub-sums, then a final sequential reduce of 16
+partials). The result is therefore **not** ULP-identical to the
+8.5a output. This is expected per D5 of the Step 8.5b spec
+(bit-parity vs 8.5a is explicitly abandoned). The determinism the
+helpers preserve is Step-8.5b-internal: runs of the same build on
+the same machine agree byte-for-byte regardless of thread count.
+
+### Tests
+
+| Test | Location | Coverage |
+|---|---|---|
+| 9 unit tests | `parallel_reduce::tests` in-module | correctness, edge cases (n ∈ {0, 1, 15, 17}), repeat-invocation determinism |
+| 6 integration tests | `tests/v2_parallel_determinism.rs` | cross-pool bit-identity at `num_threads ∈ {1, 2, 4, 8}` for `par_dot`, `par_norm2`, `par_axpy`, `par_max_abs`; small-size boundary cases |
+
+Tests use `rayon::ThreadPoolBuilder::new().num_threads(n).build().install(...)` per test (Q3 answer: pool local au test, zero interaction avec pool global, tests auto-contained).
+
+All 15 tests green on 8C/16T hardware. No call site is rewired to
+use the helpers yet — wire-in happens in Phase 2 (Jacobi path)
+and Phase 3 (AMG path).
 
 ## Phase 2 — Jacobi path parallelised (TBD)
 
