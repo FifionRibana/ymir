@@ -40,8 +40,10 @@ use crate::tectonics_v2::slab::{
 use crate::tectonics_v2::stokes::Grid;
 use crate::tectonics_v2::stokes::continuation::run_continuation;
 use crate::tectonics_v2::stokes::nonlinear_solver::{
-    NewtonConfig, NewtonSolver, NonlinearOutcome, NonlinearSolver, SnapshotSpec,
+    evaluate_residual_norm, NewtonConfig, NewtonSolver, NonlinearOutcome, NonlinearSolver,
+    SnapshotSpec,
 };
+use crate::tectonics_v2::stokes::nullspace;
 use crate::tectonics_v2::stokes::picard::{PicardConfig, PicardSolver};
 use crate::tectonics_v2::stokes::solver::{ConjugateGradient, LinearSolverConfig};
 
@@ -764,6 +766,30 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let mut drag_vs_visc_diagonal_ratio_sum = 0.0_f64;
     let mut drag_ratio_sample_count: usize = 0;
 
+    // Step 8.5b Phase 5: Newton order-2 warm-start extrapolation.
+    // `prev_iter_start_v` is `v(t_{k-1})` — the velocity at the
+    // start of the *previous* iteration. Combined with `vx, vy`
+    // (= `v(t_k)` at the current iteration's start, the converged
+    // solution of step k-1), it produces the order-2 guess
+    // `v_extrap = 2 v(t_k) - v(t_{k-1})` for the about-to-be-
+    // computed `v(t_{k+1})`.
+    //
+    // Safeguard interpretation: compare `‖F_k(v_extrap)‖` against
+    // `‖F_k(v_curr)‖` — both evaluated at the *current step's*
+    // rhs and rheology. Threshold = 1.0× (Q6: no hysteresis).
+    // The "previous step's converged residual" wording in the
+    // original spec is degenerate — that residual is essentially
+    // `tol_abs ≈ 0` against the *previous* rhs, so any candidate
+    // evaluated against the *new* rhs would always exceed it and
+    // the safeguard would block every attempt. The semantics that
+    // matches the design intent ("extrap a fait pire que rien")
+    // is "did extrapolation make the starting residual worse than
+    // the order-1 warm-start would have", which is the comparison
+    // implemented below.
+    let mut prev_iter_start_v: Option<(Vec<f64>, Vec<f64>)> = None;
+    let mut extrap_stats =
+        crate::tectonics_v2::diagnostics::newton_metrics::ExtrapolationStats::default();
+
     for step in 0..cfg.steps {
         sample_force(&mut fx, &mut fy, &s);
         // Step 7 — slab pipeline (pre-solve).
@@ -1021,6 +1047,66 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                 None
             }
         });
+
+        // Step 8.5b Phase 5: order-2 warm-start extrapolation.
+        // `vx, vy` here is `v(t_k)` (= previous step's converged
+        // solution; or the post-ramp state on `step == 0`). The
+        // snapshot must be taken *before* the extrapolation so the
+        // history buffer for next iteration's setup is the
+        // un-extrapolated `v(t_k)`, not the perturbed guess.
+        let snapshot_vx = vx.clone();
+        let snapshot_vy = vy.clone();
+        if step >= 2 {
+            if let Some((prev_vx, prev_vy)) = &prev_iter_start_v {
+                let mut v_extrap_x: Vec<f64> = vx
+                    .iter()
+                    .zip(prev_vx.iter())
+                    .map(|(a, b)| 2.0 * a - b)
+                    .collect();
+                let mut v_extrap_y: Vec<f64> = vy
+                    .iter()
+                    .zip(prev_vy.iter())
+                    .map(|(a, b)| 2.0 * a - b)
+                    .collect();
+                // Project the extrapolated guess onto the zero-mean
+                // velocity subspace. Newton's compute_residual does
+                // its own projection on the residual side, but the
+                // input `v` should also be in the subspace so the
+                // safeguard's residual measurement is gauge-fixed.
+                nullspace::project_velocity(&mut v_extrap_x, &mut v_extrap_y);
+                let resid_extrap = evaluate_residual_norm(
+                    &grid,
+                    &law_final,
+                    total_diag_step.as_ref(),
+                    fx.data(),
+                    fy.data(),
+                    &v_extrap_x,
+                    &v_extrap_y,
+                );
+                let resid_curr = evaluate_residual_norm(
+                    &grid,
+                    &law_final,
+                    total_diag_step.as_ref(),
+                    fx.data(),
+                    fy.data(),
+                    &vx,
+                    &vy,
+                );
+                extrap_stats.attempted += 1;
+                if resid_extrap.is_finite() && resid_extrap <= resid_curr {
+                    vx.copy_from_slice(&v_extrap_x);
+                    vy.copy_from_slice(&v_extrap_y);
+                    extrap_stats.applied += 1;
+                    extrap_stats.last_applied_extrap_residual = Some(resid_extrap);
+                } else {
+                    // Fallback: keep the order-1 warm-start (= snapshot,
+                    // unchanged in `vx, vy`). Records the step index so
+                    // the report can map the temporal distribution.
+                    extrap_stats.fallback_indices.push(step);
+                }
+            }
+        }
+
         let outcome = solve_nonlinear(
             &grid,
             &law_final,
@@ -1037,6 +1123,15 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             cfg.linear_solver,
         );
         record_outcome(&outcome, &mut newton_agg);
+
+        // Step 8.5b Phase 5: extrapolation history rotation. After
+        // the solve, `vx, vy` is `v(t_{k+1})`. Save the *snapshot*
+        // we took at the iter's start (= `v(t_k)`) so the next
+        // iter's setup can use it as the "two steps ago" history.
+        prev_iter_start_v = Some((snapshot_vx, snapshot_vy));
+        extrap_stats
+            .newton_outer_iters_per_step
+            .push(outcome.outer_iters());
 
         // Step 8 metric: peak|v_solved| per step, running max.
         if is_mantle_enabled {
@@ -1703,6 +1798,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         variance_series,
         max_grad_s_series,
         newton: Some(newton_agg),
+        extrapolation: if cfg.steps > 0 { Some(extrap_stats) } else { None },
         s_eq: None,
         boundary_type_diversity: None,
         yielding_cell_fraction: yielding_cf_top_level,

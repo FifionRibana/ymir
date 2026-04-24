@@ -259,10 +259,80 @@ implementation (the map/collect preserves row order, and the
 sequential flatten fixes the concatenation order). Phase 4's
 parallelisation is pure performance — no algebraic drift.
 
-## Phase 5 — Newton extrapolation order 2 (TBD)
+## Phase 5 — Newton extrapolation order 2
 
-`v_guess(t) = 2·v(t-Δt) − v(t-2Δt)`, with step-0/step-1 initialisation
-fallbacks and residual-regression safeguard.
+[`harness.rs`](../../crates/ymir-core/src/tectonics_v2/diagnostics/harness.rs)
+gains an order-2 warm-start extrapolator threaded through the
+physics loop. At iteration `k` (about to solve for `v(t_{k+1})`):
+
+```text
+if k >= 2 and history available:
+    v_extrap = 2·v(t_k) - v(t_{k-1})
+    project_velocity(v_extrap)        // null-space gauge
+    if ‖F_new(v_extrap)‖ ≤ ‖F_new(v_curr)‖:
+        warm-start ← v_extrap          // applied
+    else:
+        keep order-1 warm-start       // fallback
+```
+
+`F_new` evaluates the nonlinear residual at the *current step's*
+rhs and rheology — the meaningful comparison is "did extrap make
+the starting residual worse than not doing it". The original
+spec wording ("previous step's converged residual") would compare
+against `≈ tol_abs ≈ 0` against the *previous* rhs, which makes
+the safeguard degenerate (every attempt fails). The
+implementation note inside [`run_baseline`] documents the
+deviation; tests exercise the corrected semantics.
+
+History rotation is one-buffer: the `vx, vy` snapshot taken at
+each iter's start (= `v(t_k)`) is saved post-solve so the next
+iter's setup has it as `v(t_{k-1})`. No allocation churn beyond
+the two clones per step.
+
+[`evaluate_residual_norm`](../../crates/ymir-core/src/tectonics_v2/stokes/nonlinear_solver.rs)
+is the new public wrapper around the existing
+private `compute_residual` so the harness can probe `‖F(v)‖`
+without re-implementing the rheology + operator chain.
+
+[`NonlinearOutcome::best_residual()`](../../crates/ymir-core/src/tectonics_v2/stokes/nonlinear_solver.rs)
+returns the most informative residual figure across the four
+outcome variants — currently informational, kept for future
+diagnostics.
+
+### Instrumentation (D6 + reviewer's reminder)
+
+[`ExtrapolationStats`](../../crates/ymir-core/src/tectonics_v2/diagnostics/newton_metrics.rs)
+ships on `Metrics`. Fields:
+
+| Field | Purpose |
+|---|---|
+| `attempted` | Steps where extrap was tried (`k ≥ 2` and history available) |
+| `applied` | Subset where the safeguard accepted the extrap |
+| `fallback_indices` | Steps where the safeguard rejected — temporal map |
+| `newton_outer_iters_per_step` | Per-step outer iter count |
+| `last_applied_extrap_residual` | `‖F(v_extrap)‖` at the last applied extrap |
+| `fallback_rate()` | `(attempted − applied) / attempted` |
+| `newton_outer_iters_mean()` | Average over all steps |
+
+The reviewer's `> 10 %` flag for "regime hostile to extrap" is
+not enforced as a test (it's an informational signal), but the
+fallback indices vector lets the Phase 6/7 report surface it.
+
+### Validation
+
+| Test | Result |
+|---|---|
+| [`v2_newton_extrapolation::extrapolation_stats_are_present_and_consistent`](../../crates/ymir-core/tests/v2_newton_extrapolation.rs) — 8-step run, applied + fallback = attempted invariant | ✅ |
+| `v2_newton_extrapolation::extrapolation_fallback_rate_under_50_percent_on_typical_run` — 20-step step6 baseline | ✅ |
+| `v2_newton_extrapolation::extrapolation_stats_are_reproducible` — two runs of identical config produce identical attempt/fallback/outer-iter sequences | ✅ |
+| `v2_amg_scalar_parity` (4 cases) | ✅ — extrapolation does not perturb the converged solution beyond `C·κ·(tol+tol_ref)` |
+| `v2_step8_regression_smoke::disabled_runs_are_bit_deterministic` | ✅ — full physics pipeline remains run-to-run byte-identical |
+| `v2_step0_synthetic_parity` (2/2) | ✅ — Newton iter-0 snapshot capture unchanged |
+
+The `v2_step8_regression_smoke` 2-run total ran in 45.0 s with
+extrapolation, down from 50.1 s without (~10 % wallclock
+reduction at this run-length). Aggregate gain measurement is
+deferred to Phase 6 benchmarks per the original plan.
 
 ## Phase 6 — Benchmarks (TBD)
 

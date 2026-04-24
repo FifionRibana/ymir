@@ -125,6 +125,22 @@ impl NonlinearOutcome {
             NonlinearOutcome::CappedIters { max_iters_hit, .. } => *max_iters_hit,
         }
     }
+
+    /// Step 8.5b Phase 5: best-available residual for the
+    /// extrapolation safeguard. Converged → `final_residual`;
+    /// Diverged / CappedIters → `last_residual`; Stalled → last
+    /// recorded value in the trace (or `+∞` if the trace is
+    /// unexpectedly empty).
+    pub fn best_residual(&self) -> f64 {
+        match self {
+            NonlinearOutcome::Converged { final_residual, .. } => *final_residual,
+            NonlinearOutcome::Diverged { last_residual, .. }
+            | NonlinearOutcome::CappedIters { last_residual, .. } => *last_residual,
+            NonlinearOutcome::Stalled { trace, .. } => {
+                trace.residuals.last().copied().unwrap_or(f64::INFINITY)
+            }
+        }
+    }
 }
 
 /// Nonlinear-solver trait. Implementations: [`NewtonSolver`] and
@@ -202,6 +218,32 @@ impl Default for NewtonSolver {
             linear_solver: super::solver::LinearSolverConfig::default(),
         }
     }
+}
+
+/// Step 8.5b Phase 5: evaluate `‖F(v)‖` for the Newton extrapolation
+/// safeguard. Wraps [`compute_residual`] for callers outside this
+/// module that need the residual norm at a candidate guess (e.g.
+/// the harness deciding whether to accept the order-2 extrapolated
+/// warm-start or fall back to `v(t-Δt)`).
+pub fn evaluate_residual_norm(
+    grid: &StokesGrid,
+    law: &ViscosityLaw,
+    drag_diag: Option<&Field2D>,
+    rhs_x: &[f64],
+    rhs_y: &[f64],
+    vx: &[f64],
+    vy: &[f64],
+) -> f64 {
+    let n = grid.n_cells();
+    let mut r_x = vec![0.0; n];
+    let mut r_y = vec![0.0; n];
+    let mut sr_out: Option<StrainRate> = None;
+    let mut eta_out: Option<super::super::field::Field2D> = None;
+    compute_residual(
+        grid, law, drag_diag, vx, vy, rhs_x, rhs_y,
+        &mut r_x, &mut r_y, &mut sr_out, &mut eta_out,
+    );
+    vec_norm(&r_x, &r_y)
 }
 
 /// Compute the nonlinear residual
