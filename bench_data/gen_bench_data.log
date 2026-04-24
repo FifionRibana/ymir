@@ -1,0 +1,15 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Project\ymir\crates\ymir-core)
+    Finished `release` profile [optimized] target(s) in 0.89s
+     Running `target\release\gen_bench_data.exe --all`
+[gen_bench_data] capturing 'step0_quiescent' → bench_data\step0_quiescent.bin
+[gen_bench_data]  ✓ 'step0_quiescent' 0.34 MB in 0.3s
+[gen_bench_data] capturing 'step3_floor_yielding' → bench_data\step3_floor_yielding.bin
+[gen_bench_data]  ✓ 'step3_floor_yielding' 0.34 MB in 0.5s
+[gen_bench_data] capturing 'step6_voronoi' → bench_data\step6_voronoi.bin
+[gen_bench_data]  ✓ 'step6_voronoi' 0.38 MB in 12.2s
+[gen_bench_data] capturing 'step7_slab_off' → bench_data\step7_slab_off.bin
+[gen_bench_data]  ✓ 'step7_slab_off' 0.38 MB in 17.5s
+[gen_bench_data] capturing 'step8_activated' → bench_data\step8_activated.bin
+[gen_bench_data]  ✓ 'step8_activated' 0.38 MB in 394.1s
+[gen_bench_data] capturing 'step8_activated_128' → bench_data\step8_activated_128.bin
+[gen_bench_data]  ✓ 'step8_activated_128' 1.50 MB in 1191.6s

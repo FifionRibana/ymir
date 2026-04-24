@@ -40,10 +40,10 @@ use crate::tectonics_v2::slab::{
 use crate::tectonics_v2::stokes::Grid;
 use crate::tectonics_v2::stokes::continuation::run_continuation;
 use crate::tectonics_v2::stokes::nonlinear_solver::{
-    NewtonConfig, NewtonSolver, NonlinearOutcome, NonlinearSolver,
+    NewtonConfig, NewtonSolver, NonlinearOutcome, NonlinearSolver, SnapshotSpec,
 };
 use crate::tectonics_v2::stokes::picard::{PicardConfig, PicardSolver};
-use crate::tectonics_v2::stokes::solver::ConjugateGradient;
+use crate::tectonics_v2::stokes::solver::{ConjugateGradient, LinearSolverConfig};
 
 #[derive(Clone, Copy, Debug)]
 pub enum NonlinearChoice {
@@ -108,6 +108,19 @@ pub fn build_force(
             Box::new(sum)
         }
     }
+}
+
+/// Phase 0 benchmark-snapshot capture spec. When set on
+/// [`BaselineConfig`], the harness captures the exact CG inputs of the
+/// first Newton outer iter at physics step `at_step` to
+/// `path`, labelling the snapshot `case_label`. Bit-parity with
+/// uncaptured runs is preserved because the snapshot write is a
+/// side-effect, never read back by the physics loop.
+#[derive(Clone, Debug)]
+pub struct HarnessCaptureSpec {
+    pub at_step: usize,
+    pub path: PathBuf,
+    pub case_label: String,
 }
 
 pub struct BaselineConfig {
@@ -183,6 +196,16 @@ pub struct BaselineConfig {
     /// construction — no mantle contribution means the operator
     /// reproduces Step 7 exactly).
     pub mantle: MantleConfig,
+    /// Step 8.5a Phase 0 benchmark capture hook. Default `None`
+    /// preserves bit-parity with pre-Step-8.5a runs. `Some(spec)`
+    /// instruments the Newton solver at the target step.
+    pub capture: Option<HarnessCaptureSpec>,
+    /// Step 8.5a Phase 4.3 preconditioner dispatch. Default
+    /// `JacobiCG` preserves the pre-8.5a code path bit-for-bit.
+    /// `AmgCG(cfg)` switches the Newton inner CG + the linear
+    /// `solve_sheet` path to AMG Option B' (Picard block V-cycle,
+    /// matrix-free Newton tangent).
+    pub linear_solver: LinearSolverConfig,
 }
 
 impl BaselineConfig {
@@ -215,6 +238,8 @@ impl BaselineConfig {
             boundary_layout_name: String::new(),
             slab_pull: SlabPullConfig::Disabled,
             mantle: MantleConfig::Disabled,
+            capture: None,
+            linear_solver: LinearSolverConfig::default(),
         }
     }
 }
@@ -417,13 +442,31 @@ fn solve_nonlinear(
     newton_cfg: NewtonConfig,
     picard_cfg: PicardConfig,
     cg: &ConjugateGradient,
+    capture: Option<SnapshotSpec>,
+    linear_solver: LinearSolverConfig,
 ) -> NonlinearOutcome {
     match choice {
         NonlinearChoice::Newton => {
-            let solver = NewtonSolver::new(newton_cfg);
+            let mut solver = match capture {
+                Some(spec) => NewtonSolver::with_capture(newton_cfg, spec),
+                None => NewtonSolver::new(newton_cfg),
+            };
+            solver.linear_solver = linear_solver;
             solver.solve(grid, law, drag_diag, rhs_x, rhs_y, vx, vy, cg)
         }
         NonlinearChoice::Picard => {
+            if capture.is_some() {
+                eprintln!(
+                    "[capture] warning: Phase 0 capture hook only implemented on \
+                     NewtonChoice; Picard path will not emit a snapshot"
+                );
+            }
+            if !matches!(linear_solver, LinearSolverConfig::JacobiCG) {
+                eprintln!(
+                    "[linear_solver] warning: Picard path does not yet route through \
+                     LinearSolverConfig; continuing with the Picard-internal Jacobi CG"
+                );
+            }
             let solver = PicardSolver::new(picard_cfg);
             solver.solve(grid, law, drag_diag, rhs_x, rhs_y, vx, vy, cg)
         }
@@ -964,6 +1007,20 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                 Some(t)
             }
         };
+        // Phase 0 capture hook: when the harness reaches the target
+        // step, build a `SnapshotSpec` and pass it down so the Newton
+        // solver serialises its first outer-iter CG inputs. `None` at
+        // every other step keeps the code path bit-identical.
+        let capture_for_step = cfg.capture.as_ref().and_then(|c| {
+            if c.at_step == step {
+                Some(SnapshotSpec {
+                    path: c.path.clone(),
+                    case_label: c.case_label.clone(),
+                })
+            } else {
+                None
+            }
+        });
         let outcome = solve_nonlinear(
             &grid,
             &law_final,
@@ -976,6 +1033,8 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             cfg.newton_cfg,
             cfg.picard_cfg,
             &cg,
+            capture_for_step,
+            cfg.linear_solver,
         );
         record_outcome(&outcome, &mut newton_agg);
 

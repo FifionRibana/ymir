@@ -60,6 +60,8 @@ fn run_step5_mini(k_sub: f64) -> (f64, f64) {
         boundary_layout_name: layout_name,
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
         mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
+        capture: None,
+        linear_solver: Default::default(),
     };
     let r = run_baseline(&cfg);
     let na = r.metrics.newton.as_ref().expect("newton aggregate");

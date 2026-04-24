@@ -220,6 +220,8 @@ fn build_baseline_config(
         boundary_layout_name: format!("voronoi_seed{}_n{}", args.seed, args.num_plates),
         slab_pull: slab,
         mantle,
+        capture: None,
+        linear_solver: Default::default(),
     })
 }
 
