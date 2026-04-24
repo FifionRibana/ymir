@@ -384,6 +384,56 @@ pub fn yielding_intensity(
     if count == 0 { 0.0 } else { sum / count as f64 }
 }
 
+/// Step 8.5b Phase 5: instrumentation for the Newton order-2 warm-
+/// start extrapolation. Tracks attempt / fallback counts, the step
+/// indices at which fallbacks fired (so the report can show the
+/// temporal distribution), and the per-step Newton outer iteration
+/// count (for the `×1.5–2` reduction expected by D3).
+#[derive(Clone, Debug, Default)]
+pub struct ExtrapolationStats {
+    /// Number of physics steps where extrapolation was *attempted*
+    /// (i.e. step index ≥ 2 and history available).
+    pub attempted: usize,
+    /// Number of physics steps where extrapolation was *applied*
+    /// (i.e. residual safeguard accepted the extrapolated guess).
+    pub applied: usize,
+    /// Step indices where the safeguard rejected the extrapolated
+    /// guess (`‖F(v_extrap)‖ > ‖F(v_converged_prev)‖`). Reading
+    /// the temporal distribution reveals whether transient regime
+    /// changes cluster early / late in the run.
+    pub fallback_indices: Vec<usize>,
+    /// Newton outer iterations consumed at each physics step (one
+    /// entry per step from index 0). Aggregate `mean` / `max` are
+    /// computed by the report layer.
+    pub newton_outer_iters_per_step: Vec<u32>,
+    /// `‖F(v_extrap)‖` at the last *applied* extrapolation, for
+    /// spot-check reporting. `None` if extrapolation was never
+    /// applied (e.g. fewer than two steps).
+    pub last_applied_extrap_residual: Option<f64>,
+}
+
+impl ExtrapolationStats {
+    /// Fraction of attempts where the safeguard rejected the
+    /// extrapolated guess. `> 10 %` is the reviewer's flag for
+    /// "regime hostile to order-2 extrapolation".
+    pub fn fallback_rate(&self) -> f64 {
+        if self.attempted == 0 {
+            0.0
+        } else {
+            (self.attempted - self.applied) as f64 / self.attempted as f64
+        }
+    }
+
+    pub fn newton_outer_iters_mean(&self) -> f64 {
+        if self.newton_outer_iters_per_step.is_empty() {
+            0.0
+        } else {
+            let s: u32 = self.newton_outer_iters_per_step.iter().sum();
+            s as f64 / self.newton_outer_iters_per_step.len() as f64
+        }
+    }
+}
+
 /// Compute `η_max / η_min` from an η field.
 pub fn eta_contrast(eta_cc: &crate::tectonics_v2::field::Field2D) -> f64 {
     let mut min = f64::INFINITY;
