@@ -124,17 +124,17 @@ pub struct AmgHierarchy {
 
 /// One level of the AMG hierarchy.
 ///
-/// Populated progressively as sub-phases land:
-///
-/// - `a` at 2.0
-/// - `strong_connections` at 2.1 (per-row bool masks)
-/// - `cf_splitting` at 2.2 (C-point / F-point marking)
-/// - `prolongation`, `restriction` at 2.3
-/// - `diag_inv`, `sgs_order` for the smoother at 2.4
-/// - `coarse_lu` only on the last level at 2.5
+/// - `a` is the operator at this level.
+/// - `p` / `r` are the prolongation (to finer) and restriction
+///   (from finer) operators; both `None` on the coarsest level.
+/// - `coarse_lu` is the direct-solve factorisation, `Some` only
+///   on the coarsest level.
 #[derive(Debug)]
 pub struct AmgLevel {
     pub a: CsrMatrix,
+    pub p: Option<CsrMatrix>,
+    pub r: Option<CsrMatrix>,
+    pub coarse_lu: Option<coarse_solve::LuFactorisation>,
 }
 
 /// AMG preconditioner on the `[vx; vy]` 2·N layout — Option B'.
@@ -155,32 +155,55 @@ impl AmgPreconditioner {
     /// `2N × 2N` `A_picard` by extracting the `u-u` and `v-v`
     /// scalar blocks and running `setup::build_hierarchy` on each.
     ///
-    /// Phase 2.0 returns hierarchies with a single level (the
-    /// extracted block); real coarsening activates once Phase 2.1-
-    /// 2.6 machinery is in place.
-    pub fn build(_a_picard: &CsrMatrix, n_cells: usize, cfg: AmgConfig) -> Self {
-        // Phase 2.0 stub: real implementation delegates to
-        // `setup::build_hierarchy` — lands in Phase 2.6.
-        let u_hierarchy = AmgHierarchy { levels: Vec::new() };
-        let v_hierarchy = AmgHierarchy { levels: Vec::new() };
+    /// The cross-coupling blocks (`u-v`, `v-u`) are **discarded**
+    /// for the preconditioner — Option B' of the design review
+    /// Q3. They remain in the full CG matvec (via the sparse
+    /// matrix directly); only the preconditioner is block-
+    /// diagonal.
+    pub fn build(a_picard: &CsrMatrix, n_cells: usize, cfg: AmgConfig) -> Self {
+        debug_assert_eq!(a_picard.n_rows, 2 * n_cells);
+        debug_assert_eq!(a_picard.n_cols, 2 * n_cells);
+
+        // Extract the diagonal scalar blocks.
+        let a_uu = setup::extract_diagonal_block(a_picard, 0, n_cells);
+        let a_vv = setup::extract_diagonal_block(a_picard, n_cells, n_cells);
+
+        let u_hierarchy = setup::build_hierarchy(a_uu, cfg);
+        let v_hierarchy = setup::build_hierarchy(a_vv, cfg);
+
         Self { n_cells, u_hierarchy, v_hierarchy, cfg }
     }
 
     /// Apply the AMG preconditioner: `z = M⁻¹ r` for CG's inner
-    /// iteration.
-    ///
-    /// Phase 2.0 stub: asserts shape contract and panics if called
-    /// — no hierarchy yet to apply. Tests that need a working
-    /// preconditioner run against `JacobiCG` (the Phase 0 default)
-    /// until Phase 2.6 lands the real V-cycle.
+    /// iteration. Two independent V-cycles (Option B'), wrapped
+    /// with `project_velocity` to preserve the 2-D velocity null
+    /// space (Option α — mirrors the Jacobi precond convention).
     pub fn apply(&self, r: &[f64], z: &mut [f64]) {
         debug_assert_eq!(r.len(), 2 * self.n_cells);
         debug_assert_eq!(z.len(), 2 * self.n_cells);
-        panic!(
-            "AmgPreconditioner::apply called at Phase 2.0 — the \
-             V-cycle is scheduled to land in Phase 2.6. Use \
-             JacobiCG until then."
-        );
+
+        let n = self.n_cells;
+        // Pre-project the residual to remove null-space content
+        // (constant-per-component).
+        let mut r_proj = r.to_vec();
+        {
+            let (r_x, r_y) = r_proj.split_at_mut(n);
+            super::nullspace::project_velocity(r_x, r_y);
+        }
+
+        // V-cycle on each half independently.
+        let (z_x, z_y) = z.split_at_mut(n);
+        for v in z_x.iter_mut() {
+            *v = 0.0;
+        }
+        for v in z_y.iter_mut() {
+            *v = 0.0;
+        }
+        vcycle::v_cycle(&self.u_hierarchy, &self.cfg, &r_proj[..n], z_x);
+        vcycle::v_cycle(&self.v_hierarchy, &self.cfg, &r_proj[n..], z_y);
+
+        // Post-project to clean residual null-space drift.
+        super::nullspace::project_velocity(z_x, z_y);
     }
 }
 
@@ -199,18 +222,24 @@ mod tests {
     }
 
     #[test]
-    fn preconditioner_build_does_not_panic_at_scaffolding_stage() {
+    fn preconditioner_build_produces_non_empty_hierarchies() {
+        // Post-Phase-2.6 invariant: the setup pipeline builds at
+        // least one level per hierarchy, with an LU-factored
+        // coarsest level at the end.
         use crate::tectonics_v2::stokes::operator::StokesGrid;
         use crate::tectonics_v2::stokes::sparse_assembly::assemble_picard_csr;
         use crate::tectonics_v2::field::Field2D;
-        let nx = 8;
-        let ny = 8;
+        let nx = 16;
+        let ny = 16;
         let grid = StokesGrid::new(nx, ny, 1.0 / nx as f64, 1.0 / ny as f64);
         let eta = Field2D::filled(nx, ny, 1.0);
         let a = assemble_picard_csr(&grid, &eta, None);
         let p = AmgPreconditioner::build(&a, nx * ny, AmgConfig::default());
         assert_eq!(p.n_cells, nx * ny);
-        assert!(p.u_hierarchy.levels.is_empty());
-        assert!(p.v_hierarchy.levels.is_empty());
+        assert!(!p.u_hierarchy.levels.is_empty(), "u hierarchy is empty");
+        assert!(!p.v_hierarchy.levels.is_empty(), "v hierarchy is empty");
+        // Coarsest level carries LU; no finer does.
+        assert!(p.u_hierarchy.levels.last().unwrap().coarse_lu.is_some());
+        assert!(p.v_hierarchy.levels.last().unwrap().coarse_lu.is_some());
     }
 }
