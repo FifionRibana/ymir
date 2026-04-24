@@ -832,13 +832,44 @@ to the user.
 
 For practical use:
 - **Step 9 cratonic immunity** (next scheduled milestone step):
-  regime is step7-like (Voronoi closed, η-contrast ~10²). AMG
-  is safe here; scalar-parity already validated on step7 shape.
+  regime is step7-like (Voronoi closed, η-contrast ~10²).
+  Scalar-parity on this shape is validated, so AMG is safe
+  (correctness-wise). **However, keep JacobiCG as the default**
+  — the measured wallclock penalty (see §Performance honesty)
+  means AMG will slow Step 9 down until Step 8.5b delivers the
+  amortisation machinery. AmgCG remains available for
+  exploration and scalar-parity comparison, but not recommended
+  as the default solver for new physics steps landing before
+  8.5b.
 - **Step 8-like activated regimes**: stay on `JacobiCG` (the
   default) until 8.5a.2. Expect `cg_iter_mean` to saturate at
   1420-1853 as before — but note that these CG solves reach
   the max_iter cap without strict convergence; 8.5a.2 closes
   that gap.
+
+### Performance honesty — wallclock in this milestone
+
+**AMG is currently 1.1-3.4× SLOWER than Jacobi** on step0-7
+physics in Step 8.5a alone (see §Phase 4.3.5 table). CG iter
+counts drop 2-5× as designed, but each AMG iteration includes
+an `O(N log N)` hierarchy rebuild per Newton outer iter that
+Jacobi does not pay.
+
+If the iter count is down 2-5× but the wallclock is 1.1-3.4×
+higher, then **each AMG iteration costs 5-10× more than a Jacobi
+iteration in this build**. That is the honest framing.
+
+Step 8.5a's contribution is therefore best described as
+"**machinery validated and ready-to-be-accelerated, not a
+performance gain**" — the correctness gate passes unambiguously,
+the wallclock gains come in the follow-up.
+
+Detailed wallclock decomposition (setup vs V-cycle apply vs CG
+work) was not measured in this step and is deferred to Step 8.5b
+— probable distribution per theory: hierarchy setup dominant
+(> 50 %) because η drifts slowly between Newton outer iters and
+full rebuild is wasteful; the cache-friendly fix (reuse
+hierarchy unless `‖Δη‖ > threshold`) is a Step 8.5b lever.
 
 ## Out of scope — follow-ups
 
