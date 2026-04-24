@@ -70,6 +70,7 @@ fn run_step5_parity_mini() -> (f64, f64, f64, f64) {
         boundary_layout_name: "horizontal_oceanic_strip".into(),
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
         mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
+        capture: None,
     };
     let r = run_baseline(&cfg);
     let na = r.metrics.newton.as_ref().expect("newton aggregate");

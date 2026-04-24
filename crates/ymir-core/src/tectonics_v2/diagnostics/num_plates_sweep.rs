@@ -102,6 +102,7 @@ pub fn run_num_plates_sweep(
             boundary_layout_name: format!("voronoi_seed{}_n{}", sd, n),
             slab_pull: crate::tectonics_v2::slab::SlabPullConfig::Disabled,
             mantle: crate::tectonics_v2::mantle::MantleConfig::Disabled,
+            capture: None,
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(n, sd, &r));
