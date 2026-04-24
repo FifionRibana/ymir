@@ -61,6 +61,7 @@ fn build_step0_config(path: PathBuf) -> BaselineConfig {
             path,
             case_label: "step0_quiescent".into(),
         }),
+        linear_solver: Default::default(),
     }
 }
 

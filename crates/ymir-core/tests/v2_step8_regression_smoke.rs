@@ -77,6 +77,7 @@ fn build_step7_shape_config(mantle: MantleConfig) -> BaselineConfig {
         slab_pull: slab,
         mantle,
         capture: None,
+        linear_solver: Default::default(),
     }
 }
 

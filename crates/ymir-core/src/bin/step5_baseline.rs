@@ -236,6 +236,7 @@ fn calibration_probe(
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
         mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
         capture: None,
+        linear_solver: Default::default(),
     };
     let r = run_baseline(&cfg);
     r.metrics
@@ -291,6 +292,7 @@ fn run_scenario_multi_grid(
             slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
             mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
             capture: None,
+            linear_solver: Default::default(),
         };
         println!("-- running {}×{} for {} steps --", nx, ny, args.steps);
         let r = run_baseline(&cfg);

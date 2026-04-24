@@ -73,6 +73,7 @@ fn build_step6_shape_config(slab: SlabPullConfig) -> BaselineConfig {
         slab_pull: slab,
         mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
         capture: None,
+        linear_solver: Default::default(),
     }
 }
 

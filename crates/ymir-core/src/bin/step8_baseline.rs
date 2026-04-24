@@ -221,6 +221,7 @@ fn build_baseline_config(
         slab_pull: slab,
         mantle,
         capture: None,
+        linear_solver: Default::default(),
     })
 }
 

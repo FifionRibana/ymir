@@ -198,6 +198,7 @@ fn capture_step0_quiescent(args: &Args, path: &PathBuf) -> Result<(), String> {
             path: path.clone(),
             case_label: "step0_quiescent".into(),
         }),
+        linear_solver: Default::default(),
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -238,6 +239,7 @@ fn capture_step3_floor_yielding(args: &Args, path: &PathBuf) -> Result<(), Strin
             path: path.clone(),
             case_label: "step3_floor_yielding".into(),
         }),
+        linear_solver: Default::default(),
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -326,6 +328,7 @@ fn capture_step8_activated(
             path: path.clone(),
             case_label: case_label.into(),
         }),
+        linear_solver: Default::default(),
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -376,5 +379,6 @@ fn build_step6_shape_config(
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
         capture: Some(capture),
+        linear_solver: Default::default(),
     })
 }

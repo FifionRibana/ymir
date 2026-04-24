@@ -63,6 +63,7 @@ fn run_regression_smoke() -> (f64, f64) {
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
         mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
         capture: None,
+        linear_solver: Default::default(),
     };
     let r = run_baseline(&cfg);
     (r.metrics.wallclock_total.as_secs_f64(), r.metrics.cg_iter_mean)

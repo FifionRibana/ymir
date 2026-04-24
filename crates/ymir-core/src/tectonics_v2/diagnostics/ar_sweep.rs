@@ -81,6 +81,7 @@ pub fn run_ar_sweep(
             slab_pull: crate::tectonics_v2::slab::SlabPullConfig::Disabled,
             mantle: crate::tectonics_v2::mantle::MantleConfig::Disabled,
             capture: None,
+            linear_solver: Default::default(),
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(ar, &r));

@@ -286,6 +286,7 @@ fn run_scenario(
             slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
             mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
             capture: None,
+            linear_solver: Default::default(),
         };
         println!("-- running {}×{} for {} steps --", nx, ny, args.steps);
         let result = run_baseline(&base);
