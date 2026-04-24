@@ -52,6 +52,7 @@ fn build_cfg(
         boundary, boundary_layout_name: "voronoi_seed42_n8".into(),
         slab_pull: slab,
         mantle,
+        capture: None,
     }
 }
 

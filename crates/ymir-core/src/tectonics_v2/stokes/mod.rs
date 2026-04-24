@@ -35,6 +35,7 @@ pub mod nullspace;
 pub mod operator;
 pub mod picard;
 pub mod precond;
+pub mod snapshot;
 pub mod solver;
 
 use super::field::Field2D;

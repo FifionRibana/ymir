@@ -285,6 +285,7 @@ fn run_scenario(
             boundary_layout_name: String::new(),
             slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
             mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
+            capture: None,
         };
         println!("-- running {}×{} for {} steps --", nx, ny, args.steps);
         let result = run_baseline(&base);
