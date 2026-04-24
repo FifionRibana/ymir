@@ -111,10 +111,44 @@ All 15 tests green on 8C/16T hardware. No call site is rewired to
 use the helpers yet — wire-in happens in Phase 2 (Jacobi path)
 and Phase 3 (AMG path).
 
-## Phase 2 — Jacobi path parallelised (TBD)
+## Phase 2 — Jacobi path parallelised
 
-Matrix-free `apply_momentum`, Jacobi preconditioner apply, CG inner
-products.
+Five hot-path call sites rewired to use either the chunk-deterministic
+`parallel_reduce` helpers (dot / norm / sum / axpy / max-abs) or
+`rayon::par_iter_mut` / `par_chunks_mut` for cell-local writes:
+
+| Module | What parallelised |
+|---|---|
+| [`stokes/parallel_reduce.rs`](../../crates/ymir-core/src/tectonics_v2/stokes/parallel_reduce.rs) | Added `par_sum` (used by `nullspace`), wired-in tests. |
+| [`stokes/nullspace.rs`](../../crates/ymir-core/src/tectonics_v2/stokes/nullspace.rs) | `subtract_mean` now `par_sum` + `par_iter_mut`; `mean` now `par_sum`. Projection runs twice per CG preconditioner apply. |
+| [`stokes/operator.rs`](../../crates/ymir-core/src/tectonics_v2/stokes/operator.rs) | `apply_momentum` outer j-loop and basal-drag augmentation loop now `par_chunks_mut(nx).zip.enumerate()`. `momentum_diagonal` same pattern. `apply_tangent`'s four sequential fill passes (strain rates, `s_cc`, `σᴺ`, divergence) each parallelised over rows. Shared by both Jacobi-CG and AMG-CG (Newton tangent remains matrix-free). |
+| [`stokes/precond.rs`](../../crates/ymir-core/src/tectonics_v2/stokes/precond.rs) | `VelocityJacobi::apply`'s `z = M⁻¹ r` inner loop via `par_iter_mut` zipped with `inv_diag` and `r`. |
+| [`stokes/solver.rs`](../../crates/ymir-core/src/tectonics_v2/stokes/solver.rs) | CG initial residual (`par_iter_mut`), `b_norm` / `r0_norm` / `r_norm` via `par_norm2`, `⟨r, z⟩` and `⟨p, Ap⟩` via `par_dot`, `x += α p` and `r -= α Ap` via `par_axpy`, `p = z + β p` via `par_iter_mut`. Dead scalar `dot` / `norm2` helpers removed. |
+
+**Bit-determinism invariant preserved**: every reduction uses the
+16-chunk-in-index-order pattern and every cell-local update writes
+at a fixed index with a value that is purely a function of read-only
+inputs. Output bits are therefore independent of the rayon thread
+count.
+
+### Validation
+
+| Test | Scope | Result |
+|---|---|---|
+| `v2_parallel_determinism` (6 tests) | cross-pool bit-identity of helpers at `num_threads ∈ {1,2,4,8}` | ✅ |
+| `v2_step0_synthetic_parity` (2 tests) | two captures of Step 0 snapshot produce byte-identical `.bin`; round-trip preserves every `f64` | ✅ |
+| `v2_step8_regression_smoke` (2 tests) | two 20-step Step 7-shaped physics runs (yielding + basal drag + voronoi + slab + mantle disabled) produce byte-identical `mass_conservation_residual`, `vmax_peak`, `yielding_cell_fraction_max`, `cg_iter_mean` | ✅ |
+| `v2_amg_scalar_parity` (4 cases) | AMG scalar-parity vs 8.5a high-precision reference solutions at `C · κ · (tol_test + tol_ref)` | ✅ |
+| Lib test suite | 363 pass, 1 unrelated failure (legacy `export::tests::deserialize_legacy_metadata_without_upscale` — preexists Phase 2, tracked separately) | ✅ |
+
+Wallclock deltas for Phase 2 alone are not measured here — the
+benchmark harness drives all three compounding improvements
+(parallelisation, Newton extrapolation, LTO) in a single sweep in
+Phase 6. An early `v2_step8_regression_smoke` 2-run total of 49.5 s
+(down from ~60–65 s historical with yielding + slab + mantle off on
+this hardware) is consistent with a meaningful but not headline
+speedup at this stage — CG inner loops dominate less than the
+outer setup on 64² × 20 steps.
 
 ## Phase 3 — RBGS replaces SGS (TBD)
 

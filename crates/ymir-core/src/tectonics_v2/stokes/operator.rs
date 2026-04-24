@@ -32,6 +32,8 @@
 //!   Step 1 switched to arithmetic so the Newton Jacobian is exactly
 //!   symmetric — see the `eta_corner` doc-comment.)
 
+use rayon::prelude::*;
+
 use super::super::field::{Field2D, PeriodicIndex};
 use super::super::rheology::{StrainRate, ViscosityLaw};
 
@@ -137,57 +139,65 @@ pub fn apply_momentum(
     debug_assert_eq!(vx.len(), nx * ny);
     debug_assert_eq!(vy.len(), nx * ny);
 
-    for j in 0..ny {
-        let jp = grid.idx_y.next(j);
-        let jm = grid.idx_y.prev(j);
-        for i in 0..nx {
-            let ip = grid.idx_x.next(i);
-            let im = grid.idx_x.prev(i);
-            let lin = |ii: usize, jj: usize| jj * nx + ii;
+    // Step 8.5b: parallelise over rows j via `par_chunks_mut(nx)`. Each
+    // cell's output depends only on read-only inputs and the cell
+    // index, so execution order is irrelevant to the numeric result
+    // (bit-identical across thread counts).
+    out_vx
+        .par_chunks_mut(nx)
+        .zip(out_vy.par_chunks_mut(nx))
+        .enumerate()
+        .for_each(|(j, (row_vx, row_vy))| {
+            let jp = grid.idx_y.next(j);
+            let jm = grid.idx_y.prev(j);
+            for i in 0..nx {
+                let ip = grid.idx_x.next(i);
+                let im = grid.idx_x.prev(i);
+                let lin = |ii: usize, jj: usize| jj * nx + ii;
 
-            // ---------- x-momentum at vx(i, j) ----------
-            let eta_cc_right = eta.get(i, j);
-            let eta_cc_left = eta.get(im, j);
-            let dvx_dx_right = (vx[lin(ip, j)] - vx[lin(i, j)]) * inv_dx;
-            let dvx_dx_left = (vx[lin(i, j)] - vx[lin(im, j)]) * inv_dx;
-            let sigma_xx_right = 2.0 * eta_cc_right * dvx_dx_right;
-            let sigma_xx_left = 2.0 * eta_cc_left * dvx_dx_left;
-            let d_sigma_xx_dx = (sigma_xx_right - sigma_xx_left) * inv_dx;
+                // ---------- x-momentum at vx(i, j) ----------
+                let eta_cc_right = eta.get(i, j);
+                let eta_cc_left = eta.get(im, j);
+                let dvx_dx_right = (vx[lin(ip, j)] - vx[lin(i, j)]) * inv_dx;
+                let dvx_dx_left = (vx[lin(i, j)] - vx[lin(im, j)]) * inv_dx;
+                let sigma_xx_right = 2.0 * eta_cc_right * dvx_dx_right;
+                let sigma_xx_left = 2.0 * eta_cc_left * dvx_dx_left;
+                let d_sigma_xx_dx = (sigma_xx_right - sigma_xx_left) * inv_dx;
 
-            let eta_corner_top = eta_corner(eta, im, i, j, jp);
-            let eta_corner_bot = eta_corner(eta, im, i, jm, j);
-            let dvx_dy_top = (vx[lin(i, jp)] - vx[lin(i, j)]) * inv_dy;
-            let dvx_dy_bot = (vx[lin(i, j)] - vx[lin(i, jm)]) * inv_dy;
-            let dvy_dx_top = (vy[lin(i, jp)] - vy[lin(im, jp)]) * inv_dx;
-            let dvy_dx_bot = (vy[lin(i, j)] - vy[lin(im, j)]) * inv_dx;
-            let sigma_xy_top = eta_corner_top * (dvx_dy_top + dvy_dx_top);
-            let sigma_xy_bot = eta_corner_bot * (dvx_dy_bot + dvy_dx_bot);
-            let d_sigma_xy_dy = (sigma_xy_top - sigma_xy_bot) * inv_dy;
+                let eta_corner_top = eta_corner(eta, im, i, j, jp);
+                let eta_corner_bot = eta_corner(eta, im, i, jm, j);
+                let dvx_dy_top = (vx[lin(i, jp)] - vx[lin(i, j)]) * inv_dy;
+                let dvx_dy_bot = (vx[lin(i, j)] - vx[lin(i, jm)]) * inv_dy;
+                let dvy_dx_top = (vy[lin(i, jp)] - vy[lin(im, jp)]) * inv_dx;
+                let dvy_dx_bot = (vy[lin(i, j)] - vy[lin(im, j)]) * inv_dx;
+                let sigma_xy_top = eta_corner_top * (dvx_dy_top + dvy_dx_top);
+                let sigma_xy_bot = eta_corner_bot * (dvx_dy_bot + dvy_dx_bot);
+                let d_sigma_xy_dy = (sigma_xy_top - sigma_xy_bot) * inv_dy;
 
-            out_vx[lin(i, j)] = -(d_sigma_xx_dx + d_sigma_xy_dy);
+                row_vx[i] = -(d_sigma_xx_dx + d_sigma_xy_dy);
 
-            // ---------- y-momentum at vy(i, j) ----------
-            let eta_cc_top = eta.get(i, j);
-            let eta_cc_bot = eta.get(i, jm);
-            let dvy_dy_top = (vy[lin(i, jp)] - vy[lin(i, j)]) * inv_dy;
-            let dvy_dy_bot = (vy[lin(i, j)] - vy[lin(i, jm)]) * inv_dy;
-            let sigma_yy_top = 2.0 * eta_cc_top * dvy_dy_top;
-            let sigma_yy_bot = 2.0 * eta_cc_bot * dvy_dy_bot;
-            let d_sigma_yy_dy = (sigma_yy_top - sigma_yy_bot) * inv_dy;
+                // ---------- y-momentum at vy(i, j) ----------
+                let eta_cc_top = eta.get(i, j);
+                let eta_cc_bot = eta.get(i, jm);
+                let dvy_dy_top = (vy[lin(i, jp)] - vy[lin(i, j)]) * inv_dy;
+                let dvy_dy_bot = (vy[lin(i, j)] - vy[lin(i, jm)]) * inv_dy;
+                let sigma_yy_top = 2.0 * eta_cc_top * dvy_dy_top;
+                let sigma_yy_bot = 2.0 * eta_cc_bot * dvy_dy_bot;
+                let d_sigma_yy_dy = (sigma_yy_top - sigma_yy_bot) * inv_dy;
 
-            let eta_corner_right = eta_corner(eta, i, ip, jm, j);
-            let eta_corner_left = eta_corner(eta, im, i, jm, j);
-            let dvx_dy_right = (vx[lin(ip, j)] - vx[lin(ip, jm)]) * inv_dy;
-            let dvx_dy_left = (vx[lin(i, j)] - vx[lin(i, jm)]) * inv_dy;
-            let dvy_dx_right = (vy[lin(ip, j)] - vy[lin(i, j)]) * inv_dx;
-            let dvy_dx_left = (vy[lin(i, j)] - vy[lin(im, j)]) * inv_dx;
-            let sigma_xy_right = eta_corner_right * (dvx_dy_right + dvy_dx_right);
-            let sigma_xy_left = eta_corner_left * (dvx_dy_left + dvy_dx_left);
-            let d_sigma_xy_dx = (sigma_xy_right - sigma_xy_left) * inv_dx;
+                let eta_corner_right = eta_corner(eta, i, ip, jm, j);
+                let eta_corner_left = eta_corner(eta, im, i, jm, j);
+                let dvx_dy_right = (vx[lin(ip, j)] - vx[lin(ip, jm)]) * inv_dy;
+                let dvx_dy_left = (vx[lin(i, j)] - vx[lin(i, jm)]) * inv_dy;
+                let dvy_dx_right = (vy[lin(ip, j)] - vy[lin(i, j)]) * inv_dx;
+                let dvy_dx_left = (vy[lin(i, j)] - vy[lin(im, j)]) * inv_dx;
+                let sigma_xy_right = eta_corner_right * (dvx_dy_right + dvy_dx_right);
+                let sigma_xy_left = eta_corner_left * (dvx_dy_left + dvy_dx_left);
+                let d_sigma_xy_dx = (sigma_xy_right - sigma_xy_left) * inv_dx;
 
-            out_vy[lin(i, j)] = -(d_sigma_xy_dx + d_sigma_yy_dy);
-        }
-    }
+                row_vy[i] = -(d_sigma_xy_dx + d_sigma_yy_dy);
+            }
+        });
 
     // ---------- Basal drag augmentation (Step 4) ----------
     //
@@ -203,17 +213,21 @@ pub fn apply_momentum(
     if let Some(drag) = drag_diag {
         debug_assert_eq!(drag.nx(), nx);
         debug_assert_eq!(drag.ny(), ny);
-        for j in 0..ny {
-            let jm = grid.idx_y.prev(j);
-            for i in 0..nx {
-                let im = grid.idx_x.prev(i);
-                let lin = |ii: usize, jj: usize| jj * nx + ii;
-                let drag_x = 0.5 * (drag.get(im, j) + drag.get(i, j));
-                let drag_y = 0.5 * (drag.get(i, jm) + drag.get(i, j));
-                out_vx[lin(i, j)] += drag_x * vx[lin(i, j)];
-                out_vy[lin(i, j)] += drag_y * vy[lin(i, j)];
-            }
-        }
+        out_vx
+            .par_chunks_mut(nx)
+            .zip(out_vy.par_chunks_mut(nx))
+            .enumerate()
+            .for_each(|(j, (row_vx, row_vy))| {
+                let jm = grid.idx_y.prev(j);
+                for i in 0..nx {
+                    let im = grid.idx_x.prev(i);
+                    let lin = |ii: usize, jj: usize| jj * nx + ii;
+                    let drag_x = 0.5 * (drag.get(im, j) + drag.get(i, j));
+                    let drag_y = 0.5 * (drag.get(i, jm) + drag.get(i, j));
+                    row_vx[i] += drag_x * vx[lin(i, j)];
+                    row_vy[i] += drag_y * vy[lin(i, j)];
+                }
+            });
     }
 }
 
@@ -250,29 +264,34 @@ pub fn momentum_diagonal(
     let inv_dx2 = 1.0 / (dx * dx);
     let inv_dy2 = 1.0 / (dy * dy);
 
-    for j in 0..ny {
-        let jp = grid.idx_y.next(j);
-        let jm = grid.idx_y.prev(j);
-        for i in 0..nx {
-            let ip = grid.idx_x.next(i);
-            let im = grid.idx_x.prev(i);
-            let lin = |ii: usize, jj: usize| jj * nx + ii;
+    // Step 8.5b: parallelise over rows — same rationale as
+    // `apply_momentum` (cell-local writes, read-only inputs).
+    diag_vx
+        .par_chunks_mut(nx)
+        .zip(diag_vy.par_chunks_mut(nx))
+        .enumerate()
+        .for_each(|(j, (row_vx, row_vy))| {
+            let jp = grid.idx_y.next(j);
+            let jm = grid.idx_y.prev(j);
+            for i in 0..nx {
+                let ip = grid.idx_x.next(i);
+                let im = grid.idx_x.prev(i);
 
-            let eta_right_cc = eta.get(i, j);
-            let eta_left_cc = eta.get(im, j);
-            let eta_c_top = eta_corner(eta, im, i, j, jp);
-            let eta_c_bot = eta_corner(eta, im, i, jm, j);
-            diag_vx[lin(i, j)] =
-                2.0 * (eta_right_cc + eta_left_cc) * inv_dx2 + (eta_c_top + eta_c_bot) * inv_dy2;
+                let eta_right_cc = eta.get(i, j);
+                let eta_left_cc = eta.get(im, j);
+                let eta_c_top = eta_corner(eta, im, i, j, jp);
+                let eta_c_bot = eta_corner(eta, im, i, jm, j);
+                row_vx[i] = 2.0 * (eta_right_cc + eta_left_cc) * inv_dx2
+                    + (eta_c_top + eta_c_bot) * inv_dy2;
 
-            let eta_top_cc = eta.get(i, j);
-            let eta_bot_cc = eta.get(i, jm);
-            let eta_c_right = eta_corner(eta, i, ip, jm, j);
-            let eta_c_left = eta_corner(eta, im, i, jm, j);
-            diag_vy[lin(i, j)] =
-                (eta_c_right + eta_c_left) * inv_dx2 + 2.0 * (eta_top_cc + eta_bot_cc) * inv_dy2;
-        }
-    }
+                let eta_top_cc = eta.get(i, j);
+                let eta_bot_cc = eta.get(i, jm);
+                let eta_c_right = eta_corner(eta, i, ip, jm, j);
+                let eta_c_left = eta_corner(eta, im, i, jm, j);
+                row_vy[i] = (eta_c_right + eta_c_left) * inv_dx2
+                    + 2.0 * (eta_top_cc + eta_bot_cc) * inv_dy2;
+            }
+        });
 
     // Basal drag: augment the diagonal with `drag_face_*` (arithmetic
     // 2-point cell-to-face average of the cell-centered `drag_diag`),
@@ -281,17 +300,20 @@ pub fn momentum_diagonal(
     if let Some(drag) = drag_diag {
         debug_assert_eq!(drag.nx(), nx);
         debug_assert_eq!(drag.ny(), ny);
-        for j in 0..ny {
-            let jm = grid.idx_y.prev(j);
-            for i in 0..nx {
-                let im = grid.idx_x.prev(i);
-                let lin = |ii: usize, jj: usize| jj * nx + ii;
-                let drag_x = 0.5 * (drag.get(im, j) + drag.get(i, j));
-                let drag_y = 0.5 * (drag.get(i, jm) + drag.get(i, j));
-                diag_vx[lin(i, j)] += drag_x;
-                diag_vy[lin(i, j)] += drag_y;
-            }
-        }
+        diag_vx
+            .par_chunks_mut(nx)
+            .zip(diag_vy.par_chunks_mut(nx))
+            .enumerate()
+            .for_each(|(j, (row_vx, row_vy))| {
+                let jm = grid.idx_y.prev(j);
+                for i in 0..nx {
+                    let im = grid.idx_x.prev(i);
+                    let drag_x = 0.5 * (drag.get(im, j) + drag.get(i, j));
+                    let drag_y = 0.5 * (drag.get(i, jm) + drag.get(i, j));
+                    row_vx[i] += drag_x;
+                    row_vy[i] += drag_y;
+                }
+            });
     }
 }
 
@@ -402,23 +424,35 @@ pub fn apply_tangent(
     let idx_y = &grid.idx_y;
     let lin = |ii: usize, jj: usize| jj * nx + ii;
 
+    // Step 8.5b: each of the four loops below writes cell-local
+    // values and is safely parallelised by row (`par_chunks_mut(nx)`
+    // on the Field2D's flat buffer). The loops run sequentially
+    // relative to each other because they pipeline intermediate
+    // buffers (dexx/deyy/dexy → s_cc → sigma → divergence).
+
     // --- 1. δv's native strain-rate components ---
     let mut dexx_cc = Field2D::new(nx, ny);
     let mut deyy_cc = Field2D::new(nx, ny);
     let mut dexy_co = Field2D::new(nx, ny);
-    for j in 0..ny {
-        let jp = idx_y.next(j);
-        let jm = idx_y.prev(j);
-        for i in 0..nx {
-            let ip = idx_x.next(i);
-            let im = idx_x.prev(i);
-            dexx_cc.set(i, j, (dvx[lin(ip, j)] - dvx[lin(i, j)]) * inv_dx);
-            deyy_cc.set(i, j, (dvy[lin(i, jp)] - dvy[lin(i, j)]) * inv_dy);
-            let dvx_dy = (dvx[lin(i, j)] - dvx[lin(i, jm)]) * inv_dy;
-            let dvy_dx = (dvy[lin(i, j)] - dvy[lin(im, j)]) * inv_dx;
-            dexy_co.set(i, j, 0.5 * (dvx_dy + dvy_dx));
-        }
-    }
+    dexx_cc
+        .data_mut()
+        .par_chunks_mut(nx)
+        .zip(deyy_cc.data_mut().par_chunks_mut(nx))
+        .zip(dexy_co.data_mut().par_chunks_mut(nx))
+        .enumerate()
+        .for_each(|(j, ((dexx_row, deyy_row), dexy_row))| {
+            let jp = idx_y.next(j);
+            let jm = idx_y.prev(j);
+            for i in 0..nx {
+                let ip = idx_x.next(i);
+                let im = idx_x.prev(i);
+                dexx_row[i] = (dvx[lin(ip, j)] - dvx[lin(i, j)]) * inv_dx;
+                deyy_row[i] = (dvy[lin(i, jp)] - dvy[lin(i, j)]) * inv_dy;
+                let dvx_dy = (dvx[lin(i, j)] - dvx[lin(i, jm)]) * inv_dy;
+                let dvy_dx = (dvy[lin(i, j)] - dvy[lin(im, j)]) * inv_dx;
+                dexy_row[i] = 0.5 * (dvx_dy + dvy_dx);
+            }
+        });
 
     // --- 2. Cell-centre scalar S(δv) = c_cc · contract_cc(δv) ---
     //     contract_cc(δv) = ε̇_xx(v_k)·ε̇_xx(δv) + ε̇_yy(v_k)·ε̇_yy(δv)
@@ -426,21 +460,24 @@ pub fn apply_tangent(
     // Average-of-products on the shear term keeps it consistent with
     // the definition of `ε̇_II_cc`.
     let mut s_cc = Field2D::new(nx, ny);
-    for j in 0..ny {
-        let jp = idx_y.next(j);
-        for i in 0..nx {
-            let ip = idx_x.next(i);
-            let pxy_avg = 0.25
-                * (ctx.exy_corner.get(i, j) * dexy_co.get(i, j)
-                    + ctx.exy_corner.get(ip, j) * dexy_co.get(ip, j)
-                    + ctx.exy_corner.get(i, jp) * dexy_co.get(i, jp)
-                    + ctx.exy_corner.get(ip, jp) * dexy_co.get(ip, jp));
-            let contract = ctx.exx_center.get(i, j) * dexx_cc.get(i, j)
-                + ctx.eyy_center.get(i, j) * deyy_cc.get(i, j)
-                + 2.0 * pxy_avg;
-            s_cc.set(i, j, ctx.c_center.get(i, j) * contract);
-        }
-    }
+    s_cc.data_mut()
+        .par_chunks_mut(nx)
+        .enumerate()
+        .for_each(|(j, s_row)| {
+            let jp = idx_y.next(j);
+            for i in 0..nx {
+                let ip = idx_x.next(i);
+                let pxy_avg = 0.25
+                    * (ctx.exy_corner.get(i, j) * dexy_co.get(i, j)
+                        + ctx.exy_corner.get(ip, j) * dexy_co.get(ip, j)
+                        + ctx.exy_corner.get(i, jp) * dexy_co.get(i, jp)
+                        + ctx.exy_corner.get(ip, jp) * dexy_co.get(ip, jp));
+                let contract = ctx.exx_center.get(i, j) * dexx_cc.get(i, j)
+                    + ctx.eyy_center.get(i, j) * deyy_cc.get(i, j)
+                    + 2.0 * pxy_avg;
+                s_row[i] = ctx.c_center.get(i, j) * contract;
+            }
+        });
 
     // --- 3. Newton-extra stress components ---
     //   σ^N_xx[cc] = S(δv) · ε̇_xx(v_k)
@@ -450,33 +487,43 @@ pub fn apply_tangent(
     let mut sigma_xx_cc = Field2D::new(nx, ny);
     let mut sigma_yy_cc = Field2D::new(nx, ny);
     let mut sigma_xy_co = Field2D::new(nx, ny);
-    for j in 0..ny {
-        let jm = idx_y.prev(j);
-        for i in 0..nx {
-            let im = idx_x.prev(i);
-            sigma_xx_cc.set(i, j, s_cc.get(i, j) * ctx.exx_center.get(i, j));
-            sigma_yy_cc.set(i, j, s_cc.get(i, j) * ctx.eyy_center.get(i, j));
-            let s_avg = 0.25
-                * (s_cc.get(im, jm) + s_cc.get(i, jm) + s_cc.get(im, j) + s_cc.get(i, j));
-            sigma_xy_co.set(i, j, s_avg * ctx.exy_corner.get(i, j));
-        }
-    }
+    sigma_xx_cc
+        .data_mut()
+        .par_chunks_mut(nx)
+        .zip(sigma_yy_cc.data_mut().par_chunks_mut(nx))
+        .zip(sigma_xy_co.data_mut().par_chunks_mut(nx))
+        .enumerate()
+        .for_each(|(j, ((sxx_row, syy_row), sxy_row))| {
+            let jm = idx_y.prev(j);
+            for i in 0..nx {
+                let im = idx_x.prev(i);
+                sxx_row[i] = s_cc.get(i, j) * ctx.exx_center.get(i, j);
+                syy_row[i] = s_cc.get(i, j) * ctx.eyy_center.get(i, j);
+                let s_avg = 0.25
+                    * (s_cc.get(im, jm) + s_cc.get(i, jm) + s_cc.get(im, j) + s_cc.get(i, j));
+                sxy_row[i] = s_avg * ctx.exy_corner.get(i, j);
+            }
+        });
 
     // --- 4. Divergence: adds to existing out (caller placed Picard there). ---
-    for j in 0..ny {
-        let jp = idx_y.next(j);
-        let jm = idx_y.prev(j);
-        for i in 0..nx {
-            let ip = idx_x.next(i);
-            let im = idx_x.prev(i);
-            let d_sigma_xx_dx = (sigma_xx_cc.get(i, j) - sigma_xx_cc.get(im, j)) * inv_dx;
-            let d_sigma_xy_dy = (sigma_xy_co.get(i, jp) - sigma_xy_co.get(i, j)) * inv_dy;
-            out_vx[lin(i, j)] += -(d_sigma_xx_dx + d_sigma_xy_dy);
-            let d_sigma_xy_dx = (sigma_xy_co.get(ip, j) - sigma_xy_co.get(i, j)) * inv_dx;
-            let d_sigma_yy_dy = (sigma_yy_cc.get(i, j) - sigma_yy_cc.get(i, jm)) * inv_dy;
-            out_vy[lin(i, j)] += -(d_sigma_xy_dx + d_sigma_yy_dy);
-        }
-    }
+    out_vx
+        .par_chunks_mut(nx)
+        .zip(out_vy.par_chunks_mut(nx))
+        .enumerate()
+        .for_each(|(j, (row_vx, row_vy))| {
+            let jp = idx_y.next(j);
+            let jm = idx_y.prev(j);
+            for i in 0..nx {
+                let ip = idx_x.next(i);
+                let im = idx_x.prev(i);
+                let d_sigma_xx_dx = (sigma_xx_cc.get(i, j) - sigma_xx_cc.get(im, j)) * inv_dx;
+                let d_sigma_xy_dy = (sigma_xy_co.get(i, jp) - sigma_xy_co.get(i, j)) * inv_dy;
+                row_vx[i] += -(d_sigma_xx_dx + d_sigma_xy_dy);
+                let d_sigma_xy_dx = (sigma_xy_co.get(ip, j) - sigma_xy_co.get(i, j)) * inv_dx;
+                let d_sigma_yy_dy = (sigma_yy_cc.get(i, j) - sigma_yy_cc.get(i, jm)) * inv_dy;
+                row_vy[i] += -(d_sigma_xy_dx + d_sigma_yy_dy);
+            }
+        });
 }
 
 /// Apply the full Newton Jacobian `J δv = A_picard δv + A_tangent δv`.
