@@ -25,6 +25,9 @@ use std::path::PathBuf;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
 use ymir_core::tectonics_v2::field::Field2D;
+use ymir_core::tectonics_v2::stokes::amg::setup::build_hierarchy;
+use ymir_core::tectonics_v2::stokes::amg::vcycle::v_cycle;
+use ymir_core::tectonics_v2::stokes::amg::{AmgConfig, AmgPreconditioner};
 use ymir_core::tectonics_v2::stokes::nullspace;
 use ymir_core::tectonics_v2::stokes::operator::{
     apply_momentum, apply_tangent, StokesGrid, TangentContext,
@@ -32,6 +35,7 @@ use ymir_core::tectonics_v2::stokes::operator::{
 use ymir_core::tectonics_v2::stokes::precond::VelocityJacobi;
 use ymir_core::tectonics_v2::stokes::snapshot::{field_from_vec, LinearStokesSnapshot};
 use ymir_core::tectonics_v2::stokes::solver::{ConjugateGradient, LinearSolver, SolverStats};
+use ymir_core::tectonics_v2::stokes::sparse_assembly::{assemble_picard_csr, CsrMatrix};
 
 // ---------------------------------------------------------------------------
 // Poisson synthetic cases
@@ -227,6 +231,126 @@ fn build_stokes_replay(snap: &LinearStokesSnapshot) -> StokesReplay {
     }
 }
 
+// ---------------------------------------------------------------------------
+// AMG dispatch — Phase 2.7
+// ---------------------------------------------------------------------------
+
+/// Build a scalar Poisson CSR matching `PoissonCase` for AMG setup.
+fn poisson_case_to_csr(case: &PoissonCase) -> CsrMatrix {
+    let nx = case.nx;
+    let ny = case.ny;
+    let inv_dx2 = 1.0 / (case.dx * case.dx);
+    let inv_dy2 = 1.0 / (case.dy * case.dy);
+    let mut row_ptr = Vec::with_capacity(nx * ny + 1);
+    let mut col_idx = Vec::new();
+    let mut values = Vec::new();
+    row_ptr.push(0);
+    for j in 0..ny {
+        let jp = (j + 1) % ny;
+        let jm = (j + ny - 1) % ny;
+        for i in 0..nx {
+            let ip = (i + 1) % nx;
+            let im = (i + nx - 1) % nx;
+            let eta_c = case.eta[j * nx + i];
+            let eta_e = 0.5 * (eta_c + case.eta[j * nx + ip]);
+            let eta_w = 0.5 * (eta_c + case.eta[j * nx + im]);
+            let eta_n = 0.5 * (eta_c + case.eta[jp * nx + i]);
+            let eta_s = 0.5 * (eta_c + case.eta[jm * nx + i]);
+            let diag = (eta_e + eta_w) * inv_dx2 + (eta_n + eta_s) * inv_dy2;
+            // Row entries: sort by column. Neighbours: jm*nx+i,
+            // j*nx+im, j*nx+i (diag), j*nx+ip, jp*nx+i.
+            let mut buf = [
+                (jm * nx + i, -eta_s * inv_dy2),
+                (j * nx + im, -eta_w * inv_dx2),
+                (j * nx + i, diag),
+                (j * nx + ip, -eta_e * inv_dx2),
+                (jp * nx + i, -eta_n * inv_dy2),
+            ];
+            buf.sort_by_key(|&(c, _)| c);
+            let mut prev: Option<usize> = None;
+            for (c, v) in buf.iter() {
+                match prev {
+                    Some(p) if p == *c => *values.last_mut().unwrap() += v,
+                    _ => {
+                        col_idx.push(*c);
+                        values.push(*v);
+                        prev = Some(*c);
+                    }
+                }
+            }
+            row_ptr.push(col_idx.len());
+        }
+    }
+    CsrMatrix { n_rows: nx * ny, n_cols: nx * ny, row_ptr, col_idx, values }
+}
+
+/// Run one AMG-preconditioned CG on a Poisson case. Returns stats.
+/// AMG preconditioner is a single scalar hierarchy (the case is
+/// already scalar, Option B' doesn't apply here).
+fn solve_poisson_amg(case: &PoissonCase, cfg: AmgConfig, tol: f64, max_iter: usize) -> SolverStats {
+    let a = poisson_case_to_csr(case);
+    let hierarchy = build_hierarchy(a.clone(), cfg);
+    let cg = ConjugateGradient::new(tol, max_iter);
+    let n = case.nx * case.ny;
+    let mut x = vec![0.0f64; n];
+    let b_scratch = case.rhs.clone();
+    let a_clone = a.clone();
+    let mut matvec = |v: &[f64], out: &mut [f64]| a_clone.apply(v, out);
+    let mut precond = |r: &[f64], z: &mut [f64]| {
+        for v in z.iter_mut() {
+            *v = 0.0;
+        }
+        // Pre-project the residual (scalar null-space = constant
+        // mode, analogous to velocity-per-component projection).
+        let mut r_proj = r.to_vec();
+        nullspace::subtract_mean(&mut r_proj);
+        v_cycle(&hierarchy, &cfg, &r_proj, z);
+        nullspace::subtract_mean(z);
+    };
+    cg.solve(&mut matvec, &mut precond, &b_scratch, &mut x)
+}
+
+/// Run one AMG-preconditioned CG on a Stokes snapshot. Uses the
+/// full `AmgPreconditioner` (two scalar hierarchies, Option B').
+fn solve_stokes_amg(
+    replay: &StokesReplay,
+    snap: &LinearStokesSnapshot,
+    cfg: AmgConfig,
+) -> SolverStats {
+    // Build the sparse Picard CSR from the snapshot.
+    let a_picard = assemble_picard_csr(
+        &replay.grid,
+        &replay.eta_center,
+        replay.drag_diag.as_ref(),
+    );
+    let precond = AmgPreconditioner::build(&a_picard, snap.n_cells(), cfg);
+
+    let n = replay.grid.n_cells();
+    let cg = ConjugateGradient::new(replay.cfg_tol, replay.cfg_max_iter);
+    let mut x_pack = vec![0.0f64; 2 * n];
+    let b_scratch = replay.rhs_pack.clone();
+    let mut tmp_ax = vec![0.0; n];
+    let mut tmp_ay = vec![0.0; n];
+    let mut matvec = |v: &[f64], out: &mut [f64]| {
+        let (vx_in, vy_in) = v.split_at(n);
+        let (out_x, out_y) = out.split_at_mut(n);
+        apply_momentum(
+            &replay.grid,
+            &replay.eta_center,
+            replay.drag_diag.as_ref(),
+            vx_in,
+            vy_in,
+            &mut tmp_ax,
+            &mut tmp_ay,
+        );
+        out_x.copy_from_slice(&tmp_ax);
+        out_y.copy_from_slice(&tmp_ay);
+        apply_tangent(&replay.grid, &replay.ctx, vx_in, vy_in, out_x, out_y);
+    };
+    let mut precond_fn = |r: &[f64], z: &mut [f64]| precond.apply(r, z);
+    cg.solve(&mut matvec, &mut precond_fn, &b_scratch, &mut x_pack)
+}
+
 /// Run one Jacobi-CG solve on the Stokes replay; returns stats.
 fn solve_stokes_jacobi(replay: &StokesReplay) -> SolverStats {
     let n = replay.grid.n_cells();
@@ -260,20 +384,40 @@ fn solve_stokes_jacobi(replay: &StokesReplay) -> SolverStats {
 // ---------------------------------------------------------------------------
 
 fn bench_poisson(c: &mut Criterion, name: &str, case: PoissonCase) {
-    // One warmup solve outside the timing loop to capture + log the
-    // iteration count (deterministic, so one run suffices).
-    let stats = solve_poisson_jacobi(&case, 1e-8, 4000);
+    // Warmup solves outside the timing loop to log iteration
+    // counts (deterministic, one run suffices). Jacobi first, AMG
+    // second — the gate is on AMG iter count.
+    let stats_j = solve_poisson_jacobi(&case, 1e-8, 4000);
     eprintln!(
         "[jacobi] {name:>24}  iters = {:4}  converged = {}  r_final = {:.3e}",
-        stats.iterations,
-        stats.converged(),
-        stats.final_residual,
+        stats_j.iterations,
+        stats_j.converged(),
+        stats_j.final_residual,
     );
-    c.bench_function(name, |b| {
+    let stats_a = solve_poisson_amg(&case, AmgConfig::default(), 1e-8, 4000);
+    eprintln!(
+        "[amg   ] {name:>24}  iters = {:4}  converged = {}  r_final = {:.3e}",
+        stats_a.iterations,
+        stats_a.converged(),
+        stats_a.final_residual,
+    );
+
+    let case_ref = &case;
+    c.bench_function(&format!("{name}_jacobi"), |b| {
         b.iter_batched_ref(
             || (),
             |_| {
-                let s = solve_poisson_jacobi(&case, 1e-8, 4000);
+                let s = solve_poisson_jacobi(case_ref, 1e-8, 4000);
+                criterion::black_box(s);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    c.bench_function(&format!("{name}_amg"), |b| {
+        b.iter_batched_ref(
+            || (),
+            |_| {
+                let s = solve_poisson_amg(case_ref, AmgConfig::default(), 1e-8, 4000);
                 criterion::black_box(s);
             },
             BatchSize::SmallInput,
@@ -283,18 +427,36 @@ fn bench_poisson(c: &mut Criterion, name: &str, case: PoissonCase) {
 
 fn bench_stokes(c: &mut Criterion, name: &str, snap: LinearStokesSnapshot) {
     let replay = build_stokes_replay(&snap);
-    let stats = solve_stokes_jacobi(&replay);
+    let stats_j = solve_stokes_jacobi(&replay);
     eprintln!(
         "[jacobi] {name:>24}  iters = {:4}  converged = {}  r_final = {:.3e}",
-        stats.iterations,
-        stats.converged(),
-        stats.final_residual,
+        stats_j.iterations,
+        stats_j.converged(),
+        stats_j.final_residual,
     );
-    c.bench_function(name, |b| {
+    let stats_a = solve_stokes_amg(&replay, &snap, AmgConfig::default());
+    eprintln!(
+        "[amg   ] {name:>24}  iters = {:4}  converged = {}  r_final = {:.3e}",
+        stats_a.iterations,
+        stats_a.converged(),
+        stats_a.final_residual,
+    );
+
+    c.bench_function(&format!("{name}_jacobi"), |b| {
         b.iter_batched_ref(
             || (),
             |_| {
                 let s = solve_stokes_jacobi(&replay);
+                criterion::black_box(s);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    c.bench_function(&format!("{name}_amg"), |b| {
+        b.iter_batched_ref(
+            || (),
+            |_| {
+                let s = solve_stokes_amg(&replay, &snap, AmgConfig::default());
                 criterion::black_box(s);
             },
             BatchSize::SmallInput,
