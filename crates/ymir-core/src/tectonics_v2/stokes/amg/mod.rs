@@ -63,6 +63,7 @@
 //!   benchmark gate (poisson_contrast_10000 ≤ 100 iters).
 
 pub mod coarse_solve;
+pub mod fmg;
 pub mod prolongation;
 pub mod restriction;
 pub mod setup;

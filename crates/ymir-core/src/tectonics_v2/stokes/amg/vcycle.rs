@@ -30,7 +30,10 @@ pub fn v_cycle(h: &AmgHierarchy, cfg: &AmgConfig, b: &[f64], x: &mut [f64]) {
     v_cycle_level(h, cfg, 0, b, x);
 }
 
-fn v_cycle_level(
+/// Apply a V-cycle starting from level `k` of the hierarchy. Public
+/// for use by FMG (`super::fmg`); external callers should prefer
+/// the level-0 entry point [`v_cycle`].
+pub fn v_cycle_level(
     h: &AmgHierarchy,
     cfg: &AmgConfig,
     k: usize,
