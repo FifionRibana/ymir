@@ -194,17 +194,15 @@ The two step8 snapshots **do not converge** in the `max_iter =
    worst case. That Jacobi fails there is a stronger motivation
    for AMG, not weaker.
 
-2. **The issue's AMG-target column is interpretable as a ratio,
-   not an absolute cap.** The issue's `≤ 280` for `step8_activated`
-   was built from `1420 ÷ 5`. On the snapshot-at-step-100 regime,
-   Jacobi's true iteration count is ≥ 2000 (unbounded). Read
-   literally, the `≤ 280` target implies AMG must converge the
-   problem Jacobi can't — which is harder, but also the actual
-   product goal. Phase 4 gate is therefore reinterpreted:
-   *"AMG converges `step8_activated` to tolerance in ≤ 400 iters,
-   demonstrating ≥ 5× reduction vs Jacobi's cap-saturation
-   behaviour."* A stricter interpretation (≤ 280 / ≤ 370) is
-   retained as the stretch goal.
+2. **The issue's AMG-target column as a "×5 reduction" was
+   formulated before this finding was available.** The `1420` the
+   issue quoted came from the Step 8 physics `CG mean` — i.e., a
+   mean over 300 steps × ~14 outer Newton iters, many of which
+   *already saturated at the 2000 cap*. The `1420` was never an
+   honest iter-count-to-convergence; it was a mean of convergent +
+   cap-saturated solves. Reviewer flagged this and corrected the
+   Phase 4 gate formulation accordingly — see §"Gate revision"
+   below.
 
 3. **Per-snapshot Jacobi CG counts elsewhere are below the issue
    table.** `poisson_contrast_10000` measured 459 (issue said
@@ -214,6 +212,75 @@ The two step8 snapshots **do not converge** in the `max_iter =
    iter 50 vs an earlier state). These variations are informational;
    the measured Jacobi reference is authoritative for the rest of
    the milestone, not the issue's heuristic targets.
+
+### Observation — Step 8 physics tolerates saturated CG solves
+
+The Step 8 physics run ships on `milestone/solver-reconstruction`
+with a documented `CG mean = 1420` / `1853` — values that, in the
+context of this Phase 0 finding, are now known to be means of
+convergent *plus* cap-saturated solves. This is not a Step 8 bug:
+`NewtonSolver` tolerates a CG result at the iteration cap and
+continues because a non-fully-converged descent direction still
+reduces the nonlinear residual acceptably (see
+[`nonlinear_solver.rs:314-317`](../../crates/ymir-core/src/tectonics_v2/stokes/nonlinear_solver.rs#L314-L317)
+— `cg_stats.iterations` is recorded but the outer loop does not
+branch on `cg_stats.converged()`). Newton's Armijo line search
+absorbs the imprecision at the cost of slightly more outer iters.
+
+**Step 8.5a therefore delivers two benefits, not one:**
+
+1. *Performance* — the headline motivation (CG iter count → O(10)
+   target with AMG).
+2. *Numerical quality-of-solution* — AMG brings **strict**
+   convergence on the activated regime where Jacobi saturates.
+   Every linear solve in a downstream physics run produces a
+   CG-converged Newton direction, not a tolerated partial descent.
+
+This quality-of-solution improvement was not anticipated in the
+issue. It falls out of the discipline of "capture snapshots at
+the worst-case physics step and verify convergence on them" —
+which only became visible once the benchmark harness existed.
+
+### Gate revision — convergence-first formulation (post-Phase-0)
+
+The original gate was phrased as "×5 reduction in CG iter count
+vs Jacobi 1420/1853". Phase 0 showed that the Jacobi reference is
+itself not a convergent state on the captured snapshots, so
+"×5 reduction" mixes non-commensurable quantities. Reviewer
+corrected to the following gate set, which will replace items 9,
+10, 13 of the issue's §Acceptance criteria:
+
+1. **Strict convergence required on every benchmark case.** AMG
+   must reach the CG tolerance (`rel_residual ≤ 1e-6`) on all
+   nine cases, including `step8_activated` and
+   `step8_activated_128`. No cap saturation permitted.
+
+2. **Iter-count caps on activated cases.**
+   `step8_activated` (64²) ≤ 400 iters to strict convergence.
+   `step8_activated_128` ≤ 500 iters to strict convergence.
+
+3. **Iter-count bounds on non-activated cases** (preserved from
+   the issue table, now measured against strict Jacobi convergence
+   reference):
+   `poisson_constant` ≤ 10,
+   `poisson_contrast_100` ≤ 30,
+   `poisson_contrast_10000` ≤ 100,
+   `step0_quiescent` ≤ 20,
+   `step3_floor_yielding` ≤ 30,
+   `step6_voronoi` ≤ 40,
+   `step7_slab_off` ≤ 40.
+
+4. **The real product-level gate is wallclock Phase 7**, not iter
+   count. AMG wallclock on Step 8 physics at 64² ≤ 6 min
+   (≤ 30 % of merged Jacobi's 19 min); 128² ≤ 33 min
+   (≤ 30 % of 1h52). This naturally integrates convergence:
+   if AMG does not converge strictly, Newton tolerates less
+   gracefully, and wallclock blows up.
+
+Points 1-4 are the binding commitments. "×5 iter reduction" is
+dropped as a primary metric; wallclock + strict convergence are
+the honest replacements. The issue file carries the same patch as
+a minor edit.
 
 ### Phase 0 gate
 

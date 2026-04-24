@@ -373,13 +373,25 @@ Total wallclock:
 
 ### Benchmark performance
 
-9. **Benchmark suite AMG target met on activated regime**:
-   `step8_activated` case achieves ≤ 280 CG iterations (5×
-   reduction from 1420 Jacobi). If below, the AMG implementation
-   requires tuning before merge.
-10. **Benchmark suite AMG target met across all cases**: each
-    case achieves its target in the table above. Failures require
-    investigation before merge.
+> **Patch applied after Phase 0 finding** (Phase 0 measured Jacobi
+> saturating at the 2000-iter cap on `step8_activated` /
+> `step8_activated_128` snapshots, invalidating "×5 reduction from
+> 1420" as a commensurable target — see
+> [`docs/reports/step8_5a_amg_report.md §Gate revision`](reports/step8_5a_amg_report.md)).
+> Items 9-10 are reformulated convergence-first. Item 11 preserved.
+
+9. **Strict convergence required on every benchmark case.** AMG
+   must reach CG tolerance `rel_residual ≤ 1e-6` on all nine
+   cases, including `step8_activated` and `step8_activated_128`.
+   No cap saturation permitted.
+10. **Iter-count caps to strict convergence**:
+    - `step8_activated` ≤ 400 iters, `step8_activated_128` ≤ 500
+      iters (binding).
+    - `poisson_constant` ≤ 10, `poisson_contrast_100` ≤ 30,
+      `poisson_contrast_10000` ≤ 100, `step0_quiescent` ≤ 20,
+      `step3_floor_yielding` ≤ 30, `step6_voronoi` ≤ 40,
+      `step7_slab_off` ≤ 40 (binding; measured against strict
+      Jacobi convergence reference, not issue heuristics).
 11. **Benchmark total wallclock < 30 sec** on AMG path.
 
 ### Physics validation (graduation gate, run only when
@@ -391,8 +403,14 @@ benchmark targets met)
     modified — remontée.
 13. **Re-run Step 0-8 physics with AmgCG**: scalar-parity with
     merged Jacobi reports. peak|v|, mass_conservation_residual,
-    yielding_cell_fraction_max all within 1%. Wallclock reduced
-    by ≥ 3× on Step 6-8 runs (where η heterogeneity matters).
+    yielding_cell_fraction_max all within 1%. Wallclock targets
+    (post-Phase-0 revision): AMG wallclock on Step 8 physics
+    ≤ 30 % of merged Jacobi wallclock — i.e., ≤ 6 min at 64²
+    (vs 19 min Jacobi) and ≤ 33 min at 128² (vs 1h52 Jacobi).
+    Steps 0-7 ≥ 3× reduction preserved as before. This wallclock
+    gate is the binding product-level commitment; it integrates
+    convergence naturally (AMG saturation blows up Newton
+    iterations and wallclock explodes).
 
 ### Solver health
 
