@@ -37,6 +37,7 @@ pub mod picard;
 pub mod precond;
 pub mod snapshot;
 pub mod solver;
+pub mod sparse_assembly;
 
 use super::field::Field2D;
 use operator::{apply_momentum, momentum_diagonal, StokesGrid};
