@@ -1,5 +1,20 @@
 //! `LinearSolver` trait and a conjugate-gradient implementation.
 //!
+//! # Preconditioner dispatch — Step 8.5a Phase 4.3
+//!
+//! [`LinearSolverConfig`] selects between Jacobi-CG (default,
+//! bit-parity with all pre-8.5a paths) and AMG-CG (Step 8.5a
+//! opt-in; operates on the sparse Picard block via
+//! `tectonics_v2::stokes::amg::AmgPreconditioner`). Enum dispatch
+//! rather than a `dyn Preconditioner` trait object because (i)
+//! the enum match compiles to a static jump and (ii) it avoids
+//! permanently exposing an abstraction that only has two
+//! variants.
+//!
+//! Reviewer contract (α.1): AmgCG is opt-in per regime. For
+//! `step8`-like (η-contrast > 10⁴) callers should stay on
+//! JacobiCG until Step 8.5a.2 delivers SA-AMG.
+//!
 //! Step 0 only ships CG; the trait is the integration point for
 //! BiCGSTAB (Step 3) once plastic yielding makes the system
 //! non-symmetric. Direct calls to this routine are a violation of the
@@ -155,6 +170,24 @@ impl LinearSolver for ConjugateGradient {
             initial_residual: r0_norm,
             status: SolverStatus::MaxIterations,
         }
+    }
+}
+
+/// Preconditioner selector for the CG inner solve.
+///
+/// Default is `JacobiCG`, preserving the pre-8.5a behaviour
+/// byte-for-byte. Switching to `AmgCG(cfg)` selects the Option
+/// B' Classical-RS V-cycle preconditioner on the Picard block;
+/// the Newton tangent remains matrix-free in the CG matvec.
+#[derive(Clone, Copy, Debug)]
+pub enum LinearSolverConfig {
+    JacobiCG,
+    AmgCG(super::amg::AmgConfig),
+}
+
+impl Default for LinearSolverConfig {
+    fn default() -> Self {
+        Self::JacobiCG
     }
 }
 
