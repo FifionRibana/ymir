@@ -35,6 +35,7 @@ use std::collections::BTreeMap;
 
 use super::super::sparse_assembly::CsrMatrix;
 use super::coarse_solve::LuFactorisation;
+use super::coloring::greedy_coloring;
 use super::prolongation::build_prolongation;
 use super::restriction::transpose_to_restriction;
 use super::splitting::{classical_rs_splitting, CfType};
@@ -130,6 +131,7 @@ pub fn build_hierarchy(a_0: CsrMatrix, cfg: AmgConfig) -> AmgHierarchy {
                 p: None,
                 r: None,
                 coarse_lu: Some(lu),
+                colors: Vec::new(),
             });
             return AmgHierarchy { levels };
         }
@@ -149,6 +151,7 @@ pub fn build_hierarchy(a_0: CsrMatrix, cfg: AmgConfig) -> AmgHierarchy {
                 p: None,
                 r: None,
                 coarse_lu: Some(lu),
+                colors: Vec::new(),
             });
             return AmgHierarchy { levels };
         }
@@ -157,11 +160,15 @@ pub fn build_hierarchy(a_0: CsrMatrix, cfg: AmgConfig) -> AmgHierarchy {
         let r = transpose_to_restriction(&p);
         let a_next = galerkin_coarsen(&r, &current, &p);
 
+        // Step 8.5b Phase 3: compute algebraic greedy coloring of
+        // the level's operator so RBGS can smooth in parallel.
+        let colors = greedy_coloring(&current);
         levels.push(AmgLevel {
             a: current,
             p: Some(p),
             r: Some(r),
             coarse_lu: None,
+            colors,
         });
         current = a_next;
     }
@@ -173,6 +180,7 @@ pub fn build_hierarchy(a_0: CsrMatrix, cfg: AmgConfig) -> AmgHierarchy {
         p: None,
         r: None,
         coarse_lu: Some(lu),
+        colors: Vec::new(),
     });
     AmgHierarchy { levels }
 }

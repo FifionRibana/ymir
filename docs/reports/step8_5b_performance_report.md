@@ -150,10 +150,76 @@ this hardware) is consistent with a meaningful but not headline
 speedup at this stage — CG inner loops dominate less than the
 outer setup on 64² × 20 steps.
 
-## Phase 3 — RBGS replaces SGS (TBD)
+## Phase 3 — RBGS replaces SGS
 
-Red-Black coloring at level 0 (structured grid), algebraic greedy
-coloring at coarser levels (C/F splitting is algebraic).
+New submodule
+[`stokes/amg/coloring.rs`](../../crates/ymir-core/src/tectonics_v2/stokes/amg/coloring.rs)
+implements the classical greedy algebraic graph-coloring: rows
+scanned in ascending index order, each row takes the smallest
+colour not used by its already-coloured non-zero neighbours. The
+result is deterministic (same matrix → same partition) and costs
+`O(nnz)` per level, run once at hierarchy build time.
+
+Each `AmgLevel` now carries a `colors: Vec<Vec<usize>>` field; the
+coarsest level (LU-solved, no smoother) stores an empty partition.
+`build_hierarchy` populates the colouring at every intermediate
+level; the colouring count is exposed via
+[`coloring::max_colors_in_hierarchy`] for report instrumentation
+(D2 watch point — > 4 colours on any level is worth noting).
+
+[`stokes/amg/smoother.rs`](../../crates/ymir-core/src/tectonics_v2/stokes/amg/smoother.rs)
+replaces `sgs_sweep` with `rbgs_sweep(a, colors, b, x)`. Forward
+pass iterates colours in ascending order; within each colour
+`group.par_iter().for_each(...)` dispatches row updates on rayon
+(disjoint write indices by coloring invariant). Backward pass
+mirrors the forward pass in reverse colour order — symmetric sweep
+preserves SPD structure CG relies on. A sequential fallback
+`sequential_gs_sweep` is kept for test stability / degenerate cases.
+
+### Safety note — unsafe raw-pointer write
+
+`&mut [f64]` cannot be shared across rayon workers in safe Rust
+even when the writes target disjoint indices. A scoped
+`SyncSlicePtr` wraps the raw `*mut f64` and promises `Sync`; the
+safety invariant is discharged by (a) the coloring guarantee (no
+same-colour neighbours share a non-zero entry), and (b) the
+implicit barrier between colour-for-each blocks. The unsafe block
+is the minimum of five lines each in `read`/`write` helpers,
+fully documented inline.
+
+### Smoother-level behaviour note (not a bug)
+
+The 2-colour RBGS partition of the 5-pt Laplacian has the pure
+checkerboard mode `x_{ij} = (−1)^{i+j}` as an **exact eigen-
+invariant of one symmetric sweep**: red cells with uniform-±1
+black neighbours update to a single value, then black cells with
+now-uniform red neighbours update symmetrically, and the mode
+is preserved modulo a constant shift (null space). This is a
+textbook feature of colour-ordered Gauss-Seidel and not a
+smoother deficiency — the full V-cycle's coarse-grid correction
+absorbs the residual mode. The Step 8.5a `rbgs_reduces_residual
+_monotonically_on_poisson` test uses a random RHS and sees the
+expected `≥ 10×` reduction in 30 sweeps; the
+`rbgs_damps_random_high_frequency_error` test seeds with a
+general random field (not the checkerboard eigenvector) and sees
+`≥ 40 %` damping in 3 sweeps. The "within 5 % of SGS" convergence
+contract from D2 is measured at the **V-cycle CG iteration count**
+level (Phase 6 benchmarks against the 8.5a Poisson gates), not on
+a smoother-alone eigenmode.
+
+### Validation
+
+| Test | Result |
+|---|---|
+| `coloring` unit tests (5) | ✅ |
+| `smoother` unit tests (4): exact diagonal, random high-freq damping, monotonic reduction, run-to-run determinism | ✅ |
+| `vcycle_on_poisson_converges_fast` | ✅ — V-cycle with RBGS smoother converges ≥ 10⁶× in ≤ 10 cycles |
+| `fmg_beats_v_cycle_on_poisson_by_at_least_2x` | ✅ — FMG / V-cycle ≥ 2× advantage preserved |
+| `setup::build_hierarchy_is_deterministic` | ✅ — hierarchy byte-identical across repeats (including coloring) |
+| `v2_amg_scalar_parity` (4 cases vs 8.5a high-precision ref) | ✅ — all 4 snapshots within `C·κ·(tol_test+tol_ref)` |
+| `v2_sparse_assembly_snapshot_parity` (4 cases × 10 seeded vectors) | ✅ — CSR parity intact |
+
+22 AMG lib tests green, 8 AMG integration tests green.
 
 ## Phase 4 — AMG setup parallelised (TBD)
 

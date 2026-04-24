@@ -63,6 +63,7 @@
 //!   benchmark gate (poisson_contrast_10000 ≤ 100 iters).
 
 pub mod coarse_solve;
+pub mod coloring;
 pub mod fmg;
 pub mod prolongation;
 pub mod restriction;
@@ -136,6 +137,12 @@ pub struct AmgLevel {
     pub p: Option<CsrMatrix>,
     pub r: Option<CsrMatrix>,
     pub coarse_lu: Option<coarse_solve::LuFactorisation>,
+    /// Step 8.5b Phase 3: algebraic greedy coloring of `a`, stored
+    /// as `colors[c] = sorted row indices of colour c`. Enables
+    /// Red-Black Gauss-Seidel smoothing (parallel within each
+    /// colour). Empty on the coarsest level (where the direct LU
+    /// solve bypasses the smoother).
+    pub colors: Vec<Vec<usize>>,
 }
 
 /// AMG preconditioner on the `[vx; vy]` 2·N layout — Option B'.
