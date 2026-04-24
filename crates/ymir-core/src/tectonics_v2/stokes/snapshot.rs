@@ -100,6 +100,67 @@ impl LinearStokesSnapshot {
     }
 }
 
+/// High-precision reference solution for scalar-parity testing
+/// (Phase 4.2). Generated once by `gen_reference_solutions` and
+/// loaded by the parity tests.
+///
+/// `threshold = C · kappa_estimated · (tol_test + tol_ref_achieved)`
+/// is the scalar-parity bound derived from the triangle inequality
+/// on CG truncation error: `‖x_test − x_ref‖ ≤ ‖x_test − x*‖ +
+/// ‖x_ref − x*‖ ≤ κ·(tol_test + tol_ref)`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReferenceSolution {
+    pub format_version: u32,
+    pub case_label: String,
+    pub nx: usize,
+    pub ny: usize,
+    /// Final solution after `project_velocity` in the canonical
+    /// zero-mean gauge.
+    pub x_vx: Vec<f64>,
+    pub x_vy: Vec<f64>,
+    /// Residual norm of the reference solve relative to `‖b‖` —
+    /// the "tol_ref" in the threshold formula.
+    pub tol_ref_achieved: f64,
+    /// Empirical condition-number estimate — `κ ≈
+    /// ‖x_ref − x_coarse‖ / (‖x_ref‖ · (tol_coarse + tol_ref))`.
+    pub kappa_estimated: f64,
+    /// Which solver produced the reference ("amg" or "jacobi").
+    pub ref_solver: String,
+    /// Iteration count consumed by the reference solve.
+    pub ref_iters: usize,
+    /// Whether the reference hit strict convergence or its floor.
+    pub ref_converged: bool,
+}
+
+impl ReferenceSolution {
+    pub fn save(&self, path: impl AsRef<std::path::Path>) -> Result<(), String> {
+        let p = path.as_ref();
+        if let Some(parent) = p.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("create_dir_all {}: {}", parent.display(), e))?;
+        }
+        let f = std::fs::File::create(p).map_err(|e| format!("create {}: {}", p.display(), e))?;
+        bincode::serialize_into(std::io::BufWriter::new(f), self)
+            .map_err(|e| format!("bincode serialize: {}", e))
+    }
+
+    pub fn load(path: impl AsRef<std::path::Path>) -> Result<Self, String> {
+        let p = path.as_ref();
+        let f = std::fs::File::open(p).map_err(|e| format!("open {}: {}", p.display(), e))?;
+        let r: Self = bincode::deserialize_from(std::io::BufReader::new(f))
+            .map_err(|e| format!("bincode deserialize: {}", e))?;
+        if r.format_version > SNAPSHOT_FORMAT_VERSION {
+            return Err(format!(
+                "reference {} format v{} unknown (max v{})",
+                p.display(),
+                r.format_version,
+                SNAPSHOT_FORMAT_VERSION
+            ));
+        }
+        Ok(r)
+    }
+}
+
 /// Materialise a `Field2D` from a raw row-major `Vec<f64>` plus grid dims.
 pub fn field_from_vec(data: Vec<f64>, nx: usize, ny: usize) -> Field2D {
     assert_eq!(data.len(), nx * ny, "Field2D size mismatch");
