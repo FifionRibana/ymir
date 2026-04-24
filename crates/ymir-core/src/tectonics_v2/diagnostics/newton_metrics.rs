@@ -228,6 +228,51 @@ pub struct NewtonAggregate {
     /// Denominator is step-by-step, so rare large `peak|f_GPE|`
     /// spikes do not dominate; a `None` sampled peak is skipped.
     pub f_slab_to_f_gpe_ratio_mean: Option<f64>,
+
+    // ---- Step 8 — mantle forcing diagnostics ----
+    //
+    // All fields `None` under `MantleConfig::Disabled`. When
+    // `Enabled`, the harness populates them per step or per run
+    // as noted.
+    /// `Mf` value (§4.9 amplitude), stored once for the report.
+    pub mf_diagnostic: Option<f64>,
+    /// Coupling `c`, stored once for the report.
+    pub coupling_diagnostic: Option<f64>,
+    /// Number of Fourier modes used in the stream function.
+    pub mantle_num_modes: Option<usize>,
+    /// Seed used for the mantle pattern (independent of the
+    /// main world seed).
+    pub mantle_seed: Option<u64>,
+    /// `peak|v_mantle|` (`Mf · peak|v_pattern|`) at init.
+    /// Constant for the run (`evolution_rate = 0` at Step 8
+    /// baseline).
+    pub peak_v_mantle_pattern: Option<f64>,
+    /// Max `|v_solved|` over the run — the **primary bootstrap
+    /// diagnostic**. Expected at baseline: `O(Mf) = O(1)`,
+    /// several orders above the Step 7 value (≈ 3e-5).
+    pub peak_v_solved_mantle_run: Option<f64>,
+    /// Mean over the run of the scalar alignment
+    /// `<v_solved, Mf · v_pattern> / |Mf · v_pattern|²`.
+    /// Magnitude-aware; matches the contract in
+    /// `v2_mantle_relaxation`.
+    pub v_solved_to_v_mantle_alignment: Option<f64>,
+    /// Max `|f_mantle|` over the run.
+    pub peak_f_mantle_run: Option<f64>,
+    /// Mean over active steps of `peak|f_mantle| / peak|f_GPE|`.
+    pub f_mantle_to_f_gpe_ratio_mean: Option<f64>,
+    /// Mean over active steps of `peak|f_mantle| / peak|f_slab|`.
+    /// Zero when slab is not enabled this run.
+    pub f_mantle_to_f_slab_ratio_mean: Option<f64>,
+    /// `max(ε̇_II) / ε̇_min` max over the run. **Must exceed 1**
+    /// for yielding activation to be achievable (Step 3 floor-
+    /// dominated analysis). Expected at Step 8 baseline: `O(10)+`.
+    pub epsilon_ii_max_to_floor_ratio: Option<f64>,
+    /// `max |div(v_mantle)|` — sanity check that the stream-
+    /// function construction produces a discretely div-free
+    /// pattern. Must stay below 1e-10 (Step 8 strict acceptance).
+    /// Effectively constant within the run at Step 8
+    /// (evolution_rate = 0).
+    pub div_v_mantle_max: Option<f64>,
 }
 
 impl NewtonAggregate {

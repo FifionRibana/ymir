@@ -158,6 +158,7 @@ fn run_voronoi_config(
         boundary,
         boundary_layout_name: format!("voronoi_seed{}_n{}", args.seed, args.num_plates),
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
+        mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
     };
     println!("-- running Voronoi physics {}×{} for {} steps --", nx, ny, args.steps);
     let r = run_baseline(&cfg);
@@ -212,6 +213,7 @@ fn run_regression_config(
         boundary,
         boundary_layout_name: "horizontal_oceanic_strip".into(),
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
+        mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
     };
     println!("-- running Step 5-shape regression {}×{} for {} steps --", nx, ny, args.steps);
     let r = run_baseline(&cfg);
