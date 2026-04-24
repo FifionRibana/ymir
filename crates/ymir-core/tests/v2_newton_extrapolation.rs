@@ -146,6 +146,47 @@ fn extrapolation_fallback_rate_under_50_percent_on_typical_run() {
     );
 }
 
+/// One-shot timing tool for the Step 8.5b Phase 6 wallclock gate
+/// on `step8_activated` (mantle on, Jacobi-only — step8 is out of
+/// AMG's reliable regime per 8.5a's diagnostic). `#[ignore]`
+/// because it spends a minute or two of physics; invoke
+/// explicitly with
+/// `cargo test --release v2_newton_extrapolation::bench_step8_jacobi_100step -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn bench_step8_jacobi_100step() {
+    use ymir_core::tectonics_v2::mantle::{
+        MantleConfig, COUPLING_DEFAULT, MF_DEFAULT, NUM_MODES_DEFAULT,
+    };
+    let mut cfg = step6_config(100);
+    cfg.mantle = MantleConfig::Enabled {
+        mf: MF_DEFAULT,
+        coupling: COUPLING_DEFAULT,
+        num_modes: NUM_MODES_DEFAULT,
+        seed: 7,
+        evolution_rate: 0.0,
+    };
+    cfg.linear_solver = Default::default(); // JacobiCG only
+    let t0 = std::time::Instant::now();
+    let r = run_baseline(&cfg);
+    let dt = t0.elapsed().as_secs_f64();
+    let cg_mean = r.metrics.cg_iter_mean;
+    let stats = r.metrics.extrapolation.as_ref().unwrap();
+    eprintln!("=== step8_activated 100-step Jacobi ===");
+    eprintln!("  wallclock: {:.2}s", dt);
+    eprintln!("  cg_mean: {:.1}", cg_mean);
+    eprintln!(
+        "  extrap fallback rate: {:.1}% ({} fallbacks at steps {:?})",
+        stats.fallback_rate() * 100.0,
+        stats.fallback_indices.len(),
+        stats.fallback_indices,
+    );
+    eprintln!(
+        "  newton outer iters mean: {:.2}",
+        stats.newton_outer_iters_mean(),
+    );
+}
+
 #[test]
 fn extrapolation_stats_are_reproducible() {
     // Two runs of the same config → identical attempt count,
