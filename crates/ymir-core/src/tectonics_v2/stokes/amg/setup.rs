@@ -33,6 +33,8 @@
 
 use std::collections::BTreeMap;
 
+use rayon::prelude::*;
+
 use super::super::sparse_assembly::CsrMatrix;
 use super::coarse_solve::LuFactorisation;
 use super::coloring::greedy_coloring;
@@ -79,36 +81,51 @@ pub fn galerkin_coarsen(r: &CsrMatrix, a: &CsrMatrix, p: &CsrMatrix) -> CsrMatri
     assert_eq!(a.n_cols, p.n_rows, "A columns must match P rows");
     let n_coarse_rows = r.n_rows;
     let n_coarse_cols = p.n_cols;
-    let mut row_ptr = Vec::with_capacity(n_coarse_rows + 1);
-    let mut col_idx = Vec::new();
-    let mut values = Vec::new();
-    row_ptr.push(0);
-    for i in 0..n_coarse_rows {
-        let mut acc: BTreeMap<usize, f64> = BTreeMap::new();
-        let r_start = r.row_ptr[i];
-        let r_end = r.row_ptr[i + 1];
-        for rk in r_start..r_end {
-            let j = r.col_idx[rk];
-            let r_val = r.values[rk];
-            let a_start = a.row_ptr[j];
-            let a_end = a.row_ptr[j + 1];
-            for ak in a_start..a_end {
-                let k = a.col_idx[ak];
-                let a_val = a.values[ak];
-                let ra = r_val * a_val;
-                let p_start = p.row_ptr[k];
-                let p_end = p.row_ptr[k + 1];
-                for pk in p_start..p_end {
-                    let l = p.col_idx[pk];
-                    let p_val = p.values[pk];
-                    *acc.entry(l).or_insert(0.0) += ra * p_val;
+
+    // Step 8.5b Phase 4: build each coarse row in parallel. The
+    // BTreeMap accumulator is row-local so there is no shared
+    // state between threads; D9 ascending-column order is
+    // preserved by BTreeMap's natural iteration. A sequential
+    // flatten builds the final CSR so `row_ptr` / `col_idx` /
+    // `values` are bit-identical to the pre-8.5b sequential
+    // implementation.
+    let rows: Vec<Vec<(usize, f64)>> = (0..n_coarse_rows)
+        .into_par_iter()
+        .map(|i| {
+            let mut acc: BTreeMap<usize, f64> = BTreeMap::new();
+            let r_start = r.row_ptr[i];
+            let r_end = r.row_ptr[i + 1];
+            for rk in r_start..r_end {
+                let j = r.col_idx[rk];
+                let r_val = r.values[rk];
+                let a_start = a.row_ptr[j];
+                let a_end = a.row_ptr[j + 1];
+                for ak in a_start..a_end {
+                    let k = a.col_idx[ak];
+                    let a_val = a.values[ak];
+                    let ra = r_val * a_val;
+                    let p_start = p.row_ptr[k];
+                    let p_end = p.row_ptr[k + 1];
+                    for pk in p_start..p_end {
+                        let l = p.col_idx[pk];
+                        let p_val = p.values[pk];
+                        *acc.entry(l).or_insert(0.0) += ra * p_val;
+                    }
                 }
             }
-        }
-        // BTreeMap iteration is ascending → canonical CSR row.
-        for (l, v) in acc.iter() {
-            col_idx.push(*l);
-            values.push(*v);
+            acc.into_iter().collect()
+        })
+        .collect();
+
+    let total_nnz: usize = rows.iter().map(|r| r.len()).sum();
+    let mut row_ptr = Vec::with_capacity(n_coarse_rows + 1);
+    let mut col_idx = Vec::with_capacity(total_nnz);
+    let mut values = Vec::with_capacity(total_nnz);
+    row_ptr.push(0);
+    for row in rows {
+        for (l, v) in row {
+            col_idx.push(l);
+            values.push(v);
         }
         row_ptr.push(col_idx.len());
     }

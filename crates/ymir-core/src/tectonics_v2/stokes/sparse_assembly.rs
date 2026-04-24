@@ -59,6 +59,8 @@
 //! determinism commitment: the same `(grid, η, drag)` always
 //! produces byte-identical `row_ptr`, `col_idx`, `values` vectors.
 
+use rayon::prelude::*;
+
 use super::super::field::Field2D;
 use super::operator::StokesGrid;
 
@@ -87,18 +89,24 @@ impl CsrMatrix {
     }
 
     /// Apply `y = A · x` on the packed `2·N` vector.
+    ///
+    /// Step 8.5b: parallelised over rows via `par_iter_mut().enumerate()`
+    /// — each row computes a scalar dot product against the shared
+    /// `x` and writes to its unique `y[i]` slot, so execution order
+    /// is irrelevant to the numeric result (bit-identical across
+    /// thread counts).
     pub fn apply(&self, x: &[f64], y: &mut [f64]) {
         assert_eq!(x.len(), self.n_cols, "x length mismatches n_cols");
         assert_eq!(y.len(), self.n_rows, "y length mismatches n_rows");
-        for i in 0..self.n_rows {
+        y.par_iter_mut().enumerate().for_each(|(i, yi)| {
             let start = self.row_ptr[i];
             let end = self.row_ptr[i + 1];
             let mut acc = 0.0;
             for k in start..end {
                 acc += self.values[k] * x[self.col_idx[k]];
             }
-            y[i] = acc;
-        }
+            *yi = acc;
+        });
     }
 }
 
@@ -153,136 +161,122 @@ pub fn assemble_picard_csr(
     let n_cells = nx * ny;
     let n_dofs = 2 * n_cells;
 
-    // Per-row staging: map col_idx → value. We use a small
-    // `Vec<(usize, f64)>` since each row has at most 9 entries —
-    // simpler than a hashmap and preserves determinism trivially.
-    // The canonicalisation (sort by col, accumulate duplicates on
-    // periodic wrap) happens in `flush_row`.
-    let mut row_buf: Vec<(usize, f64)> = Vec::with_capacity(16);
-    let mut row_ptr: Vec<usize> = Vec::with_capacity(n_dofs + 1);
-    let mut col_idx: Vec<usize> = Vec::with_capacity(9 * n_dofs);
-    let mut values: Vec<f64> = Vec::with_capacity(9 * n_dofs);
-    row_ptr.push(0);
+    // Step 8.5b Phase 4: parallelise row construction. Each row's
+    // non-zero pattern is a pure function of the row index, `grid`,
+    // `eta`, and optionally `drag_diag`, so the `into_par_iter`
+    // map returns a deterministic `Vec<RowBuf>` independent of
+    // worker scheduling. A sequential flatten collects the output
+    // CSR in row order; the entire function is bit-identical to
+    // its pre-8.5b sequential implementation.
+    let rows: Vec<Vec<(usize, f64)>> = (0..n_dofs)
+        .into_par_iter()
+        .map(|row| {
+            let mut buf: Vec<(usize, f64)> = Vec::with_capacity(12);
+            let lin_x = |i: usize, j: usize| j * nx + i;
+            let lin_y = |i: usize, j: usize| n_cells + j * nx + i;
+            let eta_corner_fn = |im: usize, i: usize, jm: usize, j: usize| -> f64 {
+                0.25 * (eta.get(im, jm) + eta.get(i, jm) + eta.get(im, j) + eta.get(i, j))
+            };
 
-    let lin_x = |i: usize, j: usize| j * nx + i;
-    let lin_y = |i: usize, j: usize| n_cells + j * nx + i;
+            if row < n_cells {
+                // ---- vx row at (i, j) where j*nx + i == row ----
+                let i = row % nx;
+                let j = row / nx;
+                let jp = grid.idx_y.next(j);
+                let jm = grid.idx_y.prev(j);
+                let ip = grid.idx_x.next(i);
+                let im = grid.idx_x.prev(i);
 
-    let eta_corner = |im: usize, i: usize, jm: usize, j: usize| -> f64 {
-        0.25 * (eta.get(im, jm) + eta.get(i, jm) + eta.get(im, j) + eta.get(i, j))
-    };
+                let eta_cc_r = eta.get(i, j);
+                let eta_cc_l = eta.get(im, j);
+                let eta_c_top = eta_corner_fn(im, i, j, jp);
+                let eta_c_bot = eta_corner_fn(im, i, jm, j);
 
-    let flush_row = |buf: &mut Vec<(usize, f64)>,
-                     col_idx: &mut Vec<usize>,
-                     values: &mut Vec<f64>,
-                     row_ptr: &mut Vec<usize>| {
-        // Sort by column index.
-        buf.sort_by_key(|&(c, _)| c);
-        // Merge duplicate columns (periodic wrap: e.g., nx=2 makes
-        // im == ip for some (i,j)). Accumulate values for identical
-        // column indices. Result is strictly ascending col order.
-        let mut i = 0;
-        while i < buf.len() {
-            let (c, mut v) = buf[i];
-            let mut j = i + 1;
-            while j < buf.len() && buf[j].0 == c {
-                v += buf[j].1;
-                j += 1;
+                let diag = 2.0 * (eta_cc_r + eta_cc_l) * inv_dx2
+                    + (eta_c_top + eta_c_bot) * inv_dy2;
+
+                buf.push((lin_x(i, j), diag));
+                buf.push((lin_x(ip, j), -2.0 * eta_cc_r * inv_dx2));
+                buf.push((lin_x(im, j), -2.0 * eta_cc_l * inv_dx2));
+                buf.push((lin_x(i, jp), -eta_c_top * inv_dy2));
+                buf.push((lin_x(i, jm), -eta_c_bot * inv_dy2));
+
+                buf.push((lin_y(i, jp), -eta_c_top * inv_dxdy));
+                buf.push((lin_y(im, jp), eta_c_top * inv_dxdy));
+                buf.push((lin_y(i, j), eta_c_bot * inv_dxdy));
+                buf.push((lin_y(im, j), -eta_c_bot * inv_dxdy));
+
+                if let Some(drag) = drag_diag {
+                    let drag_x = 0.5 * (drag.get(im, j) + drag.get(i, j));
+                    buf.push((lin_x(i, j), drag_x));
+                }
+            } else {
+                // ---- vy row (x ↔ y symmetry) ----
+                let lin = row - n_cells;
+                let i = lin % nx;
+                let j = lin / nx;
+                let jp = grid.idx_y.next(j);
+                let jm = grid.idx_y.prev(j);
+                let ip = grid.idx_x.next(i);
+                let im = grid.idx_x.prev(i);
+
+                let eta_cc_t = eta.get(i, j);
+                let eta_cc_b = eta.get(i, jm);
+                let eta_c_right = eta_corner_fn(i, ip, jm, j);
+                let eta_c_left = eta_corner_fn(im, i, jm, j);
+
+                let diag = 2.0 * (eta_cc_t + eta_cc_b) * inv_dy2
+                    + (eta_c_right + eta_c_left) * inv_dx2;
+
+                buf.push((lin_y(i, j), diag));
+                buf.push((lin_y(i, jp), -2.0 * eta_cc_t * inv_dy2));
+                buf.push((lin_y(i, jm), -2.0 * eta_cc_b * inv_dy2));
+                buf.push((lin_y(ip, j), -eta_c_right * inv_dx2));
+                buf.push((lin_y(im, j), -eta_c_left * inv_dx2));
+
+                buf.push((lin_x(ip, j), -eta_c_right * inv_dxdy));
+                buf.push((lin_x(ip, jm), eta_c_right * inv_dxdy));
+                buf.push((lin_x(i, j), eta_c_left * inv_dxdy));
+                buf.push((lin_x(i, jm), -eta_c_left * inv_dxdy));
+
+                if let Some(drag) = drag_diag {
+                    let drag_y = 0.5 * (drag.get(i, jm) + drag.get(i, j));
+                    buf.push((lin_y(i, j), drag_y));
+                }
             }
+
+            // Sort by column index, then merge duplicates (periodic
+            // wrap collisions). Output is strictly ascending col
+            // order, per the module's canonical CSR invariant.
+            buf.sort_by_key(|&(c, _)| c);
+            let mut out: Vec<(usize, f64)> = Vec::with_capacity(buf.len());
+            let mut k = 0;
+            while k < buf.len() {
+                let (c, mut v) = buf[k];
+                let mut m = k + 1;
+                while m < buf.len() && buf[m].0 == c {
+                    v += buf[m].1;
+                    m += 1;
+                }
+                out.push((c, v));
+                k = m;
+            }
+            out
+        })
+        .collect();
+
+    // ---- Sequential flatten into the output CSR ----
+    let total_nnz: usize = rows.iter().map(|r| r.len()).sum();
+    let mut row_ptr: Vec<usize> = Vec::with_capacity(n_dofs + 1);
+    let mut col_idx: Vec<usize> = Vec::with_capacity(total_nnz);
+    let mut values: Vec<f64> = Vec::with_capacity(total_nnz);
+    row_ptr.push(0);
+    for row in rows {
+        for (c, v) in row {
             col_idx.push(c);
             values.push(v);
-            i = j;
         }
         row_ptr.push(col_idx.len());
-        buf.clear();
-    };
-
-    // ---- vx rows ----
-    for j in 0..ny {
-        let jp = grid.idx_y.next(j);
-        let jm = grid.idx_y.prev(j);
-        for i in 0..nx {
-            let ip = grid.idx_x.next(i);
-            let im = grid.idx_x.prev(i);
-
-            let eta_cc_r = eta.get(i, j);
-            let eta_cc_l = eta.get(im, j);
-            let eta_c_top = eta_corner(im, i, j, jp);
-            let eta_c_bot = eta_corner(im, i, jm, j);
-
-            let diag = 2.0 * (eta_cc_r + eta_cc_l) * inv_dx2
-                + (eta_c_top + eta_c_bot) * inv_dy2;
-
-            // Same-component entries.
-            row_buf.push((lin_x(i, j), diag));
-            row_buf.push((lin_x(ip, j), -2.0 * eta_cc_r * inv_dx2));
-            row_buf.push((lin_x(im, j), -2.0 * eta_cc_l * inv_dx2));
-            row_buf.push((lin_x(i, jp), -eta_c_top * inv_dy2));
-            row_buf.push((lin_x(i, jm), -eta_c_bot * inv_dy2));
-
-            // Cross-coupling from d_sigma_xy_dy:
-            //   +η_c_top · (dvx_dy_top + dvy_dx_top)/dy (with outer −)
-            //   −η_c_bot · (dvx_dy_bot + dvy_dx_bot)/dy (with outer −)
-            // dvy_dx_top = (vy(i, jp) − vy(im, jp))/dx    (sign +/−)
-            // dvy_dx_bot = (vy(i, j)  − vy(im, j))/dx     (sign +/−)
-            row_buf.push((lin_y(i, jp), -eta_c_top * inv_dxdy));
-            row_buf.push((lin_y(im, jp), eta_c_top * inv_dxdy));
-            row_buf.push((lin_y(i, j), eta_c_bot * inv_dxdy));
-            row_buf.push((lin_y(im, j), -eta_c_bot * inv_dxdy));
-
-            // Basal drag: +drag_face_x on the vx(i,j) self-entry.
-            if let Some(drag) = drag_diag {
-                let drag_x = 0.5 * (drag.get(im, j) + drag.get(i, j));
-                row_buf.push((lin_x(i, j), drag_x));
-            }
-
-            flush_row(&mut row_buf, &mut col_idx, &mut values, &mut row_ptr);
-        }
-    }
-
-    // ---- vy rows (x ↔ y symmetry) ----
-    for j in 0..ny {
-        let jp = grid.idx_y.next(j);
-        let jm = grid.idx_y.prev(j);
-        for i in 0..nx {
-            let ip = grid.idx_x.next(i);
-            let im = grid.idx_x.prev(i);
-
-            let eta_cc_t = eta.get(i, j);
-            let eta_cc_b = eta.get(i, jm);
-            // Corner η for vy row: the "right" corner of vy(i,j) is
-            // shared with vx(ip,*) and the "left" corner with vx(i,*),
-            // spanning j → jm vertically. Mirroring apply_momentum's
-            // choice at lines 178-179.
-            let eta_c_right = eta_corner(i, ip, jm, j);
-            let eta_c_left = eta_corner(im, i, jm, j);
-
-            let diag = 2.0 * (eta_cc_t + eta_cc_b) * inv_dy2
-                + (eta_c_right + eta_c_left) * inv_dx2;
-
-            // Same-component entries.
-            row_buf.push((lin_y(i, j), diag));
-            row_buf.push((lin_y(i, jp), -2.0 * eta_cc_t * inv_dy2));
-            row_buf.push((lin_y(i, jm), -2.0 * eta_cc_b * inv_dy2));
-            row_buf.push((lin_y(ip, j), -eta_c_right * inv_dx2));
-            row_buf.push((lin_y(im, j), -eta_c_left * inv_dx2));
-
-            // Cross-coupling from d_sigma_xy_dx, mirroring the
-            // apply_momentum y-momentum block (lines 180-186):
-            //   dvx_dy_right = (vx(ip, j) − vx(ip, jm))/dy
-            //   dvx_dy_left  = (vx(i,  j) − vx(i,  jm))/dy
-            row_buf.push((lin_x(ip, j), -eta_c_right * inv_dxdy));
-            row_buf.push((lin_x(ip, jm), eta_c_right * inv_dxdy));
-            row_buf.push((lin_x(i, j), eta_c_left * inv_dxdy));
-            row_buf.push((lin_x(i, jm), -eta_c_left * inv_dxdy));
-
-            // Basal drag on vy(i,j) self-entry.
-            if let Some(drag) = drag_diag {
-                let drag_y = 0.5 * (drag.get(i, jm) + drag.get(i, j));
-                row_buf.push((lin_y(i, j), drag_y));
-            }
-
-            flush_row(&mut row_buf, &mut col_idx, &mut values, &mut row_ptr);
-        }
     }
 
     CsrMatrix {
