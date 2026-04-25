@@ -1,5 +1,16 @@
 //! `LinearSolver` trait and a conjugate-gradient implementation.
 //!
+//! # Step 8.5b parallelisation
+//!
+//! All `O(N)` vector operations inside the CG inner loop (dot, norm,
+//! axpy, and the `p = z + β p` update) are delegated to the
+//! [`parallel_reduce`][super::parallel_reduce] helpers or to
+//! `rayon::par_iter_mut`. The helpers use a fixed 16-chunk
+//! sequential-reduce pattern, so CG is bit-identical across thread
+//! counts on a given machine. This cost-dominant inner loop is the
+//! main lever behind the ×4 Jacobi / ×2 AMG wallclock targets
+//! documented in the Step 8.5b report.
+//!
 //! # Preconditioner dispatch — Step 8.5a Phase 4.3
 //!
 //! [`LinearSolverConfig`] selects between Jacobi-CG (default,
@@ -27,6 +38,10 @@
 //! null-space projection (see [`super::precond`]), so CG search
 //! directions remain orthogonal to the zero-frequency modes at every
 //! iteration rather than only at the end.
+
+use rayon::prelude::*;
+
+use super::parallel_reduce::{par_axpy, par_dot, par_norm2};
 
 /// Termination reason for a single linear solve.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -101,14 +116,14 @@ impl LinearSolver for ConjugateGradient {
         let mut p = vec![0.0; n];
         let mut ap = vec![0.0; n];
 
-        // r = b - A x
+        // r = b - A x — cell-local, deterministic across thread counts.
         matvec(x, &mut r);
-        for k in 0..n {
-            r[k] = b[k] - r[k];
-        }
+        r.par_iter_mut()
+            .zip(b.par_iter())
+            .for_each(|(ri, bi)| *ri = *bi - *ri);
 
-        let b_norm = norm2(b).max(1.0);
-        let r0_norm = norm2(&r);
+        let b_norm = par_norm2(b).max(1.0);
+        let r0_norm = par_norm2(&r);
         if r0_norm <= self.tol * b_norm {
             return SolverStats {
                 iterations: 0,
@@ -120,25 +135,24 @@ impl LinearSolver for ConjugateGradient {
 
         precond(&r, &mut z);
         p.copy_from_slice(&z);
-        let mut rz = dot(&r, &z);
+        let mut rz = par_dot(&r, &z);
 
         for iter in 1..=self.max_iter {
             matvec(&p, &mut ap);
-            let pap = dot(&p, &ap);
+            let pap = par_dot(&p, &ap);
             if !pap.is_finite() || pap <= 0.0 {
                 return SolverStats {
                     iterations: iter - 1,
-                    final_residual: norm2(&r),
+                    final_residual: par_norm2(&r),
                     initial_residual: r0_norm,
                     status: SolverStatus::Breakdown,
                 };
             }
             let alpha = rz / pap;
-            for k in 0..n {
-                x[k] += alpha * p[k];
-                r[k] -= alpha * ap[k];
-            }
-            let r_norm = norm2(&r);
+            // x += α p   and   r -= α (A p)
+            par_axpy(alpha, &p, x);
+            par_axpy(-alpha, &ap, &mut r);
+            let r_norm = par_norm2(&r);
             if r_norm <= self.tol * b_norm {
                 return SolverStats {
                     iterations: iter,
@@ -148,7 +162,7 @@ impl LinearSolver for ConjugateGradient {
                 };
             }
             precond(&r, &mut z);
-            let rz_new = dot(&r, &z);
+            let rz_new = par_dot(&r, &z);
             if !rz_new.is_finite() {
                 return SolverStats {
                     iterations: iter,
@@ -159,14 +173,15 @@ impl LinearSolver for ConjugateGradient {
             }
             let beta = rz_new / rz;
             rz = rz_new;
-            for k in 0..n {
-                p[k] = z[k] + beta * p[k];
-            }
+            // p = z + β p   (cell-local, order-independent)
+            p.par_iter_mut()
+                .zip(z.par_iter())
+                .for_each(|(pi, zi)| *pi = *zi + beta * *pi);
         }
 
         SolverStats {
             iterations: self.max_iter,
-            final_residual: norm2(&r),
+            final_residual: par_norm2(&r),
             initial_residual: r0_norm,
             status: SolverStatus::MaxIterations,
         }
@@ -189,16 +204,6 @@ impl Default for LinearSolverConfig {
     fn default() -> Self {
         Self::JacobiCG
     }
-}
-
-#[inline]
-pub fn dot(a: &[f64], b: &[f64]) -> f64 {
-    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
-}
-
-#[inline]
-pub fn norm2(a: &[f64]) -> f64 {
-    dot(a, a).sqrt()
 }
 
 #[cfg(test)]

@@ -119,11 +119,42 @@ integration point for BiCGSTAB at Step 3 when plastic yielding makes
 the system non-symmetric. Direct calls to `ConjugateGradient::solve`
 outside the trait are forbidden by convention.
 
-Preconditioner: `M = diag(A)⁻¹` (Jacobi), wrapped with the velocity
-mean-projection (see [`precond.rs`](./stokes/precond.rs)). A
-configurable floor on `|diag|` protects against degenerate-η cells.
+Preconditioner: `M = diag(A)⁻¹` (Jacobi, default), wrapped with the
+velocity mean-projection (see [`precond.rs`](./stokes/precond.rs)).
+A configurable floor on `|diag|` protects against degenerate-η cells.
+
+Step 8.5a added Classical-RS AMG + FMG behind
+`LinearSolverConfig::AmgCG(AmgConfig)` (opt-in alternative to
+`JacobiCG`, on the Picard block; the Newton tangent stays matrix-
+free). Step 8.5b added rayon parallelisation, RBGS smoothing, Newton
+order-2 warm-start extrapolation, and `lto = "fat"` to the workspace
+release profile.
 
 [trait]: ./stokes/solver.rs
+
+### Downstream default recommendation (Step 9 onwards)
+
+Per the [Step 8.5b performance report](../../../../docs/reports/step8_5b_performance_report.md),
+the recommended default for production physics runs (Step 9 cratonic
+immunity, all subsequent steps) is:
+
+| Setting | Value | Reason |
+|---|---|---|
+| `LinearSolverConfig` | **`JacobiCG`** | AMG / Jacobi ratio is 1.14–1.44 × on step0–7 even after 8.5b — AmgCG is correct but still slower until Step 8.5c (hierarchy caching) lands. |
+| `RAYON_NUM_THREADS` | **4** on i7-11850H-class hardware | Above 4 threads, memory-bandwidth saturation + SMT contention turn rayon into a regression on 64² grids (measured: 13.84 s at 4 threads vs 18.89 s at 16 threads on `step6_voronoi`). The crate intentionally does *not* override rayon's pool sizing — set the env var per machine. |
+
+`AmgCG(Default)` remains a fully-supported opt-in:
+
+- For correctness exploration (scalar-parity tests, reference
+  solutions) where iter-count reductions matter more than
+  wallclock.
+- At the moment any of Step 8.5c (hierarchy caching), Step 8.5d
+  (128² scaling), or Step 8.5a.2 (SA-AMG) lands and re-balances
+  the ratio.
+
+`step8`-class regimes (`η_max / η_min ≳ 10⁴`, mantle activated)
+must keep `JacobiCG` until Step 8.5a.2 delivers a smoother capable
+of holding diagonal dominance through Galerkin coarsening.
 
 ## Transverse T1 — absorbed
 

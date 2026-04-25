@@ -33,6 +33,8 @@
 //! [md]: crate::tectonics_v2::stokes::operator::momentum_diagonal
 //! [am]: crate::tectonics_v2::stokes::operator::apply_momentum
 
+use rayon::prelude::*;
+
 use super::nullspace::project_velocity;
 
 /// Precomputed reciprocal of the momentum-diagonal, one value per
@@ -74,10 +76,13 @@ impl VelocityJacobi {
         let mut rx = r_vx.to_vec();
         let mut ry = r_vy.to_vec();
         project_velocity(&mut rx, &mut ry);
-        for k in 0..n {
-            z_vx[k] = self.inv_diag_vx[k] * rx[k];
-            z_vy[k] = self.inv_diag_vy[k] * ry[k];
-        }
+        // Step 8.5b: cell-local scalar product, order-independent.
+        z_vx.par_iter_mut()
+            .zip(self.inv_diag_vx.par_iter().zip(rx.par_iter()))
+            .for_each(|(z, (inv_d, r))| *z = *inv_d * *r);
+        z_vy.par_iter_mut()
+            .zip(self.inv_diag_vy.par_iter().zip(ry.par_iter()))
+            .for_each(|(z, (inv_d, r))| *z = *inv_d * *r);
         project_velocity(z_vx, z_vy);
     }
 }

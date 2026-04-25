@@ -20,7 +20,7 @@
 //! Recursion depth is bounded by `cfg.max_levels` (default 7),
 //! so Rust's stack handles it without issue.
 
-use super::smoother::sgs_sweep;
+use super::smoother::rbgs_sweep;
 use super::{AmgConfig, AmgHierarchy};
 
 /// Apply one V-cycle starting at level 0: update `x` in-place
@@ -57,7 +57,7 @@ pub fn v_cycle_level(
 
     // --- Pre-smooth ---
     for _ in 0..cfg.pre_smooth_sweeps {
-        sgs_sweep(&lvl.a, b, x);
+        rbgs_sweep(&lvl.a, &lvl.colors, b, x);
     }
 
     // --- Residual r = b - A · x ---
@@ -87,7 +87,7 @@ pub fn v_cycle_level(
 
     // --- Post-smooth ---
     for _ in 0..cfg.post_smooth_sweeps {
-        sgs_sweep(&lvl.a, b, x);
+        rbgs_sweep(&lvl.a, &lvl.colors, b, x);
     }
 }
 
