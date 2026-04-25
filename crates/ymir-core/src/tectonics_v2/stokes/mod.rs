@@ -34,6 +34,7 @@ pub mod continuation;
 pub mod nonlinear_solver;
 pub mod nullspace;
 pub mod operator;
+pub mod parallel_reduce;
 pub mod picard;
 pub mod precond;
 pub mod snapshot;

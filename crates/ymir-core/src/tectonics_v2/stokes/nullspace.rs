@@ -11,16 +11,22 @@
 //! Every preconditioner application must kill the velocity null-space
 //! modes BEFORE and AFTER `M⁻¹`. Two array-wide means per application
 //! is O(N) and negligible against the stencil cost.
+//!
+//! Step 8.5b: the mean is computed with [`par_sum`] (chunk-sequential
+//! reduction, bit-identical across thread counts) and the subtract
+//! step is `par_iter_mut` (cell-local, order-independent).
+
+use rayon::prelude::*;
+
+use super::parallel_reduce::par_sum;
 
 /// Subtract the arithmetic mean of `data` from every element.
 pub fn subtract_mean(data: &mut [f64]) {
     if data.is_empty() {
         return;
     }
-    let mean = data.iter().sum::<f64>() / data.len() as f64;
-    for v in data.iter_mut() {
-        *v -= mean;
-    }
+    let mean = par_sum(data) / data.len() as f64;
+    data.par_iter_mut().for_each(|v| *v -= mean);
 }
 
 /// Return the arithmetic mean of `data`.
@@ -28,7 +34,7 @@ pub fn mean(data: &[f64]) -> f64 {
     if data.is_empty() {
         0.0
     } else {
-        data.iter().sum::<f64>() / data.len() as f64
+        par_sum(data) / data.len() as f64
     }
 }
 

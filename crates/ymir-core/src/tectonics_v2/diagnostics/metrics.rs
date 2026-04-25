@@ -220,6 +220,11 @@ pub struct Metrics {
     // ---- Step 1 active: Newton aggregate. None at Step 0 (no nonlinear solve). ----
     pub newton: Option<super::newton_metrics::NewtonAggregate>,
 
+    // ---- Step 8.5b Phase 5: Newton extrapolation instrumentation ----
+    /// `Some(stats)` when the run completed at least one physics
+    /// step. `None` only on degenerate `steps == 0` configs.
+    pub extrapolation: Option<super::newton_metrics::ExtrapolationStats>,
+
     // ---- Dormant metrics ----
     pub s_eq: Option<f64>,
     pub boundary_type_diversity: Option<BoundaryTypeCounts>,
@@ -275,6 +280,7 @@ impl Metrics {
             variance_series: Vec::new(),
             max_grad_s_series: Vec::new(),
             newton: None,
+            extrapolation: None,
             s_eq: None,
             boundary_type_diversity: None,
             yielding_cell_fraction: None,
