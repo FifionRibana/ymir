@@ -32,7 +32,7 @@ use std::time::Instant;
 
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::stokes::amg::setup::{build_hierarchy, extract_diagonal_block};
-use ymir_core::tectonics_v2::stokes::amg::smoother::sgs_sweep;
+use ymir_core::tectonics_v2::stokes::amg::smoother::sequential_gs_sweep;
 use ymir_core::tectonics_v2::stokes::amg::splitting::{classical_rs_splitting, CfType};
 use ymir_core::tectonics_v2::stokes::amg::strong_connections::compute_strong_connections;
 use ymir_core::tectonics_v2::stokes::amg::{AmgConfig, AmgPreconditioner};
@@ -343,7 +343,7 @@ fn instrumented_vcycle(
     for k in 0..(n_levels - 1) {
         // Pre-smooth.
         for _ in 0..cfg.pre_smooth_sweeps {
-            sgs_sweep(&hierarchy.levels[k].a, &residuals[k], &mut xs[k]);
+            sequential_gs_sweep(&hierarchy.levels[k].a, &residuals[k], &mut xs[k]);
         }
         // Fresh residual at this level.
         let mut ax_k = vec![0.0f64; residuals[k].len()];
@@ -388,7 +388,7 @@ fn instrumented_vcycle(
             xs[k][i] += correction[i];
         }
         for _ in 0..cfg.post_smooth_sweeps {
-            sgs_sweep(&hierarchy.levels[k].a, &residuals[k], &mut xs[k]);
+            sequential_gs_sweep(&hierarchy.levels[k].a, &residuals[k], &mut xs[k]);
         }
         // Residual after full V-cycle up through level k.
         let mut ax_post = vec![0.0f64; xs[k].len()];
