@@ -160,6 +160,25 @@ fn step9_physics_baseline_64sq() {
     print_summary("Cr=0.3, K=5 baseline", dt, &r);
 }
 
+/// Pre-bump regression check (Option α): re-run the Step 7 shape
+/// 64² × 100 baseline with `B_factor = 8` explicit to verify
+/// that bumping the default from 5 to 8 does not degrade
+/// conditioning beyond the acceptance budgets (#11 CG ratio
+/// ≤ 2× Step 8, #16 wallclock ≤ 1.2× Step 8). On Step 7 shape
+/// (no slab, no mantle) the system stays in the quiescent
+/// regime where η_p is large; B_factor's effect on conditioning
+/// is expected minimal but must be verified, not assumed.
+#[test]
+#[ignore]
+fn step9_regression_check_b_factor_8_64sq() {
+    let crcfg = CratonicConfigEnabled { b_factor: 8.0, ..Default::default() };
+    let cfg = build_step9_config(CratonicConfig::Enabled(crcfg), "regression_b8");
+    let t0 = Instant::now();
+    let r = run_baseline(&cfg);
+    let dt = t0.elapsed().as_secs_f64();
+    print_summary("Cr=0.3, K=5, B_factor=8 (pre-bump check)", dt, &r);
+}
+
 #[test]
 #[ignore]
 fn step9_baseline_disabled_reference_64sq() {
