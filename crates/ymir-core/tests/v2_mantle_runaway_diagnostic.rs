@@ -53,6 +53,7 @@ fn build_cfg(
         slab_pull: slab,
         mantle,
         cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
+        age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver: Default::default(),
     }

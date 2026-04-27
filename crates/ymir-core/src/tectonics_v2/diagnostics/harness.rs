@@ -22,6 +22,9 @@ use crate::tectonics_v2::boundaries::{
     BoundaryConfig, BoundaryMechanismActive, apply_clamp_with_tracking, compute_source_sink_terms,
     div_v_cell, interface_mask, s_continental_collision_mean, s_continental_interior, s_oceanic,
 };
+use crate::tectonics_v2::age_field::{
+    advection::step_age_advect, events::apply_age_events, AgeFieldConfig, AgeFieldState,
+};
 use crate::tectonics_v2::cratonic::{
     factor::build_cratonic_factor_field, CratonicConfig, CratonicState,
 };
@@ -209,6 +212,12 @@ pub struct BaselineConfig {
     /// passes `CratonicConfig::Enabled(..)`; the Cr sweep varies
     /// the `cr` field of the inner config.
     pub cratonic: CratonicConfig,
+    /// Geological-age-field configuration (Step 10). Default is
+    /// [`AgeFieldConfig::Disabled`] — no `A` field is allocated,
+    /// no advection of `A` runs, no event-reset fires. Step 10
+    /// physics passes `AgeFieldConfig::Enabled(..)`; the
+    /// continental / oceanic init ages are user-tunable.
+    pub age_field: AgeFieldConfig,
     /// Step 8.5a Phase 0 benchmark capture hook. Default `None`
     /// preserves bit-parity with pre-Step-8.5a runs. `Some(spec)`
     /// instruments the Newton solver at the target step.
@@ -252,6 +261,7 @@ impl BaselineConfig {
             slab_pull: SlabPullConfig::Disabled,
             mantle: MantleConfig::Disabled,
             cratonic: CratonicConfig::Disabled,
+            age_field: AgeFieldConfig::Disabled,
             capture: None,
             linear_solver: LinearSolverConfig::default(),
         }
@@ -524,6 +534,30 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let idx_y = PeriodicIndex::new(ny);
 
     let mass_initial = integrated_mass(&s);
+
+    // Step 10 — geological age field. `Disabled` → `None`, no
+    // allocation, no per-step work. `Enabled(cfg)` builds the
+    // initial A field from the initial S̃ classification (D2 / D7
+    // static identification) and stores it for the time-step loop
+    // to advect + reset.
+    let mut age_state: Option<AgeFieldState> = match cfg.age_field {
+        AgeFieldConfig::Disabled => None,
+        AgeFieldConfig::Enabled(age_cfg) => {
+            Some(AgeFieldState::from_initial_thickness(&s, &age_cfg))
+        }
+    };
+    // Step 10 — run-level accumulator for boundary-event resets.
+    // Counts are updated each step inside `apply_age_events`;
+    // converted to `Option<f64>` / `Option<u64>` on
+    // `NewtonAggregate` at run end.
+    #[derive(Default)]
+    struct AgeRunCounts {
+        ridge_resets: u64,
+        arc_resets: u64,
+        collision_max_events: u64,
+        collision_max_age_sum: f64,
+    }
+    let mut age_event_counts_run = AgeRunCounts::default();
 
     // Step 5/6 — scratch fields + accumulators for the boundary
     // source/sink pipeline. Only allocated when `BoundaryConfig::Enabled`;
@@ -799,6 +833,10 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         if let Some(md) = save_snapshot(&s, &path) {
             heightmap_paths.push(path.display().to_string().replace('\\', "/"));
             heightmap_metas.push(md);
+        }
+        if let Some(state) = age_state.as_ref() {
+            let path_a = cfg.output_dir.join(format!("a_{}x{}_t0000.png", nx, ny));
+            let _ = save_snapshot(&state.current, &path_a);
         }
     }
 
@@ -1392,6 +1430,20 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         let dt = dt_target.min(dt_cfl).max(0.0);
         if dt.is_finite() && dt > 0.0 {
             step_upwind(nx, ny, dx, dy, dt, &idx_x, &idx_y, &s, &vx, &vy, &mut s_next);
+            // Step 10 — advect the age field with the same `dt`
+            // and the same `vx, vy`. Non-conservative upwind with
+            // a uniform `+dt` Lagrangian-growth source (see
+            // `age_field::advection`). Boundary-event resets are
+            // applied later, after the S̃ source/sink+clamp
+            // pipeline has finalised `s_next` and the dynamic
+            // boundary detection has been refreshed.
+            if let Some(state) = age_state.as_mut() {
+                step_age_advect(
+                    nx, ny, dx, dy, dt, &idx_x, &idx_y,
+                    &state.current, &vx, &vy, &mut state.next,
+                );
+                std::mem::swap(&mut state.current, &mut state.next);
+            }
             // Boundary source/sinks — issue #89 D9 (Lie splitting):
             // `Q` is evaluated on `S̃(t)` and `ṽ(t)` (not post-
             // advection state) and accumulated into the advected
@@ -1601,6 +1653,32 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             }
             std::mem::swap(&mut s, &mut s_next);
 
+            // Step 10 — apply boundary-event resets to `A` after
+            // the S̃ source/sink + clamp pipeline has updated `s`
+            // (the `current_flag` field reflects this step's
+            // boundary classification, refreshed earlier in this
+            // iteration when `is_dynamic`). Cells consumed by
+            // subduction have already had their `S̃` zeroed; their
+            // `A` contribution will be replenished by advection
+            // on the next step (no explicit zero-out per D3
+            // commentary).
+            if let (Some(state), Some(flag), BoundaryConfig::Enabled { geometry, .. }) =
+                (age_state.as_mut(), current_flag.as_ref(), &cfg.boundary)
+            {
+                let counts = apply_age_events(
+                    flag,
+                    &geometry.plate_type,
+                    &s,
+                    &idx_x,
+                    &idx_y,
+                    &mut state.current,
+                );
+                age_event_counts_run.ridge_resets += counts.ridge_resets as u64;
+                age_event_counts_run.arc_resets += counts.arc_resets as u64;
+                age_event_counts_run.collision_max_events += counts.collision_max_events as u64;
+                age_event_counts_run.collision_max_age_sum += counts.collision_max_age_sum;
+            }
+
             // Step 7 — advect `m_subducted` with the solved velocity.
             // Runs AFTER the Stokes solve and AFTER the S advection
             // swap, using the same `v` and `dt` as S (consistency
@@ -1650,6 +1728,16 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             if let Some(md) = save_snapshot(&s, &path) {
                 heightmap_paths.push(path.display().to_string().replace('\\', "/"));
                 heightmap_metas.push(md);
+            }
+            // Step 10 — companion A heatmap PNG, mirrors the S̃
+            // export (D5: same export pattern as S̃). When
+            // `AgeFieldConfig::Disabled`, `age_state` is None and
+            // no PNG is written.
+            if let Some(state) = age_state.as_ref() {
+                let path_a = cfg
+                    .output_dir
+                    .join(format!("a_{}x{}_t{:04}.png", nx, ny, completed));
+                let _ = save_snapshot(&state.current, &path_a);
             }
         }
     }
@@ -1879,6 +1967,63 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         if !is_slab_enabled {
             newton_agg.peak_f_gpe_run = Some(peak_f_gpe_run);
         }
+    }
+
+    // Step 10 — finalise age-field diagnostics into newton_agg.
+    if let (AgeFieldConfig::Enabled(age_cfg), Some(state)) = (&cfg.age_field, age_state.as_ref()) {
+        newton_agg.continental_age_init_diagnostic = Some(age_cfg.continental_age_init);
+        newton_agg.oceanic_age_init_diagnostic = Some(age_cfg.oceanic_age_init);
+        // Min / max / mean of A at the final step.
+        let mut amin = f64::INFINITY;
+        let mut amax = f64::NEG_INFINITY;
+        let mut asum = 0.0_f64;
+        let n_cells = (nx * ny) as f64;
+        for &v in state.current.data() {
+            if v < amin {
+                amin = v;
+            }
+            if v > amax {
+                amax = v;
+            }
+            asum += v;
+        }
+        newton_agg.age_field_min_final = Some(amin);
+        newton_agg.age_field_max_final = Some(amax);
+        newton_agg.age_field_mean_final = Some(asum / n_cells);
+        // Per-region means (continental vs oceanic) from the
+        // final S̃ classification.
+        let mut sum_cont = 0.0_f64;
+        let mut count_cont = 0usize;
+        let mut sum_oce = 0.0_f64;
+        let mut count_oce = 0usize;
+        for j in 0..ny {
+            for i in 0..nx {
+                let a_val = state.current.get(i, j);
+                if crate::tectonics_v2::age_field::init::is_continental_thickness(s.get(i, j)) {
+                    sum_cont += a_val;
+                    count_cont += 1;
+                } else {
+                    sum_oce += a_val;
+                    count_oce += 1;
+                }
+            }
+        }
+        newton_agg.age_at_continental_cells_mean_final =
+            if count_cont > 0 { Some(sum_cont / count_cont as f64) } else { None };
+        newton_agg.age_at_oceanic_cells_mean_final =
+            if count_oce > 0 { Some(sum_oce / count_oce as f64) } else { None };
+        newton_agg.age_ridge_resets_total = Some(age_event_counts_run.ridge_resets);
+        newton_agg.age_arc_resets_total = Some(age_event_counts_run.arc_resets);
+        newton_agg.age_collision_max_events_total =
+            Some(age_event_counts_run.collision_max_events);
+        newton_agg.age_collision_max_age_mean = Some(if age_event_counts_run.collision_max_events
+            == 0
+        {
+            0.0
+        } else {
+            age_event_counts_run.collision_max_age_sum
+                / age_event_counts_run.collision_max_events as f64
+        });
     }
 
     let cg_iter_mean = newton_agg.cg_iters_per_newton_mean();

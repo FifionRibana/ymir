@@ -16,6 +16,7 @@
 //! and fill tracking on top).
 
 pub mod advection;
+pub mod age_field;
 pub mod basal_drag;
 pub mod boundaries;
 pub mod boundary_detection;
