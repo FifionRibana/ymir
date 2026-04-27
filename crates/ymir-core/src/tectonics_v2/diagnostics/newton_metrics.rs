@@ -285,6 +285,8 @@ pub struct NewtonAggregate {
     pub cr_diagnostic: Option<f64>,
     /// `K` viscous contrast, stored once for the report.
     pub k_viscous_diagnostic: Option<f64>,
+    /// `B_factor` Bi elevation, stored once for the report.
+    pub b_factor_diagnostic: Option<f64>,
     /// Fraction of cells with `cratonic_factor > 0.5` — static over
     /// the run (factor field is computed once at init). Compared to
     /// `Cr · continental_fraction` per acceptance #8.

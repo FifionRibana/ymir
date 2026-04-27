@@ -686,7 +686,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                 seed_coords: Vec::new(),
             };
             let factor = build_cratonic_factor_field(&plates, crcfg);
-            Some(CratonicState::from_factor(factor, crcfg.k_viscous))
+            Some(CratonicState::from_factor(factor, crcfg.k_viscous, crcfg.b_factor))
         }
         _ => None,
     };
@@ -766,6 +766,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             .count();
         newton_agg.cr_diagnostic = Some(crcfg.cr);
         newton_agg.k_viscous_diagnostic = Some(crcfg.k_viscous);
+        newton_agg.b_factor_diagnostic = Some(crcfg.b_factor);
         newton_agg.cratonic_cell_fraction = Some(cratonic_count as f64 / total);
         newton_agg.continental_cell_fraction = Some(continental_count as f64 / total);
     }
