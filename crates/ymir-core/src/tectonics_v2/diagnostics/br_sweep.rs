@@ -91,6 +91,7 @@ pub fn run_br_sweep(
             boundary_layout_name: String::new(),
             slab_pull: crate::tectonics_v2::slab::SlabPullConfig::Disabled,
             mantle: crate::tectonics_v2::mantle::MantleConfig::Disabled,
+            cratonic: crate::tectonics_v2::cratonic::CratonicConfig::Disabled,
             capture: None,
             linear_solver: Default::default(),
         };

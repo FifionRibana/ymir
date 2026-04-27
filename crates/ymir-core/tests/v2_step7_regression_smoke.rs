@@ -72,6 +72,7 @@ fn build_step6_shape_config(slab: SlabPullConfig) -> BaselineConfig {
         boundary_layout_name: "voronoi_seed42_n8".into(),
         slab_pull: slab,
         mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
+        cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
         capture: None,
         linear_solver: Default::default(),
     }

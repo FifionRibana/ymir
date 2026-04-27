@@ -193,6 +193,7 @@ fn capture_step0_quiescent(args: &Args, path: &PathBuf) -> Result<(), String> {
         boundary_layout_name: String::new(),
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
+        cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
         capture: Some(HarnessCaptureSpec {
             at_step: 0,
             path: path.clone(),
@@ -234,6 +235,7 @@ fn capture_step3_floor_yielding(args: &Args, path: &PathBuf) -> Result<(), Strin
         boundary_layout_name: String::new(),
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
+        cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
         capture: Some(HarnessCaptureSpec {
             at_step: 5,
             path: path.clone(),
@@ -323,6 +325,7 @@ fn capture_step8_activated(
             seed: args.mantle_seed,
             evolution_rate: 0.0,
         },
+        cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
         capture: Some(HarnessCaptureSpec {
             at_step: capture_step,
             path: path.clone(),
@@ -378,6 +381,7 @@ fn build_step6_shape_config(
         boundary_layout_name: format!("voronoi_seed{}_n{}", args.seed, args.num_plates),
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
+        cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
         capture: Some(capture),
         linear_solver: Default::default(),
     })

@@ -14,6 +14,7 @@
 //! [`NewtonSolver`] so the test `picard_parity` can substitute one
 //! for the other transparently.
 
+use super::super::cratonic::CratonicState;
 use super::super::field::Field2D;
 use super::super::rheology::{self, StrainRate, ViscosityLaw};
 use super::nonlinear_solver::{NonlinearOutcome, NonlinearSolver, NonlinearTrace};
@@ -74,6 +75,7 @@ fn compute_residual(
     grid: &StokesGrid,
     law: &ViscosityLaw,
     drag_diag: Option<&Field2D>,
+    cratonic: Option<&CratonicState>,
     vx: &[f64],
     vy: &[f64],
     rhs_x: &[f64],
@@ -85,7 +87,7 @@ fn compute_residual(
         grid.nx, grid.ny, grid.dx, grid.dy,
         &grid.idx_x, &grid.idx_y, vx, vy,
     );
-    let eta = rheology::build_eta_field(law, &sr.eps_ii_center);
+    let eta = rheology::build_eta_field(law, &sr.eps_ii_center, cratonic);
     apply_momentum(grid, &eta, drag_diag, vx, vy, out_x, out_y);
     for k in 0..out_x.len() {
         out_x[k] -= rhs_x[k];
@@ -100,6 +102,7 @@ impl NonlinearSolver for PicardSolver {
         grid: &StokesGrid,
         law: &ViscosityLaw,
         drag_diag: Option<&Field2D>,
+        cratonic: Option<&CratonicState>,
         rhs_x: &[f64],
         rhs_y: &[f64],
         vx: &mut [f64],
@@ -110,7 +113,7 @@ impl NonlinearSolver for PicardSolver {
         let mut trace = NonlinearTrace::default();
         let mut r_x = vec![0.0; n];
         let mut r_y = vec![0.0; n];
-        compute_residual(grid, law, drag_diag, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y);
+        compute_residual(grid, law, drag_diag, cratonic, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y);
         let r0_norm = vec_norm(&r_x, &r_y);
         trace.residuals.push(r0_norm);
         let abs_tol_eff = self.cfg.abs_tol.max(10.0 * self.cfg.linear_tol);
@@ -153,7 +156,7 @@ impl NonlinearSolver for PicardSolver {
                 grid.nx, grid.ny, grid.dx, grid.dy,
                 &grid.idx_x, &grid.idx_y, vx, vy,
             );
-            let eta = rheology::build_eta_field(law, &sr.eps_ii_center);
+            let eta = rheology::build_eta_field(law, &sr.eps_ii_center, cratonic);
 
             // Solve the Picard problem -∇·(2 η ε̇(v_{k+1})) = rhs.
             let mut diag_vx = vec![0.0; n];
@@ -199,7 +202,7 @@ impl NonlinearSolver for PicardSolver {
             trace.alphas.push(omega);
 
             // Residual at the new iterate.
-            compute_residual(grid, law, drag_diag, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y);
+            compute_residual(grid, law, drag_diag, cratonic, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y);
             let r_norm = vec_norm(&r_x, &r_y);
             trace.residuals.push(r_norm);
             prev_resid = r_norm;

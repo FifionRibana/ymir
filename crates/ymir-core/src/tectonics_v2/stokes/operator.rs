@@ -368,24 +368,71 @@ pub struct TangentContext {
 }
 
 impl TangentContext {
+    /// Build the Newton tangent context from the current strain rate.
+    ///
+    /// When `cratonic = Some(state)`, two scalings apply consistently
+    /// to both `eta_center` and the per-cell tangent
+    /// `c_center = dη/dε̇ / (ε̇ + floor)`:
+    /// 1. The plastic branch's Bi is replaced by `bi_eff[i,j] =
+    ///    Bi · state.bi_multiplier[i,j]` (Step 9 D1 primary mechanism)
+    ///    inside both `eta_effective_with_bi_override` and
+    ///    `d_eta_effective_d_eps_ii_with_bi_override`. The chain
+    ///    rule through the soft-min blend uses the elevated
+    ///    `η_p = bi_eff/(2(ε̇+floor))`.
+    /// 2. The full result is post-multiplied by
+    ///    `state.eta_multiplier[i,j]` (Step 9 D1 secondary mechanism
+    ///    — K viscous mult). Both `eta_center` and `c_center` scale
+    ///    by the same factor because `m(x)` has no `ε̇` dependence.
+    ///
+    /// When `cratonic = None`, structural by-pass — bit-identical
+    /// to the pre-Step-9 path.
     pub fn from_strain_rate(
         grid: &StokesGrid,
         law: &ViscosityLaw,
         sr: &StrainRate,
+        cratonic: Option<&super::super::cratonic::CratonicState>,
     ) -> Self {
         let nx = grid.nx;
         let ny = grid.ny;
         let mut eta_center = Field2D::new(nx, ny);
         let mut c_center = Field2D::new(nx, ny);
-        for j in 0..ny {
-            for i in 0..nx {
-                let eps = sr.eps_ii_center.get(i, j);
-                eta_center.set(i, j, law.eta_effective(eps));
-                c_center.set(
-                    i,
-                    j,
-                    law.d_eta_effective_d_eps_ii(eps) / (eps + law.strain_rate_floor),
-                );
+        let global_bi = match law.yielding {
+            crate::tectonics_v2::presets::YieldingConfig::Disabled => 0.0,
+            crate::tectonics_v2::presets::YieldingConfig::Enabled(ylaw) => ylaw.bi,
+        };
+        match cratonic {
+            None => {
+                for j in 0..ny {
+                    for i in 0..nx {
+                        let eps = sr.eps_ii_center.get(i, j);
+                        eta_center.set(i, j, law.eta_effective(eps));
+                        c_center.set(
+                            i,
+                            j,
+                            law.d_eta_effective_d_eps_ii(eps) / (eps + law.strain_rate_floor),
+                        );
+                    }
+                }
+            }
+            Some(state) => {
+                for j in 0..ny {
+                    for i in 0..nx {
+                        let eps = sr.eps_ii_center.get(i, j);
+                        let m = state.eta_multiplier.get(i, j);
+                        let bi_eff = global_bi * state.bi_multiplier.get(i, j);
+                        eta_center.set(
+                            i,
+                            j,
+                            law.eta_effective_with_bi_override(eps, bi_eff) * m,
+                        );
+                        c_center.set(
+                            i,
+                            j,
+                            m * law.d_eta_effective_d_eps_ii_with_bi_override(eps, bi_eff)
+                                / (eps + law.strain_rate_floor),
+                        );
+                    }
+                }
             }
         }
         Self {
