@@ -28,11 +28,7 @@ use ymir_core::tectonics_v2::cratonic::{
 use ymir_core::tectonics_v2::diagnostics::heightmap::save_heightmap;
 use ymir_core::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
-#[test]
-#[ignore]
-fn dump_cratonic_factor_64sq() {
-    let nx = 64usize;
-    let ny = 64usize;
+fn dump_for_grid(nx: usize, ny: usize, label: &str) {
     let vcfg = VoronoiConfig::default(); // num_plates=8, continental_ratio=0.3
     let plates = generate_voronoi(nx, ny, &vcfg, 42);
     let crcfg = CratonicConfigEnabled::default();
@@ -46,14 +42,21 @@ fn dump_cratonic_factor_64sq() {
         .join("../../docs/reports/step9_visual_checkpoint");
     std::fs::create_dir_all(&out_dir).expect("create output dir");
 
-    let factor_meta = save_heightmap(&factor, &out_dir.join("cratonic_factor_64sq.png"))
-        .expect("save factor png");
-    let pt_meta =
-        save_heightmap(&plates.plate_type.to_heightmap(), &out_dir.join("plate_type_64sq.png"))
-            .expect("save plate-type png");
-    let pid_meta =
-        save_heightmap(&plates.plate_id.to_heightmap(), &out_dir.join("plate_id_64sq.png"))
-            .expect("save plate-id png");
+    let factor_meta = save_heightmap(
+        &factor,
+        &out_dir.join(format!("cratonic_factor_{}.png", label)),
+    )
+    .expect("save factor png");
+    let pt_meta = save_heightmap(
+        &plates.plate_type.to_heightmap(),
+        &out_dir.join(format!("plate_type_{}.png", label)),
+    )
+    .expect("save plate-type png");
+    let pid_meta = save_heightmap(
+        &plates.plate_id.to_heightmap(),
+        &out_dir.join(format!("plate_id_{}.png", label)),
+    )
+    .expect("save plate-id png");
 
     // Stat summary so the human running this test sees what they
     // are looking at without having to open the PNGs.
@@ -81,7 +84,7 @@ fn dump_cratonic_factor_64sq() {
     let expected_cratonic_frac = crcfg.cr * continental_frac;
 
     println!();
-    println!("Step 9 cratonic_factor visual checkpoint — 64x64, seed=42");
+    println!("Step 9 cratonic_factor visual checkpoint — {}, seed=42", label);
     println!("  factor png            : {}", factor_meta.png_path.display());
     println!("  plate_type png        : {}", pt_meta.png_path.display());
     println!("  plate_id png          : {}", pid_meta.png_path.display());
@@ -109,4 +112,20 @@ fn dump_cratonic_factor_64sq() {
         "  relative diff vs expected : {:.1} % (acceptance #8 tolerates 20 %)",
         100.0 * rel_diff
     );
+}
+
+#[test]
+#[ignore]
+fn dump_cratonic_factor_64sq() {
+    dump_for_grid(64, 64, "64sq");
+}
+
+/// Step 9 Phase 8 — companion `cratonic_factor` PNG at 32², the
+/// resolution used for the Section 2 immunity demonstration on
+/// Step 8 shape. Same Voronoï seed (42) so the plate layout is
+/// recognisable across the 32² and 64² visuals.
+#[test]
+#[ignore]
+fn dump_cratonic_factor_32sq() {
+    dump_for_grid(32, 32, "32sq");
 }

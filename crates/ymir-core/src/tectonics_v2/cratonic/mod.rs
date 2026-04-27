@@ -127,7 +127,17 @@ pub struct CratonicConfigEnabled {
 impl CratonicConfigEnabled {
     pub const CR_DEFAULT: f64 = 0.3;
     pub const K_VISCOUS_DEFAULT: f64 = 5.0;
-    pub const B_FACTOR_DEFAULT: f64 = 5.0;
+    /// `B_factor` default — `8.0`, set to satisfy acceptance #6
+    /// (`peak_yielding_in_craton ≤ 0.01`) on the Step 8 shape 32²
+    /// immunity test. Derived from analytical threshold
+    /// `B > η_v / (2·K·η_p_default) ≈ 6.1` in saturated regimes
+    /// (`peak|v| ~ O(1)`, ε̇ large) and validated empirically by
+    /// the `B_factor` sweep `tests/v2_step9_physics_and_sweep::
+    /// step9_immunity_demo_b_factor_sweep_32sq`. B = 5 produces a
+    /// narrow miss (`yc = 0.025`); B = 8 hits zero with margin
+    /// (`yc = 0`); B = 10 is the plateau. See `solver-scaling-
+    /// step9-patch.md` for the formal §4.10 amendment.
+    pub const B_FACTOR_DEFAULT: f64 = 8.0;
     pub const PLATE_AREA_MIN_DEFAULT: f64 = 0.10;
     pub const SMOOTHING_WIDTH_DEFAULT: f64 = 0.05;
 }
@@ -263,7 +273,10 @@ mod tests {
         let cfg = CratonicConfigEnabled::default();
         assert_eq!(cfg.cr, 0.3);
         assert_eq!(cfg.k_viscous, 5.0);
-        assert_eq!(cfg.b_factor, 5.0);
+        // B_factor default raised from 5 to 8 after the §4.10
+        // amendment validation sweep — see B_FACTOR_DEFAULT
+        // docstring for the analytical + empirical justification.
+        assert_eq!(cfg.b_factor, 8.0);
         assert_eq!(cfg.plate_area_min, 0.10);
         assert_eq!(cfg.smoothing_width, 0.05);
     }
