@@ -285,6 +285,7 @@ fn run_scenario(
             boundary_layout_name: String::new(),
             slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
             mantle: ymir_core::tectonics_v2::mantle::MantleConfig::Disabled,
+            cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
             capture: None,
             linear_solver: Default::default(),
         };

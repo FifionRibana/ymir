@@ -349,13 +349,39 @@ impl StrainRate {
 /// Build an `η` field at cell centres from the rheology and the
 /// current strain-rate field. Stored as a `Field2D` so the operator
 /// layer can feed it to the arithmetic corner averaging unchanged.
-pub fn build_eta_field(law: &ViscosityLaw, eps_ii_center: &Field2D) -> Field2D {
+///
+/// When `cratonic = Some(state)`, every cell's η is post-multiplied
+/// by `state.eta_multiplier[i, j] = 1 + (K - 1) · cratonic_factor[i,j]`
+/// (Step 9 D1 secondary mechanism). When `cratonic = None`, this is
+/// a structural by-pass — no branch is taken inside the inner loop
+/// — so Step 0–8 callers get bit-identical output to the pre-Step-9
+/// path.
+pub fn build_eta_field(
+    law: &ViscosityLaw,
+    eps_ii_center: &Field2D,
+    cratonic: Option<&super::cratonic::CratonicState>,
+) -> Field2D {
     let nx = eps_ii_center.nx();
     let ny = eps_ii_center.ny();
     let mut eta = Field2D::new(nx, ny);
-    for j in 0..ny {
-        for i in 0..nx {
-            eta.set(i, j, law.eta_effective(eps_ii_center.get(i, j)));
+    match cratonic {
+        None => {
+            // Hot path identical to pre-Step-9. Kept structurally
+            // separate from the cratonic branch so the inner loop
+            // is branch-free in Step 0–8 callers.
+            for j in 0..ny {
+                for i in 0..nx {
+                    eta.set(i, j, law.eta_effective(eps_ii_center.get(i, j)));
+                }
+            }
+        }
+        Some(state) => {
+            for j in 0..ny {
+                for i in 0..nx {
+                    let e = law.eta_effective(eps_ii_center.get(i, j));
+                    eta.set(i, j, e * state.eta_multiplier.get(i, j));
+                }
+            }
         }
     }
     eta
@@ -642,7 +668,7 @@ mod tests {
         // η_max=10³ attenuates to ~0.84·10³.
         let law = ViscosityLaw::default();
         let eps = Field2D::filled(4, 4, 0.0);
-        let eta = build_eta_field(&law, &eps);
+        let eta = build_eta_field(&law, &eps, None);
         let expected = law.eta_effective(0.0);
         for v in eta.data().iter() {
             assert!(approx(*v, expected, 1e-12));
@@ -747,7 +773,7 @@ mod tests {
                 eps.set(i, j, 1e-3 + 0.01 * (i + j) as f64);
             }
         }
-        let eta_v = build_eta_field(&visc, &eps);
+        let eta_v = build_eta_field(&visc, &eps, None);
         let eta_p = build_eta_plastic_field(&yld, visc.strain_rate_floor, &eps);
         let eta_e = blend_eta_fields(&eta_v, &eta_p, yld.sharpness);
         for j in 0..6 {

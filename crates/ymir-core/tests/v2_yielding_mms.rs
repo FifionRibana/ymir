@@ -79,7 +79,7 @@ fn jacobian_symmetric_with_yielding() {
     let idx_x = PeriodicIndex::new(nx);
     let idx_y = PeriodicIndex::new(ny);
     let sr = StrainRate::compute(nx, ny, dx, dy, &idx_x, &idx_y, &vx_k, &vy_k);
-    let ctx = TangentContext::from_strain_rate(&grid, &law, &sr);
+    let ctx = TangentContext::from_strain_rate(&grid, &law, &sr, None);
 
     let mut ux = vec![0.0; n2];
     let mut uy = vec![0.0; n2];
@@ -145,7 +145,7 @@ fn picard_block_symmetric_with_yielding_eta() {
         }
     }
     let sr = StrainRate::compute(nx, ny, dx, dy, &idx_x, &idx_y, &vx_k, &vy_k);
-    let eta = build_eta_field(&law, &sr.eps_ii_center);
+    let eta = build_eta_field(&law, &sr.eps_ii_center, None);
 
     let n2 = nx * ny;
     let mut ux = vec![0.0; n2];
