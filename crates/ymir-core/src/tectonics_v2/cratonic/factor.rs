@@ -348,7 +348,7 @@ mod tests {
         // factor = 0 everywhere, the eta multiplier round-trip is
         // identity.
         let factor = Field2D::filled(8, 8, 0.0);
-        let state = super::super::CratonicState::from_factor(factor, 5.0);
+        let state = super::super::CratonicState::from_factor(factor, 5.0, 5.0);
         for v in state.eta_multiplier.data() {
             assert_eq!(*v, 1.0);
         }

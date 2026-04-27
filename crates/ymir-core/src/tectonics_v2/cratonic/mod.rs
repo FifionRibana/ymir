@@ -26,45 +26,51 @@
 
 pub mod factor;
 
-/// Step 9 D1 primary mechanism — yield-stress modulator hook for
-/// plastic memory immunity in cratonic cells.
+/// Step 9 D1 primary mechanism (operational form) — yield-stress
+/// elevation in cratonic cells.
 ///
-/// Formula (from `step9_issue.md` D1):
+/// **Original D1 formula** (literal reading of `step9_issue.md`):
 ///
 /// ```text
 ///   yield_stress[i] = Bi · (cratonic_factor[i]
 ///                          + (1 - cratonic_factor[i]) · weakening(plastic_strain[i]))
 /// ```
 ///
-/// In a cratonic cell (`cratonic_factor → 1`), `yield_stress → Bi`
-/// regardless of accumulated plastic strain — the craton is immune
-/// to plastic weakening. In a mobile cell (`cratonic_factor → 0`),
-/// the formula reduces to `yield_stress = Bi · weakening(plastic_strain)`.
+/// This formula was discovered to be a trivial no-op in the
+/// stateless yielding regime of this milestone: `weakening` is
+/// implicitly `1.0` everywhere (no plastic strain field), so the
+/// expression collapses to `Bi · 1 = Bi` for any `cratonic_factor`.
+/// Diagnostic on the Step 8-shape immunity test (32², mantle on)
+/// showed `peak_yielding_in_craton = 0.99` despite the K = 5
+/// secondary mechanism — cratons yielded essentially everywhere.
+/// Acceptance #6 cannot be met with the original formula in this
+/// milestone scope.
 ///
-/// **Current behaviour — NO-OP.** Plastic memory has not yet landed
-/// in the milestone; the `weakening` function is implicitly `1.0`
-/// everywhere (no plastic strain accumulates in the stateless Step 0–8
-/// yielding model). With `weakening = 1`, the formula collapses to
-/// `yield_stress = Bi · 1 = Bi` for any value of `cratonic_factor`,
-/// so the function returns the input `bi` unchanged.
+/// **§4.10 amendment (Step 9, this implementation).** The primary
+/// mechanism generalises to "cratons have an *elevated* yield
+/// strength" via a new parameter `B_factor ∈ [3, 10]`:
 ///
-/// The hook is wired into the codebase now (rather than at the time
-/// plastic memory is added) so that the structural integration —
-/// where the `cratonic_factor` field is *available* at the yield-
-/// stress evaluation site — is already in place. When plastic memory
-/// arrives, the only change required will be replacing the literal
-/// `1.0` with `weakening(plastic_strain[i])`.
+/// ```text
+///   yield_stress[i] = Bi · (1 + (B_factor - 1) · cratonic_factor[i])
+///                       · weakening(plastic_strain[i])
+/// ```
 ///
-/// The active mechanism in current Step 9 baseline is the secondary
-/// viscous contrast `K` (see [`CratonicState::eta_multiplier`]); the
-/// primary plastic-immunity hook becomes observably effective only
-/// once plastic memory is added.
+/// Limits:
+/// - `cratonic_factor = 0` (mobile): `yield_stress = Bi · weakening`
+///   (= Bi today, plastic-memory-modulated later).
+/// - `cratonic_factor = 1` (full cratonic core): `yield_stress =
+///   B_factor · Bi · weakening` (= B_factor · Bi today).
+///
+/// In the current milestone (no plastic memory), `weakening = 1`
+/// and this function returns `Bi · (1 + (B_factor - 1) · cratonic_factor)`.
+/// When plastic memory is implemented, weakening will modulate
+/// mobile belts; cratons' `plastic_strain` stays zero by D1, so
+/// `weakening(0) = 1` and `B_factor · Bi` survives unmodified.
 #[inline]
-pub fn bi_with_cratonic_immunity(bi: f64, cratonic_factor: f64) -> f64 {
+pub fn bi_with_cratonic_immunity(bi: f64, cratonic_factor: f64, b_factor: f64) -> f64 {
     // weakening(plastic_strain) = 1.0 (no plastic memory yet).
-    // → bi_eff = bi · (cratonic_factor + (1 - cratonic_factor) · 1) = bi
     let weakening: f64 = 1.0;
-    bi * (cratonic_factor + (1.0 - cratonic_factor) * weakening)
+    bi * (1.0 + (b_factor - 1.0) * cratonic_factor) * weakening
 }
 
 use crate::tectonics_v2::field::Field2D;
@@ -85,6 +91,26 @@ pub struct CratonicConfigEnabled {
     /// `K = 1` is supported (effectively disables the viscous
     /// secondary while keeping the plastic-immunity hook live).
     pub k_viscous: f64,
+    /// **Step 9 D1 primary mechanism (operational form).**
+    /// Yield-stress (Bi) elevation factor in cratonic cells —
+    /// `bi_eff[i] = Bi · (1 + (B_factor - 1) · cratonic_factor[i])`.
+    /// `B_factor ∈ [3, 10]`, default `5.0`. `B_factor = 1` reduces
+    /// the formula to the no-op identity (matches the
+    /// pre-amendment behaviour where the primary mechanism was
+    /// trivially `bi · 1 = bi` because `weakening = 1` without
+    /// plastic memory).
+    ///
+    /// Why this exists: §4.10 D1's literal "yield stress maintained
+    /// at full Bi" is trivial in stateless yielding (every cell
+    /// already has yield = Bi). To make cratons actually resist
+    /// viscoplastic yielding `η_p = Bi/(2·(ε̇+ε̇_min))` in active
+    /// regimes, Bi itself must be elevated locally — this is the
+    /// operational form of the primary mechanism in the absence of
+    /// plastic memory. Once plastic memory lands, the formula
+    /// `bi_eff · weakening(plastic_strain)` retains B_factor's
+    /// effect in cratons (where plastic strain stays zero by D1)
+    /// AND lets weakening modulate mobile belts.
+    pub b_factor: f64,
     /// Lower bound on plate area (as a fraction of the domain) for a
     /// plate to receive a craton. Plates below this threshold get
     /// `cratonic_factor = 0` everywhere (they represent fragments
@@ -101,6 +127,7 @@ pub struct CratonicConfigEnabled {
 impl CratonicConfigEnabled {
     pub const CR_DEFAULT: f64 = 0.3;
     pub const K_VISCOUS_DEFAULT: f64 = 5.0;
+    pub const B_FACTOR_DEFAULT: f64 = 5.0;
     pub const PLATE_AREA_MIN_DEFAULT: f64 = 0.10;
     pub const SMOOTHING_WIDTH_DEFAULT: f64 = 0.05;
 }
@@ -110,6 +137,7 @@ impl Default for CratonicConfigEnabled {
         Self {
             cr: Self::CR_DEFAULT,
             k_viscous: Self::K_VISCOUS_DEFAULT,
+            b_factor: Self::B_FACTOR_DEFAULT,
             plate_area_min: Self::PLATE_AREA_MIN_DEFAULT,
             smoothing_width: Self::SMOOTHING_WIDTH_DEFAULT,
         }
@@ -173,32 +201,48 @@ pub struct CratonicState {
     /// Continuous factor in `[0, 1]`. `1` = full cratonic, `0` =
     /// fully mobile or non-continental.
     pub factor: Field2D,
-    /// Cached `1 + (K - 1) · factor`. Mirrors `factor` cell-for-cell,
-    /// kept ready so `build_eta_field` does not branch on a
-    /// per-cell K.
+    /// Cached secondary-mechanism viscous multiplier
+    /// `eta_multiplier[i] = 1 + (K - 1) · factor[i]`. Applied
+    /// post-blend to `η_eff` in the Stokes operator (see
+    /// `rheology::build_eta_field`). Bounded `[1, K]`.
     pub eta_multiplier: Field2D,
+    /// Cached primary-mechanism Bi multiplier
+    /// `bi_multiplier[i] = 1 + (B_factor - 1) · factor[i]`. Applied
+    /// pre-blend to `η_p = Bi/(2(ε̇+ε̇_min))` so the plastic branch
+    /// in cratonic cells uses an elevated yield strength
+    /// `B_factor · Bi`. Bounded `[1, B_factor]`. With B_factor = 1
+    /// this field is identically 1 and the cratonic state reduces
+    /// to "K viscous mult only" (the pre-amendment behaviour).
+    pub bi_multiplier: Field2D,
     /// `K` used to build `eta_multiplier` — captured for diagnostics
     /// and reporting.
     pub k_viscous: f64,
+    /// `B_factor` used to build `bi_multiplier` — captured for
+    /// diagnostics and reporting.
+    pub b_factor: f64,
 }
 
 impl CratonicState {
-    /// Build the viscous multiplier field
-    /// `m[i] = 1 + (K - 1) · cratonic_factor[i]` from the factor
-    /// field and the configured `K`. Pure function; no dependency
-    /// on the BFS / smoothstep pipeline.
-    pub fn from_factor(factor: Field2D, k_viscous: f64) -> Self {
+    /// Build the eta multiplier and Bi multiplier fields from the
+    /// `cratonic_factor` field and the two cratonic mechanism
+    /// parameters `K` (viscous, secondary) and `B_factor` (Bi
+    /// elevation, primary). Pure function; no dependency on the
+    /// BFS / smoothstep pipeline.
+    pub fn from_factor(factor: Field2D, k_viscous: f64, b_factor: f64) -> Self {
         let nx = factor.nx();
         let ny = factor.ny();
         let mut eta_multiplier = Field2D::new(nx, ny);
+        let mut bi_multiplier = Field2D::new(nx, ny);
         let k_minus_1 = k_viscous - 1.0;
+        let b_minus_1 = b_factor - 1.0;
         for j in 0..ny {
             for i in 0..nx {
                 let cf = factor.get(i, j);
                 eta_multiplier.set(i, j, 1.0 + k_minus_1 * cf);
+                bi_multiplier.set(i, j, 1.0 + b_minus_1 * cf);
             }
         }
-        Self { factor, eta_multiplier, k_viscous }
+        Self { factor, eta_multiplier, bi_multiplier, k_viscous, b_factor }
     }
 }
 
@@ -219,6 +263,7 @@ mod tests {
         let cfg = CratonicConfigEnabled::default();
         assert_eq!(cfg.cr, 0.3);
         assert_eq!(cfg.k_viscous, 5.0);
+        assert_eq!(cfg.b_factor, 5.0);
         assert_eq!(cfg.plate_area_min, 0.10);
         assert_eq!(cfg.smoothing_width, 0.05);
     }
@@ -239,7 +284,7 @@ mod tests {
     #[test]
     fn eta_multiplier_at_factor_zero_is_one() {
         let factor = Field2D::filled(4, 4, 0.0);
-        let state = CratonicState::from_factor(factor, 5.0);
+        let state = CratonicState::from_factor(factor, 5.0, 1.0);
         for v in state.eta_multiplier.data() {
             assert_eq!(*v, 1.0);
         }
@@ -248,7 +293,7 @@ mod tests {
     #[test]
     fn eta_multiplier_at_factor_one_is_k() {
         let factor = Field2D::filled(4, 4, 1.0);
-        let state = CratonicState::from_factor(factor, 5.0);
+        let state = CratonicState::from_factor(factor, 5.0, 1.0);
         for v in state.eta_multiplier.data() {
             assert_eq!(*v, 5.0);
         }
@@ -261,7 +306,7 @@ mod tests {
         factor.set(1, 0, 0.5);
         factor.set(0, 1, 1.0);
         factor.set(1, 1, 0.25);
-        let state = CratonicState::from_factor(factor, 5.0);
+        let state = CratonicState::from_factor(factor, 5.0, 1.0);
         // 1 + (K-1)·f = 1 + 4·f
         assert_eq!(state.eta_multiplier.get(0, 0), 1.0);
         assert_eq!(state.eta_multiplier.get(1, 0), 3.0);
@@ -270,17 +315,66 @@ mod tests {
     }
 
     #[test]
-    fn bi_immunity_hook_is_no_op_in_current_codepath() {
-        // With weakening = 1 (no plastic memory yet), the formula
-        // reduces to `bi · 1 = bi` for any cratonic_factor.
+    fn bi_immunity_b_factor_one_is_identity() {
+        // B_factor = 1 ⟹ multiplier = 1 + 0·factor = 1, identity.
+        // This recovers the original (pre-amendment) behaviour where
+        // the primary mechanism was a no-op in stateless yielding.
         let bi = 0.15;
         for f in [0.0, 0.1, 0.3, 0.5, 0.8, 1.0] {
-            let got = bi_with_cratonic_immunity(bi, f);
+            let got = bi_with_cratonic_immunity(bi, f, 1.0);
             assert!(
                 (got - bi).abs() < 1e-15,
-                "bi_with_cratonic_immunity({}, {}) = {} ≠ {}",
+                "bi_with_cratonic_immunity({}, {}, 1.0) = {} ≠ {}",
                 bi, f, got, bi
             );
+        }
+    }
+
+    #[test]
+    fn bi_immunity_b_factor_default_elevates_in_cratons() {
+        let bi = 0.15;
+        let b = 5.0; // default
+        // factor = 0 (mobile): bi_eff = bi (unchanged)
+        let mobile = bi_with_cratonic_immunity(bi, 0.0, b);
+        assert!((mobile - bi).abs() < 1e-15);
+        // factor = 1 (full craton): bi_eff = B · bi
+        let craton = bi_with_cratonic_immunity(bi, 1.0, b);
+        assert!((craton - b * bi).abs() < 1e-15);
+        // factor = 0.5 (boundary): bi_eff = bi · (1 + (B-1)·0.5) = 3 · bi
+        let mid = bi_with_cratonic_immunity(bi, 0.5, b);
+        assert!((mid - bi * (1.0 + (b - 1.0) * 0.5)).abs() < 1e-15);
+    }
+
+    #[test]
+    fn cratonic_state_bi_multiplier_at_factor_zero_is_one() {
+        let factor = Field2D::filled(4, 4, 0.0);
+        let state = CratonicState::from_factor(factor, 5.0, 5.0);
+        for v in state.bi_multiplier.data() {
+            assert_eq!(*v, 1.0);
+        }
+    }
+
+    #[test]
+    fn cratonic_state_bi_multiplier_at_factor_one_is_b_factor() {
+        let factor = Field2D::filled(4, 4, 1.0);
+        let state = CratonicState::from_factor(factor, 5.0, 7.0);
+        for v in state.bi_multiplier.data() {
+            assert_eq!(*v, 7.0);
+        }
+    }
+
+    #[test]
+    fn b_factor_one_makes_bi_multiplier_uniform_one() {
+        // B_factor = 1 reduces cratonic state to "K viscous mult only"
+        // — bi_multiplier identically 1, no Bi elevation anywhere.
+        let mut factor = Field2D::new(2, 2);
+        factor.set(0, 0, 0.0);
+        factor.set(1, 0, 0.5);
+        factor.set(0, 1, 1.0);
+        factor.set(1, 1, 0.25);
+        let state = CratonicState::from_factor(factor, 5.0, 1.0);
+        for v in state.bi_multiplier.data() {
+            assert_eq!(*v, 1.0);
         }
     }
 
@@ -291,7 +385,7 @@ mod tests {
         factor.set(1, 0, 0.7);
         factor.set(0, 1, 1.0);
         factor.set(1, 1, 0.4);
-        let state = CratonicState::from_factor(factor, 1.0);
+        let state = CratonicState::from_factor(factor, 1.0, 1.0);
         for v in state.eta_multiplier.data() {
             assert_eq!(*v, 1.0);
         }
