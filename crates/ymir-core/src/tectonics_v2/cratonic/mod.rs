@@ -26,6 +26,47 @@
 
 pub mod factor;
 
+/// Step 9 D1 primary mechanism — yield-stress modulator hook for
+/// plastic memory immunity in cratonic cells.
+///
+/// Formula (from `step9_issue.md` D1):
+///
+/// ```text
+///   yield_stress[i] = Bi · (cratonic_factor[i]
+///                          + (1 - cratonic_factor[i]) · weakening(plastic_strain[i]))
+/// ```
+///
+/// In a cratonic cell (`cratonic_factor → 1`), `yield_stress → Bi`
+/// regardless of accumulated plastic strain — the craton is immune
+/// to plastic weakening. In a mobile cell (`cratonic_factor → 0`),
+/// the formula reduces to `yield_stress = Bi · weakening(plastic_strain)`.
+///
+/// **Current behaviour — NO-OP.** Plastic memory has not yet landed
+/// in the milestone; the `weakening` function is implicitly `1.0`
+/// everywhere (no plastic strain accumulates in the stateless Step 0–8
+/// yielding model). With `weakening = 1`, the formula collapses to
+/// `yield_stress = Bi · 1 = Bi` for any value of `cratonic_factor`,
+/// so the function returns the input `bi` unchanged.
+///
+/// The hook is wired into the codebase now (rather than at the time
+/// plastic memory is added) so that the structural integration —
+/// where the `cratonic_factor` field is *available* at the yield-
+/// stress evaluation site — is already in place. When plastic memory
+/// arrives, the only change required will be replacing the literal
+/// `1.0` with `weakening(plastic_strain[i])`.
+///
+/// The active mechanism in current Step 9 baseline is the secondary
+/// viscous contrast `K` (see [`CratonicState::eta_multiplier`]); the
+/// primary plastic-immunity hook becomes observably effective only
+/// once plastic memory is added.
+#[inline]
+pub fn bi_with_cratonic_immunity(bi: f64, cratonic_factor: f64) -> f64 {
+    // weakening(plastic_strain) = 1.0 (no plastic memory yet).
+    // → bi_eff = bi · (cratonic_factor + (1 - cratonic_factor) · 1) = bi
+    let weakening: f64 = 1.0;
+    bi * (cratonic_factor + (1.0 - cratonic_factor) * weakening)
+}
+
 use crate::tectonics_v2::field::Field2D;
 
 /// Concrete parameters for `CratonicConfig::Enabled`.
@@ -226,6 +267,21 @@ mod tests {
         assert_eq!(state.eta_multiplier.get(1, 0), 3.0);
         assert_eq!(state.eta_multiplier.get(0, 1), 5.0);
         assert_eq!(state.eta_multiplier.get(1, 1), 2.0);
+    }
+
+    #[test]
+    fn bi_immunity_hook_is_no_op_in_current_codepath() {
+        // With weakening = 1 (no plastic memory yet), the formula
+        // reduces to `bi · 1 = bi` for any cratonic_factor.
+        let bi = 0.15;
+        for f in [0.0, 0.1, 0.3, 0.5, 0.8, 1.0] {
+            let got = bi_with_cratonic_immunity(bi, f);
+            assert!(
+                (got - bi).abs() < 1e-15,
+                "bi_with_cratonic_immunity({}, {}) = {} ≠ {}",
+                bi, f, got, bi
+            );
+        }
     }
 
     #[test]

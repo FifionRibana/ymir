@@ -45,7 +45,7 @@ fn continuation_ramp_converges_every_rung() {
     let newton = NewtonSolver::new(newton_cfg);
     let cg = ConjugateGradient::new(newton_cfg.linear_tol, newton_cfg.linear_max_iter);
     let outcome = run_continuation(
-        &grid, &law, None, &schedule, &fx, &fy, &mut vx, &mut vy, &newton, &cg,
+        &grid, &law, None, None, &schedule, &fx, &fy, &mut vx, &mut vy, &newton, &cg,
     );
 
     assert!(

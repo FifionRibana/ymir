@@ -368,24 +368,54 @@ pub struct TangentContext {
 }
 
 impl TangentContext {
+    /// Build the Newton tangent context from the current strain rate.
+    ///
+    /// When `cratonic = Some(state)`, both `eta_center[i, j]` AND the
+    /// per-cell tangent `c_center[i, j] = dη/dε̇ / (ε̇ + floor)` are
+    /// scaled by the same `state.eta_multiplier[i, j]` — this is the
+    /// chain-rule consequence of `η_eff = m(x) · η_law(ε̇)`, where
+    /// `m(x)` does not depend on `ε̇`. Both must scale together for
+    /// the Newton-extra term and the Picard block to remain
+    /// consistent. When `cratonic = None`, structural by-pass —
+    /// bit-identical to the pre-Step-9 path.
     pub fn from_strain_rate(
         grid: &StokesGrid,
         law: &ViscosityLaw,
         sr: &StrainRate,
+        cratonic: Option<&super::super::cratonic::CratonicState>,
     ) -> Self {
         let nx = grid.nx;
         let ny = grid.ny;
         let mut eta_center = Field2D::new(nx, ny);
         let mut c_center = Field2D::new(nx, ny);
-        for j in 0..ny {
-            for i in 0..nx {
-                let eps = sr.eps_ii_center.get(i, j);
-                eta_center.set(i, j, law.eta_effective(eps));
-                c_center.set(
-                    i,
-                    j,
-                    law.d_eta_effective_d_eps_ii(eps) / (eps + law.strain_rate_floor),
-                );
+        match cratonic {
+            None => {
+                for j in 0..ny {
+                    for i in 0..nx {
+                        let eps = sr.eps_ii_center.get(i, j);
+                        eta_center.set(i, j, law.eta_effective(eps));
+                        c_center.set(
+                            i,
+                            j,
+                            law.d_eta_effective_d_eps_ii(eps) / (eps + law.strain_rate_floor),
+                        );
+                    }
+                }
+            }
+            Some(state) => {
+                for j in 0..ny {
+                    for i in 0..nx {
+                        let eps = sr.eps_ii_center.get(i, j);
+                        let m = state.eta_multiplier.get(i, j);
+                        eta_center.set(i, j, law.eta_effective(eps) * m);
+                        c_center.set(
+                            i,
+                            j,
+                            m * law.d_eta_effective_d_eps_ii(eps)
+                                / (eps + law.strain_rate_floor),
+                        );
+                    }
+                }
             }
         }
         Self {
