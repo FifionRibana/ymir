@@ -56,6 +56,7 @@ fn build_step0_config(path: PathBuf) -> BaselineConfig {
         boundary_layout_name: String::new(),
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
+        cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
         capture: Some(HarnessCaptureSpec {
             at_step: 0,
             path,

@@ -245,7 +245,7 @@ fn newton_tail_at_n3(n: usize) -> NewtonTail {
     let sr = StrainRate::compute(
         nx, ny, dx, dy, &grid.idx_x, &grid.idx_y, &vx_t, &vy_t,
     );
-    let eta = rheology::build_eta_field(&law, &sr.eps_ii_center);
+    let eta = rheology::build_eta_field(&law, &sr.eps_ii_center, None);
     let mut rhs_x = vec![0.0; nx * ny];
     let mut rhs_y = vec![0.0; nx * ny];
     apply_momentum(&grid, &eta, None, &vx_t, &vy_t, &mut rhs_x, &mut rhs_y);
@@ -259,7 +259,7 @@ fn newton_tail_at_n3(n: usize) -> NewtonTail {
     cfg.max_outer_iters = 15;
     let newton = NewtonSolver::new(cfg);
     let cg = ConjugateGradient::new(cfg.linear_tol, cfg.linear_max_iter);
-    let outcome = newton.solve(&grid, &law, None, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
+    let outcome = newton.solve(&grid, &law, None, None, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
     NewtonTail {
         size: n,
         residuals: outcome.trace().residuals.clone(),

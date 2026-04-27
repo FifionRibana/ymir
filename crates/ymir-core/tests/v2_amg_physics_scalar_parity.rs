@@ -75,6 +75,7 @@ fn build_step0_config(seed: u64, linear_solver: LinearSolverConfig) -> BaselineC
         boundary_layout_name: String::new(),
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
+        cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
         capture: None,
         linear_solver,
     }
@@ -108,6 +109,7 @@ fn build_step3_config(seed: u64, linear_solver: LinearSolverConfig) -> BaselineC
         boundary_layout_name: String::new(),
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
+        cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
         capture: None,
         linear_solver,
     }
@@ -151,6 +153,7 @@ fn build_step6_config(
         boundary_layout_name: format!("voronoi_seed{}_n{}", seed, num_plates),
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
+        cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
         capture: None,
         linear_solver,
     })

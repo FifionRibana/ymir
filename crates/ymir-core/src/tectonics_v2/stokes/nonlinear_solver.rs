@@ -30,6 +30,7 @@
 
 use std::path::PathBuf;
 
+use super::super::cratonic::CratonicState;
 use super::super::field::{Field2D, PeriodicIndex};
 use super::super::rheology::{self, StrainRate, ViscosityLaw};
 use super::nullspace;
@@ -150,11 +151,19 @@ impl NonlinearOutcome {
 /// (cell-centered `Br · S̃^exp`). `None` disables drag; `Some(&field)`
 /// augments the operator and the preconditioner diagonal consistently.
 pub trait NonlinearSolver {
+    /// Solve the nonlinear Stokes problem for `v`.
+    ///
+    /// `cratonic` carries the Step 9 viscous-contrast multiplier. When
+    /// `None`, the per-cell `η` is the law's `eta_effective(ε̇_II)`
+    /// alone (Step 0–8 path, bit-identical). When `Some(state)`, every
+    /// `η` evaluation in the residual and tangent is post-multiplied
+    /// by `state.eta_multiplier[i, j]`.
     fn solve(
         &self,
         grid: &StokesGrid,
         law: &ViscosityLaw,
         drag_diag: Option<&Field2D>,
+        cratonic: Option<&CratonicState>,
         rhs_x: &[f64],
         rhs_y: &[f64],
         vx: &mut [f64],
@@ -229,6 +238,7 @@ pub fn evaluate_residual_norm(
     grid: &StokesGrid,
     law: &ViscosityLaw,
     drag_diag: Option<&Field2D>,
+    cratonic: Option<&CratonicState>,
     rhs_x: &[f64],
     rhs_y: &[f64],
     vx: &[f64],
@@ -240,7 +250,7 @@ pub fn evaluate_residual_norm(
     let mut sr_out: Option<StrainRate> = None;
     let mut eta_out: Option<super::super::field::Field2D> = None;
     compute_residual(
-        grid, law, drag_diag, vx, vy, rhs_x, rhs_y,
+        grid, law, drag_diag, cratonic, vx, vy, rhs_x, rhs_y,
         &mut r_x, &mut r_y, &mut sr_out, &mut eta_out,
     );
     vec_norm(&r_x, &r_y)
@@ -254,6 +264,7 @@ fn compute_residual(
     grid: &StokesGrid,
     law: &ViscosityLaw,
     drag_diag: Option<&Field2D>,
+    cratonic: Option<&CratonicState>,
     vx: &[f64],
     vy: &[f64],
     rhs_x: &[f64],
@@ -273,7 +284,7 @@ fn compute_residual(
         vx,
         vy,
     );
-    let eta = rheology::build_eta_field(law, &sr.eps_ii_center);
+    let eta = rheology::build_eta_field(law, &sr.eps_ii_center, cratonic);
     apply_momentum(grid, &eta, drag_diag, vx, vy, out_x, out_y);
     for k in 0..out_x.len() {
         out_x[k] -= rhs_x[k];
@@ -297,6 +308,7 @@ impl NonlinearSolver for NewtonSolver {
         grid: &StokesGrid,
         law: &ViscosityLaw,
         drag_diag: Option<&Field2D>,
+        cratonic: Option<&CratonicState>,
         rhs_x: &[f64],
         rhs_y: &[f64],
         vx: &mut [f64],
@@ -311,7 +323,7 @@ impl NonlinearSolver for NewtonSolver {
         let mut r_y = vec![0.0; n];
         let mut sr_k: Option<StrainRate> = None;
         let mut eta_k: Option<super::super::field::Field2D> = None;
-        compute_residual(grid, law, drag_diag, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y, &mut sr_k, &mut eta_k);
+        compute_residual(grid, law, drag_diag, cratonic, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y, &mut sr_k, &mut eta_k);
         let r0_norm = vec_norm(&r_x, &r_y);
         trace.residuals.push(r0_norm);
         // Effective absolute tolerance: the Newton residual cannot go
@@ -360,7 +372,7 @@ impl NonlinearSolver for NewtonSolver {
             // Build the tangent context from the current iterate.
             let sr = sr_k.take().expect("strain rate computed with residual");
             let _eta_field = eta_k.take();
-            let ctx = TangentContext::from_strain_rate(grid, law, &sr);
+            let ctx = TangentContext::from_strain_rate(grid, law, &sr, cratonic);
 
             // Preconditioner diagonal from the Picard block (SPD
             // approximation, adequate for our mildly-indefinite J).
@@ -485,7 +497,7 @@ impl NonlinearSolver for NewtonSolver {
                 let mut sr_trial: Option<StrainRate> = None;
                 let mut eta_trial: Option<super::super::field::Field2D> = None;
                 compute_residual(
-                    grid, law, drag_diag, &v_trial_x, &v_trial_y, rhs_x, rhs_y,
+                    grid, law, drag_diag, cratonic, &v_trial_x, &v_trial_y, rhs_x, rhs_y,
                     &mut r_trial_x, &mut r_trial_y, &mut sr_trial, &mut eta_trial,
                 );
                 let r_trial_norm = vec_norm(&r_trial_x, &r_trial_y);
@@ -509,7 +521,7 @@ impl NonlinearSolver for NewtonSolver {
                     grid.nx, grid.ny, grid.dx, grid.dy, &grid.idx_x, &grid.idx_y,
                     &v_trial_x, &v_trial_y,
                 ));
-                accepted_eta = Some(rheology::build_eta_field(law, &accepted_sr.as_ref().unwrap().eps_ii_center));
+                accepted_eta = Some(rheology::build_eta_field(law, &accepted_sr.as_ref().unwrap().eps_ii_center, cratonic));
             }
             trace.alphas.push(alpha);
             trace.residuals.push(accepted_resid);
@@ -582,7 +594,7 @@ mod tests {
             vy_k[k] = ((k as f64 * 1.3).cos()) * 0.2;
         }
         let sr = StrainRate::compute(nx, ny, grid.dx, grid.dy, &grid.idx_x, &grid.idx_y, &vx_k, &vy_k);
-        let ctx = TangentContext::from_strain_rate(&grid, &law, &sr);
+        let ctx = TangentContext::from_strain_rate(&grid, &law, &sr, None);
 
         let mut ux = vec![0.0; n2];
         let mut uy = vec![0.0; n2];
@@ -628,7 +640,7 @@ mod tests {
         let mut vy = vec![0.0; nx * ny];
         let solver = NewtonSolver::default();
         let cg = ConjugateGradient::new(1.0e-10, 2000);
-        let outcome = solver.solve(&grid, &law, None, &fx, &fy, &mut vx, &mut vy, &cg);
+        let outcome = solver.solve(&grid, &law, None, None, &fx, &fy, &mut vx, &mut vy, &cg);
         let trace = outcome.trace();
         eprintln!("residuals (len={}): {:?}", trace.residuals.len(), trace.residuals);
         eprintln!("alphas: {:?}", trace.alphas);
@@ -677,7 +689,7 @@ mod tests {
         let mut solver = NewtonSolver::default();
         solver.cfg.rel_tol = 1.0e-8;
         let cg = ConjugateGradient::new(1.0e-10, 2000);
-        let outcome = solver.solve(&grid, &law, None, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
+        let outcome = solver.solve(&grid, &law, None, None, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
         assert!(outcome.converged(), "trivial problem failed: {:?}", outcome);
     }
 }

@@ -166,6 +166,49 @@ impl ViscosityLaw {
     pub fn newton_extra_prefactor(&self, eps_ii: f64) -> f64 {
         2.0 * self.d_eta_effective_d_eps_ii(eps_ii) / (eps_ii + self.strain_rate_floor)
     }
+
+    /// Step 9 — `η_eff(ε̇_II)` with a per-cell `bi_override` replacing
+    /// the global yielding law's `bi`. Used by the cratonic
+    /// pipeline to apply per-cell Bi elevation
+    /// `bi_eff[i] = Bi · (1 + (B_factor - 1) · cratonic_factor[i])`.
+    /// Falls through to `eta_visc_effective` when yielding is
+    /// disabled (the override has no effect there).
+    #[inline]
+    pub fn eta_effective_with_bi_override(&self, eps_ii: f64, bi_override: f64) -> f64 {
+        let eta_v = self.eta_visc_effective(eps_ii);
+        match self.yielding {
+            crate::tectonics_v2::presets::YieldingConfig::Disabled => eta_v,
+            crate::tectonics_v2::presets::YieldingConfig::Enabled(ylaw) => {
+                let eta_p = eta_plastic(eps_ii, self.strain_rate_floor, bi_override);
+                eta_effective(eta_v, eta_p, ylaw.sharpness)
+            }
+        }
+    }
+
+    /// Step 9 — `dη_eff/dε̇_II` with a per-cell `bi_override`.
+    /// Mirrors [`Self::d_eta_effective_d_eps_ii`] but threads the
+    /// override into the plastic branch's `eta_plastic` so the
+    /// chain rule through `soft_min_harmonic` uses the elevated
+    /// Bi. The viscous branch and its derivative are unchanged
+    /// (Bi has no role there).
+    #[inline]
+    pub fn d_eta_effective_d_eps_ii_with_bi_override(
+        &self,
+        eps_ii: f64,
+        bi_override: f64,
+    ) -> f64 {
+        let dv = self.d_eta_visc_effective_d_eps_ii(eps_ii);
+        match self.yielding {
+            crate::tectonics_v2::presets::YieldingConfig::Disabled => dv,
+            crate::tectonics_v2::presets::YieldingConfig::Enabled(ylaw) => {
+                let eta_v = self.eta_visc_effective(eps_ii);
+                let eta_p = eta_plastic(eps_ii, self.strain_rate_floor, bi_override);
+                d_eta_eff_d_eps_ii(
+                    eta_v, dv, eta_p, eps_ii, self.strain_rate_floor, ylaw.sharpness,
+                )
+            }
+        }
+    }
 }
 
 impl Default for ViscosityLaw {
@@ -349,13 +392,57 @@ impl StrainRate {
 /// Build an `η` field at cell centres from the rheology and the
 /// current strain-rate field. Stored as a `Field2D` so the operator
 /// layer can feed it to the arithmetic corner averaging unchanged.
-pub fn build_eta_field(law: &ViscosityLaw, eps_ii_center: &Field2D) -> Field2D {
+///
+/// When `cratonic = Some(state)`, two cratonic mechanisms apply
+/// (Step 9 D1):
+///
+/// 1. **Primary — Bi elevation.** The plastic branch in cratonic
+///    cells uses `bi_eff[i] = Bi · state.bi_multiplier[i,j]
+///    = Bi · (1 + (B_factor - 1) · cratonic_factor[i,j])`. This
+///    elevates the yield strength inside cratons by a factor up
+///    to `B_factor`, suppressing viscoplastic yielding even in
+///    high-strain-rate regimes where the original "yield_stress
+///    = Bi" formula could not.
+/// 2. **Secondary — viscous K mult.** The full effective viscosity
+///    is post-multiplied by `state.eta_multiplier[i,j] = 1 + (K - 1)
+///    · cratonic_factor[i,j]`, slowing wide-wavelength flow through
+///    cratonic interiors.
+///
+/// When `cratonic = None`, this is a structural by-pass — no branch
+/// is taken inside the inner loop — so Step 0–8 callers get
+/// bit-identical output to the pre-Step-9 path.
+pub fn build_eta_field(
+    law: &ViscosityLaw,
+    eps_ii_center: &Field2D,
+    cratonic: Option<&super::cratonic::CratonicState>,
+) -> Field2D {
     let nx = eps_ii_center.nx();
     let ny = eps_ii_center.ny();
     let mut eta = Field2D::new(nx, ny);
-    for j in 0..ny {
-        for i in 0..nx {
-            eta.set(i, j, law.eta_effective(eps_ii_center.get(i, j)));
+    let global_bi = match law.yielding {
+        crate::tectonics_v2::presets::YieldingConfig::Disabled => 0.0,
+        crate::tectonics_v2::presets::YieldingConfig::Enabled(ylaw) => ylaw.bi,
+    };
+    match cratonic {
+        None => {
+            // Hot path identical to pre-Step-9. Kept structurally
+            // separate from the cratonic branch so the inner loop
+            // is branch-free in Step 0–8 callers.
+            for j in 0..ny {
+                for i in 0..nx {
+                    eta.set(i, j, law.eta_effective(eps_ii_center.get(i, j)));
+                }
+            }
+        }
+        Some(state) => {
+            for j in 0..ny {
+                for i in 0..nx {
+                    let eps = eps_ii_center.get(i, j);
+                    let bi_eff = global_bi * state.bi_multiplier.get(i, j);
+                    let e = law.eta_effective_with_bi_override(eps, bi_eff);
+                    eta.set(i, j, e * state.eta_multiplier.get(i, j));
+                }
+            }
         }
     }
     eta
@@ -642,7 +729,7 @@ mod tests {
         // η_max=10³ attenuates to ~0.84·10³.
         let law = ViscosityLaw::default();
         let eps = Field2D::filled(4, 4, 0.0);
-        let eta = build_eta_field(&law, &eps);
+        let eta = build_eta_field(&law, &eps, None);
         let expected = law.eta_effective(0.0);
         for v in eta.data().iter() {
             assert!(approx(*v, expected, 1e-12));
@@ -747,7 +834,7 @@ mod tests {
                 eps.set(i, j, 1e-3 + 0.01 * (i + j) as f64);
             }
         }
-        let eta_v = build_eta_field(&visc, &eps);
+        let eta_v = build_eta_field(&visc, &eps, None);
         let eta_p = build_eta_plastic_field(&yld, visc.strain_rate_floor, &eps);
         let eta_e = blend_eta_fields(&eta_v, &eta_p, yld.sharpness);
         for j in 0..6 {

@@ -12,14 +12,18 @@ use std::time::Instant;
 use super::heightmap::{HeightmapMetadata, save_heightmap};
 use super::metrics::{IterationHistogram, Metrics, SolverConfigDump, condition_number_estimate};
 use super::newton_metrics::{
-    NewtonAggregate, cap_activation_fraction, eta_contrast, yielding_cell_fraction,
-    yielding_intensity,
+    NewtonAggregate, cap_activation_fraction, eta_contrast,
+    eta_contrast_at_cratonic_boundary, yielding_cell_fraction,
+    yielding_cell_fraction_in_region, yielding_intensity,
 };
 use crate::tectonics_v2::advection::{cfl_dt, integrated_mass, step_upwind};
 use crate::tectonics_v2::basal_drag::{BasalDragConfig, build_drag_diagonal_field};
 use crate::tectonics_v2::boundaries::{
     BoundaryConfig, BoundaryMechanismActive, apply_clamp_with_tracking, compute_source_sink_terms,
     div_v_cell, interface_mask, s_continental_collision_mean, s_continental_interior, s_oceanic,
+};
+use crate::tectonics_v2::cratonic::{
+    factor::build_cratonic_factor_field, CratonicConfig, CratonicState,
 };
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use crate::tectonics_v2::forcing::{MantleForce, SlabPullForce};
@@ -198,6 +202,13 @@ pub struct BaselineConfig {
     /// construction — no mantle contribution means the operator
     /// reproduces Step 7 exactly).
     pub mantle: MantleConfig,
+    /// Cratonic-immunity configuration (Step 9). Default is
+    /// [`CratonicConfig::Disabled`] — no `cratonic_factor` field is
+    /// computed, the eta-build pipeline takes the structural
+    /// by-pass branch (bit-identical to Step 0–8). Step 9 physics
+    /// passes `CratonicConfig::Enabled(..)`; the Cr sweep varies
+    /// the `cr` field of the inner config.
+    pub cratonic: CratonicConfig,
     /// Step 8.5a Phase 0 benchmark capture hook. Default `None`
     /// preserves bit-parity with pre-Step-8.5a runs. `Some(spec)`
     /// instruments the Newton solver at the target step.
@@ -240,6 +251,7 @@ impl BaselineConfig {
             boundary_layout_name: String::new(),
             slab_pull: SlabPullConfig::Disabled,
             mantle: MantleConfig::Disabled,
+            cratonic: CratonicConfig::Disabled,
             capture: None,
             linear_solver: LinearSolverConfig::default(),
         }
@@ -436,6 +448,7 @@ fn solve_nonlinear(
     grid: &Grid,
     law: &ViscosityLaw,
     drag_diag: Option<&Field2D>,
+    cratonic: Option<&CratonicState>,
     rhs_x: &[f64],
     rhs_y: &[f64],
     vx: &mut [f64],
@@ -454,7 +467,7 @@ fn solve_nonlinear(
                 None => NewtonSolver::new(newton_cfg),
             };
             solver.linear_solver = linear_solver;
-            solver.solve(grid, law, drag_diag, rhs_x, rhs_y, vx, vy, cg)
+            solver.solve(grid, law, drag_diag, cratonic, rhs_x, rhs_y, vx, vy, cg)
         }
         NonlinearChoice::Picard => {
             if capture.is_some() {
@@ -470,7 +483,7 @@ fn solve_nonlinear(
                 );
             }
             let solver = PicardSolver::new(picard_cfg);
-            solver.solve(grid, law, drag_diag, rhs_x, rhs_y, vx, vy, cg)
+            solver.solve(grid, law, drag_diag, cratonic, rhs_x, rhs_y, vx, vy, cg)
         }
     }
 }
@@ -631,6 +644,53 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let mut f_slab_to_f_gpe_ratio_sum: f64 = 0.0;
     let mut f_slab_to_f_gpe_ratio_samples: usize = 0;
 
+    // Step 9 — cratonic immunity state, pre-computed once.
+    // Requires a Voronoï partition (carried by `BoundaryConfig::
+    // Enabled.geometry`). Disabled config or boundary-disabled
+    // runs skip the BFS and leave `cratonic_state = None`; the
+    // eta-build path then takes the structural by-pass branch and
+    // is bit-identical to Step 0–8.
+    let cratonic_state: Option<CratonicState> = match (&cfg.cratonic, &cfg.boundary) {
+        (CratonicConfig::Enabled(crcfg), BoundaryConfig::Enabled { geometry, .. }) => {
+            // Reconstruct a `VoronoiPlates`-shaped view from the
+            // shared `CrustGeometry`. The factor builder needs the
+            // per-plate type vector; CrustGeometry carries the cell-
+            // wise plate_id and plate_type, so we recover the per-
+            // plate types by sampling one cell per plate id (any
+            // cell in the plate has the right type because the
+            // assignment is constant over a plate).
+            let plate_id = &geometry.plate_id;
+            let plate_type = &geometry.plate_type;
+            let mut num_plates: usize = 0;
+            for &pid in plate_id.data() {
+                let p = pid as usize + 1;
+                if p > num_plates {
+                    num_plates = p;
+                }
+            }
+            let mut per_plate_type: Vec<crate::tectonics_v2::boundaries::PlateType> = vec![
+                crate::tectonics_v2::boundaries::PlateType::Oceanic;
+                num_plates
+            ];
+            for j in 0..ny {
+                for i in 0..nx {
+                    let pid = plate_id.get(i, j) as usize;
+                    per_plate_type[pid] = plate_type.get(i, j);
+                }
+            }
+            let plates = crate::tectonics_v2::voronoi::VoronoiPlates {
+                num_plates,
+                plate_id: plate_id.clone(),
+                plate_type: plate_type.clone(),
+                per_plate_type,
+                seed_coords: Vec::new(),
+            };
+            let factor = build_cratonic_factor_field(&plates, crcfg);
+            Some(CratonicState::from_factor(factor, crcfg.k_viscous, crcfg.b_factor))
+        }
+        _ => None,
+    };
+
     // Step 8 — mantle forcing state, pre-allocated once.
     // The pattern is static at Step 8 (evolution_rate = 0, D6);
     // generate it once at run start. The diagonal field is
@@ -686,6 +746,31 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let mut heightmap_metas: Vec<HeightmapMetadata> = Vec::new();
 
     let mut newton_agg = NewtonAggregate::default();
+
+    // Step 9 — record the per-run-constant cratonic diagnostics
+    // now that `newton_agg` exists. The factor field is static
+    // (D7), so `cratonic_cell_fraction` and `continental_cell_fraction`
+    // are sampled once and survive untouched into the report.
+    if let (CratonicConfig::Enabled(crcfg), Some(cstate), BoundaryConfig::Enabled { geometry, .. }) =
+        (&cfg.cratonic, cratonic_state.as_ref(), &cfg.boundary)
+    {
+        let total = (nx * ny) as f64;
+        let cratonic_count = cstate.factor.data().iter().filter(|&&v| v > 0.5).count();
+        let continental_count = geometry
+            .plate_type
+            .data()
+            .iter()
+            .filter(|&&t| {
+                matches!(t, crate::tectonics_v2::boundaries::PlateType::Continental)
+            })
+            .count();
+        newton_agg.cr_diagnostic = Some(crcfg.cr);
+        newton_agg.k_viscous_diagnostic = Some(crcfg.k_viscous);
+        newton_agg.b_factor_diagnostic = Some(crcfg.b_factor);
+        newton_agg.cratonic_cell_fraction = Some(cratonic_count as f64 / total);
+        newton_agg.continental_cell_fraction = Some(continental_count as f64 / total);
+    }
+
     let mut max_abs_mean_vx = 0.0f64;
     let mut max_abs_mean_vy = 0.0f64;
     let mut vmax_peak = 0.0f64;
@@ -737,6 +822,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         &grid,
         &law_final,
         drag_diag_init.as_ref(),
+        cratonic_state.as_ref(),
         &cfg.preset.continuation,
         fx.data(),
         fy.data(),
@@ -752,7 +838,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     }
 
     let sr_after_ramp = StrainRate::compute(nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy);
-    let eta_after_ramp = rheology::build_eta_field(&law_final, &sr_after_ramp.eps_ii_center);
+    let eta_after_ramp = rheology::build_eta_field(&law_final, &sr_after_ramp.eps_ii_center, cratonic_state.as_ref());
     newton_agg.cap_fraction_ramp_max = newton_agg
         .cap_fraction_ramp_max
         .max(cap_activation_fraction(&eta_after_ramp, law_final.eta_max_cap));
@@ -1078,6 +1164,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                     &grid,
                     &law_final,
                     total_diag_step.as_ref(),
+                    cratonic_state.as_ref(),
                     fx.data(),
                     fy.data(),
                     &v_extrap_x,
@@ -1087,6 +1174,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                     &grid,
                     &law_final,
                     total_diag_step.as_ref(),
+                    cratonic_state.as_ref(),
                     fx.data(),
                     fy.data(),
                     &vx,
@@ -1111,6 +1199,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             &grid,
             &law_final,
             total_diag_step.as_ref(),
+            cratonic_state.as_ref(),
             fx.data(),
             fy.data(),
             &mut vx,
@@ -1161,7 +1250,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         }
 
         let sr = StrainRate::compute(nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy);
-        let eta_cc = rheology::build_eta_field(&law_final, &sr.eps_ii_center);
+        let eta_cc = rheology::build_eta_field(&law_final, &sr.eps_ii_center, cratonic_state.as_ref());
         newton_agg.cap_fraction_steady_max = newton_agg
             .cap_fraction_steady_max
             .max(cap_activation_fraction(&eta_cc, law_final.eta_max_cap));
@@ -1220,7 +1309,7 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             // `law_final.eta_effective` with yielding flipped off.
             let mut eta_visc_only = law_final;
             eta_visc_only.yielding = crate::tectonics_v2::presets::YieldingConfig::Disabled;
-            let eta_visc_cc = rheology::build_eta_field(&eta_visc_only, &sr.eps_ii_center);
+            let eta_visc_cc = rheology::build_eta_field(&eta_visc_only, &sr.eps_ii_center, cratonic_state.as_ref());
             let frac = yielding_cell_fraction(&eta_visc_cc, &eta_cc);
             let intensity = yielding_intensity(&eta_visc_cc, &eta_cc);
             newton_agg.bi_diagnostic = Some(ylaw.bi);
@@ -1228,6 +1317,37 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                 Some(newton_agg.yielding_cell_fraction_max.unwrap_or(0.0).max(frac));
             newton_agg.yielding_intensity_max =
                 Some(newton_agg.yielding_intensity_max.unwrap_or(0.0).max(intensity));
+
+            // Step 9 — cratonic-aware yielding split + boundary
+            // contrast. Only sampled when the cratonic state is
+            // present (Enabled config + Voronoï geometry); under
+            // Disabled the metrics stay `None` and acceptance
+            // checks for them are skipped.
+            if let Some(cstate) = cratonic_state.as_ref() {
+                let frac_craton = yielding_cell_fraction_in_region(
+                    &eta_visc_cc,
+                    &eta_cc,
+                    &cstate.factor,
+                    true,
+                );
+                let frac_mobile = yielding_cell_fraction_in_region(
+                    &eta_visc_cc,
+                    &eta_cc,
+                    &cstate.factor,
+                    false,
+                );
+                let contrast =
+                    eta_contrast_at_cratonic_boundary(&cstate.eta_multiplier, &cstate.factor);
+                newton_agg.peak_yielding_in_craton = Some(
+                    newton_agg.peak_yielding_in_craton.unwrap_or(0.0).max(frac_craton),
+                );
+                newton_agg.peak_yielding_in_mobile_belt = Some(
+                    newton_agg.peak_yielding_in_mobile_belt.unwrap_or(0.0).max(frac_mobile),
+                );
+                newton_agg.peak_eta_contrast_at_boundary = Some(
+                    newton_agg.peak_eta_contrast_at_boundary.unwrap_or(1.0).max(contrast),
+                );
+            }
 
             // Floor-domination diagnostic: domain-level ε̇_II
             // aggregates at the **final** timestep (overwritten

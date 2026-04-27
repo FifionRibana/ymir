@@ -39,7 +39,7 @@ fn picard_and_newton_arrive_at_the_same_solution() {
     let sr = StrainRate::compute(
         nx, ny, dx, dy, &grid.idx_x, &grid.idx_y, &vx_target, &vy_target,
     );
-    let eta = rheology::build_eta_field(&law, &sr.eps_ii_center);
+    let eta = rheology::build_eta_field(&law, &sr.eps_ii_center, None);
     let mut rhs_x = vec![0.0; nx * ny];
     let mut rhs_y = vec![0.0; nx * ny];
     apply_momentum(&grid, &eta, None, &vx_target, &vy_target, &mut rhs_x, &mut rhs_y);
@@ -54,7 +54,7 @@ fn picard_and_newton_arrive_at_the_same_solution() {
     let newton = NewtonSolver::new(newton_cfg);
     let mut vn_x = vec![0.0; nx * ny];
     let mut vn_y = vec![0.0; nx * ny];
-    let newton_outcome = newton.solve(&grid, &law, None, &rhs_x, &rhs_y, &mut vn_x, &mut vn_y, &cg);
+    let newton_outcome = newton.solve(&grid, &law, None, None, &rhs_x, &rhs_y, &mut vn_x, &mut vn_y, &cg);
     assert!(newton_outcome.converged(), "Newton failed: {:?}", newton_outcome);
 
     // Picard.
@@ -66,7 +66,7 @@ fn picard_and_newton_arrive_at_the_same_solution() {
     let picard = PicardSolver::new(picard_cfg);
     let mut vp_x = vec![0.0; nx * ny];
     let mut vp_y = vec![0.0; nx * ny];
-    let picard_outcome = picard.solve(&grid, &law, None, &rhs_x, &rhs_y, &mut vp_x, &mut vp_y, &cg);
+    let picard_outcome = picard.solve(&grid, &law, None, None, &rhs_x, &rhs_y, &mut vp_x, &mut vp_y, &cg);
 
     eprintln!(
         "Newton outer={}, Picard outer={}, outcome={:?}",

@@ -53,7 +53,7 @@ fn newton_superlinear_with_yielding() {
     }
     ymir_core::tectonics_v2::stokes::nullspace::project_velocity(&mut vx_t, &mut vy_t);
     let sr = StrainRate::compute(n, n, dx, dx, &grid.idx_x, &grid.idx_y, &vx_t, &vy_t);
-    let eta = build_eta_field(&law, &sr.eps_ii_center);
+    let eta = build_eta_field(&law, &sr.eps_ii_center, None);
     let mut rhs_x = vec![0.0; n * n];
     let mut rhs_y = vec![0.0; n * n];
     apply_momentum(&grid, &eta, None, &vx_t, &vy_t, &mut rhs_x, &mut rhs_y);
@@ -67,7 +67,7 @@ fn newton_superlinear_with_yielding() {
     cfg.max_outer_iters = 40;
     let solver = NewtonSolver::new(cfg);
     let cg = ConjugateGradient::new(cfg.linear_tol, cfg.linear_max_iter);
-    let outcome = solver.solve(&grid, &law, None, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
+    let outcome = solver.solve(&grid, &law, None, None, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
     assert!(outcome.converged(), "Newton did not converge: {:?}", outcome);
 
     // Estimate the yielding cell fraction to confirm we actually
@@ -79,8 +79,8 @@ fn newton_superlinear_with_yielding() {
         );
         let mut visc_only = law;
         visc_only.yielding = YieldingConfig::Disabled;
-        let eta_v = build_eta_field(&visc_only, &sr.eps_ii_center);
-        let eta_e = build_eta_field(&law, &sr.eps_ii_center);
+        let eta_v = build_eta_field(&visc_only, &sr.eps_ii_center, None);
+        let eta_e = build_eta_field(&law, &sr.eps_ii_center, None);
         yielding_cell_fraction(&eta_v, &eta_e)
     };
     eprintln!("yielding_cell_fraction on target = {:.3}", yielding_cells);
