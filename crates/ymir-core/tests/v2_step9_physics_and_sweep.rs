@@ -102,6 +102,7 @@ fn build_step9_config(cratonic: CratonicConfig, label: &str) -> BaselineConfig {
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
         cratonic,
+        age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver: LinearSolverConfig::default(),
     }
@@ -325,6 +326,7 @@ fn build_step9_immunity_demo_config(cratonic: CratonicConfig, label: &str) -> Ba
             evolution_rate: 0.0,
         },
         cratonic,
+        age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver: LinearSolverConfig::default(),
     }

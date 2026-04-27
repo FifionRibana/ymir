@@ -92,6 +92,7 @@ pub fn run_br_sweep(
             slab_pull: crate::tectonics_v2::slab::SlabPullConfig::Disabled,
             mantle: crate::tectonics_v2::mantle::MantleConfig::Disabled,
             cratonic: crate::tectonics_v2::cratonic::CratonicConfig::Disabled,
+            age_field: crate::tectonics_v2::age_field::AgeFieldConfig::Disabled,
             capture: None,
             linear_solver: Default::default(),
         };
