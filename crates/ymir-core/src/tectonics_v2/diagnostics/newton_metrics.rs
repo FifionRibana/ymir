@@ -308,6 +308,42 @@ pub struct NewtonAggregate {
     /// cratonic boundary (one side `cratonic_factor > 0.5`, the
     /// other `< 0.5`). Acceptance #3 target `≤ K · 1.05`.
     pub peak_eta_contrast_at_boundary: Option<f64>,
+
+    // ---- Step 10 — geological age field diagnostics ----
+    //
+    // All `None` under `AgeFieldConfig::Disabled`. When `Enabled`,
+    // populated by the harness per step (`age_field_*` are running
+    // min / max / mean) and at run end (`*_resets` are run totals,
+    // `*_age_mean` are computed from the running sums).
+    /// `continental_age_init` value used for the run, captured for
+    /// the report header.
+    pub continental_age_init_diagnostic: Option<f64>,
+    /// `oceanic_age_init` value used for the run.
+    pub oceanic_age_init_diagnostic: Option<f64>,
+    /// Min value of the age field at the final step (≥ 0 always
+    /// per acceptance #1 / #11).
+    pub age_field_min_final: Option<f64>,
+    /// Max value of the age field at the final step. Bounded by
+    /// `age_init_max + simulation_time` per acceptance #1 / #11.
+    pub age_field_max_final: Option<f64>,
+    /// Mean value of the age field at the final step.
+    pub age_field_mean_final: Option<f64>,
+    /// Mean age at continental cells (`S̃ > 0.5`) at the final
+    /// step. Acceptance #8 (soft check): generally larger than
+    /// the oceanic mean because continental cells receive resets
+    /// only at arc / collision events (rare).
+    pub age_at_continental_cells_mean_final: Option<f64>,
+    /// Mean age at oceanic cells at the final step.
+    pub age_at_oceanic_cells_mean_final: Option<f64>,
+    /// Total ridge-reset events fired across the run.
+    pub age_ridge_resets_total: Option<u64>,
+    /// Total arc-reset events fired across the run.
+    pub age_arc_resets_total: Option<u64>,
+    /// Total collision max-age events fired across the run.
+    pub age_collision_max_events_total: Option<u64>,
+    /// Mean of the max-age values produced at collision cells
+    /// across the run (= sum / count, 0 if no collision fired).
+    pub age_collision_max_age_mean: Option<f64>,
 }
 
 impl NewtonAggregate {

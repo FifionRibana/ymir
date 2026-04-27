@@ -76,6 +76,7 @@ fn build_step0_config(seed: u64, linear_solver: LinearSolverConfig) -> BaselineC
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
         cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
+        age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver,
     }
@@ -110,6 +111,7 @@ fn build_step3_config(seed: u64, linear_solver: LinearSolverConfig) -> BaselineC
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
         cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
+        age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver,
     }
@@ -154,6 +156,7 @@ fn build_step6_config(
         slab_pull: SlabPullConfig::Disabled,
         mantle: MantleConfig::Disabled,
         cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
+        age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver,
     })

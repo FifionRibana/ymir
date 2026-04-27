@@ -90,6 +90,7 @@ fn step9_smoothing_width_calibration_probe() {
             slab_pull: SlabPullConfig::Disabled,
             mantle: MantleConfig::Disabled,
             cratonic: CratonicConfig::Enabled(crcfg),
+            age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
             capture: None,
             linear_solver: LinearSolverConfig::default(),
         };
