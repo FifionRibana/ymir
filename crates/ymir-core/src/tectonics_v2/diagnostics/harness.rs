@@ -12,8 +12,9 @@ use std::time::Instant;
 use super::heightmap::{HeightmapMetadata, save_heightmap};
 use super::metrics::{IterationHistogram, Metrics, SolverConfigDump, condition_number_estimate};
 use super::newton_metrics::{
-    NewtonAggregate, cap_activation_fraction, eta_contrast, yielding_cell_fraction,
-    yielding_intensity,
+    NewtonAggregate, cap_activation_fraction, eta_contrast,
+    eta_contrast_at_cratonic_boundary, yielding_cell_fraction,
+    yielding_cell_fraction_in_region, yielding_intensity,
 };
 use crate::tectonics_v2::advection::{cfl_dt, integrated_mass, step_upwind};
 use crate::tectonics_v2::basal_drag::{BasalDragConfig, build_drag_diagonal_field};
@@ -745,6 +746,30 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
     let mut heightmap_metas: Vec<HeightmapMetadata> = Vec::new();
 
     let mut newton_agg = NewtonAggregate::default();
+
+    // Step 9 — record the per-run-constant cratonic diagnostics
+    // now that `newton_agg` exists. The factor field is static
+    // (D7), so `cratonic_cell_fraction` and `continental_cell_fraction`
+    // are sampled once and survive untouched into the report.
+    if let (CratonicConfig::Enabled(crcfg), Some(cstate), BoundaryConfig::Enabled { geometry, .. }) =
+        (&cfg.cratonic, cratonic_state.as_ref(), &cfg.boundary)
+    {
+        let total = (nx * ny) as f64;
+        let cratonic_count = cstate.factor.data().iter().filter(|&&v| v > 0.5).count();
+        let continental_count = geometry
+            .plate_type
+            .data()
+            .iter()
+            .filter(|&&t| {
+                matches!(t, crate::tectonics_v2::boundaries::PlateType::Continental)
+            })
+            .count();
+        newton_agg.cr_diagnostic = Some(crcfg.cr);
+        newton_agg.k_viscous_diagnostic = Some(crcfg.k_viscous);
+        newton_agg.cratonic_cell_fraction = Some(cratonic_count as f64 / total);
+        newton_agg.continental_cell_fraction = Some(continental_count as f64 / total);
+    }
+
     let mut max_abs_mean_vx = 0.0f64;
     let mut max_abs_mean_vy = 0.0f64;
     let mut vmax_peak = 0.0f64;
@@ -1291,6 +1316,37 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                 Some(newton_agg.yielding_cell_fraction_max.unwrap_or(0.0).max(frac));
             newton_agg.yielding_intensity_max =
                 Some(newton_agg.yielding_intensity_max.unwrap_or(0.0).max(intensity));
+
+            // Step 9 — cratonic-aware yielding split + boundary
+            // contrast. Only sampled when the cratonic state is
+            // present (Enabled config + Voronoï geometry); under
+            // Disabled the metrics stay `None` and acceptance
+            // checks for them are skipped.
+            if let Some(cstate) = cratonic_state.as_ref() {
+                let frac_craton = yielding_cell_fraction_in_region(
+                    &eta_visc_cc,
+                    &eta_cc,
+                    &cstate.factor,
+                    true,
+                );
+                let frac_mobile = yielding_cell_fraction_in_region(
+                    &eta_visc_cc,
+                    &eta_cc,
+                    &cstate.factor,
+                    false,
+                );
+                let contrast =
+                    eta_contrast_at_cratonic_boundary(&cstate.eta_multiplier, &cstate.factor);
+                newton_agg.peak_yielding_in_craton = Some(
+                    newton_agg.peak_yielding_in_craton.unwrap_or(0.0).max(frac_craton),
+                );
+                newton_agg.peak_yielding_in_mobile_belt = Some(
+                    newton_agg.peak_yielding_in_mobile_belt.unwrap_or(0.0).max(frac_mobile),
+                );
+                newton_agg.peak_eta_contrast_at_boundary = Some(
+                    newton_agg.peak_eta_contrast_at_boundary.unwrap_or(1.0).max(contrast),
+                );
+            }
 
             // Floor-domination diagnostic: domain-level ε̇_II
             // aggregates at the **final** timestep (overwritten

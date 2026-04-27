@@ -273,6 +273,39 @@ pub struct NewtonAggregate {
     /// Effectively constant within the run at Step 8
     /// (evolution_rate = 0).
     pub div_v_mantle_max: Option<f64>,
+
+    // ---- Step 9 — cratonic immunity diagnostics ----
+    //
+    // All fields `None` under `CratonicConfig::Disabled`. When
+    // `Enabled` AND yielding is also `Enabled`, the harness
+    // populates them per step. Acceptance #6/#7/#8 of `step9_issue.md`
+    // are evaluated against `peak_yielding_in_craton`,
+    // `peak_yielding_in_mobile_belt` and `cratonic_cell_fraction`.
+    /// `Cr` value driving this run, stored once for the report.
+    pub cr_diagnostic: Option<f64>,
+    /// `K` viscous contrast, stored once for the report.
+    pub k_viscous_diagnostic: Option<f64>,
+    /// Fraction of cells with `cratonic_factor > 0.5` — static over
+    /// the run (factor field is computed once at init). Compared to
+    /// `Cr · continental_fraction` per acceptance #8.
+    pub cratonic_cell_fraction: Option<f64>,
+    /// Continental fraction of the domain (cells whose plate is
+    /// `Continental`), independent of the area threshold. Used as
+    /// the denominator in the acceptance #8 ratio
+    /// `cratonic_cell_fraction / (Cr · continental_fraction)`.
+    pub continental_cell_fraction: Option<f64>,
+    /// Max over the run of `yielding_cell_fraction` restricted to
+    /// cells with `cratonic_factor > 0.5`. Acceptance #6 target
+    /// `≤ 0.01` at baseline.
+    pub peak_yielding_in_craton: Option<f64>,
+    /// Max over the run of `yielding_cell_fraction` restricted to
+    /// cells with `cratonic_factor < 0.5`. Acceptance #7 target
+    /// "within 10 % of Step 8 baseline value".
+    pub peak_yielding_in_mobile_belt: Option<f64>,
+    /// Max ratio of `η_eff` between adjacent cells crossing the
+    /// cratonic boundary (one side `cratonic_factor > 0.5`, the
+    /// other `< 0.5`). Acceptance #3 target `≤ K · 1.05`.
+    pub peak_eta_contrast_at_boundary: Option<f64>,
 }
 
 impl NewtonAggregate {
@@ -362,6 +395,92 @@ pub fn yielding_cell_fraction(
         }
     }
     count as f64 / n as f64
+}
+
+/// Step 9 — fraction of cells where `η_eff < 0.5 · η_visc`,
+/// restricted to a region defined by `cratonic_factor` and
+/// `in_craton`. When `in_craton == true`, the metric is computed
+/// over cells with `cratonic_factor > 0.5` (cratonic interior);
+/// when `false`, over cells with `cratonic_factor ≤ 0.5` (mobile
+/// belts and oceanic cells). Returns `0.0` if the region is
+/// empty (degenerate edge case — for example, no retained
+/// continental plate so no craton).
+pub fn yielding_cell_fraction_in_region(
+    eta_visc: &crate::tectonics_v2::field::Field2D,
+    eta_eff: &crate::tectonics_v2::field::Field2D,
+    cratonic_factor: &crate::tectonics_v2::field::Field2D,
+    in_craton: bool,
+) -> f64 {
+    let v = eta_visc.data();
+    let e = eta_eff.data();
+    let f = cratonic_factor.data();
+    debug_assert_eq!(v.len(), e.len());
+    debug_assert_eq!(v.len(), f.len());
+    let mut count = 0usize;
+    let mut total = 0usize;
+    for ((&ev, &ee), &cf) in v.iter().zip(e.iter()).zip(f.iter()) {
+        let cell_in_region = if in_craton { cf > 0.5 } else { cf <= 0.5 };
+        if !cell_in_region {
+            continue;
+        }
+        total += 1;
+        if ee < 0.5 * ev {
+            count += 1;
+        }
+    }
+    if total == 0 { 0.0 } else { count as f64 / total as f64 }
+}
+
+/// Step 9 — max ratio of the cratonic eta_multiplier between
+/// adjacent cells `a, b` on the periodic torus where one side has
+/// `cratonic_factor > 0.5` and the other `≤ 0.5`. Returns `1.0`
+/// if no such pair exists.
+///
+/// The metric isolates the cratonic-induced viscous contribution
+/// (`m[i] = 1 + (K - 1) · factor[i]`) from the underlying
+/// `η_law(ε̇_II)` gradient: the latter exists at any boundary
+/// between dynamically-different regions and confounds an
+/// `η_eff` ratio. Acceptance #3 requires this multiplier ratio
+/// `≤ K · 1.05`. K = 5 baseline gives target `≤ 5.25`; failure
+/// means the smoothstep transition is too abrupt for the grid
+/// resolution and `smoothing_width` should be widened with
+/// reviewer approval.
+pub fn eta_contrast_at_cratonic_boundary(
+    eta_multiplier: &crate::tectonics_v2::field::Field2D,
+    cratonic_factor: &crate::tectonics_v2::field::Field2D,
+) -> f64 {
+    let nx = eta_multiplier.nx();
+    let ny = eta_multiplier.ny();
+    debug_assert_eq!(cratonic_factor.nx(), nx);
+    debug_assert_eq!(cratonic_factor.ny(), ny);
+    let mut peak: f64 = 1.0;
+    for j in 0..ny {
+        let jp = if j + 1 < ny { j + 1 } else { 0 };
+        for i in 0..nx {
+            let ip = if i + 1 < nx { i + 1 } else { 0 };
+            let f00 = cratonic_factor.get(i, j);
+            let f10 = cratonic_factor.get(ip, j);
+            let f01 = cratonic_factor.get(i, jp);
+            let m00 = eta_multiplier.get(i, j);
+            let m10 = eta_multiplier.get(ip, j);
+            let m01 = eta_multiplier.get(i, jp);
+            // East neighbour pair (i, j) ↔ (i+1, j).
+            if (f00 > 0.5) != (f10 > 0.5) && m00 > 0.0 && m10 > 0.0 {
+                let r = m00.max(m10) / m00.min(m10);
+                if r > peak {
+                    peak = r;
+                }
+            }
+            // North neighbour pair (i, j) ↔ (i, j+1).
+            if (f00 > 0.5) != (f01 > 0.5) && m00 > 0.0 && m01 > 0.0 {
+                let r = m00.max(m01) / m00.min(m01);
+                if r > peak {
+                    peak = r;
+                }
+            }
+        }
+    }
+    peak
 }
 
 /// Mean of `(η_visc / η_eff − 1)` over cells where
