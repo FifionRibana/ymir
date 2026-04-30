@@ -39,6 +39,12 @@ Thumbs.db
 # by `cargo test … v2_phase7_step_diagnostic`). The committed gallery
 # subdirectories (active_medley/, convergence/, etc.) stay tracked.
 /docs/reports/step8_6_phase7_gallery/diagnostic/
+
+# Step 8.6 Phase 8g — per-step PNGs are large and regenerable; keep
+# the patchwork composites but ignore the source frames + the
+# `final/` snapshot folders.
+/docs/reports/step8_6_phase8g_visuals/*/step_*.png
+/docs/reports/step8_6_phase8g_visuals/*/final/
  
 # Environment
 .env
