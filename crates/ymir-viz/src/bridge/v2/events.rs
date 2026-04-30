@@ -10,6 +10,7 @@
 
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use ymir_core::tectonics_v2::diagnostics::harness::{FinalState, StepProgress};
 use ymir_core::tectonics_v2::diagnostics::metrics::Metrics;
 
@@ -54,7 +55,7 @@ pub enum V2Event {
 /// The buffers are row-major, shape `nx × ny`, indexed as
 /// `data[j * nx + i]`. Optional fields are `None` when the
 /// corresponding mechanism was disabled in the run config.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct V2FinalState {
     pub nx: usize,
     pub ny: usize,

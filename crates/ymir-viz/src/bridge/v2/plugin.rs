@@ -18,6 +18,7 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 
 use super::commands::V2Command;
 use super::events::{V2Event, V2FinalState};
+use super::snapshot::V2ScalarMetrics;
 use super::spec::V2RunSpec;
 use super::thread::spawn_v2_thread;
 use ymir_core::tectonics_v2::diagnostics::metrics::Metrics;
@@ -45,6 +46,19 @@ pub enum V2RunState {
         spec: V2RunSpec,
         elapsed: Duration,
         metrics: Box<Metrics>,
+        final_state: Box<V2FinalState>,
+    },
+    /// Step 8.6 Phase 8e — a snapshot loaded from disk (no live solver
+    /// run took place this session). Carries only the scalar metrics
+    /// the dashboard renders; full `Metrics` is unavailable for
+    /// imports because exports drop the heavy histograms /
+    /// per-step series. Renders identically to `Completed` from the
+    /// sprite's point of view (the `final_state` is the same shape).
+    Imported {
+        spec: V2RunSpec,
+        elapsed: Duration,
+        exported_at: String,
+        scalar_metrics: V2ScalarMetrics,
         final_state: Box<V2FinalState>,
     },
     Failed {

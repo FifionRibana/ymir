@@ -18,7 +18,7 @@
 use bevy_egui::egui;
 use bevy_egui::egui::Color32;
 
-use crate::bridge::v2::{V2FinalState, V2RunState, V2SolverBridge};
+use crate::bridge::v2::{V2FinalState, V2RunState, V2ScalarMetrics, V2SolverBridge};
 
 pub fn draw(ui: &mut egui::Ui, bridge: &V2SolverBridge) {
     ui.heading("Metrics dashboard");
@@ -77,7 +77,168 @@ pub fn draw(ui: &mut egui::Ui, bridge: &V2SolverBridge) {
             ui.label(egui::RichText::new("Final state").strong());
             draw_live_metrics(ui, final_state);
         }
+        V2RunState::Imported {
+            scalar_metrics,
+            elapsed,
+            final_state,
+            spec,
+            exported_at,
+            ..
+        } => {
+            ui.colored_label(
+                Color32::LIGHT_BLUE,
+                format!("Imported snapshot · exported {}", exported_at),
+            );
+            ui.add_space(4.0);
+            ui.label(format!(
+                "Grid: {}×{} · {} steps · seed {}",
+                spec.grid_nx, spec.grid_ny, spec.steps, spec.seed
+            ));
+            ui.label(format!("Original wallclock: {:.1}s", elapsed.as_secs_f64()));
+            ui.add_space(6.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new("Snapshot metrics").strong());
+            draw_scalar_metrics(ui, scalar_metrics);
+            ui.add_space(6.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new("Final state").strong());
+            draw_live_metrics(ui, final_state);
+        }
     }
+}
+
+/// Render `V2ScalarMetrics` (post-export carrier) using the same
+/// colour banding as `draw_final_metrics`. Mirrors that function's
+/// layout but reads the `Option<...>` fields directly without the
+/// `Metrics → newton` deref hop.
+fn draw_scalar_metrics(ui: &mut egui::Ui, m: &V2ScalarMetrics) {
+    metric_row(ui, "vmax peak", &format!("{:.3e}", m.vmax_peak), v_color(m.vmax_peak));
+
+    let drift_color = if m.mass_drift_relative.abs() < 1e-6 {
+        Color32::LIGHT_GREEN
+    } else if m.mass_drift_relative.abs() < 1e-3 {
+        Color32::YELLOW
+    } else {
+        Color32::LIGHT_RED
+    };
+    metric_row(
+        ui,
+        "mass drift (relative)",
+        &format!("{:.3e}", m.mass_drift_relative),
+        drift_color,
+    );
+
+    metric_row(
+        ui,
+        "CG iters mean / max",
+        &format!("{:.0} / {}", m.cg_iter_mean, m.cg_iter_max),
+        Color32::LIGHT_GRAY,
+    );
+
+    if let (Some(conv), Some(total)) = (m.newton_converged, m.newton_total) {
+        if total > 0 {
+            let pct = conv as f64 / total as f64 * 100.0;
+            let color = if pct >= 99.0 {
+                Color32::LIGHT_GREEN
+            } else if pct >= 95.0 {
+                Color32::YELLOW
+            } else {
+                Color32::LIGHT_RED
+            };
+            metric_row(
+                ui,
+                "Newton convergence",
+                &format!("{:.1}% ({}/{})", pct, conv, total),
+                color,
+            );
+        }
+    }
+    if let (Some(mean), Some(max)) = (m.newton_outer_iters_mean, m.newton_outer_iters_max) {
+        metric_row(
+            ui,
+            "Newton outer iters mean / max",
+            &format!("{:.1} / {}", mean, max),
+            Color32::LIGHT_GRAY,
+        );
+    }
+    if let Some(yf) = m.yielding_cell_fraction_max {
+        metric_row(
+            ui,
+            "yielding cells max",
+            &format!("{:.1}%", yf * 100.0),
+            Color32::LIGHT_GRAY,
+        );
+    }
+    if let Some(pyc) = m.peak_yielding_in_craton {
+        let color = if pyc < 0.01 {
+            Color32::LIGHT_GREEN
+        } else if pyc < 0.05 {
+            Color32::YELLOW
+        } else {
+            Color32::LIGHT_RED
+        };
+        metric_row(ui, "yielding in craton (peak)", &format!("{:.4}", pyc), color);
+    }
+    if let Some(ccf) = m.cratonic_cell_fraction {
+        metric_row(
+            ui,
+            "cratonic cell fraction",
+            &format!("{:.1}%", ccf * 100.0),
+            Color32::LIGHT_GRAY,
+        );
+    }
+    if let Some(mcr) = m.mass_conservation_residual {
+        let color = if mcr < 1e-6 {
+            Color32::LIGHT_GREEN
+        } else if mcr < 1e-3 {
+            Color32::YELLOW
+        } else {
+            Color32::LIGHT_RED
+        };
+        metric_row(
+            ui,
+            "mass conservation residual",
+            &format!("{:.3e}", mcr),
+            color,
+        );
+    }
+    if let (Some(att), Some(app)) = (m.extrap_attempted, m.extrap_applied) {
+        if att > 0 {
+            let pct = app as f64 / att as f64 * 100.0;
+            metric_row(
+                ui,
+                "extrapolation applied / attempted",
+                &format!("{} / {} ({:.0}%)", app, att, pct),
+                Color32::LIGHT_GRAY,
+            );
+        }
+    }
+    if let (Some(fbc), Some(att)) = (m.extrap_fallback_count, m.extrap_attempted) {
+        if att > 0 {
+            let pct = fbc as f64 / att as f64 * 100.0;
+            let color = if pct < 5.0 {
+                Color32::LIGHT_GREEN
+            } else if pct < 20.0 {
+                Color32::YELLOW
+            } else {
+                Color32::LIGHT_RED
+            };
+            metric_row(
+                ui,
+                "extrapolation fallback rate",
+                &format!("{:.1}%", pct),
+                color,
+            );
+        }
+    }
+    metric_row(
+        ui,
+        "wallclock per step (mean)",
+        &format!("{:.1} ms", m.wallclock_per_step_mean_s * 1000.0),
+        Color32::LIGHT_GRAY,
+    );
 }
 
 fn draw_progress(ui: &mut egui::Ui, step: usize, total: usize, started_at: Option<std::time::Instant>) {
