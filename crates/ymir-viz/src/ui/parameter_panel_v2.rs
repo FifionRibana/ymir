@@ -282,6 +282,15 @@ pub fn draw(
     ui.label(egui::RichText::new(viz.field.legend_caption()).small());
     draw_legend_bar(ui, viz.field);
 
+    // Phase 8b — Voronoï + velocity overlays. Default off so Phase 7
+    // screenshots remain unchanged unless the user opts in. Toggling
+    // either flag invalidates `viz.last_signature` (the
+    // `overlay_bits` component), forcing a re-render on the next
+    // frame.
+    ui.add_space(4.0);
+    ui.checkbox(&mut viz.show_voronoi_boundaries, "Show Voronoï boundaries");
+    ui.checkbox(&mut viz.show_velocity_vectors, "Show velocity vectors");
+
     ui.add_space(8.0);
 
     // ── Run / Cancel ────────────────────────────────────────────────

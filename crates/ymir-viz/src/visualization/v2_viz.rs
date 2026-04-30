@@ -13,8 +13,9 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use super::colormap::{
     age_colormap, cratonic_grayscale, hypsometric_colormap, log_hot, log_normalize,
 };
+use super::overlay;
 
-use crate::bridge::v2::{V2FinalState, V2RunState, V2SolverBridge};
+use crate::bridge::v2::{V2FinalState, V2RunSpec, V2RunState, V2SolverBridge};
 
 /// Currently displayed field (D5 dropdown). All variants are populated
 /// by [`crate::bridge::v2::V2FinalState`] except where the corresponding
@@ -71,15 +72,17 @@ pub struct V2VizSprite;
 pub struct V2VizState {
     pub field: V2Field,
     pub texture_handle: Option<Handle<Image>>,
-    /// `(grid_nx, grid_ny, field_variant_index, phase_tag, step)` for
-    /// the last rendered frame. Triggers a re-render when any
-    /// component differs (e.g. dropdown change, run-completion
-    /// arrival, mid-run Progress event).
+    /// `(grid_nx, grid_ny, field_variant_index, phase_tag, step,
+    /// overlay_bits)` for the last rendered frame. Triggers a
+    /// re-render when any component differs (dropdown change,
+    /// run-completion arrival, mid-run Progress event, overlay
+    /// toggle change).
     ///
     /// `phase_tag` discriminates Running (= 1) vs Completed (= 2) so
     /// the final post-run repaint fires even if the final step
     /// counter equals the last Progress step counter.
-    pub last_signature: Option<(usize, usize, u8, u8, u32)>,
+    /// `overlay_bits` packs `show_voronoi_boundaries | (show_velocity_vectors << 1)`.
+    pub last_signature: Option<(usize, usize, u8, u8, u32, u8)>,
     /// Phase 6 — set by the UI Capture button. Consumed (cleared)
     /// by `handle_v2_screenshot` after the PNG is written. The
     /// `bool` arm is "save the currently displayed field"; when we
@@ -89,6 +92,31 @@ pub struct V2VizState {
     /// Phase 6 — last screenshot status surfaced to the UI as a
     /// toast-equivalent line below the capture button.
     pub last_capture: Option<Result<std::path::PathBuf, String>>,
+    /// Phase 8b — toggle the Voronoï plate-boundary overlay (drawn
+    /// in black over the field colour). Default `false` so the
+    /// existing screenshots stay unchanged unless the user opts in.
+    pub show_voronoi_boundaries: bool,
+    /// Phase 8b — toggle the per-plate velocity-vector overlay
+    /// (yellow arrow at each plate's centroid, length proportional
+    /// to mean per-plate velocity). Default `false`.
+    pub show_velocity_vectors: bool,
+}
+
+impl V2VizState {
+    fn overlay_bits(&self) -> u8 {
+        let mut b = 0u8;
+        if self.show_voronoi_boundaries {
+            b |= 0b01;
+        }
+        if self.show_velocity_vectors {
+            b |= 0b10;
+        }
+        b
+    }
+
+    fn any_overlay(&self) -> bool {
+        self.show_voronoi_boundaries || self.show_velocity_vectors
+    }
 }
 
 impl Default for V2VizState {
@@ -99,6 +127,8 @@ impl Default for V2VizState {
             last_signature: None,
             capture_requested: false,
             last_capture: None,
+            show_voronoi_boundaries: false,
+            show_velocity_vectors: false,
         }
     }
 }
@@ -135,6 +165,8 @@ fn setup_v2_sprite(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         last_signature: None,
         capture_requested: false,
         last_capture: None,
+        show_voronoi_boundaries: false,
+        show_velocity_vectors: false,
     });
 
     // z = 10 puts the v2 sprite above any leftover legacy sprite that
@@ -157,10 +189,12 @@ fn update_v2_texture(
     // Step 8.6 follow-up — render either the most recent peek-state
     // (mid-run, Running with Some peek) or the final-state (Completed).
     // Idle / Failed / Running-without-peek paint nothing.
-    let (state_ref, phase_tag, step_counter) = match &bridge.state {
-        V2RunState::Completed { final_state, .. } => (final_state.as_ref(), 2u8, 0u32),
-        V2RunState::Running { peek_state: Some(peek), step, .. } => {
-            (peek.as_ref(), 1u8, *step as u32)
+    let (state_ref, phase_tag, step_counter, spec_ref) = match &bridge.state {
+        V2RunState::Completed { final_state, spec, .. } => {
+            (final_state.as_ref(), 2u8, 0u32, Some(spec))
+        }
+        V2RunState::Running { peek_state: Some(peek), step, spec, .. } => {
+            (peek.as_ref(), 1u8, *step as u32, Some(spec))
         }
         _ => return,
     };
@@ -168,7 +202,8 @@ fn update_v2_texture(
     let nx = state_ref.nx;
     let ny = state_ref.ny;
     let field_idx = viz.field as u8;
-    let signature = (nx, ny, field_idx, phase_tag, step_counter);
+    let overlay_bits = viz.overlay_bits();
+    let signature = (nx, ny, field_idx, phase_tag, step_counter, overlay_bits);
     if viz.last_signature == Some(signature) {
         return;
     }
@@ -200,98 +235,67 @@ fn update_v2_texture(
         }
     }
 
-    match viz.field {
-        V2Field::SThickness => paint_buffer(image, nx, ny, &state_ref.s_field, viz.field),
-        V2Field::Age => match state_ref.age_field.as_ref() {
-            Some(buf) => paint_buffer(image, nx, ny, buf, viz.field),
-            None => paint_disabled_field(image, nx, ny),
-        },
-        V2Field::Cratonic => match state_ref.cratonic_factor.as_ref() {
-            Some(buf) => paint_buffer(image, nx, ny, buf, viz.field),
-            None => paint_disabled_field(image, nx, ny),
-        },
-        V2Field::StrainRate => {
-            paint_buffer(image, nx, ny, &state_ref.strain_rate_invariant, viz.field)
+    // Phase 8b — produce field colours via the unified `field_to_rgba`
+    // helper (same code path as PNG screenshots). Then overlay the
+    // Voronoï boundaries / velocity arrows on the resulting RGBA8
+    // buffer if the user has either toggle on. Final push: bulk-copy
+    // into the texture's data buffer.
+    let mut rgba = field_to_rgba_buf(state_ref, viz.field);
+
+    if viz.any_overlay() {
+        if let Some(spec) = spec_ref {
+            let plate_id = regenerate_plate_id(spec, nx, ny);
+            if viz.show_voronoi_boundaries {
+                overlay::draw_voronoi_boundaries(&mut rgba, nx, ny, &plate_id);
+            }
+            if viz.show_velocity_vectors {
+                overlay::draw_velocity_vectors(
+                    &mut rgba,
+                    nx,
+                    ny,
+                    &state_ref.vx,
+                    &state_ref.vy,
+                    &plate_id,
+                    VELOCITY_ARROW_SCALE_CELLS,
+                );
+            }
         }
-        V2Field::VelocityMagnitude => {
-            // |v| is per-cell sqrt(vx² + vy²). Recompute on demand —
-            // the bridge ships vx and vy as separate buffers.
-            let mag: Vec<f64> = (0..nx * ny)
-                .map(|k| (state_ref.vx[k].powi(2) + state_ref.vy[k].powi(2)).sqrt())
-                .collect();
-            paint_buffer(image, nx, ny, &mag, viz.field);
+    }
+
+    if let Some(data) = image.data.as_mut() {
+        if data.len() == rgba.len() {
+            data.copy_from_slice(&rgba);
+        } else {
+            *data = rgba;
         }
     }
     viz.last_signature = Some(signature);
 }
 
-fn paint_buffer(image: &mut Image, nx: usize, ny: usize, buf: &[f64], field: V2Field) {
-    let (vmin, vmax) = match field {
-        V2Field::Cratonic => (0.0, 1.0), // stable scale per §9
-        _ => {
-            let mut a = f64::INFINITY;
-            let mut b = f64::NEG_INFINITY;
-            for &v in buf {
-                if v.is_finite() {
-                    if v < a {
-                        a = v;
-                    }
-                    if v > b {
-                        b = v;
-                    }
-                }
-            }
-            if !a.is_finite() || !b.is_finite() {
-                (0.0, 1.0)
-            } else {
-                (a, b)
-            }
-        }
-    };
-    let range = (vmax - vmin).max(1e-12);
+/// Phase 8b — visible arrow scale in cells per unit non-dim velocity.
+/// Picked empirically: at 64² with `peak|v̄_plate| ≈ 5` (active_medley
+/// regime) this gives head separation ≈ 40 cells, ≈ 60% of the grid
+/// — long enough to read direction, short enough to fit. Phase 8d will
+/// expose this knob in the UI.
+const VELOCITY_ARROW_SCALE_CELLS: f64 = 8.0;
 
-    for j in 0..ny {
-        for i in 0..nx {
-            let v = buf[j * nx + i];
-            let rgba = match field {
-                V2Field::SThickness => {
-                    let t = ((v - vmin) / range).clamp(0.0, 1.0);
-                    hypsometric_colormap(t)
-                }
-                V2Field::Age => {
-                    let t = ((v - vmin) / range).clamp(0.0, 1.0);
-                    age_colormap(t)
-                }
-                V2Field::Cratonic => cratonic_grayscale(v),
-                V2Field::StrainRate => {
-                    let t = log_normalize(v, 1e-3, 1e1);
-                    log_hot(t)
-                }
-                V2Field::VelocityMagnitude => {
-                    let t = log_normalize(v, 1e-5, 1e1);
-                    log_hot(t)
-                }
-            };
-            let _ = image.set_color_at(
-                i as u32,
-                (ny - 1 - j) as u32,
-                Color::srgba_u8(rgba[0], rgba[1], rgba[2], rgba[3]),
-            );
-        }
-    }
+fn regenerate_plate_id(spec: &V2RunSpec, nx: usize, ny: usize) -> Vec<u16> {
+    use ymir_core::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+    let cfg = VoronoiConfig {
+        num_plates: spec.num_plates,
+        continental_ratio: spec.continental_ratio,
+    };
+    let plates = generate_voronoi(nx, ny, &cfg, spec.seed);
+    plates.plate_id.data().to_vec()
 }
 
-fn paint_disabled_field(image: &mut Image, nx: usize, ny: usize) {
-    // Solid dark grey rectangle for "field disabled in this run".
-    for j in 0..ny {
-        for i in 0..nx {
-            let _ = image.set_color_at(
-                i as u32,
-                (ny - 1 - j) as u32,
-                Color::srgba_u8(40, 40, 40, 255),
-            );
-        }
-    }
+/// Internal sibling of [`field_to_rgba`] that returns just the buffer
+/// (the `(nx, ny)` tuple is already known in the caller). Centralises
+/// the field colour logic so the live render and the screenshot path
+/// produce identical pixels prior to overlay application.
+fn field_to_rgba_buf(state: &V2FinalState, field: V2Field) -> Vec<u8> {
+    let (_, _, rgba) = field_to_rgba(state, field);
+    rgba
 }
 
 // ── Step 8.6 Phase 6 — standalone PNG rendering ────────────────────────
