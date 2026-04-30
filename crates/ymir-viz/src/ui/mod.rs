@@ -1,4 +1,5 @@
 pub mod left_toolbar;
+pub mod metrics_dashboard;
 pub mod parameter_panel;
 pub mod parameter_panel_v2;
 pub mod pipeline_panel;
@@ -45,6 +46,8 @@ impl Plugin for UiPlugin {
                 ui_v2_top_bar
                     .run_if(resource_exists::<crate::bridge::v2::V2SolverBridge>),
                 ui_v2_right_panel
+                    .run_if(resource_exists::<crate::bridge::v2::V2SolverBridge>),
+                ui_v2_left_panel
                     .run_if(resource_exists::<crate::bridge::v2::V2SolverBridge>),
             ),
         );
@@ -107,6 +110,25 @@ fn ui_v2_right_panel(
         egui::ScrollArea::vertical().show(ui, |ui| {
             parameter_panel_v2::draw(ui, &mut spec_state, &bridge, &mut viz);
         });
+    });
+}
+
+/// Step 8.6 Phase 8c — v2 left panel: real-time nondimensional metrics
+/// dashboard. Live during a run (peek-state derived metrics + progress
+/// + ETA), final summary post-run (Metrics struct).
+fn ui_v2_left_panel(
+    mut contexts: EguiContexts,
+    bridge: Res<crate::bridge::v2::V2SolverBridge>,
+) {
+    let Ok(ctx) = contexts.ctx_mut() else { return };
+    egui::SidePanel::left("v2_left_panel").default_width(280.0).show(ctx, |ui| {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            metrics_dashboard::draw(ui, &bridge);
+        });
+        // Repaint while running so wallclock + ETA stay live.
+        if matches!(bridge.state, crate::bridge::v2::V2RunState::Running { .. }) {
+            ctx.request_repaint();
+        }
     });
 }
 
