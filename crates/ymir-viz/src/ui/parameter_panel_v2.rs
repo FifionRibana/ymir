@@ -33,7 +33,7 @@ impl Default for V2EditableSpec {
 pub fn draw(
     ui: &mut egui::Ui,
     spec_state: &mut V2EditableSpec,
-    bridge: &V2SolverBridge,
+    bridge: &mut V2SolverBridge,
     viz: &mut V2VizState,
 ) {
     let spec = &mut spec_state.0;
@@ -60,6 +60,10 @@ pub fn draw(
             metrics.vmax_peak,
             metrics.cg_iter_mean
         ),
+        V2RunState::Imported { exported_at, scalar_metrics, .. } => format!(
+            "Imported (exported {}) — peak|v|={:.2e}, CG mean={:.0}",
+            exported_at, scalar_metrics.vmax_peak, scalar_metrics.cg_iter_mean
+        ),
         V2RunState::Failed { error } => format!("Failed: {}", error),
     };
     ui.colored_label(
@@ -67,6 +71,7 @@ pub fn draw(
             V2RunState::Failed { .. } => egui::Color32::RED,
             V2RunState::Running { .. } => egui::Color32::YELLOW,
             V2RunState::Completed { .. } => egui::Color32::GREEN,
+            V2RunState::Imported { .. } => egui::Color32::LIGHT_BLUE,
             V2RunState::Idle => egui::Color32::GRAY,
         },
         status_label,
@@ -359,7 +364,10 @@ pub fn draw(
         {
             bridge.request_cancel();
         }
-        let can_capture = matches!(bridge.state, V2RunState::Completed { .. });
+        let can_capture = matches!(
+            bridge.state,
+            V2RunState::Completed { .. } | V2RunState::Imported { .. }
+        );
         if ui
             .add_enabled(can_capture, egui::Button::new("\u{1f4f7} Capture"))
             .clicked()
@@ -386,6 +394,65 @@ pub fn draw(
                 );
             }
         }
+    }
+
+    // ── Phase 8e — Export / Import ─────────────────────────────────
+    ui.add_space(8.0);
+    ui.separator();
+    ui.label(egui::RichText::new("Snapshot (Phase 8e)").strong());
+    ui.horizontal(|ui| {
+        let can_export = matches!(bridge.state, V2RunState::Completed { .. });
+        if ui
+            .add_enabled(can_export, egui::Button::new("\u{1f4be} Export run"))
+            .on_hover_text("Save the current Completed run to JSON")
+            .clicked()
+        {
+            viz.export_requested = true;
+        }
+    });
+    if let Some(result) = &viz.last_export {
+        match result {
+            Ok(path) => ui.label(
+                egui::RichText::new(format!("Exported to: {}", path.display()))
+                    .small()
+                    .color(egui::Color32::LIGHT_GREEN),
+            ),
+            Err(err) => ui.label(
+                egui::RichText::new(format!("Export failed: {}", err))
+                    .small()
+                    .color(egui::Color32::LIGHT_RED),
+            ),
+        };
+    }
+
+    ui.add_space(4.0);
+    ui.label("Import path:");
+    ui.add(
+        egui::TextEdit::singleline(&mut viz.import_path_buffer)
+            .hint_text("/path/to/snapshot.json")
+            .desired_width(f32::INFINITY),
+    );
+    if ui.button("\u{1f4c2} Import run").clicked() {
+        let trimmed = viz.import_path_buffer.trim();
+        if trimmed.is_empty() {
+            viz.last_import = Some(Err("path is empty".to_string()));
+        } else {
+            viz.import_requested_path = Some(std::path::PathBuf::from(trimmed));
+        }
+    }
+    if let Some(result) = &viz.last_import {
+        match result {
+            Ok(path) => ui.label(
+                egui::RichText::new(format!("Imported from: {}", path.display()))
+                    .small()
+                    .color(egui::Color32::LIGHT_GREEN),
+            ),
+            Err(err) => ui.label(
+                egui::RichText::new(format!("Import failed: {}", err))
+                    .small()
+                    .color(egui::Color32::LIGHT_RED),
+            ),
+        };
     }
 }
 

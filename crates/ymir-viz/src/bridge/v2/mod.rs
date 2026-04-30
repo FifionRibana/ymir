@@ -18,12 +18,14 @@ pub mod commands;
 pub mod events;
 pub mod plugin;
 pub mod presets;
+pub mod snapshot;
 pub mod spec;
 pub mod thread;
 
 pub use commands::V2Command;
 pub use events::{V2Event, V2FinalState};
 pub use plugin::{V2BridgePlugin, V2RunState, V2SolverBridge};
+pub use snapshot::{V2RunSnapshot, V2ScalarMetrics, SNAPSHOT_FORMAT_VERSION};
 pub use spec::{
     V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2InitModeSpec, V2LinearSolverSpec, V2MantleSpec,
     V2RunSpec,

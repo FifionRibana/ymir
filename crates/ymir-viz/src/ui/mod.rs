@@ -67,6 +67,7 @@ fn ui_v2_top_bar(mut contexts: EguiContexts, bridge: Res<crate::bridge::v2::V2So
                 V2RunState::Idle => ("Idle", egui::Color32::GRAY),
                 V2RunState::Running { .. } => ("Running", egui::Color32::YELLOW),
                 V2RunState::Completed { .. } => ("Completed", egui::Color32::GREEN),
+                V2RunState::Imported { .. } => ("Imported", egui::Color32::LIGHT_BLUE),
                 V2RunState::Failed { .. } => ("Failed", egui::Color32::RED),
             };
             ui.colored_label(badge.1, badge.0);
@@ -93,22 +94,39 @@ fn ui_v2_top_bar(mut contexts: EguiContexts, bridge: Res<crate::bridge::v2::V2So
                     metrics.cg_iter_mean,
                     metrics.vmax_peak
                 ));
+            } else if let V2RunState::Imported {
+                elapsed,
+                scalar_metrics,
+                exported_at,
+                ..
+            } = &bridge.state
+            {
+                ui.separator();
+                ui.monospace(format!(
+                    "\u{1f4c2} {} · {:.1}s · CG mean {:.0} · peak|v| {:.2e}",
+                    exported_at,
+                    elapsed.as_secs_f64(),
+                    scalar_metrics.cg_iter_mean,
+                    scalar_metrics.vmax_peak
+                ));
             }
         });
     });
 }
 
-/// Step 8.6 v2 right panel — wraps the v2 parameter editor.
+/// Step 8.6 v2 right panel — wraps the v2 parameter editor. Phase 8e
+/// upgraded `bridge` to `ResMut` so the Import button can replace the
+/// current bridge state with a deserialised snapshot.
 fn ui_v2_right_panel(
     mut contexts: EguiContexts,
     mut spec_state: ResMut<V2EditableSpec>,
-    bridge: Res<crate::bridge::v2::V2SolverBridge>,
+    mut bridge: ResMut<crate::bridge::v2::V2SolverBridge>,
     mut viz: ResMut<crate::visualization::v2_viz::V2VizState>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::SidePanel::right("v2_right_panel").exact_width(300.0).show(ctx, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            parameter_panel_v2::draw(ui, &mut spec_state, &bridge, &mut viz);
+            parameter_panel_v2::draw(ui, &mut spec_state, &mut bridge, &mut viz);
         });
     });
 }

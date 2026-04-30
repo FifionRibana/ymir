@@ -100,6 +100,20 @@ pub struct V2VizState {
     /// (yellow arrow at each plate's centroid, length proportional
     /// to mean per-plate velocity). Default `false`.
     pub show_velocity_vectors: bool,
+    /// Phase 8e — set by the Export button. Consumed by the
+    /// `handle_v2_export` system; surfaces the result via
+    /// [`Self::last_export`].
+    pub export_requested: bool,
+    /// Phase 8e — last export status surfaced to the UI.
+    pub last_export: Option<Result<std::path::PathBuf, String>>,
+    /// Phase 8e — set by the Import button. Carries the source file
+    /// path. Consumed by the `handle_v2_import` system on the next
+    /// frame.
+    pub import_requested_path: Option<std::path::PathBuf>,
+    /// Phase 8e — last import status surfaced to the UI.
+    pub last_import: Option<Result<std::path::PathBuf, String>>,
+    /// Phase 8e — text buffer for the import path TextEdit.
+    pub import_path_buffer: String,
 }
 
 impl V2VizState {
@@ -129,6 +143,11 @@ impl Default for V2VizState {
             last_capture: None,
             show_voronoi_boundaries: false,
             show_velocity_vectors: false,
+            export_requested: false,
+            last_export: None,
+            import_requested_path: None,
+            last_import: None,
+            import_path_buffer: String::new(),
         }
     }
 }
@@ -167,6 +186,11 @@ fn setup_v2_sprite(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         last_capture: None,
         show_voronoi_boundaries: false,
         show_velocity_vectors: false,
+        export_requested: false,
+        last_export: None,
+        import_requested_path: None,
+        last_import: None,
+        import_path_buffer: String::new(),
     });
 
     // z = 10 puts the v2 sprite above any leftover legacy sprite that
@@ -192,6 +216,9 @@ fn update_v2_texture(
     let (state_ref, phase_tag, step_counter, spec_ref) = match &bridge.state {
         V2RunState::Completed { final_state, spec, .. } => {
             (final_state.as_ref(), 2u8, 0u32, Some(spec))
+        }
+        V2RunState::Imported { final_state, spec, .. } => {
+            (final_state.as_ref(), 3u8, 0u32, Some(spec))
         }
         V2RunState::Running { peek_state: Some(peek), step, spec, .. } => {
             (peek.as_ref(), 1u8, *step as u32, Some(spec))
@@ -451,9 +478,13 @@ fn handle_v2_screenshot(bridge: Res<V2SolverBridge>, mut viz: ResMut<V2VizState>
         return;
     }
     viz.capture_requested = false;
-    let V2RunState::Completed { spec, final_state, .. } = &bridge.state else {
-        viz.last_capture = Some(Err("no completed run to capture".to_string()));
-        return;
+    let (spec, final_state) = match &bridge.state {
+        V2RunState::Completed { spec, final_state, .. } => (spec, final_state.as_ref()),
+        V2RunState::Imported { spec, final_state, .. } => (spec, final_state.as_ref()),
+        _ => {
+            viz.last_capture = Some(Err("no completed/imported run to capture".to_string()));
+            return;
+        }
     };
     let dir = if spec.output_dir.as_os_str().is_empty() {
         std::env::temp_dir().join("ymir_v2_screenshots")
@@ -468,11 +499,87 @@ fn handle_v2_screenshot(bridge: Res<V2SolverBridge>, mut viz: ResMut<V2VizState>
     }
 }
 
+/// Phase 8e — write the current `Completed` run to a JSON snapshot.
+/// Imports are not supported here (they would have no `metrics` to
+/// re-export); the Export button is gated on `Completed` in the UI.
+fn handle_v2_export(bridge: Res<V2SolverBridge>, mut viz: ResMut<V2VizState>) {
+    if !viz.export_requested {
+        return;
+    }
+    viz.export_requested = false;
+
+    let V2RunState::Completed { spec, final_state, metrics, elapsed, .. } = &bridge.state else {
+        viz.last_export = Some(Err("export requires a Completed run".to_string()));
+        return;
+    };
+
+    let dir = if spec.output_dir.as_os_str().is_empty() {
+        std::env::temp_dir().join("ymir_v2_snapshots")
+    } else {
+        spec.output_dir.join("snapshots")
+    };
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let filename = format!("{}_{}.json", spec.preset_label, ts);
+    let path = dir.join(filename);
+
+    let snapshot = crate::bridge::v2::V2RunSnapshot::new(
+        spec.clone(),
+        final_state.as_ref().clone(),
+        metrics,
+        *elapsed,
+    );
+
+    match snapshot.save(&path) {
+        Ok(()) => {
+            viz.last_export = Some(Ok(path.clone()));
+            // Pre-fill the import path so a quick "Export → Import"
+            // round-trip in the UI is one click on each side.
+            viz.import_path_buffer = path.to_string_lossy().to_string();
+        }
+        Err(e) => viz.last_export = Some(Err(format!("{}", e))),
+    }
+}
+
+/// Phase 8e — load a JSON snapshot from disk and replace the bridge
+/// state with `V2RunState::Imported`. Reports the outcome via
+/// `viz.last_import`.
+fn handle_v2_import(mut bridge: ResMut<V2SolverBridge>, mut viz: ResMut<V2VizState>) {
+    let Some(path) = viz.import_requested_path.take() else {
+        return;
+    };
+    match crate::bridge::v2::V2RunSnapshot::load(&path) {
+        Ok(snap) => {
+            bridge.state = V2RunState::Imported {
+                spec: snap.spec,
+                elapsed: std::time::Duration::from_secs_f64(snap.elapsed_seconds.max(0.0)),
+                exported_at: snap.exported_at,
+                scalar_metrics: snap.scalar_metrics,
+                final_state: Box::new(snap.final_state),
+            };
+            viz.last_import = Some(Ok(path));
+        }
+        Err(e) => {
+            viz.last_import = Some(Err(format!("{}", e)));
+        }
+    }
+}
+
 pub struct V2VisualizationPlugin;
 
 impl Plugin for V2VisualizationPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_v2_sprite);
-        app.add_systems(Update, (update_v2_texture, handle_v2_screenshot));
+        app.add_systems(
+            Update,
+            (
+                update_v2_texture,
+                handle_v2_screenshot,
+                handle_v2_export,
+                handle_v2_import,
+            ),
+        );
     }
 }
