@@ -80,6 +80,7 @@ fn build_step7_shape_config(mantle: MantleConfig) -> BaselineConfig {
         age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver: Default::default(),
+        init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
     }
 }
 

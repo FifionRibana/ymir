@@ -95,6 +95,7 @@ pub fn run_br_sweep(
             age_field: crate::tectonics_v2::age_field::AgeFieldConfig::Disabled,
             capture: None,
             linear_solver: Default::default(),
+            init_mode: crate::tectonics_v2::init::InitMode::Checkerboard,
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(br, &r));

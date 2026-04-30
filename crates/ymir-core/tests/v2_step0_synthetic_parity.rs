@@ -64,6 +64,7 @@ fn build_step0_config(path: PathBuf) -> BaselineConfig {
             case_label: "step0_quiescent".into(),
         }),
         linear_solver: Default::default(),
+        init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
     }
 }
 

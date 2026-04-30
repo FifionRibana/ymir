@@ -228,6 +228,14 @@ pub struct BaselineConfig {
     /// `solve_sheet` path to AMG Option B' (Picard block V-cycle,
     /// matrix-free Newton tangent).
     pub linear_solver: LinearSolverConfig,
+    /// Step 8.6 Phase 8a — S̃ initialisation mode. Default
+    /// [`crate::tectonics_v2::init::InitMode::Uniform`] gives a flat
+    /// per-plate-type field with smoothstep boundary blending — the
+    /// TDD §4.2 prescription. Steps 0–10 regression tests opt into
+    /// [`crate::tectonics_v2::init::InitMode::Checkerboard`] to
+    /// preserve the legacy sinusoidal-perturbation pattern bit-for-bit
+    /// (strategy γ).
+    pub init_mode: crate::tectonics_v2::init::InitMode,
 }
 
 impl BaselineConfig {
@@ -264,6 +272,14 @@ impl BaselineConfig {
             age_field: AgeFieldConfig::Disabled,
             capture: None,
             linear_solver: LinearSolverConfig::default(),
+            // Phase 8a strategy γ — `dynamic_accidented_defaults`
+            // is the configuration consumed by the Steps 0–10
+            // regression scenarios; pin it to `Checkerboard` so
+            // the legacy sinusoidal-perturbation S̃ pattern is
+            // preserved bit-for-bit. Top-level UI / preset paths
+            // build their `BaselineConfig` separately and pick
+            // `InitMode::default()` (= `Uniform`).
+            init_mode: crate::tectonics_v2::init::InitMode::Checkerboard,
         }
     }
 }
@@ -347,62 +363,10 @@ pub struct StepProgress<'a> {
     pub peek_cratonic_factor: Option<&'a Field2D>,
 }
 
-fn init_thickness(nx: usize, ny: usize, seed: u64, amplitude: f64) -> Field2D {
-    use std::f64::consts::PI;
-    let phase = ((seed.wrapping_mul(2654435761u64)) as f64) / (u64::MAX as f64) * 2.0 * PI;
-    let mut s = Field2D::new(nx, ny);
-    for j in 0..ny {
-        for i in 0..nx {
-            let x = (i as f64 + 0.5) / nx as f64;
-            let y = (j as f64 + 0.5) / ny as f64;
-            let bump = 1.0 + amplitude * ((2.0 * PI * x + phase).sin() * (2.0 * PI * y).cos());
-            s.set(i, j, bump);
-        }
-    }
-    s
-}
-
-/// Step 5 — initialize `S̃` with per-plate-type means (oceanic = 0.2,
-/// continental = 1.0), each modulated by the same deterministic
-/// sinusoidal perturbation pattern as [`init_thickness`]. Called
-/// only when the run has a prescribed plate-type field via
-/// `BoundaryConfig::Enabled`; Step 0-4 harness callers continue to
-/// use the plate-type-agnostic `init_thickness`.
-///
-/// Physical justification: oceanic crust is ~7 km thick (S* scales
-/// to 0.2 dimensionless), continental ~35 km (1.0). Starting every
-/// cell at 1.0 forces the calibration loop to drain oceanic cells
-/// from 1.0 to 0.2 within the 3·τ* simulation window — which it
-/// cannot do at Step 5 baseline velocities (`peak|v| ≈ 1e-5`,
-/// `|Δv_conv| ≈ 1e-5`, so `Q_sub ≈ 5e-6` per step, drain rate far
-/// below the evolution window). Type-aware init sets the initial
-/// state to the physical reference thickness, and the calibration
-/// then adjusts `k_spread` around this.
-fn init_thickness_plate_aware(
-    nx: usize,
-    ny: usize,
-    seed: u64,
-    amplitude: f64,
-    plate_types: &crate::tectonics_v2::boundaries::PlateTypeField,
-) -> Field2D {
-    use crate::tectonics_v2::boundaries::PlateType;
-    use std::f64::consts::PI;
-    let phase = ((seed.wrapping_mul(2654435761u64)) as f64) / (u64::MAX as f64) * 2.0 * PI;
-    let mut s = Field2D::new(nx, ny);
-    for j in 0..ny {
-        for i in 0..nx {
-            let x = (i as f64 + 0.5) / nx as f64;
-            let y = (j as f64 + 0.5) / ny as f64;
-            let bump_scale = (2.0 * PI * x + phase).sin() * (2.0 * PI * y).cos();
-            let mean = match plate_types.get(i, j) {
-                PlateType::Oceanic => 0.2,
-                PlateType::Continental => 1.0,
-            };
-            s.set(i, j, mean + amplitude * mean * bump_scale);
-        }
-    }
-    s
-}
+// Step 8.6 Phase 8a — `init_thickness` and `init_thickness_plate_aware`
+// migrated to [`crate::tectonics_v2::init`] under the
+// `InitMode::Checkerboard` variant. The harness dispatches via
+// `init::init_s_field(cfg.init_mode, ..)` at run start.
 
 fn save_snapshot(s: &Field2D, path: &Path) -> Option<HeightmapMetadata> {
     save_heightmap(s, path).ok()
@@ -606,24 +570,31 @@ where
     let dy = cfg.domain_ly / ny as f64;
     let grid = Grid::new(nx, ny, dx, dy);
 
-    // Step 5: when boundary is Enabled, initialize S̃ per-plate-type
-    // so oceanic cells start near their physical reference (0.2) and
-    // continental cells start near 1.0. Without this, the calibration
-    // loop cannot drain oceanic cells from 1.0 down to 0.2 within
-    // the 3·τ* window (peak|v| ≈ 1e-5 at Step 5 baseline makes
-    // Q_sub ≈ 5e-6 per step). Steps 0-4 callers and the Step 5
-    // reference variant / regression (both `BoundaryConfig::Disabled`)
-    // keep the plate-type-agnostic init.
-    let mut s = match &cfg.boundary {
-        BoundaryConfig::Enabled { geometry, .. } => init_thickness_plate_aware(
-            nx,
-            ny,
-            cfg.seed,
-            cfg.s_perturbation_amplitude,
-            &geometry.plate_type,
-        ),
-        BoundaryConfig::Disabled => init_thickness(nx, ny, cfg.seed, cfg.s_perturbation_amplitude),
+    // Step 8.6 Phase 8a — S̃ initialisation dispatch. The legacy
+    // (Step 5+) plate-aware sinusoidal init lives under
+    // `InitMode::Checkerboard`; the TDD §4.2-aligned alternatives
+    // (`Uniform`, `Gaussian`, `Convolution`) are now selectable via
+    // `cfg.init_mode`. Steps 0-4 callers (`BoundaryConfig::Disabled`)
+    // pair Checkerboard with `plate_data: None` to keep the
+    // plate-type-agnostic legacy init.
+    let plate_data = match &cfg.boundary {
+        BoundaryConfig::Enabled { geometry, .. } => {
+            Some(crate::tectonics_v2::init::PlateInitData {
+                plate_id: &geometry.plate_id,
+                plate_type: &geometry.plate_type,
+                seed_coords: geometry.seed_coords.as_deref(),
+            })
+        }
+        BoundaryConfig::Disabled => None,
     };
+    let init_ctx = crate::tectonics_v2::init::InitContext {
+        nx,
+        ny,
+        seed: cfg.seed,
+        amplitude: cfg.s_perturbation_amplitude,
+        plate_data,
+    };
+    let mut s = crate::tectonics_v2::init::init_s_field(cfg.init_mode, &init_ctx);
     let mut s_next = Field2D::new(nx, ny);
     let mut vx = vec![0.0; nx * ny];
     let mut vy = vec![0.0; nx * ny];
