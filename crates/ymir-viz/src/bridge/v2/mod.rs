@@ -25,6 +25,7 @@ pub use commands::V2Command;
 pub use events::{V2Event, V2FinalState};
 pub use plugin::{V2BridgePlugin, V2RunState, V2SolverBridge};
 pub use spec::{
-    V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2LinearSolverSpec, V2MantleSpec, V2RunSpec,
+    V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2InitModeSpec, V2LinearSolverSpec, V2MantleSpec,
+    V2RunSpec,
 };
 pub use thread::spawn_v2_thread;

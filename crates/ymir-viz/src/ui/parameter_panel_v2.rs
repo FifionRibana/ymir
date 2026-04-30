@@ -14,8 +14,8 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use crate::bridge::v2::{
-    presets, V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2LinearSolverSpec, V2MantleSpec,
-    V2RunSpec, V2RunState, V2SolverBridge,
+    presets, V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2InitModeSpec, V2LinearSolverSpec,
+    V2MantleSpec, V2RunSpec, V2RunState, V2SolverBridge,
 };
 use crate::visualization::v2_viz::{V2Field, V2VizState};
 
@@ -154,6 +154,13 @@ pub fn draw(
             );
         });
 
+    // ── Initialisation (Phase 8a/8d) ───────────────────────────────
+    egui::CollapsingHeader::new("Initialisation (S̃)")
+        .default_open(true)
+        .show(ui, |ui| {
+            init_mode_widget(ui, &mut spec.init_mode);
+        });
+
     // ── Mantle ─────────────────────────────────────────────────────
     egui::CollapsingHeader::new("Mantle")
         .default_open(true)
@@ -166,10 +173,26 @@ pub fn draw(
                     V2MantleSpec::Off
                 };
             }
-            if let V2MantleSpec::On { mf, num_modes, seed: m_seed, .. } = &mut spec.mantle {
+            if let V2MantleSpec::On {
+                mf,
+                num_modes,
+                seed: m_seed,
+                evolution_rate,
+                ..
+            } = &mut spec.mantle
+            {
                 ui.add(egui::Slider::new(mf, 0.0..=2.0).text("Mf").step_by(0.05));
                 ui.add(egui::Slider::new(num_modes, 1..=12).text("modes"));
                 ui.add(egui::DragValue::new(m_seed).prefix("mantle seed = "));
+                // Phase 8d — exposed for calibration of mode evolution
+                // through a run. `0.0` keeps the mantle pattern static
+                // (Step 8 baseline default); >0 advects the modes at
+                // that rate per nondim time unit.
+                ui.add(
+                    egui::Slider::new(evolution_rate, 0.0..=2.0)
+                        .text("evolution_rate")
+                        .step_by(0.05),
+                );
             }
         });
 
@@ -185,10 +208,29 @@ pub fn draw(
                     V2CratonicSpec::Off
                 };
             }
-            if let V2CratonicSpec::On { cr, k_viscous, b_factor } = &mut spec.cratonic {
+            if let V2CratonicSpec::On {
+                cr,
+                k_viscous,
+                b_factor,
+                smoothing_width,
+                plate_area_min,
+            } = &mut spec.cratonic
+            {
                 ui.add(egui::Slider::new(cr, 0.0..=1.0).text("Cr"));
                 ui.add(egui::Slider::new(k_viscous, 1.0..=20.0).text("K (viscous)"));
                 ui.add(egui::Slider::new(b_factor, 1.0..=20.0).text("B_factor (Bi mult)"));
+                // Phase 8d — geometry knobs previously hidden behind
+                // `CratonicConfigEnabled::default()`.
+                ui.add(
+                    egui::Slider::new(smoothing_width, 0.02..=0.20)
+                        .text("smoothing_width")
+                        .step_by(0.005),
+                );
+                ui.add(
+                    egui::Slider::new(plate_area_min, 0.05..=0.20)
+                        .text("plate_area_min")
+                        .step_by(0.005),
+                );
             }
         });
 
@@ -343,6 +385,115 @@ pub fn draw(
                         .color(egui::Color32::LIGHT_RED),
                 );
             }
+        }
+    }
+}
+
+/// Phase 8d — `InitMode` editor widget. Dropdown picks the variant;
+/// the sub-block below adapts to the selection and exposes per-mode
+/// numeric parameters with sensible slider ranges.
+///
+/// Switching variants resets the inner numeric payload to that
+/// variant's defaults so the user does not see stale values from the
+/// previous selection.
+fn init_mode_widget(ui: &mut egui::Ui, mode: &mut V2InitModeSpec) {
+    let current_idx = mode.variant_index();
+    egui::ComboBox::from_id_salt("v2_init_mode_dropdown")
+        .selected_text(mode.ui_label())
+        .show_ui(ui, |ui| {
+            if ui
+                .selectable_label(current_idx == 0, "Checkerboard (legacy sinusoidal)")
+                .clicked()
+                && current_idx != 0
+            {
+                *mode = V2InitModeSpec::Checkerboard;
+            }
+            if ui
+                .selectable_label(current_idx == 1, "Uniform (TDD §4.2 default)")
+                .clicked()
+                && current_idx != 1
+            {
+                *mode = V2InitModeSpec::Uniform { boundary_smoothing_width: 1.0 };
+            }
+            if ui
+                .selectable_label(current_idx == 2, "Gaussian (peak at centroid)")
+                .clicked()
+                && current_idx != 2
+            {
+                *mode = V2InitModeSpec::Gaussian {
+                    sigma_continental: 5.0,
+                    sigma_oceanic: 5.0,
+                };
+            }
+            if ui
+                .selectable_label(current_idx == 3, "Convolution (Gaussian blur)")
+                .clicked()
+                && current_idx != 3
+            {
+                *mode = V2InitModeSpec::Convolution { sigma: 2.0 };
+            }
+        });
+
+    match mode {
+        V2InitModeSpec::Checkerboard => {
+            ui.label(
+                egui::RichText::new(
+                    "Pre-Phase-8a sinusoidal perturbation. Required for \
+                     Steps 0–10 numerical regression.",
+                )
+                .small()
+                .weak(),
+            );
+        }
+        V2InitModeSpec::Uniform { boundary_smoothing_width } => {
+            ui.add(
+                egui::Slider::new(boundary_smoothing_width, 0.0..=8.0)
+                    .text("boundary smoothing width (cells)")
+                    .step_by(0.25),
+            );
+            ui.label(
+                egui::RichText::new(
+                    "Flat per-plate-type. Smoothstep blending across \
+                     inter-plate edges over `width` cells.",
+                )
+                .small()
+                .weak(),
+            );
+        }
+        V2InitModeSpec::Gaussian { sigma_continental, sigma_oceanic } => {
+            ui.add(
+                egui::Slider::new(sigma_continental, 0.5..=20.0)
+                    .text("σ continental (cells)")
+                    .step_by(0.25),
+            );
+            ui.add(
+                egui::Slider::new(sigma_oceanic, 0.5..=20.0)
+                    .text("σ oceanic (cells)")
+                    .step_by(0.25),
+            );
+            ui.label(
+                egui::RichText::new(
+                    "Per-plate Gaussian, peaked at each Voronoï seed and \
+                     decaying with periodic minimum-image distance.",
+                )
+                .small()
+                .weak(),
+            );
+        }
+        V2InitModeSpec::Convolution { sigma } => {
+            ui.add(
+                egui::Slider::new(sigma, 0.5..=8.0)
+                    .text("σ (cells)")
+                    .step_by(0.1),
+            );
+            ui.label(
+                egui::RichText::new(
+                    "Periodic Gaussian blur of the binary plate-type \
+                     mask. Output stays inside [oceanic, continental].",
+                )
+                .small()
+                .weak(),
+            );
         }
     }
 }

@@ -44,6 +44,7 @@ fn tiny_spec() -> V2RunSpec {
         capture_endpoints: false,
         output_dir: std::env::temp_dir().join("ymir_v2_lifecycle_test"),
         preset_label: "lifecycle_test".to_string(),
+        init_mode: ymir_viz::bridge_v2::V2InitModeSpec::default(),
     }
 }
 

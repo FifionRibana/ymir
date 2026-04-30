@@ -28,7 +28,13 @@ fn quick_spec() -> V2RunSpec {
         br: 0.05,
         mantle: V2MantleSpec::Off,
         slab_enabled: false,
-        cratonic: V2CratonicSpec::On { cr: 0.3, k_viscous: 5.0, b_factor: 8.0 },
+        cratonic: V2CratonicSpec::On {
+            cr: 0.3,
+            k_viscous: 5.0,
+            b_factor: 8.0,
+            smoothing_width: 0.05,
+            plate_area_min: 0.10,
+        },
         age_field: V2AgeFieldSpec::On {
             continental_age_init: 7.0,
             oceanic_age_init: 0.5,
@@ -41,6 +47,7 @@ fn quick_spec() -> V2RunSpec {
         capture_endpoints: false,
         output_dir: std::env::temp_dir().join("ymir_v2_screenshot_test"),
         preset_label: "screenshot_test".to_string(),
+        init_mode: ymir_viz::bridge_v2::V2InitModeSpec::default(),
     }
 }
 
