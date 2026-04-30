@@ -37,7 +37,13 @@ fn full_mechanism_spec() -> V2RunSpec {
         },
         slab_enabled: false,
         // Cratonic + age on so the corresponding Options land Some.
-        cratonic: V2CratonicSpec::On { cr: 0.3, k_viscous: 5.0, b_factor: 8.0 },
+        cratonic: V2CratonicSpec::On {
+            cr: 0.3,
+            k_viscous: 5.0,
+            b_factor: 8.0,
+            smoothing_width: 0.05,
+            plate_area_min: 0.10,
+        },
         age_field: V2AgeFieldSpec::On {
             continental_age_init: 7.0,
             oceanic_age_init: 0.5,
@@ -50,6 +56,7 @@ fn full_mechanism_spec() -> V2RunSpec {
         capture_endpoints: false,
         output_dir: std::env::temp_dir().join("ymir_v2_field_extraction"),
         preset_label: "field_extraction".to_string(),
+        init_mode: ymir_viz::bridge_v2::V2InitModeSpec::default(),
     }
 }
 

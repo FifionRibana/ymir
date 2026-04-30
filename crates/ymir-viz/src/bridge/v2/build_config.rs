@@ -9,7 +9,6 @@ use ymir_core::tectonics_v2::cratonic::CratonicConfigEnabled;
 use ymir_core::tectonics_v2::diagnostics::harness::{
     BaselineConfig, ForceKind, NonlinearChoice, build_force,
 };
-use ymir_core::tectonics_v2::init::InitMode;
 use ymir_core::tectonics_v2::mantle::MantleConfig;
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
 use ymir_core::tectonics_v2::recycling::RecyclingConfig;
@@ -73,14 +72,20 @@ pub fn build(spec: &V2RunSpec) -> BaselineConfig {
 
     let cratonic = match spec.cratonic {
         V2CratonicSpec::Off => CratonicConfig::Disabled,
-        V2CratonicSpec::On { cr, k_viscous, b_factor } => {
-            CratonicConfig::Enabled(CratonicConfigEnabled {
-                cr,
-                k_viscous,
-                b_factor,
-                ..CratonicConfigEnabled::default()
-            })
-        }
+        V2CratonicSpec::On {
+            cr,
+            k_viscous,
+            b_factor,
+            smoothing_width,
+            plate_area_min,
+        } => CratonicConfig::Enabled(CratonicConfigEnabled {
+            cr,
+            k_viscous,
+            b_factor,
+            smoothing_width,
+            plate_area_min,
+            ..CratonicConfigEnabled::default()
+        }),
     };
 
     let age_field = match spec.age_field {
@@ -144,10 +149,11 @@ pub fn build(spec: &V2RunSpec) -> BaselineConfig {
         age_field,
         capture: None,
         linear_solver,
-        // Step 8.6 Phase 8a — presets default to the new
-        // sinusoidal-artefact-free init. Phase 8d will expose this
-        // toggle in the parameter panel; until then the bridge
-        // hard-codes the default.
-        init_mode: InitMode::default(),
+        // Step 8.6 Phase 8d — `init_mode` flows through `V2RunSpec`,
+        // exposed in the UI via the "Initialisation" section of the
+        // parameter panel. Existing preset JSON files that predate the
+        // field deserialise to `V2InitModeSpec::default()` (= Uniform)
+        // via `#[serde(default)]`.
+        init_mode: spec.init_mode.into_core(),
     }
 }
