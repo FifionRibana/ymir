@@ -1,6 +1,7 @@
 pub mod colormap;
 pub mod erosion;
 pub mod isostasy;
+pub mod overlay;
 pub mod plugin;
 pub mod render;
 pub mod rivers;

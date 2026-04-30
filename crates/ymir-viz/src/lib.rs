@@ -25,6 +25,9 @@ pub mod visualization {
     #[path = "../visualization/colormap.rs"]
     pub mod colormap;
 
+    #[path = "../visualization/overlay.rs"]
+    pub mod overlay;
+
     #[path = "../visualization/v2_viz.rs"]
     pub mod v2_viz;
 }
