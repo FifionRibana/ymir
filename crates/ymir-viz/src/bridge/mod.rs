@@ -1,8 +1,8 @@
-pub mod commands;
-pub mod events;
-pub mod export_system;
-pub mod plugin;
-pub mod thread;
-pub mod v2;
+//! Bridge module — v2-only after Step 8.6 Phase 8h sunset.
+//!
+//! The legacy `tectonics::` bridge (commands.rs, events.rs,
+//! export_system.rs, plugin.rs, thread.rs) was removed once the
+//! Phase 8g visual revalidation passed. The viz binary is wired to
+//! `bridge::v2::*` exclusively.
 
-pub use plugin::{SolverBridge, TectonicsBridgePlugin};
+pub mod v2;
