@@ -1,17 +1,17 @@
-//! Step 8.6 — `tectonics_v2`-bound bridge.
+//! `tectonics_v2`-bound bridge — the only solver bridge after the
+//! Step 8.6 Phase 8h sunset. A background thread owns the v2
+//! simulation harness and processes `V2Command`s; results stream
+//! back as `V2Event`s via a crossbeam channel. The bridge knows
+//! nothing about Bevy; the Bevy plugin wrapper lives in
+//! `bridge::v2::plugin`.
 //!
-//! Mirrors `bridge::legacy` / the existing `bridge` module pattern: a
-//! background thread owns the v2 simulation harness and processes
-//! `V2Command`s; results stream back as `V2Event`s via a crossbeam
-//! channel. The bridge knows nothing about Bevy; the Bevy plugin
-//! wrapper lives in `bridge::v2::plugin` (Phase 2).
-//!
-//! Phase 1 scope: spawn the thread, run a single baseline to
-//! completion, return the final state. No live progress streaming
-//! (the harness `run_baseline` is non-cancellable end-to-end at
-//! Step 8.6 Phase 1 — refactoring it to take a step callback is
-//! Phase 5 work, deferred until the visualization actually needs
-//! intermediate snapshots).
+//! `pub use` re-exports below give integration tests under
+//! `crates/ymir-viz/tests/` a flat import path
+//! (`ymir_viz::bridge_v2::*`). The bin does not reach all of them,
+//! hence the `allow(unused_imports)` — these are public API
+//! surface, not dead code.
+
+#![allow(unused_imports)]
 
 pub mod build_config;
 pub mod commands;

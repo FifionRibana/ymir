@@ -1,12 +1,12 @@
+//! Visualization module — v2-only after Step 8.6 Phase 8h sunset.
+//!
+//! Pre-sunset modules (`erosion`, `isostasy`, `plugin`, `render`,
+//! `rivers`, `upscale`) drove the legacy pipeline phases. Post-sunset
+//! the binary renders only the v2 raster sprite (`v2_viz`) plus the
+//! shared colormap helpers and the Phase 8b overlay routines.
+
 pub mod colormap;
-pub mod erosion;
-pub mod isostasy;
 pub mod overlay;
-pub mod plugin;
-pub mod render;
-pub mod rivers;
-pub mod upscale;
 pub mod v2_viz;
 
-pub use plugin::SolverVisualizationPlugin;
 pub use v2_viz::V2VisualizationPlugin;
