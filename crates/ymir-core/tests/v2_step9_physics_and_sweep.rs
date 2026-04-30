@@ -105,6 +105,7 @@ fn build_step9_config(cratonic: CratonicConfig, label: &str) -> BaselineConfig {
         age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver: LinearSolverConfig::default(),
+        init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
     }
 }
 
@@ -329,6 +330,7 @@ fn build_step9_immunity_demo_config(cratonic: CratonicConfig, label: &str) -> Ba
         age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver: LinearSolverConfig::default(),
+        init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
     }
 }
 
