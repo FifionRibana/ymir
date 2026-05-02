@@ -1,0 +1,20 @@
+{
+  "seed": 1,
+  "grid_nx": 32,
+  "grid_ny": 32,
+  "steps": 50,
+  "num_plates": 4,
+  "continental_ratio": 0.3,
+  "bi": 0.2,
+  "br": 0.1,
+  "mantle": { "kind": "off" },
+  "slab_enabled": false,
+  "cratonic": { "kind": "off" },
+  "age_field": { "kind": "off" },
+  "linear_solver": "jacobi",
+  "force": { "kind": "gpe" },
+  "s_perturbation_amplitude": 0.05,
+  "total_time_nondim": 3.0,
+  "cfl_factor": 0.3,
+  "preset_label": "quiescent"
+}

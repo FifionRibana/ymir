@@ -5645,7 +5645,10 @@ dependencies = [
  "bevy",
  "bevy_egui",
  "crossbeam-channel",
+ "image",
  "noise",
+ "serde",
+ "serde_json",
  "tracing-subscriber",
  "ymir-core",
 ]

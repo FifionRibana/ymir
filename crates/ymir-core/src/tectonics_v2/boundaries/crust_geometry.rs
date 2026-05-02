@@ -40,6 +40,13 @@ pub struct CrustGeometry {
     pub detection_config: DetectionConfig,
     pub geometry_kind: GeometryKind,
     pub layout_name: String,
+    /// Per-plate Voronoï seed coordinates in cell units (continuous).
+    /// `Some` when built from a Voronoï tessellation
+    /// ([`Self::from_voronoi`]); `None` for static layouts that don't
+    /// have geometric centroids ([`Self::from_static`]). Consumed by
+    /// [`crate::tectonics_v2::init::InitMode::Gaussian`] which peaks
+    /// each plate's S̃ at its seed.
+    pub seed_coords: Option<Vec<(f64, f64)>>,
 }
 
 pub type CrustGeometryShared = Arc<CrustGeometry>;
@@ -61,6 +68,7 @@ impl CrustGeometry {
             detection_config: DetectionConfig::default(),
             geometry_kind: GeometryKind::Static,
             layout_name: layout_name.into(),
+            seed_coords: None,
         }
     }
 
@@ -81,6 +89,7 @@ impl CrustGeometry {
                 "voronoi_seed{}_n{}",
                 seed, config.num_plates,
             ),
+            seed_coords: Some(plates.seed_coords),
         }
     }
 

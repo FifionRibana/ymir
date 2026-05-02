@@ -2,13 +2,22 @@ use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::prelude::*;
 use bevy_egui::input::EguiWantsInput;
 
-use crate::state::CursorWorldPos;
+/// World-space cursor position, recomputed every frame so
+/// `camera_zoom` can scale around the point under the mouse instead
+/// of the screen centre. Pre-Phase-8h sunset this lived in
+/// `state.rs`; the rest of `state.rs` was legacy-only and got
+/// removed, so the resource is local to the camera module now.
+#[derive(Resource, Default)]
+pub struct CursorWorldPos {
+    pub pos: Option<Vec2>,
+}
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_camera)
+        app.init_resource::<CursorWorldPos>()
+            .add_systems(Startup, setup_camera)
             .add_systems(Update, (update_cursor_world_pos, camera_pan, camera_zoom));
     }
 }

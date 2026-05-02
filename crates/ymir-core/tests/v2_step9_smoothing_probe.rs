@@ -93,6 +93,8 @@ fn step9_smoothing_width_calibration_probe() {
             age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
             capture: None,
             linear_solver: LinearSolverConfig::default(),
+            init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+            continuation: None,
         };
         let r = run_baseline(&cfg);
         let na = r.metrics.newton.as_ref().expect("newton aggregate");
