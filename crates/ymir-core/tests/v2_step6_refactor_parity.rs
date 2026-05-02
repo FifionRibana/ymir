@@ -75,6 +75,7 @@ fn run_step5_parity_mini() -> (f64, f64, f64, f64) {
         capture: None,
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     };
     let r = run_baseline(&cfg);
     let na = r.metrics.newton.as_ref().expect("newton aggregate");

@@ -19,14 +19,46 @@ use bevy_egui::egui;
 use bevy_egui::egui::Color32;
 
 use crate::bridge::v2::{V2FinalState, V2RunState, V2ScalarMetrics, V2SolverBridge};
+use crate::visualization::v2_viz::V2VizState;
 
-pub fn draw(ui: &mut egui::Ui, bridge: &V2SolverBridge) {
+pub fn draw(ui: &mut egui::Ui, bridge: &V2SolverBridge, viz: &V2VizState) {
     ui.heading("Metrics dashboard");
     ui.add_space(4.0);
 
     match &bridge.state {
         V2RunState::Idle => {
-            ui.weak("No run yet — submit a config from the right panel.");
+            if let Some(preview) = viz.preview.as_ref() {
+                ui.colored_label(
+                    Color32::from_rgb(0xC0, 0xA0, 0x60),
+                    format!("Preview ({})", preview.spec.preset_label),
+                );
+                ui.add_space(4.0);
+                ui.label(format!(
+                    "Grid: {}×{} · {} steps · seed {}",
+                    preview.spec.grid_nx,
+                    preview.spec.grid_ny,
+                    preview.spec.steps,
+                    preview.spec.seed,
+                ));
+                ui.label(format!(
+                    "Plates: {} · continental {:.0}%",
+                    preview.spec.num_plates,
+                    preview.spec.continental_ratio * 100.0,
+                ));
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new(
+                        "No live metrics yet — click ▶ Run to start the solver. \
+                         The sprite shows the configuration's initial state \
+                         (init S̃ + Voronoï tessellation + initial age + \
+                         initial cratonic factor).",
+                    )
+                    .small()
+                    .weak(),
+                );
+            } else {
+                ui.weak("No run yet — submit a config from the right panel.");
+            }
         }
         V2RunState::Failed { error } => {
             ui.colored_label(Color32::RED, format!("Failed: {}", error));

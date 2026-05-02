@@ -81,6 +81,7 @@ fn build_step7_shape_config(mantle: MantleConfig) -> BaselineConfig {
         capture: None,
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     }
 }
 

@@ -107,6 +107,7 @@ pub fn run_num_plates_sweep(
             capture: None,
             linear_solver: Default::default(),
             init_mode: crate::tectonics_v2::init::InitMode::Checkerboard,
+            continuation: None,
         };
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(n, sd, &r));

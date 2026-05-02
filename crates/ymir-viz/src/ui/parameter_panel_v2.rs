@@ -17,6 +17,8 @@ use crate::bridge::v2::{
     presets, V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2InitModeSpec, V2LinearSolverSpec,
     V2MantleSpec, V2RunSpec, V2RunState, V2SolverBridge,
 };
+use crate::phases;
+use crate::pipeline::{ActivePhase, PipelinePhase};
 use crate::visualization::v2_viz::{V2Field, V2VizState};
 
 /// UI-side mutable copy of the run spec the user is editing. Submitted
@@ -30,11 +32,21 @@ impl Default for V2EditableSpec {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw(
     ui: &mut egui::Ui,
     spec_state: &mut V2EditableSpec,
     bridge: &mut V2SolverBridge,
     viz: &mut V2VizState,
+    active: ActivePhase,
+    isostasy_params: &mut phases::isostasy::IsostasyParams,
+    isostasy_cache: &phases::isostasy::IsostasyCache,
+    fbm_params: &mut phases::upscale_fbm::FbmParams,
+    fbm_cache: &phases::upscale_fbm::FbmCache,
+    erosion_params: &mut phases::erosion::ErosionParams,
+    erosion_cache: &phases::erosion::ErosionCache,
+    hydrology_params: &mut phases::hydrology::HydrologyParams,
+    hydrology_cache: &phases::hydrology::HydrologyCache,
 ) {
     let spec = &mut spec_state.0;
 
@@ -42,8 +54,18 @@ pub fn draw(
     ui.add_space(4.0);
 
     // ── Run status badge ────────────────────────────────────────────
+    let is_preview = matches!(&bridge.state, V2RunState::Idle) && viz.preview.is_some();
     let status_label = match &bridge.state {
-        V2RunState::Idle => "Idle".to_string(),
+        V2RunState::Idle => {
+            if is_preview {
+                format!(
+                    "Preview ({}) — {}² × {} steps · seed {}",
+                    spec.preset_label, spec.grid_nx, spec.steps, spec.seed
+                )
+            } else {
+                "Idle".to_string()
+            }
+        }
         V2RunState::Running { spec: s, step, total, started_at, .. } => {
             let elapsed = started_at
                 .as_ref()
@@ -72,6 +94,7 @@ pub fn draw(
             V2RunState::Running { .. } => egui::Color32::YELLOW,
             V2RunState::Completed { .. } => egui::Color32::GREEN,
             V2RunState::Imported { .. } => egui::Color32::LIGHT_BLUE,
+            V2RunState::Idle if is_preview => egui::Color32::from_rgb(0xC0, 0xA0, 0x60),
             V2RunState::Idle => egui::Color32::GRAY,
         },
         status_label,
@@ -80,6 +103,45 @@ pub fn draw(
     ui.add_space(8.0);
     ui.separator();
 
+    // ── Save / Load (common across phases) ─────────────────────────
+    // Sits at the top of the panel — visible regardless of which
+    // pipeline phase is active. Replaces the legacy text-input
+    // import path with a list of `output/seed<S>_<R>/` directories
+    // that contain a `snapshot.json`.
+    draw_save_load_section(ui, viz, &bridge.state);
+
+    ui.add_space(8.0);
+    ui.separator();
+
+    // ── V2 raster field selector (global — visible on every phase) ──
+    // The V2Field dropdown drives the V2 raster painter
+    // (`update_v2_texture`). It is meaningful on the Tectonics view
+    // only, but the dropdown sits here so the user can pick a field
+    // ahead of switching back to Tectonics — same shape as the
+    // legacy left-toolbar field picker that lived above the phase
+    // sub-views.
+    ui.label(egui::RichText::new("V2 raster field").strong());
+    egui::ComboBox::from_id_salt("v2_field_dropdown")
+        .selected_text(viz.field.label())
+        .show_ui(ui, |ui| {
+            for &f in V2Field::ALL {
+                if ui.selectable_label(viz.field == f, f.label()).clicked() {
+                    viz.field = f;
+                }
+            }
+        });
+    ui.label(egui::RichText::new(viz.field.legend_caption()).small());
+    draw_legend_bar(ui, viz.field);
+
+    ui.add_space(8.0);
+    ui.separator();
+
+    // ── V2 solver controls ─────────────────────────────────────────
+    // Only show on the Tectonics phase. The other phases consume
+    // the v2 final state but don't drive its parameters; hiding
+    // these keeps the right panel focused on the active phase.
+    let show_v2_controls = matches!(active.0, PipelinePhase::Tectonics);
+    if show_v2_controls {
     // ── Preset dropdown (Phase 4) ──────────────────────────────────
     ui.horizontal(|ui| {
         ui.label("Preset:");
@@ -315,20 +377,6 @@ pub fn draw(
     ui.add_space(8.0);
     ui.separator();
 
-    // ── Field selector (D5 dropdown) + legend ──────────────────────
-    ui.heading("Display");
-    egui::ComboBox::from_id_salt("v2_field_dropdown")
-        .selected_text(viz.field.label())
-        .show_ui(ui, |ui| {
-            for &f in V2Field::ALL {
-                if ui.selectable_label(viz.field == f, f.label()).clicked() {
-                    viz.field = f;
-                }
-            }
-        });
-    ui.label(egui::RichText::new(viz.field.legend_caption()).small());
-    draw_legend_bar(ui, viz.field);
-
     // Phase 8b — Voronoï + velocity overlays. Default off so Phase 7
     // screenshots remain unchanged unless the user opts in. Toggling
     // either flag invalidates `viz.last_signature` (the
@@ -374,6 +422,55 @@ pub fn draw(
         {
             viz.capture_requested = true;
         }
+        // Step 8.6 follow-up — Continue button. Reuses the prior
+        // run / imported snapshot's `final_state` as the start
+        // state for a new run (S̃ + vx/vy + age + cratonic_factor),
+        // letting the user "add 100 steps to the 100 already
+        // simulated" or extend an imported run. The user-edited
+        // `spec` provides the step count, total_time, and any
+        // tweaked physics knobs; voronoi-relevant fields (seed,
+        // num_plates, continental_ratio, grid dims) are
+        // overridden from the source to keep the tessellation
+        // consistent — otherwise the prior plate_id / plate_type
+        // would no longer match the regenerated voronoi.
+        let continue_source = match &bridge.state {
+            V2RunState::Completed { spec: src, final_state, .. } => {
+                Some((src.clone(), final_state.as_ref().clone()))
+            }
+            V2RunState::Imported { spec: src, final_state, .. } => {
+                Some((src.clone(), final_state.as_ref().clone()))
+            }
+            _ => None,
+        };
+        let can_continue = continue_source.is_some();
+        if ui
+            .add_enabled(can_continue, egui::Button::new("\u{21bb} Continue"))
+            .on_hover_text(
+                "Continue from the prior run's final state \
+                 (voronoi config locked from source; user spec \
+                 provides additional steps + physics knobs).",
+            )
+            .clicked()
+        {
+            if let Some((source_spec, from_state)) = continue_source {
+                let mut next_spec = spec.clone();
+                next_spec.seed = source_spec.seed;
+                next_spec.grid_nx = source_spec.grid_nx;
+                next_spec.grid_ny = source_spec.grid_ny;
+                next_spec.num_plates = source_spec.num_plates;
+                next_spec.continental_ratio = source_spec.continental_ratio;
+                next_spec.init_mode = source_spec.init_mode;
+                let stamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                next_spec.output_dir =
+                    std::env::temp_dir().join(format!("ymir_v2_continue_{}", stamp));
+                if let Err(e) = bridge.submit_continue(next_spec, from_state) {
+                    eprintln!("[ymir-viz] failed to submit continue run: {}", e);
+                }
+            }
+        }
     });
 
     // Phase 6 — last screenshot status line
@@ -395,64 +492,56 @@ pub fn draw(
             }
         }
     }
+    } // end `if show_v2_controls`
 
-    // ── Phase 8e — Export / Import ─────────────────────────────────
-    ui.add_space(8.0);
-    ui.separator();
-    ui.label(egui::RichText::new("Snapshot (Phase 8e)").strong());
-    ui.horizontal(|ui| {
-        let can_export = matches!(bridge.state, V2RunState::Completed { .. });
-        if ui
-            .add_enabled(can_export, egui::Button::new("\u{1f4be} Export run"))
-            .on_hover_text("Save the current Completed run to JSON")
-            .clicked()
-        {
-            viz.export_requested = true;
-        }
-    });
-    if let Some(result) = &viz.last_export {
-        match result {
-            Ok(path) => ui.label(
-                egui::RichText::new(format!("Exported to: {}", path.display()))
-                    .small()
-                    .color(egui::Color32::LIGHT_GREEN),
-            ),
-            Err(err) => ui.label(
-                egui::RichText::new(format!("Export failed: {}", err))
-                    .small()
-                    .color(egui::Color32::LIGHT_RED),
-            ),
-        };
-    }
-
-    ui.add_space(4.0);
-    ui.label("Import path:");
-    ui.add(
-        egui::TextEdit::singleline(&mut viz.import_path_buffer)
-            .hint_text("/path/to/snapshot.json")
-            .desired_width(f32::INFINITY),
+    // ── Active phase parameters ────────────────────────────────────
+    // Each non-Tectonics phase exposes its own collapsible config
+    // section here. Visible only when that phase is active so the
+    // panel doesn't grow unbounded for the user.
+    let v2_finished = matches!(
+        bridge.state,
+        V2RunState::Completed { .. } | V2RunState::Imported { .. }
     );
-    if ui.button("\u{1f4c2} Import run").clicked() {
-        let trimmed = viz.import_path_buffer.trim();
-        if trimmed.is_empty() {
-            viz.last_import = Some(Err("path is empty".to_string()));
-        } else {
-            viz.import_requested_path = Some(std::path::PathBuf::from(trimmed));
+    match active.0 {
+        PipelinePhase::Tectonics => {}
+        PipelinePhase::Isostasy => {
+            ui.add_space(8.0);
+            ui.separator();
+            phases::isostasy::draw_section(ui, isostasy_params, isostasy_cache, v2_finished);
         }
-    }
-    if let Some(result) = &viz.last_import {
-        match result {
-            Ok(path) => ui.label(
-                egui::RichText::new(format!("Imported from: {}", path.display()))
-                    .small()
-                    .color(egui::Color32::LIGHT_GREEN),
-            ),
-            Err(err) => ui.label(
-                egui::RichText::new(format!("Import failed: {}", err))
-                    .small()
-                    .color(egui::Color32::LIGHT_RED),
-            ),
-        };
+        PipelinePhase::UpscaleFbm => {
+            ui.add_space(8.0);
+            ui.separator();
+            let iso_ready = isostasy_cache.result.is_some();
+            phases::upscale_fbm::draw_section(ui, fbm_params, fbm_cache, iso_ready);
+        }
+        PipelinePhase::Erosion => {
+            ui.add_space(8.0);
+            ui.separator();
+            let fbm_ready = fbm_cache.result.is_some();
+            phases::erosion::draw_section(ui, erosion_params, erosion_cache, fbm_ready);
+        }
+        PipelinePhase::Hydrology => {
+            ui.add_space(8.0);
+            ui.separator();
+            let erosion_ready = erosion_cache.result.is_some();
+            phases::hydrology::draw_section(
+                ui,
+                hydrology_params,
+                hydrology_cache,
+                erosion_ready,
+            );
+        }
+        PipelinePhase::Climate => {
+            ui.add_space(8.0);
+            ui.separator();
+            phases::climate::draw_section(ui);
+        }
+        PipelinePhase::Biome => {
+            ui.add_space(8.0);
+            ui.separator();
+            phases::biome::draw_section(ui);
+        }
     }
 }
 
@@ -583,7 +672,7 @@ fn draw_legend_bar(ui: &mut egui::Ui, field: V2Field) {
             V2Field::SThickness => hypsometric_colormap(t),
             V2Field::Age => age_colormap(t),
             V2Field::Cratonic => cratonic_grayscale(t),
-            V2Field::StrainRate | V2Field::VelocityMagnitude => log_hot(t),
+            V2Field::StrainRate | V2Field::VelocityMagnitude | V2Field::Slope => log_hot(t),
         };
         let x0 = rect.left() + k as f32 * cell_w;
         let cell_rect =
@@ -594,4 +683,134 @@ fn draw_legend_bar(ui: &mut egui::Ui, field: V2Field) {
             egui::Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]),
         );
     }
+}
+
+/// Step 8.6 follow-up — common Save / Load section. Sits at the top of
+/// the right panel (above the v2 solver controls) and is visible on
+/// every pipeline phase. The "Available runs" list scans
+/// `output/` for sub-directories that contain a `snapshot.json` and
+/// gives each one a Load button. The list is cached on
+/// [`V2VizState::cached_run_dirs`] and invalidated by the Refresh
+/// button or by a successful export (so a freshly written run shows up
+/// without the user clicking Refresh).
+fn draw_save_load_section(
+    ui: &mut egui::Ui,
+    viz: &mut V2VizState,
+    bridge_state: &V2RunState,
+) {
+    ui.label(egui::RichText::new("Save / Load").strong());
+
+    let can_export = matches!(
+        bridge_state,
+        V2RunState::Completed { .. } | V2RunState::Imported { .. }
+    );
+    let is_running = matches!(bridge_state, V2RunState::Running { .. });
+
+    ui.horizontal(|ui| {
+        if ui
+            .add_enabled(can_export, egui::Button::new("\u{1f4be} Save current run"))
+            .on_hover_text(
+                "Save thickness + altitude + upscale + eroded + flow + \
+                 lakes (whichever ran) plus snapshot.json to \
+                 `output/seed<seed>_<resolution>/`.",
+            )
+            .clicked()
+        {
+            viz.export_requested = true;
+        }
+        if ui
+            .button("\u{1f504} Refresh")
+            .on_hover_text("Rescan output/ for available runs.")
+            .clicked()
+        {
+            viz.cached_run_dirs = None;
+        }
+    });
+    if let Some(result) = &viz.last_export {
+        match result {
+            Ok(path) => {
+                ui.label(
+                    egui::RichText::new(format!("Saved → {}", path.display()))
+                        .small()
+                        .color(egui::Color32::LIGHT_GREEN),
+                );
+            }
+            Err(err) => {
+                ui.label(
+                    egui::RichText::new(format!("Save failed: {}", err))
+                        .small()
+                        .color(egui::Color32::LIGHT_RED),
+                );
+            }
+        }
+    }
+
+    ui.add_space(4.0);
+    ui.label("Available runs:");
+    let dirs = viz
+        .cached_run_dirs
+        .get_or_insert_with(|| list_export_dirs(std::path::Path::new("output")));
+    if dirs.is_empty() {
+        ui.label(
+            egui::RichText::new("(no saved runs in output/)")
+                .small()
+                .weak(),
+        );
+    } else {
+        let dirs_clone = dirs.clone();
+        for dir in dirs_clone {
+            let name = dir
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(&name).small().monospace());
+                if ui
+                    .add_enabled(!is_running, egui::Button::new("Load").small())
+                    .on_hover_text("Replace the current bridge state with this run's snapshot.")
+                    .clicked()
+                {
+                    viz.import_requested_path = Some(dir.join("snapshot.json"));
+                }
+            });
+        }
+    }
+    if let Some(result) = &viz.last_import {
+        match result {
+            Ok(path) => {
+                ui.label(
+                    egui::RichText::new(format!("Loaded {}", path.display()))
+                        .small()
+                        .color(egui::Color32::LIGHT_GREEN),
+                );
+            }
+            Err(err) => {
+                ui.label(
+                    egui::RichText::new(format!("Load failed: {}", err))
+                        .small()
+                        .color(egui::Color32::LIGHT_RED),
+                );
+            }
+        }
+    }
+}
+
+/// Walk `output/` and collect every immediate sub-directory that
+/// contains a `snapshot.json` — i.e. the v2 round-trip artefact written
+/// by `handle_v2_export`. Sorted by path so the UI ordering is stable
+/// across rescans.
+fn list_export_dirs(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    if !root.exists() {
+        return Vec::new();
+    }
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<std::path::PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir() && p.join("snapshot.json").exists())
+        .collect();
+    dirs.sort();
+    dirs
 }

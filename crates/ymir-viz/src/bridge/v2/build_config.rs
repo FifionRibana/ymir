@@ -155,5 +155,9 @@ pub fn build(spec: &V2RunSpec) -> BaselineConfig {
         // field deserialise to `V2InitModeSpec::default()` (= Uniform)
         // via `#[serde(default)]`.
         init_mode: spec.init_mode.into_core(),
+        // Step 8.6 follow-up — `None` for fresh runs; the bridge's
+        // `ContinueRun` command path overrides this after `build()`
+        // returns.
+        continuation: None,
     }
 }

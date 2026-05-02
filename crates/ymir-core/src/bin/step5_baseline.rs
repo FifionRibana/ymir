@@ -240,6 +240,7 @@ fn calibration_probe(
         capture: None,
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     };
     let r = run_baseline(&cfg);
     r.metrics
@@ -299,6 +300,7 @@ fn run_scenario_multi_grid(
             capture: None,
             linear_solver: Default::default(),
             init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+            continuation: None,
         };
         println!("-- running {}×{} for {} steps --", nx, ny, args.steps);
         let r = run_baseline(&cfg);

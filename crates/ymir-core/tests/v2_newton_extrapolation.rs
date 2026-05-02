@@ -82,6 +82,7 @@ fn step6_config(steps: usize) -> BaselineConfig {
         capture: None,
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     }
 }
 
