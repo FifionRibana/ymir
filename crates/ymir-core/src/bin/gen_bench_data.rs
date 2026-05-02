@@ -201,6 +201,8 @@ fn capture_step0_quiescent(args: &Args, path: &PathBuf) -> Result<(), String> {
             case_label: "step0_quiescent".into(),
         }),
         linear_solver: Default::default(),
+        init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -244,6 +246,8 @@ fn capture_step3_floor_yielding(args: &Args, path: &PathBuf) -> Result<(), Strin
             case_label: "step3_floor_yielding".into(),
         }),
         linear_solver: Default::default(),
+        init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -335,6 +339,8 @@ fn capture_step8_activated(
             case_label: case_label.into(),
         }),
         linear_solver: Default::default(),
+        init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -388,5 +394,7 @@ fn build_step6_shape_config(
         age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: Some(capture),
         linear_solver: Default::default(),
+        init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     })
 }

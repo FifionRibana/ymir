@@ -86,6 +86,8 @@ fn run_closed_mini(mantle_loss_fraction: f64) -> (f64, f64, f64, f64, f64) {
         age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver: Default::default(),
+        init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     };
     let r = run_baseline(&cfg);
     let na = r.metrics.newton.as_ref().expect("newton aggregate");

@@ -76,6 +76,8 @@ fn build_step3_config(linear_solver: LinearSolverConfig) -> BaselineConfig {
         age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver,
+        init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     }
 }
 
@@ -126,6 +128,8 @@ fn build_step6_config(linear_solver: LinearSolverConfig) -> BaselineConfig {
         age_field: ymir_core::tectonics_v2::age_field::AgeFieldConfig::Disabled,
         capture: None,
         linear_solver,
+        init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     }
 }
 

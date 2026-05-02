@@ -149,6 +149,23 @@ impl AgeFieldState {
         }
     }
 
+    /// Step 8.6 follow-up — build state from an existing age field
+    /// (e.g. the final state of a previous run). The continental /
+    /// oceanic init values come from `cfg`; they govern how
+    /// boundary-event resets behave during the time loop, but do
+    /// NOT overwrite `current`.
+    pub fn from_existing(current: Field2D, cfg: &AgeFieldConfigEnabled) -> Self {
+        let nx = current.nx();
+        let ny = current.ny();
+        let next = Field2D::new(nx, ny);
+        Self {
+            current,
+            next,
+            continental_age_init: cfg.continental_age_init,
+            oceanic_age_init: cfg.oceanic_age_init,
+        }
+    }
+
     /// Maximum `A` value attained by the initial state — used by
     /// the bound-acceptance check
     /// `age_max ≤ age_init_max + simulation_time` (acceptance #1).
