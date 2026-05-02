@@ -34,6 +34,11 @@ Thumbs.db
 # Generated output (terrain data, exported maps)
 /output/*
 !/output/.gitkeep
+
+# Step 8.6 Phase 7 — diagnostic step-strip frames (regenerated on demand
+# by `cargo test … v2_phase7_step_diagnostic`). The committed gallery
+# subdirectories (active_medley/, convergence/, etc.) stay tracked.
+/docs/reports/step8_6_phase7_gallery/diagnostic/
  
 # Environment
 .env
