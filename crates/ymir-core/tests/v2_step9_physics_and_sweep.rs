@@ -106,6 +106,7 @@ fn build_step9_config(cratonic: CratonicConfig, label: &str) -> BaselineConfig {
         capture: None,
         linear_solver: LinearSolverConfig::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     }
 }
 
@@ -331,6 +332,7 @@ fn build_step9_immunity_demo_config(cratonic: CratonicConfig, label: &str) -> Ba
         capture: None,
         linear_solver: LinearSolverConfig::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
+        continuation: None,
     }
 }
 

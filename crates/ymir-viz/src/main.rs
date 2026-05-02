@@ -9,6 +9,8 @@ use bevy::prelude::*;
 
 mod bridge;
 mod camera;
+mod phases;
+mod pipeline;
 mod ui;
 mod visualization;
 
@@ -43,6 +45,30 @@ fn main() {
                 },
                 ..default()
             }),
+    )
+    .init_resource::<pipeline::ActivePhase>()
+    .init_resource::<phases::isostasy::IsostasyParams>()
+    .init_resource::<phases::isostasy::IsostasyCache>()
+    .init_resource::<phases::upscale_fbm::FbmParams>()
+    .init_resource::<phases::upscale_fbm::FbmCache>()
+    .init_resource::<phases::erosion::ErosionParams>()
+    .init_resource::<phases::erosion::ErosionCache>()
+    .init_resource::<phases::hydrology::HydrologyParams>()
+    .init_resource::<phases::hydrology::HydrologyCache>()
+    .add_systems(
+        Update,
+        (
+            phases::invalidate_renders_on_phase_change,
+            phases::isostasy::handle_isostasy_compute,
+            phases::isostasy::render_isostasy_phase,
+            phases::upscale_fbm::handle_fbm_compute,
+            phases::upscale_fbm::render_upscale_phase,
+            phases::erosion::handle_erosion_compute,
+            phases::erosion::poll_erosion_result,
+            phases::erosion::render_erosion_phase,
+            phases::hydrology::handle_hydrology_compute,
+            phases::hydrology::render_hydrology_phase,
+        ),
     )
     .add_plugins((
         camera::CameraPlugin,

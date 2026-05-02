@@ -31,3 +31,18 @@ pub mod visualization {
     #[path = "../visualization/v2_viz.rs"]
     pub mod v2_viz;
 }
+
+pub mod ui {
+    // Mounted on the library facade so the `update_v2_preview`
+    // system in `visualization::v2_viz` can reach
+    // `parameter_panel_v2::V2EditableSpec` from a `crate::ui::…`
+    // path. The bin keeps its own `mod ui;` tree (which also has
+    // `metrics_dashboard` and `mod.rs`'s `UiPlugin`); the lib mounts
+    // only what `v2_viz` references.
+    #[path = "../ui/parameter_panel_v2.rs"]
+    pub mod parameter_panel_v2;
+}
+
+pub mod pipeline;
+
+pub mod phases;

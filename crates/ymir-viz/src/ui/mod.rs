@@ -10,6 +10,7 @@
 
 pub mod metrics_dashboard;
 pub mod parameter_panel_v2;
+pub mod pipeline_toolbar;
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
@@ -26,6 +27,7 @@ impl Plugin for UiPlugin {
             EguiPrimaryContextPass,
             (
                 configure_egui_style,
+                pipeline_toolbar::ui_phase_toolbar,
                 ui_v2_top_bar
                     .run_if(resource_exists::<crate::bridge::v2::V2SolverBridge>),
                 ui_v2_right_panel
@@ -97,32 +99,72 @@ fn ui_v2_top_bar(mut contexts: EguiContexts, bridge: Res<crate::bridge::v2::V2So
     });
 }
 
-/// Step 8.6 v2 right panel — wraps the v2 parameter editor.
+/// Step 8.6 v2 right panel — wraps the v2 parameter editor + the
+/// active phase's collapsible config section.
+#[allow(clippy::too_many_arguments)]
 fn ui_v2_right_panel(
     mut contexts: EguiContexts,
     mut spec_state: ResMut<V2EditableSpec>,
     mut bridge: ResMut<crate::bridge::v2::V2SolverBridge>,
     mut viz: ResMut<crate::visualization::v2_viz::V2VizState>,
+    active: Res<crate::pipeline::ActivePhase>,
+    mut isostasy_params: ResMut<crate::phases::isostasy::IsostasyParams>,
+    isostasy_cache: Res<crate::phases::isostasy::IsostasyCache>,
+    mut fbm_params: ResMut<crate::phases::upscale_fbm::FbmParams>,
+    fbm_cache: Res<crate::phases::upscale_fbm::FbmCache>,
+    mut erosion_params: ResMut<crate::phases::erosion::ErosionParams>,
+    erosion_cache: Res<crate::phases::erosion::ErosionCache>,
+    mut hydrology_params: ResMut<crate::phases::hydrology::HydrologyParams>,
+    hydrology_cache: Res<crate::phases::hydrology::HydrologyCache>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::SidePanel::right("v2_right_panel").exact_width(300.0).show(ctx, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            parameter_panel_v2::draw(ui, &mut spec_state, &mut bridge, &mut viz);
+            parameter_panel_v2::draw(
+                ui,
+                &mut spec_state,
+                &mut bridge,
+                &mut viz,
+                *active,
+                &mut isostasy_params,
+                &isostasy_cache,
+                &mut fbm_params,
+                &fbm_cache,
+                &mut erosion_params,
+                &erosion_cache,
+                &mut hydrology_params,
+                &hydrology_cache,
+            );
         });
+        // While any threaded phase worker is running, force egui /
+        // Bevy to redraw every frame so the streamed in-progress
+        // snapshots (erosion preview heightmaps, etc.) actually
+        // hit the screen instead of waiting on the next user
+        // input event. Mirrors the v2-Running repaint request in
+        // `ui_v2_left_panel`.
+        if matches!(
+            erosion_cache.state,
+            crate::phases::erosion::ErosionState::Running { .. }
+        ) {
+            ctx.request_repaint();
+        }
     });
 }
 
 /// Step 8.6 Phase 8c — v2 left panel: real-time nondimensional metrics
 /// dashboard. Live during a run (peek-state derived metrics + progress
-/// + ETA), final summary post-run (Metrics struct).
+/// + ETA), final summary post-run (Metrics struct), preview summary
+/// (config recap) when the bridge is Idle and a `V2Preview` is in
+/// flight.
 fn ui_v2_left_panel(
     mut contexts: EguiContexts,
     bridge: Res<crate::bridge::v2::V2SolverBridge>,
+    viz: Res<crate::visualization::v2_viz::V2VizState>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::SidePanel::left("v2_left_panel").default_width(280.0).show(ctx, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            metrics_dashboard::draw(ui, &bridge);
+            metrics_dashboard::draw(ui, &bridge, &viz);
         });
         if matches!(bridge.state, crate::bridge::v2::V2RunState::Running { .. }) {
             ctx.request_repaint();

@@ -86,11 +86,34 @@ impl V2SolverBridge {
             .map_err(|_| "v2 bridge channel send failed")
     }
 
-    /// Convenience: signal the running run (if any) to abort. No-op
-    /// during Phase 1-4 since `run_baseline` does not honour the flag
-    /// yet (Phase 5 step-callback refactor).
+    /// Step 8.6 follow-up — queue a "continue from prior final
+    /// state" run. The harness uses `from_state` as the initial S̃ /
+    /// vx / vy / age / cratonic_factor instead of computing init
+    /// from scratch. The voronoi-relevant fields of `spec` (seed,
+    /// num_plates, continental_ratio, grid dims) should match the
+    /// source run for the override to make physical sense.
+    pub fn submit_continue(
+        &self,
+        spec: V2RunSpec,
+        from_state: V2FinalState,
+    ) -> Result<(), &'static str> {
+        self.commands_tx
+            .send(V2Command::ContinueRun { spec, from_state })
+            .map_err(|_| "v2 bridge channel send failed")
+    }
+
+    /// Signal the running run (if any) to abort. Sets the shared
+    /// `AtomicBool` directly rather than queueing a
+    /// `V2Command::Cancel`: the bridge thread is blocked inside
+    /// `run_baseline_with_progress` while a run is in flight, so a
+    /// channel command would not reach the dispatch loop until the
+    /// run completed naturally. The harness step-callback reads the
+    /// same `AtomicBool` and returns `false` on the next step
+    /// boundary, so this lands as a graceful cancellation within
+    /// one step (≈ 5–25 s at 32–64² mantle-on).
     pub fn request_cancel(&self) {
-        let _ = self.commands_tx.send(V2Command::Cancel);
+        use std::sync::atomic::Ordering;
+        self.cancel_flag.store(true, Ordering::Relaxed);
     }
 }
 

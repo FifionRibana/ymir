@@ -236,6 +236,30 @@ pub struct BaselineConfig {
     /// preserve the legacy sinusoidal-perturbation pattern bit-for-bit
     /// (strategy γ).
     pub init_mode: crate::tectonics_v2::init::InitMode,
+    /// Step 8.6 follow-up — initial-state override for "continue"
+    /// runs. When `Some`, the harness uses the carried fields as the
+    /// run start state instead of computing init via `init_mode` /
+    /// `AgeFieldState::from_initial_thickness` /
+    /// `build_cratonic_factor_field`. The Voronoï tessellation is
+    /// still rebuilt from `cfg.seed` + `cfg.boundary` config; the
+    /// continuation must use the same voronoi-relevant config (seed,
+    /// num_plates, continental_ratio, grid dims) as the source run
+    /// for the override to make physical sense.
+    pub continuation: Option<ContinuationState>,
+}
+
+/// Step 8.6 follow-up — initial-state override for "continue" runs.
+/// Carries the fields the harness would otherwise compute at run
+/// start. `vx` / `vy` provide a warm-start for the first step's
+/// nonlinear solver (helps convergence). `Field2D` does not derive
+/// `Debug`, so neither does this struct.
+#[derive(Clone)]
+pub struct ContinuationState {
+    pub s: Field2D,
+    pub vx: Vec<f64>,
+    pub vy: Vec<f64>,
+    pub age: Option<Field2D>,
+    pub cratonic_factor: Option<Field2D>,
 }
 
 impl BaselineConfig {
@@ -280,6 +304,9 @@ impl BaselineConfig {
             // build their `BaselineConfig` separately and pick
             // `InitMode::default()` (= `Uniform`).
             init_mode: crate::tectonics_v2::init::InitMode::Checkerboard,
+            // Step 8.6 follow-up — `None` means "compute init from
+            // scratch", the regression / sweep contract.
+            continuation: None,
         }
     }
 }
@@ -577,27 +604,42 @@ where
     // `cfg.init_mode`. Steps 0-4 callers (`BoundaryConfig::Disabled`)
     // pair Checkerboard with `plate_data: None` to keep the
     // plate-type-agnostic legacy init.
-    let plate_data = match &cfg.boundary {
-        BoundaryConfig::Enabled { geometry, .. } => {
-            Some(crate::tectonics_v2::init::PlateInitData {
-                plate_id: &geometry.plate_id,
-                plate_type: &geometry.plate_type,
-                seed_coords: geometry.seed_coords.as_deref(),
-            })
-        }
-        BoundaryConfig::Disabled => None,
+    //
+    // Step 8.6 follow-up — `cfg.continuation` short-circuits the
+    // init paths and uses the carried state instead, so a "continue"
+    // run starts from the prior run's final state rather than
+    // re-init.
+    let mut s = if let Some(c) = &cfg.continuation {
+        c.s.clone()
+    } else {
+        let plate_data = match &cfg.boundary {
+            BoundaryConfig::Enabled { geometry, .. } => {
+                Some(crate::tectonics_v2::init::PlateInitData {
+                    plate_id: &geometry.plate_id,
+                    plate_type: &geometry.plate_type,
+                    seed_coords: geometry.seed_coords.as_deref(),
+                })
+            }
+            BoundaryConfig::Disabled => None,
+        };
+        let init_ctx = crate::tectonics_v2::init::InitContext {
+            nx,
+            ny,
+            seed: cfg.seed,
+            amplitude: cfg.s_perturbation_amplitude,
+            plate_data,
+        };
+        crate::tectonics_v2::init::init_s_field(cfg.init_mode, &init_ctx)
     };
-    let init_ctx = crate::tectonics_v2::init::InitContext {
-        nx,
-        ny,
-        seed: cfg.seed,
-        amplitude: cfg.s_perturbation_amplitude,
-        plate_data,
-    };
-    let mut s = crate::tectonics_v2::init::init_s_field(cfg.init_mode, &init_ctx);
     let mut s_next = Field2D::new(nx, ny);
-    let mut vx = vec![0.0; nx * ny];
-    let mut vy = vec![0.0; nx * ny];
+    let mut vx = match &cfg.continuation {
+        Some(c) => c.vx.clone(),
+        None => vec![0.0; nx * ny],
+    };
+    let mut vy = match &cfg.continuation {
+        Some(c) => c.vy.clone(),
+        None => vec![0.0; nx * ny],
+    };
     let mut fx = Field2D::new(nx, ny);
     let mut fy = Field2D::new(nx, ny);
 
@@ -614,7 +656,17 @@ where
     let mut age_state: Option<AgeFieldState> = match cfg.age_field {
         AgeFieldConfig::Disabled => None,
         AgeFieldConfig::Enabled(age_cfg) => {
-            Some(AgeFieldState::from_initial_thickness(&s, &age_cfg))
+            // Step 8.6 follow-up — when continuing, reuse the prior
+            // age field; otherwise compute the §4.11 D2/D7 static
+            // identification from the (just-computed or carried) S̃.
+            let from_continuation = cfg
+                .continuation
+                .as_ref()
+                .and_then(|c| c.age.clone());
+            match from_continuation {
+                Some(age) => Some(AgeFieldState::from_existing(age, &age_cfg)),
+                None => Some(AgeFieldState::from_initial_thickness(&s, &age_cfg)),
+            }
         }
     };
 
@@ -815,7 +867,15 @@ where
                 per_plate_type,
                 seed_coords: Vec::new(),
             };
-            let factor = build_cratonic_factor_field(&plates, crcfg);
+            // Step 8.6 follow-up — continuation override.
+            let factor = match cfg
+                .continuation
+                .as_ref()
+                .and_then(|c| c.cratonic_factor.clone())
+            {
+                Some(cf) => cf,
+                None => build_cratonic_factor_field(&plates, crcfg),
+            };
             Some(CratonicState::from_factor(factor, crcfg.k_viscous, crcfg.b_factor))
         }
         _ => None,
