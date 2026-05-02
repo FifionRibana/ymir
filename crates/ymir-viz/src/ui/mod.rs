@@ -1,5 +1,6 @@
 pub mod left_toolbar;
 pub mod parameter_panel;
+pub mod parameter_panel_v2;
 pub mod pipeline_panel;
 pub mod statistics_panel;
 
@@ -8,22 +9,105 @@ use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
 use crate::state::{GenerationParamsUi, PipelinePhase, ViewMode, ViewState};
 
+use parameter_panel_v2::V2EditableSpec;
+
 pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(EguiPlugin::default()).add_systems(
+        app.add_plugins(EguiPlugin::default());
+        app.init_resource::<V2EditableSpec>();
+        // Step 8.6 Phase 3 — bridge-mode dispatch via run_if guards.
+        // Legacy panels run only when the legacy `SolverBridge` resource
+        // is present (i.e. when the bin was launched in `legacy` mode);
+        // the v2 panel runs only when `V2SolverBridge` is present.
+        // The two arms are mutually exclusive by construction (main.rs
+        // picks one bridge plugin).
+        app.add_systems(
             EguiPrimaryContextPass,
             (
                 configure_egui_style,
-                ui_top_bar,
-                ui_right_panel,
-                ui_bottom_bar,
-                ui_toasts,
                 draw_boundary_legend,
+                // `ui_toasts` consumes `UiActions::last_message` which
+                // is populated only by the legacy bridge plugin. In
+                // v2 mode `UiActions` is not inserted, so we gate the
+                // toast pump on the legacy bridge's presence; the v2
+                // panel surfaces its own status through colored egui
+                // labels (see `parameter_panel_v2::draw`).
+                ui_toasts
+                    .run_if(resource_exists::<crate::bridge::SolverBridge>),
+                ui_top_bar
+                    .run_if(resource_exists::<crate::bridge::SolverBridge>),
+                ui_right_panel
+                    .run_if(resource_exists::<crate::bridge::SolverBridge>),
+                ui_bottom_bar
+                    .run_if(resource_exists::<crate::bridge::SolverBridge>),
+                ui_v2_top_bar
+                    .run_if(resource_exists::<crate::bridge::v2::V2SolverBridge>),
+                ui_v2_right_panel
+                    .run_if(resource_exists::<crate::bridge::v2::V2SolverBridge>),
             ),
         );
     }
+}
+
+/// Step 8.6 v2 top bar — status badge + (during a run) step counter,
+/// elapsed wall time, progress bar.
+fn ui_v2_top_bar(mut contexts: EguiContexts, bridge: Res<crate::bridge::v2::V2SolverBridge>) {
+    use crate::bridge::v2::V2RunState;
+    let Ok(ctx) = contexts.ctx_mut() else { return };
+    egui::TopBottomPanel::top("v2_top_bar").show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Ymir v2 bridge").strong());
+            ui.separator();
+            let badge = match &bridge.state {
+                V2RunState::Idle => ("Idle", egui::Color32::GRAY),
+                V2RunState::Running { .. } => ("Running", egui::Color32::YELLOW),
+                V2RunState::Completed { .. } => ("Completed", egui::Color32::GREEN),
+                V2RunState::Failed { .. } => ("Failed", egui::Color32::RED),
+            };
+            ui.colored_label(badge.1, badge.0);
+
+            if let V2RunState::Running { step, total, started_at, .. } = &bridge.state {
+                ui.separator();
+                let frac = if *total > 0 {
+                    (*step as f32 / *total as f32).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let label = format!("{}/{}", step, total);
+                ui.add(egui::ProgressBar::new(frac).text(label).desired_width(220.0));
+                if let Some(start) = started_at {
+                    let secs = start.elapsed().as_secs_f64();
+                    ui.monospace(format!("{secs:.1}s"));
+                    ctx.request_repaint();
+                }
+            } else if let V2RunState::Completed { elapsed, metrics, .. } = &bridge.state {
+                ui.separator();
+                ui.monospace(format!(
+                    "\u{2713} {:.1}s · CG mean {:.0} · peak|v| {:.2e}",
+                    elapsed.as_secs_f64(),
+                    metrics.cg_iter_mean,
+                    metrics.vmax_peak
+                ));
+            }
+        });
+    });
+}
+
+/// Step 8.6 v2 right panel — wraps the v2 parameter editor.
+fn ui_v2_right_panel(
+    mut contexts: EguiContexts,
+    mut spec_state: ResMut<V2EditableSpec>,
+    bridge: Res<crate::bridge::v2::V2SolverBridge>,
+    mut viz: ResMut<crate::visualization::v2_viz::V2VizState>,
+) {
+    let Ok(ctx) = contexts.ctx_mut() else { return };
+    egui::SidePanel::right("v2_right_panel").exact_width(300.0).show(ctx, |ui| {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            parameter_panel_v2::draw(ui, &mut spec_state, &bridge, &mut viz);
+        });
+    });
 }
 
 fn configure_egui_style(mut contexts: EguiContexts, mut done: Local<bool>) {

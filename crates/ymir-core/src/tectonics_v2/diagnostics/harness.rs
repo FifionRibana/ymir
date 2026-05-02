@@ -272,6 +272,79 @@ impl BaselineConfig {
 pub struct BaselineResult {
     pub metrics: Metrics,
     pub config_dump: SolverConfigDump,
+    /// Final-state field snapshot at end of run. Populated unconditionally;
+    /// the cost is one clone per Field2D (~32 KB on 64²) which is
+    /// negligible vs the run cost itself. Consumers that don't need it
+    /// (most existing tests) simply ignore the field.
+    pub final_state: FinalState,
+}
+
+/// End-of-run snapshot of every raster field a UI / downstream consumer
+/// might want to display. Optional fields are `None` when the
+/// corresponding mechanism was disabled (cratonic, age_field).
+///
+/// `strain_rate_invariant` is the second invariant of the strain-rate
+/// tensor, computed from the final velocity field. It is populated even
+/// without yielding, as it doubles as a "deformation activity" map.
+#[derive(Clone)]
+pub struct FinalState {
+    pub nx: usize,
+    pub ny: usize,
+    pub dx: f64,
+    pub dy: f64,
+    pub s_field: Field2D,
+    pub vx: Vec<f64>,
+    pub vy: Vec<f64>,
+    pub age_field: Option<Field2D>,
+    pub cratonic_factor: Option<Field2D>,
+    pub strain_rate_invariant: Field2D,
+    /// Periodic indices inferred from grid dimensions; included so
+    /// downstream consumers don't have to rebuild them from scratch.
+    pub plate_id: Option<crate::tectonics_v2::voronoi::PlateIdField>,
+    pub plate_type: Option<crate::tectonics_v2::boundaries::PlateTypeField>,
+    pub boundary_flag: Option<crate::tectonics_v2::boundaries::BoundaryFlagField>,
+}
+
+impl std::fmt::Debug for FinalState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FinalState")
+            .field("nx", &self.nx)
+            .field("ny", &self.ny)
+            .field("dx", &self.dx)
+            .field("dy", &self.dy)
+            .field("age_field", &self.age_field.is_some())
+            .field("cratonic_factor", &self.cratonic_factor.is_some())
+            .field("plate_id", &self.plate_id.is_some())
+            .field("plate_type", &self.plate_type.is_some())
+            .field("boundary_flag", &self.boundary_flag.is_some())
+            .finish()
+    }
+}
+
+/// Step 8.6 follow-up — per-step progress payload delivered to the
+/// callback registered via [`run_baseline_with_progress`]. Borrows the
+/// harness-side state read-only; the callback may not mutate, only
+/// observe (cloning into its own buffers if it wants to ship the
+/// snapshot off-thread). Returning `false` from the callback signals
+/// graceful cancellation: the harness breaks the time loop and emits
+/// a `BaselineResult` populated with whatever state was reached.
+pub struct StepProgress<'a> {
+    /// 1-indexed completed step, in `1..=cfg.steps`.
+    pub step: usize,
+    /// `cfg.steps` — copied here so the UI can render `step / total`
+    /// without re-reading the config.
+    pub total: usize,
+    pub peek_s: &'a Field2D,
+    pub peek_vx: &'a [f64],
+    pub peek_vy: &'a [f64],
+    /// Cell-centred ε̇_II (second invariant of the strain-rate tensor).
+    /// Pre-computed by the harness at every step boundary anyway —
+    /// pass it through so consumers don't have to recompute it from
+    /// `peek_vx` / `peek_vy`. At `step == 0` (the pre-loop emit) this
+    /// is a zero Field2D since `vx = vy = 0`.
+    pub peek_strain_ii: &'a Field2D,
+    pub peek_age: Option<&'a Field2D>,
+    pub peek_cratonic_factor: Option<&'a Field2D>,
 }
 
 fn init_thickness(nx: usize, ny: usize, seed: u64, amplitude: f64) -> Field2D {
@@ -499,7 +572,34 @@ fn solve_nonlinear(
 }
 
 /// Drive a single baseline run.
+/// Step 8.6 follow-up — non-streaming wrapper around
+/// [`run_baseline_with_progress`]. Preserves the pre-Step-8.6 caller
+/// surface so every binary, integration test, and benchmark that
+/// passed `&BaselineConfig` to `run_baseline` keeps compiling unchanged.
+/// The callback is a no-op `|_| true` (never cancels), so the run goes
+/// to completion and returns the same `BaselineResult` as before.
 pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
+    run_baseline_with_progress(cfg, |_| true)
+}
+
+/// Step 8.6 follow-up — streaming run.
+///
+/// The callback fires once per completed step (1-indexed) with a
+/// borrowed view of the current state. Returning `false` requests a
+/// graceful abort: the harness breaks the time loop, runs the
+/// post-loop metrics finalisation against whatever state was reached,
+/// and returns a `BaselineResult` (with `metrics.steps` reflecting
+/// the original cfg, not the executed step count — the partial-run
+/// metrics are still meaningful for diagnostics).
+///
+/// Bit-determinism: the callback receives only immutable borrows; it
+/// cannot influence the trajectory. Two runs with identical configs
+/// and a no-op callback produce byte-identical `BaselineResult`s
+/// (preserved by [`run_baseline`]'s wrapper).
+pub fn run_baseline_with_progress<F>(cfg: &BaselineConfig, mut on_progress: F) -> BaselineResult
+where
+    F: FnMut(&StepProgress<'_>) -> bool,
+{
     let nx = cfg.grid_nx;
     let ny = cfg.grid_ny;
     let dx = cfg.domain_lx / nx as f64;
@@ -546,6 +646,31 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
             Some(AgeFieldState::from_initial_thickness(&s, &age_cfg))
         }
     };
+
+    // Step 8.6 follow-up — fire an EARLY step=0 callback as soon as
+    // S̃ + age are initialised, BEFORE the heavy precomputes
+    // (cratonic BFS, mantle stream-function, slab buffers, first
+    // Newton+CG solve). On 64² mantle-on the precompute + first
+    // solve takes ~10 s; firing the callback here lets the UI paint
+    // the initial Voronoi-aware S̃ and age fields immediately rather
+    // than staring at a blank sprite. The cratonic peek is `None`
+    // at this point (the BFS hasn't run); it becomes available at
+    // the first per-step emit (step=1).
+    let initial_strain_ii = Field2D::new(nx, ny);
+    {
+        let initial_progress = StepProgress {
+            step: 0,
+            total: cfg.steps,
+            peek_s: &s,
+            peek_vx: &vx,
+            peek_vy: &vy,
+            peek_strain_ii: &initial_strain_ii,
+            peek_age: age_state.as_ref().map(|st| &st.current),
+            peek_cratonic_factor: None,
+        };
+        let _ = on_progress(&initial_progress);
+    }
+
     // Step 10 — run-level accumulator for boundary-event resets.
     // Counts are updated each step inside `apply_age_events`;
     // converted to `Option<f64>` / `Option<u64>` on
@@ -1740,6 +1865,28 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
                 let _ = save_snapshot(&state.current, &path_a);
             }
         }
+
+        // Step 8.6 follow-up — fire the per-step progress callback.
+        // The closure inspects current state through immutable borrows
+        // only; it cannot mutate the trajectory. Returning `false`
+        // breaks the loop (graceful cancel) and the post-loop metrics
+        // are computed against whatever state was reached.
+        let progress = StepProgress {
+            step: completed,
+            total: cfg.steps,
+            peek_s: &s,
+            peek_vx: &vx,
+            peek_vy: &vy,
+            // The harness already computes `sr` for the rheology
+            // pipeline (line ~1407 in this file); reuse it instead
+            // of recomputing in the callback consumer.
+            peek_strain_ii: &sr.eps_ii_center,
+            peek_age: age_state.as_ref().map(|st| &st.current),
+            peek_cratonic_factor: cratonic_state.as_ref().map(|st| &st.factor),
+        };
+        if !on_progress(&progress) {
+            break;
+        }
     }
 
     let wallclock = start.elapsed();
@@ -2109,7 +2256,38 @@ pub fn run_baseline(cfg: &BaselineConfig) -> BaselineResult {
         mantle_config: cfg.mantle.describe(),
     };
 
-    BaselineResult { metrics, config_dump }
+    // Step 8.6 — populate FinalState for downstream consumers
+    // (interactive viz, screenshot harness). All clones are O(grid),
+    // negligible vs the run cost itself.
+    let strain_rate_invariant = {
+        let sr = rheology::StrainRate::compute(nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy);
+        sr.eps_ii_center
+    };
+    let (plate_id_out, plate_type_out, boundary_flag_out) = match &cfg.boundary {
+        BoundaryConfig::Enabled { geometry, .. } => (
+            Some(geometry.plate_id.clone()),
+            Some(geometry.plate_type.clone()),
+            current_flag.clone(),
+        ),
+        BoundaryConfig::Disabled => (None, None, None),
+    };
+    let final_state = FinalState {
+        nx,
+        ny,
+        dx,
+        dy,
+        s_field: s.clone(),
+        vx: vx.clone(),
+        vy: vy.clone(),
+        age_field: age_state.as_ref().map(|st| st.current.clone()),
+        cratonic_factor: cratonic_state.as_ref().map(|st| st.factor.clone()),
+        strain_rate_invariant,
+        plate_id: plate_id_out,
+        plate_type: plate_type_out,
+        boundary_flag: boundary_flag_out,
+    };
+
+    BaselineResult { metrics, config_dump, final_state }
 }
 
 fn record_outcome(oc: &NonlinearOutcome, na: &mut NewtonAggregate) {
