@@ -30,6 +30,11 @@ use super::boundaries::{PlateType, PlateTypeField};
 use super::field::Field2D;
 use super::voronoi::{compute_dist_to_inter_plate_boundary, PlateIdField};
 
+pub mod radial_profile;
+pub use radial_profile::{
+    ProfileShape, CONTINENTAL_VALUE_DEFAULT, OCEANIC_VALUE_DEFAULT, POW_EXPONENT_DEFAULT,
+};
+
 /// Per-plate-type reference S̃ values, dimensionless. `0.2` for
 /// oceanic (≈ 7 km), `1.0` for continental (≈ 35 km). Shared by the
 /// new init modes so the same scale family applies as in the legacy
@@ -60,6 +65,19 @@ pub enum InitMode {
     /// Convolution of binary classification mask with a periodic
     /// Gaussian kernel. `sigma` measured in cells.
     Convolution { sigma: f64 },
+    /// Step 13 — radial profile per continental plate. Continental
+    /// cells get `S̃ = oceanic_value + (continental_value -
+    /// oceanic_value) · profile(d / L_plate)` where `d` is the
+    /// Chebyshev BFS distance to the nearest inter-plate boundary
+    /// and `L_plate` is the per-plate max distance. Oceanic cells
+    /// get `S̃ = oceanic_value` uniform. See
+    /// [`radial_profile`] module docstring for the algorithm and
+    /// degenerate-case behaviour.
+    RadialProfile {
+        continental_value: f64,
+        oceanic_value: f64,
+        profile_shape: ProfileShape,
+    },
 }
 
 impl Default for InitMode {
@@ -137,6 +155,24 @@ pub fn init_s_field(mode: InitMode, ctx: &InitContext<'_>) -> Field2D {
                  BoundaryConfig::Enabled",
             );
             convolution(ctx.nx, ctx.ny, p, sigma)
+        }
+        InitMode::RadialProfile {
+            continental_value,
+            oceanic_value,
+            profile_shape,
+        } => {
+            let p = ctx.plate_data.as_ref().expect(
+                "InitMode::RadialProfile requires plate data — pair with \
+                 BoundaryConfig::Enabled",
+            );
+            radial_profile::build(
+                ctx.nx,
+                ctx.ny,
+                p,
+                continental_value,
+                oceanic_value,
+                profile_shape,
+            )
         }
     }
 }
@@ -621,6 +657,11 @@ mod tests {
             InitMode::Uniform { boundary_smoothing_width: 1.0 },
             InitMode::Gaussian { sigma_continental: 4.0, sigma_oceanic: 4.0 },
             InitMode::Convolution { sigma: 1.5 },
+            InitMode::RadialProfile {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: ProfileShape::Smoothstep,
+            },
         ] {
             let s_a = init_s_field(mode, &ctx_with_plates(nx, ny, 42, 0.2, &plates_a));
             let s_b = init_s_field(mode, &ctx_with_plates(nx, ny, 42, 0.2, &plates_b));
