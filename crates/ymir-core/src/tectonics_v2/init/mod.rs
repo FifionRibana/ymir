@@ -25,11 +25,10 @@
 //! baselines (strategy γ).
 
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 
 use super::boundaries::{PlateType, PlateTypeField};
 use super::field::Field2D;
-use super::voronoi::PlateIdField;
+use super::voronoi::{compute_dist_to_inter_plate_boundary, PlateIdField};
 
 /// Per-plate-type reference S̃ values, dimensionless. `0.2` for
 /// oceanic (≈ 7 km), `1.0` for continental (≈ 35 km). Shared by the
@@ -199,69 +198,42 @@ fn checkerboard_plate_aware(
 /// value blends towards the midpoint between own and across-boundary
 /// values, with cubic smoothstep weight `3t² − 2t³` of normalised
 /// distance.
+///
+/// Step 13 Phase 1: the BFS distance computation is delegated to
+/// [`super::voronoi::compute_dist_to_inter_plate_boundary`] (shared
+/// with `plate_kinematic::field::build` and the upcoming
+/// `init::radial_profile`). Bit-identical with the pre-refactor
+/// implementation by construction — see that utility's module
+/// docstring.
 fn uniform(
     nx: usize,
     ny: usize,
     p: &PlateInitData<'_>,
     boundary_smoothing_width: f64,
 ) -> Field2D {
+    let bfs = compute_dist_to_inter_plate_boundary(nx, ny, p.plate_id);
+
+    // Per-cell own value + per-plate-id S̃ value lookup, in one scan.
+    // PlateInitData carries a per-cell plate_type field but no
+    // per-plate table; build the lookup inline so the utility's
+    // `target_plate_id` index can be translated to the across-
+    // boundary S̃ reference value. Bit-identical with storing the
+    // value directly during BFS because per-plate properties are
+    // constant within a plate (`plate_type[i,j] =
+    // per_plate_type[plate_id[i,j]]`).
     let n = nx * ny;
     let mut own_value = vec![0.0_f64; n];
-    let mut dist = vec![f64::INFINITY; n];
-    let mut target_value = vec![0.0_f64; n];
-
+    let mut per_plate_value: Vec<Option<f64>> = Vec::new();
     for j in 0..ny {
         for i in 0..nx {
-            own_value[j * nx + i] = s_value_for(p.plate_type.get(i, j));
-        }
-    }
-
-    // Seed BFS at every cell whose 4-periodic neighbour belongs to a
-    // different plate. The "across-boundary value" is taken from any
-    // such neighbour (deterministic — first found in NESW order).
-    let mut queue: VecDeque<(usize, usize)> = VecDeque::new();
-    for j in 0..ny {
-        for i in 0..nx {
-            let id = p.plate_id.get(i, j);
-            let ip = (i + 1) % nx;
-            let im = (i + nx - 1) % nx;
-            let jp = (j + 1) % ny;
-            let jm = (j + ny - 1) % ny;
-            let mut nb_v: Option<f64> = None;
-            for &(ni, nj) in &[(ip, j), (im, j), (i, jp), (i, jm)] {
-                if p.plate_id.get(ni, nj) != id {
-                    nb_v = Some(s_value_for(p.plate_type.get(ni, nj)));
-                    break;
-                }
+            let v = s_value_for(p.plate_type.get(i, j));
+            own_value[j * nx + i] = v;
+            let pid = p.plate_id.get(i, j) as usize;
+            if pid >= per_plate_value.len() {
+                per_plate_value.resize(pid + 1, None);
             }
-            if let Some(v) = nb_v {
-                let idx = j * nx + i;
-                dist[idx] = 0.0;
-                target_value[idx] = v;
-                queue.push_back((i, j));
-            }
-        }
-    }
-
-    // Chebyshev BFS (8-neighbour, periodic). Each step adds 1.
-    while let Some((i, j)) = queue.pop_front() {
-        let idx = j * nx + i;
-        let d = dist[idx];
-        let tv = target_value[idx];
-        for dj in [-1_i32, 0, 1] {
-            for di in [-1_i32, 0, 1] {
-                if di == 0 && dj == 0 {
-                    continue;
-                }
-                let ni = ((i as i32 + di).rem_euclid(nx as i32)) as usize;
-                let nj = ((j as i32 + dj).rem_euclid(ny as i32)) as usize;
-                let nidx = nj * nx + ni;
-                let nd = d + 1.0;
-                if nd < dist[nidx] {
-                    dist[nidx] = nd;
-                    target_value[nidx] = tv;
-                    queue.push_back((ni, nj));
-                }
+            if per_plate_value[pid].is_none() {
+                per_plate_value[pid] = Some(v);
             }
         }
     }
@@ -271,9 +243,22 @@ fn uniform(
     for j in 0..ny {
         for i in 0..nx {
             let idx = j * nx + i;
-            let d = dist[idx];
+            let d = bfs.distance.get(i, j);
             let own = own_value[idx];
-            let other = target_value[idx];
+            let tpid = bfs.target_plate_id[idx];
+            let other = if tpid == u16::MAX {
+                // BFS never reached this cell (degenerate single-
+                // plate-on-torus). dist=INFINITY → the `d >= w`
+                // branch short-circuits to `own`; the value picked
+                // here is unused. Defensive default = own.
+                own
+            } else {
+                per_plate_value[tpid as usize].expect(
+                    "BFS propagated a plate id without an entry in \
+                     per_plate_value — should be impossible since \
+                     target_plate_id is set from plate_id.get(ni, nj)",
+                )
+            };
             if d >= w {
                 s.set(i, j, own);
             } else {
