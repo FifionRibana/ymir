@@ -81,6 +81,7 @@ fn build_step0_config(seed: u64, linear_solver: LinearSolverConfig) -> BaselineC
         linear_solver,
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -118,6 +119,7 @@ fn build_step3_config(seed: u64, linear_solver: LinearSolverConfig) -> BaselineC
         linear_solver,
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -165,6 +167,7 @@ fn build_step6_config(
         linear_solver,
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     })
 }
 

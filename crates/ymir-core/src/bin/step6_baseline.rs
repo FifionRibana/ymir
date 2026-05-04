@@ -165,6 +165,7 @@ fn run_voronoi_config(
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     println!("-- running Voronoi physics {}×{} for {} steps --", nx, ny, args.steps);
     let r = run_baseline(&cfg);
@@ -226,6 +227,7 @@ fn run_regression_config(
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     println!("-- running Step 5-shape regression {}×{} for {} steps --", nx, ny, args.steps);
     let r = run_baseline(&cfg);

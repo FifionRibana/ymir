@@ -112,6 +112,15 @@ pub struct V2VizState {
     /// (yellow arrow at each plate's centroid, length proportional
     /// to mean per-plate velocity). Default `false`.
     pub show_velocity_vectors: bool,
+    /// Step 11 — multiplier on the arrow length (1.0 = the legacy
+    /// `VELOCITY_ARROW_SCALE_CELLS` baseline tuned for `peak|v̄_plate|
+    /// ≈ 5` in the active_medley regime). Drift-driven runs at
+    /// `|drift| ≈ 0.5` produce arrows ~10× shorter at default scale,
+    /// so the user can dial this up to `2.0`–`8.0` to make small
+    /// drifts visible. Anti-pattern (per the issue): never auto-scale
+    /// to the current `max|v|` — that would make arrows look the same
+    /// across runs and break visual comparison.
+    pub arrow_scale: f64,
     /// Phase 8e — set by the Export button. Consumed by the
     /// `handle_v2_export` system; surfaces the result via
     /// [`Self::last_export`].
@@ -163,6 +172,7 @@ impl Default for V2VizState {
             last_capture: None,
             show_voronoi_boundaries: false,
             show_velocity_vectors: false,
+            arrow_scale: 1.0,
             export_requested: false,
             last_export: None,
             import_requested_path: None,
@@ -207,6 +217,7 @@ fn setup_v2_sprite(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         last_capture: None,
         show_voronoi_boundaries: false,
         show_velocity_vectors: false,
+        arrow_scale: 1.0,
         export_requested: false,
         last_export: None,
         import_requested_path: None,
@@ -479,8 +490,16 @@ fn render_v2_overlay_gizmos(
 
             let mvx = acc.vx / acc.count as f64;
             let mvy = acc.vy / acc.count as f64;
-            let head_dx = mvx * VELOCITY_ARROW_SCALE_CELLS;
-            let head_dy = mvy * VELOCITY_ARROW_SCALE_CELLS;
+            // Step 11 — `viz.arrow_scale` is a user-facing
+            // multiplier on the constant `VELOCITY_ARROW_SCALE_CELLS`
+            // baseline. Scaling stays *fixed per-frame* (proportional
+            // to the velocity magnitude, not normalised by max|v| —
+            // see the issue's anti-pattern note: auto-norm makes
+            // arrows look identical across runs and breaks visual
+            // comparison).
+            let scale = VELOCITY_ARROW_SCALE_CELLS * viz.arrow_scale;
+            let head_dx = mvx * scale;
+            let head_dy = mvy * scale;
             let head_len_cells = (head_dx * head_dx + head_dy * head_dy).sqrt();
             if head_len_cells < 1.0 {
                 continue;
@@ -1140,14 +1159,39 @@ fn compute_preview_state(spec: &V2RunSpec) -> V2FinalState {
         })
         .collect();
 
+    // Step 11 — when the user has configured PerPlate drift, populate
+    // the preview's `vx, vy` with the drift field so the velocity-
+    // arrow overlay shows the prescribed plate motion *before* the
+    // user clicks Run. Without this the preview's velocity field
+    // would stay at zeros and the user could not visually verify
+    // their per-plate slider settings until launching a run.
+    //
+    // For `Zero` the buffers stay at zero — same as pre-Step-11
+    // preview semantics.
+    let (vx, vy) = match &spec.plate_kinematic {
+        crate::bridge::v2::V2PlateKinematicSpec::Zero => {
+            (vec![0.0; nx * ny], vec![0.0; nx * ny])
+        }
+        crate::bridge::v2::V2PlateKinematicSpec::PerPlate {
+            velocities,
+            boundary_smoothing_width,
+        } => ymir_core::tectonics_v2::plate_kinematic::field::build(
+            nx,
+            ny,
+            &plates.plate_id,
+            velocities,
+            *boundary_smoothing_width,
+        ),
+    };
+
     V2FinalState {
         nx,
         ny,
         dx: 1.0 / nx as f64,
         dy: 1.0 / ny as f64,
         s_field: s.data().to_vec(),
-        vx: vec![0.0; nx * ny],
-        vy: vec![0.0; nx * ny],
+        vx,
+        vy,
         strain_rate_invariant: vec![0.0; nx * ny],
         age_field,
         cratonic_factor,

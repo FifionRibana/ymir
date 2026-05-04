@@ -291,6 +291,7 @@ fn run_scenario(
             linear_solver: Default::default(),
             init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
             continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
         };
         println!("-- running {}×{} for {} steps --", nx, ny, args.steps);
         let result = run_baseline(&base);
