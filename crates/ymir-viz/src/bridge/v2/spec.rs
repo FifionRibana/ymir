@@ -267,11 +267,139 @@ pub struct V2RunSpec {
     /// (which predate this field) loading without modification.
     #[serde(default)]
     pub init_mode: V2InitModeSpec,
+    /// Step 11 — plate kinematic drift. `Zero` (the default) is a
+    /// no-op and bit-identical to pre-Step-11. `PerPlate` carries
+    /// per-plate `(vx, vy)` velocities in `[-1, 1]` and a
+    /// `boundary_smoothing_width` (cells, typical `1.5`–`6.0`)
+    /// blended via smoothstep across inter-plate boundaries. See
+    /// `docs/solver-scaling-step11-patch.md` §4.12 for the
+    /// deformation/transport split that gives this field its
+    /// semantics. `#[serde(default)]` keeps preset JSON files
+    /// written before Step 11 loading unchanged (they default to
+    /// `Zero`).
+    #[serde(default)]
+    pub plate_kinematic: V2PlateKinematicSpec,
+}
+
+/// Step 11 — UI-side mirror of
+/// [`ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig`].
+/// The two enums share `serde(tag = "kind")` shape so a v2 preset
+/// JSON round-trips between the panel state and the harness config
+/// without bespoke conversion. `Zero` is the default and the
+/// pre-Step-11 path; `PerPlate` exposes the per-plate velocity
+/// vector + smoothing width to the UI sliders.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum V2PlateKinematicSpec {
+    /// All plates at rest — no drift contribution. Bit-identical to
+    /// pre-Step-11 paths.
+    Zero,
+    /// Per-plate velocity assignment with smoothstep blending across
+    /// inter-plate boundaries. `velocities[p] = (vx, vy)` for plate
+    /// id `p`. `boundary_smoothing_width` is in cells; the panel
+    /// clamps it to `[0.5, 5.0]` (≥ `1.5` is the issue D2 default).
+    PerPlate {
+        velocities: Vec<(f64, f64)>,
+        boundary_smoothing_width: f64,
+    },
+}
+
+impl Default for V2PlateKinematicSpec {
+    fn default() -> Self {
+        V2PlateKinematicSpec::Zero
+    }
+}
+
+impl V2PlateKinematicSpec {
+    /// Default smoothing width when the user enables `PerPlate`
+    /// from the panel. Matches the
+    /// `PlateKinematicConfig::DEFAULT_BOUNDARY_SMOOTHING_WIDTH`
+    /// constant on the core side so panel→harness round-trips are
+    /// identity-default.
+    pub const DEFAULT_BOUNDARY_SMOOTHING_WIDTH: f64 = 1.5;
+
+    /// Build a fresh `PerPlate` with `n` plates' velocities all
+    /// zeroed — the UI's "enable" path: the toggle becomes the
+    /// non-`Zero` variant, but the user has not yet dragged any
+    /// slider so the dynamics are equivalent to `Zero` until they
+    /// do.
+    pub fn per_plate_zero(num_plates: usize) -> Self {
+        V2PlateKinematicSpec::PerPlate {
+            velocities: vec![(0.0, 0.0); num_plates],
+            boundary_smoothing_width: Self::DEFAULT_BOUNDARY_SMOOTHING_WIDTH,
+        }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        matches!(self, V2PlateKinematicSpec::Zero)
+    }
+
+    /// Resize the `velocities` vector when the user changes
+    /// `num_plates` in the panel. Preserves existing per-plate
+    /// values; new slots default to `(0, 0)`. No-op for `Zero`.
+    pub fn resize_to(&mut self, num_plates: usize) {
+        if let V2PlateKinematicSpec::PerPlate { velocities, .. } = self {
+            velocities.resize(num_plates, (0.0, 0.0));
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Step 11 — round-trip every `V2PlateKinematicSpec` variant
+    /// through JSON. Catches schema drift between the panel state
+    /// and the harness config the bridge translates it into.
+    #[test]
+    fn plate_kinematic_spec_roundtrips_through_json() {
+        let cases = [
+            V2PlateKinematicSpec::Zero,
+            V2PlateKinematicSpec::PerPlate {
+                velocities: vec![(0.5, 0.0), (-0.5, 0.0), (0.0, 0.3)],
+                boundary_smoothing_width: 1.5,
+            },
+            V2PlateKinematicSpec::PerPlate {
+                velocities: vec![(0.0, 0.0); 8],
+                boundary_smoothing_width: 4.5,
+            },
+        ];
+        for original in cases {
+            let json = serde_json::to_string(&original).expect("serialize");
+            let back: V2PlateKinematicSpec = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(original, back, "roundtrip failed: {}", json);
+        }
+    }
+
+    /// Step 11 — backward-compat: a preset JSON written before
+    /// Step 11 (no `plate_kinematic` field) must still deserialise
+    /// and default to `Zero` so the harness keeps the bit-identical
+    /// regression contract.
+    #[test]
+    fn old_preset_without_plate_kinematic_defaults_to_zero() {
+        let old_json = r#"{
+            "seed": 42,
+            "grid_nx": 64,
+            "grid_ny": 64,
+            "steps": 100,
+            "num_plates": 8,
+            "continental_ratio": 0.3,
+            "bi": 0.15,
+            "br": 0.05,
+            "mantle": { "kind": "off" },
+            "slab_enabled": false,
+            "cratonic": { "kind": "off" },
+            "age_field": { "kind": "off" },
+            "linear_solver": "jacobi",
+            "force": { "kind": "gpe" },
+            "s_perturbation_amplitude": 0.2,
+            "total_time_nondim": 6.0,
+            "cfl_factor": 0.3
+        }"#;
+        let spec: V2RunSpec =
+            serde_json::from_str(old_json).expect("old preset must deserialize");
+        assert_eq!(spec.plate_kinematic, V2PlateKinematicSpec::Zero);
+    }
 
     /// Phase 8d — round-trip every `V2InitModeSpec` variant through
     /// JSON. Catches schema drift between the Rust enum and any
@@ -365,6 +493,7 @@ impl V2RunSpec {
             output_dir: default_output_dir(),
             preset_label: "active_medley".to_string(),
             init_mode: V2InitModeSpec::default(),
+            plate_kinematic: V2PlateKinematicSpec::default(),
         }
     }
 }

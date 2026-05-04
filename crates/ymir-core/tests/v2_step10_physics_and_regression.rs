@@ -110,6 +110,7 @@ fn build_step10_config(age_field: AgeFieldConfig, label: &str) -> BaselineConfig
         linear_solver: LinearSolverConfig::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 

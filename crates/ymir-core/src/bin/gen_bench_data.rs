@@ -203,6 +203,7 @@ fn capture_step0_quiescent(args: &Args, path: &PathBuf) -> Result<(), String> {
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -248,6 +249,7 @@ fn capture_step3_floor_yielding(args: &Args, path: &PathBuf) -> Result<(), Strin
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -341,6 +343,7 @@ fn capture_step8_activated(
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -396,5 +399,6 @@ fn build_step6_shape_config(
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     })
 }

@@ -66,6 +66,7 @@ fn build_step0_config(path: PathBuf) -> BaselineConfig {
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
+            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
