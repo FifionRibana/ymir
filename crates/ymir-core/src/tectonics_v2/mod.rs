@@ -25,6 +25,7 @@ pub mod diagnostics;
 pub mod field;
 pub mod forcing;
 pub mod init;
+pub mod plate_kinematic;
 pub mod mantle;
 pub mod presets;
 pub mod recycling;

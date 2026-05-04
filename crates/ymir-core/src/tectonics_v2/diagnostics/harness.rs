@@ -246,6 +246,16 @@ pub struct BaselineConfig {
     /// num_plates, continental_ratio, grid dims) as the source run
     /// for the override to make physical sense.
     pub continuation: Option<ContinuationState>,
+    /// Step 11 — initial velocity field configuration. Default
+    /// [`crate::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero`]
+    /// preserves the Steps 0-10 zero-init contract bit-for-bit (the
+    /// time-loop entry below short-circuits the entire field-build
+    /// path on the `Zero` variant). `PerPlate { velocities, .. }`
+    /// builds `vx`/`vy` from the per-plate assignment with smoothstep
+    /// blending across inter-plate boundaries — used by scenario
+    /// configurations (collision / divergence / shear / triple
+    /// junction) that need motion without depending on mantle.
+    pub plate_kinematic: crate::tectonics_v2::plate_kinematic::PlateKinematicConfig,
 }
 
 /// Step 8.6 follow-up — initial-state override for "continue" runs.
@@ -307,6 +317,11 @@ impl BaselineConfig {
             // Step 8.6 follow-up — `None` means "compute init from
             // scratch", the regression / sweep contract.
             continuation: None,
+            // Step 11 — `Zero` keeps the harness on the legacy
+            // zero-init code path bit-for-bit. Scenarios that
+            // exercise the new mechanism build `BaselineConfig`
+            // separately and pass `PerPlate { .. }`.
+            plate_kinematic: crate::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
         }
     }
 }
@@ -632,13 +647,70 @@ where
         crate::tectonics_v2::init::init_s_field(cfg.init_mode, &init_ctx)
     };
     let mut s_next = Field2D::new(nx, ny);
-    let mut vx = match &cfg.continuation {
-        Some(c) => c.vx.clone(),
-        None => vec![0.0; nx * ny],
+
+    // Step 11 — plate kinematic drift (Phase 4b).
+    //
+    // The drift field `(drift_vx, drift_vy)` is constructed once at
+    // init from the per-plate assignment and then *added back* to the
+    // solver output after every Stokes solve in the time loop, so
+    // `v_total = v_solver + v_drift`. This makes the user-prescribed
+    // plate motion observable in the dynamics — without it, the
+    // quasi-static Stokes solve would overwrite any prescribed `v`
+    // at every step (see `plate_kinematic` module docs and
+    // `docs/solver-scaling-step11-patch.md` §4.12).
+    //
+    // Empty buffers when `Zero` so no allocation; the time-loop
+    // strip / add hooks branch on `is_zero()` and skip the per-cell
+    // loop entirely. `Zero` is bit-identical to pre-Step-11.
+    let (drift_vx, drift_vy) = match &cfg.plate_kinematic {
+        crate::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero => {
+            (Vec::<f64>::new(), Vec::<f64>::new())
+        }
+        crate::tectonics_v2::plate_kinematic::PlateKinematicConfig::PerPlate {
+            velocities,
+            boundary_smoothing_width,
+        } => {
+            let plate_id = match &cfg.boundary {
+                BoundaryConfig::Enabled { geometry, .. } => &geometry.plate_id,
+                BoundaryConfig::Disabled => panic!(
+                    "PlateKinematicConfig::PerPlate requires plate data — \
+                     pair with BoundaryConfig::Enabled, or use \
+                     PlateKinematicConfig::Zero for boundary-disabled runs"
+                ),
+            };
+            let max_pid = plate_id.data().iter().copied().max().unwrap_or(0) as usize;
+            assert!(
+                velocities.len() > max_pid,
+                "PlateKinematicConfig::PerPlate velocities length {} \
+                 does not cover max plate_id {}",
+                velocities.len(),
+                max_pid
+            );
+            crate::tectonics_v2::plate_kinematic::field::build(
+                nx,
+                ny,
+                plate_id,
+                velocities,
+                *boundary_smoothing_width,
+            )
+        }
     };
-    let mut vy = match &cfg.continuation {
-        Some(c) => c.vy.clone(),
-        None => vec![0.0; nx * ny],
+
+    // Initialise vx, vy. With PerPlate the buffers start equal to the
+    // drift field so the step=0 callback shows the prescribed plate
+    // motion (the user's input fed back to them visually). The first
+    // loop iteration's strip-before-solve hook then resets the buffer
+    // to zero before Newton runs — same cold-start behaviour as
+    // Steps 0-10.
+    let (mut vx, mut vy) = match &cfg.continuation {
+        Some(c) => (c.vx.clone(), c.vy.clone()),
+        None => {
+            if cfg.plate_kinematic.is_zero() {
+                (vec![0.0; nx * ny], vec![0.0; nx * ny])
+            } else {
+                (drift_vx.clone(), drift_vy.clone())
+            }
+        }
     };
     let mut fx = Field2D::new(nx, ny);
     let mut fy = Field2D::new(nx, ny);
@@ -692,6 +764,26 @@ where
             peek_cratonic_factor: None,
         };
         let _ = on_progress(&initial_progress);
+    }
+
+    // Step 11 — zero `vx, vy` after the step-0 callback (which had to
+    // see the prescribed drift for the user's UI display) so the
+    // upcoming `run_continuation` ramp + first time-loop iter both
+    // cold-start from zero. The drift is NOT a state field — it is a
+    // per-plate rigid-transport forcing applied only inside the
+    // advection scope of each iter (between `add_drift_for_advection`
+    // and `strip_drift_at_iter_end`). Letting the continuation ramp
+    // start from `vx = drift` would put Newton on a far-off warm
+    // start (drift = O(1) vs true continuation solution = O(1e-5))
+    // and risk divergence. See §4.12 patch — the
+    // deformation/transport split.
+    if !cfg.plate_kinematic.is_zero() && cfg.continuation.is_none() {
+        for v in vx.iter_mut() {
+            *v = 0.0;
+        }
+        for v in vy.iter_mut() {
+            *v = 0.0;
+        }
     }
 
     // Step 10 — run-level accumulator for boundary-event resets.
@@ -1328,6 +1420,23 @@ where
             }
         });
 
+        // Step 11 invariant: at every iteration boundary `vx, vy`
+        // hold the solver-only field. The drift is added only inside
+        // the advection scope (just before `cfl_dt` / `step_upwind`)
+        // and stripped back at the end of the iter, so:
+        //   * Newton warm-start = previous solver_(N-1) (correct
+        //     fixed-point trajectory).
+        //   * Strain rate / yielding / eta diagnostics see solver-
+        //     only — the drift is a per-plate rigid transport (a
+        //     change of frame), not a deformation, so any
+        //     deformation-flavoured metric must exclude it (see
+        //     §4.12 patch).
+        //   * Transport (advection of S̃, age, boundary detection)
+        //     sees `v_total = v_solver + v_drift`.
+        // No strip hook is needed here: the previous iter's
+        // strip-after-advection (and `run_continuation`'s output for
+        // iter 0) already left `vx, vy` in solver-only form.
+
         // Step 8.5b Phase 5: order-2 warm-start extrapolation.
         // `vx, vy` here is `v(t_k)` (= previous step's converged
         // solution; or the post-ramp state on `step == 0`). The
@@ -1406,6 +1515,22 @@ where
             cfg.linear_solver,
         );
         record_outcome(&outcome, &mut newton_agg);
+
+        // Step 11 — drift is NOT added here. The post-solve
+        // diagnostic block below (`StrainRate::compute`, eta rebuild,
+        // yielding metrics, peak|v|, mean stats) measures *deformation*
+        // and must see `v_solver` only — the drift is a per-plate
+        // rigid transport (a change of reference frame) and contributes
+        // zero deformation in plate interiors but a *huge* artificial
+        // smoothstep gradient at inter-plate boundaries that would
+        // wrongly trigger yielding and runaway feedback (`ε̇ ↑ → η ↓
+        // → v_solver ↑ → ε̇ ↑`). Drift is added back lower in the
+        // loop, just before the advection pipeline (which transports
+        // S̃, age, slab mass and which *is* the place where the rigid
+        // transport must take effect). See §4.12 patch:
+        //
+        //   Deformation (ε̇_II, η_visc, yielding criterion) = v_solver
+        //   Transport (advection S̃, age, boundary detection) = v_total
 
         // Step 8.5b Phase 5: extrapolation history rotation. After
         // the solve, `vx, vy` is `v(t_{k+1})`. Save the *snapshot*
@@ -1579,6 +1704,23 @@ where
         // tiny-v regimes don't walk through the run in a handful of
         // oversized steps (advection discretisation stability aside,
         // the physics cares about the ratio of dt to the dissipation
+        // Step 11 — *now* add drift back so the advection pipeline
+        // sees `v_total = v_solver + v_drift`. CFL must also see
+        // v_total (transport-velocity-driven stability). Above
+        // this line all consumers (Newton solve, strain rate,
+        // yielding metrics, mean velocity stats, peak|v|) saw
+        // solver-only, which is the deformation-truth state. The
+        // strip-back-to-solver-only that mirrors this add lives at
+        // the start of the next iter's solve block (the existing
+        // strip-before-Newton hook), so the loop is symmetric:
+        // drift exists only inside the advection scope.
+        if !cfg.plate_kinematic.is_zero() {
+            for k in 0..vx.len() {
+                vx[k] += drift_vx[k];
+                vy[k] += drift_vy[k];
+            }
+        }
+
         // time τ ~ L²·η/(Ar·S²), not about CFL alone).
         let dt_cfl = cfl_dt(dx, dy, &vx, &vy, cfg.cfl_factor);
         // `dt_target` is computed at the top of the loop body (Step 7
@@ -1917,6 +2059,18 @@ where
         };
         if !on_progress(&progress) {
             break;
+        }
+
+        // Step 11 — strip the drift back so the next iter starts
+        // with `vx, vy = solver_N` (solver-only invariant). The
+        // progress callback above sees `v_total` for visualisation
+        // purposes; everything from here to the start of the next
+        // iter sees solver-only.
+        if !cfg.plate_kinematic.is_zero() {
+            for k in 0..vx.len() {
+                vx[k] -= drift_vx[k];
+                vy[k] -= drift_vy[k];
+            }
         }
     }
 

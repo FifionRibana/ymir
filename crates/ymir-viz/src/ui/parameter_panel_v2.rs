@@ -15,7 +15,7 @@ use bevy_egui::egui;
 
 use crate::bridge::v2::{
     presets, V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2InitModeSpec, V2LinearSolverSpec,
-    V2MantleSpec, V2RunSpec, V2RunState, V2SolverBridge,
+    V2MantleSpec, V2PlateKinematicSpec, V2RunSpec, V2RunState, V2SolverBridge,
 };
 use crate::phases;
 use crate::pipeline::{ActivePhase, PipelinePhase};
@@ -263,6 +263,111 @@ pub fn draw(
             }
         });
 
+    // ── Plate kinematic drift (Step 11) ────────────────────────────
+    // Per-plate prescribed velocities, blended with smoothstep across
+    // inter-plate boundaries. Adds to v_solver only inside the
+    // advection scope of each step (deformation/transport split, see
+    // §4.12 patch). Default = Zero (no drift, bit-identical to
+    // pre-Step-11). Section default-collapsed because most users
+    // run with `Zero`; the user opens it when configuring a
+    // scenario (collision / divergence / shear / triple junction).
+    egui::CollapsingHeader::new("Plate velocities (Step 11)")
+        .default_open(false)
+        .show(ui, |ui| {
+            // Keep `velocities.len()` synchronised with the
+            // `Voronoï plates` slider above. The slider clamps
+            // `num_plates` to `[3, 15]`, so the resize is bounded.
+            // New plates default to `(0, 0)`; trimmed plates are
+            // dropped (per the user's vigilance #2: no global
+            // reset on count change).
+            spec.plate_kinematic.resize_to(spec.num_plates);
+
+            let mut enabled = !spec.plate_kinematic.is_zero();
+            if ui.checkbox(&mut enabled, "Enable per-plate drift").changed() {
+                spec.plate_kinematic = if enabled {
+                    V2PlateKinematicSpec::per_plate_zero(spec.num_plates)
+                } else {
+                    V2PlateKinematicSpec::Zero
+                };
+            }
+            ui.label(
+                egui::RichText::new(
+                    "Per-plate rigid transport added to v_solver in the \
+                     advection scope (S̃, age, slab). Deformation \
+                     (η, yielding) sees v_solver only — see §4.12 \
+                     patch.",
+                )
+                .small()
+                .weak(),
+            );
+
+            if let V2PlateKinematicSpec::PerPlate {
+                velocities,
+                boundary_smoothing_width,
+            } = &mut spec.plate_kinematic
+            {
+                ui.add_space(4.0);
+                ui.add(
+                    egui::Slider::new(boundary_smoothing_width, 0.5..=5.0)
+                        .text("smoothing width (cells)")
+                        .step_by(0.1),
+                );
+                ui.add_space(4.0);
+
+                // Compact per-plate velocity table. DragValue is
+                // tighter than Slider for 30+ knobs at 15 plates;
+                // drag-to-set or click-to-type, range-clamped to
+                // [-1, 1]. Plates listed flat (no accordions) per
+                // ergonomic vigilance #1.
+                egui::Grid::new("plate_velocities_grid")
+                    .num_columns(3)
+                    .spacing([8.0, 2.0])
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new("Plate").strong());
+                        ui.label(egui::RichText::new("vx").strong());
+                        ui.label(egui::RichText::new("vy").strong());
+                        ui.end_row();
+
+                        for (i, v) in velocities.iter_mut().enumerate() {
+                            ui.label(format!("{}", i));
+                            ui.add(
+                                egui::DragValue::new(&mut v.0)
+                                    .speed(0.005)
+                                    .range(-1.0..=1.0)
+                                    .min_decimals(2)
+                                    .max_decimals(3),
+                            );
+                            ui.add(
+                                egui::DragValue::new(&mut v.1)
+                                    .speed(0.005)
+                                    .range(-1.0..=1.0)
+                                    .min_decimals(2)
+                                    .max_decimals(3),
+                            );
+                            ui.end_row();
+                        }
+                    });
+
+                ui.add_space(4.0);
+                if ui
+                    .button("\u{27f2} Reset all to zero")
+                    .on_hover_text(
+                        "Set every per-plate (vx, vy) to (0, 0). Keeps \
+                         the PerPlate variant active so `is_zero()` \
+                         still returns false — bit-equivalent to Zero \
+                         but on the algorithmic path (good for \
+                         debugging the wiring).",
+                    )
+                    .clicked()
+                {
+                    for v in velocities.iter_mut() {
+                        v.0 = 0.0;
+                        v.1 = 0.0;
+                    }
+                }
+            }
+        });
+
     // ── Cratonic immunity ──────────────────────────────────────────
     egui::CollapsingHeader::new("Cratonic immunity")
         .default_open(true)
@@ -385,6 +490,21 @@ pub fn draw(
     ui.add_space(4.0);
     ui.checkbox(&mut viz.show_voronoi_boundaries, "Show Voronoï boundaries");
     ui.checkbox(&mut viz.show_velocity_vectors, "Show velocity vectors");
+    if viz.show_velocity_vectors {
+        ui.add(
+            egui::Slider::new(&mut viz.arrow_scale, 0.25..=10.0)
+                .text("arrow scale")
+                .step_by(0.25)
+                .logarithmic(true),
+        )
+        .on_hover_text(
+            "Multiplier on the fixed per-cell arrow scale. Default 1× \
+             is tuned for active-medley regime peak|v̄| ≈ 5; raise to \
+             4–8× to make small drift-driven motion (peak|v̄| ≈ 0.5) \
+             readable. Scaling is per-frame proportional, never \
+             auto-normalised to current max|v|.",
+        );
+    }
 
     ui.add_space(8.0);
 

@@ -21,7 +21,8 @@ use ymir_core::tectonics_v2::stokes::solver::LinearSolverConfig;
 use ymir_core::tectonics_v2::voronoi::VoronoiConfig;
 
 use super::spec::{
-    V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2LinearSolverSpec, V2MantleSpec, V2RunSpec,
+    V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2LinearSolverSpec, V2MantleSpec,
+    V2PlateKinematicSpec, V2RunSpec,
 };
 
 /// Build a `BaselineConfig` from the supplied `V2RunSpec`. Mirrors the
@@ -159,5 +160,23 @@ pub fn build(spec: &V2RunSpec) -> BaselineConfig {
         // `ContinueRun` command path overrides this after `build()`
         // returns.
         continuation: None,
+        // Step 11 — translate the spec's plate kinematic drift into
+        // the harness config. `Zero` is the panel default and a
+        // structural no-op (bit-identical to pre-Step-11). `PerPlate`
+        // forwards the user's `velocities` + smoothing width to the
+        // harness, which evaluates the drift inside the time loop's
+        // advection scope (see §4.12 patch).
+        plate_kinematic: match &spec.plate_kinematic {
+            V2PlateKinematicSpec::Zero => {
+                ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero
+            }
+            V2PlateKinematicSpec::PerPlate {
+                velocities,
+                boundary_smoothing_width,
+            } => ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::PerPlate {
+                velocities: velocities.clone(),
+                boundary_smoothing_width: *boundary_smoothing_width,
+            },
+        },
     }
 }
