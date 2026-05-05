@@ -135,12 +135,63 @@ pub enum V2ForceKind {
     Sinusoidal { amplitude: f64 },
 }
 
-/// Step 8.6 Phase 8a/8d — S̃ initialisation mode for v2 runs.
-/// Serialisable mirror of [`ymir_core::tectonics_v2::init::InitMode`].
-/// `Uniform` is the default and matches TDD §4.2's prescription
-/// (flat per-plate-type, smoothstep blending across boundaries).
-/// `Checkerboard` reproduces the legacy sinusoidal-perturbation
-/// pattern bit-for-bit (regression baseline).
+/// Step 13 — UI-side mirror of
+/// [`ymir_core::tectonics_v2::init::ProfileShape`]. Same
+/// `serde(tag = "kind", rename_all = "snake_case")` shape as the
+/// core enum so v2 preset JSON round-trips identity.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum V2ProfileShape {
+    /// Cubic smoothstep `3t² − 2t³`. Default.
+    Smoothstep,
+    /// Linear ramp `t`.
+    Linear,
+    /// Power profile `t^exponent`. UI clamps to `[0.3, 3.0]`.
+    Pow { exponent: f64 },
+}
+
+impl Default for V2ProfileShape {
+    fn default() -> Self {
+        V2ProfileShape::Smoothstep
+    }
+}
+
+impl V2ProfileShape {
+    pub fn into_core(self) -> ymir_core::tectonics_v2::init::ProfileShape {
+        use ymir_core::tectonics_v2::init::ProfileShape;
+        match self {
+            V2ProfileShape::Smoothstep => ProfileShape::Smoothstep,
+            V2ProfileShape::Linear => ProfileShape::Linear,
+            V2ProfileShape::Pow { exponent } => ProfileShape::Pow { exponent },
+        }
+    }
+
+    pub fn ui_label(&self) -> &'static str {
+        match self {
+            V2ProfileShape::Smoothstep => "Smoothstep (cubic)",
+            V2ProfileShape::Linear => "Linear",
+            V2ProfileShape::Pow { .. } => "Pow",
+        }
+    }
+
+    pub fn variant_index(&self) -> u8 {
+        match self {
+            V2ProfileShape::Smoothstep => 0,
+            V2ProfileShape::Linear => 1,
+            V2ProfileShape::Pow { .. } => 2,
+        }
+    }
+}
+
+/// Step 8.6 Phase 8a/8d + Step 13 — S̃ initialisation mode for v2
+/// runs. Serialisable mirror of
+/// [`ymir_core::tectonics_v2::init::InitMode`]. `Uniform` is the
+/// default and matches TDD §4.2's prescription (flat per-plate-type,
+/// smoothstep blending across boundaries). `Checkerboard` reproduces
+/// the legacy sinusoidal-perturbation pattern bit-for-bit (regression
+/// baseline). Step 13 adds `RadialProfile` and `RadialProfileWithFBM`
+/// for continental-margin gradient + intra-plate FBM heterogeneity
+/// (issue D1/D2).
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum V2InitModeSpec {
@@ -148,6 +199,29 @@ pub enum V2InitModeSpec {
     Uniform { boundary_smoothing_width: f64 },
     Gaussian { sigma_continental: f64, sigma_oceanic: f64 },
     Convolution { sigma: f64 },
+    /// Step 13 Phase 2 — radial profile per continental plate.
+    RadialProfile {
+        continental_value: f64,
+        oceanic_value: f64,
+        profile_shape: V2ProfileShape,
+    },
+    /// Step 13 Phase 3 — radial profile + isotropic FBM noise on
+    /// continental cells. Explicit `rename` overrides serde's
+    /// `snake_case` default (which would expand "FBM" into
+    /// `f_b_m`) so the on-disk JSON tag matches the core enum's
+    /// `radial_profile_with_fbm`.
+    #[serde(rename = "radial_profile_with_fbm")]
+    RadialProfileWithFBM {
+        continental_value: f64,
+        oceanic_value: f64,
+        profile_shape: V2ProfileShape,
+        fbm_amplitude: f64,
+        fbm_octaves: u8,
+        fbm_persistence: f64,
+        fbm_lacunarity: f64,
+        fbm_scale: f64,
+        fbm_seed: u64,
+    },
 }
 
 impl Default for V2InitModeSpec {
@@ -174,6 +248,36 @@ impl V2InitModeSpec {
                 InitMode::Gaussian { sigma_continental, sigma_oceanic }
             }
             V2InitModeSpec::Convolution { sigma } => InitMode::Convolution { sigma },
+            V2InitModeSpec::RadialProfile {
+                continental_value,
+                oceanic_value,
+                profile_shape,
+            } => InitMode::RadialProfile {
+                continental_value,
+                oceanic_value,
+                profile_shape: profile_shape.into_core(),
+            },
+            V2InitModeSpec::RadialProfileWithFBM {
+                continental_value,
+                oceanic_value,
+                profile_shape,
+                fbm_amplitude,
+                fbm_octaves,
+                fbm_persistence,
+                fbm_lacunarity,
+                fbm_scale,
+                fbm_seed,
+            } => InitMode::RadialProfileWithFBM {
+                continental_value,
+                oceanic_value,
+                profile_shape: profile_shape.into_core(),
+                fbm_amplitude,
+                fbm_octaves,
+                fbm_persistence,
+                fbm_lacunarity,
+                fbm_scale,
+                fbm_seed,
+            },
         }
     }
 
@@ -186,6 +290,10 @@ impl V2InitModeSpec {
             V2InitModeSpec::Uniform { .. } => "Uniform (TDD §4.2 default)",
             V2InitModeSpec::Gaussian { .. } => "Gaussian (peak at centroid)",
             V2InitModeSpec::Convolution { .. } => "Convolution (Gaussian blur)",
+            V2InitModeSpec::RadialProfile { .. } => "RadialProfile (Step 13: gradient margins)",
+            V2InitModeSpec::RadialProfileWithFBM { .. } => {
+                "RadialProfileWithFBM (Step 13: gradient + FBM heterogeneity)"
+            }
         }
     }
 
@@ -198,6 +306,44 @@ impl V2InitModeSpec {
             V2InitModeSpec::Uniform { .. } => 1,
             V2InitModeSpec::Gaussian { .. } => 2,
             V2InitModeSpec::Convolution { .. } => 3,
+            V2InitModeSpec::RadialProfile { .. } => 4,
+            V2InitModeSpec::RadialProfileWithFBM { .. } => 5,
+        }
+    }
+
+    /// Defaults for `RadialProfile` when picked from the dropdown
+    /// the first time. Mirrors the core constants
+    /// (`CONTINENTAL_VALUE_DEFAULT = 0.95`,
+    /// `OCEANIC_VALUE_DEFAULT = 0.20`, `Smoothstep`).
+    pub fn radial_profile_default() -> Self {
+        V2InitModeSpec::RadialProfile {
+            continental_value:
+                ymir_core::tectonics_v2::init::CONTINENTAL_VALUE_DEFAULT,
+            oceanic_value: ymir_core::tectonics_v2::init::OCEANIC_VALUE_DEFAULT,
+            profile_shape: V2ProfileShape::Smoothstep,
+        }
+    }
+
+    /// Defaults for `RadialProfileWithFBM` when picked from the
+    /// dropdown the first time. Mirrors the core `FBM_*_DEFAULT`
+    /// constants (amplitude 0.10, octaves 4, persistence 0.5,
+    /// lacunarity 2.0, scale 0.25, seed 0x0FBA_5EED).
+    pub fn radial_profile_fbm_default() -> Self {
+        use ymir_core::tectonics_v2::init::{
+            CONTINENTAL_VALUE_DEFAULT, FBM_AMPLITUDE_DEFAULT, FBM_LACUNARITY_DEFAULT,
+            FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
+            OCEANIC_VALUE_DEFAULT,
+        };
+        V2InitModeSpec::RadialProfileWithFBM {
+            continental_value: CONTINENTAL_VALUE_DEFAULT,
+            oceanic_value: OCEANIC_VALUE_DEFAULT,
+            profile_shape: V2ProfileShape::Smoothstep,
+            fbm_amplitude: FBM_AMPLITUDE_DEFAULT,
+            fbm_octaves: FBM_OCTAVES_DEFAULT,
+            fbm_persistence: FBM_PERSISTENCE_DEFAULT,
+            fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
+            fbm_scale: FBM_SCALE_DEFAULT,
+            fbm_seed: FBM_SEED_DEFAULT,
         }
     }
 }
@@ -401,9 +547,10 @@ mod tests {
         assert_eq!(spec.plate_kinematic, V2PlateKinematicSpec::Zero);
     }
 
-    /// Phase 8d — round-trip every `V2InitModeSpec` variant through
-    /// JSON. Catches schema drift between the Rust enum and any
-    /// downstream JSON the user hand-edits.
+    /// Phase 8d + Step 13 Phase 5 — round-trip every
+    /// `V2InitModeSpec` variant through JSON. Catches schema drift
+    /// between the Rust enum and any downstream JSON the user
+    /// hand-edits.
     #[test]
     fn init_mode_spec_roundtrips_through_json() {
         let cases = [
@@ -411,12 +558,120 @@ mod tests {
             V2InitModeSpec::Uniform { boundary_smoothing_width: 1.5 },
             V2InitModeSpec::Gaussian { sigma_continental: 6.0, sigma_oceanic: 4.5 },
             V2InitModeSpec::Convolution { sigma: 2.25 },
+            V2InitModeSpec::RadialProfile {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: V2ProfileShape::Smoothstep,
+            },
+            V2InitModeSpec::RadialProfile {
+                continental_value: 0.90,
+                oceanic_value: 0.18,
+                profile_shape: V2ProfileShape::Pow { exponent: 2.0 },
+            },
+            V2InitModeSpec::RadialProfileWithFBM {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: V2ProfileShape::Smoothstep,
+                fbm_amplitude: 0.10,
+                fbm_octaves: 4,
+                fbm_persistence: 0.5,
+                fbm_lacunarity: 2.0,
+                fbm_scale: 0.25,
+                fbm_seed: 0x0FBA_5EED,
+            },
         ];
         for original in cases {
             let json = serde_json::to_string(&original).expect("serialize");
             let back: V2InitModeSpec = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(original, back, "roundtrip failed: {}", json);
         }
+    }
+
+    /// Step 13 Phase 5 — explicit roundtrip test for the new
+    /// `RadialProfile` / `RadialProfileWithFBM` variants. Covers
+    /// every `ProfileShape` (Smoothstep, Linear, Pow) and asserts
+    /// the on-disk JSON shape matches the documented schema (so a
+    /// user hand-editing a preset gets predictable structure).
+    #[test]
+    fn v2_panel_radial_modes_serde_roundtrip() {
+        // RadialProfile × every ProfileShape.
+        let radial_cases = [
+            V2InitModeSpec::RadialProfile {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: V2ProfileShape::Smoothstep,
+            },
+            V2InitModeSpec::RadialProfile {
+                continental_value: 0.90,
+                oceanic_value: 0.15,
+                profile_shape: V2ProfileShape::Linear,
+            },
+            V2InitModeSpec::RadialProfile {
+                continental_value: 0.85,
+                oceanic_value: 0.25,
+                profile_shape: V2ProfileShape::Pow { exponent: 0.5 },
+            },
+            V2InitModeSpec::RadialProfile {
+                continental_value: 1.0,
+                oceanic_value: 0.10,
+                profile_shape: V2ProfileShape::Pow { exponent: 3.0 },
+            },
+        ];
+        for c in radial_cases {
+            let json = serde_json::to_string(&c).expect("serialize");
+            let back: V2InitModeSpec = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(c, back, "RadialProfile roundtrip failed: {}", json);
+        }
+
+        // RadialProfileWithFBM with non-default FBM parameters to
+        // catch any field-order mismatch between serialize and
+        // deserialize.
+        let fbm_case = V2InitModeSpec::RadialProfileWithFBM {
+            continental_value: 0.92,
+            oceanic_value: 0.18,
+            profile_shape: V2ProfileShape::Pow { exponent: 1.7 },
+            fbm_amplitude: 0.18,
+            fbm_octaves: 6,
+            fbm_persistence: 0.65,
+            fbm_lacunarity: 2.3,
+            fbm_scale: 0.18,
+            fbm_seed: 0xCAFE_F00D,
+        };
+        let json = serde_json::to_string(&fbm_case).expect("serialize");
+        let back: V2InitModeSpec = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(fbm_case, back, "RadialProfileWithFBM roundtrip failed: {}", json);
+
+        // Schema probe: deserialize a hand-written preset fragment
+        // matching the documented field shape (catches accidental
+        // tag-renaming or field-ordering drift).
+        let hand_written = r#"{
+            "kind": "radial_profile_with_fbm",
+            "continental_value": 0.95,
+            "oceanic_value": 0.20,
+            "profile_shape": { "kind": "pow", "exponent": 2.0 },
+            "fbm_amplitude": 0.10,
+            "fbm_octaves": 4,
+            "fbm_persistence": 0.5,
+            "fbm_lacunarity": 2.0,
+            "fbm_scale": 0.25,
+            "fbm_seed": 264339693
+        }"#;
+        let parsed: V2InitModeSpec =
+            serde_json::from_str(hand_written).expect("hand-written preset must parse");
+        assert_eq!(
+            parsed,
+            V2InitModeSpec::RadialProfileWithFBM {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: V2ProfileShape::Pow { exponent: 2.0 },
+                fbm_amplitude: 0.10,
+                fbm_octaves: 4,
+                fbm_persistence: 0.5,
+                fbm_lacunarity: 2.0,
+                fbm_scale: 0.25,
+                fbm_seed: 264339693,
+            }
+        );
     }
 
     /// Phase 8d — full-run-spec round-trip with the new `init_mode`
