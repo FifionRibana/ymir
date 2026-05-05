@@ -31,8 +31,13 @@ use super::field::Field2D;
 use super::voronoi::{compute_dist_to_inter_plate_boundary, PlateIdField};
 
 pub mod radial_profile;
+pub mod radial_profile_fbm;
 pub use radial_profile::{
     ProfileShape, CONTINENTAL_VALUE_DEFAULT, OCEANIC_VALUE_DEFAULT, POW_EXPONENT_DEFAULT,
+};
+pub use radial_profile_fbm::{
+    FBM_AMPLITUDE_DEFAULT, FBM_LACUNARITY_DEFAULT, FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT,
+    FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
 };
 
 /// Per-plate-type reference S̃ values, dimensionless. `0.2` for
@@ -77,6 +82,22 @@ pub enum InitMode {
         continental_value: f64,
         oceanic_value: f64,
         profile_shape: ProfileShape,
+    },
+    /// Step 13 — radial profile + isotropic FBM noise on
+    /// continental cells, for intra-plate thickness heterogeneity
+    /// (province texture). Oceanic cells stay at `oceanic_value`
+    /// uniform (FBM never applied). Output clamped to `[0, 1]`.
+    /// See [`radial_profile_fbm`] module docstring.
+    RadialProfileWithFBM {
+        continental_value: f64,
+        oceanic_value: f64,
+        profile_shape: ProfileShape,
+        fbm_amplitude: f64,
+        fbm_octaves: u8,
+        fbm_persistence: f64,
+        fbm_lacunarity: f64,
+        fbm_scale: f64,
+        fbm_seed: u64,
     },
 }
 
@@ -172,6 +193,36 @@ pub fn init_s_field(mode: InitMode, ctx: &InitContext<'_>) -> Field2D {
                 continental_value,
                 oceanic_value,
                 profile_shape,
+            )
+        }
+        InitMode::RadialProfileWithFBM {
+            continental_value,
+            oceanic_value,
+            profile_shape,
+            fbm_amplitude,
+            fbm_octaves,
+            fbm_persistence,
+            fbm_lacunarity,
+            fbm_scale,
+            fbm_seed,
+        } => {
+            let p = ctx.plate_data.as_ref().expect(
+                "InitMode::RadialProfileWithFBM requires plate data — pair with \
+                 BoundaryConfig::Enabled",
+            );
+            radial_profile_fbm::build(
+                ctx.nx,
+                ctx.ny,
+                p,
+                continental_value,
+                oceanic_value,
+                profile_shape,
+                fbm_amplitude,
+                fbm_octaves,
+                fbm_persistence,
+                fbm_lacunarity,
+                fbm_scale,
+                fbm_seed,
             )
         }
     }
@@ -661,6 +712,17 @@ mod tests {
                 continental_value: 0.95,
                 oceanic_value: 0.20,
                 profile_shape: ProfileShape::Smoothstep,
+            },
+            InitMode::RadialProfileWithFBM {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: ProfileShape::Smoothstep,
+                fbm_amplitude: FBM_AMPLITUDE_DEFAULT,
+                fbm_octaves: FBM_OCTAVES_DEFAULT,
+                fbm_persistence: FBM_PERSISTENCE_DEFAULT,
+                fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
+                fbm_scale: FBM_SCALE_DEFAULT,
+                fbm_seed: FBM_SEED_DEFAULT,
             },
         ] {
             let s_a = init_s_field(mode, &ctx_with_plates(nx, ny, 42, 0.2, &plates_a));
