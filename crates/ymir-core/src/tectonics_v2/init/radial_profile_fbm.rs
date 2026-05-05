@@ -17,7 +17,10 @@
 //!    `n[i, j] = fbm(x_norm / scale, y_norm / scale)` where
 //!    `x_norm = (i + 0.5) / nx`, `y_norm = (j + 0.5) / ny` and
 //!    `scale` is the largest-feature size in domain fractions
-//!    (default 0.25 ⇒ feature size ≈ ¼ of the domain).
+//!    (default `0.10 ⇒ feature size ≈ 1/10 of the domain ≈ 6
+//!    cells on 64² grids`, smaller than typical plate `L_plate ≈
+//!    10–15 cells` — calibration in the vigilance section
+//!    below).
 //! 3. Add the FBM perturbation **only on continental cells**:
 //!    `S̃[i, j] = clamp(S̃_radial + amplitude · n[i, j], 0, 1)`.
 //!    Oceanic cells stay at `oceanic_value` exactly (FBM never
@@ -33,6 +36,40 @@
 //!   threshold; the algorithm here does NOT clamp the input
 //!   amplitude (anti-pattern D7 — no silent clamp), but does clamp
 //!   the *output* to `[0, 1]` to keep S̃ in physical range.
+//! - **Default calibration (Phase 6 amendment)**: the initial
+//!   draft used `fbm_scale = 0.25` and `fbm_amplitude = 0.10`.
+//!   Phase 6 acceptance probing on `single_continent` revealed
+//!   two compounding issues:
+//!
+//!   1. `fbm_scale = 0.25` ⇒ wavelength `≈ 16 cells` on a 64²
+//!      grid, ≥ typical plate `L_plate ≈ 10–15 cells`. The FBM
+//!      does not actually oscillate intra-plate.
+//!   2. `noise::Fbm<Perlin>` is auto-normalised and produces
+//!      `σ ≈ 0.27 × amplitude`, not the `≈ amplitude / 1.5–2.0
+//!      ≈ 0.05–0.07` the issue D2 estimate assumed.
+//!
+//!   Sweep `(scale × amplitude)` on `single_continent` (Phase 6
+//!   probe `fbm_calibration_probe`):
+//!
+//!   | scale \ amp | 0.10  | 0.15  | 0.20  | 0.25  |
+//!   |-------------|-------|-------|-------|-------|
+//!   | 0.05        | 0.024 | 0.037 | 0.048 | 0.060 |
+//!   | **0.10**    | 0.027 | 0.041 | **0.055** | 0.068 |
+//!   | 0.20        | 0.018 | 0.027 | 0.036 | 0.045 |
+//!   | 0.25        | 0.018 | 0.027 | 0.036 | 0.046 |
+//!
+//!   `scale = 0.10` is empirically optimal — `scale = 0.05`
+//!   counter-productively introduces high-frequency Perlin grid
+//!   artefacts that dilute the large-scale variance.
+//!   `amplitude = 0.20` clears the acceptance lower bound
+//!   `σ_fbm_isolated ≥ 0.040` with ~35 % margin across all
+//!   continental plates of `single_continent`, while staying
+//!   well within the Phase 5 UI clamp `[0.0, 0.40]` and well
+//!   above the `0.5` continental threshold for interior cells.
+//!   Users on larger grids (256²+) may raise `fbm_scale` to
+//!   maintain a consistent physical wavelength relative to
+//!   plate sizes — the defaults target the milestone's
+//!   32²–64² validation grids.
 //! - **`noise::Fbm<Perlin>` is not periodic on the torus**: any
 //!   cell on a continental plate that wraps across the domain edge
 //!   will see a noise discontinuity. Continental plates rarely
@@ -59,9 +96,17 @@ use super::PlateInitData;
 use super::radial_profile::{self, ProfileShape};
 
 /// Default `fbm_amplitude` — the noise perturbation magnitude in
-/// the same units as `S̃` (= 0.10 ≈ 3.5 km variability around the
-/// radial baseline).
-pub const FBM_AMPLITUDE_DEFAULT: f64 = 0.10;
+/// the same units as `S̃`. Calibrated empirically (Phase 6) so the
+/// FBM contribution `σ_fbm_isolated ≥ 0.040` on the milestone's
+/// validation grids. `noise::Fbm<Perlin>` is auto-normalised and
+/// produces `σ ≈ 0.27 × amplitude` (not the `≈ amplitude / 1.5–2.0`
+/// the issue D2 estimate assumed); `amplitude = 0.20` at
+/// `scale = 0.10` gives `σ_fbm ≈ 0.05` with comfortable margin
+/// across plate sizes. Stays well within the Phase 5 UI clamp
+/// `[0.0, 0.40]` so a continental cell at the interior peak
+/// (`S̃_radial ≈ 0.95`) cannot dip below the `0.5` continental
+/// threshold via FBM.
+pub const FBM_AMPLITUDE_DEFAULT: f64 = 0.20;
 
 /// Default `fbm_octaves` — 4 layers of self-similar detail.
 pub const FBM_OCTAVES_DEFAULT: u8 = 4;
@@ -75,8 +120,11 @@ pub const FBM_PERSISTENCE_DEFAULT: f64 = 0.5;
 pub const FBM_LACUNARITY_DEFAULT: f64 = 2.0;
 
 /// Default `fbm_scale` — largest feature size in fractions of the
-/// domain (0.25 ⇒ feature size ≈ ¼ of the domain).
-pub const FBM_SCALE_DEFAULT: f64 = 0.25;
+/// domain. `0.10 ⇒ feature size ≈ 1/10 of the domain ≈ 6 cells on
+/// 64² grids`, smaller than typical plate `L_plate ≈ 10–15 cells`,
+/// so the FBM actually oscillates intra-plate. Calibration history
+/// in the module docstring (Phase 6 amendment).
+pub const FBM_SCALE_DEFAULT: f64 = 0.10;
 
 /// Default `fbm_seed` — distinct from the Voronoï seed channel so
 /// the user can vary the noise texture without redrawing the plate
