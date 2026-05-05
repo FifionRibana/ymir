@@ -15,7 +15,7 @@ use bevy_egui::egui;
 
 use crate::bridge::v2::{
     presets, V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2InitModeSpec, V2LinearSolverSpec,
-    V2MantleSpec, V2PlateKinematicSpec, V2RunSpec, V2RunState, V2SolverBridge,
+    V2MantleSpec, V2PlateKinematicSpec, V2ProfileShape, V2RunSpec, V2RunState, V2SolverBridge,
 };
 use crate::phases;
 use crate::pipeline::{ActivePhase, PipelinePhase};
@@ -708,6 +708,26 @@ fn init_mode_widget(ui: &mut egui::Ui, mode: &mut V2InitModeSpec) {
             {
                 *mode = V2InitModeSpec::Convolution { sigma: 2.0 };
             }
+            if ui
+                .selectable_label(
+                    current_idx == 4,
+                    "RadialProfile (Step 13: gradient margins)",
+                )
+                .clicked()
+                && current_idx != 4
+            {
+                *mode = V2InitModeSpec::radial_profile_default();
+            }
+            if ui
+                .selectable_label(
+                    current_idx == 5,
+                    "RadialProfileWithFBM (Step 13: gradient + FBM)",
+                )
+                .clicked()
+                && current_idx != 5
+            {
+                *mode = V2InitModeSpec::radial_profile_fbm_default();
+            }
         });
 
     match mode {
@@ -771,6 +791,146 @@ fn init_mode_widget(ui: &mut egui::Ui, mode: &mut V2InitModeSpec) {
                 .weak(),
             );
         }
+        V2InitModeSpec::RadialProfile {
+            continental_value,
+            oceanic_value,
+            profile_shape,
+        } => {
+            ui.add(
+                egui::Slider::new(continental_value, 0.5..=1.0)
+                    .text("continental_value (interior peak)")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(oceanic_value, 0.0..=0.5)
+                    .text("oceanic_value (boundary floor)")
+                    .step_by(0.01),
+            );
+            profile_shape_widget(ui, "rp", profile_shape);
+            ui.label(
+                egui::RichText::new(
+                    "Continental cells: smooth gradient from oceanic_value \
+                     at inter-plate boundary to continental_value at plate \
+                     interior, normalised by per-plate L_plate (max BFS \
+                     distance). Oceanic cells: flat oceanic_value.",
+                )
+                .small()
+                .weak(),
+            );
+        }
+        V2InitModeSpec::RadialProfileWithFBM {
+            continental_value,
+            oceanic_value,
+            profile_shape,
+            fbm_amplitude,
+            fbm_octaves,
+            fbm_persistence,
+            fbm_lacunarity,
+            fbm_scale,
+            fbm_seed,
+        } => {
+            ui.add(
+                egui::Slider::new(continental_value, 0.5..=1.0)
+                    .text("continental_value (interior peak)")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(oceanic_value, 0.0..=0.5)
+                    .text("oceanic_value (boundary floor)")
+                    .step_by(0.01),
+            );
+            profile_shape_widget(ui, "rpfbm", profile_shape);
+
+            ui.separator();
+            ui.label(
+                egui::RichText::new("FBM noise (continental cells only)").strong(),
+            );
+            // Vigilance issue #3: clamp slider to [0.0, 0.40] so a
+            // distracted slider drag cannot push continental cells
+            // below the 0.5 threshold via FBM dip. Output is also
+            // clamped to [0, 1] in the algorithm regardless.
+            ui.add(
+                egui::Slider::new(fbm_amplitude, 0.0..=0.40)
+                    .text("FBM amplitude")
+                    .step_by(0.01),
+            );
+            ui.add(egui::Slider::new(fbm_octaves, 1u8..=8u8).text("FBM octaves"));
+            ui.add(
+                egui::Slider::new(fbm_persistence, 0.10..=1.0)
+                    .text("FBM persistence")
+                    .step_by(0.05),
+            );
+            ui.add(
+                egui::Slider::new(fbm_lacunarity, 1.5..=4.0)
+                    .text("FBM lacunarity")
+                    .step_by(0.05),
+            );
+            ui.add(
+                egui::Slider::new(fbm_scale, 0.05..=1.0)
+                    .text("FBM scale (domain fractions)")
+                    .step_by(0.01),
+            );
+            ui.horizontal(|ui| {
+                ui.label("FBM seed");
+                ui.add(egui::DragValue::new(fbm_seed).speed(1.0));
+                if ui.button("randomize").clicked() {
+                    // Cheap PRNG step on the existing seed so the
+                    // user gets a fresh number without leaving the
+                    // panel. SplitMix64 mixer keeps every bit
+                    // active without external deps.
+                    let mut x = fbm_seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
+                    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+                    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+                    *fbm_seed = x ^ (x >> 31);
+                }
+            });
+            ui.label(
+                egui::RichText::new(
+                    "Phase 2 radial baseline + isotropic FBM noise on \
+                     continental cells, clamped to [0, 1]. Oceanic cells \
+                     stay at oceanic_value (FBM never applied). FBM seed \
+                     is independent of the Voronoï seed.",
+                )
+                .small()
+                .weak(),
+            );
+        }
+    }
+}
+
+/// Step 13 Phase 5 — sub-widget for [`V2ProfileShape`] selection.
+/// Reused by both `RadialProfile` and `RadialProfileWithFBM`. The
+/// `salt` argument distinguishes the two ComboBox instances on the
+/// same UI frame (egui requires unique salts per shown widget).
+fn profile_shape_widget(ui: &mut egui::Ui, salt: &str, shape: &mut V2ProfileShape) {
+    let current_idx = shape.variant_index();
+    egui::ComboBox::from_id_salt(format!("v2_profile_shape_{}", salt))
+        .selected_text(shape.ui_label())
+        .show_ui(ui, |ui| {
+            if ui
+                .selectable_label(current_idx == 0, "Smoothstep (cubic)")
+                .clicked()
+                && current_idx != 0
+            {
+                *shape = V2ProfileShape::Smoothstep;
+            }
+            if ui
+                .selectable_label(current_idx == 1, "Linear")
+                .clicked()
+                && current_idx != 1
+            {
+                *shape = V2ProfileShape::Linear;
+            }
+            if ui.selectable_label(current_idx == 2, "Pow").clicked() && current_idx != 2 {
+                *shape = V2ProfileShape::Pow { exponent: 1.0 };
+            }
+        });
+    if let V2ProfileShape::Pow { exponent } = shape {
+        ui.add(
+            egui::Slider::new(exponent, 0.3..=3.0)
+                .text("Pow exponent")
+                .step_by(0.05),
+        );
     }
 }
 

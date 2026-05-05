@@ -41,9 +41,7 @@
 //! `d = width`. Same overall family of behaviour, but smooth by
 //! construction.
 
-use std::collections::VecDeque;
-
-use super::super::voronoi::PlateIdField;
+use super::super::voronoi::{compute_dist_to_inter_plate_boundary, PlateIdField};
 
 /// Build the `(vx, vy)` initial velocity buffers from a per-plate
 /// assignment.
@@ -77,12 +75,24 @@ pub fn build(
         "velocities must not be empty (one entry per plate)",
     );
 
+    // Step 13 Phase 1: BFS distance computation delegated to the
+    // shared `compute_dist_to_inter_plate_boundary` utility (also
+    // used by `init::Uniform` and `init::radial_profile`).
+    // Bit-identical with the pre-refactor implementation by
+    // construction: per-plate properties (here the (vx, vy) entry of
+    // `velocities`) are constant within a plate, so propagating
+    // `target_plate_id` through the BFS and indexing `velocities`
+    // at the end is equivalent to propagating `(target_vx,
+    // target_vy)` directly. See
+    // `tectonics_v2::voronoi::distance` module docstring for why
+    // `cratonic::factor` is *not* unified into the same utility
+    // (different connectivity, different sources, different
+    // physical meaning).
+    let bfs = compute_dist_to_inter_plate_boundary(nx, ny, plate_id);
+
     let n = nx * ny;
     let mut own_vx = vec![0.0_f64; n];
     let mut own_vy = vec![0.0_f64; n];
-    let mut target_vx = vec![0.0_f64; n];
-    let mut target_vy = vec![0.0_f64; n];
-    let mut dist = vec![f64::INFINITY; n];
 
     // Per-cell own velocity from plate_id lookup. Bounds-checked so
     // an out-of-range plate_id panics early with a clear message
@@ -101,73 +111,25 @@ pub fn build(
         }
     }
 
-    // Seed BFS at inter-plate boundary cells. Target velocity is the
-    // first-found NESW neighbour belonging to a different plate.
-    let mut queue: VecDeque<(usize, usize)> = VecDeque::new();
-    for j in 0..ny {
-        for i in 0..nx {
-            let id = plate_id.get(i, j);
-            let ip = (i + 1) % nx;
-            let im = (i + nx - 1) % nx;
-            let jp = (j + 1) % ny;
-            let jm = (j + ny - 1) % ny;
-            let mut nb_v: Option<(f64, f64)> = None;
-            for &(ni, nj) in &[(ip, j), (im, j), (i, jp), (i, jm)] {
-                if plate_id.get(ni, nj) != id {
-                    let nb_pid = plate_id.get(ni, nj) as usize;
-                    nb_v = Some(velocities[nb_pid]);
-                    break;
-                }
-            }
-            if let Some((vx, vy)) = nb_v {
-                let idx = j * nx + i;
-                dist[idx] = 0.0;
-                target_vx[idx] = vx;
-                target_vy[idx] = vy;
-                queue.push_back((i, j));
-            }
-        }
-    }
-
-    // Chebyshev BFS (8-neighbour, periodic). Each hop adds 1.
-    // Propagates the boundary-cell target velocity into the
-    // interior so each cell stores `(d_to_boundary, vel_at_that_
-    // boundary_cell)`.
-    while let Some((i, j)) = queue.pop_front() {
-        let idx = j * nx + i;
-        let d = dist[idx];
-        let tvx = target_vx[idx];
-        let tvy = target_vy[idx];
-        for dj in [-1_i32, 0, 1] {
-            for di in [-1_i32, 0, 1] {
-                if di == 0 && dj == 0 {
-                    continue;
-                }
-                let ni = ((i as i32 + di).rem_euclid(nx as i32)) as usize;
-                let nj = ((j as i32 + dj).rem_euclid(ny as i32)) as usize;
-                let nidx = nj * nx + ni;
-                let nd = d + 1.0;
-                if nd < dist[nidx] {
-                    dist[nidx] = nd;
-                    target_vx[nidx] = tvx;
-                    target_vy[nidx] = tvy;
-                    queue.push_back((ni, nj));
-                }
-            }
-        }
-    }
-
     let w = boundary_smoothing_width;
     let mut out_vx = vec![0.0_f64; n];
     let mut out_vy = vec![0.0_f64; n];
     for j in 0..ny {
         for i in 0..nx {
             let idx = j * nx + i;
-            let d = dist[idx];
+            let d = bfs.distance.get(i, j);
             let own_x = own_vx[idx];
             let own_y = own_vy[idx];
-            let other_x = target_vx[idx];
-            let other_y = target_vy[idx];
+            let tpid = bfs.target_plate_id[idx];
+            let (other_x, other_y) = if tpid == u16::MAX {
+                // BFS never reached this cell (degenerate single-
+                // plate-on-torus). dist=INFINITY → the `d >= w`
+                // branch short-circuits to `own`; the value picked
+                // here is unused. Defensive default = own.
+                (own_x, own_y)
+            } else {
+                velocities[tpid as usize]
+            };
             if d >= w {
                 out_vx[idx] = own_x;
                 out_vy[idx] = own_y;
@@ -189,6 +151,7 @@ pub fn build(
 mod tests {
     use super::*;
     use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+    use std::collections::VecDeque;
 
     fn build_test_plates(nx: usize, ny: usize, seed: u64, num_plates: usize) {
         let _ = (nx, ny, seed, num_plates);
