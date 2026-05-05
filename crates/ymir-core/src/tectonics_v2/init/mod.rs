@@ -25,11 +25,20 @@
 //! baselines (strategy γ).
 
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 
 use super::boundaries::{PlateType, PlateTypeField};
 use super::field::Field2D;
-use super::voronoi::PlateIdField;
+use super::voronoi::{compute_dist_to_inter_plate_boundary, PlateIdField};
+
+pub mod radial_profile;
+pub mod radial_profile_fbm;
+pub use radial_profile::{
+    ProfileShape, CONTINENTAL_VALUE_DEFAULT, OCEANIC_VALUE_DEFAULT, POW_EXPONENT_DEFAULT,
+};
+pub use radial_profile_fbm::{
+    FBM_AMPLITUDE_DEFAULT, FBM_LACUNARITY_DEFAULT, FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT,
+    FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
+};
 
 /// Per-plate-type reference S̃ values, dimensionless. `0.2` for
 /// oceanic (≈ 7 km), `1.0` for continental (≈ 35 km). Shared by the
@@ -61,6 +70,41 @@ pub enum InitMode {
     /// Convolution of binary classification mask with a periodic
     /// Gaussian kernel. `sigma` measured in cells.
     Convolution { sigma: f64 },
+    /// Step 13 — radial profile per continental plate. Continental
+    /// cells get `S̃ = oceanic_value + (continental_value -
+    /// oceanic_value) · profile(d / L_plate)` where `d` is the
+    /// Chebyshev BFS distance to the nearest inter-plate boundary
+    /// and `L_plate` is the per-plate max distance. Oceanic cells
+    /// get `S̃ = oceanic_value` uniform. See
+    /// [`radial_profile`] module docstring for the algorithm and
+    /// degenerate-case behaviour.
+    RadialProfile {
+        continental_value: f64,
+        oceanic_value: f64,
+        profile_shape: ProfileShape,
+    },
+    /// Step 13 — radial profile + isotropic FBM noise on
+    /// continental cells, for intra-plate thickness heterogeneity
+    /// (province texture). Oceanic cells stay at `oceanic_value`
+    /// uniform (FBM never applied). Output clamped to `[0, 1]`.
+    /// See [`radial_profile_fbm`] module docstring.
+    ///
+    /// Explicit `rename` overrides serde's default `snake_case`
+    /// expansion of `RadialProfileWithFBM` (which would split
+    /// "FBM" into `f_b_m`) — keeps the on-disk JSON kind tag
+    /// readable as `radial_profile_with_fbm`.
+    #[serde(rename = "radial_profile_with_fbm")]
+    RadialProfileWithFBM {
+        continental_value: f64,
+        oceanic_value: f64,
+        profile_shape: ProfileShape,
+        fbm_amplitude: f64,
+        fbm_octaves: u8,
+        fbm_persistence: f64,
+        fbm_lacunarity: f64,
+        fbm_scale: f64,
+        fbm_seed: u64,
+    },
 }
 
 impl Default for InitMode {
@@ -139,6 +183,54 @@ pub fn init_s_field(mode: InitMode, ctx: &InitContext<'_>) -> Field2D {
             );
             convolution(ctx.nx, ctx.ny, p, sigma)
         }
+        InitMode::RadialProfile {
+            continental_value,
+            oceanic_value,
+            profile_shape,
+        } => {
+            let p = ctx.plate_data.as_ref().expect(
+                "InitMode::RadialProfile requires plate data — pair with \
+                 BoundaryConfig::Enabled",
+            );
+            radial_profile::build(
+                ctx.nx,
+                ctx.ny,
+                p,
+                continental_value,
+                oceanic_value,
+                profile_shape,
+            )
+        }
+        InitMode::RadialProfileWithFBM {
+            continental_value,
+            oceanic_value,
+            profile_shape,
+            fbm_amplitude,
+            fbm_octaves,
+            fbm_persistence,
+            fbm_lacunarity,
+            fbm_scale,
+            fbm_seed,
+        } => {
+            let p = ctx.plate_data.as_ref().expect(
+                "InitMode::RadialProfileWithFBM requires plate data — pair with \
+                 BoundaryConfig::Enabled",
+            );
+            radial_profile_fbm::build(
+                ctx.nx,
+                ctx.ny,
+                p,
+                continental_value,
+                oceanic_value,
+                profile_shape,
+                fbm_amplitude,
+                fbm_octaves,
+                fbm_persistence,
+                fbm_lacunarity,
+                fbm_scale,
+                fbm_seed,
+            )
+        }
     }
 }
 
@@ -199,69 +291,42 @@ fn checkerboard_plate_aware(
 /// value blends towards the midpoint between own and across-boundary
 /// values, with cubic smoothstep weight `3t² − 2t³` of normalised
 /// distance.
+///
+/// Step 13 Phase 1: the BFS distance computation is delegated to
+/// [`super::voronoi::compute_dist_to_inter_plate_boundary`] (shared
+/// with `plate_kinematic::field::build` and the upcoming
+/// `init::radial_profile`). Bit-identical with the pre-refactor
+/// implementation by construction — see that utility's module
+/// docstring.
 fn uniform(
     nx: usize,
     ny: usize,
     p: &PlateInitData<'_>,
     boundary_smoothing_width: f64,
 ) -> Field2D {
+    let bfs = compute_dist_to_inter_plate_boundary(nx, ny, p.plate_id);
+
+    // Per-cell own value + per-plate-id S̃ value lookup, in one scan.
+    // PlateInitData carries a per-cell plate_type field but no
+    // per-plate table; build the lookup inline so the utility's
+    // `target_plate_id` index can be translated to the across-
+    // boundary S̃ reference value. Bit-identical with storing the
+    // value directly during BFS because per-plate properties are
+    // constant within a plate (`plate_type[i,j] =
+    // per_plate_type[plate_id[i,j]]`).
     let n = nx * ny;
     let mut own_value = vec![0.0_f64; n];
-    let mut dist = vec![f64::INFINITY; n];
-    let mut target_value = vec![0.0_f64; n];
-
+    let mut per_plate_value: Vec<Option<f64>> = Vec::new();
     for j in 0..ny {
         for i in 0..nx {
-            own_value[j * nx + i] = s_value_for(p.plate_type.get(i, j));
-        }
-    }
-
-    // Seed BFS at every cell whose 4-periodic neighbour belongs to a
-    // different plate. The "across-boundary value" is taken from any
-    // such neighbour (deterministic — first found in NESW order).
-    let mut queue: VecDeque<(usize, usize)> = VecDeque::new();
-    for j in 0..ny {
-        for i in 0..nx {
-            let id = p.plate_id.get(i, j);
-            let ip = (i + 1) % nx;
-            let im = (i + nx - 1) % nx;
-            let jp = (j + 1) % ny;
-            let jm = (j + ny - 1) % ny;
-            let mut nb_v: Option<f64> = None;
-            for &(ni, nj) in &[(ip, j), (im, j), (i, jp), (i, jm)] {
-                if p.plate_id.get(ni, nj) != id {
-                    nb_v = Some(s_value_for(p.plate_type.get(ni, nj)));
-                    break;
-                }
+            let v = s_value_for(p.plate_type.get(i, j));
+            own_value[j * nx + i] = v;
+            let pid = p.plate_id.get(i, j) as usize;
+            if pid >= per_plate_value.len() {
+                per_plate_value.resize(pid + 1, None);
             }
-            if let Some(v) = nb_v {
-                let idx = j * nx + i;
-                dist[idx] = 0.0;
-                target_value[idx] = v;
-                queue.push_back((i, j));
-            }
-        }
-    }
-
-    // Chebyshev BFS (8-neighbour, periodic). Each step adds 1.
-    while let Some((i, j)) = queue.pop_front() {
-        let idx = j * nx + i;
-        let d = dist[idx];
-        let tv = target_value[idx];
-        for dj in [-1_i32, 0, 1] {
-            for di in [-1_i32, 0, 1] {
-                if di == 0 && dj == 0 {
-                    continue;
-                }
-                let ni = ((i as i32 + di).rem_euclid(nx as i32)) as usize;
-                let nj = ((j as i32 + dj).rem_euclid(ny as i32)) as usize;
-                let nidx = nj * nx + ni;
-                let nd = d + 1.0;
-                if nd < dist[nidx] {
-                    dist[nidx] = nd;
-                    target_value[nidx] = tv;
-                    queue.push_back((ni, nj));
-                }
+            if per_plate_value[pid].is_none() {
+                per_plate_value[pid] = Some(v);
             }
         }
     }
@@ -271,9 +336,22 @@ fn uniform(
     for j in 0..ny {
         for i in 0..nx {
             let idx = j * nx + i;
-            let d = dist[idx];
+            let d = bfs.distance.get(i, j);
             let own = own_value[idx];
-            let other = target_value[idx];
+            let tpid = bfs.target_plate_id[idx];
+            let other = if tpid == u16::MAX {
+                // BFS never reached this cell (degenerate single-
+                // plate-on-torus). dist=INFINITY → the `d >= w`
+                // branch short-circuits to `own`; the value picked
+                // here is unused. Defensive default = own.
+                own
+            } else {
+                per_plate_value[tpid as usize].expect(
+                    "BFS propagated a plate id without an entry in \
+                     per_plate_value — should be impossible since \
+                     target_plate_id is set from plate_id.get(ni, nj)",
+                )
+            };
             if d >= w {
                 s.set(i, j, own);
             } else {
@@ -636,6 +714,22 @@ mod tests {
             InitMode::Uniform { boundary_smoothing_width: 1.0 },
             InitMode::Gaussian { sigma_continental: 4.0, sigma_oceanic: 4.0 },
             InitMode::Convolution { sigma: 1.5 },
+            InitMode::RadialProfile {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: ProfileShape::Smoothstep,
+            },
+            InitMode::RadialProfileWithFBM {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: ProfileShape::Smoothstep,
+                fbm_amplitude: FBM_AMPLITUDE_DEFAULT,
+                fbm_octaves: FBM_OCTAVES_DEFAULT,
+                fbm_persistence: FBM_PERSISTENCE_DEFAULT,
+                fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
+                fbm_scale: FBM_SCALE_DEFAULT,
+                fbm_seed: FBM_SEED_DEFAULT,
+            },
         ] {
             let s_a = init_s_field(mode, &ctx_with_plates(nx, ny, 42, 0.2, &plates_a));
             let s_b = init_s_field(mode, &ctx_with_plates(nx, ny, 42, 0.2, &plates_b));

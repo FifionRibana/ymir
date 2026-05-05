@@ -25,6 +25,9 @@ use rand_chacha::ChaCha8Rng;
 
 use super::boundaries::plate_type::PlateType;
 
+pub mod distance;
+pub use distance::{compute_dist_to_inter_plate_boundary, InterPlateBoundaryDist};
+
 /// Cell-centred plate-id field, shape `nx × ny`, `u16` payload
 /// (supports up to 65535 plates — well beyond the §3.4 range `[5, 15]`).
 #[derive(Clone, Debug)]
