@@ -88,6 +88,12 @@ pub enum InitMode {
     /// (province texture). Oceanic cells stay at `oceanic_value`
     /// uniform (FBM never applied). Output clamped to `[0, 1]`.
     /// See [`radial_profile_fbm`] module docstring.
+    ///
+    /// Explicit `rename` overrides serde's default `snake_case`
+    /// expansion of `RadialProfileWithFBM` (which would split
+    /// "FBM" into `f_b_m`) — keeps the on-disk JSON kind tag
+    /// readable as `radial_profile_with_fbm`.
+    #[serde(rename = "radial_profile_with_fbm")]
     RadialProfileWithFBM {
         continental_value: f64,
         oceanic_value: f64,

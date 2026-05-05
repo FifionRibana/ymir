@@ -28,6 +28,6 @@ pub use plugin::{V2BridgePlugin, V2RunState, V2SolverBridge};
 pub use snapshot::{V2RunSnapshot, V2ScalarMetrics, SNAPSHOT_FORMAT_VERSION};
 pub use spec::{
     V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2InitModeSpec, V2LinearSolverSpec, V2MantleSpec,
-    V2PlateKinematicSpec, V2RunSpec,
+    V2PlateKinematicSpec, V2ProfileShape, V2RunSpec,
 };
 pub use thread::spawn_v2_thread;
