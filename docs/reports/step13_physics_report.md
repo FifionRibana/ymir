@@ -279,13 +279,37 @@ The mechanism is preset-shape-insensitive at this resolution.
 
 ## Caveats
 
-### 1. Oceanic FBM deferred (architecture C)
+### 1. Oceanic FBM heterogeneity (planned follow-up)
 
-Oceanic plates take a flat `oceanic_value` regardless of
-`profile_shape`/FBM (issue D1). For richer ocean-floor texture
-(seamounts, abyssal hills) the architecture is straightforward —
-add a parallel oceanic FBM term — but it's deferred to a future
-issue. The Step 13 scope is continents.
+The current implementation applies FBM only to continental cells.
+The Living Landz workflow requires oceanic bathymetric variation
+for:
+
+(a) heightmap rendering with realistic ocean floors,
+(b) coastal gameplay zones with non-uniform shallow water,
+(c) volcanic islands emerging from oceanic plates.
+
+A dedicated follow-up step (Step 14, anticipated post-Step 12 —
+see [`docs/solver-reconstruction-roadmap.md`](../solver-reconstruction-roadmap.md))
+will add oceanic FBM with:
+
+(i) opt-in via an `apply_fbm_to_oceanic` flag in
+    `RadialProfileWithFBM`,
+(ii) a separate `fbm_amplitude_oceanic` parameter,
+(iii) controlled threshold-crossing for volcanic islands
+     (game-design decision: how many islands, what spatial
+     distribution),
+(iv) calibration against Living Landz visual targets *after*
+     Step 12 erosion impact is integrated — calibrating
+     oceanic FBM before Step 12 modifies S̃ via erosion would
+     be calibrating in the dark.
+
+Sequencing rationale (Option β, current default): Step 12
+(tectonic-erosion interleaved workflow) lands first, then
+Step 14 (oceanic FBM with calibration informed by erosion
+effects), then Step 10.5 (final visual validation). Switch to
+Option α (Step 14 before Step 12) only if the absence of
+oceanic FBM measurably hampers Step 12 product calibration.
 
 ### 2. Per-plate σ measurement is statistical-noise-limited on small plates (< ~150 cells)
 
