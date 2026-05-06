@@ -277,6 +277,19 @@ impl V2InitModeSpec {
                 fbm_lacunarity,
                 fbm_scale,
                 fbm_seed,
+                // Step 13.5 — `V2InitModeSpec` has not been
+                // extended with the oceanic FBM fields yet
+                // (Phase 3 will add the UI knobs and the spec
+                // mirror). Until then the conversion to the core
+                // enum forces the disabled defaults so the viz
+                // bridge keeps producing Step-13-equivalent
+                // runs. Phase 3 replaces these with the actual
+                // user-configured values from the panel.
+                apply_fbm_to_oceanic: false,
+                fbm_amplitude_oceanic:
+                    ymir_core::tectonics_v2::init::FBM_AMPLITUDE_OCEANIC_DEFAULT,
+                fbm_scale_oceanic: None,
+                fbm_seed_oceanic: None,
             },
         }
     }
