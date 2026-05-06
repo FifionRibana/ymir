@@ -31,9 +31,9 @@
 
 use ymir_core::tectonics_v2::boundaries::PlateType;
 use ymir_core::tectonics_v2::init::{
-    init_s_field, FBM_AMPLITUDE_DEFAULT, FBM_LACUNARITY_DEFAULT, FBM_OCTAVES_DEFAULT,
-    FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT, InitContext, InitMode,
-    PlateInitData, ProfileShape,
+    init_s_field, FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
+    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
+    InitContext, InitMode, PlateInitData, ProfileShape,
 };
 use ymir_core::tectonics_v2::voronoi::{
     VoronoiConfig, VoronoiPlates, compute_dist_to_inter_plate_boundary, generate_voronoi,
@@ -225,6 +225,11 @@ fn run_acceptance_intra_plate_heterogeneity(
             fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
             fbm_scale: FBM_SCALE_DEFAULT,
             fbm_seed: FBM_SEED_DEFAULT,
+            // Step 13.5 — disabled defaults preserve Step 13.
+            apply_fbm_to_oceanic: false,
+            fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            fbm_scale_oceanic: None,
+            fbm_seed_oceanic: None,
         },
         &ctx,
     );
@@ -425,6 +430,12 @@ fn fbm_calibration_probe() {
                     fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
                     fbm_scale: scale,
                     fbm_seed: FBM_SEED_DEFAULT,
+                    // Step 13.5 — calibration probe sweeps the
+                    // continental FBM only; oceanic disabled.
+                    apply_fbm_to_oceanic: false,
+                    fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
+                    fbm_scale_oceanic: None,
+                    fbm_seed_oceanic: None,
                 },
                 &ctx,
             );

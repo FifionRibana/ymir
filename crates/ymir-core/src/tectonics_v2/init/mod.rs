@@ -36,8 +36,9 @@ pub use radial_profile::{
     ProfileShape, CONTINENTAL_VALUE_DEFAULT, OCEANIC_VALUE_DEFAULT, POW_EXPONENT_DEFAULT,
 };
 pub use radial_profile_fbm::{
-    FBM_AMPLITUDE_DEFAULT, FBM_LACUNARITY_DEFAULT, FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT,
-    FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
+    FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
+    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT,
+    FBM_SEED_DEFAULT, FBM_SEED_OCEANIC_XOR_MAGIC, OCEANIC_CLAMP_MAX,
 };
 
 /// Per-plate-type reference S̃ values, dimensionless. `0.2` for
@@ -85,9 +86,21 @@ pub enum InitMode {
     },
     /// Step 13 — radial profile + isotropic FBM noise on
     /// continental cells, for intra-plate thickness heterogeneity
-    /// (province texture). Oceanic cells stay at `oceanic_value`
-    /// uniform (FBM never applied). Output clamped to `[0, 1]`.
-    /// See [`radial_profile_fbm`] module docstring.
+    /// (province texture).
+    ///
+    /// Step 13.5 — extends with optional FBM on **oceanic** cells
+    /// (opt-in via `apply_fbm_to_oceanic`). When the flag is
+    /// `false` (default), the variant is bit-identical to its
+    /// Step 13 form: oceanic cells stay at `oceanic_value` uniform.
+    /// When `true`, oceanic cells receive
+    /// `clamp(oceanic_value + fbm_amplitude_oceanic ·
+    /// fbm_oceanic.get(x, y), 0, OCEANIC_CLAMP_MAX)` with
+    /// `OCEANIC_CLAMP_MAX = 0.49` strictly preventing
+    /// threshold-crossing to continental classification (D7;
+    /// volcanic islands are out of scope for Step 13.5).
+    ///
+    /// Continental output clamped to `[0, 1]`. See
+    /// [`radial_profile_fbm`] module docstring.
     ///
     /// Explicit `rename` overrides serde's default `snake_case`
     /// expansion of `RadialProfileWithFBM` (which would split
@@ -104,7 +117,31 @@ pub enum InitMode {
         fbm_lacunarity: f64,
         fbm_scale: f64,
         fbm_seed: u64,
+        // Step 13.5 — oceanic FBM extension. `#[serde(default)]`
+        // on each new field so legacy preset JSON written before
+        // this step (which lacks the new keys) deserialises with
+        // safe defaults: `apply_fbm_to_oceanic = false` →
+        // bit-identical Step 13 behaviour. The other defaults
+        // are only consumed when the flag is flipped on.
+        #[serde(default)]
+        apply_fbm_to_oceanic: bool,
+        #[serde(default = "default_fbm_amplitude_oceanic")]
+        fbm_amplitude_oceanic: f64,
+        #[serde(default)]
+        fbm_scale_oceanic: Option<f64>,
+        #[serde(default)]
+        fbm_seed_oceanic: Option<u64>,
     },
+}
+
+/// `#[serde(default)]` helper for the
+/// `RadialProfileWithFBM::fbm_amplitude_oceanic` field — bare
+/// `Default::default()` on `f64` is `0.0`, which would silently
+/// disable the oceanic FBM perturbation when the user later flips
+/// the flag on. The constant from `radial_profile_fbm` keeps the
+/// value in one place.
+fn default_fbm_amplitude_oceanic() -> f64 {
+    radial_profile_fbm::FBM_AMPLITUDE_OCEANIC_DEFAULT
 }
 
 impl Default for InitMode {
@@ -211,6 +248,10 @@ pub fn init_s_field(mode: InitMode, ctx: &InitContext<'_>) -> Field2D {
             fbm_lacunarity,
             fbm_scale,
             fbm_seed,
+            apply_fbm_to_oceanic,
+            fbm_amplitude_oceanic,
+            fbm_scale_oceanic,
+            fbm_seed_oceanic,
         } => {
             let p = ctx.plate_data.as_ref().expect(
                 "InitMode::RadialProfileWithFBM requires plate data — pair with \
@@ -229,6 +270,10 @@ pub fn init_s_field(mode: InitMode, ctx: &InitContext<'_>) -> Field2D {
                 fbm_lacunarity,
                 fbm_scale,
                 fbm_seed,
+                apply_fbm_to_oceanic,
+                fbm_amplitude_oceanic,
+                fbm_scale_oceanic,
+                fbm_seed_oceanic,
             )
         }
     }
@@ -729,6 +774,30 @@ mod tests {
                 fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
                 fbm_scale: FBM_SCALE_DEFAULT,
                 fbm_seed: FBM_SEED_DEFAULT,
+                // Step 13.5 — disabled (default) so this
+                // determinism check exercises the Step 13 path.
+                apply_fbm_to_oceanic: false,
+                fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
+                fbm_scale_oceanic: None,
+                fbm_seed_oceanic: None,
+            },
+            // Step 13.5 — second variant with the oceanic FBM
+            // path enabled, so the determinism contract also
+            // covers the new code path.
+            InitMode::RadialProfileWithFBM {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: ProfileShape::Smoothstep,
+                fbm_amplitude: FBM_AMPLITUDE_DEFAULT,
+                fbm_octaves: FBM_OCTAVES_DEFAULT,
+                fbm_persistence: FBM_PERSISTENCE_DEFAULT,
+                fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
+                fbm_scale: FBM_SCALE_DEFAULT,
+                fbm_seed: FBM_SEED_DEFAULT,
+                apply_fbm_to_oceanic: true,
+                fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
+                fbm_scale_oceanic: None,
+                fbm_seed_oceanic: None,
             },
         ] {
             let s_a = init_s_field(mode, &ctx_with_plates(nx, ny, 42, 0.2, &plates_a));

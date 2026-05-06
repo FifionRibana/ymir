@@ -34,8 +34,9 @@ use ymir_core::tectonics_v2::diagnostics::harness::{
     BaselineConfig, BaselineResult, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
 use ymir_core::tectonics_v2::init::{
-    FBM_AMPLITUDE_DEFAULT, FBM_LACUNARITY_DEFAULT, FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT,
-    FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT, InitMode, ProfileShape,
+    FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
+    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
+    InitMode, ProfileShape,
 };
 use ymir_core::tectonics_v2::mantle::{
     COUPLING_DEFAULT, MF_DEFAULT, MantleConfig, NUM_MODES_DEFAULT,
@@ -183,6 +184,11 @@ fn cg_ratio_acceptance() {
             fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
             fbm_scale: FBM_SCALE_DEFAULT,
             fbm_seed: FBM_SEED_DEFAULT,
+            // Step 13.5 — disabled (Step 13 baseline behaviour).
+            apply_fbm_to_oceanic: false,
+            fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            fbm_scale_oceanic: None,
+            fbm_seed_oceanic: None,
         },
     );
 

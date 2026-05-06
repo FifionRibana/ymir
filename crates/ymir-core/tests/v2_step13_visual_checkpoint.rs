@@ -42,9 +42,9 @@ use ymir_core::tectonics_v2::boundaries::PlateType;
 use ymir_core::tectonics_v2::diagnostics::heightmap::save_heightmap;
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::init::{
-    init_s_field, FBM_AMPLITUDE_DEFAULT, FBM_LACUNARITY_DEFAULT, FBM_OCTAVES_DEFAULT,
-    FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT, InitContext, InitMode,
-    PlateInitData, ProfileShape,
+    init_s_field, FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
+    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
+    InitContext, InitMode, PlateInitData, ProfileShape,
 };
 use ymir_core::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
@@ -117,6 +117,11 @@ fn dump_step13_init_modes_64sq() {
                 fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
                 fbm_scale: FBM_SCALE_DEFAULT,
                 fbm_seed: FBM_SEED_DEFAULT,
+                // Step 13.5 — disabled (Step 13 visual baseline).
+                apply_fbm_to_oceanic: false,
+                fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
+                fbm_scale_oceanic: None,
+                fbm_seed_oceanic: None,
             },
         ),
     ];
@@ -304,6 +309,11 @@ fn dump_step13_galerie_multi_preset() {
                 fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
                 fbm_scale: FBM_SCALE_DEFAULT,
                 fbm_seed: FBM_SEED_DEFAULT,
+                // Step 13.5 — disabled (Step 13 visual baseline).
+                apply_fbm_to_oceanic: false,
+                fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
+                fbm_scale_oceanic: None,
+                fbm_seed_oceanic: None,
             },
         ),
     ];

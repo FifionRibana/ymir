@@ -131,8 +131,48 @@ pub const FBM_SCALE_DEFAULT: f64 = 0.10;
 /// geometry. Hex spelt as "FBA5EED" ≈ "FBA SEED".
 pub const FBM_SEED_DEFAULT: u64 = 0x0FBA_5EED;
 
+/// Step 13.5 — strict upper bound on `S̃` for oceanic cells under
+/// FBM perturbation. Set to `0.49` (not `0.5`) to leave a defensive
+/// margin for floating-point edge cases at the continental
+/// classification threshold (`0.5`). Ensures oceanic cells cannot
+/// cross to continental classification via FBM noise — volcanic
+/// islands are out of scope for Step 13.5 (Step 13.6 if pursued).
+pub const OCEANIC_CLAMP_MAX: f64 = 0.49;
+
+/// Step 13.5 — default `fbm_amplitude_oceanic` placeholder. Phase 4
+/// sweep calibration finalises this value empirically. The issue
+/// anticipates `0.08–0.15` based on the
+/// `noise::Fbm<Perlin>::σ ≈ 0.27 × amplitude` finding from Step 13;
+/// the placeholder `0.10` is a reasonable starting point that gives
+/// `σ_fbm_oceanic_isolated ≈ 0.027` (within the issue's `[0.02, 0.08]`
+/// target band). To be confirmed by sweep.
+pub const FBM_AMPLITUDE_OCEANIC_DEFAULT: f64 = 0.10;
+
+/// Step 13.5 — XOR magic constant for deriving `fbm_seed_oceanic`
+/// from `fbm_seed` when the user does not supply an explicit
+/// oceanic seed. `0xC0FFEE` — opaque enough to avoid trivial
+/// correlation between the two seeds, memorable enough for the
+/// reader to spot it in a diff. Documented in the seed
+/// independence test (`oceanic_fbm_seed_default_derivation`).
+pub const FBM_SEED_OCEANIC_XOR_MAGIC: u64 = 0xC0_FFEE;
+
 /// Build the S̃ field for `InitMode::RadialProfileWithFBM`. See
 /// module docstring for the algorithm.
+///
+/// Step 13.5 extends the function with optional FBM on **oceanic**
+/// cells, opt-in via `apply_fbm_to_oceanic`. When `false` (default),
+/// the function is **bit-identical** to its Step 13 form by
+/// short-circuit — the oceanic FBM block is entirely skipped, no
+/// second `Fbm<Perlin>` instance is constructed, and oceanic cells
+/// retain `oceanic_value` from `radial_profile::build`. When `true`,
+/// oceanic cells receive
+/// `clamp(oceanic_value + fbm_amplitude_oceanic · fbm_oceanic.get(x, y),
+/// 0, OCEANIC_CLAMP_MAX)` — with the strict upper bound `0.49`
+/// preventing threshold-crossing to continental classification (D7).
+///
+/// `fbm_seed_oceanic = None` derives from `fbm_seed XOR
+/// FBM_SEED_OCEANIC_XOR_MAGIC` (D3); `fbm_scale_oceanic = None`
+/// reuses `fbm_scale` (D4). Either may be supplied explicitly.
 ///
 /// # Panics
 ///
@@ -140,6 +180,8 @@ pub const FBM_SEED_DEFAULT: u64 = 0x0FBA_5EED;
 ///   is not finite.
 /// - `fbm_octaves == 0`.
 /// - `fbm_scale <= 0`.
+/// - `apply_fbm_to_oceanic = true` with non-finite
+///   `fbm_amplitude_oceanic` or non-positive resolved `scale_oceanic`.
 #[allow(clippy::too_many_arguments)]
 pub fn build(
     nx: usize,
@@ -154,6 +196,15 @@ pub fn build(
     fbm_lacunarity: f64,
     fbm_scale: f64,
     fbm_seed: u64,
+    // Step 13.5 — oceanic FBM extension (opt-in). Defaults at the
+    // call site preserve Step 13 bit-identical behaviour by
+    // short-circuiting the oceanic block when `apply_fbm_to_oceanic`
+    // is false — no second FBM instance is constructed, no oceanic
+    // cell is touched.
+    apply_fbm_to_oceanic: bool,
+    fbm_amplitude_oceanic: f64,
+    fbm_scale_oceanic: Option<f64>,
+    fbm_seed_oceanic: Option<u64>,
 ) -> Field2D {
     assert!(
         fbm_amplitude.is_finite()
@@ -213,6 +264,57 @@ pub fn build(
             s.set(i, j, perturbed.clamp(0.0, 1.0));
         }
     }
+
+    // Step 13.5 — oceanic FBM extension. Strictly opt-in. When the
+    // flag is false the entire block below is skipped — no second
+    // `Fbm<Perlin>` instance, no oceanic cell modification — so the
+    // function output is bit-identical to its Step 13 form.
+    if apply_fbm_to_oceanic {
+        // D3 — derive oceanic seed: explicit `Some(seed)` wins,
+        // otherwise XOR the continental seed with the magic
+        // constant for reasonable independence.
+        let seed_oceanic =
+            fbm_seed_oceanic.unwrap_or(fbm_seed ^ FBM_SEED_OCEANIC_XOR_MAGIC);
+        // D4 — derive oceanic scale: explicit `Some(scale)` wins,
+        // otherwise reuse the continental scale.
+        let scale_oceanic = fbm_scale_oceanic.unwrap_or(fbm_scale);
+        assert!(
+            fbm_amplitude_oceanic.is_finite(),
+            "fbm_amplitude_oceanic must be finite, got {fbm_amplitude_oceanic}"
+        );
+        assert!(
+            scale_oceanic.is_finite() && scale_oceanic > 0.0,
+            "resolved fbm_scale_oceanic must be a positive finite scalar, got {scale_oceanic}"
+        );
+
+        let fbm_oceanic = Fbm::<Perlin>::new(seed_oceanic as u32)
+            .set_octaves(fbm_octaves as usize)
+            .set_persistence(fbm_persistence)
+            .set_lacunarity(fbm_lacunarity)
+            .set_frequency(1.0);
+        let inv_scale_oceanic = 1.0 / scale_oceanic;
+
+        for j in 0..ny {
+            for i in 0..nx {
+                // Mirror of the continental loop: only oceanic
+                // cells are touched here.
+                if !matches!(p.plate_type.get(i, j), PlateType::Oceanic) {
+                    continue;
+                }
+                let x = ((i as f64) + 0.5) / nx_f * inv_scale_oceanic;
+                let y = ((j as f64) + 0.5) / ny_f * inv_scale_oceanic;
+                let n = fbm_oceanic.get([x, y]);
+                let perturbed = oceanic_value + fbm_amplitude_oceanic * n;
+                // D7 — strict threshold protection. Upper bound
+                // `OCEANIC_CLAMP_MAX = 0.49` keeps oceanic cells
+                // strictly oceanic by classification regardless of
+                // the FBM peak amplitude; volcanic islands (cells
+                // crossing 0.5) are out of scope for Step 13.5.
+                s.set(i, j, perturbed.clamp(0.0, OCEANIC_CLAMP_MAX));
+            }
+        }
+    }
+
     s
 }
 
@@ -277,6 +379,10 @@ mod tests {
             lac,
             scale,
             1,
+            false,
+            FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            None,
+            None,
         );
         let s_seed_2 = build(
             nx,
@@ -291,6 +397,10 @@ mod tests {
             lac,
             scale,
             999,
+            false,
+            FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            None,
+            None,
         );
 
         let mut count_oceanic = 0;
@@ -350,6 +460,10 @@ mod tests {
             lac,
             scale,
             seed,
+            false,
+            FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            None,
+            None,
         );
 
         for j in 0..ny {
@@ -395,6 +509,10 @@ mod tests {
             lac,
             scale,
             seed,
+            false,
+            FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            None,
+            None,
         );
         let s_b = build(
             nx,
@@ -409,6 +527,10 @@ mod tests {
             lac,
             scale,
             seed,
+            false,
+            FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            None,
+            None,
         );
         assert_eq!(s_a.data(), s_b.data());
     }
@@ -438,6 +560,10 @@ mod tests {
             FBM_LACUNARITY_DEFAULT,
             FBM_SCALE_DEFAULT,
             FBM_SEED_DEFAULT,
+            false,
+            FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            None,
+            None,
         );
 
         for j in 0..ny {
@@ -477,8 +603,258 @@ mod tests {
             FBM_LACUNARITY_DEFAULT,
             FBM_SCALE_DEFAULT,
             FBM_SEED_DEFAULT,
+            false,
+            FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            None,
+            None,
         );
         assert_eq!(s_radial.data(), s_fbm.data());
+    }
+
+    /// Step 13.5 acceptance #1 — `apply_fbm_to_oceanic = false`
+    /// produces a field byte-identical to the equivalent Step 13
+    /// build (no oceanic FBM contribution). The Step 13.5 contract
+    /// rests on this short-circuit being structural, not numerical.
+    #[test]
+    fn oceanic_fbm_disabled_preserves_step13() {
+        let nx = 64;
+        let ny = 64;
+        let plates = build_plates(nx, ny, 42, 8, 0.4);
+        let p = make_init_data(&plates);
+        let (a, o, persist, lac, scale, seed) = defaults();
+
+        // Step 13-equivalent build: oceanic FBM disabled, the
+        // amplitude/scale/seed defaults are written but never read.
+        let s_step13 = build(
+            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
+            a, o, persist, lac, scale, seed,
+            false,
+            FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            None,
+            None,
+        );
+        // Same shape, but with non-trivial oceanic params (any
+        // non-default value the user might pass): the disabled
+        // flag must short-circuit before they're read, so the
+        // output stays byte-identical to the disabled-default
+        // build above.
+        let s_with_unused_params = build(
+            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
+            a, o, persist, lac, scale, seed,
+            false,        // <-- the gate
+            0.42,         // bogus amplitude — must not be applied
+            Some(0.07),   // bogus scale       — idem
+            Some(0xDEAD), // bogus seed        — idem
+        );
+        assert_eq!(s_step13.data(), s_with_unused_params.data(),
+            "apply_fbm_to_oceanic = false must short-circuit before \
+             reading any of the oceanic FBM parameters");
+    }
+
+    /// Step 13.5 acceptance #2 — with the flag enabled and any
+    /// non-zero `fbm_amplitude_oceanic`, oceanic cells gain a
+    /// measurable variance (var > 0). Confirms the FBM is
+    /// actually sampled and added, not silently dropped.
+    #[test]
+    fn oceanic_fbm_enabled_varies() {
+        let nx = 64;
+        let ny = 64;
+        let plates = build_plates(nx, ny, 42, 8, 0.4);
+        let p = make_init_data(&plates);
+        let (a, o, persist, lac, scale, seed) = defaults();
+
+        let s = build(
+            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
+            a, o, persist, lac, scale, seed,
+            true,
+            0.10,
+            None,
+            None,
+        );
+
+        let mut sum = 0.0_f64;
+        let mut count = 0usize;
+        for j in 0..ny {
+            for i in 0..nx {
+                if matches!(plates.plate_type.get(i, j), PlateType::Oceanic) {
+                    sum += s.get(i, j);
+                    count += 1;
+                }
+            }
+        }
+        assert!(count > 0, "no oceanic cells found — preset assumption failed");
+        let mean = sum / count as f64;
+        let mut var = 0.0_f64;
+        for j in 0..ny {
+            for i in 0..nx {
+                if matches!(plates.plate_type.get(i, j), PlateType::Oceanic) {
+                    let d = s.get(i, j) - mean;
+                    var += d * d;
+                }
+            }
+        }
+        var /= count as f64;
+        assert!(var > 0.0,
+            "oceanic FBM enabled but oceanic variance is zero (count={}, mean={:.6})",
+            count, mean);
+    }
+
+    /// Step 13.5 acceptance #3 — across an amplitude sweep
+    /// `{0.05, 0.10, 0.20, 0.30, 0.40}`, every oceanic cell
+    /// stays at `S̃ ≤ OCEANIC_CLAMP_MAX = 0.49`. The strict
+    /// upper bound prevents threshold-crossing to continental
+    /// classification regardless of FBM peak amplitude (D7).
+    #[test]
+    fn oceanic_fbm_no_threshold_crossing() {
+        let nx = 64;
+        let ny = 64;
+        let plates = build_plates(nx, ny, 42, 8, 0.4);
+        let p = make_init_data(&plates);
+        let (a, o, persist, lac, scale, seed) = defaults();
+
+        for amp_oceanic in [0.05, 0.10, 0.20, 0.30, 0.40] {
+            let s = build(
+                nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
+                a, o, persist, lac, scale, seed,
+                true,
+                amp_oceanic,
+                None,
+                None,
+            );
+            for j in 0..ny {
+                for i in 0..nx {
+                    if !matches!(plates.plate_type.get(i, j), PlateType::Oceanic) {
+                        continue;
+                    }
+                    let v = s.get(i, j);
+                    assert!(v <= OCEANIC_CLAMP_MAX + 1e-15,
+                        "oceanic cell ({},{}) at amplitude={} crossed clamp: {} > {}",
+                        i, j, amp_oceanic, v, OCEANIC_CLAMP_MAX);
+                    assert!(v >= 0.0,
+                        "oceanic cell ({},{}) at amplitude={} below zero: {}",
+                        i, j, amp_oceanic, v);
+                }
+            }
+        }
+    }
+
+    /// Step 13.5 acceptance #4 — different `fbm_seed_oceanic`
+    /// values produce different oceanic fields, while the
+    /// continental field stays byte-identical (continental seed
+    /// unchanged). Verifies the two `Fbm<Perlin>` instances are
+    /// independent: changing one does not perturb the other.
+    #[test]
+    fn oceanic_fbm_seed_independence() {
+        let nx = 64;
+        let ny = 64;
+        let plates = build_plates(nx, ny, 42, 8, 0.4);
+        let p = make_init_data(&plates);
+        let (a, o, persist, lac, scale, seed) = defaults();
+
+        let s_a = build(
+            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
+            a, o, persist, lac, scale, seed,
+            true, 0.10, None, Some(1),
+        );
+        let s_b = build(
+            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
+            a, o, persist, lac, scale, seed,
+            true, 0.10, None, Some(999),
+        );
+
+        let mut oceanic_diff_count = 0usize;
+        for j in 0..ny {
+            for i in 0..nx {
+                let pt = plates.plate_type.get(i, j);
+                let va = s_a.get(i, j);
+                let vb = s_b.get(i, j);
+                if matches!(pt, PlateType::Oceanic) && va != vb {
+                    oceanic_diff_count += 1;
+                }
+                if matches!(pt, PlateType::Continental) {
+                    assert_eq!(va, vb,
+                        "continental cell ({},{}) differs between oceanic-seed \
+                         variants — continental field must be insulated from \
+                         oceanic seed: {} vs {}", i, j, va, vb);
+                }
+            }
+        }
+        assert!(oceanic_diff_count > 0,
+            "no oceanic cells differ between distinct fbm_seed_oceanic values \
+             — the oceanic FBM is not actually consuming the seed");
+    }
+
+    /// Step 13.5 acceptance #5 — `fbm_seed_oceanic = None`
+    /// derives the oceanic seed from `fbm_seed XOR
+    /// FBM_SEED_OCEANIC_XOR_MAGIC`, so the explicit-derivation
+    /// build and the default-derivation build produce identical
+    /// fields.
+    #[test]
+    fn oceanic_fbm_seed_default_derivation() {
+        let nx = 32;
+        let ny = 32;
+        let plates = build_plates(nx, ny, 42, 6, 0.4);
+        let p = make_init_data(&plates);
+        let (a, o, persist, lac, scale, seed) = defaults();
+
+        let derived = seed ^ FBM_SEED_OCEANIC_XOR_MAGIC;
+
+        let s_default = build(
+            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
+            a, o, persist, lac, scale, seed,
+            true, 0.10, None,
+            None, // <-- derive from fbm_seed
+        );
+        let s_explicit = build(
+            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
+            a, o, persist, lac, scale, seed,
+            true, 0.10, None,
+            Some(derived), // <-- explicit derivation
+        );
+        assert_eq!(s_default.data(), s_explicit.data(),
+            "fbm_seed_oceanic = None must derive from fbm_seed XOR 0x{:X}",
+            FBM_SEED_OCEANIC_XOR_MAGIC);
+    }
+
+    /// Step 13.5 acceptance #6 — different `fbm_scale_oceanic`
+    /// values produce different oceanic spectral content (the
+    /// fields differ), confirming the scale parameter is
+    /// honoured rather than silently shadowed by the continental
+    /// scale. We use distinct fbm seeds to avoid coincidental
+    /// agreement on a degenerate sample.
+    #[test]
+    fn oceanic_fbm_scale_independence() {
+        let nx = 64;
+        let ny = 64;
+        let plates = build_plates(nx, ny, 42, 8, 0.4);
+        let p = make_init_data(&plates);
+        let (a, o, persist, lac, scale, seed) = defaults();
+
+        let s_short_wave = build(
+            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
+            a, o, persist, lac, scale, seed,
+            true, 0.10, Some(0.05), Some(1),
+        );
+        let s_long_wave = build(
+            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
+            a, o, persist, lac, scale, seed,
+            true, 0.10, Some(0.20), Some(1),
+        );
+
+        let mut oceanic_diff_count = 0usize;
+        for j in 0..ny {
+            for i in 0..nx {
+                if !matches!(plates.plate_type.get(i, j), PlateType::Oceanic) {
+                    continue;
+                }
+                if s_short_wave.get(i, j) != s_long_wave.get(i, j) {
+                    oceanic_diff_count += 1;
+                }
+            }
+        }
+        assert!(oceanic_diff_count > 0,
+            "no oceanic cells differ between fbm_scale_oceanic = 0.05 and 0.20 — \
+             the scale parameter is not being applied");
     }
 
     /// Sanity: distinct seeds produce distinct fields (FBM is
@@ -503,6 +879,10 @@ mod tests {
             lac,
             scale,
             1,
+            false,
+            FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            None,
+            None,
         );
         let s_2 = build(
             nx,
@@ -517,6 +897,10 @@ mod tests {
             lac,
             scale,
             999,
+            false,
+            FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            None,
+            None,
         );
         assert_ne!(s_1.data(), s_2.data());
     }
