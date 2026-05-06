@@ -210,6 +210,13 @@ pub enum V2InitModeSpec {
     /// `snake_case` default (which would expand "FBM" into
     /// `f_b_m`) so the on-disk JSON tag matches the core enum's
     /// `radial_profile_with_fbm`.
+    ///
+    /// Step 13.5 — extended with optional FBM on **oceanic** cells.
+    /// Four new fields mirror the core enum's; all carry
+    /// `#[serde(default)]` so legacy v2 preset JSON written before
+    /// Step 13.5 (which lacks the oceanic keys) loads with the
+    /// disabled-default behaviour and remains bit-identical to
+    /// Step 13.
     #[serde(rename = "radial_profile_with_fbm")]
     RadialProfileWithFBM {
         continental_value: f64,
@@ -221,7 +228,25 @@ pub enum V2InitModeSpec {
         fbm_lacunarity: f64,
         fbm_scale: f64,
         fbm_seed: u64,
+        #[serde(default)]
+        apply_fbm_to_oceanic: bool,
+        #[serde(default = "default_fbm_amplitude_oceanic")]
+        fbm_amplitude_oceanic: f64,
+        #[serde(default)]
+        fbm_scale_oceanic: Option<f64>,
+        #[serde(default)]
+        fbm_seed_oceanic: Option<u64>,
     },
+}
+
+/// `#[serde(default)]` helper for `V2InitModeSpec::RadialProfile
+/// WithFBM::fbm_amplitude_oceanic` — bare `Default::default()` on
+/// `f64` is `0.0`, which would silently disable the oceanic FBM
+/// perturbation when the user later flips the flag on. The
+/// constant from `ymir_core::tectonics_v2::init` keeps the value
+/// in one place.
+fn default_fbm_amplitude_oceanic() -> f64 {
+    ymir_core::tectonics_v2::init::FBM_AMPLITUDE_OCEANIC_DEFAULT
 }
 
 impl Default for V2InitModeSpec {
@@ -267,6 +292,14 @@ impl V2InitModeSpec {
                 fbm_lacunarity,
                 fbm_scale,
                 fbm_seed,
+                // Step 13.5 — oceanic FBM fields, mirrored from
+                // the core enum. Phase 2 adds the spec-level
+                // mirror; Phase 3 will wire these to the
+                // parameter-panel UI controls.
+                apply_fbm_to_oceanic,
+                fbm_amplitude_oceanic,
+                fbm_scale_oceanic,
+                fbm_seed_oceanic,
             } => InitMode::RadialProfileWithFBM {
                 continental_value,
                 oceanic_value,
@@ -277,19 +310,10 @@ impl V2InitModeSpec {
                 fbm_lacunarity,
                 fbm_scale,
                 fbm_seed,
-                // Step 13.5 — `V2InitModeSpec` has not been
-                // extended with the oceanic FBM fields yet
-                // (Phase 3 will add the UI knobs and the spec
-                // mirror). Until then the conversion to the core
-                // enum forces the disabled defaults so the viz
-                // bridge keeps producing Step-13-equivalent
-                // runs. Phase 3 replaces these with the actual
-                // user-configured values from the panel.
-                apply_fbm_to_oceanic: false,
-                fbm_amplitude_oceanic:
-                    ymir_core::tectonics_v2::init::FBM_AMPLITUDE_OCEANIC_DEFAULT,
-                fbm_scale_oceanic: None,
-                fbm_seed_oceanic: None,
+                apply_fbm_to_oceanic,
+                fbm_amplitude_oceanic,
+                fbm_scale_oceanic,
+                fbm_seed_oceanic,
             },
         }
     }
@@ -339,13 +363,13 @@ impl V2InitModeSpec {
 
     /// Defaults for `RadialProfileWithFBM` when picked from the
     /// dropdown the first time. Mirrors the core `FBM_*_DEFAULT`
-    /// constants (amplitude 0.10, octaves 4, persistence 0.5,
-    /// lacunarity 2.0, scale 0.25, seed 0x0FBA_5EED).
+    /// constants (amplitude 0.20, scale 0.10 since Step 13 Phase 6;
+    /// oceanic FBM disabled by default since Step 13.5).
     pub fn radial_profile_fbm_default() -> Self {
         use ymir_core::tectonics_v2::init::{
-            CONTINENTAL_VALUE_DEFAULT, FBM_AMPLITUDE_DEFAULT, FBM_LACUNARITY_DEFAULT,
-            FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
-            OCEANIC_VALUE_DEFAULT,
+            CONTINENTAL_VALUE_DEFAULT, FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            FBM_LACUNARITY_DEFAULT, FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT,
+            FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT, OCEANIC_VALUE_DEFAULT,
         };
         V2InitModeSpec::RadialProfileWithFBM {
             continental_value: CONTINENTAL_VALUE_DEFAULT,
@@ -357,6 +381,14 @@ impl V2InitModeSpec {
             fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
             fbm_scale: FBM_SCALE_DEFAULT,
             fbm_seed: FBM_SEED_DEFAULT,
+            // Step 13.5 — oceanic FBM disabled by default; the
+            // amplitude/scale/seed values are written so a user
+            // toggling the flag from the panel sees sensible
+            // initial values rather than zeros.
+            apply_fbm_to_oceanic: false,
+            fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
+            fbm_scale_oceanic: None,
+            fbm_seed_oceanic: None,
         }
     }
 }
@@ -591,6 +623,31 @@ mod tests {
                 fbm_lacunarity: 2.0,
                 fbm_scale: 0.25,
                 fbm_seed: 0x0FBA_5EED,
+                // Step 13.5 — disabled-default oceanic FBM
+                // exercises the most common path on roundtrip.
+                apply_fbm_to_oceanic: false,
+                fbm_amplitude_oceanic: 0.10,
+                fbm_scale_oceanic: None,
+                fbm_seed_oceanic: None,
+            },
+            // Step 13.5 — second case with oceanic FBM enabled
+            // and explicit `Some(...)` for the optional fields,
+            // so the roundtrip exercises both branches of the
+            // serde encoding.
+            V2InitModeSpec::RadialProfileWithFBM {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: V2ProfileShape::Smoothstep,
+                fbm_amplitude: 0.20,
+                fbm_octaves: 4,
+                fbm_persistence: 0.5,
+                fbm_lacunarity: 2.0,
+                fbm_scale: 0.10,
+                fbm_seed: 0x0FBA_5EED,
+                apply_fbm_to_oceanic: true,
+                fbm_amplitude_oceanic: 0.12,
+                fbm_scale_oceanic: Some(0.08),
+                fbm_seed_oceanic: Some(0xC0FFEE_5EE_D),
             },
         ];
         for original in cases {
@@ -649,6 +706,13 @@ mod tests {
             fbm_lacunarity: 2.3,
             fbm_scale: 0.18,
             fbm_seed: 0xCAFE_F00D,
+            // Step 13.5 — disabled-default oceanic FBM in this
+            // probe; the dedicated `v2_panel_radial_fbm_with_
+            // oceanic_roundtrip` exercises the enabled path.
+            apply_fbm_to_oceanic: false,
+            fbm_amplitude_oceanic: 0.10,
+            fbm_scale_oceanic: None,
+            fbm_seed_oceanic: None,
         };
         let json = serde_json::to_string(&fbm_case).expect("serialize");
         let back: V2InitModeSpec = serde_json::from_str(&json).expect("deserialize");
@@ -656,7 +720,13 @@ mod tests {
 
         // Schema probe: deserialize a hand-written preset fragment
         // matching the documented field shape (catches accidental
-        // tag-renaming or field-ordering drift).
+        // tag-renaming or field-ordering drift). This fragment
+        // omits the Step 13.5 oceanic FBM fields, so the parsed
+        // value carries the disabled defaults (`apply_fbm_to_
+        // oceanic = false`, etc.) — an implicit legacy-preset
+        // test; the dedicated
+        // `v2_panel_radial_fbm_legacy_preset_load` covers the
+        // contract explicitly.
         let hand_written = r#"{
             "kind": "radial_profile_with_fbm",
             "continental_value": 0.95,
@@ -683,8 +753,173 @@ mod tests {
                 fbm_lacunarity: 2.0,
                 fbm_scale: 0.25,
                 fbm_seed: 264339693,
+                // Step 13.5 — these are the `#[serde(default)]`
+                // values applied when the JSON omits the oceanic
+                // FBM keys.
+                apply_fbm_to_oceanic: false,
+                fbm_amplitude_oceanic:
+                    ymir_core::tectonics_v2::init::FBM_AMPLITUDE_OCEANIC_DEFAULT,
+                fbm_scale_oceanic: None,
+                fbm_seed_oceanic: None,
             }
         );
+    }
+
+    /// Step 13.5 Phase 2 — legacy v2 preset JSON written before the
+    /// oceanic FBM extension must still deserialise without error,
+    /// with all four new fields populated by their
+    /// `#[serde(default)]` values: `apply_fbm_to_oceanic = false`,
+    /// `fbm_amplitude_oceanic = FBM_AMPLITUDE_OCEANIC_DEFAULT`,
+    /// `fbm_scale_oceanic = None`, `fbm_seed_oceanic = None`.
+    /// `into_core()` converts the spec to an `InitMode` whose
+    /// disabled flag short-circuits the oceanic FBM block — the
+    /// run is bit-identical to its Step 13 form.
+    #[test]
+    fn v2_panel_radial_fbm_legacy_preset_load() {
+        let legacy_json = r#"{
+            "kind": "radial_profile_with_fbm",
+            "continental_value": 0.95,
+            "oceanic_value": 0.20,
+            "profile_shape": { "kind": "smoothstep" },
+            "fbm_amplitude": 0.20,
+            "fbm_octaves": 4,
+            "fbm_persistence": 0.5,
+            "fbm_lacunarity": 2.0,
+            "fbm_scale": 0.10,
+            "fbm_seed": 264339693
+        }"#;
+        let parsed: V2InitModeSpec = serde_json::from_str(legacy_json)
+            .expect("Step 13 preset must still load with Step 13.5's spec");
+        match parsed {
+            V2InitModeSpec::RadialProfileWithFBM {
+                apply_fbm_to_oceanic,
+                fbm_amplitude_oceanic,
+                fbm_scale_oceanic,
+                fbm_seed_oceanic,
+                ..
+            } => {
+                assert!(
+                    !apply_fbm_to_oceanic,
+                    "legacy preset must default `apply_fbm_to_oceanic` to false"
+                );
+                assert_eq!(
+                    fbm_amplitude_oceanic,
+                    ymir_core::tectonics_v2::init::FBM_AMPLITUDE_OCEANIC_DEFAULT,
+                    "legacy preset must default `fbm_amplitude_oceanic` to the placeholder constant"
+                );
+                assert_eq!(
+                    fbm_scale_oceanic, None,
+                    "legacy preset must default `fbm_scale_oceanic` to None"
+                );
+                assert_eq!(
+                    fbm_seed_oceanic, None,
+                    "legacy preset must default `fbm_seed_oceanic` to None"
+                );
+            }
+            other => panic!("expected RadialProfileWithFBM, got {:?}", other),
+        }
+
+        // The parsed spec must convert to a core `InitMode` whose
+        // disabled flag short-circuits the oceanic FBM path: the
+        // resulting run is bit-identical to its Step 13 form.
+        let core = parsed.into_core();
+        match core {
+            ymir_core::tectonics_v2::init::InitMode::RadialProfileWithFBM {
+                apply_fbm_to_oceanic,
+                ..
+            } => assert!(
+                !apply_fbm_to_oceanic,
+                "into_core() must thread the disabled flag through the conversion"
+            ),
+            other => panic!("expected InitMode::RadialProfileWithFBM, got {:?}", other),
+        }
+    }
+
+    /// Step 13.5 Phase 2 — JSON with the four new oceanic FBM
+    /// fields explicitly populated must roundtrip
+    /// (serialize → deserialize → compare) byte-for-byte. Locks
+    /// the on-disk schema for the oceanic FBM extension.
+    #[test]
+    fn v2_panel_radial_fbm_with_oceanic_roundtrip() {
+        let cases = [
+            // Disabled flag with explicit oceanic params filled —
+            // the params are written but unused by the run; this
+            // case exercises the serde encoding of the fields.
+            V2InitModeSpec::RadialProfileWithFBM {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: V2ProfileShape::Smoothstep,
+                fbm_amplitude: 0.20,
+                fbm_octaves: 4,
+                fbm_persistence: 0.5,
+                fbm_lacunarity: 2.0,
+                fbm_scale: 0.10,
+                fbm_seed: 0x0FBA_5EED,
+                apply_fbm_to_oceanic: false,
+                fbm_amplitude_oceanic: 0.15,
+                fbm_scale_oceanic: Some(0.12),
+                fbm_seed_oceanic: Some(0xC0FFEE),
+            },
+            // Enabled flag with non-default oceanic params, all
+            // four fields written.
+            V2InitModeSpec::RadialProfileWithFBM {
+                continental_value: 0.92,
+                oceanic_value: 0.18,
+                profile_shape: V2ProfileShape::Pow { exponent: 2.0 },
+                fbm_amplitude: 0.20,
+                fbm_octaves: 4,
+                fbm_persistence: 0.5,
+                fbm_lacunarity: 2.0,
+                fbm_scale: 0.10,
+                fbm_seed: 0xCAFE_F00D,
+                apply_fbm_to_oceanic: true,
+                fbm_amplitude_oceanic: 0.08,
+                fbm_scale_oceanic: Some(0.05),
+                fbm_seed_oceanic: Some(0xDEADBEEF),
+            },
+            // Enabled flag with `None` for the optional fields,
+            // exercising the default-derivation path of the spec.
+            V2InitModeSpec::RadialProfileWithFBM {
+                continental_value: 0.95,
+                oceanic_value: 0.20,
+                profile_shape: V2ProfileShape::Smoothstep,
+                fbm_amplitude: 0.20,
+                fbm_octaves: 4,
+                fbm_persistence: 0.5,
+                fbm_lacunarity: 2.0,
+                fbm_scale: 0.10,
+                fbm_seed: 0x0FBA_5EED,
+                apply_fbm_to_oceanic: true,
+                fbm_amplitude_oceanic: 0.10,
+                fbm_scale_oceanic: None,
+                fbm_seed_oceanic: None,
+            },
+        ];
+        for original in cases {
+            let json = serde_json::to_string(&original).expect("serialize");
+            let back: V2InitModeSpec = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(
+                original, back,
+                "Step 13.5 RadialProfileWithFBM roundtrip with oceanic FBM failed: {}",
+                json
+            );
+
+            // Cross-check the serialised JSON contains all four
+            // oceanic FBM keys when the flag is on (lock the
+            // documented schema; if the user toggles the flag
+            // and edits a preset by hand they need the keys
+            // visible).
+            if let V2InitModeSpec::RadialProfileWithFBM {
+                apply_fbm_to_oceanic: true,
+                ..
+            } = original
+            {
+                assert!(json.contains("\"apply_fbm_to_oceanic\":true"),
+                    "serialised JSON must contain apply_fbm_to_oceanic=true: {}", json);
+                assert!(json.contains("\"fbm_amplitude_oceanic\""),
+                    "serialised JSON must contain fbm_amplitude_oceanic: {}", json);
+            }
+        }
     }
 
     /// Phase 8d — full-run-spec round-trip with the new `init_mode`
