@@ -828,6 +828,11 @@ fn init_mode_widget(ui: &mut egui::Ui, mode: &mut V2InitModeSpec) {
             fbm_lacunarity,
             fbm_scale,
             fbm_seed,
+            // Step 13.5 — Phase 3 will destructure the oceanic
+            // FBM fields and add the corresponding UI controls.
+            // Phase 2 only mirrors the spec to enable serde
+            // backward-compat and the data-flow plumbing.
+            ..
         } => {
             ui.add(
                 egui::Slider::new(continental_value, 0.5..=1.0)
