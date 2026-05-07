@@ -41,18 +41,16 @@ use ymir_core::tectonics_v2::init::{
 };
 use ymir_core::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig, VoronoiPlates};
 
-const NX: usize = 64;
-const NY: usize = 64;
 const SC_SEED: u64 = 12;
 const SC_NUM_PLATES: usize = 4;
 const SC_CONTINENTAL_RATIO: f64 = 0.5;
 const CONTINENTAL_VALUE: f64 = 0.95;
 const OCEANIC_VALUE: f64 = 0.20;
 
-fn build_voronoi() -> VoronoiPlates {
+fn build_voronoi(nx: usize, ny: usize) -> VoronoiPlates {
     generate_voronoi(
-        NX,
-        NY,
+        nx,
+        ny,
         &VoronoiConfig {
             num_plates: SC_NUM_PLATES,
             continental_ratio: SC_CONTINENTAL_RATIO,
@@ -61,10 +59,10 @@ fn build_voronoi() -> VoronoiPlates {
     )
 }
 
-fn make_ctx(plates: &VoronoiPlates) -> InitContext<'_> {
+fn make_ctx<'a>(plates: &'a VoronoiPlates, nx: usize, ny: usize) -> InitContext<'a> {
     InitContext {
-        nx: NX,
-        ny: NY,
+        nx,
+        ny,
         seed: SC_SEED,
         amplitude: 0.0,
         plate_data: Some(PlateInitData {
@@ -103,13 +101,15 @@ fn oceanic_stats(
     plates: &VoronoiPlates,
     s_baseline: &Field2D,
     s_enabled: &Field2D,
+    nx: usize,
+    ny: usize,
 ) -> (usize, f64, f64, f64, f64) {
     let mut diffs: Vec<f64> = Vec::new();
     let mut max_s = f64::NEG_INFINITY;
     let mut min_s = f64::INFINITY;
     let mut clipped = 0usize;
-    for j in 0..NY {
-        for i in 0..NX {
+    for j in 0..ny {
+        for i in 0..nx {
             if !matches!(plates.plate_type.get(i, j), PlateType::Oceanic) {
                 continue;
             }
@@ -138,8 +138,10 @@ fn oceanic_stats(
 #[test]
 #[ignore]
 fn fbm_oceanic_calibration_probe() {
-    let plates = build_voronoi();
-    let ctx = make_ctx(&plates);
+    let nx = 64;
+    let ny = 64;
+    let plates = build_voronoi(nx, ny);
+    let ctx = make_ctx(&plates, nx, ny);
 
     // Baseline build with oceanic FBM disabled — every oceanic
     // cell sits at OCEANIC_VALUE = 0.20 by construction.
@@ -180,7 +182,7 @@ fn fbm_oceanic_calibration_probe() {
         for scale in [0.05_f64, 0.10, 0.15, 0.20] {
             let s = init_s_field(build_with_oceanic(amp, scale), &ctx);
             let (_, sigma, max_s, _min_s, clip_frac) =
-                oceanic_stats(&plates, &s_baseline, &s);
+                oceanic_stats(&plates, &s_baseline, &s, nx, ny);
             eprint!(
                 "  σ={:.4}/{:.3}/{:>3.0}%",
                 sigma,
@@ -213,10 +215,9 @@ fn fbm_oceanic_calibration_probe() {
 /// metrics agree numerically here, but the FBM-isolated form
 /// is robust to any future change of the oceanic baseline (e.g.,
 /// per-plate variation in Step 14+).
-#[test]
-fn oceanic_fbm_amplitude_target() {
-    let plates = build_voronoi();
-    let ctx = make_ctx(&plates);
+fn run_oceanic_fbm_amplitude_target(nx: usize, ny: usize, label: &str) {
+    let plates = build_voronoi(nx, ny);
+    let ctx = make_ctx(&plates, nx, ny);
 
     // FBM-disabled baseline (Step 13 oceanic uniform).
     let baseline_mode = InitMode::RadialProfileWithFBM {
@@ -255,11 +256,12 @@ fn oceanic_fbm_amplitude_target() {
     let s_enabled = init_s_field(enabled_mode, &ctx);
 
     let (count, sigma, max_s, _min_s, clip_frac) =
-        oceanic_stats(&plates, &s_baseline, &s_enabled);
+        oceanic_stats(&plates, &s_baseline, &s_enabled, nx, ny);
 
     eprintln!(
         "Step 13.5 acceptance #7 — oceanic_fbm_amplitude_target on \
-         single_continent (64², seed=12, {} plates, {:.0}% continental):",
+         single_continent {} (seed=12, {} plates, {:.0}% continental):",
+        label,
         SC_NUM_PLATES,
         SC_CONTINENTAL_RATIO * 100.0
     );
@@ -282,30 +284,61 @@ fn oceanic_fbm_amplitude_target() {
 
     assert!(
         count > 0,
-        "no oceanic cells found — single_continent setup invariant violated"
+        "[{}] no oceanic cells found — single_continent setup invariant violated",
+        label
     );
     assert!(
         sigma >= 0.02,
-        "σ_fbm_oceanic_isolated = {:.4} below the 0.02 lower bound — \
+        "[{}] σ_fbm_oceanic_isolated = {:.4} below the 0.02 lower bound — \
          the FBM contribution is too small to be visible. \
          Default amplitude {} may need raising.",
+        label,
         sigma,
         FBM_AMPLITUDE_OCEANIC_DEFAULT,
     );
     assert!(
         sigma <= 0.08,
-        "σ_fbm_oceanic_isolated = {:.4} above the 0.08 upper bound — \
+        "[{}] σ_fbm_oceanic_isolated = {:.4} above the 0.08 upper bound — \
          the FBM contribution is approaching the threshold. \
          Default amplitude {} may need lowering.",
+        label,
         sigma,
         FBM_AMPLITUDE_OCEANIC_DEFAULT,
     );
     assert!(
         max_s <= OCEANIC_CLAMP_MAX + 1e-15,
-        "max(S̃_oceanic) = {:.6} > OCEANIC_CLAMP_MAX = {} — \
+        "[{}] max(S̃_oceanic) = {:.6} > OCEANIC_CLAMP_MAX = {} — \
          threshold protection violated, volcanic islands would emerge \
          (out of scope for Step 13.5).",
+        label,
         max_s,
         OCEANIC_CLAMP_MAX,
     );
+    assert!(
+        clip_frac < 0.05,
+        "[{}] clip fraction = {:.2}% — sustained saturation at the {} clamp \
+         indicates the amplitude default is too aggressive for this grid. \
+         Mechanism is healthy (no threshold crossing) but the perturbation \
+         is shape-distorted.",
+        label,
+        clip_frac * 100.0,
+        OCEANIC_CLAMP_MAX,
+    );
+}
+
+#[test]
+fn oceanic_fbm_amplitude_target_64sq() {
+    run_oceanic_fbm_amplitude_target(64, 64, "64²");
+}
+
+/// Phase 7 — same acceptance at 32² (milestone validation grid pair).
+/// Single_continent at 32² has ~512 oceanic cells (vs ~928 at 64²),
+/// well above the 150-cell threshold introduced in Step 13's
+/// "small-sample noise floor" caveat. The σ measurement is
+/// statistically reliable; the assertion stays strict (no
+/// largest-plate-only relaxation here, because we measure aggregate
+/// `σ` over all oceanic cells, not per-plate).
+#[test]
+fn oceanic_fbm_amplitude_target_32sq() {
+    run_oceanic_fbm_amplitude_target(32, 32, "32²");
 }
