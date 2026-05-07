@@ -41,6 +41,7 @@ use serde::{Deserialize, Serialize};
 use crate::erosion::hydraulic::ErosionConfig;
 use crate::terrain::upscale::FbmUpscaleConfig;
 
+pub use low_res_erosion::ErosionStats;
 pub use phase_a::{run_phase_a_cycle, run_phase_a_loop};
 pub use phase_b::run_phase_b;
 
