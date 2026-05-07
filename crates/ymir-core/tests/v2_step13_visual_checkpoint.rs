@@ -428,3 +428,196 @@ fn dump_step13_galerie_multi_preset() {
          RadialProfile{{Pow 2.0}} | RadialProfileWithFBM{{default}}"
     );
 }
+
+
+/// Step 13.5 Phase 4 — sanity visual for the oceanic FBM
+/// extension. 1×4 patchwork on `single_continent` (64²,
+/// seed=12, 4 plates, 50 % continental) showing the same
+/// `RadialProfileWithFBM` mode with four oceanic-FBM
+/// configurations:
+///
+/// 1. Step 13 default (oceanic uniform, `apply_fbm_to_oceanic =
+///    false`).
+/// 2. `apply_fbm_to_oceanic = true`, `amplitude = 0.10`.
+/// 3. `apply_fbm_to_oceanic = true`, `amplitude = 0.20`.
+/// 4. `apply_fbm_to_oceanic = true`, `amplitude = 0.40`
+///    (clipping at the 0.49 clamp expected — saturation visible).
+///
+/// Fixed `[0, 1]` colour range so the four tiles are directly
+/// comparable. Continental cells dominate the dynamic range, so
+/// the oceanic variation reads as fine texture in the dark band
+/// of the colourmap. A second oceanic-zoomed patchwork is
+/// generated with the values mapped from `[0, 0.49]` to `[0, 1]`
+/// so the FBM signature is more visible — referenced in the
+/// physics report as the "oceanic detail" view.
+#[test]
+#[ignore]
+fn dump_step13_5_oceanic_amplitude_sweep() {
+    use ymir_core::tectonics_v2::init::OCEANIC_CLAMP_MAX;
+
+    const SC_SEED: u64 = 12;
+    const SC_NUM_PLATES: usize = 4;
+    const SC_CONTINENTAL_RATIO: f64 = 0.5;
+
+    let plates = generate_voronoi(
+        NX,
+        NY,
+        &VoronoiConfig {
+            num_plates: SC_NUM_PLATES,
+            continental_ratio: SC_CONTINENTAL_RATIO,
+        },
+        SC_SEED,
+    );
+    let plate_data = PlateInitData {
+        plate_id: &plates.plate_id,
+        plate_type: &plates.plate_type,
+        seed_coords: Some(&plates.seed_coords),
+    };
+    let ctx = InitContext {
+        nx: NX,
+        ny: NY,
+        seed: SC_SEED,
+        amplitude: 0.0,
+        plate_data: Some(plate_data),
+    };
+
+    let cases: Vec<(&str, bool, f64)> = vec![
+        ("step13_default_oceanic_uniform", false, 0.10),
+        ("oceanic_fbm_amp_0_10", true, 0.10),
+        ("oceanic_fbm_amp_0_20", true, 0.20),
+        ("oceanic_fbm_amp_0_40_clipping", true, 0.40),
+    ];
+
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step13_5_visual_checkpoint");
+    std::fs::create_dir_all(&out_dir).expect("create output dir");
+
+    println!();
+    println!(
+        "Step 13.5 Phase 4 visual checkpoint — single_continent (64², \n         seed={}, {} plates, {:.0}% continental)",
+        SC_SEED,
+        SC_NUM_PLATES,
+        SC_CONTINENTAL_RATIO * 100.0
+    );
+    println!(
+        "Output dir: {}",
+        out_dir.canonicalize().unwrap_or(out_dir.clone()).display()
+    );
+    println!();
+
+    let mut fields: Vec<(String, Field2D)> = Vec::new();
+    for &(label, apply_oceanic, amp_oceanic) in &cases {
+        let mode = InitMode::RadialProfileWithFBM {
+            continental_value: CONTINENTAL_VALUE,
+            oceanic_value: OCEANIC_VALUE,
+            profile_shape: ProfileShape::Smoothstep,
+            fbm_amplitude: FBM_AMPLITUDE_DEFAULT,
+            fbm_octaves: FBM_OCTAVES_DEFAULT,
+            fbm_persistence: FBM_PERSISTENCE_DEFAULT,
+            fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
+            fbm_scale: FBM_SCALE_DEFAULT,
+            fbm_seed: FBM_SEED_DEFAULT,
+            apply_fbm_to_oceanic: apply_oceanic,
+            fbm_amplitude_oceanic: amp_oceanic,
+            fbm_scale_oceanic: None,
+            fbm_seed_oceanic: None,
+        };
+        let s = init_s_field(mode, &ctx);
+
+        // Per-tile oceanic stats: mean, std, max, clip fraction.
+        let mut o_sum = 0.0_f64;
+        let mut o_count = 0usize;
+        let mut o_max = f64::NEG_INFINITY;
+        let mut o_min = f64::INFINITY;
+        let mut o_clipped = 0usize;
+        for j in 0..NY {
+            for i in 0..NX {
+                if matches!(plates.plate_type.get(i, j), PlateType::Oceanic) {
+                    let v = s.get(i, j);
+                    o_sum += v;
+                    o_count += 1;
+                    if v > o_max { o_max = v; }
+                    if v < o_min { o_min = v; }
+                    if (v - OCEANIC_CLAMP_MAX).abs() < 1e-12 { o_clipped += 1; }
+                }
+            }
+        }
+        let o_mean = o_sum / o_count.max(1) as f64;
+        let mut o_var = 0.0_f64;
+        for j in 0..NY {
+            for i in 0..NX {
+                if matches!(plates.plate_type.get(i, j), PlateType::Oceanic) {
+                    let d = s.get(i, j) - o_mean;
+                    o_var += d * d;
+                }
+            }
+        }
+        let o_std = (o_var / o_count.max(1) as f64).sqrt();
+        let clip_frac = o_clipped as f64 / o_count.max(1) as f64;
+
+        let png_path = out_dir.join(format!("{}_64sq.png", label));
+        let _meta = save_heightmap(&s, &png_path).expect("save individual png");
+
+        println!(
+            "  {:<33} : oceanic mean={:.4}, std={:.4}, range=[{:.4}, {:.4}], clip={:.1}%",
+            label, o_mean, o_std, o_min, o_max, clip_frac * 100.0
+        );
+
+        fields.push((label.to_string(), s));
+    }
+
+    // Patchwork 1×4 fixed [0, 1] range — continental dominates.
+    let tile_w = NX;
+    let tile_h = NY;
+    let sep = 1usize;
+    let pw = tile_w * fields.len() + sep * fields.len().saturating_sub(1);
+    let ph = tile_h;
+    let mut patch = vec![0.5_f32; pw * ph];
+    for (k, (_, s)) in fields.iter().enumerate() {
+        let x_off = k * (tile_w + sep);
+        for j in 0..tile_h {
+            for i in 0..tile_w {
+                let v = s.get(i, j) as f32;
+                patch[j * pw + (x_off + i)] = v;
+            }
+        }
+    }
+    let patch_grid = GridF32::from_vec(pw, ph, patch);
+    let patch_path = out_dir.join("patchwork_oceanic_amp_sweep_64sq.png");
+    patch_grid.save_png_u16(&patch_path).expect("save patchwork");
+
+    // Oceanic-zoomed patchwork — oceanic cells get their values
+    // remapped from [0, OCEANIC_CLAMP_MAX] to [0, 1] so the FBM
+    // texture is more visible. Continental cells are blanked to
+    // mid-grey (0.5) to focus the eye on the ocean.
+    let mut patch_zoom = vec![0.5_f32; pw * ph];
+    for (k, (_, s)) in fields.iter().enumerate() {
+        let x_off = k * (tile_w + sep);
+        for j in 0..tile_h {
+            for i in 0..tile_w {
+                let v = if matches!(plates.plate_type.get(i, j), PlateType::Oceanic) {
+                    (s.get(i, j) / OCEANIC_CLAMP_MAX).clamp(0.0, 1.0) as f32
+                } else {
+                    0.5_f32
+                };
+                patch_zoom[j * pw + (x_off + i)] = v;
+            }
+        }
+    }
+    let zoom_grid = GridF32::from_vec(pw, ph, patch_zoom);
+    let zoom_path = out_dir.join("patchwork_oceanic_zoom_64sq.png");
+    zoom_grid.save_png_u16(&zoom_path).expect("save zoom patchwork");
+
+    println!();
+    println!("Standard patchwork (fixed [0, 1] range, 1×4 layout):");
+    println!("  {}", patch_path.display());
+    println!();
+    println!(
+        "Oceanic-zoomed patchwork (oceanic values [0, 0.49] → [0, 1], \n         continental cells blanked to mid-grey):"
+    );
+    println!("  {}", zoom_path.display());
+    println!();
+    println!(
+        "  Layout (left → right): Step 13 default | amp=0.10 | amp=0.20 | amp=0.40 (clipping demo)"
+    );
+}
