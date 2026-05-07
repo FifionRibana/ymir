@@ -34,5 +34,6 @@ pub mod scales;
 pub mod slab;
 pub mod stokes;
 pub mod voronoi;
+pub mod workflow;
 
 pub use rheology::soft_min_harmonic;
