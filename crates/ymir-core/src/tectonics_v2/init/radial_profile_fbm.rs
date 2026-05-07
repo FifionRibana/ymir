@@ -139,14 +139,32 @@ pub const FBM_SEED_DEFAULT: u64 = 0x0FBA_5EED;
 /// islands are out of scope for Step 13.5 (Step 13.6 if pursued).
 pub const OCEANIC_CLAMP_MAX: f64 = 0.49;
 
-/// Step 13.5 — default `fbm_amplitude_oceanic` placeholder. Phase 4
-/// sweep calibration finalises this value empirically. The issue
-/// anticipates `0.08–0.15` based on the
-/// `noise::Fbm<Perlin>::σ ≈ 0.27 × amplitude` finding from Step 13;
-/// the placeholder `0.10` is a reasonable starting point that gives
-/// `σ_fbm_oceanic_isolated ≈ 0.027` (within the issue's `[0.02, 0.08]`
-/// target band). To be confirmed by sweep.
-pub const FBM_AMPLITUDE_OCEANIC_DEFAULT: f64 = 0.10;
+/// Step 13.5 — default `fbm_amplitude_oceanic`. Calibrated
+/// empirically by Phase 4 sweep (see `tests/v2_step13_5_acceptance.rs::
+/// fbm_oceanic_calibration_probe`) on the `single_continent` 64²
+/// preset, mid-target band of the issue's
+/// `σ_fbm_oceanic_isolated ∈ [0.02, 0.08]`:
+///
+/// - `noise::Fbm<Perlin>` is auto-normalised, so `σ ≈ 0.27 ×
+///   amplitude` (same finding as Step 13's continental side).
+/// - At `amplitude = 0.15`, `σ_fbm_oceanic_isolated ≈ 0.040` —
+///   sits in the middle of the target band with margin on both
+///   sides.
+/// - `max(S̃_oceanic) ≈ 0.31` — well under the strict
+///   `OCEANIC_CLAMP_MAX = 0.49` threshold, no clipping at sane
+///   amplitudes (the sweep showed clip-fraction = 0 % across the
+///   full `amp × scale` grid up to `amp = 0.25`).
+/// - σ is insensitive to `fbm_scale_oceanic` over `[0.05, 0.20]`
+///   (variation < 5 %), so the `None` default for
+///   `fbm_scale_oceanic` (= reuse continental `fbm_scale`) is
+///   justified empirically rather than just by parsimony.
+///
+/// Visually: this amplitude produces a measurable bathymetric
+/// texture without overwhelming the continental signature
+/// (Phase 4 sanity-check patchwork). UI clamps the slider to
+/// `[0.0, 0.40]`; the algorithm itself only enforces
+/// `OCEANIC_CLAMP_MAX` on the perturbed value.
+pub const FBM_AMPLITUDE_OCEANIC_DEFAULT: f64 = 0.15;
 
 /// Step 13.5 — XOR magic constant for deriving `fbm_seed_oceanic`
 /// from `fbm_seed` when the user does not supply an explicit
