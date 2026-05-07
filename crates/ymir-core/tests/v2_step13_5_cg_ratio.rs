@@ -1,27 +1,27 @@
-//! Step 13 Phase 7 — solver-health acceptance #10.
+//! Step 13.5 Phase 6 — solver-health acceptance #9.
 //!
-//! Acceptance #10: "CG iters ratio ≤ 1.1× existing modes baseline.
-//! Small overhead acceptable for richer init, but no major
-//! degradation."
+//! Acceptance #9: "Solver runs with `apply_fbm_to_oceanic = true`
+//! produce CG iters within ±10% of the disabled-flag baseline.
+//! Acceptance `cg_ratio ∈ [0.90, 1.10]`."
 //!
-//! Method: build the same `BaselineConfig` (Step 8 shape — mantle
-//! on, slab off, single_continent-like Voronoï layout) three times,
-//! varying only `init_mode` between `Uniform` (baseline),
-//! `RadialProfile { Smoothstep, defaults }`, and
-//! `RadialProfileWithFBM { defaults }`. Run each via
-//! [`run_baseline`] and read `metrics.cg_iter_mean`. Compare each
-//! new mode's mean to the `Uniform` baseline.
+//! Method: build the same `BaselineConfig` (Step 13.5 shape —
+//! mantle on, slab off, single_continent Voronoï layout) twice,
+//! varying only the `apply_fbm_to_oceanic` flag inside the
+//! `RadialProfileWithFBM` `init_mode`. Run each via
+//! [`run_baseline`] and read `metrics.cg_iter_mean`. Compare the
+//! enabled-flag mean to the disabled-flag baseline.
 //!
 //! Heavy test — `#[ignore]` so it only runs when explicitly asked:
 //!
 //! ```text
-//! cargo test --release -p ymir-core --test v2_step13_cg_ratio \
+//! cargo test --release -p ymir-core --test v2_step13_5_cg_ratio \
 //!     -- --ignored --nocapture --test-threads=1
 //! ```
 //!
-//! Reduced 64² × 30 steps to keep wallclock < 60 s per run; the
-//! ratio is a per-Newton-step average so the smaller step count
-//! is statistically adequate.
+//! Reduced 64² × 30 steps (same shape as Step 13's CG ratio test)
+//! to keep wallclock < 6 min per run; the ratio is a per-Newton-
+//! step average so the smaller step count is statistically
+//! adequate.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -35,8 +35,8 @@ use ymir_core::tectonics_v2::diagnostics::harness::{
 };
 use ymir_core::tectonics_v2::init::{
     FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
-    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
-    InitMode, ProfileShape,
+    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT, InitMode,
+    ProfileShape,
 };
 use ymir_core::tectonics_v2::mantle::{
     COUPLING_DEFAULT, MF_DEFAULT, MantleConfig, NUM_MODES_DEFAULT,
@@ -57,15 +57,30 @@ const NY: usize = 64;
 const STEPS: usize = 30;
 const SEED: u64 = 12;
 
+fn radial_fbm_mode(apply_fbm_to_oceanic: bool) -> InitMode {
+    InitMode::RadialProfileWithFBM {
+        continental_value: 0.95,
+        oceanic_value: 0.20,
+        profile_shape: ProfileShape::Smoothstep,
+        fbm_amplitude: FBM_AMPLITUDE_DEFAULT,
+        fbm_octaves: FBM_OCTAVES_DEFAULT,
+        fbm_persistence: FBM_PERSISTENCE_DEFAULT,
+        fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
+        fbm_scale: FBM_SCALE_DEFAULT,
+        fbm_seed: FBM_SEED_DEFAULT,
+        apply_fbm_to_oceanic,
+        fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
+        fbm_scale_oceanic: None,
+        fbm_seed_oceanic: None,
+    }
+}
+
 fn build_cfg(init_mode: InitMode, label: &str) -> BaselineConfig {
     let scales = Scales::default();
     let preset = Preset::by_name("dynamic-accidented").unwrap();
-    // single_continent Voronoï shape — same as the
-    // v2_step13_acceptance suite for layout consistency.
-    let vcfg = VoronoiConfig {
-        num_plates: 4,
-        continental_ratio: 0.5,
-    };
+    // single_continent Voronoï shape — same as Step 13's CG ratio
+    // suite for layout consistency.
+    let vcfg = VoronoiConfig { num_plates: 4, continental_ratio: 0.5 };
     let rates = BoundaryRates {
         k_sub: 0.5,
         k_arc: 0.0,
@@ -98,7 +113,7 @@ fn build_cfg(init_mode: InitMode, label: &str) -> BaselineConfig {
         picard_cfg: PicardConfig::default(),
         heightmap_fractions: vec![],
         output_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join(format!("../../target/v2_step13_cg_ratio/{}", label)),
+            .join(format!("../../target/v2_step13_5_cg_ratio/{}", label)),
         force,
         force_kind: ForceKind::Gpe,
         sinusoidal_amplitude: 0.0,
@@ -112,11 +127,8 @@ fn build_cfg(init_mode: InitMode, label: &str) -> BaselineConfig {
             ..BasalDragLaw::default()
         }),
         boundary,
-        boundary_layout_name: format!("v2_step13_cg_ratio_{}", label),
+        boundary_layout_name: format!("v2_step13_5_cg_ratio_{}", label),
         slab_pull: SlabPullConfig::Disabled,
-        // Mantle on — exercises the dynamic regime (matches Step
-        // 8/10 active baselines). Acceptance #10 wants headroom,
-        // so we measure under load.
         mantle: MantleConfig::Enabled {
             mf: MF_DEFAULT,
             coupling: COUPLING_DEFAULT,
@@ -142,7 +154,7 @@ fn cg_iter_mean(label: &str, init_mode: InitMode) -> (f64, f64) {
     let m = &r.metrics;
     let mean = m.cg_iter_mean;
     println!(
-        "  {:<28} : cg_iter_mean = {:.2} (wallclock {:.2}s)",
+        "  {:<32} : cg_iter_mean = {:.2} (wallclock {:.2}s)",
         label, mean, dt
     );
     (mean, dt)
@@ -150,70 +162,51 @@ fn cg_iter_mean(label: &str, init_mode: InitMode) -> (f64, f64) {
 
 #[test]
 #[ignore]
-fn cg_ratio_acceptance() {
-    println!("Step 13 Phase 7 — acceptance #10 (CG ratio ≤ 1.1× Uniform baseline)");
+fn oceanic_fbm_cg_ratio_acceptance() {
+    println!(
+        "Step 13.5 Phase 6 — acceptance #9 (CG ratio ∈ [0.90, 1.10] vs disabled-flag baseline)"
+    );
     println!(
         "  Config : 64² × {} steps, mantle on, slab off, yielding on, single_continent Voronoï (seed=12)",
         STEPS
     );
+    println!(
+        "  Init   : RadialProfileWithFBM with continental FBM enabled in both runs;"
+    );
+    println!(
+        "           only `apply_fbm_to_oceanic` differs (false vs true)."
+    );
     println!();
 
-    let (uniform_mean, _) = cg_iter_mean(
-        "Uniform (baseline)",
-        InitMode::Uniform { boundary_smoothing_width: 1.0 },
-    );
+    let (baseline_mean, _) =
+        cg_iter_mean("oceanic_disabled (Step 13)", radial_fbm_mode(false));
 
-    let (radial_mean, _) = cg_iter_mean(
-        "RadialProfile",
-        InitMode::RadialProfile {
-            continental_value: 0.95,
-            oceanic_value: 0.20,
-            profile_shape: ProfileShape::Smoothstep,
-        },
-    );
+    let (oceanic_mean, _) =
+        cg_iter_mean("oceanic_enabled (Step 13.5)", radial_fbm_mode(true));
 
-    let (radial_fbm_mean, _) = cg_iter_mean(
-        "RadialProfileWithFBM",
-        InitMode::RadialProfileWithFBM {
-            continental_value: 0.95,
-            oceanic_value: 0.20,
-            profile_shape: ProfileShape::Smoothstep,
-            fbm_amplitude: FBM_AMPLITUDE_DEFAULT,
-            fbm_octaves: FBM_OCTAVES_DEFAULT,
-            fbm_persistence: FBM_PERSISTENCE_DEFAULT,
-            fbm_lacunarity: FBM_LACUNARITY_DEFAULT,
-            fbm_scale: FBM_SCALE_DEFAULT,
-            fbm_seed: FBM_SEED_DEFAULT,
-            // Step 13.5 — disabled (Step 13 baseline behaviour).
-            apply_fbm_to_oceanic: false,
-            fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
-            fbm_scale_oceanic: None,
-            fbm_seed_oceanic: None,
-        },
-    );
-
-    let radial_ratio = radial_mean / uniform_mean.max(1e-12);
-    let fbm_ratio = radial_fbm_mean / uniform_mean.max(1e-12);
+    let ratio = oceanic_mean / baseline_mean.max(1e-12);
 
     println!();
     println!(
-        "  RadialProfile         / Uniform = {:.3}× (acceptance: ≤ 1.10)",
-        radial_ratio
-    );
-    println!(
-        "  RadialProfileWithFBM  / Uniform = {:.3}× (acceptance: ≤ 1.10)",
-        fbm_ratio
+        "  oceanic_enabled / oceanic_disabled = {:.3}× (acceptance: ∈ [0.90, 1.10])",
+        ratio
     );
 
-    const RATIO_LIMIT: f64 = 1.10;
+    const RATIO_LIMIT_LOW: f64 = 0.90;
+    const RATIO_LIMIT_HIGH: f64 = 1.10;
     assert!(
-        radial_ratio <= RATIO_LIMIT,
-        "RadialProfile CG ratio {:.3}× exceeds 1.10× Uniform baseline",
-        radial_ratio
+        ratio >= RATIO_LIMIT_LOW,
+        "oceanic FBM CG ratio {:.3}× below 0.90× — unexpected speed-up; \
+         diagnose before accepting (run was probably under-resolved or the \
+         baseline was already very stiff)",
+        ratio
     );
     assert!(
-        fbm_ratio <= RATIO_LIMIT,
-        "RadialProfileWithFBM CG ratio {:.3}× exceeds 1.10× Uniform baseline",
-        fbm_ratio
+        ratio <= RATIO_LIMIT_HIGH,
+        "oceanic FBM CG ratio {:.3}× above 1.10× — solver health degrades \
+         when the oceanic FBM is enabled. Diagnose: maybe the bathymetric \
+         heterogeneity stresses the Jacobi preconditioner past its working \
+         range.",
+        ratio
     );
 }

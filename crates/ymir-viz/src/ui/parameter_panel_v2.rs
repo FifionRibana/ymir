@@ -828,6 +828,11 @@ fn init_mode_widget(ui: &mut egui::Ui, mode: &mut V2InitModeSpec) {
             fbm_lacunarity,
             fbm_scale,
             fbm_seed,
+            // Step 13.5 — oceanic FBM extension (opt-in).
+            apply_fbm_to_oceanic,
+            fbm_amplitude_oceanic,
+            fbm_scale_oceanic,
+            fbm_seed_oceanic,
         } => {
             ui.add(
                 egui::Slider::new(continental_value, 0.5..=1.0)
@@ -843,7 +848,7 @@ fn init_mode_widget(ui: &mut egui::Ui, mode: &mut V2InitModeSpec) {
 
             ui.separator();
             ui.label(
-                egui::RichText::new("FBM noise (continental cells only)").strong(),
+                egui::RichText::new("Continental FBM noise").strong(),
             );
             // Vigilance issue #3: clamp slider to [0.0, 0.40] so a
             // distracted slider drag cannot push continental cells
@@ -874,28 +879,149 @@ fn init_mode_widget(ui: &mut egui::Ui, mode: &mut V2InitModeSpec) {
                 ui.label("FBM seed");
                 ui.add(egui::DragValue::new(fbm_seed).speed(1.0));
                 if ui.button("randomize").clicked() {
-                    // Cheap PRNG step on the existing seed so the
-                    // user gets a fresh number without leaving the
-                    // panel. SplitMix64 mixer keeps every bit
-                    // active without external deps.
-                    let mut x = fbm_seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
-                    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-                    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-                    *fbm_seed = x ^ (x >> 31);
+                    *fbm_seed = splitmix64(*fbm_seed);
                 }
             });
             ui.label(
                 egui::RichText::new(
                     "Phase 2 radial baseline + isotropic FBM noise on \
                      continental cells, clamped to [0, 1]. Oceanic cells \
-                     stay at oceanic_value (FBM never applied). FBM seed \
-                     is independent of the Voronoï seed.",
+                     stay at oceanic_value unless the Step 13.5 toggle \
+                     below is on. FBM seed is independent of the Voronoï \
+                     seed.",
                 )
                 .small()
                 .weak(),
             );
+
+            // Step 13.5 — oceanic FBM block (opt-in). When the
+            // toggle is off the four oceanic fields are still
+            // present in the spec but unused by the run; toggling
+            // on reveals the conditional sliders that drive
+            // them.
+            ui.separator();
+            ui.label(
+                egui::RichText::new("Oceanic FBM noise (Step 13.5)").strong(),
+            );
+            ui.checkbox(
+                apply_fbm_to_oceanic,
+                "Apply FBM to oceanic cells",
+            );
+            if *apply_fbm_to_oceanic {
+                // Vigilance issue D7: clamp slider to [0.0, 0.40]
+                // matching the continental amplitude. The strict
+                // OCEANIC_CLAMP_MAX = 0.49 in the algorithm
+                // prevents threshold-crossing regardless; this
+                // slider clamp keeps the user in the comfortable
+                // band.
+                ui.add(
+                    egui::Slider::new(fbm_amplitude_oceanic, 0.0..=0.40)
+                        .text("FBM amplitude (oceanic)")
+                        .step_by(0.01),
+                );
+
+                // Acceptance #16: tooltip-style info message when
+                // the user pushes the amplitude beyond what the
+                // current `oceanic_value` and `OCEANIC_CLAMP_MAX`
+                // can absorb without saturation. Not a hard block
+                // — informational only.
+                let clip_threshold = ymir_core::tectonics_v2::init::OCEANIC_CLAMP_MAX
+                    - *oceanic_value;
+                if *fbm_amplitude_oceanic > clip_threshold {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "ⓘ amplitude > {:.2} (= OCEANIC_CLAMP_MAX − oceanic_value): \
+                             oceanic cells may saturate at the {:.2} clamp \
+                             (no volcanic islands — Step 13.6 if needed).",
+                            clip_threshold,
+                            ymir_core::tectonics_v2::init::OCEANIC_CLAMP_MAX,
+                        ))
+                        .small()
+                        .italics(),
+                    );
+                }
+
+                // `fbm_scale_oceanic: Option<f64>` UI: a checkbox
+                // toggles between None (= reuse continental
+                // scale) and Some(value) (= explicit oceanic
+                // scale). The slider is shown only when the
+                // explicit branch is selected. Initial value on
+                // toggle = continental scale, so the field is
+                // visually continuous.
+                let mut use_continental_scale = fbm_scale_oceanic.is_none();
+                if ui
+                    .checkbox(&mut use_continental_scale, "Use continental scale")
+                    .changed()
+                {
+                    *fbm_scale_oceanic = if use_continental_scale {
+                        None
+                    } else {
+                        Some(*fbm_scale)
+                    };
+                }
+                if let Some(sc) = fbm_scale_oceanic {
+                    ui.add(
+                        egui::Slider::new(sc, 0.05..=0.50)
+                            .text("FBM scale (oceanic, domain fractions)")
+                            .step_by(0.01),
+                    );
+                }
+
+                // `fbm_seed_oceanic: Option<u64>` UI: same
+                // pattern as the scale. None = derive via
+                // `fbm_seed XOR FBM_SEED_OCEANIC_XOR_MAGIC`;
+                // Some(value) = explicit oceanic seed.
+                let mut derive_from_continental = fbm_seed_oceanic.is_none();
+                if ui
+                    .checkbox(
+                        &mut derive_from_continental,
+                        "Derive from continental seed XOR 0xC0FFEE",
+                    )
+                    .changed()
+                {
+                    *fbm_seed_oceanic = if derive_from_continental {
+                        None
+                    } else {
+                        Some(
+                            *fbm_seed
+                                ^ ymir_core::tectonics_v2::init::FBM_SEED_OCEANIC_XOR_MAGIC,
+                        )
+                    };
+                }
+                if let Some(seed_o) = fbm_seed_oceanic {
+                    ui.horizontal(|ui| {
+                        ui.label("FBM seed (oceanic)");
+                        ui.add(egui::DragValue::new(seed_o).speed(1.0));
+                        if ui.button("randomize").clicked() {
+                            *seed_o = splitmix64(*seed_o);
+                        }
+                    });
+                }
+
+                ui.label(
+                    egui::RichText::new(
+                        "Bathymetric variation on oceanic cells. Output \
+                         clamped to [0, 0.49] — no oceanic cell crosses \
+                         the 0.5 continental threshold (volcanic islands \
+                         are a separate Step 13.6 if pursued).",
+                    )
+                    .small()
+                    .weak(),
+                );
+            }
         }
     }
+}
+
+/// SplitMix64 mixer reused by the continental and oceanic FBM
+/// "randomize" buttons. Cheap PRNG step on an existing seed so
+/// the user gets a fresh number without leaving the panel and
+/// without an external dependency. Keeps every bit active.
+fn splitmix64(seed: u64) -> u64 {
+    let mut x = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^ (x >> 31)
 }
 
 /// Step 13 Phase 5 — sub-widget for [`V2ProfileShape`] selection.
