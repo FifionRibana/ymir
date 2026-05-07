@@ -206,3 +206,193 @@ The UI clamps are documented at the slider level
 (`crates/ymir-viz/src/ui/parameter_panel_v2.rs`); the algorithm
 itself accepts any positive value (no silent clamps — anti-pattern
 D7 from the Step 13 issue).
+
+## Step 13.5 — oceanic FBM extension
+
+Step 13's `RadialProfileWithFBM` mode applies FBM noise to
+**continental** cells only; oceanic cells stay at a flat
+`oceanic_value`. Step 13.5 adds an opt-in extension that applies
+FBM to oceanic cells too, producing bathymetric variation for
+the Living Landz workflow (heightmap rendering, coastal gameplay
+zones, visual coherence pre-erosion). Init-only mechanism, no
+dynamics changes; default flag preserves Step 13 bit-identical.
+
+### Algorithm
+
+Four new fields on `InitMode::RadialProfileWithFBM`
+(`#[serde(default)]` on each so legacy v2 preset JSON
+deserialises unchanged):
+
+```rust
+apply_fbm_to_oceanic: bool,                 // default false
+fbm_amplitude_oceanic: f64,                 // default 0.15 (Phase 5 calibration)
+fbm_scale_oceanic: Option<f64>,             // default None ⇒ reuse fbm_scale
+fbm_seed_oceanic: Option<u64>,              // default None ⇒ XOR derive
+```
+
+When the flag is on, oceanic cells receive
+
+```text
+S̃[i, j] = clamp(
+    oceanic_value + fbm_amplitude_oceanic · fbm_oceanic.get(x, y),
+    0,
+    OCEANIC_CLAMP_MAX
+)   // oceanic cells only — continental cells unchanged
+```
+
+with `OCEANIC_CLAMP_MAX = 0.49` strictly preventing
+threshold-crossing to continental classification (D7 — volcanic
+islands are explicitly out of scope, deferred to Step 13.6 if
+pursued).
+
+`fbm_seed_oceanic = None` derives the oceanic seed from
+`fbm_seed XOR FBM_SEED_OCEANIC_XOR_MAGIC` (= `0xC0FFEE`) for
+reasonable independence between continental and oceanic noise
+without forcing the user to supply two seeds. `fbm_scale_oceanic
+= None` reuses the continental `fbm_scale` (empirical sweep
+showed σ insensitive to scale over `[0.05, 0.20]` so reusing is
+both parsimonious and statistically sound).
+
+### Calibration sweep — oceanic side
+
+Phase 4 sweep on `single_continent` (64², seed=12, 4 plates,
+50 % continental):
+
+| amp \ scale | 0.05  | 0.10  | 0.15  | 0.20  |
+|-------------|-------|-------|-------|-------|
+| 0.05        | σ=0.014, max=0.24 | σ=0.013, max=0.24 | σ=0.013, max=0.23 | σ=0.014, max=0.24 |
+| 0.10        | σ=0.028, max=0.28 | σ=0.027, max=0.27 | σ=0.026, max=0.27 | σ=0.028, max=0.28 |
+| **0.15**    | σ=0.042, max=0.32 | **σ=0.040, max=0.31** | σ=0.039, max=0.30 | σ=0.042, max=0.31 |
+| 0.20        | σ=0.055, max=0.36 | σ=0.053, max=0.34 | σ=0.052, max=0.34 | σ=0.056, max=0.35 |
+| 0.25        | σ=0.069, max=0.40 | σ=0.067, max=0.38 | σ=0.065, max=0.37 | σ=0.070, max=0.39 |
+
+(format: `σ_fbm_oceanic_isolated, max(S̃_oceanic)`. Clip-fraction
+= 0 % across the entire grid — the strict `OCEANIC_CLAMP_MAX =
+0.49` upper bound never fires at sane amplitudes.)
+
+Findings:
+
+- **`noise::Fbm<Perlin>::σ ≈ 0.27 × amplitude` reproduced on
+  the oceanic side**, identical coefficient to Step 13 Phase 6's
+  continental finding. Auto-normalisation of the multifractal
+  stack is not amplitude-dependent.
+- **σ insensitive to scale** (variation < 5 % across columns)
+  — wavelength comfortably below `L_plate` over the full
+  scale range. The `None` default for `fbm_scale_oceanic` (=
+  reuse continental) is empirically justified.
+- **Clip fraction = 0 %** — even the most aggressive
+  `(amp=0.25, scale=0.05)` pair gives `max(S̃_oceanic) ≈ 0.40
+  < 0.49`. The threshold protection has comfortable headroom;
+  `OCEANIC_CLAMP_MAX = 0.49` is a safety net rather than a
+  binding constraint.
+
+### Default amplitude — `0.15`
+
+`FBM_AMPLITUDE_OCEANIC_DEFAULT = 0.15` lands at
+`σ_fbm_oceanic_isolated ≈ 0.040` — **mid-band of the issue's
+target `[0.02, 0.08]`** with margin on both sides. `max ≈ 0.31`
+leaves 38 % headroom under the `0.49` clamp. Phase 4 sanity
+visual confirmed the perturbation is visually distinct from
+Step 13's uniform oceanic baseline without overwhelming the
+continental signature.
+
+Acceptance #7 measurement at this default:
+
+| Grid | oceanic cells | σ_fbm_oceanic_isolated | max(S̃_oceanic) | clip% |
+|------|---------------|------------------------|------------------|-------|
+| 64²  | 928           | 0.0400                 | 0.307            | 0 %   |
+| 32²  | 232           | 0.0398                 | 0.295            | 0 %   |
+
+σ is grid-independent (Δσ ≈ 0.0002 between 32² and 64²) — the
+232 oceanic cells at 32² are well above the 150-cell sample-noise
+threshold introduced in Step 13's "small-sample" caveat.
+
+### Threshold protection rationale (D7)
+
+`OCEANIC_CLAMP_MAX = 0.49` is **strict** — oceanic cells cannot
+cross the `0.5` continental classification threshold via FBM
+perturbation regardless of amplitude. The defensive 0.01 margin
+under the threshold guards against floating-point edge cases at
+exactly `0.5`.
+
+Volcanic islands (oceanic cells deliberately crossing the
+`0.5` threshold to emerge as land) involve game-design
+decisions — how many, how distributed, how rare — that benefit
+from a dedicated step (Step 13.6 if pursued) with its own
+calibration. Step 13.5 provides bathymetric variation; Step
+13.6 would add controlled threshold-crossing on top.
+
+UI surfaces this contract via a tooltip warning (acceptance
+#16): when `fbm_amplitude_oceanic > OCEANIC_CLAMP_MAX −
+oceanic_value`, an italic informational message tells the user
+that oceanic cells may saturate at the 0.49 clamp and that
+volcanic islands are a separate Step 13.6 scope. Not a hard
+block — the user can push the amplitude up if they want
+visible saturation at the floor (negative FBM tails).
+
+### CG ratio (acceptance #9)
+
+`tests/v2_step13_5_cg_ratio.rs` runs the same 64² × 30-step
+mantle-on shape twice, varying only `apply_fbm_to_oceanic`:
+
+| Mode                              | cg_iter_mean |
+|-----------------------------------|--------------|
+| oceanic_disabled (Step 13 path)   | 1384.42      |
+| oceanic_enabled (Step 13.5 path)  | 1384.87      |
+
+`ratio = 1.000×` — solver health is **transparent** to the
+oceanic FBM. The disabled-flag baseline reproduces Step 13
+Phase 7's RadialProfileWithFBM CG mean (1384.4) — independent
+confirmation that Phase 1's structural short-circuit is
+bit-identical.
+
+Worth tracing: Step 13's continental FBM extension reduced CG
+iters by ≈ 5 % vs the `Uniform` baseline (smoother init →
+better Newton warm-start). Oceanic FBM extension is neutral.
+Plausible explanation: oceanic cells sit at low `S̃ ≈ 0.20`,
+where the Stokes operator's stiffness coefficient (`η ∝ S̃²`)
+is small — the preconditioner traverses that low-stiffness
+band regardless of bathymetric perturbation. Conditioning is
+dominated by continental cells, which are unchanged when the
+oceanic flag flips.
+
+### Validity envelope — Step 13.5 fields
+
+| Parameter                | Default      | Sensible range                          |
+|--------------------------|--------------|------------------------------------------|
+| `apply_fbm_to_oceanic`   | `false`      | `bool`                                   |
+| `fbm_amplitude_oceanic`  | `0.15`       | `[0.0, 0.40]` (UI clamp)                 |
+| `fbm_scale_oceanic`      | `None`       | `Some([0.05, 0.50])` or `None` (= reuse continental) |
+| `fbm_seed_oceanic`       | `None`       | `Some(u64)` or `None` (= XOR derive)     |
+| `OCEANIC_CLAMP_MAX`      | `0.49` const | not user-tunable (strict by design — D7) |
+| `FBM_SEED_OCEANIC_XOR_MAGIC` | `0xC0FFEE` const | not user-tunable                |
+
+UI tooltip warns when the user pushes
+`fbm_amplitude_oceanic > OCEANIC_CLAMP_MAX − oceanic_value`,
+indicating clipping is likely on FBM positive tails.
+
+### Volcanic islands — explicitly out of scope (Step 13.6)
+
+Volcanic islands deferred to a separate Step 13.6 because the
+mechanism intersects three game-design decisions Step 13.5
+should not silently make:
+
+1. **How many islands** — distribution model (Poisson? rare
+   high-amplitude FBM tails? per-plate quota?).
+2. **How distributed** — uniform random on oceanic cells?
+   Hot-spot tracks (volcanic chains)? Boundary-proximate
+   (subduction-induced)?
+3. **How rare** — what fraction of oceanic cells should cross
+   the threshold? Once per plate? Once per run?
+
+A naive "remove the OCEANIC_CLAMP_MAX clamp and let the FBM
+tails emerge" approach would produce volcanic islands as a
+side-effect of FBM amplitude tuning — but with no control over
+distribution, count, or geometry. Step 13.6 is the appropriate
+scope for that conversation.
+
+If the user explicitly wants no volcanic islands, the Step
+13.5 default behaviour delivers exactly that (strict clamp at
+0.49). If they want volcanic islands, Step 13.6 is the
+mechanism (when implemented).
+
