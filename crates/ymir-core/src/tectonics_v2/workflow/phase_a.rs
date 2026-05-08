@@ -183,17 +183,44 @@ pub fn run_phase_a_cycle(cfg: &BaselineConfig, wf: &WorkflowConfig) -> CycleOutp
 /// Run the Phase A multi-cycle loop.
 ///
 /// `Disabled` → exactly one cycle (single `run_baseline` passthrough).
-/// `Enabled` → Phase 4 multi-cycle loop with continuation warm-start
-/// between cycles. Currently `unimplemented!` (Phase 4 lands the
-/// loop logic).
-pub fn run_phase_a_loop(cfg: &BaselineConfig, wf: &WorkflowConfig) -> PhaseAOutput {
+/// The `&mut` requirement is preserved on this branch even though no
+/// mutation actually fires, because the [`WorkflowConfig::Enabled`]
+/// branch must mutate `cfg.continuation` between cycles to wire the
+/// D3 warm-start contract.
+///
+/// `Enabled(params)` → loop `params.phase_a.n_cycles` cycles. After
+/// each cycle (except the last) the loop sets
+/// `cfg.continuation = Some(final_state_to_continuation(...))` so the
+/// next cycle's `run_baseline` warm-starts from the prior cycle's
+/// post-erosion state. The S̃ field, velocity, age and cratonic
+/// factor all thread through (D3 contract pinned by
+/// `v2_workflow_continuation_no_transient`).
+///
+/// `cfg.steps` is consumed as the number of tectonic steps per cycle.
+/// The convention is to set `cfg.steps = params.phase_a.k_cycle`
+/// before calling, but the loop does not enforce this — the two are
+/// independently configurable.
+pub fn run_phase_a_loop(cfg: &mut BaselineConfig, wf: &WorkflowConfig) -> PhaseAOutput {
     match wf {
         WorkflowConfig::Disabled => {
             let cycle = run_phase_a_cycle(cfg, wf);
             PhaseAOutput { cycles: vec![cycle] }
         }
-        WorkflowConfig::Enabled(_) => {
-            unimplemented!("Phase A multi-cycle loop lands in Step 12 Phase 4");
+        WorkflowConfig::Enabled(params) => {
+            let n_cycles = params.phase_a.n_cycles.max(1);
+            let mut cycles: Vec<CycleOutput> = Vec::with_capacity(n_cycles);
+            for cycle_idx in 0..n_cycles {
+                let cycle = run_phase_a_cycle(cfg, wf);
+                // Set up the next cycle's warm-start *before* moving
+                // `cycle` into the output vec. Skip the last cycle:
+                // there is no next cycle to warm-start.
+                if cycle_idx + 1 < n_cycles {
+                    cfg.continuation =
+                        Some(final_state_to_continuation(&cycle.baseline.final_state));
+                }
+                cycles.push(cycle);
+            }
+            PhaseAOutput { cycles }
         }
     }
 }
