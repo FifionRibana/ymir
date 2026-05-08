@@ -1,37 +1,154 @@
 //! Phase A — low-res loop orchestration.
 //!
-//! Single-cycle and multi-cycle entry points. Phase 1 ships only the
-//! `Disabled` passthrough: [`run_phase_a_cycle`] with
-//! [`super::WorkflowConfig::Disabled`] is exactly one
-//! [`crate::tectonics_v2::diagnostics::harness::run_baseline`] call,
-//! [`run_phase_a_loop`] is exactly one cycle. The `Enabled(_)` branch
-//! is wired in Phase 3 (single-cycle orchestration) and Phase 4
-//! (multi-cycle loop with [`crate::tectonics_v2::diagnostics::harness::ContinuationState`]
-//! warm-start between cycles).
+//! `run_phase_a_cycle` chains the 5-step single-cycle pipeline:
+//!
+//! 1. **Tectonic** — `run_baseline(cfg)`; the cfg may carry a
+//!    [`ContinuationState`] for cycle-to-cycle warm-start (D3).
+//! 2. **Isostasy** — `compute_isostasy(s_field)` to extract
+//!    `sea_level_normalized` (Option 2 of Phase 0 finding E:
+//!    adaptive threshold drives erosion + reclassification).
+//! 3. **Low-res erosion** — `low_res_erosion::apply` in-place on
+//!    `final_state.s_field` with the cycle's `α / β`.
+//! 4. **Reclassify** — per-cell `plate_type[i, j]` = `Continental`
+//!    iff `s_field[i, j] > sea_level_normalized`; otherwise
+//!    `Oceanic`.
+//! 5. **Recompute cratonic factor** — clone the (static) `plate_id`
+//!    field; rebuild `per_plate_type[p]` from the post-erosion
+//!    continental fraction (D4: a plate retains its continental
+//!    eligibility iff `frac >= plate_area_min`); call
+//!    [`crate::tectonics_v2::cratonic::factor::build_cratonic_factor_field`]
+//!    with this synthesised `VoronoiPlates` (Step 9 BFS, Manhattan
+//!    4-conn, smoothstep — *not* `voronoi/distance.rs` which is
+//!    Chebyshev 8-conn). The new factor field replaces
+//!    `final_state.cratonic_factor`.
+//!
+//! Order is **strict**: erosion before reclassify, reclassify before
+//! craton recompute. Otherwise the craton would reflect the pre-erosion
+//! `S̃` and the cycle's effect would be invisible to Phase 4's
+//! `craton_recomputation_change` metric.
+//!
+//! `WorkflowConfig::Disabled` short-circuits this entire pipeline:
+//! the cycle is exactly `run_baseline(cfg)` with all extra scalars at
+//! zero/`None`. The regression
+//! `v2_workflow_disabled_regression::workflow_disabled_run_phase_a_cycle_is_bit_identical_to_run_baseline`
+//! pins this contract byte-for-byte.
 
-use super::{CycleOutput, PhaseAOutput, WorkflowConfig};
-use crate::tectonics_v2::diagnostics::harness::{run_baseline, BaselineConfig};
+use super::{low_res_erosion, CycleOutput, PhaseAOutput, WorkflowConfig};
+use crate::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use crate::tectonics_v2::boundaries::{PlateType, PlateTypeField};
+use crate::tectonics_v2::cratonic::factor::build_cratonic_factor_field;
+use crate::tectonics_v2::cratonic::{CratonicConfig, CratonicConfigEnabled};
+use crate::tectonics_v2::diagnostics::harness::{
+    run_baseline, BaselineConfig, ContinuationState, FinalState,
+};
+use crate::tectonics_v2::field::Field2D;
+use crate::tectonics_v2::voronoi::{PlateIdField, VoronoiPlates};
 
 /// Run a single Phase A cycle.
 ///
 /// `Disabled` → direct `run_baseline(cfg)` passthrough wrapped in a
-/// [`CycleOutput`] with `erosion_volume_removed = 0.0`. The bit-
-/// identical regression contract: every byte of the returned
-/// `baseline.final_state` matches a parallel `run_baseline(cfg)` call.
+/// [`CycleOutput`] with all extra scalars at zero/`None`. Bit-
+/// identical regression contract.
 ///
-/// `Enabled(_)` → Phase 3 work. Currently `unimplemented!`.
+/// `Enabled(params)` → 5-step pipeline (tectonic → isostasy → erosion →
+/// reclassify → recompute craton). Returns the post-cycle state
+/// suitable for cycle-to-cycle continuation via
+/// [`final_state_to_continuation`].
 pub fn run_phase_a_cycle(cfg: &BaselineConfig, wf: &WorkflowConfig) -> CycleOutput {
     match wf {
         WorkflowConfig::Disabled => {
             let baseline = run_baseline(cfg);
-            CycleOutput { baseline, erosion_volume_removed: 0.0 }
+            CycleOutput {
+                baseline,
+                erosion_volume_removed: 0.0,
+                erosion_peak_delta_h: 0.0,
+                sea_level_normalized: 0.0,
+                mass_drift: 0.0,
+                craton_recomputation_change: None,
+            }
         }
-        WorkflowConfig::Enabled(_) => {
-            unimplemented!(
-                "Phase A single-cycle orchestration (tectonic + isostasy + \
-                 low_res_erosion + reclassify + recompute craton) lands in \
-                 Step 12 Phase 3"
+        WorkflowConfig::Enabled(params) => {
+            // Step 1: Tectonic.
+            let mut baseline = run_baseline(cfg);
+
+            // Step 2: Isostasy → adaptive sea_level_normalized.
+            // f32 → f64 cast is exact for normalised values in
+            // `[0, 1]` (the cast is the documented source for the
+            // erosion threshold per Phase 0 finding E).
+            let isostasy =
+                compute_isostasy(&baseline.final_state.s_field, &IsostasyConfig::default());
+            let sea_level_ref = isostasy.sea_level_normalized as f64;
+
+            // Step 3: Capture original `per_plate_type` BEFORE
+            // reclassification — needed for the craton recompute's
+            // "plate was originally continental" gate (D4).
+            let original_per_plate_type = baseline
+                .final_state
+                .plate_type
+                .as_ref()
+                .zip(baseline.final_state.plate_id.as_ref())
+                .map(|(pt, pid)| extract_per_plate_type(pid, pt));
+
+            // Step 4: Erosion (in-place).
+            let mass_before: f64 = baseline.final_state.s_field.data().iter().sum();
+            let stats = low_res_erosion::apply(
+                &mut baseline.final_state.s_field,
+                &params.phase_a,
+                sea_level_ref,
             );
+            let mass_after: f64 = baseline.final_state.s_field.data().iter().sum();
+
+            // Step 5: Reclassify per-cell `plate_type` from new
+            // `s_field` against `sea_level_ref`. The Voronoï
+            // tessellation (`plate_id`) is static for the run; only
+            // the per-cell type changes.
+            if let Some(plate_type) = baseline.final_state.plate_type.as_mut() {
+                let s = &baseline.final_state.s_field;
+                for j in 0..plate_type.ny() {
+                    for i in 0..plate_type.nx() {
+                        let new_type = if s.get(i, j) > sea_level_ref {
+                            PlateType::Continental
+                        } else {
+                            PlateType::Oceanic
+                        };
+                        plate_type.set(i, j, new_type);
+                    }
+                }
+            }
+
+            // Step 6: Recompute cratonic factor — only if the cfg has
+            // CratonicConfig::Enabled. We synthesise an updated
+            // `VoronoiPlates` whose `per_plate_type[p]` reflects the
+            // post-erosion D4 retention rule, then call
+            // `build_cratonic_factor_field` (Step 9 algorithm).
+            let mut craton_change: Option<f64> = None;
+            if let CratonicConfig::Enabled(crcfg) = cfg.cratonic {
+                if let (Some(plate_id), Some(orig)) = (
+                    &baseline.final_state.plate_id,
+                    &original_per_plate_type,
+                ) {
+                    let new_factor = recompute_cratonic_factor_for_cycle(
+                        plate_id,
+                        orig,
+                        &baseline.final_state.s_field,
+                        sea_level_ref,
+                        &crcfg,
+                    );
+                    if let Some(old_factor) = &baseline.final_state.cratonic_factor {
+                        craton_change = Some(measure_craton_change(old_factor, &new_factor));
+                    }
+                    baseline.final_state.cratonic_factor = Some(new_factor);
+                }
+            }
+
+            CycleOutput {
+                baseline,
+                erosion_volume_removed: stats.volume_removed,
+                erosion_peak_delta_h: stats.peak_delta_h,
+                sea_level_normalized: sea_level_ref,
+                mass_drift: mass_after - mass_before,
+                craton_recomputation_change: craton_change,
+            }
         }
     }
 }
@@ -39,14 +156,9 @@ pub fn run_phase_a_cycle(cfg: &BaselineConfig, wf: &WorkflowConfig) -> CycleOutp
 /// Run the Phase A multi-cycle loop.
 ///
 /// `Disabled` → exactly one cycle (single `run_baseline` passthrough).
-/// `output.cycles.len() == 1` and `output.cycles[0]` is the direct
-/// passthrough `CycleOutput`.
-///
-/// `Enabled(params)` → loop `params.phase_a.n_cycles` cycles, each
-/// running `params.phase_a.k_cycle` tectonic steps before the cycle's
-/// erosion pass. Continuation between cycles uses
-/// [`crate::tectonics_v2::diagnostics::harness::ContinuationState`]
-/// (Step 8.6 infrastructure). Phase 4 work, currently `unimplemented!`.
+/// `Enabled` → Phase 4 multi-cycle loop with continuation warm-start
+/// between cycles. Currently `unimplemented!` (Phase 4 lands the
+/// loop logic).
 pub fn run_phase_a_loop(cfg: &BaselineConfig, wf: &WorkflowConfig) -> PhaseAOutput {
     match wf {
         WorkflowConfig::Disabled => {
@@ -57,4 +169,162 @@ pub fn run_phase_a_loop(cfg: &BaselineConfig, wf: &WorkflowConfig) -> PhaseAOutp
             unimplemented!("Phase A multi-cycle loop lands in Step 12 Phase 4");
         }
     }
+}
+
+/// Build a [`ContinuationState`] from a [`FinalState`].
+///
+/// The orchestrator (Phase 4) calls this at the end of cycle `N` to
+/// build the input for cycle `N+1`'s `BaselineConfig.continuation`.
+/// Step 8.6's `ContinuationState` carries everything `run_baseline`
+/// needs to short-circuit re-init: `s, vx, vy, age, cratonic_factor`.
+/// The Voronoï tessellation is implicitly preserved by the run's
+/// `BoundaryConfig` (static for the run lifetime).
+///
+/// D3 contract: cycle `N+1` step 1 should produce a peak|v| within
+/// 10 % of cycle `N` step `k_cycle` — pinned by the
+/// `v2_workflow_continuation_no_transient` test.
+pub fn final_state_to_continuation(fs: &FinalState) -> ContinuationState {
+    ContinuationState {
+        s: fs.s_field.clone(),
+        vx: fs.vx.clone(),
+        vy: fs.vy.clone(),
+        age: fs.age_field.clone(),
+        cratonic_factor: fs.cratonic_factor.clone(),
+    }
+}
+
+/// Recover `per_plate_type[p]` from the per-cell `plate_type` field.
+///
+/// At `run_baseline` start the per-cell field is a deterministic
+/// broadcast of `per_plate_type` (every cell of plate `p` has type
+/// `per_plate_type[p]`). Sampling the first occurrence of each
+/// `plate_id` is therefore a faithful recovery — the function returns
+/// `Vec<PlateType>` of length `max(plate_id) + 1`.
+///
+/// A more defensive variant could sample by majority vote across cells
+/// of each plate; not necessary at cycle 1 (broadcast is exact), and
+/// for cycle 2+ the caller passes the *original* per_plate_type from a
+/// prior call rather than re-sampling.
+fn extract_per_plate_type(plate_id: &PlateIdField, plate_type: &PlateTypeField) -> Vec<PlateType> {
+    let nx = plate_id.nx();
+    let ny = plate_id.ny();
+    let max_id = plate_id.data().iter().copied().max().unwrap_or(0) as usize;
+    let num_plates = max_id + 1;
+    let mut per = vec![PlateType::Oceanic; num_plates];
+    let mut seen = vec![false; num_plates];
+    for j in 0..ny {
+        for i in 0..nx {
+            let pid = plate_id.get(i, j) as usize;
+            if !seen[pid] {
+                per[pid] = plate_type.get(i, j);
+                seen[pid] = true;
+            }
+        }
+    }
+    per
+}
+
+/// Step 12 D4 cratonic recompute: synthesise an updated
+/// [`VoronoiPlates`] in which each plate's `per_plate_type` reflects
+/// the post-erosion D4 retention rule, then call
+/// [`build_cratonic_factor_field`].
+///
+/// **D4 retention rule** (per `step12_issue.md`):
+///
+/// ```text
+/// continental_fraction[p] = cells in plate p with S̃ > sea_level
+///                         / total cells in plate p
+/// retained[p] = was_continental_at_init[p]
+///             && continental_fraction[p] >= plate_area_min
+/// ```
+///
+/// `was_continental_at_init` comes from `initial_per_plate_type` — the
+/// caller is responsible for capturing this from the pre-erosion
+/// `plate_type` field. After Phase 4 multi-cycle wiring, this becomes
+/// the prior cycle's `per_plate_type`, threading the D4 retention rule
+/// across the loop.
+fn recompute_cratonic_factor_for_cycle(
+    plate_id: &PlateIdField,
+    initial_per_plate_type: &[PlateType],
+    s: &Field2D,
+    sea_level_reference: f64,
+    cfg: &CratonicConfigEnabled,
+) -> Field2D {
+    let nx = plate_id.nx();
+    let ny = plate_id.ny();
+    let num_plates = initial_per_plate_type.len();
+
+    // Per-plate continental cell count under the new sea_level.
+    let mut cont_count = vec![0u32; num_plates];
+    let mut total_count = vec![0u32; num_plates];
+    for j in 0..ny {
+        for i in 0..nx {
+            let pid = plate_id.get(i, j) as usize;
+            total_count[pid] += 1;
+            if s.get(i, j) > sea_level_reference {
+                cont_count[pid] += 1;
+            }
+        }
+    }
+
+    // Apply D4 retention rule to derive the new per_plate_type.
+    let mut updated_per_plate_type: Vec<PlateType> = Vec::with_capacity(num_plates);
+    for p in 0..num_plates {
+        let frac = if total_count[p] > 0 {
+            cont_count[p] as f64 / total_count[p] as f64
+        } else {
+            0.0
+        };
+        let was_continental = matches!(initial_per_plate_type[p], PlateType::Continental);
+        let new_type = if was_continental && frac >= cfg.plate_area_min {
+            PlateType::Continental
+        } else {
+            PlateType::Oceanic
+        };
+        updated_per_plate_type.push(new_type);
+    }
+
+    // Mirror per_plate_type into a per-cell PlateTypeField so the
+    // synthesised `VoronoiPlates` is internally consistent (the BFS
+    // in `build_cratonic_factor_field` reads `retained[plate_id]`
+    // which is per-plate, but the test surface
+    // `factor_zero_on_oceanic_cells` expects the per-cell field to
+    // match for diagnostic coherence).
+    let mut updated_plate_type = PlateTypeField::filled(nx, ny, PlateType::Oceanic);
+    for j in 0..ny {
+        for i in 0..nx {
+            let pid = plate_id.get(i, j) as usize;
+            updated_plate_type.set(i, j, updated_per_plate_type[pid]);
+        }
+    }
+
+    let plates = VoronoiPlates {
+        num_plates,
+        plate_id: plate_id.clone(),
+        plate_type: updated_plate_type,
+        per_plate_type: updated_per_plate_type,
+        // `seed_coords` is unused by `build_cratonic_factor_field` —
+        // empty Vec is safe.
+        seed_coords: Vec::new(),
+    };
+    build_cratonic_factor_field(&plates, cfg)
+}
+
+/// Fraction of cells whose `cratonic_factor` changed by more than
+/// `1e-9` between two snapshots. The threshold is well above the
+/// rounding error of the smoothstep (a smooth function of distances)
+/// while small enough to catch any genuine BFS reshuffle from the D4
+/// retention rule kicking in or out for a plate.
+fn measure_craton_change(old: &Field2D, new: &Field2D) -> f64 {
+    let n = old.data().len();
+    if n == 0 {
+        return 0.0;
+    }
+    let mut changed = 0_usize;
+    for k in 0..n {
+        if (old.data()[k] - new.data()[k]).abs() > 1e-9 {
+            changed += 1;
+        }
+    }
+    changed as f64 / n as f64
 }
