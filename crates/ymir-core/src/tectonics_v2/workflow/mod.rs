@@ -42,7 +42,7 @@ use crate::erosion::hydraulic::ErosionConfig;
 use crate::terrain::upscale::FbmUpscaleConfig;
 
 pub use low_res_erosion::ErosionStats;
-pub use phase_a::{run_phase_a_cycle, run_phase_a_loop};
+pub use phase_a::{final_state_to_continuation, run_phase_a_cycle, run_phase_a_loop};
 pub use phase_b::run_phase_b;
 
 /// Top-level workflow on/off switch.
@@ -150,14 +150,37 @@ impl Default for PhaseBParams {
 ///
 /// `baseline` carries the full
 /// [`crate::tectonics_v2::diagnostics::harness::BaselineResult`] from
-/// the cycle's tectonic run (final state, metrics, config dump);
-/// `erosion_volume_removed` is the integrated `Δh` summed over
-/// continental cells during the low-res erosion pass (`0.0` when
-/// `WorkflowConfig::Disabled`).
+/// the cycle's tectonic run (final state, metrics, config dump). Under
+/// `WorkflowConfig::Enabled`, the `final_state` is post-erosion +
+/// post-reclassification + post-craton-recompute (i.e. the state the
+/// next cycle's continuation should warm-start from).
+///
+/// All Disabled-cycle scalars are zeroed/`None` — the regression test
+/// `v2_workflow_disabled_regression` pins this contract.
 #[derive(Debug)]
 pub struct CycleOutput {
     pub baseline: crate::tectonics_v2::diagnostics::harness::BaselineResult,
+    /// Gross integrated `Σ Δh` over continental cells (low-res erosion
+    /// pass output). Net mass change is `-(1 - β) · volume_removed`.
     pub erosion_volume_removed: f64,
+    /// Maximum per-cell `Δh` during the cycle's erosion pass (peak
+    /// erosion magnitude). Useful for spotting outlier cells.
+    pub erosion_peak_delta_h: f64,
+    /// Adaptive sea-level threshold used for the cycle's
+    /// reclassification + cratonic recompute, sourced from
+    /// `compute_isostasy(s_post_tectonic).sea_level_normalized`. `0.0`
+    /// when Disabled.
+    pub sea_level_normalized: f64,
+    /// Total continental mass change during the cycle's erosion pass
+    /// (`Σ s_after - Σ s_before`). Equals `-(1 - β) · volume_removed`
+    /// modulo IEEE-754 rounding; tracked separately as a sanity hook
+    /// for the long-run mass-conservation diagnostic.
+    pub mass_drift: f64,
+    /// Fraction of cells whose `cratonic_factor` changed by more than
+    /// `1e-9` between pre-cycle and post-cycle recompute. `None` when
+    /// no `CratonicConfig::Enabled` was active. The Phase 4
+    /// multi-cycle metrics dashboard accumulates these per cycle.
+    pub craton_recomputation_change: Option<f64>,
 }
 
 /// Output of the full Phase A loop (one [`CycleOutput`] per cycle).
