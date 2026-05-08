@@ -34,7 +34,7 @@
 //! pins this contract byte-for-byte.
 
 use super::{low_res_erosion, CycleOutput, PhaseAOutput, WorkflowConfig};
-use crate::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use crate::tectonics::isostasy::IsostasyConfig;
 use crate::tectonics_v2::boundaries::{PlateType, PlateTypeField};
 use crate::tectonics_v2::cratonic::factor::build_cratonic_factor_field;
 use crate::tectonics_v2::cratonic::{CratonicConfig, CratonicConfigEnabled};
@@ -71,13 +71,40 @@ pub fn run_phase_a_cycle(cfg: &BaselineConfig, wf: &WorkflowConfig) -> CycleOutp
             // Step 1: Tectonic.
             let mut baseline = run_baseline(cfg);
 
-            // Step 2: Isostasy → adaptive sea_level_normalized.
-            // f32 → f64 cast is exact for normalised values in
-            // `[0, 1]` (the cast is the documented source for the
-            // erosion threshold per Phase 0 finding E).
-            let isostasy =
-                compute_isostasy(&baseline.final_state.s_field, &IsostasyConfig::default());
-            let sea_level_ref = isostasy.sea_level_normalized as f64;
+            // Step 2: Adaptive sea-level threshold in S̃ space.
+            //
+            // Phase 3 originally piped
+            // `compute_isostasy(s).sea_level_normalized` (a `f32` in
+            // heightmap `[0, 1]` space), which on the default
+            // IsostasyConfig (max_depth=500 m, max_elevation=4000 m)
+            // resolves to `0.111` — well below S̃'s natural oceanic
+            // floor of ≈ 0.2. As a result the continental/oceanic
+            // mask was satisfied by *every* cell, the recompute D4
+            // rule never fired, and the v2_workflow_cratonic_recompute_*
+            // tests passed for the wrong reason.
+            //
+            // Phase 3.5 fix: compute the threshold *in S̃ units* via
+            // the isostasy formula `h_sea = h_min + sea_level_fraction
+            // · h_range`, applied to S̃ directly:
+            //
+            //     s_sea = s_min + sea_level_fraction · (s_max - s_min)
+            //
+            // At init (S̃ ∈ [≈0.2, ≈1.2]) this resolves to ≈ 0.6 —
+            // close to the natural 0.5 midpoint between oceanic and
+            // continental, and adaptive to the S̃ distribution as
+            // cycles erode. Source: same formula as
+            // `compute_isostasy::h_sea`, just in S̃ units rather
+            // than buoyancy-scaled altitude.
+            let iso_cfg = IsostasyConfig::default();
+            let sea_level_ref = {
+                let s_data = baseline.final_state.s_field.data();
+                let (s_min, s_max) = s_data.iter().copied().fold(
+                    (f64::INFINITY, f64::NEG_INFINITY),
+                    |(lo, hi), v| (lo.min(v), hi.max(v)),
+                );
+                let s_range = (s_max - s_min).max(1e-10);
+                s_min + (iso_cfg.sea_level_fraction as f64) * s_range
+            };
 
             // Step 3: Capture original `per_plate_type` BEFORE
             // reclassification — needed for the craton recompute's
@@ -229,14 +256,22 @@ fn extract_per_plate_type(plate_id: &PlateIdField, plate_type: &PlateTypeField) 
 /// the post-erosion D4 retention rule, then call
 /// [`build_cratonic_factor_field`].
 ///
-/// **D4 retention rule** (per `step12_issue.md`):
+/// **D4 retention rule** (per `step12_issue.md`, Phase 3.5 disambiguation):
 ///
 /// ```text
 /// continental_fraction[p] = cells in plate p with S̃ > sea_level
-///                         / total cells in plate p
+///                         / total cells in plate p   (within-plate)
 /// retained[p] = was_continental_at_init[p]
-///             && continental_fraction[p] >= plate_area_min
+///             && continental_fraction[p] >= craton_retention_threshold
 /// ```
+///
+/// The threshold is [`CratonicConfigEnabled::craton_retention_threshold`]
+/// (Semantics 2, within-plate), **not** `plate_area_min` (Semantics 1,
+/// fraction-of-domain). The two are independently configurable since
+/// Step 12 Phase 3.5; the Phase 3 implementation overloaded
+/// `plate_area_min` and could not isolate the D4 flip from the init
+/// exclusion. See `step12_issue.md` D4 + the Phase 3.5 commit message
+/// for the disambiguation rationale.
 ///
 /// `was_continental_at_init` comes from `initial_per_plate_type` — the
 /// caller is responsible for capturing this from the pre-erosion
@@ -267,7 +302,11 @@ fn recompute_cratonic_factor_for_cycle(
         }
     }
 
-    // Apply D4 retention rule to derive the new per_plate_type.
+    // Apply D4 retention rule to derive the new per_plate_type. The
+    // threshold is `craton_retention_threshold` (Semantics 2, within
+    // plate), distinct from `plate_area_min` (Semantics 1, fraction
+    // of domain) which the init-time `build_cratonic_factor_field`
+    // uses internally.
     let mut updated_per_plate_type: Vec<PlateType> = Vec::with_capacity(num_plates);
     for p in 0..num_plates {
         let frac = if total_count[p] > 0 {
@@ -276,7 +315,7 @@ fn recompute_cratonic_factor_for_cycle(
             0.0
         };
         let was_continental = matches!(initial_per_plate_type[p], PlateType::Continental);
-        let new_type = if was_continental && frac >= cfg.plate_area_min {
+        let new_type = if was_continental && frac >= cfg.craton_retention_threshold {
             PlateType::Continental
         } else {
             PlateType::Oceanic

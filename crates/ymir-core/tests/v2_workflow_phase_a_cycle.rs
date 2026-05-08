@@ -147,54 +147,56 @@ fn v2_workflow_continuation_no_transient() {
 }
 
 #[test]
-fn v2_workflow_cratonic_recompute_excludes_all_under_strict_threshold() {
-    // D4 path stress-test: set `plate_area_min` so stringent that no
-    // plate clears either the init's fraction-of-domain check (Step 9)
-    // or the recompute's within-plate fraction check (Step 12 D4).
-    // Result: cratonic_factor = 0 everywhere both before and after
-    // recompute. This validates that the recompute correctly
-    // **produces zero** when no plate retains — the symmetric leg
-    // of the D4 mechanism.
+fn v2_workflow_cratonic_recompute_flips_eroded_plate() {
+    // Step 12 Phase 3.5 — true D4 flip test. The two semantics are
+    // now distinct parameters:
+    //   - `plate_area_min = 0.10` (default, fraction-of-domain) →
+    //     init's `build_cratonic_factor_field` retains every plate
+    //     (each ~25% of the domain, well above 10%) and populates
+    //     a non-trivial cratonic_factor on the continental plates.
+    //   - `craton_retention_threshold = 0.95` (strict, within-plate)
+    //     → the recompute requires 95% of each plate's cells to stay
+    //     continental for the plate to keep its craton.
     //
-    // Note on parameter overloading: `plate_area_min` carries both
-    // semantics here (Step 9 fraction-of-domain at init, Step 12 D4
-    // fraction-within-plate at recompute). Disentangling these into
-    // two parameters is a design follow-up considered for the
-    // multi-cycle Phase 4 if the overload becomes load-bearing.
-    //
-    // The richer "plate retained at init, flipped at recompute"
-    // scenario requires multi-cycle erosion accumulation to push
-    // continental fraction below the threshold; that integration
-    // test lands in Phase 4.
+    // Heavy erosion + 3 tectonic steps with k_sub=0.5 drop the
+    // within-plate continental fraction below 0.95 for at least one
+    // continental plate. That plate flips per the D4 retention rule
+    // → BFS sources its cells → cratonic_factor = 0 on the flipped
+    // plate. The Phase 3 commit message documented this scenario as
+    // "untestable in single-cycle with overloaded parameter"; the
+    // 3.5 disambiguation makes it a clean acceptance.
     let crcfg = CratonicConfigEnabled {
-        plate_area_min: 0.99,
+        plate_area_min: 0.10,
+        craton_retention_threshold: 0.95,
         ..Default::default()
     };
-    let cfg = build_cratonic_cycle_config("cratonic_excluded", crcfg);
+    let cfg = build_cratonic_cycle_config("flip_eroded", crcfg);
+    // alpha = 5.0 is aggressively non-physical — the test validates
+    // the *mechanism* (D4 flip wiring), not realistic erosion
+    // magnitudes. With realistic α (e.g. 0.01–0.05 from D8) a flip
+    // emerges across multiple cycles; the multi-cycle natural-flip
+    // scenario is Phase 4 integration territory.
     let wf = WorkflowConfig::Enabled(WorkflowParams {
-        phase_a: PhaseAParams { alpha: 0.05, beta: 0.0, ..Default::default() },
+        phase_a: PhaseAParams { alpha: 5.0, beta: 0.0, ..Default::default() },
         phase_b: Default::default(),
     });
 
     let cycle = run_phase_a_cycle(&cfg, &wf);
-    let new_factor = cycle
-        .baseline
-        .final_state
-        .cratonic_factor
-        .as_ref()
-        .expect("cratonic_factor must be populated under CratonicConfig::Enabled");
 
-    let max_factor: f64 = new_factor.data().iter().copied().fold(0.0_f64, f64::max);
+    // The change metric must register > 0 — at least one plate
+    // flipped. `measure_craton_change` counts cells whose factor
+    // moved by more than 1e-9; a plate flip changes every cell of
+    // that plate (the BFS source set rearranges), so the change
+    // metric scales with the flipped plate's area-fraction of the
+    // domain.
+    let change = cycle
+        .craton_recomputation_change
+        .expect("change metric must be populated under CratonicConfig::Enabled");
     assert!(
-        max_factor < 1e-12,
-        "stringent plate_area_min must produce factor = 0 everywhere: got max = {max_factor}"
-    );
-
-    // The recompute mechanism fires (change is populated as Some, the
-    // value being 0.0 here is correct — both pre and post are 0).
-    assert!(
-        cycle.craton_recomputation_change.is_some(),
-        "craton_recomputation_change must be populated when cratonic was Enabled"
+        change > 0.0,
+        "D4 retention rule must fire under strict craton_retention_threshold \
+         + aggressive erosion: change = {change}. Investigate \
+         continental_fraction per plate post-cycle if this surfaces."
     );
 }
 
