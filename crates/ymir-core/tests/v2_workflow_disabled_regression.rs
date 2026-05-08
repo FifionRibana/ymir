@@ -76,14 +76,23 @@ fn workflow_disabled_run_phase_a_cycle_is_bit_identical_to_run_baseline() {
 
 #[test]
 fn workflow_disabled_run_phase_a_loop_returns_single_passthrough_cycle() {
-    let cfg = build_test_config("loop_single");
-    let output = run_phase_a_loop(&cfg, &WorkflowConfig::Disabled);
+    // Phase 4 changed run_phase_a_loop's signature to `&mut
+    // BaselineConfig` because the Enabled branch mutates
+    // `cfg.continuation` between cycles. The Disabled branch still
+    // does not mutate cfg — the regression contract holds.
+    let mut cfg = build_test_config("loop_single");
+    let output = run_phase_a_loop(&mut cfg, &WorkflowConfig::Disabled);
     assert_eq!(
         output.cycles.len(),
         1,
         "Disabled loop must collapse to a single cycle"
     );
     assert_eq!(output.cycles[0].erosion_volume_removed, 0.0);
+    // cfg.continuation is unchanged under Disabled — None remains None.
+    assert!(
+        cfg.continuation.is_none(),
+        "Disabled loop must not mutate cfg.continuation"
+    );
 }
 
 #[test]
