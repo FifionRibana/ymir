@@ -48,6 +48,51 @@ pub enum V2Event {
     /// does not return a `Result` at Step 8.6 Phase 1; reserved for
     /// future cancellation-aware refactor).
     Failed { error: String },
+    /// Step 12 Phase 7 — emitted at the end of every Phase A cycle
+    /// (between `n_cycles` cycles). Carries cycle-level metrics so
+    /// the dashboard can plot per-cycle mass drift / craton change /
+    /// erosion volume curves over the loop. `peek_state` is the
+    /// post-cycle (post-erosion + reclassify + craton recompute)
+    /// state; the final cycle's payload is roughly equivalent to the
+    /// `WorkflowPhaseACompleted` event.
+    WorkflowCycleCompleted {
+        cycle_idx: usize,
+        n_cycles: usize,
+        peek_state: V2FinalState,
+        erosion_volume_removed: f64,
+        sea_level_normalized: f64,
+        mass_drift: f64,
+        craton_recomputation_change: Option<f64>,
+    },
+    /// Step 12 Phase 7 — emitted once Phase A's full multi-cycle
+    /// loop finishes. Carries the final state for chaining to a
+    /// subsequent `V2Command::RunWorkflowPhaseB`. `cycles_run` may
+    /// be less than the spec's `n_cycles` if the user cancelled
+    /// mid-run; `elapsed` is the total Phase A wallclock (sum of
+    /// per-cycle harness calls).
+    WorkflowPhaseACompleted {
+        spec: V2RunSpec,
+        cycles_run: usize,
+        final_state: V2FinalState,
+        elapsed: Duration,
+    },
+    /// Step 12 Phase 7 — emitted once Phase B HD finalization is
+    /// done. Carries the HD heightmap + sediment as flat
+    /// `Vec<f32>` payloads (matches `GridF32`'s row-major data),
+    /// plus the D5 grand-scale metrics. The acceptance gate is
+    /// `grand_scale_deviation_p95 < spec.workflow.phase_b.grand_scale_tolerance`
+    /// (the bridge does not enforce it; the UI layer asserts /
+    /// reports as needed).
+    WorkflowPhaseBCompleted {
+        spec: V2RunSpec,
+        hd_nx: usize,
+        hd_ny: usize,
+        hd_heightmap: Vec<f32>,
+        sediment: Vec<f32>,
+        grand_scale_deviation: f64,
+        grand_scale_deviation_p95: f64,
+        elapsed: Duration,
+    },
 }
 
 /// Thread-safe owned snapshot of every raster field at end of run.

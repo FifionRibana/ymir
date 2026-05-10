@@ -117,7 +117,7 @@ fn run_phase_a_then_b(
     });
     let phase_a = run_phase_a_loop(&mut cfg, &wf);
     let last_cycle = phase_a.cycles.last().expect("Phase A produced at least one cycle");
-    run_phase_b(&last_cycle.baseline, &wf, cfg.seed)
+    run_phase_b(&last_cycle.baseline.final_state.s_field, &wf, cfg.seed)
         .expect("Phase B must produce output under WorkflowConfig::Enabled")
 }
 
@@ -235,7 +235,7 @@ fn v2_workflow_phase_b_deviation_stats_probe() {
     );
     let baseline_hd = upscaled.heightmap;
 
-    let phase_b = run_phase_b(&last_cycle.baseline, &wf, cfg.seed).unwrap();
+    let phase_b = run_phase_b(&last_cycle.baseline.final_state.s_field, &wf, cfg.seed).unwrap();
     let eroded_hd = phase_b.heightmap;
 
     let mut deltas: Vec<f64> = baseline_hd

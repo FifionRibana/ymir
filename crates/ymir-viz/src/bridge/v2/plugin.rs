@@ -64,6 +64,32 @@ pub enum V2RunState {
     Failed {
         error: String,
     },
+    /// Step 12 Phase 7 — Phase A multi-cycle loop has completed.
+    /// Carries the final state for chaining into a subsequent
+    /// `V2Command::RunWorkflowPhaseB`. Distinct from `Completed`
+    /// because no `Metrics` struct is produced (the workflow's
+    /// per-cycle metrics are emitted as `WorkflowCycleCompleted`
+    /// events; aggregating them into a single `Metrics` is a Phase
+    /// 7b refinement).
+    WorkflowPhaseACompleted {
+        spec: V2RunSpec,
+        cycles_run: usize,
+        final_state: Box<V2FinalState>,
+        elapsed: Duration,
+    },
+    /// Step 12 Phase 7 — Phase B HD finalization has completed.
+    /// Holds the HD heightmap (flat `Vec<f32>` row-major,
+    /// `hd_nx × hd_ny`) for download / visualization.
+    /// `grand_scale_deviation_p95` is the formal D5 acceptance
+    /// metric (see `PhaseBOutput` for context).
+    WorkflowPhaseBCompleted {
+        spec: V2RunSpec,
+        hd_nx: usize,
+        hd_ny: usize,
+        hd_heightmap: Vec<f32>,
+        grand_scale_deviation_p95: f64,
+        elapsed: Duration,
+    },
 }
 
 /// Runtime resource — channels into and events back from the v2 worker
@@ -188,6 +214,67 @@ fn poll_v2_events(mut bridge: ResMut<V2SolverBridge>) {
             }
             V2Event::Failed { error } => {
                 bridge.state = V2RunState::Failed { error };
+            }
+            V2Event::WorkflowCycleCompleted {
+                cycle_idx,
+                n_cycles,
+                peek_state,
+                ..
+            } => {
+                // Reuse Running for in-flight workflow Phase A. step
+                // tracks cycles, total tracks n_cycles. Per-cycle
+                // metric payload (mass_drift, etc.) is dropped here
+                // for Phase 7a; the dashboard wires them in 7b.
+                let (spec, started_at) = match std::mem::take(&mut bridge.state) {
+                    V2RunState::Running { spec, started_at, .. } => (spec, started_at),
+                    other => {
+                        // First cycle: a Started event populated Running
+                        // already. If we land here from another state,
+                        // synthesise minimal context so the UI doesn't
+                        // crash; the next event will refresh.
+                        bridge.state = other;
+                        continue;
+                    }
+                };
+                bridge.state = V2RunState::Running {
+                    spec,
+                    step: cycle_idx + 1,
+                    total: n_cycles,
+                    started_at,
+                    peek_state: Some(Box::new(peek_state)),
+                };
+            }
+            V2Event::WorkflowPhaseACompleted {
+                spec,
+                cycles_run,
+                final_state,
+                elapsed,
+            } => {
+                bridge.state = V2RunState::WorkflowPhaseACompleted {
+                    spec,
+                    cycles_run,
+                    final_state: Box::new(final_state),
+                    elapsed,
+                };
+            }
+            V2Event::WorkflowPhaseBCompleted {
+                spec,
+                hd_nx,
+                hd_ny,
+                hd_heightmap,
+                sediment: _,
+                grand_scale_deviation: _,
+                grand_scale_deviation_p95,
+                elapsed,
+            } => {
+                bridge.state = V2RunState::WorkflowPhaseBCompleted {
+                    spec,
+                    hd_nx,
+                    hd_ny,
+                    hd_heightmap,
+                    grand_scale_deviation_p95,
+                    elapsed,
+                };
             }
         }
     }

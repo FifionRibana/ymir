@@ -138,6 +138,60 @@ pub fn draw(ui: &mut egui::Ui, bridge: &V2SolverBridge, viz: &V2VizState) {
             ui.label(egui::RichText::new("Final state").strong());
             draw_live_metrics(ui, final_state);
         }
+        V2RunState::WorkflowPhaseACompleted {
+            cycles_run,
+            elapsed,
+            final_state,
+            spec,
+        } => {
+            ui.colored_label(
+                Color32::LIGHT_GREEN,
+                format!(
+                    "Phase A done — {} cycles in {:.1}s",
+                    cycles_run,
+                    elapsed.as_secs_f64()
+                ),
+            );
+            ui.add_space(4.0);
+            ui.label(format!(
+                "Grid: {}×{} · seed {}",
+                spec.grid_nx, spec.grid_ny, spec.seed
+            ));
+            ui.add_space(6.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new("Phase A final state").strong());
+            draw_live_metrics(ui, final_state);
+        }
+        V2RunState::WorkflowPhaseBCompleted {
+            spec,
+            hd_nx,
+            hd_ny,
+            grand_scale_deviation_p95,
+            elapsed,
+            ..
+        } => {
+            ui.colored_label(
+                Color32::from_rgb(0x80, 0xD0, 0xFF),
+                format!(
+                    "Phase B done — {hd_nx}×{hd_ny} HD in {:.1}s",
+                    elapsed.as_secs_f64()
+                ),
+            );
+            ui.add_space(4.0);
+            ui.label(format!(
+                "Source grid: {}×{} · seed {}",
+                spec.grid_nx, spec.grid_ny, spec.seed
+            ));
+            ui.add_space(6.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new("D5 metrics").strong());
+            ui.label(format!(
+                "grand_scale_deviation_p95 = {:.4} (acceptance threshold 0.10)",
+                grand_scale_deviation_p95
+            ));
+        }
     }
 }
 

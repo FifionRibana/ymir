@@ -16,6 +16,9 @@ use ymir_core::tectonics_v2::diagnostics::harness::{
     run_baseline_with_progress, ContinuationState,
 };
 use ymir_core::tectonics_v2::field::Field2D;
+use ymir_core::tectonics_v2::workflow::{
+    final_state_to_continuation, run_phase_a_cycle, run_phase_b, WorkflowConfig,
+};
 
 use super::build_config;
 use super::commands::V2Command;
@@ -118,6 +121,175 @@ pub fn spawn_v2_thread(
                         cancel.store(true, Ordering::Relaxed);
                     }
                     V2Command::Shutdown => break,
+                    V2Command::RunWorkflowPhaseA { spec } => {
+                        cancel.store(false, Ordering::Relaxed);
+                        let _ = events_tx.send(V2Event::Started { spec: spec.clone() });
+
+                        let workflow_cfg = super::build_config::build_workflow(&spec.workflow);
+                        let n_cycles = match &workflow_cfg {
+                            WorkflowConfig::Enabled(p) => p.phase_a.n_cycles,
+                            WorkflowConfig::Disabled => {
+                                let _ = events_tx.send(V2Event::Failed {
+                                    error: "RunWorkflowPhaseA requires V2WorkflowSpec::On"
+                                        .into(),
+                                });
+                                continue;
+                            }
+                        };
+
+                        let mut cfg = super::build_config::build(&spec);
+                        let t0 = Instant::now();
+                        let mut last_final_state: Option<V2FinalState> = None;
+                        let mut cycles_run = 0;
+
+                        for cycle_idx in 0..n_cycles {
+                            if cancel.load(Ordering::Relaxed) {
+                                break;
+                            }
+                            let cycle_output = run_phase_a_cycle(&cfg, &workflow_cfg);
+                            cycles_run += 1;
+
+                            let peek_state =
+                                V2FinalState::from_harness(&cycle_output.baseline.final_state);
+                            let _ = events_tx.send(V2Event::WorkflowCycleCompleted {
+                                cycle_idx,
+                                n_cycles,
+                                peek_state: peek_state.clone(),
+                                erosion_volume_removed: cycle_output.erosion_volume_removed,
+                                sea_level_normalized: cycle_output.sea_level_normalized,
+                                mass_drift: cycle_output.mass_drift,
+                                craton_recomputation_change: cycle_output
+                                    .craton_recomputation_change,
+                            });
+
+                            if cycle_idx + 1 < n_cycles {
+                                cfg.continuation = Some(final_state_to_continuation(
+                                    &cycle_output.baseline.final_state,
+                                ));
+                            }
+                            last_final_state = Some(peek_state);
+                        }
+
+                        let elapsed = t0.elapsed();
+                        let final_state = last_final_state.unwrap_or_else(|| V2FinalState {
+                            nx: spec.grid_nx,
+                            ny: spec.grid_ny,
+                            dx: 0.0,
+                            dy: 0.0,
+                            s_field: vec![0.0; spec.grid_nx * spec.grid_ny],
+                            vx: vec![0.0; spec.grid_nx * spec.grid_ny],
+                            vy: vec![0.0; spec.grid_nx * spec.grid_ny],
+                            strain_rate_invariant: vec![0.0; spec.grid_nx * spec.grid_ny],
+                            age_field: None,
+                            cratonic_factor: None,
+                            plate_id: None,
+                            plate_type: None,
+                            boundary_flag: None,
+                        });
+                        let _ = events_tx.send(V2Event::WorkflowPhaseACompleted {
+                            spec,
+                            cycles_run,
+                            final_state,
+                            elapsed,
+                        });
+                    }
+                    V2Command::ContinueWorkflowPhaseA { spec, from_state } => {
+                        cancel.store(false, Ordering::Relaxed);
+                        let _ = events_tx.send(V2Event::Started { spec: spec.clone() });
+
+                        let workflow_cfg = super::build_config::build_workflow(&spec.workflow);
+                        let n_cycles = match &workflow_cfg {
+                            WorkflowConfig::Enabled(p) => p.phase_a.n_cycles,
+                            WorkflowConfig::Disabled => {
+                                let _ = events_tx.send(V2Event::Failed {
+                                    error: "ContinueWorkflowPhaseA requires V2WorkflowSpec::On"
+                                        .into(),
+                                });
+                                continue;
+                            }
+                        };
+
+                        let mut cfg = super::build_config::build(&spec);
+                        // Wire the prior run's rasters into cycle 1's
+                        // continuation override; subsequent cycles use
+                        // the orchestrator's natural chain.
+                        cfg.continuation = Some(continuation_from_final_state(&from_state));
+
+                        let t0 = Instant::now();
+                        let mut last_final_state: Option<V2FinalState> = None;
+                        let mut cycles_run = 0;
+
+                        for cycle_idx in 0..n_cycles {
+                            if cancel.load(Ordering::Relaxed) {
+                                break;
+                            }
+                            let cycle_output = run_phase_a_cycle(&cfg, &workflow_cfg);
+                            cycles_run += 1;
+
+                            let peek_state =
+                                V2FinalState::from_harness(&cycle_output.baseline.final_state);
+                            let _ = events_tx.send(V2Event::WorkflowCycleCompleted {
+                                cycle_idx,
+                                n_cycles,
+                                peek_state: peek_state.clone(),
+                                erosion_volume_removed: cycle_output.erosion_volume_removed,
+                                sea_level_normalized: cycle_output.sea_level_normalized,
+                                mass_drift: cycle_output.mass_drift,
+                                craton_recomputation_change: cycle_output
+                                    .craton_recomputation_change,
+                            });
+
+                            if cycle_idx + 1 < n_cycles {
+                                cfg.continuation = Some(final_state_to_continuation(
+                                    &cycle_output.baseline.final_state,
+                                ));
+                            }
+                            last_final_state = Some(peek_state);
+                        }
+
+                        let elapsed = t0.elapsed();
+                        let final_state = last_final_state.unwrap_or(from_state);
+                        let _ = events_tx.send(V2Event::WorkflowPhaseACompleted {
+                            spec,
+                            cycles_run,
+                            final_state,
+                            elapsed,
+                        });
+                    }
+                    V2Command::RunWorkflowPhaseB { spec, from_state } => {
+                        cancel.store(false, Ordering::Relaxed);
+                        let _ = events_tx.send(V2Event::Started { spec: spec.clone() });
+
+                        let workflow_cfg = super::build_config::build_workflow(&spec.workflow);
+                        let t0 = Instant::now();
+
+                        let s_field =
+                            Field2D::from_vec(from_state.nx, from_state.ny, from_state.s_field);
+                        match run_phase_b(&s_field, &workflow_cfg, spec.seed) {
+                            Some(output) => {
+                                let elapsed = t0.elapsed();
+                                let hd_nx = output.heightmap.width;
+                                let hd_ny = output.heightmap.height;
+                                let _ = events_tx.send(V2Event::WorkflowPhaseBCompleted {
+                                    spec,
+                                    hd_nx,
+                                    hd_ny,
+                                    hd_heightmap: output.heightmap.data,
+                                    sediment: output.sediment.data,
+                                    grand_scale_deviation: output.grand_scale_deviation,
+                                    grand_scale_deviation_p95: output
+                                        .grand_scale_deviation_p95,
+                                    elapsed,
+                                });
+                            }
+                            None => {
+                                let _ = events_tx.send(V2Event::Failed {
+                                    error: "RunWorkflowPhaseB requires V2WorkflowSpec::On"
+                                        .into(),
+                                });
+                            }
+                        }
+                    }
                 }
             }
         })

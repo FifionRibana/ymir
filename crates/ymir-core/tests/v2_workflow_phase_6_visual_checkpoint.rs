@@ -293,7 +293,7 @@ fn dump_step12_phase_b_hd_zoom() {
     });
     let phase_a = run_phase_a_loop(&mut cfg, &wf);
     let last_cycle = phase_a.cycles.last().unwrap();
-    let phase_b = run_phase_b(&last_cycle.baseline, &wf, cfg.seed)
+    let phase_b = run_phase_b(&last_cycle.baseline.final_state.s_field, &wf, cfg.seed)
         .expect("Phase B output");
 
     let lowres = &last_cycle.baseline.final_state.s_field;
@@ -608,7 +608,7 @@ fn dump_step12_phase_6_64sq_full() {
 
         // Phase B HD 1024².
         let phase_b_start = Instant::now();
-        let phase_b = run_phase_b(&last.baseline, &wf, cfg.seed).expect("phase b");
+        let phase_b = run_phase_b(&last.baseline.final_state.s_field, &wf, cfg.seed).expect("phase b");
         let phase_b_elapsed = phase_b_start.elapsed().as_secs_f64();
 
         // Cumulative mass drift over Phase A.
@@ -790,7 +790,7 @@ fn dump_step12_phase_6_aggressive_demo() {
         tiles.push((format!("{}_after", preset.label), after_s.clone()));
 
         let phase_b_start = Instant::now();
-        let phase_b = run_phase_b(&last.baseline, &wf, cfg.seed).expect("phase b");
+        let phase_b = run_phase_b(&last.baseline.final_state.s_field, &wf, cfg.seed).expect("phase b");
         let phase_b_elapsed = phase_b_start.elapsed().as_secs_f64();
 
         // Aggregate metrics.

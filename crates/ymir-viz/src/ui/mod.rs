@@ -54,6 +54,12 @@ fn ui_v2_top_bar(mut contexts: EguiContexts, bridge: Res<crate::bridge::v2::V2So
                 V2RunState::Completed { .. } => ("Completed", egui::Color32::GREEN),
                 V2RunState::Imported { .. } => ("Imported", egui::Color32::LIGHT_BLUE),
                 V2RunState::Failed { .. } => ("Failed", egui::Color32::RED),
+                V2RunState::WorkflowPhaseACompleted { .. } => {
+                    ("Phase A done", egui::Color32::LIGHT_GREEN)
+                }
+                V2RunState::WorkflowPhaseBCompleted { .. } => {
+                    ("Phase B done", egui::Color32::from_rgb(0x80, 0xD0, 0xFF))
+                }
             };
             ui.colored_label(badge.1, badge.0);
 
