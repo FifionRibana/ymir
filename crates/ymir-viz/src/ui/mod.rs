@@ -11,11 +11,13 @@
 pub mod metrics_dashboard;
 pub mod parameter_panel_v2;
 pub mod pipeline_toolbar;
+pub mod workflow_panel;
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
 use parameter_panel_v2::V2EditableSpec;
+use workflow_panel::WorkflowCycleHistory;
 
 pub struct UiPlugin;
 
@@ -23,6 +25,7 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EguiPlugin::default());
         app.init_resource::<V2EditableSpec>();
+        app.init_resource::<WorkflowCycleHistory>();
         app.add_systems(
             EguiPrimaryContextPass,
             (
