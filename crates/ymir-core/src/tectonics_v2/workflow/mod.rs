@@ -42,7 +42,10 @@ use crate::erosion::hydraulic::ErosionConfig;
 use crate::terrain::upscale::FbmUpscaleConfig;
 
 pub use low_res_erosion::ErosionStats;
-pub use phase_a::{final_state_to_continuation, run_phase_a_cycle, run_phase_a_loop};
+pub use phase_a::{
+    final_state_to_continuation, run_phase_a_cycle, run_phase_a_cycle_with_progress,
+    run_phase_a_loop,
+};
 pub use phase_b::run_phase_b;
 
 /// Top-level workflow on/off switch.
