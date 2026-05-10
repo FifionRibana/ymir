@@ -19,17 +19,12 @@
 //!   FIFO-capped at [`MAX_HISTORY`] so long runs do not grow the
 //!   resource unboundedly.
 //!
-//! This file is the Phase 7b.1 skeleton: layout + sliders + button
-//! enabled-state logic. The button click handlers contain stub
-//! comments; the actual command emission (7b.2), event-history
-//! population (7b.3), and PNG export (7b.4) land in subsequent
-//! sub-phases.
-
-// Module-wide dead-code suppression. Every item here is consumed once
-// the panel is mounted in `ui::mod.rs` in Phase 7b.5; removing the
-// allow at that point is the natural hygiene marker that the wiring
-// is complete.
-#![allow(dead_code)]
+//! Phases 7b.1 through 7b.5 land the layout (sliders + sections),
+//! the click handlers (`Run` / `Stop` / `Continue` / `Run Phase B`),
+//! the cycle-history population (consumed from
+//! `V2Event::WorkflowCycleCompleted`), the PNG export of the Phase B
+//! HD heightmap, and the binary-side mount of the panel into the
+//! existing v2 right-side panel respectively.
 
 use std::path::PathBuf;
 
