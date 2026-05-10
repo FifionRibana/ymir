@@ -35,7 +35,7 @@ use bevy::prelude::*;
 use bevy_egui::egui;
 
 use crate::bridge::v2::{
-    V2PhaseAParams, V2PhaseBParams, V2RunState, V2SolverBridge, V2WorkflowSpec,
+    V2PhaseAParams, V2PhaseBParams, V2RunSpec, V2RunState, V2SolverBridge, V2WorkflowSpec,
 };
 use crate::ui::parameter_panel_v2::V2EditableSpec;
 
@@ -91,8 +91,8 @@ pub fn draw(
     ui.heading("Workflow (Step 12)");
     ui.add_space(4.0);
 
-    let spec = &mut spec_state.0;
-    let mut workflow_on = matches!(spec.workflow, V2WorkflowSpec::On { .. });
+    // Off/On toggle — drives `spec_state.0.workflow` directly.
+    let mut workflow_on = matches!(spec_state.0.workflow, V2WorkflowSpec::On { .. });
     if ui
         .checkbox(&mut workflow_on, "Enable interleaved tectonic-erosion workflow")
         .on_hover_text(
@@ -102,7 +102,7 @@ pub fn draw(
         )
         .changed()
     {
-        spec.workflow = if workflow_on {
+        spec_state.0.workflow = if workflow_on {
             V2WorkflowSpec::On {
                 phase_a: V2PhaseAParams::default(),
                 phase_b: V2PhaseBParams::default(),
@@ -112,7 +112,7 @@ pub fn draw(
         };
     }
 
-    let V2WorkflowSpec::On { phase_a, phase_b } = &mut spec.workflow else {
+    if !workflow_on {
         ui.add_space(4.0);
         ui.label(
             egui::RichText::new(
@@ -124,7 +124,7 @@ pub fn draw(
             .weak(),
         );
         return;
-    };
+    }
 
     ui.add_space(4.0);
     ui.label(
@@ -145,12 +145,17 @@ pub fn draw(
     ui.add_space(8.0);
     ui.separator();
 
+    // Phase A section. The mutable destructure of `spec_state.0.workflow`
+    // is scoped to the slider call so the borrow ends before
+    // `phase_a_buttons` reads `spec_state.0` immutably.
     egui::CollapsingHeader::new("Phase A — multi-cycle interleaved")
         .default_open(true)
         .show(ui, |ui| {
-            phase_a_sliders(ui, phase_a);
+            if let V2WorkflowSpec::On { phase_a, .. } = &mut spec_state.0.workflow {
+                phase_a_sliders(ui, phase_a);
+            }
             ui.add_space(4.0);
-            phase_a_buttons(ui, bridge);
+            phase_a_buttons(ui, &spec_state.0, bridge);
         });
 
     ui.add_space(4.0);
@@ -158,9 +163,11 @@ pub fn draw(
     egui::CollapsingHeader::new("Phase B — HD finalization")
         .default_open(true)
         .show(ui, |ui| {
-            phase_b_sliders(ui, phase_b);
+            if let V2WorkflowSpec::On { phase_b, .. } = &mut spec_state.0.workflow {
+                phase_b_sliders(ui, phase_b);
+            }
             ui.add_space(4.0);
-            phase_b_buttons(ui, bridge);
+            phase_b_buttons(ui, &spec_state.0, bridge);
         });
 
     ui.add_space(4.0);
@@ -252,7 +259,7 @@ fn phase_a_sliders(ui: &mut egui::Ui, phase_a: &mut V2PhaseAParams) {
     );
 }
 
-fn phase_a_buttons(ui: &mut egui::Ui, bridge: &mut V2SolverBridge) {
+fn phase_a_buttons(ui: &mut egui::Ui, spec: &V2RunSpec, bridge: &mut V2SolverBridge) {
     let is_running = matches!(bridge.state, V2RunState::Running { .. });
     let phase_a_done = matches!(bridge.state, V2RunState::WorkflowPhaseACompleted { .. });
 
@@ -270,9 +277,9 @@ fn phase_a_buttons(ui: &mut egui::Ui, bridge: &mut V2SolverBridge) {
             )
             .clicked()
         {
-            // Stub — actual command emission lands in Phase 7b.2.
-            // Will call `bridge.submit_workflow_phase_a(spec.clone())`.
-            let _ = bridge;
+            if let Err(e) = bridge.submit_workflow_phase_a(spec.clone()) {
+                eprintln!("[ymir-viz] failed to submit workflow Phase A: {}", e);
+            }
         }
         if ui
             .add_enabled(can_stop, egui::Button::new("\u{23f9} Stop"))
@@ -283,8 +290,7 @@ fn phase_a_buttons(ui: &mut egui::Ui, bridge: &mut V2SolverBridge) {
             )
             .clicked()
         {
-            // Stub — actual cancellation lands in Phase 7b.2 via
-            // `bridge.request_cancel()`.
+            bridge.request_cancel();
         }
         if ui
             .add_enabled(can_continue, egui::Button::new("\u{21bb} Continue"))
@@ -296,8 +302,36 @@ fn phase_a_buttons(ui: &mut egui::Ui, bridge: &mut V2SolverBridge) {
             )
             .clicked()
         {
-            // Stub — actual command emission lands in Phase 7b.2.
-            // Will call `bridge.submit_continue_workflow_phase_a(...)`.
+            // Clone the source spec + final state out of bridge.state in
+            // a self-contained match so the immutable borrow is dropped
+            // before the `submit_continue_workflow_phase_a` call below.
+            let continue_source = match &bridge.state {
+                V2RunState::WorkflowPhaseACompleted { spec: src, final_state, .. } => {
+                    Some((src.clone(), final_state.as_ref().clone()))
+                }
+                _ => None,
+            };
+            if let Some((source_spec, from_state)) = continue_source {
+                let mut next_spec = spec.clone();
+                // Voronoi-relevant fields are locked from source so the
+                // continuation's plate tessellation matches the prior
+                // run's plate_id / plate_type rasters carried by
+                // from_state. User-tweaked physics knobs are honoured.
+                next_spec.seed = source_spec.seed;
+                next_spec.grid_nx = source_spec.grid_nx;
+                next_spec.grid_ny = source_spec.grid_ny;
+                next_spec.num_plates = source_spec.num_plates;
+                next_spec.continental_ratio = source_spec.continental_ratio;
+                next_spec.init_mode = source_spec.init_mode;
+                if let Err(e) =
+                    bridge.submit_continue_workflow_phase_a(next_spec, from_state)
+                {
+                    eprintln!(
+                        "[ymir-viz] failed to submit workflow continue Phase A: {}",
+                        e
+                    );
+                }
+            }
         }
     });
 }
@@ -339,7 +373,7 @@ fn phase_b_sliders(ui: &mut egui::Ui, phase_b: &mut V2PhaseBParams) {
     );
 }
 
-fn phase_b_buttons(ui: &mut egui::Ui, bridge: &mut V2SolverBridge) {
+fn phase_b_buttons(ui: &mut egui::Ui, spec: &V2RunSpec, bridge: &mut V2SolverBridge) {
     let phase_a_done = matches!(bridge.state, V2RunState::WorkflowPhaseACompleted { .. });
     let phase_b_done = matches!(bridge.state, V2RunState::WorkflowPhaseBCompleted { .. });
     let is_running = matches!(bridge.state, V2RunState::Running { .. });
@@ -356,9 +390,28 @@ fn phase_b_buttons(ui: &mut egui::Ui, bridge: &mut V2SolverBridge) {
             )
             .clicked()
         {
-            // Stub — actual command emission lands in Phase 7b.2.
-            // Will call `bridge.submit_workflow_phase_b(spec.clone(), from_state)`.
-            let _ = bridge;
+            // Same self-contained match pattern as the Phase A continue
+            // button: clone out of `bridge.state` first, drop the borrow,
+            // then call `submit_workflow_phase_b`.
+            let phase_b_source = match &bridge.state {
+                V2RunState::WorkflowPhaseACompleted { spec: src, final_state, .. } => {
+                    Some((src.clone(), final_state.as_ref().clone()))
+                }
+                _ => None,
+            };
+            if let Some((source_spec, from_state)) = phase_b_source {
+                let mut next_spec = spec.clone();
+                // Lock voronoi-relevant fields from source so the HD
+                // upscale / FBM / erosion act on a heightmap whose
+                // plate-derived structure matches the Phase A run.
+                next_spec.seed = source_spec.seed;
+                next_spec.grid_nx = source_spec.grid_nx;
+                next_spec.grid_ny = source_spec.grid_ny;
+                next_spec.num_plates = source_spec.num_plates;
+                if let Err(e) = bridge.submit_workflow_phase_b(next_spec, from_state) {
+                    eprintln!("[ymir-viz] failed to submit workflow Phase B: {}", e);
+                }
+            }
         }
         if ui
             .add_enabled(
