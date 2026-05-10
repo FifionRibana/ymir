@@ -38,9 +38,17 @@ pub mod ui {
     // `parameter_panel_v2::V2EditableSpec` from a `crate::ui::…`
     // path. The bin keeps its own `mod ui;` tree (which also has
     // `metrics_dashboard` and `mod.rs`'s `UiPlugin`); the lib mounts
-    // only what `v2_viz` references.
+    // only what `v2_viz` references plus what integration tests
+    // under `tests/` need to reach.
     #[path = "../ui/parameter_panel_v2.rs"]
     pub mod parameter_panel_v2;
+
+    // Step 12 Phase 7b — workflow_panel is mounted on the lib facade
+    // so its unit tests (`cargo test --lib ui::workflow_panel`) and
+    // integration tests under `tests/` can reach
+    // `WorkflowCycleHistory`, `CycleMetricsSnapshot`, etc.
+    #[path = "../ui/workflow_panel.rs"]
+    pub mod workflow_panel;
 }
 
 pub mod pipeline;
