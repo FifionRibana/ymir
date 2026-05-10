@@ -50,6 +50,15 @@ pub enum V2RunState {
         total: usize,
         started_at: Option<Instant>,
         peek_state: Option<Box<V2FinalState>>,
+        /// Step 12 follow-up — workflow Phase A multi-cycle context.
+        /// `Some((cycle_idx_1based, n_cycles))` after the first
+        /// `V2Event::WorkflowCycleCompleted` lands; preserved across
+        /// subsequent `V2Event::Progress` events so the dashboard can
+        /// render the cycle counter independently of the harness step
+        /// counter. `None` for `RunBaseline` / `ContinueRun` runs
+        /// (single-baseline) and prior to the first
+        /// `WorkflowCycleCompleted` event of a workflow run.
+        cycle_context: Option<(usize, usize)>,
     },
     Completed {
         spec: V2RunSpec,
@@ -244,28 +253,36 @@ fn poll_v2_events(
                     total,
                     started_at: Some(Instant::now()),
                     peek_state: None,
+                    cycle_context: None,
                 };
             }
             V2Event::Progress { step, total, peek_state } => {
-                // Preserve the existing `spec` and `started_at` from
-                // the prior Running state; only update step/total and
-                // the peek snapshot. If we somehow receive a Progress
-                // before a Started (shouldn't happen — bridge thread
-                // emits Started before invoking the harness callback),
-                // fall back to a zero-spec stub.
-                let (spec, started_at) = match std::mem::take(&mut bridge.state) {
-                    V2RunState::Running { spec, started_at, .. } => (spec, started_at),
-                    other => {
-                        bridge.state = other;
-                        continue;
-                    }
-                };
+                // Preserve the existing `spec`, `started_at`, and
+                // `cycle_context` from the prior Running state; only
+                // update step/total and the peek snapshot. (cycle_context
+                // is set by `WorkflowCycleCompleted` and persists across
+                // subsequent Progress events of the same workflow run;
+                // a baseline run never sets it, so the preserve-on-
+                // Progress logic is a no-op for that path.) If we
+                // somehow receive a Progress before a Started, fall
+                // back to a None cycle_context.
+                let (spec, started_at, cycle_context) =
+                    match std::mem::take(&mut bridge.state) {
+                        V2RunState::Running { spec, started_at, cycle_context, .. } => {
+                            (spec, started_at, cycle_context)
+                        }
+                        other => {
+                            bridge.state = other;
+                            continue;
+                        }
+                    };
                 bridge.state = V2RunState::Running {
                     spec,
                     step,
                     total,
                     started_at,
                     peek_state: Some(Box::new(peek_state)),
+                    cycle_context,
                 };
             }
             V2Event::Completed { spec, final_state, metrics, elapsed } => {
@@ -300,25 +317,39 @@ fn poll_v2_events(
                     mass_drift,
                     craton_recomputation_change,
                 });
-                // Reuse Running for in-flight workflow Phase A. step
-                // tracks cycles, total tracks n_cycles.
-                let (spec, started_at) = match std::mem::take(&mut bridge.state) {
-                    V2RunState::Running { spec, started_at, .. } => (spec, started_at),
-                    other => {
-                        // First cycle: a Started event populated Running
-                        // already. If we land here from another state,
-                        // synthesise minimal context so the UI doesn't
-                        // crash; the next event will refresh.
-                        bridge.state = other;
-                        continue;
-                    }
-                };
+                // Reuse Running for in-flight workflow Phase A. The
+                // cycle counter lives in `cycle_context`; `step` /
+                // `total` are left at the harness-step values
+                // (typically (0, 0) for Phase A since no per-step
+                // Progress events fire inside `run_phase_a_cycle`'s
+                // internal `run_baseline`). The dashboard chooses
+                // which counter to display based on
+                // `cycle_context.is_some()`.
+                let (spec, started_at, prev_step, prev_total) =
+                    match std::mem::take(&mut bridge.state) {
+                        V2RunState::Running {
+                            spec,
+                            started_at,
+                            step,
+                            total,
+                            ..
+                        } => (spec, started_at, step, total),
+                        other => {
+                            // First cycle: a Started event populated Running
+                            // already. If we land here from another state,
+                            // synthesise minimal context so the UI doesn't
+                            // crash; the next event will refresh.
+                            bridge.state = other;
+                            continue;
+                        }
+                    };
                 bridge.state = V2RunState::Running {
                     spec,
-                    step: cycle_idx + 1,
-                    total: n_cycles,
+                    step: prev_step,
+                    total: prev_total,
                     started_at,
                     peek_state: Some(Box::new(peek_state)),
+                    cycle_context: Some((cycle_idx + 1, n_cycles)),
                 };
             }
             V2Event::WorkflowPhaseACompleted {
