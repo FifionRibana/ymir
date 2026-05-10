@@ -17,7 +17,7 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
 use parameter_panel_v2::V2EditableSpec;
-use workflow_panel::WorkflowCycleHistory;
+use workflow_panel::{WorkflowCycleHistory, WorkflowExportState};
 
 pub struct UiPlugin;
 
@@ -26,6 +26,7 @@ impl Plugin for UiPlugin {
         app.add_plugins(EguiPlugin::default());
         app.init_resource::<V2EditableSpec>();
         app.init_resource::<WorkflowCycleHistory>();
+        app.init_resource::<WorkflowExportState>();
         app.add_systems(
             EguiPrimaryContextPass,
             (
