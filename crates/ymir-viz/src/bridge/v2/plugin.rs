@@ -23,6 +23,15 @@ use super::spec::V2RunSpec;
 use super::thread::spawn_v2_thread;
 use ymir_core::tectonics_v2::diagnostics::metrics::Metrics;
 
+// Step 12 Phase 7b — workflow cycle history is owned by the UI layer
+// (`crate::ui::workflow_panel`) but populated here from the
+// `WorkflowCycleCompleted` events the bridge thread streams. The
+// import direction (bridge → ui) is unusual but matches the practical
+// data-flow in this single-binary crate; the alternative (Bevy event
+// bus + separate consumer system) would be over-engineered for one
+// resource.
+use crate::ui::workflow_panel::{CycleMetricsSnapshot, WorkflowCycleHistory};
+
 /// Lifecycle of the most recent v2 run, surfaced to the UI through
 /// `V2SolverBridge::state`.
 ///
@@ -207,11 +216,28 @@ impl Plugin for V2BridgePlugin {
     }
 }
 
-fn poll_v2_events(mut bridge: ResMut<V2SolverBridge>) {
+fn poll_v2_events(
+    mut bridge: ResMut<V2SolverBridge>,
+    mut history: ResMut<WorkflowCycleHistory>,
+) {
     while let Ok(event) = bridge.events_rx.try_recv() {
         match event {
             V2Event::Started { spec } => {
                 let total = spec.steps;
+                // Step 12 Phase 7b — only reset the cycle-metrics
+                // history when a fresh workflow run starts. Single-
+                // baseline runs (workflow=Off) don't populate the
+                // history, so their Started events should not wipe
+                // a prior workflow's data the user may still be
+                // inspecting. Continuation paths route through
+                // `ContinueWorkflowPhaseA` which also re-emits
+                // Started; clearing there is desired (each Continue
+                // is a logically fresh experiment from the user's
+                // POV — their continuation builds on an in-memory
+                // state, not on the displayed cycle table).
+                if matches!(spec.workflow, crate::bridge::v2::V2WorkflowSpec::On { .. }) {
+                    history.clear();
+                }
                 bridge.state = V2RunState::Running {
                     spec,
                     step: 0,
@@ -257,12 +283,25 @@ fn poll_v2_events(mut bridge: ResMut<V2SolverBridge>) {
                 cycle_idx,
                 n_cycles,
                 peek_state,
-                ..
+                erosion_volume_removed,
+                sea_level_normalized,
+                mass_drift,
+                craton_recomputation_change,
             } => {
+                // Phase 7b.3 — push the per-cycle metrics into the
+                // dashboard history before we clobber the Running
+                // state. The history is FIFO-capped at MAX_HISTORY
+                // entries inside `WorkflowCycleHistory::push`.
+                history.push(CycleMetricsSnapshot {
+                    cycle_idx,
+                    n_cycles,
+                    erosion_volume_removed,
+                    sea_level_normalized,
+                    mass_drift,
+                    craton_recomputation_change,
+                });
                 // Reuse Running for in-flight workflow Phase A. step
-                // tracks cycles, total tracks n_cycles. Per-cycle
-                // metric payload (mass_drift, etc.) is dropped here
-                // for Phase 7a; the dashboard wires them in 7b.
+                // tracks cycles, total tracks n_cycles.
                 let (spec, started_at) = match std::mem::take(&mut bridge.state) {
                     V2RunState::Running { spec, started_at, .. } => (spec, started_at),
                     other => {
