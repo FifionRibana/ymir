@@ -97,10 +97,14 @@ fn workflow_disabled_run_phase_a_loop_returns_single_passthrough_cycle() {
 
 #[test]
 fn workflow_disabled_run_phase_b_returns_none() {
+    // Phase 5 added a `seed` parameter to run_phase_b for the
+    // Enabled-branch FBM + erosion RNG. The Disabled branch ignores
+    // it (returns None unconditionally), so the regression contract
+    // is unchanged.
     let cfg = build_test_config("phase_b_skip");
     let r = run_baseline(&cfg);
     assert!(
-        run_phase_b(&r, &WorkflowConfig::Disabled).is_none(),
+        run_phase_b(&r, &WorkflowConfig::Disabled, cfg.seed).is_none(),
         "Disabled Phase B must be skipped (no allocation, no FBM seed consumption)"
     );
 }
