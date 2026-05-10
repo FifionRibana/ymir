@@ -31,6 +31,8 @@
 // is complete.
 #![allow(dead_code)]
 
+use std::path::PathBuf;
+
 use bevy::prelude::*;
 use bevy_egui::egui;
 
@@ -65,6 +67,14 @@ pub struct CycleMetricsSnapshot {
 /// memory growth on user-driven extended runs.
 pub const MAX_HISTORY: usize = 30;
 
+/// Last-result carrier for the Phase B HD heightmap PNG export action.
+/// Held as a Bevy resource so the panel can render the success / failure
+/// status across frames without re-doing the I/O each tick.
+#[derive(Resource, Default, Debug)]
+pub struct WorkflowExportState {
+    pub last_export: Option<Result<PathBuf, String>>,
+}
+
 impl WorkflowCycleHistory {
     /// Append a snapshot, evicting from the front when the buffer
     /// overflows [`MAX_HISTORY`].
@@ -87,6 +97,7 @@ pub fn draw(
     spec_state: &mut V2EditableSpec,
     bridge: &mut V2SolverBridge,
     history: &mut WorkflowCycleHistory,
+    export_state: &mut WorkflowExportState,
 ) {
     ui.heading("Workflow (Step 12)");
     ui.add_space(4.0);
@@ -167,7 +178,7 @@ pub fn draw(
                 phase_b_sliders(ui, phase_b);
             }
             ui.add_space(4.0);
-            phase_b_buttons(ui, &spec_state.0, bridge);
+            phase_b_buttons(ui, &spec_state.0, bridge, export_state);
         });
 
     ui.add_space(4.0);
@@ -373,7 +384,12 @@ fn phase_b_sliders(ui: &mut egui::Ui, phase_b: &mut V2PhaseBParams) {
     );
 }
 
-fn phase_b_buttons(ui: &mut egui::Ui, spec: &V2RunSpec, bridge: &mut V2SolverBridge) {
+fn phase_b_buttons(
+    ui: &mut egui::Ui,
+    spec: &V2RunSpec,
+    bridge: &mut V2SolverBridge,
+    export_state: &mut WorkflowExportState,
+) {
     let phase_a_done = matches!(bridge.state, V2RunState::WorkflowPhaseACompleted { .. });
     let phase_b_done = matches!(bridge.state, V2RunState::WorkflowPhaseBCompleted { .. });
     let is_running = matches!(bridge.state, V2RunState::Running { .. });
@@ -424,9 +440,84 @@ fn phase_b_buttons(ui: &mut egui::Ui, spec: &V2RunSpec, bridge: &mut V2SolverBri
             )
             .clicked()
         {
-            // Stub — PNG export lands in Phase 7b.4.
+            // Pull a snapshot out of bridge.state in a self-contained
+            // match so the read borrow drops before we touch
+            // `export_state` (which is a different resource, so this is
+            // technically fine even with overlapping borrows; the
+            // pattern is consistent with the other buttons for
+            // readability).
+            let snapshot = match &bridge.state {
+                V2RunState::WorkflowPhaseBCompleted {
+                    hd_nx,
+                    hd_ny,
+                    hd_heightmap,
+                    ..
+                } => Some((*hd_nx, *hd_ny, hd_heightmap.clone())),
+                _ => None,
+            };
+            if let Some((nx, ny, hm)) = snapshot {
+                export_state.last_export = Some(export_hd_heightmap_png(nx, ny, &hm));
+            }
         }
     });
+    if let Some(result) = &export_state.last_export {
+        match result {
+            Ok(path) => {
+                ui.label(
+                    egui::RichText::new(format!("Saved \u{2192} {}", path.display()))
+                        .small()
+                        .color(egui::Color32::LIGHT_GREEN),
+                );
+            }
+            Err(err) => {
+                ui.label(
+                    egui::RichText::new(format!("Export failed: {}", err))
+                        .small()
+                        .color(egui::Color32::LIGHT_RED),
+                );
+            }
+        }
+    }
+}
+
+/// Convert the Phase B HD heightmap (row-major `f32` in `[0, 1]`) to a
+/// 16-bit grayscale PNG and write it under the OS temp directory with a
+/// timestamped filename. Returns the absolute path on success, the
+/// underlying `image` error message on failure.
+///
+/// 16-bit Luma is the format Living Landz expects for terrain
+/// heightmaps; the doubled bit-depth vs 8-bit Luma matters for the
+/// gentle gradients run_erosion produces (8-bit shows visible step
+/// banding on >2k² grids).
+pub fn export_hd_heightmap_png(
+    nx: usize,
+    ny: usize,
+    heightmap: &[f32],
+) -> Result<PathBuf, String> {
+    if heightmap.len() != nx * ny {
+        return Err(format!(
+            "heightmap length ({}) does not match nx \u{00d7} ny ({} \u{00d7} {} = {})",
+            heightmap.len(),
+            nx,
+            ny,
+            nx * ny
+        ));
+    }
+    let pixels: Vec<u16> = heightmap
+        .iter()
+        .map(|&v| (v.clamp(0.0, 1.0) * 65535.0).round() as u16)
+        .collect();
+    let img = image::ImageBuffer::<image::Luma<u16>, Vec<u16>>::from_raw(
+        nx as u32, ny as u32, pixels,
+    )
+    .ok_or_else(|| "ImageBuffer::from_raw rejected the buffer (size mismatch)".to_string())?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let path = std::env::temp_dir().join(format!("ymir_v2_phase_b_{}.png", stamp));
+    img.save(&path).map_err(|e| e.to_string())?;
+    Ok(path)
 }
 
 fn cycle_history_table(ui: &mut egui::Ui, history: &mut WorkflowCycleHistory) {
@@ -511,6 +602,50 @@ mod tests {
         assert_eq!(h.cycles.len(), MAX_HISTORY);
         assert_eq!(h.cycles.first().map(|s| s.cycle_idx), Some(5));
         assert_eq!(h.cycles.last().map(|s| s.cycle_idx), Some(MAX_HISTORY + 4));
+    }
+
+    /// Phase 7b.4 — round-trip a tiny synthetic heightmap through the
+    /// PNG export path: known input values map to deterministic 16-bit
+    /// pixels, the file lands under temp_dir, and re-reading the
+    /// pixels recovers the original ramp. Catches future regressions
+    /// in the clamp / scaling formula.
+    #[test]
+    fn export_hd_heightmap_png_roundtrips_pixel_values() {
+        // 2x2 heightmap: corner cells span the full [0, 1] range so
+        // each clamp branch is exercised. The off-by-one is intentional
+        // (`-0.1` and `1.1`) to validate the saturating clamps.
+        let nx = 2;
+        let ny = 2;
+        let hm: Vec<f32> = vec![-0.1_f32, 0.5, 1.1, 0.0];
+        let path = super::export_hd_heightmap_png(nx, ny, &hm)
+            .expect("export must succeed for a 2x2 buffer");
+        assert!(path.exists(), "exported PNG should exist on disk");
+
+        // Re-read the saved PNG and verify the pixel values match the
+        // documented mapping (clamp + 65535 scale).
+        let img = image::open(&path).expect("re-open exported PNG").to_luma16();
+        // -0.1 -> clamp 0 -> 0
+        assert_eq!(img.get_pixel(0, 0).0[0], 0);
+        // 0.5 -> 32768 (rounded from 32767.5)
+        assert_eq!(img.get_pixel(1, 0).0[0], 32768);
+        // 1.1 -> clamp 1 -> 65535
+        assert_eq!(img.get_pixel(0, 1).0[0], 65535);
+        // 0.0 -> 0
+        assert_eq!(img.get_pixel(1, 1).0[0], 0);
+
+        // Cleanup: remove the temp file so repeated runs don't pile up.
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Length-mismatch returns an `Err` rather than panicking. Defends
+    /// against a future caller hand-mangling the `nx` / `ny` /
+    /// `heightmap` triple (the trio is also locked together by the
+    /// `WorkflowPhaseBCompleted` event payload, but the export
+    /// function is publicly reachable from integration tests).
+    #[test]
+    fn export_hd_heightmap_png_rejects_length_mismatch() {
+        let result = super::export_hd_heightmap_png(2, 2, &[0.0, 0.5, 1.0]);
+        assert!(result.is_err(), "expected Err, got {:?}", result);
     }
 
     #[test]
