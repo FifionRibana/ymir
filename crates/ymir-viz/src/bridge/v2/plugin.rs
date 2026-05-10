@@ -141,6 +141,44 @@ impl V2SolverBridge {
         use std::sync::atomic::Ordering;
         self.cancel_flag.store(true, Ordering::Relaxed);
     }
+
+    /// Step 12 Phase 7b — queue a Phase A multi-cycle workflow run.
+    /// `spec.workflow` must be `V2WorkflowSpec::On { .. }`; the bridge
+    /// thread emits `V2Event::Failed` if invoked with `Off`.
+    pub fn submit_workflow_phase_a(&self, spec: V2RunSpec) -> Result<(), &'static str> {
+        self.commands_tx
+            .send(V2Command::RunWorkflowPhaseA { spec })
+            .map_err(|_| "v2 bridge channel send failed")
+    }
+
+    /// Step 12 Phase 7b — queue a Phase A continuation from a prior
+    /// final state. Cycle 1 receives `from_state` as the warm-start;
+    /// subsequent cycles use the orchestrator's natural continuation
+    /// chain.
+    pub fn submit_continue_workflow_phase_a(
+        &self,
+        spec: V2RunSpec,
+        from_state: V2FinalState,
+    ) -> Result<(), &'static str> {
+        self.commands_tx
+            .send(V2Command::ContinueWorkflowPhaseA { spec, from_state })
+            .map_err(|_| "v2 bridge channel send failed")
+    }
+
+    /// Step 12 Phase 7b — queue an HD Phase B finalization on a Phase
+    /// A output (single-shot, 30–90 s at 2048² × 5M droplets). The
+    /// `from_state.s_field` is consumed directly; other fields are
+    /// ignored by Phase B but carried for symmetry with the Phase A
+    /// continuation path.
+    pub fn submit_workflow_phase_b(
+        &self,
+        spec: V2RunSpec,
+        from_state: V2FinalState,
+    ) -> Result<(), &'static str> {
+        self.commands_tx
+            .send(V2Command::RunWorkflowPhaseB { spec, from_state })
+            .map_err(|_| "v2 bridge channel send failed")
+    }
 }
 
 pub struct V2BridgePlugin;
