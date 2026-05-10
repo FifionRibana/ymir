@@ -19,10 +19,14 @@ use ymir_core::tectonics_v2::stokes::nonlinear_solver::NewtonConfig;
 use ymir_core::tectonics_v2::stokes::picard::PicardConfig;
 use ymir_core::tectonics_v2::stokes::solver::LinearSolverConfig;
 use ymir_core::tectonics_v2::voronoi::VoronoiConfig;
+use ymir_core::tectonics_v2::workflow::{
+    PhaseAParams as CorePhaseAParams, PhaseBParams as CorePhaseBParams, WorkflowConfig,
+    WorkflowParams,
+};
 
 use super::spec::{
     V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2LinearSolverSpec, V2MantleSpec,
-    V2PlateKinematicSpec, V2RunSpec,
+    V2PlateKinematicSpec, V2RunSpec, V2WorkflowSpec,
 };
 
 /// Build a `BaselineConfig` from the supplied `V2RunSpec`. Mirrors the
@@ -178,5 +182,41 @@ pub fn build(spec: &V2RunSpec) -> BaselineConfig {
                 boundary_smoothing_width: *boundary_smoothing_width,
             },
         },
+    }
+}
+
+/// Step 12 Phase 7a — translate the spec-side `V2WorkflowSpec` into
+/// the core-side `WorkflowConfig`. `Off` → `Disabled` short-circuit;
+/// `On` builds a `WorkflowParams` with the user-relevant subset of
+/// the core configs and pins the rest to `default()`.
+pub fn build_workflow(spec: &V2WorkflowSpec) -> WorkflowConfig {
+    use ymir_core::erosion::hydraulic::ErosionConfig;
+    use ymir_core::terrain::upscale::FbmUpscaleConfig;
+    match spec {
+        V2WorkflowSpec::Off => WorkflowConfig::Disabled,
+        V2WorkflowSpec::On { phase_a, phase_b } => {
+            WorkflowConfig::Enabled(WorkflowParams {
+                phase_a: CorePhaseAParams {
+                    n_cycles: phase_a.n_cycles,
+                    k_cycle: phase_a.k_cycle,
+                    alpha: phase_a.alpha,
+                    beta: phase_a.beta,
+                },
+                phase_b: CorePhaseBParams {
+                    hd_grid_size: phase_b.hd_grid_size,
+                    fbm: FbmUpscaleConfig {
+                        amplitude_base: phase_b.fbm_amplitude_base,
+                        ..FbmUpscaleConfig::default()
+                    },
+                    erosion: ErosionConfig {
+                        num_droplets: phase_b.num_droplets,
+                        erosion_rate: phase_b.erosion_rate,
+                        deposition_rate: phase_b.deposition_rate,
+                        ..ErosionConfig::default()
+                    },
+                    grand_scale_tolerance: phase_b.grand_scale_tolerance,
+                },
+            })
+        }
     }
 }

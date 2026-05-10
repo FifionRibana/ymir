@@ -32,27 +32,34 @@ use crate::erosion::hydraulic::run_erosion;
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
 use crate::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
-use crate::tectonics_v2::diagnostics::harness::BaselineResult;
+use crate::tectonics_v2::field::Field2D;
 use crate::terrain::upscale::upscale_with_fbm;
 
-/// Run Phase B HD finalization on a Phase A output.
+/// Run Phase B HD finalization on a low-res `S̃` field.
 ///
 /// `Disabled` → returns `None`. The user is expected to consume the
-/// low-res `BaselineResult` directly (Step 11 contract).
+/// low-res state directly (Step 11 contract).
 ///
 /// `Enabled(_)` → returns `Some(PhaseBOutput)`. The pipeline reads
-/// `params.phase_b` (HD grid size, FBM config, erosion config, the
+/// `params.phase_b` (HD grid size, FBM config, erosion config). The
 /// D5 tolerance is *not* enforced inside the pipeline — the caller
 /// or test layer compares
-/// `output.grand_scale_deviation < params.phase_b.grand_scale_tolerance`).
+/// `output.grand_scale_deviation_p95 < params.phase_b.grand_scale_tolerance`.
 ///
 /// `seed` is shared between the upscale's FBM noise generators and
 /// the rain-drop erosion's per-batch RNG. Using a single seed keeps
 /// determinism predictable; the caller typically passes the host
 /// `BaselineConfig.seed` so a workflow run is reproducible end-to-end
 /// from a single user-supplied seed.
+///
+/// **Phase 7a refactor** — was `&BaselineResult` previously, but only
+/// the `s_field` is consumed downstream. Taking `&Field2D` directly
+/// lets the v2 bridge thread call this from a payload-derived field
+/// without having to fabricate a `BaselineResult` shell with dummy
+/// `metrics` / `config_dump`. Behaviour is bit-identical for the
+/// Phase 5 test callers; they pass `&last_cycle.baseline.final_state.s_field`.
 pub fn run_phase_b(
-    input: &BaselineResult,
+    s_field: &Field2D,
     wf: &WorkflowConfig,
     seed: u64,
 ) -> Option<PhaseBOutput> {
@@ -68,7 +75,7 @@ pub fn run_phase_b(
             // upscale_with_fbm + run_erosion both operate in heightmap
             // [0, 1] space.
             let isostasy =
-                compute_isostasy(&input.final_state.s_field, &IsostasyConfig::default());
+                compute_isostasy(s_field, &IsostasyConfig::default());
             let coarse = isostasy.heightmap;
             let sea_level = isostasy.sea_level_normalized;
 

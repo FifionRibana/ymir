@@ -411,6 +411,88 @@ fn default_capture_endpoints() -> bool {
     false
 }
 
+/// Step 12 — Phase A loop parameters mirroring
+/// [`ymir_core::tectonics_v2::workflow::PhaseAParams`]. Defaults match
+/// the issue D8 conservative starting points (`α = 0.01`, `β = 0.0`,
+/// `5 cycles × 20 steps`). Phase 6 empirical findings indicated these
+/// produce predictable counter-isostasy + minimal visual border
+/// change; aggressive variants (α ≥ 0.05, N ≥ 15) are recommended
+/// for visible curvature but kept off the default path per the
+/// issue's "starting points for exploration, not calibrated values"
+/// stance.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct V2PhaseAParams {
+    pub n_cycles: usize,
+    pub k_cycle: usize,
+    pub alpha: f64,
+    pub beta: f64,
+}
+
+impl Default for V2PhaseAParams {
+    fn default() -> Self {
+        Self { n_cycles: 5, k_cycle: 20, alpha: 0.01, beta: 0.0 }
+    }
+}
+
+/// Step 12 — Phase B HD finalization parameters mirroring the
+/// user-relevant subset of
+/// [`ymir_core::tectonics_v2::workflow::PhaseBParams`]. Only the
+/// knobs the panel exposes are roundtripped; the remaining
+/// `FbmUpscaleConfig` / `ErosionConfig` defaults are pinned to
+/// `core::*::default()` at translation time.
+///
+/// Default `hd_grid_size = 2048`, `num_droplets = 5_000_000`
+/// matches the issue's primary HD target. The `grand_scale_tolerance
+/// = 0.10` is the Phase 5 reformulated p95 acceptance threshold.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct V2PhaseBParams {
+    pub hd_grid_size: usize,
+    pub num_droplets: usize,
+    pub erosion_rate: f32,
+    pub deposition_rate: f32,
+    pub fbm_amplitude_base: f64,
+    pub grand_scale_tolerance: f64,
+}
+
+impl Default for V2PhaseBParams {
+    fn default() -> Self {
+        // Matches `ymir_core::erosion::hydraulic::ErosionConfig::default()`
+        // for `erosion_rate` / `deposition_rate` / `num_droplets` and
+        // `ymir_core::terrain::upscale::FbmUpscaleConfig::default()`
+        // for `fbm_amplitude_base`. The 0.10 tolerance is the Phase 5
+        // p95 default.
+        Self {
+            hd_grid_size: 2048,
+            num_droplets: 5_000_000,
+            erosion_rate: 0.4,
+            deposition_rate: 0.35,
+            fbm_amplitude_base: 0.08,
+            grand_scale_tolerance: 0.10,
+        }
+    }
+}
+
+/// Step 12 — workflow on/off spec mirroring
+/// [`ymir_core::tectonics_v2::workflow::WorkflowConfig`]. `Off` is
+/// the default for backward compatibility (legacy preset JSON files
+/// without a `workflow` field deserialise as `Off` via
+/// `#[serde(default)]` on `V2RunSpec.workflow`). `On` carries the
+/// Phase A and Phase B parameter bundles.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum V2WorkflowSpec {
+    #[default]
+    Off,
+    On {
+        #[serde(default)]
+        phase_a: V2PhaseAParams,
+        #[serde(default)]
+        phase_b: V2PhaseBParams,
+    },
+}
+
 /// Full v2 run specification — every knob the UI exposes plus the
 /// scratch directory for PNG snapshots (`heightmap_fractions` is
 /// derived from `capture_at_end`: `[]` for "no PNGs" or `[0.0, 1.0]`
@@ -470,6 +552,16 @@ pub struct V2RunSpec {
     /// `Zero`).
     #[serde(default)]
     pub plate_kinematic: V2PlateKinematicSpec,
+    /// Step 12 — interleaved tectonic-erosion workflow.
+    /// `V2WorkflowSpec::Off` (the default) is a structural no-op:
+    /// the bridge runs single `RunBaseline` calls as before.
+    /// `V2WorkflowSpec::On { phase_a, phase_b }` enables the multi-
+    /// cycle Phase A loop and the HD Phase B finalization, dispatched
+    /// by the new `V2Command::RunWorkflowPhaseA` /
+    /// `RunWorkflowPhaseB` commands. `#[serde(default)]` keeps preset
+    /// JSON files written before Step 12 loading unchanged.
+    #[serde(default)]
+    pub workflow: V2WorkflowSpec,
 }
 
 /// Step 11 — UI-side mirror of
@@ -538,6 +630,87 @@ impl V2PlateKinematicSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Step 12 Phase 7a — V2WorkflowSpec round-trips through JSON.
+    /// Off (default) and On with explicit phase A + phase B params.
+    /// Catches schema drift between the panel state and the
+    /// harness `WorkflowConfig` the bridge translates it into.
+    #[test]
+    fn workflow_spec_roundtrips_through_json() {
+        let cases = [
+            V2WorkflowSpec::Off,
+            V2WorkflowSpec::On {
+                phase_a: V2PhaseAParams::default(),
+                phase_b: V2PhaseBParams::default(),
+            },
+            V2WorkflowSpec::On {
+                phase_a: V2PhaseAParams { n_cycles: 15, k_cycle: 30, alpha: 0.05, beta: 0.5 },
+                phase_b: V2PhaseBParams {
+                    hd_grid_size: 1024,
+                    num_droplets: 1_000_000,
+                    erosion_rate: 0.5,
+                    deposition_rate: 0.3,
+                    fbm_amplitude_base: 0.10,
+                    grand_scale_tolerance: 0.10,
+                },
+            },
+        ];
+        for original in cases {
+            let json = serde_json::to_string(&original).expect("serialize");
+            let back: V2WorkflowSpec = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(original, back, "workflow spec roundtrip failed: {json}");
+        }
+    }
+
+    /// Step 12 Phase 7a — defaults pinned: V2PhaseAParams matches the
+    /// D8 issue defaults; V2PhaseBParams matches the issue-prescribed
+    /// HD targets. The numerical values are documented to keep
+    /// preset / report consumers and the panel's slider ranges in
+    /// sync.
+    #[test]
+    fn workflow_defaults_match_issue_d8() {
+        let pa = V2PhaseAParams::default();
+        assert_eq!(pa.n_cycles, 5);
+        assert_eq!(pa.k_cycle, 20);
+        assert_eq!(pa.alpha, 0.01);
+        assert_eq!(pa.beta, 0.0);
+
+        let pb = V2PhaseBParams::default();
+        assert_eq!(pb.hd_grid_size, 2048);
+        assert_eq!(pb.num_droplets, 5_000_000);
+        assert_eq!(pb.grand_scale_tolerance, 0.10);
+
+        assert_eq!(V2WorkflowSpec::default(), V2WorkflowSpec::Off);
+    }
+
+    /// Step 12 Phase 7a — legacy preset JSON without a `workflow`
+    /// field must still load (defaults to Off via `#[serde(default)]`
+    /// on `V2RunSpec.workflow`). This is the bit-identical contract
+    /// for pre-Step-12 presets.
+    #[test]
+    fn legacy_preset_json_without_workflow_loads_with_off() {
+        let json = r#"{
+            "seed": 42,
+            "grid_nx": 64,
+            "grid_ny": 64,
+            "steps": 100,
+            "num_plates": 8,
+            "continental_ratio": 0.3,
+            "bi": 0.15,
+            "br": 0.05,
+            "mantle": { "kind": "off" },
+            "slab_enabled": false,
+            "cratonic": { "kind": "on", "cr": 0.3, "k_viscous": 5.0, "b_factor": 8.0 },
+            "age_field": { "kind": "off" },
+            "linear_solver": "jacobi",
+            "force": { "kind": "gpe" },
+            "s_perturbation_amplitude": 0.2,
+            "total_time_nondim": 6.0,
+            "cfl_factor": 0.3
+        }"#;
+        let recovered: V2RunSpec = serde_json::from_str(json).expect("legacy preset must load");
+        assert_eq!(recovered.workflow, V2WorkflowSpec::Off);
+    }
 
     /// Step 11 — round-trip every `V2PlateKinematicSpec` variant
     /// through JSON. Catches schema drift between the panel state
@@ -997,6 +1170,7 @@ impl V2RunSpec {
             preset_label: "active_medley".to_string(),
             init_mode: V2InitModeSpec::default(),
             plate_kinematic: V2PlateKinematicSpec::default(),
+            workflow: V2WorkflowSpec::default(),
         }
     }
 }

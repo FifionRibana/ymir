@@ -104,7 +104,7 @@ fn workflow_disabled_run_phase_b_returns_none() {
     let cfg = build_test_config("phase_b_skip");
     let r = run_baseline(&cfg);
     assert!(
-        run_phase_b(&r, &WorkflowConfig::Disabled, cfg.seed).is_none(),
+        run_phase_b(&r.final_state.s_field, &WorkflowConfig::Disabled, cfg.seed).is_none(),
         "Disabled Phase B must be skipped (no allocation, no FBM seed consumption)"
     );
 }

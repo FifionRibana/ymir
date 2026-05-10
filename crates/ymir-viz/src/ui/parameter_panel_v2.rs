@@ -87,6 +87,22 @@ pub fn draw(
             exported_at, scalar_metrics.vmax_peak, scalar_metrics.cg_iter_mean
         ),
         V2RunState::Failed { error } => format!("Failed: {}", error),
+        V2RunState::WorkflowPhaseACompleted { cycles_run, elapsed, .. } => format!(
+            "Phase A done — {} cycles in {:.1}s",
+            cycles_run,
+            elapsed.as_secs_f64()
+        ),
+        V2RunState::WorkflowPhaseBCompleted {
+            hd_nx,
+            hd_ny,
+            grand_scale_deviation_p95,
+            elapsed,
+            ..
+        } => format!(
+            "Phase B done — {hd_nx}×{hd_ny} HD in {:.1}s, p95 = {:.4}",
+            elapsed.as_secs_f64(),
+            grand_scale_deviation_p95
+        ),
     };
     ui.colored_label(
         match &bridge.state {
@@ -94,6 +110,8 @@ pub fn draw(
             V2RunState::Running { .. } => egui::Color32::YELLOW,
             V2RunState::Completed { .. } => egui::Color32::GREEN,
             V2RunState::Imported { .. } => egui::Color32::LIGHT_BLUE,
+            V2RunState::WorkflowPhaseACompleted { .. } => egui::Color32::LIGHT_GREEN,
+            V2RunState::WorkflowPhaseBCompleted { .. } => egui::Color32::from_rgb(0x80, 0xD0, 0xFF),
             V2RunState::Idle if is_preview => egui::Color32::from_rgb(0xC0, 0xA0, 0x60),
             V2RunState::Idle => egui::Color32::GRAY,
         },
