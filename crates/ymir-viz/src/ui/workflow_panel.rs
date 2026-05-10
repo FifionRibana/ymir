@@ -86,7 +86,7 @@ pub fn draw(
     ui: &mut egui::Ui,
     spec_state: &mut V2EditableSpec,
     bridge: &mut V2SolverBridge,
-    history: &WorkflowCycleHistory,
+    history: &mut WorkflowCycleHistory,
 ) {
     ui.heading("Workflow (Step 12)");
     ui.add_space(4.0);
@@ -429,7 +429,7 @@ fn phase_b_buttons(ui: &mut egui::Ui, spec: &V2RunSpec, bridge: &mut V2SolverBri
     });
 }
 
-fn cycle_history_table(ui: &mut egui::Ui, history: &WorkflowCycleHistory) {
+fn cycle_history_table(ui: &mut egui::Ui, history: &mut WorkflowCycleHistory) {
     if history.cycles.is_empty() {
         ui.label(
             egui::RichText::new("(no cycles yet — run Phase A to populate)")
@@ -438,15 +438,27 @@ fn cycle_history_table(ui: &mut egui::Ui, history: &WorkflowCycleHistory) {
         );
         return;
     }
-    ui.label(
-        egui::RichText::new(format!(
-            "{} cycles retained (FIFO cap {})",
-            history.cycles.len(),
-            MAX_HISTORY
-        ))
-        .small()
-        .weak(),
-    );
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new(format!(
+                "{} cycles retained (FIFO cap {})",
+                history.cycles.len(),
+                MAX_HISTORY
+            ))
+            .small()
+            .weak(),
+        );
+        if ui
+            .small_button("Clear")
+            .on_hover_text(
+                "Empty the cycle-metrics history. New cycles from a subsequent \
+                 Phase A run will populate it again.",
+            )
+            .clicked()
+        {
+            history.clear();
+        }
+    });
     ui.add_space(2.0);
     egui::Grid::new("workflow_cycle_history")
         .num_columns(5)
