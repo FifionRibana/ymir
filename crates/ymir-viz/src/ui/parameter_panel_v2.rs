@@ -367,22 +367,62 @@ pub fn draw(
                     });
 
                 ui.add_space(4.0);
-                if ui
-                    .button("\u{27f2} Reset all to zero")
-                    .on_hover_text(
-                        "Set every per-plate (vx, vy) to (0, 0). Keeps \
-                         the PerPlate variant active so `is_zero()` \
-                         still returns false — bit-equivalent to Zero \
-                         but on the algorithmic path (good for \
-                         debugging the wiring).",
-                    )
-                    .clicked()
-                {
-                    for v in velocities.iter_mut() {
-                        v.0 = 0.0;
-                        v.1 = 0.0;
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("\u{27f2} Reset all to zero")
+                        .on_hover_text(
+                            "Set every per-plate (vx, vy) to (0, 0). Keeps \
+                             the PerPlate variant active so `is_zero()` \
+                             still returns false — bit-equivalent to Zero \
+                             but on the algorithmic path (good for \
+                             debugging the wiring).",
+                        )
+                        .clicked()
+                    {
+                        for v in velocities.iter_mut() {
+                            v.0 = 0.0;
+                            v.1 = 0.0;
+                        }
                     }
-                }
+                    if ui
+                        .button("\u{1f3b2} Random")
+                        .on_hover_text(
+                            "Assign each plate a random direction with \
+                             |v| = 0.3 (uniform on the circle). The modulus \
+                             is picked conservatively below the |v| = 0.5 \
+                             of the validated Step 11 scenarios (which run \
+                             with yielding off to isolate the drift signal) \
+                             — at 0.3 the S̃ gradients that build up over \
+                             a Step 11/12 run stay clear of the yielding \
+                             feedback loop in the default yielding-on \
+                             regime. Each click produces a fresh draw \
+                             seeded from system time.",
+                        )
+                        .clicked()
+                    {
+                        // splitmix64 starting from a time-derived seed
+                        // gives an independent angle per plate on every
+                        // click. Modulus is a documented constant; the
+                        // user can still hand-edit individual velocities
+                        // afterwards via the per-plate DragValue widgets.
+                        const RANDOM_MODULUS: f64 = 0.3;
+                        let mut state = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_nanos() as u64)
+                            .unwrap_or(0xC0FFEE_DEAD_BEEF);
+                        for v in velocities.iter_mut() {
+                            state = splitmix64(state);
+                            // Top 53 bits → uniform fraction in [0, 1)
+                            // matching the f64 mantissa precision, then
+                            // scaled to a uniform angle in [0, τ).
+                            let frac =
+                                (state >> 11) as f64 / ((1u64 << 53) as f64);
+                            let angle = frac * std::f64::consts::TAU;
+                            v.0 = RANDOM_MODULUS * angle.cos();
+                            v.1 = RANDOM_MODULUS * angle.sin();
+                        }
+                    }
+                });
             }
         });
 
