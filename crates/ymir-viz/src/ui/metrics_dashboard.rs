@@ -63,12 +63,70 @@ pub fn draw(ui: &mut egui::Ui, bridge: &V2SolverBridge, viz: &V2VizState) {
         V2RunState::Failed { error } => {
             ui.colored_label(Color32::RED, format!("Failed: {}", error));
         }
-        V2RunState::Running { step, total, started_at, peek_state, spec, .. } => {
-            draw_progress(ui, *step, *total, *started_at);
+        V2RunState::Running {
+            step,
+            total,
+            started_at,
+            peek_state,
+            spec,
+            cycle_context,
+        } => {
+            // Step 12 follow-up — activity label. Interprets the
+            // Running state into a single-line summary so the user
+            // sees what the solver is doing, not just generic
+            // "Running". `cycle_context` distinguishes a Phase A
+            // workflow run from a single-baseline run; for Phase A
+            // we lean on the cycle counter instead of the harness
+            // step counter because `run_phase_a_cycle` does not
+            // currently stream per-step Progress events.
+            let activity = match (
+                cycle_context,
+                matches!(
+                    spec.workflow,
+                    crate::bridge::v2::V2WorkflowSpec::On { .. }
+                ),
+            ) {
+                (Some((cycle_idx_1, n_cycles)), _) => format!(
+                    "Phase A · cycle {}/{} completed (cycle {} of {} in progress)",
+                    cycle_idx_1,
+                    n_cycles,
+                    (cycle_idx_1 + 1).min(*n_cycles),
+                    n_cycles
+                ),
+                (None, true) => {
+                    "Phase A · starting first cycle (warm-up in progress)".to_string()
+                }
+                (None, false) => format!(
+                    "Tectonic baseline · step {}/{}",
+                    step, total
+                ),
+            };
+            ui.colored_label(Color32::YELLOW, activity);
+            ui.add_space(4.0);
+
+            // Progress bar — cycle counter when in workflow Phase A,
+            // harness step counter otherwise. Same draw_progress
+            // helper for both; the semantics differ only in what
+            // the (step, total) pair refers to.
+            let (bar_step, bar_total) = match cycle_context {
+                Some((c1, n)) => (*c1, *n),
+                None => (*step, *total),
+            };
+            draw_progress(ui, bar_step, bar_total, *started_at);
+
             ui.add_space(6.0);
             ui.separator();
             ui.add_space(4.0);
-            ui.label(egui::RichText::new("Live metrics (peek_state)").strong());
+            // Section title adapts: during Phase A, peek_state is the
+            // *post-cycle* snapshot (latest WorkflowCycleCompleted's
+            // payload), so the user reads it as the end-of-cycle
+            // state, not a mid-cycle one.
+            let metrics_label = if cycle_context.is_some() {
+                "Latest cycle end-of-cycle metrics"
+            } else {
+                "Live metrics (peek_state)"
+            };
+            ui.label(egui::RichText::new(metrics_label).strong());
             if let Some(peek) = peek_state.as_deref() {
                 draw_live_metrics(ui, peek);
             } else {
