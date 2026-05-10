@@ -2057,7 +2057,16 @@ where
             peek_age: age_state.as_ref().map(|st| &st.current),
             peek_cratonic_factor: cratonic_state.as_ref().map(|st| &st.factor),
         };
-        if !on_progress(&progress) {
+        // The callback's return value is the user-supplied abort
+        // signal (Step 8.6 Phase 5 follow-up); the cancel-token check
+        // is the v2-bridge cooperative signal added by Step 12
+        // follow-up. Both short-circuit the step loop; either alone
+        // suffices, and `run_baseline`'s `|_| true` no-op callback
+        // makes the cancel token the only effective Stop path for
+        // workflow Phase A cycles (which do not wire a progress
+        // callback). See `crate::tectonics_v2::cancel` for the
+        // thread-local plumbing.
+        if !on_progress(&progress) || crate::tectonics_v2::cancel::is_cancelled() {
             break;
         }
 

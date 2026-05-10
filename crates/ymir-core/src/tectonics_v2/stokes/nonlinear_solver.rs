@@ -343,6 +343,23 @@ impl NonlinearSolver for NewtonSolver {
         let mut prev_resid = r0_norm;
 
         for k in 0..self.cfg.max_outer_iters {
+            // Step 12 follow-up — cooperative cancel check at the top
+            // of each Newton outer iter. The token is bound by the v2
+            // bridge thread before each `run_baseline*` command (see
+            // `crates/ymir-viz/src/bridge/v2/thread.rs`); when the UI
+            // sets the underlying `AtomicBool`, this iter returns
+            // `Stalled` (reusing the existing variant: semantically a
+            // "gave up before convergence" outcome, which the harness
+            // already knows how to fold into a `BaselineResult` —
+            // adding a new `Cancelled` variant would force a
+            // match-arm sweep across consumers for no observable
+            // user-facing gain). The CG inner loop has its own check
+            // every 16 iters so a cancel signalled mid-CG also takes
+            // effect within milliseconds rather than the full outer
+            // iter window.
+            if crate::tectonics_v2::cancel::is_cancelled() {
+                return NonlinearOutcome::Stalled { outer_iters: k, trace };
+            }
             // Divergence check against the initial residual.
             if prev_resid > 10.0 * r0_norm && r0_norm > 0.0 {
                 return NonlinearOutcome::Diverged {

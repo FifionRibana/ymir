@@ -97,8 +97,20 @@ pub fn run_phase_b(
             // upscale used.
             let mut erosion_cfg = pb.erosion.clone();
             erosion_cfg.sea_level = sea_level;
-            let erosion_result =
-                run_erosion(&baseline_hd, &erosion_cfg, &world_seed, |_, _, _| true);
+            // Step 12 follow-up — bridge the cooperative cancel token
+            // into the rain-drop loop. `run_erosion` already supports
+            // graceful abort via its `progress_callback`'s `bool`
+            // return value; here we return `false` whenever the
+            // bridge's cancel flag is set, so Stop pressed during
+            // Phase B (typically a 30–90 s wallclock at 2048² × 5M
+            // droplets) interrupts at the next batch boundary instead
+            // of waiting for the whole HD finalisation to finish.
+            // No cancel token bound (e.g. core-side tests calling
+            // `run_phase_b` directly) → callback always returns true,
+            // bit-identical to the prior `|_, _, _| true` stub.
+            let erosion_result = run_erosion(&baseline_hd, &erosion_cfg, &world_seed, |_, _, _| {
+                !crate::tectonics_v2::cancel::is_cancelled()
+            });
 
             // Step 4: D5 grand-scale deviation. Both metrics computed
             // in one pass via `compute_deviation_stats` —
