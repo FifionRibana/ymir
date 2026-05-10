@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crossbeam_channel::{Receiver, Sender};
+use ymir_core::tectonics_v2::cancel as core_cancel;
 use ymir_core::tectonics_v2::diagnostics::harness::{
     run_baseline_with_progress, ContinuationState,
 };
@@ -23,6 +24,28 @@ use ymir_core::tectonics_v2::workflow::{
 use super::build_config;
 use super::commands::V2Command;
 use super::events::{V2Event, V2FinalState};
+
+/// Step 12 follow-up — RAII binder for the core thread-local cancel
+/// token. Bound at the top of every run-style command branch so the
+/// inner CG / Newton / erosion loops on this thread observe the
+/// shared `AtomicBool` the UI flips on Stop; dropped at the end of
+/// the branch so a subsequent command does not inherit a stale
+/// token (and the run-thread sees `is_cancelled() == false` between
+/// commands, matching the pre-Step-12 baseline).
+struct CancelTokenGuard;
+
+impl CancelTokenGuard {
+    fn bind(token: Arc<AtomicBool>) -> Self {
+        core_cancel::set(Some(token));
+        CancelTokenGuard
+    }
+}
+
+impl Drop for CancelTokenGuard {
+    fn drop(&mut self) {
+        core_cancel::clear();
+    }
+}
 
 pub fn spawn_v2_thread(
     commands_rx: Receiver<V2Command>,
@@ -36,6 +59,7 @@ pub fn spawn_v2_thread(
                 match cmd {
                     V2Command::RunBaseline { spec } => {
                         cancel.store(false, Ordering::Relaxed);
+                        let _guard = CancelTokenGuard::bind(cancel.clone());
                         let _ = events_tx.send(V2Event::Started { spec: spec.clone() });
 
                         if spec.capture_endpoints {
@@ -75,6 +99,7 @@ pub fn spawn_v2_thread(
                     }
                     V2Command::ContinueRun { spec, from_state } => {
                         cancel.store(false, Ordering::Relaxed);
+                        let _guard = CancelTokenGuard::bind(cancel.clone());
                         let _ = events_tx.send(V2Event::Started { spec: spec.clone() });
 
                         if spec.capture_endpoints {
@@ -123,6 +148,7 @@ pub fn spawn_v2_thread(
                     V2Command::Shutdown => break,
                     V2Command::RunWorkflowPhaseA { spec } => {
                         cancel.store(false, Ordering::Relaxed);
+                        let _guard = CancelTokenGuard::bind(cancel.clone());
                         let _ = events_tx.send(V2Event::Started { spec: spec.clone() });
 
                         let workflow_cfg = super::build_config::build_workflow(&spec.workflow);
@@ -195,6 +221,7 @@ pub fn spawn_v2_thread(
                     }
                     V2Command::ContinueWorkflowPhaseA { spec, from_state } => {
                         cancel.store(false, Ordering::Relaxed);
+                        let _guard = CancelTokenGuard::bind(cancel.clone());
                         let _ = events_tx.send(V2Event::Started { spec: spec.clone() });
 
                         let workflow_cfg = super::build_config::build_workflow(&spec.workflow);
@@ -258,6 +285,7 @@ pub fn spawn_v2_thread(
                     }
                     V2Command::RunWorkflowPhaseB { spec, from_state } => {
                         cancel.store(false, Ordering::Relaxed);
+                        let _guard = CancelTokenGuard::bind(cancel.clone());
                         let _ = events_tx.send(V2Event::Started { spec: spec.clone() });
 
                         let workflow_cfg = super::build_config::build_workflow(&spec.workflow);
