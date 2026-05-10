@@ -39,25 +39,56 @@ use crate::tectonics_v2::boundaries::{PlateType, PlateTypeField};
 use crate::tectonics_v2::cratonic::factor::build_cratonic_factor_field;
 use crate::tectonics_v2::cratonic::{CratonicConfig, CratonicConfigEnabled};
 use crate::tectonics_v2::diagnostics::harness::{
-    run_baseline, BaselineConfig, ContinuationState, FinalState,
+    run_baseline_with_progress, BaselineConfig, ContinuationState, FinalState, StepProgress,
 };
 use crate::tectonics_v2::field::Field2D;
 use crate::tectonics_v2::voronoi::{PlateIdField, VoronoiPlates};
 
-/// Run a single Phase A cycle.
+/// Run a single Phase A cycle. Thin wrapper over
+/// [`run_phase_a_cycle_with_progress`] with a no-op callback that
+/// never aborts, preserving the bit-identical regression contract
+/// (acceptance #15) byte-for-byte: `run_baseline_with_progress(cfg,
+/// |_| true)` is itself a wrapper over `run_baseline` from Step 8.6
+/// follow-up, so the call chain reduces to the same primitive.
 ///
 /// `Disabled` → direct `run_baseline(cfg)` passthrough wrapped in a
-/// [`CycleOutput`] with all extra scalars at zero/`None`. Bit-
-/// identical regression contract.
+/// [`CycleOutput`] with all extra scalars at zero/`None`.
 ///
 /// `Enabled(params)` → 5-step pipeline (tectonic → isostasy → erosion →
 /// reclassify → recompute craton). Returns the post-cycle state
 /// suitable for cycle-to-cycle continuation via
 /// [`final_state_to_continuation`].
 pub fn run_phase_a_cycle(cfg: &BaselineConfig, wf: &WorkflowConfig) -> CycleOutput {
+    run_phase_a_cycle_with_progress(cfg, wf, |_| true)
+}
+
+/// Streaming variant of [`run_phase_a_cycle`]. The callback fires
+/// once per completed harness step inside the cycle's tectonic
+/// sub-phase (steps 1 of the 5-step pipeline); returning `false`
+/// requests a graceful abort of the harness step loop. Same
+/// callback shape as
+/// [`crate::tectonics_v2::diagnostics::harness::run_baseline_with_progress`].
+///
+/// Added in Step 12 follow-up so the v2 bridge can stream per-step
+/// `V2Event::Progress` to the metrics dashboard during Phase A
+/// (the dashboard previously froze between `WorkflowCycleCompleted`
+/// events because `run_phase_a_cycle` invoked `run_baseline` —
+/// the `|_| true` callback wrapper — with no streaming hook). The
+/// post-tectonic substeps (isostasy, erosion, reclassify, craton
+/// recompute) are not currently streamed; they're sub-second on
+/// 64² mantle-on, so a single "cycle progress" tick is the
+/// pragmatic granularity.
+pub fn run_phase_a_cycle_with_progress<F>(
+    cfg: &BaselineConfig,
+    wf: &WorkflowConfig,
+    on_progress: F,
+) -> CycleOutput
+where
+    F: FnMut(&StepProgress<'_>) -> bool,
+{
     match wf {
         WorkflowConfig::Disabled => {
-            let baseline = run_baseline(cfg);
+            let baseline = run_baseline_with_progress(cfg, on_progress);
             CycleOutput {
                 baseline,
                 erosion_volume_removed: 0.0,
@@ -69,7 +100,7 @@ pub fn run_phase_a_cycle(cfg: &BaselineConfig, wf: &WorkflowConfig) -> CycleOutp
         }
         WorkflowConfig::Enabled(params) => {
             // Step 1: Tectonic.
-            let mut baseline = run_baseline(cfg);
+            let mut baseline = run_baseline_with_progress(cfg, on_progress);
 
             // Step 2: Adaptive sea-level threshold in S̃ space.
             //

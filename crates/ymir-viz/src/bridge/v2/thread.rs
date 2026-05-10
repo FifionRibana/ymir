@@ -18,7 +18,7 @@ use ymir_core::tectonics_v2::diagnostics::harness::{
 };
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::workflow::{
-    final_state_to_continuation, run_phase_a_cycle, run_phase_b, WorkflowConfig,
+    final_state_to_continuation, run_phase_a_cycle_with_progress, run_phase_b, WorkflowConfig,
 };
 
 use super::build_config;
@@ -172,7 +172,34 @@ pub fn spawn_v2_thread(
                             if cancel.load(Ordering::Relaxed) {
                                 break;
                             }
-                            let cycle_output = run_phase_a_cycle(&cfg, &workflow_cfg);
+                            // Step 12 follow-up — stream per-step
+                            // Progress events from inside the Phase A
+                            // tectonic sub-step so the metrics
+                            // dashboard updates dynamically during the
+                            // cycle (previously frozen between
+                            // WorkflowCycleCompleted events). The
+                            // callback also honours the cancel flag at
+                            // the harness step boundary; combined with
+                            // the cooperative cancel token plumbed
+                            // into the CG / Newton inner loops, Stop
+                            // now interrupts mid-step within
+                            // milliseconds.
+                            let tx_progress = events_tx.clone();
+                            let cancel_for_callback = cancel.clone();
+                            let cycle_output = run_phase_a_cycle_with_progress(
+                                &cfg,
+                                &workflow_cfg,
+                                |progress| {
+                                    let peek_state =
+                                        V2FinalState::from_step_progress(progress);
+                                    let _ = tx_progress.send(V2Event::Progress {
+                                        step: progress.step,
+                                        total: progress.total,
+                                        peek_state,
+                                    });
+                                    !cancel_for_callback.load(Ordering::Relaxed)
+                                },
+                            );
                             cycles_run += 1;
 
                             let peek_state =
@@ -250,7 +277,34 @@ pub fn spawn_v2_thread(
                             if cancel.load(Ordering::Relaxed) {
                                 break;
                             }
-                            let cycle_output = run_phase_a_cycle(&cfg, &workflow_cfg);
+                            // Step 12 follow-up — stream per-step
+                            // Progress events from inside the Phase A
+                            // tectonic sub-step so the metrics
+                            // dashboard updates dynamically during the
+                            // cycle (previously frozen between
+                            // WorkflowCycleCompleted events). The
+                            // callback also honours the cancel flag at
+                            // the harness step boundary; combined with
+                            // the cooperative cancel token plumbed
+                            // into the CG / Newton inner loops, Stop
+                            // now interrupts mid-step within
+                            // milliseconds.
+                            let tx_progress = events_tx.clone();
+                            let cancel_for_callback = cancel.clone();
+                            let cycle_output = run_phase_a_cycle_with_progress(
+                                &cfg,
+                                &workflow_cfg,
+                                |progress| {
+                                    let peek_state =
+                                        V2FinalState::from_step_progress(progress);
+                                    let _ = tx_progress.send(V2Event::Progress {
+                                        step: progress.step,
+                                        total: progress.total,
+                                        peek_state,
+                                    });
+                                    !cancel_for_callback.load(Ordering::Relaxed)
+                                },
+                            );
                             cycles_run += 1;
 
                             let peek_state =
