@@ -34,6 +34,7 @@
 
 pub mod drainage;
 pub mod low_res_erosion;
+pub mod macro_redistribution;
 pub mod phase_a;
 pub mod phase_b;
 
