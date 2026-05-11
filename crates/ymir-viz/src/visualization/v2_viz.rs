@@ -26,6 +26,16 @@ use crate::bridge::v2::{
 pub enum V2Field {
     #[default]
     SThickness,
+    /// Step 12 R0 — Airy-isostasy altitude derived from S̃ per-frame
+    /// (`compute_isostasy(&Field2D::from_vec(s_field), IsostasyConfig
+    /// ::default()).heightmap`). The native normalised heightmap is
+    /// remapped piecewise-linearly so the configured sea level lands
+    /// at 0.5 in the hypsometric colormap (visually balances the
+    /// ocean / land bands; the colormap's blue→green transition
+    /// occupies [0.2, 0.4] and the green→brown→white land ramp
+    /// [0.4, 1.0], so `0.5` sits a hair above the vegetation band —
+    /// the design choice in the issue plan).
+    Altitude,
     Age,
     Cratonic,
     StrainRate,
@@ -40,6 +50,7 @@ pub enum V2Field {
 impl V2Field {
     pub const ALL: &'static [V2Field] = &[
         V2Field::SThickness,
+        V2Field::Altitude,
         V2Field::Age,
         V2Field::Cratonic,
         V2Field::StrainRate,
@@ -50,6 +61,7 @@ impl V2Field {
     pub fn label(self) -> &'static str {
         match self {
             V2Field::SThickness => "S̃ (crustal thickness)",
+            V2Field::Altitude => "Altitude (post-isostasy)",
             V2Field::Age => "Age field A",
             V2Field::Cratonic => "Cratonic factor",
             V2Field::StrainRate => "ε̇_II (log)",
@@ -62,6 +74,7 @@ impl V2Field {
     pub fn legend_caption(self) -> &'static str {
         match self {
             V2Field::SThickness => "S̃: 0.2 (oceanic) → 1.5+ (collision)",
+            V2Field::Altitude => "Altitude: deep ocean → mountain peaks (sea level @ 0.5)",
             V2Field::Age => "A: 0 (reset) → init_max + run_time",
             V2Field::Cratonic => "f: 0 (mobile) → 1 (cratonic core)",
             V2Field::StrainRate => "ε̇_II: 1e-3 → 1e1 (log)",
@@ -568,8 +581,13 @@ pub fn field_to_rgba(state: &V2FinalState, field: V2Field) -> (usize, usize, Vec
 
     let vmag_buf: Vec<f64>;
     let slope_buf: Vec<f64>;
+    let altitude_buf: Vec<f64>;
     let buf: &[f64] = match field {
         V2Field::SThickness => &state.s_field,
+        V2Field::Altitude => {
+            altitude_buf = compute_altitude_buf(state);
+            &altitude_buf
+        }
         V2Field::Age => match state.age_field.as_ref() {
             Some(b) => b,
             None => {
@@ -599,6 +617,10 @@ pub fn field_to_rgba(state: &V2FinalState, field: V2Field) -> (usize, usize, Vec
 
     let (vmin, vmax) = match field {
         V2Field::Cratonic => (0.0, 1.0),
+        // Step 12 R0 — `compute_altitude_buf` already piecewise-remaps
+        // the isostatic heightmap into `[0, 1]` with sea level at 0.5;
+        // bounds are therefore fixed (no per-frame auto-rescale).
+        V2Field::Altitude => (0.0, 1.0),
         V2Field::Slope => {
             // Auto-scale: slope range varies wildly between quiescent
             // (~1e-3) and active (~1e0) regimes. Auto per-frame keeps
@@ -644,6 +666,7 @@ pub fn field_to_rgba(state: &V2FinalState, field: V2Field) -> (usize, usize, Vec
             let v = buf[j * nx + i];
             let rgba_pixel = match field {
                 V2Field::SThickness => hypsometric_colormap(((v - vmin) / range).clamp(0.0, 1.0)),
+                V2Field::Altitude => hypsometric_colormap(v.clamp(0.0, 1.0)),
                 V2Field::Age => age_colormap(((v - vmin) / range).clamp(0.0, 1.0)),
                 V2Field::Cratonic => cratonic_grayscale(v),
                 // ε̇_II: log scale `[1e-3, 1e2]`. Phase 7 diagnostic on
@@ -663,6 +686,39 @@ pub fn field_to_rgba(state: &V2FinalState, field: V2Field) -> (usize, usize, Vec
     }
 
     (nx, ny, rgba)
+}
+
+/// Step 12 R0 — build the per-frame altitude buffer from the v2 S̃
+/// state via the legacy Airy-isostasy helper. Returns a `Vec<f64>` of
+/// length `nx · ny` in `[0, 1]` with the configured sea level remapped
+/// to `0.5` (visually balances ocean / land bands inside the
+/// hypsometric colormap whose blue→green transition is `[0.2, 0.4]`).
+///
+/// Default `IsostasyConfig` (no smoothing override): `sea_level_fraction
+/// = 0.4` ≈ 30 % land / 70 % ocean over the field's actual S̃ range.
+/// Smoothing sigma stays at the legacy default `2.0` so the altitude
+/// view mirrors what the Isostasy phase will compute next in the
+/// pipeline — same numerical contract, no double-rendering surprise.
+fn compute_altitude_buf(state: &V2FinalState) -> Vec<f64> {
+    use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+    use ymir_core::tectonics::solver::field::Field2D;
+
+    let field = Field2D::from_vec(state.nx, state.ny, state.s_field.clone());
+    let iso = compute_isostasy(&field, &IsostasyConfig::default());
+    let sea_norm = iso.sea_level_normalized as f64;
+    let sea_clamped = sea_norm.clamp(1e-6, 1.0 - 1e-6);
+    iso.heightmap
+        .data
+        .iter()
+        .map(|&h| {
+            let h = h as f64;
+            if h <= sea_clamped {
+                0.5 * h / sea_clamped
+            } else {
+                0.5 + 0.5 * (h - sea_clamped) / (1.0 - sea_clamped)
+            }
+        })
+        .collect()
 }
 
 fn fill_disabled(rgba: &mut [u8]) {
@@ -742,6 +798,7 @@ pub fn screenshot_filename(preset_label: &str, field: V2Field) -> String {
         .unwrap_or(0);
     let field_tag = match field {
         V2Field::SThickness => "s",
+        V2Field::Altitude => "altitude",
         V2Field::Age => "age",
         V2Field::Cratonic => "cratonic",
         V2Field::StrainRate => "strain",
