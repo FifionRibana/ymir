@@ -32,6 +32,7 @@
 //! tolerance). The orchestration logic for `Enabled` lands in
 //! Phases 2–5; Phase 1 stubs it as `unimplemented!`.
 
+pub mod drainage;
 pub mod low_res_erosion;
 pub mod phase_a;
 pub mod phase_b;
