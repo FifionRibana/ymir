@@ -412,26 +412,38 @@ fn default_capture_endpoints() -> bool {
 }
 
 /// Step 12 — Phase A loop parameters mirroring
-/// [`ymir_core::tectonics_v2::workflow::PhaseAParams`]. Defaults match
-/// the issue D8 conservative starting points (`α = 0.01`, `β = 0.0`,
-/// `5 cycles × 20 steps`). Phase 6 empirical findings indicated these
-/// produce predictable counter-isostasy + minimal visual border
-/// change; aggressive variants (α ≥ 0.05, N ≥ 15) are recommended
-/// for visible curvature but kept off the default path per the
-/// issue's "starting points for exploration, not calibrated values"
-/// stance.
+/// [`ymir_core::tectonics_v2::workflow::PhaseAParams`]. Step 12 R3
+/// refactor: dropped `β` (legacy local-deposition coefficient) in
+/// favour of `isostatic_rebound_ratio` + `max_drainage_distance` —
+/// the new macro-redistribution mechanism is mass-conserving by
+/// construction (no `β`-driven mass loss path) and routes eroded
+/// sediment along true drainage basins, not just immediate downslope
+/// neighbours. See
+/// [`ymir_core::tectonics_v2::workflow::macro_redistribution`] for
+/// the algorithm.
+///
+/// Defaults: `α = 0.01`, `rebound = 0.80` (Earth `ρ_crust / ρ_mantle`),
+/// `max_drainage_distance = 10` cells, `5 cycles × 20 steps`. R5
+/// calibration sweep will refine these.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct V2PhaseAParams {
     pub n_cycles: usize,
     pub k_cycle: usize,
     pub alpha: f64,
-    pub beta: f64,
+    pub isostatic_rebound_ratio: f64,
+    pub max_drainage_distance: usize,
 }
 
 impl Default for V2PhaseAParams {
     fn default() -> Self {
-        Self { n_cycles: 5, k_cycle: 20, alpha: 0.01, beta: 0.0 }
+        Self {
+            n_cycles: 5,
+            k_cycle: 20,
+            alpha: 0.01,
+            isostatic_rebound_ratio: 0.80,
+            max_drainage_distance: 10,
+        }
     }
 }
 
@@ -644,7 +656,13 @@ mod tests {
                 phase_b: V2PhaseBParams::default(),
             },
             V2WorkflowSpec::On {
-                phase_a: V2PhaseAParams { n_cycles: 15, k_cycle: 30, alpha: 0.05, beta: 0.5 },
+                phase_a: V2PhaseAParams {
+                    n_cycles: 15,
+                    k_cycle: 30,
+                    alpha: 0.05,
+                    isostatic_rebound_ratio: 0.70,
+                    max_drainage_distance: 15,
+                },
                 phase_b: V2PhaseBParams {
                     hd_grid_size: 1024,
                     num_droplets: 1_000_000,
@@ -667,13 +685,18 @@ mod tests {
     /// HD targets. The numerical values are documented to keep
     /// preset / report consumers and the panel's slider ranges in
     /// sync.
+    ///
+    /// Step 12 R3 refactor: dropped `β`, added
+    /// `isostatic_rebound_ratio = 0.80` (Earth `ρ_crust / ρ_mantle`)
+    /// and `max_drainage_distance = 10` cells.
     #[test]
     fn workflow_defaults_match_issue_d8() {
         let pa = V2PhaseAParams::default();
         assert_eq!(pa.n_cycles, 5);
         assert_eq!(pa.k_cycle, 20);
         assert_eq!(pa.alpha, 0.01);
-        assert_eq!(pa.beta, 0.0);
+        assert_eq!(pa.isostatic_rebound_ratio, 0.80);
+        assert_eq!(pa.max_drainage_distance, 10);
 
         let pb = V2PhaseBParams::default();
         assert_eq!(pb.hd_grid_size, 2048);

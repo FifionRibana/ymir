@@ -113,7 +113,7 @@ fn v2_workflow_continuation_no_transient() {
     // reclassify + craton recompute branches no-op (no plate_id /
     // plate_type populated under BoundaryConfig::Disabled).
     let wf = WorkflowConfig::Enabled(WorkflowParams {
-        phase_a: PhaseAParams { alpha: 0.005, beta: 0.0, ..Default::default() },
+        phase_a: PhaseAParams { alpha: 0.005, ..Default::default() },
         phase_b: Default::default(),
     });
 
@@ -176,8 +176,19 @@ fn v2_workflow_cratonic_recompute_flips_eroded_plate() {
     // magnitudes. With realistic α (e.g. 0.01–0.05 from D8) a flip
     // emerges across multiple cycles; the multi-cycle natural-flip
     // scenario is Phase 4 integration territory.
+    //
+    // Step 12 R3 — `isostatic_rebound_ratio: 0.0` recovers the legacy
+    // pre-R3 `β = 0` semantics for this wiring test (no rebound
+    // compensation, full eroded-mass migration). The default 0.80
+    // would attenuate the per-cell change by 5× and the
+    // aggressive-but-bounded `α = 5.0` would no longer cross the
+    // 0.95 retention threshold.
     let wf = WorkflowConfig::Enabled(WorkflowParams {
-        phase_a: PhaseAParams { alpha: 5.0, beta: 0.0, ..Default::default() },
+        phase_a: PhaseAParams {
+            alpha: 5.0,
+            isostatic_rebound_ratio: 0.0,
+            ..Default::default()
+        },
         phase_b: Default::default(),
     });
 
@@ -211,7 +222,7 @@ fn v2_workflow_cratonic_recompute_preserves_stable_craton() {
     let crcfg = CratonicConfigEnabled::default();
     let cfg = build_cratonic_cycle_config("cratonic_stable", crcfg);
     let wf = WorkflowConfig::Enabled(WorkflowParams {
-        phase_a: PhaseAParams { alpha: 0.001, beta: 0.0, ..Default::default() },
+        phase_a: PhaseAParams { alpha: 0.001, ..Default::default() },
         phase_b: Default::default(),
     });
 

@@ -1,3 +1,16 @@
+// Step 12 R3 — this entire file is archived. It captured the Phase 6
+// pre-R3 visual checkpoint built on the legacy `low_res_erosion` (D2
+// diffusive erosion + `β` local-deposition coefficient). R3 replaced
+// that mechanism with `macro_redistribution` (long-distance drainage +
+// isostatic rebound), and the new visual checkpoint lands in R4 with
+// fresh galleries. Helpers below (`apply_erosion_with_alpha_field`,
+// `run_custom_phase_a_loop`, `dump_step12_phase_6_curvature_variants`)
+// reference `low_res_erosion` semantics that no longer compile after
+// the R3 module deletion — `#![cfg(any())]` excludes the whole crate
+// so they remain readable in `git log` / `git show` without blocking
+// the build.
+#![cfg(any())]
+
 //! Step 12 Phase 6 — visual checkpoint, reviewer-validated.
 //!
 //! Two `#[ignore]` artefacts:

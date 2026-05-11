@@ -89,7 +89,13 @@ fn build_phase4_config(grid_size: usize, k_cycle: usize, scratch: &str) -> Basel
 fn run_5cycle_integration(grid_size: usize, scratch: &str) {
     let mut cfg = build_phase4_config(grid_size, 20, scratch);
     let wf = WorkflowConfig::Enabled(WorkflowParams {
-        phase_a: PhaseAParams { n_cycles: 5, k_cycle: 20, alpha: 0.01, beta: 0.0 },
+        phase_a: PhaseAParams {
+            n_cycles: 5,
+            k_cycle: 20,
+            alpha: 0.01,
+            isostatic_rebound_ratio: 0.80,
+            max_drainage_distance: 10,
+        },
         phase_b: Default::default(),
     });
 
@@ -103,33 +109,27 @@ fn run_5cycle_integration(grid_size: usize, scratch: &str) {
         "after 5 cycles, cfg.continuation must carry the last-but-one cycle's state"
     );
 
-    // Mass drift contract: with β = 0.0, every cycle's mass_drift is
-    // ≤ 0 (gross erosion, no redistribution back into the grid). The
-    // cumulative drift must be strictly negative — the workflow
-    // actually erodes — but bounded to a small fraction of the
-    // initial mass so the dynamics aren't running away.
+    // Mass drift contract (Step 12 R3): macro_redistribution conserves
+    // total mass by construction — every eroded gram either migrates
+    // to a drainage target or is implicitly compensated by isostatic
+    // rebound. Per-cycle `mass_drift` is bounded by IEEE-754 floor
+    // (~ N · ε · Δh̄ at machine precision), independent of sign. The
+    // pre-R3 contract "`β = 0` → mass_drift ≤ 0" is obsolete — there
+    // is no `β` knob to flip mass migration off.
+    let initial_mass_estimate = 0.6 * (grid_size * grid_size) as f64;
+    let machine_drift_budget = initial_mass_estimate * 1e-10;
     for (i, cycle) in output.cycles.iter().enumerate() {
         assert!(
-            cycle.mass_drift <= 0.0,
-            "cycle {i}: mass_drift = {} (β = 0 must produce ≤ 0)",
-            cycle.mass_drift
+            cycle.mass_drift.abs() < machine_drift_budget,
+            "cycle {i}: mass_drift = {} exceeds machine-precision budget {} (mass conservation must hold)",
+            cycle.mass_drift,
+            machine_drift_budget
         );
     }
     let total_drift: f64 = output.cycles.iter().map(|c| c.mass_drift).sum();
     assert!(
-        total_drift < 0.0,
-        "cumulative mass drift must be < 0 (some erosion happens): {total_drift}"
-    );
-    // Domain mass on `grid_size²` with continental ≈ 1.0 and oceanic
-    // ≈ 0.2 (Voronoï ratio 0.5) is ≈ `0.6 · grid_size²`. With α = 0.01
-    // the total cumulative drift over 5 cycles is bounded by about
-    // 5 % of that — well above the noise but well below pathology.
-    let initial_mass_estimate = 0.6 * (grid_size * grid_size) as f64;
-    let drift_fraction = total_drift.abs() / initial_mass_estimate;
-    assert!(
-        drift_fraction < 0.10,
-        "cumulative mass drift {drift_fraction:.3} (= |{total_drift}| / {initial_mass_estimate}) \
-         exceeds 10 % of initial mass — workflow may be running away"
+        total_drift.abs() < machine_drift_budget,
+        "cumulative mass drift {total_drift} exceeds machine-precision budget {machine_drift_budget}"
     );
 
     // Peak S̃ stabilisation contract: by cycle 3, the system has

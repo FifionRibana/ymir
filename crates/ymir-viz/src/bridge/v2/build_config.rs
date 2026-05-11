@@ -200,7 +200,8 @@ pub fn build_workflow(spec: &V2WorkflowSpec) -> WorkflowConfig {
                     n_cycles: phase_a.n_cycles,
                     k_cycle: phase_a.k_cycle,
                     alpha: phase_a.alpha,
-                    beta: phase_a.beta,
+                    isostatic_rebound_ratio: phase_a.isostatic_rebound_ratio,
+                    max_drainage_distance: phase_a.max_drainage_distance,
                 },
                 phase_b: CorePhaseBParams {
                     hd_grid_size: phase_b.hd_grid_size,
