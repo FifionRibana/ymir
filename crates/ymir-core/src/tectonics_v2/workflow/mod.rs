@@ -33,7 +33,6 @@
 //! Phases 2–5; Phase 1 stubs it as `unimplemented!`.
 
 pub mod drainage;
-pub mod low_res_erosion;
 pub mod macro_redistribution;
 pub mod phase_a;
 pub mod phase_b;
@@ -43,7 +42,7 @@ use serde::{Deserialize, Serialize};
 use crate::erosion::hydraulic::ErosionConfig;
 use crate::terrain::upscale::FbmUpscaleConfig;
 
-pub use low_res_erosion::ErosionStats;
+pub use macro_redistribution::RedistributionStats;
 pub use phase_a::{
     final_state_to_continuation, run_phase_a_cycle, run_phase_a_cycle_with_progress,
     run_phase_a_loop,
@@ -89,11 +88,24 @@ impl Default for WorkflowParams {
     }
 }
 
-/// Phase A loop parameters (D2 + D8).
+/// Phase A loop parameters (D2 + D8, Step 12 R3 refactor).
 ///
 /// Defaults: `N_cycles = 5`, `k_cycle = 20` → 100 effective tectonic
-/// steps + 5 erosion passes — a starting point for exploration, not a
-/// calibrated configuration.
+/// steps + 5 macro-redistribution passes. Step 12 R3 swapped the
+/// legacy `low_res_erosion::apply` (per-cycle diffusive erosion with a
+/// `β` local-deposition coefficient) for
+/// [`macro_redistribution::apply`], which combines erosion + long-
+/// distance drainage + isostatic rebound into one mass-conserving
+/// call. The legacy `β` parameter is gone — its semantic of "deposit
+/// `β` of eroded mass on the immediate downslope neighbour" is
+/// replaced by macro drainage that targets the real basin sink
+/// (`max_drainage_distance` hops away or the first oceanic neighbour).
+/// The remaining mass that's not redistributed is implicit in
+/// `isostatic_rebound_ratio` (the crust the doesn't migrate is
+/// altitude-restored by mantle uplift, not S̃-deleted).
+///
+/// See [`macro_redistribution`] module docstring for the full
+/// arithmetic.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PhaseAParams {
     /// Number of cycles in the Phase A loop. Default: 5 (D8).
@@ -101,17 +113,37 @@ pub struct PhaseAParams {
     /// Tectonic steps per cycle. Default: 20 (D8).
     pub k_cycle: usize,
     /// Erosion rate `α` per cycle (cycle-time, not absolute). Default:
-    /// 0.01. Range typically `[0.001, 0.05]`.
+    /// 0.01. Range typically `[0.001, 0.05]`. Consumed by
+    /// [`macro_redistribution::apply`] as the multiplier on
+    /// `slope · (S̃ − sea_level)`.
     pub alpha: f64,
-    /// Sediment redistribution coefficient `β`. `0.0` = pure erosion
-    /// (mass leaves the grid); `1.0` = full deposition downslope.
-    /// Default: 0.0 (D8).
-    pub beta: f64,
+    /// Isostatic rebound fraction (R3 / Step 12 refactor). `1.0` =
+    /// full rebound (no S̃ migration, the apply call is a no-op);
+    /// `0.0` = no rebound (every eroded gram is redistributed
+    /// downstream). Default: `0.80` — calibrated against the Earth
+    /// `ρ_crust / ρ_mantle ≈ 2700/3300 ≈ 0.82` mass-balance ratio.
+    /// Range typically `[0.5, 0.95]`; R5 sweep may pick a different
+    /// nominal value.
+    pub isostatic_rebound_ratio: f64,
+    /// Max NESW hops the drainage walks per continental cell (R3 /
+    /// Step 12 refactor). Default: `10`. Smaller values bias eroded
+    /// mass toward nearby destinations (closer to the legacy `β`
+    /// behaviour); larger values let interior cells reach distal
+    /// basins. Anti-pattern: setting beyond `~30` rarely changes the
+    /// drainage map on realistic Voronoï continental patches (the
+    /// terminal cell is reached well before that on Phase A relief).
+    pub max_drainage_distance: usize,
 }
 
 impl Default for PhaseAParams {
     fn default() -> Self {
-        Self { n_cycles: 5, k_cycle: 20, alpha: 0.01, beta: 0.0 }
+        Self {
+            n_cycles: 5,
+            k_cycle: 20,
+            alpha: 0.01,
+            isostatic_rebound_ratio: 0.80,
+            max_drainage_distance: 10,
+        }
     }
 }
 

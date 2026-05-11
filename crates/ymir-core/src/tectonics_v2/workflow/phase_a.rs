@@ -7,8 +7,14 @@
 //! 2. **Isostasy** — `compute_isostasy(s_field)` to extract
 //!    `sea_level_normalized` (Option 2 of Phase 0 finding E:
 //!    adaptive threshold drives erosion + reclassification).
-//! 3. **Low-res erosion** — `low_res_erosion::apply` in-place on
-//!    `final_state.s_field` with the cycle's `α / β`.
+//! 3. **Macro mass redistribution** — `macro_redistribution::apply`
+//!    in-place on `final_state.s_field` with the cycle's `α /
+//!    isostatic_rebound_ratio / max_drainage_distance`. Step 12 R3
+//!    replaced the legacy `low_res_erosion` (per-cycle diffusive
+//!    erosion + local `β`-deposition) with a long-distance drainage
+//!    + isostatic-rebound formulation — see
+//!    [`super::macro_redistribution`] module docstring for the full
+//!    arithmetic and conservation contract.
 //! 4. **Reclassify** — per-cell `plate_type[i, j]` = `Continental`
 //!    iff `s_field[i, j] > sea_level_normalized`; otherwise
 //!    `Oceanic`.
@@ -33,7 +39,7 @@
 //! `v2_workflow_disabled_regression::workflow_disabled_run_phase_a_cycle_is_bit_identical_to_run_baseline`
 //! pins this contract byte-for-byte.
 
-use super::{low_res_erosion, CycleOutput, PhaseAOutput, WorkflowConfig};
+use super::{macro_redistribution, CycleOutput, PhaseAOutput, WorkflowConfig};
 use crate::tectonics::isostasy::IsostasyConfig;
 use crate::tectonics_v2::boundaries::{PlateType, PlateTypeField};
 use crate::tectonics_v2::cratonic::factor::build_cratonic_factor_field;
@@ -147,9 +153,13 @@ where
                 .zip(baseline.final_state.plate_id.as_ref())
                 .map(|(pt, pid)| extract_per_plate_type(pid, pt));
 
-            // Step 4: Erosion (in-place).
+            // Step 4: Macro mass redistribution (in-place). Step 12 R3
+            // — replaces the legacy `low_res_erosion::apply`. The new
+            // call carries drainage + isostatic rebound, so mass drift
+            // is now ~ IEEE-754 floor by construction (instead of the
+            // legacy `-(1-β) · volume_removed` net change).
             let mass_before: f64 = baseline.final_state.s_field.data().iter().sum();
-            let stats = low_res_erosion::apply(
+            let stats = macro_redistribution::apply(
                 &mut baseline.final_state.s_field,
                 &params.phase_a,
                 sea_level_ref,
@@ -201,7 +211,7 @@ where
 
             CycleOutput {
                 baseline,
-                erosion_volume_removed: stats.volume_removed,
+                erosion_volume_removed: stats.total_eroded,
                 erosion_peak_delta_h: stats.peak_delta_h,
                 sea_level_normalized: sea_level_ref,
                 mass_drift: mass_after - mass_before,

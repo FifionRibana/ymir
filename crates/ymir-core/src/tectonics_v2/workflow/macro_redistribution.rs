@@ -54,39 +54,8 @@
 //! also a source that gets eroded.
 
 use super::drainage::compute_drainage_targets;
+use super::PhaseAParams;
 use crate::tectonics_v2::field::Field2D;
-
-/// R2 parameter bundle (separated from `PhaseAParams` until R3 wires
-/// these into the workflow).
-///
-/// Defaults are the Step 12 refactor brief's *starting points*; R5
-/// will run a sweep and may pick different values. The defaults
-/// themselves are not asserted by R2 tests — only the contract
-/// `1 - rebound_ratio` plus drainage-bounded propagation.
-#[derive(Clone, Copy, Debug)]
-pub struct MacroParams {
-    /// Erosion rate `α`. Default: `0.01`. Range typically `[0.001, 0.05]`.
-    pub alpha: f64,
-    /// Isostatic rebound fraction. `1.0` = full rebound (no S̃
-    /// migration, noop on the field); `0.0` = no rebound (full eroded
-    /// mass redistributed). Default: `0.80` (Earth ρ_crust / ρ_mantle).
-    pub isostatic_rebound_ratio: f64,
-    /// Drainage max NESW hops per cell. Default: `10`. Cells failing
-    /// to reach an oceanic basin within this budget keep their mass
-    /// at the last reached continental cell (the drainage map's
-    /// max-distance terminus).
-    pub max_drainage_distance: usize,
-}
-
-impl Default for MacroParams {
-    fn default() -> Self {
-        Self {
-            alpha: 0.01,
-            isostatic_rebound_ratio: 0.80,
-            max_drainage_distance: 10,
-        }
-    }
-}
 
 /// Per-call diagnostics emitted alongside the in-place mutation.
 ///
@@ -112,9 +81,13 @@ pub struct RedistributionStats {
 /// See module docstring for the algorithm. Returns
 /// [`RedistributionStats`] for the orchestrator's per-cycle metrics
 /// (R3 wires this into [`super::CycleOutput`]).
+///
+/// Only `alpha`, `isostatic_rebound_ratio`, and `max_drainage_distance`
+/// from `params` are consumed — `n_cycles` and `k_cycle` are
+/// orchestrator-level knobs that the caller layers on top.
 pub fn apply(
     s: &mut Field2D,
-    params: &MacroParams,
+    params: &PhaseAParams,
     sea_level_reference: f64,
 ) -> RedistributionStats {
     let nx = s.nx();
@@ -258,7 +231,7 @@ mod tests {
         let ny = 16;
         let mut s = flat_continental_field(nx, ny);
         let mass_before: f64 = s.data().iter().sum();
-        let params = MacroParams::default();
+        let params = PhaseAParams::default();
         let stats = apply(&mut s, &params, 0.5);
         let mass_after: f64 = s.data().iter().sum();
         let drift = (mass_after - mass_before).abs();
@@ -281,7 +254,7 @@ mod tests {
         let ny = 16;
         let s_init = flat_continental_field(nx, ny);
         let mut s = s_init.clone();
-        let params = MacroParams { isostatic_rebound_ratio: 1.0, ..Default::default() };
+        let params = PhaseAParams { isostatic_rebound_ratio: 1.0, ..Default::default() };
         let stats = apply(&mut s, &params, 0.5);
 
         // Bit-identical comparison: every cell unchanged.
@@ -304,7 +277,7 @@ mod tests {
         let ny = 16;
         let mut s = flat_continental_field(nx, ny);
         let mass_before: f64 = s.data().iter().sum();
-        let params = MacroParams { isostatic_rebound_ratio: 0.0, ..Default::default() };
+        let params = PhaseAParams { isostatic_rebound_ratio: 0.0, ..Default::default() };
         let stats = apply(&mut s, &params, 0.5);
         let mass_after: f64 = s.data().iter().sum();
         let drift = (mass_after - mass_before).abs();
@@ -328,7 +301,7 @@ mod tests {
 
         // Use a reasonable α; default rebound 0.80 keeps the effect
         // small but observable (factor=0.20 of eroded goes to sediment).
-        let params = MacroParams { alpha: 0.05, ..Default::default() };
+        let params = PhaseAParams { alpha: 0.05, ..Default::default() };
         let _stats = apply(&mut s, &params, sea_level);
 
         // Sum mass over oceanic cells (S̃_init ≤ sea_level) — should
@@ -373,7 +346,7 @@ mod tests {
         let sea_level = 0.4;
         let mut s = continent_in_ocean(nx, ny, sea_level);
         let s_init = s.clone();
-        let params = MacroParams { alpha: 0.05, ..Default::default() };
+        let params = PhaseAParams { alpha: 0.05, ..Default::default() };
 
         for _ in 0..5 {
             let stats = apply(&mut s, &params, sea_level);
@@ -419,7 +392,7 @@ mod tests {
         let ny = 16;
         let mut s = flat_continental_field(nx, ny);
         let mass_init: f64 = s.data().iter().sum();
-        let params = MacroParams { alpha: 0.05, ..Default::default() };
+        let params = PhaseAParams { alpha: 0.05, ..Default::default() };
 
         for cycle in 0..20 {
             let stats = apply(&mut s, &params, 0.5);
@@ -452,7 +425,7 @@ mod tests {
         let ny = 8;
         let mut s = Field2D::filled(nx, ny, 0.7);
         let mass_before: f64 = s.data().iter().sum();
-        let stats = apply(&mut s, &MacroParams::default(), 0.5);
+        let stats = apply(&mut s, &PhaseAParams::default(), 0.5);
         let mass_after: f64 = s.data().iter().sum();
         assert_eq!(stats.total_eroded, 0.0);
         assert_eq!(mass_before, mass_after);
@@ -493,7 +466,7 @@ mod tests {
         };
         let mut s = init_s_field(init_mode, &init_ctx);
         let sea_level = 0.5;
-        let params = MacroParams::default();
+        let params = PhaseAParams::default();
 
         println!(
             "\n=== R2 macro_redistribution diagnostic — 32² active-medley-like INIT ==="

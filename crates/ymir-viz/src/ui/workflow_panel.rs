@@ -6,8 +6,10 @@
 //! - Top-level toggle `V2WorkflowSpec::{Off, On}` — when `Off`, the
 //!   panel collapses to a hint and the rest is hidden so the user can
 //!   confirm the bridge is in single-baseline mode at a glance.
-//! - Phase A section — `n_cycles`, `k_cycle`, `α`, `β` sliders with
-//!   D8-issue defaults; `Run` / `Stop` / `Continue` buttons mapped to
+//! - Phase A section — `n_cycles`, `k_cycle`, `α`,
+//!   `isostatic_rebound_ratio`, `max_drainage_distance` sliders (Step
+//!   12 R3 — replaced the legacy `β` with the macro-redistribution
+//!   knobs); `Run` / `Stop` / `Continue` buttons mapped to
 //!   [`crate::bridge::v2::commands::V2Command::RunWorkflowPhaseA`] and
 //!   friends.
 //! - Phase B section — `hd_grid_size` (256/512/1024/2048),
@@ -255,13 +257,25 @@ fn phase_a_sliders(ui: &mut egui::Ui, phase_a: &mut V2PhaseAParams) {
          produces visible terrain change.",
     );
     ui.add(
-        egui::Slider::new(&mut phase_a.beta, 0.0..=1.0)
-            .text("\u{03b2} (downhill redistribution)")
-            .step_by(0.05),
+        egui::Slider::new(&mut phase_a.isostatic_rebound_ratio, 0.50..=0.95)
+            .text("isostatic rebound ratio")
+            .step_by(0.01),
     )
     .on_hover_text(
-        "0 = pure diffusive (mass loss); 1 = mass-conserving downhill \
-         redistribution to NESW priority neighbour.",
+        "Step 12 R3 — fraction of eroded mass that stays behind via \
+         isostatic uplift. Default 0.80 (Earth \u{03c1}_crust / \u{03c1}_mantle). \
+         1.0 = full rebound (no S\u{0303} change); 0.0 = no rebound \
+         (full redistribution).",
+    );
+    ui.add(
+        egui::Slider::new(&mut phase_a.max_drainage_distance, 3..=30)
+            .text("max drainage distance (cells)"),
+    )
+    .on_hover_text(
+        "Step 12 R3 — max NESW hops the steepest-descent drainage walks \
+         per continental cell. Default 10. Smaller values bias eroded \
+         mass toward immediate neighbours; larger let interior cells \
+         reach distal basins.",
     );
 }
 

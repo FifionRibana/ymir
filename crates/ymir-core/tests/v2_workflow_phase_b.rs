@@ -105,7 +105,13 @@ fn run_phase_a_then_b(
 ) -> ymir_core::tectonics_v2::workflow::PhaseBOutput {
     let mut cfg = build_phase_b_input_config(grid_size, k_cycle, scratch);
     let wf = WorkflowConfig::Enabled(WorkflowParams {
-        phase_a: PhaseAParams { n_cycles, k_cycle, alpha: 0.01, beta: 0.0 },
+        phase_a: PhaseAParams {
+            n_cycles,
+            k_cycle,
+            alpha: 0.01,
+            isostatic_rebound_ratio: 0.80,
+            max_drainage_distance: 10,
+        },
         phase_b: PhaseBParams {
             hd_grid_size,
             erosion: ErosionConfig {
@@ -203,7 +209,13 @@ fn v2_workflow_phase_b_deviation_stats_probe() {
     // same dynamics.
     let mut cfg = build_phase_b_input_config(32, 10, "stats_probe");
     let wf = WorkflowConfig::Enabled(WorkflowParams {
-        phase_a: PhaseAParams { n_cycles: 3, k_cycle: 10, alpha: 0.01, beta: 0.0 },
+        phase_a: PhaseAParams {
+            n_cycles: 3,
+            k_cycle: 10,
+            alpha: 0.01,
+            isostatic_rebound_ratio: 0.80,
+            max_drainage_distance: 10,
+        },
         phase_b: PhaseBParams {
             hd_grid_size: 256,
             erosion: ErosionConfig { num_droplets: 100_000, ..ErosionConfig::default() },
