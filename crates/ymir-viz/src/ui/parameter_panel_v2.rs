@@ -1133,7 +1133,7 @@ fn draw_legend_bar(ui: &mut egui::Ui, field: V2Field) {
     for k in 0..SAMPLES {
         let t = k as f64 / (SAMPLES - 1) as f64;
         let rgba = match field {
-            V2Field::SThickness => hypsometric_colormap(t),
+            V2Field::SThickness | V2Field::Altitude => hypsometric_colormap(t),
             V2Field::Age => age_colormap(t),
             V2Field::Cratonic => cratonic_grayscale(t),
             V2Field::StrainRate | V2Field::VelocityMagnitude | V2Field::Slope => log_hot(t),
