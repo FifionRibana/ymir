@@ -53,6 +53,26 @@ pub struct NewtonConfig {
     pub linear_max_iter: usize,
     /// Jacobi diagonal floor.
     pub diag_floor: f64,
+    /// Step 12 R5b D2 — state-based convergence tolerance (port of
+    /// pre-rewrite #49 criterion). Newton returns
+    /// [`NonlinearOutcome::ConvergedOnState`] when
+    /// `‖α·δv‖ / ‖v‖ < state_tolerance` AND the last `trend_window`
+    /// residuals are strictly decreasing AND `k ≥
+    /// min_iterations_before_classification`. Provides an exit when
+    /// the state has stabilised but the residual plateaus above the
+    /// reachable inner-CG precision. Default: `1.0e-4`.
+    pub state_tolerance: f64,
+    /// Window size for the residual-trend check. Default: `3`.
+    pub trend_window: u32,
+    /// Cosine-of-step threshold for oscillation detection. Two
+    /// consecutive Newton steps with `cos(δv_k, δv_{k-1}) < threshold`
+    /// produce [`NonlinearOutcome::Oscillating`]. Default: `-0.5`
+    /// (anti-aligned within ±30° of the opposite direction).
+    pub oscillation_cosine_threshold: f64,
+    /// Minimum outer iterations before either state-convergence or
+    /// oscillation is allowed to fire. Anti-noise gate against
+    /// startup transients. Default: `3`.
+    pub min_iterations_before_classification: u32,
 }
 
 impl Default for NewtonConfig {
@@ -66,6 +86,10 @@ impl Default for NewtonConfig {
             linear_tol: 1.0e-8,
             linear_max_iter: 2000,
             diag_floor: 1.0e-20,
+            state_tolerance: 1.0e-4,
+            trend_window: 3,
+            oscillation_cosine_threshold: -0.5,
+            min_iterations_before_classification: 3,
         }
     }
 }
@@ -90,8 +114,32 @@ pub enum NonlinearOutcome {
         linear_iters_total: u32,
         trace: NonlinearTrace,
     },
+    /// Step 12 R5b D2 — state-based convergence (port of pre-rewrite
+    /// #49). Triggered when `‖α·δv‖ / ‖v‖ < state_tolerance` AND the
+    /// last `trend_window` residuals are strictly decreasing AND
+    /// `k ≥ min_iterations_before_classification`. Semantically a
+    /// success: the state has stabilised even though the residual
+    /// has not yet hit `rel_tol·r0`. [`Self::converged()`] returns
+    /// `true` on this variant.
+    ConvergedOnState {
+        outer_iters: u32,
+        final_residual: f64,
+        relative_step: f64,
+        linear_iters_total: u32,
+        trace: NonlinearTrace,
+    },
     Stalled {
         outer_iters: u32,
+        trace: NonlinearTrace,
+    },
+    /// Step 12 R5b D2 — oscillation detection (port of pre-rewrite
+    /// #49). Triggered when two consecutive Newton steps have
+    /// `cos(δv_k, δv_{k-1}) < oscillation_cosine_threshold` AND
+    /// `k ≥ min_iterations_before_classification`. Semantically a
+    /// failure-to-progress, treated the same as `Stalled` by callers.
+    Oscillating {
+        outer_iters: u32,
+        last_cosine: f64,
         trace: NonlinearTrace,
     },
     Diverged {
@@ -108,12 +156,17 @@ pub enum NonlinearOutcome {
 
 impl NonlinearOutcome {
     pub fn converged(&self) -> bool {
-        matches!(self, NonlinearOutcome::Converged { .. })
+        matches!(
+            self,
+            NonlinearOutcome::Converged { .. } | NonlinearOutcome::ConvergedOnState { .. }
+        )
     }
     pub fn trace(&self) -> &NonlinearTrace {
         match self {
             NonlinearOutcome::Converged { trace, .. }
+            | NonlinearOutcome::ConvergedOnState { trace, .. }
             | NonlinearOutcome::Stalled { trace, .. }
+            | NonlinearOutcome::Oscillating { trace, .. }
             | NonlinearOutcome::Diverged { trace, .. }
             | NonlinearOutcome::CappedIters { trace, .. } => trace,
         }
@@ -121,7 +174,9 @@ impl NonlinearOutcome {
     pub fn outer_iters(&self) -> u32 {
         match self {
             NonlinearOutcome::Converged { outer_iters, .. }
+            | NonlinearOutcome::ConvergedOnState { outer_iters, .. }
             | NonlinearOutcome::Stalled { outer_iters, .. }
+            | NonlinearOutcome::Oscillating { outer_iters, .. }
             | NonlinearOutcome::Diverged { outer_iters, .. } => *outer_iters,
             NonlinearOutcome::CappedIters { max_iters_hit, .. } => *max_iters_hit,
         }
@@ -129,15 +184,18 @@ impl NonlinearOutcome {
 
     /// Step 8.5b Phase 5: best-available residual for the
     /// extrapolation safeguard. Converged → `final_residual`;
-    /// Diverged / CappedIters → `last_residual`; Stalled → last
-    /// recorded value in the trace (or `+∞` if the trace is
-    /// unexpectedly empty).
+    /// Diverged / CappedIters → `last_residual`; Stalled / Oscillating
+    /// → last recorded value in the trace (or `+∞` if the trace is
+    /// unexpectedly empty). `ConvergedOnState` reports its own
+    /// `final_residual` field — equivalent to Converged.
     pub fn best_residual(&self) -> f64 {
         match self {
-            NonlinearOutcome::Converged { final_residual, .. } => *final_residual,
+            NonlinearOutcome::Converged { final_residual, .. }
+            | NonlinearOutcome::ConvergedOnState { final_residual, .. } => *final_residual,
             NonlinearOutcome::Diverged { last_residual, .. }
             | NonlinearOutcome::CappedIters { last_residual, .. } => *last_residual,
-            NonlinearOutcome::Stalled { trace, .. } => {
+            NonlinearOutcome::Stalled { trace, .. }
+            | NonlinearOutcome::Oscillating { trace, .. } => {
                 trace.residuals.last().copied().unwrap_or(f64::INFINITY)
             }
         }
@@ -341,6 +399,13 @@ impl NonlinearSolver for NewtonSolver {
         }
 
         let mut prev_resid = r0_norm;
+
+        // Step 12 R5b D2 — oscillation detection state. Track the
+        // previous Newton step (`α·δv` after acceptance) to compare
+        // direction cosines on the next iter.
+        let mut prev_step_x: Option<Vec<f64>> = None;
+        let mut prev_step_y: Option<Vec<f64>> = None;
+        let mut consecutive_anti_aligned: u32 = 0;
 
         for k in 0..self.cfg.max_outer_iters {
             // Step 12 follow-up — cooperative cancel check at the top
@@ -553,7 +618,7 @@ impl NonlinearSolver for NewtonSolver {
 
             prev_resid = accepted_resid;
 
-            // Convergence.
+            // Convergence (residual contract — primary criterion).
             if accepted_resid <= abs_tol_eff
                 || accepted_resid <= self.cfg.rel_tol * r0_norm
             {
@@ -564,6 +629,78 @@ impl NonlinearSolver for NewtonSolver {
                     trace,
                 };
             }
+
+            // Step 12 R5b D2 — port of pre-rewrite #49 criteria.
+            // Build the actual Newton step `α · δv` (committed step,
+            // after Armijo backtracking) for use by both
+            // state-convergence and oscillation detection.
+            let step_x: Vec<f64> = (0..n).map(|i| alpha * dvx[i]).collect();
+            let step_y: Vec<f64> = (0..n).map(|i| alpha * dvy[i]).collect();
+
+            // ---- (a) State-based convergence ----
+            // Fire when `‖α·δv‖ / ‖v‖ < state_tolerance` AND the last
+            // `trend_window` residual deltas are strictly negative.
+            // Gated by `min_iterations_before_classification` so noisy
+            // early iters don't trigger a false success.
+            if (k + 1) >= self.cfg.min_iterations_before_classification {
+                let v_state_norm = vec_norm(vx, vy).max(1e-30);
+                let step_norm = vec_norm(&step_x, &step_y);
+                let relative_step = step_norm / v_state_norm;
+
+                // Trend descending check — needs at least
+                // `trend_window + 1` residual samples (the +1 covers
+                // the leading `r0_norm`).
+                let w = self.cfg.trend_window as usize;
+                let trend_descending = if trace.residuals.len() > w {
+                    let m = trace.residuals.len();
+                    (m - w..m).all(|i| trace.residuals[i] < trace.residuals[i - 1])
+                } else {
+                    false
+                };
+
+                if relative_step < self.cfg.state_tolerance && trend_descending {
+                    return NonlinearOutcome::ConvergedOnState {
+                        outer_iters: k + 1,
+                        final_residual: accepted_resid,
+                        relative_step,
+                        linear_iters_total,
+                        trace,
+                    };
+                }
+            }
+
+            // ---- (b) Oscillation detection ----
+            // Two consecutive Newton steps with
+            // `cos(step_k, step_{k-1}) < oscillation_cosine_threshold`
+            // → Oscillating. Same gate as (a).
+            if (k + 1) >= self.cfg.min_iterations_before_classification {
+                if let (Some(px), Some(py)) =
+                    (prev_step_x.as_ref(), prev_step_y.as_ref())
+                {
+                    let dot: f64 = step_x.iter().zip(px).map(|(a, b)| a * b).sum::<f64>()
+                        + step_y.iter().zip(py).map(|(a, b)| a * b).sum::<f64>();
+                    let n_curr = vec_norm(&step_x, &step_y);
+                    let n_prev = vec_norm(px, py);
+                    let denom = n_curr * n_prev;
+                    if denom > 1e-30 {
+                        let cos_theta = dot / denom;
+                        if cos_theta < self.cfg.oscillation_cosine_threshold {
+                            consecutive_anti_aligned += 1;
+                            if consecutive_anti_aligned >= 2 {
+                                return NonlinearOutcome::Oscillating {
+                                    outer_iters: k + 1,
+                                    last_cosine: cos_theta,
+                                    trace,
+                                };
+                            }
+                        } else {
+                            consecutive_anti_aligned = 0;
+                        }
+                    }
+                }
+            }
+            prev_step_x = Some(step_x);
+            prev_step_y = Some(step_y);
         }
 
         NonlinearOutcome::CappedIters {
@@ -708,5 +845,90 @@ mod tests {
         let cg = ConjugateGradient::new(1.0e-10, 2000);
         let outcome = solver.solve(&grid, &law, None, None, &rhs_x, &rhs_y, &mut vx, &mut vy, &cg);
         assert!(outcome.converged(), "trivial problem failed: {:?}", outcome);
+    }
+
+    // ── Step 12 R5b D2 — state convergence & oscillation tests ──────
+
+    /// `ConvergedOnState` fires when `‖α·δv‖ / ‖v‖ < state_tolerance`
+    /// AND the residual trend descends across `trend_window` iters,
+    /// even if the residual hasn't yet crossed `rel_tol·r0`.
+    ///
+    /// Setup: solve the same trivial sin-force problem as
+    /// `newton_trace_on_sin_force_n3` but with `state_tolerance =
+    /// 1e-2` (very lax) and `rel_tol = 1e-20` (unreachable). The lax
+    /// state criterion must fire first.
+    #[test]
+    fn newton_converged_on_state_fires_when_residual_plateaus() {
+        let nx = 16;
+        let ny = 16;
+        let dx = 1.0 / nx as f64;
+        let dy = 1.0 / ny as f64;
+        let grid = StokesGrid::new(nx, ny, dx, dy);
+        let law = ViscosityLaw::default();
+        let mut fx = vec![0.0; nx * ny];
+        let fy = vec![0.0; nx * ny];
+        for j in 0..ny {
+            for i in 0..nx {
+                let x = i as f64 * dx;
+                fx[j * nx + i] = 0.1 * (2.0 * std::f64::consts::PI * x).sin();
+            }
+        }
+        let mut vx = vec![0.0; nx * ny];
+        let mut vy = vec![0.0; nx * ny];
+        let mut solver = NewtonSolver::default();
+        // Unreachable residual tolerance ⇒ Converged variant won't
+        // fire on the residual path.
+        solver.cfg.rel_tol = 1.0e-20;
+        solver.cfg.abs_tol = 1.0e-30;
+        // Very loose state tolerance — should fire as soon as the
+        // state stabilises (which happens after a few Newton iters
+        // on this smooth problem).
+        solver.cfg.state_tolerance = 1.0e-2;
+        solver.cfg.min_iterations_before_classification = 3;
+        let cg = ConjugateGradient::new(1.0e-10, 2000);
+        let outcome = solver.solve(&grid, &law, None, None, &fx, &fy, &mut vx, &mut vy, &cg);
+        match &outcome {
+            NonlinearOutcome::ConvergedOnState { relative_step, outer_iters, .. } => {
+                assert!(*relative_step < 1.0e-2, "relative_step = {}", relative_step);
+                assert!(*outer_iters >= 3, "must respect min_iterations_before_classification");
+            }
+            other => panic!("expected ConvergedOnState, got {:?}", other),
+        }
+        assert!(outcome.converged(), "ConvergedOnState must report converged()");
+    }
+
+    /// Trivial regression: when `state_tolerance` is very strict and
+    /// the residual contract reaches first, the outcome is still
+    /// `Converged` (not `ConvergedOnState`). State criterion is a
+    /// *secondary* exit, not a primary one.
+    #[test]
+    fn newton_residual_convergence_takes_precedence() {
+        let nx = 16;
+        let ny = 16;
+        let dx = 1.0 / nx as f64;
+        let dy = 1.0 / ny as f64;
+        let grid = StokesGrid::new(nx, ny, dx, dy);
+        let law = ViscosityLaw::default();
+        let mut fx = vec![0.0; nx * ny];
+        let fy = vec![0.0; nx * ny];
+        for j in 0..ny {
+            for i in 0..nx {
+                let x = i as f64 * dx;
+                fx[j * nx + i] = 0.1 * (2.0 * std::f64::consts::PI * x).sin();
+            }
+        }
+        let mut vx = vec![0.0; nx * ny];
+        let mut vy = vec![0.0; nx * ny];
+        let mut solver = NewtonSolver::default();
+        // Strict state tolerance: should NOT fire before residual
+        // convergence on this trivial problem.
+        solver.cfg.state_tolerance = 1.0e-20;
+        let cg = ConjugateGradient::new(1.0e-10, 2000);
+        let outcome = solver.solve(&grid, &law, None, None, &fx, &fy, &mut vx, &mut vy, &cg);
+        assert!(
+            matches!(outcome, NonlinearOutcome::Converged { .. }),
+            "expected Converged (residual path), got {:?}",
+            outcome
+        );
     }
 }
