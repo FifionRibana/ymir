@@ -2486,14 +2486,27 @@ where
 
 fn record_outcome(oc: &NonlinearOutcome, na: &mut NewtonAggregate) {
     match oc {
-        NonlinearOutcome::Converged { outer_iters, trace, .. } => {
+        NonlinearOutcome::Converged { outer_iters, trace, .. }
+        // Step 12 R5b D2 — ConvergedOnState is a success outcome
+        // (state stabilised). Counted under `converged` so dashboards
+        // and regression tests that assert "all steps converged" keep
+        // their semantics. The trace records the relative-step exit
+        // info if a finer breakdown is needed downstream.
+        | NonlinearOutcome::ConvergedOnState { outer_iters, trace, .. } => {
             na.converged += 1;
             na.outer_iters.push(*outer_iters);
             for &c in &trace.linear_iters {
                 na.cg_iters_per_newton_step.push(c);
             }
         }
-        NonlinearOutcome::Stalled { outer_iters, trace } => {
+        NonlinearOutcome::Stalled { outer_iters, trace }
+        // Step 12 R5b D2 — Oscillating is a failure-to-progress
+        // (cos(step_k, step_{k-1}) < threshold). Counted under
+        // `stalled` so downstream consumers (which already know how
+        // to fold a stall into a `BaselineResult`) handle it
+        // uniformly. The exact failure mode is preserved in the
+        // outcome trace.
+        | NonlinearOutcome::Oscillating { outer_iters, trace, .. } => {
             na.stalled += 1;
             na.outer_iters.push(*outer_iters);
             for &c in &trace.linear_iters {
