@@ -166,6 +166,46 @@ where
             );
             let mass_after: f64 = baseline.final_state.s_field.data().iter().sum();
 
+            // Step 4b: R5b D1-ter — reset velocity to zero after
+            // macro_redistribution.
+            //
+            // EMPIRICAL FINDING (counter-intuitive vs classical Stokes
+            // wisdom): the warm-start `v = v_final_previous_cycle` is
+            // not just sub-optimal post-macro, it is **actively
+            // harmful**. `macro_redistribution::apply` shifts S̃ enough
+            // that the GPE driver direction changes; `v_warm_start`
+            // points in a direction now anti-useful for the next
+            // tectonic step, and Newton oscillates trying to correct
+            // it (sub-case C amplified in D2-bis classification).
+            //
+            // The 3-variant D1-ter benchmark (commit 4969de9) showed
+            // `v = 0` gives:
+            //   - cycle 2 Converged 45/45 vs 14/41 with warm-start
+            //   - 0 Oscillating vs 26 with warm-start
+            //   - CG iter total over first 5 cycle-2 steps: 28k vs 75k
+            //   - ‖Δv‖/‖v‖ max: 1.00 vs 11.43
+            // Variant C (Gaussian smoothing of v) is WORSE than
+            // warm-start (90k CG iter, peak |v| explosion to 53) —
+            // smoothing preserves the wrong direction.
+            //
+            // Gated by `WorkflowConfig::Enabled` (this match arm).
+            // The Disabled branch in `Self::Disabled => …` is
+            // untouched and the bit-identical regression
+            // `v2_workflow_disabled_regression` continues to hold.
+            //
+            // Counter-intuitive — leave the comment block intact; a
+            // future dev tempted to "re-enable warm-start because
+            // it's faster on Stokes" would re-break the system. See
+            // `docs/reports/step12_solver_audit.md` § F and
+            // `docs/reports/step12_r5b_d1_ter_init_variants/` for the
+            // full empirical record.
+            for v in baseline.final_state.vx.iter_mut() {
+                *v = 0.0;
+            }
+            for v in baseline.final_state.vy.iter_mut() {
+                *v = 0.0;
+            }
+
             // Step 5: Reclassify per-cell `plate_type` from new
             // `s_field` against `sea_level_ref`. The Voronoï
             // tessellation (`plate_id`) is static for the run; only

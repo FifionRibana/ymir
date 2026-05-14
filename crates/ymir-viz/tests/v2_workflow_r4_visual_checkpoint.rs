@@ -1912,3 +1912,113 @@ fn r5b_d1_ter_init_b_zero() {
 fn r5b_d1_ter_init_c_smoothed() {
     run_d1_ter_init_variant(InitVariant::Smoothed, "c_smoothed");
 }
+
+/// Step 12 R5b — re-measure D1-bis pattern AFTER the D1-ter implement
+/// (reinit v=0 post-macro inside `phase_a::run_phase_a_cycle_with_progress`).
+/// Output dir is distinct from the pre-D1-ter version so the
+/// comparison report stays available.
+#[test]
+#[ignore]
+fn r5b_d1_bis_per_step_workflow_on_post_d1_ter() {
+    use ymir_viz::bridge::v2::build_config;
+
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r5b_d1_bis_per_step_post_d1_ter");
+    std::fs::create_dir_all(&out_dir).expect("create output dir");
+
+    println!(
+        "\n=== R5b D1-bis POST-D1-ter: per-step CG/Newton, workflow ON, 2 cycles ==="
+    );
+
+    let mut spec = presets::load("active_medley").expect("load active_medley");
+    spec.workflow = V2WorkflowSpec::On {
+        phase_a: V2PhaseAParams {
+            n_cycles: 2,
+            k_cycle: 20,
+            ..V2PhaseAParams::default()
+        },
+        phase_b: V2PhaseBParams::default(),
+    };
+    spec.grid_nx = 32;
+    spec.grid_ny = 32;
+    spec.steps = 40;
+    spec.total_time_nondim = 2.4;
+
+    let mut cfg = build_config::build(&spec);
+    let wf = build_config::build_workflow(&spec.workflow);
+
+    let t0 = std::time::Instant::now();
+    let output = run_phase_a_loop(&mut cfg, &wf);
+    let elapsed = t0.elapsed().as_secs_f64();
+    println!("[r5b/d1-bis post-D1-ter] completed in {elapsed:.1}s");
+
+    let mut md = String::new();
+    md.push_str("# R5b D1-bis POST-D1-ter — per-step solver health\n\n");
+    md.push_str(&format!(
+        "32² active_medley (mf=1.0), workflow ON, 2 cycles × 20 steps, JacobiCG + D2 criteria + D1-ter reinit v=0. Runtime: {:.1}s.\n\n",
+        elapsed
+    ));
+    md.push_str("## Per-step CG + Newton iterations\n\n");
+    md.push_str("| cycle | step in cycle | newton outer | inner solves | CG sum | CG mean | CG max | hit cap (2000) |\n");
+    md.push_str("|---|---|---|---|---|---|---|---|\n");
+
+    for (cycle_idx, cycle) in output.cycles.iter().enumerate() {
+        let m = &cycle.baseline.metrics;
+        let newt = match m.newton.as_ref() {
+            Some(n) => n,
+            None => continue,
+        };
+        let mut cg_cursor: usize = 0;
+        for (step_in_cycle, &outer) in newt.outer_iters.iter().enumerate() {
+            let outer_n = outer as usize;
+            let cg_slice = &newt.cg_iters_per_newton_step
+                [cg_cursor..(cg_cursor + outer_n).min(newt.cg_iters_per_newton_step.len())];
+            let cg_sum: usize = cg_slice.iter().sum();
+            let cg_mean = if outer_n > 0 { cg_sum as f64 / outer_n as f64 } else { 0.0 };
+            let cg_max = *cg_slice.iter().max().unwrap_or(&0);
+            let hit_cap = cg_slice.iter().filter(|&&c| c >= 2000).count();
+            md.push_str(&format!(
+                "| {} | {} | {} | {} | {} | {:.0} | {} | {} |\n",
+                cycle_idx + 1, step_in_cycle, outer, outer_n, cg_sum, cg_mean, cg_max, hit_cap,
+            ));
+            cg_cursor += outer_n;
+        }
+        md.push_str(&format!(
+            "\n_Cycle {} aggregate: Converged={}, Stalled={}, Diverged={}, Capped={}, mass_drift={:.3e}_\n\n",
+            cycle_idx + 1,
+            newt.converged, newt.stalled, newt.diverged, newt.capped,
+            cycle.mass_drift,
+        ));
+    }
+
+    md.push_str("## Pattern detection\n\n");
+    for (cycle_idx, cycle) in output.cycles.iter().enumerate() {
+        let m = &cycle.baseline.metrics;
+        let newt = match m.newton.as_ref() {
+            Some(n) => n,
+            None => continue,
+        };
+        let mut cg_per_step: Vec<usize> = Vec::with_capacity(newt.outer_iters.len());
+        let mut cg_cursor: usize = 0;
+        for &outer in &newt.outer_iters {
+            let outer_n = outer as usize;
+            let cg_slice = &newt.cg_iters_per_newton_step
+                [cg_cursor..(cg_cursor + outer_n).min(newt.cg_iters_per_newton_step.len())];
+            cg_per_step.push(cg_slice.iter().sum());
+            cg_cursor += outer_n;
+        }
+        let n = cg_per_step.len();
+        if n < 4 { continue; }
+        let early = &cg_per_step[..n / 4];
+        let mid = &cg_per_step[n / 4..3 * n / 4];
+        let late = &cg_per_step[3 * n / 4..];
+        let avg = |v: &[usize]| -> f64 { v.iter().sum::<usize>() as f64 / v.len() as f64 };
+        md.push_str(&format!(
+            "- Cycle {} CG sum/step — early-{}: mean={:.0}; mid: mean={:.0}; late: mean={:.0}\n",
+            cycle_idx + 1, early.len(), avg(early), avg(mid), avg(late),
+        ));
+    }
+
+    std::fs::write(out_dir.join("report.md"), &md).expect("write report.md");
+    println!("\n{md}");
+}
