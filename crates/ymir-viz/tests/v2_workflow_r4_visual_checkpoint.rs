@@ -1484,3 +1484,431 @@ fn r5b_d1_bis_per_step_workflow_on_post_d2() {
     std::fs::write(out_dir.join("report.md"), &md).expect("write report.md");
     println!("\n{md}");
 }
+
+// ── R5b D2-bis — Oscillating physical evolution analysis ────────────
+//
+// D2 post-fix surfaced 26 Oscillating outcomes on cycle 2 of the
+// active_medley 32² × 2 cycles × mf=1.0 workflow ON regime. D2-bis
+// instruments step-to-step physical state (peek_s, peek_vx, peek_vy
+// via the harness on_progress callback) to classify the oscillation:
+//
+//   A. Bénin — `‖Δv‖/‖v‖` small throughout, smooth evolution
+//   B. Problème non-unique — `‖Δv‖/‖v‖` > 10 % on Oscillating
+//   C. Init transient — first Oscillating step `‖Δv‖/‖v‖` >> mean
+//
+// Output: `docs/reports/step12_r5b_d2_bis_oscillating/report.md`.
+
+#[derive(Clone, Debug)]
+struct StepSnapshot {
+    step_global: usize,
+    cycle: usize,
+    step_in_cycle: usize,
+    peak_v: f64,
+    s_mean: f64,
+    s_max: f64,
+    mass_total: f64,
+    rel_dv: f64,
+    rel_ds: f64,
+}
+
+#[test]
+#[ignore]
+fn r5b_d2_bis_oscillating_evolution() {
+    use std::cell::RefCell;
+    use ymir_core::tectonics_v2::workflow::{
+        final_state_to_continuation, run_phase_a_cycle_with_progress,
+    };
+    use ymir_viz::bridge::v2::build_config;
+
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r5b_d2_bis_oscillating");
+    std::fs::create_dir_all(&out_dir).expect("create output dir");
+
+    println!("\n=== R5b D2-bis: per-step Oscillating physical evolution ===");
+
+    let mut spec = presets::load("active_medley").expect("load active_medley");
+    spec.workflow = V2WorkflowSpec::On {
+        phase_a: V2PhaseAParams {
+            n_cycles: 2,
+            k_cycle: 20,
+            ..V2PhaseAParams::default()
+        },
+        phase_b: V2PhaseBParams::default(),
+    };
+    spec.grid_nx = 32;
+    spec.grid_ny = 32;
+    spec.steps = 40;
+    spec.total_time_nondim = 2.4;
+
+    let mut cfg = build_config::build(&spec);
+    let wf = build_config::build_workflow(&spec.workflow);
+
+    let captured: RefCell<Vec<StepSnapshot>> = RefCell::new(Vec::new());
+    let prev_state: RefCell<Option<(Vec<f64>, Vec<f64>, Vec<f64>)>> = RefCell::new(None);
+    let cycle_counter: RefCell<usize> = RefCell::new(0);
+    let step_in_cycle_counter: RefCell<usize> = RefCell::new(0);
+    let step_global_counter: RefCell<usize> = RefCell::new(0);
+
+    let mut record_step = |progress: &ymir_core::tectonics_v2::diagnostics::harness::StepProgress<'_>| -> bool {
+        let peek_s = progress.peek_s.data().to_vec();
+        let peek_vx = progress.peek_vx.to_vec();
+        let peek_vy = progress.peek_vy.to_vec();
+        let n = peek_s.len();
+        let peak_v = (0..n)
+            .map(|i| (peek_vx[i].powi(2) + peek_vy[i].powi(2)).sqrt())
+            .fold(0.0_f64, f64::max);
+        let s_mean = peek_s.iter().sum::<f64>() / n as f64;
+        let s_max = peek_s.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let mass_total: f64 = peek_s.iter().sum();
+
+        let (rel_dv, rel_ds) = {
+            let prev = prev_state.borrow();
+            if let Some((pvx, pvy, ps)) = prev.as_ref() {
+                let v_norm_sq: f64 = peek_vx.iter().map(|x| x * x).sum::<f64>()
+                    + peek_vy.iter().map(|x| x * x).sum::<f64>();
+                let dv_norm_sq: f64 = peek_vx
+                    .iter()
+                    .zip(pvx)
+                    .map(|(a, b)| (a - b).powi(2))
+                    .sum::<f64>()
+                    + peek_vy
+                        .iter()
+                        .zip(pvy)
+                        .map(|(a, b)| (a - b).powi(2))
+                        .sum::<f64>();
+                let s_norm_sq: f64 = peek_s.iter().map(|x| x * x).sum::<f64>();
+                let ds_norm_sq: f64 = peek_s
+                    .iter()
+                    .zip(ps)
+                    .map(|(a, b)| (a - b).powi(2))
+                    .sum::<f64>();
+                let rel_dv = (dv_norm_sq / v_norm_sq.max(1e-30)).sqrt();
+                let rel_ds = (ds_norm_sq / s_norm_sq.max(1e-30)).sqrt();
+                (rel_dv, rel_ds)
+            } else {
+                (0.0, 0.0)
+            }
+        };
+
+        captured.borrow_mut().push(StepSnapshot {
+            step_global: *step_global_counter.borrow(),
+            cycle: *cycle_counter.borrow(),
+            step_in_cycle: *step_in_cycle_counter.borrow(),
+            peak_v,
+            s_mean,
+            s_max,
+            mass_total,
+            rel_dv,
+            rel_ds,
+        });
+
+        *prev_state.borrow_mut() = Some((peek_vx, peek_vy, peek_s));
+        *step_in_cycle_counter.borrow_mut() += 1;
+        *step_global_counter.borrow_mut() += 1;
+        true
+    };
+
+    let t0 = std::time::Instant::now();
+
+    // Cycle 1
+    *cycle_counter.borrow_mut() = 1;
+    *step_in_cycle_counter.borrow_mut() = 0;
+    let cycle_1 = run_phase_a_cycle_with_progress(&cfg, &wf, &mut record_step);
+    cfg.continuation =
+        Some(final_state_to_continuation(&cycle_1.baseline.final_state));
+
+    // Cycle 2
+    *cycle_counter.borrow_mut() = 2;
+    *step_in_cycle_counter.borrow_mut() = 0;
+    let cycle_2 = run_phase_a_cycle_with_progress(&cfg, &wf, &mut record_step);
+
+    let elapsed = t0.elapsed().as_secs_f64();
+    println!("[r5b/d2-bis] completed in {elapsed:.1}s");
+
+    let newt_1 = cycle_1.baseline.metrics.newton.as_ref().expect("newton 1");
+    let newt_2 = cycle_2.baseline.metrics.newton.as_ref().expect("newton 2");
+
+    let mut md = String::new();
+    md.push_str("# R5b D2-bis — per-step physical evolution + Newton outcomes\n\n");
+    md.push_str(&format!(
+        "Runtime: {:.1}s. 2 cycles, JacobiCG + D2 criteria, mf=1.0 active_medley 32².\n\n",
+        elapsed
+    ));
+    md.push_str("## Cycle aggregates\n\n");
+    md.push_str(&format!(
+        "- Cycle 1: Converged={}, Stalled={} (Oscillating ⊂ Stalled), Diverged={}, Capped={}\n",
+        newt_1.converged, newt_1.stalled, newt_1.diverged, newt_1.capped
+    ));
+    md.push_str(&format!(
+        "- Cycle 2: Converged={}, Stalled={} (Oscillating ⊂ Stalled), Diverged={}, Capped={}\n\n",
+        newt_2.converged, newt_2.stalled, newt_2.diverged, newt_2.capped
+    ));
+
+    md.push_str("## Per-step physical state evolution\n\n");
+    md.push_str("| cycle | step | newton outer | ‖Δv‖/‖v‖ | ‖ΔS̃‖/‖S̃‖ | peak\\|v\\| | S̃ mean | S̃ max | mass |\n");
+    md.push_str("|---|---|---|---|---|---|---|---|---|\n");
+
+    let snaps = captured.borrow();
+    let outer_iters_cycle = |cy: usize| -> &[u32] {
+        if cy == 1 { &newt_1.outer_iters } else { &newt_2.outer_iters }
+    };
+    for snap in snaps.iter() {
+        let outer = outer_iters_cycle(snap.cycle)
+            .get(snap.step_in_cycle)
+            .copied()
+            .unwrap_or(0);
+        md.push_str(&format!(
+            "| {} | {} | {} | {:.3e} | {:.3e} | {:.3e} | {:.3} | {:.3} | {:.3} |\n",
+            snap.cycle, snap.step_in_cycle, outer, snap.rel_dv, snap.rel_ds,
+            snap.peak_v, snap.s_mean, snap.s_max, snap.mass_total,
+        ));
+    }
+    md.push('\n');
+
+    md.push_str("## Sub-case classification (cycle 2)\n\n");
+    let cycle2_snaps: Vec<&StepSnapshot> = snaps.iter().filter(|s| s.cycle == 2).collect();
+    if !cycle2_snaps.is_empty() {
+        let dv_first = cycle2_snaps.first().map(|s| s.rel_dv).unwrap_or(0.0);
+        let dv_max = cycle2_snaps.iter().map(|s| s.rel_dv).fold(0.0_f64, f64::max);
+        let dv_mean = cycle2_snaps.iter().map(|s| s.rel_dv).sum::<f64>()
+            / cycle2_snaps.len() as f64;
+        let mass_init = cycle2_snaps.first().map(|s| s.mass_total).unwrap_or(0.0);
+        let mass_final = cycle2_snaps.last().map(|s| s.mass_total).unwrap_or(0.0);
+        let mass_change_pct = (mass_final - mass_init) / mass_init.max(1e-12) * 100.0;
+        md.push_str(&format!(
+            "- ‖Δv‖/‖v‖ : first step = {:.3e}, max = {:.3e}, mean = {:.3e}\n",
+            dv_first, dv_max, dv_mean
+        ));
+        md.push_str(&format!(
+            "- Mass evolution : init = {:.3}, final = {:.3} (Δ {:.3} %)\n",
+            mass_init, mass_final, mass_change_pct
+        ));
+
+        let verdict = if dv_max < 1e-2 {
+            "**Sous-cas A (bénin)** — `‖Δv‖/‖v‖ max < 1 %` ; oscillation autour d'un attracteur stable, état committé acceptable."
+        } else if dv_first > 5.0 * dv_mean && dv_max > 0.05 {
+            "**Sous-cas C (init transient)** — premier step Oscillating montre `‖Δv‖/‖v‖` >> moyenne ; init continuation mauvais. D1-ter peut aider mais cible la cause."
+        } else if dv_max > 0.1 {
+            "**Sous-cas B (problème non-unique)** — `‖Δv‖/‖v‖` > 10 % sur Oscillating ; état committé arbitraire ; D1-ter smoothing critique."
+        } else {
+            "**Intermédiaire** — pattern mixte, examen visuel nécessaire."
+        };
+        md.push_str(&format!("\n{verdict}\n"));
+    }
+
+    std::fs::write(out_dir.join("report.md"), &md).expect("write report.md");
+    println!("\n{md}");
+}
+
+// ── R5b D1-ter — init variant diagnostic for cycle 2 oscillation ────
+//
+// D2-bis classified cycle 2 oscillation as sub-case C (init transient,
+// `‖Δv‖/‖v‖ max = 1143 %`). Before committing to a specific fix
+// (reinit v=0, smoothing post-macro, or other), this diagnostic runs
+// three init variants on the SAME post-cycle-1 state and measures
+// Newton iter / CG iter / outcome on cycle 2 steps 0-4 (where the
+// oscillation peaks).
+//
+// Variants:
+//   A. warm_start : v = v_final_cycle_1 (current behaviour, baseline)
+//   B. zero       : v = 0
+//   C. smoothed   : v = 3x3 Gaussian-smoothed v_final_cycle_1 on
+//                   periodic grid
+//
+// Output: `docs/reports/step12_r5b_d1_ter_init_variants/<label>/`.
+
+fn apply_3x3_gauss_periodic(data: &mut [f64], nx: usize, ny: usize) {
+    let src: Vec<f64> = data.to_vec();
+    let k: [[f64; 3]; 3] = [
+        [1.0, 2.0, 1.0],
+        [2.0, 4.0, 2.0],
+        [1.0, 2.0, 1.0],
+    ];
+    let norm = 16.0;
+    for j in 0..ny {
+        for i in 0..nx {
+            let mut sum = 0.0;
+            for dj in 0..3 {
+                let jj = (j + ny + dj - 1) % ny;
+                for di in 0..3 {
+                    let ii = (i + nx + di - 1) % nx;
+                    sum += k[dj][di] * src[jj * nx + ii];
+                }
+            }
+            data[j * nx + i] = sum / norm;
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum InitVariant {
+    WarmStart,
+    Zero,
+    Smoothed,
+}
+
+fn run_d1_ter_init_variant(variant: InitVariant, label: &str) {
+    use std::cell::RefCell;
+    use ymir_core::tectonics_v2::workflow::{
+        final_state_to_continuation, run_phase_a_cycle_with_progress,
+    };
+    use ymir_viz::bridge::v2::build_config;
+
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r5b_d1_ter_init_variants")
+        .join(label);
+    std::fs::create_dir_all(&out_dir).expect("create output dir");
+
+    println!("\n=== R5b D1-ter init variant: {label} ===");
+
+    let mut spec = presets::load("active_medley").expect("load active_medley");
+    spec.workflow = V2WorkflowSpec::On {
+        phase_a: V2PhaseAParams {
+            n_cycles: 2,
+            k_cycle: 20,
+            ..V2PhaseAParams::default()
+        },
+        phase_b: V2PhaseBParams::default(),
+    };
+    spec.grid_nx = 32;
+    spec.grid_ny = 32;
+    spec.steps = 40;
+    spec.total_time_nondim = 2.4;
+
+    let mut cfg = build_config::build(&spec);
+    let wf = build_config::build_workflow(&spec.workflow);
+
+    // Cycle 1 — identical for all variants (baseline)
+    let no_op =
+        |_: &ymir_core::tectonics_v2::diagnostics::harness::StepProgress<'_>| -> bool { true };
+    let t0 = std::time::Instant::now();
+    let cycle_1 = run_phase_a_cycle_with_progress(&cfg, &wf, no_op);
+    let cycle_1_elapsed = t0.elapsed().as_secs_f64();
+    println!("[d1-ter/{label}] cycle 1 done in {cycle_1_elapsed:.1}s");
+
+    let nx = cycle_1.baseline.final_state.s_field.nx();
+    let ny = cycle_1.baseline.final_state.s_field.ny();
+    let mut continuation =
+        final_state_to_continuation(&cycle_1.baseline.final_state);
+    match variant {
+        InitVariant::WarmStart => {}
+        InitVariant::Zero => {
+            for v in continuation.vx.iter_mut() { *v = 0.0; }
+            for v in continuation.vy.iter_mut() { *v = 0.0; }
+        }
+        InitVariant::Smoothed => {
+            apply_3x3_gauss_periodic(&mut continuation.vx, nx, ny);
+            apply_3x3_gauss_periodic(&mut continuation.vy, nx, ny);
+        }
+    }
+    cfg.continuation = Some(continuation);
+
+    let captured: RefCell<Vec<StepSnapshot>> = RefCell::new(Vec::new());
+    let prev_state: RefCell<Option<(Vec<f64>, Vec<f64>, Vec<f64>)>> =
+        RefCell::new(None);
+    let step_counter: RefCell<usize> = RefCell::new(0);
+
+    let mut record_step =
+        |progress: &ymir_core::tectonics_v2::diagnostics::harness::StepProgress<'_>| -> bool {
+        let peek_s = progress.peek_s.data().to_vec();
+        let peek_vx = progress.peek_vx.to_vec();
+        let peek_vy = progress.peek_vy.to_vec();
+        let n = peek_s.len();
+        let peak_v = (0..n)
+            .map(|i| (peek_vx[i].powi(2) + peek_vy[i].powi(2)).sqrt())
+            .fold(0.0_f64, f64::max);
+        let s_mean = peek_s.iter().sum::<f64>() / n as f64;
+        let s_max = peek_s.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let mass_total: f64 = peek_s.iter().sum();
+        let (rel_dv, rel_ds) = {
+            let prev = prev_state.borrow();
+            if let Some((pvx, pvy, ps)) = prev.as_ref() {
+                let v_norm_sq: f64 = peek_vx.iter().map(|x| x * x).sum::<f64>()
+                    + peek_vy.iter().map(|x| x * x).sum::<f64>();
+                let dv_norm_sq: f64 = peek_vx.iter().zip(pvx).map(|(a, b)| (a - b).powi(2)).sum::<f64>()
+                    + peek_vy.iter().zip(pvy).map(|(a, b)| (a - b).powi(2)).sum::<f64>();
+                let s_norm_sq: f64 = peek_s.iter().map(|x| x * x).sum::<f64>();
+                let ds_norm_sq: f64 = peek_s.iter().zip(ps).map(|(a, b)| (a - b).powi(2)).sum::<f64>();
+                (
+                    (dv_norm_sq / v_norm_sq.max(1e-30)).sqrt(),
+                    (ds_norm_sq / s_norm_sq.max(1e-30)).sqrt(),
+                )
+            } else { (0.0, 0.0) }
+        };
+        captured.borrow_mut().push(StepSnapshot {
+            step_global: *step_counter.borrow(),
+            cycle: 2,
+            step_in_cycle: *step_counter.borrow(),
+            peak_v, s_mean, s_max, mass_total, rel_dv, rel_ds,
+        });
+        *prev_state.borrow_mut() = Some((peek_vx, peek_vy, peek_s));
+        *step_counter.borrow_mut() += 1;
+        true
+    };
+
+    let t1 = std::time::Instant::now();
+    let cycle_2 = run_phase_a_cycle_with_progress(&cfg, &wf, &mut record_step);
+    let cycle_2_elapsed = t1.elapsed().as_secs_f64();
+    println!("[d1-ter/{label}] cycle 2 done in {cycle_2_elapsed:.1}s");
+
+    let newt_2 = cycle_2.baseline.metrics.newton.as_ref().expect("newton 2");
+
+    let mut md = String::new();
+    md.push_str(&format!("# R5b D1-ter init variant — {label}\n\n"));
+    md.push_str(&format!(
+        "Cycle 1 runtime: {:.1}s. Cycle 2 runtime: {:.1}s.\n\n",
+        cycle_1_elapsed, cycle_2_elapsed
+    ));
+    md.push_str(&format!(
+        "Cycle 2 outcomes: Converged={}, Stalled={}, Diverged={}, Capped={}\n\n",
+        newt_2.converged, newt_2.stalled, newt_2.diverged, newt_2.capped
+    ));
+
+    md.push_str("## Cycle 2 first 10 steps\n\n");
+    md.push_str("| step | newton outer | ‖Δv‖/‖v‖ | ‖ΔS̃‖/‖S̃‖ | peak\\|v\\| | S̃ max | mass |\n");
+    md.push_str("|---|---|---|---|---|---|---|\n");
+    let snaps = captured.borrow();
+    let take = snaps.len().min(10);
+    for (idx, snap) in snaps.iter().take(take).enumerate() {
+        let outer = newt_2.outer_iters.get(idx).copied().unwrap_or(0);
+        md.push_str(&format!(
+            "| {} | {} | {:.3e} | {:.3e} | {:.3e} | {:.3} | {:.3} |\n",
+            idx, outer, snap.rel_dv, snap.rel_ds, snap.peak_v, snap.s_max, snap.mass_total,
+        ));
+    }
+    md.push('\n');
+
+    let first_5: Vec<&StepSnapshot> = snaps.iter().take(5).collect();
+    if !first_5.is_empty() {
+        let dv_max = first_5.iter().map(|s| s.rel_dv).fold(0.0_f64, f64::max);
+        let dv_mean = first_5.iter().map(|s| s.rel_dv).sum::<f64>() / first_5.len() as f64;
+        let newton_total: u32 = newt_2.outer_iters.iter().take(5).sum();
+        let cg_total: usize = newt_2.cg_iters_per_newton_step.iter().take(newton_total as usize).sum();
+        md.push_str("## Aggregate first 5 steps cycle 2\n\n");
+        md.push_str(&format!("- ‖Δv‖/‖v‖ max : {:.3e}\n", dv_max));
+        md.push_str(&format!("- ‖Δv‖/‖v‖ mean : {:.3e}\n", dv_mean));
+        md.push_str(&format!("- Newton outer iter total : {}\n", newton_total));
+        md.push_str(&format!("- CG iter total : {}\n", cg_total));
+    }
+
+    std::fs::write(out_dir.join("report.md"), &md).expect("write report.md");
+    println!("\n{md}");
+}
+
+#[test]
+#[ignore]
+fn r5b_d1_ter_init_a_warm_start() {
+    run_d1_ter_init_variant(InitVariant::WarmStart, "a_warm_start");
+}
+
+#[test]
+#[ignore]
+fn r5b_d1_ter_init_b_zero() {
+    run_d1_ter_init_variant(InitVariant::Zero, "b_zero");
+}
+
+#[test]
+#[ignore]
+fn r5b_d1_ter_init_c_smoothed() {
+    run_d1_ter_init_variant(InitVariant::Smoothed, "c_smoothed");
+}
