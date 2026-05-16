@@ -96,6 +96,37 @@ impl MantlePattern {
         }
         peak
     }
+
+    /// Recompute `v_mantle = curl(ψ ẑ)` in place from a new nodal
+    /// `ψ`. Same algebra as [`build_mantle_pattern`] but writes
+    /// into the existing buffers (no allocation). Used by Step 12
+    /// R6 to rebuild the pattern each step under phase drift —
+    /// the buffer footprint stays constant across the run.
+    pub fn rebuild_from_psi(
+        &mut self,
+        psi_nodal: &Field2D,
+        dx: f64,
+        dy: f64,
+        idx_x: &PeriodicIndex,
+        idx_y: &PeriodicIndex,
+    ) {
+        debug_assert_eq!(psi_nodal.nx(), self.nx());
+        debug_assert_eq!(psi_nodal.ny(), self.ny());
+        let nx = self.nx();
+        let ny = self.ny();
+        let inv_dx = 1.0 / dx;
+        let inv_dy = 1.0 / dy;
+        for j in 0..ny {
+            let jp = idx_y.next(j);
+            for i in 0..nx {
+                let ip = idx_x.next(i);
+                let vx = (psi_nodal.get(i, jp) - psi_nodal.get(i, j)) * inv_dy;
+                self.v_mantle_x.set(i, j, vx);
+                let vy = -(psi_nodal.get(ip, j) - psi_nodal.get(i, j)) * inv_dx;
+                self.v_mantle_y.set(i, j, vy);
+            }
+        }
+    }
 }
 
 /// Build `v_mantle = curl(ψ ẑ)` from a nodal stream function on

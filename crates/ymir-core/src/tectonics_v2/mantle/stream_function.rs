@@ -27,6 +27,27 @@
 //! After sampling, `ψ` is rescaled so `max|ψ| = 1` (or left at
 //! zero if all modes cancel). The final velocity magnitude is
 //! then controlled by `Mf`: `v_mantle = Mf · curl(ψ)`.
+//!
+//! Time evolution (Step 12 R6 — Phys.A phase drift)
+//! ------------------------------------------------
+//! At Step 8 the pattern was static (D6, "Out of scope at Step 8").
+//! Step 12 R6 wires `MantleConfig::Enabled.evolution_rate` by drifting
+//! all modes' phases linearly with non-dimensional time:
+//! ```
+//!   φx_k(t) = φx_k(0) + ω · t
+//!   φy_k(t) = φy_k(0) + ω · t       with  ω = evolution_rate · TAU
+//! ```
+//! Wave numbers and amplitudes are frozen at init. The normalisation
+//! `init_norm = max|ψ(t=0)|` is also frozen, so `|ψ(t)|` may drift
+//! around 1 instead of being clamped each step — this avoids jitter
+//! on the argmax position. See [`StreamFunctionBuilder`].
+//!
+//! Div-freeness of `v_mantle = curl(ψ)` survives the drift by
+//! construction: the staggered-curl cancellation in `pattern.rs` is
+//! algebraic in the four corner values of ψ, independent of what
+//! phases were used to compute them.
+
+use std::f64::consts::TAU;
 
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -59,7 +80,80 @@ struct Mode {
     phase_y: f64,
 }
 
-/// Generate a nodal stream function field.
+/// Builder for nodal stream functions, with optional Step 12 R6
+/// phase-drift evolution.
+///
+/// The builder draws and freezes the Fourier modes (wave numbers,
+/// amplitudes, base phases) and the t=0 normalisation factor
+/// `init_norm = max|ψ(t=0)|`. Subsequent samples at non-dimensional
+/// time `t > 0` apply a phase offset `ω · t` (with
+/// `ω = evolution_rate · TAU`) to every mode's `(φx, φy)` and
+/// divide by the *frozen* `init_norm`. The amplitude `max|ψ(t)|`
+/// is therefore allowed to drift around 1 (no runtime renorm) —
+/// preferred over per-step renormalisation because the argmax
+/// position would otherwise jitter step-to-step.
+///
+/// For Step 8 callers that only need the static t=0 pattern,
+/// [`generate_stream_function`] is a thin wrapper that builds and
+/// samples in one call — and produces output bit-identical to the
+/// pre-R6 implementation.
+#[derive(Clone, Debug)]
+pub struct StreamFunctionBuilder {
+    base_modes: Vec<Mode>,
+    init_norm: f64,
+}
+
+impl StreamFunctionBuilder {
+    /// Draw the base modes from `config.seed` and compute the t=0
+    /// normalisation factor. The grid size enters via the discrete
+    /// `max|ψ|` sample (different `(nx, ny)` may select different
+    /// argmax cells).
+    pub fn new(nx: usize, ny: usize, config: &StreamFunctionConfig) -> Self {
+        let mut rng = ChaCha8Rng::seed_from_u64(config.seed);
+        let base_modes = draw_modes(&mut rng, config.num_modes);
+        let psi_t0 = sample_nodal_unscaled(nx, ny, &base_modes);
+        let raw_max = psi_t0
+            .data()
+            .iter()
+            .map(|v| v.abs())
+            .fold(0.0_f64, f64::max);
+        let init_norm = if raw_max > 0.0 { raw_max } else { 1.0 };
+        Self { base_modes, init_norm }
+    }
+
+    /// Sample ψ at non-dimensional time `t_nondim` with phase-drift
+    /// rate `evolution_rate`. `t_nondim = 0` or `evolution_rate = 0`
+    /// returns the static t=0 pattern bit-identical to
+    /// [`generate_stream_function`].
+    pub fn sample_at_time(
+        &self,
+        nx: usize,
+        ny: usize,
+        t_nondim: f64,
+        evolution_rate: f64,
+    ) -> Field2D {
+        let phase_offset = evolution_rate * TAU * t_nondim;
+        let mut psi = if phase_offset == 0.0 {
+            sample_nodal_unscaled(nx, ny, &self.base_modes)
+        } else {
+            let drifted = drift_modes(&self.base_modes, phase_offset);
+            sample_nodal_unscaled(nx, ny, &drifted)
+        };
+        let inv = 1.0 / self.init_norm;
+        for v in psi.data_mut().iter_mut() {
+            *v *= inv;
+        }
+        psi
+    }
+
+    /// Frozen normalisation factor `max|ψ(t=0)|` (or `1.0` if all
+    /// modes degenerated to zero). Exposed for diagnostics.
+    pub fn init_norm(&self) -> f64 {
+        self.init_norm
+    }
+}
+
+/// Generate a nodal stream function field at t=0.
 ///
 /// Samples `ψ(i · dx, j · dy)` at grid nodes; returns a
 /// `Field2D` sized `nx × ny` with the nodal interpretation
@@ -71,18 +165,37 @@ struct Mode {
 /// standard normal (Box–Muller via two uniforms), giving varied
 /// Fourier weights while keeping the normalised output in `[-1,
 /// 1]`.
+///
+/// Output is bit-identical to the pre-R6 implementation. For
+/// multi-step rebuilds with phase drift, use
+/// [`StreamFunctionBuilder`] directly.
 pub fn generate_stream_function(
     nx: usize,
     ny: usize,
     config: &StreamFunctionConfig,
 ) -> Field2D {
-    let mut rng = ChaCha8Rng::seed_from_u64(config.seed);
-    let modes = draw_modes(&mut rng, config.num_modes);
-    sample_nodal(nx, ny, &modes)
+    StreamFunctionBuilder::new(nx, ny, config).sample_at_time(nx, ny, 0.0, 0.0)
+}
+
+/// Generate a nodal stream function field at non-dimensional time
+/// `t_nondim` with phase-drift rate `evolution_rate` (Step 12 R6).
+///
+/// One-shot convenience equivalent to building a
+/// [`StreamFunctionBuilder`] and calling
+/// [`StreamFunctionBuilder::sample_at_time`] once. For per-step
+/// rebuilds in the harness loop, prefer the builder so the modes
+/// and `init_norm` are drawn only once.
+pub fn generate_stream_function_at_time(
+    nx: usize,
+    ny: usize,
+    config: &StreamFunctionConfig,
+    t_nondim: f64,
+    evolution_rate: f64,
+) -> Field2D {
+    StreamFunctionBuilder::new(nx, ny, config).sample_at_time(nx, ny, t_nondim, evolution_rate)
 }
 
 fn draw_modes(rng: &mut ChaCha8Rng, num_modes: usize) -> Vec<Mode> {
-    use std::f64::consts::TAU;
     let mut modes = Vec::with_capacity(num_modes);
     for _ in 0..num_modes {
         // Wave numbers ∈ {1, 2, 3}. Convert from a uniform [0,1)
@@ -103,12 +216,27 @@ fn draw_modes(rng: &mut ChaCha8Rng, num_modes: usize) -> Vec<Mode> {
     modes
 }
 
-fn sample_nodal(nx: usize, ny: usize, modes: &[Mode]) -> Field2D {
-    use std::f64::consts::TAU;
+/// Apply a uniform phase offset to every mode's `(phase_x, phase_y)`.
+/// Wave numbers and amplitudes are passed through unchanged.
+fn drift_modes(base: &[Mode], phase_offset: f64) -> Vec<Mode> {
+    base.iter()
+        .map(|m| Mode {
+            kx: m.kx,
+            ky: m.ky,
+            amplitude: m.amplitude,
+            phase_x: m.phase_x + phase_offset,
+            phase_y: m.phase_y + phase_offset,
+        })
+        .collect()
+}
+
+/// Sample ψ at grid nodes without normalisation. Caller divides by
+/// the desired scaling factor afterwards (`init_norm` for the
+/// builder, or `max|ψ|` for the legacy renormalise-each-call path).
+fn sample_nodal_unscaled(nx: usize, ny: usize, modes: &[Mode]) -> Field2D {
     let mut psi = Field2D::new(nx, ny);
     let nxf = nx as f64;
     let nyf = ny as f64;
-    let mut max_abs = 0.0_f64;
     for j in 0..ny {
         let y = j as f64 / nyf;
         for i in 0..nx {
@@ -120,16 +248,6 @@ fn sample_nodal(nx: usize, ny: usize, modes: &[Mode]) -> Field2D {
                 sum += m.amplitude * sx * sy;
             }
             psi.set(i, j, sum);
-            let abs = sum.abs();
-            if abs > max_abs {
-                max_abs = abs;
-            }
-        }
-    }
-    if max_abs > 0.0 {
-        let inv = 1.0 / max_abs;
-        for v in psi.data_mut().iter_mut() {
-            *v *= inv;
         }
     }
     psi

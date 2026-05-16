@@ -34,8 +34,8 @@ use crate::tectonics_v2::forcing::{
     BodyForce, ForceSum, GpeForce, SimulationState, SinusoidalForce, VectorField,
 };
 use crate::tectonics_v2::mantle::{
-    build_mantle_diagonal_field, build_mantle_pattern, generate_stream_function, MantleConfig,
-    MantlePattern, StreamFunctionConfig,
+    build_mantle_diagonal_field, build_mantle_pattern, MantleConfig, MantlePattern,
+    StreamFunctionBuilder, StreamFunctionConfig,
 };
 use crate::tectonics_v2::presets::{Preset, YieldingConfig};
 use crate::tectonics_v2::rheology::{self, StrainRate, ViscosityLaw};
@@ -974,17 +974,27 @@ where
     };
 
     // Step 8 — mantle forcing state, pre-allocated once.
-    // The pattern is static at Step 8 (evolution_rate = 0, D6);
-    // generate it once at run start. The diagonal field is
-    // rebuilt each step because S̃ evolves with advection.
+    //
+    // At Step 8 the pattern was static (D6, `evolution_rate = 0`).
+    // Step 12 R6 wires `evolution_rate > 0` via Phys.A phase drift:
+    // the builder captures the base modes and the t=0 normalisation
+    // once at init, and the step loop rebuilds the pattern in place
+    // each iteration. The diagonal field is rebuilt each step
+    // regardless because S̃ evolves with advection. When
+    // `evolution_rate == 0`, the pattern is not rebuilt — the path
+    // is byte-for-byte identical to the pre-R6 behaviour.
     let is_mantle_enabled = matches!(cfg.mantle, MantleConfig::Enabled { .. });
-    let mantle_pattern: Option<MantlePattern> = if is_mantle_enabled {
+    let mut mantle_pattern: Option<MantlePattern> = None;
+    let mantle_psi_builder: Option<StreamFunctionBuilder> = if is_mantle_enabled {
         if let MantleConfig::Enabled { num_modes, seed, .. } = cfg.mantle {
-            let psi = generate_stream_function(
-                nx, ny,
+            let builder = StreamFunctionBuilder::new(
+                nx,
+                ny,
                 &StreamFunctionConfig { num_modes, seed },
             );
-            Some(build_mantle_pattern(&psi, dx, dy, &idx_x, &idx_y))
+            let psi = builder.sample_at_time(nx, ny, 0.0, 0.0);
+            mantle_pattern = Some(build_mantle_pattern(&psi, dx, dy, &idx_x, &idx_y));
+            Some(builder)
         } else {
             None
         }
@@ -1321,7 +1331,39 @@ where
         // — with no mantle-specific dispatch. `v_solved` converges
         // to the self-consistent balance via Newton's own outer loop.
         if is_mantle_enabled {
-            if let MantleConfig::Enabled { mf, coupling, .. } = cfg.mantle {
+            if let MantleConfig::Enabled { mf, coupling, evolution_rate, .. } = cfg.mantle {
+                // Step 12 R6 — phase-drift rebuild gated on
+                // `evolution_rate > 0`. At `evolution_rate == 0` the
+                // pattern stays untouched (Step 8 behaviour,
+                // bit-identical with pre-R6 baselines). When > 0, we
+                // shift every mode's (φx, φy) by ω · t_nondim with
+                // ω = evolution_rate · TAU and recompute the staggered
+                // curl in place. The cancellation proof in pattern.rs
+                // is algebraic in the four corner values of ψ — phase
+                // drift preserves `div(v_mantle) ≡ 0` to f64 precision
+                // at every t.
+                if evolution_rate > 0.0 {
+                    let builder = mantle_psi_builder
+                        .as_ref()
+                        .expect("enabled → psi builder");
+                    let t_nondim = step as f64 * dt_target;
+                    let psi = builder.sample_at_time(nx, ny, t_nondim, evolution_rate);
+                    mantle_pattern
+                        .as_mut()
+                        .expect("enabled → pattern")
+                        .rebuild_from_psi(&psi, dx, dy, &idx_x, &idx_y);
+                    // Sanity probe: div-freeness should survive the
+                    // phase drift by construction. Track the running
+                    // max so the report's `div_v_mantle_max` reflects
+                    // the worst case over the whole evolving pattern.
+                    let div_step = crate::tectonics_v2::mantle::pattern::pattern_div_max(
+                        mantle_pattern.as_ref().expect("enabled → pattern"),
+                        dx, dy, &idx_x, &idx_y,
+                    );
+                    if div_step > div_v_mantle_max_run {
+                        div_v_mantle_max_run = div_step;
+                    }
+                }
                 let pattern = mantle_pattern.as_ref().expect("enabled → pattern");
                 let f_mantle_x = slab_f_buf_mantle_x.as_mut().expect("enabled → buf");
                 let f_mantle_y = slab_f_buf_mantle_y.as_mut().expect("enabled → buf");

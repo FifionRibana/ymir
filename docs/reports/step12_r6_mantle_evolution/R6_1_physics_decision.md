@@ -164,3 +164,48 @@ Implémentation : décaler les arguments `x → (x - v_drift_x · t) mod 1`, `y 
 ## 9. Critère de succès R6.2
 
 Tous les 4 tests régression verts **et** suite `cargo test -p ymir-core` reste verte (tests pré-R6 pas cassés). Mesure empirique `||ψ(t=10) - ψ(t=0)||_inf > 0.1` confirmée. Div-freeness multi-step `< 1e-10` confirmée. **Pause obligatoire** ensuite : validation utilisateur avant lancer R6.3 sweep.
+
+## 10. Caveat structurel découvert pendant R6.2 — period field = π (pas TAU)
+
+Pendant l'écriture du test `evolution_rate_nonzero_evolves_measurably`, j'ai pris `evolution_rate = 0.5, t = 1.0` espérant `phase_offset = π` produirait `ψ(t=1) = −ψ(t=0)` (chaque sin flippe). Test FAIL : `||·||_inf = 1.9e-15` au lieu de `~2.0`. Cause structurelle de la formulation Phys.A.
+
+### Cause
+
+La forme produit `sin(arg_x + φ_x) · sin(arg_y + φ_y)` est invariante au shift simultané de `φ_x` et `φ_y` par `π` :
+
+```
+sin(arg_x + φ_x + π) · sin(arg_y + φ_y + π)
+= (−sin(arg_x + φ_x)) · (−sin(arg_y + φ_y))
+= sin(arg_x + φ_x) · sin(arg_y + φ_y)
+```
+
+Les deux signes se compensent. Conséquence : le **champ ψ a une période effective de π en phase**, pas TAU comme je l'avais supposé.
+
+### Impact sur la convention de mise à l'échelle
+
+Recalcul correct (avec `cfg.total_time_nondim ≈ 2.0` pour les presets active_medley / single_continent, dt_nondim ≈ 0.02 sur 100 steps) :
+
+| `evolution_rate` | Cumul `phase_offset = evo · TAU · t_end` | En units field-period (π) | Régime |
+|---|---|---|---|
+| 0.0  | 0 | 0 | statique (Step 8 baseline) |
+| 0.05 | 0.05·TAU·2 = 0.1·TAU ≈ 36°  | 0.2·π | très lente — moins d'1/5 de période |
+| 0.10 | 0.10·TAU·2 = 0.2·TAU ≈ 72°  | 0.4·π | lente — pas de retour identité |
+| 0.20 | 0.20·TAU·2 = 0.4·TAU ≈ 144° | 0.8·π | modérée — proche de l'identité-π |
+| 0.50 | 0.50·TAU·2 = 1.0·TAU = 360°  | 2·π    | passe par 1 identité-π mid-run |
+| 1.0  | 1.0·TAU·2 = 2·TAU = 720°    | 4·π    | 2 identités-π pendant le run |
+
+**Conséquence pour R6.3 sweep** : la fenêtre `evolution_rate ∈ {0.05, 0.10, 0.20}` initialement planifiée stays dans `[0, π]` côté phase cumulée. Aucune `evolution_rate` ne fait revenir le pattern à `ψ(0)` pendant un run de 100 steps. **Bonne nouvelle** — pas d'effet "yo-yo" non-intentionnel sur l'évolution du pattern.
+
+Si R6.3 EVO.D (aucune config ne passe) et qu'on veut tester un régime "yo-yo" volontaire pour cartographier le comportement avant pivot Phys.C, étendre le sweep à `evolution_rate ∈ {0.50, 1.0}` avant d'abandonner Phys.A.
+
+### Mitigation alternative non retenue ici
+
+Désymétriser le drift entre x et y : `φx += ω·t`, `φy += ω·t · sqrt(2)` (ou tout incommensurable). La compensation `(−1)·(−1) = 1` disparaît, la période effective redevient TAU, et la dynamique est plus riche. Pas implémenté en R6.2 — préserver la simplicité MVP. À retenir si Phys.A se révèle trop pauvre.
+
+### Test correspondant
+
+Le test 3 `evolution_rate_nonzero_evolves_measurably` :
+- Probe primaire : `phase_offset = π/2` (quadrature) → `||·||_inf > 0.1` ✓
+- Probe secondaire : `phase_offset = π` → `||·||_inf < 1e-10` (documente l'identité-π comme propriété structurelle, pas comme bug)
+
+Les deux probes coexistent dans le même test pour ancrer le caveat dans la suite régression.
