@@ -3469,3 +3469,122 @@ fn r6_3_c4_amp_5() {
 fn r6_3_c4_amp_10() {
     let _ = run_r6_3_c4_config(1.0, 0.10, 10.0, "mf_1_0_evo_0_10_amp_10");
 }
+
+// ----------------------------------------------------------------------------
+// Step 12 R7.A.1.2 step e — init-only visual preview.
+//
+// Builds the t=0 S̃ field for three init-mode variants under the
+// active_medley plate seed (no simulation, no Stokes solve) and writes
+// the corresponding S̃/altitude PNGs side-by-side. Cheap (< 1 s).
+//
+//   - active_medley (Uniform, default)            — reference shape of plates
+//   - active_medley + RadialProfile (R7.A.1 Run A) — Step 13 baseline
+//   - active_medley + Orogenic (R7.A.1 Run B)     — Step 12 R7.A.1 test
+//
+// Visual checks (manual, R7.A.1.2 remontée):
+//   - Crest identifiable on the Orogenic PNG ?
+//   - Oriented along plate's principal axis (not aligned with grid x) ?
+//   - Degenerate plates (small / colinear) fall back to angle_rad=0 ?
+//   - No artefacts from wrap (plates spanning the torus boundary)?
+//
+// Output: `docs/reports/step12_r7_a_orogenic_profile/init_preview/`.
+
+#[test]
+#[ignore]
+fn r7_a_1_init_preview() {
+    use ymir_viz::bridge::v2::{V2InitModeSpec, V2OrogenicOrientation};
+
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r7_a_orogenic_profile/init_preview");
+    std::fs::create_dir_all(&out_dir).expect("create out dir");
+
+    println!("\n=== R7.A.1 init preview ===");
+
+    // Baseline preset — active_medley loads with V2InitModeSpec::Uniform
+    // by default (no `init_mode` field in the JSON ⇒ Default trait).
+    let base_spec = presets::load("active_medley").expect("load active_medley");
+
+    // Variant 1 — Uniform (reference / plate shape only).
+    {
+        let mut spec = base_spec.clone();
+        spec.grid_nx = R4B_GRID;
+        spec.grid_ny = R4B_GRID;
+        let state = make_init_state(&spec);
+        save_field_png(&state, V2Field::SThickness, &out_dir.join("uniform_s.png"))
+            .expect("save uniform s");
+        save_field_png(&state, V2Field::Altitude, &out_dir.join("uniform_altitude.png"))
+            .expect("save uniform altitude");
+        println!("[r7.a.1] wrote uniform_s.png / uniform_altitude.png");
+    }
+
+    // Variant 2 — RadialProfile (Run A baseline for R7.A.1.3).
+    {
+        let mut spec = base_spec.clone();
+        spec.grid_nx = R4B_GRID;
+        spec.grid_ny = R4B_GRID;
+        spec.init_mode = V2InitModeSpec::radial_profile_default();
+        spec.s_perturbation_amplitude = 0.0;
+        let state = make_init_state(&spec);
+        save_field_png(&state, V2Field::SThickness, &out_dir.join("radial_s.png"))
+            .expect("save radial s");
+        save_field_png(&state, V2Field::Altitude, &out_dir.join("radial_altitude.png"))
+            .expect("save radial altitude");
+        println!("[r7.a.1] wrote radial_s.png / radial_altitude.png");
+    }
+
+    // Variant 3 — Orogenic (Run B test for R7.A.1.3).
+    {
+        let mut spec = base_spec;
+        spec.grid_nx = R4B_GRID;
+        spec.grid_ny = R4B_GRID;
+        spec.init_mode = V2InitModeSpec::Orogenic {
+            peak_value: 1.20,
+            base_continental_value: 0.85,
+            oceanic_value: 0.20,
+            half_length_ratio: 0.40,
+            width_sigma_ratio: 0.08,
+            orientation: V2OrogenicOrientation::PlateMainAxisPca,
+        };
+        spec.s_perturbation_amplitude = 0.0;
+        let state = make_init_state(&spec);
+        save_field_png(&state, V2Field::SThickness, &out_dir.join("orogenic_s.png"))
+            .expect("save orogenic s");
+        save_field_png(&state, V2Field::Altitude, &out_dir.join("orogenic_altitude.png"))
+            .expect("save orogenic altitude");
+        // Sanity: max(S̃) over the orogenic field must exceed both the
+        // base (0.85) and the radial peak (0.95) — confirms the ridge
+        // amplitude is wired through and not clamped to the radial
+        // ceiling.
+        let max_s_oro: f64 = state.s_field.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        println!("[r7.a.1] orogenic max(S̃) = {max_s_oro:.4} (peak target 1.20)");
+        assert!(
+            max_s_oro > 1.0,
+            "orogenic max(S̃) = {max_s_oro} ≤ 1.0 — ridge did not form; \
+             check periodic centroid / PCA / formula wiring",
+        );
+        // Also write a 64² version for the R7.A.1.3 sim grid.
+        let mut spec64 = presets::load("active_medley").expect("reload medley");
+        spec64.grid_nx = 64;
+        spec64.grid_ny = 64;
+        spec64.init_mode = spec.init_mode;
+        spec64.s_perturbation_amplitude = 0.0;
+        let state64 = make_init_state(&spec64);
+        save_field_png(&state64, V2Field::SThickness, &out_dir.join("orogenic_s_64.png"))
+            .expect("save 64 s");
+        save_field_png(
+            &state64,
+            V2Field::Altitude,
+            &out_dir.join("orogenic_altitude_64.png"),
+        )
+        .expect("save 64 altitude");
+        let max_s_oro_64: f64 = state64
+            .s_field
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        println!("[r7.a.1] orogenic 64² max(S̃) = {max_s_oro_64:.4}");
+        println!("[r7.a.1] wrote orogenic_s.png / orogenic_altitude.png + 64 variants");
+    }
+
+    println!("[r7.a.1] init preview done. Inspect {}", out_dir.display());
+}
