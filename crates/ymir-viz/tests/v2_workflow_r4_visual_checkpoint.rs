@@ -690,6 +690,408 @@ fn r4b5_mf_0_1() {
     );
 }
 
+// ── R5b sweep — mf {0.5, 0.6, 0.7, 0.8, 0.9} × full D2+D1-ter ─────
+//
+// R4b.5 mf sweep was conducted BEFORE the D2 + D1-ter solver fixes;
+// the verdict (mf=0.5 = sweet spot at 32²) may differ now that the
+// solver converges properly across the regime. This sweep re-measures
+// 5 mf values on 32² × 5 cycles × 20 steps × workflow ON × D2+D1-ter,
+// capturing **peak |v| per cycle** explicitly (the metric missing
+// from R4b.5 that hid the quasi-static failure of mf=0.5 at 64²).
+//
+// Output: `docs/reports/step12_r5b_mf_sweep_post_d1_ter/<label>/`.
+//
+// Multi-dim acceptance per axis (cf. user brief) :
+//   1. Preservation     — frac S̃>0.8 retention > 50 %
+//   2. Dynamics         — peak |v| > 0.1 nondim on ≥ 3 of 5 cycles
+//   3. Stability        — mass loss cumul < 5 %
+//   4. Convergence      — Stalled/Capped < 20 % of steps
+//   5. Visual           — continent shape persists (out of scope of
+//                         this scalar test — judged on cycle_5 PNG)
+
+fn run_r5b_mf_sweep(mf_value: f64, label: &str) {
+    use ymir_viz::bridge::v2::build_config;
+
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r5b_mf_sweep_post_d1_ter")
+        .join(label);
+    std::fs::create_dir_all(&out_dir).expect("create output dir");
+
+    println!("\n=== R5b mf sweep: {label} (mf={mf_value}) — 32² × 5 cycles × D2+D1-ter ===");
+
+    let mut spec = presets::load("active_medley").expect("load active_medley");
+    spec.workflow = V2WorkflowSpec::On {
+        phase_a: V2PhaseAParams::default(),
+        phase_b: V2PhaseBParams::default(),
+    };
+    if let V2MantleSpec::On {
+        coupling,
+        num_modes,
+        seed,
+        evolution_rate,
+        ..
+    } = spec.mantle
+    {
+        spec.mantle = V2MantleSpec::On {
+            mf: mf_value,
+            coupling,
+            num_modes,
+            seed,
+            evolution_rate,
+        };
+    }
+    spec.grid_nx = R4B_GRID;
+    spec.grid_ny = R4B_GRID;
+    spec.steps = R4B_N_CYCLES * R4B_K_CYCLE;
+    spec.total_time_nondim = 6.0;
+
+    // INIT capture
+    let init_state = make_init_state(&spec);
+    save_field_png(&init_state, V2Field::SThickness, &out_dir.join("cycle_0_s.png"))
+        .expect("save init s");
+    save_field_png(&init_state, V2Field::Altitude, &out_dir.join("cycle_0_altitude.png"))
+        .expect("save init alt");
+
+    let mut cfg = build_config::build(&spec);
+    let wf = build_config::build_workflow(&spec.workflow);
+
+    let t0 = std::time::Instant::now();
+    let output = run_phase_a_loop(&mut cfg, &wf);
+    let elapsed = t0.elapsed().as_secs_f64();
+    println!("[r5b-sweep/{label}] completed in {elapsed:.1}s");
+
+    let init_field = Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
+    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let mut metrics = vec![compute_metrics(0, &init_field, init_sea, 0.0, 0.0)];
+
+    for (i, cycle) in output.cycles.iter().enumerate() {
+        let cyc_idx = i + 1;
+        let v2_state = V2FinalState::from_harness(&cycle.baseline.final_state);
+        save_field_png(
+            &v2_state,
+            V2Field::SThickness,
+            &out_dir.join(format!("cycle_{cyc_idx}_s.png")),
+        )
+        .expect("save s");
+        save_field_png(
+            &v2_state,
+            V2Field::Altitude,
+            &out_dir.join(format!("cycle_{cyc_idx}_altitude.png")),
+        )
+        .expect("save altitude");
+        metrics.push(compute_metrics(
+            cyc_idx,
+            &cycle.baseline.final_state.s_field,
+            cycle.sea_level_normalized,
+            cycle.erosion_volume_removed,
+            cycle.mass_drift,
+        ));
+    }
+
+    let peak_v: Vec<f64> = output
+        .cycles
+        .iter()
+        .map(|c| c.baseline.metrics.vmax_peak)
+        .collect();
+    let newton_outcomes: Vec<(usize, usize, usize, usize)> = output
+        .cycles
+        .iter()
+        .map(|c| {
+            let n = c.baseline.metrics.newton.as_ref();
+            (
+                n.map(|n| n.converged).unwrap_or(0),
+                n.map(|n| n.stalled).unwrap_or(0),
+                n.map(|n| n.diverged).unwrap_or(0),
+                n.map(|n| n.capped).unwrap_or(0),
+            )
+        })
+        .collect();
+
+    let mut md = String::new();
+    md.push_str(&format!("# R5b mf sweep — {label} (mf={mf_value})\n\n"));
+    md.push_str(&format!(
+        "32² active_medley, workflow ON (D2 + D1-ter), 5 cycles × 20 steps. Runtime: {:.1}s.\n\n",
+        elapsed
+    ));
+
+    md.push_str("## Per-cycle solver health\n\n");
+    md.push_str("| cycle | peak \\|v\\| | Newton C/S/D/Cap | peak S̃ | frac>0.8 | mass total | max_path |\n");
+    md.push_str("|---|---|---|---|---|---|---|\n");
+    for (i, cycle) in output.cycles.iter().enumerate() {
+        let m = &metrics[i + 1];
+        let outc = newton_outcomes[i];
+        md.push_str(&format!(
+            "| {} | {:.3e} | {}/{}/{}/{} | {:.3} | {:.3} | {:.2} | {} |\n",
+            i + 1,
+            peak_v[i],
+            outc.0,
+            outc.1,
+            outc.2,
+            outc.3,
+            m.peak_s,
+            m.fraction_above_0_8,
+            m.mass_total,
+            m.max_path_length,
+        ));
+    }
+    md.push('\n');
+
+    // Multi-dim verdict
+    let init_frac = metrics[0].fraction_above_0_8;
+    let final_frac = metrics.last().unwrap().fraction_above_0_8;
+    let retention = if init_frac > 1e-9 { final_frac / init_frac } else { 0.0 };
+    let n_cycles_dynamic = peak_v.iter().filter(|&&v| v > 0.1).count();
+    let mass_init = metrics[0].mass_total;
+    let mass_final = metrics.last().unwrap().mass_total;
+    let mass_loss_pct = (mass_init - mass_final) / mass_init.abs().max(1e-12) * 100.0;
+    let total_steps_all_cycles: usize = newton_outcomes
+        .iter()
+        .map(|(c, s, d, cap)| c + s + d + cap)
+        .sum();
+    let stalled_or_capped: usize = newton_outcomes
+        .iter()
+        .map(|(_c, s, _d, cap)| s + cap)
+        .sum();
+    let stall_cap_pct = if total_steps_all_cycles > 0 {
+        100.0 * stalled_or_capped as f64 / total_steps_all_cycles as f64
+    } else {
+        0.0
+    };
+
+    md.push_str("## Multi-dim acceptance\n\n");
+    md.push_str(&format!(
+        "1. **Preservation** : frac>0.8 retention = {:.1} % (init {:.3} → final {:.3}) → {}\n",
+        100.0 * retention,
+        init_frac,
+        final_frac,
+        if retention > 0.5 { "**PASS**" } else { "**FAIL**" }
+    ));
+    md.push_str(&format!(
+        "2. **Dynamics** : peak |v| > 0.1 on {}/5 cycles → {}\n",
+        n_cycles_dynamic,
+        if n_cycles_dynamic >= 3 { "**PASS**" } else { "**FAIL**" }
+    ));
+    md.push_str(&format!(
+        "3. **Stability** : mass loss = {:.2} % → {}\n",
+        mass_loss_pct,
+        if mass_loss_pct.abs() < 5.0 { "**PASS**" } else { "**FAIL**" }
+    ));
+    md.push_str(&format!(
+        "4. **Convergence** : Stalled+Capped = {:.1} % of steps → {}\n",
+        stall_cap_pct,
+        if stall_cap_pct < 20.0 { "**PASS**" } else { "**FAIL**" }
+    ));
+    md.push_str("5. **Visual** : inspect `cycle_5_altitude.png` vs `cycle_0_altitude.png` (judged externally)\n");
+
+    std::fs::write(out_dir.join("report.md"), &md).expect("write report");
+    println!("\n{md}");
+}
+
+#[test]
+#[ignore]
+fn r5b_sweep_mf_0_5() {
+    run_r5b_mf_sweep(0.5, "mf_0_5");
+}
+
+#[test]
+#[ignore]
+fn r5b_sweep_mf_0_6() {
+    run_r5b_mf_sweep(0.6, "mf_0_6");
+}
+
+#[test]
+#[ignore]
+fn r5b_sweep_mf_0_7() {
+    run_r5b_mf_sweep(0.7, "mf_0_7");
+}
+
+#[test]
+#[ignore]
+fn r5b_sweep_mf_0_8() {
+    run_r5b_mf_sweep(0.8, "mf_0_8");
+}
+
+#[test]
+#[ignore]
+fn r5b_sweep_mf_0_9() {
+    run_r5b_mf_sweep(0.9, "mf_0_9");
+}
+
+// ── R5b evolution_rate sweep — γ.1 investigation upstream ──────────
+//
+// R5b mf sweep verdict: aucun mf ∈ {0.5, 0.6, 0.7, 0.8, 0.9} ne
+// passe les 3 critères (preservation, dynamics, stability)
+// simultanément. Pattern mf=0.7/0.8 révélateur : cycle 1 explosion
+// (peak |v| ~ 0.3-1) puis amortissement cycles 2-5. Le mantle field
+// avec `evolution_rate = 0.0` (default `active_medley`) est figé,
+// seulement scalé par mf — l'énergie n'est pas réinjectée
+// cycle-à-cycle.
+//
+// (γ.1) Hypothesis : un `mantle.evolution_rate > 0` réinjecte
+// temporellement l'énergie convective et maintient peak |v| > 0.1
+// sur les 5 cycles. Sweet spot possible en combinant `mf` modéré
+// (0.7 — assez pour produire la dynamique cycle 1) et evolution_rate
+// non-nul (sustenance).
+//
+// Sweep : `evolution_rate ∈ {0.05, 0.10, 0.20}` avec `mf = 0.7` fixe.
+//
+// Output: `docs/reports/step12_r5b_evo_sweep_mf_0_7/<label>/`.
+
+fn run_r5b_evo_sweep(mf_value: f64, evo_rate: f64, label: &str) {
+    use ymir_viz::bridge::v2::build_config;
+
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r5b_evo_sweep_mf_0_7")
+        .join(label);
+    std::fs::create_dir_all(&out_dir).expect("create output dir");
+
+    println!(
+        "\n=== R5b evo sweep: {label} (mf={mf_value}, evolution_rate={evo_rate}) ==="
+    );
+
+    let mut spec = presets::load("active_medley").expect("load active_medley");
+    spec.workflow = V2WorkflowSpec::On {
+        phase_a: V2PhaseAParams::default(),
+        phase_b: V2PhaseBParams::default(),
+    };
+    if let V2MantleSpec::On { coupling, num_modes, seed, .. } = spec.mantle {
+        spec.mantle = V2MantleSpec::On {
+            mf: mf_value,
+            coupling,
+            num_modes,
+            seed,
+            evolution_rate: evo_rate,
+        };
+    }
+    spec.grid_nx = R4B_GRID;
+    spec.grid_ny = R4B_GRID;
+    spec.steps = R4B_N_CYCLES * R4B_K_CYCLE;
+    spec.total_time_nondim = 6.0;
+
+    let init_state = make_init_state(&spec);
+    save_field_png(&init_state, V2Field::SThickness, &out_dir.join("cycle_0_s.png"))
+        .expect("save init s");
+    save_field_png(&init_state, V2Field::Altitude, &out_dir.join("cycle_0_altitude.png"))
+        .expect("save init alt");
+
+    let mut cfg = build_config::build(&spec);
+    let wf = build_config::build_workflow(&spec.workflow);
+
+    let t0 = std::time::Instant::now();
+    let output = run_phase_a_loop(&mut cfg, &wf);
+    let elapsed = t0.elapsed().as_secs_f64();
+    println!("[r5b-evo/{label}] completed in {elapsed:.1}s");
+
+    let init_field =
+        Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
+    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let mut metrics = vec![compute_metrics(0, &init_field, init_sea, 0.0, 0.0)];
+    for (i, cycle) in output.cycles.iter().enumerate() {
+        let cyc_idx = i + 1;
+        let v2_state = V2FinalState::from_harness(&cycle.baseline.final_state);
+        save_field_png(&v2_state, V2Field::SThickness, &out_dir.join(format!("cycle_{cyc_idx}_s.png"))).expect("save s");
+        save_field_png(&v2_state, V2Field::Altitude, &out_dir.join(format!("cycle_{cyc_idx}_altitude.png"))).expect("save alt");
+        metrics.push(compute_metrics(
+            cyc_idx,
+            &cycle.baseline.final_state.s_field,
+            cycle.sea_level_normalized,
+            cycle.erosion_volume_removed,
+            cycle.mass_drift,
+        ));
+    }
+
+    let peak_v: Vec<f64> = output.cycles.iter().map(|c| c.baseline.metrics.vmax_peak).collect();
+    let newton_outcomes: Vec<(usize, usize, usize, usize)> = output
+        .cycles
+        .iter()
+        .map(|c| {
+            let n = c.baseline.metrics.newton.as_ref();
+            (
+                n.map(|n| n.converged).unwrap_or(0),
+                n.map(|n| n.stalled).unwrap_or(0),
+                n.map(|n| n.diverged).unwrap_or(0),
+                n.map(|n| n.capped).unwrap_or(0),
+            )
+        })
+        .collect();
+
+    let mut md = String::new();
+    md.push_str(&format!(
+        "# R5b evolution_rate sweep — {label} (mf={mf_value}, evolution_rate={evo_rate})\n\n"
+    ));
+    md.push_str(&format!(
+        "32² active_medley, workflow ON (D2 + D1-ter), 5 cycles × 20 steps. Runtime: {:.1}s.\n\n",
+        elapsed
+    ));
+    md.push_str("## Per-cycle solver health\n\n");
+    md.push_str("| cycle | peak \\|v\\| | Newton C/S/D/Cap | peak S̃ | frac>0.8 | mass total | max_path |\n");
+    md.push_str("|---|---|---|---|---|---|---|\n");
+    for (i, _cycle) in output.cycles.iter().enumerate() {
+        let m = &metrics[i + 1];
+        let o = newton_outcomes[i];
+        md.push_str(&format!(
+            "| {} | {:.3e} | {}/{}/{}/{} | {:.3} | {:.3} | {:.2} | {} |\n",
+            i + 1, peak_v[i], o.0, o.1, o.2, o.3, m.peak_s, m.fraction_above_0_8, m.mass_total, m.max_path_length,
+        ));
+    }
+    md.push('\n');
+
+    let init_frac = metrics[0].fraction_above_0_8;
+    let final_frac = metrics.last().unwrap().fraction_above_0_8;
+    let retention = if init_frac > 1e-9 { final_frac / init_frac } else { 0.0 };
+    let n_dynamic = peak_v.iter().filter(|&&v| v > 0.1).count();
+    let mass_init = metrics[0].mass_total;
+    let mass_final = metrics.last().unwrap().mass_total;
+    let mass_loss_pct = (mass_init - mass_final) / mass_init.abs().max(1e-12) * 100.0;
+    let total_steps: usize = newton_outcomes.iter().map(|(c, s, d, cap)| c + s + d + cap).sum();
+    let stall_cap: usize = newton_outcomes.iter().map(|(_c, s, _d, cap)| s + cap).sum();
+    let stall_pct = if total_steps > 0 { 100.0 * stall_cap as f64 / total_steps as f64 } else { 0.0 };
+
+    md.push_str("## Multi-dim acceptance\n\n");
+    md.push_str(&format!(
+        "1. **Preservation** : frac>0.8 retention = {:.1} % → {}\n",
+        100.0 * retention,
+        if retention > 0.5 { "**PASS**" } else { "**FAIL**" }
+    ));
+    md.push_str(&format!(
+        "2. **Dynamics (sustained)** : peak |v| > 0.1 on {}/5 cycles → {}\n",
+        n_dynamic,
+        if n_dynamic >= 3 { "**PASS**" } else { "**FAIL**" }
+    ));
+    md.push_str(&format!(
+        "3. **Stability** : mass loss = {:.2} % → {}\n",
+        mass_loss_pct,
+        if mass_loss_pct.abs() < 5.0 { "**PASS**" } else { "**FAIL**" }
+    ));
+    md.push_str(&format!(
+        "4. **Convergence** : Stalled+Capped = {:.1} % → {}\n",
+        stall_pct,
+        if stall_pct < 20.0 { "**PASS**" } else { "**FAIL**" }
+    ));
+    md.push_str("5. **Visual** : inspect `cycle_5_altitude.png`\n");
+
+    std::fs::write(out_dir.join("report.md"), &md).expect("write report");
+    println!("\n{md}");
+}
+
+#[test]
+#[ignore]
+fn r5b_evo_mf_0_7_evo_0_05() {
+    run_r5b_evo_sweep(0.7, 0.05, "evo_0_05");
+}
+
+#[test]
+#[ignore]
+fn r5b_evo_mf_0_7_evo_0_10() {
+    run_r5b_evo_sweep(0.7, 0.10, "evo_0_10");
+}
+
+#[test]
+#[ignore]
+fn r5b_evo_mf_0_7_evo_0_20() {
+    run_r5b_evo_sweep(0.7, 0.20, "evo_0_20");
+}
+
 // ── R5.0 — dt sweep at mf=1.0 ────────────────────────────────────────
 //
 // R4b.5 showed that mf=1.0 runtime is 12× longer than mf=0.5 for a
@@ -1917,6 +2319,153 @@ fn r5b_d1_ter_init_c_smoothed() {
 /// (reinit v=0 post-macro inside `phase_a::run_phase_a_cycle_with_progress`).
 /// Output dir is distinct from the pre-D1-ter version so the
 /// comparison report stays available.
+/// Step 12 R5b validation — R4 active_medley 64² × 5 cycles after the
+/// full D2 + D1-ter stack. This is the product-validation gate: if
+/// continents are visible at cycle 5 with no Oscillating outcomes,
+/// Step 12 is mergeable.
+#[test]
+#[ignore]
+fn r5b_validation_r4_active_medley_64sq() {
+    let out_dir = out_root().join("active_medley_post_d1_ter");
+    let metrics = run_gallery_for_preset("active_medley", &out_dir);
+    write_metrics_table("active_medley_post_d1_ter", &metrics, &out_dir);
+}
+
+/// Step 12 R5b validation — R4 active_medley 64² × 5 cycles with
+/// mantle override mf=0.5 (R4b.5 finding) + the full D2 + D1-ter
+/// solver stack. Decides whether the mf=0.5 calibration produces a
+/// viable Living Landz product (continents preserved AND tectonic
+/// dynamics visible: peak |v| non-trivial, mountain ranges at plate
+/// boundaries, evolving coastlines). Output dir is suffixed
+/// `_mf_0_5_post_d1_ter`.
+#[test]
+#[ignore]
+fn r5b_validation_r4_active_medley_64sq_mf_0_5() {
+    use ymir_viz::bridge::v2::build_config;
+
+    let out_dir = out_root().join("active_medley_mf_0_5_post_d1_ter");
+    std::fs::create_dir_all(&out_dir).expect("create output dir");
+    println!("\n=== Preset: active_medley (mf=0.5 override) ===");
+
+    let mut spec = presets::load("active_medley")
+        .unwrap_or_else(|e| panic!("preset 'active_medley' load failed: {e}"));
+    spec.workflow = V2WorkflowSpec::On {
+        phase_a: V2PhaseAParams::default(),
+        phase_b: V2PhaseBParams::default(),
+    };
+    // R4b.5 sweet-spot override : mf 1.0 → 0.5 (preserving other
+    // mantle fields).
+    if let V2MantleSpec::On {
+        coupling,
+        num_modes,
+        seed,
+        evolution_rate,
+        ..
+    } = spec.mantle
+    {
+        spec.mantle = V2MantleSpec::On {
+            mf: 0.5,
+            coupling,
+            num_modes,
+            seed,
+            evolution_rate,
+        };
+    }
+    spec.grid_nx = 64;
+    spec.grid_ny = 64;
+    spec.steps = N_CYCLES * K_CYCLE;
+    spec.total_time_nondim = 6.0;
+
+    // INIT capture (mf=0.5, default mantle is already On in active_medley)
+    let init_state = make_init_state(&spec);
+    save_field_png(
+        &init_state,
+        V2Field::SThickness,
+        &out_dir.join("cycle_0_s.png"),
+    )
+    .expect("save init s");
+    save_field_png(
+        &init_state,
+        V2Field::Altitude,
+        &out_dir.join("cycle_0_altitude.png"),
+    )
+    .expect("save init alt");
+
+    let mut cfg = build_config::build(&spec);
+    let wf = build_config::build_workflow(&spec.workflow);
+
+    println!("[r5b validation] running 5 cycles × 20 steps (64², mf=0.5, D2+D1-ter active)…");
+    let t0 = std::time::Instant::now();
+    let output = run_phase_a_loop(&mut cfg, &wf);
+    let elapsed = t0.elapsed().as_secs_f64();
+    println!(
+        "[r5b validation] completed in {elapsed:.1}s, {} cycles",
+        output.cycles.len()
+    );
+
+    let init_field =
+        Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
+    let init_sea = output
+        .cycles
+        .first()
+        .map(|c| c.sea_level_normalized)
+        .unwrap_or(0.5);
+    let mut metrics = vec![compute_metrics(0, &init_field, init_sea, 0.0, 0.0)];
+
+    for (i, cycle) in output.cycles.iter().enumerate() {
+        let cyc_idx = i + 1;
+        let v2_state = V2FinalState::from_harness(&cycle.baseline.final_state);
+        save_field_png(
+            &v2_state,
+            V2Field::SThickness,
+            &out_dir.join(format!("cycle_{cyc_idx}_s.png")),
+        )
+        .expect("save s");
+        save_field_png(
+            &v2_state,
+            V2Field::Altitude,
+            &out_dir.join(format!("cycle_{cyc_idx}_altitude.png")),
+        )
+        .expect("save altitude");
+
+        metrics.push(compute_metrics(
+            cyc_idx,
+            &cycle.baseline.final_state.s_field,
+            cycle.sea_level_normalized,
+            cycle.erosion_volume_removed,
+            cycle.mass_drift,
+        ));
+    }
+
+    // Add peak|v| per cycle to the report (D2+D1-ter answered solver
+    // convergence; this report needs to answer "is the tectonic
+    // dynamic non-trivial?").
+    let peak_v_per_cycle: Vec<f64> = output
+        .cycles
+        .iter()
+        .map(|c| c.baseline.metrics.vmax_peak)
+        .collect();
+
+    write_metrics_table("active_medley_mf_0_5_post_d1_ter", &metrics, &out_dir);
+
+    // Append peak|v| info to the metrics.md as a dynamics-check row.
+    let dyn_extra = format!(
+        "\n## Dynamics probe (peak |v| per cycle)\n\n{}\n\nIf all peak|v| > 0.5 (nondim) the run carries non-trivial tectonic dynamics. < 0.1 → quasi-static (bad).\n",
+        peak_v_per_cycle
+            .iter()
+            .enumerate()
+            .map(|(i, v)| format!("- Cycle {}: peak |v| = {:.3e}", i + 1, v))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    let path = out_dir.join("metrics.md");
+    let existing =
+        std::fs::read_to_string(&path).unwrap_or_default();
+    std::fs::write(&path, format!("{existing}{dyn_extra}"))
+        .expect("append dynamics probe");
+    println!("Dynamics probe appended to {}", path.display());
+}
+
 #[test]
 #[ignore]
 fn r5b_d1_bis_per_step_workflow_on_post_d1_ter() {
@@ -2021,4 +2570,902 @@ fn r5b_d1_bis_per_step_workflow_on_post_d1_ter() {
 
     std::fs::write(out_dir.join("report.md"), &md).expect("write report.md");
     println!("\n{md}");
+}
+
+// ----------------------------------------------------------------------------
+// Step 12 R6.3 — mantle.evolution_rate × mf product validation sweep.
+//
+// 12 configs: mf ∈ {0.5, 0.7, 0.8, 1.0} × evo ∈ {0.05, 0.10, 0.20}, at 32²,
+// workflow ON (D2 + D1-ter active), 5 cycles × 20 steps each. Per-config
+// outputs go under `docs/reports/step12_r6_3_sweep/<label>/`, plus a
+// top-level `summary.md` with the comparison table and EVO.A/B/C/D verdict.
+//
+// Acceptance criteria R4.1–R4.6 (6 axes from R6 plan):
+//   R4.1 — Continents émergés         (peak S̃_final > sea_level)
+//   R4.2 — Cratons préservés          (frac>0.8 retention > 50 % init)
+//   R4.3 — Bordures continentales évoluées (VISUAL, manual)
+//   R4.4 — Conservation               (|mass loss| < 1 % per cycle)
+//   R4.5 — Drainage actif             (max_path ≥ 5)
+//   R4.6 — Dynamique soutenue         (peak|v| > 0.1 nondim on ≥ 3 cycles)
+//
+// A config passes 5/5 auto-criteria → EVO.A candidate (R4.3 visual still
+// required). 5 auto-fail → EVO.D. Visual fail on R4.3 with auto-pass → EVO.C.
+//
+// Reference for evo=0: R5b mf sweep results in
+// `docs/reports/step12_r5b_mf_sweep_post_d1_ter/` (mf ∈ {0.5, 0.7, 0.8})
+// and R4 active_medley_post_d1_ter for mf=1.0.
+
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
+struct R6ConfigSummary {
+    mf: f64,
+    evo_rate: f64,
+    label: String,
+    runtime_s: f64,
+    peak_v_per_cycle: Vec<f64>,
+    peak_s_per_cycle: Vec<f64>,
+    frac_above_0_8_per_cycle: Vec<f64>,
+    mass_total_per_cycle: Vec<f64>,
+    max_path_per_cycle: Vec<u8>,
+    sea_level_per_cycle: Vec<f64>,
+    newton_outcomes_per_cycle: Vec<(usize, usize, usize, usize)>,
+    cg_mean_quartiles_per_cycle: Vec<(f64, f64, f64)>,
+    init_frac_above_0_8: f64,
+    init_peak_s: f64,
+}
+
+fn run_r6_3_config(mf: f64, evo_rate: f64, label: &str) -> R6ConfigSummary {
+    use ymir_viz::bridge::v2::build_config;
+
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r6_3_sweep")
+        .join(label);
+    std::fs::create_dir_all(&out_dir).expect("create output dir");
+
+    println!("\n=== R6.3 sweep: {label} (mf={mf}, evolution_rate={evo_rate}) ===");
+
+    let mut spec = presets::load("active_medley").expect("load active_medley");
+    spec.workflow = V2WorkflowSpec::On {
+        phase_a: V2PhaseAParams::default(),
+        phase_b: V2PhaseBParams::default(),
+    };
+    if let V2MantleSpec::On { coupling, num_modes, seed, .. } = spec.mantle {
+        spec.mantle = V2MantleSpec::On {
+            mf,
+            coupling,
+            num_modes,
+            seed,
+            evolution_rate: evo_rate,
+        };
+    }
+    spec.grid_nx = R4B_GRID;
+    spec.grid_ny = R4B_GRID;
+    spec.steps = R4B_N_CYCLES * R4B_K_CYCLE;
+    spec.total_time_nondim = 6.0;
+
+    let init_state = make_init_state(&spec);
+    save_field_png(&init_state, V2Field::SThickness, &out_dir.join("cycle_0_s.png"))
+        .expect("save init s");
+    save_field_png(&init_state, V2Field::Altitude, &out_dir.join("cycle_0_altitude.png"))
+        .expect("save init alt");
+
+    let mut cfg = build_config::build(&spec);
+    let wf = build_config::build_workflow(&spec.workflow);
+
+    let t0 = std::time::Instant::now();
+    let output = run_phase_a_loop(&mut cfg, &wf);
+    let elapsed = t0.elapsed().as_secs_f64();
+    println!("[r6.3/{label}] completed in {elapsed:.1}s");
+
+    let init_field =
+        Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
+    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let init_metrics = compute_metrics(0, &init_field, init_sea, 0.0, 0.0);
+    let mut metrics = vec![init_metrics];
+
+    let mut peak_v_per_cycle: Vec<f64> = Vec::with_capacity(R4B_N_CYCLES);
+    let mut newton_outcomes_per_cycle: Vec<(usize, usize, usize, usize)> =
+        Vec::with_capacity(R4B_N_CYCLES);
+    let mut cg_mean_quartiles_per_cycle: Vec<(f64, f64, f64)> = Vec::with_capacity(R4B_N_CYCLES);
+
+    for (i, cycle) in output.cycles.iter().enumerate() {
+        let cyc_idx = i + 1;
+        let v2_state = V2FinalState::from_harness(&cycle.baseline.final_state);
+        save_field_png(
+            &v2_state,
+            V2Field::SThickness,
+            &out_dir.join(format!("cycle_{cyc_idx}_s.png")),
+        )
+        .expect("save s");
+        save_field_png(
+            &v2_state,
+            V2Field::Altitude,
+            &out_dir.join(format!("cycle_{cyc_idx}_altitude.png")),
+        )
+        .expect("save alt");
+        metrics.push(compute_metrics(
+            cyc_idx,
+            &cycle.baseline.final_state.s_field,
+            cycle.sea_level_normalized,
+            cycle.erosion_volume_removed,
+            cycle.mass_drift,
+        ));
+        peak_v_per_cycle.push(cycle.baseline.metrics.vmax_peak);
+        if let Some(n) = cycle.baseline.metrics.newton.as_ref() {
+            newton_outcomes_per_cycle.push((n.converged, n.stalled, n.diverged, n.capped));
+            let mut cg_per_step: Vec<usize> = Vec::with_capacity(n.outer_iters.len());
+            let mut cg_cursor: usize = 0;
+            for &outer in &n.outer_iters {
+                let outer_n = outer as usize;
+                let cg_slice = &n.cg_iters_per_newton_step
+                    [cg_cursor..(cg_cursor + outer_n).min(n.cg_iters_per_newton_step.len())];
+                cg_per_step.push(cg_slice.iter().sum());
+                cg_cursor += outer_n;
+            }
+            let k = cg_per_step.len();
+            if k >= 4 {
+                let early = &cg_per_step[..k / 4];
+                let mid = &cg_per_step[k / 4..3 * k / 4];
+                let late = &cg_per_step[3 * k / 4..];
+                let avg = |v: &[usize]| -> f64 {
+                    if v.is_empty() {
+                        0.0
+                    } else {
+                        v.iter().sum::<usize>() as f64 / v.len() as f64
+                    }
+                };
+                cg_mean_quartiles_per_cycle.push((avg(early), avg(mid), avg(late)));
+            } else {
+                cg_mean_quartiles_per_cycle.push((0.0, 0.0, 0.0));
+            }
+        } else {
+            newton_outcomes_per_cycle.push((0, 0, 0, 0));
+            cg_mean_quartiles_per_cycle.push((0.0, 0.0, 0.0));
+        }
+    }
+
+    let mut md = String::new();
+    md.push_str(&format!(
+        "# R6.3 — {label} (mf={mf}, evolution_rate={evo_rate})\n\n"
+    ));
+    md.push_str(&format!(
+        "32² active_medley, workflow ON (D2 + D1-ter), 5 cycles × 20 steps. Runtime: {:.1}s.\n\n",
+        elapsed
+    ));
+    md.push_str("## Per-cycle solver health\n\n");
+    md.push_str(
+        "| cycle | peak \\|v\\| | Newton C/S/D/Cap | peak S̃ | frac>0.8 | mass | max_path | CG e/m/l |\n",
+    );
+    md.push_str("|---|---|---|---|---|---|---|---|\n");
+    for (i, _cycle) in output.cycles.iter().enumerate() {
+        let m = &metrics[i + 1];
+        let o = newton_outcomes_per_cycle[i];
+        let q = cg_mean_quartiles_per_cycle[i];
+        md.push_str(&format!(
+            "| {} | {:.3e} | {}/{}/{}/{} | {:.3} | {:.3} | {:.2} | {} | {:.0}/{:.0}/{:.0} |\n",
+            i + 1,
+            peak_v_per_cycle[i],
+            o.0, o.1, o.2, o.3,
+            m.peak_s,
+            m.fraction_above_0_8,
+            m.mass_total,
+            m.max_path_length,
+            q.0, q.1, q.2,
+        ));
+    }
+    md.push('\n');
+
+    let init_frac = metrics[0].fraction_above_0_8;
+    let final_frac = metrics.last().unwrap().fraction_above_0_8;
+    let retention = if init_frac > 1e-9 { final_frac / init_frac } else { 0.0 };
+    let n_dynamic = peak_v_per_cycle.iter().filter(|&&v| v > 0.1).count();
+    let mass_init = metrics[0].mass_total;
+    let mass_final = metrics.last().unwrap().mass_total;
+    let mass_loss_pct = (mass_init - mass_final) / mass_init.abs().max(1e-12) * 100.0;
+    let mass_loss_per_cycle_pct = mass_loss_pct / R4B_N_CYCLES as f64;
+    let final_peak_s = metrics.last().unwrap().peak_s;
+    let final_sea = metrics.last().unwrap().sea_level_ref;
+    let max_max_path = metrics
+        .iter()
+        .skip(1)
+        .map(|m| m.max_path_length)
+        .max()
+        .unwrap_or(0);
+    let stalled_total: usize = newton_outcomes_per_cycle.iter().map(|o| o.1 + o.3).sum();
+    let total_steps: usize =
+        newton_outcomes_per_cycle.iter().map(|o| o.0 + o.1 + o.2 + o.3).sum();
+    let stall_pct = if total_steps > 0 {
+        100.0 * stalled_total as f64 / total_steps as f64
+    } else {
+        0.0
+    };
+
+    let pass_r4_1 = final_peak_s > final_sea;
+    let pass_r4_2 = retention > 0.5;
+    let pass_r4_4 = mass_loss_per_cycle_pct.abs() < 1.0;
+    let pass_r4_5 = max_max_path >= 5;
+    let pass_r4_6 = n_dynamic >= 3;
+    let auto_pass_count = [pass_r4_1, pass_r4_2, pass_r4_4, pass_r4_5, pass_r4_6]
+        .iter()
+        .filter(|&&p| p)
+        .count();
+
+    md.push_str("## Multi-dim acceptance (R4.1-R4.6)\n\n");
+    md.push_str(&format!(
+        "- **R4.1 - Continents émergés** : peak S̃_final = {:.3} vs sea_level = {:.3} → **{}**\n",
+        final_peak_s, final_sea,
+        if pass_r4_1 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(&format!(
+        "- **R4.2 - Cratons préservés** : retention = {:.1} % → **{}**\n",
+        100.0 * retention,
+        if pass_r4_2 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(
+        "- **R4.3 - Bordures continentales évoluées** : VISUAL — inspect `cycle_5_altitude.png`\n",
+    );
+    md.push_str(&format!(
+        "- **R4.4 - Conservation** : mass loss/cycle = {:.3} % → **{}**\n",
+        mass_loss_per_cycle_pct,
+        if pass_r4_4 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(&format!(
+        "- **R4.5 - Drainage actif** : max_path = {} (cycles 1-5) → **{}**\n",
+        max_max_path,
+        if pass_r4_5 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(&format!(
+        "- **R4.6 - Dynamique soutenue** : peak |v| > 0.1 on {}/5 cycles → **{}**\n",
+        n_dynamic,
+        if pass_r4_6 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(&format!(
+        "\nStall+Cap = {:.1} % over {} total Newton outcomes.\n",
+        stall_pct, total_steps
+    ));
+    md.push_str(&format!(
+        "\nAuto-criteria PASS count: **{} / 5** (R4.3 visual pending).\n",
+        auto_pass_count
+    ));
+
+    std::fs::write(out_dir.join("report.md"), &md).expect("write per-config report");
+    println!("{md}");
+
+    R6ConfigSummary {
+        mf,
+        evo_rate,
+        label: label.to_string(),
+        runtime_s: elapsed,
+        peak_v_per_cycle,
+        peak_s_per_cycle: metrics.iter().skip(1).map(|m| m.peak_s).collect(),
+        frac_above_0_8_per_cycle: metrics.iter().skip(1).map(|m| m.fraction_above_0_8).collect(),
+        mass_total_per_cycle: metrics.iter().skip(1).map(|m| m.mass_total).collect(),
+        max_path_per_cycle: metrics.iter().skip(1).map(|m| m.max_path_length).collect(),
+        sea_level_per_cycle: metrics.iter().skip(1).map(|m| m.sea_level_ref).collect(),
+        newton_outcomes_per_cycle,
+        cg_mean_quartiles_per_cycle,
+        init_frac_above_0_8: metrics[0].fraction_above_0_8,
+        init_peak_s: metrics[0].peak_s,
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct AutoVerdict {
+    r4_1: bool,
+    r4_2: bool,
+    r4_4: bool,
+    r4_5: bool,
+    r4_6: bool,
+    auto_count: u8,
+}
+
+fn evaluate_auto(s: &R6ConfigSummary) -> AutoVerdict {
+    let final_peak_s = s.peak_s_per_cycle.last().copied().unwrap_or(0.0);
+    let final_sea = s.sea_level_per_cycle.last().copied().unwrap_or(0.5);
+    let final_frac = s.frac_above_0_8_per_cycle.last().copied().unwrap_or(0.0);
+    let retention = if s.init_frac_above_0_8 > 1e-9 {
+        final_frac / s.init_frac_above_0_8
+    } else {
+        0.0
+    };
+    let n_dynamic = s.peak_v_per_cycle.iter().filter(|&&v| v > 0.1).count();
+    let mass_init = s.mass_total_per_cycle.first().copied().unwrap_or(1.0);
+    let mass_final = s.mass_total_per_cycle.last().copied().unwrap_or(mass_init);
+    let mass_loss_per_cycle_pct =
+        (mass_init - mass_final) / mass_init.abs().max(1e-12) * 100.0 / R4B_N_CYCLES as f64;
+    let max_max_path = s.max_path_per_cycle.iter().copied().max().unwrap_or(0);
+
+    let r4_1 = final_peak_s > final_sea;
+    let r4_2 = retention > 0.5;
+    let r4_4 = mass_loss_per_cycle_pct.abs() < 1.0;
+    let r4_5 = max_max_path >= 5;
+    let r4_6 = n_dynamic >= 3;
+    let auto_count = [r4_1, r4_2, r4_4, r4_5, r4_6].iter().filter(|&&p| p).count() as u8;
+    AutoVerdict { r4_1, r4_2, r4_4, r4_5, r4_6, auto_count }
+}
+
+fn write_r6_3_summary(summaries: &[R6ConfigSummary], out_root: &Path) {
+    let mut md = String::new();
+    md.push_str("# Step 12 R6.3 — mantle.evolution_rate × mf sweep\n\n");
+    md.push_str("32² active_medley, workflow ON (D2 + D1-ter), 5 cycles × 20 steps. ");
+    md.push_str("Phase A defaults (α=0.01, rebound=0.80, max_drainage=10). ");
+    md.push_str(&format!(
+        "{} configs total. Generated by `r6_3_sweep_all_configs`.\n\n",
+        summaries.len()
+    ));
+
+    md.push_str("## Per-config auto verdict\n\n");
+    md.push_str(
+        "| mf | evo | runtime | R4.1 émergés | R4.2 cratons | R4.4 conserv. | R4.5 drainage | R4.6 dynamique | auto count |\n",
+    );
+    md.push_str("|---|---|---|---|---|---|---|---|---|\n");
+    let mut verdicts: Vec<AutoVerdict> = Vec::with_capacity(summaries.len());
+    for s in summaries {
+        let v = evaluate_auto(s);
+        verdicts.push(v);
+        let p = |b: bool| if b { "PASS" } else { "FAIL" };
+        md.push_str(&format!(
+            "| {:.2} | {:.2} | {:.0}s | {} | {} | {} | {} | {} | **{} / 5** |\n",
+            s.mf, s.evo_rate, s.runtime_s,
+            p(v.r4_1), p(v.r4_2), p(v.r4_4), p(v.r4_5), p(v.r4_6),
+            v.auto_count,
+        ));
+    }
+    md.push('\n');
+
+    md.push_str("## Per-config peak|v| series (cycles 1-5)\n\n");
+    md.push_str("| mf | evo | c1 | c2 | c3 | c4 | c5 | n cycles > 0.1 |\n");
+    md.push_str("|---|---|---|---|---|---|---|---|\n");
+    for s in summaries {
+        let n_dyn = s.peak_v_per_cycle.iter().filter(|&&v| v > 0.1).count();
+        let vs: Vec<String> = s.peak_v_per_cycle.iter().map(|v| format!("{:.3e}", v)).collect();
+        let row: String = vs.join(" | ");
+        md.push_str(&format!(
+            "| {:.2} | {:.2} | {} | **{}** |\n",
+            s.mf, s.evo_rate, row, n_dyn,
+        ));
+    }
+    md.push('\n');
+
+    md.push_str("## Per-config preservation (frac>0.8 retention)\n\n");
+    md.push_str("| mf | evo | init | c1 | c2 | c3 | c4 | c5 | retention |\n");
+    md.push_str("|---|---|---|---|---|---|---|---|---|\n");
+    for s in summaries {
+        let final_frac = s.frac_above_0_8_per_cycle.last().copied().unwrap_or(0.0);
+        let retention = if s.init_frac_above_0_8 > 1e-9 {
+            final_frac / s.init_frac_above_0_8
+        } else {
+            0.0
+        };
+        let vs: Vec<String> = s
+            .frac_above_0_8_per_cycle
+            .iter()
+            .map(|v| format!("{:.3}", v))
+            .collect();
+        let row: String = vs.join(" | ");
+        md.push_str(&format!(
+            "| {:.2} | {:.2} | {:.3} | {} | {:.1} % |\n",
+            s.mf, s.evo_rate, s.init_frac_above_0_8, row, 100.0 * retention,
+        ));
+    }
+    md.push('\n');
+
+    md.push_str("## Reference — R5b evo=0 baseline (from earlier sweeps)\n\n");
+    md.push_str(
+        "These cells are the R6.3 anchor for `evo=0`. They are NOT re-run here \
+         (evo=0 is bit-identical to the pre-R6 mantle path under the R6.2 wiring). \
+         Source reports referenced below.\n\n",
+    );
+    md.push_str("| mf | evo | source | preservation | peak \\|v\\|_max | notes |\n");
+    md.push_str("|---|---|---|---|---|---|\n");
+    md.push_str(
+        "| 0.50 | 0.00 | `step12_r5b_mf_sweep_post_d1_ter/mf_0_5/` | preserved | ~ 1.2e-3 | quasi-static (R5b finding) |\n",
+    );
+    md.push_str(
+        "| 0.70 | 0.00 | `step12_r5b_mf_sweep_post_d1_ter/mf_0_7/` | preserved | ~ 1 cycle > 0.1 | borderline dynamic |\n",
+    );
+    md.push_str(
+        "| 0.80 | 0.00 | `step12_r5b_mf_sweep_post_d1_ter/mf_0_8/` | transition | mixed | transition pathological (R5b) |\n",
+    );
+    md.push_str(
+        "| 1.00 | 0.00 | `step12_r4_visual_checkpoint/active_medley_post_d1_ter/` | dissolves | high | continents dissolved (R4) |\n",
+    );
+    md.push('\n');
+
+    let auto_passers: Vec<(&R6ConfigSummary, AutoVerdict)> = summaries
+        .iter()
+        .zip(verdicts.iter())
+        .filter(|(_, v)| v.auto_count == 5)
+        .map(|(s, v)| (s, *v))
+        .collect();
+    md.push_str("## EVO verdict (auto-criteria only — R4.3 visual still required)\n\n");
+    match auto_passers.len() {
+        0 => {
+            md.push_str(
+                "**Provisional EVO.D** — no config passes all 5 auto-criteria. \
+                 Inspect `R4.3 visual` per config; if no chains observed either, \
+                 confirm EVO.D and consider Phys.C pivot in Step 12.X. If R4.3 \
+                 visual passes but auto-fail comes from a single criterion only, \
+                 re-evaluate as marginal (no tuning).\n\n",
+            );
+        }
+        1 => {
+            let (s, _) = &auto_passers[0];
+            md.push_str(&format!(
+                "**Provisional EVO.A** — single config passes all 5 auto-criteria: \
+                 `mf={:.2}, evo={:.2}`. Visual R4.3 inspection required on \
+                 `step12_r6_3_sweep/{}/cycle_5_altitude.png`. If chains visible \
+                 and migration coherent → 64² validation gate.\n\n",
+                s.mf, s.evo_rate, s.label,
+            ));
+        }
+        _ => {
+            md.push_str(&format!(
+                "**Provisional EVO.B** — {} configs pass all 5 auto-criteria. \
+                 Priority for 64² validation (user rule): mf=0.7 + median evo. \
+                 Visual R4.3 inspection on each. Candidates:\n\n",
+                auto_passers.len(),
+            ));
+            for (s, _) in &auto_passers {
+                md.push_str(&format!("- mf={:.2}, evo={:.2} ({})\n", s.mf, s.evo_rate, s.label));
+            }
+            md.push('\n');
+        }
+    }
+
+    std::fs::write(out_root.join("summary.md"), &md).expect("write summary");
+    println!("\n[r6.3] wrote summary.md");
+}
+
+/// R6.3 master sweep — 12 configs run sequentially. Estimated ~2h compute.
+///
+/// ```bash
+/// cargo test --release -p ymir-viz --test v2_workflow_r4_visual_checkpoint \
+///     r6_3_sweep_all_configs -- --ignored --nocapture --test-threads=1
+/// ```
+#[test]
+#[ignore]
+fn r6_3_sweep_all_configs() {
+    let out_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r6_3_sweep");
+    std::fs::create_dir_all(&out_root).expect("create r6_3 root");
+
+    let configs: Vec<(f64, f64, &str)> = vec![
+        (0.5, 0.05, "mf_0_5_evo_0_05"),
+        (0.5, 0.10, "mf_0_5_evo_0_10"),
+        (0.5, 0.20, "mf_0_5_evo_0_20"),
+        (0.7, 0.05, "mf_0_7_evo_0_05"),
+        (0.7, 0.10, "mf_0_7_evo_0_10"),
+        (0.7, 0.20, "mf_0_7_evo_0_20"),
+        (0.8, 0.05, "mf_0_8_evo_0_05"),
+        (0.8, 0.10, "mf_0_8_evo_0_10"),
+        (0.8, 0.20, "mf_0_8_evo_0_20"),
+        (1.0, 0.05, "mf_1_0_evo_0_05"),
+        (1.0, 0.10, "mf_1_0_evo_0_10"),
+        (1.0, 0.20, "mf_1_0_evo_0_20"),
+    ];
+
+    let n = configs.len();
+    let t_total = std::time::Instant::now();
+    let mut summaries: Vec<R6ConfigSummary> = Vec::with_capacity(n);
+    for (idx, (mf, evo, label)) in configs.iter().enumerate() {
+        println!(
+            "\n[r6.3] ===== {}/{} : mf={mf}, evo={evo} ({label}) =====",
+            idx + 1,
+            n,
+        );
+        let s = run_r6_3_config(*mf, *evo, label);
+        summaries.push(s);
+        // Write summary after every config so partial progress is visible
+        // if the run is interrupted.
+        write_r6_3_summary(&summaries, &out_root);
+        println!(
+            "[r6.3] cumulative elapsed: {:.1}s ({:.1} min)",
+            t_total.elapsed().as_secs_f64(),
+            t_total.elapsed().as_secs_f64() / 60.0,
+        );
+    }
+    println!(
+        "\n[r6.3] sweep done. {} configs in {:.1} min total.",
+        n,
+        t_total.elapsed().as_secs_f64() / 60.0,
+    );
+}
+
+/// Single-config smoke test for the R6.3 scaffolding. Use before launching
+/// the full sweep to catch wiring/compile bugs cheaply (~10 min).
+///
+/// ```bash
+/// cargo test --release -p ymir-viz --test v2_workflow_r4_visual_checkpoint \
+///     r6_3_smoke_single_config -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore]
+fn r6_3_smoke_single_config() {
+    let _ = run_r6_3_config(0.7, 0.10, "smoke_mf_0_7_evo_0_10");
+}
+
+/// R6.3 Option β — focused 2-config probe at mf=1.0 × evo ∈ {0.10, 0.20}.
+///
+/// Triggered by the smoke finding (mf=0.7, evo=0.10 → adiabatic equilibrium,
+/// R4.6 dynamique FAIL). Hypothesis: at higher pattern amplitude (mf=1.0),
+/// the system can no longer relax fast enough to track the drifting pattern
+/// → sustained dynamics. Tests this with two evo points before declaring
+/// EVO.D or escalating to a refined sweep.
+///
+/// Budget: ~50 min wall time (25 min × 2 configs from smoke runtime).
+///
+/// Decision tree:
+/// - β.1 — sustained dynamics + mass loss < 5 % → EVO.A probable, recommend
+///         refined mini-sweep mf ∈ {0.85..1.0} × evo ∈ {0.10, 0.20}
+/// - β.2 — sustained dynamics but mass loss > 10 % → EVO.C, escalate to
+///         Step 13.6 (stronger cratons) decision
+/// - β.3 — peak |v| collapse at mf=1.0 too → EVO.D confirmed, pivot Phys.C
+///         in Step 12.X
+///
+/// ```bash
+/// cargo test --release -p ymir-viz --test v2_workflow_r4_visual_checkpoint \
+///     r6_3_option_b_mf_1_0 -- --ignored --nocapture --test-threads=1
+/// ```
+#[test]
+#[ignore]
+fn r6_3_option_b_mf_1_0() {
+    let out_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r6_3_sweep");
+    std::fs::create_dir_all(&out_root).expect("create r6_3 root");
+
+    let configs: Vec<(f64, f64, &str)> = vec![
+        (1.0, 0.10, "mf_1_0_evo_0_10"),
+        (1.0, 0.20, "mf_1_0_evo_0_20"),
+    ];
+
+    let t_total = std::time::Instant::now();
+    let mut summaries: Vec<R6ConfigSummary> = Vec::with_capacity(configs.len());
+    for (idx, (mf, evo, label)) in configs.iter().enumerate() {
+        println!(
+            "\n[r6.3-β] ===== {}/{} : mf={mf}, evo={evo} ({label}) =====",
+            idx + 1,
+            configs.len(),
+        );
+        let s = run_r6_3_config(*mf, *evo, label);
+        summaries.push(s);
+        write_r6_3_summary(&summaries, &out_root);
+        println!(
+            "[r6.3-β] cumulative elapsed: {:.1}s ({:.1} min)",
+            t_total.elapsed().as_secs_f64(),
+            t_total.elapsed().as_secs_f64() / 60.0,
+        );
+    }
+    println!(
+        "\n[r6.3-β] Option β done. {} configs in {:.1} min total.",
+        configs.len(),
+        t_total.elapsed().as_secs_f64() / 60.0,
+    );
+}
+
+// ----------------------------------------------------------------------------
+// Step 12 R6.3 Option C.4 — cratonic resistance amplification probe.
+//
+// Triggered by Option β verdict β.2/EVO.C: at mf=1.0, evo > 0 unlocks
+// sustained dynamics but cratons retain only 31-35 % (vs 50 % target) and
+// mass loss is ~2 %/cycle. Hypothesis: amplifying the existing cratonic
+// resistance mechanisms (K viscous + B yield) lets cratons survive the
+// mantle-pull dynamics that produce the wanted tectonic flow.
+//
+// Approach (minimum-surface): scale the existing `k_viscous` and `b_factor`
+// fields of `V2CratonicSpec::On` by a `cratonic_amp` multiplier. No core
+// library change; `amp = 1.0` is bit-identical to pre-C.4 behaviour.
+//
+//   amp=1   → K=5,    B=8    (defaults — bit-identical to Option β)
+//   amp=2   → K=10,   B=16   (gate test, V1 vigilance)
+//   amp=5   → K=25,   B=40
+//   amp=10  → K=50,   B=80   (saturation-risk; CG cap probable)
+//
+// V1 — amp=2 first as a saturation gate. If CG mean > 1.5× the Option β
+// baseline (~13000/cycle) OR retention stays below the β baseline, halt
+// and remontée before running amp=5/10. Equivalent budget per config to
+// Option β (~35 min).
+//
+// Output: `docs/reports/step12_r6_3_c4_craton_amp/<label>/` plus
+// `summary.md` consolidating amp-by-amp comparison + verdict.
+
+/// Run an R6.3 config with cratonic resistance scaled by `cratonic_amp`.
+/// `cratonic_amp = 1.0` is bit-identical to `run_r6_3_config` at the same
+/// (mf, evo).
+fn run_r6_3_c4_config(
+    mf: f64,
+    evo_rate: f64,
+    cratonic_amp: f64,
+    label: &str,
+) -> R6ConfigSummary {
+    use ymir_viz::bridge::v2::build_config;
+
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r6_3_c4_craton_amp")
+        .join(label);
+    std::fs::create_dir_all(&out_dir).expect("create output dir");
+
+    println!(
+        "\n=== R6.3 C.4: {label} (mf={mf}, evo={evo_rate}, craton_amp={cratonic_amp}) ===",
+    );
+
+    let mut spec = presets::load("active_medley").expect("load active_medley");
+    spec.workflow = V2WorkflowSpec::On {
+        phase_a: V2PhaseAParams::default(),
+        phase_b: V2PhaseBParams::default(),
+    };
+    if let V2MantleSpec::On { coupling, num_modes, seed, .. } = spec.mantle {
+        spec.mantle = V2MantleSpec::On {
+            mf,
+            coupling,
+            num_modes,
+            seed,
+            evolution_rate: evo_rate,
+        };
+    }
+    // Scale K and B by `cratonic_amp`. At amp=1.0 the spec is byte-equal
+    // to the active_medley default cratonic block, preserving pre-C.4
+    // regression for that case.
+    if let ymir_viz::bridge::v2::V2CratonicSpec::On {
+        cr,
+        k_viscous,
+        b_factor,
+        smoothing_width,
+        plate_area_min,
+    } = spec.cratonic
+    {
+        spec.cratonic = ymir_viz::bridge::v2::V2CratonicSpec::On {
+            cr,
+            k_viscous: k_viscous * cratonic_amp,
+            b_factor: b_factor * cratonic_amp,
+            smoothing_width,
+            plate_area_min,
+        };
+        println!(
+            "[c.4/{label}] cratonic K {} → {:.1}, B {} → {:.1}",
+            k_viscous,
+            k_viscous * cratonic_amp,
+            b_factor,
+            b_factor * cratonic_amp,
+        );
+    }
+    spec.grid_nx = R4B_GRID;
+    spec.grid_ny = R4B_GRID;
+    spec.steps = R4B_N_CYCLES * R4B_K_CYCLE;
+    spec.total_time_nondim = 6.0;
+
+    let init_state = make_init_state(&spec);
+    save_field_png(&init_state, V2Field::SThickness, &out_dir.join("cycle_0_s.png"))
+        .expect("save init s");
+    save_field_png(&init_state, V2Field::Altitude, &out_dir.join("cycle_0_altitude.png"))
+        .expect("save init alt");
+
+    let mut cfg = build_config::build(&spec);
+    let wf = build_config::build_workflow(&spec.workflow);
+
+    let t0 = std::time::Instant::now();
+    let output = run_phase_a_loop(&mut cfg, &wf);
+    let elapsed = t0.elapsed().as_secs_f64();
+    println!("[c.4/{label}] completed in {elapsed:.1}s");
+
+    let init_field =
+        Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
+    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let init_metrics = compute_metrics(0, &init_field, init_sea, 0.0, 0.0);
+    let mut metrics = vec![init_metrics];
+
+    let mut peak_v_per_cycle: Vec<f64> = Vec::with_capacity(R4B_N_CYCLES);
+    let mut newton_outcomes_per_cycle: Vec<(usize, usize, usize, usize)> =
+        Vec::with_capacity(R4B_N_CYCLES);
+    let mut cg_mean_quartiles_per_cycle: Vec<(f64, f64, f64)> = Vec::with_capacity(R4B_N_CYCLES);
+
+    for (i, cycle) in output.cycles.iter().enumerate() {
+        let cyc_idx = i + 1;
+        let v2_state = V2FinalState::from_harness(&cycle.baseline.final_state);
+        save_field_png(
+            &v2_state,
+            V2Field::SThickness,
+            &out_dir.join(format!("cycle_{cyc_idx}_s.png")),
+        )
+        .expect("save s");
+        save_field_png(
+            &v2_state,
+            V2Field::Altitude,
+            &out_dir.join(format!("cycle_{cyc_idx}_altitude.png")),
+        )
+        .expect("save alt");
+        metrics.push(compute_metrics(
+            cyc_idx,
+            &cycle.baseline.final_state.s_field,
+            cycle.sea_level_normalized,
+            cycle.erosion_volume_removed,
+            cycle.mass_drift,
+        ));
+        peak_v_per_cycle.push(cycle.baseline.metrics.vmax_peak);
+        if let Some(n) = cycle.baseline.metrics.newton.as_ref() {
+            newton_outcomes_per_cycle.push((n.converged, n.stalled, n.diverged, n.capped));
+            let mut cg_per_step: Vec<usize> = Vec::with_capacity(n.outer_iters.len());
+            let mut cg_cursor: usize = 0;
+            for &outer in &n.outer_iters {
+                let outer_n = outer as usize;
+                let cg_slice = &n.cg_iters_per_newton_step
+                    [cg_cursor..(cg_cursor + outer_n).min(n.cg_iters_per_newton_step.len())];
+                cg_per_step.push(cg_slice.iter().sum());
+                cg_cursor += outer_n;
+            }
+            let k = cg_per_step.len();
+            if k >= 4 {
+                let early = &cg_per_step[..k / 4];
+                let mid = &cg_per_step[k / 4..3 * k / 4];
+                let late = &cg_per_step[3 * k / 4..];
+                let avg = |v: &[usize]| -> f64 {
+                    if v.is_empty() { 0.0 } else { v.iter().sum::<usize>() as f64 / v.len() as f64 }
+                };
+                cg_mean_quartiles_per_cycle.push((avg(early), avg(mid), avg(late)));
+            } else {
+                cg_mean_quartiles_per_cycle.push((0.0, 0.0, 0.0));
+            }
+        } else {
+            newton_outcomes_per_cycle.push((0, 0, 0, 0));
+            cg_mean_quartiles_per_cycle.push((0.0, 0.0, 0.0));
+        }
+    }
+
+    let mut md = String::new();
+    md.push_str(&format!(
+        "# R6.3 C.4 — {label} (mf={mf}, evo={evo_rate}, craton_amp={cratonic_amp})\n\n"
+    ));
+    md.push_str(&format!(
+        "32² active_medley, workflow ON (D2 + D1-ter), 5 cycles × 20 steps. \
+         K_viscous={:.1}, B_factor={:.1} (amp={cratonic_amp}). Runtime: {:.1}s.\n\n",
+        5.0 * cratonic_amp,
+        8.0 * cratonic_amp,
+        elapsed,
+    ));
+    md.push_str("## Per-cycle solver health\n\n");
+    md.push_str(
+        "| cycle | peak \\|v\\| | Newton C/S/D/Cap | peak S̃ | frac>0.8 | mass | max_path | CG e/m/l |\n",
+    );
+    md.push_str("|---|---|---|---|---|---|---|---|\n");
+    for (i, _cycle) in output.cycles.iter().enumerate() {
+        let m = &metrics[i + 1];
+        let o = newton_outcomes_per_cycle[i];
+        let q = cg_mean_quartiles_per_cycle[i];
+        md.push_str(&format!(
+            "| {} | {:.3e} | {}/{}/{}/{} | {:.3} | {:.3} | {:.2} | {} | {:.0}/{:.0}/{:.0} |\n",
+            i + 1,
+            peak_v_per_cycle[i],
+            o.0, o.1, o.2, o.3,
+            m.peak_s,
+            m.fraction_above_0_8,
+            m.mass_total,
+            m.max_path_length,
+            q.0, q.1, q.2,
+        ));
+    }
+    md.push('\n');
+
+    let init_frac = metrics[0].fraction_above_0_8;
+    let final_frac = metrics.last().unwrap().fraction_above_0_8;
+    let retention = if init_frac > 1e-9 { final_frac / init_frac } else { 0.0 };
+    let n_dynamic = peak_v_per_cycle.iter().filter(|&&v| v > 0.1).count();
+    let mass_init = metrics[0].mass_total;
+    let mass_final = metrics.last().unwrap().mass_total;
+    let mass_loss_pct = (mass_init - mass_final) / mass_init.abs().max(1e-12) * 100.0;
+    let mass_loss_per_cycle_pct = mass_loss_pct / R4B_N_CYCLES as f64;
+    let final_peak_s = metrics.last().unwrap().peak_s;
+    let final_sea = metrics.last().unwrap().sea_level_ref;
+    let max_max_path = metrics
+        .iter()
+        .skip(1)
+        .map(|m| m.max_path_length)
+        .max()
+        .unwrap_or(0);
+    let stalled_total: usize = newton_outcomes_per_cycle.iter().map(|o| o.1 + o.3).sum();
+    let total_steps: usize =
+        newton_outcomes_per_cycle.iter().map(|o| o.0 + o.1 + o.2 + o.3).sum();
+    let stall_pct = if total_steps > 0 {
+        100.0 * stalled_total as f64 / total_steps as f64
+    } else {
+        0.0
+    };
+    let cg_mean_run: f64 = cg_mean_quartiles_per_cycle
+        .iter()
+        .map(|(a, b, c)| (a + b + c) / 3.0)
+        .sum::<f64>()
+        / cg_mean_quartiles_per_cycle.len().max(1) as f64;
+
+    // 5 critères C.4 (user spec) :
+    //   1. cratons retention > 50 %
+    //   2. mass loss < 5 % total (= 1 % / cycle)
+    //   3. dynamique soutenue (peak |v| > 0.1 on ≥ 3 cycles)
+    //   4. pas de régression solveur (CG iter mean < 1000)  ← user threshold
+    //   5. visual (manual)
+    let pass_c1 = retention > 0.5;
+    let pass_c2 = mass_loss_pct.abs() < 5.0;
+    let pass_c3 = n_dynamic >= 3;
+    let pass_c4 = cg_mean_run < 1000.0;
+    let auto_count = [pass_c1, pass_c2, pass_c3, pass_c4]
+        .iter()
+        .filter(|&&p| p)
+        .count();
+
+    md.push_str("## C.4 acceptance (5 criteria — last is visual)\n\n");
+    md.push_str(&format!(
+        "1. **Cratons retention > 50 %** : {:.1} % → **{}**\n",
+        100.0 * retention,
+        if pass_c1 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(&format!(
+        "2. **Mass loss < 5 % cumul** : {:.2} % ({:.3} %/cycle) → **{}**\n",
+        mass_loss_pct,
+        mass_loss_per_cycle_pct,
+        if pass_c2 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(&format!(
+        "3. **Dynamique soutenue (≥ 3 cycles > 0.1)** : {}/5 → **{}**\n",
+        n_dynamic,
+        if pass_c3 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(&format!(
+        "4. **Pas de régression solveur (CG mean < 1000)** : {:.0} → **{}**\n",
+        cg_mean_run,
+        if pass_c4 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str("5. **Visual** : inspect `cycle_5_altitude.png` (chains + bordures + cratons stables)\n");
+    md.push_str(&format!(
+        "\nAuxiliary: peak S̃ final = {:.3} vs sea {:.3}; max_path = {}; Stall+Cap = {:.1} % over {} outcomes.\n",
+        final_peak_s, final_sea, max_max_path, stall_pct, total_steps,
+    ));
+    md.push_str(&format!(
+        "\nAuto-criteria PASS count: **{} / 4** (visual #5 pending).\n",
+        auto_count
+    ));
+
+    std::fs::write(out_dir.join("report.md"), &md).expect("write report");
+    println!("{md}");
+
+    R6ConfigSummary {
+        mf,
+        evo_rate,
+        label: label.to_string(),
+        runtime_s: elapsed,
+        peak_v_per_cycle,
+        peak_s_per_cycle: metrics.iter().skip(1).map(|m| m.peak_s).collect(),
+        frac_above_0_8_per_cycle: metrics.iter().skip(1).map(|m| m.fraction_above_0_8).collect(),
+        mass_total_per_cycle: metrics.iter().skip(1).map(|m| m.mass_total).collect(),
+        max_path_per_cycle: metrics.iter().skip(1).map(|m| m.max_path_length).collect(),
+        sea_level_per_cycle: metrics.iter().skip(1).map(|m| m.sea_level_ref).collect(),
+        newton_outcomes_per_cycle,
+        cg_mean_quartiles_per_cycle,
+        init_frac_above_0_8: metrics[0].fraction_above_0_8,
+        init_peak_s: metrics[0].peak_s,
+    }
+}
+
+/// C.4 gate — amp=2 single run. Triggers V1 vigilance check before amp=5/10.
+///
+/// ```bash
+/// cargo test --release -p ymir-viz --test v2_workflow_r4_visual_checkpoint \
+///     r6_3_c4_amp_2 -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore]
+fn r6_3_c4_amp_2() {
+    let _ = run_r6_3_c4_config(1.0, 0.10, 2.0, "mf_1_0_evo_0_10_amp_2");
+}
+
+/// C.4 amp=5 — run only after amp=2 gate passes (CG mean < 1000 AND
+/// retention improves vs Option β baseline).
+#[test]
+#[ignore]
+fn r6_3_c4_amp_5() {
+    let _ = run_r6_3_c4_config(1.0, 0.10, 5.0, "mf_1_0_evo_0_10_amp_5");
+}
+
+/// C.4 amp=10 — run only after amp=5 passes the gate.
+#[test]
+#[ignore]
+fn r6_3_c4_amp_10() {
+    let _ = run_r6_3_c4_config(1.0, 0.10, 10.0, "mf_1_0_evo_0_10_amp_10");
 }
