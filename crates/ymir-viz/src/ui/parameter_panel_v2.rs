@@ -1068,6 +1068,51 @@ fn init_mode_widget(ui: &mut egui::Ui, mode: &mut V2InitModeSpec) {
                 );
             }
         }
+        V2InitModeSpec::Orogenic {
+            peak_value,
+            base_continental_value,
+            oceanic_value,
+            half_length_ratio,
+            width_sigma_ratio,
+            orientation: _,
+        } => {
+            ui.add(
+                egui::Slider::new(peak_value, 0.9..=1.5)
+                    .text("peak_value (ridge crest)")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(base_continental_value, 0.5..=1.0)
+                    .text("base_continental_value (plain)")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(oceanic_value, 0.0..=0.5)
+                    .text("oceanic_value")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(half_length_ratio, 0.10..=0.80)
+                    .text("half_length_ratio (× L_plate)")
+                    .step_by(0.05),
+            );
+            ui.add(
+                egui::Slider::new(width_sigma_ratio, 0.04..=0.30)
+                    .text("width_sigma_ratio (× L_plate)")
+                    .step_by(0.01),
+            );
+            ui.label(
+                egui::RichText::new(
+                    "Step 12 R7.A.1 — one linear ridge per continental \
+                     plate along its PCA principal axis (periodic-aware). \
+                     Oceanic cells receive oceanic_value uniform. \
+                     Orientation toggle is fixed to PCA in the v2 UI; \
+                     edit the preset JSON for a Fixed angle.",
+                )
+                .small()
+                .weak(),
+            );
+        }
     }
 }
 
