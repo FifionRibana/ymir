@@ -3586,5 +3586,47 @@ fn r7_a_1_init_preview() {
         println!("[r7.a.1] wrote orogenic_s.png / orogenic_altitude.png + 64 variants");
     }
 
+    // Variant 4 — Orogenic 64² with width_sigma_ratio = 0.10
+    // (Himalaya-like ~10 % of plate diameter, user proposal (I) for
+    // R7.A.1.3). Compared to the σ=0.08 baseline above, σ=0.10 gives
+    // ~25 % wider transverse profile and is the candidate for the
+    // simulation run pre-validation visual.
+    {
+        let mut spec64w = presets::load("active_medley").expect("reload medley");
+        spec64w.grid_nx = 64;
+        spec64w.grid_ny = 64;
+        spec64w.init_mode = V2InitModeSpec::Orogenic {
+            peak_value: 1.20,
+            base_continental_value: 0.85,
+            oceanic_value: 0.20,
+            half_length_ratio: 0.40,
+            width_sigma_ratio: 0.10,
+            orientation: V2OrogenicOrientation::PlateMainAxisPca,
+        };
+        spec64w.s_perturbation_amplitude = 0.0;
+        let state64w = make_init_state(&spec64w);
+        save_field_png(
+            &state64w,
+            V2Field::SThickness,
+            &out_dir.join("orogenic_s_64_sigma_10.png"),
+        )
+        .expect("save 64 sigma=0.10 s");
+        save_field_png(
+            &state64w,
+            V2Field::Altitude,
+            &out_dir.join("orogenic_altitude_64_sigma_10.png"),
+        )
+        .expect("save 64 sigma=0.10 altitude");
+        let max_s_64_w: f64 = state64w
+            .s_field
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        println!(
+            "[r7.a.1] orogenic 64² σ=0.10 max(S̃) = {max_s_64_w:.4} (peak target 1.20)",
+        );
+        println!("[r7.a.1] wrote orogenic_*_64_sigma_10.png");
+    }
+
     println!("[r7.a.1] init preview done. Inspect {}", out_dir.display());
 }
