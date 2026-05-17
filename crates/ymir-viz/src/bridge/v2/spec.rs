@@ -247,6 +247,87 @@ pub enum V2InitModeSpec {
         width_sigma_ratio: f64,
         orientation: V2OrogenicOrientation,
     },
+    /// Step 12 R7.A.2 — composite continental profile: radial dome
+    /// (Step 13 `RadialProfile`) + orogenic ridge (R7.A.1) added
+    /// with a cap. Mirrors
+    /// [`ymir_core::tectonics_v2::init::InitMode::Composite`].
+    Composite {
+        radial: V2CompositeRadialParams,
+        orogenic_ridge: V2CompositeOrogenicRidgeParams,
+        oceanic_value: f64,
+        cap: V2CompositeCap,
+    },
+}
+
+/// V2-side mirror of
+/// [`ymir_core::tectonics_v2::init::composite_profile::CompositeRadialParams`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct V2CompositeRadialParams {
+    pub continental_value: f64,
+    pub profile_shape: V2ProfileShape,
+}
+
+impl V2CompositeRadialParams {
+    pub fn into_core(
+        self,
+    ) -> ymir_core::tectonics_v2::init::CompositeRadialParams {
+        ymir_core::tectonics_v2::init::CompositeRadialParams {
+            continental_value: self.continental_value,
+            profile_shape: self.profile_shape.into_core(),
+        }
+    }
+}
+
+/// V2-side mirror of
+/// [`ymir_core::tectonics_v2::init::composite_profile::CompositeOrogenicRidgeParams`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct V2CompositeOrogenicRidgeParams {
+    pub peak_value: f64,
+    pub base_continental_value: f64,
+    pub half_length_ratio: f64,
+    pub width_sigma_ratio: f64,
+    pub orientation: V2OrogenicOrientation,
+    pub offset_along_axis_ratio: f64,
+}
+
+impl V2CompositeOrogenicRidgeParams {
+    pub fn into_core(
+        self,
+    ) -> ymir_core::tectonics_v2::init::CompositeOrogenicRidgeParams {
+        ymir_core::tectonics_v2::init::CompositeOrogenicRidgeParams {
+            peak_value: self.peak_value,
+            base_continental_value: self.base_continental_value,
+            half_length_ratio: self.half_length_ratio,
+            width_sigma_ratio: self.width_sigma_ratio,
+            orientation: self.orientation.into_core(),
+            offset_along_axis_ratio: self.offset_along_axis_ratio,
+        }
+    }
+}
+
+/// V2-side mirror of
+/// [`ymir_core::tectonics_v2::init::composite_profile::CompositeCap`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum V2CompositeCap {
+    UsePeakOrogenic,
+    Fixed { value: f64 },
+}
+
+impl Default for V2CompositeCap {
+    fn default() -> Self {
+        V2CompositeCap::UsePeakOrogenic
+    }
+}
+
+impl V2CompositeCap {
+    pub fn into_core(self) -> ymir_core::tectonics_v2::init::CompositeCap {
+        use ymir_core::tectonics_v2::init::CompositeCap;
+        match self {
+            V2CompositeCap::UsePeakOrogenic => CompositeCap::UsePeakOrogenic,
+            V2CompositeCap::Fixed { value } => CompositeCap::Fixed { value },
+        }
+    }
 }
 
 /// V2-side mirror of
@@ -371,6 +452,17 @@ impl V2InitModeSpec {
                 width_sigma_ratio,
                 orientation: orientation.into_core(),
             },
+            V2InitModeSpec::Composite {
+                radial,
+                orogenic_ridge,
+                oceanic_value,
+                cap,
+            } => InitMode::Composite {
+                radial: radial.into_core(),
+                orogenic_ridge: orogenic_ridge.into_core(),
+                oceanic_value,
+                cap: cap.into_core(),
+            },
         }
     }
 
@@ -388,6 +480,7 @@ impl V2InitModeSpec {
                 "RadialProfileWithFBM (Step 13: gradient + FBM heterogeneity)"
             }
             V2InitModeSpec::Orogenic { .. } => "Orogenic (Step 12 R7.A.1: linear ridge)",
+            V2InitModeSpec::Composite { .. } => "Composite (Step 12 R7.A.2: dome + ridge)",
         }
     }
 
@@ -403,6 +496,7 @@ impl V2InitModeSpec {
             V2InitModeSpec::RadialProfile { .. } => 4,
             V2InitModeSpec::RadialProfileWithFBM { .. } => 5,
             V2InitModeSpec::Orogenic { .. } => 6,
+            V2InitModeSpec::Composite { .. } => 7,
         }
     }
 
@@ -467,6 +561,37 @@ impl V2InitModeSpec {
             half_length_ratio: OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
             width_sigma_ratio: OROGENIC_WIDTH_SIGMA_RATIO_DEFAULT,
             orientation: V2OrogenicOrientation::PlateMainAxisPca,
+        }
+    }
+
+    /// Defaults for `Composite` when picked from the dropdown the
+    /// first time. Reuses the radial peak from
+    /// `RadialProfile::default()` (0.95) for the dome, and the
+    /// Orogenic defaults for the ridge — with the R7.A.1.bis-
+    /// validated `width_sigma_ratio = 0.10` instead of the
+    /// orogenic-seul default of 0.08 (the slightly wider sigma
+    /// produces a more readable ridge in the composite at 64²).
+    pub fn composite_default() -> Self {
+        use ymir_core::tectonics_v2::init::{
+            COMPOSITE_RADIAL_CONTINENTAL_DEFAULT, OROGENIC_BASE_VALUE_DEFAULT,
+            OROGENIC_HALF_LENGTH_RATIO_DEFAULT, OROGENIC_OCEANIC_VALUE_DEFAULT,
+            OROGENIC_PEAK_VALUE_DEFAULT,
+        };
+        V2InitModeSpec::Composite {
+            radial: V2CompositeRadialParams {
+                continental_value: COMPOSITE_RADIAL_CONTINENTAL_DEFAULT,
+                profile_shape: V2ProfileShape::Smoothstep,
+            },
+            orogenic_ridge: V2CompositeOrogenicRidgeParams {
+                peak_value: OROGENIC_PEAK_VALUE_DEFAULT,
+                base_continental_value: OROGENIC_BASE_VALUE_DEFAULT,
+                half_length_ratio: OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
+                width_sigma_ratio: 0.10,
+                orientation: V2OrogenicOrientation::PlateMainAxisPca,
+                offset_along_axis_ratio: 0.0,
+            },
+            oceanic_value: OROGENIC_OCEANIC_VALUE_DEFAULT,
+            cap: V2CompositeCap::UsePeakOrogenic,
         }
     }
 }
@@ -941,6 +1066,42 @@ mod tests {
                 half_length_ratio: 0.40,
                 width_sigma_ratio: 0.08,
                 orientation: V2OrogenicOrientation::Fixed { angle_rad: 0.7853981633974483 },
+            },
+            // Step 12 R7.A.2 — composite mode with UsePeakOrogenic cap.
+            V2InitModeSpec::Composite {
+                radial: V2CompositeRadialParams {
+                    continental_value: 0.95,
+                    profile_shape: V2ProfileShape::Smoothstep,
+                },
+                orogenic_ridge: V2CompositeOrogenicRidgeParams {
+                    peak_value: 1.20,
+                    base_continental_value: 0.85,
+                    half_length_ratio: 0.40,
+                    width_sigma_ratio: 0.10,
+                    orientation: V2OrogenicOrientation::PlateMainAxisPca,
+                    offset_along_axis_ratio: 0.0,
+                },
+                oceanic_value: 0.20,
+                cap: V2CompositeCap::UsePeakOrogenic,
+            },
+            // Step 12 R7.A.2 — composite mode with Fixed cap +
+            // non-zero offset_along_axis_ratio (exercises second
+            // variant of V2CompositeCap).
+            V2InitModeSpec::Composite {
+                radial: V2CompositeRadialParams {
+                    continental_value: 0.90,
+                    profile_shape: V2ProfileShape::Pow { exponent: 1.5 },
+                },
+                orogenic_ridge: V2CompositeOrogenicRidgeParams {
+                    peak_value: 1.25,
+                    base_continental_value: 0.85,
+                    half_length_ratio: 0.45,
+                    width_sigma_ratio: 0.12,
+                    orientation: V2OrogenicOrientation::Fixed { angle_rad: 0.5 },
+                    offset_along_axis_ratio: 0.3,
+                },
+                oceanic_value: 0.18,
+                cap: V2CompositeCap::Fixed { value: 1.30 },
             },
         ];
         for original in cases {

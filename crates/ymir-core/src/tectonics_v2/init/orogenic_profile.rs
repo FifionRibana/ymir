@@ -268,8 +268,11 @@ pub fn build(
 
 /// Minimum-image delta on a torus of length `n`. Returns the signed
 /// difference in `[-n/2, n/2)` that is closest to zero (modulo `n`).
+///
+/// Exposed at `pub(crate)` from R7.A.2 so [`super::composite_profile`]
+/// can share the same wrap convention as the orogenic ridge.
 #[inline]
-fn min_image_delta(raw: f64, n: f64) -> f64 {
+pub(crate) fn min_image_delta(raw: f64, n: f64) -> f64 {
     let half = 0.5 * n;
     let mut d = raw;
     while d > half {
@@ -289,7 +292,14 @@ fn min_image_delta(raw: f64, n: f64) -> f64 {
 /// already), [`Self::principal_axis`] returns the unit eigenvector
 /// of the larger eigenvalue of the 2×2 covariance, or `None` for
 /// degenerate inputs.
-struct PlateAccum {
+///
+/// Exposed at `pub(crate)` from R7.A.2 so
+/// [`super::composite_profile`] can reuse the exact same plate
+/// geometry pipeline as the standalone Orogenic mode — same
+/// centroid, same PCA axis, same fallback semantics. Visibility is
+/// the only change; the algorithm is unchanged so
+/// `InitMode::Orogenic` output stays byte-equal to R7.A.1.
+pub(crate) struct PlateAccum {
     n: usize,
     // Circular-mean accumulators for x and y (unit-circle projections).
     cos_x_sum: f64,
@@ -311,7 +321,7 @@ struct PlateAccum {
 }
 
 impl PlateAccum {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             n: 0,
             cos_x_sum: 0.0,
@@ -327,7 +337,17 @@ impl PlateAccum {
         }
     }
 
-    fn accumulate_pos(&mut self, i: usize, j: usize, nx: usize, ny: usize) {
+    /// Centroid `(x, y)` in cell coordinates after
+    /// [`Self::finalise_centroid`] has been called. `None` while the
+    /// accumulator is still in the "positions-only" phase.
+    pub(crate) fn centroid(&self) -> Option<(f64, f64)> {
+        match (self.centroid_x, self.centroid_y) {
+            (Some(x), Some(y)) => Some((x, y)),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn accumulate_pos(&mut self, i: usize, j: usize, nx: usize, ny: usize) {
         use std::f64::consts::TAU;
         self.n += 1;
         // Project each cell-center coord onto the unit circle of its
@@ -341,7 +361,7 @@ impl PlateAccum {
         self.sin_y_sum += theta_y.sin();
     }
 
-    fn finalise_centroid(&mut self, nx: usize, ny: usize) {
+    pub(crate) fn finalise_centroid(&mut self, nx: usize, ny: usize) {
         use std::f64::consts::TAU;
         if self.n == 0 {
             return;
@@ -363,7 +383,7 @@ impl PlateAccum {
         self.centroid_y = Some(cy);
     }
 
-    fn accumulate_covariance(&mut self, i: usize, j: usize, nx: usize, ny: usize) {
+    pub(crate) fn accumulate_covariance(&mut self, i: usize, j: usize, nx: usize, ny: usize) {
         let (cx, cy) = match (self.centroid_x, self.centroid_y) {
             (Some(a), Some(b)) => (a, b),
             _ => return,
@@ -379,7 +399,7 @@ impl PlateAccum {
     /// covariance matrix. Returns `None` for plates with too few
     /// cells (PCA unreliable) or with rank-1 / near-isotropic
     /// covariance (caller falls back).
-    fn principal_axis(&self) -> Option<(f64, f64)> {
+    pub(crate) fn principal_axis(&self) -> Option<(f64, f64)> {
         if self.n < ORO_MIN_CELLS_FOR_PCA {
             return None;
         }

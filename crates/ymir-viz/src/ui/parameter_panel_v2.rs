@@ -1113,6 +1113,63 @@ fn init_mode_widget(ui: &mut egui::Ui, mode: &mut V2InitModeSpec) {
                 .weak(),
             );
         }
+        V2InitModeSpec::Composite {
+            radial,
+            orogenic_ridge,
+            oceanic_value,
+            cap: _,
+        } => {
+            ui.label(egui::RichText::new("Radial dome").strong());
+            ui.add(
+                egui::Slider::new(&mut radial.continental_value, 0.5..=1.0)
+                    .text("dome continental_value")
+                    .step_by(0.01),
+            );
+            ui.separator();
+            ui.label(egui::RichText::new("Orogenic ridge").strong());
+            ui.add(
+                egui::Slider::new(&mut orogenic_ridge.peak_value, 0.9..=1.5)
+                    .text("ridge peak_value")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(&mut orogenic_ridge.base_continental_value, 0.5..=1.0)
+                    .text("ridge base_continental_value")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(&mut orogenic_ridge.half_length_ratio, 0.10..=0.80)
+                    .text("ridge half_length_ratio")
+                    .step_by(0.05),
+            );
+            ui.add(
+                egui::Slider::new(&mut orogenic_ridge.width_sigma_ratio, 0.04..=0.30)
+                    .text("ridge width_sigma_ratio")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(&mut orogenic_ridge.offset_along_axis_ratio, -1.0..=1.0)
+                    .text("ridge offset_along_axis_ratio")
+                    .step_by(0.05),
+            );
+            ui.separator();
+            ui.add(
+                egui::Slider::new(oceanic_value, 0.0..=0.5)
+                    .text("oceanic_value")
+                    .step_by(0.01),
+            );
+            ui.label(
+                egui::RichText::new(
+                    "Step 12 R7.A.2 — RadialProfile dome + Orogenic ridge \
+                     superposed additively with cap. Composite S̃ = clamp(dome \
+                     + (peak - base) · ridge_amount, 0, cap). Cap fixed to \
+                     `UsePeakOrogenic` in v2 UI; edit preset JSON for \
+                     `Fixed { value }`.",
+                )
+                .small()
+                .weak(),
+            );
+        }
     }
 }
 

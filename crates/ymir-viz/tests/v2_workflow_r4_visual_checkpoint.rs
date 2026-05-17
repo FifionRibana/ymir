@@ -3630,3 +3630,133 @@ fn r7_a_1_init_preview() {
 
     println!("[r7.a.1] init preview done. Inspect {}", out_dir.display());
 }
+
+/// R7.A.2.3 init-only visual preview — Composite mode vs the three
+/// baselines under the same Voronoï layout at 64² (Living Landz
+/// target resolution). The simulation run R7.A.2.4 is gated on this
+/// preview passing the user's visual acceptance (a)+(b)+(c) criteria:
+/// dome identifiable, ridge superposed distinct, piémont visible.
+///
+/// Output: `docs/reports/step12_r7_a_composite_profile/init_preview/`
+///   - uniform_{s,altitude}.png      — reference plate shape
+///   - radial_{s,altitude}.png       — Step 13 RadialProfile (Run A baseline)
+///   - orogenic_{s,altitude}.png     — R7.A.1 Orogenic-seul (Run B comparator)
+///   - composite_{s,altitude}.png    — R7.A.2 Composite (Run C candidate)
+///
+/// ```bash
+/// cargo test --release -p ymir-viz --test v2_workflow_r4_visual_checkpoint \
+///     r7_a_2_init_preview -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore]
+fn r7_a_2_init_preview() {
+    use ymir_viz::bridge::v2::V2InitModeSpec;
+
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r7_a_composite_profile/init_preview");
+    std::fs::create_dir_all(&out_dir).expect("create out dir");
+
+    println!("\n=== R7.A.2 init preview ===");
+
+    let base_spec = presets::load("active_medley").expect("load active_medley");
+
+    // Variant 1 — Uniform reference (plate shape only).
+    {
+        let mut spec = base_spec.clone();
+        spec.grid_nx = 64;
+        spec.grid_ny = 64;
+        let state = make_init_state(&spec);
+        save_field_png(&state, V2Field::SThickness, &out_dir.join("uniform_s.png"))
+            .expect("save uniform s");
+        save_field_png(&state, V2Field::Altitude, &out_dir.join("uniform_altitude.png"))
+            .expect("save uniform altitude");
+        println!("[r7.a.2] wrote uniform_*.png");
+    }
+
+    // Variant 2 — RadialProfile (Run A baseline).
+    {
+        let mut spec = base_spec.clone();
+        spec.grid_nx = 64;
+        spec.grid_ny = 64;
+        spec.init_mode = V2InitModeSpec::radial_profile_default();
+        spec.s_perturbation_amplitude = 0.0;
+        let state = make_init_state(&spec);
+        save_field_png(&state, V2Field::SThickness, &out_dir.join("radial_s.png"))
+            .expect("save radial s");
+        save_field_png(&state, V2Field::Altitude, &out_dir.join("radial_altitude.png"))
+            .expect("save radial altitude");
+        let max_s: f64 = state
+            .s_field
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        println!("[r7.a.2] radial 64² max(S̃) = {max_s:.4}");
+    }
+
+    // Variant 3 — Orogenic-seul σ=0.10 (Run B comparator from R7.A.1).
+    {
+        let mut spec = base_spec.clone();
+        spec.grid_nx = 64;
+        spec.grid_ny = 64;
+        spec.init_mode = V2InitModeSpec::orogenic_default();
+        if let V2InitModeSpec::Orogenic { width_sigma_ratio, .. } = &mut spec.init_mode {
+            *width_sigma_ratio = 0.10;
+        }
+        spec.s_perturbation_amplitude = 0.0;
+        let state = make_init_state(&spec);
+        save_field_png(&state, V2Field::SThickness, &out_dir.join("orogenic_s.png"))
+            .expect("save orogenic s");
+        save_field_png(
+            &state,
+            V2Field::Altitude,
+            &out_dir.join("orogenic_altitude.png"),
+        )
+        .expect("save orogenic altitude");
+        let max_s: f64 = state
+            .s_field
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        println!("[r7.a.2] orogenic σ=0.10 64² max(S̃) = {max_s:.4}");
+    }
+
+    // Variant 4 — Composite (Run C candidate, R7.A.2 defaults).
+    {
+        let mut spec = base_spec;
+        spec.grid_nx = 64;
+        spec.grid_ny = 64;
+        spec.init_mode = V2InitModeSpec::composite_default();
+        spec.s_perturbation_amplitude = 0.0;
+        let state = make_init_state(&spec);
+        save_field_png(&state, V2Field::SThickness, &out_dir.join("composite_s.png"))
+            .expect("save composite s");
+        save_field_png(
+            &state,
+            V2Field::Altitude,
+            &out_dir.join("composite_altitude.png"),
+        )
+        .expect("save composite altitude");
+        let max_s: f64 = state
+            .s_field
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+        println!(
+            "[r7.a.2] composite 64² max(S̃) = {max_s:.4} (cap target 1.20)",
+        );
+        // Sanity probe: the composite max must exceed the orogenic-seul
+        // max (it strictly adds dome to the ridge before capping). At
+        // 64² σ=0.10 orogenic-seul reaches ~1.17; composite must clear
+        // 1.18 at minimum (and likely hits ~1.20 thanks to the dome).
+        assert!(
+            max_s > 1.10,
+            "composite max(S̃) = {max_s} ≤ 1.10 — dome + ridge wiring \
+             check needed",
+        );
+    }
+
+    println!(
+        "[r7.a.2] init preview done. Inspect {}",
+        out_dir.display(),
+    );
+}

@@ -1,0 +1,44 @@
+{
+  "seed": 42,
+  "grid_nx": 64,
+  "grid_ny": 64,
+  "steps": 100,
+  "num_plates": 8,
+  "continental_ratio": 0.3,
+  "bi": 0.15,
+  "br": 0.05,
+  "mantle": {
+    "kind": "on",
+    "mf": 1.0,
+    "coupling": 1.0,
+    "num_modes": 6,
+    "seed": 7,
+    "evolution_rate": 0.0
+  },
+  "slab_enabled": false,
+  "cratonic": { "kind": "on", "cr": 0.3, "k_viscous": 5.0, "b_factor": 8.0 },
+  "age_field": { "kind": "on", "continental_age_init": 7.0, "oceanic_age_init": 0.5 },
+  "linear_solver": "jacobi",
+  "force": { "kind": "gpe" },
+  "s_perturbation_amplitude": 0.0,
+  "init_mode": {
+    "kind": "composite",
+    "radial": {
+      "continental_value": 0.95,
+      "profile_shape": { "kind": "smoothstep" }
+    },
+    "orogenic_ridge": {
+      "peak_value": 1.20,
+      "base_continental_value": 0.85,
+      "half_length_ratio": 0.40,
+      "width_sigma_ratio": 0.10,
+      "orientation": { "kind": "plate_main_axis_pca" },
+      "offset_along_axis_ratio": 0.0
+    },
+    "oceanic_value": 0.20,
+    "cap": { "kind": "use_peak_orogenic" }
+  },
+  "total_time_nondim": 6.0,
+  "cfl_factor": 0.3,
+  "preset_label": "active_medley_composite"
+}
