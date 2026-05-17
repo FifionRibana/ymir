@@ -3631,6 +3631,92 @@ fn r7_a_1_init_preview() {
     println!("[r7.a.1] init preview done. Inspect {}", out_dir.display());
 }
 
+/// Render a fixed-global-scale "altitude" PNG that bypasses
+/// `compute_isostasy`'s per-image `h_min`/`h_max` rescaling. Maps the
+/// raw S̃ field through the isostasy piecewise (with **fixed**
+/// `s_min`/`s_max` bounds shared across all renders) and the standard
+/// hypsometric colormap. The point is to make composite ↔ radial ↔
+/// orogenic PNGs directly comparable: the same S̃ value yields the
+/// same color in every output (user's R7.A.2.3 finding).
+///
+/// `s_min` / `s_max` are S̃ bounds (not isostasy heights). Pick
+/// `s_max ≥ orogenic_peak + margin` so the composite cap lands inside
+/// the colormap's "mountain" band rather than saturating to white.
+fn save_altitude_fixed_scale(
+    state: &V2FinalState,
+    path: &Path,
+    s_min: f64,
+    s_max: f64,
+) -> std::io::Result<()> {
+    use image::{ColorType, save_buffer};
+    use ymir_core::tectonics::isostasy::IsostasyConfig;
+    use ymir_viz::visualization::colormap::hypsometric_colormap;
+    let cfg = IsostasyConfig::default();
+    let buoyancy = 1.0 - (cfg.rho_crust / cfg.rho_mantle) as f64;
+    let h_min = s_min * buoyancy;
+    let h_max = s_max * buoyancy;
+    let h_range = (h_max - h_min).max(1e-10);
+    let h_sea = h_min + cfg.sea_level_fraction as f64 * h_range;
+    let sea_norm = (cfg.max_depth_m / (cfg.max_depth_m + cfg.max_elevation_m)) as f64;
+    let sea_clamped = sea_norm.clamp(1e-6, 1.0 - 1e-6);
+    let nx = state.nx;
+    let ny = state.ny;
+    let mut rgba = vec![0u8; nx * ny * 4];
+    for k in 0..nx * ny {
+        let s = state.s_field[k];
+        let h_raw = (s * buoyancy).clamp(h_min, h_max);
+        let normalized = if h_raw <= h_sea {
+            let t = (h_raw - h_min) / (h_sea - h_min).max(1e-10);
+            t * sea_norm
+        } else {
+            let t = (h_raw - h_sea) / (h_max - h_sea).max(1e-10);
+            sea_norm + t * (1.0 - sea_norm)
+        };
+        let altitude = if normalized <= sea_clamped {
+            0.5 * normalized / sea_clamped
+        } else {
+            0.5 + 0.5 * (normalized - sea_clamped) / (1.0 - sea_clamped)
+        };
+        let color = hypsometric_colormap(altitude.clamp(0.0, 1.0));
+        let off = k * 4;
+        rgba[off..off + 4].copy_from_slice(&color);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    save_buffer(path, &rgba, nx as u32, ny as u32, ColorType::Rgba8)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+    Ok(())
+}
+
+/// Numerical sanity stats for an init S̃ field. Printed alongside the
+/// PNGs so the visual inspection can be cross-checked against
+/// quantitative thresholds — protects against palette-adaptive
+/// artefacts that would make e.g. composite "look less elevated than
+/// radial" purely because its colour mapping is rescaled.
+fn print_init_stats(label: &str, state: &V2FinalState) {
+    let s = &state.s_field;
+    let n = s.len();
+    let max = s.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let min = s.iter().cloned().fold(f64::INFINITY, f64::min);
+    let mean: f64 = s.iter().sum::<f64>() / n as f64;
+    let count = |thr: f64| -> f64 {
+        s.iter().filter(|&&v| v > thr).count() as f64 / n as f64
+    };
+    println!(
+        "[r7.a.2/stats] {label:30} min={:.4} mean={:.4} max={:.4} | \
+         f>0.85={:.3} f>0.95={:.3} f>1.00={:.3} f>1.10={:.3} f>1.15={:.3}",
+        min,
+        mean,
+        max,
+        count(0.85),
+        count(0.95),
+        count(1.00),
+        count(1.10),
+        count(1.15),
+    );
+}
+
 /// R7.A.2.3 init-only visual preview — Composite mode vs the three
 /// baselines under the same Voronoï layout at 64² (Living Landz
 /// target resolution). The simulation run R7.A.2.4 is gated on this
@@ -3642,6 +3728,15 @@ fn r7_a_1_init_preview() {
 ///   - radial_{s,altitude}.png       — Step 13 RadialProfile (Run A baseline)
 ///   - orogenic_{s,altitude}.png     — R7.A.1 Orogenic-seul (Run B comparator)
 ///   - composite_{s,altitude}.png    — R7.A.2 Composite (Run C candidate)
+///   - *_altitude_fixed.png          — global-scale altitude (palette
+///                                     bounds shared across runs;
+///                                     adaptive per-image bounds is
+///                                     the diagnostic gotcha that
+///                                     prompted R7.A.2.3 follow-up).
+///
+/// SThickness ("*_s.png") already uses the fixed global palette
+/// `[0, 2.5]` (see `field_to_rgba` in `v2_viz.rs`) — those PNGs are
+/// comparable across runs as-is.
 ///
 /// ```bash
 /// cargo test --release -p ymir-viz --test v2_workflow_r4_visual_checkpoint \
@@ -3660,6 +3755,19 @@ fn r7_a_2_init_preview() {
 
     let base_spec = presets::load("active_medley").expect("load active_medley");
 
+    // Global altitude palette bounds (used by `save_altitude_fixed_scale`
+    // below). `s_max = 1.5` keeps the composite cap (1.20) inside the
+    // colormap's "mountain" band without saturating to white, leaving
+    // headroom to spot anomalies above the cap if the wiring ever
+    // misfires.
+    let s_min_global: f64 = 0.0;
+    let s_max_global: f64 = 1.5;
+    println!(
+        "[r7.a.2] altitude palette: SThickness adaptive=[0,2.5] (global, OK), \
+         Altitude adaptive (BUGGY per-image isostasy), \
+         altitude_fixed in this test = [{s_min_global}, {s_max_global}]",
+    );
+
     // Variant 1 — Uniform reference (plate shape only).
     {
         let mut spec = base_spec.clone();
@@ -3670,7 +3778,14 @@ fn r7_a_2_init_preview() {
             .expect("save uniform s");
         save_field_png(&state, V2Field::Altitude, &out_dir.join("uniform_altitude.png"))
             .expect("save uniform altitude");
-        println!("[r7.a.2] wrote uniform_*.png");
+        save_altitude_fixed_scale(
+            &state,
+            &out_dir.join("uniform_altitude_fixed.png"),
+            s_min_global,
+            s_max_global,
+        )
+        .expect("save uniform altitude fixed");
+        print_init_stats("uniform", &state);
     }
 
     // Variant 2 — RadialProfile (Run A baseline).
@@ -3685,12 +3800,14 @@ fn r7_a_2_init_preview() {
             .expect("save radial s");
         save_field_png(&state, V2Field::Altitude, &out_dir.join("radial_altitude.png"))
             .expect("save radial altitude");
-        let max_s: f64 = state
-            .s_field
-            .iter()
-            .cloned()
-            .fold(f64::NEG_INFINITY, f64::max);
-        println!("[r7.a.2] radial 64² max(S̃) = {max_s:.4}");
+        save_altitude_fixed_scale(
+            &state,
+            &out_dir.join("radial_altitude_fixed.png"),
+            s_min_global,
+            s_max_global,
+        )
+        .expect("save radial altitude fixed");
+        print_init_stats("radial", &state);
     }
 
     // Variant 3 — Orogenic-seul σ=0.10 (Run B comparator from R7.A.1).
@@ -3712,12 +3829,14 @@ fn r7_a_2_init_preview() {
             &out_dir.join("orogenic_altitude.png"),
         )
         .expect("save orogenic altitude");
-        let max_s: f64 = state
-            .s_field
-            .iter()
-            .cloned()
-            .fold(f64::NEG_INFINITY, f64::max);
-        println!("[r7.a.2] orogenic σ=0.10 64² max(S̃) = {max_s:.4}");
+        save_altitude_fixed_scale(
+            &state,
+            &out_dir.join("orogenic_altitude_fixed.png"),
+            s_min_global,
+            s_max_global,
+        )
+        .expect("save orogenic altitude fixed");
+        print_init_stats("orogenic σ=0.10", &state);
     }
 
     // Variant 4 — Composite (Run C candidate, R7.A.2 defaults).
@@ -3736,14 +3855,19 @@ fn r7_a_2_init_preview() {
             &out_dir.join("composite_altitude.png"),
         )
         .expect("save composite altitude");
+        save_altitude_fixed_scale(
+            &state,
+            &out_dir.join("composite_altitude_fixed.png"),
+            s_min_global,
+            s_max_global,
+        )
+        .expect("save composite altitude fixed");
+        print_init_stats("composite", &state);
         let max_s: f64 = state
             .s_field
             .iter()
             .cloned()
             .fold(f64::NEG_INFINITY, f64::max);
-        println!(
-            "[r7.a.2] composite 64² max(S̃) = {max_s:.4} (cap target 1.20)",
-        );
         // Sanity probe: the composite max must exceed the orogenic-seul
         // max (it strictly adds dome to the ridge before capping). At
         // 64² σ=0.10 orogenic-seul reaches ~1.17; composite must clear
@@ -3758,5 +3882,13 @@ fn r7_a_2_init_preview() {
     println!(
         "[r7.a.2] init preview done. Inspect {}",
         out_dir.display(),
+    );
+    println!(
+        "[r7.a.2] Compare *_altitude_fixed.png across the 4 variants — \
+         shared palette [{s_min_global}, {s_max_global}]. The *_s.png \
+         files are also globally comparable (fixed [0, 2.5] palette in \
+         field_to_rgba). The *_altitude.png files (no `_fixed` suffix) \
+         use the buggy per-image isostasy normalisation; do NOT compare \
+         them across runs.",
     );
 }
