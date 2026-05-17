@@ -237,6 +237,47 @@ pub enum V2InitModeSpec {
         #[serde(default)]
         fbm_seed_oceanic: Option<u64>,
     },
+    /// Step 12 R7.A.1 — orogenic linear ridge per continental plate.
+    /// Mirrors [`ymir_core::tectonics_v2::init::InitMode::Orogenic`].
+    Orogenic {
+        peak_value: f64,
+        base_continental_value: f64,
+        oceanic_value: f64,
+        half_length_ratio: f64,
+        width_sigma_ratio: f64,
+        orientation: V2OrogenicOrientation,
+    },
+}
+
+/// V2-side mirror of
+/// [`ymir_core::tectonics_v2::init::OrogenicOrientation`]. Serialises
+/// to the same `kind`-tagged JSON shape as the core enum so preset
+/// round-trips identity.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum V2OrogenicOrientation {
+    /// PCA principal axis of the plate's cells (periodic-aware).
+    /// Default; falls back to `Fixed { angle_rad: 0.0 }` for plates
+    /// with too few cells or rank-1 covariance.
+    PlateMainAxisPca,
+    /// Constant orientation for every plate.
+    Fixed { angle_rad: f64 },
+}
+
+impl Default for V2OrogenicOrientation {
+    fn default() -> Self {
+        V2OrogenicOrientation::PlateMainAxisPca
+    }
+}
+
+impl V2OrogenicOrientation {
+    pub fn into_core(self) -> ymir_core::tectonics_v2::init::OrogenicOrientation {
+        use ymir_core::tectonics_v2::init::OrogenicOrientation;
+        match self {
+            V2OrogenicOrientation::PlateMainAxisPca => OrogenicOrientation::PlateMainAxisPca,
+            V2OrogenicOrientation::Fixed { angle_rad } => OrogenicOrientation::Fixed { angle_rad },
+        }
+    }
 }
 
 /// `#[serde(default)]` helper for `V2InitModeSpec::RadialProfile
@@ -315,6 +356,21 @@ impl V2InitModeSpec {
                 fbm_scale_oceanic,
                 fbm_seed_oceanic,
             },
+            V2InitModeSpec::Orogenic {
+                peak_value,
+                base_continental_value,
+                oceanic_value,
+                half_length_ratio,
+                width_sigma_ratio,
+                orientation,
+            } => InitMode::Orogenic {
+                peak_value,
+                base_continental_value,
+                oceanic_value,
+                half_length_ratio,
+                width_sigma_ratio,
+                orientation: orientation.into_core(),
+            },
         }
     }
 
@@ -331,6 +387,7 @@ impl V2InitModeSpec {
             V2InitModeSpec::RadialProfileWithFBM { .. } => {
                 "RadialProfileWithFBM (Step 13: gradient + FBM heterogeneity)"
             }
+            V2InitModeSpec::Orogenic { .. } => "Orogenic (Step 12 R7.A.1: linear ridge)",
         }
     }
 
@@ -345,6 +402,7 @@ impl V2InitModeSpec {
             V2InitModeSpec::Convolution { .. } => 3,
             V2InitModeSpec::RadialProfile { .. } => 4,
             V2InitModeSpec::RadialProfileWithFBM { .. } => 5,
+            V2InitModeSpec::Orogenic { .. } => 6,
         }
     }
 
@@ -389,6 +447,26 @@ impl V2InitModeSpec {
             fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
             fbm_scale_oceanic: None,
             fbm_seed_oceanic: None,
+        }
+    }
+
+    /// Defaults for `Orogenic` when picked from the dropdown the
+    /// first time. Mirrors the core `OROGENIC_*_DEFAULT` constants
+    /// (peak=1.20, base=0.85, oceanic=0.20, half_length_ratio=0.40,
+    /// width_sigma_ratio=0.08, orientation=PlateMainAxisPca).
+    pub fn orogenic_default() -> Self {
+        use ymir_core::tectonics_v2::init::{
+            OROGENIC_BASE_VALUE_DEFAULT, OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
+            OROGENIC_OCEANIC_VALUE_DEFAULT, OROGENIC_PEAK_VALUE_DEFAULT,
+            OROGENIC_WIDTH_SIGMA_RATIO_DEFAULT,
+        };
+        V2InitModeSpec::Orogenic {
+            peak_value: OROGENIC_PEAK_VALUE_DEFAULT,
+            base_continental_value: OROGENIC_BASE_VALUE_DEFAULT,
+            oceanic_value: OROGENIC_OCEANIC_VALUE_DEFAULT,
+            half_length_ratio: OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
+            width_sigma_ratio: OROGENIC_WIDTH_SIGMA_RATIO_DEFAULT,
+            orientation: V2OrogenicOrientation::PlateMainAxisPca,
         }
     }
 }
@@ -844,6 +922,25 @@ mod tests {
                 fbm_amplitude_oceanic: 0.12,
                 fbm_scale_oceanic: Some(0.08),
                 fbm_seed_oceanic: Some(0xC0FFEE_5EE_D),
+            },
+            // Step 12 R7.A.1 — orogenic mode, PCA orientation.
+            V2InitModeSpec::Orogenic {
+                peak_value: 1.20,
+                base_continental_value: 0.85,
+                oceanic_value: 0.20,
+                half_length_ratio: 0.40,
+                width_sigma_ratio: 0.08,
+                orientation: V2OrogenicOrientation::PlateMainAxisPca,
+            },
+            // Step 12 R7.A.1 — orogenic mode, Fixed orientation
+            // (exercises the second variant of OrogenicOrientation).
+            V2InitModeSpec::Orogenic {
+                peak_value: 1.20,
+                base_continental_value: 0.85,
+                oceanic_value: 0.20,
+                half_length_ratio: 0.40,
+                width_sigma_ratio: 0.08,
+                orientation: V2OrogenicOrientation::Fixed { angle_rad: 0.7853981633974483 },
             },
         ];
         for original in cases {
