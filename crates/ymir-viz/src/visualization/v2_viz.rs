@@ -704,7 +704,19 @@ fn compute_altitude_buf(state: &V2FinalState) -> Vec<f64> {
     use ymir_core::tectonics::solver::field::Field2D;
 
     let field = Field2D::from_vec(state.nx, state.ny, state.s_field.clone());
-    let iso = compute_isostasy(&field, &IsostasyConfig::default());
+    // Step 12 R7.A.1 — disable the post-isostasy Gaussian blur for the
+    // *viz* path. `IsostasyConfig::default()` carries
+    // `altitude_smoothing_sigma = 2.0`, which is the right call for
+    // downstream pipelines (hydraulic erosion stability, final export)
+    // but in the diagnostic viz it erases any S̃ structure narrower
+    // than ~5 cells — including the orogenic ridge at 32² × 64²
+    // (σ_ridge < 2 cells). Disabling the blur locally keeps the
+    // viz altitude faithful to the S̃ field's discrete sampling.
+    let cfg = IsostasyConfig {
+        altitude_smoothing_sigma: 0.0,
+        ..IsostasyConfig::default()
+    };
+    let iso = compute_isostasy(&field, &cfg);
     let sea_norm = iso.sea_level_normalized as f64;
     let sea_clamped = sea_norm.clamp(1e-6, 1.0 - 1e-6);
     iso.heightmap
