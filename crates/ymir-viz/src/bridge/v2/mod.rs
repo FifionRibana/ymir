@@ -27,7 +27,8 @@ pub use events::{V2Event, V2FinalState};
 pub use plugin::{V2BridgePlugin, V2RunState, V2SolverBridge};
 pub use snapshot::{V2RunSnapshot, V2ScalarMetrics, SNAPSHOT_FORMAT_VERSION};
 pub use spec::{
-    V2AgeFieldSpec, V2CratonicSpec, V2ForceKind, V2InitModeSpec, V2LinearSolverSpec, V2MantleSpec,
+    V2AgeFieldSpec, V2CompositeCap, V2CompositeOrogenicRidgeParams, V2CompositeRadialParams,
+    V2CratonicSpec, V2ForceKind, V2InitModeSpec, V2LinearSolverSpec, V2MantleSpec,
     V2OrogenicOrientation, V2PhaseAParams, V2PhaseBParams, V2PlateKinematicSpec, V2ProfileShape,
     V2RunSpec, V2WorkflowSpec,
 };
