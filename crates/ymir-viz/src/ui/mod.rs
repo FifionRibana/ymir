@@ -11,11 +11,13 @@
 pub mod metrics_dashboard;
 pub mod parameter_panel_v2;
 pub mod pipeline_toolbar;
+pub mod workflow_panel;
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
 use parameter_panel_v2::V2EditableSpec;
+use workflow_panel::{WorkflowCycleHistory, WorkflowExportState};
 
 pub struct UiPlugin;
 
@@ -23,6 +25,8 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EguiPlugin::default());
         app.init_resource::<V2EditableSpec>();
+        app.init_resource::<WorkflowCycleHistory>();
+        app.init_resource::<WorkflowExportState>();
         app.add_systems(
             EguiPrimaryContextPass,
             (
@@ -54,6 +58,12 @@ fn ui_v2_top_bar(mut contexts: EguiContexts, bridge: Res<crate::bridge::v2::V2So
                 V2RunState::Completed { .. } => ("Completed", egui::Color32::GREEN),
                 V2RunState::Imported { .. } => ("Imported", egui::Color32::LIGHT_BLUE),
                 V2RunState::Failed { .. } => ("Failed", egui::Color32::RED),
+                V2RunState::WorkflowPhaseACompleted { .. } => {
+                    ("Phase A done", egui::Color32::LIGHT_GREEN)
+                }
+                V2RunState::WorkflowPhaseBCompleted { .. } => {
+                    ("Phase B done", egui::Color32::from_rgb(0x80, 0xD0, 0xFF))
+                }
             };
             ui.colored_label(badge.1, badge.0);
 
@@ -100,7 +110,8 @@ fn ui_v2_top_bar(mut contexts: EguiContexts, bridge: Res<crate::bridge::v2::V2So
 }
 
 /// Step 8.6 v2 right panel — wraps the v2 parameter editor + the
-/// active phase's collapsible config section.
+/// active phase's collapsible config section + (Step 12 Phase 7b.5)
+/// the workflow panel.
 #[allow(clippy::too_many_arguments)]
 fn ui_v2_right_panel(
     mut contexts: EguiContexts,
@@ -116,6 +127,8 @@ fn ui_v2_right_panel(
     erosion_cache: Res<crate::phases::erosion::ErosionCache>,
     mut hydrology_params: ResMut<crate::phases::hydrology::HydrologyParams>,
     hydrology_cache: Res<crate::phases::hydrology::HydrologyCache>,
+    mut workflow_history: ResMut<WorkflowCycleHistory>,
+    mut workflow_export: ResMut<WorkflowExportState>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
     egui::SidePanel::right("v2_right_panel").exact_width(300.0).show(ctx, |ui| {
@@ -135,6 +148,25 @@ fn ui_v2_right_panel(
                 &mut hydrology_params,
                 &hydrology_cache,
             );
+            // Step 12 Phase 7b.5 — workflow controls share the right
+            // panel's scroll area below the existing parameter editor
+            // so the user keeps a single mental model for the
+            // tectonics-side controls. Hidden whenever the active
+            // phase is not Tectonics so the panel stays focused on
+            // downstream phases when the user navigates away (the
+            // workflow buttons act on the tectonics bridge, so they
+            // are out-of-context anywhere else).
+            if matches!(active.0, crate::pipeline::PipelinePhase::Tectonics) {
+                ui.add_space(8.0);
+                ui.separator();
+                workflow_panel::draw(
+                    ui,
+                    &mut spec_state,
+                    &mut bridge,
+                    &mut workflow_history,
+                    &mut workflow_export,
+                );
+            }
         });
         // While any threaded phase worker is running, force egui /
         // Bevy to redraw every frame so the streamed in-progress

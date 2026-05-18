@@ -137,7 +137,30 @@ impl LinearSolver for ConjugateGradient {
         p.copy_from_slice(&z);
         let mut rz = par_dot(&r, &z);
 
+        // Step 12 follow-up — cooperative cancel check. The token is
+        // bound by the v2 bridge thread before each `run_baseline*`
+        // command (see `crates/ymir-viz/src/bridge/v2/thread.rs`); when
+        // the UI sets the underlying `AtomicBool`, the next CG iter
+        // whose `iter % CANCEL_CHECK_INTERVAL == 0` returns early with
+        // `MaxIterations` status. Newton sees this as a non-converged
+        // CG and (with its own cancel check at the iter top) returns
+        // promptly; the harness's step loop then breaks at the
+        // post-step callback. Total Stop-to-return latency drops from
+        // one full step (≈ 5–25 s on 64² mantle-on) to a few
+        // milliseconds (one CG iter window plus the Newton + step
+        // unwind).
+        const CANCEL_CHECK_INTERVAL: usize = 16;
         for iter in 1..=self.max_iter {
+            if iter % CANCEL_CHECK_INTERVAL == 0
+                && crate::tectonics_v2::cancel::is_cancelled()
+            {
+                return SolverStats {
+                    iterations: iter - 1,
+                    final_residual: par_norm2(&r),
+                    initial_residual: r0_norm,
+                    status: SolverStatus::MaxIterations,
+                };
+            }
             matvec(&p, &mut ap);
             let pap = par_dot(&p, &ap);
             if !pap.is_finite() || pap <= 0.0 {

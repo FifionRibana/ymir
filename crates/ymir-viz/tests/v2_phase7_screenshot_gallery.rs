@@ -91,10 +91,12 @@ fn v2_phase7_screenshot_gallery() {
         for &field in V2Field::ALL {
             let tag = match field {
                 V2Field::SThickness => "s",
+                V2Field::Altitude => "altitude",
                 V2Field::Age => "age",
                 V2Field::Cratonic => "cratonic",
                 V2Field::StrainRate => "strain",
                 V2Field::VelocityMagnitude => "vmag",
+                V2Field::Slope => "slope",
             };
             let path = preset_dir.join(format!("{}.png", tag));
             save_field_png(&final_state, field, &path).unwrap_or_else(|e| {

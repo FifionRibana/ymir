@@ -30,8 +30,18 @@ use super::boundaries::{PlateType, PlateTypeField};
 use super::field::Field2D;
 use super::voronoi::{compute_dist_to_inter_plate_boundary, PlateIdField};
 
+pub mod composite_profile;
+pub mod orogenic_profile;
 pub mod radial_profile;
 pub mod radial_profile_fbm;
+pub use composite_profile::{
+    CompositeCap, CompositeOrogenicRidgeParams, CompositeRadialParams,
+    COMPOSITE_RADIAL_CONTINENTAL_DEFAULT,
+};
+pub use orogenic_profile::{
+    OrogenicOrientation, OROGENIC_BASE_VALUE_DEFAULT, OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
+    OROGENIC_OCEANIC_VALUE_DEFAULT, OROGENIC_PEAK_VALUE_DEFAULT, OROGENIC_WIDTH_SIGMA_RATIO_DEFAULT,
+};
 pub use radial_profile::{
     ProfileShape, CONTINENTAL_VALUE_DEFAULT, OCEANIC_VALUE_DEFAULT, POW_EXPONENT_DEFAULT,
 };
@@ -131,6 +141,37 @@ pub enum InitMode {
         fbm_scale_oceanic: Option<f64>,
         #[serde(default)]
         fbm_seed_oceanic: Option<u64>,
+    },
+    /// Step 12 R7.A.1 — orogenic linear ridge per continental plate.
+    /// One ridge oriented along the plate's PCA principal axis (with
+    /// fallback for degenerate plates), Gaussian transverse profile
+    /// and smoothstep longitudinal modulation. Oceanic cells receive
+    /// `oceanic_value` uniform. See
+    /// [`orogenic_profile`] module docstring for the full algorithm
+    /// and the geometric spec under
+    /// `docs/reports/step12_r7_a_orogenic_profile/`.
+    Orogenic {
+        peak_value: f64,
+        base_continental_value: f64,
+        oceanic_value: f64,
+        half_length_ratio: f64,
+        width_sigma_ratio: f64,
+        orientation: OrogenicOrientation,
+    },
+    /// Step 12 R7.A.2 — composite continental profile: radial dome
+    /// (Step 13 `RadialProfile`) + orogenic ridge (R7.A.1) added
+    /// with a cap. Designed to test the "South America + Andes"
+    /// composition hypothesis after R7.A.1 revealed that
+    /// orogenic-seul produces isolated spikes on a flat plain.
+    /// Oceanic cells receive `oceanic_value` uniform. See
+    /// [`composite_profile`] module and
+    /// `docs/reports/step12_r7_a_composite_profile/` for the
+    /// formula and rationale.
+    Composite {
+        radial: CompositeRadialParams,
+        orogenic_ridge: CompositeOrogenicRidgeParams,
+        oceanic_value: f64,
+        cap: CompositeCap,
     },
 }
 
@@ -274,6 +315,50 @@ pub fn init_s_field(mode: InitMode, ctx: &InitContext<'_>) -> Field2D {
                 fbm_amplitude_oceanic,
                 fbm_scale_oceanic,
                 fbm_seed_oceanic,
+            )
+        }
+        InitMode::Orogenic {
+            peak_value,
+            base_continental_value,
+            oceanic_value,
+            half_length_ratio,
+            width_sigma_ratio,
+            orientation,
+        } => {
+            let p = ctx.plate_data.as_ref().expect(
+                "InitMode::Orogenic requires plate data — pair with \
+                 BoundaryConfig::Enabled",
+            );
+            orogenic_profile::build(
+                ctx.nx,
+                ctx.ny,
+                p,
+                peak_value,
+                base_continental_value,
+                oceanic_value,
+                half_length_ratio,
+                width_sigma_ratio,
+                orientation,
+            )
+        }
+        InitMode::Composite {
+            radial,
+            orogenic_ridge,
+            oceanic_value,
+            cap,
+        } => {
+            let p = ctx.plate_data.as_ref().expect(
+                "InitMode::Composite requires plate data — pair with \
+                 BoundaryConfig::Enabled",
+            );
+            composite_profile::build(
+                ctx.nx,
+                ctx.ny,
+                p,
+                radial,
+                orogenic_ridge,
+                oceanic_value,
+                cap,
             )
         }
     }
@@ -798,6 +883,35 @@ mod tests {
                 fbm_amplitude_oceanic: FBM_AMPLITUDE_OCEANIC_DEFAULT,
                 fbm_scale_oceanic: None,
                 fbm_seed_oceanic: None,
+            },
+            // Step 12 R7.A.1 — orogenic linear ridge mode added to
+            // the determinism contract so byte-equal output is
+            // guaranteed for repeated (seed, mode) pairs.
+            InitMode::Orogenic {
+                peak_value: OROGENIC_PEAK_VALUE_DEFAULT,
+                base_continental_value: OROGENIC_BASE_VALUE_DEFAULT,
+                oceanic_value: OROGENIC_OCEANIC_VALUE_DEFAULT,
+                half_length_ratio: OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
+                width_sigma_ratio: OROGENIC_WIDTH_SIGMA_RATIO_DEFAULT,
+                orientation: OrogenicOrientation::PlateMainAxisPca,
+            },
+            // Step 12 R7.A.2 — composite mode added to the
+            // determinism contract.
+            InitMode::Composite {
+                radial: CompositeRadialParams {
+                    continental_value: COMPOSITE_RADIAL_CONTINENTAL_DEFAULT,
+                    profile_shape: ProfileShape::Smoothstep,
+                },
+                orogenic_ridge: CompositeOrogenicRidgeParams {
+                    peak_value: OROGENIC_PEAK_VALUE_DEFAULT,
+                    base_continental_value: OROGENIC_BASE_VALUE_DEFAULT,
+                    half_length_ratio: OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
+                    width_sigma_ratio: 0.10,
+                    orientation: OrogenicOrientation::PlateMainAxisPca,
+                    offset_along_axis_ratio: 0.0,
+                },
+                oceanic_value: OROGENIC_OCEANIC_VALUE_DEFAULT,
+                cap: CompositeCap::UsePeakOrogenic,
             },
         ] {
             let s_a = init_s_field(mode, &ctx_with_plates(nx, ny, 42, 0.2, &plates_a));

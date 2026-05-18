@@ -20,6 +20,7 @@ pub mod age_field;
 pub mod basal_drag;
 pub mod boundaries;
 pub mod boundary_detection;
+pub mod cancel;
 pub mod cratonic;
 pub mod diagnostics;
 pub mod field;
@@ -34,5 +35,6 @@ pub mod scales;
 pub mod slab;
 pub mod stokes;
 pub mod voronoi;
+pub mod workflow;
 
 pub use rheology::soft_min_harmonic;
