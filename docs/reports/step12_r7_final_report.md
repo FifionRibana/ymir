@@ -429,21 +429,61 @@ The init-only diagnostic pattern (build state from `init_s_field`, dump stats, r
 
 ---
 
-## Section 7 — Direction pivot (TBD)
+## Section 7 — Direction pivot : architecture C1
 
-*This section is a placeholder. The pivot direction will be co-authored with the stakeholder once the desired resolution paradigm is shared. Candidate directions noted in the conversation include but are not limited to:*
+Step 12 R7 a établi que le modèle Phys.A (2D thin-sheet + Voronoï + 
+Stokes quasi-static + mantle Fourier + cratonic stiffening + 
+macro_redistribution) est structurellement incapable de produire le 
+visuel Living Landz attendu, indépendamment de toute calibration 
+paramétrique. Les limitations S1, S3, S5, S8 documentées en Section 
+4 sont des propriétés du modèle, pas des bugs.
 
-- *Different dynamics formulation (e.g. lower-viscosity continuum, viscoelastic with stress memory, kinematic plate-velocity boundary conditions overriding the GPE-driven Stokes)*
-- *Different geometry / topology (e.g. DEM particle plates with rigid-body internal dynamics, hierarchical Voronoï with sub-plate features)*
-- *Different solver paradigm (e.g. cellular automata, agent-based plate motion, optimisation-driven landscape evolution)*
-- *Different acceptance contract (e.g. statistical Living Landz instead of dynamic Living Landz — accept that the model produces landscapes via post-init redistribution rather than via in-flight tectonic evolution)*
+Le successeur architectural retenu est documenté dans 
+docs/design/c1_lightweight_dynamic_tectonics.md. C1 est un design 
+radicalement différent :
 
-When the direction is chosen, this section will document:
-- The new paradigm's force-balance or motion-balance equations
-- The Phys.A components retired and the new components introduced
-- Migration plan for the Section 6 reusable assets
-- New acceptance contract for the equivalent of R4.1–R4.6
-- First-iteration milestone definition
+- Pas de solveur Stokes (élimine S1, S3)
+- Closures empiriques additives (Davis-Suppe, Parsons-Sclater, etc.)
+  encodant des phénomènes validés
+- Plates rigides discrètes avec kinematics prescrites (adresse S8)
+- Source terms qui créent activement du gradient (adresse S5)
+- Time loop O(N_cells) avec advection + closures évaluation
+- Target runtime < 10s à 512² (vs heures avec v2)
+
+Acquis Step 12 conservés pour C1 (§4.8 C1.md) :
+
+- [`crates/ymir-core/src/tectonics_v2/advection.rs`](../../crates/ymir-core/src/tectonics_v2/advection.rs) — schéma upwind, réutilisable as-is pour la time loop C1
+- [`crates/ymir-core/src/tectonics_v2/field.rs`](../../crates/ymir-core/src/tectonics_v2/field.rs) + types `Field2D` / `PeriodicIndex` — abstraction de champ 2D
+- [`crates/ymir-core/src/tectonics_v2/voronoi/`](../../crates/ymir-core/src/tectonics_v2/voronoi/) — géométrie initiale, sujette à généralisation R7 en Phase 2 (§6 C1.md)
+- [`crates/ymir-core/src/tectonics_v2/cratonic/`](../../crates/ymir-core/src/tectonics_v2/cratonic/) — BFS du masque cratonique (le champ `factor` devient masque binaire en C1, smoothstep amplification v2 retirée)
+- [`crates/ymir-core/src/tectonics_v2/age_field/`](../../crates/ymir-core/src/tectonics_v2/age_field/) — champ d'âge géologique, drive la closure Parsons-Sclater
+- [`crates/ymir-core/src/tectonics_v2/diagnostics/`](../../crates/ymir-core/src/tectonics_v2/diagnostics/) — instrumentation, reports, structure harness
+- [`crates/ymir-core/src/tectonics_v2/boundaries/{plate_type, boundary_flag, layouts}.rs`](../../crates/ymir-core/src/tectonics_v2/boundaries/) — classification surface de frontière
+- [`crates/ymir-core/src/tectonics_v2/recycling/`](../../crates/ymir-core/src/tectonics_v2/recycling/) — Voronoï recycling conservatif
+- [`crates/ymir-core/src/tectonics_v2/workflow/`](../../crates/ymir-core/src/tectonics_v2/workflow/) — orchestrateur Phase A/B Step 12 (le sub-cycle tectonique Phase A devient un run C1, Phase B inchangée)
+- [`crates/ymir-core/src/{erosion, terrain, climate, export}`](../../crates/ymir-core/src/) — pipeline downstream complet
+- [`crates/ymir-viz/src/bridge/`](../../crates/ymir-viz/src/bridge/) — plumbing Bevy bridge
+- Discipline régression + viz gallery + V2 spec layer (cf. Sections 6.4–6.6 ci-dessus)
+
+Acquis Step 12 retirés (relocated to `_attic`, §4.7 C1.md) :
+
+- [`crates/ymir-core/src/tectonics_v2/stokes/`](../../crates/ymir-core/src/tectonics_v2/stokes/) — sous-arbre solveur complet (Newton outer, CG inner, D2 préconditioner, fallback Picard, AMG, continuation, snapshot)
+- [`crates/ymir-core/src/tectonics_v2/forcing/slab_pull.rs`](../../crates/ymir-core/src/tectonics_v2/forcing/slab_pull.rs)
+- [`crates/ymir-core/src/tectonics_v2/forcing/mantle_force.rs`](../../crates/ymir-core/src/tectonics_v2/forcing/mantle_force.rs)
+- [`crates/ymir-core/src/tectonics_v2/mantle/`](../../crates/ymir-core/src/tectonics_v2/mantle/) — stream-function builder, evolution_rate phase drift, pattern modes
+- [`crates/ymir-core/src/tectonics_v2/rheology.rs`](../../crates/ymir-core/src/tectonics_v2/rheology.rs) — closure non-linéaire power-law
+- [`crates/ymir-core/src/tectonics_v2/basal_drag.rs`](../../crates/ymir-core/src/tectonics_v2/basal_drag.rs) en sa forme v2 (tout basal drag en C1 serait une closure, pas un terme opérateur diagonal)
+- Les fixes solveur R5b D2 + D1-ter sont retirés avec le reste du sous-arbre stokes ; ils restent accessibles via `git log` comme référence pour tout couplage iterative-solver futur. Une synthèse `docs/reference/newton_solver_robustness.md` peut être créée en Phase 1.1+ de C1 si une closure non-linéaire nécessite un solveur itératif.
+
+Trade-off : la migration `_attic` (avec feature flag `v2_legacy`) préserve la reproductibilité des tests régression v2 — quiconque lit le rapport peut `cargo test --features v2_legacy` pour reproduire les FAIL evidence R7.A.2.4 — tout en sortant le code Phys.A du chemin de build par défaut C1.
+
+C1 Phase 1 prototype démarrera après merge Step 12, nouvelle 
+milestone dédiée. Acceptance gate Phase 1 : produire un continent 
+qui visuellement carries la signature chronologique (jeunes ranges 
++ vieux massifs sur même continent) sans peinture explicite.
+
+Step 12 R7 reste la base diagnostique solide qui justifie ce pivot 
+empiriquement et théoriquement.
 
 ---
 
