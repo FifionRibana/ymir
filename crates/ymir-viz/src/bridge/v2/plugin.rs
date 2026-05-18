@@ -23,6 +23,15 @@ use super::spec::V2RunSpec;
 use super::thread::spawn_v2_thread;
 use ymir_core::tectonics_v2::diagnostics::metrics::Metrics;
 
+// Step 12 Phase 7b — workflow cycle history is owned by the UI layer
+// (`crate::ui::workflow_panel`) but populated here from the
+// `WorkflowCycleCompleted` events the bridge thread streams. The
+// import direction (bridge → ui) is unusual but matches the practical
+// data-flow in this single-binary crate; the alternative (Bevy event
+// bus + separate consumer system) would be over-engineered for one
+// resource.
+use crate::ui::workflow_panel::{CycleMetricsSnapshot, WorkflowCycleHistory};
+
 /// Lifecycle of the most recent v2 run, surfaced to the UI through
 /// `V2SolverBridge::state`.
 ///
@@ -41,6 +50,15 @@ pub enum V2RunState {
         total: usize,
         started_at: Option<Instant>,
         peek_state: Option<Box<V2FinalState>>,
+        /// Step 12 follow-up — workflow Phase A multi-cycle context.
+        /// `Some((cycle_idx_1based, n_cycles))` after the first
+        /// `V2Event::WorkflowCycleCompleted` lands; preserved across
+        /// subsequent `V2Event::Progress` events so the dashboard can
+        /// render the cycle counter independently of the harness step
+        /// counter. `None` for `RunBaseline` / `ContinueRun` runs
+        /// (single-baseline) and prior to the first
+        /// `WorkflowCycleCompleted` event of a workflow run.
+        cycle_context: Option<(usize, usize)>,
     },
     Completed {
         spec: V2RunSpec,
@@ -63,6 +81,32 @@ pub enum V2RunState {
     },
     Failed {
         error: String,
+    },
+    /// Step 12 Phase 7 — Phase A multi-cycle loop has completed.
+    /// Carries the final state for chaining into a subsequent
+    /// `V2Command::RunWorkflowPhaseB`. Distinct from `Completed`
+    /// because no `Metrics` struct is produced (the workflow's
+    /// per-cycle metrics are emitted as `WorkflowCycleCompleted`
+    /// events; aggregating them into a single `Metrics` is a Phase
+    /// 7b refinement).
+    WorkflowPhaseACompleted {
+        spec: V2RunSpec,
+        cycles_run: usize,
+        final_state: Box<V2FinalState>,
+        elapsed: Duration,
+    },
+    /// Step 12 Phase 7 — Phase B HD finalization has completed.
+    /// Holds the HD heightmap (flat `Vec<f32>` row-major,
+    /// `hd_nx × hd_ny`) for download / visualization.
+    /// `grand_scale_deviation_p95` is the formal D5 acceptance
+    /// metric (see `PhaseBOutput` for context).
+    WorkflowPhaseBCompleted {
+        spec: V2RunSpec,
+        hd_nx: usize,
+        hd_ny: usize,
+        hd_heightmap: Vec<f32>,
+        grand_scale_deviation_p95: f64,
+        elapsed: Duration,
     },
 }
 
@@ -115,6 +159,44 @@ impl V2SolverBridge {
         use std::sync::atomic::Ordering;
         self.cancel_flag.store(true, Ordering::Relaxed);
     }
+
+    /// Step 12 Phase 7b — queue a Phase A multi-cycle workflow run.
+    /// `spec.workflow` must be `V2WorkflowSpec::On { .. }`; the bridge
+    /// thread emits `V2Event::Failed` if invoked with `Off`.
+    pub fn submit_workflow_phase_a(&self, spec: V2RunSpec) -> Result<(), &'static str> {
+        self.commands_tx
+            .send(V2Command::RunWorkflowPhaseA { spec })
+            .map_err(|_| "v2 bridge channel send failed")
+    }
+
+    /// Step 12 Phase 7b — queue a Phase A continuation from a prior
+    /// final state. Cycle 1 receives `from_state` as the warm-start;
+    /// subsequent cycles use the orchestrator's natural continuation
+    /// chain.
+    pub fn submit_continue_workflow_phase_a(
+        &self,
+        spec: V2RunSpec,
+        from_state: V2FinalState,
+    ) -> Result<(), &'static str> {
+        self.commands_tx
+            .send(V2Command::ContinueWorkflowPhaseA { spec, from_state })
+            .map_err(|_| "v2 bridge channel send failed")
+    }
+
+    /// Step 12 Phase 7b — queue an HD Phase B finalization on a Phase
+    /// A output (single-shot, 30–90 s at 2048² × 5M droplets). The
+    /// `from_state.s_field` is consumed directly; other fields are
+    /// ignored by Phase B but carried for symmetry with the Phase A
+    /// continuation path.
+    pub fn submit_workflow_phase_b(
+        &self,
+        spec: V2RunSpec,
+        from_state: V2FinalState,
+    ) -> Result<(), &'static str> {
+        self.commands_tx
+            .send(V2Command::RunWorkflowPhaseB { spec, from_state })
+            .map_err(|_| "v2 bridge channel send failed")
+    }
 }
 
 pub struct V2BridgePlugin;
@@ -143,39 +225,64 @@ impl Plugin for V2BridgePlugin {
     }
 }
 
-fn poll_v2_events(mut bridge: ResMut<V2SolverBridge>) {
+fn poll_v2_events(
+    mut bridge: ResMut<V2SolverBridge>,
+    mut history: ResMut<WorkflowCycleHistory>,
+) {
     while let Ok(event) = bridge.events_rx.try_recv() {
         match event {
             V2Event::Started { spec } => {
                 let total = spec.steps;
+                // Step 12 Phase 7b — only reset the cycle-metrics
+                // history when a fresh workflow run starts. Single-
+                // baseline runs (workflow=Off) don't populate the
+                // history, so their Started events should not wipe
+                // a prior workflow's data the user may still be
+                // inspecting. Continuation paths route through
+                // `ContinueWorkflowPhaseA` which also re-emits
+                // Started; clearing there is desired (each Continue
+                // is a logically fresh experiment from the user's
+                // POV — their continuation builds on an in-memory
+                // state, not on the displayed cycle table).
+                if matches!(spec.workflow, crate::bridge::v2::V2WorkflowSpec::On { .. }) {
+                    history.clear();
+                }
                 bridge.state = V2RunState::Running {
                     spec,
                     step: 0,
                     total,
                     started_at: Some(Instant::now()),
                     peek_state: None,
+                    cycle_context: None,
                 };
             }
             V2Event::Progress { step, total, peek_state } => {
-                // Preserve the existing `spec` and `started_at` from
-                // the prior Running state; only update step/total and
-                // the peek snapshot. If we somehow receive a Progress
-                // before a Started (shouldn't happen — bridge thread
-                // emits Started before invoking the harness callback),
-                // fall back to a zero-spec stub.
-                let (spec, started_at) = match std::mem::take(&mut bridge.state) {
-                    V2RunState::Running { spec, started_at, .. } => (spec, started_at),
-                    other => {
-                        bridge.state = other;
-                        continue;
-                    }
-                };
+                // Preserve the existing `spec`, `started_at`, and
+                // `cycle_context` from the prior Running state; only
+                // update step/total and the peek snapshot. (cycle_context
+                // is set by `WorkflowCycleCompleted` and persists across
+                // subsequent Progress events of the same workflow run;
+                // a baseline run never sets it, so the preserve-on-
+                // Progress logic is a no-op for that path.) If we
+                // somehow receive a Progress before a Started, fall
+                // back to a None cycle_context.
+                let (spec, started_at, cycle_context) =
+                    match std::mem::take(&mut bridge.state) {
+                        V2RunState::Running { spec, started_at, cycle_context, .. } => {
+                            (spec, started_at, cycle_context)
+                        }
+                        other => {
+                            bridge.state = other;
+                            continue;
+                        }
+                    };
                 bridge.state = V2RunState::Running {
                     spec,
                     step,
                     total,
                     started_at,
                     peek_state: Some(Box::new(peek_state)),
+                    cycle_context,
                 };
             }
             V2Event::Completed { spec, final_state, metrics, elapsed } => {
@@ -188,6 +295,94 @@ fn poll_v2_events(mut bridge: ResMut<V2SolverBridge>) {
             }
             V2Event::Failed { error } => {
                 bridge.state = V2RunState::Failed { error };
+            }
+            V2Event::WorkflowCycleCompleted {
+                cycle_idx,
+                n_cycles,
+                peek_state,
+                erosion_volume_removed,
+                sea_level_normalized,
+                mass_drift,
+                craton_recomputation_change,
+            } => {
+                // Phase 7b.3 — push the per-cycle metrics into the
+                // dashboard history before we clobber the Running
+                // state. The history is FIFO-capped at MAX_HISTORY
+                // entries inside `WorkflowCycleHistory::push`.
+                history.push(CycleMetricsSnapshot {
+                    cycle_idx,
+                    n_cycles,
+                    erosion_volume_removed,
+                    sea_level_normalized,
+                    mass_drift,
+                    craton_recomputation_change,
+                });
+                // Reuse Running for in-flight workflow Phase A. The
+                // cycle counter lives in `cycle_context`; `step` /
+                // `total` are left at the harness-step values
+                // (typically (0, 0) for Phase A since no per-step
+                // Progress events fire inside `run_phase_a_cycle`'s
+                // internal `run_baseline`). The dashboard chooses
+                // which counter to display based on
+                // `cycle_context.is_some()`.
+                let (spec, started_at, prev_step, prev_total) =
+                    match std::mem::take(&mut bridge.state) {
+                        V2RunState::Running {
+                            spec,
+                            started_at,
+                            step,
+                            total,
+                            ..
+                        } => (spec, started_at, step, total),
+                        other => {
+                            // First cycle: a Started event populated Running
+                            // already. If we land here from another state,
+                            // synthesise minimal context so the UI doesn't
+                            // crash; the next event will refresh.
+                            bridge.state = other;
+                            continue;
+                        }
+                    };
+                bridge.state = V2RunState::Running {
+                    spec,
+                    step: prev_step,
+                    total: prev_total,
+                    started_at,
+                    peek_state: Some(Box::new(peek_state)),
+                    cycle_context: Some((cycle_idx + 1, n_cycles)),
+                };
+            }
+            V2Event::WorkflowPhaseACompleted {
+                spec,
+                cycles_run,
+                final_state,
+                elapsed,
+            } => {
+                bridge.state = V2RunState::WorkflowPhaseACompleted {
+                    spec,
+                    cycles_run,
+                    final_state: Box::new(final_state),
+                    elapsed,
+                };
+            }
+            V2Event::WorkflowPhaseBCompleted {
+                spec,
+                hd_nx,
+                hd_ny,
+                hd_heightmap,
+                sediment: _,
+                grand_scale_deviation: _,
+                grand_scale_deviation_p95,
+                elapsed,
+            } => {
+                bridge.state = V2RunState::WorkflowPhaseBCompleted {
+                    spec,
+                    hd_nx,
+                    hd_ny,
+                    hd_heightmap,
+                    grand_scale_deviation_p95,
+                    elapsed,
+                };
             }
         }
     }

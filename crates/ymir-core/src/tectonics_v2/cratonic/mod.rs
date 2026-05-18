@@ -111,12 +111,49 @@ pub struct CratonicConfigEnabled {
     /// effect in cratons (where plastic strain stays zero by D1)
     /// AND lets weakening modulate mobile belts.
     pub b_factor: f64,
-    /// Lower bound on plate area (as a fraction of the domain) for a
-    /// plate to receive a craton. Plates below this threshold get
-    /// `cratonic_factor = 0` everywhere (they represent fragments
-    /// without geological time to consolidate a cratonic root).
-    /// Range `[0.05, 0.20]`.
+    /// Lower bound on plate area (as a fraction of the **domain**) for
+    /// a plate to receive a craton at simulation init. Plates below
+    /// this threshold get `cratonic_factor = 0` everywhere (they
+    /// represent fragments without geological time to consolidate a
+    /// cratonic root). Range `[0.05, 0.20]`.
+    ///
+    /// **Semantics 1 — init-time exclusion.** This parameter is
+    /// fraction-of-domain. Used by
+    /// [`super::factor::build_cratonic_factor_field`] (Step 9) when the
+    /// run starts. **It is *not* the per-cycle retention threshold**;
+    /// see [`Self::craton_retention_threshold`] for the post-erosion
+    /// recompute counterpart (Step 12).
+    ///
+    /// The two parameters are deliberately separate (Step 12 Phase 3
+    /// finding): a Step 9 init check reads the plate's *cell count*
+    /// fraction of the whole domain, while a Step 12 D4 recompute
+    /// check reads each plate's *continental cell* fraction *within
+    /// the plate*. Numerically equal at the default value (`0.10`)
+    /// but conceptually distinct.
     pub plate_area_min: f64,
+    /// Step 12 D4 — minimum continental cell fraction **within a
+    /// plate** for that plate to retain its cratonic factor across a
+    /// Phase A cycle. After erosion drops `continental_count[p] /
+    /// total_cells_in_plate[p]` below this value, the plate's
+    /// per-plate type flips from `Continental` to oceanic-equivalent
+    /// in the recompute, BFS sources this plate's cells, and
+    /// `cratonic_factor = 0` for every cell of that plate post-cycle.
+    /// Range `[0.05, 0.95]`.
+    ///
+    /// **Semantics 2 — per-cycle retention.** This parameter is
+    /// fraction-within-plate. Used **only** by Step 12's
+    /// `tectonics_v2::workflow::phase_a` orchestrator
+    /// (`recompute_cratonic_factor_for_cycle`); it has no effect on
+    /// any pre-Step-12 code path, so legacy regression tests are
+    /// bit-identical regardless of its value.
+    ///
+    /// **Default `0.10`.** Intentionally aligned with
+    /// [`Self::plate_area_min`] default to preserve the
+    /// pre-Step-12-Phase-3.5 behaviour bit-for-bit. Empirical
+    /// calibration during Phase 8 reports may suggest a different
+    /// default (e.g., `0.05` more permissive) once multi-cycle runs
+    /// are characterised.
+    pub craton_retention_threshold: f64,
     /// Smoothstep transition width, in units of `L_plate`. The
     /// transition runs from `d_mid - smoothing_width / 2` to
     /// `d_mid + smoothing_width / 2`. Default `0.05` (5 % of
@@ -139,6 +176,11 @@ impl CratonicConfigEnabled {
     /// step9-patch.md` for the formal §4.10 amendment.
     pub const B_FACTOR_DEFAULT: f64 = 8.0;
     pub const PLATE_AREA_MIN_DEFAULT: f64 = 0.10;
+    /// Step 12 D4 default — within-plate continental fraction below
+    /// which a plate flips to oceanic-equivalent in the per-cycle
+    /// craton recompute. Aligned with `PLATE_AREA_MIN_DEFAULT` for
+    /// bit-identical regression behaviour pre-Step-12.
+    pub const CRATON_RETENTION_THRESHOLD_DEFAULT: f64 = 0.10;
     pub const SMOOTHING_WIDTH_DEFAULT: f64 = 0.05;
 }
 
@@ -149,6 +191,7 @@ impl Default for CratonicConfigEnabled {
             k_viscous: Self::K_VISCOUS_DEFAULT,
             b_factor: Self::B_FACTOR_DEFAULT,
             plate_area_min: Self::PLATE_AREA_MIN_DEFAULT,
+            craton_retention_threshold: Self::CRATON_RETENTION_THRESHOLD_DEFAULT,
             smoothing_width: Self::SMOOTHING_WIDTH_DEFAULT,
         }
     }
@@ -278,6 +321,9 @@ mod tests {
         // docstring for the analytical + empirical justification.
         assert_eq!(cfg.b_factor, 8.0);
         assert_eq!(cfg.plate_area_min, 0.10);
+        // Step 12 Phase 3.5 — separate from `plate_area_min`, default
+        // intentionally aligned to preserve pre-Step-12 bit-identity.
+        assert_eq!(cfg.craton_retention_threshold, 0.10);
         assert_eq!(cfg.smoothing_width, 0.05);
     }
 

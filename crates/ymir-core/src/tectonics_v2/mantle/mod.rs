@@ -51,7 +51,10 @@ pub mod pattern;
 pub mod stream_function;
 
 pub use pattern::{build_mantle_pattern, MantlePattern};
-pub use stream_function::{generate_stream_function, StreamFunctionConfig};
+pub use stream_function::{
+    generate_stream_function, generate_stream_function_at_time, StreamFunctionBuilder,
+    StreamFunctionConfig,
+};
 
 use super::field::Field2D;
 
@@ -67,8 +70,12 @@ pub const COUPLING_DEFAULT: f64 = 1.0;
 /// Default number of Fourier modes in the stream function.
 pub const NUM_MODES_DEFAULT: usize = 6;
 
-/// Default evolution rate. `0.0` = static pattern, per D6.
-/// Time-varying pattern is deferred to a future milestone.
+/// Default evolution rate. `0.0` = static pattern (Step 8 baseline,
+/// bit-identical with pre-Step-12-R6 behaviour). Non-zero activates
+/// the Step 12 R6 Phys.A phase-drift evolution: every Fourier mode's
+/// `(φx, φy)` shifts by `ω · t_nondim` with `ω = evolution_rate · TAU`,
+/// while wave numbers, amplitudes and the t=0 normalisation stay
+/// frozen.
 pub const EVOLUTION_RATE_DEFAULT: f64 = 0.0;
 
 /// Mantle forcing configuration.
@@ -93,8 +100,10 @@ pub enum MantleConfig {
         /// independently for sweeps.
         seed: u64,
         /// Evolution rate. `0.0` = static pattern (Step 8
-        /// baseline). Non-zero = pattern drifts each step. Out
-        /// of scope at Step 8.
+        /// baseline). Non-zero = Step 12 R6 Phys.A phase drift —
+        /// each step rebuilds ψ with all mode phases shifted by
+        /// `evolution_rate · TAU · t_nondim`. Wave numbers,
+        /// amplitudes and t=0 normalisation are frozen.
         evolution_rate: f64,
     },
 }

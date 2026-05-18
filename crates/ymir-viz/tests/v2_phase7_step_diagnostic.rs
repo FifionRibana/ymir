@@ -94,10 +94,12 @@ fn save_all_fields(state: &V2FinalState, dir: &std::path::Path, step: usize) {
     for &field in V2Field::ALL {
         let tag = match field {
             V2Field::SThickness => "s",
+            V2Field::Altitude => "altitude",
             V2Field::Age => "age",
             V2Field::Cratonic => "cratonic",
             V2Field::StrainRate => "strain",
             V2Field::VelocityMagnitude => "vmag",
+            V2Field::Slope => "slope",
         };
         let path = dir.join(format!("step_{:04}_{}.png", step, tag));
         save_field_png(state, field, &path)
@@ -191,10 +193,12 @@ fn v2_phase7_step_diagnostic() {
                 for &field in V2Field::ALL {
                     let tag = match field {
                         V2Field::SThickness => "s",
+                        V2Field::Altitude => "altitude",
                         V2Field::Age => "age",
                         V2Field::Cratonic => "cratonic",
                         V2Field::StrainRate => "strain",
                         V2Field::VelocityMagnitude => "vmag",
+                        V2Field::Slope => "slope",
                     };
                     let path = final_dir.join(format!("{}.png", tag));
                     save_field_png(&final_state, field, &path).unwrap_or_else(|e| {
@@ -226,6 +230,11 @@ fn v2_phase7_step_diagnostic() {
                 break;
             }
             Ok(V2Event::Failed { error }) => panic!("bridge failed: {}", error),
+            // Workflow events never fire in this RunBaseline-only
+            // diagnostic; harmlessly ignored if the bridge surfaces
+            // them in the future (kept as a wildcard to avoid this
+            // test re-breaking on every new V2Event variant).
+            Ok(_) => {}
             Err(RecvTimeoutError::Timeout) => continue,
             Err(RecvTimeoutError::Disconnected) => panic!("channel disconnected"),
         }

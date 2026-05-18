@@ -87,6 +87,22 @@ pub fn draw(
             exported_at, scalar_metrics.vmax_peak, scalar_metrics.cg_iter_mean
         ),
         V2RunState::Failed { error } => format!("Failed: {}", error),
+        V2RunState::WorkflowPhaseACompleted { cycles_run, elapsed, .. } => format!(
+            "Phase A done — {} cycles in {:.1}s",
+            cycles_run,
+            elapsed.as_secs_f64()
+        ),
+        V2RunState::WorkflowPhaseBCompleted {
+            hd_nx,
+            hd_ny,
+            grand_scale_deviation_p95,
+            elapsed,
+            ..
+        } => format!(
+            "Phase B done — {hd_nx}×{hd_ny} HD in {:.1}s, p95 = {:.4}",
+            elapsed.as_secs_f64(),
+            grand_scale_deviation_p95
+        ),
     };
     ui.colored_label(
         match &bridge.state {
@@ -94,6 +110,8 @@ pub fn draw(
             V2RunState::Running { .. } => egui::Color32::YELLOW,
             V2RunState::Completed { .. } => egui::Color32::GREEN,
             V2RunState::Imported { .. } => egui::Color32::LIGHT_BLUE,
+            V2RunState::WorkflowPhaseACompleted { .. } => egui::Color32::LIGHT_GREEN,
+            V2RunState::WorkflowPhaseBCompleted { .. } => egui::Color32::from_rgb(0x80, 0xD0, 0xFF),
             V2RunState::Idle if is_preview => egui::Color32::from_rgb(0xC0, 0xA0, 0x60),
             V2RunState::Idle => egui::Color32::GRAY,
         },
@@ -349,22 +367,62 @@ pub fn draw(
                     });
 
                 ui.add_space(4.0);
-                if ui
-                    .button("\u{27f2} Reset all to zero")
-                    .on_hover_text(
-                        "Set every per-plate (vx, vy) to (0, 0). Keeps \
-                         the PerPlate variant active so `is_zero()` \
-                         still returns false — bit-equivalent to Zero \
-                         but on the algorithmic path (good for \
-                         debugging the wiring).",
-                    )
-                    .clicked()
-                {
-                    for v in velocities.iter_mut() {
-                        v.0 = 0.0;
-                        v.1 = 0.0;
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("\u{27f2} Reset all to zero")
+                        .on_hover_text(
+                            "Set every per-plate (vx, vy) to (0, 0). Keeps \
+                             the PerPlate variant active so `is_zero()` \
+                             still returns false — bit-equivalent to Zero \
+                             but on the algorithmic path (good for \
+                             debugging the wiring).",
+                        )
+                        .clicked()
+                    {
+                        for v in velocities.iter_mut() {
+                            v.0 = 0.0;
+                            v.1 = 0.0;
+                        }
                     }
-                }
+                    if ui
+                        .button("\u{1f3b2} Random")
+                        .on_hover_text(
+                            "Assign each plate a random direction with \
+                             |v| = 0.3 (uniform on the circle). The modulus \
+                             is picked conservatively below the |v| = 0.5 \
+                             of the validated Step 11 scenarios (which run \
+                             with yielding off to isolate the drift signal) \
+                             — at 0.3 the S̃ gradients that build up over \
+                             a Step 11/12 run stay clear of the yielding \
+                             feedback loop in the default yielding-on \
+                             regime. Each click produces a fresh draw \
+                             seeded from system time.",
+                        )
+                        .clicked()
+                    {
+                        // splitmix64 starting from a time-derived seed
+                        // gives an independent angle per plate on every
+                        // click. Modulus is a documented constant; the
+                        // user can still hand-edit individual velocities
+                        // afterwards via the per-plate DragValue widgets.
+                        const RANDOM_MODULUS: f64 = 0.3;
+                        let mut state = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_nanos() as u64)
+                            .unwrap_or(0xC0FFEE_DEAD_BEEF);
+                        for v in velocities.iter_mut() {
+                            state = splitmix64(state);
+                            // Top 53 bits → uniform fraction in [0, 1)
+                            // matching the f64 mantissa precision, then
+                            // scaled to a uniform angle in [0, τ).
+                            let frac =
+                                (state >> 11) as f64 / ((1u64 << 53) as f64);
+                            let angle = frac * std::f64::consts::TAU;
+                            v.0 = RANDOM_MODULUS * angle.cos();
+                            v.1 = RANDOM_MODULUS * angle.sin();
+                        }
+                    }
+                });
             }
         });
 
@@ -1010,6 +1068,108 @@ fn init_mode_widget(ui: &mut egui::Ui, mode: &mut V2InitModeSpec) {
                 );
             }
         }
+        V2InitModeSpec::Orogenic {
+            peak_value,
+            base_continental_value,
+            oceanic_value,
+            half_length_ratio,
+            width_sigma_ratio,
+            orientation: _,
+        } => {
+            ui.add(
+                egui::Slider::new(peak_value, 0.9..=1.5)
+                    .text("peak_value (ridge crest)")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(base_continental_value, 0.5..=1.0)
+                    .text("base_continental_value (plain)")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(oceanic_value, 0.0..=0.5)
+                    .text("oceanic_value")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(half_length_ratio, 0.10..=0.80)
+                    .text("half_length_ratio (× L_plate)")
+                    .step_by(0.05),
+            );
+            ui.add(
+                egui::Slider::new(width_sigma_ratio, 0.04..=0.30)
+                    .text("width_sigma_ratio (× L_plate)")
+                    .step_by(0.01),
+            );
+            ui.label(
+                egui::RichText::new(
+                    "Step 12 R7.A.1 — one linear ridge per continental \
+                     plate along its PCA principal axis (periodic-aware). \
+                     Oceanic cells receive oceanic_value uniform. \
+                     Orientation toggle is fixed to PCA in the v2 UI; \
+                     edit the preset JSON for a Fixed angle.",
+                )
+                .small()
+                .weak(),
+            );
+        }
+        V2InitModeSpec::Composite {
+            radial,
+            orogenic_ridge,
+            oceanic_value,
+            cap: _,
+        } => {
+            ui.label(egui::RichText::new("Radial dome").strong());
+            ui.add(
+                egui::Slider::new(&mut radial.continental_value, 0.5..=1.0)
+                    .text("dome continental_value")
+                    .step_by(0.01),
+            );
+            ui.separator();
+            ui.label(egui::RichText::new("Orogenic ridge").strong());
+            ui.add(
+                egui::Slider::new(&mut orogenic_ridge.peak_value, 0.9..=1.5)
+                    .text("ridge peak_value")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(&mut orogenic_ridge.base_continental_value, 0.5..=1.0)
+                    .text("ridge base_continental_value")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(&mut orogenic_ridge.half_length_ratio, 0.10..=0.80)
+                    .text("ridge half_length_ratio")
+                    .step_by(0.05),
+            );
+            ui.add(
+                egui::Slider::new(&mut orogenic_ridge.width_sigma_ratio, 0.04..=0.30)
+                    .text("ridge width_sigma_ratio")
+                    .step_by(0.01),
+            );
+            ui.add(
+                egui::Slider::new(&mut orogenic_ridge.offset_along_axis_ratio, -1.0..=1.0)
+                    .text("ridge offset_along_axis_ratio")
+                    .step_by(0.05),
+            );
+            ui.separator();
+            ui.add(
+                egui::Slider::new(oceanic_value, 0.0..=0.5)
+                    .text("oceanic_value")
+                    .step_by(0.01),
+            );
+            ui.label(
+                egui::RichText::new(
+                    "Step 12 R7.A.2 — RadialProfile dome + Orogenic ridge \
+                     superposed additively with cap. Composite S̃ = clamp(dome \
+                     + (peak - base) · ridge_amount, 0, cap). Cap fixed to \
+                     `UsePeakOrogenic` in v2 UI; edit preset JSON for \
+                     `Fixed { value }`.",
+                )
+                .small()
+                .weak(),
+            );
+        }
     }
 }
 
@@ -1075,7 +1235,7 @@ fn draw_legend_bar(ui: &mut egui::Ui, field: V2Field) {
     for k in 0..SAMPLES {
         let t = k as f64 / (SAMPLES - 1) as f64;
         let rgba = match field {
-            V2Field::SThickness => hypsometric_colormap(t),
+            V2Field::SThickness | V2Field::Altitude => hypsometric_colormap(t),
             V2Field::Age => age_colormap(t),
             V2Field::Cratonic => cratonic_grayscale(t),
             V2Field::StrainRate | V2Field::VelocityMagnitude | V2Field::Slope => log_hot(t),

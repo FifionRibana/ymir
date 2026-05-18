@@ -237,6 +237,128 @@ pub enum V2InitModeSpec {
         #[serde(default)]
         fbm_seed_oceanic: Option<u64>,
     },
+    /// Step 12 R7.A.1 — orogenic linear ridge per continental plate.
+    /// Mirrors [`ymir_core::tectonics_v2::init::InitMode::Orogenic`].
+    Orogenic {
+        peak_value: f64,
+        base_continental_value: f64,
+        oceanic_value: f64,
+        half_length_ratio: f64,
+        width_sigma_ratio: f64,
+        orientation: V2OrogenicOrientation,
+    },
+    /// Step 12 R7.A.2 — composite continental profile: radial dome
+    /// (Step 13 `RadialProfile`) + orogenic ridge (R7.A.1) added
+    /// with a cap. Mirrors
+    /// [`ymir_core::tectonics_v2::init::InitMode::Composite`].
+    Composite {
+        radial: V2CompositeRadialParams,
+        orogenic_ridge: V2CompositeOrogenicRidgeParams,
+        oceanic_value: f64,
+        cap: V2CompositeCap,
+    },
+}
+
+/// V2-side mirror of
+/// [`ymir_core::tectonics_v2::init::composite_profile::CompositeRadialParams`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct V2CompositeRadialParams {
+    pub continental_value: f64,
+    pub profile_shape: V2ProfileShape,
+}
+
+impl V2CompositeRadialParams {
+    pub fn into_core(
+        self,
+    ) -> ymir_core::tectonics_v2::init::CompositeRadialParams {
+        ymir_core::tectonics_v2::init::CompositeRadialParams {
+            continental_value: self.continental_value,
+            profile_shape: self.profile_shape.into_core(),
+        }
+    }
+}
+
+/// V2-side mirror of
+/// [`ymir_core::tectonics_v2::init::composite_profile::CompositeOrogenicRidgeParams`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+pub struct V2CompositeOrogenicRidgeParams {
+    pub peak_value: f64,
+    pub base_continental_value: f64,
+    pub half_length_ratio: f64,
+    pub width_sigma_ratio: f64,
+    pub orientation: V2OrogenicOrientation,
+    pub offset_along_axis_ratio: f64,
+}
+
+impl V2CompositeOrogenicRidgeParams {
+    pub fn into_core(
+        self,
+    ) -> ymir_core::tectonics_v2::init::CompositeOrogenicRidgeParams {
+        ymir_core::tectonics_v2::init::CompositeOrogenicRidgeParams {
+            peak_value: self.peak_value,
+            base_continental_value: self.base_continental_value,
+            half_length_ratio: self.half_length_ratio,
+            width_sigma_ratio: self.width_sigma_ratio,
+            orientation: self.orientation.into_core(),
+            offset_along_axis_ratio: self.offset_along_axis_ratio,
+        }
+    }
+}
+
+/// V2-side mirror of
+/// [`ymir_core::tectonics_v2::init::composite_profile::CompositeCap`].
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum V2CompositeCap {
+    UsePeakOrogenic,
+    Fixed { value: f64 },
+}
+
+impl Default for V2CompositeCap {
+    fn default() -> Self {
+        V2CompositeCap::UsePeakOrogenic
+    }
+}
+
+impl V2CompositeCap {
+    pub fn into_core(self) -> ymir_core::tectonics_v2::init::CompositeCap {
+        use ymir_core::tectonics_v2::init::CompositeCap;
+        match self {
+            V2CompositeCap::UsePeakOrogenic => CompositeCap::UsePeakOrogenic,
+            V2CompositeCap::Fixed { value } => CompositeCap::Fixed { value },
+        }
+    }
+}
+
+/// V2-side mirror of
+/// [`ymir_core::tectonics_v2::init::OrogenicOrientation`]. Serialises
+/// to the same `kind`-tagged JSON shape as the core enum so preset
+/// round-trips identity.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum V2OrogenicOrientation {
+    /// PCA principal axis of the plate's cells (periodic-aware).
+    /// Default; falls back to `Fixed { angle_rad: 0.0 }` for plates
+    /// with too few cells or rank-1 covariance.
+    PlateMainAxisPca,
+    /// Constant orientation for every plate.
+    Fixed { angle_rad: f64 },
+}
+
+impl Default for V2OrogenicOrientation {
+    fn default() -> Self {
+        V2OrogenicOrientation::PlateMainAxisPca
+    }
+}
+
+impl V2OrogenicOrientation {
+    pub fn into_core(self) -> ymir_core::tectonics_v2::init::OrogenicOrientation {
+        use ymir_core::tectonics_v2::init::OrogenicOrientation;
+        match self {
+            V2OrogenicOrientation::PlateMainAxisPca => OrogenicOrientation::PlateMainAxisPca,
+            V2OrogenicOrientation::Fixed { angle_rad } => OrogenicOrientation::Fixed { angle_rad },
+        }
+    }
 }
 
 /// `#[serde(default)]` helper for `V2InitModeSpec::RadialProfile
@@ -315,6 +437,32 @@ impl V2InitModeSpec {
                 fbm_scale_oceanic,
                 fbm_seed_oceanic,
             },
+            V2InitModeSpec::Orogenic {
+                peak_value,
+                base_continental_value,
+                oceanic_value,
+                half_length_ratio,
+                width_sigma_ratio,
+                orientation,
+            } => InitMode::Orogenic {
+                peak_value,
+                base_continental_value,
+                oceanic_value,
+                half_length_ratio,
+                width_sigma_ratio,
+                orientation: orientation.into_core(),
+            },
+            V2InitModeSpec::Composite {
+                radial,
+                orogenic_ridge,
+                oceanic_value,
+                cap,
+            } => InitMode::Composite {
+                radial: radial.into_core(),
+                orogenic_ridge: orogenic_ridge.into_core(),
+                oceanic_value,
+                cap: cap.into_core(),
+            },
         }
     }
 
@@ -331,6 +479,8 @@ impl V2InitModeSpec {
             V2InitModeSpec::RadialProfileWithFBM { .. } => {
                 "RadialProfileWithFBM (Step 13: gradient + FBM heterogeneity)"
             }
+            V2InitModeSpec::Orogenic { .. } => "Orogenic (Step 12 R7.A.1: linear ridge)",
+            V2InitModeSpec::Composite { .. } => "Composite (Step 12 R7.A.2: dome + ridge)",
         }
     }
 
@@ -345,6 +495,8 @@ impl V2InitModeSpec {
             V2InitModeSpec::Convolution { .. } => 3,
             V2InitModeSpec::RadialProfile { .. } => 4,
             V2InitModeSpec::RadialProfileWithFBM { .. } => 5,
+            V2InitModeSpec::Orogenic { .. } => 6,
+            V2InitModeSpec::Composite { .. } => 7,
         }
     }
 
@@ -391,6 +543,57 @@ impl V2InitModeSpec {
             fbm_seed_oceanic: None,
         }
     }
+
+    /// Defaults for `Orogenic` when picked from the dropdown the
+    /// first time. Mirrors the core `OROGENIC_*_DEFAULT` constants
+    /// (peak=1.20, base=0.85, oceanic=0.20, half_length_ratio=0.40,
+    /// width_sigma_ratio=0.08, orientation=PlateMainAxisPca).
+    pub fn orogenic_default() -> Self {
+        use ymir_core::tectonics_v2::init::{
+            OROGENIC_BASE_VALUE_DEFAULT, OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
+            OROGENIC_OCEANIC_VALUE_DEFAULT, OROGENIC_PEAK_VALUE_DEFAULT,
+            OROGENIC_WIDTH_SIGMA_RATIO_DEFAULT,
+        };
+        V2InitModeSpec::Orogenic {
+            peak_value: OROGENIC_PEAK_VALUE_DEFAULT,
+            base_continental_value: OROGENIC_BASE_VALUE_DEFAULT,
+            oceanic_value: OROGENIC_OCEANIC_VALUE_DEFAULT,
+            half_length_ratio: OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
+            width_sigma_ratio: OROGENIC_WIDTH_SIGMA_RATIO_DEFAULT,
+            orientation: V2OrogenicOrientation::PlateMainAxisPca,
+        }
+    }
+
+    /// Defaults for `Composite` when picked from the dropdown the
+    /// first time. Reuses the radial peak from
+    /// `RadialProfile::default()` (0.95) for the dome, and the
+    /// Orogenic defaults for the ridge — with the R7.A.1.bis-
+    /// validated `width_sigma_ratio = 0.10` instead of the
+    /// orogenic-seul default of 0.08 (the slightly wider sigma
+    /// produces a more readable ridge in the composite at 64²).
+    pub fn composite_default() -> Self {
+        use ymir_core::tectonics_v2::init::{
+            COMPOSITE_RADIAL_CONTINENTAL_DEFAULT, OROGENIC_BASE_VALUE_DEFAULT,
+            OROGENIC_HALF_LENGTH_RATIO_DEFAULT, OROGENIC_OCEANIC_VALUE_DEFAULT,
+            OROGENIC_PEAK_VALUE_DEFAULT,
+        };
+        V2InitModeSpec::Composite {
+            radial: V2CompositeRadialParams {
+                continental_value: COMPOSITE_RADIAL_CONTINENTAL_DEFAULT,
+                profile_shape: V2ProfileShape::Smoothstep,
+            },
+            orogenic_ridge: V2CompositeOrogenicRidgeParams {
+                peak_value: OROGENIC_PEAK_VALUE_DEFAULT,
+                base_continental_value: OROGENIC_BASE_VALUE_DEFAULT,
+                half_length_ratio: OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
+                width_sigma_ratio: 0.10,
+                orientation: V2OrogenicOrientation::PlateMainAxisPca,
+                offset_along_axis_ratio: 0.0,
+            },
+            oceanic_value: OROGENIC_OCEANIC_VALUE_DEFAULT,
+            cap: V2CompositeCap::UsePeakOrogenic,
+        }
+    }
 }
 
 impl Default for V2ForceKind {
@@ -409,6 +612,100 @@ fn default_preset_label() -> String {
 
 fn default_capture_endpoints() -> bool {
     false
+}
+
+/// Step 12 — Phase A loop parameters mirroring
+/// [`ymir_core::tectonics_v2::workflow::PhaseAParams`]. Step 12 R3
+/// refactor: dropped `β` (legacy local-deposition coefficient) in
+/// favour of `isostatic_rebound_ratio` + `max_drainage_distance` —
+/// the new macro-redistribution mechanism is mass-conserving by
+/// construction (no `β`-driven mass loss path) and routes eroded
+/// sediment along true drainage basins, not just immediate downslope
+/// neighbours. See
+/// [`ymir_core::tectonics_v2::workflow::macro_redistribution`] for
+/// the algorithm.
+///
+/// Defaults: `α = 0.01`, `rebound = 0.80` (Earth `ρ_crust / ρ_mantle`),
+/// `max_drainage_distance = 10` cells, `5 cycles × 20 steps`. R5
+/// calibration sweep will refine these.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct V2PhaseAParams {
+    pub n_cycles: usize,
+    pub k_cycle: usize,
+    pub alpha: f64,
+    pub isostatic_rebound_ratio: f64,
+    pub max_drainage_distance: usize,
+}
+
+impl Default for V2PhaseAParams {
+    fn default() -> Self {
+        Self {
+            n_cycles: 5,
+            k_cycle: 20,
+            alpha: 0.01,
+            isostatic_rebound_ratio: 0.80,
+            max_drainage_distance: 10,
+        }
+    }
+}
+
+/// Step 12 — Phase B HD finalization parameters mirroring the
+/// user-relevant subset of
+/// [`ymir_core::tectonics_v2::workflow::PhaseBParams`]. Only the
+/// knobs the panel exposes are roundtripped; the remaining
+/// `FbmUpscaleConfig` / `ErosionConfig` defaults are pinned to
+/// `core::*::default()` at translation time.
+///
+/// Default `hd_grid_size = 2048`, `num_droplets = 5_000_000`
+/// matches the issue's primary HD target. The `grand_scale_tolerance
+/// = 0.10` is the Phase 5 reformulated p95 acceptance threshold.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct V2PhaseBParams {
+    pub hd_grid_size: usize,
+    pub num_droplets: usize,
+    pub erosion_rate: f32,
+    pub deposition_rate: f32,
+    pub fbm_amplitude_base: f64,
+    pub grand_scale_tolerance: f64,
+}
+
+impl Default for V2PhaseBParams {
+    fn default() -> Self {
+        // Matches `ymir_core::erosion::hydraulic::ErosionConfig::default()`
+        // for `erosion_rate` / `deposition_rate` / `num_droplets` and
+        // `ymir_core::terrain::upscale::FbmUpscaleConfig::default()`
+        // for `fbm_amplitude_base`. The 0.10 tolerance is the Phase 5
+        // p95 default.
+        Self {
+            hd_grid_size: 2048,
+            num_droplets: 5_000_000,
+            erosion_rate: 0.4,
+            deposition_rate: 0.35,
+            fbm_amplitude_base: 0.08,
+            grand_scale_tolerance: 0.10,
+        }
+    }
+}
+
+/// Step 12 — workflow on/off spec mirroring
+/// [`ymir_core::tectonics_v2::workflow::WorkflowConfig`]. `Off` is
+/// the default for backward compatibility (legacy preset JSON files
+/// without a `workflow` field deserialise as `Off` via
+/// `#[serde(default)]` on `V2RunSpec.workflow`). `On` carries the
+/// Phase A and Phase B parameter bundles.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum V2WorkflowSpec {
+    #[default]
+    Off,
+    On {
+        #[serde(default)]
+        phase_a: V2PhaseAParams,
+        #[serde(default)]
+        phase_b: V2PhaseBParams,
+    },
 }
 
 /// Full v2 run specification — every knob the UI exposes plus the
@@ -470,6 +767,16 @@ pub struct V2RunSpec {
     /// `Zero`).
     #[serde(default)]
     pub plate_kinematic: V2PlateKinematicSpec,
+    /// Step 12 — interleaved tectonic-erosion workflow.
+    /// `V2WorkflowSpec::Off` (the default) is a structural no-op:
+    /// the bridge runs single `RunBaseline` calls as before.
+    /// `V2WorkflowSpec::On { phase_a, phase_b }` enables the multi-
+    /// cycle Phase A loop and the HD Phase B finalization, dispatched
+    /// by the new `V2Command::RunWorkflowPhaseA` /
+    /// `RunWorkflowPhaseB` commands. `#[serde(default)]` keeps preset
+    /// JSON files written before Step 12 loading unchanged.
+    #[serde(default)]
+    pub workflow: V2WorkflowSpec,
 }
 
 /// Step 11 — UI-side mirror of
@@ -538,6 +845,98 @@ impl V2PlateKinematicSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Step 12 Phase 7a — V2WorkflowSpec round-trips through JSON.
+    /// Off (default) and On with explicit phase A + phase B params.
+    /// Catches schema drift between the panel state and the
+    /// harness `WorkflowConfig` the bridge translates it into.
+    #[test]
+    fn workflow_spec_roundtrips_through_json() {
+        let cases = [
+            V2WorkflowSpec::Off,
+            V2WorkflowSpec::On {
+                phase_a: V2PhaseAParams::default(),
+                phase_b: V2PhaseBParams::default(),
+            },
+            V2WorkflowSpec::On {
+                phase_a: V2PhaseAParams {
+                    n_cycles: 15,
+                    k_cycle: 30,
+                    alpha: 0.05,
+                    isostatic_rebound_ratio: 0.70,
+                    max_drainage_distance: 15,
+                },
+                phase_b: V2PhaseBParams {
+                    hd_grid_size: 1024,
+                    num_droplets: 1_000_000,
+                    erosion_rate: 0.5,
+                    deposition_rate: 0.3,
+                    fbm_amplitude_base: 0.10,
+                    grand_scale_tolerance: 0.10,
+                },
+            },
+        ];
+        for original in cases {
+            let json = serde_json::to_string(&original).expect("serialize");
+            let back: V2WorkflowSpec = serde_json::from_str(&json).expect("deserialize");
+            assert_eq!(original, back, "workflow spec roundtrip failed: {json}");
+        }
+    }
+
+    /// Step 12 Phase 7a — defaults pinned: V2PhaseAParams matches the
+    /// D8 issue defaults; V2PhaseBParams matches the issue-prescribed
+    /// HD targets. The numerical values are documented to keep
+    /// preset / report consumers and the panel's slider ranges in
+    /// sync.
+    ///
+    /// Step 12 R3 refactor: dropped `β`, added
+    /// `isostatic_rebound_ratio = 0.80` (Earth `ρ_crust / ρ_mantle`)
+    /// and `max_drainage_distance = 10` cells.
+    #[test]
+    fn workflow_defaults_match_issue_d8() {
+        let pa = V2PhaseAParams::default();
+        assert_eq!(pa.n_cycles, 5);
+        assert_eq!(pa.k_cycle, 20);
+        assert_eq!(pa.alpha, 0.01);
+        assert_eq!(pa.isostatic_rebound_ratio, 0.80);
+        assert_eq!(pa.max_drainage_distance, 10);
+
+        let pb = V2PhaseBParams::default();
+        assert_eq!(pb.hd_grid_size, 2048);
+        assert_eq!(pb.num_droplets, 5_000_000);
+        assert_eq!(pb.grand_scale_tolerance, 0.10);
+
+        assert_eq!(V2WorkflowSpec::default(), V2WorkflowSpec::Off);
+    }
+
+    /// Step 12 Phase 7a — legacy preset JSON without a `workflow`
+    /// field must still load (defaults to Off via `#[serde(default)]`
+    /// on `V2RunSpec.workflow`). This is the bit-identical contract
+    /// for pre-Step-12 presets.
+    #[test]
+    fn legacy_preset_json_without_workflow_loads_with_off() {
+        let json = r#"{
+            "seed": 42,
+            "grid_nx": 64,
+            "grid_ny": 64,
+            "steps": 100,
+            "num_plates": 8,
+            "continental_ratio": 0.3,
+            "bi": 0.15,
+            "br": 0.05,
+            "mantle": { "kind": "off" },
+            "slab_enabled": false,
+            "cratonic": { "kind": "on", "cr": 0.3, "k_viscous": 5.0, "b_factor": 8.0 },
+            "age_field": { "kind": "off" },
+            "linear_solver": "jacobi",
+            "force": { "kind": "gpe" },
+            "s_perturbation_amplitude": 0.2,
+            "total_time_nondim": 6.0,
+            "cfl_factor": 0.3
+        }"#;
+        let recovered: V2RunSpec = serde_json::from_str(json).expect("legacy preset must load");
+        assert_eq!(recovered.workflow, V2WorkflowSpec::Off);
+    }
 
     /// Step 11 — round-trip every `V2PlateKinematicSpec` variant
     /// through JSON. Catches schema drift between the panel state
@@ -648,6 +1047,61 @@ mod tests {
                 fbm_amplitude_oceanic: 0.12,
                 fbm_scale_oceanic: Some(0.08),
                 fbm_seed_oceanic: Some(0xC0FFEE_5EE_D),
+            },
+            // Step 12 R7.A.1 — orogenic mode, PCA orientation.
+            V2InitModeSpec::Orogenic {
+                peak_value: 1.20,
+                base_continental_value: 0.85,
+                oceanic_value: 0.20,
+                half_length_ratio: 0.40,
+                width_sigma_ratio: 0.08,
+                orientation: V2OrogenicOrientation::PlateMainAxisPca,
+            },
+            // Step 12 R7.A.1 — orogenic mode, Fixed orientation
+            // (exercises the second variant of OrogenicOrientation).
+            V2InitModeSpec::Orogenic {
+                peak_value: 1.20,
+                base_continental_value: 0.85,
+                oceanic_value: 0.20,
+                half_length_ratio: 0.40,
+                width_sigma_ratio: 0.08,
+                orientation: V2OrogenicOrientation::Fixed { angle_rad: 0.7853981633974483 },
+            },
+            // Step 12 R7.A.2 — composite mode with UsePeakOrogenic cap.
+            V2InitModeSpec::Composite {
+                radial: V2CompositeRadialParams {
+                    continental_value: 0.95,
+                    profile_shape: V2ProfileShape::Smoothstep,
+                },
+                orogenic_ridge: V2CompositeOrogenicRidgeParams {
+                    peak_value: 1.20,
+                    base_continental_value: 0.85,
+                    half_length_ratio: 0.40,
+                    width_sigma_ratio: 0.10,
+                    orientation: V2OrogenicOrientation::PlateMainAxisPca,
+                    offset_along_axis_ratio: 0.0,
+                },
+                oceanic_value: 0.20,
+                cap: V2CompositeCap::UsePeakOrogenic,
+            },
+            // Step 12 R7.A.2 — composite mode with Fixed cap +
+            // non-zero offset_along_axis_ratio (exercises second
+            // variant of V2CompositeCap).
+            V2InitModeSpec::Composite {
+                radial: V2CompositeRadialParams {
+                    continental_value: 0.90,
+                    profile_shape: V2ProfileShape::Pow { exponent: 1.5 },
+                },
+                orogenic_ridge: V2CompositeOrogenicRidgeParams {
+                    peak_value: 1.25,
+                    base_continental_value: 0.85,
+                    half_length_ratio: 0.45,
+                    width_sigma_ratio: 0.12,
+                    orientation: V2OrogenicOrientation::Fixed { angle_rad: 0.5 },
+                    offset_along_axis_ratio: 0.3,
+                },
+                oceanic_value: 0.18,
+                cap: V2CompositeCap::Fixed { value: 1.30 },
             },
         ];
         for original in cases {
@@ -997,6 +1451,7 @@ impl V2RunSpec {
             preset_label: "active_medley".to_string(),
             init_mode: V2InitModeSpec::default(),
             plate_kinematic: V2PlateKinematicSpec::default(),
+            workflow: V2WorkflowSpec::default(),
         }
     }
 }
