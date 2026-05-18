@@ -3662,24 +3662,32 @@ fn save_altitude_fixed_scale(
     let nx = state.nx;
     let ny = state.ny;
     let mut rgba = vec![0u8; nx * ny * 4];
-    for k in 0..nx * ny {
-        let s = state.s_field[k];
-        let h_raw = (s * buoyancy).clamp(h_min, h_max);
-        let normalized = if h_raw <= h_sea {
-            let t = (h_raw - h_min) / (h_sea - h_min).max(1e-10);
-            t * sea_norm
-        } else {
-            let t = (h_raw - h_sea) / (h_max - h_sea).max(1e-10);
-            sea_norm + t * (1.0 - sea_norm)
-        };
-        let altitude = if normalized <= sea_clamped {
-            0.5 * normalized / sea_clamped
-        } else {
-            0.5 + 0.5 * (normalized - sea_clamped) / (1.0 - sea_clamped)
-        };
-        let color = hypsometric_colormap(altitude.clamp(0.0, 1.0));
-        let off = k * 4;
-        rgba[off..off + 4].copy_from_slice(&color);
+    for j in 0..ny {
+        for i in 0..nx {
+            let s = state.s_field[j * nx + i];
+            let h_raw = (s * buoyancy).clamp(h_min, h_max);
+            let normalized = if h_raw <= h_sea {
+                let t = (h_raw - h_min) / (h_sea - h_min).max(1e-10);
+                t * sea_norm
+            } else {
+                let t = (h_raw - h_sea) / (h_max - h_sea).max(1e-10);
+                sea_norm + t * (1.0 - sea_norm)
+            };
+            let altitude = if normalized <= sea_clamped {
+                0.5 * normalized / sea_clamped
+            } else {
+                0.5 + 0.5 * (normalized - sea_clamped) / (1.0 - sea_clamped)
+            };
+            let color = hypsometric_colormap(altitude.clamp(0.0, 1.0));
+            // Match field_to_rgba: image row 0 maps to grid row
+            // (ny - 1 - j). Without this Y-flip the *_altitude_fixed.png
+            // renders are vertically inverted relative to the SThickness
+            // and adaptive-altitude PNGs (user-reported R7.A.2.3
+            // follow-up).
+            let img_row = ny - 1 - j;
+            let off = (img_row * nx + i) * 4;
+            rgba[off..off + 4].copy_from_slice(&color);
+        }
     }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
