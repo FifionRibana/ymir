@@ -3900,3 +3900,333 @@ fn r7_a_2_init_preview() {
          them across runs.",
     );
 }
+
+// ----------------------------------------------------------------------------
+// Step 12 R7.A.2.4 — simulation A/B/C at 64² × 5 cycles × 20 steps under
+// workflow ON × mf=1.0 × evo=0.10 × craton_amp=3 (the EVO.C sweet spot
+// empirically located by R6.3 Option β + C.4). The init mode is the
+// only variable across runs:
+//
+//   Run A — InitMode::RadialProfile (Step 13 baseline)
+//   Run B — InitMode::Orogenic σ=0.10 (R7.A.1)
+//   Run C — InitMode::Composite defaults (R7.A.2)
+//
+// Acceptance R4.1–R4.6 per cycle (the 6 multi-dim axes the user has
+// repeatedly insisted on) + visual R4.3 (chains formed, ridges
+// persistent, plate boundaries deformed). The verdict
+// PASS / MARGINAL / FAIL / FAIL.deep is reported in
+// `docs/reports/step12_r7_a_2_4_simulation/summary.md`.
+
+/// Runtime palette bounds for the comparable altitude renders
+/// (R7.A.2.3 finding — must be shared across all runs).
+const R7_ALT_S_MIN: f64 = 0.0;
+const R7_ALT_S_MAX: f64 = 1.5;
+
+/// Cycles at which to capture PNGs + per-cycle metrics. Cycle 0 is
+/// the init state; the loop's per-cycle output is `cycle ∈ 1..=5`.
+const R7_CAPTURE_CYCLES: &[usize] = &[1, 3, 5];
+
+fn r7_a_2_4_apply_craton_amp(spec: &mut ymir_viz::bridge::v2::V2RunSpec, amp: f64) {
+    if let ymir_viz::bridge::v2::V2CratonicSpec::On {
+        cr,
+        k_viscous,
+        b_factor,
+        smoothing_width,
+        plate_area_min,
+    } = spec.cratonic
+    {
+        spec.cratonic = ymir_viz::bridge::v2::V2CratonicSpec::On {
+            cr,
+            k_viscous: k_viscous * amp,
+            b_factor: b_factor * amp,
+            smoothing_width,
+            plate_area_min,
+        };
+    }
+}
+
+/// Run one of the three R7.A.2.4 configurations. Returns a summary
+/// suitable for the consolidated comparison table.
+fn run_r7_a_2_4_config(
+    init_mode: ymir_viz::bridge::v2::V2InitModeSpec,
+    label: &str,
+) -> R6ConfigSummary {
+    use ymir_viz::bridge::v2::{build_config, V2MantleSpec};
+
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r7_a_2_4_simulation")
+        .join(label);
+    std::fs::create_dir_all(&out_dir).expect("create output dir");
+
+    println!("\n=== R7.A.2.4: {label} ===");
+
+    let mut spec = presets::load("active_medley").expect("load active_medley");
+    spec.workflow = V2WorkflowSpec::On {
+        phase_a: V2PhaseAParams::default(),
+        phase_b: V2PhaseBParams::default(),
+    };
+    if let V2MantleSpec::On { coupling, num_modes, seed, .. } = spec.mantle {
+        spec.mantle = V2MantleSpec::On {
+            mf: 1.0,
+            coupling,
+            num_modes,
+            seed,
+            evolution_rate: 0.10,
+        };
+    }
+    r7_a_2_4_apply_craton_amp(&mut spec, 3.0);
+    spec.init_mode = init_mode;
+    spec.s_perturbation_amplitude = 0.0;
+    spec.grid_nx = 64;
+    spec.grid_ny = 64;
+    spec.steps = 5 * 20;
+    spec.total_time_nondim = 6.0;
+
+    // Init capture (cycle 0).
+    let init_state = make_init_state(&spec);
+    save_field_png(&init_state, V2Field::SThickness, &out_dir.join("cycle_0_s.png"))
+        .expect("save init s");
+    save_altitude_fixed_scale(
+        &init_state,
+        &out_dir.join("cycle_0_altitude_fixed.png"),
+        R7_ALT_S_MIN,
+        R7_ALT_S_MAX,
+    )
+    .expect("save init altitude_fixed");
+    print_init_stats(&format!("{label}/init"), &init_state);
+
+    let mut cfg = build_config::build(&spec);
+    let wf = build_config::build_workflow(&spec.workflow);
+
+    let t0 = std::time::Instant::now();
+    let output = run_phase_a_loop(&mut cfg, &wf);
+    let elapsed = t0.elapsed().as_secs_f64();
+    println!("[r7.a.2.4/{label}] simulation completed in {elapsed:.1}s");
+
+    let init_field =
+        Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
+    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let init_metrics = compute_metrics(0, &init_field, init_sea, 0.0, 0.0);
+    let mut metrics = vec![init_metrics];
+
+    let mut peak_v_per_cycle: Vec<f64> = Vec::with_capacity(5);
+    let mut newton_outcomes_per_cycle: Vec<(usize, usize, usize, usize)> =
+        Vec::with_capacity(5);
+    let mut cg_mean_quartiles_per_cycle: Vec<(f64, f64, f64)> = Vec::with_capacity(5);
+
+    for (i, cycle) in output.cycles.iter().enumerate() {
+        let cyc_idx = i + 1;
+        if R7_CAPTURE_CYCLES.contains(&cyc_idx) {
+            let v2_state = V2FinalState::from_harness(&cycle.baseline.final_state);
+            save_field_png(
+                &v2_state,
+                V2Field::SThickness,
+                &out_dir.join(format!("cycle_{cyc_idx}_s.png")),
+            )
+            .expect("save s");
+            save_altitude_fixed_scale(
+                &v2_state,
+                &out_dir.join(format!("cycle_{cyc_idx}_altitude_fixed.png")),
+                R7_ALT_S_MIN,
+                R7_ALT_S_MAX,
+            )
+            .expect("save altitude_fixed");
+        }
+        metrics.push(compute_metrics(
+            cyc_idx,
+            &cycle.baseline.final_state.s_field,
+            cycle.sea_level_normalized,
+            cycle.erosion_volume_removed,
+            cycle.mass_drift,
+        ));
+        peak_v_per_cycle.push(cycle.baseline.metrics.vmax_peak);
+        if let Some(n) = cycle.baseline.metrics.newton.as_ref() {
+            newton_outcomes_per_cycle.push((n.converged, n.stalled, n.diverged, n.capped));
+            let mut cg_per_step: Vec<usize> = Vec::with_capacity(n.outer_iters.len());
+            let mut cg_cursor: usize = 0;
+            for &outer in &n.outer_iters {
+                let outer_n = outer as usize;
+                let cg_slice = &n.cg_iters_per_newton_step
+                    [cg_cursor..(cg_cursor + outer_n).min(n.cg_iters_per_newton_step.len())];
+                cg_per_step.push(cg_slice.iter().sum());
+                cg_cursor += outer_n;
+            }
+            let k = cg_per_step.len();
+            if k >= 4 {
+                let early = &cg_per_step[..k / 4];
+                let mid = &cg_per_step[k / 4..3 * k / 4];
+                let late = &cg_per_step[3 * k / 4..];
+                let avg = |v: &[usize]| -> f64 {
+                    if v.is_empty() { 0.0 } else { v.iter().sum::<usize>() as f64 / v.len() as f64 }
+                };
+                cg_mean_quartiles_per_cycle.push((avg(early), avg(mid), avg(late)));
+            } else {
+                cg_mean_quartiles_per_cycle.push((0.0, 0.0, 0.0));
+            }
+        } else {
+            newton_outcomes_per_cycle.push((0, 0, 0, 0));
+            cg_mean_quartiles_per_cycle.push((0.0, 0.0, 0.0));
+        }
+    }
+
+    // Per-config metrics.md with the per-cycle R4.1–R4.6 table.
+    let mut md = String::new();
+    md.push_str(&format!("# R7.A.2.4 — {label}\n\n"));
+    md.push_str(&format!(
+        "64² active_medley, workflow ON (D2 + D1-ter), mf=1.0, evo=0.10, \
+         craton_amp=3. 5 cycles × 20 steps. Runtime: {:.1}s.\n\n",
+        elapsed
+    ));
+    md.push_str("## Per-cycle solver + S̃ health\n\n");
+    md.push_str(
+        "| cycle | peak \\|v\\| | Newton C/S/D/Cap | peak S̃ | frac>0.85 | frac>0.95 | mass | max_path | CG e/m/l |\n",
+    );
+    md.push_str("|---|---|---|---|---|---|---|---|---|\n");
+    for (i, _cycle) in output.cycles.iter().enumerate() {
+        let m = &metrics[i + 1];
+        let o = newton_outcomes_per_cycle[i];
+        let q = cg_mean_quartiles_per_cycle[i];
+        let frac_above_0_85 = m.mass_continental / (m.mass_continental.abs() + m.mass_oceanic.abs()).max(1e-12);
+        md.push_str(&format!(
+            "| {} | {:.3e} | {}/{}/{}/{} | {:.3} | {:.3} | {:.3} | {:.2} | {} | {:.0}/{:.0}/{:.0} |\n",
+            i + 1,
+            peak_v_per_cycle[i],
+            o.0, o.1, o.2, o.3,
+            m.peak_s,
+            frac_above_0_85,
+            m.fraction_above_0_8,
+            m.mass_total,
+            m.max_path_length,
+            q.0, q.1, q.2,
+        ));
+    }
+    md.push('\n');
+
+    // 6-criteria verdict per run.
+    let init_frac = metrics[0].fraction_above_0_8;
+    let final_frac = metrics.last().unwrap().fraction_above_0_8;
+    let retention = if init_frac > 1e-9 { final_frac / init_frac } else { 0.0 };
+    let n_dynamic = peak_v_per_cycle.iter().filter(|&&v| v > 0.1).count();
+    let mass_init = metrics[0].mass_total;
+    let mass_final = metrics.last().unwrap().mass_total;
+    let mass_loss_pct = (mass_init - mass_final) / mass_init.abs().max(1e-12) * 100.0;
+    let mass_loss_per_cycle_pct = mass_loss_pct / 5.0;
+    let final_peak_s = metrics.last().unwrap().peak_s;
+    let final_sea = metrics.last().unwrap().sea_level_ref;
+    let max_max_path = metrics
+        .iter()
+        .skip(1)
+        .map(|m| m.max_path_length)
+        .max()
+        .unwrap_or(0);
+
+    let r4_1 = final_peak_s > final_sea;
+    let r4_2 = retention > 0.5;
+    let r4_4 = mass_loss_per_cycle_pct.abs() < 1.0;
+    let r4_5 = max_max_path >= 5;
+    let r4_6 = n_dynamic >= 3;
+    let auto_count = [r4_1, r4_2, r4_4, r4_5, r4_6].iter().filter(|&&p| p).count();
+
+    md.push_str("## Multi-dim acceptance (R4.1–R4.6)\n\n");
+    md.push_str(&format!(
+        "- R4.1 Continents émergés: peak S̃_final = {:.3} > sea = {:.3} → **{}**\n",
+        final_peak_s, final_sea,
+        if r4_1 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(&format!(
+        "- R4.2 Cratons préservés: retention = {:.1} % → **{}**\n",
+        100.0 * retention,
+        if r4_2 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str("- R4.3 Bordures + chaînes: VISUAL (inspect `cycle_5_altitude_fixed.png`)\n");
+    md.push_str(&format!(
+        "- R4.4 Conservation: mass loss/cycle = {:.3} % → **{}**\n",
+        mass_loss_per_cycle_pct,
+        if r4_4 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(&format!(
+        "- R4.5 Drainage actif: max_path = {} (cycles 1-5) → **{}**\n",
+        max_max_path,
+        if r4_5 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(&format!(
+        "- R4.6 Dynamique soutenue: peak |v| > 0.1 on {}/5 → **{}**\n",
+        n_dynamic,
+        if r4_6 { "PASS" } else { "FAIL" }
+    ));
+    md.push_str(&format!(
+        "\nAuto count: **{} / 5** (R4.3 visual pending).\n",
+        auto_count
+    ));
+
+    std::fs::write(out_dir.join("metrics.md"), &md).expect("write metrics");
+    println!("{md}");
+
+    R6ConfigSummary {
+        mf: 1.0,
+        evo_rate: 0.10,
+        label: label.to_string(),
+        runtime_s: elapsed,
+        peak_v_per_cycle,
+        peak_s_per_cycle: metrics.iter().skip(1).map(|m| m.peak_s).collect(),
+        frac_above_0_8_per_cycle: metrics.iter().skip(1).map(|m| m.fraction_above_0_8).collect(),
+        mass_total_per_cycle: metrics.iter().skip(1).map(|m| m.mass_total).collect(),
+        max_path_per_cycle: metrics.iter().skip(1).map(|m| m.max_path_length).collect(),
+        sea_level_per_cycle: metrics.iter().skip(1).map(|m| m.sea_level_ref).collect(),
+        newton_outcomes_per_cycle,
+        cg_mean_quartiles_per_cycle,
+        init_frac_above_0_8: metrics[0].fraction_above_0_8,
+        init_peak_s: metrics[0].peak_s,
+    }
+}
+
+/// R7.A.2.4 master — runs A, B, C sequentially and writes
+/// `summary.md` with the comparative R4.1–R4.6 table + EVO verdict.
+///
+/// ```bash
+/// cargo test --release -p ymir-viz --test v2_workflow_r4_visual_checkpoint \
+///     r7_a_2_4_simulation_abc -- --ignored --nocapture --test-threads=1
+/// ```
+#[test]
+#[ignore]
+fn r7_a_2_4_simulation_abc() {
+    use ymir_viz::bridge::v2::V2InitModeSpec;
+
+    let out_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/reports/step12_r7_a_2_4_simulation");
+    std::fs::create_dir_all(&out_root).expect("create out root");
+
+    let configs: Vec<(V2InitModeSpec, &str)> = vec![
+        (V2InitModeSpec::radial_profile_default(), "run_a_radial"),
+        ({
+            let mut m = V2InitModeSpec::orogenic_default();
+            if let V2InitModeSpec::Orogenic { width_sigma_ratio, .. } = &mut m {
+                *width_sigma_ratio = 0.10;
+            }
+            m
+        }, "run_b_orogenic_sigma_10"),
+        (V2InitModeSpec::composite_default(), "run_c_composite"),
+    ];
+
+    let t_total = std::time::Instant::now();
+    let mut summaries: Vec<R6ConfigSummary> = Vec::with_capacity(configs.len());
+    for (idx, (init_mode, label)) in configs.into_iter().enumerate() {
+        println!(
+            "\n[r7.a.2.4] ===== {}/3 : {label} =====",
+            idx + 1,
+        );
+        let s = run_r7_a_2_4_config(init_mode, label);
+        summaries.push(s);
+        write_r6_3_summary(&summaries, &out_root); // partial-progress snapshot
+        println!(
+            "[r7.a.2.4] cumulative elapsed: {:.1} min",
+            t_total.elapsed().as_secs_f64() / 60.0,
+        );
+    }
+    println!(
+        "\n[r7.a.2.4] simulation done. {} runs in {:.1} min total. Inspect {}",
+        summaries.len(),
+        t_total.elapsed().as_secs_f64() / 60.0,
+        out_root.display(),
+    );
+}
