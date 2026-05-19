@@ -20,6 +20,55 @@ tracing = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 
+# Issue #117 — Phase 3 Commit 1 — v2 → _attic migration.
+# `v2_legacy` gates the Stokes-coupled tectonics_v2 subtree (stokes/,
+# mantle/, slab/, rheology, basal_drag, presets, forcing/{slab_pull,
+# mantle_force}) moved under tectonics_v2/_attic/. The default build
+# excludes this subtree to keep the default compile path C1-clean;
+# `cargo build --features v2_legacy` rebuilds the retired surface for
+# regression reproducibility (R5b sweeps, R6.3, R7.A.2.4 evidence).
+[features]
+default = []
+v2_legacy = []
+
 [[bench]]
 name = "amg_benchmark"
 harness = false
+required-features = ["v2_legacy"]
+
+# Bins below depend on the retired Stokes subtree; gated behind
+# `v2_legacy` so the default workspace build stays lean.
+[[bin]]
+name = "step_baseline"
+path = "src/bin/step_baseline.rs"
+required-features = ["v2_legacy"]
+
+[[bin]]
+name = "step5_baseline"
+path = "src/bin/step5_baseline.rs"
+required-features = ["v2_legacy"]
+
+[[bin]]
+name = "step6_baseline"
+path = "src/bin/step6_baseline.rs"
+required-features = ["v2_legacy"]
+
+[[bin]]
+name = "step7_baseline"
+path = "src/bin/step7_baseline.rs"
+required-features = ["v2_legacy"]
+
+[[bin]]
+name = "step8_baseline"
+path = "src/bin/step8_baseline.rs"
+required-features = ["v2_legacy"]
+
+[[bin]]
+name = "gen_reference_solutions"
+path = "src/bin/gen_reference_solutions.rs"
+required-features = ["v2_legacy"]
+
+[[bin]]
+name = "gen_bench_data"
+path = "src/bin/gen_bench_data.rs"
+required-features = ["v2_legacy"]

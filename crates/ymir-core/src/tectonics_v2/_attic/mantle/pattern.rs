@@ -52,7 +52,7 @@
 //! leave a residual `div ≈ O(dx²)` which at 256² is already
 //! `~1.5e-5`, far above the acceptance.
 
-use super::super::field::{Field2D, PeriodicIndex};
+use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 
 /// MAC-staggered mantle velocity pattern.
 ///

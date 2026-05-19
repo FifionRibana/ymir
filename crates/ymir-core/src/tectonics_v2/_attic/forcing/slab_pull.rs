@@ -37,8 +37,8 @@
 //! would discard information the solver is already equipped to
 //! handle. See the `v2_slab_null_space_preservation` test.
 
-use super::super::field::Field2D;
-use super::body_force::{BodyForce, SimulationState, VectorField};
+use crate::tectonics_v2::field::Field2D;
+use crate::tectonics_v2::forcing::body_force::{BodyForce, SimulationState, VectorField};
 
 /// Slab-pull body-force term.
 ///
@@ -100,7 +100,7 @@ impl<'a> BodyForce for SlabPullForce<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::field::PeriodicIndex;
+    use super::crate::tectonics_v2::field::PeriodicIndex;
     use super::*;
 
     fn env(

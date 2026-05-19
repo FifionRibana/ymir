@@ -13,6 +13,18 @@ path = "src/lib.rs"
 [[bin]]
 name = "ymir-viz"
 path = "src/main.rs"
+# Issue #117 — Bevy app wires bridge::v2 + UI panels which retire to
+# `_attic` until C1 reintroduces a paradigm-agnostic facade. Gate the
+# bin so default workspace build stays clean.
+required-features = ["v2_legacy"]
+
+# Issue #117 — v2_legacy feature mirror so `cargo {build,test} --features v2_legacy`
+# from this crate propagates the gate to ymir-core. Bridge/v2 + UI panel + R4/R5b/
+# R6/R7.A tests gate against `v2_legacy` to keep the default workspace build
+# C1-clean. See docs/migrations/v2_to_c1_attic.md.
+[features]
+default = []
+v2_legacy = ["ymir-core/v2_legacy"]
 
 [dependencies]
 ymir-core = { workspace = true }

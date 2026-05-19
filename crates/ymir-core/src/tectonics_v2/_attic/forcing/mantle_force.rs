@@ -45,9 +45,9 @@
 //! handle. The `v2_mantle_null_space_preservation` test checks
 //! that `|mean(v_solved)|` stays below `1e-15` after the solve.
 
-use super::super::field::Field2D;
+use crate::tectonics_v2::field::Field2D;
 use super::super::mantle::MantlePattern;
-use super::body_force::{BodyForce, SimulationState, VectorField};
+use crate::tectonics_v2::forcing::body_force::{BodyForce, SimulationState, VectorField};
 
 /// Constant-RHS contribution of the mantle forcing.
 ///
@@ -107,7 +107,7 @@ impl<'a> BodyForce for MantleForce<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::super::field::PeriodicIndex;
+    use super::crate::tectonics_v2::field::PeriodicIndex;
     use super::super::super::mantle::{
         build_mantle_pattern, generate_stream_function, StreamFunctionConfig,
     };
