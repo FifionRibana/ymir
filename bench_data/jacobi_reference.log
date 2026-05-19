@@ -1,0 +1,89 @@
+   Compiling ymir-core v0.1.0 (D:\Personnel\Project\ymir\crates\ymir-core)
+    Finished `bench` profile [optimized] target(s) in 2.29s
+     Running benches\amg_benchmark.rs (target\release\deps\amg_benchmark-2a4e61c9130d971f.exe)
+Gnuplot not found, using plotters backend
+[jacobi]         poisson_constant  iters =    1  converged = true  r_final = 1.128e-12
+Benchmarking poisson_constant
+Benchmarking poisson_constant: Warming up for 3.0000 s
+Benchmarking poisson_constant: Collecting 100 samples in estimated 5.2002 s (66k iterations)
+Benchmarking poisson_constant: Analyzing
+poisson_constant        time:   [75.797 µs 76.136 µs 76.517 µs]
+                        change: [-5.4760% -4.4804% -3.4679%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 11 outliers among 100 measurements (11.00%)
+  2 (2.00%) high mild
+  9 (9.00%) high severe
+
+[jacobi]     poisson_contrast_100  iters =  266  converged = true  r_final = 3.545e-7
+Benchmarking poisson_contrast_100
+Benchmarking poisson_contrast_100: Warming up for 3.0000 s
+Benchmarking poisson_contrast_100: Collecting 100 samples in estimated 5.7820 s (600 iterations)
+Benchmarking poisson_contrast_100: Analyzing
+poisson_contrast_100    time:   [9.5386 ms 9.5654 ms 9.5923 ms]
+                        change: [-17.161% -13.907% -10.570%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+
+[jacobi]   poisson_contrast_10000  iters =  459  converged = true  r_final = 3.617e-7
+Benchmarking poisson_contrast_10000
+Benchmarking poisson_contrast_10000: Warming up for 3.0000 s
+Benchmarking poisson_contrast_10000: Collecting 100 samples in estimated 5.0896 s (300 iterations)
+Benchmarking poisson_contrast_10000: Analyzing
+poisson_contrast_10000  time:   [16.573 ms 16.642 ms 16.722 ms]
+                        change: [-32.196% -30.250% -28.071%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 12 outliers among 100 measurements (12.00%)
+  1 (1.00%) low mild
+  3 (3.00%) high mild
+  8 (8.00%) high severe
+
+[jacobi]          step0_quiescent  iters =   43  converged = true  r_final = 9.263e-9
+Benchmarking step0_quiescent
+Benchmarking step0_quiescent: Warming up for 3.0000 s
+Benchmarking step0_quiescent: Collecting 100 samples in estimated 5.0306 s (700 iterations)
+Benchmarking step0_quiescent: Analyzing
+step0_quiescent         time:   [8.1133 ms 8.4119 ms 8.6989 ms]
+
+[jacobi]     step3_floor_yielding  iters =   73  converged = true  r_final = 9.689e-9
+Benchmarking step3_floor_yielding
+Benchmarking step3_floor_yielding: Warming up for 3.0000 s
+Benchmarking step3_floor_yielding: Collecting 100 samples in estimated 5.0183 s (400 iterations)
+Benchmarking step3_floor_yielding: Analyzing
+step3_floor_yielding    time:   [13.357 ms 13.799 ms 14.234 ms]
+
+[jacobi]            step6_voronoi  iters =  207  converged = true  r_final = 8.556e-9
+Benchmarking step6_voronoi
+Benchmarking step6_voronoi: Warming up for 3.0000 s
+Benchmarking step6_voronoi: Collecting 100 samples in estimated 9.6050 s (200 iterations)
+Benchmarking step6_voronoi: Analyzing
+step6_voronoi           time:   [34.618 ms 36.002 ms 37.463 ms]
+
+[jacobi]           step7_slab_off  iters =  190  converged = true  r_final = 9.907e-9
+Benchmarking step7_slab_off
+Benchmarking step7_slab_off: Warming up for 3.0000 s
+Benchmarking step7_slab_off: Collecting 100 samples in estimated 5.8312 s (200 iterations)
+Benchmarking step7_slab_off: Analyzing
+step7_slab_off          time:   [28.194 ms 28.430 ms 28.737 ms]
+Found 9 outliers among 100 measurements (9.00%)
+  6 (6.00%) high mild
+  3 (3.00%) high severe
+
+[jacobi]          step8_activated  iters = 2000  converged = false  r_final = 2.331e-2
+Benchmarking step8_activated
+Benchmarking step8_activated: Warming up for 3.0000 s
+
+Warning: Unable to complete 100 samples in 5.0s. You may wish to increase target time to 30.8s, or reduce sample count to 10.
+Benchmarking step8_activated: Collecting 100 samples in estimated 30.755 s (100 iterations)
+Benchmarking step8_activated: Analyzing
+step8_activated         time:   [352.42 ms 364.17 ms 376.24 ms]
+
+[jacobi]      step8_activated_128  iters = 2000  converged = false  r_final = 5.695e-1
+Benchmarking step8_activated_128
+Benchmarking step8_activated_128: Warming up for 3.0000 s
+
+Warning: Unable to complete 100 samples in 5.0s. You may wish to increase target time to 187.3s, or reduce sample count to 10.
+Benchmarking step8_activated_128: Collecting 100 samples in estimated 187.25 s (100 iterations)
+Benchmarking step8_activated_128: Analyzing
+step8_activated_128     time:   [1.3421 s 1.3772 s 1.4137 s]
+
