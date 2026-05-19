@@ -72,3 +72,287 @@ required-features = ["v2_legacy"]
 name = "gen_bench_data"
 path = "src/bin/gen_bench_data.rs"
 required-features = ["v2_legacy"]
+# Issue #117 Phase 3 Commit 2 — v2-coupled tests relocated to tests/_attic/.
+# Cargo doesn't auto-discover tests in subdirectories of tests/, so each
+# moved test gets an explicit [[test]] entry below with required-features.
+# Tests pass under `cargo test --features v2_legacy` only.
+
+[[test]]
+name = "v2_amg_phase3_diagnostic"
+path = "tests/_attic/v2_amg_phase3_diagnostic.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_amg_physics_scalar_parity"
+path = "tests/_attic/v2_amg_physics_scalar_parity.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_amg_poisson_projection_diag"
+path = "tests/_attic/v2_amg_poisson_projection_diag.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_amg_scalar_parity"
+path = "tests/_attic/v2_amg_scalar_parity.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_basal_drag_mms"
+path = "tests/_attic/v2_basal_drag_mms.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_basal_drag_operator_symmetric"
+path = "tests/_attic/v2_basal_drag_operator_symmetric.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_basal_drag_regression_smoke"
+path = "tests/_attic/v2_basal_drag_regression_smoke.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_basal_drag_unit"
+path = "tests/_attic/v2_basal_drag_unit.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_baseline_32sq"
+path = "tests/_attic/v2_baseline_32sq.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_boundary_regression_smoke"
+path = "tests/_attic/v2_boundary_regression_smoke.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_closed_recycling_conservation"
+path = "tests/_attic/v2_closed_recycling_conservation.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_continuation"
+path = "tests/_attic/v2_continuation.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_force_sum_integration"
+path = "tests/_attic/v2_force_sum_integration.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_mantle_div_free"
+path = "tests/_attic/v2_mantle_div_free.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_mantle_evolution_rate"
+path = "tests/_attic/v2_mantle_evolution_rate.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_mantle_force_mms"
+path = "tests/_attic/v2_mantle_force_mms.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_mantle_null_space_preservation"
+path = "tests/_attic/v2_mantle_null_space_preservation.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_mantle_relaxation"
+path = "tests/_attic/v2_mantle_relaxation.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_mantle_runaway_diagnostic"
+path = "tests/_attic/v2_mantle_runaway_diagnostic.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_mass_balance_residual"
+path = "tests/_attic/v2_mass_balance_residual.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_newton_convergence"
+path = "tests/_attic/v2_newton_convergence.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_newton_extrapolation"
+path = "tests/_attic/v2_newton_extrapolation.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_nullspace"
+path = "tests/_attic/v2_nullspace.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_parallel_determinism"
+path = "tests/_attic/v2_parallel_determinism.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_picard_parity"
+path = "tests/_attic/v2_picard_parity.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_picard_real_run"
+path = "tests/_attic/v2_picard_real_run.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_plate_kinematic"
+path = "tests/_attic/v2_plate_kinematic.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_plate_kinematic_scenarios"
+path = "tests/_attic/v2_plate_kinematic_scenarios.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_precond_drag_diagonal"
+path = "tests/_attic/v2_precond_drag_diagonal.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_slab_advection_mms"
+path = "tests/_attic/v2_slab_advection_mms.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_slab_decay_mms"
+path = "tests/_attic/v2_slab_decay_mms.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_slab_force_mms"
+path = "tests/_attic/v2_slab_force_mms.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_slab_null_space_preservation"
+path = "tests/_attic/v2_slab_null_space_preservation.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_smoke"
+path = "tests/_attic/v2_smoke.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_sparse_assembly_snapshot_parity"
+path = "tests/_attic/v2_sparse_assembly_snapshot_parity.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_spreading_integration"
+path = "tests/_attic/v2_spreading_integration.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_step0_synthetic_parity"
+path = "tests/_attic/v2_step0_synthetic_parity.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_step10_physics_and_regression"
+path = "tests/_attic/v2_step10_physics_and_regression.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_step13_5_cg_ratio"
+path = "tests/_attic/v2_step13_5_cg_ratio.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_step13_cg_ratio"
+path = "tests/_attic/v2_step13_cg_ratio.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_step6_refactor_parity"
+path = "tests/_attic/v2_step6_refactor_parity.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_step7_regression_smoke"
+path = "tests/_attic/v2_step7_regression_smoke.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_step8_regression_smoke"
+path = "tests/_attic/v2_step8_regression_smoke.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_step9_physics_and_sweep"
+path = "tests/_attic/v2_step9_physics_and_sweep.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_step9_smoothing_probe"
+path = "tests/_attic/v2_step9_smoothing_probe.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_stokes_mms"
+path = "tests/_attic/v2_stokes_mms.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_stokes_mms_variable_eta"
+path = "tests/_attic/v2_stokes_mms_variable_eta.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_viscosity"
+path = "tests/_attic/v2_viscosity.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_workflow_disabled_regression"
+path = "tests/_attic/v2_workflow_disabled_regression.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_workflow_phase_6_visual_checkpoint"
+path = "tests/_attic/v2_workflow_phase_6_visual_checkpoint.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_workflow_phase_a_cycle"
+path = "tests/_attic/v2_workflow_phase_a_cycle.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_workflow_phase_a_loop"
+path = "tests/_attic/v2_workflow_phase_a_loop.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_workflow_phase_b"
+path = "tests/_attic/v2_workflow_phase_b.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_yielding_mms"
+path = "tests/_attic/v2_yielding_mms.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_yielding_newton"
+path = "tests/_attic/v2_yielding_newton.rs"
+required-features = ["v2_legacy"]
+
+[[test]]
+name = "v2_yielding_regression_smoke"
+path = "tests/_attic/v2_yielding_regression_smoke.rs"
+required-features = ["v2_legacy"]
