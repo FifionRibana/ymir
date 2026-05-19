@@ -14,8 +14,8 @@
 //! [`NewtonSolver`] so the test `picard_parity` can substitute one
 //! for the other transparently.
 
-use super::super::cratonic::CratonicState;
-use super::super::field::Field2D;
+use crate::tectonics_v2::cratonic::CratonicState;
+use crate::tectonics_v2::field::Field2D;
 use super::super::rheology::{self, StrainRate, ViscosityLaw};
 use super::nonlinear_solver::{NonlinearOutcome, NonlinearSolver, NonlinearTrace};
 use super::nullspace;

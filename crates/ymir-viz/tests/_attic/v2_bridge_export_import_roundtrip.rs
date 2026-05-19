@@ -19,8 +19,8 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{bounded, RecvTimeoutError};
 use ymir_viz::bridge_v2::{
     spawn_v2_thread, V2AgeFieldSpec, V2Command, V2CratonicSpec, V2Event, V2ForceKind,
-    V2InitModeSpec, V2LinearSolverSpec, V2MantleSpec, V2RunSnapshot, V2RunSpec,
-    SNAPSHOT_FORMAT_VERSION,
+    V2InitModeSpec, V2LinearSolverSpec, V2MantleSpec, V2PlateKinematicSpec, V2RunSnapshot,
+    V2RunSpec, V2WorkflowSpec, SNAPSHOT_FORMAT_VERSION,
 };
 
 fn tiny_spec() -> V2RunSpec {
@@ -55,6 +55,8 @@ fn tiny_spec() -> V2RunSpec {
         output_dir: std::env::temp_dir().join("ymir_v2_export_import_test"),
         preset_label: "export_import_test".to_string(),
         init_mode: V2InitModeSpec::default(),
+        plate_kinematic: V2PlateKinematicSpec::Zero,
+        workflow: V2WorkflowSpec::Off,
     }
 }
 
@@ -79,6 +81,9 @@ fn v2_bridge_export_import_roundtrip() {
                 completed = Some((spec, final_state, metrics, elapsed));
                 break;
             }
+            Ok(V2Event::WorkflowCycleCompleted { .. })
+            | Ok(V2Event::WorkflowPhaseACompleted { .. })
+            | Ok(V2Event::WorkflowPhaseBCompleted { .. }) => {}
             Ok(V2Event::Failed { error }) => panic!("bridge failed: {}", error),
             Err(RecvTimeoutError::Timeout) => continue,
             Err(RecvTimeoutError::Disconnected) => panic!("disconnected"),

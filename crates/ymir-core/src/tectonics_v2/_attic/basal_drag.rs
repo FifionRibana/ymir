@@ -64,7 +64,7 @@
 //! no dead branch inside the hot path. This is what the Step 4
 //! regression ratio `[0.95, 1.05]` vs Step 3 requires (decision D4).
 
-use super::field::Field2D;
+use crate::tectonics_v2::field::Field2D;
 
 /// Basal-drag law parameters.
 ///

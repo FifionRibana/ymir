@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{bounded, RecvTimeoutError};
 use ymir_viz::bridge_v2::{
     spawn_v2_thread, V2AgeFieldSpec, V2Command, V2CratonicSpec, V2Event, V2ForceKind,
-    V2LinearSolverSpec, V2MantleSpec, V2RunSpec,
+    V2LinearSolverSpec, V2MantleSpec, V2PlateKinematicSpec, V2RunSpec, V2WorkflowSpec,
 };
 
 /// Tiny spec — 32² × 5 steps with mantle off (Step 7 shape).
@@ -45,6 +45,8 @@ fn tiny_spec() -> V2RunSpec {
         output_dir: std::env::temp_dir().join("ymir_v2_lifecycle_test"),
         preset_label: "lifecycle_test".to_string(),
         init_mode: ymir_viz::bridge_v2::V2InitModeSpec::default(),
+        plate_kinematic: V2PlateKinematicSpec::Zero,
+        workflow: V2WorkflowSpec::Off,
     }
 }
 
@@ -118,6 +120,9 @@ fn v2_bridge_lifecycle() {
                 );
                 got_completed = true;
             }
+            Ok(V2Event::WorkflowCycleCompleted { .. })
+            | Ok(V2Event::WorkflowPhaseACompleted { .. })
+            | Ok(V2Event::WorkflowPhaseBCompleted { .. }) => {}
             Ok(V2Event::Failed { error }) => {
                 panic!("bridge reported failure: {}", error);
             }

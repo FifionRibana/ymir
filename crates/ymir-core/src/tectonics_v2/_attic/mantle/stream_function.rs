@@ -52,7 +52,7 @@ use std::f64::consts::TAU;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-use super::super::field::Field2D;
+use crate::tectonics_v2::field::Field2D;
 
 /// Knobs for [`generate_stream_function`].
 #[derive(Clone, Copy, Debug)]

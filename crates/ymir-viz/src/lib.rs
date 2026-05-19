@@ -2,6 +2,18 @@
 //! bridge can be exercised by integration tests in `tests/` without
 //! pulling in the full Bevy plugin graph.
 //!
+//! Issue #117 — the whole library is gated behind Cargo feature
+//! `v2_legacy` because every module (`bridge::v2::*`, the v2 UI
+//! panels, the v2 visualization helpers) wires directly into the
+//! retired `tectonics_v2/{stokes, mantle, slab, rheology, basal_drag,
+//! presets}` subtree. The default build of `ymir-viz` compiles as an
+//! empty library; `cargo {build,test} --features v2_legacy` rebuilds
+//! the full surface for regression reproducibility. C1's bridge +
+//! UI will be reintroduced under a paradigm-agnostic facade in C1
+//! Phase 4 (§7 C1.md).
+
+#![cfg(feature = "v2_legacy")]
+//!
 //! The library scope is narrow: the v2 bridge tree and the v2-only
 //! visualization helpers are re-exported. Legacy bridge plugin
 //! systems and other crate-local resources stay in the binary

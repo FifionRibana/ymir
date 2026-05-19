@@ -34,7 +34,7 @@
 
 use rayon::prelude::*;
 
-use super::super::field::{Field2D, PeriodicIndex};
+use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use super::super::rheology::{StrainRate, ViscosityLaw};
 
 /// Geometry needed by the momentum operator. Borrows nothing; η is
@@ -390,7 +390,7 @@ impl TangentContext {
         grid: &StokesGrid,
         law: &ViscosityLaw,
         sr: &StrainRate,
-        cratonic: Option<&super::super::cratonic::CratonicState>,
+        cratonic: Option<&crate::tectonics_v2::cratonic::CratonicState>,
     ) -> Self {
         let nx = grid.nx;
         let ny = grid.ny;

@@ -24,8 +24,8 @@
 //! inside [`super::super::forcing::slab_pull::SlabPullForce`]
 //! (same pattern as `GpeForce`).
 
-use super::super::boundaries::source_sink::div_v_cell;
-use super::super::field::{Field2D, PeriodicIndex};
+use crate::tectonics_v2::boundaries::source_sink::div_v_cell;
+use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 
 /// Knobs controlling `n̂_convergence` computation.
 #[derive(Clone, Copy, Debug)]
