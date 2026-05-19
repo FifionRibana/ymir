@@ -26,7 +26,7 @@
 //!   produces `n̂_convergence = -∇(div(v)) / |∇(div(v))|` per cell,
 //!   with a zero-vector fallback below `epsilon` to avoid
 //!   ill-defined unit vectors in quiescent regions.
-//! - [`super::forcing::slab_pull::SlabPullForce`] (in the existing
+//! - [`crate::tectonics_v2::forcing::slab_pull::SlabPullForce`] (in the existing
 //!   `forcing/` hierarchy) implements the `BodyForce` trait so the
 //!   contribution plugs directly into `ForceSum` alongside `GpeForce`.
 //!

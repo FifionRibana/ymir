@@ -10,13 +10,16 @@
 pub mod body_force;
 pub mod force_sum;
 pub mod gpe;
-pub mod mantle_force;
 pub mod sinusoidal;
-pub mod slab_pull;
 
 pub use body_force::{BodyForce, SimulationState, VectorField};
 pub use force_sum::ForceSum;
 pub use gpe::GpeForce;
-pub use mantle_force::MantleForce;
 pub use sinusoidal::{SinusoidalForce, ZeroForce};
-pub use slab_pull::SlabPullForce;
+
+// Issue #117 — `MantleForce` and `SlabPullForce` retired to
+// `_attic/forcing/` (gated by `v2_legacy`). Re-exports here restore
+// the old `tectonics_v2::forcing::{mantle_force, slab_pull, …}` paths
+// under feature so callers compile bit-identically.
+#[cfg(feature = "v2_legacy")]
+pub use super::_attic::forcing::{mantle_force, slab_pull, MantleForce, SlabPullForce};

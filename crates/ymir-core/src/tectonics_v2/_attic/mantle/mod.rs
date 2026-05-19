@@ -56,7 +56,7 @@ pub use stream_function::{
     StreamFunctionConfig,
 };
 
-use super::field::Field2D;
+use crate::tectonics_v2::field::Field2D;
 
 /// Default forcing amplitude. Sits in the middle of the §4.9
 /// target band `Mf ∈ [0.3, 2.0]`.

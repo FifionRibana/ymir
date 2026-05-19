@@ -17,7 +17,6 @@
 
 pub mod advection;
 pub mod age_field;
-pub mod basal_drag;
 pub mod boundaries;
 pub mod boundary_detection;
 pub mod cancel;
@@ -27,14 +26,21 @@ pub mod field;
 pub mod forcing;
 pub mod init;
 pub mod plate_kinematic;
-pub mod mantle;
-pub mod presets;
 pub mod recycling;
-pub mod rheology;
 pub mod scales;
-pub mod slab;
-pub mod stokes;
 pub mod voronoi;
 pub mod workflow;
 
-pub use rheology::soft_min_harmonic;
+// Issue #117 — Stokes-coupled subtree retired to `_attic/` (gated by
+// Cargo feature `v2_legacy`). Re-exports below restore the old module
+// paths under feature so callers (harness, bridge build_config, R4/R5b/
+// R6/R7.A tests) compile bit-identically once the feature is on. The
+// default build sees no retired modules at all.
+#[cfg(feature = "v2_legacy")]
+pub mod _attic;
+
+#[cfg(feature = "v2_legacy")]
+pub use _attic::{basal_drag, mantle, presets, rheology, slab, stokes};
+
+#[cfg(feature = "v2_legacy")]
+pub use _attic::rheology::soft_min_harmonic;

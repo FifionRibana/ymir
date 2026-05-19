@@ -34,7 +34,14 @@
 
 pub mod drainage;
 pub mod macro_redistribution;
+
+// Issue #117 — Phase A + Phase B currently call into the retired
+// harness (`run_baseline_with_progress`). Per audit HC4, gate the
+// orchestrator entry points until C1's paradigm-agnostic per-cycle
+// tectonic runner reintroduces them in Phase 1.3 (§7 C1.md).
+#[cfg(feature = "v2_legacy")]
 pub mod phase_a;
+#[cfg(feature = "v2_legacy")]
 pub mod phase_b;
 
 use serde::{Deserialize, Serialize};
@@ -43,10 +50,13 @@ use crate::erosion::hydraulic::ErosionConfig;
 use crate::terrain::upscale::FbmUpscaleConfig;
 
 pub use macro_redistribution::RedistributionStats;
+
+#[cfg(feature = "v2_legacy")]
 pub use phase_a::{
     final_state_to_continuation, run_phase_a_cycle, run_phase_a_cycle_with_progress,
     run_phase_a_loop,
 };
+#[cfg(feature = "v2_legacy")]
 pub use phase_b::run_phase_b;
 
 /// Top-level workflow on/off switch.
@@ -213,6 +223,10 @@ impl Default for PhaseBParams {
 ///
 /// All Disabled-cycle scalars are zeroed/`None` — the regression test
 /// `v2_workflow_disabled_regression` pins this contract.
+// Issue #117 — `CycleOutput` carries `BaselineResult` which retires with
+// the harness. Gated until C1's per-cycle tectonic runner provides a
+// paradigm-agnostic replacement.
+#[cfg(feature = "v2_legacy")]
 #[derive(Debug)]
 pub struct CycleOutput {
     pub baseline: crate::tectonics_v2::diagnostics::harness::BaselineResult,
@@ -244,6 +258,9 @@ pub struct CycleOutput {
 /// When `WorkflowConfig::Disabled`, the vec contains exactly one
 /// entry — the direct `run_baseline` passthrough — so the regression
 /// contract holds: `output.cycles[0].baseline ≡ run_baseline(cfg)`.
+// Issue #117 — `PhaseAOutput` transitively gates because it carries
+// `Vec<CycleOutput>` (which references retired harness types).
+#[cfg(feature = "v2_legacy")]
 #[derive(Debug)]
 pub struct PhaseAOutput {
     pub cycles: Vec<CycleOutput>,

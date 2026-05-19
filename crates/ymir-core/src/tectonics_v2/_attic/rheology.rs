@@ -61,7 +61,7 @@
 //!   k = 4. The "cap active" signal `η_eff > 0.9·η_max` is reached
 //!   when `η_newton ≈ 1.47 · η_max`.
 
-use super::field::{Field2D, PeriodicIndex};
+use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 
 /// Power-law viscosity law evaluated pointwise on the MAC grid.
 ///
@@ -414,7 +414,7 @@ impl StrainRate {
 pub fn build_eta_field(
     law: &ViscosityLaw,
     eps_ii_center: &Field2D,
-    cratonic: Option<&super::cratonic::CratonicState>,
+    cratonic: Option<&crate::tectonics_v2::cratonic::CratonicState>,
 ) -> Field2D {
     let nx = eps_ii_center.nx();
     let ny = eps_ii_center.ny();

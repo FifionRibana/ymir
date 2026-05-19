@@ -9,7 +9,7 @@
 //!   solve, so `f_slab` sees the updated `m`.
 //! - [`SlabState::advect`] — conservative upwind advection with
 //!   the solved velocity. **After** the Stokes solve. Reuses the
-//!   Step 0 [`super::super::advection::step_upwind`] scheme
+//!   Step 0 [`crate::tectonics_v2::advection::step_upwind`] scheme
 //!   unchanged — `m̃` is an extensive surface density just like
 //!   `S̃`.
 //!
@@ -20,8 +20,8 @@
 //! smoothing would hide under-/over-shooting from the diagnostic
 //! reports.
 
-use super::super::advection::step_upwind;
-use super::super::field::{Field2D, PeriodicIndex};
+use crate::tectonics_v2::advection::step_upwind;
+use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 
 /// Slab-mass field wrapper.
 ///
