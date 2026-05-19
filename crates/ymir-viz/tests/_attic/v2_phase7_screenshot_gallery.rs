@@ -79,6 +79,9 @@ fn v2_phase7_screenshot_gallery() {
                     state = Some(final_state);
                     break;
                 }
+                Ok(V2Event::WorkflowCycleCompleted { .. })
+                | Ok(V2Event::WorkflowPhaseACompleted { .. })
+                | Ok(V2Event::WorkflowPhaseBCompleted { .. }) => {}
                 Ok(V2Event::Failed { error }) => panic!("preset '{}' failed: {}", name, error),
                 Err(RecvTimeoutError::Timeout) => continue,
                 Err(RecvTimeoutError::Disconnected) => panic!("channel disconnected"),
