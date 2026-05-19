@@ -21,5 +21,6 @@ pub mod erosion;
 pub mod export;
 pub mod lakes;
 pub mod tectonics;
+pub mod tectonics_c1;
 pub mod tectonics_v2;
 pub mod terrain;
