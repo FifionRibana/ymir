@@ -107,7 +107,7 @@ impl<'a> BodyForce for MantleForce<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::crate::tectonics_v2::field::PeriodicIndex;
+    use crate::tectonics_v2::field::PeriodicIndex;
     use super::super::super::mantle::{
         build_mantle_pattern, generate_stream_function, StreamFunctionConfig,
     };

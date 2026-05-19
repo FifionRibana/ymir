@@ -100,7 +100,7 @@ impl<'a> BodyForce for SlabPullForce<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::crate::tectonics_v2::field::PeriodicIndex;
+    use crate::tectonics_v2::field::PeriodicIndex;
     use super::*;
 
     fn env(
