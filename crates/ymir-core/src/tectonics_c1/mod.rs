@@ -49,6 +49,18 @@
 //! C1 does **not** reuse v2's `stokes`, `mantle`, `slab`, `rheology`,
 //! `basal_drag`, or `presets` — those moved to `tectonics_v2/_attic/`
 //! under the `v2_legacy` feature in Issue #117.
+//!
+//! ## Phase 1.1 outputs
+//!
+//! See [`docs/reports/c1_phase_1_1_advection/README.md`](../../../docs/reports/c1_phase_1_1_advection/README.md)
+//! for the visual + scalar acceptance evidence: 5 cycle snapshots
+//! (cycle 0 / 50 / 100 / 200 / 300), per-cycle `S̃` distribution
+//! stats, runtime, and the "what this output is not" guide.
+//!
+//! The integration test that produces those outputs lives in
+//! `crates/ymir-core/tests/c1_phase_1_1_advection.rs`. Mass-
+//! conservation drift is asserted < `1e-6`; the measured drift
+//! is `1.6e-14` (machine precision, well below the threshold).
 
 pub mod init;
 pub mod kinematics;
