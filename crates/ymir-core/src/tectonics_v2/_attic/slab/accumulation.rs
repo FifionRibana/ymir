@@ -22,13 +22,13 @@
 //! **oceanic** (`plate_type == Oceanic`) and **subducting**
 //! (`boundary_flag ∈ {Subduction, OceanicSubduction}`). Other
 //! cells receive zero. This reuses the exact same predicate as
-//! `Q_sub` in [`super::super::boundaries::source_sink`], so the
+//! `Q_sub` in [`crate::tectonics_v2::boundaries::source_sink`], so the
 //! two rates act in lock-step on the flag field.
 
-use super::super::boundaries::boundary_flag::BoundaryFlagField;
-use super::super::boundaries::plate_type::{PlateType, PlateTypeField};
-use super::super::boundaries::source_sink::{convergent_component, div_v_cell};
-use super::super::field::{Field2D, PeriodicIndex};
+use crate::tectonics_v2::boundaries::boundary_flag::BoundaryFlagField;
+use crate::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
+use crate::tectonics_v2::boundaries::source_sink::{convergent_component, div_v_cell};
+use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 
 /// Knobs for [`compute_q_sub_conv`].
 #[derive(Clone, Copy, Debug)]
@@ -95,7 +95,7 @@ pub fn compute_q_sub_conv(
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::boundaries::boundary_flag::BoundaryFlag;
+    use crate::tectonics_v2::boundaries::boundary_flag::BoundaryFlag;
     use super::*;
 
     fn make_env(nx: usize, ny: usize) -> (PeriodicIndex, PeriodicIndex, f64) {

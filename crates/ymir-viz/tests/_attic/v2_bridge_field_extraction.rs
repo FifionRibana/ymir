@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{bounded, RecvTimeoutError};
 use ymir_viz::bridge_v2::{
     spawn_v2_thread, V2AgeFieldSpec, V2Command, V2CratonicSpec, V2Event, V2ForceKind,
-    V2LinearSolverSpec, V2MantleSpec, V2RunSpec,
+    V2LinearSolverSpec, V2MantleSpec, V2PlateKinematicSpec, V2RunSpec, V2WorkflowSpec,
 };
 
 fn full_mechanism_spec() -> V2RunSpec {
@@ -57,6 +57,8 @@ fn full_mechanism_spec() -> V2RunSpec {
         output_dir: std::env::temp_dir().join("ymir_v2_field_extraction"),
         preset_label: "field_extraction".to_string(),
         init_mode: ymir_viz::bridge_v2::V2InitModeSpec::default(),
+        plate_kinematic: V2PlateKinematicSpec::Zero,
+        workflow: V2WorkflowSpec::Off,
     }
 }
 
@@ -81,6 +83,9 @@ fn v2_bridge_field_extraction() {
                 completed = Some(final_state);
                 break;
             }
+            Ok(V2Event::WorkflowCycleCompleted { .. })
+            | Ok(V2Event::WorkflowPhaseACompleted { .. })
+            | Ok(V2Event::WorkflowPhaseBCompleted { .. }) => {}
             Ok(V2Event::Failed { error }) => panic!("bridge failed: {}", error),
             Err(RecvTimeoutError::Timeout) => continue,
             Err(RecvTimeoutError::Disconnected) => panic!("channel disconnected"),

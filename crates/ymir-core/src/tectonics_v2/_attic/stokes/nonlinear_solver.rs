@@ -30,8 +30,8 @@
 
 use std::path::PathBuf;
 
-use super::super::cratonic::CratonicState;
-use super::super::field::{Field2D, PeriodicIndex};
+use crate::tectonics_v2::cratonic::CratonicState;
+use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use super::super::rheology::{self, StrainRate, ViscosityLaw};
 use super::nullspace;
 use super::operator::{apply_momentum, momentum_diagonal, StokesGrid, TangentContext};
@@ -306,7 +306,7 @@ pub fn evaluate_residual_norm(
     let mut r_x = vec![0.0; n];
     let mut r_y = vec![0.0; n];
     let mut sr_out: Option<StrainRate> = None;
-    let mut eta_out: Option<super::super::field::Field2D> = None;
+    let mut eta_out: Option<crate::tectonics_v2::field::Field2D> = None;
     compute_residual(
         grid, law, drag_diag, cratonic, vx, vy, rhs_x, rhs_y,
         &mut r_x, &mut r_y, &mut sr_out, &mut eta_out,
@@ -330,7 +330,7 @@ fn compute_residual(
     out_x: &mut [f64],
     out_y: &mut [f64],
     sr_out: &mut Option<StrainRate>,
-    eta_out: &mut Option<super::super::field::Field2D>,
+    eta_out: &mut Option<crate::tectonics_v2::field::Field2D>,
 ) {
     let sr = StrainRate::compute(
         grid.nx,
@@ -380,7 +380,7 @@ impl NonlinearSolver for NewtonSolver {
         let mut r_x = vec![0.0; n];
         let mut r_y = vec![0.0; n];
         let mut sr_k: Option<StrainRate> = None;
-        let mut eta_k: Option<super::super::field::Field2D> = None;
+        let mut eta_k: Option<crate::tectonics_v2::field::Field2D> = None;
         compute_residual(grid, law, drag_diag, cratonic, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y, &mut sr_k, &mut eta_k);
         let r0_norm = vec_norm(&r_x, &r_y);
         trace.residuals.push(r0_norm);
@@ -568,7 +568,7 @@ impl NonlinearSolver for NewtonSolver {
             let mut r_trial_y = vec![0.0; n];
             let mut accepted_resid = prev_resid;
             let mut accepted_sr: Option<StrainRate> = None;
-            let mut accepted_eta: Option<super::super::field::Field2D> = None;
+            let mut accepted_eta: Option<crate::tectonics_v2::field::Field2D> = None;
             let mut accepted = false;
             for _ in 0..=self.cfg.max_backtrack {
                 for i in 0..n {
@@ -577,7 +577,7 @@ impl NonlinearSolver for NewtonSolver {
                 }
                 nullspace::project_velocity(&mut v_trial_x, &mut v_trial_y);
                 let mut sr_trial: Option<StrainRate> = None;
-                let mut eta_trial: Option<super::super::field::Field2D> = None;
+                let mut eta_trial: Option<crate::tectonics_v2::field::Field2D> = None;
                 compute_residual(
                     grid, law, drag_diag, cratonic, &v_trial_x, &v_trial_y, rhs_x, rhs_y,
                     &mut r_trial_x, &mut r_trial_y, &mut sr_trial, &mut eta_trial,

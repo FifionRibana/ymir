@@ -13,8 +13,8 @@
 //! adaptive retry are out of scope for Step 1 — the fallback for
 //! mid-run Newton trouble is the dual-track Picard path.
 
-use super::super::cratonic::CratonicState;
-use super::super::field::Field2D;
+use crate::tectonics_v2::cratonic::CratonicState;
+use crate::tectonics_v2::field::Field2D;
 use super::super::presets::ContinuationConfig;
 use super::super::rheology::ViscosityLaw;
 use super::nonlinear_solver::{NewtonSolver, NonlinearOutcome, NonlinearSolver};

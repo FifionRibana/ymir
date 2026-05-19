@@ -61,7 +61,7 @@
 
 use rayon::prelude::*;
 
-use super::super::field::Field2D;
+use crate::tectonics_v2::field::Field2D;
 use super::operator::StokesGrid;
 
 /// Compressed Sparse Row matrix on a `2·N` packed velocity layout.

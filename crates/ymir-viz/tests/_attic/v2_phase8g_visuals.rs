@@ -166,6 +166,9 @@ fn run_preset_capture(
                 completed = true;
                 break;
             }
+            Ok(V2Event::WorkflowCycleCompleted { .. })
+            | Ok(V2Event::WorkflowPhaseACompleted { .. })
+            | Ok(V2Event::WorkflowPhaseBCompleted { .. }) => {}
             Ok(V2Event::Failed { error }) => panic!("'{}' failed: {}", preset_name, error),
             Err(RecvTimeoutError::Timeout) => continue,
             Err(RecvTimeoutError::Disconnected) => panic!("channel disconnected"),
