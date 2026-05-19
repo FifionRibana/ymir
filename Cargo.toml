@@ -20,6 +20,8 @@ rand = "0.9"
 rand_chacha = "0.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+bincode = "1.3"
+criterion = { version = "0.5", features = ["html_reports"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 bevy_egui = "0.39"
 crossbeam-channel = "0.5"
@@ -48,3 +50,14 @@ bevy = { version = "0.18.1", default-features = false, features = [
     "mouse",
     "keyboard",
 ] }
+
+# Step 8.5b D4 — whole-program optimisation for release builds.
+# `lto = "fat"` enables cross-crate inlining and dead-code elimination;
+# `codegen-units = 1` forces the whole workspace through a single LLVM
+# unit so every inlining opportunity is visible. Compilation time
+# penalty is ~20–60 s on cold release builds. `target-cpu=native` and
+# PGO are intentionally excluded (portability + ceremony for marginal
+# gain). Debug/test profiles inherit cargo defaults (unchanged).
+[profile.release]
+lto = "fat"
+codegen-units = 1

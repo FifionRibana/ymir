@@ -18,6 +18,20 @@ impl Field2D {
         Self { data: vec![value; nx * ny], nx, ny }
     }
 
+    /// Construct a field from an existing row-major `Vec<f64>`.
+    /// Panics if `data.len() != nx * ny` — the contract is "the
+    /// caller already shaped the data correctly".
+    pub fn from_vec(nx: usize, ny: usize, data: Vec<f64>) -> Self {
+        assert_eq!(
+            data.len(),
+            nx * ny,
+            "Field2D::from_vec: data.len() = {}, expected nx*ny = {}",
+            data.len(),
+            nx * ny,
+        );
+        Self { data, nx, ny }
+    }
+
     #[inline(always)]
     pub fn get(&self, i: usize, j: usize) -> f64 {
         self.data[j * self.nx + i]

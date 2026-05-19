@@ -1,0 +1,609 @@
+//! Step-1 Newton-specific aggregates.
+//!
+//! A single baseline run aggregates, per time step, the outcome of
+//! the nonlinear solve and the number of CG iterations the inner
+//! linear solve consumed. The totals are what ends up in the
+//! markdown report.
+
+#[derive(Clone, Debug, Default)]
+pub struct NewtonAggregate {
+    /// Outcome counts. Ordered so the report can render a stable row
+    /// set even when one outcome doesn't appear.
+    pub converged: usize,
+    pub stalled: usize,
+    pub diverged: usize,
+    pub capped: usize,
+
+    /// Newton outer iterations per timestep.
+    pub outer_iters: Vec<u32>,
+    /// CG iterations inside Newton outer iteration, aggregated over
+    /// the run (one sample per Newton step).
+    pub cg_iters_per_newton_step: Vec<usize>,
+
+    /// Cap-activation counters — fraction of cells where
+    /// `η_eff > 0.9·η_max`. Split into "ramp" (during the startup
+    /// continuation) and "steady" (after), as the spec requires.
+    pub cap_fraction_ramp_max: f64,
+    pub cap_fraction_steady_max: f64,
+
+    /// Effective η_max / η_min ratio, sampled once per timestep and
+    /// reduced to mean/max across the run.
+    pub eta_contrast_samples: Vec<f64>,
+
+    /// Startup continuation outcome: `Some(true)` if every ramp
+    /// sub-solve converged; `Some(false)` if any sub-solve failed;
+    /// `None` if continuation wasn't run (no step in this run).
+    pub continuation_all_converged: Option<bool>,
+    pub continuation_iters_used: u32,
+
+    /// Step 3 — plastic yielding metrics. `None` when yielding is
+    /// `Disabled`. When `Enabled`, `bi_diagnostic` carries the run's
+    /// Bi value and the two cell-fraction / intensity aggregates are
+    /// max-over-timestep values (peaks picked over the run).
+    pub bi_diagnostic: Option<f64>,
+    /// Fraction of cells where `η_eff < 0.5 · η_visc`. Max over the run.
+    pub yielding_cell_fraction_max: Option<f64>,
+    /// Mean of `(η_visc / η_eff − 1)` over cells where
+    /// `η_eff < 0.9 · η_visc`. Max over the run; zero if no cell
+    /// meets the threshold during the run.
+    pub yielding_intensity_max: Option<f64>,
+    /// Domain-level `ε̇_II` aggregates at the **final timestep**,
+    /// intended for the floor-dominated-regime diagnostic in the
+    /// Step 3 physics report. `None` when yielding is Disabled.
+    pub eps_ii_mean_final: Option<f64>,
+    pub eps_ii_max_final: Option<f64>,
+    /// Fraction of cells where `ε̇_II < 10·ε̇_min` at the final
+    /// timestep — "how much of the domain sits in the floor-
+    /// dominated band at the end of the run".
+    pub eps_ii_floor_dominated_fraction_final: Option<f64>,
+
+    // ---- Step 4 — basal-drag diagnostics ----
+    //
+    // All three fields are `None` when `BasalDragConfig::Disabled`;
+    // under `Enabled(law)`, `br_diagnostic` carries `law.br` and the
+    // two ratios are means across the run (mean per step of per-cell
+    // means). `peak_v_damping_ratio` is NOT computed here — it's a
+    // cross-run quantity (physics vs regression) computed at report
+    // rendering time.
+    pub br_diagnostic: Option<f64>,
+    /// `mean_cells(Br·S̃² / (Br·S̃² + η/Δx²))`, averaged across the
+    /// run. Saturates at 1 when drag dominates; baseline Step-4 value
+    /// is expected `≪ 1` (drag much smaller than viscous diagonal).
+    pub basal_drag_energy_ratio: Option<f64>,
+    /// `mean_cells(Br·S̃² / (η/Δx²))`, averaged across the run.
+    /// Linear in Br; baseline Step-4 target band `[10⁻⁶, 10⁻⁴]` at
+    /// 128² per the Step-4 spec algebra.
+    pub drag_vs_visc_diagonal_ratio: Option<f64>,
+
+    // ---- Step 5 — boundary source/sink diagnostics ----
+    //
+    // All fields are `None` under `BoundaryConfig::Disabled`; under
+    // `Enabled` they are populated by the harness at the end of the
+    // run. The mean/std fields are domain-wise stats on the final
+    // `S̃`; the mass-balance residual and clamp activation fraction
+    // are integrated over the whole run.
+    pub boundary_layout_name: Option<&'static str>,
+    pub s_oceanic_mean: Option<f64>,
+    pub s_oceanic_std: Option<f64>,
+    pub s_continental_interior_mean: Option<f64>,
+    pub s_continental_interior_std: Option<f64>,
+    pub s_continental_collision_mean: Option<f64>,
+    /// Count of boundary-flag variants active (Q ≠ 0) during the run.
+    /// Integer 0..=4 (None, plus Subduction|OceanicSubduction counted
+    /// once, Rift, ContinentalCollision).
+    pub boundary_type_diversity: Option<u32>,
+    /// Mean over steps of `clamp_activation_fraction`.
+    pub clamp_activation_fraction_mean: Option<f64>,
+    /// Max over steps of `clamp_activation_fraction`.
+    pub clamp_activation_fraction_max: Option<f64>,
+    /// Relative residual per issue #89 D5:
+    /// `|Δmass_observed − ∫Q − ∫clamp_flux| / max(|∫Q|+|∫clamp_flux|, 1)`.
+    pub mass_balance_residual: Option<f64>,
+    /// Integrated physical source/sink flux `Σ_steps dt·Σ_cells Q(cell,t)`.
+    pub q_integral: Option<f64>,
+    /// Integrated artificial clamp flux
+    /// `Σ_steps dt·Σ_cells (S̃_post_clamp − S̃_pre_clamp)`.
+    pub clamp_flux_integral: Option<f64>,
+    /// `max |∇S̃|` on the interface cells (oceanic cells adjacent to
+    /// continental, or vice versa) at the final timestep. Monitoring
+    /// for issue #78.
+    pub max_grad_s_interface_final: Option<f64>,
+    /// `peak |f_GPE|` on the interface cells at the final timestep.
+    /// Companion to `max_grad_s_interface_final`.
+    pub peak_f_gpe_interface_final: Option<f64>,
+    /// `max |∇S̃|` globally at the final timestep. Reference value
+    /// for the interface number.
+    pub max_grad_s_global_final: Option<f64>,
+    /// `peak |f_GPE|` globally at the final timestep.
+    pub peak_f_gpe_global_final: Option<f64>,
+    /// Calibrated value of `k_spread`. `None` when calibration was
+    /// not run (e.g., Step 5 regression, boundary Disabled, or when
+    /// the CLI supplies an explicit `--k-spread`).
+    pub k_spread_calibrated: Option<f64>,
+
+    // ---- Step 6 — Voronoi + dynamic detection + Closed recycling ----
+    //
+    // All `None` outside Step 6 or when the relevant path is not
+    // exercised. `plate_count` / `plate_type_distribution` are
+    // populated whenever boundary is Enabled (for both static and
+    // Voronoi geometries). Recycling / buffer fields are populated
+    // only under `RecyclingModeInit::Closed`.
+    pub plate_count: Option<u32>,
+    pub plate_type_distribution: Option<(f64, f64)>, // (oceanic_frac, continental_frac)
+    /// Time series of the fraction of cells whose `boundary_flag`
+    /// changed vs the previous step. Populated under dynamic
+    /// geometries (Voronoi) — for static geometries it would be
+    /// identically zero, so we leave it `None` to signal "not
+    /// applicable".
+    pub boundary_flag_transition_rate_mean: Option<f64>,
+    pub boundary_flag_transition_rate_max: Option<f64>,
+    /// `recycling_buffer_fill` diagnostic: mean and max of the
+    /// buffer's in-transit mass over the run.
+    pub recycling_buffer_fill_mean: Option<f64>,
+    pub recycling_buffer_fill_max: Option<f64>,
+    /// Max observed `max(arc_pending, coll_v_pending, rift_v_pending)`
+    /// over the run. Non-zero means some class had no eligible cell
+    /// at some step and rolled over.
+    pub immediate_pending_max: Option<f64>,
+    /// Final immediate accumulator sum (a component of the
+    /// mass-conservation residual).
+    pub immediate_pending_final: Option<f64>,
+    /// Final buffer fill (in-transit mass at end of run).
+    pub recycling_buffer_fill_final: Option<f64>,
+    /// Integrated mantle loss over the run
+    /// (`Σ_steps mantle_loss_fraction · M_sub_step`). Zero when
+    /// `mantle_loss_fraction = 0`.
+    pub mantle_loss_integral: Option<f64>,
+    /// Total subducted mass over the run — the denominator for the
+    /// mantle_loss observed-fraction diagnostic.
+    pub m_sub_total: Option<f64>,
+    /// Closed-mode absolute mass-conservation residual per the
+    /// Step 6 bilan:
+    ///   `|Δmass_obs + mantle_loss_integral + buffer_fill_final +
+    ///     pending_final - clamp_flux_integral| / initial_mass`
+    /// Distinct from Step 5's `mass_balance_residual`; the Step 6
+    /// version includes the buffer + pending terms. Target < 1e-6
+    /// when `mantle_loss_fraction = 0`.
+    pub mass_conservation_residual: Option<f64>,
+    /// Max `clamp_activation_fraction` during the buffer spin-up
+    /// window (first `mantle_delay_steps` steps). Zero if spin-up
+    /// is safe.
+    pub clamp_activation_during_spinup_max: Option<f64>,
+    /// #78 trajectory samples: `(step, max|∇S̃|_interface,
+    /// max|∇S̃|_global, peak|f_GPE|_interface, peak|f_GPE|_global,
+    /// buffer_fill)` at steps {1, 10, 50, 150, 300}.
+    pub issue_78_trajectory: Vec<(usize, f64, f64, f64, f64, f64)>,
+    /// Per-flag-type cell count at the **final** step. Keys:
+    /// `(none, subduction, oceanic_subduction, rift, continental_collision)`.
+    /// Informative when `boundary_type_diversity` is suspicious —
+    /// e.g. `diversity = 1` could mean either "only subduction
+    /// detected" or "only rift detected"; this breakdown
+    /// disambiguates.
+    pub boundary_flag_counts_final: Option<(usize, usize, usize, usize, usize)>,
+    /// Per-flag-type cell count at the **first** step (post-first
+    /// `detect_boundaries` call). Compared against `_final` to show
+    /// whether detection produced flags at step 1 and how they
+    /// evolved. For static geometries, `_step1` and `_final` are
+    /// identical (no dynamic update).
+    pub boundary_flag_counts_step1: Option<(usize, usize, usize, usize, usize)>,
+    /// Integrated arc return budget: `Σ_steps (arc_fraction · M_sub_step
+    /// actually distributed this step)`. Equal to `arc_fraction ·
+    /// M_sub_total` in the steady state where eligible cells always
+    /// exist; deviates during rollover.
+    pub arc_distributed_integral: Option<f64>,
+    /// Integrated coll_v return budget. Same interpretation.
+    pub coll_v_distributed_integral: Option<f64>,
+    /// Integrated rift_v return budget. Same interpretation.
+    pub rift_v_distributed_integral: Option<f64>,
+    /// Integrated spread return emitted on rift oceanic cells.
+    pub spread_distributed_integral: Option<f64>,
+
+    // ---- Step 7 — slab-pull diagnostics ----
+    //
+    // All fields are `None` under `SlabPullConfig::Disabled`.
+    // When `Enabled`, the harness populates them per step or per
+    // run as noted.
+    /// `Sp` value (§4.8 coupling), stored once for the report.
+    pub sp_diagnostic: Option<f64>,
+    /// `τ_slab` value (nondim decay time).
+    pub tau_slab_diagnostic: Option<f64>,
+    /// `k_slab_accum` value (mass accumulation rate).
+    pub k_slab_accum_diagnostic: Option<f64>,
+    /// Series of `mean(m_subducted)` per step. Used by the
+    /// markdown report to tell whether `m` plateaus at
+    /// `Q · τ` or grows monotonically (flag: decay too slow).
+    pub slab_m_mean_series: Vec<f64>,
+    /// Series of `max(m_subducted)` per step.
+    pub slab_m_max_series: Vec<f64>,
+    /// Max over the run of the cell-wise `|f_slab|` magnitude.
+    /// Compared to `peak_f_gpe_run` for the balance diagnostic.
+    pub peak_f_slab_run: Option<f64>,
+    /// Max over the run of the cell-wise `|f_GPE|` magnitude
+    /// (sampled on the step's RHS, before slab-pull is added).
+    /// Lives here so the Step 7 report can present
+    /// `peak_f_slab / peak_f_gpe` without fishing for it in a
+    /// different namespace.
+    pub peak_f_gpe_run: Option<f64>,
+    /// Mean over active steps of `peak|f_slab| / peak|f_GPE|`.
+    /// Denominator is step-by-step, so rare large `peak|f_GPE|`
+    /// spikes do not dominate; a `None` sampled peak is skipped.
+    pub f_slab_to_f_gpe_ratio_mean: Option<f64>,
+
+    // ---- Step 8 — mantle forcing diagnostics ----
+    //
+    // All fields `None` under `MantleConfig::Disabled`. When
+    // `Enabled`, the harness populates them per step or per run
+    // as noted.
+    /// `Mf` value (§4.9 amplitude), stored once for the report.
+    pub mf_diagnostic: Option<f64>,
+    /// Coupling `c`, stored once for the report.
+    pub coupling_diagnostic: Option<f64>,
+    /// Number of Fourier modes used in the stream function.
+    pub mantle_num_modes: Option<usize>,
+    /// Seed used for the mantle pattern (independent of the
+    /// main world seed).
+    pub mantle_seed: Option<u64>,
+    /// `peak|v_mantle|` (`Mf · peak|v_pattern|`) at init.
+    /// Constant for the run (`evolution_rate = 0` at Step 8
+    /// baseline).
+    pub peak_v_mantle_pattern: Option<f64>,
+    /// Max `|v_solved|` over the run — the **primary bootstrap
+    /// diagnostic**. Expected at baseline: `O(Mf) = O(1)`,
+    /// several orders above the Step 7 value (≈ 3e-5).
+    pub peak_v_solved_mantle_run: Option<f64>,
+    /// Mean over the run of the scalar alignment
+    /// `<v_solved, Mf · v_pattern> / |Mf · v_pattern|²`.
+    /// Magnitude-aware; matches the contract in
+    /// `v2_mantle_relaxation`.
+    pub v_solved_to_v_mantle_alignment: Option<f64>,
+    /// Max `|f_mantle|` over the run.
+    pub peak_f_mantle_run: Option<f64>,
+    /// Mean over active steps of `peak|f_mantle| / peak|f_GPE|`.
+    pub f_mantle_to_f_gpe_ratio_mean: Option<f64>,
+    /// Mean over active steps of `peak|f_mantle| / peak|f_slab|`.
+    /// Zero when slab is not enabled this run.
+    pub f_mantle_to_f_slab_ratio_mean: Option<f64>,
+    /// `max(ε̇_II) / ε̇_min` max over the run. **Must exceed 1**
+    /// for yielding activation to be achievable (Step 3 floor-
+    /// dominated analysis). Expected at Step 8 baseline: `O(10)+`.
+    pub epsilon_ii_max_to_floor_ratio: Option<f64>,
+    /// `max |div(v_mantle)|` — sanity check that the stream-
+    /// function construction produces a discretely div-free
+    /// pattern. Must stay below 1e-10 (Step 8 strict acceptance).
+    /// Effectively constant within the run at Step 8
+    /// (evolution_rate = 0).
+    pub div_v_mantle_max: Option<f64>,
+
+    // ---- Step 9 — cratonic immunity diagnostics ----
+    //
+    // All fields `None` under `CratonicConfig::Disabled`. When
+    // `Enabled` AND yielding is also `Enabled`, the harness
+    // populates them per step. Acceptance #6/#7/#8 of `step9_issue.md`
+    // are evaluated against `peak_yielding_in_craton`,
+    // `peak_yielding_in_mobile_belt` and `cratonic_cell_fraction`.
+    /// `Cr` value driving this run, stored once for the report.
+    pub cr_diagnostic: Option<f64>,
+    /// `K` viscous contrast, stored once for the report.
+    pub k_viscous_diagnostic: Option<f64>,
+    /// `B_factor` Bi elevation, stored once for the report.
+    pub b_factor_diagnostic: Option<f64>,
+    /// Fraction of cells with `cratonic_factor > 0.5` — static over
+    /// the run (factor field is computed once at init). Compared to
+    /// `Cr · continental_fraction` per acceptance #8.
+    pub cratonic_cell_fraction: Option<f64>,
+    /// Continental fraction of the domain (cells whose plate is
+    /// `Continental`), independent of the area threshold. Used as
+    /// the denominator in the acceptance #8 ratio
+    /// `cratonic_cell_fraction / (Cr · continental_fraction)`.
+    pub continental_cell_fraction: Option<f64>,
+    /// Max over the run of `yielding_cell_fraction` restricted to
+    /// cells with `cratonic_factor > 0.5`. Acceptance #6 target
+    /// `≤ 0.01` at baseline.
+    pub peak_yielding_in_craton: Option<f64>,
+    /// Max over the run of `yielding_cell_fraction` restricted to
+    /// cells with `cratonic_factor < 0.5`. Acceptance #7 target
+    /// "within 10 % of Step 8 baseline value".
+    pub peak_yielding_in_mobile_belt: Option<f64>,
+    /// Max ratio of `η_eff` between adjacent cells crossing the
+    /// cratonic boundary (one side `cratonic_factor > 0.5`, the
+    /// other `< 0.5`). Acceptance #3 target `≤ K · 1.05`.
+    pub peak_eta_contrast_at_boundary: Option<f64>,
+
+    // ---- Step 10 — geological age field diagnostics ----
+    //
+    // All `None` under `AgeFieldConfig::Disabled`. When `Enabled`,
+    // populated by the harness per step (`age_field_*` are running
+    // min / max / mean) and at run end (`*_resets` are run totals,
+    // `*_age_mean` are computed from the running sums).
+    /// `continental_age_init` value used for the run, captured for
+    /// the report header.
+    pub continental_age_init_diagnostic: Option<f64>,
+    /// `oceanic_age_init` value used for the run.
+    pub oceanic_age_init_diagnostic: Option<f64>,
+    /// Min value of the age field at the final step (≥ 0 always
+    /// per acceptance #1 / #11).
+    pub age_field_min_final: Option<f64>,
+    /// Max value of the age field at the final step. Bounded by
+    /// `age_init_max + simulation_time` per acceptance #1 / #11.
+    pub age_field_max_final: Option<f64>,
+    /// Mean value of the age field at the final step.
+    pub age_field_mean_final: Option<f64>,
+    /// Mean age at continental cells (`S̃ > 0.5`) at the final
+    /// step. Acceptance #8 (soft check): generally larger than
+    /// the oceanic mean because continental cells receive resets
+    /// only at arc / collision events (rare).
+    pub age_at_continental_cells_mean_final: Option<f64>,
+    /// Mean age at oceanic cells at the final step.
+    pub age_at_oceanic_cells_mean_final: Option<f64>,
+    /// Total ridge-reset events fired across the run.
+    pub age_ridge_resets_total: Option<u64>,
+    /// Total arc-reset events fired across the run.
+    pub age_arc_resets_total: Option<u64>,
+    /// Total collision max-age events fired across the run.
+    pub age_collision_max_events_total: Option<u64>,
+    /// Mean of the max-age values produced at collision cells
+    /// across the run (= sum / count, 0 if no collision fired).
+    pub age_collision_max_age_mean: Option<f64>,
+}
+
+impl NewtonAggregate {
+    /// Summary helper for the markdown writer.
+    pub fn outer_iters_mean(&self) -> f64 {
+        if self.outer_iters.is_empty() {
+            0.0
+        } else {
+            self.outer_iters.iter().map(|&v| v as f64).sum::<f64>() / self.outer_iters.len() as f64
+        }
+    }
+    pub fn outer_iters_max(&self) -> u32 {
+        self.outer_iters.iter().copied().max().unwrap_or(0)
+    }
+    pub fn cg_iters_per_newton_mean(&self) -> f64 {
+        if self.cg_iters_per_newton_step.is_empty() {
+            0.0
+        } else {
+            self.cg_iters_per_newton_step.iter().sum::<usize>() as f64
+                / self.cg_iters_per_newton_step.len() as f64
+        }
+    }
+    pub fn cg_iters_per_newton_max(&self) -> usize {
+        self.cg_iters_per_newton_step.iter().copied().max().unwrap_or(0)
+    }
+    pub fn eta_contrast_mean(&self) -> f64 {
+        if self.eta_contrast_samples.is_empty() {
+            1.0
+        } else {
+            self.eta_contrast_samples.iter().sum::<f64>() / self.eta_contrast_samples.len() as f64
+        }
+    }
+    pub fn eta_contrast_max(&self) -> f64 {
+        self.eta_contrast_samples.iter().copied().fold(1.0_f64, f64::max)
+    }
+
+    /// Percentage outcome distribution; rounds to one decimal place.
+    pub fn outcome_percentages(&self) -> (f64, f64, f64, f64) {
+        let total = (self.converged + self.stalled + self.diverged + self.capped) as f64;
+        if total == 0.0 {
+            return (0.0, 0.0, 0.0, 0.0);
+        }
+        (
+            100.0 * self.converged as f64 / total,
+            100.0 * self.stalled as f64 / total,
+            100.0 * self.diverged as f64 / total,
+            100.0 * self.capped as f64 / total,
+        )
+    }
+}
+
+/// Compute the fraction of cells in `eta_cc` where the soft cap is
+/// close to active — `η_eff > 0.9 · η_max_cap`.
+pub fn cap_activation_fraction(
+    eta_cc: &crate::tectonics_v2::field::Field2D,
+    eta_max_cap: f64,
+) -> f64 {
+    let n = eta_cc.data().len();
+    if n == 0 {
+        return 0.0;
+    }
+    let threshold = 0.9 * eta_max_cap;
+    let count = eta_cc.data().iter().filter(|&&v| v > threshold).count();
+    count as f64 / n as f64
+}
+
+/// Fraction of cells where `η_eff < 0.5 · η_visc`.
+///
+/// Step 3 primary yielding metric (issue #85). This definition
+/// captures "yielding is the dominant branch" rather than
+/// "yielding is present anywhere" — the legacy `η_p < η_v`
+/// criterion saturated to ~1.0 as soon as the plastic branch was
+/// defined, carrying no diagnostic signal. See the `#75`
+/// discussion.
+pub fn yielding_cell_fraction(
+    eta_visc: &crate::tectonics_v2::field::Field2D,
+    eta_eff: &crate::tectonics_v2::field::Field2D,
+) -> f64 {
+    let n = eta_visc.data().len();
+    if n == 0 {
+        return 0.0;
+    }
+    let mut count = 0usize;
+    for (&ev, &ee) in eta_visc.data().iter().zip(eta_eff.data().iter()) {
+        if ee < 0.5 * ev {
+            count += 1;
+        }
+    }
+    count as f64 / n as f64
+}
+
+/// Step 9 — fraction of cells where `η_eff < 0.5 · η_visc`,
+/// restricted to a region defined by `cratonic_factor` and
+/// `in_craton`. When `in_craton == true`, the metric is computed
+/// over cells with `cratonic_factor > 0.5` (cratonic interior);
+/// when `false`, over cells with `cratonic_factor ≤ 0.5` (mobile
+/// belts and oceanic cells). Returns `0.0` if the region is
+/// empty (degenerate edge case — for example, no retained
+/// continental plate so no craton).
+pub fn yielding_cell_fraction_in_region(
+    eta_visc: &crate::tectonics_v2::field::Field2D,
+    eta_eff: &crate::tectonics_v2::field::Field2D,
+    cratonic_factor: &crate::tectonics_v2::field::Field2D,
+    in_craton: bool,
+) -> f64 {
+    let v = eta_visc.data();
+    let e = eta_eff.data();
+    let f = cratonic_factor.data();
+    debug_assert_eq!(v.len(), e.len());
+    debug_assert_eq!(v.len(), f.len());
+    let mut count = 0usize;
+    let mut total = 0usize;
+    for ((&ev, &ee), &cf) in v.iter().zip(e.iter()).zip(f.iter()) {
+        let cell_in_region = if in_craton { cf > 0.5 } else { cf <= 0.5 };
+        if !cell_in_region {
+            continue;
+        }
+        total += 1;
+        if ee < 0.5 * ev {
+            count += 1;
+        }
+    }
+    if total == 0 { 0.0 } else { count as f64 / total as f64 }
+}
+
+/// Step 9 — max ratio of the cratonic eta_multiplier between
+/// adjacent cells `a, b` on the periodic torus where one side has
+/// `cratonic_factor > 0.5` and the other `≤ 0.5`. Returns `1.0`
+/// if no such pair exists.
+///
+/// The metric isolates the cratonic-induced viscous contribution
+/// (`m[i] = 1 + (K - 1) · factor[i]`) from the underlying
+/// `η_law(ε̇_II)` gradient: the latter exists at any boundary
+/// between dynamically-different regions and confounds an
+/// `η_eff` ratio. Acceptance #3 requires this multiplier ratio
+/// `≤ K · 1.05`. K = 5 baseline gives target `≤ 5.25`; failure
+/// means the smoothstep transition is too abrupt for the grid
+/// resolution and `smoothing_width` should be widened with
+/// reviewer approval.
+pub fn eta_contrast_at_cratonic_boundary(
+    eta_multiplier: &crate::tectonics_v2::field::Field2D,
+    cratonic_factor: &crate::tectonics_v2::field::Field2D,
+) -> f64 {
+    let nx = eta_multiplier.nx();
+    let ny = eta_multiplier.ny();
+    debug_assert_eq!(cratonic_factor.nx(), nx);
+    debug_assert_eq!(cratonic_factor.ny(), ny);
+    let mut peak: f64 = 1.0;
+    for j in 0..ny {
+        let jp = if j + 1 < ny { j + 1 } else { 0 };
+        for i in 0..nx {
+            let ip = if i + 1 < nx { i + 1 } else { 0 };
+            let f00 = cratonic_factor.get(i, j);
+            let f10 = cratonic_factor.get(ip, j);
+            let f01 = cratonic_factor.get(i, jp);
+            let m00 = eta_multiplier.get(i, j);
+            let m10 = eta_multiplier.get(ip, j);
+            let m01 = eta_multiplier.get(i, jp);
+            // East neighbour pair (i, j) ↔ (i+1, j).
+            if (f00 > 0.5) != (f10 > 0.5) && m00 > 0.0 && m10 > 0.0 {
+                let r = m00.max(m10) / m00.min(m10);
+                if r > peak {
+                    peak = r;
+                }
+            }
+            // North neighbour pair (i, j) ↔ (i, j+1).
+            if (f00 > 0.5) != (f01 > 0.5) && m00 > 0.0 && m01 > 0.0 {
+                let r = m00.max(m01) / m00.min(m01);
+                if r > peak {
+                    peak = r;
+                }
+            }
+        }
+    }
+    peak
+}
+
+/// Mean of `(η_visc / η_eff − 1)` over cells where
+/// `η_eff < 0.9 · η_visc`. Zero if no cell meets the threshold.
+/// Captures "how much the yielding softens the already-yielding
+/// zones", orthogonal to `yielding_cell_fraction` which captures
+/// "how widespread the yielding is".
+pub fn yielding_intensity(
+    eta_visc: &crate::tectonics_v2::field::Field2D,
+    eta_eff: &crate::tectonics_v2::field::Field2D,
+) -> f64 {
+    let mut sum = 0.0_f64;
+    let mut count = 0usize;
+    for (&ev, &ee) in eta_visc.data().iter().zip(eta_eff.data().iter()) {
+        if ee < 0.9 * ev && ee > 0.0 {
+            sum += ev / ee - 1.0;
+            count += 1;
+        }
+    }
+    if count == 0 { 0.0 } else { sum / count as f64 }
+}
+
+/// Step 8.5b Phase 5: instrumentation for the Newton order-2 warm-
+/// start extrapolation. Tracks attempt / fallback counts, the step
+/// indices at which fallbacks fired (so the report can show the
+/// temporal distribution), and the per-step Newton outer iteration
+/// count (for the `×1.5–2` reduction expected by D3).
+#[derive(Clone, Debug, Default)]
+pub struct ExtrapolationStats {
+    /// Number of physics steps where extrapolation was *attempted*
+    /// (i.e. step index ≥ 2 and history available).
+    pub attempted: usize,
+    /// Number of physics steps where extrapolation was *applied*
+    /// (i.e. residual safeguard accepted the extrapolated guess).
+    pub applied: usize,
+    /// Step indices where the safeguard rejected the extrapolated
+    /// guess (`‖F(v_extrap)‖ > ‖F(v_converged_prev)‖`). Reading
+    /// the temporal distribution reveals whether transient regime
+    /// changes cluster early / late in the run.
+    pub fallback_indices: Vec<usize>,
+    /// Newton outer iterations consumed at each physics step (one
+    /// entry per step from index 0). Aggregate `mean` / `max` are
+    /// computed by the report layer.
+    pub newton_outer_iters_per_step: Vec<u32>,
+    /// `‖F(v_extrap)‖` at the last *applied* extrapolation, for
+    /// spot-check reporting. `None` if extrapolation was never
+    /// applied (e.g. fewer than two steps).
+    pub last_applied_extrap_residual: Option<f64>,
+}
+
+impl ExtrapolationStats {
+    /// Fraction of attempts where the safeguard rejected the
+    /// extrapolated guess. `> 10 %` is the reviewer's flag for
+    /// "regime hostile to order-2 extrapolation".
+    pub fn fallback_rate(&self) -> f64 {
+        if self.attempted == 0 {
+            0.0
+        } else {
+            (self.attempted - self.applied) as f64 / self.attempted as f64
+        }
+    }
+
+    pub fn newton_outer_iters_mean(&self) -> f64 {
+        if self.newton_outer_iters_per_step.is_empty() {
+            0.0
+        } else {
+            let s: u32 = self.newton_outer_iters_per_step.iter().sum();
+            s as f64 / self.newton_outer_iters_per_step.len() as f64
+        }
+    }
+}
+
+/// Compute `η_max / η_min` from an η field.
+pub fn eta_contrast(eta_cc: &crate::tectonics_v2::field::Field2D) -> f64 {
+    let mut min = f64::INFINITY;
+    let mut max = f64::NEG_INFINITY;
+    for &v in eta_cc.data() {
+        if v > 0.0 {
+            if v < min {
+                min = v;
+            }
+            if v > max {
+                max = v;
+            }
+        }
+    }
+    if min.is_finite() && min > 0.0 { max / min } else { 1.0 }
+}

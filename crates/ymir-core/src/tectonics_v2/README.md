@@ -1,0 +1,314 @@
+# tectonics_v2 — Step 0
+
+Incremental rebuild of the tectonic solver. Step 0 ships a linear,
+constant-viscosity **thin viscous sheet** solver (England & McKenzie
+1982) coupled to a conservative upwind advection of the crustal
+thickness `S̃` on a fully periodic toroidal domain, plus the
+diagnostics framework the rest of the milestone extends.
+
+Physical reference: [`docs/solver-scaling.md`](../../../../docs/solver-scaling.md).
+Milestone tracker: [`docs/solver-reconstruction-roadmap.md`](../../../../docs/solver-reconstruction-roadmap.md).
+
+## Formulation: thin viscous sheet, NOT incompressible Stokes
+
+The equations are:
+
+```
+Momentum:   -∇·(2 η̃ ε̇̃(ṽ)) = Ar·∇Φ̃ + f̃_ext       (1) [elliptic, SPD]
+Thickness:  ∂_t̃ S̃ + ∇·(S̃ ṽ) = Q̃                  (2) [mass balance]
+```
+
+Two properties that distinguish this from incompressible Stokes and
+are foundational for every Step 1–10 that follows:
+
+- **No incompressibility constraint.** `∇·ṽ ≠ 0` in 2-D is physically
+  meaningful — it is the rate at which the crustal column thickens
+  (plug it into (2) and it becomes the source of `∂_t̃ S̃`). Enforcing
+  `∇·ṽ = 0` would make it impossible for orogens to thicken under
+  convergence or for rifts to thin under divergence.
+- **No pressure unknown.** `Φ̃` is the gravitational potential
+  energy and enters (1) as a physical driving term weighted by the
+  Argand number `Ar` — not as a Lagrange multiplier dual to a
+  constraint. Nothing in the solver carries a pressure field.
+
+Consequence for the linear algebra: (1) assembles an SPD operator on
+the velocity. A **single preconditioned conjugate-gradient solve per
+time step** suffices — no saddle point, no Schur complement, no
+nested iteration.
+
+### Early faux-départ note
+
+The first Step 0 commit (`a8c8f3a`) shipped an incompressible-Stokes
+saddle-point solver (pressure Schur complement with nested CG). That
+was an implementation error, not a design choice: the spec never
+called for incompressibility. It passed the original unit tests
+because the placeholder forcing happened to produce a div-free
+velocity (so the constraint did not bite) and the original MMS
+manufactured solution was div-free by construction. The current tree
+replaces that solver with the correct thin-sheet elliptic operator;
+the faux-départ commit remains in the history as documentation of
+the correction trajectory.
+
+## Entry-condition decisions (archived for the milestone)
+
+1. **Viscosity scale `η*`.**
+   `η* = ρ*·g·τ*·S* = 3300 × 9.81 × (30·3.156·10¹³) × 3.5·10⁴
+   ≈ 1.073·10²⁴ Pa·s`. The previous handoff's `~10²³` was an
+   arithmetic slip. Adopted value: **`η* = 1.073·10²⁴ Pa·s`** (rounded
+   display `~10²⁴`). Reported at solver startup.
+
+2. **`Field2D` / `PeriodicIndex` audit.** The legacy types in
+   `crates/ymir-core/src/tectonics/solver/field.rs` are self-contained
+   (zero external imports), tested for stride and wrap (square,
+   rectangular, coprime), and carry no tectonic state. **Decision:
+   re-export directly** via [`field.rs`](./field.rs) (`pub use` only).
+   No other symbol is imported from `tectonics/`.
+
+3. **Gauge-fixing strategy.** The fully periodic torus admits a **2-D
+   velocity null space** (constant `vx` and `vy`, rigid-body
+   translation). The strategy is: **mean-subtract `vx` and `vy`
+   before and after every preconditioner application `M⁻¹`, plus once
+   more on the final iterate.** Verified by `tests/v2_nullspace.rs`
+   with RHS deliberately carrying a nonzero mean in each component.
+
+## Discretization choice
+
+MAC (staggered) grid with periodic BCs:
+- `η`, `S` at cell centres `((i+0.5)dx, (j+0.5)dy)`.
+- `vx` at left vertical faces `(i dx, (j+0.5)dy)`.
+- `vy` at bottom horizontal faces `((i+0.5)dx, j dy)`.
+- `ε̇_xy` at nodal corners `(i dx, j dy)`, with η there by
+  **arithmetic 4-point averaging** of surrounding cells. Step 0
+  initially used harmonic averaging (standard for staggered Stokes
+  with sharp viscosity contrasts); Step 1 switched to arithmetic
+  because the Newton Jacobian of the variable-η operator is only
+  exactly symmetric at discrete level when
+  `dη_corner / dη_cell = ¼` (arithmetic), not when it is
+  `(η_corner / η_cell)²/4` (harmonic). CG relies on operator
+  symmetry. The switch was code-only (Step 1) — this README section
+  was updated to reflect it at Step 3. See the `eta_corner`
+  doc-comment in `stokes/operator.rs` for the full derivation, and
+  the test `eta_corner_is_arithmetic_average` for the runtime
+  contract. Step 0 / Step 1 MMS convergence is preserved at order 2
+  under arithmetic averaging since the averaging rule is
+  consistent between `apply_momentum` (Picard part of the Jacobian)
+  and `apply_tangent` (Newton-extra).
+
+For constant η the discrete operator reduces to
+`A v = -η (∇² v + ∇(∇·v))`. The grad-div part is essential: it
+couples `vx` and `vy` through normal strain, and dropping it would
+reduce the 2-D thin-sheet to two decoupled scalar Laplacians — wrong
+physics. The MMS test uses a deliberately non-div-free manufactured
+solution (`v = (sin(2πx), sin(2πy))`) so that both terms are
+exercised.
+
+MMS convergence (rel tol 1e-12, manufactured non-div-free solution):
+
+```
+N=16:  v_err=9.16e-3
+N=32:  v_err=2.28e-3  (slope 2.008)
+N=64:  v_err=5.68e-4  (slope 2.002)
+N=128: v_err=1.42e-4  (slope 2.001)
+```
+
+## Linear solver
+
+Preconditioned **conjugate gradient** (`ConjugateGradient`
+implementing the [`LinearSolver`][trait] trait). The trait is the
+integration point for BiCGSTAB at Step 3 when plastic yielding makes
+the system non-symmetric. Direct calls to `ConjugateGradient::solve`
+outside the trait are forbidden by convention.
+
+Preconditioner: `M = diag(A)⁻¹` (Jacobi, default), wrapped with the
+velocity mean-projection (see [`precond.rs`](./stokes/precond.rs)).
+A configurable floor on `|diag|` protects against degenerate-η cells.
+
+Step 8.5a added Classical-RS AMG + FMG behind
+`LinearSolverConfig::AmgCG(AmgConfig)` (opt-in alternative to
+`JacobiCG`, on the Picard block; the Newton tangent stays matrix-
+free). Step 8.5b added rayon parallelisation, RBGS smoothing, Newton
+order-2 warm-start extrapolation, and `lto = "fat"` to the workspace
+release profile.
+
+[trait]: ./stokes/solver.rs
+
+### Downstream default recommendation (Step 9 onwards)
+
+Per the [Step 8.5b performance report](../../../../docs/reports/step8_5b_performance_report.md),
+the recommended default for production physics runs (Step 9 cratonic
+immunity, all subsequent steps) is:
+
+| Setting | Value | Reason |
+|---|---|---|
+| `LinearSolverConfig` | **`JacobiCG`** | AMG / Jacobi ratio is 1.14–1.44 × on step0–7 even after 8.5b — AmgCG is correct but still slower until Step 8.5c (hierarchy caching) lands. |
+| `RAYON_NUM_THREADS` | **4** on i7-11850H-class hardware | Above 4 threads, memory-bandwidth saturation + SMT contention turn rayon into a regression on 64² grids (measured: 13.84 s at 4 threads vs 18.89 s at 16 threads on `step6_voronoi`). The crate intentionally does *not* override rayon's pool sizing — set the env var per machine. |
+
+`AmgCG(Default)` remains a fully-supported opt-in:
+
+- For correctness exploration (scalar-parity tests, reference
+  solutions) where iter-count reductions matter more than
+  wallclock.
+- At the moment any of Step 8.5c (hierarchy caching), Step 8.5d
+  (128² scaling), or Step 8.5a.2 (SA-AMG) lands and re-balances
+  the ratio.
+
+`step8`-class regimes (`η_max / η_min ≳ 10⁴`, mantle activated)
+must keep `JacobiCG` until Step 8.5a.2 delivers a smoother capable
+of holding diagonal dominance through Galerkin coarsening.
+
+## Transverse T1 — absorbed
+
+The roadmap previously listed "T1 — Null-space-aware preconditioner"
+as an independent transverse task. Step 0 ships the null-space-aware
+preconditioner as part of the core solver, so T1 is absorbed.
+[`docs/solver-reconstruction-roadmap.md`](../../../../docs/solver-reconstruction-roadmap.md)
+reflects this.
+
+## Dormant metrics
+
+The [`Metrics`](./diagnostics/metrics.rs) struct declares the full
+list of metrics the milestone will eventually track. Those not
+applicable at Step 0 are `Option<_>` and stay `None`:
+
+| metric | activated at |
+|---|---|
+| `s_eq` (active-orogen mean thickness) | Step 5+ |
+| `boundary_type_diversity` | Step 5 |
+| `yielding_cell_fraction` | Step 3 |
+| `cratonic_stability` | Step 9 |
+| `newton_outcome_distribution` | Step 1 |
+| `age_field_stats` | Step 10 |
+
+## Files
+
+```
+tectonics_v2/
+├── README.md                 ← this file
+├── mod.rs                    ← public re-exports
+├── scales.rs                 ← Scales + dim ↔ nondim conversions
+├── field.rs                  ← re-exports Field2D, PeriodicIndex
+├── forcing.rs                ← BodyForce trait + ZeroForce + SinusoidalForce
+├── advection.rs              ← conservative first-order upwind S advection
+├── stokes/
+│   ├── mod.rs                ← thin-sheet solver entry point
+│   ├── nullspace.rs          ← mean projectors for vx, vy
+│   ├── operator.rs           ← MAC momentum operator
+│   ├── precond.rs            ← velocity Jacobi with null-space wrapping
+│   └── solver.rs             ← LinearSolver trait + CG
+└── diagnostics/
+    ├── mod.rs                ← re-exports
+    ├── metrics.rs            ← Metrics + histogram + SolverConfigDump
+    ├── report.rs             ← markdown writer
+    └── harness.rs            ← baseline runner (seed-parametrisable)
+```
+
+Plus the binary entry point at
+[`crates/ymir-core/src/bin/step_baseline.rs`](../../bin/step_baseline.rs).
+
+## Running the baseline
+
+```bash
+cargo run --release --bin step_baseline -- \
+    --seed 42 --grids 64,128 --steps 300 \
+    --output docs/reports/step0_report.md
+```
+
+Writes the markdown report and a heightmap set under
+`docs/reports/step0_heightmaps/`.
+
+### Regression run convention (applicable from Step 5 onward)
+
+The regression run of step N activates all mechanisms up to and
+including step N-1 in their canonical configuration, and disables
+only the mechanism newly introduced at step N. It is compared
+against a reference physics run of step N-1 with the same "all
+mechanisms enabled" configuration.
+
+If step N-1's original physics run was executed with a non-
+canonical configuration (e.g., a mechanism disabled to isolate
+the newly-introduced mechanism of that step), step N produces a
+reference variant on its own branch: a physics run with all
+mechanisms through N-1 enabled. This variant is named explicitly
+in the regression report and serves only as the comparison target
+for step N's regression.
+
+Acceptance ratios in [0.95, 1.05] on wallclock and CG iters mean.
+
+Historical note: Steps 0-4 used a looser pattern where the
+regression run disabled all non-linear mechanisms. Step 4
+specifically disabled yielding + basal drag to isolate Br, which
+created an ambiguity on the comparison target (resolved
+retroactively by comparing to Step 3 physics rather than Step 3
+regression). From Step 5 onward, the convention above applies
+uniformly.
+
+Exception clause: if a step N introduces a mechanism that
+functionally presupposes step N-1 (e.g., a mechanism that acts
+on a field created by step N-1), disabling both N-1 and N
+together for the regression run is acceptable if explicitly
+justified in the issue. The default remains "disable only N".
+
+At Step 5 specifically, this is what the "reference variant"
+run in [`bin/step5_baseline.rs`](../../bin/step5_baseline.rs)
+produces: a Step 4 physics configuration with yielding Enabled
+(the merged Step 4 physics ran yielding Disabled for Br
+isolation), emitted to `docs/reports/step5_reference_variant_report.md`
+and serving as the comparison target for
+`docs/reports/step5_regression_report.md`.
+
+## Step 8 regression convention exception (pending slab+mantle co-calibration)
+
+The §Regression run convention installed at Step 5 — "regression = Step
+N physics − new-mechanism" — is suspended for Step 8. The nominal
+application would be "Step 7 physics − `MantleConfig::Enabled`", i.e.
+Step 6 physics + `SlabPullConfig::Enabled` + `MantleConfig::Disabled`.
+That configuration is pathological: slab-pull at the §4.8 target band
+produces exponential runaway in the mantle-activated regime (see
+`docs/reports/step8_physics_report.md §Slab+Mantle interaction
+instability finding` for the diagnostic and loop-gain derivation).
+
+**Step 8 exception.** Both the physics baseline and the regression hold
+slab-pull `Disabled`. The physics toggles mantle `Enabled` on a Step 6
+base; the regression toggles it `Disabled`, reducing to Step 6 physics
+bit-identically. Ratios in the regression report compare against
+`step6_physics_report.md`, not `step7_physics_report.md`.
+
+The convention is restored after the slab+mantle co-calibration issue
+is resolved (draft in `docs/followup_slab_mantle_cocalibration.md`).
+The `v2_mantle_runaway_diagnostic` test (currently `#[ignore]`-d) will
+be promoted to a non-ignored regression guard at that point, so any
+future change re-introducing the instability fails CI.
+
+## Yielding checkpoint (revised at Step 7)
+
+The checkpoint installed at Step 3 and carried through Steps 4-6 with the
+expectation that slab-pull at Step 7 would resolve it was based on an
+implicit assumption (slab-pull as initiator). The Step 7 diagnostic (see
+`docs/reports/step7_physics_report.md §Yielding checkpoint: resolution
+and deferral`) demonstrates rigorously that slab-pull is an **amplifier,
+not an initiator**. In the floor-dominated regime `ε̇_II < ε̇_min`
+everywhere, `η_newton ≈ 100`, and the closed-loop gain
+`G = Sp · k_slab_accum · τ_slab / (η · L)` stays `≪ 1` over the entire
+`Sp ∈ [0.5, 3.0]` band; the quiescent fixed point is linearly stable.
+The checkpoint migrates to Step 8 where mantle forcing provides the
+initiator (`v_mantle = Mf · pattern(x, t)` imposes flow independently of
+the local loop gain). **Step 8 is last-chance** — no further deferral
+possible.
+
+This revision was itself a non-trivial result of the D8 strictness
+installed at Step 7. A weaker discipline would have silently tuned `Sp`
+outside the §4.8 band and masked the physical knowledge. Strict
+remontée under rigorous diagnostic produced a refined mechanism
+hierarchy — that is the value the D8 guard was meant to capture.
+
+## Note on the placeholder body force
+
+`f̃ = ε · sin(2π x̃ / L̃x) · ê_x` per the Step 0 spec. In the
+thin-sheet formulation this force **produces flow** (no pressure
+available to absorb it as a gradient); the analytic steady solution
+with constant η is `ṽx = ε · sin(2π x̃ / L̃x) / (8 π² η / L̃x²)`,
+`ṽy = 0`, giving `peak|ṽ| ≈ 1.27·10⁻³` at `ε = 0.1`, `L̃x = 1`,
+`η = 1`. The single-Fourier-mode character of this solution is why
+CG converges in very few iterations at Step 0; the iteration count
+becomes meaningful once Step 1 (power-law η) and Step 2 (GPE)
+introduce real structure in the solution.
