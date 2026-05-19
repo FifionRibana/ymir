@@ -50,8 +50,7 @@
 //! `basal_drag`, or `presets` — those moved to `tectonics_v2/_attic/`
 //! under the `v2_legacy` feature in Issue #117.
 
-// `init` lands in Stage 3 of Issue #120, alongside the integration
-// test that exercises the full Phase 1.1 advection sanity run.
+pub mod init;
 pub mod kinematics;
 pub mod state;
 pub mod time_loop;
