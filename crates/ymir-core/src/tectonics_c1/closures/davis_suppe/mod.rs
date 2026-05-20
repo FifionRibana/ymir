@@ -37,3 +37,4 @@
 //! does not gate.
 
 pub mod critical_taper;
+pub mod source_term;
