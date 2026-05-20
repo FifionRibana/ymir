@@ -64,6 +64,7 @@
 
 pub mod boundary_classification;
 pub mod closures;
+pub mod distance_field;
 pub mod init;
 pub mod kinematics;
 pub mod state;
