@@ -62,6 +62,7 @@
 //! conservation drift is asserted < `1e-6`; the measured drift
 //! is `1.6e-14` (machine precision, well below the threshold).
 
+pub mod closures;
 pub mod init;
 pub mod kinematics;
 pub mod state;
