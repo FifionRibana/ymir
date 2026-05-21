@@ -6,11 +6,13 @@
 //! diagnostic purposes (W4 watchpoint of Issue #123, §6.3 of the
 //! design doc).
 //!
-//! ## Phase 1.2 (Issue #123) status
+//! ## Phase 1.2 (Issue #123) status — COMPLETE
 //!
-//! - [`davis_suppe`] — Davis-Suppe critical taper orogenic profile
-//!   (this issue's deliverable). Active on upper-plate cells at
-//!   convergent boundaries.
+//! - [`davis_suppe`] — Davis-Suppe critical taper orogenic profile,
+//!   shipped. Active on upper-plate cells at convergent boundaries.
+//!   See `davis_suppe::mod` docstring "Findings during Phase 1.2"
+//!   for the three architectural findings (boundary-skip locking,
+//!   advection-dominated regime, fill-ratio acceptance metric).
 //!
 //! ## Forthcoming closures (per design doc §5.1)
 //!
