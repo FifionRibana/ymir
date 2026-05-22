@@ -53,6 +53,8 @@ use image::{ImageBuffer, Rgb};
 
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
+use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
+use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
 use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
@@ -89,7 +91,19 @@ fn davis_suppe_wedge_body_invariants() {
         dx: 1.0 / GRID_SIZE as f64,
         dy: 1.0 / GRID_SIZE as f64,
     };
-    let closures = C1Closures::default();
+    // Phase 1.2 semantics: keep Davis-Suppe ON, equilibrium-height
+    // OFF. The Phase 1.2 invariants (especially the unbounded
+    // boundary pile-up `global_max ≈ 2297`) rely on no global sink
+    // being active. Phase 1.3 adds equilibrium-height defaulted ON
+    // — disable it explicitly here so this test continues to lock
+    // the pure-Phase-1.2 behaviour.
+    let closures = C1Closures {
+        davis_suppe: DavisSuppeParams::default(),
+        equilibrium_height: EquilibriumHeightParams {
+            enabled: false,
+            ..EquilibriumHeightParams::default()
+        },
+    };
     let h_max = closures.davis_suppe.h_max;
 
     eprintln!(
