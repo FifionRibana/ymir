@@ -1,20 +1,36 @@
-//! C1 time loop — forward-Euler advection of `S̃` and `age`.
+//! C1 time loop — forward-Euler advection of `S̃` and `age`
+//! plus per-step closure source terms (Phase 1.2+).
 //!
-//! ## Phase 1.1 contract
+//! ## Phase 1.1 contract — [`run_advection_only`]
 //!
-//! Advection only, no closures. At each step:
+//! Advection only, no closures. Preserved verbatim for the W4
+//! closure-disabled regression: a Phase 1.2 run with all
+//! closures disabled is **not** equivalent to a `run_with_closures`
+//! call with `params.enabled = false` (the latter still computes
+//! boundary + wedge distance once at setup — small overhead, but
+//! not bit-identical). The clean closure-OFF baseline is to call
+//! [`run_advection_only`] directly.
 //!
-//! 1. Compute `Δt = 0.5 · min(dx, dy) / max(|v|, 1e-12)` (CFL,
-//!    safety factor 0.5 from §4.6 of the design doc).
-//! 2. Build per-cell velocity field `(vx, vy)` from per-plate
-//!    kinematics — every cell of plate `p` gets `velocities[p]`
-//!    (cratonic and non-cratonic cells alike at this stage).
-//! 3. Advect `S̃` and `age` independently using v2's
-//!    [`crate::tectonics_v2::advection::step_upwind`] scheme.
-//! 4. Invoke the caller-supplied `on_step` callback for
-//!    diagnostics (snapshot dumping, mass-drift checks, …).
+//! ## Phase 1.2 contract — [`run_with_closures`]
 //!
-//! Closures join in Phase 1.2+ between steps 3 and 4.
+//! Adds the Davis-Suppe orogenic source term after each advection
+//! step. Per-step structure:
+//!
+//! 1. CFL Δt.
+//! 2. Advect `S̃` and `age` (same as Phase 1.1).
+//! 3. Apply Davis-Suppe source term on upper-plate interior cells
+//!    via [`super::closures::davis_suppe::source_term::apply_davis_suppe_step`].
+//! 4. Diagnostic callback.
+//!
+//! ## Static-classification optimisation
+//!
+//! In Phase 1.2 the `plate_id` field does **not** advect — only
+//! `S̃` and `age` move under advection. As a consequence the
+//! Stage 2 boundary classification and the Stage 3.1 intra-plate
+//! wedge distance are **static throughout the run** and are
+//! computed once outside the loop. Phase 2 (boundary evolution)
+//! will lift them back inside the loop when the underlying
+//! geometry actually changes per step.
 //!
 //! ## Reuse, do not reinvent
 //!
@@ -25,6 +41,9 @@
 use crate::tectonics_v2::advection::step_upwind;
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 
+use super::boundary_classification::classify_boundaries;
+use super::closures::davis_suppe::source_term::{apply_davis_suppe_step, DavisSuppeParams};
+use super::distance_field::wedge_distance_intra_plate;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
 
@@ -114,6 +133,106 @@ fn fill_velocity_field(
             vx[k] = vx_p;
             vy[k] = vy_p;
         }
+    }
+}
+
+/// Bundle of all C1 closures and their parameters.
+///
+/// Each closure is independently togglable via its own `enabled`
+/// flag. The bundle grows alongside the C1 milestone:
+///
+/// - Phase 1.2 (Issue #123) — `davis_suppe` (this issue).
+/// - Phase 1.3 — `equilibrium_height` (Molnar-Lyon-Caen). TBA.
+/// - Phase 1.4 — `macro_erosion` (Whipple-Tucker) and isostasy
+///   hook. TBA.
+/// - Phase 2 — `parsons_sclater` (oceanic bathymetry). TBA.
+#[derive(Clone, Copy, Debug)]
+pub struct C1Closures {
+    pub davis_suppe: DavisSuppeParams,
+}
+
+impl Default for C1Closures {
+    fn default() -> Self {
+        Self { davis_suppe: DavisSuppeParams::default() }
+    }
+}
+
+/// Run the C1 forward-Euler time loop with per-step closure source
+/// terms applied after each advection update.
+///
+/// Phase 1.2 wires only the Davis-Suppe orogenic closure; future
+/// phases extend [`C1Closures`] and add new `apply_*_step` calls
+/// in the per-step body of this function.
+///
+/// ## Static-classification optimisation (Phase 1.2)
+///
+/// Since `plate_id` is not advected, the boundary classification
+/// and the intra-plate wedge-distance field are static throughout
+/// the run. They are computed **once before** the loop and reused
+/// every step. Phase 2 (boundary evolution) will move them back
+/// inside the loop.
+pub fn run_with_closures<F>(
+    state: &mut C1State,
+    kinematics: &PlateKinematics,
+    config: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    mut on_step: F,
+) where
+    F: FnMut(usize, &C1State),
+{
+    let nx = state.nx();
+    let ny = state.ny();
+    let n_cells = nx * ny;
+
+    let max_v = kinematics.max_velocity().max(1e-12);
+    let dx_min = config.dx.min(config.dy);
+    let dt = 0.5 * dx_min / max_v;
+
+    let mut vx = vec![0.0_f64; n_cells];
+    let mut vy = vec![0.0_f64; n_cells];
+    fill_velocity_field(&mut vx, &mut vy, state, kinematics);
+
+    // Static-classification optimisation: plate_id is invariant
+    // in Phase 1.2, so the boundary verdict and the intra-plate
+    // wedge distance are computed once here, reused every step.
+    let boundary = classify_boundaries(&state.plate_id, kinematics);
+    let wedge_d = wedge_distance_intra_plate(
+        &state.plate_id,
+        &boundary.upper_plate_mask,
+        closures.davis_suppe.max_distance,
+    );
+
+    let mut s_next = Field2D::new(nx, ny);
+    let mut age_next = Field2D::new(nx, ny);
+    let idx_x = PeriodicIndex::new(nx);
+    let idx_y = PeriodicIndex::new(ny);
+
+    for step in 0..config.n_steps {
+        // 1. Advection (Phase 1.1 unchanged).
+        step_upwind(
+            nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy, &mut s_next,
+        );
+        step_upwind(
+            nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.age, &vx, &vy,
+            &mut age_next,
+        );
+        std::mem::swap(&mut state.s, &mut s_next);
+        std::mem::swap(&mut state.age, &mut age_next);
+
+        // 2. Davis-Suppe orogenic source term.
+        apply_davis_suppe_step(
+            &mut state.s,
+            &state.plate_id,
+            &boundary,
+            &wedge_d,
+            kinematics,
+            &closures.davis_suppe,
+            dt,
+        );
+
+        // 3. (Future closures land here.)
+
+        on_step(step, state);
     }
 }
 
