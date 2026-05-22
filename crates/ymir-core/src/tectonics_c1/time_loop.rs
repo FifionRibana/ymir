@@ -11,16 +11,22 @@
 //! not bit-identical). The clean closure-OFF baseline is to call
 //! [`run_advection_only`] directly.
 //!
-//! ## Phase 1.2 contract — [`run_with_closures`]
+//! ## Phase 1.2 / 1.3 contract — [`run_with_closures`]
 //!
-//! Adds the Davis-Suppe orogenic source term after each advection
+//! Adds per-step closure source / sink terms after each advection
 //! step. Per-step structure:
 //!
 //! 1. CFL Δt.
 //! 2. Advect `S̃` and `age` (same as Phase 1.1).
-//! 3. Apply Davis-Suppe source term on upper-plate interior cells
-//!    via [`super::closures::davis_suppe::source_term::apply_davis_suppe_step`].
-//! 4. Diagnostic callback.
+//! 3. Apply Davis-Suppe orogenic source term on upper-plate
+//!    interior cells via
+//!    [`super::closures::davis_suppe::source_term::apply_davis_suppe_step`]
+//!    (Phase 1.2).
+//! 4. Apply equilibrium-height gravitational sink globally via
+//!    [`super::closures::equilibrium_height::source_term::apply_equilibrium_height_step`]
+//!    (Phase 1.3). Strict ordering: AFTER Davis-Suppe — reversing
+//!    would oscillate around `h_eq` instead of converging.
+//! 5. Diagnostic callback.
 //!
 //! ## Static-classification optimisation
 //!
@@ -43,6 +49,8 @@ use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 
 use super::boundary_classification::classify_boundaries;
 use super::closures::davis_suppe::source_term::{apply_davis_suppe_step, DavisSuppeParams};
+use super::closures::equilibrium_height::params::EquilibriumHeightParams;
+use super::closures::equilibrium_height::source_term::apply_equilibrium_height_step;
 use super::distance_field::wedge_distance_intra_plate;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
@@ -139,21 +147,45 @@ fn fill_velocity_field(
 /// Bundle of all C1 closures and their parameters.
 ///
 /// Each closure is independently togglable via its own `enabled`
-/// flag. The bundle grows alongside the C1 milestone:
+/// flag (W4 isolation discipline). The bundle grows alongside the
+/// C1 milestone:
 ///
-/// - Phase 1.2 (Issue #123) — `davis_suppe` (this issue).
-/// - Phase 1.3 — `equilibrium_height` (Molnar-Lyon-Caen). TBA.
+/// - Phase 1.2 (Issue #123) — `davis_suppe` (orogenic source).
+/// - Phase 1.3 (Issue #125) — `equilibrium_height` (gravitational
+///   collapse sink, Molnar-Lyon-Caen).
 /// - Phase 1.4 — `macro_erosion` (Whipple-Tucker) and isostasy
 ///   hook. TBA.
 /// - Phase 2 — `parsons_sclater` (oceanic bathymetry). TBA.
+///
+/// ## Default-behaviour caveat
+///
+/// `C1Closures::default()` enables **both** Davis-Suppe and
+/// equilibrium-height. Tests written for a Phase-1.2-only regime
+/// (where the unbounded boundary pile-up `global_max ≈ 2297` is a
+/// load-bearing observable) must explicitly disable
+/// `equilibrium_height`:
+///
+/// ```ignore
+/// let closures = C1Closures {
+///     davis_suppe: DavisSuppeParams::default(),
+///     equilibrium_height: EquilibriumHeightParams {
+///         enabled: false,
+///         ..EquilibriumHeightParams::default()
+///     },
+/// };
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct C1Closures {
     pub davis_suppe: DavisSuppeParams,
+    pub equilibrium_height: EquilibriumHeightParams,
 }
 
 impl Default for C1Closures {
     fn default() -> Self {
-        Self { davis_suppe: DavisSuppeParams::default() }
+        Self {
+            davis_suppe: DavisSuppeParams::default(),
+            equilibrium_height: EquilibriumHeightParams::default(),
+        }
     }
 }
 
@@ -219,7 +251,7 @@ pub fn run_with_closures<F>(
         std::mem::swap(&mut state.s, &mut s_next);
         std::mem::swap(&mut state.age, &mut age_next);
 
-        // 2. Davis-Suppe orogenic source term.
+        // 2. Davis-Suppe orogenic source term (Phase 1.2).
         apply_davis_suppe_step(
             &mut state.s,
             &state.plate_id,
@@ -230,7 +262,16 @@ pub fn run_with_closures<F>(
             dt,
         );
 
-        // 3. (Future closures land here.)
+        // 3. Equilibrium height sink (Phase 1.3).
+        // Order critical: AFTER Davis-Suppe.
+        // Reverse order causes oscillation:
+        //   - Equilibrium caps at h_eq
+        //   - Davis-Suppe re-injects mass above h_eq
+        //   - Next step: excess from re-injection
+        //   - Etc., oscillation around h_eq instead of stable equilibrium.
+        apply_equilibrium_height_step(&mut state.s, &closures.equilibrium_height, dt);
+
+        // 4. (Future closures land here — Phase 1.4 erosion.)
 
         on_step(step, state);
     }
