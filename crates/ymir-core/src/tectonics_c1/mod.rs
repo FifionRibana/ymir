@@ -11,12 +11,25 @@
 //! Parsons-Sclater bathymetry, stream-power erosion, Airy isostasy)
 //! applied per forward-Euler step. No Stokes solver.
 //!
-//! ## Phase 1.1 status (this module's first issue, #120)
+//! ## Phase status
 //!
-//! Advection only. No closures. The output of a Phase 1.1 run is
-//! a transport-correctness check, **not** a plausible continent.
-//! Closures land in Phase 1.2 (Davis-Suppe), Phase 1.3 (equilibrium
-//! height), Phase 1.4 (erosion + isostasy + downstream).
+//! - **Phase 1.1 (Issue #120) — COMPLETE.** Advection-only
+//!   prototype. Mass-conservation drift `1.6 × 10⁻¹⁴` over 300
+//!   steps at 64². See [`docs/reports/c1_phase_1_1_advection/
+//!   README.md`](../../../docs/reports/c1_phase_1_1_advection/README.md).
+//! - **Phase 1.2 (Issue #123) — COMPLETE.** Davis-Suppe orogenic
+//!   closure ([`closures::davis_suppe`]) wired into the time
+//!   loop via [`time_loop::run_with_closures`]. 4 / 4 acceptance
+//!   invariants pass (p95 bound, p99 activity, near-boundary
+//!   fill ratio, advection-dominated asymmetry). See
+//!   [`docs/reports/c1_phase_1_2_davis_suppe/README.md`](../../../docs/reports/c1_phase_1_2_davis_suppe/README.md)
+//!   for the empirical findings and per-bucket fill-ratio profile.
+//! - **Phase 1.3 — TBA.** Equilibrium-height closure (Molnar-Lyon-
+//!   Caen 1988) plus the paradigm-agnostic harness refactor
+//!   surfaced by Issue #117 HC4.
+//! - **Phase 1.4 — TBA.** Macro stream-power erosion (Whipple-
+//!   Tucker 1999) — the mass sink for the source-only Phase 1.2
+//!   regime — plus isostasy + downstream pipeline.
 //!
 //! ## Module map
 //!
@@ -62,6 +75,9 @@
 //! conservation drift is asserted < `1e-6`; the measured drift
 //! is `1.6e-14` (machine precision, well below the threshold).
 
+pub mod boundary_classification;
+pub mod closures;
+pub mod distance_field;
 pub mod init;
 pub mod kinematics;
 pub mod state;
