@@ -24,3 +24,4 @@
 //!   re-implemented)
 
 pub mod davis_suppe;
+pub mod equilibrium_height;
