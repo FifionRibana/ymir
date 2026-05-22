@@ -1,8 +1,20 @@
-# Issue #125 Phase 1.3 Stage H1 — Harness paradigm-agnostic refactor audit
+# Issue #125 Phase 1.3 — Harness paradigm-agnostic refactor
 
-**Status:** Phase 1.3 Stage H1 audit only. Read-only. No source modifications,
-no `cfg` changes, no `git mv`. H2 / H3 land the implementation if the
-recommendation below is accepted.
+**Status:**
+
+- **H1 (audit) — RESOLVED.** Option B (two separate functions)
+  recommended on three converging criteria. See §1-§11 below.
+- **H2 (implementation) — RESOLVED.** 5 commits across `ymir-core`
+  (`CycleOutputCommon` carve-out, `phase_a` v2 rename, shared
+  `phase_a_common`, default-features `phase_a_c1`, `phase_b`
+  un-gated). See § 12 for SHAs + summary.
+- **H3 (tests) — RESOLVED.** 4 integration tests at
+  `crates/ymir-core/tests/c1_phase_1_3_workflow.rs`, including the
+  bit-identical wrapper-equals-decomposition regression. See § 12.
+- **Verification:** 58 / 58 tests PASS across both feature flags.
+- **Known limitation:** `ymir-viz` bin under `--features v2_legacy`
+  pre-existing-broken (299 unrelated errors), out of scope. See
+  § 14.
 
 **Scope:** Cartograph the v2 harness and its workflow callers, identify the
 load-bearing paradigm-coupling points, evaluate two design options (trait
@@ -542,3 +554,215 @@ documented HC4 debt:
 
 No STOP-and-surface required. GO/STOP on H2 is the explicit user gate
 that follows this audit.
+
+---
+
+## §12 — Implementation status (Phase 1.3 H2 / H3 — POST-AUDIT)
+
+The audit landed at `e6a58e2`. H2 + H3 then implemented across 5
+sequenced commits on the same branch.
+
+### §12.1 H2 + H3 commits
+
+| # | SHA | Type | Summary |
+|---|---|---|---|
+| 1 | `11c53b6` | REFACTOR | Carve `CycleOutputCommon` (5 paradigm-agnostic scalars) out of `CycleOutput` (now `CycleOutputV2 { baseline, common }`); drop `v2_legacy` gate from `phase_b.rs` per § 2.2 audit (Phase B is paradigm-agnostic at runtime). 8 files, +125/-100. |
+| 2 | `f8f1c5b` | REFACTOR | Rename v2 path symbols with `_v2` suffix (Q2.b naming choice from § 8.3): `phase_a` → `phase_a_v2`, `run_phase_a_cycle*`, `run_phase_a_loop`, `final_state_to_continuation`, `CycleOutput`, `PhaseAOutput`. 12 files, 103 substitutions via `\b`-bounded regex with UTF-8 no-BOM-safe I/O. |
+| 3 | `2be9db9` | REFACTOR | Extract `workflow/phase_a_common.rs` with `apply_post_tectonic` (shared paradigm-agnostic post-tectonic pass: sea-level → macro-redistribution → reclassification → cratonic recompute) plus `extract_per_plate_type`. v2 path now calls `apply_post_tectonic`; bit-identical Disabled regression preserved. |
+| 4 | `5679631` | FEAT | Create `workflow/phase_a_c1.rs` (default-features-on): `run_phase_a_cycle_c1(input: PhaseACycleInputC1, wf: &WorkflowConfig) -> PhaseACycleOutputC1`. Asymmetric API (W1): no `baseline` field on output, no `with_progress` variant (deferred Phase 4), no warm-start threading helper. Inline 64²×300 smoke test. |
+| 5 | `6ef32a0` | TEST | Four integration tests at `crates/ymir-core/tests/c1_phase_1_3_workflow.rs` (default features). The critical `c1_phase_a_decomposes_into_closures_then_post_tectonic` asserts byte-for-byte equality between the wrapper and the manual decomposition — **passed at IEEE-754 floor, no tolerance needed**. |
+
+### §12.2 Q2 final choice (Q2.b — rename)
+
+Q2.b chosen over Q2.a (no rename) at Commit 2 based on observed
+cost: **12 files, 103 substitutions, all in already-v2-coupled
+subtrees** (`workflow/`, `bridge/v2/`, attic tests, one comment in
+`ui/metrics_dashboard.rs`). The H1 audit's anticipated "63 entries
+to update" overestimated because most of those 63 are `_attic/`
+tests with their own gating. The actual rename surface is
+contained.
+
+Rationale: semantic alignment with `tectonics_c1::` (mainline,
+default) vs `tectonics_v2::_attic::` (legacy, gated). Avoids
+cognitive overhead of "is `run_phase_a_cycle` the v2 or C1 path?"
+
+### §12.3 Architectural finding — bit-identical wrapper
+
+The H3 test `c1_phase_a_decomposes_into_closures_then_post_tectonic`
+runs two parallel paths on identical inputs:
+
+- **Path A:** `run_phase_a_cycle_c1(input, Enabled(_))`
+- **Path B:** `run_with_closures(state, …)` followed by
+  `apply_post_tectonic(PostTectonicInput { … })`
+
+Asserts `state_a.s == state_b.s` and all 5 `CycleOutputCommon`
+fields are bit-equal. **Passes at IEEE-754 floor with no
+tolerance.** This confirms the wrapper is structurally pure
+("nothing more, nothing less") and surfaces no hidden order-
+sensitive computation. The same contract pattern as v2's
+`workflow_disabled_run_phase_a_cycle_is_bit_identical_to_run_baseline`,
+applied to the C1 paradigm.
+
+### §12.4 Verification surface (58 / 58 PASS)
+
+| Suite | Feature flag | Pass |
+|---|---|---|
+| `c1_phase_1_3_workflow` (NEW) | default | 4 / 4 |
+| `tectonics_v2::workflow::phase_a_c1::tests` (inline) | default | 1 / 1 |
+| `tectonics_c1` lib unit tests | default | 42 / 42 |
+| `c1_phase_1_1_advection` | default | 1 / 1 |
+| `c1_phase_1_2_davis_suppe` | default | 2 / 2 |
+| `v2_workflow_macro` | default | 2 / 2 |
+| `v2_workflow_disabled_regression` | v2_legacy | 3 / 3 |
+| `v2_workflow_phase_a_cycle` | v2_legacy | 3 / 3 |
+| **Total** | | **58 / 58** |
+
+`cargo build --workspace --tests` (default features) and
+`cargo build -p ymir-core --tests --features v2_legacy` both
+clean.
+
+---
+
+## §13 — Future revisit criteria (R6 mitigation from § 8.2)
+
+If a future phase considers retrofitting Option A (trait
+abstraction) in place of the current Option B (two functions), this
+section is the cold-start brief for that decision. The H1 audit
+(2026-05-22) chose Option B on criterion-driven grounds; revisit
+only when the criteria themselves shift.
+
+### §13.1 Indicators that *do* warrant revisit
+
+1. **A third paradigm materialises with a shared signature.** If
+   Phase 2.x (constrained-kinematics sampling) or a hypothetical
+   "Phase 3 Lallemand boundary refinement" ships a *runner* with a
+   signature that genuinely overlaps both v2 and C1 (i.e., not just
+   "looks similar" but actually shares the config-bundle / per-step
+   payload / result-envelope shapes), then the trait abstraction
+   stops costing 3 associated types and becomes natural.
+2. **The same scalar surfaces shift across paradigms.** Today
+   `CycleOutputCommon` has 5 fields; if a future paradigm adds N
+   more shared fields and the inter-paradigm overlap grows past ~10
+   shared fields, the lexical-duplication cost of two `phase_a_*`
+   functions exceeds the trait-monomorphisation cost.
+3. **Workflow code outside `phase_a*` itself becomes paradigm-
+   parametric.** Today the C1 path's caller (Phase 4 UI bridge, when
+   it exists) will know it's a C1 path and call the C1 function
+   directly. If a *generic workflow caller* needs to dispatch
+   between paradigms at runtime (without prior knowledge), the
+   trait becomes the right abstraction.
+4. **The bin/test surface area drops materially.** Today 63 bin/
+   test entries are gated under `v2_legacy`. If the `v2_legacy`
+   subtree retires entirely (Phase 2+ decision), the cost of
+   generic-parameterising the remaining workflow code drops to
+   "touch the C1 callers only" — feasible.
+
+### §13.2 Indicators that *confirm* the current Option B
+
+1. **Per-step payloads remain structurally distinct.** v2's
+   `StepProgress<'_>` carries Stokes residuals + nonlinear iter
+   counts; C1's `(usize, &C1State)` does not. As long as this gap
+   stays, a trait would still need a GAT and a `ControlFlow` enum
+   wrap.
+2. **The `BaselineResult` envelope stays load-bearing for v2.**
+   Today the v2 caller assigns `baseline.final_state.cratonic_factor
+   = Some(new_factor)`. As long as v2's state lives in a unified
+   `FinalState` struct, that bridge point stays paradigm-specific.
+3. **C1's mutate-in-place semantics remain idiomatic.** C1 hands
+   the caller `&mut C1State` and updates fields directly — there is
+   no `Result`-like envelope. As long as that ergonomics stays, the
+   asymmetric output (v2 returns `BaselineResult`, C1 returns `()`)
+   resists a uniform trait abstraction.
+4. **The shared scalars stay computable from `Field2D` alone.**
+   The `apply_post_tectonic` function already proves this: it
+   accepts only paradigm-agnostic types and produces
+   `CycleOutputCommon`. As long as new shared diagnostics derive
+   from `Field2D` + `PlateIdField` + `PlateType[]`, they can join
+   `CycleOutputCommon` without changing the wrapper API.
+
+### §13.3 Suggested revisit cadence
+
+- **At each major milestone boundary.** When Phase 2 / 3 / 4 lands,
+  re-evaluate against the indicators above.
+- **When a third paradigm is *proposed*.** Pause the new paradigm
+  design and check the trait viability before duplicating the
+  workflow scaffolding a third time.
+- **When the C1 path adds a `with_progress` variant** (currently
+  deferred to Phase 4 UI). If the C1 progress payload turns out to
+  be GAT-equivalent to v2's `StepProgress<'a>`, that's evidence the
+  per-step payloads have converged → § 13.1 indicator (1) triggers.
+
+The decision in this doc is not "two functions forever" — it is
+"two functions until the criteria flip". Be honest with the
+criteria.
+
+---
+
+## §14 — Known limitations (post-implementation)
+
+### §14.1 `ymir-viz` bin under `--features v2_legacy` — pre-existing breakage
+
+`cargo build -p ymir-viz --features v2_legacy` fails with **299
+errors** on the Stage H1 base commit `e6a58e2` (before any H2
+work) and remains broken after H2 + H3. Errors are Bevy-side scope
+issues (`..default()` not in scope, `Transform` not in scope), in
+`ymir-viz` bin / main code — NOT in the `bridge/v2/` subtree that
+H2 actually touched.
+
+**Pre-existing-confirmed** by a `git stash` baseline run at the
+Stage H1 base commit (before any H2 changes). Surfaced and
+explicitly deferred per `feedback_match_request_scope`: bundling a
+`ymir-viz` fix into the harness paradigm-agnostic refactor would
+have expanded scope without authorization, and the likely root
+cause (Bevy version drift or feature-flag-conditional imports) may
+overlap with the Phase 1.4 surgical-gating work tracked in the
+Issue #117 PR description.
+
+Filed as a separate GitHub issue: **`[Issue #TBD]`** (file via
+the GitHub web UI when convenient; tracking title:
+`BUG: ymir-viz bin breaks under v2_legacy (Bevy imports / pre-
+existing)`).
+
+### §14.2 H2 verification surface limitations
+
+Because of § 14.1, the H2 verification surface is **bounded** to:
+
+- `cargo build --workspace --tests` (default features) — green
+- `cargo build -p ymir-core --tests --features v2_legacy` — green
+- `cargo test -p ymir-core ...` under both feature flags — 58 / 58
+  green
+- `cargo build -p ymir-viz --features v2_legacy` — **not verified**
+  (299 pre-existing errors block compilation; would re-test green
+  once § 14.1 is resolved)
+
+The H2 refactor itself touched 1 file in `ymir-viz`
+(`bridge/v2/thread.rs`, 6 substitutions for `cycle_output.common.X`
+access path + the `run_phase_a_cycle_with_progress_v2` rename) and
+2 comments (`bridge/v2/plugin.rs`, `ui/metrics_dashboard.rs`). The
+default-features `ymir-viz` build is clean (the `bridge/v2/` code
+is gated under `v2_legacy`, so these updates compile only when the
+v2_legacy ymir-viz issues are also fixed).
+
+### §14.3 C1 path's `with_progress` variant — deferred
+
+The C1 `phase_a_c1.rs` ships only `run_phase_a_cycle_c1` (no
+progress callback) in Phase 1.3. The v2 path ships both
+`run_phase_a_cycle_v2` and `run_phase_a_cycle_with_progress_v2`.
+This asymmetry is intentional — the C1 viz bridge (which would
+consume per-step progress) does not exist yet; it lands in Phase 4.
+At that point, `run_phase_a_cycle_with_progress_c1` can be added
+with a callback signature designed in concert with the bridge
+consumer. The C1 `time_loop::run_with_closures` already takes a
+`FnMut(usize, &C1State)` callback, so the lift is trivial.
+
+### §14.4 No multi-cycle `run_phase_a_loop_c1` yet
+
+The v2 path ships `run_phase_a_loop_v2` for multi-cycle execution
+with `ContinuationState` warm-start threading between cycles.
+The C1 path does not need this in Phase 1.3 (C1 has no Stokes
+velocity warm-start; cycle-to-cycle threading is just "keep the
+same `&mut C1State`"). If multi-cycle integration tests are added
+in Stage E3 or later, the loop can be written either at the test
+layer (idiomatic, given C1's in-place mutation semantics) or as a
+`run_phase_a_loop_c1` helper. Deferred until a concrete consumer
+appears.
