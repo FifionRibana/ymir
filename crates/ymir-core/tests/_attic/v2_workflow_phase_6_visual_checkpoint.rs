@@ -217,11 +217,11 @@ fn dump_step12_phase_a_evolution_galerie() {
                 .iter()
                 .copied()
                 .fold(f64::NEG_INFINITY, f64::max);
-            cum_drift += c.mass_drift;
-            let craton = c.craton_recomputation_change.map_or("—".to_string(), |v| format!("{v:.4}"));
+            cum_drift += c.common.mass_drift;
+            let craton = c.common.craton_recomputation_change.map_or("—".to_string(), |v| format!("{v:.4}"));
             report_lines.push(format!(
                 "| {i} | {peak_s:.4} | {:+.5} | {:.5} | {:.4} | {craton} |",
-                c.mass_drift, c.erosion_volume_removed, c.sea_level_normalized
+                c.common.mass_drift, c.common.erosion_volume_removed, c.common.sea_level_normalized
             ));
         }
         report_lines.push(format!("  Cumulative mass drift over {N_CYCLES} cycles: {cum_drift:+.5}"));
@@ -625,7 +625,7 @@ fn dump_step12_phase_6_64sq_full() {
         let phase_b_elapsed = phase_b_start.elapsed().as_secs_f64();
 
         // Cumulative mass drift over Phase A.
-        let cum_drift: f64 = phase_a.cycles.iter().map(|c| c.mass_drift).sum();
+        let cum_drift: f64 = phase_a.cycles.iter().map(|c| c.common.mass_drift).sum();
         let initial_mass_estimate =
             ((preset.continental_ratio + (1.0 - preset.continental_ratio) * 0.2) as f64)
                 * (nx * ny) as f64; // continental ≈ 1.0, oceanic ≈ 0.2
@@ -807,7 +807,7 @@ fn dump_step12_phase_6_aggressive_demo() {
         let phase_b_elapsed = phase_b_start.elapsed().as_secs_f64();
 
         // Aggregate metrics.
-        let cum_drift: f64 = phase_a.cycles.iter().map(|c| c.mass_drift).sum();
+        let cum_drift: f64 = phase_a.cycles.iter().map(|c| c.common.mass_drift).sum();
         let initial_mass_estimate =
             ((preset.continental_ratio + (1.0 - preset.continental_ratio) * 0.2) as f64)
                 * (64.0 * 64.0);
@@ -1155,7 +1155,7 @@ fn dump_step12_phase_6_curvature_variants() {
                 };
                 let phase_a = run_phase_a_loop(&mut cfg, &wf_b);
                 let last = phase_a.cycles.last().unwrap();
-                cum_drift = phase_a.cycles.iter().map(|c| c.mass_drift).sum();
+                cum_drift = phase_a.cycles.iter().map(|c| c.common.mass_drift).sum();
                 after_s = last.baseline.final_state.s_field.clone();
             }
             let preset_elapsed = preset_t.elapsed().as_secs_f64();

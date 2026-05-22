@@ -35,13 +35,14 @@
 pub mod drainage;
 pub mod macro_redistribution;
 
-// Issue #117 — Phase A + Phase B currently call into the retired
-// harness (`run_baseline_with_progress`). Per audit HC4, gate the
-// orchestrator entry points until C1's paradigm-agnostic per-cycle
-// tectonic runner reintroduces them in Phase 1.3 (§7 C1.md).
+// Issue #117 HC4 — Phase A currently couples to the retired harness
+// (`run_baseline_with_progress`); gated until Phase 1.3 H2 ships the
+// C1 path. Phase B is paradigm-agnostic at runtime (consumes
+// `Field2D + sea_level + iso_config`, no `BaselineResult`); the
+// Phase 1.3 H1 audit confirmed it is safe to un-gate.
+// See `docs/migrations/harness_paradigm_agnostic.md` § 2.2.
 #[cfg(feature = "v2_legacy")]
 pub mod phase_a;
-#[cfg(feature = "v2_legacy")]
 pub mod phase_b;
 
 use serde::{Deserialize, Serialize};
@@ -56,7 +57,6 @@ pub use phase_a::{
     final_state_to_continuation, run_phase_a_cycle, run_phase_a_cycle_with_progress,
     run_phase_a_loop,
 };
-#[cfg(feature = "v2_legacy")]
 pub use phase_b::run_phase_b;
 
 /// Top-level workflow on/off switch.
@@ -212,24 +212,22 @@ impl Default for PhaseBParams {
     }
 }
 
-/// Output of a single Phase A cycle.
+/// Paradigm-agnostic per-cycle Phase A diagnostics.
 ///
-/// `baseline` carries the full
-/// [`crate::tectonics_v2::diagnostics::harness::BaselineResult`] from
-/// the cycle's tectonic run (final state, metrics, config dump). Under
-/// `WorkflowConfig::Enabled`, the `final_state` is post-erosion +
-/// post-reclassification + post-craton-recompute (i.e. the state the
-/// next cycle's continuation should warm-start from).
+/// These five scalars describe the cycle's macro-redistribution +
+/// reclassification + craton-recompute pass and are **paradigm-
+/// independent**: both the v2 path and the C1 path populate them
+/// from the same downstream code in
+/// [`crate::tectonics_v2::workflow::macro_redistribution`] and the
+/// shared post-tectonic-step pass (Phase 1.3 H2 introduces this
+/// shared pass as `workflow::phase_a_common`).
 ///
-/// All Disabled-cycle scalars are zeroed/`None` — the regression test
-/// `v2_workflow_disabled_regression` pins this contract.
-// Issue #117 — `CycleOutput` carries `BaselineResult` which retires with
-// the harness. Gated until C1's per-cycle tectonic runner provides a
-// paradigm-agnostic replacement.
-#[cfg(feature = "v2_legacy")]
-#[derive(Debug)]
-pub struct CycleOutput {
-    pub baseline: crate::tectonics_v2::diagnostics::harness::BaselineResult,
+/// Carrying them in a dedicated struct (rather than as flat fields
+/// on the paradigm-specific `CycleOutput*` envelopes) keeps the
+/// two paths from drifting silently. See
+/// `docs/migrations/harness_paradigm_agnostic.md` § R3.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CycleOutputCommon {
     /// Gross integrated `Σ Δh` over continental cells (low-res erosion
     /// pass output). Net mass change is `-(1 - β) · volume_removed`.
     pub erosion_volume_removed: f64,
@@ -248,9 +246,36 @@ pub struct CycleOutput {
     pub mass_drift: f64,
     /// Fraction of cells whose `cratonic_factor` changed by more than
     /// `1e-9` between pre-cycle and post-cycle recompute. `None` when
-    /// no `CratonicConfig::Enabled` was active. The Phase 4
+    /// no `CratonicConfig::Enabled` was active (or the paradigm has
+    /// no equivalent — C1 currently does not). The Phase 4
     /// multi-cycle metrics dashboard accumulates these per cycle.
     pub craton_recomputation_change: Option<f64>,
+}
+
+/// Output of a single Phase A cycle on the **v2 path**.
+///
+/// `baseline` carries the full
+/// [`crate::tectonics_v2::diagnostics::harness::BaselineResult`] from
+/// the cycle's tectonic run (final state, metrics, config dump). Under
+/// `WorkflowConfig::Enabled`, the `final_state` is post-erosion +
+/// post-reclassification + post-craton-recompute (i.e. the state the
+/// next cycle's continuation should warm-start from).
+///
+/// `common` carries the paradigm-agnostic per-cycle diagnostics shared
+/// with the C1 path; see [`CycleOutputCommon`].
+///
+/// All Disabled-cycle scalars in `common` are zeroed/`None` — the
+/// regression test `v2_workflow_disabled_regression` pins this
+/// contract.
+// Issue #117 / Phase 1.3 H2 — `CycleOutput` carries `BaselineResult`
+// which is v2-specific. Gated under `v2_legacy`; the paradigm-
+// agnostic scalars have moved to [`CycleOutputCommon`] which is not
+// gated.
+#[cfg(feature = "v2_legacy")]
+#[derive(Debug)]
+pub struct CycleOutput {
+    pub baseline: crate::tectonics_v2::diagnostics::harness::BaselineResult,
+    pub common: CycleOutputCommon,
 }
 
 /// Output of the full Phase A loop (one [`CycleOutput`] per cycle).

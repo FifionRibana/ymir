@@ -201,7 +201,7 @@ fn v2_workflow_cratonic_recompute_flips_eroded_plate() {
     // metric scales with the flipped plate's area-fraction of the
     // domain.
     let change = cycle
-        .craton_recomputation_change
+        .common.craton_recomputation_change
         .expect("change metric must be populated under CratonicConfig::Enabled");
     assert!(
         change > 0.0,
@@ -244,7 +244,7 @@ fn v2_workflow_cratonic_recompute_preserves_stable_craton() {
 
     // BFS distances unchanged → recomputed factor identical.
     let change = cycle
-        .craton_recomputation_change
+        .common.craton_recomputation_change
         .expect("craton_recomputation_change must be populated");
     assert!(
         change < 1e-12,
