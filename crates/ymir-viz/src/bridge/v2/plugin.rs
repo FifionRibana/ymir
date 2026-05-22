@@ -321,7 +321,7 @@ fn poll_v2_events(
                 // cycle counter lives in `cycle_context`; `step` /
                 // `total` are left at the harness-step values
                 // (typically (0, 0) for Phase A since no per-step
-                // Progress events fire inside `run_phase_a_cycle`'s
+                // Progress events fire inside `run_phase_a_cycle_v2`'s
                 // internal `run_baseline`). The dashboard chooses
                 // which counter to display based on
                 // `cycle_context.is_some()`.

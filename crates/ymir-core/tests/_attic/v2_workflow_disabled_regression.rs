@@ -9,8 +9,8 @@
 //! > to running Step 11 directly.
 //!
 //! The test rationale is structural rather than statistical: under
-//! `Disabled`, [`run_phase_a_cycle`] is implemented as
-//! `run_baseline(cfg)` plus a wrap into `CycleOutput`. No additional
+//! `Disabled`, [`run_phase_a_cycle_v2`] is implemented as
+//! `run_baseline(cfg)` plus a wrap into `CycleOutputV2`. No additional
 //! RNG consumption, no extra allocation, no Field2D mutation outside
 //! what `run_baseline` does internally. The byte-equal contract is
 //! therefore inherited from `run_baseline` determinism (see
@@ -27,7 +27,7 @@ use std::path::PathBuf;
 use ymir_core::tectonics_v2::diagnostics::harness::{run_baseline, BaselineConfig};
 use ymir_core::tectonics_v2::scales::Scales;
 use ymir_core::tectonics_v2::workflow::{
-    run_phase_a_cycle, run_phase_a_loop, run_phase_b, WorkflowConfig,
+    run_phase_a_cycle_v2, run_phase_a_loop_v2, run_phase_b, WorkflowConfig,
 };
 
 fn build_test_config(scratch_subdir: &str) -> BaselineConfig {
@@ -54,13 +54,13 @@ fn workflow_disabled_run_phase_a_cycle_is_bit_identical_to_run_baseline() {
     let cfg_b = build_test_config("path_b");
 
     let r_a = run_baseline(&cfg_a);
-    let cycle_b = run_phase_a_cycle(&cfg_b, &WorkflowConfig::Disabled);
+    let cycle_b = run_phase_a_cycle_v2(&cfg_b, &WorkflowConfig::Disabled);
 
     let s_a = r_a.final_state.s_field.data();
     let s_b = cycle_b.baseline.final_state.s_field.data();
     assert_eq!(
         s_a, s_b,
-        "s_field bytes must match between run_baseline and run_phase_a_cycle(Disabled)"
+        "s_field bytes must match between run_baseline and run_phase_a_cycle_v2(Disabled)"
     );
     assert_eq!(r_a.final_state.vx, cycle_b.baseline.final_state.vx, "vx bytes mismatch");
     assert_eq!(r_a.final_state.vy, cycle_b.baseline.final_state.vy, "vy bytes mismatch");
@@ -76,12 +76,12 @@ fn workflow_disabled_run_phase_a_cycle_is_bit_identical_to_run_baseline() {
 
 #[test]
 fn workflow_disabled_run_phase_a_loop_returns_single_passthrough_cycle() {
-    // Phase 4 changed run_phase_a_loop's signature to `&mut
+    // Phase 4 changed run_phase_a_loop_v2's signature to `&mut
     // BaselineConfig` because the Enabled branch mutates
     // `cfg.continuation` between cycles. The Disabled branch still
     // does not mutate cfg — the regression contract holds.
     let mut cfg = build_test_config("loop_single");
-    let output = run_phase_a_loop(&mut cfg, &WorkflowConfig::Disabled);
+    let output = run_phase_a_loop_v2(&mut cfg, &WorkflowConfig::Disabled);
     assert_eq!(
         output.cycles.len(),
         1,

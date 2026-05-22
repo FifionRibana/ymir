@@ -38,7 +38,7 @@ use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::init::{init_s_field, InitContext, PlateInitData};
 use ymir_core::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
 use ymir_core::tectonics_v2::workflow::{
-    drainage::compute_drainage_targets, run_phase_a_loop,
+    drainage::compute_drainage_targets, run_phase_a_loop_v2,
 };
 
 use ymir_viz::bridge::v2::{
@@ -215,7 +215,7 @@ fn run_gallery_for_preset(preset_name: &str, out_dir: &Path) -> Vec<CycleMetrics
 
     println!("[r4] {preset_name}: running 5 cycles × 20 steps (mantle ON, 64²)…");
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[r4] {preset_name}: completed in {elapsed:.1}s, {} cycles", output.cycles.len());
 
@@ -439,7 +439,7 @@ fn run_r4b_variant(
     let wf = build_config::build_workflow(&spec.workflow);
 
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[r4b/{label}] completed in {elapsed:.1}s, {} cycles", output.cycles.len());
 
@@ -756,7 +756,7 @@ fn run_r5b_mf_sweep(mf_value: f64, label: &str) {
     let wf = build_config::build_workflow(&spec.workflow);
 
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[r5b-sweep/{label}] completed in {elapsed:.1}s");
 
@@ -978,7 +978,7 @@ fn run_r5b_evo_sweep(mf_value: f64, evo_rate: f64, label: &str) {
     let wf = build_config::build_workflow(&spec.workflow);
 
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[r5b-evo/{label}] completed in {elapsed:.1}s");
 
@@ -1163,7 +1163,7 @@ fn run_r5_dt_variant(label: &str, k_cycle: usize) -> (R4bMetrics, R5SolverMetric
     let wf = build_config::build_workflow(&spec.workflow);
 
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[r5/{label}] completed in {elapsed:.1}s, {} cycles", output.cycles.len());
 
@@ -1360,7 +1360,7 @@ fn run_r5_0_1_short_dt(total_time: f64, label: &str) {
     let wf = build_config::build_workflow(&spec.workflow);
 
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
 
     let cycle = output.cycles.first().expect("at least one cycle");
@@ -1613,7 +1613,7 @@ fn r5b_d1_amg_cg() {
 // specific to the macro_redistribution → tectonic continuation
 // interaction.
 //
-// D1-bis: instrument run_phase_a_loop on a short 2-cycle × 20-step
+// D1-bis: instrument run_phase_a_loop_v2 on a short 2-cycle × 20-step
 // configuration. Extract per-step CG iter and Newton outer iter,
 // labelled by `(cycle_idx, step_idx_in_cycle)`. Goal: localise
 // where in the cycle the CG saturates.
@@ -1658,7 +1658,7 @@ fn run_r5b_d1_bis() {
     let wf = build_config::build_workflow(&spec.workflow);
 
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[r5b/d1-bis] completed in {elapsed:.1}s, {} cycles", output.cycles.len());
 
@@ -1801,7 +1801,7 @@ fn r5b_d1_bis_per_step_workflow_on_post_d2() {
     let wf = build_config::build_workflow(&spec.workflow);
 
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[r5b/d1-bis post-D2] completed in {elapsed:.1}s");
 
@@ -1918,7 +1918,7 @@ struct StepSnapshot {
 fn r5b_d2_bis_oscillating_evolution() {
     use std::cell::RefCell;
     use ymir_core::tectonics_v2::workflow::{
-        final_state_to_continuation, run_phase_a_cycle_with_progress,
+        final_state_to_continuation_v2, run_phase_a_cycle_with_progress_v2,
     };
     use ymir_viz::bridge::v2::build_config;
 
@@ -2015,14 +2015,14 @@ fn r5b_d2_bis_oscillating_evolution() {
     // Cycle 1
     *cycle_counter.borrow_mut() = 1;
     *step_in_cycle_counter.borrow_mut() = 0;
-    let cycle_1 = run_phase_a_cycle_with_progress(&cfg, &wf, &mut record_step);
+    let cycle_1 = run_phase_a_cycle_with_progress_v2(&cfg, &wf, &mut record_step);
     cfg.continuation =
-        Some(final_state_to_continuation(&cycle_1.baseline.final_state));
+        Some(final_state_to_continuation_v2(&cycle_1.baseline.final_state));
 
     // Cycle 2
     *cycle_counter.borrow_mut() = 2;
     *step_in_cycle_counter.borrow_mut() = 0;
-    let cycle_2 = run_phase_a_cycle_with_progress(&cfg, &wf, &mut record_step);
+    let cycle_2 = run_phase_a_cycle_with_progress_v2(&cfg, &wf, &mut record_step);
 
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[r5b/d2-bis] completed in {elapsed:.1}s");
@@ -2152,7 +2152,7 @@ enum InitVariant {
 fn run_d1_ter_init_variant(variant: InitVariant, label: &str) {
     use std::cell::RefCell;
     use ymir_core::tectonics_v2::workflow::{
-        final_state_to_continuation, run_phase_a_cycle_with_progress,
+        final_state_to_continuation_v2, run_phase_a_cycle_with_progress_v2,
     };
     use ymir_viz::bridge::v2::build_config;
 
@@ -2184,14 +2184,14 @@ fn run_d1_ter_init_variant(variant: InitVariant, label: &str) {
     let no_op =
         |_: &ymir_core::tectonics_v2::diagnostics::harness::StepProgress<'_>| -> bool { true };
     let t0 = std::time::Instant::now();
-    let cycle_1 = run_phase_a_cycle_with_progress(&cfg, &wf, no_op);
+    let cycle_1 = run_phase_a_cycle_with_progress_v2(&cfg, &wf, no_op);
     let cycle_1_elapsed = t0.elapsed().as_secs_f64();
     println!("[d1-ter/{label}] cycle 1 done in {cycle_1_elapsed:.1}s");
 
     let nx = cycle_1.baseline.final_state.s_field.nx();
     let ny = cycle_1.baseline.final_state.s_field.ny();
     let mut continuation =
-        final_state_to_continuation(&cycle_1.baseline.final_state);
+        final_state_to_continuation_v2(&cycle_1.baseline.final_state);
     match variant {
         InitVariant::WarmStart => {}
         InitVariant::Zero => {
@@ -2249,7 +2249,7 @@ fn run_d1_ter_init_variant(variant: InitVariant, label: &str) {
     };
 
     let t1 = std::time::Instant::now();
-    let cycle_2 = run_phase_a_cycle_with_progress(&cfg, &wf, &mut record_step);
+    let cycle_2 = run_phase_a_cycle_with_progress_v2(&cfg, &wf, &mut record_step);
     let cycle_2_elapsed = t1.elapsed().as_secs_f64();
     println!("[d1-ter/{label}] cycle 2 done in {cycle_2_elapsed:.1}s");
 
@@ -2316,7 +2316,7 @@ fn r5b_d1_ter_init_c_smoothed() {
 }
 
 /// Step 12 R5b — re-measure D1-bis pattern AFTER the D1-ter implement
-/// (reinit v=0 post-macro inside `phase_a::run_phase_a_cycle_with_progress`).
+/// (reinit v=0 post-macro inside `phase_a::run_phase_a_cycle_with_progress_v2`).
 /// Output dir is distinct from the pre-D1-ter version so the
 /// comparison report stays available.
 /// Step 12 R5b validation — R4 active_medley 64² × 5 cycles after the
@@ -2396,7 +2396,7 @@ fn r5b_validation_r4_active_medley_64sq_mf_0_5() {
 
     println!("[r5b validation] running 5 cycles × 20 steps (64², mf=0.5, D2+D1-ter active)…");
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!(
         "[r5b validation] completed in {elapsed:.1}s, {} cycles",
@@ -2497,7 +2497,7 @@ fn r5b_d1_bis_per_step_workflow_on_post_d1_ter() {
     let wf = build_config::build_workflow(&spec.workflow);
 
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[r5b/d1-bis post-D1-ter] completed in {elapsed:.1}s");
 
@@ -2653,7 +2653,7 @@ fn run_r6_3_config(mf: f64, evo_rate: f64, label: &str) -> R6ConfigSummary {
     let wf = build_config::build_workflow(&spec.workflow);
 
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[r6.3/{label}] completed in {elapsed:.1}s");
 
@@ -3244,7 +3244,7 @@ fn run_r6_3_c4_config(
     let wf = build_config::build_workflow(&spec.workflow);
 
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[c.4/{label}] completed in {elapsed:.1}s");
 
@@ -3999,7 +3999,7 @@ fn run_r7_a_2_4_config(
     let wf = build_config::build_workflow(&spec.workflow);
 
     let t0 = std::time::Instant::now();
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     let elapsed = t0.elapsed().as_secs_f64();
     println!("[r7.a.2.4/{label}] simulation completed in {elapsed:.1}s");
 

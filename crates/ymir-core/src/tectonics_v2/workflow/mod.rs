@@ -21,7 +21,7 @@
 //! [`WorkflowConfig::Disabled`] passthrough. The Disabled variant is
 //! the default, structurally short-circuits every workflow branch,
 //! and is the **bit-identical contract** for Steps 0–13.5 regression:
-//! calling [`phase_a::run_phase_a_cycle`] with `Disabled` is exactly
+//! calling [`phase_a::run_phase_a_cycle_v2`] with `Disabled` is exactly
 //! [`crate::tectonics_v2::diagnostics::harness::run_baseline`] under
 //! the hood, no extra allocation, no extra RNG consumption, no path
 //! deviation — see `tests/v2_workflow_disabled_regression.rs`.
@@ -35,14 +35,15 @@
 pub mod drainage;
 pub mod macro_redistribution;
 
-// Issue #117 HC4 — Phase A currently couples to the retired harness
-// (`run_baseline_with_progress`); gated until Phase 1.3 H2 ships the
-// C1 path. Phase B is paradigm-agnostic at runtime (consumes
-// `Field2D + sea_level + iso_config`, no `BaselineResult`); the
-// Phase 1.3 H1 audit confirmed it is safe to un-gate.
-// See `docs/migrations/harness_paradigm_agnostic.md` § 2.2.
+// Issue #117 HC4 / Phase 1.3 H2 — Phase A's v2 path
+// (`run_phase_a_cycle_v2`) couples to the retired harness; gated
+// under `v2_legacy`. The C1 path (`run_phase_a_cycle_c1`, Commit 4
+// of H2) is default-features-on. Phase B is paradigm-agnostic at
+// runtime (consumes `Field2D + sea_level + iso_config`, no
+// `BaselineResult`); H1 audit § 2.2 confirmed it is safe to un-gate.
+// See `docs/migrations/harness_paradigm_agnostic.md`.
 #[cfg(feature = "v2_legacy")]
-pub mod phase_a;
+pub mod phase_a_v2;
 pub mod phase_b;
 
 use serde::{Deserialize, Serialize};
@@ -53,9 +54,9 @@ use crate::terrain::upscale::FbmUpscaleConfig;
 pub use macro_redistribution::RedistributionStats;
 
 #[cfg(feature = "v2_legacy")]
-pub use phase_a::{
-    final_state_to_continuation, run_phase_a_cycle, run_phase_a_cycle_with_progress,
-    run_phase_a_loop,
+pub use phase_a_v2::{
+    final_state_to_continuation_v2, run_phase_a_cycle_v2, run_phase_a_cycle_with_progress_v2,
+    run_phase_a_loop_v2,
 };
 pub use phase_b::run_phase_b;
 
@@ -69,7 +70,7 @@ pub use phase_b::run_phase_b;
 ///
 /// Default: `Disabled` — preserves Step 11 standalone behaviour
 /// bit-for-bit. The Step 12 acceptance #15 regression test verifies
-/// this by calling [`run_phase_a_cycle`] with `Disabled` and comparing
+/// this by calling [`run_phase_a_cycle_v2`] with `Disabled` and comparing
 /// final-state byte-by-byte against a direct `run_baseline` call.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub enum WorkflowConfig {
@@ -223,7 +224,7 @@ impl Default for PhaseBParams {
 /// shared pass as `workflow::phase_a_common`).
 ///
 /// Carrying them in a dedicated struct (rather than as flat fields
-/// on the paradigm-specific `CycleOutput*` envelopes) keeps the
+/// on the paradigm-specific `CycleOutputV2*` envelopes) keeps the
 /// two paths from drifting silently. See
 /// `docs/migrations/harness_paradigm_agnostic.md` § R3.
 #[derive(Clone, Copy, Debug, Default)]
@@ -267,28 +268,28 @@ pub struct CycleOutputCommon {
 /// All Disabled-cycle scalars in `common` are zeroed/`None` — the
 /// regression test `v2_workflow_disabled_regression` pins this
 /// contract.
-// Issue #117 / Phase 1.3 H2 — `CycleOutput` carries `BaselineResult`
+// Issue #117 / Phase 1.3 H2 — `CycleOutputV2` carries `BaselineResult`
 // which is v2-specific. Gated under `v2_legacy`; the paradigm-
 // agnostic scalars have moved to [`CycleOutputCommon`] which is not
 // gated.
 #[cfg(feature = "v2_legacy")]
 #[derive(Debug)]
-pub struct CycleOutput {
+pub struct CycleOutputV2 {
     pub baseline: crate::tectonics_v2::diagnostics::harness::BaselineResult,
     pub common: CycleOutputCommon,
 }
 
-/// Output of the full Phase A loop (one [`CycleOutput`] per cycle).
+/// Output of the full Phase A loop (one [`CycleOutputV2`] per cycle).
 ///
 /// When `WorkflowConfig::Disabled`, the vec contains exactly one
 /// entry — the direct `run_baseline` passthrough — so the regression
 /// contract holds: `output.cycles[0].baseline ≡ run_baseline(cfg)`.
-// Issue #117 — `PhaseAOutput` transitively gates because it carries
-// `Vec<CycleOutput>` (which references retired harness types).
+// Issue #117 — `PhaseAOutputV2` transitively gates because it carries
+// `Vec<CycleOutputV2>` (which references retired harness types).
 #[cfg(feature = "v2_legacy")]
 #[derive(Debug)]
-pub struct PhaseAOutput {
-    pub cycles: Vec<CycleOutput>,
+pub struct PhaseAOutputV2 {
+    pub cycles: Vec<CycleOutputV2>,
 }
 
 /// Output of Phase B HD finalization.
