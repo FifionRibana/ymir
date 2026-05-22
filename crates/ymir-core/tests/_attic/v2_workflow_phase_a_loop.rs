@@ -120,13 +120,13 @@ fn run_5cycle_integration(grid_size: usize, scratch: &str) {
     let machine_drift_budget = initial_mass_estimate * 1e-10;
     for (i, cycle) in output.cycles.iter().enumerate() {
         assert!(
-            cycle.mass_drift.abs() < machine_drift_budget,
+            cycle.common.mass_drift.abs() < machine_drift_budget,
             "cycle {i}: mass_drift = {} exceeds machine-precision budget {} (mass conservation must hold)",
-            cycle.mass_drift,
+            cycle.common.mass_drift,
             machine_drift_budget
         );
     }
-    let total_drift: f64 = output.cycles.iter().map(|c| c.mass_drift).sum();
+    let total_drift: f64 = output.cycles.iter().map(|c| c.common.mass_drift).sum();
     assert!(
         total_drift.abs() < machine_drift_budget,
         "cumulative mass drift {total_drift} exceeds machine-precision budget {machine_drift_budget}"
@@ -165,9 +165,9 @@ fn run_5cycle_integration(grid_size: usize, scratch: &str) {
     // through.
     for (i, cycle) in output.cycles.iter().enumerate() {
         assert!(
-            cycle.erosion_volume_removed > 0.0,
+            cycle.common.erosion_volume_removed > 0.0,
             "cycle {i}: erosion_volume_removed = {} (every cycle must engage)",
-            cycle.erosion_volume_removed
+            cycle.common.erosion_volume_removed
         );
     }
 }

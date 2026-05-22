@@ -208,10 +208,11 @@ pub fn spawn_v2_thread(
                                 cycle_idx,
                                 n_cycles,
                                 peek_state: peek_state.clone(),
-                                erosion_volume_removed: cycle_output.erosion_volume_removed,
-                                sea_level_normalized: cycle_output.sea_level_normalized,
-                                mass_drift: cycle_output.mass_drift,
+                                erosion_volume_removed: cycle_output.common.erosion_volume_removed,
+                                sea_level_normalized: cycle_output.common.sea_level_normalized,
+                                mass_drift: cycle_output.common.mass_drift,
                                 craton_recomputation_change: cycle_output
+                                    .common
                                     .craton_recomputation_change,
                             });
 
@@ -313,10 +314,11 @@ pub fn spawn_v2_thread(
                                 cycle_idx,
                                 n_cycles,
                                 peek_state: peek_state.clone(),
-                                erosion_volume_removed: cycle_output.erosion_volume_removed,
-                                sea_level_normalized: cycle_output.sea_level_normalized,
-                                mass_drift: cycle_output.mass_drift,
+                                erosion_volume_removed: cycle_output.common.erosion_volume_removed,
+                                sea_level_normalized: cycle_output.common.sea_level_normalized,
+                                mass_drift: cycle_output.common.mass_drift,
                                 craton_recomputation_change: cycle_output
+                                    .common
                                     .craton_recomputation_change,
                             });
 

@@ -39,7 +39,7 @@
 //! `v2_workflow_disabled_regression::workflow_disabled_run_phase_a_cycle_is_bit_identical_to_run_baseline`
 //! pins this contract byte-for-byte.
 
-use super::{macro_redistribution, CycleOutput, PhaseAOutput, WorkflowConfig};
+use super::{macro_redistribution, CycleOutput, CycleOutputCommon, PhaseAOutput, WorkflowConfig};
 use crate::tectonics::isostasy::IsostasyConfig;
 use crate::tectonics_v2::boundaries::{PlateType, PlateTypeField};
 use crate::tectonics_v2::cratonic::factor::build_cratonic_factor_field;
@@ -97,11 +97,7 @@ where
             let baseline = run_baseline_with_progress(cfg, on_progress);
             CycleOutput {
                 baseline,
-                erosion_volume_removed: 0.0,
-                erosion_peak_delta_h: 0.0,
-                sea_level_normalized: 0.0,
-                mass_drift: 0.0,
-                craton_recomputation_change: None,
+                common: CycleOutputCommon::default(),
             }
         }
         WorkflowConfig::Enabled(params) => {
@@ -251,11 +247,13 @@ where
 
             CycleOutput {
                 baseline,
-                erosion_volume_removed: stats.total_eroded,
-                erosion_peak_delta_h: stats.peak_delta_h,
-                sea_level_normalized: sea_level_ref,
-                mass_drift: mass_after - mass_before,
-                craton_recomputation_change: craton_change,
+                common: CycleOutputCommon {
+                    erosion_volume_removed: stats.total_eroded,
+                    erosion_peak_delta_h: stats.peak_delta_h,
+                    sea_level_normalized: sea_level_ref,
+                    mass_drift: mass_after - mass_before,
+                    craton_recomputation_change: craton_change,
+                },
             }
         }
     }

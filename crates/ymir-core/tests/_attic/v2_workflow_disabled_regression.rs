@@ -66,7 +66,7 @@ fn workflow_disabled_run_phase_a_cycle_is_bit_identical_to_run_baseline() {
     assert_eq!(r_a.final_state.vy, cycle_b.baseline.final_state.vy, "vy bytes mismatch");
 
     // Disabled never engages the low-res erosion path.
-    assert_eq!(cycle_b.erosion_volume_removed, 0.0);
+    assert_eq!(cycle_b.common.erosion_volume_removed, 0.0);
 
     // Cherry-picked metrics — full metrics struct is not Eq, so we
     // compare scalar invariants that suffice to flag any drift.
@@ -87,7 +87,7 @@ fn workflow_disabled_run_phase_a_loop_returns_single_passthrough_cycle() {
         1,
         "Disabled loop must collapse to a single cycle"
     );
-    assert_eq!(output.cycles[0].erosion_volume_removed, 0.0);
+    assert_eq!(output.cycles[0].common.erosion_volume_removed, 0.0);
     // cfg.continuation is unchanged under Disabled — None remains None.
     assert!(
         cfg.continuation.is_none(),

@@ -221,7 +221,7 @@ fn run_gallery_for_preset(preset_name: &str, out_dir: &Path) -> Vec<CycleMetrics
 
     // INIT metrics (use init field, no erosion stats).
     let init_field = Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
-    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let init_sea = output.cycles.first().map(|c| c.common.sea_level_normalized).unwrap_or(0.5);
     let mut metrics = vec![compute_metrics(0, &init_field, init_sea, 0.0, 0.0)];
 
     // Per-cycle metrics + PNG.
@@ -244,9 +244,9 @@ fn run_gallery_for_preset(preset_name: &str, out_dir: &Path) -> Vec<CycleMetrics
         metrics.push(compute_metrics(
             cyc_idx,
             &cycle.baseline.final_state.s_field,
-            cycle.sea_level_normalized,
-            cycle.erosion_volume_removed,
-            cycle.mass_drift,
+            cycle.common.sea_level_normalized,
+            cycle.common.erosion_volume_removed,
+            cycle.common.mass_drift,
         ));
     }
 
@@ -273,7 +273,7 @@ fn write_metrics_table(preset_name: &str, metrics: &[CycleMetrics], out_dir: &Pa
             m.sea_level_ref,
             m.max_path_length,
             m.total_eroded,
-            m.mass_drift,
+            m.common.mass_drift,
         ));
     }
     md.push('\n');
@@ -322,7 +322,7 @@ fn write_metrics_table(preset_name: &str, metrics: &[CycleMetrics], out_dir: &Pa
     let cumulative_drift: f64 = metrics
         .iter()
         .skip(1)
-        .map(|m| m.mass_drift.abs())
+        .map(|m| m.common.mass_drift.abs())
         .sum();
     let budget = init.mass_total.abs() * 1e-9;
     let r4_4 = cumulative_drift < budget;
@@ -452,16 +452,16 @@ fn run_r4b_variant(
         .expect("save final alt");
 
     let init_field = Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
-    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let init_sea = output.cycles.first().map(|c| c.common.sea_level_normalized).unwrap_or(0.5);
     let init_metrics = compute_metrics(0, &init_field, init_sea, 0.0, 0.0);
     let final_metrics = compute_metrics(
         R4B_N_CYCLES,
         &final_cycle.baseline.final_state.s_field,
-        final_cycle.sea_level_normalized,
-        final_cycle.erosion_volume_removed,
-        final_cycle.mass_drift,
+        final_cycle.common.sea_level_normalized,
+        final_cycle.common.erosion_volume_removed,
+        final_cycle.common.mass_drift,
     );
-    let cumulative_drift: f64 = output.cycles.iter().map(|c| c.mass_drift.abs()).sum();
+    let cumulative_drift: f64 = output.cycles.iter().map(|c| c.common.mass_drift.abs()).sum();
 
     R4bMetrics {
         init: init_metrics,
@@ -761,7 +761,7 @@ fn run_r5b_mf_sweep(mf_value: f64, label: &str) {
     println!("[r5b-sweep/{label}] completed in {elapsed:.1}s");
 
     let init_field = Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
-    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let init_sea = output.cycles.first().map(|c| c.common.sea_level_normalized).unwrap_or(0.5);
     let mut metrics = vec![compute_metrics(0, &init_field, init_sea, 0.0, 0.0)];
 
     for (i, cycle) in output.cycles.iter().enumerate() {
@@ -782,9 +782,9 @@ fn run_r5b_mf_sweep(mf_value: f64, label: &str) {
         metrics.push(compute_metrics(
             cyc_idx,
             &cycle.baseline.final_state.s_field,
-            cycle.sea_level_normalized,
-            cycle.erosion_volume_removed,
-            cycle.mass_drift,
+            cycle.common.sea_level_normalized,
+            cycle.common.erosion_volume_removed,
+            cycle.common.mass_drift,
         ));
     }
 
@@ -984,7 +984,7 @@ fn run_r5b_evo_sweep(mf_value: f64, evo_rate: f64, label: &str) {
 
     let init_field =
         Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
-    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let init_sea = output.cycles.first().map(|c| c.common.sea_level_normalized).unwrap_or(0.5);
     let mut metrics = vec![compute_metrics(0, &init_field, init_sea, 0.0, 0.0)];
     for (i, cycle) in output.cycles.iter().enumerate() {
         let cyc_idx = i + 1;
@@ -994,9 +994,9 @@ fn run_r5b_evo_sweep(mf_value: f64, evo_rate: f64, label: &str) {
         metrics.push(compute_metrics(
             cyc_idx,
             &cycle.baseline.final_state.s_field,
-            cycle.sea_level_normalized,
-            cycle.erosion_volume_removed,
-            cycle.mass_drift,
+            cycle.common.sea_level_normalized,
+            cycle.common.erosion_volume_removed,
+            cycle.common.mass_drift,
         ));
     }
 
@@ -1176,16 +1176,16 @@ fn run_r5_dt_variant(label: &str, k_cycle: usize) -> (R4bMetrics, R5SolverMetric
         .expect("save final alt");
 
     let init_field = Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
-    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let init_sea = output.cycles.first().map(|c| c.common.sea_level_normalized).unwrap_or(0.5);
     let init_metrics = compute_metrics(0, &init_field, init_sea, 0.0, 0.0);
     let final_metrics = compute_metrics(
         5,
         &final_cycle.baseline.final_state.s_field,
-        final_cycle.sea_level_normalized,
-        final_cycle.erosion_volume_removed,
-        final_cycle.mass_drift,
+        final_cycle.common.sea_level_normalized,
+        final_cycle.common.erosion_volume_removed,
+        final_cycle.common.mass_drift,
     );
-    let cumulative_drift: f64 = output.cycles.iter().map(|c| c.mass_drift.abs()).sum();
+    let cumulative_drift: f64 = output.cycles.iter().map(|c| c.common.mass_drift.abs()).sum();
 
     let r4b = R4bMetrics {
         init: init_metrics,
@@ -1381,8 +1381,8 @@ fn run_r5_0_1_short_dt(total_time: f64, label: &str) {
     md.push_str(&format!("- CG iter mean: **{:.1}**  (max: {})\n", m.cg_iter_mean, m.cg_iter_max));
     md.push_str(&format!("- Kappa estimate: {:.2e}\n", m.kappa_estimate));
     md.push_str(&format!("- Peak |v|: {:.3e}\n", m.vmax_peak));
-    md.push_str(&format!("- Mass drift over 1 cycle: {:.3e}\n", cycle.mass_drift));
-    md.push_str(&format!("- Mass drift cumulative (1 cycle = same): {:.3e}\n\n", cycle.mass_drift.abs()));
+    md.push_str(&format!("- Mass drift over 1 cycle: {:.3e}\n", cycle.common.mass_drift));
+    md.push_str(&format!("- Mass drift cumulative (1 cycle = same): {:.3e}\n\n", cycle.common.mass_drift.abs()));
 
     let cap_2000 = m.cg_iter_max >= 2000;
     let nominal = m.cg_iter_mean < 500.0;
@@ -1710,7 +1710,7 @@ fn run_r5b_d1_bis() {
             newt.stalled,
             newt.diverged,
             newt.capped,
-            cycle.mass_drift,
+            cycle.common.mass_drift,
         ));
     }
 
@@ -1850,7 +1850,7 @@ fn r5b_d1_bis_per_step_workflow_on_post_d2() {
             newt.stalled,
             newt.diverged,
             newt.capped,
-            cycle.mass_drift,
+            cycle.common.mass_drift,
         ));
     }
 
@@ -2408,7 +2408,7 @@ fn r5b_validation_r4_active_medley_64sq_mf_0_5() {
     let init_sea = output
         .cycles
         .first()
-        .map(|c| c.sea_level_normalized)
+        .map(|c| c.common.sea_level_normalized)
         .unwrap_or(0.5);
     let mut metrics = vec![compute_metrics(0, &init_field, init_sea, 0.0, 0.0)];
 
@@ -2431,9 +2431,9 @@ fn r5b_validation_r4_active_medley_64sq_mf_0_5() {
         metrics.push(compute_metrics(
             cyc_idx,
             &cycle.baseline.final_state.s_field,
-            cycle.sea_level_normalized,
-            cycle.erosion_volume_removed,
-            cycle.mass_drift,
+            cycle.common.sea_level_normalized,
+            cycle.common.erosion_volume_removed,
+            cycle.common.mass_drift,
         ));
     }
 
@@ -2536,7 +2536,7 @@ fn r5b_d1_bis_per_step_workflow_on_post_d1_ter() {
             "\n_Cycle {} aggregate: Converged={}, Stalled={}, Diverged={}, Capped={}, mass_drift={:.3e}_\n\n",
             cycle_idx + 1,
             newt.converged, newt.stalled, newt.diverged, newt.capped,
-            cycle.mass_drift,
+            cycle.common.mass_drift,
         ));
     }
 
@@ -2659,7 +2659,7 @@ fn run_r6_3_config(mf: f64, evo_rate: f64, label: &str) -> R6ConfigSummary {
 
     let init_field =
         Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
-    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let init_sea = output.cycles.first().map(|c| c.common.sea_level_normalized).unwrap_or(0.5);
     let init_metrics = compute_metrics(0, &init_field, init_sea, 0.0, 0.0);
     let mut metrics = vec![init_metrics];
 
@@ -2686,9 +2686,9 @@ fn run_r6_3_config(mf: f64, evo_rate: f64, label: &str) -> R6ConfigSummary {
         metrics.push(compute_metrics(
             cyc_idx,
             &cycle.baseline.final_state.s_field,
-            cycle.sea_level_normalized,
-            cycle.erosion_volume_removed,
-            cycle.mass_drift,
+            cycle.common.sea_level_normalized,
+            cycle.common.erosion_volume_removed,
+            cycle.common.mass_drift,
         ));
         peak_v_per_cycle.push(cycle.baseline.metrics.vmax_peak);
         if let Some(n) = cycle.baseline.metrics.newton.as_ref() {
@@ -3250,7 +3250,7 @@ fn run_r6_3_c4_config(
 
     let init_field =
         Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
-    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let init_sea = output.cycles.first().map(|c| c.common.sea_level_normalized).unwrap_or(0.5);
     let init_metrics = compute_metrics(0, &init_field, init_sea, 0.0, 0.0);
     let mut metrics = vec![init_metrics];
 
@@ -3277,9 +3277,9 @@ fn run_r6_3_c4_config(
         metrics.push(compute_metrics(
             cyc_idx,
             &cycle.baseline.final_state.s_field,
-            cycle.sea_level_normalized,
-            cycle.erosion_volume_removed,
-            cycle.mass_drift,
+            cycle.common.sea_level_normalized,
+            cycle.common.erosion_volume_removed,
+            cycle.common.mass_drift,
         ));
         peak_v_per_cycle.push(cycle.baseline.metrics.vmax_peak);
         if let Some(n) = cycle.baseline.metrics.newton.as_ref() {
@@ -4005,7 +4005,7 @@ fn run_r7_a_2_4_config(
 
     let init_field =
         Field2D::from_vec(init_state.nx, init_state.ny, init_state.s_field.clone());
-    let init_sea = output.cycles.first().map(|c| c.sea_level_normalized).unwrap_or(0.5);
+    let init_sea = output.cycles.first().map(|c| c.common.sea_level_normalized).unwrap_or(0.5);
     let init_metrics = compute_metrics(0, &init_field, init_sea, 0.0, 0.0);
     let mut metrics = vec![init_metrics];
 
@@ -4035,9 +4035,9 @@ fn run_r7_a_2_4_config(
         metrics.push(compute_metrics(
             cyc_idx,
             &cycle.baseline.final_state.s_field,
-            cycle.sea_level_normalized,
-            cycle.erosion_volume_removed,
-            cycle.mass_drift,
+            cycle.common.sea_level_normalized,
+            cycle.common.erosion_volume_removed,
+            cycle.common.mass_drift,
         ));
         peak_v_per_cycle.push(cycle.baseline.metrics.vmax_peak);
         if let Some(n) = cycle.baseline.metrics.newton.as_ref() {
