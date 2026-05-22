@@ -80,7 +80,7 @@ pub struct RedistributionStats {
 ///
 /// See module docstring for the algorithm. Returns
 /// [`RedistributionStats`] for the orchestrator's per-cycle metrics
-/// (R3 wires this into [`super::CycleOutput`]).
+/// (R3 wires this into [`super::CycleOutputV2`]).
 ///
 /// Only `alpha`, `isostatic_rebound_ratio`, and `max_drainage_distance`
 /// from `params` are consumed — `n_cycles` and `k_cycle` are

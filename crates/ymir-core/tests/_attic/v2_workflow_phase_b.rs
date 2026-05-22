@@ -35,7 +35,7 @@ use ymir_core::tectonics_v2::scales::Scales;
 use ymir_core::tectonics_v2::slab::SlabPullConfig;
 use ymir_core::tectonics_v2::voronoi::VoronoiConfig;
 use ymir_core::tectonics_v2::workflow::{
-    run_phase_a_loop, run_phase_b, PhaseAParams, PhaseBParams, WorkflowConfig, WorkflowParams,
+    run_phase_a_loop_v2, run_phase_b, PhaseAParams, PhaseBParams, WorkflowConfig, WorkflowParams,
 };
 
 fn build_phase_b_input_config(
@@ -121,7 +121,7 @@ fn run_phase_a_then_b(
             ..PhaseBParams::default()
         },
     });
-    let phase_a = run_phase_a_loop(&mut cfg, &wf);
+    let phase_a = run_phase_a_loop_v2(&mut cfg, &wf);
     let last_cycle = phase_a.cycles.last().expect("Phase A produced at least one cycle");
     run_phase_b(&last_cycle.baseline.final_state.s_field, &wf, cfg.seed)
         .expect("Phase B must produce output under WorkflowConfig::Enabled")
@@ -222,7 +222,7 @@ fn v2_workflow_phase_b_deviation_stats_probe() {
             ..PhaseBParams::default()
         },
     });
-    let phase_a = run_phase_a_loop(&mut cfg, &wf);
+    let phase_a = run_phase_a_loop_v2(&mut cfg, &wf);
     let last_cycle = phase_a.cycles.last().unwrap();
     // Need both pre- and post-erosion HD to compute per-cell devs.
     // The current run_phase_b returns only the post-erosion + the

@@ -1,6 +1,6 @@
 //! Phase A — low-res loop orchestration.
 //!
-//! `run_phase_a_cycle` chains the 5-step single-cycle pipeline:
+//! `run_phase_a_cycle_v2` chains the 5-step single-cycle pipeline:
 //!
 //! 1. **Tectonic** — `run_baseline(cfg)`; the cfg may carry a
 //!    [`ContinuationState`] for cycle-to-cycle warm-start (D3).
@@ -39,7 +39,7 @@
 //! `v2_workflow_disabled_regression::workflow_disabled_run_phase_a_cycle_is_bit_identical_to_run_baseline`
 //! pins this contract byte-for-byte.
 
-use super::{macro_redistribution, CycleOutput, CycleOutputCommon, PhaseAOutput, WorkflowConfig};
+use super::{macro_redistribution, CycleOutputV2, CycleOutputCommon, PhaseAOutputV2, WorkflowConfig};
 use crate::tectonics::isostasy::IsostasyConfig;
 use crate::tectonics_v2::boundaries::{PlateType, PlateTypeField};
 use crate::tectonics_v2::cratonic::factor::build_cratonic_factor_field;
@@ -51,24 +51,24 @@ use crate::tectonics_v2::field::Field2D;
 use crate::tectonics_v2::voronoi::{PlateIdField, VoronoiPlates};
 
 /// Run a single Phase A cycle. Thin wrapper over
-/// [`run_phase_a_cycle_with_progress`] with a no-op callback that
+/// [`run_phase_a_cycle_with_progress_v2`] with a no-op callback that
 /// never aborts, preserving the bit-identical regression contract
 /// (acceptance #15) byte-for-byte: `run_baseline_with_progress(cfg,
 /// |_| true)` is itself a wrapper over `run_baseline` from Step 8.6
 /// follow-up, so the call chain reduces to the same primitive.
 ///
 /// `Disabled` → direct `run_baseline(cfg)` passthrough wrapped in a
-/// [`CycleOutput`] with all extra scalars at zero/`None`.
+/// [`CycleOutputV2`] with all extra scalars at zero/`None`.
 ///
 /// `Enabled(params)` → 5-step pipeline (tectonic → isostasy → erosion →
 /// reclassify → recompute craton). Returns the post-cycle state
 /// suitable for cycle-to-cycle continuation via
-/// [`final_state_to_continuation`].
-pub fn run_phase_a_cycle(cfg: &BaselineConfig, wf: &WorkflowConfig) -> CycleOutput {
-    run_phase_a_cycle_with_progress(cfg, wf, |_| true)
+/// [`final_state_to_continuation_v2`].
+pub fn run_phase_a_cycle_v2(cfg: &BaselineConfig, wf: &WorkflowConfig) -> CycleOutputV2 {
+    run_phase_a_cycle_with_progress_v2(cfg, wf, |_| true)
 }
 
-/// Streaming variant of [`run_phase_a_cycle`]. The callback fires
+/// Streaming variant of [`run_phase_a_cycle_v2`]. The callback fires
 /// once per completed harness step inside the cycle's tectonic
 /// sub-phase (steps 1 of the 5-step pipeline); returning `false`
 /// requests a graceful abort of the harness step loop. Same
@@ -78,24 +78,24 @@ pub fn run_phase_a_cycle(cfg: &BaselineConfig, wf: &WorkflowConfig) -> CycleOutp
 /// Added in Step 12 follow-up so the v2 bridge can stream per-step
 /// `V2Event::Progress` to the metrics dashboard during Phase A
 /// (the dashboard previously froze between `WorkflowCycleCompleted`
-/// events because `run_phase_a_cycle` invoked `run_baseline` —
+/// events because `run_phase_a_cycle_v2` invoked `run_baseline` —
 /// the `|_| true` callback wrapper — with no streaming hook). The
 /// post-tectonic substeps (isostasy, erosion, reclassify, craton
 /// recompute) are not currently streamed; they're sub-second on
 /// 64² mantle-on, so a single "cycle progress" tick is the
 /// pragmatic granularity.
-pub fn run_phase_a_cycle_with_progress<F>(
+pub fn run_phase_a_cycle_with_progress_v2<F>(
     cfg: &BaselineConfig,
     wf: &WorkflowConfig,
     on_progress: F,
-) -> CycleOutput
+) -> CycleOutputV2
 where
     F: FnMut(&StepProgress<'_>) -> bool,
 {
     match wf {
         WorkflowConfig::Disabled => {
             let baseline = run_baseline_with_progress(cfg, on_progress);
-            CycleOutput {
+            CycleOutputV2 {
                 baseline,
                 common: CycleOutputCommon::default(),
             }
@@ -245,7 +245,7 @@ where
                 }
             }
 
-            CycleOutput {
+            CycleOutputV2 {
                 baseline,
                 common: CycleOutputCommon {
                     erosion_volume_removed: stats.total_eroded,
@@ -269,7 +269,7 @@ where
 ///
 /// `Enabled(params)` → loop `params.phase_a.n_cycles` cycles. After
 /// each cycle (except the last) the loop sets
-/// `cfg.continuation = Some(final_state_to_continuation(...))` so the
+/// `cfg.continuation = Some(final_state_to_continuation_v2(...))` so the
 /// next cycle's `run_baseline` warm-starts from the prior cycle's
 /// post-erosion state. The S̃ field, velocity, age and cratonic
 /// factor all thread through (D3 contract pinned by
@@ -279,27 +279,27 @@ where
 /// The convention is to set `cfg.steps = params.phase_a.k_cycle`
 /// before calling, but the loop does not enforce this — the two are
 /// independently configurable.
-pub fn run_phase_a_loop(cfg: &mut BaselineConfig, wf: &WorkflowConfig) -> PhaseAOutput {
+pub fn run_phase_a_loop_v2(cfg: &mut BaselineConfig, wf: &WorkflowConfig) -> PhaseAOutputV2 {
     match wf {
         WorkflowConfig::Disabled => {
-            let cycle = run_phase_a_cycle(cfg, wf);
-            PhaseAOutput { cycles: vec![cycle] }
+            let cycle = run_phase_a_cycle_v2(cfg, wf);
+            PhaseAOutputV2 { cycles: vec![cycle] }
         }
         WorkflowConfig::Enabled(params) => {
             let n_cycles = params.phase_a.n_cycles.max(1);
-            let mut cycles: Vec<CycleOutput> = Vec::with_capacity(n_cycles);
+            let mut cycles: Vec<CycleOutputV2> = Vec::with_capacity(n_cycles);
             for cycle_idx in 0..n_cycles {
-                let cycle = run_phase_a_cycle(cfg, wf);
+                let cycle = run_phase_a_cycle_v2(cfg, wf);
                 // Set up the next cycle's warm-start *before* moving
                 // `cycle` into the output vec. Skip the last cycle:
                 // there is no next cycle to warm-start.
                 if cycle_idx + 1 < n_cycles {
                     cfg.continuation =
-                        Some(final_state_to_continuation(&cycle.baseline.final_state));
+                        Some(final_state_to_continuation_v2(&cycle.baseline.final_state));
                 }
                 cycles.push(cycle);
             }
-            PhaseAOutput { cycles }
+            PhaseAOutputV2 { cycles }
         }
     }
 }
@@ -316,7 +316,7 @@ pub fn run_phase_a_loop(cfg: &mut BaselineConfig, wf: &WorkflowConfig) -> PhaseA
 /// D3 contract: cycle `N+1` step 1 should produce a peak|v| within
 /// 10 % of cycle `N` step `k_cycle` — pinned by the
 /// `v2_workflow_continuation_no_transient` test.
-pub fn final_state_to_continuation(fs: &FinalState) -> ContinuationState {
+pub fn final_state_to_continuation_v2(fs: &FinalState) -> ContinuationState {
     ContinuationState {
         s: fs.s_field.clone(),
         vx: fs.vx.clone(),

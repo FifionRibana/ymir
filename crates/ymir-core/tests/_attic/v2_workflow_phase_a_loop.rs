@@ -32,7 +32,7 @@ use ymir_core::tectonics_v2::scales::Scales;
 use ymir_core::tectonics_v2::slab::SlabPullConfig;
 use ymir_core::tectonics_v2::voronoi::VoronoiConfig;
 use ymir_core::tectonics_v2::workflow::{
-    run_phase_a_loop, PhaseAParams, WorkflowConfig, WorkflowParams,
+    run_phase_a_loop_v2, PhaseAParams, WorkflowConfig, WorkflowParams,
 };
 
 fn build_phase4_config(grid_size: usize, k_cycle: usize, scratch: &str) -> BaselineConfig {
@@ -99,7 +99,7 @@ fn run_5cycle_integration(grid_size: usize, scratch: &str) {
         phase_b: Default::default(),
     });
 
-    let output = run_phase_a_loop(&mut cfg, &wf);
+    let output = run_phase_a_loop_v2(&mut cfg, &wf);
     assert_eq!(output.cycles.len(), 5, "expected 5 cycles");
 
     // Continuation chained — by the second cycle on, cfg.continuation
