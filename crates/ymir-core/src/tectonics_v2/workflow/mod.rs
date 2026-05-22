@@ -34,6 +34,7 @@
 
 pub mod drainage;
 pub mod macro_redistribution;
+pub mod phase_a_common;
 
 // Issue #117 HC4 / Phase 1.3 H2 — Phase A's v2 path
 // (`run_phase_a_cycle_v2`) couples to the retired harness; gated
