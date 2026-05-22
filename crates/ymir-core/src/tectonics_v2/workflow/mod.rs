@@ -38,13 +38,14 @@ pub mod phase_a_common;
 
 // Issue #117 HC4 / Phase 1.3 H2 — Phase A's v2 path
 // (`run_phase_a_cycle_v2`) couples to the retired harness; gated
-// under `v2_legacy`. The C1 path (`run_phase_a_cycle_c1`, Commit 4
-// of H2) is default-features-on. Phase B is paradigm-agnostic at
-// runtime (consumes `Field2D + sea_level + iso_config`, no
+// under `v2_legacy`. The C1 path (`run_phase_a_cycle_c1`) is
+// default-features-on. Phase B is paradigm-agnostic at runtime
+// (consumes `Field2D + sea_level + iso_config`, no
 // `BaselineResult`); H1 audit § 2.2 confirmed it is safe to un-gate.
 // See `docs/migrations/harness_paradigm_agnostic.md`.
 #[cfg(feature = "v2_legacy")]
 pub mod phase_a_v2;
+pub mod phase_a_c1;
 pub mod phase_b;
 
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,7 @@ pub use phase_a_v2::{
     final_state_to_continuation_v2, run_phase_a_cycle_v2, run_phase_a_cycle_with_progress_v2,
     run_phase_a_loop_v2,
 };
+pub use phase_a_c1::{run_phase_a_cycle_c1, PhaseACycleInputC1, PhaseACycleOutputC1};
 pub use phase_b::run_phase_b;
 
 /// Top-level workflow on/off switch.
