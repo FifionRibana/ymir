@@ -1,8 +1,9 @@
 //! Per-time-step application of the equilibrium height closure.
 //!
-//! See the parent module ([`super`]) for the physics derivation,
-//! the global-cell application rationale, and the interaction
-//! with Phase 1.2's Davis-Suppe imprint.
+//! See the parent module ([`super`]) for the physics derivation
+//! (quadratic per Molnar & Lyon-Caen 1988 eq. 2), the global-cell
+//! application rationale, and the interaction with Phase 1.2's
+//! Davis-Suppe imprint.
 
 use crate::tectonics_v2::field::Field2D;
 
@@ -14,11 +15,13 @@ use super::params::EquilibriumHeightParams;
 /// For each cell `c`:
 ///
 /// ```text
-///     S̃_new(c) = S̃(c) − k_collapse · max(0, S̃(c) − h_eq) · dt
+///     S̃_new(c) = S̃(c) − k_collapse · max(0, S̃(c) − h_eq)² · dt
 /// ```
 ///
 /// with a defensive clamp at `h_eq` (see the in-function comment
-/// for why this is non-physical safety, not part of the model).
+/// for why this triggers as part of the *intended* threshold
+/// behavior for large-excess cells, and is non-physical safety
+/// for the small-excess regime).
 ///
 /// Unlike
 /// [`super::super::davis_suppe::source_term::apply_davis_suppe_step`],
@@ -33,7 +36,8 @@ use super::params::EquilibriumHeightParams;
 /// - `s`: mutable `S̃` field, updated in place
 /// - `params`: closure tunables (see
 ///   [`EquilibriumHeightParams`])
-/// - `dt`: time step in the same units as `1 / k_collapse`
+/// - `dt`: time step in the same units as `1 / (k_collapse ·
+///   length)`
 pub fn apply_equilibrium_height_step(
     s: &mut Field2D,
     params: &EquilibriumHeightParams,
@@ -53,10 +57,15 @@ pub fn apply_equilibrium_height_step(
             if excess <= 0.0 {
                 continue;
             }
-            let mut s_new = s_now - k_collapse * excess * dt;
-            // Safety clamp: prevent undershoot of h_eq if k_collapse · dt > 1
-            // This is defensive (not physically meaningful) — in normal
-            // operation k_collapse · dt << 1.
+            let mut s_new = s_now - k_collapse * excess.powi(2) * dt;
+            // Safety clamp: prevent undershoot of h_eq.
+            // For the quadratic formula this is the intended
+            // threshold behavior on large-excess cells (k · excess²
+            // · dt > excess when k · excess · dt > 1), where one
+            // step caps the cell at h_eq.
+            // For small-excess wedge cells (k · excess · dt « 1)
+            // the clamp never triggers and the formula evolves
+            // smoothly.
             if s_new < h_eq {
                 s_new = h_eq;
             }
@@ -103,17 +112,19 @@ mod tests {
 
     #[test]
     fn collapse_above_h_eq() {
-        // S̃ = 3.0, h_eq = 2.0, k_collapse = 1.0, dt = 0.1
-        //   excess    = 1.0
-        //   decrement = 1.0 · 1.0 · 0.1 = 0.1
-        //   S̃_new    = 3.0 - 0.1 = 2.9
-        // k_collapse · dt = 0.1 « 1 → clamp inactive, exact formula.
+        // Quadratic formula sanity check with the post-E1.bis
+        // defaults (k_collapse = 2.0):
+        //   excess     = 1.0
+        //   decrement  = 2.0 · 1.0² · 0.1 = 0.2
+        //   S̃_new     = 3.0 - 0.2 = 2.8
+        // k · excess · dt = 0.2 « 1 → clamp inactive, exact
+        // quadratic formula.
         let params = EquilibriumHeightParams::default();
         let initial = 3.0;
         let dt = 0.1;
         let mut s = fill_with(4, 4, initial);
         apply_equilibrium_height_step(&mut s, &params, dt);
-        let expected = initial - params.k_collapse * (initial - params.h_eq) * dt;
+        let expected = initial - params.k_collapse * (initial - params.h_eq).powi(2) * dt;
         for j in 0..s.ny() {
             for i in 0..s.nx() {
                 let got = s.get(i, j);
@@ -177,18 +188,23 @@ mod tests {
     #[test]
     fn never_undershoots_h_eq() {
         // Pathological k_collapse · dt = 100 — without the safety
-        // clamp this would predict S̃_new = 3 - 100 · (3-2) = -97.
+        // clamp the quadratic formula would predict
+        //   S̃_new = 3 − 100 · (3 − 2)² · 1 = 3 − 100 = −97.
         // The clamp must hold S̃_new at h_eq = 2.
         //
-        // This test locks the *defensive* clamp; in normal use
-        // k_collapse · dt « 1 and the clamp never triggers.
+        // This test locks the *defensive / threshold* clamp; in
+        // normal use on small-excess wedge cells `k · excess · dt
+        // « 1` and the clamp never triggers. On large-excess
+        // boundary outliers the clamp triggering is the intended
+        // one-step cap (see module docstring).
         let params = EquilibriumHeightParams {
             k_collapse: 100.0,
             ..EquilibriumHeightParams::default()
         };
         let initial = 3.0;
         let dt = 1.0;
-        let predicted_unclamped = initial - params.k_collapse * (initial - params.h_eq) * dt;
+        let predicted_unclamped =
+            initial - params.k_collapse * (initial - params.h_eq).powi(2) * dt;
         assert!(
             predicted_unclamped < params.h_eq,
             "test premise: unclamped prediction must undershoot h_eq (got {predicted_unclamped})"

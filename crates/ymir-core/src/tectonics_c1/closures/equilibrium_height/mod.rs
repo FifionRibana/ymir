@@ -3,24 +3,63 @@
 //!
 //! ## Physics in one paragraph
 //!
-//! Per Molnar & Lyon-Caen 1988, *J. Geophys. Res.* 93(B5), 4885-4923
-//! and England & Houseman 1989, *J. Geophys. Res.* 94(B12), 17561-
-//! 17579: a thickened continental lithosphere stores gravitational
-//! potential energy proportional to the thickness excess above some
-//! equilibrium value `h_eq`. Above that threshold, the gravitational
-//! body force becomes large enough to drive ductile extension /
-//! gravitational collapse, capping the elevated wedge at the
-//! equilibrium height. The closure approximates this as a linear
-//! one-sided relaxation:
+//! Per Molnar & Lyon-Caen 1988, *Geological Society of America
+//! Special Papers* 218, 179-208 and England & Houseman 1989,
+//! *J. Geophys. Res.* 94(B12), 17561-17579: a thickened
+//! continental lithosphere stores gravitational potential energy
+//! quadratically in the thickness excess above some equilibrium
+//! value `h_eq`. Above that threshold, the gravitational body
+//! force drives ductile extension / gravitational collapse,
+//! capping the elevated wedge. The closure approximates this as
+//! a quadratic one-sided relaxation:
 //!
 //! ```text
-//!     ∂S̃/∂t = − k_collapse · max(0, S̃ − h_eq)
+//!     ∂S̃/∂t = − k_collapse · max(0, S̃ − h_eq)²
 //! ```
 //!
 //! The `max(0, ·)` makes the closure **asymmetric**: cells above
 //! `h_eq` collapse toward it, cells below are untouched (no thin-
 //! lithosphere "lift"). The asymmetry is what makes this term a
-//! pure sink — never a source.
+//! pure sink — never a source. The squared excess implements a
+//! soft threshold (see § Formula derivation).
+//!
+//! ## Formula derivation
+//!
+//! Per Molnar & Lyon-Caen 1988, GSA Spec. Paper 218, eq. (2):
+//!
+//! ```text
+//!     ΔPE_A = ½ρ_c·g·h² + ρ_c·g·h·H_0 + ½·Δρ·g·ΔH²
+//! ```
+//!
+//! The gravitational potential energy excess is **quadratic** in
+//! the excess thickness `ΔH`. Our sink term derives from this:
+//!
+//! ```text
+//!     ∂S̃/∂t |_equilibrium = − k_collapse · max(0, S̃ − h_eq)²
+//! ```
+//!
+//! Quadratic dependence implements threshold behavior:
+//!
+//! - **Small excess** → weak collapse (preserves the Davis-Suppe
+//!   wedge body where excess above `h_eq` is < 1 or so).
+//! - **Large excess** → strong collapse (caps boundary outliers,
+//!   advection pile-up cells where excess can reach `≈ 2 × 10³`
+//!   in the Phase 1.2 regime). One step is enough — the safety
+//!   clamp in [`source_term`] catches the overshoot and holds the
+//!   cell at `h_eq`.
+//!
+//! ## Parameter `h_eq = 2.0` (phenomenological)
+//!
+//! Corresponds to the observed Tibet crustal-thickness ratio
+//! (~70 km plateau crust vs ~35 km normal continental crust →
+//! ratio ≈ 2). This is **not** a rigorous "equilibrium height"
+//! derivation; Molnar & Lyon-Caen 1988 itself defines a critical
+//! thickness `S_c ≈ 50-60 km` (ratio 1.43-1.71) above which
+//! convective removal of the mantle lithosphere is the active
+//! mechanism — a more complex two-layer instability than this
+//! single-field linear sink. We adopt `h_eq = 2.0` as a tunable
+//! target consistent with observed plateau elevation limits, not
+//! as a derived equilibrium value.
 //!
 //! ## Differences from Davis-Suppe
 //!
@@ -33,12 +72,13 @@
 //! - **First global sink in C1.** Davis-Suppe is source-only;
 //!   equilibrium height is the first closure that subtracts mass.
 //!   Phase 1.4's stream-power erosion will be the second.
-//! - **Bounded contribution.** For `k_collapse · dt ≤ 1` the per-
-//!   step decrement is a convex combination of `S̃_old` and `h_eq`
-//!   → no undershoot. The [`source_term`] module ships a defensive
-//!   clamp that protects against pathological time steps; see
-//!   [`source_term::apply_equilibrium_height_step`] for the in-
-//!   function comment explaining when the clamp triggers.
+//! - **Bounded by clamp, not by linearity.** With the quadratic
+//!   form, the per-step decrement `k_collapse · excess² · dt` can
+//!   exceed `excess` for large `excess`; the safety clamp in
+//!   [`source_term`] holds the cell at `h_eq` in that case. This
+//!   is the intended threshold behavior — see
+//!   [`source_term::apply_equilibrium_height_step`] for the
+//!   in-function comment.
 //!
 //! ## Interaction with Phase 1.2 Davis-Suppe imprint
 //!
@@ -50,8 +90,8 @@
 //! | `mean(S̃)`              | 1.574  | below — untouched            |
 //! | `wedge_p95`             | 0.376  | below — untouched            |
 //! | `mean(d∈0..5)` (near)   | 0.904  | below — untouched            |
-//! | `wedge_p99`             | 5.83   | above — collapsed to `h_eq`  |
-//! | `global_max` (boundary) | 2297   | above — collapsed to `h_eq`  |
+//! | `wedge_p99`             | 5.83   | above — clamped to `h_eq`    |
+//! | `global_max` (boundary) | 2297   | above — clamped to `h_eq`    |
 //!
 //! The bulk wedge body (where the Davis-Suppe fill-ratio profile
 //! sits) is preserved; only the sparse boundary pile-up tail is
@@ -61,7 +101,7 @@
 //! ## Module layout
 //!
 //! - [`params`] — [`params::EquilibriumHeightParams`] tunables
-//!   (`h_eq = 2.0`, `k_collapse = 1.0`, `enabled = true`).
+//!   (`h_eq = 2.0`, `k_collapse = 2.0`, `enabled = true`).
 //! - [`source_term`] — [`source_term::apply_equilibrium_height_step`],
 //!   the per-step in-place collapse plus 5 unit tests.
 //!
