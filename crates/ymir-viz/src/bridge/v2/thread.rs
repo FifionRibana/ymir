@@ -18,7 +18,7 @@ use ymir_core::tectonics_v2::diagnostics::harness::{
 };
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::workflow::{
-    final_state_to_continuation, run_phase_a_cycle_with_progress, run_phase_b, WorkflowConfig,
+    final_state_to_continuation_v2, run_phase_a_cycle_with_progress_v2, run_phase_b, WorkflowConfig,
 };
 
 use super::build_config;
@@ -186,7 +186,7 @@ pub fn spawn_v2_thread(
                             // milliseconds.
                             let tx_progress = events_tx.clone();
                             let cancel_for_callback = cancel.clone();
-                            let cycle_output = run_phase_a_cycle_with_progress(
+                            let cycle_output = run_phase_a_cycle_with_progress_v2(
                                 &cfg,
                                 &workflow_cfg,
                                 |progress| {
@@ -208,15 +208,16 @@ pub fn spawn_v2_thread(
                                 cycle_idx,
                                 n_cycles,
                                 peek_state: peek_state.clone(),
-                                erosion_volume_removed: cycle_output.erosion_volume_removed,
-                                sea_level_normalized: cycle_output.sea_level_normalized,
-                                mass_drift: cycle_output.mass_drift,
+                                erosion_volume_removed: cycle_output.common.erosion_volume_removed,
+                                sea_level_normalized: cycle_output.common.sea_level_normalized,
+                                mass_drift: cycle_output.common.mass_drift,
                                 craton_recomputation_change: cycle_output
+                                    .common
                                     .craton_recomputation_change,
                             });
 
                             if cycle_idx + 1 < n_cycles {
-                                cfg.continuation = Some(final_state_to_continuation(
+                                cfg.continuation = Some(final_state_to_continuation_v2(
                                     &cycle_output.baseline.final_state,
                                 ));
                             }
@@ -291,7 +292,7 @@ pub fn spawn_v2_thread(
                             // milliseconds.
                             let tx_progress = events_tx.clone();
                             let cancel_for_callback = cancel.clone();
-                            let cycle_output = run_phase_a_cycle_with_progress(
+                            let cycle_output = run_phase_a_cycle_with_progress_v2(
                                 &cfg,
                                 &workflow_cfg,
                                 |progress| {
@@ -313,15 +314,16 @@ pub fn spawn_v2_thread(
                                 cycle_idx,
                                 n_cycles,
                                 peek_state: peek_state.clone(),
-                                erosion_volume_removed: cycle_output.erosion_volume_removed,
-                                sea_level_normalized: cycle_output.sea_level_normalized,
-                                mass_drift: cycle_output.mass_drift,
+                                erosion_volume_removed: cycle_output.common.erosion_volume_removed,
+                                sea_level_normalized: cycle_output.common.sea_level_normalized,
+                                mass_drift: cycle_output.common.mass_drift,
                                 craton_recomputation_change: cycle_output
+                                    .common
                                     .craton_recomputation_change,
                             });
 
                             if cycle_idx + 1 < n_cycles {
-                                cfg.continuation = Some(final_state_to_continuation(
+                                cfg.continuation = Some(final_state_to_continuation_v2(
                                     &cycle_output.baseline.final_state,
                                 ));
                             }
