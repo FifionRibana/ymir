@@ -55,7 +55,7 @@ use ymir_core::tectonics_v2::scales::Scales;
 use ymir_core::tectonics_v2::slab::SlabPullConfig;
 use ymir_core::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
 use ymir_core::tectonics_v2::workflow::{
-    run_phase_a_loop, run_phase_b, PhaseAParams, PhaseBParams, WorkflowConfig, WorkflowParams,
+    run_phase_a_loop_v2, run_phase_b, PhaseAParams, PhaseBParams, WorkflowConfig, WorkflowParams,
 };
 
 const NX: usize = 32;
@@ -196,7 +196,7 @@ fn dump_step12_phase_a_evolution_galerie() {
             phase_a: PhaseAParams { n_cycles: N_CYCLES, k_cycle: K_CYCLE, alpha: ALPHA, beta: 0.0 },
             phase_b: Default::default(),
         });
-        let phase_a = run_phase_a_loop(&mut cfg, &wf);
+        let phase_a = run_phase_a_loop_v2(&mut cfg, &wf);
 
         // Per-cycle metrics
         report_lines.push(format!("## Preset: {}", preset.label));
@@ -217,11 +217,11 @@ fn dump_step12_phase_a_evolution_galerie() {
                 .iter()
                 .copied()
                 .fold(f64::NEG_INFINITY, f64::max);
-            cum_drift += c.mass_drift;
-            let craton = c.craton_recomputation_change.map_or("—".to_string(), |v| format!("{v:.4}"));
+            cum_drift += c.common.mass_drift;
+            let craton = c.common.craton_recomputation_change.map_or("—".to_string(), |v| format!("{v:.4}"));
             report_lines.push(format!(
                 "| {i} | {peak_s:.4} | {:+.5} | {:.5} | {:.4} | {craton} |",
-                c.mass_drift, c.erosion_volume_removed, c.sea_level_normalized
+                c.common.mass_drift, c.common.erosion_volume_removed, c.common.sea_level_normalized
             ));
         }
         report_lines.push(format!("  Cumulative mass drift over {N_CYCLES} cycles: {cum_drift:+.5}"));
@@ -304,7 +304,7 @@ fn dump_step12_phase_b_hd_zoom() {
             ..PhaseBParams::default()
         },
     });
-    let phase_a = run_phase_a_loop(&mut cfg, &wf);
+    let phase_a = run_phase_a_loop_v2(&mut cfg, &wf);
     let last_cycle = phase_a.cycles.last().unwrap();
     let phase_b = run_phase_b(&last_cycle.baseline.final_state.s_field, &wf, cfg.seed)
         .expect("Phase B output");
@@ -606,12 +606,12 @@ fn dump_step12_phase_6_64sq_full() {
         tiles.push((format!("{}_before", preset.label), init_s));
 
         // Phase A loop with per-cycle wallclock timing. The
-        // run_phase_a_loop API doesn't expose per-cycle hooks, so we
+        // run_phase_a_loop_v2 API doesn't expose per-cycle hooks, so we
         // measure total + estimate per-cycle as total / n_cycles.
         // (A finer per-cycle measurement would need a streaming
         // variant; that's a Phase 7+ refinement.)
         let phase_a_start = Instant::now();
-        let phase_a = run_phase_a_loop(&mut cfg, &wf);
+        let phase_a = run_phase_a_loop_v2(&mut cfg, &wf);
         let phase_a_elapsed = phase_a_start.elapsed().as_secs_f64();
         let mean_per_cycle = phase_a_elapsed / N_CYCLES as f64;
 
@@ -625,7 +625,7 @@ fn dump_step12_phase_6_64sq_full() {
         let phase_b_elapsed = phase_b_start.elapsed().as_secs_f64();
 
         // Cumulative mass drift over Phase A.
-        let cum_drift: f64 = phase_a.cycles.iter().map(|c| c.mass_drift).sum();
+        let cum_drift: f64 = phase_a.cycles.iter().map(|c| c.common.mass_drift).sum();
         let initial_mass_estimate =
             ((preset.continental_ratio + (1.0 - preset.continental_ratio) * 0.2) as f64)
                 * (nx * ny) as f64; // continental ≈ 1.0, oceanic ≈ 0.2
@@ -795,7 +795,7 @@ fn dump_step12_phase_6_aggressive_demo() {
         tiles.push((format!("{}_before", preset.label), init_s));
 
         let phase_a_start = Instant::now();
-        let phase_a = run_phase_a_loop(&mut cfg, &wf);
+        let phase_a = run_phase_a_loop_v2(&mut cfg, &wf);
         let phase_a_elapsed = phase_a_start.elapsed().as_secs_f64();
 
         let last = phase_a.cycles.last().unwrap();
@@ -807,7 +807,7 @@ fn dump_step12_phase_6_aggressive_demo() {
         let phase_b_elapsed = phase_b_start.elapsed().as_secs_f64();
 
         // Aggregate metrics.
-        let cum_drift: f64 = phase_a.cycles.iter().map(|c| c.mass_drift).sum();
+        let cum_drift: f64 = phase_a.cycles.iter().map(|c| c.common.mass_drift).sum();
         let initial_mass_estimate =
             ((preset.continental_ratio + (1.0 - preset.continental_ratio) * 0.2) as f64)
                 * (64.0 * 64.0);
@@ -1042,7 +1042,7 @@ fn run_custom_phase_a_loop(
     alpha_field: &Field2D,
     beta: f64,
 ) -> (Field2D, Vec<f64>) {
-    use ymir_core::tectonics_v2::workflow::final_state_to_continuation;
+    use ymir_core::tectonics_v2::workflow::final_state_to_continuation_v2;
     let mut drifts = Vec::with_capacity(n_cycles);
     let mut last_s: Option<Field2D> = None;
     for cycle_idx in 0..n_cycles {
@@ -1065,7 +1065,7 @@ fn run_custom_phase_a_loop(
         drifts.push(mass_after - mass_before);
         last_s = Some(baseline.final_state.s_field.clone());
         if cycle_idx + 1 < n_cycles {
-            cfg.continuation = Some(final_state_to_continuation(&baseline.final_state));
+            cfg.continuation = Some(final_state_to_continuation_v2(&baseline.final_state));
         }
     }
     (last_s.unwrap(), drifts)
@@ -1153,9 +1153,9 @@ fn dump_step12_phase_6_curvature_variants() {
                 } else {
                     wf
                 };
-                let phase_a = run_phase_a_loop(&mut cfg, &wf_b);
+                let phase_a = run_phase_a_loop_v2(&mut cfg, &wf_b);
                 let last = phase_a.cycles.last().unwrap();
-                cum_drift = phase_a.cycles.iter().map(|c| c.mass_drift).sum();
+                cum_drift = phase_a.cycles.iter().map(|c| c.common.mass_drift).sum();
                 after_s = last.baseline.final_state.s_field.clone();
             }
             let preset_elapsed = preset_t.elapsed().as_secs_f64();

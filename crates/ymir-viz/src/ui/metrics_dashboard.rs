@@ -77,7 +77,7 @@ pub fn draw(ui: &mut egui::Ui, bridge: &V2SolverBridge, viz: &V2VizState) {
             // "Running". `cycle_context` distinguishes a Phase A
             // workflow run from a single-baseline run; for Phase A
             // we lean on the cycle counter instead of the harness
-            // step counter because `run_phase_a_cycle` does not
+            // step counter because `run_phase_a_cycle_v2` does not
             // currently stream per-step Progress events.
             let activity = match (
                 cycle_context,

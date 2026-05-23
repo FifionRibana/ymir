@@ -386,11 +386,38 @@ Audited: these are small utility modules.
 
 No issue; these were just absent from both lists. Implicit "preserved".
 
-### HC4 — `workflow/` sub-files
+### HC4 — `workflow/` sub-files (RESOLVED by Phase 1.3 H2, Issue #125)
+
+**Resolution status: RESOLVED.** Phase 1.3 H2 (Issue #125) shipped
+the paradigm-agnostic workflow refactor on 2026-05-22 via 5 commits
+on branch `125-c1-phase-13-equilibrium-height-closure-harness-paradigm-agnostic-refactor`.
+Two-separate-functions approach (Option B), not trait abstraction.
+See [`harness_paradigm_agnostic.md`](./harness_paradigm_agnostic.md)
+for the full audit and § 12 of that doc for the implementation
+record (SHAs `11c53b6` → `6ef32a0`).
+
+Key outcomes:
+
+- `workflow/phase_a.rs` was renamed to `phase_a_v2.rs` and stays
+  gated under `v2_legacy`. A sibling `phase_a_c1.rs`
+  (default-features-on) drives the C1 paradigm via
+  `tectonics_c1::time_loop::run_with_closures`.
+- `workflow/phase_b.rs` had its `v2_legacy` gate dropped — Phase B
+  was already paradigm-agnostic at runtime (consumes `Field2D +
+  sea_level + iso_config`, no `BaselineResult`).
+- A shared `workflow/phase_a_common.rs` carries the paradigm-
+  agnostic post-tectonic pass (sea-level → macro-redistribution
+  → reclassification → cratonic recompute) consumed by both
+  paradigm-specific Phase A entries.
+- 58 / 58 regression tests PASS across both feature flags,
+  including a bit-identical decomposition contract on the C1
+  path that matches v2's bit-identical Disabled contract.
+
+### HC4 (original audit — historical record)
 
 §4.8 lists `tectonics_v2/workflow/*` as preserved. But the workflow's `phase_a.rs` calls `harness::run_baseline_with_progress`, which is retired. **The workflow orchestrator is conserve-architecturally but cannot execute without `v2_legacy`** until C1 provides its own per-cycle tectonic runner.
 
-**Recommendation:** add to the migration doc a note that the workflow shell is paradigm-agnostic *by design* but currently couples to v2 at run-time. C1 Phase 1.3+ (§7 C1.md) is where the shell becomes truly paradigm-portable. For the migration itself, gate `workflow/phase_a.rs` (and likely `phase_b.rs` if it consumes via harness too) and let C1 reintroduce a paradigm-agnostic form when the tectonic_c1 runner exists.
+**Recommendation (since acted on):** add to the migration doc a note that the workflow shell is paradigm-agnostic *by design* but currently couples to v2 at run-time. C1 Phase 1.3+ (§7 C1.md) is where the shell becomes truly paradigm-portable. For the migration itself, gate `workflow/phase_a.rs` (and likely `phase_b.rs` if it consumes via harness too) and let C1 reintroduce a paradigm-agnostic form when the tectonic_c1 runner exists.
 
 ---
 

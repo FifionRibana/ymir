@@ -36,7 +36,7 @@ use ymir_core::tectonics_v2::scales::Scales;
 use ymir_core::tectonics_v2::slab::SlabPullConfig;
 use ymir_core::tectonics_v2::voronoi::VoronoiConfig;
 use ymir_core::tectonics_v2::workflow::{
-    final_state_to_continuation, run_phase_a_cycle, PhaseAParams, WorkflowConfig, WorkflowParams,
+    final_state_to_continuation_v2, run_phase_a_cycle_v2, PhaseAParams, WorkflowConfig, WorkflowParams,
 };
 
 fn build_minimal_cycle_config(steps: usize, scratch: &str) -> BaselineConfig {
@@ -119,7 +119,7 @@ fn v2_workflow_continuation_no_transient() {
 
     // Cycle 1 cold start, 5 steps.
     let cfg_1 = build_minimal_cycle_config(5, "cycle_1");
-    let cycle_1 = run_phase_a_cycle(&cfg_1, &wf);
+    let cycle_1 = run_phase_a_cycle_v2(&cfg_1, &wf);
     let vmax_1 = cycle_1.baseline.metrics.vmax_peak;
     assert!(
         vmax_1 > 0.0,
@@ -132,8 +132,8 @@ fn v2_workflow_continuation_no_transient() {
     // would either spike (transient) or dip (re-ramping) by far
     // more than 10%.
     let mut cfg_2 = build_minimal_cycle_config(1, "cycle_2");
-    cfg_2.continuation = Some(final_state_to_continuation(&cycle_1.baseline.final_state));
-    let cycle_2 = run_phase_a_cycle(&cfg_2, &wf);
+    cfg_2.continuation = Some(final_state_to_continuation_v2(&cycle_1.baseline.final_state));
+    let cycle_2 = run_phase_a_cycle_v2(&cfg_2, &wf);
     let vmax_2 = cycle_2.baseline.metrics.vmax_peak;
 
     let rel_diff = (vmax_2 - vmax_1).abs() / vmax_1;
@@ -192,7 +192,7 @@ fn v2_workflow_cratonic_recompute_flips_eroded_plate() {
         phase_b: Default::default(),
     });
 
-    let cycle = run_phase_a_cycle(&cfg, &wf);
+    let cycle = run_phase_a_cycle_v2(&cfg, &wf);
 
     // The change metric must register > 0 — at least one plate
     // flipped. `measure_craton_change` counts cells whose factor
@@ -201,7 +201,7 @@ fn v2_workflow_cratonic_recompute_flips_eroded_plate() {
     // metric scales with the flipped plate's area-fraction of the
     // domain.
     let change = cycle
-        .craton_recomputation_change
+        .common.craton_recomputation_change
         .expect("change metric must be populated under CratonicConfig::Enabled");
     assert!(
         change > 0.0,
@@ -226,7 +226,7 @@ fn v2_workflow_cratonic_recompute_preserves_stable_craton() {
         phase_b: Default::default(),
     });
 
-    let cycle = run_phase_a_cycle(&cfg, &wf);
+    let cycle = run_phase_a_cycle_v2(&cfg, &wf);
     let new_factor = cycle
         .baseline
         .final_state
@@ -244,7 +244,7 @@ fn v2_workflow_cratonic_recompute_preserves_stable_craton() {
 
     // BFS distances unchanged → recomputed factor identical.
     let change = cycle
-        .craton_recomputation_change
+        .common.craton_recomputation_change
         .expect("craton_recomputation_change must be populated");
     assert!(
         change < 1e-12,
