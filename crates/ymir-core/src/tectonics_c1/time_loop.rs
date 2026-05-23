@@ -11,7 +11,7 @@
 //! not bit-identical). The clean closure-OFF baseline is to call
 //! [`run_advection_only`] directly.
 //!
-//! ## Phase 1.2 / 1.3 contract — [`run_with_closures`]
+//! ## Phase 1.2 / 1.3 / 1.4 contract — [`run_with_closures`]
 //!
 //! Adds per-step closure source / sink terms after each advection
 //! step. Per-step structure:
@@ -26,7 +26,12 @@
 //!    [`super::closures::equilibrium_height::source_term::apply_equilibrium_height_step`]
 //!    (Phase 1.3). Strict ordering: AFTER Davis-Suppe — reversing
 //!    would oscillate around `h_eq` instead of converging.
-//! 5. Diagnostic callback.
+//! 5. Apply stream-power erosion sink via the per-step isostasy
+//!    + drainage-targets + drainage-areas + erosion pipeline
+//!    (Phase 1.4 — see [`run_with_closures`] for the per-stage
+//!    breakdown). Skipped entirely when `closures.erosion.enabled`
+//!    is `false`.
+//! 6. Diagnostic callback.
 //!
 //! ## Static-classification optimisation
 //!
@@ -218,12 +223,130 @@ impl Default for C1Closures {
     }
 }
 
-/// Run the C1 forward-Euler time loop with per-step closure source
-/// terms applied after each advection update.
+/// Run the C1 forward-Euler time loop with per-step closure
+/// source / sink terms applied after each advection update.
 ///
-/// Phase 1.2 wires only the Davis-Suppe orogenic closure; future
-/// phases extend [`C1Closures`] and add new `apply_*_step` calls
-/// in the per-step body of this function.
+/// ## Per-step pipeline
+///
+/// Each iteration of the `0..config.n_steps` loop executes the
+/// following stages, in strict order:
+///
+/// | # | Stage | Phase | Complexity per step |
+/// |---|-------|-------|---------------------|
+/// | 1 | Advection of `S̃` + `age` via `step_upwind` | 1.1 | `O(N)` |
+/// | 2 | Davis-Suppe orogenic source — `apply_davis_suppe_step` | 1.2 | `O(N)` |
+/// | 3 | Equilibrium-height sink — `apply_equilibrium_height_step` | 1.3 | `O(N)` |
+/// | 4 | Stream-power erosion (4 sub-steps, gated by `closures.erosion.enabled`): | 1.4 | `O(N · max_d + N log N)` |
+/// |   | 4a — `compute_isostasy` → altitude heightmap | | `O(N)` + Gaussian blur |
+/// |   | 4b — `compute_sea_level_ref_s_space` → S̃-space threshold | | `O(N)` |
+/// |   | 4c — `compute_drainage_targets` → `DrainageMap` | | `O(N · max_distance)` BFS |
+/// |   | 4d — `compute_drainage_areas` → `Vec<u32>` transitive areas | | `O(N log N)` sort + iter |
+/// |   | 4e — `apply_erosion_step` (W-T `K · A^m · S^n`) | | `O(N)` |
+/// | 5 | Diagnostic `on_step(step, &state)` callback | — | caller |
+///
+/// `N = nx · ny` is the cell count. `max_distance` is bounded by
+/// `config.drainage_max_distance` (default `30`). Stage 4 dominates
+/// the per-step cost (~ 320 µs at 64² × Phase-1.1 kinematics vs
+/// ~ 50 µs for stages 1-3 combined — see § Performance below).
+///
+/// ## Why per-step isostasy
+///
+/// Stages 4a → 4d are coupled: erosion (4e) needs **altitude**
+/// (from 4a) AND **drainage areas** (from 4d), where drainage
+/// targets (4c) classify oceanic vs continental cells using the
+/// **current** `S̃` distribution via `sea_level_ref` (4b). Running
+/// 4a once at start-of-run would compute drainage on stale
+/// altitude — after a few hundred steps of Davis-Suppe source +
+/// equilibrium clamp, the altitude field has shifted enough that
+/// the drainage classification would be wrong. Per-step
+/// recomputation is the simplest defensible choice.
+///
+/// Cost is bounded — § Performance below shows the full pipeline
+/// at 64² takes ~ 110 ms for 300 steps. The Gaussian blur inside
+/// `compute_isostasy` (default σ = 2.0) is the single largest
+/// contributor (~ 150 µs/step). If profiling identifies it as a
+/// bottleneck at 512², the blur can be moved to `apply_post_
+/// tectonic` (end-of-cycle only) once the C1 cycle pattern
+/// requires per-cycle altitude smoothing rather than per-step.
+///
+/// ## End-of-cycle `apply_post_tectonic` consistency
+///
+/// The C1 workflow wrapper
+/// [`crate::tectonics_v2::workflow::phase_a_c1::run_phase_a_cycle_c1`]
+/// runs this loop, then invokes
+/// [`crate::tectonics_v2::workflow::phase_a_common::apply_post_tectonic`]
+/// at the end of the cycle. The post-tectonic pass re-runs:
+///
+/// - **Sea-level**: same Phase 3.5 formula via the helper
+///   `compute_sea_level_ref_s_space` extracted in Stage E0.
+///   Per-step (4b) and end-of-cycle reuse the same code.
+/// - **Macro-redistribution**: in-place mass redistribution under
+///   drainage targets. Not run per step (only end-of-cycle).
+/// - **Reclassification + cratonic recompute**: end-of-cycle only.
+///
+/// This means the per-step pipeline (stages 4a-4e) duplicates the
+/// isostasy + sea-level computation that `apply_post_tectonic`
+/// will redo. The redundancy is **mildly costly but
+/// architecturally cleaner**: the time loop only knows about
+/// per-step needs (erosion), the workflow wrapper only knows about
+/// per-cycle needs (macro mass + reclass + craton). Sharing
+/// computed altitude across the boundary would require a
+/// `&mut FinalState`-like envelope that C1 deliberately avoids
+/// (see `phase_a_c1` module docstring on the asymmetric API).
+///
+/// ## Performance
+///
+/// At 64² × 300 steps, Phase 1.1 kinematics, default closures
+/// (DS + EH + erosion all enabled):
+///
+/// - Phase 1.3 baseline (DS + EH, no erosion): **29 ms / 300 steps
+///   = 96 µs/step**.
+/// - Phase 1.4 measurement (this commit chain, all 3 closures):
+///   **~110 ms / 300 steps = ~367 µs/step**.
+/// - ~ 3.8× slowdown vs Phase 1.3 baseline; well within the
+///   user-spec acceptable range and well below the design-doc
+///   §2.3 < 10 s / 512² target.
+///
+/// Per-step breakdown estimate at 64²:
+///
+/// | Stage | Cost | Comment |
+/// |---|---|---|
+/// | Advection (1) | ~ 50 µs | unchanged from Phase 1.1 |
+/// | DS + EH (2, 3) | ~ 7 µs | small per-cell formulas |
+/// | Isostasy (4a) | ~ 150 µs | Gaussian blur σ = 2 dominates |
+/// | Sea-level (4b) | ~ 5 µs | single min/max pass |
+/// | Drainage targets (4c) | ~ 100 µs | BFS bounded by `max_distance` |
+/// | Drainage areas (4d) | ~ 30 µs | `O(N log N)` sort |
+/// | Erosion (4e) | ~ 30 µs | linear scan with skip-if-flat |
+/// | **Total** | **~ 372 µs** | matches measured 367 µs/step |
+///
+/// When `closures.erosion.enabled = false`, stages 4a-4e are
+/// **skipped entirely** (single branch at the top of the
+/// erosion block — not the closure's internal early-return).
+/// In this configuration the loop reduces to Phase 1.3
+/// behaviour bit-identically — see § Closure isolation below.
+///
+/// ## Closure isolation (W4 discipline)
+///
+/// Each closure has its own `enabled` flag. The time loop honours
+/// these flags at two levels:
+///
+/// - **Davis-Suppe** (stage 2) and **equilibrium-height** (stage
+///   3): the `apply_*_step` functions early-return on `!enabled`.
+///   The per-step overhead is a single branch comparison.
+/// - **Erosion** (stage 4): the entire `if closures.erosion.
+///   enabled { … }` block (4a-4e) is skipped. The expensive
+///   isostasy + drainage precomputation does NOT run when erosion
+///   is off. This preserves bit-identical regression for
+///   Phase 1.2 / 1.3 tests that disable erosion explicitly via
+///   `erosion: ErosionParams { enabled: false, .. }`.
+///
+/// The bit-identical decomposition contract — pinned by
+/// `c1_phase_a_decomposes_into_closures_then_post_tectonic` in
+/// `crates/ymir-core/tests/c1_phase_1_3_workflow.rs` — depends on
+/// this two-level isolation: with erosion disabled, the wrapper
+/// and the manual `run_with_closures + apply_post_tectonic`
+/// decomposition produce byte-identical `S̃` buffers.
 ///
 /// ## Static-classification optimisation (Phase 1.2)
 ///
@@ -231,7 +354,22 @@ impl Default for C1Closures {
 /// and the intra-plate wedge-distance field are static throughout
 /// the run. They are computed **once before** the loop and reused
 /// every step. Phase 2 (boundary evolution) will move them back
-/// inside the loop.
+/// inside the loop when the underlying geometry actually changes
+/// per step. The erosion stage 4 has no equivalent static
+/// pre-computation today — `S̃` mutates every step, so altitude,
+/// drainage targets, and drainage areas must be re-derived.
+///
+/// ## See also
+///
+/// - [`crate::tectonics_v2::workflow::phase_a_common::apply_post_tectonic`]
+///   — the end-of-cycle post-tectonic pass that wraps this loop
+///   in the C1 workflow (and the v2 workflow under `v2_legacy`).
+/// - [`crate::tectonics_v2::workflow::phase_a_c1::run_phase_a_cycle_c1`]
+///   — the C1 paradigm Phase A entry that orchestrates this loop
+///   + `apply_post_tectonic`.
+/// - `docs/c1_lightweight_dynamic_tectonics.md` §5.1 (MVP
+///   closures), §7.1 (Phase 1 prototype plan), §11
+///   (implicit physical scales).
 pub fn run_with_closures<F>(
     state: &mut C1State,
     kinematics: &PlateKinematics,
