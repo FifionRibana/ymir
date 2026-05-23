@@ -156,9 +156,12 @@ fn compute_local_slope(altitude: &GridF32, i: usize, j: usize, dx: f64) -> f64 {
 /// retained. Promote if Phase 2+ profiling identifies this as a
 /// hot path.
 ///
-/// Private until a second consumer emerges; promote to `pub`
-/// (potentially in `workflow::drainage`) if Phase 2+ needs it.
-fn compute_drainage_areas(map: &DrainageMap) -> Vec<u32> {
+/// Crate-visible (`pub(crate)`) since Phase 1.4 Stage E2: the
+/// C1 time loop consumes it to prepare the `drainage_areas`
+/// argument for [`apply_erosion_step`]. Promote to `pub`
+/// (potentially in `workflow::drainage`) if Phase 2+ needs it
+/// from outside `ymir-core`.
+pub(crate) fn compute_drainage_areas(map: &DrainageMap) -> Vec<u32> {
     let n = map.target_idx.len();
     let mut areas = vec![1u32; n];
 

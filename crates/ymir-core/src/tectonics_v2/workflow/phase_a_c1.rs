@@ -182,12 +182,14 @@ mod tests {
         let mut state = init_c1_state_phase_1_1(grid, 42);
         let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
+        let iso_config = IsostasyConfig::default();
         let time_loop_config = C1TimeLoopConfig {
             n_steps: 300,
             dx: 1.0 / grid as f64,
             dy: 1.0 / grid as f64,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
-        let iso_config = IsostasyConfig::default();
         let wf = WorkflowConfig::Enabled(WorkflowParams::default());
 
         let output = run_phase_a_cycle_c1(
