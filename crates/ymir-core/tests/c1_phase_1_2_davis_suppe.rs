@@ -55,6 +55,7 @@ use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
+use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
 use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
@@ -90,6 +91,8 @@ fn davis_suppe_wedge_body_invariants() {
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
         dy: 1.0 / GRID_SIZE as f64,
+        iso_config: IsostasyConfig::default(),
+        drainage_max_distance: 30,
     };
     // Phase 1.2 semantics: keep Davis-Suppe ON, equilibrium-height
     // OFF. The Phase 1.2 invariants (especially the unbounded
@@ -102,6 +105,10 @@ fn davis_suppe_wedge_body_invariants() {
         equilibrium_height: EquilibriumHeightParams {
             enabled: false,
             ..EquilibriumHeightParams::default()
+        },
+        erosion: ErosionParams {
+            enabled: false,
+            ..ErosionParams::default()
         },
     };
     let h_max = closures.davis_suppe.h_max;
@@ -323,6 +330,8 @@ fn davis_suppe_disabled_matches_phase_1_1() {
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
         dy: 1.0 / GRID_SIZE as f64,
+        iso_config: IsostasyConfig::default(),
+        drainage_max_distance: 30,
     };
     run_advection_only(&mut state, &kinematics, &config, |_, _| {});
     let final_max = state.s.data().iter().cloned().fold(0.0_f64, f64::max);

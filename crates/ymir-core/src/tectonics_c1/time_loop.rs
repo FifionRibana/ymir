@@ -44,27 +44,48 @@
 //! `crate::tectonics_v2::advection`. No reimplementation here
 //! (W1 watchpoint of Issue #120).
 
+use crate::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use crate::tectonics_v2::advection::step_upwind;
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
+use crate::tectonics_v2::workflow::drainage::compute_drainage_targets;
+use crate::tectonics_v2::workflow::phase_a_common::compute_sea_level_ref_s_space;
 
 use super::boundary_classification::classify_boundaries;
 use super::closures::davis_suppe::source_term::{apply_davis_suppe_step, DavisSuppeParams};
 use super::closures::equilibrium_height::params::EquilibriumHeightParams;
 use super::closures::equilibrium_height::source_term::apply_equilibrium_height_step;
+use super::closures::erosion::params::ErosionParams;
+use super::closures::erosion::source_term::{apply_erosion_step, compute_drainage_areas};
 use super::distance_field::wedge_distance_intra_plate;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
 
-/// Tunables for [`run_advection_only`].
+/// Tunables for [`run_advection_only`] and [`run_with_closures`].
 ///
 /// `dx` and `dy` are the cell-size in non-dimensional length units.
 /// For the typical unit-domain `1×1` non-dim setup they both equal
 /// `1.0 / grid_size`.
-#[derive(Clone, Copy, Debug)]
+///
+/// `iso_config` and `drainage_max_distance` are consumed by
+/// [`run_with_closures`]'s per-step isostasy + drainage +
+/// stream-power-erosion path (Phase 1.4). They are unused by
+/// [`run_advection_only`] but must be present in the config for
+/// the shared struct surface.
+#[derive(Clone, Debug)]
 pub struct C1TimeLoopConfig {
     pub n_steps: usize,
     pub dx: f64,
     pub dy: f64,
+    /// Isostasy parameters consumed by the per-step erosion path
+    /// (Phase 1.4). Used by [`compute_isostasy`] for the altitude
+    /// heightmap and by
+    /// [`compute_sea_level_ref_s_space`] for the
+    /// drainage-classification sea-level threshold.
+    pub iso_config: IsostasyConfig,
+    /// Maximum drainage path length (cells) for
+    /// [`compute_drainage_targets`]. Default `30` mirrors the
+    /// Phase 1.2 + 1.3 default for wedge / drainage distances.
+    pub drainage_max_distance: usize,
 }
 
 /// Run advection-only forward in time. The callback fires once
@@ -153,17 +174,19 @@ fn fill_velocity_field(
 /// - Phase 1.2 (Issue #123) — `davis_suppe` (orogenic source).
 /// - Phase 1.3 (Issue #125) — `equilibrium_height` (gravitational
 ///   collapse sink, Molnar-Lyon-Caen).
-/// - Phase 1.4 — `macro_erosion` (Whipple-Tucker) and isostasy
-///   hook. TBA.
+/// - Phase 1.4 (Issue #127) — `erosion` (stream-power incision
+///   sink, Whipple-Tucker 1999 / Lague 2014).
 /// - Phase 2 — `parsons_sclater` (oceanic bathymetry). TBA.
 ///
 /// ## Default-behaviour caveat
 ///
-/// `C1Closures::default()` enables **both** Davis-Suppe and
-/// equilibrium-height. Tests written for a Phase-1.2-only regime
-/// (where the unbounded boundary pile-up `global_max ≈ 2297` is a
-/// load-bearing observable) must explicitly disable
-/// `equilibrium_height`:
+/// `C1Closures::default()` enables **all three** closures
+/// (Davis-Suppe + equilibrium-height + erosion). Tests written
+/// for a prior-phase regime (where a closure-specific observable
+/// is load-bearing — e.g. the Phase 1.2 unbounded boundary pile-up
+/// `global_max ≈ 2297`, or the Phase 1.3 `wedge_p95 = 0.376`
+/// preservation) must explicitly disable the later-phase
+/// closures:
 ///
 /// ```ignore
 /// let closures = C1Closures {
@@ -172,12 +195,17 @@ fn fill_velocity_field(
 ///         enabled: false,
 ///         ..EquilibriumHeightParams::default()
 ///     },
+///     erosion: ErosionParams {
+///         enabled: false,
+///         ..ErosionParams::default()
+///     },
 /// };
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct C1Closures {
     pub davis_suppe: DavisSuppeParams,
     pub equilibrium_height: EquilibriumHeightParams,
+    pub erosion: ErosionParams,
 }
 
 impl Default for C1Closures {
@@ -185,6 +213,7 @@ impl Default for C1Closures {
         Self {
             davis_suppe: DavisSuppeParams::default(),
             equilibrium_height: EquilibriumHeightParams::default(),
+            erosion: ErosionParams::default(),
         }
     }
 }
@@ -271,7 +300,54 @@ pub fn run_with_closures<F>(
         //   - Etc., oscillation around h_eq instead of stable equilibrium.
         apply_equilibrium_height_step(&mut state.s, &closures.equilibrium_height, dt);
 
-        // 4. (Future closures land here — Phase 1.4 erosion.)
+        // 4. Stream-power erosion sink (Phase 1.4 — Issue #127).
+        //
+        // Three-stage pipeline (W1 strict order):
+        //   (a) Isostasy — `S̃ → altitude` heightmap via Airy.
+        //       Needed for the slope magnitude in W-T eq. (1).
+        //   (b) Drainage — classify each cell's drainage target
+        //       via `compute_drainage_targets` (operates on the
+        //       cellular `S̃` with the Phase 3.5 S̃-space sea-
+        //       level threshold), then convert per-cell targets
+        //       into transitive drainage *areas* via
+        //       `compute_drainage_areas`.
+        //   (c) Erosion — apply W-T `E = K · A^m · S^n` with the
+        //       safety floor at the oceanic baseline.
+        //
+        // Order critical: AFTER equilibrium-height. The erosion
+        // closure reads altitude *after* the height cap has been
+        // applied; reversing would produce visible incision on
+        // boundary pile-up cells that the equilibrium clamp is
+        // about to remove anyway — wasted computation, and the
+        // cap-then-erode order matches the W-T citing of
+        // Molnar-Lyon-Caen for `h_effective ≈ min(h_collapse,
+        // h_erosion)`.
+        //
+        // Skipped entirely when `closures.erosion.enabled` is
+        // `false` (W4 closure-isolation discipline). The
+        // `apply_erosion_step` early-return guards the per-step
+        // overhead so the Phase 1.2 / Phase 1.3 regression tests
+        // remain bit-identical when erosion is disabled.
+        if closures.erosion.enabled {
+            let isostasy = compute_isostasy(&state.s, &config.iso_config);
+            let sea_level_ref = compute_sea_level_ref_s_space(&state.s, &config.iso_config);
+            let drainage_map = compute_drainage_targets(
+                &state.s,
+                sea_level_ref,
+                config.drainage_max_distance,
+            );
+            let drainage_areas = compute_drainage_areas(&drainage_map);
+            apply_erosion_step(
+                &mut state.s,
+                &isostasy.heightmap,
+                &drainage_areas,
+                &closures.erosion,
+                dt,
+                config.dx,
+            );
+        }
+
+        // 5. (Future closures land here — Phase 2 oceanic bathymetry.)
 
         on_step(step, state);
     }
@@ -312,7 +388,13 @@ mod tests {
         let initial_mass: f64 = state.s.data().iter().sum();
 
         let kinematics = PlateKinematics { velocities: vec![(0.01, 0.005)] };
-        let config = C1TimeLoopConfig { n_steps: 100, dx: 1.0 / nx as f64, dy: 1.0 / ny as f64 };
+        let config = C1TimeLoopConfig {
+            n_steps: 100,
+            dx: 1.0 / nx as f64,
+            dy: 1.0 / ny as f64,
+            iso_config: IsostasyConfig::default(),
+            drainage_max_distance: 30,
+        };
 
         run_advection_only(&mut state, &kinematics, &config, |_, _| {});
 
@@ -331,7 +413,13 @@ mod tests {
         let ny = 8;
         let mut state = uniform_single_plate_state(nx, ny);
         let kinematics = PlateKinematics { velocities: vec![(0.01, 0.0)] };
-        let config = C1TimeLoopConfig { n_steps: 7, dx: 1.0 / nx as f64, dy: 1.0 / ny as f64 };
+        let config = C1TimeLoopConfig {
+            n_steps: 7,
+            dx: 1.0 / nx as f64,
+            dy: 1.0 / ny as f64,
+            iso_config: IsostasyConfig::default(),
+            drainage_max_distance: 30,
+        };
 
         let mut steps_seen = Vec::new();
         run_advection_only(&mut state, &kinematics, &config, |s, _| {

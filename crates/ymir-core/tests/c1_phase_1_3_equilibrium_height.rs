@@ -45,6 +45,7 @@ use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
+use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
 use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
@@ -75,6 +76,8 @@ fn setup() -> (C1State, PlateKinematics, C1TimeLoopConfig) {
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
         dy: 1.0 / GRID_SIZE as f64,
+        iso_config: IsostasyConfig::default(),
+        drainage_max_distance: 30,
     };
     (state, kinematics, config)
 }
@@ -91,7 +94,14 @@ fn equilibrium_height_caps_global_max() {
     // formula's threshold behaviour (clamp triggers on the large-
     // excess cells, holding them at h_eq within one step).
     let (mut state, kinematics, config) = setup();
-    let closures = C1Closures::default();
+    let closures = C1Closures {
+        davis_suppe: DavisSuppeParams::default(),
+        equilibrium_height: EquilibriumHeightParams::default(),
+        erosion: ErosionParams {
+            enabled: false,
+            ..ErosionParams::default()
+        },
+    };
     let h_eq = closures.equilibrium_height.h_eq;
 
     run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
@@ -118,7 +128,14 @@ fn davis_suppe_imprint_preserved_with_equilibrium() {
     std::fs::create_dir_all(&dir).expect("create output dir");
 
     let (mut state, kinematics, config) = setup();
-    let closures = C1Closures::default();
+    let closures = C1Closures {
+        davis_suppe: DavisSuppeParams::default(),
+        equilibrium_height: EquilibriumHeightParams::default(),
+        erosion: ErosionParams {
+            enabled: false,
+            ..ErosionParams::default()
+        },
+    };
 
     eprintln!(
         "c1_phase_1_3 T2: grid={GRID_SIZE}², steps={N_STEPS}, h_eq={}, k_collapse={}, \
@@ -319,6 +336,10 @@ fn equilibrium_alone_caps_initial_state() {
             ..DavisSuppeParams::default()
         },
         equilibrium_height: EquilibriumHeightParams::default(),
+        erosion: ErosionParams {
+            enabled: false,
+            ..ErosionParams::default()
+        },
     };
     let h_eq = closures.equilibrium_height.h_eq;
 
@@ -354,6 +375,10 @@ fn both_closures_disabled_matches_phase_1_1() {
         equilibrium_height: EquilibriumHeightParams {
             enabled: false,
             ..EquilibriumHeightParams::default()
+        },
+        erosion: ErosionParams {
+            enabled: false,
+            ..ErosionParams::default()
         },
     };
 
