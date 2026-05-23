@@ -144,7 +144,7 @@ pub fn apply_post_tectonic(mut input: PostTectonicInput<'_>) -> PostTectonicOutp
     // At init (S̃ ∈ [≈0.2, ≈1.2]) this resolves to ≈ 0.6 — close to
     // the natural 0.5 midpoint between oceanic and continental, and
     // adaptive to the S̃ distribution as cycles erode.
-    let sea_level_ref = compute_sea_level_ref(input.s_field, input.iso_cfg);
+    let sea_level_ref = compute_sea_level_ref_s_space(input.s_field, input.iso_cfg);
 
     // Step 2 — macro mass redistribution. Step 12 R3 replaced the
     // legacy `low_res_erosion::apply` with this drainage + isostatic-
@@ -229,8 +229,46 @@ pub fn extract_per_plate_type(
     per
 }
 
-/// Phase 3.5 sea-level formula in `S̃` space.
-fn compute_sea_level_ref(s: &Field2D, iso_cfg: &IsostasyConfig) -> f64 {
+/// Phase 3.5 sea-level reference in `S̃` space.
+///
+/// Computes the adaptive sea-level threshold in **`S̃` units**
+/// (not in heightmap `[0, 1]` units) via the isostasy formula
+/// `h_sea = h_min + sea_level_fraction · h_range`, applied to
+/// the current `S̃` field directly:
+///
+/// ```text
+///     s_sea = s_min + sea_level_fraction · (s_max - s_min)
+/// ```
+///
+/// At Phase 1.1 init (`S̃ ∈ [≈0.2, ≈1.0]`) this resolves to ≈ 0.5
+/// — close to the natural midpoint between oceanic and continental
+/// values, and **adaptive to the `S̃` distribution as cycles
+/// erode**. This is the value that downstream consumers (drainage
+/// classification, per-cell reclassification, cratonic recompute,
+/// stream-power erosion in Phase 1.4) should use to discriminate
+/// continental from oceanic cells inside C1's `S̃`-paradigm time
+/// loop.
+///
+/// **Why this matters:** the alternative — using
+/// `compute_isostasy(s).sea_level_normalized` (an `f32` in heightmap
+/// `[0, 1]` space) — resolves to ≈ 0.111 for the default
+/// `IsostasyConfig` (`max_depth=500 m, max_elevation=4000 m`),
+/// well below `S̃`'s natural oceanic floor of ≈ 0.2. The Phase 3
+/// (pre-3.5) workflow used the heightmap-space value and every
+/// continental/oceanic mask was satisfied by every cell; the
+/// reclassification rule never fired and the v2 cratonic-recompute
+/// tests passed for the wrong reason.
+///
+/// **Single source of truth.** Called by
+/// [`apply_post_tectonic`] (end-of-cycle in `phase_a_*`) AND by
+/// the per-step Phase 1.4 stream-power erosion path (which needs
+/// the same threshold to classify drainage targets). Keeping one
+/// implementation prevents the two call sites from drifting under
+/// future formula refinements.
+///
+/// The function is read-only on its arguments — pure computation,
+/// thread-safe, no caching.
+pub fn compute_sea_level_ref_s_space(s: &Field2D, iso_cfg: &IsostasyConfig) -> f64 {
     let s_data = s.data();
     let (s_min, s_max) = s_data.iter().copied().fold(
         (f64::INFINITY, f64::NEG_INFINITY),
