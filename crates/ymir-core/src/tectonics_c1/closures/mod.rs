@@ -25,3 +25,4 @@
 
 pub mod davis_suppe;
 pub mod equilibrium_height;
+pub mod erosion;
