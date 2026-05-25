@@ -54,6 +54,8 @@ fn c1_phase_1_1_advection_sanity() {
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
         dy: 1.0 / GRID_SIZE as f64,
+        iso_config: ymir_core::tectonics::isostasy::IsostasyConfig::default(),
+        drainage_max_distance: 30,
     };
 
     let initial_mass: f64 = state.s.data().iter().sum();

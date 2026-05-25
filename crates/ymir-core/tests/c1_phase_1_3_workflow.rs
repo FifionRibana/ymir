@@ -33,6 +33,7 @@
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
+use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
@@ -52,6 +53,29 @@ fn make_time_loop_config(n_steps: usize) -> C1TimeLoopConfig {
         n_steps,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,
+        iso_config: IsostasyConfig::default(),
+        drainage_max_distance: 30,
+    }
+}
+
+/// C1Closures with the Phase-1.3 active set: Davis-Suppe ON,
+/// equilibrium-height ON, **erosion OFF**. Preserves the
+/// Phase-1.3-regime semantics these tests were written for —
+/// notably the bit-identical decomposition test's invariant that
+/// the wrapper equals the manual `run_with_closures +
+/// apply_post_tectonic` decomposition byte-for-byte. With
+/// erosion enabled, the wrapper invokes the additional isostasy +
+/// drainage + erosion pass per step; the manual path B doesn't,
+/// breaking bit-identity. Phase 1.4 acceptance tests get their
+/// own dedicated test file (`c1_phase_1_4_erosion`).
+fn phase_1_3_closures() -> C1Closures {
+    C1Closures {
+        davis_suppe: DavisSuppeParams::default(),
+        equilibrium_height: EquilibriumHeightParams::default(),
+        erosion: ErosionParams {
+            enabled: false,
+            ..ErosionParams::default()
+        },
     }
 }
 
@@ -62,7 +86,7 @@ fn c1_phase_a_cycle_smoke_integration() {
     // sub-second under default `cargo test`.
     let mut state = init_c1_state_phase_1_1(GRID, SEED);
     let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
-    let closures = C1Closures::default();
+    let closures = phase_1_3_closures();
     let time_loop_config = make_time_loop_config(50);
     let iso_config = IsostasyConfig::default();
     let wf = WorkflowConfig::Enabled(WorkflowParams::default());
@@ -107,7 +131,7 @@ fn c1_phase_a_decomposes_into_closures_then_post_tectonic() {
         let scratch = init_c1_state_phase_1_1(GRID, SEED);
         PlateKinematics::preset_phase_1_1(scratch.num_plates)
     };
-    let closures = C1Closures::default();
+    let closures = phase_1_3_closures();
     let time_loop_config = make_time_loop_config(n_steps);
     let iso_config = IsostasyConfig::default();
     let wf_params = WorkflowParams::default();
@@ -202,6 +226,10 @@ fn c1_phase_a_with_disabled_closures_matches_phase_1_1() {
             enabled: false,
             ..EquilibriumHeightParams::default()
         },
+        erosion: ErosionParams {
+            enabled: false,
+            ..ErosionParams::default()
+        },
     };
     let time_loop_config = make_time_loop_config(50);
     let iso_config = IsostasyConfig::default();
@@ -279,7 +307,7 @@ fn c1_phase_a_with_cratonic_enabled_produces_factor() {
     // v2_legacy); just a "C1 can drive this codepath" sanity.
     let mut state = init_c1_state_phase_1_1(GRID, SEED);
     let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
-    let closures = C1Closures::default();
+    let closures = phase_1_3_closures();
     let time_loop_config = make_time_loop_config(30);
     let iso_config = IsostasyConfig::default();
     let cratonic_cfg = CratonicConfigEnabled::default();

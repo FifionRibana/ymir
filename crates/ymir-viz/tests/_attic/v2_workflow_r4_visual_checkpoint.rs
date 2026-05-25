@@ -273,7 +273,7 @@ fn write_metrics_table(preset_name: &str, metrics: &[CycleMetrics], out_dir: &Pa
             m.sea_level_ref,
             m.max_path_length,
             m.total_eroded,
-            m.common.mass_drift,
+            m.mass_drift,
         ));
     }
     md.push('\n');
@@ -322,7 +322,7 @@ fn write_metrics_table(preset_name: &str, metrics: &[CycleMetrics], out_dir: &Pa
     let cumulative_drift: f64 = metrics
         .iter()
         .skip(1)
-        .map(|m| m.common.mass_drift.abs())
+        .map(|m| m.mass_drift.abs())
         .sum();
     let budget = init.mass_total.abs() * 1e-9;
     let r4_4 = cumulative_drift < budget;
