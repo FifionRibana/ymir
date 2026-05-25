@@ -700,28 +700,43 @@ criteria.
 
 ## §14 — Known limitations (post-implementation)
 
-### §14.1 `ymir-viz` bin under `--features v2_legacy` — pre-existing breakage
+### §14.1 `ymir-viz` under `--features v2_legacy` — partially resolved
 
-`cargo build -p ymir-viz --features v2_legacy` fails with **299
-errors** on the Stage H1 base commit `e6a58e2` (before any H2
-work) and remains broken after H2 + H3. Errors are Bevy-side scope
-issues (`..default()` not in scope, `Transform` not in scope), in
-`ymir-viz` bin / main code — NOT in the `bridge/v2/` subtree that
-H2 actually touched.
+**Status update (post-Phase 1.4 Stage V Fix-A, 2026-05-25):**
+this limitation is **PARTIALLY RESOLVED**.
 
-**Pre-existing-confirmed** by a `git stash` baseline run at the
-Stage H1 base commit (before any H2 changes). Surfaced and
-explicitly deferred per `feedback_match_request_scope`: bundling a
-`ymir-viz` fix into the harness paradigm-agnostic refactor would
-have expanded scope without authorization, and the likely root
-cause (Bevy version drift or feature-flag-conditional imports) may
-overlap with the Phase 1.4 surgical-gating work tracked in the
-Issue #117 PR description.
+- `cargo build -p ymir-viz --features v2_legacy` (**bin alone**)
+  → **NOW BUILDS CLEAN** (11 dead-code warnings only). The
+  original 299-error breakage at Stage H1 base commit `e6a58e2`
+  no longer reproduces on the current branch; the bin compiles.
+- `cargo build -p ymir-viz --tests --features v2_legacy` (**test
+  build**) → still fails. Phase 1.4 Stage V1 diagnose
+  surfaced **two distinct root causes** behind the originally
+  reported 299 errors, the larger of which is the bevy /
+  bevy_egui API drift:
 
-Filed as a separate GitHub issue: **`[Issue #TBD]`** (file via
-the GitHub web UI when convenient; tracking title:
-`BUG: ymir-viz bin breaks under v2_legacy (Bevy imports / pre-
-existing)`).
+| Root cause | Errors | Source | Status |
+| --- | --- | --- | --- |
+| **Bevy 0.18.1 version drift.** `bevy::image::ImageSampler`, `bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat}`, `bevy::input::mouse::AccumulatedMouseMotion/AccumulatedMouseScroll`, `bevy_egui::input::EguiWantsInput`, `bevy_egui::egui` — modules moved between Bevy minor versions. Found in `src/visualization/v2_viz.rs`, `src/camera.rs`, `src/phases/*.rs`, `src/ui/mod.rs`. | ~297 (cascade) | pre-existing, predates Phase 1.3 H1 | filed as separate follow-up |
+| **Phase 1.3 H2 Commit 1 regex over-match.** The Stage H2 Commit 1 bulk regex `(\w+)\.<field>` → `\1.common.<field>` over-matched on a LOCAL `CycleMetrics` struct in `tests/_attic/v2_workflow_r4_visual_checkpoint.rs` (different struct from the workflow's `CycleOutput`, but had identically-named `mass_drift` field). | 2 | introduced by Phase 1.3 H2 (`11c53b6`) | **RESOLVED by Phase 1.4 Stage V Fix-A (`<TBD>`)** |
+
+The Phase 1.4 Stage V Fix-A surgically reverted the 2 lines
+(`crates/ymir-viz/tests/_attic/v2_workflow_r4_visual_checkpoint.rs:276,325`)
+that the Phase 1.3 H2 regex had incorrectly rewritten. Net error
+count for that test target dropped from 31 → 29. The remaining
+~297 errors are Bevy version drift, **pre-existing on
+the milestone branch before any Phase 1.3 work**.
+
+**Bevy migration filed as a separate follow-up GitHub issue:**
+**`[Issue #TBD]`** — `ymir-viz Bevy 0.18.1 migration`. Estimated
+effort 4-8 hours (import path updates, no architectural change).
+Out of Phase 1.4 scope per `feedback_match_request_scope`.
+
+Memory pattern: see
+`feedback_bulk_regex_overmatch_on_homonym_structs` (Stage Final
+memory entry) — bulk regex on field-access pattern requires
+enumeration of homonym struct definitions first; my Stage H2
+Commit 1 script did not.
 
 ### §14.2 H2 verification surface limitations
 
