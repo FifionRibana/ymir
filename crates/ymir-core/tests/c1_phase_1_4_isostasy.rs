@@ -38,6 +38,7 @@
 
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::boundary_classification::{classify_boundaries, BoundaryType};
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
@@ -48,6 +49,19 @@ use ymir_core::tectonics_v2::workflow::{PhaseAParams, WorkflowParams};
 
 const GRID: usize = 64;
 const SEED: u64 = 42;
+
+/// Phase 1.4 closure stack — DS + EQ + erosion ON, S-S OFF. See
+/// `c1_phase_1_4_erosion.rs::phase_1_4_closures` for the rationale
+/// on holding the Phase 1.4 regime stable post-#129.
+fn phase_1_4_closures() -> C1Closures {
+    C1Closures {
+        oceanic_bathymetry: SteinSteinParams {
+            enabled: false,
+            ..SteinSteinParams::default()
+        },
+        ..C1Closures::default()
+    }
+}
 
 #[test]
 fn altitude_responds_to_s_changes_per_step() {
@@ -89,7 +103,7 @@ fn altitude_responds_to_s_changes_per_step() {
     );
 
     // Run 50 steps with full Phase 1.4 closure stack.
-    let closures = C1Closures::default();
+    let closures = phase_1_4_closures();
     let config = C1TimeLoopConfig {
         n_steps: 50,
         dx: 1.0 / GRID as f64,
@@ -213,7 +227,7 @@ fn apply_post_tectonic_mutates_s_via_macro_redistribution() {
     let mut state = init_c1_state_phase_1_1(GRID, SEED);
     let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let iso_config = IsostasyConfig::default();
-    let closures = C1Closures::default();
+    let closures = phase_1_4_closures();
     let config = C1TimeLoopConfig {
         n_steps: 30,
         dx: 1.0 / GRID as f64,

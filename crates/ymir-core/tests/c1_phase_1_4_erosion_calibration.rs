@@ -35,6 +35,7 @@ use image::{ImageBuffer, Rgb};
 
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
@@ -61,7 +62,17 @@ fn erosion_calibration_visual_review() {
     let mut state = init_c1_state_phase_1_1(GRID_SIZE, SEED);
     let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let iso_config = IsostasyConfig::default();
-    let closures = C1Closures::default();
+    // Phase 1.4 calibration tool — keep S-S OFF so the K calibration
+    // record matches the Phase 1.4 PNG gallery committed in
+    // `docs/reports/c1_phase_1_4_erosion/`. Phase 2 Track A gets its
+    // own gallery (Stage D, Issue #129).
+    let closures = C1Closures {
+        oceanic_bathymetry: SteinSteinParams {
+            enabled: false,
+            ..SteinSteinParams::default()
+        },
+        ..C1Closures::default()
+    };
     let config = C1TimeLoopConfig {
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,

@@ -76,6 +76,17 @@
 //! gallery is the empirical check on whether Architecture C
 //! suffices.
 //!
+//! ## Sign convention — "sea level = 0"
+//!
+//! Architecture C writes signed altitude values into oceanic cells:
+//! `altitude = − depth_m / depth_scale_m ∈ [−1.13, −0.52]`. The
+//! "sea level = 0" reference is implicit. This deviates from
+//! `compute_isostasy`'s `[0, 1]` normalisation contract on oceanic
+//! cells, but the downstream pipeline (drainage in S̃ space, erosion
+//! on altitude gradient) is sign-insensitive and only consumes
+//! relative gradients. The convention keeps the apply function
+//! self-contained — no sea-level reference argument required.
+//!
 //! ## Parameter choices
 //!
 //! All defaults read directly from the Stein-Stein 1992 paper
