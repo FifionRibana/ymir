@@ -61,6 +61,8 @@ use super::closures::equilibrium_height::params::EquilibriumHeightParams;
 use super::closures::equilibrium_height::source_term::apply_equilibrium_height_step;
 use super::closures::erosion::params::ErosionParams;
 use super::closures::erosion::source_term::{apply_erosion_step, compute_drainage_areas};
+use super::closures::oceanic_bathymetry::params::SteinSteinParams;
+use super::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
 use super::distance_field::wedge_distance_intra_plate;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
@@ -181,17 +183,20 @@ fn fill_velocity_field(
 ///   collapse sink, Molnar-Lyon-Caen).
 /// - Phase 1.4 (Issue #127) — `erosion` (stream-power incision
 ///   sink, Whipple-Tucker 1999 / Lague 2014).
-/// - Phase 2 — `parsons_sclater` (oceanic bathymetry). TBA.
+/// - Phase 2 Track A (Issue #129) — `oceanic_bathymetry`
+///   (Stein-Stein 1992 post-isostasy depth assignment,
+///   **Architecture C** — see [`SteinSteinParams`] and
+///   [`super::closures::oceanic_bathymetry`] module docstring).
 ///
 /// ## Default-behaviour caveat
 ///
-/// `C1Closures::default()` enables **all three** closures
-/// (Davis-Suppe + equilibrium-height + erosion). Tests written
-/// for a prior-phase regime (where a closure-specific observable
-/// is load-bearing — e.g. the Phase 1.2 unbounded boundary pile-up
-/// `global_max ≈ 2297`, or the Phase 1.3 `wedge_p95 = 0.376`
-/// preservation) must explicitly disable the later-phase
-/// closures:
+/// `C1Closures::default()` enables **all four** closures
+/// (Davis-Suppe + equilibrium-height + erosion + oceanic
+/// bathymetry). Tests written for a prior-phase regime (where a
+/// closure-specific observable is load-bearing — e.g. the Phase
+/// 1.2 unbounded boundary pile-up `global_max ≈ 2297`, or the
+/// Phase 1.3 `wedge_p95 = 0.376` preservation) must explicitly
+/// disable the later-phase closures:
 ///
 /// ```ignore
 /// let closures = C1Closures {
@@ -204,6 +209,10 @@ fn fill_velocity_field(
 ///         enabled: false,
 ///         ..ErosionParams::default()
 ///     },
+///     oceanic_bathymetry: SteinSteinParams {
+///         enabled: false,
+///         ..SteinSteinParams::default()
+///     },
 /// };
 /// ```
 #[derive(Clone, Copy, Debug)]
@@ -211,6 +220,7 @@ pub struct C1Closures {
     pub davis_suppe: DavisSuppeParams,
     pub equilibrium_height: EquilibriumHeightParams,
     pub erosion: ErosionParams,
+    pub oceanic_bathymetry: SteinSteinParams,
 }
 
 impl Default for C1Closures {
@@ -219,6 +229,7 @@ impl Default for C1Closures {
             davis_suppe: DavisSuppeParams::default(),
             equilibrium_height: EquilibriumHeightParams::default(),
             erosion: ErosionParams::default(),
+            oceanic_bathymetry: SteinSteinParams::default(),
         }
     }
 }
@@ -466,26 +477,72 @@ pub fn run_with_closures<F>(
         // `apply_erosion_step` early-return guards the per-step
         // overhead so the Phase 1.2 / Phase 1.3 regression tests
         // remain bit-identical when erosion is disabled.
-        if closures.erosion.enabled {
+        // Stage 4 — altitude preparation (isostasy + S-S bathymetry)
+        // is shared between the erosion path and the oceanic-
+        // bathymetry path. Both closures consume altitude:
+        //
+        //  - Erosion (4c-4e) reads altitude for the slope-magnitude
+        //    factor of W-T `E = K · A^m · S^n`.
+        //  - Stein-Stein (4b) reads age + plate_type to OVERWRITE
+        //    altitude on oceanic cells with `−d(t) / depth_scale_m`
+        //    (Architecture C — see [`apply_stein_stein_bathymetry`]
+        //    sign-convention paragraph).
+        //
+        // If both are enabled, S-S runs FIRST so the drainage /
+        // erosion sub-pipeline sees S-S-modulated altitude — the
+        // intended cross-closure interaction (older oceanic
+        // plateaus drain toward ridges; ridges are local highs in
+        // the oceanic basin).
+        //
+        // If only oceanic_bathymetry is enabled (erosion off), S-S
+        // still runs each step but its effect is **transient** —
+        // altitude is recomputed from S̃ via `compute_isostasy` at
+        // the next call, so the closure modifies state only through
+        // downstream consumers in the same stage. Acceptance tests
+        // must re-apply S-S at the run boundary to observe its
+        // imprint (see Stage A test 1 of `c1_phase_2_bathymetry_*`).
+        if closures.erosion.enabled || closures.oceanic_bathymetry.enabled {
             let isostasy = compute_isostasy(&state.s, &config.iso_config);
-            let sea_level_ref = compute_sea_level_ref_s_space(&state.s, &config.iso_config);
-            let drainage_map = compute_drainage_targets(
-                &state.s,
-                sea_level_ref,
-                config.drainage_max_distance,
+            let mut altitude = isostasy.heightmap;
+
+            // 4b. Stein-Stein 1992 oceanic bathymetry (Phase 2
+            // Track A — Issue #129). Internal `enabled = false`
+            // early-return so the call is free when the closure is
+            // disabled.
+            apply_stein_stein_bathymetry(
+                &mut altitude,
+                &state.age,
+                &state.plate_type,
+                &closures.oceanic_bathymetry,
             );
-            let drainage_areas = compute_drainage_areas(&drainage_map);
-            apply_erosion_step(
-                &mut state.s,
-                &isostasy.heightmap,
-                &drainage_areas,
-                &closures.erosion,
-                dt,
-                config.dx,
-            );
+
+            // 4c-4e. Erosion sub-pipeline. Drainage classification
+            // consumes `state.s` in S̃ space (sea-level threshold in
+            // S̃ units, not altitude — so S-S adjustment does NOT
+            // shift the drainage classification), but the erosion
+            // formula's slope factor reads `altitude` directly and
+            // therefore sees the S-S modulation.
+            if closures.erosion.enabled {
+                let sea_level_ref =
+                    compute_sea_level_ref_s_space(&state.s, &config.iso_config);
+                let drainage_map = compute_drainage_targets(
+                    &state.s,
+                    sea_level_ref,
+                    config.drainage_max_distance,
+                );
+                let drainage_areas = compute_drainage_areas(&drainage_map);
+                apply_erosion_step(
+                    &mut state.s,
+                    &altitude,
+                    &drainage_areas,
+                    &closures.erosion,
+                    dt,
+                    config.dx,
+                );
+            }
         }
 
-        // 5. (Future closures land here — Phase 2 oceanic bathymetry.)
+        // 5. (Future closures land here — Phase 2 Tracks B/C/D.)
 
         on_step(step, state);
     }

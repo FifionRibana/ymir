@@ -46,6 +46,7 @@ use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
 use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
@@ -101,6 +102,10 @@ fn equilibrium_height_caps_global_max() {
             enabled: false,
             ..ErosionParams::default()
         },
+        oceanic_bathymetry: SteinSteinParams {
+            enabled: false,
+            ..SteinSteinParams::default()
+        },
     };
     let h_eq = closures.equilibrium_height.h_eq;
 
@@ -134,6 +139,10 @@ fn davis_suppe_imprint_preserved_with_equilibrium() {
         erosion: ErosionParams {
             enabled: false,
             ..ErosionParams::default()
+        },
+        oceanic_bathymetry: SteinSteinParams {
+            enabled: false,
+            ..SteinSteinParams::default()
         },
     };
 
@@ -340,6 +349,10 @@ fn equilibrium_alone_caps_initial_state() {
             enabled: false,
             ..ErosionParams::default()
         },
+        oceanic_bathymetry: SteinSteinParams {
+            enabled: false,
+            ..SteinSteinParams::default()
+        },
     };
     let h_eq = closures.equilibrium_height.h_eq;
 
@@ -379,6 +392,10 @@ fn both_closures_disabled_matches_phase_1_1() {
         erosion: ErosionParams {
             enabled: false,
             ..ErosionParams::default()
+        },
+        oceanic_bathymetry: SteinSteinParams {
+            enabled: false,
+            ..SteinSteinParams::default()
         },
     };
 

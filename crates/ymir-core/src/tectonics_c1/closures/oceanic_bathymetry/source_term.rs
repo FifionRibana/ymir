@@ -81,11 +81,28 @@ pub fn stein_stein_depth(age_ma: f64, params: &SteinSteinParams) -> f64 {
 /// For each cell `c` classified as `PlateType::Oceanic`:
 ///
 /// ```text
-///     altitude_new(c) = sea_level − stein_stein_depth(age_ma(c)) / depth_scale_m
+///     altitude_new(c) = − stein_stein_depth(age_ma(c)) / depth_scale_m
 /// ```
 ///
 /// with `age_ma(c) = age(c) · params.age_to_ma`. Continental cells
-/// are left unchanged.
+/// are left unchanged. Plate-type is the canonical oceanic/
+/// continental classifier (Stein-Stein semantics — "oceanic
+/// lithosphere subsides with age"); no altitude threshold (e.g.,
+/// `< sea_level`) is consulted, since lifting a continental cell
+/// below sea level does not by itself make it oceanic in the S-S
+/// regime, and an oceanic cell uplifted by the upstream
+/// tessellation (transient or artefact) should still receive S-S
+/// bathymetry to keep the closure's domain coherent.
+///
+/// **Sign convention.** Oceanic cells receive negative altitude
+/// values in `[−1.13, −0.52]` (corresponding to the S-S depth
+/// range `[5651, 2600] m` divided by `depth_scale_m = 5000`).
+/// "Sea level = 0" in this convention. This breaks the
+/// `compute_isostasy` `[0, 1]` normalisation contract on oceanic
+/// cells, but the downstream consumers in the C1 stage-4 pipeline
+/// (drainage routing operates in `S̃` space; erosion operates on
+/// slope magnitudes) are sign-insensitive — they care about
+/// gradients, not absolute level.
 ///
 /// **Architecture C**: this mutates the `altitude` heightmap only;
 /// `S̃` is not touched. See [`super`] for the rationale and the
@@ -102,12 +119,6 @@ pub fn stein_stein_depth(age_ma: f64, params: &SteinSteinParams) -> f64 {
 /// - `plate_type`: per-cell oceanic/continental classification.
 ///   Only oceanic cells are modified.
 /// - `params`: closure tunables (see [`SteinSteinParams`]).
-/// - `sea_level`: altitude value at sea level in the same non-dim
-///   units as `altitude`. The S-S depth `d(t)` is subtracted from
-///   this reference to produce the cell altitude. Typically the
-///   `sea_level_normalized` field of the
-///   [`crate::tectonics::isostasy::IsostasyResult`] consumed in the
-///   same time-loop stage 4a.
 ///
 /// `params.enabled = false` makes the call a no-op (W4
 /// closure-isolation discipline). The early-return is the only
@@ -117,7 +128,6 @@ pub fn apply_stein_stein_bathymetry(
     age: &Field2D,
     plate_type: &PlateTypeField,
     params: &SteinSteinParams,
-    sea_level: f32,
 ) {
     if !params.enabled {
         return;
@@ -156,7 +166,7 @@ pub fn apply_stein_stein_bathymetry(
             let age_ma = age.get(i, j) * age_to_ma;
             let depth_m = stein_stein_depth(age_ma, params);
             let depth_nondim = (depth_m / depth_scale) as f32;
-            altitude.set(i, j, sea_level - depth_nondim);
+            altitude.set(i, j, -depth_nondim);
         }
     }
 }
@@ -270,7 +280,7 @@ mod tests {
         let initial = altitude.data.clone();
         let params = SteinSteinParams::default();
 
-        apply_stein_stein_bathymetry(&mut altitude, &age, &plate_type, &params, 0.5);
+        apply_stein_stein_bathymetry(&mut altitude, &age, &plate_type, &params);
 
         // Continental top half (j < 2) must be bit-identical.
         for j in 0..2 {
@@ -312,7 +322,7 @@ mod tests {
             ..SteinSteinParams::default()
         };
 
-        apply_stein_stein_bathymetry(&mut altitude, &age, &plate_type, &params, 0.5);
+        apply_stein_stein_bathymetry(&mut altitude, &age, &plate_type, &params);
 
         for k in 0..initial.len() {
             assert_eq!(

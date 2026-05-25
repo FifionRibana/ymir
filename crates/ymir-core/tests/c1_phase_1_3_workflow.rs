@@ -34,6 +34,7 @@ use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
 use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
@@ -59,15 +60,21 @@ fn make_time_loop_config(n_steps: usize) -> C1TimeLoopConfig {
 }
 
 /// C1Closures with the Phase-1.3 active set: Davis-Suppe ON,
-/// equilibrium-height ON, **erosion OFF**. Preserves the
-/// Phase-1.3-regime semantics these tests were written for —
-/// notably the bit-identical decomposition test's invariant that
-/// the wrapper equals the manual `run_with_closures +
-/// apply_post_tectonic` decomposition byte-for-byte. With
-/// erosion enabled, the wrapper invokes the additional isostasy +
-/// drainage + erosion pass per step; the manual path B doesn't,
-/// breaking bit-identity. Phase 1.4 acceptance tests get their
-/// own dedicated test file (`c1_phase_1_4_erosion`).
+/// equilibrium-height ON, **erosion OFF**, **oceanic bathymetry
+/// OFF**. Preserves the Phase-1.3-regime semantics these tests
+/// were written for — notably the bit-identical decomposition
+/// test's invariant that the wrapper equals the manual
+/// `run_with_closures + apply_post_tectonic` decomposition
+/// byte-for-byte. With erosion enabled, the wrapper invokes the
+/// additional isostasy + drainage + erosion pass per step; the
+/// manual path B doesn't, breaking bit-identity. The same logic
+/// applies to oceanic bathymetry (Phase 2 Track A, Issue #129) —
+/// when enabled, the per-step `apply_stein_stein_bathymetry`
+/// modifies the altitude that erosion consumes; with both off the
+/// stage 4 block is skipped entirely, preserving the Phase 1.3
+/// decomposition contract. Phase 1.4 + Phase 2 acceptance tests
+/// get dedicated files (`c1_phase_1_4_erosion`,
+/// `c1_phase_2_oceanic_bathymetry`).
 fn phase_1_3_closures() -> C1Closures {
     C1Closures {
         davis_suppe: DavisSuppeParams::default(),
@@ -75,6 +82,10 @@ fn phase_1_3_closures() -> C1Closures {
         erosion: ErosionParams {
             enabled: false,
             ..ErosionParams::default()
+        },
+        oceanic_bathymetry: SteinSteinParams {
+            enabled: false,
+            ..SteinSteinParams::default()
         },
     }
 }
@@ -229,6 +240,10 @@ fn c1_phase_a_with_disabled_closures_matches_phase_1_1() {
         erosion: ErosionParams {
             enabled: false,
             ..ErosionParams::default()
+        },
+        oceanic_bathymetry: SteinSteinParams {
+            enabled: false,
+            ..SteinSteinParams::default()
         },
     };
     let time_loop_config = make_time_loop_config(50);
