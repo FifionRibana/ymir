@@ -426,6 +426,17 @@ validated.
 | Macro erosion | Stream-power law applied at the macro scale to age old ranges within the C1 time loop | Whipple & Tucker 1999, *JGR* 104(B8); Willett 1999 for orogen-erosion coupling |
 | Isostasy | Airy local isostasy: altitude from S̃ and reference densities | Standard (Turcotte & Schubert *Geodynamics*); existing v2 `compute_isostasy` |
 
+*Note: Phase 2 Track A (Issue #129) implements the oceanic-bathymetry
+closure using Stein & Stein 1992 (the revision of Parsons-Sclater 1977
+referenced above) under **Architecture C** — post-isostasy bathymetry
+adjustment that replaces altitude on oceanic cells with the S-S depth
+formula based on cell age, rather than entering as an additive source
+term on `S̃`. Rationale and per-cell formula live in the
+`tectonics_c1/closures/oceanic_bathymetry/` module docstring. If
+Architecture C limitations surface during Stage D visual review,
+fallback to additive-source Architecture A or hybrid Architecture B is
+documented as a follow-up path.*
+
 ### 5.2 Second wave (post-MVP)
 
 These are necessary for the morphological diversity Living Landz
@@ -603,15 +614,25 @@ having to "paint" it.
 
 ### 7.2 Phase 2 — boundary evolution + R7 init (1–2 weeks)
 
-- Implement subduction, accretion, rifting as boundary events
-  (§4.5).
-- Generalise the init: boundary displacement on Voronoi (§6.1),
-  continental clustering (§6.2), constrained kinematics (§6.3).
-- Add closure #3 (oceanic bathymetry, Parsons-Sclater).
+Phase 2 is split into four work tracks, each delivered as a separate
+issue:
 
-Acceptance gate: the same preset run multiple times with different
-seeds produces visually distinct continents (not just rotations of
-the same shape).
+- **Track A — oceanic bathymetry (Stein & Stein 1992).**
+  Status: **in progress (Issue #129)**. Architecture C (post-
+  isostasy bathymetry adjustment). MVP-table closure #3 is
+  swapped from the original Parsons-Sclater 1977 reference to its
+  Stein-Stein 1992 successor (continuity with crossover at
+  ~20 Ma). See §5.1 footnote.
+- Track B — R7 init (boundary displacement / clustering /
+  constrained kinematics, §6.1–§6.3). Separate issue TBD.
+- Track C — boundary evolution: subduction, accretion, rifting
+  (§4.5). Separate issue TBD.
+- Track D — kinematics sampling (constrained random / Euler pole /
+  scoring, §6.3). Separate issue TBD.
+
+Acceptance gate (cross-track): the same preset run multiple times
+with different seeds produces visually distinct continents (not
+just rotations of the same shape).
 
 ### 7.3 Phase 3 — second-wave closures (1–2 weeks)
 
@@ -801,6 +822,23 @@ shipped code (`DavisSuppeParams::default()`,
 | `\|v\| ≈ 0.005 – 0.011`     | `PlateKinematics::preset_phase_1_1` magnitudes (cardinal 0.01, diagonal `√2·0.008 ≈ 0.0113`) | ~5–10 cm/yr — typical convergent rate |
 | `Δt ≈ 0.69`                 | CFL non-dim/step at 64² (`0.5·dx/max\|v\|`) | ~30–100 ka per step                |
 | `300 steps`                 | typical Phase 1.1–1.3 run length    | ~10–30 Ma orogen evolution           |
+
+Phase 2 Track A (Issue #129) introduces two additional scales,
+documented separately because the values are tied to the
+Stein-Stein 1992 closure rather than to the global time-loop /
+grid setup:
+
+- `SteinSteinParams::age_to_ma = 0.667` — `1 age step ~ 0.667 Ma`;
+  default chosen so that the canonical `300 steps` run spans
+  `~200 Ma`, matching the upper end of typical oceanic-plate
+  lifetimes from ridge to subduction.
+- `SteinSteinParams::depth_scale_m = 5000` — converts the S-S
+  metric depth `(2600 m at ridge → 5651 m at asymptote)` to the
+  non-dim altitude range `~ 0.52–1.13`, consistent with the
+  Phase 1.4 isostatic altitude convention.
+
+Both are consumed by `apply_stein_stein_bathymetry` (Architecture
+C, see §5.1 footnote).
 
 The mapping is **not enforced in code** — there is no dimensional
 analysis pass, no unit checking, no `Quantity` wrapper type.

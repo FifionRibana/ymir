@@ -90,6 +90,7 @@ use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
 use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
@@ -124,6 +125,27 @@ fn global_max(state: &C1State) -> f64 {
     state.s.data().iter().cloned().fold(0.0_f64, f64::max)
 }
 
+/// Phase 1.4 closure stack — Davis-Suppe + equilibrium-height +
+/// erosion all ON; Phase 2 Track A oceanic bathymetry **OFF**.
+/// Locks the Phase 1.4 acceptance regime against silent regime
+/// drift from `C1Closures::default()` which (post-#129) enables
+/// S-S bathymetry by default. With S-S on, oceanic altitude jumps
+/// to `-d(t) / depth_scale_m`, slope at the continental/oceanic
+/// coastline steepens dramatically, and erosion's slope factor
+/// runs much hotter on coastal cells — Phase 1.4's regime-tagged
+/// thresholds (wedge_p95 ∈ [0.4, 1.0], global_max ∈ [1.0, 2.5])
+/// were calibrated without S-S and must remain testable
+/// independently.
+fn phase_1_4_closures() -> C1Closures {
+    C1Closures {
+        oceanic_bathymetry: SteinSteinParams {
+            enabled: false,
+            ..SteinSteinParams::default()
+        },
+        ..C1Closures::default()
+    }
+}
+
 #[test]
 fn erosion_caps_height_below_equilibrium() {
     // Phase 1.4 default — all 3 closures enabled. global_max must
@@ -131,7 +153,7 @@ fn erosion_caps_height_below_equilibrium() {
     // and bounded below by 1.0 to guard against pathological
     // erosion that erases everything. Stage E3 measured 2.181.
     let (mut state, kinematics, config) = setup();
-    let closures = C1Closures::default();
+    let closures = phase_1_4_closures();
 
     run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
 
@@ -192,7 +214,7 @@ fn erosion_preserves_davis_suppe_imprint_partially() {
     std::fs::create_dir_all(&dir).expect("create output dir");
 
     let (mut state, kinematics, config) = setup();
-    let closures = C1Closures::default();
+    let closures = phase_1_4_closures();
 
     eprintln!(
         "c1_phase_1_4 T2: grid={GRID_SIZE}², steps={N_STEPS}, K={}, m={}, n={}, h_eq={}, h_max={}",
@@ -363,6 +385,10 @@ fn all_closures_disabled_matches_phase_1_1() {
         erosion: ErosionParams {
             enabled: false,
             ..ErosionParams::default()
+        },
+        oceanic_bathymetry: SteinSteinParams {
+            enabled: false,
+            ..SteinSteinParams::default()
         },
     };
 
