@@ -65,6 +65,7 @@
 use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
@@ -72,6 +73,22 @@ use ymir_core::terrain::flow::{compute_flow, FlowConfig};
 
 const GRID: usize = 64;
 const SEED: u64 = 42;
+
+/// Phase 1.4 closure stack — Davis-Suppe + equilibrium-height +
+/// erosion all ON, Phase 2 Track A oceanic bathymetry OFF. Locks
+/// the Phase 1.4 downstream-test regime against silent regime
+/// drift from `C1Closures::default()` (post-#129 enables S-S). See
+/// the matching helper in `c1_phase_1_4_erosion.rs` for the
+/// rationale on holding the Phase 1.4 thresholds stable.
+fn phase_1_4_closures() -> C1Closures {
+    C1Closures {
+        oceanic_bathymetry: SteinSteinParams {
+            enabled: false,
+            ..SteinSteinParams::default()
+        },
+        ..C1Closures::default()
+    }
+}
 
 #[test]
 fn c1_continental_drainage_functional() {
@@ -114,7 +131,7 @@ fn c1_continental_drainage_functional() {
     let mut state = init_c1_state_phase_1_1(GRID, SEED);
     let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let iso_config = IsostasyConfig::default();
-    let closures = C1Closures::default();
+    let closures = phase_1_4_closures();
     let config = C1TimeLoopConfig {
         n_steps: 300,
         dx: 1.0 / GRID as f64,
@@ -275,7 +292,7 @@ fn c1_post_run_altitude_consumable_by_downstream() {
     let mut state = init_c1_state_phase_1_1(GRID, SEED);
     let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let iso_config = IsostasyConfig::default();
-    let closures = C1Closures::default();
+    let closures = phase_1_4_closures();
     let config = C1TimeLoopConfig {
         n_steps: 300,
         dx: 1.0 / GRID as f64,
