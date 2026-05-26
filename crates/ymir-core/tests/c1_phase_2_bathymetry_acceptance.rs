@@ -99,6 +99,8 @@
 //! ±50 m) and Stage A Test 1 (regime ordering preserved at run
 //! boundary); Test 3 would add noise, not signal.
 
+use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
+use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
@@ -110,6 +112,7 @@ use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
 use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
+use ymir_core::terrain::flow::{compute_flow, FlowConfig};
 
 const GRID: usize = 64;
 const SEED: u64 = 42;
@@ -421,5 +424,145 @@ fn disabled_matches_phase_1_4() {
 
     eprintln!(
         "  Phase 1.4 regression guarantee PRESERVED — S-S off ≡ Phase 1.4 closure stack."
+    );
+}
+
+/// **Test 3 — downstream smoke.** Phase 2 Track A produces a
+/// bipolar altitude field via Architecture C (oceanic cells
+/// negative after re-application). The downstream pipeline
+/// (`compute_flow` for D8 routing, then `run_erosion` for particle
+/// HD erosion) must accept that field without panicking and
+/// produce all-finite output. No thresholds — the age-field-as-
+/// density artifact from Stage A's architectural finding would
+/// dominate any thresholded metric on flow accumulation or
+/// erosion mass-change for the Phase 1.1 init regime; Track B
+/// must land first before composite downstream assertions are
+/// meaningful.
+///
+/// Three smoke checks:
+/// 1. `compute_flow` runs without panic; D8 outputs are finite.
+/// 2. `run_erosion` runs without panic; final heightmap is
+///    finite.
+/// 3. Final heightmap stays within `(-3.0, +3.0)` — a generous
+///    sanity bound covering both bipolar Architecture C altitudes
+///    (`[-1.13, ~0.7]`) and any downstream pipeline normalisation
+///    that might shift the range. A value outside this bound
+///    indicates either a NaN/Inf leak or an unexpected
+///    re-normalisation.
+#[test]
+fn downstream_pipeline_accepts_phase_2_altitude() {
+    let (mut state, kinematics, config) = setup();
+    let closures = C1Closures::default();
+
+    eprintln!("c1_phase_2 Stage D Test 3 — downstream_pipeline_accepts_phase_2_altitude");
+    eprintln!(
+        "  grid = {GRID}², steps = {N_STEPS}  (full Phase 2 closure stack: DS+EH+erosion+S-S)"
+    );
+
+    run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
+
+    // Architecture C re-application at boundary so altitude
+    // carries the S-S imprint when the downstream pipeline reads
+    // it.
+    let isostasy = compute_isostasy(&state.s, &config.iso_config);
+    let mut altitude = isostasy.heightmap;
+    apply_stein_stein_bathymetry(
+        &mut altitude,
+        &state.age,
+        &state.plate_type,
+        &closures.oceanic_bathymetry,
+    );
+
+    let alt_min = altitude.data.iter().cloned().fold(f32::INFINITY, f32::min);
+    let alt_max = altitude
+        .data
+        .iter()
+        .cloned()
+        .fold(f32::NEG_INFINITY, f32::max);
+    let any_non_finite = altitude.data.iter().any(|v| !v.is_finite());
+    eprintln!(
+        "  post-S-S altitude range: [{alt_min:.4}, {alt_max:.4}]  (bipolar Architecture C)"
+    );
+    assert!(
+        !any_non_finite,
+        "post-S-S altitude buffer contains non-finite values; check S-S apply path"
+    );
+
+    // Smoke 1 — D8 flow routing.
+    let flow_config = FlowConfig {
+        sea_level: isostasy.sea_level_normalized,
+        ..FlowConfig::default()
+    };
+    let flow = compute_flow(&altitude, &flow_config);
+    eprintln!(
+        "  compute_flow: accepted bipolar altitude without panic; num_basins = {}, max accum = {:.1}",
+        flow.num_basins,
+        flow.accumulation
+            .data
+            .iter()
+            .cloned()
+            .fold(0.0_f32, f32::max),
+    );
+    assert!(
+        flow.accumulation.data.iter().all(|v| v.is_finite()),
+        "compute_flow produced non-finite accumulation"
+    );
+    assert!(
+        flow.filled.data.iter().all(|h| h.is_finite()),
+        "compute_flow produced non-finite filled heightmap"
+    );
+
+    // Smoke 2 — HD erosion. Use a low droplet count to keep
+    // runtime acceptable — this is a consumability check, not an
+    // erosion-effect validation. Same pattern as
+    // c1_phase_1_4_downstream.rs:332-355.
+    let erosion_config = ErosionConfig {
+        num_droplets: 1_000,
+        ..ErosionConfig::default()
+    };
+    let world_seed = WorldSeed::new(SEED);
+    let eroded = run_erosion(&altitude, &erosion_config, &world_seed, |_, _, _| true);
+    let eroded_min = eroded
+        .heightmap
+        .data
+        .iter()
+        .cloned()
+        .fold(f32::INFINITY, f32::min);
+    let eroded_max = eroded
+        .heightmap
+        .data
+        .iter()
+        .cloned()
+        .fold(f32::NEG_INFINITY, f32::max);
+    let any_non_finite_eroded = eroded.heightmap.data.iter().any(|v| !v.is_finite());
+    eprintln!(
+        "  run_erosion:  accepted bipolar altitude without panic; {} droplets; \
+         post-erosion range [{eroded_min:.4}, {eroded_max:.4}]",
+        erosion_config.num_droplets
+    );
+    assert!(
+        !any_non_finite_eroded,
+        "post-erosion altitude buffer contains non-finite values"
+    );
+    assert!(
+        eroded.sediment.data.iter().all(|s| s.is_finite() && *s >= 0.0),
+        "run_erosion produced non-finite or negative sediment"
+    );
+
+    // Smoke 3 — altitude range sanity. Phase 2 Architecture C
+    // bipolar values shouldn't escape ±3.0 even after downstream
+    // erosion (an internal renormalisation that suddenly shifted
+    // values to e.g. [0, 1000] would indicate a contract break).
+    assert!(
+        alt_min > -3.0 && alt_max < 3.0,
+        "post-S-S altitude range [{alt_min}, {alt_max}] escapes ±3.0 sanity bound"
+    );
+    assert!(
+        eroded_min > -3.0 && eroded_max < 3.0,
+        "post-erosion altitude range [{eroded_min}, {eroded_max}] escapes ±3.0 sanity bound"
+    );
+
+    eprintln!(
+        "  Phase 2 Track A altitude consumable by downstream pipeline (D8 + HD erosion)."
     );
 }
