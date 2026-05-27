@@ -110,7 +110,15 @@ pub fn init_c1_state_phase_1_1(grid_size: usize, seed: u64) -> C1State {
 /// plate's seed-coordinate `x` is in the lower half of the
 /// domain are marked `true`. Oceanic cells and continental
 /// cells from "upper-half" plates are `false`.
-fn build_phase_1_1_cratonic_mask(
+///
+/// Promoted to `pub(crate)` in Phase 2 Stage E4 for reuse from
+/// [`super::init_r7`]'s Phase 2 R7 init dispatcher. The
+/// cratonic-mask rule is uniform across init flows; this
+/// preserves the single-source-of-truth invariant. Keep the
+/// name `build_phase_1_1_cratonic_mask` for now — rename in
+/// Phase 3+ when a real cratonic rule replaces the Phase 1.1
+/// hand-tuned stand-in.
+pub(crate) fn build_phase_1_1_cratonic_mask(
     nx: usize,
     ny: usize,
     plate_id: &PlateIdField,
