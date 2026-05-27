@@ -79,6 +79,7 @@ pub mod boundary_classification;
 pub mod closures;
 pub mod distance_field;
 pub mod init;
+pub mod init_r7;
 pub mod kinematics;
 pub mod state;
 pub mod time_loop;
