@@ -59,10 +59,12 @@
 //! `init_c1_state_phase_1_1(grid_size, seed)` directly; the Phase
 //! 2 entry is a new function call.
 
+pub mod age_init;
 pub mod boundary_displacement;
 pub mod clustering;
 pub mod params;
 
+pub use age_init::{init_age_field_ridge_aligned, AgeInitParams};
 pub use boundary_displacement::apply_boundary_displacement;
 pub use clustering::{
     assign_continental_clusters, build_plate_adjacency, ContinentalClusterParams,
