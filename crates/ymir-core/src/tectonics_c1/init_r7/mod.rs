@@ -60,7 +60,11 @@
 //! 2 entry is a new function call.
 
 pub mod boundary_displacement;
+pub mod clustering;
 pub mod params;
 
 pub use boundary_displacement::apply_boundary_displacement;
+pub use clustering::{
+    assign_continental_clusters, build_plate_adjacency, ContinentalClusterParams,
+};
 pub use params::R7InitParams;
