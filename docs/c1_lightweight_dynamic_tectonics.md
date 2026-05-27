@@ -519,6 +519,15 @@ Start with boundary displacement. The Step 12.X follow-up issue
 (noted in §4.14 of the v2 patch) covered this territory and can be
 re-purposed.
 
+*Note: Phase 2 Track B (Issue #131) implements the **boundary
+displacement** option using Perlin/Simplex noise via the `noise`
+crate. For each grid cell, a noise-sampled displacement vector
+shifts the candidate sampling position before re-running the
+nearest-Voronoï-seed query — produces curved boundaries while
+preserving the seed-based plate identity. Defaults `amplitude =
+grid_size / 8`, `frequency = 4.0`, `octaves = 3`, `persistence =
+0.5`. Lloyd relaxation and multi-scale overlay remain deferred.*
+
 ### 6.2 Continental clustering
 
 For the §2.4 viewport requirement, continental plates must be
@@ -536,6 +545,15 @@ Two strategies:
 
 The second is simpler and produces more compact clusters. Start
 there.
+
+*Note: Phase 2 Track B (Issue #131) implements the **cluster-based
+type assignment** option via a BFS expansion over the per-plate
+adjacency graph derived from the (post-displacement) Voronoï
+tessellation. Defaults `continental_fraction = 0.29` (Earth-like)
+and `seed_cluster_count = 1` (single contiguous continent for the
+§2.4 viewport-cadrable requirement). Spatially-biased seed sampling
+remains deferred — empirically the BFS approach produces compact
+clusters on the default 8-plate adjacency graph.*
 
 ### 6.3 Plate kinematics — open problem
 
@@ -580,6 +598,22 @@ continental crust starts at some baseline age (the "geological past"
 of the continent), oceanic crust ages from zero at oceanic ridges.
 Reuse `age_field::init` from v2.
 
+*Note: Phase 2 Track B (Issue #131) implements the **ridge-aligned
+age = 0 initialisation** under **Path 3.A (init-only)** — at init
+time, detect cells adjacent to divergent boundaries (reusing
+[`tectonics_c1::boundary_classification::classify_boundaries`]
+which already produces `BoundaryType::Divergent` from per-plate
+kinematics), set `age = 0` on those cells, baseline elsewhere.
+This addresses Phase 2 Track A's empirical finding that the
+flux-form `∂_t·age + ∇·(age·v) = 0` advection produces ~1000×
+density pile-up at convergent boundaries from initial uniform
+oceanic `age = 0.5` (see `feedback_age_advection_density_vs_lagrangian`).
+Path 3.A keeps the existing density-form advection unchanged;
+escalation to Path 3.B (per-step ageing) or Path 3.C (Lagrangian
+advection) is documented as fallback if Stage A reveals Path 3.A
+does not preserve the Track A Spearman age-altitude correlation
+sufficiently.*
+
 ---
 
 ## 7. Implementation plan
@@ -618,17 +652,24 @@ Phase 2 is split into four work tracks, each delivered as a separate
 issue:
 
 - **Track A — oceanic bathymetry (Stein & Stein 1992).**
-  Status: **in progress (Issue #129)**. Architecture C (post-
-  isostasy bathymetry adjustment). MVP-table closure #3 is
-  swapped from the original Parsons-Sclater 1977 reference to its
-  Stein-Stein 1992 successor (continuity with crossover at
-  ~20 Ma). See §5.1 footnote.
-- Track B — R7 init (boundary displacement / clustering /
-  constrained kinematics, §6.1–§6.3). Separate issue TBD.
-- Track C — boundary evolution: subduction, accretion, rifting
-  (§4.5). Separate issue TBD.
-- Track D — kinematics sampling (constrained random / Euler pole /
-  scoring, §6.3). Separate issue TBD.
+  Status: ✓ **Complete (Issue #129, merged via PR #130).**
+  Architecture C (post-isostasy bathymetry adjustment). MVP-table
+  closure #3 is swapped from the original Parsons-Sclater 1977
+  reference to its Stein-Stein 1992 successor (continuity with
+  crossover at ~20 Ma). See §5.1 footnote.
+- **Track B — R7 init (boundary displacement + continental
+  clustering + ridge-aligned age, §6.1 / §6.2 / §6.5).**
+  Status: ⏳ **In progress (Issue #131).** Three sub-components:
+  (1) Perlin/Simplex boundary displacement on Voronoï; (2)
+  cluster-based BFS continental type assignment with
+  cadrable-continent constraint; (3) Path 3.A ridge-aligned
+  `age = 0` init at divergent boundaries (resolves Track A
+  density-advection finding). Kinematics sampling deferred to
+  Track C/D.
+- **Track C — boundary evolution: subduction, accretion, rifting
+  (§4.5).** Separate issue TBD.
+- **Track D — kinematics sampling (constrained random / Euler
+  pole / scoring, §6.3).** Separate issue TBD.
 
 Acceptance gate (cross-track): the same preset run multiple times
 with different seeds produces visually distinct continents (not
