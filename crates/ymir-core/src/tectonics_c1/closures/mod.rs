@@ -25,11 +25,22 @@
 //!   modifies altitude on oceanic cells, not `S̃`** — see its
 //!   module docstring for the rationale and fallback architectures.
 //!
+//! - [`subduction`] — Lallemand 2005 oceanic-mass consumption +
+//!   arc volcanism + floor-triggered `plate_id` reassignment
+//!   (Phase 2 Track D, Issue #132). **First C1 closure to mutate
+//!   `plate_id` and `plate_type`** — breaks the static-classification
+//!   optimisation in `tectonics_c1::time_loop::run_with_closures`
+//!   (per-step `classify_boundaries` recompute lands at Stage E4
+//!   of Track D).
+//!
 //! ## Forthcoming closures (per design doc §5.1, §5.2)
 //!
-//! - Subduction arc (Lallemand) — Phase 2+
-//! - Rifting / passive margins (McKenzie-Buck) — Phase 2+
-//! - Foreland basin flexure (Beaumont) — Phase 2+
+//! - Accretion mechanism (sustained-convergence plate_id merge) —
+//!   Phase 2 Track D Stage E2 (Issue #132)
+//! - Rifting closure + split mechanism (McKenzie-Buck thinning +
+//!   "chewing-gum cut" two-condition split) — Phase 2 Track D
+//!   Stage E3 (Issue #132)
+//! - Foreland basin flexure (Beaumont) — Phase 3
 //! - Airy isostasy — already available via
 //!   `crate::tectonics::isostasy::compute_isostasy` (reused, not
 //!   re-implemented)
@@ -38,3 +49,4 @@ pub mod davis_suppe;
 pub mod equilibrium_height;
 pub mod erosion;
 pub mod oceanic_bathymetry;
+pub mod subduction;
