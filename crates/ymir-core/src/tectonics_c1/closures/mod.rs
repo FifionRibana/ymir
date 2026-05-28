@@ -32,11 +32,16 @@
 //!   optimisation in `tectonics_c1::time_loop::run_with_closures`
 //!   (per-step `classify_boundaries` recompute lands at Stage E4
 //!   of Track D).
+//! - [`accretion`] — Coney-Jones-Monger 1980 sustained-convergence
+//!   plate-id merge (Phase 2 Track D, Issue #132). **First C1
+//!   closure to mutate `kinematics.velocities`** — winner plate's
+//!   post-merge velocity is the mass-weighted average of the two
+//!   pre-merge velocities. No `S̃` thickening source; Davis-Suppe
+//!   already handles orogenic morphology during the pre-merge
+//!   convergence phase.
 //!
 //! ## Forthcoming closures (per design doc §5.1, §5.2)
 //!
-//! - Accretion mechanism (sustained-convergence plate_id merge) —
-//!   Phase 2 Track D Stage E2 (Issue #132)
 //! - Rifting closure + split mechanism (McKenzie-Buck thinning +
 //!   "chewing-gum cut" two-condition split) — Phase 2 Track D
 //!   Stage E3 (Issue #132)
@@ -45,6 +50,7 @@
 //!   `crate::tectonics::isostasy::compute_isostasy` (reused, not
 //!   re-implemented)
 
+pub mod accretion;
 pub mod davis_suppe;
 pub mod equilibrium_height;
 pub mod erosion;
