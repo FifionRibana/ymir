@@ -39,12 +39,16 @@
 //!   pre-merge velocities. No `S̃` thickening source; Davis-Suppe
 //!   already handles orogenic morphology during the pre-merge
 //!   convergence phase.
+//! - [`rifting`] — McKenzie 1978 / Buck 1991 divergent-boundary
+//!   continental thinning + "chewing-gum cut" plate split (Phase
+//!   2 Track D, Issue #132). **Third C1 closure to mutate
+//!   `plate_id`** + first to allocate new plate ids (extends
+//!   `kinematics.velocities` on split). Path 3.B event-driven
+//!   `age = 0` on rift-spawned cells extends Track B Path 3.A
+//!   init-only.
 //!
 //! ## Forthcoming closures (per design doc §5.1, §5.2)
 //!
-//! - Rifting closure + split mechanism (McKenzie-Buck thinning +
-//!   "chewing-gum cut" two-condition split) — Phase 2 Track D
-//!   Stage E3 (Issue #132)
 //! - Foreland basin flexure (Beaumont) — Phase 3
 //! - Airy isostasy — already available via
 //!   `crate::tectonics::isostasy::compute_isostasy` (reused, not
@@ -55,4 +59,5 @@ pub mod davis_suppe;
 pub mod equilibrium_height;
 pub mod erosion;
 pub mod oceanic_bathymetry;
+pub mod rifting;
 pub mod subduction;
