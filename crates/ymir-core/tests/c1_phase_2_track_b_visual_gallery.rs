@@ -62,7 +62,10 @@ use image::{ImageBuffer, Rgb};
 
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
+use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
+use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::init_r7::{init_c1_state_phase_2_r7, Phase2InitParams};
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
@@ -89,9 +92,26 @@ fn phase_2_track_b_visual_gallery() {
 
     let init_params = Phase2InitParams::default();
     let mut state = init_c1_state_phase_2_r7(GRID_SIZE, SEED, &init_params);
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let iso_config = IsostasyConfig::default();
-    let closures = C1Closures::default();
+    // Phase 2 Track B gallery — Track D disabled so the
+    // committed PNG references match the Track B-only behaviour
+    // (no subduction / accretion / rifting events).
+    let closures = C1Closures {
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
+        ..C1Closures::default()
+    };
     let config = C1TimeLoopConfig {
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
@@ -121,7 +141,7 @@ fn phase_2_track_b_visual_gallery() {
     let started = std::time::Instant::now();
     run_with_closures(
         &mut state,
-        &kinematics,
+        &mut kinematics,
         &config,
         &closures,
         |step, current_state| {

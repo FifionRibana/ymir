@@ -102,10 +102,13 @@
 use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
 use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
+use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
@@ -198,9 +201,26 @@ fn median_sorted(sorted: &[f64]) -> f64 {
 /// age-modulated oceanic bathymetry.
 #[test]
 fn bathymetry_modulated_by_age_after_300_steps() {
-    let (mut state, kinematics, config) = setup();
-    // Full Phase 2 closure stack — all four enabled by default.
-    let closures = C1Closures::default();
+    let (mut state, mut kinematics, config) = setup();
+    // Phase 2 Track A closure stack — all four MVP closures
+    // enabled. Track D disabled to preserve the Track A
+    // acceptance assertions (S-S anchor 5-point ±50 m would be
+    // disturbed by subduction/accretion/rifting mid-run).
+    let closures = C1Closures {
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
+        ..C1Closures::default()
+    };
 
     eprintln!("c1_phase_2 Stage A Test 1 — bathymetry_modulated_by_age_after_300_steps");
     eprintln!("  grid = {GRID}², steps = {N_STEPS}, seed = {SEED}");
@@ -213,7 +233,7 @@ fn bathymetry_modulated_by_age_after_300_steps() {
     );
 
     let started = std::time::Instant::now();
-    run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
     let elapsed = started.elapsed();
     eprintln!(
         "  run wall time: {:.2?} ({:.2?} / step)",
@@ -357,21 +377,34 @@ fn bathymetry_modulated_by_age_after_300_steps() {
 #[test]
 fn disabled_matches_phase_1_4() {
     // Path A — Phase 1.4-style closures (S-S off via struct-update
-    // syntax from `C1Closures::default()`).
-    let (mut state_a, kinematics_a, config_a) = setup();
+    // syntax from `C1Closures::default()`). Track D also disabled
+    // to keep the Path A regime aligned with Phase 1.4.
+    let (mut state_a, mut kinematics_a, config_a) = setup();
     let closures_a = C1Closures {
         oceanic_bathymetry: SteinSteinParams {
             enabled: false,
             ..SteinSteinParams::default()
         },
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
         ..C1Closures::default()
     };
-    run_with_closures(&mut state_a, &kinematics_a, &config_a, &closures_a, |_, _| {});
+    run_with_closures(&mut state_a, &mut kinematics_a, &config_a, &closures_a, |_, _| {});
 
     // Path B — Phase 2-explicit closure construction (all fields
     // named) with S-S off. Different struct-literal spelling, same
     // semantic content as Path A.
-    let (mut state_b, kinematics_b, config_b) = setup();
+    let (mut state_b, mut kinematics_b, config_b) = setup();
     let closures_b = C1Closures {
         davis_suppe: DavisSuppeParams::default(),
         equilibrium_height: EquilibriumHeightParams::default(),
@@ -380,8 +413,20 @@ fn disabled_matches_phase_1_4() {
             enabled: false,
             ..SteinSteinParams::default()
         },
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
     };
-    run_with_closures(&mut state_b, &kinematics_b, &config_b, &closures_b, |_, _| {});
+    run_with_closures(&mut state_b, &mut kinematics_b, &config_b, &closures_b, |_, _| {});
 
     // Bit-identical S̃ comparison over all cells.
     let total_cells = GRID * GRID;
@@ -451,15 +496,29 @@ fn disabled_matches_phase_1_4() {
 ///    re-normalisation.
 #[test]
 fn downstream_pipeline_accepts_phase_2_altitude() {
-    let (mut state, kinematics, config) = setup();
-    let closures = C1Closures::default();
+    let (mut state, mut kinematics, config) = setup();
+    let closures = C1Closures {
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
+        ..C1Closures::default()
+    };
 
     eprintln!("c1_phase_2 Stage D Test 3 — downstream_pipeline_accepts_phase_2_altitude");
     eprintln!(
         "  grid = {GRID}², steps = {N_STEPS}  (full Phase 2 closure stack: DS+EH+erosion+S-S)"
     );
 
-    run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
 
     // Architecture C re-application at boundary so altitude
     // carries the S-S imprint when the downstream pipeline reads

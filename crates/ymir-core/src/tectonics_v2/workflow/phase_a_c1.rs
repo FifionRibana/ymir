@@ -66,7 +66,14 @@ use super::{CycleOutputCommon, WorkflowConfig};
 /// `C1State` and consume the output.
 pub struct PhaseACycleInputC1<'a> {
     pub state: &'a mut C1State,
-    pub kinematics: &'a PlateKinematics,
+    /// Per-plate kinematics. Mutable since Phase 2 Track D
+    /// (Issue #132) — accretion's mass-weighted merge and
+    /// rifting's plate-split spawn both mutate
+    /// `kinematics.velocities`. Phase 1.x + Track A/B callers
+    /// pass `&mut kinematics` even though they do not actually
+    /// mutate it (Track D closures default-enabled but can be
+    /// disabled per-test).
+    pub kinematics: &'a mut PlateKinematics,
     pub closures: &'a C1Closures,
     pub time_loop_config: &'a C1TimeLoopConfig,
     pub iso_config: &'a IsostasyConfig,
@@ -180,7 +187,7 @@ mod tests {
     fn c1_phase_a_cycle_completes_300_steps() {
         let grid = 64;
         let mut state = init_c1_state_phase_1_1(grid, 42);
-        let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let iso_config = IsostasyConfig::default();
         let time_loop_config = C1TimeLoopConfig {
@@ -195,7 +202,7 @@ mod tests {
         let output = run_phase_a_cycle_c1(
             PhaseACycleInputC1 {
                 state: &mut state,
-                kinematics: &kinematics,
+                kinematics: &mut kinematics,
                 closures: &closures,
                 time_loop_config: &time_loop_config,
                 iso_config: &iso_config,

@@ -44,7 +44,10 @@
 //! the critical path of Phase 2 closeout, not a Track B blocker.
 
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
+use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
+use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::init_r7::{
     init_c1_state_phase_2_r7, Phase2InitParams, R7InitParams,
 };
@@ -310,8 +313,26 @@ fn acceptance_track_b2_continent_cadrable() {
 fn acceptance_track_b3_age_ridge_aligned_substantively() {
     let mut state =
         init_c1_state_phase_2_r7(GRID, SEED, &Phase2InitParams::default());
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
-    let closures = C1Closures::default();
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    // Track B3 acceptance — Track D disabled so the Spearman
+    // baseline (-0.5233) compares cleanly against the Track A
+    // baseline (-0.476). Track D mutates plate_id mid-run which
+    // would skew the age-altitude correlation.
+    let closures = C1Closures {
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
+        ..C1Closures::default()
+    };
     let config = make_time_loop_config();
 
     eprintln!("Acceptance Track B3 — Spearman re-run vs Track A baseline:");
@@ -324,7 +345,7 @@ fn acceptance_track_b3_age_ridge_aligned_substantively() {
         closures.oceanic_bathymetry.enabled,
     );
 
-    run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
 
     // Architecture C: re-apply S-S at run boundary to observe
     // the bathymetric imprint (same pattern as Track A Stage A

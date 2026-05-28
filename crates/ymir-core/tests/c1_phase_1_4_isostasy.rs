@@ -38,7 +38,10 @@
 
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::boundary_classification::{classify_boundaries, BoundaryType};
+use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
+use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
@@ -59,6 +62,20 @@ fn phase_1_4_closures() -> C1Closures {
             enabled: false,
             ..SteinSteinParams::default()
         },
+        // Track D (Issue #132) — disabled to preserve Phase 1.4
+        // regression invariants.
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
         ..C1Closures::default()
     }
 }
@@ -78,7 +95,7 @@ fn altitude_responds_to_s_changes_per_step() {
     // protects against the edge case where a single sampled cell
     // happens to land at steady-state.
     let mut state = init_c1_state_phase_1_1(GRID, SEED);
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let iso_config = IsostasyConfig::default();
 
     // Snapshot altitude at cycle 0.
@@ -111,7 +128,7 @@ fn altitude_responds_to_s_changes_per_step() {
         iso_config: iso_config.clone(),
         drainage_max_distance: 30,
     };
-    run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
 
     // Snapshot altitude at cycle 50.
     let altitude_50 = compute_isostasy(&state.s, &iso_config);
@@ -225,7 +242,7 @@ fn apply_post_tectonic_mutates_s_via_macro_redistribution() {
     // uniform to make the mutation reliably visible at the
     // 1e-6 tolerance).
     let mut state = init_c1_state_phase_1_1(GRID, SEED);
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let iso_config = IsostasyConfig::default();
     let closures = phase_1_4_closures();
     let config = C1TimeLoopConfig {
@@ -235,7 +252,7 @@ fn apply_post_tectonic_mutates_s_via_macro_redistribution() {
         iso_config: iso_config.clone(),
         drainage_max_distance: 30,
     };
-    run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
 
     // Snapshot s + altitude *before* apply_post_tectonic.
     let s_pre: Vec<f64> = state.s.data().to_vec();

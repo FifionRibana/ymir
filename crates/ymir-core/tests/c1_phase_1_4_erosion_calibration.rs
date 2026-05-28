@@ -35,7 +35,10 @@ use image::{ImageBuffer, Rgb};
 
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
+use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
+use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
@@ -60,7 +63,7 @@ fn erosion_calibration_visual_review() {
     std::fs::create_dir_all(&dir).expect("create output dir");
 
     let mut state = init_c1_state_phase_1_1(GRID_SIZE, SEED);
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let iso_config = IsostasyConfig::default();
     // Phase 1.4 calibration tool — keep S-S OFF so the K calibration
     // record matches the Phase 1.4 PNG gallery committed in
@@ -70,6 +73,18 @@ fn erosion_calibration_visual_review() {
         oceanic_bathymetry: SteinSteinParams {
             enabled: false,
             ..SteinSteinParams::default()
+        },
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
         },
         ..C1Closures::default()
     };
@@ -103,7 +118,7 @@ fn erosion_calibration_visual_review() {
     let started = std::time::Instant::now();
     run_with_closures(
         &mut state,
-        &kinematics,
+        &mut kinematics,
         &config,
         &closures,
         |step, current_state| {
