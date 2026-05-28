@@ -31,10 +31,13 @@
 //! equilibrium-height + Davis-Suppe interaction at 64²×300).
 
 use ymir_core::tectonics::isostasy::IsostasyConfig;
+use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
 use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
+use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
@@ -87,6 +90,20 @@ fn phase_1_3_closures() -> C1Closures {
             enabled: false,
             ..SteinSteinParams::default()
         },
+        // Track D (Issue #132) — disabled to preserve the
+        // Phase 1.3 decomposition contract.
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
     }
 }
 
@@ -96,7 +113,7 @@ fn c1_phase_a_cycle_smoke_integration() {
     // Commit 4 test (32² × 50 steps vs 64² × 300) so it stays
     // sub-second under default `cargo test`.
     let mut state = init_c1_state_phase_1_1(GRID, SEED);
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let closures = phase_1_3_closures();
     let time_loop_config = make_time_loop_config(50);
     let iso_config = IsostasyConfig::default();
@@ -105,7 +122,7 @@ fn c1_phase_a_cycle_smoke_integration() {
     let output = run_phase_a_cycle_c1(
         PhaseACycleInputC1 {
             state: &mut state,
-            kinematics: &kinematics,
+            kinematics: &mut kinematics,
             closures: &closures,
             time_loop_config: &time_loop_config,
             iso_config: &iso_config,
@@ -138,7 +155,7 @@ fn c1_phase_a_decomposes_into_closures_then_post_tectonic() {
     // appears, surface as architectural finding.
 
     let n_steps = 30;
-    let kinematics_template = {
+    let mut kinematics_template = {
         let scratch = init_c1_state_phase_1_1(GRID, SEED);
         PlateKinematics::preset_phase_1_1(scratch.num_plates)
     };
@@ -154,7 +171,7 @@ fn c1_phase_a_decomposes_into_closures_then_post_tectonic() {
     let output_a = run_phase_a_cycle_c1(
         PhaseACycleInputC1 {
             state: &mut state_a,
-            kinematics: &kinematics_template,
+            kinematics: &mut kinematics_template,
             closures: &closures,
             time_loop_config: &time_loop_config,
             iso_config: &iso_config,
@@ -169,7 +186,7 @@ fn c1_phase_a_decomposes_into_closures_then_post_tectonic() {
     let mut state_b = init_c1_state_phase_1_1(GRID, SEED);
     run_with_closures(
         &mut state_b,
-        &kinematics_template,
+        &mut kinematics_template,
         &time_loop_config,
         &closures,
         |_, _| {},
@@ -245,11 +262,23 @@ fn c1_phase_a_with_disabled_closures_matches_phase_1_1() {
             enabled: false,
             ..SteinSteinParams::default()
         },
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
     };
     let time_loop_config = make_time_loop_config(50);
     let iso_config = IsostasyConfig::default();
 
-    let kinematics = {
+    let mut kinematics = {
         let scratch = init_c1_state_phase_1_1(GRID, SEED);
         PlateKinematics::preset_phase_1_1(scratch.num_plates)
     };
@@ -260,7 +289,7 @@ fn c1_phase_a_with_disabled_closures_matches_phase_1_1() {
     let output_a = run_phase_a_cycle_c1(
         PhaseACycleInputC1 {
             state: &mut state_a,
-            kinematics: &kinematics,
+            kinematics: &mut kinematics,
             closures: &closures_off,
             time_loop_config: &time_loop_config,
             iso_config: &iso_config,
@@ -283,7 +312,7 @@ fn c1_phase_a_with_disabled_closures_matches_phase_1_1() {
     let initial_mass_b: f64 = state_b.s.data().iter().sum();
     run_with_closures(
         &mut state_b,
-        &kinematics,
+        &mut kinematics,
         &time_loop_config,
         &closures_off,
         |_, _| {},
@@ -321,7 +350,7 @@ fn c1_phase_a_with_cratonic_enabled_produces_factor() {
     // (those are v2's `v2_workflow_cratonic_recompute_*` under
     // v2_legacy); just a "C1 can drive this codepath" sanity.
     let mut state = init_c1_state_phase_1_1(GRID, SEED);
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let closures = phase_1_3_closures();
     let time_loop_config = make_time_loop_config(30);
     let iso_config = IsostasyConfig::default();
@@ -331,7 +360,7 @@ fn c1_phase_a_with_cratonic_enabled_produces_factor() {
     let output = run_phase_a_cycle_c1(
         PhaseACycleInputC1 {
             state: &mut state,
-            kinematics: &kinematics,
+            kinematics: &mut kinematics,
             closures: &closures,
             time_loop_config: &time_loop_config,
             iso_config: &iso_config,
