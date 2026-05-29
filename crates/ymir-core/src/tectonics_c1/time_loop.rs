@@ -56,6 +56,7 @@ use crate::tectonics_v2::workflow::drainage::compute_drainage_targets;
 use crate::tectonics_v2::workflow::phase_a_common::compute_sea_level_ref_s_space;
 
 use super::boundary_classification::classify_boundaries;
+use super::closures::accretion::{apply_accretion_step, AccretionParams, ConvergenceTracker};
 use super::closures::davis_suppe::source_term::{apply_davis_suppe_step, DavisSuppeParams};
 use super::closures::equilibrium_height::params::EquilibriumHeightParams;
 use super::closures::equilibrium_height::source_term::apply_equilibrium_height_step;
@@ -63,6 +64,10 @@ use super::closures::erosion::params::ErosionParams;
 use super::closures::erosion::source_term::{apply_erosion_step, compute_drainage_areas};
 use super::closures::oceanic_bathymetry::params::SteinSteinParams;
 use super::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
+use super::closures::rifting::{
+    apply_rifting_split, apply_rifting_thinning, DivergenceTracker, RiftingParams,
+};
+use super::closures::subduction::{apply_subduction_step, SubductionParams};
 use super::distance_field::wedge_distance_intra_plate;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
@@ -190,29 +195,41 @@ fn fill_velocity_field(
 ///
 /// ## Default-behaviour caveat
 ///
-/// `C1Closures::default()` enables **all four** closures
+/// `C1Closures::default()` enables **all seven** closures
 /// (Davis-Suppe + equilibrium-height + erosion + oceanic
-/// bathymetry). Tests written for a prior-phase regime (where a
-/// closure-specific observable is load-bearing — e.g. the Phase
-/// 1.2 unbounded boundary pile-up `global_max ≈ 2297`, or the
-/// Phase 1.3 `wedge_p95 = 0.376` preservation) must explicitly
-/// disable the later-phase closures:
+/// bathymetry + subduction + accretion + rifting). Tests written
+/// for a prior-phase regime (where a closure-specific observable
+/// is load-bearing — e.g. the Phase 1.2 unbounded boundary
+/// pile-up `global_max ≈ 2297`, the Phase 1.3 `wedge_p95 = 0.376`
+/// preservation, or the Track B 8th bit-identical decomposition
+/// contract) must explicitly disable the later-phase closures.
+/// Phase 1.x test fixtures use the `phase_1_X_closures()` helper
+/// pattern (see [`crates/ymir-core/tests/c1_phase_1_4_erosion.rs`])
+/// to disable forward-only closures with `enabled: false` overrides.
+///
+/// **Track D defaults** (subduction, accretion, rifting): each
+/// `Default::default()` ships with `enabled: true` per its own
+/// docstring, so `C1Closures::default()` includes them. Phase 1.x
+/// + Track A + Track B tests must add the trio of `enabled: false`
+/// overrides to preserve the regression invariants. Track D
+/// integration tests + Phase 2 milestone gate runs leave the
+/// defaults intact.
 ///
 /// ```ignore
 /// let closures = C1Closures {
-///     davis_suppe: DavisSuppeParams::default(),
-///     equilibrium_height: EquilibriumHeightParams {
+///     subduction: SubductionParams {
 ///         enabled: false,
-///         ..EquilibriumHeightParams::default()
+///         ..SubductionParams::default()
 ///     },
-///     erosion: ErosionParams {
+///     accretion: AccretionParams {
 ///         enabled: false,
-///         ..ErosionParams::default()
+///         ..AccretionParams::default()
 ///     },
-///     oceanic_bathymetry: SteinSteinParams {
+///     rifting: RiftingParams {
 ///         enabled: false,
-///         ..SteinSteinParams::default()
+///         ..RiftingParams::default()
 ///     },
+///     ..C1Closures::default()
 /// };
 /// ```
 #[derive(Clone, Copy, Debug)]
@@ -221,6 +238,12 @@ pub struct C1Closures {
     pub equilibrium_height: EquilibriumHeightParams,
     pub erosion: ErosionParams,
     pub oceanic_bathymetry: SteinSteinParams,
+    /// Track D — subduction (Issue #132 Stage E1).
+    pub subduction: SubductionParams,
+    /// Track D — accretion (Issue #132 Stage E2).
+    pub accretion: AccretionParams,
+    /// Track D — rifting (Issue #132 Stage E3).
+    pub rifting: RiftingParams,
 }
 
 impl Default for C1Closures {
@@ -230,6 +253,9 @@ impl Default for C1Closures {
             equilibrium_height: EquilibriumHeightParams::default(),
             erosion: ErosionParams::default(),
             oceanic_bathymetry: SteinSteinParams::default(),
+            subduction: SubductionParams::default(),
+            accretion: AccretionParams::default(),
+            rifting: RiftingParams::default(),
         }
     }
 }
@@ -383,7 +409,7 @@ impl Default for C1Closures {
 ///   (implicit physical scales).
 pub fn run_with_closures<F>(
     state: &mut C1State,
-    kinematics: &PlateKinematics,
+    kinematics: &mut PlateKinematics,
     config: &C1TimeLoopConfig,
     closures: &C1Closures,
     mut on_step: F,
@@ -402,15 +428,45 @@ pub fn run_with_closures<F>(
     let mut vy = vec![0.0_f64; n_cells];
     fill_velocity_field(&mut vx, &mut vy, state, kinematics);
 
-    // Static-classification optimisation: plate_id is invariant
-    // in Phase 1.2, so the boundary verdict and the intra-plate
-    // wedge distance are computed once here, reused every step.
-    let boundary = classify_boundaries(&state.plate_id, kinematics);
-    let wedge_d = wedge_distance_intra_plate(
-        &state.plate_id,
-        &boundary.upper_plate_mask,
-        closures.davis_suppe.max_distance,
-    );
+    // Track D enabled-flag drives per-step boundary / wedge_d
+    // recompute (Stage E4 Q-E3.1). When any Track D closure is
+    // enabled, `plate_id` may mutate per step (subduction floor-
+    // trigger reassignment, accretion merge, rifting split), so
+    // the static cache of `boundary` + `wedge_d` becomes stale.
+    // Recompute every step costs ~ 200 µs at 64² — well inside
+    // the Phase 2 W4 budget.
+    let any_track_d_enabled = closures.subduction.enabled
+        || closures.accretion.enabled
+        || closures.rifting.enabled;
+
+    // Outer cache for the Track-D-disabled path (Phase 1.x +
+    // Track A/B regression — `plate_id` is invariant, the cache
+    // stays valid for the full run).
+    let outer_cache: Option<(_, _)> = if !any_track_d_enabled {
+        let bi = classify_boundaries(&state.plate_id, kinematics);
+        let wd = wedge_distance_intra_plate(
+            &state.plate_id,
+            &bi.upper_plate_mask,
+            closures.davis_suppe.max_distance,
+        );
+        Some((bi, wd))
+    } else {
+        None
+    };
+
+    // Trackers — internal to the run when Track D is enabled
+    // (Q-E1.2 Option (c) confirmed). Dropped at function exit;
+    // not part of the saveable `C1State`.
+    let mut convergence_tracker = if closures.accretion.enabled {
+        Some(ConvergenceTracker::new())
+    } else {
+        None
+    };
+    let mut divergence_tracker = if closures.rifting.enabled {
+        Some(DivergenceTracker::new())
+    } else {
+        None
+    };
 
     let mut s_next = Field2D::new(nx, ny);
     let mut age_next = Field2D::new(nx, ny);
@@ -418,6 +474,37 @@ pub fn run_with_closures<F>(
     let idx_y = PeriodicIndex::new(ny);
 
     for step in 0..config.n_steps {
+        // Per-step boundary geometry. When Track D is enabled,
+        // recompute from the current `plate_id` (which may have
+        // been mutated by the previous step's Track D events).
+        // When Track D is disabled, reuse the outer cache.
+        let per_step_cache: Option<(_, _)> = if any_track_d_enabled {
+            let bi = classify_boundaries(&state.plate_id, kinematics);
+            let wd = wedge_distance_intra_plate(
+                &state.plate_id,
+                &bi.upper_plate_mask,
+                closures.davis_suppe.max_distance,
+            );
+            Some((bi, wd))
+        } else {
+            None
+        };
+        let (boundary, wedge_d): (&_, &_) = match (&per_step_cache, &outer_cache) {
+            (Some((b, w)), _) => (b, w),
+            (None, Some((b, w))) => (b, w),
+            (None, None) => unreachable!(
+                "boundary cache must be present: either per-step (Track D) or outer (cached)"
+            ),
+        };
+
+        // Per-step velocity field. When Track D may have mutated
+        // `kinematics` or `plate_id` in the previous step, rebuild.
+        // Phase 1.x / Track A/B path keeps the initial fill (no
+        // mutation possible).
+        if any_track_d_enabled {
+            fill_velocity_field(&mut vx, &mut vy, state, kinematics);
+        }
+
         // 1. Advection (Phase 1.1 unchanged).
         step_upwind(
             nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy, &mut s_next,
@@ -433,8 +520,8 @@ pub fn run_with_closures<F>(
         apply_davis_suppe_step(
             &mut state.s,
             &state.plate_id,
-            &boundary,
-            &wedge_d,
+            boundary,
+            wedge_d,
             kinematics,
             &closures.davis_suppe,
             dt,
@@ -542,7 +629,112 @@ pub fn run_with_closures<F>(
             }
         }
 
-        // 5. (Future closures land here — Phase 2 Tracks B/C/D.)
+        // 5. Track D boundary-evolution events (Issue #132).
+        //
+        // Order:
+        //   5a. Subduction — consumes oceanic, distributes arc;
+        //       may mutate `plate_id` + `plate_type` via floor-
+        //       trigger reassignment.
+        //   5b. Rifting thinning — negative `S̃` source on
+        //       divergent continental cells.
+        //   5c. Trackers update — re-scan post-subduction
+        //       `plate_id` to identify currently-convergent and
+        //       currently-divergent pairs.
+        //   5d. Accretion merge — when convergence count ≥
+        //       threshold, merge plate pair; mutates `plate_id`
+        //       and `kinematics.velocities[winner]`.
+        //   5e. Rifting split — when both time + thickness
+        //       conditions hold, spawn new plate from rift strip;
+        //       mutates `plate_id`, `kinematics.velocities`
+        //       (push), `age` (Path 3.B = 0).
+        //
+        // `plate_type` is preserved per cell through accretion +
+        // rifting events (continental cells stay continental;
+        // oceanic stay oceanic). Subduction's floor-trigger
+        // reassignment is the only path that re-types a cell, and
+        // it does so in-place on the (i, j) being processed —
+        // per-cell `plate_type` ↔ `plate_id` consistency is
+        // preserved at all times. No "recompute plate_type from
+        // plate_id" step is needed (the spec called it out as 5g
+        // but it would be a no-op given how subduction handles
+        // re-typing inline).
+        if closures.subduction.enabled {
+            apply_subduction_step(
+                &mut state.s,
+                &mut state.plate_id,
+                &mut state.plate_type,
+                boundary,
+                kinematics,
+                &closures.subduction,
+                dt,
+            );
+        }
+
+        if closures.rifting.enabled {
+            apply_rifting_thinning(
+                &mut state.s,
+                &state.plate_type,
+                &state.plate_id,
+                boundary,
+                kinematics,
+                &closures.rifting,
+                dt,
+            );
+        }
+
+        if let Some(tracker) = convergence_tracker.as_mut() {
+            tracker.update(&state.plate_id, kinematics);
+        }
+        if let Some(tracker) = divergence_tracker.as_mut() {
+            tracker.update(&state.plate_id, kinematics);
+        }
+
+        if closures.accretion.enabled {
+            apply_accretion_step(
+                &mut state.plate_id,
+                &state.s,
+                kinematics,
+                convergence_tracker
+                    .as_ref()
+                    .expect("convergence_tracker allocated when accretion enabled"),
+                &closures.accretion,
+            );
+        }
+
+        if closures.rifting.enabled {
+            apply_rifting_split(
+                &mut state.plate_id,
+                &state.plate_type,
+                &mut state.age,
+                &state.s,
+                kinematics,
+                divergence_tracker
+                    .as_ref()
+                    .expect("divergence_tracker allocated when rifting enabled"),
+                &closures.rifting,
+            );
+        }
+
+        // Cratonic-factor staleness (Q-S.2 Option (c) confirmed).
+        // The `cratonic_mask` BoolField on `C1State` was built by
+        // BFS over the initial-Continental-seeded plates at init
+        // time (`init.rs::build_phase_1_1_cratonic_mask`). It is
+        // NOT recomputed when Track D mutates `plate_id`. Result:
+        // a cell that was reassigned to a different continental
+        // plate via subduction (or moved into a new rifted plate
+        // via Path 3.B split) carries the cratonic flag of its
+        // OLD plate identity until the end-of-cycle
+        // `apply_post_tectonic` cratonic recompute runs (see
+        // `workflow/phase_a_c1.rs::run_phase_a_cycle_c1`).
+        //
+        // The lag is at most one cycle (~0.67 Ma at Phase 1.1
+        // `dt`). Acceptable per Stage S Q-S.2 trade-off:
+        // cratonic mask is a slow-evolving feature (Earth
+        // cratons preserved over ~100 Ma timescales), so a 0.67-
+        // Ma lag is physically negligible. Alternative was a per-
+        // step cratonic-mask rebuild — invasive and unprofiled.
+        // Pattern matches Phase 1.4's "designed trade-off, not
+        // bug" floor-clamp finding.
 
         on_step(step, state);
     }
@@ -591,6 +783,9 @@ mod tests {
             drainage_max_distance: 30,
         };
 
+        // `run_advection_only` keeps the `&PlateKinematics`
+        // signature — only `run_with_closures` was upgraded to
+        // `&mut` for Track D.
         run_advection_only(&mut state, &kinematics, &config, |_, _| {});
 
         let final_mass: f64 = state.s.data().iter().sum();

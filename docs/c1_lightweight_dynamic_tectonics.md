@@ -360,6 +360,19 @@ implemented as **direct algorithmic updates to plate_id and S̃**
 rather than as constraints inside a coupled solve. The Step 6
 RecyclingBuffer pattern is preserved.
 
+*Note: Phase 2 Track D (Issue #132) implements all three mechanisms
+as parallel-entry closure modules in `tectonics_c1/closures/`:
+`subduction/` (rate-based oceanic consumption + arc volcanism +
+floor-triggered plate_id reassignment), `accretion/` (sustained-
+convergence plate_id merge with mass-weighted velocity averaging,
+no thickening — Davis-Suppe closure §5.1 already handles continental-
+continental orogeny), and `rifting/` (dedicated thinning closure on
+divergent continental boundaries + "chewing-gum cut" split mechanism
+gated by both sustained-divergence time AND sub-threshold thinning).
+Plate split events propagate `age = 0` along the new divergent
+boundary via the Path 3.B event-driven extension of §6.5. See §5.2
+for closure-table detail and §7.2 for delivery status.*
+
 ### 4.6 Time stepping
 
 Forward Euler on the advection (`S̃_new = S̃ - Δt · ∇·(S̃·v) +
@@ -456,6 +469,56 @@ margin). Andean arcs, Atlantic-style passive margins, and Po-Valley
 foreland plains are all absent from the MVP output. Foreland basins
 are particularly relevant because they produce fertile plains —
 prime city-placement terrain.
+
+*Note: Phase 2 Track D (Issue #132) implements the subduction and
+rifting closures of the table above, plus a third **accretion**
+mechanism. Track D is the first C1 work-track to mutate `plate_id`,
+`plate_type`, and `kinematics` per-step — Phase 1.1–1.4 + Track A/B
+all treated these as static-after-init. The three Track D mechanisms:*
+
+- **Subduction (`closures/subduction/`)** — rate-based consumption
+  `Δs = K_subduction · |v_convergence| · dt` on oceanic cells
+  adjacent to convergent oceanic-continental boundaries. Consumed
+  mass is redistributed as arc volcanism to the N nearest
+  continental neighbours within `arc_distance` (local BFS). When
+  the oceanic cell's S̃ drops below `plate_id_reassign_threshold`,
+  the cell is reassigned to the adjacent continental plate (rest
+  of S̃ contributes to arc). Foreland basin morphology (Beaumont
+  flexure entry above) remains unimplemented in Track D — covered
+  by §7.3 Phase 3.
+- **Accretion (`closures/accretion/`)** — sustained-convergence
+  merge: when two convergent plates remain convergent for at least
+  `merge_time_threshold` steps (tracked by a per-pair
+  `ConvergenceTracker`), the smaller-index plate absorbs the
+  larger-index plate's cells. Post-merge velocity is the
+  mass-weighted average of the two pre-merge velocities. **No
+  thickening source** — the existing Davis-Suppe closure (§5.1)
+  already produces orogenic morphology at convergent boundaries
+  during the pre-merge phase; the merge itself only resolves the
+  boundary topology.
+- **Rifting (`closures/rifting/`)** — two-stage mechanism:
+  (1) a thinning closure (negative `s_field` source) applied on
+  divergent continental boundaries, mirroring the Davis-Suppe
+  positive source on convergent ones; (2) a "chewing-gum cut"
+  split mechanism gated by BOTH conditions: sustained-divergence
+  time ≥ `split_time_threshold` AND boundary `S̃` < `split_thickness_threshold`.
+  Either condition alone is insufficient — both must hold (per
+  Phase 2 Track D Q3.2 hybrid-conditions decision). New plate_id
+  allocated for the rifted-off cells; per-plate velocity inherits
+  parent with a perpendicular offset. **Path 3.B event-driven
+  age=0** propagation along the newly-spawned divergent boundary
+  extends Track B's init-only Path 3.A to maintain the age-density
+  pile-up mitigation across rift events.
+
+*Mass conservation diagnostic (test-only): each subduction step
+records `(consumed, arc_distributed)` deltas; the per-cycle
+accumulator validates that `initial_total_mass - final_total_mass`
+matches `(consumed - arc_distributed)` within `1e-6` tolerance.
+Track D's other two mechanisms are exactly conservative by
+construction (accretion mutates only `plate_id` / `kinematics`,
+not S̃; rifting thinning is a closure source — its imprint shows
+in the standard mass-budget envelope already validated for the
+other closures).*
 
 ### 5.3 Optional enrichments
 
@@ -659,17 +722,39 @@ issue:
   crossover at ~20 Ma). See §5.1 footnote.
 - **Track B — R7 init (boundary displacement + continental
   clustering + ridge-aligned age, §6.1 / §6.2 / §6.5).**
-  Status: ⏳ **In progress (Issue #131).** Three sub-components:
-  (1) Perlin/Simplex boundary displacement on Voronoï; (2)
-  cluster-based BFS continental type assignment with
+  Status: ✓ **Complete (Issue #131, merged via PR #133).** Three
+  sub-components: (1) Perlin/Simplex boundary displacement on
+  Voronoï; (2) cluster-based BFS continental type assignment with
   cadrable-continent constraint; (3) Path 3.A ridge-aligned
   `age = 0` init at divergent boundaries (resolves Track A
-  density-advection finding). Kinematics sampling deferred to
-  Track C/D.
-- **Track C — boundary evolution: subduction, accretion, rifting
-  (§4.5).** Separate issue TBD.
-- **Track D — kinematics sampling (constrained random / Euler
-  pole / scoring, §6.3).** Separate issue TBD.
+  density-advection finding). Cadrable constraint deferred to
+  Track B-bis (9 / 10 seeds wrap periodic boundary at 64²; see
+  §6.2). Spearman ρ = -0.5233 IMPROVES on Track A baseline
+  ρ = -0.476 (Δ -0.047) with 43 % age pile-up reduction.
+- **Track D — boundary evolution: subduction, accretion, rifting
+  (§4.5).** Status: ⏳ **In progress (Issue #132).** First C1
+  work-track to mutate `plate_id`, `plate_type`, and `kinematics`
+  per-step. Three closure modules in `tectonics_c1/closures/`:
+  `subduction/`, `accretion/`, `rifting/`. Mass-conservation
+  diagnostic test-only. Path 3.B event-driven age=0 propagation
+  on rift-spawned divergent boundaries. *(Naming: the Issue #132
+  rebrand swaps the historical Track C/D labels from earlier
+  Track A + B project memory entries — Track D is now "boundary
+  evolution" and Track C is now "kinematics sampling".)*
+- **Track C — kinematics sampling (constrained random / Euler
+  pole / scoring, §6.3).** Status: 📋 **Conditional (event-rarity
+  escalation).** Phase 1.1 kinematics preset (8 plates, cardinal
+  + diagonal velocities) is the default for Track D's acceptance
+  runs. If Stage A's event-count diagnostic shows Track D events
+  fire too rarely (< N per 300 steps systematically across seeds)
+  under this default, Track C is escalated to produce more
+  visibly active boundary evolution. Issue TBD.
+- **Track B-bis — cadrable viewport offset for §2.4 compliance.**
+  Status: 📋 **Pending.** Three remediation options documented in
+  `c1_phase_2_track_b_acceptance.rs::acceptance_track_b2_continent_cadrable`
+  docstring: constrained BFS seed selection, increased default
+  plate count (8 → 12-16), spatially-biased seed sampling.
+  Issue TBD.
 
 Acceptance gate (cross-track): the same preset run multiple times
 with different seeds produces visually distinct continents (not
@@ -880,6 +965,20 @@ grid setup:
 
 Both are consumed by `apply_stein_stein_bathymetry` (Architecture
 C, see §5.1 footnote).
+
+Phase 2 Track D (Issue #132) will introduce additional parameter
+scales for the three new closures — `K_subduction` (rate
+coefficient for oceanic consumption), `arc_efficiency` and
+`arc_distance` (arc-volcanism distribution), `K_rift` (rate
+coefficient for divergent continental thinning), and the time /
+thickness thresholds for accretion-merge and rifting-split. The
+defaults will land here as they are calibrated in Track D
+Stages E1 / E2 / E3, alongside their physical interpretation.
+Track D follows the calibration-via-visual-review discipline
+(§11.1) under tier 2 (analytical first-pass + visual review, no
+published universal coefficient) — same tier as the Phase 1.3
+`k_collapse` and Phase 1.4 `K` (stream-power erosion)
+calibrations.
 
 The mapping is **not enforced in code** — there is no dimensional
 analysis pass, no unit checking, no `Quantity` wrapper type.

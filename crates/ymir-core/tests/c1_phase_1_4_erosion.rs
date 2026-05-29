@@ -87,10 +87,13 @@ use image::{ImageBuffer, Rgb};
 
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
+use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
 use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
+use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
@@ -110,7 +113,7 @@ fn output_dir() -> PathBuf {
 
 fn setup() -> (C1State, PlateKinematics, C1TimeLoopConfig) {
     let state = init_c1_state_phase_1_1(GRID_SIZE, SEED);
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let config = C1TimeLoopConfig {
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
@@ -142,6 +145,18 @@ fn phase_1_4_closures() -> C1Closures {
             enabled: false,
             ..SteinSteinParams::default()
         },
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
         ..C1Closures::default()
     }
 }
@@ -152,10 +167,10 @@ fn erosion_caps_height_below_equilibrium() {
     // stay bounded above by `h_max = 2.5` (Davis-Suppe ceiling)
     // and bounded below by 1.0 to guard against pathological
     // erosion that erases everything. Stage E3 measured 2.181.
-    let (mut state, kinematics, config) = setup();
+    let (mut state, mut kinematics, config) = setup();
     let closures = phase_1_4_closures();
 
-    run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
 
     let g_max = global_max(&state);
     eprintln!(
@@ -213,7 +228,7 @@ fn erosion_preserves_davis_suppe_imprint_partially() {
     let dir = output_dir();
     std::fs::create_dir_all(&dir).expect("create output dir");
 
-    let (mut state, kinematics, config) = setup();
+    let (mut state, mut kinematics, config) = setup();
     let closures = phase_1_4_closures();
 
     eprintln!(
@@ -234,7 +249,7 @@ fn erosion_preserves_davis_suppe_imprint_partially() {
     let started = std::time::Instant::now();
     run_with_closures(
         &mut state,
-        &kinematics,
+        &mut kinematics,
         &config,
         &closures,
         |step, current_state| {
@@ -372,7 +387,7 @@ fn all_closures_disabled_matches_phase_1_1() {
     // pile-up baseline (`global_max ≈ 1080`) must be preserved.
     // A silent default-state mutation enabling any closure
     // would cap the global max and fail this assertion.
-    let (mut state, kinematics, config) = setup();
+    let (mut state, mut kinematics, config) = setup();
     let closures = C1Closures {
         davis_suppe: DavisSuppeParams {
             enabled: false,
@@ -390,9 +405,21 @@ fn all_closures_disabled_matches_phase_1_1() {
             enabled: false,
             ..SteinSteinParams::default()
         },
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
     };
 
-    run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
 
     let g_max = global_max(&state);
     eprintln!(
