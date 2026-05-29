@@ -39,8 +39,27 @@ optimisation in `run_with_closures`.
 
 ### Pre-existing untouched regressions
 
-- `export::deserialize_legacy_metadata_without_upscale` — Issue #21, predates Phase 1.x.
-- `rectangular_simulation_smoke_test` — v1 Stokes `NonlinearSolverDidNotConverge`. Verified pre-Track-D via `git stash` (fails identically without my changes).
+- `export::deserialize_legacy_metadata_without_upscale` — failure
+  identical at `git checkout e4f4005~1 -- crates/ymir-core/src/export/mod.rs`
+  (Track B tip, before any Track D commit). `crates/ymir-core/src/export/mod.rs`
+  is byte-identical pre/post Track D. **Root cause: Issue #47**
+  (commit `6d13789`, 2026-04-17) added `continental_area_factor`
+  to `PlateConfig` (`crates/ymir-core/src/tectonics/plates.rs:105`)
+  without `#[serde(default)]`, while the test JSON fixture at
+  `export/mod.rs:480-487` was never updated. Test name suffix
+  `_without_upscale` refers to Issue #21's original purpose
+  (upscale becoming optional), but the test now fails on
+  `PlateConfig` deserialisation BEFORE reaching the upscale
+  check. Both the timing (pre-Phase-1.x) and the cause (#47, not
+  #21) place this OUTSIDE Track D scope. Remediation candidates
+  for a follow-up: (a) add `#[serde(default)]` to
+  `PlateConfig.continental_area_factor` (backward-compat); or
+  (b) update the test JSON fixture to include the field.
+- `rectangular_simulation_smoke_test` — v1 Stokes
+  `NonlinearSolverDidNotConverge { step: 3 }`. Verified pre-
+  Track-D via `git stash` (fails identically without my
+  changes). Belongs to the v1 legacy tectonics solver
+  (`crates/ymir-core/src/tectonics/solver/`), not C1.
 
 Both unchanged by Track D scope.
 
