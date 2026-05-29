@@ -25,16 +25,39 @@
 //!   modifies altitude on oceanic cells, not `S̃`** — see its
 //!   module docstring for the rationale and fallback architectures.
 //!
+//! - [`subduction`] — Lallemand 2005 oceanic-mass consumption +
+//!   arc volcanism + floor-triggered `plate_id` reassignment
+//!   (Phase 2 Track D, Issue #132). **First C1 closure to mutate
+//!   `plate_id` and `plate_type`** — breaks the static-classification
+//!   optimisation in `tectonics_c1::time_loop::run_with_closures`
+//!   (per-step `classify_boundaries` recompute lands at Stage E4
+//!   of Track D).
+//! - [`accretion`] — Coney-Jones-Monger 1980 sustained-convergence
+//!   plate-id merge (Phase 2 Track D, Issue #132). **First C1
+//!   closure to mutate `kinematics.velocities`** — winner plate's
+//!   post-merge velocity is the mass-weighted average of the two
+//!   pre-merge velocities. No `S̃` thickening source; Davis-Suppe
+//!   already handles orogenic morphology during the pre-merge
+//!   convergence phase.
+//! - [`rifting`] — McKenzie 1978 / Buck 1991 divergent-boundary
+//!   continental thinning + "chewing-gum cut" plate split (Phase
+//!   2 Track D, Issue #132). **Third C1 closure to mutate
+//!   `plate_id`** + first to allocate new plate ids (extends
+//!   `kinematics.velocities` on split). Path 3.B event-driven
+//!   `age = 0` on rift-spawned cells extends Track B Path 3.A
+//!   init-only.
+//!
 //! ## Forthcoming closures (per design doc §5.1, §5.2)
 //!
-//! - Subduction arc (Lallemand) — Phase 2+
-//! - Rifting / passive margins (McKenzie-Buck) — Phase 2+
-//! - Foreland basin flexure (Beaumont) — Phase 2+
+//! - Foreland basin flexure (Beaumont) — Phase 3
 //! - Airy isostasy — already available via
 //!   `crate::tectonics::isostasy::compute_isostasy` (reused, not
 //!   re-implemented)
 
+pub mod accretion;
 pub mod davis_suppe;
 pub mod equilibrium_height;
 pub mod erosion;
 pub mod oceanic_bathymetry;
+pub mod rifting;
+pub mod subduction;

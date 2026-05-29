@@ -53,10 +53,13 @@ use image::{ImageBuffer, Rgb};
 
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
+use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
 use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
+use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
@@ -87,7 +90,7 @@ fn davis_suppe_wedge_body_invariants() {
     std::fs::create_dir_all(&dir).expect("create output dir");
 
     let mut state = init_c1_state_phase_1_1(GRID_SIZE, SEED);
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let config = C1TimeLoopConfig {
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
@@ -115,6 +118,18 @@ fn davis_suppe_wedge_body_invariants() {
             enabled: false,
             ..SteinSteinParams::default()
         },
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
+        },
     };
     let h_max = closures.davis_suppe.h_max;
 
@@ -135,7 +150,7 @@ fn davis_suppe_wedge_body_invariants() {
     let started = std::time::Instant::now();
     run_with_closures(
         &mut state,
-        &kinematics,
+        &mut kinematics,
         &config,
         &closures,
         |step, current_state| {
@@ -330,7 +345,7 @@ fn davis_suppe_disabled_matches_phase_1_1() {
     // be preserved. The Phase 1.1 baseline observed
     // final max S̃ ≈ 1080 × initial.
     let mut state = init_c1_state_phase_1_1(GRID_SIZE, SEED);
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let config = C1TimeLoopConfig {
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,

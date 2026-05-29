@@ -65,7 +65,10 @@
 use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
+use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
@@ -85,6 +88,18 @@ fn phase_1_4_closures() -> C1Closures {
         oceanic_bathymetry: SteinSteinParams {
             enabled: false,
             ..SteinSteinParams::default()
+        },
+        subduction: SubductionParams {
+            enabled: false,
+            ..SubductionParams::default()
+        },
+        accretion: AccretionParams {
+            enabled: false,
+            ..AccretionParams::default()
+        },
+        rifting: RiftingParams {
+            enabled: false,
+            ..RiftingParams::default()
         },
         ..C1Closures::default()
     }
@@ -129,7 +144,7 @@ fn c1_continental_drainage_functional() {
     // changes are compared.
 
     let mut state = init_c1_state_phase_1_1(GRID, SEED);
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let iso_config = IsostasyConfig::default();
     let closures = phase_1_4_closures();
     let config = C1TimeLoopConfig {
@@ -139,7 +154,7 @@ fn c1_continental_drainage_functional() {
         iso_config: iso_config.clone(),
         drainage_max_distance: 30,
     };
-    run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
 
     // Compute altitude + D8 flow.
     let isostasy = compute_isostasy(&state.s, &iso_config);
@@ -290,7 +305,7 @@ fn c1_post_run_altitude_consumable_by_downstream() {
     // stack that consumes altitude.
 
     let mut state = init_c1_state_phase_1_1(GRID, SEED);
-    let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let iso_config = IsostasyConfig::default();
     let closures = phase_1_4_closures();
     let config = C1TimeLoopConfig {
@@ -300,7 +315,7 @@ fn c1_post_run_altitude_consumable_by_downstream() {
         iso_config: iso_config.clone(),
         drainage_max_distance: 30,
     };
-    run_with_closures(&mut state, &kinematics, &config, &closures, |_, _| {});
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
 
     // Stage 1 — isostasy. Smoke: altitude finite, in [0, 1].
     let isostasy = compute_isostasy(&state.s, &iso_config);
