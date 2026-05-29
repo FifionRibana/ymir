@@ -43,6 +43,21 @@
 //!
 //! Files NOT committed (Phase 1.x + Track A/B convention). PNG
 //! references are regenerated each run.
+//!
+//! ## Downstream pipeline cross-reference (Stage D)
+//!
+//! Phase 2 R7 + Track D init produces a downstream-consumable
+//! `C1State` — the post-run altitude (post-isostasy + post-S-S
+//! Architecture C re-apply) feeds the Phase 1.4 downstream path
+//! (D8 flow + sea-level + drainage) without changes. Coverage:
+//! `c1_phase_2_bathymetry_acceptance::downstream_pipeline_accepts_phase_2_altitude`
+//! validates the same downstream-consumability invariant for
+//! Track A altitude; Track D does NOT alter the altitude
+//! contract since the per-step pipeline still produces the same
+//! `S̃` + `age` + `plate_type` shape that the downstream
+//! consumers expect. The Track D-specific signal lives in the
+//! per-event-type stats logged here, not in the downstream-
+//! pipeline shape.
 
 use std::path::{Path, PathBuf};
 
