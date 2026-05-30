@@ -82,4 +82,7 @@ pub mod init;
 pub mod init_r7;
 pub mod kinematics;
 pub mod state;
+pub mod stats;
 pub mod time_loop;
+
+pub use stats::C1StepStats;

@@ -658,7 +658,11 @@ pub fn run_with_closures<F>(
         // plate_id" step is needed (the spec called it out as 5g
         // but it would be a no-op given how subduction handles
         // re-typing inline).
-        if closures.subduction.enabled {
+        // Capture Track D per-step diagnostics into `state.last_step_stats`
+        // (Issue #137 Viz-D0 Option B). Default = all-zero when a closure
+        // is disabled (the `apply_*_step` functions early-return their
+        // `Default` stats on `!enabled`).
+        let subduction_stats = if closures.subduction.enabled {
             apply_subduction_step(
                 &mut state.s,
                 &mut state.plate_id,
@@ -667,10 +671,12 @@ pub fn run_with_closures<F>(
                 kinematics,
                 &closures.subduction,
                 dt,
-            );
-        }
+            )
+        } else {
+            Default::default()
+        };
 
-        if closures.rifting.enabled {
+        let rifting_thinning_stats = if closures.rifting.enabled {
             apply_rifting_thinning(
                 &mut state.s,
                 &state.plate_type,
@@ -679,8 +685,10 @@ pub fn run_with_closures<F>(
                 kinematics,
                 &closures.rifting,
                 dt,
-            );
-        }
+            )
+        } else {
+            Default::default()
+        };
 
         if let Some(tracker) = convergence_tracker.as_mut() {
             tracker.update(&state.plate_id, kinematics);
@@ -689,7 +697,7 @@ pub fn run_with_closures<F>(
             tracker.update(&state.plate_id, kinematics);
         }
 
-        if closures.accretion.enabled {
+        let accretion_stats = if closures.accretion.enabled {
             apply_accretion_step(
                 &mut state.plate_id,
                 &state.s,
@@ -698,10 +706,12 @@ pub fn run_with_closures<F>(
                     .as_ref()
                     .expect("convergence_tracker allocated when accretion enabled"),
                 &closures.accretion,
-            );
-        }
+            )
+        } else {
+            Default::default()
+        };
 
-        if closures.rifting.enabled {
+        let rifting_split_stats = if closures.rifting.enabled {
             apply_rifting_split(
                 &mut state.plate_id,
                 &state.plate_type,
@@ -712,8 +722,19 @@ pub fn run_with_closures<F>(
                     .as_ref()
                     .expect("divergence_tracker allocated when rifting enabled"),
                 &closures.rifting,
-            );
-        }
+            )
+        } else {
+            Default::default()
+        };
+
+        // Aggregate into `state.last_step_stats` BEFORE `on_step` so the
+        // callback (and viz snapshot) sees the matching stats.
+        state.last_step_stats = crate::tectonics_c1::stats::C1StepStats {
+            subduction: subduction_stats,
+            accretion: accretion_stats,
+            rifting_thinning: rifting_thinning_stats,
+            rifting_split: rifting_split_stats,
+        };
 
         // Cratonic-factor staleness (Q-S.2 Option (c) confirmed).
         // The `cratonic_mask` BoolField on `C1State` was built by
@@ -764,7 +785,15 @@ mod tests {
         let plate_id = PlateIdField::new(nx, ny); // all zeros
         let plate_type = PlateTypeField::filled(nx, ny, PlateType::Continental);
         let cratonic_mask = BoolField::filled(nx, ny, false);
-        C1State { s, age, plate_id, plate_type, cratonic_mask, num_plates: 1 }
+        C1State {
+            s,
+            age,
+            plate_id,
+            plate_type,
+            cratonic_mask,
+            num_plates: 1,
+            last_step_stats: Default::default(),
+        }
     }
 
     #[test]
