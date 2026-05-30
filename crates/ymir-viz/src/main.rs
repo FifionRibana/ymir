@@ -75,6 +75,12 @@ fn main() {
         bridge::v2::V2BridgePlugin,
         visualization::V2VisualizationPlugin,
         ui::UiPlugin,
+        // Issue #137 Viz-0 C1 integration — registered in parallel
+        // with v2 (NOT a replacement). Engine selector in the
+        // C1VisualizationPlugin egui panel toggles between sprites
+        // via Visibility component.
+        bridge::c1::C1BridgePlugin,
+        visualization::C1VisualizationPlugin,
     ));
 
     app.run();
