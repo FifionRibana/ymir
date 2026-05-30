@@ -46,13 +46,10 @@
 //! `plate_type[c] = 1` ↔ `PlateType::Continental` (mirrors
 //! `V2FinalState.plate_type` convention).
 
-use ymir_core::tectonics::isostasy::IsostasyConfig;
-use ymir_core::tectonics_c1::c1_reclassify_plate_type;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
 use ymir_core::tectonics_c1::stats::C1StepStats;
 use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
-use ymir_core::tectonics_v2::workflow::phase_a_common::compute_sea_level_ref_s_space;
 
 #[derive(Clone, Debug)]
 pub struct C1Snapshot {
@@ -111,44 +108,8 @@ impl C1Snapshot {
         let age = state.age.data().to_vec();
         let plate_id = state.plate_id.data().to_vec();
 
-        // Snapshot-only reclassify (Issue #137 Stage A bug fix).
-        //
-        // `run_with_closures` advects S̃ per step but does NOT call
-        // `reclassify_inplace` (that step lives end-of-cycle in
-        // `apply_post_tectonic`, which the C1 viz worker bypasses).
-        // Result: `state.plate_type` is effectively static through
-        // a run (modulo Track D's ~20 subduction reassignments at
-        // seed 42 / 64² / 300 steps), and the live altitude view
-        // shows a FROZEN coastline even when S̃ visibly migrates.
-        //
-        // Fix: reclassify a TEMP copy of `state.plate_type` here,
-        // at snapshot time. The sim's actual `state.plate_type` is
-        // unchanged — Track D closures keep seeing their original
-        // (init-time + ~20 Track D reassignments) plate_type, so
-        // the headless acceptance test reference values (6 merges,
-        // 11700 sub cells at seed 42 / 64² / 300) are preserved.
-        //
-        // Honest trade-off: a `run_with_closures` + viz-snapshot-
-        // reclassify run and a full `run_phase_a_cycle_c1(Enabled)`
-        // run would DIVERGE over time — Track D sees different
-        // plate_type inputs in the two paths. The viz shows the
-        // qualitative coast evolution, NOT the exact full-Phase-A
-        // trajectory. Per-step simulation-influencing reclassify
-        // is Viz-0-bis #6 (re-validate Track D event counts under
-        // that regime).
-        let mut plate_type_temp = state.plate_type.clone();
-        let sea_level_ref = compute_sea_level_ref_s_space(
-            &state.s,
-            &IsostasyConfig::default(),
-        );
-        c1_reclassify_plate_type(
-            &mut plate_type_temp,
-            &state.s,
-            sea_level_ref,
-        );
-
         let mut plate_type = Vec::with_capacity(n_cells);
-        for &t in plate_type_temp.data() {
+        for &t in state.plate_type.data() {
             plate_type.push(match t {
                 PlateType::Oceanic => 0,
                 PlateType::Continental => 1,

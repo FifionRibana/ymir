@@ -16,80 +16,80 @@ The binary launches a Bevy/wgpu window titled "Ymir — Continent Generator (v2)
 
 ### 1. Boot
 
-- [x] **`cargo run -p ymir-viz --features v2_legacy` opens the window.** No crash; primary window renders the background. C1 sprite (z=12) is the default visible engine.
-- [x] **The "C1 Engine Controls" egui window is visible.** Top-left position around (20, 80), width ~320 px. Five collapsing sections visible: Init parameters, Closures, (Run controls), Field, Overlays, Live stats.
+- [ ] **`cargo run -p ymir-viz --features v2_legacy` opens the window.** No crash; primary window renders the background. C1 sprite (z=12) is the default visible engine.
+- [ ] **The "C1 Engine Controls" egui window is visible.** Top-left position around (20, 80), width ~320 px. Five collapsing sections visible: Init parameters, Closures, (Run controls), Field, Overlays, Live stats.
 
 ### 2. First run
 
-- [x] **Press ▶ Run.** Default spec is `grid_size = 64`, `seed = 42`, `n_steps = 300`, all 7 closures enabled (including Track D).
-- [x] **Animation begins step-by-step.** The C1 sprite updates over ~250 ms (Track D Stage A measured 838.7 µs/step × 300 = ~252 ms). Sprite resizes from 1×1 placeholder to 64×64 at first frame.
-- [x] **No flickering or jitter on the v2 sprite below.** v2's sprite at z=10 is dark/black (V2RunState::Idle); C1 covers it via z=12.
+- [ ] **Press ▶ Run.** Default spec is `grid_size = 64`, `seed = 42`, `n_steps = 300`, all 7 closures enabled (including Track D).
+- [ ] **Animation begins step-by-step.** The C1 sprite updates over ~250 ms (Track D Stage A measured 838.7 µs/step × 300 = ~252 ms). Sprite resizes from 1×1 placeholder to 64×64 at first frame.
+- [ ] **No flickering or jitter on the v2 sprite below.** v2's sprite at z=10 is dark/black (V2RunState::Idle); C1 covers it via z=12.
 
 ### 3. Track D evolution visible (acceptance gate)
 
-- [x] **Live stats panel updates during the run.** Step counter shows `Step N/300`. Grid shows: `live plates`, `subduction cells`, `accretion merges`, `rifting splits`, `rifting cells thinned`.
-- [x] **`live plates` decreases from 8 to 2 over the run.** Pangaea collapse signature — accretion merges 6 plates by step 300 (matches headless test stat).
-- [x] **`subduction cells` is non-zero throughout the run.** High-frequency event.
+- [ ] **Live stats panel updates during the run.** Step counter shows `Step N/300`. Grid shows: `live plates`, `subduction cells`, `accretion merges`, `rifting splits`, `rifting cells thinned`.
+- [ ] **`live plates` decreases from 8 to 2 over the run.** Pangaea collapse signature — accretion merges 6 plates by step 300 (matches headless test stat).
+- [ ] **`subduction cells` is non-zero throughout the run.** High-frequency event.
 - [ ] **`accretion merges` reaches ~6 by step 300.** Matches Stage A evidence.
-- [x] **`rifting splits` is 0 at seed 42** (expected per Stage V evidence: seed 42 has 0 splits; chewing-gum cut is rare).
+- [ ] **`rifting splits` is 0 at seed 42** (expected per Stage V evidence: seed 42 has 0 splits; chewing-gum cut is rare).
 
 ### 4. Six field modes
 
 After Run completes (or during a pause), use the **Field** dropdown:
 
-- [x] **S̃ (crustal thickness).** Hypsometric ramp on `[0, 3.0]`. Continental cells light blue → green / brown; oceanic dark blue. Matches Track A/B/D PNG galleries.
-- [x] **Age field.** Auto-normalised per-frame. Cells reset to 0 along ridges (Track B Path 3.A init) → teal; mature oceanic → olive / amber. Continental high age → red / brown.
-- [x] **Plate ID.** 12-color hash-mod hue palette. Distinct hues for the 8 init plates; same id renders identically frame-to-frame (no scintillation). Accretion merges visually swap a region to the winner's hue.
-- [x] **Plate type.** Cyan (oceanic) + beige (continental). Sharp boundary, no anti-aliasing.
-- [x] **Altitude.** Architecture C bipolar palette `[-1.13, +1.13]` sym; sea level at the blue→green transition. **Spot-check vs gallery PNG**: open `docs/reports/c1_phase_2_track_d_boundary_evolution/cycle_300_altitude.png` side-by-side — coastlines and continental shape should match (allowing for per-frame normalisation variance in the gallery).
-- [x] **Cratonic.** Binary grayscale 0/1. Black background with white patches at the cratonic-mask cells. NOT recomputed per step (one-cycle lag per Issue #132 Q-S.2).
+- [ ] **S̃ (crustal thickness).** Hypsometric ramp on `[0, 3.0]`. Continental cells light blue → green / brown; oceanic dark blue. Matches Track A/B/D PNG galleries.
+- [ ] **Age field.** Auto-normalised per-frame. Cells reset to 0 along ridges (Track B Path 3.A init) → teal; mature oceanic → olive / amber. Continental high age → red / brown.
+- [ ] **Plate ID.** 12-color hash-mod hue palette. Distinct hues for the 8 init plates; same id renders identically frame-to-frame (no scintillation). Accretion merges visually swap a region to the winner's hue.
+- [ ] **Plate type.** Cyan (oceanic) + beige (continental). Sharp boundary, no anti-aliasing.
+- [ ] **Altitude.** Architecture C bipolar palette `[-1.13, +1.13]` sym; sea level at the blue→green transition. **Spot-check vs gallery PNG**: open `docs/reports/c1_phase_2_track_d_boundary_evolution/cycle_300_altitude.png` side-by-side — coastlines and continental shape should match (allowing for per-frame normalisation variance in the gallery).
+- [ ] **Cratonic.** Binary grayscale 0/1. Black background with white patches at the cratonic-mask cells. NOT recomputed per step (one-cycle lag per Issue #132 Q-S.2).
 
 ### 5. View-switch during pause
 
-- [x] **After Run completes**, swap field via the dropdown.
-- [x] **The sprite re-renders instantly** (no channel round-trip). Tests the cached-snapshot contract from Stage E3 W4.
+- [ ] **After Run completes**, swap field via the dropdown.
+- [ ] **The sprite re-renders instantly** (no channel round-trip). Tests the cached-snapshot contract from Stage E3 W4.
 
 ### 6. Altitude vs gallery spot-check
 
-- [x] **Open** `docs/reports/c1_phase_2_track_d_boundary_evolution/cycle_300_altitude.png` (generated by Track D Stage A; will exist after a `cargo test --release -p ymir-core --test c1_phase_2_track_d_visual_gallery -- --ignored --nocapture` run).
-- [x] **Compare the C1 live altitude view to the PNG.** Coastlines at the same positions, deep ocean at the same colour intensity, continental highs at the same locations. Track A/B/D galleries used the same Architecture C derivation + bipolar palette, so the C1 live view should match within rendering tolerance.
+- [ ] **Open** `docs/reports/c1_phase_2_track_d_boundary_evolution/cycle_300_altitude.png` (generated by Track D Stage A; will exist after a `cargo test --release -p ymir-core --test c1_phase_2_track_d_visual_gallery -- --ignored --nocapture` run).
+- [ ] **Compare the C1 live altitude view to the PNG.** Coastlines at the same positions, deep ocean at the same colour intensity, continental highs at the same locations. Track A/B/D galleries used the same Architecture C derivation + bipolar palette, so the C1 live view should match within rendering tolerance.
 
 ### 7. Overlays
 
-- [x] **Toggle "Voronoi boundaries"** (Overlays section). Black lines appear at plate-boundary cells. Cardinality-agnostic — accretion mergers cause boundaries to disappear (cells absorbed into the winner's region); rifting split would spawn new boundaries (rare at seed 42).
+- [ ] **Toggle "Voronoi boundaries"** (Overlays section). Black lines appear at plate-boundary cells. Cardinality-agnostic — accretion mergers cause boundaries to disappear (cells absorbed into the winner's region); rifting split would spawn new boundaries (rare at seed 42).
 - [ ] **Toggle "Velocity arrows"**. White arrows per plate, anchored at the per-plate centroid. **Hover the checkbox** — tooltip surfaces the init-time limitation:
     > Init-time per-plate velocities only. Mid-run mutations from accretion / rifting splits NOT reflected (Viz-0-bis Option B follow-up).
 - [ ] **Adjust the arrow scale slider** (0.5–20.0). Arrows grow/shrink linearly.
 
 ### 8. Closures run-locked
 
-- [x] **Press ▶ Run** to start a new run.
-- [x] **During Running**: open the Closures collapsing section. **All 7 checkboxes are grayed out** (disabled). Hint text visible: `(disabled during run; closures are run-locked)`.
-- [x] **After Completed**: checkboxes become editable again.
+- [ ] **Press ▶ Run** to start a new run.
+- [ ] **During Running**: open the Closures collapsing section. **All 7 checkboxes are grayed out** (disabled). Hint text visible: `(disabled during run; closures are run-locked)`.
+- [ ] **After Completed**: checkboxes become editable again.
 
 ### 9. Init params dirty flow
 
-- [x] **In Idle / Completed**: change `grid_size` to 32 (DragValue), change `seed` to 1337.
-- [x] **Press ▶ Run.** Worker re-inits from the edited spec (no separate Init step — mirrors v2 pattern).
-- [x] **Live stats reflect the new run** (smaller grid, different seed pattern). 
+- [ ] **In Idle / Completed**: change `grid_size` to 32 (DragValue), change `seed` to 1337.
+- [ ] **Press ▶ Run.** Worker re-inits from the edited spec (no separate Init step — mirrors v2 pattern).
+- [ ] **Live stats reflect the new run** (smaller grid, different seed pattern). 
 
 ### 10. Engine switcher
 
-- [x] **Click "v2 (legacy)"** in the Engine row at the top.
-- [x] **The C1 sprite disappears** (Visibility::Hidden on C1VizSprite); v2's sprite at z=10 is visible underneath (dark placeholder if v2 is Idle, or v2's last state if it ran). C1 panel sub-controls (init params, closures, etc.) gray out with the message "Switch to C1 engine to access these controls."
-- [x] **Run v2 if desired** (use v2's own control panel). v2 engine works unchanged.
-- [x] **Click "C1 (Track A/B/D)"**. C1 sprite reappears immediately. No crash. No artefacts.
+- [ ] **Click "v2 (legacy)"** in the Engine row at the top.
+- [ ] **The C1 sprite disappears** (Visibility::Hidden on C1VizSprite); v2's sprite at z=10 is visible underneath (dark placeholder if v2 is Idle, or v2's last state if it ran). C1 panel sub-controls (init params, closures, etc.) gray out with the message "Switch to C1 engine to access these controls."
+- [ ] **Run v2 if desired** (use v2's own control panel). v2 engine works unchanged.
+- [ ] **Click "C1 (Track A/B/D)"**. C1 sprite reappears immediately. No crash. No artefacts.
 
 ### 11. Plate ID visual evidence of Track D
 
-- [x] **Field → Plate ID** during or after a 300-step run.
-- [x] **Observe**: at cycle 0 the grid shows 8 distinct hue regions. By cycle 300, only 1-2 distinct hues remain — accretion mergers visualised.
+- [ ] **Field → Plate ID** during or after a 300-step run.
+- [ ] **Observe**: at cycle 0 the grid shows 8 distinct hue regions. By cycle 300, only 1-2 distinct hues remain — accretion mergers visualised.
 
 ### 12. Cancel button (MVP Option C semantics)
 
-- [x] **Press ▶ Run.**
-- [x] **Press ■ Cancel during the run.** The cancel flag is set on the AtomicBool, BUT the current run continues to completion (Q-E1.3 MVP — no per-step cancel hook in `run_with_closures`).
-- [x] **After Completed**: the next ▶ Run press is blocked? Actually no — the worker checks the cancel flag *between* commands, and the test only cancels future runs implicitly via the flag. **Acceptable for MVP**: a Viz-0-bis follow-up will add `tectonics_c1::cancel` (~1 day) for true mid-run interruption.
+- [ ] **Press ▶ Run.**
+- [ ] **Press ■ Cancel during the run.** The cancel flag is set on the AtomicBool, BUT the current run continues to completion (Q-E1.3 MVP — no per-step cancel hook in `run_with_closures`).
+- [ ] **After Completed**: the next ▶ Run press is blocked? Actually no — the worker checks the cancel flag *between* commands, and the test only cancels future runs implicitly via the flag. **Acceptable for MVP**: a Viz-0-bis follow-up will add `tectonics_c1::cancel` (~1 day) for true mid-run interruption.
 
 ## Headless acceptance test (automatable)
 
@@ -132,11 +132,4 @@ Hard assertions:
 
 - **Item 7 velocity arrows**: init-time only (Viz-0-bis Option B follow-up).
 - **Item 12 Cancel**: no mid-run interrupt (Viz-0-bis core-cancel-token follow-up).
-- **Items 4 + 6 Altitude — snapshot-only reclassify**: the live altitude view shows a **migrating coastline** because `C1Snapshot::from_state` runs reclassify on a temp copy of `plate_type` at snapshot time (Issue #137 Stage A bug fix; the C1 viz worker uses `run_with_closures` directly, which doesn't call `reclassify_inplace` end-of-cycle).
-    - **FIXES**: the visible coast migration that was previously frozen. `S̃` advection now propagates into the displayed coastline.
-    - **DOES NOT FIX**: the simulation is NOT reclassified. Track D closures (e.g., subduction's plate_type filter) continue to operate on the pre-reclassify `state.plate_type` (init + ~20 Track D subduction reassignments at seed 42 / 64² / 300). The headless acceptance test reference values (6 merges, 11,700 sub cells at seed 42) are preserved exactly — the sim is unchanged.
-    - **Divergences expected**:
-        - **Viz altitude vs Track A/B/D gallery PNGs**: viz coast migrates, gallery coast frozen (galleries use the same `run_with_closures` + post-loop derivation as viz did pre-fix; they were not regenerated with snapshot-only reclassify). Item 6 spot-check will now NEWLY diverge from the committed gallery PNGs. **By design**, not a regression — viz is now a live reference; gallery PNGs are the older static reference. Regenerating galleries with the new convention is a Viz-0-bis-or-separate-issue scope decision.
-        - **Viz vs full workflow Phase A**: a viz run and a `run_phase_a_cycle_c1(Enabled)` run would diverge in the long run, because Track D sees different plate_type inputs in the two paths. The viz shows the **qualitative** coast evolution, NOT the exact full-Phase-A trajectory.
-    - **Viz-0-bis #6 candidate**: per-step simulation-influencing reclassify (vs snapshot-only). Would require re-validating Track D event counts under the new regime + revisiting the 9th bit-identical decomposition contract.
-    - **Re-validation note after this fix**: relaunch the binary, observe the altitude view on a 300-step run. The coast should drift smoothly as S̃ advects; if it FLICKERS (cells oscillating Continental ↔ Oceanic step-to-step), increase the reclassify interval — currently per-step (K=1). Add `reclassify_interval: usize` to `C1RunSpec` if needed.
+- **Item 4 Altitude**: per-frame deterministic; the gallery PNG used the same code path (Architecture C + `hypsometric_bipolar`), so the visual should be very close — modulo image compression of the PNG.

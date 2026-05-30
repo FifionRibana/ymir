@@ -280,14 +280,7 @@ pub fn compute_sea_level_ref_s_space(s: &Field2D, iso_cfg: &IsostasyConfig) -> f
 
 /// Reclassify per-cell `plate_type` from the post-erosion `S̃`
 /// field against `sea_level_ref`.
-///
-/// `pub(crate)` so the C1 viz facade
-/// [`crate::tectonics_c1::reclassify::c1_reclassify_plate_type`]
-/// can delegate to this function for snapshot-only reclassification
-/// (Viz-0 Stage A bug fix, Issue #137). The C1 viz wraps this
-/// behind a C1-facing public name to keep the workflow internals
-/// from being called directly by viz-layer code.
-pub(crate) fn reclassify_inplace(plate_type: &mut PlateTypeField, s: &Field2D, sea_level_ref: f64) {
+fn reclassify_inplace(plate_type: &mut PlateTypeField, s: &Field2D, sea_level_ref: f64) {
     for j in 0..plate_type.ny() {
         for i in 0..plate_type.nx() {
             let new_type = if s.get(i, j) > sea_level_ref {
