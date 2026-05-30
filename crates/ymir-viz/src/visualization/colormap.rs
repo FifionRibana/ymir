@@ -83,6 +83,54 @@ pub fn cratonic_grayscale(t: f64) -> [u8; 4] {
     [v, v, v, 255]
 }
 
+/// Bipolar altitude colormap — replicates the local `hypsometric`
+/// helper used by the C1 Track A / B / D visual galleries
+/// (`c1_phase_2_*_visual_gallery.rs::hypsometric(h, sea_norm)`)
+/// verbatim. Single source of truth for the C1 live-altitude
+/// render path (Issue #137 Stage E4) — calling this function with
+/// the same `(t, sea_norm)` as the gallery produces byte-identical
+/// RGB.
+///
+/// `t ∈ [0, 1]` is the **normalised** altitude (callers apply
+/// `t = (alt + half_range) / (2 * half_range)` for the bipolar
+/// `[-half_range, +half_range]` altitude range; the gallery uses
+/// `half_range = 1.13`). `sea_norm ∈ [0, 1]` is the position of
+/// sea level in the normalised axis (gallery uses `0.5`, so
+/// `alt = 0` sits on the blue→green transition).
+///
+/// Four-segment ramp:
+///   - `[0, sea_norm/2)`         deep ocean — `[10, 20, 60]` → `[40, 80, 160]`
+///   - `[sea_norm/2, sea_norm)`  shallow ocean — `[40, 80, 160]` → `[120, 180, 230]`
+///   - `[sea_norm, mid)`         low land — `[60, 130, 60]` → `[140, 100, 50]`
+///   - `[mid, 1]`                high land — `[140, 100, 50]` → `[245, 245, 245]`
+///
+/// where `mid = (sea_norm + 1.0) / 2.0` (= 0.75 at `sea_norm = 0.5`).
+pub fn hypsometric_bipolar(t: f32, sea_norm: f32) -> [u8; 4] {
+    let mid = (sea_norm + 1.0) * 0.5;
+    let lerp = |t: f32, a: [u8; 3], b: [u8; 3]| -> [u8; 3] {
+        let t = t.clamp(0.0, 1.0);
+        [
+            (a[0] as f32 + t * (b[0] as f32 - a[0] as f32)).round() as u8,
+            (a[1] as f32 + t * (b[1] as f32 - a[1] as f32)).round() as u8,
+            (a[2] as f32 + t * (b[2] as f32 - a[2] as f32)).round() as u8,
+        ]
+    };
+    let rgb = if t <= sea_norm * 0.5 {
+        let tt = t / (sea_norm * 0.5).max(1e-6);
+        lerp(tt, [10, 20, 60], [40, 80, 160])
+    } else if t <= sea_norm {
+        let tt = (t - sea_norm * 0.5) / (sea_norm * 0.5).max(1e-6);
+        lerp(tt, [40, 80, 160], [120, 180, 230])
+    } else if t <= mid {
+        let tt = (t - sea_norm) / (mid - sea_norm).max(1e-6);
+        lerp(tt, [60, 130, 60], [140, 100, 50])
+    } else {
+        let tt = (t - mid) / (1.0 - mid).max(1e-6);
+        lerp(tt, [140, 100, 50], [245, 245, 245])
+    };
+    [rgb[0], rgb[1], rgb[2], 255]
+}
+
 /// Inferno-like ramp for log-scaled fields (ε̇_II, |v|). Deep purple →
 /// red → orange → yellow → near-white. `t ∈ [0, 1]` already sits on
 /// the log axis; this function does no additional scaling.
