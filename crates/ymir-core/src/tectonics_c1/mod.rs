@@ -81,8 +81,10 @@ pub mod distance_field;
 pub mod init;
 pub mod init_r7;
 pub mod kinematics;
+pub mod reclassify;
 pub mod state;
 pub mod stats;
 pub mod time_loop;
 
+pub use reclassify::c1_reclassify_plate_type;
 pub use stats::C1StepStats;
