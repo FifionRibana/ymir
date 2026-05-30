@@ -282,6 +282,107 @@ mod tests {
         drop(cmd_tx);
         handle.join().unwrap();
     }
+
+    /// Stage A acceptance — DISTINCT angle from Stage V worker
+    /// mechanics. Production-scale `64² × 300` seed 42 run with
+    /// the default `C1Closures` (all 7 enabled including Track
+    /// D), asserting product-level invariants:
+    ///
+    /// - Completed event received (no hang).
+    /// - `final_snapshot.live_plate_count ≤ 3` — Pangaea-like
+    ///   collapse from 8 init plates (Track D Stage A 64² ×
+    ///   300 evidence: seed 42 → 2 surviving plates, 6 accretion
+    ///   merges).
+    /// - Track D activity confirmed via cumulative stats: total
+    ///   subduction cells > 0 + cumulative accretion merges > 0
+    ///   over the full run.
+    ///
+    /// Visual / UI acceptance is NOT testable here; see
+    /// `docs/reports/viz_0_c1_integration/acceptance_checklist.md`
+    /// for the manual checklist the user runs before merge.
+    #[test]
+    fn acceptance_full_run_seed_42_pangaea_collapse() {
+        let (cmd_tx, cmd_rx) = bounded(4);
+        let (evt_tx, evt_rx) = bounded(2);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
+
+        // Production-scale: 64² × 300, seed 42, default closures
+        // (Track D enabled). Track D Stage A measured 251 ms wall
+        // time at this scale; allow generous timeout in drain.
+        let spec = C1RunSpec::default(); // 64, seed=42, n=300
+        cmd_tx
+            .send(C1Command::RunBaseline { spec: spec.clone() })
+            .unwrap();
+
+        let events = drain_run(&evt_rx);
+
+        // Tally cumulative Track D stats from the StepCompleted
+        // stream (each snapshot carries that step's stats only;
+        // sum across the run for a cumulative figure).
+        let mut cum_sub_cells = 0_usize;
+        let mut cum_merges = 0_usize;
+        let mut cum_splits = 0_usize;
+        let mut cum_thinning = 0_usize;
+        for e in &events {
+            if let C1Event::StepCompleted { snapshot } = e {
+                cum_sub_cells += snapshot.stats.subduction.cells_consumed;
+                cum_merges += snapshot.stats.accretion.merges_count;
+                cum_splits += snapshot.stats.rifting_split.splits_count;
+                cum_thinning += snapshot.stats.rifting_thinning.cells_thinned;
+            }
+        }
+
+        let final_snap = match events.last() {
+            Some(C1Event::Completed { final_snapshot, .. }) => final_snapshot,
+            _ => panic!("expected Completed as last event; got {:?}", events.last()),
+        };
+
+        eprintln!("Stage A acceptance (seed 42, 64²×300, default closures):");
+        eprintln!(
+            "  init num_plates       = {}",
+            final_snap.num_plates
+        );
+        eprintln!(
+            "  final live_plate_count = {}",
+            final_snap.live_plate_count
+        );
+        eprintln!("  cumulative subduction cells = {cum_sub_cells}");
+        eprintln!("  cumulative accretion merges = {cum_merges}");
+        eprintln!("  cumulative rifting splits   = {cum_splits}");
+        eprintln!("  cumulative thinning cells   = {cum_thinning}");
+
+        // Track D Pangaea collapse — 8 init plates collapse to
+        // 1-3 surviving (Track D Stage A measured 2 at seed 42).
+        // Threshold ≤ 3 gives margin for stochastic variance in
+        // accretion-merge timing while still asserting the
+        // Pangaea narrative.
+        assert_eq!(
+            final_snap.num_plates, 8,
+            "Phase 2 R7 default init should produce 8 plates"
+        );
+        assert!(
+            final_snap.live_plate_count <= 3,
+            "Pangaea collapse not achieved: final live plates = {} (expected ≤ 3 at seed 42 / 64² / 300 steps)",
+            final_snap.live_plate_count
+        );
+
+        // Track D activity sanity: subduction high-frequency,
+        // accretion fires at least once. Stage A reference seed
+        // 42 measured 20,914 subduction cells + 6 merges over
+        // 300 steps; we conservatively assert > 1000 + > 0.
+        assert!(
+            cum_sub_cells > 1000,
+            "subduction must fire substantially at seed 42 / 300 steps; got {cum_sub_cells}"
+        );
+        assert!(
+            cum_merges > 0,
+            "accretion must merge at least once at seed 42 / 300 steps; got {cum_merges}"
+        );
+
+        drop(cmd_tx);
+        handle.join().unwrap();
+    }
 }
 
 pub fn spawn_c1_thread(
