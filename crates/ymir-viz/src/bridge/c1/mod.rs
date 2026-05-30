@@ -12,12 +12,14 @@
 
 pub mod commands;
 pub mod events;
+pub mod plugin;
 pub mod snapshot;
 pub mod spec;
 pub mod thread;
 
 pub use commands::C1Command;
 pub use events::C1Event;
+pub use plugin::{C1BridgePlugin, C1RunState, C1SolverBridge};
 pub use snapshot::C1Snapshot;
 pub use spec::C1RunSpec;
 pub use thread::spawn_c1_thread;
