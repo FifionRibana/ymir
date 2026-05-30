@@ -37,8 +37,8 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
-use crate::bridge::c1::{C1RunSpec, C1RunState, C1SolverBridge};
-use crate::visualization::c1_viz::{field_to_rgba, snapshot_event_summary, C1Field};
+use crate::bridge::c1::{C1CumulativeStats, C1RunSpec, C1RunState, C1SolverBridge};
+use crate::visualization::c1_viz::{field_to_rgba, C1Field};
 use crate::visualization::overlay::{draw_velocity_vectors, draw_voronoi_boundaries};
 
 const C1_SPRITE_BASE_SIZE: f32 = 600.0;
@@ -68,6 +68,12 @@ pub struct C1VizState {
     pub show_voronoi_boundaries: bool,
     /// Toggle velocity arrows (init-time only; Q-E4.4).
     pub show_velocity_vectors: bool,
+    /// Arrow length factor for the velocity overlay. C1 Phase 1.1
+    /// per-plate velocities have magnitude ~0.01 (non-dim) — far
+    /// smaller than v2's ~5 cells/step. To get visible arrows
+    /// (≥ MIN_ARROW_CELLS = 1 cell long), `arrow_scale` must be
+    /// ~100 minimum; default 500 gives ~5-cell arrows. Slider
+    /// range `[50, 3000]` logarithmic in the panel.
     pub arrow_scale: f64,
     /// `(nx, ny, step, field_idx, overlay_bits)` for change detection.
     pub last_signature: Option<(usize, usize, usize, u8, u8)>,
@@ -81,7 +87,9 @@ impl Default for C1VizState {
             pending_spec: C1RunSpec::default(),
             show_voronoi_boundaries: false,
             show_velocity_vectors: false,
-            arrow_scale: 4.0,
+            // C1-tuned default: 0.01 × 500 = 5 cells, comfortably
+            // above MIN_ARROW_CELLS = 1. See arrow_scale docstring.
+            arrow_scale: 500.0,
             last_signature: None,
         }
     }
@@ -379,13 +387,21 @@ fn c1_control_panel(
                 });
                 if viz.show_velocity_vectors {
                     ui.add(
-                        egui::Slider::new(&mut viz.arrow_scale, 0.5..=20.0)
-                            .text("arrow scale"),
+                        egui::Slider::new(&mut viz.arrow_scale, 50.0..=3000.0)
+                            .logarithmic(true)
+                            .text("arrow scale (cells / unit velocity)"),
                     );
                 }
             });
 
-            // Live stats.
+            // Live stats — Stage A bug fix: cumulative totals
+            // accumulated across the StepCompleted stream, NOT
+            // per-step (per-step reads 0 for rare events like
+            // accretion merges and rifting splits even when the
+            // run has accumulated several). For high-frequency
+            // events (subduction, thinning) the display also
+            // shows the last-step value alongside the cumulative
+            // total to keep the panel "alive" during the run.
             ui.separator();
             ui.collapsing("Live stats", |ui| {
                 match &bridge.state {
@@ -396,59 +412,40 @@ fn c1_control_panel(
                         step,
                         total,
                         latest_snapshot,
+                        cumulative,
                         ..
                     } => {
                         ui.label(format!("Step {}/{}", step + 1, total));
                         if let Some(snap) = latest_snapshot {
-                            let (live, sub, merges, splits, thin) =
-                                snapshot_event_summary(snap);
-                            egui::Grid::new("c1_live_stats").show(ui, |ui| {
-                                ui.label("live plates");
-                                ui.label(format!("{live}"));
-                                ui.end_row();
-                                ui.label("subduction cells");
-                                ui.label(format!("{sub}"));
-                                ui.end_row();
-                                ui.label("accretion merges");
-                                ui.label(format!("{merges}"));
-                                ui.end_row();
-                                ui.label("rifting splits");
-                                ui.label(format!("{splits}"));
-                                ui.end_row();
-                                ui.label("rifting cells thinned");
-                                ui.label(format!("{thin}"));
-                                ui.end_row();
-                            });
+                            render_live_stats_grid(
+                                ui,
+                                snap.live_plate_count,
+                                snap.num_plates,
+                                Some(&snap.stats),
+                                cumulative,
+                                false,
+                            );
                         }
                     }
-                    C1RunState::Completed { elapsed, final_snapshot, .. } => {
+                    C1RunState::Completed {
+                        elapsed,
+                        final_snapshot,
+                        cumulative,
+                        ..
+                    } => {
                         ui.label(format!(
                             "Completed in {:.2?} ({} steps)",
                             elapsed,
                             final_snapshot.step + 1
                         ));
-                        let (live, sub, merges, splits, thin) =
-                            snapshot_event_summary(final_snapshot);
-                        egui::Grid::new("c1_final_stats").show(ui, |ui| {
-                            ui.label("final live plates");
-                            ui.label(format!(
-                                "{live} (init {})",
-                                final_snapshot.num_plates
-                            ));
-                            ui.end_row();
-                            ui.label("last-step subduction cells");
-                            ui.label(format!("{sub}"));
-                            ui.end_row();
-                            ui.label("last-step accretion merges");
-                            ui.label(format!("{merges}"));
-                            ui.end_row();
-                            ui.label("last-step rifting splits");
-                            ui.label(format!("{splits}"));
-                            ui.end_row();
-                            ui.label("last-step thinning cells");
-                            ui.label(format!("{thin}"));
-                            ui.end_row();
-                        });
+                        render_live_stats_grid(
+                            ui,
+                            final_snapshot.live_plate_count,
+                            final_snapshot.num_plates,
+                            None,
+                            cumulative,
+                            true,
+                        );
                     }
                     C1RunState::Failed { error } => {
                         ui.colored_label(egui::Color32::RED, error);
@@ -456,6 +453,76 @@ fn c1_control_panel(
                 }
             });
         });
+}
+
+/// Render the Track D live-stats grid. `per_step` is the current
+/// step's stats (only present during `Running`); `cumulative` is
+/// the run-cumulative totals accumulated by `poll_c1_events`. When
+/// `is_completed` is true, the label says "final" instead of
+/// "current"; otherwise the layout is identical.
+fn render_live_stats_grid(
+    ui: &mut egui::Ui,
+    live_plates: usize,
+    init_plates: usize,
+    per_step: Option<&ymir_core::tectonics_c1::stats::C1StepStats>,
+    cumulative: &C1CumulativeStats,
+    is_completed: bool,
+) {
+    let live_label = if is_completed {
+        "final live plates"
+    } else {
+        "live plates"
+    };
+    egui::Grid::new("c1_live_stats").show(ui, |ui| {
+        ui.label(live_label);
+        ui.label(format!("{live_plates} (init {init_plates})"));
+        ui.end_row();
+
+        // High-frequency events: cumulative + per-step.
+        let sub_per = per_step
+            .map(|s| s.subduction.cells_consumed)
+            .unwrap_or(0);
+        ui.label("subduction cells");
+        if per_step.is_some() {
+            ui.label(format!(
+                "{}/step ({} total)",
+                sub_per, cumulative.subduction_cells
+            ));
+        } else {
+            ui.label(format!("{} total", cumulative.subduction_cells));
+        }
+        ui.end_row();
+
+        let thin_per = per_step
+            .map(|s| s.rifting_thinning.cells_thinned)
+            .unwrap_or(0);
+        ui.label("rifting cells thinned");
+        if per_step.is_some() {
+            ui.label(format!(
+                "{}/step ({} total)",
+                thin_per, cumulative.thinning_cells
+            ));
+        } else {
+            ui.label(format!("{} total", cumulative.thinning_cells));
+        }
+        ui.end_row();
+
+        // Rare events: cumulative only (per-step is almost always 0).
+        ui.label("accretion merges");
+        ui.label(format!("{} total", cumulative.accretion_merges));
+        ui.end_row();
+
+        ui.label("rifting splits");
+        if cumulative.new_plate_ids.is_empty() {
+            ui.label(format!("{} total", cumulative.rifting_splits));
+        } else {
+            ui.label(format!(
+                "{} total (new pids: {:?})",
+                cumulative.rifting_splits, cumulative.new_plate_ids
+            ));
+        }
+        ui.end_row();
+    });
 }
 
 pub struct C1VisualizationPlugin;

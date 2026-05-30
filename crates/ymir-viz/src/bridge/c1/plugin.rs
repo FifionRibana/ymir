@@ -30,6 +30,25 @@ use super::snapshot::C1Snapshot;
 use super::spec::C1RunSpec;
 use super::thread::spawn_c1_thread;
 
+/// Run-cumulative Track D event totals — accumulated by
+/// `poll_c1_events` from every `StepCompleted` snapshot's per-step
+/// stats. Reset to all-zero on `Started`. Stage A bug fix (per-step
+/// vs cumulative) — the UI panel needs cumulative totals because
+/// rare events (accretion merges, rifting splits) have per-step
+/// values of 0 almost always and a per-step display reads 0 even
+/// when the run has accumulated 6 merges.
+#[derive(Default, Clone, Debug)]
+pub struct C1CumulativeStats {
+    pub subduction_cells: usize,
+    pub accretion_merges: usize,
+    pub rifting_splits: usize,
+    pub thinning_cells: usize,
+    /// Plate ids spawned by rifting splits across the full run
+    /// (appended each time `apply_rifting_split` fires). Resets
+    /// at `Started`.
+    pub new_plate_ids: Vec<u16>,
+}
+
 /// Lifecycle of the most recent C1 run. UI / render systems query
 /// this via `C1SolverBridge::state`.
 #[derive(Default, Clone)]
@@ -45,11 +64,15 @@ pub enum C1RunState {
         /// `None` on `Started` of a fresh run. Required for the
         /// view-switch-during-pause behaviour.
         latest_snapshot: Option<Box<C1Snapshot>>,
+        /// Run-cumulative Track D totals (Stage A bug fix).
+        cumulative: C1CumulativeStats,
     },
     Completed {
         spec: C1RunSpec,
         elapsed: Duration,
         final_snapshot: Box<C1Snapshot>,
+        /// Run-cumulative Track D totals at end of run.
+        cumulative: C1CumulativeStats,
     },
     Failed {
         error: String,
@@ -138,28 +161,40 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
                     total,
                     started_at: Some(Instant::now()),
                     latest_snapshot: None,
+                    cumulative: C1CumulativeStats::default(),
                 };
             }
             C1Event::StepCompleted { snapshot } => {
-                // Update the cached snapshot. Preserve spec /
-                // started_at / total from the prior Running state.
-                let (spec, total, started_at) =
+                // Update the cached snapshot + accumulate Track D
+                // totals. Stage A bug fix: per-step stats from
+                // `snapshot.stats` are this-step-only; for rare
+                // events the panel needs the cumulative figure
+                // accumulated across the StepCompleted stream.
+                let (spec, total, started_at, mut cumulative) =
                     match std::mem::take(&mut bridge.state) {
                         C1RunState::Running {
                             spec,
                             total,
                             started_at,
+                            cumulative,
                             ..
-                        } => (spec, total, started_at),
+                        } => (spec, total, started_at, cumulative),
                         other => {
-                            // Defensive: if StepCompleted arrives
-                            // without a preceding Started (unlikely
-                            // outside tests), restore the prior
-                            // state and skip.
                             bridge.state = other;
                             continue;
                         }
                     };
+                cumulative.subduction_cells +=
+                    snapshot.stats.subduction.cells_consumed;
+                cumulative.accretion_merges +=
+                    snapshot.stats.accretion.merges_count;
+                cumulative.rifting_splits +=
+                    snapshot.stats.rifting_split.splits_count;
+                cumulative.thinning_cells +=
+                    snapshot.stats.rifting_thinning.cells_thinned;
+                cumulative
+                    .new_plate_ids
+                    .extend(snapshot.stats.rifting_split.new_plate_ids_created.iter().copied());
                 let step = snapshot.step;
                 bridge.state = C1RunState::Running {
                     spec,
@@ -167,6 +202,7 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
                     total,
                     started_at,
                     latest_snapshot: Some(Box::new(snapshot)),
+                    cumulative,
                 };
             }
             C1Event::Completed {
@@ -174,10 +210,17 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
                 final_snapshot,
                 elapsed,
             } => {
+                // Transfer cumulative from Running → Completed.
+                let cumulative =
+                    match std::mem::take(&mut bridge.state) {
+                        C1RunState::Running { cumulative, .. } => cumulative,
+                        _ => C1CumulativeStats::default(),
+                    };
                 bridge.state = C1RunState::Completed {
                     spec,
                     elapsed,
                     final_snapshot: Box::new(final_snapshot),
+                    cumulative,
                 };
             }
             C1Event::Failed { error } => {
