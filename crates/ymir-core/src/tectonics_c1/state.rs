@@ -19,6 +19,7 @@
 //!   binary by design (§4.4: the v2 smoothstep amplification
 //!   factor retires).
 
+use crate::tectonics_c1::stats::C1StepStats;
 use crate::tectonics_v2::boundaries::plate_type::PlateTypeField;
 use crate::tectonics_v2::field::Field2D;
 use crate::tectonics_v2::voronoi::PlateIdField;
@@ -79,28 +80,64 @@ impl BoolField {
 
 /// Full C1 cell state.
 ///
-/// Carries the dynamical fields (`s`, `age`) and the static-ish
-/// classification fields (`plate_id`, `plate_type`, `cratonic_mask`).
-/// Phase 1.1 evolves `s` and `age` by advection only.
+/// Carries the dynamical fields (`s`, `age`, plus Phase 2 Track D
+/// `plate_id` / `plate_type` / `kinematics` mutation surfaces) and
+/// the slow-evolving `cratonic_mask`.
+///
+/// **Mutation status** (post-Track D, Issue #132):
+///
+/// - `s`, `age` — advected every step (Phase 1.1 baseline).
+/// - `plate_id`, `plate_type` — mutate per-step under Track D:
+///   subduction floor-trigger reassignment, accretion merges,
+///   rifting splits. Static when Track D is disabled (Phase 1.x /
+///   Track A/B regression mode).
+/// - `cratonic_mask` — built at init by BFS over the
+///   Continental-seeded plates; NOT recomputed per step. A
+///   one-cycle lag exists when Track D mutates `plate_id`
+///   mid-cycle (Issue #132 Stage S Q-S.2 Option (c) accepted
+///   trade-off: cratons are ~100 Ma features, lag is ~0.67 Ma).
+/// - `num_plates` — count at init time. With Track D enabled the
+///   actual count of distinct plate ids in `plate_id` can drop
+///   (merges) or grow (rifting splits) during a run; consumers
+///   needing the live count should re-scan `plate_id.data()`.
+/// - `last_step_stats` — refreshed every step by
+///   `run_with_closures` just before the `on_step` callback fires
+///   (Viz-D0 Option B, Issue #137).
 pub struct C1State {
     /// Crust thickness, non-dimensional, per cell. Advected.
     pub s: Field2D,
     /// Geological age field, non-dimensional, per cell. Advected.
+    /// Path 3.A ridge-aligned init (Track B Issue #131); Path 3.B
+    /// event-driven `= 0` on rift-spawned cells (Track D Issue #132).
     pub age: Field2D,
-    /// Voronoï plate index per cell. Static in Phase 1.1
-    /// (boundary evolution lands in Phase 2).
+    /// Voronoï plate index per cell. Mutates per-step when any
+    /// Track D closure is enabled (subduction floor-trigger
+    /// reassignment, accretion merge, rifting split). Static
+    /// otherwise (Phase 1.x / Track A/B regression mode).
     pub plate_id: PlateIdField,
-    /// Continental / oceanic classification per cell. Static in
-    /// Phase 1.1.
+    /// Continental / oceanic classification per cell. Mutates
+    /// per-step under Track D subduction reassignment (Oceanic →
+    /// Continental on floor trigger). Accretion + rifting splits
+    /// preserve per-cell type. Static under Track D disabled.
     pub plate_type: PlateTypeField,
-    /// Binary cratonic mask per cell. Static in Phase 1.1; cells
-    /// inside the mask transport rigidly with their plate (the
-    /// per-cell velocity is the plate's velocity unchanged, same
-    /// behaviour as non-cratonic cells in this stage).
+    /// Binary cratonic mask per cell. Built at init by BFS over
+    /// Continental-seeded plates; NOT recomputed per step. Cells
+    /// inside the mask transport rigidly with their plate. One-
+    /// cycle lag under Track D mutation is the accepted trade-off
+    /// (Issue #132 Q-S.2 Option (c)).
     pub cratonic_mask: BoolField,
-    /// Number of distinct plates in `plate_id`. Cached at init for
-    /// fast access from the time loop and kinematics builder.
+    /// Number of distinct plates **at init time**. With Track D
+    /// enabled, accretion merges + rifting splits can change the
+    /// live count; consumers needing live cardinality should
+    /// re-scan `plate_id.data()`. Cached at init for fast access
+    /// from the time loop and kinematics builder.
     pub num_plates: usize,
+    /// Per-step diagnostic stats from the four Track D `apply_*_step`
+    /// returns, captured by `run_with_closures` just before
+    /// `on_step`. Default = all-zero when Track D closures are
+    /// disabled or no event fired (Issue #137 Viz-D0 Option B).
+    /// Lives outside the 9th bit-identical decomposition contract.
+    pub last_step_stats: C1StepStats,
 }
 
 impl C1State {
