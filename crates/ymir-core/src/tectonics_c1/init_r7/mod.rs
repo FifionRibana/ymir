@@ -268,6 +268,7 @@ pub fn init_c1_state_phase_2_r7(
         plate_type,
         cratonic_mask,
         num_plates,
+        last_step_stats: Default::default(),
     }
 }
 
