@@ -103,6 +103,7 @@ pub fn init_c1_state_phase_1_1(grid_size: usize, seed: u64) -> C1State {
         plate_type: plates.plate_type,
         cratonic_mask,
         num_plates: plates.num_plates,
+        last_step_stats: Default::default(),
     }
 }
 
