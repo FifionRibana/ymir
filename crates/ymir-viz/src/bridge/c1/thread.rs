@@ -1,33 +1,69 @@
-//! Worker thread driving the C1 time loop.
+//! Worker thread driving the C1 Phase A pipeline (Issue #137
+//! Stage A revision — A1-c design).
 //!
-//! ## Lifecycle
+//! ## A1-c — full Phase A pipeline with per-step animation
 //!
-//! 1. `spawn_c1_thread` returns a `JoinHandle`. The thread blocks
-//!    on `commands_rx.recv()` between runs.
-//! 2. On `C1Command::RunBaseline { spec }`:
-//!    a. Reset the cancel flag (allow future cancels).
-//!    b. Send `C1Event::Started`.
-//!    c. Build state + kinematics + config from `spec`.
-//!    d. **Clone `kinematics.velocities` pre-run** into a local
-//!       `initial_velocities: Vec<(f64, f64)>` — captured by the
-//!       per-step closure (cannot access `kinematics` directly
-//!       because `run_with_closures` borrows it `&mut`; see
-//!       Stage E2 W7 Q-E1.3).
-//!    e. Emit a pre-run cycle-0 `StepCompleted` so the UI can
-//!       render the init state before the first step fires.
-//!    f. Call `run_with_closures`. The per-step closure emits a
-//!       `StepCompleted { snapshot }` event each step.
-//!    g. Send `C1Event::Completed { spec, final_snapshot,
-//!       elapsed }`.
-//! 3. On `C1Command::Cancel`: set the cancel flag (no effect on
-//!    current run per Q-E1.3 Option C MVP).
+//! The worker replicates `run_phase_a_cycle_c1`'s internals
+//! (`run_with_closures` + `apply_post_tectonic`) directly, rather
+//! than calling the wrapper, because `run_phase_a_cycle_c1` hardcodes
+//! `on_step = |_, _| {}` and provides no animation hook. By
+//! inlining the cycle structure here we get:
+//!
+//! - **Per-step animation**: `run_with_closures` with a custom
+//!   `on_step` closure emits one `StepCompleted` per step.
+//!   S̃ + age advect smoothly each step.
+//! - **Per-cycle reclassify**: after each cycle's
+//!   `run_with_closures` returns, the worker invokes
+//!   `apply_post_tectonic` (sea-level + macro_redistribution +
+//!   reclassify). plate_type is correctly updated; the displayed
+//!   coast migrates in discrete jumps every `steps_per_cycle` steps.
+//! - **Honest pipeline**: the rendered state IS what C1 Phase A
+//!   actually produces — same path Phase 1.x acceptance tests use.
+//!   Track A/B/D galleries use `run_with_closures` standalone
+//!   (post_tectonic OMITTED) and were therefore showing an
+//!   INCOMPLETE pipeline; the viz now shows the COMPLETE one.
+//!
+//! ## Cycle structure
+//!
+//! ```text
+//! C1Event::Started
+//! C1Event::StepCompleted { cycle-0 snapshot }
+//! For cycle in 0..n_cycles {
+//!   run_with_closures(steps_per_cycle, |step, state| {
+//!     emit StepCompleted with global_step
+//!   })
+//!   apply_post_tectonic(state)                ← reclassify here
+//!   emit StepCompleted (post-cycle snapshot)  ← coast migration visible
+//! }
+//! C1Event::Completed { final_snapshot }
+//! ```
+//!
+//! Total step events emitted: `1 (cycle-0) + n_cycles ×
+//! (steps_per_cycle + 1)` (the `+1` is the per-cycle post-tectonic
+//! snapshot).
+//!
+//! ## Cratonic recompute SKIPPED at MVP
+//!
+//! `apply_post_tectonic` step 4 (cratonic factor recompute) is
+//! gated by `initial_per_plate_type` + `cratonic_cfg` both being
+//! `Some`. We pass `None` for both — skipping the recompute.
+//! Rationale:
+//! - `C1State.cratonic_mask: BoolField` was built BFS-style at
+//!   init from continental seeds; it's a binary mask, NOT a
+//!   `Field2D` factor. The current C1 design (Track A/B/D) does
+//!   NOT recompute it per cycle. Including it here would diverge
+//!   from established C1 acceptance.
+//! - The skipped step is sequential AFTER reclassify and does NOT
+//!   feed back into macro_redistribution / reclassify. Skipping
+//!   is safe per the apply_post_tectonic ordering.
+//!
+//! Viz-0-bis #6 (or a Phase 1.5 C1 task) can revisit if the
+//! cratonic factor evolution becomes a design priority.
 //!
 //! ## Worker owns no Bevy state (W4 global)
 //!
-//! All Bevy-side data (resources, sprites, image handles) lives
-//! in `plugin.rs` + the UI/render systems. The worker uses only
-//! crossbeam channels + `ymir-core` types. This isolation is
-//! shared with `bridge::v2::thread`.
+//! All Bevy-side data lives in `plugin.rs` + UI/render systems.
+//! Worker uses only crossbeam + `ymir-core`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -39,6 +75,10 @@ use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::init_r7::init_c1_state_phase_2_r7;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1TimeLoopConfig};
+use ymir_core::tectonics_v2::workflow::phase_a_common::{
+    apply_post_tectonic, PostTectonicInput,
+};
+use ymir_core::tectonics_v2::workflow::WorkflowParams;
 
 use super::commands::C1Command;
 use super::events::C1Event;
@@ -77,12 +117,25 @@ mod tests {
         events
     }
 
-    /// Spec sized for fast tests — 32² grid + small n_steps.
+    /// Spec sized for fast tests — 32² grid + small n_steps. The
+    /// `steps_per_cycle` defaults to 50; tests that need many
+    /// cycles at small `n_steps` should pass a custom value via
+    /// `small_spec_with_cycle` to avoid `n_cycles == 0`.
     fn small_spec(n_steps: usize, seed: u64) -> C1RunSpec {
         C1RunSpec {
             grid_size: 32,
             seed,
             n_steps,
+            ..C1RunSpec::default()
+        }
+    }
+
+    fn small_spec_with_cycle(n_steps: usize, seed: u64, steps_per_cycle: usize) -> C1RunSpec {
+        C1RunSpec {
+            grid_size: 32,
+            seed,
+            n_steps,
+            steps_per_cycle,
             ..C1RunSpec::default()
         }
     }
@@ -156,22 +209,29 @@ mod tests {
 
     #[test]
     fn c1_worker_event_ordering_no_loss_under_backpressure() {
-        // Q-E5.1 Option C: with bounded(2) events and immediate
-        // drain in the test, the worker naturally backpressures
-        // when the channel fills. We don't time-assert blocking;
-        // we assert the stream invariant — every step index
-        // 0..n_steps appears exactly once in the StepCompleted
-        // events, in monotone order. No loss, no duplication,
-        // no reordering.
+        // Q-E5.1 Option C: bounded(2) events + immediate drain.
+        // The worker naturally backpressures when the channel
+        // fills. We don't time-assert blocking; we assert the
+        // stream invariant — every step index appears exactly
+        // once in StepCompleted events, in strictly monotone
+        // order. No loss, no duplication, no reordering.
+        //
+        // A1-c update (Issue #137 Stage A): the per-cycle
+        // post_tectonic is emitted SILENTLY (no event) so the
+        // event stream remains strictly monotone in `step`.
+        // Effective step count = n_cycles * steps_per_cycle.
         let (cmd_tx, cmd_rx) = bounded(4);
         let (evt_tx, evt_rx) = bounded(2);
         let cancel = Arc::new(AtomicBool::new(false));
         let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
 
+        // 30 steps / steps_per_cycle = 3 cycles, effective = 30
+        // total inner steps. Plus cycle-0 = 31 StepCompleted.
         let n_steps = 30;
+        let steps_per_cycle = 10;
         cmd_tx
             .send(C1Command::RunBaseline {
-                spec: small_spec(n_steps, 42),
+                spec: small_spec_with_cycle(n_steps, 42, steps_per_cycle),
             })
             .unwrap();
 
@@ -185,22 +245,14 @@ mod tests {
             })
             .collect();
 
-        // Cycle 0 + 30 steps = 31 total. The cycle-0 snapshot
-        // uses step = 0 and the first run_with_closures callback
-        // also fires step = 0; the worker emits both verbatim,
-        // so we expect [0, 0, 1, 2, ..., 29].
+        // Expected: [0 (cycle-0), 1, 2, ..., 30] — 31 events.
         assert_eq!(step_indices.len(), n_steps + 1);
         assert_eq!(step_indices[0], 0, "first StepCompleted is cycle-0 (step 0)");
-        // Steps from run_with_closures: indices 1..=n_steps should be
-        // 0, 1, 2, ..., n_steps - 1 (monotonically increasing).
         for (i, &s) in step_indices.iter().enumerate().skip(1) {
             assert_eq!(
-                s,
-                i - 1,
+                s, i,
                 "expected step {} at position {}, got {}",
-                i - 1,
-                i,
-                s
+                i, i, s
             );
         }
 
@@ -396,9 +448,6 @@ pub fn spawn_c1_thread(
             while let Ok(cmd) = commands_rx.recv() {
                 match cmd {
                     C1Command::RunBaseline { spec } => {
-                        // Reset cancel before each run (Option C
-                        // MVP — the flag is only sampled between
-                        // runs, never during).
                         cancel.store(false, Ordering::Relaxed);
 
                         let _ = events_tx.send(C1Event::Started {
@@ -413,62 +462,106 @@ pub fn spawn_c1_thread(
                         let mut kinematics =
                             PlateKinematics::preset_phase_1_1(state.num_plates);
 
-                        // Pre-run snapshot of kinematics velocities
-                        // for the per-step closure (see module
-                        // docstring rationale).
+                        // Pre-run clone of per-plate velocities for
+                        // the per-step closure (cannot access
+                        // kinematics directly inside on_step due to
+                        // &mut borrow by run_with_closures; see
+                        // module docstring on Q-E1.3 trade-off).
                         let initial_velocities: Vec<(f64, f64)> =
                             kinematics.velocities.clone();
 
-                        let config = C1TimeLoopConfig {
-                            n_steps: spec.n_steps,
+                        // Phase A cycle structure (A1-c).
+                        let n_cycles = spec.n_cycles();
+                        let steps_per_cycle = spec.steps_per_cycle;
+                        let cycle_config = C1TimeLoopConfig {
+                            n_steps: steps_per_cycle,
                             dx: 1.0 / spec.grid_size as f64,
                             dy: 1.0 / spec.grid_size as f64,
                             iso_config: IsostasyConfig::default(),
                             drainage_max_distance: spec.drainage_max_distance,
                         };
+                        let workflow_params = WorkflowParams::default();
 
-                        // Cycle-0 pre-run snapshot — lets the UI
-                        // paint the init state before stepping
-                        // begins. Uses `step = 0` (matches the
-                        // first `on_step` callback's step index;
-                        // n_steps + 1 events total per run).
-                        let cycle_0 = C1Snapshot::from_state(
+                        // Cycle-0 pre-run snapshot.
+                        let cycle_0_snapshot = C1Snapshot::from_state(
                             0,
                             &state,
                             &initial_velocities,
                         );
                         let _ = events_tx.send(C1Event::StepCompleted {
-                            snapshot: cycle_0,
+                            snapshot: cycle_0_snapshot,
                         });
 
                         let t0 = Instant::now();
-                        let tx = events_tx.clone();
+                        let tx_for_steps = events_tx.clone();
                         let velocities_for_closure = initial_velocities.clone();
-                        run_with_closures(
-                            &mut state,
-                            &mut kinematics,
-                            &config,
-                            &spec.closures,
-                            |step, state| {
-                                let snapshot = C1Snapshot::from_state(
-                                    step,
-                                    state,
-                                    &velocities_for_closure,
-                                );
-                                // `send` blocks when the bounded
-                                // events channel is full — this is
-                                // the backpressure pause semantics
-                                // (W7 Stage E2).
-                                let _ =
-                                    tx.send(C1Event::StepCompleted { snapshot });
-                            },
-                        );
+
+                        for cycle_idx in 0..n_cycles {
+                            // Step 1 — per-step tectonic loop. Emit
+                            // one StepCompleted per step (animation
+                            // hook).
+                            let cycle_base = cycle_idx * steps_per_cycle;
+                            let tx = tx_for_steps.clone();
+                            let velocities = velocities_for_closure.clone();
+                            run_with_closures(
+                                &mut state,
+                                &mut kinematics,
+                                &cycle_config,
+                                &spec.closures,
+                                |step_in_cycle, state| {
+                                    let global_step =
+                                        cycle_base + step_in_cycle + 1;
+                                    let snap = C1Snapshot::from_state(
+                                        global_step,
+                                        state,
+                                        &velocities,
+                                    );
+                                    let _ = tx.send(
+                                        C1Event::StepCompleted { snapshot: snap },
+                                    );
+                                },
+                            );
+
+                            // Step 2 — Phase A post-tectonic pass.
+                            // Replicates run_phase_a_cycle_c1's
+                            // body but with cratonic recompute
+                            // SKIPPED (Viz-0 MVP — see module
+                            // docstring). The struct-literal split
+                            // borrow on `state` works because s,
+                            // plate_id, and plate_type are
+                            // disjoint fields.
+                            //
+                            // No event emitted here: the NEXT
+                            // cycle's first inner snapshot will
+                            // naturally show the post-post_tectonic
+                            // state (state mutations are persistent
+                            // across the inner loop). The final
+                            // cycle's post-tectonic state is
+                            // captured in `Completed.final_snapshot`
+                            // below. This keeps the StepCompleted
+                            // stream's step indices strictly
+                            // monotone (no duplicates) — preserves
+                            // Stage V's event-ordering invariant.
+                            let _ = apply_post_tectonic(
+                                PostTectonicInput {
+                                    s_field: &mut state.s,
+                                    plate_id: Some(&state.plate_id),
+                                    plate_type: Some(&mut state.plate_type),
+                                    previous_cratonic_factor: None,
+                                    initial_per_plate_type: None,
+                                    params: &workflow_params.phase_a,
+                                    iso_cfg: &IsostasyConfig::default(),
+                                    cratonic_cfg: None,
+                                },
+                            );
+                        }
+
                         let elapsed = t0.elapsed();
 
-                        // Final snapshot — re-extract for the
-                        // Completed convenience payload.
+                        let final_step =
+                            n_cycles.saturating_mul(steps_per_cycle);
                         let final_snapshot = C1Snapshot::from_state(
-                            spec.n_steps.saturating_sub(1),
+                            final_step,
                             &state,
                             &initial_velocities,
                         );

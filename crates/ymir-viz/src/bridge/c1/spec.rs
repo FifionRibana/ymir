@@ -38,7 +38,21 @@ use ymir_core::tectonics_c1::time_loop::C1Closures;
 pub struct C1RunSpec {
     pub grid_size: usize,
     pub seed: u64,
+    /// Total simulation steps across all cycles. Rounded DOWN to a
+    /// multiple of `steps_per_cycle` by the worker (`n_cycles =
+    /// n_steps / steps_per_cycle`, integer division). The UI
+    /// exposes the rounded actual step count.
     pub n_steps: usize,
+    /// Number of forward-Euler steps per Phase A cycle (A1-c worker
+    /// design, Issue #137 Stage A revision). At the end of each
+    /// cycle the worker runs `apply_post_tectonic` (sea-level +
+    /// macro-redistribution + reclassify) before starting the next
+    /// cycle. Smaller `steps_per_cycle` = more frequent coast
+    /// reclassification (smoother visual coast migration); larger
+    /// = closer to standalone closures (rare coast updates).
+    /// Default 50 matches the gallery convention's implicit cycle
+    /// scale.
+    pub steps_per_cycle: usize,
     pub init_params: Phase2InitParams,
     pub closures: C1Closures,
     pub drainage_max_distance: usize,
@@ -50,6 +64,9 @@ impl Default for C1RunSpec {
             grid_size: 64,
             seed: 42,
             n_steps: 300,
+            // Default 300 / 50 = 6 cycles. Matches the Phase 1.x
+            // workflow tests' cycle scale.
+            steps_per_cycle: 50,
             init_params: Phase2InitParams::default(),
             closures: C1Closures::default(),
             drainage_max_distance: 30,
@@ -58,9 +75,29 @@ impl Default for C1RunSpec {
 }
 
 impl C1RunSpec {
+    /// Effective cycle count (`n_steps / steps_per_cycle`, rounded
+    /// down). The worker runs exactly this many cycles; any
+    /// remainder of `n_steps` is dropped (no partial cycles).
+    pub fn n_cycles(&self) -> usize {
+        if self.steps_per_cycle == 0 {
+            0
+        } else {
+            self.n_steps / self.steps_per_cycle
+        }
+    }
+
+    /// Actual step count after rounding (`n_cycles * steps_per_cycle`).
+    /// UI should display this as the "effective" step count.
+    pub fn effective_n_steps(&self) -> usize {
+        self.n_cycles() * self.steps_per_cycle
+    }
+}
+
+impl C1RunSpec {
     /// Convenience: a Phase-1.x-style spec with Track D disabled
     /// (subduction / accretion / rifting all `enabled: false`). Useful
     /// for UI testing without dynamic plate mutation.
+    #[allow(dead_code)]
     pub fn track_d_disabled() -> Self {
         let mut spec = Self::default();
         spec.closures.subduction = SubductionParams {
