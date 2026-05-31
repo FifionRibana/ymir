@@ -293,39 +293,7 @@ fn c1_control_panel(
                                 .speed(10),
                         );
                         ui.end_row();
-
-                        ui.label("steps_per_cycle");
-                        ui.add(
-                            egui::DragValue::new(
-                                &mut viz.pending_spec.steps_per_cycle,
-                            )
-                            .range(1..=500)
-                            .speed(1),
-                        )
-                        .on_hover_text(
-                            "Steps per Phase A cycle. After each cycle the \
-                             worker runs apply_post_tectonic (sea-level + \
-                             macro-redistribution + reclassify) — the coast \
-                             migrates in discrete jumps every N steps. \
-                             Smaller = smoother coast migration. Default 50.",
-                        );
-                        ui.end_row();
                     });
-                    // Show effective step count (rounded down) so
-                    // the user sees what actually runs vs n_steps.
-                    let n_cycles = viz.pending_spec.n_cycles();
-                    let effective = viz.pending_spec.effective_n_steps();
-                    if effective != viz.pending_spec.n_steps {
-                        ui.weak(format!(
-                            "effective: {} = {} × {} (n_steps rounded down to multiple of steps_per_cycle)",
-                            effective, n_cycles, viz.pending_spec.steps_per_cycle
-                        ));
-                    } else {
-                        ui.weak(format!(
-                            "effective: {} = {} × {}",
-                            effective, n_cycles, viz.pending_spec.steps_per_cycle
-                        ));
-                    }
                 });
             });
 
@@ -441,24 +409,13 @@ fn c1_control_panel(
                         ui.label("Idle. Press ▶ Run to start.");
                     }
                     C1RunState::Running {
-                        spec,
                         step,
                         total,
                         latest_snapshot,
                         cumulative,
                         ..
                     } => {
-                        let steps_per_cycle =
-                            spec.steps_per_cycle.max(1);
-                        let cycle_idx = step.saturating_sub(1) / steps_per_cycle;
-                        let n_cycles = spec.n_cycles().max(1);
-                        ui.label(format!(
-                            "Step {}/{}  (cycle {}/{})",
-                            step + 1,
-                            total,
-                            (cycle_idx + 1).min(n_cycles),
-                            n_cycles,
-                        ));
+                        ui.label(format!("Step {}/{}", step + 1, total,));
                         if let Some(snap) = latest_snapshot {
                             render_live_stats_grid(
                                 ui,
