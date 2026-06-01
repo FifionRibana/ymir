@@ -24,8 +24,10 @@ use std::time::{Duration, Instant};
 use bevy::prelude::*;
 use crossbeam_channel::{bounded, Receiver, Sender};
 
+use ymir_core::tectonics_v2::workflow::PhaseAParams;
+
 use super::commands::C1Command;
-use super::events::C1Event;
+use super::events::{C1Event, C1RunKind};
 use super::snapshot::C1Snapshot;
 use super::spec::C1RunSpec;
 use super::thread::spawn_c1_thread;
@@ -57,6 +59,9 @@ pub enum C1RunState {
     Idle,
     Running {
         spec: C1RunSpec,
+        /// Pipeline kind (gallery vs workflow + cadence). Drives the
+        /// UI step/cycle counter (Issue #139 Stage E2/E3).
+        kind: C1RunKind,
         step: usize,
         total: usize,
         started_at: Option<Instant>,
@@ -69,6 +74,8 @@ pub enum C1RunState {
     },
     Completed {
         spec: C1RunSpec,
+        /// Pipeline kind of the completed run (Issue #139 Stage E2).
+        kind: C1RunKind,
         elapsed: Duration,
         final_snapshot: Box<C1Snapshot>,
         /// Run-cumulative Track D totals at end of run.
@@ -109,11 +116,24 @@ pub struct C1SolverBridge {
 }
 
 impl C1SolverBridge {
-    /// Queue a baseline run. Returns `Err` if the channel is
-    /// full or disconnected.
+    /// Queue a gallery-path baseline run. Returns `Err` if the
+    /// channel is full or disconnected.
     pub fn submit_run(&self, spec: C1RunSpec) -> Result<(), &'static str> {
         self.commands_tx
             .send(C1Command::RunBaseline { spec })
+            .map_err(|_| "c1 bridge channel send failed")
+    }
+
+    /// Queue a workflow-path run (Issue #139 Stage E2). `phase_a`
+    /// carries the calibrated Phase A cadence (default
+    /// `PhaseAParams::default()`).
+    pub fn submit_workflow(
+        &self,
+        spec: C1RunSpec,
+        phase_a: PhaseAParams,
+    ) -> Result<(), &'static str> {
+        self.commands_tx
+            .send(C1Command::RunWorkflow { spec, phase_a })
             .map_err(|_| "c1 bridge channel send failed")
     }
 
@@ -153,10 +173,11 @@ impl Plugin for C1BridgePlugin {
 fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
     while let Ok(event) = bridge.events_rx.try_recv() {
         match event {
-            C1Event::Started { spec } => {
-                let total = spec.n_steps;
+            C1Event::Started { spec, kind } => {
+                let total = kind.total_tectonic_steps(&spec);
                 bridge.state = C1RunState::Running {
                     spec,
+                    kind,
                     step: 0,
                     total,
                     started_at: Some(Instant::now()),
@@ -170,15 +191,16 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
                 // `snapshot.stats` are this-step-only; for rare
                 // events the panel needs the cumulative figure
                 // accumulated across the StepCompleted stream.
-                let (spec, total, started_at, mut cumulative) =
+                let (spec, kind, total, started_at, mut cumulative) =
                     match std::mem::take(&mut bridge.state) {
                         C1RunState::Running {
                             spec,
+                            kind,
                             total,
                             started_at,
                             cumulative,
                             ..
-                        } => (spec, total, started_at, cumulative),
+                        } => (spec, kind, total, started_at, cumulative),
                         other => {
                             bridge.state = other;
                             continue;
@@ -198,6 +220,7 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
                 let step = snapshot.step;
                 bridge.state = C1RunState::Running {
                     spec,
+                    kind,
                     step,
                     total,
                     started_at,
@@ -210,14 +233,17 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
                 final_snapshot,
                 elapsed,
             } => {
-                // Transfer cumulative from Running → Completed.
-                let cumulative =
+                // Transfer cumulative + kind from Running → Completed.
+                let (kind, cumulative) =
                     match std::mem::take(&mut bridge.state) {
-                        C1RunState::Running { cumulative, .. } => cumulative,
-                        _ => C1CumulativeStats::default(),
+                        C1RunState::Running {
+                            kind, cumulative, ..
+                        } => (kind, cumulative),
+                        _ => (C1RunKind::Gallery, C1CumulativeStats::default()),
                     };
                 bridge.state = C1RunState::Completed {
                     spec,
+                    kind,
                     elapsed,
                     final_snapshot: Box::new(final_snapshot),
                     cumulative,

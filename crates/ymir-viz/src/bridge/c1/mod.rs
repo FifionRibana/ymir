@@ -18,7 +18,7 @@ pub mod spec;
 pub mod thread;
 
 pub use commands::C1Command;
-pub use events::C1Event;
+pub use events::{C1Event, C1RunKind};
 pub use plugin::{C1BridgePlugin, C1CumulativeStats, C1RunState, C1SolverBridge};
 pub use snapshot::C1Snapshot;
 pub use spec::C1RunSpec;
