@@ -21,14 +21,31 @@
 //! `tectonics_v2::cancel`), threaded through `run_with_closures`'s
 //! per-step boundary. ~1 day effort.
 
+use ymir_core::tectonics_v2::workflow::PhaseAParams;
+
 use super::spec::C1RunSpec;
 
 #[derive(Clone, Debug)]
 pub enum C1Command {
-    /// Launch a baseline run with `spec`. Worker emits
-    /// `Started → StepCompleted × n_steps → Completed` (or
-    /// `Failed` on panic, currently unreachable per Q-E1.2).
+    /// Launch a **gallery-path** baseline run with `spec`: standalone
+    /// `run_with_closures`, NO `apply_post_tectonic`. Worker emits
+    /// `Started → StepCompleted × n_steps → Completed` (or `Failed`
+    /// on panic, currently unreachable per Q-E1.2). Reproduces the
+    /// Track A/B/D visual gallery (Issue #137 gallery contract).
     RunBaseline { spec: C1RunSpec },
+    /// Launch a **workflow-path** run (Issue #139 Stage E2): the
+    /// calibrated Phase A loop — `n_cycles` cycles of
+    /// `run_with_closures(k_cycle)` each followed by
+    /// `apply_post_tectonic` (sea-level → macro-redistribution →
+    /// reclassify). `phase_a` defaults to `PhaseAParams::default()`
+    /// (n_cycles 5, k_cycle 20, alpha 0.01) — the calibrated cadence.
+    /// Total tectonic steps = `n_cycles × k_cycle`, NEVER `n_steps`
+    /// (the A1-c over-erosion guard). The gallery `RunBaseline` path
+    /// is left untouched (W4).
+    RunWorkflow {
+        spec: C1RunSpec,
+        phase_a: PhaseAParams,
+    },
     /// Set the shared cancel flag. Does NOT interrupt the
     /// current run — see module docstring.
     Cancel,

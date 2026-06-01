@@ -74,15 +74,17 @@ use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::init_r7::init_c1_state_phase_2_r7;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1TimeLoopConfig};
+use ymir_core::tectonics_v2::workflow::phase_a_common::{apply_post_tectonic, PostTectonicInput};
+use ymir_core::tectonics_v2::workflow::PhaseAParams;
 
 use super::commands::C1Command;
-use super::events::C1Event;
+use super::events::{C1Event, C1RunKind};
 use super::snapshot::C1Snapshot;
+use super::spec::C1RunSpec;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bridge::c1::spec::C1RunSpec;
     use crossbeam_channel::bounded;
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
@@ -417,6 +419,7 @@ pub fn spawn_c1_thread(
 
                         let _ = events_tx.send(C1Event::Started {
                             spec: spec.clone(),
+                            kind: C1RunKind::Gallery,
                         });
 
                         let mut state = init_c1_state_phase_2_r7(
@@ -495,6 +498,9 @@ pub fn spawn_c1_thread(
                             elapsed,
                         });
                     }
+                    C1Command::RunWorkflow { spec, phase_a } => {
+                        run_workflow(&spec, &phase_a, &events_tx);
+                    }
                     C1Command::Cancel => {
                         // MVP Option C — set the flag; takes
                         // effect on the next RunBaseline only.
@@ -504,4 +510,114 @@ pub fn spawn_c1_thread(
             }
         })
         .expect("ymir-c1-bridge thread spawn")
+}
+
+/// Workflow-path run (Issue #139 Stage E2) — the **calibrated** Phase
+/// A loop. Reproduces `run_phase_a_cycle_c1(Enabled)` `n_cycles`
+/// times, inlining `run_with_closures` only to inject the per-step
+/// animation hook (the wrapper hardcodes `on_step = |_, _| {}`).
+///
+/// Cadence is the calibration anchor: `phase_a.n_cycles × phase_a.
+/// k_cycle` tectonic steps with one `apply_post_tectonic` per cycle
+/// (default 5×20 = 100 steps, 5 macro-redistribution passes). This is
+/// **NOT** the A1-c failure mode (6 passes over 300 steps = 6× the
+/// calibrated cadence → over-erosion); `macro_redistribution`'s
+/// `alpha = 0.01` is calibrated for exactly this cadence.
+///
+/// `cratonic_cfg = None` ⇒ `apply_post_tectonic` Step 4 (cratonic
+/// recompute) is skipped, so `initial_per_plate_type = None` is
+/// bit-identical to `run_phase_a_cycle_c1` with `cratonic_config =
+/// None` (only Step 4 reads it — see `phase_a_common.rs` Step 4 gate).
+///
+/// Snapshot stream: cycle-0 (step 0) + per cycle `{ k_cycle per-step
+/// snapshots + 1 post-tectonic snapshot }` + `Completed`. Per-step
+/// indices are the global tectonic step `cycle·k_cycle + s + 1`; the
+/// post-cycle snapshot reuses the cycle-boundary index (so the step
+/// sequence is monotone non-decreasing and the "step N/total" counter
+/// tracks tectonic steps, not emission ordinal).
+fn run_workflow(spec: &C1RunSpec, phase_a: &PhaseAParams, events_tx: &Sender<C1Event>) {
+    let _ = events_tx.send(C1Event::Started {
+        spec: spec.clone(),
+        kind: C1RunKind::Workflow {
+            phase_a: phase_a.clone(),
+        },
+    });
+
+    let mut state =
+        init_c1_state_phase_2_r7(spec.grid_size, spec.seed, &spec.init_params);
+    let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+
+    // Init-time velocities for the snapshot (mid-run kinematics
+    // mutations from accretion/rifting are NOT reflected — same MVP
+    // caveat as the gallery path; Viz-0-bis item 1).
+    let initial_velocities: Vec<(f64, f64)> = kinematics.velocities.clone();
+
+    let n_cycles = phase_a.n_cycles;
+    let k_cycle = phase_a.k_cycle;
+    let iso_config = IsostasyConfig::default();
+
+    // Cycle-0 pre-run snapshot (step 0).
+    let _ = events_tx.send(C1Event::StepCompleted {
+        snapshot: C1Snapshot::from_state(0, &state, &initial_velocities),
+    });
+
+    let t0 = Instant::now();
+
+    for cycle in 0..n_cycles {
+        let cfg = C1TimeLoopConfig {
+            n_steps: k_cycle,
+            dx: 1.0 / spec.grid_size as f64,
+            dy: 1.0 / spec.grid_size as f64,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: spec.drainage_max_distance,
+        };
+        let base = cycle * k_cycle;
+
+        // Per-step tectonic loop (animation hook). The closure
+        // captures only `events_tx`, `initial_velocities`, `base` by
+        // reference / copy — none alias `state` / `kinematics`, so no
+        // borrow conflict with `run_with_closures`'s `&mut` args.
+        run_with_closures(
+            &mut state,
+            &mut kinematics,
+            &cfg,
+            &spec.closures,
+            |s_in_c, st| {
+                let step = base + s_in_c + 1;
+                let _ = events_tx.send(C1Event::StepCompleted {
+                    snapshot: C1Snapshot::from_state(step, st, &initial_velocities),
+                });
+            },
+        );
+
+        // Calibrated post-tectonic pass (split borrow: &mut s /
+        // &plate_id / &mut plate_type are disjoint fields).
+        let _ = apply_post_tectonic(PostTectonicInput {
+            s_field: &mut state.s,
+            plate_id: Some(&state.plate_id),
+            plate_type: Some(&mut state.plate_type),
+            previous_cratonic_factor: None,
+            initial_per_plate_type: None,
+            params: phase_a,
+            iso_cfg: &iso_config,
+            cratonic_cfg: None,
+        });
+
+        // Post-cycle snapshot — coast reclassified. Reuses the
+        // boundary tectonic step index.
+        let boundary_step = base + k_cycle;
+        let _ = events_tx.send(C1Event::StepCompleted {
+            snapshot: C1Snapshot::from_state(boundary_step, &state, &initial_velocities),
+        });
+    }
+
+    let elapsed = t0.elapsed();
+    let final_step = n_cycles * k_cycle;
+    let final_snapshot =
+        C1Snapshot::from_state(final_step, &state, &initial_velocities);
+    let _ = events_tx.send(C1Event::Completed {
+        spec: spec.clone(),
+        final_snapshot,
+        elapsed,
+    });
 }
