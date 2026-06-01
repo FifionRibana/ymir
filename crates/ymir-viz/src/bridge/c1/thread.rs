@@ -73,6 +73,7 @@ use crossbeam_channel::{Receiver, Sender};
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::init_r7::init_c1_state_phase_2_r7;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
+use ymir_core::tectonics_c1::state::C1State;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1TimeLoopConfig};
 use ymir_core::tectonics_v2::workflow::phase_a_common::{apply_post_tectonic, PostTectonicInput};
 use ymir_core::tectonics_v2::workflow::PhaseAParams;
@@ -412,7 +413,22 @@ pub fn spawn_c1_thread(
     std::thread::Builder::new()
         .name("ymir-c1-bridge".into())
         .spawn(move || {
+            // Continuation-ready retention (Issue #139 Stage E4): the
+            // last completed run's (state, kinematics). A future
+            // `C1Command::ContinueRun { additional_cycles,
+            // new_kinematics }` would resume from here via
+            // `run_workflow_cycles` instead of re-initialising. No
+            // command consumes it yet (capability only) — retention is
+            // passive and does not change current-run behaviour (W2).
+            let mut retained: Option<(C1State, PlateKinematics)> = None;
+
             while let Ok(cmd) = commands_rx.recv() {
+                // Read the retained handle so its presence is
+                // observable to the (future) continuation path; today
+                // this is purely the W1 "worker holds state across
+                // commands" capability marker.
+                let _resumable = retained.is_some();
+
                 match cmd {
                     C1Command::RunBaseline { spec } => {
                         cancel.store(false, Ordering::Relaxed);
@@ -497,9 +513,13 @@ pub fn spawn_c1_thread(
                             final_snapshot,
                             elapsed,
                         });
+
+                        // Retain for a future continuation (Stage E4).
+                        retained = Some((state, kinematics));
                     }
                     C1Command::RunWorkflow { spec, phase_a } => {
-                        run_workflow(&spec, &phase_a, &events_tx);
+                        retained =
+                            Some(run_workflow(&spec, &phase_a, &events_tx));
                     }
                     C1Command::Cancel => {
                         // MVP Option C — set the flag; takes
@@ -535,7 +555,11 @@ pub fn spawn_c1_thread(
 /// post-cycle snapshot reuses the cycle-boundary index (so the step
 /// sequence is monotone non-decreasing and the "step N/total" counter
 /// tracks tectonic steps, not emission ordinal).
-fn run_workflow(spec: &C1RunSpec, phase_a: &PhaseAParams, events_tx: &Sender<C1Event>) {
+fn run_workflow(
+    spec: &C1RunSpec,
+    phase_a: &PhaseAParams,
+    events_tx: &Sender<C1Event>,
+) -> (C1State, PlateKinematics) {
     let _ = events_tx.send(C1Event::Started {
         spec: spec.clone(),
         kind: C1RunKind::Workflow {
@@ -552,18 +576,63 @@ fn run_workflow(spec: &C1RunSpec, phase_a: &PhaseAParams, events_tx: &Sender<C1E
     // caveat as the gallery path; Viz-0-bis item 1).
     let initial_velocities: Vec<(f64, f64)> = kinematics.velocities.clone();
 
-    let n_cycles = phase_a.n_cycles;
-    let k_cycle = phase_a.k_cycle;
-    let iso_config = IsostasyConfig::default();
-
     // Cycle-0 pre-run snapshot (step 0).
     let _ = events_tx.send(C1Event::StepCompleted {
         snapshot: C1Snapshot::from_state(0, &state, &initial_velocities),
     });
 
     let t0 = Instant::now();
+    let final_step = run_workflow_cycles(
+        &mut state,
+        &mut kinematics,
+        spec,
+        phase_a,
+        &initial_velocities,
+        events_tx,
+        0,
+    );
+    let elapsed = t0.elapsed();
 
-    for cycle in 0..n_cycles {
+    let final_snapshot =
+        C1Snapshot::from_state(final_step, &state, &initial_velocities);
+    let _ = events_tx.send(C1Event::Completed {
+        spec: spec.clone(),
+        final_snapshot,
+        elapsed,
+    });
+
+    // Hand the post-run state back so the worker can retain it for a
+    // future continuation (Issue #139 Stage E4).
+    (state, kinematics)
+}
+
+/// Continuation-ready core (Issue #139 Stage E4): run `phase_a.
+/// n_cycles` Phase A cycles on an **existing** `state` + `kinematics`,
+/// emitting per-step + per-cycle snapshots. `base_step` is the global
+/// tectonic step already elapsed (0 for a fresh run; `> 0` when
+/// resuming a retained state). Returns the global tectonic step after
+/// the last cycle.
+///
+/// Factored out of [`run_workflow`] so a future
+/// `C1Command::ContinueRun { additional_cycles, new_kinematics }`
+/// could call it again on the worker's retained `(state, kinematics)`
+/// with `base_step = prior total` — resuming the simulation instead
+/// of re-initialising. No command consumes it yet (Stage E4 ships the
+/// capability only; the command + UI are deferred).
+fn run_workflow_cycles(
+    state: &mut C1State,
+    kinematics: &mut PlateKinematics,
+    spec: &C1RunSpec,
+    phase_a: &PhaseAParams,
+    initial_velocities: &[(f64, f64)],
+    events_tx: &Sender<C1Event>,
+    base_step: usize,
+) -> usize {
+    let k_cycle = phase_a.k_cycle;
+    let iso_config = IsostasyConfig::default();
+    let mut last_step = base_step;
+
+    for cycle in 0..phase_a.n_cycles {
         let cfg = C1TimeLoopConfig {
             n_steps: k_cycle,
             dx: 1.0 / spec.grid_size as f64,
@@ -571,21 +640,21 @@ fn run_workflow(spec: &C1RunSpec, phase_a: &PhaseAParams, events_tx: &Sender<C1E
             iso_config: iso_config.clone(),
             drainage_max_distance: spec.drainage_max_distance,
         };
-        let base = cycle * k_cycle;
+        let cyc_base = base_step + cycle * k_cycle;
 
         // Per-step tectonic loop (animation hook). The closure
-        // captures only `events_tx`, `initial_velocities`, `base` by
-        // reference / copy — none alias `state` / `kinematics`, so no
-        // borrow conflict with `run_with_closures`'s `&mut` args.
+        // captures only `events_tx`, `initial_velocities`, `cyc_base`
+        // by reference / copy — none alias `state` / `kinematics`, so
+        // no borrow conflict with `run_with_closures`'s `&mut` args.
         run_with_closures(
-            &mut state,
-            &mut kinematics,
+            state,
+            kinematics,
             &cfg,
             &spec.closures,
             |s_in_c, st| {
-                let step = base + s_in_c + 1;
+                let step = cyc_base + s_in_c + 1;
                 let _ = events_tx.send(C1Event::StepCompleted {
-                    snapshot: C1Snapshot::from_state(step, st, &initial_velocities),
+                    snapshot: C1Snapshot::from_state(step, st, initial_velocities),
                 });
             },
         );
@@ -605,19 +674,12 @@ fn run_workflow(spec: &C1RunSpec, phase_a: &PhaseAParams, events_tx: &Sender<C1E
 
         // Post-cycle snapshot — coast reclassified. Reuses the
         // boundary tectonic step index.
-        let boundary_step = base + k_cycle;
+        let boundary_step = cyc_base + k_cycle;
         let _ = events_tx.send(C1Event::StepCompleted {
-            snapshot: C1Snapshot::from_state(boundary_step, &state, &initial_velocities),
+            snapshot: C1Snapshot::from_state(boundary_step, state, initial_velocities),
         });
+        last_step = boundary_step;
     }
 
-    let elapsed = t0.elapsed();
-    let final_step = n_cycles * k_cycle;
-    let final_snapshot =
-        C1Snapshot::from_state(final_step, &state, &initial_velocities);
-    let _ = events_tx.send(C1Event::Completed {
-        spec: spec.clone(),
-        final_snapshot,
-        elapsed,
-    });
+    last_step
 }
