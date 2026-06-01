@@ -35,10 +35,14 @@ use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy_egui::input::EguiWantsInput;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
+use ymir_core::grid::GridF32;
+
 use crate::bridge::c1::{C1CumulativeStats, C1RunSpec, C1RunState, C1SolverBridge};
-use crate::visualization::c1_viz::{field_to_rgba, C1Field};
+use crate::camera::CursorWorldPos;
+use crate::visualization::c1_viz::{derive_altitude_field, field_to_rgba, C1Field};
 use crate::visualization::overlay::{draw_velocity_vectors, draw_voronoi_boundaries};
 
 const C1_SPRITE_BASE_SIZE: f32 = 600.0;
@@ -54,6 +58,19 @@ pub enum ActiveEngine {
 
 #[derive(Component)]
 pub struct C1VizSprite;
+
+/// Per-cell hover readout (Issue #139 Stage E1). `altitude_nondim`
+/// is the verification value (W3 global: non-dim = truth, meters =
+/// cosmetic). Meters are added by the Stage E3 hypsometric lens and
+/// rendered SECOND, below the non-dim row.
+#[derive(Clone, Copy, Debug)]
+pub struct HoverReadout {
+    pub i: usize,
+    pub j: usize,
+    pub s: f64,
+    pub age: f64,
+    pub altitude_nondim: f32,
+}
 
 /// Run-locked UI state — editable spec the user is composing,
 /// plus current field selection and overlay toggles.
@@ -77,6 +94,18 @@ pub struct C1VizState {
     pub arrow_scale: f64,
     /// `(nx, ny, step, field_idx, overlay_bits)` for change detection.
     pub last_signature: Option<(usize, usize, usize, u8, u8)>,
+    /// Lazily-derived Architecture C altitude field for the hover
+    /// inspector, keyed by `snapshot.step`. Recomputed only when a
+    /// newer snapshot arrives (W2: invalidate on snapshot change);
+    /// cursor movement within the same step is a cache hit. Makes
+    /// per-cell altitude available in ALL views (W4), not just the
+    /// Altitude view.
+    pub altitude_cache: Option<(usize, GridF32)>,
+    /// Current per-cell hover readout, or `None` when the cursor is
+    /// off the map / over an egui panel / a different engine is
+    /// active. Written by `update_c1_hover`, read by
+    /// `c1_hover_panel`.
+    pub hover: Option<HoverReadout>,
 }
 
 impl Default for C1VizState {
@@ -91,8 +120,38 @@ impl Default for C1VizState {
             // above MIN_ARROW_CELLS = 1. See arrow_scale docstring.
             arrow_scale: 500.0,
             last_signature: None,
+            altitude_cache: None,
+            hover: None,
         }
     }
+}
+
+/// Invert the C1 sprite transform to map a world-space cursor
+/// position to a cell `(i, j)`. Returns `None` when the cursor is
+/// outside the sprite bounds.
+///
+/// The sprite is centred at the world origin (`Transform::from_xyz(
+/// 0, 0, C1_SPRITE_Z)`) with `custom_size = sprite_size(nx, ny)` and
+/// a nearest sampler over the `nx × ny` texel image, so
+/// `sprite_local == world`. Bevy sprite texel row 0 renders at the
+/// top and world `+Y` points up, hence `v = (half.y − world.y)` for
+/// the vertical axis (NOT `world.y + half.y`). Mirrors the
+/// `sprite_size` formula used by `update_c1_texture` so the mapping
+/// stays correct across grid resizes (W1).
+fn world_to_cell(world: Vec2, nx: usize, ny: usize) -> Option<(usize, usize)> {
+    if nx == 0 || ny == 0 {
+        return None;
+    }
+    let size = sprite_size(nx, ny);
+    let half = size / 2.0;
+    let u = (world.x + half.x) / size.x;
+    let v = (half.y - world.y) / size.y;
+    if !(0.0..1.0).contains(&u) || !(0.0..1.0).contains(&v) {
+        return None;
+    }
+    let i = ((u * nx as f32) as usize).min(nx - 1);
+    let j = ((v * ny as f32) as usize).min(ny - 1);
+    Some((i, j))
 }
 
 fn sprite_size(nx: usize, ny: usize) -> Vec2 {
@@ -226,6 +285,111 @@ fn update_engine_visibility(
             *v = target;
         }
     }
+}
+
+/// Hover-to-inspect (Issue #139 Stage E1). Maps the world-space
+/// cursor to a cell, refreshes the lazily-derived altitude cache
+/// when the snapshot step changes, and writes the per-cell readout
+/// into `C1VizState.hover`. Suppressed (`hover = None`) when:
+/// - a non-C1 engine is active,
+/// - the pointer is over an egui panel (not the map),
+/// - the cursor is off the sprite, or
+/// - there is no snapshot yet.
+fn update_c1_hover(
+    active: Res<ActiveEngine>,
+    egui_input: Res<EguiWantsInput>,
+    cursor: Res<CursorWorldPos>,
+    bridge: Res<C1SolverBridge>,
+    mut viz: ResMut<C1VizState>,
+) {
+    if *active != ActiveEngine::C1 || egui_input.is_pointer_over_area() {
+        viz.hover = None;
+        return;
+    }
+    let Some(world) = cursor.pos else {
+        viz.hover = None;
+        return;
+    };
+    let Some(snapshot) = bridge.state.latest_snapshot() else {
+        viz.hover = None;
+        return;
+    };
+    let nx = snapshot.nx;
+    let ny = snapshot.ny;
+    let Some((i, j)) = world_to_cell(world, nx, ny) else {
+        viz.hover = None;
+        return;
+    };
+
+    // Refresh the altitude cache if the snapshot step changed (W2).
+    let step = snapshot.step;
+    let stale = match &viz.altitude_cache {
+        Some((cached_step, _)) => *cached_step != step,
+        None => true,
+    };
+    if stale {
+        let altitude = derive_altitude_field(snapshot);
+        viz.altitude_cache = Some((step, altitude));
+    }
+
+    let altitude_nondim = viz
+        .altitude_cache
+        .as_ref()
+        .map(|(_, grid)| grid.get(i as i32, j as i32))
+        .unwrap_or(0.0);
+    let s = snapshot.s[j * nx + i];
+    let age = snapshot.age[j * nx + i];
+
+    viz.hover = Some(HoverReadout {
+        i,
+        j,
+        s,
+        age,
+        altitude_nondim,
+    });
+}
+
+/// Fixed corner panel rendering the hover readout (Issue #139 Stage
+/// E1, anchored bottom-right). Non-dim altitude is shown FIRST as
+/// the verification value (W3 global). Meters (Stage E3 hypsometric
+/// lens) will be added below, labelled "(after hypsometric curve)".
+fn c1_hover_panel(
+    mut contexts: EguiContexts,
+    viz: Res<C1VizState>,
+    active: Res<ActiveEngine>,
+) {
+    if *active != ActiveEngine::C1 {
+        return;
+    }
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    egui::Window::new("C1 Cell Inspector")
+        .anchor(egui::Align2::RIGHT_BOTTOM, [-16.0, -16.0])
+        .resizable(false)
+        .collapsible(false)
+        .show(ctx, |ui| match viz.hover {
+            Some(h) => {
+                egui::Grid::new("c1_hover_grid").show(ui, |ui| {
+                    ui.label("cell (i, j)");
+                    ui.label(format!("({}, {})", h.i, h.j));
+                    ui.end_row();
+                    ui.label("S̃");
+                    ui.label(format!("{:.4}", h.s));
+                    ui.end_row();
+                    ui.label("age");
+                    ui.label(format!("{:.4}", h.age));
+                    ui.end_row();
+                    ui.label("altitude (non-dim)");
+                    ui.label(format!("{:+.4}", h.altitude_nondim));
+                    ui.end_row();
+                });
+                ui.weak("non-dim = verification value (meters: Stage E3)");
+            }
+            None => {
+                ui.weak("Hover over the map…");
+            }
+        });
 }
 
 /// egui control panel — init params, closure toggles, Run/Cancel,
@@ -531,7 +695,64 @@ impl Plugin for C1VisualizationPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ActiveEngine>()
             .add_systems(Startup, setup_c1_sprite)
-            .add_systems(Update, (update_c1_texture, update_engine_visibility))
-            .add_systems(EguiPrimaryContextPass, c1_control_panel);
+            .add_systems(
+                Update,
+                (update_c1_texture, update_engine_visibility, update_c1_hover),
+            )
+            .add_systems(EguiPrimaryContextPass, (c1_control_panel, c1_hover_panel));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Default 64² grid → square sprite 600×600, half = 300.
+    const N: usize = 64;
+
+    #[test]
+    fn world_to_cell_centre_is_mid_grid() {
+        // World origin = sprite centre → centre cell.
+        assert_eq!(world_to_cell(Vec2::new(0.0, 0.0), N, N), Some((32, 32)));
+    }
+
+    #[test]
+    fn world_to_cell_y_axis_is_top_down() {
+        // W1 Y-flip guard: an OFF-CENTRE, non-symmetric point. World
+        // +Y is up; texel row 0 is the TOP. A point in the upper
+        // half (world.y > 0) must map to a SMALL j (near the top),
+        // not a large one. size = 600, half = 300.
+        //   world.y = +150 → v = (300 - 150)/600 = 0.25 → j = 16.
+        //   world.x = -150 → u = (-150 + 300)/600 = 0.25 → i = 16.
+        // If the vertical term were (world.y + half)/size (the wrong
+        // sign), v would be 0.75 → j = 48, failing this assert.
+        assert_eq!(
+            world_to_cell(Vec2::new(-150.0, 150.0), N, N),
+            Some((16, 16))
+        );
+        // Symmetric lower-right point → large i and j.
+        assert_eq!(
+            world_to_cell(Vec2::new(150.0, -150.0), N, N),
+            Some((48, 48))
+        );
+    }
+
+    #[test]
+    fn world_to_cell_outside_is_none() {
+        // Beyond the +x edge (half = 300).
+        assert_eq!(world_to_cell(Vec2::new(400.0, 0.0), N, N), None);
+        // Beyond the -y edge.
+        assert_eq!(world_to_cell(Vec2::new(0.0, -400.0), N, N), None);
+    }
+
+    #[test]
+    fn world_to_cell_respects_non_square_resize() {
+        // W1 resize correctness: nx=4, ny=8 → longer=8,
+        // size = (600·4/8, 600·8/8) = (300, 600), half = (150, 300).
+        // World origin → centre cell (nx/2, ny/2) = (2, 4).
+        assert_eq!(world_to_cell(Vec2::new(0.0, 0.0), 4, 8), Some((2, 4)));
+        // A point at x = +75 (u = 0.75 → i = 3), y = +150
+        // (v = (300-150)/600 = 0.25 → j = 2).
+        assert_eq!(world_to_cell(Vec2::new(75.0, 150.0), 4, 8), Some((3, 2)));
     }
 }
