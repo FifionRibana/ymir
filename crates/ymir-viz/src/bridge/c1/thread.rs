@@ -688,6 +688,84 @@ mod tests {
         handle.join().unwrap();
     }
 
+    /// Issue #139 Stage A acceptance — DISTINCT product angle from the
+    /// Stage V mechanism guard. Stage V asserts mass-conservation /
+    /// convergence / isostatic-floor; this asserts the PRODUCT promise
+    /// of workflow mode: the coast actually MIGRATES (the displayed
+    /// land/sea boundary moves substantially from init), AND the
+    /// continent does not vanish (emergent land stays nonzero). This
+    /// is what distinguishes workflow mode from the static-coast
+    /// gallery path (Issue #137 contract). 64² seed 42, calibrated
+    /// default cadence.
+    #[test]
+    fn workflow_acceptance_continent_preserved_seed_42() {
+        use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+        use ymir_core::tectonics_v2::field::Field2D;
+
+        let (cmd_tx, cmd_rx) = bounded(4);
+        let (evt_tx, evt_rx) = bounded(2);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
+        cmd_tx
+            .send(C1Command::RunWorkflow {
+                spec: C1RunSpec {
+                    grid_size: 64,
+                    seed: 42,
+                    ..C1RunSpec::default()
+                },
+                phase_a: PhaseAParams::default(),
+            })
+            .unwrap();
+        let events = drain_run(&evt_rx);
+        drop(cmd_tx);
+        handle.join().unwrap();
+
+        // init (cycle-0) plate_type vs final plate_type.
+        let init_pt = events
+            .iter()
+            .find_map(|e| match e {
+                C1Event::StepCompleted { snapshot } if snapshot.step == 0 => {
+                    Some(snapshot.plate_type.clone())
+                }
+                _ => None,
+            })
+            .expect("cycle-0 snapshot");
+        let final_snap = match events.last() {
+            Some(C1Event::Completed { final_snapshot, .. }) => final_snapshot,
+            other => panic!("expected Completed; got {other:?}"),
+        };
+
+        let coast_moved = init_pt
+            .iter()
+            .zip(&final_snap.plate_type)
+            .filter(|(a, b)| a != b)
+            .count();
+
+        let emergent_land = {
+            let f = Field2D::from_vec(final_snap.nx, final_snap.ny, final_snap.s.clone());
+            compute_isostasy(&f, &IsostasyConfig::default()).land_ratio as f64
+        };
+
+        eprintln!("Stage A acceptance (workflow, seed 42, 64², 5×20):");
+        eprintln!("  coast cells reclassified vs init = {coast_moved}");
+        eprintln!("  final emergent land fraction      = {emergent_land:.4}");
+
+        // PRODUCT: the coast migrated substantially (workflow mode's
+        // raison d'être — gallery would not reclassify on sea level).
+        // Seed 42 measured ~1500 net flips; assert a robust lower
+        // bound.
+        assert!(
+            coast_moved > 500,
+            "workflow coast did not migrate: only {coast_moved} cells reclassified vs init (expected > 500)"
+        );
+        // PRODUCT: the continent did not vanish — emergent land stays
+        // nonzero (the converged equilibrium, ~0.058 at seed 42).
+        assert!(
+            emergent_land > 0.02,
+            "continent vanished: emergent land = {emergent_land:.4} (expected > 0.02)"
+        );
+    }
+
     /// Issue #139 Stage V diagnostic (user-requested, `#[ignore]`'d):
     /// resolve whether the ~0.058 workflow continental fraction is an
     /// apples/oranges metric artefact, an adaptive-threshold drift, or
