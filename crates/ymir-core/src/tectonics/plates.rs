@@ -90,7 +90,14 @@ impl Plate {
 pub const BASE_CONTINENTAL_RATIO: f64 = 0.6;
 
 /// Configuration for plate generation.
+///
+/// `#[serde(default)]` (struct-level): metadata saved before a field
+/// was added still deserializes — missing fields fall back to
+/// [`PlateConfig::default`]. Guards against the #47-class legacy-
+/// compat break (e.g. `continental_area_factor` added later without a
+/// default broke `deserialize_legacy_metadata_without_upscale`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct PlateConfig {
     /// Number of tectonic plates (5–15).
     pub num_plates: usize,
