@@ -160,8 +160,20 @@ fn c1_phase_a_decomposes_into_closures_then_post_tectonic() {
         PlateKinematics::preset_phase_1_1(scratch.num_plates)
     };
     let closures = phase_1_3_closures();
-    let time_loop_config = make_time_loop_config(n_steps);
-    let iso_config = IsostasyConfig::default();
+    // Issue #141: exercise the decomposition CONTRACT under the C1
+    // production sea-level mode (P95-cap). BOTH the inner run_with_
+    // closures (via time_loop_config.iso_config) AND apply_post_
+    // tectonic (via iso_config) must use the SAME mode for a coherent
+    // test. Contract is wrapper == decomposition (path-A == path-B);
+    // S̃ values redefined (P95-cap), contract must stay byte-exact.
+    let iso_config = IsostasyConfig::c1_default();
+    let time_loop_config = C1TimeLoopConfig {
+        n_steps,
+        dx: 1.0 / GRID as f64,
+        dy: 1.0 / GRID as f64,
+        iso_config: iso_config.clone(),
+        drainage_max_distance: 30,
+    };
     let wf_params = WorkflowParams::default();
     let phase_a_params = wf_params.phase_a.clone();
     let wf = WorkflowConfig::Enabled(wf_params);
