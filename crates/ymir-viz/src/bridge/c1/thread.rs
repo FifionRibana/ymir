@@ -688,6 +688,157 @@ mod tests {
         handle.join().unwrap();
     }
 
+    /// Issue #141 Stage V — Q4 convergence gate under P95-cap. Logs
+    /// TWO signals (per the Stage V design):
+    ///   (1) GLOBAL convergence: per-cycle |Δmass|/mass < 1e-3 +
+    ///       last-cycle |Δfrac| < 0.01.
+    ///   (2) THRESHOLD jitter: the per-step drainage sea_level_ref
+    ///       (P95-cap), recomputed post-hoc from each step's S̃, to
+    ///       see whether the threshold itself oscillates step-to-step
+    ///       (the most sensitive signal) — distinguishing per-step
+    ///       drainage jitter from per-cycle reclassify jumps (macro
+    ///       redistribution at cycle boundaries).
+    /// Verdict drives whether the per-cycle-stable drainage sub-fix is
+    /// needed (already spec'd; activate only if the per-step threshold
+    /// jitters).
+    #[test]
+    fn workflow_converges_under_p95_cap() {
+        use ymir_core::tectonics::isostasy::IsostasyConfig;
+        use ymir_core::tectonics_v2::field::Field2D;
+        use ymir_core::tectonics_v2::workflow::phase_a_common::compute_sea_level_ref_s_space;
+
+        let (cmd_tx, cmd_rx) = bounded(4);
+        let (evt_tx, evt_rx) = bounded(2);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
+        cmd_tx
+            .send(C1Command::RunWorkflow {
+                spec: C1RunSpec {
+                    grid_size: 64,
+                    seed: 42,
+                    ..C1RunSpec::default()
+                },
+                phase_a: PhaseAParams::default(),
+            })
+            .unwrap();
+        let events = drain_run(&evt_rx);
+        drop(cmd_tx);
+        handle.join().unwrap();
+
+        let c1 = IsostasyConfig::c1_default();
+        let k_cycle = PhaseAParams::default().k_cycle;
+        let n_cycles = PhaseAParams::default().n_cycles;
+
+        // Per-step P95-cap drainage threshold, in emission order.
+        let mut step_thr: Vec<(usize, f64)> = Vec::new();
+        for e in &events {
+            if let C1Event::StepCompleted { snapshot } = e {
+                let f = Field2D::from_vec(snapshot.nx, snapshot.ny, snapshot.s.clone());
+                step_thr.push((snapshot.step, compute_sea_level_ref_s_space(&f, &c1)));
+            }
+        }
+
+        // (2) Within-cycle step-to-step jitter vs cycle-boundary jumps.
+        // Steps 1..=k_cycle are cycle 1, etc. The cycle-0 snapshot is
+        // step 0; boundary snapshots (post-macro) repeat the boundary
+        // step value. Walk consecutive distinct emissions.
+        let mut max_within = 0.0_f64;
+        let mut max_within_at = (0usize, 0usize);
+        let mut max_boundary = 0.0_f64;
+        for w in step_thr.windows(2) {
+            let (s0, t0) = w[0];
+            let (s1, t1) = w[1];
+            let d = (t1 - t0).abs();
+            // A boundary transition is where the step index does NOT
+            // advance by exactly 1 (post-cycle snapshot reuse) or
+            // crosses a multiple of k_cycle.
+            let is_boundary = s1 == s0 || s0 % k_cycle == 0 && s0 != 0;
+            if is_boundary {
+                max_boundary = max_boundary.max(d);
+            } else {
+                if d > max_within {
+                    max_within = d;
+                    max_within_at = (s0, s1);
+                }
+            }
+        }
+        // Count "large" within-cycle threshold jumps (> 0.05). A
+        // chronic per-step jitter would make this large; a smooth
+        // threshold (mild sawtooth + rare discrete level shifts) keeps
+        // it small. Measured at seed 42: 1 / ~100 (a single discrete
+        // S̃-event level shift; the rest is a ~0.01 sawtooth the system
+        // absorbs).
+        let big_within = step_thr
+            .windows(2)
+            .filter(|w| {
+                let (s0, _) = w[0];
+                let (s1, _) = w[1];
+                let is_boundary = s1 == s0 || s0 % k_cycle == 0 && s0 != 0;
+                !is_boundary && (w[1].1 - w[0].1).abs() > 0.05
+            })
+            .count();
+
+        // (1) per-cycle mass + continental-fraction trajectory.
+        let cont_frac = |snap: &C1Snapshot| -> f64 {
+            snap.plate_type.iter().filter(|&&t| t == 1).count() as f64
+                / snap.plate_type.len() as f64
+        };
+        let mass = |s: &[f64]| -> f64 { s.iter().sum() };
+        let snaps_at = |step: usize| -> Vec<&C1Snapshot> {
+            events
+                .iter()
+                .filter_map(|e| match e {
+                    C1Event::StepCompleted { snapshot } if snapshot.step == step => Some(snapshot),
+                    _ => None,
+                })
+                .collect()
+        };
+        let mut frac_traj: Vec<f64> = Vec::new();
+        if let Some(s0) = snaps_at(0).first() {
+            frac_traj.push(cont_frac(s0));
+        }
+        let mut max_rel_dmass = 0.0_f64;
+        for c in 1..=n_cycles {
+            let pair = snaps_at(c * k_cycle);
+            assert!(pair.len() >= 2);
+            let (pre, post) = (pair[0], pair[1]);
+            let m_pre = mass(&pre.s);
+            max_rel_dmass = max_rel_dmass.max((mass(&post.s) - m_pre).abs() / m_pre.max(1e-12));
+            frac_traj.push(cont_frac(post));
+        }
+        let n = frac_traj.len();
+        let last_delta = (frac_traj[n - 1] - frac_traj[n - 2]).abs();
+
+        eprintln!("=== Issue #141 Stage V — convergence under P95-cap (seed 42, 64²) ===");
+        eprintln!("  per-step P95 drainage threshold: max WITHIN-cycle |Δ| = {max_within:.4} at steps {max_within_at:?}, max BOUNDARY |Δ| = {max_boundary:.4}");
+        eprintln!("  within-cycle transitions |Δ|>0.05: {big_within} of ~{}", n_cycles * k_cycle);
+        eprintln!("  continental-fraction trajectory  = {frac_traj:?}");
+        eprintln!("  per-cycle max |Δmass|/mass        = {max_rel_dmass:.2e}");
+        eprintln!("  last-cycle |Δfrac|                = {last_delta:.4}");
+
+        // Q4 gate (1) — global convergence: mass-conserving + last-
+        // cycle settled.
+        assert!(
+            max_rel_dmass < 1e-3,
+            "macro not mass-conserving under P95-cap: max |Δmass|/mass = {max_rel_dmass:.2e}"
+        );
+        assert!(
+            last_delta < 0.01,
+            "did not converge under P95-cap: last-cycle |Δfrac| = {last_delta:.4}; trajectory {frac_traj:?}"
+        );
+        // Q4 gate (2) — NO chronic per-step threshold jitter. The
+        // drainage threshold is smooth (mild ~0.01 sawtooth + rare
+        // discrete level shifts), so large within-cycle jumps are
+        // rare. A chronic sawtooth would blow this up and would
+        // trigger the per-cycle-stable drainage sub-fix (spec'd, not
+        // needed at seed 42).
+        assert!(
+            big_within <= 5,
+            "per-step drainage threshold jitters ({big_within} within-cycle jumps > 0.05 of ~{}) — chronic jitter; activate the per-cycle-stable drainage sub-fix",
+            n_cycles * k_cycle
+        );
+    }
+
     /// Issue #139 Stage A acceptance — DISTINCT product angle from the
     /// Stage V mechanism guard. Stage V asserts mass-conservation /
     /// convergence / isostatic-floor; this asserts the PRODUCT promise
