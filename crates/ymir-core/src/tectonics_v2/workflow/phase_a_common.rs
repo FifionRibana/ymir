@@ -66,7 +66,7 @@
 //! state shape. C1 in Phase 1.3 has no cratonic-factor evolution,
 //! so it discards. Phase 1.4+ may add one.
 
-use crate::tectonics::isostasy::IsostasyConfig;
+use crate::tectonics::isostasy::{percentile_copy, IsostasyConfig, SeaLevelMode};
 use crate::tectonics_v2::boundaries::{PlateType, PlateTypeField};
 use crate::tectonics_v2::cratonic::factor::build_cratonic_factor_field;
 use crate::tectonics_v2::cratonic::CratonicConfigEnabled;
@@ -274,7 +274,18 @@ pub fn compute_sea_level_ref_s_space(s: &Field2D, iso_cfg: &IsostasyConfig) -> f
         (f64::INFINITY, f64::NEG_INFINITY),
         |(lo, hi), v| (lo.min(v), hi.max(v)),
     );
-    let s_range = (s_max - s_min).max(1e-10);
+    // Cap the upper end per the sea-level mode (Issue #141). MinMax
+    // caps at s_max (original, byte-identical); PercentileCapped caps
+    // at the cap-percentile of S̃ — coherent with the h-space branch
+    // in `compute_isostasy` because h = S̃·buoyancy is monotonic, so
+    // both place the land/sea boundary at the same S̃ value (W2).
+    let s_cap = match iso_cfg.sea_level_mode {
+        SeaLevelMode::MinMaxFraction => s_max,
+        SeaLevelMode::PercentileCapped { cap_percentile } => {
+            percentile_copy(s_data, cap_percentile)
+        }
+    };
+    let s_range = (s_cap - s_min).max(1e-10);
     s_min + (iso_cfg.sea_level_fraction as f64) * s_range
 }
 
@@ -395,4 +406,57 @@ fn measure_craton_change(old: &Field2D, new: &Field2D) -> f64 {
         }
     }
     changed as f64 / n as f64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tectonics::isostasy::{compute_isostasy, SeaLevelMode};
+
+    /// W2 dual-space coherence (Issue #141): under the SAME sea-level
+    /// mode, the h-space land set (`compute_isostasy` land_ratio) must
+    /// equal the S̃-space land set (cells above `compute_sea_level_ref_
+    /// s_space`). Because h = S̃·buoyancy is monotonic, both place the
+    /// land/sea boundary at the same S̃ value — so the plate_type coast
+    /// (reclassify, S̃-space) cannot diverge from the altitude=0 coast
+    /// (render, h-space). Checked under BOTH modes.
+    fn coherence_for(mode: SeaLevelMode) {
+        let n = 48;
+        let mut s = Field2D::new(n, n);
+        // Tailed distribution: bulk ~0.3, gradient, a few peaks ~2.1.
+        for j in 0..n {
+            for i in 0..n {
+                s.set(i, j, 0.2 + 0.6 * (i as f64 / (n - 1) as f64));
+            }
+        }
+        for k in 0..(n * n / 40) {
+            s.data_mut()[k] = 2.1;
+        }
+        let cfg = IsostasyConfig {
+            sea_level_mode: mode,
+            ..Default::default()
+        };
+
+        let sea_ref = compute_sea_level_ref_s_space(&s, &cfg);
+        let s_land = s.data().iter().filter(|&&v| v > sea_ref).count();
+
+        let iso = compute_isostasy(&s, &cfg);
+        // land_ratio counts h > h_sea; multiply back to a cell count.
+        let h_land = (iso.land_ratio as f64 * (n * n) as f64).round() as usize;
+
+        assert_eq!(
+            s_land, h_land,
+            "dual-space coherence broken for {mode:?}: S̃-land {s_land} vs h-land {h_land}"
+        );
+    }
+
+    #[test]
+    fn dual_space_coherence_min_max() {
+        coherence_for(SeaLevelMode::MinMaxFraction);
+    }
+
+    #[test]
+    fn dual_space_coherence_percentile() {
+        coherence_for(SeaLevelMode::PercentileCapped { cap_percentile: 0.95 });
+    }
 }
