@@ -1054,7 +1054,12 @@ pub fn spawn_c1_thread(
                             n_steps: spec.n_steps,
                             dx: 1.0 / spec.grid_size as f64,
                             dy: 1.0 / spec.grid_size as f64,
-                            iso_config: IsostasyConfig::default(),
+                            // Issue #141: C1 engine uses the robust
+                            // P95-capped sea level (drainage + render
+                            // altitude). Gallery path has no reclassify,
+                            // so this affects the per-step isostasy +
+                            // drainage only.
+                            iso_config: IsostasyConfig::c1_default(),
                             drainage_max_distance: spec.drainage_max_distance,
                         };
 
@@ -1225,7 +1230,12 @@ fn run_workflow_cycles(
     base_step: usize,
 ) -> usize {
     let k_cycle = phase_a.k_cycle;
-    let iso_config = IsostasyConfig::default();
+    // Issue #141: P95-capped sea level. This single config flows to
+    // BOTH the time loop (drainage, time_loop.rs:614) AND
+    // apply_post_tectonic (reclassify) below, so the drainage coast,
+    // the reclassify coast, and the rendered altitude coast all share
+    // the same robust threshold (W2 coherence).
+    let iso_config = IsostasyConfig::c1_default();
     let mut last_step = base_step;
 
     for cycle in 0..phase_a.n_cycles {

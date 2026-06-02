@@ -192,6 +192,8 @@ pub fn handle_isostasy_compute(
         max_depth_m: params.max_depth_m,
         sea_level_fraction: params.sea_level_fraction,
         altitude_smoothing_sigma: params.altitude_smoothing_sigma,
+        // v2 standalone isostasy phase: keep MinMaxFraction (#141).
+        ..IsostasyConfig::default()
     };
     let result = compute_isostasy(&s_field, &cfg);
     cache.last_status = Some(Ok(format!(
