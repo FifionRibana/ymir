@@ -677,6 +677,165 @@ mod tests {
         handle.join().unwrap();
     }
 
+    /// Issue #141 Stage A — coast coherence (W2). The Viz-0 Stage A
+    /// bug was the plate_type coast (reclassify, S̃-space sea level)
+    /// diverging from the altitude=0 coast (compute_isostasy, h-space
+    /// sea level) because the two used DIFFERENT sea-level formulas.
+    /// Under Phase 1.5 both use `c1_default` (P95-cap), so the
+    /// S̃-space reclassify land set must equal the h-space isostasy
+    /// land set. This is NON-trivial (it would catch a future
+    /// divergence of the two instances); it is NOT the structural
+    /// `altitude>0 ⟺ plate_type` identity (which Stein-Stein gating
+    /// makes tautological). 64² seed 42, cap=0.92 / n_cycles=12.
+    #[test]
+    fn acceptance_coast_coherence_phase_1_5() {
+        use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+        use ymir_core::tectonics_v2::field::Field2D;
+
+        let (cmd_tx, cmd_rx) = bounded(4);
+        let (evt_tx, evt_rx) = bounded(2);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
+        cmd_tx
+            .send(C1Command::RunWorkflow {
+                spec: C1RunSpec {
+                    grid_size: 64,
+                    seed: 42,
+                    ..C1RunSpec::default()
+                },
+                phase_a: PhaseAParams {
+                    n_cycles: 12,
+                    ..PhaseAParams::default()
+                },
+            })
+            .unwrap();
+        let events = drain_run(&evt_rx);
+        drop(cmd_tx);
+        handle.join().unwrap();
+
+        let final_snap = match events.last() {
+            Some(C1Event::Completed { final_snapshot, .. }) => final_snapshot,
+            other => panic!("expected Completed; got {other:?}"),
+        };
+        let n = (final_snap.nx * final_snap.ny) as f64;
+
+        // S̃-space land set (plate_type, set by reclassify).
+        let reclassify_land =
+            final_snap.plate_type.iter().filter(|&&t| t == 1).count() as f64 / n;
+        // h-space land set (compute_isostasy land_ratio on the SAME s,
+        // under the SAME c1_default mode).
+        let f = Field2D::from_vec(final_snap.nx, final_snap.ny, final_snap.s.clone());
+        let isostasy_land =
+            compute_isostasy(&f, &IsostasyConfig::c1_default()).land_ratio as f64;
+
+        eprintln!("Phase 1.5 Stage A coast coherence (seed 42, 64², cap=0.92):");
+        eprintln!("  reclassify land (S̃-space) = {reclassify_land:.4}");
+        eprintln!("  isostasy land  (h-space)  = {isostasy_land:.4}");
+
+        // Both reduce to {s > sea_level_ref} (h = s·buoyancy monotonic),
+        // so they must agree to within f32 rounding. A divergence would
+        // mean the two sea-level instances drifted (the Viz-0 Stage A
+        // regression).
+        assert!(
+            (reclassify_land - isostasy_land).abs() < 1e-3,
+            "dual-space coast divergence: reclassify land {reclassify_land:.4} != isostasy land {isostasy_land:.4} (the two sea-level instances disagree — Viz-0 Stage A regression)"
+        );
+    }
+
+    /// Issue #141 Stage A — multi-seed emergent-land distribution.
+    /// The P95-cap product target: emergent land in a bounded band
+    /// AROUND ~30% with NATURAL per-seed variation (NOT a uniform
+    /// fixed value — that would be suspect). Asserts the seed
+    /// DISTRIBUTION (mean + per-seed band), not a tight per-seed
+    /// point (the system is a bounded limit cycle). 64² cap=0.92 /
+    /// n_cycles=12; emergent = mean of the last 4 post-cycle
+    /// continental fractions (band-centre estimate, robust to the
+    /// ±0.05 limit-cycle stop-point variance).
+    #[test]
+    fn acceptance_emergent_land_multiseed_phase_1_5() {
+        let k_cycle = PhaseAParams::default().k_cycle;
+        let n_cycles = 12usize;
+
+        let mut emergents = Vec::new();
+        for &seed in &[42_u64, 1337, 2026, 7, 99] {
+            let (cmd_tx, cmd_rx) = bounded(4);
+            let (evt_tx, evt_rx) = bounded(2);
+            let cancel = Arc::new(AtomicBool::new(false));
+            let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
+            cmd_tx
+                .send(C1Command::RunWorkflow {
+                    spec: C1RunSpec {
+                        grid_size: 64,
+                        seed,
+                        ..C1RunSpec::default()
+                    },
+                    phase_a: PhaseAParams {
+                        n_cycles,
+                        ..PhaseAParams::default()
+                    },
+                })
+                .unwrap();
+            let events = drain_run(&evt_rx);
+            drop(cmd_tx);
+            handle.join().unwrap();
+
+            // Post-cycle continental fraction at each boundary; average
+            // the last 4 cycles (band centre, robust to the limit-cycle).
+            let mut post_cycle: Vec<f64> = Vec::new();
+            for c in 1..=n_cycles {
+                let boundary = c * k_cycle;
+                let snaps: Vec<&C1Snapshot> = events
+                    .iter()
+                    .filter_map(|e| match e {
+                        C1Event::StepCompleted { snapshot } if snapshot.step == boundary => {
+                            Some(snapshot)
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                if let Some(post) = snaps.get(1) {
+                    let frac = post.plate_type.iter().filter(|&&t| t == 1).count() as f64
+                        / post.plate_type.len() as f64;
+                    post_cycle.push(frac);
+                }
+            }
+            let tail = &post_cycle[post_cycle.len().saturating_sub(4)..];
+            let emergent = tail.iter().sum::<f64>() / tail.len() as f64;
+            emergents.push((seed, emergent));
+        }
+
+        let mean = emergents.iter().map(|(_, e)| e).sum::<f64>() / emergents.len() as f64;
+        let (mn, mx) = emergents
+            .iter()
+            .fold((1.0_f64, 0.0_f64), |(a, b), &(_, e)| (a.min(e), b.max(e)));
+
+        eprintln!("Phase 1.5 Stage A multi-seed emergent land (64², cap=0.92, 12×20):");
+        for (seed, e) in &emergents {
+            eprintln!("  seed {seed:>5}: {e:.4}");
+        }
+        eprintln!("  distribution: min {mn:.4}, mean {mean:.4}, max {mx:.4}");
+
+        // Each seed in a generous band (covers the ±0.05 limit cycle);
+        // NOT collapsed (≈0) and NOT runaway (≈0.95).
+        for (seed, e) in &emergents {
+            assert!(
+                (0.15..=0.45).contains(e),
+                "seed {seed} emergent {e:.4} outside [0.15, 0.45] (collapsed or runaway)"
+            );
+        }
+        // Distribution centred AROUND ~30%.
+        assert!(
+            (0.24..=0.38).contains(&mean),
+            "multi-seed mean emergent {mean:.4} not centred around ~30% (expected [0.24, 0.38])"
+        );
+        // Natural variation (not a suspect uniform value).
+        assert!(
+            mx - mn > 0.02,
+            "multi-seed spread {:.4} suspiciously uniform (expected natural per-seed variation)",
+            mx - mn
+        );
+    }
+
     /// Issue #141 Stage V — Q4 convergence gate under P95-cap. Logs
     /// TWO signals (per the Stage V design):
     ///   (1) GLOBAL convergence: per-cycle |Δmass|/mass < 1e-3 +
