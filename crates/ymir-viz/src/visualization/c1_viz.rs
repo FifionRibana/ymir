@@ -19,6 +19,7 @@
 //!   showing S̃** (gallery-anchored derivation lands at Stage E4).
 //! - `Cratonic` — binary grayscale (0/1) MVP standalone view.
 
+use ymir_core::grid::GridF32;
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::{
     apply_stein_stein_bathymetry, SteinSteinParams,
@@ -224,10 +225,27 @@ fn render_plate_type(snapshot: &C1Snapshot, rgba: &mut [u8]) {
 /// `IsostasyConfig::default()` and `SteinSteinParams::default()`
 /// are the same defaults the galleries use (no per-spec overrides
 /// in Viz-0; Q-V.3 Option A palette continuity preserved).
-fn render_altitude(snapshot: &C1Snapshot, rgba: &mut [u8]) {
+/// Architecture C live altitude derivation, returning the raw
+/// non-dimensional altitude `GridF32` (steps 1–3 of the gallery
+/// code path). Factored out of [`render_altitude`] so the hover
+/// inspector (Issue #139 Stage E1) can read per-cell altitude in
+/// **any** view, not just the Altitude view — the cache reuses
+/// this single source of truth.
+///
+///   1. Reconstruct `Field2D` for `s` + `age` from snapshot vecs.
+///   2. Reconstruct `PlateTypeField` from `snapshot.plate_type:
+///      Vec<u8>` via the `0 = Oceanic / 1 = Continental` decoder.
+///   3. `compute_isostasy(&s_field, &IsostasyConfig::default())` →
+///      `heightmap: GridF32`, then `apply_stein_stein_bathymetry`
+///      (Architecture C post-isostasy overwrite on oceanic cells).
+///
+/// The returned grid carries non-dim altitude per cell
+/// (`grid.get(i, j)`), the verification value surfaced first by
+/// the hover readout (Issue #139 W3 global: non-dim = verification,
+/// meters = cosmetic).
+pub fn derive_altitude_field(snapshot: &C1Snapshot) -> GridF32 {
     let nx = snapshot.nx;
     let ny = snapshot.ny;
-    debug_assert_eq!(rgba.len(), nx * ny * 4);
 
     // 1. Reconstruct Field2D from snapshot raw vecs.
     let s_field = Field2D::from_vec(nx, ny, snapshot.s.clone());
@@ -257,6 +275,16 @@ fn render_altitude(snapshot: &C1Snapshot, rgba: &mut [u8]) {
         &plate_type_field,
         &SteinSteinParams::default(),
     );
+    altitude
+}
+
+fn render_altitude(snapshot: &C1Snapshot, rgba: &mut [u8]) {
+    let nx = snapshot.nx;
+    let ny = snapshot.ny;
+    debug_assert_eq!(rgba.len(), nx * ny * 4);
+
+    // Steps 1–3 (shared with the hover inspector cache).
+    let altitude = derive_altitude_field(snapshot);
 
     // 4. Map [-half_range, +half_range] → [0, 1] → RGBA via
     //    hypsometric_bipolar (same colormap as gallery).
