@@ -19,23 +19,44 @@ The indirect-coupling worry (equilibrium→S̃→threshold) does **not** bite: t
 |---|---|---|
 | **Phase 1.4 K erosion** | continental S̃ relief: min 0.238, mean 0.592, max 2.174 | **HOLDS** — the lower threshold drains/erodes a larger land area (~28% vs ~6%), yet the continent retains real relief (range 0.24–2.17, not razed flat). Erosion carves, doesn't obliterate. K unchanged. |
 | **Track A S-S bathymetry** | S-S applies to ~72% oceanic (vs ~94%); depths down to −0.523 non-dim (≈ −2615 m); **coast coherence: 0/4096 mismatches** (altitude>0 ⟺ plate_type==Continental) | **HOLDS** — sensible bathymetry on the reduced ocean; the land/sea transition is exactly where plate_type flips. The Viz-0 Stage A plate_type-vs-altitude divergence does **not** recur (dual-space coherence, W2). depth_scale unchanged. |
-| **Track D K_subduction** | cum_sub 24,738 cells over 240 steps | **HOLDS** — subduction fires substantially at convergent boundaries; sensible high-frequency regime under the new ~30/70 geometry. K_subduction unchanged. |
-| **Track D K_rift (thinning)** | cum_thinning 4,998 cells | **HOLDS** — rifting thinning fires on continental divergent cells. K_rift unchanged. |
+| **Track D K_subduction** (per-step) | cum_sub 24,738 cells over 240 steps | **HOLDS (per-step)** — subduction fires substantially at convergent boundaries; sensible high-frequency regime under the new ~30/70 geometry. K_subduction unchanged. |
+| **Track D K_rift thinning** (per-step) | cum_thinning 4,998 cells | **HOLDS (per-step)** — rifting thinning fires on continental divergent cells. K_rift thinning unchanged. |
+| **Track D accretion MERGE + rifting SPLIT** (cross-step) | cum_merges 0, cum_splits 0 | **NOT EXERCISED in workflow** — see below. NOT re-validated under cap=0.92 in workflow; remain validated on the gallery path only. This is honesty about tested-vs-assumed, not a calibration pass. |
 
-No calibration is physically broken under cap=0.92. None re-tuned.
+No **per-step** calibration is physically broken under cap=0.92; none re-tuned. The **cross-step** Track-D events (accretion merge / rifting split) are a separate matter — qualified below.
 
-## Finding (surfaced, NOT smoothed) — workflow suppresses Track-D CROSS-STEP events
+## Finding (surfaced, NOT smoothed) — workflow does NOT evolve plate topology → Phase 3 PREREQUISITE
 
-`cum_merges = 0` and `cum_splits = 0` in the workflow. **This is NOT a cap effect and NOT a K re-tune.**
+`cum_merges = 0` and `cum_splits = 0` in the workflow. **This is NOT a cap effect and NOT a K re-tune — and it is bigger than a "counter at zero" follow-up.**
 
-- **Mechanism (code-confirmed):** the accretion `ConvergenceTracker` and rifting `DivergenceTracker` are created **fresh at the top of every `run_with_closures` call** ([time_loop.rs:460-466](../../../crates/ymir-core/src/tectonics_c1/time_loop.rs#L460)). The workflow calls `run_with_closures(k_cycle=20)` once per cycle → the tracker resets each cycle → a maximum of 20 consecutive convergent/divergent steps, below the `merge_time_threshold = 50` → the cross-step events **never fire**. The per-STEP events (subduction, thinning) are unaffected and fire normally.
-- **Cap-independent (measured):** the trackers use `plate_id` + `kinematics` velocity, never the sea level. The gallery path (`acceptance_full_run_seed_42_pangaea_collapse`, a single 300-step `run_with_closures` under the *same* `c1_default` cap after Stage E2) produces `cum_merges > 0`. So merges depend on **run length per `run_with_closures` call, not the cap** — a cadence × tracker-reset interaction.
-- **Latent since #139** (the workflow has always used 20-step cycles; the #139 acceptance that asserts `merges>0` runs the *gallery* path). Surfaced now by the Stage Cal Track-D measurement.
-- **Out of Phase 1.5 scope** (orthogonal to the sea-level cap). **Follow-up registered**: "workflow Track-D cross-step events" — thread the tracker across cycles, or lower the threshold for workflow cadence, or document that workflow mode shows subduction/thinning but not accretion-merges/rifting-splits (those need the gallery's long single run). To be scoped separately.
+### Mechanism (code-confirmed, cap-independent, measured)
+
+- The accretion `ConvergenceTracker` and rifting `DivergenceTracker` are created **fresh at the top of every `run_with_closures` call** ([time_loop.rs:460-466](../../../crates/ymir-core/src/tectonics_c1/time_loop.rs#L460)). The workflow calls `run_with_closures(k_cycle=20)` once per cycle → the tracker resets each cycle → a maximum of 20 consecutive convergent/divergent steps, below `merge_time_threshold = 50` → the cross-step events **never fire**. Per-STEP events (subduction, thinning) are unaffected.
+- **Cap-independent (measured):** the trackers use `plate_id` + `kinematics` velocity, never the sea level. The gallery path (`acceptance_full_run_seed_42_pangaea_collapse`, a single 300-step `run_with_closures` under the *same* `c1_default` cap) produces `cum_merges > 0`. So this is **run-length-driven, not cap-driven** — a cadence × tracker-reset interaction. Latent since #139 (the workflow has always used 20-step cycles; the #139 Pangaea-collapse acceptance runs the *gallery* path).
+
+### Consequence — the workflow's plate topology is QUASI-STATIC
+
+Because merge/split never fire in workflow mode:
+
+- The workflow does **not** fuse plates (no accretion) and does **not** split them (no rifting split). Plate topology stays at the init 8 plates throughout a workflow run — only per-cell `plate_type`/`S̃`/`age` evolve, not the plate *set*.
+- **The Pangaea collapse (8 → 2) is GALLERY-ONLY.** The `acceptance_full_run_seed_42_pangaea_collapse` test that validates it runs the gallery path. In **workflow** mode `cum_merges = 0` ⇒ the workflow does **not** collapse the Pangaea.
+
+### Why this is a Phase 3 PREREQUISITE, not a distant follow-up
+
+Workflow mode is the **production reference for Phase 3** (arcs / margins / basins). Phase 3 morphology would be built on a **quasi-static plate topology** in workflow mode (no fusion/separation over the run).
+
+**Question to settle BEFORE Phase 3.A** (registered as a Phase 3 prerequisite, not a loose follow-up):
+
+> Must workflow mode drive merge/split (an *evolving* plate topology), or do per-step subduction + thinning suffice for Phase 3 morphology?
+
+- If Phase 3 needs an evolving topology → the run-length fix (longer cycles, OR trackers persisted across cycles) becomes a **Phase 3 prerequisite**, scheduled before Phase 3.A.
+- If per-step subduction + thinning suffice → document that workflow plate topology is intentionally quasi-static and the cross-step narrative (Pangaea) is a gallery-only demonstration.
+
+This decision is not Phase 1.5's to make, but Phase 1.5 surfaces it as load-bearing for Phase 3.
 
 ## Summary
 
-- 4 sea-level-dependent calibrations: **all HOLD** under cap=0.92 (physics sensible; none re-tuned).
+- 4 sea-level-dependent calibrations: **per-step behavior HOLDS** under cap=0.92 (physics sensible; none re-tuned). Track D **cross-step** events (merge/split) are **not exercised in workflow** — re-validated on the gallery path only (honest tested-vs-assumed).
 - 2 independent calibrations: **byte-identical** (confirmed by measurement, not assumption).
 - Coast coherence (W2 / Stage A): **perfect** (0/4096) — surfaced early here.
-- One cap-INDEPENDENT finding (workflow cross-step Track-D suppression) surfaced + registered as a follow-up, not conflated with the sea-level calibration.
+- The cap-INDEPENDENT cross-step finding is re-classified: **"workflow does not evolve plate topology — Phase 3 prerequisite to settle"**, not a counter follow-up.
