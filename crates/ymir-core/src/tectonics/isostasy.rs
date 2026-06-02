@@ -100,14 +100,21 @@ impl Default for IsostasyConfig {
 impl IsostasyConfig {
     /// C1 default (Issue #141 Phase 1.5): identical to [`Default`]
     /// except `sea_level_mode = PercentileCapped { cap_percentile:
-    /// 0.95 }` — the robust threshold that yields ~28–32% emergent
-    /// land for the C1 S̃ distribution (M2 evidence). Used by the C1
-    /// engine's config builders (viz workflow / gallery worker /
-    /// render altitude, and C1 validation tests); v2 + export + the
-    /// gallery PNG generators keep [`Default`] (`MinMaxFraction`).
+    /// 0.92 }`. The cap was **calibrated live** (not from M2's static
+    /// post-hoc 28%, which the in-loop feedback contradicted): a
+    /// multi-seed 15-cycle sweep showed 0.92 damps to a bounded
+    /// equilibrium with emergent-land distribution mean ~30.6%, range
+    /// ~24.5–36.6% (natural per-seed variation — "around 30%"). 0.95
+    /// oscillates persistently and undershoots (~20%); 0.90 is erratic
+    /// (runaway). cap=0.92 is COUPLED with `n_cycles ≈ 12` (worst-case
+    /// band-entry cycle 9 + margin) — the system is a bounded limit
+    /// cycle (±0.05), not a fixed point. Used by the C1 engine's
+    /// config builders (viz workflow / gallery worker / render
+    /// altitude, and C1 validation tests); v2 + export + the gallery
+    /// PNG generators keep [`Default`] (`MinMaxFraction`).
     pub fn c1_default() -> Self {
         Self {
-            sea_level_mode: SeaLevelMode::PercentileCapped { cap_percentile: 0.95 },
+            sea_level_mode: SeaLevelMode::PercentileCapped { cap_percentile: 0.92 },
             ..Default::default()
         }
     }
@@ -383,7 +390,7 @@ mod tests {
         assert_eq!(IsostasyConfig::default().sea_level_mode, SeaLevelMode::MinMaxFraction);
         assert_eq!(
             IsostasyConfig::c1_default().sea_level_mode,
-            SeaLevelMode::PercentileCapped { cap_percentile: 0.95 }
+            SeaLevelMode::PercentileCapped { cap_percentile: 0.92 }
         );
         // c1_default differs ONLY in the mode.
         let d = IsostasyConfig::default();

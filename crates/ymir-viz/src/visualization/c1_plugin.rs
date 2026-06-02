@@ -173,7 +173,16 @@ impl Default for C1VizState {
             texture_handle: None,
             field: C1Field::default(),
             pending_spec: C1RunSpec::default(),
-            pending_phase_a: PhaseAParams::default(),
+            // Issue #141: cap=0.92 is COUPLED with n_cycles≈12 — the
+            // P95-cap equilibrium (bounded limit cycle ~30% emergent)
+            // is reached by the worst-case band-entry cycle 9 + margin.
+            // n_cycles=5 would cut mid-overshoot. PhaseAParams CORE
+            // default stays 5 (shared with v2); this is the C1 viz
+            // workflow default only.
+            pending_phase_a: PhaseAParams {
+                n_cycles: 12,
+                ..PhaseAParams::default()
+            },
             show_voronoi_boundaries: false,
             show_velocity_vectors: false,
             // C1-tuned default: 0.01 × 500 = 5 cells, comfortably
