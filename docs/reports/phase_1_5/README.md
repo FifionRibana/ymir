@@ -45,7 +45,14 @@ Both the reclassify coast (S̃-space) and the altitude coast (h-space) use `c1_d
 
 ## v2 isolation (the hard guard)
 
-`MinMaxFraction` is the `Default`; v2 + export + gallery PNG generators keep it. Full ymir-core `--features v2_legacy` suite: **586 pass** (only the pre-existing #47 `deserialize_legacy_metadata_without_upscale`, unrelated). The formula change is fully opt-in.
+`MinMaxFraction` is the `Default`; v2 + export + gallery PNG generators keep it. The formula change is fully opt-in (Stage E1 lib tests: every v2/export path is **byte-identical** to the MinMaxFraction baseline).
+
+**Why the v2 path is provably unchanged** — it is *byte-identical*, not "fails the same way." There are two **pre-existing** ymir-core test failures, both independent of #141 (enumerated exhaustively, not tail-sampled):
+
+1. `export::tests::deserialize_legacy_metadata_without_upscale` — the #47-class missing-field break (`continental_area_factor` lacked a serde default). **Fixed on a separate branch** `47-continental-area-factor-serde-default` (orthogonal to #141; one PR = one subject), NOT in #141.
+2. `rectangular_simulation_smoke_test` — a v2 Stokes `NonlinearSolverDidNotConverge { step: 3 }`, deterministic, confirmed **identical on the milestone base 659079f** (zero #141). It is unchanged by #141 **because v2 is byte-identical** (the MinMaxFraction default ⇒ every v2 code path, including this failure, is exactly as before) — the proof is the byte-identity, NOT the coincidental "same step 3" symptom (a nonlinear solver can reach the same symptom from different inputs, so the symptom alone is not evidence). Tracked as a separate v2-solver issue; out of #141 (C1 sea-level) scope.
+
+So #141 changes nothing in v2: the one v2-relevant pre-existing failure is byte-for-byte the same with and without #141.
 
 ## 9th bit-identical — redefined (contract exact, values redefined)
 

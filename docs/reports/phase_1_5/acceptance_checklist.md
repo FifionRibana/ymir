@@ -13,7 +13,7 @@ cargo test --release -p ymir-core --features v2_legacy   # v2 byte-identical gua
 - **`acceptance_emergent_land_multiseed_phase_1_5`** — emergent land distribution AROUND ~30% with natural per-seed variation: seeds {42, 1337, 2026, 7, 99} → 0.31 / 0.33 / 0.34 / 0.38 / 0.25, **mean 0.3213**, range 0.25–0.38 (each in [0.15, 0.45]; mean in [0.24, 0.38]; spread > 0.02 = not suspiciously uniform). Measured as the mean of the last 4 post-cycle fractions (band centre, robust to the ±0.05 limit-cycle stop-point variance).
 - **`workflow_mode_continent_preserved`** (A1-c guard, reframed) — mass-conserving + bounded-band (late-cycle spread < 0.12) + emergent in [0.18, 0.45].
 - **`workflow_converges_under_p95_cap`** (Q4 gate) — mass-conserving + bounded-band + no chronic per-step drainage jitter.
-- **v2 byte-identical** — full ymir-core `--features v2_legacy` suite passes (MinMaxFraction default preserved); only the pre-existing #47 `deserialize_legacy_metadata_without_upscale` failure (unrelated).
+- **v2 byte-identical** — every v2/export path is byte-identical to the MinMaxFraction baseline (the proof v2 is unchanged). Two PRE-EXISTING failures, both independent of #141 (enumerated, not tail-sampled): (1) `deserialize_legacy_metadata_without_upscale` (#47-class; fixed on the separate `47-...` branch, not #141); (2) `rectangular_simulation_smoke_test` (v2 Stokes non-convergence, identical on the milestone base — unchanged by #141 *because* v2 is byte-identical; tracked separately, out of scope).
 
 ## Manual visual review (Viz-0.5 workflow mode)
 
