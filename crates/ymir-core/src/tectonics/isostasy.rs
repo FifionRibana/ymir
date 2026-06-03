@@ -10,6 +10,48 @@ use crate::grid::GridF32;
 use crate::tectonics::solver::field::Field2D;
 use serde::{Deserialize, Serialize};
 
+/// How the sea-level threshold is positioned within the crustal /
+/// altitude distribution (Issue #141 Phase 1.5).
+///
+/// `MinMaxFraction` is the original formula (`min + frac·(max −
+/// min)`) and the [`IsostasyConfig::default`] mode — v2 + export +
+/// gallery paths keep it, byte-identical. `PercentileCapped` caps the
+/// upper end of the range at the `cap_percentile`-th percentile
+/// instead of the raw max, so a thin upper tail (e.g. Davis-Suppe
+/// orographic peaks pushing `s_max` to ~2.18 while P50 ≈ 0.28) no
+/// longer inflates the threshold and submerges the bulk of the crust.
+/// M2 (Issue #139 Stage V diagnostic) measured P95-cap → ~28% emergent
+/// land vs ~5.9% under min/max on the same field.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum SeaLevelMode {
+    /// Sea level = `min + frac·(max − min)`. Original behaviour.
+    MinMaxFraction,
+    /// Sea level = `min + frac·(percentile(data, cap) − min)`. Robust
+    /// to upper-tail outliers. `cap_percentile ∈ [0, 1]` (e.g. 0.95).
+    PercentileCapped { cap_percentile: f32 },
+}
+
+impl Default for SeaLevelMode {
+    fn default() -> Self {
+        SeaLevelMode::MinMaxFraction
+    }
+}
+
+/// O(N)-average percentile via `select_nth_unstable_by` (no full
+/// sort, no NaN handling beyond `partial_cmp` — fields are finite by
+/// invariant). `q ∈ [0, 1]`; index = `round(q·(n−1))`. Allocates one
+/// scratch copy of `data`. Used by both sea-level instances so the
+/// S̃-space and h-space thresholds stay coherent (Issue #141 W2).
+pub(crate) fn percentile_copy<T: Copy + PartialOrd>(data: &[T], q: f32) -> T {
+    debug_assert!(!data.is_empty(), "percentile of empty slice");
+    let mut buf: Vec<T> = data.to_vec();
+    let n = buf.len();
+    let idx = (((q as f64) * (n - 1) as f64).round() as usize).min(n - 1);
+    let (_, nth, _) =
+        buf.select_nth_unstable_by(idx, |a, b| a.partial_cmp(b).expect("non-finite in percentile"));
+    *nth
+}
+
 /// Configuration for isostatic altitude computation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IsostasyConfig {
@@ -31,6 +73,13 @@ pub struct IsostasyConfig {
     /// isostatic computation. Smooths sharp tectonic transitions.
     /// Default: 2.0. Set to 0.0 to disable.
     pub altitude_smoothing_sigma: f32,
+    /// How the sea-level threshold is positioned (Issue #141). Default
+    /// `MinMaxFraction` (v2 + export bit-compat). C1 uses
+    /// [`IsostasyConfig::c1_default`] (`PercentileCapped`).
+    /// `#[serde(default)]` so legacy configs without this field
+    /// deserialize to `MinMaxFraction` (avoids the #47-style break).
+    #[serde(default)]
+    pub sea_level_mode: SeaLevelMode,
 }
 
 impl Default for IsostasyConfig {
@@ -43,6 +92,30 @@ impl Default for IsostasyConfig {
             max_depth_m: 500.0,
             sea_level_fraction: 0.4,
             altitude_smoothing_sigma: 2.0,
+            sea_level_mode: SeaLevelMode::MinMaxFraction,
+        }
+    }
+}
+
+impl IsostasyConfig {
+    /// C1 default (Issue #141 Phase 1.5): identical to [`Default`]
+    /// except `sea_level_mode = PercentileCapped { cap_percentile:
+    /// 0.92 }`. The cap was **calibrated live** (not from M2's static
+    /// post-hoc 28%, which the in-loop feedback contradicted): a
+    /// multi-seed 15-cycle sweep showed 0.92 damps to a bounded
+    /// equilibrium with emergent-land distribution mean ~30.6%, range
+    /// ~24.5–36.6% (natural per-seed variation — "around 30%"). 0.95
+    /// oscillates persistently and undershoots (~20%); 0.90 is erratic
+    /// (runaway). cap=0.92 is COUPLED with `n_cycles ≈ 12` (worst-case
+    /// band-entry cycle 9 + margin) — the system is a bounded limit
+    /// cycle (±0.05), not a fixed point. Used by the C1 engine's
+    /// config builders (viz workflow / gallery worker / render
+    /// altitude, and C1 validation tests); v2 + export + the gallery
+    /// PNG generators keep [`Default`] (`MinMaxFraction`).
+    pub fn c1_default() -> Self {
+        Self {
+            sea_level_mode: SeaLevelMode::PercentileCapped { cap_percentile: 0.92 },
+            ..Default::default()
         }
     }
 }
@@ -83,8 +156,17 @@ pub fn compute_isostasy(thickness: &Field2D, config: &IsostasyConfig) -> Isostas
         h_max = h_max.max(h);
     }
 
-    // 2. Determine sea level from the configured fraction
-    let h_range = (h_max - h_min).max(1e-10);
+    // 2. Determine sea level from the configured fraction + mode.
+    // MinMaxFraction caps at the raw max (original, byte-identical);
+    // PercentileCapped caps at the cap-percentile of the raw
+    // altitude (Issue #141 — robust to upper-tail orographic peaks).
+    let h_cap = match config.sea_level_mode {
+        SeaLevelMode::MinMaxFraction => h_max,
+        SeaLevelMode::PercentileCapped { cap_percentile } => {
+            percentile_copy(&h_raw, cap_percentile)
+        }
+    };
+    let h_range = (h_cap - h_min).max(1e-10);
     let h_sea = h_min + config.sea_level_fraction * h_range;
 
     // 3. Map to normalized [0, 1] with sea level at a known position
@@ -280,5 +362,112 @@ mod tests {
             grad_sharp,
             grad_smooth
         );
+    }
+
+    // ----- Issue #141 Phase 1.5: SeaLevelMode -----
+
+    /// A field with a SPREAD bulk (gradient 0.2..0.9, ~95% of cells)
+    /// plus a thin tall tail (~5% peaks at 2.0) — the M2 configuration
+    /// in miniature (P50/P90 within the bulk, max in the tail, so
+    /// min/max sea level sits above the bulk but P95 sits inside it).
+    fn tailed_field(n: usize) -> Field2D {
+        let mut s = Field2D::new(n, n);
+        for j in 0..n {
+            for i in 0..n {
+                s.set(i, j, 0.2 + 0.7 * (i as f64 / (n - 1) as f64));
+            }
+        }
+        // ~5% of cells: tall orographic peaks (inflate min/max, not P95).
+        let peaks = (n * n) / 20;
+        for k in 0..peaks {
+            s.data_mut()[k] = 2.0;
+        }
+        s
+    }
+
+    #[test]
+    fn defaults_and_c1_default_modes() {
+        assert_eq!(IsostasyConfig::default().sea_level_mode, SeaLevelMode::MinMaxFraction);
+        assert_eq!(
+            IsostasyConfig::c1_default().sea_level_mode,
+            SeaLevelMode::PercentileCapped { cap_percentile: 0.92 }
+        );
+        // c1_default differs ONLY in the mode.
+        let d = IsostasyConfig::default();
+        let c = IsostasyConfig::c1_default();
+        assert_eq!(d.sea_level_fraction, c.sea_level_fraction);
+        assert_eq!(d.max_elevation_m, c.max_elevation_m);
+        assert_eq!(d.altitude_smoothing_sigma, c.altitude_smoothing_sigma);
+    }
+
+    #[test]
+    fn percentile_cap_at_100_equals_min_max() {
+        // P100 == max, so PercentileCapped{1.0} must give the SAME
+        // h_sea / land_ratio as MinMaxFraction (byte-identity sanity).
+        let s = tailed_field(32);
+        let r_minmax = compute_isostasy(&s, &IsostasyConfig::default());
+        let r_p100 = compute_isostasy(
+            &s,
+            &IsostasyConfig {
+                sea_level_mode: SeaLevelMode::PercentileCapped { cap_percentile: 1.0 },
+                ..Default::default()
+            },
+        );
+        assert_eq!(r_minmax.land_ratio, r_p100.land_ratio);
+    }
+
+    #[test]
+    fn percentile_cap_lowers_sea_level_and_raises_land() {
+        // The Phase 1.5 point: capping the upper tail drops the sea
+        // level, so MORE of the bulk crust emerges. Same field.
+        let s = tailed_field(32);
+        let r_minmax = compute_isostasy(&s, &IsostasyConfig::default());
+        let r_p95 = compute_isostasy(&s, &IsostasyConfig::c1_default());
+        assert!(
+            r_p95.land_ratio > r_minmax.land_ratio,
+            "P95-cap should raise emergent land vs min/max: p95={} minmax={}",
+            r_p95.land_ratio,
+            r_minmax.land_ratio
+        );
+        // The bulk (98% of cells at 0.3) should now be land: min/max
+        // sea level ≈ 0.3 + 0.4·(2.0−0.3) ≈ 0.98 (above the bulk → ~2%
+        // land); P95-cap sea level ≈ 0.3 + 0.4·(0.3−0.3)=0.3 (bulk at
+        // the boundary). The jump must be large.
+        assert!(
+            r_minmax.land_ratio < 0.10 && r_p95.land_ratio > 0.5,
+            "expected min/max ~2% vs P95-cap majority: minmax={} p95={}",
+            r_minmax.land_ratio,
+            r_p95.land_ratio
+        );
+    }
+
+    #[test]
+    fn percentile_copy_picks_expected_value() {
+        let data: Vec<f64> = (0..=100).map(|i| i as f64).collect(); // 0..100
+        assert_eq!(percentile_copy(&data, 0.0), 0.0);
+        assert_eq!(percentile_copy(&data, 1.0), 100.0);
+        assert_eq!(percentile_copy(&data, 0.5), 50.0);
+        assert_eq!(percentile_copy(&data, 0.95), 95.0);
+    }
+
+    #[test]
+    fn serde_legacy_config_without_mode_defaults_minmax() {
+        // A config JSON predating Phase 1.5 (no sea_level_mode field)
+        // must deserialize to MinMaxFraction (W4 — no #47-style break).
+        let legacy = r#"{
+            "rho_crust": 2750.0, "rho_mantle": 3300.0, "rho_water": 1025.0,
+            "max_elevation_m": 4000.0, "max_depth_m": 500.0,
+            "sea_level_fraction": 0.4, "altitude_smoothing_sigma": 2.0
+        }"#;
+        let cfg: IsostasyConfig = serde_json::from_str(legacy).expect("legacy deserialize");
+        assert_eq!(cfg.sea_level_mode, SeaLevelMode::MinMaxFraction);
+    }
+
+    #[test]
+    fn serde_roundtrip_percentile_mode() {
+        let cfg = IsostasyConfig::c1_default();
+        let json = serde_json::to_string(&cfg).unwrap();
+        let back: IsostasyConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.sea_level_mode, cfg.sea_level_mode);
     }
 }

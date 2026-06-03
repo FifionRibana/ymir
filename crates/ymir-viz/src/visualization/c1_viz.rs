@@ -267,7 +267,11 @@ pub fn derive_altitude_field(snapshot: &C1Snapshot) -> GridF32 {
     }
 
     // 3. Architecture C: compute_isostasy + Stein-Stein re-apply.
-    let iso = compute_isostasy(&s_field, &IsostasyConfig::default());
+    // Issue #141: c1_default (P95-capped) so the rendered altitude=0
+    // coast matches the reclassify (plate_type) coast — both use the
+    // same robust sea level (W2 coherence; prevents the Viz-0 Stage A
+    // plate_type-vs-altitude divergence).
+    let iso = compute_isostasy(&s_field, &IsostasyConfig::c1_default());
     let mut altitude = iso.heightmap;
     apply_stein_stein_bathymetry(
         &mut altitude,

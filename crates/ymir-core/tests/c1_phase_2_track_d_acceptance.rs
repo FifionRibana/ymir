@@ -218,7 +218,12 @@ fn ninth_bit_identical_preservation_phase_2_r7() {
     let n_steps_short = 50; // Short run keeps the test sub-second.
 
     let closures = track_d_disabled_closures();
-    let iso_config = IsostasyConfig::default();
+    // Issue #141: exercise the decomposition CONTRACT under the C1
+    // production sea-level mode (P95-cap). The test is wrapper ==
+    // decomposition (path-A == path-B), so the S̃ values are redefined
+    // (P95-cap) but the CONTRACT must stay byte-exact; if it breaks,
+    // P95-cap introduced a decomposition inconsistency (real bug).
+    let iso_config = IsostasyConfig::c1_default();
     let time_loop_config = C1TimeLoopConfig {
         n_steps: n_steps_short,
         dx: 1.0 / GRID as f64,
