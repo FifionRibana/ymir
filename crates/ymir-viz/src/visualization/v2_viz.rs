@@ -961,6 +961,8 @@ fn handle_v2_export(
             max_depth_m: iso_params.max_depth_m,
             sea_level_fraction: iso_params.sea_level_fraction,
             altitude_smoothing_sigma: iso_params.altitude_smoothing_sigma,
+            // v2 path: keep MinMaxFraction (Issue #141 byte-compat).
+            ..IsostasyConfig::default()
         };
         match export.save_altitude(iso, &cfg) {
             Ok(()) => saved.push("altitude"),
