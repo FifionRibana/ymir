@@ -1,6 +1,18 @@
 # Issue #141 — Phase 1.5: robust P95-capped sea-level for C1 land/sea classification
 
-The deepest core change since Track D. Replaces the C1 sea-level threshold's `min/max·fraction` formula — fragile to upper-tail outliers — with a percentile-capped formula, raising emergent land from ~5% to ~30% (the extractable-continent target) while keeping v2 byte-identical. Branch off `milestone/c1-lightweight-dynamic-tectonics`.
+> ## ⚠ POST-MERGE CORRECTION — the workflow calibration is SUPERSEDED (morphology finding)
+>
+> A post-#141 visual + morphology investigation found that the cap=0.92 figure below validated **fraction (~30%)** but **not morphology**: at cap=0.92 the 30% land is **filamentous** (perimeter/area ~1.1, ~48 disconnected components), not continental masses. Root cause (isolated by a macro-threshold sweep + a hysteresis test): the **per-cycle reclassify** under the low threshold churns `plate_type`, and the churn → closures feedback fragments the S̃ field. The macro threshold is innocent (invariant). Reclassify-driven coast migration is therefore a **3×-proven paradigm dead end** (W7-1 / A1-c / #139); the migration *is* the churn that filaments.
+>
+> **What this README's content SURVIVES vs DIES:**
+> - **SURVIVES (kept + reused):** the `SeaLevelMode` enum, the dual-space opt-in branch, `c1_default` (P95-cap), and **v2 isolation** (byte-identical). The successor (piste 4) reuses these on the **render / land-classification** path.
+> - **DIES (superseded):** the **workflow calibration** — `cap=0.92`, `n_cycles=12`, the bounded-band convergence framing — because it calibrated a per-cycle-reclassify *workflow* that produces filaments and is being retired as the production path.
+>
+> **Successor:** *piste 4* — gallery dynamics (Issue #137 contract, no per-cycle reclassify) + the P95-cap threshold on the **render/classification** path → ~30% **masses** (gallery measured: perim/area 0.515, largest-component 0.625, 11 components). A dynamic coast, if wanted, is a separate **eustatic** follow-up (animate the sea level over static masses — NOT reclassify). The morphology metric (perim/area, largest-component, n_components) becomes a permanent acceptance gate; fraction alone let the filaments through.
+>
+> Read the body below as: the mechanism (SeaLevelMode/c1_default/v2-isolation) is good and used; the workflow calibration is dead. The "~30% extractable continent" claim in the next paragraph is **false as stated** — it's ~30% *filaments* under the workflow; ~30% *masses* only via piste 4's gallery path.
+
+The deepest core change since Track D. Replaces the C1 sea-level threshold's `min/max·fraction` formula — fragile to upper-tail outliers — with a percentile-capped formula `SeaLevelMode`, **kept and reused by the successor**. (The "raising emergent land ~5%→~30% extractable" goal below was achieved only on *fraction*, not morphology — see the correction above.) v2 stays byte-identical. Branch off `milestone/c1-lightweight-dynamic-tectonics`.
 
 ## The bottleneck (Issue #139 M2 evidence) — and the falsified prediction
 
