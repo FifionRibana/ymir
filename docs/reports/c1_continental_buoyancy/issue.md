@@ -52,7 +52,7 @@ The fix is **making continental/cratonic crust advectively distinct (non-subduct
 ## Conditional roadmap (sized by the post-fix closure measurement)
 
 1. **Buoyancy milestone** (fix proven) + measure closure behaviour on the new transport.
-2. **Per the measurement:** light re-validation OR closure re-foundation.
+2. **Per the measurement:** light re-validation OR closure re-foundation. → **MEASURED (`stage_point6.md`): TARGETED, medium-weight re-foundation.** Not global, not diffuse — three mechanisms change role: (i) **Davis-Suppe** over-produces (+237% alone; reduce rate), (ii) **erosion floor-clamp** flips to a mass-injector (+247% alone; fix the non-conservation — a mechanism, not a rate), (iii) **equilibrium-height** is now the load-bearing regulator (ALL−eh → +201%; confirm h_eq). Subduction/accretion/rifting marginal (≤±4%, robust). seed-2 islands are continental (94%), not artefacts.
 3. **THEN** piste 4 (rendering a correct field) + Phase 3 (morphology on continents that hold).
 
 ## Acceptance criteria
