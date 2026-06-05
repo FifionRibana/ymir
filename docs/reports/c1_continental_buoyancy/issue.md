@@ -24,15 +24,17 @@ The fix is **making continental/cratonic crust advectively distinct (non-subduct
 
 ## Design points to cover
 
-1. **Rigidity mechanism** — how to mark continental/cratonic crust as non-advecting.
-   - Binary (`v = 0` on continental cells) works (92%) and is mass-conservative (flux-form face cancellation; no freeze blow-up).
-   - Graduated (resistance ∝ buoyancy/thickness) may be more physical — continental crust resists but is not infinitely rigid. Evaluate binary vs graduated.
+> **Stage S decided (audit + comparative measurement, see `stage_s.md`):** points 1, 3, 4 are resolved; point 2 carries the relocated "does subduction resolve the boundary" measurement.
 
-2. **Boundary handling (the one caveat)** — oceanic crust converging on a rigid continental margin accumulates against it (cont/ocean edge mean 0.60→1.99, localized to convergent edges; p50 unchanged). This is physically subduction (ocean dives under the rigid continent) / accretion (ocean welds onto it). **Route the edge inflow through the existing Track-D subduction/accretion closures** so it is consumed/accreted rather than piled. Consuming the inflow removes the accumulation by construction. This is the integration point with Track D — not a tuning knob to prototype in isolation.
+1. **Rigidity mechanism — DECIDED: BINARY.** `v = 0` on `plate_type == Continental`, via **upstream v-masking** (zero `vx`/`vy` in/after `fill_velocity_field`; mass-conservative — flux-form face cancellation, Δmass −0.00%). Binary beats graded on the SPATIAL bar (RUN 1, closures off): craton area 92% vs 89%, **one compact dominant mass (largest 0.92) vs fragmented (0.43, 31 components)**, drift 0.4, mass exact. Graded's only edge (boundary 1.55 vs 1.99) is moot in production (subduction consumes the inflow, point 2) and it pays by shredding margins (thinned margins become mobile → cascade fragmentation). Hook + mask details in `stage_s.md` S1/S2.
 
-3. **Coherence with `plate_type`** — does rigidity follow `plate_type` (Continental/Cratonic)? `plate_type` evolves (accretion turns Oceanic→Continental; rifting splits). Rigidity must track that evolution: newly-accreted continental crust becomes rigid; rifted continental crust stays rigid. Define the coupling explicitly.
+2. **Boundary handling (the one caveat) — carries the production measurement.** Oceanic crust converging on a rigid continental margin accumulates (cont/ocean edge mean 0.60→1.99, localized; closures OFF). Physically subduction/accretion. Route the edge inflow through the existing Track-D subduction/accretion closures. **GATE (relocated from the point-1 deliberation):** Stage S established *in theory* that subduction reads the right inflow, but the prototype measured it **closures OFF**. Point 2 must **MEASURE, closures ON (production)**, that subduction actually drains the 1.99 edge accumulation. This is the point-2 acceptance gate, not a point-1 condition.
 
-4. **Determinism** — preserve the C1 `Deterministic` invariant (same seed + config → bit-identical). The rigidity mask derives from existing deterministic fields (`plate_type`, `cratonic_mask`); ensure no new nondeterministic ordering.
+3. **Coherence with `plate_type` — SATISFIED BY CONSTRUCTION.** Rigidity = `plate_type==Continental`, recomputed where `plate_type` is rebuilt: once in gallery (static), **per step on the Track-D path** (aligned with the existing per-step boundary/velocity recompute, lines 481–506). Newly-promoted continental crust (subduction Oceanic→Continental) becomes rigid the next step; rifted continental stays rigid. `cratonic_mask` never mutates (Track D doesn't write it), so it is not the mask base.
+
+4. **Determinism — CLEARED.** `step_upwind` + `fill_velocity_field` are serial (no rayon/sort); the mask derives from deterministic fields. v-masking is a serial element-wise scale → no new nondeterministic ordering. Invariant preserved.
+
+   **BLOCKING PREREQUISITE (Stage S discovery) — port `morphology.rs` into #145 (Stage E1).** The spatial gate (`land_morphology`, piste-4 Stage E1, commit `d110cdd`) is the **acceptance invariant** of this milestone, but it lives ONLY on the `piste-4-gallery-production-morphology` branch, NOT on milestone. Cherry-pick / port it into #145 in E1 before any validation stage.
 
 5. **Re-validation matrix** — this change **breaks bit-identity** for every C1 phase AND **invalidates the Phase 1.x / Phase 2 calibrations** (Davis-Suppe rates, erosion K, Stein-Stein anchors — all tuned against uniform advection). Plan the full re-validation: each phase's acceptance re-run and recalibrated where needed. This is the deepest re-validation in the project.
 
