@@ -1,5 +1,6 @@
 # C1 Milestone — Buoyant (non-subducting) continental crust in the advection
 
+**Issue:** #145 · **Branch:** `145-c1-continental-buoyancy`
 **Status:** scoped (diagnostic prototyping complete — cause proven, fix proven). Not yet implemented.
 **Branch convention:** one branch per issue; integration target is the C1 integration branch, not `main`.
 **Roadmap placement:** BEFORE Phase 3 (no point building subduction arcs / boundary evolution on crust that collapses) and BEFORE resuming piste 4 (rendering a correct field). This milestone re-founds C1 crustal transport — it sits *below* the advection scheme itself.
