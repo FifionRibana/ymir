@@ -89,6 +89,7 @@ fn erosion_calibration_visual_review() {
         ..C1Closures::default()
     };
     let config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
         dy: 1.0 / GRID_SIZE as f64,
