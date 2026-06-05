@@ -148,6 +148,7 @@ fn c1_continental_drainage_functional() {
     let iso_config = IsostasyConfig::default();
     let closures = phase_1_4_closures();
     let config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps: 300,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,
@@ -309,6 +310,7 @@ fn c1_post_run_altitude_consumable_by_downstream() {
     let iso_config = IsostasyConfig::default();
     let closures = phase_1_4_closures();
     let config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps: 300,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,

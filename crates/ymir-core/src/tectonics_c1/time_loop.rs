@@ -71,6 +71,7 @@ use super::closures::subduction::{apply_subduction_step, SubductionParams};
 use super::distance_field::wedge_distance_intra_plate;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
+use crate::tectonics_v2::boundaries::plate_type::PlateType;
 
 /// Tunables for [`run_advection_only`] and [`run_with_closures`].
 ///
@@ -98,6 +99,30 @@ pub struct C1TimeLoopConfig {
     /// [`compute_drainage_targets`]. Default `30` mirrors the
     /// Phase 1.2 + 1.3 default for wedge / drainage distances.
     pub drainage_max_distance: usize,
+    /// **TRANSITIONAL fix flag (Issue #145) — NOT a permanent mode.**
+    ///
+    /// `false` = the legacy advection (continental crust advected
+    /// uniformly like a fluid). This is **physically incorrect** — it
+    /// destroys continents (a convergent velocity field sweeps all
+    /// crust into pile-ups and empties the interiors; cratons 1.00→0
+    /// over a run, proven in the piste-4 investigation). It is kept
+    /// ONLY transitionally, as the byte-identical A/B reference while
+    /// the Phase 1.x/2 closures are re-validated on the corrected
+    /// transport.
+    ///
+    /// `true` = the fix: continental crust (`plate_type==Continental`)
+    /// is **rigid / non-subducting** — its advection velocity is
+    /// zeroed (upstream v-masking in `fill_velocity_field`; still
+    /// participates in face flux, so mass is conserved). Preserves
+    /// ~92 % of cratonic area on the diagnostic.
+    ///
+    /// **EXIT PLAN:** once the full Phase 1.x/2 re-validation on rigid
+    /// transport is complete, the default flips to `true` (or the flag
+    /// is removed and rigidity becomes unconditional). `false` must
+    /// NOT fossilise into a "legitimate mode" — it is the old broken
+    /// behaviour, retained only for the re-validation transition. See
+    /// `docs/reports/c1_continental_buoyancy/`.
+    pub rigid_continental_crust: bool,
 }
 
 /// Run advection-only forward in time. The callback fires once
@@ -130,6 +155,9 @@ pub fn run_advection_only<F>(
     let mut vx = vec![0.0_f64; n_cells];
     let mut vy = vec![0.0_f64; n_cells];
     fill_velocity_field(&mut vx, &mut vy, state, kinematics);
+    if config.rigid_continental_crust {
+        apply_continental_rigidity(&mut vx, &mut vy, state);
+    }
 
     // Pre-allocated scratch buffers for the upwind sweep.
     let mut s_next = Field2D::new(nx, ny);
@@ -153,6 +181,22 @@ pub fn run_advection_only<F>(
         std::mem::swap(&mut state.age, &mut age_next);
 
         on_step(step, state);
+    }
+}
+
+/// Issue #145 — continental rigidity (the buoyancy fix). Zero the
+/// advection velocity on `plate_type==Continental` cells so buoyant
+/// continental crust does NOT advect (does not subduct / funnel into
+/// convergence). Applied AFTER [`fill_velocity_field`], at the same
+/// hook. Conservative: rigid cells still participate in `step_upwind`
+/// face flux (mass cancels), so this is not a freeze and does not
+/// inject/destroy mass. No-op unless `rigid_continental_crust`.
+fn apply_continental_rigidity(vx: &mut [f64], vy: &mut [f64], state: &C1State) {
+    for (k, t) in state.plate_type.data().iter().enumerate() {
+        if matches!(t, PlateType::Continental) {
+            vx[k] = 0.0;
+            vy[k] = 0.0;
+        }
     }
 }
 
@@ -427,6 +471,9 @@ pub fn run_with_closures<F>(
     let mut vx = vec![0.0_f64; n_cells];
     let mut vy = vec![0.0_f64; n_cells];
     fill_velocity_field(&mut vx, &mut vy, state, kinematics);
+    if config.rigid_continental_crust {
+        apply_continental_rigidity(&mut vx, &mut vy, state);
+    }
 
     // Track D enabled-flag drives per-step boundary / wedge_d
     // recompute (Stage E4 Q-E3.1). When any Track D closure is
@@ -503,6 +550,12 @@ pub fn run_with_closures<F>(
         // mutation possible).
         if any_track_d_enabled {
             fill_velocity_field(&mut vx, &mut vy, state, kinematics);
+            // Track D mutates plate_type (subduction Oceanic→Continental,
+            // accretion) → re-apply rigidity so newly-continental crust
+            // becomes rigid this step (point-of-design 3, by construction).
+            if config.rigid_continental_crust {
+                apply_continental_rigidity(&mut vx, &mut vy, state);
+            }
         }
 
         // 1. Advection (Phase 1.1 unchanged).
@@ -805,6 +858,7 @@ mod tests {
 
         let kinematics = PlateKinematics { velocities: vec![(0.01, 0.005)] };
         let config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
             n_steps: 100,
             dx: 1.0 / nx as f64,
             dy: 1.0 / ny as f64,
@@ -833,6 +887,7 @@ mod tests {
         let mut state = uniform_single_plate_state(nx, ny);
         let kinematics = PlateKinematics { velocities: vec![(0.01, 0.0)] };
         let config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
             n_steps: 7,
             dx: 1.0 / nx as f64,
             dy: 1.0 / ny as f64,

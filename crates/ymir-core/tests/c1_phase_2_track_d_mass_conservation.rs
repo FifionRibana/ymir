@@ -79,6 +79,7 @@ fn mass_conservation_holds_per_step_100_run() {
     let closures = C1Closures::default();
     let iso_config = IsostasyConfig::default();
     let config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps: N_STEPS,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,

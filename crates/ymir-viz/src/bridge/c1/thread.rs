@@ -1367,6 +1367,7 @@ pub fn spawn_c1_thread(
                             kinematics.velocities.clone();
 
                         let config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
                             n_steps: spec.n_steps,
                             dx: 1.0 / spec.grid_size as f64,
                             dy: 1.0 / spec.grid_size as f64,
@@ -1556,6 +1557,7 @@ fn run_workflow_cycles(
 
     for cycle in 0..phase_a.n_cycles {
         let cfg = C1TimeLoopConfig {
+        rigid_continental_crust: false,
             n_steps: k_cycle,
             dx: 1.0 / spec.grid_size as f64,
             dy: 1.0 / spec.grid_size as f64,

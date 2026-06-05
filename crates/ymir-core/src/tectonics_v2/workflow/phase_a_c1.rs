@@ -191,6 +191,7 @@ mod tests {
         let closures = C1Closures::default();
         let iso_config = IsostasyConfig::default();
         let time_loop_config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
             n_steps: 300,
             dx: 1.0 / grid as f64,
             dy: 1.0 / grid as f64,
