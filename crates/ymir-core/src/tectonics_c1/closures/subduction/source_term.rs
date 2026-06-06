@@ -28,12 +28,21 @@
 //!    (`Δs × (1 − arc_efficiency)`) is the fraction lost to the
 //!    deeper mantle, out of model.
 //!
-//! 4. **If `s[c] < plate_id_reassign_threshold` after step 2**,
-//!    reassign `plate_id[c]` to the continental neighbour's plate
-//!    id and `plate_type[c]` to `Continental`. The cell's
-//!    (small) remaining `S̃` value stays in place — its mass is
-//!    absorbed by the continental plate via the `plate_type`
-//!    promotion, no S̃ reset needed for mass conservation.
+//! 4. **If `s[c] < plate_id_reassign_threshold` after step 2 AND the
+//!    cell has ≥2 convergent continental neighbours**, reassign
+//!    `plate_id[c]` to the continental neighbour's plate id and
+//!    `plate_type[c]` to `Continental`. The cell's (small) remaining
+//!    `S̃` value stays in place — its mass is absorbed by the
+//!    continental plate via the `plate_type` promotion, no S̃ reset
+//!    needed for mass conservation.
+//!
+//!    **The ≥2-neighbour requirement (Issue #145)** prevents 1px
+//!    grid-aligned false-land "fingers": a promoted cell becoming a
+//!    continental neighbour for its own oceanic neighbour next step
+//!    cascades a 1-cell-wide line into the ocean (most visible under
+//!    rigid continental crust, which sharpens the boundary). A real
+//!    accretion front has ≥2 convergent continental contacts; a 1px
+//!    finger tip has exactly 1, so it is consumed but not promoted.
 //!
 //! 5. **Distribute `arc_mass` via BFS** up to `arc_distance` cells
 //!    from `c`. The BFS visits 4-connected neighbours layer by
@@ -65,11 +74,15 @@
 //!    small fraction of cells (<5 % at typical Phase 1.1 init) and
 //!    excluding them parallels the Davis-Suppe convention. Revisit
 //!    if Stage A event-count diagnostic shows insufficient activity.
-//! 3. **Single-pass mutation propagation.** A cell reassigned to
-//!    Continental in row `j` can be a continental BFS target for a
-//!    later row's subduction. Acceptable for this iteration; if
-//!    Stage A shows determinism / ordering artefacts, switch to a
-//!    collect-then-apply two-pass pattern.
+//! 3. **Single-pass mutation propagation — FIXED (Issue #145).** A
+//!    cell reassigned to Continental can seed promotion of its oceanic
+//!    neighbour (intra-step within a scan, and inter-step across
+//!    steps), cascading a 1px grid-aligned false-land finger into the
+//!    ocean. Measurement showed the cascade is inter-step-dominated
+//!    (snapshot-per-step alone does not fix it). The ≥2-convergent-
+//!    continental-neighbour promotion requirement (step 4) breaks the
+//!    1px line — a finger tip has only 1 neighbour. No longer
+//!    "acceptable"; corrected.
 
 use std::collections::{HashSet, VecDeque};
 
@@ -176,6 +189,11 @@ pub fn apply_subduction_step(
             // positive convergence dot product.
             let mut best_continental_pid: Option<u16> = None;
             let mut best_convergence = 0.0_f64;
+            // #145 PROTOTYPE — count convergent continental neighbours; require
+            // >=2 to PROMOTE (a 1px finger tip has exactly 1 → won't promote,
+            // killing the grid-aligned false-land line; a broad accretion front
+            // has >=2 → still promotes). Consumption is unchanged (needs >=1).
+            let mut continental_convergent_count = 0usize;
 
             for &(di, dj, nx_norm, ny_norm) in neighbours.iter() {
                 let ni = if di > 0 {
@@ -203,6 +221,9 @@ pub fn apply_subduction_step(
                 let vrel_x = vx_c - vx_n;
                 let vrel_y = vy_c - vy_n;
                 let dot = vrel_x * nx_norm + vrel_y * ny_norm;
+                if dot > 0.0 {
+                    continental_convergent_count += 1;
+                }
                 if dot > best_convergence {
                     best_convergence = dot;
                     best_continental_pid = Some(pid_n);
@@ -229,8 +250,12 @@ pub fn apply_subduction_step(
 
             let arc_mass = delta_s * params.arc_efficiency;
 
-            // Floor-triggered plate_id reassignment.
-            if s_after < params.plate_id_reassign_threshold {
+            // Floor-triggered plate_id reassignment. #145 PROTOTYPE: require
+            // >=2 convergent continental neighbours so a 1px finger tip (1
+            // neighbour) cannot promote (kills grid-aligned false-land lines).
+            if s_after < params.plate_id_reassign_threshold
+                && continental_convergent_count >= 2
+            {
                 plate_id.set(i, j, continental_pid);
                 plate_type.set(i, j, PlateType::Continental);
                 stats.plate_ids_reassigned += 1;
@@ -602,11 +627,13 @@ mod tests {
     }
 
     #[test]
-    fn subduction_plate_id_reassignment_below_floor() {
-        // Pathologically high consumption rate drives the oceanic
-        // boundary cell's S̃ from 0.2 down to below the floor (0.05)
-        // in a single step. The cell must be reassigned to the
-        // continental plate.
+    fn subduction_single_neighbour_consumes_but_does_not_promote() {
+        // #145 — promotion now requires ≥2 convergent continental
+        // neighbours (see module docstring: kills 1px grid-aligned
+        // false-land fingers). In this east-west fixture every oceanic
+        // boundary cell has exactly ONE continental neighbour, so even a
+        // pathologically high consumption rate that drives S̃ below the
+        // floor must NOT promote it — consumption fires, promotion does not.
         //
         // At v_rel · n̂ = 0.02 and dt = 1.0, default
         // consumption_rate = 0.5 would give Δs = 0.01 — well above
@@ -642,30 +669,79 @@ mod tests {
             dt,
         );
 
+        // Consumption still fires...
         assert!(
-            stats.plate_ids_reassigned >= ny,
-            "expected ≥ {ny} reassignments (one per row), got {}",
+            stats.cells_consumed > 0,
+            "subduction must still consume the slab regardless of the promotion rule"
+        );
+        // ...but NO promotion (every boundary oceanic cell has exactly 1
+        // continental neighbour < the ≥2 requirement).
+        assert_eq!(
+            stats.plate_ids_reassigned, 0,
+            "single-continental-neighbour cells must NOT promote under the ≥2 rule, got {}",
             stats.plate_ids_reassigned
         );
-
-        // The previously-oceanic cell at (4, 0) is now part of
-        // plate 0 (continental) and typed Continental.
-        assert_eq!(
-            plate_id.get(4, 0),
-            0,
-            "reassigned cell must adopt the adjacent continental plate's id"
-        );
+        // The consumed cell stays Oceanic even though S̃ fell below the floor.
         assert_eq!(
             plate_type.get(4, 0),
-            PlateType::Continental,
-            "reassigned cell must become Continental"
+            PlateType::Oceanic,
+            "1-neighbour cell is consumed but must remain Oceanic (not promoted)"
         );
-        // Its S̃ must be below the floor (post-clamp).
         assert!(
             s.get(4, 0) < params.plate_id_reassign_threshold,
-            "reassigned cell S̃ ({}) must be below floor ({})",
+            "consumption must still drive S̃ ({}) below floor ({})",
             s.get(4, 0),
             params.plate_id_reassign_threshold
+        );
+    }
+
+    #[test]
+    fn subduction_promotes_with_two_convergent_continental_neighbours() {
+        // #145 — the ≥2 rule's positive case: a single-column oceanic strip
+        // flanked by continental on BOTH sides (plate 0 west, plate 1 oceanic
+        // strip, plate 2 east), both converging onto the strip → the strip
+        // cell has 2 convergent continental neighbours → it DOES promote.
+        // This is a real (broad) accretion front, not a 1px finger tip.
+        let (nx, ny) = (5usize, 4usize);
+        let mut s = Field2D::new(nx, ny);
+        let mut plate_id = PlateIdField::new(nx, ny);
+        let mut plate_type = PlateTypeField::filled(nx, ny, PlateType::Continental);
+        for j in 0..ny {
+            for i in 0..nx {
+                let (pid, pt) = match i {
+                    0 | 1 => (0u16, PlateType::Continental),
+                    2 => (1u16, PlateType::Oceanic), // single-column strip
+                    _ => (2u16, PlateType::Continental),
+                };
+                plate_id.set(i, j, pid);
+                plate_type.set(i, j, pt);
+                s.set(i, j, if matches!(pt, PlateType::Continental) { 1.0 } else { 0.2 });
+            }
+        }
+        // West pushes east (+), east pushes west (−), strip stationary →
+        // both continental neighbours converge on the strip.
+        let kinematics = PlateKinematics {
+            velocities: vec![(0.01, 0.0), (0.0, 0.0), (-0.01, 0.0)],
+        };
+        let boundary_info = classify_boundaries(&plate_id, &kinematics);
+        let params = SubductionParams { consumption_rate: 50.0, ..SubductionParams::default() };
+        let stats = apply_subduction_step(
+            &mut s,
+            &mut plate_id,
+            &mut plate_type,
+            &boundary_info,
+            &kinematics,
+            &params,
+            1.0,
+        );
+        assert!(
+            stats.plate_ids_reassigned > 0,
+            "strip cell with ≥2 convergent continental neighbours must promote"
+        );
+        assert_eq!(
+            plate_type.get(2, 0),
+            PlateType::Continental,
+            "the 2-neighbour strip cell must become Continental"
         );
     }
 }
