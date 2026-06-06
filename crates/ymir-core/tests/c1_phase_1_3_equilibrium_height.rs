@@ -77,7 +77,7 @@ fn setup() -> (C1State, PlateKinematics, C1TimeLoopConfig) {
     let state = init_c1_state_phase_1_1(GRID_SIZE, SEED);
     let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let config = C1TimeLoopConfig {
-        rigid_continental_crust: false,
+        rigid_continental_crust: true,
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
         dy: 1.0 / GRID_SIZE as f64,
@@ -264,6 +264,7 @@ fn davis_suppe_imprint_preserved_with_equilibrium() {
     };
 
     let fill_near = bucket_mean[0] / h_crit_at(2.5);
+    let fill_mid = bucket_mean[1] / h_crit_at(7.5);
     let fill_far = bucket_mean[2] / h_crit_at(15.0);
     let asymmetry = bucket_mean[0] / bucket_mean[2];
 
@@ -297,9 +298,10 @@ fn davis_suppe_imprint_preserved_with_equilibrium() {
     );
     eprintln!("c1_phase_1_3 T2: output dir = {}", dir.display());
     eprintln!("c1_phase_1_3 T2 imprint preservation evidence (composite):");
-    eprintln!("  wedge_p95: {wedge_p95:.3}   (Phase 1.2 baseline: 0.376; expected bit-identical)");
-    eprintln!("  asymmetry: {asymmetry:.2}    (Phase 1.2 baseline: 4.66; expected > 1.5)");
-    eprintln!("  fill_near: {fill_near:.3}   (Phase 1.2 baseline: 0.778; Phase 1.3 floor 0.1)");
+    eprintln!("  wedge_p95: {wedge_p95:.3}   (RIGID #145; legacy 0.376; band [1.6, 2.0], below h_eq)");
+    eprintln!("  taper fill: {fill_near:.3}/{fill_mid:.3}/{fill_far:.3} (near>mid>far = source critical taper)");
+    eprintln!("  asymmetry: {asymmetry:.2}    (informational; legacy >1.5 was an advection toe-pile, see stage_5b)");
+    eprintln!("  fill_near: {fill_near:.3}   (threshold > 0.1)");
     eprintln!(
         "  Note: fill_near drop is the *expected* consequence of the equilibrium clamp on"
     );
@@ -315,30 +317,29 @@ fn davis_suppe_imprint_preserved_with_equilibrium() {
         "T2 profile buckets empty: cannot compute fill-ratio metrics"
     );
 
-    // Sub-assertion 1 — bulk wedge body preserved (PRIMARY).
-    // Phase 1.2 baseline `wedge_p95 = 0.376`. The bulk (95% of
-    // wedge cells) sits below `h_eq = 2.0` and is therefore
-    // untouched by the equilibrium closure — bit-identical
-    // between Phase 1.2 and 1.3. The range `[0.3, 0.5]` absorbs
-    // benign numerical drift while flagging significant
-    // degradation.
+    // Sub-assertion 1 — bulk wedge body preserved (PRIMARY), RIGID transport (#145).
+    // Under rigid continental crust the wedge is no longer dispersed by advection,
+    // so the bulk sits high: wedge_p95 ≈ 1.80 (was 0.376 legacy), still BELOW
+    // h_eq = 2.0 so the equilibrium clamp does not touch it (bit-identical to the
+    // Phase 1.2 rigid run, also 1.7985). Band [1.6, 2.0] around the rigid baseline.
     assert!(
-        (0.3..0.5).contains(&wedge_p95),
-        "T2 sub-1 (wedge_p95 bulk preservation): {wedge_p95:.3} outside [0.3, 0.5] \
-         — Phase 1.2 baseline 0.376; the bulk wedge body below h_eq should be \
-         bit-identical between Phase 1.2 and 1.3. Significant drift indicates \
-         equilibrium closure is interfering with the Davis-Suppe bulk imprint."
+        (1.6..2.0).contains(&wedge_p95),
+        "T2 sub-1 (wedge_p95 bulk preservation, rigid): {wedge_p95:.3} outside [1.6, 2.0] \
+         — rigid wedge bulk sits high (crust not advected away), below h_eq so the \
+         equilibrium clamp leaves it untouched (bit-identical to Phase 1.2 rigid)."
     );
 
-    // Sub-assertion 2 — spatial asymmetry preserved.
-    // Phase 1.2 baseline `asymmetry = 4.66`. The equilibrium
-    // clamp reduces both bucket means but keeps the spatial
-    // shape `near > far`. Phase 1.3 empirical ≈ 2.12.
+    // Sub-assertion 2 — source critical TAPER (replaces the legacy asymmetry>1.5).
+    // Legacy `asymmetry = near/far mean > 1` tested an ADVECTION toe-pile that
+    // INVERTED the Davis-Suppe source taper. Under rigid transport the true source
+    // signature appears: fill ratio DECREASES with distance (h_crit grows with
+    // distance). Measured monotone: fill_near 0.747 > fill_mid 0.519 > fill_far
+    // 0.361. Asserts the PHYSICS (source critical taper), not the advection artifact.
+    // See docs/reports/c1_continental_buoyancy/stage_5b_asymmetry.md.
     assert!(
-        asymmetry > 1.5,
-        "T2 sub-2 (spatial asymmetry preservation): {asymmetry:.3} ≤ 1.5 \
-         — Phase 1.2 baseline 4.66, Phase 1.3 expected ≈ 2.12. Loss of \
-         asymmetry indicates the wedges have flattened or the imprint is lost."
+        fill_near > fill_mid && fill_mid > fill_far,
+        "T2 sub-2 (source taper fill_near>fill_mid>fill_far): {fill_near:.3}/{fill_mid:.3}/{fill_far:.3} \
+         not monotone-decreasing — Davis-Suppe critical taper lost (legacy asymmetry={asymmetry:.2})"
     );
 
     // Sub-assertion 3 — fill_near regime-tagged Phase 1.3 floor.
