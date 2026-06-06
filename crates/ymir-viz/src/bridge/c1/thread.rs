@@ -1367,7 +1367,11 @@ pub fn spawn_c1_thread(
                             kinematics.velocities.clone();
 
                         let config = C1TimeLoopConfig {
-        rigid_continental_crust: false,
+        // #145 5d — production runs the buoyancy fix (rigid continental crust).
+        // `false` = legacy (continents collapse), kept as the regression-guard A/B
+        // reference until the flag is removed (rigidity unconditional). See
+        // docs/reports/c1_continental_buoyancy/.
+        rigid_continental_crust: true,
                             n_steps: spec.n_steps,
                             dx: 1.0 / spec.grid_size as f64,
                             dy: 1.0 / spec.grid_size as f64,
@@ -1557,7 +1561,8 @@ fn run_workflow_cycles(
 
     for cycle in 0..phase_a.n_cycles {
         let cfg = C1TimeLoopConfig {
-        rigid_continental_crust: false,
+        // #145 5d — production runs the buoyancy fix (rigid continental crust).
+        rigid_continental_crust: true,
             n_steps: k_cycle,
             dx: 1.0 / spec.grid_size as f64,
             dy: 1.0 / spec.grid_size as f64,
