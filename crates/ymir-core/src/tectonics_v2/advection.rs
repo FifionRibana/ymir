@@ -101,6 +101,61 @@ pub fn step_upwind(
     }
 }
 
+/// Issue #145 PROTOTYPE — upwind with a **no-flux rigid boundary**. Identical to
+/// [`step_upwind`] except: any face shared with a `rigid` cell carries **zero
+/// flux**. This makes rigid cells true no-flux walls (conservative: the face
+/// transports nothing on BOTH sides, so mass still cancels), fixing the
+/// boundary-leak artifact that per-cell `v=0` cannot (a rigid cell's face flux
+/// otherwise uses the mobile neighbour's velocity → continental crust leaks).
+#[allow(clippy::too_many_arguments)]
+pub fn step_upwind_masked(
+    nx: usize,
+    ny: usize,
+    dx: f64,
+    dy: f64,
+    dt: f64,
+    idx_x: &PeriodicIndex,
+    idx_y: &PeriodicIndex,
+    s: &Field2D,
+    vx: &[f64],
+    vy: &[f64],
+    rigid: &[bool],
+    s_next: &mut Field2D,
+) {
+    let inv_dx = 1.0 / dx;
+    let inv_dy = 1.0 / dy;
+    let lin = |ii: usize, jj: usize| jj * nx + ii;
+    for j in 0..ny {
+        let jp = idx_y.next(j);
+        let jm = idx_y.prev(j);
+        for i in 0..nx {
+            let ip = idx_x.next(i);
+            let im = idx_x.prev(i);
+            let here = rigid[lin(i, j)];
+
+            let vx_left = vx[lin(i, j)];
+            let vx_right = vx[lin(ip, j)];
+            let vy_bot = vy[lin(i, j)];
+            let vy_top = vy[lin(i, jp)];
+
+            let s_up_left = if vx_left >= 0.0 { s.get(im, j) } else { s.get(i, j) };
+            let s_up_right = if vx_right >= 0.0 { s.get(i, j) } else { s.get(ip, j) };
+            let s_up_bot = if vy_bot >= 0.0 { s.get(i, jm) } else { s.get(i, j) };
+            let s_up_top = if vy_top >= 0.0 { s.get(i, j) } else { s.get(i, jp) };
+
+            // No-flux on any face touching a rigid cell.
+            let flux_x_left = if here || rigid[lin(im, j)] { 0.0 } else { vx_left * s_up_left };
+            let flux_x_right = if here || rigid[lin(ip, j)] { 0.0 } else { vx_right * s_up_right };
+            let flux_y_bot = if here || rigid[lin(i, jm)] { 0.0 } else { vy_bot * s_up_bot };
+            let flux_y_top = if here || rigid[lin(i, jp)] { 0.0 } else { vy_top * s_up_top };
+
+            let dsdt = -((flux_x_right - flux_x_left) * inv_dx
+                + (flux_y_top - flux_y_bot) * inv_dy);
+            s_next.set(i, j, s.get(i, j) + dt * dsdt);
+        }
+    }
+}
+
 /// Integrated mass `Σ S̃` over the periodic domain. Used as a
 /// conservation diagnostic.
 pub fn integrated_mass(s: &Field2D) -> f64 {
