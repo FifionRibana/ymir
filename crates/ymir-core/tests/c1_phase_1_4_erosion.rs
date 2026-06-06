@@ -115,7 +115,7 @@ fn setup() -> (C1State, PlateKinematics, C1TimeLoopConfig) {
     let state = init_c1_state_phase_1_1(GRID_SIZE, SEED);
     let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let config = C1TimeLoopConfig {
-        rigid_continental_crust: false,
+        rigid_continental_crust: true,
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
         dy: 1.0 / GRID_SIZE as f64,
@@ -189,16 +189,15 @@ fn erosion_caps_height_below_equilibrium() {
     );
 }
 
-// Issue #145 re-foundation: the erosion floor-clamp fix (clean non-injecting
-// removal) changed Phase-1.4 behaviour on legacy transport — wedge_p95 drops
-// 0.4+ → 0.359 (below the Phase-1.3 baseline 0.376). FINDING: the "erosion
-// lifts wedge_p95" architectural claim was partly an artefact of the floor
-// INJECTION (sub-floor cells refilled to 0.2 inflated the bulk). With correct
-// (non-injecting) erosion the lift is gone; the spatial imprint (asymmetry
-// 2.10 > 1.0, fill_near 0.203 > 0.05) still holds. This is a behaviour to
-// re-validate in #145 point 5, NOT a band to widen blindly — deferred, not
-// silently re-baselined.
-#[ignore = "#145 point-5 re-validation: wedge_p95 lift was floor-injection-dependent (now 0.359); re-validate, do not blind-rebaseline"]
+// Issue #145 — RE-BASELINED under rigid transport (Stage 5b). This test now
+// runs rigid (production transport, `setup()` config). Two changes vs legacy:
+// (1) the erosion floor-clamp fix (Step 1, clean non-injecting removal) removed
+// the floor-INJECTION that had inflated the legacy wedge_p95 "lift"; (2) rigid
+// continental crust no longer advects out of the wedge, so the bulk sits HIGH
+// (wedge_p95 ≈ 1.64). The legacy `asymmetry > 1` sub-assertion tested an
+// ADVECTION toe-pile that INVERTED the Davis-Suppe critical taper; it is
+// replaced by the true source-taper signature (fill ratio decreasing with
+// distance). Full attribution + verdict A: stage_5b_asymmetry.md.
 #[test]
 fn erosion_preserves_davis_suppe_imprint_partially() {
     // Composite assertion, Phase-1.4-regime-tagged per the
@@ -327,29 +326,37 @@ fn erosion_preserves_davis_suppe_imprint_partially() {
     };
     let fill_near = bucket_mean[0] / h_crit_at(2.5);
     let asymmetry = bucket_mean[0] / bucket_mean[2];
+    // #145 — fill ratio per distance bucket. The Davis-Suppe SOURCE drives each
+    // cell toward h_crit(d), which GROWS with distance, so the physical critical
+    // taper is fill DECREASING with distance. Under rigid transport this source
+    // taper is revealed (fill_near > fill_mid > fill_far); under legacy advection
+    // it was inverted into a near-pile (asymmetry > 1, an ADVECTION artifact —
+    // see docs/reports/c1_continental_buoyancy/stage_5b_asymmetry.md).
+    let fill_mid = bucket_mean[1] / h_crit_at(7.5);
+    let fill_far = bucket_mean[2] / h_crit_at(15.0);
 
     eprintln!();
     eprintln!("c1_phase_1_4 T2 imprint preservation evidence (composite):");
     eprintln!(
-        "  wedge_p95  = {wedge_p95:.3}  (Phase 1.2: 0.376, Phase 1.3: 0.376, Phase 1.4 LIFTED; threshold [0.4, 1.0])"
+        "  wedge_p95  = {wedge_p95:.3}  (RIGID #145; legacy 0.696; band [1.3, 2.1])"
     );
     eprintln!(
-        "  asymmetry  = {asymmetry:.2}   (Phase 1.2: 4.66,  Phase 1.3: 2.12,  threshold > 1.0)"
+        "  taper fill = {fill_near:.3}/{fill_mid:.3}/{fill_far:.3} (near>mid>far = source critical taper; rigid)"
     );
     eprintln!(
-        "  fill_near  = {fill_near:.3}  (Phase 1.2: 0.778, Phase 1.3: 0.207, threshold > 0.05)"
+        "  asymmetry  = {asymmetry:.2}   (informational; legacy >1 was an advection toe-pile artifact, see stage_5b)"
     );
     eprintln!(
-        "  Note: wedge_p95 UP is the Phase 1.4 architectural finding. Erosion E ∝ A^m"
+        "  fill_near  = {fill_near:.3}  (threshold > 0.05)"
     );
     eprintln!(
-        "        eats continental shoulders (large A) preferentially over wedge cells"
+        "  Note (#145): rigid continental crust no longer advects out of the wedge →"
     );
     eprintln!(
-        "        (small A, upstream of their drainage basin). Wedge ridges stand HIGHER"
+        "        wedge sits HIGH (p95 ≈ 1.64) and follows the source taper (fill ↓ with"
     );
     eprintln!(
-        "        relative to the eroding bulk. Earth-like: mountain ranges in oceanic terrane."
+        "        distance), not the legacy advection toe-pile. Wedge stronger, more faithful to DS."
     );
     eprintln!();
     eprintln!(
@@ -367,20 +374,31 @@ fn erosion_preserves_davis_suppe_imprint_partially() {
         "T2: profile buckets empty"
     );
 
-    // Sub-assertion 1 — wedge_p95 bulk preservation + LIFT.
+    // Sub-assertion 1 — wedge_p95 bulk preservation + LIFT (RIGID transport, #145).
+    // Under rigid continental crust the wedge is no longer dispersed by advection,
+    // so the bulk sits much higher than the legacy [0.4, 1.0] band: measured
+    // wedge_p95 ≈ 1.64 (was 0.696 legacy). Attribution: erosion clean-removal
+    // (step 1) lowered it 0.696→0.359, rigidity then lifted it 0.359→1.64; the
+    // finger-fix (subduction-off here) does not affect it. Bounded above by the
+    // Davis-Suppe h_max plateau. Band [1.3, 2.1] around the rigid baseline.
     assert!(
-        (0.4..=1.0).contains(&wedge_p95),
-        "T2 sub-1 (wedge_p95 ∈ [0.4, 1.0]): {wedge_p95:.3} outside range — \
-         Phase 1.4 should show wedge bulk lifted relative to Phase 1.3 baseline 0.376 \
-         due to drainage-area-discriminated erosion, but bounded by Davis-Suppe \
-         h_max"
+        (1.3..=2.1).contains(&wedge_p95),
+        "T2 sub-1 (wedge_p95 ∈ [1.3, 2.1] rigid): {wedge_p95:.3} outside range — \
+         rigid wedge bulk should sit high (crust not advected away), bounded by h_max"
     );
 
-    // Sub-assertion 2 — spatial asymmetry preserved.
+    // Sub-assertion 2 — source critical TAPER (replaces the legacy asymmetry>1).
+    // The legacy `asymmetry = near/far mean > 1` tested an ADVECTION toe-pile
+    // (crust advected to the boundary), which INVERTED the Davis-Suppe source
+    // taper. Under rigid transport the true source signature appears: fill ratio
+    // DECREASES with distance (h_crit grows with distance; cells fill more of
+    // their small near-h_crit than their large far-h_crit). Measured monotone:
+    // fill_near 0.539 > fill_mid 0.447 > fill_far 0.281. This asserts the PHYSICS
+    // (source critical taper), not the advection artifact. See stage_5b_asymmetry.md.
     assert!(
-        asymmetry > 1.0,
-        "T2 sub-2 (asymmetry > 1.0): {asymmetry:.2} ≤ 1.0 — spatial near-vs-far signature \
-         lost; wedges have flattened or imprint erased"
+        fill_near > fill_mid && fill_mid > fill_far,
+        "T2 sub-2 (source taper fill_near>fill_mid>fill_far): {fill_near:.3}/{fill_mid:.3}/{fill_far:.3} \
+         not monotone-decreasing — Davis-Suppe critical taper lost (legacy asymmetry={asymmetry:.2})"
     );
 
     // Sub-assertion 3 — fill_near regime-tagged Phase 1.4 floor.
