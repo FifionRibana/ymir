@@ -50,7 +50,7 @@
 //! (W1 watchpoint of Issue #120).
 
 use crate::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
-use crate::tectonics_v2::advection::step_upwind;
+use crate::tectonics_v2::advection::{step_upwind, step_upwind_masked};
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use crate::tectonics_v2::workflow::drainage::compute_drainage_targets;
 use crate::tectonics_v2::workflow::phase_a_common::compute_sea_level_ref_s_space;
@@ -155,9 +155,12 @@ pub fn run_advection_only<F>(
     let mut vx = vec![0.0_f64; n_cells];
     let mut vy = vec![0.0_f64; n_cells];
     fill_velocity_field(&mut vx, &mut vy, state, kinematics);
-    if config.rigid_continental_crust {
+    let rigid_mask: Option<Vec<bool>> = if config.rigid_continental_crust {
         apply_continental_rigidity(&mut vx, &mut vy, state);
-    }
+        Some(continental_rigid_mask(state))
+    } else {
+        None
+    };
 
     // Pre-allocated scratch buffers for the upwind sweep.
     let mut s_next = Field2D::new(nx, ny);
@@ -166,14 +169,26 @@ pub fn run_advection_only<F>(
     let idx_y = PeriodicIndex::new(ny);
 
     for step in 0..config.n_steps {
-        // Advect S̃.
-        step_upwind(
-            nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy, &mut s_next,
-        );
-        // Advect age.
-        step_upwind(
-            nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.age, &vx, &vy, &mut age_next,
-        );
+        // Advect S̃ (no-flux rigid boundary when rigid; #145).
+        match &rigid_mask {
+            Some(m) => step_upwind_masked(
+                nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy, m, &mut s_next,
+            ),
+            None => step_upwind(
+                nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy, &mut s_next,
+            ),
+        }
+        // Advect age (same no-flux rigid boundary; #145).
+        match &rigid_mask {
+            Some(m) => step_upwind_masked(
+                nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.age, &vx, &vy, m,
+                &mut age_next,
+            ),
+            None => step_upwind(
+                nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.age, &vx, &vy,
+                &mut age_next,
+            ),
+        }
 
         // Swap rather than reassign — keeps the same backing
         // allocations alive for the next iteration.
@@ -198,6 +213,18 @@ fn apply_continental_rigidity(vx: &mut [f64], vy: &mut [f64], state: &C1State) {
             vy[k] = 0.0;
         }
     }
+}
+
+/// Issue #145 — rigid mask (`plate_type==Continental`) for the no-flux boundary
+/// in [`step_upwind_masked`]. Rebuilt wherever the velocity field is rebuilt
+/// (once in gallery, per-step on the Track-D path).
+fn continental_rigid_mask(state: &C1State) -> Vec<bool> {
+    state
+        .plate_type
+        .data()
+        .iter()
+        .map(|t| matches!(t, PlateType::Continental))
+        .collect()
 }
 
 /// Populate the per-cell velocity slices from the plate-id map
@@ -471,9 +498,13 @@ pub fn run_with_closures<F>(
     let mut vx = vec![0.0_f64; n_cells];
     let mut vy = vec![0.0_f64; n_cells];
     fill_velocity_field(&mut vx, &mut vy, state, kinematics);
-    if config.rigid_continental_crust {
+    // #145 — rigid mask for the no-flux boundary (rebuilt per-step on Track D).
+    let mut rigid_mask: Option<Vec<bool>> = if config.rigid_continental_crust {
         apply_continental_rigidity(&mut vx, &mut vy, state);
-    }
+        Some(continental_rigid_mask(state))
+    } else {
+        None
+    };
 
     // Track D enabled-flag drives per-step boundary / wedge_d
     // recompute (Stage E4 Q-E3.1). When any Track D closure is
@@ -551,21 +582,37 @@ pub fn run_with_closures<F>(
         if any_track_d_enabled {
             fill_velocity_field(&mut vx, &mut vy, state, kinematics);
             // Track D mutates plate_type (subduction Oceanic→Continental,
-            // accretion) → re-apply rigidity so newly-continental crust
-            // becomes rigid this step (point-of-design 3, by construction).
+            // accretion) → re-apply rigidity + rebuild the rigid mask so
+            // newly-continental crust becomes rigid this step (point 3).
             if config.rigid_continental_crust {
                 apply_continental_rigidity(&mut vx, &mut vy, state);
+                rigid_mask = Some(continental_rigid_mask(state));
             }
         }
 
-        // 1. Advection (Phase 1.1 unchanged).
-        step_upwind(
-            nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy, &mut s_next,
-        );
-        step_upwind(
-            nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.age, &vx, &vy,
-            &mut age_next,
-        );
+        // 1. Advection (no-flux rigid boundary when rigid; #145).
+        match &rigid_mask {
+            Some(m) => {
+                step_upwind_masked(
+                    nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy, m,
+                    &mut s_next,
+                );
+                step_upwind_masked(
+                    nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.age, &vx, &vy, m,
+                    &mut age_next,
+                );
+            }
+            None => {
+                step_upwind(
+                    nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy,
+                    &mut s_next,
+                );
+                step_upwind(
+                    nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.age, &vx, &vy,
+                    &mut age_next,
+                );
+            }
+        }
         std::mem::swap(&mut state.s, &mut s_next);
         std::mem::swap(&mut state.age, &mut age_next);
 
