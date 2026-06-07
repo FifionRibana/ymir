@@ -835,13 +835,24 @@ fn export_hd_upscaled() {
     //  - "warped":  domain warp ON + stronger amplitude — the upscale's
     //    documented "break regular patterns" path. Measure if it
     //    dissolves the coarse 64² coastline blockiness.
-    let configs: [(&str, FbmUpscaleConfig); 2] = [
+    // #147 coastline cause-pinning (contrefactuel A): isolate
+    // submarine_damping. If dropping it (0.3→0.0) de-blockifies the
+    // coast → STEP 2 (damping suppressed a coast-breaking FBM). If not
+    // → STEP 1 (the coast contour follows the bilinear-interpolated 64²
+    // altitude; FBM height can't move the level contour). `no_damp_amp`
+    // also raises amplitude so "no change" can't be blamed on FBM being
+    // too weak to reveal the damping effect.
+    let configs: [(&str, FbmUpscaleConfig); 3] = [
         ("default", FbmUpscaleConfig { target_size: 1024, ..Default::default() }),
         (
-            "warped",
+            "no_damp",
+            FbmUpscaleConfig { target_size: 1024, submarine_damping: 0.0, ..Default::default() },
+        ),
+        (
+            "no_damp_amp",
             FbmUpscaleConfig {
                 target_size: 1024,
-                domain_warp_strength: 0.6,
+                submarine_damping: 0.0,
                 amplitude_base: 0.16,
                 ..Default::default()
             },

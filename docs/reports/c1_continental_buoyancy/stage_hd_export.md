@@ -51,6 +51,34 @@ at higher resolution. The throwaway-config test already shows the in-upscale
 knobs (warp, amplitude) do NOT suffice for the coast — so the fix is a
 coastline-specific treatment, not a global amplitude bump.
 
+## Coastline cause PINNED (contrefactuel A) — STEP 1, NOT damping
+
+Two steps could cause the blocky coast, different fixes: (1) the bilinear
+64²→1024² interpolation — the `altitude=sea_level` contour follows the
+interpolated coarse altitude (a scaled 64² polygon, no sub-cell structure);
+(2) `submarine_damping=0.3` suppressing a coast-breaking FBM. Measured by
+isolating the damping (`export_hd_upscaled` configs `no_damp`, `no_damp_amp`):
+
+- `no_damp` (damping 0.3→0.0, amplitude unchanged): coast **still blocky**.
+- `no_damp_amp` (damping 0.0 + amplitude 0.08→0.16): coast **still blocky**
+  (interior becomes credibly rugged — FBM works on land, not on the coast).
+
+**Verdict: STEP 1.** `submarine_damping` is NOT the cause (removing it, even
+with raised amplitude, leaves the coast blocky). The coast contour is dictated
+by the bilinearly-interpolated 64² altitude: the coarse land/ocean altitude
+jump (~0.4 over one 64² cell ≈ 16 px at 1024²) dwarfs any reasonable FBM
+amplitude, so vertical FBM detail cannot move the level contour. (Consistent
+with the earlier `warped` test: the existing `domain_warp` warps the NOISE
+sampling, not the coarse-altitude interpolation, so it can't move the coast
+either.)
+
+**Fix direction (STEP 1, scope W7 — displace the CONTOUR, not add relief):**
+warp the COARSE-altitude sampling coordinates (so the interpolated contour
+meanders), OR explicit coastal boundary perturbation (coherent noise on the
+sea/land threshold), OR refine the coast at higher resolution. NOT damping,
+NOT global amplitude (both ruled out by measurement). The fix is horizontal
+boundary displacement, not vertical height.
+
 **Positives banked:** the upscale produces a credible same-world product
 (robustness held, #147 #6); interior FBM is plausible at raised amplitude;
 cost is cheap (≤ ~1 s even at 4096²). Phase 3 and the sculpting chantier
