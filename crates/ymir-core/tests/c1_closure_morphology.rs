@@ -693,6 +693,104 @@ fn contrast_counterfactual_gamma() {
     eprintln!("  r→~1 with λ ⇒ scheme FEASIBLE (curtain cedes) → go (α). r stuck ⇒ scheme floor.");
 }
 
+/// #147 (C) — visual characterisation of the advection-only
+/// decorrelation: is it BULK (interior differs across resolutions too →
+/// upwind transport mesh-dependent everywhere) or BOUNDARY-only
+/// (interior coherent, only the rim differs → not bulk). Dumps S̃ for
+/// advection-only (rigid no-flux, NO closures) at 64² and 256², scaled
+/// to the same ~512 px display so the SAME physical area is compared.
+#[test]
+#[ignore]
+fn advection_only_visual_64_256() {
+    let dir = output_dir().join("advection_only");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 42u64;
+    for &grid in &[64usize, 256] {
+        let n_steps = 300 * grid / 64;
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps,
+            dx: 1.0 / grid as f64,
+            dy: 1.0 / grid as f64,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
+        };
+        ymir_core::tectonics_c1::time_loop::run_advection_only(
+            &mut state, &kin, &config, |_, _| {},
+        );
+        let scale = (512 / grid).max(1) as u32;
+        save_s_scaled(&state.s, &dir.join(format!("advonly_grid{grid:04}_s.png")), scale);
+        // Low-range palette (S̃∈[0,0.6] → full ramp) so the OCEAN field
+        // (≈0.2 ± advected structure, saturated to flat blue in the
+        // [0,3] palette) is visible — that's where advection acts and
+        // the decorrelation must live.
+        save_s_lowrange(&state.s, &dir.join(format!("advonly_grid{grid:04}_s_ocean.png")), scale);
+    }
+    eprintln!("advection-only S̃ dumped to {}", dir.display());
+}
+
+/// #147 (C-bis) — is the bulk decorrelation in the ADVECTION or already
+/// in the INIT? Correlate S̃ at step 0 (no stepping at all) across
+/// resolutions, whole-field + continental-only + oceanic-only. If init
+/// S̃→64 r is ALREADY ~0.045, the non-convergence is the GRID-DEPENDENT
+/// INITIAL CONDITION (R7 per-cell heterogeneity), not the upwind scheme.
+#[test]
+#[ignore]
+fn init_convergence_check() {
+    let seed = 42u64;
+    let grids: [usize; 3] = [64, 128, 256];
+    eprintln!("#147 (C-bis) — INIT S̃ convergence (step 0, no advection, no closures)");
+    eprintln!("  {:>5} | {:>9} {:>9} {:>9}", "grid", "all r", "cont r", "ocean r");
+    let (mut ref_all, mut ref_c, mut ref_o): (Vec<f64>, Vec<f64>, Vec<f64>) =
+        (vec![], vec![], vec![]);
+    for &grid in grids.iter() {
+        let state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let cont: Vec<bool> = (0..grid * grid)
+            .map(|k| matches!(state.plate_type.get(k % grid, k / grid), PlateType::Continental))
+            .collect();
+        let all = block_mean_to_64(&|i, j| state.s.get(i, j), grid);
+        // Continental / oceanic masked fields (non-member cells → 0;
+        // correlation still dominated by the masked region's structure).
+        let cmask = block_mean_to_64(
+            &|i, j| if cont[j * grid + i] { state.s.get(i, j) } else { 0.0 },
+            grid,
+        );
+        let omask = block_mean_to_64(
+            &|i, j| if !cont[j * grid + i] { state.s.get(i, j) } else { 0.0 },
+            grid,
+        );
+        let (ra, rc, ro) = if grid == 64 {
+            ref_all = all.clone();
+            ref_c = cmask.clone();
+            ref_o = omask.clone();
+            (1.0, 1.0, 1.0)
+        } else {
+            (pearson(&ref_all, &all), pearson(&ref_c, &cmask), pearson(&ref_o, &omask))
+        };
+        eprintln!("  {:>4}² | {ra:>9.4} {rc:>9.4} {ro:>9.4}", grid);
+    }
+    eprintln!();
+    eprintln!("  init all r ~0.045 ⇒ NON-CONVERGENCE IS THE INIT (grid-dependent R7), not advection.");
+}
+
+/// Render S̃ with a stretched low range (`[0, 0.6]` → full ramp) so
+/// sub-continental (ocean) structure is visible. Grayscale-ish ramp.
+fn save_s_lowrange(s: &Field2D, path: &Path, scale: u32) {
+    let (nx, ny) = (s.nx(), s.ny());
+    let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(nx as u32 * scale, ny as u32 * scale);
+    for j in 0..ny {
+        for i in 0..nx {
+            let v = (s.get(i, j) / 0.6).clamp(0.0, 1.0) as f32;
+            let g = (v * 255.0) as u8;
+            put_block(&mut img, i, ny - 1 - j, scale, [g, g, g]);
+        }
+    }
+    img.save(path).expect("save low-range S̃ PNG");
+}
+
 /// Cells within `r` cells of a continental/oceanic boundary (the band
 /// the contrast lives on). A boundary cell is a `cont` cell 4-adjacent
 /// to non-`cont` or vice versa; dilated by `r`.
