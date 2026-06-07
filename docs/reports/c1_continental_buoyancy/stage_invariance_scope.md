@@ -246,6 +246,29 @@ fix → re-run the sweep, expect wedge% to stabilise and full-system r to climb
 toward ~0.78. Curtain/contrast is NOT the lever (disproven). (α) full-system
 churn is NOT paid (γ already showed the contrast is not the lever).
 
+## (C) characterisation — ANCHORED by an init-convergence control
+
+Pure visual (advection-only S̃, 64²/256²) was palette-LIMITED: the field
+looks like continent + (near-empty) ocean at both resolutions, ambiguous on
+its own (don't accept it). The decisive anchor is a CONTROL — correlate S̃
+at step 0 (no advection, no closures) across resolutions:
+
+```
+ grid   init all r   cont r   ocean r
+ 128²     0.9363     0.9311   0.6721
+ 256²     0.8992     0.8927   0.6168
+```
+
+**The INIT is mesh-CONVERGENT (r~0.90).** Therefore the advection-only
+collapse to r~0.045 is unambiguously the **ADVECTION destroying a
+convergent field**, NOT a grid-dependent init. Over n_steps∝grid with
+upwind numerical diffusion ∝ dx, the rigid-no-flux transport drives the
+field to a mesh-dependent state. Bulk non-convergence = the SCHEME,
+confirmed by control (stronger than the raw r=0.045 scalar or the
+palette-limited visual). The full-system r~0.5 is equilibrium-height
+pinning S̃ toward h_eq, MASKING the advection divergence — not the
+advection converging.
+
 ## Explicitly OUT of scope
 
 - **64² geography calibration (cap / n_cycles, Issue #141)** — NOT
