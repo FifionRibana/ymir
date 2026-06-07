@@ -269,6 +269,50 @@ palette-limited visual). The full-system r~0.5 is equilibrium-height
 pinning S̃ toward h_eq, MASKING the advection divergence — not the
 advection converging.
 
+## #147 FINAL VERDICT (measured) — no parametric fix; the residual IS the advection scheme
+
+Accretion temporal fix (merge_time_threshold steps→∝grid) was implemented
+and MEASURED: it did NOT stabilise wedge% nor lift r (wedge% collapsed
+*faster*: 0.59→0.24 at 128², 0.28→0.05 at 256²; r unchanged 0.51). It is
+byte-identical at 64² but **degrades** 128²/256² without gain → **REVERTED**.
+Rule applied: keep units-hygiene that improves/doesn't harm (Fix #1 DS);
+revert one that degrades the measured metric (accretion). Measurement over
+principle ("a real units bug in principle" does not justify keeping a diff
+that worsens the measured outcome).
+
+**Verdict (acted):**
+- **No PARAMETRIC fix of the residual exists.** DS width (done, insufficient)
+  + accretion timing (done, degrading→reverted) are units-hygiene, NOT the
+  lever.
+- **The residual IS the advection scheme:** upwind bulk diffusion ∝ dx +
+  no-flux margin pile + accretion↔advection coupling (velocity averaging,
+  not the trigger). Anchored by the init-convergence control (init r~0.90 →
+  advection-only r~0.045) and (γ) (contrast smoothing doesn't help).
+- **Production r ≈ 0.51, NOT 0.78.** The 0.78 only appears with accretion
+  DISABLED (B2); accretion is a wanted feature. So the earlier "realistic
+  ~0.78" was optimistic — production (accretion ON) field-convergence is
+  ~0.51, EH-bounded, and lifting it needs the SCHEME, not a parameter.
+
+**What #147 DELIVERS (honest, given the measurement):**
+1. **Fix #1 (DS physical-width)** — a real units bug, genuine partial
+   invariance, byte-identical at 64², kept.
+2. **The complete diagnostic that REDEFINES the problem:** mesh invariance
+   of S̃ is an ADVECTION-SCHEME problem, not a closure-parameter one. DS +
+   accretion innocenced as levers (by measurement, not assumption);
+   subduction innocent (split B); contrast innocent (γ); init convergent
+   (control). Production S̃ r ~0.51; geography converges (alt r ~0.87).
+3. #147 CANNOT deliver "S̃-field mesh invariance" — proven out of reach
+   without a new advection scheme.
+
+**REGISTERED — FOUNDATION follow-up (out of #147, like buoyancy was):**
+"C1 upwind advection is bulk mesh-non-convergent (numerical diffusion ∝ dx;
+init r 0.90 → advected r 0.045). A higher-order / less-diffusive / flux-
+limited (or semi-Lagrangian) advection scheme is required for S̃-field
+mesh invariance. Equilibrium-height MASKS it (full-system r~0.51) but does
+not cure it. This is a FOUNDATION defect of the transport scheme — same
+depth class as the continental-buoyancy finding, surfaced by the same
+measure-don't-assume method."
+
 ## Explicitly OUT of scope
 
 - **64² geography calibration (cap / n_cycles, Issue #141)** — NOT
