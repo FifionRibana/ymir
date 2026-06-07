@@ -1,0 +1,110 @@
+# C1 mesh-invariance — fix scope (W7 surface, NOT yet implemented)
+
+Issue-in-waiting: **"Resolution invariance (mesh convergence) of C1"**. Built
+on the measurement verdict in `stage_mesh_convergence.md`. This document is
+the *surface-before-implement* (W7) scoping — it locks the mechanism, the
+physical anchor, and the two open points BEFORE any code.
+
+## Problem (from the measurement)
+
+C1's large-scale GEOGRAPHY already converges (alt→64² r ~0.87, IoU≈init,
+land% stable). The invariance FAILURE is localised to the **S̃ thickening
+field** (S̃→64² r plateaus at 0.46; wedge area ∝ 1/grid; curtain worse at
+512²). Because the upscale consumes the **S̃ gradient**, a non-convergent S̃
+means 64²+FBM and 512²+FBM are different worlds → invariance is a
+prerequisite to wiring the upscale and to piste 4.
+
+## Root cause located in code (the #1 culprit, confirmed)
+
+`crates/ymir-core/src/tectonics_c1/closures/davis_suppe/source_term.rs`
+defines the wedge length scales **in CELLS, not physical length**
+(verbatim doc, lines 69–77):
+
+```
+l_taper: 4.0,       // "Characteristic length … In cells, not non-dim length."
+l_decay: 6.0,       // "… In cells."
+max_distance: 30.0, // "Outside this distance (cells) … zero."
+```
+
+`h_critical(d) = h_max·(1 − exp(−d/l_taper))` with `d` in cells ⇒ the wedge
+reaches `h_max` over a FIXED CELL COUNT. Physical wedge width = `l_taper /
+grid` → shrinks ∝ 1/grid as the mesh refines. That is precisely the
+measured `wedge% ∝ 1/grid`, coast-pinned (`d̄coast=0`), `∂S̃` divergent
+signature. **Per-cell, not per-physical-length — root cause, three lines.**
+
+## Fix #1 (principal) — re-express DS length scales in PHYSICAL units
+
+Convert `l_taper`, `l_decay`, `max_distance` from cells to non-dim domain
+length (the `[0,1]` unit domain); consume them as cells via `× grid` at the
+call site (the wedge-distance field is already in cells, so a single
+conversion `l_phys · grid` keeps the kernel unchanged). Result: a wedge of
+FIXED PHYSICAL width, sampled by more cells at higher resolution — the
+invariance condition.
+
+### Point b (LOCKED) — the physical width comes from DS physics, not a homemade number
+
+`l_taper` is the critical-taper length: the horizontal distance over which
+a Davis-Suppe wedge thickens to `h_max`. Its physical value derives from
+the critical taper angle `α_c` (Davis-Suppe-Dahlen mechanics):
+`l_taper_phys ≈ h_max / tan(α_c)` (the run-out of a wedge of plateau
+thickness `h_max` at slope `tan α_c`). So the width is set by the wedge
+mechanics + the chosen non-dim `h_max`, anchored to literature `α_c`
+(typical critical tapers ~3–10°), NOT a "3 cells" guess. The closure-
+relations note applies: the length scale is a closure derived from the
+physics, sampled on as many cells as the resolution allows. (Calibration of
+`α_c` / `l_taper_phys` to a chosen non-dim domain size is the one number to
+fix with a literature anchor + the existing visual-review protocol.)
+
+## Fix #2 candidates — to confirm in scope, not presumed
+
+1. **Accretion deposition** — audit `closures/accretion/` for the same
+   per-cell length pattern (it piles oceanic crust against the rigid margin,
+   contributing to the coast-pinned wedge). Likely the same per-cell→
+   per-length conversion. Confirm before lumping into Fix #1.
+2. **No-flux curtain** — the bounded grid-aligned oscillation, measured
+   WORSE at 512². See Point a.
+
+## Point a (LOCKED as a measurement, not a presumption) — curtain coupled or independent?
+
+Do NOT presume the curtain is a separate defect. It and the margin pile may
+share a cause (sharp 1.0/0.2 contrast + upwind at the rigid face, the
+oscillation root identified earlier). **Scope order:**
+1. Implement Fix #1 (physical-width DS).
+2. Re-run `mesh_convergence_sweep`. Inspect whether the curtain ALSO
+   diminished (shared cause → one fix) or persists (independent → a second,
+   separate treatment of the sharp-contrast no-flux face).
+3. The "curtain counterfactual" (disable the no-flux / soften the contrast
+   on a throwaway) belongs HERE — after Fix #1 isolates what remains — not
+   before scoping.
+
+## Acceptance criterion (the measurement IS the test)
+
+Re-run `c1_closure_morphology::mesh_convergence_sweep`:
+- **S̃→64² r must climb toward ~1** (from the 0.46 plateau) across
+  64²/128²/256²/512².
+- **wedge% must STABILISE** (a fixed physical fraction), not decay ∝ 1/grid.
+- alt→64² r and geography metrics (land%, largest, IoU≈init) must NOT
+  regress (they already converge).
+
+The structural-convergence criterion (not bit-identity): large formations
+same and stable, formations no longer disappear, geography recognisable at
+every mesh. Fine detail may still vary (the upscale fills it legitimately).
+
+## Explicitly OUT of scope
+
+- **64² geography calibration (cap / n_cycles, Issue #141)** — NOT
+  implicated; geography already converges. This fix does NOT reopen #141.
+- **Upscale wiring** — gated behind invariance; not in this chantier.
+- **SCULPTING chantier (flat interior + un-reworked init-Voronoi boundary,
+  Lecture A)** — a DISTINCT downstream chantier, AFTER invariance. Invariance
+  REVEALS the true un-sculpted state (at 64² masked by the grid-width pile
+  overflowing inward); the sculpting fix must be PHYSICAL (incising erosion,
+  intracontinental rifting, distributed deformation), NOT FBM. Causal order,
+  not just sequential.
+
+## Anti-patterns honoured
+
+Structural-convergence target (not bit-identity); upscale not wired;
+invariance vs sculpting kept distinct; root cause + physical anchor
+surfaced BEFORE code; the curtain coupling left as a post-Fix-#1 measurement
+rather than a presumption.
