@@ -32,7 +32,18 @@ Out of #145 scope (scope kept healthy: core buoyancy fix proven/implemented/flip
 **Diagnosis (acquired, measured):** S̃ does not converge with mesh resolution because the **upwind advection scheme itself** is bulk mesh-dependent (numerical diffusion ∝ dx; init→64 r 0.90 collapses to advection-only r 0.045 over a run). Anchored by an init-convergence CONTROL (init IS convergent → advection destroys it), the contrast counterfactual γ (boundary-contrast smoothing does NOT help → not a boundary issue), and split B (subduction innocent; accretion couples via velocity-averaging, not a parameter). NO closure-PARAMETER fix works: DS physical-width (Fix #1, real units bug, kept, partial) and accretion step→time (degraded 128/256, reverted) are units-hygiene, not the lever. Equilibrium-height MASKS it (full-system r~0.51) but does not cure it. Production S̃ r ~0.51; geography converges (alt r ~0.87).
 **Lead:** a higher-order / less-diffusive / flux-limited (or semi-Lagrangian) advection scheme for S̃ + age. **FOUNDATION defect** of the transport scheme — same depth class as continental-buoyancy, surfaced by the same measure-don't-assume method. Out of #147, which REDEFINED the problem from "closure calibration" to "advection scheme".
 
-**GATING QUESTION before opening the scheme issue (do NOT open it yet):** do we actually NEED r→1? The reason to want S̃-field invariance is the upscale (consumes the S̃ gradient). But we have NOT measured whether r~0.51 actually perturbs the upscale downstream. Precedent: the mass swing LOOKED like a problem; Stein-Stein absorbed it (invisible in production). The upscale may be similarly robust to r~0.51 (stochastic FBM merely ORIENTED by the gradient — perhaps no need for a perfectly convergent gradient). **MEASURE FIRST** (next session): 64²+upscale vs 256²+upscale — coherent detail (upscale robust to r~0.51 → scheme milestone DEFERRABLE) or different worlds (upscale diverges → milestone NECESSARY)? Same "is the effect visible downstream?" logic that (correctly) avoided over-fixing DS. The scheme issue's urgency/necessity is decided by that measurement, not assumed.
+**GATING ANSWERED → DEFERRABLE (do NOT open the scheme issue).** Measured
+(`stage_upscale_robustness.md`): 64²+upscale vs 256²+upscale = SAME world
+(upscaled structure r 0.90 ≈ coarse-altitude r 0.88; ~26% land + largest
+~0.96 both; visual = same continents/orogen/bathymetry, different fineness).
+The upscale orients FBM by the coarse ALTITUDE slope (convergent, r~0.88),
+NOT raw S̃ (r~0.51) — the non-convergence is laundered through isostasy +
+Stein-Stein, invisible downstream (same as the DS mass swing). So the
+advection-scheme milestone is NOT urgent; #6 stays registered but deferred.
+**Precondition:** holds because the upscale reads altitude; revisit only if a
+consumer reads the raw S̃ gradient. Original reasoning retained below.
+
+**GATING QUESTION (now answered above — kept for the record):** do we actually NEED r→1? The reason to want S̃-field invariance is the upscale (consumes the S̃ gradient). But we have NOT measured whether r~0.51 actually perturbs the upscale downstream. Precedent: the mass swing LOOKED like a problem; Stein-Stein absorbed it (invisible in production). The upscale may be similarly robust to r~0.51 (stochastic FBM merely ORIENTED by the gradient — perhaps no need for a perfectly convergent gradient). **MEASURE FIRST** (next session): 64²+upscale vs 256²+upscale — coherent detail (upscale robust to r~0.51 → scheme milestone DEFERRABLE) or different worlds (upscale diverges → milestone NECESSARY)? Same "is the effect visible downstream?" logic that (correctly) avoided over-fixing DS. The scheme issue's urgency/necessity is decided by that measurement, not assumed.
 
 ---
 
