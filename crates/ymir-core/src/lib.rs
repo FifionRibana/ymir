@@ -11,6 +11,7 @@
 
 pub mod config;
 pub mod grid;
+pub mod morphology;
 pub mod seed;
 
 // Pipeline phases — module structure follows the TDD.

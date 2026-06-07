@@ -54,6 +54,7 @@ const SEED: u64 = 42;
 
 fn make_time_loop_config(n_steps: usize) -> C1TimeLoopConfig {
     C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,
@@ -168,6 +169,7 @@ fn c1_phase_a_decomposes_into_closures_then_post_tectonic() {
     // S̃ values redefined (P95-cap), contract must stay byte-exact.
     let iso_config = IsostasyConfig::c1_default();
     let time_loop_config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,

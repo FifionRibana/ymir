@@ -52,6 +52,7 @@ const FULL_RUN: usize = 300;
 
 fn make_config(n_steps: usize) -> C1TimeLoopConfig {
     C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,

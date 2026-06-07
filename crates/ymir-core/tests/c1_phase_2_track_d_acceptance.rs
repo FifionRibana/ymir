@@ -49,6 +49,7 @@ const N_STEPS: usize = 300;
 
 fn make_config() -> C1TimeLoopConfig {
     C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps: N_STEPS,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,
@@ -225,6 +226,7 @@ fn ninth_bit_identical_preservation_phase_2_r7() {
     // P95-cap introduced a decomposition inconsistency (real bug).
     let iso_config = IsostasyConfig::c1_default();
     let time_loop_config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps: n_steps_short,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,

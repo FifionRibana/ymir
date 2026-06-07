@@ -102,6 +102,7 @@ fn spearman_correlation(pairs: &[(f64, f64)]) -> f64 {
 
 fn make_time_loop_config() -> C1TimeLoopConfig {
     C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps: N_STEPS,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,
