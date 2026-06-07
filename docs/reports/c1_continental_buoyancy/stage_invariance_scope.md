@@ -201,6 +201,51 @@ Another evident suspect innocenced by measurement, not bet.
    is the safe Fix-#1-pattern part. De-risk the curtain/contrast first: it
    tells us whether r→1 is ATTAINABLE at all before investing in the margin.
 
+## Contrast counterfactual (γ) — SCHEME FLOOR (measured, `contrast_counterfactual_gamma`)
+
+Advection-only + rigid no-flux + S̃ band-smoothing (2.5 physical cells),
+reusing the real `run_advection_only` one step at a time. S̃→64 r:
+
+```
+   λ      64²      128²     256²
+ 0.00    1.0000   0.0466   0.0454   (= pure curtain, variant C)
+ 0.25    1.0000   0.0924   0.0158
+ 0.50    1.0000   0.1385   0.0139
+ 1.00    1.0000   0.2207   0.0153
+```
+
+**Verdict = pre-registered branch 3: SCHEME FLOOR.** Contrast band-smoothing
+does NOT lift r toward 1 (256² flat ~0.015 at every λ, even full local
+averaging). The single-root "sharp contrast" hypothesis is **rejected**.
+
+**Deeper finding from the r≈0.045 magnitude:** near-zero correlation means
+advection-only is **bulk-decorrelated**, not a thin boundary curtain (which
+would leave the interior at r~0.7). The curtain speckle is a SYMPTOM; the
+disease is **bulk upwind-advection mesh-dependence** — the transport itself
+produces a different field at each resolution. A boundary (or even interior)
+contrast-smooth cannot fix a bulk-transport mesh-dependence. The full system
+reaches r~0.5 only because **equilibrium-height pins S̃ toward h_eq** (the
+mesh-stable convergence pattern), NOT because the advection converges.
+
+**Consequence — REDEFINE the criterion (don't chase r→1 via contrast; save
+the (α) churn):**
+- r→1 is NOT attainable with this upwind+rigid advection (it needs a
+  higher-order / less-diffusive advection SCHEME — deep, out of #147).
+- The realistic, achievable invariance target is the EH-bounded ceiling:
+  fix **accretion** (physical-width margin deposition, the proven Fix-#1
+  pattern) to recover wedge% convergence AND lift full-system r from 0.51
+  toward the ~0.78 ceiling (the value with accretion's mesh-dependence
+  removed). Accept ~0.78 as the realistic structural-convergence r.
+- **Register (deep follow-up, out of #147):** "upwind advection is bulk
+  mesh-non-convergent (r≈0.045 isolated); r→1 needs an advection scheme
+  change (higher-order / less diffusive)." Equilibrium-height masks but does
+  not cure it.
+
+**#147 actionable deliverable:** Fix #1 (DS, done) + accretion physical-width
+fix → re-run the sweep, expect wedge% to stabilise and full-system r to climb
+toward ~0.78. Curtain/contrast is NOT the lever (disproven). (α) full-system
+churn is NOT paid (γ already showed the contrast is not the lever).
+
 ## Explicitly OUT of scope
 
 - **64² geography calibration (cap / n_cycles, Issue #141)** — NOT
