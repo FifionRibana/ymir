@@ -52,6 +52,9 @@ use ymir_core::tectonics_c1::state::C1State;
 use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
 use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
 use ymir_core::tectonics_v2::field::Field2D;
+use ymir_core::seed::WorldSeed;
+use ymir_core::terrain::upscale::FbmUpscaleConfig;
+use ymir_core::tectonics_c1::production_upscale::upscale_from_c1;
 
 const GRID_SIZE: usize = 64;
 const N_STEPS: usize = 300;
@@ -691,6 +694,141 @@ fn contrast_counterfactual_gamma() {
     eprintln!();
     eprintln!("  λ=0 row = pure curtain (variant C, expect ~0.045).");
     eprintln!("  r→~1 with λ ⇒ scheme FEASIBLE (curtain cedes) → go (α). r stuck ⇒ scheme floor.");
+}
+
+/// #147 FOLLOWUPS-#6 GATING measurement — is the upscale ROBUST to the
+/// S̃ field non-convergence (production r~0.51), or does it diverge?
+/// Wires C1→upscale on a throwaway: run production (rigid, full
+/// closures) at 64² and 256² (same seed), build the gallery altitude,
+/// normalise with the SAME fixed map (sea=0.5) so both are comparable,
+/// upscale both to 1024² anisotropic FBM, and compare STRUCTURE
+/// (NOT identity — FBM fills more from 256² by design, "different
+/// paths" accepted). Criterion = structure convergence: same
+/// continents/chains/bathymetry in the same places, detail differing.
+///
+/// Metrics: (1) coarse-altitude cross-grid r (the field the upscale's
+/// slope orientation reads); (2) upscaled-result structure r (both
+/// 1024² block-meaned to 64², correlated — FBM averages out, large
+/// structure remains); (3) land morphology of each upscaled result
+/// (sea_level threshold) — same n_components/largest/area? (4) visual
+/// side-by-side PNGs (the judge).
+#[test]
+#[ignore]
+fn upscale_from_c1_structure_converges() {
+    let dir = output_dir().join("upscale_robustness");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 42u64;
+    const HALF: f32 = ALT_HALF; // fixed normalisation half-range (sea at 0.0 → 0.5)
+    let cfg = FbmUpscaleConfig { target_size: 1024, ..Default::default() };
+
+    eprintln!("#147 FOLLOWUPS-#6 contract regression — upscale_from_c1 structure convergence (seed {seed})");
+    eprintln!("  structure-convergence (NOT identity); coarse normalised sea=0.5, target 1024²");
+
+    let mut coarse_ds: Vec<Vec<f64>> = Vec::new(); // coarse-altitude →64
+    let mut up_ds: Vec<Vec<f64>> = Vec::new();      // upscaled →64
+    let mut up_land: Vec<f64> = Vec::new();
+    let mut up_largest: Vec<f64> = Vec::new();
+    let grids = [64usize, 256];
+    for &grid in &grids {
+        let n_steps = 300 * grid / 64;
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps,
+            dx: 1.0 / grid as f64,
+            dy: 1.0 / grid as f64,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        // Gallery altitude → fixed [0,1] normalisation (sea 0.0 → 0.5).
+        let altitude = render_altitude(&state, &iso_config, &closures);
+        let mut coarse = altitude.clone();
+        for v in coarse.data.iter_mut() {
+            *v = ((*v + HALF) / (2.0 * HALF)).clamp(0.0, 1.0);
+        }
+        coarse_ds.push(block_mean_to_64(&|i, j| coarse.get(i as i32, j as i32) as f64, grid));
+
+        // Upscale through the CONTRACT path (upscale_from_c1 builds the
+        // laundered altitude internally — never raw S̃). This is what the
+        // regression guards: production uses exactly this entry.
+        let up = upscale_from_c1(
+            &state,
+            &iso_config,
+            &closures.oceanic_bathymetry,
+            &WorldSeed::new(seed),
+            &cfg,
+        );
+        let up_grid = up.heightmap.width;
+        up_ds.push(block_mean_to_64_dim(
+            &|i, j| up.heightmap.get(i as i32, j as i32) as f64,
+            up_grid,
+        ));
+
+        // Land morphology of the upscaled result (land = h > sea 0.5).
+        let mask: Vec<bool> = up.heightmap.data.iter().map(|&v| v > 0.5).collect();
+        let m = land_morphology(&mask, up.heightmap.width, up.heightmap.height);
+        eprintln!(
+            "  grid {grid}²→{}²: upscaled land%={:.1} perim/A={:.3} n_comp={} largest={:.3}",
+            up_grid, 100.0 * m.area_fraction, m.perimeter_over_area, m.n_components,
+            m.largest_component_fraction
+        );
+        up_land.push(m.area_fraction);
+        up_largest.push(m.largest_component_fraction);
+
+        save_heightmap01(&up.heightmap, &dir.join(format!("upscaled_from{grid:04}.png")));
+    }
+
+    let coarse_r = pearson(&coarse_ds[0], &coarse_ds[1]);
+    let up_r = pearson(&up_ds[0], &up_ds[1]);
+    eprintln!();
+    eprintln!("  coarse-altitude structure r (64 vs 256, →64) = {coarse_r:.4}");
+    eprintln!("  UPSCALED structure r       (64 vs 256, →64) = {up_r:.4}");
+    eprintln!("  Visual: {}", dir.display());
+
+    // REGRESSION (Issue #147 #6 contract): the upscale, fed via
+    // `upscale_from_c1` (laundered altitude), must stay STRUCTURE-
+    // convergent across resolutions. If a future change feeds raw S̃
+    // instead, up_r collapses toward the S̃ field r (~0.51) and this
+    // fails — the precondition is TESTED, not merely documented.
+    assert!(
+        up_r >= 0.85,
+        "upscaled structure r {up_r:.3} < 0.85 — robustness contract broken \
+         (is the upscale reading raw S̃ instead of the laundered altitude? reopens #6)"
+    );
+    // Same world: one dominant landmass at BOTH resolutions, comparable
+    // land fraction (FBM detail differs; large structure must not).
+    assert!(
+        up_largest[0] > 0.8 && up_largest[1] > 0.8,
+        "upscaled largest-component {up_largest:?} — not one dominant landmass at both res"
+    );
+    assert!(
+        (up_land[0] - up_land[1]).abs() < 0.05,
+        "upscaled land fractions {up_land:?} diverge > 5 pts across resolution"
+    );
+}
+
+/// Block-mean an arbitrary square `grid` (multiple of 64) field to 64².
+fn block_mean_to_64_dim(get: &dyn Fn(usize, usize) -> f64, grid: usize) -> Vec<f64> {
+    block_mean_to_64(get, grid)
+}
+
+/// Render a normalised `[0,1]` heightmap (sea at 0.5) with the
+/// hypsometric palette, 1:1 (no upscale).
+fn save_heightmap01(h: &GridF32, path: &Path) {
+    let (nx, ny) = (h.width, h.height);
+    let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(nx as u32, ny as u32);
+    for j in 0..ny {
+        for i in 0..nx {
+            let v = h.get(i as i32, j as i32).clamp(0.0, 1.0);
+            img.put_pixel(i as u32, (ny - 1 - j) as u32, Rgb(hypsometric(v, 0.5)));
+        }
+    }
+    img.save(path).expect("save heightmap01 PNG");
 }
 
 /// #147 (C) — visual characterisation of the advection-only

@@ -20,10 +20,8 @@
 //! - `Cratonic` — binary grayscale (0/1) MVP standalone view.
 
 use ymir_core::grid::GridF32;
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
-use ymir_core::tectonics_c1::closures::oceanic_bathymetry::{
-    apply_stein_stein_bathymetry, SteinSteinParams,
-};
+use ymir_core::tectonics::isostasy::IsostasyConfig;
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::SteinSteinParams;
 use ymir_core::tectonics_c1::stats::C1StepStats;
 use ymir_core::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
 use ymir_core::tectonics_v2::field::Field2D;
@@ -266,20 +264,20 @@ pub fn derive_altitude_field(snapshot: &C1Snapshot) -> GridF32 {
         }
     }
 
-    // 3. Architecture C: compute_isostasy + Stein-Stein re-apply.
+    // 3. Architecture C: compute_isostasy + Stein-Stein re-apply, via
+    // the SHARED core source of truth (Issue #147 #6) so this render
+    // altitude and the upscale input (`upscale_from_c1`) cannot diverge.
     // Issue #141: c1_default (P95-capped) so the rendered altitude=0
     // coast matches the reclassify (plate_type) coast — both use the
     // same robust sea level (W2 coherence; prevents the Viz-0 Stage A
     // plate_type-vs-altitude divergence).
-    let iso = compute_isostasy(&s_field, &IsostasyConfig::c1_default());
-    let mut altitude = iso.heightmap;
-    apply_stein_stein_bathymetry(
-        &mut altitude,
+    ymir_core::tectonics_c1::production_upscale::c1_production_altitude(
+        &s_field,
         &age_field,
         &plate_type_field,
+        &IsostasyConfig::c1_default(),
         &SteinSteinParams::default(),
-    );
-    altitude
+    )
 }
 
 fn render_altitude(snapshot: &C1Snapshot, rgba: &mut [u8]) {
