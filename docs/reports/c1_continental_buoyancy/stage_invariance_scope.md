@@ -112,6 +112,40 @@ The structural-convergence criterion (not bit-identity): large formations
 same and stable, formations no longer disappear, geography recognisable at
 every mesh. Fine detail may still vary (the upscale fills it legitimately).
 
+## Fix #1 RESULT (measured) — correct + byte-identical, but INSUFFICIENT alone
+
+Implemented (`DavisSuppeParams::scaled_to_grid(nx)`, applied at the kernel +
+both wedge-distance call sites in `time_loop`). Byte-identical at 64²
+(factor = 64/64 = 1; imprint tests 1.2/1.3/1.4 + DS unit tests all green,
+unchanged). Re-running `mesh_convergence_sweep`:
+
+```
+ grid  S̃→64 r  (pre-#147 → post-Fix#1)   wedge%  (pre → post)
+ 128²   0.544 → 0.568                      0.5 → 0.6
+ 256²   0.470 → 0.512                      0.2 → 0.3
+ 512²   0.457 → 0.473                      0.1 → 0.2
+```
+
+**Verdict: Fix #1 is necessary but NOT sufficient.** S̃→64² r still plateaus
+~0.47 (target ~1); wedge% still ~∝1/grid. The Davis-Suppe continental wedge
+was NOT the dominant non-convergence source — the "evident suspect" (named
+#1 from the code reading) is largely innocent for the FIELD-level metric.
+
+**Revised attribution (isolate next, measure before fixing):**
+- The **wedge metric (S̃>1.5) is OCEANIC ACCRETION** piled against the rigid
+  margin (continental orogens were ~0 above 1.5) — `closures/accretion/`,
+  NOT touched by Fix #1. Its per-cell deposition is the likely wedge%∝1/grid
+  driver.
+- The **curtain** (grid-aligned no-flux oscillation, dense interior speckle
+  worse at 512²) is the likely driver of the FIELD decorrelation (S̃ r),
+  covering the interior at high spatial frequency.
+
+**Next (Point a, now actionable):** counterfactual sweep — disable
+subduction+accretion (isolate the accretion pile) and separately probe the
+no-flux curtain — to attribute the residual S̃ r / wedge% BEFORE the next
+fix. Fix #1 stays (correct, byte-identical, no regression); one necessary
+piece, not the whole.
+
 ## Explicitly OUT of scope
 
 - **64² geography calibration (cap / n_cycles, Issue #141)** — NOT
