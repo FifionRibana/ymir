@@ -30,13 +30,41 @@
 //! asserts the precondition (64²/256² structure convergence) so a
 //! future change that breaks it is caught, not just warned against.
 
+use crate::grid::GridF32;
 use crate::seed::WorldSeed;
 use crate::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use crate::tectonics_v2::boundaries::plate_type::PlateTypeField;
+use crate::tectonics_v2::field::Field2D;
 use crate::terrain::upscale::{upscale_with_fbm, FbmUpscaleConfig, UpscaleResult};
 
 use super::closures::oceanic_bathymetry::params::SteinSteinParams;
 use super::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
 use super::state::C1State;
+
+/// The C1 PRODUCTION altitude (Architecture C): `compute_isostasy`
+/// followed by the Stein-Stein bathymetry re-apply on oceanic cells.
+///
+/// **SINGLE SOURCE OF TRUTH** for the production altitude, shared by
+/// the viz render (`bridge::c1` / `c1_viz::derive_altitude_field`, which
+/// reconstructs these fields from a snapshot and calls this) AND the
+/// upscale input ([`upscale_from_c1`]). Factoring it here (Issue #147
+/// #6) prevents the upscaled HD terrain from silently diverging from
+/// the rendered production altitude: the two agree BY CONSTRUCTION, not
+/// by two copies of the same `isostasy + Stein-Stein` sequence drifting
+/// apart. The regression test guards robustness; this shared function
+/// guards render/upscale equality.
+pub fn c1_production_altitude(
+    s: &Field2D,
+    age: &Field2D,
+    plate_type: &PlateTypeField,
+    iso: &IsostasyConfig,
+    ss: &SteinSteinParams,
+) -> GridF32 {
+    let isostasy = compute_isostasy(s, iso);
+    let mut altitude = isostasy.heightmap;
+    apply_stein_stein_bathymetry(&mut altitude, age, plate_type, ss);
+    altitude
+}
 
 /// Fixed altitude→`[0,1]` normalisation half-range (sea level 0.0 maps
 /// to 0.5). This MUST be a constant, NOT a per-call data range:
@@ -66,16 +94,13 @@ pub fn upscale_from_c1(
     // CONTRACT (Issue #147 #6): the upscale reads the laundered
     // ALTITUDE (isostasy + Stein-Stein, convergent r~0.88), NOT raw S̃
     // (non-convergent r~0.51). This is what makes the upscale robust to
-    // S̃ mesh non-convergence. Do NOT replace this with `&state.s` or a
-    // raw-S̃ heightmap — it reopens FOLLOWUPS #6 and silently diverges
-    // across resolutions.
-    let isostasy = compute_isostasy(&state.s, iso);
-    let mut altitude = isostasy.heightmap;
-    apply_stein_stein_bathymetry(&mut altitude, &state.age, &state.plate_type, ss);
+    // S̃ mesh non-convergence. Built via the SHARED `c1_production_altitude`
+    // (same source of truth as the viz render) — do NOT inline a raw-S̃
+    // path here; it reopens FOLLOWUPS #6 and silently diverges.
+    let mut coarse = c1_production_altitude(&state.s, &state.age, &state.plate_type, iso, ss);
 
     // Fixed normalisation to [0,1] (sea 0.0 → 0.5), resolution-independent.
     let half = ALTITUDE_NORM_HALF_RANGE;
-    let mut coarse = altitude;
     for v in coarse.data.iter_mut() {
         *v = ((*v + half) / (2.0 * half)).clamp(0.0, 1.0);
     }
