@@ -631,8 +631,13 @@ fn mesh_convergence_attribution() {
     }
     let variants = [
         Variant { tag: "A full", mutate: |_| {} },
+        // Split B (#147 step 1) — which of the Track-D pair carries
+        // wedge%? Don't assume accretion (DS bet just lost); subduction
+        // promotion is per-cell too (#145 finger / ≥2 / Oceanic→Continental).
+        Variant { tag: "B1 sub_off", mutate: |c| c.subduction.enabled = false },
+        Variant { tag: "B2 acc_off", mutate: |c| c.accretion.enabled = false },
         Variant {
-            tag: "B no_sub_acc",
+            tag: "B sub+acc_off",
             mutate: |c| {
                 c.subduction.enabled = false;
                 c.accretion.enabled = false;

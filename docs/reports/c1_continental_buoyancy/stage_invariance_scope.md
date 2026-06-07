@@ -166,15 +166,40 @@ Three variants × {64,128,256}, rigid, post-Fix-#1, each S̃ r vs its OWN 64²:
 - **Coupling CONFIRMED:** both at the rigid margin on the sharp contrast;
   removing sub+acc moves BOTH metrics; EH bounds the curtain.
 
-**Next fix (dominant proven lever, measure-don't-bet):**
-1. **First confirm accretion-vs-subduction** within the Track-D pair (B
-   disabled both): split B → sub-only-off / acc-only-off, see which carries
-   wedge%. Don't assume accretion (we just saw an "evident" DS bet lose).
-2. Then **physical-width the per-cell margin deposition** (the proven Fix-#1
-   pattern) on the confirmed culprit → recovers wedge% convergence + ~0.27 r.
-3. Then the **curtain** (no-flux sharp-contrast treatment) for the final
-   push toward r→1 — the deeper, coupled floor. EH bounds it but does not
-   make it converge.
+**SPLIT B (measured) — accretion carries it, subduction innocent:**
+
+```
+ variant       wedge% (64/128/256)   S̃→64 r (128/256)
+ A full        2.08 / 0.59 / 0.28    0.568 / 0.512
+ B1 sub_off    2.08 / 0.58 / 0.28    0.564 / 0.508   ≡ A (subduction INNOCENT)
+ B2 acc_off    5.03 / 3.84 / 4.17    0.812 / 0.781   ≡ B (accretion CARRIES it)
+```
+
+B1 (subduction off) is identical to A → subduction (the per-cell
+Oceanic→Continental promotion, the #145 finger/≥2 terrain — a plausible
+bet) is INNOCENT. B2 (accretion off) stabilises wedge% + lifts r → the
+**oceanic ACCRETION margin pile is the wedge%∝1/grid + ~0.27-r carrier.**
+Another evident suspect innocenced by measurement, not bet.
+
+**Next (order = de-risk the hard/critical part first, NOT easy-first):**
+1. **Contrast counterfactual (throwaway, BEFORE any fix).** Both accretion
+   pile and curtain live on the sharp 1.0/0.2 contrast at the rigid margin
+   (coupling: removing accretion moved BOTH metrics). Hypothesis: softening
+   the contrast (local buoyancy transition over 2–3 physical cells) treats
+   BOTH (upwind stops oscillating on a smoothed contrast; deposition has no
+   sharp wall to pile against). Throwaway-soften + re-run the sweep:
+   - r→~1 AND wedge% stabilises → single root cause (sharp contrast), one
+     elegant fix.
+   - r lifts but wedge% doesn't → two fixes (contrast for curtain, physical
+     width for accretion margin).
+   - even softened contrast doesn't lift r → curtain is a SCHEME floor
+     (upwind can't converge on a contrast without changing advection) →
+     redefine the criterion (r~0.78 realistic).
+2. Then the fix the counterfactual points to — single-root (contrast) or
+   two (contrast + accretion physical-width). The curtain is on the critical
+   path to r→1 (EH bounds it to ~0.78 but does not converge it); the margin
+   is the safe Fix-#1-pattern part. De-risk the curtain/contrast first: it
+   tells us whether r→1 is ATTAINABLE at all before investing in the margin.
 
 ## Explicitly OUT of scope
 
