@@ -817,6 +817,73 @@ fn block_mean_to_64_dim(get: &dyn Fn(usize, usize) -> f64, grid: usize) -> Vec<f
     block_mean_to_64(get, grid)
 }
 
+/// Quick HD EXPORT — see the final product (no UI). Runs C1 production
+/// (64², rigid, full closures) then `upscale_from_c1` (THE contract
+/// function — laundered altitude, NOT raw S̃) → 1024² HD heightmap PNG,
+/// for several validated seeds (42, 1988 "best relief", 4138 "oceanic
+/// world"). The eye on these decides what (if anything) to enrich next
+/// (Phase 3 tectonic morpho / sculpting chantier / nothing).
+#[test]
+#[ignore]
+fn export_hd_upscaled() {
+    let dir = output_dir().join("hd_export");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    // Two upscale configs to SEE the effect of the upscale's own
+    // pattern-breaking knobs (default leaves them OFF → blocky coast):
+    //  - "default": stock FbmUpscaleConfig (domain_warp_strength = 0.0).
+    //  - "warped":  domain warp ON + stronger amplitude — the upscale's
+    //    documented "break regular patterns" path. Measure if it
+    //    dissolves the coarse 64² coastline blockiness.
+    let configs: [(&str, FbmUpscaleConfig); 2] = [
+        ("default", FbmUpscaleConfig { target_size: 1024, ..Default::default() }),
+        (
+            "warped",
+            FbmUpscaleConfig {
+                target_size: 1024,
+                domain_warp_strength: 0.6,
+                amplitude_base: 0.16,
+                ..Default::default()
+            },
+        ),
+    ];
+    let seeds: [u64; 3] = [42, 1988, 4138];
+
+    eprintln!("HD export — C1 64² production → upscale_from_c1 (contract) → 1024² PNG");
+    for &seed in &seeds {
+        let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        for (tag, cfg) in &configs {
+            let t0 = std::time::Instant::now();
+            let up = upscale_from_c1(
+                &state,
+                &iso_config,
+                &closures.oceanic_bathymetry,
+                &WorldSeed::new(seed),
+                cfg,
+            );
+            let dt = t0.elapsed();
+            save_heightmap01(
+                &up.heightmap,
+                &dir.join(format!("hd_seed{seed:05}_{tag}_1024.png")),
+            );
+            eprintln!("  seed {seed:>5} [{tag:>7}]: {}² HD in {:.2?}", up.heightmap.width, dt);
+        }
+    }
+    eprintln!("  out = {} (cost note: 1024² ~per above; 4096² ≈ 16× the FBM)", dir.display());
+}
+
 /// Render a normalised `[0,1]` heightmap (sea at 0.5) with the
 /// hypsometric palette, 1:1 (no upscale).
 fn save_heightmap01(h: &GridF32, path: &Path) {
