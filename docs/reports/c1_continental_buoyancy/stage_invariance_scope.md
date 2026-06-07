@@ -41,19 +41,41 @@ conversion `l_phys · grid` keeps the kernel unchanged). Result: a wedge of
 FIXED PHYSICAL width, sampled by more cells at higher resolution — the
 invariance condition.
 
-### Point b (LOCKED) — the physical width comes from DS physics, not a homemade number
+### Two objectives the original scope conflated — SEPARATE them
 
-`l_taper` is the critical-taper length: the horizontal distance over which
-a Davis-Suppe wedge thickens to `h_max`. Its physical value derives from
-the critical taper angle `α_c` (Davis-Suppe-Dahlen mechanics):
-`l_taper_phys ≈ h_max / tan(α_c)` (the run-out of a wedge of plateau
-thickness `h_max` at slope `tan α_c`). So the width is set by the wedge
-mechanics + the chosen non-dim `h_max`, anchored to literature `α_c`
-(typical critical tapers ~3–10°), NOT a "3 cells" guess. The closure-
-relations note applies: the length scale is a closure derived from the
-physics, sampled on as many cells as the resolution allows. (Calibration of
-`α_c` / `l_taper_phys` to a chosen non-dim domain size is the one number to
-fix with a literature anchor + the existing visual-review protocol.)
+A physics check on the code corrects the original Point b. `h_critical(d) =
+h_max·(1 − exp(−d/l_taper))` is an **empirical exponential** rise (the doc
+calls it "the classical Davis-Suppe wedge profile", but mechanically it is a
+plausible-shape exponential, NOT the critical-wedge mechanics of
+Davis-Suppe-Dahlen, where the taper = α_surface + β_décollement).
+`l_taper` is the exponential's characteristic length, NOT "the run-out at
+slope tan(α_c)".
+
+- **Objective 1 = Fix #1 = INVARIANCE (this issue).** The measured bug is a
+  UNIT bug: `l_taper/l_decay/max_distance` in CELLS → physical width ∝
+  1/grid. Converting cells → non-dim length (× grid at the call site) fixes
+  invariance **regardless of whether the formula is physically faithful**.
+- **Objective 2 = PHYSICAL FIDELITY of `h_critical` (NOT this issue).**
+  Replacing the empirical exponential with the true critical-wedge mechanics
+  is a fidelity question, deeper, and the code already defers fine fidelity
+  to "Phase 3 Lallemand".
+
+### Point b — REVISED — anchor the physical width on the CURRENT 64² value
+
+Do NOT derive `l_taper_phys` from `h_max / tan(α_c)`: that injects a number
+from the TRUE critical-taper relation into a formula that is NOT that
+physics → a homemade relation with a parameter dressed as physics (the exact
+closure-relations trap). Instead, the conservative, correct anchor:
+
+> take the CURRENT `l_taper = 4 cells` at 64² and convert to non-dim length
+> (`4/64 = 0.0625` of the domain); likewise `l_decay = 6/64`, `max_distance
+> = 30/64`. This PRESERVES today's already-calibrated 64² behaviour
+> (geography converges) while making it mesh-invariant (same physical width,
+> cells adapt with resolution).
+
+This is purely a change of UNITS, not of behaviour at 64². The α_c / true
+critical-wedge anchor belongs to Objective 2 (Phase 3 Lallemand), where the
+code itself says the physics will be refined.
 
 ## Fix #2 candidates — to confirm in scope, not presumed
 
@@ -101,10 +123,20 @@ every mesh. Fine detail may still vary (the upscale fills it legitimately).
   overflowing inward); the sculpting fix must be PHYSICAL (incising erosion,
   intracontinental rifting, distributed deformation), NOT FBM. Causal order,
   not just sequential.
+- **Objective 2 — physical fidelity of `h_critical` (REGISTERED follow-up,
+  Phase 3 Lallemand).** `h_critical(d) = h_max·(1−exp(−d/l_taper))` is an
+  empirical exponential, NOT the Davis-Suppe-Dahlen critical-wedge mechanics
+  (taper = α_surface + β_décollement). Refound it on the true wedge physics
+  (a closure relation, not the homemade exponential) at Phase 3 Lallemand,
+  where the code already defers fine fidelity. Out of this issue:
+  re-founding the formula would change behaviour → reopen the closure
+  calibration, which invariance explicitly must NOT do.
 
 ## Anti-patterns honoured
 
 Structural-convergence target (not bit-identity); upscale not wired;
-invariance vs sculpting kept distinct; root cause + physical anchor
-surfaced BEFORE code; the curtain coupling left as a post-Fix-#1 measurement
-rather than a presumption.
+invariance vs sculpting kept distinct; **invariance vs physical-fidelity
+kept distinct** (Fix #1 is a unit conversion, NOT a formula re-foundation —
+a pre-code physics check caught Point b dressing an α_c number into a
+non-critical-wedge formula); root cause surfaced BEFORE code; the curtain
+coupling left as a post-Fix-#1 measurement rather than a presumption.
