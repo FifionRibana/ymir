@@ -604,6 +604,141 @@ fn dilate(mask: &[bool], grid: usize, r: usize) -> Vec<bool> {
     cur
 }
 
+/// #147 — contrast counterfactual, variant (γ): FEASIBILITY of the
+/// scheme. Question: "can the curtain cede?" Advection-only + rigid
+/// no-flux (= the pure curtain, variant C r≈0.045) PLUS a local S̃
+/// band-smoothing across the continental/oceanic boundary (softens the
+/// sharp 1.0/0.2 contrast the upwind oscillates on). Reuses the REAL
+/// `run_advection_only` one step at a time (no churn, no reinvention),
+/// smoothing `state.s` between steps. NO closures (no EH) — this
+/// isolates "smoothing → curtain", proving scheme FEASIBILITY only,
+/// NOT the net system effect (EH already bounds the curtain to ~0.78
+/// in the full system).
+///
+/// Band width = fixed PHYSICAL 2.5 reference-cells (`2.5/64 · grid`),
+/// so the band is itself mesh-invariant. λ = smoothing strength per
+/// step toward the 4-neighbour mean (0 = off = pure variant C).
+///
+/// Verdict: λ lifts r→~1 ⇒ NOT a scheme floor (upwind CAN converge on
+/// a softened contrast) → proceed to (α) full-system net effect. λ
+/// leaves r ~0.045–0.2 ⇒ SCHEME floor → redefine the criterion
+/// (r~0.78) without touching the production loop.
+#[test]
+#[ignore]
+fn contrast_counterfactual_gamma() {
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 42u64;
+    let grids: [usize; 3] = [64, 128, 256];
+    let lambdas: [f64; 4] = [0.0, 0.25, 0.5, 1.0];
+    const BAND_PHYS_CELLS: f64 = 2.5; // physical band width at ref-64
+
+    eprintln!("#147 — contrast counterfactual (γ): advection-only + S̃ band-smoothing");
+    eprintln!("  isolates 'softened contrast → curtain'; proves SCHEME FEASIBILITY only (no EH)");
+    eprintln!("  band = {BAND_PHYS_CELLS} physical cells (2.5/64·grid); λ = smooth strength/step");
+    eprintln!("  {:>6} | {:>8} {:>8} {:>8}", "λ", "64²", "128²", "256²");
+
+    for &lambda in lambdas.iter() {
+        let mut ref64: Vec<f64> = Vec::new();
+        let mut row = String::new();
+        for &grid in grids.iter() {
+            let n_steps = 300 * grid / 64;
+            let band_cells = (BAND_PHYS_CELLS / 64.0 * grid as f64).round() as usize;
+            let mut state =
+                init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+            let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+
+            // Continental/oceanic boundary band (static under advection-only).
+            let mut cont = vec![false; grid * grid];
+            for j in 0..grid {
+                for i in 0..grid {
+                    cont[j * grid + i] =
+                        matches!(state.plate_type.get(i, j), PlateType::Continental);
+                }
+            }
+            let band = boundary_band(&cont, grid, band_cells);
+
+            let step_cfg = C1TimeLoopConfig {
+                rigid_continental_crust: true,
+                n_steps: 1,
+                dx: 1.0 / grid as f64,
+                dy: 1.0 / grid as f64,
+                iso_config: iso_config.clone(),
+                drainage_max_distance: 30,
+            };
+            let mut kin = kinematics.clone();
+            for _ in 0..n_steps {
+                // One real advection step (rigid no-flux), then smooth.
+                ymir_core::tectonics_c1::time_loop::run_advection_only(
+                    &mut state, &kin, &step_cfg, |_, _| {},
+                );
+                if lambda > 0.0 {
+                    smooth_band(&mut state.s, &band, grid, lambda);
+                }
+                let _ = &mut kin;
+            }
+
+            let s_ds = block_mean_to_64(&|i, j| state.s.get(i, j), grid);
+            let r = if grid == 64 {
+                ref64 = s_ds.clone();
+                1.0
+            } else {
+                pearson(&ref64, &s_ds)
+            };
+            row.push_str(&format!(" {r:>8.4}"));
+        }
+        eprintln!("  {lambda:>6.2} |{row}");
+    }
+    eprintln!();
+    eprintln!("  λ=0 row = pure curtain (variant C, expect ~0.045).");
+    eprintln!("  r→~1 with λ ⇒ scheme FEASIBLE (curtain cedes) → go (α). r stuck ⇒ scheme floor.");
+}
+
+/// Cells within `r` cells of a continental/oceanic boundary (the band
+/// the contrast lives on). A boundary cell is a `cont` cell 4-adjacent
+/// to non-`cont` or vice versa; dilated by `r`.
+fn boundary_band(cont: &[bool], grid: usize, r: usize) -> Vec<bool> {
+    let idx = |i: usize, j: usize| j * grid + i;
+    let mut seed = vec![false; grid * grid];
+    for j in 0..grid {
+        for i in 0..grid {
+            let c = cont[idx(i, j)];
+            for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni >= 0 && nj >= 0 && ni < grid as i32 && nj < grid as i32
+                    && cont[idx(ni as usize, nj as usize)] != c
+                {
+                    seed[idx(i, j)] = true;
+                }
+            }
+        }
+    }
+    dilate(&seed, grid, r)
+}
+
+/// Jacobi smoothing of `s` toward the in-bounds 4-neighbour mean, only
+/// on `band` cells, blend factor `lambda`.
+fn smooth_band(s: &mut Field2D, band: &[bool], grid: usize, lambda: f64) {
+    let old: Vec<f64> = (0..grid * grid).map(|k| s.get(k % grid, k / grid)).collect();
+    let idx = |i: usize, j: usize| j * grid + i;
+    for j in 0..grid {
+        for i in 0..grid {
+            if !band[idx(i, j)] {
+                continue;
+            }
+            let (mut sum, mut n) = (0.0, 0.0);
+            for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni >= 0 && nj >= 0 && ni < grid as i32 && nj < grid as i32 {
+                    sum += old[idx(ni as usize, nj as usize)];
+                    n += 1.0;
+                }
+            }
+            let mean = sum / n;
+            s.set(i, j, (1.0 - lambda) * old[idx(i, j)] + lambda * mean);
+        }
+    }
+}
+
 /// #147 — counterfactual ATTRIBUTION sweep. Decompose the residual
 /// mesh non-convergence (post-Fix-#1: S̃→64 r ~0.47, wedge% ∝1/grid)
 /// between the oceanic ACCRETION margin pile and the no-flux CURTAIN,
