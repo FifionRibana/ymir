@@ -491,6 +491,13 @@ pub fn run_with_closures<F>(
     let ny = state.ny();
     let n_cells = nx * ny;
 
+    // #147 mesh invariance — rescale the Davis-Suppe length scales
+    // from their reference-grid (64²) calibration to the actual grid,
+    // so the wedge has a FIXED PHYSICAL width independent of the mesh.
+    // Used for BOTH the upstream wedge-distance `max_distance` and the
+    // kernel, so they stay consistent. At nx==64 this is the identity.
+    let davis_suppe = closures.davis_suppe.scaled_to_grid(nx);
+
     let max_v = kinematics.max_velocity().max(1e-12);
     let dx_min = config.dx.min(config.dy);
     let dt = 0.5 * dx_min / max_v;
@@ -525,7 +532,7 @@ pub fn run_with_closures<F>(
         let wd = wedge_distance_intra_plate(
             &state.plate_id,
             &bi.upper_plate_mask,
-            closures.davis_suppe.max_distance,
+            davis_suppe.max_distance,
         );
         Some((bi, wd))
     } else {
@@ -561,7 +568,7 @@ pub fn run_with_closures<F>(
             let wd = wedge_distance_intra_plate(
                 &state.plate_id,
                 &bi.upper_plate_mask,
-                closures.davis_suppe.max_distance,
+                davis_suppe.max_distance,
             );
             Some((bi, wd))
         } else {
@@ -623,7 +630,7 @@ pub fn run_with_closures<F>(
             boundary,
             wedge_d,
             kinematics,
-            &closures.davis_suppe,
+            &davis_suppe,
             dt,
         );
 
