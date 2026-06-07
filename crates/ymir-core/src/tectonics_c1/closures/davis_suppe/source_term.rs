@@ -66,15 +66,52 @@ pub struct DavisSuppeParams {
     /// Plateau height for the wedge: `h_critical(∞) = h_max`.
     pub h_max: f64,
     /// Characteristic length over which `h_critical(d)` rises
-    /// from 0 to `h_max`. In **cells**, not non-dim length.
+    /// from 0 to `h_max`. In **cells at [`DS_REFERENCE_GRID`]** —
+    /// the runtime rescales it ∝ `nx` via [`DavisSuppeParams::scaled_to_grid`]
+    /// so the wedge has a FIXED PHYSICAL width independent of the
+    /// mesh (Issue #147 mesh invariance). At `nx == 64` the rescale
+    /// is the identity.
     pub l_taper: f64,
     /// Characteristic length over which the source-term decays
-    /// away from the boundary. In **cells**.
+    /// away from the boundary. In **cells at [`DS_REFERENCE_GRID`]**
+    /// (see `l_taper`; rescaled ∝ `nx` at runtime).
     pub l_decay: f64,
-    /// Outside this distance (cells), the source term is zero.
-    /// Must match the `max_distance` argument used when computing
-    /// the wedge distance field upstream.
+    /// Outside this distance the source term is zero. In **cells at
+    /// [`DS_REFERENCE_GRID`]** (rescaled ∝ `nx` at runtime). Must
+    /// match the `max_distance` argument used when computing the
+    /// wedge distance field upstream — both come from the SAME
+    /// [`DavisSuppeParams::scaled_to_grid`] result.
     pub max_distance: f64,
+}
+
+/// Reference resolution at which the Davis-Suppe length scales
+/// (`l_taper`, `l_decay`, `max_distance`) were calibrated. The
+/// runtime treats the stored values as *physical* widths expressed
+/// in reference-grid cells: a length `l` cells at `DS_REFERENCE_GRID`
+/// is the physical fraction `l / DS_REFERENCE_GRID` of the domain,
+/// re-sampled to `l · nx / DS_REFERENCE_GRID` cells at the actual
+/// grid `nx` (Issue #147). This makes the wedge width mesh-invariant
+/// while preserving the calibrated 64² behaviour bit-for-bit.
+pub const DS_REFERENCE_GRID: f64 = 64.0;
+
+impl DavisSuppeParams {
+    /// Rescale the cell-valued length parameters from
+    /// [`DS_REFERENCE_GRID`] to the actual grid `nx`, yielding a
+    /// FIXED PHYSICAL wedge width independent of the mesh (Issue
+    /// #147). `factor = nx / DS_REFERENCE_GRID`; at `nx == 64` this
+    /// is the identity (byte-identical to pre-#147). Non-length
+    /// fields (`coupling`, `h_max`, `enabled`) are unchanged — they
+    /// are intensive, not lengths.
+    #[must_use]
+    pub fn scaled_to_grid(&self, nx: usize) -> DavisSuppeParams {
+        let factor = nx as f64 / DS_REFERENCE_GRID;
+        DavisSuppeParams {
+            l_taper: self.l_taper * factor,
+            l_decay: self.l_decay * factor,
+            max_distance: self.max_distance * factor,
+            ..*self
+        }
+    }
 }
 
 impl Default for DavisSuppeParams {

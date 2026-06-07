@@ -604,6 +604,349 @@ fn dilate(mask: &[bool], grid: usize, r: usize) -> Vec<bool> {
     cur
 }
 
+/// #147 — contrast counterfactual, variant (γ): FEASIBILITY of the
+/// scheme. Question: "can the curtain cede?" Advection-only + rigid
+/// no-flux (= the pure curtain, variant C r≈0.045) PLUS a local S̃
+/// band-smoothing across the continental/oceanic boundary (softens the
+/// sharp 1.0/0.2 contrast the upwind oscillates on). Reuses the REAL
+/// `run_advection_only` one step at a time (no churn, no reinvention),
+/// smoothing `state.s` between steps. NO closures (no EH) — this
+/// isolates "smoothing → curtain", proving scheme FEASIBILITY only,
+/// NOT the net system effect (EH already bounds the curtain to ~0.78
+/// in the full system).
+///
+/// Band width = fixed PHYSICAL 2.5 reference-cells (`2.5/64 · grid`),
+/// so the band is itself mesh-invariant. λ = smoothing strength per
+/// step toward the 4-neighbour mean (0 = off = pure variant C).
+///
+/// Verdict: λ lifts r→~1 ⇒ NOT a scheme floor (upwind CAN converge on
+/// a softened contrast) → proceed to (α) full-system net effect. λ
+/// leaves r ~0.045–0.2 ⇒ SCHEME floor → redefine the criterion
+/// (r~0.78) without touching the production loop.
+#[test]
+#[ignore]
+fn contrast_counterfactual_gamma() {
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 42u64;
+    let grids: [usize; 3] = [64, 128, 256];
+    let lambdas: [f64; 4] = [0.0, 0.25, 0.5, 1.0];
+    const BAND_PHYS_CELLS: f64 = 2.5; // physical band width at ref-64
+
+    eprintln!("#147 — contrast counterfactual (γ): advection-only + S̃ band-smoothing");
+    eprintln!("  isolates 'softened contrast → curtain'; proves SCHEME FEASIBILITY only (no EH)");
+    eprintln!("  band = {BAND_PHYS_CELLS} physical cells (2.5/64·grid); λ = smooth strength/step");
+    eprintln!("  {:>6} | {:>8} {:>8} {:>8}", "λ", "64²", "128²", "256²");
+
+    for &lambda in lambdas.iter() {
+        let mut ref64: Vec<f64> = Vec::new();
+        let mut row = String::new();
+        for &grid in grids.iter() {
+            let n_steps = 300 * grid / 64;
+            let band_cells = (BAND_PHYS_CELLS / 64.0 * grid as f64).round() as usize;
+            let mut state =
+                init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+            let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+
+            // Continental/oceanic boundary band (static under advection-only).
+            let mut cont = vec![false; grid * grid];
+            for j in 0..grid {
+                for i in 0..grid {
+                    cont[j * grid + i] =
+                        matches!(state.plate_type.get(i, j), PlateType::Continental);
+                }
+            }
+            let band = boundary_band(&cont, grid, band_cells);
+
+            let step_cfg = C1TimeLoopConfig {
+                rigid_continental_crust: true,
+                n_steps: 1,
+                dx: 1.0 / grid as f64,
+                dy: 1.0 / grid as f64,
+                iso_config: iso_config.clone(),
+                drainage_max_distance: 30,
+            };
+            let mut kin = kinematics.clone();
+            for _ in 0..n_steps {
+                // One real advection step (rigid no-flux), then smooth.
+                ymir_core::tectonics_c1::time_loop::run_advection_only(
+                    &mut state, &kin, &step_cfg, |_, _| {},
+                );
+                if lambda > 0.0 {
+                    smooth_band(&mut state.s, &band, grid, lambda);
+                }
+                let _ = &mut kin;
+            }
+
+            let s_ds = block_mean_to_64(&|i, j| state.s.get(i, j), grid);
+            let r = if grid == 64 {
+                ref64 = s_ds.clone();
+                1.0
+            } else {
+                pearson(&ref64, &s_ds)
+            };
+            row.push_str(&format!(" {r:>8.4}"));
+        }
+        eprintln!("  {lambda:>6.2} |{row}");
+    }
+    eprintln!();
+    eprintln!("  λ=0 row = pure curtain (variant C, expect ~0.045).");
+    eprintln!("  r→~1 with λ ⇒ scheme FEASIBLE (curtain cedes) → go (α). r stuck ⇒ scheme floor.");
+}
+
+/// #147 (C) — visual characterisation of the advection-only
+/// decorrelation: is it BULK (interior differs across resolutions too →
+/// upwind transport mesh-dependent everywhere) or BOUNDARY-only
+/// (interior coherent, only the rim differs → not bulk). Dumps S̃ for
+/// advection-only (rigid no-flux, NO closures) at 64² and 256², scaled
+/// to the same ~512 px display so the SAME physical area is compared.
+#[test]
+#[ignore]
+fn advection_only_visual_64_256() {
+    let dir = output_dir().join("advection_only");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 42u64;
+    for &grid in &[64usize, 256] {
+        let n_steps = 300 * grid / 64;
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps,
+            dx: 1.0 / grid as f64,
+            dy: 1.0 / grid as f64,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
+        };
+        ymir_core::tectonics_c1::time_loop::run_advection_only(
+            &mut state, &kin, &config, |_, _| {},
+        );
+        let scale = (512 / grid).max(1) as u32;
+        save_s_scaled(&state.s, &dir.join(format!("advonly_grid{grid:04}_s.png")), scale);
+        // Low-range palette (S̃∈[0,0.6] → full ramp) so the OCEAN field
+        // (≈0.2 ± advected structure, saturated to flat blue in the
+        // [0,3] palette) is visible — that's where advection acts and
+        // the decorrelation must live.
+        save_s_lowrange(&state.s, &dir.join(format!("advonly_grid{grid:04}_s_ocean.png")), scale);
+    }
+    eprintln!("advection-only S̃ dumped to {}", dir.display());
+}
+
+/// #147 (C-bis) — is the bulk decorrelation in the ADVECTION or already
+/// in the INIT? Correlate S̃ at step 0 (no stepping at all) across
+/// resolutions, whole-field + continental-only + oceanic-only. If init
+/// S̃→64 r is ALREADY ~0.045, the non-convergence is the GRID-DEPENDENT
+/// INITIAL CONDITION (R7 per-cell heterogeneity), not the upwind scheme.
+#[test]
+#[ignore]
+fn init_convergence_check() {
+    let seed = 42u64;
+    let grids: [usize; 3] = [64, 128, 256];
+    eprintln!("#147 (C-bis) — INIT S̃ convergence (step 0, no advection, no closures)");
+    eprintln!("  {:>5} | {:>9} {:>9} {:>9}", "grid", "all r", "cont r", "ocean r");
+    let (mut ref_all, mut ref_c, mut ref_o): (Vec<f64>, Vec<f64>, Vec<f64>) =
+        (vec![], vec![], vec![]);
+    for &grid in grids.iter() {
+        let state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let cont: Vec<bool> = (0..grid * grid)
+            .map(|k| matches!(state.plate_type.get(k % grid, k / grid), PlateType::Continental))
+            .collect();
+        let all = block_mean_to_64(&|i, j| state.s.get(i, j), grid);
+        // Continental / oceanic masked fields (non-member cells → 0;
+        // correlation still dominated by the masked region's structure).
+        let cmask = block_mean_to_64(
+            &|i, j| if cont[j * grid + i] { state.s.get(i, j) } else { 0.0 },
+            grid,
+        );
+        let omask = block_mean_to_64(
+            &|i, j| if !cont[j * grid + i] { state.s.get(i, j) } else { 0.0 },
+            grid,
+        );
+        let (ra, rc, ro) = if grid == 64 {
+            ref_all = all.clone();
+            ref_c = cmask.clone();
+            ref_o = omask.clone();
+            (1.0, 1.0, 1.0)
+        } else {
+            (pearson(&ref_all, &all), pearson(&ref_c, &cmask), pearson(&ref_o, &omask))
+        };
+        eprintln!("  {:>4}² | {ra:>9.4} {rc:>9.4} {ro:>9.4}", grid);
+    }
+    eprintln!();
+    eprintln!("  init all r ~0.045 ⇒ NON-CONVERGENCE IS THE INIT (grid-dependent R7), not advection.");
+}
+
+/// Render S̃ with a stretched low range (`[0, 0.6]` → full ramp) so
+/// sub-continental (ocean) structure is visible. Grayscale-ish ramp.
+fn save_s_lowrange(s: &Field2D, path: &Path, scale: u32) {
+    let (nx, ny) = (s.nx(), s.ny());
+    let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(nx as u32 * scale, ny as u32 * scale);
+    for j in 0..ny {
+        for i in 0..nx {
+            let v = (s.get(i, j) / 0.6).clamp(0.0, 1.0) as f32;
+            let g = (v * 255.0) as u8;
+            put_block(&mut img, i, ny - 1 - j, scale, [g, g, g]);
+        }
+    }
+    img.save(path).expect("save low-range S̃ PNG");
+}
+
+/// Cells within `r` cells of a continental/oceanic boundary (the band
+/// the contrast lives on). A boundary cell is a `cont` cell 4-adjacent
+/// to non-`cont` or vice versa; dilated by `r`.
+fn boundary_band(cont: &[bool], grid: usize, r: usize) -> Vec<bool> {
+    let idx = |i: usize, j: usize| j * grid + i;
+    let mut seed = vec![false; grid * grid];
+    for j in 0..grid {
+        for i in 0..grid {
+            let c = cont[idx(i, j)];
+            for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni >= 0 && nj >= 0 && ni < grid as i32 && nj < grid as i32
+                    && cont[idx(ni as usize, nj as usize)] != c
+                {
+                    seed[idx(i, j)] = true;
+                }
+            }
+        }
+    }
+    dilate(&seed, grid, r)
+}
+
+/// Jacobi smoothing of `s` toward the in-bounds 4-neighbour mean, only
+/// on `band` cells, blend factor `lambda`.
+fn smooth_band(s: &mut Field2D, band: &[bool], grid: usize, lambda: f64) {
+    let old: Vec<f64> = (0..grid * grid).map(|k| s.get(k % grid, k / grid)).collect();
+    let idx = |i: usize, j: usize| j * grid + i;
+    for j in 0..grid {
+        for i in 0..grid {
+            if !band[idx(i, j)] {
+                continue;
+            }
+            let (mut sum, mut n) = (0.0, 0.0);
+            for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni >= 0 && nj >= 0 && ni < grid as i32 && nj < grid as i32 {
+                    sum += old[idx(ni as usize, nj as usize)];
+                    n += 1.0;
+                }
+            }
+            let mean = sum / n;
+            s.set(i, j, (1.0 - lambda) * old[idx(i, j)] + lambda * mean);
+        }
+    }
+}
+
+/// #147 — counterfactual ATTRIBUTION sweep. Decompose the residual
+/// mesh non-convergence (post-Fix-#1: S̃→64 r ~0.47, wedge% ∝1/grid)
+/// between the oceanic ACCRETION margin pile and the no-flux CURTAIN,
+/// using existing closure toggles only (NO fix code):
+///   A. full (all ON, post-Fix-#1) — reference.
+///   B. subduction+accretion OFF — isolate the accretion margin pile.
+///   C. all closures OFF (advection + rigid no-flux only) — isolate
+///      the curtain (the interior speckle is an advection+no-flux
+///      artefact on the sharp 1.0/0.2 contrast, present without any
+///      closure).
+/// Per (variant, grid): S̃→64 r (correlated to that VARIANT's OWN 64²
+/// reference) + wedge% (S̃>1.5). Reads the attribution off how each
+/// metric moves when a mechanism is removed; coupling shows up as one
+/// toggle moving the OTHER mechanism's metric.
+#[test]
+#[ignore]
+fn mesh_convergence_attribution() {
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 42u64;
+    let grids: [usize; 3] = [64, 128, 256];
+
+    struct Variant {
+        tag: &'static str,
+        mutate: fn(&mut C1Closures),
+    }
+    let variants = [
+        Variant { tag: "A full", mutate: |_| {} },
+        // Split B (#147 step 1) — which of the Track-D pair carries
+        // wedge%? Don't assume accretion (DS bet just lost); subduction
+        // promotion is per-cell too (#145 finger / ≥2 / Oceanic→Continental).
+        Variant { tag: "B1 sub_off", mutate: |c| c.subduction.enabled = false },
+        Variant { tag: "B2 acc_off", mutate: |c| c.accretion.enabled = false },
+        Variant {
+            tag: "B sub+acc_off",
+            mutate: |c| {
+                c.subduction.enabled = false;
+                c.accretion.enabled = false;
+            },
+        },
+        Variant {
+            tag: "C advection_only",
+            mutate: |c| {
+                c.davis_suppe.enabled = false;
+                c.equilibrium_height.enabled = false;
+                c.erosion.enabled = false;
+                c.oceanic_bathymetry.enabled = false;
+                c.subduction.enabled = false;
+                c.accretion.enabled = false;
+                c.rifting.enabled = false;
+            },
+        },
+    ];
+
+    eprintln!("#147 — counterfactual ATTRIBUTION sweep (seed {seed}, rigid, post-Fix-#1)");
+    eprintln!("  isolate accretion pile (B) vs curtain (C) in the residual non-convergence");
+    eprintln!(
+        "  {:<18} {:>5} | {:>8} {:>9}",
+        "variant", "grid", "wedge%", "S̃→64 r"
+    );
+
+    for v in &variants {
+        let mut ref64: Vec<f64> = Vec::new();
+        for &grid in grids.iter() {
+            let mut closures = C1Closures::default();
+            (v.mutate)(&mut closures);
+            let n_steps = 300 * grid / 64;
+            let mut state =
+                init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+            let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+            let config = C1TimeLoopConfig {
+                rigid_continental_crust: true,
+                n_steps,
+                dx: 1.0 / grid as f64,
+                dy: 1.0 / grid as f64,
+                iso_config: iso_config.clone(),
+                drainage_max_distance: 30,
+            };
+            run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
+
+            let wedge_n = (0..grid * grid)
+                .filter(|&k| {
+                    let (i, j) = (k % grid, k / grid);
+                    state.s.get(i, j) > 1.5
+                })
+                .count();
+            let wedge_pct = 100.0 * wedge_n as f64 / (grid * grid) as f64;
+
+            let s_ds = block_mean_to_64(&|i, j| state.s.get(i, j), grid);
+            let r = if grid == 64 {
+                ref64 = s_ds.clone();
+                1.0
+            } else {
+                pearson(&ref64, &s_ds)
+            };
+
+            eprintln!(
+                "  {:<18} {:>4}² | {:>8.2} {:>9.4}",
+                if grid == 64 { v.tag } else { "" },
+                grid,
+                wedge_pct,
+                r
+            );
+        }
+    }
+    eprintln!();
+    eprintln!("  Read: wedge% stabilises in B → accretion carries wedge%.");
+    eprintln!("        S̃ r climbs in C → curtain carries field decorrelation.");
+    eprintln!("        a toggle moving the OTHER metric → coupling (one fix may do both).");
+}
+
 /// BFS distance (in cells) to the coast over continental cells.
 /// Coast = continental cell 4-adjacent to a non-continental cell or
 /// grid edge. Non-continental cells get `usize::MAX`.
