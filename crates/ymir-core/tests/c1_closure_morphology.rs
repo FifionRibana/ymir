@@ -604,6 +604,111 @@ fn dilate(mask: &[bool], grid: usize, r: usize) -> Vec<bool> {
     cur
 }
 
+/// #147 — counterfactual ATTRIBUTION sweep. Decompose the residual
+/// mesh non-convergence (post-Fix-#1: S̃→64 r ~0.47, wedge% ∝1/grid)
+/// between the oceanic ACCRETION margin pile and the no-flux CURTAIN,
+/// using existing closure toggles only (NO fix code):
+///   A. full (all ON, post-Fix-#1) — reference.
+///   B. subduction+accretion OFF — isolate the accretion margin pile.
+///   C. all closures OFF (advection + rigid no-flux only) — isolate
+///      the curtain (the interior speckle is an advection+no-flux
+///      artefact on the sharp 1.0/0.2 contrast, present without any
+///      closure).
+/// Per (variant, grid): S̃→64 r (correlated to that VARIANT's OWN 64²
+/// reference) + wedge% (S̃>1.5). Reads the attribution off how each
+/// metric moves when a mechanism is removed; coupling shows up as one
+/// toggle moving the OTHER mechanism's metric.
+#[test]
+#[ignore]
+fn mesh_convergence_attribution() {
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 42u64;
+    let grids: [usize; 3] = [64, 128, 256];
+
+    struct Variant {
+        tag: &'static str,
+        mutate: fn(&mut C1Closures),
+    }
+    let variants = [
+        Variant { tag: "A full", mutate: |_| {} },
+        Variant {
+            tag: "B no_sub_acc",
+            mutate: |c| {
+                c.subduction.enabled = false;
+                c.accretion.enabled = false;
+            },
+        },
+        Variant {
+            tag: "C advection_only",
+            mutate: |c| {
+                c.davis_suppe.enabled = false;
+                c.equilibrium_height.enabled = false;
+                c.erosion.enabled = false;
+                c.oceanic_bathymetry.enabled = false;
+                c.subduction.enabled = false;
+                c.accretion.enabled = false;
+                c.rifting.enabled = false;
+            },
+        },
+    ];
+
+    eprintln!("#147 — counterfactual ATTRIBUTION sweep (seed {seed}, rigid, post-Fix-#1)");
+    eprintln!("  isolate accretion pile (B) vs curtain (C) in the residual non-convergence");
+    eprintln!(
+        "  {:<18} {:>5} | {:>8} {:>9}",
+        "variant", "grid", "wedge%", "S̃→64 r"
+    );
+
+    for v in &variants {
+        let mut ref64: Vec<f64> = Vec::new();
+        for &grid in grids.iter() {
+            let mut closures = C1Closures::default();
+            (v.mutate)(&mut closures);
+            let n_steps = 300 * grid / 64;
+            let mut state =
+                init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+            let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
+            let config = C1TimeLoopConfig {
+                rigid_continental_crust: true,
+                n_steps,
+                dx: 1.0 / grid as f64,
+                dy: 1.0 / grid as f64,
+                iso_config: iso_config.clone(),
+                drainage_max_distance: 30,
+            };
+            run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
+
+            let wedge_n = (0..grid * grid)
+                .filter(|&k| {
+                    let (i, j) = (k % grid, k / grid);
+                    state.s.get(i, j) > 1.5
+                })
+                .count();
+            let wedge_pct = 100.0 * wedge_n as f64 / (grid * grid) as f64;
+
+            let s_ds = block_mean_to_64(&|i, j| state.s.get(i, j), grid);
+            let r = if grid == 64 {
+                ref64 = s_ds.clone();
+                1.0
+            } else {
+                pearson(&ref64, &s_ds)
+            };
+
+            eprintln!(
+                "  {:<18} {:>4}² | {:>8.2} {:>9.4}",
+                if grid == 64 { v.tag } else { "" },
+                grid,
+                wedge_pct,
+                r
+            );
+        }
+    }
+    eprintln!();
+    eprintln!("  Read: wedge% stabilises in B → accretion carries wedge%.");
+    eprintln!("        S̃ r climbs in C → curtain carries field decorrelation.");
+    eprintln!("        a toggle moving the OTHER metric → coupling (one fix may do both).");
+}
+
 /// BFS distance (in cells) to the coast over continental cells.
 /// Coast = continental cell 4-adjacent to a non-continental cell or
 /// grid edge. Non-continental cells get `usize::MAX`.
