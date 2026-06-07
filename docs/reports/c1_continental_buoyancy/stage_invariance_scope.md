@@ -146,6 +146,36 @@ no-flux curtain — to attribute the residual S̃ r / wedge% BEFORE the next
 fix. Fix #1 stays (correct, byte-identical, no regression); one necessary
 piece, not the whole.
 
+## Counterfactual ATTRIBUTION (measured — `mesh_convergence_attribution`)
+
+Three variants × {64,128,256}, rigid, post-Fix-#1, each S̃ r vs its OWN 64²:
+
+```
+ variant            wedge% (64/128/256)   S̃→64 r (64/128/256)
+ A full             2.08 / 0.59 / 0.28    1.0 / 0.568 / 0.512
+ B sub+acc OFF      4.76 / 3.71 / 3.78    1.0 / 0.809 / 0.777
+ C advection-only   1.46 / 0.71 / 0.36    1.0 / 0.047 / 0.045
+```
+
+- **B stabilises wedge%** (3.71→3.78, NOT ∝1/grid) **and lifts S̃ r
+  0.51→0.78** → **subduction+accretion carry the wedge%∝1/grid collapse AND
+  ~0.27 of the field decorrelation.**
+- **C crashes S̃ r to ~0.045** → the **no-flux advection curtain is
+  intrinsically mesh-NON-convergent**; equilibrium-height (in A/B, not C)
+  is what BOUNDS it to the ~0.5–0.8 range. The curtain is the deep floor.
+- **Coupling CONFIRMED:** both at the rigid margin on the sharp contrast;
+  removing sub+acc moves BOTH metrics; EH bounds the curtain.
+
+**Next fix (dominant proven lever, measure-don't-bet):**
+1. **First confirm accretion-vs-subduction** within the Track-D pair (B
+   disabled both): split B → sub-only-off / acc-only-off, see which carries
+   wedge%. Don't assume accretion (we just saw an "evident" DS bet lose).
+2. Then **physical-width the per-cell margin deposition** (the proven Fix-#1
+   pattern) on the confirmed culprit → recovers wedge% convergence + ~0.27 r.
+3. Then the **curtain** (no-flux sharp-contrast treatment) for the final
+   push toward r→1 — the deeper, coupled floor. EH bounds it but does not
+   make it converge.
+
 ## Explicitly OUT of scope
 
 - **64² geography calibration (cap / n_cycles, Issue #141)** — NOT
