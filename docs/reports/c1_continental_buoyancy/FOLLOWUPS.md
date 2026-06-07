@@ -21,3 +21,12 @@ Out of #145 scope (scope kept healthy: core buoyancy fix proven/implemented/flip
 
 **Diagnosis (acquired):** seeds 99 & 1337 init with ZERO cratonic cells (R7 continental-clustering is stochastic). Continents still form (continental clustering), just no cratonic-core label → craton-area metric undefined for those seeds.
 **Lead:** if a guaranteed cratonic core is desired, constrain the R7 init to always seed ≥1 craton; else document as expected variability.
+
+## 5. Davis-Suppe `h_critical` is an empirical exponential, not critical-wedge mechanics (Phase 3 Lallemand)
+
+**Diagnosis (acquired):** `h_critical(d) = h_max·(1 − exp(−d/l_taper))` (davis_suppe/source_term.rs) is an empirical exponential rise of plausible shape — NOT the Davis-Suppe-Dahlen critical-wedge mechanics (taper = α_surface + β_décollement). `l_taper` is the exponential's characteristic length, not the run-out at slope tan(α_c). Surfaced during the mesh-invariance scope: anchoring `l_taper` on `h_max/tan(α_c)` would dress a true-physics number onto a non-physics formula (closure-relations trap) — so the invariance fix uses a UNIT conversion of the current 64² value instead, deferring fidelity here.
+**Lead:** refound `h_critical` on the true critical-wedge physics (a closure relation, not the homemade exponential) at **Phase 3 Lallemand**, where the code already defers fine fidelity ("Phase 3 Lallemand will refine to the true relative-velocity normal component"). Distinct from invariance: re-founding changes behaviour → reopens closure calibration, which the invariance chantier must not do.
+
+---
+
+**Note — the mesh-invariance chantier itself** (S̃ thickening non-convergent, DS+accretion per-cell length scales) is now its OWN issue/branch (`c1-mesh-invariance`), not a #145 follow-up. See `stage_mesh_convergence.md` + `stage_invariance_scope.md`. Item 5 above is its registered downstream (Objective 2).
