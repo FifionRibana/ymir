@@ -53,7 +53,8 @@ use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLo
 use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::seed::WorldSeed;
-use ymir_core::terrain::upscale::{upscale_with_fbm, FbmUpscaleConfig};
+use ymir_core::terrain::upscale::FbmUpscaleConfig;
+use ymir_core::tectonics_c1::production_upscale::upscale_from_c1;
 
 const GRID_SIZE: usize = 64;
 const N_STEPS: usize = 300;
@@ -713,7 +714,7 @@ fn contrast_counterfactual_gamma() {
 /// side-by-side PNGs (the judge).
 #[test]
 #[ignore]
-fn upscale_robustness_64_vs_256() {
+fn upscale_from_c1_structure_converges() {
     let dir = output_dir().join("upscale_robustness");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso_config = IsostasyConfig::c1_default();
@@ -721,11 +722,13 @@ fn upscale_robustness_64_vs_256() {
     const HALF: f32 = ALT_HALF; // fixed normalisation half-range (sea at 0.0 → 0.5)
     let cfg = FbmUpscaleConfig { target_size: 1024, ..Default::default() };
 
-    eprintln!("#147 FOLLOWUPS-#6 gating — upscale robustness to S̃ r~0.51 (seed {seed})");
+    eprintln!("#147 FOLLOWUPS-#6 contract regression — upscale_from_c1 structure convergence (seed {seed})");
     eprintln!("  structure-convergence (NOT identity); coarse normalised sea=0.5, target 1024²");
 
     let mut coarse_ds: Vec<Vec<f64>> = Vec::new(); // coarse-altitude →64
     let mut up_ds: Vec<Vec<f64>> = Vec::new();      // upscaled →64
+    let mut up_land: Vec<f64> = Vec::new();
+    let mut up_largest: Vec<f64> = Vec::new();
     let grids = [64usize, 256];
     for &grid in &grids {
         let n_steps = 300 * grid / 64;
@@ -750,7 +753,16 @@ fn upscale_robustness_64_vs_256() {
         }
         coarse_ds.push(block_mean_to_64(&|i, j| coarse.get(i as i32, j as i32) as f64, grid));
 
-        let up = upscale_with_fbm(&coarse, 0.5, &WorldSeed::new(seed), &cfg);
+        // Upscale through the CONTRACT path (upscale_from_c1 builds the
+        // laundered altitude internally — never raw S̃). This is what the
+        // regression guards: production uses exactly this entry.
+        let up = upscale_from_c1(
+            &state,
+            &iso_config,
+            &closures.oceanic_bathymetry,
+            &WorldSeed::new(seed),
+            &cfg,
+        );
         let up_grid = up.heightmap.width;
         up_ds.push(block_mean_to_64_dim(
             &|i, j| up.heightmap.get(i as i32, j as i32) as f64,
@@ -765,6 +777,8 @@ fn upscale_robustness_64_vs_256() {
             up_grid, 100.0 * m.area_fraction, m.perimeter_over_area, m.n_components,
             m.largest_component_fraction
         );
+        up_land.push(m.area_fraction);
+        up_largest.push(m.largest_component_fraction);
 
         save_heightmap01(&up.heightmap, &dir.join(format!("upscaled_from{grid:04}.png")));
     }
@@ -774,11 +788,28 @@ fn upscale_robustness_64_vs_256() {
     eprintln!();
     eprintln!("  coarse-altitude structure r (64 vs 256, →64) = {coarse_r:.4}");
     eprintln!("  UPSCALED structure r       (64 vs 256, →64) = {up_r:.4}");
-    eprintln!();
-    eprintln!("  ROBUST if upscaled structure r ≈ coarse r (upscale preserves the convergent");
-    eprintln!("  large structure; FBM detail differs) → scheme milestone DEFERRABLE.");
-    eprintln!("  DIVERGES if upscaled structure r << coarse r → scheme milestone NECESSARY.");
     eprintln!("  Visual: {}", dir.display());
+
+    // REGRESSION (Issue #147 #6 contract): the upscale, fed via
+    // `upscale_from_c1` (laundered altitude), must stay STRUCTURE-
+    // convergent across resolutions. If a future change feeds raw S̃
+    // instead, up_r collapses toward the S̃ field r (~0.51) and this
+    // fails — the precondition is TESTED, not merely documented.
+    assert!(
+        up_r >= 0.85,
+        "upscaled structure r {up_r:.3} < 0.85 — robustness contract broken \
+         (is the upscale reading raw S̃ instead of the laundered altitude? reopens #6)"
+    );
+    // Same world: one dominant landmass at BOTH resolutions, comparable
+    // land fraction (FBM detail differs; large structure must not).
+    assert!(
+        up_largest[0] > 0.8 && up_largest[1] > 0.8,
+        "upscaled largest-component {up_largest:?} — not one dominant landmass at both res"
+    );
+    assert!(
+        (up_land[0] - up_land[1]).abs() < 0.05,
+        "upscaled land fractions {up_land:?} diverge > 5 pts across resolution"
+    );
 }
 
 /// Block-mean an arbitrary square `grid` (multiple of 64) field to 64².

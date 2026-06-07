@@ -81,6 +81,7 @@ pub mod distance_field;
 pub mod init;
 pub mod init_r7;
 pub mod kinematics;
+pub mod production_upscale;
 pub mod state;
 pub mod stats;
 pub mod time_loop;
