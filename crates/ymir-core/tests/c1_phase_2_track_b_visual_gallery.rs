@@ -113,6 +113,7 @@ fn phase_2_track_b_visual_gallery() {
         ..C1Closures::default()
     };
     let config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
         dy: 1.0 / GRID_SIZE as f64,

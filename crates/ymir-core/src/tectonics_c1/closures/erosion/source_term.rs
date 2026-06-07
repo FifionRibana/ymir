@@ -91,7 +91,23 @@ pub fn apply_erosion_step(
             let erosion_rate = k * a.powf(m) * slope.powf(n_exp);
             let delta = erosion_rate * dt;
             let s_old = s.get(i, j);
-            let s_new = (s_old - delta).max(floor);
+            // Issue #145 — clean non-injecting removal. The legacy
+            // `max(floor, s_old - delta)` RAISED any cell already below
+            // `floor` up to `floor`, injecting mass (+247% standalone on
+            // rigid transport; the known Phase-1.4 non-conservation). Erode
+            // toward `floor` but NEVER above `s_old`. The ONLY behavioural
+            // change vs legacy is sub-floor cells (s_old < floor): legacy
+            // injected them up to floor; we leave them untouched. For
+            // s_old >= floor the result is identical (floor returned
+            // exactly, so no FP drift vs the old `max`). Conservative
+            // deposition (sediment routing) is a separate follow-up, NOT #145.
+            let s_new = if s_old <= floor {
+                s_old // already at/below floor — never inject
+            } else if delta >= s_old - floor {
+                floor // fully eroded to the floor (exact, no FP drift)
+            } else {
+                s_old - delta
+            };
             s.set(i, j, s_new);
         }
     }

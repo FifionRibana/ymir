@@ -122,6 +122,7 @@ fn altitude_responds_to_s_changes_per_step() {
     // Run 50 steps with full Phase 1.4 closure stack.
     let closures = phase_1_4_closures();
     let config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps: 50,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,
@@ -246,6 +247,7 @@ fn apply_post_tectonic_mutates_s_via_macro_redistribution() {
     let iso_config = IsostasyConfig::default();
     let closures = phase_1_4_closures();
     let config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps: 30,
         dx: 1.0 / GRID as f64,
         dy: 1.0 / GRID as f64,

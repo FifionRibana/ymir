@@ -51,6 +51,7 @@ fn c1_phase_1_1_advection_sanity() {
     let mut state = init_c1_state_phase_1_1(GRID_SIZE, SEED);
     let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     let config = C1TimeLoopConfig {
+        rigid_continental_crust: false,
         n_steps: N_STEPS,
         dx: 1.0 / GRID_SIZE as f64,
         dy: 1.0 / GRID_SIZE as f64,
