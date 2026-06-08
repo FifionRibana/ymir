@@ -97,6 +97,35 @@ C1 coarse + default params (the FBM feature-size change is source/param-
 independent); a v2-NATIVE before/after at 2048² would be the gold-standard
 confirmation before relying on v2 at non-1024 targets in production.
 
+## Border-feathering artefact (#151) — cause PINNED
+
+User report: the FBM "deforms the interior near the border" (directional
+combing at the coast); macro border + coast warp OK, mountains OK. Native-res
+crops (`export_fbm_2048_isolate` + `save_heightmap01_crop`, the artefact is
+invisible under Read's downscaling) confirm: a feathered/combed coastline,
+worst on the thin near-sea-level bridge/peninsula.
+
+Counterfactual pinning (2048², seed 1988, env-driven):
+- `max_anisotropy = 1` (isotropic): **still feathered** → NOT anisotropy.
+- `amplitude_slope_factor = 0` (no slope boost): **still feathered** → NOT the
+  slope-amplified amplitude.
+- `amplitude_base 0.08 → 0.02`: **feathering nearly gone** → the **base FBM
+  amplitude crossing the sea-level contour** is the cause.
+
+Mechanism: `final = base_height + amplitude·noise`; near the sea-level contour
+`±amplitude·noise` flips cells land↔ocean → a feathered coast. Worst where the
+coarse altitude is FLAT and near sea level (the bridge): no relief to anchor
+against, so the whole low region is FBM-dominated. Strong-relief interior
+(mountains) is barely perturbed → "mountains OK". `submarine_damping` only
+damps BELOW sea level, not the near-sea-level band on the land side.
+
+**Fix direction (NOT global amplitude — that flattens mountains too):** a
+LOCAL near-sea-level amplitude taper — `amplitude *= smoothstep(|base_height −
+sea_level|, 0, coastal_band)` → FBM ≈ 0 at the coast (no feathering), full
+inland (mountains preserved). The coast warp supplies the macro coast
+irregularity; this removes the micro-feathering. `coastal_band` ~0.05–0.1
+altitude, to scope/measure. (Surface W7 before coding.)
+
 ## Recommended production setting
 `coast_warp_strength ≈ 0.8`, `coast_warp_frequency = 0.5` for the C1 HD export.
 Kept OFF by default in `FbmUpscaleConfig` (byte-identical / v2-safe); the C1
