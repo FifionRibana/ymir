@@ -74,6 +74,29 @@ visibly finer. Upscale lib tests green (default-off / 1024-identical).
 corrected) → re-validate v2 visually before relying on it; no v2 test asserts
 exact pixels.
 
+## v2 re-validation (the FBM fix touches shared code)
+
+v2 consumers of `upscale_with_fbm`: v2 viz (target = actual heightmap dims,
+dropdown) and v2 workflow `phase_b` (`hd_grid_size`, **default 2048**,
+workflow/mod.rs:211). So v2's default target is **2048²**, not 1024² — the fix
+DOES change v2's default output (the pre-existing resolution-dependence bug
+affected v2 too). `export_fbm_2048_isolate`, seed 1988, default config (coast
+warp off, to isolate the FBM), rendered before vs after by swapping `upscale.rs`:
+
+- **before (pre-fix) @2048²:** interior FBM slightly finer/granular (2× the
+  1024 cycle count — the bug).
+- **after (fixed) @2048²:** interior slightly smoother/broader = the
+  1024-referenced feature size; **well-formed, well-calibrated continent**
+  (amplitude/aniso/gradient read correctly).
+
+**Verdict: v2 IMPROVED / NEUTRAL.** The fix gives resolution-consistency; at
+the 2048² default it is a subtle, benign coarsening (2×), NOT a calibration
+derangement. v2's calibration was not critically relying on the
+resolution-dependent fineness. Residual (non-blocking): this isolation used a
+C1 coarse + default params (the FBM feature-size change is source/param-
+independent); a v2-NATIVE before/after at 2048² would be the gold-standard
+confirmation before relying on v2 at non-1024 targets in production.
+
 ## Recommended production setting
 `coast_warp_strength ≈ 0.8`, `coast_warp_frequency = 0.5` for the C1 HD export.
 Kept OFF by default in `FbmUpscaleConfig` (byte-identical / v2-safe); the C1
