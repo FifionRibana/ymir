@@ -124,10 +124,21 @@ LOCAL near-sea-level amplitude taper — `amplitude *= smoothstep(|base_height �
 sea_level|, 0, coastal_band)` → FBM ≈ 0 at the coast (no feathering), full
 inland (mountains preserved). The coast warp supplies the macro coast
 irregularity; this removes the micro-feathering. `coastal_band` ~0.05–0.1
-altitude, to scope/measure. (Surface W7 before coding.)
+altitude.
+
+**FIX DONE + validated** (`coastal_amplitude_band`, opt-in, default 0.0 =
+byte-identical / v2-safe; upscale lib tests green). Native-res crops, band
+sweep {0, 0.06, 0.12}: **band 0.06 removes the coastal feathering** (coastline
+back to a clean contour) while the interior mountain texture is **fully
+preserved** (local taper — `smoothstep(|h−sea|,0,band)` = 1 beyond the band, so
+inland relief is untouched). band 0.12 also clean (slightly wider flat coastal
+strip). Recommend **~0.06** (gentler). Complements the coast warp: the warp
+bends the contour (macro irregularity), the taper stops the FBM
+micro-feathering at it.
 
 ## Recommended production setting
-`coast_warp_strength ≈ 0.8`, `coast_warp_frequency = 0.5` for the C1 HD export.
-Kept OFF by default in `FbmUpscaleConfig` (byte-identical / v2-safe); the C1
-production HD path opts in. Wiring the default into the C1 production upscale
-config is a product decision (deferred with the rest of the HD/UI wiring).
+`coast_warp_strength ≈ 0.8`, `coast_warp_frequency = 0.5`,
+`coastal_amplitude_band ≈ 0.06` for the C1 HD export. All kept OFF/0 by default
+in `FbmUpscaleConfig` (byte-identical / v2-safe); the C1 production HD path opts
+in. Wiring these defaults into the C1 production upscale config is a product
+decision (deferred with the rest of the HD/UI wiring).
