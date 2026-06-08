@@ -138,7 +138,21 @@ micro-feathering at it.
 
 ## Recommended production setting
 `coast_warp_strength ≈ 0.8`, `coast_warp_frequency = 0.5`,
-`coastal_amplitude_band ≈ 0.06` for the C1 HD export. All kept OFF/0 by default
-in `FbmUpscaleConfig` (byte-identical / v2-safe); the C1 production HD path opts
-in. Wiring these defaults into the C1 production upscale config is a product
-decision (deferred with the rest of the HD/UI wiring).
+`coastal_amplitude_band ≈ 0.06`, `amplitude_base ≈ 0.16`,
+**`submarine_damping = 0.0`** for the C1 HD export.
+
+The last one fixes a separate reported defect: with the default
+`submarine_damping = 0.3` the FBM is still visible in the OCEAN (~0.3× amplitude
+→ mottled bathymetry / contour ripples — "on voit le FBM, on ne devrait pas").
+Counterfactual: `0.3 → 0.0` removes it entirely (smooth bathymetry gradient;
+land/mountains unchanged — FBM above sea level is untouched). So set
+`submarine_damping = 0.0` for C1 HD (no underwater FBM). Combined production
+render (7 seeds: 2/42/99/1337/1988/2026/4138) = credible continents, irregular
+coasts, mountains w/ snow peaks, **smooth oceans**. (Residual: F3 ocean
+age-discontinuity lines on a few seeds — separate registered follow-up, not the
+upscale.)
+
+All these are existing/`FbmUpscaleConfig` fields kept OFF/default
+(byte-identical / v2-safe); the C1 production HD path opts in. Wiring these
+defaults into the C1 production upscale config is a product decision (deferred
+with the rest of the HD/UI wiring).

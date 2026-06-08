@@ -832,9 +832,10 @@ fn export_hd_production() {
         coast_warp_frequency: 0.5,
         coastal_amplitude_band: 0.06,
         amplitude_base: 0.16,
+        submarine_damping: 0.0, // no FBM in the ocean (smooth bathymetry)
         ..Default::default()
     };
-    eprintln!("#151 HD production export — warp 0.8 + band 0.06 + amp 0.16, 2048²");
+    eprintln!("#151 HD production export — warp 0.8 + band 0.06 + amp 0.16 + subdamp 0.0, 2048²");
     for &seed in &seeds {
         let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
@@ -933,9 +934,11 @@ fn export_fbm_2048_isolate() {
     let sfac = std::env::var("FBM_SLOPEFAC").ok().and_then(|s| s.parse().ok()).unwrap_or(3.0);
     let amp = std::env::var("FBM_AMP").ok().and_then(|s| s.parse().ok()).unwrap_or(0.08);
     let band = std::env::var("FBM_BAND").ok().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let subdamp = std::env::var("FBM_SUBDAMP").ok().and_then(|s| s.parse().ok()).unwrap_or(0.3);
     let cfg = FbmUpscaleConfig {
         target_size: 2048, max_anisotropy: aniso, amplitude_slope_factor: sfac,
-        amplitude_base: amp, coastal_amplitude_band: band, ..Default::default()
+        amplitude_base: amp, coastal_amplitude_band: band, submarine_damping: subdamp,
+        ..Default::default()
     };
     let up = upscale_from_c1(
         &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
