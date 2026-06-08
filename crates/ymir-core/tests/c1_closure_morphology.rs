@@ -54,7 +54,8 @@ use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::seed::WorldSeed;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
-use ymir_core::tectonics_c1::production_upscale::upscale_from_c1;
+use ymir_core::tectonics_c1::production_upscale::{c1_production_altitude, upscale_from_c1};
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::SteinSteinParams;
 
 const GRID_SIZE: usize = 64;
 const N_STEPS: usize = 300;
@@ -916,6 +917,83 @@ fn coast_palette_check() {
             &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &c2,
         );
         save_heightmap01(&u2.heightmap, &dir.join(format!("full_band_{:03}.png", (band * 100.0) as i32)));
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// F3 PIN — the dark dotted lines in the OCEAN. Render, at the COARSE
+/// 64² resolution (pre-upscale), the production altitude (Stein-Stein
+/// bathymetry), the age field, and the plate boundaries, to test:
+/// (1) are the dark lines already in the coarse altitude (→ Stein-Stein,
+/// not the upscale)? (2) do they coincide with age discontinuities /
+/// plate boundaries (→ age-jump → depth-jump)?
+#[test]
+#[ignore]
+fn pin_f3_ocean_lines() {
+    let dir = output_dir().join("f3_pin");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    for &seed in &[4138u64, 2] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / grid as f64, dy: 1.0 / grid as f64,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        // (1) Coarse production altitude (Stein-Stein), 64² scaled ×8.
+        let alt = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
+        save_altitude_scaled(&alt, &dir.join(format!("f3_seed{seed:05}_altitude.png")), 8);
+
+        // Counterfactual: 3×3 MEDIAN-filtered age → despikes the
+        // pile-up cells, then Stein-Stein. Do the dark dots vanish?
+        let mut age_med = state.age.clone();
+        for j in 0..grid { for i in 0..grid {
+            let mut nb: Vec<f64> = Vec::with_capacity(9);
+            for dj in -1i32..=1 { for di in -1i32..=1 {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni>=0 && nj>=0 && (ni as usize)<grid && (nj as usize)<grid {
+                    nb.push(state.age.get(ni as usize, nj as usize));
+                }
+            }}
+            nb.sort_by(|a,b| a.partial_cmp(b).unwrap());
+            age_med.set(i, j, nb[nb.len()/2]);
+        }}
+        let alt_med = c1_production_altitude(&state.s, &age_med, &state.plate_type, &iso_config, &ss);
+        save_altitude_scaled(&alt_med, &dir.join(format!("f3_seed{seed:05}_altitude_median.png")), 8);
+
+        // (2a) Age field, grayscale normalised to its range.
+        let mut amin = f64::INFINITY; let mut amax = f64::NEG_INFINITY;
+        for &v in state.age.data() { amin = amin.min(v); amax = amax.max(v); }
+        let arange = (amax - amin).max(1e-9);
+        let mut aimg = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
+        for j in 0..grid { for i in 0..grid {
+            let g = (((state.age.get(i, j) - amin) / arange) * 255.0) as u8;
+            put_block(&mut aimg, i, grid - 1 - j, 8, [g, g, g]);
+        }}
+        aimg.save(dir.join(format!("f3_seed{seed:05}_age.png"))).unwrap();
+
+        // (2b) Plate boundaries (cell 4-adjacent to a different plate_id) in red over ocean.
+        let idx = |i: usize, j: usize| state.plate_id.get(i, j);
+        let mut bimg = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
+        for j in 0..grid { for i in 0..grid {
+            let mut bnd = false;
+            for (di, dj) in [(-1i32,0i32),(1,0),(0,-1),(0,1)] {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni>=0 && nj>=0 && (ni as usize)<grid && (nj as usize)<grid
+                    && idx(ni as usize, nj as usize) != idx(i, j) { bnd = true; }
+            }
+            let oceanic = matches!(state.plate_type.get(i,j), PlateType::Oceanic);
+            let col = if bnd { [255,0,0] } else if oceanic { [40,80,160] } else { [60,130,60] };
+            put_block(&mut bimg, i, grid - 1 - j, 8, col);
+        }}
+        bimg.save(dir.join(format!("f3_seed{seed:05}_bounds.png"))).unwrap();
+        eprintln!("  seed {seed}: age range [{amin:.3},{amax:.3}]");
     }
     eprintln!("  out = {}", dir.display());
 }
