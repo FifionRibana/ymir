@@ -817,6 +817,40 @@ fn block_mean_to_64_dim(get: &dyn Fn(usize, usize) -> f64, grid: usize) -> Vec<f
     block_mean_to_64(get, grid)
 }
 
+/// #151 v2 re-validation — render the upscale at v2's DEFAULT workflow
+/// target (2048²) with DEFAULT config (no coast warp) to isolate the FBM
+/// frequency change. Run before vs after the FBM recalibration (swap
+/// upscale.rs) to judge v2's calibration at its real target.
+#[test]
+#[ignore]
+fn export_fbm_2048_isolate() {
+    let dir = output_dir().join("fbm_2048");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 1988u64;
+    let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let closures = C1Closures::default();
+    let config = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: 300,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso_config.clone(),
+        drainage_max_distance: 30,
+    };
+    run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+    // Default config (coast_warp off) at v2's default target 2048².
+    let cfg = FbmUpscaleConfig { target_size: 2048, ..Default::default() };
+    let up = upscale_from_c1(
+        &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+    );
+    // Filename tag from an env var so before/after runs don't clobber.
+    let tag = std::env::var("FBM_TAG").unwrap_or_else(|_| "x".into());
+    save_heightmap01(&up.heightmap, &dir.join(format!("fbm2048_{tag}.png")));
+    eprintln!("  fbm2048_{tag}: {}²", up.heightmap.width);
+}
+
 /// #151 coastline warp at the TARGET resolution (4096²) — see the
 /// product the eye will actually judge. Seed 1988, off / 0.8 / 1.2 coast
 /// warp (isolated), plus 0.8 + raised amplitude (full-product look).
