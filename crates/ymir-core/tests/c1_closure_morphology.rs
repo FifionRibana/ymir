@@ -946,6 +946,10 @@ fn pin_f3_ocean_lines() {
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
 
+        let mut amin = f64::INFINITY; let mut amax = f64::NEG_INFINITY;
+        for &v in state.age.data() { amin = amin.min(v); amax = amax.max(v); }
+        let arange = (amax - amin).max(1e-9);
+
         // (1) Coarse production altitude (Stein-Stein), 64² scaled ×8.
         let alt = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
         save_altitude_scaled(&alt, &dir.join(format!("f3_seed{seed:05}_altitude.png")), 8);
@@ -967,10 +971,16 @@ fn pin_f3_ocean_lines() {
         let alt_med = c1_production_altitude(&state.s, &age_med, &state.plate_type, &iso_config, &ss);
         save_altitude_scaled(&alt_med, &dir.join(format!("f3_seed{seed:05}_altitude_median.png")), 8);
 
+        // Despiked age, SAME normalisation as the before-age, to verify the
+        // median kills ONLY spikes and preserves any legitimate age gradient.
+        let mut aimg2 = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
+        for j in 0..grid { for i in 0..grid {
+            let g = (((age_med.get(i, j) - amin) / arange).clamp(0.0, 1.0) * 255.0) as u8;
+            put_block(&mut aimg2, i, grid - 1 - j, 8, [g, g, g]);
+        }}
+        aimg2.save(dir.join(format!("f3_seed{seed:05}_age_median.png"))).unwrap();
+
         // (2a) Age field, grayscale normalised to its range.
-        let mut amin = f64::INFINITY; let mut amax = f64::NEG_INFINITY;
-        for &v in state.age.data() { amin = amin.min(v); amax = amax.max(v); }
-        let arange = (amax - amin).max(1e-9);
         let mut aimg = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
         for j in 0..grid { for i in 0..grid {
             let g = (((state.age.get(i, j) - amin) / arange) * 255.0) as u8;

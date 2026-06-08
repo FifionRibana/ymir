@@ -62,8 +62,46 @@ pub fn c1_production_altitude(
 ) -> GridF32 {
     let isostasy = compute_isostasy(s, iso);
     let mut altitude = isostasy.heightmap;
-    apply_stein_stein_bathymetry(&mut altitude, age, plate_type, ss);
+    // #151 F3 fix — despike the age before Stein-Stein. The flux-form age
+    // advection piles age up at convergent plate boundaries (sparse cells
+    // with ~1000× the background age — the registered density-vs-Lagrangian
+    // artefact). Stein-Stein turns those age spikes into the deepest cells,
+    // rendering as dark dotted lines in the ocean (F3). A 3×3 median kills
+    // the sparse spikes while preserving smooth age structure (verified: no
+    // legitimate age gradient is flattened — the C1 model has none without
+    // seafloor spreading). This is a RENDER-side band-aid: Stein-Stein is the
+    // only consumer of age on the altitude path, so this fixes F3 fully for
+    // both the viz render and the upscale. The internal advected age field is
+    // unchanged (the root cause — age advection — is a deferred deep fix).
+    let age_despiked = median_3x3(age);
+    apply_stein_stein_bathymetry(&mut altitude, &age_despiked, plate_type, ss);
     altitude
+}
+
+/// 3×3 median filter (clamped edges). Removes sparse spikes (the age
+/// pile-up cells) while preserving smooth structure.
+fn median_3x3(field: &Field2D) -> Field2D {
+    let nx = field.nx();
+    let ny = field.ny();
+    let mut out = field.clone();
+    let mut nb: Vec<f64> = Vec::with_capacity(9);
+    for j in 0..ny {
+        for i in 0..nx {
+            nb.clear();
+            for dj in -1i32..=1 {
+                for di in -1i32..=1 {
+                    let ni = i as i32 + di;
+                    let nj = j as i32 + dj;
+                    if ni >= 0 && nj >= 0 && (ni as usize) < nx && (nj as usize) < ny {
+                        nb.push(field.get(ni as usize, nj as usize));
+                    }
+                }
+            }
+            nb.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            out.set(i, j, nb[nb.len() / 2]);
+        }
+    }
+    out
 }
 
 /// Fixed altitude→`[0,1]` normalisation half-range (sea level 0.0 maps
