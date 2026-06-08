@@ -138,8 +138,22 @@ micro-feathering at it.
 
 ## Recommended production setting
 `coast_warp_strength ≈ 0.8`, `coast_warp_frequency = 0.5`,
-`coastal_amplitude_band ≈ 0.20`, `amplitude_base ≈ 0.16`,
+`coastal_amplitude_band ≈ 0.30`, `amplitude_base ≈ 0.16`,
 **`submarine_damping = 0.0`** for the C1 HD export.
+
+(`coastal_amplitude_band` 0.20 → **0.30**: a 3rd reported pass showed faint
+reddish contour lines on the near-coast land. **Decisive attribution** — a
+HILLSHADE of the region shows the actual relief there is GENTLE/smooth (no
+sharp structures); the lines are the hypsometric TEST PALETTE's hard green→brown
+colour boundary (at normalised height 0.75) being wiggled by FBM that resumes at
+the band edge (0.70 for band 0.20) — i.e. a RENDERING artefact of the test
+palette, not a terrain defect (the heightmap data is good). Two consequences:
+(1) the production renderer/colormap determines whether this shows at all; (2)
+for clean test renders AND a sensible model, band 0.30 puts the FBM onset at
+height 0.80 — ABOVE the green/brown boundary — so all green lowland is smooth
+and FBM lives only in the brown highland. Verified: green coastal margins clean
+on seeds 2/42, mountains (seed 2 high-relief) fully preserved. So "FBM ∝
+elevation: smooth plains, rugged mountains" with FBM confined to highland.)
 
 (`coastal_amplitude_band` revised 0.06 → **0.20**: a second reported defect —
 faint FBM contour ripples on the LOW land NEAR the coast (confirmed real height,

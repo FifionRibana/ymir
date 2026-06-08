@@ -834,6 +834,34 @@ fn save_gray01_crop(h: &GridF32, x0: usize, y0: usize, size: usize, path: &Path)
     img.save(path).expect("save gray crop PNG");
 }
 
+/// Hillshade crop (Lambert, light from NW) — shows REAL relief without
+/// any palette colour-band artefact. Flat land → uniform mid-gray;
+/// FBM ripples → visible shading. dz exaggerated for visibility.
+fn save_hillshade_crop(h: &GridF32, x0: usize, y0: usize, size: usize, path: &Path) {
+    let w = (x0 + size).min(h.width) - x0;
+    let ht = (y0 + size).min(h.height) - y0;
+    let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(w as u32, ht as u32);
+    let z = 60.0_f64; // vertical exaggeration
+    let (lx, ly, lz) = {
+        let (a, b, c) = (1.0_f64, 1.0, 2.0);
+        let n = (a * a + b * b + c * c).sqrt();
+        (a / n, b / n, c / n)
+    };
+    for jj in 0..ht {
+        for ii in 0..w {
+            let gx = (x0 + ii) as i32;
+            let gy = (y0 + jj) as i32;
+            let dzdx = (h.get(gx + 1, gy) - h.get(gx - 1, gy)) as f64 * z;
+            let dzdy = (h.get(gx, gy + 1) - h.get(gx, gy - 1)) as f64 * z;
+            let nn = (dzdx * dzdx + dzdy * dzdy + 1.0).sqrt();
+            let shade = ((-dzdx * lx - dzdy * ly + lz) / nn).clamp(0.0, 1.0);
+            let g = (shade * 255.0) as u8;
+            img.put_pixel(ii as u32, (ht - 1 - jj) as u32, Rgb([g, g, g]));
+        }
+    }
+    img.save(path).expect("save hillshade crop PNG");
+}
+
 /// #151 coastal contour-line PIN — are the faint lines near the coast on
 /// land real FBM height, or hypsometric-PALETTE banding? Render the same
 /// coastal crop in hypsometric vs continuous grayscale. If the lines
@@ -844,7 +872,7 @@ fn coast_palette_check() {
     let dir = output_dir().join("coast_palette");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso_config = IsostasyConfig::c1_default();
-    let seed = 1988u64;
+    let seed = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1988u64);
     let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     let closures = C1Closures::default();
@@ -854,19 +882,23 @@ fn coast_palette_check() {
         iso_config: iso_config.clone(), drainage_max_distance: 30,
     };
     run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+    let band = std::env::var("FBM_BAND").ok().and_then(|s| s.parse().ok()).unwrap_or(0.20);
     let cfg = FbmUpscaleConfig {
         target_size: 2048, coast_warp_strength: 0.8, coast_warp_frequency: 0.5,
-        coastal_amplitude_band: 0.06, amplitude_base: 0.16, submarine_damping: 0.0,
+        coastal_amplitude_band: band, amplitude_base: 0.16, submarine_damping: 0.0,
         ..Default::default()
     };
     let up = upscale_from_c1(
         &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
     );
-    // Current config: hypso + gray crops (palette-vs-real check).
+    // 3-way render of coastal crops: hypso (user's view) vs gray (real
+    // height) vs hillshade (relief, no palette bands).
     for (cname, x0, y0) in [("a", 900usize, 1050usize), ("b", 1150, 850), ("c", 600, 1500)] {
         save_heightmap01_crop(&up.heightmap, x0, y0, 460, &dir.join(format!("coast_{cname}_hypso.png")));
         save_gray01_crop(&up.heightmap, x0, y0, 460, &dir.join(format!("coast_{cname}_gray.png")));
+        save_hillshade_crop(&up.heightmap, x0, y0, 460, &dir.join(format!("coast_{cname}_hill.png")));
     }
+    save_heightmap01(&up.heightmap, &dir.join("full_hypso.png"));
     // Band-width sweep (grayscale crop "a") — does a WIDER coastal taper
     // suppress the near-coast FBM ripples?
     for band in [0.06_f64, 0.15, 0.30] {
@@ -901,12 +933,12 @@ fn export_hd_production() {
         target_size: 2048,
         coast_warp_strength: 0.8,
         coast_warp_frequency: 0.5,
-        coastal_amplitude_band: 0.20, // smooth coastal plains; FBM only inland (mountains)
+        coastal_amplitude_band: 0.30, // FBM only in highland; all lowland smooth
         amplitude_base: 0.16,
         submarine_damping: 0.0, // no FBM in the ocean (smooth bathymetry)
         ..Default::default()
     };
-    eprintln!("#151 HD production export — warp 0.8 + band 0.20 + amp 0.16 + subdamp 0.0, 2048²");
+    eprintln!("#151 HD production export — warp 0.8 + band 0.30 + amp 0.16 + subdamp 0.0, 2048²");
     for &seed in &seeds {
         let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
