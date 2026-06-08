@@ -920,6 +920,43 @@ fn coast_palette_check() {
     eprintln!("  out = {}", dir.display());
 }
 
+/// #151 coast-warp strength sweep — with FBM removed from the coast
+/// (band 0.30) the warp carries the coastline irregularity alone, so it
+/// reads lighter; sweep stronger warp to restore an irregular coast
+/// (watch for fragmentation). Production-ish config, 2048².
+#[test]
+#[ignore]
+fn export_warp_sweep() {
+    let dir = output_dir().join("warp_sweep");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    for &seed in &[1988u64, 2] {
+        let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        for warp in [0.8_f64, 1.2, 1.6, 2.0] {
+            let cfg = FbmUpscaleConfig {
+                target_size: 2048, coast_warp_strength: warp, coast_warp_frequency: 0.5,
+                coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+                ..Default::default()
+            };
+            let up = upscale_from_c1(
+                &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+            );
+            save_heightmap01(&up.heightmap,
+                &dir.join(format!("warp_seed{seed:05}_{:02}.png", (warp * 10.0) as i32)));
+        }
+        eprintln!("  seed {seed} done");
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
 /// #151 PRODUCTION combined export — coast warp + coastal amplitude taper
 /// + mountain amplitude, the full recommended HD config, on the seed set.
 #[test]
@@ -931,7 +968,7 @@ fn export_hd_production() {
     let seeds: [u64; 7] = [2, 42, 99, 1337, 1988, 2026, 4138];
     let cfg = FbmUpscaleConfig {
         target_size: 2048,
-        coast_warp_strength: 0.8,
+        coast_warp_strength: 1.5, // stronger: FBM no longer roughens the coast (band 0.30)
         coast_warp_frequency: 0.5,
         coastal_amplitude_band: 0.30, // FBM only in highland; all lowland smooth
         amplitude_base: 0.16,

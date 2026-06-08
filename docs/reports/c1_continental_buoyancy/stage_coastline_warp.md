@@ -137,9 +137,18 @@ bends the contour (macro irregularity), the taper stops the FBM
 micro-feathering at it.
 
 ## Recommended production setting
-`coast_warp_strength ≈ 0.8`, `coast_warp_frequency = 0.5`,
+`coast_warp_strength ≈ 1.5`, `coast_warp_frequency = 0.5`,
 `coastal_amplitude_band ≈ 0.30`, `amplitude_base ≈ 0.16`,
 **`submarine_damping = 0.0`** for the C1 HD export.
+
+(`coast_warp_strength` 0.8 → **1.5**: with FBM removed from the coast (band 0.30),
+the warp carries the coastline irregularity ALONE → 0.8 read too light/smooth.
+Sweep {0.8, 1.2, 1.6, 2.0}: 1.2–1.6 give a natural irregular coast, 2.0 gets
+busy/spiky; **1.5** chosen. Verified across geometries — seeds 1988, 2
+(high-relief), 42 (modest), 4138 (islands): irregular natural coasts, NO
+fragmentation, smooth coastal plains, rugged mountains preserved. The two coast
+levers are now correctly balanced: the warp does the macro irregularity, the
+band keeps the plains smooth.)
 
 (`coastal_amplitude_band` 0.20 → **0.30**: a 3rd reported pass showed faint
 reddish contour lines on the near-coast land. **Decisive attribution** — a
