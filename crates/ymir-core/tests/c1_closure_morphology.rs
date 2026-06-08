@@ -817,6 +817,56 @@ fn block_mean_to_64_dim(get: &dyn Fn(usize, usize) -> f64, grid: usize) -> Vec<f
     block_mean_to_64(get, grid)
 }
 
+/// #151 coastline-warp variants — does displacing the coarse-altitude
+/// sampling (`coast_warp_strength`, in coarse cells) break the blocky
+/// 64² coastline (STEP-1 fix)? Eye-judged: credible meander vs
+/// procedural-fake regular ripples. All via the contract `upscale_from_c1`.
+#[test]
+#[ignore]
+fn export_coast_warp() {
+    let dir = output_dir().join("coast_warp");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seeds: [u64; 2] = [42, 1988];
+    // Isolate the coast warp: amplitude/damping at defaults; vary only
+    // coast_warp_strength (coarse cells). 0.0 = baseline (blocky).
+    let strengths: [(&str, f64); 4] = [
+        ("off", 0.0),
+        ("c05", 0.5),
+        ("c08", 0.8),
+        ("c12", 1.2),
+    ];
+    eprintln!("#151 coastline warp — seeds {seeds:?}, coast_warp_strength sweep (coarse cells)");
+    for &seed in &seeds {
+        let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        for (tag, strength) in &strengths {
+            let cfg = FbmUpscaleConfig {
+                target_size: 1024,
+                coast_warp_strength: *strength,
+                ..Default::default()
+            };
+            let up = upscale_from_c1(
+                &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+            );
+            save_heightmap01(&up.heightmap, &dir.join(format!("coast_seed{seed:05}_{tag}.png")));
+        }
+        eprintln!("  seed {seed} done");
+    }
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  EYE: coast meanders credibly (real-coast irregular) vs procedural-fake ripples?");
+}
+
 /// Quick HD EXPORT — see the final product (no UI). Runs C1 production
 /// (64², rigid, full closures) then `upscale_from_c1` (THE contract
 /// function — laundered altitude, NOT raw S̃) → 1024² HD heightmap PNG,
