@@ -138,8 +138,18 @@ micro-feathering at it.
 
 ## Recommended production setting
 `coast_warp_strength ≈ 0.8`, `coast_warp_frequency = 0.5`,
-`coastal_amplitude_band ≈ 0.06`, `amplitude_base ≈ 0.16`,
+`coastal_amplitude_band ≈ 0.20`, `amplitude_base ≈ 0.16`,
 **`submarine_damping = 0.0`** for the C1 HD export.
+
+(`coastal_amplitude_band` revised 0.06 → **0.20**: a second reported defect —
+faint FBM contour ripples on the LOW land NEAR the coast (confirmed real height,
+not palette banding, via a grayscale crop). The 0.06 band killed only the
+coastline flicker; the near-coast lowland still carried FBM. Widening to ~0.20
+suppresses FBM on land within 0.20 altitude of sea (coastal plains → smooth)
+while keeping full FBM on the higher inland terrain — verified on seed 2
+(high-relief: mountains fully preserved, snow peaks intact) and seed 1988. This
+makes FBM amplitude effectively scale with elevation: smooth coastal plains,
+rugged mountains — geologically sensible. Pure config value, no code change.)
 
 The last one fixes a separate reported defect: with the default
 `submarine_damping = 0.3` the FBM is still visible in the OCEAN (~0.3× amplitude
