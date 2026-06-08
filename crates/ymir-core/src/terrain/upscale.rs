@@ -151,11 +151,22 @@ pub fn upscale_with_fbm(
     // Precompute slope and direction on the coarse grid
     let (slope_map, direction_map) = compute_terrain_analysis(coarse);
 
-    // Base frequency: one cycle per source cell, calibrated against the
-    // longer source axis so the noise wavelength in physical units is
-    // identical on both axes regardless of orientation (on a square grid
-    // this is unchanged since src_w == src_h).
-    let freq = config.base_frequency / (src_w.max(src_h) as f64);
+    // #151: RESOLUTION-INDEPENDENT noise frequency. The FBM is sampled in
+    // COARSE-CELL coordinate space (`sx, sy`), NOT target-pixel space, so
+    // the noise feature size is fixed relative to the terrain regardless of
+    // `target_size`. (Previously `freq = base/src_w` applied to the TARGET
+    // pixel index → the feature count scaled with the upscale ratio, e.g.
+    // 4× finer at 4096² than 1024² for the same config — see #151.)
+    //
+    // The coefficients reference the prior 1024² calibration
+    // (`NOISE_REF_TARGET`) so that a 1024² render is BYTE-IDENTICAL to
+    // pre-#151 (old `i·base/src` ≡ `sx·nscale` when `target == 1024`); all
+    // other target sizes now match the 1024² feature size instead of
+    // diverging.
+    const NOISE_REF_TARGET: f64 = 1024.0;
+    let src_max = src_w.max(src_h) as f64;
+    let nscale = config.base_frequency * NOISE_REF_TARGET / (src_max * src_max);
+    let ascale = ANGLE_PERTURBATION_FREQ * NOISE_REF_TARGET / src_max;
 
     // Process each output row in parallel
     let row_data: Vec<(Vec<f32>, Vec<f32>)> = (0..dst_h)
@@ -215,23 +226,26 @@ pub fn upscale_with_fbm(
                 // 5. Blend factor: isotropic at low slopes, anisotropic at high slopes
                 let aniso_blend = smoothstep(slope_f64, ISOTROPY_LOW, ISOTROPY_HIGH);
 
-                // 6. Angular perturbation to break long-range parallelism
+                // 6. Angular perturbation to break long-range parallelism.
+                // #151: sampled in coarse-cell space (sx·ascale) →
+                // resolution-independent, byte-identical at 1024².
                 let angle_offset = angle_noise.sample(
                     0,
-                    i as f64 * ANGLE_PERTURBATION_FREQ,
-                    j as f64 * ANGLE_PERTURBATION_FREQ,
+                    sx * ascale,
+                    sy * ascale,
                 ) * ANGLE_PERTURBATION_MAX;
                 let perturbed_dir = slope_dir as f64 + angle_offset;
 
-                // 7. Domain warping: distort noise coordinates to break regular patterns
-                let raw_nx = i as f64 * freq;
-                let raw_ny = j as f64 * freq;
+                // 7. Domain warping: distort noise coordinates to break regular
+                // patterns. #151: all in coarse-cell space (sx·nscale).
+                let raw_nx = sx * nscale;
+                let raw_ny = sy * nscale;
 
                 let (nx, ny) = if config.domain_warp_strength > 0.0 {
-                    let warp_freq = freq * config.domain_warp_frequency;
-                    let wx = i as f64 * warp_freq;
-                    let wy = j as f64 * warp_freq;
-                    let inv_freq = config.domain_warp_strength / freq;
+                    let warp_freq = nscale * config.domain_warp_frequency;
+                    let wx = sx * warp_freq;
+                    let wy = sy * warp_freq;
+                    let inv_freq = config.domain_warp_strength / nscale;
                     let warp_dx = warp_noise_x.fbm(
                         wx,
                         wy,
