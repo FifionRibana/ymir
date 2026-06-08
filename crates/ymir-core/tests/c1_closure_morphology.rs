@@ -895,9 +895,10 @@ fn export_fbm_2048_isolate() {
     let aniso = std::env::var("FBM_ANISO").ok().and_then(|s| s.parse().ok()).unwrap_or(3.0);
     let sfac = std::env::var("FBM_SLOPEFAC").ok().and_then(|s| s.parse().ok()).unwrap_or(3.0);
     let amp = std::env::var("FBM_AMP").ok().and_then(|s| s.parse().ok()).unwrap_or(0.08);
+    let band = std::env::var("FBM_BAND").ok().and_then(|s| s.parse().ok()).unwrap_or(0.0);
     let cfg = FbmUpscaleConfig {
         target_size: 2048, max_anisotropy: aniso, amplitude_slope_factor: sfac,
-        amplitude_base: amp, ..Default::default()
+        amplitude_base: amp, coastal_amplitude_band: band, ..Default::default()
     };
     let up = upscale_from_c1(
         &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,

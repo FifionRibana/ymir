@@ -53,6 +53,19 @@ pub struct FbmUpscaleConfig {
     /// pixel. Low = coherent meander over several coarse cells.
     /// Default: 0.5.
     pub coast_warp_frequency: f64,
+    /// **Coastal amplitude taper** (Issue #151 follow-up). FBM amplitude
+    /// is multiplied by `smoothstep(|height − sea_level|, 0,
+    /// coastal_amplitude_band)`, so the noise tapers to ~0 AT the
+    /// sea-level contour and rises to full beyond `band` (altitude
+    /// units). Without it, `±amplitude·noise` flips cells land↔ocean at
+    /// the coast → a feathered/combed coastline, worst on flat
+    /// near-sea-level regions (the interior of strong relief is
+    /// unaffected — so a global amplitude cut is the wrong fix, it would
+    /// flatten mountains). This is a LOCAL fix: kills coastal feathering,
+    /// keeps inland mountain detail. The coast warp supplies the macro
+    /// coast irregularity; this removes the micro-feathering. Default:
+    /// 0.0 (OFF → byte-identical to pre-#151; v2 unaffected).
+    pub coastal_amplitude_band: f64,
 }
 
 impl Default for FbmUpscaleConfig {
@@ -72,6 +85,7 @@ impl Default for FbmUpscaleConfig {
             domain_warp_octaves: 3,
             coast_warp_strength: 0.0,
             coast_warp_frequency: 0.5,
+            coastal_amplitude_band: 0.0,
         }
     }
 }
@@ -214,9 +228,18 @@ pub fn upscale_with_fbm(
                 let altitude_factor =
                     if base_height > sea_level { 1.0 } else { config.submarine_damping };
 
-                let amplitude = config.amplitude_base
+                let mut amplitude = config.amplitude_base
                     * (1.0 + slope_mag as f64 * config.amplitude_slope_factor)
                     * altitude_factor;
+
+                // #151: coastal amplitude taper — damp the FBM to ~0 AT the
+                // sea-level contour so it doesn't feather the coastline by
+                // flipping near-sea cells land↔ocean; full amplitude inland
+                // (mountains preserved). OFF (band 0) → no-op, byte-identical.
+                if config.coastal_amplitude_band > 0.0 {
+                    let dist_from_sea = (base_height as f64 - sea_level as f64).abs();
+                    amplitude *= smoothstep(dist_from_sea, 0.0, config.coastal_amplitude_band);
+                }
 
                 // 4. Compute anisotropy ratio with sigmoid rolloff
                 let slope_f64 = slope_mag as f64;
