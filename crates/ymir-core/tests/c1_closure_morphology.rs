@@ -817,6 +817,43 @@ fn block_mean_to_64_dim(get: &dyn Fn(usize, usize) -> f64, grid: usize) -> Vec<f
     block_mean_to_64(get, grid)
 }
 
+/// #151 PRODUCTION combined export — coast warp + coastal amplitude taper
+/// + mountain amplitude, the full recommended HD config, on the seed set.
+#[test]
+#[ignore]
+fn export_hd_production() {
+    let dir = output_dir().join("hd_production");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seeds: [u64; 7] = [2, 42, 99, 1337, 1988, 2026, 4138];
+    let cfg = FbmUpscaleConfig {
+        target_size: 2048,
+        coast_warp_strength: 0.8,
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.06,
+        amplitude_base: 0.16,
+        ..Default::default()
+    };
+    eprintln!("#151 HD production export — warp 0.8 + band 0.06 + amp 0.16, 2048²");
+    for &seed in &seeds {
+        let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let up = upscale_from_c1(
+            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+        );
+        save_heightmap01(&up.heightmap, &dir.join(format!("hd_seed{seed:05}.png")));
+        eprintln!("  seed {seed:>5} done");
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
 /// #151 border-FBM artefact PIN — the FBM streaks the interior near the
 /// coast (directional ridges shooting inland). Hypothesis: the coast's
 /// extreme coarse-step slope drives FULL anisotropy + slope-amplified
