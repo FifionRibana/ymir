@@ -817,6 +817,56 @@ fn block_mean_to_64_dim(get: &dyn Fn(usize, usize) -> f64, grid: usize) -> Vec<f
     block_mean_to_64(get, grid)
 }
 
+/// #151 border-FBM artefact PIN — the FBM streaks the interior near the
+/// coast (directional ridges shooting inland). Hypothesis: the coast's
+/// extreme coarse-step slope drives FULL anisotropy + slope-amplified
+/// amplitude → long ridges along the coast-normal. Counterfactual:
+/// disable anisotropy (max_anisotropy=1) and/or the slope amplitude
+/// boost (amplitude_slope_factor=0) — does the border streaking vanish?
+#[test]
+#[ignore]
+fn export_border_fbm_pin() {
+    let dir = output_dir().join("border_fbm");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 1988u64;
+    let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let closures = C1Closures::default();
+    let config = C1TimeLoopConfig {
+        rigid_continental_crust: true, n_steps: 300,
+        dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+        iso_config: iso_config.clone(), drainage_max_distance: 30,
+    };
+    run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+    // Match the fbm2048 case the artefact was reported in (no coast warp,
+    // default amplitude); vary only the slope-driven FBM terms. 1024² for
+    // viewability.
+    let base = FbmUpscaleConfig {
+        target_size: 1024, coast_warp_strength: 0.0, amplitude_base: 0.08,
+        ..Default::default()
+    };
+    let variants: [(&str, f64, f64); 4] = [
+        // tag, max_anisotropy, amplitude_slope_factor
+        ("default", 3.0, 3.0),
+        ("aniso1", 1.0, 3.0),     // isotropic → streaks gone?
+        ("slopefac0", 3.0, 0.0),  // no slope amplitude boost
+        ("both", 1.0, 0.0),       // both off
+    ];
+    eprintln!("#151 border-FBM pin (seed {seed}) — aniso/slope-boost counterfactual");
+    for (tag, aniso, sfac) in &variants {
+        let cfg = FbmUpscaleConfig {
+            max_anisotropy: *aniso, amplitude_slope_factor: *sfac, ..base.clone()
+        };
+        let up = upscale_from_c1(
+            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+        );
+        save_heightmap01(&up.heightmap, &dir.join(format!("border_{tag}.png")));
+        eprintln!("  {tag}: aniso={aniso} slope_factor={sfac}");
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
 /// #151 v2 re-validation — render the upscale at v2's DEFAULT workflow
 /// target (2048²) with DEFAULT config (no coast warp) to isolate the FBM
 /// frequency change. Run before vs after the FBM recalibration (swap
@@ -841,14 +891,26 @@ fn export_fbm_2048_isolate() {
     };
     run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
     // Default config (coast_warp off) at v2's default target 2048².
-    let cfg = FbmUpscaleConfig { target_size: 2048, ..Default::default() };
+    // FBM_ANISO env overrides max_anisotropy (counterfactual: 1 = isotropic).
+    let aniso = std::env::var("FBM_ANISO").ok().and_then(|s| s.parse().ok()).unwrap_or(3.0);
+    let sfac = std::env::var("FBM_SLOPEFAC").ok().and_then(|s| s.parse().ok()).unwrap_or(3.0);
+    let amp = std::env::var("FBM_AMP").ok().and_then(|s| s.parse().ok()).unwrap_or(0.08);
+    let cfg = FbmUpscaleConfig {
+        target_size: 2048, max_anisotropy: aniso, amplitude_slope_factor: sfac,
+        amplitude_base: amp, ..Default::default()
+    };
     let up = upscale_from_c1(
         &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
     );
     // Filename tag from an env var so before/after runs don't clobber.
     let tag = std::env::var("FBM_TAG").unwrap_or_else(|_| "x".into());
     save_heightmap01(&up.heightmap, &dir.join(format!("fbm2048_{tag}.png")));
-    eprintln!("  fbm2048_{tag}: {}²", up.heightmap.width);
+    // Native-resolution crops (no downscale) so fine anisotropic streaks
+    // are visible. 384² windows over the bridge/peninsula + lower interior.
+    for (cname, x0, y0) in [("bridge", 820usize, 760usize), ("lower", 520, 1180), ("lowedge", 640, 1560)] {
+        save_heightmap01_crop(&up.heightmap, x0, y0, 384, &dir.join(format!("crop_{cname}_{tag}.png")));
+    }
+    eprintln!("  fbm2048_{tag}: {}² (+3 native crops)", up.heightmap.width);
 }
 
 /// #151 coastline warp at the TARGET resolution (4096²) — see the
@@ -1025,6 +1087,22 @@ fn export_hd_upscaled() {
         }
     }
     eprintln!("  out = {} (cost note: 1024² ~per above; 4096² ≈ 16× the FBM)", dir.display());
+}
+
+/// Save a native-resolution `size×size` crop of a `[0,1]` heightmap at
+/// `(x0,y0)` (1:1, no scaling) so fine detail (anisotropic streaks) is
+/// visible without Read's downscaling.
+fn save_heightmap01_crop(h: &GridF32, x0: usize, y0: usize, size: usize, path: &Path) {
+    let w = (x0 + size).min(h.width) - x0;
+    let ht = (y0 + size).min(h.height) - y0;
+    let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(w as u32, ht as u32);
+    for jj in 0..ht {
+        for ii in 0..w {
+            let v = h.get((x0 + ii) as i32, (y0 + jj) as i32).clamp(0.0, 1.0);
+            img.put_pixel(ii as u32, (ht - 1 - jj) as u32, Rgb(hypsometric(v, 0.5)));
+        }
+    }
+    img.save(path).expect("save crop PNG");
 }
 
 /// Render a normalised `[0,1]` heightmap (sea at 0.5) with the
