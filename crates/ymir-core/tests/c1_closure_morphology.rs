@@ -817,6 +817,54 @@ fn block_mean_to_64_dim(get: &dyn Fn(usize, usize) -> f64, grid: usize) -> Vec<f
     block_mean_to_64(get, grid)
 }
 
+/// #151 coastline warp at the TARGET resolution (4096²) — see the
+/// product the eye will actually judge. Seed 1988, off / 0.8 / 1.2 coast
+/// warp (isolated), plus 0.8 + raised amplitude (full-product look).
+#[test]
+#[ignore]
+fn export_coast_warp_4096() {
+    let dir = output_dir().join("coast_warp_4096");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 1988u64;
+    let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let closures = C1Closures::default();
+    let config = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: 300,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso_config.clone(),
+        drainage_max_distance: 30,
+    };
+    run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+    let variants: [(&str, f64, f64); 4] = [
+        // tag, coast_warp_strength, amplitude_base
+        ("off", 0.0, 0.08),
+        ("c08", 0.8, 0.08),
+        ("c12", 1.2, 0.08),
+        ("c08_amp", 0.8, 0.16),
+    ];
+    eprintln!("#151 coast warp @ 4096² (seed {seed}) — 0.8 coarse cell ≈ 51 px at this res");
+    for (tag, strength, amp) in &variants {
+        let cfg = FbmUpscaleConfig {
+            target_size: 4096,
+            coast_warp_strength: *strength,
+            amplitude_base: *amp,
+            ..Default::default()
+        };
+        let t0 = std::time::Instant::now();
+        let up = upscale_from_c1(
+            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+        );
+        save_heightmap01(&up.heightmap, &dir.join(format!("coast4096_{tag}.png")));
+        eprintln!("  [{tag:>7}] {}² in {:.2?}", up.heightmap.width, t0.elapsed());
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
 /// #151 coastline-warp variants — does displacing the coarse-altitude
 /// sampling (`coast_warp_strength`, in coarse cells) break the blocky
 /// 64² coastline (STEP-1 fix)? Eye-judged: credible meander vs
