@@ -50,6 +50,30 @@ finer base — but the blocky-coast complaint (the #1 HD flaw) is resolved.
   **resolution-dependent**: 1.2 fragments at 1024² but is clean + more natural
   at 4096².
 
+## FBM resolution-calibration fix (#151) — the FBM was target-pixel-based
+
+Surfaced by the 4096² render: the SAME config gave a **4× finer** interior FBM
+at 4096² than 1024². Cause (pre-existing, NOT the coast warp): the noise was
+sampled in TARGET-pixel space — `freq = base/src_w; nx = i·freq` (i = target
+pixel) → the FBM cycle count across the image = `(dst/src)·base`, scaling with
+`target_size`. The coast warp was already coarse-cell-based (resolution-OK);
+only the interior FBM was miscalibrated.
+
+**Fix:** sample ALL noise (base FBM, domain warp, angle perturbation) in
+COARSE-CELL space (`sx·nscale`, `nscale = base·NOISE_REF_TARGET/src²`,
+`NOISE_REF_TARGET = 1024`). The feature size is now fixed relative to the
+terrain, independent of `target_size`. Coefficients reference the prior 1024²
+calibration so **1024² is byte-identical to pre-#151** (`sx·nscale ≡ i·freq`
+when `target == 1024`; warp off by default) — v2@1024 unaffected; other target
+sizes now MATCH the 1024² feature size instead of diverging.
+
+**Verified:** post-fix, c08 at 1024² and 4096² show the same world at the same
+relative feature size (broad mottled interior at both); pre-fix 4096² was
+visibly finer. Upscale lib tests green (default-off / 1024-identical).
+**v2 impact:** v2 renders at a non-1024 target would change (resolution-
+corrected) → re-validate v2 visually before relying on it; no v2 test asserts
+exact pixels.
+
 ## Recommended production setting
 `coast_warp_strength ≈ 0.8`, `coast_warp_frequency = 0.5` for the C1 HD export.
 Kept OFF by default in `FbmUpscaleConfig` (byte-identical / v2-safe); the C1
