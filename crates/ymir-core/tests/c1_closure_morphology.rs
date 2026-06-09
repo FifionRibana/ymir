@@ -54,7 +54,8 @@ use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::seed::WorldSeed;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
-use ymir_core::tectonics_c1::production_upscale::upscale_from_c1;
+use ymir_core::tectonics_c1::production_upscale::{c1_production_altitude, upscale_from_c1};
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::SteinSteinParams;
 
 const GRID_SIZE: usize = 64;
 const N_STEPS: usize = 300;
@@ -817,6 +818,468 @@ fn block_mean_to_64_dim(get: &dyn Fn(usize, usize) -> f64, grid: usize) -> Vec<f
     block_mean_to_64(get, grid)
 }
 
+/// Save a native crop with a CONTINUOUS grayscale palette (no
+/// hypsometric color bands), so palette-banding can be told apart from
+/// real height (FBM) variation.
+fn save_gray01_crop(h: &GridF32, x0: usize, y0: usize, size: usize, path: &Path) {
+    let w = (x0 + size).min(h.width) - x0;
+    let ht = (y0 + size).min(h.height) - y0;
+    let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(w as u32, ht as u32);
+    for jj in 0..ht {
+        for ii in 0..w {
+            let v = h.get((x0 + ii) as i32, (y0 + jj) as i32).clamp(0.0, 1.0);
+            let g = (v * 255.0) as u8;
+            img.put_pixel(ii as u32, (ht - 1 - jj) as u32, Rgb([g, g, g]));
+        }
+    }
+    img.save(path).expect("save gray crop PNG");
+}
+
+/// Hillshade crop (Lambert, light from NW) — shows REAL relief without
+/// any palette colour-band artefact. Flat land → uniform mid-gray;
+/// FBM ripples → visible shading. dz exaggerated for visibility.
+fn save_hillshade_crop(h: &GridF32, x0: usize, y0: usize, size: usize, path: &Path) {
+    let w = (x0 + size).min(h.width) - x0;
+    let ht = (y0 + size).min(h.height) - y0;
+    let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(w as u32, ht as u32);
+    let z = 60.0_f64; // vertical exaggeration
+    let (lx, ly, lz) = {
+        let (a, b, c) = (1.0_f64, 1.0, 2.0);
+        let n = (a * a + b * b + c * c).sqrt();
+        (a / n, b / n, c / n)
+    };
+    for jj in 0..ht {
+        for ii in 0..w {
+            let gx = (x0 + ii) as i32;
+            let gy = (y0 + jj) as i32;
+            let dzdx = (h.get(gx + 1, gy) - h.get(gx - 1, gy)) as f64 * z;
+            let dzdy = (h.get(gx, gy + 1) - h.get(gx, gy - 1)) as f64 * z;
+            let nn = (dzdx * dzdx + dzdy * dzdy + 1.0).sqrt();
+            let shade = ((-dzdx * lx - dzdy * ly + lz) / nn).clamp(0.0, 1.0);
+            let g = (shade * 255.0) as u8;
+            img.put_pixel(ii as u32, (ht - 1 - jj) as u32, Rgb([g, g, g]));
+        }
+    }
+    img.save(path).expect("save hillshade crop PNG");
+}
+
+/// #151 coastal contour-line PIN — are the faint lines near the coast on
+/// land real FBM height, or hypsometric-PALETTE banding? Render the same
+/// coastal crop in hypsometric vs continuous grayscale. If the lines
+/// vanish in grayscale → palette artefact (cosmetic, not terrain).
+#[test]
+#[ignore]
+fn coast_palette_check() {
+    let dir = output_dir().join("coast_palette");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1988u64);
+    let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let closures = C1Closures::default();
+    let config = C1TimeLoopConfig {
+        rigid_continental_crust: true, n_steps: 300,
+        dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+        iso_config: iso_config.clone(), drainage_max_distance: 30,
+    };
+    run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+    let band = std::env::var("FBM_BAND").ok().and_then(|s| s.parse().ok()).unwrap_or(0.20);
+    let cfg = FbmUpscaleConfig {
+        target_size: 2048, coast_warp_strength: 0.8, coast_warp_frequency: 0.5,
+        coastal_amplitude_band: band, amplitude_base: 0.16, submarine_damping: 0.0,
+        ..Default::default()
+    };
+    let up = upscale_from_c1(
+        &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+    );
+    // 3-way render of coastal crops: hypso (user's view) vs gray (real
+    // height) vs hillshade (relief, no palette bands).
+    for (cname, x0, y0) in [("a", 900usize, 1050usize), ("b", 1150, 850), ("c", 600, 1500)] {
+        save_heightmap01_crop(&up.heightmap, x0, y0, 460, &dir.join(format!("coast_{cname}_hypso.png")));
+        save_gray01_crop(&up.heightmap, x0, y0, 460, &dir.join(format!("coast_{cname}_gray.png")));
+        save_hillshade_crop(&up.heightmap, x0, y0, 460, &dir.join(format!("coast_{cname}_hill.png")));
+    }
+    save_heightmap01(&up.heightmap, &dir.join("full_hypso.png"));
+    // Band-width sweep (grayscale crop "a") — does a WIDER coastal taper
+    // suppress the near-coast FBM ripples?
+    for band in [0.06_f64, 0.15, 0.30] {
+        let c2 = FbmUpscaleConfig { coastal_amplitude_band: band, ..cfg.clone() };
+        let u2 = upscale_from_c1(
+            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &c2,
+        );
+        save_gray01_crop(&u2.heightmap, 900, 1050, 460,
+            &dir.join(format!("band_{:03}_gray.png", (band * 100.0) as i32)));
+    }
+    // Full continents at a few band widths (hypsometric) for the look call.
+    for band in [0.06_f64, 0.20, 0.35] {
+        let c2 = FbmUpscaleConfig { coastal_amplitude_band: band, ..cfg.clone() };
+        let u2 = upscale_from_c1(
+            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &c2,
+        );
+        save_heightmap01(&u2.heightmap, &dir.join(format!("full_band_{:03}.png", (band * 100.0) as i32)));
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// F3 PIN — the dark dotted lines in the OCEAN. Render, at the COARSE
+/// 64² resolution (pre-upscale), the production altitude (Stein-Stein
+/// bathymetry), the age field, and the plate boundaries, to test:
+/// (1) are the dark lines already in the coarse altitude (→ Stein-Stein,
+/// not the upscale)? (2) do they coincide with age discontinuities /
+/// plate boundaries (→ age-jump → depth-jump)?
+#[test]
+#[ignore]
+fn pin_f3_ocean_lines() {
+    let dir = output_dir().join("f3_pin");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    for &seed in &[4138u64, 2] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / grid as f64, dy: 1.0 / grid as f64,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        let mut amin = f64::INFINITY; let mut amax = f64::NEG_INFINITY;
+        for &v in state.age.data() { amin = amin.min(v); amax = amax.max(v); }
+        let arange = (amax - amin).max(1e-9);
+
+        // (1) Coarse production altitude (Stein-Stein), 64² scaled ×8.
+        let alt = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
+        save_altitude_scaled(&alt, &dir.join(format!("f3_seed{seed:05}_altitude.png")), 8);
+
+        // Counterfactual: 3×3 MEDIAN-filtered age → despikes the
+        // pile-up cells, then Stein-Stein. Do the dark dots vanish?
+        let mut age_med = state.age.clone();
+        for j in 0..grid { for i in 0..grid {
+            let mut nb: Vec<f64> = Vec::with_capacity(9);
+            for dj in -1i32..=1 { for di in -1i32..=1 {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni>=0 && nj>=0 && (ni as usize)<grid && (nj as usize)<grid {
+                    nb.push(state.age.get(ni as usize, nj as usize));
+                }
+            }}
+            nb.sort_by(|a,b| a.partial_cmp(b).unwrap());
+            age_med.set(i, j, nb[nb.len()/2]);
+        }}
+        let alt_med = c1_production_altitude(&state.s, &age_med, &state.plate_type, &iso_config, &ss);
+        save_altitude_scaled(&alt_med, &dir.join(format!("f3_seed{seed:05}_altitude_median.png")), 8);
+
+        // Despiked age, SAME normalisation as the before-age, to verify the
+        // median kills ONLY spikes and preserves any legitimate age gradient.
+        let mut aimg2 = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
+        for j in 0..grid { for i in 0..grid {
+            let g = (((age_med.get(i, j) - amin) / arange).clamp(0.0, 1.0) * 255.0) as u8;
+            put_block(&mut aimg2, i, grid - 1 - j, 8, [g, g, g]);
+        }}
+        aimg2.save(dir.join(format!("f3_seed{seed:05}_age_median.png"))).unwrap();
+
+        // (2a) Age field, grayscale normalised to its range.
+        let mut aimg = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
+        for j in 0..grid { for i in 0..grid {
+            let g = (((state.age.get(i, j) - amin) / arange) * 255.0) as u8;
+            put_block(&mut aimg, i, grid - 1 - j, 8, [g, g, g]);
+        }}
+        aimg.save(dir.join(format!("f3_seed{seed:05}_age.png"))).unwrap();
+
+        // (2b) Plate boundaries (cell 4-adjacent to a different plate_id) in red over ocean.
+        let idx = |i: usize, j: usize| state.plate_id.get(i, j);
+        let mut bimg = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
+        for j in 0..grid { for i in 0..grid {
+            let mut bnd = false;
+            for (di, dj) in [(-1i32,0i32),(1,0),(0,-1),(0,1)] {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni>=0 && nj>=0 && (ni as usize)<grid && (nj as usize)<grid
+                    && idx(ni as usize, nj as usize) != idx(i, j) { bnd = true; }
+            }
+            let oceanic = matches!(state.plate_type.get(i,j), PlateType::Oceanic);
+            let col = if bnd { [255,0,0] } else if oceanic { [40,80,160] } else { [60,130,60] };
+            put_block(&mut bimg, i, grid - 1 - j, 8, col);
+        }}
+        bimg.save(dir.join(format!("f3_seed{seed:05}_bounds.png"))).unwrap();
+        eprintln!("  seed {seed}: age range [{amin:.3},{amax:.3}]");
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #151 coast-warp strength sweep — with FBM removed from the coast
+/// (band 0.30) the warp carries the coastline irregularity alone, so it
+/// reads lighter; sweep stronger warp to restore an irregular coast
+/// (watch for fragmentation). Production-ish config, 2048².
+#[test]
+#[ignore]
+fn export_warp_sweep() {
+    let dir = output_dir().join("warp_sweep");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    for &seed in &[1988u64, 2] {
+        let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        for warp in [0.8_f64, 1.2, 1.6, 2.0] {
+            let cfg = FbmUpscaleConfig {
+                target_size: 2048, coast_warp_strength: warp, coast_warp_frequency: 0.5,
+                coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+                ..Default::default()
+            };
+            let up = upscale_from_c1(
+                &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+            );
+            save_heightmap01(&up.heightmap,
+                &dir.join(format!("warp_seed{seed:05}_{:02}.png", (warp * 10.0) as i32)));
+        }
+        eprintln!("  seed {seed} done");
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #151 PRODUCTION combined export — coast warp + coastal amplitude taper
+/// + mountain amplitude, the full recommended HD config, on the seed set.
+#[test]
+#[ignore]
+fn export_hd_production() {
+    let dir = output_dir().join("hd_production");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seeds: [u64; 7] = [2, 42, 99, 1337, 1988, 2026, 4138];
+    let cfg = FbmUpscaleConfig {
+        target_size: 2048,
+        coast_warp_strength: 1.5, // stronger: FBM no longer roughens the coast (band 0.30)
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30, // FBM only in highland; all lowland smooth
+        amplitude_base: 0.16,
+        submarine_damping: 0.0, // no FBM in the ocean (smooth bathymetry)
+        ..Default::default()
+    };
+    eprintln!("#151 HD production export — warp 0.8 + band 0.30 + amp 0.16 + subdamp 0.0, 2048²");
+    for &seed in &seeds {
+        let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let up = upscale_from_c1(
+            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+        );
+        save_heightmap01(&up.heightmap, &dir.join(format!("hd_seed{seed:05}.png")));
+        eprintln!("  seed {seed:>5} done");
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #151 border-FBM artefact PIN — the FBM streaks the interior near the
+/// coast (directional ridges shooting inland). Hypothesis: the coast's
+/// extreme coarse-step slope drives FULL anisotropy + slope-amplified
+/// amplitude → long ridges along the coast-normal. Counterfactual:
+/// disable anisotropy (max_anisotropy=1) and/or the slope amplitude
+/// boost (amplitude_slope_factor=0) — does the border streaking vanish?
+#[test]
+#[ignore]
+fn export_border_fbm_pin() {
+    let dir = output_dir().join("border_fbm");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 1988u64;
+    let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let closures = C1Closures::default();
+    let config = C1TimeLoopConfig {
+        rigid_continental_crust: true, n_steps: 300,
+        dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+        iso_config: iso_config.clone(), drainage_max_distance: 30,
+    };
+    run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+    // Match the fbm2048 case the artefact was reported in (no coast warp,
+    // default amplitude); vary only the slope-driven FBM terms. 1024² for
+    // viewability.
+    let base = FbmUpscaleConfig {
+        target_size: 1024, coast_warp_strength: 0.0, amplitude_base: 0.08,
+        ..Default::default()
+    };
+    let variants: [(&str, f64, f64); 4] = [
+        // tag, max_anisotropy, amplitude_slope_factor
+        ("default", 3.0, 3.0),
+        ("aniso1", 1.0, 3.0),     // isotropic → streaks gone?
+        ("slopefac0", 3.0, 0.0),  // no slope amplitude boost
+        ("both", 1.0, 0.0),       // both off
+    ];
+    eprintln!("#151 border-FBM pin (seed {seed}) — aniso/slope-boost counterfactual");
+    for (tag, aniso, sfac) in &variants {
+        let cfg = FbmUpscaleConfig {
+            max_anisotropy: *aniso, amplitude_slope_factor: *sfac, ..base.clone()
+        };
+        let up = upscale_from_c1(
+            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+        );
+        save_heightmap01(&up.heightmap, &dir.join(format!("border_{tag}.png")));
+        eprintln!("  {tag}: aniso={aniso} slope_factor={sfac}");
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #151 v2 re-validation — render the upscale at v2's DEFAULT workflow
+/// target (2048²) with DEFAULT config (no coast warp) to isolate the FBM
+/// frequency change. Run before vs after the FBM recalibration (swap
+/// upscale.rs) to judge v2's calibration at its real target.
+#[test]
+#[ignore]
+fn export_fbm_2048_isolate() {
+    let dir = output_dir().join("fbm_2048");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 1988u64;
+    let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let closures = C1Closures::default();
+    let config = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: 300,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso_config.clone(),
+        drainage_max_distance: 30,
+    };
+    run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+    // Default config (coast_warp off) at v2's default target 2048².
+    // FBM_ANISO env overrides max_anisotropy (counterfactual: 1 = isotropic).
+    let aniso = std::env::var("FBM_ANISO").ok().and_then(|s| s.parse().ok()).unwrap_or(3.0);
+    let sfac = std::env::var("FBM_SLOPEFAC").ok().and_then(|s| s.parse().ok()).unwrap_or(3.0);
+    let amp = std::env::var("FBM_AMP").ok().and_then(|s| s.parse().ok()).unwrap_or(0.08);
+    let band = std::env::var("FBM_BAND").ok().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let subdamp = std::env::var("FBM_SUBDAMP").ok().and_then(|s| s.parse().ok()).unwrap_or(0.3);
+    let cfg = FbmUpscaleConfig {
+        target_size: 2048, max_anisotropy: aniso, amplitude_slope_factor: sfac,
+        amplitude_base: amp, coastal_amplitude_band: band, submarine_damping: subdamp,
+        ..Default::default()
+    };
+    let up = upscale_from_c1(
+        &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+    );
+    // Filename tag from an env var so before/after runs don't clobber.
+    let tag = std::env::var("FBM_TAG").unwrap_or_else(|_| "x".into());
+    save_heightmap01(&up.heightmap, &dir.join(format!("fbm2048_{tag}.png")));
+    // Native-resolution crops (no downscale) so fine anisotropic streaks
+    // are visible. 384² windows over the bridge/peninsula + lower interior.
+    for (cname, x0, y0) in [("bridge", 820usize, 760usize), ("lower", 520, 1180), ("lowedge", 640, 1560)] {
+        save_heightmap01_crop(&up.heightmap, x0, y0, 384, &dir.join(format!("crop_{cname}_{tag}.png")));
+    }
+    eprintln!("  fbm2048_{tag}: {}² (+3 native crops)", up.heightmap.width);
+}
+
+/// #151 coastline warp at the TARGET resolution (4096²) — see the
+/// product the eye will actually judge. Seed 1988, off / 0.8 / 1.2 coast
+/// warp (isolated), plus 0.8 + raised amplitude (full-product look).
+#[test]
+#[ignore]
+fn export_coast_warp_4096() {
+    let dir = output_dir().join("coast_warp_4096");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seed = 1988u64;
+    let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let closures = C1Closures::default();
+    let config = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: 300,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso_config.clone(),
+        drainage_max_distance: 30,
+    };
+    run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+    let variants: [(&str, f64, f64); 4] = [
+        // tag, coast_warp_strength, amplitude_base
+        ("off", 0.0, 0.08),
+        ("c08", 0.8, 0.08),
+        ("c12", 1.2, 0.08),
+        ("c08_amp", 0.8, 0.16),
+    ];
+    eprintln!("#151 coast warp @ 4096² (seed {seed}) — 0.8 coarse cell ≈ 51 px at this res");
+    for (tag, strength, amp) in &variants {
+        let cfg = FbmUpscaleConfig {
+            target_size: 4096,
+            coast_warp_strength: *strength,
+            amplitude_base: *amp,
+            ..Default::default()
+        };
+        let t0 = std::time::Instant::now();
+        let up = upscale_from_c1(
+            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+        );
+        save_heightmap01(&up.heightmap, &dir.join(format!("coast4096_{tag}.png")));
+        eprintln!("  [{tag:>7}] {}² in {:.2?}", up.heightmap.width, t0.elapsed());
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #151 coastline-warp variants — does displacing the coarse-altitude
+/// sampling (`coast_warp_strength`, in coarse cells) break the blocky
+/// 64² coastline (STEP-1 fix)? Eye-judged: credible meander vs
+/// procedural-fake regular ripples. All via the contract `upscale_from_c1`.
+#[test]
+#[ignore]
+fn export_coast_warp() {
+    let dir = output_dir().join("coast_warp");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let seeds: [u64; 2] = [42, 1988];
+    // Isolate the coast warp: amplitude/damping at defaults; vary only
+    // coast_warp_strength (coarse cells). 0.0 = baseline (blocky).
+    let strengths: [(&str, f64); 4] = [
+        ("off", 0.0),
+        ("c05", 0.5),
+        ("c08", 0.8),
+        ("c12", 1.2),
+    ];
+    eprintln!("#151 coastline warp — seeds {seeds:?}, coast_warp_strength sweep (coarse cells)");
+    for &seed in &seeds {
+        let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        for (tag, strength) in &strengths {
+            let cfg = FbmUpscaleConfig {
+                target_size: 1024,
+                coast_warp_strength: *strength,
+                ..Default::default()
+            };
+            let up = upscale_from_c1(
+                &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+            );
+            save_heightmap01(&up.heightmap, &dir.join(format!("coast_seed{seed:05}_{tag}.png")));
+        }
+        eprintln!("  seed {seed} done");
+    }
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  EYE: coast meanders credibly (real-coast irregular) vs procedural-fake ripples?");
+}
+
 /// Quick HD EXPORT — see the final product (no UI). Runs C1 production
 /// (64², rigid, full closures) then `upscale_from_c1` (THE contract
 /// function — laundered altitude, NOT raw S̃) → 1024² HD heightmap PNG,
@@ -893,6 +1356,22 @@ fn export_hd_upscaled() {
         }
     }
     eprintln!("  out = {} (cost note: 1024² ~per above; 4096² ≈ 16× the FBM)", dir.display());
+}
+
+/// Save a native-resolution `size×size` crop of a `[0,1]` heightmap at
+/// `(x0,y0)` (1:1, no scaling) so fine detail (anisotropic streaks) is
+/// visible without Read's downscaling.
+fn save_heightmap01_crop(h: &GridF32, x0: usize, y0: usize, size: usize, path: &Path) {
+    let w = (x0 + size).min(h.width) - x0;
+    let ht = (y0 + size).min(h.height) - y0;
+    let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(w as u32, ht as u32);
+    for jj in 0..ht {
+        for ii in 0..w {
+            let v = h.get((x0 + ii) as i32, (y0 + jj) as i32).clamp(0.0, 1.0);
+            img.put_pixel(ii as u32, (ht - 1 - jj) as u32, Rgb(hypsometric(v, 0.5)));
+        }
+    }
+    img.save(path).expect("save crop PNG");
 }
 
 /// Render a normalised `[0,1]` heightmap (sea at 0.5) with the
