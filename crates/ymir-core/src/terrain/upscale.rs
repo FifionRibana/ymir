@@ -37,6 +37,35 @@ pub struct FbmUpscaleConfig {
     pub domain_warp_frequency: f64,
     /// Number of FBM octaves for the warp noise itself. Default: 3.
     pub domain_warp_octaves: usize,
+    /// **Coastline warp** (Issue #151 follow-up). Displacement applied
+    /// to the COARSE-ALTITUDE sampling coordinates `(sx, sy)` BEFORE
+    /// bilinear interpolation, in units of COARSE pixels. This makes
+    /// the `altitude = sea_level` contour (the coastline) meander
+    /// instead of following the blocky interpolated coarse polygon —
+    /// the domain warp above only warps the NOISE, never the coarse
+    /// sampling, so it cannot move the coast (cause pinned: blocky
+    /// coast = STEP 1, the interpolated contour). Amplitude ~0.5–1.0
+    /// coarse cells breaks the 1-cell stairstep without making the
+    /// coast chaotic. Default: 0.0 (OFF → byte-identical to pre-#151;
+    /// the existing v2 pipeline is unaffected).
+    pub coast_warp_strength: f64,
+    /// Frequency of the coastline-warp noise, in cycles per COARSE
+    /// pixel. Low = coherent meander over several coarse cells.
+    /// Default: 0.5.
+    pub coast_warp_frequency: f64,
+    /// **Coastal amplitude taper** (Issue #151 follow-up). FBM amplitude
+    /// is multiplied by `smoothstep(|height − sea_level|, 0,
+    /// coastal_amplitude_band)`, so the noise tapers to ~0 AT the
+    /// sea-level contour and rises to full beyond `band` (altitude
+    /// units). Without it, `±amplitude·noise` flips cells land↔ocean at
+    /// the coast → a feathered/combed coastline, worst on flat
+    /// near-sea-level regions (the interior of strong relief is
+    /// unaffected — so a global amplitude cut is the wrong fix, it would
+    /// flatten mountains). This is a LOCAL fix: kills coastal feathering,
+    /// keeps inland mountain detail. The coast warp supplies the macro
+    /// coast irregularity; this removes the micro-feathering. Default:
+    /// 0.0 (OFF → byte-identical to pre-#151; v2 unaffected).
+    pub coastal_amplitude_band: f64,
 }
 
 impl Default for FbmUpscaleConfig {
@@ -54,6 +83,9 @@ impl Default for FbmUpscaleConfig {
             domain_warp_strength: 0.0,
             domain_warp_frequency: 0.5,
             domain_warp_octaves: 3,
+            coast_warp_strength: 0.0,
+            coast_warp_frequency: 0.5,
+            coastal_amplitude_band: 0.0,
         }
     }
 }
@@ -123,15 +155,32 @@ pub fn upscale_with_fbm(
     // Domain warp: two independent FBM fields for X and Y displacement
     let warp_noise_x = SeededNoise::new(noise_seed.wrapping_add(55555), config.domain_warp_octaves);
     let warp_noise_y = SeededNoise::new(noise_seed.wrapping_add(77777), config.domain_warp_octaves);
+    // Dedicated coastline-warp noise (Issue #151 follow-up) — distinct
+    // seeds from the noise/domain-warp so the coast displacement is
+    // independent of the FBM detail.
+    let coast_octaves = config.domain_warp_octaves.max(1);
+    let coast_warp_noise_x = SeededNoise::new(noise_seed.wrapping_add(13331), coast_octaves);
+    let coast_warp_noise_y = SeededNoise::new(noise_seed.wrapping_add(24421), coast_octaves);
 
     // Precompute slope and direction on the coarse grid
     let (slope_map, direction_map) = compute_terrain_analysis(coarse);
 
-    // Base frequency: one cycle per source cell, calibrated against the
-    // longer source axis so the noise wavelength in physical units is
-    // identical on both axes regardless of orientation (on a square grid
-    // this is unchanged since src_w == src_h).
-    let freq = config.base_frequency / (src_w.max(src_h) as f64);
+    // #151: RESOLUTION-INDEPENDENT noise frequency. The FBM is sampled in
+    // COARSE-CELL coordinate space (`sx, sy`), NOT target-pixel space, so
+    // the noise feature size is fixed relative to the terrain regardless of
+    // `target_size`. (Previously `freq = base/src_w` applied to the TARGET
+    // pixel index → the feature count scaled with the upscale ratio, e.g.
+    // 4× finer at 4096² than 1024² for the same config — see #151.)
+    //
+    // The coefficients reference the prior 1024² calibration
+    // (`NOISE_REF_TARGET`) so that a 1024² render is BYTE-IDENTICAL to
+    // pre-#151 (old `i·base/src` ≡ `sx·nscale` when `target == 1024`); all
+    // other target sizes now match the 1024² feature size instead of
+    // diverging.
+    const NOISE_REF_TARGET: f64 = 1024.0;
+    let src_max = src_w.max(src_h) as f64;
+    let nscale = config.base_frequency * NOISE_REF_TARGET / (src_max * src_max);
+    let ascale = ANGLE_PERTURBATION_FREQ * NOISE_REF_TARGET / src_max;
 
     // Process each output row in parallel
     let row_data: Vec<(Vec<f32>, Vec<f32>)> = (0..dst_h)
@@ -145,20 +194,52 @@ pub fn upscale_with_fbm(
                 let sx = i as f64 * scale_x;
                 let sy = j as f64 * scale_y;
 
-                // 1. Bilinear interpolation of the coarse heightmap
-                let base_height = coarse.sample_bilinear_periodic(sx as f32, sy as f32);
+                // 0. Coastline warp (Issue #151 follow-up): displace the
+                // COARSE-ALTITUDE sampling position so the sea-level
+                // contour meanders instead of following the blocky 64²
+                // polygon. In coarse-pixel units; the domain warp (step
+                // 7) never touches this. OFF when strength == 0 →
+                // (csx, csy) == (sx, sy), byte-identical to pre-#151.
+                let (csx, csy) = if config.coast_warp_strength > 0.0 {
+                    let cwf = config.coast_warp_frequency;
+                    let (wcx, wcy) = (sx * cwf, sy * cwf);
+                    let cdx = coast_warp_noise_x.fbm(
+                        wcx, wcy, coast_octaves, config.lacunarity, config.persistence,
+                    ) * config.coast_warp_strength;
+                    let cdy = coast_warp_noise_y.fbm(
+                        wcx, wcy, coast_octaves, config.lacunarity, config.persistence,
+                    ) * config.coast_warp_strength;
+                    (sx + cdx, sy + cdy)
+                } else {
+                    (sx, sy)
+                };
 
-                // 2. Sample terrain properties from coarse analysis
-                let slope_mag = slope_map.sample_bilinear_periodic(sx as f32, sy as f32);
-                let slope_dir = direction_map.sample_bilinear_periodic(sx as f32, sy as f32);
+                // 1. Bilinear interpolation of the coarse heightmap (at the
+                // coast-warped position — this is what bends the coastline).
+                let base_height = coarse.sample_bilinear_periodic(csx as f32, csy as f32);
+
+                // 2. Sample terrain properties from coarse analysis (same
+                // warped position so amplitude/orientation follow the
+                // displaced coarse terrain coherently).
+                let slope_mag = slope_map.sample_bilinear_periodic(csx as f32, csy as f32);
+                let slope_dir = direction_map.sample_bilinear_periodic(csx as f32, csy as f32);
 
                 // 3. Compute amplitude modulation
                 let altitude_factor =
                     if base_height > sea_level { 1.0 } else { config.submarine_damping };
 
-                let amplitude = config.amplitude_base
+                let mut amplitude = config.amplitude_base
                     * (1.0 + slope_mag as f64 * config.amplitude_slope_factor)
                     * altitude_factor;
+
+                // #151: coastal amplitude taper — damp the FBM to ~0 AT the
+                // sea-level contour so it doesn't feather the coastline by
+                // flipping near-sea cells land↔ocean; full amplitude inland
+                // (mountains preserved). OFF (band 0) → no-op, byte-identical.
+                if config.coastal_amplitude_band > 0.0 {
+                    let dist_from_sea = (base_height as f64 - sea_level as f64).abs();
+                    amplitude *= smoothstep(dist_from_sea, 0.0, config.coastal_amplitude_band);
+                }
 
                 // 4. Compute anisotropy ratio with sigmoid rolloff
                 let slope_f64 = slope_mag as f64;
@@ -168,23 +249,26 @@ pub fn upscale_with_fbm(
                 // 5. Blend factor: isotropic at low slopes, anisotropic at high slopes
                 let aniso_blend = smoothstep(slope_f64, ISOTROPY_LOW, ISOTROPY_HIGH);
 
-                // 6. Angular perturbation to break long-range parallelism
+                // 6. Angular perturbation to break long-range parallelism.
+                // #151: sampled in coarse-cell space (sx·ascale) →
+                // resolution-independent, byte-identical at 1024².
                 let angle_offset = angle_noise.sample(
                     0,
-                    i as f64 * ANGLE_PERTURBATION_FREQ,
-                    j as f64 * ANGLE_PERTURBATION_FREQ,
+                    sx * ascale,
+                    sy * ascale,
                 ) * ANGLE_PERTURBATION_MAX;
                 let perturbed_dir = slope_dir as f64 + angle_offset;
 
-                // 7. Domain warping: distort noise coordinates to break regular patterns
-                let raw_nx = i as f64 * freq;
-                let raw_ny = j as f64 * freq;
+                // 7. Domain warping: distort noise coordinates to break regular
+                // patterns. #151: all in coarse-cell space (sx·nscale).
+                let raw_nx = sx * nscale;
+                let raw_ny = sy * nscale;
 
                 let (nx, ny) = if config.domain_warp_strength > 0.0 {
-                    let warp_freq = freq * config.domain_warp_frequency;
-                    let wx = i as f64 * warp_freq;
-                    let wy = j as f64 * warp_freq;
-                    let inv_freq = config.domain_warp_strength / freq;
+                    let warp_freq = nscale * config.domain_warp_frequency;
+                    let wx = sx * warp_freq;
+                    let wy = sy * warp_freq;
+                    let inv_freq = config.domain_warp_strength / nscale;
                     let warp_dx = warp_noise_x.fbm(
                         wx,
                         wy,
