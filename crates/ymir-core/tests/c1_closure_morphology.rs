@@ -921,6 +921,166 @@ fn coast_palette_check() {
     eprintln!("  out = {}", dir.display());
 }
 
+/// Bresenham line into an RGB image (clamped).
+fn draw_line(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>, x0: i32, y0: i32, x1: i32, y1: i32, c: [u8; 3]) {
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    let dx = (x1 - x0).abs();
+    let dy = -(y1 - y0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let (mut x, mut y) = (x0, y0);
+    let mut err = dx + dy;
+    loop {
+        if x >= 0 && y >= 0 && x < w && y < h { img.put_pixel(x as u32, y as u32, Rgb(c)); }
+        if x == x1 && y == y1 { break; }
+        let e2 = 2 * err;
+        if e2 >= dy { err += dy; x += sx; }
+        if e2 <= dx { err += dx; y += sy; }
+    }
+}
+
+/// #151 RELIEF profile — 1D cuts ACROSS the convergent arc (seed 42),
+/// sampling raw S̃ and the COARSE production altitude (pre-FBM) vs
+/// distance, to read whether a marginal Davis-Suppe orogen pic exists
+/// in S̃ (force) and whether it survives the S̃→altitude conversion
+/// (expression). Arc located via the DS convergence classifier
+/// (`classify_boundaries` → Convergent). Same run/fields as
+/// `export_relief_compare`. Outputs CSV (the numbers) + a PNG plot per
+/// cut; prints cut centres + inward normals so the cut placement is
+/// auditable.
+#[test]
+#[ignore]
+fn profile_convergent_arc_seed42() {
+    let dir = output_dir().join("relief_profile");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let seed = 42u64;
+    let grid = 64usize;
+
+    let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let closures = C1Closures::default();
+    let config = C1TimeLoopConfig {
+        rigid_continental_crust: true, n_steps: 300,
+        dx: 1.0 / grid as f64, dy: 1.0 / grid as f64,
+        iso_config: iso_config.clone(), drainage_max_distance: 30,
+    };
+    run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+    // Coarse production altitude (pre-FBM): isostasy + Stein-Stein + despike.
+    let alt = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
+    let binfo = classify_boundaries(&state.plate_id, &kin);
+    let cont = |i: usize, j: usize| matches!(state.plate_type.get(i, j), PlateType::Continental);
+
+    // Convergent cells adjacent to land (the orogen sites along the coast).
+    let mut conv: Vec<(usize, usize)> = Vec::new();
+    for j in 0..grid { for i in 0..grid {
+        if matches!(binfo.boundary_type.get(i, j), BoundaryType::Convergent) {
+            conv.push((i, j));
+        }
+    }}
+    // COAST convergences (south half): convergent cells with BOTH a
+    // continental and an oceanic 4-neighbour → a real coast convergence
+    // with a well-defined inward normal (excludes mid-ocean convergences,
+    // which gave degenerate normal=0 cuts).
+    let has_both = |ci: usize, cj: usize| {
+        let (mut land, mut sea) = (false, false);
+        for (di, dj) in [(-1i32,0i32),(1,0),(0,-1),(0,1)] {
+            let (a, b) = (ci as i32 + di, cj as i32 + dj);
+            if a>=0 && b>=0 && (a as usize)<grid && (b as usize)<grid {
+                if cont(a as usize, b as usize) { land = true; } else { sea = true; }
+            }
+        }
+        land && sea
+    };
+    let mut south: Vec<(usize, usize)> = conv.iter().copied()
+        .filter(|&(i, j)| j < grid / 2 && has_both(i, j)).collect();
+    south.sort_by_key(|&(i, _)| i);
+    eprintln!("seed {seed}: {} convergent cells total, {} south COAST convergences", conv.len(), south.len());
+    eprintln!("  south coast-convergent cells (i,j): {south:?}");
+
+    // 3 cut centres spread along the south arc.
+    let centres: Vec<(usize, usize)> = if south.len() >= 3 {
+        [south.len() / 5, south.len() / 2, 4 * south.len() / 5].iter().map(|&k| south[k]).collect()
+    } else { south.clone() };
+
+    // Inward normal at a cell: toward continental neighbours.
+    let normal = |ci: usize, cj: usize| -> (f64, f64) {
+        let (mut nx, mut ny) = (0.0, 0.0);
+        for dj in -1i32..=1 { for di in -1i32..=1 {
+            if di == 0 && dj == 0 { continue; }
+            let (a, b) = (ci as i32 + di, cj as i32 + dj);
+            if a >= 0 && b >= 0 && (a as usize) < grid && (b as usize) < grid {
+                let s = if cont(a as usize, b as usize) { 1.0 } else { -1.0 };
+                nx += s * di as f64; ny += s * dj as f64;
+            }
+        }}
+        let n = (nx * nx + ny * ny).sqrt().max(1e-9);
+        (nx / n, ny / n)
+    };
+
+    for (ci, &(cx, cy)) in centres.iter().enumerate() {
+        let (nx, ny) = normal(cx, cy);
+        eprintln!("  cut {ci}: centre=({cx},{cy}) inward_normal=({nx:.2},{ny:.2})  [t<0 ocean → t=0 convergence → t>0 interior]");
+        // Sample t = -10..=12 cells along the inward normal.
+        let mut rows: Vec<(i32, f64, f64, u8, char)> = Vec::new();
+        for t in -10i32..=12 {
+            let i = (cx as f64 + t as f64 * nx).round();
+            let j = (cy as f64 + t as f64 * ny).round();
+            if i < 0.0 || j < 0.0 || i >= grid as f64 || j >= grid as f64 { continue; }
+            let (i, j) = (i as usize, j as usize);
+            let s = state.s.get(i, j);
+            let a = alt.get(i as i32, j as i32) as f64;
+            let cv = matches!(binfo.boundary_type.get(i, j), BoundaryType::Convergent) as u8;
+            let pt = if cont(i, j) { 'C' } else { 'O' };
+            rows.push((t, s, a, cv, pt));
+        }
+        // CSV (plate_type: C continental [altitude = isostasy(S̃)] / O
+        // oceanic [altitude = Stein-Stein bathymetry, S̃ NOT used]).
+        let mut csv = String::from("dist_cells,s_thickness,coarse_altitude,convergent,plate_type\n");
+        for &(t, s, a, cv, pt) in &rows {
+            csv.push_str(&format!("{t},{s:.4},{a:.4},{cv},{pt}\n"));
+        }
+        std::fs::write(dir.join(format!("seed{seed:05}_cut{ci}.csv")), &csv).unwrap();
+        // Console table.
+        eprintln!("    dist  S̃       altitude  pt  conv");
+        for &(t, s, a, cv, pt) in &rows {
+            eprintln!("    {t:>4}  {s:>6.3}  {a:>+7.3}   {pt}  {}", if cv == 1 { "<-- CONV" } else { "" });
+        }
+
+        // PNG plot: S̃ (blue) + altitude (brown), each normalised to its
+        // own range; gray vertical marker at t=0; gray baseline.
+        let (w, h) = (640i32, 360i32);
+        let (ml, mr, mt, mb) = (40i32, 20, 20, 30);
+        let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::from_pixel(w as u32, h as u32, Rgb([250, 250, 250]));
+        let smin = rows.iter().map(|r| r.1).fold(f64::MAX, f64::min);
+        let smax = rows.iter().map(|r| r.1).fold(f64::MIN, f64::max);
+        let amin = rows.iter().map(|r| r.2).fold(f64::MAX, f64::min);
+        let amax = rows.iter().map(|r| r.2).fold(f64::MIN, f64::max);
+        let n = rows.len() as i32;
+        let xof = |k: i32| ml + k * (w - ml - mr) / (n - 1).max(1);
+        let yof = |v: f64, lo: f64, hi: f64| {
+            let t = ((v - lo) / (hi - lo).max(1e-9)).clamp(0.0, 1.0);
+            (h - mb) - (t * (h - mt - mb) as f64) as i32
+        };
+        // t=0 marker.
+        if let Some(k0) = rows.iter().position(|r| r.0 == 0) {
+            draw_line(&mut img, xof(k0 as i32), mt, xof(k0 as i32), h - mb, [150, 150, 150]);
+        }
+        for k in 1..rows.len() {
+            let (x0, x1) = (xof(k as i32 - 1), xof(k as i32));
+            draw_line(&mut img,
+                x0, yof(rows[k - 1].1, smin, smax), x1, yof(rows[k].1, smin, smax), [30, 60, 200]);
+            draw_line(&mut img,
+                x0, yof(rows[k - 1].2, amin, amax), x1, yof(rows[k].2, amin, amax), [160, 90, 30]);
+        }
+        img.save(dir.join(format!("seed{seed:05}_cut{ci}.png"))).unwrap();
+        eprintln!("    S̃ range [{smin:.3},{smax:.3}]  altitude range [{amin:.3},{amax:.3}]");
+    }
+    eprintln!("  out = {} (BLUE=S̃, BROWN=coarse altitude, GRAY=convergence t=0)", dir.display());
+}
+
 /// RELIEF EXPRESSION-vs-GENERATION diagnostic — per seed, three
 /// co-registered views from the SAME final C1State: (1) HD altitude
 /// (production #151 config, the real product where relief is missing),
