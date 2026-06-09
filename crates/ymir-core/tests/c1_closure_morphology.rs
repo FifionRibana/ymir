@@ -921,6 +921,65 @@ fn coast_palette_check() {
     eprintln!("  out = {}", dir.display());
 }
 
+/// RELIEF EXPRESSION-vs-GENERATION diagnostic — per seed, three
+/// co-registered views from the SAME final C1State: (1) HD altitude
+/// (production #151 config, the real product where relief is missing),
+/// (2) RAW S̃ thickness (no FBM — does Davis-Suppe orogeny exist in the
+/// thickness?), (3) boundary TYPES — convergences (red) reusing the DS
+/// convergence classifier (`classify_boundaries`), so the analysis can
+/// overlay convergence ↔ altitude ↔ S̃: orogen in S̃ + flat altitude =
+/// EXPRESSION; flat in both at a convergence = GENERATION.
+#[test]
+#[ignore]
+fn export_relief_compare() {
+    let dir = output_dir().join("relief_compare");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let seeds: [u64; 7] = [2, 42, 99, 1337, 1988, 2026, 4138];
+    let cfg = FbmUpscaleConfig {
+        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        ..Default::default()
+    };
+    eprintln!("#151 relief compare — altitude(1024² prod) / raw S̃ / convergence map, per seed");
+    for &seed in &seeds {
+        let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        let up = upscale_from_c1(&state, &iso_config, &ss, &WorldSeed::new(seed), &cfg);
+        save_heightmap01(&up.heightmap, &dir.join(format!("seed{seed:05}_altitude.png")));
+        save_s_scaled(&state.s, &dir.join(format!("seed{seed:05}_sthickness.png")), 8);
+
+        let binfo = classify_boundaries(&state.plate_id, &kin);
+        let grid = 64usize;
+        let mut bimg = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
+        for j in 0..grid { for i in 0..grid {
+            let base = if matches!(state.plate_type.get(i, j), PlateType::Continental) {
+                [60, 130, 60]
+            } else { [40, 80, 160] };
+            let col = match binfo.boundary_type.get(i, j) {
+                BoundaryType::Convergent => [220, 30, 30],
+                BoundaryType::Divergent => [40, 220, 220],
+                BoundaryType::Transform => [230, 220, 40],
+                _ => base,
+            };
+            put_block(&mut bimg, i, grid - 1 - j, 8, col);
+        }}
+        bimg.save(dir.join(format!("seed{seed:05}_boundaries.png"))).unwrap();
+        eprintln!("  seed {seed} done");
+    }
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  legend: convergent=RED divergent=CYAN transform=YELLOW; land=green ocean=blue");
+}
+
 /// F3 PIN — the dark dotted lines in the OCEAN. Render, at the COARSE
 /// 64² resolution (pre-upscale), the production altitude (Stein-Stein
 /// bathymetry), the age field, and the plate boundaries, to test:
