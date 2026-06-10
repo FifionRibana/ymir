@@ -336,18 +336,16 @@ fn davis_suppe_wedge_body_invariants() {
         "Phase 1.2 (c1) saturation failed: fill_near = {fill_near:.3} ≤ 0.5 — \
          closure under-fills the near-boundary wedge band"
     );
-    // #155 maillon 1a KNOWN-RED (deliberately left failing — issue #155).
-    // Maillon 1a retargets the DS wedge onto the CONTINENTAL plate at O-C
-    // subductions (relief now appears — measured +12.4 % mean continental
-    // S̃ on seed 42), but does NOT yet fix the wedge GEOMETRY: the deposit
-    // fills the continental INTERIOR (a Tibet-style dome, `h_critical(d)`
-    // rises with d), so the far band (d∈10-20) fills and the near/far
-    // asymmetry collapses (≈1.11). (c2) encodes the CORRECT target — a
-    // margin-concentrated ridge (near>far, the Andes we want) — so it is
-    // NOT re-baselined: it is the macro-border thermometer, RED while the
-    // geometry is a dome (1a) and expected to go GREEN once maillon 1b
-    // concentrates the wedge near the O-C margin. Consistent with the
-    // direction note above (~lines 324-329), which anticipated this flip.
+    // #155 maillon 1b-i RESTORED. This near>far asymmetry is the macro-
+    // border thermometer. It briefly went RED under maillon 1a (≈1.11):
+    // 1a retargeted the DS wedge onto the continental plate at O-C
+    // subductions but left the geometry a Tibet-style dome filling the
+    // interior. Maillon 1b-i routes the O-C wedge to a margin-peaked ridge
+    // profile (`h_max·exp(−d/l_taper)`, peaks at the margin, decays
+    // inland), concentrating the relief near the boundary → near/far rises
+    // back above 1.5 (measured ≈1.70). Green here means the O-C relief is
+    // a margin ridge (Andes), not an interior dome. Consistent with the
+    // direction note above (~lines 324-329).
     assert!(
         asymmetry > 1.5,
         "Phase 1.2 (c2) asymmetry failed: mean(d∈0-5)/mean(d∈10-20) = {asymmetry:.3} ≤ 1.5 — \

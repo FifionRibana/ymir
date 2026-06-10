@@ -376,6 +376,54 @@ pub fn retarget_upper_plate_continental(
     }
 }
 
+/// #155 maillon 1b-i — companion to [`retarget_upper_plate_continental`]:
+/// the mask of cells that ARE O-C continental-override seeds (the cells
+/// `retarget` sets `upper = true` via the O-C branch). Used to route the
+/// Davis-Suppe wedge GEOMETRY by convergence type: cells whose nearest
+/// upper-plate seed is O-C get the margin-peaked ridge profile (Andes),
+/// C-C / velocity-fallback seeds keep the rising-to-plateau dome (Tibet).
+///
+/// Same O-C criterion and 4-neighbour periodic convention as `retarget`:
+/// a Convergent **Continental** cell with an Oceanic differing-plate
+/// neighbour. C-C / O-O / non-Convergent cells → `false`.
+pub fn oc_override_seed_mask(
+    boundary: &BoundaryInfo,
+    plate_id: &PlateIdField,
+    plate_type: &PlateTypeField,
+) -> BoolField {
+    let nx = plate_id.nx();
+    let ny = plate_id.ny();
+    let idx_x = PeriodicIndex::new(nx);
+    let idx_y = PeriodicIndex::new(ny);
+    let mut mask = BoolField::filled(nx, ny, false);
+    for j in 0..ny {
+        for i in 0..nx {
+            if !matches!(boundary.boundary_type.get(i, j), BoundaryType::Convergent) {
+                continue;
+            }
+            if !matches!(plate_type.get(i, j), PlateType::Continental) {
+                continue;
+            }
+            let pid_c = plate_id.get(i, j);
+            let has_oceanic_diff = [
+                (idx_x.next(i), j),
+                (idx_x.prev(i), j),
+                (i, idx_y.next(j)),
+                (i, idx_y.prev(j)),
+            ]
+            .into_iter()
+            .any(|(ni, nj)| {
+                plate_id.get(ni, nj) != pid_c
+                    && matches!(plate_type.get(ni, nj), PlateType::Oceanic)
+            });
+            if has_oceanic_diff {
+                mask.set(i, j, true);
+            }
+        }
+    }
+    mask
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
