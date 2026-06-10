@@ -55,9 +55,11 @@ use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use crate::tectonics_v2::workflow::drainage::compute_drainage_targets;
 use crate::tectonics_v2::workflow::phase_a_common::compute_sea_level_ref_s_space;
 
-use super::boundary_classification::{classify_boundaries, retarget_upper_plate_continental};
+use super::boundary_classification::{
+    classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+};
 use super::closures::accretion::{apply_accretion_step, AccretionParams, ConvergenceTracker};
-use super::closures::davis_suppe::source_term::{apply_davis_suppe_step, DavisSuppeParams};
+use super::closures::davis_suppe::source_term::{apply_davis_suppe_step_routed, DavisSuppeParams};
 use super::closures::equilibrium_height::params::EquilibriumHeightParams;
 use super::closures::equilibrium_height::source_term::apply_equilibrium_height_step;
 use super::closures::erosion::params::ErosionParams;
@@ -68,7 +70,7 @@ use super::closures::rifting::{
     apply_rifting_split, apply_rifting_thinning, DivergenceTracker, RiftingParams,
 };
 use super::closures::subduction::{apply_subduction_step, SubductionParams};
-use super::distance_field::wedge_distance_intra_plate;
+use super::distance_field::wedge_distance_intra_plate_typed;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
 use crate::tectonics_v2::boundaries::plate_type::PlateType;
@@ -527,18 +529,22 @@ pub fn run_with_closures<F>(
     // Outer cache for the Track-D-disabled path (Phase 1.x +
     // Track A/B regression — `plate_id` is invariant, the cache
     // stays valid for the full run).
-    let outer_cache: Option<(_, _)> = if !any_track_d_enabled {
+    let outer_cache: Option<(_, _, _)> = if !any_track_d_enabled {
         let mut bi = classify_boundaries(&state.plate_id, kinematics);
         // #155 1a: retarget DS upper plate to the continental side at O-C
         // subductions (continent thickens, not the faster/oceanic plate);
         // C-C/O-O strictly untouched.
         retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
-        let wd = wedge_distance_intra_plate(
+        // #155 1b-i: type the wedge so the DS step routes geometry — O-C
+        // seeds → margin-peaked ridge, C-C/fallback → rising dome.
+        let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+        let (wd, oc_wedge) = wedge_distance_intra_plate_typed(
             &state.plate_id,
             &bi.upper_plate_mask,
+            &oc_seed,
             davis_suppe.max_distance,
         );
-        Some((bi, wd))
+        Some((bi, wd, oc_wedge))
     } else {
         None
     };
@@ -567,23 +573,27 @@ pub fn run_with_closures<F>(
         // recompute from the current `plate_id` (which may have
         // been mutated by the previous step's Track D events).
         // When Track D is disabled, reuse the outer cache.
-        let per_step_cache: Option<(_, _)> = if any_track_d_enabled {
+        let per_step_cache: Option<(_, _, _)> = if any_track_d_enabled {
             let mut bi = classify_boundaries(&state.plate_id, kinematics);
             // #155 1a: retarget DS upper plate to the continental side at O-C
             // (Track-D path: recomputed per step as plate_type may change).
             retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
-            let wd = wedge_distance_intra_plate(
+            // #155 1b-i: type the wedge for geometry routing (per step,
+            // as plate_type may have changed via Track D events).
+            let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+            let (wd, oc_wedge) = wedge_distance_intra_plate_typed(
                 &state.plate_id,
                 &bi.upper_plate_mask,
+                &oc_seed,
                 davis_suppe.max_distance,
             );
-            Some((bi, wd))
+            Some((bi, wd, oc_wedge))
         } else {
             None
         };
-        let (boundary, wedge_d): (&_, &_) = match (&per_step_cache, &outer_cache) {
-            (Some((b, w)), _) => (b, w),
-            (None, Some((b, w))) => (b, w),
+        let (boundary, wedge_d, oc_wedge): (&_, &_, &_) = match (&per_step_cache, &outer_cache) {
+            (Some((b, w, o)), _) => (b, w, o),
+            (None, Some((b, w, o))) => (b, w, o),
             (None, None) => unreachable!(
                 "boundary cache must be present: either per-step (Track D) or outer (cached)"
             ),
@@ -631,7 +641,7 @@ pub fn run_with_closures<F>(
         std::mem::swap(&mut state.age, &mut age_next);
 
         // 2. Davis-Suppe orogenic source term (Phase 1.2).
-        apply_davis_suppe_step(
+        apply_davis_suppe_step_routed(
             &mut state.s,
             &state.plate_id,
             boundary,
@@ -639,6 +649,7 @@ pub fn run_with_closures<F>(
             kinematics,
             &davis_suppe,
             dt,
+            oc_wedge,
         );
 
         // 3. Equilibrium height sink (Phase 1.3).
