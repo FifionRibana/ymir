@@ -70,6 +70,7 @@
 //! performance + UI work can revisit if the orogenic visual at
 //! 64²-512² shows staircase artefacts on oblique boundaries.
 
+use crate::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
 use crate::tectonics_v2::field::PeriodicIndex;
 use crate::tectonics_v2::voronoi::PlateIdField;
 
@@ -307,6 +308,74 @@ pub fn classify_boundaries(
     BoundaryInfo { boundary_type, upper_plate_mask }
 }
 
+/// #155 maillon 1a — retarget the Davis-Suppe "upper plate" to the
+/// CONTINENTAL plate at **O-C (subduction)** convergences.
+///
+/// [`classify_boundaries`] marks `upper_plate_mask` by the velocity
+/// heuristic `is_upper = v_mag_c > v_mag_n` (the FASTER plate, plate_type-
+/// blind). Real orogeny thickens the overriding **continental** plate
+/// (Andes on South America). This post-process overrides ONLY O-C
+/// convergent cells:
+/// - a Convergent **Continental** cell with an Oceanic differing-plate
+///   neighbour → `upper = true` (overriding plate, gets the DS wedge);
+/// - a Convergent **Oceanic** cell with a Continental differing-plate
+///   neighbour → `upper = false` (subducting / lower plate).
+///
+/// **Strict fallback (critical):** C-C (collision) and O-O cells are
+/// **NOT touched** — the velocity-based `upper_plate_mask` from
+/// `classify_boundaries` stays, so any seed WITHOUT O-C subduction is
+/// byte-identical. Reuses the same 4-neighbour periodic convention as
+/// `classify_boundaries`.
+///
+/// Scope is QUI is thickened, NOT the wedge geometry (dome vs chain) nor
+/// C-C collision orogeny — those are maillon 1b. Called only on the
+/// production DS path (`time_loop`), where `plate_type` is in hand; the
+/// 28 test/age-init callers of `classify_boundaries` are unaffected.
+pub fn retarget_upper_plate_continental(
+    boundary: &mut BoundaryInfo,
+    plate_id: &PlateIdField,
+    plate_type: &PlateTypeField,
+) {
+    let nx = plate_id.nx();
+    let ny = plate_id.ny();
+    let idx_x = PeriodicIndex::new(nx);
+    let idx_y = PeriodicIndex::new(ny);
+    for j in 0..ny {
+        for i in 0..nx {
+            if !matches!(boundary.boundary_type.get(i, j), BoundaryType::Convergent) {
+                continue;
+            }
+            let pid_c = plate_id.get(i, j);
+            let cont_c = matches!(plate_type.get(i, j), PlateType::Continental);
+            // Differing-plate 4-neighbours = the boundary partners.
+            let mut has_oceanic_diff = false;
+            let mut has_continental_diff = false;
+            for (ni, nj) in [
+                (idx_x.next(i), j),
+                (idx_x.prev(i), j),
+                (i, idx_y.next(j)),
+                (i, idx_y.prev(j)),
+            ] {
+                if plate_id.get(ni, nj) == pid_c {
+                    continue;
+                }
+                match plate_type.get(ni, nj) {
+                    PlateType::Oceanic => has_oceanic_diff = true,
+                    PlateType::Continental => has_continental_diff = true,
+                }
+            }
+            if cont_c && has_oceanic_diff {
+                // O-C: continental side overrides → gets the wedge.
+                boundary.upper_plate_mask.set(i, j, true);
+            } else if !cont_c && has_continental_diff {
+                // O-C: oceanic side subducts → lower plate, no wedge.
+                boundary.upper_plate_mask.set(i, j, false);
+            }
+            // else C-C / O-O → strictly untouched (velocity fallback).
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,6 +390,63 @@ mod tests {
             }
         }
         p
+    }
+
+    /// #155 maillon 1a — the BOUNDED proof. The retarget helper must
+    /// flip ONLY O-C (subduction) convergent cells and leave C-C
+    /// (collision) and O-O cells byte-identical to the velocity-based
+    /// `upper_plate_mask`. Geography-independent (no kinematics, no
+    /// seed): three synthetic 4×1 boundaries, one per plate-type pair.
+    ///
+    /// This is the test that proves the C-C/O-O fallback leaks nothing —
+    /// the real-seed runs all carry O-C boundaries (seed 2026 retargets
+    /// 13044 cells, NOT zero, falsifying the earlier "pure-intraplate"
+    /// premise), so the boundedness must be proven structurally here.
+    #[test]
+    fn retarget_bounded_to_oc_subduction() {
+        use crate::tectonics_c1::state::BoolField;
+        // 4×1 (ny=1 ⇒ periodic y-neighbour is self ⇒ x-axis only).
+        // plate_id [0,0,1,1]; the 0|1 boundary is between cell 1 & 2.
+        let nx = 4;
+        let ny = 1;
+        let plate_id = build_plate_id(nx, ny, |i, _| if i < 2 { 0 } else { 1 });
+
+        // Common: only cells 1 & 2 are Convergent (the boundary pair).
+        let make_boundary = |m1: bool, m2: bool| {
+            let mut bt = BoundaryTypeField::filled(nx, ny, BoundaryType::Internal);
+            bt.set(1, 0, BoundaryType::Convergent);
+            bt.set(2, 0, BoundaryType::Convergent);
+            let mut mask = BoolField::filled(nx, ny, false);
+            mask.set(1, 0, m1);
+            mask.set(2, 0, m2);
+            BoundaryInfo { boundary_type: bt, upper_plate_mask: mask }
+        };
+        let pt = |a: PlateType, b: PlateType| {
+            // cells 0,1 = `a`; cells 2,3 = `b`.
+            let mut p = PlateTypeField::filled(nx, ny, a);
+            p.set(2, 0, b);
+            p.set(3, 0, b);
+            p
+        };
+
+        // --- O-C: continental (cells 0,1) overriding oceanic (2,3). ---
+        // Seed the mask "wrong" (cont=false, ocean=true) to see the flip.
+        let mut oc = make_boundary(false, true);
+        retarget_upper_plate_continental(&mut oc, &plate_id, &pt(PlateType::Continental, PlateType::Oceanic));
+        assert!(oc.upper_plate_mask.get(1, 0), "O-C: continental cell must become upper=true");
+        assert!(!oc.upper_plate_mask.get(2, 0), "O-C: oceanic cell must become lower=false");
+
+        // --- C-C: both continental → strictly untouched. ---
+        let mut cc = make_boundary(false, true);
+        retarget_upper_plate_continental(&mut cc, &plate_id, &pt(PlateType::Continental, PlateType::Continental));
+        assert!(!cc.upper_plate_mask.get(1, 0), "C-C: cell 1 mask must stay false (velocity fallback)");
+        assert!(cc.upper_plate_mask.get(2, 0), "C-C: cell 2 mask must stay true (velocity fallback)");
+
+        // --- O-O: both oceanic → strictly untouched. ---
+        let mut oo = make_boundary(true, false);
+        retarget_upper_plate_continental(&mut oo, &plate_id, &pt(PlateType::Oceanic, PlateType::Oceanic));
+        assert!(oo.upper_plate_mask.get(1, 0), "O-O: cell 1 mask must stay true (velocity fallback)");
+        assert!(!oo.upper_plate_mask.get(2, 0), "O-O: cell 2 mask must stay false (velocity fallback)");
     }
 
     #[test]

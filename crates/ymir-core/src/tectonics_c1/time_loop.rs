@@ -55,7 +55,7 @@ use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use crate::tectonics_v2::workflow::drainage::compute_drainage_targets;
 use crate::tectonics_v2::workflow::phase_a_common::compute_sea_level_ref_s_space;
 
-use super::boundary_classification::classify_boundaries;
+use super::boundary_classification::{classify_boundaries, retarget_upper_plate_continental};
 use super::closures::accretion::{apply_accretion_step, AccretionParams, ConvergenceTracker};
 use super::closures::davis_suppe::source_term::{apply_davis_suppe_step, DavisSuppeParams};
 use super::closures::equilibrium_height::params::EquilibriumHeightParams;
@@ -528,7 +528,11 @@ pub fn run_with_closures<F>(
     // Track A/B regression — `plate_id` is invariant, the cache
     // stays valid for the full run).
     let outer_cache: Option<(_, _)> = if !any_track_d_enabled {
-        let bi = classify_boundaries(&state.plate_id, kinematics);
+        let mut bi = classify_boundaries(&state.plate_id, kinematics);
+        // #155 1a: retarget DS upper plate to the continental side at O-C
+        // subductions (continent thickens, not the faster/oceanic plate);
+        // C-C/O-O strictly untouched.
+        retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
         let wd = wedge_distance_intra_plate(
             &state.plate_id,
             &bi.upper_plate_mask,
@@ -564,7 +568,10 @@ pub fn run_with_closures<F>(
         // been mutated by the previous step's Track D events).
         // When Track D is disabled, reuse the outer cache.
         let per_step_cache: Option<(_, _)> = if any_track_d_enabled {
-            let bi = classify_boundaries(&state.plate_id, kinematics);
+            let mut bi = classify_boundaries(&state.plate_id, kinematics);
+            // #155 1a: retarget DS upper plate to the continental side at O-C
+            // (Track-D path: recomputed per step as plate_type may change).
+            retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
             let wd = wedge_distance_intra_plate(
                 &state.plate_id,
                 &bi.upper_plate_mask,
