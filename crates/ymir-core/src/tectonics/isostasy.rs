@@ -115,6 +115,19 @@ impl IsostasyConfig {
     pub fn c1_default() -> Self {
         Self {
             sea_level_mode: SeaLevelMode::PercentileCapped { cap_percentile: 0.92 },
+            // #155 méso — reduced from the inherited 2.0. The σ=2 gaussian
+            // blur ("smooths sharp tectonic transitions") was the DOMINANT
+            // wall smoothing sub-macro (méso) structure out of the altitude
+            // BEFORE upscale (σ-sweep: méso coarse osc 0.05@σ2 → 0.35@σ0.5);
+            // it also smooths the REAL macro O-C ridge (gap +0.06@σ2 →
+            // +0.11@σ0.5 on seed 1988). 0.5 captures ~80-87% of the
+            // sharpening while keeping mild smoothing (cleaner than σ=0, no
+            // Voronoi-staircase). Confirmed NOT the #151 anti-feathering
+            // (that is the upscale `coastal_band`); reducing σ unmasks NO
+            // grid striping / steps / feathering (σ-sweep, real hillshades
+            // 1988+4138). v2 + export keep the `Default` 2.0 (bit-compat).
+            // See `stage_meso_expression.md`.
+            altitude_smoothing_sigma: 0.5,
             ..Default::default()
         }
     }
@@ -392,12 +405,17 @@ mod tests {
             IsostasyConfig::c1_default().sea_level_mode,
             SeaLevelMode::PercentileCapped { cap_percentile: 0.92 }
         );
-        // c1_default differs ONLY in the mode.
+        // c1_default differs from Default in the sea-level MODE and (since
+        // #155 méso) the altitude_smoothing_sigma: 2.0 (Default, v2/export
+        // bit-compat) vs 0.5 (C1, so the σ=2 blur no longer smooths the
+        // macro O-C ridge + méso structure out of the altitude). Other
+        // fields match.
         let d = IsostasyConfig::default();
         let c = IsostasyConfig::c1_default();
         assert_eq!(d.sea_level_fraction, c.sea_level_fraction);
         assert_eq!(d.max_elevation_m, c.max_elevation_m);
-        assert_eq!(d.altitude_smoothing_sigma, c.altitude_smoothing_sigma);
+        assert_eq!(d.altitude_smoothing_sigma, 2.0);
+        assert_eq!(c.altitude_smoothing_sigma, 0.5);
     }
 
     #[test]
