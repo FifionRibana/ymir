@@ -2350,3 +2350,523 @@ fn triptych_consistent_norm() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 MÉSO VIABILITY PROBE (throwaway, before drafting the méso issue
+/// or W7-ing the injection — measure, don't deduce). The tectonic-méso
+/// approach (deposit parallel ridges in S̃, let erosion orient drainage)
+/// is DEDUCED, not measured. Risk: méso structure is FINER than macro;
+/// raw S̃ converges only r~0.51 (advection diffuses it) and the upscale
+/// reads LAUNDERED altitude precisely because fine S̃ doesn't survive.
+/// So synthetic fine ridges in S̃ may be (i) smoothed by upscale, (ii)
+/// drowned by FBM, (iii) ignored by erosion (dendritic anyway).
+///
+/// Inject a SYNTHETIC imbricate stack (cosine in d, wavelength λ) into
+/// coarse S̃ at the O-C wedge of a franc-O-C seed, run the FULL aval
+/// (upscale + FBM + erosion), and compare to the no-injection baseline:
+///   - hillshade (eye): organized parallel ridges + oriented drainage,
+///     or smoothed/dendritic?
+///   - transverse d-shell profile of HD altitude (normalised): does the
+///     injected oscillation (peaks at d≈λ,2λ) survive to HD, or collapse
+///     to one smooth bump?
+/// Verdict gates #1/#2: structure traverses → tectonic méso VIABLE;
+/// smoothed/drowned → méso is an aval-EXPRESSION problem (like S̃ r~0.51),
+/// a DIFFERENT chantier — don't draft the tectonic issue.
+#[test]
+#[ignore]
+fn probe_meso_viability() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
+    let dir = output_dir().join("meso_viability");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let cfg = FbmUpscaleConfig {
+        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        ..Default::default()
+    };
+    let ero_cfg = ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
+    let lambda = 3.0_f64; // thrust spacing in coarse cells (~2-3 ridges in d∈0..8)
+    let amp = 0.8_f64;     // S̃ modulation amplitude (wedge S̃ ~1-2)
+    let band_max = 9.0_f64;
+    let half = 1.13_f64;   // production_upscale::ALTITUDE_NORM_HALF_RANGE (consistent norm)
+    eprintln!("#155 méso viability — synthetic imbricate stack (λ={lambda} cells, amp={amp}) through the full aval");
+    for &seed in &[1988u64, 42u64] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        let mut bi = classify_boundaries(&state.plate_id, &kin);
+        retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(
+            &state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0,
+        );
+
+        let _ = half;
+        // Aval pass on the current state, tagged. Captures shared refs but
+        // NOT `state` (passed as arg), so state.s can be mutated between the
+        // two calls (C1State is not Clone → inject in place rather than clone).
+        let aval = |st: &C1State, tag: &str| {
+            let up = upscale_from_c1(st, &iso_config, &ss, &WorldSeed::new(seed), &cfg);
+            let eroded = run_erosion(&up.heightmap, &ero_cfg, &WorldSeed::new(seed), |_, _, _| true);
+            save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_{tag}_upscale.png")));
+            save_hillshade_crop(&eroded.heightmap, 0, 0, eroded.heightmap.width, &dir.join(format!("seed{seed:05}_{tag}_eroded.png")));
+            // Transverse d-shell profile (upscale only, HD already [0,1]):
+            // did the injected oscillation (peaks at d≈λ,2λ) survive the
+            // upscale, before erosion reorganises?
+            let scale = up.heightmap.width / grid;
+            let mut shells = vec![(0.0f64, 0usize); 20];
+            for j in 0..grid { for i in 0..grid {
+                if !is_oc.get(i, j) { continue; }
+                let d = wd.get(i, j);
+                if d < 0.5 || d > 10.0 { continue; }
+                let sh = ((d / 0.5) as usize).min(19);
+                let mut s = 0.0; let mut n = 0;
+                for jj in 0..scale { for ii in 0..scale {
+                    s += up.heightmap.get((i*scale+ii) as i32, (j*scale+jj) as i32) as f64; n += 1;
+                }}
+                shells[sh].0 += s / n.max(1) as f64; shells[sh].1 += 1;
+            }}
+            let prof: Vec<String> = shells.iter().enumerate().filter(|(_, c)| c.1 > 0)
+                .map(|(k, c)| format!("d{:.1}:{:.3}", k as f64 * 0.5, c.0 / c.1 as f64)).collect();
+            eprintln!("  seed {seed} [{tag}] transverse HD profile [0,1]: {}", prof.join(" "));
+        };
+
+        aval(&state, "base");
+        // Inject the synthetic imbricate stack into S̃ at O-C wedge cells.
+        for j in 0..grid { for i in 0..grid {
+            if is_oc.get(i, j) {
+                let d = wd.get(i, j);
+                if d >= 0.5 && d <= band_max {
+                    let m = amp * (std::f64::consts::TAU * d / lambda).cos();
+                    let v = (state.s.get(i, j) + m).max(0.1);
+                    state.s.set(i, j, v);
+                }
+            }
+        }}
+        aval(&state, "inj");
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 méso viability LOCALIZE (fast, no upscale/erosion) — where does
+/// the injected S̃ structure die? Profiles, per d-shell over O-C cells:
+/// (1) raw S̃ (sanity: injection present + oscillating), (2) coarse
+/// c1_production_altitude (isostasy(S̃)). If S̃ oscillates but coarse
+/// altitude does NOT → isostasy maps the fine structure away (deep). If
+/// coarse altitude oscillates but HD (probe_meso_viability) did not →
+/// the UPSCALE smooths it (actionable: aval-expression). Decisive for
+/// whether méso is tectonic-in-S̃, or an aval-expression chantier.
+#[test]
+#[ignore]
+fn probe_meso_localize() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let (lambda, amp, band_max) = (3.0_f64, 0.8_f64, 9.0_f64);
+    eprintln!("#155 méso localize — S̃ and COARSE-altitude d-shell profiles, base vs inj");
+    for &seed in &[1988u64, 42u64] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let mut bi = classify_boundaries(&state.plate_id, &kin);
+        retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+
+        let shell_profile = |field: &dyn Fn(usize, usize) -> f64| -> Vec<String> {
+            let mut shells = vec![(0.0f64, 0usize); 20];
+            for j in 0..grid { for i in 0..grid {
+                if !is_oc.get(i, j) { continue; }
+                let d = wd.get(i, j);
+                if d < 0.5 || d > 10.0 { continue; }
+                let sh = ((d / 0.5) as usize).min(19);
+                shells[sh].0 += field(i, j); shells[sh].1 += 1;
+            }}
+            shells.iter().enumerate().filter(|(_, c)| c.1 > 0)
+                .map(|(k, c)| format!("d{:.1}:{:.3}", k as f64 * 0.5, c.0 / c.1 as f64)).collect()
+        };
+
+        let alt_base = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
+        eprintln!("  seed {seed} [base] S̃   : {}", shell_profile(&|i, j| state.s.get(i, j)).join(" "));
+        eprintln!("  seed {seed} [base] alt : {}", shell_profile(&|i, j| alt_base.get(i as i32, j as i32) as f64).join(" "));
+        // inject
+        for j in 0..grid { for i in 0..grid {
+            if is_oc.get(i, j) { let d = wd.get(i, j);
+                if d >= 0.5 && d <= band_max {
+                    let v = (state.s.get(i, j) + amp * (std::f64::consts::TAU * d / lambda).cos()).max(0.1);
+                    state.s.set(i, j, v);
+                }}
+        }}
+        let alt_inj = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
+        eprintln!("  seed {seed} [inj ] S̃   : {}", shell_profile(&|i, j| state.s.get(i, j)).join(" "));
+        eprintln!("  seed {seed} [inj ] alt : {}", shell_profile(&|i, j| alt_inj.get(i as i32, j as i32) as f64).join(" "));
+    }
+}
+
+/// #155 méso DISTINCTION (fast, no upscale/erosion) — compression (case
+/// 1, reversible) vs destruction (case 2/3)? c1_production_altitude's
+/// h_raw = S̃·buoyancy is local (structure survives); the [0,1] LAND
+/// normalisation divides by raw h_max (line 185), which injected crests
+/// self-inflate (the 0.92 cap is applied to sea level ONLY). So the
+/// earlier "absorbed" (measured on NORMALISED output) conflates the two.
+/// Decisive test: normalise the INJECTED h_raw with the BASE field's
+/// fixed range (h_min/h_sea/h_max). If the imbricate oscillation
+/// RE-APPEARS under the fixed range → CASE 1 (compression by self-
+/// inflated h_max), reversible, structure was never destroyed → the
+/// expression fix (percentile-cap the LAND ceiling too) would work and
+/// tectonic-méso-in-S̃ is NOT falsified. Measured in CONSISTENT space
+/// (same range for both states; gaps, not cross-space ratios).
+///
+/// ⚠️ GUARD-RAIL — this probe NEARLY MISLED (it over-claimed "+0.587 /
+/// cheap land-cap fix"): it hand-rolls the normalisation and OMITS
+/// `compute_isostasy`'s gaussian blur (`altitude_smoothing_sigma`),
+/// which is the DOMINANT wall — corrected by `probe_sigma_sweep`. So:
+/// (1) trust this probe ONLY for the compression-vs-destruction VERDICT
+/// (structure survives in h_raw = case 1), NOT for the absolute magnitude
+/// (the blur cuts it; the real coarse osc is ~0.05@σ2, not +0.587). (2)
+/// Always measure the GAP under a FIXED range, never a ratio across
+/// affine-rescaled spaces, and never conclude "absent/smoothed" from a
+/// range-normalised output — see [[feedback_measure_structure_not_compressed_output]]
+/// and [[feedback_ratio_across_affine_rescaled_spaces]]. (3) Any
+/// hand-rolled probe MUST replicate the FULL pipeline (incl. the blur);
+/// this one does not — use `probe_sigma_sweep` / `probe_meso_cap` for the
+/// real path.
+#[test]
+#[ignore]
+fn probe_meso_distinction() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    let iso_config = IsostasyConfig::c1_default();
+    let grid = 64usize;
+    let (lambda, amp, band_max) = (3.0_f64, 0.8_f64, 9.0_f64);
+    let buoy = 1.0 - 2750.0_f64 / 3300.0;
+    let sea_norm = 500.0_f64 / (500.0 + 4000.0);
+    let sea_frac = 0.4_f64;
+    let cap = 0.92_f64;
+    eprintln!("#155 méso distinction — inj h_raw under BASE fixed range (buoy={buoy:.4}, sea_norm={sea_norm:.4})");
+    for &seed in &[1988u64, 42u64] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let mut bi = classify_boundaries(&state.plate_id, &kin);
+        retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+
+        // BASE fixed range (replicate compute_isostasy steps 1-2 on base S̃).
+        let hraw_base: Vec<f64> = (0..grid*grid).map(|k| state.s.get(k % grid, k / grid) * buoy).collect();
+        let hmin = hraw_base.iter().cloned().fold(f64::INFINITY, f64::min);
+        let hmax = hraw_base.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let mut sorted = hraw_base.clone(); sorted.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let hcap = sorted[((cap * (sorted.len()-1) as f64).round() as usize).min(sorted.len()-1)];
+        let hsea = hmin + sea_frac * (hcap - hmin).max(1e-10);
+        let normalize = |h: f64| -> f64 {
+            if h <= hsea { ((h - hmin) / (hsea - hmin).max(1e-10)) * sea_norm }
+            else { sea_norm + ((h - hsea) / (hmax - hsea).max(1e-10)) * (1.0 - sea_norm) }.clamp(0.0, 1.0)
+        };
+
+        let shell = |f: &dyn Fn(usize,usize)->f64| -> Vec<f64> {
+            let mut sh = vec![(0.0,0usize); 20];
+            for j in 0..grid { for i in 0..grid {
+                if !is_oc.get(i,j) { continue; }
+                let d = wd.get(i,j); if d < 0.5 || d > 10.0 { continue; }
+                let k = ((d/0.5) as usize).min(19); sh[k].0 += f(i,j); sh[k].1 += 1;
+            }}
+            sh.iter().map(|c| if c.1>0 { c.0/c.1 as f64 } else { f64::NAN }).collect()
+        };
+        // base normalized (base range) vs inj normalized (SAME base range).
+        let base_norm = shell(&|i,j| normalize(state.s.get(i,j) * buoy));
+        // inject
+        for j in 0..grid { for i in 0..grid {
+            if is_oc.get(i,j) { let d = wd.get(i,j);
+                if d >= 0.5 && d <= band_max {
+                    state.s.set(i, j, (state.s.get(i,j) + amp*(std::f64::consts::TAU*d/lambda).cos()).max(0.1));
+                }}
+        }}
+        let inj_fixed = shell(&|i,j| normalize(state.s.get(i,j) * buoy));
+        let osc = |v: &[f64]| { // crest(d≈3,6) − trough(d≈4.5,7.5) mean
+            let g=|x:f64| v[(x/0.5) as usize];
+            ((g(3.0)+g(6.0))/2.0) - ((g(4.5)+g(7.5))/2.0)
+        };
+        let fmt=|v:&[f64]| v.iter().enumerate().filter(|(_,x)|x.is_finite()).map(|(k,x)| format!("d{:.1}:{:.3}",k as f64*0.5,x)).collect::<Vec<_>>().join(" ");
+        eprintln!("  seed {seed} base(baseRange)    : {}", fmt(&base_norm));
+        eprintln!("  seed {seed} inj (baseRange FIX): {}", fmt(&inj_fixed));
+        eprintln!("  seed {seed} crest-trough osc: base={:+.4}  inj(fixed)={:+.4}  (inj>base ⇒ structure expresses under fixed range = CASE 1)", osc(&base_norm), osc(&inj_fixed));
+    }
+}
+
+/// #155 méso step 1+2 — blur isolation + upscale survival.
+/// Step 1: isolate the coarse wall by toggling the gaussian blur
+/// (`altitude_smoothing_sigma` σ=2 vs 0) — does the injected imbricate
+/// structure EXPRESS in the normalised coarse altitude once the blur is
+/// off? (This probe originally also swept a `land_cap_percentile` lever;
+/// that field was MEASURED BAD — over-saturates 14-46% — and REVERTED,
+/// so only the σ dimension remains. The cap finding lives in
+/// `stage_meso_expression.md`.)
+/// Step 2 (the real gate): does the decompressed (σ=0) structure SURVIVE
+/// upscale+FBM (case 3, the r~0.51 fine-S̃ wall)?
+/// All in consistent normalised space (shell crest−trough gaps, never a
+/// cross-space ratio — [[feedback_measure_structure_not_compressed_output]]).
+#[test]
+#[ignore]
+fn probe_meso_cap() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    let dir = output_dir().join("meso_cap");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let base_iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let (lambda, amp, band_max) = (3.0_f64, 0.8_f64, 9.0_f64);
+    let cfg = FbmUpscaleConfig {
+        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        ..Default::default()
+    };
+    // shell crest(d≈3,6)−trough(d≈4.5,7.5) over O-C cells, on a coarse GridF32.
+    let osc_coarse = |alt: &GridF32, isoc: &dyn Fn(usize,usize)->bool, wd: &Field2D| -> f64 {
+        let (mut cs, mut cn, mut ts, mut tn) = (0.0, 0usize, 0.0, 0usize);
+        for j in 0..grid { for i in 0..grid {
+            if !isoc(i, j) { continue; }
+            let d = wd.get(i, j); let a = alt.get(i as i32, j as i32) as f64;
+            if (2.5..=3.5).contains(&d) || (5.5..=6.5).contains(&d) { cs += a; cn += 1; }
+            else if (4.0..=5.0).contains(&d) || (7.0..=8.0).contains(&d) { ts += a; tn += 1; }
+        }}
+        cs / cn.max(1) as f64 - ts / tn.max(1) as f64
+    };
+    eprintln!("#155 méso cap — step1 decompress (coarse osc + saturation), step2 upscale survival");
+    for &seed in &[2u64, 99u64, 1337u64, 2026u64, 4138u64] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: base_iso.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let mut bi = classify_boundaries(&state.plate_id, &kin);
+        retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let isoc = |i: usize, j: usize| is_oc.get(i, j);
+
+        // s_base and s_inj (synthetic imbricate stack), no state mutation yet.
+        let s_base = state.s.clone();
+        let mut s_inj = state.s.clone();
+        for j in 0..grid { for i in 0..grid {
+            if is_oc.get(i, j) { let d = wd.get(i, j);
+                if d >= 0.5 && d <= band_max {
+                    s_inj.set(i, j, (s_base.get(i, j) + amp*(std::f64::consts::TAU*d/lambda).cos()).max(0.1));
+                }}
+        }}
+
+        // Step 1: blur isolation — coarse decompression at σ=2 vs σ=0.
+        for sigma in [2.0f32, 0.0] {
+            let mut iso = base_iso.clone();
+            iso.altitude_smoothing_sigma = sigma;
+            let ab = c1_production_altitude(&s_base, &state.age, &state.plate_type, &iso, &ss);
+            let ai = c1_production_altitude(&s_inj, &state.age, &state.plate_type, &iso, &ss);
+            let (ob, oi) = (osc_coarse(&ab, &isoc, &wd), osc_coarse(&ai, &isoc, &wd));
+            eprintln!("  seed {seed} σ={sigma}: coarse osc base={ob:+.4} inj={oi:+.4} (inj≫base@σ0 ⇒ blur was the wall)");
+        }
+
+        // Step 2: does the DECOMPRESSED structure survive upscale+FBM? Use
+        // the clean coarse expression (σ=0 — blur off, the dominant wall;
+        // cap=None — no saturation cost) found in step 1.
+        let mut iso = base_iso.clone();
+        iso.altitude_smoothing_sigma = 0.0;
+        state.s = s_inj; // move injected field into state for upscale
+        let coarse_alt = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso, &ss);
+        let oc_coarse = osc_coarse(&coarse_alt, &isoc, &wd);
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let scale = up.heightmap.width / grid;
+        // HD osc: same crest/trough d-bands, mean over each coarse cell's HD block.
+        let hd_band = |lo: f64, hi1: f64, lo2: f64, hi2: f64| -> f64 {
+            let (mut s, mut n) = (0.0, 0usize);
+            for j in 0..grid { for i in 0..grid {
+                if !is_oc.get(i, j) { continue; }
+                let d = wd.get(i, j);
+                if (d>=lo && d<=hi1) || (d>=lo2 && d<=hi2) {
+                    for jj in 0..scale { for ii in 0..scale { s += up.heightmap.get((i*scale+ii) as i32,(j*scale+jj) as i32) as f64; n+=1; }}
+                }
+            }}
+            s / n.max(1) as f64
+        };
+        let oc_hd = hd_band(2.5,3.5,5.5,6.5) - hd_band(4.0,5.0,7.0,8.0);
+        eprintln!("  seed {seed} STEP2 σ=0: coarse osc={oc_coarse:+.4}  HD osc={oc_hd:+.4}  (HD≈coarse ⇒ survives upscale; HD≪coarse ⇒ smoothed = CASE 3 upscale wall)");
+        save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_sigma0_inj_upscale.png")));
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 méso — altitude_smoothing_sigma sweep on the FULL production path
+/// (C1 → isostasy(σ) → upscale+FBM → HD). Measures simultaneously:
+/// (A) the méso UNLOCK — injected imbricate coarse osc per σ (consistent
+/// normalised space across σ; the threshold where structure expresses);
+/// (B) what lowering σ UNMASKS on the REAL (non-injected) production HD —
+/// rendered as hillshades to inspect: abrupt tectonic steps at plate
+/// boundaries, grid CURTAIN/striping (the invariance-report artefact σ may
+/// hide), and coast feathering (the FALSE suspect — should stay absent,
+/// it's the upscale coastal_band's job not σ's). σ's stated purpose:
+/// "smooths sharp tectonic transitions" — NOT anti-feathering (#151).
+#[test]
+#[ignore]
+fn probe_sigma_sweep() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    let dir = output_dir().join("sigma_sweep");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let base_iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let (lambda, amp, band_max) = (3.0_f64, 0.8_f64, 9.0_f64);
+    let sigmas = [0.0f32, 0.5, 1.0, 1.5, 2.0];
+    let cfg = FbmUpscaleConfig {
+        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        ..Default::default()
+    };
+    eprintln!("#155 σ sweep — (A) méso unlock coarse osc / (B) real-production HD hillshades for artefacts");
+    for &seed in &[1988u64, 42u64, 1337u64, 4138u64] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: base_iso.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let mut bi = classify_boundaries(&state.plate_id, &kin);
+        retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+
+        let s_base = state.s.clone();
+        let mut s_inj = state.s.clone();
+        for j in 0..grid { for i in 0..grid {
+            if is_oc.get(i, j) { let d = wd.get(i, j);
+                if d >= 0.5 && d <= band_max {
+                    s_inj.set(i, j, (s_base.get(i, j) + amp*(std::f64::consts::TAU*d/lambda).cos()).max(0.1));
+                }}
+        }}
+        let osc_coarse = |alt: &GridF32| -> f64 {
+            let (mut cs, mut cn, mut ts, mut tn) = (0.0, 0usize, 0.0, 0usize);
+            for j in 0..grid { for i in 0..grid {
+                if !is_oc.get(i, j) { continue; }
+                let d = wd.get(i, j); let a = alt.get(i as i32, j as i32) as f64;
+                if (2.5..=3.5).contains(&d) || (5.5..=6.5).contains(&d) { cs += a; cn += 1; }
+                else if (4.0..=5.0).contains(&d) || (7.0..=8.0).contains(&d) { ts += a; tn += 1; }
+            }}
+            cs / cn.max(1) as f64 - ts / tn.max(1) as f64
+        };
+
+        for &sigma in &sigmas {
+            let mut iso = base_iso.clone(); iso.altitude_smoothing_sigma = sigma;
+            // (A) méso unlock — injected coarse osc.
+            let ai = c1_production_altitude(&s_inj, &state.age, &state.plate_type, &iso, &ss);
+            eprintln!("  seed {seed} σ={sigma}: méso inj coarse osc = {:+.4}", osc_coarse(&ai));
+            // (B) REAL production HD hillshade (artefacts: steps / striping / feathering).
+            state.s = s_base.clone();
+            let up_real = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+            save_hillshade_crop(&up_real.heightmap, 0, 0, up_real.heightmap.width,
+                &dir.join(format!("seed{seed:05}_s{sigma:.1}_real.png")));
+            // (A-visual) injected HD hillshade for the franc-O-C seeds.
+            if seed == 1988 || seed == 1337 {
+                state.s = s_inj.clone();
+                let up_inj = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+                save_hillshade_crop(&up_inj.heightmap, 0, 0, up_inj.heightmap.width,
+                    &dir.join(format!("seed{seed:05}_s{sigma:.1}_inj.png")));
+            }
+        }
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 méso σ maillon — effect of reduced altitude_smoothing_sigma on
+/// the REAL macro O-C ridge (1a+1b-i, NOT synthetic injection — the first
+/// test of reduced σ on real structure). O-C-band vs passive-band mean
+/// altitude GAP in consistent normalised space (same normalisation across
+/// σ; gap not ratio — [[feedback_measure_structure_not_compressed_output]]).
+/// Expected: the real macro ridge gets SHARPER (bigger gap) at low σ
+/// because σ no longer smooths it. (Real hillshades per σ: sigma_sweep/.)
+#[test]
+#[ignore]
+fn probe_sigma_macro() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    let base_iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    eprintln!("#155 σ macro — REAL O-C ridge gap (O-C band − passive band, normalised) vs σ");
+    for &seed in &[1988u64, 42u64, 1337u64, 4138u64] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: base_iso.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let mut bi = classify_boundaries(&state.plate_id, &kin);
+        retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let is_cont = |i: usize, j: usize| matches!(state.plate_type.get(i, j), PlateType::Continental);
+        // dist-to-ocean for the passive band.
+        let mut d_ocean = vec![usize::MAX; grid*grid];
+        let mut q = std::collections::VecDeque::new();
+        for j in 0..grid { for i in 0..grid { if !is_cont(i,j) { d_ocean[j*grid+i]=0; q.push_back((i,j)); } }}
+        while let Some((i,j)) = q.pop_front() { let dc=d_ocean[j*grid+i];
+            for (di,dj) in [(-1i32,0i32),(1,0),(0,-1),(0,1)] { let (ni,nj)=(i as i32+di,j as i32+dj);
+                if ni<0||nj<0||ni as usize>=grid||nj as usize>=grid {continue;}
+                let (ni,nj)=(ni as usize,nj as usize);
+                if d_ocean[nj*grid+ni]>dc+1 { d_ocean[nj*grid+ni]=dc+1; q.push_back((ni,nj)); }}}
+        for &sigma in &[2.0f32, 0.5, 0.0] {
+            let mut iso = base_iso.clone(); iso.altitude_smoothing_sigma = sigma;
+            let alt = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso, &ss);
+            let (mut ocs, mut ocn, mut pas, mut pan) = (0.0f64, 0usize, 0.0f64, 0usize);
+            for j in 0..grid { for i in 0..grid {
+                if !is_cont(i,j) { continue; }
+                let a = alt.get(i as i32, j as i32) as f64; let dw = wd.get(i,j);
+                if is_oc.get(i,j) && dw>=1.0 && dw<=6.0 { ocs += a; ocn += 1; }
+                else if !is_oc.get(i,j) { let d=d_ocean[j*grid+i]; if d>=1 && d<=6 { pas += a; pan += 1; } }
+            }}
+            let (ocm, pam) = (ocs/ocn.max(1) as f64, pas/pan.max(1) as f64);
+            eprintln!("  seed {seed} σ={sigma}: O-C band={ocm:.4} passive={pam:.4} GAP={:+.4}", ocm - pam);
+        }
+    }
+}
