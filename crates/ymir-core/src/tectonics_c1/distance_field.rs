@@ -254,6 +254,94 @@ pub fn wedge_distance_intra_plate(
     dist
 }
 
+/// #155 maillon 1b-i — typed variant of [`wedge_distance_intra_plate`]
+/// that ALSO propagates each seed's convergence type to its reachable
+/// wedge cells. Identical Dijkstra (same distances), plus a companion
+/// `is_oc` mask: each reached cell inherits the O-C flag of the seed on
+/// its shortest path (the nearest upper-plate seed). The Davis-Suppe
+/// step then routes geometry by type — O-C cells get the margin-peaked
+/// ridge profile (Andes), C-C / velocity-fallback cells keep the
+/// rising-to-plateau dome (Tibet).
+///
+/// `oc_seed_mask` (from
+/// [`super::boundary_classification::oc_override_seed_mask`]) must align
+/// with the `true` cells of `upper_plate_mask`: it flags which of those
+/// seeds are O-C continental overrides.
+pub fn wedge_distance_intra_plate_typed(
+    plate_id: &crate::tectonics_v2::voronoi::PlateIdField,
+    upper_plate_mask: &super::state::BoolField,
+    oc_seed_mask: &super::state::BoolField,
+    max_distance: f64,
+) -> (Field2D, super::state::BoolField) {
+    let nx = plate_id.nx();
+    let ny = plate_id.ny();
+    let idx_x = PeriodicIndex::new(nx);
+    let idx_y = PeriodicIndex::new(ny);
+
+    let mut dist = Field2D::filled(nx, ny, max_distance);
+    let mut is_oc = super::state::BoolField::filled(nx, ny, false);
+
+    let mut heap: BinaryHeap<std::cmp::Reverse<(OrdF64, usize, usize)>> = BinaryHeap::new();
+    for j in 0..ny {
+        for i in 0..nx {
+            if upper_plate_mask.get(i, j) {
+                dist.set(i, j, 0.0);
+                is_oc.set(i, j, oc_seed_mask.get(i, j));
+                heap.push(std::cmp::Reverse((OrdF64(0.0), i, j)));
+            }
+        }
+    }
+
+    let neighbours: [(i32, i32, f64); 8] = [
+        (1, 0, 1.0),
+        (-1, 0, 1.0),
+        (0, 1, 1.0),
+        (0, -1, 1.0),
+        (1, 1, DIAG),
+        (1, -1, DIAG),
+        (-1, 1, DIAG),
+        (-1, -1, DIAG),
+    ];
+
+    while let Some(std::cmp::Reverse((OrdF64(d), i, j))) = heap.pop() {
+        if d > dist.get(i, j) {
+            continue;
+        }
+        if d >= max_distance {
+            continue;
+        }
+        let plate_c = plate_id.get(i, j);
+        let oc_c = is_oc.get(i, j);
+        for &(di, dj, cost) in neighbours.iter() {
+            let ni = if di > 0 {
+                idx_x.next(i)
+            } else if di < 0 {
+                idx_x.prev(i)
+            } else {
+                i
+            };
+            let nj = if dj > 0 {
+                idx_y.next(j)
+            } else if dj < 0 {
+                idx_y.prev(j)
+            } else {
+                j
+            };
+            if plate_id.get(ni, nj) != plate_c {
+                continue;
+            }
+            let new_d = d + cost;
+            if new_d < dist.get(ni, nj) && new_d < max_distance {
+                dist.set(ni, nj, new_d);
+                is_oc.set(ni, nj, oc_c);
+                heap.push(std::cmp::Reverse((OrdF64(new_d), ni, nj)));
+            }
+        }
+    }
+
+    (dist, is_oc)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -336,6 +336,16 @@ fn davis_suppe_wedge_body_invariants() {
         "Phase 1.2 (c1) saturation failed: fill_near = {fill_near:.3} ≤ 0.5 — \
          closure under-fills the near-boundary wedge band"
     );
+    // #155 maillon 1b-i RESTORED. This near>far asymmetry is the macro-
+    // border thermometer. It briefly went RED under maillon 1a (≈1.11):
+    // 1a retargeted the DS wedge onto the continental plate at O-C
+    // subductions but left the geometry a Tibet-style dome filling the
+    // interior. Maillon 1b-i routes the O-C wedge to a margin-peaked ridge
+    // profile (`h_max·exp(−d/l_taper)`, peaks at the margin, decays
+    // inland), concentrating the relief near the boundary → near/far rises
+    // back above 1.5 (measured ≈1.70). Green here means the O-C relief is
+    // a margin ridge (Andes), not an interior dome. Consistent with the
+    // direction note above (~lines 324-329).
     assert!(
         asymmetry > 1.5,
         "Phase 1.2 (c2) asymmetry failed: mean(d∈0-5)/mean(d∈10-20) = {asymmetry:.3} ≤ 1.5 — \
