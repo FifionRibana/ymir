@@ -158,6 +158,46 @@ pub fn apply_davis_suppe_step(
     params: &DavisSuppeParams,
     dt: f64,
 ) {
+    apply_davis_suppe_step_inner(
+        s, plate_id, boundary, wedge_distance, kinematics, params, dt, None,
+    );
+}
+
+/// #155 maillon 1b-i — geometry-routed Davis-Suppe step. Identical to
+/// [`apply_davis_suppe_step`] except cells flagged in `oc_wedge` (their
+/// nearest upper-plate seed is an O-C subduction; see
+/// [`super::super::distance_field::wedge_distance_intra_plate_typed`])
+/// use the **margin-peaked ridge** target `h_critical_oc(d) = h_max ·
+/// exp(−d / l_taper)` — peaking near the margin and decaying inland
+/// (Andes) — instead of the rising-to-plateau dome (Tibet) the C-C /
+/// velocity-fallback cells keep. Reuses `l_taper` as the ridge length
+/// (no new knob): the O-C profile is the literal inverse of the C-C one.
+pub fn apply_davis_suppe_step_routed(
+    s: &mut Field2D,
+    plate_id: &PlateIdField,
+    boundary: &BoundaryInfo,
+    wedge_distance: &Field2D,
+    kinematics: &PlateKinematics,
+    params: &DavisSuppeParams,
+    dt: f64,
+    oc_wedge: &crate::tectonics_c1::state::BoolField,
+) {
+    apply_davis_suppe_step_inner(
+        s, plate_id, boundary, wedge_distance, kinematics, params, dt, Some(oc_wedge),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_davis_suppe_step_inner(
+    s: &mut Field2D,
+    plate_id: &PlateIdField,
+    boundary: &BoundaryInfo,
+    wedge_distance: &Field2D,
+    kinematics: &PlateKinematics,
+    params: &DavisSuppeParams,
+    dt: f64,
+    oc_wedge: Option<&crate::tectonics_c1::state::BoolField>,
+) {
     if !params.enabled {
         return;
     }
@@ -183,8 +223,17 @@ pub fn apply_davis_suppe_step(
             if d >= max_d {
                 continue;
             }
-            // h_critical and current S̃.
-            let h_crit = h_max * (1.0 - (-d / l_taper).exp());
+            // h_critical and current S̃. #155 1b-i: O-C cells (nearest
+            // upper-plate seed is a subduction) use the margin-peaked
+            // ridge target h_max·exp(−d/l_taper) — peaks near the margin,
+            // decays inland (Andes); C-C / fallback keep the classical
+            // rising-to-plateau h_max·(1−exp(−d/l_taper)) (Tibet).
+            let is_oc = oc_wedge.is_some_and(|m| m.get(i, j));
+            let h_crit = if is_oc {
+                h_max * (-d / l_taper).exp()
+            } else {
+                h_max * (1.0 - (-d / l_taper).exp())
+            };
             let h_now = s.get(i, j);
             // Saturation: no source when already at or above
             // critical taper — `max(0, h_crit - h_now)`.

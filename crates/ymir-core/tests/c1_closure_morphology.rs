@@ -921,6 +921,225 @@ fn coast_palette_check() {
     eprintln!("  out = {}", dir.display());
 }
 
+/// Bresenham line into an RGB image (clamped).
+fn draw_line(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>, x0: i32, y0: i32, x1: i32, y1: i32, c: [u8; 3]) {
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    let dx = (x1 - x0).abs();
+    let dy = -(y1 - y0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let (mut x, mut y) = (x0, y0);
+    let mut err = dx + dy;
+    loop {
+        if x >= 0 && y >= 0 && x < w && y < h { img.put_pixel(x as u32, y as u32, Rgb(c)); }
+        if x == x1 && y == y1 { break; }
+        let e2 = 2 * err;
+        if e2 >= dy { err += dy; x += sx; }
+        if e2 <= dx { err += dx; y += sy; }
+    }
+}
+
+/// #151 RELIEF profile — 1D cuts ACROSS the convergent arc (seed 42),
+/// sampling raw S̃ and the COARSE production altitude (pre-FBM) vs
+/// distance, to read whether a marginal Davis-Suppe orogen pic exists
+/// in S̃ (force) and whether it survives the S̃→altitude conversion
+/// (expression). Arc located via the DS convergence classifier
+/// (`classify_boundaries` → Convergent). Same run/fields as
+/// `export_relief_compare`. Outputs CSV (the numbers) + a PNG plot per
+/// cut; prints cut centres + inward normals so the cut placement is
+/// auditable.
+#[test]
+#[ignore]
+fn profile_convergent_arc_seed42() {
+    let dir = output_dir().join("relief_profile");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let seed = 42u64;
+    let grid = 64usize;
+
+    let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    let closures = C1Closures::default();
+    let config = C1TimeLoopConfig {
+        rigid_continental_crust: true, n_steps: 300,
+        dx: 1.0 / grid as f64, dy: 1.0 / grid as f64,
+        iso_config: iso_config.clone(), drainage_max_distance: 30,
+    };
+    run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+    // Coarse production altitude (pre-FBM): isostasy + Stein-Stein + despike.
+    let alt = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
+    let binfo = classify_boundaries(&state.plate_id, &kin);
+    let cont = |i: usize, j: usize| matches!(state.plate_type.get(i, j), PlateType::Continental);
+
+    // Convergent cells adjacent to land (the orogen sites along the coast).
+    let mut conv: Vec<(usize, usize)> = Vec::new();
+    for j in 0..grid { for i in 0..grid {
+        if matches!(binfo.boundary_type.get(i, j), BoundaryType::Convergent) {
+            conv.push((i, j));
+        }
+    }}
+    // COAST convergences (south half): convergent cells with BOTH a
+    // continental and an oceanic 4-neighbour → a real coast convergence
+    // with a well-defined inward normal (excludes mid-ocean convergences,
+    // which gave degenerate normal=0 cuts).
+    let has_both = |ci: usize, cj: usize| {
+        let (mut land, mut sea) = (false, false);
+        for (di, dj) in [(-1i32,0i32),(1,0),(0,-1),(0,1)] {
+            let (a, b) = (ci as i32 + di, cj as i32 + dj);
+            if a>=0 && b>=0 && (a as usize)<grid && (b as usize)<grid {
+                if cont(a as usize, b as usize) { land = true; } else { sea = true; }
+            }
+        }
+        land && sea
+    };
+    let mut south: Vec<(usize, usize)> = conv.iter().copied()
+        .filter(|&(i, j)| j < grid / 2 && has_both(i, j)).collect();
+    south.sort_by_key(|&(i, _)| i);
+    eprintln!("seed {seed}: {} convergent cells total, {} south COAST convergences", conv.len(), south.len());
+    eprintln!("  south coast-convergent cells (i,j): {south:?}");
+
+    // 3 cut centres spread along the south arc.
+    let centres: Vec<(usize, usize)> = if south.len() >= 3 {
+        [south.len() / 5, south.len() / 2, 4 * south.len() / 5].iter().map(|&k| south[k]).collect()
+    } else { south.clone() };
+
+    // Inward normal at a cell: toward continental neighbours.
+    let normal = |ci: usize, cj: usize| -> (f64, f64) {
+        let (mut nx, mut ny) = (0.0, 0.0);
+        for dj in -1i32..=1 { for di in -1i32..=1 {
+            if di == 0 && dj == 0 { continue; }
+            let (a, b) = (ci as i32 + di, cj as i32 + dj);
+            if a >= 0 && b >= 0 && (a as usize) < grid && (b as usize) < grid {
+                let s = if cont(a as usize, b as usize) { 1.0 } else { -1.0 };
+                nx += s * di as f64; ny += s * dj as f64;
+            }
+        }}
+        let n = (nx * nx + ny * ny).sqrt().max(1e-9);
+        (nx / n, ny / n)
+    };
+
+    for (ci, &(cx, cy)) in centres.iter().enumerate() {
+        let (nx, ny) = normal(cx, cy);
+        eprintln!("  cut {ci}: centre=({cx},{cy}) inward_normal=({nx:.2},{ny:.2})  [t<0 ocean → t=0 convergence → t>0 interior]");
+        // Sample t = -10..=12 cells along the inward normal.
+        let mut rows: Vec<(i32, f64, f64, u8, char)> = Vec::new();
+        for t in -10i32..=12 {
+            let i = (cx as f64 + t as f64 * nx).round();
+            let j = (cy as f64 + t as f64 * ny).round();
+            if i < 0.0 || j < 0.0 || i >= grid as f64 || j >= grid as f64 { continue; }
+            let (i, j) = (i as usize, j as usize);
+            let s = state.s.get(i, j);
+            let a = alt.get(i as i32, j as i32) as f64;
+            let cv = matches!(binfo.boundary_type.get(i, j), BoundaryType::Convergent) as u8;
+            let pt = if cont(i, j) { 'C' } else { 'O' };
+            rows.push((t, s, a, cv, pt));
+        }
+        // CSV (plate_type: C continental [altitude = isostasy(S̃)] / O
+        // oceanic [altitude = Stein-Stein bathymetry, S̃ NOT used]).
+        let mut csv = String::from("dist_cells,s_thickness,coarse_altitude,convergent,plate_type\n");
+        for &(t, s, a, cv, pt) in &rows {
+            csv.push_str(&format!("{t},{s:.4},{a:.4},{cv},{pt}\n"));
+        }
+        std::fs::write(dir.join(format!("seed{seed:05}_cut{ci}.csv")), &csv).unwrap();
+        // Console table.
+        eprintln!("    dist  S̃       altitude  pt  conv");
+        for &(t, s, a, cv, pt) in &rows {
+            eprintln!("    {t:>4}  {s:>6.3}  {a:>+7.3}   {pt}  {}", if cv == 1 { "<-- CONV" } else { "" });
+        }
+
+        // PNG plot: S̃ (blue) + altitude (brown), each normalised to its
+        // own range; gray vertical marker at t=0; gray baseline.
+        let (w, h) = (640i32, 360i32);
+        let (ml, mr, mt, mb) = (40i32, 20, 20, 30);
+        let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::from_pixel(w as u32, h as u32, Rgb([250, 250, 250]));
+        let smin = rows.iter().map(|r| r.1).fold(f64::MAX, f64::min);
+        let smax = rows.iter().map(|r| r.1).fold(f64::MIN, f64::max);
+        let amin = rows.iter().map(|r| r.2).fold(f64::MAX, f64::min);
+        let amax = rows.iter().map(|r| r.2).fold(f64::MIN, f64::max);
+        let n = rows.len() as i32;
+        let xof = |k: i32| ml + k * (w - ml - mr) / (n - 1).max(1);
+        let yof = |v: f64, lo: f64, hi: f64| {
+            let t = ((v - lo) / (hi - lo).max(1e-9)).clamp(0.0, 1.0);
+            (h - mb) - (t * (h - mt - mb) as f64) as i32
+        };
+        // t=0 marker.
+        if let Some(k0) = rows.iter().position(|r| r.0 == 0) {
+            draw_line(&mut img, xof(k0 as i32), mt, xof(k0 as i32), h - mb, [150, 150, 150]);
+        }
+        for k in 1..rows.len() {
+            let (x0, x1) = (xof(k as i32 - 1), xof(k as i32));
+            draw_line(&mut img,
+                x0, yof(rows[k - 1].1, smin, smax), x1, yof(rows[k].1, smin, smax), [30, 60, 200]);
+            draw_line(&mut img,
+                x0, yof(rows[k - 1].2, amin, amax), x1, yof(rows[k].2, amin, amax), [160, 90, 30]);
+        }
+        img.save(dir.join(format!("seed{seed:05}_cut{ci}.png"))).unwrap();
+        eprintln!("    S̃ range [{smin:.3},{smax:.3}]  altitude range [{amin:.3},{amax:.3}]");
+    }
+    eprintln!("  out = {} (BLUE=S̃, BROWN=coarse altitude, GRAY=convergence t=0)", dir.display());
+}
+
+/// RELIEF EXPRESSION-vs-GENERATION diagnostic — per seed, three
+/// co-registered views from the SAME final C1State: (1) HD altitude
+/// (production #151 config, the real product where relief is missing),
+/// (2) RAW S̃ thickness (no FBM — does Davis-Suppe orogeny exist in the
+/// thickness?), (3) boundary TYPES — convergences (red) reusing the DS
+/// convergence classifier (`classify_boundaries`), so the analysis can
+/// overlay convergence ↔ altitude ↔ S̃: orogen in S̃ + flat altitude =
+/// EXPRESSION; flat in both at a convergence = GENERATION.
+#[test]
+#[ignore]
+fn export_relief_compare() {
+    let dir = output_dir().join("relief_compare");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let seeds: [u64; 7] = [2, 42, 99, 1337, 1988, 2026, 4138];
+    let cfg = FbmUpscaleConfig {
+        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        ..Default::default()
+    };
+    eprintln!("#151 relief compare — altitude(1024² prod) / raw S̃ / convergence map, per seed");
+    for &seed in &seeds {
+        let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        let up = upscale_from_c1(&state, &iso_config, &ss, &WorldSeed::new(seed), &cfg);
+        save_heightmap01(&up.heightmap, &dir.join(format!("seed{seed:05}_altitude.png")));
+        save_s_scaled(&state.s, &dir.join(format!("seed{seed:05}_sthickness.png")), 8);
+
+        let binfo = classify_boundaries(&state.plate_id, &kin);
+        let grid = 64usize;
+        let mut bimg = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
+        for j in 0..grid { for i in 0..grid {
+            let base = if matches!(state.plate_type.get(i, j), PlateType::Continental) {
+                [60, 130, 60]
+            } else { [40, 80, 160] };
+            let col = match binfo.boundary_type.get(i, j) {
+                BoundaryType::Convergent => [220, 30, 30],
+                BoundaryType::Divergent => [40, 220, 220],
+                BoundaryType::Transform => [230, 220, 40],
+                _ => base,
+            };
+            put_block(&mut bimg, i, grid - 1 - j, 8, col);
+        }}
+        bimg.save(dir.join(format!("seed{seed:05}_boundaries.png"))).unwrap();
+        eprintln!("  seed {seed} done");
+    }
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  legend: convergent=RED divergent=CYAN transform=YELLOW; land=green ocean=blue");
+}
+
 /// F3 PIN — the dark dotted lines in the OCEAN. Render, at the COARSE
 /// 64² resolution (pre-upscale), the production altitude (Stein-Stein
 /// bathymetry), the age field, and the plate boundaries, to test:
@@ -1827,4 +2046,307 @@ fn hypsometric(h: f32, sea_norm: f32) -> [u8; 3] {
     } else {
         lerp((h - mid) / (1.0 - mid).max(1e-6), [140, 100, 50], [245, 245, 245])
     }
+}
+
+/// #155 amplitude reading (a) — does the 1b-i O-C margin ridge read as a
+/// MOUNTAIN CHAIN after the HD upscale (upscale_from_c1 = isostasy +
+/// Stein-Stein + bicubic + FBM detail oriented by the altitude gradient),
+/// or stay a low soft band? Hillshade (palette-free) of the HD 1024²
+/// product on seeds 42 (S arc) + 1988 (N+E margins) — the franc-O-C seeds.
+/// Hypothesis: 1b-i turned the dome's MOU gradient into a margin-peaked
+/// NET gradient; the FBM amplifies gradients → a low-but-sharp ridge may
+/// become a chain in HD where the dome could not. Measure before coding
+/// any force/meso fix (reading a before b/c).
+#[test]
+#[ignore]
+fn measure_ridge_hd_amplitude() {
+    let dir = output_dir().join("ridge_hd_amplitude");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let cfg = FbmUpscaleConfig {
+        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        ..Default::default()
+    };
+    eprintln!("#155 (a) ridge HD amplitude — hillshade of upscale_from_c1 (1024²)");
+    for &seed in &[42u64, 1988u64] {
+        let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let up = upscale_from_c1(&state, &iso_config, &ss, &WorldSeed::new(seed), &cfg);
+        let h = &up.heightmap;
+        // Full-frame hillshade (palette-free relief).
+        save_hillshade_crop(h, 0, 0, h.width, &dir.join(format!("seed{seed:05}_hillshade_full.png")));
+        // Also grayscale full (continuous height, no palette bands).
+        save_gray01_crop(h, 0, 0, h.width, &dir.join(format!("seed{seed:05}_gray_full.png")));
+        eprintln!("  seed {seed}: HD {}² hillshade + gray written", h.width);
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 amplitude reading — quantitative O-C-margin vs passive-margin
+/// contrast. Does 1b-i leave a measurable elevation signal at O-C
+/// margins above passive (non-convergent) margins, or is it ≈1 (coastal
+/// band erases it)? Measured on the COARSE production altitude (where
+/// 1b-i imprints directly, before FBM dilution). Bands: cells 1..=6
+/// inland of their respective margin. O-C band = typed-wedge is_oc &&
+/// 1<=d<=6; passive band = continental, !is_oc, Manhattan dist-to-ocean
+/// 1..=6. Ratio >1 (even modest) = sub-visible signal erosion could
+/// amplify; ≈1 = 1b-i imprints ~nothing in elevation.
+#[test]
+#[ignore]
+fn measure_oc_vs_passive_margin() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    eprintln!("#155 O-C vs passive margin elevation contrast (coarse altitude, band 1..=6)");
+    for &seed in &[42u64, 1988u64, 1337u64, 2u64] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        // Reproduce production geometry on the final state.
+        let mut bi = classify_boundaries(&state.plate_id, &kin);
+        retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(
+            &state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0,
+        );
+        let alt = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
+
+        let is_cont = |i: usize, j: usize| matches!(state.plate_type.get(i, j), PlateType::Continental);
+        // Manhattan dist-to-ocean over continental cells (multi-source BFS).
+        let mut d_ocean = vec![usize::MAX; grid * grid];
+        let mut q = std::collections::VecDeque::new();
+        for j in 0..grid { for i in 0..grid {
+            if !is_cont(i, j) { d_ocean[j * grid + i] = 0; q.push_back((i, j)); }
+        }}
+        while let Some((i, j)) = q.pop_front() {
+            let dc = d_ocean[j * grid + i];
+            for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni < 0 || nj < 0 || ni as usize >= grid || nj as usize >= grid { continue; }
+                let (ni, nj) = (ni as usize, nj as usize);
+                if d_ocean[nj * grid + ni] > dc + 1 {
+                    d_ocean[nj * grid + ni] = dc + 1;
+                    q.push_back((ni, nj));
+                }
+            }
+        }
+
+        // ARTIFACT GUARD (see [[feedback_ratio_across_affine_rescaled_spaces]]):
+        // report the O-C−passive GAP in the SAME normalised [0,1] space the
+        // HD product uses ((alt+half)/(2·half), sea→0.5), NOT a ratio on raw
+        // altitude. A raw-altitude ratio here (1.2-1.5) vs an HD-normalised
+        // ratio (1.05-1.12) elsewhere is a false "collapse" (pure +offset
+        // arithmetic) — it misled the #155 amplitude diagnostic for a full
+        // round. Gap-in-consistent-space is cross-state comparable; ratio is
+        // not. `half` mirrors production_upscale::ALTITUDE_NORM_HALF_RANGE.
+        let half = 1.13_f64;
+        let norm = |a: f64| ((a + half) / (2.0 * half)).clamp(0.0, 1.0);
+        let (mut oc_sum, mut oc_n) = (0.0f64, 0usize);
+        let (mut pa_sum, mut pa_n) = (0.0f64, 0usize);
+        for j in 0..grid { for i in 0..grid {
+            if !is_cont(i, j) { continue; }
+            let a = norm(alt.get(i as i32, j as i32) as f64);
+            let dw = wd.get(i, j);
+            if is_oc.get(i, j) && dw >= 1.0 && dw <= 6.0 {
+                oc_sum += a; oc_n += 1;
+            } else if !is_oc.get(i, j) {
+                let do_ = d_ocean[j * grid + i];
+                if do_ >= 1 && do_ <= 6 { pa_sum += a; pa_n += 1; }
+            }
+        }}
+        let oc_mean = oc_sum / oc_n.max(1) as f64;
+        let pa_mean = pa_sum / pa_n.max(1) as f64;
+        eprintln!(
+            "  seed {seed:5}: O-C band (norm) = {oc_mean:.4} (n={oc_n:4})  passive band (norm) = {pa_mean:.4} (n={pa_n:4})  GAP = {:+.4}",
+            oc_mean - pa_mean
+        );
+    }
+}
+
+/// #155 reading (a-erosion) PROXY — apply v2 droplet hydraulic erosion
+/// (erosion::hydraulic::run_erosion — SAME TYPE as the expected phase-4
+/// HD erosion, so representative) to the C1 upscaled heightmap, and ask
+/// the DIFFERENTIAL question: does erosion amplify the O-C ridge
+/// PREFERENTIALLY (O-C/passive elevation ratio RISES → ridge emerges,
+/// (a) succeeds) or UNIFORMLY (ratio flat → ridge stays drowned, (a)
+/// fails → (b)/(c))? Measures the same O-C-vs-passive contrast on the HD
+/// heightmap PRE and POST erosion (coarse band cells mapped to HD
+/// blocks), plus a post-erosion hillshade for the eye.
+#[test]
+#[ignore]
+fn measure_aerosion_proxy() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
+    let dir = output_dir().join("aerosion_proxy");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let cfg = FbmUpscaleConfig {
+        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        ..Default::default()
+    };
+    let ero_cfg = ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
+    eprintln!("#155 (a-erosion) proxy — droplet hydraulic erosion on C1 HD; O-C/passive ratio pre vs post");
+    for &seed in &[42u64, 1988u64, 1337u64] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        let mut bi = classify_boundaries(&state.plate_id, &kin);
+        retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(
+            &state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0,
+        );
+        let is_cont = |i: usize, j: usize| matches!(state.plate_type.get(i, j), PlateType::Continental);
+        // dist-to-ocean (Manhattan) for the passive band.
+        let mut d_ocean = vec![usize::MAX; grid * grid];
+        let mut q = std::collections::VecDeque::new();
+        for j in 0..grid { for i in 0..grid {
+            if !is_cont(i, j) { d_ocean[j * grid + i] = 0; q.push_back((i, j)); }
+        }}
+        while let Some((i, j)) = q.pop_front() {
+            let dc = d_ocean[j * grid + i];
+            for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni < 0 || nj < 0 || ni as usize >= grid || nj as usize >= grid { continue; }
+                let (ni, nj) = (ni as usize, nj as usize);
+                if d_ocean[nj * grid + ni] > dc + 1 { d_ocean[nj * grid + ni] = dc + 1; q.push_back((ni, nj)); }
+            }
+        }
+        // Coarse band membership: 0 = none, 1 = O-C, 2 = passive.
+        let mut band = vec![0u8; grid * grid];
+        for j in 0..grid { for i in 0..grid {
+            if !is_cont(i, j) { continue; }
+            let dw = wd.get(i, j);
+            if is_oc.get(i, j) && dw >= 1.0 && dw <= 6.0 { band[j * grid + i] = 1; }
+            else if !is_oc.get(i, j) {
+                let do_ = d_ocean[j * grid + i];
+                if do_ >= 1 && do_ <= 6 { band[j * grid + i] = 2; }
+            }
+        }}
+
+        let up = upscale_from_c1(&state, &iso_config, &ss, &WorldSeed::new(seed), &cfg);
+        let h0 = up.heightmap.clone();
+        let eroded = run_erosion(&h0, &ero_cfg, &WorldSeed::new(seed), |_, _, _| true);
+        let h1 = &eroded.heightmap;
+        let scale = h0.width / grid; // 16
+
+        // Mean HD height over the coarse band's HD blocks.
+        let mean_over_band = |hd: &GridF32, target: u8| -> f64 {
+            let (mut s, mut n) = (0.0f64, 0usize);
+            for j in 0..grid { for i in 0..grid {
+                if band[j * grid + i] != target { continue; }
+                for jj in 0..scale { for ii in 0..scale {
+                    s += hd.get((i * scale + ii) as i32, (j * scale + jj) as i32) as f64; n += 1;
+                }}
+            }}
+            s / n.max(1) as f64
+        };
+        // ARTIFACT GUARD ([[feedback_ratio_across_affine_rescaled_spaces]]):
+        // h0/h1 are ALREADY normalised [0,1] (upscale_from_c1 output), so
+        // report the O-C−passive GAP (cross-state comparable) — NOT a ratio,
+        // and NEVER compare this number to a raw-altitude ratio (that mix is
+        // the false-collapse trap). The differential verdict is gap_post vs
+        // gap_pre: gap RISES → erosion amplifies the ridge preferentially.
+        let (oc0, pa0) = (mean_over_band(&h0, 1), mean_over_band(&h0, 2));
+        let (oc1, pa1) = (mean_over_band(h1, 1), mean_over_band(h1, 2));
+        eprintln!(
+            "  seed {seed:5}: PRE  O-C={oc0:.4} passive={pa0:.4} GAP={:+.4}  | POST O-C={oc1:.4} passive={pa1:.4} GAP={:+.4}",
+            oc0 - pa0, oc1 - pa1,
+        );
+        save_hillshade_crop(h1, 0, 0, h1.width, &dir.join(format!("seed{seed:05}_eroded_hillshade.png")));
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 reading (a) CLOSURE — visual confirmation in CONSISTENT
+/// normalization. The corrected quantitative verdict: the O-C ridge
+/// signal survives upscale + is amplified by erosion (gap +60-76% in
+/// consistent space). This triptych confirms by eye whether that
+/// preserved-but-modest ridge reads as a distinct CHAIN or stays
+/// coastal-dominated (→ méso/structure the next subject).
+///
+/// CRITICAL: all three states share the SAME normalization AND
+/// resolution. The coarse is routed through `upscale_from_c1` with a
+/// FLAT config (amplitude_base=0, coast_warp=0 → pure bicubic of the
+/// normalized coarse), so it differs from the upscale state ONLY by the
+/// FBM detail — not by a normalization offset (the artifact we caught)
+/// nor a 64²-vs-1024² hillshade-gradient mismatch (a second cross-space
+/// trap). State 2 = prod #151 config; state 3 = state 2 + v2 erosion.
+#[test]
+#[ignore]
+fn triptych_consistent_norm() {
+    use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
+    let dir = output_dir().join("triptych_norm");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso_config = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    // Flat config: pure bicubic upscale of the normalized coarse (NO FBM,
+    // NO warp) → macro ossature at 1024², same normalization as prod.
+    let cfg_flat = FbmUpscaleConfig {
+        target_size: 1024, amplitude_base: 0.0, coast_warp_strength: 0.0,
+        coastal_amplitude_band: 0.0, ..Default::default()
+    };
+    // Prod #151 config (the real aval).
+    let cfg_prod = FbmUpscaleConfig {
+        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        ..Default::default()
+    };
+    let ero_cfg = ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
+    eprintln!("#155 (a) closure — consistent-norm hillshade triptych (coarse-bicubic / upscale / eroded)");
+    for &seed in &[1337u64, 1988u64, 42u64] {
+        let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300,
+            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        let coarse = upscale_from_c1(&state, &iso_config, &ss, &WorldSeed::new(seed), &cfg_flat);
+        let up = upscale_from_c1(&state, &iso_config, &ss, &WorldSeed::new(seed), &cfg_prod);
+        let eroded = run_erosion(&up.heightmap, &ero_cfg, &WorldSeed::new(seed), |_, _, _| true);
+
+        let w = coarse.heightmap.width;
+        save_hillshade_crop(&coarse.heightmap, 0, 0, w, &dir.join(format!("seed{seed:05}_1_coarse_norm.png")));
+        save_hillshade_crop(&up.heightmap, 0, 0, w, &dir.join(format!("seed{seed:05}_2_upscale_norm.png")));
+        save_hillshade_crop(&eroded.heightmap, 0, 0, w, &dir.join(format!("seed{seed:05}_3_eroded_norm.png")));
+        eprintln!("  seed {seed}: triptych written ({w}²)");
+    }
+    eprintln!("  out = {}", dir.display());
 }
