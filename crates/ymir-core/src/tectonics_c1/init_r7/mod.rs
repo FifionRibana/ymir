@@ -108,6 +108,25 @@ pub struct Phase2InitParams {
     pub cluster: ContinentalClusterParams,
     /// Ridge-aligned age = 0 init (sub-component 3, Path 3.A).
     pub age: AgeInitParams,
+    /// #155 A′ — cratonic crustal-thickness ratio. After the cratonic
+    /// mask is built, continental cratonic cells get their initial S̃
+    /// multiplied by this (Airy: thick craton crust → elevated). Default
+    /// 1.25 (canonical C1; real crustal ratio ~40 km craton / ~32 km
+    /// platform). Set to 1.0 to disable (byte-identical to pre-#155 init).
+    /// Pairs with `ErosionParams::craton_resist` so the differential is
+    /// not planed/inverted by erosion (the measured 2026 inversion).
+    ///
+    /// MAGNITUDE (measured, defaults A′-on): cratons render ~600-1100 m
+    /// above non-craton land (conversion-dependent — the robust measure is
+    /// the ~0.134 normalised difference / S̃ ratio ~1.5-1.8; the metres
+    /// figure depends on the unpinned norm→m vertical scale). NOT
+    /// geologically wrong — real cratons include high plateaus (~1000-
+    /// 1500 m, e.g. southern African); the 300-500 m target was the MOST
+    /// WORN shields. Lowering it = a MODEL refinement (worn-init / Jordan
+    /// compositional isostasy / cumulative wear over eons — 300 steps ≠
+    /// eons), NOT a knob (params stay anchored: 1.25 = crustal ratio,
+    /// craton_resist mid-band). Worn-shield height = documented follow-up.
+    pub craton_thickness_ratio: f64,
 }
 
 impl Default for Phase2InitParams {
@@ -116,6 +135,7 @@ impl Default for Phase2InitParams {
             r7: R7InitParams::default(),
             cluster: ContinentalClusterParams::default(),
             age: AgeInitParams::default(),
+            craton_thickness_ratio: 1.25,
         }
     }
 }
@@ -235,7 +255,7 @@ pub fn init_c1_state_phase_2_r7(
             seed_coords: Some(&seed_coords),
         }),
     };
-    let s = init_s_field(InitMode::default(), &init_ctx);
+    let mut s = init_s_field(InitMode::default(), &init_ctx);
 
     // Step 7 — kinematics (Phase 1.1 preset; Track C/D
     // placeholder per Stage E4 W7 concern).
@@ -260,6 +280,20 @@ pub fn init_c1_state_phase_2_r7(
     // pub(crate)-promoted helper).
     let cratonic_mask =
         build_phase_1_1_cratonic_mask(nx, ny, &plate_id, &plate_type, &seed_coords);
+
+    // Step 11 (#155 A′) — cratonic crustal-thickness differential. Thick
+    // cratonic crust (Airy isostasy → elevated worn shields). Multiply the
+    // initial continental cratonic S̃ by the ratio (mask is built only on
+    // continental cells). ratio == 1.0 → no-op (byte-identical pre-#155).
+    if params.craton_thickness_ratio != 1.0 {
+        for j in 0..ny {
+            for i in 0..nx {
+                if cratonic_mask.get(i, j) {
+                    s.set(i, j, s.get(i, j) * params.craton_thickness_ratio);
+                }
+            }
+        }
+    }
 
     C1State {
         s,
