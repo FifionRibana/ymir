@@ -2870,3 +2870,162 @@ fn probe_sigma_macro() {
         }
     }
 }
+
+/// #155 méso B viability — the central bet: does ISOTROPIC hydraulic
+/// erosion on an already-tectonically-ORIENTED FBM texture yield distinct
+/// PARALLEL cordilleras, or generic DENDRITIC dissection that erases the
+/// orientation? Throwaway (no wiring, no prod change): on the REAL macro
+/// ridge (σ=0.5, no synthetic injection), upscale with a BOOSTED
+/// anisotropic FBM (amplitude/anisotropy/slope-factor up), then
+/// run_erosion. Compare pre- vs post-erosion hillshades:
+///   - cordilleras survive/sharpen → B viable, wire HD erosion cleanly;
+///   - dendritic dissection (orientation erased) → B needs an ORIENTED
+///     erosion (anisotropy input in hydraulic.rs), more work to scope.
+/// Visual is authoritative ([[feedback_visual_over_scalar]]).
+#[test]
+#[ignore]
+fn probe_meso_erosion_orientation() {
+    use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
+    let dir = output_dir().join("meso_erosion_orient");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default(); // σ=0.5
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    // BOOSTED anisotropic FBM: stronger oriented ridges on the macro slopes.
+    let cfg = FbmUpscaleConfig {
+        target_size: 1024,
+        amplitude_base: 0.30,        // 0.16 → 0.30 (taller méso ridges)
+        max_anisotropy: 8.0,         // 3.0 → 8.0 (long margin-parallel stretch)
+        amplitude_slope_factor: 5.0, // 3.0 → 5.0 (amplitude on the ridge flanks)
+        coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30, submarine_damping: 0.0,
+        ..Default::default()
+    };
+    let ero_cfg = ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
+    eprintln!("#155 méso B viability — isotropic erosion on oriented FBM: cordilleras or dendritic?");
+    for &seed in &[1988u64, 42u64] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: iso.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width,
+            &dir.join(format!("seed{seed:05}_1_oriented_fbm.png")));
+        let eroded = run_erosion(&up.heightmap, &ero_cfg, &WorldSeed::new(seed), |_, _, _| true);
+        save_hillshade_crop(&eroded.heightmap, 0, 0, eroded.heightmap.width,
+            &dir.join(format!("seed{seed:05}_2_eroded.png")));
+        eprintln!("  seed {seed}: oriented-FBM + eroded hillshades written");
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// Land/sea binary map (Living Landz output): land (h > sea) green, sea blue.
+fn save_binarymap(h: &GridF32, sea: f32, path: &Path) {
+    let (nx, ny) = (h.width, h.height);
+    let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(nx as u32, ny as u32);
+    for j in 0..ny { for i in 0..nx {
+        let v = h.get(i as i32, j as i32);
+        let c = if v > sea { Rgb([70, 140, 70]) } else { Rgb([40, 80, 160]) };
+        img.put_pixel(i as u32, (ny - 1 - j) as u32, c);
+    }}
+    img.save(path).expect("save binarymap PNG");
+}
+
+/// #155 PRODUCT état-des-lieux — the C1 product at the Living Landz target
+/// 2048², ALL seeds, WITH sea level visible (hypsometric) + binarymap.
+/// Pipeline = C1 (σ=0.5) → upscale_from_c1 (prod #151 FBM) → run_erosion
+/// (the decided méso = dendritic dissection; NOTE erosion is NOT YET WIRED
+/// into upscale_from_c1, Case 2a — applied manually here pending that
+/// maillon). Full world, no crop. Judge: credible mountains on all seeds?
+/// coasts natural / relief stays on land? oceans flat (known gap)?
+#[test]
+#[ignore]
+fn product_etat_des_lieux() {
+    use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
+    let dir = output_dir().join("product_2048");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default(); // σ=0.5
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let cfg = FbmUpscaleConfig {
+        target_size: 2048, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        ..Default::default()
+    };
+    let ero_cfg = ErosionConfig { num_droplets: 4_000_000, batch_size: 100_000, ..Default::default() };
+    let sea = 0.5f32; // upscale_from_c1 maps sea level to 0.5
+    eprintln!("#155 product état-des-lieux — 2048², all seeds, hypsometric + binarymap (C1 σ0.5 + upscale + erosion)");
+    for &seed in &[2u64, 42, 99, 1337, 1988, 2026, 4138] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: iso.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let eroded = run_erosion(&up.heightmap, &ero_cfg, &WorldSeed::new(seed), |_, _, _| true);
+        let h = &eroded.heightmap;
+        save_heightmap01(h, &dir.join(format!("seed{seed:05}_hypso.png")));
+        save_binarymap(h, sea, &dir.join(format!("seed{seed:05}_binary.png")));
+        save_hillshade_crop(h, 0, 0, h.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
+        let land = h.data.iter().filter(|&&v| v > sea).count();
+        eprintln!("  seed {seed}: {}² written, land = {:.1}%", h.width, 100.0 * land as f64 / (h.width*h.height) as f64);
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 HD-production wiring ACCEPTANCE — upscale_from_c1 with the canonical
+/// c1_hd_production config now delivers the eroded (dissected) product the
+/// 2048² état-des-lieux judged. Confirms: (1) product ≡ état-des-lieux
+/// (hypso/hillshade), (2) determinism run×2 byte-identical, (3) cost at
+/// 2048², (4) sediment hook present + slope recomputed post-erosion.
+#[test]
+#[ignore]
+fn hd_production_acceptance() {
+    let dir = output_dir().join("hd_production");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let cfg = FbmUpscaleConfig::c1_hd_production(2048);
+    eprintln!("#155 HD production acceptance — c1_hd_production(2048), seeds 1988/42/2026");
+    eprintln!("  cfg: target={} erosion={}", cfg.target_size,
+        cfg.erosion.as_ref().map(|e| e.num_droplets).unwrap_or(0));
+    for &seed in &[1988u64, 42, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: iso.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        // COST + product: ONE 2048² pass (the heavy, judged config).
+        let t0 = std::time::Instant::now();
+        let up1 = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let dt = t0.elapsed();
+        let sed = up1.sediment.is_some();
+        let land = up1.heightmap.data.iter().filter(|&&v| v > 0.5).count();
+        // DETERMINISM: proven cheaply at 512² (run×2), NOT at the heavy 2048².
+        let cfg_det = FbmUpscaleConfig::c1_hd_production(512);
+        let d1 = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg_det);
+        let d2 = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg_det);
+        let det = d1.heightmap.data == d2.heightmap.data;
+        eprintln!("  seed {seed}: {}² in {dt:.2?}  det(512²)={}  sediment={}  slope_ok={}  land={:.1}%",
+            up1.heightmap.width, if det {"OK"} else {"MISMATCH"}, sed,
+            up1.slope.data.iter().any(|&s| s > 0.0),
+            100.0 * land as f64 / (up1.heightmap.width*up1.heightmap.height) as f64);
+        save_heightmap01(&up1.heightmap, &dir.join(format!("seed{seed:05}_hypso.png")));
+        save_hillshade_crop(&up1.heightmap, 0, 0, up1.heightmap.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
+        assert!(det, "seed {seed}: HD production not deterministic run×2 (512²)");
+        assert!(sed, "seed {seed}: sediment hook missing");
+    }
+    eprintln!("  out = {}", dir.display());
+}
