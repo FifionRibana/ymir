@@ -30,6 +30,7 @@
 //! asserts the precondition (64²/256² structure convergence) so a
 //! future change that breaks it is caught, not just warned against.
 
+use crate::erosion::hydraulic::run_erosion;
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
 use crate::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
@@ -144,7 +145,31 @@ pub fn upscale_from_c1(
     }
     let sea_level_normalized = 0.5_f32;
 
-    upscale_with_fbm(&coarse, sea_level_normalized, seed, cfg)
+    let result = upscale_with_fbm(&coarse, sea_level_normalized, seed, cfg);
+
+    // #155 méso — HD hydraulic erosion (the dendritic dissection that makes
+    // the macro ridge read as credible eroded mountains). Applied AFTER the
+    // FBM, ONLY when `cfg.erosion` is Some (the canonical C1 HD product config
+    // `FbmUpscaleConfig::c1_hd_production` turns it on; default None →
+    // byte-identical). Slope is RECOMPUTED post-erosion (it changed);
+    // `sediment` is forwarded (the rivers/lakes hook, not consumed yet).
+    let Some(ero) = &cfg.erosion else {
+        return result;
+    };
+    let eroded = run_erosion(&result.heightmap, ero, seed, |_, _, _| true);
+    let h = &eroded.heightmap;
+    let mut slope = GridF32::new(h.width, h.height, 0.0);
+    for j in 0..h.height {
+        for i in 0..h.width {
+            let (gx, gy) = h.gradient_at(i, j);
+            slope.set(i, j, (gx * gx + gy * gy).sqrt());
+        }
+    }
+    UpscaleResult {
+        heightmap: eroded.heightmap,
+        slope,
+        sediment: Some(eroded.sediment),
+    }
 }
 
 #[cfg(test)]
