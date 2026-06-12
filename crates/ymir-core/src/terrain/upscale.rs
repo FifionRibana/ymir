@@ -5,6 +5,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::noise::SeededNoise;
+use crate::erosion::hydraulic::ErosionConfig;
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
 
@@ -66,6 +67,17 @@ pub struct FbmUpscaleConfig {
     /// coast irregularity; this removes the micro-feathering. Default:
     /// 0.0 (OFF → byte-identical to pre-#151; v2 unaffected).
     pub coastal_amplitude_band: f64,
+    /// **HD hydraulic erosion** (#155 méso). When `Some`, [`upscale_from_c1`]
+    /// (tectonics_c1::production_upscale) applies droplet hydraulic erosion
+    /// to the HD heightmap AFTER the FBM step — the dendritic dissection that
+    /// turns the C1 macro ridge into credible eroded mountains (the méso bar
+    /// for Living Landz; validated by the 2048² état-des-lieux). Default
+    /// `None` → no erosion (byte-identical; smoke/regression/probe tests and
+    /// v2's `upscale_with_fbm` path are unaffected — only `upscale_from_c1`
+    /// reads this field). The canonical C1 HD product config that turns it
+    /// ON is [`FbmUpscaleConfig::c1_hd_production`].
+    #[serde(default)]
+    pub erosion: Option<ErosionConfig>,
 }
 
 impl Default for FbmUpscaleConfig {
@@ -86,6 +98,49 @@ impl Default for FbmUpscaleConfig {
             coast_warp_strength: 0.0,
             coast_warp_frequency: 0.5,
             coastal_amplitude_band: 0.0,
+            erosion: None,
+        }
+    }
+}
+
+impl FbmUpscaleConfig {
+    /// Canonical C1 HD product config (#155) — the #151 coastline params
+    /// + HD hydraulic erosion ON (the validated 2048² état-des-lieux
+    /// product). `target_size` parameterised; `num_droplets` is scaled at
+    /// the judged density (4M at 2048²) ∝ `target_size²` so the dissection
+    /// is resolution-coherent (#151 spirit), 2048² == 4M exactly (the judged
+    /// point). The path that DELIVERS the HD product must use THIS (else the
+    /// erosion-off product — judged non-deliverable — ships).
+    ///
+    /// COST (product characteristic): the 4M-droplet erosion at 2048² is
+    /// ~2 min/seed (measured 105–125 s). This is an OFFLINE / background
+    /// export path, NOT interactive — the Living Landz pipeline must generate
+    /// the HD product in the background, not on-the-fly.
+    ///
+    /// NOTE (#155 follow-up): `ErosionConfig::sea_level` defaults to 0.1 and
+    /// is PRESERVED here as-judged — the état-des-lieux rendered with that
+    /// (mismatched) value. The normalised sea level is actually 0.5; setting
+    /// `sea_level = 0.5` is the CORRECT value but CHANGES coastal deposition
+    /// → a separate follow-up maillon to re-judge the coastal render, NOT a
+    /// silent fix here. Do not "correct" it in passing.
+    #[must_use]
+    pub fn c1_hd_production(target_size: usize) -> Self {
+        let num_droplets =
+            (4_000_000u64 * (target_size as u64).pow(2) / (2048u64).pow(2)) as usize;
+        Self {
+            target_size,
+            coast_warp_strength: 1.5,
+            coast_warp_frequency: 0.5,
+            coastal_amplitude_band: 0.30,
+            amplitude_base: 0.16,
+            submarine_damping: 0.0,
+            erosion: Some(ErosionConfig {
+                num_droplets,
+                batch_size: 100_000,
+                // sea_level 0.1 preserved as-judged (see note above).
+                ..Default::default()
+            }),
+            ..Default::default()
         }
     }
 }
@@ -96,6 +151,10 @@ pub struct UpscaleResult {
     pub heightmap: GridF32,
     /// The slope magnitude field (useful for erosion and viz).
     pub slope: GridF32,
+    /// Sediment / water-passage map from HD erosion (#155) — `Some` only
+    /// when `cfg.erosion` ran. Forwarded from `ErosionResult.sediment`; the
+    /// hook for a future rivers/lakes chantier (NOT consumed yet).
+    pub sediment: Option<GridF32>,
 }
 
 /// Hermite smoothstep: 0 at lo, 1 at hi, smooth transition.
@@ -341,7 +400,7 @@ pub fn upscale_with_fbm(
         }
     }
 
-    UpscaleResult { heightmap, slope: slope_out }
+    UpscaleResult { heightmap, slope: slope_out, sediment: None }
 }
 
 /// Compute slope magnitude and direction on the coarse grid.

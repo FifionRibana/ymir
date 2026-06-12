@@ -1393,7 +1393,7 @@ fn load_phase_caches_from_dir(
                 // safe. Re-running UpscaleFbm regenerates the real
                 // slope from scratch.
                 let slope = GridF32::from_vec(nx, ny, vec![0.0; nx * ny]);
-                fbm_cache.result = Some(UpscaleResult { heightmap, slope });
+                fbm_cache.result = Some(UpscaleResult { heightmap, slope, sediment: None });
                 fbm_cache.last_status = Some(Ok("loaded from disk".into()));
                 fbm_cache.mark_dirty();
                 info!("[import] upscale_fbm result restored");
