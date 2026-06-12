@@ -63,7 +63,7 @@ use super::closures::davis_suppe::source_term::{apply_davis_suppe_step_routed, D
 use super::closures::equilibrium_height::params::EquilibriumHeightParams;
 use super::closures::equilibrium_height::source_term::apply_equilibrium_height_step;
 use super::closures::erosion::params::ErosionParams;
-use super::closures::erosion::source_term::{apply_erosion_step, compute_drainage_areas};
+use super::closures::erosion::source_term::{apply_erosion_step_craton, compute_drainage_areas};
 use super::closures::oceanic_bathymetry::params::SteinSteinParams;
 use super::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
 use super::closures::rifting::{
@@ -324,7 +324,12 @@ impl Default for C1Closures {
         Self {
             davis_suppe: DavisSuppeParams::default(),
             equilibrium_height: EquilibriumHeightParams::default(),
-            erosion: ErosionParams::default(),
+            // #155 A′ — canonical C1 activates craton erosion-resistance
+            // (anchored mid-band ~5×). Pairs with the init thickness
+            // differential (Phase2InitParams::craton_thickness_ratio) so
+            // cratons (thick + resistant) stand as elevated worn shields.
+            // ErosionParams::default() keeps 1.0 (off) for v2/unit/generic.
+            erosion: ErosionParams { craton_resist: 0.2, ..ErosionParams::default() },
             oceanic_bathymetry: SteinSteinParams::default(),
             subduction: SubductionParams::default(),
             accretion: AccretionParams::default(),
@@ -743,13 +748,15 @@ pub fn run_with_closures<F>(
                     config.drainage_max_distance,
                 );
                 let drainage_areas = compute_drainage_areas(&drainage_map);
-                apply_erosion_step(
+                // #155 A′: craton-aware erosion (resist from params; 1.0 = byte-identical).
+                apply_erosion_step_craton(
                     &mut state.s,
                     &altitude,
                     &drainage_areas,
                     &closures.erosion,
                     dt,
                     config.dx,
+                    &state.cratonic_mask,
                 );
             }
         }
