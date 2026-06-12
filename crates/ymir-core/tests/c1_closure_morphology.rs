@@ -3029,3 +3029,117 @@ fn hd_production_acceptance() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 INTERIOR relief — economical-hypothesis test. The interior is flat
+/// because NOTHING couples craton/age → continental altitude (EH treats
+/// cratons uniformly; isostasy = S̃ only; age → oceanic only). Hypothesis:
+/// the interior needs no new closure — just LARGE-SCALE altitude variation
+/// (from the cratonic_mask we already HAVE) so the aval (σ=0.5 + FBM +
+/// erosion) dresses it into relief, the way the macro gradient lets the
+/// aval work at margins. Test (throwaway, post-loop = advection-free):
+/// bump continental S̃ by Δ·smooth(cratonic_mask) → upscale_from_c1 (erosion
+/// ON) → does interior relief APPEAR over cratons vs the flat baseline?
+/// Visual authoritative; interior altitude std (continental, away from
+/// coast) base vs bumped as a scalar companion.
+#[test]
+#[ignore]
+fn probe_interior_craton() {
+    let dir = output_dir().join("interior_craton");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let cfg = FbmUpscaleConfig::c1_hd_production(1024); // 1024² for speed
+    let delta = 1.0f64; // S̃ bump in craton cores (→ ~+0.17 raw altitude)
+    eprintln!("#155 interior craton — does the aval dress a gentle craton gradient into relief? (Δ={delta})");
+    for &seed in &[42u64, 2026, 1988] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: iso.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let n_craton = (0..grid*grid).filter(|k| state.cratonic_mask.get(k % grid, k / grid)).count();
+
+        // BASELINE (flat interior).
+        let up_base = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        save_hillshade_crop(&up_base.heightmap, 0, 0, up_base.heightmap.width, &dir.join(format!("seed{seed:05}_1_base.png")));
+
+        // Smooth craton field → gentle large-scale gradient.
+        let mut cf = GridF32::new(grid, grid, 0.0);
+        for j in 0..grid { for i in 0..grid {
+            if state.cratonic_mask.get(i, j) { cf.set(i, j, 1.0); }
+        }}
+        let cf = cf.gaussian_blur(4.0);
+        // BUMP continental S̃ post-loop (advection-free, large-scale).
+        for j in 0..grid { for i in 0..grid {
+            if matches!(state.plate_type.get(i, j), PlateType::Continental) {
+                let add = delta * cf.get(i as i32, j as i32) as f64;
+                state.s.set(i, j, state.s.get(i, j) + add);
+            }
+        }}
+        let up_bump = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        save_hillshade_crop(&up_bump.heightmap, 0, 0, up_bump.heightmap.width, &dir.join(format!("seed{seed:05}_2_craton_bumped.png")));
+        save_heightmap01(&up_bump.heightmap, &dir.join(format!("seed{seed:05}_2_craton_hypso.png")));
+
+        // Interior relief proxy: std of HD altitude over land cells (>0.5).
+        let interior_std = |h: &GridF32| -> f64 {
+            let land: Vec<f64> = h.data.iter().filter(|&&v| v > 0.5).map(|&v| v as f64).collect();
+            if land.is_empty() { return 0.0; }
+            let m = land.iter().sum::<f64>() / land.len() as f64;
+            (land.iter().map(|v| (v - m).powi(2)).sum::<f64>() / land.len() as f64).sqrt()
+        };
+        eprintln!("  seed {seed}: cratons={} cells  land-alt std base={:.4} bumped={:.4}",
+            n_craton, interior_std(&up_base.heightmap), interior_std(&up_bump.heightmap));
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 A′ CALIBRATION — judge the now-active (default) craton elevation on
+/// RENDERED altitude in METERS (not the raw S̃ ratio). Defaults are A′-on
+/// (craton_thickness 1.25 + craton_resist 0.2). Measures craton vs
+/// non-craton LAND mean altitude (HD, c1_hd_production) in metres
+/// (norm→m: (v−0.5)·2·max_elevation_m, max_elevation_m=4000). Target ~300-
+/// 500 m worn shield. Too high → check note (b) (base-erosion melting the
+/// non-craton denominator) before any in-band resist nudge.
+#[test]
+#[ignore]
+fn probe_craton_calibration() {
+    let dir = output_dir().join("craton_calib");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let cfg = FbmUpscaleConfig::c1_hd_production(1024);
+    let max_elev_m = 4000.0f64;
+    eprintln!("#155 A′ calibration — craton vs non-craton land altitude (m), defaults A′-on");
+    for &seed in &[42u64, 1988, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default(); // A′ active
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: iso.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let scale = up.heightmap.width / grid;
+        let (mut cs, mut cn, mut ns, mut nn) = (0.0f64, 0usize, 0.0f64, 0usize);
+        for j in 0..grid { for i in 0..grid {
+            let craton = state.cratonic_mask.get(i, j);
+            for jj in 0..scale { for ii in 0..scale {
+                let v = up.heightmap.get((i*scale+ii) as i32, (j*scale+jj) as i32) as f64;
+                if v <= 0.5 { continue; } // land only
+                let m = (v - 0.5) * 2.0 * max_elev_m;
+                if craton { cs += m; cn += 1; } else { ns += m; nn += 1; }
+            }}
+        }}
+        let (cm, nm) = (cs / cn.max(1) as f64, ns / nn.max(1) as f64);
+        eprintln!("  seed {seed}: craton land mean = {cm:.0} m  non-craton = {nm:.0} m  craton above = {:.0} m  (target shield ~300-500)", cm - nm);
+        save_heightmap01(&up.heightmap, &dir.join(format!("seed{seed:05}_hypso.png")));
+        save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
+    }
+    eprintln!("  out = {}", dir.display());
+}

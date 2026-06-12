@@ -54,6 +54,39 @@ pub fn apply_erosion_step(
     dt: f64,
     dx: f64,
 ) {
+    erosion_loop(s, altitude, drainage_areas, params, dt, dx, None);
+}
+
+/// #155 A′ — erosion with craton resistance. Identical to
+/// [`apply_erosion_step`] except `K` is scaled by `params.craton_resist`
+/// on cells where `craton` is set (ancient cratons erode slower — their
+/// defining property; resolves the measured craton-S̃ inversion that
+/// planed elevated cratons like normal crust). `craton_resist == 1.0`
+/// (default) → byte-identical to the plain step. The C1 time loop calls
+/// THIS, passing the state's cratonic mask.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_erosion_step_craton(
+    s: &mut Field2D,
+    altitude: &GridF32,
+    drainage_areas: &[u32],
+    params: &ErosionParams,
+    dt: f64,
+    dx: f64,
+    craton: &crate::tectonics_c1::state::BoolField,
+) {
+    erosion_loop(s, altitude, drainage_areas, params, dt, dx, Some(craton));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn erosion_loop(
+    s: &mut Field2D,
+    altitude: &GridF32,
+    drainage_areas: &[u32],
+    params: &ErosionParams,
+    dt: f64,
+    dx: f64,
+    craton: Option<&crate::tectonics_c1::state::BoolField>,
+) {
     if !params.enabled {
         return;
     }
@@ -88,7 +121,12 @@ pub fn apply_erosion_step(
             if a <= 0.0 {
                 continue;
             }
-            let erosion_rate = k * a.powf(m) * slope.powf(n_exp);
+            // #155 A′: cratons resist erosion (K × craton_resist where masked).
+            let k_cell = match craton {
+                Some(mask) if mask.get(i, j) => k * params.craton_resist,
+                _ => k,
+            };
+            let erosion_rate = k_cell * a.powf(m) * slope.powf(n_exp);
             let delta = erosion_rate * dt;
             let s_old = s.get(i, j);
             // Issue #145 — clean non-injecting removal. The legacy

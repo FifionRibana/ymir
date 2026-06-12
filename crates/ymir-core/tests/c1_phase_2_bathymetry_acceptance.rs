@@ -409,7 +409,10 @@ fn disabled_matches_phase_1_4() {
     let closures_b = C1Closures {
         davis_suppe: DavisSuppeParams::default(),
         equilibrium_height: EquilibriumHeightParams::default(),
-        erosion: ErosionParams::default(),
+        // #155 A′: track the canonical erosion (now craton_resist=0.2 in
+        // C1Closures::default) rather than hardcoding ErosionParams::default
+        // (=1.0) — Path B must match Path A's `..C1Closures::default()`.
+        erosion: C1Closures::default().erosion,
         oceanic_bathymetry: SteinSteinParams {
             enabled: false,
             ..SteinSteinParams::default()

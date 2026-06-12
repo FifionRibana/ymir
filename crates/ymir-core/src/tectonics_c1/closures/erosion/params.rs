@@ -60,6 +60,16 @@ pub struct ErosionParams {
     /// Defensive against pathological `k · A^m · S^n · dt > S̃`
     /// configurations.
     pub floor: f64,
+    /// #155 A′ — craton erosion-resistance. `K` is multiplied by this
+    /// factor on cells flagged cratonic, so ancient stable cratons erode
+    /// SLOWER (their defining property alongside thick crust). Default
+    /// `1.0` = OFF / byte-identical (v2, unit tests, generic erosion). The
+    /// canonical C1 config (`C1Closures::default`) sets it < 1 (anchored in
+    /// the real craton/non-craton erosion-rate band ~3-10×); without it an
+    /// init-thick craton is planed (and can INVERT) by normal erosion — the
+    /// measured 2026 craton-S̃ inversion. Pairs with the init thickness
+    /// differential (`Phase2InitParams::craton_thickness_ratio`).
+    pub craton_resist: f64,
 }
 
 impl Default for ErosionParams {
@@ -70,6 +80,7 @@ impl Default for ErosionParams {
             m: 0.5,
             n: 1.0,
             floor: 0.2,
+            craton_resist: 1.0, // OFF by default — byte-identical
         }
     }
 }
