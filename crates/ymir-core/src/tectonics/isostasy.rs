@@ -178,7 +178,7 @@ pub struct IsostasyResult {
 /// The input is the Field2D from the solver (f64, dimensionless).
 /// The output is a normalized GridF32 heightmap suitable for erosion and export.
 pub fn compute_isostasy(thickness: &Field2D, config: &IsostasyConfig) -> IsostasyResult {
-    compute_isostasy_inner(thickness, config, None)
+    compute_isostasy_inner(thickness, config, None, None)
 }
 
 /// #155 B-Jordan — Airy isostasy with spatial CRATONIC density. Identical
@@ -193,13 +193,40 @@ pub fn compute_isostasy_craton(
     config: &IsostasyConfig,
     craton: &[bool],
 ) -> IsostasyResult {
-    compute_isostasy_inner(thickness, config, Some(craton))
+    compute_isostasy_inner(thickness, config, Some(craton), None)
+}
+
+/// #155 vertical-scale — Airy isostasy with BOTH the cratonic density mask
+/// (`craton`, see [`compute_isostasy_craton`]) AND a CONTINENTAL mask that
+/// repairs the land-normalisation ceiling.
+///
+/// **The land-ceiling repair.** [`compute_isostasy`] normalises the LAND ramp
+/// `[h_sea, h_max] → [sea_norm, 1.0]` against the GLOBAL raw `h_max`. In the C1
+/// production that global max is the OCEANIC advective pile-up cell (S̃ ≈ 2.15
+/// at the rigid margin, #145) — a cell Stein-Stein then overwrites into deep
+/// ocean. So real continental land is normalised against a phantom oceanic
+/// ceiling (tops at ~0.94) and `peak_altitude_m` describes that ocean cell, not
+/// any land (the `project_c1_vertical_scale_contract` diagnostic). When
+/// `continental` is `Some`, the land ceiling is the max `h` over CONTINENTAL
+/// cells instead — the real terrestrial summit; oceanic cells (S-S-overwritten)
+/// no longer inflate it. `continental == None` → byte-identical to the global
+/// `h_max` behaviour (v2/export untouched — they have no S-S/no advective spike,
+/// so no phantom: the fix is C1-specific). Row-major `&[bool]` (length nx·ny),
+/// same convention as `craton` (avoids a tectonics→tectonics_c1 cycle).
+pub fn compute_isostasy_c1(
+    thickness: &Field2D,
+    config: &IsostasyConfig,
+    craton: Option<&[bool]>,
+    continental: &[bool],
+) -> IsostasyResult {
+    compute_isostasy_inner(thickness, config, craton, Some(continental))
 }
 
 fn compute_isostasy_inner(
     thickness: &Field2D,
     config: &IsostasyConfig,
     craton: Option<&[bool]>,
+    continental: Option<&[bool]>,
 ) -> IsostasyResult {
     let nx = thickness.nx();
     let ny = thickness.ny();
@@ -236,6 +263,26 @@ fn compute_isostasy_inner(
     let h_range = (h_cap - h_min).max(1e-10);
     let h_sea = h_min + config.sea_level_fraction * h_range;
 
+    // 2b. #155 land-ceiling repair. The LAND ramp tops at this ceiling. By
+    // default (continental == None) it is the global raw h_max — but in the C1
+    // production that is the OCEANIC advective spike (S-S-overwritten), so real
+    // land is normalised against a phantom. When a continental mask is given,
+    // use the max h over CONTINENTAL cells: the real terrestrial summit, with
+    // oceanic cells excluded (they get S-S bathymetry downstream regardless).
+    // See `compute_isostasy_c1`. Fallback to h_max if the mask flags no cell.
+    let land_cap = match continental {
+        Some(cont) => {
+            let mut m = f32::NEG_INFINITY;
+            for k in 0..nx * ny {
+                if cont[k] {
+                    m = m.max(h_raw[k]);
+                }
+            }
+            if m.is_finite() { m } else { h_max }
+        }
+        None => h_max,
+    };
+
     // 3. Map to normalized [0, 1] with sea level at a known position
     // sea_norm = max_depth / (max_depth + max_elevation)
     let sea_norm = config.max_depth_m / (config.max_depth_m + config.max_elevation_m);
@@ -249,7 +296,9 @@ fn compute_isostasy_inner(
             let t = (h - h_min) / (h_sea - h_min).max(1e-10);
             t * sea_norm
         } else {
-            let t = (h - h_sea) / (h_max - h_sea).max(1e-10);
+            // #155 land ramp tops at land_cap (continental summit, not the
+            // phantom oceanic h_max). Cells above land_cap clamp to 1.0 below.
+            let t = (h - h_sea) / (land_cap - h_sea).max(1e-10);
             sea_norm + t * (1.0 - sea_norm)
         };
         data[k] = normalized.clamp(0.0, 1.0);
@@ -261,8 +310,11 @@ fn compute_isostasy_inner(
 
     let land_ratio = land_count as f32 / (nx * ny) as f32;
 
-    // 4. Compute actual peak altitude and depth for metadata
-    let peak_altitude_m = (h_max - h_sea) / (h_max - h_min).max(1e-10) * config.max_elevation_m;
+    // 4. Compute actual peak altitude and depth for metadata. #155: the peak
+    // is the real continental summit (land_cap), not the phantom oceanic h_max
+    // — so peak_altitude_m describes an actual land cell (None path: land_cap
+    // == h_max, byte-identical).
+    let peak_altitude_m = (land_cap - h_sea) / (land_cap - h_min).max(1e-10) * config.max_elevation_m;
     let actual_depth_m = (h_sea - h_min) / (h_max - h_min).max(1e-10) * config.max_depth_m;
 
     let heightmap = GridF32::from_vec(nx, ny, data);
