@@ -44,7 +44,7 @@ use image::{ImageBuffer, Rgb};
 use ymir_core::grid::GridF32;
 use ymir_core::morphology::{land_morphology, LandMorphology};
 use ymir_core::tectonics_c1::boundary_classification::{classify_boundaries, BoundaryType};
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{compute_isostasy, compute_isostasy_craton, IsostasyConfig};
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
 use ymir_core::tectonics_c1::init_r7::{init_c1_state_phase_2_r7, Phase2InitParams};
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
@@ -3463,4 +3463,93 @@ fn probe_jordan_render() {
         }
     }
     eprintln!("  out = {}", dir.display());
+}
+
+/// #155 VERTICAL-SCALE CONTRACT + HIGH-MOUNTAIN CEILING (read-only diagnostic).
+///
+/// VOLET 1 (contract): the production altitude is DOUBLE-NORMALISED with an
+/// internally INCOHERENT metre scale, which is the source of the ~×2 norm→m
+/// ambiguity flagged in `project_c1_vertical_scale_contract`:
+///  - `compute_isostasy` outputs an ASYMMETRIC [0,1] (sea at
+///    `sea_norm = max_depth_m/(max_depth_m+max_elevation_m) = 500/4500 ≈ 0.111`);
+///    on LAND the metre anchor is `IsostasyResult.peak_altitude_m` =
+///    `(h_max−h_sea)/(h_max−h_min)·max_elevation_m`, i.e. FIELD-RELATIVE
+///    (depends on the seed's raw S̃ spread), NOT a fixed constant.
+///  - Stein-Stein then OVERWRITES oceanic cells with `−depth_m/depth_scale_m`
+///    (depth_scale=5000), a SECOND, FIXED metre scale with sea at 0 (not 0.111).
+///  - `upscale_from_c1` then re-normalises `(v+1.13)/2.26` → land tops at 0.943,
+///    S-S sea→0.5 but isostasy-continental-sea→0.549 (the two "sea levels" differ).
+/// So there is NO single norm→m: land = field-relative `peak_altitude_m`,
+/// ocean = fixed 5000 m, spliced at incompatible zeros. The downstream guess
+/// `(v−0.5)·2·4000` used in `probe_craton_calibration` is exactly one arbitrary
+/// pick — measured here against the model's OWN `peak_altitude_m`.
+///
+/// VOLET 2 (ceiling attribution): print, per seed, the model's OWN peak metres
+/// (`peak_altitude_m`), the S̃ ceiling on the margin orogen vs EH `h_eq=2.0`,
+/// and the HD rendered land-max under the downstream guess. Attributes the
+/// 6000–8000 m gap: (EH) S̃ capped at 2.0 → (ramp) `peak_altitude_m` is a
+/// FRACTION of `max_elevation_m=4000` → (conversion) the codomain itself tops
+/// at 4000 m. NOT a fix; scopes the Phase-3 EH/critical-wedge chantier.
+#[test]
+#[ignore]
+fn probe_vertical_scale_ceiling() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let h_eq = 2.0f64;
+    let max_elev = iso.max_elevation_m;
+    let p95 = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[(v.len()*95/100).min(v.len()-1)] };
+    eprintln!("#155 vertical-scale + ceiling — max_elevation_m={max_elev}, sea_norm={:.3}, EH h_eq={h_eq}",
+        iso.max_depth_m / (iso.max_depth_m + iso.max_elevation_m));
+    for &seed in &[42u64, 1988, 2026] {
+        // Zones (margin orogen) — same construction as probe_prominence_attribution.
+        let geom = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let kin0 = PlateKinematics::preset_phase_1_1(geom.num_plates);
+        let mut bi = classify_boundaries(&geom.plate_id, &kin0);
+        retarget_upper_plate_continental(&mut bi, &geom.plate_id, &geom.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &geom.plate_id, &geom.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default(); // A′ active
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: iso.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        // S̃ ceiling on the margin orogen (raw, consistent space).
+        let mut margin = Vec::new();
+        let mut s_global_max = f64::NEG_INFINITY;
+        for j in 0..grid { for i in 0..grid {
+            let s = state.s.get(i, j);
+            s_global_max = s_global_max.max(s);
+            if matches!(geom.plate_type.get(i,j), PlateType::Continental)
+                && is_oc.get(i,j) && wd.get(i,j) < 30.0 { margin.push(s); }
+        }}
+        let n_margin = margin.len();
+        let n_at_ceiling = margin.iter().filter(|&&s| s >= 1.9).count();
+        let margin_p95 = p95(margin.clone());
+
+        // The model's OWN metre statement (IsostasyResult metadata).
+        let iso_res = compute_isostasy_craton(&state.s, &iso, state.cratonic_mask.data());
+        let peak_m = iso_res.peak_altitude_m;
+
+        // HD rendered land-max under the DOWNSTREAM guess convention (v−0.5)·2·4000.
+        let cfg = FbmUpscaleConfig::c1_hd_production(512);
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let hd_land_max_norm = up.heightmap.data.iter().cloned().fold(0.0f32, f32::max);
+        let hd_guess_m = (hd_land_max_norm as f64 - 0.5) * 2.0 * max_elev as f64;
+
+        eprintln!("  seed {seed}:");
+        eprintln!("    S̃: global_max={s_global_max:.3}  margin orogen p95={margin_p95:.3}  cells≥1.9: {n_at_ceiling}/{n_margin}  (EH h_eq={h_eq})");
+        eprintln!("    model peak_altitude_m = {peak_m:.0} m  (= fraction of max_elevation_m={max_elev:.0}; the ramp's land ceiling)");
+        eprintln!("    HD land-max norm={hd_land_max_norm:.3} → guess-convention {hd_guess_m:.0} m  vs target 6000-8000");
+    }
+    eprintln!("  ATTRIBUTION: EH caps S̃ at 2.0 → peak_altitude_m is a fraction of 4000 → conversion codomain tops at 4000 < 6000-8000.");
 }
