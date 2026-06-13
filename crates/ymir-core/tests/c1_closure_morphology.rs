@@ -3553,3 +3553,93 @@ fn probe_vertical_scale_ceiling() {
     }
     eprintln!("  ATTRIBUTION: EH caps S̃ at 2.0 → peak_altitude_m is a fraction of 4000 → conversion codomain tops at 4000 < 6000-8000.");
 }
+
+/// #155 vertical-scale chantier — characterise the LAND-ceiling repair BEFORE
+/// coding. The cause: compute_isostasy normalises land against global raw h_max
+/// (the oceanic advective spike). Measures, on the production state: raw h by
+/// plate_type, so we can choose the terrestrial ceiling (max-continental vs a
+/// robust percentile) and quantify over-saturation (how many land cells would
+/// clamp to 1.0 under each). Read-only — no isostasy change yet.
+#[test]
+#[ignore]
+fn probe_land_ceiling_repair() {
+    let iso = IsostasyConfig::c1_default();
+    let grid = 64usize;
+    let buoy = 1.0 - iso.rho_crust / iso.rho_mantle;
+    let buoy_c = match iso.craton_rho_crust { Some(r) => 1.0 - r / iso.rho_mantle, None => buoy };
+    let pct = |v: &[f64], q: f64| -> f64 { if v.is_empty() { return f64::NAN; } let mut s = v.to_vec(); s.sort_by(|a,b| a.partial_cmp(b).unwrap()); s[((q*(s.len()-1) as f64).round() as usize).min(s.len()-1)] };
+    eprintln!("#155 land-ceiling repair — raw h by plate_type (buoy cont={buoy:.4} craton={buoy_c:.4})");
+    for &seed in &[42u64, 1988, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        // raw h = S̃ * buoyancy (craton density on cratonic cells), global vs continental.
+        let mut h_all = Vec::new();
+        let mut h_cont = Vec::new();
+        for j in 0..grid { for i in 0..grid {
+            let k = j*grid+i;
+            let b = if state.cratonic_mask.data()[k] { buoy_c } else { buoy };
+            let h = state.s.get(i,j) * b as f64;
+            h_all.push(h);
+            if matches!(state.plate_type.get(i,j), PlateType::Continental) { h_cont.push(h); }
+        }}
+        let h_min = h_all.iter().cloned().fold(f64::INFINITY, f64::min);
+        let h_max_glob = h_all.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let h_max_cont = h_cont.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        // land = h > h_sea (isostasy's own threshold), under the GLOBAL h_max ramp.
+        let h_range = (pct(&h_all, 0.92) - h_min).max(1e-10); // sea uses PercentileCapped{0.92} (the LOW cap)
+        let h_sea = h_min + iso.sea_level_fraction as f64 * h_range;
+        let land: Vec<f64> = h_all.iter().cloned().filter(|&h| h > h_sea).collect();
+        let land_cont: Vec<f64> = h_cont.iter().cloned().filter(|&h| h > h_sea).collect();
+        eprintln!("  seed {seed}: h_min={h_min:.3} h_sea={h_sea:.3} | h_max GLOBAL={h_max_glob:.3} CONTINENTAL={h_max_cont:.3} (ratio {:.2})", h_max_glob/h_max_cont.max(1e-6));
+        eprintln!("    land cells (h>h_sea): {} total, {} continental | land p50={:.3} p95={:.3} p99={:.3} max={:.3}",
+            land.len(), land_cont.len(), pct(&land,0.5), pct(&land,0.95), pct(&land,0.99), pct(&land,1.0));
+        // over-saturation: under a candidate ceiling C, land cells with h>=C clamp to 1.0.
+        for &(tag, c) in &[("maxCont", h_max_cont), ("landP99", pct(&land,0.99)), ("landP95", pct(&land,0.95))] {
+            let clamp = land.iter().filter(|&&h| h >= c).count();
+            eprintln!("    ceiling {tag}={c:.3} → {clamp}/{} land cells clamp to 1.0 ({:.1}%)", land.len(), 100.0*clamp as f64/land.len().max(1) as f64);
+        }
+    }
+}
+
+/// #155 land-ceiling repair ACCEPTANCE — contrast the phantom (global h_max)
+/// vs repaired (continental ceiling) peak_altitude_m, the over-saturation, and
+/// the rendered land change. compute_isostasy_craton (no continental mask) =
+/// pre-fix phantom; compute_isostasy_c1 (continental mask) = repaired; the
+/// production upscale_from_c1 now uses the repaired path. Renders hypso +
+/// hillshade for the visual re-judge (land now spreads to 1.0).
+#[test]
+#[ignore]
+fn probe_land_ceiling_acceptance() {
+    use ymir_core::tectonics::isostasy::{compute_isostasy_craton, compute_isostasy_c1};
+    let dir = output_dir().join("land_ceiling_accept");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let cfg = FbmUpscaleConfig::c1_hd_production(1024);
+    eprintln!("#155 land-ceiling acceptance — phantom vs repaired peak_altitude_m + render");
+    for &seed in &[42u64, 1988, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let continental: Vec<bool> = (0..grid*grid).map(|k| matches!(state.plate_type.get(k%grid, k/grid), PlateType::Continental)).collect();
+        let phantom = compute_isostasy_craton(&state.s, &iso, state.cratonic_mask.data());
+        let repaired = compute_isostasy_c1(&state.s, &iso, Some(state.cratonic_mask.data()), &continental);
+        // over-saturation: land cells (coarse) at exactly 1.0 in the repaired map.
+        let clamp = repaired.heightmap.data.iter().filter(|&&v| v >= 0.999).count();
+        let land = repaired.heightmap.data.iter().filter(|&&v| v > repaired.sea_level_normalized).count();
+        // production render (repaired path).
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let hd_max = up.heightmap.data.iter().cloned().fold(0.0f32, f32::max);
+        eprintln!("  seed {seed}: peak_altitude_m phantom={:.0} → repaired={:.0} m  | coarse land-clamp@1.0: {clamp}/{land} ({:.1}%)  | HD land-max norm={hd_max:.3}",
+            phantom.peak_altitude_m, repaired.peak_altitude_m, 100.0*clamp as f64/land.max(1) as f64);
+        save_heightmap01(&up.heightmap, &dir.join(format!("seed{seed:05}_hypso.png")));
+        save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
+    }
+    eprintln!("  out = {}", dir.display());
+}
