@@ -3143,3 +3143,324 @@ fn probe_craton_calibration() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 POST-A′ état-des-lieux — the product WITH interior cratons, via the
+/// canonical c1_hd_production (A′ active by default: thick + erosion-resistant
+/// cratons). 7 seeds, 2048², hypsometric (sea level) + hillshade + binarymap.
+/// Compares to the pre-A′ snapshot (product_2048): interiors now carry craton
+/// shields, margins keep their O-C ridges, oceans still flat (known gap).
+#[test]
+#[ignore]
+fn product_etat_des_lieux_aprime() {
+    let dir = output_dir().join("product_2048_aprime");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let cfg = FbmUpscaleConfig::c1_hd_production(2048); // erosion wired internally
+    let sea = 0.5f32;
+    eprintln!("#155 post-A′ état-des-lieux — 2048², all seeds, via c1_hd_production (A′ default-on)");
+    for &seed in &[2u64, 42, 99, 1337, 1988, 2026, 4138] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default(); // A′ active
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
+            iso_config: iso.clone(), drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let h = &up.heightmap;
+        save_heightmap01(h, &dir.join(format!("seed{seed:05}_hypso.png")));
+        save_binarymap(h, sea, &dir.join(format!("seed{seed:05}_binary.png")));
+        save_hillshade_crop(h, 0, 0, h.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
+        let land = h.data.iter().filter(|&&v| v > sea).count();
+        eprintln!("  seed {seed}: {}² written, land = {:.1}%", h.width, 100.0 * land as f64 / (h.width*h.height) as f64);
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 PROMINENCE attribution — why is the orogen/craton differential
+/// crushed? Decompose end-of-loop S̃ (raw, consistent space) into three
+/// continental zones — margin orogen (O-C wedge), craton, platform — and
+/// test the hypothesis (i) orogens cap at EH h_eq=2.0 vs (ii) cratons
+/// drift up. Discriminator = a counterfactual run with NO craton
+/// differential (init ratio 1.0 + resist 1.0): does the margin/craton
+/// ratio re-open? + how many margin cells are above h_eq (EH-collapsed).
+#[test]
+#[ignore]
+fn probe_prominence_attribution() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
+    let iso = IsostasyConfig::c1_default();
+    let grid = 64usize;
+    let h_eq = 2.0f64;
+    let p95 = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[(v.len()*95/100).min(v.len()-1)] };
+    let med = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[v.len()/2] };
+    eprintln!("#155 prominence attribution — end-of-loop S̃ by zone (margin orogen / craton / platform)");
+    for &seed in &[42u64, 2026, 1988] {
+        // Geometry (zones) — from a default init (plate_id identical across variants).
+        let geom = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let kin0 = PlateKinematics::preset_phase_1_1(geom.num_plates);
+        let mut bi = classify_boundaries(&geom.plate_id, &kin0);
+        retarget_upper_plate_continental(&mut bi, &geom.plate_id, &geom.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &geom.plate_id, &geom.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let is_cont = |i: usize, j: usize| matches!(geom.plate_type.get(i, j), PlateType::Continental);
+        // EXCLUSIVE zones (de-confound craton∩wedge overlap): 1 pure orogen
+        // (wedge ∧ ¬craton), 2 pure craton (craton ∧ ¬wedge), 3 platform,
+        // 4 craton∩wedge (reported apart). wedge = O-C && wd<max_d.
+        let mut zone = vec![0u8; grid*grid];
+        for j in 0..grid { for i in 0..grid {
+            if !is_cont(i, j) { continue; }
+            let wedge = is_oc.get(i, j) && wd.get(i, j) < 30.0;
+            let crat = geom.cratonic_mask.get(i, j);
+            zone[j*grid+i] = match (wedge, crat) {
+                (true, false) => 1,
+                (false, true) => 2,
+                (false, false) => 3,
+                (true, true) => 4,
+            };
+        }}
+        let zsamp = |st: &C1State, z: u8| -> Vec<f64> {
+            let mut v = Vec::new();
+            for j in 0..grid { for i in 0..grid { if zone[j*grid+i]==z { v.push(st.s.get(i,j)); } }} v
+        };
+
+        let run = |ratio: f64, resist: f64| -> C1State {
+            let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams { craton_thickness_ratio: ratio, ..Default::default() });
+            let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+            let closures = C1Closures { erosion: ErosionParams { craton_resist: resist, ..ErosionParams::default() }, ..C1Closures::default() };
+            let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+            run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+            state
+        };
+
+        // craton S̃ at t=0 (A′ init, =1.25×base).
+        let c_t0 = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let craton_t0 = p95(zsamp(&c_t0, 2));
+
+        // A′ (default: ratio 1.25, resist 0.2).
+        let a = run(1.25, 0.2);
+        let (mg, cr, pf) = (p95(zsamp(&a,1)), p95(zsamp(&a,2)), p95(zsamp(&a,3)));
+        let mg_med = med(zsamp(&a,1)); let cr_med = med(zsamp(&a,2));
+        let above_heq = zsamp(&a,1).iter().filter(|&&v| v > h_eq).count();
+        let n_mg = zsamp(&a,1).len();
+        eprintln!("  seed {seed} [A′]: margin p95={mg:.3} (med {mg_med:.3}) craton p95={cr:.3} (med {cr_med:.3}, t0={craton_t0:.3}) platform p95={pf:.3}  ratio mg/cr={:.2}  margin>h_eq: {}/{} ({:.0}%)",
+            mg/cr.max(1e-6), above_heq, n_mg, 100.0*above_heq as f64/n_mg.max(1) as f64);
+
+        // Counterfactual: NO craton differential (ratio 1.0, resist 1.0).
+        let cf = run(1.0, 1.0);
+        let (mgc, crc) = (p95(zsamp(&cf,1)), p95(zsamp(&cf,2)));
+        eprintln!("  seed {seed} [CF no-craton-diff]: margin p95={mgc:.3} craton p95={crc:.3}  ratio mg/cr={:.2}  (re-opens if > A′)", mgc/crc.max(1e-6));
+    }
+}
+
+/// #155 OROGEN EQUILIBRIUM — DS targets h_max=2.5 but orogens reach ~1.0.
+/// Which agent brakes? Counterfactual chain-of-innocence: margin S̃ p95
+/// end-of-loop in {baseline A′, erosion-C1 OFF}. Erosion-OFF rises toward
+/// 2.5 → erosion rabote (mech 2). Stays low → DS rate too slow (mech 1)
+/// (advection mech 3 a-priori out: continental orogen is rigid/sealed,
+/// no-flux bidirectional). Margin = O-C wedge (is_oc && wd<max_d). 42/1988
+/// cratons≡margins (orogen on cratonic crust, S̃ starts 1.25×); 2026 =
+/// clean non-craton margin. Raw S̃, consistent space.
+#[test]
+#[ignore]
+fn probe_orogen_equilibrium() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
+    let iso = IsostasyConfig::c1_default();
+    let grid = 64usize;
+    let p95 = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[(v.len()*95/100).min(v.len()-1)] };
+    eprintln!("#155 orogen equilibrium — margin S̃ p95: baseline vs erosion-OFF (DS h_max=2.5)");
+    for &seed in &[42u64, 1988, 2026] {
+        let geom = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let kin0 = PlateKinematics::preset_phase_1_1(geom.num_plates);
+        let mut bi = classify_boundaries(&geom.plate_id, &kin0);
+        retarget_upper_plate_continental(&mut bi, &geom.plate_id, &geom.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &geom.plate_id, &geom.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let mut margin = vec![false; grid*grid];
+        for j in 0..grid { for i in 0..grid {
+            if matches!(geom.plate_type.get(i,j), PlateType::Continental) && is_oc.get(i,j) && wd.get(i,j) < 30.0 { margin[j*grid+i] = true; }
+        }}
+        let msamp = |st: &C1State| -> Vec<f64> { let mut v=Vec::new(); for j in 0..grid { for i in 0..grid { if margin[j*grid+i] { v.push(st.s.get(i,j)); } }} v };
+        let run = |erosion_on: bool| -> C1State {
+            let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+            let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+            let mut closures = C1Closures::default();
+            if !erosion_on { closures.erosion = ErosionParams { enabled: false, ..ErosionParams::default() }; }
+            let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+            run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+            state
+        };
+        let base = p95(msamp(&run(true)));
+        let no_ero = p95(msamp(&run(false)));
+        eprintln!("  seed {seed}: margin p95 baseline={base:.3}  erosion-OFF={no_ero:.3}  (rises→2.5 = erosion brakes; stays low = DS rate)  [DS h_max=2.5]");
+    }
+}
+
+/// #155 WORN-SHIELD sweep — re-calibrate craton_resist DOWN (cratons lower)
+/// to reopen prominence + plausible shield height, without re-inverting.
+/// Orogens are EH-ceiling-bound ~2.0 → prominence = cratons DOWN. A′
+/// resist=0.2 (5×) over-elevates (cratons ~1.3, prominence ~1.6×, height
+/// ~600-1100m). Sweep resist {0.2,0.33,0.5,0.7} (5×,3×,2×,1.4×) on RENDERED
+/// altitude (the lesson — not raw S̃). ratio_craton=1.25 fixed. 2026 =
+/// decisive (separate craton + inversion floor); 42/1988 control
+/// (craton≡margin). If no in-band (3-10×, resist 0.1-0.33) value hits
+/// worn-height + prominence + no-inversion → STRUCTURAL signal (worn-init
+/// needed, not a resist out-of-band).
+#[test]
+#[ignore]
+fn probe_worn_shield_sweep() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
+    let dir = output_dir().join("worn_shield");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let cfg = FbmUpscaleConfig::c1_hd_production(1024);
+    let p95 = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[(v.len()*95/100).min(v.len()-1)] };
+    let mean = |v: &[f64]| -> f64 { if v.is_empty() { return f64::NAN; } v.iter().sum::<f64>()/v.len() as f64 };
+    eprintln!("#155 worn-shield sweep — RENDERED altitude by zone vs craton_resist (ratio_craton=1.25 fixed)");
+    for &seed in &[2026u64, 42, 1988] {
+        let geom = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let kin0 = PlateKinematics::preset_phase_1_1(geom.num_plates);
+        let mut bi = classify_boundaries(&geom.plate_id, &kin0);
+        retarget_upper_plate_continental(&mut bi, &geom.plate_id, &geom.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &geom.plate_id, &geom.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        // zone: 1 orogen(wedge¬craton), 2 craton(craton¬wedge), 3 platform, 4 both
+        let mut zone = vec![0u8; grid*grid];
+        for j in 0..grid { for i in 0..grid {
+            if !matches!(geom.plate_type.get(i,j), PlateType::Continental) { continue; }
+            let w = is_oc.get(i,j) && wd.get(i,j) < 30.0; let c = geom.cratonic_mask.get(i,j);
+            zone[j*grid+i] = match (w,c) { (true,false)=>1, (false,true)=>2, (false,false)=>3, (true,true)=>4 };
+        }}
+        eprintln!("  --- seed {seed} ---");
+        for &resist in &[0.2f64, 0.33, 0.5, 0.7] {
+            let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+            let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+            let closures = C1Closures { erosion: ErosionParams { craton_resist: resist, ..ErosionParams::default() }, ..C1Closures::default() };
+            let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+            run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+            let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+            let scale = up.heightmap.width / grid;
+            let zalt = |z: u8| -> Vec<f64> { let mut v=Vec::new(); for j in 0..grid { for i in 0..grid { if zone[j*grid+i]==z { for jj in 0..scale { for ii in 0..scale { let a=up.heightmap.get((i*scale+ii) as i32,(j*scale+jj) as i32) as f64; if a>0.5 { v.push(a); } }} } }} v };
+            let (oro, crat, plat) = (zalt(1), zalt(2), zalt(3));
+            let to_m = |norm: f64| (norm - 0.5) * 8000.0; // conversion-dependent, flagged
+            let crat_p95 = p95(crat.clone());
+            let prom = p95(oro.clone()) / crat_p95.max(1e-6);
+            let inverted = mean(&crat) < mean(&plat); // craton below platform = inverted
+            eprintln!("    resist={resist} ({:.0}×): craton p95={crat_p95:.3} (~{:.0} m above sea) prominence oro/cra={prom:.2}  inverted(vs platform)={inverted}",
+                1.0/resist, to_m(crat_p95));
+        }
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 B-JORDAN sweep — spatial cratonic density lowers thick-craton
+/// altitude (compositional isostasy) WITHOUT touching S̃ (orthogonal to
+/// resist). Sweep iso.craton_rho_crust {None, 2850, 2900, 2950} on RENDERED
+/// altitude. 2026 = decisive (separate craton): craton height plausible?
+/// prominence oro/craton → ~3×? altitude-order craton vs platform (Jordan
+/// too strong → altitude inversion even though S̃ ordered — resist covers
+/// S̃ NOT altitude). 42/1988 control: cratons≡margins → does Jordan LOWER
+/// the orogens there (craton∩wedge zone)? Loop S̃ shared (Jordan is
+/// altitude-only) → one loop/seed, upscale per density.
+#[test]
+#[ignore]
+fn probe_jordan_sweep() {
+    use ymir_core::tectonics_c1::boundary_classification::{
+        classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
+    };
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
+    let iso0 = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let cfg = FbmUpscaleConfig::c1_hd_production(1024);
+    let p95 = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[(v.len()*95/100).min(v.len()-1)] };
+    let mean = |v: &[f64]| -> f64 { if v.is_empty() { return f64::NAN; } v.iter().sum::<f64>()/v.len() as f64 };
+    let to_m = |n: f64| (n - 0.5) * 8000.0; // conversion-dependent, flagged
+    eprintln!("#155 B-Jordan sweep — RENDERED altitude by zone vs craton_rho_crust");
+    for &seed in &[2026u64, 42, 1988] {
+        let geom = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let kin0 = PlateKinematics::preset_phase_1_1(geom.num_plates);
+        let mut bi = classify_boundaries(&geom.plate_id, &kin0);
+        retarget_upper_plate_continental(&mut bi, &geom.plate_id, &geom.plate_type);
+        let oc_seed = oc_override_seed_mask(&bi, &geom.plate_id, &geom.plate_type);
+        let (wd, is_oc) = wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let mut zone = vec![0u8; grid*grid];
+        for j in 0..grid { for i in 0..grid {
+            if !matches!(geom.plate_type.get(i,j), PlateType::Continental) { continue; }
+            let w = is_oc.get(i,j) && wd.get(i,j) < 30.0; let c = geom.cratonic_mask.get(i,j);
+            zone[j*grid+i] = match (w,c) { (true,false)=>1, (false,true)=>2, (false,false)=>3, (true,true)=>4 };
+        }}
+        // C1 loop once (defaults A′: resist 0.2, thick 1.25). Jordan is altitude-only.
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso0.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        eprintln!("  --- seed {seed} ---");
+        for rho in [None, Some(2850.0f32), Some(2900.0), Some(2950.0)] {
+            let mut iso = iso0.clone(); iso.craton_rho_crust = rho;
+            let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+            let scale = up.heightmap.width / grid;
+            let zalt = |z: u8| -> Vec<f64> { let mut v=Vec::new(); for j in 0..grid { for i in 0..grid { if zone[j*grid+i]==z { for jj in 0..scale { for ii in 0..scale { let a=up.heightmap.get((i*scale+ii) as i32,(j*scale+jj) as i32) as f64; if a>0.5 { v.push(a); } }} } }} v };
+            let (oro, crat, plat, cw) = (zalt(1), zalt(2), zalt(3), zalt(4));
+            // orogen p95 = max of pure-orogen (z1) and craton∩wedge (z4) where present.
+            let oro_p95 = { let mut a=oro.clone(); a.extend(cw.clone()); p95(a) };
+            let crat_p95 = p95(crat.clone());
+            let prom = oro_p95 / crat_p95.max(1e-6);
+            let alt_inv = !crat.is_empty() && mean(&crat) < mean(&plat);
+            eprintln!("    rho={:?}: craton p95={crat_p95:.3} (~{:.0}m) orogen p95={oro_p95:.3} (~{:.0}m) prom={prom:.2}  craton<platform(altInv)={alt_inv}  [z4 craton∩wedge p95={:.3}]",
+                rho, to_m(crat_p95), to_m(oro_p95), p95(cw));
+        }
+    }
+    eprintln!("  out done");
+}
+
+/// #155 B-Jordan VISUAL — the density choice + craton/orogen morphology is
+/// a read, not a scalar (the rendered ratio is renorm-confounded). Render
+/// 2026 (separate craton, decisive) + 1988 (craton≡margin, control) at
+/// 2048² via c1_hd_production, sweeping craton_rho_crust {None,2850,2900,
+/// 2950}. hypso (height, renorm-confounded across densities — read with
+/// care) + hillshade (MORPHOLOGY — plateau-broad-flat vs chain-narrow — the
+/// KEY view). Gated (param, not productionized).
+#[test]
+#[ignore]
+fn probe_jordan_render() {
+    let dir = output_dir().join("jordan_render");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso0 = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let cfg = FbmUpscaleConfig::c1_hd_production(2048);
+    eprintln!("#155 B-Jordan render — 2026 + 1988, 2048², density {{None,2850,2900,2950}}");
+    for &seed in &[2026u64, 1988] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso0.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        for (tag, rho) in [("none", None), ("2850", Some(2850.0f32)), ("2900", Some(2900.0)), ("2950", Some(2950.0))] {
+            let mut iso = iso0.clone(); iso.craton_rho_crust = rho;
+            let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+            save_heightmap01(&up.heightmap, &dir.join(format!("seed{seed:05}_rho{tag}_hypso.png")));
+            save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_rho{tag}_hillshade.png")));
+            eprintln!("  seed {seed} rho={tag}: written");
+        }
+    }
+    eprintln!("  out = {}", dir.display());
+}
