@@ -33,8 +33,8 @@
 use crate::erosion::hydraulic::run_erosion;
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
-use crate::tectonics::isostasy::{compute_isostasy, compute_isostasy_craton, IsostasyConfig};
-use crate::tectonics_v2::boundaries::plate_type::PlateTypeField;
+use crate::tectonics::isostasy::{compute_isostasy_c1, IsostasyConfig};
+use crate::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
 use crate::tectonics_v2::field::Field2D;
 use crate::terrain::upscale::{upscale_with_fbm, FbmUpscaleConfig, UpscaleResult};
 
@@ -87,10 +87,17 @@ fn c1_production_altitude_inner(
     ss: &SteinSteinParams,
     craton: Option<&[bool]>,
 ) -> GridF32 {
-    let isostasy = match craton {
-        Some(c) => compute_isostasy_craton(s, iso, c),
-        None => compute_isostasy(s, iso),
-    };
+    // #155 land-ceiling repair — the C1 production ALWAYS supplies the
+    // continental mask so the land ramp tops at the real terrestrial summit,
+    // not the phantom oceanic advective spike (which Stein-Stein overwrites
+    // below). Built from plate_type (row-major, length nx·ny). v2/export do
+    // NOT go through this path → they keep `compute_isostasy` (no mask,
+    // byte-identical). See `compute_isostasy_c1`.
+    let continental: Vec<bool> = (0..plate_type.ny())
+        .flat_map(|j| (0..plate_type.nx()).map(move |i| (i, j)))
+        .map(|(i, j)| plate_type.get(i, j) == PlateType::Continental)
+        .collect();
+    let isostasy = compute_isostasy_c1(s, iso, craton, &continental);
     let mut altitude = isostasy.heightmap;
     // #151 F3 fix — despike the age before Stein-Stein. The flux-form age
     // advection piles age up at convergent plate boundaries (sparse cells
