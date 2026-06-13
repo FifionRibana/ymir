@@ -33,7 +33,7 @@
 use crate::erosion::hydraulic::run_erosion;
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
-use crate::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use crate::tectonics::isostasy::{compute_isostasy, compute_isostasy_craton, IsostasyConfig};
 use crate::tectonics_v2::boundaries::plate_type::PlateTypeField;
 use crate::tectonics_v2::field::Field2D;
 use crate::terrain::upscale::{upscale_with_fbm, FbmUpscaleConfig, UpscaleResult};
@@ -61,7 +61,36 @@ pub fn c1_production_altitude(
     iso: &IsostasyConfig,
     ss: &SteinSteinParams,
 ) -> GridF32 {
-    let isostasy = compute_isostasy(s, iso);
+    c1_production_altitude_inner(s, age, plate_type, iso, ss, None)
+}
+
+/// #155 B-Jordan — [`c1_production_altitude`] with spatial cratonic density.
+/// `craton` (row-major `&[bool]`, the cratonic mask) routes those cells to
+/// `compute_isostasy_craton` (denser cratonic crust → worn-shield altitude).
+/// `iso.craton_rho_crust == None` → byte-identical to the plain function.
+pub fn c1_production_altitude_craton(
+    s: &Field2D,
+    age: &Field2D,
+    plate_type: &PlateTypeField,
+    craton: &[bool],
+    iso: &IsostasyConfig,
+    ss: &SteinSteinParams,
+) -> GridF32 {
+    c1_production_altitude_inner(s, age, plate_type, iso, ss, Some(craton))
+}
+
+fn c1_production_altitude_inner(
+    s: &Field2D,
+    age: &Field2D,
+    plate_type: &PlateTypeField,
+    iso: &IsostasyConfig,
+    ss: &SteinSteinParams,
+    craton: Option<&[bool]>,
+) -> GridF32 {
+    let isostasy = match craton {
+        Some(c) => compute_isostasy_craton(s, iso, c),
+        None => compute_isostasy(s, iso),
+    };
     let mut altitude = isostasy.heightmap;
     // #151 F3 fix — despike the age before Stein-Stein. The flux-form age
     // advection piles age up at convergent plate boundaries (sparse cells
@@ -136,7 +165,11 @@ pub fn upscale_from_c1(
     // S̃ mesh non-convergence. Built via the SHARED `c1_production_altitude`
     // (same source of truth as the viz render) — do NOT inline a raw-S̃
     // path here; it reopens FOLLOWUPS #6 and silently diverges.
-    let mut coarse = c1_production_altitude(&state.s, &state.age, &state.plate_type, iso, ss);
+    // #155 B-Jordan: route the cratonic mask so cratonic cells get the
+    // dense-crust buoyancy (iso.craton_rho_crust). None → byte-identical.
+    let mut coarse = c1_production_altitude_craton(
+        &state.s, &state.age, &state.plate_type, state.cratonic_mask.data(), iso, ss,
+    );
 
     // Fixed normalisation to [0,1] (sea 0.0 → 0.5), resolution-independent.
     let half = ALTITUDE_NORM_HALF_RANGE;

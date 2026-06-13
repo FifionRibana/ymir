@@ -80,6 +80,18 @@ pub struct IsostasyConfig {
     /// deserialize to `MinMaxFraction` (avoids the #47-style break).
     #[serde(default)]
     pub sea_level_mode: SeaLevelMode,
+    /// #155 B-Jordan — optional CRATONIC crustal density (kg/m³). When
+    /// `Some`, [`compute_isostasy_craton`] uses it instead of `rho_crust`
+    /// on cells flagged cratonic → lower Airy buoyancy → a thick craton
+    /// (1.25× S̃) elevates LESS (compositional isostasy: old cratonic
+    /// lower crust is dense / the cold lithospheric root is ~neutrally
+    /// buoyant, so the thick crust does NOT over-elevate — worn-shield
+    /// height). Real cratonic crust ~2850-2950 vs 2750 normal. Default
+    /// `None` → scalar buoyancy = byte-identical (v2/export untouched).
+    /// Orthogonal to `craton_resist` (this is ALTITUDE via density; resist
+    /// is the S̃ order). Thickness ratio (1.25) stays anchored.
+    #[serde(default)]
+    pub craton_rho_crust: Option<f32>,
 }
 
 impl Default for IsostasyConfig {
@@ -93,6 +105,7 @@ impl Default for IsostasyConfig {
             sea_level_fraction: 0.4,
             altitude_smoothing_sigma: 2.0,
             sea_level_mode: SeaLevelMode::MinMaxFraction,
+            craton_rho_crust: None,
         }
     }
 }
@@ -128,6 +141,18 @@ impl IsostasyConfig {
             // 1988+4138). v2 + export keep the `Default` 2.0 (bit-compat).
             // See `stage_meso_expression.md`.
             altitude_smoothing_sigma: 0.5,
+            // #155 B-Jordan — cratonic crustal density 2900 (real range
+            // 2850-2950; old dense lower crust / cold neutrally-buoyant
+            // root). Thick craton (1.25× S̃) elevates LESS → worn high-
+            // plateau (~1650 m, S. African/Colorado type) instead of ~2340 m.
+            // Compositional isostasy — the 3rd real craton property (after
+            // thickness=Airy + resist=S̃-order); ALTITUDE-only (compute_isostasy
+            // scalar/None ignores it → loop S̃ unchanged; applies in
+            // upscale_from_c1 which threads cratonic_mask). Validated 4-density
+            // visual; 2900 corrects height without under-selling cratonic
+            // orogens (2950 over-lowers). Default keeps None (v2/export
+            // bit-compat). Anchored — not tuned to a target.
+            craton_rho_crust: Some(2900.0),
             ..Default::default()
         }
     }
@@ -153,9 +178,37 @@ pub struct IsostasyResult {
 /// The input is the Field2D from the solver (f64, dimensionless).
 /// The output is a normalized GridF32 heightmap suitable for erosion and export.
 pub fn compute_isostasy(thickness: &Field2D, config: &IsostasyConfig) -> IsostasyResult {
+    compute_isostasy_inner(thickness, config, None)
+}
+
+/// #155 B-Jordan — Airy isostasy with spatial CRATONIC density. Identical
+/// to [`compute_isostasy`] except cells where `craton[k]` is true use
+/// `config.craton_rho_crust` (if `Some`) for the buoyancy — a denser
+/// cratonic crust → lower buoyancy → a thick craton elevates LESS
+/// (compositional isostasy / worn-shield height). `craton` is a row-major
+/// `&[bool]` (length nx·ny) to avoid a tectonics→tectonics_c1 dependency
+/// cycle. With `craton_rho_crust == None` → byte-identical to the scalar.
+pub fn compute_isostasy_craton(
+    thickness: &Field2D,
+    config: &IsostasyConfig,
+    craton: &[bool],
+) -> IsostasyResult {
+    compute_isostasy_inner(thickness, config, Some(craton))
+}
+
+fn compute_isostasy_inner(
+    thickness: &Field2D,
+    config: &IsostasyConfig,
+    craton: Option<&[bool]>,
+) -> IsostasyResult {
     let nx = thickness.nx();
     let ny = thickness.ny();
     let buoyancy = 1.0 - config.rho_crust / config.rho_mantle;
+    // #155 B-Jordan: cratonic buoyancy (denser crust → less elevation).
+    let buoyancy_craton = match config.craton_rho_crust {
+        Some(r) => 1.0 - r / config.rho_mantle,
+        None => buoyancy,
+    };
 
     // 1. Compute raw isostatic elevation
     let mut h_raw = vec![0.0f32; nx * ny];
@@ -163,7 +216,8 @@ pub fn compute_isostasy(thickness: &Field2D, config: &IsostasyConfig) -> Isostas
     let mut h_max = f32::NEG_INFINITY;
 
     for (k, val) in thickness.data().iter().enumerate() {
-        let h = *val as f32 * buoyancy;
+        let b = if craton.is_some_and(|c| c[k]) { buoyancy_craton } else { buoyancy };
+        let h = *val as f32 * b;
         h_raw[k] = h;
         h_min = h_min.min(h);
         h_max = h_max.max(h);
