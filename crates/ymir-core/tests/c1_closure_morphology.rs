@@ -4101,3 +4101,85 @@ fn probe_flat_routing_fix_render() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 flat-routing fix VALIDATION — zoomed overlays on the flat interiors
+/// (the decisive zone). Per seed @2048²: (1) crop on the FILLED-depression
+/// interior (where bars/fans were) → must be dendritic-convergent now;
+/// (2) crop on a NATIVE plateau → must stay diffuse (no invented channels);
+/// (3) full lakes/hypso (invariance). 1337 = slope control. Origin-bottom,
+/// rivers masked under lakes (product convention). Same c1_drainage config.
+#[test]
+#[ignore]
+fn probe_flat_fix_validation() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, Navigability};
+    let dir = output_dir().join("flat_fix_validation");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    let shade = |h: &GridF32, i: usize, j: usize| -> u8 {
+        let z=60.0_f64; let (lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};
+        let dzdx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32)) as f64*z;
+        let dzdy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1)) as f64*z;
+        let n=(dzdx*dzdx+dzdy*dzdy+1.0).sqrt(); (((-dzdx*lx-dzdy*ly+lz)/n).clamp(0.0,1.0)*255.0) as u8
+    };
+    // crop render: hillshade + navigable rivers (masked under lakes), origin-bottom.
+    let render_crop = |h:&GridF32, dr:&ymir_core::tectonics_c1::drainage::C1DrainageResult, x0:usize,y0:usize,sz:usize, path:&std::path::Path| {
+        let w=h.width;
+        let mut buf=image::ImageBuffer::new(sz as u32, sz as u32);
+        // base
+        for jj in 0..sz { for ii in 0..sz {
+            let (i,j)=(x0+ii,y0+jj); let k=j*w+i;
+            let c = if h.data[k]<=0.5 {[40,70,120]} else if dr.lake_map[k]!=0 {[35,80,160]} else {let g=shade(h,i,j);[g,g,g]};
+            buf.put_pixel(ii as u32,(sz-1-jj) as u32, image::Rgb(c));
+        }}
+        // navigable rivers (skip lake cells), thicker for higher tiers
+        for (si,seg) in dr.rivers.segments.iter().enumerate() {
+            let (col,th)=match dr.segment_navigability[si]{Navigability::Ship=>([10u8,50,170],1i32),Navigability::Barge=>([30,90,210],0),Navigability::SmallBoat=>([90,150,235],0),Navigability::NonNavigable=>([140,180,215],0)};
+            for &(px,py) in &seg.points {
+                let (px,py)=(px as usize,py as usize);
+                if px<x0||py<y0||px>=x0+sz||py>=y0+sz {continue}
+                for dj in -th..=th { for di in -th..=th {
+                    let (ii,jj)=((px as i32-x0 as i32+di),(py as i32-y0 as i32+dj));
+                    if ii<0||jj<0||ii>=sz as i32||jj>=sz as i32 {continue}
+                    let k=py*w+px; if dr.lake_map[k]!=0 {continue}
+                    buf.put_pixel(ii as u32,(sz as i32-1-jj) as u32, image::Rgb(col));
+                }}
+            }
+        }
+        buf.save(path).unwrap();
+    };
+    for &seed in &[1988u64, 2026, 1337] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let cfg = FbmUpscaleConfig::c1_hd_production(2048);
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let h=&up.heightmap; let (w,ht)=(h.width,h.height);
+        let dr=c1_drainage(h,&dcfg,&ss);
+        let sz=512usize;
+        // centroids: filled-depression flats vs native flats (land, low orig grad, not filled).
+        let (mut fx,mut fy,mut fn_,mut nx,mut ny,mut nn)=(0u64,0u64,0u64,0u64,0u64,0u64);
+        let mut lg=Vec::new();
+        for j in 0..ht { for i in 0..w { if h.data[j*w+i]>0.5 { let (gx,gy)=h.gradient_at(i,j); lg.push((gx*gx+gy*gy).sqrt()); }}}
+        lg.sort_by(|a,b|a.partial_cmp(b).unwrap()); let med=lg[lg.len()/2]; let flat_thr=0.15*med;
+        for j in 0..ht { for i in 0..w { let k=j*w+i; if h.data[k]<=0.5 {continue}
+            let raised=dr.flow.filled.data[k]-h.data[k];
+            let (gx,gy)=h.gradient_at(i,j); let g=(gx*gx+gy*gy).sqrt();
+            if raised>1e-5 { fx+=i as u64; fy+=j as u64; fn_+=1; }
+            else if g<flat_thr { nx+=i as u64; ny+=j as u64; nn+=1; }
+        }}
+        let clamp=|c:i64,sz:usize,max:usize| (c-(sz as i64)/2).max(0).min(max as i64-sz as i64) as usize;
+        if fn_>0 { let (cx,cy)=((fx/fn_) as i64,(fy/fn_) as i64); render_crop(h,&dr,clamp(cx,sz,w),clamp(cy,sz,ht),sz,&dir.join(format!("seed{seed:05}_filled_interior.png"))); }
+        if nn>0 { let (cx,cy)=((nx/nn) as i64,(ny/nn) as i64); render_crop(h,&dr,clamp(cx,sz,w),clamp(cy,sz,ht),sz,&dir.join(format!("seed{seed:05}_native_plateau.png"))); }
+        // full lakes/hypso (invariance)
+        let mut buf=image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w { let k=j*w+i; let c= if dr.lake_map[k]!=0 {[40,90,190]} else {hypsometric(h.data[k].clamp(0.0,1.0),0.5)}; buf.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(c)); }}
+        buf.save(dir.join(format!("seed{seed:05}_lakes_hypso_full.png"))).unwrap();
+        eprintln!("  seed {seed}: filled-flat {fn_} cells, native-flat {nn} cells, {} lakes", dr.lakes.len());
+    }
+    eprintln!("  out = {}", dir.display());
+}
