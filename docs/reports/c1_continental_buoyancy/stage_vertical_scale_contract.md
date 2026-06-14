@@ -105,6 +105,78 @@ in S̃, not capped by EH.
 
 ---
 
+---
+
+## Maillon 2 — sea-level unification + the norm→m contract (FIX)
+
+The diagnostic above left TWO repairs. Maillon 1 (land-ceiling, merged) fixed the
+phantom peak. **Maillon 2 unifies the scale end-to-end and exposes the norm→m
+function** — the prerequisite for rivers/biome/climate.
+
+### W7 verdict (read before coding)
+- **500 vs 5000 is NOT a conflict — two physical regimes.** `max_depth_m=500` =
+  submerged **continental shelf** (~200-500 m, physical); Stein-Stein
+  `depth_scale_m=5000` = **deep oceanic** lithosphere (~5000 m, physical). The S-S
+  param doc states 5000 was chosen "consistent with the isostatic convention" — the
+  intent was always a shared sea-zero. Unify on a common **sea=0, uniform
+  metres/5000 nondim**; 500 stays as the shelf anchor for continental-submerged cells.
+- **The 0.549 origin.** Isostasy outputs `[0,1]` with continental sea at
+  `sea_norm≈0.111`; S-S writes oceanic sea-centred (sea=0). The fixed upscale
+  `(v+1.13)/2.26` maps S-S-sea(0)→0.5 but isostasy-sea(0.111)→0.549. Two stages, two
+  sea anchors.
+- **The re-offset is NOT a bug.** `ALTITUDE_NORM_HALF_RANGE=1.13 ≈ 5651/5000` (S-S
+  deepest ocean) + sea→0.5 is a deliberate **resolution-invariance** constant (#151).
+  It stays fixed; the other stages align to it.
+
+### The fix
+`c1_production_altitude` now **sea-centres** the continental altitude to
+metres/`depth_scale_m` (sea→0), matching the S-S oceanic convention. Both consumers
+(viz render + `upscale_from_c1`) keep their fixed `(alt+1.13)/2.26`, which now maps
+**sea→0.5 exactly** (0.549 gone) and the FBM coast logic (sea_level=0.5) finally
+aligns with the real coastline. v2/export untouched (they use `compute_isostasy`
+`[0,1]` + their own `upscale_with_fbm` sea_level — C1-specific path).
+
+### The unified vertical scale (the contract)
+`c1_altitude_norm_to_metres` (+ inverse `c1_metres_to_altitude_norm`):
+
+```text
+    metres = (norm − 0.5) · 2 · ALTITUDE_NORM_HALF_RANGE · depth_scale_m
+           = (norm − 0.5) · 11300       [defaults 1.13, 5000]
+```
+
+| norm | metres | what |
+|-----:|-------:|------|
+| 1.0  | +5650  | scale ceiling (unreachable: `max_elevation_m=4000` caps land at norm ~0.85) |
+| ~0.73| ~2300-2600 | **measured highest mountains** (seeds 42/1988/2026) |
+| 0.5  | 0      | **sea level** (exact, all seeds) |
+| 0.0  | −5650  | S-S ocean asymptote (~5651 m) |
+
+**Single linear scale, no piecewise seam** — land AND ocean on one inverse-able
+relation; rivers/biome/climate read metres without knowing the regime. Land occupies
+`[0.5, ~0.73]` (≤0.85 maxed); ocean `[0, 0.5]`. The headroom `~0.73→1.0` is RESERVED
+for the separate critical-wedge high-mountain chantier — the scale tells the truth,
+and the gap it reveals is the diagnostic of the relief not yet produced.
+
+### Acceptance (probe `probe_sea_unification_acceptance`)
+1. Continental coast → norm **0.5000 exactly** (was 0.549), all 3 seeds. ✓
+2. norm→m exposed + round-trips; anchors as table above. The craton/orogen heights
+   (the Jordan caveat + the high-mountain gap) are now **defined metres**
+   (2265-2596 m highest). ✓
+3. Resolution invariance preserved BY CONSTRUCTION — sea-centring is on the 64²
+   coarse, before upscale (the fixed 1.13/sea→0.5 untouched). ✓
+4. Render re-judged (2-3 seeds): coast at 0.5 aligned (shelf band renders), land
+   legible, no re-conversion artifact → improvement (coherent + aligned coast).
+5. v2/export byte-identical (C1-only path); isostasy 13/13, lib 446/0, all C1 green,
+   only pre-existing v2 `rectangular_simulation` red.
+
+### Frontier (NOT done here — distinct chantiers)
+- **Submarine relief**: unifying the scale ≠ creating ocean-floor structure. Oceans
+  stay flat (IQR≈0) at the −5650 m scale; ridges/trenches = a separate chantier.
+- **High mountains** (the norm `0.73→1.0` headroom): the critical-wedge orogen lift —
+  a relief chantier, independent of the scale.
+
+---
+
 ## Discipline notes
 - Volet 1 = reading; the scale is what the model encodes (two-scale, phantom peak) — not
   tuned toward a target height. Pinning the scale does not create relief.
