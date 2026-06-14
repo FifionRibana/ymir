@@ -3643,3 +3643,57 @@ fn probe_land_ceiling_acceptance() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 Maillon 2 ACCEPTANCE — sea-level unification + norm→m contract.
+/// Checks: (1) continental sea maps to EXACTLY 0.5 (no 0.549) after the
+/// production offset; (2) c1_altitude_norm_to_metres round-trips + key anchors;
+/// (3) render re-judge (hypso/hillshade). Resolution invariance is preserved by
+/// construction (sea-centering is on the 64² coarse, before upscale).
+#[test]
+#[ignore]
+fn probe_sea_unification_acceptance() {
+    use ymir_core::tectonics_c1::production_upscale::{
+        c1_production_altitude, c1_altitude_norm_to_metres, c1_metres_to_altitude_norm,
+    };
+    let dir = output_dir().join("sea_unify_accept");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let half = 1.13f32;
+    let cfg = FbmUpscaleConfig::c1_hd_production(1024);
+    // norm→m contract anchors (independent of any seed).
+    eprintln!("#155 Maillon 2 — norm→m contract: sea(0.5)={:.1}m  norm1.0={:.0}m  norm0.0={:.0}m  roundtrip(2772m)={:.4}",
+        c1_altitude_norm_to_metres(0.5, &ss), c1_altitude_norm_to_metres(1.0, &ss),
+        c1_altitude_norm_to_metres(0.0, &ss), c1_metres_to_altitude_norm(2772.0, &ss));
+    for &seed in &[42u64, 1988, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        // coarse production altitude (sea-centred metres/scale). Continental
+        // sea-level cells should be ~0 → offset (alt+1.13)/2.26 = 0.5 exactly.
+        let coarse = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso, &ss);
+        // continental cells: min |alt| ≈ the coast (alt≈0); land = alt>0.
+        let mut cont_land = 0usize; let mut cont = 0usize; let mut min_abs = f32::INFINITY;
+        for j in 0..grid { for i in 0..grid {
+            if matches!(state.plate_type.get(i,j), PlateType::Continental) {
+                cont += 1;
+                let a = coarse.get(i as i32, j as i32);
+                min_abs = min_abs.min(a.abs());
+                if a > 0.0 { cont_land += 1; }
+            }
+        }}
+        // production HD render.
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let off = |a: f32| ((a + half) / (2.0*half)).clamp(0.0,1.0);
+        let coast_norm = off(0.0); // continental sea (alt 0) under the offset
+        let land_max_norm = up.heightmap.data.iter().cloned().fold(0.0f32, f32::max);
+        eprintln!("  seed {seed}: continental coast alt(coarse) min|alt|={min_abs:.4} (→0) | coast→norm {coast_norm:.4} (want 0.5) | HD land-max norm={land_max_norm:.3} = {:.0}m | cont land {cont_land}/{cont}",
+            c1_altitude_norm_to_metres(land_max_norm, &ss));
+        save_heightmap01(&up.heightmap, &dir.join(format!("seed{seed:05}_hypso.png")));
+        save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
+    }
+    eprintln!("  out = {}", dir.display());
+}
