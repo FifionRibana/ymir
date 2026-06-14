@@ -93,6 +93,30 @@ native FBM-textured plateaus are never exactly flat → untouched (no invented c
 
 This CLOSES the drainage maillon.
 
+### Lake-margin fix + the "non-lake yellow" verdict (FEAT 0b07360, probes)
+
+After the GM fix, diagnostic renders that COLOURED resolved-flat cells showed yellow
+bands. Two populations, both chased to ground:
+
+1. **Lake-adjacent sill shelves** → real classification gap (flooded to the sill but
+   below the 10 m lake-naming threshold). FIX `detect_lakes` (0b07360): a cell is WATER
+   if `filled>eroded`; grow each named lake over its connected flooded cells to the true
+   shoreline. Levels unchanged, extent +12-15%. The shelf bands → water.
+
+2. **Non-lake-adjacent flooded zones** (`probe_nonlake_flooded_zones`): measured ~14 000
+   tiny components (<1 km²) + ~20 larger shallow basins (10-274 km², mean 2-5 m) per
+   seed, ~3-4 % of land, rough size cutoff ~10 km². **VERDICT: NOT a product defect.**
+   These render "yellow" ONLY under the diagnostic colouring (exact-flat marked to LOCATE
+   them); in the clean product (`probe_clean_product_2048`: ocean/lakes/rivers/hillshade)
+   they are neither lake nor river → terrain, and being tiny+shallow they are INVISIBLE.
+   Both 2048² clean renders are dendritic rivers + lakes + relief, no artifact. The tiny
+   ones are noise pits (FBM/erosion minima, product-invisible); the ~20 larger shallow
+   basins are wetland-territory (lake-vs-marsh needs climate → defer, like endorheic).
+   Do NOT fix — coding a treatment would be an over-correction for a defect absent from
+   the product. (The "yellow triangle" escalation dissolved under measurement: ladder →
+   3-cell fragments → sill-shelf classification gap (fixed) → diagnostic-colouring
+   artifact. The clean product render is the ground truth.)
+
 ---
 
 ## Quasi-flat residual — measured MARGINAL, documented (probe_quasi_flat_residual)

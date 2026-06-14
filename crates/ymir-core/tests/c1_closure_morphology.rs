@@ -4429,3 +4429,101 @@ fn probe_yellow_fan_mechanism() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 non-lake flooded zones DIAGNOSTIC — characterise the residual yellow
+/// (flooded to sill, filled>eroded, but NOT in any named lake → depressions
+/// whose max depth never reached the 10 m lake-naming threshold). Measure size
+/// (km², natural cutoff vs continuum?), depth (m, real water vs films?), shape
+/// (compact basin vs filiform artifact), terrain fraction; + marked maps.
+#[test]
+#[ignore]
+fn probe_nonlake_flooded_zones() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::{c1_cell_area_km2, c1_altitude_norm_to_metres};
+    let dir = output_dir().join("nonlake_flooded"); std::fs::create_dir_all(&dir).unwrap();
+    let iso=IsostasyConfig::c1_default(); let ss=SteinSteinParams::default(); let dcfg=C1DrainageConfig::default(); let grid=64usize;
+    let m_per_norm = c1_altitude_norm_to_metres(1.0,&ss)-c1_altitude_norm_to_metres(0.0,&ss);
+    for &seed in &[1988u64,2026,42,1337]{
+        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
+        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
+        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
+        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let cell_km2=c1_cell_area_km2(w);
+        let depth=|k:usize|->f32{(dr.flow.filled.data[k]-h.data[k]).max(0.0)};
+        // residual flooded non-lake cells.
+        let mut res=vec![false;w*ht]; let mut nres=0u64;
+        for k in 0..w*ht{ if h.data[k]>0.5 && dr.lake_map[k]==0 && depth(k)>1e-6 {res[k]=true;nres+=1;} }
+        // connected components.
+        let mut seen=vec![false;w*ht]; let mut comps:Vec<(u64,f32,f32,usize,usize,usize,usize)>=Vec::new(); // area,maxd_norm,sumd,mni,mxi,mnj,mxj
+        for s0 in 0..w*ht{ if !res[s0]||seen[s0]{continue}
+            let mut q=std::collections::VecDeque::new();q.push_back(s0);seen[s0]=true;
+            let(mut a,mut md,mut sd,mut mni,mut mxi,mut mnj,mut mxj)=(0u64,0.0f32,0.0f32,w,0usize,ht,0usize);
+            while let Some(c)=q.pop_front(){a+=1;let d=depth(c);md=md.max(d);sd+=d;let(ci,cj)=(c%w,c/w);mni=mni.min(ci);mxi=mxi.max(ci);mnj=mnj.min(cj);mxj=mxj.max(cj);
+                for dy in -1i32..=1{for dx in -1i32..=1{if dx==0&&dy==0{continue}let ni=((ci as i32+dx).rem_euclid(w as i32))as usize;let nj=((cj as i32+dy).rem_euclid(ht as i32))as usize;let m=nj*w+ni;if res[m]&&!seen[m]{seen[m]=true;q.push_back(m)}}}}
+            comps.push((a,md,sd,mni,mxi,mnj,mxj));
+        }
+        comps.sort_by(|x,y|y.0.cmp(&x.0));
+        // size histogram (km²) + depth-of-max histogram (m) + shape.
+        let szbins=[0.0,1.0,10.0,100.0,1000.0,f32::INFINITY]; let mut szh=[0u64;5]; let mut szarea=[0.0f64;5];
+        let dpbins=[0.0,1.0,3.0,6.0,10.0,f32::INFINITY]; let mut dph=[0u64;5];
+        for &(a,md,_,mni,mxi,mnj,mxj) in &comps{
+            let km2=a as f32*cell_km2; let mdm=md*m_per_norm;
+            for t in 0..5{if km2>=szbins[t]&&km2<szbins[t+1]{szh[t]+=1;szarea[t]+=a as f64*cell_km2 as f64;break}}
+            for t in 0..5{if mdm>=dpbins[t]&&mdm<dpbins[t+1]{dph[t]+=1;break}}
+            let _=(mni,mxi,mnj,mxj);
+        }
+        let land:u64=(0..w*ht).filter(|&k|h.data[k]>0.5).count() as u64;
+        let lake_cells:u64=dr.lake_map.iter().filter(|&&x|x!=0).count() as u64;
+        eprintln!("  seed {seed} @2048²: residual non-lake flooded {nres} cells ({:.2}% land, {:.0} km²) in {} components | named-lake cells {} ({:.2}% land)",
+            100.0*nres as f64/land.max(1)as f64, nres as f64*cell_km2 as f64, comps.len(), lake_cells, 100.0*lake_cells as f64/land.max(1)as f64);
+        eprintln!("    size km² [<1 |1-10|10-100|100-1k|>1k]: count {:?} area {:?}", szh, szarea.iter().map(|x|*x as u64).collect::<Vec<_>>());
+        eprintln!("    max-depth m [<1|1-3|3-6|6-10|>=10]: {:?}", dph);
+        // top 5 components: area km², max depth m, fill ratio (compact vs filiform).
+        for (r,&(a,md,sd,mni,mxi,mnj,mxj)) in comps.iter().take(5).enumerate(){
+            let bbox=((mxi-mni+1)*(mxj-mnj+1)) as f32; let fill=a as f32/bbox.max(1.0);
+            eprintln!("    #{r}: {:.1} km², max {:.1} m, mean {:.1} m, fill-ratio {:.2} ({}x{})", a as f32*cell_km2, md*m_per_norm, (sd/a as f32)*m_per_norm, fill, mxi-mni+1, mxj-mnj+1);
+        }
+        // marked map: hypso + residual in magenta.
+        let mut buf=image::ImageBuffer::new(w as u32,ht as u32);
+        for j in 0..ht{for i in 0..w{let k=j*w+i; let c= if res[k]{[230,40,200]} else if dr.lake_map[k]!=0{[40,90,190]} else {hypsometric(h.data[k].clamp(0.0,1.0),0.5)}; buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));}}
+        buf.save(dir.join(format!("seed{seed:05}_nonlake_marked.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 clean PRODUCT render @2048² (no diagnostic coloring) — to check whether
+/// the residual non-lake flooded speckle is even VISIBLE in the product (where
+/// it renders as terrain, not lake/river), vs only in the diagnostic marking.
+/// Side-by-side with the marked map (probe_nonlake_flooded_zones) settles it.
+#[test]
+#[ignore]
+fn probe_clean_product_2048() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    let dir = output_dir().join("clean_product"); std::fs::create_dir_all(&dir).unwrap();
+    let iso=IsostasyConfig::c1_default(); let ss=SteinSteinParams::default(); let dcfg=C1DrainageConfig::default(); let grid=64usize;
+    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=55.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*255.0)as u8};
+    for &seed in &[1988u64,2026]{
+        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
+        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
+        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
+        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
+        // PRODUCT convention: ocean, lakes, rivers (acc>=stream masked under lakes), else hillshade.
+        let mut buf=image::ImageBuffer::new(w as u32,ht as u32);
+        for j in 0..ht{for i in 0..w{let k=j*w+i;
+            let c= if h.data[k]<=0.5 {[30,60,(120.0+200.0*h.data[k]) as u8]}
+                else if dr.lake_map[k]!=0 {[40,90,190]}
+                else if dr.flow.accumulation.data[k]>=stream {[40,110,230]}
+                else {let g=shade(h,i,j);[g,g,g]};
+            buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_clean_product.png"))).unwrap();
+        eprintln!("  seed {seed}: clean product written");
+    }
+    eprintln!("  out = {}", dir.display());
+}
