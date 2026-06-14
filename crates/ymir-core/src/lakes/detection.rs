@@ -185,6 +185,44 @@ pub fn detect_lakes(
         }
     }
 
+    // #155 lake margin — grow each surviving lake over its connected FLOODED
+    // cells (filled > eroded, i.e. flooded up to the sill) that fell below the
+    // `min_depth` lake-NAMING threshold. Such a cell sits AT the lake's sill =
+    // its water surface, so it is shallow water (shoreline shallows), not part
+    // of the drainage network — the `min_depth`/`min_area` cut classifies which
+    // depressions are NAMED lakes, it must NOT leave the lake's own shallow
+    // margin rendering as land-drainage (the #155 "sill-shelf" classification
+    // gap). Surface level is unchanged (margins are at the sill); only the
+    // lake's extent/area grows to the true shoreline. Expansion stops at the
+    // shoreline naturally (cells above the sill are not flooded), so lakes do
+    // not merge across terrain.
+    let flood_eps = 1e-6f32;
+    let mut area_delta = vec![0usize; lakes.len()];
+    let mut queue: VecDeque<usize> = (0..n).filter(|&k| lake_map[k] != 0).collect();
+    while let Some(cur) = queue.pop_front() {
+        let lid = lake_map[cur];
+        let cx = cur % w;
+        let cy = cur / w;
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let nx = ((cx as i32 + dx) % w as i32 + w as i32) as usize % w;
+                let ny = ((cy as i32 + dy) % h as i32 + h as i32) as usize % h;
+                let nidx = ny * w + nx;
+                if lake_map[nidx] == 0 && (filled.data[nidx] - eroded.data[nidx]) > flood_eps {
+                    lake_map[nidx] = lid;
+                    area_delta[(lid - 1) as usize] += 1;
+                    queue.push_back(nidx);
+                }
+            }
+        }
+    }
+    for (lk, d) in lakes.iter_mut().zip(area_delta.iter()) {
+        lk.area += *d;
+    }
+
     LakeResult { lake_map, lakes, width: w, height: h }
 }
 
