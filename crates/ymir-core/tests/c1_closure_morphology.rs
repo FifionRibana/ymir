@@ -3697,3 +3697,173 @@ fn probe_sea_unification_acceptance() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155→complétude W7 DRAINAGE — measure what the EXISTING drainage stack
+/// (terrain::flow + lakes::detection, already built) produces on the CURRENT
+/// C1 HD product (unified scale, sea=0.5, post-erosion). Grounds the W7:
+/// rivers by Strahler order, lakes (area/depth/level in METRES via the Maillon-2
+/// contract), and the endorheic-vs-exorheic question (trace each lake outlet
+/// downstream → reaches sea?). NOT the implementation — a measurement probe.
+#[test]
+#[ignore]
+fn probe_drainage_etat_des_lieux() {
+    use ymir_core::terrain::flow::{compute_flow, extract_rivers, FlowConfig, RiverConfig, DIR_NONE, D8_DX, D8_DY};
+    use ymir_core::lakes::detection::{detect_lakes, LakeConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    let dir = output_dir().join("drainage_etat");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let target = 512usize;
+    let cfg = FbmUpscaleConfig::c1_hd_production(target);
+    eprintln!("#155 W7 drainage état-des-lieux — existing stack on C1 HD product ({target}², sea=0.5)");
+    for &seed in &[42u64, 1988, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
+
+        // The unified scale puts sea at 0.5.
+        let flow = compute_flow(h, &FlowConfig { sea_level: 0.5 });
+        let rivers = extract_rivers(&flow, &RiverConfig::default(), w, ht);
+        let lakes = detect_lakes(h, &flow.filled, &flow.direction, &flow.basins, &LakeConfig::default());
+
+        // Strahler histogram.
+        let mut strahler = [0usize; 12];
+        for s in &rivers.segments { strahler[(s.strahler_order as usize).min(11)] += 1; }
+        let max_acc = flow.accumulation.data.iter().cloned().fold(0.0f32, f32::max);
+
+        // Endorheic vs exorheic: trace each lake outlet downstream; reaches sea?
+        let is_sea = |k: usize| h.data[k] <= 0.5;
+        let mut endorheic = 0; let mut exorheic = 0;
+        for lk in &lakes.lakes {
+            let (mut x, mut y) = (lk.outlet.0 as usize, lk.outlet.1 as usize);
+            let mut steps = 0; let mut reached_sea = false;
+            loop {
+                let k = y*w + x;
+                if is_sea(k) { reached_sea = true; break; }
+                let d = flow.direction[k];
+                if d == DIR_NONE || steps > w*ht { break; }
+                x = ((x as i32 + D8_DX[d as usize]).rem_euclid(w as i32)) as usize;
+                y = ((y as i32 + D8_DY[d as usize]).rem_euclid(ht as i32)) as usize;
+                steps += 1;
+            }
+            if reached_sea { exorheic += 1; } else { endorheic += 1; }
+        }
+        // Lake levels/depths in metres (Maillon-2 contract).
+        let (mut max_area, mut deepest_m, mut highest_lake_m) = (0usize, 0.0f32, f32::MIN);
+        for lk in &lakes.lakes {
+            max_area = max_area.max(lk.area);
+            deepest_m = deepest_m.max(c1_altitude_norm_to_metres(lk.surface_elevation, &ss) - c1_altitude_norm_to_metres(lk.surface_elevation - lk.max_depth, &ss));
+            highest_lake_m = highest_lake_m.max(c1_altitude_norm_to_metres(lk.surface_elevation, &ss));
+        }
+        let land = h.data.iter().filter(|&&v| v > 0.5).count();
+        eprintln!("  seed {seed}: land {:.1}% | basins {} max_acc {max_acc:.0} | rivers {} segs, Strahler {:?}",
+            100.0*land as f64/(w*ht) as f64, flow.num_basins, rivers.segments.len(), &strahler[1..7]);
+        eprintln!("    lakes {} (exorheic {exorheic} / endorheic {endorheic}) | max area {max_area} cells | deepest {deepest_m:.0} m | highest level {highest_lake_m:.0} m",
+            lakes.lakes.len());
+
+        // Render overlay (hypso + rivers blue + lakes).
+        let mut img = vec![0u8; w*ht*3];
+        for k in 0..w*ht {
+            let v = h.data[k].clamp(0.0,1.0);
+            let (r,g,b) = if v <= 0.5 { (30,60,(120.0+200.0*v) as u8) } else { let t=(v-0.5)*2.0; (((60.0+150.0*t) as u8),((120.0+80.0*t) as u8),60) };
+            img[k*3]=r; img[k*3+1]=g; img[k*3+2]=b;
+        }
+        let stream = RiverConfig::default().stream_threshold;
+        for k in 0..w*ht {
+            if lakes.lake_map[k] != 0 { img[k*3]=30; img[k*3+1]=90; img[k*3+2]=180; }
+            else if flow.accumulation.data[k] >= stream && h.data[k] > 0.5 { img[k*3]=40; img[k*3+1]=110; img[k*3+2]=230; }
+        }
+        // Origin-bottom (data row j → image row ht-1-j), matching the
+        // product-wide convention (save_heightmap01/binarymap/hillshade_crop +
+        // viz hydrology). The extraction reads the same GridF32 indexing as
+        // every consumer; only this render's orientation was the Y-flip.
+        let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w {
+            let k = j*w + i;
+            buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb([img[k*3],img[k*3+1],img[k*3+2]]));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 drainage maillon ACCEPTANCE — validate the PRODUCT (c1_drainage) on the
+/// real C1 terrain, not the algorithm (that has unit tests). Checks: navigability
+/// classes (km² thresholds), lake stats in metres, and RESOLUTION-INDEPENDENCE
+/// (512² vs 1024²: km²-anchored network density comparable, where cell-count
+/// thresholds would break). Renders the drainage overlay (origin-bottom) for the
+/// geometric-coherence re-judge (rivers in valleys / lakes in basins).
+#[test]
+#[ignore]
+fn probe_c1_drainage_acceptance() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, Navigability, LakeType};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    let dir = output_dir().join("drainage_accept");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    eprintln!("#155 drainage acceptance — c1_drainage on C1 product, km² thresholds {:?}", dcfg.thresholds);
+    for &seed in &[42u64, 1988, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        // Resolution-independence: 512² and 1024², compare km²-normalised metrics.
+        for &target in &[512usize, 1024] {
+            let cfg = FbmUpscaleConfig::c1_hd_production(target);
+            let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+            let dr = c1_drainage(&up.heightmap, &dcfg, &ss);
+            let (w, _h) = (dr.width, dr.height);
+            let land_km2 = up.heightmap.data.iter().filter(|&&v| v > 0.5).count() as f32 * c1_cell_area_km2(w);
+            let mut nav = [0usize; 4];
+            for n in &dr.segment_navigability { nav[match n { Navigability::NonNavigable=>0, Navigability::SmallBoat=>1, Navigability::Barge=>2, Navigability::Ship=>3 }] += 1; }
+            let max_drain = dr.segment_drainage_km2.iter().cloned().fold(0.0f32, f32::max);
+            let exo = dr.lakes.iter().filter(|l| l.lake_type==LakeType::Exorheic).count();
+            let endo = dr.lakes.iter().filter(|l| l.lake_type==LakeType::Endorheic).count();
+            let (deepest, highest, biggest) = dr.lakes.iter().fold((0.0f32,f32::MIN,0.0f32), |(d,h,a),l| (d.max(l.depth_m), h.max(l.level_m), a.max(l.area_km2)));
+            eprintln!("  seed {seed} @{target}²: land {land_km2:.0} km² | rivers {} (nonNav {} smallBoat {} barge {} ship {}) maxDrain {max_drain:.0} km²",
+                dr.rivers.segments.len(), nav[0], nav[1], nav[2], nav[3]);
+            eprintln!("    lakes {} (exo {exo}/endo {endo}) deepest {deepest:.0} m, highest level {highest:.0} m, biggest {biggest:.0} km²", dr.lakes.len());
+
+            if target == 1024 {
+                // render overlay (origin-bottom, the product convention). Base
+                // hypso + lakes + NAVIGABLE rivers by tier (the mappable network:
+                // small-boat→barge→ship), NOT every headwater (the full
+                // hydrography at stream_km2 is the dense texture, consumer-filtered).
+                let mut img = vec![0u8; w*dr.height*3];
+                for k in 0..w*dr.height {
+                    let v = up.heightmap.data[k].clamp(0.0,1.0);
+                    let (r,g,b) = if v <= 0.5 { (30,60,(120.0+200.0*v) as u8) } else { let t=(v-0.5)*2.0; (((60.0+150.0*t) as u8),((120.0+80.0*t) as u8),60) };
+                    img[k*3]=r; img[k*3+1]=g; img[k*3+2]=b;
+                }
+                for (si, seg) in dr.rivers.segments.iter().enumerate() {
+                    let col = match dr.segment_navigability[si] {
+                        Navigability::Ship => [20u8, 70, 200],
+                        Navigability::Barge => [40, 110, 230],
+                        Navigability::SmallBoat => [90, 160, 240],
+                        Navigability::NonNavigable => continue,
+                    };
+                    for &(px, py) in &seg.points { let k = py as usize * w + px as usize; img[k*3]=col[0]; img[k*3+1]=col[1]; img[k*3+2]=col[2]; }
+                }
+                for k in 0..w*dr.height {
+                    if dr.lake_map[k]!=0 { img[k*3]=30; img[k*3+1]=90; img[k*3+2]=180; }
+                }
+                let mut buf = image::ImageBuffer::new(w as u32, dr.height as u32);
+                for j in 0..dr.height { for i in 0..w { let k=j*w+i; buf.put_pixel(i as u32,(dr.height-1-j) as u32, image::Rgb([img[k*3],img[k*3+1],img[k*3+2]])); }}
+                buf.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
+            }
+        }
+    }
+    eprintln!("  out = {}", dir.display());
+}
