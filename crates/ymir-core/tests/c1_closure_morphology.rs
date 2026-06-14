@@ -4339,3 +4339,52 @@ fn probe_ladder_locator() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 ladder reconcile — render the two candidate identities of the flagged
+/// "triangle" so it can be attributed: LAKES (cyan, outlined) vs GM-RESOLVED
+/// flats / their convergent fans (yellow tint) vs rivers (blue), over hillshade,
+/// 2048², origin-bottom. The triangle's colour identifies it.
+#[test]
+#[ignore]
+fn probe_ladder_reconcile() {
+    use ymir_core::terrain::flow::{DIR_NONE, D8_DX, D8_DY};
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    let dir = output_dir().join("ladder_reconcile");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default(); let grid=64usize;
+    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=50.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*200.0+40.0)as u8};
+    for &seed in &[1988u64, 2026] {
+        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
+        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
+        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
+        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let f=&dr.flow.filled.data; let acc=&dr.flow.accumulation;
+        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
+        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
+        // exact-flat (GM-resolved) membership.
+        let mut exact=vec![false;w*ht];
+        for j in 0..ht{for i in 0..w{let k=j*w+i;if h.data[k]<=0.5{continue}let(mut hl,mut he)=(false,false);for d in 0..8{let m=nb(i,j,d);if f[m]<f[k]{hl=true}else if f[m]==f[k]{he=true}}exact[k]=!hl&&he;}}
+        let mut buf=image::ImageBuffer::new(w as u32,ht as u32);
+        for j in 0..ht{for i in 0..w{let k=j*w+i;
+            let lake=dr.lake_map[k]!=0;
+            // lake outline: lake cell adjacent to non-lake.
+            let lake_edge= lake && (0..8).any(|d|{let m=nb(i,j,d);dr.lake_map[m]==0});
+            let c= if h.data[k]<=0.5 {[25,45,90]}
+                else if lake_edge {[180,240,255]}
+                else if lake {[60,200,220]}
+                else if acc.data[k]>=stream {[40,110,235]}      // rivers
+                else if exact[k] {let g=shade(h,i,j);[ (g as u16*9/10+60) as u8, (g as u16*9/10+50) as u8, (g/3) as u8 ]} // resolved-flat = yellow tint
+                else {let g=shade(h,i,j);[g,g,g]};
+            buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_reconcile.png"))).unwrap();
+        let nlake:usize=dr.lake_map.iter().filter(|&&x|x!=0).count();
+        let nexact:usize=exact.iter().filter(|&&x|x).count();
+        eprintln!("  seed {seed}: lake cells {nlake} ({:.2}%), resolved-flat cells {nexact} ({:.2}%) [yellow], rivers blue", 100.0*nlake as f64/(w*ht)as f64, 100.0*nexact as f64/(w*ht)as f64);
+    }
+    eprintln!("  out = {}", dir.display());
+}
