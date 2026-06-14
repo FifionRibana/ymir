@@ -4183,3 +4183,97 @@ fn probe_flat_fix_validation() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 quasi-flat residual DIAGNOSTIC — measure the EXTENT and NATURE of the
+/// ladder/parallel residual on near-flat cells NOT resolved by resolve_flats
+/// (non-exact-equal, so GM skipped them). The local gradient is the instrument
+/// the hillshade lacked: it separates a quasi-flat defect (grad≈0) from natural
+/// D8-on-planar-slope parallelism (grad low but franc). Quantify, don't fix.
+#[test]
+#[ignore]
+fn probe_quasi_flat_residual() {
+    use ymir_core::terrain::flow::{compute_flow, FlowConfig, RiverConfig, DIR_NONE, D8_DX, D8_DY};
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::{c1_cell_area_km2, c1_altitude_norm_to_metres, C1_DOMAIN_KM};
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    // gradient bins in norm/cell; converted to m/km via the contracts.
+    let bins = [0.0f32, 1e-5, 1e-4, 1e-3, 1e-2, f32::INFINITY];
+    let binname = ["<1e-5","1e-5..1e-4","1e-4..1e-3","1e-3..1e-2",">=1e-2"];
+    // local directional coherence: fraction of drainage-neighbours (5x5) sharing dir.
+    let coherence = |dir:&[u8], acc:&GridF32, stream:f32, w:usize, ht:usize, k:usize| -> f32 {
+        let d=dir[k]; if d==DIR_NONE {return 0.0}
+        let (ci,cj)=(k%w,k/w); let (mut same,mut tot)=(0u32,0u32);
+        for dj in -2i32..=2 { for di in -2i32..=2 {
+            if di==0&&dj==0 {continue}
+            let ni=(ci as i32+di).rem_euclid(w as i32) as usize; let nj=(cj as i32+dj).rem_euclid(ht as i32) as usize;
+            let m=nj*w+ni; if acc.data[m]>=stream && dir[m]!=DIR_NONE { tot+=1; if dir[m]==d {same+=1} }
+        }}
+        if tot==0 {0.0} else {same as f32/tot as f32}
+    };
+    // --- counterfactual: synthetic uniform slopes (parallel-on-planar baseline) ---
+    eprintln!("#155 quasi-flat residual — synthetic uniform-slope counterfactual (parallel baseline):");
+    for &sg in &[1e-4f32, 1e-3, 5e-3] {
+        let n=512usize; let mut hm=GridF32::new(n,n,0.0);
+        for j in 0..n { for i in 0..n { hm.set(i,j, (0.75 - i as f32*sg).max(0.2)); }}
+        let fl=compute_flow(&hm,&FlowConfig{sea_level:0.5});
+        let stream=RiverConfig::default().stream_threshold;
+        let (mut cs,mut cn)=(0.0f32,0u32);
+        for k in 0..n*n { if hm.data[k]>0.5 && fl.accumulation.data[k]>=stream { cs+=coherence(&fl.direction,&fl.accumulation,stream,n,n,k); cn+=1; }}
+        eprintln!("  slope {sg:.0e} norm/cell (~{:.1} m/km): mean dir-coherence over drainage = {:.2} (1.0 = fully parallel)",
+            sg*c1_altitude_norm_to_metres_delta(&ss)/(C1_DOMAIN_KM/n as f32), if cn>0 {cs/cn as f32} else {0.0});
+    }
+    // --- real terrain ---
+    let grid=64usize; let dcfg=C1DrainageConfig::default();
+    for &seed in &[1988u64, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg_2048());
+        let h=&up.heightmap; let (w,ht)=(h.width,h.height);
+        let dr=c1_drainage(h,&dcfg,&ss);
+        let f=&dr.flow.filled.data;
+        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
+        let m_per_km = c1_altitude_norm_to_metres_delta(&ss)/(C1_DOMAIN_KM/w as f32);
+        // recompute exact-flat (GM-resolved) membership on filled.
+        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
+        let mut bin_tot=[0u64;5]; let mut bin_nonexact=[0u64;5]; let mut bin_coh=[0.0f64;5];
+        let (mut drain,mut land)=(0u64,0u64);
+        let (mut resid,mut resid_fringe)=(0u64,0u64);
+        for j in 0..ht { for i in 0..w { let k=j*w+i;
+            if h.data[k]<=0.5 {continue} land+=1;
+            if dr.flow.accumulation.data[k] < stream {continue} drain+=1;
+            let (gx,gy)=h.gradient_at(i,j); let g=(gx*gx+gy*gy).sqrt();
+            let mut b=4; for t in 0..5 { if g>=bins[t]&&g<bins[t+1]{b=t;break} }
+            bin_tot[b]+=1; bin_coh[b]+=coherence(&dr.flow.direction,&dr.flow.accumulation,stream,w,ht,k) as f64;
+            // exact-flat? no strictly-lower filled neighbour AND an exact-equal one.
+            let (mut hl,mut he)=(false,false);
+            for d in 0..8 { let mm=nb(i,j,d); if f[mm]<f[k]{hl=true} else if f[mm]==f[k]{he=true} }
+            let exact_flat = !hl && he;
+            if !exact_flat { bin_nonexact[b]+=1; }
+            // residual band = low-gradient (<1e-4) AND not exact-flat (GM skipped it).
+            if g<1e-4 && !exact_flat {
+                resid+=1;
+                // fringe: adjacent to a filled cell (filled>h → partially-filled depression edge)?
+                let mut fr=false; for d in 0..8 { let mm=nb(i,j,d); if dr.flow.filled.data[mm]-h.data[mm]>1e-5 {fr=true} }
+                if fr {resid_fringe+=1;}
+            }
+        }}
+        eprintln!("  seed {seed} @2048² (m/km factor {m_per_km:.0}): drainage cells {drain} ({:.1}% of land)", 100.0*drain as f64/land.max(1) as f64);
+        for b in 0..5 {
+            let coh = if bin_tot[b]>0 {bin_coh[b]/bin_tot[b] as f64} else {0.0};
+            eprintln!("    grad {:>10} ({:>6.1} m/km lo): {:>7} drainage ({:>4.1}%), non-exact {:>7} ({:>4.1}%), coherence {:.2}",
+                binname[b], bins[b]*m_per_km, bin_tot[b], 100.0*bin_tot[b] as f64/drain.max(1) as f64,
+                bin_nonexact[b], 100.0*bin_nonexact[b] as f64/bin_tot[b].max(1) as f64, coh);
+        }
+        eprintln!("    RESIDUAL band (grad<1e-4 & non-exact-flat): {resid} cells = {:.2}% of drainage, {:.3}% of land | fringe-of-depression {:.0}%",
+            100.0*resid as f64/drain.max(1) as f64, 100.0*resid as f64/land.max(1) as f64, 100.0*resid_fringe as f64/resid.max(1) as f64);
+    }
+}
+fn cfg_2048() -> FbmUpscaleConfig { FbmUpscaleConfig::c1_hd_production(2048) }
+fn c1_altitude_norm_to_metres_delta(ss:&SteinSteinParams)->f32 {
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    c1_altitude_norm_to_metres(1.0,ss)-c1_altitude_norm_to_metres(0.0,ss)
+}

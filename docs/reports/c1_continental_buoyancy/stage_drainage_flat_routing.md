@@ -92,3 +92,31 @@ native FBM-textured plateaus are never exactly flat → untouched (no invented c
    product's lake-masking) — not the systematic artifact.
 
 This CLOSES the drainage maillon.
+
+---
+
+## Quasi-flat residual — measured MARGINAL, documented (probe_quasi_flat_residual)
+
+The visual flagged a faint ladder/parallel residual on QUASI-flats (low gradient but
+NOT exactly at the sill → not exact-equal → `resolve_flats` skips them by design). The
+local gradient (the instrument the hillshade lacked) quantifies extent + nature:
+
+**Extent (grad <1e-4 norm/cell AND non-exact-flat):** 1988 **0.281 % of land** (3.0 % of
+drainage); 2026 **0.141 % of land** (1.4 %). Marginal.
+
+**Nature — no systematic defect:** directional coherence (fraction of drainage
+neighbours sharing D8 direction, 5×5) is **~0.50, flat across ALL gradient bins**
+(0.40–0.58), including the quasi-flat bins. A parallel/ladder artifact would spike the
+low-gradient bins toward the planar baseline (synthetic 0.6 m/km slope → **0.92**); they
+don't → drainage is dendritic at every gradient. 88 % of drainage is at franc gradient
+(≥2.3 m/km). The synthetic counterfactual also showed planar-slope parallel flow
+doesn't accumulate above the stream threshold (so it barely renders as channels).
+
+**Type:** ~50 % of the residual is fringe-of-depression (sill edges just above the
+exact-equal flat), ~50 % very-gentle plains (natural D8-planar parallelism).
+
+**Verdict: DOCUMENT, do not fix.** 0.14–0.28 % of land, no gradient-localised defect,
+half of it natural parallelism. Extending the criterion (near-sill fringes / a gradient
+band) would risk over-correcting correct gentle slopes for a ~0.1 % gain — the
+anti-over-correction discipline: the number doesn't justify it. A future flat-routing
+refinement (fringe inclusion) is logged but NOT blocking. Drainage maillon stays closed.
