@@ -65,3 +65,30 @@ the correctness fix (matters for accumulation, and for shallow filled flats not 
 enough to register as lakes).
 
 Diagnostic only — the fix follows this verdict.
+
+---
+
+## FIX LANDED — Garbrecht-Martz flat resolution (FEAT 0278119, TEST 7d54afc)
+
+`pit_fill` now fills to the EXACT sill (no `+eps`); `resolve_flats()` imposes the
+convergent gradient: `flat_grad = tl·(fhmax+1) + (fhmax − fh)` (toward-lower BFS `tl`
+dominant → guaranteed descent, no interior minimum; away-from-higher `fh` breaks the
+bar-forming ties). `compute_d8` pass 1 = steepest descent on `filled` (real slopes
+unchanged), pass 2 = flat cells route down `flat_grad` to the outlet.
+
+**Self-targeting:** only EXACT-equal flats (pit-filled depressions) are resolved;
+native FBM-textured plateaus are never exactly flat → untouched (no invented channels).
+`filled` keeps the exact sill → lake levels unchanged.
+
+**Acceptance (probe_flat_routing_fix_render, 2048²):**
+1. **Artifact dissolved** — 1988/2026 interiors: parallel-bars/fans → dendritic networks.
+2. **Native plateaus intact** — diffuse FBM drainage, no false straight channels.
+3. **Slopes unchanged** — 1337 control + margins of 1988/2026 (steepest-descent path
+   untouched; eps removal doesn't affect cells with a real lower neighbour).
+4. **All resolutions / deterministic** — BFS, no RNG; the resolution-dependent artifact
+   is gone at 2048² (the worst case); lib 450/0, all C1 green, only pre-existing v2 red.
+5. **Lakes unchanged** — `filled` = exact sill; the fix changes routing, not filling.
+6. Residual: convergent fill only in the LARGEST basins (= lakes, hidden by the
+   product's lake-masking) — not the systematic artifact.
+
+This CLOSES the drainage maillon.
