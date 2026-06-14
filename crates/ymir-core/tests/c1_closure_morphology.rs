@@ -4388,3 +4388,44 @@ fn probe_ladder_reconcile() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 yellow-fan mechanism — zoom the largest NON-LAKE resolved-flat (the
+/// "yellow triangle"), colour by D8 direction, to see WHY it's rectilinear
+/// (diamond iso-lines of the tl-dominant distance transform?). Confirm before
+/// re-tuning the GM weighting.
+#[test]
+#[ignore]
+fn probe_yellow_fan_mechanism() {
+    use ymir_core::terrain::flow::{DIR_NONE, D8_DX, D8_DY};
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    let dir = output_dir().join("yellow_fan"); std::fs::create_dir_all(&dir).unwrap();
+    let iso=IsostasyConfig::c1_default(); let ss=SteinSteinParams::default(); let dcfg=C1DrainageConfig::default(); let grid=64usize;
+    let huecol=|d:u8|->[u8;3]{match d{0=>[230,30,30],1=>[230,140,20],2=>[220,220,30],3=>[60,200,40],4=>[30,200,200],5=>[40,90,230],6=>[150,40,220],7=>[230,40,150],_=>[110,110,110]}};
+    for &seed in &[1988u64,2026]{
+        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
+        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
+        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
+        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let f=&dr.flow.filled.data; let dirf=&dr.flow.direction;
+        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
+        // exact-flat NON-lake cells.
+        let mut ef=vec![false;w*ht];
+        for j in 0..ht{for i in 0..w{let k=j*w+i;if h.data[k]<=0.5||dr.lake_map[k]!=0{continue}let(mut hl,mut he)=(false,false);for d in 0..8{let m=nb(i,j,d);if f[m]<f[k]{hl=true}else if f[m]==f[k]{he=true}}ef[k]=!hl&&he;}}
+        // largest connected ef cluster.
+        let mut seen=vec![false;w*ht];let(mut bn,mut bx,mut by,mut bw,mut bh,mut bi,mut bj)=(0usize,0usize,0usize,0usize,0usize,0usize,0usize);
+        for s0 in 0..w*ht{if !ef[s0]||seen[s0]{continue}let mut q=std::collections::VecDeque::new();q.push_back(s0);seen[s0]=true;let(mut c,mut sx,mut sy,mut mni,mut mxi,mut mnj,mut mxj)=(0u64,0u64,0u64,w,0usize,ht,0usize);
+            while let Some(z)=q.pop_front(){c+=1;let(zi,zj)=(z%w,z/w);sx+=zi as u64;sy+=zj as u64;mni=mni.min(zi);mxi=mxi.max(zi);mnj=mnj.min(zj);mxj=mxj.max(zj);for d in 0..8{let m=nb(zi,zj,d);if ef[m]&&!seen[m]{seen[m]=true;q.push_back(m)}}}
+            if c as usize>bn{bn=c as usize;bx=(sx/c)as usize;by=(sy/c)as usize;bw=mxi-mni+1;bh=mxj-mnj+1;bi=mni;bj=mnj;}}
+        eprintln!("  seed {seed}: largest non-lake resolved-flat = {bn} cells, bbox {bw}x{bh} @({bi},{bj}), centroid ({bx},{by})");
+        let sz=128usize;let x0=(bx as i64-64).max(0).min(w as i64-sz as i64)as usize;let y0=(by as i64-64).max(0).min(ht as i64-sz as i64)as usize;
+        let mut buf=image::ImageBuffer::new(sz as u32,sz as u32);
+        for jj in 0..sz{for ii in 0..sz{let(i,j)=(x0+ii,y0+jj);let k=j*w+i;
+            let c= if h.data[k]<=0.5{[30,50,90]} else if dr.lake_map[k]!=0{[60,200,220]} else if ef[k]{huecol(dirf[k])} else {[235,235,235]};
+            buf.put_pixel(ii as u32,(sz-1-jj)as u32,image::Rgb(c));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_yellowfan_dir.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
