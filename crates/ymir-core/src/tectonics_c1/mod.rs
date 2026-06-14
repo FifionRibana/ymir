@@ -78,6 +78,7 @@
 pub mod boundary_classification;
 pub mod closures;
 pub mod distance_field;
+pub mod drainage;
 pub mod init;
 pub mod init_r7;
 pub mod kinematics;
