@@ -3867,3 +3867,95 @@ fn probe_c1_drainage_acceptance() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 drainage VISUAL validation — overlays of the (numbers-validated)
+/// c1_drainage product on the relief, origin-bottom (the Y-flip lesson). Per
+/// seed: (1) rivers on HILLSHADE (navigability-tiered: do they sit in valleys?
+/// do navigable trunks drain interior→coast?), (2) lakes on HYPSO (are they in
+/// real basins, not perched?). Same default c1_drainage config — no re-tuning,
+/// this RENDERS the validated product for the eye. 1024² (+ 2048² spot-check).
+#[test]
+#[ignore]
+fn probe_drainage_overlays() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, Navigability};
+    let dir = output_dir().join("drainage_overlays");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+
+    // hillshade grayscale for one cell (same lighting as save_hillshade_crop).
+    let shade_at = |h: &GridF32, i: usize, j: usize| -> f64 {
+        let z = 60.0_f64;
+        let (lx, ly, lz) = { let (a,b,c)=(1.0_f64,1.0,2.0); let n=(a*a+b*b+c*c).sqrt(); (a/n,b/n,c/n) };
+        let (gx, gy) = (i as i32, j as i32);
+        let dzdx = (h.get(gx+1, gy) - h.get(gx-1, gy)) as f64 * z;
+        let dzdy = (h.get(gx, gy+1) - h.get(gx, gy-1)) as f64 * z;
+        let nn = (dzdx*dzdx + dzdy*dzdy + 1.0).sqrt();
+        ((-dzdx*lx - dzdy*ly + lz)/nn).clamp(0.0, 1.0)
+    };
+
+    for &seed in &[2026u64, 1988, 42, 1337] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        let targets: &[usize] = &[1024];
+        for &target in targets {
+            let cfg = FbmUpscaleConfig::c1_hd_production(target);
+            let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+            let h = &up.heightmap;
+            let (w, ht) = (h.width, h.height);
+            let dr = c1_drainage(h, &dcfg, &ss);
+
+            // ---- (1) rivers on hillshade ----
+            let mut riv = vec![0u8; w*ht*3];
+            for j in 0..ht { for i in 0..w {
+                let k = j*w+i;
+                let g = if h.data[k] <= 0.5 { 70u8 } else { (shade_at(h, i, j)*255.0) as u8 };
+                let c = if h.data[k] <= 0.5 { [40,70,120] } else { [g,g,g] };
+                riv[k*3]=c[0]; riv[k*3+1]=c[1]; riv[k*3+2]=c[2];
+            }}
+            // Lakes drawn first (the filled flat basins) — rivers are then MASKED
+            // under lakes (the viz convention): a flat filled basin is a lake, not
+            // a blocky fill-front "river". This separates real valley rivers from
+            // the D8-on-flats artifact.
+            let put = |img: &mut [u8], k: usize, c: [u8;3]| { img[k*3]=c[0]; img[k*3+1]=c[1]; img[k*3+2]=c[2]; };
+            for k in 0..w*ht { if dr.lake_map[k]!=0 { put(&mut riv, k, [35,80,160]); } }
+            // navigable tiers + faint non-navigable streams, NOT over lake cells.
+            for (si, seg) in dr.rivers.segments.iter().enumerate() {
+                let (col, thick) = match dr.segment_navigability[si] {
+                    Navigability::Ship => ([10u8,50,170], 2i32),
+                    Navigability::Barge => ([30,90,210], 1),
+                    Navigability::SmallBoat => ([80,150,235], 0),
+                    Navigability::NonNavigable => ([120,170,210], 0), // faint, shows valley-following
+                };
+                for &(px, py) in &seg.points {
+                    for dj in -thick..=thick { for di in -thick..=thick {
+                        let ni=(px as i32+di).rem_euclid(w as i32) as usize; let nj=(py as i32+dj).rem_euclid(ht as i32) as usize;
+                        let k = nj*w+ni;
+                        if dr.lake_map[k]==0 { put(&mut riv, k, col); }
+                    }}
+                }
+            }
+            let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+            for j in 0..ht { for i in 0..w { let k=j*w+i; buf.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb([riv[k*3],riv[k*3+1],riv[k*3+2]])); }}
+            buf.save(dir.join(format!("seed{seed:05}_{target}_rivers_hillshade.png"))).unwrap();
+
+            // ---- (2) lakes on hypso ----
+            let mut buf2 = image::ImageBuffer::new(w as u32, ht as u32);
+            for j in 0..ht { for i in 0..w {
+                let k=j*w+i;
+                let c = if dr.lake_map[k]!=0 { [40,90,190] } else { hypsometric(h.data[k].clamp(0.0,1.0), 0.5) };
+                buf2.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(c));
+            }}
+            buf2.save(dir.join(format!("seed{seed:05}_{target}_lakes_hypso.png"))).unwrap();
+
+            eprintln!("  seed {seed} @{target}²: {} rivers, {} lakes → overlays written", dr.rivers.segments.len(), dr.lakes.len());
+        }
+    }
+    eprintln!("  out = {}", dir.display());
+}
