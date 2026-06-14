@@ -118,14 +118,26 @@ pub fn compute_flow(heightmap: &GridF32, config: &FlowConfig) -> FlowResult {
         is_ocean[i] = heightmap.data[i] <= config.sea_level;
     }
 
-    // Step 2: priority flood pit filling
+    // Step 2: priority flood pit filling (fills depressions to the EXACT sill —
+    // no epsilon increment, so flats are truly flat for the Garbrecht-Martz step).
     let filled = pit_fill(heightmap, &is_ocean, w, h);
 
-    // Step 3: D8 flow direction
-    let direction = compute_d8(&filled, &is_ocean, w, h);
+    // Step 2b: flat resolution (Garbrecht-Martz 1997). Replaces the old eps-fill
+    // micro-gradient (which followed the flood TREE → parallel-bar / 45°-fan
+    // artifacts on flat interiors, #155 diagnostic 2ec0348). Imposes a convergent
+    // drainage gradient on the EXACT-equal flats (= the pit-filled depressions;
+    // native FBM-textured plateaus are never exactly flat, so they keep their
+    // real micro-gradient and are untouched). Returns a per-cell `flat_grad`
+    // (f64, 0 on non-flat cells) used ONLY for routing — `filled` keeps the exact
+    // sill so lake levels are unchanged.
+    let flat_grad = resolve_flats(&filled, &is_ocean, w, h);
 
-    // Step 4: flow accumulation
-    let accumulation = compute_accumulation(&filled, &direction, &is_ocean, w, h);
+    // Step 3: D8 flow direction (steepest descent on `filled`; flat cells routed
+    // down the `flat_grad` toward the outlet).
+    let direction = compute_d8(&filled, &flat_grad, &is_ocean, w, h);
+
+    // Step 4: flow accumulation (topological order by filled, then flat_grad).
+    let accumulation = compute_accumulation(&filled, &flat_grad, &direction, &is_ocean, w, h);
 
     // Step 5: basin labeling
     let (basins, num_basins) = compute_basins(&direction, &is_ocean, w, h);
@@ -138,7 +150,6 @@ fn pit_fill(heightmap: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> GridF
     let mut filled = heightmap.clone();
     let mut processed = vec![false; n];
     let mut pq = BinaryHeap::new();
-    let eps: f32 = 1e-7;
 
     // Seed: ocean cells and land cells adjacent to ocean
     for j in 0..h {
@@ -174,7 +185,10 @@ fn pit_fill(heightmap: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> GridF
                 continue;
             }
 
-            let fill_h = heightmap.data[nidx].max(filled.data[cell.idx] + eps);
+            // Fill to the exact sill (no epsilon): a depression becomes a TRUE
+            // flat, which the Garbrecht-Martz step then drains. (Was `+ eps`, the
+            // flood-tree micro-gradient that caused the flat-routing artifact.)
+            let fill_h = heightmap.data[nidx].max(filled.data[cell.idx]);
             filled.data[nidx] = fill_h;
             processed[nidx] = true;
             pq.push(PqCell { height: fill_h, idx: nidx });
@@ -184,7 +198,7 @@ fn pit_fill(heightmap: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> GridF
     filled
 }
 
-fn compute_d8(filled: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> Vec<u8> {
+fn compute_d8(filled: &GridF32, flat_grad: &[f64], is_ocean: &[bool], w: usize, h: usize) -> Vec<u8> {
     let n = w * h;
     let mut direction = vec![DIR_NONE; n];
 
@@ -199,6 +213,8 @@ fn compute_d8(filled: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> Vec<u8
             let mut best_dir = DIR_NONE;
             let mut best_slope = 0.0f32;
 
+            // Pass 1 — steepest descent on `filled` (real terrain + the sill exits
+            // of flats). Unchanged from the original; slopes/real drainage untouched.
             for d in 0..8 {
                 let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
                 let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
@@ -211,6 +227,27 @@ fn compute_d8(filled: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> Vec<u8
                 }
             }
 
+            // Pass 2 — flat resolution. Only reached when no strictly-lower
+            // neighbour exists (a pit-filled flat interior). Route to the
+            // EQUAL-elevation neighbour with the smallest `flat_grad` (down the
+            // Garbrecht-Martz gradient toward the outlet). `flat_grad` is 0 on
+            // non-flat cells, so the flat's spill cells (which DO drain via pass 1)
+            // attract the flow. Guaranteed to descend (the toward-lower term
+            // dominates `flat_grad`), so no spurious sink is introduced.
+            if best_dir == DIR_NONE {
+                let my_g = flat_grad[idx];
+                let mut best_g = my_g;
+                for d in 0..8 {
+                    let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
+                    let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
+                    let nidx = nj * w + ni;
+                    if !is_ocean[nidx] && filled.data[nidx] == my_h && flat_grad[nidx] < best_g {
+                        best_g = flat_grad[nidx];
+                        best_dir = d as u8;
+                    }
+                }
+            }
+
             direction[idx] = best_dir;
         }
     }
@@ -218,8 +255,143 @@ fn compute_d8(filled: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> Vec<u8
     direction
 }
 
+/// Garbrecht-Martz 1997 flat resolution. Imposes a convergent drainage gradient
+/// over the TRULY-flat regions (cells whose `filled` value exactly equals a
+/// neighbour's and which have no strictly-lower neighbour = the pit-filled
+/// depression interiors). Returns a per-cell `flat_grad` (0 on non-flat cells);
+/// a flat cell drains to the equal-elevation neighbour with the smallest value.
+///
+/// The gradient combines two distance transforms over the flat:
+/// - **toward-lower** `tl`: graph distance from the flat's spill cells (the
+///   equal-elevation cells adjacent to lower terrain / ocean). 0 at the spill,
+///   growing inward.
+/// - **away-from-higher** `fh`: graph distance from the flat's high edges (cells
+///   adjacent to HIGHER terrain — where inflow enters). 0 at the high edge.
+///
+/// `flat_grad = tl·(fhmax+1) + (fhmax − fh)`. The `tl` term DOMINATES (weight
+/// `fhmax+1` exceeds the `(fhmax − fh)` range), so every flat cell has a
+/// strictly-smaller-`flat_grad` neighbour toward a spill → guaranteed drainage,
+/// no interior minimum. The `(fhmax − fh)` term breaks ties between equal-`tl`
+/// neighbours toward the convergent (away-from-inflow) direction — this is what
+/// dissolves the parallel-bar / fan pattern the old eps-fill produced.
+///
+/// Native FBM-textured plateaus are never EXACTLY flat (micro-relief gives a
+/// strictly-lower neighbour), so they are not classified as flat here and keep
+/// their real diffuse drainage — the fix touches only the pit-filled flats.
+fn resolve_flats(filled: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> Vec<f64> {
+    use std::collections::VecDeque;
+    let n = w * h;
+    let f = &filled.data;
+    let nb = |i: usize, j: usize, d: usize| -> usize {
+        let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
+        let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
+        nj * w + ni
+    };
+
+    // 1. Classify flat cells: land, exact-equal to a neighbour, no lower neighbour.
+    let mut needs = vec![false; n];
+    for j in 0..h {
+        for i in 0..w {
+            let c = j * w + i;
+            if is_ocean[c] {
+                continue;
+            }
+            let (mut has_lower, mut has_equal) = (false, false);
+            for d in 0..8 {
+                let m = nb(i, j, d);
+                if is_ocean[m] || f[m] < f[c] {
+                    has_lower = true;
+                } else if f[m] == f[c] {
+                    has_equal = true;
+                }
+            }
+            needs[c] = !has_lower && has_equal;
+        }
+    }
+
+    // 2. toward-lower BFS — seeds: flat cells adjacent to a spill (ocean, lower,
+    //    or an equal NON-flat cell that itself drains).
+    let mut tl = vec![-1i32; n];
+    let mut q = VecDeque::new();
+    for j in 0..h {
+        for i in 0..w {
+            let c = j * w + i;
+            if !needs[c] {
+                continue;
+            }
+            let mut is_spill = false;
+            for d in 0..8 {
+                let m = nb(i, j, d);
+                if is_ocean[m] || f[m] < f[c] || (f[m] == f[c] && !needs[m]) {
+                    is_spill = true;
+                }
+            }
+            if is_spill {
+                tl[c] = 0;
+                q.push_back(c);
+            }
+        }
+    }
+    while let Some(c) = q.pop_front() {
+        let (ci, cj) = (c % w, c / w);
+        for d in 0..8 {
+            let m = nb(ci, cj, d);
+            if needs[m] && f[m] == f[c] && tl[m] < 0 {
+                tl[m] = tl[c] + 1;
+                q.push_back(m);
+            }
+        }
+    }
+
+    // 3. away-from-higher BFS — seeds: flat cells adjacent to higher terrain.
+    let mut fh = vec![-1i32; n];
+    let mut q2 = VecDeque::new();
+    for j in 0..h {
+        for i in 0..w {
+            let c = j * w + i;
+            if !needs[c] {
+                continue;
+            }
+            let mut is_high = false;
+            for d in 0..8 {
+                let m = nb(i, j, d);
+                if !is_ocean[m] && f[m] > f[c] {
+                    is_high = true;
+                }
+            }
+            if is_high {
+                fh[c] = 0;
+                q2.push_back(c);
+            }
+        }
+    }
+    while let Some(c) = q2.pop_front() {
+        let (ci, cj) = (c % w, c / w);
+        for d in 0..8 {
+            let m = nb(ci, cj, d);
+            if needs[m] && f[m] == f[c] && fh[m] < 0 {
+                fh[m] = fh[c] + 1;
+                q2.push_back(m);
+            }
+        }
+    }
+    let fhmax = fh.iter().copied().max().unwrap_or(0).max(0) as f64;
+
+    // 4. Combined gradient (tl dominant → guaranteed descent; fh breaks bars).
+    let mut flat_grad = vec![0.0f64; n];
+    for c in 0..n {
+        if needs[c] {
+            let t = if tl[c] < 0 { 0 } else { tl[c] } as f64;
+            let hh = if fh[c] < 0 { fhmax } else { fh[c] as f64 };
+            flat_grad[c] = t * (fhmax + 1.0) + (fhmax - hh);
+        }
+    }
+    flat_grad
+}
+
 fn compute_accumulation(
     filled: &GridF32,
+    flat_grad: &[f64],
     direction: &[u8],
     is_ocean: &[bool],
     w: usize,
@@ -227,10 +399,15 @@ fn compute_accumulation(
 ) -> GridF32 {
     let n = w * h;
 
-    // Sort land cells by decreasing height
+    // Sort land cells by decreasing height, then decreasing flat_grad so flat
+    // cells are processed from the inflow side down to the outlet (correct
+    // topological order on flats where `filled` ties).
     let mut land_cells: Vec<usize> = (0..n).filter(|&i| !is_ocean[i]).collect();
     land_cells.sort_unstable_by(|&a, &b| {
-        filled.data[b].partial_cmp(&filled.data[a]).unwrap_or(CmpOrd::Equal)
+        filled.data[b]
+            .partial_cmp(&filled.data[a])
+            .unwrap_or(CmpOrd::Equal)
+            .then(flat_grad[b].partial_cmp(&flat_grad[a]).unwrap_or(CmpOrd::Equal))
     });
 
     let mut acc = GridF32::new(w, h, 0.0);
