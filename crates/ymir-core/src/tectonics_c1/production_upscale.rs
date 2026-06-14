@@ -99,6 +99,34 @@ fn c1_production_altitude_inner(
         .collect();
     let isostasy = compute_isostasy_c1(s, iso, craton, &continental);
     let mut altitude = isostasy.heightmap;
+
+    // #155 Maillon 2 — sea-CENTRE the continental altitude to metres /
+    // depth_scale (sea → 0), matching the Stein-Stein oceanic convention
+    // (which already writes −depth/depth_scale_m, sea at 0). The isostasy
+    // heightmap is [0,1] with continental sea at `sea_norm` (≈0.111); converting
+    // it to a sea-centred metres/depth_scale field means the downstream FIXED
+    // re-offset `(alt + 1.13)/2.26` (shared by the viz render AND
+    // `upscale_from_c1`) maps sea → 0.5 EXACTLY — no more 0.5-vs-0.549 mismatch
+    // between the two stages — and the whole field (land + ocean) shares ONE
+    // linear norm→m scale (see `c1_altitude_norm_to_metres`). `peak_altitude_m`
+    // (land summit) and `max_depth_m` (continental shelf) are the metre anchors
+    // from the isostasy metadata; `depth_scale_m` is the shared unit. Oceanic
+    // cells are overwritten by Stein-Stein just below, so converting them here
+    // is harmless (they re-enter in the same metres/depth_scale convention).
+    let sea_norm = isostasy.sea_level_normalized;
+    let peak_m = isostasy.peak_altitude_m;
+    let shelf_m = isostasy.max_depth_m;
+    let scale = ss.depth_scale_m as f32;
+    for v in altitude.data.iter_mut() {
+        let n = *v;
+        let metres = if n >= sea_norm {
+            (n - sea_norm) / (1.0 - sea_norm).max(1e-10) * peak_m
+        } else {
+            -(sea_norm - n) / sea_norm.max(1e-10) * shelf_m
+        };
+        *v = metres / scale;
+    }
+
     // #151 F3 fix — despike the age before Stein-Stein. The flux-form age
     // advection piles age up at convergent plate boundaries (sparse cells
     // with ~1000× the background age — the registered density-vs-Lagrangian
@@ -147,6 +175,36 @@ fn median_3x3(field: &Field2D) -> Field2D {
 /// incomparable and break the measured cross-resolution robustness.
 /// Value matches the production gallery palette half-range.
 const ALTITUDE_NORM_HALF_RANGE: f32 = 1.13;
+
+/// #155 Maillon 2 — **THE unified C1 vertical-scale contract.** Convert an HD
+/// heightmap normalised value (sea = 0.5, the `upscale_from_c1` / viz-render
+/// convention) to METRES. A SINGLE linear scale across land AND ocean — no
+/// piecewise seam, no per-regime slope: the consumer reads metres without
+/// knowing whether it is on land or sea.
+///
+/// ```text
+///     metres = (norm − 0.5) · 2 · ALTITUDE_NORM_HALF_RANGE · depth_scale_m
+/// ```
+///
+/// With the defaults (`1.13`, `5000`): `metres = (norm − 0.5) · 11300`. Sea
+/// (0.5) → 0 m; `norm = 1.0` → +5650 m; `norm = 0.0` → −5650 m. Land occupies
+/// `[0.5, ~0.85]` (the upper land bound is `max_elevation_m = 4000 m`, set by
+/// isostasy); ocean occupies `[0, 0.5]` (down to the Stein-Stein asymptote
+/// ~5651 m). The headroom `~0.85 → 1.0` is RESERVED for the separate
+/// critical-wedge high-mountain chantier — the scale tells the truth, and the
+/// gap it reveals is the diagnostic of the relief not yet produced.
+///
+/// This is the contract downstream consumers (rivers, biome, climate) read to
+/// reason in defined metres. Coherent BY CONSTRUCTION with the sea-centred
+/// production altitude (`c1_production_altitude`) — see its body.
+pub fn c1_altitude_norm_to_metres(norm: f32, ss: &SteinSteinParams) -> f32 {
+    (norm - 0.5) * 2.0 * ALTITUDE_NORM_HALF_RANGE * ss.depth_scale_m as f32
+}
+
+/// Inverse of [`c1_altitude_norm_to_metres`]: metres → normalised value.
+pub fn c1_metres_to_altitude_norm(metres: f32, ss: &SteinSteinParams) -> f32 {
+    metres / (2.0 * ALTITUDE_NORM_HALF_RANGE * ss.depth_scale_m as f32) + 0.5
+}
 
 /// Upscale a C1 simulation state to a detailed heightmap via the
 /// anisotropic-FBM upscale, **through the robustness-preserving
