@@ -4053,3 +4053,51 @@ fn probe_flat_routing_diagnostic() {
         }
     }
 }
+
+/// #155 flat-routing FIX acceptance — re-render the FULL accumulation network
+/// (unmasked, directly comparable to the pre-fix blocky image) at 2048² on the
+/// artifact seeds 1988/2026, + 1337 control (slope-dominant). After Garbrecht-
+/// Martz: the parallel-bars/fans on filled flats should be replaced by
+/// convergent drainage to the outlet; slopes unchanged.
+#[test]
+#[ignore]
+fn probe_flat_routing_fix_render() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    let dir = output_dir().join("flat_fix");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    let shade = |h: &GridF32, i: usize, j: usize| -> f64 {
+        let z=60.0_f64; let (lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};
+        let dzdx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32)) as f64*z;
+        let dzdy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1)) as f64*z;
+        let n=(dzdx*dzdx+dzdy*dzdy+1.0).sqrt(); ((-dzdx*lx-dzdy*ly+lz)/n).clamp(0.0,1.0)
+    };
+    for &(seed, target) in &[(1988u64,2048usize),(2026,2048),(1337,1024)] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let cfg = FbmUpscaleConfig::c1_hd_production(target);
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let dr = c1_drainage(h, &dcfg, &ss);
+        let stream = (dcfg.thresholds.stream_km2 / c1_cell_area_km2(w)).max(1.0);
+        // FULL accumulation network over hillshade, UNMASKED (so bars would show).
+        let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w {
+            let k=j*w+i;
+            let c = if h.data[k] <= 0.5 { [40,70,120] }
+                else if dr.flow.accumulation.data[k] >= stream { [40,110,230] }
+                else { let g=(shade(h,i,j)*255.0) as u8; [g,g,g] };
+            buf.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(c));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_{target}_accum.png"))).unwrap();
+        eprintln!("  seed {seed} @{target}²: {} rivers, {} lakes", dr.rivers.segments.len(), dr.lakes.len());
+    }
+    eprintln!("  out = {}", dir.display());
+}
