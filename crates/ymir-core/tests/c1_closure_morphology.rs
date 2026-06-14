@@ -4277,3 +4277,65 @@ fn c1_altitude_norm_to_metres_delta(ss:&SteinSteinParams)->f32 {
     use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
     c1_altitude_norm_to_metres(1.0,ss)-c1_altitude_norm_to_metres(0.0,ss)
 }
+
+/// #155 ladder-residual LOCATOR — confirm the mechanism on the WORST flagged
+/// feature before any fix. Finds the largest cluster of (drainage, grad<1e-4,
+/// non-exact-flat, high coherence) cells, hard-zooms it (96px) coloring each
+/// drainage cell by D8 DIRECTION (8 hues) over faint hillshade: a rectilinear
+/// ladder = regular same-hue blocks; correct convergent drainage = mixed hues.
+/// Reports those cells: gradient, raised-by-fill?, adjacent-to-resolved-flat?.
+#[test]
+#[ignore]
+fn probe_ladder_locator() {
+    use ymir_core::terrain::flow::{DIR_NONE, D8_DX, D8_DY};
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    let dir = output_dir().join("ladder_locator");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default(); let grid=64usize;
+    // 8 distinct hues for D8 directions.
+    let huecol = |d:u8| -> [u8;3] { match d {0=>[230,30,30],1=>[230,140,20],2=>[220,220,30],3=>[60,200,40],4=>[30,200,200],5=>[40,90,230],6=>[150,40,220],7=>[230,40,150],_=>[120,120,120]} };
+    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=40.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*200.0+30.0)as u8};
+    for &seed in &[1988u64, 2026] {
+        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
+        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
+        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
+        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
+        let h=&up.heightmap; let(w,ht)=(h.width,h.height); let dr=c1_drainage(h,&dcfg,&ss);
+        let f=&dr.flow.filled.data; let dirf=&dr.flow.direction; let acc=&dr.flow.accumulation;
+        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
+        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
+        let coh=|k:usize|->f32{let d=dirf[k];if d==DIR_NONE{return 0.0}let(ci,cj)=(k%w,k/w);let(mut s,mut t)=(0u32,0u32);for dj in -2i32..=2{for di in -2i32..=2{if di==0&&dj==0{continue}let ni=(ci as i32+di).rem_euclid(w as i32)as usize;let nj=(cj as i32+dj).rem_euclid(ht as i32)as usize;let m=nj*w+ni;if acc.data[m]>=stream&&dirf[m]!=DIR_NONE{t+=1;if dirf[m]==d{s+=1}}}}if t==0{0.0}else{s as f32/t as f32}};
+        // suspect mask: drainage, low grad, non-exact-flat, high coherence.
+        let mut suspect=vec![false;w*ht];
+        for j in 0..ht{for i in 0..w{let k=j*w+i;if h.data[k]<=0.5||acc.data[k]<stream{continue}
+            let(gx,gy)=h.gradient_at(i,j);let g=(gx*gx+gy*gy).sqrt();if g>=1e-4{continue}
+            let(mut hl,mut he)=(false,false);for d in 0..8{let m=nb(i,j,d);if f[m]<f[k]{hl=true}else if f[m]==f[k]{he=true}}
+            let exact=!hl&&he; if exact{continue}
+            if coh(k)>=0.7{suspect[k]=true}
+        }}
+        // largest suspect cluster (BFS), get centroid.
+        let mut seen=vec![false;w*ht]; let(mut best_n,mut bx,mut by)=(0usize,0usize,0usize);
+        for s0 in 0..w*ht{if !suspect[s0]||seen[s0]{continue}let mut q=std::collections::VecDeque::new();q.push_back(s0);seen[s0]=true;let(mut cnt,mut sx,mut sy)=(0u64,0u64,0u64);
+            while let Some(c)=q.pop_front(){cnt+=1;sx+=(c%w)as u64;sy+=(c/w)as u64;let(ci,cj)=(c%w,c/w);for d in 0..8{let m=nb(ci,cj,d);if suspect[m]&&!seen[m]{seen[m]=true;q.push_back(m)}}}
+            if cnt as usize>best_n{best_n=cnt as usize;bx=(sx/cnt)as usize;by=(sy/cnt)as usize}}
+        let total_suspect:usize=suspect.iter().filter(|&&x|x).count();
+        eprintln!("  seed {seed}: suspect cells {total_suspect} ({:.3}% land-ish), largest cluster {best_n} cells @ ({bx},{by})",100.0*total_suspect as f64/(w*ht)as f64);
+        if best_n==0 {eprintln!("    no high-coherence low-grad non-exact cluster → ladder NOT a coherent parallel artifact"); continue;}
+        // hard zoom 96px on the worst cluster, color drainage by D8 dir.
+        let sz=96usize; let x0=(bx as i64-48).max(0).min(w as i64-sz as i64)as usize; let y0=(by as i64-48).max(0).min(ht as i64-sz as i64)as usize;
+        let mut buf=image::ImageBuffer::new(sz as u32,sz as u32);
+        let(mut raised,mut adj_flat)=(0u64,0u64); let mut cnt=0u64;
+        for jj in 0..sz{for ii in 0..sz{let(i,j)=(x0+ii,y0+jj);let k=j*w+i;
+            let c= if h.data[k]<=0.5 {[40,70,120]}
+                else if acc.data[k]>=stream && dirf[k]!=DIR_NONE { if suspect[k]{cnt+=1; if f[k]-h.data[k]>1e-5{raised+=1} let mut af=false;for d in 0..8{let m=nb(i,j,d);let(mut hl2,mut he2)=(false,false);for e in 0..8{let mm=nb(m%w,m/w,e);if f[mm]<f[m]{hl2=true}else if f[mm]==f[m]{he2=true}}if !hl2&&he2{af=true}}if af{adj_flat+=1}} huecol(dirf[k]) }
+                else {let g=shade(h,i,j);[g,g,g]};
+            buf.put_pixel(ii as u32,(sz-1-jj)as u32,image::Rgb(c));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_ladder_dirhue.png"))).unwrap();
+        eprintln!("    zoom @({x0},{y0}) 96px: suspect-in-crop {cnt}, raised-by-fill {raised}, adjacent-to-resolved-flat {adj_flat}");
+    }
+    eprintln!("  out = {}", dir.display());
+}
