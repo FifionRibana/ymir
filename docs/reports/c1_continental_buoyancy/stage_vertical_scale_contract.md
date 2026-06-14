@@ -177,6 +177,38 @@ and the gap it reveals is the diagnostic of the relief not yet produced.
 
 ---
 
+## Maillon 3 — the HORIZONTAL scale (coordinate contract's other half)
+
+Surfaced while scoping drainage: km² river thresholds need a **km/cell**, and the
+C1 product had **no pinned horizontal scale** — a ~5× ambiguity, the exact pendant
+of the vertical gap:
+- Legacy `GenerationConfig`: `continent_size_km=300`, `meters_per_pixel=40`.
+- C1 TDD §11: domain `1×1` = "~1000-5000 km regional", dx ≈ "~2 km at 512²".
+
+These disagree, and the C1 figure is itself a 5× range → km² thresholds would rest
+on a disguised extent knob. Pinned as its own mini-maillon (the coordinate contract
+is a shared foundation — biomes/climate/villages, not just rivers — like the
+vertical, done as its own chantier, not slipped into the first consumer).
+
+**The pin (anchored, revisable):** `C1_DOMAIN_KM = 1024` — the TDD §11 lower anchor
+`2.0 km/cell × 512`, making its implicit "~2 km at 512²" explicit. dx = 16 km @64²,
+0.5 km @2048². Consistent with §2.2's dense playable-region gameplay (not a stretched
+whole continent). A "whole continent" product intent → set ~3000 km; **one constant,
+every consumer follows** (nothing else encodes the horizontal scale).
+
+Exposed: `c1_km_per_cell(grid)` = `C1_DOMAIN_KM/grid` (resolution-independent — domain
+km fixed); `c1_cell_area_km2(grid)` — the unit for resolution-independent
+drainage-area thresholds (`accumulation × cell_area_km2` = upstream km², invariant for
+a fixed physical catchment). Pure additive functions → byte-identical (no existing path
+changed). Unit test asserts the §11 anchor (2.0 km/cell @512²) + resolution-independence.
+
+**The coordinate contract is now complete**: vertical (`c1_altitude_norm_to_metres`,
+sea=0.5→0 m, ±5650 m) + horizontal (`C1_DOMAIN_KM=1024`, `c1_km_per_cell`). metadata.json
+§9.3 (meters-per-pixel beside elevation) = these two together. Drainage (the first
+consumer) can now anchor thresholds in km².
+
+---
+
 ## Discipline notes
 - Volet 1 = reading; the scale is what the model encodes (two-scale, phantom peak) — not
   tuned toward a target height. Pinning the scale does not create relief.
