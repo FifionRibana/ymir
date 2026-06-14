@@ -3959,3 +3959,97 @@ fn probe_drainage_overlays() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 flat-routing DIAGNOSTIC — characterise the parallel-bar / 45° fan
+/// artifact on flat interiors at 2048². Confirms the root (D8 follows the
+/// pit_fill epsilon-tree, NOT real terrain) by a NON-INVASIVE eps=0
+/// counterfactual: steepest-descent on the ORIGINAL (unfilled) heightmap =
+/// eps=0; flat cells that get a direction ONLY from the eps-fill are the
+/// artifact. Splits the artifact: filled depressions (legit drainage to sill)
+/// vs native plateaus (cratonic, physically diffuse — channels here are FALSE).
+#[test]
+#[ignore]
+fn probe_flat_routing_diagnostic() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    // steepest-descent direction on a given heightmap (eps=0 semantics): NONE if
+    // no strictly-lower neighbour.
+    let d8_eps0 = |h: &GridF32, i: usize, j: usize, w: usize, ht: usize| -> u8 {
+        let my = h.data[j*w+i];
+        let mut best = 0.0f32; let mut dir = DIR_NONE;
+        for d in 0..8 {
+            let ni = ((i as i32 + D8_DX[d]).rem_euclid(w as i32)) as usize;
+            let nj = ((j as i32 + D8_DY[d]).rem_euclid(ht as i32)) as usize;
+            let dist = if d % 2 == 0 { 1.0 } else { 1.414 };
+            let s = (my - h.data[nj*w+ni]) / dist;
+            if s > best { best = s; dir = d as u8; }
+        }
+        dir
+    };
+    let pct = |v: &[f32], q: f32| -> f32 { if v.is_empty() {return f32::NAN;} let mut s=v.to_vec(); s.sort_by(|a,b| a.partial_cmp(b).unwrap()); s[((q*(s.len()-1) as f32) as usize).min(s.len()-1)] };
+    eprintln!("#155 flat-routing diagnostic — eps=0 counterfactual + filled/native split");
+    for &seed in &[1988u64, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        for &target in &[1024usize, 2048] {
+            let cfg = FbmUpscaleConfig::c1_hd_production(target);
+            let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+            let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+            let dr = c1_drainage(h, &dcfg, &ss);
+            let cell_km2 = c1_cell_area_km2(w);
+            let stream_cells = (dcfg.thresholds.stream_km2 / cell_km2).max(1.0);
+
+            // land gradient distribution → flat threshold (15% of median land grad).
+            let mut grads = vec![0.0f32; w*ht];
+            let mut land_grads = Vec::new();
+            for j in 0..ht { for i in 0..w {
+                let (gx, gy) = h.gradient_at(i, j); let g = (gx*gx+gy*gy).sqrt();
+                grads[j*w+i] = g;
+                if h.data[j*w+i] > 0.5 { land_grads.push(g); }
+            }}
+            let med = pct(&land_grads, 0.5);
+            let flat_thr = 0.15 * med;
+
+            let (mut land, mut flat, mut filled_flat, mut native_flat) = (0usize,0usize,0usize,0usize);
+            let (mut eps_driven, mut eps_filled, mut eps_native) = (0usize,0usize,0usize);
+            let (mut native_above_stream, mut native_flat_total) = (0usize, 0usize);
+            for j in 0..ht { for i in 0..w {
+                let k = j*w+i;
+                if h.data[k] <= 0.5 { continue; }
+                land += 1;
+                if grads[k] >= flat_thr { continue; }
+                flat += 1;
+                let raised = dr.flow.filled.data[k] - h.data[k];
+                let is_filled = raised > 1e-5;
+                if is_filled { filled_flat += 1; } else { native_flat += 1; }
+                // eps-driven: compute_flow gave a direction, eps=0 gives NONE.
+                let dir_filled = dr.flow.direction[k];
+                let dir_orig = d8_eps0(h, i, j, w, ht);
+                if dir_filled != DIR_NONE && dir_orig == DIR_NONE {
+                    eps_driven += 1;
+                    if is_filled { eps_filled += 1; } else { eps_native += 1; }
+                }
+                // native plateau: does flow accumulation exceed the stream threshold
+                // (→ FALSE channels) or stay diffuse (correct)?
+                if !is_filled {
+                    native_flat_total += 1;
+                    if dr.flow.accumulation.data[k] >= stream_cells { native_above_stream += 1; }
+                }
+            }}
+            eprintln!("  seed {seed} @{target}²: land {land} | flat {flat} ({:.1}% land, thr={flat_thr:.2e}) = filled {filled_flat} + native {native_flat}",
+                100.0*flat as f64/land.max(1) as f64);
+            eprintln!("    eps-driven (dir from fill, NONE at eps=0): {eps_driven} ({:.1}% of flat) = filled {eps_filled} + native {eps_native}",
+                100.0*eps_driven as f64/flat.max(1) as f64);
+            eprintln!("    native plateau flats above stream-threshold (FALSE channels): {native_above_stream}/{native_flat_total} ({:.1}%)",
+                100.0*native_above_stream as f64/native_flat_total.max(1) as f64);
+        }
+    }
+}
