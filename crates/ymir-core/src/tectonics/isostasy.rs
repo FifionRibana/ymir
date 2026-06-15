@@ -92,6 +92,19 @@ pub struct IsostasyConfig {
     /// is the S̃ order). Thickness ratio (1.25) stays anchored.
     #[serde(default)]
     pub craton_rho_crust: Option<f32>,
+    /// #155 critical-wedge — FIXED land-elevation reference (S̃ thickness). When
+    /// `Some(rt)`, the LAND ramp normalises against `rt · buoyancy` (a FIXED raw
+    /// height) instead of the field's `h_max`/`land_cap`, and `peak_altitude_m =
+    /// max_elevation_m`. This DECOUPLES the rendered land elevation from the
+    /// field's own relief: a given S̃ thickness renders the SAME metres in every
+    /// seed and after every closure (no more field-dependent ~0.74-0.80 fraction
+    /// that shifts as the orogen grows). `rt = h_eq = 2.0` (= ~70 km, the EH cap
+    /// = the physical max crustal thickness) is the single anchor the whole
+    /// relief converges on (the critical-wedge targets it, EH caps it, the scale
+    /// references it). Cells above `rt` clamp to norm 1.0 = `max_elevation_m`.
+    /// `None` → the field-relative `land_cap` behaviour (byte-identical; v2/export).
+    #[serde(default)]
+    pub land_ref_thickness: Option<f32>,
 }
 
 impl Default for IsostasyConfig {
@@ -106,6 +119,7 @@ impl Default for IsostasyConfig {
             altitude_smoothing_sigma: 2.0,
             sea_level_mode: SeaLevelMode::MinMaxFraction,
             craton_rho_crust: None,
+            land_ref_thickness: None,
         }
     }
 }
@@ -153,6 +167,20 @@ impl IsostasyConfig {
             // orogens (2950 over-lowers). Default keeps None (v2/export
             // bit-compat). Anchored — not tuned to a target.
             craton_rho_crust: Some(2900.0),
+            // #155 critical-wedge — land elevation anchor = the contract norm-1.0
+            // (5650 m). With `land_ref_thickness=Some(2.0)`, norm 1.0 ↔ S̃=2.0
+            // (~70 km, the EH cap) ↔ max_elevation_m ↔ the vertical contract max:
+            // ONE coherent anchor. An S̃=2.0 orogen renders 5650 m, S̃≈1.9 renders
+            // ~5.3 km, FIELD-INDEPENDENTLY (no re-pin; rendered ≤ contract). Default
+            // keeps 4000 (v2/export byte-identical). 8000 m Everest POINT peaks
+            // exceed the contract + C1's mean-field resolution → out of scope.
+            max_elevation_m: 5650.0,
+            // #155 critical-wedge — fix the land reference to S̃=2.0 (h_eq=70 km,
+            // EH cap): decouples rendered orogen height from the field's own
+            // relief (the ~0.78 field-dependent fraction → field-INDEPENDENT). The
+            // single anchor the relief converges on (wedge targets 2.0, EH caps
+            // 2.0, scale references 2.0). Default None (v2/export field-relative).
+            land_ref_thickness: Some(2.0),
             ..Default::default()
         }
     }
@@ -283,6 +311,17 @@ fn compute_isostasy_inner(
         None => h_max,
     };
 
+    // 2c. #155 critical-wedge — the LAND-ramp ceiling. With `land_ref_thickness`
+    // it is a FIXED raw height `rt · buoyancy` (rt = S̃ reference, the EH cap 2.0
+    // = 70 km), NOT the field's `land_cap`: this decouples the rendered land
+    // elevation from the field's own relief (a given S̃ → the same metres in every
+    // seed / after every closure). Cells above it clamp to norm 1.0. `None` →
+    // the field-relative `land_cap` (byte-identical).
+    let land_ceiling = match config.land_ref_thickness {
+        Some(rt) => rt * buoyancy,
+        None => land_cap,
+    };
+
     // 3. Map to normalized [0, 1] with sea level at a known position
     // sea_norm = max_depth / (max_depth + max_elevation)
     let sea_norm = config.max_depth_m / (config.max_depth_m + config.max_elevation_m);
@@ -296,9 +335,10 @@ fn compute_isostasy_inner(
             let t = (h - h_min) / (h_sea - h_min).max(1e-10);
             t * sea_norm
         } else {
-            // #155 land ramp tops at land_cap (continental summit, not the
-            // phantom oceanic h_max). Cells above land_cap clamp to 1.0 below.
-            let t = (h - h_sea) / (land_cap - h_sea).max(1e-10);
+            // #155 land ramp tops at `land_ceiling` (fixed S̃-reference when
+            // land_ref_thickness is set, else the continental land_cap). Cells
+            // above it clamp to 1.0 below.
+            let t = (h - h_sea) / (land_ceiling - h_sea).max(1e-10);
             sea_norm + t * (1.0 - sea_norm)
         };
         data[k] = normalized.clamp(0.0, 1.0);
@@ -310,11 +350,17 @@ fn compute_isostasy_inner(
 
     let land_ratio = land_count as f32 / (nx * ny) as f32;
 
-    // 4. Compute actual peak altitude and depth for metadata. #155: the peak
-    // is the real continental summit (land_cap), not the phantom oceanic h_max
-    // — so peak_altitude_m describes an actual land cell (None path: land_cap
-    // == h_max, byte-identical).
-    let peak_altitude_m = (land_cap - h_sea) / (land_cap - h_min).max(1e-10) * config.max_elevation_m;
+    // 4. Compute actual peak altitude and depth for metadata. #155 critical-wedge:
+    // with a fixed land reference, norm 1.0 ↔ `land_ceiling` (S̃=rt) ↔
+    // `max_elevation_m` directly — so `peak_altitude_m = max_elevation_m`,
+    // field-INDEPENDENT (a cell at the reference thickness renders the same metres
+    // in every field). Without it, the field-relative continental-summit fraction
+    // (byte-identical None path).
+    let peak_altitude_m = if config.land_ref_thickness.is_some() {
+        config.max_elevation_m
+    } else {
+        (land_cap - h_sea) / (land_cap - h_min).max(1e-10) * config.max_elevation_m
+    };
     let actual_depth_m = (h_sea - h_min) / (h_max - h_min).max(1e-10) * config.max_depth_m;
 
     let heightmap = GridF32::from_vec(nx, ny, data);
@@ -519,7 +565,14 @@ mod tests {
         let d = IsostasyConfig::default();
         let c = IsostasyConfig::c1_default();
         assert_eq!(d.sea_level_fraction, c.sea_level_fraction);
-        assert_eq!(d.max_elevation_m, c.max_elevation_m);
+        // #155 critical-wedge: c1_default max_elevation_m = 5650 (= contract
+        // norm-1.0) + land_ref_thickness Some(2.0) (fixed S̃=70 km reference, so
+        // rendered orogen height is field-independent); Default keeps 4000 + None
+        // (field-relative, v2/export bit-compat).
+        assert_eq!(d.max_elevation_m, 4000.0);
+        assert_eq!(c.max_elevation_m, 5650.0);
+        assert_eq!(d.land_ref_thickness, None);
+        assert_eq!(c.land_ref_thickness, Some(2.0));
         assert_eq!(d.altitude_smoothing_sigma, 2.0);
         assert_eq!(c.altitude_smoothing_sigma, 0.5);
     }
