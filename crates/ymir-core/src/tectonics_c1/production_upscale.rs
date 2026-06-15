@@ -206,6 +206,42 @@ pub fn c1_metres_to_altitude_norm(metres: f32, ss: &SteinSteinParams) -> f32 {
     metres / (2.0 * ALTITUDE_NORM_HALF_RANGE * ss.depth_scale_m as f32) + 0.5
 }
 
+/// #155 — **THE C1 HORIZONTAL scale (the coordinate contract's other half).**
+/// The km side-length the unit (`1 × 1`) tectonic domain represents. This is the
+/// pendant of the vertical `c1_altitude_norm_to_metres`: the metadata.json
+/// coordinate contract (§9.3) lists meters-per-pixel ALONGSIDE the elevation
+/// scale — both are ONE coordinate system, and a defined horizontal scale is the
+/// shared prerequisite for every metric consumer (rivers' drainage-area
+/// thresholds, biome zones, climate orographic distance, village spacing).
+///
+/// **Derivation (anchored, not arbitrary).** TDD §11 "Implicit physical scales"
+/// states the C1 domain is regional (~1000-5000 km) with dx ≈ "~2 km at 512²".
+/// Pinning the lower-end TDD anchor `2.0 km/cell × 512 = 1024 km` makes that
+/// implicit statement explicit. dx then = 16 km @64² (tectonic), 0.5 km @2048²
+/// (HD). Consistent with the §2.2 gameplay scale (a dense playable region —
+/// cités, riverside villages, navigable valleys — i.e. "large region", not a
+/// stretched whole continent). **Revisable product choice**: a "whole continent"
+/// intent would set ~3000 km; change this ONE constant and every consumer
+/// follows (nothing else encodes the horizontal scale).
+pub const C1_DOMAIN_KM: f32 = 1024.0;
+
+/// Kilometres per cell at the given grid resolution (the `1×1` domain is
+/// [`C1_DOMAIN_KM`] on a side). Resolution-INdependent contract: the domain km
+/// is fixed; km/cell = `C1_DOMAIN_KM / grid_size`. E.g. 2.0 km @512², 0.5 km
+/// @2048².
+pub fn c1_km_per_cell(grid_size: usize) -> f32 {
+    C1_DOMAIN_KM / grid_size as f32
+}
+
+/// Cell area in km² at the given grid resolution — the unit for
+/// resolution-independent drainage-area thresholds (flow accumulation × this =
+/// upstream area in km², which does NOT change with grid_size for the same
+/// physical catchment).
+pub fn c1_cell_area_km2(grid_size: usize) -> f32 {
+    let s = c1_km_per_cell(grid_size);
+    s * s
+}
+
 /// Upscale a C1 simulation state to a detailed heightmap via the
 /// anisotropic-FBM upscale, **through the robustness-preserving
 /// altitude path** (Issue #147 FOLLOWUPS-#6 — see module docs).
@@ -291,5 +327,30 @@ mod tests {
         assert_eq!(out.heightmap.width, 128);
         assert_eq!(out.heightmap.height, 128);
         assert!(out.heightmap.data.iter().all(|v| v.is_finite()));
+    }
+
+    /// #155 horizontal contract — the TDD §11 anchor (2.0 km/cell @512²) +
+    /// resolution-independence (domain km fixed; km/cell = domain/grid).
+    #[test]
+    fn horizontal_scale_contract() {
+        assert_eq!(C1_DOMAIN_KM, 1024.0);
+        assert!((c1_km_per_cell(512) - 2.0).abs() < 1e-6, "TDD §11 anchor: 2 km/cell @512²");
+        assert!((c1_km_per_cell(64) - 16.0).abs() < 1e-6);
+        assert!((c1_km_per_cell(2048) - 0.5).abs() < 1e-6);
+        // cell area = (km/cell)²; a fixed physical catchment is resolution-invariant:
+        // accumulation(cells) × cell_area_km2 = upstream area in km².
+        assert!((c1_cell_area_km2(512) - 4.0).abs() < 1e-6);
+        assert!((c1_cell_area_km2(2048) - 0.25).abs() < 1e-6);
+    }
+
+    /// #155 vertical contract — anchors + round-trip (Maillon 2).
+    #[test]
+    fn vertical_scale_contract() {
+        let ss = SteinSteinParams::default();
+        assert!((c1_altitude_norm_to_metres(0.5, &ss)).abs() < 1e-3, "sea = 0 m");
+        assert!((c1_altitude_norm_to_metres(1.0, &ss) - 5650.0).abs() < 5.0);
+        assert!((c1_altitude_norm_to_metres(0.0, &ss) + 5650.0).abs() < 5.0);
+        let rt = c1_metres_to_altitude_norm(c1_altitude_norm_to_metres(0.73, &ss), &ss);
+        assert!((rt - 0.73).abs() < 1e-5, "round-trip");
     }
 }
