@@ -82,6 +82,21 @@ pub struct DavisSuppeParams {
     /// wedge distance field upstream — both come from the SAME
     /// [`DavisSuppeParams::scaled_to_grid`] result.
     pub max_distance: f64,
+    /// #155 critical-wedge — deposition-RATE boost on O-C convergent-margin
+    /// orogens (only the `oc_wedge` cells of the routed step). The #155
+    /// diagnostic showed orogens equilibrate at S̃ ≈ 1.3-1.5, well below their
+    /// margin-peaked critical-taper target `h_crit ≈ 1.95` (≈ 2× normal crust =
+    /// the ~70 km Tibetan plateau, = `h_eq`): the LIMITER is the deposition rate
+    /// (the erosion sink + advective smear hold the equilibrium below the
+    /// target), NOT the EH ceiling (which is a no-op below 2.0). This multiplies
+    /// the O-C `coupling` so deposition overcomes the sink and the orogen
+    /// reaches its critical taper, and clamps the per-step result to `h_crit`
+    /// (the critical taper is the physical cap — no forward-Euler overshoot). The
+    /// THICKNESS target stays anchored in `h_crit` (the 1b-i 2× ridge); this only
+    /// supplies the rate to reach it. `None` → byte-identical (effective
+    /// coupling = `coupling`, no clamp). Calibrated by the achieved equilibrium
+    /// (not the term), see `probe_orogen_equilibrium`.
+    pub oc_coupling_boost: Option<f64>,
 }
 
 /// Reference resolution at which the Davis-Suppe length scales
@@ -123,6 +138,7 @@ impl Default for DavisSuppeParams {
             l_taper: 4.0,
             l_decay: 6.0,
             max_distance: 30.0, // = 5 × l_decay
+            oc_coupling_boost: None,
         }
     }
 }
@@ -248,9 +264,18 @@ fn apply_davis_suppe_step_inner(
             let v_mag = (vx * vx + vy * vy).sqrt();
             // Decay envelope.
             let envelope = (-d / l_decay).exp();
+            // #155 critical-wedge: boost the O-C deposition RATE so the orogen
+            // reaches its critical taper (the diagnostic limiter is the rate, not
+            // the target/EH). None → byte-identical (factor 1.0, no clamp).
+            let boost = if is_oc { params.oc_coupling_boost } else { None };
+            let eff_coupling = coupling * boost.unwrap_or(1.0);
             // Forward-Euler step.
-            let ds_dt = coupling * v_mag * driving * envelope;
-            s.set(i, j, h_now + ds_dt * dt);
+            let ds_dt = eff_coupling * v_mag * driving * envelope;
+            let raw = h_now + ds_dt * dt;
+            // Clamp the boosted O-C step to the critical taper h_crit (its
+            // physical cap) — no overshoot from the larger rate.
+            let s_new = if boost.is_some() { raw.min(h_crit) } else { raw };
+            s.set(i, j, s_new);
         }
     }
 }
