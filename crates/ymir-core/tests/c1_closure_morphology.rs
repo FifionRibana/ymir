@@ -4671,3 +4671,122 @@ fn probe_precip_structure() {
             wm/em.max(1e-9), pct(0.1), pct(0.5), pct(0.9), pct(1.0));
     }
 }
+
+/// #165 climate VISUAL validation — precip in LOG + LINEAR + windward-marked, and
+/// temperature; 2 seeds @2048², 45° westerlies, origin-bottom. Log reveals the
+/// gradient a linear colormap drowns (skewed dist). Reports p50/max + the
+/// floor-fraction (land cells at the convective minimum — suspect if a temperate
+/// continent is mostly desert-floor).
+#[test]
+#[ignore]
+fn probe_climate_maps() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+    let dir = output_dir().join("climate_maps"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default();
+    for &seed in &[42u64, 99, 1337, 4138] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(2048));
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, 45.0, &pp);
+        let pr = &clim.precipitation.data; let temp = &clim.temperature.data;
+        let dx_m = c1_km_per_cell(w) * 1000.0;
+        // land precip stats.
+        let mut lp: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| pr[k]).collect();
+        lp.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let n = lp.len().max(1);
+        let p50 = lp[n/2]; let pmax = lp[n-1].max(1e-6); let pmin = lp[0].max(1e-6);
+        let floor = lp.iter().filter(|&&v| v < 0.015).count();
+        eprintln!("  seed {seed}: land {n} | precip p50={p50:.4} max={pmax:.4} | floor(<0.015) {:.0}% | log range [{:.2},{:.2}]",
+            100.0*floor as f64/n as f64, pmin.log10(), pmax.log10());
+        let lnmin = pmin.ln(); let lnmax = pmax.ln();
+        let put = |buf:&mut image::RgbImage, i:usize, j:usize, c:[u8;3]| buf.put_pixel(i as u32, (ht-1-j) as u32, image::Rgb(c));
+        let (mut blog, mut blin, mut bslp, mut btmp) = (image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32));
+        for j in 0..ht { for i in 0..w { let k=j*w+i;
+            let sea = h.data[k] <= SEA_LEVEL_NORM;
+            let p = pr[k];
+            // LOG
+            let tl = if sea {0.0} else { ((p.max(1e-6).ln()-lnmin)/(lnmax-lnmin)).clamp(0.0,1.0) };
+            put(&mut blog,i,j, if sea {[20,40,80]} else {[ (215.0-185.0*tl) as u8,(205.0-125.0*tl) as u8,(165.0+90.0*tl) as u8 ]});
+            // LINEAR (clamp p99)
+            let tlin = if sea {0.0} else { (p/pmax).clamp(0.0,1.0) };
+            put(&mut blin,i,j, if sea {[20,40,80]} else {[ (215.0-185.0*tlin) as u8,(205.0-125.0*tlin) as u8,(165.0+90.0*tlin) as u8 ]});
+            // SLOPES: windward (ascending eastward) tinted by precip-blue, leeward red.
+            let cslp = if sea {[20,40,80]} else {
+                let altw = if i>0 {c1_altitude_norm_to_metres(h.data[k-1],&ss).max(0.0)} else {0.0};
+                let asc = (c1_altitude_norm_to_metres(h.data[k],&ss).max(0.0)-altw)/dx_m;
+                let b = (tl*255.0) as u8;
+                if asc > 1e-4 { [ (60.0-40.0*tl) as u8, (120.0+100.0*tl).min(255.0) as u8, b.max(120) ] } // windward, precip-blue
+                else if asc < -1e-4 { [ 180, (80.0+60.0*tl) as u8, 60 ] } // leeward orange
+                else { [140,140,140] }
+            };
+            put(&mut bslp,i,j,cslp);
+            // TEMP
+            let tt=((temp[k]+20.0)/50.0).clamp(0.0,1.0);
+            put(&mut btmp,i,j, if sea {[30,50,90]} else {[ (40.0+200.0*tt) as u8,60,(240.0-200.0*tt) as u8 ]});
+        }}
+        blog.save(dir.join(format!("seed{seed:05}_precip_LOG.png"))).unwrap();
+        blin.save(dir.join(format!("seed{seed:05}_precip_LINEAR.png"))).unwrap();
+        bslp.save(dir.join(format!("seed{seed:05}_precip_SLOPES.png"))).unwrap();
+        btmp.save(dir.join(format!("seed{seed:05}_temp.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #165 climate CONTROL survey — find a NORMAL-relief continent (passive/low
+/// WINDWARD (west) margin, interior open to the westerly ocean) to disambiguate
+/// dry-interior cause: climatic (no frontal base) vs local (cordillera
+/// encirclement). Identify by RELIEF (west-margin height), not climate. 1024².
+#[test]
+#[ignore]
+fn probe_climate_control_survey() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    let dir = output_dir().join("climate_control"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default();
+    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=55.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*255.0)as u8};
+    eprintln!("#165 climate control survey (1024², 45° westerlies; windward=WEST). margin = mean altitude(m) of the 6 westmost/eastmost land cells per row.");
+    for &seed in &[1337u64, 4138, 42, 99] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(1024));
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let alt = |k:usize| c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
+        // west/east margin relief: per row, the 6 westmost & 6 eastmost land cells.
+        let (mut wsum,mut wn,mut esum,mut en)=(0.0f64,0u64,0.0f64,0u64);
+        for j in 0..ht {
+            let land:Vec<usize>=(0..w).filter(|&i| h.data[j*w+i]>SEA_LEVEL_NORM).collect();
+            if land.len()<12 {continue;}
+            for &i in land.iter().take(6) { wsum+=alt(j*w+i) as f64; wn+=1; }
+            for &i in land.iter().rev().take(6) { esum+=alt(j*w+i) as f64; en+=1; }
+        }
+        let (wm,em)=(wsum/wn.max(1) as f64, esum/en.max(1) as f64);
+        let clim = c1_climate(h,&ss,45.0,&pp);
+        let mut lp:Vec<f32>=(0..w*ht).filter(|&k|h.data[k]>SEA_LEVEL_NORM).map(|k|clim.precipitation.data[k]).collect();
+        lp.sort_by(|a,b|a.partial_cmp(b).unwrap()); let nl=lp.len().max(1);
+        let floor=100.0*lp.iter().filter(|&&v|v<0.015).count() as f64/nl as f64;
+        eprintln!("  seed {seed}: WEST margin {wm:.0} m / EAST margin {em:.0} m | floor {floor:.0}% | (low west = passive windward = control candidate)");
+        // renders: hillshade + precip LOG.
+        let mut lpmin=f32::MAX; let mut lpmax=0.0f32; for &v in &lp {lpmin=lpmin.min(v.max(1e-6));lpmax=lpmax.max(v);}
+        let (lnmin,lnmax)=(lpmin.ln(), lpmax.max(1e-6).ln());
+        let mut bh=image::RgbImage::new(w as u32,ht as u32); let mut bp=image::RgbImage::new(w as u32,ht as u32);
+        for j in 0..ht{for i in 0..w{let k=j*w+i; let sea=h.data[k]<=SEA_LEVEL_NORM;
+            let g=if sea{70}else{shade(h,i,j)};
+            bh.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(if sea{[40,70,120]}else{[g,g,g]}));
+            let tl=if sea{0.0}else{((clim.precipitation.data[k].max(1e-6).ln()-lnmin)/(lnmax-lnmin)).clamp(0.0,1.0)};
+            bp.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(if sea{[20,40,80]}else{[(215.0-185.0*tl)as u8,(205.0-125.0*tl)as u8,(165.0+90.0*tl)as u8]}));
+        }}
+        bh.save(dir.join(format!("seed{seed:05}_relief.png"))).unwrap();
+        bp.save(dir.join(format!("seed{seed:05}_precip_log.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
