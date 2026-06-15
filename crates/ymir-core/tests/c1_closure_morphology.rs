@@ -3697,3 +3697,833 @@ fn probe_sea_unification_acceptance() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155→complétude W7 DRAINAGE — measure what the EXISTING drainage stack
+/// (terrain::flow + lakes::detection, already built) produces on the CURRENT
+/// C1 HD product (unified scale, sea=0.5, post-erosion). Grounds the W7:
+/// rivers by Strahler order, lakes (area/depth/level in METRES via the Maillon-2
+/// contract), and the endorheic-vs-exorheic question (trace each lake outlet
+/// downstream → reaches sea?). NOT the implementation — a measurement probe.
+#[test]
+#[ignore]
+fn probe_drainage_etat_des_lieux() {
+    use ymir_core::terrain::flow::{compute_flow, extract_rivers, FlowConfig, RiverConfig, DIR_NONE, D8_DX, D8_DY};
+    use ymir_core::lakes::detection::{detect_lakes, LakeConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    let dir = output_dir().join("drainage_etat");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let target = 512usize;
+    let cfg = FbmUpscaleConfig::c1_hd_production(target);
+    eprintln!("#155 W7 drainage état-des-lieux — existing stack on C1 HD product ({target}², sea=0.5)");
+    for &seed in &[42u64, 1988, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
+
+        // The unified scale puts sea at 0.5.
+        let flow = compute_flow(h, &FlowConfig { sea_level: 0.5 });
+        let rivers = extract_rivers(&flow, &RiverConfig::default(), w, ht);
+        let lakes = detect_lakes(h, &flow.filled, &flow.direction, &flow.basins, &LakeConfig::default());
+
+        // Strahler histogram.
+        let mut strahler = [0usize; 12];
+        for s in &rivers.segments { strahler[(s.strahler_order as usize).min(11)] += 1; }
+        let max_acc = flow.accumulation.data.iter().cloned().fold(0.0f32, f32::max);
+
+        // Endorheic vs exorheic: trace each lake outlet downstream; reaches sea?
+        let is_sea = |k: usize| h.data[k] <= 0.5;
+        let mut endorheic = 0; let mut exorheic = 0;
+        for lk in &lakes.lakes {
+            let (mut x, mut y) = (lk.outlet.0 as usize, lk.outlet.1 as usize);
+            let mut steps = 0; let mut reached_sea = false;
+            loop {
+                let k = y*w + x;
+                if is_sea(k) { reached_sea = true; break; }
+                let d = flow.direction[k];
+                if d == DIR_NONE || steps > w*ht { break; }
+                x = ((x as i32 + D8_DX[d as usize]).rem_euclid(w as i32)) as usize;
+                y = ((y as i32 + D8_DY[d as usize]).rem_euclid(ht as i32)) as usize;
+                steps += 1;
+            }
+            if reached_sea { exorheic += 1; } else { endorheic += 1; }
+        }
+        // Lake levels/depths in metres (Maillon-2 contract).
+        let (mut max_area, mut deepest_m, mut highest_lake_m) = (0usize, 0.0f32, f32::MIN);
+        for lk in &lakes.lakes {
+            max_area = max_area.max(lk.area);
+            deepest_m = deepest_m.max(c1_altitude_norm_to_metres(lk.surface_elevation, &ss) - c1_altitude_norm_to_metres(lk.surface_elevation - lk.max_depth, &ss));
+            highest_lake_m = highest_lake_m.max(c1_altitude_norm_to_metres(lk.surface_elevation, &ss));
+        }
+        let land = h.data.iter().filter(|&&v| v > 0.5).count();
+        eprintln!("  seed {seed}: land {:.1}% | basins {} max_acc {max_acc:.0} | rivers {} segs, Strahler {:?}",
+            100.0*land as f64/(w*ht) as f64, flow.num_basins, rivers.segments.len(), &strahler[1..7]);
+        eprintln!("    lakes {} (exorheic {exorheic} / endorheic {endorheic}) | max area {max_area} cells | deepest {deepest_m:.0} m | highest level {highest_lake_m:.0} m",
+            lakes.lakes.len());
+
+        // Render overlay (hypso + rivers blue + lakes).
+        let mut img = vec![0u8; w*ht*3];
+        for k in 0..w*ht {
+            let v = h.data[k].clamp(0.0,1.0);
+            let (r,g,b) = if v <= 0.5 { (30,60,(120.0+200.0*v) as u8) } else { let t=(v-0.5)*2.0; (((60.0+150.0*t) as u8),((120.0+80.0*t) as u8),60) };
+            img[k*3]=r; img[k*3+1]=g; img[k*3+2]=b;
+        }
+        let stream = RiverConfig::default().stream_threshold;
+        for k in 0..w*ht {
+            if lakes.lake_map[k] != 0 { img[k*3]=30; img[k*3+1]=90; img[k*3+2]=180; }
+            else if flow.accumulation.data[k] >= stream && h.data[k] > 0.5 { img[k*3]=40; img[k*3+1]=110; img[k*3+2]=230; }
+        }
+        // Origin-bottom (data row j → image row ht-1-j), matching the
+        // product-wide convention (save_heightmap01/binarymap/hillshade_crop +
+        // viz hydrology). The extraction reads the same GridF32 indexing as
+        // every consumer; only this render's orientation was the Y-flip.
+        let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w {
+            let k = j*w + i;
+            buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb([img[k*3],img[k*3+1],img[k*3+2]]));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 drainage maillon ACCEPTANCE — validate the PRODUCT (c1_drainage) on the
+/// real C1 terrain, not the algorithm (that has unit tests). Checks: navigability
+/// classes (km² thresholds), lake stats in metres, and RESOLUTION-INDEPENDENCE
+/// (512² vs 1024²: km²-anchored network density comparable, where cell-count
+/// thresholds would break). Renders the drainage overlay (origin-bottom) for the
+/// geometric-coherence re-judge (rivers in valleys / lakes in basins).
+#[test]
+#[ignore]
+fn probe_c1_drainage_acceptance() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, Navigability, LakeType};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    let dir = output_dir().join("drainage_accept");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    eprintln!("#155 drainage acceptance — c1_drainage on C1 product, km² thresholds {:?}", dcfg.thresholds);
+    for &seed in &[42u64, 1988, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        // Resolution-independence: 512² and 1024², compare km²-normalised metrics.
+        for &target in &[512usize, 1024] {
+            let cfg = FbmUpscaleConfig::c1_hd_production(target);
+            let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+            let dr = c1_drainage(&up.heightmap, &dcfg, &ss);
+            let (w, _h) = (dr.width, dr.height);
+            let land_km2 = up.heightmap.data.iter().filter(|&&v| v > 0.5).count() as f32 * c1_cell_area_km2(w);
+            let mut nav = [0usize; 4];
+            for n in &dr.segment_navigability { nav[match n { Navigability::NonNavigable=>0, Navigability::SmallBoat=>1, Navigability::Barge=>2, Navigability::Ship=>3 }] += 1; }
+            let max_drain = dr.segment_drainage_km2.iter().cloned().fold(0.0f32, f32::max);
+            let exo = dr.lakes.iter().filter(|l| l.lake_type==LakeType::Exorheic).count();
+            let endo = dr.lakes.iter().filter(|l| l.lake_type==LakeType::Endorheic).count();
+            let (deepest, highest, biggest) = dr.lakes.iter().fold((0.0f32,f32::MIN,0.0f32), |(d,h,a),l| (d.max(l.depth_m), h.max(l.level_m), a.max(l.area_km2)));
+            eprintln!("  seed {seed} @{target}²: land {land_km2:.0} km² | rivers {} (nonNav {} smallBoat {} barge {} ship {}) maxDrain {max_drain:.0} km²",
+                dr.rivers.segments.len(), nav[0], nav[1], nav[2], nav[3]);
+            eprintln!("    lakes {} (exo {exo}/endo {endo}) deepest {deepest:.0} m, highest level {highest:.0} m, biggest {biggest:.0} km²", dr.lakes.len());
+
+            if target == 1024 {
+                // render overlay (origin-bottom, the product convention). Base
+                // hypso + lakes + NAVIGABLE rivers by tier (the mappable network:
+                // small-boat→barge→ship), NOT every headwater (the full
+                // hydrography at stream_km2 is the dense texture, consumer-filtered).
+                let mut img = vec![0u8; w*dr.height*3];
+                for k in 0..w*dr.height {
+                    let v = up.heightmap.data[k].clamp(0.0,1.0);
+                    let (r,g,b) = if v <= 0.5 { (30,60,(120.0+200.0*v) as u8) } else { let t=(v-0.5)*2.0; (((60.0+150.0*t) as u8),((120.0+80.0*t) as u8),60) };
+                    img[k*3]=r; img[k*3+1]=g; img[k*3+2]=b;
+                }
+                for (si, seg) in dr.rivers.segments.iter().enumerate() {
+                    let col = match dr.segment_navigability[si] {
+                        Navigability::Ship => [20u8, 70, 200],
+                        Navigability::Barge => [40, 110, 230],
+                        Navigability::SmallBoat => [90, 160, 240],
+                        Navigability::NonNavigable => continue,
+                    };
+                    for &(px, py) in &seg.points { let k = py as usize * w + px as usize; img[k*3]=col[0]; img[k*3+1]=col[1]; img[k*3+2]=col[2]; }
+                }
+                for k in 0..w*dr.height {
+                    if dr.lake_map[k]!=0 { img[k*3]=30; img[k*3+1]=90; img[k*3+2]=180; }
+                }
+                let mut buf = image::ImageBuffer::new(w as u32, dr.height as u32);
+                for j in 0..dr.height { for i in 0..w { let k=j*w+i; buf.put_pixel(i as u32,(dr.height-1-j) as u32, image::Rgb([img[k*3],img[k*3+1],img[k*3+2]])); }}
+                buf.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
+            }
+        }
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 drainage VISUAL validation — overlays of the (numbers-validated)
+/// c1_drainage product on the relief, origin-bottom (the Y-flip lesson). Per
+/// seed: (1) rivers on HILLSHADE (navigability-tiered: do they sit in valleys?
+/// do navigable trunks drain interior→coast?), (2) lakes on HYPSO (are they in
+/// real basins, not perched?). Same default c1_drainage config — no re-tuning,
+/// this RENDERS the validated product for the eye. 1024² (+ 2048² spot-check).
+#[test]
+#[ignore]
+fn probe_drainage_overlays() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, Navigability};
+    let dir = output_dir().join("drainage_overlays");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+
+    // hillshade grayscale for one cell (same lighting as save_hillshade_crop).
+    let shade_at = |h: &GridF32, i: usize, j: usize| -> f64 {
+        let z = 60.0_f64;
+        let (lx, ly, lz) = { let (a,b,c)=(1.0_f64,1.0,2.0); let n=(a*a+b*b+c*c).sqrt(); (a/n,b/n,c/n) };
+        let (gx, gy) = (i as i32, j as i32);
+        let dzdx = (h.get(gx+1, gy) - h.get(gx-1, gy)) as f64 * z;
+        let dzdy = (h.get(gx, gy+1) - h.get(gx, gy-1)) as f64 * z;
+        let nn = (dzdx*dzdx + dzdy*dzdy + 1.0).sqrt();
+        ((-dzdx*lx - dzdy*ly + lz)/nn).clamp(0.0, 1.0)
+    };
+
+    for &seed in &[2026u64, 1988, 42, 1337] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+
+        let targets: &[usize] = &[1024];
+        for &target in targets {
+            let cfg = FbmUpscaleConfig::c1_hd_production(target);
+            let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+            let h = &up.heightmap;
+            let (w, ht) = (h.width, h.height);
+            let dr = c1_drainage(h, &dcfg, &ss);
+
+            // ---- (1) rivers on hillshade ----
+            let mut riv = vec![0u8; w*ht*3];
+            for j in 0..ht { for i in 0..w {
+                let k = j*w+i;
+                let g = if h.data[k] <= 0.5 { 70u8 } else { (shade_at(h, i, j)*255.0) as u8 };
+                let c = if h.data[k] <= 0.5 { [40,70,120] } else { [g,g,g] };
+                riv[k*3]=c[0]; riv[k*3+1]=c[1]; riv[k*3+2]=c[2];
+            }}
+            // Lakes drawn first (the filled flat basins) — rivers are then MASKED
+            // under lakes (the viz convention): a flat filled basin is a lake, not
+            // a blocky fill-front "river". This separates real valley rivers from
+            // the D8-on-flats artifact.
+            let put = |img: &mut [u8], k: usize, c: [u8;3]| { img[k*3]=c[0]; img[k*3+1]=c[1]; img[k*3+2]=c[2]; };
+            for k in 0..w*ht { if dr.lake_map[k]!=0 { put(&mut riv, k, [35,80,160]); } }
+            // navigable tiers + faint non-navigable streams, NOT over lake cells.
+            for (si, seg) in dr.rivers.segments.iter().enumerate() {
+                let (col, thick) = match dr.segment_navigability[si] {
+                    Navigability::Ship => ([10u8,50,170], 2i32),
+                    Navigability::Barge => ([30,90,210], 1),
+                    Navigability::SmallBoat => ([80,150,235], 0),
+                    Navigability::NonNavigable => ([120,170,210], 0), // faint, shows valley-following
+                };
+                for &(px, py) in &seg.points {
+                    for dj in -thick..=thick { for di in -thick..=thick {
+                        let ni=(px as i32+di).rem_euclid(w as i32) as usize; let nj=(py as i32+dj).rem_euclid(ht as i32) as usize;
+                        let k = nj*w+ni;
+                        if dr.lake_map[k]==0 { put(&mut riv, k, col); }
+                    }}
+                }
+            }
+            let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+            for j in 0..ht { for i in 0..w { let k=j*w+i; buf.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb([riv[k*3],riv[k*3+1],riv[k*3+2]])); }}
+            buf.save(dir.join(format!("seed{seed:05}_{target}_rivers_hillshade.png"))).unwrap();
+
+            // ---- (2) lakes on hypso ----
+            let mut buf2 = image::ImageBuffer::new(w as u32, ht as u32);
+            for j in 0..ht { for i in 0..w {
+                let k=j*w+i;
+                let c = if dr.lake_map[k]!=0 { [40,90,190] } else { hypsometric(h.data[k].clamp(0.0,1.0), 0.5) };
+                buf2.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(c));
+            }}
+            buf2.save(dir.join(format!("seed{seed:05}_{target}_lakes_hypso.png"))).unwrap();
+
+            eprintln!("  seed {seed} @{target}²: {} rivers, {} lakes → overlays written", dr.rivers.segments.len(), dr.lakes.len());
+        }
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 flat-routing DIAGNOSTIC — characterise the parallel-bar / 45° fan
+/// artifact on flat interiors at 2048². Confirms the root (D8 follows the
+/// pit_fill epsilon-tree, NOT real terrain) by a NON-INVASIVE eps=0
+/// counterfactual: steepest-descent on the ORIGINAL (unfilled) heightmap =
+/// eps=0; flat cells that get a direction ONLY from the eps-fill are the
+/// artifact. Splits the artifact: filled depressions (legit drainage to sill)
+/// vs native plateaus (cratonic, physically diffuse — channels here are FALSE).
+#[test]
+#[ignore]
+fn probe_flat_routing_diagnostic() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    // steepest-descent direction on a given heightmap (eps=0 semantics): NONE if
+    // no strictly-lower neighbour.
+    let d8_eps0 = |h: &GridF32, i: usize, j: usize, w: usize, ht: usize| -> u8 {
+        let my = h.data[j*w+i];
+        let mut best = 0.0f32; let mut dir = DIR_NONE;
+        for d in 0..8 {
+            let ni = ((i as i32 + D8_DX[d]).rem_euclid(w as i32)) as usize;
+            let nj = ((j as i32 + D8_DY[d]).rem_euclid(ht as i32)) as usize;
+            let dist = if d % 2 == 0 { 1.0 } else { 1.414 };
+            let s = (my - h.data[nj*w+ni]) / dist;
+            if s > best { best = s; dir = d as u8; }
+        }
+        dir
+    };
+    let pct = |v: &[f32], q: f32| -> f32 { if v.is_empty() {return f32::NAN;} let mut s=v.to_vec(); s.sort_by(|a,b| a.partial_cmp(b).unwrap()); s[((q*(s.len()-1) as f32) as usize).min(s.len()-1)] };
+    eprintln!("#155 flat-routing diagnostic — eps=0 counterfactual + filled/native split");
+    for &seed in &[1988u64, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        for &target in &[1024usize, 2048] {
+            let cfg = FbmUpscaleConfig::c1_hd_production(target);
+            let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+            let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+            let dr = c1_drainage(h, &dcfg, &ss);
+            let cell_km2 = c1_cell_area_km2(w);
+            let stream_cells = (dcfg.thresholds.stream_km2 / cell_km2).max(1.0);
+
+            // land gradient distribution → flat threshold (15% of median land grad).
+            let mut grads = vec![0.0f32; w*ht];
+            let mut land_grads = Vec::new();
+            for j in 0..ht { for i in 0..w {
+                let (gx, gy) = h.gradient_at(i, j); let g = (gx*gx+gy*gy).sqrt();
+                grads[j*w+i] = g;
+                if h.data[j*w+i] > 0.5 { land_grads.push(g); }
+            }}
+            let med = pct(&land_grads, 0.5);
+            let flat_thr = 0.15 * med;
+
+            let (mut land, mut flat, mut filled_flat, mut native_flat) = (0usize,0usize,0usize,0usize);
+            let (mut eps_driven, mut eps_filled, mut eps_native) = (0usize,0usize,0usize);
+            let (mut native_above_stream, mut native_flat_total) = (0usize, 0usize);
+            for j in 0..ht { for i in 0..w {
+                let k = j*w+i;
+                if h.data[k] <= 0.5 { continue; }
+                land += 1;
+                if grads[k] >= flat_thr { continue; }
+                flat += 1;
+                let raised = dr.flow.filled.data[k] - h.data[k];
+                let is_filled = raised > 1e-5;
+                if is_filled { filled_flat += 1; } else { native_flat += 1; }
+                // eps-driven: compute_flow gave a direction, eps=0 gives NONE.
+                let dir_filled = dr.flow.direction[k];
+                let dir_orig = d8_eps0(h, i, j, w, ht);
+                if dir_filled != DIR_NONE && dir_orig == DIR_NONE {
+                    eps_driven += 1;
+                    if is_filled { eps_filled += 1; } else { eps_native += 1; }
+                }
+                // native plateau: does flow accumulation exceed the stream threshold
+                // (→ FALSE channels) or stay diffuse (correct)?
+                if !is_filled {
+                    native_flat_total += 1;
+                    if dr.flow.accumulation.data[k] >= stream_cells { native_above_stream += 1; }
+                }
+            }}
+            eprintln!("  seed {seed} @{target}²: land {land} | flat {flat} ({:.1}% land, thr={flat_thr:.2e}) = filled {filled_flat} + native {native_flat}",
+                100.0*flat as f64/land.max(1) as f64);
+            eprintln!("    eps-driven (dir from fill, NONE at eps=0): {eps_driven} ({:.1}% of flat) = filled {eps_filled} + native {eps_native}",
+                100.0*eps_driven as f64/flat.max(1) as f64);
+            eprintln!("    native plateau flats above stream-threshold (FALSE channels): {native_above_stream}/{native_flat_total} ({:.1}%)",
+                100.0*native_above_stream as f64/native_flat_total.max(1) as f64);
+        }
+    }
+}
+
+/// #155 flat-routing FIX acceptance — re-render the FULL accumulation network
+/// (unmasked, directly comparable to the pre-fix blocky image) at 2048² on the
+/// artifact seeds 1988/2026, + 1337 control (slope-dominant). After Garbrecht-
+/// Martz: the parallel-bars/fans on filled flats should be replaced by
+/// convergent drainage to the outlet; slopes unchanged.
+#[test]
+#[ignore]
+fn probe_flat_routing_fix_render() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    let dir = output_dir().join("flat_fix");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    let shade = |h: &GridF32, i: usize, j: usize| -> f64 {
+        let z=60.0_f64; let (lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};
+        let dzdx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32)) as f64*z;
+        let dzdy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1)) as f64*z;
+        let n=(dzdx*dzdx+dzdy*dzdy+1.0).sqrt(); ((-dzdx*lx-dzdy*ly+lz)/n).clamp(0.0,1.0)
+    };
+    for &(seed, target) in &[(1988u64,2048usize),(2026,2048),(1337,1024)] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let cfg = FbmUpscaleConfig::c1_hd_production(target);
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let dr = c1_drainage(h, &dcfg, &ss);
+        let stream = (dcfg.thresholds.stream_km2 / c1_cell_area_km2(w)).max(1.0);
+        // FULL accumulation network over hillshade, UNMASKED (so bars would show).
+        let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w {
+            let k=j*w+i;
+            let c = if h.data[k] <= 0.5 { [40,70,120] }
+                else if dr.flow.accumulation.data[k] >= stream { [40,110,230] }
+                else { let g=(shade(h,i,j)*255.0) as u8; [g,g,g] };
+            buf.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(c));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_{target}_accum.png"))).unwrap();
+        eprintln!("  seed {seed} @{target}²: {} rivers, {} lakes", dr.rivers.segments.len(), dr.lakes.len());
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 flat-routing fix VALIDATION — zoomed overlays on the flat interiors
+/// (the decisive zone). Per seed @2048²: (1) crop on the FILLED-depression
+/// interior (where bars/fans were) → must be dendritic-convergent now;
+/// (2) crop on a NATIVE plateau → must stay diffuse (no invented channels);
+/// (3) full lakes/hypso (invariance). 1337 = slope control. Origin-bottom,
+/// rivers masked under lakes (product convention). Same c1_drainage config.
+#[test]
+#[ignore]
+fn probe_flat_fix_validation() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, Navigability};
+    let dir = output_dir().join("flat_fix_validation");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    let shade = |h: &GridF32, i: usize, j: usize| -> u8 {
+        let z=60.0_f64; let (lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};
+        let dzdx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32)) as f64*z;
+        let dzdy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1)) as f64*z;
+        let n=(dzdx*dzdx+dzdy*dzdy+1.0).sqrt(); (((-dzdx*lx-dzdy*ly+lz)/n).clamp(0.0,1.0)*255.0) as u8
+    };
+    // crop render: hillshade + navigable rivers (masked under lakes), origin-bottom.
+    let render_crop = |h:&GridF32, dr:&ymir_core::tectonics_c1::drainage::C1DrainageResult, x0:usize,y0:usize,sz:usize, path:&std::path::Path| {
+        let w=h.width;
+        let mut buf=image::ImageBuffer::new(sz as u32, sz as u32);
+        // base
+        for jj in 0..sz { for ii in 0..sz {
+            let (i,j)=(x0+ii,y0+jj); let k=j*w+i;
+            let c = if h.data[k]<=0.5 {[40,70,120]} else if dr.lake_map[k]!=0 {[35,80,160]} else {let g=shade(h,i,j);[g,g,g]};
+            buf.put_pixel(ii as u32,(sz-1-jj) as u32, image::Rgb(c));
+        }}
+        // navigable rivers (skip lake cells), thicker for higher tiers
+        for (si,seg) in dr.rivers.segments.iter().enumerate() {
+            let (col,th)=match dr.segment_navigability[si]{Navigability::Ship=>([10u8,50,170],1i32),Navigability::Barge=>([30,90,210],0),Navigability::SmallBoat=>([90,150,235],0),Navigability::NonNavigable=>([140,180,215],0)};
+            for &(px,py) in &seg.points {
+                let (px,py)=(px as usize,py as usize);
+                if px<x0||py<y0||px>=x0+sz||py>=y0+sz {continue}
+                for dj in -th..=th { for di in -th..=th {
+                    let (ii,jj)=((px as i32-x0 as i32+di),(py as i32-y0 as i32+dj));
+                    if ii<0||jj<0||ii>=sz as i32||jj>=sz as i32 {continue}
+                    let k=py*w+px; if dr.lake_map[k]!=0 {continue}
+                    buf.put_pixel(ii as u32,(sz as i32-1-jj) as u32, image::Rgb(col));
+                }}
+            }
+        }
+        buf.save(path).unwrap();
+    };
+    for &seed in &[1988u64, 2026, 1337] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let cfg = FbmUpscaleConfig::c1_hd_production(2048);
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
+        let h=&up.heightmap; let (w,ht)=(h.width,h.height);
+        let dr=c1_drainage(h,&dcfg,&ss);
+        let sz=512usize;
+        // centroids: filled-depression flats vs native flats (land, low orig grad, not filled).
+        let (mut fx,mut fy,mut fn_,mut nx,mut ny,mut nn)=(0u64,0u64,0u64,0u64,0u64,0u64);
+        let mut lg=Vec::new();
+        for j in 0..ht { for i in 0..w { if h.data[j*w+i]>0.5 { let (gx,gy)=h.gradient_at(i,j); lg.push((gx*gx+gy*gy).sqrt()); }}}
+        lg.sort_by(|a,b|a.partial_cmp(b).unwrap()); let med=lg[lg.len()/2]; let flat_thr=0.15*med;
+        for j in 0..ht { for i in 0..w { let k=j*w+i; if h.data[k]<=0.5 {continue}
+            let raised=dr.flow.filled.data[k]-h.data[k];
+            let (gx,gy)=h.gradient_at(i,j); let g=(gx*gx+gy*gy).sqrt();
+            if raised>1e-5 { fx+=i as u64; fy+=j as u64; fn_+=1; }
+            else if g<flat_thr { nx+=i as u64; ny+=j as u64; nn+=1; }
+        }}
+        let clamp=|c:i64,sz:usize,max:usize| (c-(sz as i64)/2).max(0).min(max as i64-sz as i64) as usize;
+        if fn_>0 { let (cx,cy)=((fx/fn_) as i64,(fy/fn_) as i64); render_crop(h,&dr,clamp(cx,sz,w),clamp(cy,sz,ht),sz,&dir.join(format!("seed{seed:05}_filled_interior.png"))); }
+        if nn>0 { let (cx,cy)=((nx/nn) as i64,(ny/nn) as i64); render_crop(h,&dr,clamp(cx,sz,w),clamp(cy,sz,ht),sz,&dir.join(format!("seed{seed:05}_native_plateau.png"))); }
+        // full lakes/hypso (invariance)
+        let mut buf=image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w { let k=j*w+i; let c= if dr.lake_map[k]!=0 {[40,90,190]} else {hypsometric(h.data[k].clamp(0.0,1.0),0.5)}; buf.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(c)); }}
+        buf.save(dir.join(format!("seed{seed:05}_lakes_hypso_full.png"))).unwrap();
+        eprintln!("  seed {seed}: filled-flat {fn_} cells, native-flat {nn} cells, {} lakes", dr.lakes.len());
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 quasi-flat residual DIAGNOSTIC — measure the EXTENT and NATURE of the
+/// ladder/parallel residual on near-flat cells NOT resolved by resolve_flats
+/// (non-exact-equal, so GM skipped them). The local gradient is the instrument
+/// the hillshade lacked: it separates a quasi-flat defect (grad≈0) from natural
+/// D8-on-planar-slope parallelism (grad low but franc). Quantify, don't fix.
+#[test]
+#[ignore]
+fn probe_quasi_flat_residual() {
+    use ymir_core::terrain::flow::{compute_flow, FlowConfig, RiverConfig, DIR_NONE, D8_DX, D8_DY};
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::{c1_cell_area_km2, c1_altitude_norm_to_metres, C1_DOMAIN_KM};
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    // gradient bins in norm/cell; converted to m/km via the contracts.
+    let bins = [0.0f32, 1e-5, 1e-4, 1e-3, 1e-2, f32::INFINITY];
+    let binname = ["<1e-5","1e-5..1e-4","1e-4..1e-3","1e-3..1e-2",">=1e-2"];
+    // local directional coherence: fraction of drainage-neighbours (5x5) sharing dir.
+    let coherence = |dir:&[u8], acc:&GridF32, stream:f32, w:usize, ht:usize, k:usize| -> f32 {
+        let d=dir[k]; if d==DIR_NONE {return 0.0}
+        let (ci,cj)=(k%w,k/w); let (mut same,mut tot)=(0u32,0u32);
+        for dj in -2i32..=2 { for di in -2i32..=2 {
+            if di==0&&dj==0 {continue}
+            let ni=(ci as i32+di).rem_euclid(w as i32) as usize; let nj=(cj as i32+dj).rem_euclid(ht as i32) as usize;
+            let m=nj*w+ni; if acc.data[m]>=stream && dir[m]!=DIR_NONE { tot+=1; if dir[m]==d {same+=1} }
+        }}
+        if tot==0 {0.0} else {same as f32/tot as f32}
+    };
+    // --- counterfactual: synthetic uniform slopes (parallel-on-planar baseline) ---
+    eprintln!("#155 quasi-flat residual — synthetic uniform-slope counterfactual (parallel baseline):");
+    for &sg in &[1e-4f32, 1e-3, 5e-3] {
+        let n=512usize; let mut hm=GridF32::new(n,n,0.0);
+        for j in 0..n { for i in 0..n { hm.set(i,j, (0.75 - i as f32*sg).max(0.2)); }}
+        let fl=compute_flow(&hm,&FlowConfig{sea_level:0.5});
+        let stream=RiverConfig::default().stream_threshold;
+        let (mut cs,mut cn)=(0.0f32,0u32);
+        for k in 0..n*n { if hm.data[k]>0.5 && fl.accumulation.data[k]>=stream { cs+=coherence(&fl.direction,&fl.accumulation,stream,n,n,k); cn+=1; }}
+        eprintln!("  slope {sg:.0e} norm/cell (~{:.1} m/km): mean dir-coherence over drainage = {:.2} (1.0 = fully parallel)",
+            sg*c1_altitude_norm_to_metres_delta(&ss)/(C1_DOMAIN_KM/n as f32), if cn>0 {cs/cn as f32} else {0.0});
+    }
+    // --- real terrain ---
+    let grid=64usize; let dcfg=C1DrainageConfig::default();
+    for &seed in &[1988u64, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let closures = C1Closures::default();
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg_2048());
+        let h=&up.heightmap; let (w,ht)=(h.width,h.height);
+        let dr=c1_drainage(h,&dcfg,&ss);
+        let f=&dr.flow.filled.data;
+        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
+        let m_per_km = c1_altitude_norm_to_metres_delta(&ss)/(C1_DOMAIN_KM/w as f32);
+        // recompute exact-flat (GM-resolved) membership on filled.
+        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
+        let mut bin_tot=[0u64;5]; let mut bin_nonexact=[0u64;5]; let mut bin_coh=[0.0f64;5];
+        let (mut drain,mut land)=(0u64,0u64);
+        let (mut resid,mut resid_fringe)=(0u64,0u64);
+        for j in 0..ht { for i in 0..w { let k=j*w+i;
+            if h.data[k]<=0.5 {continue} land+=1;
+            if dr.flow.accumulation.data[k] < stream {continue} drain+=1;
+            let (gx,gy)=h.gradient_at(i,j); let g=(gx*gx+gy*gy).sqrt();
+            let mut b=4; for t in 0..5 { if g>=bins[t]&&g<bins[t+1]{b=t;break} }
+            bin_tot[b]+=1; bin_coh[b]+=coherence(&dr.flow.direction,&dr.flow.accumulation,stream,w,ht,k) as f64;
+            // exact-flat? no strictly-lower filled neighbour AND an exact-equal one.
+            let (mut hl,mut he)=(false,false);
+            for d in 0..8 { let mm=nb(i,j,d); if f[mm]<f[k]{hl=true} else if f[mm]==f[k]{he=true} }
+            let exact_flat = !hl && he;
+            if !exact_flat { bin_nonexact[b]+=1; }
+            // residual band = low-gradient (<1e-4) AND not exact-flat (GM skipped it).
+            if g<1e-4 && !exact_flat {
+                resid+=1;
+                // fringe: adjacent to a filled cell (filled>h → partially-filled depression edge)?
+                let mut fr=false; for d in 0..8 { let mm=nb(i,j,d); if dr.flow.filled.data[mm]-h.data[mm]>1e-5 {fr=true} }
+                if fr {resid_fringe+=1;}
+            }
+        }}
+        eprintln!("  seed {seed} @2048² (m/km factor {m_per_km:.0}): drainage cells {drain} ({:.1}% of land)", 100.0*drain as f64/land.max(1) as f64);
+        for b in 0..5 {
+            let coh = if bin_tot[b]>0 {bin_coh[b]/bin_tot[b] as f64} else {0.0};
+            eprintln!("    grad {:>10} ({:>6.1} m/km lo): {:>7} drainage ({:>4.1}%), non-exact {:>7} ({:>4.1}%), coherence {:.2}",
+                binname[b], bins[b]*m_per_km, bin_tot[b], 100.0*bin_tot[b] as f64/drain.max(1) as f64,
+                bin_nonexact[b], 100.0*bin_nonexact[b] as f64/bin_tot[b].max(1) as f64, coh);
+        }
+        eprintln!("    RESIDUAL band (grad<1e-4 & non-exact-flat): {resid} cells = {:.2}% of drainage, {:.3}% of land | fringe-of-depression {:.0}%",
+            100.0*resid as f64/drain.max(1) as f64, 100.0*resid as f64/land.max(1) as f64, 100.0*resid_fringe as f64/resid.max(1) as f64);
+    }
+}
+fn cfg_2048() -> FbmUpscaleConfig { FbmUpscaleConfig::c1_hd_production(2048) }
+fn c1_altitude_norm_to_metres_delta(ss:&SteinSteinParams)->f32 {
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    c1_altitude_norm_to_metres(1.0,ss)-c1_altitude_norm_to_metres(0.0,ss)
+}
+
+/// #155 ladder-residual LOCATOR — confirm the mechanism on the WORST flagged
+/// feature before any fix. Finds the largest cluster of (drainage, grad<1e-4,
+/// non-exact-flat, high coherence) cells, hard-zooms it (96px) coloring each
+/// drainage cell by D8 DIRECTION (8 hues) over faint hillshade: a rectilinear
+/// ladder = regular same-hue blocks; correct convergent drainage = mixed hues.
+/// Reports those cells: gradient, raised-by-fill?, adjacent-to-resolved-flat?.
+#[test]
+#[ignore]
+fn probe_ladder_locator() {
+    use ymir_core::terrain::flow::{DIR_NONE, D8_DX, D8_DY};
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    let dir = output_dir().join("ladder_locator");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default(); let grid=64usize;
+    // 8 distinct hues for D8 directions.
+    let huecol = |d:u8| -> [u8;3] { match d {0=>[230,30,30],1=>[230,140,20],2=>[220,220,30],3=>[60,200,40],4=>[30,200,200],5=>[40,90,230],6=>[150,40,220],7=>[230,40,150],_=>[120,120,120]} };
+    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=40.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*200.0+30.0)as u8};
+    for &seed in &[1988u64, 2026] {
+        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
+        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
+        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
+        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
+        let h=&up.heightmap; let(w,ht)=(h.width,h.height); let dr=c1_drainage(h,&dcfg,&ss);
+        let f=&dr.flow.filled.data; let dirf=&dr.flow.direction; let acc=&dr.flow.accumulation;
+        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
+        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
+        let coh=|k:usize|->f32{let d=dirf[k];if d==DIR_NONE{return 0.0}let(ci,cj)=(k%w,k/w);let(mut s,mut t)=(0u32,0u32);for dj in -2i32..=2{for di in -2i32..=2{if di==0&&dj==0{continue}let ni=(ci as i32+di).rem_euclid(w as i32)as usize;let nj=(cj as i32+dj).rem_euclid(ht as i32)as usize;let m=nj*w+ni;if acc.data[m]>=stream&&dirf[m]!=DIR_NONE{t+=1;if dirf[m]==d{s+=1}}}}if t==0{0.0}else{s as f32/t as f32}};
+        // suspect mask: drainage, low grad, non-exact-flat, high coherence.
+        let mut suspect=vec![false;w*ht];
+        for j in 0..ht{for i in 0..w{let k=j*w+i;if h.data[k]<=0.5||acc.data[k]<stream{continue}
+            let(gx,gy)=h.gradient_at(i,j);let g=(gx*gx+gy*gy).sqrt();if g>=1e-4{continue}
+            let(mut hl,mut he)=(false,false);for d in 0..8{let m=nb(i,j,d);if f[m]<f[k]{hl=true}else if f[m]==f[k]{he=true}}
+            let exact=!hl&&he; if exact{continue}
+            if coh(k)>=0.7{suspect[k]=true}
+        }}
+        // largest suspect cluster (BFS), get centroid.
+        let mut seen=vec![false;w*ht]; let(mut best_n,mut bx,mut by)=(0usize,0usize,0usize);
+        for s0 in 0..w*ht{if !suspect[s0]||seen[s0]{continue}let mut q=std::collections::VecDeque::new();q.push_back(s0);seen[s0]=true;let(mut cnt,mut sx,mut sy)=(0u64,0u64,0u64);
+            while let Some(c)=q.pop_front(){cnt+=1;sx+=(c%w)as u64;sy+=(c/w)as u64;let(ci,cj)=(c%w,c/w);for d in 0..8{let m=nb(ci,cj,d);if suspect[m]&&!seen[m]{seen[m]=true;q.push_back(m)}}}
+            if cnt as usize>best_n{best_n=cnt as usize;bx=(sx/cnt)as usize;by=(sy/cnt)as usize}}
+        let total_suspect:usize=suspect.iter().filter(|&&x|x).count();
+        eprintln!("  seed {seed}: suspect cells {total_suspect} ({:.3}% land-ish), largest cluster {best_n} cells @ ({bx},{by})",100.0*total_suspect as f64/(w*ht)as f64);
+        if best_n==0 {eprintln!("    no high-coherence low-grad non-exact cluster → ladder NOT a coherent parallel artifact"); continue;}
+        // hard zoom 96px on the worst cluster, color drainage by D8 dir.
+        let sz=96usize; let x0=(bx as i64-48).max(0).min(w as i64-sz as i64)as usize; let y0=(by as i64-48).max(0).min(ht as i64-sz as i64)as usize;
+        let mut buf=image::ImageBuffer::new(sz as u32,sz as u32);
+        let(mut raised,mut adj_flat)=(0u64,0u64); let mut cnt=0u64;
+        for jj in 0..sz{for ii in 0..sz{let(i,j)=(x0+ii,y0+jj);let k=j*w+i;
+            let c= if h.data[k]<=0.5 {[40,70,120]}
+                else if acc.data[k]>=stream && dirf[k]!=DIR_NONE { if suspect[k]{cnt+=1; if f[k]-h.data[k]>1e-5{raised+=1} let mut af=false;for d in 0..8{let m=nb(i,j,d);let(mut hl2,mut he2)=(false,false);for e in 0..8{let mm=nb(m%w,m/w,e);if f[mm]<f[m]{hl2=true}else if f[mm]==f[m]{he2=true}}if !hl2&&he2{af=true}}if af{adj_flat+=1}} huecol(dirf[k]) }
+                else {let g=shade(h,i,j);[g,g,g]};
+            buf.put_pixel(ii as u32,(sz-1-jj)as u32,image::Rgb(c));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_ladder_dirhue.png"))).unwrap();
+        eprintln!("    zoom @({x0},{y0}) 96px: suspect-in-crop {cnt}, raised-by-fill {raised}, adjacent-to-resolved-flat {adj_flat}");
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 ladder reconcile — render the two candidate identities of the flagged
+/// "triangle" so it can be attributed: LAKES (cyan, outlined) vs GM-RESOLVED
+/// flats / their convergent fans (yellow tint) vs rivers (blue), over hillshade,
+/// 2048², origin-bottom. The triangle's colour identifies it.
+#[test]
+#[ignore]
+fn probe_ladder_reconcile() {
+    use ymir_core::terrain::flow::{DIR_NONE, D8_DX, D8_DY};
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    let dir = output_dir().join("ladder_reconcile");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default(); let grid=64usize;
+    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=50.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*200.0+40.0)as u8};
+    for &seed in &[1988u64, 2026] {
+        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
+        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
+        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
+        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let f=&dr.flow.filled.data; let acc=&dr.flow.accumulation;
+        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
+        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
+        // exact-flat (GM-resolved) membership.
+        let mut exact=vec![false;w*ht];
+        for j in 0..ht{for i in 0..w{let k=j*w+i;if h.data[k]<=0.5{continue}let(mut hl,mut he)=(false,false);for d in 0..8{let m=nb(i,j,d);if f[m]<f[k]{hl=true}else if f[m]==f[k]{he=true}}exact[k]=!hl&&he;}}
+        let mut buf=image::ImageBuffer::new(w as u32,ht as u32);
+        for j in 0..ht{for i in 0..w{let k=j*w+i;
+            let lake=dr.lake_map[k]!=0;
+            // lake outline: lake cell adjacent to non-lake.
+            let lake_edge= lake && (0..8).any(|d|{let m=nb(i,j,d);dr.lake_map[m]==0});
+            let c= if h.data[k]<=0.5 {[25,45,90]}
+                else if lake_edge {[180,240,255]}
+                else if lake {[60,200,220]}
+                else if acc.data[k]>=stream {[40,110,235]}      // rivers
+                else if exact[k] {let g=shade(h,i,j);[ (g as u16*9/10+60) as u8, (g as u16*9/10+50) as u8, (g/3) as u8 ]} // resolved-flat = yellow tint
+                else {let g=shade(h,i,j);[g,g,g]};
+            buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_reconcile.png"))).unwrap();
+        let nlake:usize=dr.lake_map.iter().filter(|&&x|x!=0).count();
+        let nexact:usize=exact.iter().filter(|&&x|x).count();
+        eprintln!("  seed {seed}: lake cells {nlake} ({:.2}%), resolved-flat cells {nexact} ({:.2}%) [yellow], rivers blue", 100.0*nlake as f64/(w*ht)as f64, 100.0*nexact as f64/(w*ht)as f64);
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 yellow-fan mechanism — zoom the largest NON-LAKE resolved-flat (the
+/// "yellow triangle"), colour by D8 direction, to see WHY it's rectilinear
+/// (diamond iso-lines of the tl-dominant distance transform?). Confirm before
+/// re-tuning the GM weighting.
+#[test]
+#[ignore]
+fn probe_yellow_fan_mechanism() {
+    use ymir_core::terrain::flow::{DIR_NONE, D8_DX, D8_DY};
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    let dir = output_dir().join("yellow_fan"); std::fs::create_dir_all(&dir).unwrap();
+    let iso=IsostasyConfig::c1_default(); let ss=SteinSteinParams::default(); let dcfg=C1DrainageConfig::default(); let grid=64usize;
+    let huecol=|d:u8|->[u8;3]{match d{0=>[230,30,30],1=>[230,140,20],2=>[220,220,30],3=>[60,200,40],4=>[30,200,200],5=>[40,90,230],6=>[150,40,220],7=>[230,40,150],_=>[110,110,110]}};
+    for &seed in &[1988u64,2026]{
+        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
+        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
+        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
+        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let f=&dr.flow.filled.data; let dirf=&dr.flow.direction;
+        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
+        // exact-flat NON-lake cells.
+        let mut ef=vec![false;w*ht];
+        for j in 0..ht{for i in 0..w{let k=j*w+i;if h.data[k]<=0.5||dr.lake_map[k]!=0{continue}let(mut hl,mut he)=(false,false);for d in 0..8{let m=nb(i,j,d);if f[m]<f[k]{hl=true}else if f[m]==f[k]{he=true}}ef[k]=!hl&&he;}}
+        // largest connected ef cluster.
+        let mut seen=vec![false;w*ht];let(mut bn,mut bx,mut by,mut bw,mut bh,mut bi,mut bj)=(0usize,0usize,0usize,0usize,0usize,0usize,0usize);
+        for s0 in 0..w*ht{if !ef[s0]||seen[s0]{continue}let mut q=std::collections::VecDeque::new();q.push_back(s0);seen[s0]=true;let(mut c,mut sx,mut sy,mut mni,mut mxi,mut mnj,mut mxj)=(0u64,0u64,0u64,w,0usize,ht,0usize);
+            while let Some(z)=q.pop_front(){c+=1;let(zi,zj)=(z%w,z/w);sx+=zi as u64;sy+=zj as u64;mni=mni.min(zi);mxi=mxi.max(zi);mnj=mnj.min(zj);mxj=mxj.max(zj);for d in 0..8{let m=nb(zi,zj,d);if ef[m]&&!seen[m]{seen[m]=true;q.push_back(m)}}}
+            if c as usize>bn{bn=c as usize;bx=(sx/c)as usize;by=(sy/c)as usize;bw=mxi-mni+1;bh=mxj-mnj+1;bi=mni;bj=mnj;}}
+        eprintln!("  seed {seed}: largest non-lake resolved-flat = {bn} cells, bbox {bw}x{bh} @({bi},{bj}), centroid ({bx},{by})");
+        let sz=128usize;let x0=(bx as i64-64).max(0).min(w as i64-sz as i64)as usize;let y0=(by as i64-64).max(0).min(ht as i64-sz as i64)as usize;
+        let mut buf=image::ImageBuffer::new(sz as u32,sz as u32);
+        for jj in 0..sz{for ii in 0..sz{let(i,j)=(x0+ii,y0+jj);let k=j*w+i;
+            let c= if h.data[k]<=0.5{[30,50,90]} else if dr.lake_map[k]!=0{[60,200,220]} else if ef[k]{huecol(dirf[k])} else {[235,235,235]};
+            buf.put_pixel(ii as u32,(sz-1-jj)as u32,image::Rgb(c));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_yellowfan_dir.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 non-lake flooded zones DIAGNOSTIC — characterise the residual yellow
+/// (flooded to sill, filled>eroded, but NOT in any named lake → depressions
+/// whose max depth never reached the 10 m lake-naming threshold). Measure size
+/// (km², natural cutoff vs continuum?), depth (m, real water vs films?), shape
+/// (compact basin vs filiform artifact), terrain fraction; + marked maps.
+#[test]
+#[ignore]
+fn probe_nonlake_flooded_zones() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::{c1_cell_area_km2, c1_altitude_norm_to_metres};
+    let dir = output_dir().join("nonlake_flooded"); std::fs::create_dir_all(&dir).unwrap();
+    let iso=IsostasyConfig::c1_default(); let ss=SteinSteinParams::default(); let dcfg=C1DrainageConfig::default(); let grid=64usize;
+    let m_per_norm = c1_altitude_norm_to_metres(1.0,&ss)-c1_altitude_norm_to_metres(0.0,&ss);
+    for &seed in &[1988u64,2026,42,1337]{
+        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
+        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
+        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
+        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let cell_km2=c1_cell_area_km2(w);
+        let depth=|k:usize|->f32{(dr.flow.filled.data[k]-h.data[k]).max(0.0)};
+        // residual flooded non-lake cells.
+        let mut res=vec![false;w*ht]; let mut nres=0u64;
+        for k in 0..w*ht{ if h.data[k]>0.5 && dr.lake_map[k]==0 && depth(k)>1e-6 {res[k]=true;nres+=1;} }
+        // connected components.
+        let mut seen=vec![false;w*ht]; let mut comps:Vec<(u64,f32,f32,usize,usize,usize,usize)>=Vec::new(); // area,maxd_norm,sumd,mni,mxi,mnj,mxj
+        for s0 in 0..w*ht{ if !res[s0]||seen[s0]{continue}
+            let mut q=std::collections::VecDeque::new();q.push_back(s0);seen[s0]=true;
+            let(mut a,mut md,mut sd,mut mni,mut mxi,mut mnj,mut mxj)=(0u64,0.0f32,0.0f32,w,0usize,ht,0usize);
+            while let Some(c)=q.pop_front(){a+=1;let d=depth(c);md=md.max(d);sd+=d;let(ci,cj)=(c%w,c/w);mni=mni.min(ci);mxi=mxi.max(ci);mnj=mnj.min(cj);mxj=mxj.max(cj);
+                for dy in -1i32..=1{for dx in -1i32..=1{if dx==0&&dy==0{continue}let ni=((ci as i32+dx).rem_euclid(w as i32))as usize;let nj=((cj as i32+dy).rem_euclid(ht as i32))as usize;let m=nj*w+ni;if res[m]&&!seen[m]{seen[m]=true;q.push_back(m)}}}}
+            comps.push((a,md,sd,mni,mxi,mnj,mxj));
+        }
+        comps.sort_by(|x,y|y.0.cmp(&x.0));
+        // size histogram (km²) + depth-of-max histogram (m) + shape.
+        let szbins=[0.0,1.0,10.0,100.0,1000.0,f32::INFINITY]; let mut szh=[0u64;5]; let mut szarea=[0.0f64;5];
+        let dpbins=[0.0,1.0,3.0,6.0,10.0,f32::INFINITY]; let mut dph=[0u64;5];
+        for &(a,md,_,mni,mxi,mnj,mxj) in &comps{
+            let km2=a as f32*cell_km2; let mdm=md*m_per_norm;
+            for t in 0..5{if km2>=szbins[t]&&km2<szbins[t+1]{szh[t]+=1;szarea[t]+=a as f64*cell_km2 as f64;break}}
+            for t in 0..5{if mdm>=dpbins[t]&&mdm<dpbins[t+1]{dph[t]+=1;break}}
+            let _=(mni,mxi,mnj,mxj);
+        }
+        let land:u64=(0..w*ht).filter(|&k|h.data[k]>0.5).count() as u64;
+        let lake_cells:u64=dr.lake_map.iter().filter(|&&x|x!=0).count() as u64;
+        eprintln!("  seed {seed} @2048²: residual non-lake flooded {nres} cells ({:.2}% land, {:.0} km²) in {} components | named-lake cells {} ({:.2}% land)",
+            100.0*nres as f64/land.max(1)as f64, nres as f64*cell_km2 as f64, comps.len(), lake_cells, 100.0*lake_cells as f64/land.max(1)as f64);
+        eprintln!("    size km² [<1 |1-10|10-100|100-1k|>1k]: count {:?} area {:?}", szh, szarea.iter().map(|x|*x as u64).collect::<Vec<_>>());
+        eprintln!("    max-depth m [<1|1-3|3-6|6-10|>=10]: {:?}", dph);
+        // top 5 components: area km², max depth m, fill ratio (compact vs filiform).
+        for (r,&(a,md,sd,mni,mxi,mnj,mxj)) in comps.iter().take(5).enumerate(){
+            let bbox=((mxi-mni+1)*(mxj-mnj+1)) as f32; let fill=a as f32/bbox.max(1.0);
+            eprintln!("    #{r}: {:.1} km², max {:.1} m, mean {:.1} m, fill-ratio {:.2} ({}x{})", a as f32*cell_km2, md*m_per_norm, (sd/a as f32)*m_per_norm, fill, mxi-mni+1, mxj-mnj+1);
+        }
+        // marked map: hypso + residual in magenta.
+        let mut buf=image::ImageBuffer::new(w as u32,ht as u32);
+        for j in 0..ht{for i in 0..w{let k=j*w+i; let c= if res[k]{[230,40,200]} else if dr.lake_map[k]!=0{[40,90,190]} else {hypsometric(h.data[k].clamp(0.0,1.0),0.5)}; buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));}}
+        buf.save(dir.join(format!("seed{seed:05}_nonlake_marked.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #155 clean PRODUCT render @2048² (no diagnostic coloring) — to check whether
+/// the residual non-lake flooded speckle is even VISIBLE in the product (where
+/// it renders as terrain, not lake/river), vs only in the diagnostic marking.
+/// Side-by-side with the marked map (probe_nonlake_flooded_zones) settles it.
+#[test]
+#[ignore]
+fn probe_clean_product_2048() {
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    let dir = output_dir().join("clean_product"); std::fs::create_dir_all(&dir).unwrap();
+    let iso=IsostasyConfig::c1_default(); let ss=SteinSteinParams::default(); let dcfg=C1DrainageConfig::default(); let grid=64usize;
+    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=55.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*255.0)as u8};
+    for &seed in &[1988u64,2026]{
+        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
+        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
+        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
+        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
+        // PRODUCT convention: ocean, lakes, rivers (acc>=stream masked under lakes), else hillshade.
+        let mut buf=image::ImageBuffer::new(w as u32,ht as u32);
+        for j in 0..ht{for i in 0..w{let k=j*w+i;
+            let c= if h.data[k]<=0.5 {[30,60,(120.0+200.0*h.data[k]) as u8]}
+                else if dr.lake_map[k]!=0 {[40,90,190]}
+                else if dr.flow.accumulation.data[k]>=stream {[40,110,230]}
+                else {let g=shade(h,i,j);[g,g,g]};
+            buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
+        }}
+        buf.save(dir.join(format!("seed{seed:05}_clean_product.png"))).unwrap();
+        eprintln!("  seed {seed}: clean product written");
+    }
+    eprintln!("  out = {}", dir.display());
+}
