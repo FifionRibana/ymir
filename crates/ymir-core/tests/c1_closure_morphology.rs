@@ -4558,3 +4558,116 @@ fn probe_orogen_fraction() {
         eprintln!("    fraction (land_cap-h_sea)/(land_cap-h_min): GLOBAL={frac_g:.3}  CONTINENTAL={frac_c:.3}  (global<continental ⇒ ocean h_min drives the <1)");
     }
 }
+
+/// #165 c1_climate ACCEPTANCE — triple validation on the real C1 product @2048²:
+/// (1) CONSERVATION (the model's law: evap_in = precip + exit, exact); (2)
+/// MAGNITUDE (windward/leeward precip ratio ~3-10×, real ranges); (3) STRUCTURE
+/// (visual: west-facing slopes wet, east dry at 45° westerlies). Default 45°.
+#[test]
+#[ignore]
+fn probe_climate_acceptance() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{compute_precipitation_with_budget, PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+    let dir = output_dir().join("climate"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let lat = 45.0f32; let pp = PrecipParams::default();
+    eprintln!("#165 c1_climate acceptance — 2048², latitude {lat}° (westerlies, W→E)");
+    for &seed in &[1988u64, 2026, 42] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(2048));
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, lat, &pp);
+
+        // (1) CONSERVATION
+        let temp = &clim.temperature;
+        let (_p, evap_in, exit_out, oro_sum) = compute_precipitation_with_budget(h, temp, lat, c1_km_per_cell(w), |n| c1_altitude_norm_to_metres(n, &ss), &pp);
+        let psum: f64 = clim.precipitation.data.iter().map(|&v| v as f64).sum();
+        // OROGRAPHIC conservation (the convective baseline is a separate source).
+        let residual = (evap_in - (oro_sum + exit_out)).abs();
+        // (2) MAGNITUDE — windward (W-facing ascending) vs leeward (descending) land precip.
+        let dx_m = c1_km_per_cell(w) * 1000.0;
+        let (mut wp, mut wn, mut lp, mut ln) = (0.0f64, 0u64, 0.0f64, 0u64);
+        for j in 0..ht { for i in 1..w-1 {
+            let k = j*w+i; if h.data[k] <= SEA_LEVEL_NORM { continue; }
+            // along-wind (eastward) slope: cell to its west (i-1).
+            let altw = c1_altitude_norm_to_metres(h.data[k-1], &ss).max(0.0);
+            let alt = c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
+            let asc = (alt - altw)/dx_m; // >0 = ascending eastward = windward (W-facing)
+            let pr = clim.precipitation.data[k] as f64;
+            if asc > 1e-4 { wp += pr; wn += 1; } else if asc < -1e-4 { lp += pr; ln += 1; }
+        }}
+        let (wm, lm) = (wp/wn.max(1) as f64, lp/ln.max(1) as f64);
+        // T stats
+        let tmin = temp.data.iter().cloned().fold(f32::INFINITY, f32::min);
+        let tmax = temp.data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        eprintln!("  seed {seed}: CONSERVE evap={evap_in:.0} = oro_precip {oro_sum:.0} + exit {exit_out:.0} (resid {residual:.2e}) | total precip(incl convective) {psum:.0}");
+        eprintln!("    MAGNITUDE windward mean {wm:.3} / leeward mean {lm:.3} = ratio {:.1}× (want ~3-10×) | T [{tmin:.0}, {tmax:.0}]°C", wm/lm.max(1e-9));
+
+        // (3) STRUCTURE — precip (blue) + temperature (cyan→red) maps, origin-bottom.
+        // Robust scale: clamp at the land-precip P90 + sqrt, so the windward/leeward
+        // GRADIENT is visible (a few steep-coast outliers must not compress it — the
+        // measure-the-structure-not-the-compressed-output lesson).
+        let mut landp: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| clim.precipitation.data[k]).collect();
+        landp.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let p90 = if landp.is_empty() { 1e-6 } else { landp[(landp.len()*90/100).min(landp.len()-1)].max(1e-6) };
+        let mut pb = image::ImageBuffer::new(w as u32, ht as u32);
+        let mut tb = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w { let k=j*w+i;
+            let sea = h.data[k] <= SEA_LEVEL_NORM;
+            // precip map: ocean dark, land tan(dry)→blue(wet), sqrt of precip/P90.
+            let pc = if sea { [20,40,80] } else { let t=(clim.precipitation.data[k]/p90).clamp(0.0,1.0).sqrt(); [ (210.0-180.0*t) as u8, (200.0-120.0*t) as u8, (170.0+85.0*t).min(255.0) as u8 ] };
+            pb.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(pc));
+            // temp map: blue(cold)→red(hot), [-20,30].
+            let tt = ((temp.data[k]+20.0)/50.0).clamp(0.0,1.0); let tc=[ (40.0+200.0*tt) as u8, 60u8, (240.0-200.0*tt) as u8 ];
+            tb.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(if sea {[30,50,90]} else {tc}));
+        }}
+        pb.save(dir.join(format!("seed{seed:05}_precip.png"))).unwrap();
+        tb.save(dir.join(format!("seed{seed:05}_temp.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #165 precip STRUCTURE check (cheap, 512²) — is the W→E rain-shadow gradient
+/// real (just visually subtle vs the uniform convective baseline) or flat?
+/// Per row, split the land run at its midpoint and compare W-half vs E-half mean
+/// precip (at 45° westerlies, W should be wetter). + land precip percentiles.
+#[test]
+#[ignore]
+fn probe_precip_structure() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default();
+    eprintln!("#165 precip structure (512², 45° westerlies W→E)");
+    for &seed in &[1988u64, 2026, 42] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(512));
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, 45.0, &pp);
+        // per-row W-half vs E-half land precip.
+        let (mut wsum, mut wn, mut esum, mut en) = (0.0f64, 0u64, 0.0f64, 0u64);
+        for j in 0..ht {
+            let land: Vec<usize> = (0..w).filter(|&i| h.data[j*w+i] > SEA_LEVEL_NORM).collect();
+            if land.len() < 4 { continue; }
+            let mid = land[land.len()/2];
+            for &i in &land {
+                let p = clim.precipitation.data[j*w+i] as f64;
+                if i < mid { wsum += p; wn += 1; } else { esum += p; en += 1; }
+            }
+        }
+        let (wm, em) = (wsum/wn.max(1) as f64, esum/en.max(1) as f64);
+        // land precip percentiles.
+        let mut lp: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| clim.precipitation.data[k]).collect();
+        lp.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let pct = |q: f32| lp[((q*(lp.len()-1) as f32) as usize).min(lp.len()-1)];
+        eprintln!("  seed {seed}: W-half mean {wm:.4} / E-half mean {em:.4} = {:.2}× (>1 = rain shadow eastward) | land precip p10={:.4} p50={:.4} p90={:.4} max={:.4}",
+            wm/em.max(1e-9), pct(0.1), pct(0.5), pct(0.9), pct(1.0));
+    }
+}
