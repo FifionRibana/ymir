@@ -322,7 +322,13 @@ pub struct C1Closures {
 impl Default for C1Closures {
     fn default() -> Self {
         Self {
-            davis_suppe: DavisSuppeParams::default(),
+            // #155 critical-wedge — canonical C1 boosts the O-C convergent-margin
+            // deposition RATE so orogens reach their critical-taper target (S̃≈
+            // h_crit≈2.0 = ~70 km Tibetan plateau = 2× normal crust), instead of
+            // stalling at S̃≈1.5 (the diagnostic limiter is the rate, not the EH
+            // ceiling). Calibrated by the achieved equilibrium. DavisSuppeParams::
+            // default() keeps None (off) for the phase-1.2/1.3 imprint tests + v2.
+            davis_suppe: DavisSuppeParams { oc_coupling_boost: Some(6.0), ..DavisSuppeParams::default() },
             equilibrium_height: EquilibriumHeightParams::default(),
             // #155 A′ — canonical C1 activates craton erosion-resistance
             // (anchored mid-band ~5×). Pairs with the init thickness
