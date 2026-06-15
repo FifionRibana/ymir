@@ -4527,3 +4527,34 @@ fn probe_clean_product_2048() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #155 elucidate the 0.78 orogen-render fraction: is it a normalization coupling
+/// (peak_altitude_m ties land height to the GLOBAL range incl ocean h_min) or
+/// correct? Reconstruct the isostasy raw-h internals at 64² (the sim grid).
+#[test]
+#[ignore]
+fn probe_orogen_fraction() {
+    let iso = IsostasyConfig::c1_default(); let grid=64usize;
+    let buoy=1.0-iso.rho_crust/iso.rho_mantle;
+    let buoy_c=match iso.craton_rho_crust { Some(r)=>1.0-r/iso.rho_mantle, None=>buoy };
+    let pct=|v:&[f32],q:f32|->f32{let mut s=v.to_vec();s.sort_by(|a,b|a.partial_cmp(b).unwrap());s[((q*(s.len()-1)as f32)as usize).min(s.len()-1)]};
+    eprintln!("#155 orogen-render fraction elucidation (64²)");
+    for &seed in &[1988u64,2026,42]{
+        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
+        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
+        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
+        let mut raw=vec![0.0f32;grid*grid]; let mut raw_cont=Vec::new();
+        for j in 0..grid{for i in 0..grid{let k=j*grid+i;let b=if state.cratonic_mask.data()[k]{buoy_c}else{buoy};let h=(state.s.get(i,j) as f32)*b;raw[k]=h;if matches!(state.plate_type.get(i,j),PlateType::Continental){raw_cont.push(h);}}}
+        let h_min_g=raw.iter().cloned().fold(f32::INFINITY,f32::min);
+        let h_min_c=raw_cont.iter().cloned().fold(f32::INFINITY,f32::min);
+        let land_cap=raw_cont.iter().cloned().fold(f32::NEG_INFINITY,f32::max);
+        let h_cap=pct(&raw,0.92); let h_range=(h_cap-h_min_g).max(1e-10); let h_sea=h_min_g+0.4*h_range;
+        let frac_g=(land_cap-h_sea)/(land_cap-h_min_g);
+        let frac_c=(land_cap-h_sea)/(land_cap-h_min_c).max(1e-10);
+        // fixed-Airy alternative: orogen elevation = (land_cap - h_sea) directly (raw above sea),
+        // vs the range-normalized fraction.
+        eprintln!("  seed {seed}: land_cap={land_cap:.3} h_sea={h_sea:.3} h_min global={h_min_g:.3} continental={h_min_c:.3}",);
+        eprintln!("    fraction (land_cap-h_sea)/(land_cap-h_min): GLOBAL={frac_g:.3}  CONTINENTAL={frac_c:.3}  (global<continental ⇒ ocean h_min drives the <1)");
+    }
+}

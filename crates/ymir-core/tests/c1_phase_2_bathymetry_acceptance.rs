@@ -103,9 +103,7 @@ use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
 use ymir_core::seed::WorldSeed;
 use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
 use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
-use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
-use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
 use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
@@ -407,7 +405,13 @@ fn disabled_matches_phase_1_4() {
     // semantic content as Path A.
     let (mut state_b, mut kinematics_b, config_b) = setup();
     let closures_b = C1Closures {
-        davis_suppe: DavisSuppeParams::default(),
+        // #155 critical-wedge: track the canonical davis_suppe (now
+        // oc_coupling_boost=Some in C1Closures::default) rather than hardcoding
+        // DavisSuppeParams::default (boost None) — Path B must match Path A's
+        // `..C1Closures::default()`. The boost is orthogonal to the S-S-off
+        // contract this test verifies (S-S does not touch S̃); same precedent
+        // as the A′ erosion fix below.
+        davis_suppe: C1Closures::default().davis_suppe,
         equilibrium_height: EquilibriumHeightParams::default(),
         // #155 A′: track the canonical erosion (now craton_resist=0.2 in
         // C1Closures::default) rather than hardcoding ErosionParams::default
