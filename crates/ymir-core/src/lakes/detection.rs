@@ -10,9 +10,14 @@ use crate::terrain::flow::DIR_NONE;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LakeConfig {
-    /// Minimum depth (filled - original) to classify as lake. Default: 0.001.
+    /// #155: the deep-vs-SHALLOW TYPE threshold (max depth, filled − eroded), NOT
+    /// the water-vs-land gate. A water body whose max depth ≥ `min_depth` is a
+    /// deep lake (`shallow = false`); below it, shallow water (`shallow = true`,
+    /// lake-vs-marsh deferred to climate). Water itself = ANY flooded cell
+    /// (`filled > eroded`); see [`detect_lakes`]. Default: 0.001.
     pub min_depth: f32,
-    /// Minimum area in pixels to keep a lake. Default: 20.
+    /// Minimum water-body area in cells to keep (filters sub-resolution noise
+    /// pits). Default: 20.
     pub min_area: usize,
 }
 
@@ -30,6 +35,12 @@ pub struct Lake {
     pub area: usize,
     pub basin_id: u32,
     pub outlet: (u32, u32),
+    /// #155: `true` when `max_depth < config.min_depth` — a SHALLOW water body
+    /// (large flooded depression too shallow to be a deep lake). It is still
+    /// WATER (flooded to the sill), not terrain; the lake-vs-marsh distinction
+    /// is deferred to a future hydroclimate layer (geometry alone cannot decide
+    /// it). `false` = a deep (named) lake.
+    pub shallow: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -40,7 +51,17 @@ pub struct LakeResult {
     pub height: usize,
 }
 
-/// Detect lakes by comparing eroded heightmap with pit-filled heightmap.
+/// Detect WATER BODIES from the eroded vs pit-filled heightmaps.
+///
+/// #155 model: a cell is WATER iff it is FLOODED to the sill (`filled > eroded`)
+/// — that is decidable by geometry and is the water-vs-land classification.
+/// Connected flooded components with area ≥ `min_area` are water bodies (the
+/// `min_area` cut removes sub-resolution noise pits). `min_depth` is now only the
+/// deep-vs-shallow TYPE threshold (`Lake::shallow`), NOT a water gate: a large
+/// SHALLOW flooded basin is water (shallow), not terrain — leaving it as terrain
+/// was the #155 misclassification (vast flooded basins whose deep core fell below
+/// `min_area` were dropped entirely). The lake-vs-marsh label for shallow water
+/// is deferred to climate (see [`Lake::shallow`]).
 pub fn detect_lakes(
     eroded: &GridF32,
     filled: &GridF32,
@@ -52,9 +73,12 @@ pub fn detect_lakes(
     let h = eroded.height;
     let n = w * h;
 
-    // Step 1: identify potential lake cells
+    // Step 1: identify WATER cells = flooded to the sill (filled > eroded). NOT
+    // gated by min_depth (that is now only the deep/shallow TYPE threshold): a
+    // shallow flooded basin is still water. FLOOD_EPS rejects float-noise fill.
+    const FLOOD_EPS: f32 = 1e-6;
     let is_lake_cell: Vec<bool> =
-        (0..n).map(|i| (filled.data[i] - eroded.data[i]) > config.min_depth).collect();
+        (0..n).map(|i| (filled.data[i] - eroded.data[i]) > FLOOD_EPS).collect();
 
     // Step 2: connected component labeling (BFS, 8-connectivity, periodic)
     let mut lake_map = vec![0u32; n];
@@ -173,6 +197,7 @@ pub fn detect_lakes(
             area: areas[idx],
             basin_id: basin_ids[idx],
             outlet,
+            shallow: max_depth < config.min_depth,
         });
         new_id += 1;
     }
@@ -185,43 +210,11 @@ pub fn detect_lakes(
         }
     }
 
-    // #155 lake margin — grow each surviving lake over its connected FLOODED
-    // cells (filled > eroded, i.e. flooded up to the sill) that fell below the
-    // `min_depth` lake-NAMING threshold. Such a cell sits AT the lake's sill =
-    // its water surface, so it is shallow water (shoreline shallows), not part
-    // of the drainage network — the `min_depth`/`min_area` cut classifies which
-    // depressions are NAMED lakes, it must NOT leave the lake's own shallow
-    // margin rendering as land-drainage (the #155 "sill-shelf" classification
-    // gap). Surface level is unchanged (margins are at the sill); only the
-    // lake's extent/area grows to the true shoreline. Expansion stops at the
-    // shoreline naturally (cells above the sill are not flooded), so lakes do
-    // not merge across terrain.
-    let flood_eps = 1e-6f32;
-    let mut area_delta = vec![0usize; lakes.len()];
-    let mut queue: VecDeque<usize> = (0..n).filter(|&k| lake_map[k] != 0).collect();
-    while let Some(cur) = queue.pop_front() {
-        let lid = lake_map[cur];
-        let cx = cur % w;
-        let cy = cur / w;
-        for dy in -1i32..=1 {
-            for dx in -1i32..=1 {
-                if dx == 0 && dy == 0 {
-                    continue;
-                }
-                let nx = ((cx as i32 + dx) % w as i32 + w as i32) as usize % w;
-                let ny = ((cy as i32 + dy) % h as i32 + h as i32) as usize % h;
-                let nidx = ny * w + nx;
-                if lake_map[nidx] == 0 && (filled.data[nidx] - eroded.data[nidx]) > flood_eps {
-                    lake_map[nidx] = lid;
-                    area_delta[(lid - 1) as usize] += 1;
-                    queue.push_back(nidx);
-                }
-            }
-        }
-    }
-    for (lk, d) in lakes.iter_mut().zip(area_delta.iter()) {
-        lk.area += *d;
-    }
+    // (The earlier separate "lake margin" expansion is no longer needed: with
+    // the water = `filled > eroded` criterion above, a lake's shallow shore is
+    // flooded → already in the same connected component as its deep core, and a
+    // vast shallow basin is its own component ≥ min_area. Both are captured by
+    // Step 1 + the min_area filter, in one place.)
 
     LakeResult { lake_map, lakes, width: w, height: h }
 }
