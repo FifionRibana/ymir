@@ -25,6 +25,20 @@ pub fn e_sat(t_c: f32) -> f32 {
     6.112 * (17.62 * t_c / (243.12 + t_c)).exp()
 }
 
+/// Meridional precipitation belt factor (≈0.15–1.0): the real zonal-mean
+/// precipitation SHAPE — wet ITCZ (~0°), dry subtropical highs (~25-30° → the
+/// desert belts), moderate mid-latitude westerlies (~45-55°), dry poles. Anchors
+/// the FRONTAL base's latitude dependence: the desert minimum is simply this at
+/// ~30°, the temperate base is this at ~45° — one profile, the slider modulates
+/// the base by belt through it. Anchored on the observed zonal-mean profile, not
+/// a knob.
+pub fn belt_factor(lat_deg: f32) -> f32 {
+    let l = lat_deg.abs();
+    let itcz = (-(l / 12.0).powi(2)).exp(); // equatorial / ITCZ peak
+    let midlat = (-((l - 52.0) / 15.0).powi(2)).exp(); // mid-latitude westerly peak
+    (0.15 + 0.85 * itcz + 0.5 * midlat).min(1.2)
+}
+
 /// Prevailing zonal wind direction by latitude belt: `+1` eastward (streamlines
 /// W→E, westerlies); `−1` westward (trade / polar easterlies). The full belt
 /// table is in place for the viz latitude slider, even though one belt is active
@@ -50,18 +64,23 @@ pub struct PrecipParams {
     /// windward slope: too high dumps ~100 % in the first steep coastal cell
     /// (thin wet rim, dry interior); ~0.5 lets moisture penetrate inland.
     pub k_oro: f32,
-    /// CONVECTIVE baseline coefficient — `precip += k_conv · e_sat(T)` on land,
-    /// a SEPARATE local source (warmed air convects, no relief needed). The
-    /// physically-missing component the orographic-only transport omits: real
-    /// interiors / leeward deserts are never EXACTLY 0 (Sahara ~25 mm, Atacama
-    /// ~1-15 mm). Scales with capacity (warm lowlands convect more, cold high
-    /// peaks less). Additive — NOT part of the orographic conservation budget.
-    pub k_conv: f32,
+    /// FRONTAL / synoptic base coefficient — `precip += k_frontal · belt_factor(lat)
+    /// · e_sat(T_sea(lat))` on ALL land, INDEPENDENT of local slope. The
+    /// physically-missing component the orographic-only transport omits: in each
+    /// circulation belt large frontal systems deposit rain over BROAD areas (the
+    /// westerlies wet a temperate interior like Europe), not just on relief. This
+    /// is the LATITUDINAL base — it SUBSUMES the old convective floor (the desert
+    /// minimum is just `belt_factor` at the subtropical ~30° highs; the temperate
+    /// base is `belt_factor` at ~45° westerlies). Orography MODULATES it (the
+    /// orographic term adds on windward; the lee keeps the frontal base, not the
+    /// desert floor). A SEPARATE synoptic source (moisture from elsewhere in the
+    /// belt) → additive, NOT part of the orographic conservation budget.
+    pub k_frontal: f32,
 }
 
 impl Default for PrecipParams {
     fn default() -> Self {
-        Self { k_evap: 0.20, k_oro: 0.5, k_conv: 0.002 }
+        Self { k_evap: 0.20, k_oro: 0.5, k_frontal: 0.01 }
     }
 }
 
@@ -102,6 +121,9 @@ pub fn compute_precipitation_with_budget(
     let mut evap_in = 0.0f64;
     let mut exit_out = 0.0f64;
     let mut oro_precip_sum = 0.0f64;
+    // FRONTAL / synoptic base (per the domain's belt; ~9° span → one value).
+    let frontal_base =
+        params.k_frontal * belt_factor(lat_deg) * e_sat(super::temperature::sea_level_temperature(lat_deg));
 
     for j in 0..h {
         // Scan along the wind, upwind → downwind.
@@ -133,12 +155,13 @@ pub fn compute_precipitation_with_budget(
             }
             // `precip` so far is the OROGRAPHIC (transport) component, conserved.
             oro_precip_sum += precip as f64;
-            // CONVECTIVE baseline (separate local source, additive): on land,
-            // proportional to capacity (warm lowlands convect more). NOT part of
-            // the conserved budget. This supplies the realistic interior/leeward
-            // minimum (deserts are never exactly 0).
+            // FRONTAL/synoptic base (separate source, additive): on land, the
+            // belt's broad frontal rain — INDEPENDENT of slope. NOT part of the
+            // conserved orographic budget. Subsumes the old convective floor:
+            // wets the temperate interior to a moderate base (not the desert
+            // floor), with orography enhancing it on windward.
             let total = if n > SEA_LEVEL_NORM {
-                precip + params.k_conv * cap
+                precip + frontal_base
             } else {
                 precip
             };
