@@ -4872,3 +4872,57 @@ fn probe_oro_depletion() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #165 BIOMES + mm/yr legend — the judgement instruments. Per seed (2048²,
+/// 45°): c1_climate → c1_biomes; renders the categorical BIOME map, precip
+/// BANDED by mm/yr (desert/steppe/temperate/oceanic/wet — legend baked into the
+/// colormap), temp banded by °C; + prints the biome HISTOGRAM (% per biome —
+/// directly judgeable: steppe vs desert interior, etc.). Origin-bottom.
+#[test]
+#[ignore]
+fn probe_climate_biomes() {
+    use ymir_core::climate::{c1_climate, c1_biomes};
+    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year, SEA_LEVEL_NORM};
+    use ymir_core::climate::biomes::Biome;
+    let dir = output_dir().join("climate_maps"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default();
+    // mm/yr bands (legend baked in): desert / steppe / temperate-dry / oceanic / wet.
+    let precip_band = |mm: f32| -> [u8;3] {
+        if mm < 250.0 {[225,200,140]} else if mm < 500.0 {[200,195,110]} else if mm < 800.0 {[150,180,90]}
+        else if mm < 1500.0 {[80,150,200]} else {[30,90,200]}
+    };
+    let temp_band = |t: f32| -> [u8;3] {
+        if t < -10.0 {[230,235,245]} else if t < 0.0 {[150,180,230]} else if t < 10.0 {[120,190,120]}
+        else if t < 20.0 {[220,210,120]} else {[220,110,70]}
+    };
+    eprintln!("#165 biomes + mm/yr (2048², 45° westerlies). precip bands: desert<250 steppe250-500 tempDry500-800 oceanic800-1500 wet>1500 mm/yr");
+    for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(2048));
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, 45.0, &pp);
+        let biomes = c1_biomes(h, &clim);
+        // biome histogram over LAND.
+        let order = [Biome::Tundra, Biome::BorealForest, Biome::TemperateGrassland, Biome::TemperateForest, Biome::TemperateRainforest, Biome::Desert, Biome::Savanna, Biome::TropicalSeasonalForest, Biome::TropicalRainforest];
+        let mut land = 0u64; let mut cnt = std::collections::HashMap::new();
+        for &b in &biomes { if b != Biome::Ocean { land += 1; *cnt.entry(b).or_insert(0u64) += 1; } }
+        let hist: Vec<String> = order.iter().filter_map(|b| { let c=*cnt.get(b).unwrap_or(&0); if c>0 {Some(format!("{} {:.0}%", b.name(), 100.0*c as f64/land.max(1) as f64))} else {None} }).collect();
+        eprintln!("  seed {seed}: {}", hist.join(" | "));
+        // renders.
+        let put=|buf:&mut image::RgbImage,i:usize,j:usize,c:[u8;3]|buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
+        let (mut bb, mut bpm, mut bt) = (image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32));
+        for j in 0..ht{for i in 0..w{let k=j*w+i; let sea=h.data[k]<=SEA_LEVEL_NORM;
+            put(&mut bb,i,j, biomes[k].color());
+            put(&mut bpm,i,j, if sea {[30,50,90]} else {precip_band(precip_mm_per_year(clim.precipitation.data[k]))});
+            put(&mut bt,i,j, if sea {[30,50,90]} else {temp_band(clim.temperature.data[k])});
+        }}
+        bb.save(dir.join(format!("seed{seed:05}_BIOMES.png"))).unwrap();
+        bpm.save(dir.join(format!("seed{seed:05}_precip_MMBANDS.png"))).unwrap();
+        bt.save(dir.join(format!("seed{seed:05}_temp_CBANDS.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
