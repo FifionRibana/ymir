@@ -5047,3 +5047,55 @@ fn probe_climate_verdict_grid() {
     eprintln!("  out = {}", dir.display());
     eprintln!("  relief: grey=alt(0-6000m), red tint=windward 80km band. transect: grey=alt(0-6000m) cyan=precip(0-rowmax mm) bottom=biome strip.");
 }
+
+/// #165 FRONTAL/OROGRAPHIC RATIO DIAGNOSTIC — decompose interior precipitation
+/// into the UNIFORM frontal base (latitude-only) vs the relief-MODULATED
+/// orographic surcharge, by region (windward 80 km band vs interior >150 km
+/// inland of the W coast). The verdict grid showed interior p50 ≡ frontal base
+/// (1281 mm) on every seed → the frontal base SATURATES the interior, masking the
+/// orographic shadow. This measures the actual ratio: how much interior precip is
+/// uniform (frontal) vs modulated (orographic), and whether the orographic
+/// surcharge reaches the temperate-humid target (~1000-1500 mm) so a fix can lower
+/// the frontal floor toward the temperate-dry floor (~400 mm) WITHOUT re-creating
+/// the desert (>250 mm) and WITHOUT needing to boost orography. MEASURES; the
+/// re-calibration is a separate maillon.
+#[test]
+#[ignore]
+fn probe_frontal_oro_ratio() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year, belt_factor, e_sat, SEA_LEVEL_NORM};
+    use ymir_core::climate::temperature::sea_level_temperature;
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default(); let lat = 45.0f32;
+    let alt_m = |n: f32| c1_altitude_norm_to_metres(n, &ss).max(0.0);
+    let frontal_mm = precip_mm_per_year(pp.k_frontal * belt_factor(lat) * e_sat(sea_level_temperature(lat)));
+    eprintln!("#165 frontal/orographic ratio — 2048°, 45° westerlies. frontal base = {frontal_mm:.0} mm (UNIFORM floor on all land).");
+    eprintln!("  oro surcharge = precip_total - frontal_base (relief-modulated). windward = first 80km land; interior = >150km inland.");
+    // 3 representative seeds: tallest wall (1988), intermediate coast (99), craton (42).
+    for &seed in &[1988u64, 99, 42] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(2048));
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, lat, &pp);
+        let w_band = (80.0 / (1024.0/w as f32)) as usize;
+        let i_start = (150.0 / (1024.0/w as f32)) as usize;
+        let (mut wind_oro, mut int_oro, mut int_tot): (Vec<f32>, Vec<f32>, Vec<f32>) = (vec![], vec![], vec![]);
+        for j in 0..ht {
+            let mut i0 = None; for i in 0..w { if h.data[j*w+i] > SEA_LEVEL_NORM { i0 = Some(i); break; } }
+            let Some(i0) = i0 else { continue; };
+            for i in i0..(i0+w_band).min(w) { let k=j*w+i; if h.data[k] > SEA_LEVEL_NORM { wind_oro.push((precip_mm_per_year(clim.precipitation.data[k])-frontal_mm).max(0.0)); } }
+            for i in (i0+i_start)..w { let k=j*w+i; if h.data[k] > SEA_LEVEL_NORM { let tot=precip_mm_per_year(clim.precipitation.data[k]); int_tot.push(tot); int_oro.push((tot-frontal_mm).max(0.0)); } }
+        }
+        for v in [&mut wind_oro, &mut int_oro, &mut int_tot] { v.sort_by(|a,b| a.partial_cmp(b).unwrap()); }
+        let pct = |v:&Vec<f32>, p:f64| if v.is_empty() {0.0} else { v[(((v.len()-1) as f64)*p) as usize] };
+        let frontal_share = if !int_tot.is_empty() { 100.0*frontal_mm/(pct(&int_tot,0.5)).max(1.0) } else {0.0};
+        eprintln!("  seed {seed}:");
+        eprintln!("    windward oro surcharge: p50 {:.0} p90 {:.0} max {:.0} mm", pct(&wind_oro,0.5), pct(&wind_oro,0.9), wind_oro.last().copied().unwrap_or(0.0));
+        eprintln!("    interior oro surcharge: p50 {:.0} p90 {:.0} max {:.0} mm  (interior total p50 {:.0} mm; frontal share of median = {:.0}%)", pct(&int_oro,0.5), pct(&int_oro,0.9), int_oro.last().copied().unwrap_or(0.0), pct(&int_tot,0.5), frontal_share);
+    }
+    eprintln!("  READING: interior oro p50≈0 + frontal share≈100% ⇒ frontal SATURATES (the verdict-grid finding); windward oro max = the orographic headroom available above a lowered floor.");
+}
