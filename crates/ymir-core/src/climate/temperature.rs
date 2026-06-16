@@ -19,13 +19,19 @@ pub const LAPSE_RATE_C_PER_KM: f32 = 6.5;
 pub const SEA_LEVEL_NORM: f32 = 0.5;
 
 /// Sea-level temperature (°C) at a latitude (degrees), anchored on the real
-/// equator-pole gradient: `T = T_eq − (T_eq − T_pole)·sin²(lat)` (equator ~+27 °C,
-/// pole ~−25 °C). At the 45° default this is a temperate sea-level value.
+/// annual-mean T-vs-latitude CURVE — equator ~+27 °C, pole ~−25 °C, mid-latitudes
+/// convex (flat tropics, steep toward the poles): `T = T_eq − (T_eq − T_pole)·
+/// (|lat|/90)^1.8`. The endpoints were always right; the earlier sin²(lat) shape
+/// was the bug — it put 45° at the cold MIDPOINT (+1 °C, subarctic) when the real
+/// 45° is ~13 °C (temperate). The exponent 1.8 reproduces the observed profile at
+/// 0/15/30/45/60/90° (≈27/25/20/12/2/−25 °C), so the slider is right across the
+/// whole range, not just the 45° default. (Validated by the biome instrument:
+/// this makes the 45° lowlands temperate, not taiga.)
 pub fn sea_level_temperature(lat_deg: f32) -> f32 {
     const T_EQ: f32 = 27.0;
     const T_POLE: f32 = -25.0;
-    let s = lat_deg.to_radians().sin();
-    T_EQ - (T_EQ - T_POLE) * s * s
+    let f = (lat_deg.abs() / 90.0).powf(1.8);
+    T_EQ - (T_EQ - T_POLE) * f
 }
 
 /// Latitude (degrees) of grid row `j`: the domain spans `C1_DOMAIN_KM / 111`
