@@ -19,11 +19,13 @@ use crate::grid::GridF32;
 /// The C1 sea-level normalised value.
 pub const SEA_LEVEL_NORM: f32 = 0.5;
 
-/// Internal precipitation → mm/year. ANCHORED, not invented: the 45° westerly
-/// FRONTAL base (`k_frontal·belt_factor(45)·e_sat(T_sea(45)) ≈ 0.0363` internal)
-/// is set to ~600 mm/yr — the observed temperate mid-latitude westerly belt mean.
-/// So `MM_PER_UNIT = 600 / 0.0363 ≈ 16500`. (Caveat: the rare steep-coast windward
-/// outliers, ~4.5 internal, map to unphysical values — the known orographic
+/// Internal precipitation → mm/year. The FIXED scale anchor: `MM_PER_UNIT ≈ 16500`
+/// was set so that an internal frontal base of ~0.0363 read as ~600 mm/yr (the
+/// temperate westerly belt mean). The scale is held CONSTANT through subsequent
+/// calibrations — the T re-anchor and the k_frontal ratio shift change the frontal
+/// base's *internal* value (and hence its mm reading: ~450 mm at the current
+/// k_frontal=0.0035), NOT this conversion. (Caveat: the rare steep-coast windward
+/// outliers, ~4.5+ internal, map to unphysical values — the known orographic
 /// over-concentration, <0.1 % of cells; the bulk desert→steppe→temperate→oceanic
 /// range maps plausibly.)
 pub const PRECIP_MM_PER_UNIT: f32 = 16500.0;
@@ -105,7 +107,23 @@ impl Default for PrecipParams {
         // legitimately orographic-dry and gets its rain from the frontal base. So
         // k_oro stays 0.5; the coastal dump + frontal-base interior is the correct
         // rain-shadow regime, not a bug.
-        Self { k_evap: 0.20, k_oro: 0.5, k_frontal: 0.01 }
+        // #165 k_frontal 0.01 → 0.0035. The T re-anchor (sin²→(lat/90)^1.8, correct,
+        // biome-confirmed) raised T_sea(45°) +1→12.1°C → e_sat ×2.15 → the frontal
+        // base DOUBLED 600→1281 mm, which SATURATED the temperate interior: the
+        // verdict-grid + frontal/oro decomposition measured interior orographic
+        // surcharge p50 = 0 on every seed (frontal share of the median = 100%) — the
+        // relief contributed NOTHING to the interior median, while the windward
+        // orographic headroom (p90 2809–3853 mm) sat unused, drowned by the uniform
+        // floor. Lowering k_frontal to bring the frontal base to ~450 mm (factor
+        // 450/1281 ≈ 0.35) is a RATIO shift (frontal vs orography), not an eyeball
+        // trim: 450 mm is the real temperate-DRY leeward floor (steppe), letting the
+        // pre-existing orographic surcharge re-emerge into the MEDIAN so the interior
+        // responds to relief (variety) instead of a 1281 mm flat. Orography UNTOUCHED
+        // (k_oro stays 0.5 — the headroom proves it suffices). Anti-desert: 450 > 250
+        // (desert line) at 45° → temperate steppe, NOT desert; at ~30° belt_factor
+        // drops it to ~150 → desert, correct (the Sahara belt). The mm scale
+        // (PRECIP_MM_PER_UNIT) is unchanged; only the frontal strength changes.
+        Self { k_evap: 0.20, k_oro: 0.5, k_frontal: 0.0035 }
     }
 }
 
