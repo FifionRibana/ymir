@@ -80,6 +80,17 @@ pub struct PrecipParams {
 
 impl Default for PrecipParams {
     fn default() -> Self {
+        // #165 k_oro = 0.5. NB: a k_oro reduction (→0.2) was TRIED to lengthen the
+        // orographic depletion (coastal dump), and the decisive re-measure FALSIFIED
+        // it: the e-folding did NOT lengthen (it sharpened on cordillera seeds),
+        // because lowering the uplift extraction feeds MORE moisture to the cold
+        // high coastal peak where the Clausius-Clapeyron CAPACITY CAP (e_sat(−30°C)
+        // ≈ 0.5) wrings it out regardless. The depletion is the cold-coastal-peak
+        // cap (PHYSICAL — air crossing a 4.65 km cold range is wrung dry, Patagonia
+        // behind the Andes), not k_oro. The interior behind such ranges is
+        // legitimately orographic-dry and gets its rain from the frontal base. So
+        // k_oro stays 0.5; the coastal dump + frontal-base interior is the correct
+        // rain-shadow regime, not a bug.
         Self { k_evap: 0.20, k_oro: 0.5, k_frontal: 0.01 }
     }
 }

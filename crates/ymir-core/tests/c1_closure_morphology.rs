@@ -4686,7 +4686,9 @@ fn probe_climate_maps() {
     let dir = output_dir().join("climate_maps"); std::fs::create_dir_all(&dir).unwrap();
     let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
     let pp = PrecipParams::default();
-    for &seed in &[42u64, 99, 1337, 4138] {
+    // hillshade (origin-bottom) for the relief panel.
+    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=55.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*255.0)as u8};
+    for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
@@ -4704,17 +4706,22 @@ fn probe_climate_maps() {
         let floor = lp.iter().filter(|&&v| v < 0.015).count();
         eprintln!("  seed {seed}: land {n} | precip p50={p50:.4} max={pmax:.4} | floor(<0.015) {:.0}% | log range [{:.2},{:.2}]",
             100.0*floor as f64/n as f64, pmin.log10(), pmax.log10());
-        let lnmin = pmin.ln(); let lnmax = pmax.ln();
+        // FIXED-reference colormap (NOT field min/max — those are dominated by the
+        // steep-coast windward outliers and squash the uniform temperate base).
+        // Absolute anchors: desert P_DRY → tan, temperate base ~0.036 → moderate,
+        // heavy rain P_WET → blue. Honest across seeds + vs the floor.
+        const P_DRY: f32 = 0.005; const P_WET: f32 = 0.5;
+        let lnmin = P_DRY.ln(); let lnmax = P_WET.ln();
         let put = |buf:&mut image::RgbImage, i:usize, j:usize, c:[u8;3]| buf.put_pixel(i as u32, (ht-1-j) as u32, image::Rgb(c));
-        let (mut blog, mut blin, mut bslp, mut btmp) = (image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32));
+        let (mut blog, mut blin, mut bslp, mut btmp, mut brel) = (image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32));
         for j in 0..ht { for i in 0..w { let k=j*w+i;
             let sea = h.data[k] <= SEA_LEVEL_NORM;
             let p = pr[k];
             // LOG
             let tl = if sea {0.0} else { ((p.max(1e-6).ln()-lnmin)/(lnmax-lnmin)).clamp(0.0,1.0) };
             put(&mut blog,i,j, if sea {[20,40,80]} else {[ (215.0-185.0*tl) as u8,(205.0-125.0*tl) as u8,(165.0+90.0*tl) as u8 ]});
-            // LINEAR (clamp p99)
-            let tlin = if sea {0.0} else { (p/pmax).clamp(0.0,1.0) };
+            // LINEAR (fixed P_WET clamp, not /max — so the base isn't squashed)
+            let tlin = if sea {0.0} else { (p/P_WET).clamp(0.0,1.0) };
             put(&mut blin,i,j, if sea {[20,40,80]} else {[ (215.0-185.0*tlin) as u8,(205.0-125.0*tlin) as u8,(165.0+90.0*tlin) as u8 ]});
             // SLOPES: windward (ascending eastward) tinted by precip-blue, leeward red.
             let cslp = if sea {[20,40,80]} else {
@@ -4729,7 +4736,11 @@ fn probe_climate_maps() {
             // TEMP
             let tt=((temp[k]+20.0)/50.0).clamp(0.0,1.0);
             put(&mut btmp,i,j, if sea {[30,50,90]} else {[ (40.0+200.0*tt) as u8,60,(240.0-200.0*tt) as u8 ]});
+            // RELIEF (hillshade)
+            let g = if sea {70} else { shade(h,i,j) };
+            put(&mut brel,i,j, if sea {[40,70,120]} else {[g,g,g]});
         }}
+        brel.save(dir.join(format!("seed{seed:05}_relief.png"))).unwrap();
         blog.save(dir.join(format!("seed{seed:05}_precip_LOG.png"))).unwrap();
         blin.save(dir.join(format!("seed{seed:05}_precip_LINEAR.png"))).unwrap();
         bslp.save(dir.join(format!("seed{seed:05}_precip_SLOPES.png"))).unwrap();
@@ -4787,6 +4798,77 @@ fn probe_climate_control_survey() {
         }}
         bh.save(dir.join(format!("seed{seed:05}_relief.png"))).unwrap();
         bp.save(dir.join(format!("seed{seed:05}_precip_log.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #165 orographic DEPLETION diagnostic — settle depletion vs low-interior-relief
+/// by normalizing the orographic surplus by the along-wind ascent. precip_oro =
+/// k_oro·M·ascent → oro/ascent = k_oro·M ∝ the carried moisture flux. Exposes the
+/// orographic field ALONE (k_frontal=0, no uniform base masking it) and bins
+/// oro/ascent by distance-from-windward-coast (reset per landmass, W→E at 45°).
+/// COLLAPSE = depletion (air wrung out); CONSTANT = low relief (not depletion).
+#[test]
+#[ignore]
+fn probe_oro_depletion() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+    let dir = output_dir().join("climate_maps"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    // orographic ONLY: frontal base off (the uniform base masks the depletion profile).
+    let pp = PrecipParams { k_frontal: 0.0, ..PrecipParams::default() };
+    let bins_km = [0.0f32, 10.0, 30.0, 60.0, 120.0, 250.0, f32::INFINITY];
+    eprintln!("#165 orographic depletion — oro/ascent (∝ moisture flux M) by distance-from-windward-coast (km), 1024², 45° W→E");
+    for &seed in &[1988u64, 2026, 42, 99] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(1024));
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, 45.0, &pp); // orographic-only
+        let oro = &clim.precipitation.data;
+        let km_cell = c1_km_per_cell(w); let dx_m = km_cell * 1000.0;
+        let alt = |k:usize| c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
+        let mut sum = [0.0f64; 6]; let mut cnt = [0u64; 6];
+        for j in 0..ht {
+            let mut dist_cells = 0u32; let mut in_land = false;
+            for i in 0..w { let k=j*w+i;
+                let land = h.data[k] > SEA_LEVEL_NORM;
+                if land {
+                    if !in_land { dist_cells = 0; in_land = true; } else { dist_cells += 1; }
+                    if i>0 {
+                        let asc = (alt(k) - alt(k-1)) / dx_m; // along +x (wind) ascent, m/m
+                        if asc > 1e-4 {
+                            let r = oro[k] as f64 / asc as f64; // ∝ M
+                            let dkm = dist_cells as f32 * km_cell;
+                            for b in 0..6 { if dkm>=bins_km[b] && dkm<bins_km[b+1] { sum[b]+=r; cnt[b]+=1; break; } }
+                        }
+                    }
+                } else { in_land = false; }
+            }
+        }
+        let means: Vec<f64> = (0..6).map(|b| if cnt[b]>0 {sum[b]/cnt[b] as f64} else {f64::NAN}).collect();
+        let m0 = means[0];
+        // e-folding: first bin whose mean < 0.37*m0.
+        let efold = (0..6).find(|&b| means[b].is_finite() && means[b] < 0.37*m0).map(|b| (bins_km[b]+bins_km[b+1].min(300.0))*0.5);
+        eprintln!("  seed {seed}: oro/ascent by dist[0-10|10-30|30-60|60-120|120-250|250+]km = {:?}",
+            means.iter().map(|v| (v*1000.0).round()/1000.0).collect::<Vec<_>>());
+        eprintln!("    -> {} | e-fold(<37% of coastal) ~{:?} km",
+            if means.iter().take(4).filter(|v|v.is_finite()).count()>=2 && means[3].is_finite() && means[3] < 0.6*m0 {"COLLAPSE = DEPLETION"} else {"~CONSTANT = low-relief (not depletion)"}, efold);
+        if seed == 1988 {
+            // render orographic-only LOG.
+            let mut lp:Vec<f32>=(0..w*ht).filter(|&k|h.data[k]>SEA_LEVEL_NORM).map(|k|oro[k]).collect();
+            lp.sort_by(|a,b|a.partial_cmp(b).unwrap()); let pmax=lp[lp.len()-1].max(1e-6);
+            let (lnmin,lnmax)=(1e-4f32.ln(), pmax.ln());
+            let mut b=image::RgbImage::new(w as u32,ht as u32);
+            for j in 0..ht{for i in 0..w{let k=j*w+i;let sea=h.data[k]<=SEA_LEVEL_NORM;
+                let tl=if sea{0.0}else{((oro[k].max(1e-4).ln()-lnmin)/(lnmax-lnmin)).clamp(0.0,1.0)};
+                b.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(if sea{[20,40,80]}else{[(215.0-185.0*tl)as u8,(205.0-125.0*tl)as u8,(165.0+90.0*tl)as u8]}));
+            }}
+            b.save(dir.join("seed01988_precip_OROGRAPHIC_ONLY.png")).unwrap();
+        }
     }
     eprintln!("  out = {}", dir.display());
 }
