@@ -4926,3 +4926,124 @@ fn probe_climate_biomes() {
     }
     eprintln!("  out = {}", dir.display());
 }
+
+/// #165 A/B VERDICT GRID — the verdict lives in the CROSS windward-coast-height
+/// (MEASURED in metres, not eyeballed) × interior-humidity (biome), NOT in
+/// biomes or relief alone: a dry interior is CORRECT behind a wall (legitimate
+/// Patagonia shadow) and a PROBLEM behind a low coast (rain should penetrate).
+/// At 45° westerlies the air enters from the WEST, so "windward coast" = the
+/// west margin. Per seed: measure the windward coastal-band altitude (max + p95,
+/// metres via the vertical contract), the interior dominant biome + precip
+/// (mm/yr), classify into the 4 cases, and render relief (windward height baked
+/// into the filename + a red tint on the windward band) / biomes / a W→E transect
+/// (altitude + precip + biome strip). MEASURES; does NOT decide A vs B.
+#[test]
+#[ignore]
+fn probe_climate_verdict_grid() {
+    use ymir_core::climate::{c1_climate, c1_biomes};
+    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year, SEA_LEVEL_NORM};
+    use ymir_core::climate::biomes::Biome;
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+    let dir = output_dir().join("climate_verdict"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default();
+    let lat = 45.0f32;
+    let alt_m = |n: f32| c1_altitude_norm_to_metres(n, &ss).max(0.0);
+    // interior is SEC when the rain-shadow biomes (desert + steppe) dominate it.
+    let dry = |b: Biome| matches!(b, Biome::Desert | Biome::TemperateGrassland);
+    eprintln!("#165 A/B verdict grid — 2048², 45° westerlies (wind W→E); windward = WEST margin.");
+    eprintln!("  coast: HAUTE>3000m / BASSE<2000m (2-3km INTERM). interior SEC if desert+steppe >50%.");
+    for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(2048));
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let km_cell = c1_km_per_cell(w);
+        let clim = c1_climate(h, &ss, lat, &pp);
+        let biomes = c1_biomes(h, &clim);
+        let w_band = (80.0 / km_cell) as usize;   // windward coastal band: first 80 km of land
+        let i_start = (150.0 / km_cell) as usize;  // interior begins 150 km inland of the W coast
+        let mut wind_alts: Vec<f32> = Vec::new();
+        let mut best_row = (ht/2, -1.0f32);        // row with the tallest windward peak → transect
+        let mut interior_cnt: std::collections::HashMap<Biome, u64> = std::collections::HashMap::new();
+        let mut interior_land = 0u64; let mut interior_dry = 0u64;
+        let mut interior_precip: Vec<f32> = Vec::new();
+        for j in 0..ht {
+            let mut i0 = None;
+            for i in 0..w { if h.data[j*w+i] > SEA_LEVEL_NORM { i0 = Some(i); break; } }
+            let Some(i0) = i0 else { continue; };
+            let mut row_peak = 0.0f32;
+            for i in i0..(i0+w_band).min(w) {
+                let k = j*w+i; if h.data[k] > SEA_LEVEL_NORM { let a = alt_m(h.data[k]); wind_alts.push(a); row_peak = row_peak.max(a); }
+            }
+            if row_peak > best_row.1 { best_row = (j, row_peak); }
+            for i in (i0+i_start)..w {
+                let k = j*w+i; if h.data[k] > SEA_LEVEL_NORM {
+                    interior_land += 1;
+                    let b = biomes[k];
+                    *interior_cnt.entry(b).or_insert(0) += 1;
+                    if dry(b) { interior_dry += 1; }
+                    interior_precip.push(precip_mm_per_year(clim.precipitation.data[k]));
+                }
+            }
+        }
+        wind_alts.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        interior_precip.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let pct = |v:&Vec<f32>, p:f64| if v.is_empty() {0.0} else { v[(((v.len()-1) as f64)*p) as usize] };
+        let wind_max = wind_alts.last().copied().unwrap_or(0.0);
+        let wind_p95 = pct(&wind_alts, 0.95);
+        let int_p50 = pct(&interior_precip, 0.5);
+        let int_p90 = pct(&interior_precip, 0.9);
+        let dry_frac = if interior_land>0 {100.0*interior_dry as f64/interior_land as f64} else {0.0};
+        let dom = interior_cnt.iter().max_by_key(|(_,c)| **c).map(|(b,_)| b.name()).unwrap_or("-");
+        let coast = if wind_max > 3000.0 {"HAUTE"} else if wind_max < 2000.0 {"BASSE"} else {"INTERM"};
+        let hum = if dry_frac > 50.0 {"SEC"} else {"HUMIDE"};
+        let case = match (coast, hum) {
+            ("HAUTE","SEC")    => "ombre légitime (Patagonie) [correct]",
+            ("BASSE","HUMIDE") => "océanique [correct]",
+            ("BASSE","SEC")    => "PROBLÈME (pluie ne pénètre pas)",
+            ("HAUTE","HUMIDE") => "improbable (haut + humide)",
+            _                  => "intermédiaire (coast 2-3km)",
+        };
+        eprintln!("  seed {seed}: windward max {wind_max:.0}m p95 {wind_p95:.0}m [{coast}] | interior dom={dom} dry={dry_frac:.0}% precip p50 {int_p50:.0} p90 {int_p90:.0} mm [{hum}] => {case}");
+        // renders.
+        let put=|buf:&mut image::RgbImage,i:usize,j:usize,c:[u8;3]|buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
+        let mut relief = image::RgbImage::new(w as u32, ht as u32);
+        let mut bb = image::RgbImage::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w { let k=j*w+i;
+            if h.data[k] <= SEA_LEVEL_NORM { put(&mut relief,i,j,[30,50,90]); }
+            else { let g=((alt_m(h.data[k])/6000.0)*255.0).min(255.0) as u8; put(&mut relief,i,j,[g,g,g]); }
+            put(&mut bb,i,j, biomes[k].color());
+        }}
+        // red tint on the measured windward band (first 80 km of land per row).
+        for j in 0..ht {
+            let mut i0=None; for i in 0..w { if h.data[j*w+i] > SEA_LEVEL_NORM { i0=Some(i); break; } }
+            if let Some(i0)=i0 { for i in i0..(i0+w_band).min(w) { let k=j*w+i; if h.data[k]>SEA_LEVEL_NORM {
+                let y=(ht-1-j) as u32; let p=relief.get_pixel(i as u32,y).0;
+                relief.put_pixel(i as u32,y, image::Rgb([(p[0] as u16+90).min(255) as u8, p[1]/2, p[2]/2])); } } }
+        }
+        relief.save(dir.join(format!("seed{seed:05}_relief_wind{:.0}m_{coast}.png", wind_max))).unwrap();
+        bb.save(dir.join(format!("seed{seed:05}_biomes.png"))).unwrap();
+        // transect on the tallest-windward row: altitude (grey) + precip (cyan) + biome strip.
+        let jr = best_row.0; let th = 400usize;
+        let mut tr = image::RgbImage::new(w as u32, th as u32);
+        for p in tr.pixels_mut() { *p = image::Rgb([20,20,28]); }
+        let max_mm = (0..w).map(|i| precip_mm_per_year(clim.precipitation.data[jr*w+i])).fold(1.0f32, f32::max);
+        for i in 0..w {
+            let k=jr*w+i;
+            let a = if h.data[k]>SEA_LEVEL_NORM {alt_m(h.data[k])} else {0.0};
+            let ay = (((a/6000.0).min(1.0))*(th as f32 - 40.0)) as usize;
+            let mm = precip_mm_per_year(clim.precipitation.data[k]);
+            let my = (((mm/max_mm).min(1.0))*(th as f32 - 40.0)) as usize;
+            if ay < th { tr.put_pixel(i as u32, (th-1-ay) as u32, image::Rgb([200,200,200])); }
+            if my < th { tr.put_pixel(i as u32, (th-1-my) as u32, image::Rgb([60,200,230])); }
+            let c = if h.data[k]<=SEA_LEVEL_NORM {[30,50,90]} else {biomes[k].color()};
+            for y in 0..30 { tr.put_pixel(i as u32, (th-1-y) as u32, image::Rgb(c)); }
+        }
+        tr.save(dir.join(format!("seed{seed:05}_transect_row{jr}_maxmm{max_mm:.0}.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  relief: grey=alt(0-6000m), red tint=windward 80km band. transect: grey=alt(0-6000m) cyan=precip(0-rowmax mm) bottom=biome strip.");
+}
