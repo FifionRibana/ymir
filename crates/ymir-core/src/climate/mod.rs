@@ -8,9 +8,9 @@
 //! as the coordinate contracts: one anchored computation, not a tuned output.
 //! See `docs/design/c1_climate_design.md`.
 
+pub mod biomes;
 pub mod precipitation;
 pub mod temperature;
-// pub mod biomes;          // next maillon — Whittaker T×P classification
 
 use crate::grid::GridF32;
 use crate::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
@@ -26,8 +26,15 @@ pub const DEFAULT_LATITUDE_DEG: f32 = 45.0;
 pub struct ClimateResult {
     /// Temperature (°C): latitudinal sea-level gradient − adiabatic lapse.
     pub temperature: GridF32,
-    /// Precipitation (relative moisture units): conservative orographic transport.
+    /// Precipitation (internal units; see `precipitation::precip_mm_per_year`).
     pub precipitation: GridF32,
+}
+
+/// Whittaker biome map from a climate result (the chain `c1_climate → c1_biomes`).
+/// Derived & re-runnable: recompute when the relief/climate change. `heightmap`
+/// marks ocean cells. Row-major `Vec<Biome>`.
+pub fn c1_biomes(heightmap: &GridF32, climate: &ClimateResult) -> Vec<biomes::Biome> {
+    biomes::compute_biomes(heightmap, &climate.temperature, &climate.precipitation)
 }
 
 /// Derive (temperature, precipitation) from the C1 relief at a centre latitude.

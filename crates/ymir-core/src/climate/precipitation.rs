@@ -19,6 +19,20 @@ use crate::grid::GridF32;
 /// The C1 sea-level normalised value.
 pub const SEA_LEVEL_NORM: f32 = 0.5;
 
+/// Internal precipitation → mm/year. ANCHORED, not invented: the 45° westerly
+/// FRONTAL base (`k_frontal·belt_factor(45)·e_sat(T_sea(45)) ≈ 0.0363` internal)
+/// is set to ~600 mm/yr — the observed temperate mid-latitude westerly belt mean.
+/// So `MM_PER_UNIT = 600 / 0.0363 ≈ 16500`. (Caveat: the rare steep-coast windward
+/// outliers, ~4.5 internal, map to unphysical values — the known orographic
+/// over-concentration, <0.1 % of cells; the bulk desert→steppe→temperate→oceanic
+/// range maps plausibly.)
+pub const PRECIP_MM_PER_UNIT: f32 = 16500.0;
+
+/// Convert internal precipitation to mm/year (the product-readable unit).
+pub fn precip_mm_per_year(p_internal: f32) -> f32 {
+    p_internal * PRECIP_MM_PER_UNIT
+}
+
 /// Clausius-Clapeyron saturation vapour pressure (hPa) at `t` (°C) — the air's
 /// moisture-carrying CAPACITY proxy (Magnus form).
 pub fn e_sat(t_c: f32) -> f32 {
