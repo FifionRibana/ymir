@@ -4953,6 +4953,7 @@ fn probe_climate_verdict_grid() {
     let dry = |b: Biome| matches!(b, Biome::Desert | Biome::TemperateGrassland);
     eprintln!("#165 A/B verdict grid — 2048², 45° westerlies (wind W→E); windward = WEST margin.");
     eprintln!("  coast: HAUTE>3000m / BASSE<2000m (2-3km INTERM). interior SEC if desert+steppe >50%.");
+    let mut global_min = f32::INFINITY; let mut global_max = 0.0f32;
     for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
@@ -5007,15 +5008,34 @@ fn probe_climate_verdict_grid() {
             ("HAUTE","HUMIDE") => "improbable (haut + humide)",
             _                  => "intermédiaire (coast 2-3km)",
         };
+        // full-land precip range (mm/yr) — the actual min/max behind the fixed
+        // bands (the ">1500 wet" band's real extent = the coastal-dump outliers).
+        let mut land_p: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| precip_mm_per_year(clim.precipitation.data[k])).collect();
+        land_p.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let lp = |p:f64| if land_p.is_empty() {0.0} else { land_p[(((land_p.len()-1) as f64)*p) as usize] };
+        let (l_min, l_max) = (land_p.first().copied().unwrap_or(0.0), land_p.last().copied().unwrap_or(0.0));
+        global_min = global_min.min(l_min); global_max = global_max.max(l_max);
         eprintln!("  seed {seed}: windward max {wind_max:.0}m p95 {wind_p95:.0}m [{coast}] | interior dom={dom} dry={dry_frac:.0}% precip p50 {int_p50:.0} p90 {int_p90:.0} mm [{hum}] => {case}");
-        // renders.
+        eprintln!("    land precip mm/yr: min {l_min:.0} p50 {:.0} p90 {:.0} p99 {:.0} max {l_max:.0}", lp(0.5), lp(0.9), lp(0.99));
+        // renders — ALL on COMMON FIXED scales (shared across the 6 seeds) so the
+        // interiors are directly comparable. Precip uses the anchored mm/yr BANDS
+        // (desert/steppe/temperate-dry/oceanic/wet); the coastal outliers (40k-158k
+        // mm, <0.1 %) fold into the top "wet" band so they don't wash out the
+        // interior (300-1500 mm), which stays fully distinguishable. Biomes use the
+        // shared categorical palette. NO per-seed normalisation.
+        let precip_band = |mm: f32| -> [u8;3] {
+            if mm < 250.0 {[225,200,140]} else if mm < 500.0 {[200,195,110]} else if mm < 800.0 {[150,180,90]}
+            else if mm < 1500.0 {[80,150,200]} else {[30,90,200]}
+        };
         let put=|buf:&mut image::RgbImage,i:usize,j:usize,c:[u8;3]|buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
         let mut relief = image::RgbImage::new(w as u32, ht as u32);
         let mut bb = image::RgbImage::new(w as u32, ht as u32);
-        for j in 0..ht { for i in 0..w { let k=j*w+i;
-            if h.data[k] <= SEA_LEVEL_NORM { put(&mut relief,i,j,[30,50,90]); }
+        let mut pm = image::RgbImage::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w { let k=j*w+i; let sea = h.data[k] <= SEA_LEVEL_NORM;
+            if sea { put(&mut relief,i,j,[30,50,90]); }
             else { let g=((alt_m(h.data[k])/6000.0)*255.0).min(255.0) as u8; put(&mut relief,i,j,[g,g,g]); }
             put(&mut bb,i,j, biomes[k].color());
+            put(&mut pm,i,j, if sea {[30,50,90]} else {precip_band(precip_mm_per_year(clim.precipitation.data[k]))});
         }}
         // red tint on the measured windward band (first 80 km of land per row).
         for j in 0..ht {
@@ -5026,26 +5046,45 @@ fn probe_climate_verdict_grid() {
         }
         relief.save(dir.join(format!("seed{seed:05}_relief_wind{:.0}m_{coast}.png", wind_max))).unwrap();
         bb.save(dir.join(format!("seed{seed:05}_biomes.png"))).unwrap();
-        // transect on the tallest-windward row: altitude (grey) + precip (cyan) + biome strip.
+        pm.save(dir.join(format!("seed{seed:05}_precip_MMBANDS.png"))).unwrap();
+        // transect on the tallest-windward row: altitude (grey) + precip (cyan) on a
+        // COMMON FIXED scale clamped to 2000 mm (interior readable, coastal outliers
+        // clamp at the top) + biome strip (shared palette).
+        const TRANSECT_MM_MAX: f32 = 2000.0;
         let jr = best_row.0; let th = 400usize;
         let mut tr = image::RgbImage::new(w as u32, th as u32);
         for p in tr.pixels_mut() { *p = image::Rgb([20,20,28]); }
-        let max_mm = (0..w).map(|i| precip_mm_per_year(clim.precipitation.data[jr*w+i])).fold(1.0f32, f32::max);
         for i in 0..w {
             let k=jr*w+i;
             let a = if h.data[k]>SEA_LEVEL_NORM {alt_m(h.data[k])} else {0.0};
             let ay = (((a/6000.0).min(1.0))*(th as f32 - 40.0)) as usize;
             let mm = precip_mm_per_year(clim.precipitation.data[k]);
-            let my = (((mm/max_mm).min(1.0))*(th as f32 - 40.0)) as usize;
+            let my = (((mm/TRANSECT_MM_MAX).min(1.0))*(th as f32 - 40.0)) as usize;
             if ay < th { tr.put_pixel(i as u32, (th-1-ay) as u32, image::Rgb([200,200,200])); }
             if my < th { tr.put_pixel(i as u32, (th-1-my) as u32, image::Rgb([60,200,230])); }
             let c = if h.data[k]<=SEA_LEVEL_NORM {[30,50,90]} else {biomes[k].color()};
             for y in 0..30 { tr.put_pixel(i as u32, (th-1-y) as u32, image::Rgb(c)); }
         }
-        tr.save(dir.join(format!("seed{seed:05}_transect_row{jr}_maxmm{max_mm:.0}.png"))).unwrap();
+        tr.save(dir.join(format!("seed{seed:05}_transect_row{jr}.png"))).unwrap();
     }
+    // shared legend reference PNGs (colour swatches in a fixed order — the named
+    // mapping is printed below; no font rendering in-image).
+    let precip_legend: [(&str,[u8;3]);5] = [("desert <250",[225,200,140]),("steppe 250-500",[200,195,110]),("temperate-dry 500-800",[150,180,90]),("oceanic 800-1500",[80,150,200]),("wet >1500",[30,90,200])];
+    let biome_legend: [(&str,[u8;3]);6] = [("steppe",Biome::TemperateGrassland.color()),("temperate forest",Biome::TemperateForest.color()),("temperate rainforest",Biome::TemperateRainforest.color()),("boreal/taiga",Biome::BorealForest.color()),("tundra",Biome::Tundra.color()),("desert",Biome::Desert.color())];
+    let save_legend = |name: &str, items: &[(&str,[u8;3])]| {
+        let (sw, sh) = (120u32, 60u32); let mut img = image::RgbImage::new(sw*items.len() as u32, sh);
+        for (n,(_,c)) in items.iter().enumerate() { for x in 0..sw { for y in 0..sh { img.put_pixel(n as u32*sw+x, y, image::Rgb(*c)); } } }
+        img.save(dir.join(name)).unwrap();
+    };
+    save_legend("legend_precip_bands.png", &precip_legend);
+    save_legend("legend_biomes.png", &biome_legend);
     eprintln!("  out = {}", dir.display());
-    eprintln!("  relief: grey=alt(0-6000m), red tint=windward 80km band. transect: grey=alt(0-6000m) cyan=precip(0-rowmax mm) bottom=biome strip.");
+    eprintln!("  COMMON SCALES (shared across all 6 seeds — directly comparable):");
+    eprintln!("    actual land precip EXTENT across all 6 seeds: min {global_min:.0} → max {global_max:.0} mm/yr (the top 'wet >1500' band spans up to this max — the coastal-dump outliers).");
+    eprintln!("    precip MMBANDS (fixed, outliers fold into top band): {}", precip_legend.iter().map(|(n,c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | "));
+    eprintln!("    biomes (shared palette): {}", biome_legend.iter().map(|(n,c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | "));
+    eprintln!("    relief grey=alt(0-6000m), red tint=windward 80km band. transect grey=alt(0-6000m) cyan=precip(0-2000mm FIXED clamp) bottom=biome strip.");
+    eprintln!("    legends: legend_precip_bands.png, legend_biomes.png (swatch order = the lists above).");
 }
 
 /// #165 FRONTAL/OROGRAPHIC RATIO DIAGNOSTIC — decompose interior precipitation
