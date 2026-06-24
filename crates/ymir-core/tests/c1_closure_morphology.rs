@@ -5017,6 +5017,22 @@ fn probe_climate_verdict_grid() {
         global_min = global_min.min(l_min); global_max = global_max.max(l_max);
         eprintln!("  seed {seed}: windward max {wind_max:.0}m p95 {wind_p95:.0}m [{coast}] | interior dom={dom} dry={dry_frac:.0}% precip p50 {int_p50:.0} p90 {int_p90:.0} mm [{hum}] => {case}");
         eprintln!("    land precip mm/yr: min {l_min:.0} p50 {:.0} p90 {:.0} p99 {:.0} max {l_max:.0}", lp(0.5), lp(0.9), lp(0.99));
+        // CONTINGENCY biome × (temperature °C, altitude m): for each biome, the T and
+        // alt distributions of the cells classified into it. taiga T is bounded -5..+5
+        // BY the Whittaker thresholds (so T alone is near-tautological); the ALTITUDE
+        // column is the real discriminator — taiga at high alt = legitimate alpine cold
+        // (lapse correct), taiga at low alt = lapse too steep / threshold mis-set.
+        let mut contingency: std::collections::HashMap<Biome, (Vec<f32>, Vec<f32>)> = std::collections::HashMap::new();
+        for k in 0..w*ht { if h.data[k] > SEA_LEVEL_NORM { let e = contingency.entry(biomes[k]).or_default(); e.0.push(clim.temperature.data[k]); e.1.push(alt_m(h.data[k])); } }
+        let land_n = land_p.len().max(1) as f64;
+        let bo = [Biome::Tundra, Biome::BorealForest, Biome::TemperateGrassland, Biome::TemperateForest, Biome::TemperateRainforest, Biome::Desert, Biome::Savanna, Biome::TropicalSeasonalForest, Biome::TropicalRainforest];
+        for b in bo { if let Some((ts, az)) = contingency.get(&b) { if !ts.is_empty() {
+            let (mut t, mut a) = (ts.clone(), az.clone());
+            t.sort_by(|x,y| x.partial_cmp(y).unwrap()); a.sort_by(|x,y| x.partial_cmp(y).unwrap());
+            let q = |v:&Vec<f32>, p:f64| v[(((v.len()-1) as f64)*p) as usize];
+            eprintln!("      {:>24}: {:>4.0}% | T°C [min {:>5.1} p50 {:>5.1} max {:>5.1}] | alt m [min {:>5.0} p50 {:>5.0} max {:>5.0}]",
+                b.name(), 100.0*ts.len() as f64/land_n, t[0], q(&t,0.5), *t.last().unwrap(), a[0], q(&a,0.5), *a.last().unwrap());
+        }}}
         // renders — ALL on COMMON FIXED scales (shared across the 6 seeds) so the
         // interiors are directly comparable. Precip uses the anchored mm/yr BANDS
         // (desert/steppe/temperate-dry/oceanic/wet); the coastal outliers (40k-158k
@@ -5027,15 +5043,23 @@ fn probe_climate_verdict_grid() {
             if mm < 250.0 {[225,200,140]} else if mm < 500.0 {[200,195,110]} else if mm < 800.0 {[150,180,90]}
             else if mm < 1500.0 {[80,150,200]} else {[30,90,200]}
         };
+        // temperature bands at the Whittaker thermal THRESHOLDS used by classify():
+        // tundra <-5, taiga -5..+5, temperate +5..+20, warm/tropical >+20. So the
+        // panel colour = the thermal CLASS of each cell (read against the biome map).
+        let temp_band = |t: f32| -> [u8;3] {
+            if t < -5.0 {[225,235,248]} else if t < 5.0 {[90,140,205]} else if t < 20.0 {[110,190,110]} else {[225,120,70]}
+        };
         let put=|buf:&mut image::RgbImage,i:usize,j:usize,c:[u8;3]|buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
         let mut relief = image::RgbImage::new(w as u32, ht as u32);
         let mut bb = image::RgbImage::new(w as u32, ht as u32);
         let mut pm = image::RgbImage::new(w as u32, ht as u32);
+        let mut tm = image::RgbImage::new(w as u32, ht as u32);
         for j in 0..ht { for i in 0..w { let k=j*w+i; let sea = h.data[k] <= SEA_LEVEL_NORM;
             if sea { put(&mut relief,i,j,[30,50,90]); }
             else { let g=((alt_m(h.data[k])/6000.0)*255.0).min(255.0) as u8; put(&mut relief,i,j,[g,g,g]); }
             put(&mut bb,i,j, biomes[k].color());
             put(&mut pm,i,j, if sea {[30,50,90]} else {precip_band(precip_mm_per_year(clim.precipitation.data[k]))});
+            put(&mut tm,i,j, if sea {[40,45,70]} else {temp_band(clim.temperature.data[k])});
         }}
         // red tint on the measured windward band (first 80 km of land per row).
         for j in 0..ht {
@@ -5047,6 +5071,7 @@ fn probe_climate_verdict_grid() {
         relief.save(dir.join(format!("seed{seed:05}_relief_wind{:.0}m_{coast}.png", wind_max))).unwrap();
         bb.save(dir.join(format!("seed{seed:05}_biomes.png"))).unwrap();
         pm.save(dir.join(format!("seed{seed:05}_precip_MMBANDS.png"))).unwrap();
+        tm.save(dir.join(format!("seed{seed:05}_temp_CBANDS.png"))).unwrap();
         // transect on the tallest-windward row: altitude (grey) + precip (cyan) on a
         // COMMON FIXED scale clamped to 2000 mm (interior readable, coastal outliers
         // clamp at the top) + biome strip (shared palette).
@@ -5076,15 +5101,18 @@ fn probe_climate_verdict_grid() {
         for (n,(_,c)) in items.iter().enumerate() { for x in 0..sw { for y in 0..sh { img.put_pixel(n as u32*sw+x, y, image::Rgb(*c)); } } }
         img.save(dir.join(name)).unwrap();
     };
+    let temp_legend: [(&str,[u8;3]);4] = [("tundra <-5C",[225,235,248]),("taiga -5..+5C",[90,140,205]),("temperate +5..+20C",[110,190,110]),("warm/tropical >+20C",[225,120,70])];
     save_legend("legend_precip_bands.png", &precip_legend);
     save_legend("legend_biomes.png", &biome_legend);
+    save_legend("legend_temp_bands.png", &temp_legend);
     eprintln!("  out = {}", dir.display());
     eprintln!("  COMMON SCALES (shared across all 6 seeds — directly comparable):");
     eprintln!("    actual land precip EXTENT across all 6 seeds: min {global_min:.0} → max {global_max:.0} mm/yr (the top 'wet >1500' band spans up to this max — the coastal-dump outliers).");
     eprintln!("    precip MMBANDS (fixed, outliers fold into top band): {}", precip_legend.iter().map(|(n,c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | "));
     eprintln!("    biomes (shared palette): {}", biome_legend.iter().map(|(n,c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | "));
+    eprintln!("    temp CBANDS (fixed, at the Whittaker classify() thresholds -5/+5/+20°C): {}", temp_legend.iter().map(|(n,c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | "));
     eprintln!("    relief grey=alt(0-6000m), red tint=windward 80km band. transect grey=alt(0-6000m) cyan=precip(0-2000mm FIXED clamp) bottom=biome strip.");
-    eprintln!("    legends: legend_precip_bands.png, legend_biomes.png (swatch order = the lists above).");
+    eprintln!("    legends: legend_precip_bands.png, legend_biomes.png, legend_temp_bands.png (swatch order = the lists above).");
 }
 
 /// #165 FRONTAL/OROGRAPHIC RATIO DIAGNOSTIC — decompose interior precipitation
