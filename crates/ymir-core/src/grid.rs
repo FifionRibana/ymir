@@ -252,21 +252,15 @@ impl GridF32 {
 
     // ── Raw binary I/O ────────────────────────────────────────────────────
 
-    /// Save the grid as raw little-endian f32 bytes. Lossless.
+    /// Save the grid as raw little-endian f32 bytes. Lossless. Delegates to the
+    /// shared codec (`export::raw`) so every `.raw` shares the §9 byte layout.
     pub fn save_raw(&self, path: &Path) -> Result<(), String> {
-        let bytes: Vec<u8> = self.data.iter().flat_map(|f| f.to_le_bytes()).collect();
-        std::fs::write(path, bytes).map_err(|e| format!("Write error: {e}"))
+        crate::export::raw::save_f32(path, &self.data)
     }
 
-    /// Load a grid from raw little-endian f32 bytes.
+    /// Load a grid from raw little-endian f32 bytes (via the shared codec).
     pub fn load_raw(path: &Path, width: usize, height: usize) -> Result<Self, String> {
-        let bytes = std::fs::read(path).map_err(|e| format!("Read error: {e}"))?;
-        let expected = width * height * 4;
-        if bytes.len() != expected {
-            return Err(format!("Size mismatch: expected {expected} bytes, got {}", bytes.len()));
-        }
-        let data: Vec<f32> =
-            bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+        let data = crate::export::raw::load_f32(path, width * height)?;
         Ok(Self { width, height, data })
     }
 

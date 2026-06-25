@@ -9,6 +9,7 @@
 //! Each phase operates on a [`grid::GridF32`] heightmap and is controlled by a
 //! deterministic [`seed::WorldSeed`] to ensure reproducibility.
 
+pub mod cache;
 pub mod config;
 pub mod grid;
 pub mod morphology;

@@ -69,7 +69,7 @@ pub fn wind_zonal_dir(lat_deg: f32) -> i32 {
 
 /// Precipitation tunables. Anchored FORMS (Clausius-Clapeyron, Smith-Barstad);
 /// the rate coefficients are calibrated by the windward/leeward ratio.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PrecipParams {
     /// Ocean charge rate per cell — `M` relaxes toward `e_sat(SST)` over the
     /// fetch (maritime air saturates over a long ocean run).

@@ -20,7 +20,7 @@
 /// when `false`, [`super::source_term::apply_stein_stein_bathymetry`]
 /// is a no-op and the run reproduces the caller's previous
 /// behaviour bit-identically.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SteinSteinParams {
     /// Master enable/disable. When `false`,
     /// [`super::source_term::apply_stein_stein_bathymetry`] is a
