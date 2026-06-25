@@ -5714,3 +5714,325 @@ fn probe_floor_diagnosis() {
 fn pct(count: u64, total: u64) -> f64 {
     if total > 0 { count as f64 / total as f64 } else { 0.0 }
 }
+
+/// Descriptive stats of a slice: (n, mean, std, min, max, median).
+fn describe(v: &mut [f32]) -> (usize, f64, f64, f32, f32, f32) {
+    let n = v.len();
+    if n == 0 {
+        return (0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    }
+    let mean = v.iter().map(|&x| x as f64).sum::<f64>() / n as f64;
+    let var = v.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / n as f64;
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    (n, mean, var.sqrt(), v[0], v[n - 1], v[(n - 1) / 2])
+}
+
+/// #165 RELIEF SUB-DIAGNOSIS — réglage à baisser ou closure d'amincissement manquante ?
+///
+/// The floor diagnosis (`probe_floor_diagnosis`) proved the floor is BORN high
+/// (pre-erosion), not carved by erosion. This probe answers the orthogonal
+/// question before any fix: is the high floor a SETTING too high (a global floor
+/// to lower → everything drops uniformly, no plain/mountain contrast) or the
+/// symptom of a MISSING/INACTIVE thinning mechanism (the crust is thickened
+/// somewhere but thinned nowhere → all at the "thick"/high baseline)?
+///
+///   1. **decompose born-high** — coarse isostatic altitude (pre-FBM, 64²) vs
+///      the FBM contribution (pre-erosion 2048²). Where is the floor's altitude
+///      taken: the tectonic/isostasy baseline, or an FBM offset?
+///   2. **uniform vs varied (THE test)** — the continental crustal-thickness `S̃`
+///      distribution, EXCLUDING cratons (made thick on purpose). Narrow around a
+///      value (UNIFORM → the mechanism that thins it is missing/inactive =
+///      closure) or broad (VARIED → thin zones already exist, the mean is just
+///      offset = setting to lower)? Same for the coarse isostatic altitude.
+///   3. **is the thinning closure even firing?** — the rifting closure
+///      (`closures/rifting/`, the doc's thinning mechanism, McKenzie-Buck) IS
+///      wired and enabled by default. Run rifting ON vs OFF and read its stats
+///      (`total_mass_removed`, `cells_thinned`, `splits`): if disabling it barely
+///      moves the continental `S̃`/altitude distribution, the mechanism is
+///      present-but-inactive (the §7.2 Track C "events fire too rarely" risk).
+///   4. **Earth anchor** — continental crust thickness VARIES a lot (cratons
+///      ~40 km → high; rifted margins/basins ~20-30 km → low). Printed for scale.
+///
+/// DIAGNOSTIC ONLY — writes a CSV + prints; does NOT decide or apply the fix.
+/// Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_floor_thickness -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_floor_thickness() {
+    use std::io::Write;
+    use ymir_core::climate::precipitation::SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
+    use ymir_core::tectonics_c1::production_upscale::c1_production_altitude_craton;
+
+    let dir = output_dir().join("floor_thickness");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let depth_scale = ss.depth_scale_m as f32;
+    let seeds: [u64; 2] = [42, 1337];
+
+    // Build the tectonic state + total rifting activity over the run. `rifting`
+    // toggles the thinning/split closure (default ON); everything else default.
+    let build = |seed: u64, rifting_on: bool| -> (C1State, f64, usize, usize) {
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: N_STEPS,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        let mut clo = C1Closures::default();
+        clo.rifting = RiftingParams { enabled: rifting_on, ..RiftingParams::default() };
+        let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let (mut mass_removed, mut cells_thinned, mut splits) = (0.0f64, 0usize, 0usize);
+        run_with_closures(&mut state, &mut kin, &run, &clo, |_, s| {
+            mass_removed += s.last_step_stats.rifting_thinning.total_mass_removed;
+            cells_thinned += s.last_step_stats.rifting_thinning.cells_thinned;
+            splits += s.last_step_stats.rifting_split.splits_count;
+        });
+        (state, mass_removed, cells_thinned, splits)
+    };
+
+    // S̃ histogram bins (continental baseline = 1.0; split target 0.7).
+    let s_edges = [0.0f32, 0.5, 0.7, 0.9, 1.1, 1.5, 2.0];
+    let s_label = ["<0.5", "0.5-0.7", "0.7-0.9", "0.9-1.1", "1.1-1.5", "1.5-2.0", "2.0+"];
+    let s_bin = |x: f32| -> usize {
+        let mut b = 0;
+        for (k, &e) in s_edges.iter().enumerate() {
+            if x >= e {
+                b = k;
+            }
+        }
+        b
+    };
+
+    let mut csv = std::fs::File::create(dir.join("floor_thickness.csv")).unwrap();
+    writeln!(
+        csv,
+        "seed,rifting,set,n,s_mean,s_std,s_cv,s_min,s_max,alt_mean_m,alt_median_m,frac_alt_lt500,frac_s_baseline"
+    )
+    .unwrap();
+
+    eprintln!(
+        "#165 floor thickness — tectonic 64² ({} cells). S̃ = crustal thickness proxy \
+         (continental baseline 1.0). coarse altitude (pre-FBM) metres = S̃→isostasy×{depth_scale}. \
+         Earth: continental crust 20-70 km (cratons thick→high, margins/basins thin→low).",
+        GRID_SIZE * GRID_SIZE
+    );
+
+    for &seed in &seeds {
+        let (state, mass_removed, cells_thinned, splits) = build(seed, true);
+        let n_cells = state.nx() * state.ny();
+        let coarse = c1_production_altitude_craton(
+            &state.s,
+            &state.age,
+            &state.plate_type,
+            state.cratonic_mask.data(),
+            &iso,
+            &ss,
+        );
+        let cont: Vec<bool> = state
+            .plate_type
+            .data()
+            .iter()
+            .map(|t| matches!(t, PlateType::Continental))
+            .collect();
+        let craton = state.cratonic_mask.data();
+
+        // Partition continental cells into craton vs non-craton; collect S̃ and
+        // coarse altitude (metres) for each.
+        let mut s_nc: Vec<f32> = Vec::new(); // S̃, continental non-craton
+        let mut alt_nc: Vec<f32> = Vec::new(); // coarse altitude m, continental non-craton
+        let mut s_cr: Vec<f32> = Vec::new(); // S̃, craton
+        let mut s_hist = [0u64; 7]; // S̃ histogram, continental non-craton
+        for k in 0..n_cells {
+            if !cont[k] {
+                continue;
+            }
+            let sval = state.s.data()[k] as f32;
+            let altm = coarse.data[k] * depth_scale;
+            if craton[k] {
+                s_cr.push(sval);
+            } else {
+                s_nc.push(sval);
+                alt_nc.push(altm);
+                s_hist[s_bin(sval)] += 1;
+            }
+        }
+
+        // Stats for continental non-craton (the bulk that should hold the floor).
+        let (sn, smean, sstd, smin, smax, _smed) = describe(&mut s_nc.clone());
+        let (_an, amean, _astd, _amin, _amax, amed) = describe(&mut alt_nc.clone());
+        let cv = if smean.abs() > 1e-9 { sstd / smean } else { 0.0 };
+        let frac_alt_lt500 =
+            alt_nc.iter().filter(|&&m| m < 500.0).count() as f64 / alt_nc.len().max(1) as f64;
+        // Fraction at baseline thickness (|S̃ - 1.0| < 0.1) — the uniform-floor signature.
+        let frac_baseline =
+            s_nc.iter().filter(|&&x| (x - 1.0).abs() < 0.1).count() as f64 / sn.max(1) as f64;
+        let (_cn, crmean, _, _, _, _) = describe(&mut s_cr.clone());
+
+        // EMERGENT-land hypsometry split by craton vs non-craton (alt > 0): is
+        // the high floor the cratons or the non-craton crust? (The non-craton
+        // altitude stats above mix submerged + emergent — this isolates emergent.)
+        let mut em_cr: Vec<f32> = Vec::new();
+        let mut em_nc: Vec<f32> = Vec::new();
+        for k in 0..n_cells {
+            if !cont[k] {
+                continue;
+            }
+            let altm = coarse.data[k] * depth_scale;
+            if altm <= 0.0 {
+                continue; // submerged continental crust is not emergent land
+            }
+            if craton[k] {
+                em_cr.push(altm);
+            } else {
+                em_nc.push(altm);
+            }
+        }
+        let f500 = |v: &[f32]| v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+        let (_e1, em_cr_mean, _, _, _, em_cr_med) = describe(&mut em_cr.clone());
+        let (_e2, em_nc_mean, _, _, _, em_nc_med) = describe(&mut em_nc.clone());
+        let em_total = em_cr.len() + em_nc.len();
+        eprintln!(
+            "    EMERGENT land split: craton {} cells ({:.0}% of land) mean {em_cr_mean:.0}m med {em_cr_med:.0}m frac<500 {:.0}% | non-craton {} cells mean {em_nc_mean:.0}m med {em_nc_med:.0}m frac<500 {:.0}%",
+            em_cr.len(),
+            100.0 * em_cr.len() as f64 / em_total.max(1) as f64,
+            100.0 * f500(&em_cr),
+            em_nc.len(),
+            100.0 * f500(&em_nc),
+        );
+
+        writeln!(
+            csv,
+            "{seed},on,cont_noncraton,{sn},{smean:.4},{sstd:.4},{cv:.4},{smin:.3},{smax:.3},{amean:.0},{amed:.0},{frac_alt_lt500:.4},{frac_baseline:.4}"
+        )
+        .unwrap();
+
+        eprintln!(
+            "\n  seed {seed}: continental cells {} (craton {}, non-craton {sn}).",
+            cont.iter().filter(|&&c| c).count(),
+            s_cr.len(),
+        );
+        eprintln!(
+            "    rifting activity: total_mass_removed {mass_removed:.3} (S̃ units·cell), cells_thinned {cells_thinned}, splits {splits}"
+        );
+        eprintln!(
+            "    S̃ non-craton: mean {smean:.3} std {sstd:.3} CV {cv:.3} [min {smin:.2}, max {smax:.2}] | craton mean {crmean:.3}"
+        );
+        eprintln!(
+            "    → {:.0}% of non-craton continental at baseline S̃≈1.0 (|S̃-1|<0.1) = uniform-floor signature",
+            100.0 * frac_baseline
+        );
+        let shp: Vec<String> =
+            (0..7).map(|b| format!("{}:{:.0}%", s_label[b], 100.0 * pct(s_hist[b], sn as u64))).collect();
+        eprintln!("    S̃ histogram (non-craton): {}", shp.join("  "));
+        eprintln!(
+            "    coarse altitude non-craton: mean {amean:.0} m, median {amed:.0} m, frac<500m {:.1}%",
+            100.0 * frac_alt_lt500
+        );
+
+        // Rifting OFF — does removing the thinning closure move the distribution?
+        let (state_off, _, _, _) = build(seed, false);
+        let coarse_off = c1_production_altitude_craton(
+            &state_off.s,
+            &state_off.age,
+            &state_off.plate_type,
+            state_off.cratonic_mask.data(),
+            &iso,
+            &ss,
+        );
+        let cont_off: Vec<bool> = state_off
+            .plate_type
+            .data()
+            .iter()
+            .map(|t| matches!(t, PlateType::Continental))
+            .collect();
+        let craton_off = state_off.cratonic_mask.data();
+        let mut s_nc_off: Vec<f32> = Vec::new();
+        let mut alt_nc_off: Vec<f32> = Vec::new();
+        for k in 0..state_off.nx() * state_off.ny() {
+            if cont_off[k] && !craton_off[k] {
+                s_nc_off.push(state_off.s.data()[k] as f32);
+                alt_nc_off.push(coarse_off.data[k] * depth_scale);
+            }
+        }
+        let (sn_off, smean_off, sstd_off, _, _, _) = describe(&mut s_nc_off.clone());
+        let frac_alt_lt500_off =
+            alt_nc_off.iter().filter(|&&m| m < 500.0).count() as f64 / alt_nc_off.len().max(1) as f64;
+        writeln!(
+            csv,
+            "{seed},off,cont_noncraton,{sn_off},{smean_off:.4},{sstd_off:.4},{:.4},,,,,{frac_alt_lt500_off:.4},",
+            if smean_off.abs() > 1e-9 { sstd_off / smean_off } else { 0.0 }
+        )
+        .unwrap();
+        eprintln!(
+            "    RIFTING OFF: S̃ mean {smean_off:.3} std {sstd_off:.3} (Δ vs ON: mean {:+.4}, std {:+.4}), frac alt<500m {:.1}% (vs ON {:.1}%)",
+            smean_off - smean,
+            sstd_off - sstd,
+            100.0 * frac_alt_lt500_off,
+            100.0 * frac_alt_lt500,
+        );
+    }
+
+    // (1) decompose born-high: coarse (pre-FBM) vs pre-erosion FBM (2048²), seed 42.
+    let seed = 42u64;
+    let (state, _, _, _) = build(seed, true);
+    let coarse = c1_production_altitude_craton(
+        &state.s,
+        &state.age,
+        &state.plate_type,
+        state.cratonic_mask.data(),
+        &iso,
+        &ss,
+    );
+    let cont: Vec<bool> = state
+        .plate_type
+        .data()
+        .iter()
+        .map(|t| matches!(t, PlateType::Continental))
+        .collect();
+    // coarse continental LAND (altitude > 0) hypsometry.
+    let coarse_land: Vec<f32> =
+        (0..coarse.data.len()).filter(|&k| cont[k] && coarse.data[k] > 0.0).map(|k| coarse.data[k] * depth_scale).collect();
+    let coarse_frac500 =
+        coarse_land.iter().filter(|&&m| m < 500.0).count() as f64 / coarse_land.len().max(1) as f64;
+    let coarse_mean = coarse_land.iter().map(|&x| x as f64).sum::<f64>() / coarse_land.len().max(1) as f64;
+    // pre-erosion FBM 2048² (build_pre logic, erosion off).
+    let run = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: N_STEPS,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso.clone(),
+        drainage_max_distance: 30,
+    };
+    let mut st = init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    run_with_closures(&mut st, &mut kin, &run, &C1Closures::default(), |_, _| {});
+    let mut cfg = FbmUpscaleConfig::c1_hd_production(2048);
+    cfg.erosion = None;
+    let fbm = upscale_from_c1(&st, &run.iso_config, &ss, &WorldSeed::new(seed), &cfg).heightmap;
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    let fbm_land: Vec<f32> = fbm
+        .data
+        .iter()
+        .filter(|&&n| n > SEA_LEVEL_NORM)
+        .map(|&n| c1_altitude_norm_to_metres(n, &ss))
+        .collect();
+    let fbm_frac500 = fbm_land.iter().filter(|&&m| m < 500.0).count() as f64 / fbm_land.len().max(1) as f64;
+    let fbm_mean = fbm_land.iter().map(|&x| x as f64).sum::<f64>() / fbm_land.len().max(1) as f64;
+    eprintln!(
+        "\n  DECOMPOSE born-high (seed 42): coarse iso land (pre-FBM) mean {coarse_mean:.0} m, frac<500m {:.1}% \
+         → +FBM 2048² land mean {fbm_mean:.0} m, frac<500m {:.1}%",
+        100.0 * coarse_frac500,
+        100.0 * fbm_frac500,
+    );
+    eprintln!(
+        "    → if coarse already shows the bulge & FBM ~preserves the mean, the floor is set by ISOSTASY (S̃→altitude), not FBM."
+    );
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  CSV: floor_thickness.csv (per-seed rifting on/off S̃ + coarse-altitude stats).");
+}
