@@ -68,6 +68,100 @@ fn output_dir() -> PathBuf {
         .join("../../docs/reports/c1_continental_buoyancy/closure_morphology")
 }
 
+/// THE canonical #165 calibration relief, built through the generation CACHE.
+///
+/// Every #165 probe (climate / biomes / hypsometry / verdict-grid) builds its
+/// 2048² HD relief through this ONE helper, so they all produce the IDENTICAL
+/// cache key for a given (seed, iso) and SHARE the cached eroded terrain via the
+/// repo-relative `.ymir_cache/`. The expensive HD erosion (~100 s/seed) is
+/// computed once; every downstream analysis on the same relief is a HIT (~ms).
+/// `iso` is a parameter so the relief fix (lowering the continental floor) flows
+/// into the key → MISS → erosion re-runs on the new relief (invalidation).
+///
+/// Byte-identical to the old direct `init → run_with_closures → upscale_from_c1`
+/// path (the cache only changes speed) — guaranteed by
+/// `cached_product::tests::no_cache_path_is_byte_identical`.
+fn c165_eroded(seed: u64, iso: &IsostasyConfig) -> GridF32 {
+    let run = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: N_STEPS,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso.clone(),
+        drainage_max_distance: 30,
+    };
+    ymir_core::tectonics_c1::cached_product::cached_c1_eroded(
+        &ymir_core::cache::default_cache_dir(),
+        seed,
+        GRID_SIZE,
+        &Phase2InitParams::default(),
+        &run,
+        &C1Closures::default(),
+        &SteinSteinParams::default(),
+        &FbmUpscaleConfig::c1_hd_production(2048),
+    )
+    .expect("cached #165 eroded heightmap")
+}
+
+/// #165 cache GAIN demonstration in the REAL probe path (the `c165_eroded`
+/// helper every #165 probe now calls). MISS builds the relief (~100 s); a 2nd
+/// call on the SAME relief is a HIT (~ms) — this is the climate/biomes/hypsometry
+/// SHARING (compute the erosion once, analyse many times). A relief (iso) change
+/// flips the key → MISS (the fix-relief invalidation, in the probe path).
+#[test]
+#[ignore]
+fn probe_cache_loop_gain() {
+    use std::time::Instant;
+    use ymir_core::cache::default_cache_dir;
+    use ymir_core::tectonics_c1::cached_product::{eroded_key, tectonic_key};
+
+    let iso = IsostasyConfig::c1_default();
+    let seed = 42u64;
+    // Fresh shared cache so the first call is a genuine MISS.
+    let _ = std::fs::remove_dir_all(default_cache_dir());
+
+    let t0 = Instant::now();
+    let h_miss = c165_eroded(seed, &iso); // e.g. the biomes probe builds the relief
+    let miss = t0.elapsed();
+
+    let t1 = Instant::now();
+    let h_hit = c165_eroded(seed, &iso); // e.g. the hypsometry probe, SAME relief
+    let hit = t1.elapsed();
+    assert_eq!(h_miss.data, h_hit.data, "HIT must be byte-identical to MISS");
+
+    // Invalidation: a relief (iso) change flips the eroded digest → MISS (cheap
+    // digest check; the actual recompute is covered by the cached_product tests).
+    let run = |c: &IsostasyConfig| C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: N_STEPS,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: c.clone(),
+        drainage_max_distance: 30,
+    };
+    let ss = SteinSteinParams::default();
+    let up = FbmUpscaleConfig::c1_hd_production(2048);
+    let init = Phase2InitParams::default();
+    let clo = C1Closures::default();
+    let k0 = eroded_key(&tectonic_key(seed, GRID_SIZE, &init, &run(&iso), &clo), &ss, &up);
+    let mut iso2 = iso.clone();
+    iso2.max_elevation_m += 500.0; // the relief-fix surface
+    let k1 = eroded_key(&tectonic_key(seed, GRID_SIZE, &init, &run(&iso2), &clo), &ss, &up);
+    assert_ne!(k0.digest(), k1.digest(), "relief (iso) change must flip the eroded digest → MISS");
+
+    eprintln!(
+        "#165 cache gain — MISS (build relief) {:.1?} | HIT (shared cached terrain) {:.3?} | speedup ×{:.0}",
+        miss,
+        hit,
+        miss.as_secs_f64() / hit.as_secs_f64().max(1e-9)
+    );
+    eprintln!(
+        "  invalidation: iso change {} → {} (different digest ⇒ MISS, erosion re-runs on the new relief)",
+        k0.digest(),
+        k1.digest()
+    );
+}
+
 /// A named LOO ablation: mutate the default (all-ON) closure set.
 struct Ablation {
     tag: &'static str,
@@ -4574,12 +4668,8 @@ fn probe_climate_acceptance() {
     let lat = 45.0f32; let pp = PrecipParams::default();
     eprintln!("#165 c1_climate acceptance — 2048², latitude {lat}° (westerlies, W→E)");
     for &seed in &[1988u64, 2026, 42] {
-        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
-        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
-        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
-        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(2048));
-        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap; let (w, ht) = (h.width, h.height);
         let clim = c1_climate(h, &ss, lat, &pp);
 
         // (1) CONSERVATION
@@ -4689,12 +4779,8 @@ fn probe_climate_maps() {
     // hillshade (origin-bottom) for the relief panel.
     let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=55.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*255.0)as u8};
     for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
-        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
-        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
-        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
-        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(2048));
-        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap; let (w, ht) = (h.width, h.height);
         let clim = c1_climate(h, &ss, 45.0, &pp);
         let pr = &clim.precipitation.data; let temp = &clim.temperature.data;
         let dx_m = c1_km_per_cell(w) * 1000.0;
@@ -4898,12 +4984,8 @@ fn probe_climate_biomes() {
     };
     eprintln!("#165 biomes + mm/yr (2048², 45° westerlies). precip bands: desert<250 steppe250-500 tempDry500-800 oceanic800-1500 wet>1500 mm/yr");
     for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
-        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
-        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
-        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
-        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(2048));
-        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap; let (w, ht) = (h.width, h.height);
         let clim = c1_climate(h, &ss, 45.0, &pp);
         let biomes = c1_biomes(h, &clim);
         // biome histogram over LAND.
@@ -4955,12 +5037,8 @@ fn probe_climate_verdict_grid() {
     eprintln!("  coast: HAUTE>3000m / BASSE<2000m (2-3km INTERM). interior SEC if desert+steppe >50%.");
     let mut global_min = f32::INFINITY; let mut global_max = 0.0f32;
     for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
-        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
-        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
-        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
-        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(2048));
-        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap; let (w, ht) = (h.width, h.height);
         let km_cell = c1_km_per_cell(w);
         let clim = c1_climate(h, &ss, lat, &pp);
         let biomes = c1_biomes(h, &clim);
@@ -5141,12 +5219,8 @@ fn probe_frontal_oro_ratio() {
     eprintln!("  oro surcharge = precip_total - frontal_base (relief-modulated). windward = first 80km land; interior = >150km inland.");
     // 3 representative seeds: tallest wall (1988), intermediate coast (99), craton (42).
     for &seed in &[1988u64, 99, 42] {
-        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
-        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
-        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
-        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(2048));
-        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap; let (w, ht) = (h.width, h.height);
         let clim = c1_climate(h, &ss, lat, &pp);
         let w_band = (80.0 / (1024.0/w as f32)) as usize;
         let i_start = (150.0 / (1024.0/w as f32)) as usize;
@@ -5165,4 +5239,204 @@ fn probe_frontal_oro_ratio() {
         eprintln!("    interior oro surcharge: p50 {:.0} p90 {:.0} max {:.0} mm  (interior total p50 {:.0} mm; frontal share of median = {:.0}%)", pct(&int_oro,0.5), pct(&int_oro,0.9), int_oro.last().copied().unwrap_or(0.0), pct(&int_tot,0.5), frontal_share);
     }
     eprintln!("  READING: interior oro p50≈0 + frontal share≈100% ⇒ frontal SATURATES (the verdict-grid finding); windward oro max = the orographic headroom available above a lowered floor.");
+}
+
+/// #165 amont — HYPSOMETRIC diagnostic. Are the interiors too HIGH (too little
+/// low plain)? This MEASURES the land-altitude distribution in METRES directly,
+/// rather than inferring "too high" from the taiga-dominated biome map.
+///
+/// Field measured = the SAME one the climate/biomes consumed: the 2048² HD
+/// production altitude (`upscale_from_c1` + `c1_hd_production`), in metres via
+/// the vertical contract `c1_altitude_norm_to_metres`, land = `n > SEA_LEVEL_NORM`.
+/// Per the 6 climate-verdict seeds + aggregated.
+///
+/// COAST vs INTERIOR split: omnidirectional BFS distance-to-coast over the
+/// emergent-land mask (the `dist_to_coast` convention of the morphology
+/// analyses), interior = > 150 km from the coast. The hypsometric curve bands
+/// the land area (0-250 / 250-500 / 500-1000 / 1000-2000 / 2000-3000 / 3000+ m).
+/// The interior fraction below ~900 m is the direct link to the symptom: at 45°
+/// with a 6.5 °C/km lapse, ~900 m is the ceiling to stay > +5 °C (the temperate-
+/// forest thermal niche). Earth's land hypsography is the anchor (printed).
+///
+/// DIAGNOSTIC ONLY — writes CSVs + prints; does NOT decide the relief fix.
+#[test]
+#[ignore]
+fn probe_hypsometry() {
+    use std::io::Write;
+    use ymir_core::climate::precipitation::SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+
+    let dir = output_dir().join("hypsometry");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let hd = 2048usize;
+    let seeds: [u64; 6] = [42, 99, 1337, 4138, 1988, 2026];
+
+    // Altitude bands (metres), lower edges; last band is open (3000+).
+    let edges = [0.0f32, 250.0, 500.0, 1000.0, 2000.0, 3000.0];
+    let band_label = ["0-250", "250-500", "500-1000", "1000-2000", "2000-3000", "3000+"];
+    let band_of = |m: f32| -> usize {
+        let mut b = 0;
+        for (k, &e) in edges.iter().enumerate() {
+            if m >= e {
+                b = k;
+            }
+        }
+        b
+    };
+    // regions: 0 = all land, 1 = coast (<=150 km), 2 = interior (>150 km).
+    let region_name = |r: usize| match r {
+        0 => "all",
+        1 => "coast",
+        _ => "interior",
+    };
+
+    let km_cell = c1_km_per_cell(hd);
+    let cell_area = (km_cell * km_cell) as f64;
+
+    let mut bands_csv = std::fs::File::create(dir.join("hypsometry_bands.csv")).unwrap();
+    writeln!(bands_csv, "seed,region,band_m,count,fraction").unwrap();
+    let mut summ_csv = std::fs::File::create(dir.join("hypsometry_summary.csv")).unwrap();
+    writeln!(
+        summ_csv,
+        "seed,region,n_land_cells,area_km2,frac_lt_500,frac_lt_900,frac_lt_1000,frac_lt_2000,frac_ge_3000,mean_m,median_m"
+    )
+    .unwrap();
+
+    let mut agg = [[0u64; 6]; 3]; // aggregate band counts per region
+
+    eprintln!(
+        "#165 hypsometry — 2048² HD product (same field as biomes), 6 seeds. \
+         interior = BFS dist-to-coast > 150 km ({:.2} km/cell). altitude in metres \
+         via c1_altitude_norm_to_metres (sea=0.5).",
+        km_cell
+    );
+
+    for &seed in &seeds {
+        // CACHE: the SAME relief the climate/biomes probes build (shared key →
+        // HIT if any #165 probe already computed this seed's eroded terrain).
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap;
+        let (w, ht) = (h.width, h.height);
+        assert_eq!(w, ht, "dist_to_coast expects a square grid");
+
+        // Emergent-land mask + BFS distance to coast (in cells) over it.
+        let land: Vec<bool> = h.data.iter().map(|&n| n > SEA_LEVEL_NORM).collect();
+        let dist = dist_to_coast(&land, w);
+
+        let mut cnt = [[0u64; 6]; 3];
+        let mut below900 = [0u64; 3];
+        let mut sum_m = [0.0f64; 3];
+        let mut alts: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+        for k in 0..w * ht {
+            if !land[k] {
+                continue;
+            }
+            let m = c1_altitude_norm_to_metres(h.data[k], &ss); // > 0 on land
+            let b = band_of(m);
+            let is_interior = dist[k] as f32 * km_cell > 150.0;
+            let regions: [usize; 2] = if is_interior { [0, 2] } else { [0, 1] };
+            for r in regions {
+                cnt[r][b] += 1;
+                sum_m[r] += m as f64;
+                alts[r].push(m);
+                if m < 900.0 {
+                    below900[r] += 1;
+                }
+            }
+        }
+
+        for r in 0..3 {
+            let n: u64 = cnt[r].iter().sum();
+            for b in 0..6 {
+                let frac = if n > 0 { cnt[r][b] as f64 / n as f64 } else { 0.0 };
+                writeln!(
+                    bands_csv,
+                    "{seed},{},{},{},{:.5}",
+                    region_name(r),
+                    band_label[b],
+                    cnt[r][b],
+                    frac
+                )
+                .unwrap();
+                agg[r][b] += cnt[r][b];
+            }
+            alts[r].sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let median = if n > 0 { alts[r][(n as usize - 1) / 2] } else { 0.0 };
+            let mean = if n > 0 { sum_m[r] / n as f64 } else { 0.0 };
+            let frac_lt = |thr: f32| {
+                if n > 0 {
+                    alts[r].iter().filter(|&&x| x < thr).count() as f64 / n as f64
+                } else {
+                    0.0
+                }
+            };
+            let frac_ge = |thr: f32| {
+                if n > 0 {
+                    alts[r].iter().filter(|&&x| x >= thr).count() as f64 / n as f64
+                } else {
+                    0.0
+                }
+            };
+            writeln!(
+                summ_csv,
+                "{seed},{},{},{:.1},{:.4},{:.4},{:.4},{:.4},{:.4},{:.1},{:.1}",
+                region_name(r),
+                n,
+                n as f64 * cell_area,
+                frac_lt(500.0),
+                frac_lt(900.0),
+                frac_lt(1000.0),
+                frac_lt(2000.0),
+                frac_ge(3000.0),
+                mean,
+                median
+            )
+            .unwrap();
+        }
+
+        let int_n: u64 = cnt[2].iter().sum();
+        let all_n: u64 = cnt[0].iter().sum();
+        eprintln!(
+            "  seed {seed}: land {all_n} cells ({:.0} km²) | interior {int_n} cells, <900m {:.1}% (<500m {:.1}%, ≥3000m {:.1}%)",
+            all_n as f64 * cell_area,
+            if int_n > 0 { 100.0 * below900[2] as f64 / int_n as f64 } else { 0.0 },
+            if int_n > 0 { 100.0 * alts[2].iter().filter(|&&x| x < 500.0).count() as f64 / int_n as f64 } else { 0.0 },
+            if int_n > 0 { 100.0 * alts[2].iter().filter(|&&x| x >= 3000.0).count() as f64 / int_n as f64 } else { 0.0 },
+        );
+    }
+
+    // Aggregate band rows.
+    for r in 0..3 {
+        let n: u64 = agg[r].iter().sum();
+        for b in 0..6 {
+            let frac = if n > 0 { agg[r][b] as f64 / n as f64 } else { 0.0 };
+            writeln!(
+                bands_csv,
+                "AGGREGATE,{},{},{},{:.5}",
+                region_name(r),
+                band_label[b],
+                agg[r][b],
+                frac
+            )
+            .unwrap();
+        }
+    }
+
+    // Earth land-hypsography anchor (fraction of EMERGENT land area per band),
+    // approximated from the standard area-elevation distribution of the
+    // continents (0-200 25%, 200-500 27%, 500-1000 19%, 1000-2000 15%,
+    // 2000-3000 7.5%, >3000 6%; mean land elevation ≈ 840 m). Cumulative
+    // anchors: ≈52% < 500 m, ≈71% < 1000 m, ≈86% < 2000 m, ≈94% < 3000 m.
+    let earth = [0.29f64, 0.23, 0.19, 0.15, 0.075, 0.065];
+    for b in 0..6 {
+        writeln!(bands_csv, "EARTH,land,{},,{:.5}", band_label[b], earth[b]).unwrap();
+    }
+
+    eprintln!(
+        "  EARTH anchor (land): <500m ≈52%, <1000m ≈71%, <2000m ≈86%, <3000m ≈94%, mean ≈840 m."
+    );
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  CSV: hypsometry_bands.csv (per-seed + AGGREGATE + EARTH band fractions), hypsometry_summary.csv (frac<500/900/1000/2000, ≥3000, mean, median, per region).");
 }
