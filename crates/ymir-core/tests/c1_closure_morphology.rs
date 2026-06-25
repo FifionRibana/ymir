@@ -6138,3 +6138,149 @@ fn probe_craton_density_sweep() {
          init_r7 craton_thickness_ratio docstring: thickness is anchored, not a knob)."
     );
 }
+
+/// #165 CRATON FRACTION — is the high floor a matter of cratons being too HIGH
+/// (altitude, which hit 2 formulation walls: density bound + sea-level coupling)
+/// or too NUMEROUS (fraction)? The cratonic mask is set by an UNANCHORED rule
+/// (`build_phase_1_1_cratonic_mask`: a plate is cratonic iff its Voronoï seed is
+/// in the LEFT HALF of the domain, `x < nx/2` → ~half the continental plates).
+///
+/// Measures: (1) the cratonic AREA fraction across seeds (vs the real-Earth
+/// anchor); (2) the LEVER TEST — rebuild with the craton special-treatment dialed
+/// to NORMAL crust (thickness_ratio 1.0 + craton_resist 1.0 + craton_rho_crust
+/// None = the limit of "no high-craton area"), and see if the continental
+/// hypsometry → the (already-Earth-like) non-craton distribution AND the
+/// sea-level coupling dissolves. This brackets the fraction lever without a fix.
+///
+/// DIAGNOSTIC ONLY. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_craton_fraction -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_craton_fraction() {
+    use ymir_core::tectonics_c1::production_upscale::c1_production_altitude_craton;
+
+    let ss = SteinSteinParams::default();
+    let depth_scale = ss.depth_scale_m as f32;
+    let median = |v: &mut Vec<f32>| -> f32 {
+        if v.is_empty() {
+            return 0.0;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() - 1) / 2]
+    };
+    let f500 = |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+
+    // Build a tectonic state with the craton special-treatment either ON (c1
+    // canonical) or dialed to NORMAL crust (thickness 1.0 + resist 1.0 + density
+    // None) — the latter is the "no high-craton" limit of reducing the fraction.
+    let build = |seed: u64, special: bool| -> (C1State, IsostasyConfig) {
+        let mut iso = IsostasyConfig::c1_default();
+        let mut initp = Phase2InitParams::default();
+        let mut clo = C1Closures::default();
+        if !special {
+            iso.craton_rho_crust = None;
+            initp.craton_thickness_ratio = 1.0;
+            clo.erosion.craton_resist = 1.0;
+        }
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: N_STEPS,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &initp);
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        run_with_closures(&mut state, &mut kin, &run, &clo, |_, _| {});
+        (state, iso)
+    };
+
+    eprintln!(
+        "#165 craton FRACTION — origin: build_phase_1_1_cratonic_mask flags a plate cratonic \
+         iff its seed x < nx/2 (LEFT HALF) → ~half the continental plates, UNANCHORED. \
+         Earth anchor: Precambrian craton underlies ~50-70% of continental crust, BUT exposed \
+         high SHIELD is only ~10-20%; the rest is LOW platform (sediment-covered). So a large \
+         craton AREA is realistic — rendering ALL of it as HIGH shield is not."
+    );
+
+    // (1) cratonic AREA fraction across the #165 seeds.
+    eprintln!("\n  cratonic AREA fraction (special treatment ON):");
+    eprintln!("  seed | continental | cratonic | craton/continental | craton/emergent-land");
+    for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
+        let (state, iso) = build(seed, true);
+        let n = state.nx() * state.ny();
+        let coarse = c1_production_altitude_craton(
+            &state.s, &state.age, &state.plate_type, state.cratonic_mask.data(), &iso, &ss,
+        );
+        let craton = state.cratonic_mask.data();
+        let (mut cont, mut cra, mut em_cont, mut em_cra) = (0u64, 0u64, 0u64, 0u64);
+        for k in 0..n {
+            let is_cont = matches!(state.plate_type.data()[k], PlateType::Continental);
+            if !is_cont {
+                continue;
+            }
+            cont += 1;
+            let emergent = coarse.data[k] * depth_scale > 0.0;
+            if emergent {
+                em_cont += 1;
+            }
+            if craton[k] {
+                cra += 1;
+                if emergent {
+                    em_cra += 1;
+                }
+            }
+        }
+        eprintln!(
+            "  {seed:>4} | {cont:>11} | {cra:>8} | {:>17.0}% | {:>19.0}%",
+            100.0 * cra as f64 / cont.max(1) as f64,
+            100.0 * em_cra as f64 / em_cont.max(1) as f64,
+        );
+    }
+
+    // (2) LEVER TEST on seed 42: special vs normal-crust cratons.
+    eprintln!(
+        "\n  LEVER TEST (seed 42): craton special vs NORMAL crust (thickness 1.0 + resist 1.0 \
+         + density None = no high-craton). Does continental hypsometry → non-craton (Earth-like) \
+         and the sea-level coupling dissolve?"
+    );
+    eprintln!("  variant            | ALL land<500 | craton med | non-craton med | non-craton<500");
+    for (label, special) in [("special (c1_default)", true), ("normal crust", false)] {
+        let (state, iso) = build(42, special);
+        let n = state.nx() * state.ny();
+        let coarse = c1_production_altitude_craton(
+            &state.s, &state.age, &state.plate_type, state.cratonic_mask.data(), &iso, &ss,
+        );
+        let craton = state.cratonic_mask.data();
+        let (mut em_all, mut em_cr, mut em_nc): (Vec<f32>, Vec<f32>, Vec<f32>) =
+            (Vec::new(), Vec::new(), Vec::new());
+        for k in 0..n {
+            if !matches!(state.plate_type.data()[k], PlateType::Continental) {
+                continue;
+            }
+            let m = coarse.data[k] * depth_scale;
+            if m <= 0.0 {
+                continue;
+            }
+            em_all.push(m);
+            if craton[k] {
+                em_cr.push(m);
+            } else {
+                em_nc.push(m);
+            }
+        }
+        eprintln!(
+            "  {label:<18} | {:>11.0}% | {:>9.0}m | {:>13.0}m | {:>13.0}%",
+            f500(&em_all),
+            median(&mut em_cr.clone()),
+            median(&mut em_nc.clone()),
+            f500(&em_nc),
+        );
+    }
+    eprintln!(
+        "  → if 'normal crust' (no high-craton) → ALL<500 ≈ the non-craton ~54% AND non-craton \
+         stable (no coupling), then the large HIGH-craton AREA is the lever (fix = fewer high \
+         cratons / bimodal low platform), not craton altitude alone. Non-craton already Earth-like."
+    );
+}
