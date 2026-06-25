@@ -16,7 +16,7 @@ use crate::tectonics::plates::PlateConfig;
 use crate::terrain::flow::{FlowConfig, FlowResult, RiverConfig, RiverNetwork};
 use crate::terrain::upscale::FbmUpscaleConfig;
 
-// pub mod raw;     // Native binary format (u16/f32 raw + JSON metadata)
+pub mod raw; // Low-level raw binary codec (f32/u8/u32 LE), shared with crate::cache.
 // pub mod png;     // PNG export for compatibility and debugging
 
 // ── Metadata ─────────────────────────────────────────────────────────────
@@ -423,48 +423,12 @@ fn upscale_dims(meta: &PipelineMetadata) -> (usize, usize) {
 }
 
 // ── Raw binary helpers ──────────────────────────────────────────────────
+// Thin aliases over the SHARED low-level codec (`export::raw`). The §9 export
+// and `crate::cache` write identical bytes because they go through the same
+// functions — no second serializer.
 
-fn save_raw_f32(path: &Path, data: &[f32]) -> Result<(), String> {
-    let bytes: Vec<u8> = data.iter().flat_map(|f| f.to_le_bytes()).collect();
-    fs::write(path, bytes).map_err(|e| format!("Write error: {e}"))
-}
-
-fn load_raw_f32(path: &Path, expected_len: usize) -> Result<Vec<f32>, String> {
-    let bytes = fs::read(path).map_err(|e| format!("Read error: {e}"))?;
-    if bytes.len() != expected_len * 4 {
-        return Err(format!(
-            "Size mismatch: expected {} bytes, got {}",
-            expected_len * 4,
-            bytes.len()
-        ));
-    }
-    Ok(bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())
-}
-
-fn save_raw_u8(path: &Path, data: &[u8]) -> Result<(), String> {
-    fs::write(path, data).map_err(|e| format!("Write error: {e}"))
-}
-
-fn load_raw_u8(path: &Path) -> Result<Vec<u8>, String> {
-    fs::read(path).map_err(|e| format!("Read error: {e}"))
-}
-
-fn save_raw_u32(path: &Path, data: &[u32]) -> Result<(), String> {
-    let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
-    fs::write(path, bytes).map_err(|e| format!("Write error: {e}"))
-}
-
-fn load_raw_u32(path: &Path, expected_len: usize) -> Result<Vec<u32>, String> {
-    let bytes = fs::read(path).map_err(|e| format!("Read error: {e}"))?;
-    if bytes.len() != expected_len * 4 {
-        return Err(format!(
-            "Size mismatch: expected {} bytes, got {}",
-            expected_len * 4,
-            bytes.len()
-        ));
-    }
-    Ok(bytes.chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())
-}
+use raw::{load_f32 as load_raw_f32, load_u8 as load_raw_u8, load_u32 as load_raw_u32};
+use raw::{save_f32 as save_raw_f32, save_u8 as save_raw_u8, save_u32 as save_raw_u32};
 
 #[cfg(test)]
 mod tests {
