@@ -6036,3 +6036,105 @@ fn probe_floor_thickness() {
     eprintln!("  out = {}", dir.display());
     eprintln!("  CSV: floor_thickness.csv (per-seed rifting on/off S̃ + coarse-altitude stats).");
 }
+
+/// #165 CRATON CALIBRATION — sweep `craton_rho_crust` to find the value that
+/// brings the emergent craton floor toward worn-shield height (~400-600 m),
+/// WITHIN the physical density bound (continental crust ≤ ~3000 kg/m³; 3300 =
+/// mantle, non-physical).
+///
+/// Cheap: `craton_rho_crust` enters ONLY the final altitude mapping
+/// (`c1_production_altitude_craton`), NOT the tectonic S̃ evolution (the time
+/// loop's erosion uses the SCALAR `compute_isostasy`). So the tectonic state is
+/// built ONCE per seed and the sweep just re-maps altitude per candidate density.
+///
+/// Reports, per density: emergent craton median + frac<500m, emergent non-craton
+/// median (the INVARIANT to watch — should barely move; it shifts only via the
+/// shared sea-level percentile), and global land frac<500m (the headline). Values
+/// above 3000 are printed as OUT-OF-BOUND reference only.
+///
+/// DIAGNOSTIC ONLY. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_craton_density_sweep -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_craton_density_sweep() {
+    use ymir_core::tectonics_c1::production_upscale::c1_production_altitude_craton;
+
+    let ss = SteinSteinParams::default();
+    let depth_scale = ss.depth_scale_m as f32;
+    let seed = 42u64; // the craton-bearing seed (1337 has none)
+    let base_iso = IsostasyConfig::c1_default();
+
+    // Build the tectonic state ONCE (density does not affect it).
+    let run = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: N_STEPS,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: base_iso.clone(),
+        drainage_max_distance: 30,
+    };
+    let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    run_with_closures(&mut state, &mut kin, &run, &C1Closures::default(), |_, _| {});
+
+    let cont: Vec<bool> = state
+        .plate_type
+        .data()
+        .iter()
+        .map(|t| matches!(t, PlateType::Continental))
+        .collect();
+    let craton = state.cratonic_mask.data().to_vec();
+    let median = |v: &mut Vec<f32>| -> f32 {
+        if v.is_empty() {
+            return 0.0;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() - 1) / 2]
+    };
+    let f500 = |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+
+    eprintln!(
+        "#165 craton calibration (seed {seed}) — sweep craton_rho_crust. Target: emergent \
+         craton median ~400-600 m (worn shield). Bound: ≤3000 kg/m³ (crust; 3300=mantle). \
+         Current c1_default = 2900 → craton median 1814 m (measured). Non-craton = invariant to watch."
+    );
+    eprintln!("  rho   | craton: med  frac<500 | non-craton: med  frac<500 | ALL land frac<500 | bound");
+
+    for &rho in &[2750.0f32, 2900.0, 2950.0, 3000.0, 3050.0, 3100.0, 3200.0] {
+        let mut iso = base_iso.clone();
+        iso.craton_rho_crust = Some(rho);
+        let coarse =
+            c1_production_altitude_craton(&state.s, &state.age, &state.plate_type, &craton, &iso, &ss);
+        let mut em_cr: Vec<f32> = Vec::new();
+        let mut em_nc: Vec<f32> = Vec::new();
+        let mut em_all: Vec<f32> = Vec::new();
+        for k in 0..coarse.data.len() {
+            if !cont[k] {
+                continue;
+            }
+            let m = coarse.data[k] * depth_scale;
+            if m <= 0.0 {
+                continue;
+            }
+            em_all.push(m);
+            if craton[k] {
+                em_cr.push(m);
+            } else {
+                em_nc.push(m);
+            }
+        }
+        let (cr500, nc500, all500) = (f500(&em_cr), f500(&em_nc), f500(&em_all));
+        let cr_med = median(&mut em_cr.clone());
+        let nc_med = median(&mut em_nc.clone());
+        let bound = if rho <= 3000.0 { "ok" } else { "OUT (>3000, non-physical)" };
+        eprintln!(
+            "  {rho:>5.0} | {cr_med:>9.0}m {cr500:>7.0}% | {nc_med:>9.0}m {nc500:>7.0}% | {all500:>13.0}% | {bound}"
+        );
+    }
+    eprintln!(
+        "  → read off the lowest-bound rho hitting craton median ~400-600 m. If even 3000 \
+         stays ≫600 m, the density knob is INSUFFICIENT within physics → worn-shield is a \
+         MODEL refinement (Jordan compositional isostasy / worn-init), not a parameter (see \
+         init_r7 craton_thickness_ratio docstring: thickness is anchored, not a knob)."
+    );
+}
