@@ -5440,3 +5440,277 @@ fn probe_hypsometry() {
     eprintln!("  out = {}", dir.display());
     eprintln!("  CSV: hypsometry_bands.csv (per-seed + AGGREGATE + EARTH band fractions), hypsometry_summary.csv (frac<500/900/1000/2000, ≥3000, mean, median, per region).");
 }
+
+/// #165 RELIEF DIAGNOSIS — *why* is the continental floor at 1000-2000 m?
+///
+/// `probe_hypsometry` established the SYMPTOM (too little low plain, mass piled
+/// in 1000-2000 m, NOT excess mountains). The same symptom has OPPOSITE fixes,
+/// so this probe MEASURES the cause before any code is written:
+///   1. **before vs after erosion** — is the floor already high in the
+///      pre-erosion HD terrain (FBM, no droplets)? Does erosion lower it? This
+///      splits "born high" (cause 1: base buoyancy) from "not carved" (cause 2:
+///      erosion). The two stages share the IDENTICAL FBM heightmap (erosion is
+///      applied AFTER the FBM in `upscale_from_c1`, so toggling `cfg.erosion`
+///      between None/Some changes ONLY the droplet pass — same terrain, ±erosion).
+///   2. **mass balance** — per-cell Δ(post−pre): does erosion strip the highs
+///      AND deposit in low plains (building the plain/mountain contrast), or does
+///      the stripped mass transit past the real coast into the deep (deposited
+///      below the real sea, so NO low plain is built)? NB the erosion's own
+///      `sea_level = 0.1` ≠ the terrain's real sea 0.5 (`SEA_LEVEL_NORM`): a
+///      droplet deposits only after going below 0.1, i.e. past the real coast and
+///      the whole shelf [0.1, 0.5]. This probe measures how much deposit lands on
+///      real land (>0.5) vs below the real sea.
+///   3. **leverage test** — re-erode seed 42 with ×3 droplets; if the <500 m
+///      fraction rises toward Earth's ~52 %, erosion IS the lever (cause 2); if
+///      it barely moves, the floor is born high (cause 1, fix isostasy).
+///   4. **sea threshold** (cause 3) — printed: fraction of land just above sea
+///      (0-250 m) and the erosion-vs-real sea-level mismatch, to rule it in/out.
+///
+/// DIAGNOSTIC ONLY — writes CSVs + prints; does NOT decide or apply the fix.
+/// Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_floor_diagnosis -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_floor_diagnosis() {
+    use std::io::Write;
+    use ymir_core::climate::precipitation::SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+
+    let dir = output_dir().join("floor_diagnosis");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let hd = 2048usize;
+    let seeds: [u64; 2] = [42, 1337];
+    const BOOST_SEED: u64 = 42;
+    const BOOST_FACTOR: usize = 3;
+
+    let edges = [0.0f32, 250.0, 500.0, 1000.0, 2000.0, 3000.0];
+    let band_label = ["0-250", "250-500", "500-1000", "1000-2000", "2000-3000", "3000+"];
+    let band_of = |m: f32| -> usize {
+        let mut b = 0;
+        for (k, &e) in edges.iter().enumerate() {
+            if m >= e {
+                b = k;
+            }
+        }
+        b
+    };
+    let km_cell = c1_km_per_cell(hd);
+    let cell_area = (km_cell * km_cell) as f64;
+
+    // Land-only band fractions (n > real sea 0.5) for one HD heightmap.
+    let bands = |h: &GridF32| -> ([u64; 6], u64) {
+        let mut cnt = [0u64; 6];
+        let mut n_land = 0u64;
+        for &nrm in &h.data {
+            if nrm > SEA_LEVEL_NORM {
+                cnt[band_of(c1_altitude_norm_to_metres(nrm, &ss))] += 1;
+                n_land += 1;
+            }
+        }
+        (cnt, n_land)
+    };
+    let frac_lt = |h: &GridF32, thr: f32| -> f64 {
+        let (mut n, mut below) = (0u64, 0u64);
+        for &nrm in &h.data {
+            if nrm > SEA_LEVEL_NORM {
+                n += 1;
+                if c1_altitude_norm_to_metres(nrm, &ss) < thr {
+                    below += 1;
+                }
+            }
+        }
+        if n > 0 { below as f64 / n as f64 } else { 0.0 }
+    };
+
+    // Build the pre-erosion HD terrain (FBM only) — the SAME FBM the canonical
+    // product erodes, just with the droplet pass turned off.
+    let build_pre = |seed: u64| -> GridF32 {
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: N_STEPS,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        run_with_closures(&mut state, &mut kin, &run, &C1Closures::default(), |_, _| {});
+        let mut cfg = FbmUpscaleConfig::c1_hd_production(hd);
+        cfg.erosion = None; // pre-erosion: FBM terrain, no droplets
+        upscale_from_c1(&state, &run.iso_config, &ss, &WorldSeed::new(seed), &cfg).heightmap
+    };
+    // Re-erode the SAME FBM with boosted droplet count (the leverage test).
+    let build_boosted = |seed: u64, factor: usize| -> GridF32 {
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: N_STEPS,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        run_with_closures(&mut state, &mut kin, &run, &C1Closures::default(), |_, _| {});
+        let mut cfg = FbmUpscaleConfig::c1_hd_production(hd);
+        if let Some(e) = cfg.erosion.as_mut() {
+            e.num_droplets *= factor;
+        }
+        upscale_from_c1(&state, &run.iso_config, &ss, &WorldSeed::new(seed), &cfg).heightmap
+    };
+
+    let mut prepost = std::fs::File::create(dir.join("floor_prepost_bands.csv")).unwrap();
+    writeln!(prepost, "seed,stage,band_m,count,frac").unwrap();
+    let mut massf = std::fs::File::create(dir.join("floor_mass_balance.csv")).unwrap();
+    writeln!(
+        massf,
+        "seed,eroded_km3,deposited_km3,dep_on_land_km3,dep_below_sea_km3,dep_on_land_pct,\
+         mean_d_from_1000_2000_m,mean_d_from_0_500_m,cells_1000_2000_to_lt500"
+    )
+    .unwrap();
+
+    eprintln!(
+        "#165 floor diagnosis — 2048² HD ({:.2} km/cell). PRE = FBM no-erosion, \
+         POST = canonical eroded (shared cache). Earth anchor: ~52% land < 500 m.",
+        km_cell
+    );
+
+    for &seed in &seeds {
+        let pre = build_pre(seed);
+        // POST = canonical product (cache HIT if a prior #165 probe built it);
+        // byte-identical to erosion=Some on the same FBM (deterministic state).
+        let post = c165_eroded(seed, &iso);
+        assert_eq!((pre.width, pre.height), (post.width, post.height), "pre/post dims");
+
+        // (1) before/after band fractions on land.
+        for (stage, h) in [("pre", &pre), ("post", &post)] {
+            let (cnt, n) = bands(h);
+            for b in 0..6 {
+                let frac = if n > 0 { cnt[b] as f64 / n as f64 } else { 0.0 };
+                writeln!(prepost, "{seed},{stage},{},{},{:.5}", band_label[b], cnt[b], frac).unwrap();
+            }
+        }
+        let (pre_cnt, pre_n) = bands(&pre);
+        let (post_cnt, post_n) = bands(&post);
+        eprintln!(
+            "  seed {seed}: land cells pre {pre_n} → post {post_n}. frac<500m: pre {:.1}% → post {:.1}%  (Δ {:+.1} pts)",
+            100.0 * frac_lt(&pre, 500.0),
+            100.0 * frac_lt(&post, 500.0),
+            100.0 * (frac_lt(&post, 500.0) - frac_lt(&pre, 500.0)),
+        );
+        eprintln!(
+            "    band 1000-2000m: pre {:.1}% → post {:.1}% | 3000+m: pre {:.1}% → post {:.1}%",
+            100.0 * pct(pre_cnt[3], pre_n),
+            100.0 * pct(post_cnt[3], post_n),
+            100.0 * pct(pre_cnt[5], pre_n),
+            100.0 * pct(post_cnt[5], post_n),
+        );
+
+        // (2) mass balance — per-cell Δ in metres over ALL cells; volume = Δ·area.
+        let (mut eroded, mut deposited, mut dep_land, mut dep_sea) = (0.0f64, 0.0, 0.0, 0.0);
+        let (mut d_1020_sum, mut d_1020_n) = (0.0f64, 0u64);
+        let (mut d_0500_sum, mut d_0500_n) = (0.0f64, 0u64);
+        let mut migrated = 0u64; // pre in 1000-2000 m land → post in <500 m land
+        for k in 0..pre.data.len() {
+            let pm = c1_altitude_norm_to_metres(pre.data[k], &ss);
+            let qm = c1_altitude_norm_to_metres(post.data[k], &ss);
+            let d = (qm - pm) as f64;
+            let vol = d.abs() * cell_area; // km² · m → ×1e-3 = km³
+            if d < 0.0 {
+                eroded += vol;
+            } else {
+                deposited += vol;
+                if post.data[k] > SEA_LEVEL_NORM {
+                    dep_land += vol;
+                } else {
+                    dep_sea += vol;
+                }
+            }
+            // Δ binned by PRE band, land only (pre > real sea).
+            if pre.data[k] > SEA_LEVEL_NORM {
+                if pm >= 1000.0 && pm < 2000.0 {
+                    d_1020_sum += d;
+                    d_1020_n += 1;
+                    if post.data[k] > SEA_LEVEL_NORM && qm < 500.0 {
+                        migrated += 1;
+                    }
+                } else if pm < 500.0 {
+                    d_0500_sum += d;
+                    d_0500_n += 1;
+                }
+            }
+        }
+        let to_km3 = 1e-3; // km²·m → km³
+        let dep_land_pct =
+            if deposited > 0.0 { 100.0 * dep_land / deposited } else { 0.0 };
+        writeln!(
+            massf,
+            "{seed},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{}",
+            eroded * to_km3,
+            deposited * to_km3,
+            dep_land * to_km3,
+            dep_sea * to_km3,
+            dep_land_pct,
+            if d_1020_n > 0 { d_1020_sum / d_1020_n as f64 } else { 0.0 },
+            if d_0500_n > 0 { d_0500_sum / d_0500_n as f64 } else { 0.0 },
+            migrated,
+        )
+        .unwrap();
+        eprintln!(
+            "    mass: eroded {:.0} km³, deposited {:.0} km³ ({:.0}% on real land, {:.0}% below real sea)",
+            eroded * to_km3,
+            deposited * to_km3,
+            dep_land_pct,
+            100.0 - dep_land_pct,
+        );
+        eprintln!(
+            "    Δalt by start band (land): from 1000-2000m mean {:+.0} m | from 0-500m mean {:+.0} m | cells 1000-2000m→<500m: {migrated}",
+            if d_1020_n > 0 { d_1020_sum / d_1020_n as f64 } else { 0.0 },
+            if d_0500_n > 0 { d_0500_sum / d_0500_n as f64 } else { 0.0 },
+        );
+    }
+
+    // (3) leverage test — does MORE erosion create MORE low plain?
+    let pre_b = build_pre(BOOST_SEED);
+    let base = c165_eroded(BOOST_SEED, &iso);
+    let boosted = build_boosted(BOOST_SEED, BOOST_FACTOR);
+    for (stage, h) in [("pre", &pre_b), ("post_1x", &base), ("post_3x", &boosted)] {
+        let (cnt, n) = bands(h);
+        for b in 0..6 {
+            let frac = if n > 0 { cnt[b] as f64 / n as f64 } else { 0.0 };
+            writeln!(prepost, "LEVERAGE_{seed},{stage},{},{},{:.5}", band_label[b], cnt[b], frac, seed = BOOST_SEED).unwrap();
+        }
+    }
+    eprintln!(
+        "  LEVERAGE (seed {BOOST_SEED}, ×{BOOST_FACTOR} droplets): frac<500m  pre {:.1}% → post_1x {:.1}% → post_3x {:.1}%",
+        100.0 * frac_lt(&pre_b, 500.0),
+        100.0 * frac_lt(&base, 500.0),
+        100.0 * frac_lt(&boosted, 500.0),
+    );
+    eprintln!(
+        "    → if post_3x >> post_1x toward ~52%, EROSION is the lever (cause 2); if it barely moves, floor is BORN high (cause 1: isostasy)."
+    );
+
+    // (4) sea-threshold note — rule cause 3 in/out.
+    let (pre0, _) = bands(&pre_b);
+    let (post0, post0n) = {
+        let h = c165_eroded(BOOST_SEED, &iso);
+        bands(&h)
+    };
+    eprintln!(
+        "  SEA THRESHOLD: real sea = {SEA_LEVEL_NORM} (n), erosion sea_level = 0.1 (mismatch: droplets deposit only below 0.1, past the real coast + shelf [0.1,0.5]). \
+         land 0-250m: pre {:.1}% → post {:.1}% of land — a thin sliver just-above-sea would point at the threshold (cause 3); a fat 1000-2000m bulge points at relief.",
+        100.0 * pct(pre0[0], pre0.iter().sum::<u64>()),
+        100.0 * pct(post0[0], post0n),
+    );
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  CSV: floor_prepost_bands.csv (pre/post/leverage band fractions), floor_mass_balance.csv (eroded/deposited volumes, Δ by start band).");
+}
+
+/// Fraction helper (count / total, 0 when empty).
+fn pct(count: u64, total: u64) -> f64 {
+    if total > 0 { count as f64 / total as f64 } else { 0.0 }
+}
