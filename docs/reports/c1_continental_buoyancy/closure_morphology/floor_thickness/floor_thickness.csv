@@ -1,0 +1,5 @@
+seed,rifting,set,n,s_mean,s_std,s_cv,s_min,s_max,alt_mean_m,alt_median_m,frac_alt_lt500,frac_s_baseline
+42,on,cont_noncraton,574,0.4124,0.2853,0.6918,0.007,1.608,410,159,0.6951,0.0314
+42,off,cont_noncraton,574,0.4182,0.2818,0.6740,,,,,0.6951,
+1337,on,cont_noncraton,1158,0.4883,0.3417,0.6999,0.000,1.857,756,439,0.5207,0.0570
+1337,off,cont_noncraton,1158,0.4938,0.3379,0.6842,,,,,0.5138,
