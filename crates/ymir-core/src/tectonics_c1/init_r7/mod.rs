@@ -79,7 +79,7 @@ use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
 use super::boundary_classification::classify_boundaries;
 use super::init::build_phase_1_1_cratonic_mask;
 use super::kinematics::PlateKinematics;
-use super::state::C1State;
+use super::state::{BoolField, C1State};
 
 /// Bundle of all Phase 2 R7 init tunables.
 ///
@@ -127,6 +127,21 @@ pub struct Phase2InitParams {
     /// eons), NOT a knob (params stay anchored: 1.25 = crustal ratio,
     /// craton_resist mid-band). Worn-shield height = documented follow-up.
     pub craton_thickness_ratio: f64,
+    /// #165 bimodal shield/platform — fraction of the CRATONIC AREA rendered as
+    /// exposed HIGH SHIELD; the rest becomes LOW PLATFORM. The cratonic mask sets
+    /// the AREA (old Precambrian lithosphere, ~50-70 % of continents — realistic),
+    /// but the model rendered ALL of it as high shield, whereas Earth's exposed
+    /// shield is only ~10-20 % of cratonic area; the rest (~80-90 %) is sediment-
+    /// covered LOW platform (measured: high cratons were 58 % of emergent land at
+    /// median 1814 m → the bulk of the missing-low-plain deficit, and lowering
+    /// them uniformly hit a sea-level-percentile coupling — see
+    /// `floor_thickness/VERDICT_fraction.md`). `Some(f)` keeps only ~`f` of the
+    /// cratonic cells as shield (the high thick+resistant+dense treatment); the
+    /// platform cells drop OUT of the mask and become normal low continental crust
+    /// (already Earth-like). `None` → all cratonic cells are shield (byte-identical
+    /// to pre-#165). Anchored on the exposed-shield fraction (~0.15), NOT tuned to
+    /// a hypsometry target.
+    pub craton_shield_fraction: Option<f64>,
 }
 
 impl Default for Phase2InitParams {
@@ -136,6 +151,15 @@ impl Default for Phase2InitParams {
             cluster: ContinentalClusterParams::default(),
             age: AgeInitParams::default(),
             craton_thickness_ratio: 1.25,
+            // #165 bimodal shield/platform — ~15 % of the cratonic AREA stays
+            // exposed HIGH shield, the rest becomes LOW platform (normal crust).
+            // Anchored on Earth's exposed-shield share (~10-20 % of cratonic
+            // area); VERIFIED via probe_craton_bimodal: lifts ALL-land<500m from
+            // ~25 % to ~45 % (seed 42) with the platform/non-craton floor stable
+            // (the sea-level-percentile coupling dissolved). None → all-shield
+            // (byte-identical to pre-#165). Pairs with `craton_thickness_ratio`
+            // (the high shields stay thick) + isostasy `craton_rho_crust`.
+            craton_shield_fraction: Some(0.15),
         }
     }
 }
@@ -198,6 +222,70 @@ impl Default for Phase2InitParams {
 /// - **Boundary evolution** (Track C): the post-init kinematics
 ///   are static (Phase 1.1 contract). Track C will introduce
 ///   dynamic boundary updates.
+/// #165 bimodal shield/platform — keep ~`fraction` of the cratonic cells as
+/// exposed SHIELD (returned `true`); the rest become platform (`false`, dropped
+/// from the high treatment). Selection is a deterministic, spatially COHERENT
+/// value-noise mosaic (a coarse seeded lattice, bilinearly interpolated) so the
+/// shields form contiguous patches (not salt-and-pepper) and the proportion is
+/// hit by thresholding at the `fraction` upper quantile over the cratonic cells
+/// — exact-ish regardless of seed / cratonic area. Distinct sub-seed so the
+/// mosaic does not correlate with the tectonic / R7 channels.
+fn select_shield_mask(
+    craton: &BoolField,
+    nx: usize,
+    ny: usize,
+    seed: u64,
+    fraction: f64,
+) -> BoolField {
+    use rand::{Rng, SeedableRng};
+    use rand_chacha::ChaCha8Rng;
+
+    let frac = fraction.clamp(0.0, 1.0);
+    // Coarse value-noise lattice (~1 node / 8 cells) → smooth coherent field.
+    let lat = (nx / 8).max(2);
+    let laty = (ny / 8).max(2);
+    let mut rng = ChaCha8Rng::seed_from_u64(seed ^ 0x5165_B1_0DA1_C0DE);
+    let nodes: Vec<f32> = (0..(lat + 1) * (laty + 1)).map(|_| rng.random::<f32>()).collect();
+    let sample = |i: usize, j: usize| -> f32 {
+        let gx = i as f32 * lat as f32 / nx as f32;
+        let gy = j as f32 * laty as f32 / ny as f32;
+        let x0 = gx.floor() as usize;
+        let y0 = gy.floor() as usize;
+        let tx = gx - x0 as f32;
+        let ty = gy - y0 as f32;
+        let at = |a: usize, b: usize| nodes[b * (lat + 1) + a];
+        let v0 = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx;
+        let v1 = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
+        v0 + (v1 - v0) * ty
+    };
+
+    // Threshold = the (1 − frac) quantile of the noise over the cratonic cells.
+    let mut vals: Vec<f32> = Vec::new();
+    for j in 0..ny {
+        for i in 0..nx {
+            if craton.get(i, j) {
+                vals.push(sample(i, j));
+            }
+        }
+    }
+    if vals.is_empty() {
+        return BoolField::filled(nx, ny, false);
+    }
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let k = (((1.0 - frac) * vals.len() as f64).floor() as usize).min(vals.len() - 1);
+    let threshold = vals[k];
+
+    let mut shield = BoolField::filled(nx, ny, false);
+    for j in 0..ny {
+        for i in 0..nx {
+            if craton.get(i, j) && sample(i, j) >= threshold {
+                shield.set(i, j, true);
+            }
+        }
+    }
+    shield
+}
+
 pub fn init_c1_state_phase_2_r7(
     grid_size: usize,
     seed: u64,
@@ -277,9 +365,20 @@ pub fn init_c1_state_phase_2_r7(
     );
 
     // Step 10 — cratonic mask (Phase 1.1 rule, reused via the
-    // pub(crate)-promoted helper).
+    // pub(crate)-promoted helper). This is the cratonic AREA.
     let cratonic_mask =
         build_phase_1_1_cratonic_mask(nx, ny, &plate_id, &plate_type, &seed_coords);
+
+    // Step 10.5 (#165 bimodal) — narrow the cratonic AREA to the exposed SHIELD.
+    // Only ~`craton_shield_fraction` of cratonic cells stay high (they keep the
+    // thick+resist+dense treatment below + downstream); the rest become low
+    // PLATFORM, dropping out of the mask → normal low continental crust. `None`
+    // → all cratonic cells stay shield (byte-identical to pre-#165). See the
+    // `craton_shield_fraction` docstring.
+    let cratonic_mask = match params.craton_shield_fraction {
+        Some(f) => select_shield_mask(&cratonic_mask, nx, ny, seed, f),
+        None => cratonic_mask,
+    };
 
     // Step 11 (#155 A′) — cratonic crustal-thickness differential. Thick
     // cratonic crust (Airy isostasy → elevated worn shields). Multiply the

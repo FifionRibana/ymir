@@ -6284,3 +6284,119 @@ fn probe_craton_fraction() {
          cratons / bimodal low platform), not craton altitude alone. Non-craton already Earth-like."
     );
 }
+
+/// #165 BIMODAL calibration — sweep `Phase2InitParams::craton_shield_fraction` and
+/// verify the shield/platform split lands the hypsometry (ALL<500 → ~42 %),
+/// dissolves the sea-level coupling (non-craton stable), and hits anchored
+/// proportions (~10-20 % shield of cratonic area). `None` = all-shield (current).
+///
+/// Each fraction rebuilds the tectonic state (the thickness boost applies to the
+/// narrowed shield mask, so the S̃ evolution differs). 64² tectonic, fast.
+///
+/// DIAGNOSTIC. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_craton_bimodal -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_craton_bimodal() {
+    use ymir_core::tectonics_c1::production_upscale::c1_production_altitude_craton;
+
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let depth_scale = ss.depth_scale_m as f32;
+    let median = |v: &mut Vec<f32>| -> f32 {
+        if v.is_empty() {
+            return 0.0;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() - 1) / 2]
+    };
+    let f500 = |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+
+    // Build the state for a given shield fraction (rebuilds tectonics — the
+    // thickness boost applies to the narrowed shield mask).
+    let build = |seed: u64, shield: Option<f64>| -> C1State {
+        let mut initp = Phase2InitParams::default();
+        initp.craton_shield_fraction = shield;
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: N_STEPS,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &initp);
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        run_with_closures(&mut state, &mut kin, &run, &C1Closures::default(), |_, _| {});
+        state
+    };
+
+    eprintln!(
+        "#165 bimodal calibration — craton_shield_fraction sweep. None = all cratonic is HIGH \
+         shield (current). Some(f) = ~f of cratonic cells stay shield, rest become LOW platform. \
+         Target: ALL<500 → ~42 %, non-craton STABLE (coupling dissolved), shield ~10-20 % of area."
+    );
+
+    for &seed in &[42u64, 1988] {
+        // The full cratonic AREA = the None build's mask (all cratonic flagged).
+        let area_state = build(seed, None);
+        let area: u64 = area_state.cratonic_mask.data().iter().filter(|&&c| c).count() as u64;
+        let cont: u64 = area_state
+            .plate_type
+            .data()
+            .iter()
+            .filter(|t| matches!(t, PlateType::Continental))
+            .count() as u64;
+        eprintln!(
+            "\n  seed {seed}: continental {cont}, cratonic AREA {area} ({:.0}% of continental)",
+            100.0 * area as f64 / cont.max(1) as f64
+        );
+        eprintln!("  shield_frac | shield cells | ALL land<500 | SHIELD med | platform+nc med | platform+nc<500");
+
+        for shield in [None, Some(0.30f64), Some(0.20), Some(0.15), Some(0.10)] {
+            let state = build(seed, shield);
+            let n = state.nx() * state.ny();
+            let coarse = c1_production_altitude_craton(
+                &state.s, &state.age, &state.plate_type, state.cratonic_mask.data(), &iso, &ss,
+            );
+            let mask = state.cratonic_mask.data(); // = shield when Some, full area when None
+            let (mut em_all, mut em_sh, mut em_lo): (Vec<f32>, Vec<f32>, Vec<f32>) =
+                (Vec::new(), Vec::new(), Vec::new());
+            let mut shield_cells = 0u64;
+            for k in 0..n {
+                if !matches!(state.plate_type.data()[k], PlateType::Continental) {
+                    continue;
+                }
+                if mask[k] {
+                    shield_cells += 1;
+                }
+                let m = coarse.data[k] * depth_scale;
+                if m <= 0.0 {
+                    continue;
+                }
+                em_all.push(m);
+                if mask[k] {
+                    em_sh.push(m);
+                } else {
+                    em_lo.push(m); // platform + non-craton (both low continental)
+                }
+            }
+            let label = match shield {
+                None => "None (all high)".to_string(),
+                Some(f) => format!("{f:.2}"),
+            };
+            eprintln!(
+                "  {label:<11} | {shield_cells:>12} | {:>11.0}% | {:>9.0}m | {:>14.0}m | {:>14.0}%",
+                f500(&em_all),
+                median(&mut em_sh.clone()),
+                median(&mut em_lo.clone()),
+                f500(&em_lo),
+            );
+        }
+    }
+    eprintln!(
+        "\n  → pick the lowest-bound shield_frac (anchored ~0.10-0.20 = real exposed-shield share) \
+         where ALL<500 ≈ 42 % AND the low (platform+non-craton) median stays ~430 m (coupling \
+         dissolved). That fraction is the c1 production value."
+    );
+}
