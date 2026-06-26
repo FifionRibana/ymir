@@ -6499,3 +6499,129 @@ fn probe_latitude_slider() {
          (jungle / desert / temperate / boreal-tundra) or uniform? Verdict = what's wired vs the gap."
     );
 }
+
+/// #SUBMARINE — what's UNDER the sea today? All relief work was on EMERGENT land;
+/// the ocean floor is whatever the generation produces by default. "Oceans are
+/// flat" is an impression, not a measurement — this measures the existing
+/// submarine relief BEFORE scoping what to generate.
+///
+/// Per the 6 seeds (shared cached terrain), over the cells BELOW sea level
+/// (`n <= SEA_LEVEL_NORM`), metres via the vertical contract `c1_altitude_norm_to_metres`
+/// (ocean = norm [0, 0.5] → [−5650, 0] m): (1) the OCEANIC hypsometry (depth bands
+/// shelf/slope/abyss/trench) — is the scale USED (deep abyssal plains to
+/// −4000/−5000) or are floors a shallow slab just under 0? (2) STRUCTURE — flat
+/// vs varied (std); shelf present? (3) the coast→offshore profile (mean depth by
+/// distance-to-coast: shelf → slope → abyss, or a cliff, or flat).
+///
+/// Earth anchor: ocean is BIMODAL — narrow shelf (~0-200 m, ~7 % of ocean near
+/// coasts) then a steep slope to vast abyssal plains (~−3500/−5000 m, the bulk);
+/// mean ocean depth ≈ −3700 m.
+///
+/// DIAGNOSTIC ONLY. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_submarine_relief -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_submarine_relief() {
+    use ymir_core::climate::precipitation::SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let seeds: [u64; 6] = [42, 99, 1337, 4138, 1988, 2026];
+
+    // Depth bands (metres BELOW sea, positive depth), lower edges.
+    let edges = [0.0f32, 200.0, 1000.0, 3000.0, 5000.0];
+    let band_label = ["0-200 shelf", "200-1000 slope", "1000-3000", "3000-5000 abyss", "5000+ trench"];
+    let band_of = |d: f32| -> usize {
+        let mut b = 0;
+        for (k, &e) in edges.iter().enumerate() {
+            if d >= e {
+                b = k;
+            }
+        }
+        b
+    };
+    // Coast→offshore distance bands (km).
+    let dist_edges_km = [0.0f32, 25.0, 100.0, 300.0];
+    let dist_label = ["0-25", "25-100", "100-300", "300+"];
+
+    eprintln!(
+        "#SUBMARINE relief — 2048² HD, 6 seeds. depth via c1_altitude_norm_to_metres (sea=0.5, \
+         floor −5650 m). Earth: bimodal — shelf ~0-200 m (~7%) then abyss ~−3500/−5000 m (bulk), \
+         mean ≈ −3700 m."
+    );
+
+    let mut agg = [0u64; 5];
+    let mut agg_n = 0u64;
+    for &seed in &seeds {
+        let h = c165_eroded(seed, &iso);
+        let (w, ht) = (h.width, h.height);
+        let km_cell = c1_km_per_cell(w);
+        let ocean: Vec<bool> = h.data.iter().map(|&n| n <= SEA_LEVEL_NORM).collect();
+        let dist = dist_to_coast(&ocean, w);
+
+        let mut cnt = [0u64; 5];
+        let mut depths: Vec<f32> = Vec::new();
+        let mut deepest = 0.0f32;
+        // mean depth by distance band.
+        let mut dsum = [0.0f64; 4];
+        let mut dn = [0u64; 4];
+        for k in 0..w * ht {
+            if !ocean[k] {
+                continue;
+            }
+            let depth = -c1_altitude_norm_to_metres(h.data[k], &ss); // positive metres down
+            cnt[band_of(depth)] += 1;
+            depths.push(depth);
+            deepest = deepest.max(depth);
+            let dkm = dist[k] as f32 * km_cell;
+            let mut db = 0;
+            for (b, &e) in dist_edges_km.iter().enumerate() {
+                if dkm >= e {
+                    db = b;
+                }
+            }
+            dsum[db] += depth as f64;
+            dn[db] += 1;
+        }
+        let n: u64 = cnt.iter().sum();
+        for b in 0..5 {
+            agg[b] += cnt[b];
+        }
+        agg_n += n;
+        depths.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let median = if n > 0 { depths[(n as usize - 1) / 2] } else { 0.0 };
+        let mean = if n > 0 { depths.iter().map(|&x| x as f64).sum::<f64>() / n as f64 } else { 0.0 };
+        let std = if n > 0 {
+            (depths.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / n as f64).sqrt()
+        } else {
+            0.0
+        };
+        let ocean_frac = 100.0 * n as f64 / (w * ht) as f64;
+
+        eprintln!(
+            "\n  seed {seed}: ocean {ocean_frac:.0}% of map | depth mean {mean:.0} m, median {median:.0} m, \
+             deepest {deepest:.0} m, std {std:.0} m"
+        );
+        let bands: Vec<String> = (0..5)
+            .map(|b| format!("{} {:.0}%", band_label[b], 100.0 * cnt[b] as f64 / n.max(1) as f64))
+            .collect();
+        eprintln!("    depth bands: {}", bands.join(" | "));
+        let prof: Vec<String> = (0..4)
+            .map(|b| {
+                format!("{}km {:.0}m", dist_label[b], if dn[b] > 0 { dsum[b] / dn[b] as f64 } else { 0.0 })
+            })
+            .collect();
+        eprintln!("    coast→offshore mean depth: {}", prof.join("  "));
+    }
+
+    eprintln!("\n  AGGREGATE depth bands (6 seeds):");
+    for b in 0..5 {
+        eprintln!("    {} : {:.1}%", band_label[b], 100.0 * agg[b] as f64 / agg_n.max(1) as f64);
+    }
+    eprintln!(
+        "  → (1) scale USED (abyss to −4000/−5000) or shallow slab? (2) flat (low std) or varied? \
+         (3) coast→offshore: does depth deepen with distance (shelf→slope→abyss) or jump/stay flat? \
+         Verdict = generate all / enrich a base / fix the shape; what's missing (shelf/slope/abyss/ridge/trench)."
+    );
+}
