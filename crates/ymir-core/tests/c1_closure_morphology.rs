@@ -6400,3 +6400,102 @@ fn probe_craton_bimodal() {
          dissolved). That fraction is the c1 production value."
     );
 }
+
+/// #165 LATITUDE SLIDER — is the latitude_deg slider EXPRESSIVE? Each belt should
+/// read as its signature climate: 0° ITCZ (jungle), ~30° subsidence (desert),
+/// ~45° westerlies (temperate, the shipped default), ~60° polar front (humid),
+/// ~75-90° (cold dry). Measures what's WIRED vs MISSING so only the gap is coded.
+///
+/// Generates the climate (T, P, biomes) on ONE seed at 0/15/30/45/60/75°. The
+/// cache shares the eroded terrain across latitudes (latitude changes only the
+/// DERIVED climate, not the relief), so this is fast. Per latitude reports:
+/// (1) wind direction `wind_zonal_dir` (trade easterly / westerly / polar); (2)
+/// the zonal base `belt_factor` + the actual land precip distribution (mm/yr) —
+/// does it follow the real zonal profile (wet ITCZ / dry subtropics / etc.) or
+/// is it flat; (3) the land biome histogram — distinct signatures or uniform.
+///
+/// DIAGNOSTIC ONLY. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_latitude_slider -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_latitude_slider() {
+    use ymir_core::climate::biomes::Biome;
+    use ymir_core::climate::precipitation::{
+        belt_factor, precip_mm_per_year, wind_zonal_dir, PrecipParams,
+    };
+    use ymir_core::climate::temperature::sea_level_temperature;
+    use ymir_core::climate::{c1_biomes, c1_climate};
+    use ymir_core::climate::precipitation::SEA_LEVEL_NORM;
+
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let pp = PrecipParams::default();
+    let seed = 42u64;
+    // Shared eroded terrain (cache HIT if a prior #165 probe built this seed).
+    let heightmap = c165_eroded(seed, &iso);
+    let h = &heightmap;
+    let land: Vec<usize> = (0..h.data.len()).filter(|&k| h.data[k] > SEA_LEVEL_NORM).collect();
+
+    let pct = |v: &mut Vec<f32>, q: f32| -> f32 {
+        if v.is_empty() {
+            return 0.0;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[((q * (v.len() - 1) as f32).round() as usize).min(v.len() - 1)]
+    };
+
+    let order = [
+        Biome::TropicalRainforest, Biome::TropicalSeasonalForest, Biome::Savanna, Biome::Desert,
+        Biome::TemperateGrassland, Biome::TemperateForest, Biome::TemperateRainforest,
+        Biome::BorealForest, Biome::Tundra,
+    ];
+
+    eprintln!(
+        "#165 latitude slider — seed {seed}, shared terrain across latitudes. wind: trade=E→W \
+         (<30°), westerly=W→E (30-60°), polar=E→W (≥60°). Real zonal precip anchor: ITCZ ~0° \
+         very wet, subtropics ~30° desert (<250), westerlies ~45-60° moderate, poles dry."
+    );
+    eprintln!("  lat | wind | belt | T_sea | land T med | precip mm/yr (p10/med/p90) | dominant biomes");
+
+    for &lat in &[0.0f32, 15.0, 30.0, 45.0, 60.0, 75.0] {
+        let clim = c1_climate(h, &ss, lat, &pp);
+        let biomes = c1_biomes(h, &clim);
+        let mut temps: Vec<f32> = land.iter().map(|&k| clim.temperature.data[k]).collect();
+        let mut precip: Vec<f32> =
+            land.iter().map(|&k| precip_mm_per_year(clim.precipitation.data[k])).collect();
+        let n = land.len().max(1);
+        let mut cnt = std::collections::HashMap::new();
+        for &k in &land {
+            *cnt.entry(biomes[k]).or_insert(0u64) += 1;
+        }
+        let wind = match wind_zonal_dir(lat) {
+            d if d > 0 => "W→E west",
+            _ => "E→W east",
+        };
+        let t_med = pct(&mut temps, 0.5);
+        let (p10, pmed, p90) = (pct(&mut precip, 0.1), pct(&mut precip, 0.5), pct(&mut precip, 0.9));
+        let hist: Vec<String> = order
+            .iter()
+            .filter_map(|b| {
+                let c = *cnt.get(b).unwrap_or(&0);
+                let f = 100.0 * c as f64 / n as f64;
+                if f >= 8.0 {
+                    Some(format!("{} {:.0}%", b.name(), f))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        eprintln!(
+            "  {lat:>3.0}° | {wind} | {:.2} | {:>5.1}°C | {t_med:>6.1}°C | {p10:>5.0}/{pmed:>5.0}/{p90:>5.0} | {}",
+            belt_factor(lat),
+            sea_level_temperature(lat),
+            hist.join("  "),
+        );
+    }
+    eprintln!(
+        "\n  → (1) wind flips by belt? (2) precip MEDIAN follows the zonal profile (ITCZ high, \
+         ~30° desert <250, midlat moderate, poles dry) or flat? (3) biomes distinct per latitude \
+         (jungle / desert / temperate / boreal-tundra) or uniform? Verdict = what's wired vs the gap."
+    );
+}
