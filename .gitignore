@@ -48,3 +48,5 @@ Thumbs.db
  
 # Environment
 .env
+# Generation step cache (internal, disposable, content-addressed)
+.ymir_cache/

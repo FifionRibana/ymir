@@ -76,6 +76,7 @@
 //! is `1.6e-14` (machine precision, well below the threshold).
 
 pub mod boundary_classification;
+pub mod cached_product;
 pub mod closures;
 pub mod distance_field;
 pub mod drainage;
