@@ -92,6 +92,33 @@ pub struct PrecipParams {
     /// desert floor). A SEPARATE synoptic source (moisture from elsewhere in the
     /// belt) → additive, NOT part of the orographic conservation budget.
     pub k_frontal: f32,
+    /// #165 — Hadley SUBTROPICAL SUBSIDENCE dryness. The descending branch of the
+    /// Hadley cell (~20-30°) suppresses frontal precipitation → the world's great
+    /// deserts (Sahara, Arabia, Atacama, Kalahari, Australia). Multiplies the
+    /// frontal base by `1 − subtropical_subsidence · gaussian(|lat|−28°)` (see
+    /// [`subtropical_suppression`]) — a LOCAL dip on the subtropical high that
+    /// deepens the zonal minimum `belt_factor` alone left too shallow (the
+    /// diagnostic measured 30° interior ~279 mm = steppe, above the 250 mm desert
+    /// line). Anchored on the observed subtropical/mid-latitude precip ratio
+    /// (subsidence removes ~half the frontal base), not eyeballed to a target.
+    /// `0.0` → off (byte-identical to pre-fix). Leaves the ITCZ, savanna, and
+    /// temperate belts intact (the gaussian is narrow, centred on ~28°).
+    #[serde(default)]
+    pub subtropical_subsidence: f32,
+}
+
+/// #165 — frontal-base multiplier from Hadley subtropical subsidence. Returns a
+/// value in `(0, 1]`: ~`1 − amplitude` at the subtropical high (~28°, the Hadley
+/// descending branch), rising back to `1` away from it. LOCAL by construction (a
+/// narrow gaussian) — the equatorial ITCZ, the ~15° savanna, and the ~45-60°
+/// temperate/westerly belts are essentially untouched. `amplitude = 0` → `1.0`
+/// everywhere (no-op). Anchored: the centre 28° and width 8° are the subtropical
+/// subsidence belt; the amplitude scales the observed subtropical dryness.
+pub fn subtropical_suppression(lat_deg: f32, amplitude: f32) -> f32 {
+    const CENTER: f32 = 28.0; // subtropical high — Hadley descending branch
+    const WIDTH: f32 = 8.0;
+    let g = (-((lat_deg.abs() - CENTER) / WIDTH).powi(2)).exp();
+    1.0 - amplitude * g
 }
 
 impl Default for PrecipParams {
@@ -123,7 +150,16 @@ impl Default for PrecipParams {
         // (desert line) at 45° → temperate steppe, NOT desert; at ~30° belt_factor
         // drops it to ~150 → desert, correct (the Sahara belt). The mm scale
         // (PRECIP_MM_PER_UNIT) is unchanged; only the frontal strength changes.
-        Self { k_evap: 0.20, k_oro: 0.5, k_frontal: 0.0035 }
+        // #165 subtropical desert — the latitude-slider diagnostic measured the
+        // ~30° interior at ~279 mm (steppe), above the 250 mm desert line: the
+        // `belt_factor` zonal minimum alone was too shallow to render the
+        // subtropical desert belt. `subtropical_subsidence = 0.45` deepens it via
+        // the Hadley descending-branch suppression (see `subtropical_suppression`)
+        // so the 30° interior drops below 250 mm (desert) WHILE leaving 0°/15°/45°+
+        // intact (narrow gaussian on the subtropical high). 0.45 ≈ the observed
+        // subtropical/mid-latitude precip ratio (subsidence removes ~half the
+        // frontal base); 0.0 = off (byte-identical pre-fix).
+        Self { k_evap: 0.20, k_oro: 0.5, k_frontal: 0.0035, subtropical_subsidence: 0.45 }
     }
 }
 
@@ -165,8 +201,12 @@ pub fn compute_precipitation_with_budget(
     let mut exit_out = 0.0f64;
     let mut oro_precip_sum = 0.0f64;
     // FRONTAL / synoptic base (per the domain's belt; ~9° span → one value).
-    let frontal_base =
-        params.k_frontal * belt_factor(lat_deg) * e_sat(super::temperature::sea_level_temperature(lat_deg));
+    // #165 — Hadley subtropical subsidence deepens the zonal minimum so the ~30°
+    // belt reads as desert (the diagnostic gap); 0.0 amplitude → unchanged.
+    let frontal_base = params.k_frontal
+        * belt_factor(lat_deg)
+        * e_sat(super::temperature::sea_level_temperature(lat_deg))
+        * subtropical_suppression(lat_deg, params.subtropical_subsidence);
 
     for j in 0..h {
         // Scan along the wind, upwind → downwind.
@@ -269,5 +309,28 @@ mod tests {
             "moisture not conserved: evap_in={evap_in:.4} oro_precip={oro_sum:.4} exit={exit_out:.4} residual={residual:.2e}"
         );
         assert!(oro_sum > 0.0, "some orographic precipitation expected");
+    }
+
+    /// #165 — the Hadley subtropical subsidence dip is LOCAL: it suppresses the
+    /// frontal base hard at the subtropical high (~28°) but leaves the ITCZ,
+    /// savanna, and temperate/westerly belts essentially untouched. Locks the
+    /// "don't dry the temperate belt" invariant (the 45° production default must
+    /// not move) and the byte-identical off-switch.
+    #[test]
+    fn subtropical_subsidence_is_local() {
+        let a = 0.45;
+        // Strong suppression on the subtropical high (~28°): ~1 − amplitude.
+        assert!((subtropical_suppression(28.0, a) - (1.0 - a)).abs() < 1e-6);
+        assert!(subtropical_suppression(30.0, a) < 0.6, "30° must be strongly dried (desert belt)");
+        // Neighbours essentially untouched (local narrow gaussian).
+        assert!(subtropical_suppression(0.0, a) > 0.999, "ITCZ intact");
+        assert!(subtropical_suppression(15.0, a) > 0.95, "savanna ~intact");
+        assert!(subtropical_suppression(45.0, a) > 0.99, "temperate belt intact");
+        assert!(subtropical_suppression(60.0, a) > 0.999, "polar front intact");
+        // Symmetric in hemisphere and off at amplitude 0 (byte-identical).
+        assert_eq!(subtropical_suppression(-28.0, a), subtropical_suppression(28.0, a));
+        for lat in [0.0, 15.0, 28.0, 45.0, 75.0] {
+            assert_eq!(subtropical_suppression(lat, 0.0), 1.0, "amplitude 0 = no-op");
+        }
     }
 }

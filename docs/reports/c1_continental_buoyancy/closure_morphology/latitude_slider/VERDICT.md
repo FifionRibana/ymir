@@ -58,3 +58,16 @@ précip zonal et biomes changent tous avec la latitude, produisant des signature
 précip : (1) creuser le désert subtropical ~30° (279 → < 250 mm), (2) optionnellement
 enrichir le front polaire ~60° (sinon il reste froid-sec, pas humide). Diagnostic seulement —
 le fix (ajuster `belt_factor` / un terme subsidence / un boost front polaire) suit ce verdict.
+
+## FIX appliqué — gap (1) résolu (subsidence subtropicale de Hadley)
+
+`PrecipParams::subtropical_subsidence = 0.45` (gated, `0.0` = byte-identique) multiplie le
+`frontal_base` par `1 − 0.45·gaussian(|lat|−28°)` (`subtropical_suppression`) — la branche
+descendante de la cellule de Hadley qui assèche les subtropiques (Sahara/Arabie/Atacama).
+**Mesuré (slider, seed 42)** : 30° médiane **279 → 161 mm → désert 67 %** (la signature
+manquante), tandis que les voisines sont **intactes** (0° 2054 mm jungle ; 15° 599→579 mm
+savane ; 45° 448→**446** mm tempéré, −2 mm négligeable ; 60°/75° inchangés). Le slider couvre
+désormais TOUTE la gamme : jungle → savane → **désert** → tempéré → froid-sec → toundra.
+Test unitaire `subtropical_subsidence_is_local` + lib verte (471). **Gap (2) — front polaire
+60° : NON touché** (limite déclarée : le 60° continental est sec légitimement ; un « 60°
+humide » exigerait une closure de storm tracks maritimes, différée/hors-scope).
