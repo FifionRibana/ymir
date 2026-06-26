@@ -125,4 +125,50 @@ mod tests {
         // temperate + very wet → temperate rainforest.
         assert_eq!(classify(10.0, 1800.0), Biome::TemperateRainforest);
     }
+
+    /// #165 — biome↔climate COHERENCE invariant. Locks the manual cross-check
+    /// from the final climate re-validation ("temperate forest must NOT sit on
+    /// dry/cold ground") into an automatic guard. EXHAUSTIVE over the (T, P)
+    /// plane: every cell `classify` calls a temperate FOREST must lie in the
+    /// temperate thermal niche [+5, +20) °C AND be humid enough — anchored on
+    /// the SAME Whittaker thresholds `classify` uses (500 mm forest floor,
+    /// 1500 mm rainforest floor). By contraposition this forbids temperate
+    /// forest on steppe-dry (< 500 mm), on desert (< 250), on taiga-cold
+    /// (< +5 °C), or on warm/tropical (≥ +20 °C). A future change that placed a
+    /// temperate forest off this niche (the false-alarm the re-validation
+    /// caught by eye) breaks this test.
+    #[test]
+    fn temperate_forest_implies_temperate_and_humid() {
+        let mut t = -40.0f32;
+        while t <= 50.0 {
+            let mut p = 0.0f32;
+            while p <= 5000.0 {
+                match classify(t, p) {
+                    Biome::TemperateForest => {
+                        assert!(
+                            (5.0..20.0).contains(&t),
+                            "temperate forest off the thermal niche: t={t} °C (p={p} mm)"
+                        );
+                        assert!(
+                            (500.0..1500.0).contains(&p),
+                            "temperate forest outside its humid band: p={p} mm (t={t} °C)"
+                        );
+                    }
+                    Biome::TemperateRainforest => {
+                        assert!(
+                            (5.0..20.0).contains(&t),
+                            "temperate rainforest off the thermal niche: t={t} °C (p={p} mm)"
+                        );
+                        assert!(
+                            p >= 1500.0,
+                            "temperate rainforest below its humid floor: p={p} mm (t={t} °C)"
+                        );
+                    }
+                    _ => {}
+                }
+                p += 5.0;
+            }
+            t += 0.25;
+        }
+    }
 }
