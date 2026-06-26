@@ -67,3 +67,33 @@ la distance à la côte (le `dist_to_coast` existe), OU vieillir la croûte océ
 que Stein-Stein descende à l'abysse + un terme de plateau sur la marge continentale immergée.
 Diagnostic seulement — le cadrage de ce qu'on génère (et jusqu'où : plateau fonctionnel vs
 abysse cartographique) suit ce verdict.
+
+## FIX appliqué — re-map bathymétrique plateau→talus→abysse (chemin 2)
+
+`FbmUpscaleConfig::bathymetry: Option<BathymetryProfile>` (gated, `None` = byte-identique),
+appliqué dans `upscale_from_c1` APRÈS l'érosion sur les cellules sous-marines uniquement
+([`terrain::bathymetry`]). Re-map chaque cellule océan vers l'enveloppe `dist_to_coast`
+(plateau ~30 km → talus → abysse ~−4500 m), MODULÉE par sa déviation relative existante
+(`env·(1+texture·dev)`) → la texture FBM/Stein-Stein survit (pas d'océan en oignon).
+
+**Mesuré (probe, 6 seeds), avant → après :**
+
+| bande | avant (dalle) | après |
+|---|---|---|
+| 0-200 m plateau | 1.5 % | **11.6 %** |
+| 200-1000 m talus | 3.2 % | 5.5 % |
+| 1000-3000 m | 95.2 % | 6.8 % |
+| 3000-5000 m abysse | 0.1 % | **64.7 %** |
+| 5000+ m | 0.0 % | 11.4 % |
+
+Le plus profond ~3000 → **~5000-5600 m** (échelle utilisée), std ~500 → **~2000 m** (varié),
+distribution **BIMODALE** (plateau + abysse, talus étroit). **Invariants tenus** : fraction
+océan IDENTIQUE avant/après sur les 6 seeds (79/92/77/83/76/73 %) → côte / masque terre-mer /
+hypsométrie terrestre inchangés (le re-map ne touche que sous la mer et garde les cellules
+immergées). Tests unitaires (`envelope_is_monotone`, `remap_keeps_coastline_and_deepens_offshore`)
++ lib verte (471). Cache invalidé par le champ (FbmUpscaleConfig serde), pas de bump ALGO.
+
+**Calibration** : plateau 11.6 % (un peu au-dessus du ~7-8 % Terre — généreux/fonctionnel,
+eaux côtières jouables sur ces cartes régionales à côtes denses ; `shelf_width_km` = le knob
+si on veut plus serré). **Différé** : chemin 1 (spreading tectonique → abysse/dorsales/fosses
+émergents de la physique), fosses/dorsales réelles (ne suivent pas `dist_to_coast`).
