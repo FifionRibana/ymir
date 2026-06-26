@@ -78,6 +78,17 @@ pub struct FbmUpscaleConfig {
     /// ON is [`FbmUpscaleConfig::c1_hd_production`].
     #[serde(default)]
     pub erosion: Option<ErosionConfig>,
+    /// **Submarine bathymetry re-map** (#submarine). When `Some`,
+    /// [`upscale_from_c1`](crate::tectonics_c1::production_upscale::upscale_from_c1)
+    /// re-maps the ocean floor toward the plateau→slope→abyss envelope AFTER the
+    /// FBM + erosion (see [`crate::terrain::bathymetry`]) — gives the missing
+    /// continental shelf + abyssal plain the Stein-Stein slab lacked. Touches
+    /// ONLY sub-sea cells (coastline / land invariant). Default `None` →
+    /// byte-identical (only `upscale_from_c1` reads it; v2's `upscale_with_fbm`
+    /// path is unaffected). The canonical C1 HD product config that turns it ON is
+    /// [`FbmUpscaleConfig::c1_hd_production`].
+    #[serde(default)]
+    pub bathymetry: Option<crate::terrain::bathymetry::BathymetryProfile>,
 }
 
 impl Default for FbmUpscaleConfig {
@@ -99,6 +110,7 @@ impl Default for FbmUpscaleConfig {
             coast_warp_frequency: 0.5,
             coastal_amplitude_band: 0.0,
             erosion: None,
+            bathymetry: None,
         }
     }
 }
@@ -140,6 +152,11 @@ impl FbmUpscaleConfig {
                 // sea_level 0.1 preserved as-judged (see note above).
                 ..Default::default()
             }),
+            // #submarine — re-map the ocean floor to the plateau→slope→abyss
+            // envelope (the diagnostic found a uniform ~−2600 m slab with almost
+            // no shelf and no abyss). Anchored default profile; touches only
+            // sub-sea cells. None on the plain Default keeps v2/byte-identical.
+            bathymetry: Some(crate::terrain::bathymetry::BathymetryProfile::default()),
             ..Default::default()
         }
     }
