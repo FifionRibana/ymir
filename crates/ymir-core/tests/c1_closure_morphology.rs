@@ -68,6 +68,100 @@ fn output_dir() -> PathBuf {
         .join("../../docs/reports/c1_continental_buoyancy/closure_morphology")
 }
 
+/// THE canonical #165 calibration relief, built through the generation CACHE.
+///
+/// Every #165 probe (climate / biomes / hypsometry / verdict-grid) builds its
+/// 2048² HD relief through this ONE helper, so they all produce the IDENTICAL
+/// cache key for a given (seed, iso) and SHARE the cached eroded terrain via the
+/// repo-relative `.ymir_cache/`. The expensive HD erosion (~100 s/seed) is
+/// computed once; every downstream analysis on the same relief is a HIT (~ms).
+/// `iso` is a parameter so the relief fix (lowering the continental floor) flows
+/// into the key → MISS → erosion re-runs on the new relief (invalidation).
+///
+/// Byte-identical to the old direct `init → run_with_closures → upscale_from_c1`
+/// path (the cache only changes speed) — guaranteed by
+/// `cached_product::tests::no_cache_path_is_byte_identical`.
+fn c165_eroded(seed: u64, iso: &IsostasyConfig) -> GridF32 {
+    let run = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: N_STEPS,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso.clone(),
+        drainage_max_distance: 30,
+    };
+    ymir_core::tectonics_c1::cached_product::cached_c1_eroded(
+        &ymir_core::cache::default_cache_dir(),
+        seed,
+        GRID_SIZE,
+        &Phase2InitParams::default(),
+        &run,
+        &C1Closures::default(),
+        &SteinSteinParams::default(),
+        &FbmUpscaleConfig::c1_hd_production(2048),
+    )
+    .expect("cached #165 eroded heightmap")
+}
+
+/// #165 cache GAIN demonstration in the REAL probe path (the `c165_eroded`
+/// helper every #165 probe now calls). MISS builds the relief (~100 s); a 2nd
+/// call on the SAME relief is a HIT (~ms) — this is the climate/biomes/hypsometry
+/// SHARING (compute the erosion once, analyse many times). A relief (iso) change
+/// flips the key → MISS (the fix-relief invalidation, in the probe path).
+#[test]
+#[ignore]
+fn probe_cache_loop_gain() {
+    use std::time::Instant;
+    use ymir_core::cache::default_cache_dir;
+    use ymir_core::tectonics_c1::cached_product::{eroded_key, tectonic_key};
+
+    let iso = IsostasyConfig::c1_default();
+    let seed = 42u64;
+    // Fresh shared cache so the first call is a genuine MISS.
+    let _ = std::fs::remove_dir_all(default_cache_dir());
+
+    let t0 = Instant::now();
+    let h_miss = c165_eroded(seed, &iso); // e.g. the biomes probe builds the relief
+    let miss = t0.elapsed();
+
+    let t1 = Instant::now();
+    let h_hit = c165_eroded(seed, &iso); // e.g. the hypsometry probe, SAME relief
+    let hit = t1.elapsed();
+    assert_eq!(h_miss.data, h_hit.data, "HIT must be byte-identical to MISS");
+
+    // Invalidation: a relief (iso) change flips the eroded digest → MISS (cheap
+    // digest check; the actual recompute is covered by the cached_product tests).
+    let run = |c: &IsostasyConfig| C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: N_STEPS,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: c.clone(),
+        drainage_max_distance: 30,
+    };
+    let ss = SteinSteinParams::default();
+    let up = FbmUpscaleConfig::c1_hd_production(2048);
+    let init = Phase2InitParams::default();
+    let clo = C1Closures::default();
+    let k0 = eroded_key(&tectonic_key(seed, GRID_SIZE, &init, &run(&iso), &clo), &ss, &up);
+    let mut iso2 = iso.clone();
+    iso2.max_elevation_m += 500.0; // the relief-fix surface
+    let k1 = eroded_key(&tectonic_key(seed, GRID_SIZE, &init, &run(&iso2), &clo), &ss, &up);
+    assert_ne!(k0.digest(), k1.digest(), "relief (iso) change must flip the eroded digest → MISS");
+
+    eprintln!(
+        "#165 cache gain — MISS (build relief) {:.1?} | HIT (shared cached terrain) {:.3?} | speedup ×{:.0}",
+        miss,
+        hit,
+        miss.as_secs_f64() / hit.as_secs_f64().max(1e-9)
+    );
+    eprintln!(
+        "  invalidation: iso change {} → {} (different digest ⇒ MISS, erosion re-runs on the new relief)",
+        k0.digest(),
+        k1.digest()
+    );
+}
+
 /// A named LOO ablation: mutate the default (all-ON) closure set.
 struct Ablation {
     tag: &'static str,
@@ -4557,4 +4651,1752 @@ fn probe_orogen_fraction() {
         eprintln!("  seed {seed}: land_cap={land_cap:.3} h_sea={h_sea:.3} h_min global={h_min_g:.3} continental={h_min_c:.3}",);
         eprintln!("    fraction (land_cap-h_sea)/(land_cap-h_min): GLOBAL={frac_g:.3}  CONTINENTAL={frac_c:.3}  (global<continental ⇒ ocean h_min drives the <1)");
     }
+}
+
+/// #165 c1_climate ACCEPTANCE — triple validation on the real C1 product @2048²:
+/// (1) CONSERVATION (the model's law: evap_in = precip + exit, exact); (2)
+/// MAGNITUDE (windward/leeward precip ratio ~3-10×, real ranges); (3) STRUCTURE
+/// (visual: west-facing slopes wet, east dry at 45° westerlies). Default 45°.
+#[test]
+#[ignore]
+fn probe_climate_acceptance() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{compute_precipitation_with_budget, PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+    let dir = output_dir().join("climate"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let lat = 45.0f32; let pp = PrecipParams::default();
+    eprintln!("#165 c1_climate acceptance — 2048², latitude {lat}° (westerlies, W→E)");
+    for &seed in &[1988u64, 2026, 42] {
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, lat, &pp);
+
+        // (1) CONSERVATION
+        let temp = &clim.temperature;
+        let (_p, evap_in, exit_out, oro_sum) = compute_precipitation_with_budget(h, temp, lat, c1_km_per_cell(w), |n| c1_altitude_norm_to_metres(n, &ss), &pp);
+        let psum: f64 = clim.precipitation.data.iter().map(|&v| v as f64).sum();
+        // OROGRAPHIC conservation (the convective baseline is a separate source).
+        let residual = (evap_in - (oro_sum + exit_out)).abs();
+        // (2) MAGNITUDE — windward (W-facing ascending) vs leeward (descending) land precip.
+        let dx_m = c1_km_per_cell(w) * 1000.0;
+        let (mut wp, mut wn, mut lp, mut ln) = (0.0f64, 0u64, 0.0f64, 0u64);
+        for j in 0..ht { for i in 1..w-1 {
+            let k = j*w+i; if h.data[k] <= SEA_LEVEL_NORM { continue; }
+            // along-wind (eastward) slope: cell to its west (i-1).
+            let altw = c1_altitude_norm_to_metres(h.data[k-1], &ss).max(0.0);
+            let alt = c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
+            let asc = (alt - altw)/dx_m; // >0 = ascending eastward = windward (W-facing)
+            let pr = clim.precipitation.data[k] as f64;
+            if asc > 1e-4 { wp += pr; wn += 1; } else if asc < -1e-4 { lp += pr; ln += 1; }
+        }}
+        let (wm, lm) = (wp/wn.max(1) as f64, lp/ln.max(1) as f64);
+        // T stats
+        let tmin = temp.data.iter().cloned().fold(f32::INFINITY, f32::min);
+        let tmax = temp.data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        eprintln!("  seed {seed}: CONSERVE evap={evap_in:.0} = oro_precip {oro_sum:.0} + exit {exit_out:.0} (resid {residual:.2e}) | total precip(incl convective) {psum:.0}");
+        eprintln!("    MAGNITUDE windward mean {wm:.3} / leeward mean {lm:.3} = ratio {:.1}× (want ~3-10×) | T [{tmin:.0}, {tmax:.0}]°C", wm/lm.max(1e-9));
+
+        // (3) STRUCTURE — precip (blue) + temperature (cyan→red) maps, origin-bottom.
+        // Robust scale: clamp at the land-precip P90 + sqrt, so the windward/leeward
+        // GRADIENT is visible (a few steep-coast outliers must not compress it — the
+        // measure-the-structure-not-the-compressed-output lesson).
+        let mut landp: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| clim.precipitation.data[k]).collect();
+        landp.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let p90 = if landp.is_empty() { 1e-6 } else { landp[(landp.len()*90/100).min(landp.len()-1)].max(1e-6) };
+        let mut pb = image::ImageBuffer::new(w as u32, ht as u32);
+        let mut tb = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w { let k=j*w+i;
+            let sea = h.data[k] <= SEA_LEVEL_NORM;
+            // precip map: ocean dark, land tan(dry)→blue(wet), sqrt of precip/P90.
+            let pc = if sea { [20,40,80] } else { let t=(clim.precipitation.data[k]/p90).clamp(0.0,1.0).sqrt(); [ (210.0-180.0*t) as u8, (200.0-120.0*t) as u8, (170.0+85.0*t).min(255.0) as u8 ] };
+            pb.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(pc));
+            // temp map: blue(cold)→red(hot), [-20,30].
+            let tt = ((temp.data[k]+20.0)/50.0).clamp(0.0,1.0); let tc=[ (40.0+200.0*tt) as u8, 60u8, (240.0-200.0*tt) as u8 ];
+            tb.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(if sea {[30,50,90]} else {tc}));
+        }}
+        pb.save(dir.join(format!("seed{seed:05}_precip.png"))).unwrap();
+        tb.save(dir.join(format!("seed{seed:05}_temp.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #165 precip STRUCTURE check (cheap, 512²) — is the W→E rain-shadow gradient
+/// real (just visually subtle vs the uniform convective baseline) or flat?
+/// Per row, split the land run at its midpoint and compare W-half vs E-half mean
+/// precip (at 45° westerlies, W should be wetter). + land precip percentiles.
+#[test]
+#[ignore]
+fn probe_precip_structure() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default();
+    eprintln!("#165 precip structure (512², 45° westerlies W→E)");
+    for &seed in &[1988u64, 2026, 42] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(512));
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, 45.0, &pp);
+        // per-row W-half vs E-half land precip.
+        let (mut wsum, mut wn, mut esum, mut en) = (0.0f64, 0u64, 0.0f64, 0u64);
+        for j in 0..ht {
+            let land: Vec<usize> = (0..w).filter(|&i| h.data[j*w+i] > SEA_LEVEL_NORM).collect();
+            if land.len() < 4 { continue; }
+            let mid = land[land.len()/2];
+            for &i in &land {
+                let p = clim.precipitation.data[j*w+i] as f64;
+                if i < mid { wsum += p; wn += 1; } else { esum += p; en += 1; }
+            }
+        }
+        let (wm, em) = (wsum/wn.max(1) as f64, esum/en.max(1) as f64);
+        // land precip percentiles.
+        let mut lp: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| clim.precipitation.data[k]).collect();
+        lp.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let pct = |q: f32| lp[((q*(lp.len()-1) as f32) as usize).min(lp.len()-1)];
+        eprintln!("  seed {seed}: W-half mean {wm:.4} / E-half mean {em:.4} = {:.2}× (>1 = rain shadow eastward) | land precip p10={:.4} p50={:.4} p90={:.4} max={:.4}",
+            wm/em.max(1e-9), pct(0.1), pct(0.5), pct(0.9), pct(1.0));
+    }
+}
+
+/// #165 climate VISUAL validation — precip in LOG + LINEAR + windward-marked, and
+/// temperature; 2 seeds @2048², 45° westerlies, origin-bottom. Log reveals the
+/// gradient a linear colormap drowns (skewed dist). Reports p50/max + the
+/// floor-fraction (land cells at the convective minimum — suspect if a temperate
+/// continent is mostly desert-floor).
+#[test]
+#[ignore]
+fn probe_climate_maps() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+    let dir = output_dir().join("climate_maps"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default();
+    // hillshade (origin-bottom) for the relief panel.
+    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=55.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*255.0)as u8};
+    for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, 45.0, &pp);
+        let pr = &clim.precipitation.data; let temp = &clim.temperature.data;
+        let dx_m = c1_km_per_cell(w) * 1000.0;
+        // land precip stats.
+        let mut lp: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| pr[k]).collect();
+        lp.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let n = lp.len().max(1);
+        let p50 = lp[n/2]; let pmax = lp[n-1].max(1e-6); let pmin = lp[0].max(1e-6);
+        let floor = lp.iter().filter(|&&v| v < 0.015).count();
+        eprintln!("  seed {seed}: land {n} | precip p50={p50:.4} max={pmax:.4} | floor(<0.015) {:.0}% | log range [{:.2},{:.2}]",
+            100.0*floor as f64/n as f64, pmin.log10(), pmax.log10());
+        // FIXED-reference colormap (NOT field min/max — those are dominated by the
+        // steep-coast windward outliers and squash the uniform temperate base).
+        // Absolute anchors: desert P_DRY → tan, temperate base ~0.036 → moderate,
+        // heavy rain P_WET → blue. Honest across seeds + vs the floor.
+        const P_DRY: f32 = 0.005; const P_WET: f32 = 0.5;
+        let lnmin = P_DRY.ln(); let lnmax = P_WET.ln();
+        let put = |buf:&mut image::RgbImage, i:usize, j:usize, c:[u8;3]| buf.put_pixel(i as u32, (ht-1-j) as u32, image::Rgb(c));
+        let (mut blog, mut blin, mut bslp, mut btmp, mut brel) = (image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32));
+        for j in 0..ht { for i in 0..w { let k=j*w+i;
+            let sea = h.data[k] <= SEA_LEVEL_NORM;
+            let p = pr[k];
+            // LOG
+            let tl = if sea {0.0} else { ((p.max(1e-6).ln()-lnmin)/(lnmax-lnmin)).clamp(0.0,1.0) };
+            put(&mut blog,i,j, if sea {[20,40,80]} else {[ (215.0-185.0*tl) as u8,(205.0-125.0*tl) as u8,(165.0+90.0*tl) as u8 ]});
+            // LINEAR (fixed P_WET clamp, not /max — so the base isn't squashed)
+            let tlin = if sea {0.0} else { (p/P_WET).clamp(0.0,1.0) };
+            put(&mut blin,i,j, if sea {[20,40,80]} else {[ (215.0-185.0*tlin) as u8,(205.0-125.0*tlin) as u8,(165.0+90.0*tlin) as u8 ]});
+            // SLOPES: windward (ascending eastward) tinted by precip-blue, leeward red.
+            let cslp = if sea {[20,40,80]} else {
+                let altw = if i>0 {c1_altitude_norm_to_metres(h.data[k-1],&ss).max(0.0)} else {0.0};
+                let asc = (c1_altitude_norm_to_metres(h.data[k],&ss).max(0.0)-altw)/dx_m;
+                let b = (tl*255.0) as u8;
+                if asc > 1e-4 { [ (60.0-40.0*tl) as u8, (120.0+100.0*tl).min(255.0) as u8, b.max(120) ] } // windward, precip-blue
+                else if asc < -1e-4 { [ 180, (80.0+60.0*tl) as u8, 60 ] } // leeward orange
+                else { [140,140,140] }
+            };
+            put(&mut bslp,i,j,cslp);
+            // TEMP
+            let tt=((temp[k]+20.0)/50.0).clamp(0.0,1.0);
+            put(&mut btmp,i,j, if sea {[30,50,90]} else {[ (40.0+200.0*tt) as u8,60,(240.0-200.0*tt) as u8 ]});
+            // RELIEF (hillshade)
+            let g = if sea {70} else { shade(h,i,j) };
+            put(&mut brel,i,j, if sea {[40,70,120]} else {[g,g,g]});
+        }}
+        brel.save(dir.join(format!("seed{seed:05}_relief.png"))).unwrap();
+        blog.save(dir.join(format!("seed{seed:05}_precip_LOG.png"))).unwrap();
+        blin.save(dir.join(format!("seed{seed:05}_precip_LINEAR.png"))).unwrap();
+        bslp.save(dir.join(format!("seed{seed:05}_precip_SLOPES.png"))).unwrap();
+        btmp.save(dir.join(format!("seed{seed:05}_temp.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #165 climate CONTROL survey — find a NORMAL-relief continent (passive/low
+/// WINDWARD (west) margin, interior open to the westerly ocean) to disambiguate
+/// dry-interior cause: climatic (no frontal base) vs local (cordillera
+/// encirclement). Identify by RELIEF (west-margin height), not climate. 1024².
+#[test]
+#[ignore]
+fn probe_climate_control_survey() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    let dir = output_dir().join("climate_control"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default();
+    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=55.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*255.0)as u8};
+    eprintln!("#165 climate control survey (1024², 45° westerlies; windward=WEST). margin = mean altitude(m) of the 6 westmost/eastmost land cells per row.");
+    for &seed in &[1337u64, 4138, 42, 99] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(1024));
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let alt = |k:usize| c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
+        // west/east margin relief: per row, the 6 westmost & 6 eastmost land cells.
+        let (mut wsum,mut wn,mut esum,mut en)=(0.0f64,0u64,0.0f64,0u64);
+        for j in 0..ht {
+            let land:Vec<usize>=(0..w).filter(|&i| h.data[j*w+i]>SEA_LEVEL_NORM).collect();
+            if land.len()<12 {continue;}
+            for &i in land.iter().take(6) { wsum+=alt(j*w+i) as f64; wn+=1; }
+            for &i in land.iter().rev().take(6) { esum+=alt(j*w+i) as f64; en+=1; }
+        }
+        let (wm,em)=(wsum/wn.max(1) as f64, esum/en.max(1) as f64);
+        let clim = c1_climate(h,&ss,45.0,&pp);
+        let mut lp:Vec<f32>=(0..w*ht).filter(|&k|h.data[k]>SEA_LEVEL_NORM).map(|k|clim.precipitation.data[k]).collect();
+        lp.sort_by(|a,b|a.partial_cmp(b).unwrap()); let nl=lp.len().max(1);
+        let floor=100.0*lp.iter().filter(|&&v|v<0.015).count() as f64/nl as f64;
+        eprintln!("  seed {seed}: WEST margin {wm:.0} m / EAST margin {em:.0} m | floor {floor:.0}% | (low west = passive windward = control candidate)");
+        // renders: hillshade + precip LOG.
+        let mut lpmin=f32::MAX; let mut lpmax=0.0f32; for &v in &lp {lpmin=lpmin.min(v.max(1e-6));lpmax=lpmax.max(v);}
+        let (lnmin,lnmax)=(lpmin.ln(), lpmax.max(1e-6).ln());
+        let mut bh=image::RgbImage::new(w as u32,ht as u32); let mut bp=image::RgbImage::new(w as u32,ht as u32);
+        for j in 0..ht{for i in 0..w{let k=j*w+i; let sea=h.data[k]<=SEA_LEVEL_NORM;
+            let g=if sea{70}else{shade(h,i,j)};
+            bh.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(if sea{[40,70,120]}else{[g,g,g]}));
+            let tl=if sea{0.0}else{((clim.precipitation.data[k].max(1e-6).ln()-lnmin)/(lnmax-lnmin)).clamp(0.0,1.0)};
+            bp.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(if sea{[20,40,80]}else{[(215.0-185.0*tl)as u8,(205.0-125.0*tl)as u8,(165.0+90.0*tl)as u8]}));
+        }}
+        bh.save(dir.join(format!("seed{seed:05}_relief.png"))).unwrap();
+        bp.save(dir.join(format!("seed{seed:05}_precip_log.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #165 orographic DEPLETION diagnostic — settle depletion vs low-interior-relief
+/// by normalizing the orographic surplus by the along-wind ascent. precip_oro =
+/// k_oro·M·ascent → oro/ascent = k_oro·M ∝ the carried moisture flux. Exposes the
+/// orographic field ALONE (k_frontal=0, no uniform base masking it) and bins
+/// oro/ascent by distance-from-windward-coast (reset per landmass, W→E at 45°).
+/// COLLAPSE = depletion (air wrung out); CONSTANT = low relief (not depletion).
+#[test]
+#[ignore]
+fn probe_oro_depletion() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+    let dir = output_dir().join("climate_maps"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    // orographic ONLY: frontal base off (the uniform base masks the depletion profile).
+    let pp = PrecipParams { k_frontal: 0.0, ..PrecipParams::default() };
+    let bins_km = [0.0f32, 10.0, 30.0, 60.0, 120.0, 250.0, f32::INFINITY];
+    eprintln!("#165 orographic depletion — oro/ascent (∝ moisture flux M) by distance-from-windward-coast (km), 1024², 45° W→E");
+    for &seed in &[1988u64, 2026, 42, 99] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(1024));
+        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, 45.0, &pp); // orographic-only
+        let oro = &clim.precipitation.data;
+        let km_cell = c1_km_per_cell(w); let dx_m = km_cell * 1000.0;
+        let alt = |k:usize| c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
+        let mut sum = [0.0f64; 6]; let mut cnt = [0u64; 6];
+        for j in 0..ht {
+            let mut dist_cells = 0u32; let mut in_land = false;
+            for i in 0..w { let k=j*w+i;
+                let land = h.data[k] > SEA_LEVEL_NORM;
+                if land {
+                    if !in_land { dist_cells = 0; in_land = true; } else { dist_cells += 1; }
+                    if i>0 {
+                        let asc = (alt(k) - alt(k-1)) / dx_m; // along +x (wind) ascent, m/m
+                        if asc > 1e-4 {
+                            let r = oro[k] as f64 / asc as f64; // ∝ M
+                            let dkm = dist_cells as f32 * km_cell;
+                            for b in 0..6 { if dkm>=bins_km[b] && dkm<bins_km[b+1] { sum[b]+=r; cnt[b]+=1; break; } }
+                        }
+                    }
+                } else { in_land = false; }
+            }
+        }
+        let means: Vec<f64> = (0..6).map(|b| if cnt[b]>0 {sum[b]/cnt[b] as f64} else {f64::NAN}).collect();
+        let m0 = means[0];
+        // e-folding: first bin whose mean < 0.37*m0.
+        let efold = (0..6).find(|&b| means[b].is_finite() && means[b] < 0.37*m0).map(|b| (bins_km[b]+bins_km[b+1].min(300.0))*0.5);
+        eprintln!("  seed {seed}: oro/ascent by dist[0-10|10-30|30-60|60-120|120-250|250+]km = {:?}",
+            means.iter().map(|v| (v*1000.0).round()/1000.0).collect::<Vec<_>>());
+        eprintln!("    -> {} | e-fold(<37% of coastal) ~{:?} km",
+            if means.iter().take(4).filter(|v|v.is_finite()).count()>=2 && means[3].is_finite() && means[3] < 0.6*m0 {"COLLAPSE = DEPLETION"} else {"~CONSTANT = low-relief (not depletion)"}, efold);
+        if seed == 1988 {
+            // render orographic-only LOG.
+            let mut lp:Vec<f32>=(0..w*ht).filter(|&k|h.data[k]>SEA_LEVEL_NORM).map(|k|oro[k]).collect();
+            lp.sort_by(|a,b|a.partial_cmp(b).unwrap()); let pmax=lp[lp.len()-1].max(1e-6);
+            let (lnmin,lnmax)=(1e-4f32.ln(), pmax.ln());
+            let mut b=image::RgbImage::new(w as u32,ht as u32);
+            for j in 0..ht{for i in 0..w{let k=j*w+i;let sea=h.data[k]<=SEA_LEVEL_NORM;
+                let tl=if sea{0.0}else{((oro[k].max(1e-4).ln()-lnmin)/(lnmax-lnmin)).clamp(0.0,1.0)};
+                b.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(if sea{[20,40,80]}else{[(215.0-185.0*tl)as u8,(205.0-125.0*tl)as u8,(165.0+90.0*tl)as u8]}));
+            }}
+            b.save(dir.join("seed01988_precip_OROGRAPHIC_ONLY.png")).unwrap();
+        }
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #165 BIOMES + mm/yr legend — the judgement instruments. Per seed (2048²,
+/// 45°): c1_climate → c1_biomes; renders the categorical BIOME map, precip
+/// BANDED by mm/yr (desert/steppe/temperate/oceanic/wet — legend baked into the
+/// colormap), temp banded by °C; + prints the biome HISTOGRAM (% per biome —
+/// directly judgeable: steppe vs desert interior, etc.). Origin-bottom.
+#[test]
+#[ignore]
+fn probe_climate_biomes() {
+    use ymir_core::climate::{c1_climate, c1_biomes};
+    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year, SEA_LEVEL_NORM};
+    use ymir_core::climate::biomes::Biome;
+    let dir = output_dir().join("climate_maps"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default();
+    // mm/yr bands (legend baked in): desert / steppe / temperate-dry / oceanic / wet.
+    let precip_band = |mm: f32| -> [u8;3] {
+        if mm < 250.0 {[225,200,140]} else if mm < 500.0 {[200,195,110]} else if mm < 800.0 {[150,180,90]}
+        else if mm < 1500.0 {[80,150,200]} else {[30,90,200]}
+    };
+    let temp_band = |t: f32| -> [u8;3] {
+        if t < -10.0 {[230,235,245]} else if t < 0.0 {[150,180,230]} else if t < 10.0 {[120,190,120]}
+        else if t < 20.0 {[220,210,120]} else {[220,110,70]}
+    };
+    eprintln!("#165 biomes + mm/yr (2048², 45° westerlies). precip bands: desert<250 steppe250-500 tempDry500-800 oceanic800-1500 wet>1500 mm/yr");
+    for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, 45.0, &pp);
+        let biomes = c1_biomes(h, &clim);
+        // biome histogram over LAND.
+        let order = [Biome::Tundra, Biome::BorealForest, Biome::TemperateGrassland, Biome::TemperateForest, Biome::TemperateRainforest, Biome::Desert, Biome::Savanna, Biome::TropicalSeasonalForest, Biome::TropicalRainforest];
+        let mut land = 0u64; let mut cnt = std::collections::HashMap::new();
+        for &b in &biomes { if b != Biome::Ocean { land += 1; *cnt.entry(b).or_insert(0u64) += 1; } }
+        let hist: Vec<String> = order.iter().filter_map(|b| { let c=*cnt.get(b).unwrap_or(&0); if c>0 {Some(format!("{} {:.0}%", b.name(), 100.0*c as f64/land.max(1) as f64))} else {None} }).collect();
+        eprintln!("  seed {seed}: {}", hist.join(" | "));
+        // renders.
+        let put=|buf:&mut image::RgbImage,i:usize,j:usize,c:[u8;3]|buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
+        let (mut bb, mut bpm, mut bt) = (image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32));
+        for j in 0..ht{for i in 0..w{let k=j*w+i; let sea=h.data[k]<=SEA_LEVEL_NORM;
+            put(&mut bb,i,j, biomes[k].color());
+            put(&mut bpm,i,j, if sea {[30,50,90]} else {precip_band(precip_mm_per_year(clim.precipitation.data[k]))});
+            put(&mut bt,i,j, if sea {[30,50,90]} else {temp_band(clim.temperature.data[k])});
+        }}
+        bb.save(dir.join(format!("seed{seed:05}_BIOMES.png"))).unwrap();
+        bpm.save(dir.join(format!("seed{seed:05}_precip_MMBANDS.png"))).unwrap();
+        bt.save(dir.join(format!("seed{seed:05}_temp_CBANDS.png"))).unwrap();
+    }
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #165 A/B VERDICT GRID — the verdict lives in the CROSS windward-coast-height
+/// (MEASURED in metres, not eyeballed) × interior-humidity (biome), NOT in
+/// biomes or relief alone: a dry interior is CORRECT behind a wall (legitimate
+/// Patagonia shadow) and a PROBLEM behind a low coast (rain should penetrate).
+/// At 45° westerlies the air enters from the WEST, so "windward coast" = the
+/// west margin. Per seed: measure the windward coastal-band altitude (max + p95,
+/// metres via the vertical contract), the interior dominant biome + precip
+/// (mm/yr), classify into the 4 cases, and render relief (windward height baked
+/// into the filename + a red tint on the windward band) / biomes / a W→E transect
+/// (altitude + precip + biome strip). MEASURES; does NOT decide A vs B.
+#[test]
+#[ignore]
+fn probe_climate_verdict_grid() {
+    use ymir_core::climate::{c1_climate, c1_biomes};
+    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year, SEA_LEVEL_NORM};
+    use ymir_core::climate::biomes::Biome;
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+    let dir = output_dir().join("climate_verdict"); std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default();
+    let lat = 45.0f32;
+    let alt_m = |n: f32| c1_altitude_norm_to_metres(n, &ss).max(0.0);
+    // interior is SEC when the rain-shadow biomes (desert + steppe) dominate it.
+    let dry = |b: Biome| matches!(b, Biome::Desert | Biome::TemperateGrassland);
+    eprintln!("#165 A/B verdict grid — 2048², 45° westerlies (wind W→E); windward = WEST margin.");
+    eprintln!("  coast: HAUTE>3000m / BASSE<2000m (2-3km INTERM). interior SEC if desert+steppe >50%.");
+    let mut global_min = f32::INFINITY; let mut global_max = 0.0f32;
+    for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap; let (w, ht) = (h.width, h.height);
+        let km_cell = c1_km_per_cell(w);
+        let clim = c1_climate(h, &ss, lat, &pp);
+        let biomes = c1_biomes(h, &clim);
+        let w_band = (80.0 / km_cell) as usize;   // windward coastal band: first 80 km of land
+        let i_start = (150.0 / km_cell) as usize;  // interior begins 150 km inland of the W coast
+        let mut wind_alts: Vec<f32> = Vec::new();
+        let mut best_row = (ht/2, -1.0f32);        // row with the tallest windward peak → transect
+        let mut interior_cnt: std::collections::HashMap<Biome, u64> = std::collections::HashMap::new();
+        let mut interior_land = 0u64; let mut interior_dry = 0u64;
+        let mut interior_precip: Vec<f32> = Vec::new();
+        for j in 0..ht {
+            let mut i0 = None;
+            for i in 0..w { if h.data[j*w+i] > SEA_LEVEL_NORM { i0 = Some(i); break; } }
+            let Some(i0) = i0 else { continue; };
+            let mut row_peak = 0.0f32;
+            for i in i0..(i0+w_band).min(w) {
+                let k = j*w+i; if h.data[k] > SEA_LEVEL_NORM { let a = alt_m(h.data[k]); wind_alts.push(a); row_peak = row_peak.max(a); }
+            }
+            if row_peak > best_row.1 { best_row = (j, row_peak); }
+            for i in (i0+i_start)..w {
+                let k = j*w+i; if h.data[k] > SEA_LEVEL_NORM {
+                    interior_land += 1;
+                    let b = biomes[k];
+                    *interior_cnt.entry(b).or_insert(0) += 1;
+                    if dry(b) { interior_dry += 1; }
+                    interior_precip.push(precip_mm_per_year(clim.precipitation.data[k]));
+                }
+            }
+        }
+        wind_alts.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        interior_precip.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let pct = |v:&Vec<f32>, p:f64| if v.is_empty() {0.0} else { v[(((v.len()-1) as f64)*p) as usize] };
+        let wind_max = wind_alts.last().copied().unwrap_or(0.0);
+        let wind_p95 = pct(&wind_alts, 0.95);
+        let int_p50 = pct(&interior_precip, 0.5);
+        let int_p90 = pct(&interior_precip, 0.9);
+        let dry_frac = if interior_land>0 {100.0*interior_dry as f64/interior_land as f64} else {0.0};
+        let dom = interior_cnt.iter().max_by_key(|(_,c)| **c).map(|(b,_)| b.name()).unwrap_or("-");
+        let coast = if wind_max > 3000.0 {"HAUTE"} else if wind_max < 2000.0 {"BASSE"} else {"INTERM"};
+        let hum = if dry_frac > 50.0 {"SEC"} else {"HUMIDE"};
+        let case = match (coast, hum) {
+            ("HAUTE","SEC")    => "ombre légitime (Patagonie) [correct]",
+            ("BASSE","HUMIDE") => "océanique [correct]",
+            ("BASSE","SEC")    => "PROBLÈME (pluie ne pénètre pas)",
+            ("HAUTE","HUMIDE") => "improbable (haut + humide)",
+            _                  => "intermédiaire (coast 2-3km)",
+        };
+        // full-land precip range (mm/yr) — the actual min/max behind the fixed
+        // bands (the ">1500 wet" band's real extent = the coastal-dump outliers).
+        let mut land_p: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| precip_mm_per_year(clim.precipitation.data[k])).collect();
+        land_p.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let lp = |p:f64| if land_p.is_empty() {0.0} else { land_p[(((land_p.len()-1) as f64)*p) as usize] };
+        let (l_min, l_max) = (land_p.first().copied().unwrap_or(0.0), land_p.last().copied().unwrap_or(0.0));
+        global_min = global_min.min(l_min); global_max = global_max.max(l_max);
+        eprintln!("  seed {seed}: windward max {wind_max:.0}m p95 {wind_p95:.0}m [{coast}] | interior dom={dom} dry={dry_frac:.0}% precip p50 {int_p50:.0} p90 {int_p90:.0} mm [{hum}] => {case}");
+        eprintln!("    land precip mm/yr: min {l_min:.0} p50 {:.0} p90 {:.0} p99 {:.0} max {l_max:.0}", lp(0.5), lp(0.9), lp(0.99));
+        // CONTINGENCY biome × (temperature °C, altitude m): for each biome, the T and
+        // alt distributions of the cells classified into it. taiga T is bounded -5..+5
+        // BY the Whittaker thresholds (so T alone is near-tautological); the ALTITUDE
+        // column is the real discriminator — taiga at high alt = legitimate alpine cold
+        // (lapse correct), taiga at low alt = lapse too steep / threshold mis-set.
+        let mut contingency: std::collections::HashMap<Biome, (Vec<f32>, Vec<f32>)> = std::collections::HashMap::new();
+        for k in 0..w*ht { if h.data[k] > SEA_LEVEL_NORM { let e = contingency.entry(biomes[k]).or_default(); e.0.push(clim.temperature.data[k]); e.1.push(alt_m(h.data[k])); } }
+        let land_n = land_p.len().max(1) as f64;
+        let bo = [Biome::Tundra, Biome::BorealForest, Biome::TemperateGrassland, Biome::TemperateForest, Biome::TemperateRainforest, Biome::Desert, Biome::Savanna, Biome::TropicalSeasonalForest, Biome::TropicalRainforest];
+        for b in bo { if let Some((ts, az)) = contingency.get(&b) { if !ts.is_empty() {
+            let (mut t, mut a) = (ts.clone(), az.clone());
+            t.sort_by(|x,y| x.partial_cmp(y).unwrap()); a.sort_by(|x,y| x.partial_cmp(y).unwrap());
+            let q = |v:&Vec<f32>, p:f64| v[(((v.len()-1) as f64)*p) as usize];
+            eprintln!("      {:>24}: {:>4.0}% | T°C [min {:>5.1} p50 {:>5.1} max {:>5.1}] | alt m [min {:>5.0} p50 {:>5.0} max {:>5.0}]",
+                b.name(), 100.0*ts.len() as f64/land_n, t[0], q(&t,0.5), *t.last().unwrap(), a[0], q(&a,0.5), *a.last().unwrap());
+        }}}
+        // renders — ALL on COMMON FIXED scales (shared across the 6 seeds) so the
+        // interiors are directly comparable. Precip uses the anchored mm/yr BANDS
+        // (desert/steppe/temperate-dry/oceanic/wet); the coastal outliers (40k-158k
+        // mm, <0.1 %) fold into the top "wet" band so they don't wash out the
+        // interior (300-1500 mm), which stays fully distinguishable. Biomes use the
+        // shared categorical palette. NO per-seed normalisation.
+        let precip_band = |mm: f32| -> [u8;3] {
+            if mm < 250.0 {[225,200,140]} else if mm < 500.0 {[200,195,110]} else if mm < 800.0 {[150,180,90]}
+            else if mm < 1500.0 {[80,150,200]} else {[30,90,200]}
+        };
+        // temperature bands at the Whittaker thermal THRESHOLDS used by classify():
+        // tundra <-5, taiga -5..+5, temperate +5..+20, warm/tropical >+20. So the
+        // panel colour = the thermal CLASS of each cell (read against the biome map).
+        let temp_band = |t: f32| -> [u8;3] {
+            if t < -5.0 {[225,235,248]} else if t < 5.0 {[90,140,205]} else if t < 20.0 {[110,190,110]} else {[225,120,70]}
+        };
+        let put=|buf:&mut image::RgbImage,i:usize,j:usize,c:[u8;3]|buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
+        let mut relief = image::RgbImage::new(w as u32, ht as u32);
+        let mut bb = image::RgbImage::new(w as u32, ht as u32);
+        let mut pm = image::RgbImage::new(w as u32, ht as u32);
+        let mut tm = image::RgbImage::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w { let k=j*w+i; let sea = h.data[k] <= SEA_LEVEL_NORM;
+            if sea { put(&mut relief,i,j,[30,50,90]); }
+            else { let g=((alt_m(h.data[k])/6000.0)*255.0).min(255.0) as u8; put(&mut relief,i,j,[g,g,g]); }
+            put(&mut bb,i,j, biomes[k].color());
+            put(&mut pm,i,j, if sea {[30,50,90]} else {precip_band(precip_mm_per_year(clim.precipitation.data[k]))});
+            put(&mut tm,i,j, if sea {[40,45,70]} else {temp_band(clim.temperature.data[k])});
+        }}
+        // red tint on the measured windward band (first 80 km of land per row).
+        for j in 0..ht {
+            let mut i0=None; for i in 0..w { if h.data[j*w+i] > SEA_LEVEL_NORM { i0=Some(i); break; } }
+            if let Some(i0)=i0 { for i in i0..(i0+w_band).min(w) { let k=j*w+i; if h.data[k]>SEA_LEVEL_NORM {
+                let y=(ht-1-j) as u32; let p=relief.get_pixel(i as u32,y).0;
+                relief.put_pixel(i as u32,y, image::Rgb([(p[0] as u16+90).min(255) as u8, p[1]/2, p[2]/2])); } } }
+        }
+        relief.save(dir.join(format!("seed{seed:05}_relief_wind{:.0}m_{coast}.png", wind_max))).unwrap();
+        bb.save(dir.join(format!("seed{seed:05}_biomes.png"))).unwrap();
+        pm.save(dir.join(format!("seed{seed:05}_precip_MMBANDS.png"))).unwrap();
+        tm.save(dir.join(format!("seed{seed:05}_temp_CBANDS.png"))).unwrap();
+        // transect on the tallest-windward row: altitude (grey) + precip (cyan) on a
+        // COMMON FIXED scale clamped to 2000 mm (interior readable, coastal outliers
+        // clamp at the top) + biome strip (shared palette).
+        const TRANSECT_MM_MAX: f32 = 2000.0;
+        let jr = best_row.0; let th = 400usize;
+        let mut tr = image::RgbImage::new(w as u32, th as u32);
+        for p in tr.pixels_mut() { *p = image::Rgb([20,20,28]); }
+        for i in 0..w {
+            let k=jr*w+i;
+            let a = if h.data[k]>SEA_LEVEL_NORM {alt_m(h.data[k])} else {0.0};
+            let ay = (((a/6000.0).min(1.0))*(th as f32 - 40.0)) as usize;
+            let mm = precip_mm_per_year(clim.precipitation.data[k]);
+            let my = (((mm/TRANSECT_MM_MAX).min(1.0))*(th as f32 - 40.0)) as usize;
+            if ay < th { tr.put_pixel(i as u32, (th-1-ay) as u32, image::Rgb([200,200,200])); }
+            if my < th { tr.put_pixel(i as u32, (th-1-my) as u32, image::Rgb([60,200,230])); }
+            let c = if h.data[k]<=SEA_LEVEL_NORM {[30,50,90]} else {biomes[k].color()};
+            for y in 0..30 { tr.put_pixel(i as u32, (th-1-y) as u32, image::Rgb(c)); }
+        }
+        tr.save(dir.join(format!("seed{seed:05}_transect_row{jr}.png"))).unwrap();
+    }
+    // shared legend reference PNGs (colour swatches in a fixed order — the named
+    // mapping is printed below; no font rendering in-image).
+    let precip_legend: [(&str,[u8;3]);5] = [("desert <250",[225,200,140]),("steppe 250-500",[200,195,110]),("temperate-dry 500-800",[150,180,90]),("oceanic 800-1500",[80,150,200]),("wet >1500",[30,90,200])];
+    let biome_legend: [(&str,[u8;3]);6] = [("steppe",Biome::TemperateGrassland.color()),("temperate forest",Biome::TemperateForest.color()),("temperate rainforest",Biome::TemperateRainforest.color()),("boreal/taiga",Biome::BorealForest.color()),("tundra",Biome::Tundra.color()),("desert",Biome::Desert.color())];
+    let save_legend = |name: &str, items: &[(&str,[u8;3])]| {
+        let (sw, sh) = (120u32, 60u32); let mut img = image::RgbImage::new(sw*items.len() as u32, sh);
+        for (n,(_,c)) in items.iter().enumerate() { for x in 0..sw { for y in 0..sh { img.put_pixel(n as u32*sw+x, y, image::Rgb(*c)); } } }
+        img.save(dir.join(name)).unwrap();
+    };
+    let temp_legend: [(&str,[u8;3]);4] = [("tundra <-5C",[225,235,248]),("taiga -5..+5C",[90,140,205]),("temperate +5..+20C",[110,190,110]),("warm/tropical >+20C",[225,120,70])];
+    save_legend("legend_precip_bands.png", &precip_legend);
+    save_legend("legend_biomes.png", &biome_legend);
+    save_legend("legend_temp_bands.png", &temp_legend);
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  COMMON SCALES (shared across all 6 seeds — directly comparable):");
+    eprintln!("    actual land precip EXTENT across all 6 seeds: min {global_min:.0} → max {global_max:.0} mm/yr (the top 'wet >1500' band spans up to this max — the coastal-dump outliers).");
+    eprintln!("    precip MMBANDS (fixed, outliers fold into top band): {}", precip_legend.iter().map(|(n,c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | "));
+    eprintln!("    biomes (shared palette): {}", biome_legend.iter().map(|(n,c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | "));
+    eprintln!("    temp CBANDS (fixed, at the Whittaker classify() thresholds -5/+5/+20°C): {}", temp_legend.iter().map(|(n,c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | "));
+    eprintln!("    relief grey=alt(0-6000m), red tint=windward 80km band. transect grey=alt(0-6000m) cyan=precip(0-2000mm FIXED clamp) bottom=biome strip.");
+    eprintln!("    legends: legend_precip_bands.png, legend_biomes.png, legend_temp_bands.png (swatch order = the lists above).");
+}
+
+/// #165 FRONTAL/OROGRAPHIC RATIO DIAGNOSTIC — decompose interior precipitation
+/// into the UNIFORM frontal base (latitude-only) vs the relief-MODULATED
+/// orographic surcharge, by region (windward 80 km band vs interior >150 km
+/// inland of the W coast). The verdict grid showed interior p50 ≡ frontal base
+/// (1281 mm) on every seed → the frontal base SATURATES the interior, masking the
+/// orographic shadow. This measures the actual ratio: how much interior precip is
+/// uniform (frontal) vs modulated (orographic), and whether the orographic
+/// surcharge reaches the temperate-humid target (~1000-1500 mm) so a fix can lower
+/// the frontal floor toward the temperate-dry floor (~400 mm) WITHOUT re-creating
+/// the desert (>250 mm) and WITHOUT needing to boost orography. MEASURES; the
+/// re-calibration is a separate maillon.
+#[test]
+#[ignore]
+fn probe_frontal_oro_ratio() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year, belt_factor, e_sat, SEA_LEVEL_NORM};
+    use ymir_core::climate::temperature::sea_level_temperature;
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let pp = PrecipParams::default(); let lat = 45.0f32;
+    let alt_m = |n: f32| c1_altitude_norm_to_metres(n, &ss).max(0.0);
+    let frontal_mm = precip_mm_per_year(pp.k_frontal * belt_factor(lat) * e_sat(sea_level_temperature(lat)));
+    eprintln!("#165 frontal/orographic ratio — 2048°, 45° westerlies. frontal base = {frontal_mm:.0} mm (UNIFORM floor on all land).");
+    eprintln!("  oro surcharge = precip_total - frontal_base (relief-modulated). windward = first 80km land; interior = >150km inland.");
+    // 3 representative seeds: tallest wall (1988), intermediate coast (99), craton (42).
+    for &seed in &[1988u64, 99, 42] {
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap; let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(h, &ss, lat, &pp);
+        let w_band = (80.0 / (1024.0/w as f32)) as usize;
+        let i_start = (150.0 / (1024.0/w as f32)) as usize;
+        let (mut wind_oro, mut int_oro, mut int_tot): (Vec<f32>, Vec<f32>, Vec<f32>) = (vec![], vec![], vec![]);
+        for j in 0..ht {
+            let mut i0 = None; for i in 0..w { if h.data[j*w+i] > SEA_LEVEL_NORM { i0 = Some(i); break; } }
+            let Some(i0) = i0 else { continue; };
+            for i in i0..(i0+w_band).min(w) { let k=j*w+i; if h.data[k] > SEA_LEVEL_NORM { wind_oro.push((precip_mm_per_year(clim.precipitation.data[k])-frontal_mm).max(0.0)); } }
+            for i in (i0+i_start)..w { let k=j*w+i; if h.data[k] > SEA_LEVEL_NORM { let tot=precip_mm_per_year(clim.precipitation.data[k]); int_tot.push(tot); int_oro.push((tot-frontal_mm).max(0.0)); } }
+        }
+        for v in [&mut wind_oro, &mut int_oro, &mut int_tot] { v.sort_by(|a,b| a.partial_cmp(b).unwrap()); }
+        let pct = |v:&Vec<f32>, p:f64| if v.is_empty() {0.0} else { v[(((v.len()-1) as f64)*p) as usize] };
+        let frontal_share = if !int_tot.is_empty() { 100.0*frontal_mm/(pct(&int_tot,0.5)).max(1.0) } else {0.0};
+        eprintln!("  seed {seed}:");
+        eprintln!("    windward oro surcharge: p50 {:.0} p90 {:.0} max {:.0} mm", pct(&wind_oro,0.5), pct(&wind_oro,0.9), wind_oro.last().copied().unwrap_or(0.0));
+        eprintln!("    interior oro surcharge: p50 {:.0} p90 {:.0} max {:.0} mm  (interior total p50 {:.0} mm; frontal share of median = {:.0}%)", pct(&int_oro,0.5), pct(&int_oro,0.9), int_oro.last().copied().unwrap_or(0.0), pct(&int_tot,0.5), frontal_share);
+    }
+    eprintln!("  READING: interior oro p50≈0 + frontal share≈100% ⇒ frontal SATURATES (the verdict-grid finding); windward oro max = the orographic headroom available above a lowered floor.");
+}
+
+/// #165 amont — HYPSOMETRIC diagnostic. Are the interiors too HIGH (too little
+/// low plain)? This MEASURES the land-altitude distribution in METRES directly,
+/// rather than inferring "too high" from the taiga-dominated biome map.
+///
+/// Field measured = the SAME one the climate/biomes consumed: the 2048² HD
+/// production altitude (`upscale_from_c1` + `c1_hd_production`), in metres via
+/// the vertical contract `c1_altitude_norm_to_metres`, land = `n > SEA_LEVEL_NORM`.
+/// Per the 6 climate-verdict seeds + aggregated.
+///
+/// COAST vs INTERIOR split: omnidirectional BFS distance-to-coast over the
+/// emergent-land mask (the `dist_to_coast` convention of the morphology
+/// analyses), interior = > 150 km from the coast. The hypsometric curve bands
+/// the land area (0-250 / 250-500 / 500-1000 / 1000-2000 / 2000-3000 / 3000+ m).
+/// The interior fraction below ~900 m is the direct link to the symptom: at 45°
+/// with a 6.5 °C/km lapse, ~900 m is the ceiling to stay > +5 °C (the temperate-
+/// forest thermal niche). Earth's land hypsography is the anchor (printed).
+///
+/// DIAGNOSTIC ONLY — writes CSVs + prints; does NOT decide the relief fix.
+#[test]
+#[ignore]
+fn probe_hypsometry() {
+    use std::io::Write;
+    use ymir_core::climate::precipitation::SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+
+    let dir = output_dir().join("hypsometry");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let hd = 2048usize;
+    let seeds: [u64; 6] = [42, 99, 1337, 4138, 1988, 2026];
+
+    // Altitude bands (metres), lower edges; last band is open (3000+).
+    let edges = [0.0f32, 250.0, 500.0, 1000.0, 2000.0, 3000.0];
+    let band_label = ["0-250", "250-500", "500-1000", "1000-2000", "2000-3000", "3000+"];
+    let band_of = |m: f32| -> usize {
+        let mut b = 0;
+        for (k, &e) in edges.iter().enumerate() {
+            if m >= e {
+                b = k;
+            }
+        }
+        b
+    };
+    // regions: 0 = all land, 1 = coast (<=150 km), 2 = interior (>150 km).
+    let region_name = |r: usize| match r {
+        0 => "all",
+        1 => "coast",
+        _ => "interior",
+    };
+
+    let km_cell = c1_km_per_cell(hd);
+    let cell_area = (km_cell * km_cell) as f64;
+
+    let mut bands_csv = std::fs::File::create(dir.join("hypsometry_bands.csv")).unwrap();
+    writeln!(bands_csv, "seed,region,band_m,count,fraction").unwrap();
+    let mut summ_csv = std::fs::File::create(dir.join("hypsometry_summary.csv")).unwrap();
+    writeln!(
+        summ_csv,
+        "seed,region,n_land_cells,area_km2,frac_lt_500,frac_lt_900,frac_lt_1000,frac_lt_2000,frac_ge_3000,mean_m,median_m"
+    )
+    .unwrap();
+
+    let mut agg = [[0u64; 6]; 3]; // aggregate band counts per region
+
+    eprintln!(
+        "#165 hypsometry — 2048² HD product (same field as biomes), 6 seeds. \
+         interior = BFS dist-to-coast > 150 km ({:.2} km/cell). altitude in metres \
+         via c1_altitude_norm_to_metres (sea=0.5).",
+        km_cell
+    );
+
+    for &seed in &seeds {
+        // CACHE: the SAME relief the climate/biomes probes build (shared key →
+        // HIT if any #165 probe already computed this seed's eroded terrain).
+        let heightmap = c165_eroded(seed, &iso);
+        let h = &heightmap;
+        let (w, ht) = (h.width, h.height);
+        assert_eq!(w, ht, "dist_to_coast expects a square grid");
+
+        // Emergent-land mask + BFS distance to coast (in cells) over it.
+        let land: Vec<bool> = h.data.iter().map(|&n| n > SEA_LEVEL_NORM).collect();
+        let dist = dist_to_coast(&land, w);
+
+        let mut cnt = [[0u64; 6]; 3];
+        let mut below900 = [0u64; 3];
+        let mut sum_m = [0.0f64; 3];
+        let mut alts: [Vec<f32>; 3] = [Vec::new(), Vec::new(), Vec::new()];
+        for k in 0..w * ht {
+            if !land[k] {
+                continue;
+            }
+            let m = c1_altitude_norm_to_metres(h.data[k], &ss); // > 0 on land
+            let b = band_of(m);
+            let is_interior = dist[k] as f32 * km_cell > 150.0;
+            let regions: [usize; 2] = if is_interior { [0, 2] } else { [0, 1] };
+            for r in regions {
+                cnt[r][b] += 1;
+                sum_m[r] += m as f64;
+                alts[r].push(m);
+                if m < 900.0 {
+                    below900[r] += 1;
+                }
+            }
+        }
+
+        for r in 0..3 {
+            let n: u64 = cnt[r].iter().sum();
+            for b in 0..6 {
+                let frac = if n > 0 { cnt[r][b] as f64 / n as f64 } else { 0.0 };
+                writeln!(
+                    bands_csv,
+                    "{seed},{},{},{},{:.5}",
+                    region_name(r),
+                    band_label[b],
+                    cnt[r][b],
+                    frac
+                )
+                .unwrap();
+                agg[r][b] += cnt[r][b];
+            }
+            alts[r].sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let median = if n > 0 { alts[r][(n as usize - 1) / 2] } else { 0.0 };
+            let mean = if n > 0 { sum_m[r] / n as f64 } else { 0.0 };
+            let frac_lt = |thr: f32| {
+                if n > 0 {
+                    alts[r].iter().filter(|&&x| x < thr).count() as f64 / n as f64
+                } else {
+                    0.0
+                }
+            };
+            let frac_ge = |thr: f32| {
+                if n > 0 {
+                    alts[r].iter().filter(|&&x| x >= thr).count() as f64 / n as f64
+                } else {
+                    0.0
+                }
+            };
+            writeln!(
+                summ_csv,
+                "{seed},{},{},{:.1},{:.4},{:.4},{:.4},{:.4},{:.4},{:.1},{:.1}",
+                region_name(r),
+                n,
+                n as f64 * cell_area,
+                frac_lt(500.0),
+                frac_lt(900.0),
+                frac_lt(1000.0),
+                frac_lt(2000.0),
+                frac_ge(3000.0),
+                mean,
+                median
+            )
+            .unwrap();
+        }
+
+        let int_n: u64 = cnt[2].iter().sum();
+        let all_n: u64 = cnt[0].iter().sum();
+        eprintln!(
+            "  seed {seed}: land {all_n} cells ({:.0} km²) | interior {int_n} cells, <900m {:.1}% (<500m {:.1}%, ≥3000m {:.1}%)",
+            all_n as f64 * cell_area,
+            if int_n > 0 { 100.0 * below900[2] as f64 / int_n as f64 } else { 0.0 },
+            if int_n > 0 { 100.0 * alts[2].iter().filter(|&&x| x < 500.0).count() as f64 / int_n as f64 } else { 0.0 },
+            if int_n > 0 { 100.0 * alts[2].iter().filter(|&&x| x >= 3000.0).count() as f64 / int_n as f64 } else { 0.0 },
+        );
+    }
+
+    // Aggregate band rows.
+    for r in 0..3 {
+        let n: u64 = agg[r].iter().sum();
+        for b in 0..6 {
+            let frac = if n > 0 { agg[r][b] as f64 / n as f64 } else { 0.0 };
+            writeln!(
+                bands_csv,
+                "AGGREGATE,{},{},{},{:.5}",
+                region_name(r),
+                band_label[b],
+                agg[r][b],
+                frac
+            )
+            .unwrap();
+        }
+    }
+
+    // Earth land-hypsography anchor (fraction of EMERGENT land area per band),
+    // approximated from the standard area-elevation distribution of the
+    // continents (0-200 25%, 200-500 27%, 500-1000 19%, 1000-2000 15%,
+    // 2000-3000 7.5%, >3000 6%; mean land elevation ≈ 840 m). Cumulative
+    // anchors: ≈52% < 500 m, ≈71% < 1000 m, ≈86% < 2000 m, ≈94% < 3000 m.
+    let earth = [0.29f64, 0.23, 0.19, 0.15, 0.075, 0.065];
+    for b in 0..6 {
+        writeln!(bands_csv, "EARTH,land,{},,{:.5}", band_label[b], earth[b]).unwrap();
+    }
+
+    eprintln!(
+        "  EARTH anchor (land): <500m ≈52%, <1000m ≈71%, <2000m ≈86%, <3000m ≈94%, mean ≈840 m."
+    );
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  CSV: hypsometry_bands.csv (per-seed + AGGREGATE + EARTH band fractions), hypsometry_summary.csv (frac<500/900/1000/2000, ≥3000, mean, median, per region).");
+}
+
+/// #165 RELIEF DIAGNOSIS — *why* is the continental floor at 1000-2000 m?
+///
+/// `probe_hypsometry` established the SYMPTOM (too little low plain, mass piled
+/// in 1000-2000 m, NOT excess mountains). The same symptom has OPPOSITE fixes,
+/// so this probe MEASURES the cause before any code is written:
+///   1. **before vs after erosion** — is the floor already high in the
+///      pre-erosion HD terrain (FBM, no droplets)? Does erosion lower it? This
+///      splits "born high" (cause 1: base buoyancy) from "not carved" (cause 2:
+///      erosion). The two stages share the IDENTICAL FBM heightmap (erosion is
+///      applied AFTER the FBM in `upscale_from_c1`, so toggling `cfg.erosion`
+///      between None/Some changes ONLY the droplet pass — same terrain, ±erosion).
+///   2. **mass balance** — per-cell Δ(post−pre): does erosion strip the highs
+///      AND deposit in low plains (building the plain/mountain contrast), or does
+///      the stripped mass transit past the real coast into the deep (deposited
+///      below the real sea, so NO low plain is built)? NB the erosion's own
+///      `sea_level = 0.1` ≠ the terrain's real sea 0.5 (`SEA_LEVEL_NORM`): a
+///      droplet deposits only after going below 0.1, i.e. past the real coast and
+///      the whole shelf [0.1, 0.5]. This probe measures how much deposit lands on
+///      real land (>0.5) vs below the real sea.
+///   3. **leverage test** — re-erode seed 42 with ×3 droplets; if the <500 m
+///      fraction rises toward Earth's ~52 %, erosion IS the lever (cause 2); if
+///      it barely moves, the floor is born high (cause 1, fix isostasy).
+///   4. **sea threshold** (cause 3) — printed: fraction of land just above sea
+///      (0-250 m) and the erosion-vs-real sea-level mismatch, to rule it in/out.
+///
+/// DIAGNOSTIC ONLY — writes CSVs + prints; does NOT decide or apply the fix.
+/// Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_floor_diagnosis -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_floor_diagnosis() {
+    use std::io::Write;
+    use ymir_core::climate::precipitation::SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+
+    let dir = output_dir().join("floor_diagnosis");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let hd = 2048usize;
+    let seeds: [u64; 2] = [42, 1337];
+    const BOOST_SEED: u64 = 42;
+    const BOOST_FACTOR: usize = 3;
+
+    let edges = [0.0f32, 250.0, 500.0, 1000.0, 2000.0, 3000.0];
+    let band_label = ["0-250", "250-500", "500-1000", "1000-2000", "2000-3000", "3000+"];
+    let band_of = |m: f32| -> usize {
+        let mut b = 0;
+        for (k, &e) in edges.iter().enumerate() {
+            if m >= e {
+                b = k;
+            }
+        }
+        b
+    };
+    let km_cell = c1_km_per_cell(hd);
+    let cell_area = (km_cell * km_cell) as f64;
+
+    // Land-only band fractions (n > real sea 0.5) for one HD heightmap.
+    let bands = |h: &GridF32| -> ([u64; 6], u64) {
+        let mut cnt = [0u64; 6];
+        let mut n_land = 0u64;
+        for &nrm in &h.data {
+            if nrm > SEA_LEVEL_NORM {
+                cnt[band_of(c1_altitude_norm_to_metres(nrm, &ss))] += 1;
+                n_land += 1;
+            }
+        }
+        (cnt, n_land)
+    };
+    let frac_lt = |h: &GridF32, thr: f32| -> f64 {
+        let (mut n, mut below) = (0u64, 0u64);
+        for &nrm in &h.data {
+            if nrm > SEA_LEVEL_NORM {
+                n += 1;
+                if c1_altitude_norm_to_metres(nrm, &ss) < thr {
+                    below += 1;
+                }
+            }
+        }
+        if n > 0 { below as f64 / n as f64 } else { 0.0 }
+    };
+
+    // Build the pre-erosion HD terrain (FBM only) — the SAME FBM the canonical
+    // product erodes, just with the droplet pass turned off.
+    let build_pre = |seed: u64| -> GridF32 {
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: N_STEPS,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        run_with_closures(&mut state, &mut kin, &run, &C1Closures::default(), |_, _| {});
+        let mut cfg = FbmUpscaleConfig::c1_hd_production(hd);
+        cfg.erosion = None; // pre-erosion: FBM terrain, no droplets
+        upscale_from_c1(&state, &run.iso_config, &ss, &WorldSeed::new(seed), &cfg).heightmap
+    };
+    // Re-erode the SAME FBM with boosted droplet count (the leverage test).
+    let build_boosted = |seed: u64, factor: usize| -> GridF32 {
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: N_STEPS,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        run_with_closures(&mut state, &mut kin, &run, &C1Closures::default(), |_, _| {});
+        let mut cfg = FbmUpscaleConfig::c1_hd_production(hd);
+        if let Some(e) = cfg.erosion.as_mut() {
+            e.num_droplets *= factor;
+        }
+        upscale_from_c1(&state, &run.iso_config, &ss, &WorldSeed::new(seed), &cfg).heightmap
+    };
+
+    let mut prepost = std::fs::File::create(dir.join("floor_prepost_bands.csv")).unwrap();
+    writeln!(prepost, "seed,stage,band_m,count,frac").unwrap();
+    let mut massf = std::fs::File::create(dir.join("floor_mass_balance.csv")).unwrap();
+    writeln!(
+        massf,
+        "seed,eroded_km3,deposited_km3,dep_on_land_km3,dep_below_sea_km3,dep_on_land_pct,\
+         mean_d_from_1000_2000_m,mean_d_from_0_500_m,cells_1000_2000_to_lt500"
+    )
+    .unwrap();
+
+    eprintln!(
+        "#165 floor diagnosis — 2048² HD ({:.2} km/cell). PRE = FBM no-erosion, \
+         POST = canonical eroded (shared cache). Earth anchor: ~52% land < 500 m.",
+        km_cell
+    );
+
+    for &seed in &seeds {
+        let pre = build_pre(seed);
+        // POST = canonical product (cache HIT if a prior #165 probe built it);
+        // byte-identical to erosion=Some on the same FBM (deterministic state).
+        let post = c165_eroded(seed, &iso);
+        assert_eq!((pre.width, pre.height), (post.width, post.height), "pre/post dims");
+
+        // (1) before/after band fractions on land.
+        for (stage, h) in [("pre", &pre), ("post", &post)] {
+            let (cnt, n) = bands(h);
+            for b in 0..6 {
+                let frac = if n > 0 { cnt[b] as f64 / n as f64 } else { 0.0 };
+                writeln!(prepost, "{seed},{stage},{},{},{:.5}", band_label[b], cnt[b], frac).unwrap();
+            }
+        }
+        let (pre_cnt, pre_n) = bands(&pre);
+        let (post_cnt, post_n) = bands(&post);
+        eprintln!(
+            "  seed {seed}: land cells pre {pre_n} → post {post_n}. frac<500m: pre {:.1}% → post {:.1}%  (Δ {:+.1} pts)",
+            100.0 * frac_lt(&pre, 500.0),
+            100.0 * frac_lt(&post, 500.0),
+            100.0 * (frac_lt(&post, 500.0) - frac_lt(&pre, 500.0)),
+        );
+        eprintln!(
+            "    band 1000-2000m: pre {:.1}% → post {:.1}% | 3000+m: pre {:.1}% → post {:.1}%",
+            100.0 * pct(pre_cnt[3], pre_n),
+            100.0 * pct(post_cnt[3], post_n),
+            100.0 * pct(pre_cnt[5], pre_n),
+            100.0 * pct(post_cnt[5], post_n),
+        );
+
+        // (2) mass balance — per-cell Δ in metres over ALL cells; volume = Δ·area.
+        let (mut eroded, mut deposited, mut dep_land, mut dep_sea) = (0.0f64, 0.0, 0.0, 0.0);
+        let (mut d_1020_sum, mut d_1020_n) = (0.0f64, 0u64);
+        let (mut d_0500_sum, mut d_0500_n) = (0.0f64, 0u64);
+        let mut migrated = 0u64; // pre in 1000-2000 m land → post in <500 m land
+        for k in 0..pre.data.len() {
+            let pm = c1_altitude_norm_to_metres(pre.data[k], &ss);
+            let qm = c1_altitude_norm_to_metres(post.data[k], &ss);
+            let d = (qm - pm) as f64;
+            let vol = d.abs() * cell_area; // km² · m → ×1e-3 = km³
+            if d < 0.0 {
+                eroded += vol;
+            } else {
+                deposited += vol;
+                if post.data[k] > SEA_LEVEL_NORM {
+                    dep_land += vol;
+                } else {
+                    dep_sea += vol;
+                }
+            }
+            // Δ binned by PRE band, land only (pre > real sea).
+            if pre.data[k] > SEA_LEVEL_NORM {
+                if pm >= 1000.0 && pm < 2000.0 {
+                    d_1020_sum += d;
+                    d_1020_n += 1;
+                    if post.data[k] > SEA_LEVEL_NORM && qm < 500.0 {
+                        migrated += 1;
+                    }
+                } else if pm < 500.0 {
+                    d_0500_sum += d;
+                    d_0500_n += 1;
+                }
+            }
+        }
+        let to_km3 = 1e-3; // km²·m → km³
+        let dep_land_pct =
+            if deposited > 0.0 { 100.0 * dep_land / deposited } else { 0.0 };
+        writeln!(
+            massf,
+            "{seed},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{}",
+            eroded * to_km3,
+            deposited * to_km3,
+            dep_land * to_km3,
+            dep_sea * to_km3,
+            dep_land_pct,
+            if d_1020_n > 0 { d_1020_sum / d_1020_n as f64 } else { 0.0 },
+            if d_0500_n > 0 { d_0500_sum / d_0500_n as f64 } else { 0.0 },
+            migrated,
+        )
+        .unwrap();
+        eprintln!(
+            "    mass: eroded {:.0} km³, deposited {:.0} km³ ({:.0}% on real land, {:.0}% below real sea)",
+            eroded * to_km3,
+            deposited * to_km3,
+            dep_land_pct,
+            100.0 - dep_land_pct,
+        );
+        eprintln!(
+            "    Δalt by start band (land): from 1000-2000m mean {:+.0} m | from 0-500m mean {:+.0} m | cells 1000-2000m→<500m: {migrated}",
+            if d_1020_n > 0 { d_1020_sum / d_1020_n as f64 } else { 0.0 },
+            if d_0500_n > 0 { d_0500_sum / d_0500_n as f64 } else { 0.0 },
+        );
+    }
+
+    // (3) leverage test — does MORE erosion create MORE low plain?
+    let pre_b = build_pre(BOOST_SEED);
+    let base = c165_eroded(BOOST_SEED, &iso);
+    let boosted = build_boosted(BOOST_SEED, BOOST_FACTOR);
+    for (stage, h) in [("pre", &pre_b), ("post_1x", &base), ("post_3x", &boosted)] {
+        let (cnt, n) = bands(h);
+        for b in 0..6 {
+            let frac = if n > 0 { cnt[b] as f64 / n as f64 } else { 0.0 };
+            writeln!(prepost, "LEVERAGE_{seed},{stage},{},{},{:.5}", band_label[b], cnt[b], frac, seed = BOOST_SEED).unwrap();
+        }
+    }
+    eprintln!(
+        "  LEVERAGE (seed {BOOST_SEED}, ×{BOOST_FACTOR} droplets): frac<500m  pre {:.1}% → post_1x {:.1}% → post_3x {:.1}%",
+        100.0 * frac_lt(&pre_b, 500.0),
+        100.0 * frac_lt(&base, 500.0),
+        100.0 * frac_lt(&boosted, 500.0),
+    );
+    eprintln!(
+        "    → if post_3x >> post_1x toward ~52%, EROSION is the lever (cause 2); if it barely moves, floor is BORN high (cause 1: isostasy)."
+    );
+
+    // (4) sea-threshold note — rule cause 3 in/out.
+    let (pre0, _) = bands(&pre_b);
+    let (post0, post0n) = {
+        let h = c165_eroded(BOOST_SEED, &iso);
+        bands(&h)
+    };
+    eprintln!(
+        "  SEA THRESHOLD: real sea = {SEA_LEVEL_NORM} (n), erosion sea_level = 0.1 (mismatch: droplets deposit only below 0.1, past the real coast + shelf [0.1,0.5]). \
+         land 0-250m: pre {:.1}% → post {:.1}% of land — a thin sliver just-above-sea would point at the threshold (cause 3); a fat 1000-2000m bulge points at relief.",
+        100.0 * pct(pre0[0], pre0.iter().sum::<u64>()),
+        100.0 * pct(post0[0], post0n),
+    );
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  CSV: floor_prepost_bands.csv (pre/post/leverage band fractions), floor_mass_balance.csv (eroded/deposited volumes, Δ by start band).");
+}
+
+/// Fraction helper (count / total, 0 when empty).
+fn pct(count: u64, total: u64) -> f64 {
+    if total > 0 { count as f64 / total as f64 } else { 0.0 }
+}
+
+/// Descriptive stats of a slice: (n, mean, std, min, max, median).
+fn describe(v: &mut [f32]) -> (usize, f64, f64, f32, f32, f32) {
+    let n = v.len();
+    if n == 0 {
+        return (0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    }
+    let mean = v.iter().map(|&x| x as f64).sum::<f64>() / n as f64;
+    let var = v.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / n as f64;
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    (n, mean, var.sqrt(), v[0], v[n - 1], v[(n - 1) / 2])
+}
+
+/// #165 RELIEF SUB-DIAGNOSIS — réglage à baisser ou closure d'amincissement manquante ?
+///
+/// The floor diagnosis (`probe_floor_diagnosis`) proved the floor is BORN high
+/// (pre-erosion), not carved by erosion. This probe answers the orthogonal
+/// question before any fix: is the high floor a SETTING too high (a global floor
+/// to lower → everything drops uniformly, no plain/mountain contrast) or the
+/// symptom of a MISSING/INACTIVE thinning mechanism (the crust is thickened
+/// somewhere but thinned nowhere → all at the "thick"/high baseline)?
+///
+///   1. **decompose born-high** — coarse isostatic altitude (pre-FBM, 64²) vs
+///      the FBM contribution (pre-erosion 2048²). Where is the floor's altitude
+///      taken: the tectonic/isostasy baseline, or an FBM offset?
+///   2. **uniform vs varied (THE test)** — the continental crustal-thickness `S̃`
+///      distribution, EXCLUDING cratons (made thick on purpose). Narrow around a
+///      value (UNIFORM → the mechanism that thins it is missing/inactive =
+///      closure) or broad (VARIED → thin zones already exist, the mean is just
+///      offset = setting to lower)? Same for the coarse isostatic altitude.
+///   3. **is the thinning closure even firing?** — the rifting closure
+///      (`closures/rifting/`, the doc's thinning mechanism, McKenzie-Buck) IS
+///      wired and enabled by default. Run rifting ON vs OFF and read its stats
+///      (`total_mass_removed`, `cells_thinned`, `splits`): if disabling it barely
+///      moves the continental `S̃`/altitude distribution, the mechanism is
+///      present-but-inactive (the §7.2 Track C "events fire too rarely" risk).
+///   4. **Earth anchor** — continental crust thickness VARIES a lot (cratons
+///      ~40 km → high; rifted margins/basins ~20-30 km → low). Printed for scale.
+///
+/// DIAGNOSTIC ONLY — writes a CSV + prints; does NOT decide or apply the fix.
+/// Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_floor_thickness -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_floor_thickness() {
+    use std::io::Write;
+    use ymir_core::climate::precipitation::SEA_LEVEL_NORM;
+    use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
+    use ymir_core::tectonics_c1::production_upscale::c1_production_altitude_craton;
+
+    let dir = output_dir().join("floor_thickness");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let depth_scale = ss.depth_scale_m as f32;
+    let seeds: [u64; 2] = [42, 1337];
+
+    // Build the tectonic state + total rifting activity over the run. `rifting`
+    // toggles the thinning/split closure (default ON); everything else default.
+    let build = |seed: u64, rifting_on: bool| -> (C1State, f64, usize, usize) {
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: N_STEPS,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        let mut clo = C1Closures::default();
+        clo.rifting = RiftingParams { enabled: rifting_on, ..RiftingParams::default() };
+        let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let (mut mass_removed, mut cells_thinned, mut splits) = (0.0f64, 0usize, 0usize);
+        run_with_closures(&mut state, &mut kin, &run, &clo, |_, s| {
+            mass_removed += s.last_step_stats.rifting_thinning.total_mass_removed;
+            cells_thinned += s.last_step_stats.rifting_thinning.cells_thinned;
+            splits += s.last_step_stats.rifting_split.splits_count;
+        });
+        (state, mass_removed, cells_thinned, splits)
+    };
+
+    // S̃ histogram bins (continental baseline = 1.0; split target 0.7).
+    let s_edges = [0.0f32, 0.5, 0.7, 0.9, 1.1, 1.5, 2.0];
+    let s_label = ["<0.5", "0.5-0.7", "0.7-0.9", "0.9-1.1", "1.1-1.5", "1.5-2.0", "2.0+"];
+    let s_bin = |x: f32| -> usize {
+        let mut b = 0;
+        for (k, &e) in s_edges.iter().enumerate() {
+            if x >= e {
+                b = k;
+            }
+        }
+        b
+    };
+
+    let mut csv = std::fs::File::create(dir.join("floor_thickness.csv")).unwrap();
+    writeln!(
+        csv,
+        "seed,rifting,set,n,s_mean,s_std,s_cv,s_min,s_max,alt_mean_m,alt_median_m,frac_alt_lt500,frac_s_baseline"
+    )
+    .unwrap();
+
+    eprintln!(
+        "#165 floor thickness — tectonic 64² ({} cells). S̃ = crustal thickness proxy \
+         (continental baseline 1.0). coarse altitude (pre-FBM) metres = S̃→isostasy×{depth_scale}. \
+         Earth: continental crust 20-70 km (cratons thick→high, margins/basins thin→low).",
+        GRID_SIZE * GRID_SIZE
+    );
+
+    for &seed in &seeds {
+        let (state, mass_removed, cells_thinned, splits) = build(seed, true);
+        let n_cells = state.nx() * state.ny();
+        let coarse = c1_production_altitude_craton(
+            &state.s,
+            &state.age,
+            &state.plate_type,
+            state.cratonic_mask.data(),
+            &iso,
+            &ss,
+        );
+        let cont: Vec<bool> = state
+            .plate_type
+            .data()
+            .iter()
+            .map(|t| matches!(t, PlateType::Continental))
+            .collect();
+        let craton = state.cratonic_mask.data();
+
+        // Partition continental cells into craton vs non-craton; collect S̃ and
+        // coarse altitude (metres) for each.
+        let mut s_nc: Vec<f32> = Vec::new(); // S̃, continental non-craton
+        let mut alt_nc: Vec<f32> = Vec::new(); // coarse altitude m, continental non-craton
+        let mut s_cr: Vec<f32> = Vec::new(); // S̃, craton
+        let mut s_hist = [0u64; 7]; // S̃ histogram, continental non-craton
+        for k in 0..n_cells {
+            if !cont[k] {
+                continue;
+            }
+            let sval = state.s.data()[k] as f32;
+            let altm = coarse.data[k] * depth_scale;
+            if craton[k] {
+                s_cr.push(sval);
+            } else {
+                s_nc.push(sval);
+                alt_nc.push(altm);
+                s_hist[s_bin(sval)] += 1;
+            }
+        }
+
+        // Stats for continental non-craton (the bulk that should hold the floor).
+        let (sn, smean, sstd, smin, smax, _smed) = describe(&mut s_nc.clone());
+        let (_an, amean, _astd, _amin, _amax, amed) = describe(&mut alt_nc.clone());
+        let cv = if smean.abs() > 1e-9 { sstd / smean } else { 0.0 };
+        let frac_alt_lt500 =
+            alt_nc.iter().filter(|&&m| m < 500.0).count() as f64 / alt_nc.len().max(1) as f64;
+        // Fraction at baseline thickness (|S̃ - 1.0| < 0.1) — the uniform-floor signature.
+        let frac_baseline =
+            s_nc.iter().filter(|&&x| (x - 1.0).abs() < 0.1).count() as f64 / sn.max(1) as f64;
+        let (_cn, crmean, _, _, _, _) = describe(&mut s_cr.clone());
+
+        // EMERGENT-land hypsometry split by craton vs non-craton (alt > 0): is
+        // the high floor the cratons or the non-craton crust? (The non-craton
+        // altitude stats above mix submerged + emergent — this isolates emergent.)
+        let mut em_cr: Vec<f32> = Vec::new();
+        let mut em_nc: Vec<f32> = Vec::new();
+        for k in 0..n_cells {
+            if !cont[k] {
+                continue;
+            }
+            let altm = coarse.data[k] * depth_scale;
+            if altm <= 0.0 {
+                continue; // submerged continental crust is not emergent land
+            }
+            if craton[k] {
+                em_cr.push(altm);
+            } else {
+                em_nc.push(altm);
+            }
+        }
+        let f500 = |v: &[f32]| v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+        let (_e1, em_cr_mean, _, _, _, em_cr_med) = describe(&mut em_cr.clone());
+        let (_e2, em_nc_mean, _, _, _, em_nc_med) = describe(&mut em_nc.clone());
+        let em_total = em_cr.len() + em_nc.len();
+        eprintln!(
+            "    EMERGENT land split: craton {} cells ({:.0}% of land) mean {em_cr_mean:.0}m med {em_cr_med:.0}m frac<500 {:.0}% | non-craton {} cells mean {em_nc_mean:.0}m med {em_nc_med:.0}m frac<500 {:.0}%",
+            em_cr.len(),
+            100.0 * em_cr.len() as f64 / em_total.max(1) as f64,
+            100.0 * f500(&em_cr),
+            em_nc.len(),
+            100.0 * f500(&em_nc),
+        );
+
+        writeln!(
+            csv,
+            "{seed},on,cont_noncraton,{sn},{smean:.4},{sstd:.4},{cv:.4},{smin:.3},{smax:.3},{amean:.0},{amed:.0},{frac_alt_lt500:.4},{frac_baseline:.4}"
+        )
+        .unwrap();
+
+        eprintln!(
+            "\n  seed {seed}: continental cells {} (craton {}, non-craton {sn}).",
+            cont.iter().filter(|&&c| c).count(),
+            s_cr.len(),
+        );
+        eprintln!(
+            "    rifting activity: total_mass_removed {mass_removed:.3} (S̃ units·cell), cells_thinned {cells_thinned}, splits {splits}"
+        );
+        eprintln!(
+            "    S̃ non-craton: mean {smean:.3} std {sstd:.3} CV {cv:.3} [min {smin:.2}, max {smax:.2}] | craton mean {crmean:.3}"
+        );
+        eprintln!(
+            "    → {:.0}% of non-craton continental at baseline S̃≈1.0 (|S̃-1|<0.1) = uniform-floor signature",
+            100.0 * frac_baseline
+        );
+        let shp: Vec<String> =
+            (0..7).map(|b| format!("{}:{:.0}%", s_label[b], 100.0 * pct(s_hist[b], sn as u64))).collect();
+        eprintln!("    S̃ histogram (non-craton): {}", shp.join("  "));
+        eprintln!(
+            "    coarse altitude non-craton: mean {amean:.0} m, median {amed:.0} m, frac<500m {:.1}%",
+            100.0 * frac_alt_lt500
+        );
+
+        // Rifting OFF — does removing the thinning closure move the distribution?
+        let (state_off, _, _, _) = build(seed, false);
+        let coarse_off = c1_production_altitude_craton(
+            &state_off.s,
+            &state_off.age,
+            &state_off.plate_type,
+            state_off.cratonic_mask.data(),
+            &iso,
+            &ss,
+        );
+        let cont_off: Vec<bool> = state_off
+            .plate_type
+            .data()
+            .iter()
+            .map(|t| matches!(t, PlateType::Continental))
+            .collect();
+        let craton_off = state_off.cratonic_mask.data();
+        let mut s_nc_off: Vec<f32> = Vec::new();
+        let mut alt_nc_off: Vec<f32> = Vec::new();
+        for k in 0..state_off.nx() * state_off.ny() {
+            if cont_off[k] && !craton_off[k] {
+                s_nc_off.push(state_off.s.data()[k] as f32);
+                alt_nc_off.push(coarse_off.data[k] * depth_scale);
+            }
+        }
+        let (sn_off, smean_off, sstd_off, _, _, _) = describe(&mut s_nc_off.clone());
+        let frac_alt_lt500_off =
+            alt_nc_off.iter().filter(|&&m| m < 500.0).count() as f64 / alt_nc_off.len().max(1) as f64;
+        writeln!(
+            csv,
+            "{seed},off,cont_noncraton,{sn_off},{smean_off:.4},{sstd_off:.4},{:.4},,,,,{frac_alt_lt500_off:.4},",
+            if smean_off.abs() > 1e-9 { sstd_off / smean_off } else { 0.0 }
+        )
+        .unwrap();
+        eprintln!(
+            "    RIFTING OFF: S̃ mean {smean_off:.3} std {sstd_off:.3} (Δ vs ON: mean {:+.4}, std {:+.4}), frac alt<500m {:.1}% (vs ON {:.1}%)",
+            smean_off - smean,
+            sstd_off - sstd,
+            100.0 * frac_alt_lt500_off,
+            100.0 * frac_alt_lt500,
+        );
+    }
+
+    // (1) decompose born-high: coarse (pre-FBM) vs pre-erosion FBM (2048²), seed 42.
+    let seed = 42u64;
+    let (state, _, _, _) = build(seed, true);
+    let coarse = c1_production_altitude_craton(
+        &state.s,
+        &state.age,
+        &state.plate_type,
+        state.cratonic_mask.data(),
+        &iso,
+        &ss,
+    );
+    let cont: Vec<bool> = state
+        .plate_type
+        .data()
+        .iter()
+        .map(|t| matches!(t, PlateType::Continental))
+        .collect();
+    // coarse continental LAND (altitude > 0) hypsometry.
+    let coarse_land: Vec<f32> =
+        (0..coarse.data.len()).filter(|&k| cont[k] && coarse.data[k] > 0.0).map(|k| coarse.data[k] * depth_scale).collect();
+    let coarse_frac500 =
+        coarse_land.iter().filter(|&&m| m < 500.0).count() as f64 / coarse_land.len().max(1) as f64;
+    let coarse_mean = coarse_land.iter().map(|&x| x as f64).sum::<f64>() / coarse_land.len().max(1) as f64;
+    // pre-erosion FBM 2048² (build_pre logic, erosion off).
+    let run = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: N_STEPS,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso.clone(),
+        drainage_max_distance: 30,
+    };
+    let mut st = init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(st.num_plates);
+    run_with_closures(&mut st, &mut kin, &run, &C1Closures::default(), |_, _| {});
+    let mut cfg = FbmUpscaleConfig::c1_hd_production(2048);
+    cfg.erosion = None;
+    let fbm = upscale_from_c1(&st, &run.iso_config, &ss, &WorldSeed::new(seed), &cfg).heightmap;
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    let fbm_land: Vec<f32> = fbm
+        .data
+        .iter()
+        .filter(|&&n| n > SEA_LEVEL_NORM)
+        .map(|&n| c1_altitude_norm_to_metres(n, &ss))
+        .collect();
+    let fbm_frac500 = fbm_land.iter().filter(|&&m| m < 500.0).count() as f64 / fbm_land.len().max(1) as f64;
+    let fbm_mean = fbm_land.iter().map(|&x| x as f64).sum::<f64>() / fbm_land.len().max(1) as f64;
+    eprintln!(
+        "\n  DECOMPOSE born-high (seed 42): coarse iso land (pre-FBM) mean {coarse_mean:.0} m, frac<500m {:.1}% \
+         → +FBM 2048² land mean {fbm_mean:.0} m, frac<500m {:.1}%",
+        100.0 * coarse_frac500,
+        100.0 * fbm_frac500,
+    );
+    eprintln!(
+        "    → if coarse already shows the bulge & FBM ~preserves the mean, the floor is set by ISOSTASY (S̃→altitude), not FBM."
+    );
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  CSV: floor_thickness.csv (per-seed rifting on/off S̃ + coarse-altitude stats).");
+}
+
+/// #165 CRATON CALIBRATION — sweep `craton_rho_crust` to find the value that
+/// brings the emergent craton floor toward worn-shield height (~400-600 m),
+/// WITHIN the physical density bound (continental crust ≤ ~3000 kg/m³; 3300 =
+/// mantle, non-physical).
+///
+/// Cheap: `craton_rho_crust` enters ONLY the final altitude mapping
+/// (`c1_production_altitude_craton`), NOT the tectonic S̃ evolution (the time
+/// loop's erosion uses the SCALAR `compute_isostasy`). So the tectonic state is
+/// built ONCE per seed and the sweep just re-maps altitude per candidate density.
+///
+/// Reports, per density: emergent craton median + frac<500m, emergent non-craton
+/// median (the INVARIANT to watch — should barely move; it shifts only via the
+/// shared sea-level percentile), and global land frac<500m (the headline). Values
+/// above 3000 are printed as OUT-OF-BOUND reference only.
+///
+/// DIAGNOSTIC ONLY. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_craton_density_sweep -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_craton_density_sweep() {
+    use ymir_core::tectonics_c1::production_upscale::c1_production_altitude_craton;
+
+    let ss = SteinSteinParams::default();
+    let depth_scale = ss.depth_scale_m as f32;
+    let seed = 42u64; // the craton-bearing seed (1337 has none)
+    let base_iso = IsostasyConfig::c1_default();
+
+    // Build the tectonic state ONCE (density does not affect it).
+    let run = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: N_STEPS,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: base_iso.clone(),
+        drainage_max_distance: 30,
+    };
+    let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    run_with_closures(&mut state, &mut kin, &run, &C1Closures::default(), |_, _| {});
+
+    let cont: Vec<bool> = state
+        .plate_type
+        .data()
+        .iter()
+        .map(|t| matches!(t, PlateType::Continental))
+        .collect();
+    let craton = state.cratonic_mask.data().to_vec();
+    let median = |v: &mut Vec<f32>| -> f32 {
+        if v.is_empty() {
+            return 0.0;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() - 1) / 2]
+    };
+    let f500 = |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+
+    eprintln!(
+        "#165 craton calibration (seed {seed}) — sweep craton_rho_crust. Target: emergent \
+         craton median ~400-600 m (worn shield). Bound: ≤3000 kg/m³ (crust; 3300=mantle). \
+         Current c1_default = 2900 → craton median 1814 m (measured). Non-craton = invariant to watch."
+    );
+    eprintln!("  rho   | craton: med  frac<500 | non-craton: med  frac<500 | ALL land frac<500 | bound");
+
+    for &rho in &[2750.0f32, 2900.0, 2950.0, 3000.0, 3050.0, 3100.0, 3200.0] {
+        let mut iso = base_iso.clone();
+        iso.craton_rho_crust = Some(rho);
+        let coarse =
+            c1_production_altitude_craton(&state.s, &state.age, &state.plate_type, &craton, &iso, &ss);
+        let mut em_cr: Vec<f32> = Vec::new();
+        let mut em_nc: Vec<f32> = Vec::new();
+        let mut em_all: Vec<f32> = Vec::new();
+        for k in 0..coarse.data.len() {
+            if !cont[k] {
+                continue;
+            }
+            let m = coarse.data[k] * depth_scale;
+            if m <= 0.0 {
+                continue;
+            }
+            em_all.push(m);
+            if craton[k] {
+                em_cr.push(m);
+            } else {
+                em_nc.push(m);
+            }
+        }
+        let (cr500, nc500, all500) = (f500(&em_cr), f500(&em_nc), f500(&em_all));
+        let cr_med = median(&mut em_cr.clone());
+        let nc_med = median(&mut em_nc.clone());
+        let bound = if rho <= 3000.0 { "ok" } else { "OUT (>3000, non-physical)" };
+        eprintln!(
+            "  {rho:>5.0} | {cr_med:>9.0}m {cr500:>7.0}% | {nc_med:>9.0}m {nc500:>7.0}% | {all500:>13.0}% | {bound}"
+        );
+    }
+    eprintln!(
+        "  → read off the lowest-bound rho hitting craton median ~400-600 m. If even 3000 \
+         stays ≫600 m, the density knob is INSUFFICIENT within physics → worn-shield is a \
+         MODEL refinement (Jordan compositional isostasy / worn-init), not a parameter (see \
+         init_r7 craton_thickness_ratio docstring: thickness is anchored, not a knob)."
+    );
+}
+
+/// #165 CRATON FRACTION — is the high floor a matter of cratons being too HIGH
+/// (altitude, which hit 2 formulation walls: density bound + sea-level coupling)
+/// or too NUMEROUS (fraction)? The cratonic mask is set by an UNANCHORED rule
+/// (`build_phase_1_1_cratonic_mask`: a plate is cratonic iff its Voronoï seed is
+/// in the LEFT HALF of the domain, `x < nx/2` → ~half the continental plates).
+///
+/// Measures: (1) the cratonic AREA fraction across seeds (vs the real-Earth
+/// anchor); (2) the LEVER TEST — rebuild with the craton special-treatment dialed
+/// to NORMAL crust (thickness_ratio 1.0 + craton_resist 1.0 + craton_rho_crust
+/// None = the limit of "no high-craton area"), and see if the continental
+/// hypsometry → the (already-Earth-like) non-craton distribution AND the
+/// sea-level coupling dissolves. This brackets the fraction lever without a fix.
+///
+/// DIAGNOSTIC ONLY. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_craton_fraction -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_craton_fraction() {
+    use ymir_core::tectonics_c1::production_upscale::c1_production_altitude_craton;
+
+    let ss = SteinSteinParams::default();
+    let depth_scale = ss.depth_scale_m as f32;
+    let median = |v: &mut Vec<f32>| -> f32 {
+        if v.is_empty() {
+            return 0.0;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() - 1) / 2]
+    };
+    let f500 = |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+
+    // Build a tectonic state with the craton special-treatment either ON (c1
+    // canonical) or dialed to NORMAL crust (thickness 1.0 + resist 1.0 + density
+    // None) — the latter is the "no high-craton" limit of reducing the fraction.
+    let build = |seed: u64, special: bool| -> (C1State, IsostasyConfig) {
+        let mut iso = IsostasyConfig::c1_default();
+        let mut initp = Phase2InitParams::default();
+        let mut clo = C1Closures::default();
+        if !special {
+            iso.craton_rho_crust = None;
+            initp.craton_thickness_ratio = 1.0;
+            clo.erosion.craton_resist = 1.0;
+        }
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: N_STEPS,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &initp);
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        run_with_closures(&mut state, &mut kin, &run, &clo, |_, _| {});
+        (state, iso)
+    };
+
+    eprintln!(
+        "#165 craton FRACTION — origin: build_phase_1_1_cratonic_mask flags a plate cratonic \
+         iff its seed x < nx/2 (LEFT HALF) → ~half the continental plates, UNANCHORED. \
+         Earth anchor: Precambrian craton underlies ~50-70% of continental crust, BUT exposed \
+         high SHIELD is only ~10-20%; the rest is LOW platform (sediment-covered). So a large \
+         craton AREA is realistic — rendering ALL of it as HIGH shield is not."
+    );
+
+    // (1) cratonic AREA fraction across the #165 seeds.
+    eprintln!("\n  cratonic AREA fraction (special treatment ON):");
+    eprintln!("  seed | continental | cratonic | craton/continental | craton/emergent-land");
+    for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
+        let (state, iso) = build(seed, true);
+        let n = state.nx() * state.ny();
+        let coarse = c1_production_altitude_craton(
+            &state.s, &state.age, &state.plate_type, state.cratonic_mask.data(), &iso, &ss,
+        );
+        let craton = state.cratonic_mask.data();
+        let (mut cont, mut cra, mut em_cont, mut em_cra) = (0u64, 0u64, 0u64, 0u64);
+        for k in 0..n {
+            let is_cont = matches!(state.plate_type.data()[k], PlateType::Continental);
+            if !is_cont {
+                continue;
+            }
+            cont += 1;
+            let emergent = coarse.data[k] * depth_scale > 0.0;
+            if emergent {
+                em_cont += 1;
+            }
+            if craton[k] {
+                cra += 1;
+                if emergent {
+                    em_cra += 1;
+                }
+            }
+        }
+        eprintln!(
+            "  {seed:>4} | {cont:>11} | {cra:>8} | {:>17.0}% | {:>19.0}%",
+            100.0 * cra as f64 / cont.max(1) as f64,
+            100.0 * em_cra as f64 / em_cont.max(1) as f64,
+        );
+    }
+
+    // (2) LEVER TEST on seed 42: special vs normal-crust cratons.
+    eprintln!(
+        "\n  LEVER TEST (seed 42): craton special vs NORMAL crust (thickness 1.0 + resist 1.0 \
+         + density None = no high-craton). Does continental hypsometry → non-craton (Earth-like) \
+         and the sea-level coupling dissolve?"
+    );
+    eprintln!("  variant            | ALL land<500 | craton med | non-craton med | non-craton<500");
+    for (label, special) in [("special (c1_default)", true), ("normal crust", false)] {
+        let (state, iso) = build(42, special);
+        let n = state.nx() * state.ny();
+        let coarse = c1_production_altitude_craton(
+            &state.s, &state.age, &state.plate_type, state.cratonic_mask.data(), &iso, &ss,
+        );
+        let craton = state.cratonic_mask.data();
+        let (mut em_all, mut em_cr, mut em_nc): (Vec<f32>, Vec<f32>, Vec<f32>) =
+            (Vec::new(), Vec::new(), Vec::new());
+        for k in 0..n {
+            if !matches!(state.plate_type.data()[k], PlateType::Continental) {
+                continue;
+            }
+            let m = coarse.data[k] * depth_scale;
+            if m <= 0.0 {
+                continue;
+            }
+            em_all.push(m);
+            if craton[k] {
+                em_cr.push(m);
+            } else {
+                em_nc.push(m);
+            }
+        }
+        eprintln!(
+            "  {label:<18} | {:>11.0}% | {:>9.0}m | {:>13.0}m | {:>13.0}%",
+            f500(&em_all),
+            median(&mut em_cr.clone()),
+            median(&mut em_nc.clone()),
+            f500(&em_nc),
+        );
+    }
+    eprintln!(
+        "  → if 'normal crust' (no high-craton) → ALL<500 ≈ the non-craton ~54% AND non-craton \
+         stable (no coupling), then the large HIGH-craton AREA is the lever (fix = fewer high \
+         cratons / bimodal low platform), not craton altitude alone. Non-craton already Earth-like."
+    );
+}
+
+/// #165 BIMODAL calibration — sweep `Phase2InitParams::craton_shield_fraction` and
+/// verify the shield/platform split lands the hypsometry (ALL<500 → ~42 %),
+/// dissolves the sea-level coupling (non-craton stable), and hits anchored
+/// proportions (~10-20 % shield of cratonic area). `None` = all-shield (current).
+///
+/// Each fraction rebuilds the tectonic state (the thickness boost applies to the
+/// narrowed shield mask, so the S̃ evolution differs). 64² tectonic, fast.
+///
+/// DIAGNOSTIC. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_craton_bimodal -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_craton_bimodal() {
+    use ymir_core::tectonics_c1::production_upscale::c1_production_altitude_craton;
+
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let depth_scale = ss.depth_scale_m as f32;
+    let median = |v: &mut Vec<f32>| -> f32 {
+        if v.is_empty() {
+            return 0.0;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() - 1) / 2]
+    };
+    let f500 = |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+
+    // Build the state for a given shield fraction (rebuilds tectonics — the
+    // thickness boost applies to the narrowed shield mask).
+    let build = |seed: u64, shield: Option<f64>| -> C1State {
+        let mut initp = Phase2InitParams::default();
+        initp.craton_shield_fraction = shield;
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: N_STEPS,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &initp);
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        run_with_closures(&mut state, &mut kin, &run, &C1Closures::default(), |_, _| {});
+        state
+    };
+
+    eprintln!(
+        "#165 bimodal calibration — craton_shield_fraction sweep. None = all cratonic is HIGH \
+         shield (current). Some(f) = ~f of cratonic cells stay shield, rest become LOW platform. \
+         Target: ALL<500 → ~42 %, non-craton STABLE (coupling dissolved), shield ~10-20 % of area."
+    );
+
+    for &seed in &[42u64, 1988] {
+        // The full cratonic AREA = the None build's mask (all cratonic flagged).
+        let area_state = build(seed, None);
+        let area: u64 = area_state.cratonic_mask.data().iter().filter(|&&c| c).count() as u64;
+        let cont: u64 = area_state
+            .plate_type
+            .data()
+            .iter()
+            .filter(|t| matches!(t, PlateType::Continental))
+            .count() as u64;
+        eprintln!(
+            "\n  seed {seed}: continental {cont}, cratonic AREA {area} ({:.0}% of continental)",
+            100.0 * area as f64 / cont.max(1) as f64
+        );
+        eprintln!("  shield_frac | shield cells | ALL land<500 | SHIELD med | platform+nc med | platform+nc<500");
+
+        for shield in [None, Some(0.30f64), Some(0.20), Some(0.15), Some(0.10)] {
+            let state = build(seed, shield);
+            let n = state.nx() * state.ny();
+            let coarse = c1_production_altitude_craton(
+                &state.s, &state.age, &state.plate_type, state.cratonic_mask.data(), &iso, &ss,
+            );
+            let mask = state.cratonic_mask.data(); // = shield when Some, full area when None
+            let (mut em_all, mut em_sh, mut em_lo): (Vec<f32>, Vec<f32>, Vec<f32>) =
+                (Vec::new(), Vec::new(), Vec::new());
+            let mut shield_cells = 0u64;
+            for k in 0..n {
+                if !matches!(state.plate_type.data()[k], PlateType::Continental) {
+                    continue;
+                }
+                if mask[k] {
+                    shield_cells += 1;
+                }
+                let m = coarse.data[k] * depth_scale;
+                if m <= 0.0 {
+                    continue;
+                }
+                em_all.push(m);
+                if mask[k] {
+                    em_sh.push(m);
+                } else {
+                    em_lo.push(m); // platform + non-craton (both low continental)
+                }
+            }
+            let label = match shield {
+                None => "None (all high)".to_string(),
+                Some(f) => format!("{f:.2}"),
+            };
+            eprintln!(
+                "  {label:<11} | {shield_cells:>12} | {:>11.0}% | {:>9.0}m | {:>14.0}m | {:>14.0}%",
+                f500(&em_all),
+                median(&mut em_sh.clone()),
+                median(&mut em_lo.clone()),
+                f500(&em_lo),
+            );
+        }
+    }
+    eprintln!(
+        "\n  → pick the lowest-bound shield_frac (anchored ~0.10-0.20 = real exposed-shield share) \
+         where ALL<500 ≈ 42 % AND the low (platform+non-craton) median stays ~430 m (coupling \
+         dissolved). That fraction is the c1 production value."
+    );
 }
