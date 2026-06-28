@@ -279,7 +279,7 @@ pub fn upscale_from_c1(
     }
     let sea_level_normalized = 0.5_f32;
 
-    let result = upscale_with_fbm(&coarse, sea_level_normalized, seed, cfg);
+    let mut result = upscale_with_fbm(&coarse, sea_level_normalized, seed, cfg);
 
     // #155 méso — HD hydraulic erosion (the dendritic dissection that makes
     // the macro ridge read as credible eroded mountains). Applied AFTER the
@@ -287,23 +287,39 @@ pub fn upscale_from_c1(
     // `FbmUpscaleConfig::c1_hd_production` turns it on; default None →
     // byte-identical). Slope is RECOMPUTED post-erosion (it changed);
     // `sediment` is forwarded (the rivers/lakes hook, not consumed yet).
-    let Some(ero) = &cfg.erosion else {
-        return result;
-    };
-    let eroded = run_erosion(&result.heightmap, ero, seed, |_, _, _| true);
-    let h = &eroded.heightmap;
-    let mut slope = GridF32::new(h.width, h.height, 0.0);
-    for j in 0..h.height {
-        for i in 0..h.width {
-            let (gx, gy) = h.gradient_at(i, j);
-            slope.set(i, j, (gx * gx + gy * gy).sqrt());
+    if let Some(ero) = &cfg.erosion {
+        let eroded = run_erosion(&result.heightmap, ero, seed, |_, _, _| true);
+        let h = &eroded.heightmap;
+        let mut slope = GridF32::new(h.width, h.height, 0.0);
+        for j in 0..h.height {
+            for i in 0..h.width {
+                let (gx, gy) = h.gradient_at(i, j);
+                slope.set(i, j, (gx * gx + gy * gy).sqrt());
+            }
         }
+        result = UpscaleResult { heightmap: eroded.heightmap, slope, sediment: Some(eroded.sediment) };
     }
-    UpscaleResult {
-        heightmap: eroded.heightmap,
-        slope,
-        sediment: Some(eroded.sediment),
+
+    // #submarine — re-map the ocean floor toward the plateau→slope→abyss envelope
+    // (the diagnostic found a uniform ~−2600 m slab). Applied LAST, on the final
+    // ocean cells, ONLY when `cfg.bathymetry` is Some. Touches sub-sea cells only
+    // and keeps them submerged (coastline / land hypsometry invariant). None →
+    // byte-identical. `depth_per_norm` is the vertical contract slope (norm→m
+    // below sea), `2·ALTITUDE_NORM_HALF_RANGE·depth_scale_m` (= the
+    // `c1_altitude_norm_to_metres` slope).
+    if let Some(bath) = &cfg.bathymetry {
+        let depth_per_norm = 2.0 * ALTITUDE_NORM_HALF_RANGE * ss.depth_scale_m as f32;
+        let km_per_cell = c1_km_per_cell(result.heightmap.width);
+        crate::terrain::bathymetry::apply_bathymetry_profile(
+            &mut result.heightmap,
+            sea_level_normalized,
+            depth_per_norm,
+            km_per_cell,
+            bath,
+        );
     }
+
+    result
 }
 
 #[cfg(test)]
