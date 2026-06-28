@@ -202,3 +202,44 @@ et par DÉBIT, + crops colorés par longueur de run (vert = run court, rouge = r
 
 Donc : **réglage de la perturbation d'abord** (les peignes des grands plats), **D∞ ensuite si
 nécessaire** (l'escalier diffus). Diagnostic seulement — le fix suit.
+
+---
+
+## FIX peignes appliqué — la FRÉQUENCE relevée (pas une octave basse)
+
+**Hypothèse de départ (le brief)** : une octave BASSE fréquence (λ ~ taille des grands plats)
+donnerait au grand plat une variation à son échelle. **RÉFUTÉE par la mesure.** Une composante
+basse fréquence est une **pente lisse à grande échelle** → les rivières la descendent tout droit
+sur une longue distance → les peignes EMPIRENT : straightness grands plats 59 % → **72 %**, runs de
+17+ pas 6 % → 33 % (`seed02026_residual_runlen.png` de cet essai : traînées diagonales plus longues).
+
+**Ce que la donnée disait** : pour casser un long run droit en escalier court, le bruit doit
+**basculer le choix latéral D8 plus SOUVENT** → il faut une fréquence **plus HAUTE** (longueur
+d'onde plus courte), l'inverse de l'hypothèse. La basse fréquence flippe rarement (lisse) → runs
+longs ; la haute fréquence flippe souvent → runs courts (escalier = acceptable).
+
+**Le fix** : `frequency` 0.07 → **0.17** (λ ≈ 14 → 6 cellules), `amplitude` inchangée (0.45, sous la
+borne anti-pit). Pas de composante basse fréquence (la machinerie multi-échelle a été retirée — elle
+ne servait pas). Une seule manette : la fréquence, relevée.
+
+**Mesure (seeds 42 / 2026), avant (λ14) → après (λ6)** :
+
+| | λ14 (0.07) | λ6 (0.17) |
+|---|---|---|
+| runs LONGS (9+, peignes) | 28-29 % | **9-10 %** |
+| runs 17+ (longues droites) | 5-6 % | **1 %** |
+| straightness GRANDS plats | 57-59 % | **48 %** |
+| straightness petits plats | 34 % | 34 % (inchangé) |
+| straightness-plats globale OFF→ON | 60 → 44 % | 60 → **38 %** |
+
+**Visuel** (`flat_tracing/seed02026_residual_runlen.png`) : les traînées diagonales rouges (peignes)
+sont **dissoutes** — réseau quasi entièrement vert dendritique. Les petits plats sont inchangés
+(la haute fréquence marche toujours). **Garde-fous** : aire de lacs 0.16 % = 0.16 % (pas de pit —
+la fréquence ne touche pas l'amplitude/la borne), endorhéiques 113 ≈ 111, réseau connecté. Gated
+(None byte-identique), plié dans la clé de cache via la config. Lib verte (472).
+
+**Jugement de l'escalier diffus restant** : une fois les peignes partis, le résidu est l'escalier D8
+court (90-91 % des pas droits en runs 2-8), qui rend un tracé **dendritique d'aspect naturel** (crops).
+Les grands plats à 48 % et les petits à 34 % sont du même ordre — le motif n'est plus pathologique.
+→ **On s'arrête là. D∞ reste en RÉSERVE** (chantier de fond : flux fractionnaire, touche
+`compute_accumulation`/`extract_rivers`) — à n'engager que si l'escalier est un jour jugé gênant.
