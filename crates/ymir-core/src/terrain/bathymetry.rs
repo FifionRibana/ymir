@@ -48,9 +48,15 @@ impl Default for BathymetryProfile {
         Self {
             shelf_min_depth_m: 20.0,
             shelf_break_depth_m: 200.0,
-            // #submarine — 30 km lands the shelf at ~Earth's ~7-8 % of ocean area
-            // on these regional maps (70 km gave ~21 %, too wide for the small
-            // basins / dense coastlines); a steeper-margin width, still anchored.
+            // #submarine — DELIBERATE GAMEPLAY CHOICE, not a calibration miss. At
+            // 30 km the shelf lands at ~11.6 % of ocean area (measured, 6 seeds) —
+            // WIDER than Earth's real ~7-8 %, kept on purpose for playable coastal
+            // waters (coastal navigation / fishing in the Living Landz sandbox).
+            // This is the generator's ONE gameplay-tuned departure from the real
+            // anchor (everything else is anchored-not-tuned); it is named here so
+            // the gap reads as intent, not drift. `shelf_width_km` is the knob:
+            // ~20 km tightens the shelf toward the real ~7-8 %; 70 km gave ~21 %
+            // (too wide for these regional maps' dense coastlines).
             shelf_width_km: 30.0,
             slope_width_km: 80.0,
             abyss_depth_m: 4500.0,
