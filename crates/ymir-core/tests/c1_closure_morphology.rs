@@ -6936,3 +6936,103 @@ fn probe_drainage_lake_audit() {
         "  → water balance ON: lake area 18% → ~0.7% (semi-arid 45° world: precip<PE → few small lakes, mostly endorheic, like steppes); exorheic preserved; endorheic in arid interiors. The fill-and-spill over-fill is fixed."
     );
 }
+
+/// #drainage routing audit — the lake fix re-revealed two RIVER-ROUTING defects
+/// (the drained lakes no longer hide the flats). Two distinct causes, measured in
+/// one look:
+///   A. RECTILINEAR rivers on flats (priority 1): D8 (8 discrete dirs) routed down
+///      the Garbrecht-Martz flat gradient on PIT-FILLED flats → cardinal-aligned
+///      straight channels + ~90° junctions. Old defect, was hidden under lakes.
+///   B. PHANTOM rivers (priority 2): `extract_rivers` runs on the GEOMETRIC
+///      accumulation (priority-flood, pre-water-balance) → it does NOT know which
+///      basins the water balance made endorheic, so a river flows OUT of a closed
+///      basin to the sea (water that actually evaporated in the lake).
+///
+/// Measures (shared cache): (A) % of river cells on pit-filled flats + a
+/// straightness metric (mean same-direction run length, cardinal %); (B) % of
+/// NAVIGABLE river length in water-deficit (precip<PE) terrain — the phantom proxy
+/// (a river wholly in net-evaporative terrain carries no real water).
+///
+/// DIAGNOSTIC. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_river_routing_audit -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_river_routing_audit() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{precip_mm_per_year, PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::tectonics_c1::drainage::{potential_evaporation_mm, LakeType, Navigability};
+
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let pp = PrecipParams::default();
+    let seeds: [u64; 3] = [42, 1988, 2026];
+
+    eprintln!(
+        "#drainage routing audit — D8 + Garbrecht-Martz on pit-filled flats (rectilinear), \
+         extract_rivers on GEOMETRIC accumulation (ignores endorheic → phantom). Shared cache."
+    );
+
+    for &seed in &seeds {
+        let h = c165_eroded(seed, &iso);
+        let dr = c165_drainage(seed, &iso);
+        let clim = c1_climate(&h, &ss, 45.0, &pp);
+        let (w, _ht) = (h.width, h.height);
+        let eps = 1e-6f32;
+
+        // A. flat fraction + straightness over ALL river cells.
+        let (mut river_cells, mut flat_cells) = (0u64, 0u64);
+        let (mut steps, mut straight_steps, mut cardinal_steps) = (0u64, 0u64, 0u64);
+        // B. navigable river cells in water-deficit terrain.
+        let (mut nav_cells, mut nav_deficit) = (0u64, 0u64);
+        for (si, seg) in dr.rivers.segments.iter().enumerate() {
+            let navigable = !matches!(dr.segment_navigability[si], Navigability::NonNavigable);
+            let mut prev_dir: Option<(i32, i32)> = None;
+            for (pi, &(px, py)) in seg.points.iter().enumerate() {
+                let k = py as usize * w + px as usize;
+                river_cells += 1;
+                if (dr.flow.filled.data[k] - h.data[k]) > eps {
+                    flat_cells += 1; // pit-filled flat → G-M routed
+                }
+                if navigable {
+                    nav_cells += 1;
+                    let mm = precip_mm_per_year(clim.precipitation.data[k]);
+                    let pe = potential_evaporation_mm(clim.temperature.data[k]);
+                    if mm < pe {
+                        nav_deficit += 1;
+                    }
+                }
+                if pi > 0 {
+                    let (qx, qy) = seg.points[pi - 1];
+                    let (dx, dy) = ((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum());
+                    steps += 1;
+                    if dx == 0 || dy == 0 {
+                        cardinal_steps += 1;
+                    }
+                    if prev_dir == Some((dx, dy)) {
+                        straight_steps += 1;
+                    }
+                    prev_dir = Some((dx, dy));
+                }
+            }
+        }
+        let endo = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).count();
+        eprintln!(
+            "\n  seed {seed}: river cells {river_cells} | on pit-filled FLATS {:.0}% (G-M rectilinear-prone)",
+            100.0 * flat_cells as f64 / river_cells.max(1) as f64
+        );
+        eprintln!(
+            "    straightness: {:.0}% steps continue same D8 dir (straight runs), {:.0}% cardinal (vs diagonal)",
+            100.0 * straight_steps as f64 / steps.max(1) as f64,
+            100.0 * cardinal_steps as f64 / steps.max(1) as f64,
+        );
+        eprintln!(
+            "    PHANTOM proxy: {:.0}% of NAVIGABLE river cells are in water-deficit terrain (precip<PE) — carry no real water. {endo} endorheic basins the rivers ignore (extract_rivers is geometric).",
+            100.0 * nav_deficit as f64 / nav_cells.max(1) as f64
+        );
+        let _ = SEA_LEVEL_NORM;
+    }
+    eprintln!(
+        "\n  → A (rectilinear): D8 on G-M flat gradient → cardinal straight channels on pit-filled flats (low plains / drained basins). Approaches: D∞ (continuous dir) / flat micro-perturbation / stochastic meander. \
+         B (phantom): extract_rivers uses geometric accumulation, ignores the water balance's endorheic basins → rivers exit closed basins. Fix: route rivers on runoff with endorheic resets. SEPARATE fixes (flat tracing vs closed-basin coherence)."
+    );
+}
