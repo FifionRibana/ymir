@@ -151,3 +151,54 @@ pentes passent par la passe 1 de `compute_d8`, intouchées). Lib verte (472 ; l'
 
 **Verdict** : A + B faits. Le réseau hydrographique est désormais physique (débit réel, bassins
 fermés respectés, allochtones préservés) ET son tracé sur les plats est naturel (dendritique).
+
+---
+
+## DIAGNOSTIC du rectiligne RÉSIDUEL (fix A suite)
+
+La perturbation a amélioré le tracé (straightness-plats 60 % → 44 %) mais **insuffisamment** : il
+reste des rivières droites. 44 % est une MOYENNE — ce diagnostic localise et caractérise le résidu
+pour choisir le bon fix (D∞ de fond vs réglage de perturbation). Probe `probe_residual_rectilinear`
+(2 seeds, cache, perturbation ON) : longueur des runs de pas droits, straightness par TAILLE de plat
+et par DÉBIT, + crops colorés par longueur de run (vert = run court, rouge = run long).
+
+### Mesure
+
+| | seed 42 | seed 2026 |
+|---|---|---|
+| pas droits en runs COURTS (2-8, escalier) | **71 %** | **72 %** |
+| pas droits en runs LONGS (9+, peigne) | **29 %** | **28 %** |
+| straightness petits plats (<100 c.) | 34 % | 34 % |
+| straightness GRANDS plats (>5k c.) | **59 %** | **57 %** |
+| straightness par débit (<50 / 50-1k / >1k km²) | 49 / 42 / 47 % | 49 / 41 / 18 % |
+
+### Le résidu a DEUX natures distinctes
+
+1. **DOMINANT (~71 %) — escalier D8 DIFFUS.** La majorité des pas droits sont dans des runs COURTS
+   (2-8 pas) : la rivière serpente mais D8 (8 directions discrètes) la rend en marches d'escalier.
+   C'est le **plancher de discrétisation**, partout (le vert dendritique des crops). Visuellement
+   plutôt naturel. Seul **D∞** (direction de flux continue) l'enlève.
+
+2. **SECONDAIRE (~28 %) — peignes CONCENTRÉS sur les GRANDS plats.** Les runs LONGS (9+) sont des
+   **traînées diagonales parallèles** (les lignes rouges des crops, surtout `seed02026_residual_runlen.png`),
+   concentrées sur les GRANDS plats : straightness **59 % sur les grands plats vs 34 % sur les
+   petits**. Cause : la fréquence du bruit (0.07, longueur d'onde ≈ 14 cellules) est trop FINE pour
+   les grands plats — sur des centaines de cellules le bruit **moyenne à ~0** et le gradient G-M
+   uniforme (diagonal vers l'exutoire lointain) **redomine** → longs peignes diagonaux. L'amplitude
+   (0.45) ne peut pas monter (borne 0.5 de garantie anti-pit).
+
+   Ce n'est **PAS** lié au DÉBIT (la straightness ne croît pas avec le débit ; le bucket >1k km² est
+   trop petit — 67-187 pas — pour conclure). Le driver est la **TAILLE du plat**, pas le débit.
+
+### Verdict — les deux fix sont distincts, le réglage d'abord
+
+- **Les peignes (rouge, ~28 %, le plus VISIBLE — longues droites parallèles)** = perturbation MAL
+  CALÉE pour les grands plats (fréquence trop fine). Fix = **régler la perturbation** : abaisser la
+  fréquence (longueur d'onde plus grande) ou ajouter une octave BASSE fréquence qui varie à travers
+  le grand plat. **Cheap, ciblé, attaque l'artefact le plus visible. À faire en premier.**
+- **L'escalier (vert, ~71 %, diffus)** = plancher de discrétisation D8. Fix = **D∞** (mono → flux
+  fractionnaire, touche `compute_accumulation` / `extract_rivers` — chantier de FOND). À n'engager
+  que si l'escalier reste jugé trop rectiligne UNE FOIS les peignes dissous.
+
+Donc : **réglage de la perturbation d'abord** (les peignes des grands plats), **D∞ ensuite si
+nécessaire** (l'escalier diffus). Diagnostic seulement — le fix suit.
