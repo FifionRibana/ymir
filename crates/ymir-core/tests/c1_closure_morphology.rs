@@ -7404,3 +7404,238 @@ fn probe_residual_rectilinear() {
 
 const D8_DX_T: [i32; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
 const D8_DY_T: [i32; 8] = [-1, -1, 0, 1, 1, 1, 0, -1];
+
+/// #drainage fix A suite — is the residual "lines" impression DIRECTIONAL
+/// PARALLELISM (neighbouring rivers all pointing the same D8 direction = the
+/// teeth of a comb), rather than long runs (already optimised)? Measures, on
+/// large flats vs small flats vs slopes:
+///   - the 8-direction histogram (D8 only emits 8 directions; is it CONCENTRATED
+///     on 1-2 — especially the 45° diagonals — = parallel, or spread = dendritic?)
+///   - the LOCAL orientation order parameter R2 (in a window, do nearby river
+///     steps share an axis? R2→1 = locally parallel = comb; R2→0 = isotropic =
+///     natural). This is what the eye reads as "lines".
+/// Renders the flat-heavy crop coloured by D8 direction (8 hues): a large flat in
+/// one hue = parallel. If parallelism is a discretisation artefact (peaked on 8
+/// dirs + high R2 on large flats), D∞ (continuous directions) is the justified
+/// fix. DIAGNOSTIC ONLY.
+///
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_direction_parallelism -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_direction_parallelism() {
+    use std::collections::VecDeque;
+    let dir = output_dir().join("flat_tracing");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let seeds: [u64; 2] = [42, 2026];
+    // D8 angle per direction index; cos/sin of the DOUBLED angle (orientation).
+    let mut cos2 = [0.0f64; 8];
+    let mut sin2 = [0.0f64; 8];
+    for d in 0..8 {
+        let th = (D8_DY_T[d] as f64).atan2(D8_DX_T[d] as f64);
+        cos2[d] = (2.0 * th).cos();
+        sin2[d] = (2.0 * th).sin();
+    }
+    let dir_index = |sdx: i32, sdy: i32| -> Option<usize> {
+        (0..8).find(|&d| D8_DX_T[d] == sdx && D8_DY_T[d] == sdy)
+    };
+    eprintln!("#fixA direction parallelism — 8-dir histogram + local orientation order R2 (parallel=comb), large flats vs small vs slope. Cached ON drainage.");
+
+    for &seed in &seeds {
+        let h = c165_eroded(seed, &iso);
+        let dr = c165_drainage(seed, &iso);
+        let (w, ht) = (h.width, h.height);
+        let n = w * ht;
+        let eps = 1e-6f32;
+        let is_flat: Vec<bool> =
+            (0..n).map(|k| (dr.flow.filled.data[k] - h.data[k]) > eps).collect();
+
+        // connected flat regions → size per cell.
+        let mut region = vec![0u32; n];
+        let mut region_size: Vec<u32> = vec![0];
+        for start in 0..n {
+            if !is_flat[start] || region[start] != 0 {
+                continue;
+            }
+            let id = region_size.len() as u32;
+            let mut sz = 0u32;
+            let mut q = VecDeque::new();
+            region[start] = id;
+            q.push_back(start);
+            while let Some(c) = q.pop_front() {
+                sz += 1;
+                let (ci, cj) = (c % w, c / w);
+                for d in 0..8 {
+                    let ni = ((ci as i32 + D8_DX_T[d]) % w as i32 + w as i32) as usize % w;
+                    let nj = ((cj as i32 + D8_DY_T[d]) % ht as i32 + ht as i32) as usize % ht;
+                    let m = nj * w + ni;
+                    if is_flat[m] && region[m] == 0 {
+                        region[m] = id;
+                        q.push_back(m);
+                    }
+                }
+            }
+            region_size.push(sz);
+        }
+
+        // per-cell river step direction (the step arriving at the cell), -1 = none.
+        let mut cdir = vec![-1i8; n];
+        for seg in &dr.rivers.segments {
+            for pi in 1..seg.points.len() {
+                let (px, py) = seg.points[pi];
+                let (qx, qy) = seg.points[pi - 1];
+                if let Some(d) =
+                    dir_index((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum())
+                {
+                    cdir[py as usize * w + px as usize] = d as i8;
+                }
+            }
+        }
+
+        // class: 0 small flat (<100), 1 med, 2 large (>5k), 3 slope (non-flat).
+        let class = |k: usize| -> usize {
+            if !is_flat[k] {
+                3
+            } else {
+                let s = region_size[region[k] as usize];
+                if s < 100 {
+                    0
+                } else if s < 5000 {
+                    1
+                } else {
+                    2
+                }
+            }
+        };
+        let cname = ["small flat <100", "med flat", "LARGE flat >5k", "slope"];
+
+        // 8-dir histogram per class.
+        let mut hist = [[0u64; 8]; 4];
+        for k in 0..n {
+            if cdir[k] >= 0 {
+                hist[class(k)][cdir[k] as usize] += 1;
+            }
+        }
+        eprintln!("\n  seed {seed}: 8-dir histogram (N=cardinal · X=diagonal), share of river steps");
+        for c in 0..4 {
+            let tot: u64 = hist[c].iter().sum();
+            if tot == 0 {
+                continue;
+            }
+            let pc = |d: usize| 100.0 * hist[c][d] as f64 / tot as f64;
+            let diag = pc(1) + pc(3) + pc(5) + pc(7);
+            let maxbin = (0..8).map(|d| pc(d)).fold(0.0f64, f64::max);
+            // direction entropy (bits, max 3) → low = concentrated/parallel.
+            let ent: f64 = (0..8)
+                .map(|d| hist[c][d] as f64 / tot as f64)
+                .filter(|&p| p > 0.0)
+                .map(|p| -p * p.log2())
+                .sum();
+            eprintln!(
+                "    {:16} N[{:.0} {:.0} {:.0} {:.0}] X[{:.0} {:.0} {:.0} {:.0}] | diag {diag:.0}% maxbin {maxbin:.0}% entropy {ent:.2}/3 (low=parallel) | {tot} steps",
+                cname[c], pc(0), pc(2), pc(4), pc(6), pc(1), pc(3), pc(5), pc(7)
+            );
+        }
+
+        // local orientation order parameter R2 in an r-window over river cells.
+        let r = 8i32;
+        let mut r2_sum = [0.0f64; 4];
+        let mut r2_cnt = [0u64; 4];
+        for k in 0..n {
+            if cdir[k] < 0 {
+                continue;
+            }
+            let cl = class(k);
+            let (ci, cj) = ((k % w) as i32, (k / w) as i32);
+            let (mut sc, mut ss, mut cnt) = (0.0f64, 0.0f64, 0u64);
+            let mut dj = -r;
+            while dj <= r {
+                let mut di = -r;
+                while di <= r {
+                    let ni = ((ci + di) % w as i32 + w as i32) as usize % w;
+                    let nj = ((cj + dj) % ht as i32 + ht as i32) as usize % ht;
+                    let m = nj * w + ni;
+                    if cdir[m] >= 0 {
+                        sc += cos2[cdir[m] as usize];
+                        ss += sin2[cdir[m] as usize];
+                        cnt += 1;
+                    }
+                    di += 1;
+                }
+                dj += 1;
+            }
+            if cnt > 0 {
+                r2_sum[cl] += (sc * sc + ss * ss).sqrt() / cnt as f64;
+                r2_cnt[cl] += 1;
+            }
+        }
+        eprintln!("    local orientation order R2 (window {}², 1=parallel/comb, 0=isotropic):", 2 * r + 1);
+        for c in 0..4 {
+            if r2_cnt[c] > 0 {
+                eprintln!("      {:16} R2 = {:.2}", cname[c], r2_sum[c] / r2_cnt[c] as f64);
+            }
+        }
+
+        // render the flat-heavy crop, color river cells by D8 direction (8 hues).
+        const CROP: usize = 384;
+        let stride = 64usize;
+        let mut rof = vec![0u8; n];
+        for k in 0..n {
+            if cdir[k] >= 0 && is_flat[k] {
+                rof[k] = 1;
+            }
+        }
+        let (mut best, mut bxy) = (0u64, (0usize, 0usize));
+        let mut y = 0;
+        while y + CROP <= ht {
+            let mut x = 0;
+            while x + CROP <= w {
+                let mut cc = 0u64;
+                for jj in y..y + CROP {
+                    for ii in x..x + CROP {
+                        cc += rof[jj * w + ii] as u64;
+                    }
+                }
+                if cc > best {
+                    best = cc;
+                    bxy = (x, y);
+                }
+                x += stride;
+            }
+            y += stride;
+        }
+        let (cx, cy) = bxy;
+        // 8 distinct hues for the 8 D8 directions.
+        let hue: [[u8; 3]; 8] = [
+            [240, 60, 60], [240, 160, 40], [230, 230, 50], [80, 220, 60],
+            [40, 220, 200], [60, 130, 240], [150, 70, 240], [240, 70, 200],
+        ];
+        let scale = 2usize;
+        let mut buf = image::ImageBuffer::new((CROP * scale) as u32, (CROP * scale) as u32);
+        for jj in 0..CROP * scale {
+            for ii in 0..CROP * scale {
+                let i = cx + ii / scale;
+                let j = cy + jj / scale;
+                let k = j * w + i;
+                let v = h.data[k].clamp(0.0, 1.0);
+                let mut px = if v <= 0.5 {
+                    [18u8, 34, 70]
+                } else if is_flat[k] {
+                    [38, 48, 60]
+                } else {
+                    [55, 66, 45]
+                };
+                if cdir[k] >= 0 {
+                    px = hue[cdir[k] as usize];
+                }
+                if dr.lake_map[k] != 0 {
+                    px = [30, 90, 180];
+                }
+                buf.put_pixel(ii as u32, (CROP * scale - 1 - jj) as u32, image::Rgb(px));
+            }
+        }
+        buf.save(dir.join(format!("seed{seed:05}_direction_hue.png"))).unwrap();
+        eprintln!("    crop {CROP}² at ({cx},{cy}) → seed{seed:05}_direction_hue.png (one hue per D8 dir; mono-hue flat = parallel)");
+    }
+    eprintln!("\n  out = {}", dir.display());
+}
