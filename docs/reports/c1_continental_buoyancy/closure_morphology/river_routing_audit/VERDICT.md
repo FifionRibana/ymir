@@ -102,3 +102,52 @@ inchangée). `ALGO_DRAINAGE` 1→2 (le code a changé sans changer d'input → l
 Lib verte (472). `runoff_accumulation` est factorisé et partagé avec le bilan hydrique des lacs.
 
 **Reste** : fix A (tracé rectiligne sur les plats) — géométrie du routage, à traiter séparément.
+
+---
+
+## FIX A appliqué — micro-perturbation du gradient G-M sur les plats
+
+**Cause rappel** : le pit-fill rend les dépressions PARFAITEMENT plates ; Garbrecht-Martz y impose
+un gradient distance-à-l'exutoire UNIFORME → D8 route en peignes droits cardinaux/diagonaux.
+
+**Le fix (la version retenue après itération)** : on ajoute un **bruit cohérent (value-noise)** au
+**gradient G-M `flat_grad`** sur les plats — PAS à la surface `filled`. Le bruit est **borné à
+`amplitude·(fhmax+1)` avec `amplitude < 0.5`** (où `fhmax+1` = le poids d'un pas `tl` du gradient).
+
+**Pourquoi cette borne = pas de pit, garanti mathématiquement** : un pas vers l'exutoire fait baisser
+`flat_grad` de `(fhmax+1)` ; l'écart de bruit entre deux cellules est `< 2·0.5·(fhmax+1) = (fhmax+1)`,
+donc le voisin-vers-l'exutoire reste **strictement plus bas** après bruit → drainage garanti, aucun
+minimum intérieur, réseau connecté. Sous cette borne le bruit domine le choix LATÉRAL (le tie-break
+`fh` et les petits écarts `tl`) → la rivière **serpente**. `filled` n'est jamais touché → niveaux de
+lac, bilan hydrique, bassins endorhéiques **inchangés** (B intact).
+
+**Première tentative écartée** : perturber la surface `filled` puis re-pit-filler. Le re-fill
+**re-aplatissait** les pits creusés par le bruit → re-créait des plats → G-M cardinal (le cardinal
+remontait même). Le re-fill contrecarrait la perturbation. La perturbation du gradient (ci-dessus)
+n'a pas ce problème : pas de re-fill, pas de pit par construction.
+
+**Itération visuelle** (probe `probe_flat_tracing_compare`, crop des plats, OFF vs ON) :
+`flat_tracing/seed00042_tracing_OFF.png` montre les **peignes diagonaux parallèles** (l'artefact) ;
+`_ON.png` montre des **réseaux dendritiques organiques** (arborescences naturelles, peignes dissous).
+Réglage retenu : `amplitude = 0.45` (juste sous la borne 0.5 → serpentement fort), `frequency = 0.07`
+(longueur d'onde ≈ 14 cellules), `octaves = 4`.
+
+**Mesure (seed 42)** :
+
+| | valeur |
+|---|---|
+| straightness SUR LES PLATS (pas même-dir) | **OFF 60 % → ON 44 %** |
+| aire de lacs (invariant) | OFF 0.16 % = ON 0.16 % ✓ |
+| lacs endorhéiques (invariant) | OFF 113 ≈ ON 112 ✓ |
+
+L'audit global (3 seeds) : la rectilinéarité totale 53-54 % → 46-47 % (diluée — 60 % des cellules de
+rivière sont sur de vraies pentes, déjà bien routées) ; endorhéiques 113/186/84 → 112/185/85
+(inchangés) ; navigabilité (fix B) préservée.
+
+**Gating** : `flat_perturbation: None` (sur `FlowConfig` / `C1DrainageConfig`) → routage légataire
+byte-identique. Plié dans la clé de cache via la config (pas de re-bump ALGO). Plats SEULEMENT (les
+pentes passent par la passe 1 de `compute_d8`, intouchées). Lib verte (472 ; l'échec
+`rectangular_simulation_smoke_test` est pré-existant, tectonique, sans rapport).
+
+**Verdict** : A + B faits. Le réseau hydrographique est désormais physique (débit réel, bassins
+fermés respectés, allochtones préservés) ET son tracé sur les plats est naturel (dendritique).

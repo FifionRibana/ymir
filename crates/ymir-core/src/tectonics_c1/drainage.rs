@@ -27,8 +27,8 @@ use crate::climate::precipitation::{e_sat, precip_mm_per_year};
 use crate::grid::GridF32;
 use crate::lakes::detection::{detect_lakes, Lake, LakeConfig};
 use crate::terrain::flow::{
-    compute_flow, extract_rivers, FlowConfig, FlowResult, RiverConfig, RiverNetwork, D8_DX, D8_DY,
-    DIR_NONE,
+    compute_flow, extract_rivers, FlatPerturbation, FlowConfig, FlowResult, RiverConfig,
+    RiverNetwork, D8_DX, D8_DY, DIR_NONE,
 };
 
 use super::closures::oceanic_bathymetry::params::SteinSteinParams;
@@ -136,12 +136,21 @@ pub struct C1DrainageConfig {
     pub lake_min_depth_m: f32,
     /// Minimum lake surface area in km² to keep.
     pub lake_min_area_km2: f32,
+    /// #drainage fix A — micro-relief restored on the pit-filled flats so rivers
+    /// wander instead of running cardinal-straight. `None` → legacy routing
+    /// (byte-identical). Folded into the drainage cache key via the config.
+    pub flat_perturbation: Option<FlatPerturbation>,
 }
 
 impl Default for C1DrainageConfig {
     fn default() -> Self {
         // 10 m min lake depth, 5 km² min lake area — plausible mappable lakes.
-        Self { thresholds: DrainageThresholds::default(), lake_min_depth_m: 10.0, lake_min_area_km2: 5.0 }
+        Self {
+            thresholds: DrainageThresholds::default(),
+            lake_min_depth_m: 10.0,
+            lake_min_area_km2: 5.0,
+            flat_perturbation: Some(FlatPerturbation::default()),
+        }
     }
 }
 
@@ -193,8 +202,16 @@ pub fn c1_drainage(
     // metres per unit of normalised altitude (the linear vertical scale slope).
     let metres_per_norm = c1_altitude_norm_to_metres(1.0, ss) - c1_altitude_norm_to_metres(0.0, ss);
 
-    // 1. Flow at the unified sea level (NOT the legacy 0.1).
-    let flow = compute_flow(heightmap, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM });
+    // 1. Flow at the unified sea level (NOT the legacy 0.1). The flat
+    //    perturbation (fix A) restores micro-relief on the pit-filled flats so the
+    //    routing wanders; it touches only the routing surface, not the hydrology.
+    let flow = compute_flow(
+        heightmap,
+        &FlowConfig {
+            sea_level: C1_SEA_LEVEL_NORM,
+            flat_perturbation: cfg.flat_perturbation.clone(),
+        },
+    );
 
     // 2. Rivers — km² thresholds → accumulation cell-counts for THIS resolution.
     let to_cells = |km2: f32| (km2 / cell_km2).max(1.0);

@@ -1036,7 +1036,7 @@ fn handle_v2_export(
             .sea_level_override
             .or_else(|| iso_cache.result.as_ref().map(|r| r.sea_level_normalized))
             .unwrap_or(0.1);
-        let flow_cfg = FlowConfig { sea_level };
+        let flow_cfg = FlowConfig { sea_level, ..Default::default() };
         let river_cfg = RiverConfig {
             stream_threshold: hydrology_params.stream_threshold,
             river_threshold: hydrology_params.river_threshold,

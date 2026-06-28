@@ -6,6 +6,7 @@ use std::collections::BinaryHeap;
 use serde::{Deserialize, Serialize};
 
 use crate::grid::GridF32;
+use crate::terrain::noise::SeededNoise;
 
 // ── D8 direction encoding ───────────────────────────────────────────────
 
@@ -24,11 +25,47 @@ pub const D8_DIST: [f32; 8] = [1.0, 1.414, 1.0, 1.414, 1.0, 1.414, 1.0, 1.414];
 #[serde(default)]
 pub struct FlowConfig {
     pub sea_level: f32,
+    /// #drainage fix A — optional micro-relief restored on the pit-filled FLATS
+    /// before routing. The priority-flood fills depressions to a PERFECTLY flat
+    /// sill; Garbrecht-Martz then imposes a uniform distance-to-outlet gradient →
+    /// D8 routes cardinal-straight (straight channels + 90° junctions). Real
+    /// plains are never perfectly flat (old meanders, deposits). This restores a
+    /// little coherent micro-relief on those flats so the routing WANDERS down it
+    /// instead. It touches ONLY the routing surface — `filled` (and thus every
+    /// lake level) keeps the exact original sill, so the hydrology is unchanged.
+    /// `None` → no perturbation (byte-identical legacy routing).
+    pub flat_perturbation: Option<FlatPerturbation>,
 }
 
 impl Default for FlowConfig {
     fn default() -> Self {
-        Self { sea_level: 0.1 }
+        Self { sea_level: 0.1, flat_perturbation: None }
+    }
+}
+
+/// #drainage fix A — coherent value-noise added to the Garbrecht-Martz flat
+/// gradient so the routing wanders on the flats instead of running
+/// cardinal-straight down the uniform distance-to-outlet gradient.
+///
+/// `amplitude` is a FRACTION of the G-M descent step (the per-cell `tl` weight,
+/// `fhmax+1`). It MUST stay `< 0.5`: at `< 0.5` the toward-outlet neighbour is
+/// still strictly lower after the noise, so drainage is mathematically guaranteed
+/// (no spurious pit, network stays connected). Within that bound the noise
+/// dominates the lateral tie-break → the river meanders. `frequency` (cells⁻¹)
+/// sets the meander wavelength — the main visual knob.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlatPerturbation {
+    pub seed: u32,
+    pub amplitude: f32,
+    pub frequency: f64,
+    pub octaves: usize,
+}
+
+impl Default for FlatPerturbation {
+    fn default() -> Self {
+        // 0.45 of the G-M step (just under the 0.5 no-pit bound → strong wander);
+        // wavelength ≈ 14 cells.
+        Self { seed: 0xF1A7_5EED, amplitude: 0.45, frequency: 0.07, octaves: 4 }
     }
 }
 
@@ -130,7 +167,15 @@ pub fn compute_flow(heightmap: &GridF32, config: &FlowConfig) -> FlowResult {
     // real micro-gradient and are untouched). Returns a per-cell `flat_grad`
     // (f64, 0 on non-flat cells) used ONLY for routing — `filled` keeps the exact
     // sill so lake levels are unchanged.
-    let flat_grad = resolve_flats(&filled, &is_ocean, w, h);
+    //
+    // #drainage fix A — with `flat_perturbation`, a coherent value-noise term is
+    // ADDED to `flat_grad` on the flats (bounded below the G-M descent step) so D8
+    // wanders laterally instead of running cardinal-straight down the uniform
+    // distance gradient. It cannot create a pit (the bound keeps the toward-outlet
+    // neighbour strictly lower) and never touches `filled` → the hydrology (lakes,
+    // water balance, endorheic basins) is unchanged; only the TRACÉ wanders.
+    let flat_grad =
+        resolve_flats(&filled, &is_ocean, config.flat_perturbation.as_ref(), w, h);
 
     // Step 3: D8 flow direction (steepest descent on `filled`; flat cells routed
     // down the `flat_grad` toward the outlet).
@@ -278,7 +323,22 @@ fn compute_d8(filled: &GridF32, flat_grad: &[f64], is_ocean: &[bool], w: usize, 
 /// Native FBM-textured plateaus are never EXACTLY flat (micro-relief gives a
 /// strictly-lower neighbour), so they are not classified as flat here and keep
 /// their real diffuse drainage — the fix touches only the pit-filled flats.
-fn resolve_flats(filled: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> Vec<f64> {
+///
+/// #drainage fix A — with `perturb`, a coherent value-noise term bounded to
+/// `amplitude·(fhmax+1)` with `amplitude < 0.5` is ADDED to `flat_grad` on the
+/// flats. Since a single `tl` step is `(fhmax+1)` and the noise difference
+/// between two cells is `< 2·0.5·(fhmax+1) = (fhmax+1)`, the toward-spill
+/// neighbour (one `tl` lower) stays strictly lower → drainage still guaranteed,
+/// no interior minimum. But the noise (up to nearly half a `tl` step) overrides
+/// the `(fhmax − fh)` tie-break and small `tl` differences → the route WANDERS
+/// instead of converging cardinal-straight.
+fn resolve_flats(
+    filled: &GridF32,
+    is_ocean: &[bool],
+    perturb: Option<&FlatPerturbation>,
+    w: usize,
+    h: usize,
+) -> Vec<f64> {
     use std::collections::VecDeque;
     let n = w * h;
     let f = &filled.data;
@@ -378,12 +438,23 @@ fn resolve_flats(filled: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> Vec
     let fhmax = fh.iter().copied().max().unwrap_or(0).max(0) as f64;
 
     // 4. Combined gradient (tl dominant → guaranteed descent; fh breaks bars).
+    //    With a perturbation, add coherent noise bounded to amplitude·(fhmax+1)
+    //    (amplitude < 0.5 keeps the toward-spill neighbour strictly lower → still
+    //    no interior minimum) so the lateral choice wanders → meandering rivers.
+    let noise = perturb.map(|p| (SeededNoise::new(p.seed, p.octaves.max(1)), p));
     let mut flat_grad = vec![0.0f64; n];
     for c in 0..n {
         if needs[c] {
             let t = if tl[c] < 0 { 0 } else { tl[c] } as f64;
             let hh = if fh[c] < 0 { fhmax } else { fh[c] as f64 };
-            flat_grad[c] = t * (fhmax + 1.0) + (fhmax - hh);
+            let mut g = t * (fhmax + 1.0) + (fhmax - hh);
+            if let Some((ng, p)) = &noise {
+                let (i, j) = (c % w, c / w);
+                let bound = (p.amplitude as f64).min(0.49) * (fhmax + 1.0);
+                let v = ng.fbm(i as f64 * p.frequency, j as f64 * p.frequency, p.octaves, 2.0, 0.5);
+                g += v * bound;
+            }
+            flat_grad[c] = g;
         }
     }
     flat_grad
@@ -735,7 +806,7 @@ mod tests {
             }
         }
 
-        let config = FlowConfig { sea_level: 0.05 };
+        let config = FlowConfig { sea_level: 0.05, ..Default::default() };
         let result = compute_flow(&hmap, &config);
 
         // Max accumulation should be large (many cells drain to edges)
@@ -756,7 +827,7 @@ mod tests {
             hmap.set(31, i, 0.0);
         }
 
-        let config = FlowConfig { sea_level: 0.05 };
+        let config = FlowConfig { sea_level: 0.05, ..Default::default() };
         let result = compute_flow(&hmap, &config);
 
         // The pit cell should have a valid flow direction
@@ -783,7 +854,7 @@ mod tests {
             }
         }
 
-        let config = FlowConfig { sea_level: 0.05 };
+        let config = FlowConfig { sea_level: 0.05, ..Default::default() };
         let result = compute_flow(&hmap, &config);
 
         // Flow accumulation should generally increase toward the right (downhill)
@@ -823,7 +894,7 @@ mod tests {
             }
         }
 
-        let config = FlowConfig { sea_level: 0.05 };
+        let config = FlowConfig { sea_level: 0.05, ..Default::default() };
         let result = compute_flow(&hmap, &config);
 
         // Every land cell must have a valid flow direction (pit filling guarantees this)
