@@ -7026,7 +7026,11 @@ fn probe_river_routing_audit() {
             100.0 * cardinal_steps as f64 / steps.max(1) as f64,
         );
         eprintln!(
-            "    PHANTOM proxy: {:.0}% of NAVIGABLE river cells are in water-deficit terrain (precip<PE) — carry no real water. {endo} endorheic basins the rivers ignore (extract_rivers is geometric).",
+            "    NAVIGABLE: {nav_cells} river cells ({:.0}% of all river cells)",
+            100.0 * nav_cells as f64 / river_cells.max(1) as f64
+        );
+        eprintln!(
+            "    PHANTOM proxy: {:.0}% of NAVIGABLE river cells are in water-deficit terrain (precip<PE) — local deficit (residual = allochthonous, real upstream discharge). {endo} endorheic basins.",
             100.0 * nav_deficit as f64 / nav_cells.max(1) as f64
         );
         let _ = SEA_LEVEL_NORM;
