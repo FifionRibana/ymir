@@ -243,3 +243,57 @@ court (90-91 % des pas droits en runs 2-8), qui rend un tracé **dendritique d'a
 Les grands plats à 48 % et les petits à 34 % sont du même ordre — le motif n'est plus pathologique.
 → **On s'arrête là. D∞ reste en RÉSERVE** (chantier de fond : flux fractionnaire, touche
 `compute_accumulation`/`extract_rivers`) — à n'engager que si l'escalier est un jour jugé gênant.
+
+---
+
+## DIAGNOSTIC directionnel — l'impression de lignes = quantisation DIAGONALE D8
+
+L'utilisateur voit ENCORE des traînées diagonales (« plus courtes mais on a l'impression de longues
+lignes »). La métrique des RUNS (longueur des segments droits) ne capte pas ça. Hypothèse : l'œil
+lit le **parallélisme directionnel** (rivières voisines toutes orientées pareil), pas la longueur.
+Probe `probe_direction_parallelism` (2 seeds, cache) : histogramme des 8 directions D8 + paramètre
+d'ordre d'orientation LOCAL R2 + crop teinté (1 teinte/direction).
+
+### Mesure
+
+| classe | diagonal % (50 % = neutre) | maxbin | entropie /3 | R2 local (1=parallèle) |
+|---|---|---|---|---|
+| petits plats <100 c. | 38-41 % | 18-20 % | 2.94 | 0.40-0.41 |
+| **GRANDS plats >5k c.** | **67-68 %** | 19-20 % | 2.87-2.90 | 0.39-0.40 |
+| pente (non plat) | 46-47 % | 15-16 % | 2.97 | 0.45-0.51 |
+
+### Lecture
+
+1. **Biais DIAGONAL fort et SPÉCIFIQUE aux grands plats** : 67-68 % des pas y sont diagonaux, contre
+   46-47 % sur les pentes (et ~50 % neutre). C'est le cœur de l'artefact. Sur une pente réelle, D8
+   pénalise les diagonales (le `D8_DIST` √2 en pas 1) → diag < 50 %. Sur un plat, la passe 2 choisit
+   le `flat_grad` voisin minimal **sans pénalité de distance** → les diagonales (qui « avancent » plus
+   vite vers l'exutoire dans le champ de distance) sont sur-représentées. Un gradient continu pointant
+   vers l'exutoire lointain est **snappé à 45°** → traînées diagonales parallèles de MÊME direction.
+
+2. **Pas un peigne « serré » uniforme** : le R2 local (0.40 sur les grands plats) n'est PAS supérieur
+   aux pentes (0.45-0.51) et l'entropie reste haute (2.87/3) — donc pas une seule direction partout.
+   Mais le biais diagonal + la quantisation produisent les **streaks mono-teinte diagonaux** bien
+   visibles sur `flat_tracing/seed02026_direction_hue.png` (grands plats), absents de
+   `seed00042_direction_hue.png` (petits plats, dendritique multi-teinte). Le parallélisme est
+   **concentré sur les grands plats, en diagonale** — exactement là où l'œil voit les lignes.
+
+3. **D8-quantisé par construction** : les directions ne prennent que 8 valeurs. La perturbation ne
+   change QUE *quelle* cellule bascule, jamais le fait qu'elle bascule vers une des 8 → elle ne peut
+   pas étaler le biais diagonal. C'est pourquoi le tracé reste « en lignes » malgré la perturbation.
+
+### Verdict — D∞ justifié (avec une piste plus cheap à tester d'abord)
+
+L'impression de lignes vient bien de la **quantisation directionnelle D8** (biais diagonal sur les
+grands plats), PAS de la longueur des runs (déjà optimisée). **D∞** (directions continues) est le
+fix de fond justifié : il étale le biais diagonal sur un continuum d'angles → les streaks diagonaux
+se dissolvent. Confirmé par la mesure (pas une supposition).
+
+**Nuance — une piste moins chère à essayer AVANT le chantier D∞** : une grande part du biais diagonal
+vient de la passe 2 de `compute_d8` qui compare `flat_grad` **sans normaliser par la distance**
+(contrairement à la passe 1 des pentes, qui divise par `D8_DIST`). Pénaliser les diagonales dans la
+passe plat (diviser l'écart de `flat_grad` par √2 pour les diagonales) pourrait réduire le biais
+67 %→~50 % sans toucher au cœur du routage (flux mono D8 conservé). À mesurer en premier ; si le biais
+diagonal tombe et que l'œil est satisfait, on évite le chantier D∞. Sinon, D∞ (flux fractionnaire
+continu — touche `compute_accumulation`/`extract_rivers`/la cohérence runoff de B). Diagnostic
+seulement — le fix suit.
