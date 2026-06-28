@@ -103,6 +103,40 @@ fn c165_eroded(seed: u64, iso: &IsostasyConfig) -> GridF32 {
     .expect("cached #165 eroded heightmap")
 }
 
+/// #viz — the C1 DRAINAGE product on the SHARED cached terrain. Calls
+/// [`c165_eroded`] (cache HIT — the SAME eroded relief the climate/biomes/relief
+/// tiles use, so the whole integration grid is one terrain per seed) then
+/// `cached_c1_drainage` (chained on the eroded key; cached too). Replaces the
+/// old direct `init → run → upscale → c1_drainage` rebuild — fast + coherent.
+fn c165_drainage(seed: u64, iso: &IsostasyConfig) -> ymir_core::tectonics_c1::drainage::C1DrainageResult {
+    use ymir_core::tectonics_c1::cached_product::{cached_c1_drainage, eroded_key, tectonic_key};
+    use ymir_core::tectonics_c1::drainage::C1DrainageConfig;
+    let h = c165_eroded(seed, iso);
+    let run = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: N_STEPS,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso.clone(),
+        drainage_max_distance: 30,
+    };
+    let ss = SteinSteinParams::default();
+    let up = FbmUpscaleConfig::c1_hd_production(2048);
+    let ek = eroded_key(
+        &tectonic_key(seed, GRID_SIZE, &Phase2InitParams::default(), &run, &C1Closures::default()),
+        &ss,
+        &up,
+    );
+    cached_c1_drainage(
+        &ymir_core::cache::default_cache_dir(),
+        &ek,
+        &h,
+        &C1DrainageConfig::default(),
+        &ss,
+    )
+    .expect("cached #165 drainage")
+}
+
 /// #165 cache GAIN demonstration in the REAL probe path (the `c165_eroded`
 /// helper every #165 probe now calls). MISS builds the relief (~100 s); a 2nd
 /// call on the SAME relief is a HIT (~ms) — this is the climate/biomes/hypsometry
@@ -3890,74 +3924,65 @@ fn probe_drainage_etat_des_lieux() {
 
 /// #155 drainage maillon ACCEPTANCE — validate the PRODUCT (c1_drainage) on the
 /// real C1 terrain, not the algorithm (that has unit tests). Checks: navigability
-/// classes (km² thresholds), lake stats in metres, and RESOLUTION-INDEPENDENCE
-/// (512² vs 1024²: km²-anchored network density comparable, where cell-count
-/// thresholds would break). Renders the drainage overlay (origin-bottom) for the
+/// classes (km² thresholds, resolution-independent by design) + lake stats in
+/// metres, and renders the drainage overlay (origin-bottom) for the
 /// geometric-coherence re-judge (rivers in valleys / lakes in basins).
+///
+/// #viz — now reads the SHARED cache (`c165_eroded` + `cached_c1_drainage`)
+/// instead of rebuilding erosion in-line per run: fast (HIT after the first
+/// erosion) and COHERENT (the exact terrain the climate/biomes/integration tiles
+/// use). The render is unchanged (the cache changes only speed + the terrain
+/// source, not the drainage product).
 #[test]
 #[ignore]
 fn probe_c1_drainage_acceptance() {
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, Navigability, LakeType};
+    use ymir_core::tectonics_c1::drainage::{LakeType, Navigability};
     use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
     let dir = output_dir().join("drainage_accept");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso = IsostasyConfig::c1_default();
-    let ss = SteinSteinParams::default();
-    let dcfg = C1DrainageConfig::default();
-    let grid = 64usize;
-    eprintln!("#155 drainage acceptance — c1_drainage on C1 product, km² thresholds {:?}", dcfg.thresholds);
+    eprintln!("#155 drainage acceptance — c1_drainage on the SHARED cached 2048² C1 product (c165_eroded + cached_c1_drainage); km² navigability is resolution-independent by design.");
     for &seed in &[42u64, 1988, 2026] {
-        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
-        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-        let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
-        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
-
-        // Resolution-independence: 512² and 1024², compare km²-normalised metrics.
-        for &target in &[512usize, 1024] {
-            let cfg = FbmUpscaleConfig::c1_hd_production(target);
-            let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
-            let dr = c1_drainage(&up.heightmap, &dcfg, &ss);
-            let (w, _h) = (dr.width, dr.height);
-            let land_km2 = up.heightmap.data.iter().filter(|&&v| v > 0.5).count() as f32 * c1_cell_area_km2(w);
-            let mut nav = [0usize; 4];
-            for n in &dr.segment_navigability { nav[match n { Navigability::NonNavigable=>0, Navigability::SmallBoat=>1, Navigability::Barge=>2, Navigability::Ship=>3 }] += 1; }
-            let max_drain = dr.segment_drainage_km2.iter().cloned().fold(0.0f32, f32::max);
-            let exo = dr.lakes.iter().filter(|l| l.lake_type==LakeType::Exorheic).count();
-            let endo = dr.lakes.iter().filter(|l| l.lake_type==LakeType::Endorheic).count();
-            let (deepest, highest, biggest) = dr.lakes.iter().fold((0.0f32,f32::MIN,0.0f32), |(d,h,a),l| (d.max(l.depth_m), h.max(l.level_m), a.max(l.area_km2)));
-            eprintln!("  seed {seed} @{target}²: land {land_km2:.0} km² | rivers {} (nonNav {} smallBoat {} barge {} ship {}) maxDrain {max_drain:.0} km²",
-                dr.rivers.segments.len(), nav[0], nav[1], nav[2], nav[3]);
-            eprintln!("    lakes {} (exo {exo}/endo {endo}) deepest {deepest:.0} m, highest level {highest:.0} m, biggest {biggest:.0} km²", dr.lakes.len());
-
-            if target == 1024 {
-                // render overlay (origin-bottom, the product convention). Base
-                // hypso + lakes + NAVIGABLE rivers by tier (the mappable network:
-                // small-boat→barge→ship), NOT every headwater (the full
-                // hydrography at stream_km2 is the dense texture, consumer-filtered).
-                let mut img = vec![0u8; w*dr.height*3];
-                for k in 0..w*dr.height {
-                    let v = up.heightmap.data[k].clamp(0.0,1.0);
-                    let (r,g,b) = if v <= 0.5 { (30,60,(120.0+200.0*v) as u8) } else { let t=(v-0.5)*2.0; (((60.0+150.0*t) as u8),((120.0+80.0*t) as u8),60) };
-                    img[k*3]=r; img[k*3+1]=g; img[k*3+2]=b;
-                }
-                for (si, seg) in dr.rivers.segments.iter().enumerate() {
-                    let col = match dr.segment_navigability[si] {
-                        Navigability::Ship => [20u8, 70, 200],
-                        Navigability::Barge => [40, 110, 230],
-                        Navigability::SmallBoat => [90, 160, 240],
-                        Navigability::NonNavigable => continue,
-                    };
-                    for &(px, py) in &seg.points { let k = py as usize * w + px as usize; img[k*3]=col[0]; img[k*3+1]=col[1]; img[k*3+2]=col[2]; }
-                }
-                for k in 0..w*dr.height {
-                    if dr.lake_map[k]!=0 { img[k*3]=30; img[k*3+1]=90; img[k*3+2]=180; }
-                }
-                let mut buf = image::ImageBuffer::new(w as u32, dr.height as u32);
-                for j in 0..dr.height { for i in 0..w { let k=j*w+i; buf.put_pixel(i as u32,(dr.height-1-j) as u32, image::Rgb([img[k*3],img[k*3+1],img[k*3+2]])); }}
-                buf.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
-            }
+        let h = c165_eroded(seed, &iso); // HIT — the shared terrain
+        let dr = c165_drainage(seed, &iso); // cached drainage, chained on the eroded key
+        let (w, ht) = (dr.width, dr.height);
+        let land_km2 = h.data.iter().filter(|&&v| v > 0.5).count() as f32 * c1_cell_area_km2(w);
+        let mut nav = [0usize; 4];
+        for n in &dr.segment_navigability {
+            nav[match n { Navigability::NonNavigable=>0, Navigability::SmallBoat=>1, Navigability::Barge=>2, Navigability::Ship=>3 }] += 1;
         }
+        let max_drain = dr.segment_drainage_km2.iter().cloned().fold(0.0f32, f32::max);
+        let exo = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Exorheic).count();
+        let endo = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).count();
+        let (deepest, highest, biggest) = dr.lakes.iter().fold((0.0f32, f32::MIN, 0.0f32), |(d, hh, a), l| (d.max(l.depth_m), hh.max(l.level_m), a.max(l.area_km2)));
+        eprintln!("  seed {seed} @2048²: land {land_km2:.0} km² | rivers {} (nonNav {} smallBoat {} barge {} ship {}) maxDrain {max_drain:.0} km²",
+            dr.rivers.segments.len(), nav[0], nav[1], nav[2], nav[3]);
+        eprintln!("    lakes {} (exo {exo}/endo {endo}) deepest {deepest:.0} m, highest level {highest:.0} m, biggest {biggest:.0} km²", dr.lakes.len());
+
+        // render overlay (origin-bottom, the product convention). Base hypso +
+        // lakes + NAVIGABLE rivers by tier (small-boat→barge→ship); non-navigable
+        // headwaters omitted (consumer-filtered dense hydrography).
+        let mut img = vec![0u8; w * ht * 3];
+        for k in 0..w * ht {
+            let v = h.data[k].clamp(0.0, 1.0);
+            let (r, g, b) = if v <= 0.5 { (30, 60, (120.0 + 200.0 * v) as u8) } else { let t = (v - 0.5) * 2.0; (((60.0 + 150.0 * t) as u8), ((120.0 + 80.0 * t) as u8), 60) };
+            img[k * 3] = r; img[k * 3 + 1] = g; img[k * 3 + 2] = b;
+        }
+        for (si, seg) in dr.rivers.segments.iter().enumerate() {
+            let col = match dr.segment_navigability[si] {
+                Navigability::Ship => [20u8, 70, 200],
+                Navigability::Barge => [40, 110, 230],
+                Navigability::SmallBoat => [90, 160, 240],
+                Navigability::NonNavigable => continue,
+            };
+            for &(px, py) in &seg.points { let k = py as usize * w + px as usize; img[k * 3] = col[0]; img[k * 3 + 1] = col[1]; img[k * 3 + 2] = col[2]; }
+        }
+        for k in 0..w * ht {
+            if dr.lake_map[k] != 0 { img[k * 3] = 30; img[k * 3 + 1] = 90; img[k * 3 + 2] = 180; }
+        }
+        let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w { let k = j * w + i; buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb([img[k * 3], img[k * 3 + 1], img[k * 3 + 2]])); } }
+        buf.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -6623,5 +6648,171 @@ fn probe_submarine_relief() {
         "  → (1) scale USED (abyss to −4000/−5000) or shallow slab? (2) flat (low std) or varied? \
          (3) coast→offshore: does depth deepen with distance (shelf→slope→abyss) or jump/stay flat? \
          Verdict = generate all / enrich a base / fix the shape; what's missing (shelf/slope/abyss/ridge/trench)."
+    );
+}
+
+/// #viz — INTEGRATION GRID: the WHOLE current chain on ONE shared cached terrain
+/// per seed, so the complete product is visible in one place (the global visual
+/// validation before the Living Landz export — the cross-link coherence the
+/// per-maillon probes cannot see). Assembles EXISTING renders (no reinvention):
+/// relief+BATHYMETRY, c1_drainage (navigable rivers + typed lakes), precip,
+/// temperature, biomes, W→E transect. All tiles read the SAME `c165_eroded`
+/// terrain (HIT — one erosion per seed feeds every view; the cache pays here) and
+/// the SAME `c165_drainage` (cached, chained on the eroded key). Common fixed
+/// scales/palettes across the 6 seeds (cross-seed comparison valid).
+///
+/// Tiles per seed → `integration_grid/seed{NNNNN}_{relief,drainage,precip_MMBANDS,
+/// temp_CBANDS,biomes,transect}.png`; assemble with `image_grid_integration.py`.
+///
+/// DIAGNOSTIC. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_integration_grid -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_integration_grid() {
+    use ymir_core::climate::biomes::Biome;
+    use ymir_core::climate::precipitation::{precip_mm_per_year, PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::climate::{c1_biomes, c1_climate};
+    use ymir_core::tectonics_c1::drainage::Navigability;
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+
+    let dir = output_dir().join("integration_grid");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let pp = PrecipParams::default();
+    let seeds: [u64; 6] = [42, 99, 1337, 4138, 1988, 2026];
+
+    // COMMON fixed scales (identical across seeds → comparable).
+    let alt_m = |n: f32| c1_altitude_norm_to_metres(n, &ss);
+    // relief+bathy: land hypso (green→brown→white) + ocean depth (shelf cyan →
+    // abyss navy). The bathymetry plateau/slope/abyss reads directly.
+    let relief_color = |n: f32| -> [u8; 3] {
+        if n <= SEA_LEVEL_NORM {
+            let d = (-alt_m(n)).clamp(0.0, 5650.0) / 5650.0; // 0 shelf → 1 abyss
+            let lerp = |a: f32, b: f32| (a + (b - a) * d) as u8;
+            [lerp(140.0, 10.0), lerp(195.0, 25.0), lerp(215.0, 70.0)]
+        } else {
+            let a = alt_m(n).max(0.0);
+            if a < 1000.0 {
+                let t = a / 1000.0;
+                [(70.0 + 90.0 * t) as u8, (130.0 + 20.0 * t) as u8, (70.0 - 10.0 * t) as u8]
+            } else if a < 3000.0 {
+                let t = (a - 1000.0) / 2000.0;
+                [(160.0 + 60.0 * t) as u8, (150.0 + 60.0 * t) as u8, (60.0 + 110.0 * t) as u8]
+            } else {
+                [230, 230, 235]
+            }
+        }
+    };
+    let precip_band = |mm: f32| -> [u8; 3] {
+        if mm < 250.0 { [225, 200, 140] } else if mm < 500.0 { [200, 195, 110] }
+        else if mm < 800.0 { [150, 180, 90] } else if mm < 1500.0 { [80, 150, 200] } else { [30, 90, 200] }
+    };
+    let temp_band = |t: f32| -> [u8; 3] {
+        if t < -5.0 { [225, 235, 248] } else if t < 5.0 { [90, 140, 205] }
+        else if t < 20.0 { [110, 190, 110] } else { [225, 120, 70] }
+    };
+
+    eprintln!(
+        "#viz integration grid — 2048² HD, 6 seeds, ONE cached terrain per seed feeds ALL views \
+         (relief+bathy / drainage / precip / temp / biomes / transect). Common scales."
+    );
+
+    for &seed in &seeds {
+        // SHARED terrain + drainage (both cache HIT after the first erosion).
+        let h = c165_eroded(seed, &iso);
+        let dr = c165_drainage(seed, &iso);
+        let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(&h, &ss, 45.0, &pp);
+        let biomes = c1_biomes(&h, &clim);
+
+        let put = |buf: &mut image::RgbImage, i: usize, j: usize, c: [u8; 3]| {
+            buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(c)); // origin-bottom
+        };
+        let (mut relief, mut drain, mut pm, mut tm, mut bb) = (
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+        );
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let n = h.data[k];
+                let sea = n <= SEA_LEVEL_NORM;
+                let rc = relief_color(n);
+                put(&mut relief, i, j, rc);
+                // drainage base = dimmed relief (so rivers/lakes pop).
+                put(&mut drain, i, j, [rc[0] / 2 + 30, rc[1] / 2 + 30, rc[2] / 2 + 30]);
+                put(&mut pm, i, j, if sea { [25, 40, 75] } else { precip_band(precip_mm_per_year(clim.precipitation.data[k])) });
+                put(&mut tm, i, j, if sea { [25, 40, 75] } else { temp_band(clim.temperature.data[k]) });
+                put(&mut bb, i, j, biomes[k].color());
+            }
+        }
+        // Drainage overlay: typed lakes, then NAVIGABLE rivers by tier (the
+        // mappable network; non-navigable headwaters omitted — consumer-filtered).
+        for k in 0..w * ht {
+            if dr.lake_map[k] != 0 {
+                let c = [30, 90, 180];
+                put(&mut drain, k % w, k / w, c);
+            }
+        }
+        for (si, seg) in dr.rivers.segments.iter().enumerate() {
+            // Thicken navigable trunks (plus-shape, +radius by tier) so they
+            // survive the grid downscale; non-navigable headwaters omitted.
+            let (col, rad): ([u8; 3], i32) = match dr.segment_navigability[si] {
+                Navigability::Ship => ([20, 70, 200], 2),
+                Navigability::Barge => ([40, 110, 230], 1),
+                Navigability::SmallBoat => ([90, 160, 240], 1),
+                Navigability::NonNavigable => continue,
+            };
+            for &(px, py) in &seg.points {
+                for (dx, dy) in [(0i32, 0i32), (1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, 2), (0, -2)] {
+                    if (dx.abs() + dy.abs()) > rad + 1 {
+                        continue;
+                    }
+                    let (nx, ny) = (px as i32 + dx, py as i32 + dy);
+                    if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < ht {
+                        put(&mut drain, nx as usize, ny as usize, col);
+                    }
+                }
+            }
+        }
+
+        // W→E transect on the map's middle row: altitude (grey) + precip (cyan,
+        // FIXED 0-2000 mm clamp) + a biome strip at the bottom (shared palette).
+        const TR_MM: f32 = 2000.0;
+        let th = 360usize;
+        let jr = ht / 2;
+        let mut tr = image::RgbImage::new(w as u32, th as u32);
+        for p in tr.pixels_mut() { *p = image::Rgb([20, 20, 28]); }
+        for i in 0..w {
+            let k = jr * w + i;
+            let a = if h.data[k] > SEA_LEVEL_NORM { alt_m(h.data[k]) } else { 0.0 };
+            let ay = (((a / 6000.0).clamp(0.0, 1.0)) * (th as f32 - 40.0)) as usize;
+            let mm = precip_mm_per_year(clim.precipitation.data[k]);
+            let my = (((mm / TR_MM).min(1.0)) * (th as f32 - 40.0)) as usize;
+            if ay < th { tr.put_pixel(i as u32, (th - 1 - ay) as u32, image::Rgb([200, 200, 200])); }
+            if my < th { tr.put_pixel(i as u32, (th - 1 - my) as u32, image::Rgb([60, 200, 230])); }
+            let c = if h.data[k] <= SEA_LEVEL_NORM { [30, 50, 90] } else { biomes[k].color() };
+            for y in 0..28 { tr.put_pixel(i as u32, (th - 1 - y) as u32, image::Rgb(c)); }
+        }
+
+        relief.save(dir.join(format!("seed{seed:05}_relief.png"))).unwrap();
+        drain.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
+        pm.save(dir.join(format!("seed{seed:05}_precip_MMBANDS.png"))).unwrap();
+        tm.save(dir.join(format!("seed{seed:05}_temp_CBANDS.png"))).unwrap();
+        bb.save(dir.join(format!("seed{seed:05}_biomes.png"))).unwrap();
+        tr.save(dir.join(format!("seed{seed:05}_transect.png"))).unwrap();
+
+        let nav: usize = dr.segment_navigability.iter().filter(|n| !matches!(n, Navigability::NonNavigable)).count();
+        eprintln!("  seed {seed}: tiles written | rivers {} (navigable {nav}), lakes {}", dr.rivers.segments.len(), dr.lakes.len());
+    }
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  assemble: python image_grid_integration.py");
+    eprintln!(
+        "  COMMON SCALES: relief land green→brown→white (0-3000m+), ocean cyan→navy (0 shelf→5650m abyss); \
+         precip bands desert<250/steppe/temp-dry/oceanic/wet>1500; temp Whittaker -5/+5/+20°C; biomes shared palette."
     );
 }
