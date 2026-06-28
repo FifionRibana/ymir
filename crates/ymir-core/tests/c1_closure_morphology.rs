@@ -6816,3 +6816,115 @@ fn probe_integration_grid() {
          precip bands desert<250/steppe/temp-dry/oceanic/wet>1500; temp Whittaker -5/+5/+20°C; biomes shared palette."
     );
 }
+
+/// #drainage audit — are the lakes OVER-FILLED (geometric fill-and-spill, ignoring
+/// the water balance) or realistic? The integration grid showed many big lakes,
+/// all basins ~filled, all with an outlet (0 endorheic / 6 seeds) — the signature
+/// of a priority-flood that fills every depression to its overflow sill. This
+/// MEASURES it (audit, no fix), on the shared cached terrain + drainage.
+///
+/// Reports per seed + aggregate: (1) lake AREA fraction of land (vs Earth ~2 %);
+/// (2) lake SIZE distribution (km² bands); (3) exo/endo counts (the algorithm is
+/// documented as geometric → all exorheic); (4) the CLIMATE LINK — bin the lake
+/// CELLS by their precipitation (mm/yr): how much lake area sits in ARID interior
+/// (< 250 / < 500 mm) where Earth has its CLOSED (endorheic) basins (Caspian,
+/// Chad, Aral) but fill-and-spill overflows them anyway.
+///
+/// DIAGNOSTIC. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_drainage_lake_audit -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_drainage_lake_audit() {
+    use ymir_core::climate::precipitation::{precip_mm_per_year, PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::climate::c1_climate;
+    use ymir_core::tectonics_c1::drainage::LakeType;
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let pp = PrecipParams::default();
+    let seeds: [u64; 6] = [42, 99, 1337, 4138, 1988, 2026];
+
+    // Lake-area size bands (km²) and lake-cell precip bands (mm/yr).
+    let size_edges = [0.0f32, 100.0, 1000.0, 5000.0];
+    let size_label = ["<100", "100-1000", "1000-5000", "5000+"];
+    let precip_label = ["arid <250", "semi 250-500", "humid >500"];
+
+    eprintln!(
+        "#drainage lake audit — 6 seeds, shared cache. Earth anchor: lakes ~2% of land; \
+         CLOSED (endorheic) basins exist in ARID interiors (Caspian/Chad/Aral). c1_drainage is \
+         documented PURE-GEOMETRY (priority-flood fill-and-spill) → no climate input."
+    );
+
+    let (mut agg_lake_cells, mut agg_land_cells, mut agg_exo, mut agg_endo) = (0u64, 0u64, 0u64, 0u64);
+    let mut agg_precip = [0u64; 3]; // lake cells by precip band, aggregate
+    for &seed in &seeds {
+        let h = c165_eroded(seed, &iso);
+        let dr = c165_drainage(seed, &iso);
+        let clim = c1_climate(&h, &ss, 45.0, &pp);
+        let (w, _ht) = (h.width, h.height);
+        let cell_km2 = c1_cell_area_km2(w);
+
+        let land_cells = h.data.iter().filter(|&&v| v > SEA_LEVEL_NORM).count() as u64;
+        let mut lake_cells = 0u64;
+        let mut pband = [0u64; 3]; // lake cells by precip
+        for k in 0..dr.lake_map.len() {
+            if dr.lake_map[k] != 0 {
+                lake_cells += 1;
+                let mm = precip_mm_per_year(clim.precipitation.data[k]);
+                let b = if mm < 250.0 { 0 } else if mm < 500.0 { 1 } else { 2 };
+                pband[b] += 1;
+            }
+        }
+        // Size distribution + exo/endo.
+        let mut scnt = [0u64; 4];
+        let (mut exo, mut endo) = (0u64, 0u64);
+        for lk in &dr.lakes {
+            let mut b = 0;
+            for (i, &e) in size_edges.iter().enumerate() {
+                if lk.area_km2 >= e {
+                    b = i;
+                }
+            }
+            scnt[b] += 1;
+            match lk.lake_type {
+                LakeType::Exorheic => exo += 1,
+                LakeType::Endorheic => endo += 1,
+            }
+        }
+        let lake_frac = 100.0 * lake_cells as f64 / land_cells.max(1) as f64;
+        let lake_area_km2 = lake_cells as f64 * cell_km2 as f64;
+
+        eprintln!(
+            "\n  seed {seed}: lakes {} | lake area {lake_area_km2:.0} km² = {lake_frac:.1}% of land | exo {exo} / endo {endo}",
+            dr.lakes.len()
+        );
+        let sz: Vec<String> = (0..4).map(|b| format!("{} {}", size_label[b], scnt[b])).collect();
+        eprintln!("    size (km²): {}", sz.join(" | "));
+        eprintln!(
+            "    lake area by precip: {} {:.0}% | {} {:.0}% | {} {:.0}%  ← arid-zone lake area that fill-and-spill overflows (should be endorheic)",
+            precip_label[0], 100.0 * pband[0] as f64 / lake_cells.max(1) as f64,
+            precip_label[1], 100.0 * pband[1] as f64 / lake_cells.max(1) as f64,
+            precip_label[2], 100.0 * pband[2] as f64 / lake_cells.max(1) as f64,
+        );
+        agg_lake_cells += lake_cells;
+        agg_land_cells += land_cells;
+        agg_exo += exo;
+        agg_endo += endo;
+        for b in 0..3 { agg_precip[b] += pband[b]; }
+    }
+
+    eprintln!("\n  AGGREGATE (6 seeds):");
+    eprintln!(
+        "    lakes area = {:.1}% of land (Earth ~2%) | exo {agg_exo} / endo {agg_endo} (0 endo = structural: fill-and-spill spills every basin)",
+        100.0 * agg_lake_cells as f64 / agg_land_cells.max(1) as f64
+    );
+    eprintln!(
+        "    lake area in ARID (<250mm) {:.0}% | semi-arid (<500mm) {:.0}% — these should host CLOSED basins; fill-and-spill overflows them (the climate is IGNORED).",
+        100.0 * agg_precip[0] as f64 / agg_lake_cells.max(1) as f64,
+        100.0 * (agg_precip[0] + agg_precip[1]) as f64 / agg_lake_cells.max(1) as f64,
+    );
+    eprintln!(
+        "  → verdict: (1) lake fraction vs ~2%? (2) too many big lakes? (3) algo = priority-flood fill-and-spill (code-confirmed, no climate input); (4) arid basins overflow (climate ignored)? (5) 0 endo = closed basins over-filled. Fix = water balance (overflow only if inflow>evaporation)."
+    );
+}
