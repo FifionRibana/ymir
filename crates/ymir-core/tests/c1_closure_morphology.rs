@@ -7172,3 +7172,235 @@ fn probe_flat_tracing_compare() {
     render(&dr_on, "ON");
     eprintln!("  out = {}", dir.display());
 }
+
+/// #drainage fix A suite — LOCALISE the RESIDUAL rectilinearity (perturbation ON
+/// still leaves straight rivers). Distinguishes the two causes before committing
+/// a deeper fix:
+///   - DIFFUSE D8 STAIRCASE (the discretisation floor): straight steps live in
+///     SHORT runs (1-4 steps) — the river meanders but D8's 8 directions render it
+///     as stairsteps. Fix = D∞ (continuous flow direction).
+///   - CONCENTRATED COMBS (perturbation under-bit): straight steps live in LONG
+///     runs (≥9 steps), concentrated on specific flats (large flats where the
+///     ~14-cell noise averages out, or big rivers the lateral noise can't bend).
+///     Fix = tune the perturbation (amplitude/frequency).
+/// Measures (cached drainage, ON): run-length histogram of straight steps on
+/// flats, straightness by flat SIZE and by river DISCHARGE, and renders the
+/// flat-heavy crop coloring rivers by run length (green = short staircase, red =
+/// long comb). DIAGNOSTIC ONLY.
+///
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_residual_rectilinear -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_residual_rectilinear() {
+    use std::collections::VecDeque;
+    let dir = output_dir().join("flat_tracing");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let seeds: [u64; 2] = [42, 2026];
+    eprintln!("#fixA residual rectilinear — run-length of straight steps on flats (short=D8 staircase→D∞, long=comb→tune perturbation), by flat size + discharge. Cached ON drainage.");
+
+    for &seed in &seeds {
+        let h = c165_eroded(seed, &iso);
+        let dr = c165_drainage(seed, &iso);
+        let (w, ht) = (h.width, h.height);
+        let eps = 1e-6f32;
+        let is_flat: Vec<bool> =
+            (0..w * ht).map(|k| (dr.flow.filled.data[k] - h.data[k]) > eps).collect();
+
+        // Label connected flat regions (8-conn) → region size per cell.
+        let mut region = vec![0u32; w * ht];
+        let mut region_size: Vec<u32> = vec![0]; // id 0 = not flat / unassigned
+        let nb = |i: usize, j: usize, d: usize| -> (usize, usize) {
+            let ni = ((i as i32 + D8_DX_T[d]) % w as i32 + w as i32) as usize % w;
+            let nj = ((j as i32 + D8_DY_T[d]) % ht as i32 + ht as i32) as usize % ht;
+            (ni, nj)
+        };
+        for start in 0..w * ht {
+            if !is_flat[start] || region[start] != 0 {
+                continue;
+            }
+            let id = region_size.len() as u32;
+            let mut sz = 0u32;
+            let mut q = VecDeque::new();
+            region[start] = id;
+            q.push_back(start);
+            while let Some(c) = q.pop_front() {
+                sz += 1;
+                let (ci, cj) = (c % w, c / w);
+                for d in 0..8 {
+                    let (ni, nj) = nb(ci, cj, d);
+                    let m = nj * w + ni;
+                    if is_flat[m] && region[m] == 0 {
+                        region[m] = id;
+                        q.push_back(m);
+                    }
+                }
+            }
+            region_size.push(sz);
+        }
+
+        // Walk segments; group consecutive equal-direction STEPS into runs, but
+        // only over steps whose cell is on a flat. Bucket straight steps by run
+        // length; also accumulate straightness by flat-size and discharge bucket.
+        let mut run_buckets = [0u64; 5]; // straight steps in runs of len 1, 2-4, 5-8, 9-16, 17+
+        let bucket = |s: usize| -> usize {
+            match s {
+                0..=1 => 0,
+                2..=4 => 1,
+                5..=8 => 2,
+                9..=16 => 3,
+                _ => 4,
+            }
+        };
+        // per-cell run length (steps) for the render.
+        let mut cell_run = vec![0u16; w * ht];
+        // straightness by flat-size bucket: small <100, med 100-5k, large >5k cells.
+        let mut sz_steps = [0u64; 3];
+        let mut sz_straight = [0u64; 3];
+        let sz_b = |s: u32| -> usize {
+            if s < 100 {
+                0
+            } else if s < 5000 {
+                1
+            } else {
+                2
+            }
+        };
+        // straightness by discharge bucket (segment drainage km²): <50, 50-1k, >1k.
+        let mut dq_steps = [0u64; 3];
+        let mut dq_straight = [0u64; 3];
+
+        for (si, seg) in dr.rivers.segments.iter().enumerate() {
+            let dq = dr.segment_drainage_km2[si];
+            let dqb = if dq < 50.0 {
+                0
+            } else if dq < 1000.0 {
+                1
+            } else {
+                2
+            };
+            // build the step list on flats: (cell_k, dir)
+            let mut steps: Vec<(usize, (i32, i32))> = Vec::new();
+            for pi in 1..seg.points.len() {
+                let (px, py) = seg.points[pi];
+                let (qx, qy) = seg.points[pi - 1];
+                let k = py as usize * w + px as usize;
+                if !is_flat[k] {
+                    continue;
+                }
+                let d = ((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum());
+                steps.push((k, d));
+            }
+            // group into runs of equal direction.
+            let mut i = 0;
+            while i < steps.len() {
+                let mut j = i + 1;
+                while j < steps.len() && steps[j].1 == steps[i].1 {
+                    j += 1;
+                }
+                let run_len = j - i; // steps in this run
+                let straight = (run_len - 1) as u64; // continuations (first step is a change)
+                run_buckets[bucket(run_len)] += straight;
+                for s in i..j {
+                    let k = steps[s].0;
+                    cell_run[k] = run_len.min(u16::MAX as usize) as u16;
+                    let szb = sz_b(region_size[region[k] as usize]);
+                    sz_steps[szb] += 1;
+                    dq_steps[dqb] += 1;
+                    if s > i {
+                        sz_straight[szb] += 1;
+                        dq_straight[dqb] += 1;
+                    }
+                }
+                i = j;
+            }
+        }
+
+        let total_straight: u64 = run_buckets.iter().sum();
+        let pct = |x: u64| 100.0 * x as f64 / total_straight.max(1) as f64;
+        eprintln!("\n  seed {seed}: straight steps on flats = {total_straight}");
+        eprintln!(
+            "    run-length of straight steps:  len1 {:.0}% | 2-4 {:.0}% | 5-8 {:.0}% | 9-16 {:.0}% | 17+ {:.0}%",
+            pct(run_buckets[0]), pct(run_buckets[1]), pct(run_buckets[2]), pct(run_buckets[3]), pct(run_buckets[4])
+        );
+        let long = pct(run_buckets[3]) + pct(run_buckets[4]);
+        let short = pct(run_buckets[1]) + pct(run_buckets[2]);
+        eprintln!(
+            "    → SHORT runs (2-8, staircase) {short:.0}% vs LONG runs (9+, comb) {long:.0}% of straight steps"
+        );
+        let sline = |lbl: &str, st: &[u64; 3], sr: &[u64; 3]| {
+            eprintln!(
+                "    {lbl}: [{:.0}% / {} steps] [{:.0}% / {}] [{:.0}% / {}]",
+                100.0 * sr[0] as f64 / st[0].max(1) as f64, st[0],
+                100.0 * sr[1] as f64 / st[1].max(1) as f64, st[1],
+                100.0 * sr[2] as f64 / st[2].max(1) as f64, st[2],
+            );
+        };
+        sline("straightness by flat size  (small<100 / med / large>5k cells)", &sz_steps, &sz_straight);
+        sline("straightness by discharge  (<50 / 50-1k / >1k km²)         ", &dq_steps, &dq_straight);
+
+        // render the flat-heavy crop, color rivers by run length (green short → red long).
+        const CROP: usize = 384;
+        let stride = 64usize;
+        let mut rof = vec![0u8; w * ht];
+        for k in 0..w * ht {
+            if is_flat[k] && cell_run[k] > 0 {
+                rof[k] = 1;
+            }
+        }
+        let (mut best, mut bxy) = (0u64, (0usize, 0usize));
+        let mut y = 0;
+        while y + CROP <= ht {
+            let mut x = 0;
+            while x + CROP <= w {
+                let mut c = 0u64;
+                for jj in y..y + CROP {
+                    for ii in x..x + CROP {
+                        c += rof[jj * w + ii] as u64;
+                    }
+                }
+                if c > best {
+                    best = c;
+                    bxy = (x, y);
+                }
+                x += stride;
+            }
+            y += stride;
+        }
+        let (cx, cy) = bxy;
+        let scale = 2usize;
+        let mut buf = image::ImageBuffer::new((CROP * scale) as u32, (CROP * scale) as u32);
+        for jj in 0..CROP * scale {
+            for ii in 0..CROP * scale {
+                let i = cx + ii / scale;
+                let j = cy + jj / scale;
+                let k = j * w + i;
+                let v = h.data[k].clamp(0.0, 1.0);
+                let mut px = if v <= 0.5 {
+                    [18u8, 34, 70]
+                } else if is_flat[k] {
+                    [40, 52, 66]
+                } else {
+                    let t = (v - 0.5) * 2.0;
+                    [(55.0 + 80.0 * t) as u8, (70.0 + 55.0 * t) as u8, 45]
+                };
+                if cell_run[k] > 0 {
+                    // green (short staircase) → yellow → red (long comb).
+                    let r = cell_run[k] as f32;
+                    let t = ((r - 2.0) / 14.0).clamp(0.0, 1.0); // 2→0, 16+→1
+                    px = [(60.0 + 195.0 * t) as u8, (220.0 - 120.0 * t) as u8, 60];
+                }
+                if dr.lake_map[k] != 0 {
+                    px = [30, 90, 180];
+                }
+                buf.put_pixel(ii as u32, (CROP * scale - 1 - jj) as u32, image::Rgb(px));
+            }
+        }
+        buf.save(dir.join(format!("seed{seed:05}_residual_runlen.png"))).unwrap();
+        eprintln!("    crop {CROP}² at ({cx},{cy}) → seed{seed:05}_residual_runlen.png (green=short staircase, red=long comb)");
+    }
+    eprintln!("\n  out = {}", dir.display());
+}
+
+const D8_DX_T: [i32; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
+const D8_DY_T: [i32; 8] = [-1, -1, 0, 1, 1, 1, 0, -1];
