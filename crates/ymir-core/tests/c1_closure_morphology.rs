@@ -3863,7 +3863,7 @@ fn probe_drainage_etat_des_lieux() {
         let (w, ht) = (h.width, h.height);
 
         // The unified scale puts sea at 0.5.
-        let flow = compute_flow(h, &FlowConfig { sea_level: 0.5 });
+        let flow = compute_flow(h, &FlowConfig { sea_level: 0.5, ..Default::default() });
         let rivers = extract_rivers(&flow, &RiverConfig::default(), w, ht);
         let lakes = detect_lakes(h, &flow.filled, &flow.direction, &flow.basins, &LakeConfig::default());
 
@@ -4341,7 +4341,7 @@ fn probe_quasi_flat_residual() {
     for &sg in &[1e-4f32, 1e-3, 5e-3] {
         let n=512usize; let mut hm=GridF32::new(n,n,0.0);
         for j in 0..n { for i in 0..n { hm.set(i,j, (0.75 - i as f32*sg).max(0.2)); }}
-        let fl=compute_flow(&hm,&FlowConfig{sea_level:0.5});
+        let fl=compute_flow(&hm,&FlowConfig{sea_level:0.5,..Default::default()});
         let stream=RiverConfig::default().stream_threshold;
         let (mut cs,mut cn)=(0.0f32,0u32);
         for k in 0..n*n { if hm.data[k]>0.5 && fl.accumulation.data[k]>=stream { cs+=coherence(&fl.direction,&fl.accumulation,stream,n,n,k); cn+=1; }}
@@ -7039,4 +7039,136 @@ fn probe_river_routing_audit() {
         "\n  → A (rectilinear): D8 on G-M flat gradient → cardinal straight channels on pit-filled flats (low plains / drained basins). Approaches: D∞ (continuous dir) / flat micro-perturbation / stochastic meander. \
          B (phantom): extract_rivers uses geometric accumulation, ignores the water balance's endorheic basins → rivers exit closed basins. Fix: route rivers on runoff with endorheic resets. SEPARATE fixes (flat tracing vs closed-basin coherence)."
     );
+}
+
+/// #drainage fix A — VISUAL comparison of the flat tracing, perturbation OFF vs
+/// ON. Picks the flat-heavy crop (most river cells on pit-filled flats) and
+/// renders the FULL drainage network (all segments, not just navigable) there,
+/// zoomed, side by side, so the meandering is judged by eye. Also prints the
+/// straightness on the FLATS ONLY (the metric the fix targets) and the lake-area
+/// invariant (must be unchanged). Iterate the `FlatPerturbation` default
+/// (amplitude/frequency) and re-run.
+///
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_flat_tracing_compare -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_flat_tracing_compare() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, C1DrainageResult, DrainageClimate};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+
+    let dir = output_dir().join("flat_tracing");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let pp = PrecipParams::default();
+    let seed = 42u64;
+
+    let h = c165_eroded(seed, &iso);
+    let (w, ht) = (h.width, h.height);
+    let clim = c1_climate(&h, &ss, 45.0, &pp);
+    let dc = DrainageClimate { precip_internal: &clim.precipitation, temperature: &clim.temperature };
+
+    let cfg_off = C1DrainageConfig { flat_perturbation: None, ..Default::default() };
+    let cfg_on = C1DrainageConfig::default(); // Some(FlatPerturbation::default())
+    let dr_off = c1_drainage(&h, Some(&dc), &cfg_off, &ss);
+    let dr_on = c1_drainage(&h, Some(&dc), &cfg_on, &ss);
+
+    let eps = 1e-6f32;
+    // flat mask from the OFF flow (the pit-filled flats: filled raised above h).
+    let is_flat: Vec<bool> = (0..w * ht).map(|k| (dr_off.flow.filled.data[k] - h.data[k]) > eps).collect();
+
+    // straightness on flats only, OFF vs ON, + lake area (invariant).
+    let straight_on_flats = |dr: &C1DrainageResult| -> (f64, u64) {
+        let (mut steps, mut straight) = (0u64, 0u64);
+        for seg in &dr.rivers.segments {
+            let mut prev: Option<(i32, i32)> = None;
+            for pi in 1..seg.points.len() {
+                let (px, py) = seg.points[pi];
+                let (qx, qy) = seg.points[pi - 1];
+                let k = py as usize * w + px as usize;
+                if !is_flat[k] { prev = None; continue; }
+                let dxy = ((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum());
+                steps += 1;
+                if prev == Some(dxy) { straight += 1; }
+                prev = Some(dxy);
+            }
+        }
+        (100.0 * straight as f64 / steps.max(1) as f64, steps)
+    };
+    let lake_area = |dr: &C1DrainageResult| -> f64 {
+        let cells = dr.lake_map.iter().filter(|&&v| v != 0).count();
+        100.0 * cells as f64 / (w * ht) as f64
+    };
+    let (s_off, n_off) = straight_on_flats(&dr_off);
+    let (s_on, n_on) = straight_on_flats(&dr_on);
+    eprintln!("#fixA flat-tracing seed {seed}:");
+    eprintln!("  straightness ON FLATS: OFF {s_off:.0}% ({n_off} steps) → ON {s_on:.0}% ({n_on} steps)");
+    eprintln!("  lake area: OFF {:.2}% → ON {:.2}% (invariant — must match)", lake_area(&dr_off), lake_area(&dr_on));
+    eprintln!("  endorheic lakes: OFF {} → ON {} | cell km² {:.2}",
+        dr_off.lakes.iter().filter(|l| l.lake_type == ymir_core::tectonics_c1::drainage::LakeType::Endorheic).count(),
+        dr_on.lakes.iter().filter(|l| l.lake_type == ymir_core::tectonics_c1::drainage::LakeType::Endorheic).count(),
+        c1_cell_area_km2(w));
+
+    // pick the flat-heavy crop (most river-on-flat cells, OFF).
+    const CROP: usize = 384;
+    let mut rof = vec![0u8; w * ht];
+    for seg in &dr_off.rivers.segments {
+        for &(px, py) in &seg.points {
+            let k = py as usize * w + px as usize;
+            if is_flat[k] { rof[k] = 1; }
+        }
+    }
+    let stride = 64usize;
+    let (mut best, mut bxy) = (0u64, (0usize, 0usize));
+    let mut y = 0;
+    while y + CROP <= ht {
+        let mut x = 0;
+        while x + CROP <= w {
+            let mut c = 0u64;
+            for j in y..y + CROP { for i in x..x + CROP { c += rof[j * w + i] as u64; } }
+            if c > best { best = c; bxy = (x, y); }
+            x += stride;
+        }
+        y += stride;
+    }
+    let (cx, cy) = bxy;
+    eprintln!("  crop {CROP}² at ({cx},{cy}) — {best} river-on-flat cells (OFF). Rendered OFF/ON for eyeballing.");
+
+    let scale = 2usize;
+    let render = |dr: &C1DrainageResult, tag: &str| {
+        let mut river = vec![false; w * ht];
+        for seg in &dr.rivers.segments {
+            for &(px, py) in &seg.points { river[py as usize * w + px as usize] = true; }
+        }
+        let mut buf = image::ImageBuffer::new((CROP * scale) as u32, (CROP * scale) as u32);
+        for jj in 0..CROP * scale {
+            for ii in 0..CROP * scale {
+                let i = cx + ii / scale;
+                let j = cy + jj / scale;
+                let k = j * w + i;
+                let v = h.data[k].clamp(0.0, 1.0);
+                let mut px = if v <= 0.5 {
+                    [18u8, 34, 70]
+                } else {
+                    let t = (v - 0.5) * 2.0;
+                    // dim hypso so rivers pop; pit-filled flats tinted darker/bluer.
+                    if is_flat[k] {
+                        [(40.0 + 40.0 * t) as u8, (55.0 + 35.0 * t) as u8, 70]
+                    } else {
+                        [(55.0 + 95.0 * t) as u8, (75.0 + 60.0 * t) as u8, 45]
+                    }
+                };
+                if river[k] { px = [120, 205, 255]; }
+                if dr.lake_map[k] != 0 { px = [30, 90, 180]; }
+                buf.put_pixel(ii as u32, (CROP * scale - 1 - jj) as u32, image::Rgb(px));
+            }
+        }
+        let path = dir.join(format!("seed{seed:05}_tracing_{tag}.png"));
+        buf.save(&path).unwrap();
+    };
+    render(&dr_off, "OFF");
+    render(&dr_on, "ON");
+    eprintln!("  out = {}", dir.display());
 }

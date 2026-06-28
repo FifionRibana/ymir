@@ -161,7 +161,7 @@ fn c1_continental_drainage_functional() {
     let isostasy = compute_isostasy(&state.s, &iso_config);
     let altitude = isostasy.heightmap;
     let sea_level = isostasy.sea_level_normalized;
-    let flow_config = FlowConfig { sea_level };
+    let flow_config = FlowConfig { sea_level, ..Default::default() };
     let flow = compute_flow(&altitude, &flow_config);
 
     // Continental filtering — restrict drainage analysis to
@@ -335,6 +335,7 @@ fn c1_post_run_altitude_consumable_by_downstream() {
     // finite; no panic.
     let flow_config = FlowConfig {
         sea_level: isostasy.sea_level_normalized,
+        ..Default::default()
     };
     let flow = compute_flow(&altitude, &flow_config);
     assert!(
