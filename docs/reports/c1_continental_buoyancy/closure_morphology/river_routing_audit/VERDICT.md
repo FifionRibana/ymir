@@ -61,3 +61,44 @@ bilan hydrique, sans reset endorhéique) n'aide pas encore.
 
 Ils peuvent partager un refactor du routage mais sont conceptuellement distincts. Diagnostic
 seulement — le(s) fix suivent ce verdict.
+
+---
+
+## FIX B appliqué — débit sur le runoff réel + bassins fermés en puits
+
+**Quoi** : la navigabilité (et l'aire de drainage par segment) ne lisent plus le **compte de
+cellules** géométrique mais le **DÉBIT runoff réel** (`runoff_accumulation` : `max(0, précip−PE)·
+aire`, accumulé en aval le long du D8). Les **bassins endorhéiques** (du bilan hydrique) sont des
+**PUITS** : le runoff y meurt (évaporation) → aucun débit fantôme ne continue vers la mer en aval
+d'un lac fermé. L'aire effective d'un segment = `débit / runoff de référence (300 mm)`, donc les
+seuils de navigabilité en km² s'appliquent inchangés à la profondeur de runoff de référence (une
+rivière humide classe exactement comme l'ancien cell-count ; plus sèche → déclassée).
+
+**Ordre** : la navigabilité est calculée APRÈS les lacs (il faut connaître les bassins
+endorhéiques). `extract_rivers` garde les **tracés** géométriques (le défaut A, rectiligne,
+n'est pas touché ici) ; seul le **débit/navigabilité** porté par ces tracés change.
+
+**Allochtones préservés** (la nuance critique) : le débit est ACCUMULÉ depuis l'amont. Une rivière
+née dans un massif humide qui traverse ensuite un terrain localement aride GARDE son débit (le
+Nil) → reste navigable malgré le déficit local. On ne coupe jamais sur le déficit LOCAL.
+
+**Mesure (3 seeds, 42/1988/2026), avant → après** :
+
+| seed | navigable en déficit (avant) | navigable en déficit (après) | navigable / cellules rivière (après) |
+|---|---|---|---|
+| 42   | **92 %** | **48 %** | 4 % (3 729 cell.) |
+| 1988 | **81 %** | **38 %** | 3 % (2 934 cell.) |
+| 2026 | **79 %** | **43 %** | 2 % (2 917 cell.) |
+
+Les fantômes purs (eau inexistante) sont tués : la navigabilité passe à **2-4 %** des cellules de
+rivière (monde semi-aride à 45° → navigable seulement là où un bassin humide produit du surplus).
+Le **résidu ~40 %** « navigable en déficit local » n'est PAS un fantôme : ce sont les rivières
+**ALLOCHTONES** (débit accumulé amont traversant un terrain aride) — exactement ce qu'on doit
+garder. La fraction de cellules sur plats (47/46/39 %) et la rectilinéarité (53-54 %) sont
+inchangées : c'est le périmètre du fix A, distinct.
+
+**Gating** : `c1_drainage` sans `climate` (None) → chemin géométrique byte-identique (logique
+inchangée). `ALGO_DRAINAGE` 1→2 (le code a changé sans changer d'input → le cache se ré-adresse).
+Lib verte (472). `runoff_accumulation` est factorisé et partagé avec le bilan hydrique des lacs.
+
+**Reste** : fix A (tracé rectiligne sur les plats) — géométrie du routage, à traiter séparément.

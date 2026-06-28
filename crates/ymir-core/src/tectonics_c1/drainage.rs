@@ -207,13 +207,6 @@ pub fn c1_drainage(
     };
     let rivers = extract_rivers(&flow, &river_cfg, w, h);
 
-    // Per-segment drainage area (km²) from the segment's max accumulation, and
-    // the navigability class.
-    let segment_drainage_km2: Vec<f32> =
-        rivers.segments.iter().map(|s| s.max_flow * cell_km2).collect();
-    let segment_navigability: Vec<Navigability> =
-        segment_drainage_km2.iter().map(|&km2| cfg.thresholds.classify(km2)).collect();
-
     // 3. Lakes — min_depth (m → norm), min_area (km² → cells).
     let lake_cfg = LakeConfig {
         min_depth: cfg.lake_min_depth_m / metres_per_norm,
@@ -254,6 +247,52 @@ pub fn c1_drainage(
             .collect(),
     };
 
+    // 4. Per-segment drainage + navigability. With `climate` (#drainage fix B) the
+    // DISCHARGE is the REAL runoff (`max(0, precip−PE)` accumulated downstream),
+    // with endorheic basins as SINKS (water dies in the closed lake — no phantom
+    // river below it). A segment's discharge = max runoff_accum over its cells;
+    // its effective drainage area = discharge / a reference runoff depth, so the
+    // existing km² navigability thresholds apply unchanged at that reference.
+    // Effect: desert channels (no surplus) and rivers exiting a closed basin → 0
+    // discharge → NonNavigable; allochthonous rivers (humid upstream) keep their
+    // accumulated discharge across a dry reach (the Nile). Without `climate` →
+    // geometric cell-count drainage area (byte-identical).
+    let (segment_drainage_km2, segment_navigability): (Vec<f32>, Vec<Navigability>) = match climate {
+        Some(clim) => {
+            let mut endorheic = vec![false; w * h];
+            for lk in &lakes {
+                if lk.lake_type == LakeType::Endorheic {
+                    for k in 0..w * h {
+                        if lake_map[k] == lk.base.id {
+                            endorheic[k] = true;
+                        }
+                    }
+                }
+            }
+            let discharge =
+                runoff_accumulation(heightmap, &flow, clim, cell_km2, Some(&endorheic), w, h);
+            let dr_km2: Vec<f32> = rivers
+                .segments
+                .iter()
+                .map(|s| {
+                    let q = s
+                        .points
+                        .iter()
+                        .map(|&(x, y)| discharge[y as usize * w + x as usize])
+                        .fold(0.0f32, f32::max);
+                    q / REFERENCE_RUNOFF_MM // discharge → effective km² at reference runoff depth
+                })
+                .collect();
+            let nav = dr_km2.iter().map(|&km2| cfg.thresholds.classify(km2)).collect();
+            (dr_km2, nav)
+        }
+        None => {
+            let dr_km2: Vec<f32> = rivers.segments.iter().map(|s| s.max_flow * cell_km2).collect();
+            let nav = dr_km2.iter().map(|&km2| cfg.thresholds.classify(km2)).collect();
+            (dr_km2, nav)
+        }
+    };
+
     C1DrainageResult {
         flow,
         rivers,
@@ -264,6 +303,58 @@ pub fn c1_drainage(
         width: w,
         height: h,
     }
+}
+
+/// #drainage fix B — reference runoff depth (mm/yr) that maps a river's real
+/// DISCHARGE (`runoff_accumulation`, in mm·km²/yr) to an effective drainage area
+/// in km², so the existing km² navigability thresholds apply unchanged: a humid
+/// river at this runoff depth classifies exactly as the old cell-count area did,
+/// a drier one downgrades, a dry/endorheic-below one → NonNavigable. Anchored on
+/// a typical humid annual runoff depth (~300 mm).
+const REFERENCE_RUNOFF_MM: f32 = 300.0;
+
+/// #drainage — runoff (`max(0, precip − PE)·cell_km2`, mm·km²/yr) accumulated
+/// downstream along the D8 flow (decreasing `filled` order). `sinks` cells (e.g.
+/// endorheic lake cells) do NOT propagate their accumulation downstream — the
+/// water dies there (evaporation), so no phantom discharge continues to the sea.
+/// `None` sinks → plain accumulation (used for the lake-inflow classification).
+fn runoff_accumulation(
+    heightmap: &GridF32,
+    flow: &FlowResult,
+    climate: &DrainageClimate,
+    cell_km2: f32,
+    sinks: Option<&[bool]>,
+    w: usize,
+    h: usize,
+) -> Vec<f32> {
+    let n = w * h;
+    let mut acc = vec![0.0f32; n];
+    for k in 0..n {
+        if heightmap.data[k] > C1_SEA_LEVEL_NORM {
+            let p = precip_mm_per_year(climate.precip_internal.data[k]);
+            let pe = potential_evaporation_mm(climate.temperature.data[k]);
+            acc[k] = (p - pe).max(0.0) * cell_km2;
+        }
+    }
+    let mut order: Vec<usize> =
+        (0..n).filter(|&k| heightmap.data[k] > C1_SEA_LEVEL_NORM).collect();
+    order.sort_unstable_by(|&a, &b| {
+        flow.filled.data[b].partial_cmp(&flow.filled.data[a]).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    for &k in &order {
+        if sinks.is_some_and(|s| s[k]) {
+            continue; // endorheic sink: water dies here, no downstream discharge
+        }
+        let d = flow.direction[k];
+        if d == DIR_NONE {
+            continue;
+        }
+        let (i, j) = (k % w, k / w);
+        let ni = ((i as i32 + D8_DX[d as usize]).rem_euclid(w as i32)) as usize;
+        let nj = ((j as i32 + D8_DY[d as usize]).rem_euclid(h as i32)) as usize;
+        acc[nj * w + ni] += acc[k];
+    }
+    acc
 }
 
 /// #drainage — the WATER BALANCE: a basin overflows (exorheic) only if its
@@ -290,33 +381,9 @@ fn water_balance_lakes(
     h: usize,
 ) -> Vec<C1Lake> {
     let n = w * h;
-    // 1. Runoff per land cell (mm·km²/yr surplus) = max(0, precip − PE)·cell_km2.
-    let mut runoff = vec![0.0f32; n];
-    for k in 0..n {
-        if heightmap.data[k] > C1_SEA_LEVEL_NORM {
-            let p = precip_mm_per_year(climate.precip_internal.data[k]);
-            let pe = potential_evaporation_mm(climate.temperature.data[k]);
-            runoff[k] = (p - pe).max(0.0) * cell_km2;
-        }
-    }
-    // 2. Accumulate runoff downstream (decreasing filled height — the flow
-    //    topological order; the flat tiebreak is omitted, negligible for inflow).
-    let mut order: Vec<usize> =
-        (0..n).filter(|&k| heightmap.data[k] > C1_SEA_LEVEL_NORM).collect();
-    order.sort_unstable_by(|&a, &b| {
-        flow.filled.data[b].partial_cmp(&flow.filled.data[a]).unwrap_or(std::cmp::Ordering::Equal)
-    });
-    let mut runoff_accum = runoff;
-    for &k in &order {
-        let d = flow.direction[k];
-        if d == DIR_NONE {
-            continue;
-        }
-        let (i, j) = (k % w, k / w);
-        let ni = ((i as i32 + D8_DX[d as usize]).rem_euclid(w as i32)) as usize;
-        let nj = ((j as i32 + D8_DY[d as usize]).rem_euclid(h as i32)) as usize;
-        runoff_accum[nj * w + ni] += runoff_accum[k];
-    }
+    // 1-2. Runoff (max(0, precip − PE)·cell_km2) accumulated downstream. No sinks
+    //      here: we want the full catchment inflow REACHING each candidate lake.
+    let runoff_accum = runoff_accumulation(heightmap, flow, climate, cell_km2, None, w, h);
     // 3. Per lake: inflow vs evaporation → exorheic (overflow) or endorheic level.
     let mut out = Vec::with_capacity(lakes.len());
     for lk in lakes {
