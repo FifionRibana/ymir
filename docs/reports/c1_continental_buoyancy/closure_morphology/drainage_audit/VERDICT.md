@@ -57,3 +57,41 @@ l'aire de lacs chute vers ~2 %, des bassins fermés apparaissent dans les intér
 Tous les champs nécessaires existent déjà (précip + température → évaporation potentielle).
 
 Audit seulement — le fix bilan-hydrique suit ce verdict.
+
+## FIX appliqué — bilan hydrique (lacs endorhéiques)
+
+`c1_drainage` prend désormais un `Option<&DrainageClimate>` (précip + température) — le
+« hydroclimate layer » que le placeholder attendait ; `None` = géométrie pure (byte-identique).
+`cached_c1_drainage` calcule le climat en interne et le fold dans la clé (nouvelle dépendance :
+changer le climat réinvalide le drainage). Activé par défaut via `c165_drainage` (45°).
+
+**Modèle** : runoff par cellule = `max(0, précip − PE)·aire` (PE = évaporation potentielle
+`61·e_sat(T)`, ancrée : ~850 mm à 12 °C, ~2200 à 27 °C) ; apport = runoff accumulé en aval
+jusqu'au lac ; un bassin déborde (exorhéique) si `aire_équilibre = apport/PE_lac ≥ aire_seuil`,
+sinon ENDORHÉIQUE au niveau où l'aire couvre `aire_équilibre` (lu sur l'hypsométrie du lac,
+direct — pas d'itération). Les cellules au-dessus de l'équilibre sont drainées.
+
+**Mesuré (6 seeds), avant → après :**
+
+| | géométrique | bilan hydrique |
+|---|---|---|
+| aire lacs / terre (agg) | 18.0 % | **0.7 %** |
+| exo / endo (agg) | 1026 / 0 | **258 / 601** |
+| par seed | 8-27 % | 0.5-1.0 % |
+
+Le sur-remplissage 9× est éliminé ; **601 endorhéiques** apparaissent en zone aride/semi-aride
+(85 % de l'aire de lacs), exorhéiques préservés (258). 0.7 % est **sous** le ~2 % terrestre
+mais **cohérent** : le monde à 45° est semi-aride (précip ~450 < PE ~854 → terre en déficit
+hydrique → peu de lacs, surtout fermés, comme les steppes) — un résultat ANCRÉ, pas calé sur
+2 %. Re-validé sur la grille d'intégration (les gros lacs sur-remplis ont disparu). Lib verte ;
+None byte-identique ; clé cache inclut le climat. Gated.
+
+## SUITE tracké — les rivières (discharge depuis le runoff)
+
+Les rivières utilisent encore l'accumulation géométrique (compte de cellules), pas le runoff :
+une « rivière » dans un désert (runoff ~0) reste navigable à tort, et les rivières en aval d'un
+bassin endorhéique persistent (fantômes — l'eau s'est évaporée dans le lac). FIX suivant
+(parallèle, le runoff_accum existe déjà) : navigabilité depuis le runoff (discharge réel) +
+reset du runoff aux lacs endorhéiques → rivières sèches dans les déserts, mortes aux bassins
+fermés. Différé (le défaut majeur — 18 % de lacs — est corrigé ; les rivières fantômes sont
+secondaires).

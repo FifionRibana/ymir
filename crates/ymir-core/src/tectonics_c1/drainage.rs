@@ -23,6 +23,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::climate::precipitation::{e_sat, precip_mm_per_year};
 use crate::grid::GridF32;
 use crate::lakes::detection::{detect_lakes, Lake, LakeConfig};
 use crate::terrain::flow::{
@@ -32,6 +33,28 @@ use crate::terrain::flow::{
 
 use super::closures::oceanic_bathymetry::params::SteinSteinParams;
 use super::production_upscale::{c1_altitude_norm_to_metres, c1_cell_area_km2};
+
+/// #drainage — climate input for the water balance (the "hydroclimate layer" the
+/// geometric fill-and-spill placeholder was waiting for). `Some` couples the
+/// balance (basins overflow only if inflow > evaporation; arid basins become
+/// terminal/endorheic); `None` → the pure-geometry path (byte-identical pre-fix).
+pub struct DrainageClimate<'a> {
+    /// Precipitation in `c1_climate` INTERNAL units (→ mm/yr via `precip_mm_per_year`).
+    pub precip_internal: &'a GridF32,
+    /// Air temperature (°C) — drives the potential-evaporation proxy.
+    pub temperature: &'a GridF32,
+}
+
+/// #drainage — potential OPEN-WATER evaporation (mm/yr) from temperature: the
+/// Clausius-Clapeyron proxy `PE = PE_PER_ESAT · e_sat(T)` (warmer air evaporates
+/// more). Anchored on the observed open-water PE range — temperate ~12 °C →
+/// ~850 mm/yr, hot desert ~27 °C → ~2200 mm/yr, cold ~0 °C → ~370 mm/yr.
+const PE_PER_ESAT: f32 = 61.0;
+
+/// Potential evaporation (mm/yr) at air temperature `t_c` (°C).
+pub fn potential_evaporation_mm(t_c: f32) -> f32 {
+    PE_PER_ESAT * e_sat(t_c)
+}
 
 /// The C1 unified sea level (Maillon 2): continental sea maps to 0.5.
 pub const C1_SEA_LEVEL_NORM: f32 = 0.5;
@@ -161,6 +184,7 @@ pub struct C1DrainageResult {
 /// (`c1_cell_area_km2(width)`).
 pub fn c1_drainage(
     heightmap: &GridF32,
+    climate: Option<&DrainageClimate>,
     cfg: &C1DrainageConfig,
     ss: &SteinSteinParams,
 ) -> C1DrainageResult {
@@ -198,27 +222,37 @@ pub fn c1_drainage(
     let lake_result =
         detect_lakes(heightmap, &flow.filled, &flow.direction, &flow.basins, &lake_cfg);
 
-    // Enrich lakes: metres, km², type (trace outlet → sea?).
-    let lakes: Vec<C1Lake> = lake_result
-        .lakes
-        .iter()
-        .map(|lk| {
-            let level_m = c1_altitude_norm_to_metres(lk.surface_elevation, ss);
-            let floor_m = c1_altitude_norm_to_metres(lk.surface_elevation - lk.max_depth, ss);
-            let lake_type = if outlet_reaches_sea(lk, &flow, heightmap, w, h) {
-                LakeType::Exorheic
-            } else {
-                LakeType::Endorheic
-            };
-            C1Lake {
-                base: lk.clone(),
-                level_m,
-                depth_m: level_m - floor_m,
-                area_km2: lk.area as f32 * cell_km2,
-                lake_type,
-            }
-        })
-        .collect();
+    // Enrich lakes. With a `climate` (#drainage hydroclimate layer) the WATER
+    // BALANCE decides each basin: overflow → exorheic, else shrink to the
+    // endorheic equilibrium level (drained cells leave `lake_map`). Without it,
+    // the pure-geometry path (every basin fills to its sill → exorheic) is kept
+    // byte-identical.
+    let mut lake_map = lake_result.lake_map;
+    let lakes: Vec<C1Lake> = match climate {
+        Some(clim) => {
+            water_balance_lakes(heightmap, &flow, clim, cell_km2, ss, &lake_result.lakes, &mut lake_map, w, h)
+        }
+        None => lake_result
+            .lakes
+            .iter()
+            .map(|lk| {
+                let level_m = c1_altitude_norm_to_metres(lk.surface_elevation, ss);
+                let floor_m = c1_altitude_norm_to_metres(lk.surface_elevation - lk.max_depth, ss);
+                let lake_type = if outlet_reaches_sea(lk, &flow, heightmap, w, h) {
+                    LakeType::Exorheic
+                } else {
+                    LakeType::Endorheic
+                };
+                C1Lake {
+                    base: lk.clone(),
+                    level_m,
+                    depth_m: level_m - floor_m,
+                    area_km2: lk.area as f32 * cell_km2,
+                    lake_type,
+                }
+            })
+            .collect(),
+    };
 
     C1DrainageResult {
         flow,
@@ -226,10 +260,119 @@ pub fn c1_drainage(
         segment_drainage_km2,
         segment_navigability,
         lakes,
-        lake_map: lake_result.lake_map,
+        lake_map,
         width: w,
         height: h,
     }
+}
+
+/// #drainage — the WATER BALANCE: a basin overflows (exorheic) only if its
+/// catchment INFLOW exceeds the lake's EVAPORATION at the sill; otherwise it is
+/// ENDORHEIC (terminal), stabilising at the level where evaporation = inflow.
+/// Mutates `lake_map` (cells above an endorheic lake's equilibrium are drained →
+/// `0`) and returns the reclassified / resized lakes.
+///
+/// Inflow = runoff (`max(0, precip − PE)·cell_km2`) accumulated downstream to the
+/// lake. Endorheic equilibrium SURFACE `A_eq = inflow / PE_lake` (evap balances
+/// inflow); the level is read off the lake's own hypsometry (its cells sorted by
+/// elevation). The surface is on BOTH sides (evap on surface, surface from level)
+/// but `A_eq` is direct (no iteration), then mapped to a level — monotone.
+#[allow(clippy::too_many_arguments)]
+fn water_balance_lakes(
+    heightmap: &GridF32,
+    flow: &FlowResult,
+    climate: &DrainageClimate,
+    cell_km2: f32,
+    ss: &SteinSteinParams,
+    lakes: &[Lake],
+    lake_map: &mut [u32],
+    w: usize,
+    h: usize,
+) -> Vec<C1Lake> {
+    let n = w * h;
+    // 1. Runoff per land cell (mm·km²/yr surplus) = max(0, precip − PE)·cell_km2.
+    let mut runoff = vec![0.0f32; n];
+    for k in 0..n {
+        if heightmap.data[k] > C1_SEA_LEVEL_NORM {
+            let p = precip_mm_per_year(climate.precip_internal.data[k]);
+            let pe = potential_evaporation_mm(climate.temperature.data[k]);
+            runoff[k] = (p - pe).max(0.0) * cell_km2;
+        }
+    }
+    // 2. Accumulate runoff downstream (decreasing filled height — the flow
+    //    topological order; the flat tiebreak is omitted, negligible for inflow).
+    let mut order: Vec<usize> =
+        (0..n).filter(|&k| heightmap.data[k] > C1_SEA_LEVEL_NORM).collect();
+    order.sort_unstable_by(|&a, &b| {
+        flow.filled.data[b].partial_cmp(&flow.filled.data[a]).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut runoff_accum = runoff;
+    for &k in &order {
+        let d = flow.direction[k];
+        if d == DIR_NONE {
+            continue;
+        }
+        let (i, j) = (k % w, k / w);
+        let ni = ((i as i32 + D8_DX[d as usize]).rem_euclid(w as i32)) as usize;
+        let nj = ((j as i32 + D8_DY[d as usize]).rem_euclid(h as i32)) as usize;
+        runoff_accum[nj * w + ni] += runoff_accum[k];
+    }
+    // 3. Per lake: inflow vs evaporation → exorheic (overflow) or endorheic level.
+    let mut out = Vec::with_capacity(lakes.len());
+    for lk in lakes {
+        let mut cells: Vec<(usize, f32)> =
+            (0..n).filter(|&k| lake_map[k] == lk.id).map(|k| (k, heightmap.data[k])).collect();
+        if cells.is_empty() {
+            continue;
+        }
+        // Sort by elevation ascending → the lake's hypsometry (floor first).
+        cells.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let inflow = cells.iter().map(|&(k, _)| runoff_accum[k]).fold(0.0f32, f32::max);
+        let pe_lake = potential_evaporation_mm(climate.temperature.data[cells[0].0]).max(1.0);
+        let a_eq_km2 = inflow / pe_lake; // surface where evaporation = inflow
+        let a_sill_km2 = lk.area as f32 * cell_km2;
+
+        if a_eq_km2 >= a_sill_km2 {
+            // Inflow fills past the sill → OVERFLOW (exorheic), full sill lake.
+            let level_m = c1_altitude_norm_to_metres(lk.surface_elevation, ss);
+            let floor_m = c1_altitude_norm_to_metres(lk.surface_elevation - lk.max_depth, ss);
+            out.push(C1Lake {
+                base: lk.clone(),
+                level_m,
+                depth_m: level_m - floor_m,
+                area_km2: a_sill_km2,
+                lake_type: LakeType::Exorheic,
+            });
+        } else {
+            // ENDORHEIC: shrink to A_eq; drain the cells above the equilibrium.
+            let n_eq = (a_eq_km2 / cell_km2).floor() as usize;
+            for &(k, _) in cells.iter().skip(n_eq.max(1)) {
+                lake_map[k] = 0; // drained back to terrain (no longer flooded)
+            }
+            if n_eq == 0 {
+                // Inflow can't sustain even one cell → the basin dries up.
+                if let Some(&(k0, _)) = cells.first() {
+                    lake_map[k0] = 0;
+                }
+                continue;
+            }
+            let level = cells[n_eq - 1].1; // equilibrium surface elevation
+            let level_m = c1_altitude_norm_to_metres(level, ss);
+            let floor_m = c1_altitude_norm_to_metres(cells[0].1, ss);
+            let mut base = lk.clone();
+            base.surface_elevation = level;
+            base.max_depth = level - cells[0].1;
+            base.area = n_eq;
+            out.push(C1Lake {
+                base,
+                level_m,
+                depth_m: level_m - floor_m,
+                area_km2: n_eq as f32 * cell_km2,
+                lake_type: LakeType::Endorheic,
+            });
+        }
+    }
+    out
 }
 
 /// Trace a lake's outlet downstream via D8; does it reach the sea (≤ 0.5)?
@@ -277,7 +420,7 @@ mod tests {
                 hm.set(i, j, 0.85 - t * 0.6);
             }
         }
-        let out = c1_drainage(&hm, &C1DrainageConfig::default(), &SteinSteinParams::default());
+        let out = c1_drainage(&hm, None, &C1DrainageConfig::default(), &SteinSteinParams::default());
         assert_eq!(out.width, n);
         assert_eq!(out.segment_drainage_km2.len(), out.rivers.segments.len());
         assert!(out.segment_drainage_km2.iter().all(|v| v.is_finite() && *v >= 0.0));

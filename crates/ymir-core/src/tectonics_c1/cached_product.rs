@@ -28,6 +28,8 @@ use serde_json::Value;
 use crate::cache::{
     ALGO_DRAINAGE, ALGO_TECTONICS, ALGO_UPSCALE_EROSION, CacheKey, RawCodec, cached,
 };
+use crate::climate::c1_climate;
+use crate::climate::precipitation::PrecipParams;
 use crate::export::raw;
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
@@ -35,7 +37,7 @@ use crate::terrain::flow::FlowResult;
 use crate::terrain::upscale::FbmUpscaleConfig;
 
 use super::closures::oceanic_bathymetry::SteinSteinParams;
-use super::drainage::{C1DrainageConfig, C1DrainageResult, c1_drainage};
+use super::drainage::{C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage};
 use super::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use super::kinematics::PlateKinematics;
 use super::production_upscale::upscale_from_c1;
@@ -179,22 +181,51 @@ impl RawCodec for C1DrainageResult {
 
 /// The cache key for the drainage product — chained onto the eroded key
 /// (upstream change → this digest changes) plus the drainage-specific inputs.
-pub fn drainage_key(eroded: &CacheKey, cfg: &C1DrainageConfig, ss: &SteinSteinParams) -> CacheKey {
-    CacheKey::derived_from(eroded).with("drainage_cfg", cfg).with("ss", ss).algo(ALGO_DRAINAGE)
+/// `climate` (#drainage water balance) is `Some((latitude_deg, precip_params))`
+/// when the hydroclimate layer is on: it is folded into the key so a CLIMATE
+/// change re-invalidates the drainage (the new dependency). `None` → the
+/// pure-geometry path, byte-identical key to pre-#drainage.
+pub fn drainage_key(
+    eroded: &CacheKey,
+    cfg: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    climate: Option<(f32, &PrecipParams)>,
+) -> CacheKey {
+    let mut k = CacheKey::derived_from(eroded).with("drainage_cfg", cfg).with("ss", ss);
+    if let Some((lat, pp)) = climate {
+        k = k.with("drainage_lat", &lat).with("drainage_precip", pp);
+    }
+    k.algo(ALGO_DRAINAGE)
 }
 
 /// Extract the C1 drainage product, reusing the cached payload if `eroded`
 /// (the upstream heightmap key) and the drainage inputs are unchanged.
-/// `c1_drainage` is untouched (pure); this only wraps it.
+///
+/// `climate` = `Some((latitude_deg, &PrecipParams))` activates the #drainage
+/// WATER BALANCE: the climate is computed INTERNALLY from the heightmap (so the
+/// wrapper owns both the grids it feeds `c1_drainage` AND the key inputs), and
+/// folded into the key. `None` → pure-geometry fill-and-spill (byte-identical to
+/// pre-#drainage). `c1_drainage` is untouched (pure); this only wraps it.
 pub fn cached_c1_drainage(
     cache_dir: &Path,
     eroded: &CacheKey,
     heightmap: &GridF32,
+    climate: Option<(f32, &PrecipParams)>,
     cfg: &C1DrainageConfig,
     ss: &SteinSteinParams,
 ) -> Result<C1DrainageResult, String> {
-    let key = drainage_key(eroded, cfg, ss);
-    cached(cache_dir, "drainage", &key, || c1_drainage(heightmap, cfg, ss))
+    let key = drainage_key(eroded, cfg, ss, climate);
+    cached(cache_dir, "drainage", &key, || match climate {
+        Some((lat, pp)) => {
+            let clim = c1_climate(heightmap, ss, lat, pp);
+            let dc = DrainageClimate {
+                precip_internal: &clim.precipitation,
+                temperature: &clim.temperature,
+            };
+            c1_drainage(heightmap, Some(&dc), cfg, ss)
+        }
+        None => c1_drainage(heightmap, None, cfg, ss),
+    })
 }
 
 #[cfg(test)]
@@ -412,19 +443,19 @@ mod tests {
         let cfg = C1DrainageConfig::default();
 
         // MISS then HIT — whole structure must round-trip equivalent.
-        let miss = cached_c1_drainage(&dir, &ek, &h, &cfg, &ss).unwrap();
-        let hit = cached_c1_drainage(&dir, &ek, &h, &cfg, &ss).unwrap();
+        let miss = cached_c1_drainage(&dir, &ek, &h, None, &cfg, &ss).unwrap();
+        let hit = cached_c1_drainage(&dir, &ek, &h, None, &cfg, &ss).unwrap();
         assert_drainage_equiv(&miss, &hit);
 
         // And equal to the direct (no-cache) computation (wrapper is pure).
-        let direct = c1_drainage(&h, &cfg, &ss);
+        let direct = c1_drainage(&h, None, &cfg, &ss);
         assert_drainage_equiv(&miss, &direct);
 
         // Chaining: a different eroded (upstream) key → different drainage digest.
         let ek2 = eroded_key(&tectonic_key(43, grid, &init, &run, &clo), &ss, &up);
         assert_ne!(
-            drainage_key(&ek, &cfg, &ss).digest(),
-            drainage_key(&ek2, &cfg, &ss).digest(),
+            drainage_key(&ek, &cfg, &ss, None).digest(),
+            drainage_key(&ek2, &cfg, &ss, None).digest(),
             "upstream (eroded) change must change the drainage digest"
         );
 
@@ -432,9 +463,16 @@ mod tests {
         let mut cfg2 = cfg.clone();
         cfg2.lake_min_area_km2 += 1.0;
         assert_ne!(
-            drainage_key(&ek, &cfg, &ss).digest(),
-            drainage_key(&ek, &cfg2, &ss).digest(),
+            drainage_key(&ek, &cfg, &ss, None).digest(),
+            drainage_key(&ek, &cfg2, &ss, None).digest(),
             "drainage config must be in the key"
+        );
+        // #drainage — the climate (water-balance dependency) is in the key.
+        let pp = PrecipParams::default();
+        assert_ne!(
+            drainage_key(&ek, &cfg, &ss, None).digest(),
+            drainage_key(&ek, &cfg, &ss, Some((45.0, &pp))).digest(),
+            "climate (water balance) must be in the drainage key"
         );
     }
 }
