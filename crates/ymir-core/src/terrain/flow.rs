@@ -52,8 +52,18 @@ impl Default for FlowConfig {
 /// still strictly lower after the noise, so drainage is mathematically guaranteed
 /// (no spurious pit, network stays connected). Within that bound the noise
 /// dominates the lateral tie-break → the river meanders. `frequency` (cells⁻¹)
-/// sets the meander wavelength — the main visual knob.
+/// sets the wavelength.
+///
+/// FREQUENCY vs the LARGE-FLAT combs (#fix A suite). The residual diagonal combs
+/// sit on the LARGE flats: there the noise must flip the D8 lateral choice OFTEN
+/// to break a long straight run into a short staircase. Counter-intuitively a LOW
+/// frequency makes it WORSE (a smooth large-scale tilt = a long straight descent,
+/// measured: large-flat straightness 59 %→72 %); a HIGHER frequency (shorter
+/// wavelength) flips the choice more often → long combs collapse into short
+/// staircases (λ≈14→6: large-flat 59 %→48 %, 17+ runs 6 %→1 %). So `frequency` is
+/// the lever, raised, not a low-frequency octave.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FlatPerturbation {
     pub seed: u32,
     pub amplitude: f32,
@@ -63,9 +73,9 @@ pub struct FlatPerturbation {
 
 impl Default for FlatPerturbation {
     fn default() -> Self {
-        // 0.45 of the G-M step (just under the 0.5 no-pit bound → strong wander);
-        // wavelength ≈ 14 cells.
-        Self { seed: 0xF1A7_5EED, amplitude: 0.45, frequency: 0.07, octaves: 4 }
+        // amplitude 0.45 of the G-M step (just under the 0.5 no-pit bound);
+        // frequency 0.17 (λ≈6) — high enough to collapse the large-flat combs.
+        Self { seed: 0xF1A7_5EED, amplitude: 0.45, frequency: 0.17, octaves: 4 }
     }
 }
 
