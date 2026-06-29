@@ -289,11 +289,36 @@ grands plats), PAS de la longueur des runs (déjà optimisée). **D∞** (direct
 fix de fond justifié : il étale le biais diagonal sur un continuum d'angles → les streaks diagonaux
 se dissolvent. Confirmé par la mesure (pas une supposition).
 
-**Nuance — une piste moins chère à essayer AVANT le chantier D∞** : une grande part du biais diagonal
-vient de la passe 2 de `compute_d8` qui compare `flat_grad` **sans normaliser par la distance**
-(contrairement à la passe 1 des pentes, qui divise par `D8_DIST`). Pénaliser les diagonales dans la
-passe plat (diviser l'écart de `flat_grad` par √2 pour les diagonales) pourrait réduire le biais
-67 %→~50 % sans toucher au cœur du routage (flux mono D8 conservé). À mesurer en premier ; si le biais
-diagonal tombe et que l'œil est satisfait, on évite le chantier D∞. Sinon, D∞ (flux fractionnaire
-continu — touche `compute_accumulation`/`extract_rivers`/la cohérence runoff de B). Diagnostic
-seulement — le fix suit.
+### Piste cheap ESSAYÉE puis RÉFUTÉE — normaliser la passe plat par la distance
+
+L'hypothèse : une grande part du biais diagonal vient de la passe 2 de `compute_d8` qui compare
+`flat_grad` **sans** diviser par `D8_DIST` (contrairement à la passe 1 des pentes). Fix tenté :
+prendre le plus grand **drop / distance** (÷√2 pour les diagonales) dans la passe plat, gated.
+
+**RÉFUTÉ par la mesure — surcorrection catastrophique** :
+
+| classe | diag % avant | diag % après ÷dist | R2 avant | R2 après |
+|---|---|---|---|---|
+| GRANDS plats | 67-68 % | **2 %** | 0.39-0.40 | **0.90-0.91** |
+
+Le biais bascule de diagonal à **cardinal** (diag 2 %) et le parallélisme EXPLOSE (R2 0.40 → **0.90**)
+— des **peignes cardinaux pleins** bien pires que les diagonaux (`seed02026_direction_hue_NORMALIZED_WORSE.png` :
+blocs mono-teinte, longues droites horizontales/verticales). En prime, ~3× plus de cellules de rivière
+sur les grands plats (le routage cardinal collapse en quelques gros canaux).
+
+**Pourquoi** : `flat_grad` est une **distance-graphe (BFS 8-connexe)**, PAS une hauteur euclidienne.
+Un voisin cardinal ET un voisin diagonal vers l'exutoire ont TOUS DEUX `tl−1` → le MÊME drop
+(`fhmax+1`). Diviser par la distance euclidienne √2 pénalise alors les diagonales à tort → cardinal
+pur. L'analogie avec la passe 1 (qui, elle, opère sur de vraies hauteurs euclidiennes où ÷distance
+est physiquement correct) NE TIENT PAS. Code reverté.
+
+### Verdict final — D∞ est le seul fix de fond
+
+La piste cheap est morte (la normalisation euclidienne ne s'applique pas à une distance-graphe). Le
+biais diagonal n'est donc PAS un simple oubli de pénalité : c'est l'interaction **D8 × transformée de
+distance** (quantisation à 8 directions d'un champ de distance octogonal). Seul **D∞** (direction de
+flux CONTINUE, Tarboton) l'enlève — il étale le biais sur un continuum d'angles. Chantier de fond
+(flux fractionnaire — touche `compute_accumulation`/`extract_rivers`/la cohérence runoff de B), à
+n'engager que si l'utilisateur juge les streaks diagonaux résiduels gênants. **Rappel** : le tracé
+est DÉJÀ dendritique et d'aspect naturel (perturbation + fréquence) ; D∞ est un polish, pas une
+correction de défaut bloquant. Diagnostic seulement.
