@@ -35,11 +35,26 @@ pub struct FlowConfig {
     /// lake level) keeps the exact original sill, so the hydrology is unchanged.
     /// `None` → no perturbation (byte-identical legacy routing).
     pub flat_perturbation: Option<FlatPerturbation>,
+    /// #drainage fix A — D∞ (Tarboton) on the FLATS: route along the CONTINUOUS
+    /// angle of the `flat_grad` gradient (split fractionally between the two
+    /// bracketing D8 neighbours) instead of snapping to one of 8 directions. The
+    /// slope pass stays mono-D8. `direction` carries the PRIMARY (larger-fraction)
+    /// neighbour, so lakes/basins/B use a valid mono direction; only
+    /// `accumulation` becomes fractional. `false` → mono D8 (byte-identical).
+    ///
+    /// ⚠️ KEPT OFF — measured INFERIOR (`probe_dinf_compare`). The rendered river
+    /// trace follows the primary (one D8 neighbour per cell), so it re-quantises;
+    /// and the `flat_grad` distance field (8-conn BFS ≈ Chebyshev) has a CARDINAL
+    /// gradient, so the continuous angle points cardinally → the trace collapses
+    /// to CARDINAL combs (diagonal 67 %→1 %, local orientation R2 0.40→0.91 —
+    /// WORSE than D8's diagonal). The grid-rendered parallelism is a floor of
+    /// drawing rivers as grid cells; no flat-routing tweak removes it. Default D8.
+    pub dinf: bool,
 }
 
 impl Default for FlowConfig {
     fn default() -> Self {
-        Self { sea_level: 0.1, flat_perturbation: None }
+        Self { sea_level: 0.1, flat_perturbation: None, dinf: false }
     }
 }
 
@@ -187,12 +202,20 @@ pub fn compute_flow(heightmap: &GridF32, config: &FlowConfig) -> FlowResult {
     let flat_grad =
         resolve_flats(&filled, &is_ocean, config.flat_perturbation.as_ref(), w, h);
 
-    // Step 3: D8 flow direction (steepest descent on `filled`; flat cells routed
-    // down the `flat_grad` toward the outlet).
-    let direction = compute_d8(&filled, &flat_grad, &is_ocean, w, h);
-
-    // Step 4: flow accumulation (topological order by filled, then flat_grad).
-    let accumulation = compute_accumulation(&filled, &flat_grad, &direction, &is_ocean, w, h);
+    // Step 3+4: flow direction + accumulation. D8 (mono) by default; with `dinf`,
+    // the flat pass routes on the CONTINUOUS flat_grad gradient (fractional split)
+    // → `accumulation` is fractional, `direction` is the primary neighbour.
+    let (direction, accumulation) = if config.dinf {
+        let (dir, dir2, frac1) = compute_dinf(&filled, &flat_grad, &is_ocean, w, h);
+        let acc = compute_accumulation_dinf(
+            &filled, &flat_grad, &dir, &dir2, &frac1, &is_ocean, w, h,
+        );
+        (dir, acc)
+    } else {
+        let dir = compute_d8(&filled, &flat_grad, &is_ocean, w, h);
+        let acc = compute_accumulation(&filled, &flat_grad, &dir, &is_ocean, w, h);
+        (dir, acc)
+    };
 
     // Step 5: basin labeling
     let (basins, num_basins) = compute_basins(&direction, &is_ocean, w, h);
@@ -308,6 +331,197 @@ fn compute_d8(filled: &GridF32, flat_grad: &[f64], is_ocean: &[bool], w: usize, 
     }
 
     direction
+}
+
+/// #drainage fix A — D∞ (Tarboton 1997) flow on the FLATS. The slope pass is the
+/// SAME mono-D8 steepest descent as `compute_d8` (slopes already route well). On a
+/// flat (no strictly-lower `filled` neighbour) the flow follows the CONTINUOUS
+/// angle of the `flat_grad` gradient and is split between the two BRACKETING D8
+/// neighbours by angular proximity. Returns `(primary_dir, secondary_dir, frac1)`:
+/// `frac1` of the flow goes to `primary_dir`, `1−frac1` to `secondary_dir`
+/// (`DIR_NONE` if none). Both candidates are valid downstream (equal `filled`,
+/// strictly-lower `flat_grad`) → drainage still guaranteed, no pit. The primary is
+/// the larger fraction, so `direction` stays a valid mono field for lakes/basins/B.
+fn compute_dinf(
+    filled: &GridF32,
+    flat_grad: &[f64],
+    is_ocean: &[bool],
+    w: usize,
+    h: usize,
+) -> (Vec<u8>, Vec<u8>, Vec<f32>) {
+    use std::f64::consts::FRAC_PI_4;
+    let n = w * h;
+    let mut dir = vec![DIR_NONE; n];
+    let mut dir2 = vec![DIR_NONE; n];
+    let mut frac1 = vec![1.0f32; n];
+    // D8 direction angles (atan2(dy, dx)).
+    let mut ang = [0.0f64; 8];
+    for d in 0..8 {
+        ang[d] = (D8_DY[d] as f64).atan2(D8_DX[d] as f64);
+    }
+    let angdiff = |a: f64, b: f64| -> f64 {
+        let mut x = (a - b).abs() % (2.0 * std::f64::consts::PI);
+        if x > std::f64::consts::PI {
+            x = 2.0 * std::f64::consts::PI - x;
+        }
+        x
+    };
+
+    for j in 0..h {
+        for i in 0..w {
+            let idx = j * w + i;
+            if is_ocean[idx] {
+                continue;
+            }
+            let my_h = filled.data[idx];
+            // Pass 1 — mono steepest descent on `filled` (slopes). Unchanged.
+            let mut best_dir = DIR_NONE;
+            let mut best_slope = 0.0f32;
+            for d in 0..8 {
+                let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
+                let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
+                let nidx = nj * w + ni;
+                let slope = (my_h - filled.data[nidx]) / D8_DIST[d];
+                if slope > best_slope {
+                    best_slope = slope;
+                    best_dir = d as u8;
+                }
+            }
+            if best_dir != DIR_NONE {
+                dir[idx] = best_dir;
+                continue;
+            }
+
+            // Pass 2 — D∞ on the flat. Valid downstream = equal `filled`, strictly
+            // lower `flat_grad`. Gradient of `flat_grad` over equal-filled
+            // neighbours; flow = −∇flat_grad (toward the outlet).
+            let my_g = flat_grad[idx];
+            let nbr = |d: usize| -> usize {
+                let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
+                let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
+                nj * w + ni
+            };
+            let g_at = |d: usize| -> f64 {
+                let m = nbr(d);
+                if !is_ocean[m] && filled.data[m] == my_h { flat_grad[m] } else { my_g }
+            };
+            // central differences (E=2, W=6, S=4, N=0); y grows downward.
+            let gx = (g_at(2) - g_at(6)) * 0.5;
+            let gy = (g_at(4) - g_at(0)) * 0.5;
+            let (fx, fy) = (-gx, -gy);
+
+            // valid downstream candidates.
+            let valid = |d: usize| -> bool {
+                let m = nbr(d);
+                !is_ocean[m] && filled.data[m] == my_h && flat_grad[m] < my_g
+            };
+
+            if fx == 0.0 && fy == 0.0 {
+                // degenerate gradient → mono to the min-flat_grad valid neighbour.
+                let mut bg = my_g;
+                for d in 0..8 {
+                    if valid(d) && flat_grad[nbr(d)] < bg {
+                        bg = flat_grad[nbr(d)];
+                        dir[idx] = d as u8;
+                    }
+                }
+                continue;
+            }
+            let theta = fy.atan2(fx);
+            // bracketing pair = valid dirs within 45° of θ, weighted linearly.
+            let mut wd = [0.0f64; 8];
+            let mut wsum = 0.0;
+            for d in 0..8 {
+                if valid(d) {
+                    let ad = angdiff(theta, ang[d]);
+                    if ad < FRAC_PI_4 {
+                        let wt = FRAC_PI_4 - ad;
+                        wd[d] = wt;
+                        wsum += wt;
+                    }
+                }
+            }
+            if wsum <= 0.0 {
+                // θ points away from every valid neighbour → mono closest valid.
+                let mut best = f64::MAX;
+                for d in 0..8 {
+                    if valid(d) {
+                        let ad = angdiff(theta, ang[d]);
+                        if ad < best {
+                            best = ad;
+                            dir[idx] = d as u8;
+                        }
+                    }
+                }
+                continue;
+            }
+            // top two weights → primary + secondary.
+            let (mut p1, mut p2) = (usize::MAX, usize::MAX);
+            for d in 0..8 {
+                if wd[d] > 0.0 {
+                    if p1 == usize::MAX || wd[d] > wd[p1] {
+                        p2 = p1;
+                        p1 = d;
+                    } else if p2 == usize::MAX || wd[d] > wd[p2] {
+                        p2 = d;
+                    }
+                }
+            }
+            dir[idx] = p1 as u8;
+            if p2 != usize::MAX {
+                dir2[idx] = p2 as u8;
+                frac1[idx] = (wd[p1] / (wd[p1] + wd[p2])) as f32;
+            }
+        }
+    }
+    (dir, dir2, frac1)
+}
+
+/// #drainage fix A — fractional flow accumulation for D∞. Each cell sends `frac1`
+/// of its accumulation to `direction` and `1−frac1` to `dir2` (if any), in
+/// topological order (filled desc, flat_grad desc). The split conserves water
+/// (`frac1 + (1−frac1) = 1`), so the total runoff is preserved exactly.
+fn compute_accumulation_dinf(
+    filled: &GridF32,
+    flat_grad: &[f64],
+    direction: &[u8],
+    dir2: &[u8],
+    frac1: &[f32],
+    is_ocean: &[bool],
+    w: usize,
+    h: usize,
+) -> GridF32 {
+    let n = w * h;
+    let mut land_cells: Vec<usize> = (0..n).filter(|&i| !is_ocean[i]).collect();
+    land_cells.sort_unstable_by(|&a, &b| {
+        filled.data[b]
+            .partial_cmp(&filled.data[a])
+            .unwrap_or(CmpOrd::Equal)
+            .then(flat_grad[b].partial_cmp(&flat_grad[a]).unwrap_or(CmpOrd::Equal))
+    });
+    let mut acc = GridF32::new(w, h, 0.0);
+    for &idx in &land_cells {
+        acc.data[idx] = 1.0;
+    }
+    let push = |acc: &mut GridF32, from: usize, d: u8, frac: f32| {
+        if d == DIR_NONE || frac <= 0.0 {
+            return;
+        }
+        let (i, j) = (from % w, from / w);
+        let ni = ((i as i32 + D8_DX[d as usize]) % w as i32 + w as i32) as usize % w;
+        let nj = ((j as i32 + D8_DY[d as usize]) % h as i32 + h as i32) as usize % h;
+        acc.data[nj * w + ni] += acc.data[from] * frac;
+    };
+    for &idx in &land_cells {
+        let d1 = direction[idx];
+        if d1 == DIR_NONE {
+            continue;
+        }
+        let f1 = frac1[idx];
+        push(&mut acc, idx, d1, f1);
+        push(&mut acc, idx, dir2[idx], 1.0 - f1);
+    }
+    acc
 }
 
 /// Garbrecht-Martz 1997 flat resolution. Imposes a convergent drainage gradient

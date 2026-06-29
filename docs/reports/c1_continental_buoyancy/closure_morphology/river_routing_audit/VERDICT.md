@@ -322,3 +322,44 @@ flux CONTINUE, Tarboton) l'enlève — il étale le biais sur un continuum d'ang
 n'engager que si l'utilisateur juge les streaks diagonaux résiduels gênants. **Rappel** : le tracé
 est DÉJÀ dendritique et d'aspect naturel (perturbation + fréquence) ; D∞ est un polish, pas une
 correction de défaut bloquant. Diagnostic seulement.
+
+---
+
+## FIX D∞ — ESSAYÉ puis REPLI D8 (le tracé rendu re-quantise)
+
+Tentative (repli D8 gratuit, gating). D∞ (Tarboton) implémenté sur les plats : flux à direction
+CONTINUE depuis le gradient de `flat_grad`, réparti fractionnairement entre les 2 voisins D8
+encadrants ; `direction` = la primaire (plus grande fraction) → lacs/bassins/B gardent une mono
+direction valide ; `accumulation` devient fractionnaire (eau conservée, `frac1 + (1−frac1) = 1`).
+Probe `probe_dinf_compare` (seed 2026, grands plats), D8 vs D∞ (perturbation ON dans les deux).
+
+**RÉSULTAT — D∞ est PIRE, même pathologie que la normalisation** :
+
+| | D8 (actuel) | D∞ |
+|---|---|---|
+| diagonal grands plats | 67 % | **1 %** (bascule cardinal) |
+| R2 local (1=parallèle) | 0.40 | **0.91** |
+| aire de lacs | 0.14 % | 0.15 % (préservée) |
+| endorhéiques | 86 | 85 (préservés) |
+
+`seed02026_dinf_Dinf.png` : **blocs cardinaux pleins** (cyan/jaune/rouge), bien pires que le
+diagonal de `seed02026_dinf_D8.png`. (L'hydrologie de B, elle, EST préservée — lacs, endorhéiques :
+le garde-fou tient. Mais le tracé est pire.)
+
+**Pourquoi — la cause est FONDAMENTALE** : le tracé RENDU suit la primaire (UN voisin D8 par
+cellule) → il **re-quantise** quoi qu'il arrive. Et le champ `flat_grad` (distance BFS 8-connexe ≈
+Chebyshev) a un gradient **CARDINAL** → l'angle continu pointe cardinal → la primaire se verrouille
+en cardinal → peignes cardinaux. C'est la MÊME bascule que la normalisation par distance, par la même
+raison (la géométrie du champ de distance). Le bénéfice continu de D∞ est dans l'ACCUMULATION
+(fractionnaire), pas dans le TRACÉ (qui reste une suite de cellules 8-connexes).
+
+**Conclusion** : le parallélisme rendu est un **plancher du dessin des rivières comme cellules de
+grille** sur un grand plat à gradient uniforme. AUCUN réglage du routage (perturbation, normalisation,
+D∞) ne l'enlève — le D8 actuel (diagonal, R2 0.40) est le MOINS parallèle des options testées. Le
+dissoudre demanderait un rendu VECTORIEL/sous-pixel des rivières (un changement de RENDU viz, pas de
+routage), hors périmètre.
+
+**Décision : REPLI D8** (assumé, pas un échec — le tracé D8 + perturbation + fréquence est déjà
+dendritique et naturel). D∞ reste une **option gated documentée** (`dinf`, défaut `false`, mesurée
+inférieure) pour reproductibilité ; D8 jamais cassé (byte-identique, lib verte 472). Fin du fix A :
+les leviers de routage sont épuisés ; tout gain supplémentaire est côté rendu, pas routage.
