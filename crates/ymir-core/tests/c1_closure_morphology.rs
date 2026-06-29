@@ -103,6 +103,46 @@ fn c165_eroded(seed: u64, iso: &IsostasyConfig) -> GridF32 {
     .expect("cached #165 eroded heightmap")
 }
 
+/// #viz — the C1 DRAINAGE product on the SHARED cached terrain. Calls
+/// [`c165_eroded`] (cache HIT — the SAME eroded relief the climate/biomes/relief
+/// tiles use, so the whole integration grid is one terrain per seed) then
+/// `cached_c1_drainage` (chained on the eroded key; cached too). Replaces the
+/// old direct `init → run → upscale → c1_drainage` rebuild — fast + coherent.
+fn c165_drainage(seed: u64, iso: &IsostasyConfig) -> ymir_core::tectonics_c1::drainage::C1DrainageResult {
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::tectonics_c1::cached_product::{cached_c1_drainage, eroded_key, tectonic_key};
+    use ymir_core::tectonics_c1::drainage::C1DrainageConfig;
+    let h = c165_eroded(seed, iso);
+    let run = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: N_STEPS,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso.clone(),
+        drainage_max_distance: 30,
+    };
+    let ss = SteinSteinParams::default();
+    let up = FbmUpscaleConfig::c1_hd_production(2048);
+    let ek = eroded_key(
+        &tectonic_key(seed, GRID_SIZE, &Phase2InitParams::default(), &run, &C1Closures::default()),
+        &ss,
+        &up,
+    );
+    // #drainage — activate the WATER BALANCE (the production drainage): the
+    // climate is computed inside the wrapper from (heightmap, ss, 45° westerlies,
+    // PrecipParams) and folded into the key. Same 45° the climate/biomes tiles use.
+    let pp = PrecipParams::default();
+    cached_c1_drainage(
+        &ymir_core::cache::default_cache_dir(),
+        &ek,
+        &h,
+        Some((45.0, &pp)),
+        &C1DrainageConfig::default(),
+        &ss,
+    )
+    .expect("cached #165 drainage")
+}
+
 /// #165 cache GAIN demonstration in the REAL probe path (the `c165_eroded`
 /// helper every #165 probe now calls). MISS builds the relief (~100 s); a 2nd
 /// call on the SAME relief is a HIT (~ms) — this is the climate/biomes/hypsometry
@@ -3823,7 +3863,7 @@ fn probe_drainage_etat_des_lieux() {
         let (w, ht) = (h.width, h.height);
 
         // The unified scale puts sea at 0.5.
-        let flow = compute_flow(h, &FlowConfig { sea_level: 0.5 });
+        let flow = compute_flow(h, &FlowConfig { sea_level: 0.5, ..Default::default() });
         let rivers = extract_rivers(&flow, &RiverConfig::default(), w, ht);
         let lakes = detect_lakes(h, &flow.filled, &flow.direction, &flow.basins, &LakeConfig::default());
 
@@ -3890,74 +3930,65 @@ fn probe_drainage_etat_des_lieux() {
 
 /// #155 drainage maillon ACCEPTANCE — validate the PRODUCT (c1_drainage) on the
 /// real C1 terrain, not the algorithm (that has unit tests). Checks: navigability
-/// classes (km² thresholds), lake stats in metres, and RESOLUTION-INDEPENDENCE
-/// (512² vs 1024²: km²-anchored network density comparable, where cell-count
-/// thresholds would break). Renders the drainage overlay (origin-bottom) for the
+/// classes (km² thresholds, resolution-independent by design) + lake stats in
+/// metres, and renders the drainage overlay (origin-bottom) for the
 /// geometric-coherence re-judge (rivers in valleys / lakes in basins).
+///
+/// #viz — now reads the SHARED cache (`c165_eroded` + `cached_c1_drainage`)
+/// instead of rebuilding erosion in-line per run: fast (HIT after the first
+/// erosion) and COHERENT (the exact terrain the climate/biomes/integration tiles
+/// use). The render is unchanged (the cache changes only speed + the terrain
+/// source, not the drainage product).
 #[test]
 #[ignore]
 fn probe_c1_drainage_acceptance() {
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, Navigability, LakeType};
+    use ymir_core::tectonics_c1::drainage::{LakeType, Navigability};
     use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
     let dir = output_dir().join("drainage_accept");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso = IsostasyConfig::c1_default();
-    let ss = SteinSteinParams::default();
-    let dcfg = C1DrainageConfig::default();
-    let grid = 64usize;
-    eprintln!("#155 drainage acceptance — c1_drainage on C1 product, km² thresholds {:?}", dcfg.thresholds);
+    eprintln!("#155 drainage acceptance — c1_drainage on the SHARED cached 2048² C1 product (c165_eroded + cached_c1_drainage); km² navigability is resolution-independent by design.");
     for &seed in &[42u64, 1988, 2026] {
-        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
-        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-        let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
-        run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
-
-        // Resolution-independence: 512² and 1024², compare km²-normalised metrics.
-        for &target in &[512usize, 1024] {
-            let cfg = FbmUpscaleConfig::c1_hd_production(target);
-            let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
-            let dr = c1_drainage(&up.heightmap, &dcfg, &ss);
-            let (w, _h) = (dr.width, dr.height);
-            let land_km2 = up.heightmap.data.iter().filter(|&&v| v > 0.5).count() as f32 * c1_cell_area_km2(w);
-            let mut nav = [0usize; 4];
-            for n in &dr.segment_navigability { nav[match n { Navigability::NonNavigable=>0, Navigability::SmallBoat=>1, Navigability::Barge=>2, Navigability::Ship=>3 }] += 1; }
-            let max_drain = dr.segment_drainage_km2.iter().cloned().fold(0.0f32, f32::max);
-            let exo = dr.lakes.iter().filter(|l| l.lake_type==LakeType::Exorheic).count();
-            let endo = dr.lakes.iter().filter(|l| l.lake_type==LakeType::Endorheic).count();
-            let (deepest, highest, biggest) = dr.lakes.iter().fold((0.0f32,f32::MIN,0.0f32), |(d,h,a),l| (d.max(l.depth_m), h.max(l.level_m), a.max(l.area_km2)));
-            eprintln!("  seed {seed} @{target}²: land {land_km2:.0} km² | rivers {} (nonNav {} smallBoat {} barge {} ship {}) maxDrain {max_drain:.0} km²",
-                dr.rivers.segments.len(), nav[0], nav[1], nav[2], nav[3]);
-            eprintln!("    lakes {} (exo {exo}/endo {endo}) deepest {deepest:.0} m, highest level {highest:.0} m, biggest {biggest:.0} km²", dr.lakes.len());
-
-            if target == 1024 {
-                // render overlay (origin-bottom, the product convention). Base
-                // hypso + lakes + NAVIGABLE rivers by tier (the mappable network:
-                // small-boat→barge→ship), NOT every headwater (the full
-                // hydrography at stream_km2 is the dense texture, consumer-filtered).
-                let mut img = vec![0u8; w*dr.height*3];
-                for k in 0..w*dr.height {
-                    let v = up.heightmap.data[k].clamp(0.0,1.0);
-                    let (r,g,b) = if v <= 0.5 { (30,60,(120.0+200.0*v) as u8) } else { let t=(v-0.5)*2.0; (((60.0+150.0*t) as u8),((120.0+80.0*t) as u8),60) };
-                    img[k*3]=r; img[k*3+1]=g; img[k*3+2]=b;
-                }
-                for (si, seg) in dr.rivers.segments.iter().enumerate() {
-                    let col = match dr.segment_navigability[si] {
-                        Navigability::Ship => [20u8, 70, 200],
-                        Navigability::Barge => [40, 110, 230],
-                        Navigability::SmallBoat => [90, 160, 240],
-                        Navigability::NonNavigable => continue,
-                    };
-                    for &(px, py) in &seg.points { let k = py as usize * w + px as usize; img[k*3]=col[0]; img[k*3+1]=col[1]; img[k*3+2]=col[2]; }
-                }
-                for k in 0..w*dr.height {
-                    if dr.lake_map[k]!=0 { img[k*3]=30; img[k*3+1]=90; img[k*3+2]=180; }
-                }
-                let mut buf = image::ImageBuffer::new(w as u32, dr.height as u32);
-                for j in 0..dr.height { for i in 0..w { let k=j*w+i; buf.put_pixel(i as u32,(dr.height-1-j) as u32, image::Rgb([img[k*3],img[k*3+1],img[k*3+2]])); }}
-                buf.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
-            }
+        let h = c165_eroded(seed, &iso); // HIT — the shared terrain
+        let dr = c165_drainage(seed, &iso); // cached drainage, chained on the eroded key
+        let (w, ht) = (dr.width, dr.height);
+        let land_km2 = h.data.iter().filter(|&&v| v > 0.5).count() as f32 * c1_cell_area_km2(w);
+        let mut nav = [0usize; 4];
+        for n in &dr.segment_navigability {
+            nav[match n { Navigability::NonNavigable=>0, Navigability::SmallBoat=>1, Navigability::Barge=>2, Navigability::Ship=>3 }] += 1;
         }
+        let max_drain = dr.segment_drainage_km2.iter().cloned().fold(0.0f32, f32::max);
+        let exo = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Exorheic).count();
+        let endo = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).count();
+        let (deepest, highest, biggest) = dr.lakes.iter().fold((0.0f32, f32::MIN, 0.0f32), |(d, hh, a), l| (d.max(l.depth_m), hh.max(l.level_m), a.max(l.area_km2)));
+        eprintln!("  seed {seed} @2048²: land {land_km2:.0} km² | rivers {} (nonNav {} smallBoat {} barge {} ship {}) maxDrain {max_drain:.0} km²",
+            dr.rivers.segments.len(), nav[0], nav[1], nav[2], nav[3]);
+        eprintln!("    lakes {} (exo {exo}/endo {endo}) deepest {deepest:.0} m, highest level {highest:.0} m, biggest {biggest:.0} km²", dr.lakes.len());
+
+        // render overlay (origin-bottom, the product convention). Base hypso +
+        // lakes + NAVIGABLE rivers by tier (small-boat→barge→ship); non-navigable
+        // headwaters omitted (consumer-filtered dense hydrography).
+        let mut img = vec![0u8; w * ht * 3];
+        for k in 0..w * ht {
+            let v = h.data[k].clamp(0.0, 1.0);
+            let (r, g, b) = if v <= 0.5 { (30, 60, (120.0 + 200.0 * v) as u8) } else { let t = (v - 0.5) * 2.0; (((60.0 + 150.0 * t) as u8), ((120.0 + 80.0 * t) as u8), 60) };
+            img[k * 3] = r; img[k * 3 + 1] = g; img[k * 3 + 2] = b;
+        }
+        for (si, seg) in dr.rivers.segments.iter().enumerate() {
+            let col = match dr.segment_navigability[si] {
+                Navigability::Ship => [20u8, 70, 200],
+                Navigability::Barge => [40, 110, 230],
+                Navigability::SmallBoat => [90, 160, 240],
+                Navigability::NonNavigable => continue,
+            };
+            for &(px, py) in &seg.points { let k = py as usize * w + px as usize; img[k * 3] = col[0]; img[k * 3 + 1] = col[1]; img[k * 3 + 2] = col[2]; }
+        }
+        for k in 0..w * ht {
+            if dr.lake_map[k] != 0 { img[k * 3] = 30; img[k * 3 + 1] = 90; img[k * 3 + 2] = 180; }
+        }
+        let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht { for i in 0..w { let k = j * w + i; buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb([img[k * 3], img[k * 3 + 1], img[k * 3 + 2]])); } }
+        buf.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -4003,7 +4034,7 @@ fn probe_drainage_overlays() {
             let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
             let h = &up.heightmap;
             let (w, ht) = (h.width, h.height);
-            let dr = c1_drainage(h, &dcfg, &ss);
+            let dr = c1_drainage(h, None, &dcfg, &ss);
 
             // ---- (1) rivers on hillshade ----
             let mut riv = vec![0u8; w*ht*3];
@@ -4097,7 +4128,7 @@ fn probe_flat_routing_diagnostic() {
             let cfg = FbmUpscaleConfig::c1_hd_production(target);
             let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
             let h = &up.heightmap; let (w, ht) = (h.width, h.height);
-            let dr = c1_drainage(h, &dcfg, &ss);
+            let dr = c1_drainage(h, None, &dcfg, &ss);
             let cell_km2 = c1_cell_area_km2(w);
             let stream_cells = (dcfg.thresholds.stream_km2 / cell_km2).max(1.0);
 
@@ -4179,7 +4210,7 @@ fn probe_flat_routing_fix_render() {
         let cfg = FbmUpscaleConfig::c1_hd_production(target);
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
         let h = &up.heightmap; let (w, ht) = (h.width, h.height);
-        let dr = c1_drainage(h, &dcfg, &ss);
+        let dr = c1_drainage(h, None, &dcfg, &ss);
         let stream = (dcfg.thresholds.stream_km2 / c1_cell_area_km2(w)).max(1.0);
         // FULL accumulation network over hillshade, UNMASKED (so bars would show).
         let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
@@ -4253,7 +4284,7 @@ fn probe_flat_fix_validation() {
         let cfg = FbmUpscaleConfig::c1_hd_production(2048);
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
         let h=&up.heightmap; let (w,ht)=(h.width,h.height);
-        let dr=c1_drainage(h,&dcfg,&ss);
+        let dr=c1_drainage(h,None,&dcfg,&ss);
         let sz=512usize;
         // centroids: filled-depression flats vs native flats (land, low orig grad, not filled).
         let (mut fx,mut fy,mut fn_,mut nx,mut ny,mut nn)=(0u64,0u64,0u64,0u64,0u64,0u64);
@@ -4310,7 +4341,7 @@ fn probe_quasi_flat_residual() {
     for &sg in &[1e-4f32, 1e-3, 5e-3] {
         let n=512usize; let mut hm=GridF32::new(n,n,0.0);
         for j in 0..n { for i in 0..n { hm.set(i,j, (0.75 - i as f32*sg).max(0.2)); }}
-        let fl=compute_flow(&hm,&FlowConfig{sea_level:0.5});
+        let fl=compute_flow(&hm,&FlowConfig{sea_level:0.5,..Default::default()});
         let stream=RiverConfig::default().stream_threshold;
         let (mut cs,mut cn)=(0.0f32,0u32);
         for k in 0..n*n { if hm.data[k]>0.5 && fl.accumulation.data[k]>=stream { cs+=coherence(&fl.direction,&fl.accumulation,stream,n,n,k); cn+=1; }}
@@ -4327,7 +4358,7 @@ fn probe_quasi_flat_residual() {
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg_2048());
         let h=&up.heightmap; let (w,ht)=(h.width,h.height);
-        let dr=c1_drainage(h,&dcfg,&ss);
+        let dr=c1_drainage(h,None,&dcfg,&ss);
         let f=&dr.flow.filled.data;
         let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
         let m_per_km = c1_altitude_norm_to_metres_delta(&ss)/(C1_DOMAIN_KM/w as f32);
@@ -4397,7 +4428,7 @@ fn probe_ladder_locator() {
         let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
         run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
         let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
-        let h=&up.heightmap; let(w,ht)=(h.width,h.height); let dr=c1_drainage(h,&dcfg,&ss);
+        let h=&up.heightmap; let(w,ht)=(h.width,h.height); let dr=c1_drainage(h,None,&dcfg,&ss);
         let f=&dr.flow.filled.data; let dirf=&dr.flow.direction; let acc=&dr.flow.accumulation;
         let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
         let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
@@ -4455,7 +4486,7 @@ fn probe_ladder_reconcile() {
         let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
         run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
         let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
-        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,None,&dcfg,&ss);
         let f=&dr.flow.filled.data; let acc=&dr.flow.accumulation;
         let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
         let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
@@ -4501,7 +4532,7 @@ fn probe_yellow_fan_mechanism() {
         let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
         run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
         let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
-        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,None,&dcfg,&ss);
         let f=&dr.flow.filled.data; let dirf=&dr.flow.direction;
         let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
         // exact-flat NON-lake cells.
@@ -4543,7 +4574,7 @@ fn probe_nonlake_flooded_zones() {
         let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
         run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
         let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
-        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,None,&dcfg,&ss);
         let cell_km2=c1_cell_area_km2(w);
         let depth=|k:usize|->f32{(dr.flow.filled.data[k]-h.data[k]).max(0.0)};
         // residual flooded non-lake cells.
@@ -4605,7 +4636,7 @@ fn probe_clean_product_2048() {
         let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
         run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
         let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
-        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,&dcfg,&ss);
+        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,None,&dcfg,&ss);
         let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
         // PRODUCT convention: ocean, lakes, rivers (acc>=stream masked under lakes), else hillshade.
         let mut buf=image::ImageBuffer::new(w as u32,ht as u32);
@@ -6624,4 +6655,1184 @@ fn probe_submarine_relief() {
          (3) coast→offshore: does depth deepen with distance (shelf→slope→abyss) or jump/stay flat? \
          Verdict = generate all / enrich a base / fix the shape; what's missing (shelf/slope/abyss/ridge/trench)."
     );
+}
+
+/// #viz — INTEGRATION GRID: the WHOLE current chain on ONE shared cached terrain
+/// per seed, so the complete product is visible in one place (the global visual
+/// validation before the Living Landz export — the cross-link coherence the
+/// per-maillon probes cannot see). Assembles EXISTING renders (no reinvention):
+/// relief+BATHYMETRY, c1_drainage (navigable rivers + typed lakes), precip,
+/// temperature, biomes, W→E transect. All tiles read the SAME `c165_eroded`
+/// terrain (HIT — one erosion per seed feeds every view; the cache pays here) and
+/// the SAME `c165_drainage` (cached, chained on the eroded key). Common fixed
+/// scales/palettes across the 6 seeds (cross-seed comparison valid).
+///
+/// Tiles per seed → `integration_grid/seed{NNNNN}_{relief,drainage,precip_MMBANDS,
+/// temp_CBANDS,biomes,transect}.png`; assemble with `image_grid_integration.py`.
+///
+/// DIAGNOSTIC. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_integration_grid -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_integration_grid() {
+    use ymir_core::climate::biomes::Biome;
+    use ymir_core::climate::precipitation::{precip_mm_per_year, PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::climate::{c1_biomes, c1_climate};
+    use ymir_core::tectonics_c1::drainage::Navigability;
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+
+    let dir = output_dir().join("integration_grid");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let pp = PrecipParams::default();
+    let seeds: [u64; 6] = [42, 99, 1337, 4138, 1988, 2026];
+
+    // COMMON fixed scales (identical across seeds → comparable).
+    let alt_m = |n: f32| c1_altitude_norm_to_metres(n, &ss);
+    // relief+bathy: land hypso (green→brown→white) + ocean depth (shelf cyan →
+    // abyss navy). The bathymetry plateau/slope/abyss reads directly.
+    let relief_color = |n: f32| -> [u8; 3] {
+        if n <= SEA_LEVEL_NORM {
+            let d = (-alt_m(n)).clamp(0.0, 5650.0) / 5650.0; // 0 shelf → 1 abyss
+            let lerp = |a: f32, b: f32| (a + (b - a) * d) as u8;
+            [lerp(140.0, 10.0), lerp(195.0, 25.0), lerp(215.0, 70.0)]
+        } else {
+            let a = alt_m(n).max(0.0);
+            if a < 1000.0 {
+                let t = a / 1000.0;
+                [(70.0 + 90.0 * t) as u8, (130.0 + 20.0 * t) as u8, (70.0 - 10.0 * t) as u8]
+            } else if a < 3000.0 {
+                let t = (a - 1000.0) / 2000.0;
+                [(160.0 + 60.0 * t) as u8, (150.0 + 60.0 * t) as u8, (60.0 + 110.0 * t) as u8]
+            } else {
+                [230, 230, 235]
+            }
+        }
+    };
+    let precip_band = |mm: f32| -> [u8; 3] {
+        if mm < 250.0 { [225, 200, 140] } else if mm < 500.0 { [200, 195, 110] }
+        else if mm < 800.0 { [150, 180, 90] } else if mm < 1500.0 { [80, 150, 200] } else { [30, 90, 200] }
+    };
+    let temp_band = |t: f32| -> [u8; 3] {
+        if t < -5.0 { [225, 235, 248] } else if t < 5.0 { [90, 140, 205] }
+        else if t < 20.0 { [110, 190, 110] } else { [225, 120, 70] }
+    };
+
+    eprintln!(
+        "#viz integration grid — 2048² HD, 6 seeds, ONE cached terrain per seed feeds ALL views \
+         (relief+bathy / drainage / precip / temp / biomes / transect). Common scales."
+    );
+
+    for &seed in &seeds {
+        // SHARED terrain + drainage (both cache HIT after the first erosion).
+        let h = c165_eroded(seed, &iso);
+        let dr = c165_drainage(seed, &iso);
+        let (w, ht) = (h.width, h.height);
+        let clim = c1_climate(&h, &ss, 45.0, &pp);
+        let biomes = c1_biomes(&h, &clim);
+
+        let put = |buf: &mut image::RgbImage, i: usize, j: usize, c: [u8; 3]| {
+            buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(c)); // origin-bottom
+        };
+        let (mut relief, mut drain, mut pm, mut tm, mut bb) = (
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+        );
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let n = h.data[k];
+                let sea = n <= SEA_LEVEL_NORM;
+                let rc = relief_color(n);
+                put(&mut relief, i, j, rc);
+                // drainage base = dimmed relief (so rivers/lakes pop).
+                put(&mut drain, i, j, [rc[0] / 2 + 30, rc[1] / 2 + 30, rc[2] / 2 + 30]);
+                put(&mut pm, i, j, if sea { [25, 40, 75] } else { precip_band(precip_mm_per_year(clim.precipitation.data[k])) });
+                put(&mut tm, i, j, if sea { [25, 40, 75] } else { temp_band(clim.temperature.data[k]) });
+                put(&mut bb, i, j, biomes[k].color());
+            }
+        }
+        // Drainage overlay: typed lakes, then NAVIGABLE rivers by tier (the
+        // mappable network; non-navigable headwaters omitted — consumer-filtered).
+        for k in 0..w * ht {
+            if dr.lake_map[k] != 0 {
+                let c = [30, 90, 180];
+                put(&mut drain, k % w, k / w, c);
+            }
+        }
+        for (si, seg) in dr.rivers.segments.iter().enumerate() {
+            // Thicken navigable trunks (plus-shape, +radius by tier) so they
+            // survive the grid downscale; non-navigable headwaters omitted.
+            let (col, rad): ([u8; 3], i32) = match dr.segment_navigability[si] {
+                Navigability::Ship => ([20, 70, 200], 2),
+                Navigability::Barge => ([40, 110, 230], 1),
+                Navigability::SmallBoat => ([90, 160, 240], 1),
+                Navigability::NonNavigable => continue,
+            };
+            for &(px, py) in &seg.points {
+                for (dx, dy) in [(0i32, 0i32), (1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, 2), (0, -2)] {
+                    if (dx.abs() + dy.abs()) > rad + 1 {
+                        continue;
+                    }
+                    let (nx, ny) = (px as i32 + dx, py as i32 + dy);
+                    if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < ht {
+                        put(&mut drain, nx as usize, ny as usize, col);
+                    }
+                }
+            }
+        }
+
+        // W→E transect on the map's middle row: altitude (grey) + precip (cyan,
+        // FIXED 0-2000 mm clamp) + a biome strip at the bottom (shared palette).
+        const TR_MM: f32 = 2000.0;
+        let th = 360usize;
+        let jr = ht / 2;
+        let mut tr = image::RgbImage::new(w as u32, th as u32);
+        for p in tr.pixels_mut() { *p = image::Rgb([20, 20, 28]); }
+        for i in 0..w {
+            let k = jr * w + i;
+            let a = if h.data[k] > SEA_LEVEL_NORM { alt_m(h.data[k]) } else { 0.0 };
+            let ay = (((a / 6000.0).clamp(0.0, 1.0)) * (th as f32 - 40.0)) as usize;
+            let mm = precip_mm_per_year(clim.precipitation.data[k]);
+            let my = (((mm / TR_MM).min(1.0)) * (th as f32 - 40.0)) as usize;
+            if ay < th { tr.put_pixel(i as u32, (th - 1 - ay) as u32, image::Rgb([200, 200, 200])); }
+            if my < th { tr.put_pixel(i as u32, (th - 1 - my) as u32, image::Rgb([60, 200, 230])); }
+            let c = if h.data[k] <= SEA_LEVEL_NORM { [30, 50, 90] } else { biomes[k].color() };
+            for y in 0..28 { tr.put_pixel(i as u32, (th - 1 - y) as u32, image::Rgb(c)); }
+        }
+
+        relief.save(dir.join(format!("seed{seed:05}_relief.png"))).unwrap();
+        drain.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
+        pm.save(dir.join(format!("seed{seed:05}_precip_MMBANDS.png"))).unwrap();
+        tm.save(dir.join(format!("seed{seed:05}_temp_CBANDS.png"))).unwrap();
+        bb.save(dir.join(format!("seed{seed:05}_biomes.png"))).unwrap();
+        tr.save(dir.join(format!("seed{seed:05}_transect.png"))).unwrap();
+
+        let nav: usize = dr.segment_navigability.iter().filter(|n| !matches!(n, Navigability::NonNavigable)).count();
+        eprintln!("  seed {seed}: tiles written | rivers {} (navigable {nav}), lakes {}", dr.rivers.segments.len(), dr.lakes.len());
+    }
+    eprintln!("  out = {}", dir.display());
+    eprintln!("  assemble: python image_grid_integration.py");
+    eprintln!(
+        "  COMMON SCALES: relief land green→brown→white (0-3000m+), ocean cyan→navy (0 shelf→5650m abyss); \
+         precip bands desert<250/steppe/temp-dry/oceanic/wet>1500; temp Whittaker -5/+5/+20°C; biomes shared palette."
+    );
+}
+
+/// #drainage audit — are the lakes OVER-FILLED (geometric fill-and-spill, ignoring
+/// the water balance) or realistic? The integration grid showed many big lakes,
+/// all basins ~filled, all with an outlet (0 endorheic / 6 seeds) — the signature
+/// of a priority-flood that fills every depression to its overflow sill. This
+/// MEASURES it (audit, no fix), on the shared cached terrain + drainage.
+///
+/// Reports per seed + aggregate: (1) lake AREA fraction of land (vs Earth ~2 %);
+/// (2) lake SIZE distribution (km² bands); (3) exo/endo counts (the algorithm is
+/// documented as geometric → all exorheic); (4) the CLIMATE LINK — bin the lake
+/// CELLS by their precipitation (mm/yr): how much lake area sits in ARID interior
+/// (< 250 / < 500 mm) where Earth has its CLOSED (endorheic) basins (Caspian,
+/// Chad, Aral) but fill-and-spill overflows them anyway.
+///
+/// DIAGNOSTIC. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_drainage_lake_audit -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_drainage_lake_audit() {
+    use ymir_core::climate::precipitation::{precip_mm_per_year, PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::climate::c1_climate;
+    use ymir_core::tectonics_c1::drainage::LakeType;
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let pp = PrecipParams::default();
+    let seeds: [u64; 6] = [42, 99, 1337, 4138, 1988, 2026];
+
+    // Lake-area size bands (km²) and lake-cell precip bands (mm/yr).
+    let size_edges = [0.0f32, 100.0, 1000.0, 5000.0];
+    let size_label = ["<100", "100-1000", "1000-5000", "5000+"];
+    let precip_label = ["arid <250", "semi 250-500", "humid >500"];
+
+    eprintln!(
+        "#drainage lake audit — 6 seeds, shared cache. Earth anchor: lakes ~2% of land; \
+         CLOSED (endorheic) basins exist in ARID interiors (Caspian/Chad/Aral). With the WATER \
+         BALANCE on (c165_drainage passes the climate), basins overflow only if inflow > \
+         evaporation; arid basins become endorheic. (Pre-fix geometric fill-and-spill: 18% of \
+         land in lakes, 0 endorheic.)"
+    );
+
+    let (mut agg_lake_cells, mut agg_land_cells, mut agg_exo, mut agg_endo) = (0u64, 0u64, 0u64, 0u64);
+    let mut agg_precip = [0u64; 3]; // lake cells by precip band, aggregate
+    for &seed in &seeds {
+        let h = c165_eroded(seed, &iso);
+        let dr = c165_drainage(seed, &iso);
+        let clim = c1_climate(&h, &ss, 45.0, &pp);
+        let (w, _ht) = (h.width, h.height);
+        let cell_km2 = c1_cell_area_km2(w);
+
+        let land_cells = h.data.iter().filter(|&&v| v > SEA_LEVEL_NORM).count() as u64;
+        let mut lake_cells = 0u64;
+        let mut pband = [0u64; 3]; // lake cells by precip
+        for k in 0..dr.lake_map.len() {
+            if dr.lake_map[k] != 0 {
+                lake_cells += 1;
+                let mm = precip_mm_per_year(clim.precipitation.data[k]);
+                let b = if mm < 250.0 { 0 } else if mm < 500.0 { 1 } else { 2 };
+                pband[b] += 1;
+            }
+        }
+        // Size distribution + exo/endo.
+        let mut scnt = [0u64; 4];
+        let (mut exo, mut endo) = (0u64, 0u64);
+        for lk in &dr.lakes {
+            let mut b = 0;
+            for (i, &e) in size_edges.iter().enumerate() {
+                if lk.area_km2 >= e {
+                    b = i;
+                }
+            }
+            scnt[b] += 1;
+            match lk.lake_type {
+                LakeType::Exorheic => exo += 1,
+                LakeType::Endorheic => endo += 1,
+            }
+        }
+        let lake_frac = 100.0 * lake_cells as f64 / land_cells.max(1) as f64;
+        let lake_area_km2 = lake_cells as f64 * cell_km2 as f64;
+
+        eprintln!(
+            "\n  seed {seed}: lakes {} | lake area {lake_area_km2:.0} km² = {lake_frac:.1}% of land | exo {exo} / endo {endo}",
+            dr.lakes.len()
+        );
+        let sz: Vec<String> = (0..4).map(|b| format!("{} {}", size_label[b], scnt[b])).collect();
+        eprintln!("    size (km²): {}", sz.join(" | "));
+        eprintln!(
+            "    lake area by precip: {} {:.0}% | {} {:.0}% | {} {:.0}%  ← arid-zone lake area that fill-and-spill overflows (should be endorheic)",
+            precip_label[0], 100.0 * pband[0] as f64 / lake_cells.max(1) as f64,
+            precip_label[1], 100.0 * pband[1] as f64 / lake_cells.max(1) as f64,
+            precip_label[2], 100.0 * pband[2] as f64 / lake_cells.max(1) as f64,
+        );
+        agg_lake_cells += lake_cells;
+        agg_land_cells += land_cells;
+        agg_exo += exo;
+        agg_endo += endo;
+        for b in 0..3 { agg_precip[b] += pband[b]; }
+    }
+
+    eprintln!("\n  AGGREGATE (6 seeds):");
+    eprintln!(
+        "    lakes area = {:.1}% of land (Earth ~2%; pre-fix geometric was 18%) | exo {agg_exo} / endo {agg_endo} (endorheic now appear via the water balance)",
+        100.0 * agg_lake_cells as f64 / agg_land_cells.max(1) as f64
+    );
+    eprintln!(
+        "    lake area in ARID (<250mm) {:.0}% | semi-arid (<500mm) {:.0}% — these arid-interior basins are now ENDORHEIC (closed, evaporation balances inflow), like Caspian/Chad.",
+        100.0 * agg_precip[0] as f64 / agg_lake_cells.max(1) as f64,
+        100.0 * (agg_precip[0] + agg_precip[1]) as f64 / agg_lake_cells.max(1) as f64,
+    );
+    eprintln!(
+        "  → water balance ON: lake area 18% → ~0.7% (semi-arid 45° world: precip<PE → few small lakes, mostly endorheic, like steppes); exorheic preserved; endorheic in arid interiors. The fill-and-spill over-fill is fixed."
+    );
+}
+
+/// #drainage routing audit — the lake fix re-revealed two RIVER-ROUTING defects
+/// (the drained lakes no longer hide the flats). Two distinct causes, measured in
+/// one look:
+///   A. RECTILINEAR rivers on flats (priority 1): D8 (8 discrete dirs) routed down
+///      the Garbrecht-Martz flat gradient on PIT-FILLED flats → cardinal-aligned
+///      straight channels + ~90° junctions. Old defect, was hidden under lakes.
+///   B. PHANTOM rivers (priority 2): `extract_rivers` runs on the GEOMETRIC
+///      accumulation (priority-flood, pre-water-balance) → it does NOT know which
+///      basins the water balance made endorheic, so a river flows OUT of a closed
+///      basin to the sea (water that actually evaporated in the lake).
+///
+/// Measures (shared cache): (A) % of river cells on pit-filled flats + a
+/// straightness metric (mean same-direction run length, cardinal %); (B) % of
+/// NAVIGABLE river length in water-deficit (precip<PE) terrain — the phantom proxy
+/// (a river wholly in net-evaporative terrain carries no real water).
+///
+/// DIAGNOSTIC. Invocation:
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_river_routing_audit -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_river_routing_audit() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{precip_mm_per_year, PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::tectonics_c1::drainage::{potential_evaporation_mm, LakeType, Navigability};
+
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let pp = PrecipParams::default();
+    let seeds: [u64; 3] = [42, 1988, 2026];
+
+    eprintln!(
+        "#drainage routing audit — D8 + Garbrecht-Martz on pit-filled flats (rectilinear), \
+         extract_rivers on GEOMETRIC accumulation (ignores endorheic → phantom). Shared cache."
+    );
+
+    for &seed in &seeds {
+        let h = c165_eroded(seed, &iso);
+        let dr = c165_drainage(seed, &iso);
+        let clim = c1_climate(&h, &ss, 45.0, &pp);
+        let (w, _ht) = (h.width, h.height);
+        let eps = 1e-6f32;
+
+        // A. flat fraction + straightness over ALL river cells.
+        let (mut river_cells, mut flat_cells) = (0u64, 0u64);
+        let (mut steps, mut straight_steps, mut cardinal_steps) = (0u64, 0u64, 0u64);
+        // B. navigable river cells in water-deficit terrain.
+        let (mut nav_cells, mut nav_deficit) = (0u64, 0u64);
+        for (si, seg) in dr.rivers.segments.iter().enumerate() {
+            let navigable = !matches!(dr.segment_navigability[si], Navigability::NonNavigable);
+            let mut prev_dir: Option<(i32, i32)> = None;
+            for (pi, &(px, py)) in seg.points.iter().enumerate() {
+                let k = py as usize * w + px as usize;
+                river_cells += 1;
+                if (dr.flow.filled.data[k] - h.data[k]) > eps {
+                    flat_cells += 1; // pit-filled flat → G-M routed
+                }
+                if navigable {
+                    nav_cells += 1;
+                    let mm = precip_mm_per_year(clim.precipitation.data[k]);
+                    let pe = potential_evaporation_mm(clim.temperature.data[k]);
+                    if mm < pe {
+                        nav_deficit += 1;
+                    }
+                }
+                if pi > 0 {
+                    let (qx, qy) = seg.points[pi - 1];
+                    let (dx, dy) = ((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum());
+                    steps += 1;
+                    if dx == 0 || dy == 0 {
+                        cardinal_steps += 1;
+                    }
+                    if prev_dir == Some((dx, dy)) {
+                        straight_steps += 1;
+                    }
+                    prev_dir = Some((dx, dy));
+                }
+            }
+        }
+        let endo = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).count();
+        eprintln!(
+            "\n  seed {seed}: river cells {river_cells} | on pit-filled FLATS {:.0}% (G-M rectilinear-prone)",
+            100.0 * flat_cells as f64 / river_cells.max(1) as f64
+        );
+        eprintln!(
+            "    straightness: {:.0}% steps continue same D8 dir (straight runs), {:.0}% cardinal (vs diagonal)",
+            100.0 * straight_steps as f64 / steps.max(1) as f64,
+            100.0 * cardinal_steps as f64 / steps.max(1) as f64,
+        );
+        eprintln!(
+            "    NAVIGABLE: {nav_cells} river cells ({:.0}% of all river cells)",
+            100.0 * nav_cells as f64 / river_cells.max(1) as f64
+        );
+        eprintln!(
+            "    PHANTOM proxy: {:.0}% of NAVIGABLE river cells are in water-deficit terrain (precip<PE) — local deficit (residual = allochthonous, real upstream discharge). {endo} endorheic basins.",
+            100.0 * nav_deficit as f64 / nav_cells.max(1) as f64
+        );
+        let _ = SEA_LEVEL_NORM;
+    }
+    eprintln!(
+        "\n  → A (rectilinear): D8 on G-M flat gradient → cardinal straight channels on pit-filled flats (low plains / drained basins). Approaches: D∞ (continuous dir) / flat micro-perturbation / stochastic meander. \
+         B (phantom): extract_rivers uses geometric accumulation, ignores the water balance's endorheic basins → rivers exit closed basins. Fix: route rivers on runoff with endorheic resets. SEPARATE fixes (flat tracing vs closed-basin coherence)."
+    );
+}
+
+/// #drainage fix A — VISUAL comparison of the flat tracing, perturbation OFF vs
+/// ON. Picks the flat-heavy crop (most river cells on pit-filled flats) and
+/// renders the FULL drainage network (all segments, not just navigable) there,
+/// zoomed, side by side, so the meandering is judged by eye. Also prints the
+/// straightness on the FLATS ONLY (the metric the fix targets) and the lake-area
+/// invariant (must be unchanged). Iterate the `FlatPerturbation` default
+/// (amplitude/frequency) and re-run.
+///
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_flat_tracing_compare -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_flat_tracing_compare() {
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, C1DrainageResult, DrainageClimate};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+
+    let dir = output_dir().join("flat_tracing");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let pp = PrecipParams::default();
+    let seed = 42u64;
+
+    let h = c165_eroded(seed, &iso);
+    let (w, ht) = (h.width, h.height);
+    let clim = c1_climate(&h, &ss, 45.0, &pp);
+    let dc = DrainageClimate { precip_internal: &clim.precipitation, temperature: &clim.temperature };
+
+    let cfg_off = C1DrainageConfig { flat_perturbation: None, ..Default::default() };
+    let cfg_on = C1DrainageConfig::default(); // Some(FlatPerturbation::default())
+    let dr_off = c1_drainage(&h, Some(&dc), &cfg_off, &ss);
+    let dr_on = c1_drainage(&h, Some(&dc), &cfg_on, &ss);
+
+    let eps = 1e-6f32;
+    // flat mask from the OFF flow (the pit-filled flats: filled raised above h).
+    let is_flat: Vec<bool> = (0..w * ht).map(|k| (dr_off.flow.filled.data[k] - h.data[k]) > eps).collect();
+
+    // straightness on flats only, OFF vs ON, + lake area (invariant).
+    let straight_on_flats = |dr: &C1DrainageResult| -> (f64, u64) {
+        let (mut steps, mut straight) = (0u64, 0u64);
+        for seg in &dr.rivers.segments {
+            let mut prev: Option<(i32, i32)> = None;
+            for pi in 1..seg.points.len() {
+                let (px, py) = seg.points[pi];
+                let (qx, qy) = seg.points[pi - 1];
+                let k = py as usize * w + px as usize;
+                if !is_flat[k] { prev = None; continue; }
+                let dxy = ((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum());
+                steps += 1;
+                if prev == Some(dxy) { straight += 1; }
+                prev = Some(dxy);
+            }
+        }
+        (100.0 * straight as f64 / steps.max(1) as f64, steps)
+    };
+    let lake_area = |dr: &C1DrainageResult| -> f64 {
+        let cells = dr.lake_map.iter().filter(|&&v| v != 0).count();
+        100.0 * cells as f64 / (w * ht) as f64
+    };
+    let (s_off, n_off) = straight_on_flats(&dr_off);
+    let (s_on, n_on) = straight_on_flats(&dr_on);
+    eprintln!("#fixA flat-tracing seed {seed}:");
+    eprintln!("  straightness ON FLATS: OFF {s_off:.0}% ({n_off} steps) → ON {s_on:.0}% ({n_on} steps)");
+    eprintln!("  lake area: OFF {:.2}% → ON {:.2}% (invariant — must match)", lake_area(&dr_off), lake_area(&dr_on));
+    eprintln!("  endorheic lakes: OFF {} → ON {} | cell km² {:.2}",
+        dr_off.lakes.iter().filter(|l| l.lake_type == ymir_core::tectonics_c1::drainage::LakeType::Endorheic).count(),
+        dr_on.lakes.iter().filter(|l| l.lake_type == ymir_core::tectonics_c1::drainage::LakeType::Endorheic).count(),
+        c1_cell_area_km2(w));
+
+    // pick the flat-heavy crop (most river-on-flat cells, OFF).
+    const CROP: usize = 384;
+    let mut rof = vec![0u8; w * ht];
+    for seg in &dr_off.rivers.segments {
+        for &(px, py) in &seg.points {
+            let k = py as usize * w + px as usize;
+            if is_flat[k] { rof[k] = 1; }
+        }
+    }
+    let stride = 64usize;
+    let (mut best, mut bxy) = (0u64, (0usize, 0usize));
+    let mut y = 0;
+    while y + CROP <= ht {
+        let mut x = 0;
+        while x + CROP <= w {
+            let mut c = 0u64;
+            for j in y..y + CROP { for i in x..x + CROP { c += rof[j * w + i] as u64; } }
+            if c > best { best = c; bxy = (x, y); }
+            x += stride;
+        }
+        y += stride;
+    }
+    let (cx, cy) = bxy;
+    eprintln!("  crop {CROP}² at ({cx},{cy}) — {best} river-on-flat cells (OFF). Rendered OFF/ON for eyeballing.");
+
+    let scale = 2usize;
+    let render = |dr: &C1DrainageResult, tag: &str| {
+        let mut river = vec![false; w * ht];
+        for seg in &dr.rivers.segments {
+            for &(px, py) in &seg.points { river[py as usize * w + px as usize] = true; }
+        }
+        let mut buf = image::ImageBuffer::new((CROP * scale) as u32, (CROP * scale) as u32);
+        for jj in 0..CROP * scale {
+            for ii in 0..CROP * scale {
+                let i = cx + ii / scale;
+                let j = cy + jj / scale;
+                let k = j * w + i;
+                let v = h.data[k].clamp(0.0, 1.0);
+                let mut px = if v <= 0.5 {
+                    [18u8, 34, 70]
+                } else {
+                    let t = (v - 0.5) * 2.0;
+                    // dim hypso so rivers pop; pit-filled flats tinted darker/bluer.
+                    if is_flat[k] {
+                        [(40.0 + 40.0 * t) as u8, (55.0 + 35.0 * t) as u8, 70]
+                    } else {
+                        [(55.0 + 95.0 * t) as u8, (75.0 + 60.0 * t) as u8, 45]
+                    }
+                };
+                if river[k] { px = [120, 205, 255]; }
+                if dr.lake_map[k] != 0 { px = [30, 90, 180]; }
+                buf.put_pixel(ii as u32, (CROP * scale - 1 - jj) as u32, image::Rgb(px));
+            }
+        }
+        let path = dir.join(format!("seed{seed:05}_tracing_{tag}.png"));
+        buf.save(&path).unwrap();
+    };
+    render(&dr_off, "OFF");
+    render(&dr_on, "ON");
+    eprintln!("  out = {}", dir.display());
+}
+
+/// #drainage fix A suite — LOCALISE the RESIDUAL rectilinearity (perturbation ON
+/// still leaves straight rivers). Distinguishes the two causes before committing
+/// a deeper fix:
+///   - DIFFUSE D8 STAIRCASE (the discretisation floor): straight steps live in
+///     SHORT runs (1-4 steps) — the river meanders but D8's 8 directions render it
+///     as stairsteps. Fix = D∞ (continuous flow direction).
+///   - CONCENTRATED COMBS (perturbation under-bit): straight steps live in LONG
+///     runs (≥9 steps), concentrated on specific flats (large flats where the
+///     ~14-cell noise averages out, or big rivers the lateral noise can't bend).
+///     Fix = tune the perturbation (amplitude/frequency).
+/// Measures (cached drainage, ON): run-length histogram of straight steps on
+/// flats, straightness by flat SIZE and by river DISCHARGE, and renders the
+/// flat-heavy crop coloring rivers by run length (green = short staircase, red =
+/// long comb). DIAGNOSTIC ONLY.
+///
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_residual_rectilinear -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_residual_rectilinear() {
+    use std::collections::VecDeque;
+    let dir = output_dir().join("flat_tracing");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let seeds: [u64; 2] = [42, 2026];
+    eprintln!("#fixA residual rectilinear — run-length of straight steps on flats (short=D8 staircase→D∞, long=comb→tune perturbation), by flat size + discharge. Cached ON drainage.");
+
+    for &seed in &seeds {
+        let h = c165_eroded(seed, &iso);
+        let dr = c165_drainage(seed, &iso);
+        let (w, ht) = (h.width, h.height);
+        let eps = 1e-6f32;
+        let is_flat: Vec<bool> =
+            (0..w * ht).map(|k| (dr.flow.filled.data[k] - h.data[k]) > eps).collect();
+
+        // Label connected flat regions (8-conn) → region size per cell.
+        let mut region = vec![0u32; w * ht];
+        let mut region_size: Vec<u32> = vec![0]; // id 0 = not flat / unassigned
+        let nb = |i: usize, j: usize, d: usize| -> (usize, usize) {
+            let ni = ((i as i32 + D8_DX_T[d]) % w as i32 + w as i32) as usize % w;
+            let nj = ((j as i32 + D8_DY_T[d]) % ht as i32 + ht as i32) as usize % ht;
+            (ni, nj)
+        };
+        for start in 0..w * ht {
+            if !is_flat[start] || region[start] != 0 {
+                continue;
+            }
+            let id = region_size.len() as u32;
+            let mut sz = 0u32;
+            let mut q = VecDeque::new();
+            region[start] = id;
+            q.push_back(start);
+            while let Some(c) = q.pop_front() {
+                sz += 1;
+                let (ci, cj) = (c % w, c / w);
+                for d in 0..8 {
+                    let (ni, nj) = nb(ci, cj, d);
+                    let m = nj * w + ni;
+                    if is_flat[m] && region[m] == 0 {
+                        region[m] = id;
+                        q.push_back(m);
+                    }
+                }
+            }
+            region_size.push(sz);
+        }
+
+        // Walk segments; group consecutive equal-direction STEPS into runs, but
+        // only over steps whose cell is on a flat. Bucket straight steps by run
+        // length; also accumulate straightness by flat-size and discharge bucket.
+        let mut run_buckets = [0u64; 5]; // straight steps in runs of len 1, 2-4, 5-8, 9-16, 17+
+        let bucket = |s: usize| -> usize {
+            match s {
+                0..=1 => 0,
+                2..=4 => 1,
+                5..=8 => 2,
+                9..=16 => 3,
+                _ => 4,
+            }
+        };
+        // per-cell run length (steps) for the render.
+        let mut cell_run = vec![0u16; w * ht];
+        // straightness by flat-size bucket: small <100, med 100-5k, large >5k cells.
+        let mut sz_steps = [0u64; 3];
+        let mut sz_straight = [0u64; 3];
+        let sz_b = |s: u32| -> usize {
+            if s < 100 {
+                0
+            } else if s < 5000 {
+                1
+            } else {
+                2
+            }
+        };
+        // straightness by discharge bucket (segment drainage km²): <50, 50-1k, >1k.
+        let mut dq_steps = [0u64; 3];
+        let mut dq_straight = [0u64; 3];
+
+        for (si, seg) in dr.rivers.segments.iter().enumerate() {
+            let dq = dr.segment_drainage_km2[si];
+            let dqb = if dq < 50.0 {
+                0
+            } else if dq < 1000.0 {
+                1
+            } else {
+                2
+            };
+            // build the step list on flats: (cell_k, dir)
+            let mut steps: Vec<(usize, (i32, i32))> = Vec::new();
+            for pi in 1..seg.points.len() {
+                let (px, py) = seg.points[pi];
+                let (qx, qy) = seg.points[pi - 1];
+                let k = py as usize * w + px as usize;
+                if !is_flat[k] {
+                    continue;
+                }
+                let d = ((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum());
+                steps.push((k, d));
+            }
+            // group into runs of equal direction.
+            let mut i = 0;
+            while i < steps.len() {
+                let mut j = i + 1;
+                while j < steps.len() && steps[j].1 == steps[i].1 {
+                    j += 1;
+                }
+                let run_len = j - i; // steps in this run
+                let straight = (run_len - 1) as u64; // continuations (first step is a change)
+                run_buckets[bucket(run_len)] += straight;
+                for s in i..j {
+                    let k = steps[s].0;
+                    cell_run[k] = run_len.min(u16::MAX as usize) as u16;
+                    let szb = sz_b(region_size[region[k] as usize]);
+                    sz_steps[szb] += 1;
+                    dq_steps[dqb] += 1;
+                    if s > i {
+                        sz_straight[szb] += 1;
+                        dq_straight[dqb] += 1;
+                    }
+                }
+                i = j;
+            }
+        }
+
+        let total_straight: u64 = run_buckets.iter().sum();
+        let pct = |x: u64| 100.0 * x as f64 / total_straight.max(1) as f64;
+        eprintln!("\n  seed {seed}: straight steps on flats = {total_straight}");
+        eprintln!(
+            "    run-length of straight steps:  len1 {:.0}% | 2-4 {:.0}% | 5-8 {:.0}% | 9-16 {:.0}% | 17+ {:.0}%",
+            pct(run_buckets[0]), pct(run_buckets[1]), pct(run_buckets[2]), pct(run_buckets[3]), pct(run_buckets[4])
+        );
+        let long = pct(run_buckets[3]) + pct(run_buckets[4]);
+        let short = pct(run_buckets[1]) + pct(run_buckets[2]);
+        eprintln!(
+            "    → SHORT runs (2-8, staircase) {short:.0}% vs LONG runs (9+, comb) {long:.0}% of straight steps"
+        );
+        let sline = |lbl: &str, st: &[u64; 3], sr: &[u64; 3]| {
+            eprintln!(
+                "    {lbl}: [{:.0}% / {} steps] [{:.0}% / {}] [{:.0}% / {}]",
+                100.0 * sr[0] as f64 / st[0].max(1) as f64, st[0],
+                100.0 * sr[1] as f64 / st[1].max(1) as f64, st[1],
+                100.0 * sr[2] as f64 / st[2].max(1) as f64, st[2],
+            );
+        };
+        sline("straightness by flat size  (small<100 / med / large>5k cells)", &sz_steps, &sz_straight);
+        sline("straightness by discharge  (<50 / 50-1k / >1k km²)         ", &dq_steps, &dq_straight);
+
+        // render the flat-heavy crop, color rivers by run length (green short → red long).
+        const CROP: usize = 384;
+        let stride = 64usize;
+        let mut rof = vec![0u8; w * ht];
+        for k in 0..w * ht {
+            if is_flat[k] && cell_run[k] > 0 {
+                rof[k] = 1;
+            }
+        }
+        let (mut best, mut bxy) = (0u64, (0usize, 0usize));
+        let mut y = 0;
+        while y + CROP <= ht {
+            let mut x = 0;
+            while x + CROP <= w {
+                let mut c = 0u64;
+                for jj in y..y + CROP {
+                    for ii in x..x + CROP {
+                        c += rof[jj * w + ii] as u64;
+                    }
+                }
+                if c > best {
+                    best = c;
+                    bxy = (x, y);
+                }
+                x += stride;
+            }
+            y += stride;
+        }
+        let (cx, cy) = bxy;
+        let scale = 2usize;
+        let mut buf = image::ImageBuffer::new((CROP * scale) as u32, (CROP * scale) as u32);
+        for jj in 0..CROP * scale {
+            for ii in 0..CROP * scale {
+                let i = cx + ii / scale;
+                let j = cy + jj / scale;
+                let k = j * w + i;
+                let v = h.data[k].clamp(0.0, 1.0);
+                let mut px = if v <= 0.5 {
+                    [18u8, 34, 70]
+                } else if is_flat[k] {
+                    [40, 52, 66]
+                } else {
+                    let t = (v - 0.5) * 2.0;
+                    [(55.0 + 80.0 * t) as u8, (70.0 + 55.0 * t) as u8, 45]
+                };
+                if cell_run[k] > 0 {
+                    // green (short staircase) → yellow → red (long comb).
+                    let r = cell_run[k] as f32;
+                    let t = ((r - 2.0) / 14.0).clamp(0.0, 1.0); // 2→0, 16+→1
+                    px = [(60.0 + 195.0 * t) as u8, (220.0 - 120.0 * t) as u8, 60];
+                }
+                if dr.lake_map[k] != 0 {
+                    px = [30, 90, 180];
+                }
+                buf.put_pixel(ii as u32, (CROP * scale - 1 - jj) as u32, image::Rgb(px));
+            }
+        }
+        buf.save(dir.join(format!("seed{seed:05}_residual_runlen.png"))).unwrap();
+        eprintln!("    crop {CROP}² at ({cx},{cy}) → seed{seed:05}_residual_runlen.png (green=short staircase, red=long comb)");
+    }
+    eprintln!("\n  out = {}", dir.display());
+}
+
+const D8_DX_T: [i32; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
+const D8_DY_T: [i32; 8] = [-1, -1, 0, 1, 1, 1, 0, -1];
+
+/// #drainage fix A suite — is the residual "lines" impression DIRECTIONAL
+/// PARALLELISM (neighbouring rivers all pointing the same D8 direction = the
+/// teeth of a comb), rather than long runs (already optimised)? Measures, on
+/// large flats vs small flats vs slopes:
+///   - the 8-direction histogram (D8 only emits 8 directions; is it CONCENTRATED
+///     on 1-2 — especially the 45° diagonals — = parallel, or spread = dendritic?)
+///   - the LOCAL orientation order parameter R2 (in a window, do nearby river
+///     steps share an axis? R2→1 = locally parallel = comb; R2→0 = isotropic =
+///     natural). This is what the eye reads as "lines".
+/// Renders the flat-heavy crop coloured by D8 direction (8 hues): a large flat in
+/// one hue = parallel. If parallelism is a discretisation artefact (peaked on 8
+/// dirs + high R2 on large flats), D∞ (continuous directions) is the justified
+/// fix. DIAGNOSTIC ONLY.
+///
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_direction_parallelism -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_direction_parallelism() {
+    use std::collections::VecDeque;
+    let dir = output_dir().join("flat_tracing");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let seeds: [u64; 2] = [42, 2026];
+    // D8 angle per direction index; cos/sin of the DOUBLED angle (orientation).
+    let mut cos2 = [0.0f64; 8];
+    let mut sin2 = [0.0f64; 8];
+    for d in 0..8 {
+        let th = (D8_DY_T[d] as f64).atan2(D8_DX_T[d] as f64);
+        cos2[d] = (2.0 * th).cos();
+        sin2[d] = (2.0 * th).sin();
+    }
+    let dir_index = |sdx: i32, sdy: i32| -> Option<usize> {
+        (0..8).find(|&d| D8_DX_T[d] == sdx && D8_DY_T[d] == sdy)
+    };
+    eprintln!("#fixA direction parallelism — 8-dir histogram + local orientation order R2 (parallel=comb), large flats vs small vs slope. Cached ON drainage.");
+
+    for &seed in &seeds {
+        let h = c165_eroded(seed, &iso);
+        let dr = c165_drainage(seed, &iso);
+        let (w, ht) = (h.width, h.height);
+        let n = w * ht;
+        let eps = 1e-6f32;
+        let is_flat: Vec<bool> =
+            (0..n).map(|k| (dr.flow.filled.data[k] - h.data[k]) > eps).collect();
+
+        // connected flat regions → size per cell.
+        let mut region = vec![0u32; n];
+        let mut region_size: Vec<u32> = vec![0];
+        for start in 0..n {
+            if !is_flat[start] || region[start] != 0 {
+                continue;
+            }
+            let id = region_size.len() as u32;
+            let mut sz = 0u32;
+            let mut q = VecDeque::new();
+            region[start] = id;
+            q.push_back(start);
+            while let Some(c) = q.pop_front() {
+                sz += 1;
+                let (ci, cj) = (c % w, c / w);
+                for d in 0..8 {
+                    let ni = ((ci as i32 + D8_DX_T[d]) % w as i32 + w as i32) as usize % w;
+                    let nj = ((cj as i32 + D8_DY_T[d]) % ht as i32 + ht as i32) as usize % ht;
+                    let m = nj * w + ni;
+                    if is_flat[m] && region[m] == 0 {
+                        region[m] = id;
+                        q.push_back(m);
+                    }
+                }
+            }
+            region_size.push(sz);
+        }
+
+        // per-cell river step direction (the step arriving at the cell), -1 = none.
+        let mut cdir = vec![-1i8; n];
+        for seg in &dr.rivers.segments {
+            for pi in 1..seg.points.len() {
+                let (px, py) = seg.points[pi];
+                let (qx, qy) = seg.points[pi - 1];
+                if let Some(d) =
+                    dir_index((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum())
+                {
+                    cdir[py as usize * w + px as usize] = d as i8;
+                }
+            }
+        }
+
+        // class: 0 small flat (<100), 1 med, 2 large (>5k), 3 slope (non-flat).
+        let class = |k: usize| -> usize {
+            if !is_flat[k] {
+                3
+            } else {
+                let s = region_size[region[k] as usize];
+                if s < 100 {
+                    0
+                } else if s < 5000 {
+                    1
+                } else {
+                    2
+                }
+            }
+        };
+        let cname = ["small flat <100", "med flat", "LARGE flat >5k", "slope"];
+
+        // 8-dir histogram per class.
+        let mut hist = [[0u64; 8]; 4];
+        for k in 0..n {
+            if cdir[k] >= 0 {
+                hist[class(k)][cdir[k] as usize] += 1;
+            }
+        }
+        eprintln!("\n  seed {seed}: 8-dir histogram (N=cardinal · X=diagonal), share of river steps");
+        for c in 0..4 {
+            let tot: u64 = hist[c].iter().sum();
+            if tot == 0 {
+                continue;
+            }
+            let pc = |d: usize| 100.0 * hist[c][d] as f64 / tot as f64;
+            let diag = pc(1) + pc(3) + pc(5) + pc(7);
+            let maxbin = (0..8).map(|d| pc(d)).fold(0.0f64, f64::max);
+            // direction entropy (bits, max 3) → low = concentrated/parallel.
+            let ent: f64 = (0..8)
+                .map(|d| hist[c][d] as f64 / tot as f64)
+                .filter(|&p| p > 0.0)
+                .map(|p| -p * p.log2())
+                .sum();
+            eprintln!(
+                "    {:16} N[{:.0} {:.0} {:.0} {:.0}] X[{:.0} {:.0} {:.0} {:.0}] | diag {diag:.0}% maxbin {maxbin:.0}% entropy {ent:.2}/3 (low=parallel) | {tot} steps",
+                cname[c], pc(0), pc(2), pc(4), pc(6), pc(1), pc(3), pc(5), pc(7)
+            );
+        }
+
+        // local orientation order parameter R2 in an r-window over river cells.
+        let r = 8i32;
+        let mut r2_sum = [0.0f64; 4];
+        let mut r2_cnt = [0u64; 4];
+        for k in 0..n {
+            if cdir[k] < 0 {
+                continue;
+            }
+            let cl = class(k);
+            let (ci, cj) = ((k % w) as i32, (k / w) as i32);
+            let (mut sc, mut ss, mut cnt) = (0.0f64, 0.0f64, 0u64);
+            let mut dj = -r;
+            while dj <= r {
+                let mut di = -r;
+                while di <= r {
+                    let ni = ((ci + di) % w as i32 + w as i32) as usize % w;
+                    let nj = ((cj + dj) % ht as i32 + ht as i32) as usize % ht;
+                    let m = nj * w + ni;
+                    if cdir[m] >= 0 {
+                        sc += cos2[cdir[m] as usize];
+                        ss += sin2[cdir[m] as usize];
+                        cnt += 1;
+                    }
+                    di += 1;
+                }
+                dj += 1;
+            }
+            if cnt > 0 {
+                r2_sum[cl] += (sc * sc + ss * ss).sqrt() / cnt as f64;
+                r2_cnt[cl] += 1;
+            }
+        }
+        eprintln!("    local orientation order R2 (window {}², 1=parallel/comb, 0=isotropic):", 2 * r + 1);
+        for c in 0..4 {
+            if r2_cnt[c] > 0 {
+                eprintln!("      {:16} R2 = {:.2}", cname[c], r2_sum[c] / r2_cnt[c] as f64);
+            }
+        }
+
+        // render the flat-heavy crop, color river cells by D8 direction (8 hues).
+        const CROP: usize = 384;
+        let stride = 64usize;
+        let mut rof = vec![0u8; n];
+        for k in 0..n {
+            if cdir[k] >= 0 && is_flat[k] {
+                rof[k] = 1;
+            }
+        }
+        let (mut best, mut bxy) = (0u64, (0usize, 0usize));
+        let mut y = 0;
+        while y + CROP <= ht {
+            let mut x = 0;
+            while x + CROP <= w {
+                let mut cc = 0u64;
+                for jj in y..y + CROP {
+                    for ii in x..x + CROP {
+                        cc += rof[jj * w + ii] as u64;
+                    }
+                }
+                if cc > best {
+                    best = cc;
+                    bxy = (x, y);
+                }
+                x += stride;
+            }
+            y += stride;
+        }
+        let (cx, cy) = bxy;
+        // 8 distinct hues for the 8 D8 directions.
+        let hue: [[u8; 3]; 8] = [
+            [240, 60, 60], [240, 160, 40], [230, 230, 50], [80, 220, 60],
+            [40, 220, 200], [60, 130, 240], [150, 70, 240], [240, 70, 200],
+        ];
+        let scale = 2usize;
+        let mut buf = image::ImageBuffer::new((CROP * scale) as u32, (CROP * scale) as u32);
+        for jj in 0..CROP * scale {
+            for ii in 0..CROP * scale {
+                let i = cx + ii / scale;
+                let j = cy + jj / scale;
+                let k = j * w + i;
+                let v = h.data[k].clamp(0.0, 1.0);
+                let mut px = if v <= 0.5 {
+                    [18u8, 34, 70]
+                } else if is_flat[k] {
+                    [38, 48, 60]
+                } else {
+                    [55, 66, 45]
+                };
+                if cdir[k] >= 0 {
+                    px = hue[cdir[k] as usize];
+                }
+                if dr.lake_map[k] != 0 {
+                    px = [30, 90, 180];
+                }
+                buf.put_pixel(ii as u32, (CROP * scale - 1 - jj) as u32, image::Rgb(px));
+            }
+        }
+        buf.save(dir.join(format!("seed{seed:05}_direction_hue.png"))).unwrap();
+        eprintln!("    crop {CROP}² at ({cx},{cy}) → seed{seed:05}_direction_hue.png (one hue per D8 dir; mono-hue flat = parallel)");
+    }
+    eprintln!("\n  out = {}", dir.display());
+}
+
+/// #drainage fix A — D∞ vs D8 comparison (TENTATIVE, free D8 fallback). Computes
+/// the drainage with `dinf = false` then `true` (perturbation ON in both) and, on
+/// the large flats, reports the diagonal share + local orientation R2 and renders
+/// the direction-hue crop for EACH, plus the hydrology guards (lake area,
+/// endorheic count) that must be preserved. Judge D∞ vs D8 at the eye + guards.
+///
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_dinf_compare -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_dinf_compare() {
+    use std::collections::VecDeque;
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::tectonics_c1::drainage::{
+        c1_drainage, C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType,
+    };
+
+    let dir = output_dir().join("flat_tracing");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let pp = PrecipParams::default();
+    let seed = 2026u64; // the large-flat seed with the visible diagonal streaks
+
+    let h = c165_eroded(seed, &iso);
+    let (w, ht) = (h.width, h.height);
+    let n = w * ht;
+    let clim = c1_climate(&h, &ss, 45.0, &pp);
+    let dc =
+        DrainageClimate { precip_internal: &clim.precipitation, temperature: &clim.temperature };
+    let eps = 1e-6f32;
+
+    let mut cos2 = [0.0f64; 8];
+    let mut sin2 = [0.0f64; 8];
+    for d in 0..8 {
+        let th = (D8_DY_T[d] as f64).atan2(D8_DX_T[d] as f64);
+        cos2[d] = (2.0 * th).cos();
+        sin2[d] = (2.0 * th).sin();
+    }
+    let dir_index =
+        |sdx: i32, sdy: i32| -> Option<usize> { (0..8).find(|&d| D8_DX_T[d] == sdx && D8_DY_T[d] == sdy) };
+
+    eprintln!("#fixA D∞ vs D8 — seed {seed} (large flats). Diagonal share + R2 on large flats, hydrology guards, hue crops.");
+
+    for &dinf in &[false, true] {
+        let cfg = C1DrainageConfig { dinf, ..Default::default() };
+        let dr: C1DrainageResult = c1_drainage(&h, Some(&dc), &cfg, &ss);
+        let tag = if dinf { "Dinf" } else { "D8" };
+
+        let is_flat: Vec<bool> =
+            (0..n).map(|k| (dr.flow.filled.data[k] - h.data[k]) > eps).collect();
+        // large flat regions (>5k cells).
+        let mut region = vec![0u32; n];
+        let mut rsize: Vec<u32> = vec![0];
+        for s in 0..n {
+            if !is_flat[s] || region[s] != 0 {
+                continue;
+            }
+            let id = rsize.len() as u32;
+            let mut sz = 0u32;
+            let mut q = VecDeque::new();
+            region[s] = id;
+            q.push_back(s);
+            while let Some(c) = q.pop_front() {
+                sz += 1;
+                let (ci, cj) = (c % w, c / w);
+                for d in 0..8 {
+                    let ni = ((ci as i32 + D8_DX_T[d]) % w as i32 + w as i32) as usize % w;
+                    let nj = ((cj as i32 + D8_DY_T[d]) % ht as i32 + ht as i32) as usize % ht;
+                    let m = nj * w + ni;
+                    if is_flat[m] && region[m] == 0 {
+                        region[m] = id;
+                        q.push_back(m);
+                    }
+                }
+            }
+            rsize.push(sz);
+        }
+        let large = |k: usize| is_flat[k] && rsize[region[k] as usize] > 5000;
+
+        let mut cdir = vec![-1i8; n];
+        for seg in &dr.rivers.segments {
+            for pi in 1..seg.points.len() {
+                let (px, py) = seg.points[pi];
+                let (qx, qy) = seg.points[pi - 1];
+                if let Some(d) =
+                    dir_index((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum())
+                {
+                    cdir[py as usize * w + px as usize] = d as i8;
+                }
+            }
+        }
+        // diagonal share + R2 on large flats.
+        let mut hist = [0u64; 8];
+        for k in 0..n {
+            if cdir[k] >= 0 && large(k) {
+                hist[cdir[k] as usize] += 1;
+            }
+        }
+        let tot: u64 = hist.iter().sum::<u64>().max(1);
+        let diag = 100.0 * (hist[1] + hist[3] + hist[5] + hist[7]) as f64 / tot as f64;
+        let r = 8i32;
+        let (mut r2s, mut r2c) = (0.0f64, 0u64);
+        for k in 0..n {
+            if cdir[k] < 0 || !large(k) {
+                continue;
+            }
+            let (ci, cj) = ((k % w) as i32, (k / w) as i32);
+            let (mut sc, mut ss2, mut cnt) = (0.0f64, 0.0f64, 0u64);
+            for dj in -r..=r {
+                for di in -r..=r {
+                    let ni = ((ci + di) % w as i32 + w as i32) as usize % w;
+                    let nj = ((cj + dj) % ht as i32 + ht as i32) as usize % ht;
+                    let m = nj * w + ni;
+                    if cdir[m] >= 0 {
+                        sc += cos2[cdir[m] as usize];
+                        ss2 += sin2[cdir[m] as usize];
+                        cnt += 1;
+                    }
+                }
+            }
+            if cnt > 0 {
+                r2s += (sc * sc + ss2 * ss2).sqrt() / cnt as f64;
+                r2c += 1;
+            }
+        }
+        let lake_pct = 100.0 * dr.lake_map.iter().filter(|&&v| v != 0).count() as f64 / n as f64;
+        let endo = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).count();
+        eprintln!(
+            "  {tag}: large-flat diagonal {diag:.0}% | R2 {:.2} | lake area {lake_pct:.2}% | endorheic {endo} | river segs {}",
+            r2s / r2c.max(1) as f64,
+            dr.rivers.segments.len()
+        );
+
+        // hue crop on the flat-heavy region.
+        const CROP: usize = 384;
+        let stride = 64usize;
+        let mut rof = vec![0u8; n];
+        for k in 0..n {
+            if cdir[k] >= 0 && is_flat[k] {
+                rof[k] = 1;
+            }
+        }
+        let (mut best, mut bxy) = (0u64, (0usize, 0usize));
+        let mut y = 0;
+        while y + CROP <= ht {
+            let mut x = 0;
+            while x + CROP <= w {
+                let mut cc = 0u64;
+                for jj in y..y + CROP {
+                    for ii in x..x + CROP {
+                        cc += rof[jj * w + ii] as u64;
+                    }
+                }
+                if cc > best {
+                    best = cc;
+                    bxy = (x, y);
+                }
+                x += stride;
+            }
+            y += stride;
+        }
+        let (cx, cy) = bxy;
+        let hue: [[u8; 3]; 8] = [
+            [240, 60, 60], [240, 160, 40], [230, 230, 50], [80, 220, 60],
+            [40, 220, 200], [60, 130, 240], [150, 70, 240], [240, 70, 200],
+        ];
+        let sc = 2usize;
+        let mut buf = image::ImageBuffer::new((CROP * sc) as u32, (CROP * sc) as u32);
+        for jj in 0..CROP * sc {
+            for ii in 0..CROP * sc {
+                let i = cx + ii / sc;
+                let j = cy + jj / sc;
+                let k = j * w + i;
+                let v = h.data[k].clamp(0.0, 1.0);
+                let mut px = if v <= 0.5 {
+                    [18u8, 34, 70]
+                } else if is_flat[k] {
+                    [38, 48, 60]
+                } else {
+                    [55, 66, 45]
+                };
+                if cdir[k] >= 0 {
+                    px = hue[cdir[k] as usize];
+                }
+                if dr.lake_map[k] != 0 {
+                    px = [30, 90, 180];
+                }
+                buf.put_pixel(ii as u32, (CROP * sc - 1 - jj) as u32, image::Rgb(px));
+            }
+        }
+        buf.save(dir.join(format!("seed{seed:05}_dinf_{tag}.png"))).unwrap();
+        eprintln!("    crop at ({cx},{cy}) → seed{seed:05}_dinf_{tag}.png");
+    }
+    eprintln!("\n  out = {}", dir.display());
 }

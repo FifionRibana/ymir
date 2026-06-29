@@ -52,7 +52,7 @@ pub const ALGO_UPSCALE_EROSION: u32 = 1;
 
 /// Version of the drainage build (`c1_drainage`). ⚠️ BUMP on ANY code change to
 /// that step (see above).
-pub const ALGO_DRAINAGE: u32 = 1;
+pub const ALGO_DRAINAGE: u32 = 2;
 
 // ── Cache key ──────────────────────────────────────────────────────────────
 

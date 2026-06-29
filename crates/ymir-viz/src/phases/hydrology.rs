@@ -195,7 +195,7 @@ pub fn handle_hydrology_compute(
         .or_else(|| iso_cache.result.as_ref().map(|r| r.sea_level_normalized))
         .unwrap_or(0.1);
 
-    let flow_cfg = FlowConfig { sea_level };
+    let flow_cfg = FlowConfig { sea_level, ..Default::default() };
     let flow = compute_flow(&eroded.heightmap, &flow_cfg);
 
     let river_cfg = RiverConfig {
