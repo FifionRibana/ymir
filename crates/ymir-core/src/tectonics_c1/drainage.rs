@@ -140,6 +140,9 @@ pub struct C1DrainageConfig {
     /// wander instead of running cardinal-straight. `None` → legacy routing
     /// (byte-identical). Folded into the drainage cache key via the config.
     pub flat_perturbation: Option<FlatPerturbation>,
+    /// #drainage fix A — D∞ continuous-direction flow on the flats (Tarboton).
+    /// `false` → mono D8 (byte-identical). See `FlowConfig::dinf`.
+    pub dinf: bool,
 }
 
 impl Default for C1DrainageConfig {
@@ -150,6 +153,7 @@ impl Default for C1DrainageConfig {
             lake_min_depth_m: 10.0,
             lake_min_area_km2: 5.0,
             flat_perturbation: Some(FlatPerturbation::default()),
+            dinf: false,
         }
     }
 }
@@ -210,6 +214,7 @@ pub fn c1_drainage(
         &FlowConfig {
             sea_level: C1_SEA_LEVEL_NORM,
             flat_perturbation: cfg.flat_perturbation.clone(),
+            dinf: cfg.dinf,
         },
     );
 

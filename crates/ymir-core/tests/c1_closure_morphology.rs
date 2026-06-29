@@ -7639,3 +7639,200 @@ fn probe_direction_parallelism() {
     }
     eprintln!("\n  out = {}", dir.display());
 }
+
+/// #drainage fix A — D∞ vs D8 comparison (TENTATIVE, free D8 fallback). Computes
+/// the drainage with `dinf = false` then `true` (perturbation ON in both) and, on
+/// the large flats, reports the diagonal share + local orientation R2 and renders
+/// the direction-hue crop for EACH, plus the hydrology guards (lake area,
+/// endorheic count) that must be preserved. Judge D∞ vs D8 at the eye + guards.
+///
+/// `cargo test --release -p ymir-core --test c1_closure_morphology probe_dinf_compare -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn probe_dinf_compare() {
+    use std::collections::VecDeque;
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::tectonics_c1::drainage::{
+        c1_drainage, C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType,
+    };
+
+    let dir = output_dir().join("flat_tracing");
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let pp = PrecipParams::default();
+    let seed = 2026u64; // the large-flat seed with the visible diagonal streaks
+
+    let h = c165_eroded(seed, &iso);
+    let (w, ht) = (h.width, h.height);
+    let n = w * ht;
+    let clim = c1_climate(&h, &ss, 45.0, &pp);
+    let dc =
+        DrainageClimate { precip_internal: &clim.precipitation, temperature: &clim.temperature };
+    let eps = 1e-6f32;
+
+    let mut cos2 = [0.0f64; 8];
+    let mut sin2 = [0.0f64; 8];
+    for d in 0..8 {
+        let th = (D8_DY_T[d] as f64).atan2(D8_DX_T[d] as f64);
+        cos2[d] = (2.0 * th).cos();
+        sin2[d] = (2.0 * th).sin();
+    }
+    let dir_index =
+        |sdx: i32, sdy: i32| -> Option<usize> { (0..8).find(|&d| D8_DX_T[d] == sdx && D8_DY_T[d] == sdy) };
+
+    eprintln!("#fixA D∞ vs D8 — seed {seed} (large flats). Diagonal share + R2 on large flats, hydrology guards, hue crops.");
+
+    for &dinf in &[false, true] {
+        let cfg = C1DrainageConfig { dinf, ..Default::default() };
+        let dr: C1DrainageResult = c1_drainage(&h, Some(&dc), &cfg, &ss);
+        let tag = if dinf { "Dinf" } else { "D8" };
+
+        let is_flat: Vec<bool> =
+            (0..n).map(|k| (dr.flow.filled.data[k] - h.data[k]) > eps).collect();
+        // large flat regions (>5k cells).
+        let mut region = vec![0u32; n];
+        let mut rsize: Vec<u32> = vec![0];
+        for s in 0..n {
+            if !is_flat[s] || region[s] != 0 {
+                continue;
+            }
+            let id = rsize.len() as u32;
+            let mut sz = 0u32;
+            let mut q = VecDeque::new();
+            region[s] = id;
+            q.push_back(s);
+            while let Some(c) = q.pop_front() {
+                sz += 1;
+                let (ci, cj) = (c % w, c / w);
+                for d in 0..8 {
+                    let ni = ((ci as i32 + D8_DX_T[d]) % w as i32 + w as i32) as usize % w;
+                    let nj = ((cj as i32 + D8_DY_T[d]) % ht as i32 + ht as i32) as usize % ht;
+                    let m = nj * w + ni;
+                    if is_flat[m] && region[m] == 0 {
+                        region[m] = id;
+                        q.push_back(m);
+                    }
+                }
+            }
+            rsize.push(sz);
+        }
+        let large = |k: usize| is_flat[k] && rsize[region[k] as usize] > 5000;
+
+        let mut cdir = vec![-1i8; n];
+        for seg in &dr.rivers.segments {
+            for pi in 1..seg.points.len() {
+                let (px, py) = seg.points[pi];
+                let (qx, qy) = seg.points[pi - 1];
+                if let Some(d) =
+                    dir_index((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum())
+                {
+                    cdir[py as usize * w + px as usize] = d as i8;
+                }
+            }
+        }
+        // diagonal share + R2 on large flats.
+        let mut hist = [0u64; 8];
+        for k in 0..n {
+            if cdir[k] >= 0 && large(k) {
+                hist[cdir[k] as usize] += 1;
+            }
+        }
+        let tot: u64 = hist.iter().sum::<u64>().max(1);
+        let diag = 100.0 * (hist[1] + hist[3] + hist[5] + hist[7]) as f64 / tot as f64;
+        let r = 8i32;
+        let (mut r2s, mut r2c) = (0.0f64, 0u64);
+        for k in 0..n {
+            if cdir[k] < 0 || !large(k) {
+                continue;
+            }
+            let (ci, cj) = ((k % w) as i32, (k / w) as i32);
+            let (mut sc, mut ss2, mut cnt) = (0.0f64, 0.0f64, 0u64);
+            for dj in -r..=r {
+                for di in -r..=r {
+                    let ni = ((ci + di) % w as i32 + w as i32) as usize % w;
+                    let nj = ((cj + dj) % ht as i32 + ht as i32) as usize % ht;
+                    let m = nj * w + ni;
+                    if cdir[m] >= 0 {
+                        sc += cos2[cdir[m] as usize];
+                        ss2 += sin2[cdir[m] as usize];
+                        cnt += 1;
+                    }
+                }
+            }
+            if cnt > 0 {
+                r2s += (sc * sc + ss2 * ss2).sqrt() / cnt as f64;
+                r2c += 1;
+            }
+        }
+        let lake_pct = 100.0 * dr.lake_map.iter().filter(|&&v| v != 0).count() as f64 / n as f64;
+        let endo = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).count();
+        eprintln!(
+            "  {tag}: large-flat diagonal {diag:.0}% | R2 {:.2} | lake area {lake_pct:.2}% | endorheic {endo} | river segs {}",
+            r2s / r2c.max(1) as f64,
+            dr.rivers.segments.len()
+        );
+
+        // hue crop on the flat-heavy region.
+        const CROP: usize = 384;
+        let stride = 64usize;
+        let mut rof = vec![0u8; n];
+        for k in 0..n {
+            if cdir[k] >= 0 && is_flat[k] {
+                rof[k] = 1;
+            }
+        }
+        let (mut best, mut bxy) = (0u64, (0usize, 0usize));
+        let mut y = 0;
+        while y + CROP <= ht {
+            let mut x = 0;
+            while x + CROP <= w {
+                let mut cc = 0u64;
+                for jj in y..y + CROP {
+                    for ii in x..x + CROP {
+                        cc += rof[jj * w + ii] as u64;
+                    }
+                }
+                if cc > best {
+                    best = cc;
+                    bxy = (x, y);
+                }
+                x += stride;
+            }
+            y += stride;
+        }
+        let (cx, cy) = bxy;
+        let hue: [[u8; 3]; 8] = [
+            [240, 60, 60], [240, 160, 40], [230, 230, 50], [80, 220, 60],
+            [40, 220, 200], [60, 130, 240], [150, 70, 240], [240, 70, 200],
+        ];
+        let sc = 2usize;
+        let mut buf = image::ImageBuffer::new((CROP * sc) as u32, (CROP * sc) as u32);
+        for jj in 0..CROP * sc {
+            for ii in 0..CROP * sc {
+                let i = cx + ii / sc;
+                let j = cy + jj / sc;
+                let k = j * w + i;
+                let v = h.data[k].clamp(0.0, 1.0);
+                let mut px = if v <= 0.5 {
+                    [18u8, 34, 70]
+                } else if is_flat[k] {
+                    [38, 48, 60]
+                } else {
+                    [55, 66, 45]
+                };
+                if cdir[k] >= 0 {
+                    px = hue[cdir[k] as usize];
+                }
+                if dr.lake_map[k] != 0 {
+                    px = [30, 90, 180];
+                }
+                buf.put_pixel(ii as u32, (CROP * sc - 1 - jj) as u32, image::Rgb(px));
+            }
+        }
+        buf.save(dir.join(format!("seed{seed:05}_dinf_{tag}.png"))).unwrap();
+        eprintln!("    crop at ({cx},{cy}) → seed{seed:05}_dinf_{tag}.png");
+    }
+    eprintln!("\n  out = {}", dir.display());
+}
