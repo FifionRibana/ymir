@@ -25,10 +25,12 @@
 //! pausing the simulation. This is the intended "tight backpressure
 //! = pause semantics" behaviour (W1 of Stage E2).
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use ymir_core::tectonics_v2::workflow::PhaseAParams;
 
+use super::hd::{CacheRegime, HdParams, HdPhase, HdResult};
 use super::snapshot::C1Snapshot;
 use super::spec::C1RunSpec;
 
@@ -81,4 +83,21 @@ pub enum C1Event {
     /// Unreachable at MVP (Q-E1.2). Reserved for future panic
     /// catch or NaN detection paths.
     Failed { error: String },
+
+    // ── HD pipeline (UI rewrite step b/5) ──────────────────────────
+    /// The HD production chain (eroded → climate → drainage → biomes)
+    /// is about to start on the worker.
+    HdStarted { spec: C1RunSpec, params: HdParams },
+    /// An HD phase has begun (UI shows an indeterminate waiter — every
+    /// HD phase is an opaque block, no N/total).
+    HdPhaseStarted { phase: HdPhase },
+    /// An HD phase finished; `regime` says HIT (from cache) / MISS
+    /// (computed) / Computed (uncached cheap phase), `elapsed` its wall
+    /// time.
+    HdPhaseDone { phase: HdPhase, regime: CacheRegime, elapsed: Duration },
+    /// The HD chain completed; `result` carries the full product (Arc so
+    /// the event stays `Clone` without `C1DrainageResult: Clone`).
+    HdCompleted { result: Arc<HdResult>, elapsed: Duration },
+    /// The HD chain failed (core error) or was cancelled between phases.
+    HdFailed { error: String },
 }

@@ -33,7 +33,9 @@ use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics_v2::workflow::PhaseAParams;
 
-use crate::bridge::c1::{C1CumulativeStats, C1RunKind, C1RunSpec, C1RunState, C1SolverBridge};
+use crate::bridge::c1::{
+    C1CumulativeStats, C1RunKind, C1RunSpec, C1RunState, C1SolverBridge, HdParams, HdState,
+};
 use crate::camera::CursorWorldPos;
 use crate::visualization::c1_viz::{derive_altitude_field, field_to_rgba, C1Field};
 use crate::visualization::overlay::{draw_velocity_vectors, draw_voronoi_boundaries};
@@ -628,6 +630,68 @@ fn c1_control_panel(
                     bridge.request_cancel();
                 }
             });
+
+            // HD production (step b/5). Coarse validation surface: a button
+            // that drives the full cached chain on the worker + a per-phase
+            // status with the HIT/MISS regime. (The polished layer rendering
+            // is the UI rewrite step d.)
+            ui.separator();
+            let hd_running = matches!(bridge.hd, HdState::Running { .. });
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(!hd_running, egui::Button::new("⛰ Generate HD"))
+                    .on_hover_text(
+                        "Run the full HD chain (eroded → climate → drainage → biomes) \
+                         on the worker. First build is slow (erosion at 2048²); cached after.",
+                    )
+                    .clicked()
+                {
+                    let _ = bridge.submit_hd(viz.pending_spec.clone(), HdParams::default());
+                }
+                if hd_running {
+                    ui.spinner();
+                }
+            });
+            match &bridge.hd {
+                HdState::Idle => {}
+                HdState::Running { current, done, .. } => {
+                    for r in done {
+                        ui.weak(format!(
+                            "✓ {} — {} ({:.1}s)",
+                            r.phase.label(),
+                            r.regime.label(),
+                            r.elapsed.as_secs_f32()
+                        ));
+                    }
+                    if let Some(p) = current {
+                        ui.label(format!("⏳ {} …", p.label()));
+                    }
+                }
+                HdState::Completed { result, total, done } => {
+                    for r in done {
+                        ui.weak(format!(
+                            "✓ {} — {} ({:.1}s)",
+                            r.phase.label(),
+                            r.regime.label(),
+                            r.elapsed.as_secs_f32()
+                        ));
+                    }
+                    ui.colored_label(
+                        egui::Color32::from_rgb(0x6E, 0xBE, 0x6E),
+                        format!(
+                            "✓ HD prêt : {}×{} · {} rivières · {} lacs · biomes ✓ ({:.1}s)",
+                            result.width,
+                            result.height,
+                            result.drainage.rivers.segments.len(),
+                            result.drainage.lakes.len(),
+                            total.as_secs_f32(),
+                        ),
+                    );
+                }
+                HdState::Failed { error } => {
+                    ui.colored_label(egui::Color32::from_rgb(0xE1, 0x78, 0x46), format!("HD : {error}"));
+                }
+            }
 
             // Field switcher.
             ui.separator();

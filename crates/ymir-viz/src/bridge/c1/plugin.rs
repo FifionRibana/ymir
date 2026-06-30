@@ -28,6 +28,7 @@ use ymir_core::tectonics_v2::workflow::PhaseAParams;
 
 use super::commands::C1Command;
 use super::events::{C1Event, C1RunKind};
+use super::hd::{HdParams, HdPhaseRecord, HdState};
 use super::snapshot::C1Snapshot;
 use super::spec::C1RunSpec;
 use super::thread::spawn_c1_thread;
@@ -113,6 +114,9 @@ pub struct C1SolverBridge {
     pub events_rx: Receiver<C1Event>,
     pub cancel_flag: Arc<AtomicBool>,
     pub state: C1RunState,
+    /// HD pipeline state (step b/5) — independent of the coarse tectonic
+    /// `state` so the live gallery view and HD generation coexist.
+    pub hd: HdState,
 }
 
 impl C1SolverBridge {
@@ -134,6 +138,14 @@ impl C1SolverBridge {
     ) -> Result<(), &'static str> {
         self.commands_tx
             .send(C1Command::RunWorkflow { spec, phase_a })
+            .map_err(|_| "c1 bridge channel send failed")
+    }
+
+    /// Queue an HD production run (step b/5): the full cached chain
+    /// (eroded → climate → drainage → biomes) on the worker thread.
+    pub fn submit_hd(&self, spec: C1RunSpec, params: HdParams) -> Result<(), &'static str> {
+        self.commands_tx
+            .send(C1Command::RunHd { spec, params })
             .map_err(|_| "c1 bridge channel send failed")
     }
 
@@ -164,6 +176,7 @@ impl Plugin for C1BridgePlugin {
             events_rx: evt_rx,
             cancel_flag: cancel,
             state: C1RunState::Idle,
+            hd: HdState::Idle,
         });
 
         app.add_systems(Update, poll_c1_events);
@@ -251,6 +264,32 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
             }
             C1Event::Failed { error } => {
                 bridge.state = C1RunState::Failed { error };
+            }
+
+            // ── HD pipeline (step b/5) — drives `bridge.hd`. ──
+            C1Event::HdStarted { params, .. } => {
+                bridge.hd = HdState::Running { params, current: None, done: Vec::new() };
+            }
+            C1Event::HdPhaseStarted { phase } => {
+                if let HdState::Running { current, .. } = &mut bridge.hd {
+                    *current = Some(phase);
+                }
+            }
+            C1Event::HdPhaseDone { phase, regime, elapsed } => {
+                if let HdState::Running { current, done, .. } = &mut bridge.hd {
+                    *current = None;
+                    done.push(HdPhaseRecord { phase, regime, elapsed });
+                }
+            }
+            C1Event::HdCompleted { result, elapsed } => {
+                let done = match std::mem::take(&mut bridge.hd) {
+                    HdState::Running { done, .. } => done,
+                    _ => Vec::new(),
+                };
+                bridge.hd = HdState::Completed { result, total: elapsed, done };
+            }
+            C1Event::HdFailed { error } => {
+                bridge.hd = HdState::Failed { error };
             }
         }
     }

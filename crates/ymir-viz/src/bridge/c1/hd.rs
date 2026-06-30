@@ -1,0 +1,302 @@
+//! HD production pipeline driven on the C1 worker thread (UI rewrite
+//! step b/5 — the foundation).
+//!
+//! The coarse tectonic loop (`RunBaseline` / `RunWorkflow`) renders the
+//! live 64² S̃/age/plate/craton fields. This module drives the FULL HD
+//! production chain — the same `ymir-core` functions the production /
+//! test pipelines use — on the background worker:
+//!
+//! ```text
+//!   eroded  (tectonics → upscale → erosion → bathymetry, CACHED)
+//!   climate (temperature + precipitation, computed)
+//!   drainage (rivers + lakes + water balance, CACHED)
+//!   biomes  (Whittaker classification, computed)
+//! ```
+//!
+//! Each phase emits `HdPhaseStarted` → `HdPhaseDone { regime, elapsed }`
+//! events (see [`super::events`]). Per ÉTAPE 0 every phase is an OPAQUE
+//! block (no progress callback survives `cached_c1_eroded` / `c1_drainage`),
+//! so the UI shows an INDETERMINATE waiter per phase — not an N/total bar.
+//! The cache regime (HIT vs MISS) is detected by probing the sidecar file
+//! BEFORE the call (exact, not time-inferred): a HIT reloads in ~ms, a MISS
+//! computes (erosion at 2048² is the slow one). Re-running the same continent
+//! → every cached phase HITs → near-instant.
+//!
+//! `ymir-core` is CALLED, never re-implemented (the legacy-viz mistake the
+//! v2 removal undid).
+
+use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use crossbeam_channel::Sender;
+
+use ymir_core::cache::default_cache_dir;
+use ymir_core::climate::biomes::Biome;
+use ymir_core::climate::precipitation::PrecipParams;
+use ymir_core::climate::{c1_biomes, c1_climate};
+use ymir_core::grid::GridF32;
+use ymir_core::tectonics::isostasy::IsostasyConfig;
+use ymir_core::tectonics_c1::cached_product::{
+    cached_c1_drainage, cached_c1_eroded, drainage_key, eroded_key, tectonic_key,
+};
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult};
+use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
+use ymir_core::terrain::upscale::FbmUpscaleConfig;
+
+use super::events::C1Event;
+use super::spec::C1RunSpec;
+
+/// HD-specific run parameters (the coarse tectonic params live in
+/// [`C1RunSpec`]). `target_size` is the HD grid edge (2048 = production);
+/// `latitude_deg` drives the climate band (45° = the production anchor the
+/// drainage/climate tiles use).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HdParams {
+    pub target_size: usize,
+    pub latitude_deg: f32,
+}
+
+impl Default for HdParams {
+    fn default() -> Self {
+        Self { target_size: 2048, latitude_deg: 45.0 }
+    }
+}
+
+/// The HD pipeline phases, in execution order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HdPhase {
+    /// Tectonics → upscale → erosion → bathymetry (cached as "eroded").
+    Eroded,
+    /// Temperature + precipitation.
+    Climate,
+    /// Rivers + lakes + water balance (cached as "drainage").
+    Drainage,
+    /// Whittaker biome classification.
+    Biomes,
+}
+
+impl HdPhase {
+    pub fn label(self) -> &'static str {
+        match self {
+            HdPhase::Eroded => "relief + bathymétrie",
+            HdPhase::Climate => "climat",
+            HdPhase::Drainage => "drainage",
+            HdPhase::Biomes => "biomes",
+        }
+    }
+}
+
+/// Outcome of a phase w.r.t. the content-addressed cache.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CacheRegime {
+    /// Reloaded from `.ymir_cache/` (the sidecar existed) — near-instant.
+    Hit,
+    /// Computed and written (no sidecar) — the slow path.
+    Miss,
+    /// Not a cached phase (climate / biomes are cheap, always computed).
+    Computed,
+}
+
+impl CacheRegime {
+    pub fn label(self) -> &'static str {
+        match self {
+            CacheRegime::Hit => "depuis le cache",
+            CacheRegime::Miss => "calculé",
+            CacheRegime::Computed => "calculé",
+        }
+    }
+}
+
+/// The full HD product — every layer the UI inspects. Carried to the UI
+/// inside an [`Arc`] (so [`C1Event`] stays `Clone`/`Debug` without
+/// requiring `C1DrainageResult: Clone`, which it is not).
+pub struct HdResult {
+    pub width: usize,
+    pub height: usize,
+    /// Final relief + bathymetry (post-erosion, normalised altitude).
+    pub eroded: GridF32,
+    /// Temperature grid (°C).
+    pub temperature: GridF32,
+    /// Precipitation grid (internal units → `precip_mm_per_year`).
+    pub precipitation: GridF32,
+    /// Rivers + lakes + per-segment navigability + water balance.
+    pub drainage: C1DrainageResult,
+    /// Per-cell Whittaker biome (row-major `width × height`).
+    pub biomes: Vec<Biome>,
+}
+
+impl fmt::Debug for HdResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Manual Debug: the heavy fields (and `C1DrainageResult`) are not
+        // `Debug`. Print a compact summary so `C1Event` can derive `Debug`.
+        f.debug_struct("HdResult")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("rivers", &self.drainage.rivers.segments.len())
+            .field("lakes", &self.drainage.lakes.len())
+            .finish()
+    }
+}
+
+/// A finished phase record (for the UI's per-phase HIT/MISS log).
+#[derive(Clone, Copy, Debug)]
+pub struct HdPhaseRecord {
+    pub phase: HdPhase,
+    pub regime: CacheRegime,
+    pub elapsed: Duration,
+}
+
+/// UI-side state of the HD pipeline, updated by `poll_c1_events` from the
+/// HD event stream. Independent of the coarse tectonic `C1RunState` so the
+/// live gallery view and the HD generation coexist.
+#[derive(Clone, Default)]
+pub enum HdState {
+    #[default]
+    Idle,
+    Running {
+        params: HdParams,
+        /// Phase currently in flight (an indeterminate waiter), if any.
+        current: Option<HdPhase>,
+        /// Phases finished so far, with their HIT/MISS regime + timing.
+        done: Vec<HdPhaseRecord>,
+    },
+    Completed {
+        result: Arc<HdResult>,
+        total: Duration,
+        done: Vec<HdPhaseRecord>,
+    },
+    Failed {
+        error: String,
+    },
+}
+
+/// Build the production tectonic time-loop config for `spec` (matches the
+/// gallery worker + the production/test pipelines so cache keys align).
+fn hd_run_config(spec: &C1RunSpec) -> C1TimeLoopConfig {
+    C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: spec.n_steps,
+        dx: 1.0 / spec.grid_size as f64,
+        dy: 1.0 / spec.grid_size as f64,
+        iso_config: IsostasyConfig::c1_default(),
+        drainage_max_distance: spec.drainage_max_distance,
+    }
+}
+
+/// Drive the HD chain on the worker thread, emitting per-phase events.
+/// Cancellable BETWEEN phases (the cached/opaque calls have no interior
+/// cancel hook — adding one would reopen `ymir-core`). On any core error,
+/// emits `HdFailed` and returns.
+pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel: &Arc<AtomicBool>) {
+    cancel.store(false, Ordering::Relaxed);
+    let _ = tx.send(C1Event::HdStarted { spec: spec.clone(), params: *params });
+    let t_all = Instant::now();
+
+    let run = hd_run_config(spec);
+    let ss = SteinSteinParams::default();
+    let upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
+    let pp = PrecipParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let cache_dir = default_cache_dir();
+    let lat = params.latitude_deg;
+
+    // Cache keys (for HIT/MISS detection via sidecar existence).
+    let tkey = tectonic_key(spec.seed, spec.grid_size, &spec.init_params, &run, &spec.closures);
+    let ekey = eroded_key(&tkey, &ss, &upscale);
+    let sidecar_exists = |step: &str, digest: String| -> bool {
+        cache_dir.join(format!("{step}_{digest}.json")).exists()
+    };
+
+    macro_rules! bail_if_cancelled {
+        () => {
+            if cancel.load(Ordering::Relaxed) {
+                let _ = tx.send(C1Event::HdFailed { error: "annulé".to_string() });
+                return;
+            }
+        };
+    }
+
+    // ── Phase 1: eroded (tectonics → upscale → erosion → bathymetry). ──
+    bail_if_cancelled!();
+    let eroded_hit = sidecar_exists("eroded", ekey.digest());
+    let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Eroded });
+    let t = Instant::now();
+    let eroded = match cached_c1_eroded(
+        &cache_dir,
+        spec.seed,
+        spec.grid_size,
+        &spec.init_params,
+        &run,
+        &spec.closures,
+        &ss,
+        &upscale,
+    ) {
+        Ok(g) => g,
+        Err(e) => {
+            let _ = tx.send(C1Event::HdFailed { error: format!("eroded: {e}") });
+            return;
+        }
+    };
+    let _ = tx.send(C1Event::HdPhaseDone {
+        phase: HdPhase::Eroded,
+        regime: if eroded_hit { CacheRegime::Hit } else { CacheRegime::Miss },
+        elapsed: t.elapsed(),
+    });
+
+    // ── Phase 2: climate (temperature + precipitation). ──
+    bail_if_cancelled!();
+    let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Climate });
+    let t = Instant::now();
+    let climate = c1_climate(&eroded, &ss, lat, &pp);
+    let _ = tx.send(C1Event::HdPhaseDone {
+        phase: HdPhase::Climate,
+        regime: CacheRegime::Computed,
+        elapsed: t.elapsed(),
+    });
+
+    // ── Phase 3: drainage (rivers + lakes + water balance). ──
+    bail_if_cancelled!();
+    let dkey = drainage_key(&ekey, &dcfg, &ss, Some((lat, &pp)));
+    let drainage_hit = sidecar_exists("drainage", dkey.digest());
+    let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Drainage });
+    let t = Instant::now();
+    let drainage = match cached_c1_drainage(&cache_dir, &ekey, &eroded, Some((lat, &pp)), &dcfg, &ss)
+    {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = tx.send(C1Event::HdFailed { error: format!("drainage: {e}") });
+            return;
+        }
+    };
+    let _ = tx.send(C1Event::HdPhaseDone {
+        phase: HdPhase::Drainage,
+        regime: if drainage_hit { CacheRegime::Hit } else { CacheRegime::Miss },
+        elapsed: t.elapsed(),
+    });
+
+    // ── Phase 4: biomes (Whittaker classification). ──
+    bail_if_cancelled!();
+    let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Biomes });
+    let t = Instant::now();
+    let biomes = c1_biomes(&eroded, &climate);
+    let _ = tx.send(C1Event::HdPhaseDone {
+        phase: HdPhase::Biomes,
+        regime: CacheRegime::Computed,
+        elapsed: t.elapsed(),
+    });
+
+    // ── Done — ship the full product. ──
+    let result = Arc::new(HdResult {
+        width: eroded.width,
+        height: eroded.height,
+        eroded,
+        temperature: climate.temperature,
+        precipitation: climate.precipitation,
+        drainage,
+        biomes,
+    });
+    let _ = tx.send(C1Event::HdCompleted { result, elapsed: t_all.elapsed() });
+}

@@ -23,6 +23,7 @@
 
 use ymir_core::tectonics_v2::workflow::PhaseAParams;
 
+use super::hd::HdParams;
 use super::spec::C1RunSpec;
 
 #[derive(Clone, Debug)]
@@ -46,6 +47,12 @@ pub enum C1Command {
         spec: C1RunSpec,
         phase_a: PhaseAParams,
     },
+    /// Launch the HD production chain (UI rewrite step b/5): tectonics →
+    /// upscale → erosion → bathymetry → drainage → climate → biomes, via
+    /// the cached `ymir-core` production functions, on the worker thread.
+    /// Emits `HdStarted → (HdPhaseStarted → HdPhaseDone) × 4 → HdCompleted`
+    /// (or `HdFailed`). Cancellable between phases.
+    RunHd { spec: C1RunSpec, params: HdParams },
     /// Set the shared cancel flag. Does NOT interrupt the
     /// current run — see module docstring.
     Cancel,

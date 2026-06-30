@@ -192,6 +192,86 @@ mod tests {
         handle.join().expect("c1 worker join");
     }
 
+    /// Step b/5 — the worker drives the full HD chain and SHIPS the
+    /// product. Tiny grid + small HD target so erosion is fast even in a
+    /// debug test build. Validates the event sequence (Started → 4×(phase
+    /// start+done) → Completed) and that the result carries every layer at
+    /// the HD resolution. Cache regime is NOT asserted (HIT/MISS depends on
+    /// whether a prior test populated `.ymir_cache/`).
+    #[test]
+    fn c1_worker_runs_hd_chain_and_ships_product() {
+        use super::super::hd::{HdParams, HdPhase};
+
+        let (cmd_tx, cmd_rx) = bounded(4);
+        let (evt_tx, evt_rx) = bounded(2);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
+
+        let target = 64usize;
+        cmd_tx
+            .send(C1Command::RunHd {
+                spec: small_spec(10, 42),
+                params: HdParams { target_size: target, latitude_deg: 45.0 },
+            })
+            .expect("send RunHd");
+
+        // Drain until HdCompleted / HdFailed (drain_run stops on the
+        // tectonic Completed, which the HD path never emits).
+        let mut events = Vec::new();
+        loop {
+            match evt_rx.recv_timeout(Duration::from_secs(120)) {
+                Ok(e) => {
+                    let terminal =
+                        matches!(e, C1Event::HdCompleted { .. } | C1Event::HdFailed { .. });
+                    events.push(e);
+                    if terminal {
+                        break;
+                    }
+                }
+                Err(_) => panic!("HD worker timed out"),
+            }
+        }
+
+        let started = events.iter().filter(|e| matches!(e, C1Event::HdStarted { .. })).count();
+        let phase_started =
+            events.iter().filter(|e| matches!(e, C1Event::HdPhaseStarted { .. })).count();
+        let phase_done =
+            events.iter().filter(|e| matches!(e, C1Event::HdPhaseDone { .. })).count();
+        assert_eq!(started, 1, "one HdStarted");
+        assert_eq!(phase_started, 4, "4 HdPhaseStarted (eroded/climate/drainage/biomes)");
+        assert_eq!(phase_done, 4, "4 HdPhaseDone");
+
+        // Phases arrive in execution order.
+        let order: Vec<HdPhase> = events
+            .iter()
+            .filter_map(|e| match e {
+                C1Event::HdPhaseStarted { phase } => Some(*phase),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            order,
+            vec![HdPhase::Eroded, HdPhase::Climate, HdPhase::Drainage, HdPhase::Biomes],
+        );
+
+        // Final product carries every layer at the HD resolution.
+        match events.last() {
+            Some(C1Event::HdCompleted { result, .. }) => {
+                assert_eq!(result.width, target);
+                assert_eq!(result.height, target);
+                assert_eq!(result.eroded.width, target);
+                assert_eq!(result.temperature.data.len(), target * target);
+                assert_eq!(result.precipitation.data.len(), target * target);
+                assert_eq!(result.biomes.len(), target * target);
+                assert_eq!(result.drainage.width, target);
+            }
+            other => panic!("last event must be HdCompleted, got {other:?}"),
+        }
+
+        drop(cmd_tx);
+        handle.join().expect("c1 worker join");
+    }
+
     #[test]
     fn c1_worker_event_ordering_no_loss_under_backpressure() {
         // Q-E5.1 Option C: bounded(2) events + immediate drain.
@@ -1442,6 +1522,13 @@ pub fn spawn_c1_thread(
                     C1Command::RunWorkflow { spec, phase_a } => {
                         retained =
                             Some(run_workflow(&spec, &phase_a, &events_tx));
+                    }
+                    C1Command::RunHd { spec, params } => {
+                        // HD production chain (step b/5) — cached ymir-core
+                        // functions on the worker, per-phase events. Does not
+                        // touch `retained` (re-derives deterministically /
+                        // from cache).
+                        super::hd::run_hd(&spec, &params, &events_tx, &cancel);
                     }
                     C1Command::Cancel => {
                         // MVP Option C — set the flag; takes
