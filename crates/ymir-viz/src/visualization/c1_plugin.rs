@@ -1,16 +1,8 @@
 //! C1 Bevy plugin — sprite setup, per-frame render system, egui
-//! control panel, engine-switcher visibility toggle (Issue #137
-//! Stage E5).
+//! control panel, cell inspector.
 //!
-//! ## Engine switcher (Q-E4.1)
-//!
-//! Two sprites coexist: `V2VizSprite` at z=10 (existing) and
-//! `C1VizSprite` at z=12 (new, above). The `ActiveEngine`
-//! resource flips `Visibility` on the C1 sprite — when
-//! `ActiveEngine::C1`, the C1 sprite is `Inherited` (visible on
-//! top); when `ActiveEngine::V2`, it's `Hidden` and v2 shows
-//! through. v2's render system is UNTOUCHED; both render systems
-//! write to their own separate `Image` handles. No contention.
+//! The C1 sprite (`C1VizSprite`) is the sole map render after the v2 sunset
+//! (the old engine switcher + the parallel `V2VizSprite` were removed).
 //!
 //! ## Closure toggles run-locked (Q-E4.2)
 //!
@@ -49,13 +41,6 @@ use crate::visualization::overlay::{draw_velocity_vectors, draw_voronoi_boundari
 const C1_SPRITE_BASE_SIZE: f32 = 600.0;
 const C1_SPRITE_Z: f32 = 12.0;
 
-/// Which engine the user has selected. Defaults to C1 (post-Track-D).
-#[derive(Resource, Clone, Copy, Default, PartialEq, Eq, Debug)]
-pub enum ActiveEngine {
-    V2,
-    #[default]
-    C1,
-}
 
 /// Which C1 pipeline the panel will submit on Run (Issue #139 Stage
 /// E3). Default `Gallery` (the Issue #137 contract). Run-locked: set
@@ -339,39 +324,20 @@ fn update_c1_texture(
     viz.last_signature = Some(sig);
 }
 
-/// Engine-switcher visibility toggle. Mounts on C1VizSprite;
-/// shows when `ActiveEngine::C1`, hides when `V2`.
-fn update_engine_visibility(
-    active: Res<ActiveEngine>,
-    mut q: Query<&mut Visibility, With<C1VizSprite>>,
-) {
-    let target = match *active {
-        ActiveEngine::C1 => Visibility::Inherited,
-        ActiveEngine::V2 => Visibility::Hidden,
-    };
-    for mut v in q.iter_mut() {
-        if *v != target {
-            *v = target;
-        }
-    }
-}
-
 /// Hover-to-inspect (Issue #139 Stage E1). Maps the world-space
 /// cursor to a cell, refreshes the lazily-derived altitude cache
 /// when the snapshot step changes, and writes the per-cell readout
 /// into `C1VizState.hover`. Suppressed (`hover = None`) when:
-/// - a non-C1 engine is active,
 /// - the pointer is over an egui panel (not the map),
 /// - the cursor is off the sprite, or
 /// - there is no snapshot yet.
 fn update_c1_hover(
-    active: Res<ActiveEngine>,
     egui_input: Res<EguiWantsInput>,
     cursor: Res<CursorWorldPos>,
     bridge: Res<C1SolverBridge>,
     mut viz: ResMut<C1VizState>,
 ) {
-    if *active != ActiveEngine::C1 || egui_input.is_pointer_over_area() {
+    if egui_input.is_pointer_over_area() {
         viz.hover = None;
         return;
     }
@@ -425,12 +391,8 @@ fn update_c1_hover(
 fn c1_hover_panel(
     mut contexts: EguiContexts,
     viz: Res<C1VizState>,
-    active: Res<ActiveEngine>,
     hypso: Res<HypsometricScale>,
 ) {
-    if *active != ActiveEngine::C1 {
-        return;
-    }
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
@@ -474,7 +436,6 @@ fn c1_control_panel(
     mut contexts: EguiContexts,
     bridge: Res<C1SolverBridge>,
     mut viz: ResMut<C1VizState>,
-    mut active_engine: ResMut<ActiveEngine>,
     mut active_pipeline: ResMut<ActivePipeline>,
     mut hypso: ResMut<HypsometricScale>,
 ) {
@@ -488,30 +449,6 @@ fn c1_control_panel(
         .default_pos([20.0, 80.0])
         .default_width(320.0)
         .show(ctx, |ui| {
-            // Engine switcher.
-            ui.horizontal(|ui| {
-                ui.label("Engine:");
-                let mut eng = *active_engine;
-                if ui
-                    .selectable_value(&mut eng, ActiveEngine::C1, "C1 (Track A/B/D)")
-                    .clicked()
-                {
-                    *active_engine = eng;
-                }
-                if ui
-                    .selectable_value(&mut eng, ActiveEngine::V2, "v2 (legacy)")
-                    .clicked()
-                {
-                    *active_engine = eng;
-                }
-            });
-            ui.separator();
-
-            if *active_engine != ActiveEngine::C1 {
-                ui.label("Switch to C1 engine to access these controls.");
-                return;
-            }
-
             // Pipeline toggle (run-locked, Issue #139 Stage E3).
             ui.horizontal(|ui| {
                 ui.label("Pipeline:");
@@ -916,14 +853,10 @@ pub struct C1VisualizationPlugin;
 
 impl Plugin for C1VisualizationPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ActiveEngine>()
-            .init_resource::<ActivePipeline>()
+        app.init_resource::<ActivePipeline>()
             .init_resource::<HypsometricScale>()
             .add_systems(Startup, setup_c1_sprite)
-            .add_systems(
-                Update,
-                (update_c1_texture, update_engine_visibility, update_c1_hover),
-            )
+            .add_systems(Update, (update_c1_texture, update_c1_hover))
             .add_systems(EguiPrimaryContextPass, (c1_control_panel, c1_hover_panel));
     }
 }
