@@ -201,6 +201,7 @@ mod tests {
     #[test]
     fn c1_worker_runs_hd_chain_and_ships_product() {
         use super::super::hd::{HdParams, HdPhase};
+        use super::super::inspect::{inspect_cell, RiverCellMap};
 
         let (cmd_tx, cmd_rx) = bounded(4);
         let (evt_tx, evt_rx) = bounded(2);
@@ -264,6 +265,28 @@ mod tests {
                 assert_eq!(result.precipitation.data.len(), target * target);
                 assert_eq!(result.biomes.len(), target * target);
                 assert_eq!(result.drainage.width, target);
+
+                // Step c/5 — per-cell inspection over the HD product.
+                let river_map = RiverCellMap::from_drainage(&result.drainage);
+                // Every river segment's cells resolve to Some in the map.
+                for seg in &result.drainage.rivers.segments {
+                    for &(px, py) in &seg.points {
+                        assert!(
+                            river_map.at(px as usize, py as usize).is_some(),
+                            "river cell ({px},{py}) must map to a segment",
+                        );
+                    }
+                }
+                // inspect_cell reads coherent values at an arbitrary cell.
+                let c = inspect_cell(&result, &river_map, target / 2, target / 2);
+                assert!(c.altitude_m.is_finite());
+                assert!(c.runoff_mm >= 0.0);
+                assert_eq!(c.is_ocean, c.depth_m.is_some());
+                // A cell flagged on a river by the map is reported as such by
+                // the unified inspection (consistency between the two paths).
+                if let Some(info) = river_map.at(target / 2, target / 2) {
+                    assert_eq!(c.river, Some(info));
+                }
             }
             other => panic!("last event must be HdCompleted, got {other:?}"),
         }
