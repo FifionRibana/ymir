@@ -1,16 +1,14 @@
-//! Ymir interactive visualisation binary — `tectonics_v2` only after
-//! Step 8.6 Phase 8h sunset. The legacy `tectonics::` bridge and
-//! every plugin/panel that drove its pipeline phases have been
-//! removed; this binary now wires the v2 bridge plugin, the v2
-//! visualization plugin, and the v2 UI plugin into a vanilla Bevy
-//! app.
+//! Ymir interactive visualisation binary — single-engine (C1) after the v2
+//! legacy sunset. The Stokes-coupled `tectonics_v2` bridge, its visualization
+//! sprite, its UI panels, and the per-phase legacy pipeline (isostasy / FBM /
+//! erosion / hydrology + the climate/biome stubs) have all been removed. This
+//! binary wires the C1 bridge + C1 visualization + the egui UI into a vanilla
+//! Bevy app.
 
 use bevy::prelude::*;
 
 mod bridge;
 mod camera;
-mod phases;
-mod pipeline;
 mod ui;
 mod visualization;
 
@@ -20,14 +18,14 @@ fn main() {
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "Ymir — Continent Generator (v2)".to_string(),
+                    title: "Ymir — Continent Generator".to_string(),
                     resolution: (1280, 720).into(),
                     ..default()
                 }),
                 ..default()
             })
             .set(bevy::log::LogPlugin {
-                filter: "warn,ymir_core::tectonics_v2=info,ymir_viz=info".to_string(),
+                filter: "warn,ymir_core=info,ymir_viz=info".to_string(),
                 level: bevy::log::Level::DEBUG,
                 custom_layer: |_app| {
                     let file = std::fs::OpenOptions::new()
@@ -46,39 +44,9 @@ fn main() {
                 ..default()
             }),
     )
-    .init_resource::<pipeline::ActivePhase>()
-    .init_resource::<phases::isostasy::IsostasyParams>()
-    .init_resource::<phases::isostasy::IsostasyCache>()
-    .init_resource::<phases::upscale_fbm::FbmParams>()
-    .init_resource::<phases::upscale_fbm::FbmCache>()
-    .init_resource::<phases::erosion::ErosionParams>()
-    .init_resource::<phases::erosion::ErosionCache>()
-    .init_resource::<phases::hydrology::HydrologyParams>()
-    .init_resource::<phases::hydrology::HydrologyCache>()
-    .add_systems(
-        Update,
-        (
-            phases::invalidate_renders_on_phase_change,
-            phases::isostasy::handle_isostasy_compute,
-            phases::isostasy::render_isostasy_phase,
-            phases::upscale_fbm::handle_fbm_compute,
-            phases::upscale_fbm::render_upscale_phase,
-            phases::erosion::handle_erosion_compute,
-            phases::erosion::poll_erosion_result,
-            phases::erosion::render_erosion_phase,
-            phases::hydrology::handle_hydrology_compute,
-            phases::hydrology::render_hydrology_phase,
-        ),
-    )
     .add_plugins((
         camera::CameraPlugin,
-        bridge::v2::V2BridgePlugin,
-        visualization::V2VisualizationPlugin,
         ui::UiPlugin,
-        // Issue #137 Viz-0 C1 integration — registered in parallel
-        // with v2 (NOT a replacement). Engine selector in the
-        // C1VisualizationPlugin egui panel toggles between sprites
-        // via Visibility component.
         bridge::c1::C1BridgePlugin,
         visualization::C1VisualizationPlugin,
     ));
