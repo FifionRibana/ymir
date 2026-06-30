@@ -13,18 +13,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "ymir-viz"
 path = "src/main.rs"
-# Issue #117 — Bevy app wires bridge::v2 + UI panels which retire to
-# `_attic` until C1 reintroduces a paradigm-agnostic facade. Gate the
-# bin so default workspace build stays clean.
-required-features = ["v2_legacy"]
-
-# Issue #117 — v2_legacy feature mirror so `cargo {build,test} --features v2_legacy`
-# from this crate propagates the gate to ymir-core. Bridge/v2 + UI panel + R4/R5b/
-# R6/R7.A tests gate against `v2_legacy` to keep the default workspace build
-# C1-clean. See docs/migrations/v2_to_c1_attic.md.
-[features]
-default = []
-v2_legacy = ["ymir-core/v2_legacy"]
 
 [dependencies]
 ymir-core = { workspace = true }
@@ -36,67 +24,3 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 image = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-# Issue #117 Phase 3 Commit 2 — v2-coupled tests relocated to tests/_attic/.
-# Cargo doesn't auto-discover tests in subdirectories of tests/, so each
-# moved test gets an explicit [[test]] entry below with required-features.
-# Tests pass under `cargo test --features v2_legacy` only.
-
-[[test]]
-name = "v2_bridge_export_import_roundtrip"
-path = "tests/_attic/v2_bridge_export_import_roundtrip.rs"
-required-features = ["v2_legacy"]
-
-[[test]]
-name = "v2_bridge_field_extraction"
-path = "tests/_attic/v2_bridge_field_extraction.rs"
-required-features = ["v2_legacy"]
-
-[[test]]
-name = "v2_bridge_lifecycle"
-path = "tests/_attic/v2_bridge_lifecycle.rs"
-required-features = ["v2_legacy"]
-
-[[test]]
-name = "v2_bridge_preset_load"
-path = "tests/_attic/v2_bridge_preset_load.rs"
-required-features = ["v2_legacy"]
-
-[[test]]
-name = "v2_bridge_screenshot"
-path = "tests/_attic/v2_bridge_screenshot.rs"
-required-features = ["v2_legacy"]
-
-[[test]]
-name = "v2_phase7_screenshot_gallery"
-path = "tests/_attic/v2_phase7_screenshot_gallery.rs"
-required-features = ["v2_legacy"]
-
-[[test]]
-name = "v2_phase7_step_diagnostic"
-path = "tests/_attic/v2_phase7_step_diagnostic.rs"
-required-features = ["v2_legacy"]
-
-[[test]]
-name = "v2_phase8f_equilibrium"
-path = "tests/_attic/v2_phase8f_equilibrium.rs"
-required-features = ["v2_legacy"]
-
-[[test]]
-name = "v2_phase8g_visuals"
-path = "tests/_attic/v2_phase8g_visuals.rs"
-required-features = ["v2_legacy"]
-
-[[test]]
-name = "v2_r7_omega_3_gradient_diagnostic"
-path = "tests/_attic/v2_r7_omega_3_gradient_diagnostic.rs"
-required-features = ["v2_legacy"]
-
-[[test]]
-name = "v2_workflow_panel_commands"
-path = "tests/_attic/v2_workflow_panel_commands.rs"
-required-features = ["v2_legacy"]
-
-[[test]]
-name = "v2_workflow_r4_visual_checkpoint"
-path = "tests/_attic/v2_workflow_r4_visual_checkpoint.rs"
-required-features = ["v2_legacy"]
