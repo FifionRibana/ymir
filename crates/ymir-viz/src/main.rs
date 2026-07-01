@@ -48,7 +48,12 @@ fn main() {
         camera::CameraPlugin,
         ui::UiPlugin,
         bridge::c1::C1BridgePlugin,
-        visualization::C1VisualizationPlugin,
+        // The HD workspace (step d1) is the interface: 3 egui zones consuming
+        // the worker's HD product + per-cell inspection. The coarse gallery
+        // presentation (`visualization::C1VisualizationPlugin`) is retained in
+        // the tree but NOT registered — superseded by the workspace; a possible
+        // live-coarse layer is a step-d2 decision.
+        ui::workspace::HdWorkspacePlugin,
     ));
 
     app.run();
