@@ -13,6 +13,7 @@
 pub mod commands;
 pub mod events;
 pub mod hd;
+pub mod inspect;
 pub mod plugin;
 pub mod snapshot;
 pub mod spec;
@@ -20,5 +21,6 @@ pub mod thread;
 
 pub use events::C1RunKind;
 pub use hd::{CacheRegime, HdParams, HdPhase, HdResult, HdState};
+pub use inspect::{inspect_cell, CellInspection, LakeCellInfo, RiverCellInfo, RiverCellMap};
 pub use plugin::{C1BridgePlugin, C1CumulativeStats, C1RunState, C1SolverBridge};
 pub use spec::C1RunSpec;
