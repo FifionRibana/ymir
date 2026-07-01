@@ -10,6 +10,8 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 
+pub mod workspace;
+
 pub struct UiPlugin;
 
 impl Plugin for UiPlugin {

@@ -1,3 +1,8 @@
+// Step d1: the coarse-gallery presentation is RETAINED but no longer
+// registered (the HD workspace supersedes it; a live-coarse layer is a d2
+// decision). Allow dead code so the unregistered systems don't warn.
+#![allow(dead_code)]
+
 //! C1 Bevy plugin — sprite setup, per-frame render system, egui
 //! control panel, cell inspector.
 //!
