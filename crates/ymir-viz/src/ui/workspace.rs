@@ -225,6 +225,62 @@ fn field_label(ui: &mut egui::Ui, t: &str) {
     ui.label(egui::RichText::new(t).color(DIM2).size(10.0));
 }
 
+/// Custom latitude slider matching the mock: a warm→polar gradient track, a
+/// copper thumb, and tick marks + labels aligned under 0/30/45/60/75/90.
+fn latitude_slider(ui: &mut egui::Ui, lat: &mut f32) {
+    let w = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 40.0), egui::Sense::click_and_drag());
+    let p = ui.painter_at(rect);
+    let x0 = rect.left();
+    let x1 = rect.right();
+    let span = (x1 - x0).max(1.0);
+    let track_y = rect.top() + 6.0;
+
+    // Gradient track (equator warm → polar white).
+    let stops = [
+        (0.0, C::from_rgb(0xE1, 0x78, 0x46)),
+        (0.34, C::from_rgb(0x6E, 0xBE, 0x6E)),
+        (0.67, C::from_rgb(0x5A, 0x8C, 0xCD)),
+        (1.0, C::from_rgb(0xE1, 0xEB, 0xF8)),
+    ];
+    let steps = 64;
+    for s in 0..steps {
+        let t = s as f32 / (steps - 1) as f32;
+        let x = x0 + span * t;
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(x, track_y), egui::vec2(span / steps as f32 + 1.0, 4.0)), 0.0, grad_at(&stops, t));
+    }
+
+    // Drag / click to set.
+    if (resp.dragged() || resp.clicked()) {
+        if let Some(pos) = resp.interact_pointer_pos() {
+            let f = ((pos.x - x0) / span).clamp(0.0, 1.0);
+            *lat = (f * 90.0).round();
+        }
+    }
+
+    // Thumb.
+    let tx = x0 + (*lat / 90.0).clamp(0.0, 1.0) * span;
+    let tc = egui::pos2(tx, track_y + 2.0);
+    p.circle_filled(tc, 7.5, C::from_rgb(0x2a, 0x21, 0x18));
+    p.circle_filled(tc, 6.0, COPPER);
+
+    // Ticks + labels.
+    let ticks = [(0.0, "équat."), (30.0, "subtrop."), (45.0, "tempéré"), (60.0, "subpol."), (90.0, "polaire")];
+    for (deg, label) in ticks {
+        let tickx = x0 + (deg / 90.0) * span;
+        p.line_segment([egui::pos2(tickx, track_y + 10.0), egui::pos2(tickx, track_y + 15.0)], egui::Stroke::new(1.0, C::from_rgb(0x3a, 0x3a, 0x3a)));
+        let (align, lx) = if deg == 0.0 {
+            (egui::Align2::LEFT_TOP, tickx)
+        } else if deg == 90.0 {
+            (egui::Align2::RIGHT_TOP, tickx)
+        } else {
+            (egui::Align2::CENTER_TOP, tickx)
+        };
+        p.text(egui::pos2(lx, track_y + 17.0), align, format!("{deg:.0}°"), egui::FontId::monospace(8.5), DIM2);
+        p.text(egui::pos2(lx, track_y + 27.0), align, label, egui::FontId::proportional(8.0), C::from_rgb(0x55, 0x55, 0x55));
+    }
+}
+
 fn section_header(ui: &mut egui::Ui, open: &mut bool, title: &str, badge: Option<(&str, C)>) {
     ui.horizontal(|ui| {
         let arrow = if *open { "▼" } else { "▶" };
@@ -403,22 +459,8 @@ fn left_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceSt
                                     ui.label(egui::RichText::new(format!("{:.0}° ({})", ws.latitude, zone_name(ws.latitude))).color(COPPER_BRIGHT).monospace().size(13.0));
                                 });
                             });
-                            ui.add_space(6.0);
-                            ui.add(egui::Slider::new(&mut ws.latitude, 0.0..=90.0).show_value(false));
-                            ui.add_space(2.0);
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 0.0;
-                                for (i, (d, l)) in [(0, "équat."), (30, "subtr."), (45, "temp."), (60, "subpol."), (90, "polaire")].iter().enumerate() {
-                                    if i > 0 {
-                                        ui.add_space(if i == 4 { 20.0 } else { 24.0 });
-                                    }
-                                    ui.vertical(|ui| {
-                                        ui.spacing_mut().item_spacing.y = 1.0;
-                                        ui.label(egui::RichText::new(format!("{d}°")).color(DIM2).monospace().size(8.5));
-                                        ui.label(egui::RichText::new(*l).color(C::from_rgb(0x55, 0x55, 0x55)).size(8.0));
-                                    });
-                                }
-                            });
+                            ui.add_space(8.0);
+                            latitude_slider(ui, &mut ws.latitude);
                         });
                     }
                     ui.separator();
@@ -728,10 +770,33 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             let fy = uv.min.y + (rel.y / resp.rect.height()).clamp(0.0, 0.999) * (uv.max.y - uv.min.y);
             let x = (fx * hd.width as f32) as usize;
             let y = (fy * hd.height as f32) as usize;
+            let cx = x.min(hd.width - 1);
+            let cy = y.min(hd.height - 1);
             if let Some(rm) = ws.river_map.as_ref() {
-                ws.hover = Some(inspect_cell(&hd, rm, x.min(hd.width - 1), y.min(hd.height - 1)));
-                ws.hover_xy = Some((x, y));
+                ws.hover = Some(inspect_cell(&hd, rm, cx, cy));
+                ws.hover_xy = Some((cx, cy));
             }
+
+            // Reticle: faint crosshair through the cell + a copper cell box.
+            let pnt = ui.painter_at(resp.rect);
+            let uvw = uv.max.x - uv.min.x;
+            let uvh = uv.max.y - uv.min.y;
+            let ncx = (cx as f32 + 0.5) / hd.width as f32;
+            let ncy = (cy as f32 + 0.5) / hd.height as f32;
+            let sx = resp.rect.left() + ((ncx - uv.min.x) / uvw) * resp.rect.width();
+            let sy = resp.rect.top() + ((ncy - uv.min.y) / uvh) * resp.rect.height();
+            let bw = ((1.0 / hd.width as f32 / uvw) * resp.rect.width()).max(8.0);
+            let bh = ((1.0 / hd.height as f32 / uvh) * resp.rect.height()).max(8.0);
+            let faint = C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, 90);
+            pnt.line_segment([egui::pos2(sx, resp.rect.top()), egui::pos2(sx, resp.rect.bottom())], egui::Stroke::new(1.0, faint));
+            pnt.line_segment([egui::pos2(resp.rect.left(), sy), egui::pos2(resp.rect.right(), sy)], egui::Stroke::new(1.0, faint));
+            pnt.rect_stroke(
+                egui::Rect::from_center_size(egui::pos2(sx, sy), egui::vec2(bw, bh)),
+                0.0,
+                egui::Stroke::new(1.5, COPPER_BRIGHT),
+                egui::StrokeKind::Middle,
+            );
+
             // Hover coord readout (top-right).
             let txt = format!("x {x}  y {y}");
             let anchor = egui::pos2(resp.rect.right() - 8.0, resp.rect.top() + 8.0);
