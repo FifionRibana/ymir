@@ -170,7 +170,137 @@ impl Default for WorkspaceState {
 
 fn seg_label(ui: &mut egui::Ui, text: &str, active: bool) -> egui::Response {
     let (bg, fg) = if active { (COPPER, INK) } else { (C::TRANSPARENT, DIM) };
-    ui.add(egui::Button::new(egui::RichText::new(text).color(fg).size(12.0)).fill(bg).min_size(egui::vec2(0.0, 22.0)))
+    ui.add(
+        egui::Button::new(egui::RichText::new(text).color(fg).size(11.0))
+            .fill(bg)
+            .corner_radius(4.0)
+            .min_size(egui::vec2(0.0, 22.0)),
+    )
+}
+
+/// A framed segmented control (equal-width buttons in a recessed track), as the
+/// mock's resolution / flow selectors. Returns the clicked index.
+fn seg_row(ui: &mut egui::Ui, labels: &[&str], active: usize) -> Option<usize> {
+    let mut clicked = None;
+    egui::Frame::default()
+        .fill(FIELD)
+        .stroke(egui::Stroke::new(1.0, C::from_rgb(0x2e, 0x2e, 0x2e)))
+        .inner_margin(3)
+        .corner_radius(6)
+        .show(ui, |ui| {
+            let n = labels.len() as f32;
+            let w = ((ui.available_width() - 3.0 * (n - 1.0)) / n).max(10.0);
+            ui.spacing_mut().item_spacing.x = 3.0;
+            ui.horizontal(|ui| {
+                for (i, l) in labels.iter().enumerate() {
+                    let (bg, fg) = if i == active { (COPPER, INK) } else { (C::TRANSPARENT, DIM) };
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new(*l).color(fg).size(12.0))
+                                .fill(bg)
+                                .corner_radius(4.0)
+                                .min_size(egui::vec2(w, 24.0)),
+                        )
+                        .clicked()
+                    {
+                        clicked = Some(i);
+                    }
+                }
+            });
+        });
+    clicked
+}
+
+/// A left/right-panel content block padded to the mock's 16 px gutter, with
+/// per-block top/bottom padding. Separators between blocks stay full-bleed.
+fn block<R>(ui: &mut egui::Ui, gutter: i8, top: i8, bottom: i8, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    egui::Frame::default()
+        .inner_margin(egui::Margin { left: gutter, right: gutter, top, bottom })
+        .show(ui, add)
+        .inner
+}
+
+/// A small uppercase field label ("GRAINE", "RÉSOLUTION").
+fn field_label(ui: &mut egui::Ui, t: &str) {
+    ui.label(egui::RichText::new(t).color(DIM2).size(10.0));
+}
+
+/// An expert parameter row (the mock's pattern): a label (left) + its value in
+/// copper mono (right), then a full-width slider below (no inline value).
+fn param_slider(ui: &mut egui::Ui, label: &str, v: &mut f32, range: std::ops::RangeInclusive<f32>, decimals: usize) {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(label).color(C::from_rgb(0x9a, 0x9a, 0x9a)).size(11.0));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(egui::RichText::new(format!("{:.*}", decimals, *v)).color(COPPER_BRIGHT).monospace().size(11.0));
+        });
+    });
+    ui.add_space(2.0);
+    ui.spacing_mut().slider_width = ui.available_width();
+    ui.add(egui::Slider::new(v, range).show_value(false));
+    ui.add_space(10.0);
+}
+
+/// A sub-heading inside an expert section (e.g. "ISOSTASIE").
+fn sub_heading(ui: &mut egui::Ui, t: &str) {
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new(t).color(C::from_rgb(0x5e, 0x5e, 0x5e)).size(9.5));
+    ui.add_space(6.0);
+}
+
+/// Custom latitude slider matching the mock: a warm→polar gradient track, a
+/// copper thumb, and tick marks + labels aligned under 0/30/45/60/75/90.
+fn latitude_slider(ui: &mut egui::Ui, lat: &mut f32) {
+    let w = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 40.0), egui::Sense::click_and_drag());
+    let p = ui.painter_at(rect);
+    let x0 = rect.left();
+    let x1 = rect.right();
+    let span = (x1 - x0).max(1.0);
+    let track_y = rect.top() + 6.0;
+
+    // Gradient track (equator warm → polar white).
+    let stops = [
+        (0.0, C::from_rgb(0xE1, 0x78, 0x46)),
+        (0.34, C::from_rgb(0x6E, 0xBE, 0x6E)),
+        (0.67, C::from_rgb(0x5A, 0x8C, 0xCD)),
+        (1.0, C::from_rgb(0xE1, 0xEB, 0xF8)),
+    ];
+    let steps = 64;
+    for s in 0..steps {
+        let t = s as f32 / (steps - 1) as f32;
+        let x = x0 + span * t;
+        p.rect_filled(egui::Rect::from_min_size(egui::pos2(x, track_y), egui::vec2(span / steps as f32 + 1.0, 4.0)), 0.0, grad_at(&stops, t));
+    }
+
+    // Drag / click to set.
+    if (resp.dragged() || resp.clicked()) {
+        if let Some(pos) = resp.interact_pointer_pos() {
+            let f = ((pos.x - x0) / span).clamp(0.0, 1.0);
+            *lat = (f * 90.0).round();
+        }
+    }
+
+    // Thumb.
+    let tx = x0 + (*lat / 90.0).clamp(0.0, 1.0) * span;
+    let tc = egui::pos2(tx, track_y + 2.0);
+    p.circle_filled(tc, 7.5, C::from_rgb(0x2a, 0x21, 0x18));
+    p.circle_filled(tc, 6.0, COPPER);
+
+    // Ticks + labels.
+    let ticks = [(0.0, "équat."), (30.0, "subtrop."), (45.0, "tempéré"), (60.0, "subpol."), (90.0, "polaire")];
+    for (deg, label) in ticks {
+        let tickx = x0 + (deg / 90.0) * span;
+        p.line_segment([egui::pos2(tickx, track_y + 10.0), egui::pos2(tickx, track_y + 15.0)], egui::Stroke::new(1.0, C::from_rgb(0x3a, 0x3a, 0x3a)));
+        let (align, lx) = if deg == 0.0 {
+            (egui::Align2::LEFT_TOP, tickx)
+        } else if deg == 90.0 {
+            (egui::Align2::RIGHT_TOP, tickx)
+        } else {
+            (egui::Align2::CENTER_TOP, tickx)
+        };
+        p.text(egui::pos2(lx, track_y + 17.0), align, format!("{deg:.0}°"), egui::FontId::monospace(8.5), DIM2);
+        p.text(egui::pos2(lx, track_y + 27.0), align, label, egui::FontId::proportional(8.0), C::from_rgb(0x55, 0x55, 0x55));
+    }
 }
 
 fn section_header(ui: &mut egui::Ui, open: &mut bool, title: &str, badge: Option<(&str, C)>) {
@@ -223,11 +353,13 @@ fn top_bar(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState
         .frame(egui::Frame::default().fill(PANEL2).inner_margin(egui::Margin::symmetric(12, 0)))
         .show(ctx, |ui| {
             ui.horizontal_centered(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
                 ui.label(egui::RichText::new("◇").color(COPPER).size(13.0));
                 ui.label(egui::RichText::new("YMIR").color(C::from_rgb(0xD8, 0xD8, 0xD8)).strong().size(12.0));
-                ui.add_space(10.0);
+                ui.add_space(14.0);
                 for m in ["Fichier", "Génération", "Couches", "Vue", "Aide"] {
                     ui.label(egui::RichText::new(m).color(C::from_rgb(0x7d, 0x7d, 0x7d)).size(12.0));
+                    ui.add_space(8.0);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Mode toggle (Standard / Expert).
@@ -253,16 +385,44 @@ fn top_bar(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState
 fn left_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState, hd_running: bool) {
     egui::SidePanel::left("controls")
         .exact_width(296.0)
-        .frame(egui::Frame::default().fill(PANEL))
+        .frame(egui::Frame::default().fill(PANEL).inner_margin(0))
         .show(ctx, |ui| {
-            // Logo block.
+            ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+
+            // GENERATE + progress pinned at the bottom (declared first so it
+            // reserves the bottom strip; the central area fills the rest).
+            egui::TopBottomPanel::bottom("generate_bar")
+                .frame(egui::Frame::default().fill(C::from_rgb(0x19, 0x19, 0x19)).inner_margin(egui::Margin { left: 16, right: 16, top: 13, bottom: 15 }))
+                .show_inside(ui, |ui| {
+                    let label = if hd_running {
+                        "GÉNÉRATION EN COURS…"
+                    } else if ws.current.is_some() {
+                        "RÉGÉNÉRER"
+                    } else {
+                        "GÉNÉRER"
+                    };
+                    let btn = egui::Button::new(egui::RichText::new(label).color(INK).strong().size(13.0))
+                        .fill(COPPER)
+                        .corner_radius(7.0)
+                        .min_size(egui::vec2(ui.available_width(), 38.0));
+                    if ui.add_enabled(!hd_running, btn).clicked() {
+                        let spec = C1RunSpec { seed: ws.seed, ..C1RunSpec::default() };
+                        let params = HdParams { target_size: ws.resolution, latitude_deg: ws.latitude };
+                        let _ = bridge.submit_hd(spec, params);
+                    }
+                    progress_block(ui, &bridge.hd, bridge);
+                });
+
+            // Logo block (full-bleed tinted header).
             egui::Frame::default()
                 .fill(C::from_rgb(0x1f, 0x1c, 0x18))
-                .inner_margin(egui::Margin { left: 16, right: 16, top: 14, bottom: 13 })
+                .inner_margin(egui::Margin { left: 16, right: 16, top: 15, bottom: 14 })
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("⬡").color(COPPER_BRIGHT).size(28.0));
+                        ui.label(egui::RichText::new("⬡").color(COPPER_BRIGHT).size(30.0));
+                        ui.add_space(4.0);
                         ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing.y = 3.0;
                             ui.label(egui::RichText::new("YMIR").color(TEXT_BRIGHT).strong().size(19.0));
                             ui.label(egui::RichText::new("CONTINENT GENERATOR").color(BRONZE).size(9.5));
                         });
@@ -271,89 +431,84 @@ fn left_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceSt
             ui.separator();
 
             egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.add_space(6.0);
                 ui.add_enabled_ui(!hd_running, |ui| {
                     // Seed + resolution.
-                    ui.label(egui::RichText::new("GRAINE").color(DIM2).size(10.0));
-                    ui.horizontal(|ui| {
-                        let mut s = ws.seed.to_string();
-                        if ui.add(egui::TextEdit::singleline(&mut s).desired_width(180.0).font(egui::TextStyle::Monospace)).changed() {
-                            if let Ok(v) = s.parse::<u64>() {
-                                ws.seed = v;
+                    block(ui, 16, 14, 16, |ui| {
+                        field_label(ui, "GRAINE");
+                        ui.add_space(1.0);
+                        ui.horizontal(|ui| {
+                            let mut s = ws.seed.to_string();
+                            if ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut s)
+                                        .desired_width(ui.available_width() - 42.0)
+                                        .font(egui::TextStyle::Monospace),
+                                )
+                                .changed()
+                            {
+                                if let Ok(v) = s.parse::<u64>() {
+                                    ws.seed = v;
+                                }
                             }
-                        }
-                        if ui.button(egui::RichText::new("⟳").color(COPPER_BRIGHT)).on_hover_text("Graine aléatoire").clicked() {
-                            ws.seed = ws.seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                            if ui
+                                .add(egui::Button::new(egui::RichText::new("⟳").color(COPPER_BRIGHT)).min_size(egui::vec2(34.0, 0.0)))
+                                .on_hover_text("Graine aléatoire")
+                                .clicked()
+                            {
+                                ws.seed = ws.seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                            }
+                        });
+                        ui.add_space(10.0);
+                        field_label(ui, "RÉSOLUTION");
+                        ui.add_space(1.0);
+                        let cur = [512usize, 1024, 2048].iter().position(|&r| r == ws.resolution).unwrap_or(1);
+                        if let Some(i) = seg_row(ui, &["512", "1024", "2048"], cur) {
+                            ws.resolution = [512, 1024, 2048][i];
                         }
                     });
-                    ui.add_space(6.0);
-                    ui.label(egui::RichText::new("RÉSOLUTION").color(DIM2).size(10.0));
-                    ui.horizontal(|ui| {
-                        for r in [512usize, 1024, 2048] {
-                            if seg_label(ui, &r.to_string(), ws.resolution == r).clicked() {
-                                ws.resolution = r;
-                            }
-                        }
-                    });
-                    ui.add_space(10.0);
                     ui.separator();
 
                     // Climat section (latitude — the wired climate knob).
                     let mut climat_open = ws.climat_open;
-                    section_header(ui, &mut climat_open, "Climat", Some(("EXPRESSIF", C::from_rgb(0x5a, 0x7a, 0x5a))));
-                    ws.climat_open = climat_open;
-                    if ws.climat_open {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Latitude du continent").color(C::from_rgb(0xbd, 0xbd, 0xbd)).size(11.5));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(egui::RichText::new(format!("{:.0}° ({})", ws.latitude, zone_name(ws.latitude))).color(COPPER_BRIGHT).monospace());
+                    block(ui, 16, 12, if climat_open { 4 } else { 12 }, |ui| {
+                        section_header(ui, &mut climat_open, "Climat", Some(("EXPRESSIF", C::from_rgb(0x5a, 0x7a, 0x5a))));
+                    });
+                    if climat_open {
+                        block(ui, 16, 0, 16, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Latitude du continent").color(C::from_rgb(0xbd, 0xbd, 0xbd)).size(11.5));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(egui::RichText::new(format!("{:.0}° ({})", ws.latitude, zone_name(ws.latitude))).color(COPPER_BRIGHT).monospace().size(13.0));
+                                });
                             });
-                        });
-                        ui.add(egui::Slider::new(&mut ws.latitude, 0.0..=90.0).show_value(false));
-                        ui.horizontal(|ui| {
-                            for (d, l) in [(0, "équat."), (30, "subtr."), (45, "tempéré"), (60, "subpol."), (90, "polaire")] {
-                                ui.label(egui::RichText::new(format!("{d}° {l}")).color(C::from_rgb(0x55, 0x55, 0x55)).size(8.0));
-                            }
+                            ui.add_space(8.0);
+                            latitude_slider(ui, &mut ws.latitude);
                         });
                     }
-                    ui.add_space(10.0);
                     ui.separator();
 
                     match ws.mode {
                         Mode::Standard => {
-                            egui::Frame::default().fill(C::from_rgb(0x1a, 0x16, 0x11)).inner_margin(11).corner_radius(6).show(ui, |ui| {
-                                ui.label(egui::RichText::new("Plaques, isostasie, érosion, bathymétrie & drainage — réglages fins dans le mode Expert.").color(C::from_rgb(0x8a, 0x7a, 0x60)).size(10.5));
+                            block(ui, 16, 14, 16, |ui| {
+                                egui::Frame::default().fill(C::from_rgb(0x1a, 0x16, 0x11)).stroke(egui::Stroke::new(1.0, C::from_rgb(0x2c, 0x24, 0x17))).inner_margin(11).corner_radius(6).show(ui, |ui| {
+                                    ui.label(egui::RichText::new("Plaques, isostasie, érosion, bathymétrie & drainage — réglages fins dans le mode Expert.").color(C::from_rgb(0x8a, 0x7a, 0x60)).size(10.5));
+                                });
+                                ui.add_space(9.0);
+                                let b = egui::Button::new(egui::RichText::new("Passer en Expert →").color(COPPER_BRIGHT).size(11.5)).fill(C::from_rgb(0x22, 0x1c, 0x14)).min_size(egui::vec2(ui.available_width(), 30.0));
+                                if ui.add(b).clicked() {
+                                    ws.mode = Mode::Expert;
+                                }
                             });
-                            if ui.button(egui::RichText::new("Passer en Expert →").color(COPPER_BRIGHT)).clicked() {
-                                ws.mode = Mode::Expert;
-                            }
                         }
                         Mode::Expert => {
-                            expert_sections(ui, ws);
+                            block(ui, 16, 12, 16, |ui| {
+                                expert_sections(ui, ws);
+                            });
                         }
                     }
+                    ui.separator();
                 });
-                ui.add_space(8.0);
             });
-
-            // Bottom: generate + progress.
-            ui.separator();
-            let label = if hd_running {
-                "GÉNÉRATION EN COURS…"
-            } else if ws.current.is_some() {
-                "RÉGÉNÉRER"
-            } else {
-                "GÉNÉRER"
-            };
-            let btn = egui::Button::new(egui::RichText::new(label).color(INK).strong().size(13.0))
-                .fill(COPPER)
-                .min_size(egui::vec2(ui.available_width(), 34.0));
-            if ui.add_enabled(!hd_running, btn).clicked() {
-                let spec = C1RunSpec { seed: ws.seed, ..C1RunSpec::default() };
-                let params = HdParams { target_size: ws.resolution, latitude_deg: ws.latitude };
-                let _ = bridge.submit_hd(spec, params);
-            }
-            progress_block(ui, &bridge.hd, bridge);
         });
 }
 
@@ -365,26 +520,27 @@ fn expert_sections(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     section_header(ui, &mut relief_open, "Relief & closures", Some(("AVANCÉ", DIM2)));
     ws.relief_open = relief_open;
     if ws.relief_open {
-        ui.add(egui::Slider::new(&mut ws.craton_density, 2.6..=3.1).text("Densité cratonique"));
-        ui.add(egui::Slider::new(&mut ws.shield_frac, 0.0..=1.0).text("Fraction bouclier"));
-        ui.add(egui::Slider::new(&mut ws.shelf_width, 40.0..=320.0).text("Largeur plateau"));
-        ui.add(egui::Slider::new(&mut ws.erosion, 0.0..=1.0).text("Érosion"));
+        ui.add_space(6.0);
+        sub_heading(ui, "ISOSTASIE");
+        param_slider(ui, "Densité cratonique", &mut ws.craton_density, 2.6..=3.1, 2);
+        param_slider(ui, "Fraction bouclier", &mut ws.shield_frac, 0.0..=1.0, 2);
+        sub_heading(ui, "BATHYMÉTRIE & ÉROSION");
+        param_slider(ui, "Largeur plateau cont.", &mut ws.shelf_width, 40.0..=320.0, 0);
+        param_slider(ui, "Intensité d'érosion", &mut ws.erosion, 0.0..=1.0, 2);
     }
     ui.add_space(6.0);
     let mut drainage_open = ws.drainage_open;
     section_header(ui, &mut drainage_open, "Drainage", Some(("AVANCÉ", DIM2)));
     ws.drainage_open = drainage_open;
     if ws.drainage_open {
-        ui.add(egui::Slider::new(&mut ws.channel_jitter, 0.0..=1.0).text("Perturbation du tracé"));
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Écoulement").color(C::from_rgb(0x9a, 0x9a, 0x9a)).size(11.0));
-            if seg_label(ui, "D8", !ws.dinf).clicked() {
-                ws.dinf = false;
-            }
-            if seg_label(ui, "D∞", ws.dinf).clicked() {
-                ws.dinf = true;
-            }
-        });
+        ui.add_space(6.0);
+        param_slider(ui, "Perturbation du tracé", &mut ws.channel_jitter, 0.0..=1.0, 2);
+        ui.label(egui::RichText::new("Mode d'écoulement").color(C::from_rgb(0x9a, 0x9a, 0x9a)).size(11.0));
+        ui.add_space(3.0);
+        let cur = if ws.dinf { 1 } else { 0 };
+        if let Some(i) = seg_row(ui, &["D8", "D∞"], cur) {
+            ws.dinf = i == 1;
+        }
     }
 }
 
@@ -432,22 +588,31 @@ fn right_panel(ctx: &egui::Context, ws: &mut WorkspaceState) {
         });
         return;
     }
-    egui::SidePanel::right("inspector").exact_width(282.0).frame(egui::Frame::default().fill(PANEL)).show(ctx, |ui| {
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Inspection de cellule").color(TEXT_BRIGHT).strong().size(12.5));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("›").on_hover_text("Replier").clicked() {
-                    ws.inspector_open = false;
-                }
+    egui::SidePanel::right("inspector").exact_width(282.0).frame(egui::Frame::default().fill(PANEL).inner_margin(0)).show(ctx, |ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(8.0, 6.0);
+        block(ui, 15, 13, 13, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Inspection de cellule").color(TEXT_BRIGHT).strong().size(12.5));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("›").on_hover_text("Replier").clicked() {
+                        ws.inspector_open = false;
+                    }
+                });
             });
         });
         ui.separator();
         match &ws.hover {
-            Some(c) => inspection(ui, c),
+            Some(c) => {
+                let c = *c;
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    block(ui, 15, 14, 14, |ui| inspection(ui, &c));
+                });
+            }
             None => {
-                ui.add_space(40.0);
+                ui.add_space(48.0);
                 ui.vertical_centered(|ui| {
-                    ui.label(egui::RichText::new("⊹").color(C::from_rgb(0x4a, 0x4a, 0x4a)).size(20.0));
+                    ui.label(egui::RichText::new("⊹").color(C::from_rgb(0x4a, 0x4a, 0x4a)).size(22.0));
+                    ui.add_space(6.0);
                     ui.label(egui::RichText::new(if ws.current.is_some() { "Survolez la carte pour inspecter\nles grandeurs d'une cellule." } else { "Générez un continent." }).color(C::from_rgb(0x7a, 0x7a, 0x7a)).size(12.0));
                 });
             }
@@ -471,70 +636,73 @@ fn group_title(ui: &mut egui::Ui, t: &str) {
 }
 
 fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        let [br, bg, bb] = c.biome.color();
+    let [br, bg, bb] = c.biome.color();
+    egui::Frame::default().fill(FIELD).stroke(egui::Stroke::new(1.0, C::from_rgb(0x2a, 0x2a, 0x2a))).inner_margin(egui::Margin::symmetric(9, 5)).corner_radius(5).show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("⬛").color(C::from_rgb(br, bg, bb)).size(11.0));
             ui.label(egui::RichText::new(format!("x {} · y {}", c.x, c.y)).color(C::from_rgb(0xbb, 0xbb, 0xbb)).monospace().size(11.0));
         });
+    });
 
-        group_title(ui, "GÉOLOGIE");
-        kv(ui, "Altitude", format!("{:+.0} m", c.altitude_m));
-        if let Some(d) = c.depth_m {
-            kv(ui, "Profondeur", format!("−{d:.0} m"));
-        }
-        kv(ui, "Épaisseur crustale / S̃", "—".into()); // coarse — deferred
-        kv(ui, "Type de plaque", "—".into());
-        kv(ui, "Craton", "—".into());
+    group_title(ui, "GÉOLOGIE");
+    kv(ui, "Altitude", format!("{:+.0} m", c.altitude_m));
+    if let Some(d) = c.depth_m {
+        kv(ui, "Profondeur", format!("−{d:.0} m"));
+    }
+    kv(ui, "Épaisseur crustale / S̃", "—".into()); // coarse — deferred
+    kv(ui, "Type de plaque", "—".into());
+    kv(ui, "Craton", "—".into());
 
-        group_title(ui, "CLIMAT");
-        kv(ui, "Température", format!("{:.1} °C", c.temperature_c));
-        kv(ui, "Précipitation", format!("{:.0} mm/an", c.precip_mm));
+    group_title(ui, "CLIMAT");
+    kv(ui, "Température", format!("{:.1} °C", c.temperature_c));
+    kv(ui, "Précipitation", format!("{:.0} mm/an", c.precip_mm));
 
-        group_title(ui, "HYDROLOGIE");
-        let drainage = match &c.river {
-            Some(r) => match r.navigability {
-                Navigability::Ship => "Rivière — navire".to_string(),
-                Navigability::Barge => "Rivière — chaland".to_string(),
-                Navigability::SmallBoat => "Rivière — barque".to_string(),
-                Navigability::NonNavigable => "Rivière".to_string(),
+    group_title(ui, "HYDROLOGIE");
+    let drainage = match &c.river {
+        Some(r) => match r.navigability {
+            Navigability::Ship => "Rivière — navire".to_string(),
+            Navigability::Barge => "Rivière — chaland".to_string(),
+            Navigability::SmallBoat => "Rivière — barque".to_string(),
+            Navigability::NonNavigable => "Rivière".to_string(),
+        },
+        None => match &c.lake {
+            Some(l) => match l.lake_type {
+                LakeType::Exorheic => "Lac (exoréique)".to_string(),
+                LakeType::Endorheic => "Lac (endoréique)".to_string(),
             },
-            None => match &c.lake {
-                Some(l) => match l.lake_type {
-                    LakeType::Exorheic => "Lac (exoréique)".to_string(),
-                    LakeType::Endorheic => "Lac (endoréique)".to_string(),
-                },
-                None => "—".to_string(),
-            },
-        };
-        kv(ui, "Drainage", drainage);
-        kv(ui, "Ruissellement", format!("{:.0} mm/an", c.runoff_mm));
+            None => "—".to_string(),
+        },
+    };
+    kv(ui, "Drainage", drainage);
+    kv(ui, "Ruissellement", format!("{:.0} mm/an", c.runoff_mm));
 
-        group_title(ui, "BIOME");
-        egui::Frame::default().fill(FIELD).inner_margin(10).corner_radius(6).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("⬛").color(C::from_rgb(br, bg, bb)).size(16.0));
-                ui.label(egui::RichText::new(french_biome(c.biome)).color(TEXT_BRIGHT).size(13.0));
-            });
+    group_title(ui, "BIOME");
+    egui::Frame::default().fill(FIELD).stroke(egui::Stroke::new(1.0, C::from_rgb(0x2a, 0x2a, 0x2a))).inner_margin(egui::Margin::symmetric(12, 10)).corner_radius(6).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("⬛").color(C::from_rgb(br, bg, bb)).size(16.0));
+            ui.add_space(2.0);
+            ui.label(egui::RichText::new(french_biome(c.biome)).color(TEXT_BRIGHT).size(13.0));
         });
     });
 }
 
 // ── Central: frieze + map ────────────────────────────────────────────────
 fn central_panel(ctx: &egui::Context, ws: &mut WorkspaceState) {
-    egui::CentralPanel::default().frame(egui::Frame::default().fill(C::from_rgb(0x0f, 0x0f, 0x0f))).show(ctx, |ui| {
-        frieze(ui, ws);
-        ui.separator();
-        map(ui, ws);
+    egui::CentralPanel::default().frame(egui::Frame::default().fill(C::from_rgb(0x0f, 0x0f, 0x0f)).inner_margin(0)).show(ctx, |ui| {
+        // Pipeline frieze — a top strip (#161616) matching the mock.
+        egui::TopBottomPanel::top("frieze_strip")
+            .frame(egui::Frame::default().fill(PANEL2).inner_margin(egui::Margin { left: 16, right: 16, top: 11, bottom: 14 }))
+            .show_inside(ui, |ui| frieze(ui, ws));
+        // Map viewport (#0A0A0A).
+        egui::CentralPanel::default().frame(egui::Frame::default().fill(VIEWPORT).inner_margin(0)).show_inside(ui, |ui| map(ui, ws));
     });
 }
 
 fn frieze(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("PIPELINE").color(DIM2).size(9.5));
-    });
+    ui.label(egui::RichText::new("PIPELINE").color(DIM2).size(9.5));
+    ui.add_space(6.0);
     let full = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(full, 52.0), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(full, 44.0), egui::Sense::hover());
     let painter = ui.painter_at(rect);
     let n = HdLayer::ALL.len();
     let margin = 30.0;
@@ -597,10 +765,10 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
 
     let avail = ui.available_size();
     let side = avail.x.min(avail.y).max(1.0);
-    // Centre the square map.
-    let offset_x = ((avail.x - side) * 0.5).max(0.0);
+    // Centre the square map both ways.
+    ui.add_space(((avail.y - side) * 0.5).max(0.0));
     ui.horizontal(|ui| {
-        ui.add_space(offset_x);
+        ui.add_space(((avail.x - side) * 0.5).max(0.0));
         // Zoom → centred uv sub-rect (pan deferred to step e).
         let z = ws.zoom.max(1.0);
         let uv_half = 0.5 / z;
@@ -625,10 +793,33 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             let fy = uv.min.y + (rel.y / resp.rect.height()).clamp(0.0, 0.999) * (uv.max.y - uv.min.y);
             let x = (fx * hd.width as f32) as usize;
             let y = (fy * hd.height as f32) as usize;
+            let cx = x.min(hd.width - 1);
+            let cy = y.min(hd.height - 1);
             if let Some(rm) = ws.river_map.as_ref() {
-                ws.hover = Some(inspect_cell(&hd, rm, x.min(hd.width - 1), y.min(hd.height - 1)));
-                ws.hover_xy = Some((x, y));
+                ws.hover = Some(inspect_cell(&hd, rm, cx, cy));
+                ws.hover_xy = Some((cx, cy));
             }
+
+            // Reticle: faint crosshair through the cell + a copper cell box.
+            let pnt = ui.painter_at(resp.rect);
+            let uvw = uv.max.x - uv.min.x;
+            let uvh = uv.max.y - uv.min.y;
+            let ncx = (cx as f32 + 0.5) / hd.width as f32;
+            let ncy = (cy as f32 + 0.5) / hd.height as f32;
+            let sx = resp.rect.left() + ((ncx - uv.min.x) / uvw) * resp.rect.width();
+            let sy = resp.rect.top() + ((ncy - uv.min.y) / uvh) * resp.rect.height();
+            let bw = ((1.0 / hd.width as f32 / uvw) * resp.rect.width()).max(8.0);
+            let bh = ((1.0 / hd.height as f32 / uvh) * resp.rect.height()).max(8.0);
+            let faint = C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, 90);
+            pnt.line_segment([egui::pos2(sx, resp.rect.top()), egui::pos2(sx, resp.rect.bottom())], egui::Stroke::new(1.0, faint));
+            pnt.line_segment([egui::pos2(resp.rect.left(), sy), egui::pos2(resp.rect.right(), sy)], egui::Stroke::new(1.0, faint));
+            pnt.rect_stroke(
+                egui::Rect::from_center_size(egui::pos2(sx, sy), egui::vec2(bw, bh)),
+                0.0,
+                egui::Stroke::new(1.5, COPPER_BRIGHT),
+                egui::StrokeKind::Middle,
+            );
+
             // Hover coord readout (top-right).
             let txt = format!("x {x}  y {y}");
             let anchor = egui::pos2(resp.rect.right() - 8.0, resp.rect.top() + 8.0);
