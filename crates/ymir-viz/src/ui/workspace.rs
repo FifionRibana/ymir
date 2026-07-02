@@ -225,6 +225,28 @@ fn field_label(ui: &mut egui::Ui, t: &str) {
     ui.label(egui::RichText::new(t).color(DIM2).size(10.0));
 }
 
+/// An expert parameter row (the mock's pattern): a label (left) + its value in
+/// copper mono (right), then a full-width slider below (no inline value).
+fn param_slider(ui: &mut egui::Ui, label: &str, v: &mut f32, range: std::ops::RangeInclusive<f32>, decimals: usize) {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(label).color(C::from_rgb(0x9a, 0x9a, 0x9a)).size(11.0));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(egui::RichText::new(format!("{:.*}", decimals, *v)).color(COPPER_BRIGHT).monospace().size(11.0));
+        });
+    });
+    ui.add_space(2.0);
+    ui.spacing_mut().slider_width = ui.available_width();
+    ui.add(egui::Slider::new(v, range).show_value(false));
+    ui.add_space(10.0);
+}
+
+/// A sub-heading inside an expert section (e.g. "ISOSTASIE").
+fn sub_heading(ui: &mut egui::Ui, t: &str) {
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new(t).color(C::from_rgb(0x5e, 0x5e, 0x5e)).size(9.5));
+    ui.add_space(6.0);
+}
+
 /// Custom latitude slider matching the mock: a warm→polar gradient track, a
 /// copper thumb, and tick marks + labels aligned under 0/30/45/60/75/90.
 fn latitude_slider(ui: &mut egui::Ui, lat: &mut f32) {
@@ -498,26 +520,27 @@ fn expert_sections(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     section_header(ui, &mut relief_open, "Relief & closures", Some(("AVANCÉ", DIM2)));
     ws.relief_open = relief_open;
     if ws.relief_open {
-        ui.add(egui::Slider::new(&mut ws.craton_density, 2.6..=3.1).text("Densité cratonique"));
-        ui.add(egui::Slider::new(&mut ws.shield_frac, 0.0..=1.0).text("Fraction bouclier"));
-        ui.add(egui::Slider::new(&mut ws.shelf_width, 40.0..=320.0).text("Largeur plateau"));
-        ui.add(egui::Slider::new(&mut ws.erosion, 0.0..=1.0).text("Érosion"));
+        ui.add_space(6.0);
+        sub_heading(ui, "ISOSTASIE");
+        param_slider(ui, "Densité cratonique", &mut ws.craton_density, 2.6..=3.1, 2);
+        param_slider(ui, "Fraction bouclier", &mut ws.shield_frac, 0.0..=1.0, 2);
+        sub_heading(ui, "BATHYMÉTRIE & ÉROSION");
+        param_slider(ui, "Largeur plateau cont.", &mut ws.shelf_width, 40.0..=320.0, 0);
+        param_slider(ui, "Intensité d'érosion", &mut ws.erosion, 0.0..=1.0, 2);
     }
     ui.add_space(6.0);
     let mut drainage_open = ws.drainage_open;
     section_header(ui, &mut drainage_open, "Drainage", Some(("AVANCÉ", DIM2)));
     ws.drainage_open = drainage_open;
     if ws.drainage_open {
-        ui.add(egui::Slider::new(&mut ws.channel_jitter, 0.0..=1.0).text("Perturbation du tracé"));
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Écoulement").color(C::from_rgb(0x9a, 0x9a, 0x9a)).size(11.0));
-            if seg_label(ui, "D8", !ws.dinf).clicked() {
-                ws.dinf = false;
-            }
-            if seg_label(ui, "D∞", ws.dinf).clicked() {
-                ws.dinf = true;
-            }
-        });
+        ui.add_space(6.0);
+        param_slider(ui, "Perturbation du tracé", &mut ws.channel_jitter, 0.0..=1.0, 2);
+        ui.label(egui::RichText::new("Mode d'écoulement").color(C::from_rgb(0x9a, 0x9a, 0x9a)).size(11.0));
+        ui.add_space(3.0);
+        let cur = if ws.dinf { 1 } else { 0 };
+        if let Some(i) = seg_row(ui, &["D8", "D∞"], cur) {
+            ws.dinf = i == 1;
+        }
     }
 }
 
