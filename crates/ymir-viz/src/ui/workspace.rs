@@ -26,8 +26,8 @@ use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 use egui::Color32 as C;
 
 use crate::bridge::c1::{
-    inspect_cell, C1RunSpec, C1SolverBridge, CellInspection, HdParams, HdResult, HdState,
-    RiverCellMap,
+    inspect_cell, C1RunSpec, C1SolverBridge, CacheRegime, CellInspection, HdParams, HdPhase,
+    HdResult, HdState, RiverCellMap,
 };
 use crate::visualization::colormap::hypsometric_bipolar;
 use ymir_core::climate::biomes::Biome;
@@ -103,6 +103,25 @@ impl HdLayer {
             HdLayer::Biomes => "Classification de Whittaker (température × précipitation).",
         }
     }
+    /// The HD worker phase that PRODUCES this layer (step b emits these). The
+    /// Climate phase produces both Précipitation and Température.
+    fn phase(self) -> HdPhase {
+        match self {
+            HdLayer::Relief => HdPhase::Eroded,
+            HdLayer::Drainage => HdPhase::Drainage,
+            HdLayer::Precipitation => HdPhase::Climate,
+            HdLayer::Temperature => HdPhase::Climate,
+            HdLayer::Biomes => HdPhase::Biomes,
+        }
+    }
+}
+
+/// Visual state of a frieze node, derived from the live HD event stream.
+#[derive(Clone, Copy, PartialEq)]
+enum NodeVis {
+    Pending,
+    Running,
+    Done { cached: bool },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -340,10 +359,15 @@ fn draw_workspace(
     }
     let hd_running = matches!(bridge.hd, HdState::Running { .. });
 
+    // Keep animating (waiter pulse) + polling the worker while a run is live.
+    if hd_running {
+        ctx.request_repaint();
+    }
+
     top_bar(ctx, &bridge, &mut ws);
     left_panel(ctx, &bridge, &mut ws, hd_running);
     right_panel(ctx, &mut ws);
-    central_panel(ctx, &mut ws);
+    central_panel(ctx, &bridge, &mut ws);
 }
 
 // ── Top bar ──────────────────────────────────────────────────────────────
@@ -687,19 +711,60 @@ fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
 }
 
 // ── Central: frieze + map ────────────────────────────────────────────────
-fn central_panel(ctx: &egui::Context, ws: &mut WorkspaceState) {
+fn central_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState) {
     egui::CentralPanel::default().frame(egui::Frame::default().fill(C::from_rgb(0x0f, 0x0f, 0x0f)).inner_margin(0)).show(ctx, |ui| {
         // Pipeline frieze — a top strip (#161616) matching the mock.
         egui::TopBottomPanel::top("frieze_strip")
             .frame(egui::Frame::default().fill(PANEL2).inner_margin(egui::Margin { left: 16, right: 16, top: 11, bottom: 14 }))
-            .show_inside(ui, |ui| frieze(ui, ws));
+            .show_inside(ui, |ui| frieze(ui, &bridge.hd, ws));
         // Map viewport (#0A0A0A).
         egui::CentralPanel::default().frame(egui::Frame::default().fill(VIEWPORT).inner_margin(0)).show_inside(ui, |ui| map(ui, ws));
     });
 }
 
-fn frieze(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
-    ui.label(egui::RichText::new("PIPELINE").color(DIM2).size(9.5));
+/// Node state for `layer` derived from the live HD event stream (step e).
+fn node_vis(hd: &HdState, has_result: bool, layer: HdLayer) -> NodeVis {
+    let phase = layer.phase();
+    match hd {
+        HdState::Running { current, done, .. } => {
+            if let Some(r) = done.iter().find(|r| r.phase == phase) {
+                NodeVis::Done { cached: r.regime == CacheRegime::Hit }
+            } else if *current == Some(phase) {
+                NodeVis::Running
+            } else {
+                NodeVis::Pending
+            }
+        }
+        HdState::Completed { done, .. } => {
+            let cached = done.iter().find(|r| r.phase == phase).map(|r| r.regime == CacheRegime::Hit).unwrap_or(false);
+            NodeVis::Done { cached }
+        }
+        // Idle before the first run → pending; a Failed run keeps whatever the
+        // previous result showed (done if a result exists).
+        _ => {
+            if has_result {
+                NodeVis::Done { cached: false }
+            } else {
+                NodeVis::Pending
+            }
+        }
+    }
+}
+
+fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("PIPELINE").color(DIM2).size(9.5));
+        if matches!(hd, HdState::Running { .. }) {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if let HdState::Running { current, .. } = hd {
+                    if let Some(p) = current {
+                        ui.label(egui::RichText::new(format!("{} …", p.label())).color(COPPER_BRIGHT).size(10.5));
+                        ui.spinner();
+                    }
+                }
+            });
+        }
+    });
     ui.add_space(6.0);
     let full = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(egui::vec2(full, 44.0), egui::Sense::hover());
@@ -709,36 +774,67 @@ fn frieze(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     let y = rect.top() + 12.0;
     let x0 = rect.left() + margin;
     let x1 = rect.right() - margin;
-    // Base line + fill (fill = up to the active node, post-generation).
+    let time = ui.ctx().input(|i| i.time);
+    let has = ws.current.is_some() || matches!(hd, HdState::Running { .. });
+    let selecting = matches!(hd, HdState::Completed { .. } | HdState::Idle) && ws.current.is_some();
+
+    // Per-node visual state.
+    let states: Vec<NodeVis> = HdLayer::ALL.iter().map(|&l| node_vis(hd, ws.current.is_some(), l)).collect();
+
+    // Base line.
     painter.line_segment([egui::pos2(x0, y), egui::pos2(x1, y)], egui::Stroke::new(2.0, C::from_rgb(0x2e, 0x2e, 0x2e)));
-    let has = ws.current.is_some();
-    let active_idx = HdLayer::ALL.iter().position(|&l| l == ws.layer).unwrap_or(0);
+    // Fill: to the rightmost running/done node while generating; to the selected
+    // node in selector mode.
+    let frontier = if selecting {
+        HdLayer::ALL.iter().position(|&l| l == ws.layer).unwrap_or(0)
+    } else {
+        states
+            .iter()
+            .rposition(|s| !matches!(s, NodeVis::Pending))
+            .unwrap_or(0)
+    };
     if has {
-        let fx = x0 + (x1 - x0) * (active_idx as f32 / (n - 1) as f32);
+        let fx = x0 + (x1 - x0) * (frontier as f32 / (n - 1) as f32);
         painter.line_segment([egui::pos2(x0, y), egui::pos2(fx, y)], egui::Stroke::new(2.0, COPPER_BRIGHT));
     }
+
     for (i, &layer) in HdLayer::ALL.iter().enumerate() {
         let cx = x0 + (x1 - x0) * (i as f32 / (n - 1) as f32);
         let center = egui::pos2(cx, y);
-        let active = layer == ws.layer;
-        let done = has;
-        let (radius, col) = if active {
-            (7.5, COPPER_BRIGHT)
-        } else if done {
-            (5.5, COPPER)
-        } else {
-            (5.5, C::from_rgb(0x3f, 0x3f, 0x3f))
+        let vis = states[i];
+        let selected = selecting && layer == ws.layer;
+        let (radius, col) = match vis {
+            NodeVis::Running => (7.5, COPPER_BRIGHT),
+            NodeVis::Done { .. } if selected => (7.5, COPPER_BRIGHT),
+            NodeVis::Done { .. } => (5.5, COPPER),
+            NodeVis::Pending => (5.5, C::from_rgb(0x3f, 0x3f, 0x3f)),
         };
-        if active {
+        // Halo: animated pulse while running, static glow when selected.
+        if matches!(vis, NodeVis::Running) {
+            let pulse = (time as f32 * 4.0).sin() * 0.5 + 0.5;
+            let a = (110.0 * (1.0 - pulse)) as u8;
+            painter.circle_filled(center, radius + 3.0 + pulse * 5.0, C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, a));
+        } else if selected {
             painter.circle_filled(center, radius + 3.0, C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, 55));
         }
         painter.circle_filled(center, radius, col);
-        let lab_col = if active { COPPER_BRIGHT } else if done { C::from_rgb(0xc4, 0xc4, 0xc4) } else { C::from_rgb(0x5a, 0x5a, 0x5a) };
+        // Cache indicator: a bright inner ring on a done-from-cache node.
+        if matches!(vis, NodeVis::Done { cached: true }) {
+            painter.circle_stroke(center, radius - 1.5, egui::Stroke::new(1.5, C::from_rgb(0xE9, 0xDC, 0xC4)));
+        }
+        let lab_col = match vis {
+            NodeVis::Running => COPPER_BRIGHT,
+            NodeVis::Done { .. } if selected => COPPER_BRIGHT,
+            NodeVis::Done { .. } => C::from_rgb(0xc4, 0xc4, 0xc4),
+            NodeVis::Pending => C::from_rgb(0x5a, 0x5a, 0x5a),
+        };
         painter.text(egui::pos2(cx, y + 16.0), egui::Align2::CENTER_TOP, layer.frieze_label(), egui::FontId::proportional(9.5), lab_col);
-        // Click target.
-        let hit = egui::Rect::from_center_size(center, egui::vec2((x1 - x0) / n as f32, 44.0));
-        if has && ui.interact(hit, ui.id().with(("frieze", i)), egui::Sense::click()).clicked() {
-            ws.layer = layer;
+        // Click a node to view its layer (only when a result exists to show).
+        if ws.current.is_some() {
+            let hit = egui::Rect::from_center_size(center, egui::vec2((x1 - x0) / n as f32, 44.0));
+            if ui.interact(hit, ui.id().with(("frieze", i)), egui::Sense::click()).clicked() {
+                ws.layer = layer;
+            }
         }
     }
 }
