@@ -768,71 +768,84 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
     let y = rect.top() + 12.0;
     let x0 = rect.left() + margin;
     let x1 = rect.right() - margin;
-    let time = ui.ctx().input(|i| i.time);
-    let has = ws.current.is_some() || matches!(hd, HdState::Running { .. });
-    let selecting = matches!(hd, HdState::Completed { .. } | HdState::Idle) && ws.current.is_some();
+    let node_x = |i: usize| x0 + (x1 - x0) * (i as f32 / (n - 1) as f32);
+    let time = ui.ctx().input(|i| i.time) as f32;
 
+    // Three ORTHOGONAL states, each on its own visual dimension (they overlay):
+    //   1. completeness  → node FILL + the copper line (persists; never retracts)
+    //   2. running       → an animated PROGRESS ARC (distinct from a filled dot)
+    //   3. selected      → an OUTER RING (navigation; independent of the above)
     let states: Vec<NodeVis> = FRIEZE.iter().map(|(p, _, _)| node_vis(hd, ws.current.is_some(), *p)).collect();
-
-    // Running phase index + its determinate fraction (for the continuous bar).
     let (running_idx, frac) = match hd {
-        HdState::Running { current, progress, .. } => {
-            let idx = current.and_then(|c| FRIEZE.iter().position(|(p, _, _)| *p == c));
-            let f = progress.map(|(d, t)| if t > 0 { d as f32 / t as f32 } else { 0.0 });
-            (idx, f)
-        }
+        HdState::Running { current, progress, .. } => (
+            current.and_then(|c| FRIEZE.iter().position(|(p, _, _)| *p == c)),
+            progress.map(|(d, t)| if t > 0 { d as f32 / t as f32 } else { 0.0 }),
+        ),
         _ => (None, None),
     };
+    let selected_idx = ws.current.is_some().then(|| canonical_node(ws.layer));
 
-    // Base line.
+    const R: f32 = 6.0;
+    let dark = C::from_rgb(0x1a, 0x1a, 0x1a);
+
+    // Dimension 1 — completeness line: grey base + copper up to the last DONE
+    // node (stays full after the build; independent of selection).
     painter.line_segment([egui::pos2(x0, y), egui::pos2(x1, y)], egui::Stroke::new(2.0, C::from_rgb(0x2e, 0x2e, 0x2e)));
-    // Continuous fill frontier (in node-index units, fractional). During a
-    // determinate running phase (érosion at 20%) the bar fills the segment
-    // leading to that node by the fraction (prev node + 20 %).
-    let frontier_f: f32 = if selecting {
-        canonical_node(ws.layer) as f32
-    } else if let Some(idx) = running_idx {
-        match frac {
-            Some(f) => (idx as f32 - 1.0).max(0.0) + f,
-            None => idx as f32, // opaque waiter: bar at the node
-        }
-    } else {
-        states.iter().rposition(|s| !matches!(s, NodeVis::Pending)).unwrap_or(0) as f32
-    };
-    if has {
-        let fx = x0 + (x1 - x0) * (frontier_f / (n - 1) as f32).clamp(0.0, 1.0);
-        painter.line_segment([egui::pos2(x0, y), egui::pos2(fx, y)], egui::Stroke::new(2.0, COPPER_BRIGHT));
+    if let Some(last_done) = states.iter().rposition(|s| matches!(s, NodeVis::Done { .. })) {
+        painter.line_segment([egui::pos2(x0, y), egui::pos2(node_x(last_done), y)], egui::Stroke::new(2.0, COPPER));
     }
 
     for (i, (_, label, view_layer)) in FRIEZE.iter().enumerate() {
-        let cx = x0 + (x1 - x0) * (i as f32 / (n - 1) as f32);
-        let center = egui::pos2(cx, y);
+        let center = egui::pos2(node_x(i), y);
         let vis = states[i];
-        let selected = selecting && canonical_node(ws.layer) == i;
-        let (radius, col) = match vis {
-            NodeVis::Running => (7.5, COPPER_BRIGHT),
-            NodeVis::Done { .. } if selected => (7.5, COPPER_BRIGHT),
-            NodeVis::Done { .. } => (5.5, COPPER),
-            NodeVis::Pending => (5.5, C::from_rgb(0x3f, 0x3f, 0x3f)),
-        };
-        if matches!(vis, NodeVis::Running) {
-            let pulse = (time as f32 * 4.0).sin() * 0.5 + 0.5;
-            let a = (110.0 * (1.0 - pulse)) as u8;
-            painter.circle_filled(center, radius + 3.0 + pulse * 5.0, C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, a));
-        } else if selected {
-            painter.circle_filled(center, radius + 3.0, C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, 55));
+        let selected = selected_idx == Some(i);
+
+        // Dimension 1/2 — the dot by completeness / running.
+        match vis {
+            NodeVis::Done { cached } => {
+                painter.circle_filled(center, R, COPPER);
+                if cached {
+                    painter.circle_stroke(center, R - 2.0, egui::Stroke::new(1.5, C::from_rgb(0xE9, 0xDC, 0xC4)));
+                }
+            }
+            NodeVis::Pending => {
+                painter.circle_filled(center, R, C::from_rgb(0x20, 0x20, 0x20));
+                painter.circle_stroke(center, R, egui::Stroke::new(1.5, C::from_rgb(0x3f, 0x3f, 0x3f)));
+            }
+            NodeVis::Running => {
+                // Distinct from "done": a dark disc + an animated progress ARC.
+                painter.circle_filled(center, R, dark);
+                painter.circle_stroke(center, R + 2.0, egui::Stroke::new(2.0, C::from_rgb(0x3a, 0x2e, 0x20)));
+                let start = -std::f32::consts::FRAC_PI_2;
+                let (a0, a1) = if running_idx == Some(i) {
+                    match frac {
+                        Some(f) => (start, start + f.clamp(0.0, 1.0) * std::f32::consts::TAU),
+                        None => (time * 2.4, time * 2.4 + 1.8), // waiter: spinning arc
+                    }
+                } else {
+                    (start, start) // not the live node (shouldn't happen)
+                };
+                stroke_arc(&painter, center, R + 2.0, a0, a1, egui::Stroke::new(2.5, COPPER_BRIGHT));
+            }
         }
-        painter.circle_filled(center, radius, col);
-        if matches!(vis, NodeVis::Done { cached: true }) {
-            painter.circle_stroke(center, radius - 1.5, egui::Stroke::new(1.5, C::from_rgb(0xE9, 0xDC, 0xC4)));
+
+        // Dimension 3 — selection: an outer ring, overlaid on any fill/arc.
+        if selected {
+            painter.circle_stroke(center, R + 4.5, egui::Stroke::new(2.0, COPPER_BRIGHT));
         }
-        let lab_col = match vis {
-            NodeVis::Running => COPPER_BRIGHT,
-            NodeVis::Done { .. } if selected => COPPER_BRIGHT,
-            NodeVis::Done { .. } => C::from_rgb(0xc4, 0xc4, 0xc4),
-            NodeVis::Pending => C::from_rgb(0x5a, 0x5a, 0x5a),
+
+        // Label: bright if selected, else by completeness/running.
+        let lab_col = if selected {
+            COPPER_BRIGHT
+        } else {
+            match vis {
+                NodeVis::Running => COPPER_BRIGHT,
+                NodeVis::Done { .. } => C::from_rgb(0xc4, 0xc4, 0xc4),
+                NodeVis::Pending => C::from_rgb(0x5a, 0x5a, 0x5a),
+            }
         };
-        painter.text(egui::pos2(cx, y + 16.0), egui::Align2::CENTER_TOP, *label, egui::FontId::proportional(9.5), lab_col);
+        painter.text(egui::pos2(node_x(i), y + 18.0), egui::Align2::CENTER_TOP, *label, egui::FontId::proportional(9.5), lab_col);
+
         // Click a node to view its layer (only when a result exists to show).
         if ws.current.is_some() {
             let hit = egui::Rect::from_center_size(center, egui::vec2((x1 - x0) / n as f32, 44.0));
@@ -840,6 +853,20 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
                 ws.layer = *view_layer;
             }
         }
+    }
+}
+
+/// Stroke a circular arc (egui has no arc primitive) as short segments.
+fn stroke_arc(painter: &egui::Painter, center: egui::Pos2, radius: f32, a0: f32, a1: f32, stroke: egui::Stroke) {
+    let steps = (((a1 - a0).abs() / 0.22).ceil() as usize).max(1);
+    let mut prev = None;
+    for k in 0..=steps {
+        let t = a0 + (a1 - a0) * (k as f32 / steps as f32);
+        let p = center + egui::vec2(t.cos(), t.sin()) * radius;
+        if let Some(pp) = prev {
+            painter.line_segment([pp, p], stroke);
+        }
+        prev = Some(p);
     }
 }
 
