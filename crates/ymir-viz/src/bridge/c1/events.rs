@@ -88,9 +88,11 @@ pub enum C1Event {
     /// The HD production chain (eroded → climate → drainage → biomes)
     /// is about to start on the worker.
     HdStarted { spec: C1RunSpec, params: HdParams },
-    /// An HD phase has begun (UI shows an indeterminate waiter — every
-    /// HD phase is an opaque block, no N/total).
+    /// An HD phase has begun (UI shows a waiter, or a bar once progress arrives).
     HdPhaseStarted { phase: HdPhase },
+    /// Determinate progress within a phase (Tectonic steps / Erosion batches) —
+    /// drives a real bar on that frieze node. Opaque phases never emit this.
+    HdPhaseProgress { phase: HdPhase, done: usize, total: usize },
     /// An HD phase finished; `regime` says HIT (from cache) / MISS
     /// (computed) / Computed (uncached cheap phase), `elapsed` its wall
     /// time.

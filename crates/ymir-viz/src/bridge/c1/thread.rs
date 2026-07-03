@@ -239,10 +239,11 @@ mod tests {
         let phase_done =
             events.iter().filter(|e| matches!(e, C1Event::HdPhaseDone { .. })).count();
         assert_eq!(started, 1, "one HdStarted");
-        assert_eq!(phase_started, 4, "4 HdPhaseStarted (eroded/climate/drainage/biomes)");
-        assert_eq!(phase_done, 4, "4 HdPhaseDone");
+        // Eroded is split into Tectonic/Relief/Erosion (suite e) → 6 sub-phases.
+        assert_eq!(phase_started, 6, "6 HdPhaseStarted");
+        assert_eq!(phase_done, 6, "6 HdPhaseDone");
 
-        // Phases arrive in execution order.
+        // Phases arrive in execution order (same on HIT or MISS).
         let order: Vec<HdPhase> = events
             .iter()
             .filter_map(|e| match e {
@@ -252,7 +253,14 @@ mod tests {
             .collect();
         assert_eq!(
             order,
-            vec![HdPhase::Eroded, HdPhase::Climate, HdPhase::Drainage, HdPhase::Biomes],
+            vec![
+                HdPhase::Tectonic,
+                HdPhase::Relief,
+                HdPhase::Erosion,
+                HdPhase::Climate,
+                HdPhase::Drainage,
+                HdPhase::Biomes,
+            ],
         );
 
         // Final product carries every layer at the HD resolution.

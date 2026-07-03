@@ -39,10 +39,12 @@ use ymir_core::climate::{c1_biomes, c1_climate};
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::cached_product::{
-    cached_c1_drainage, cached_c1_eroded, drainage_key, eroded_key, tectonic_key,
+    cached_c1_drainage, cached_c1_eroded, cached_c1_eroded_with_progress, drainage_key, eroded_key,
+    tectonic_key,
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult};
+use ymir_core::tectonics_c1::production_upscale::EroProgress;
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
@@ -65,11 +67,17 @@ impl Default for HdParams {
     }
 }
 
-/// The HD pipeline phases, in execution order.
+/// The HD pipeline phases, in execution order. The former single `Eroded`
+/// phase is split into `Tectonic` → `Relief` → `Erosion` (suite e) so the frieze
+/// shows the long erosion progressing; bathymetry is folded into `Erosion`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HdPhase {
-    /// Tectonics → upscale → erosion → bathymetry (cached as "eroded").
-    Eroded,
+    /// Coarse thin-sheet tectonics (`run_with_closures`) — determinate N/steps.
+    Tectonic,
+    /// HD relief synthesis (bicubic + FBM upscale) — opaque waiter.
+    Relief,
+    /// HD hydraulic erosion (+ bathymetry) — determinate % (batch callback).
+    Erosion,
     /// Temperature + precipitation.
     Climate,
     /// Rivers + lakes + water balance (cached as "drainage").
@@ -81,7 +89,9 @@ pub enum HdPhase {
 impl HdPhase {
     pub fn label(self) -> &'static str {
         match self {
-            HdPhase::Eroded => "relief + bathymétrie",
+            HdPhase::Tectonic => "tectonique",
+            HdPhase::Relief => "relief",
+            HdPhase::Erosion => "érosion",
             HdPhase::Climate => "climat",
             HdPhase::Drainage => "drainage",
             HdPhase::Biomes => "biomes",
@@ -160,6 +170,9 @@ pub enum HdState {
         params: HdParams,
         /// Phase currently in flight (an indeterminate waiter), if any.
         current: Option<HdPhase>,
+        /// `(done, total)` of the current phase when it is DETERMINATE (Tectonic
+        /// steps, Erosion batches) → the frieze draws a real bar; `None` → waiter.
+        progress: Option<(usize, usize)>,
         /// Phases finished so far, with their HIT/MISS regime + timing.
         done: Vec<HdPhaseRecord>,
     },
@@ -219,32 +232,74 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         };
     }
 
-    // ── Phase 1: eroded (tectonics → upscale → erosion → bathymetry). ──
+    // ── Phase 1: eroded, split into Tectonic → Relief → Erosion (bathy folded).
+    // On a HIT the whole "eroded" .raw reloads at once (no sub-step runs) → mark
+    // the three nodes done-from-cache instantly. On a MISS the core progress
+    // callback drives the sub-nodes (Tectonic N/steps, Relief waiter, Erosion %),
+    // with mid-erosion cancel (a cancelled build is NOT cached).
     bail_if_cancelled!();
     let eroded_hit = sidecar_exists("eroded", ekey.digest());
-    let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Eroded });
-    let t = Instant::now();
-    let eroded = match cached_c1_eroded(
-        &cache_dir,
-        spec.seed,
-        spec.grid_size,
-        &spec.init_params,
-        &run,
-        &spec.closures,
-        &ss,
-        &upscale,
-    ) {
-        Ok(g) => g,
-        Err(e) => {
-            let _ = tx.send(C1Event::HdFailed { error: format!("eroded: {e}") });
-            return;
+    let eroded = if eroded_hit {
+        for phase in [HdPhase::Tectonic, HdPhase::Relief, HdPhase::Erosion] {
+            let _ = tx.send(C1Event::HdPhaseStarted { phase });
+            let _ = tx.send(C1Event::HdPhaseDone { phase, regime: CacheRegime::Hit, elapsed: Duration::ZERO });
+        }
+        match cached_c1_eroded(&cache_dir, spec.seed, spec.grid_size, &spec.init_params, &run, &spec.closures, &ss, &upscale) {
+            Ok(g) => g,
+            Err(e) => {
+                let _ = tx.send(C1Event::HdFailed { error: format!("eroded: {e}") });
+                return;
+            }
+        }
+    } else {
+        // Stateful sub-node emission (shared via Cell so we can finalise the last
+        // node after the call returns).
+        let cur = std::cell::Cell::new(None::<HdPhase>);
+        let started = std::cell::Cell::new(Instant::now());
+        let mut progress = |p: EroProgress| {
+            let target = match p {
+                EroProgress::Tectonic { .. } => HdPhase::Tectonic,
+                EroProgress::Relief => HdPhase::Relief,
+                EroProgress::Erosion { .. } => HdPhase::Erosion,
+                EroProgress::Bathymetry => return, // fold: keep the Erosion node active
+            };
+            if cur.get() != Some(target) {
+                if let Some(prev) = cur.get() {
+                    let _ = tx.send(C1Event::HdPhaseDone { phase: prev, regime: CacheRegime::Miss, elapsed: started.get().elapsed() });
+                }
+                let _ = tx.send(C1Event::HdPhaseStarted { phase: target });
+                cur.set(Some(target));
+                started.set(Instant::now());
+            }
+            match p {
+                EroProgress::Tectonic { step, total } => {
+                    let _ = tx.send(C1Event::HdPhaseProgress { phase: HdPhase::Tectonic, done: step, total });
+                }
+                EroProgress::Erosion { done, total } => {
+                    let _ = tx.send(C1Event::HdPhaseProgress { phase: HdPhase::Erosion, done, total });
+                }
+                _ => {}
+            }
+        };
+        let result = cached_c1_eroded_with_progress(
+            &cache_dir, spec.seed, spec.grid_size, &spec.init_params, &run, &spec.closures, &ss,
+            &upscale, &mut progress, &|| cancel.load(Ordering::Relaxed),
+        );
+        drop(progress);
+        // Finalise the last sub-node (unless cancelled → HdFailed below).
+        if result.is_ok() {
+            if let Some(prev) = cur.get() {
+                let _ = tx.send(C1Event::HdPhaseDone { phase: prev, regime: CacheRegime::Miss, elapsed: started.get().elapsed() });
+            }
+        }
+        match result {
+            Ok(g) => g,
+            Err(_) => {
+                let _ = tx.send(C1Event::HdFailed { error: "annulé".to_string() });
+                return;
+            }
         }
     };
-    let _ = tx.send(C1Event::HdPhaseDone {
-        phase: HdPhase::Eroded,
-        regime: if eroded_hit { CacheRegime::Hit } else { CacheRegime::Miss },
-        elapsed: t.elapsed(),
-    });
 
     // ── Phase 2: climate (temperature + precipitation). ──
     bail_if_cancelled!();
