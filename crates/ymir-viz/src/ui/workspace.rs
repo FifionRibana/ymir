@@ -89,19 +89,21 @@ impl HdLayer {
     }
 }
 
-/// The frieze nodes (suite e — the eroded phase split into Tectonique/Relief/
-/// Érosion): `(worker phase for progress/state, short label, layer shown on
-/// click)`. Two nodes map to the Climate phase (Précip + Temp are produced
-/// together). Tectonique/Érosion are build stages; clicking them shows the
-/// Relief layer (the closest viewable data).
-const FRIEZE: [(HdPhase, &str, HdLayer); 7] = [
-    (HdPhase::Tectonic, "Tectonique", HdLayer::Relief),
-    (HdPhase::Relief, "Relief", HdLayer::Relief),
-    (HdPhase::Erosion, "Érosion", HdLayer::Relief),
-    (HdPhase::Drainage, "Drainage", HdLayer::Drainage),
-    (HdPhase::Climate, "Précip.", HdLayer::Precipitation),
-    (HdPhase::Climate, "Temp.", HdLayer::Temperature),
-    (HdPhase::Biomes, "Biomes", HdLayer::Biomes),
+/// The frieze nodes (suite e): `(worker phase, short label, viewable layer)`.
+/// The layer is `Some` only when the HD product RETAINS a displayable layer for
+/// that node → clickable/selectable. `None` = a pure build-progress stage (no
+/// retained layer to view): Tectonique (coarse S̃/plate/craton, not in the HD
+/// product) and Relief (pre-erosion upscale, not retained). The Érosion node
+/// carries the Relief layer (the eroded heightmap = the final relief). Précip.
+/// and Temp. share the Climate phase.
+const FRIEZE: [(HdPhase, &str, Option<HdLayer>); 7] = [
+    (HdPhase::Tectonic, "Tectonique", None),
+    (HdPhase::Relief, "Relief", None),
+    (HdPhase::Erosion, "Érosion", Some(HdLayer::Relief)),
+    (HdPhase::Drainage, "Drainage", Some(HdLayer::Drainage)),
+    (HdPhase::Climate, "Précip.", Some(HdLayer::Precipitation)),
+    (HdPhase::Climate, "Temp.", Some(HdLayer::Temperature)),
+    (HdPhase::Biomes, "Biomes", Some(HdLayer::Biomes)),
 ];
 
 /// Visual state of a frieze node, derived from the live HD event stream.
@@ -738,14 +740,11 @@ fn node_vis(hd: &HdState, has_result: bool, phase: HdPhase) -> NodeVis {
 
 /// The canonical frieze node highlighted for a viewed layer (selector mode):
 /// Relief → the "Relief" node (not Tectonique/Érosion, which share that layer).
+/// The frieze index that OWNS a layer (the selection ring lands here). Derived
+/// from the table so it always points at the selectable node carrying `layer`
+/// — notably Relief → Érosion (index 2), not the non-selectable Relief node.
 fn canonical_node(layer: HdLayer) -> usize {
-    match layer {
-        HdLayer::Relief => 1,
-        HdLayer::Drainage => 3,
-        HdLayer::Precipitation => 4,
-        HdLayer::Temperature => 5,
-        HdLayer::Biomes => 6,
-    }
+    FRIEZE.iter().position(|(_, _, v)| *v == Some(layer)).unwrap_or(0)
 }
 
 fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
@@ -795,17 +794,23 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
         painter.line_segment([egui::pos2(x0, y), egui::pos2(node_x(last_done), y)], egui::Stroke::new(2.0, COPPER));
     }
 
+    // Muted copper for NON-selectable nodes (Tectonique / Relief): pure build
+    // stages with no retained layer to view. They still fill / run (progression)
+    // but read as "technical", carry no selection ring, and take no click.
+    let muted_done = C::from_rgb(0x63, 0x4d, 0x33);
     for (i, (_, label, view_layer)) in FRIEZE.iter().enumerate() {
         let center = egui::pos2(node_x(i), y);
         let vis = states[i];
-        let selected = selected_idx == Some(i);
+        let selectable = view_layer.is_some();
+        let selected = selectable && selected_idx == Some(i);
 
         // Dimension 1/2 — the dot by completeness / running.
         match vis {
             NodeVis::Done { cached } => {
-                painter.circle_filled(center, R, COPPER);
+                painter.circle_filled(center, R, if selectable { COPPER } else { muted_done });
                 if cached {
-                    painter.circle_stroke(center, R - 2.0, egui::Stroke::new(1.5, C::from_rgb(0xE9, 0xDC, 0xC4)));
+                    let ring = if selectable { C::from_rgb(0xE9, 0xDC, 0xC4) } else { C::from_rgb(0x8a, 0x7a, 0x60) };
+                    painter.circle_stroke(center, R - 2.0, egui::Stroke::new(1.5, ring));
                 }
             }
             NodeVis::Pending => {
@@ -825,17 +830,26 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
                 } else {
                     (start, start) // not the live node (shouldn't happen)
                 };
-                stroke_arc(&painter, center, R + 2.0, a0, a1, egui::Stroke::new(2.5, COPPER_BRIGHT));
+                // Progression stays visible even on non-selectable nodes, just muted.
+                let arc = if selectable { COPPER_BRIGHT } else { muted_done };
+                stroke_arc(&painter, center, R + 2.0, a0, a1, egui::Stroke::new(2.5, arc));
             }
         }
 
-        // Dimension 3 — selection: an outer ring, overlaid on any fill/arc.
+        // Dimension 3 — selection: an outer ring (selectable nodes only).
         if selected {
             painter.circle_stroke(center, R + 4.5, egui::Stroke::new(2.0, COPPER_BRIGHT));
         }
 
-        // Label: bright if selected, else by completeness/running.
-        let lab_col = if selected {
+        // Label: non-selectable nodes read muted across every state; selectable
+        // nodes brighten on selection / running / completion.
+        let lab_col = if !selectable {
+            match vis {
+                NodeVis::Running => C::from_rgb(0x8a, 0x74, 0x58),
+                NodeVis::Done { .. } => C::from_rgb(0x74, 0x6a, 0x5a),
+                NodeVis::Pending => C::from_rgb(0x4a, 0x44, 0x3a),
+            }
+        } else if selected {
             COPPER_BRIGHT
         } else {
             match vis {
@@ -846,11 +860,16 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
         };
         painter.text(egui::pos2(node_x(i), y + 18.0), egui::Align2::CENTER_TOP, *label, egui::FontId::proportional(9.5), lab_col);
 
-        // Click a node to view its layer (only when a result exists to show).
-        if ws.current.is_some() {
+        // Click a node to view its layer — selectable nodes only (a result must
+        // exist to show). Non-selectable nodes get no click / hover / pointer.
+        if let (true, Some(layer)) = (ws.current.is_some(), *view_layer) {
             let hit = egui::Rect::from_center_size(center, egui::vec2((x1 - x0) / n as f32, 44.0));
-            if ui.interact(hit, ui.id().with(("frieze", i)), egui::Sense::click()).clicked() {
-                ws.layer = *view_layer;
+            let resp = ui.interact(hit, ui.id().with(("frieze", i)), egui::Sense::click());
+            if resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if resp.clicked() {
+                ws.layer = layer;
             }
         }
     }
