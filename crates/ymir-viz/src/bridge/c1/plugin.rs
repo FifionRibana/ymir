@@ -266,18 +266,27 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
                 bridge.state = C1RunState::Failed { error };
             }
 
-            // ── HD pipeline (step b/5) — drives `bridge.hd`. ──
+            // ── HD pipeline (step b/5 + e progress) — drives `bridge.hd`. ──
             C1Event::HdStarted { params, .. } => {
-                bridge.hd = HdState::Running { params, current: None, done: Vec::new() };
+                bridge.hd = HdState::Running { params, current: None, progress: None, done: Vec::new() };
             }
             C1Event::HdPhaseStarted { phase } => {
-                if let HdState::Running { current, .. } = &mut bridge.hd {
+                if let HdState::Running { current, progress, .. } = &mut bridge.hd {
                     *current = Some(phase);
+                    *progress = None; // reset; a bar appears only once progress arrives
+                }
+            }
+            C1Event::HdPhaseProgress { phase, done, total } => {
+                if let HdState::Running { current, progress, .. } = &mut bridge.hd {
+                    if *current == Some(phase) {
+                        *progress = Some((done, total));
+                    }
                 }
             }
             C1Event::HdPhaseDone { phase, regime, elapsed } => {
-                if let HdState::Running { current, done, .. } = &mut bridge.hd {
+                if let HdState::Running { current, progress, done, .. } = &mut bridge.hd {
                     *current = None;
+                    *progress = None;
                     done.push(HdPhaseRecord { phase, regime, elapsed });
                 }
             }
