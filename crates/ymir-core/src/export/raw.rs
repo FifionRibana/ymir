@@ -44,6 +44,44 @@ pub fn load_u8(path: &Path) -> Result<Vec<u8>, String> {
     std::fs::read(path).map_err(|e| format!("Read error: {e}"))
 }
 
+/// Write `u16` slice as little-endian bytes (no header).
+pub fn save_u16(path: &Path, data: &[u16]) -> Result<(), String> {
+    let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+    std::fs::write(path, bytes).map_err(|e| format!("Write error: {e}"))
+}
+
+/// Read `expected_len` little-endian `u16` values (errors on size mismatch).
+pub fn load_u16(path: &Path, expected_len: usize) -> Result<Vec<u16>, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("Read error: {e}"))?;
+    if bytes.len() != expected_len * 2 {
+        return Err(format!(
+            "Size mismatch: expected {} bytes, got {}",
+            expected_len * 2,
+            bytes.len()
+        ));
+    }
+    Ok(bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect())
+}
+
+/// Write `i16` slice as little-endian bytes (no header).
+pub fn save_i16(path: &Path, data: &[i16]) -> Result<(), String> {
+    let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+    std::fs::write(path, bytes).map_err(|e| format!("Write error: {e}"))
+}
+
+/// Read `expected_len` little-endian `i16` values (errors on size mismatch).
+pub fn load_i16(path: &Path, expected_len: usize) -> Result<Vec<i16>, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("Read error: {e}"))?;
+    if bytes.len() != expected_len * 2 {
+        return Err(format!(
+            "Size mismatch: expected {} bytes, got {}",
+            expected_len * 2,
+            bytes.len()
+        ));
+    }
+    Ok(bytes.chunks_exact(2).map(|c| i16::from_le_bytes([c[0], c[1]])).collect())
+}
+
 /// Write `u32` slice as little-endian bytes (no header).
 pub fn save_u32(path: &Path, data: &[u32]) -> Result<(), String> {
     let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
@@ -78,6 +116,29 @@ mod tests {
         assert_eq!(data, back, "f32 raw round-trip must be byte-exact");
         // wrong length → error, never a silent truncation.
         assert!(load_f32(&path, data.len() + 1).is_err());
+    }
+
+    #[test]
+    fn u16_round_trip_exact() {
+        let dir = std::env::temp_dir().join("ymir_raw_codec_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("rt_u16.raw");
+        let data = vec![0u16, 1, 65_535, 12_345, 40_000];
+        save_u16(&path, &data).unwrap();
+        assert_eq!(data, load_u16(&path, data.len()).unwrap());
+        // wrong length → error, never a silent truncation.
+        assert!(load_u16(&path, data.len() + 1).is_err());
+    }
+
+    #[test]
+    fn i16_round_trip_exact() {
+        let dir = std::env::temp_dir().join("ymir_raw_codec_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("rt_i16.raw");
+        let data = vec![0i16, -1, i16::MIN, i16::MAX, -12_345];
+        save_i16(&path, &data).unwrap();
+        assert_eq!(data, load_i16(&path, data.len()).unwrap());
+        assert!(load_i16(&path, data.len() + 1).is_err());
     }
 
     #[test]
