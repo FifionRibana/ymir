@@ -19,15 +19,16 @@
 //! - Fonts approximate the mock (egui defaults; Space Grotesk / IBM Plex are
 //!   not bundled).
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
+use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 use egui::Color32 as C;
 
 use crate::bridge::c1::{
-    inspect_cell, C1RunSpec, C1SolverBridge, CacheRegime, CellInspection, HdParams, HdPhase,
-    HdResult, HdState, RiverCellMap,
+    C1RunSpec, C1SolverBridge, CacheRegime, CellInspection, HdParams, HdPhase, HdResult, HdState,
+    RiverCellMap, inspect_cell,
 };
 use crate::visualization::colormap::hypsometric_bipolar;
 use ymir_core::climate::biomes::Biome;
@@ -82,7 +83,9 @@ impl HdLayer {
         match self {
             HdLayer::Relief => "Élévation hypsométrique (relief + bathymétrie), après érosion.",
             HdLayer::Drainage => "Réseau hydrographique — navigabilité des rivières et lacs.",
-            HdLayer::Precipitation => "Précipitation annuelle — bandes ITCZ / subtropicale / mid-latitude.",
+            HdLayer::Precipitation => {
+                "Précipitation annuelle — bandes ITCZ / subtropicale / mid-latitude."
+            }
             HdLayer::Temperature => "Température de surface — gradient latitudinal + lapse rate.",
             HdLayer::Biomes => "Classification de Whittaker (température × précipitation).",
         }
@@ -138,6 +141,10 @@ struct WorkspaceState {
     erosion: f32,
     channel_jitter: f32,
     dinf: bool,
+    /// Opt-in: write a v1 `.ymir` delivery container after the biome phase.
+    export_ymir: bool,
+    /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
+    export_dir: String,
     // Derived / cache.
     current: Option<Arc<HdResult>>,
     river_map: Option<RiverCellMap>,
@@ -166,6 +173,8 @@ impl Default for WorkspaceState {
             erosion: 0.5,
             channel_jitter: 0.3,
             dinf: false,
+            export_ymir: false,
+            export_dir: "exports".to_string(),
             current: None,
             river_map: None,
             texture: None,
@@ -222,7 +231,13 @@ fn seg_row(ui: &mut egui::Ui, labels: &[&str], active: usize) -> Option<usize> {
 
 /// A left/right-panel content block padded to the mock's 16 px gutter, with
 /// per-block top/bottom padding. Separators between blocks stay full-bleed.
-fn block<R>(ui: &mut egui::Ui, gutter: i8, top: i8, bottom: i8, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+fn block<R>(
+    ui: &mut egui::Ui,
+    gutter: i8,
+    top: i8,
+    bottom: i8,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
     egui::Frame::default()
         .inner_margin(egui::Margin { left: gutter, right: gutter, top, bottom })
         .show(ui, add)
@@ -236,11 +251,22 @@ fn field_label(ui: &mut egui::Ui, t: &str) {
 
 /// An expert parameter row (the mock's pattern): a label (left) + its value in
 /// copper mono (right), then a full-width slider below (no inline value).
-fn param_slider(ui: &mut egui::Ui, label: &str, v: &mut f32, range: std::ops::RangeInclusive<f32>, decimals: usize) {
+fn param_slider(
+    ui: &mut egui::Ui,
+    label: &str,
+    v: &mut f32,
+    range: std::ops::RangeInclusive<f32>,
+    decimals: usize,
+) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(label).color(C::from_rgb(0x9a, 0x9a, 0x9a)).size(11.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(egui::RichText::new(format!("{:.*}", decimals, *v)).color(COPPER_BRIGHT).monospace().size(11.0));
+            ui.label(
+                egui::RichText::new(format!("{:.*}", decimals, *v))
+                    .color(COPPER_BRIGHT)
+                    .monospace()
+                    .size(11.0),
+            );
         });
     });
     ui.add_space(2.0);
@@ -278,7 +304,14 @@ fn latitude_slider(ui: &mut egui::Ui, lat: &mut f32) {
     for s in 0..steps {
         let t = s as f32 / (steps - 1) as f32;
         let x = x0 + span * t;
-        p.rect_filled(egui::Rect::from_min_size(egui::pos2(x, track_y), egui::vec2(span / steps as f32 + 1.0, 4.0)), 0.0, grad_at(&stops, t));
+        p.rect_filled(
+            egui::Rect::from_min_size(
+                egui::pos2(x, track_y),
+                egui::vec2(span / steps as f32 + 1.0, 4.0),
+            ),
+            0.0,
+            grad_at(&stops, t),
+        );
     }
 
     // Drag / click to set.
@@ -296,10 +329,19 @@ fn latitude_slider(ui: &mut egui::Ui, lat: &mut f32) {
     p.circle_filled(tc, 6.0, COPPER);
 
     // Ticks + labels.
-    let ticks = [(0.0, "équat."), (30.0, "subtrop."), (45.0, "tempéré"), (60.0, "subpol."), (90.0, "polaire")];
+    let ticks = [
+        (0.0, "équat."),
+        (30.0, "subtrop."),
+        (45.0, "tempéré"),
+        (60.0, "subpol."),
+        (90.0, "polaire"),
+    ];
     for (deg, label) in ticks {
         let tickx = x0 + (deg / 90.0) * span;
-        p.line_segment([egui::pos2(tickx, track_y + 10.0), egui::pos2(tickx, track_y + 15.0)], egui::Stroke::new(1.0, C::from_rgb(0x3a, 0x3a, 0x3a)));
+        p.line_segment(
+            [egui::pos2(tickx, track_y + 10.0), egui::pos2(tickx, track_y + 15.0)],
+            egui::Stroke::new(1.0, C::from_rgb(0x3a, 0x3a, 0x3a)),
+        );
         let (align, lx) = if deg == 0.0 {
             (egui::Align2::LEFT_TOP, tickx)
         } else if deg == 90.0 {
@@ -307,18 +349,42 @@ fn latitude_slider(ui: &mut egui::Ui, lat: &mut f32) {
         } else {
             (egui::Align2::CENTER_TOP, tickx)
         };
-        p.text(egui::pos2(lx, track_y + 17.0), align, format!("{deg:.0}°"), egui::FontId::monospace(8.5), DIM2);
-        p.text(egui::pos2(lx, track_y + 27.0), align, label, egui::FontId::proportional(8.0), C::from_rgb(0x55, 0x55, 0x55));
+        p.text(
+            egui::pos2(lx, track_y + 17.0),
+            align,
+            format!("{deg:.0}°"),
+            egui::FontId::monospace(8.5),
+            DIM2,
+        );
+        p.text(
+            egui::pos2(lx, track_y + 27.0),
+            align,
+            label,
+            egui::FontId::proportional(8.0),
+            C::from_rgb(0x55, 0x55, 0x55),
+        );
     }
 }
 
 fn section_header(ui: &mut egui::Ui, open: &mut bool, title: &str, badge: Option<(&str, C)>) {
     ui.horizontal(|ui| {
         let arrow = if *open { "▼" } else { "▶" };
-        if ui.add(egui::Label::new(egui::RichText::new(arrow).color(COPPER).size(10.0)).sense(egui::Sense::click())).clicked() {
+        if ui
+            .add(
+                egui::Label::new(egui::RichText::new(arrow).color(COPPER).size(10.0))
+                    .sense(egui::Sense::click()),
+            )
+            .clicked()
+        {
             *open = !*open;
         }
-        if ui.add(egui::Label::new(egui::RichText::new(title).color(TEXT_BRIGHT).strong().size(12.5)).sense(egui::Sense::click())).clicked() {
+        if ui
+            .add(
+                egui::Label::new(egui::RichText::new(title).color(TEXT_BRIGHT).strong().size(12.5))
+                    .sense(egui::Sense::click()),
+            )
+            .clicked()
+        {
             *open = !*open;
         }
         if let Some((b, col)) = badge {
@@ -369,10 +435,17 @@ fn top_bar(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 ui.label(egui::RichText::new("◇").color(COPPER).size(13.0));
-                ui.label(egui::RichText::new("YMIR").color(C::from_rgb(0xD8, 0xD8, 0xD8)).strong().size(12.0));
+                ui.label(
+                    egui::RichText::new("YMIR")
+                        .color(C::from_rgb(0xD8, 0xD8, 0xD8))
+                        .strong()
+                        .size(12.0),
+                );
                 ui.add_space(14.0);
                 for m in ["Fichier", "Génération", "Couches", "Vue", "Aide"] {
-                    ui.label(egui::RichText::new(m).color(C::from_rgb(0x7d, 0x7d, 0x7d)).size(12.0));
+                    ui.label(
+                        egui::RichText::new(m).color(C::from_rgb(0x7d, 0x7d, 0x7d)).size(12.0),
+                    );
                     ui.add_space(8.0);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -387,7 +460,10 @@ fn top_bar(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState
                     ui.add_space(12.0);
                     // Stats.
                     let cells = ws.current.as_ref().map(|c| c.width * c.height).unwrap_or(0);
-                    let stat = format!("{}² px  ·  {} cellules  ·  seed {}", ws.resolution, cells, ws.seed);
+                    let stat = format!(
+                        "{}² px  ·  {} cellules  ·  seed {}",
+                        ws.resolution, cells, ws.seed
+                    );
                     ui.label(egui::RichText::new(stat).color(DIM2).monospace().size(11.0));
                     let _ = bridge;
                 });
@@ -396,7 +472,12 @@ fn top_bar(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState
 }
 
 // ── Left control panel ───────────────────────────────────────────────────
-fn left_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState, hd_running: bool) {
+fn left_panel(
+    ctx: &egui::Context,
+    bridge: &C1SolverBridge,
+    ws: &mut WorkspaceState,
+    hd_running: bool,
+) {
     egui::SidePanel::left("controls")
         .exact_width(296.0)
         .frame(egui::Frame::default().fill(PANEL).inner_margin(0))
@@ -421,9 +502,37 @@ fn left_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceSt
                         .min_size(egui::vec2(ui.available_width(), 38.0));
                     if ui.add_enabled(!hd_running, btn).clicked() {
                         let spec = C1RunSpec { seed: ws.seed, ..C1RunSpec::default() };
-                        let params = HdParams { target_size: ws.resolution, latitude_deg: ws.latitude };
+                        // `Some(dir)` = export enabled; empty path falls back to
+                        // "exports" so the checkbox alone is enough to opt in.
+                        let export_dir = if ws.export_ymir {
+                            let d = ws.export_dir.trim();
+                            Some(PathBuf::from(if d.is_empty() { "exports" } else { d }))
+                        } else {
+                            None
+                        };
+                        let params = HdParams {
+                            target_size: ws.resolution,
+                            latitude_deg: ws.latitude,
+                            export_dir,
+                        };
                         let _ = bridge.submit_hd(spec, params);
                     }
+                    ui.add_enabled_ui(!hd_running, |ui| {
+                        ui.checkbox(
+                            &mut ws.export_ymir,
+                            egui::RichText::new("Exporter .ymir").color(DIM2).size(11.0),
+                        );
+                        ui.add_enabled_ui(ws.export_ymir, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Dossier").color(DIM2).size(11.0));
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut ws.export_dir)
+                                        .hint_text("exports")
+                                        .desired_width(f32::INFINITY),
+                                );
+                            });
+                        });
+                    });
                     progress_block(ui, &bridge.hd, bridge);
                 });
 
@@ -527,7 +636,12 @@ fn left_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceSt
 }
 
 fn expert_sections(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
-    ui.label(egui::RichText::new("Ces réglages sont EXPOSÉS ; câblage moteur à suivre.").color(C::from_rgb(0x6a, 0x5a, 0x40)).size(9.5).italics());
+    ui.label(
+        egui::RichText::new("Ces réglages sont EXPOSÉS ; câblage moteur à suivre.")
+            .color(C::from_rgb(0x6a, 0x5a, 0x40))
+            .size(9.5)
+            .italics(),
+    );
     ui.add_space(4.0);
 
     let mut relief_open = ws.relief_open;
@@ -549,7 +663,11 @@ fn expert_sections(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     if ws.drainage_open {
         ui.add_space(6.0);
         param_slider(ui, "Perturbation du tracé", &mut ws.channel_jitter, 0.0..=1.0, 2);
-        ui.label(egui::RichText::new("Mode d'écoulement").color(C::from_rgb(0x9a, 0x9a, 0x9a)).size(11.0));
+        ui.label(
+            egui::RichText::new("Mode d'écoulement")
+                .color(C::from_rgb(0x9a, 0x9a, 0x9a))
+                .size(11.0),
+        );
         ui.add_space(3.0);
         let cur = if ws.dinf { 1 } else { 0 };
         if let Some(i) = seg_row(ui, &["D8", "D∞"], cur) {
@@ -564,18 +682,43 @@ fn progress_block(ui: &mut egui::Ui, hd: &HdState, _bridge: &C1SolverBridge) {
         HdState::Running { current, done, .. } => {
             ui.add_space(8.0);
             for r in done {
-                ui.label(egui::RichText::new(format!("✓ {} — {} ({:.1}s)", r.phase.label(), r.regime.label(), r.elapsed.as_secs_f32())).color(DIM).size(10.5));
+                ui.label(
+                    egui::RichText::new(format!(
+                        "✓ {} — {} ({:.1}s)",
+                        r.phase.label(),
+                        r.regime.label(),
+                        r.elapsed.as_secs_f32()
+                    ))
+                    .color(DIM)
+                    .size(10.5),
+                );
             }
             if let Some(p) = current {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label(egui::RichText::new(format!("{} …", p.label())).color(TEXT).size(11.5));
+                    ui.label(
+                        egui::RichText::new(format!("{} …", p.label())).color(TEXT).size(11.5),
+                    );
                 });
             }
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("● Interface active pendant le calcul").color(GREEN).size(10.0));
+                ui.label(
+                    egui::RichText::new("● Interface active pendant le calcul")
+                        .color(GREEN)
+                        .size(10.0),
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Label::new(egui::RichText::new("Annuler").color(C::from_rgb(0xcc, 0x77, 0x77)).size(11.0)).sense(egui::Sense::click())).clicked() {
+                    if ui
+                        .add(
+                            egui::Label::new(
+                                egui::RichText::new("Annuler")
+                                    .color(C::from_rgb(0xcc, 0x77, 0x77))
+                                    .size(11.0),
+                            )
+                            .sense(egui::Sense::click()),
+                        )
+                        .clicked()
+                    {
                         _bridge.request_cancel();
                     }
                 });
@@ -583,11 +726,23 @@ fn progress_block(ui: &mut egui::Ui, hd: &HdState, _bridge: &C1SolverBridge) {
         }
         HdState::Completed { done, total, .. } => {
             ui.add_space(8.0);
-            ui.label(egui::RichText::new(format!("⚡ Rendu complet · {} étapes · {:.1}s", done.len(), total.as_secs_f32())).color(C::from_rgb(0x7a, 0x7a, 0x7a)).size(10.5));
+            ui.label(
+                egui::RichText::new(format!(
+                    "⚡ Rendu complet · {} étapes · {:.1}s",
+                    done.len(),
+                    total.as_secs_f32()
+                ))
+                .color(C::from_rgb(0x7a, 0x7a, 0x7a))
+                .size(10.5),
+            );
         }
         HdState::Failed { error } => {
             ui.add_space(8.0);
-            ui.label(egui::RichText::new(format!("Échec : {error}")).color(C::from_rgb(0xE1, 0x78, 0x46)).size(11.0));
+            ui.label(
+                egui::RichText::new(format!("Échec : {error}"))
+                    .color(C::from_rgb(0xE1, 0x78, 0x46))
+                    .size(11.0),
+            );
         }
     }
 }
@@ -595,50 +750,83 @@ fn progress_block(ui: &mut egui::Ui, hd: &HdState, _bridge: &C1SolverBridge) {
 // ── Right inspector ──────────────────────────────────────────────────────
 fn right_panel(ctx: &egui::Context, ws: &mut WorkspaceState) {
     if !ws.inspector_open {
-        egui::SidePanel::right("inspector_closed").exact_width(34.0).frame(egui::Frame::default().fill(PANEL)).show(ctx, |ui| {
-            if ui.add(egui::Label::new(egui::RichText::new("‹\nINSPECTION").color(DIM).size(11.0)).sense(egui::Sense::click())).clicked() {
-                ws.inspector_open = true;
-            }
-        });
+        egui::SidePanel::right("inspector_closed")
+            .exact_width(34.0)
+            .frame(egui::Frame::default().fill(PANEL))
+            .show(ctx, |ui| {
+                if ui
+                    .add(
+                        egui::Label::new(
+                            egui::RichText::new("‹\nINSPECTION").color(DIM).size(11.0),
+                        )
+                        .sense(egui::Sense::click()),
+                    )
+                    .clicked()
+                {
+                    ws.inspector_open = true;
+                }
+            });
         return;
     }
-    egui::SidePanel::right("inspector").exact_width(282.0).frame(egui::Frame::default().fill(PANEL).inner_margin(0)).show(ctx, |ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(8.0, 6.0);
-        block(ui, 15, 13, 13, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Inspection de cellule").color(TEXT_BRIGHT).strong().size(12.5));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("›").on_hover_text("Replier").clicked() {
-                        ws.inspector_open = false;
-                    }
+    egui::SidePanel::right("inspector")
+        .exact_width(282.0)
+        .frame(egui::Frame::default().fill(PANEL).inner_margin(0))
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(8.0, 6.0);
+            block(ui, 15, 13, 13, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("Inspection de cellule")
+                            .color(TEXT_BRIGHT)
+                            .strong()
+                            .size(12.5),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("›").on_hover_text("Replier").clicked() {
+                            ws.inspector_open = false;
+                        }
+                    });
                 });
             });
+            ui.separator();
+            match &ws.hover {
+                Some(c) => {
+                    let c = *c;
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        block(ui, 15, 14, 14, |ui| inspection(ui, &c));
+                    });
+                }
+                None => {
+                    ui.add_space(48.0);
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            egui::RichText::new("⊹")
+                                .color(C::from_rgb(0x4a, 0x4a, 0x4a))
+                                .size(22.0),
+                        );
+                        ui.add_space(6.0);
+                        ui.label(
+                            egui::RichText::new(if ws.current.is_some() {
+                                "Survolez la carte pour inspecter\nles grandeurs d'une cellule."
+                            } else {
+                                "Générez un continent."
+                            })
+                            .color(C::from_rgb(0x7a, 0x7a, 0x7a))
+                            .size(12.0),
+                        );
+                    });
+                }
+            }
         });
-        ui.separator();
-        match &ws.hover {
-            Some(c) => {
-                let c = *c;
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    block(ui, 15, 14, 14, |ui| inspection(ui, &c));
-                });
-            }
-            None => {
-                ui.add_space(48.0);
-                ui.vertical_centered(|ui| {
-                    ui.label(egui::RichText::new("⊹").color(C::from_rgb(0x4a, 0x4a, 0x4a)).size(22.0));
-                    ui.add_space(6.0);
-                    ui.label(egui::RichText::new(if ws.current.is_some() { "Survolez la carte pour inspecter\nles grandeurs d'une cellule." } else { "Générez un continent." }).color(C::from_rgb(0x7a, 0x7a, 0x7a)).size(12.0));
-                });
-            }
-        }
-    });
 }
 
 fn kv(ui: &mut egui::Ui, k: &str, v: String) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(k).color(DIM).size(12.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(egui::RichText::new(v).color(C::from_rgb(0xe6, 0xe6, 0xe6)).monospace().size(12.0));
+            ui.label(
+                egui::RichText::new(v).color(C::from_rgb(0xe6, 0xe6, 0xe6)).monospace().size(12.0),
+            );
         });
     });
     ui.separator();
@@ -651,12 +839,22 @@ fn group_title(ui: &mut egui::Ui, t: &str) {
 
 fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
     let [br, bg, bb] = c.biome.color();
-    egui::Frame::default().fill(FIELD).stroke(egui::Stroke::new(1.0, C::from_rgb(0x2a, 0x2a, 0x2a))).inner_margin(egui::Margin::symmetric(9, 5)).corner_radius(5).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("⬛").color(C::from_rgb(br, bg, bb)).size(11.0));
-            ui.label(egui::RichText::new(format!("x {} · y {}", c.x, c.y)).color(C::from_rgb(0xbb, 0xbb, 0xbb)).monospace().size(11.0));
+    egui::Frame::default()
+        .fill(FIELD)
+        .stroke(egui::Stroke::new(1.0, C::from_rgb(0x2a, 0x2a, 0x2a)))
+        .inner_margin(egui::Margin::symmetric(9, 5))
+        .corner_radius(5)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("⬛").color(C::from_rgb(br, bg, bb)).size(11.0));
+                ui.label(
+                    egui::RichText::new(format!("x {} · y {}", c.x, c.y))
+                        .color(C::from_rgb(0xbb, 0xbb, 0xbb))
+                        .monospace()
+                        .size(11.0),
+                );
+            });
         });
-    });
 
     group_title(ui, "GÉOLOGIE");
     kv(ui, "Altitude", format!("{:+.0} m", c.altitude_m));
@@ -691,25 +889,39 @@ fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
     kv(ui, "Ruissellement", format!("{:.0} mm/an", c.runoff_mm));
 
     group_title(ui, "BIOME");
-    egui::Frame::default().fill(FIELD).stroke(egui::Stroke::new(1.0, C::from_rgb(0x2a, 0x2a, 0x2a))).inner_margin(egui::Margin::symmetric(12, 10)).corner_radius(6).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("⬛").color(C::from_rgb(br, bg, bb)).size(16.0));
-            ui.add_space(2.0);
-            ui.label(egui::RichText::new(french_biome(c.biome)).color(TEXT_BRIGHT).size(13.0));
+    egui::Frame::default()
+        .fill(FIELD)
+        .stroke(egui::Stroke::new(1.0, C::from_rgb(0x2a, 0x2a, 0x2a)))
+        .inner_margin(egui::Margin::symmetric(12, 10))
+        .corner_radius(6)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("⬛").color(C::from_rgb(br, bg, bb)).size(16.0));
+                ui.add_space(2.0);
+                ui.label(egui::RichText::new(french_biome(c.biome)).color(TEXT_BRIGHT).size(13.0));
+            });
         });
-    });
 }
 
 // ── Central: frieze + map ────────────────────────────────────────────────
 fn central_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState) {
-    egui::CentralPanel::default().frame(egui::Frame::default().fill(C::from_rgb(0x0f, 0x0f, 0x0f)).inner_margin(0)).show(ctx, |ui| {
-        // Pipeline frieze — a top strip (#161616) matching the mock.
-        egui::TopBottomPanel::top("frieze_strip")
-            .frame(egui::Frame::default().fill(PANEL2).inner_margin(egui::Margin { left: 16, right: 16, top: 11, bottom: 14 }))
-            .show_inside(ui, |ui| frieze(ui, &bridge.hd, ws));
-        // Map viewport (#0A0A0A).
-        egui::CentralPanel::default().frame(egui::Frame::default().fill(VIEWPORT).inner_margin(0)).show_inside(ui, |ui| map(ui, ws));
-    });
+    egui::CentralPanel::default()
+        .frame(egui::Frame::default().fill(C::from_rgb(0x0f, 0x0f, 0x0f)).inner_margin(0))
+        .show(ctx, |ui| {
+            // Pipeline frieze — a top strip (#161616) matching the mock.
+            egui::TopBottomPanel::top("frieze_strip")
+                .frame(egui::Frame::default().fill(PANEL2).inner_margin(egui::Margin {
+                    left: 16,
+                    right: 16,
+                    top: 11,
+                    bottom: 14,
+                }))
+                .show_inside(ui, |ui| frieze(ui, &bridge.hd, ws));
+            // Map viewport (#0A0A0A).
+            egui::CentralPanel::default()
+                .frame(egui::Frame::default().fill(VIEWPORT).inner_margin(0))
+                .show_inside(ui, |ui| map(ui, ws));
+        });
 }
 
 /// Node state for `phase` derived from the live HD event stream (step e).
@@ -725,7 +937,11 @@ fn node_vis(hd: &HdState, has_result: bool, phase: HdPhase) -> NodeVis {
             }
         }
         HdState::Completed { done, .. } => {
-            let cached = done.iter().find(|r| r.phase == phase).map(|r| r.regime == CacheRegime::Hit).unwrap_or(false);
+            let cached = done
+                .iter()
+                .find(|r| r.phase == phase)
+                .map(|r| r.regime == CacheRegime::Hit)
+                .unwrap_or(false);
             NodeVis::Done { cached }
         }
         _ => {
@@ -752,8 +968,14 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
         ui.label(egui::RichText::new("PIPELINE").color(DIM2).size(9.5));
         if let HdState::Running { current: Some(p), progress, .. } = hd {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let pct = progress.map(|(d, t)| format!(" {}%", if t > 0 { d * 100 / t } else { 0 })).unwrap_or_default();
-                ui.label(egui::RichText::new(format!("{}{} …", p.label(), pct)).color(COPPER_BRIGHT).size(10.5));
+                let pct = progress
+                    .map(|(d, t)| format!(" {}%", if t > 0 { d * 100 / t } else { 0 }))
+                    .unwrap_or_default();
+                ui.label(
+                    egui::RichText::new(format!("{}{} …", p.label(), pct))
+                        .color(COPPER_BRIGHT)
+                        .size(10.5),
+                );
                 ui.spinner();
             });
         }
@@ -774,7 +996,8 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
     //   1. completeness  → node FILL + the copper line (persists; never retracts)
     //   2. running       → an animated PROGRESS ARC (distinct from a filled dot)
     //   3. selected      → an OUTER RING (navigation; independent of the above)
-    let states: Vec<NodeVis> = FRIEZE.iter().map(|(p, _, _)| node_vis(hd, ws.current.is_some(), *p)).collect();
+    let states: Vec<NodeVis> =
+        FRIEZE.iter().map(|(p, _, _)| node_vis(hd, ws.current.is_some(), *p)).collect();
     let (running_idx, frac) = match hd {
         HdState::Running { current, progress, .. } => (
             current.and_then(|c| FRIEZE.iter().position(|(p, _, _)| *p == c)),
@@ -789,9 +1012,15 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
 
     // Dimension 1 — completeness line: grey base + copper up to the last DONE
     // node (stays full after the build; independent of selection).
-    painter.line_segment([egui::pos2(x0, y), egui::pos2(x1, y)], egui::Stroke::new(2.0, C::from_rgb(0x2e, 0x2e, 0x2e)));
+    painter.line_segment(
+        [egui::pos2(x0, y), egui::pos2(x1, y)],
+        egui::Stroke::new(2.0, C::from_rgb(0x2e, 0x2e, 0x2e)),
+    );
     if let Some(last_done) = states.iter().rposition(|s| matches!(s, NodeVis::Done { .. })) {
-        painter.line_segment([egui::pos2(x0, y), egui::pos2(node_x(last_done), y)], egui::Stroke::new(2.0, COPPER));
+        painter.line_segment(
+            [egui::pos2(x0, y), egui::pos2(node_x(last_done), y)],
+            egui::Stroke::new(2.0, COPPER),
+        );
     }
 
     // Muted copper for NON-selectable nodes (Tectonique / Relief): pure build
@@ -809,18 +1038,30 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
             NodeVis::Done { cached } => {
                 painter.circle_filled(center, R, if selectable { COPPER } else { muted_done });
                 if cached {
-                    let ring = if selectable { C::from_rgb(0xE9, 0xDC, 0xC4) } else { C::from_rgb(0x8a, 0x7a, 0x60) };
+                    let ring = if selectable {
+                        C::from_rgb(0xE9, 0xDC, 0xC4)
+                    } else {
+                        C::from_rgb(0x8a, 0x7a, 0x60)
+                    };
                     painter.circle_stroke(center, R - 2.0, egui::Stroke::new(1.5, ring));
                 }
             }
             NodeVis::Pending => {
                 painter.circle_filled(center, R, C::from_rgb(0x20, 0x20, 0x20));
-                painter.circle_stroke(center, R, egui::Stroke::new(1.5, C::from_rgb(0x3f, 0x3f, 0x3f)));
+                painter.circle_stroke(
+                    center,
+                    R,
+                    egui::Stroke::new(1.5, C::from_rgb(0x3f, 0x3f, 0x3f)),
+                );
             }
             NodeVis::Running => {
                 // Distinct from "done": a dark disc + an animated progress ARC.
                 painter.circle_filled(center, R, dark);
-                painter.circle_stroke(center, R + 2.0, egui::Stroke::new(2.0, C::from_rgb(0x3a, 0x2e, 0x20)));
+                painter.circle_stroke(
+                    center,
+                    R + 2.0,
+                    egui::Stroke::new(2.0, C::from_rgb(0x3a, 0x2e, 0x20)),
+                );
                 let start = -std::f32::consts::FRAC_PI_2;
                 let (a0, a1) = if running_idx == Some(i) {
                     match frac {
@@ -858,7 +1099,13 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
                 NodeVis::Pending => C::from_rgb(0x5a, 0x5a, 0x5a),
             }
         };
-        painter.text(egui::pos2(node_x(i), y + 18.0), egui::Align2::CENTER_TOP, *label, egui::FontId::proportional(9.5), lab_col);
+        painter.text(
+            egui::pos2(node_x(i), y + 18.0),
+            egui::Align2::CENTER_TOP,
+            *label,
+            egui::FontId::proportional(9.5),
+            lab_col,
+        );
 
         // Click a node to view its layer — selectable nodes only (a result must
         // exist to show). Non-selectable nodes get no click / hover / pointer.
@@ -876,7 +1123,14 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
 }
 
 /// Stroke a circular arc (egui has no arc primitive) as short segments.
-fn stroke_arc(painter: &egui::Painter, center: egui::Pos2, radius: f32, a0: f32, a1: f32, stroke: egui::Stroke) {
+fn stroke_arc(
+    painter: &egui::Painter,
+    center: egui::Pos2,
+    radius: f32,
+    a0: f32,
+    a1: f32,
+    stroke: egui::Stroke,
+) {
     let steps = (((a1 - a0).abs() / 0.22).ceil() as usize).max(1);
     let mut prev = None;
     for k in 0..=steps {
@@ -918,7 +1172,10 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         // Zoom → centred uv sub-rect (pan deferred to step e).
         let z = ws.zoom.max(1.0);
         let uv_half = 0.5 / z;
-        let uv = egui::Rect::from_min_max(egui::pos2(0.5 - uv_half, 0.5 - uv_half), egui::pos2(0.5 + uv_half, 0.5 + uv_half));
+        let uv = egui::Rect::from_min_max(
+            egui::pos2(0.5 - uv_half, 0.5 - uv_half),
+            egui::pos2(0.5 + uv_half, 0.5 + uv_half),
+        );
         let resp = ui.add(
             egui::Image::new(egui::load::SizedTexture::new(handle.id(), egui::vec2(side, side)))
                 .uv(uv)
@@ -935,8 +1192,10 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         ws.hover_xy = None;
         if let Some(pos) = resp.hover_pos() {
             let rel = pos - resp.rect.min;
-            let fx = uv.min.x + (rel.x / resp.rect.width()).clamp(0.0, 0.999) * (uv.max.x - uv.min.x);
-            let fy = uv.min.y + (rel.y / resp.rect.height()).clamp(0.0, 0.999) * (uv.max.y - uv.min.y);
+            let fx =
+                uv.min.x + (rel.x / resp.rect.width()).clamp(0.0, 0.999) * (uv.max.x - uv.min.x);
+            let fy =
+                uv.min.y + (rel.y / resp.rect.height()).clamp(0.0, 0.999) * (uv.max.y - uv.min.y);
             let x = (fx * hd.width as f32) as usize;
             let y = (fy * hd.height as f32) as usize;
             let cx = x.min(hd.width - 1);
@@ -957,8 +1216,14 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             let bw = ((1.0 / hd.width as f32 / uvw) * resp.rect.width()).max(8.0);
             let bh = ((1.0 / hd.height as f32 / uvh) * resp.rect.height()).max(8.0);
             let faint = C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, 90);
-            pnt.line_segment([egui::pos2(sx, resp.rect.top()), egui::pos2(sx, resp.rect.bottom())], egui::Stroke::new(1.0, faint));
-            pnt.line_segment([egui::pos2(resp.rect.left(), sy), egui::pos2(resp.rect.right(), sy)], egui::Stroke::new(1.0, faint));
+            pnt.line_segment(
+                [egui::pos2(sx, resp.rect.top()), egui::pos2(sx, resp.rect.bottom())],
+                egui::Stroke::new(1.0, faint),
+            );
+            pnt.line_segment(
+                [egui::pos2(resp.rect.left(), sy), egui::pos2(resp.rect.right(), sy)],
+                egui::Stroke::new(1.0, faint),
+            );
             pnt.rect_stroke(
                 egui::Rect::from_center_size(egui::pos2(sx, sy), egui::vec2(bw, bh)),
                 0.0,
@@ -969,8 +1234,15 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             // Hover coord readout (top-right).
             let txt = format!("x {x}  y {y}");
             let anchor = egui::pos2(resp.rect.right() - 8.0, resp.rect.top() + 8.0);
-            let galley = ui.painter().layout_no_wrap(txt, egui::FontId::monospace(10.5), C::from_rgb(0x9a, 0x9a, 0x9a));
-            let bg = egui::Rect::from_min_size(egui::pos2(anchor.x - galley.size().x - 10.0, anchor.y), galley.size() + egui::vec2(12.0, 8.0));
+            let galley = ui.painter().layout_no_wrap(
+                txt,
+                egui::FontId::monospace(10.5),
+                C::from_rgb(0x9a, 0x9a, 0x9a),
+            );
+            let bg = egui::Rect::from_min_size(
+                egui::pos2(anchor.x - galley.size().x - 10.0, anchor.y),
+                galley.size() + egui::vec2(12.0, 8.0),
+            );
             ui.painter().rect_filled(bg, 6.0, C::from_rgba_unmultiplied(18, 18, 18, 210));
             ui.painter().galley(egui::pos2(bg.left() + 6.0, bg.top() + 4.0), galley, TEXT);
         }
@@ -1019,9 +1291,7 @@ fn legend_box(ui: &mut egui::Ui, rect: egui::Rect, layer: HdLayer) {
             (C::from_rgb(0x6E, 0xBE, 0x6E), "Tempéré", "5–20°"),
             (C::from_rgb(0xE1, 0x78, 0x46), "Chaud", ">20°"),
         ],
-        HdLayer::Biomes => (0..10)
-            .map(|i| (biome_hex(i), biome_fr(i), ""))
-            .collect(),
+        HdLayer::Biomes => (0..10).map(|i| (biome_hex(i), biome_fr(i), "")).collect(),
     };
     let title = match layer {
         HdLayer::Relief => "RELIEF — HYPSOMÉTRIE",
@@ -1037,7 +1307,13 @@ fn legend_box(ui: &mut egui::Ui, rect: egui::Rect, layer: HdLayer) {
     let bpos = egui::pos2(rect.left() + 12.0, rect.bottom() - bh - 12.0);
     let box_rect = egui::Rect::from_min_size(bpos, egui::vec2(bw, bh));
     p.rect_filled(box_rect, 8.0, C::from_rgba_unmultiplied(18, 18, 18, 220));
-    p.text(egui::pos2(bpos.x + 12.0, bpos.y + 9.0), egui::Align2::LEFT_TOP, title, egui::FontId::proportional(9.5), C::from_rgb(0x7a, 0x7a, 0x7a));
+    p.text(
+        egui::pos2(bpos.x + 12.0, bpos.y + 9.0),
+        egui::Align2::LEFT_TOP,
+        title,
+        egui::FontId::proportional(9.5),
+        C::from_rgb(0x7a, 0x7a, 0x7a),
+    );
     if layer == HdLayer::Relief {
         // Gradient scale.
         let gy = bpos.y + 26.0;
@@ -1055,19 +1331,51 @@ fn legend_box(ui: &mut egui::Ui, rect: egui::Rect, layer: HdLayer) {
             let t = s as f32 / (steps - 1) as f32;
             let col = grad_at(&stops, t);
             let x = gx0 + gw * t;
-            p.rect_filled(egui::Rect::from_min_size(egui::pos2(x, gy), egui::vec2(gw / steps as f32 + 1.0, 9.0)), 0.0, col);
+            p.rect_filled(
+                egui::Rect::from_min_size(
+                    egui::pos2(x, gy),
+                    egui::vec2(gw / steps as f32 + 1.0, 9.0),
+                ),
+                0.0,
+                col,
+            );
         }
         for (i, lbl) in ["Abysse", "Plateau", "Plaine", "Collines", "Sommets"].iter().enumerate() {
             let x = gx0 + gw * (i as f32 / 4.0);
-            p.text(egui::pos2(x, gy + 12.0), egui::Align2::LEFT_TOP, *lbl, egui::FontId::proportional(8.0), DIM);
+            p.text(
+                egui::pos2(x, gy + 12.0),
+                egui::Align2::LEFT_TOP,
+                *lbl,
+                egui::FontId::proportional(8.0),
+                DIM,
+            );
         }
     } else {
         for (i, (col, lbl, sub)) in items.iter().enumerate() {
             let ry = bpos.y + 26.0 + i as f32 * row_h;
-            p.rect_filled(egui::Rect::from_min_size(egui::pos2(bpos.x + 12.0, ry + 1.0), egui::vec2(11.0, 11.0)), 3.0, *col);
-            p.text(egui::pos2(bpos.x + 28.0, ry), egui::Align2::LEFT_TOP, *lbl, egui::FontId::proportional(11.0), C::from_rgb(0xcf, 0xcf, 0xcf));
+            p.rect_filled(
+                egui::Rect::from_min_size(
+                    egui::pos2(bpos.x + 12.0, ry + 1.0),
+                    egui::vec2(11.0, 11.0),
+                ),
+                3.0,
+                *col,
+            );
+            p.text(
+                egui::pos2(bpos.x + 28.0, ry),
+                egui::Align2::LEFT_TOP,
+                *lbl,
+                egui::FontId::proportional(11.0),
+                C::from_rgb(0xcf, 0xcf, 0xcf),
+            );
             if !sub.is_empty() {
-                p.text(egui::pos2(bpos.x + bw - 12.0, ry), egui::Align2::RIGHT_TOP, *sub, egui::FontId::monospace(9.5), C::from_rgb(0x77, 0x77, 0x77));
+                p.text(
+                    egui::pos2(bpos.x + bw - 12.0, ry),
+                    egui::Align2::RIGHT_TOP,
+                    *sub,
+                    egui::FontId::monospace(9.5),
+                    C::from_rgb(0x77, 0x77, 0x77),
+                );
             }
         }
     }
@@ -1075,13 +1383,25 @@ fn legend_box(ui: &mut egui::Ui, rect: egui::Rect, layer: HdLayer) {
 
 fn zoom_controls(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) {
     let w = 150.0;
-    let area = egui::Rect::from_min_size(egui::pos2(rect.right() - w - 12.0, rect.bottom() - 38.0), egui::vec2(w, 26.0));
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    let area = egui::Rect::from_min_size(
+        egui::pos2(rect.right() - w - 12.0, rect.bottom() - 38.0),
+        egui::vec2(w, 26.0),
+    );
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(area)
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
     child.horizontal(|ui| {
         if ui.small_button("−").clicked() {
             ws.zoom = (ws.zoom / 1.25).max(1.0);
         }
-        ui.label(egui::RichText::new(format!("{:.0}%", ws.zoom * 100.0)).monospace().color(C::from_rgb(0xbb, 0xbb, 0xbb)).size(11.0));
+        ui.label(
+            egui::RichText::new(format!("{:.0}%", ws.zoom * 100.0))
+                .monospace()
+                .color(C::from_rgb(0xbb, 0xbb, 0xbb))
+                .size(11.0),
+        );
         if ui.small_button("+").clicked() {
             ws.zoom = (ws.zoom * 1.25).min(9.0);
         }
@@ -1093,7 +1413,17 @@ fn zoom_controls(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) {
 
 // ── Helpers: colours, zones, biome names ─────────────────────────────────
 fn zone_name(l: f32) -> &'static str {
-    if l < 10.0 { "équatoriale" } else if l < 30.0 { "subtropicale" } else if l < 45.0 { "tempérée" } else if l < 60.0 { "subpolaire" } else { "polaire" }
+    if l < 10.0 {
+        "équatoriale"
+    } else if l < 30.0 {
+        "subtropicale"
+    } else if l < 45.0 {
+        "tempérée"
+    } else if l < 60.0 {
+        "subpolaire"
+    } else {
+        "polaire"
+    }
 }
 
 fn grad_at(stops: &[(f32, C)], t: f32) -> C {
@@ -1114,9 +1444,16 @@ fn grad_at(stops: &[(f32, C)], t: f32) -> C {
 
 fn biome_hex(i: usize) -> C {
     const H: [[u8; 3]; 10] = [
-        [0x1E, 0x32, 0x5A], [0xC8, 0xCD, 0xD7], [0x46, 0x6E, 0x5A], [0xC8, 0xC3, 0x6E],
-        [0x50, 0xA0, 0x50], [0x28, 0x6E, 0x46], [0xE1, 0xC8, 0x8C], [0xBE, 0xAF, 0x5A],
-        [0x78, 0xAF, 0x46], [0x14, 0x6E, 0x32],
+        [0x1E, 0x32, 0x5A],
+        [0xC8, 0xCD, 0xD7],
+        [0x46, 0x6E, 0x5A],
+        [0xC8, 0xC3, 0x6E],
+        [0x50, 0xA0, 0x50],
+        [0x28, 0x6E, 0x46],
+        [0xE1, 0xC8, 0x8C],
+        [0xBE, 0xAF, 0x5A],
+        [0x78, 0xAF, 0x46],
+        [0x14, 0x6E, 0x32],
     ];
     let c = H[i.min(9)];
     C::from_rgb(c[0], c[1], c[2])
@@ -1124,8 +1461,16 @@ fn biome_hex(i: usize) -> C {
 
 fn biome_fr(i: usize) -> &'static str {
     [
-        "Océan", "Toundra", "Taïga", "Steppe", "Forêt tempérée", "Forêt pluviale tempérée",
-        "Désert", "Savane", "Forêt tropicale saisonnière", "Forêt tropicale",
+        "Océan",
+        "Toundra",
+        "Taïga",
+        "Steppe",
+        "Forêt tempérée",
+        "Forêt pluviale tempérée",
+        "Désert",
+        "Savane",
+        "Forêt tropicale saisonnière",
+        "Forêt tropicale",
     ][i.min(9)]
 }
 
@@ -1172,10 +1517,28 @@ fn relief_color(norm: f32) -> [u8; 3] {
     [r, g, b]
 }
 fn precip_color(mm: f32) -> [u8; 3] {
-    if mm < 250.0 { [225, 200, 140] } else if mm < 500.0 { [200, 195, 110] } else if mm < 800.0 { [150, 180, 90] } else if mm < 1500.0 { [80, 150, 200] } else { [30, 90, 200] }
+    if mm < 250.0 {
+        [225, 200, 140]
+    } else if mm < 500.0 {
+        [200, 195, 110]
+    } else if mm < 800.0 {
+        [150, 180, 90]
+    } else if mm < 1500.0 {
+        [80, 150, 200]
+    } else {
+        [30, 90, 200]
+    }
 }
 fn temp_color(t: f32) -> [u8; 3] {
-    if t < -5.0 { [225, 235, 248] } else if t < 5.0 { [90, 140, 205] } else if t < 20.0 { [110, 190, 110] } else { [225, 120, 70] }
+    if t < -5.0 {
+        [225, 235, 248]
+    } else if t < 5.0 {
+        [90, 140, 205]
+    } else if t < 20.0 {
+        [110, 190, 110]
+    } else {
+        [225, 120, 70]
+    }
 }
 fn drainage_color(hd: &HdResult, river_map: &RiverCellMap, k: usize) -> [u8; 3] {
     let w = hd.width;

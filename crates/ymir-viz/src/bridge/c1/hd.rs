@@ -26,8 +26,9 @@
 //! v2 removal undid).
 
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::Sender;
@@ -36,6 +37,7 @@ use ymir_core::cache::default_cache_dir;
 use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::PrecipParams;
 use ymir_core::climate::{c1_biomes, c1_climate};
+use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::cached_product::{
@@ -44,7 +46,7 @@ use ymir_core::tectonics_c1::cached_product::{
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult};
-use ymir_core::tectonics_c1::production_upscale::EroProgress;
+use ymir_core::tectonics_c1::production_upscale::{C1_DOMAIN_KM, EroProgress};
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
@@ -55,15 +57,20 @@ use super::spec::C1RunSpec;
 /// [`C1RunSpec`]). `target_size` is the HD grid edge (2048 = production);
 /// `latitude_deg` drives the climate band (45° = the production anchor the
 /// drainage/climate tiles use).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct HdParams {
     pub target_size: usize,
     pub latitude_deg: f32,
+    /// When `Some(dir)`, after the biome phase the run writes a v1 `.ymir`
+    /// delivery container under `dir` (see [`ymir_core::export::container`]).
+    /// `None` = no export. Explicit opt-in — the pipeline NEVER auto-exports
+    /// (WP-0). The container directory is `dir/<name>.ymir/`.
+    pub export_dir: Option<PathBuf>,
 }
 
 impl Default for HdParams {
     fn default() -> Self {
-        Self { target_size: 2048, latitude_deg: 45.0 }
+        Self { target_size: 2048, latitude_deg: 45.0, export_dir: None }
     }
 }
 
@@ -205,7 +212,7 @@ fn hd_run_config(spec: &C1RunSpec) -> C1TimeLoopConfig {
 /// emits `HdFailed` and returns.
 pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel: &Arc<AtomicBool>) {
     cancel.store(false, Ordering::Relaxed);
-    let _ = tx.send(C1Event::HdStarted { spec: spec.clone(), params: *params });
+    let _ = tx.send(C1Event::HdStarted { spec: spec.clone(), params: params.clone() });
     let t_all = Instant::now();
 
     let run = hd_run_config(spec);
@@ -242,9 +249,22 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let eroded = if eroded_hit {
         for phase in [HdPhase::Tectonic, HdPhase::Relief, HdPhase::Erosion] {
             let _ = tx.send(C1Event::HdPhaseStarted { phase });
-            let _ = tx.send(C1Event::HdPhaseDone { phase, regime: CacheRegime::Hit, elapsed: Duration::ZERO });
+            let _ = tx.send(C1Event::HdPhaseDone {
+                phase,
+                regime: CacheRegime::Hit,
+                elapsed: Duration::ZERO,
+            });
         }
-        match cached_c1_eroded(&cache_dir, spec.seed, spec.grid_size, &spec.init_params, &run, &spec.closures, &ss, &upscale) {
+        match cached_c1_eroded(
+            &cache_dir,
+            spec.seed,
+            spec.grid_size,
+            &spec.init_params,
+            &run,
+            &spec.closures,
+            &ss,
+            &upscale,
+        ) {
             Ok(g) => g,
             Err(e) => {
                 let _ = tx.send(C1Event::HdFailed { error: format!("eroded: {e}") });
@@ -265,7 +285,11 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             };
             if cur.get() != Some(target) {
                 if let Some(prev) = cur.get() {
-                    let _ = tx.send(C1Event::HdPhaseDone { phase: prev, regime: CacheRegime::Miss, elapsed: started.get().elapsed() });
+                    let _ = tx.send(C1Event::HdPhaseDone {
+                        phase: prev,
+                        regime: CacheRegime::Miss,
+                        elapsed: started.get().elapsed(),
+                    });
                 }
                 let _ = tx.send(C1Event::HdPhaseStarted { phase: target });
                 cur.set(Some(target));
@@ -273,23 +297,40 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             }
             match p {
                 EroProgress::Tectonic { step, total } => {
-                    let _ = tx.send(C1Event::HdPhaseProgress { phase: HdPhase::Tectonic, done: step, total });
+                    let _ = tx.send(C1Event::HdPhaseProgress {
+                        phase: HdPhase::Tectonic,
+                        done: step,
+                        total,
+                    });
                 }
                 EroProgress::Erosion { done, total } => {
-                    let _ = tx.send(C1Event::HdPhaseProgress { phase: HdPhase::Erosion, done, total });
+                    let _ =
+                        tx.send(C1Event::HdPhaseProgress { phase: HdPhase::Erosion, done, total });
                 }
                 _ => {}
             }
         };
         let result = cached_c1_eroded_with_progress(
-            &cache_dir, spec.seed, spec.grid_size, &spec.init_params, &run, &spec.closures, &ss,
-            &upscale, &mut progress, &|| cancel.load(Ordering::Relaxed),
+            &cache_dir,
+            spec.seed,
+            spec.grid_size,
+            &spec.init_params,
+            &run,
+            &spec.closures,
+            &ss,
+            &upscale,
+            &mut progress,
+            &|| cancel.load(Ordering::Relaxed),
         );
         drop(progress);
         // Finalise the last sub-node (unless cancelled → HdFailed below).
         if result.is_ok() {
             if let Some(prev) = cur.get() {
-                let _ = tx.send(C1Event::HdPhaseDone { phase: prev, regime: CacheRegime::Miss, elapsed: started.get().elapsed() });
+                let _ = tx.send(C1Event::HdPhaseDone {
+                    phase: prev,
+                    regime: CacheRegime::Miss,
+                    elapsed: started.get().elapsed(),
+                });
             }
         }
         match result {
@@ -318,14 +359,14 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let drainage_hit = sidecar_exists("drainage", dkey.digest());
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Drainage });
     let t = Instant::now();
-    let drainage = match cached_c1_drainage(&cache_dir, &ekey, &eroded, Some((lat, &pp)), &dcfg, &ss)
-    {
-        Ok(d) => d,
-        Err(e) => {
-            let _ = tx.send(C1Event::HdFailed { error: format!("drainage: {e}") });
-            return;
-        }
-    };
+    let drainage =
+        match cached_c1_drainage(&cache_dir, &ekey, &eroded, Some((lat, &pp)), &dcfg, &ss) {
+            Ok(d) => d,
+            Err(e) => {
+                let _ = tx.send(C1Event::HdFailed { error: format!("drainage: {e}") });
+                return;
+            }
+        };
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Drainage,
         regime: if drainage_hit { CacheRegime::Hit } else { CacheRegime::Miss },
@@ -343,6 +384,16 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         elapsed: t.elapsed(),
     });
 
+    // ── Optional: write the v1 `.ymir` delivery container (WP-0). ──
+    // Explicit opt-in only (never automatic). WP-0 ships just the `height`
+    // raster; the metric-height / coastline / biome layers land in WP-1..WP-4.
+    if let Some(export_dir) = &params.export_dir {
+        if let Err(e) = export_ymir_container(spec, &ss, &eroded, export_dir) {
+            // Non-fatal: the product still ships to the UI; surface the reason.
+            let _ = tx.send(C1Event::HdFailed { error: format!("export .ymir: {e}") });
+        }
+    }
+
     // ── Done — ship the full product. ──
     let result = Arc::new(HdResult {
         width: eroded.width,
@@ -354,4 +405,54 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         biomes,
     });
     let _ = tx.send(C1Event::HdCompleted { result, elapsed: t_all.elapsed() });
+}
+
+/// Write a v1 `.ymir` delivery container for `eroded` under `root`
+/// (`root/<name>.ymir/`, the destination configured by the caller).
+///
+/// WP-0 keystone: emits the manifest + the `height` raster only. The height
+/// dump is a placeholder — the normalized eroded range is linearly mapped to
+/// `u16`, NOT true metres (that is WP-1). See the marker below.
+fn export_ymir_container(
+    spec: &C1RunSpec,
+    ss: &SteinSteinParams,
+    eroded: &GridF32,
+    root: &Path,
+) -> Result<(), String> {
+    let (w, h) = (eroded.width, eroded.height);
+
+    // WP-1: replace with c1_altitude_norm_to_metres (true metric height).
+    // For now: linear-map the eroded normalized range to the full u16 span.
+    let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+    for &v in &eroded.data {
+        lo = lo.min(v);
+        hi = hi.max(v);
+    }
+    let span = (hi - lo).max(f32::EPSILON);
+    let height_u16: Vec<u16> = eroded
+        .data
+        .iter()
+        .map(|&v| (((v - lo) / span) * u16::MAX as f32).round().clamp(0.0, u16::MAX as f32) as u16)
+        .collect();
+
+    // WP (later): a real window crop. For now window_km == tectonic_domain_km.
+    let meta = ContinentMeta {
+        name: format!("seed{}_{}", spec.seed, w),
+        seed: spec.seed,
+        grid: Grid { width: w, height: h },
+        window_km: C1_DOMAIN_KM as f64,
+        tectonic_domain_km: C1_DOMAIN_KM as f64,
+        window_offset_in_torus: [0.0, 0.0],
+        stein_stein: *ss,
+        // WP-1: real sea-level / elevation / depth in metres.
+        sea_level_m: 0.0,
+        max_elevation_m: ss.asymptotic_depth_m,
+        max_depth_m: ss.asymptotic_depth_m,
+    };
+
+    let dir = root.join(format!("{}.ymir", meta.name));
+    let mut writer = ContinentWriter::new(&dir, meta)?;
+    writer.add_raster_u16("height", &height_u16)?;
+    writer.finish()?;
+    Ok(())
 }
