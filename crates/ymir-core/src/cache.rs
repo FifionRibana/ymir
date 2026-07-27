@@ -183,6 +183,19 @@ pub fn cached<T: RawCodec>(
     key: &CacheKey,
     compute: impl FnOnce() -> T,
 ) -> Result<T, String> {
+    cached_fallible(dir, step, key, || Ok(compute()))
+}
+
+/// Like [`cached`] but `compute` is FALLIBLE (returns `Result<T, String>`); the
+/// payload is written ONLY on `Ok`. An `Err` (e.g. a cancelled build) propagates
+/// WITHOUT persisting — a partial/aborted result never pollutes the cache. HIT
+/// path identical.
+pub fn cached_fallible<T: RawCodec>(
+    dir: &Path,
+    step: &str,
+    key: &CacheKey,
+    compute: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
     let digest = key.digest();
     let stem = dir.join(format!("{step}_{digest}"));
     let sidecar_path = stem.with_extension("json");
@@ -195,8 +208,8 @@ pub fn cached<T: RawCodec>(
         return T::read_raw(&stem, &meta.shape); // HIT
     }
 
-    // MISS — compute, then persist.
-    let value = compute();
+    // MISS — compute; persist ONLY on success.
+    let value = compute()?;
     std::fs::create_dir_all(dir).map_err(|e| format!("cache dir create error: {e}"))?;
     value.write_raw(&stem)?;
     let meta = Sidecar {

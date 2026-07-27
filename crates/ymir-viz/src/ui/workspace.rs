@@ -43,8 +43,6 @@ const PANEL: C = C::from_rgb(0x1B, 0x1B, 0x1B);
 const PANEL2: C = C::from_rgb(0x16, 0x16, 0x16);
 const VIEWPORT: C = C::from_rgb(0x0A, 0x0A, 0x0A);
 const FIELD: C = C::from_rgb(0x11, 0x11, 0x11);
-const BORDER: C = C::from_rgb(0x2A, 0x2A, 0x2A);
-const BORDER2: C = C::from_rgb(0x23, 0x23, 0x23);
 const TEXT: C = C::from_rgb(0xE0, 0xE0, 0xE0);
 const TEXT_BRIGHT: C = C::from_rgb(0xEA, 0xEA, 0xEA);
 const DIM: C = C::from_rgb(0x8A, 0x8A, 0x8A);
@@ -71,13 +69,6 @@ enum HdLayer {
 }
 
 impl HdLayer {
-    const ALL: [HdLayer; 5] = [
-        HdLayer::Relief,
-        HdLayer::Drainage,
-        HdLayer::Precipitation,
-        HdLayer::Temperature,
-        HdLayer::Biomes,
-    ];
     fn label(self) -> &'static str {
         match self {
             HdLayer::Relief => "Relief",
@@ -85,13 +76,6 @@ impl HdLayer {
             HdLayer::Precipitation => "Précipitation",
             HdLayer::Temperature => "Température",
             HdLayer::Biomes => "Biomes",
-        }
-    }
-    fn frieze_label(self) -> &'static str {
-        match self {
-            HdLayer::Precipitation => "Précip.",
-            HdLayer::Temperature => "Temp.",
-            other => other.label(),
         }
     }
     fn desc(self) -> &'static str {
@@ -103,18 +87,24 @@ impl HdLayer {
             HdLayer::Biomes => "Classification de Whittaker (température × précipitation).",
         }
     }
-    /// The HD worker phase that PRODUCES this layer (step b emits these). The
-    /// Climate phase produces both Précipitation and Température.
-    fn phase(self) -> HdPhase {
-        match self {
-            HdLayer::Relief => HdPhase::Eroded,
-            HdLayer::Drainage => HdPhase::Drainage,
-            HdLayer::Precipitation => HdPhase::Climate,
-            HdLayer::Temperature => HdPhase::Climate,
-            HdLayer::Biomes => HdPhase::Biomes,
-        }
-    }
 }
+
+/// The frieze nodes (suite e): `(worker phase, short label, viewable layer)`.
+/// The layer is `Some` only when the HD product RETAINS a displayable layer for
+/// that node → clickable/selectable. `None` = a pure build-progress stage (no
+/// retained layer to view): Tectonique (coarse S̃/plate/craton, not in the HD
+/// product) and Relief (pre-erosion upscale, not retained). The Érosion node
+/// carries the Relief layer (the eroded heightmap = the final relief). Précip.
+/// and Temp. share the Climate phase.
+const FRIEZE: [(HdPhase, &str, Option<HdLayer>); 7] = [
+    (HdPhase::Tectonic, "Tectonique", None),
+    (HdPhase::Relief, "Relief", None),
+    (HdPhase::Erosion, "Érosion", Some(HdLayer::Relief)),
+    (HdPhase::Drainage, "Drainage", Some(HdLayer::Drainage)),
+    (HdPhase::Climate, "Précip.", Some(HdLayer::Precipitation)),
+    (HdPhase::Climate, "Temp.", Some(HdLayer::Temperature)),
+    (HdPhase::Biomes, "Biomes", Some(HdLayer::Biomes)),
+];
 
 /// Visual state of a frieze node, derived from the live HD event stream.
 #[derive(Clone, Copy, PartialEq)]
@@ -722,9 +712,8 @@ fn central_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut Workspac
     });
 }
 
-/// Node state for `layer` derived from the live HD event stream (step e).
-fn node_vis(hd: &HdState, has_result: bool, layer: HdLayer) -> NodeVis {
-    let phase = layer.phase();
+/// Node state for `phase` derived from the live HD event stream (step e).
+fn node_vis(hd: &HdState, has_result: bool, phase: HdPhase) -> NodeVis {
     match hd {
         HdState::Running { current, done, .. } => {
             if let Some(r) = done.iter().find(|r| r.phase == phase) {
@@ -739,8 +728,6 @@ fn node_vis(hd: &HdState, has_result: bool, layer: HdLayer) -> NodeVis {
             let cached = done.iter().find(|r| r.phase == phase).map(|r| r.regime == CacheRegime::Hit).unwrap_or(false);
             NodeVis::Done { cached }
         }
-        // Idle before the first run → pending; a Failed run keeps whatever the
-        // previous result showed (done if a result exists).
         _ => {
             if has_result {
                 NodeVis::Done { cached: false }
@@ -751,17 +738,23 @@ fn node_vis(hd: &HdState, has_result: bool, layer: HdLayer) -> NodeVis {
     }
 }
 
+/// The canonical frieze node highlighted for a viewed layer (selector mode):
+/// Relief → the "Relief" node (not Tectonique/Érosion, which share that layer).
+/// The frieze index that OWNS a layer (the selection ring lands here). Derived
+/// from the table so it always points at the selectable node carrying `layer`
+/// — notably Relief → Érosion (index 2), not the non-selectable Relief node.
+fn canonical_node(layer: HdLayer) -> usize {
+    FRIEZE.iter().position(|(_, _, v)| *v == Some(layer)).unwrap_or(0)
+}
+
 fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("PIPELINE").color(DIM2).size(9.5));
-        if matches!(hd, HdState::Running { .. }) {
+        if let HdState::Running { current: Some(p), progress, .. } = hd {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if let HdState::Running { current, .. } = hd {
-                    if let Some(p) = current {
-                        ui.label(egui::RichText::new(format!("{} …", p.label())).color(COPPER_BRIGHT).size(10.5));
-                        ui.spinner();
-                    }
-                }
+                let pct = progress.map(|(d, t)| format!(" {}%", if t > 0 { d * 100 / t } else { 0 })).unwrap_or_default();
+                ui.label(egui::RichText::new(format!("{}{} …", p.label(), pct)).color(COPPER_BRIGHT).size(10.5));
+                ui.spinner();
             });
         }
     });
@@ -769,73 +762,130 @@ fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
     let full = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(egui::vec2(full, 44.0), egui::Sense::hover());
     let painter = ui.painter_at(rect);
-    let n = HdLayer::ALL.len();
+    let n = FRIEZE.len();
     let margin = 30.0;
     let y = rect.top() + 12.0;
     let x0 = rect.left() + margin;
     let x1 = rect.right() - margin;
-    let time = ui.ctx().input(|i| i.time);
-    let has = ws.current.is_some() || matches!(hd, HdState::Running { .. });
-    let selecting = matches!(hd, HdState::Completed { .. } | HdState::Idle) && ws.current.is_some();
+    let node_x = |i: usize| x0 + (x1 - x0) * (i as f32 / (n - 1) as f32);
+    let time = ui.ctx().input(|i| i.time) as f32;
 
-    // Per-node visual state.
-    let states: Vec<NodeVis> = HdLayer::ALL.iter().map(|&l| node_vis(hd, ws.current.is_some(), l)).collect();
-
-    // Base line.
-    painter.line_segment([egui::pos2(x0, y), egui::pos2(x1, y)], egui::Stroke::new(2.0, C::from_rgb(0x2e, 0x2e, 0x2e)));
-    // Fill: to the rightmost running/done node while generating; to the selected
-    // node in selector mode.
-    let frontier = if selecting {
-        HdLayer::ALL.iter().position(|&l| l == ws.layer).unwrap_or(0)
-    } else {
-        states
-            .iter()
-            .rposition(|s| !matches!(s, NodeVis::Pending))
-            .unwrap_or(0)
+    // Three ORTHOGONAL states, each on its own visual dimension (they overlay):
+    //   1. completeness  → node FILL + the copper line (persists; never retracts)
+    //   2. running       → an animated PROGRESS ARC (distinct from a filled dot)
+    //   3. selected      → an OUTER RING (navigation; independent of the above)
+    let states: Vec<NodeVis> = FRIEZE.iter().map(|(p, _, _)| node_vis(hd, ws.current.is_some(), *p)).collect();
+    let (running_idx, frac) = match hd {
+        HdState::Running { current, progress, .. } => (
+            current.and_then(|c| FRIEZE.iter().position(|(p, _, _)| *p == c)),
+            progress.map(|(d, t)| if t > 0 { d as f32 / t as f32 } else { 0.0 }),
+        ),
+        _ => (None, None),
     };
-    if has {
-        let fx = x0 + (x1 - x0) * (frontier as f32 / (n - 1) as f32);
-        painter.line_segment([egui::pos2(x0, y), egui::pos2(fx, y)], egui::Stroke::new(2.0, COPPER_BRIGHT));
+    let selected_idx = ws.current.is_some().then(|| canonical_node(ws.layer));
+
+    const R: f32 = 6.0;
+    let dark = C::from_rgb(0x1a, 0x1a, 0x1a);
+
+    // Dimension 1 — completeness line: grey base + copper up to the last DONE
+    // node (stays full after the build; independent of selection).
+    painter.line_segment([egui::pos2(x0, y), egui::pos2(x1, y)], egui::Stroke::new(2.0, C::from_rgb(0x2e, 0x2e, 0x2e)));
+    if let Some(last_done) = states.iter().rposition(|s| matches!(s, NodeVis::Done { .. })) {
+        painter.line_segment([egui::pos2(x0, y), egui::pos2(node_x(last_done), y)], egui::Stroke::new(2.0, COPPER));
     }
 
-    for (i, &layer) in HdLayer::ALL.iter().enumerate() {
-        let cx = x0 + (x1 - x0) * (i as f32 / (n - 1) as f32);
-        let center = egui::pos2(cx, y);
+    // Muted copper for NON-selectable nodes (Tectonique / Relief): pure build
+    // stages with no retained layer to view. They still fill / run (progression)
+    // but read as "technical", carry no selection ring, and take no click.
+    let muted_done = C::from_rgb(0x63, 0x4d, 0x33);
+    for (i, (_, label, view_layer)) in FRIEZE.iter().enumerate() {
+        let center = egui::pos2(node_x(i), y);
         let vis = states[i];
-        let selected = selecting && layer == ws.layer;
-        let (radius, col) = match vis {
-            NodeVis::Running => (7.5, COPPER_BRIGHT),
-            NodeVis::Done { .. } if selected => (7.5, COPPER_BRIGHT),
-            NodeVis::Done { .. } => (5.5, COPPER),
-            NodeVis::Pending => (5.5, C::from_rgb(0x3f, 0x3f, 0x3f)),
-        };
-        // Halo: animated pulse while running, static glow when selected.
-        if matches!(vis, NodeVis::Running) {
-            let pulse = (time as f32 * 4.0).sin() * 0.5 + 0.5;
-            let a = (110.0 * (1.0 - pulse)) as u8;
-            painter.circle_filled(center, radius + 3.0 + pulse * 5.0, C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, a));
+        let selectable = view_layer.is_some();
+        let selected = selectable && selected_idx == Some(i);
+
+        // Dimension 1/2 — the dot by completeness / running.
+        match vis {
+            NodeVis::Done { cached } => {
+                painter.circle_filled(center, R, if selectable { COPPER } else { muted_done });
+                if cached {
+                    let ring = if selectable { C::from_rgb(0xE9, 0xDC, 0xC4) } else { C::from_rgb(0x8a, 0x7a, 0x60) };
+                    painter.circle_stroke(center, R - 2.0, egui::Stroke::new(1.5, ring));
+                }
+            }
+            NodeVis::Pending => {
+                painter.circle_filled(center, R, C::from_rgb(0x20, 0x20, 0x20));
+                painter.circle_stroke(center, R, egui::Stroke::new(1.5, C::from_rgb(0x3f, 0x3f, 0x3f)));
+            }
+            NodeVis::Running => {
+                // Distinct from "done": a dark disc + an animated progress ARC.
+                painter.circle_filled(center, R, dark);
+                painter.circle_stroke(center, R + 2.0, egui::Stroke::new(2.0, C::from_rgb(0x3a, 0x2e, 0x20)));
+                let start = -std::f32::consts::FRAC_PI_2;
+                let (a0, a1) = if running_idx == Some(i) {
+                    match frac {
+                        Some(f) => (start, start + f.clamp(0.0, 1.0) * std::f32::consts::TAU),
+                        None => (time * 2.4, time * 2.4 + 1.8), // waiter: spinning arc
+                    }
+                } else {
+                    (start, start) // not the live node (shouldn't happen)
+                };
+                // Progression stays visible even on non-selectable nodes, just muted.
+                let arc = if selectable { COPPER_BRIGHT } else { muted_done };
+                stroke_arc(&painter, center, R + 2.0, a0, a1, egui::Stroke::new(2.5, arc));
+            }
+        }
+
+        // Dimension 3 — selection: an outer ring (selectable nodes only).
+        if selected {
+            painter.circle_stroke(center, R + 4.5, egui::Stroke::new(2.0, COPPER_BRIGHT));
+        }
+
+        // Label: non-selectable nodes read muted across every state; selectable
+        // nodes brighten on selection / running / completion.
+        let lab_col = if !selectable {
+            match vis {
+                NodeVis::Running => C::from_rgb(0x8a, 0x74, 0x58),
+                NodeVis::Done { .. } => C::from_rgb(0x74, 0x6a, 0x5a),
+                NodeVis::Pending => C::from_rgb(0x4a, 0x44, 0x3a),
+            }
         } else if selected {
-            painter.circle_filled(center, radius + 3.0, C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, 55));
-        }
-        painter.circle_filled(center, radius, col);
-        // Cache indicator: a bright inner ring on a done-from-cache node.
-        if matches!(vis, NodeVis::Done { cached: true }) {
-            painter.circle_stroke(center, radius - 1.5, egui::Stroke::new(1.5, C::from_rgb(0xE9, 0xDC, 0xC4)));
-        }
-        let lab_col = match vis {
-            NodeVis::Running => COPPER_BRIGHT,
-            NodeVis::Done { .. } if selected => COPPER_BRIGHT,
-            NodeVis::Done { .. } => C::from_rgb(0xc4, 0xc4, 0xc4),
-            NodeVis::Pending => C::from_rgb(0x5a, 0x5a, 0x5a),
+            COPPER_BRIGHT
+        } else {
+            match vis {
+                NodeVis::Running => COPPER_BRIGHT,
+                NodeVis::Done { .. } => C::from_rgb(0xc4, 0xc4, 0xc4),
+                NodeVis::Pending => C::from_rgb(0x5a, 0x5a, 0x5a),
+            }
         };
-        painter.text(egui::pos2(cx, y + 16.0), egui::Align2::CENTER_TOP, layer.frieze_label(), egui::FontId::proportional(9.5), lab_col);
-        // Click a node to view its layer (only when a result exists to show).
-        if ws.current.is_some() {
+        painter.text(egui::pos2(node_x(i), y + 18.0), egui::Align2::CENTER_TOP, *label, egui::FontId::proportional(9.5), lab_col);
+
+        // Click a node to view its layer — selectable nodes only (a result must
+        // exist to show). Non-selectable nodes get no click / hover / pointer.
+        if let (true, Some(layer)) = (ws.current.is_some(), *view_layer) {
             let hit = egui::Rect::from_center_size(center, egui::vec2((x1 - x0) / n as f32, 44.0));
-            if ui.interact(hit, ui.id().with(("frieze", i)), egui::Sense::click()).clicked() {
+            let resp = ui.interact(hit, ui.id().with(("frieze", i)), egui::Sense::click());
+            if resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if resp.clicked() {
                 ws.layer = layer;
             }
         }
+    }
+}
+
+/// Stroke a circular arc (egui has no arc primitive) as short segments.
+fn stroke_arc(painter: &egui::Painter, center: egui::Pos2, radius: f32, a0: f32, a1: f32, stroke: egui::Stroke) {
+    let steps = (((a1 - a0).abs() / 0.22).ceil() as usize).max(1);
+    let mut prev = None;
+    for k in 0..=steps {
+        let t = a0 + (a1 - a0) * (k as f32 / steps as f32);
+        let p = center + egui::vec2(t.cos(), t.sin()) * radius;
+        if let Some(pp) = prev {
+            painter.line_segment([pp, p], stroke);
+        }
+        prev = Some(p);
     }
 }
 

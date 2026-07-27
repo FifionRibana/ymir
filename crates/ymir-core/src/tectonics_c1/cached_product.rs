@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::cache::{
-    ALGO_DRAINAGE, ALGO_TECTONICS, ALGO_UPSCALE_EROSION, CacheKey, RawCodec, cached,
+    ALGO_DRAINAGE, ALGO_TECTONICS, ALGO_UPSCALE_EROSION, CacheKey, RawCodec, cached, cached_fallible,
 };
 use crate::climate::c1_climate;
 use crate::climate::precipitation::PrecipParams;
@@ -40,7 +40,7 @@ use super::closures::oceanic_bathymetry::SteinSteinParams;
 use super::drainage::{C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage};
 use super::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use super::kinematics::PlateKinematics;
-use super::production_upscale::upscale_from_c1;
+use super::production_upscale::{upscale_from_c1_with_progress, EroProgress};
 use super::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 
 /// The cache key for the 64² tectonic build (`init` + `run_with_closures`).
@@ -94,12 +94,48 @@ pub fn cached_c1_eroded(
     ss: &SteinSteinParams,
     upscale_cfg: &FbmUpscaleConfig,
 ) -> Result<GridF32, String> {
+    cached_c1_eroded_with_progress(
+        cache_dir, seed, grid, init, run, closures, ss, upscale_cfg, &mut |_| {}, &|| false,
+    )
+}
+
+/// [`cached_c1_eroded`] with sub-phase progress + mid-build cancel (UI frieze
+/// split, suite e). On a MISS the compute emits `EroProgress` (Tectonic step,
+/// Relief, Erosion %, Bathymetry) via `progress` and polls `cancel()`; a
+/// cancelled build returns `Err` and is NOT written to the cache (via
+/// `cached_fallible`). On a HIT nothing runs (no progress) — the caller detects
+/// the HIT itself (sidecar) and shows the cached state. Byte-identical payload.
+#[allow(clippy::too_many_arguments)]
+pub fn cached_c1_eroded_with_progress(
+    cache_dir: &Path,
+    seed: u64,
+    grid: usize,
+    init: &Phase2InitParams,
+    run: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    ss: &SteinSteinParams,
+    upscale_cfg: &FbmUpscaleConfig,
+    progress: &mut dyn FnMut(EroProgress),
+    cancel: &dyn Fn() -> bool,
+) -> Result<GridF32, String> {
     let key = eroded_key(&tectonic_key(seed, grid, init, run, closures), ss, upscale_cfg);
-    cached(cache_dir, "eroded", &key, || {
+    cached_fallible(cache_dir, "eroded", &key, || {
         let mut state = init_c1_state_phase_2_r7(grid, seed, init);
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-        run_with_closures(&mut state, &mut kin, run, closures, |_, _| {});
-        upscale_from_c1(&state, &run.iso_config, ss, &WorldSeed::new(seed), upscale_cfg).heightmap
+        let total = run.n_steps;
+        run_with_closures(&mut state, &mut kin, run, closures, |step, _| {
+            progress(EroProgress::Tectonic { step: step + 1, total });
+        });
+        if cancel() {
+            return Err("cancelled".to_string());
+        }
+        let up = upscale_from_c1_with_progress(
+            &state, &run.iso_config, ss, &WorldSeed::new(seed), upscale_cfg, progress, cancel,
+        );
+        if cancel() {
+            return Err("cancelled".to_string());
+        }
+        Ok(up.heightmap)
     })
 }
 
@@ -231,6 +267,7 @@ pub fn cached_c1_drainage(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::production_upscale::upscale_from_c1;
     use crate::tectonics::isostasy::IsostasyConfig;
     use std::cell::Cell;
 
