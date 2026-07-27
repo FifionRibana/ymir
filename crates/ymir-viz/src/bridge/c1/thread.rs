@@ -64,8 +64,8 @@
 //! crossbeam channels + `ymir-core` types. This isolation is
 //! shared with `bridge::v2::thread`.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crossbeam_channel::{Receiver, Sender};
@@ -74,9 +74,9 @@ use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::init_r7::init_c1_state_phase_2_r7;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1TimeLoopConfig};
-use ymir_core::tectonics_v2::workflow::phase_a_common::{apply_post_tectonic, PostTectonicInput};
+use ymir_core::tectonics_c1::time_loop::{C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::workflow::PhaseAParams;
+use ymir_core::tectonics_v2::workflow::phase_a_common::{PostTectonicInput, apply_post_tectonic};
 
 use super::commands::C1Command;
 use super::events::{C1Event, C1RunKind};
@@ -87,8 +87,8 @@ use super::spec::C1RunSpec;
 mod tests {
     use super::*;
     use crossbeam_channel::bounded;
-    use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
     use std::time::Duration;
 
     /// Drain all events from `evt_rx` until a `Completed` arrives
@@ -100,10 +100,7 @@ mod tests {
         loop {
             match evt_rx.recv_timeout(Duration::from_secs(30)) {
                 Ok(e) => {
-                    let terminal = matches!(
-                        e,
-                        C1Event::Completed { .. } | C1Event::Failed { .. }
-                    );
+                    let terminal = matches!(e, C1Event::Completed { .. } | C1Event::Failed { .. });
                     events.push(e);
                     if terminal {
                         break;
@@ -117,12 +114,7 @@ mod tests {
 
     /// Spec sized for fast tests — 32² grid + small n_steps.
     fn small_spec(n_steps: usize, seed: u64) -> C1RunSpec {
-        C1RunSpec {
-            grid_size: 32,
-            seed,
-            n_steps,
-            ..C1RunSpec::default()
-        }
+        C1RunSpec { grid_size: 32, seed, n_steps, ..C1RunSpec::default() }
     }
 
     #[test]
@@ -134,9 +126,7 @@ mod tests {
 
         let n_steps = 50;
         cmd_tx
-            .send(C1Command::RunBaseline {
-                spec: small_spec(n_steps, 42),
-            })
+            .send(C1Command::RunBaseline { spec: small_spec(n_steps, 42) })
             .expect("send RunBaseline");
 
         let events = drain_run(&evt_rx);
@@ -146,18 +136,10 @@ mod tests {
         // 1..=n_steps), then Completed. Cycle-0 uses step=0; the
         // first `on_step` callback fires AFTER step 1 mutations
         // and gets `global_step = 1`. Total = n_steps + 1.
-        let started = events
-            .iter()
-            .filter(|e| matches!(e, C1Event::Started { .. }))
-            .count();
-        let step_completed = events
-            .iter()
-            .filter(|e| matches!(e, C1Event::StepCompleted { .. }))
-            .count();
-        let completed = events
-            .iter()
-            .filter(|e| matches!(e, C1Event::Completed { .. }))
-            .count();
+        let started = events.iter().filter(|e| matches!(e, C1Event::Started { .. })).count();
+        let step_completed =
+            events.iter().filter(|e| matches!(e, C1Event::StepCompleted { .. })).count();
+        let completed = events.iter().filter(|e| matches!(e, C1Event::Completed { .. })).count();
 
         assert_eq!(started, 1, "exactly one Started event");
         assert_eq!(completed, 1, "exactly one Completed event");
@@ -201,7 +183,7 @@ mod tests {
     #[test]
     fn c1_worker_runs_hd_chain_and_ships_product() {
         use super::super::hd::{HdParams, HdPhase};
-        use super::super::inspect::{inspect_cell, RiverCellMap};
+        use super::super::inspect::{RiverCellMap, inspect_cell};
 
         let (cmd_tx, cmd_rx) = bounded(4);
         let (evt_tx, evt_rx) = bounded(2);
@@ -212,7 +194,7 @@ mod tests {
         cmd_tx
             .send(C1Command::RunHd {
                 spec: small_spec(10, 42),
-                params: HdParams { target_size: target, latitude_deg: 45.0 },
+                params: HdParams { target_size: target, latitude_deg: 45.0, export_dir: None },
             })
             .expect("send RunHd");
 
@@ -236,8 +218,7 @@ mod tests {
         let started = events.iter().filter(|e| matches!(e, C1Event::HdStarted { .. })).count();
         let phase_started =
             events.iter().filter(|e| matches!(e, C1Event::HdPhaseStarted { .. })).count();
-        let phase_done =
-            events.iter().filter(|e| matches!(e, C1Event::HdPhaseDone { .. })).count();
+        let phase_done = events.iter().filter(|e| matches!(e, C1Event::HdPhaseDone { .. })).count();
         assert_eq!(started, 1, "one HdStarted");
         // Eroded is split into Tectonic/Relief/Erosion (suite e) → 6 sub-phases.
         assert_eq!(phase_started, 6, "6 HdPhaseStarted");
@@ -321,11 +302,7 @@ mod tests {
         let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
 
         let n_steps = 30;
-        cmd_tx
-            .send(C1Command::RunBaseline {
-                spec: small_spec(n_steps, 42),
-            })
-            .unwrap();
+        cmd_tx.send(C1Command::RunBaseline { spec: small_spec(n_steps, 42) }).unwrap();
 
         let events = drain_run(&evt_rx);
 
@@ -340,11 +317,7 @@ mod tests {
         assert_eq!(step_indices.len(), n_steps + 1);
         assert_eq!(step_indices[0], 0, "first StepCompleted is cycle-0 (step 0)");
         for (i, &s) in step_indices.iter().enumerate().skip(1) {
-            assert_eq!(
-                s, i,
-                "expected step {} at position {}, got {}",
-                i, i, s
-            );
+            assert_eq!(s, i, "expected step {} at position {}, got {}", i, i, s);
         }
 
         drop(cmd_tx);
@@ -371,11 +344,7 @@ mod tests {
         let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
 
         let n_steps = 200;
-        cmd_tx
-            .send(C1Command::RunBaseline {
-                spec: small_spec(n_steps, 42),
-            })
-            .unwrap();
+        cmd_tx.send(C1Command::RunBaseline { spec: small_spec(n_steps, 42) }).unwrap();
 
         let events = drain_run(&evt_rx);
 
@@ -384,22 +353,16 @@ mod tests {
         let mut total_rifting_thinning = 0_usize;
         for e in &events {
             if let C1Event::StepCompleted { snapshot } = e {
-                max_sub_cells = max_sub_cells
-                    .max(snapshot.stats.subduction.cells_consumed);
+                max_sub_cells = max_sub_cells.max(snapshot.stats.subduction.cells_consumed);
                 total_merges += snapshot.stats.accretion.merges_count;
-                total_rifting_thinning +=
-                    snapshot.stats.rifting_thinning.cells_thinned;
+                total_rifting_thinning += snapshot.stats.rifting_thinning.cells_thinned;
             }
         }
 
-        eprintln!(
-            "Stage V c1_snapshot_carries_stats (seed 42, n_steps={n_steps}, 32²):"
-        );
+        eprintln!("Stage V c1_snapshot_carries_stats (seed 42, n_steps={n_steps}, 32²):");
         eprintln!("  max subduction.cells_consumed per step = {max_sub_cells}");
         eprintln!("  cumulative accretion.merges_count      = {total_merges}");
-        eprintln!(
-            "  cumulative rifting_thinning.cells_thinned = {total_rifting_thinning}"
-        );
+        eprintln!("  cumulative rifting_thinning.cells_thinned = {total_rifting_thinning}");
 
         // Hard assertion: subduction fires (Stage A evidence
         // shows subduction is high-frequency at seed 42).
@@ -451,9 +414,7 @@ mod tests {
         let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
 
         let spec = C1RunSpec::default(); // 64, seed=42, n=300
-        cmd_tx
-            .send(C1Command::RunBaseline { spec: spec.clone() })
-            .unwrap();
+        cmd_tx.send(C1Command::RunBaseline { spec: spec.clone() }).unwrap();
 
         let events = drain_run(&evt_rx);
 
@@ -479,23 +440,14 @@ mod tests {
         };
 
         eprintln!("Stage A acceptance (seed 42, 64²×300, default closures):");
-        eprintln!(
-            "  init num_plates       = {}",
-            final_snap.num_plates
-        );
-        eprintln!(
-            "  final live_plate_count = {}",
-            final_snap.live_plate_count
-        );
+        eprintln!("  init num_plates       = {}", final_snap.num_plates);
+        eprintln!("  final live_plate_count = {}", final_snap.live_plate_count);
         eprintln!("  cumulative subduction cells = {cum_sub_cells}");
         eprintln!("  cumulative accretion merges = {cum_merges}");
         eprintln!("  cumulative rifting splits   = {cum_splits}");
         eprintln!("  cumulative thinning cells   = {cum_thinning}");
 
-        assert_eq!(
-            final_snap.num_plates, 8,
-            "Phase 2 R7 default init should produce 8 plates"
-        );
+        assert_eq!(final_snap.num_plates, 8, "Phase 2 R7 default init should produce 8 plates");
         assert!(
             final_snap.live_plate_count <= 3,
             "Pangaea collapse not achieved: final live plates = {} (expected ≤ 3 at seed 42 / 64² / 300 steps)",
@@ -530,11 +482,7 @@ mod tests {
 
         let n_cycles = 2;
         let k_cycle = 5;
-        let phase_a = PhaseAParams {
-            n_cycles,
-            k_cycle,
-            ..PhaseAParams::default()
-        };
+        let phase_a = PhaseAParams { n_cycles, k_cycle, ..PhaseAParams::default() };
         cmd_tx
             .send(C1Command::RunWorkflow {
                 spec: small_spec(0, 42), // n_steps unused in workflow
@@ -599,7 +547,7 @@ mod tests {
     /// 64² seed 42, cap=0.92 / n_cycles=12 (coupled calibration).
     #[test]
     fn workflow_mode_continent_preserved() {
-        use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+        use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
         use ymir_core::tectonics_v2::field::Field2D;
 
         let continental_fraction = |snap: &C1Snapshot| -> f64 {
@@ -621,11 +569,7 @@ mod tests {
         let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
         cmd_tx
             .send(C1Command::RunWorkflow {
-                spec: C1RunSpec {
-                    grid_size: 64,
-                    seed: 42,
-                    ..C1RunSpec::default()
-                },
+                spec: C1RunSpec { grid_size: 64, seed: 42, ..C1RunSpec::default() },
                 phase_a: PhaseAParams {
                     // Issue #141: cap=0.92 is COUPLED with n_cycles≈12
                     // (worst-case band-entry cycle 9 + margin). 5 would
@@ -645,9 +589,7 @@ mod tests {
             events
                 .iter()
                 .filter_map(|e| match e {
-                    C1Event::StepCompleted { snapshot } if snapshot.step == step => {
-                        Some(snapshot)
-                    }
+                    C1Event::StepCompleted { snapshot } if snapshot.step == step => Some(snapshot),
                     _ => None,
                 })
                 .collect()
@@ -663,10 +605,7 @@ mod tests {
         }
         for c in 1..=n_cycles {
             let pair = snaps_at(c * k_cycle);
-            assert!(
-                pair.len() >= 2,
-                "cycle {c}: expected pre+post snapshots at boundary"
-            );
+            assert!(pair.len() >= 2, "cycle {c}: expected pre+post snapshots at boundary");
             let (pre, post) = (pair[0], pair[1]);
             let m_pre = mass(&pre.s);
             let rel_dmass = (mass(&post.s) - m_pre).abs() / m_pre.max(1e-12);
@@ -684,9 +623,7 @@ mod tests {
         // band around the equilibrium (the natural coast fluctuation).
         // frac_traj = [cycle0, cycle1..n_cycles]; late = last 6 cycles.
         let late = &frac_traj[frac_traj.len().saturating_sub(6)..];
-        let (lmn, lmx) = late
-            .iter()
-            .fold((1.0_f64, 0.0_f64), |(a, b), &v| (a.min(v), b.max(v)));
+        let (lmn, lmx) = late.iter().fold((1.0_f64, 0.0_f64), |(a, b), &v| (a.min(v), b.max(v)));
         let late_spread = lmx - lmn;
         assert!(
             late_spread < 0.12,
@@ -733,17 +670,8 @@ mod tests {
 
         let n_cycles = 3;
         let k_cycle = 20;
-        let phase_a = PhaseAParams {
-            n_cycles,
-            k_cycle,
-            ..PhaseAParams::default()
-        };
-        cmd_tx
-            .send(C1Command::RunWorkflow {
-                spec: small_spec(0, 42),
-                phase_a,
-            })
-            .unwrap();
+        let phase_a = PhaseAParams { n_cycles, k_cycle, ..PhaseAParams::default() };
+        cmd_tx.send(C1Command::RunWorkflow { spec: small_spec(0, 42), phase_a }).unwrap();
 
         let events = drain_run(&evt_rx);
 
@@ -754,10 +682,7 @@ mod tests {
         let mut by_step: HashMap<usize, Vec<Vec<u8>>> = HashMap::new();
         for e in &events {
             if let C1Event::StepCompleted { snapshot } = e {
-                by_step
-                    .entry(snapshot.step)
-                    .or_default()
-                    .push(snapshot.plate_type.clone());
+                by_step.entry(snapshot.step).or_default().push(snapshot.plate_type.clone());
             }
         }
 
@@ -766,11 +691,7 @@ mod tests {
             let boundary = c * k_cycle;
             if let Some(pair) = by_step.get(&boundary) {
                 if pair.len() == 2 && pair[0] != pair[1] {
-                    let changed = pair[0]
-                        .iter()
-                        .zip(&pair[1])
-                        .filter(|(a, b)| a != b)
-                        .count();
+                    let changed = pair[0].iter().zip(&pair[1]).filter(|(a, b)| a != b).count();
                     eprintln!(
                         "Stage V reclassify: cycle {c} boundary step {boundary} flipped {changed} cells"
                     );
@@ -800,7 +721,7 @@ mod tests {
     /// makes tautological). 64² seed 42, cap=0.92 / n_cycles=12.
     #[test]
     fn acceptance_coast_coherence_phase_1_5() {
-        use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+        use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
         use ymir_core::tectonics_v2::field::Field2D;
 
         let (cmd_tx, cmd_rx) = bounded(4);
@@ -809,15 +730,8 @@ mod tests {
         let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
         cmd_tx
             .send(C1Command::RunWorkflow {
-                spec: C1RunSpec {
-                    grid_size: 64,
-                    seed: 42,
-                    ..C1RunSpec::default()
-                },
-                phase_a: PhaseAParams {
-                    n_cycles: 12,
-                    ..PhaseAParams::default()
-                },
+                spec: C1RunSpec { grid_size: 64, seed: 42, ..C1RunSpec::default() },
+                phase_a: PhaseAParams { n_cycles: 12, ..PhaseAParams::default() },
             })
             .unwrap();
         let events = drain_run(&evt_rx);
@@ -831,13 +745,11 @@ mod tests {
         let n = (final_snap.nx * final_snap.ny) as f64;
 
         // S̃-space land set (plate_type, set by reclassify).
-        let reclassify_land =
-            final_snap.plate_type.iter().filter(|&&t| t == 1).count() as f64 / n;
+        let reclassify_land = final_snap.plate_type.iter().filter(|&&t| t == 1).count() as f64 / n;
         // h-space land set (compute_isostasy land_ratio on the SAME s,
         // under the SAME c1_default mode).
         let f = Field2D::from_vec(final_snap.nx, final_snap.ny, final_snap.s.clone());
-        let isostasy_land =
-            compute_isostasy(&f, &IsostasyConfig::c1_default()).land_ratio as f64;
+        let isostasy_land = compute_isostasy(&f, &IsostasyConfig::c1_default()).land_ratio as f64;
 
         eprintln!("Phase 1.5 Stage A coast coherence (seed 42, 64², cap=0.92):");
         eprintln!("  reclassify land (S̃-space) = {reclassify_land:.4}");
@@ -875,15 +787,8 @@ mod tests {
             let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
             cmd_tx
                 .send(C1Command::RunWorkflow {
-                    spec: C1RunSpec {
-                        grid_size: 64,
-                        seed,
-                        ..C1RunSpec::default()
-                    },
-                    phase_a: PhaseAParams {
-                        n_cycles,
-                        ..PhaseAParams::default()
-                    },
+                    spec: C1RunSpec { grid_size: 64, seed, ..C1RunSpec::default() },
+                    phase_a: PhaseAParams { n_cycles, ..PhaseAParams::default() },
                 })
                 .unwrap();
             let events = drain_run(&evt_rx);
@@ -916,9 +821,8 @@ mod tests {
         }
 
         let mean = emergents.iter().map(|(_, e)| e).sum::<f64>() / emergents.len() as f64;
-        let (mn, mx) = emergents
-            .iter()
-            .fold((1.0_f64, 0.0_f64), |(a, b), &(_, e)| (a.min(e), b.max(e)));
+        let (mn, mx) =
+            emergents.iter().fold((1.0_f64, 0.0_f64), |(a, b), &(_, e)| (a.min(e), b.max(e)));
 
         eprintln!("Phase 1.5 Stage A multi-seed emergent land (64², cap=0.92, 12×20):");
         for (seed, e) in &emergents {
@@ -972,11 +876,7 @@ mod tests {
         let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
         cmd_tx
             .send(C1Command::RunWorkflow {
-                spec: C1RunSpec {
-                    grid_size: 64,
-                    seed: 42,
-                    ..C1RunSpec::default()
-                },
+                spec: C1RunSpec { grid_size: 64, seed: 42, ..C1RunSpec::default() },
                 phase_a: PhaseAParams {
                     n_cycles: 12, // Issue #141: coupled with cap=0.92.
                     ..PhaseAParams::default()
@@ -1074,13 +974,15 @@ mod tests {
         // 5-cycle "Δ=0.005" earlier was a fluke). Assert the late
         // cycles stay within a bounded band around the equilibrium.
         let late = &frac_traj[frac_traj.len().saturating_sub(6)..];
-        let (lmn, lmx) = late
-            .iter()
-            .fold((1.0_f64, 0.0_f64), |(a, b), &v| (a.min(v), b.max(v)));
+        let (lmn, lmx) = late.iter().fold((1.0_f64, 0.0_f64), |(a, b), &v| (a.min(v), b.max(v)));
         let late_spread = lmx - lmn;
 
-        eprintln!("=== Issue #141 Stage V — convergence under P95-cap (seed 42, 64², cap=0.92, 12×20) ===");
-        eprintln!("  per-step P95 drainage threshold: max WITHIN-cycle |Δ| = {max_within:.4} at steps {max_within_at:?}, max BOUNDARY |Δ| = {max_boundary:.4}");
+        eprintln!(
+            "=== Issue #141 Stage V — convergence under P95-cap (seed 42, 64², cap=0.92, 12×20) ==="
+        );
+        eprintln!(
+            "  per-step P95 drainage threshold: max WITHIN-cycle |Δ| = {max_within:.4} at steps {max_within_at:?}, max BOUNDARY |Δ| = {max_boundary:.4}"
+        );
         eprintln!("  within-cycle transitions |Δ|>0.05: {big_within} of ~{}", n_cycles * k_cycle);
         eprintln!("  continental-fraction trajectory  = {frac_traj:?}");
         eprintln!("  per-cycle max |Δmass|/mass        = {max_rel_dmass:.2e}");
@@ -1121,7 +1023,7 @@ mod tests {
     /// default cadence.
     #[test]
     fn workflow_acceptance_continent_preserved_seed_42() {
-        use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+        use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
         use ymir_core::tectonics_v2::field::Field2D;
 
         let (cmd_tx, cmd_rx) = bounded(4);
@@ -1130,11 +1032,7 @@ mod tests {
         let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
         cmd_tx
             .send(C1Command::RunWorkflow {
-                spec: C1RunSpec {
-                    grid_size: 64,
-                    seed: 42,
-                    ..C1RunSpec::default()
-                },
+                spec: C1RunSpec { grid_size: 64, seed: 42, ..C1RunSpec::default() },
                 phase_a: PhaseAParams {
                     n_cycles: 12, // Issue #141: coupled with cap=0.92.
                     ..PhaseAParams::default()
@@ -1160,11 +1058,8 @@ mod tests {
             other => panic!("expected Completed; got {other:?}"),
         };
 
-        let coast_moved = init_pt
-            .iter()
-            .zip(&final_snap.plate_type)
-            .filter(|(a, b)| a != b)
-            .count();
+        let coast_moved =
+            init_pt.iter().zip(&final_snap.plate_type).filter(|(a, b)| a != b).count();
 
         let emergent_land = {
             let f = Field2D::from_vec(final_snap.nx, final_snap.ny, final_snap.s.clone());
@@ -1211,7 +1106,7 @@ mod tests {
     #[test]
     #[ignore]
     fn workflow_continent_diagnostic() {
-        use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+        use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
         use ymir_core::tectonics_v2::field::Field2D;
 
         let nx = 64usize;
@@ -1255,16 +1150,9 @@ mod tests {
         let (evt_tx, evt_rx) = bounded(2);
         let cancel = Arc::new(AtomicBool::new(false));
         let handle = spawn_c1_thread(cmd_rx, evt_tx, cancel);
-        let spec = C1RunSpec {
-            grid_size: 64,
-            seed: 42,
-            ..C1RunSpec::default()
-        };
+        let spec = C1RunSpec { grid_size: 64, seed: 42, ..C1RunSpec::default() };
         cmd_tx
-            .send(C1Command::RunWorkflow {
-                spec: spec.clone(),
-                phase_a: PhaseAParams::default(),
-            })
+            .send(C1Command::RunWorkflow { spec: spec.clone(), phase_a: PhaseAParams::default() })
             .unwrap();
         let events = drain_run(&evt_rx);
         drop(cmd_tx);
@@ -1277,9 +1165,7 @@ mod tests {
             events
                 .iter()
                 .filter_map(|e| match e {
-                    C1Event::StepCompleted { snapshot } if snapshot.step == step => {
-                        Some(snapshot)
-                    }
+                    C1Event::StepCompleted { snapshot } if snapshot.step == step => Some(snapshot),
                     _ => None,
                 })
                 .collect()
@@ -1346,15 +1232,9 @@ mod tests {
         let (evt_tx2, evt_rx2) = bounded(2);
         let cancel2 = Arc::new(AtomicBool::new(false));
         let handle2 = spawn_c1_thread(cmd_rx2, evt_tx2, cancel2);
-        let gallery_spec = C1RunSpec {
-            grid_size: 64,
-            seed: 42,
-            n_steps: 100,
-            ..C1RunSpec::default()
-        };
-        cmd_tx2
-            .send(C1Command::RunBaseline { spec: gallery_spec })
-            .unwrap();
+        let gallery_spec =
+            C1RunSpec { grid_size: 64, seed: 42, n_steps: 100, ..C1RunSpec::default() };
+        cmd_tx2.send(C1Command::RunBaseline { spec: gallery_spec }).unwrap();
         let gevents = drain_run(&evt_rx2);
         drop(cmd_tx2);
         handle2.join().unwrap();
@@ -1384,31 +1264,20 @@ mod tests {
         let (tx, _rx) = unbounded::<C1Event>();
 
         let spec = small_spec(0, 42); // 32² for speed
-        let phase_a = PhaseAParams {
-            n_cycles: 2,
-            k_cycle: 5,
-            ..PhaseAParams::default()
-        };
+        let phase_a = PhaseAParams { n_cycles: 2, k_cycle: 5, ..PhaseAParams::default() };
 
-        let mut state = init_c1_state_phase_2_r7(
-            spec.grid_size,
-            spec.seed,
-            &spec.init_params,
-        );
+        let mut state = init_c1_state_phase_2_r7(spec.grid_size, spec.seed, &spec.init_params);
         let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
         let vel: Vec<(f64, f64)> = kinematics.velocities.clone();
 
         // Run 1 from a fresh state (base_step 0).
-        let last1 = run_workflow_cycles(
-            &mut state, &mut kinematics, &spec, &phase_a, &vel, &tx, 0,
-        );
+        let last1 = run_workflow_cycles(&mut state, &mut kinematics, &spec, &phase_a, &vel, &tx, 0);
         assert_eq!(last1, phase_a.n_cycles * phase_a.k_cycle);
         let s_after_run1: Vec<f64> = state.s.data().to_vec();
 
         // Run 2 RESUMING the same state (base_step = last1).
-        let last2 = run_workflow_cycles(
-            &mut state, &mut kinematics, &spec, &phase_a, &vel, &tx, last1,
-        );
+        let last2 =
+            run_workflow_cycles(&mut state, &mut kinematics, &spec, &phase_a, &vel, &tx, last1);
 
         // Step offset carried forward.
         assert_eq!(
@@ -1461,28 +1330,23 @@ pub fn spawn_c1_thread(
                             kind: C1RunKind::Gallery,
                         });
 
-                        let mut state = init_c1_state_phase_2_r7(
-                            spec.grid_size,
-                            spec.seed,
-                            &spec.init_params,
-                        );
-                        let mut kinematics =
-                            PlateKinematics::preset_phase_1_1(state.num_plates);
+                        let mut state =
+                            init_c1_state_phase_2_r7(spec.grid_size, spec.seed, &spec.init_params);
+                        let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
 
                         // Pre-run clone of per-plate velocities for
                         // the per-step closure (cannot access
                         // kinematics directly inside on_step due to
                         // &mut borrow by run_with_closures; see
                         // module docstring on Q-E1.3 trade-off).
-                        let initial_velocities: Vec<(f64, f64)> =
-                            kinematics.velocities.clone();
+                        let initial_velocities: Vec<(f64, f64)> = kinematics.velocities.clone();
 
                         let config = C1TimeLoopConfig {
-        // #145 5d — production runs the buoyancy fix (rigid continental crust).
-        // `false` = legacy (continents collapse), kept as the regression-guard A/B
-        // reference until the flag is removed (rigidity unconditional). See
-        // docs/reports/c1_continental_buoyancy/.
-        rigid_continental_crust: true,
+                            // #145 5d — production runs the buoyancy fix (rigid continental crust).
+                            // `false` = legacy (continents collapse), kept as the regression-guard A/B
+                            // reference until the flag is removed (rigidity unconditional). See
+                            // docs/reports/c1_continental_buoyancy/.
+                            rigid_continental_crust: true,
                             n_steps: spec.n_steps,
                             dx: 1.0 / spec.grid_size as f64,
                             dy: 1.0 / spec.grid_size as f64,
@@ -1496,14 +1360,10 @@ pub fn spawn_c1_thread(
                         };
 
                         // Cycle-0 pre-run snapshot.
-                        let cycle_0_snapshot = C1Snapshot::from_state(
-                            0,
-                            &state,
-                            &initial_velocities,
-                        );
-                        let _ = events_tx.send(C1Event::StepCompleted {
-                            snapshot: cycle_0_snapshot,
-                        });
+                        let cycle_0_snapshot =
+                            C1Snapshot::from_state(0, &state, &initial_velocities);
+                        let _ =
+                            events_tx.send(C1Event::StepCompleted { snapshot: cycle_0_snapshot });
 
                         let t0 = Instant::now();
                         let tx_for_steps = events_tx.clone();
@@ -1528,31 +1388,23 @@ pub fn spawn_c1_thread(
                                     state,
                                     &velocities_for_closure,
                                 );
-                                let _ = tx_for_steps.send(
-                                    C1Event::StepCompleted { snapshot: snap },
-                                );
+                                let _ =
+                                    tx_for_steps.send(C1Event::StepCompleted { snapshot: snap });
                             },
                         );
 
                         let elapsed = t0.elapsed();
 
-                        let final_snapshot = C1Snapshot::from_state(
-                            spec.n_steps,
-                            &state,
-                            &initial_velocities,
-                        );
-                        let _ = events_tx.send(C1Event::Completed {
-                            spec,
-                            final_snapshot,
-                            elapsed,
-                        });
+                        let final_snapshot =
+                            C1Snapshot::from_state(spec.n_steps, &state, &initial_velocities);
+                        let _ =
+                            events_tx.send(C1Event::Completed { spec, final_snapshot, elapsed });
 
                         // Retain for a future continuation (Stage E4).
                         retained = Some((state, kinematics));
                     }
                     C1Command::RunWorkflow { spec, phase_a } => {
-                        retained =
-                            Some(run_workflow(&spec, &phase_a, &events_tx));
+                        retained = Some(run_workflow(&spec, &phase_a, &events_tx));
                     }
                     C1Command::RunHd { spec, params } => {
                         // HD production chain (step b/5) — cached ymir-core
@@ -1602,13 +1454,10 @@ fn run_workflow(
 ) -> (C1State, PlateKinematics) {
     let _ = events_tx.send(C1Event::Started {
         spec: spec.clone(),
-        kind: C1RunKind::Workflow {
-            phase_a: phase_a.clone(),
-        },
+        kind: C1RunKind::Workflow { phase_a: phase_a.clone() },
     });
 
-    let mut state =
-        init_c1_state_phase_2_r7(spec.grid_size, spec.seed, &spec.init_params);
+    let mut state = init_c1_state_phase_2_r7(spec.grid_size, spec.seed, &spec.init_params);
     let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
 
     // Init-time velocities for the snapshot (mid-run kinematics
@@ -1633,13 +1482,8 @@ fn run_workflow(
     );
     let elapsed = t0.elapsed();
 
-    let final_snapshot =
-        C1Snapshot::from_state(final_step, &state, &initial_velocities);
-    let _ = events_tx.send(C1Event::Completed {
-        spec: spec.clone(),
-        final_snapshot,
-        elapsed,
-    });
+    let final_snapshot = C1Snapshot::from_state(final_step, &state, &initial_velocities);
+    let _ = events_tx.send(C1Event::Completed { spec: spec.clone(), final_snapshot, elapsed });
 
     // Hand the post-run state back so the worker can retain it for a
     // future continuation (Issue #139 Stage E4).
@@ -1679,8 +1523,8 @@ fn run_workflow_cycles(
 
     for cycle in 0..phase_a.n_cycles {
         let cfg = C1TimeLoopConfig {
-        // #145 5d — production runs the buoyancy fix (rigid continental crust).
-        rigid_continental_crust: true,
+            // #145 5d — production runs the buoyancy fix (rigid continental crust).
+            rigid_continental_crust: true,
             n_steps: k_cycle,
             dx: 1.0 / spec.grid_size as f64,
             dy: 1.0 / spec.grid_size as f64,
@@ -1693,18 +1537,12 @@ fn run_workflow_cycles(
         // captures only `events_tx`, `initial_velocities`, `cyc_base`
         // by reference / copy — none alias `state` / `kinematics`, so
         // no borrow conflict with `run_with_closures`'s `&mut` args.
-        run_with_closures(
-            state,
-            kinematics,
-            &cfg,
-            &spec.closures,
-            |s_in_c, st| {
-                let step = cyc_base + s_in_c + 1;
-                let _ = events_tx.send(C1Event::StepCompleted {
-                    snapshot: C1Snapshot::from_state(step, st, initial_velocities),
-                });
-            },
-        );
+        run_with_closures(state, kinematics, &cfg, &spec.closures, |s_in_c, st| {
+            let step = cyc_base + s_in_c + 1;
+            let _ = events_tx.send(C1Event::StepCompleted {
+                snapshot: C1Snapshot::from_state(step, st, initial_velocities),
+            });
+        });
 
         // Calibrated post-tectonic pass (split borrow: &mut s /
         // &plate_id / &mut plate_type are disjoint fields).
