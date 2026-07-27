@@ -253,12 +253,41 @@ pub fn c1_cell_area_km2(grid_size: usize) -> f32 {
 /// Pipeline (identical to the measured-robust `stage_upscale_robustness`
 /// path): `compute_isostasy(iso)` → `apply_stein_stein_bathymetry(ss)`
 /// → fixed `[0,1]` normalisation (sea→0.5) → `upscale_with_fbm`.
+/// Sub-phase progress of the HD "eroded" build (UI frieze split, suite e). The
+/// long one is `Erosion` (a real % via the `run_erosion` batch callback);
+/// `Relief`/`Bathymetry` are opaque markers; `Tectonic` is emitted by the caller
+/// (`cached_c1_eroded_with_progress`), not by the upscale itself.
+#[derive(Clone, Copy, Debug)]
+pub enum EroProgress {
+    Tectonic { step: usize, total: usize },
+    Relief,
+    Erosion { done: usize, total: usize },
+    Bathymetry,
+}
+
 pub fn upscale_from_c1(
     state: &C1State,
     iso: &IsostasyConfig,
     ss: &SteinSteinParams,
     seed: &WorldSeed,
     cfg: &FbmUpscaleConfig,
+) -> UpscaleResult {
+    upscale_from_c1_with_progress(state, iso, ss, seed, cfg, &mut |_| {}, &|| false)
+}
+
+/// [`upscale_from_c1`] with sub-phase progress emission + mid-erosion cancel.
+/// `progress` is called at each sub-phase boundary and per erosion batch;
+/// `cancel()` is polled inside erosion (returns `true` → `run_erosion` stops
+/// early, leaving a partial heightmap the caller must discard). Byte-identical
+/// to `upscale_from_c1` when `progress`/`cancel` are the no-op defaults.
+pub fn upscale_from_c1_with_progress(
+    state: &C1State,
+    iso: &IsostasyConfig,
+    ss: &SteinSteinParams,
+    seed: &WorldSeed,
+    cfg: &FbmUpscaleConfig,
+    progress: &mut dyn FnMut(EroProgress),
+    cancel: &dyn Fn() -> bool,
 ) -> UpscaleResult {
     // CONTRACT (Issue #147 #6): the upscale reads the laundered
     // ALTITUDE (isostasy + Stein-Stein, convergent r~0.88), NOT raw S̃
@@ -279,6 +308,7 @@ pub fn upscale_from_c1(
     }
     let sea_level_normalized = 0.5_f32;
 
+    progress(EroProgress::Relief);
     let mut result = upscale_with_fbm(&coarse, sea_level_normalized, seed, cfg);
 
     // #155 méso — HD hydraulic erosion (the dendritic dissection that makes
@@ -288,7 +318,10 @@ pub fn upscale_from_c1(
     // byte-identical). Slope is RECOMPUTED post-erosion (it changed);
     // `sediment` is forwarded (the rivers/lakes hook, not consumed yet).
     if let Some(ero) = &cfg.erosion {
-        let eroded = run_erosion(&result.heightmap, ero, seed, |_, _, _| true);
+        let eroded = run_erosion(&result.heightmap, ero, seed, |done, total, _| {
+            progress(EroProgress::Erosion { done, total });
+            !cancel() // return false → run_erosion stops early (cancel)
+        });
         let h = &eroded.heightmap;
         let mut slope = GridF32::new(h.width, h.height, 0.0);
         for j in 0..h.height {
@@ -308,6 +341,7 @@ pub fn upscale_from_c1(
     // below sea), `2·ALTITUDE_NORM_HALF_RANGE·depth_scale_m` (= the
     // `c1_altitude_norm_to_metres` slope).
     if let Some(bath) = &cfg.bathymetry {
+        progress(EroProgress::Bathymetry);
         let depth_per_norm = 2.0 * ALTITUDE_NORM_HALF_RANGE * ss.depth_scale_m as f32;
         let km_per_cell = c1_km_per_cell(result.heightmap.width);
         crate::terrain::bathymetry::apply_bathymetry_profile(
