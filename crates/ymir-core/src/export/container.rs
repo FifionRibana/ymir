@@ -88,6 +88,9 @@ pub struct Continent {
     pub tectonic_domain_km: f64,
     /// `0..1` window origin in the torus.
     pub window_offset_in_torus: [f64; 2],
+    /// Centre latitude (°) the climate/biome layers were DERIVED at, so a
+    /// consumer knows the placement behind `temperature`/`precipitation`/`biome`.
+    pub latitude_deg: f64,
     pub vertical_scale: VerticalScale,
     pub sea_level_m: f64,
     pub max_elevation_m: f64,
@@ -147,6 +150,8 @@ pub struct ContinentMeta {
     pub tectonic_domain_km: f64,
     /// `0..1` window origin in the torus.
     pub window_offset_in_torus: [f64; 2],
+    /// Centre latitude (°) the climate/biome layers were derived at.
+    pub latitude_deg: f64,
     /// Vertical scale is derived from these Stein-Stein params.
     pub stein_stein: SteinSteinParams,
     pub sea_level_m: f64,
@@ -171,6 +176,7 @@ impl ContinentMeta {
             km_per_cell,
             tectonic_domain_km: self.tectonic_domain_km,
             window_offset_in_torus: self.window_offset_in_torus,
+            latitude_deg: self.latitude_deg,
             vertical_scale: VerticalScale {
                 altitude_norm_half_range,
                 depth_scale_m: ss.depth_scale_m,
@@ -247,7 +253,8 @@ impl ContinentWriter {
         }
         layer.present = true;
         layer.dtype = Some(dtype.to_string());
-        layer.endianness = Some("le".to_string());
+        // Byte order is meaningless for a single-byte dtype (u8).
+        layer.endianness = if dtype == "u8" { None } else { Some("le".to_string()) };
         layer.width = Some(w);
         layer.height = Some(h);
         Ok(dir.join(&layer.file))
@@ -424,6 +431,7 @@ mod tests {
             window_km: 1024.0,
             tectonic_domain_km: 1024.0,
             window_offset_in_torus: [0.0, 0.0],
+            latitude_deg: 45.0,
             stein_stein: SteinSteinParams::default(),
             sea_level_m: 0.0,
             max_elevation_m: 5650.0,
@@ -468,6 +476,66 @@ mod tests {
                 assert_eq!(layer.height, Some(h));
             } else {
                 assert!(!layer.present, "{} must be absent", layer.id);
+            }
+        }
+    }
+
+    /// Y-C climate contract: temperature/precipitation/biome layers round-trip
+    /// with correct byte lengths, dtypes, `present` flags, metadata, and the
+    /// derivation latitude; temperature decodes within 0.01 °C.
+    #[test]
+    fn climate_layers_round_trip() {
+        let dir = std::env::temp_dir().join("ymir_container_climate_rt");
+        let _ = std::fs::remove_dir_all(&dir);
+        let (w, h) = (8usize, 8usize);
+        let n = w * h;
+
+        let mut meta = tiny_meta(w, h);
+        meta.latitude_deg = 52.5;
+        let mut writer = ContinentWriter::new(&dir, meta).unwrap();
+
+        // temperature.i16 = round(t_c * 100); pick a value needing rounding.
+        let t_c = 13.37f32;
+        let temperature = vec![(t_c * 100.0).round() as i16; n];
+        writer.add_raster_i16("temperature", &temperature).unwrap();
+        writer.add_raster_u16("precipitation", &vec![850u16; n]).unwrap();
+        writer.add_raster_u8("biome", &vec![5u8; n]).unwrap();
+        let manifest_path = writer.finish().unwrap();
+
+        let json = std::fs::read_to_string(&manifest_path).unwrap();
+        let m: Manifest = serde_json::from_str(&json).unwrap();
+
+        // Derivation latitude recorded in the continent block.
+        assert!((m.continent.latitude_deg - 52.5).abs() < 1e-9);
+
+        // Byte lengths == width*height*sizeof(dtype).
+        assert_eq!(std::fs::metadata(dir.join("temperature.i16")).unwrap().len(), (n * 2) as u64);
+        assert_eq!(std::fs::metadata(dir.join("precipitation.u16")).unwrap().len(), (n * 2) as u64);
+        assert_eq!(std::fs::metadata(dir.join("biome.u8")).unwrap().len(), n as u64);
+
+        // Temperature round-trips within 0.01 °C.
+        let back = crate::export::raw::load_i16(&dir.join("temperature.i16"), n).unwrap();
+        assert!((back[0] as f32 / 100.0 - t_c).abs() < 0.01, "temperature within 0.01 °C");
+
+        // Layer metadata: units, biome semantics, and u8 has no endianness.
+        for layer in &m.layers {
+            match layer.id.as_str() {
+                "temperature" => {
+                    assert!(layer.present);
+                    assert_eq!(layer.unit.as_deref(), Some("celsius_x100"));
+                    assert_eq!(layer.endianness.as_deref(), Some("le"));
+                }
+                "precipitation" => {
+                    assert!(layer.present);
+                    assert_eq!(layer.unit.as_deref(), Some("mm_per_year"));
+                }
+                "biome" => {
+                    assert!(layer.present);
+                    assert_eq!(layer.dtype.as_deref(), Some("u8"));
+                    assert_eq!(layer.semantics.as_deref(), Some("ymir.WhittakerBiome@v1"));
+                    assert_eq!(layer.endianness, None, "u8 carries no byte order");
+                }
+                _ => {}
             }
         }
     }

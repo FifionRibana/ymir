@@ -6,18 +6,29 @@
 //! mm/yr) per the Whittaker diagram. Thresholds anchored on the real Whittaker
 //! biome boundaries, NOT arbitrary. Derived from (T, P) → re-runnable like
 //! `c1_climate`: if the precipitation changes, the biomes recompute.
+//!
+//! # Wire contract — `ymir.WhittakerBiome@v1`
+//!
+//! [`Biome::to_u8`] / [`Biome::from_u8`] define the STABLE on-disk id used by
+//! the `.ymir` `biome.u8` raster (see [`crate::export::container`]). `0` is a
+//! reserved sentinel (Undefined, no variant); the ten Whittaker biomes are
+//! `1..=10` in the order below. These numbers are FROZEN — a consumer decodes
+//! against them, so a variant reorder must NOT change them (a test pins each).
+
+/// Reserved sentinel id in the `ymir.WhittakerBiome@v1` contract (no variant).
+pub const BIOME_UNDEFINED_U8: u8 = 0;
 
 use crate::grid::GridF32;
 
-use super::precipitation::{precip_mm_per_year, SEA_LEVEL_NORM};
+use super::precipitation::{SEA_LEVEL_NORM, precip_mm_per_year};
 
 /// Whittaker biomes (+ Ocean for sub-sea cells).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Biome {
     Ocean,
     Tundra,
-    BorealForest,        // taiga
-    TemperateGrassland,  // steppe / prairie
+    BorealForest,       // taiga
+    TemperateGrassland, // steppe / prairie
     TemperateForest,
     TemperateRainforest,
     Desert,
@@ -41,6 +52,41 @@ impl Biome {
             Biome::TropicalSeasonalForest => "tropical seasonal forest",
             Biome::TropicalRainforest => "tropical rainforest",
         }
+    }
+
+    /// Stable `ymir.WhittakerBiome@v1` id (`1..=10`; see module header). FROZEN
+    /// wire format — never renumber. `0` is reserved ([`BIOME_UNDEFINED_U8`]).
+    pub fn to_u8(self) -> u8 {
+        match self {
+            Biome::Ocean => 1,
+            Biome::Tundra => 2,
+            Biome::BorealForest => 3,
+            Biome::TemperateGrassland => 4,
+            Biome::TemperateForest => 5,
+            Biome::TemperateRainforest => 6,
+            Biome::Desert => 7,
+            Biome::Savanna => 8,
+            Biome::TropicalSeasonalForest => 9,
+            Biome::TropicalRainforest => 10,
+        }
+    }
+
+    /// Inverse of [`Biome::to_u8`]. `None` for the reserved `0` sentinel or any
+    /// unknown id (a reader must tolerate ids it does not recognise).
+    pub fn from_u8(id: u8) -> Option<Biome> {
+        Some(match id {
+            1 => Biome::Ocean,
+            2 => Biome::Tundra,
+            3 => Biome::BorealForest,
+            4 => Biome::TemperateGrassland,
+            5 => Biome::TemperateForest,
+            6 => Biome::TemperateRainforest,
+            7 => Biome::Desert,
+            8 => Biome::Savanna,
+            9 => Biome::TropicalSeasonalForest,
+            10 => Biome::TropicalRainforest,
+            _ => return None,
+        })
     }
 
     /// Categorical render colour (RGB) — distinct per biome for a readable map.
@@ -91,7 +137,11 @@ pub fn classify(t_c: f32, p_mm: f32) -> Biome {
 /// Biome map for a relief heightmap given its climate (temperature °C +
 /// precipitation in INTERNAL units). Sub-sea cells → `Ocean`. Derived & gated:
 /// recompute when T/P change. Row-major `Vec<Biome>` (length nx·ny).
-pub fn compute_biomes(heightmap: &GridF32, temperature: &GridF32, precipitation: &GridF32) -> Vec<Biome> {
+pub fn compute_biomes(
+    heightmap: &GridF32,
+    temperature: &GridF32,
+    precipitation: &GridF32,
+) -> Vec<Biome> {
     let n = heightmap.width * heightmap.height;
     (0..n)
         .map(|k| {
@@ -107,6 +157,41 @@ pub fn compute_biomes(heightmap: &GridF32, temperature: &GridF32, precipitation:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `ymir.WhittakerBiome@v1` — the on-disk ids are FROZEN. This pins every
+    /// number so a future variant reorder can't silently change the wire format,
+    /// and checks the `from_u8` round-trip + the reserved `0` sentinel.
+    #[test]
+    fn biome_u8_ids_are_frozen() {
+        let table = [
+            (Biome::Ocean, 1u8),
+            (Biome::Tundra, 2),
+            (Biome::BorealForest, 3),
+            (Biome::TemperateGrassland, 4),
+            (Biome::TemperateForest, 5),
+            (Biome::TemperateRainforest, 6),
+            (Biome::Desert, 7),
+            (Biome::Savanna, 8),
+            (Biome::TropicalSeasonalForest, 9),
+            (Biome::TropicalRainforest, 10),
+        ];
+        for (biome, id) in table {
+            assert_eq!(biome.to_u8(), id, "{biome:?} id must stay {id}");
+            assert_eq!(Biome::from_u8(id), Some(biome), "id {id} must decode to {biome:?}");
+        }
+        assert_eq!(Biome::from_u8(BIOME_UNDEFINED_U8), None, "0 is the reserved sentinel");
+        assert_eq!(Biome::from_u8(11), None, "unknown ids decode to None");
+    }
+
+    /// The full climate contract: a hand-built (T, P) classifies to the biome
+    /// whose FROZEN id the `biome.u8` raster would carry.
+    #[test]
+    fn classify_to_u8_matches_expected_id() {
+        assert_eq!(classify(12.0, 900.0).to_u8(), 5, "temperate forest → 5");
+        assert_eq!(classify(25.0, 100.0).to_u8(), 7, "hot+dry desert → 7");
+        assert_eq!(classify(-12.0, 600.0).to_u8(), 2, "cold tundra → 2");
+        assert_eq!(classify(26.0, 2500.0).to_u8(), 10, "tropical rainforest → 10");
+    }
 
     #[test]
     fn whittaker_known_cases() {
