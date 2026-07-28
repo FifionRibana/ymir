@@ -303,6 +303,20 @@ impl ContinentWriter {
         std::fs::write(&path, bytes).map_err(|e| format!("Write error: {e}"))
     }
 
+    /// Stamp a vector layer's `level_m` (e.g. coastline sea level) into the
+    /// manifest. Errors on an unknown layer id.
+    pub fn set_level_m(&mut self, id: &str, level_m: f64) -> Result<(), String> {
+        self.layer_mut(id)?.level_m = Some(level_m);
+        Ok(())
+    }
+
+    /// Stamp a vector layer's `slope_threshold_deg` (cliffs) into the manifest.
+    /// Errors on an unknown layer id.
+    pub fn set_slope_threshold_deg(&mut self, id: &str, deg: f64) -> Result<(), String> {
+        self.layer_mut(id)?.slope_threshold_deg = Some(deg);
+        Ok(())
+    }
+
     /// Serialise `manifest.json` (pretty) into the export directory.
     pub fn finish(self) -> Result<PathBuf, String> {
         let json =
