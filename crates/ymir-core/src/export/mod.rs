@@ -18,6 +18,7 @@ use crate::terrain::upscale::FbmUpscaleConfig;
 
 pub mod container; // v1 `.ymir` delivery container (manifest + layer files).
 pub mod raw; // Low-level raw binary codec (f32/u8/u32 LE), shared with crate::cache.
+pub mod vector; // GeoJSON vector layers (coastline, cliffs) for the container.
 // pub mod png;     // PNG export for compatibility and debugging
 
 // ── Metadata ─────────────────────────────────────────────────────────────
