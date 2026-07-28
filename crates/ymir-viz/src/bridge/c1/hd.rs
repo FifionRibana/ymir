@@ -38,6 +38,7 @@ use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::PrecipParams;
 use ymir_core::climate::{c1_biomes, c1_climate};
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
+use ymir_core::export::vector;
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::cached_product::{
@@ -410,9 +411,9 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
 /// Write a v1 `.ymir` delivery container for `eroded` under `root`
 /// (`root/<name>.ymir/`, the destination configured by the caller).
 ///
-/// WP-0 keystone: emits the manifest + the `height` raster only. The height
-/// dump is a placeholder — the normalized eroded range is linearly mapped to
-/// `u16`, NOT true metres (that is WP-1). See the marker below.
+/// Emits the manifest + the `height` raster (WP-0 placeholder, see the marker
+/// below) + the `coastline` and `cliffs` vector layers (Y-B). The height dump
+/// is still a normalized-range linear map, NOT true metres (that is WP-1).
 fn export_ymir_container(
     spec: &C1RunSpec,
     ss: &SteinSteinParams,
@@ -453,6 +454,20 @@ fn export_ymir_container(
     let dir = root.join(format!("{}.ymir", meta.name));
     let mut writer = ContinentWriter::new(&dir, meta)?;
     writer.add_raster_u16("height", &height_u16)?;
+
+    // ── Y-B vector layers (traced from the same eroded field). ──
+    // Coastline: sea-level isoline on the normalized field (sea = 0.5).
+    let coastline = vector::coastline_geojson(eroded);
+    writer.add_vector_file("coastline", "coastline.geojson", &coastline)?;
+    writer.set_level_m("coastline", 0.0)?;
+
+    // Cliffs: slope-threshold isoline (real angle from metric height + km/cell).
+    let cell_size_m = (C1_DOMAIN_KM / w as f32) * 1000.0;
+    let threshold_deg = vector::DEFAULT_CLIFF_THRESHOLD_DEG;
+    let cliffs = vector::cliffs_geojson(eroded, ss, cell_size_m, threshold_deg);
+    writer.add_vector_file("cliffs", "cliffs.geojson", &cliffs)?;
+    writer.set_slope_threshold_deg("cliffs", threshold_deg as f64)?;
+
     writer.finish()?;
     Ok(())
 }
