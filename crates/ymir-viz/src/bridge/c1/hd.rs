@@ -35,8 +35,8 @@ use crossbeam_channel::Sender;
 
 use ymir_core::cache::default_cache_dir;
 use ymir_core::climate::biomes::Biome;
-use ymir_core::climate::precipitation::PrecipParams;
-use ymir_core::climate::{c1_biomes, c1_climate};
+use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
+use ymir_core::climate::{ClimateResult, c1_biomes, c1_climate};
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
 use ymir_core::export::vector;
 use ymir_core::grid::GridF32;
@@ -385,11 +385,13 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         elapsed: t.elapsed(),
     });
 
-    // ── Optional: write the v1 `.ymir` delivery container (WP-0). ──
-    // Explicit opt-in only (never automatic). WP-0 ships just the `height`
-    // raster; the metric-height / coastline / biome layers land in WP-1..WP-4.
+    // ── Optional: write the v1 `.ymir` delivery container. ──
+    // Explicit opt-in only (never automatic). Ships height (placeholder) +
+    // coastline/cliffs (Y-B) + temperature/precipitation/biome (Y-C).
     if let Some(export_dir) = &params.export_dir {
-        if let Err(e) = export_ymir_container(spec, &ss, &eroded, export_dir) {
+        if let Err(e) =
+            export_ymir_container(spec, &ss, &eroded, &climate, &biomes, lat, export_dir)
+        {
             // Non-fatal: the product still ships to the UI; surface the reason.
             let _ = tx.send(C1Event::HdFailed { error: format!("export .ymir: {e}") });
         }
@@ -414,10 +416,14 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
 /// Emits the manifest + the `height` raster (WP-0 placeholder, see the marker
 /// below) + the `coastline` and `cliffs` vector layers (Y-B). The height dump
 /// is still a normalized-range linear map, NOT true metres (that is WP-1).
+#[allow(clippy::too_many_arguments)]
 fn export_ymir_container(
     spec: &C1RunSpec,
     ss: &SteinSteinParams,
     eroded: &GridF32,
+    climate: &ClimateResult,
+    biomes: &[Biome],
+    lat: f32,
     root: &Path,
 ) -> Result<(), String> {
     let (w, h) = (eroded.width, eroded.height);
@@ -444,6 +450,7 @@ fn export_ymir_container(
         window_km: C1_DOMAIN_KM as f64,
         tectonic_domain_km: C1_DOMAIN_KM as f64,
         window_offset_in_torus: [0.0, 0.0],
+        latitude_deg: lat as f64,
         stein_stein: *ss,
         // WP-1: real sea-level / elevation / depth in metres.
         sea_level_m: 0.0,
@@ -467,6 +474,26 @@ fn export_ymir_container(
     let cliffs = vector::cliffs_geojson(eroded, ss, cell_size_m, threshold_deg);
     writer.add_vector_file("cliffs", "cliffs.geojson", &cliffs)?;
     writer.set_slope_threshold_deg("cliffs", threshold_deg as f64)?;
+
+    // ── Y-C climate layers (read c1_climate / c1_biomes outputs; no re-compute). ──
+    let n = w * h;
+    let temperature: Vec<i16> = climate
+        .temperature
+        .data
+        .iter()
+        .map(|&t| (t * 100.0).round().clamp(i16::MIN as f32, i16::MAX as f32) as i16)
+        .collect();
+    let precipitation: Vec<u16> = climate
+        .precipitation
+        .data
+        .iter()
+        .map(|&p| precip_mm_per_year(p).round().clamp(0.0, u16::MAX as f32) as u16)
+        .collect();
+    let biome: Vec<u8> = biomes.iter().map(|b| b.to_u8()).collect();
+    debug_assert_eq!(biome.len(), n);
+    writer.add_raster_i16("temperature", &temperature)?;
+    writer.add_raster_u16("precipitation", &precipitation)?;
+    writer.add_raster_u8("biome", &biome)?;
 
     writer.finish()?;
     Ok(())
