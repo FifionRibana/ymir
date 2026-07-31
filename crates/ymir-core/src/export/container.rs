@@ -405,6 +405,11 @@ fn default_layers(w: usize, h: usize) -> Vec<Layer> {
     let mut precipitation = raster("precipitation", "precipitation.u16", "u16");
     precipitation.unit = Some("mm_per_year".to_string());
 
+    let mut water_class = raster("water_class", "water_class.u8", "u8");
+    water_class.endianness = None; // single-byte
+    // 0 = land, 1 = ocean (edge-connected below-sea), 2 = inland (enclosed below-sea).
+    water_class.semantics = Some("ymir.WaterClass@v1".to_string());
+
     vec![
         height,
         coastline,
@@ -416,6 +421,7 @@ fn default_layers(w: usize, h: usize) -> Vec<Layer> {
         biome,
         temperature,
         precipitation,
+        water_class,
     ]
 }
 
