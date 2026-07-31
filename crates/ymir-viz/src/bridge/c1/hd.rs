@@ -38,8 +38,9 @@ use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
 use ymir_core::climate::{ClimateResult, c1_biomes, c1_climate};
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
-use ymir_core::export::vector;
+use ymir_core::export::{hydro, vector};
 use ymir_core::grid::GridF32;
+use ymir_core::lakes::connectivity;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::cached_product::{
     cached_c1_drainage, cached_c1_eroded, cached_c1_eroded_with_progress, drainage_key, eroded_key,
@@ -390,7 +391,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // coastline/cliffs (Y-B) + temperature/precipitation/biome (Y-C).
     if let Some(export_dir) = &params.export_dir {
         if let Err(e) =
-            export_ymir_container(spec, &ss, &eroded, &climate, &biomes, lat, export_dir)
+            export_ymir_container(spec, &ss, &eroded, &climate, &biomes, &drainage, lat, export_dir)
         {
             // Non-fatal: the product still ships to the UI; surface the reason.
             let _ = tx.send(C1Event::HdFailed { error: format!("export .ymir: {e}") });
@@ -423,6 +424,7 @@ fn export_ymir_container(
     eroded: &GridF32,
     climate: &ClimateResult,
     biomes: &[Biome],
+    drainage: &C1DrainageResult,
     lat: f32,
     root: &Path,
 ) -> Result<(), String> {
@@ -494,6 +496,19 @@ fn export_ymir_container(
     writer.add_raster_i16("temperature", &temperature)?;
     writer.add_raster_u16("precipitation", &precipitation)?;
     writer.add_raster_u8("biome", &biome)?;
+
+    // ── Hydro layers (serialize existing drainage outputs; no re-compute). ──
+    writer.add_raster_u32("lake_mask", &drainage.lake_map)?;
+    writer.add_raster_f32("flow_accumulation", &drainage.flow.accumulation.data)?;
+    let rivers = hydro::rivers_json(drainage);
+    writer.add_vector_file("rivers", "rivers.json", &rivers)?;
+    let lakes = hydro::lakes_json(drainage);
+    writer.add_vector_file("lakes", "lakes.json", &lakes)?;
+
+    // water_class: reuse the SAME sea level the coastline trace uses (no second
+    // constant) — 0 land, 1 ocean (edge-connected), 2 inland (enclosed below-sea).
+    let water = connectivity::water_class(eroded, vector::SEA_LEVEL_NORM);
+    writer.add_raster_u8("water_class", &water)?;
 
     writer.finish()?;
     Ok(())
