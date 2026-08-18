@@ -42,7 +42,7 @@ use super::drainage::C1_SEA_LEVEL_NORM;
 use super::drainage::{C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage_windowed};
 use super::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use super::kinematics::PlateKinematics;
-use super::land_topology::{LandTopology, land_topology};
+use super::land_topology::{IslandCriteria, LandTopology, is_island_fit, land_topology};
 use super::production_upscale::{
     C1_DOMAIN_KM, EroProgress, c1_coarse_normalized_altitude, c1_land_centroid_normalized,
     upscale_from_c1_with_progress,
@@ -213,6 +213,65 @@ pub fn c1_coarse_land_report(
         centroid: c1_land_centroid_normalized(&coarse),
         topology: land_topology(&coarse, C1_SEA_LEVEL_NORM),
     }
+}
+
+/// A tectonic configuration whose largest landmass passes [`is_island_fit`].
+#[derive(Debug, Clone, Copy)]
+pub struct IslandHit {
+    pub seed: u64,
+    pub num_plates: usize,
+    pub seed_cluster_count: usize,
+    pub topology: LandTopology,
+    pub centroid: [f64; 2],
+}
+
+/// Seed/plate search (M1 #190) — the tool that closes the geometric budget.
+/// Scans `plate_counts × cluster_counts × seeds` and returns the FIRST config
+/// whose largest landmass does not wrap the torus and fits the export window
+/// with an ocean margin (via [`is_island_fit`]). Reuses [`c1_coarse_land_report`]
+/// (coarse only — cheap vs HD erosion), so the search runs one tectonic pass per
+/// candidate. Deterministic: the scan order is exactly the input order.
+#[allow(clippy::too_many_arguments)]
+pub fn find_island_config(
+    grid: usize,
+    base_init: &Phase2InitParams,
+    run: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    ss: &SteinSteinParams,
+    target_land_fraction: Option<f32>,
+    plate_counts: &[usize],
+    cluster_counts: &[usize],
+    seeds: &[u64],
+    criteria: &IslandCriteria,
+) -> Option<IslandHit> {
+    for &num_plates in plate_counts {
+        for &seed_cluster_count in cluster_counts {
+            let mut init = base_init.clone();
+            init.num_plates = num_plates;
+            init.cluster.seed_cluster_count = seed_cluster_count;
+            for &seed in seeds {
+                let report = c1_coarse_land_report(
+                    seed,
+                    grid,
+                    &init,
+                    run,
+                    closures,
+                    ss,
+                    target_land_fraction,
+                );
+                if is_island_fit(&report.topology, criteria) {
+                    return Some(IslandHit {
+                        seed,
+                        num_plates,
+                        seed_cluster_count,
+                        topology: report.topology,
+                        centroid: report.centroid,
+                    });
+                }
+            }
+        }
+    }
+    None
 }
 
 // ── Drainage (composite) cache ─────────────────────────────────────────────
@@ -407,6 +466,119 @@ mod tests {
             SteinSteinParams::default(),
             FbmUpscaleConfig::c1_hd_production(128),
         )
+    }
+
+    /// Manual island-seed search at production resolution (M1 #190). NOT a unit
+    /// test — it runs a real coarse-tectonic scan (minutes) and PRINTS the first
+    /// config whose largest landmass fits a 328 km window with margin. Run it to
+    /// pick a shipping (num_plates, seed_cluster_count, seed):
+    ///   cargo test -p ymir-core --lib search_island_seed_report -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn search_island_seed_report() {
+        let grid = 64usize;
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / grid as f64,
+            dy: 1.0 / grid as f64,
+            iso_config: IsostasyConfig::c1_default(),
+            drainage_max_distance: 30,
+        };
+        let init = Phase2InitParams::default();
+        let clo = C1Closures::default();
+        let ss = SteinSteinParams::default();
+        let crit =
+            IslandCriteria { window_km: 328.0, ocean_margin_km: 25.0, min_traverse_km: 120.0 };
+        let plate_counts = [8usize, 12, 16];
+        let cluster_counts = [1usize, 2, 4, 6];
+        let seeds: Vec<u64> = (0..20).collect();
+
+        eprintln!(
+            "island search — grid {grid}², window {} km, max traverse {:.0} km",
+            crit.window_km,
+            crit.max_traverse_km()
+        );
+
+        // Full scan (no early return) so we can report HOW FAR the best candidate
+        // is from the budget, not just fit / no-fit.
+        let (mut n, mut n_wrap, mut fits) = (0u32, 0u32, 0u32);
+        // Best NON-WRAPPING candidate by smallest traverse (the closest to fitting).
+        let mut best: Option<(f32, u64, usize, usize, LandTopology)> = None;
+        for &np in &plate_counts {
+            for &cc in &cluster_counts {
+                let mut i = init.clone();
+                i.num_plates = np;
+                i.cluster.seed_cluster_count = cc;
+                for &seed in &seeds {
+                    n += 1;
+                    let r = c1_coarse_land_report(seed, grid, &i, &run, &clo, &ss, Some(0.29));
+                    let t = r.topology;
+                    if t.wraps_x || t.wraps_y {
+                        n_wrap += 1;
+                        continue;
+                    }
+                    if is_island_fit(&t, &crit) {
+                        fits += 1;
+                    }
+                    let traverse = t.bbox_km.0.max(t.bbox_km.1);
+                    if best.map_or(true, |(b, ..)| traverse < b) {
+                        best = Some((traverse, seed, np, cc, t));
+                    }
+                }
+            }
+        }
+        eprintln!("scanned {n} configs — {n_wrap} wrap the torus, {fits} fit the budget");
+        match best {
+            Some((tr, seed, np, cc, t)) => eprintln!(
+                "BEST non-wrapping: seed {seed} · {np} plates · {cc} clusters → traverse {tr:.0} km \
+                 (budget {:.0}); largest {:.0} km² ({:.1}%), {} masses",
+                crit.max_traverse_km(),
+                t.largest_area_km2,
+                t.largest_area_frac * 100.0,
+                t.num_landmasses,
+            ),
+            None => eprintln!("every scanned config wraps the torus — 29 % land is too much here"),
+        }
+    }
+
+    #[test]
+    fn find_island_config_scans_deterministically() {
+        let (init, run, clo, ss, _up) = inputs();
+        let crit =
+            IslandCriteria { window_km: 328.0, ocean_margin_km: 20.0, min_traverse_km: 50.0 };
+        let scan = || {
+            find_island_config(
+                32,
+                &init,
+                &run,
+                &clo,
+                &ss,
+                Some(0.29),
+                &[8, 12],
+                &[1, 3],
+                &[42, 7],
+                &crit,
+            )
+            .map(|h| (h.seed, h.num_plates, h.seed_cluster_count))
+        };
+        // Same inputs → same result (Some or None), and a hit must satisfy the
+        // predicate on its own reported topology.
+        assert_eq!(scan(), scan(), "the (plates × clusters × seeds) scan is deterministic");
+        if let Some(hit) = find_island_config(
+            32,
+            &init,
+            &run,
+            &clo,
+            &ss,
+            Some(0.29),
+            &[8, 12],
+            &[1, 3],
+            &[42, 7],
+            &crit,
+        ) {
+            assert!(is_island_fit(&hit.topology, &crit), "a returned hit must fit the criteria");
+        }
     }
 
     #[test]

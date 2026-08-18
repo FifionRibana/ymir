@@ -184,6 +184,40 @@ pub fn land_topology(altitude_norm: &GridF32, sea_level_norm: f32) -> LandTopolo
     }
 }
 
+// ── Island-continent acceptance (M1 #190 geometric budget) ──────────────────
+
+/// Acceptance criteria for "a continent surrounded by ocean, framed by the
+/// export window". A seed passes if its LARGEST landmass does not wrap the torus
+/// and fits inside `window_km` with an ocean margin on every side.
+#[derive(Debug, Clone, Copy)]
+pub struct IslandCriteria {
+    /// Export window side (km) the mass must fit inside.
+    pub window_km: f32,
+    /// Ocean margin (km) required on EACH side (so the coast never touches the
+    /// window edge → every basin terminates inside the window, no halo needed).
+    pub ocean_margin_km: f32,
+    /// Minimum acceptable traverse (km) — reject a speck of land.
+    pub min_traverse_km: f32,
+}
+
+impl IslandCriteria {
+    /// Max landmass traverse (km) that still leaves `ocean_margin_km` per side.
+    pub fn max_traverse_km(&self) -> f32 {
+        self.window_km - 2.0 * self.ocean_margin_km
+    }
+}
+
+/// Does this land topology describe an island continent that fits the window?
+/// Exactly one criterion per clause: at least one landmass, the largest does not
+/// wrap either seam, and its bounding-box traverse fits the window with margin.
+pub fn is_island_fit(t: &LandTopology, c: &IslandCriteria) -> bool {
+    if t.num_landmasses == 0 || t.wraps_x || t.wraps_y {
+        return false;
+    }
+    let traverse = t.bbox_km.0.max(t.bbox_km.1);
+    traverse >= c.min_traverse_km && traverse <= c.max_traverse_km()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,5 +283,32 @@ mod tests {
         assert_eq!(t.num_landmasses, 0);
         assert_eq!(t.largest_cells, 0);
         assert_eq!(t.emerged_fraction, 0.0);
+    }
+
+    /// Island acceptance: only a non-wrapping mass that fits the window with an
+    /// ocean margin passes.
+    #[test]
+    fn island_fit_predicate() {
+        let crit =
+            IslandCriteria { window_km: 328.0, ocean_margin_km: 25.0, min_traverse_km: 80.0 };
+        // max traverse = 328 − 50 = 278 km.
+        let base = LandTopology {
+            num_landmasses: 3,
+            wraps_x: false,
+            wraps_y: false,
+            bbox_km: (250.0, 240.0),
+            ..LandTopology::empty()
+        };
+        assert!(is_island_fit(&base, &crit), "250 km mass fits a 278 km budget");
+
+        // Too big (traverse 300 > 278).
+        assert!(!is_island_fit(&LandTopology { bbox_km: (300.0, 100.0), ..base }, &crit));
+        // Wrapping → rejected regardless of size.
+        assert!(!is_island_fit(&LandTopology { wraps_x: true, ..base }, &crit));
+        assert!(!is_island_fit(&LandTopology { wraps_y: true, ..base }, &crit));
+        // Speck below the floor.
+        assert!(!is_island_fit(&LandTopology { bbox_km: (40.0, 30.0), ..base }, &crit));
+        // No land.
+        assert!(!is_island_fit(&LandTopology::empty(), &crit));
     }
 }

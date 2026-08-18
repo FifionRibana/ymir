@@ -64,17 +64,17 @@ pub mod boundary_displacement;
 pub mod clustering;
 pub mod params;
 
-pub use age_init::{init_age_field_ridge_aligned, AgeInitParams};
+pub use age_init::{AgeInitParams, init_age_field_ridge_aligned};
 pub use boundary_displacement::apply_boundary_displacement;
 pub use clustering::{
-    assign_continental_clusters, build_plate_adjacency, ContinentalClusterParams,
+    ContinentalClusterParams, assign_continental_clusters, build_plate_adjacency,
 };
 pub use params::R7InitParams;
 
 use crate::tectonics_v2::boundaries::plate_type::PlateTypeField;
 use crate::tectonics_v2::field::Field2D;
-use crate::tectonics_v2::init::{init_s_field, InitContext, InitMode, PlateInitData};
-use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+use crate::tectonics_v2::init::{InitContext, InitMode, PlateInitData, init_s_field};
+use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
 use super::boundary_classification::classify_boundaries;
 use super::init::build_phase_1_1_cratonic_mask;
@@ -127,6 +127,12 @@ pub struct Phase2InitParams {
     /// eons), NOT a knob (params stay anchored: 1.25 = crustal ratio,
     /// craton_resist mid-band). Worn-shield height = documented follow-up.
     pub craton_thickness_ratio: f64,
+    /// Number of Voronoi plates (`VoronoiConfig::num_plates`). Default 8 (the
+    /// TDD §3.4 `[5,15]` mid-point). A fragmentation lever for the "island
+    /// continent" budget (M1 #190): more plates → smaller plates, and — paired
+    /// with `cluster.seed_cluster_count > 1` — smaller separate landmasses at a
+    /// constant land fraction. Folded into the tectonic cache key.
+    pub num_plates: usize,
     /// #165 bimodal shield/platform — fraction of the CRATONIC AREA rendered as
     /// exposed HIGH SHIELD; the rest becomes LOW PLATFORM. The cratonic mask sets
     /// the AREA (old Precambrian lithosphere, ~50-70 % of continents — realistic),
@@ -150,6 +156,7 @@ impl Default for Phase2InitParams {
             r7: R7InitParams::default(),
             cluster: ContinentalClusterParams::default(),
             age: AgeInitParams::default(),
+            num_plates: 8,
             craton_thickness_ratio: 1.25,
             // #165 bimodal shield/platform — ~15 % of the cratonic AREA stays
             // exposed HIGH shield, the rest becomes LOW platform (normal crust).
@@ -286,20 +293,15 @@ fn select_shield_mask(
     shield
 }
 
-pub fn init_c1_state_phase_2_r7(
-    grid_size: usize,
-    seed: u64,
-    params: &Phase2InitParams,
-) -> C1State {
+pub fn init_c1_state_phase_2_r7(grid_size: usize, seed: u64, params: &Phase2InitParams) -> C1State {
     let nx = grid_size;
     let ny = grid_size;
 
-    // Step 1 — Voronoï tessellation. Default config (8 plates,
-    // 30 % continental Bernoulli) — the clustering step
-    // overrides `per_plate_type` so the Bernoulli ratio is
-    // discarded; the Voronoï output is still load-bearing for
-    // `plate_id`, `seed_coords`, and `num_plates`.
-    let vor_config = VoronoiConfig::default();
+    // Step 1 — Voronoï tessellation. `num_plates` from the init params (default
+    // 8); 30 % continental Bernoulli — the clustering step overrides
+    // `per_plate_type` so the Bernoulli ratio is discarded; the Voronoï output is
+    // still load-bearing for `plate_id`, `seed_coords`, and `num_plates`.
+    let vor_config = VoronoiConfig { num_plates: params.num_plates, ..VoronoiConfig::default() };
     let voronoi = generate_voronoi(nx, ny, &vor_config, seed);
     let mut plate_id = voronoi.plate_id;
     let seed_coords = voronoi.seed_coords;
@@ -320,8 +322,7 @@ pub fn init_c1_state_phase_2_r7(
 
     // Step 5 — broadcast the updated `per_plate_type` back into
     // cell-level `PlateTypeField`.
-    let mut plate_type =
-        PlateTypeField::filled(nx, ny, per_plate_type[0]);
+    let mut plate_type = PlateTypeField::filled(nx, ny, per_plate_type[0]);
     for j in 0..ny {
         for i in 0..nx {
             let pid = plate_id.get(i, j) as usize;
@@ -356,18 +357,11 @@ pub fn init_c1_state_phase_2_r7(
     // Step 9 — age field with trichotomy (continental >
     // divergent > oceanic).
     let mut age = Field2D::new(nx, ny);
-    init_age_field_ridge_aligned(
-        &mut age,
-        &plate_id,
-        &plate_type,
-        &boundary_info,
-        &params.age,
-    );
+    init_age_field_ridge_aligned(&mut age, &plate_id, &plate_type, &boundary_info, &params.age);
 
     // Step 10 — cratonic mask (Phase 1.1 rule, reused via the
     // pub(crate)-promoted helper). This is the cratonic AREA.
-    let cratonic_mask =
-        build_phase_1_1_cratonic_mask(nx, ny, &plate_id, &plate_type, &seed_coords);
+    let cratonic_mask = build_phase_1_1_cratonic_mask(nx, ny, &plate_id, &plate_type, &seed_coords);
 
     // Step 10.5 (#165 bimodal) — narrow the cratonic AREA to the exposed SHIELD.
     // Only ~`craton_shield_fraction` of cratonic cells stay high (they keep the
@@ -449,11 +443,7 @@ mod tests {
 
         for j in 0..64 {
             for i in 0..64 {
-                assert_eq!(
-                    state_a.s.get(i, j),
-                    state_b.s.get(i, j),
-                    "S̃ mismatch at ({i}, {j})"
-                );
+                assert_eq!(state_a.s.get(i, j), state_b.s.get(i, j), "S̃ mismatch at ({i}, {j})");
                 assert_eq!(
                     state_a.age.get(i, j),
                     state_b.age.get(i, j),
