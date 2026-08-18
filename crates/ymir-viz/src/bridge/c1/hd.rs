@@ -38,7 +38,7 @@ use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
 use ymir_core::climate::{ClimateResult, c1_biomes, c1_climate};
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
-use ymir_core::export::{hydro, vector};
+use ymir_core::export::{height, hydro, vector};
 use ymir_core::grid::GridF32;
 use ymir_core::lakes::connectivity;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
@@ -414,9 +414,9 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
 /// Write a v1 `.ymir` delivery container for `eroded` under `root`
 /// (`root/<name>.ymir/`, the destination configured by the caller).
 ///
-/// Emits the manifest + the `height` raster (WP-0 placeholder, see the marker
-/// below) + the `coastline` and `cliffs` vector layers (Y-B). The height dump
-/// is still a normalized-range linear map, NOT true metres (that is WP-1).
+/// Emits the manifest + the `height` raster (true metres via the vertical
+/// contract, quantised to u16 over the field's real range — see the body) +
+/// the `coastline` and `cliffs` vector layers (Y-B).
 #[allow(clippy::too_many_arguments)]
 fn export_ymir_container(
     spec: &C1RunSpec,
@@ -430,21 +430,16 @@ fn export_ymir_container(
 ) -> Result<(), String> {
     let (w, h) = (eroded.width, eroded.height);
 
-    // WP-1: replace with c1_altitude_norm_to_metres (true metric height).
-    // For now: linear-map the eroded normalized range to the full u16 span.
-    let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
-    for &v in &eroded.data {
-        lo = lo.min(v);
-        hi = hi.max(v);
-    }
-    let span = (hi - lo).max(f32::EPSILON);
-    let height_u16: Vec<u16> = eroded
-        .data
-        .iter()
-        .map(|&v| (((v - lo) / span) * u16::MAX as f32).round().clamp(0.0, u16::MAX as f32) as u16)
-        .collect();
+    // Metric height (the WP-1 vertical contract). Convert the normalized field
+    // to TRUE metres via the single vertical contract, anchored on the SAME
+    // sea-level constant the coastline is traced at (so 0 m == the coastline),
+    // then quantise linearly to u16 over the field's real [min_m, max_m]:
+    //   code = round((m − min_m) / (max_m − min_m) · 65535)  (decode is the
+    //   inverse). The min_m/max_m are stamped on the "height" layer below.
+    let height = height::metric_height_u16(eroded, ss);
 
-    // WP (later): a real window crop. For now window_km == tectonic_domain_km.
+    // window_km == tectonic_domain_km until the real window crop lands (separate
+    // chantier — not touched here).
     let meta = ContinentMeta {
         name: format!("seed{}_{}", spec.seed, w),
         seed: spec.seed,
@@ -454,15 +449,17 @@ fn export_ymir_container(
         window_offset_in_torus: [0.0, 0.0],
         latitude_deg: lat as f64,
         stein_stein: *ss,
-        // WP-1: real sea-level / elevation / depth in metres.
+        // Honest metric bounds: sea anchored to 0 m; elevation/depth are the
+        // field's real metric extrema (depth is the min, i.e. most negative).
         sea_level_m: 0.0,
-        max_elevation_m: ss.asymptotic_depth_m,
-        max_depth_m: ss.asymptotic_depth_m,
+        max_elevation_m: height.max_m as f64,
+        max_depth_m: height.min_m as f64,
     };
 
     let dir = root.join(format!("{}.ymir", meta.name));
     let mut writer = ContinentWriter::new(&dir, meta)?;
-    writer.add_raster_u16("height", &height_u16)?;
+    writer.add_raster_u16("height", &height.codes)?;
+    writer.set_metric_range("height", height.min_m as f64, height.max_m as f64)?;
 
     // ── Y-B vector layers (traced from the same eroded field). ──
     // Coastline: sea-level isoline on the normalized field (sea = 0.5).
