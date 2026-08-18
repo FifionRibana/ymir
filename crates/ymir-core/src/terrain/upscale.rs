@@ -31,6 +31,22 @@ pub struct FbmUpscaleConfig {
     pub submarine_damping: f64,
     /// Base frequency of the first octave, in cycles per source pixel. Default: 1.0.
     pub base_frequency: f64,
+    /// **Sub-domain window ORIGIN** in normalized coarse coordinates `[0,1]`
+    /// `(x, y)`. The upscale samples only the window `[origin, origin+size]²`
+    /// of the coarse field instead of the whole (periodic) torus, so a fraction
+    /// of the domain is rendered at the full `target_size` (→ finer km/cell).
+    /// Default `[0.0, 0.0]`. The coarse grid is sampled periodically, so a window
+    /// whose `origin+size` exceeds 1 simply wraps.
+    ///
+    /// `skip_serializing_if` on the full-domain default keeps the eroded cache
+    /// key byte-identical for non-windowed configs (existing `.raw` stay valid).
+    #[serde(default, skip_serializing_if = "is_full_domain_origin")]
+    pub sample_origin: [f64; 2],
+    /// **Sub-domain window SIZE** as a fraction of the coarse field `(0,1]`.
+    /// `1.0` (default) = the whole torus → byte-identical to pre-window. `< 1`
+    /// zooms into a window rendered at `target_size`.
+    #[serde(default = "default_sample_size", skip_serializing_if = "is_full_sample_size")]
+    pub sample_size: f64,
     /// Domain warp strength as fraction of base noise frequency. Default: 0.4.
     /// 0.0 = no warping, 0.5 = moderate, 1.0 = heavy distortion.
     pub domain_warp_strength: f64,
@@ -91,6 +107,23 @@ pub struct FbmUpscaleConfig {
     pub bathymetry: Option<crate::terrain::bathymetry::BathymetryProfile>,
 }
 
+/// serde default for [`FbmUpscaleConfig::sample_size`] (a missing field must
+/// deserialize to the full domain `1.0`, not `f64`'s `0.0`).
+fn default_sample_size() -> f64 {
+    1.0
+}
+
+/// A full-domain origin serializes to nothing (keeps the pre-window cache key).
+fn is_full_domain_origin(o: &[f64; 2]) -> bool {
+    o[0] == 0.0 && o[1] == 0.0
+}
+
+/// A full-domain size (`1.0`) serializes to nothing (keeps the pre-window key).
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_full_sample_size(s: &f64) -> bool {
+    *s == 1.0
+}
+
 impl Default for FbmUpscaleConfig {
     fn default() -> Self {
         Self {
@@ -103,6 +136,8 @@ impl Default for FbmUpscaleConfig {
             max_anisotropy: 3.0,
             submarine_damping: 0.3,
             base_frequency: 1.0,
+            sample_origin: [0.0, 0.0],
+            sample_size: 1.0,
             domain_warp_strength: 0.0,
             domain_warp_frequency: 0.5,
             domain_warp_octaves: 3,
@@ -137,8 +172,7 @@ impl FbmUpscaleConfig {
     /// silent fix here. Do not "correct" it in passing.
     #[must_use]
     pub fn c1_hd_production(target_size: usize) -> Self {
-        let num_droplets =
-            (4_000_000u64 * (target_size as u64).pow(2) / (2048u64).pow(2)) as usize;
+        let num_droplets = (4_000_000u64 * (target_size as u64).pow(2) / (2048u64).pow(2)) as usize;
         Self {
             target_size,
             coast_warp_strength: 1.5,
@@ -220,8 +254,16 @@ pub fn upscale_with_fbm(
         (w.max(1), target)
     };
 
-    let scale_x = src_w as f64 / dst_w as f64;
-    let scale_y = src_h as f64 / dst_h as f64;
+    // Sub-domain window: sample only `[origin, origin+size]` of the coarse
+    // field. `size == 1` and `origin == 0` (defaults) → the full domain, and
+    // `scale`/`origin` collapse to the pre-window `src/dst` mapping (byte-
+    // identical). A smaller `size` maps `dst` pixels onto fewer coarse cells →
+    // finer effective km/cell. Coarse sampling is periodic (`_periodic`), so a
+    // window crossing the torus edge wraps.
+    let scale_x = config.sample_size * src_w as f64 / dst_w as f64;
+    let scale_y = config.sample_size * src_h as f64 / dst_h as f64;
+    let origin_x = config.sample_origin[0] * src_w as f64;
+    let origin_y = config.sample_origin[1] * src_h as f64;
 
     // Create noise generators
     let noise_seed = seed.derive_seed("fbm_upscale") as u32;
@@ -266,9 +308,10 @@ pub fn upscale_with_fbm(
             let mut s_row = vec![0.0f32; dst_w];
 
             for i in 0..dst_w {
-                // Source coordinates in coarse pixel space
-                let sx = i as f64 * scale_x;
-                let sy = j as f64 * scale_y;
+                // Source coordinates in coarse pixel space (offset into the
+                // sub-domain window; see `origin_x`/`scale_x` above).
+                let sx = origin_x + i as f64 * scale_x;
+                let sy = origin_y + j as f64 * scale_y;
 
                 // 0. Coastline warp (Issue #151 follow-up): displace the
                 // COARSE-ALTITUDE sampling position so the sea-level
@@ -280,10 +323,18 @@ pub fn upscale_with_fbm(
                     let cwf = config.coast_warp_frequency;
                     let (wcx, wcy) = (sx * cwf, sy * cwf);
                     let cdx = coast_warp_noise_x.fbm(
-                        wcx, wcy, coast_octaves, config.lacunarity, config.persistence,
+                        wcx,
+                        wcy,
+                        coast_octaves,
+                        config.lacunarity,
+                        config.persistence,
                     ) * config.coast_warp_strength;
                     let cdy = coast_warp_noise_y.fbm(
-                        wcx, wcy, coast_octaves, config.lacunarity, config.persistence,
+                        wcx,
+                        wcy,
+                        coast_octaves,
+                        config.lacunarity,
+                        config.persistence,
                     ) * config.coast_warp_strength;
                     (sx + cdx, sy + cdy)
                 } else {
@@ -328,11 +379,8 @@ pub fn upscale_with_fbm(
                 // 6. Angular perturbation to break long-range parallelism.
                 // #151: sampled in coarse-cell space (sx·ascale) →
                 // resolution-independent, byte-identical at 1024².
-                let angle_offset = angle_noise.sample(
-                    0,
-                    sx * ascale,
-                    sy * ascale,
-                ) * ANGLE_PERTURBATION_MAX;
+                let angle_offset =
+                    angle_noise.sample(0, sx * ascale, sy * ascale) * ANGLE_PERTURBATION_MAX;
                 let perturbed_dir = slope_dir as f64 + angle_offset;
 
                 // 7. Domain warping: distort noise coordinates to break regular
@@ -469,6 +517,55 @@ mod tests {
             r1.heightmap.data, r2.heightmap.data,
             "Same seed should produce identical output"
         );
+    }
+
+    #[test]
+    fn full_domain_window_is_byte_identical_to_default() {
+        // An explicit full-domain window ([0,0], 1.0) must reproduce the default
+        // (no-window) output bit-for-bit — the byte-identical guard.
+        let n = 24;
+        let mut coarse = GridF32::new(n, n, 0.0);
+        for j in 0..n {
+            for i in 0..n {
+                coarse.set(i, j, i as f32 / n as f32 * 0.6 + 0.2);
+            }
+        }
+        let seed = WorldSeed::new(7);
+        let base = FbmUpscaleConfig { target_size: 96, ..Default::default() };
+        let explicit =
+            FbmUpscaleConfig { sample_origin: [0.0, 0.0], sample_size: 1.0, ..base.clone() };
+        let r_def = upscale_with_fbm(&coarse, 0.1, &seed, &base);
+        let r_exp = upscale_with_fbm(&coarse, 0.1, &seed, &explicit);
+        assert_eq!(r_def.heightmap.data, r_exp.heightmap.data);
+    }
+
+    #[test]
+    fn sub_domain_window_zooms_into_region() {
+        // Noise off (amplitude 0) → heightmap == bilinear coarse samples, so the
+        // window maps deterministically onto its coarse sub-region. A 0.5-wide
+        // window at origin 0.25 renders coarse x∈[0.25,0.75] across the target.
+        let n = 32;
+        let mut coarse = GridF32::new(n, n, 0.0);
+        for j in 0..n {
+            for i in 0..n {
+                coarse.set(i, j, i as f32 / n as f32); // 0..1 gradient in x
+            }
+        }
+        let seed = WorldSeed::new(1);
+        let cfg = FbmUpscaleConfig {
+            target_size: n,
+            amplitude_base: 0.0, // kill the FBM → pure coarse resampling
+            sample_origin: [0.25, 0.0],
+            sample_size: 0.5,
+            ..Default::default()
+        };
+        let r = upscale_with_fbm(&coarse, 0.1, &seed, &cfg);
+        let left = r.heightmap.get(0, 0); // sx = 0.25·n = 8 → 0.25
+        let right = r.heightmap.get((n - 1) as i32, 0); // sx = 8 + 0.5·31 = 23.5 → ~0.734
+        assert!((left - 0.25).abs() < 0.02, "window left edge ~0.25, got {left}");
+        assert!((right - 0.734).abs() < 0.03, "window right edge ~0.734, got {right}");
+        // Half-domain window → about half the x-span a full render would show.
+        assert!((0.35..0.6).contains(&(right - left)), "half-domain span, got {}", right - left);
     }
 
     #[test]

@@ -11,7 +11,7 @@
 
 use crate::grid::GridF32;
 use crate::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
-use crate::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, C1_DOMAIN_KM};
+use crate::tectonics_c1::production_upscale::{C1_DOMAIN_KM, c1_altitude_norm_to_metres};
 
 /// Environmental (adiabatic) lapse rate — the real value, 6.5 °C per km.
 pub const LAPSE_RATE_C_PER_KM: f32 = 6.5;
@@ -34,20 +34,41 @@ pub fn sea_level_temperature(lat_deg: f32) -> f32 {
     T_EQ - (T_EQ - T_POLE) * f
 }
 
-/// Latitude (degrees) of grid row `j`: the domain spans `C1_DOMAIN_KM / 111`
-/// ≈ 9.2° centred on `lat_deg` (the placement parameter). j=0 is the south edge.
+/// Latitude (degrees) of grid row `j`, full-torus span (`C1_DOMAIN_KM`).
+/// Thin wrapper over [`row_latitude_windowed`]; see it for the contract.
 pub fn row_latitude(j: usize, ny: usize, lat_deg: f32) -> f32 {
-    let span = C1_DOMAIN_KM / 111.0;
+    row_latitude_windowed(j, ny, lat_deg, C1_DOMAIN_KM)
+}
+
+/// Latitude (degrees) of grid row `j` when the grid spans `domain_km` north-
+/// south: the span is `domain_km / 111` degrees centred on `lat_deg` (the
+/// placement parameter). j=0 is the south edge. A cropped window passes its
+/// (smaller) `window_km` here so the gradient across the window is correct.
+pub fn row_latitude_windowed(j: usize, ny: usize, lat_deg: f32, domain_km: f32) -> f32 {
+    let span = domain_km / 111.0;
     let frac = if ny > 1 { j as f32 / (ny - 1) as f32 } else { 0.5 };
     lat_deg + (frac - 0.5) * span
 }
 
-/// Temperature field (°C) for the relief heightmap at the given centre latitude.
+/// Temperature field (°C), full-torus span. Thin wrapper over
+/// [`compute_temperature_windowed`] with `domain_km = C1_DOMAIN_KM`.
 pub fn compute_temperature(heightmap: &GridF32, ss: &SteinSteinParams, lat_deg: f32) -> GridF32 {
+    compute_temperature_windowed(heightmap, ss, lat_deg, C1_DOMAIN_KM)
+}
+
+/// Temperature field (°C) for a grid spanning `domain_km` north-south at centre
+/// latitude `lat_deg`. `domain_km == C1_DOMAIN_KM` (full torus) reproduces
+/// [`compute_temperature`] exactly; a cropped window passes its `window_km`.
+pub fn compute_temperature_windowed(
+    heightmap: &GridF32,
+    ss: &SteinSteinParams,
+    lat_deg: f32,
+    domain_km: f32,
+) -> GridF32 {
     let (w, h) = (heightmap.width, heightmap.height);
     let mut t = GridF32::new(w, h, 0.0);
     for j in 0..h {
-        let t_sea = sea_level_temperature(row_latitude(j, h, lat_deg));
+        let t_sea = sea_level_temperature(row_latitude_windowed(j, h, lat_deg, domain_km));
         for i in 0..w {
             let n = heightmap.get(i as i32, j as i32);
             let cell = if n <= SEA_LEVEL_NORM {

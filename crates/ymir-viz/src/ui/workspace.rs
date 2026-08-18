@@ -141,6 +141,9 @@ struct WorkspaceState {
     erosion: f32,
     channel_jitter: f32,
     dinf: bool,
+    /// Physical size (km) of the playable export window (rendered at `resolution`,
+    /// centred on the continent). `km_per_cell = window_km / resolution`.
+    window_km: f32,
     /// Opt-in: write a v1 `.ymir` delivery container after the biome phase.
     export_ymir: bool,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
@@ -173,6 +176,7 @@ impl Default for WorkspaceState {
             erosion: 0.5,
             channel_jitter: 0.3,
             dinf: false,
+            window_km: 328.0,
             export_ymir: false,
             export_dir: "exports".to_string(),
             current: None,
@@ -513,6 +517,7 @@ fn left_panel(
                         let params = HdParams {
                             target_size: ws.resolution,
                             latitude_deg: ws.latitude,
+                            window_km: ws.window_km,
                             export_dir,
                         };
                         let _ = bridge.submit_hd(spec, params);
@@ -584,10 +589,20 @@ fn left_panel(
                         ui.add_space(10.0);
                         field_label(ui, "RÉSOLUTION");
                         ui.add_space(1.0);
-                        let cur = [512usize, 1024, 2048].iter().position(|&r| r == ws.resolution).unwrap_or(1);
-                        if let Some(i) = seg_row(ui, &["512", "1024", "2048"], cur) {
-                            ws.resolution = [512, 1024, 2048][i];
+                        let cur = [512usize, 1024, 2048, 4096, 8192].iter().position(|&r| r == ws.resolution).unwrap_or(1);
+                        if let Some(i) = seg_row(ui, &["512", "1024", "2048", "4096", "8192"], cur) {
+                            ws.resolution = [512, 1024, 2048, 4096, 8192][i];
                         }
+                        ui.add_space(10.0);
+                        // Playable window size (km): the HD grid renders this sub-domain
+                        // of the torus → km_per_cell = window_km / resolution.
+                        field_label(ui, "FENÊTRE (km)");
+                        ui.add_space(1.0);
+                        ui.horizontal(|ui| {
+                            ui.add(egui::Slider::new(&mut ws.window_km, 200.0..=1024.0).step_by(1.0).show_value(false));
+                            let m_per_cell = ws.window_km * 1000.0 / ws.resolution as f32;
+                            ui.label(egui::RichText::new(format!("{:.0} km · {:.0} m/px", ws.window_km, m_per_cell)).color(COPPER_BRIGHT).monospace().size(12.0));
+                        });
                     });
                     ui.separator();
 

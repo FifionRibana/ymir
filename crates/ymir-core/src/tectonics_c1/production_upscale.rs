@@ -33,10 +33,10 @@
 use crate::erosion::hydraulic::run_erosion;
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
-use crate::tectonics::isostasy::{compute_isostasy_c1, IsostasyConfig};
+use crate::tectonics::isostasy::{IsostasyConfig, compute_isostasy_c1};
 use crate::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
 use crate::tectonics_v2::field::Field2D;
-use crate::terrain::upscale::{upscale_with_fbm, FbmUpscaleConfig, UpscaleResult};
+use crate::terrain::upscale::{FbmUpscaleConfig, UpscaleResult, upscale_with_fbm};
 
 use super::closures::oceanic_bathymetry::params::SteinSteinParams;
 use super::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
@@ -265,6 +265,52 @@ pub enum EroProgress {
     Bathymetry,
 }
 
+/// The coarse C1 altitude, normalised to `[0,1]` with sea at `0.5` (the exact
+/// field [`upscale_from_c1`] samples). Extracted as ONE source of truth so the
+/// window-origin centroid ([`c1_land_centroid_normalized`]) is computed on the
+/// same field the upscale renders — no drift.
+pub fn c1_coarse_normalized_altitude(
+    state: &C1State,
+    iso: &IsostasyConfig,
+    ss: &SteinSteinParams,
+) -> GridF32 {
+    let mut coarse = c1_production_altitude_craton(
+        &state.s,
+        &state.age,
+        &state.plate_type,
+        state.cratonic_mask.data(),
+        iso,
+        ss,
+    );
+    // Fixed normalisation to [0,1] (sea 0.0 → 0.5), resolution-independent.
+    let half = ALTITUDE_NORM_HALF_RANGE;
+    for v in coarse.data.iter_mut() {
+        *v = ((*v + half) / (2.0 * half)).clamp(0.0, 1.0);
+    }
+    coarse
+}
+
+/// Normalized land centroid `[u, v]` in `[0,1]²` of a coarse altitude field
+/// (cells above sea level `0.5`). Used to CENTRE a cropped export window on the
+/// continent. Falls back to the grid centre when there is no land.
+pub fn c1_land_centroid_normalized(coarse_norm: &GridF32) -> [f64; 2] {
+    let (w, h) = (coarse_norm.width, coarse_norm.height);
+    let (mut sx, mut sy, mut n) = (0.0f64, 0.0f64, 0u64);
+    for j in 0..h {
+        for i in 0..w {
+            if coarse_norm.data[j * w + i] > 0.5 {
+                sx += i as f64;
+                sy += j as f64;
+                n += 1;
+            }
+        }
+    }
+    if n == 0 {
+        return [0.5, 0.5];
+    }
+    [(sx / n as f64 + 0.5) / w as f64, (sy / n as f64 + 0.5) / h as f64]
+}
+
 pub fn upscale_from_c1(
     state: &C1State,
     iso: &IsostasyConfig,
@@ -297,15 +343,7 @@ pub fn upscale_from_c1_with_progress(
     // path here; it reopens FOLLOWUPS #6 and silently diverges.
     // #155 B-Jordan: route the cratonic mask so cratonic cells get the
     // dense-crust buoyancy (iso.craton_rho_crust). None → byte-identical.
-    let mut coarse = c1_production_altitude_craton(
-        &state.s, &state.age, &state.plate_type, state.cratonic_mask.data(), iso, ss,
-    );
-
-    // Fixed normalisation to [0,1] (sea 0.0 → 0.5), resolution-independent.
-    let half = ALTITUDE_NORM_HALF_RANGE;
-    for v in coarse.data.iter_mut() {
-        *v = ((*v + half) / (2.0 * half)).clamp(0.0, 1.0);
-    }
+    let coarse = c1_coarse_normalized_altitude(state, iso, ss);
     let sea_level_normalized = 0.5_f32;
 
     progress(EroProgress::Relief);
@@ -330,7 +368,8 @@ pub fn upscale_from_c1_with_progress(
                 slope.set(i, j, (gx * gx + gy * gy).sqrt());
             }
         }
-        result = UpscaleResult { heightmap: eroded.heightmap, slope, sediment: Some(eroded.sediment) };
+        result =
+            UpscaleResult { heightmap: eroded.heightmap, slope, sediment: Some(eroded.sediment) };
     }
 
     // #submarine — re-map the ocean floor toward the plateau→slope→abyss envelope
@@ -343,7 +382,10 @@ pub fn upscale_from_c1_with_progress(
     if let Some(bath) = &cfg.bathymetry {
         progress(EroProgress::Bathymetry);
         let depth_per_norm = 2.0 * ALTITUDE_NORM_HALF_RANGE * ss.depth_scale_m as f32;
-        let km_per_cell = c1_km_per_cell(result.heightmap.width);
+        // Window-aware horizontal scale: the HD grid spans `sample_size` of the
+        // torus, so its km/cell is that fraction of the full-domain km/cell.
+        // `sample_size == 1` (full domain) → unchanged.
+        let km_per_cell = cfg.sample_size as f32 * c1_km_per_cell(result.heightmap.width);
         crate::terrain::bathymetry::apply_bathymetry_profile(
             &mut result.heightmap,
             sea_level_normalized,
@@ -359,7 +401,7 @@ pub fn upscale_from_c1_with_progress(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tectonics_c1::init_r7::{init_c1_state_phase_2_r7, Phase2InitParams};
+    use crate::tectonics_c1::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 
     /// Smoke: the contract path runs and produces a target-sized
     /// heightmap with finite values (no NaN/Inf), at a small target.
@@ -377,6 +419,26 @@ mod tests {
         assert_eq!(out.heightmap.width, 128);
         assert_eq!(out.heightmap.height, 128);
         assert!(out.heightmap.data.iter().all(|v| v.is_finite()));
+    }
+
+    /// The window-origin land centroid tracks the land mass: a field with land
+    /// only in the upper-right quadrant centres there; an all-ocean field falls
+    /// back to the grid centre.
+    #[test]
+    fn land_centroid_tracks_the_landmass() {
+        let n = 20;
+        let mut coarse = GridF32::new(n, n, 0.3); // ocean (< 0.5)
+        for j in (n / 2)..n {
+            for i in (n / 2)..n {
+                coarse.set(i, j, 0.8); // land in the upper-right quadrant
+            }
+        }
+        let c = c1_land_centroid_normalized(&coarse);
+        assert!(c[0] > 0.6 && c[0] < 0.9, "u centroid in the right half, got {}", c[0]);
+        assert!(c[1] > 0.6 && c[1] < 0.9, "v centroid in the upper half, got {}", c[1]);
+
+        let ocean = GridF32::new(n, n, 0.3);
+        assert_eq!(c1_land_centroid_normalized(&ocean), [0.5, 0.5], "no land → grid centre");
     }
 
     /// #155 horizontal contract — the TDD §11 anchor (2.0 km/cell @512²) +

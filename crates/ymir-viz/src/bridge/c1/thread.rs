@@ -194,7 +194,12 @@ mod tests {
         cmd_tx
             .send(C1Command::RunHd {
                 spec: small_spec(10, 42),
-                params: HdParams { target_size: target, latitude_deg: 45.0, export_dir: None },
+                params: HdParams {
+                    target_size: target,
+                    latitude_deg: 45.0,
+                    window_km: 328.0,
+                    export_dir: None,
+                },
             })
             .expect("send RunHd");
 

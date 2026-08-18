@@ -25,14 +25,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::climate::precipitation::{e_sat, precip_mm_per_year};
 use crate::grid::GridF32;
-use crate::lakes::detection::{detect_lakes, Lake, LakeConfig};
+use crate::lakes::detection::{Lake, LakeConfig, detect_lakes};
 use crate::terrain::flow::{
-    compute_flow, extract_rivers, FlatPerturbation, FlowConfig, FlowResult, RiverConfig,
-    RiverNetwork, D8_DX, D8_DY, DIR_NONE,
+    D8_DX, D8_DY, DIR_NONE, FlatPerturbation, FlowConfig, FlowResult, RiverConfig, RiverNetwork,
+    compute_flow, extract_rivers,
 };
 
 use super::closures::oceanic_bathymetry::params::SteinSteinParams;
-use super::production_upscale::{c1_altitude_norm_to_metres, c1_cell_area_km2};
+use super::production_upscale::{C1_DOMAIN_KM, c1_altitude_norm_to_metres};
 
 /// #drainage — climate input for the water balance (the "hydroclimate layer" the
 /// geometric fill-and-spill placeholder was waiting for). `Some` couples the
@@ -201,8 +201,25 @@ pub fn c1_drainage(
     cfg: &C1DrainageConfig,
     ss: &SteinSteinParams,
 ) -> C1DrainageResult {
+    c1_drainage_windowed(heightmap, climate, cfg, ss, C1_DOMAIN_KM)
+}
+
+/// [`c1_drainage`] for a grid spanning `window_km` (a cropped playable window).
+/// The cell area `(window_km / width)²` drives the km² network / lake-area
+/// thresholds, so a zoomed window's rivers/lakes use its OWN metric scale.
+/// `window_km == C1_DOMAIN_KM` reproduces [`c1_drainage`] exactly.
+pub fn c1_drainage_windowed(
+    heightmap: &GridF32,
+    climate: Option<&DrainageClimate>,
+    cfg: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    window_km: f32,
+) -> C1DrainageResult {
     let (w, h) = (heightmap.width, heightmap.height);
-    let cell_km2 = c1_cell_area_km2(w);
+    let cell_km2 = {
+        let s = window_km / w as f32;
+        s * s
+    };
     // metres per unit of normalised altitude (the linear vertical scale slope).
     let metres_per_norm = c1_altitude_norm_to_metres(1.0, ss) - c1_altitude_norm_to_metres(0.0, ss);
 
@@ -244,9 +261,17 @@ pub fn c1_drainage(
     // byte-identical.
     let mut lake_map = lake_result.lake_map;
     let lakes: Vec<C1Lake> = match climate {
-        Some(clim) => {
-            water_balance_lakes(heightmap, &flow, clim, cell_km2, ss, &lake_result.lakes, &mut lake_map, w, h)
-        }
+        Some(clim) => water_balance_lakes(
+            heightmap,
+            &flow,
+            clim,
+            cell_km2,
+            ss,
+            &lake_result.lakes,
+            &mut lake_map,
+            w,
+            h,
+        ),
         None => lake_result
             .lakes
             .iter()
@@ -279,7 +304,8 @@ pub fn c1_drainage(
     // discharge → NonNavigable; allochthonous rivers (humid upstream) keep their
     // accumulated discharge across a dry reach (the Nile). Without `climate` →
     // geometric cell-count drainage area (byte-identical).
-    let (segment_drainage_km2, segment_navigability): (Vec<f32>, Vec<Navigability>) = match climate {
+    let (segment_drainage_km2, segment_navigability): (Vec<f32>, Vec<Navigability>) = match climate
+    {
         Some(clim) => {
             let mut endorheic = vec![false; w * h];
             for lk in &lakes {
@@ -358,8 +384,7 @@ fn runoff_accumulation(
             acc[k] = (p - pe).max(0.0) * cell_km2;
         }
     }
-    let mut order: Vec<usize> =
-        (0..n).filter(|&k| heightmap.data[k] > C1_SEA_LEVEL_NORM).collect();
+    let mut order: Vec<usize> = (0..n).filter(|&k| heightmap.data[k] > C1_SEA_LEVEL_NORM).collect();
     order.sort_unstable_by(|&a, &b| {
         flow.filled.data[b].partial_cmp(&flow.filled.data[a]).unwrap_or(std::cmp::Ordering::Equal)
     });
@@ -509,7 +534,8 @@ mod tests {
                 hm.set(i, j, 0.85 - t * 0.6);
             }
         }
-        let out = c1_drainage(&hm, None, &C1DrainageConfig::default(), &SteinSteinParams::default());
+        let out =
+            c1_drainage(&hm, None, &C1DrainageConfig::default(), &SteinSteinParams::default());
         assert_eq!(out.width, n);
         assert_eq!(out.segment_drainage_km2.len(), out.rivers.segments.len());
         assert!(out.segment_drainage_km2.iter().all(|v| v.is_finite() && *v >= 0.0));

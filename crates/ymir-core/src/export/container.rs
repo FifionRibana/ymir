@@ -559,6 +559,34 @@ mod tests {
         }
     }
 
+    /// The playable-window contract: km_per_cell = window_km / width lands in the
+    /// 30–50 m target (328 km @ 8192² = 40.0 m/cell), and every raster layer the
+    /// writer stamps shares the window grid dims.
+    #[test]
+    fn window_km_per_cell_in_target_range_and_layers_share_dims() {
+        let (w, h) = (8192usize, 8192usize);
+        let mut meta = tiny_meta(4, 4); // reused shell; overwrite the window fields
+        meta.grid = Grid { width: w, height: h };
+        meta.window_km = 328.0;
+        let m = ContinentWriter::new(&std::env::temp_dir().join("ymir_window_km"), meta)
+            .unwrap()
+            .manifest()
+            .clone();
+
+        let m_per_cell = m.continent.km_per_cell * 1000.0;
+        assert!((39.9..40.1).contains(&m_per_cell), "328 km @ 8192² ≈ 40 m/cell, got {m_per_cell}");
+        assert!((30.0..=50.0).contains(&m_per_cell), "km_per_cell must be in the 30–50 m band");
+
+        // Every raster layer declares the window grid dims (they cannot diverge —
+        // all are rendered on the one eroded window grid).
+        for layer in &m.layers {
+            if layer.kind == "raster" {
+                assert_eq!(layer.width, Some(w), "{} width", layer.id);
+                assert_eq!(layer.height, Some(h), "{} height", layer.id);
+            }
+        }
+    }
+
     #[test]
     fn wrong_raster_length_is_rejected() {
         let dir = std::env::temp_dir().join("ymir_container_badlen");

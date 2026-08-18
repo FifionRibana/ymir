@@ -14,7 +14,7 @@ pub mod temperature;
 
 use crate::grid::GridF32;
 use crate::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
-use crate::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
+use crate::tectonics_c1::production_upscale::{C1_DOMAIN_KM, c1_altitude_norm_to_metres};
 
 use precipitation::PrecipParams;
 
@@ -47,8 +47,24 @@ pub fn c1_climate(
     latitude_deg: f32,
     params: &PrecipParams,
 ) -> ClimateResult {
-    let temperature = temperature::compute_temperature(heightmap, ss, latitude_deg);
-    let km_per_cell = c1_km_per_cell(heightmap.width);
+    c1_climate_windowed(heightmap, ss, latitude_deg, params, C1_DOMAIN_KM)
+}
+
+/// [`c1_climate`] for a grid spanning `window_km` (a cropped playable window).
+/// The horizontal scale (`km_per_cell = window_km / width`) drives precipitation
+/// orographic distance, and `window_km` sets the temperature latitudinal span —
+/// so a zoomed window reads its OWN metric scale, not the full torus.
+/// `window_km == C1_DOMAIN_KM` reproduces [`c1_climate`] exactly.
+pub fn c1_climate_windowed(
+    heightmap: &GridF32,
+    ss: &SteinSteinParams,
+    latitude_deg: f32,
+    params: &PrecipParams,
+    window_km: f32,
+) -> ClimateResult {
+    let temperature =
+        temperature::compute_temperature_windowed(heightmap, ss, latitude_deg, window_km);
+    let km_per_cell = window_km / heightmap.width as f32;
     let precipitation = precipitation::compute_precipitation(
         heightmap,
         &temperature,

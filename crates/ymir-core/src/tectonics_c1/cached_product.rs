@@ -26,9 +26,10 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::cache::{
-    ALGO_DRAINAGE, ALGO_TECTONICS, ALGO_UPSCALE_EROSION, CacheKey, RawCodec, cached, cached_fallible,
+    ALGO_DRAINAGE, ALGO_TECTONICS, ALGO_UPSCALE_EROSION, CacheKey, RawCodec, cached,
+    cached_fallible,
 };
-use crate::climate::c1_climate;
+use crate::climate::c1_climate_windowed;
 use crate::climate::precipitation::PrecipParams;
 use crate::export::raw;
 use crate::grid::GridF32;
@@ -37,10 +38,13 @@ use crate::terrain::flow::FlowResult;
 use crate::terrain::upscale::FbmUpscaleConfig;
 
 use super::closures::oceanic_bathymetry::SteinSteinParams;
-use super::drainage::{C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage};
+use super::drainage::{C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage_windowed};
 use super::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use super::kinematics::PlateKinematics;
-use super::production_upscale::{upscale_from_c1_with_progress, EroProgress};
+use super::production_upscale::{
+    C1_DOMAIN_KM, EroProgress, c1_coarse_normalized_altitude, c1_land_centroid_normalized,
+    upscale_from_c1_with_progress,
+};
 use super::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 
 /// The cache key for the 64² tectonic build (`init` + `run_with_closures`).
@@ -95,7 +99,16 @@ pub fn cached_c1_eroded(
     upscale_cfg: &FbmUpscaleConfig,
 ) -> Result<GridF32, String> {
     cached_c1_eroded_with_progress(
-        cache_dir, seed, grid, init, run, closures, ss, upscale_cfg, &mut |_| {}, &|| false,
+        cache_dir,
+        seed,
+        grid,
+        init,
+        run,
+        closures,
+        ss,
+        upscale_cfg,
+        &mut |_| {},
+        &|| false,
     )
 }
 
@@ -130,13 +143,42 @@ pub fn cached_c1_eroded_with_progress(
             return Err("cancelled".to_string());
         }
         let up = upscale_from_c1_with_progress(
-            &state, &run.iso_config, ss, &WorldSeed::new(seed), upscale_cfg, progress, cancel,
+            &state,
+            &run.iso_config,
+            ss,
+            &WorldSeed::new(seed),
+            upscale_cfg,
+            progress,
+            cancel,
         );
         if cancel() {
             return Err("cancelled".to_string());
         }
         Ok(up.heightmap)
     })
+}
+
+/// Land centroid (normalized `[u, v]`) of the coarse C1 continent for these
+/// tectonic inputs — used to CENTRE a cropped export window on the continent.
+/// Runs the coarse tectonic sim (cheap vs the HD erosion) and reads the SAME
+/// normalized altitude the upscale samples. Deterministic in the tectonic key.
+///
+/// Perf follow-up: NOT cached — on an eroded-cache HIT this still re-runs the
+/// coarse tectonics. Could share a cached coarse-altitude pass with
+/// `cached_c1_eroded` (the tectonic loop is the cheap phase, so deferred).
+pub fn c1_land_centroid(
+    seed: u64,
+    grid: usize,
+    init: &Phase2InitParams,
+    run: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    ss: &SteinSteinParams,
+) -> [f64; 2] {
+    let mut state = init_c1_state_phase_2_r7(grid, seed, init);
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    run_with_closures(&mut state, &mut kin, run, closures, |_, _| {});
+    let coarse = c1_coarse_normalized_altitude(&state, &run.iso_config, ss);
+    c1_land_centroid_normalized(&coarse)
 }
 
 // ── Drainage (composite) cache ─────────────────────────────────────────────
@@ -227,9 +269,25 @@ pub fn drainage_key(
     ss: &SteinSteinParams,
     climate: Option<(f32, &PrecipParams)>,
 ) -> CacheKey {
+    drainage_key_windowed(eroded, cfg, ss, climate, C1_DOMAIN_KM)
+}
+
+/// [`drainage_key`] with the window horizontal scale folded in. The window is
+/// only added to the digest when it is an ACTUAL crop (`window_km != full
+/// torus`), so the full-domain key stays byte-identical to pre-window.
+pub fn drainage_key_windowed(
+    eroded: &CacheKey,
+    cfg: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    climate: Option<(f32, &PrecipParams)>,
+    window_km: f32,
+) -> CacheKey {
     let mut k = CacheKey::derived_from(eroded).with("drainage_cfg", cfg).with("ss", ss);
     if let Some((lat, pp)) = climate {
         k = k.with("drainage_lat", &lat).with("drainage_precip", pp);
+    }
+    if window_km != C1_DOMAIN_KM {
+        k = k.with("drainage_window_km", &window_km);
     }
     k.algo(ALGO_DRAINAGE)
 }
@@ -250,24 +308,42 @@ pub fn cached_c1_drainage(
     cfg: &C1DrainageConfig,
     ss: &SteinSteinParams,
 ) -> Result<C1DrainageResult, String> {
-    let key = drainage_key(eroded, cfg, ss, climate);
+    cached_c1_drainage_windowed(cache_dir, eroded, heightmap, climate, cfg, ss, C1_DOMAIN_KM)
+}
+
+/// [`cached_c1_drainage`] for a grid spanning `window_km` (a cropped window):
+/// the internal climate + drainage use the window horizontal scale, and the key
+/// folds it in. `window_km == C1_DOMAIN_KM` reproduces [`cached_c1_drainage`]
+/// exactly (byte-identical key + payload).
+#[allow(clippy::too_many_arguments)]
+pub fn cached_c1_drainage_windowed(
+    cache_dir: &Path,
+    eroded: &CacheKey,
+    heightmap: &GridF32,
+    climate: Option<(f32, &PrecipParams)>,
+    cfg: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    window_km: f32,
+) -> Result<C1DrainageResult, String> {
+    let key = drainage_key_windowed(eroded, cfg, ss, climate, window_km);
     cached(cache_dir, "drainage", &key, || match climate {
         Some((lat, pp)) => {
-            let clim = c1_climate(heightmap, ss, lat, pp);
+            let clim = c1_climate_windowed(heightmap, ss, lat, pp, window_km);
             let dc = DrainageClimate {
                 precip_internal: &clim.precipitation,
                 temperature: &clim.temperature,
             };
-            c1_drainage(heightmap, Some(&dc), cfg, ss)
+            c1_drainage_windowed(heightmap, Some(&dc), cfg, ss, window_km)
         }
-        None => c1_drainage(heightmap, None, cfg, ss),
+        None => c1_drainage_windowed(heightmap, None, cfg, ss, window_km),
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::super::drainage::c1_drainage;
     use super::super::production_upscale::upscale_from_c1;
+    use super::*;
     use crate::tectonics::isostasy::IsostasyConfig;
     use std::cell::Cell;
 

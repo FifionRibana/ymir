@@ -36,15 +36,15 @@ use crossbeam_channel::Sender;
 use ymir_core::cache::default_cache_dir;
 use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
-use ymir_core::climate::{ClimateResult, c1_biomes, c1_climate};
+use ymir_core::climate::{ClimateResult, c1_biomes, c1_climate_windowed};
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
 use ymir_core::export::{height, hydro, vector};
 use ymir_core::grid::GridF32;
 use ymir_core::lakes::connectivity;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::cached_product::{
-    cached_c1_drainage, cached_c1_eroded, cached_c1_eroded_with_progress, drainage_key, eroded_key,
-    tectonic_key,
+    c1_land_centroid, cached_c1_drainage_windowed, cached_c1_eroded,
+    cached_c1_eroded_with_progress, drainage_key_windowed, eroded_key, tectonic_key,
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult};
@@ -63,6 +63,11 @@ use super::spec::C1RunSpec;
 pub struct HdParams {
     pub target_size: usize,
     pub latitude_deg: f32,
+    /// Physical size (km) of the exported/rendered PLAYABLE window. The HD grid
+    /// (`target_size²`) renders this sub-domain of the 1024 km tectonic torus, so
+    /// `km_per_cell = window_km / target_size` (328 km @ 8192² → 40 m/cell). The
+    /// window is centred on the continent (land centroid). Default 328.0.
+    pub window_km: f32,
     /// When `Some(dir)`, after the biome phase the run writes a v1 `.ymir`
     /// delivery container under `dir` (see [`ymir_core::export::container`]).
     /// `None` = no export. Explicit opt-in — the pipeline NEVER auto-exports
@@ -72,7 +77,7 @@ pub struct HdParams {
 
 impl Default for HdParams {
     fn default() -> Self {
-        Self { target_size: 2048, latitude_deg: 45.0, export_dir: None }
+        Self { target_size: 2048, latitude_deg: 45.0, window_km: 328.0, export_dir: None }
     }
 }
 
@@ -219,7 +224,25 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
 
     let run = hd_run_config(spec);
     let ss = SteinSteinParams::default();
-    let upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
+
+    // ── Playable window: render a `window_km` sub-domain of the 1024 km torus at
+    // `target_size`, CENTRED on the continent (land centroid). This is what makes
+    // km_per_cell = window_km/target_size land at ~40 m instead of the torus's
+    // 125 m. The tectonic sim stays full-torus; only the HD render is windowed.
+    let window_km = params.window_km;
+    let wf = (window_km / C1_DOMAIN_KM) as f64;
+    let centroid =
+        c1_land_centroid(spec.seed, spec.grid_size, &spec.init_params, &run, &spec.closures, &ss);
+    // Centre the window on the centroid, clamped so it stays inside the torus
+    // (no wrap — documented; the 0.32-wide window has ample room).
+    let win_origin = [
+        (centroid[0] - wf * 0.5).clamp(0.0, 1.0 - wf),
+        (centroid[1] - wf * 0.5).clamp(0.0, 1.0 - wf),
+    ];
+    let mut upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
+    upscale.sample_origin = win_origin;
+    upscale.sample_size = wf;
+
     let pp = PrecipParams::default();
     let dcfg = C1DrainageConfig::default();
     let cache_dir = default_cache_dir();
@@ -348,7 +371,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     bail_if_cancelled!();
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Climate });
     let t = Instant::now();
-    let climate = c1_climate(&eroded, &ss, lat, &pp);
+    let climate = c1_climate_windowed(&eroded, &ss, lat, &pp, window_km);
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Climate,
         regime: CacheRegime::Computed,
@@ -357,18 +380,25 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
 
     // ── Phase 3: drainage (rivers + lakes + water balance). ──
     bail_if_cancelled!();
-    let dkey = drainage_key(&ekey, &dcfg, &ss, Some((lat, &pp)));
+    let dkey = drainage_key_windowed(&ekey, &dcfg, &ss, Some((lat, &pp)), window_km);
     let drainage_hit = sidecar_exists("drainage", dkey.digest());
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Drainage });
     let t = Instant::now();
-    let drainage =
-        match cached_c1_drainage(&cache_dir, &ekey, &eroded, Some((lat, &pp)), &dcfg, &ss) {
-            Ok(d) => d,
-            Err(e) => {
-                let _ = tx.send(C1Event::HdFailed { error: format!("drainage: {e}") });
-                return;
-            }
-        };
+    let drainage = match cached_c1_drainage_windowed(
+        &cache_dir,
+        &ekey,
+        &eroded,
+        Some((lat, &pp)),
+        &dcfg,
+        &ss,
+        window_km,
+    ) {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = tx.send(C1Event::HdFailed { error: format!("drainage: {e}") });
+            return;
+        }
+    };
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Drainage,
         regime: if drainage_hit { CacheRegime::Hit } else { CacheRegime::Miss },
@@ -390,9 +420,10 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // Explicit opt-in only (never automatic). Ships height (placeholder) +
     // coastline/cliffs (Y-B) + temperature/precipitation/biome (Y-C).
     if let Some(export_dir) = &params.export_dir {
-        if let Err(e) =
-            export_ymir_container(spec, &ss, &eroded, &climate, &biomes, &drainage, lat, export_dir)
-        {
+        if let Err(e) = export_ymir_container(
+            spec, &ss, &eroded, &climate, &biomes, &drainage, lat, window_km, win_origin,
+            export_dir,
+        ) {
             // Non-fatal: the product still ships to the UI; surface the reason.
             let _ = tx.send(C1Event::HdFailed { error: format!("export .ymir: {e}") });
         }
@@ -426,6 +457,8 @@ fn export_ymir_container(
     biomes: &[Biome],
     drainage: &C1DrainageResult,
     lat: f32,
+    window_km: f32,
+    window_offset: [f64; 2],
     root: &Path,
 ) -> Result<(), String> {
     let (w, h) = (eroded.width, eroded.height);
@@ -438,15 +471,16 @@ fn export_ymir_container(
     //   inverse). The min_m/max_m are stamped on the "height" layer below.
     let height = height::metric_height_u16(eroded, ss);
 
-    // window_km == tectonic_domain_km until the real window crop lands (separate
-    // chantier — not touched here).
+    // The HD grid renders the `window_km` sub-domain of the 1024 km torus, so
+    // km_per_cell = window_km / width (the writer computes it). The tectonic
+    // torus stays the context; the window origin is the land-centred crop.
     let meta = ContinentMeta {
         name: format!("seed{}_{}", spec.seed, w),
         seed: spec.seed,
         grid: Grid { width: w, height: h },
-        window_km: C1_DOMAIN_KM as f64,
+        window_km: window_km as f64,
         tectonic_domain_km: C1_DOMAIN_KM as f64,
-        window_offset_in_torus: [0.0, 0.0],
+        window_offset_in_torus: window_offset,
         latitude_deg: lat as f64,
         stein_stein: *ss,
         // Honest metric bounds: sea anchored to 0 m; elevation/depth are the
@@ -468,7 +502,8 @@ fn export_ymir_container(
     writer.set_level_m("coastline", 0.0)?;
 
     // Cliffs: slope-threshold isoline (real angle from metric height + km/cell).
-    let cell_size_m = (C1_DOMAIN_KM / w as f32) * 1000.0;
+    // Window km/cell — the same scale the climate/drainage use.
+    let cell_size_m = (window_km / w as f32) * 1000.0;
     let threshold_deg = vector::DEFAULT_CLIFF_THRESHOLD_DEG;
     let cliffs = vector::cliffs_geojson(eroded, ss, cell_size_m, threshold_deg);
     writer.add_vector_file("cliffs", "cliffs.geojson", &cliffs)?;
