@@ -290,33 +290,49 @@ pub fn c1_coarse_normalized_altitude(
     ss: &SteinSteinParams,
     target_land_fraction: Option<f32>,
 ) -> GridF32 {
-    let mut coarse = c1_production_altitude_craton(
+    c1_normalize_coarse(c1_coarse_raw_altitude(state, iso, ss), target_land_fraction)
+}
+
+/// The RAW coarse C1 altitude (sea-centred at 0, metres/`depth_scale` units),
+/// BEFORE the M1 calibration and the `[0,1]` normalisation. Exposed so a
+/// parameter sweep can build it ONCE per tectonic config and then evaluate many
+/// `target_land_fraction` values by re-thresholding the same field (the
+/// tectonic pass is the cost; calibration is a cheap quantile subtract).
+pub fn c1_coarse_raw_altitude(
+    state: &C1State,
+    iso: &IsostasyConfig,
+    ss: &SteinSteinParams,
+) -> GridF32 {
+    c1_production_altitude_craton(
         &state.s,
         &state.age,
         &state.plate_type,
         state.cratonic_mask.data(),
         iso,
         ss,
-    );
+    )
+}
 
-    // M1 sea-level calibration: `c1_production_altitude_craton` sea-centres the
-    // field at raw 0 (the isostatic sea level), which emerges ~55–60 % land. To
-    // hit a target LAND-AREA fraction `f`, shift the field so the `1−f` quantile
-    // becomes exactly 0 m: then precisely `f` of cells are > 0 (land), and
-    // "0 m = coastline" holds by construction. Resolution-independent (computed
-    // on the coarse field, before FBM/erosion). `None` → no shift (byte-
-    // identical to pre-M1). See `docs/tdd.md` — the eustatic sea level is a free
-    // parameter set by water volume, so choosing it by ocean fraction is right.
+/// Apply the M1 sea-level calibration + the fixed `[0,1]` normalisation to a raw
+/// coarse field ([`c1_coarse_raw_altitude`]).
+///
+/// M1 sea-level calibration: the raw field is sea-centred at 0 (the isostatic
+/// sea level), which emerges ~55–60 % land. To hit a target LAND-AREA fraction
+/// `f`, shift the field so the `1−f` quantile becomes exactly 0 m: then precisely
+/// `f` of cells are `> 0` (land), and "0 m = coastline" holds by construction.
+/// Resolution-independent (coarse field, before FBM/erosion). `None` → no shift
+/// (byte-identical to pre-M1). The eustatic sea level is a free parameter set by
+/// water volume, so choosing it by ocean fraction is right.
+pub fn c1_normalize_coarse(mut raw: GridF32, target_land_fraction: Option<f32>) -> GridF32 {
     if let Some(f) = target_land_fraction {
-        calibrate_to_land_fraction(&mut coarse.data, f);
+        calibrate_to_land_fraction(&mut raw.data, f);
     }
-
     // Fixed normalisation to [0,1] (sea 0.0 → 0.5), resolution-independent.
     let half = ALTITUDE_NORM_HALF_RANGE;
-    for v in coarse.data.iter_mut() {
+    for v in raw.data.iter_mut() {
         *v = ((*v + half) / (2.0 * half)).clamp(0.0, 1.0);
     }
-    coarse
+    raw
 }
 
 /// Normalized land centroid `[u, v]` in `[0,1]²` of a coarse altitude field
