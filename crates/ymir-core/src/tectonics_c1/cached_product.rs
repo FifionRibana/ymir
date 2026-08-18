@@ -42,7 +42,9 @@ use super::drainage::C1_SEA_LEVEL_NORM;
 use super::drainage::{C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage_windowed};
 use super::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use super::kinematics::PlateKinematics;
-use super::land_topology::{IslandCriteria, LandTopology, is_island_fit, land_topology};
+use super::land_topology::{
+    IslandCriteria, LandTopology, evaluate_island, harvest_islands, is_island_fit, land_topology,
+};
 use super::production_upscale::{
     C1_DOMAIN_KM, EroProgress, c1_coarse_normalized_altitude, c1_coarse_raw_altitude,
     c1_land_centroid_normalized, c1_normalize_coarse, upscale_from_c1_with_progress,
@@ -215,13 +217,14 @@ pub fn c1_coarse_land_report(
     }
 }
 
-/// Sweep the land topology of ONE tectonic config across many target land
-/// fractions, running the (expensive) coarse tectonic pass ONCE and evaluating
-/// each `tlf` by re-thresholding the same raw altitude field (cheap). Returns
-/// `(tlf, topology)` per fraction. Window/margin budgets are a POST-HOC predicate
-/// on these metrics — not swept here. Deterministic in the tectonic key.
+/// Sweep the normalized coarse field of ONE tectonic config across many target
+/// land fractions, running the (expensive) coarse tectonic pass ONCE and
+/// producing each `tlf`'s field by re-thresholding the same raw altitude (cheap).
+/// Returns `(tlf, normalized_field)` per fraction; the caller derives topology /
+/// border-clean metrics. Window/margin budgets are a POST-HOC predicate on those
+/// metrics — not swept here. Deterministic in the tectonic key.
 #[allow(clippy::too_many_arguments)]
-pub fn coarse_land_topology_sweep(
+pub fn coarse_normalized_sweep(
     seed: u64,
     grid: usize,
     init: &Phase2InitParams,
@@ -229,17 +232,14 @@ pub fn coarse_land_topology_sweep(
     closures: &C1Closures,
     ss: &SteinSteinParams,
     target_land_fractions: &[f32],
-) -> Vec<(f32, LandTopology)> {
+) -> Vec<(f32, GridF32)> {
     let mut state = init_c1_state_phase_2_r7(grid, seed, init);
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     run_with_closures(&mut state, &mut kin, run, closures, |_, _| {});
     let raw = c1_coarse_raw_altitude(&state, &run.iso_config, ss);
     target_land_fractions
         .iter()
-        .map(|&f| {
-            let norm = c1_normalize_coarse(raw.clone(), Some(f));
-            (f, land_topology(&norm, C1_SEA_LEVEL_NORM))
-        })
+        .map(|&f| (f, c1_normalize_coarse(raw.clone(), Some(f))))
         .collect()
 }
 
@@ -496,18 +496,17 @@ mod tests {
         )
     }
 
-    /// Island-budget parameter sweep (M1 #190). NOT a unit test — runs a real
-    /// coarse-tectonic scan (minutes) and reports DISTRIBUTIONS of land-topology
-    /// metrics per target_land_fraction, plus which window budgets close. Cheap
-    /// by construction: one tectonic pass per (plates, clusters, seed), all tlf
-    /// evaluated by re-thresholding (see `coarse_land_topology_sweep`). Raw rows
-    /// dumped to CSV for re-analysis without re-running. Run:
+    /// Island-budget sweep with the BORDER-CLEAN predicate (M1 #190 reframe). NOT
+    /// a unit test — runs a real coarse-tectonic scan (minutes). The window is
+    /// SIZED to the largest landmass (`traverse + 2·margin`); a config is accepted
+    /// iff the largest mass does not wrap, the window cell size is in the 30–50 m
+    /// band, and NO land (of any mass) lies on the window border ring. Compactness
+    /// is reported, never selected on. Cheap: one tectonic pass per (plates,
+    /// clusters, seed), all tlf by re-thresholding. Raw rows → CSV. Run:
     ///   cargo test -p ymir-core --lib sweep_island_budget -- --ignored --nocapture
     #[test]
     #[ignore]
     fn sweep_island_budget() {
-        use std::f32::consts::PI;
-
         let grid = 64usize;
         let run = C1TimeLoopConfig {
             rigid_continental_crust: true,
@@ -521,14 +520,19 @@ mod tests {
         let clo = C1Closures::default();
         let ss = SteinSteinParams::default();
 
-        // Stage A (this run). Stage B if it does not close: plates {12,16,20},
-        // clusters {4,6,8}, seeds 0..20, same tlf list.
-        let plate_counts = [16usize];
-        let cluster_counts = [6usize];
-        let seeds: Vec<u64> = (0..40).collect();
-        let tlfs = [0.29f32, 0.20, 0.15, 0.12];
+        // Stage B (corrected direction): border-clean needs ISOLATION, not
+        // fragmentation. Stage A (cc=6) produced an archipelago → every in-band
+        // island had 4-22 satellites clipping its window ring → 0 clean. So scan
+        // LOW cluster counts (1-3 → one/few isolated continental regions), not the
+        // {4,6,8} the pre-reframe plan assumed. Lower tlf shrinks the single mass
+        // toward the in-band window size without adding neighbours.
+        let plate_counts = [12usize, 16, 20];
+        let cluster_counts = [1usize, 2, 3];
+        let seeds: Vec<u64> = (0..20).collect();
+        let tlfs = [0.15f32, 0.12, 0.10];
         let margin_km = 25.0f32;
-        let windows = [328.0f32, 360.0, 380.0, 400.0];
+        let ring_cells = 1usize;
+        let km_per_cell = C1_DOMAIN_KM / grid as f32;
 
         struct Row {
             np: usize,
@@ -538,14 +542,22 @@ mod tests {
             masses: usize,
             area: f32,
             frac: f32,
+            traverse: f32,
+            window_km: f32,
+            m_per_cell: f32,
+            res_ok: bool,
             wx: bool,
             wy: bool,
-            bx: f32,
-            by: f32,
-            traverse: f32,
-            disc: f32,
+            clean: bool,
+            sats: usize,
             compact: f32,
         }
+        impl Row {
+            fn accepted(&self) -> bool {
+                !self.wx && !self.wy && self.res_ok && self.clean
+            }
+        }
+
         let mut rows: Vec<Row> = Vec::new();
         for &np in &plate_counts {
             for &cc in &cluster_counts {
@@ -553,159 +565,142 @@ mod tests {
                 init.num_plates = np;
                 init.cluster.seed_cluster_count = cc;
                 for &seed in &seeds {
-                    for (tlf, t) in
-                        coarse_land_topology_sweep(seed, grid, &init, &run, &clo, &ss, &tlfs)
+                    for (tlf, field) in
+                        coarse_normalized_sweep(seed, grid, &init, &run, &clo, &ss, &tlfs)
                     {
-                        let traverse = t.bbox_km.0.max(t.bbox_km.1);
-                        let disc = 2.0 * (t.largest_area_km2 / PI).sqrt();
-                        let compact = if traverse > 0.0 { disc / traverse } else { 0.0 };
+                        let e = evaluate_island(&field, C1_SEA_LEVEL_NORM, margin_km, ring_cells);
                         rows.push(Row {
                             np,
                             cc,
                             seed,
                             tlf,
-                            masses: t.num_landmasses,
-                            area: t.largest_area_km2,
-                            frac: t.largest_area_frac,
-                            wx: t.wraps_x,
-                            wy: t.wraps_y,
-                            bx: t.bbox_km.0,
-                            by: t.bbox_km.1,
-                            traverse,
-                            disc,
-                            compact,
+                            masses: e.topo.num_landmasses,
+                            area: e.topo.largest_area_km2,
+                            frac: e.topo.largest_area_frac,
+                            traverse: e.topo.bbox_km.0.max(e.topo.bbox_km.1),
+                            window_km: e.window_km,
+                            m_per_cell: e.m_per_cell,
+                            res_ok: e.resolution_ok,
+                            wx: e.topo.wraps_x,
+                            wy: e.topo.wraps_y,
+                            clean: e.border_clean,
+                            sats: e.satellites_inside,
+                            compact: e.compactness,
                         });
                     }
                 }
             }
         }
 
-        // ── Persist raw rows (CSV) for re-analysis against new budgets. ──
+        // ── Persist raw rows (CSV). ──
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
         let _ = std::fs::create_dir_all(&dir);
         let csv_path = dir.join("island_sweep.csv");
         let mut csv = String::from(
             "num_plates,seed_cluster_count,seed,tlf,num_landmasses,largest_area_km2,\
-             largest_area_frac,wraps_x,wraps_y,bbox_x_km,bbox_y_km,traverse_km,\
-             equiv_disc_diameter_km,compactness\n",
+             largest_area_frac,traverse_km,window_km,m_per_cell,resolution_ok,wraps_x,wraps_y,\
+             border_clean,satellites_inside,compactness\n",
         );
         for r in &rows {
             csv.push_str(&format!(
-                "{},{},{},{:.3},{},{:.1},{:.4},{},{},{:.1},{:.1},{:.1},{:.1},{:.3}\n",
-                r.np, r.cc, r.seed, r.tlf, r.masses, r.area, r.frac, r.wx, r.wy, r.bx, r.by,
-                r.traverse, r.disc, r.compact
+                "{},{},{},{:.3},{},{:.1},{:.4},{:.1},{:.1},{:.2},{},{},{},{},{},{:.3}\n",
+                r.np, r.cc, r.seed, r.tlf, r.masses, r.area, r.frac, r.traverse, r.window_km,
+                r.m_per_cell, r.res_ok, r.wx, r.wy, r.clean, r.sats, r.compact
             ));
         }
         std::fs::write(&csv_path, csv).unwrap();
-        eprintln!("rows: {} — CSV: {}", rows.len(), csv_path.display());
-
-        // ── Budget table (once). ──
-        eprintln!("=== budget table (margin {margin_km:.0} km, HD 8192²) ===");
-        for &w in &windows {
-            let budget = w - 2.0 * margin_km;
-            let max_area = PI * (budget / 2.0).powi(2);
-            let cell = w / 8192.0 * 1000.0;
-            let flag = if !(30.0..=50.0).contains(&cell) { "  [OUTSIDE 30-50 m band]" } else { "" };
-            eprintln!(
-                "  window {w:.0} km → traverse budget {budget:.0} km, max compact area \
-                 {max_area:.0} km², cell {cell:.1} m{flag}"
-            );
-        }
+        eprintln!(
+            "rows: {} — CSV: {}\nwindow SIZED to island (traverse + 2·{margin_km:.0} km); ring \
+             {ring_cells} cell = {:.0} km; resolution band 30-50 m/cell → window ∈ [246,400] km",
+            rows.len(),
+            csv_path.display(),
+            ring_cells as f32 * km_per_cell
+        );
 
         // ── Distributions per target_land_fraction. ──
-        let pct = |sorted: &[f32], q: f32| -> f32 {
-            if sorted.is_empty() {
-                return f32::NAN;
-            }
-            sorted[(((sorted.len() - 1) as f32) * q).round() as usize]
-        };
-        let mut fitting: Vec<(f32, f32, &Row)> = Vec::new(); // (tlf, min_window, row)
         for &tlf in &tlfs {
             let rt: Vec<&Row> = rows.iter().filter(|r| (r.tlf - tlf).abs() < 1e-6).collect();
             let total = rt.len();
             let wrap = rt.iter().filter(|r| r.wx || r.wy).count();
-            let nonwrap: Vec<&Row> = rt.into_iter().filter(|r| !(r.wx || r.wy)).collect();
+            let nonwrap = total - wrap;
+            let clean: Vec<&&Row> = rt.iter().filter(|r| r.accepted()).collect();
             eprintln!(
-                "--- tlf {tlf:.2}: {total} configs, {wrap} wrap ({}%), {} non-wrapping",
-                if total > 0 { 100 * wrap / total } else { 0 },
-                nonwrap.len()
+                "--- tlf {tlf:.2}: {total} configs, {wrap} wrap, {nonwrap} non-wrap, \
+                 {} BORDER-CLEAN",
+                clean.len()
             );
-            if nonwrap.is_empty() {
-                continue;
-            }
-            let mut trav: Vec<f32> = nonwrap.iter().map(|r| r.traverse).collect();
-            trav.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            let mut comp: Vec<f32> = nonwrap.iter().map(|r| r.compact).collect();
-            comp.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            let min_row = nonwrap.iter().min_by(|a, b| a.traverse.partial_cmp(&b.traverse).unwrap()).unwrap();
-            eprintln!(
-                "    traverse min {:.0} / median {:.0} / p90 {:.0} km; min-traverse area \
-                 {:.0} km² ({:.0}%); median compactness {:.2}",
-                pct(&trav, 0.0),
-                pct(&trav, 0.5),
-                pct(&trav, 0.9),
-                min_row.area,
-                min_row.frac * 100.0,
-                pct(&comp, 0.5),
-            );
-            for &w in &windows {
-                let budget = w - 2.0 * margin_km;
-                let fit: Vec<&&Row> = nonwrap.iter().filter(|r| r.traverse <= budget).collect();
-                let best = fit.iter().min_by(|a, b| a.traverse.partial_cmp(&b.traverse).unwrap());
-                match best {
-                    Some(b) => eprintln!(
-                        "    window {w:.0}: {} fit — best seed {} · {} pl · {} cl → {:.0} km, \
-                         {:.0} km² ({:.0}%)",
-                        fit.len(),
-                        b.seed,
-                        b.np,
-                        b.cc,
-                        b.traverse,
-                        b.area,
-                        b.frac * 100.0
-                    ),
-                    None => eprintln!("    window {w:.0}: 0 fit"),
-                }
-            }
-            // Track the highest-tlf fitting rows for the recommendation.
-            for r in &nonwrap {
-                if let Some(&w) = windows.iter().find(|&&w| r.traverse <= w - 2.0 * margin_km) {
-                    fitting.push((tlf, w, r));
-                }
+            if let Some(b) = clean.iter().max_by(|a, b| a.area.partial_cmp(&b.area).unwrap()) {
+                eprintln!(
+                    "    largest clean: seed {} → area {:.0} km² ({:.0}%), window {:.0} km \
+                     ({:.1} m/cell), {} satellites, compactness {:.2}",
+                    b.seed, b.area, b.frac * 100.0, b.window_km, b.m_per_cell, b.sats, b.compact
+                );
             }
         }
 
-        // ── Recommendation: keep the most land (highest tlf), then most compact. ──
+        // ── Recommendation: BORDER-CLEAN first, then LARGEST area, then finest cell. ──
         eprintln!("=== recommendation ===");
-        if let Some(&(tlf, win, r)) = fitting.iter().max_by(|a, b| {
-            a.0.partial_cmp(&b.0).unwrap().then(a.2.compact.partial_cmp(&b.2.compact).unwrap())
-        }) {
-            eprintln!(
-                "RECOMMENDED: tlf {tlf:.2} · {} plates · {} clusters · seed {} → traverse \
-                 {:.0} km fits window {win:.0} km (cell {:.1} m); area {:.0} km² ({:.0}%), \
-                 {} masses, compactness {:.2}",
-                r.np, r.cc, r.seed, r.traverse, win / 8192.0 * 1000.0, r.area, r.frac * 100.0,
-                r.masses, r.compact
-            );
-        } else {
-            let best = rows
-                .iter()
-                .filter(|r| !(r.wx || r.wy))
-                .min_by(|a, b| a.traverse.partial_cmp(&b.traverse).unwrap());
-            match best {
-                Some(b) => {
-                    let widest_budget = windows[windows.len() - 1] - 2.0 * margin_km; // 350 km
-                    let max_area = PI * (widest_budget / 2.0).powi(2);
+        let best = rows.iter().filter(|r| r.accepted()).max_by(|a, b| {
+            a.area
+                .partial_cmp(&b.area)
+                .unwrap()
+                .then(b.m_per_cell.partial_cmp(&a.m_per_cell).unwrap())
+        });
+        match best {
+            Some(r) => {
+                eprintln!(
+                    "RECOMMENDED (reproduce): num_plates={} seed_cluster_count={} seed={} \
+                     target_land_fraction={:.2} window_km={:.0} margin_km={:.0} ring_cells={ring_cells}",
+                    r.np, r.cc, r.seed, r.tlf, r.window_km, margin_km
+                );
+                eprintln!(
+                    "  → largest island {:.0} km² ({:.0}%), traverse {:.0} km, {:.1} m/cell, \
+                     {} satellites inside, compactness {:.2} (reported only)",
+                    r.area, r.frac * 100.0, r.traverse, r.m_per_cell, r.sats, r.compact
+                );
+
+                // ── Step 4: multi-continent harvest on the recommended config. ──
+                let mut init = base.clone();
+                init.num_plates = r.np;
+                init.cluster.seed_cluster_count = r.cc;
+                let fields = coarse_normalized_sweep(r.seed, grid, &init, &run, &clo, &ss, &tlfs);
+                let field = &fields.iter().find(|(t, _)| (t - r.tlf).abs() < 1e-6).unwrap().1;
+                let cands = harvest_islands(field, C1_SEA_LEVEL_NORM, margin_km, ring_cells);
+                let placeable: Vec<_> = cands.iter().filter(|c| c.placeable()).collect();
+                eprintln!(
+                    "=== harvest === {} landmasses, {} independently placeable continents:",
+                    cands.len(),
+                    placeable.len()
+                );
+                for c in placeable.iter().take(12) {
                     eprintln!(
-                        "NO FIT at any tlf/window. Best non-wrapping: tlf {:.2} · {} pl · {} cl · \
-                         seed {} → traverse {:.0} km (misses widest budget {widest_budget:.0} by \
-                         {:.0} km); area {:.0} km² (over the {max_area:.0} km² compact budget by \
-                         {:.0} km²)",
-                        b.tlf, b.np, b.cc, b.seed, b.traverse, b.traverse - widest_budget,
-                        b.area, b.area - max_area
+                        "  area {:.0} km², traverse {:.0} km, window {:.0} km ({:.1} m/cell)",
+                        c.area_km2, c.traverse_km, c.window_km, c.m_per_cell
                     );
                 }
-                None => eprintln!("every scanned config wraps the torus at every tlf"),
+            }
+            None => {
+                // Report the closest miss and WHY (resolution vs border).
+                let nonwrap: Vec<&Row> = rows.iter().filter(|r| !(r.wx || r.wy)).collect();
+                let dirty = nonwrap.iter().filter(|r| r.res_ok && !r.clean).count();
+                let too_fine = nonwrap.iter().filter(|r| r.m_per_cell < 30.0).count();
+                let too_coarse = nonwrap.iter().filter(|r| r.m_per_cell > 50.0).count();
+                let min_sats = nonwrap
+                    .iter()
+                    .filter(|r| r.res_ok)
+                    .map(|r| r.sats)
+                    .min()
+                    .unwrap_or(0);
+                eprintln!(
+                    "NO BORDER-CLEAN config. Of {} non-wrapping: {} in-band but border-dirty \
+                     (min {} satellites clip the window), {} too fine (<30 m), {} too coarse \
+                     (>50 m).",
+                    nonwrap.len(),
+                    dirty,
+                    min_sats,
+                    too_fine,
+                    too_coarse
+                );
             }
         }
     }

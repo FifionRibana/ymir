@@ -218,6 +218,278 @@ pub fn is_island_fit(t: &LandTopology, c: &IslandCriteria) -> bool {
     traverse >= c.min_traverse_km && traverse <= c.max_traverse_km()
 }
 
+/// Border-clean island evaluation (M1 #190 reframe): the window is SIZED to the
+/// largest landmass (`window_km = traverse + 2·margin`) and centred on its bbox
+/// centre. The binding property is that the continent is surrounded by ocean —
+/// so tentacular shape is fine; what matters is that NO land (of any mass) lies
+/// on the window border ring. Compactness is reported, never selected on.
+#[derive(Debug, Clone, Copy)]
+pub struct IslandEval {
+    /// Largest-mass metrics (from [`land_topology`]).
+    pub topo: LandTopology,
+    /// Window side (km) = `traverse + 2·margin`.
+    pub window_km: f32,
+    /// Resulting cell size at HD 8192² (m).
+    pub m_per_cell: f32,
+    /// `m_per_cell` within the 30–50 m band.
+    pub resolution_ok: bool,
+    /// No land cell (of ANY landmass) lies on the window border ring.
+    pub border_clean: bool,
+    /// Number of OTHER landmasses fully inside the window (satellite islets — a
+    /// feature: independently placeable continents from one tectonic run).
+    pub satellites_inside: usize,
+    /// Border ring thickness in km (`ring_cells · km_per_cell`).
+    pub ring_km: f32,
+    /// Window centre (largest-mass bbox centre) in coarse cells.
+    pub center_cell: (usize, usize),
+    /// Reported only, never a selector: equiv-disc-diameter / traverse.
+    pub compactness: f32,
+}
+
+impl IslandEval {
+    /// Accept: largest mass does not wrap, resolution in band, border clean.
+    pub fn accepted(&self) -> bool {
+        !self.topo.wraps_x && !self.topo.wraps_y && self.resolution_ok && self.border_clean
+    }
+}
+
+/// Evaluate the border-clean island predicate on a coarse normalized field, with
+/// the window sized to the largest landmass and centred on its bbox centre. The
+/// border ring is `ring_cells` thick on the (periodic) coarse grid. Land = value
+/// `> sea`.
+pub fn evaluate_island(coarse: &GridF32, sea: f32, margin_km: f32, ring_cells: usize) -> IslandEval {
+    let topo = land_topology(coarse, sea);
+    let (w, h) = (coarse.width, coarse.height);
+    let km_per_cell = C1_DOMAIN_KM / w as f32;
+    let traverse_km = topo.bbox_km.0.max(topo.bbox_km.1);
+    let window_km = traverse_km + 2.0 * margin_km;
+    let m_per_cell = window_km / 8192.0 * 1000.0;
+    let resolution_ok = (30.0..=50.0).contains(&m_per_cell);
+    let ring_km = ring_cells as f32 * km_per_cell;
+    let disc = 2.0 * (topo.largest_area_km2 / std::f32::consts::PI).sqrt();
+    let compactness = if traverse_km > 0.0 { disc / traverse_km } else { 0.0 };
+    let cx = (topo.bbox_min.0 + topo.bbox_max.0) as f32 / 2.0;
+    let cy = (topo.bbox_min.1 + topo.bbox_max.1) as f32 / 2.0;
+    let center_cell = ((cx.round() as usize) % w, (cy.round() as usize) % h);
+
+    let mut eval = IslandEval {
+        topo,
+        window_km,
+        m_per_cell,
+        resolution_ok,
+        border_clean: false,
+        satellites_inside: 0,
+        ring_km,
+        center_cell,
+        compactness,
+    };
+    if topo.num_landmasses == 0 {
+        return eval; // no land → not a clean island
+    }
+
+    // Periodic signed offset of integer coord `p` from float centre `c` (axis `len`).
+    let offset = |p: usize, c: f32, len: usize| -> f32 {
+        let l = len as f32;
+        let mut d = p as f32 - c;
+        d -= (d / l).round() * l;
+        d
+    };
+
+    // CCL to label components (satellites need per-component membership).
+    let n = w * h;
+    let is_land = |k: usize| coarse.data[k] > sea;
+    let mut ds = DisjointSet::new(n);
+    for y in 0..h {
+        for x in 0..w {
+            let k = y * w + x;
+            if !is_land(k) {
+                continue;
+            }
+            let kr = y * w + (x + 1) % w;
+            if is_land(kr) {
+                ds.union(k, kr);
+            }
+            let kd = ((y + 1) % h) * w + x;
+            if is_land(kd) {
+                ds.union(k, kd);
+            }
+        }
+    }
+    let mut sizes: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    for k in 0..n {
+        if is_land(k) {
+            *sizes.entry(ds.find(k)).or_insert(0) += 1;
+        }
+    }
+    let largest_root =
+        sizes.iter().max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0))).map(|(&r, _)| r).unwrap();
+
+    let half = (window_km / km_per_cell).round().max(1.0) / 2.0;
+    let ring = ring_cells as f32;
+    let mut border_clean = true;
+    // Per-component: stays strictly inside the window (no cell on/beyond the ring)?
+    let mut inside: std::collections::HashMap<usize, bool> = std::collections::HashMap::new();
+    for y in 0..h {
+        for x in 0..w {
+            let k = y * w + x;
+            if !is_land(k) {
+                continue;
+            }
+            let dx = offset(x, cx, w).abs();
+            let dy = offset(y, cy, h).abs();
+            let in_window = dx <= half && dy <= half;
+            let on_ring = in_window && (dx > half - ring || dy > half - ring);
+            if on_ring {
+                border_clean = false;
+            }
+            let strictly_inside = in_window && !on_ring;
+            let e = inside.entry(ds.find(k)).or_insert(true);
+            if !strictly_inside {
+                *e = false;
+            }
+        }
+    }
+    eval.border_clean = border_clean;
+    eval.satellites_inside =
+        inside.iter().filter(|&(&r, &ins)| r != largest_root && ins).count();
+    eval
+}
+
+/// One landmass evaluated as a placeable continent with its OWN window.
+#[derive(Debug, Clone, Copy)]
+pub struct IslandCandidate {
+    pub area_km2: f32,
+    pub traverse_km: f32,
+    pub window_km: f32,
+    pub m_per_cell: f32,
+    pub resolution_ok: bool,
+    pub border_clean: bool,
+    pub wraps: bool,
+}
+
+impl IslandCandidate {
+    /// Placeable on a globe: non-wrapping, resolution in band, border clean.
+    pub fn placeable(&self) -> bool {
+        !self.wraps && self.resolution_ok && self.border_clean
+    }
+}
+
+/// Evaluate EVERY landmass as its own border-clean continent (M1 #190 multi-
+/// continent harvest, report-only): each mass gets a window sized to itself and
+/// is placeable when non-wrapping, resolution in band, and no OTHER land lies on
+/// its ring. One tectonic run can thus yield several placeable continents that
+/// share a consistent tectonic history. Sorted by area (desc), deterministic.
+pub fn harvest_islands(
+    coarse: &GridF32,
+    sea: f32,
+    margin_km: f32,
+    ring_cells: usize,
+) -> Vec<IslandCandidate> {
+    use std::collections::{HashMap, HashSet};
+    let (w, h) = (coarse.width, coarse.height);
+    let n = w * h;
+    let km_per_cell = C1_DOMAIN_KM / w as f32;
+    let cell_km2 = km_per_cell * km_per_cell;
+    let is_land = |k: usize| coarse.data[k] > sea;
+
+    let mut ds = DisjointSet::new(n);
+    for y in 0..h {
+        for x in 0..w {
+            let k = y * w + x;
+            if !is_land(k) {
+                continue;
+            }
+            let kr = y * w + (x + 1) % w;
+            if is_land(kr) {
+                ds.union(k, kr);
+            }
+            let kd = ((y + 1) % h) * w + x;
+            if is_land(kd) {
+                ds.union(k, kd);
+            }
+        }
+    }
+    // Per-root area + bbox.
+    let mut agg: HashMap<usize, (usize, usize, usize, usize, usize)> = HashMap::new();
+    for y in 0..h {
+        for x in 0..w {
+            let k = y * w + x;
+            if !is_land(k) {
+                continue;
+            }
+            let r = ds.find(k);
+            let e = agg.entry(r).or_insert((0, x, x, y, y));
+            e.0 += 1;
+            e.1 = e.1.min(x);
+            e.2 = e.2.max(x);
+            e.3 = e.3.min(y);
+            e.4 = e.4.max(y);
+        }
+    }
+    // Roots that wrap a seam (not placeable).
+    let mut wraps: HashSet<usize> = HashSet::new();
+    for y in 0..h {
+        let (a, b) = (y * w + (w - 1), y * w);
+        if is_land(a) && is_land(b) {
+            wraps.insert(ds.find(a));
+        }
+    }
+    for x in 0..w {
+        let (a, b) = ((h - 1) * w + x, x);
+        if is_land(a) && is_land(b) {
+            wraps.insert(ds.find(a));
+        }
+    }
+
+    let offset = |p: usize, c: f32, len: usize| -> f32 {
+        let l = len as f32;
+        let mut d = p as f32 - c;
+        d -= (d / l).round() * l;
+        d
+    };
+    let ring = ring_cells as f32;
+    let mut roots: Vec<usize> = agg.keys().copied().collect();
+    roots.sort_unstable(); // deterministic scan order
+    let mut out = Vec::with_capacity(roots.len());
+    for r in roots {
+        let (area, xmin, xmax, ymin, ymax) = agg[&r];
+        let traverse = ((xmax - xmin + 1).max(ymax - ymin + 1)) as f32 * km_per_cell;
+        let window_km = traverse + 2.0 * margin_km;
+        let m_per_cell = window_km / 8192.0 * 1000.0;
+        let resolution_ok = (30.0..=50.0).contains(&m_per_cell);
+        let wr = wraps.contains(&r);
+        let (cx, cy) = ((xmin + xmax) as f32 / 2.0, (ymin + ymax) as f32 / 2.0);
+        let half = (window_km / km_per_cell).round().max(1.0) / 2.0;
+        // Border-clean: no land (any mass) on this window's ring.
+        let mut border_clean = !wr;
+        if border_clean {
+            'scan: for y in 0..h {
+                for x in 0..w {
+                    if !is_land(y * w + x) {
+                        continue;
+                    }
+                    let (dx, dy) = (offset(x, cx, w).abs(), offset(y, cy, h).abs());
+                    if dx <= half && dy <= half && (dx > half - ring || dy > half - ring) {
+                        border_clean = false;
+                        break 'scan;
+                    }
+                }
+            }
+        }
+        out.push(IslandCandidate {
+            area_km2: area as f32 * cell_km2,
+            traverse_km: traverse,
+            window_km,
+            m_per_cell,
+            resolution_ok,
+            border_clean,
+            wraps: wr,
+        });
+    }
+    out.sort_by(|a, b| b.area_km2.partial_cmp(&a.area_km2).unwrap());
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,6 +555,34 @@ mod tests {
         assert_eq!(t.num_landmasses, 0);
         assert_eq!(t.largest_cells, 0);
         assert_eq!(t.emerged_fraction, 0.0);
+    }
+
+    /// Border-clean: a centred island with ocean margin passes; a second mass
+    /// intruding on the window ring breaks it.
+    #[test]
+    fn border_clean_predicate() {
+        let (w, h) = (64usize, 64usize);
+        // Centred 18-cell block on a 64² torus (16 km/cell) → window ~338 km
+        // (~41 m/cell), block inside with margin → border-clean, 0 satellites.
+        let mut d = vec![0.2f32; w * h];
+        for y in 23..41 {
+            for x in 23..41 {
+                d[y * w + x] = 0.8;
+            }
+        }
+        let e = evaluate_island(&GridF32::from_vec(w, h, d.clone()), 0.5, 25.0, 1);
+        assert!((30.0..=50.0).contains(&e.m_per_cell), "cell {} m in band", e.m_per_cell);
+        assert!(e.resolution_ok);
+        assert!(e.border_clean, "isolated centred block is border-clean");
+        assert_eq!(e.satellites_inside, 0);
+        assert!(e.accepted());
+
+        // A distinct landmass on the window ring breaks border-clean.
+        let mut d2 = d;
+        d2[32 * w + 42] = 0.8; // inside the window but on its ring
+        let e2 = evaluate_island(&GridF32::from_vec(w, h, d2), 0.5, 25.0, 1);
+        assert!(!e2.border_clean, "a mass touching the ring is not border-clean");
+        assert!(!e2.accepted());
     }
 
     /// Island acceptance: only a non-wrapping mass that fits the window with an
