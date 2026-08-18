@@ -520,18 +520,19 @@ mod tests {
         let clo = C1Closures::default();
         let ss = SteinSteinParams::default();
 
-        // Stage B (corrected direction): border-clean needs ISOLATION, not
-        // fragmentation. Stage A (cc=6) produced an archipelago → every in-band
-        // island had 4-22 satellites clipping its window ring → 0 clean. So scan
-        // LOW cluster counts (1-3 → one/few isolated continental regions), not the
-        // {4,6,8} the pre-reframe plan assumed. Lower tlf shrinks the single mass
-        // toward the in-band window size without adding neighbours.
+        // Option 3: push tlf lower to shrink the ISOLATED island under the 360 km
+        // in-band ceiling — but guard on AREA, not just traverse (a smaller tlf can
+        // give a tinier, more tentacular island: barely-reduced window for far less
+        // land). Floor at 25 000 km² (seed 8 is 31 232) and report compactness so
+        // land-vs-resolution is arbitrated on numbers. Low cc (isolation), same as
+        // Stage B; fragmentation is the CAUSE of the satellite-clip, not the cure.
         let plate_counts = [12usize, 16, 20];
         let cluster_counts = [1usize, 2, 3];
         let seeds: Vec<u64> = (0..20).collect();
-        let tlfs = [0.15f32, 0.12, 0.10];
+        let tlfs = [0.10f32, 0.08, 0.06];
         let margin_km = 25.0f32;
         let ring_cells = 1usize;
+        let min_area_km2 = 25_000.0f32;
         let km_per_cell = C1_DOMAIN_KM / grid as f32;
 
         struct Row {
@@ -624,10 +625,13 @@ mod tests {
             let wrap = rt.iter().filter(|r| r.wx || r.wy).count();
             let nonwrap = total - wrap;
             let clean: Vec<&&Row> = rt.iter().filter(|r| r.accepted()).collect();
+            let clean_floor = clean.iter().filter(|r| r.area >= min_area_km2).count();
             eprintln!(
                 "--- tlf {tlf:.2}: {total} configs, {wrap} wrap, {nonwrap} non-wrap, \
-                 {} BORDER-CLEAN",
-                clean.len()
+                 {} BORDER-CLEAN ({} ≥ {:.0}k km²)",
+                clean.len(),
+                clean_floor,
+                min_area_km2 / 1000.0
             );
             if let Some(b) = clean.iter().max_by(|a, b| a.area.partial_cmp(&b.area).unwrap()) {
                 eprintln!(
@@ -640,12 +644,16 @@ mod tests {
 
         // ── Recommendation: BORDER-CLEAN first, then LARGEST area, then finest cell. ──
         eprintln!("=== recommendation ===");
-        let best = rows.iter().filter(|r| r.accepted()).max_by(|a, b| {
-            a.area
-                .partial_cmp(&b.area)
-                .unwrap()
-                .then(b.m_per_cell.partial_cmp(&a.m_per_cell).unwrap())
-        });
+        // Border-clean AND in-band AND non-wrap AND area ≥ floor; then LARGEST area.
+        let best = rows
+            .iter()
+            .filter(|r| r.accepted() && r.area >= min_area_km2)
+            .max_by(|a, b| {
+                a.area
+                    .partial_cmp(&b.area)
+                    .unwrap()
+                    .then(b.m_per_cell.partial_cmp(&a.m_per_cell).unwrap())
+            });
         match best {
             Some(r) => {
                 eprintln!(
