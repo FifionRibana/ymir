@@ -269,10 +269,26 @@ pub enum EroProgress {
 /// field [`upscale_from_c1`] samples). Extracted as ONE source of truth so the
 /// window-origin centroid ([`c1_land_centroid_normalized`]) is computed on the
 /// same field the upscale renders — no drift.
+/// M1 sea-level calibration: shift `data` (a sea-centred altitude field) so that
+/// exactly `target_land_fraction` of cells are `> 0` — the `1 − f` quantile
+/// becomes 0. Returns the subtracted threshold (the old altitude that is now the
+/// coastline). Reuses the shared `percentile_copy` helper.
+pub fn calibrate_to_land_fraction(data: &mut [f32], target_land_fraction: f32) -> f32 {
+    if data.is_empty() {
+        return 0.0;
+    }
+    let threshold = crate::tectonics::isostasy::percentile_copy(data, 1.0 - target_land_fraction);
+    for v in data.iter_mut() {
+        *v -= threshold;
+    }
+    threshold
+}
+
 pub fn c1_coarse_normalized_altitude(
     state: &C1State,
     iso: &IsostasyConfig,
     ss: &SteinSteinParams,
+    target_land_fraction: Option<f32>,
 ) -> GridF32 {
     let mut coarse = c1_production_altitude_craton(
         &state.s,
@@ -282,6 +298,19 @@ pub fn c1_coarse_normalized_altitude(
         iso,
         ss,
     );
+
+    // M1 sea-level calibration: `c1_production_altitude_craton` sea-centres the
+    // field at raw 0 (the isostatic sea level), which emerges ~55–60 % land. To
+    // hit a target LAND-AREA fraction `f`, shift the field so the `1−f` quantile
+    // becomes exactly 0 m: then precisely `f` of cells are > 0 (land), and
+    // "0 m = coastline" holds by construction. Resolution-independent (computed
+    // on the coarse field, before FBM/erosion). `None` → no shift (byte-
+    // identical to pre-M1). See `docs/tdd.md` — the eustatic sea level is a free
+    // parameter set by water volume, so choosing it by ocean fraction is right.
+    if let Some(f) = target_land_fraction {
+        calibrate_to_land_fraction(&mut coarse.data, f);
+    }
+
     // Fixed normalisation to [0,1] (sea 0.0 → 0.5), resolution-independent.
     let half = ALTITUDE_NORM_HALF_RANGE;
     for v in coarse.data.iter_mut() {
@@ -343,7 +372,7 @@ pub fn upscale_from_c1_with_progress(
     // path here; it reopens FOLLOWUPS #6 and silently diverges.
     // #155 B-Jordan: route the cratonic mask so cratonic cells get the
     // dense-crust buoyancy (iso.craton_rho_crust). None → byte-identical.
-    let coarse = c1_coarse_normalized_altitude(state, iso, ss);
+    let coarse = c1_coarse_normalized_altitude(state, iso, ss, cfg.target_land_fraction);
     let sea_level_normalized = 0.5_f32;
 
     progress(EroProgress::Relief);
@@ -419,6 +448,22 @@ mod tests {
         assert_eq!(out.heightmap.width, 128);
         assert_eq!(out.heightmap.height, 128);
         assert!(out.heightmap.data.iter().all(|v| v.is_finite()));
+    }
+
+    /// M1 calibration: subtracting the `1−f` quantile yields exactly the target
+    /// land fraction (`> 0`) and puts the calibrated coastline at 0 m.
+    #[test]
+    fn calibration_hits_target_fraction_at_zero() {
+        // Uniform ramp 0..99. target 0.29 → quantile 0.71 → idx round(0.71·99)=70
+        // → threshold value 70; after the shift, values 71..99 (29 cells) are > 0.
+        let mut data: Vec<f32> = (0..100).map(|i| i as f32).collect();
+        let thr = calibrate_to_land_fraction(&mut data, 0.29);
+        assert_eq!(thr, 70.0, "threshold is the 0.71 quantile of 0..99");
+        let land = data.iter().filter(|&&v| v > 0.0).count();
+        assert!((land as f32 / 100.0 - 0.29).abs() <= 0.02, "land fraction ≈ 0.29, got {land}%");
+        assert!(data.contains(&0.0), "the calibrated coastline sits exactly at 0 m");
+        // Empty slice is a no-op.
+        assert_eq!(calibrate_to_land_fraction(&mut [], 0.29), 0.0);
     }
 
     /// The window-origin land centroid tracks the land mass: a field with land

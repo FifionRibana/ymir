@@ -469,6 +469,24 @@ fn top_bar(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState
                         ws.resolution, cells, ws.seed
                     );
                     ui.label(egui::RichText::new(stat).color(DIM2).monospace().size(11.0));
+                    // M1 island-continent verdict from the land-topology diagnostics.
+                    if let Some(cur) = ws.current.as_ref() {
+                        let t = &cur.land_topology;
+                        let island = t.num_landmasses > 0 && !t.wraps_x && !t.wraps_y;
+                        let (verdict, col) = if island {
+                            ("île ✓", C::from_rgb(0x6a, 0xb0, 0x6a))
+                        } else {
+                            ("continent tore ✗", C::from_rgb(0xc0, 0x7a, 0x4a))
+                        };
+                        ui.add_space(12.0);
+                        let land = format!(
+                            "terre {:.0}%  ·  masse max {:.0} km²  ·  {}",
+                            t.largest_area_frac * 100.0,
+                            t.largest_area_km2,
+                            verdict,
+                        );
+                        ui.label(egui::RichText::new(land).color(col).monospace().size(11.0));
+                    }
                     let _ = bridge;
                 });
             });

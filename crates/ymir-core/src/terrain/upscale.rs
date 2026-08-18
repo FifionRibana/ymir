@@ -105,6 +105,15 @@ pub struct FbmUpscaleConfig {
     /// [`FbmUpscaleConfig::c1_hd_production`].
     #[serde(default)]
     pub bathymetry: Option<crate::terrain::bathymetry::BathymetryProfile>,
+    /// **Sea-level calibration on a target LAND-AREA fraction** (M1). When
+    /// `Some(f)`, [`upscale_from_c1`](crate::tectonics_c1::production_upscale::upscale_from_c1)
+    /// shifts the COARSE altitude so exactly `f` of cells stay above 0 m (the
+    /// `1−f` quantile becomes 0 m → "0 m = coastline" by construction), instead
+    /// of leaving sea at the isostatic level (which emerges ~55–60 % land). Read
+    /// ONLY by `upscale_from_c1`; `None` (default) → no shift, byte-identical.
+    /// The canonical HD config sets `Some(0.29)` (Earth-like ocean fraction).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_land_fraction: Option<f32>,
 }
 
 /// serde default for [`FbmUpscaleConfig::sample_size`] (a missing field must
@@ -146,6 +155,7 @@ impl Default for FbmUpscaleConfig {
             coastal_amplitude_band: 0.0,
             erosion: None,
             bathymetry: None,
+            target_land_fraction: None,
         }
     }
 }
@@ -164,12 +174,14 @@ impl FbmUpscaleConfig {
     /// export path, NOT interactive — the Living Landz pipeline must generate
     /// the HD product in the background, not on-the-fly.
     ///
-    /// NOTE (#155 follow-up): `ErosionConfig::sea_level` defaults to 0.1 and
-    /// is PRESERVED here as-judged — the état-des-lieux rendered with that
-    /// (mismatched) value. The normalised sea level is actually 0.5; setting
-    /// `sea_level = 0.5` is the CORRECT value but CHANGES coastal deposition
-    /// → a separate follow-up maillon to re-judge the coastal render, NOT a
-    /// silent fix here. Do not "correct" it in passing.
+    /// M1: `ErosionConfig::sea_level` is set to **0.5** — the real normalised sea
+    /// level (`C1_SEA_LEVEL_NORM`). It was 0.1 (a mismatch preserved "as-judged"
+    /// for the earlier état-des-lieux); M1 IS the judged change. Coastal impact:
+    /// hydraulic erosion's coastal deposition triggers at the TRUE waterline now,
+    /// so beach/delta deposition lands at the actual coast (0 m) instead of ~0.1
+    /// norm (deep ocean) — deposition that previously vanished offshore now
+    /// shapes the real shoreline. Combined with `target_land_fraction = 0.29`
+    /// (below), which calibrates that waterline to an Earth-like ocean fraction.
     #[must_use]
     pub fn c1_hd_production(target_size: usize) -> Self {
         let num_droplets = (4_000_000u64 * (target_size as u64).pow(2) / (2048u64).pow(2)) as usize;
@@ -180,10 +192,13 @@ impl FbmUpscaleConfig {
             coastal_amplitude_band: 0.30,
             amplitude_base: 0.16,
             submarine_damping: 0.0,
+            // M1: calibrate sea level on the Earth-like land-area fraction.
+            target_land_fraction: Some(0.29),
             erosion: Some(ErosionConfig {
                 num_droplets,
                 batch_size: 100_000,
-                // sea_level 0.1 preserved as-judged (see note above).
+                // M1: real normalised sea level (was 0.1 — see docstring).
+                sea_level: 0.5,
                 ..Default::default()
             }),
             // #submarine — re-map the ocean floor to the plateau→slope→abyss

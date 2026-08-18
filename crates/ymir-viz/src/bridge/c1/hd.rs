@@ -43,11 +43,12 @@ use ymir_core::grid::GridF32;
 use ymir_core::lakes::connectivity;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::cached_product::{
-    c1_land_centroid, cached_c1_drainage_windowed, cached_c1_eroded,
+    c1_coarse_land_report, cached_c1_drainage_windowed, cached_c1_eroded,
     cached_c1_eroded_with_progress, drainage_key_windowed, eroded_key, tectonic_key,
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult};
+use ymir_core::tectonics_c1::land_topology::LandTopology;
 use ymir_core::tectonics_c1::production_upscale::{C1_DOMAIN_KM, EroProgress};
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
@@ -150,6 +151,9 @@ pub struct HdResult {
     pub drainage: C1DrainageResult,
     /// Per-cell Whittaker biome (row-major `width × height`).
     pub biomes: Vec<Biome>,
+    /// M1 land-topology of the full coarse torus (island-continent judgement:
+    /// number of masses, largest area, wrap flags). Independent of the window.
+    pub land_topology: LandTopology,
 }
 
 impl fmt::Debug for HdResult {
@@ -231,15 +235,43 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // 125 m. The tectonic sim stays full-torus; only the HD render is windowed.
     let window_km = params.window_km;
     let wf = (window_km / C1_DOMAIN_KM) as f64;
-    let centroid =
-        c1_land_centroid(spec.seed, spec.grid_size, &spec.init_params, &run, &spec.closures, &ss);
+    let mut upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
+    // Centroid + land topology are measured on the SAME calibrated coarse field
+    // the upscale renders (so the window centres on the post-calibration land).
+    // Hence build `upscale` first to read its `target_land_fraction`.
+    let land = c1_coarse_land_report(
+        spec.seed,
+        spec.grid_size,
+        &spec.init_params,
+        &run,
+        &spec.closures,
+        &ss,
+        upscale.target_land_fraction,
+    );
+    let centroid = land.centroid;
+    let land_topology = land.topology;
+    // Telemetry — judge the seed as an island continent. A largest landmass that
+    // WRAPS the torus is not an island; the window then can't frame ocean margin.
+    let t = &land_topology;
+    eprintln!(
+        "[C1 land] seed {} — {} landmass(es); largest {:.0} km² ({:.1}% of torus), \
+         wraps x={} y={}, bbox {:.0}×{:.0} km; coarse emerged {:.1}%",
+        spec.seed,
+        t.num_landmasses,
+        t.largest_area_km2,
+        t.largest_area_frac * 100.0,
+        t.wraps_x,
+        t.wraps_y,
+        t.bbox_km.0,
+        t.bbox_km.1,
+        t.emerged_fraction * 100.0,
+    );
     // Centre the window on the centroid, clamped so it stays inside the torus
     // (no wrap — documented; the 0.32-wide window has ample room).
     let win_origin = [
         (centroid[0] - wf * 0.5).clamp(0.0, 1.0 - wf),
         (centroid[1] - wf * 0.5).clamp(0.0, 1.0 - wf),
     ];
-    let mut upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
     upscale.sample_origin = win_origin;
     upscale.sample_size = wf;
 
@@ -429,6 +461,16 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         }
     }
 
+    // Telemetry: emerged fraction measured AFTER FBM+erosion on the window grid.
+    // It differs from the coarse target (resolution-dependent until the FBM band
+    // policy is fixed — separate issue); reported, not compensated.
+    let post_emerged =
+        eroded.data.iter().filter(|&&v| v > 0.5).count() as f32 / eroded.data.len().max(1) as f32;
+    eprintln!(
+        "[C1 land] post-FBM+erosion emerged fraction (window) = {:.1}%",
+        post_emerged * 100.0
+    );
+
     // ── Done — ship the full product. ──
     let result = Arc::new(HdResult {
         width: eroded.width,
@@ -438,6 +480,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         precipitation: climate.precipitation,
         drainage,
         biomes,
+        land_topology,
     });
     let _ = tx.send(C1Event::HdCompleted { result, elapsed: t_all.elapsed() });
 }

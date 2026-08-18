@@ -38,9 +38,11 @@ use crate::terrain::flow::FlowResult;
 use crate::terrain::upscale::FbmUpscaleConfig;
 
 use super::closures::oceanic_bathymetry::SteinSteinParams;
+use super::drainage::C1_SEA_LEVEL_NORM;
 use super::drainage::{C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage_windowed};
 use super::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use super::kinematics::PlateKinematics;
+use super::land_topology::{LandTopology, land_topology};
 use super::production_upscale::{
     C1_DOMAIN_KM, EroProgress, c1_coarse_normalized_altitude, c1_land_centroid_normalized,
     upscale_from_c1_with_progress,
@@ -173,12 +175,44 @@ pub fn c1_land_centroid(
     run: &C1TimeLoopConfig,
     closures: &C1Closures,
     ss: &SteinSteinParams,
+    target_land_fraction: Option<f32>,
 ) -> [f64; 2] {
     let mut state = init_c1_state_phase_2_r7(grid, seed, init);
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     run_with_closures(&mut state, &mut kin, run, closures, |_, _| {});
-    let coarse = c1_coarse_normalized_altitude(&state, &run.iso_config, ss);
+    let coarse = c1_coarse_normalized_altitude(&state, &run.iso_config, ss, target_land_fraction);
     c1_land_centroid_normalized(&coarse)
+}
+
+/// Coarse-field land report (M1): the window-origin centroid AND the land-topology
+/// diagnostics, from ONE coarse pass (avoids a second tectonic run). Computed on
+/// the calibrated coarse field (the same one the upscale renders), so the metrics
+/// describe the continent that will actually be exported.
+pub struct CoarseLandReport {
+    /// Normalized land centroid `[u, v]` (window-origin anchor).
+    pub centroid: [f64; 2],
+    /// Full-torus land topology (number of masses, largest, wrap flags, bbox).
+    pub topology: LandTopology,
+}
+
+/// Run the coarse C1 sim and report both the land centroid and the land topology.
+pub fn c1_coarse_land_report(
+    seed: u64,
+    grid: usize,
+    init: &Phase2InitParams,
+    run: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    ss: &SteinSteinParams,
+    target_land_fraction: Option<f32>,
+) -> CoarseLandReport {
+    let mut state = init_c1_state_phase_2_r7(grid, seed, init);
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    run_with_closures(&mut state, &mut kin, run, closures, |_, _| {});
+    let coarse = c1_coarse_normalized_altitude(&state, &run.iso_config, ss, target_land_fraction);
+    CoarseLandReport {
+        centroid: c1_land_centroid_normalized(&coarse),
+        topology: land_topology(&coarse, C1_SEA_LEVEL_NORM),
+    }
 }
 
 // ── Drainage (composite) cache ─────────────────────────────────────────────
