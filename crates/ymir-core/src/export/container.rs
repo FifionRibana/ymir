@@ -324,6 +324,19 @@ impl ContinentWriter {
         Ok(())
     }
 
+    /// Stamp a metric raster's vertical mapping into the manifest: `unit`
+    /// `"meter"`, `encoding` `"linear"`, and the `[min_m, max_m]` range the
+    /// integer codes map onto (decode: `m = min_m + code/MAX · (max_m − min_m)`).
+    /// Errors on an unknown layer id.
+    pub fn set_metric_range(&mut self, id: &str, min_m: f64, max_m: f64) -> Result<(), String> {
+        let layer = self.layer_mut(id)?;
+        layer.unit = Some("meter".to_string());
+        layer.encoding = Some("linear".to_string());
+        layer.min_m = Some(min_m);
+        layer.max_m = Some(max_m);
+        Ok(())
+    }
+
     /// Serialise `manifest.json` (pretty) into the export directory.
     pub fn finish(self) -> Result<PathBuf, String> {
         let json =
