@@ -81,7 +81,7 @@ pub struct HdParams {
 
 impl Default for HdParams {
     fn default() -> Self {
-        Self { target_size: 2048, latitude_deg: 45.0, window_km: 338.0, export_dir: None }
+        Self { target_size: 2048, latitude_deg: 45.0, window_km: 328.0, export_dir: None }
     }
 }
 

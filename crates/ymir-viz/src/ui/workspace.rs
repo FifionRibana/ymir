@@ -164,7 +164,7 @@ struct WorkspaceState {
 impl Default for WorkspaceState {
     fn default() -> Self {
         Self {
-            seed: 9, // M1 #190: validated border-clean island seed (see island_production)
+            seed: 42, // restored pre-M1 default (island preset is opt-in, not default)
             resolution: 2048,
             latitude: 45.0,
             mode: Mode::Standard,
@@ -179,7 +179,7 @@ impl Default for WorkspaceState {
             erosion: 0.5,
             channel_jitter: 0.3,
             dinf: false,
-            window_km: 338.0, // M1 #190: island-fit window (338 km → 41 m/cell @8192²)
+            window_km: 328.0,
             export_ymir: false,
             export_dir: "exports".to_string(),
             current: None,
@@ -540,9 +540,7 @@ fn left_panel(
                         .corner_radius(7.0)
                         .min_size(egui::vec2(ui.available_width(), 38.0));
                     if ui.add_enabled(!hd_running, btn).clicked() {
-                        // M1 #190: the production island knobs (16 plates / 3
-                        // clusters); the user's seed overrides island_production's.
-                        let spec = C1RunSpec { seed: ws.seed, ..C1RunSpec::island_production() };
+                        let spec = C1RunSpec { seed: ws.seed, ..C1RunSpec::default() };
                         // `Some(dir)` = export enabled; empty path falls back to
                         // "exports" so the checkbox alone is enough to opt in.
                         let export_dir = if ws.export_ymir {
@@ -570,7 +568,7 @@ fn left_panel(
                     .corner_radius(6.0)
                     .min_size(egui::vec2(ui.available_width(), 28.0));
                     if ui.add_enabled(!hd_running, prev_btn).clicked() {
-                        let spec = C1RunSpec { seed: ws.seed, ..C1RunSpec::island_production() };
+                        let spec = C1RunSpec { seed: ws.seed, ..C1RunSpec::default() };
                         let params = HdParams {
                             target_size: ws.resolution,
                             latitude_deg: ws.latitude,

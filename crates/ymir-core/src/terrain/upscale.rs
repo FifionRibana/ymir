@@ -182,13 +182,15 @@ impl FbmUpscaleConfig {
     /// norm (deep ocean) — deposition that previously vanished offshore now
     /// shapes the real shoreline. Combined with `target_land_fraction` (below).
     ///
-    /// M1 #190 (budget closed): `target_land_fraction = 0.08`, not the planetary
-    /// 0.29. The torus is a CONTINENT FACTORY, not a world — a domain sized to
-    /// hold one isolated island + ocean margin is legitimately more oceanic
-    /// (Earth's 0.29 carries several continents). At 0.08, with 16 plates / 3
-    /// continental clusters (see `C1RunSpec::island_production`), the largest mass
-    /// is a border-clean, ocean-surrounded continent that fits the 338 km window
-    /// at 8192² (~41 m/cell) — validated end-to-end (seed 9).
+    /// M1 #190 REGRESSION FIX: `target_land_fraction` defaults to `None` (no
+    /// sea-level calibration). Quantile calibration moves sea level onto the FLAT
+    /// continental-shelf plateau (measured slope ~2 000 cell/unit at tlf 0.08 vs
+    /// ~12 350 at the isostatic level), so the 0-crossing becomes hypersensitive
+    /// → speckled coasts + marginal land (the seed-42 regression). The isostatic
+    /// sea level sits on the STEEP part of the hypsometric curve → crisp coasts.
+    /// Calibration stays available as an OPT-IN knob (set `target_land_fraction`
+    /// on the returned config); it is just not defaulted on. Bounding the
+    /// landmass without drowning it is a separate lever (continental_fraction).
     #[must_use]
     pub fn c1_hd_production(target_size: usize) -> Self {
         let num_droplets = (4_000_000u64 * (target_size as u64).pow(2) / (2048u64).pow(2)) as usize;
@@ -199,9 +201,9 @@ impl FbmUpscaleConfig {
             coastal_amplitude_band: 0.30,
             amplitude_base: 0.16,
             submarine_damping: 0.0,
-            // M1 #190: calibrate sea level on the island land-area fraction (0.08,
-            // not the planetary 0.29 — the torus is a continent factory). See docstring.
-            target_land_fraction: Some(0.08),
+            // M1 #190 regression fix: NO sea-level calibration by default (it lands
+            // on the flat shelf → speckled coasts). Opt-in only. See docstring.
+            target_land_fraction: None,
             erosion: Some(ErosionConfig {
                 num_droplets,
                 batch_size: 100_000,

@@ -70,8 +70,14 @@ impl C1RunSpec {
     /// [`ymir_core::terrain::upscale::FbmUpscaleConfig::c1_hd_production`]).
     ///
     /// Distinct from [`Self::default`], which stays the 8-plate scientific
-    /// baseline the gallery / Stage-A acceptance tests pin. The HD "Générer" path
-    /// uses THIS so a default run produces an island, not a torus-spanning blob.
+    /// baseline the gallery / Stage-A acceptance tests pin.
+    ///
+    /// OPT-IN ONLY (no longer the "Générer" default — that regressed seed 42 to
+    /// speckled ocean). Border-clean ONLY when paired with the opt-in
+    /// `target_land_fraction ≈ 0.08` sea-level calibration; at the default `None`
+    /// this config emerges ~36 % land and WRAPS the torus. Kept as a preset for
+    /// the M1 #190 border-clean experiments, not a shipping default.
+    #[allow(dead_code)] // opt-in preset, not wired to a default path
     pub fn island_production() -> Self {
         let mut init_params = Phase2InitParams::default();
         init_params.num_plates = 16;

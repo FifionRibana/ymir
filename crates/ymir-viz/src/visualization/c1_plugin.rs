@@ -158,7 +158,7 @@ impl Default for C1VizState {
         Self {
             texture_handle: None,
             field: C1Field::default(),
-            pending_spec: C1RunSpec::island_production(), // M1 #190 production island default
+            pending_spec: C1RunSpec::default(),
             // Issue #141: cap=0.92 is COUPLED with n_cycles≈12 — the
             // P95-cap equilibrium (bounded limit cycle ~30% emergent)
             // is reached by the worst-case band-entry cycle 9 + margin.
