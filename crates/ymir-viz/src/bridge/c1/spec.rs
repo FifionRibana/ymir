@@ -62,24 +62,33 @@ impl Default for C1RunSpec {
 }
 
 impl C1RunSpec {
+    /// M1 #190 production island config — the validated border-clean,
+    /// ocean-surrounded continent. `num_plates = 16` + `seed_cluster_count = 3`
+    /// (ISOLATION, not fragmentation) with `seed = 9` yield a single non-wrapping
+    /// landmass that fits the 338 km export window at 8192² (~41 m/cell) under
+    /// `target_land_fraction = 0.08` (set in
+    /// [`ymir_core::terrain::upscale::FbmUpscaleConfig::c1_hd_production`]).
+    ///
+    /// Distinct from [`Self::default`], which stays the 8-plate scientific
+    /// baseline the gallery / Stage-A acceptance tests pin. The HD "Générer" path
+    /// uses THIS so a default run produces an island, not a torus-spanning blob.
+    pub fn island_production() -> Self {
+        let mut init_params = Phase2InitParams::default();
+        init_params.num_plates = 16;
+        init_params.cluster.seed_cluster_count = 3;
+        Self { seed: 9, init_params, ..Self::default() }
+    }
+
     /// Convenience: a Phase-1.x-style spec with Track D disabled
     /// (subduction / accretion / rifting all `enabled: false`). Useful
     /// for UI testing without dynamic plate mutation.
     #[allow(dead_code)]
     pub fn track_d_disabled() -> Self {
         let mut spec = Self::default();
-        spec.closures.subduction = SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        };
-        spec.closures.accretion = AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        };
-        spec.closures.rifting = RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        };
+        spec.closures.subduction =
+            SubductionParams { enabled: false, ..SubductionParams::default() };
+        spec.closures.accretion = AccretionParams { enabled: false, ..AccretionParams::default() };
+        spec.closures.rifting = RiftingParams { enabled: false, ..RiftingParams::default() };
         spec
     }
 }

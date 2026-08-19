@@ -180,8 +180,15 @@ impl FbmUpscaleConfig {
     /// hydraulic erosion's coastal deposition triggers at the TRUE waterline now,
     /// so beach/delta deposition lands at the actual coast (0 m) instead of ~0.1
     /// norm (deep ocean) — deposition that previously vanished offshore now
-    /// shapes the real shoreline. Combined with `target_land_fraction = 0.29`
-    /// (below), which calibrates that waterline to an Earth-like ocean fraction.
+    /// shapes the real shoreline. Combined with `target_land_fraction` (below).
+    ///
+    /// M1 #190 (budget closed): `target_land_fraction = 0.08`, not the planetary
+    /// 0.29. The torus is a CONTINENT FACTORY, not a world — a domain sized to
+    /// hold one isolated island + ocean margin is legitimately more oceanic
+    /// (Earth's 0.29 carries several continents). At 0.08, with 16 plates / 3
+    /// continental clusters (see `C1RunSpec::island_production`), the largest mass
+    /// is a border-clean, ocean-surrounded continent that fits the 338 km window
+    /// at 8192² (~41 m/cell) — validated end-to-end (seed 9).
     #[must_use]
     pub fn c1_hd_production(target_size: usize) -> Self {
         let num_droplets = (4_000_000u64 * (target_size as u64).pow(2) / (2048u64).pow(2)) as usize;
@@ -192,8 +199,9 @@ impl FbmUpscaleConfig {
             coastal_amplitude_band: 0.30,
             amplitude_base: 0.16,
             submarine_damping: 0.0,
-            // M1: calibrate sea level on the Earth-like land-area fraction.
-            target_land_fraction: Some(0.29),
+            // M1 #190: calibrate sea level on the island land-area fraction (0.08,
+            // not the planetary 0.29 — the torus is a continent factory). See docstring.
+            target_land_fraction: Some(0.08),
             erosion: Some(ErosionConfig {
                 num_droplets,
                 batch_size: 100_000,
