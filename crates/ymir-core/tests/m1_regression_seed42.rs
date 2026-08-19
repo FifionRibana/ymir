@@ -7,7 +7,7 @@
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
-use ymir_core::tectonics_c1::land_topology::land_topology;
+use ymir_core::tectonics_c1::land_topology::{evaluate_island, land_topology};
 use ymir_core::tectonics_c1::production_upscale::{c1_coarse_raw_altitude, c1_normalize_coarse};
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
@@ -46,17 +46,26 @@ fn coarse_raw(seed: u64, grid: usize, init: &Phase2InitParams) -> (ymir_core::gr
 fn report(label: &str, raw: &ymir_core::grid::GridF32, tlf: Option<f32>) {
     let norm = c1_normalize_coarse(raw.clone(), tlf);
     let t = land_topology(&norm, 0.5);
+    let e = evaluate_island(&norm, 0.5, 25.0, 1); // window = traverse + 2×25
     let tlf_s = tlf.map(|f| format!("{f:.2}")).unwrap_or_else(|| "None".into());
     eprintln!(
         "  [{label}] tlf={tlf_s:>4}  emerged {:>5.1}%  largest {:>7.0} km² ({:>4.1}%)  \
-         traverse {:>3.0} km  masses {:>3}  wrap x={} y={}",
+         extent {:>3.0}×{:>3.0} km (traverse {:>3.0})  masses {:>3}  BAND x={} y={}  \
+         straddle x={} y={}  window {:>3.0} km ({:>4.1} m/cell)  clean {}",
         t.emerged_fraction * 100.0,
         t.largest_area_km2,
         t.largest_area_frac * 100.0,
+        t.bbox_km.0,
+        t.bbox_km.1,
         t.bbox_km.0.max(t.bbox_km.1),
         t.num_landmasses,
         t.wraps_x,
         t.wraps_y,
+        t.straddles_x,
+        t.straddles_y,
+        e.window_km,
+        e.m_per_cell,
+        e.accepted(),
     );
 }
 

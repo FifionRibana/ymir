@@ -25,17 +25,31 @@ pub struct LandTopology {
     pub largest_area_km2: f32,
     /// Largest landmass — fraction of the whole domain area `[0,1]`.
     pub largest_area_frac: f32,
-    /// Largest landmass connects to itself across the x seam (wraps the torus in
-    /// x). A `true` here means the mass spans the domain → NOT an island.
+    /// TRUE BAND in x: the largest mass circumnavigates the torus (there is NO
+    /// empty column) — a real east-west band with no coast. This is the ONLY case
+    /// that should reject a mass as "not an island". A finite mass that merely
+    /// STRADDLES the seam is NOT a band (see `straddles_x`).
     pub wraps_x: bool,
-    /// Largest landmass connects to itself across the y seam.
+    /// TRUE BAND in y (no empty row).
     pub wraps_y: bool,
-    /// Bounding box of the largest landmass in cells (inclusive): `(min, max)`.
-    /// Meaningless as an extent when the corresponding axis wraps.
+    /// The largest mass touches both x edges but is FINITE (seam-straddle) — a
+    /// debug flag, NOT a rejection criterion. Such a mass is surrounded by ocean;
+    /// it just renders split by an arbitrary origin.
+    pub straddles_x: bool,
+    pub straddles_y: bool,
+    /// Bounding box of the largest mass in the ROLLED frame (unrolled so the mass
+    /// is contiguous): `(min, max)` cells. `min` = the unroll origin.
     pub bbox_min: (usize, usize),
     pub bbox_max: (usize, usize),
-    /// Bounding box `(width_km, height_km)` of the largest landmass.
+    /// CIRCULAR extent `(width_km, height_km)` of the largest mass — correct
+    /// across the seam (`domain − largest empty run`), NOT the wrapped bbox.
     pub bbox_km: (f32, f32),
+    /// Torus centre (cells) of the largest mass — the unrolled mid-point, valid
+    /// for a seam-straddling mass (periodic).
+    pub center_cell: (usize, usize),
+    /// Cyclic shift (cells) that makes the largest mass contiguous; compose with
+    /// `window_offset_in_torus` to locate the exported window in the torus.
+    pub roll_origin: (usize, usize),
     /// Total emerged fraction of the field (all land cells / all cells).
     pub emerged_fraction: f32,
 }
@@ -50,11 +64,83 @@ impl LandTopology {
             largest_area_frac: 0.0,
             wraps_x: false,
             wraps_y: false,
+            straddles_x: false,
+            straddles_y: false,
             bbox_min: (0, 0),
             bbox_max: (0, 0),
             bbox_km: (0.0, 0.0),
+            center_cell: (0, 0),
+            roll_origin: (0, 0),
             emerged_fraction: 0.0,
         }
+    }
+}
+
+/// Circular extent of a 1-D occupancy (a set of occupied slots on a ring of size
+/// `n`). Returns `(band, extent, unroll)`:
+/// - `band`: every slot occupied → the set circumnavigates (a true band);
+/// - `extent`: slots in the TIGHTEST circular arc covering the set
+///   (`n − largest empty run`);
+/// - `unroll`: index of the slot just AFTER the largest empty run — the start of
+///   the arc, i.e. the cyclic shift that makes the set contiguous.
+fn circular_extent(occ: &[bool]) -> (bool, usize, usize) {
+    let n = occ.len();
+    let count = occ.iter().filter(|&&b| b).count();
+    if count == 0 {
+        return (false, 0, 0);
+    }
+    if count == n {
+        return (true, n, 0); // circumnavigates → band
+    }
+    // Largest run of EMPTY slots, allowing the run to wrap the seam (scan 2n).
+    let (mut best_gap, mut best_end) = (0usize, 0usize);
+    let mut cur = 0usize;
+    for i in 0..2 * n {
+        if !occ[i % n] {
+            cur += 1;
+            if cur > best_gap && cur <= n {
+                best_gap = cur;
+                best_end = (i + 1) % n; // slot after this empty run
+            }
+        } else {
+            cur = 0;
+        }
+    }
+    (false, n - best_gap, best_end)
+}
+
+/// Circular extent of a mass from its per-axis occupancy (which columns / rows it
+/// occupies). Correct across the seam: a finite mass straddling the seam reports
+/// its true extent + a torus centre, and only a circumnavigating mass is a band.
+struct MassExtent {
+    band_x: bool,
+    band_y: bool,
+    straddles_x: bool,
+    straddles_y: bool,
+    extent_x: usize,
+    extent_y: usize,
+    roll_x: usize,
+    roll_y: usize,
+    center_x: usize,
+    center_y: usize,
+}
+
+fn mass_extent(occ_x: &[bool], occ_y: &[bool]) -> MassExtent {
+    let (w, h) = (occ_x.len(), occ_y.len());
+    let (band_x, extent_x, roll_x) = circular_extent(occ_x);
+    let (band_y, extent_y, roll_y) = circular_extent(occ_y);
+    MassExtent {
+        band_x,
+        band_y,
+        straddles_x: !band_x && occ_x[0] && occ_x[w - 1],
+        straddles_y: !band_y && occ_y[0] && occ_y[h - 1],
+        extent_x,
+        extent_y,
+        roll_x,
+        roll_y,
+        // Torus centre = middle of the circular arc, unrolled back onto the torus.
+        center_x: (roll_x + extent_x / 2) % w,
+        center_y: (roll_y + extent_y / 2) % h,
     }
 }
 
@@ -136,36 +222,20 @@ pub fn land_topology(altitude_norm: &GridF32, sea_level_norm: f32) -> LandTopolo
         sizes.iter().max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0))).map(|(&root, _)| root).unwrap();
     let largest_cells = sizes[&largest_root];
 
-    // Bounding box + wrap detection for the largest component.
-    let (mut xmin, mut xmax, mut ymin, mut ymax) = (usize::MAX, 0usize, usize::MAX, 0usize);
-    let (mut wraps_x, mut wraps_y) = (false, false);
+    // CIRCULAR extent of the largest mass (correct across the seam). Occupancy
+    // per axis → largest empty run → finite extent + unroll origin + true-band.
+    let mut occ_x = vec![false; w];
+    let mut occ_y = vec![false; h];
     for y in 0..h {
         for x in 0..w {
             let k = y * w + x;
             if is_land(k) && ds.find(k) == largest_root {
-                xmin = xmin.min(x);
-                xmax = xmax.max(x);
-                ymin = ymin.min(y);
-                ymax = ymax.max(y);
+                occ_x[x] = true;
+                occ_y[y] = true;
             }
         }
     }
-    // Wrap = the seam edge is INTERNAL to the largest mass: both the last and the
-    // first cell of a row/column are land and belong to it (they are unioned).
-    for y in 0..h {
-        let (k_last, k_first) = (y * w + (w - 1), y * w);
-        if is_land(k_last) && is_land(k_first) && ds.find(k_last) == largest_root {
-            wraps_x = true;
-            break;
-        }
-    }
-    for x in 0..w {
-        let (k_last, k_first) = ((h - 1) * w + x, x);
-        if is_land(k_last) && is_land(k_first) && ds.find(k_last) == largest_root {
-            wraps_y = true;
-            break;
-        }
-    }
+    let m = mass_extent(&occ_x, &occ_y);
 
     let cell_km2 = c1_cell_area_km2(w);
     let km_per_cell = C1_DOMAIN_KM / w as f32;
@@ -175,11 +245,15 @@ pub fn land_topology(altitude_norm: &GridF32, sea_level_norm: f32) -> LandTopolo
         largest_cells,
         largest_area_km2: largest_cells as f32 * cell_km2,
         largest_area_frac: (largest_cells as f32 * cell_km2) / domain_km2,
-        wraps_x,
-        wraps_y,
-        bbox_min: (xmin, ymin),
-        bbox_max: (xmax, ymax),
-        bbox_km: ((xmax - xmin + 1) as f32 * km_per_cell, (ymax - ymin + 1) as f32 * km_per_cell),
+        wraps_x: m.band_x,
+        wraps_y: m.band_y,
+        straddles_x: m.straddles_x,
+        straddles_y: m.straddles_y,
+        bbox_min: (m.roll_x, m.roll_y),
+        bbox_max: (m.roll_x + m.extent_x.saturating_sub(1), m.roll_y + m.extent_y.saturating_sub(1)),
+        bbox_km: (m.extent_x as f32 * km_per_cell, m.extent_y as f32 * km_per_cell),
+        center_cell: (m.center_x, m.center_y),
+        roll_origin: (m.roll_x, m.roll_y),
         emerged_fraction,
     }
 }
@@ -257,7 +331,12 @@ impl IslandEval {
 /// the window sized to the largest landmass and centred on its bbox centre. The
 /// border ring is `ring_cells` thick on the (periodic) coarse grid. Land = value
 /// `> sea`.
-pub fn evaluate_island(coarse: &GridF32, sea: f32, margin_km: f32, ring_cells: usize) -> IslandEval {
+pub fn evaluate_island(
+    coarse: &GridF32,
+    sea: f32,
+    margin_km: f32,
+    ring_cells: usize,
+) -> IslandEval {
     let topo = land_topology(coarse, sea);
     let (w, h) = (coarse.width, coarse.height);
     let km_per_cell = C1_DOMAIN_KM / w as f32;
@@ -268,9 +347,10 @@ pub fn evaluate_island(coarse: &GridF32, sea: f32, margin_km: f32, ring_cells: u
     let ring_km = ring_cells as f32 * km_per_cell;
     let disc = 2.0 * (topo.largest_area_km2 / std::f32::consts::PI).sqrt();
     let compactness = if traverse_km > 0.0 { disc / traverse_km } else { 0.0 };
-    let cx = (topo.bbox_min.0 + topo.bbox_max.0) as f32 / 2.0;
-    let cy = (topo.bbox_min.1 + topo.bbox_max.1) as f32 / 2.0;
-    let center_cell = ((cx.round() as usize) % w, (cy.round() as usize) % h);
+    // Torus centre of the largest mass (correct across the seam; the periodic
+    // `offset` below measures distances the short way round).
+    let center_cell = topo.center_cell;
+    let (cx, cy) = (center_cell.0 as f32, center_cell.1 as f32);
 
     let mut eval = IslandEval {
         topo,
@@ -350,8 +430,7 @@ pub fn evaluate_island(coarse: &GridF32, sea: f32, margin_km: f32, ring_cells: u
         }
     }
     eval.border_clean = border_clean;
-    eval.satellites_inside =
-        inside.iter().filter(|&(&r, &ins)| r != largest_root && ins).count();
+    eval.satellites_inside = inside.iter().filter(|&(&r, &ins)| r != largest_root && ins).count();
     eval
 }
 
@@ -385,7 +464,7 @@ pub fn harvest_islands(
     margin_km: f32,
     ring_cells: usize,
 ) -> Vec<IslandCandidate> {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
     let (w, h) = (coarse.width, coarse.height);
     let n = w * h;
     let km_per_cell = C1_DOMAIN_KM / w as f32;
@@ -409,8 +488,8 @@ pub fn harvest_islands(
             }
         }
     }
-    // Per-root area + bbox.
-    let mut agg: HashMap<usize, (usize, usize, usize, usize, usize)> = HashMap::new();
+    // Per-root: area + occupancy per axis (for the circular extent, seam-correct).
+    let mut agg: HashMap<usize, (usize, Vec<bool>, Vec<bool>)> = HashMap::new();
     for y in 0..h {
         for x in 0..w {
             let k = y * w + x;
@@ -418,26 +497,10 @@ pub fn harvest_islands(
                 continue;
             }
             let r = ds.find(k);
-            let e = agg.entry(r).or_insert((0, x, x, y, y));
+            let e = agg.entry(r).or_insert_with(|| (0, vec![false; w], vec![false; h]));
             e.0 += 1;
-            e.1 = e.1.min(x);
-            e.2 = e.2.max(x);
-            e.3 = e.3.min(y);
-            e.4 = e.4.max(y);
-        }
-    }
-    // Roots that wrap a seam (not placeable).
-    let mut wraps: HashSet<usize> = HashSet::new();
-    for y in 0..h {
-        let (a, b) = (y * w + (w - 1), y * w);
-        if is_land(a) && is_land(b) {
-            wraps.insert(ds.find(a));
-        }
-    }
-    for x in 0..w {
-        let (a, b) = ((h - 1) * w + x, x);
-        if is_land(a) && is_land(b) {
-            wraps.insert(ds.find(a));
+            e.1[x] = true;
+            e.2[y] = true;
         }
     }
 
@@ -452,13 +515,15 @@ pub fn harvest_islands(
     roots.sort_unstable(); // deterministic scan order
     let mut out = Vec::with_capacity(roots.len());
     for r in roots {
-        let (area, xmin, xmax, ymin, ymax) = agg[&r];
-        let traverse = ((xmax - xmin + 1).max(ymax - ymin + 1)) as f32 * km_per_cell;
+        let (area, occ_x, occ_y) = &agg[&r];
+        let m = mass_extent(occ_x, occ_y);
+        let traverse = m.extent_x.max(m.extent_y) as f32 * km_per_cell;
         let window_km = traverse + 2.0 * margin_km;
         let m_per_cell = window_km / 8192.0 * 1000.0;
         let resolution_ok = (30.0..=50.0).contains(&m_per_cell);
-        let wr = wraps.contains(&r);
-        let (cx, cy) = ((xmin + xmax) as f32 / 2.0, (ymin + ymax) as f32 / 2.0);
+        let wr = m.band_x || m.band_y; // only a TRUE band is unplaceable
+        let (cx, cy) = (m.center_x as f32, m.center_y as f32);
+        let area = *area;
         let half = (window_km / km_per_cell).round().max(1.0) / 2.0;
         // Border-clean: no land (any mass) on this window's ring.
         let mut border_clean = !wr;
@@ -519,9 +584,10 @@ mod tests {
     }
 
     #[test]
-    fn block_touching_both_x_edges_wraps_x() {
-        // Land in columns 0..3 and 17..20 but only rows 3..7 (interior in y), so
-        // it crosses the x seam but leaves y-edge rows ocean → wraps_x, not y.
+    fn seam_straddle_x_is_finite_not_a_band() {
+        // Land in columns 0..3 and 17..20 (rows 3..7): ONE finite mass straddling
+        // the x seam (6 columns wide), NOT a circumnavigating band. The bug flagged
+        // this as wraps_x; the fix reports straddles_x + a correct 6-column extent.
         let mut f = field_with_block(20, 10, 0, 3, 3, 7);
         for y in 3..7 {
             for x in 17..20 {
@@ -529,14 +595,25 @@ mod tests {
             }
         }
         let t = land_topology(&f, 0.5);
-        assert!(t.wraps_x, "land spanning the x seam must be flagged wraps_x");
-        assert!(!t.wraps_y, "y-edge rows are ocean → must not wrap y");
+        assert!(!t.wraps_x, "a finite seam-straddle is NOT a band");
+        assert!(t.straddles_x, "it does straddle the x seam");
+        assert!(!t.wraps_y && !t.straddles_y);
         assert_eq!(t.num_landmasses, 1, "the two edge strips are one mass via the seam");
+        // extent_x = 6 columns (17,18,19,0,1,2), not the whole width.
+        assert!((t.bbox_km.0 - 6.0 * (1024.0 / 20.0)).abs() < 1e-3, "extent {} km", t.bbox_km.0);
     }
 
     #[test]
-    fn block_touching_both_y_edges_wraps_y() {
-        // Rows 0..2 and 8..10 land, with an ocean gap in x so it can't wrap x.
+    fn full_band_x_is_a_band() {
+        // Every column occupied (rows 4..6) → a real circumnavigating band.
+        let f = field_with_block(20, 10, 0, 20, 4, 6);
+        let t = land_topology(&f, 0.5);
+        assert!(t.wraps_x, "a mass occupying every column IS a band");
+    }
+
+    #[test]
+    fn seam_straddle_y_is_finite_not_a_band() {
+        // Rows 0..2 and 8..10 land (cols 3..9): finite mass straddling the y seam.
         let mut f = field_with_block(12, 10, 3, 9, 0, 2);
         for y in 8..10 {
             for x in 3..9 {
@@ -544,8 +621,32 @@ mod tests {
             }
         }
         let t = land_topology(&f, 0.5);
-        assert!(t.wraps_y, "land spanning the y seam must be flagged wraps_y");
-        assert!(!t.wraps_x, "interior-x block must not wrap x");
+        assert!(!t.wraps_y && t.straddles_y, "finite y-seam-straddle, not a band");
+        assert!(!t.wraps_x);
+    }
+
+    /// STEP 2 regression guard: the SAME blob placed across the seam must report
+    /// the same extent / traverse / area as placed in the middle of the domain.
+    #[test]
+    fn seam_straddle_matches_centred_blob() {
+        let (w, h) = (32usize, 32usize);
+        let block = |cx: i32, cy: i32| {
+            let mut d = vec![0.2f32; w * h];
+            for dy in -3..=3 {
+                for dx in -3..=3 {
+                    let x = (cx + dx).rem_euclid(w as i32) as usize;
+                    let y = (cy + dy).rem_euclid(h as i32) as usize;
+                    d[y * w + x] = 0.8;
+                }
+            }
+            land_topology(&GridF32::from_vec(w, h, d), 0.5)
+        };
+        let mid = block(16, 16); // centred
+        let seam = block(0, 0); // straddles both seams
+        assert_eq!(mid.largest_cells, seam.largest_cells, "same area");
+        assert_eq!(mid.bbox_km, seam.bbox_km, "same circular extent");
+        assert!(!seam.wraps_x && !seam.wraps_y, "a 7×7 blob is never a band");
+        assert!(seam.straddles_x && seam.straddles_y, "the seam blob straddles both seams");
     }
 
     #[test]

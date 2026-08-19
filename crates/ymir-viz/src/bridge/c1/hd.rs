@@ -50,9 +50,7 @@ use ymir_core::tectonics_c1::cached_product::{
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult};
 use ymir_core::tectonics_c1::land_topology::{IslandEval, LandTopology, evaluate_island};
-use ymir_core::tectonics_c1::production_upscale::{
-    C1_DOMAIN_KM, EroProgress, c1_land_centroid_normalized,
-};
+use ymir_core::tectonics_c1::production_upscale::{C1_DOMAIN_KM, EroProgress};
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
@@ -267,11 +265,13 @@ pub fn preview_shape(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>) 
     .remove(0)
     .1;
     let eval = evaluate_island(&coarse, vector::SEA_LEVEL_NORM, 25.0, 1);
-    // Export window (matches run_hd: centroid-centred, clamped, no wrap).
+    // Export window (matches run_hd): centred on the seam-correct mass centre, may
+    // straddle the seam (periodic sampling), no clamp.
     let wf = (params.window_km / C1_DOMAIN_KM) as f64;
-    let c = c1_land_centroid_normalized(&coarse);
+    let (gw, gh) = (spec.grid_size as f64, spec.grid_size as f64);
+    let c = [eval.center_cell.0 as f64 / gw, eval.center_cell.1 as f64 / gh];
     let window_origin =
-        [(c[0] - wf * 0.5).clamp(0.0, 1.0 - wf), (c[1] - wf * 0.5).clamp(0.0, 1.0 - wf)];
+        [(c[0] - wf * 0.5).rem_euclid(1.0), (c[1] - wf * 0.5).rem_euclid(1.0)];
     let preview = Arc::new(PreviewShape { coarse, eval, window_origin, window_size: wf });
     let _ = tx.send(C1Event::PreviewReady { preview, elapsed: t.elapsed() });
 }
@@ -307,7 +307,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         &ss,
         upscale.target_land_fraction,
     );
-    let centroid = land.centroid;
+    let _ = land.centroid; // superseded by the seam-correct centre below
     let land_topology = land.topology;
     // Telemetry — judge the seed as an island continent. A largest landmass that
     // WRAPS the torus is not an island; the window then can't frame ocean margin.
@@ -325,12 +325,14 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         t.bbox_km.1,
         t.emerged_fraction * 100.0,
     );
-    // Centre the window on the centroid, clamped so it stays inside the torus
-    // (no wrap — documented; the 0.32-wide window has ample room).
-    let win_origin = [
-        (centroid[0] - wf * 0.5).clamp(0.0, 1.0 - wf),
-        (centroid[1] - wf * 0.5).clamp(0.0, 1.0 - wf),
-    ];
+    // Centre the window on the largest mass's SEAM-CORRECT centre (unrolled;
+    // `center_cell` is valid even for a mass straddling the torus seam). No clamp:
+    // the window may straddle the seam and sample periodically — a continent that
+    // sits on the seam is still framed contiguously (rem_euclid → [0,1)).
+    let (gw, gh) = (spec.grid_size as f64, spec.grid_size as f64);
+    let center = [land_topology.center_cell.0 as f64 / gw, land_topology.center_cell.1 as f64 / gh];
+    let win_origin =
+        [(center[0] - wf * 0.5).rem_euclid(1.0), (center[1] - wf * 0.5).rem_euclid(1.0)];
     upscale.sample_origin = win_origin;
     upscale.sample_size = wf;
 

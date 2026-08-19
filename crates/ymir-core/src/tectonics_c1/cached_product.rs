@@ -42,9 +42,7 @@ use super::drainage::C1_SEA_LEVEL_NORM;
 use super::drainage::{C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage_windowed};
 use super::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use super::kinematics::PlateKinematics;
-use super::land_topology::{
-    IslandCriteria, LandTopology, evaluate_island, harvest_islands, is_island_fit, land_topology,
-};
+use super::land_topology::{IslandCriteria, LandTopology, is_island_fit, land_topology};
 use super::production_upscale::{
     C1_DOMAIN_KM, EroProgress, c1_coarse_normalized_altitude, c1_coarse_raw_altitude,
     c1_land_centroid_normalized, c1_normalize_coarse, upscale_from_c1_with_progress,
@@ -237,10 +235,7 @@ pub fn coarse_normalized_sweep(
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     run_with_closures(&mut state, &mut kin, run, closures, |_, _| {});
     let raw = c1_coarse_raw_altitude(&state, &run.iso_config, ss);
-    target_land_fractions
-        .iter()
-        .map(|&f| (f, c1_normalize_coarse(raw.clone(), Some(f))))
-        .collect()
+    target_land_fractions.iter().map(|&f| (f, c1_normalize_coarse(raw.clone(), Some(f)))).collect()
 }
 
 /// A tectonic configuration whose largest landmass passes [`is_island_fit`].
@@ -463,6 +458,7 @@ pub fn cached_c1_drainage_windowed(
 #[cfg(test)]
 mod tests {
     use super::super::drainage::c1_drainage;
+    use super::super::land_topology::{evaluate_island, harvest_islands};
     use super::super::production_upscale::upscale_from_c1;
     use super::*;
     use crate::tectonics::isostasy::IsostasyConfig;
@@ -605,8 +601,22 @@ mod tests {
         for r in &rows {
             csv.push_str(&format!(
                 "{},{},{},{:.3},{},{:.1},{:.4},{:.1},{:.1},{:.2},{},{},{},{},{},{:.3}\n",
-                r.np, r.cc, r.seed, r.tlf, r.masses, r.area, r.frac, r.traverse, r.window_km,
-                r.m_per_cell, r.res_ok, r.wx, r.wy, r.clean, r.sats, r.compact
+                r.np,
+                r.cc,
+                r.seed,
+                r.tlf,
+                r.masses,
+                r.area,
+                r.frac,
+                r.traverse,
+                r.window_km,
+                r.m_per_cell,
+                r.res_ok,
+                r.wx,
+                r.wy,
+                r.clean,
+                r.sats,
+                r.compact
             ));
         }
         std::fs::write(&csv_path, csv).unwrap();
@@ -637,7 +647,13 @@ mod tests {
                 eprintln!(
                     "    largest clean: seed {} → area {:.0} km² ({:.0}%), window {:.0} km \
                      ({:.1} m/cell), {} satellites, compactness {:.2}",
-                    b.seed, b.area, b.frac * 100.0, b.window_km, b.m_per_cell, b.sats, b.compact
+                    b.seed,
+                    b.area,
+                    b.frac * 100.0,
+                    b.window_km,
+                    b.m_per_cell,
+                    b.sats,
+                    b.compact
                 );
             }
         }
@@ -645,15 +661,12 @@ mod tests {
         // ── Recommendation: BORDER-CLEAN first, then LARGEST area, then finest cell. ──
         eprintln!("=== recommendation ===");
         // Border-clean AND in-band AND non-wrap AND area ≥ floor; then LARGEST area.
-        let best = rows
-            .iter()
-            .filter(|r| r.accepted() && r.area >= min_area_km2)
-            .max_by(|a, b| {
-                a.area
-                    .partial_cmp(&b.area)
-                    .unwrap()
-                    .then(b.m_per_cell.partial_cmp(&a.m_per_cell).unwrap())
-            });
+        let best = rows.iter().filter(|r| r.accepted() && r.area >= min_area_km2).max_by(|a, b| {
+            a.area
+                .partial_cmp(&b.area)
+                .unwrap()
+                .then(b.m_per_cell.partial_cmp(&a.m_per_cell).unwrap())
+        });
         match best {
             Some(r) => {
                 eprintln!(
@@ -664,7 +677,12 @@ mod tests {
                 eprintln!(
                     "  → largest island {:.0} km² ({:.0}%), traverse {:.0} km, {:.1} m/cell, \
                      {} satellites inside, compactness {:.2} (reported only)",
-                    r.area, r.frac * 100.0, r.traverse, r.m_per_cell, r.sats, r.compact
+                    r.area,
+                    r.frac * 100.0,
+                    r.traverse,
+                    r.m_per_cell,
+                    r.sats,
+                    r.compact
                 );
 
                 // ── Step 4: multi-continent harvest on the recommended config. ──
@@ -693,12 +711,8 @@ mod tests {
                 let dirty = nonwrap.iter().filter(|r| r.res_ok && !r.clean).count();
                 let too_fine = nonwrap.iter().filter(|r| r.m_per_cell < 30.0).count();
                 let too_coarse = nonwrap.iter().filter(|r| r.m_per_cell > 50.0).count();
-                let min_sats = nonwrap
-                    .iter()
-                    .filter(|r| r.res_ok)
-                    .map(|r| r.sats)
-                    .min()
-                    .unwrap_or(0);
+                let min_sats =
+                    nonwrap.iter().filter(|r| r.res_ok).map(|r| r.sats).min().unwrap_or(0);
                 eprintln!(
                     "NO BORDER-CLEAN config. Of {} non-wrapping: {} in-band but border-dirty \
                      (min {} satellites clip the window), {} too fine (<30 m), {} too coarse \
