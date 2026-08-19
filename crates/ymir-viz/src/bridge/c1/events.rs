@@ -30,7 +30,7 @@ use std::time::Duration;
 
 use ymir_core::tectonics_v2::workflow::PhaseAParams;
 
-use super::hd::{CacheRegime, HdParams, HdPhase, HdResult};
+use super::hd::{CacheRegime, HdParams, HdPhase, HdResult, PreviewShape};
 use super::snapshot::C1Snapshot;
 use super::spec::C1RunSpec;
 
@@ -75,11 +75,7 @@ pub enum C1Event {
     /// re-emitted for convenience (callers can latch on
     /// `Completed` for final-state UI without tracking the last
     /// `StepCompleted`).
-    Completed {
-        spec: C1RunSpec,
-        final_snapshot: C1Snapshot,
-        elapsed: Duration,
-    },
+    Completed { spec: C1RunSpec, final_snapshot: C1Snapshot, elapsed: Duration },
     /// Unreachable at MVP (Q-E1.2). Reserved for future panic
     /// catch or NaN detection paths.
     Failed { error: String },
@@ -102,4 +98,9 @@ pub enum C1Event {
     HdCompleted { result: Arc<HdResult>, elapsed: Duration },
     /// The HD chain failed (core error) or was cancelled between phases.
     HdFailed { error: String },
+
+    // ── Tectonic-shape preview (fast, coarse-only) ─────────────────
+    /// The coarse continent preview is ready (shape + island verdict), for
+    /// judging a seed before the HD run.
+    PreviewReady { preview: Arc<PreviewShape>, elapsed: Duration },
 }

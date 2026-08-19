@@ -44,12 +44,15 @@ use ymir_core::lakes::connectivity;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::cached_product::{
     c1_coarse_land_report, cached_c1_drainage_windowed, cached_c1_eroded,
-    cached_c1_eroded_with_progress, drainage_key_windowed, eroded_key, tectonic_key,
+    cached_c1_eroded_with_progress, coarse_normalized_sweep, drainage_key_windowed, eroded_key,
+    tectonic_key,
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult};
-use ymir_core::tectonics_c1::land_topology::LandTopology;
-use ymir_core::tectonics_c1::production_upscale::{C1_DOMAIN_KM, EroProgress};
+use ymir_core::tectonics_c1::land_topology::{IslandEval, LandTopology, evaluate_island};
+use ymir_core::tectonics_c1::production_upscale::{
+    C1_DOMAIN_KM, EroProgress, c1_land_centroid_normalized,
+};
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
@@ -215,6 +218,62 @@ fn hd_run_config(spec: &C1RunSpec) -> C1TimeLoopConfig {
         iso_config: IsostasyConfig::c1_default(),
         drainage_max_distance: spec.drainage_max_distance,
     }
+}
+
+/// Fast tectonic-shape preview: the calibrated COARSE continent (one ~1-2 s
+/// tectonic pass, NO HD upscale/erosion) so a seed can be judged BEFORE the
+/// ~20-min HD run. Carries the coarse normalized field (for a heightmap render),
+/// the island verdict ([`IslandEval`] — border-clean? area? wraps?), and the
+/// export-window rectangle in normalized torus coords (matching `run_hd`).
+pub struct PreviewShape {
+    /// Coarse normalized altitude (sea = 0.5), calibrated at the HD tlf.
+    pub coarse: GridF32,
+    /// Island verdict on the coarse field (window sized to the island).
+    pub eval: IslandEval,
+    /// Export-window origin `[u, v]` in `[0,1]` torus coords (centroid-centred,
+    /// clamped) and its normalized size — the box `run_hd` would crop.
+    pub window_origin: [f64; 2],
+    pub window_size: f64,
+}
+
+impl fmt::Debug for PreviewShape {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PreviewShape")
+            .field("grid", &self.coarse.width)
+            .field("largest_km2", &self.eval.topo.largest_area_km2)
+            .field("border_clean", &self.eval.border_clean)
+            .finish()
+    }
+}
+
+/// Run only the coarse tectonic pass + calibration for `spec`, emitting a
+/// [`C1Event::PreviewReady`]. Cheap (no erosion); used by the "Aperçu" button.
+pub fn preview_shape(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>) {
+    let t = Instant::now();
+    let run = hd_run_config(spec);
+    let ss = SteinSteinParams::default();
+    // Same sea-level calibration the HD run uses (read it off the HD config so
+    // the preview coastline matches what will be exported).
+    let tlf = FbmUpscaleConfig::c1_hd_production(params.target_size).target_land_fraction;
+    let coarse = coarse_normalized_sweep(
+        spec.seed,
+        spec.grid_size,
+        &spec.init_params,
+        &run,
+        &spec.closures,
+        &ss,
+        &[tlf.unwrap_or(0.29)],
+    )
+    .remove(0)
+    .1;
+    let eval = evaluate_island(&coarse, vector::SEA_LEVEL_NORM, 25.0, 1);
+    // Export window (matches run_hd: centroid-centred, clamped, no wrap).
+    let wf = (params.window_km / C1_DOMAIN_KM) as f64;
+    let c = c1_land_centroid_normalized(&coarse);
+    let window_origin =
+        [(c[0] - wf * 0.5).clamp(0.0, 1.0 - wf), (c[1] - wf * 0.5).clamp(0.0, 1.0 - wf)];
+    let preview = Arc::new(PreviewShape { coarse, eval, window_origin, window_size: wf });
+    let _ = tx.send(C1Event::PreviewReady { preview, elapsed: t.elapsed() });
 }
 
 /// Drive the HD chain on the worker thread, emitting per-phase events.

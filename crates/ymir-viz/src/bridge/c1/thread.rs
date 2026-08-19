@@ -1418,6 +1418,10 @@ pub fn spawn_c1_thread(
                         // from cache).
                         super::hd::run_hd(&spec, &params, &events_tx, &cancel);
                     }
+                    C1Command::PreviewShape { spec, params } => {
+                        // Coarse-only shape preview (fast) — judge a seed before HD.
+                        super::hd::preview_shape(&spec, &params, &events_tx);
+                    }
                     C1Command::Cancel => {
                         // MVP Option C — set the flag; takes
                         // effect on the next RunBaseline only.

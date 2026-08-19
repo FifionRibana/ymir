@@ -28,7 +28,7 @@ use egui::Color32 as C;
 
 use crate::bridge::c1::{
     C1RunSpec, C1SolverBridge, CacheRegime, CellInspection, HdParams, HdPhase, HdResult, HdState,
-    RiverCellMap, inspect_cell,
+    PreviewShape, RiverCellMap, inspect_cell,
 };
 use crate::visualization::colormap::hypsometric_bipolar;
 use ymir_core::climate::biomes::Biome;
@@ -150,6 +150,9 @@ struct WorkspaceState {
     export_dir: String,
     // Derived / cache.
     current: Option<Arc<HdResult>>,
+    /// Fast tectonic-shape preview (coarse continent) shown before the HD run.
+    preview: Option<Arc<PreviewShape>>,
+    preview_tex: Option<egui::TextureHandle>,
     river_map: Option<RiverCellMap>,
     texture: Option<egui::TextureHandle>,
     tex_layer: Option<HdLayer>,
@@ -180,6 +183,8 @@ impl Default for WorkspaceState {
             export_ymir: false,
             export_dir: "exports".to_string(),
             current: None,
+            preview: None,
+            preview_tex: None,
             river_map: None,
             texture: None,
             tex_layer: None,
@@ -417,6 +422,18 @@ fn draw_workspace(
             ws.hover = None;
         }
     }
+    // Latch a fresh tectonic-shape preview → show it (and drop any stale HD map
+    // so the preview is what's on screen until the user hits Générer).
+    if let Some(preview) = &bridge.preview {
+        let is_new = ws.preview.as_ref().map(|p| !Arc::ptr_eq(p, preview)).unwrap_or(true);
+        if is_new {
+            ws.preview = Some(preview.clone());
+            ws.preview_tex = None;
+            ws.current = None;
+            ws.texture = None;
+            ws.hover = None;
+        }
+    }
     let hd_running = matches!(bridge.hd, HdState::Running { .. });
 
     // Keep animating (waiter pulse) + polling the worker while a run is live.
@@ -541,6 +558,26 @@ fn left_panel(
                             export_dir,
                         };
                         let _ = bridge.submit_hd(spec, params);
+                    }
+                    // Fast tectonic-shape preview: judge the seed's continent
+                    // BEFORE the ~20-min HD run.
+                    ui.add_space(6.0);
+                    let prev_btn = egui::Button::new(
+                        egui::RichText::new("APERÇU TECTONIQUE").color(BRONZE).strong().size(11.5),
+                    )
+                    .fill(C::from_rgb(0x24, 0x22, 0x1e))
+                    .stroke(egui::Stroke::new(1.0, BRONZE))
+                    .corner_radius(6.0)
+                    .min_size(egui::vec2(ui.available_width(), 28.0));
+                    if ui.add_enabled(!hd_running, prev_btn).clicked() {
+                        let spec = C1RunSpec { seed: ws.seed, ..C1RunSpec::island_production() };
+                        let params = HdParams {
+                            target_size: ws.resolution,
+                            latitude_deg: ws.latitude,
+                            window_km: ws.window_km,
+                            export_dir: None,
+                        };
+                        let _ = bridge.submit_preview(spec, params);
                     }
                     ui.add_enabled_ui(!hd_running, |ui| {
                         ui.checkbox(
@@ -1178,11 +1215,98 @@ fn stroke_arc(
     }
 }
 
+/// Coarse continent → relief heightmap image (no FBM detail; the shape only).
+fn preview_color_image(coarse: &ymir_core::grid::GridF32) -> egui::ColorImage {
+    let (w, h) = (coarse.width, coarse.height);
+    let mut rgba = vec![0u8; w * h * 4];
+    for k in 0..w * h {
+        let [r, g, b] = relief_color(coarse.data[k]);
+        rgba[k * 4..k * 4 + 4].copy_from_slice(&[r, g, b, 255]);
+    }
+    egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba)
+}
+
+/// Render the fast tectonic-shape preview: coarse continent + the export-window
+/// box + a one-line island verdict, so a seed can be judged before the HD run.
+fn render_preview(ui: &mut egui::Ui, ws: &mut WorkspaceState, preview: &PreviewShape) {
+    if ws.preview_tex.is_none() {
+        let img = preview_color_image(&preview.coarse);
+        ws.preview_tex =
+            Some(ui.ctx().load_texture("tecto_preview", img, egui::TextureOptions::NEAREST));
+    }
+    let handle = ws.preview_tex.as_ref().unwrap().clone();
+    let avail = ui.available_size();
+    let side = avail.x.min(avail.y).max(1.0);
+    ui.add_space(((avail.y - side) * 0.5).max(0.0));
+    ui.horizontal(|ui| {
+        ui.add_space(((avail.x - side) * 0.5).max(0.0));
+        let resp = ui.add(egui::Image::new(egui::load::SizedTexture::new(
+            handle.id(),
+            egui::vec2(side, side),
+        )));
+        let r = resp.rect;
+        let pnt = ui.painter_at(r);
+
+        // Export-window rectangle (normalized origin/size → image rect).
+        let o = preview.window_origin;
+        let s = preview.window_size as f32;
+        let box_rect = egui::Rect::from_min_size(
+            egui::pos2(r.min.x + o[0] as f32 * r.width(), r.min.y + o[1] as f32 * r.height()),
+            egui::vec2(s * r.width(), s * r.height()),
+        );
+        pnt.rect_stroke(
+            box_rect,
+            2.0,
+            egui::Stroke::new(2.0, COPPER_BRIGHT),
+            egui::StrokeKind::Middle,
+        );
+
+        // Verdict chip (top-left).
+        let e = &preview.eval;
+        let (vtxt, vcol) = if e.accepted() {
+            ("île entourée d'océan ✓", C::from_rgb(0x6a, 0xb0, 0x6a))
+        } else {
+            ("non conforme ✗", C::from_rgb(0xc0, 0x7a, 0x4a))
+        };
+        let line = format!(
+            "aperçu tectonique — masse max {:.0} km² · {} masses · wrap x={} y={} · \
+             fenêtre {:.0} km ({:.0} m/px) · {vtxt}",
+            e.topo.largest_area_km2,
+            e.topo.num_landmasses,
+            e.topo.wraps_x,
+            e.topo.wraps_y,
+            e.window_km,
+            e.m_per_cell,
+        );
+        let chip = egui::Rect::from_min_size(
+            r.min + egui::vec2(10.0, 10.0),
+            egui::vec2(r.width() - 20.0, 24.0),
+        );
+        pnt.rect_filled(chip, 6.0, C::from_rgba_unmultiplied(18, 18, 18, 210));
+        pnt.text(
+            chip.min + egui::vec2(8.0, 12.0),
+            egui::Align2::LEFT_CENTER,
+            line,
+            egui::FontId::monospace(11.0),
+            vcol,
+        );
+    });
+}
+
 fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     if ws.current.is_none() {
-        ui.centered_and_justified(|ui| {
-            ui.label(egui::RichText::new("Aucun continent — cliquez « Générer ».").color(DIM));
-        });
+        if let Some(preview) = ws.preview.clone() {
+            render_preview(ui, ws, &preview);
+        } else {
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    egui::RichText::new(
+                        "Aucun continent — « Aperçu tectonique » pour voir la forme, puis « Générer ».",
+                    )
+                    .color(DIM),
+                );
+            });
+        }
         return;
     }
     // (Re)build the texture on layer/result change.
