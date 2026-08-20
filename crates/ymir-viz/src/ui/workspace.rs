@@ -32,6 +32,7 @@ use crate::bridge::c1::{
 };
 use crate::visualization::colormap::hypsometric_bipolar;
 use ymir_core::climate::biomes::Biome;
+use ymir_core::grid::GridF32;
 use ymir_core::climate::precipitation::precip_mm_per_year;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{LakeType, Navigability};
@@ -147,6 +148,21 @@ struct WorkspaceState {
     /// (no crop). Pure relabelling of the 64² pattern: `m_per_px = domain_km ·
     /// 1000 / resolution`. Moving it recomputes NO tectonics (see `m_per_px`).
     domain_km: f32,
+    /// Framing offset (integer COARSE cells) applied to the coarse field for both
+    /// the preview and the export (auto ± manual pan), stored mod grid. A cyclic
+    /// rotation on the torus — no bounds, wraps at the edges. This is what
+    /// `run_hd` writes to `window_offset_in_torus`.
+    offset_cells: [i64; 2],
+    /// Last auto-computed framing offset (cells) from the preview — the target of
+    /// "snap to auto" and the reference for [`panned`].
+    auto_offset_cells: [i64; 2],
+    /// The offset has been manually panned away from the auto value.
+    panned: bool,
+    /// Seed text edited but not yet submitted — debounced: the coarse recompute
+    /// fires on focus loss / Enter, not per keystroke (seeds are 20-digit).
+    seed_dirty: bool,
+    /// The initial auto-preview has been requested (so it fires once at startup).
+    bootstrapped: bool,
     /// Opt-in: write a v1 `.ymir` delivery container after the biome phase.
     export_ymir: bool,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
@@ -156,6 +172,11 @@ struct WorkspaceState {
     /// Fast tectonic-shape preview (coarse continent) shown before the HD run.
     preview: Option<Arc<PreviewShape>>,
     preview_tex: Option<egui::TextureHandle>,
+    /// Framing offset the `preview_tex` was built at — rebuild the texture when the
+    /// user pans so the drawn frame follows the offset.
+    preview_tex_offset: [i64; 2],
+    /// Sub-cell drag accumulator (pixels) for smooth drag-to-pan on the preview.
+    pan_accum: [f32; 2],
     river_map: Option<RiverCellMap>,
     texture: Option<egui::TextureHandle>,
     tex_layer: Option<HdLayer>,
@@ -183,11 +204,18 @@ impl Default for WorkspaceState {
             channel_jitter: 0.3,
             dinf: false,
             domain_km: 1024.0,
+            offset_cells: [0, 0],
+            auto_offset_cells: [0, 0],
+            panned: false,
+            seed_dirty: false,
+            bootstrapped: false,
             export_ymir: false,
             export_dir: "exports".to_string(),
             current: None,
             preview: None,
             preview_tex: None,
+            preview_tex_offset: [0, 0],
+            pan_accum: [0.0, 0.0],
             river_map: None,
             texture: None,
             tex_layer: None,
@@ -430,6 +458,13 @@ fn draw_workspace(
     if let Some(preview) = &bridge.preview {
         let is_new = ws.preview.as_ref().map(|p| !Arc::ptr_eq(p, preview)).unwrap_or(true);
         if is_new {
+            ws.auto_offset_cells = preview.auto_offset_cells;
+            // A fresh preview follows a seed change (which cleared `panned`), so the
+            // framing snaps to the new auto offset. A manual pan set `panned`, which
+            // survives a mere refresh of the same seed.
+            if !ws.panned {
+                ws.offset_cells = preview.auto_offset_cells;
+            }
             ws.preview = Some(preview.clone());
             ws.preview_tex = None;
             ws.current = None;
@@ -438,6 +473,13 @@ fn draw_workspace(
         }
     }
     let hd_running = matches!(bridge.hd, HdState::Running { .. });
+
+    // One-time auto-preview at startup: the default seed shows a framed continent
+    // without a click (coarse pass only — never the HD pipeline).
+    if !ws.bootstrapped && ws.preview.is_none() && !hd_running {
+        request_preview(&mut ws, &bridge, true);
+        ctx.request_repaint();
+    }
 
     // Keep animating (waiter pulse) + polling the worker while a run is live.
     if hd_running {
@@ -552,33 +594,34 @@ fn left_panel(
                         } else {
                             None
                         };
+                        // Ship exactly the framing the user sees (auto ± manual pan),
+                        // as a normalised offset in [0,1) — cells / grid.
+                        let grid = ws.preview.as_ref().map(|p| p.coarse.width as i64).unwrap_or(64);
+                        let off = [
+                            ws.offset_cells[0].rem_euclid(grid) as f64 / grid as f64,
+                            ws.offset_cells[1].rem_euclid(grid) as f64 / grid as f64,
+                        ];
                         let params = HdParams {
                             target_size: ws.resolution,
                             latitude_deg: ws.latitude,
                             domain_km: ws.domain_km,
+                            manual_offset: Some(off),
                             export_dir,
                         };
                         let _ = bridge.submit_hd(spec, params);
                     }
-                    // Fast tectonic-shape preview: judge the seed's continent
-                    // BEFORE the ~20-min HD run.
+                    // Manual refresh of the coarse preview (auto-preview fires on
+                    // seed change; this re-runs the same seed, keeping any pan).
                     ui.add_space(6.0);
                     let prev_btn = egui::Button::new(
-                        egui::RichText::new("APERÇU TECTONIQUE").color(BRONZE).strong().size(11.5),
+                        egui::RichText::new("RAFRAÎCHIR L'APERÇU").color(BRONZE).strong().size(11.5),
                     )
                     .fill(C::from_rgb(0x24, 0x22, 0x1e))
                     .stroke(egui::Stroke::new(1.0, BRONZE))
                     .corner_radius(6.0)
                     .min_size(egui::vec2(ui.available_width(), 28.0));
                     if ui.add_enabled(!hd_running, prev_btn).clicked() {
-                        let spec = C1RunSpec { seed: ws.seed, ..C1RunSpec::default() };
-                        let params = HdParams {
-                            target_size: ws.resolution,
-                            latitude_deg: ws.latitude,
-                            domain_km: ws.domain_km,
-                            export_dir: None,
-                        };
-                        let _ = bridge.submit_preview(spec, params);
+                        request_preview(ws, bridge, false);
                     }
                     ui.add_enabled_ui(!hd_running, |ui| {
                         ui.checkbox(
@@ -624,17 +667,23 @@ fn left_panel(
                         ui.add_space(1.0);
                         ui.horizontal(|ui| {
                             let mut s = ws.seed.to_string();
-                            if ui
-                                .add(
-                                    egui::TextEdit::singleline(&mut s)
-                                        .desired_width(ui.available_width() - 42.0)
-                                        .font(egui::TextStyle::Monospace),
-                                )
-                                .changed()
-                            {
+                            let resp = ui.add(
+                                egui::TextEdit::singleline(&mut s)
+                                    .desired_width(ui.available_width() - 42.0)
+                                    .font(egui::TextStyle::Monospace),
+                            );
+                            if resp.changed() {
                                 if let Ok(v) = s.parse::<u64>() {
-                                    ws.seed = v;
+                                    if v != ws.seed {
+                                        ws.seed = v;
+                                        ws.seed_dirty = true; // submit on focus loss
+                                    }
                                 }
+                            }
+                            // Debounce: one coarse recompute when editing completes
+                            // (Enter / focus loss), never per keystroke.
+                            if resp.lost_focus() && ws.seed_dirty {
+                                request_preview(ws, bridge, true);
                             }
                             if ui
                                 .add(egui::Button::new(egui::RichText::new("⟳").color(COPPER_BRIGHT)).min_size(egui::vec2(34.0, 0.0)))
@@ -642,6 +691,7 @@ fn left_panel(
                                 .clicked()
                             {
                                 ws.seed = ws.seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                                request_preview(ws, bridge, true); // immediate
                             }
                         });
                         ui.add_space(10.0);
@@ -667,6 +717,19 @@ fn left_panel(
                         // recomputed instantly from the coarse preview field (cheap 64²
                         // — no tectonic pass). Shown once a preview exists.
                         domain_readout(ui, ws, mpp);
+                        ui.add_space(10.0);
+                        // Manual framing pan (cyclic; composes on top of the auto offset).
+                        framing_controls(ui, ws);
+                        ui.add_space(8.0);
+                        if ui
+                            .add(egui::Button::new(
+                                egui::RichText::new("Réinitialiser").color(DIM).size(11.0),
+                            ))
+                            .on_hover_text("Cadrage auto + domaine par défaut, graine inchangée")
+                            .clicked()
+                        {
+                            reset_current_seed(ws);
+                        }
                     });
                     ui.separator();
 
@@ -1249,6 +1312,98 @@ const SEA_NORM: f32 = 0.5;
 const OK_GREEN: C = C::from_rgb(0x6a, 0xb0, 0x6a);
 const WARN_ORANGE: C = C::from_rgb(0xc0, 0x7a, 0x4a);
 
+/// Cyclically shift a periodic coarse field so output cell `(x,y)` reads torus
+/// cell `(x+rx, y+ry) mod (w,h)`. Matches the HD export's `sample_origin =
+/// offset/grid`, so the preview frames exactly what ships. Pure relabelling — no
+/// recompute; `rem_euclid` makes any integer offset valid (cyclic, no clamp).
+fn roll_grid(src: &GridF32, rx: i64, ry: i64) -> GridF32 {
+    let (w, h) = (src.width, src.height);
+    let (wi, hi) = (w as i64, h as i64);
+    let mut out = vec![0.0f32; w * h];
+    for y in 0..h {
+        let sy = ((y as i64 + ry).rem_euclid(hi)) as usize;
+        for x in 0..w {
+            let sx = ((x as i64 + rx).rem_euclid(wi)) as usize;
+            out[y * w + x] = src.data[sy * w + sx];
+        }
+    }
+    GridF32::from_vec(w, h, out)
+}
+
+/// The coarse preview field with the current framing offset applied (the frame the
+/// user sees and the export ships). `None` until the first preview lands.
+fn framed_coarse(ws: &WorkspaceState) -> Option<GridF32> {
+    ws.preview.as_ref().map(|p| roll_grid(&p.coarse, ws.offset_cells[0], ws.offset_cells[1]))
+}
+
+/// Params for a coarse preview: NO manual offset (the preview computes the auto
+/// offset; the UI applies the roll at render time). Never runs the HD pipeline.
+fn preview_params(ws: &WorkspaceState) -> HdParams {
+    HdParams {
+        target_size: ws.resolution,
+        latitude_deg: ws.latitude,
+        domain_km: ws.domain_km,
+        manual_offset: None,
+        export_dir: None,
+    }
+}
+
+/// Request a fresh CHEAP coarse preview for `ws.seed` (never the HD pipeline).
+/// `reset_pan` = true for a seed change (snap the framing back to auto + drop the
+/// stale HD result when the preview lands); false for a manual refresh of the same
+/// seed (keep any manual pan).
+fn request_preview(ws: &mut WorkspaceState, bridge: &C1SolverBridge, reset_pan: bool) {
+    if reset_pan {
+        ws.panned = false;
+        ws.current = None; // a new shape invalidates the previous HD result
+    }
+    ws.seed_dirty = false;
+    ws.bootstrapped = true;
+    let spec = C1RunSpec { seed: ws.seed, ..C1RunSpec::default() };
+    let _ = bridge.submit_preview(spec, preview_params(ws));
+}
+
+/// Reset the framing/scale for the CURRENT seed (Reset button): snap the offset to
+/// auto, restore the default domain, clear the HD result. Seed + preview untouched.
+fn reset_current_seed(ws: &mut WorkspaceState) {
+    ws.offset_cells = ws.auto_offset_cells;
+    ws.panned = false;
+    ws.domain_km = 1024.0;
+    ws.current = None;
+    ws.texture = None;
+    ws.tex_layer = None;
+    ws.hover = None;
+}
+
+/// Manual framing controls: two cyclic cell offsets (x, y) with an auto/manual
+/// indicator and a snap-to-auto button. Panning recomputes metrics instantly (pure
+/// relabelling of the same coarse field — no tectonic recompute, no HD run).
+fn framing_controls(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
+    let grid = ws.preview.as_ref().map(|p| p.coarse.width as i64).unwrap_or(64);
+    field_label(ui, "CADRAGE (cellules, cyclique)");
+    ui.add_space(1.0);
+    ui.horizontal(|ui| {
+        let (mut x, mut y) = (ws.offset_cells[0], ws.offset_cells[1]);
+        let rx = ui.add(egui::DragValue::new(&mut x).prefix("x ").speed(0.15));
+        let ry = ui.add(egui::DragValue::new(&mut y).prefix("y ").speed(0.15));
+        if rx.changed() || ry.changed() {
+            ws.offset_cells = [x.rem_euclid(grid), y.rem_euclid(grid)];
+            ws.panned = ws.offset_cells != ws.auto_offset_cells;
+        }
+        let (tag, col) = if ws.panned { ("manuel", WARN_ORANGE) } else { ("auto", OK_GREEN) };
+        ui.label(egui::RichText::new(tag).color(col).monospace().size(11.0));
+        if ws.panned
+            && ui
+                .add(egui::Button::new(egui::RichText::new("↺ auto").color(BRONZE).size(10.5)))
+                .on_hover_text("Revenir au cadrage automatique")
+                .clicked()
+        {
+            ws.offset_cells = ws.auto_offset_cells;
+            ws.panned = false;
+        }
+    });
+}
+
 /// Compact domain-as-map readout under the DOMAINE slider: m/px band flag, then
 /// (once a coarse preview exists) the largest-mass traverse + bbox %, the per-side
 /// ocean margins, and the geometric seed verdict. Recomputed from the coarse field
@@ -1266,9 +1421,9 @@ fn domain_readout(ui: &mut egui::Ui, ws: &WorkspaceState, mpp: f32) {
         egui::RichText::new(format!("{mpp:.1} m/px — {flag}")).color(fcol).monospace().size(10.5),
     );
 
-    let Some(preview) = ws.preview.as_ref() else {
+    let Some(coarse) = framed_coarse(ws) else {
         ui.label(
-            egui::RichText::new("· lancer APERÇU pour marges + verdict")
+            egui::RichText::new("· aperçu en cours…")
                 .color(DIM2)
                 .monospace()
                 .size(10.0),
@@ -1276,7 +1431,7 @@ fn domain_readout(ui: &mut egui::Ui, ws: &WorkspaceState, mpp: f32) {
         return;
     };
     let ss = SteinSteinParams::default();
-    let m = domain_metrics(&preview.coarse, SEA_NORM, &ss, ws.domain_km, ws.resolution);
+    let m = domain_metrics(&coarse, SEA_NORM, &ss, ws.domain_km, ws.resolution);
     let traverse = m.extent_km.0.max(m.extent_km.1);
     ui.label(
         egui::RichText::new(format!(
@@ -1306,10 +1461,15 @@ fn domain_readout(ui: &mut egui::Ui, ws: &WorkspaceState, mpp: f32) {
 }
 
 fn render_preview(ui: &mut egui::Ui, ws: &mut WorkspaceState, preview: &PreviewShape) {
-    if ws.preview_tex.is_none() {
-        let img = preview_color_image(&preview.coarse);
+    let grid = preview.coarse.width as i64;
+    // Rolled (framed) coarse field: rebuild the texture whenever the offset changes
+    // (a pan) so the drawn frame follows the offset. Metrics use the same field.
+    let framed = roll_grid(&preview.coarse, ws.offset_cells[0], ws.offset_cells[1]);
+    if ws.preview_tex.is_none() || ws.preview_tex_offset != ws.offset_cells {
+        let img = preview_color_image(&framed);
         ws.preview_tex =
             Some(ui.ctx().load_texture("tecto_preview", img, egui::TextureOptions::NEAREST));
+        ws.preview_tex_offset = ws.offset_cells;
     }
     let handle = ws.preview_tex.as_ref().unwrap().clone();
     let avail = ui.available_size();
@@ -1317,17 +1477,42 @@ fn render_preview(ui: &mut egui::Ui, ws: &mut WorkspaceState, preview: &PreviewS
     ui.add_space(((avail.y - side) * 0.5).max(0.0));
     ui.horizontal(|ui| {
         ui.add_space(((avail.x - side) * 0.5).max(0.0));
-        let resp = ui.add(egui::Image::new(egui::load::SizedTexture::new(
-            handle.id(),
-            egui::vec2(side, side),
-        )));
+        let resp = ui
+            .add(
+                egui::Image::new(egui::load::SizedTexture::new(handle.id(), egui::vec2(side, side)))
+                    .sense(egui::Sense::drag()),
+            )
+            .on_hover_text("Glisser pour recadrer (rotation cyclique du tore)");
         let r = resp.rect;
         let pnt = ui.painter_at(r);
 
-        // Domain-as-map metrics for the CURRENT domain-km (no crop). Derived from
-        // the same coarse field; scales with the DOMAINE slider (see `m_per_px`).
+        // Drag-to-pan: shift the framing by whole coarse cells (cyclic). Dragging
+        // the content right decreases the sampling origin. Sub-cell motion is
+        // accumulated so slow drags still register. Panning is pure relabelling —
+        // no recompute, no HD run.
+        if resp.dragged() {
+            let ppc = (side / grid as f32).max(1.0);
+            let d = resp.drag_delta();
+            ws.pan_accum[0] += d.x;
+            ws.pan_accum[1] += d.y;
+            let step_x = (ws.pan_accum[0] / ppc).trunc() as i64;
+            let step_y = (ws.pan_accum[1] / ppc).trunc() as i64;
+            if step_x != 0 || step_y != 0 {
+                ws.pan_accum[0] -= step_x as f32 * ppc;
+                ws.pan_accum[1] -= step_y as f32 * ppc;
+                ws.offset_cells[0] = (ws.offset_cells[0] - step_x).rem_euclid(grid);
+                ws.offset_cells[1] = (ws.offset_cells[1] - step_y).rem_euclid(grid);
+                ws.panned = ws.offset_cells != ws.auto_offset_cells;
+            }
+        }
+        if resp.drag_stopped() {
+            ws.pan_accum = [0.0, 0.0];
+        }
+
+        // Domain-as-map metrics for the CURRENT domain-km (no crop), on the framed
+        // field. Scales with the DOMAINE slider and updates instantly on pan.
         let ss = SteinSteinParams::default();
-        let m = domain_metrics(&preview.coarse, SEA_NORM, &ss, ws.domain_km, ws.resolution);
+        let m = domain_metrics(&framed, SEA_NORM, &ss, ws.domain_km, ws.resolution);
         let mpp = m_per_px(ws.domain_km, ws.resolution);
 
         // Largest-mass bounding box (map frame, from the ocean margins) → the ocean

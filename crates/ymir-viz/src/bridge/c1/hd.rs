@@ -74,6 +74,12 @@ pub struct HdParams {
     /// scale and drives climate/drainage km/cell, but NOT the tectonic sim. The
     /// tectonic cache key does not include it. Default 1024.0.
     pub domain_km: f32,
+    /// Framing ROLL to apply at the coarse sampling origin (normalised `[0,1)`).
+    /// `None` → `run_hd` centres the largest mass automatically (the default). When
+    /// the UI has computed a framing (auto ± manual pan) it passes `Some(offset)`
+    /// so the export matches exactly what the preview showed. Determinism: passing
+    /// the same value `run_hd` would auto-compute yields a byte-identical export.
+    pub manual_offset: Option<[f64; 2]>,
     /// When `Some(dir)`, after the biome phase the run writes a v1 `.ymir`
     /// delivery container under `dir` (see [`ymir_core::export::container`]).
     /// `None` = no export. Explicit opt-in — the pipeline NEVER auto-exports
@@ -83,7 +89,13 @@ pub struct HdParams {
 
 impl Default for HdParams {
     fn default() -> Self {
-        Self { target_size: 2048, latitude_deg: 45.0, domain_km: 1024.0, export_dir: None }
+        Self {
+            target_size: 2048,
+            latitude_deg: 45.0,
+            domain_km: 1024.0,
+            manual_offset: None,
+            export_dir: None,
+        }
     }
 }
 
@@ -228,10 +240,15 @@ fn hd_run_config(spec: &C1RunSpec) -> C1TimeLoopConfig {
 /// the island verdict ([`IslandEval`] — border-clean? area? wraps?), and the
 /// export-window rectangle in normalized torus coords (matching `run_hd`).
 pub struct PreviewShape {
-    /// Coarse normalized altitude (sea = 0.5), calibrated at the HD tlf. The
-    /// domain-as-map metrics (margins, verdict, m/px) are derived from THIS field
-    /// at render time, so they scale with the DOMAINE slider without a recompute.
+    /// Coarse normalized altitude (sea = 0.5), calibrated at the HD tlf, in the
+    /// UNROLLED torus frame. The UI applies the framing roll (auto ± manual pan) at
+    /// render time, so panning is pure relabelling — no tectonic recompute — and
+    /// the domain-as-map metrics recompute instantly for any offset.
     pub coarse: GridF32,
+    /// Auto-computed framing offset (integer COARSE CELLS) that centres the largest
+    /// landmass: `(center_cell − grid/2) mod grid`. The UI seeds the current offset
+    /// from this on every new preview and offers a "snap to auto" back to it.
+    pub auto_offset_cells: [i64; 2],
     /// Island verdict on the coarse field (largest-mass summary for the Debug log).
     pub eval: IslandEval,
 }
@@ -267,37 +284,17 @@ pub fn preview_shape(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>) 
     .remove(0)
     .1;
     let eval = evaluate_island(&coarse, vector::SEA_LEVEL_NORM, 25.0, 1);
-    // The domain IS the map (M1 #190): no crop. Apply the SAME framing roll the HD
-    // export uses (centre the largest mass at the coarse SAMPLING ORIGIN) so the
-    // preview shows exactly what ships — a contiguous, centred continent, not the
-    // seam-split arrangement. The domain-as-map metrics are then computed at render
-    // time from this rolled field, so the DOMAINE slider relabels instantly.
+    // The domain IS the map (M1 #190): no crop. Return the UNROLLED coarse field +
+    // the auto framing offset (centre the largest mass). The UI applies the roll
+    // (auto ± manual pan) at render time, so panning is instant (no recompute) and
+    // what the user frames is exactly what `run_hd` exports.
     let topo = land_topology(&coarse, vector::SEA_LEVEL_NORM);
     let g = spec.grid_size as i64;
     let (cx, cy) = topo.center_cell;
-    let roll_x = ((cx as i64) - g / 2).rem_euclid(g) as usize;
-    let roll_y = ((cy as i64) - g / 2).rem_euclid(g) as usize;
-    let coarse = roll_grid(&coarse, roll_x, roll_y);
-    let preview = Arc::new(PreviewShape { coarse, eval });
+    let auto_offset_cells =
+        [((cx as i64) - g / 2).rem_euclid(g), ((cy as i64) - g / 2).rem_euclid(g)];
+    let preview = Arc::new(PreviewShape { coarse, auto_offset_cells, eval });
     let _ = tx.send(C1Event::PreviewReady { preview, elapsed: t.elapsed() });
-}
-
-/// Cyclically shift a periodic coarse field so cell `(x,y)` reads the torus cell
-/// `(x+roll_x, y+roll_y) mod (w,h)`. This reproduces, at coarse resolution, the
-/// framing the HD export applies via `sample_origin = roll/grid`: output centre
-/// shows the torus point `roll + grid/2` (= the mass centre when `roll =
-/// center_cell − grid/2`), so the preview and the export frame the same continent.
-fn roll_grid(src: &GridF32, roll_x: usize, roll_y: usize) -> GridF32 {
-    let (w, h) = (src.width, src.height);
-    let mut out = vec![0.0f32; w * h];
-    for y in 0..h {
-        let sy = (y + roll_y) % h;
-        for x in 0..w {
-            let sx = (x + roll_x) % w;
-            out[y * w + x] = src.data[sy * w + sx];
-        }
-    }
-    GridF32::from_vec(w, h, out)
 }
 
 /// Drive the HD chain on the worker thread, emitting per-phase events.
@@ -347,7 +344,9 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let (cx, cy) = land_topology.center_cell;
     let roll_x = ((cx as i64) - g / 2).rem_euclid(g) as usize;
     let roll_y = ((cy as i64) - g / 2).rem_euclid(g) as usize;
-    let window_offset = [roll_x as f64 / g as f64, roll_y as f64 / g as f64];
+    let auto_offset = [roll_x as f64 / g as f64, roll_y as f64 / g as f64];
+    // Use the UI framing (auto ± manual pan) when supplied; else auto-centre.
+    let window_offset = params.manual_offset.unwrap_or(auto_offset);
     upscale.sample_origin = window_offset;
     upscale.sample_size = 1.0;
 

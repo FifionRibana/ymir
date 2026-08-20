@@ -198,6 +198,7 @@ mod tests {
                     target_size: target,
                     latitude_deg: 45.0,
                     domain_km: 1024.0,
+                    manual_offset: None,
                     export_dir: None,
                 },
             })
