@@ -265,14 +265,12 @@ pub fn preview_shape(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>) 
     .remove(0)
     .1;
     let eval = evaluate_island(&coarse, vector::SEA_LEVEL_NORM, 25.0, 1);
-    // Export window (matches run_hd): centred on the seam-correct mass centre, may
-    // straddle the seam (periodic sampling), no clamp.
-    let wf = (params.window_km / C1_DOMAIN_KM) as f64;
-    let (gw, gh) = (spec.grid_size as f64, spec.grid_size as f64);
-    let c = [eval.center_cell.0 as f64 / gw, eval.center_cell.1 as f64 / gh];
-    let window_origin =
-        [(c[0] - wf * 0.5).rem_euclid(1.0), (c[1] - wf * 0.5).rem_euclid(1.0)];
-    let preview = Arc::new(PreviewShape { coarse, eval, window_origin, window_size: wf });
+    // The domain IS the map (M1 #190): no crop. The preview shows the WHOLE torus
+    // (origin [0,0], size 1.0); seed selection — not a window — frames the
+    // continent. The domain-as-map metrics are computed at render time from the
+    // coarse field, so the domain-km slider relabels instantly (no recompute).
+    let preview =
+        Arc::new(PreviewShape { coarse, eval, window_origin: [0.0, 0.0], window_size: 1.0 });
     let _ = tx.send(C1Event::PreviewReady { preview, elapsed: t.elapsed() });
 }
 
@@ -288,16 +286,15 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let run = hd_run_config(spec);
     let ss = SteinSteinParams::default();
 
-    // ── Playable window: render a `window_km` sub-domain of the 1024 km torus at
-    // `target_size`, CENTRED on the continent (land centroid). This is what makes
-    // km_per_cell = window_km/target_size land at ~40 m instead of the torus's
-    // 125 m. The tectonic sim stays full-torus; only the HD render is windowed.
-    let window_km = params.window_km;
-    let wf = (window_km / C1_DOMAIN_KM) as f64;
+    // ── The domain IS the map (M1 #190): NO crop, ever. The whole 1024 km torus
+    // renders at `target_size` (sample_origin [0,0], sample_size 1.0). km_per_cell
+    // = C1_DOMAIN_KM/target_size, so the export size is chosen for the cell budget
+    // (e.g. 24576² → ~42 m/cell). Seed selection — not a window — puts a continent
+    // with ocean margin on the map (see the coarse preview / seed scan).
+    let window_km = C1_DOMAIN_KM; // manifest: window == domain
     let mut upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
-    // Centroid + land topology are measured on the SAME calibrated coarse field
-    // the upscale renders (so the window centres on the post-calibration land).
-    // Hence build `upscale` first to read its `target_land_fraction`.
+    upscale.sample_origin = [0.0, 0.0];
+    upscale.sample_size = 1.0;
     let land = c1_coarse_land_report(
         spec.seed,
         spec.grid_size,
@@ -307,10 +304,11 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         &ss,
         upscale.target_land_fraction,
     );
-    let _ = land.centroid; // superseded by the seam-correct centre below
+    let _ = land.centroid; // no window to centre — whole domain
     let land_topology = land.topology;
     // Telemetry — judge the seed as an island continent. A largest landmass that
-    // WRAPS the torus is not an island; the window then can't frame ocean margin.
+    // WRAPS the torus is a band with no coast; a finite mass touching the map edge
+    // is split across the border (see the domain-as-map verdict in the preview).
     let t = &land_topology;
     eprintln!(
         "[C1 land] seed {} — {} landmass(es); largest {:.0} km² ({:.1}% of torus), \
@@ -325,16 +323,6 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         t.bbox_km.1,
         t.emerged_fraction * 100.0,
     );
-    // Centre the window on the largest mass's SEAM-CORRECT centre (unrolled;
-    // `center_cell` is valid even for a mass straddling the torus seam). No clamp:
-    // the window may straddle the seam and sample periodically — a continent that
-    // sits on the seam is still framed contiguously (rem_euclid → [0,1)).
-    let (gw, gh) = (spec.grid_size as f64, spec.grid_size as f64);
-    let center = [land_topology.center_cell.0 as f64 / gw, land_topology.center_cell.1 as f64 / gh];
-    let win_origin =
-        [(center[0] - wf * 0.5).rem_euclid(1.0), (center[1] - wf * 0.5).rem_euclid(1.0)];
-    upscale.sample_origin = win_origin;
-    upscale.sample_size = wf;
 
     let pp = PrecipParams::default();
     let dcfg = C1DrainageConfig::default();
@@ -514,7 +502,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // coastline/cliffs (Y-B) + temperature/precipitation/biome (Y-C).
     if let Some(export_dir) = &params.export_dir {
         if let Err(e) = export_ymir_container(
-            spec, &ss, &eroded, &climate, &biomes, &drainage, lat, window_km, win_origin,
+            spec, &ss, &eroded, &climate, &biomes, &drainage, lat, window_km, [0.0, 0.0],
             export_dir,
         ) {
             // Non-fatal: the product still ships to the UI; surface the reason.
@@ -575,9 +563,10 @@ fn export_ymir_container(
     //   inverse). The min_m/max_m are stamped on the "height" layer below.
     let height = height::metric_height_u16(eroded, ss);
 
-    // The HD grid renders the `window_km` sub-domain of the 1024 km torus, so
-    // km_per_cell = window_km / width (the writer computes it). The tectonic
-    // torus stays the context; the window origin is the land-centred crop.
+    // The domain IS the map (M1 #190): the HD grid renders the WHOLE 1024 km
+    // torus, so window_km == tectonic_domain_km and window_offset == [0,0]. The
+    // manifest fields are kept because the consumer reads km_per_cell = window_km
+    // / width — here simply C1_DOMAIN_KM / width.
     let meta = ContinentMeta {
         name: format!("seed{}_{}", spec.seed, w),
         seed: spec.seed,

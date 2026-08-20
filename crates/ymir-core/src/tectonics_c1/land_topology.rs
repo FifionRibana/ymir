@@ -12,7 +12,8 @@
 
 use crate::grid::GridF32;
 
-use super::production_upscale::{C1_DOMAIN_KM, c1_cell_area_km2};
+use super::closures::oceanic_bathymetry::params::SteinSteinParams;
+use super::production_upscale::{C1_DOMAIN_KM, c1_altitude_norm_to_metres, c1_cell_area_km2};
 
 /// Metrics for the land mask of a coarse altitude field.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -555,6 +556,378 @@ pub fn harvest_islands(
     out
 }
 
+// ── Domain-as-map metrics (M1 #190: the domain IS the map, no crop) ─────────
+
+/// Coarse-preview metrics for a seed evaluated as a WHOLE-DOMAIN map (no crop,
+/// no roll). Everything a placement judgement needs BEFORE the ~16 min HD pass:
+/// ocean margins around the continent, the bathymetric border criterion (is the
+/// domain edge deep enough for Living Landz's uniform-seabed extrusion?), the
+/// resolution at the chosen export size, and a single accept/reject verdict.
+///
+/// All km/m figures scale with `domain_km` — the tectonic pattern lives in grid
+/// units, so changing `domain_km` is pure relabelling (no recompute). Fractions
+/// (`bbox_frac_*`, `min_margin_frac`) and cell counts are domain-independent.
+#[derive(Debug, Clone)]
+pub struct DomainMetrics {
+    /// Largest-mass topology (band flags, circular extent, centre).
+    pub topo: LandTopology,
+    /// Domain side used for the km/m labelling.
+    pub domain_km: f32,
+    /// Coarse emerged fraction (pre-FBM, pre-erosion).
+    pub emerged_frac: f32,
+    /// Measured post-FBM+erosion drift to ADD to `emerged_frac` for the true
+    /// figure (+0.076 on seed 42: FBM lifts the shelf above sea level).
+    pub emerged_drift: f32,
+    /// Circular extent of the largest mass as a fraction of the domain, per axis.
+    pub bbox_frac_x: f32,
+    pub bbox_frac_y: f32,
+    /// Circular extent of the largest mass in km, per axis.
+    pub extent_km: (f32, f32),
+    /// Ocean margin (km) between the largest mass's MAP-FRAME bounding box and
+    /// each domain edge (N=+y, S=−y with y=0 south; E=+x, W=−x). A seam-straddling
+    /// mass reads 0 on that axis — honest for an un-rolled export.
+    pub margin_n_km: f32,
+    pub margin_s_km: f32,
+    pub margin_e_km: f32,
+    pub margin_w_km: f32,
+    /// Smallest of the four margins as a fraction of the domain side.
+    pub min_margin_frac: f32,
+    /// Any land cell (of any mass) lies on the domain border ring.
+    pub land_on_border: bool,
+    /// Stein-Stein asymptotic depth (m) — the deepest credible seabed.
+    pub asymptotic_depth_m: f32,
+    /// Median depth (m, positive down) over the domain border ring.
+    pub border_depth_median_m: f32,
+    /// `border_depth_median_m / asymptotic_depth_m`.
+    pub border_depth_frac: f32,
+    /// Border deep enough (≥ 90 % of the asymptote) for credible extrusion.
+    pub border_depth_ok: bool,
+    /// Deepest ocean cell in the whole domain (m) — the model's achievable
+    /// abyssal ceiling. The Stein-Stein asymptote is theoretical; the C1 ocean is
+    /// young, so this is well below `asymptotic_depth_m` in practice.
+    pub deepest_ocean_m: f32,
+    /// Ocean cells (from the coastline outward) before the median depth first
+    /// reaches 90 % of the asymptote — the model's real margin requirement.
+    /// `None` if the ocean never gets that deep anywhere.
+    pub cells_to_asymptote: Option<usize>,
+    /// `cells_to_asymptote · km_per_cell`.
+    pub km_to_asymptote: Option<f32>,
+    /// Cell size (m) of the whole-domain export at `target_size`.
+    pub m_per_cell: f32,
+    /// `m_per_cell` within the 30–50 m band.
+    pub resolution_ok: bool,
+    /// Passes the GEOMETRIC clauses only (not a band, no land on the border,
+    /// continent ≤ 60 % on both axes) — independent of bathymetry.
+    pub geometric_pass: bool,
+    /// Seed passes the full placement verdict (geometric AND border-depth).
+    pub verdict_pass: bool,
+    /// First failing clause (empty when `verdict_pass`).
+    pub verdict_reason: &'static str,
+}
+
+/// Post-FBM+erosion emerged drift measured on the author's seed-42 8192² run
+/// (coarse 18.0 % → windowed 25.6 %). Reported so a coarse preview is never read
+/// as the final land fraction.
+pub const EMERGED_DRIFT: f32 = 0.076;
+
+/// Fraction of the asymptote the border ring must reach for the verdict.
+pub const BORDER_DEPTH_MIN_FRAC: f32 = 0.90;
+
+/// Max circular extent (fraction of the domain, per axis) the continent may span
+/// so ≥ ~20 % ocean margin per side remains (60 % land ⇒ 40 % ocean ⇒ 20 %/side).
+pub const MAX_BBOX_FRAC: f32 = 0.60;
+
+/// Whole-domain map metrics for a coarse normalized field. `sea` is the sea-level
+/// norm (0.5); `ss` supplies the metre scale and Stein-Stein asymptote; `domain_km`
+/// labels the km/m figures; `target_size` is the intended HD export side.
+pub fn domain_metrics(
+    coarse: &GridF32,
+    sea: f32,
+    ss: &SteinSteinParams,
+    domain_km: f32,
+    target_size: usize,
+) -> DomainMetrics {
+    let (w, h) = (coarse.width, coarse.height);
+    let n = w * h;
+    let km_per_cell = domain_km / w as f32;
+    let topo = land_topology(coarse, sea);
+    let emerged_frac = topo.emerged_fraction;
+
+    // Circular extent (cells) from the rolled bbox → domain fractions + km.
+    let ext_x = topo.bbox_max.0.saturating_sub(topo.bbox_min.0) + 1;
+    let ext_y = topo.bbox_max.1.saturating_sub(topo.bbox_min.1) + 1;
+    let (bbox_frac_x, bbox_frac_y) = (ext_x as f32 / w as f32, ext_y as f32 / h as f32);
+    let extent_km = (ext_x as f32 * km_per_cell, ext_y as f32 * km_per_cell);
+
+    let is_land = |k: usize| coarse.data[k] > sea;
+
+    // Largest mass (map-frame bbox for margins) via CCL.
+    let mut ds = DisjointSet::new(n.max(1));
+    for y in 0..h {
+        for x in 0..w {
+            let k = y * w + x;
+            if !is_land(k) {
+                continue;
+            }
+            let kr = y * w + (x + 1) % w;
+            if is_land(kr) {
+                ds.union(k, kr);
+            }
+            let kd = ((y + 1) % h) * w + x;
+            if is_land(kd) {
+                ds.union(k, kd);
+            }
+        }
+    }
+    let mut sizes: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    for k in 0..n {
+        if is_land(k) {
+            *sizes.entry(ds.find(k)).or_insert(0) += 1;
+        }
+    }
+    let largest_root =
+        sizes.iter().max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0))).map(|(&r, _)| r);
+
+    // Map-frame (un-rolled) bounding box of the largest mass → per-side margins.
+    let (mut x0, mut x1, mut y0, mut y1) = (w, 0usize, h, 0usize);
+    if let Some(root) = largest_root {
+        for y in 0..h {
+            for x in 0..w {
+                let k = y * w + x;
+                if is_land(k) && ds.find(k) == root {
+                    x0 = x0.min(x);
+                    x1 = x1.max(x);
+                    y0 = y0.min(y);
+                    y1 = y1.max(y);
+                }
+            }
+        }
+    } else {
+        (x0, x1, y0, y1) = (0, 0, 0, 0);
+    }
+    let margin_w_km = x0 as f32 * km_per_cell;
+    let margin_e_km = (w - 1 - x1) as f32 * km_per_cell;
+    let margin_s_km = y0 as f32 * km_per_cell; // y=0 = south
+    let margin_n_km = (h - 1 - y1) as f32 * km_per_cell;
+    let min_margin_frac = if largest_root.is_some() {
+        [x0, w - 1 - x1, y0, h - 1 - y1].into_iter().min().unwrap() as f32 / w as f32
+    } else {
+        0.0
+    };
+
+    // Any land on the domain border ring (a continent split across the map edge).
+    let mut land_on_border = false;
+    'b: for y in 0..h {
+        for x in 0..w {
+            if (x == 0 || x == w - 1 || y == 0 || y == h - 1) && is_land(y * w + x) {
+                land_on_border = true;
+                break 'b;
+            }
+        }
+    }
+
+    // Bathymetry — border ring median depth + how far ocean must run to get deep.
+    let asymptotic_depth_m = ss.asymptotic_depth_m as f32;
+    let depth_m = |k: usize| -> f32 { (-c1_altitude_norm_to_metres(coarse.data[k], ss)).max(0.0) };
+    let mut ring: Vec<f32> = Vec::new();
+    for y in 0..h {
+        for x in 0..w {
+            if x == 0 || x == w - 1 || y == 0 || y == h - 1 {
+                ring.push(depth_m(y * w + x));
+            }
+        }
+    }
+    let border_depth_median_m = median_f32(&mut ring);
+    let border_depth_frac = if asymptotic_depth_m > 0.0 {
+        border_depth_median_m / asymptotic_depth_m
+    } else {
+        0.0
+    };
+    let border_depth_ok = border_depth_frac >= BORDER_DEPTH_MIN_FRAC;
+    let deepest_ocean_m =
+        (0..n).filter(|&k| !is_land(k)).map(depth_m).fold(0.0f32, f32::max);
+
+    // Distance-from-coastline (periodic multi-source BFS over ocean) → median
+    // depth per ring → first distance whose median reaches 90 % of the asymptote.
+    let (cells_to_asymptote, km_to_asymptote) = if largest_root.is_some() {
+        let d = cells_to_asymptote_depth(coarse, sea, ss, BORDER_DEPTH_MIN_FRAC);
+        (d, d.map(|c| c as f32 * km_per_cell))
+    } else {
+        (None, None)
+    };
+
+    let m_per_cell = domain_km / target_size as f32 * 1000.0;
+    let resolution_ok = (30.0..=50.0).contains(&m_per_cell);
+
+    // Geometric verdict: not a band, no land on the map edge, continent ≤
+    // MAX_BBOX_FRAC on both axes (≥20 % ocean/side). The border-depth clause is
+    // reported and appended last (it is a property of the ocean-age model, not the
+    // seed geometry — see `deepest_ocean_m`). First failing clause wins.
+    let (geometric_pass, geo_reason) = {
+        if topo.num_landmasses == 0 {
+            (false, "no land")
+        } else if topo.wraps_x {
+            (false, "wraps x (band)")
+        } else if topo.wraps_y {
+            (false, "wraps y (band)")
+        } else if land_on_border {
+            (false, "land on domain border")
+        } else if bbox_frac_x > MAX_BBOX_FRAC {
+            (false, "too wide (bbox_x > 60%)")
+        } else if bbox_frac_y > MAX_BBOX_FRAC {
+            (false, "too tall (bbox_y > 60%)")
+        } else {
+            (true, "")
+        }
+    };
+    let (verdict_pass, verdict_reason) = if !geometric_pass {
+        (false, geo_reason)
+    } else if !border_depth_ok {
+        (false, "border too shallow")
+    } else {
+        (true, "")
+    };
+
+    DomainMetrics {
+        topo,
+        domain_km,
+        emerged_frac,
+        emerged_drift: EMERGED_DRIFT,
+        bbox_frac_x,
+        bbox_frac_y,
+        extent_km,
+        margin_n_km,
+        margin_s_km,
+        margin_e_km,
+        margin_w_km,
+        min_margin_frac,
+        land_on_border,
+        asymptotic_depth_m,
+        border_depth_median_m,
+        border_depth_frac,
+        border_depth_ok,
+        deepest_ocean_m,
+        cells_to_asymptote,
+        km_to_asymptote,
+        m_per_cell,
+        resolution_ok,
+        geometric_pass,
+        verdict_pass,
+        verdict_reason,
+    }
+}
+
+/// Median of a slice (mutates: sorts in place). `NaN` if empty.
+fn median_f32(v: &mut [f32]) -> f32 {
+    if v.is_empty() {
+        return f32::NAN;
+    }
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v[v.len() / 2]
+}
+
+/// Periodic multi-source BFS from land over ocean: for each ring of equal
+/// distance-from-coastline, the median ocean depth (m). Returns the smallest ring
+/// distance (cells) whose median depth ≥ `frac · asymptote`, or `None`.
+fn cells_to_asymptote_depth(
+    coarse: &GridF32,
+    sea: f32,
+    ss: &SteinSteinParams,
+    frac: f32,
+) -> Option<usize> {
+    let (w, h) = (coarse.width, coarse.height);
+    let n = w * h;
+    let is_land = |k: usize| coarse.data[k] > sea;
+    let mut dist = vec![usize::MAX; n];
+    let mut queue: std::collections::VecDeque<usize> = std::collections::VecDeque::new();
+    for k in 0..n {
+        if is_land(k) {
+            dist[k] = 0;
+            queue.push_back(k);
+        }
+    }
+    if queue.is_empty() || queue.len() == n {
+        return None; // no land, or no ocean
+    }
+    while let Some(k) = queue.pop_front() {
+        let (x, y) = (k % w, k / w);
+        let d = dist[k];
+        for (nx, ny) in
+            [((x + 1) % w, y), ((x + w - 1) % w, y), (x, (y + 1) % h), (x, (y + h - 1) % h)]
+        {
+            let nk = ny * w + nx;
+            if dist[nk] == usize::MAX {
+                dist[nk] = d + 1;
+                queue.push_back(nk);
+            }
+        }
+    }
+    let target = frac * ss.asymptotic_depth_m as f32;
+    let depth_m = |k: usize| -> f32 { (-c1_altitude_norm_to_metres(coarse.data[k], ss)).max(0.0) };
+    let maxd = (0..n).filter(|&k| !is_land(k)).map(|k| dist[k]).max().unwrap_or(0);
+    for ringd in 1..=maxd {
+        let mut depths: Vec<f32> =
+            (0..n).filter(|&k| !is_land(k) && dist[k] == ringd).map(depth_m).collect();
+        if depths.is_empty() {
+            continue;
+        }
+        if median_f32(&mut depths) >= target {
+            return Some(ringd);
+        }
+    }
+    None
+}
+
+/// Share of LAND cells whose surface slope exceeds 15° / 30° / 45°, on the coarse
+/// field. Slope couples the vertical scale (`depth_scale_m` → metres via
+/// [`c1_altitude_norm_to_metres`]) to the horizontal (`domain_km / w`). Pass the
+/// COUPLED `depth_scale_m` (∝ domain_km, preserves slopes) or the UNCOUPLED one
+/// (fixed) to quantify the buildable-land cost of not coupling — a number, not an
+/// opinion. Central differences; periodic; NaN-safe.
+pub fn slope_shares(
+    coarse: &GridF32,
+    sea: f32,
+    domain_km: f32,
+    depth_scale_m: f32,
+) -> (f32, f32, f32) {
+    let (w, h) = (coarse.width, coarse.height);
+    let cell_m = domain_km / w as f32 * 1000.0;
+    // metres = (norm − 0.5) · 2 · 1.13 · depth_scale_m (the vertical contract).
+    let norm_to_m = 2.0 * 1.13 * depth_scale_m;
+    let is_land = |k: usize| coarse.data[k] > sea;
+    let (mut land, mut c15, mut c30, mut c45) = (0usize, 0usize, 0usize, 0usize);
+    for y in 0..h {
+        for x in 0..w {
+            let k = y * w + x;
+            if !is_land(k) {
+                continue;
+            }
+            land += 1;
+            let l = coarse.data[y * w + (x + w - 1) % w];
+            let r = coarse.data[y * w + (x + 1) % w];
+            let d = coarse.data[((y + h - 1) % h) * w + x];
+            let u = coarse.data[((y + 1) % h) * w + x];
+            let gx = (r - l) * 0.5 * norm_to_m / cell_m;
+            let gy = (u - d) * 0.5 * norm_to_m / cell_m;
+            let slope_deg = (gx * gx + gy * gy).sqrt().atan().to_degrees();
+            if slope_deg > 15.0 {
+                c15 += 1;
+            }
+            if slope_deg > 30.0 {
+                c30 += 1;
+            }
+            if slope_deg > 45.0 {
+                c45 += 1;
+            }
+        }
+    }
+    if land == 0 {
+        return (0.0, 0.0, 0.0);
+    }
+    let f = land as f32;
+    (c15 as f32 / f, c30 as f32 / f, c45 as f32 / f)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -711,5 +1084,64 @@ mod tests {
         assert!(!is_island_fit(&LandTopology { bbox_km: (40.0, 30.0), ..base }, &crit));
         // No land.
         assert!(!is_island_fit(&LandTopology::empty(), &crit));
+    }
+
+    /// Domain-as-map: a centred continent over deep ocean passes; the same land
+    /// split across the seam fails on "land on domain border". Margins are the
+    /// map-frame gaps to each edge.
+    #[test]
+    fn domain_metrics_verdict_and_margins() {
+        let (w, h) = (64usize, 64usize);
+        let ss = SteinSteinParams::default();
+        // Deep ocean (norm 0.0 → ~5650 m ≥ 90 % of the asymptote) + centred block.
+        let mut d = vec![0.0f32; w * h];
+        for y in 24..40 {
+            for x in 24..40 {
+                d[y * w + x] = 0.8;
+            }
+        }
+        let m = domain_metrics(&GridF32::from_vec(w, h, d), 0.5, &ss, 1024.0, 24576);
+        assert!(!m.land_on_border);
+        assert!(m.border_depth_ok, "border frac {}", m.border_depth_frac);
+        assert!((m.margin_w_km - 24.0 * 16.0).abs() < 1e-3, "W margin {}", m.margin_w_km);
+        assert!((m.margin_e_km - 24.0 * 16.0).abs() < 1e-3, "E margin {}", m.margin_e_km);
+        assert_eq!(m.cells_to_asymptote, Some(1), "uniform deep ocean is deep at 1 cell");
+        assert!(m.verdict_pass, "reason: {}", m.verdict_reason);
+
+        // Same land split across the x seam → touches the map edge → rejected.
+        let mut d2 = vec![0.0f32; w * h];
+        for y in 28..36 {
+            for x in 0..3 {
+                d2[y * w + x] = 0.8;
+            }
+            for x in 61..64 {
+                d2[y * w + x] = 0.8;
+            }
+        }
+        let m2 = domain_metrics(&GridF32::from_vec(w, h, d2), 0.5, &ss, 1024.0, 24576);
+        assert!(m2.land_on_border && !m2.topo.wraps_x, "finite straddle on the edge");
+        assert!(!m2.verdict_pass);
+        assert_eq!(m2.verdict_reason, "land on domain border");
+    }
+
+    /// Slope telemetry: coupling `depth_scale_m ∝ domain_km` keeps slopes
+    /// invariant to the domain; leaving it uncoupled at a smaller domain steepens
+    /// every gradient (≥ the coupled shares).
+    #[test]
+    fn slope_shares_coupling_invariance() {
+        let (w, h) = (32usize, 32usize);
+        let mut d = vec![0.6f32; w * h];
+        for y in 10..22 {
+            for x in 10..22 {
+                d[y * w + x] = 0.72;
+            }
+        }
+        let f = GridF32::from_vec(w, h, d);
+        let base = 5000.0f32;
+        let a = slope_shares(&f, 0.5, 1024.0, base);
+        let coupled = slope_shares(&f, 0.5, 375.0, base * 375.0 / 1024.0);
+        assert!((a.0 - coupled.0).abs() < 1e-6, "coupling preserves slopes");
+        let unc = slope_shares(&f, 0.5, 375.0, base);
+        assert!(unc.0 >= a.0 && unc.1 >= a.1, "uncoupled at 375 km is steeper");
     }
 }
