@@ -616,12 +616,13 @@ pub struct DomainMetrics {
     pub m_per_cell: f32,
     /// `m_per_cell` within the 30–50 m band.
     pub resolution_ok: bool,
-    /// Passes the GEOMETRIC clauses only (not a band, no land on the border,
-    /// continent ≤ 60 % on both axes) — independent of bathymetry.
+    /// Passes the GEOMETRIC clauses (not a band, no land on the border, continent
+    /// ≤ 60 % on both axes). Bathymetry is reported, never gated.
     pub geometric_pass: bool,
-    /// Seed passes the full placement verdict (geometric AND border-depth).
+    /// Seed acceptance verdict. Equals `geometric_pass` — border-depth is
+    /// report-only (the asymptote is a model ceiling, not a seed knob).
     pub verdict_pass: bool,
-    /// First failing clause (empty when `verdict_pass`).
+    /// First failing GEOMETRIC clause (empty when `verdict_pass`).
     pub verdict_reason: &'static str,
 }
 
@@ -759,11 +760,12 @@ pub fn domain_metrics(
     let m_per_cell = domain_km / target_size as f32 * 1000.0;
     let resolution_ok = (30.0..=50.0).contains(&m_per_cell);
 
-    // Geometric verdict: not a band, no land on the map edge, continent ≤
-    // MAX_BBOX_FRAC on both axes (≥20 % ocean/side). The border-depth clause is
-    // reported and appended last (it is a property of the ocean-age model, not the
-    // seed geometry — see `deepest_ocean_m`). First failing clause wins.
-    let (geometric_pass, geo_reason) = {
+    // Acceptance verdict = the GEOMETRIC clauses only: not a band, no land on the
+    // map edge, continent ≤ MAX_BBOX_FRAC on both axes (≥20 % ocean/side). The
+    // border-depth is REPORTED, never a gate — the Stein-Stein asymptote is a model
+    // ceiling the young C1 ocean never reaches, so gating on it rejects every seed
+    // (see `border_depth_frac` / `deepest_ocean_m`). First failing clause wins.
+    let (geometric_pass, verdict_reason) = {
         if topo.num_landmasses == 0 {
             (false, "no land")
         } else if topo.wraps_x {
@@ -780,13 +782,7 @@ pub fn domain_metrics(
             (true, "")
         }
     };
-    let (verdict_pass, verdict_reason) = if !geometric_pass {
-        (false, geo_reason)
-    } else if !border_depth_ok {
-        (false, "border too shallow")
-    } else {
-        (true, "")
-    };
+    let verdict_pass = geometric_pass;
 
     DomainMetrics {
         topo,
