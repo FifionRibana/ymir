@@ -65,6 +65,39 @@ fn row(seed: u64, m: &DomainMetrics) -> String {
     )
 }
 
+/// Sanity check (M1 #190): the domain slider is pure relabelling, so the SAME
+/// coarse field reports different km/m figures at different domain_km. Seed 154 at
+/// 505 km / 8192 → ~61.6 m/px, ~300 km traverse, ~100 km margins; default 1024 km
+/// / 2048 → 500 m/px.
+#[test]
+#[ignore]
+fn sanity_seed154_relabel() {
+    let ss = SteinSteinParams::default();
+    let init = Phase2InitParams::default();
+    let f = coarse_norm(154, &init, &ss);
+
+    let m505 = domain_metrics(&f, SEA, &ss, 505.0, 8192);
+    let mpx = 505.0 / 8192.0 * 1000.0;
+    eprintln!(
+        "seed 154 @ 505 km / 8192: {:.1} m/px, traverse {:.0} km, margins N{:.0} S{:.0} E{:.0} W{:.0}",
+        m505.m_per_cell, m505.extent_km.0.max(m505.extent_km.1),
+        m505.margin_n_km, m505.margin_s_km, m505.margin_e_km, m505.margin_w_km,
+    );
+    assert!((m505.m_per_cell - mpx).abs() < 0.5, "m/px {} vs {mpx}", m505.m_per_cell);
+    assert!((m505.m_per_cell - 61.6).abs() < 1.0, "expected ~61.6 m/px");
+    let traverse = m505.extent_km.0.max(m505.extent_km.1);
+    assert!((280.0..=320.0).contains(&traverse), "traverse {traverse} ~300 km");
+    for margin in [m505.margin_n_km, m505.margin_e_km, m505.margin_w_km] {
+        assert!((80.0..=140.0).contains(&margin), "margin {margin} ~100 km");
+    }
+
+    let m1024 = domain_metrics(&f, SEA, &ss, 1024.0, 2048);
+    assert!((m1024.m_per_cell - 500.0).abs() < 0.5, "default 1024/2048 = 500 m/px");
+    // Same field, same geometry fractions — only the km labels scale.
+    assert_eq!(m505.geometric_pass, m1024.geometric_pass);
+    assert!((m505.bbox_frac_x - m1024.bbox_frac_x).abs() < 1e-6, "fractions are domain-invariant");
+}
+
 #[test]
 #[ignore]
 fn scan_domain_map_seeds() {

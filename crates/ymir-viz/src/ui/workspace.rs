@@ -33,7 +33,9 @@ use crate::bridge::c1::{
 use crate::visualization::colormap::hypsometric_bipolar;
 use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::precip_mm_per_year;
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{LakeType, Navigability};
+use ymir_core::tectonics_c1::land_topology::domain_metrics;
 
 // ── Palette (the mock's exact hex) ───────────────────────────────────────
 const COPPER: C = C::from_rgb(0xB8, 0x73, 0x33);
@@ -141,9 +143,10 @@ struct WorkspaceState {
     erosion: f32,
     channel_jitter: f32,
     dinf: bool,
-    /// Physical size (km) of the playable export window (rendered at `resolution`,
-    /// centred on the continent). `km_per_cell = window_km / resolution`.
-    window_km: f32,
+    /// Physical size (km) the tectonic domain represents — the domain IS the map
+    /// (no crop). Pure relabelling of the 64² pattern: `m_per_px = domain_km ·
+    /// 1000 / resolution`. Moving it recomputes NO tectonics (see `m_per_px`).
+    domain_km: f32,
     /// Opt-in: write a v1 `.ymir` delivery container after the biome phase.
     export_ymir: bool,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
@@ -179,7 +182,7 @@ impl Default for WorkspaceState {
             erosion: 0.5,
             channel_jitter: 0.3,
             dinf: false,
-            window_km: 328.0,
+            domain_km: 1024.0,
             export_ymir: false,
             export_dir: "exports".to_string(),
             current: None,
@@ -482,8 +485,8 @@ fn top_bar(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState
                     // Stats.
                     let cells = ws.current.as_ref().map(|c| c.width * c.height).unwrap_or(0);
                     let stat = format!(
-                        "{}² px  ·  {} cellules  ·  seed {}",
-                        ws.resolution, cells, ws.seed
+                        "{}² px  ·  {:.0} km  ·  {:.0} m/px  ·  {} cellules  ·  seed {}",
+                        ws.resolution, ws.domain_km, m_per_px(ws.domain_km, ws.resolution), cells, ws.seed
                     );
                     ui.label(egui::RichText::new(stat).color(DIM2).monospace().size(11.0));
                     // M1 island-continent verdict from the land-topology diagnostics.
@@ -552,7 +555,7 @@ fn left_panel(
                         let params = HdParams {
                             target_size: ws.resolution,
                             latitude_deg: ws.latitude,
-                            window_km: ws.window_km,
+                            domain_km: ws.domain_km,
                             export_dir,
                         };
                         let _ = bridge.submit_hd(spec, params);
@@ -572,7 +575,7 @@ fn left_panel(
                         let params = HdParams {
                             target_size: ws.resolution,
                             latitude_deg: ws.latitude,
-                            window_km: ws.window_km,
+                            domain_km: ws.domain_km,
                             export_dir: None,
                         };
                         let _ = bridge.submit_preview(spec, params);
@@ -649,15 +652,21 @@ fn left_panel(
                             ws.resolution = [512, 1024, 2048, 4096, 8192][i];
                         }
                         ui.add_space(10.0);
-                        // Playable window size (km): the HD grid renders this sub-domain
-                        // of the torus → km_per_cell = window_km / resolution.
-                        field_label(ui, "FENÊTRE (km)");
+                        // Domain size (km): the domain IS the map (no crop). The whole
+                        // torus renders at `resolution`, so m_per_px = domain_km·1000/
+                        // resolution (the single source of truth, `m_per_px`). Moving
+                        // this relabels the SAME coarse field — NO tectonic recompute.
+                        field_label(ui, "DOMAINE (km)");
                         ui.add_space(1.0);
+                        let mpp = m_per_px(ws.domain_km, ws.resolution);
                         ui.horizontal(|ui| {
-                            ui.add(egui::Slider::new(&mut ws.window_km, 200.0..=1024.0).step_by(1.0).show_value(false));
-                            let m_per_cell = ws.window_km * 1000.0 / ws.resolution as f32;
-                            ui.label(egui::RichText::new(format!("{:.0} km · {:.0} m/px", ws.window_km, m_per_cell)).color(COPPER_BRIGHT).monospace().size(12.0));
+                            ui.add(egui::Slider::new(&mut ws.domain_km, 200.0..=1200.0).step_by(1.0).show_value(false));
+                            ui.label(egui::RichText::new(format!("{:.0} km · {:.0} m/px", ws.domain_km, mpp)).color(COPPER_BRIGHT).monospace().size(12.0));
                         });
+                        // Compact domain-as-map readout for the current seed + domain,
+                        // recomputed instantly from the coarse preview field (cheap 64²
+                        // — no tectonic pass). Shown once a preview exists.
+                        domain_readout(ui, ws, mpp);
                     });
                     ui.separator();
 
@@ -1226,6 +1235,76 @@ fn preview_color_image(coarse: &ymir_core::grid::GridF32) -> egui::ColorImage {
 
 /// Render the fast tectonic-shape preview: coarse continent + the export-window
 /// box + a one-line island verdict, so a seed can be judged before the HD run.
+/// THE single source of truth for the export scale (M1 #190). The domain IS the
+/// map (no crop), so a pixel is `domain_km · 1000 / resolution` metres — every
+/// scale readout (slider label, top bar, preview chip) derives from here, so they
+/// cannot disagree by construction.
+fn m_per_px(domain_km: f32, resolution: usize) -> f32 {
+    domain_km * 1000.0 / resolution.max(1) as f32
+}
+
+/// Sea-level norm on the coarse field (sea = 0.5 in the C1 vertical contract).
+const SEA_NORM: f32 = 0.5;
+
+const OK_GREEN: C = C::from_rgb(0x6a, 0xb0, 0x6a);
+const WARN_ORANGE: C = C::from_rgb(0xc0, 0x7a, 0x4a);
+
+/// Compact domain-as-map readout under the DOMAINE slider: m/px band flag, then
+/// (once a coarse preview exists) the largest-mass traverse + bbox %, the per-side
+/// ocean margins, and the geometric seed verdict. Recomputed from the coarse field
+/// each frame via `domain_metrics` — a 64² pass, no tectonic recompute — so it
+/// tracks the slider instantly. All figures scale with `ws.domain_km`.
+fn domain_readout(ui: &mut egui::Ui, ws: &WorkspaceState, mpp: f32) {
+    ui.add_space(6.0);
+    let in_band = (30.0..=50.0).contains(&mpp);
+    let (flag, fcol) = if in_band {
+        ("dans la cible 30–50 m", OK_GREEN)
+    } else {
+        ("hors cible 30–50 m", WARN_ORANGE)
+    };
+    ui.label(
+        egui::RichText::new(format!("{mpp:.1} m/px — {flag}")).color(fcol).monospace().size(10.5),
+    );
+
+    let Some(preview) = ws.preview.as_ref() else {
+        ui.label(
+            egui::RichText::new("· lancer APERÇU pour marges + verdict")
+                .color(DIM2)
+                .monospace()
+                .size(10.0),
+        );
+        return;
+    };
+    let ss = SteinSteinParams::default();
+    let m = domain_metrics(&preview.coarse, SEA_NORM, &ss, ws.domain_km, ws.resolution);
+    let traverse = m.extent_km.0.max(m.extent_km.1);
+    ui.label(
+        egui::RichText::new(format!(
+            "masse max {traverse:.0} km · bbox {:.0}×{:.0}% du domaine",
+            m.bbox_frac_x * 100.0,
+            m.bbox_frac_y * 100.0,
+        ))
+        .color(DIM)
+        .monospace()
+        .size(10.5),
+    );
+    ui.label(
+        egui::RichText::new(format!(
+            "marges océan  N{:.0} S{:.0} E{:.0} W{:.0} km",
+            m.margin_n_km, m.margin_s_km, m.margin_e_km, m.margin_w_km,
+        ))
+        .color(DIM)
+        .monospace()
+        .size(10.5),
+    );
+    let (vtxt, vcol) = if m.verdict_pass {
+        ("verdict ✓ île centrée entourée d'océan".to_string(), OK_GREEN)
+    } else {
+        (format!("verdict ✗ {}", m.verdict_reason), WARN_ORANGE)
+    };
+    ui.label(egui::RichText::new(vtxt).color(vcol).monospace().size(10.5));
+}
+
 fn render_preview(ui: &mut egui::Ui, ws: &mut WorkspaceState, preview: &PreviewShape) {
     if ws.preview_tex.is_none() {
         let img = preview_color_image(&preview.coarse);
@@ -1245,12 +1324,23 @@ fn render_preview(ui: &mut egui::Ui, ws: &mut WorkspaceState, preview: &PreviewS
         let r = resp.rect;
         let pnt = ui.painter_at(r);
 
-        // Export-window rectangle (normalized origin/size → image rect).
-        let o = preview.window_origin;
-        let s = preview.window_size as f32;
+        // Domain-as-map metrics for the CURRENT domain-km (no crop). Derived from
+        // the same coarse field; scales with the DOMAINE slider (see `m_per_px`).
+        let ss = SteinSteinParams::default();
+        let m = domain_metrics(&preview.coarse, SEA_NORM, &ss, ws.domain_km, ws.resolution);
+        let mpp = m_per_px(ws.domain_km, ws.resolution);
+
+        // Largest-mass bounding box (map frame, from the ocean margins) → the ocean
+        // margin all around is what makes the domain a usable island map. Row 0 of
+        // the coarse field (y=0 = south) is drawn at the image top, so the top gap
+        // is the SOUTH margin.
+        let dk = ws.domain_km.max(1.0);
         let box_rect = egui::Rect::from_min_size(
-            egui::pos2(r.min.x + o[0] as f32 * r.width(), r.min.y + o[1] as f32 * r.height()),
-            egui::vec2(s * r.width(), s * r.height()),
+            egui::pos2(
+                r.min.x + (m.margin_w_km / dk) * r.width(),
+                r.min.y + (m.margin_s_km / dk) * r.height(),
+            ),
+            egui::vec2(m.bbox_frac_x * r.width(), m.bbox_frac_y * r.height()),
         );
         pnt.rect_stroke(
             box_rect,
@@ -1259,22 +1349,24 @@ fn render_preview(ui: &mut egui::Ui, ws: &mut WorkspaceState, preview: &PreviewS
             egui::StrokeKind::Middle,
         );
 
-        // Verdict chip (top-left).
-        let e = &preview.eval;
-        let (vtxt, vcol) = if e.accepted() {
-            ("île entourée d'océan ✓", C::from_rgb(0x6a, 0xb0, 0x6a))
+        // Verdict chip (top-left) — same figures as the left-panel readout.
+        let (vtag, vcol) = if m.verdict_pass {
+            ("île centrée ✓", OK_GREEN)
         } else {
-            ("non conforme ✗", C::from_rgb(0xc0, 0x7a, 0x4a))
+            ("✗", WARN_ORANGE)
         };
+        let vreason = if m.verdict_pass { String::new() } else { format!(" ({})", m.verdict_reason) };
         let line = format!(
-            "aperçu tectonique — masse max {:.0} km² · {} masses · wrap x={} y={} · \
-             fenêtre {:.0} km ({:.0} m/px) · {vtxt}",
-            e.topo.largest_area_km2,
-            e.topo.num_landmasses,
-            e.topo.wraps_x,
-            e.topo.wraps_y,
-            e.window_km,
-            e.m_per_cell,
+            "aperçu — masse max {:.0} km · bbox {:.0}×{:.0}% · marges N{:.0} S{:.0} E{:.0} W{:.0} km · \
+             {:.0} m/px · {vtag}{vreason}",
+            m.extent_km.0.max(m.extent_km.1),
+            m.bbox_frac_x * 100.0,
+            m.bbox_frac_y * 100.0,
+            m.margin_n_km,
+            m.margin_s_km,
+            m.margin_e_km,
+            m.margin_w_km,
+            mpp,
         );
         let chip = egui::Rect::from_min_size(
             r.min + egui::vec2(10.0, 10.0),

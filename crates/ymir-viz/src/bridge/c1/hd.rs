@@ -50,7 +50,7 @@ use ymir_core::tectonics_c1::cached_product::{
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult};
 use ymir_core::tectonics_c1::land_topology::{IslandEval, LandTopology, evaluate_island};
-use ymir_core::tectonics_c1::production_upscale::{C1_DOMAIN_KM, EroProgress};
+use ymir_core::tectonics_c1::production_upscale::EroProgress;
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
@@ -65,11 +65,13 @@ use super::spec::C1RunSpec;
 pub struct HdParams {
     pub target_size: usize,
     pub latitude_deg: f32,
-    /// Physical size (km) of the exported/rendered PLAYABLE window. The HD grid
-    /// (`target_size²`) renders this sub-domain of the 1024 km tectonic torus, so
-    /// `km_per_cell = window_km / target_size` (328 km @ 8192² → 40 m/cell). The
-    /// window is centred on the continent (land centroid). Default 328.0.
-    pub window_km: f32,
+    /// Physical size (km) the tectonic domain represents — the domain IS the map
+    /// (M1 #190, no crop). The whole torus renders at `target_size²`, so
+    /// `m_per_px = domain_km · 1000 / target_size` (1024 km @ 2048² → 500 m/px).
+    /// A pure relabelling of the 64² tectonic pattern: it stamps the manifest
+    /// scale and drives climate/drainage km/cell, but NOT the tectonic sim. The
+    /// tectonic cache key does not include it. Default 1024.0.
+    pub domain_km: f32,
     /// When `Some(dir)`, after the biome phase the run writes a v1 `.ymir`
     /// delivery container under `dir` (see [`ymir_core::export::container`]).
     /// `None` = no export. Explicit opt-in — the pipeline NEVER auto-exports
@@ -79,7 +81,7 @@ pub struct HdParams {
 
 impl Default for HdParams {
     fn default() -> Self {
-        Self { target_size: 2048, latitude_deg: 45.0, window_km: 328.0, export_dir: None }
+        Self { target_size: 2048, latitude_deg: 45.0, domain_km: 1024.0, export_dir: None }
     }
 }
 
@@ -224,14 +226,12 @@ fn hd_run_config(spec: &C1RunSpec) -> C1TimeLoopConfig {
 /// the island verdict ([`IslandEval`] — border-clean? area? wraps?), and the
 /// export-window rectangle in normalized torus coords (matching `run_hd`).
 pub struct PreviewShape {
-    /// Coarse normalized altitude (sea = 0.5), calibrated at the HD tlf.
+    /// Coarse normalized altitude (sea = 0.5), calibrated at the HD tlf. The
+    /// domain-as-map metrics (margins, verdict, m/px) are derived from THIS field
+    /// at render time, so they scale with the DOMAINE slider without a recompute.
     pub coarse: GridF32,
-    /// Island verdict on the coarse field (window sized to the island).
+    /// Island verdict on the coarse field (largest-mass summary for the Debug log).
     pub eval: IslandEval,
-    /// Export-window origin `[u, v]` in `[0,1]` torus coords (centroid-centred,
-    /// clamped) and its normalized size — the box `run_hd` would crop.
-    pub window_origin: [f64; 2],
-    pub window_size: f64,
 }
 
 impl fmt::Debug for PreviewShape {
@@ -265,12 +265,11 @@ pub fn preview_shape(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>) 
     .remove(0)
     .1;
     let eval = evaluate_island(&coarse, vector::SEA_LEVEL_NORM, 25.0, 1);
-    // The domain IS the map (M1 #190): no crop. The preview shows the WHOLE torus
-    // (origin [0,0], size 1.0); seed selection — not a window — frames the
-    // continent. The domain-as-map metrics are computed at render time from the
-    // coarse field, so the domain-km slider relabels instantly (no recompute).
-    let preview =
-        Arc::new(PreviewShape { coarse, eval, window_origin: [0.0, 0.0], window_size: 1.0 });
+    // The domain IS the map (M1 #190): no crop. The preview shows the WHOLE torus;
+    // seed selection — not a window — frames the continent. The domain-as-map
+    // metrics are computed at render time from the coarse field, so the DOMAINE
+    // slider relabels instantly (no tectonic recompute).
+    let preview = Arc::new(PreviewShape { coarse, eval });
     let _ = tx.send(C1Event::PreviewReady { preview, elapsed: t.elapsed() });
 }
 
@@ -286,12 +285,12 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let run = hd_run_config(spec);
     let ss = SteinSteinParams::default();
 
-    // ── The domain IS the map (M1 #190): NO crop, ever. The whole 1024 km torus
-    // renders at `target_size` (sample_origin [0,0], sample_size 1.0). km_per_cell
-    // = C1_DOMAIN_KM/target_size, so the export size is chosen for the cell budget
-    // (e.g. 24576² → ~42 m/cell). Seed selection — not a window — puts a continent
-    // with ocean margin on the map (see the coarse preview / seed scan).
-    let window_km = C1_DOMAIN_KM; // manifest: window == domain
+    // ── The domain IS the map (M1 #190): NO crop, ever. The whole torus renders at
+    // `target_size` (sample_origin [0,0], sample_size 1.0). m_per_px =
+    // domain_km·1000/target_size, so the export size is chosen for the cell budget
+    // (e.g. 24576² → ~42 m/px at 1024 km). Seed selection — not a window — puts a
+    // continent with ocean margin on the map (see the coarse preview / seed scan).
+    let window_km = params.domain_km; // domain IS the map: window == domain == domain_km
     let mut upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
     upscale.sample_origin = [0.0, 0.0];
     upscale.sample_size = 1.0;
@@ -566,13 +565,13 @@ fn export_ymir_container(
     // The domain IS the map (M1 #190): the HD grid renders the WHOLE 1024 km
     // torus, so window_km == tectonic_domain_km and window_offset == [0,0]. The
     // manifest fields are kept because the consumer reads km_per_cell = window_km
-    // / width — here simply C1_DOMAIN_KM / width.
+    // / width — here simply domain_km / width.
     let meta = ContinentMeta {
         name: format!("seed{}_{}", spec.seed, w),
         seed: spec.seed,
         grid: Grid { width: w, height: h },
         window_km: window_km as f64,
-        tectonic_domain_km: C1_DOMAIN_KM as f64,
+        tectonic_domain_km: window_km as f64, // window == domain (no crop)
         window_offset_in_torus: window_offset,
         latitude_deg: lat as f64,
         stein_stein: *ss,

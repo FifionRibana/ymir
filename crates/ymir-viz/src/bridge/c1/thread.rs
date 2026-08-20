@@ -197,7 +197,7 @@ mod tests {
                 params: HdParams {
                     target_size: target,
                     latitude_deg: 45.0,
-                    window_km: 328.0,
+                    domain_km: 1024.0,
                     export_dir: None,
                 },
             })
