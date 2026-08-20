@@ -49,7 +49,9 @@ use ymir_core::tectonics_c1::cached_product::{
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult};
-use ymir_core::tectonics_c1::land_topology::{IslandEval, LandTopology, evaluate_island};
+use ymir_core::tectonics_c1::land_topology::{
+    IslandEval, LandTopology, evaluate_island, land_topology,
+};
 use ymir_core::tectonics_c1::production_upscale::EroProgress;
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
@@ -265,12 +267,37 @@ pub fn preview_shape(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>) 
     .remove(0)
     .1;
     let eval = evaluate_island(&coarse, vector::SEA_LEVEL_NORM, 25.0, 1);
-    // The domain IS the map (M1 #190): no crop. The preview shows the WHOLE torus;
-    // seed selection — not a window — frames the continent. The domain-as-map
-    // metrics are computed at render time from the coarse field, so the DOMAINE
-    // slider relabels instantly (no tectonic recompute).
+    // The domain IS the map (M1 #190): no crop. Apply the SAME framing roll the HD
+    // export uses (centre the largest mass at the coarse SAMPLING ORIGIN) so the
+    // preview shows exactly what ships — a contiguous, centred continent, not the
+    // seam-split arrangement. The domain-as-map metrics are then computed at render
+    // time from this rolled field, so the DOMAINE slider relabels instantly.
+    let topo = land_topology(&coarse, vector::SEA_LEVEL_NORM);
+    let g = spec.grid_size as i64;
+    let (cx, cy) = topo.center_cell;
+    let roll_x = ((cx as i64) - g / 2).rem_euclid(g) as usize;
+    let roll_y = ((cy as i64) - g / 2).rem_euclid(g) as usize;
+    let coarse = roll_grid(&coarse, roll_x, roll_y);
     let preview = Arc::new(PreviewShape { coarse, eval });
     let _ = tx.send(C1Event::PreviewReady { preview, elapsed: t.elapsed() });
+}
+
+/// Cyclically shift a periodic coarse field so cell `(x,y)` reads the torus cell
+/// `(x+roll_x, y+roll_y) mod (w,h)`. This reproduces, at coarse resolution, the
+/// framing the HD export applies via `sample_origin = roll/grid`: output centre
+/// shows the torus point `roll + grid/2` (= the mass centre when `roll =
+/// center_cell − grid/2`), so the preview and the export frame the same continent.
+fn roll_grid(src: &GridF32, roll_x: usize, roll_y: usize) -> GridF32 {
+    let (w, h) = (src.width, src.height);
+    let mut out = vec![0.0f32; w * h];
+    for y in 0..h {
+        let sy = (y + roll_y) % h;
+        for x in 0..w {
+            let sx = (x + roll_x) % w;
+            out[y * w + x] = src.data[sy * w + sx];
+        }
+    }
+    GridF32::from_vec(w, h, out)
 }
 
 /// Drive the HD chain on the worker thread, emitting per-phase events.
@@ -292,8 +319,8 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // continent with ocean margin on the map (see the coarse preview / seed scan).
     let window_km = params.domain_km; // domain IS the map: window == domain == domain_km
     let mut upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
-    upscale.sample_origin = [0.0, 0.0];
-    upscale.sample_size = 1.0;
+    // Land report FIRST (reads only `target_land_fraction`) so the seam-correct
+    // torus centre of the largest mass is known before we choose the sampling roll.
     let land = c1_coarse_land_report(
         spec.seed,
         spec.grid_size,
@@ -303,15 +330,34 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         &ss,
         upscale.target_land_fraction,
     );
-    let _ = land.centroid; // no window to centre — whole domain
+    let _ = land.centroid; // superseded by the seam-correct centre below
     let land_topology = land.topology;
+
+    // ── Framing ROLL (M1 #190): shift the coarse SAMPLING ORIGIN so the largest
+    // landmass is contiguous and centred in the exported (whole) domain. A mass
+    // straddling the torus seam would otherwise export split across the border
+    // (Living Landz reads it as two landmasses). This is a ROLL, not a crop:
+    // sample_size stays 1.0, the whole torus is exported, no cell is discarded.
+    //
+    // Offset = integer coarse cells (exact, cache-stable): roll the mass centre to
+    // the domain centre — origin = (center_cell − grid/2) mod grid. Because the FBM
+    // + coast warp are evaluated in TORUS coords (sx = origin + i·scale), the noise
+    // rolls WITH the terrain, so the exported continent is the one the preview shows.
+    let g = spec.grid_size as i64;
+    let (cx, cy) = land_topology.center_cell;
+    let roll_x = ((cx as i64) - g / 2).rem_euclid(g) as usize;
+    let roll_y = ((cy as i64) - g / 2).rem_euclid(g) as usize;
+    let window_offset = [roll_x as f64 / g as f64, roll_y as f64 / g as f64];
+    upscale.sample_origin = window_offset;
+    upscale.sample_size = 1.0;
+
     // Telemetry — judge the seed as an island continent. A largest landmass that
     // WRAPS the torus is a band with no coast; a finite mass touching the map edge
     // is split across the border (see the domain-as-map verdict in the preview).
     let t = &land_topology;
     eprintln!(
         "[C1 land] seed {} — {} landmass(es); largest {:.0} km² ({:.1}% of torus), \
-         wraps x={} y={}, bbox {:.0}×{:.0} km; coarse emerged {:.1}%",
+         wraps x={} y={}, bbox {:.0}×{:.0} km; coarse emerged {:.1}%; roll ({},{}) cells → offset [{:.3},{:.3}]",
         spec.seed,
         t.num_landmasses,
         t.largest_area_km2,
@@ -321,6 +367,10 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         t.bbox_km.0,
         t.bbox_km.1,
         t.emerged_fraction * 100.0,
+        roll_x,
+        roll_y,
+        window_offset[0],
+        window_offset[1],
     );
 
     let pp = PrecipParams::default();
@@ -501,7 +551,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // coastline/cliffs (Y-B) + temperature/precipitation/biome (Y-C).
     if let Some(export_dir) = &params.export_dir {
         if let Err(e) = export_ymir_container(
-            spec, &ss, &eroded, &climate, &biomes, &drainage, lat, window_km, [0.0, 0.0],
+            spec, &ss, &eroded, &climate, &biomes, &drainage, lat, window_km, window_offset,
             export_dir,
         ) {
             // Non-fatal: the product still ships to the UI; surface the reason.
@@ -562,10 +612,11 @@ fn export_ymir_container(
     //   inverse). The min_m/max_m are stamped on the "height" layer below.
     let height = height::metric_height_u16(eroded, ss);
 
-    // The domain IS the map (M1 #190): the HD grid renders the WHOLE 1024 km
-    // torus, so window_km == tectonic_domain_km and window_offset == [0,0]. The
-    // manifest fields are kept because the consumer reads km_per_cell = window_km
-    // / width — here simply domain_km / width.
+    // The domain IS the map (M1 #190): the HD grid renders the WHOLE torus, so
+    // window_km == tectonic_domain_km (no crop). window_offset_in_torus carries the
+    // framing ROLL (normalised 0..1) applied at the coarse sampling origin so the
+    // continent is contiguous/centred — Living Landz reads it to know where the
+    // frame sits on the torus. km_per_cell = window_km / width = domain_km / width.
     let meta = ContinentMeta {
         name: format!("seed{}_{}", spec.seed, w),
         seed: spec.seed,
