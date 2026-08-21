@@ -129,4 +129,7 @@ addressed at the SOURCE — the isostasy / equilibrium-height closures — a sep
 job. Not touched here.
 
 **Consequences.** Terraces remain visible until the closure work is done. See
-Finding 3's successor and the recommended order in the campaign summary.
+Finding 3's successor and the recommended order in the campaign summary. When the
+equilibrium-height closure is touched, re-check the pre-existing Picard
+non-convergence in the same tectonic layer —
+[docs/issues/picard-nonconvergence-rectangular-smoke.md](../issues/picard-nonconvergence-rectangular-smoke.md).
