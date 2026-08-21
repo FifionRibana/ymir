@@ -30,17 +30,23 @@ pub struct ErosionConfig {
     /// step size automatically for larger or smaller grids. Default: 256.
     pub reference_size: usize,
     /// Fraction of a droplet's remaining sediment load DEPOSITED at the coast when
-    /// it terminates below `sea_level` (the terminal coastal dump). `1.0` (default)
-    /// = current behaviour: the whole load is deposited at the shoreline. `< 1.0`
-    /// treats the sea as a partial SINK — deposit `f`, and the remaining `1 − f`
-    /// leaves the system (still counted as eroded). `f > 0` preserves a
-    /// delta/beach at river mouths; `f = 0` = total sink. Held OUT of the serialized
-    /// form (and thus the eroded cache key) when `1.0`, so production is
-    /// byte-identical and existing caches stay valid.
+    /// it terminates below `sea_level` (the terminal coastal dump). **Default 0.25**
+    /// (a partial sea SINK): deposit 25 % at the shoreline — enough to keep a
+    /// delta/beach at river mouths (measured deposition ≤5 cells ~47 %) — and let
+    /// the remaining 75 % leave the system (still counted as eroded). This turns the
+    /// net balance strongly erosive (measured net +1 % → +47 % on the reference
+    /// field) instead of the old net-zero coastal-dump lock. `1.0` reproduces the
+    /// pre-sink behaviour (whole load deposited); `0.0` is a total sink (abrupt
+    /// coast). A config that sets `1.0` serializes identically to a legacy config
+    /// (skip_serializing_if), so the pre-sink cache stays valid for it; the new
+    /// default 0.25 DOES enter the cache key and correctly rebuilds derived stages.
+    /// See docs/adr/0001-erosion-coastal-sink-and-terraces.md.
     #[serde(default = "one_f32", skip_serializing_if = "is_one_f32")]
     pub coastal_deposit_fraction: f32,
 }
 
+/// serde deserialize default for a legacy config that predates the field: the
+/// pre-sink behaviour was "deposit the whole load" (1.0), NOT the new 0.25 default.
 fn one_f32() -> f32 {
     1.0
 }
@@ -65,7 +71,9 @@ impl Default for ErosionConfig {
             sea_level: 0.1,
             batch_size: 50_000,
             reference_size: 256,
-            coastal_deposit_fraction: 1.0,
+            // Partial coastal sink (see field doc + ADR 0001): net-erosive balance,
+            // deltas preserved, network hierarchy preserved. Was 1.0 (deposit all).
+            coastal_deposit_fraction: 0.25,
         }
     }
 }
