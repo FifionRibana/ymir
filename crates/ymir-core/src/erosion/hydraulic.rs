@@ -29,6 +29,24 @@ pub struct ErosionConfig {
     /// Reference grid size for parameter calibration. The algorithm scales
     /// step size automatically for larger or smaller grids. Default: 256.
     pub reference_size: usize,
+    /// Fraction of a droplet's remaining sediment load DEPOSITED at the coast when
+    /// it terminates below `sea_level` (the terminal coastal dump). `1.0` (default)
+    /// = current behaviour: the whole load is deposited at the shoreline. `< 1.0`
+    /// treats the sea as a partial SINK — deposit `f`, and the remaining `1 − f`
+    /// leaves the system (still counted as eroded). `f > 0` preserves a
+    /// delta/beach at river mouths; `f = 0` = total sink. Held OUT of the serialized
+    /// form (and thus the eroded cache key) when `1.0`, so production is
+    /// byte-identical and existing caches stay valid.
+    #[serde(default = "one_f32", skip_serializing_if = "is_one_f32")]
+    pub coastal_deposit_fraction: f32,
+}
+
+fn one_f32() -> f32 {
+    1.0
+}
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_one_f32(v: &f32) -> bool {
+    *v == 1.0
 }
 
 impl Default for ErosionConfig {
@@ -47,6 +65,7 @@ impl Default for ErosionConfig {
             sea_level: 0.1,
             batch_size: 50_000,
             reference_size: 256,
+            coastal_deposit_fraction: 1.0,
         }
     }
 }
@@ -291,8 +310,14 @@ fn simulate_droplet(
             below_sea_steps += 1;
             if below_sea_steps > config.coastal_deposition_range {
                 if sediment > 0.0 {
-                    apply_brush(hmap, sediment_map, brush, x, y, sediment);
-                    stats.total_deposited += sediment as f64;
+                    // Partial coastal sink: deposit `f` of the load at the shoreline,
+                    // the remaining `1 − f` leaves the system (still counted eroded).
+                    // f == 1.0 (default) → deposit all (byte-identical to before).
+                    let keep = sediment * config.coastal_deposit_fraction;
+                    if keep > 0.0 {
+                        apply_brush(hmap, sediment_map, brush, x, y, keep);
+                        stats.total_deposited += keep as f64;
+                    }
                 }
                 return step;
             }

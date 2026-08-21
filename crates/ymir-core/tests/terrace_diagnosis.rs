@@ -583,107 +583,171 @@ fn structure_metrics(field: &GridF32, ss: &SteinSteinParams) -> (Vec<usize>, usi
     (hist, confl, minc as f32 / hi.max(1) as f32, maxs)
 }
 
-/// TASK 1 + 2 — inclined plane (convergent/parallel flow, sea at the low edge) with
-/// STRUCTURE metrics (not roughness) across the density ladder, plus the coastal-
-/// deposition locality that TASK 2's code path predicts. Read-only; local config.
+/// TASK 3 decider — on the REAL coarse→FBM field (1024²), the sink × density
+/// matrix with structure metrics + delta survival. Does sink+density TOGETHER
+/// restore incision where sink-alone and density-alone each failed?
+#[test]
+#[ignore]
+fn sink_density_matrix() {
+    let ss = SteinSteinParams::default();
+    let t = 1024usize;
+    let cells = (t * t) as f64;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let (_, _, carved_fbm, _) = structure_metrics(&fbm, &ss);
+    eprintln!(
+        "\n=== TASK 3 — sink × density on the real FBM field ({t}²) ===\n  \
+         FBM (no erosion): emerged {:.1}%, carved {:.0}% (the incision floor to beat)",
+        emerged_frac(&fbm) * 100.0,
+        carved_fbm * 100.0,
+    );
+    eprintln!("  f    density | net% | carvedΔ (after) | maxS | confl | dep≤5/≤20/≤50 | emerged%");
+    for (f, dens) in [(1.0f32, 0.95f64), (0.0, 0.95), (0.25, 4.0), (0.0, 4.0)] {
+        let mut ec = ero_cfg(t);
+        ec.coastal_deposit_fraction = f;
+        ec.num_droplets = (dens * cells) as usize;
+        let out = run_erosion(&fbm, &ec, &seed, |_, _, _| true).heightmap;
+        let (e, d) = erosion_balance(&fbm, &out);
+        let (hist, confl, carved, maxs) = structure_metrics(&out, &ss);
+        let (d5, d20, d50) = deposition_locality(&fbm, &out);
+        eprintln!(
+            "  {f:.2} {dens:>5.2} | {:>4.0} | {:>+4.0}% ({:>3.0}%) | {maxs:>4} | {confl:>5} | {d5:>3.0}/{d20:>3.0}/{d50:>3.0}% | {:.1}",
+            (e - d) / e.max(1.0) * 100.0,
+            (carved - carved_fbm) * 100.0,
+            carved * 100.0,
+            emerged_frac(&out) * 100.0,
+        );
+        let _ = hist;
+    }
+    eprintln!("  (delta/beach survives while dep≤5c > 0; carvedΔ>0 with a deep histogram = real incision.)");
+}
+
+fn emerged_frac(field: &GridF32) -> f32 {
+    field.data.iter().filter(|&&v| v > SEA).count() as f32 / field.data.len() as f32
+}
+
+/// Total-deposition-vs-distance-to-coast profile (≤5 / ≤20 / ≤50 cells) as a % of
+/// all deposition (before→after), on the exported grid.
+fn deposition_locality(before: &GridF32, after: &GridF32) -> (f32, f32, f32) {
+    let cd = coast_distance(after);
+    let (mut tot, mut d5, mut d20, mut d50) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+    for k in 0..before.data.len() {
+        let dep = (after.data[k] - before.data[k]).max(0.0) as f64;
+        if dep <= 0.0 {
+            continue;
+        }
+        tot += dep;
+        let dc = cd[k];
+        if dc <= 5 {
+            d5 += dep;
+        }
+        if dc <= 20 {
+            d20 += dep;
+        }
+        if dc <= 50 {
+            d50 += dep;
+        }
+    }
+    let t = tot.max(1e-9);
+    ((d5 / t * 100.0) as f32, (d20 / t * 100.0) as f32, (d50 / t * 100.0) as f32)
+}
+
+/// TASK 1 + 2 — inclined plane (parallel flow, sea at the low edge) at the CURRENT
+/// production density (0.95/cell), sweeping the coastal SINK fraction f. Corrected
+/// metrics: carved% is reported as the DIFFERENTIAL (after − before on the same
+/// field) so it measures INCISION, not the initial-noise floor. Read-only; the sink
+/// is a parameter (default f=1.0 = current behaviour). Also reports the emerged-
+/// fraction drift on the real coarse→FBM field.
 #[test]
 #[ignore]
 fn inclined_plane_structure() {
     let ss = SteinSteinParams::default();
     let n = 512usize;
-    // Tilt along +y: top (y=0) high land ~0.82, bottom (y=n-1) below sea (~0.48) so
-    // rivers have an outlet. Small deterministic value-noise seeds channels.
+    // Tilt along +y: top high land (~0.82), bottom below sea (~0.48) so rivers have
+    // an outlet. Small deterministic value-noise seeds channels.
     let mut plane = GridF32::new(n, n, 0.0);
     for y in 0..n {
         for x in 0..n {
             let t = y as f32 / (n as f32 - 1.0);
             let s = (x as f32 * 127.1 + y as f32 * 311.7).sin() * 43758.547;
-            let noise = (s - s.floor()) - 0.5; // [-0.5,0.5]
-            plane.set(x, y, 0.48 + 0.34 * (1.0 - t) + 0.010 * noise);
+            let noise = (s - s.floor()) - 0.5;
+            plane.set(x, y, 0.48 + 0.34 * (1.0 - t) + 0.008 * noise);
         }
     }
     let cells = (n * n) as f64;
-    let base = FbmUpscaleConfig::c1_hd_production(n).erosion.unwrap();
-    eprintln!("\n=== TASK 1 — inclined plane {n}² (parallel flow, sea at low edge) ===");
-    let (h0, c0, carved0, m0) = structure_metrics(&plane, &ss);
+    let mut base = FbmUpscaleConfig::c1_hd_production(n).erosion.unwrap();
+    base.num_droplets = (0.95 * cells) as usize; // production density
+
+    let (h0, c0, carved_before, m0) = structure_metrics(&plane, &ss);
+    let em0 = emerged_frac(&plane);
+    eprintln!("\n=== TASK 1+2 — inclined plane {n}², coastal-sink f sweep @ 0.95 droplets/cell ===");
     eprintln!(
-        "  baseline (no erosion): maxStrahler {m0}, confluences {c0}, carved {:.0}%, order hist {:?}",
-        carved0 * 100.0,
+        "  baseline (no erosion): carved(local-min of top-1% flow) {:.0}%, maxStrahler {m0}, \
+         confluences {c0}, emerged {:.1}%, order hist {:?}",
+        carved_before * 100.0,
+        em0 * 100.0,
         &h0[1..=m0.max(1) as usize],
     );
-    eprintln!("  density/cell | net% | carved% | maxS | confluences | roughness× | order histogram");
-    for dens in [base.num_droplets as f64 / cells, 4.0, 8.0] {
+    eprintln!("  f=deposit | net% | carvedΔ (after) | maxS | confl | dep≤5/≤20/≤50 | emerged→ | order hist");
+    // f = 1.0 (A: current), 0.5, 0.25, 0.1, 0.0 (total sink).
+    for f in [1.0f32, 0.5, 0.25, 0.1, 0.0] {
         let mut cfg = base.clone();
-        cfg.num_droplets = (dens * cells) as usize;
+        cfg.coastal_deposit_fraction = f;
         let seed = WorldSeed::new(7);
         let out = run_erosion(&plane, &cfg, &seed, |_, _, _| true).heightmap;
         let (e, d) = erosion_balance(&plane, &out);
-        let rough = std_of(&out) / std_of(&plane).max(1e-9);
-        let (hist, confl, carved, maxs) = structure_metrics(&out, &ss);
-
-        // TASK 2 — where does deposition land relative to the coast?
-        let cd = coast_distance(&out);
-        let (mut dep_tot, mut d5, mut d20, mut d50) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
-        for k in 0..n * n {
-            let dep = (out.data[k] - plane.data[k]).max(0.0) as f64;
-            if dep <= 0.0 {
-                continue;
-            }
-            dep_tot += dep;
-            let dc = cd[k];
-            if dc <= 5 {
-                d5 += dep;
-            }
-            if dc <= 20 {
-                d20 += dep;
-            }
-            if dc <= 50 {
-                d50 += dep;
-            }
-        }
+        let (hist, confl, carved_after, maxs) = structure_metrics(&out, &ss);
+        let (d5, d20, d50) = deposition_locality(&plane, &out);
+        let em = emerged_frac(&out);
         eprintln!(
-            "  {dens:>10.2} | {:>4.0} | {:>5.0}% | {maxs:>4} | {confl:>11} | {rough:>9.1} | {:?}",
+            "  {f:>7.2}  | {:>4.0} | {:>+4.0}% ({:>3.0}%) | {maxs:>4} | {confl:>5} | {d5:>3.0}/{d20:>3.0}/{d50:>3.0}% | {:>4.1}→{:>4.1}% | {:?}",
             (e - d) / e.max(1.0) * 100.0,
-            carved * 100.0,
+            (carved_after - carved_before) * 100.0,
+            carved_after * 100.0,
+            em0 * 100.0,
+            em * 100.0,
             &hist[1..=maxs.max(1) as usize],
         );
-        eprintln!(
-            "               coastal deposition: ≤5c {:.0}%, ≤20c {:.0}%, ≤50c {:.0}% of total deposition",
-            d5 / dep_tot.max(1e-9) * 100.0,
-            d20 / dep_tot.max(1e-9) * 100.0,
-            d50 / dep_tot.max(1e-9) * 100.0,
-        );
-
-        // Cross-section across the highest-order channel (perpendicular to it).
-        let dr = c1_drainage(&out, None, &C1DrainageConfig::default(), &ss);
-        if let Some(seg) = dr.rivers.segments.iter().filter(|s| s.points.len() >= 3).max_by_key(|s| s.strahler_order) {
-            let mid = seg.points.len() / 2;
-            let (ax, ay) = seg.points[mid - 1];
-            let (bx, by) = seg.points[mid + 1];
-            let (tx, ty) = (bx as f32 - ax as f32, by as f32 - ay as f32);
-            let tl = (tx * tx + ty * ty).sqrt().max(1e-6);
-            let (px, py) = (-ty / tl, tx / tl); // perpendicular unit
-            let (cx, cy) = seg.points[mid];
-            let om = to_metres(&out, &ss);
-            let mut xs = Vec::new();
-            for o in -10i32..=10 {
-                let sx = (cx as f32 + px * o as f32).round().clamp(0.0, n as f32 - 1.0) as i32;
-                let sy = (cy as f32 + py * o as f32).round().clamp(0.0, n as f32 - 1.0) as i32;
-                xs.push(om.get(sx, sy));
-            }
-            let bottom = xs.iter().cloned().fold(f32::MAX, f32::min);
-            let rim = xs[0].max(xs[20]);
-            eprint!("               S{} x-section (m): ", seg.strahler_order);
-            for v in &xs {
-                eprint!("{:.0} ", v);
-            }
-            eprintln!(" → incision {:.0} m", rim - bottom);
-        }
     }
     eprintln!(
-        "  VERDICT: density is justified only if carved% RISES toward a real valley network AND the \
-         order histogram deepens. Roughness alone = grain, not drainage."
+        "  (carvedΔ = incision above the noise floor; delta/beach survives while dep≤5c > 0. \
+         f=1.0 is current production; f=0.0 is the total sink.)"
     );
+
+    // TASK 2 impact on the REAL field: emerged fraction coarse → FBM → eroded, for a
+    // few sink fractions (1024², production density), to size the island-shrink risk.
+    eprintln!("\n=== emerged-fraction drift on the real coarse→FBM field (1024², 0.95/cell) ===");
+    let t = 1024usize;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    eprintln!(
+        "  coarse emerged {:.1}%  →  FBM emerged {:.1}%",
+        emerged_frac(&coarse) * 100.0,
+        emerged_frac(&fbm) * 100.0,
+    );
+    for f in [1.0f32, 0.25, 0.0] {
+        let mut ec = ero_cfg(t);
+        ec.coastal_deposit_fraction = f;
+        let out = run_erosion(&fbm, &ec, &seed, |_, _, _| true).heightmap;
+        let (e, d) = erosion_balance(&fbm, &out);
+        let (_, _, carved, maxs) = structure_metrics(&out, &ss);
+        eprintln!(
+            "  f={f:.2}: eroded emerged {:.1}%  (net {:>+4.0}%, carved {:.0}%, maxS {maxs})",
+            emerged_frac(&out) * 100.0,
+            (e - d) / e.max(1.0) * 100.0,
+            carved * 100.0,
+        );
+    }
 }
 
 fn std_of(field: &GridF32) -> f32 {
