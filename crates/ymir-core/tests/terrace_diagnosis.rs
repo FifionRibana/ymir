@@ -501,6 +501,191 @@ fn erosion_param_sweep_cone() {
     eprintln!("  (channelisation = roughness ratio ≫1 and carved% rising; production row is the current default)");
 }
 
+/// Distance-to-coast field (cells): BFS from all sea cells (≤ sea) over land.
+fn coast_distance(field: &GridF32) -> Vec<u32> {
+    use std::collections::VecDeque;
+    let (w, h) = (field.width, field.height);
+    let n = w * h;
+    let mut dist = vec![u32::MAX; n];
+    let mut q = VecDeque::new();
+    for k in 0..n {
+        if field.data[k] <= SEA {
+            dist[k] = 0;
+            q.push_back(k);
+        }
+    }
+    while let Some(k) = q.pop_front() {
+        let (x, y) = (k % w, k / w);
+        let d = dist[k];
+        let push = |nx: usize, ny: usize, dist: &mut Vec<u32>, q: &mut VecDeque<usize>| {
+            let nk = ny * w + nx;
+            if dist[nk] == u32::MAX {
+                dist[nk] = d + 1;
+                q.push_back(nk);
+            }
+        };
+        if x + 1 < w {
+            push(x + 1, y, &mut dist, &mut q);
+        }
+        if x > 0 {
+            push(x - 1, y, &mut dist, &mut q);
+        }
+        if y + 1 < h {
+            push(x, y + 1, &mut dist, &mut q);
+        }
+        if y > 0 {
+            push(x, y - 1, &mut dist, &mut q);
+        }
+    }
+    dist
+}
+
+/// Structure metrics of a drained field: (order histogram, #confluences,
+/// carved-fraction of top-1% accumulation cells via 8-neighbours, max order).
+fn structure_metrics(field: &GridF32, ss: &SteinSteinParams) -> (Vec<usize>, usize, f32, u8) {
+    let dr = c1_drainage(field, None, &C1DrainageConfig::default(), ss);
+    let mut hist = vec![0usize; 12];
+    let mut confl = 0usize;
+    for s in &dr.rivers.segments {
+        hist[(s.strahler_order as usize).min(11)] += 1;
+        if s.upstream.len() >= 2 {
+            confl += 1;
+        }
+    }
+    let maxs = dr.rivers.segments.iter().map(|s| s.strahler_order).max().unwrap_or(0);
+    let acc = &dr.flow.accumulation;
+    let (w, h) = (field.width, field.height);
+    let mut accs = acc.data.clone();
+    accs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let thr = accs[(accs.len() as f64 * 0.99) as usize];
+    let (mut hi, mut minc) = (0usize, 0usize);
+    for y in 1..h - 1 {
+        for x in 1..w - 1 {
+            let k = y * w + x;
+            if acc.data[k] < thr || field.data[k] <= SEA {
+                continue;
+            }
+            hi += 1;
+            let c = field.data[k];
+            let mut is_min = true;
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, 1), (-1, 1), (1, -1)] {
+                let nk = ((y as i32 + dy) as usize) * w + (x as i32 + dx) as usize;
+                if field.data[nk] < c {
+                    is_min = false;
+                    break;
+                }
+            }
+            if is_min {
+                minc += 1;
+            }
+        }
+    }
+    (hist, confl, minc as f32 / hi.max(1) as f32, maxs)
+}
+
+/// TASK 1 + 2 — inclined plane (convergent/parallel flow, sea at the low edge) with
+/// STRUCTURE metrics (not roughness) across the density ladder, plus the coastal-
+/// deposition locality that TASK 2's code path predicts. Read-only; local config.
+#[test]
+#[ignore]
+fn inclined_plane_structure() {
+    let ss = SteinSteinParams::default();
+    let n = 512usize;
+    // Tilt along +y: top (y=0) high land ~0.82, bottom (y=n-1) below sea (~0.48) so
+    // rivers have an outlet. Small deterministic value-noise seeds channels.
+    let mut plane = GridF32::new(n, n, 0.0);
+    for y in 0..n {
+        for x in 0..n {
+            let t = y as f32 / (n as f32 - 1.0);
+            let s = (x as f32 * 127.1 + y as f32 * 311.7).sin() * 43758.547;
+            let noise = (s - s.floor()) - 0.5; // [-0.5,0.5]
+            plane.set(x, y, 0.48 + 0.34 * (1.0 - t) + 0.010 * noise);
+        }
+    }
+    let cells = (n * n) as f64;
+    let base = FbmUpscaleConfig::c1_hd_production(n).erosion.unwrap();
+    eprintln!("\n=== TASK 1 — inclined plane {n}² (parallel flow, sea at low edge) ===");
+    let (h0, c0, carved0, m0) = structure_metrics(&plane, &ss);
+    eprintln!(
+        "  baseline (no erosion): maxStrahler {m0}, confluences {c0}, carved {:.0}%, order hist {:?}",
+        carved0 * 100.0,
+        &h0[1..=m0.max(1) as usize],
+    );
+    eprintln!("  density/cell | net% | carved% | maxS | confluences | roughness× | order histogram");
+    for dens in [base.num_droplets as f64 / cells, 4.0, 8.0] {
+        let mut cfg = base.clone();
+        cfg.num_droplets = (dens * cells) as usize;
+        let seed = WorldSeed::new(7);
+        let out = run_erosion(&plane, &cfg, &seed, |_, _, _| true).heightmap;
+        let (e, d) = erosion_balance(&plane, &out);
+        let rough = std_of(&out) / std_of(&plane).max(1e-9);
+        let (hist, confl, carved, maxs) = structure_metrics(&out, &ss);
+
+        // TASK 2 — where does deposition land relative to the coast?
+        let cd = coast_distance(&out);
+        let (mut dep_tot, mut d5, mut d20, mut d50) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+        for k in 0..n * n {
+            let dep = (out.data[k] - plane.data[k]).max(0.0) as f64;
+            if dep <= 0.0 {
+                continue;
+            }
+            dep_tot += dep;
+            let dc = cd[k];
+            if dc <= 5 {
+                d5 += dep;
+            }
+            if dc <= 20 {
+                d20 += dep;
+            }
+            if dc <= 50 {
+                d50 += dep;
+            }
+        }
+        eprintln!(
+            "  {dens:>10.2} | {:>4.0} | {:>5.0}% | {maxs:>4} | {confl:>11} | {rough:>9.1} | {:?}",
+            (e - d) / e.max(1.0) * 100.0,
+            carved * 100.0,
+            &hist[1..=maxs.max(1) as usize],
+        );
+        eprintln!(
+            "               coastal deposition: ≤5c {:.0}%, ≤20c {:.0}%, ≤50c {:.0}% of total deposition",
+            d5 / dep_tot.max(1e-9) * 100.0,
+            d20 / dep_tot.max(1e-9) * 100.0,
+            d50 / dep_tot.max(1e-9) * 100.0,
+        );
+
+        // Cross-section across the highest-order channel (perpendicular to it).
+        let dr = c1_drainage(&out, None, &C1DrainageConfig::default(), &ss);
+        if let Some(seg) = dr.rivers.segments.iter().filter(|s| s.points.len() >= 3).max_by_key(|s| s.strahler_order) {
+            let mid = seg.points.len() / 2;
+            let (ax, ay) = seg.points[mid - 1];
+            let (bx, by) = seg.points[mid + 1];
+            let (tx, ty) = (bx as f32 - ax as f32, by as f32 - ay as f32);
+            let tl = (tx * tx + ty * ty).sqrt().max(1e-6);
+            let (px, py) = (-ty / tl, tx / tl); // perpendicular unit
+            let (cx, cy) = seg.points[mid];
+            let om = to_metres(&out, &ss);
+            let mut xs = Vec::new();
+            for o in -10i32..=10 {
+                let sx = (cx as f32 + px * o as f32).round().clamp(0.0, n as f32 - 1.0) as i32;
+                let sy = (cy as f32 + py * o as f32).round().clamp(0.0, n as f32 - 1.0) as i32;
+                xs.push(om.get(sx, sy));
+            }
+            let bottom = xs.iter().cloned().fold(f32::MAX, f32::min);
+            let rim = xs[0].max(xs[20]);
+            eprint!("               S{} x-section (m): ", seg.strahler_order);
+            for v in &xs {
+                eprint!("{:.0} ", v);
+            }
+            eprintln!(" → incision {:.0} m", rim - bottom);
+        }
+    }
+    eprintln!(
+        "  VERDICT: density is justified only if carved% RISES toward a real valley network AND the \
+         order histogram deepens. Roughness alone = grain, not drainage."
+    );
+}
+
 fn std_of(field: &GridF32) -> f32 {
     let (w, h) = (field.width, field.height);
     let mut acc = 0.0f64;
