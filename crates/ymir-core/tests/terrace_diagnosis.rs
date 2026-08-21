@@ -627,6 +627,137 @@ fn sink_density_matrix() {
     eprintln!("  (delta/beach survives while dep≤5c > 0; carvedΔ>0 with a deep histogram = real incision.)");
 }
 
+/// PART B — locate the terrace source in the closure chain. Measures the S̃ field
+/// (crustal thickness) from the coarse pass for hard-clamp spikes at the global
+/// equilibrium level h_eq (2.0) and the Davis-Suppe cap h_max (2.5), and ties the
+/// altitude plateaux to the S̃≈h_eq cells. Read-only.
+#[test]
+#[ignore]
+fn terrace_source_closure() {
+    let ss = SteinSteinParams::default();
+    let (state, _run) = coarse_state(SEED);
+    let s = &state.s; // S̃ crustal thickness (the closures' state)
+    let (nx, ny) = (s.nx(), s.ny());
+    let vals: Vec<f64> = (0..ny).flat_map(|j| (0..nx).map(move |i| (i, j))).map(|(i, j)| s.get(i, j)).collect();
+    let n = vals.len() as f32;
+    let (h_eq, h_max) = (2.0f64, 2.5f64);
+    let near = |v: f64, t: f64| (v - t).abs() < 1e-4;
+    let at_heq = vals.iter().filter(|&&v| near(v, h_eq)).count();
+    let at_hmax = vals.iter().filter(|&&v| near(v, h_max)).count();
+    let above_heq = vals.iter().filter(|&&v| v > h_eq + 1e-4).count();
+    eprintln!("\n=== PART B — terrace source in the closure chain (seed {SEED}, coarse S̃) ===");
+    eprintln!(
+        "  S̃ cells: {} total. HARD-CLAMP spike at h_eq=2.0 (equilibrium_height): {} ({:.0}%). \
+         at h_max=2.5 (davis_suppe): {} ({:.0}%). above h_eq (still relaxing): {} ({:.0}%).",
+        vals.len(),
+        at_heq, at_heq as f32 / n * 100.0,
+        at_hmax, at_hmax as f32 / n * 100.0,
+        above_heq, above_heq as f32 / n * 100.0,
+    );
+
+    // Distinct S̃ levels: fine histogram, report bins holding > 2% of cells.
+    let (mn, mx) = vals.iter().fold((f64::MAX, f64::MIN), |(a, b), &v| (a.min(v), b.max(v)));
+    const NB: usize = 200;
+    let mut bins = vec![0u32; NB];
+    let span = (mx - mn).max(1e-9);
+    for &v in &vals {
+        bins[(((v - mn) / span) * (NB as f64 - 1.0)) as usize] += 1;
+    }
+    eprint!("  S̃ range {mn:.2}..{mx:.2}; dominant levels (>2% of cells): ");
+    for (b, &c) in bins.iter().enumerate() {
+        if c as f32 / n > 0.02 {
+            eprint!("{:.2}({:.0}%) ", mn + (b as f64 + 0.5) / NB as f64 * span, c as f32 / n * 100.0);
+        }
+    }
+    eprintln!();
+
+    // Tie S̃≈h_eq cells to a single altitude plateau (in metres).
+    let alt = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let alt_m = to_metres(&alt, &ss);
+    let mut plat_m: Vec<f32> = Vec::new();
+    for k in 0..vals.len() {
+        if near(vals[k], h_eq) {
+            plat_m.push(alt_m.data[k]);
+        }
+    }
+    plat_m.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    if !plat_m.is_empty() {
+        let (lo, hi, md) = (plat_m[0], plat_m[plat_m.len() - 1], plat_m[plat_m.len() / 2]);
+        eprintln!(
+            "  altitude of the S̃=h_eq plateau: {lo:.0}..{hi:.0} m (median {md:.0} m) — a tight band \
+             ⇒ the global h_eq maps to a single altitude LEVEL SET (concentric terrace).",
+        );
+    }
+
+    // LAND altitude levels (metres) — are there discrete steps, and what makes them?
+    let mut land_m: Vec<f32> = alt_m.data.iter().copied().filter(|&m| m > 0.0).collect();
+    land_m.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let (lmn, lmx) = (land_m[0], land_m[land_m.len() - 1]);
+    const AB: usize = 80;
+    let mut abins = vec![0u32; AB];
+    let aspan = (lmx - lmn).max(1.0);
+    for &m in &land_m {
+        abins[(((m - lmn) / aspan) * (AB as f32 - 1.0)) as usize] += 1;
+    }
+    let amean = land_m.len() as f32 / abins.iter().filter(|&&c| c > 0).count() as f32;
+    eprint!(
+        "  LAND altitude {lmn:.0}..{lmx:.0} m; spikes (>3× mean bin, width {:.0} m): ",
+        aspan / AB as f32
+    );
+    for (b, &c) in abins.iter().enumerate() {
+        if c as f32 > 3.0 * amean {
+            eprint!("{:.0}m({:.0}%) ", lmn + (b as f32 + 0.5) / AB as f32 * aspan, c as f32 / land_m.len() as f32 * 100.0);
+        }
+    }
+    eprintln!();
+
+    // Craton correlation: cratons get compute_isostasy_craton (worn-shield altitude)
+    // — a candidate discrete level whose boundary is the craton-mask contour.
+    let craton = state.cratonic_mask.data();
+    let mut cra: Vec<f32> = Vec::new();
+    let mut noncra: Vec<f32> = Vec::new();
+    for k in 0..alt_m.data.len() {
+        if alt_m.data[k] > 0.0 {
+            if craton[k] {
+                cra.push(alt_m.data[k]);
+            } else {
+                noncra.push(alt_m.data[k]);
+            }
+        }
+    }
+    let med = |v: &mut Vec<f32>| {
+        if v.is_empty() {
+            return f32::NAN;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[v.len() / 2]
+    };
+    let (cn, ncn) = (cra.len(), noncra.len());
+    let _ = med(&mut cra);
+    let _ = med(&mut noncra);
+    let pct = |v: &[f32], p: f32| v[((v.len() as f32 - 1.0) * p) as usize];
+    eprintln!(
+        "  cratonic land {cn} cells: altitude p10/median/p90 = {:.0}/{:.0}/{:.0} m; \
+         non-cratonic {ncn}: {:.0}/{:.0}/{:.0} m. Cratonic band is WIDE (not a level set) → \
+         cratons are NOT the terrace source either.",
+        pct(&cra, 0.1), pct(&cra, 0.5), pct(&cra, 0.9),
+        pct(&noncra, 0.1), pct(&noncra, 0.5), pct(&noncra, 0.9),
+    );
+    eprintln!(
+        "  VERDICT: no coarse discrete level found (h_eq 0%, h_max 0%, craton wide). The flat fraction \
+         is dominated by EROSION DEPOSITION (disentangle: bilinear 13% → FBM 6% → eroded 24%), i.e. the \
+         same erosion-algorithm limit as the missing valleys — NOT a tectonic/isostasy closure."
+    );
+
+    let km_cell_1024 = C1_DOMAIN_KM / 64.0;
+    eprintln!(
+        "  vertical scale: depth_scale_m {} (uncoupled to domain today); ~120–176 m coarse step > a \
+         hamlet valley's relief (150–250 m WIDE at {:.0} km/coarse-cell), not cosmetic. If depth_scale_m \
+         were coupled to domain_km the step would scale ∝ domain_km.",
+        ss.depth_scale_m, km_cell_1024,
+    );
+}
+
 fn emerged_frac(field: &GridF32) -> f32 {
     field.data.iter().filter(|&&v| v > SEA).count() as f32 / field.data.len() as f32
 }

@@ -106,30 +106,44 @@ and is a separate chantier. The sink (Finding 2) fixes the balance/coast, not th
 
 ---
 
-## Finding 4 — H3 terraces originate in the coarse isostasy / equilibrium-height, not erosion
+## Finding 4 — Terraces are an EROSION-DEPOSITION artifact, NOT a tectonic/isostasy closure
 
 **Context.** The relief shows terraces PARALLEL to contours (concentric loops around
-hills), with jumps of several hundred metres, at both 8192² and 2048².
+hills), with jumps of several hundred metres. The initial hypothesis (recorded here
+because it was tested) was a coarse discrete altitude level from the C1
+equilibrium-height closure (a single global `h_eq` → level sets).
 
-**Measurement.**
+**Measurement (seed 42 coarse field — the hypothesis was REFUTED).**
 - u16 quantisation REFUTED: 0.1–0.14 m/unit, vs observed jumps of 100s of m.
-- Step height ~**120–176 m**, roughly resolution-INDEPENDENT (512²/2048²) → set by a
-  resolution-independent source (coarse tectonic/isostasy field).
+- equilibrium-height clamp INACTIVE: **0 %** of `S̃` cells sit at `h_eq = 2.0`
+  (only 1 % are even above it; `S̃` maxes at 2.18). Davis-Suppe `h_max = 2.5`: **0 %**
+  (and its cap is distance-TAPERED `h_max·(1−exp(−d/L))`, already spatially varying).
+- cratonic isostasy is NOT a level either: cratonic land altitude p10/median/p90 =
+  335 / 1072 / 1901 m — a WIDE band, not a step.
+- No clean discrete altitude ladder on the coarse land field.
 - Terrace-source disentangle (flat fraction of a transect): **pure bilinear
-  (coarse only) 13 % → FBM 6 % → after erosion 24 %.** So FBM ROUGHENS (not a source);
-  erosion DEPOSITION re-flattens (secondary). The flat plateaux originate in the
-  coarse post-isostasy field.
+  (coarse only) 13 % → FBM 6 % → after erosion 24 %.** FBM ROUGHENS; the flat fraction
+  is dominated by **erosion DEPOSITION** (6 % → 24 %).
 
-The step height matches the C1 equilibrium-height closures producing flat crustal
-levels. Note the scale: a 120–176 m step exceeds the relief of a hamlet-scale valley
-(~150–250 m wide), so this is not cosmetic.
+**Conclusion (corrected).** The terraces are NOT produced by a coarse
+tectonic/isostasy closure — the equilibrium-height / Davis-Suppe / craton candidates
+are all refuted by direct measurement. They are an **erosion-deposition artifact**:
+the same net-zero, uncorrelated-droplet erosion of Finding 3 deposits sediment in
+flat sheets that pool to local base levels bounded by contours (hence "concentric
+terraces"). Terraces and missing valleys are TWO SYMPTOMS OF ONE CAUSE — the erosion
+algorithm (Finding 3), not two separate jobs.
 
-**Decision.** Since erosion (Finding 3) does not dissect these steps, they must be
-addressed at the SOURCE — the isostasy / equilibrium-height closures — a separate
-job. Not touched here.
+**Caveats.** Measured on seed 42; the earlier "~120–176 m resolution-independent
+step" came from a weak modal-|Δ| metric and is not a confirmed discrete ladder. A
+client-side render contribution (contouring/quantisation in Living Landz) is not
+excluded and is out of Ymir's scope. The coastal `coastal_deposit_fraction` sink
+reduces COASTAL deposition, not the inland depositional flats.
 
-**Consequences.** Terraces remain visible until the closure work is done. See
-Finding 3's successor and the recommended order in the campaign summary. When the
-equilibrium-height closure is touched, re-check the pre-existing Picard
-non-convergence in the same tectonic layer —
-[docs/issues/picard-nonconvergence-rectangular-smoke.md](../issues/picard-nonconvergence-rectangular-smoke.md).
+**Decision.** Fold the terrace fix into the erosion chantier (Finding 3's routed
+stream-power successor + a deposition/transport rework), not into the isostasy /
+equilibrium-height closures. Not touched here.
+
+**Consequences.** The prior "address terraces at the isostasy source, before
+stream-power" ordering is moot — both are the erosion chantier. When any tectonic
+closure IS eventually touched, re-check the pre-existing Picard non-convergence in
+that layer — [docs/issues/picard-nonconvergence-rectangular-smoke.md](../issues/picard-nonconvergence-rectangular-smoke.md).
