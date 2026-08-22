@@ -900,7 +900,7 @@ fn fbm_striation() {
     let (state, _run) = coarse_state(SEED);
     let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
     let seed = WorldSeed::new(SEED);
-    let sp = StreamPowerConfig::relief_v1(cell_km2);
+    let sp = StreamPowerConfig::relief_v1(cell_km2, ss.depth_scale_m as f32);
 
     let mut report = |label: String, mut fc: FbmUpscaleConfig| {
         fc.erosion = None;
@@ -973,7 +973,7 @@ fn valley_width_distribution() {
     fcfg.erosion = None;
     fcfg.bathymetry = None;
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
-    let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2));
+    let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2, ss.depth_scale_m as f32));
     let slope = slope_deg_field(&sp, domain, base);
     let (w, h) = (t, t);
     let fm: Vec<f32> = sp.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
@@ -1062,7 +1062,7 @@ fn incision_resolution() {
         fcfg.erosion = None;
         fcfg.bathymetry = None;
         let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
-        let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2));
+        let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2, ss.depth_scale_m as f32));
         let (tab, _) = per_order_incision(&fbm, &sp, &ss);
         eprintln!("  {t}²: {}", fmt_orders(&tab));
     }
@@ -1116,7 +1116,7 @@ fn render_striation_ladder() {
         fc.bathymetry = None;
         fc.amplitude_base = amp;
         let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
-        let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2));
+        let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2, ss.depth_scale_m as f32));
         let hs = hillshade(&sp, domain, base);
         let path = dir.join(format!("amp{amp:.2}_{t}.png"));
         hs.save_png_u8(&path).unwrap();
@@ -1134,7 +1134,7 @@ fn render_striation_ladder() {
         let maxs = dr.rivers.segments.iter().map(|s| s.strahler_order).max().unwrap_or(0);
         let confl = dr.rivers.segments.iter().filter(|s| s.upstream.len() >= 2).count();
         let slope = slope_deg_field(&sp, domain, base);
-        let corr = channel_corridor(&sp, &ss, StreamPowerConfig::relief_v1(cell_km2).min_area_cells);
+        let corr = channel_corridor(&sp, &ss, StreamPowerConfig::relief_v1(cell_km2, ss.depth_scale_m as f32).min_area_cells);
         let (vf5, _, _, _) = valley_floor(&slope, &corr, &sp, cell_km2);
         eprintln!("  amp {amp:.2} @{t}²: maxS {maxs}, confl {confl}, valley floor<5° {vf5:.0} km²  → {}", path.display());
     };
@@ -1145,6 +1145,34 @@ fn render_striation_ladder() {
     // Recommended value at production scale (provisional — the author's eye decides).
     render(8192, 0.04);
     eprintln!("  RECOMMEND (provisional): amp 0.04 — 4× reduction, drainage healthy; author confirms the visual.");
+}
+
+/// Recalibrate the PHYSICAL K to reproduce the relief-v1 reference (1024²: drainage
+/// relief ~682 m, per-order S2~414 S4~136). The old K=3 was against the normalised
+/// slope; the physical law needs a different K.
+#[test]
+#[ignore]
+fn calibrate_k_physical() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let (t, domain) = (1024usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    eprintln!("\n=== physical-K calibration (target: relief ~682 m, S2~414 S4~136) ===");
+    for k in [100.0f32, 300.0, 1000.0, 3000.0, 10000.0] {
+        let mut cfg = StreamPowerConfig::relief_v1(cell_km2, ss.depth_scale_m as f32);
+        cfg.k = k;
+        let sp = incise(&fbm, &cfg);
+        let rel = drainage_relief_m(&sp, &ss);
+        let (tab, _) = per_order_incision(&fbm, &sp, &ss);
+        eprintln!("  K={k:>7.0}: relief {rel:>4.0} m, {}", fmt_orders(&tab));
+    }
 }
 
 /// TASK 2 — striation metric via a DIRECTIONAL POWER SPECTRUM. The old ±8 roughness
@@ -1218,7 +1246,7 @@ fn striation_spectrum_validate() {
     let (state, _run) = coarse_state(SEED);
     let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
     let seed = WorldSeed::new(SEED);
-    let sp = StreamPowerConfig::relief_v1(cell_km2);
+    let sp = StreamPowerConfig::relief_v1(cell_km2, ss.depth_scale_m as f32);
     eprintln!("\n=== TASK 2 — striation power-spectrum validation (win=48, steep>20°) ===");
     let run = |label: &str, aniso: f64, amp: f64| {
         let mut fc = FbmUpscaleConfig::c1_hd_production(t);
@@ -1318,7 +1346,7 @@ fn relief_v1_regression() {
     fcfg.erosion = None;
     fcfg.bathymetry = None;
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
-    let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2));
+    let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2, ss.depth_scale_m as f32));
 
     let relief = drainage_relief_m(&sp, &ss);
     let slope = slope_deg_field(&sp, domain, base);
@@ -1333,13 +1361,15 @@ fn relief_v1_regression() {
          largest flank {l1} cells, per-order {}",
         fmt_orders(&tab),
     );
-    // Collapse-catching bounds (generous; NOT tuning targets). Droplet-style collapse
-    // would push relief <100 m, S2 <150 m, and valley-floor near the whole map.
-    assert!(relief > 300.0, "drainage relief collapsed: {relief} m (expect >300)");
-    assert!((250.0..=700.0).contains(&s2), "S2 incision {s2} m out of [250,700]");
-    assert!((60.0..=300.0).contains(&s4), "S4 incision {s4} m out of [60,300]");
-    assert!((250.0..=1500.0).contains(&vf5_km), "valley floor<5° {vf5_km} km² out of [250,1500]");
-    assert!(l1 > 800, "largest steep flank {l1} cells (<800 ⇒ steep ground scattered, not flanks)");
+    // Tightened bounds around the exact reference (rebased after the physical-slope
+    // change — which reproduces the reference exactly at K=3000, so the numbers did
+    // NOT move: relief 682, S2 414, S4 136, valley floor 688, flank 4677). Ranges are
+    // ±~15–20 % to catch silent degradation, NOT loosened to pass.
+    assert!((580.0..=780.0).contains(&relief), "drainage relief {relief} m out of [580,780] (ref 682)");
+    assert!((340.0..=490.0).contains(&s2), "S2 incision {s2} m out of [340,490] (ref 414)");
+    assert!((100.0..=180.0).contains(&s4), "S4 incision {s4} m out of [100,180] (ref 136)");
+    assert!((560.0..=820.0).contains(&vf5_km), "valley floor<5° {vf5_km} km² out of [560,820] (ref 688)");
+    assert!(l1 > 3000, "largest steep flank {l1} cells (<3000 ⇒ degraded; ref 4677)");
 }
 
 /// Per-cell surface slope in DEGREES (central differences; `depth_scale` is the
@@ -1551,7 +1581,7 @@ fn stream_power_hillslope() {
     let km2 = c1_cell_area_km2(t);
     let base = |th: f32, ac: f32| StreamPowerConfig {
         k: 1.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA,
-        diffusion: 0.0, diffusion_substeps: 4, threshold: th, min_area_cells: ac,
+        diffusion: 0.0, diffusion_substeps: 4, threshold: th, min_area_cells: ac, cell_km: 1.0, depth_scale_m: 5000.0,
     };
 
     eprintln!("\n=== TASK 1 — incision threshold θ sweep (K=1,m=.5,n=1,iters=3) ===");
@@ -1603,7 +1633,7 @@ fn stream_power_confirm8192() {
     let fbm_ms = t0.elapsed().as_millis();
     let cfg = StreamPowerConfig {
         k: 3.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA,
-        diffusion: 0.05, diffusion_substeps: 4, min_area_cells: a_c, threshold: 0.0,
+        diffusion: 0.05, diffusion_substeps: 4, min_area_cells: a_c, threshold: 0.0, cell_km: 1.0, depth_scale_m: 5000.0,
     };
     eprintln!("  A_c = {a_c_km2} km² = {a_c:.0} cells at {t}²");
     let t0 = Instant::now();
@@ -1691,7 +1721,7 @@ fn stream_power_legible() {
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
     let cfg = |k: f32| StreamPowerConfig {
         k, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA,
-        diffusion: 0.05, diffusion_substeps: 4, min_area_cells: a_c, threshold: 0.0,
+        diffusion: 0.05, diffusion_substeps: 4, min_area_cells: a_c, threshold: 0.0, cell_km: 1.0, depth_scale_m: 5000.0,
     };
     let report = |label: String, field: &GridF32, cf: f32| {
         let depth = base * cf;
@@ -1761,7 +1791,7 @@ fn stream_power_recommended() {
     // Recommended: A_c=50, D=0.05, K=1, m=0.5, n=1, iters=3.
     let cfg = StreamPowerConfig {
         k: 1.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA,
-        diffusion: 0.05, diffusion_substeps: 4, min_area_cells: 50.0, threshold: 0.0,
+        diffusion: 0.05, diffusion_substeps: 4, min_area_cells: 50.0, threshold: 0.0, cell_km: 1.0, depth_scale_m: 5000.0,
     };
     let sp = incise(&fbm, &cfg);
     let couple = 400.0f32 / 1024.0; // depth_scale ∝ domain (400 km) → relief ×0.39
@@ -1813,7 +1843,7 @@ fn stream_power_regime() {
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
     let cfg = |ac: f32, d: f32| StreamPowerConfig {
         k: 1.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA,
-        diffusion: d, diffusion_substeps: 4, min_area_cells: ac, threshold: 0.0,
+        diffusion: d, diffusion_substeps: 4, min_area_cells: ac, threshold: 0.0, cell_km: 1.0, depth_scale_m: 5000.0,
     };
     let probes = channel_probes(&incise(&fbm, &cfg(0.0, 0.0)), &ss, 12);
     let (fd, _) = cross_section_stats(&fbm, &ss, &probes);
@@ -1890,7 +1920,7 @@ fn stream_power_reconfirm() {
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
     let fbm_ms = ti.elapsed().as_millis();
 
-    let cfg = StreamPowerConfig { k: 1.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA, diffusion: 0.0, diffusion_substeps: 4, min_area_cells: 0.0, threshold: 0.0 };
+    let cfg = StreamPowerConfig { k: 1.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA, diffusion: 0.0, diffusion_substeps: 4, min_area_cells: 0.0, threshold: 0.0, cell_km: 1.0, depth_scale_m: 5000.0 };
     let ti = Instant::now();
     let sp = incise(&fbm, &cfg);
     let sp_ms = ti.elapsed().as_millis();
@@ -2005,7 +2035,7 @@ fn stream_power_tuning() {
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
     let sp = |k: f32, m: f32, d: f32| StreamPowerConfig {
         k, m, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA, diffusion: d, diffusion_substeps: 4,
-        min_area_cells: 0.0, threshold: 0.0,
+        min_area_cells: 0.0, threshold: 0.0, cell_km: 1.0, depth_scale_m: 5000.0,
     };
     let base = incise(&fbm, &sp(1.0, 0.5, 0.0)); // fix probes on the D=0 carved field
     let probes = channel_probes(&base, &ss, 12);

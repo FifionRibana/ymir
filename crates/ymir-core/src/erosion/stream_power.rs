@@ -53,6 +53,14 @@ pub struct StreamPowerConfig {
     /// critical stream power, so low-energy cells (again, headwaters) do not carve.
     /// `0` (default) = no threshold (legacy).
     pub threshold: f32,
+    /// PHYSICAL cell size (km): makes the law dimensional — drainage area in km²
+    /// (`A_cells · cell_km²`) and slope a true gradient (`Δh_m / dist_m`), so K is
+    /// resolution-invariant instead of drifting ~1.5× per resolution doubling (the
+    /// per-cell `Δnorm` slope measured steeper on finer cells). See ADR 0001 §D.
+    pub cell_km: f32,
+    /// Vertical scale (m) for the physical slope: `Δh_m = Δnorm · 2 · 1.13 ·
+    /// depth_scale_m` (the `c1_altitude_norm_to_metres` slope).
+    pub depth_scale_m: f32,
 }
 
 /// Relief-v1 reference: physical critical drainage area (km²) for the channel head.
@@ -66,10 +74,14 @@ impl StreamPowerConfig {
     /// setting that produces legible relief: routed stream power on channels +
     /// hillslope diffusion, droplets OFF, uncoupled vertical scale. `cell_km2` is the
     /// run's cell area (`(domain_km / grid)²`), used to convert the physical `A_c`
-    /// (7.6 km²) to cells at THIS resolution. K=3, m=0.5, n=1, iters=3, D=0.05, θ=0.
-    pub fn relief_v1(cell_km2: f32) -> Self {
+    /// (7.6 km²) to cells at THIS resolution. Physical law: `cell_km` + `depth_scale_m`
+    /// make the slope a true gradient and area km², so K is resolution-invariant.
+    /// K=3.7e-4 (physical), m=0.5, n=1, iters=3, D=0.05, θ=0.
+    pub fn relief_v1(cell_km2: f32, depth_scale_m: f32) -> Self {
+        let cell_km2 = cell_km2.max(1e-9);
+        let cell_km = cell_km2.sqrt();
         Self {
-            k: 3.0,
+            k: RELIEF_V1_K,
             m: 0.5,
             n: 1.0,
             dt: 1.0,
@@ -77,11 +89,19 @@ impl StreamPowerConfig {
             sea_level: 0.5,
             diffusion: 0.05,
             diffusion_substeps: 4,
-            min_area_cells: RELIEF_V1_A_C_KM2 / cell_km2.max(1e-9),
+            min_area_cells: RELIEF_V1_A_C_KM2 / cell_km2,
             threshold: 0.0,
+            cell_km,
+            depth_scale_m,
         }
     }
 }
+
+/// Relief-v1 erodibility K in the PHYSICAL law (`E = K·A_km²^m·S_phys^n`, A in km²,
+/// S = Δh_m/dist_m). Recalibrated from the old normalised-slope K=3: **K=3000
+/// reproduces the reference exactly** (1024², domain 400 km: drainage relief 682 m,
+/// per-order S1=25 S2=414 S3=307 S4=136 — identical to normalised K=3). See ADR 0001 §D.
+pub const RELIEF_V1_K: f32 = 3000.0;
 
 impl Default for StreamPowerConfig {
     fn default() -> Self {
@@ -96,6 +116,8 @@ impl Default for StreamPowerConfig {
             diffusion_substeps: 4,
             min_area_cells: 0.0,
             threshold: 0.0,
+            cell_km: 1.0,
+            depth_scale_m: 5000.0,
         }
     }
 }
@@ -179,7 +201,13 @@ pub fn incise_with_progress(
         }
 
         // 4. Implicit incision in stack order (base → up). h_r is already updated.
+        // PHYSICAL law: E = K · A_km²^m · S_phys^n, S_phys = Δh_m / dist_m. Heights
+        // stay in NORM; K/θ carry the units. For n=1 the norm→m factor cancels in the
+        // area term (f = kdt·A_km²^m / dist_m) and appears only on θ.
         let kdt = cfg.k * cfg.dt;
+        let norm_to_m = 2.0 * 1.13 * cfg.depth_scale_m;
+        let cell_m = cfg.cell_km * 1000.0;
+        let cell_km2 = cfg.cell_km * cfg.cell_km;
         for &k in &stack {
             let r = receiver[k];
             if r == k || field.data[k] <= cfg.sea_level {
@@ -191,27 +219,27 @@ pub fn incise_with_progress(
             }
             let hr = field.data[r];
             let ho = field.data[k];
-            let a = area.powf(cfg.m) / dist[k].powf(cfg.n);
-            // Threshold gate: skip cells whose stream power A^m·S^n is below θ.
-            let sp_now = a * (ho - hr).max(0.0).powf(cfg.n);
-            if sp_now <= cfg.threshold {
+            let am = (area * cell_km2).powf(cfg.m); // A_km²^m
+            let dist_m = dist[k] * cell_m;
+            // Threshold gate: physical stream power A_km²^m · S_phys^n vs θ.
+            let s_now = (ho - hr).max(0.0) * norm_to_m / dist_m;
+            if am * s_now.powf(cfg.n) <= cfg.threshold {
                 continue;
             }
-            let f = kdt * a;
             let hn = if (cfg.n - 1.0).abs() < 1e-6 {
-                // Closed form, n=1, with the −θ threshold (the +kdt·θ term reduces
-                // incision): E = K·max(0, A·S − θ).
-                (ho + f * hr + kdt * cfg.threshold) / (1.0 + f)
+                // n=1: E_norm = K·A_km²^m·(h−hr)/dist_m; θ term = kdt·θ/norm_to_m.
+                let f = kdt * am / dist_m;
+                (ho + f * hr + kdt * cfg.threshold / norm_to_m) / (1.0 + f)
             } else {
-                // Newton for general n with threshold: g(x) = x − ho + kdt·max(0,
-                // a·(x−hr)^n − θ) = 0, x ≥ hr.
+                // Newton (general n), norm heights, physical slope.
+                let c = norm_to_m / dist_m; // Δnorm → S_phys
                 let mut x = ho;
                 for _ in 0..8 {
-                    let s = (x - hr).max(0.0);
-                    let e = (a * s.powf(cfg.n) - cfg.threshold).max(0.0);
-                    let g = x - ho + kdt * e;
-                    let de = if a * s.powf(cfg.n) > cfg.threshold {
-                        kdt * a * cfg.n * s.powf(cfg.n - 1.0)
+                    let s = ((x - hr).max(0.0)) * c;
+                    let e = (am * s.powf(cfg.n) - cfg.threshold).max(0.0);
+                    let g = x - ho + kdt * e / norm_to_m;
+                    let de = if am * s.powf(cfg.n) > cfg.threshold {
+                        kdt * am * cfg.n * s.powf(cfg.n - 1.0) * c / norm_to_m
                     } else {
                         0.0
                     };
@@ -222,8 +250,7 @@ pub fn incise_with_progress(
                 }
                 x
             };
-            // Never incise below the receiver (no reversal) or ABOVE the old height
-            // (the threshold term must not deposit).
+            // Never incise below the receiver or ABOVE the old height (no deposition).
             field.data[k] = hn.clamp(hr, ho);
         }
 

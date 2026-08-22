@@ -248,12 +248,29 @@ S3 8.8, S4 41.4 (wide trunks), with a fat tail (p90 up to 77). **W/D widens
 downstream** — gorges as chokepoint content upstream, wide buildable valleys at
 trunks/coast. No widening fix needed.
 
-**Incision is resolution-dependent (a real dependency, not to paper over).** Per-order
-incision rises with resolution (S4: 108 m @512² → 136 @1024² → 318 @2048²), because
-`S = Δnorm per cell` in `E = K·A^m·S^n` is measured steeper on finer cells (the FBM
-detail resolves sharper gradients). The clean fix is a PHYSICAL slope (`Δh_m /
-cell_m`) and area in km², so K is resolution-invariant — NOT a per-resolution K,
-which would mask the dependency and return at every scale change.
+**Incision is resolution-dependent — and physical units DON'T fix it (measured).**
+Per-order incision rises with resolution (S4: 108 m @512² → 136 @1024² → 318 @2048²).
+The physical reformulation (`A` in km², `S = Δh_m / dist_m`) was IMPLEMENTED and
+measured: for the shipped `n=1, m=0.5` it is **algebraically equivalent** to the
+normalised law (the `cell_km` factor cancels between `A_km²^0.5` and `dist_m`), so
+`K = 3000` physical reproduces the reference EXACTLY (relief 682 m, S1=25 S2=414
+S3=307 S4=136 — identical to normalised K=3) and the resolution dependence is
+**UNCHANGED** (still 108/136/318). So the ~1.5× drift is NOT a slope-unit artifact —
+it originates in the FBM detail resolving sharper gradients on finer cells. The real
+levers are a resolution-independent FBM feature size or an explicit per-resolution K;
+the physical law is kept because it makes K dimensional and matters for `n≠1`, but it
+is a no-op for the shipped exponents. (Corrects the earlier "physical slope is the
+clean fix" hypothesis.)
+
+**Striations (TASK 2 metric) — the anisotropy knob is not the lever.** A directional
+power-spectrum metric (length-48 profiles along contour vs gradient on steep cells)
+does NOT respond to `max_anisotropy` 3→1 (ratio ~0.65 either way, no short-λ peak) —
+same verdict as the ±8 roughness metric. Either the visual striations are not
+gradient/contour-aligned or not from `max_anisotropy`. `amplitude_base` is the lever
+that moves both metrics (ratio 0.65→0.45 at 0.04) and reduces overall FBM detail 8×
+with drainage staying organic (Finding 5 above); the rendered amplitude ladder
+(exports/relief_ladder/, 0.16/0.08/0.04/0.02) is the visual arbiter, provisional
+recommendation `amplitude_base ≈ 0.04`.
 
 ---
 

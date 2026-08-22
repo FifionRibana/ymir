@@ -338,7 +338,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // resolution (resolution-stable channel head); uncoupled vertical scale.
     if params.stream_power {
         let km_per_cell = window_km / params.target_size as f32; // window_km == domain_km
-        let sp = StreamPowerConfig::relief_v1(km_per_cell * km_per_cell);
+        let sp = StreamPowerConfig::relief_v1(km_per_cell * km_per_cell, ss.depth_scale_m as f32);
         eprintln!(
             "[HD] stream-power incision ON (relief-v1: A_c {:.0} cells = {} km²), droplets OFF",
             sp.min_area_cells,
