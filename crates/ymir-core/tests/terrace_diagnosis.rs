@@ -1147,6 +1147,101 @@ fn render_striation_ladder() {
     eprintln!("  RECOMMEND (provisional): amp 0.04 — 4× reduction, drainage healthy; author confirms the visual.");
 }
 
+/// TASK 2 — striation metric via a DIRECTIONAL POWER SPECTRUM. The old ±8 roughness
+/// ratio failed because the window (~16 cells) was the size of the ~8–11 cell period
+/// it tried to resolve. Here: on steep cells, extract a length-`win` (≥32) profile
+/// along the contour and along the gradient, endpoint-detrend (removes the slope),
+/// DFT, accumulate power per frequency. Striations = a spectral PEAK at a specific
+/// wavelength in the contour direction. Returns (dominant wavelength cells,
+/// anisotropic power ratio contour/gradient at that wavelength).
+fn striation_spectrum(field: &GridF32, slope: &[f32], min_deg: f32, win: usize) -> (f32, f32) {
+    let (w, h) = (field.width, field.height);
+    let nf = win / 2;
+    let mut pc = vec![0.0f64; nf]; // contour power per frequency
+    let mut pg = vec![0.0f64; nf]; // gradient power
+    let half = win as f32 / 2.0;
+    for y in 2..h - 2 {
+        for x in 2..w - 2 {
+            let k = y * w + x;
+            if slope[k] < min_deg || field.data[k] <= SEA {
+                continue;
+            }
+            let gx = field.data[k + 1] - field.data[k - 1];
+            let gy = field.data[k + w] - field.data[k - w];
+            let gl = (gx * gx + gy * gy).sqrt().max(1e-9);
+            let (ux, uy) = (gx / gl, gy / gl);
+            let (cxx, cyy) = (-uy, ux);
+            let mut accum = |dx: f32, dy: f32, pow: &mut [f64]| {
+                let p: Vec<f32> = (0..win)
+                    .map(|i| {
+                        let t = i as f32 - half;
+                        field.sample_bilinear_periodic(x as f32 + dx * t, y as f32 + dy * t)
+                    })
+                    .collect();
+                // endpoint detrend (remove DC + linear slope along the line).
+                let (p0, p1) = (p[0], p[win - 1]);
+                let d: Vec<f32> = (0..win)
+                    .map(|i| p[i] - (p0 + (p1 - p0) * i as f32 / (win as f32 - 1.0)))
+                    .collect();
+                for kf in 1..nf {
+                    let (mut re, mut im) = (0.0f64, 0.0f64);
+                    for i in 0..win {
+                        let ph = -2.0 * std::f64::consts::PI * kf as f64 * i as f64 / win as f64;
+                        re += d[i] as f64 * ph.cos();
+                        im += d[i] as f64 * ph.sin();
+                    }
+                    pow[kf] += re * re + im * im;
+                }
+            };
+            accum(ux, uy, &mut pg);
+            accum(cxx, cyy, &mut pc);
+        }
+    }
+    // Dominant frequency = peak of the contour spectrum (where striations show).
+    let dom = (1..nf).max_by(|&a, &b| pc[a].partial_cmp(&pc[b]).unwrap()).unwrap_or(1);
+    let wavelength = win as f32 / dom as f32;
+    let ratio = (pc[dom] / pg[dom].max(1e-12)) as f32;
+    (wavelength, ratio)
+}
+
+/// TASK 2 validation — does the spectrum metric MOVE when max_anisotropy 3→1 (and
+/// amplitude 0.16→0.04)? If yes the metric works + the knob is a real lever; if no,
+/// the knobs genuinely are not the striation cause. 1024², relief-v1 incision.
+#[test]
+#[ignore]
+fn striation_spectrum_validate() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let (t, domain) = (1024usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let base = ss.depth_scale_m as f32;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let sp = StreamPowerConfig::relief_v1(cell_km2);
+    eprintln!("\n=== TASK 2 — striation power-spectrum validation (win=48, steep>20°) ===");
+    let run = |label: &str, aniso: f64, amp: f64| {
+        let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+        fc.erosion = None;
+        fc.bathymetry = None;
+        fc.max_anisotropy = aniso;
+        fc.amplitude_base = amp;
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        // pre-incision (raw FBM) + post-incision.
+        let sl_f = slope_deg_field(&fbm, domain, base);
+        let (wlf, rf) = striation_spectrum(&fbm, &sl_f, 20.0, 48);
+        let field = incise(&fbm, &sp);
+        let sl = slope_deg_field(&field, domain, base);
+        let (wl, r) = striation_spectrum(&field, &sl, 20.0, 48);
+        eprintln!("  {label:<28}: pre-FBM λ {wlf:.1} ratio {rf:.2} | post-incision λ {wl:.1} ratio {r:.2}");
+    };
+    run("baseline aniso=3 amp=0.16", 3.0, 0.16);
+    run("aniso=1 (isotropic) amp=0.16", 1.0, 0.16);
+    run("aniso=3 amp=0.04", 3.0, 0.04);
+    run("aniso=1 amp=0.04", 1.0, 0.04);
+    eprintln!("  (ratio ≫1 = striations along contour; if it drops 3→1 the anisotropy knob is the lever)");
+}
+
 /// B1 — striation metric. On STEEP cells (slope > `min_deg`), sample the altitude
 /// profile ALONG the gradient and ALONG the contour, and measure short-wavelength
 /// roughness (RMS of the 1-D Laplacian) in each. Anisotropic FBM elongates noise
