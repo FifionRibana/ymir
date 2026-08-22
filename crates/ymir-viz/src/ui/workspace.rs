@@ -165,6 +165,9 @@ struct WorkspaceState {
     bootstrapped: bool,
     /// Opt-in: write a v1 `.ymir` delivery container after the biome phase.
     export_ymir: bool,
+    /// EXPERIMENTAL (ADR 0001): use routed stream-power incision instead of the
+    /// droplet pass for the next HD run. Off by default (production unchanged).
+    stream_power: bool,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
     export_dir: String,
     // Derived / cache.
@@ -210,6 +213,7 @@ impl Default for WorkspaceState {
             seed_dirty: false,
             bootstrapped: false,
             export_ymir: false,
+            stream_power: false,
             export_dir: "exports".to_string(),
             current: None,
             preview: None,
@@ -606,6 +610,7 @@ fn left_panel(
                             latitude_deg: ws.latitude,
                             domain_km: ws.domain_km,
                             manual_offset: Some(off),
+                            stream_power: ws.stream_power,
                             export_dir,
                         };
                         let _ = bridge.submit_hd(spec, params);
@@ -624,6 +629,15 @@ fn left_panel(
                         request_preview(ws, bridge, false);
                     }
                     ui.add_enabled_ui(!hd_running, |ui| {
+                        ui.checkbox(
+                            &mut ws.stream_power,
+                            egui::RichText::new("Incision stream-power (exp.)").color(DIM2).size(11.0),
+                        )
+                        .on_hover_text(
+                            "Remplace l'érosion par gouttelettes par l'incision stream-power \
+                             routée + versants (ADR 0001). Vallées incisées, pas de terrasses de \
+                             dépôt. Off = pipeline de production.",
+                        );
                         ui.checkbox(
                             &mut ws.export_ymir,
                             egui::RichText::new("Exporter .ymir").color(DIM2).size(11.0),
@@ -1344,6 +1358,7 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         latitude_deg: ws.latitude,
         domain_km: ws.domain_km,
         manual_offset: None,
+        stream_power: false, // preview is coarse-only; SP applies to the HD run
         export_dir: None,
     }
 }

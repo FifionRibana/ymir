@@ -199,6 +199,7 @@ mod tests {
                     latitude_deg: 45.0,
                     domain_km: 1024.0,
                     manual_offset: None,
+                    stream_power: false,
                     export_dir: None,
                 },
             })

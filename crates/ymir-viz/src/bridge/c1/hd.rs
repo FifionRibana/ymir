@@ -54,6 +54,7 @@ use ymir_core::tectonics_c1::land_topology::{
 };
 use ymir_core::tectonics_c1::production_upscale::EroProgress;
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
+use ymir_core::erosion::stream_power::StreamPowerConfig;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
 use super::events::C1Event;
@@ -80,6 +81,13 @@ pub struct HdParams {
     /// so the export matches exactly what the preview showed. Determinism: passing
     /// the same value `run_hd` would auto-compute yields a byte-identical export.
     pub manual_offset: Option<[f64; 2]>,
+    /// EXPERIMENTAL (ADR 0001): replace droplet erosion with routed stream-power
+    /// incision + hillslope regime split for this run. `false` (default) → the
+    /// production droplet pass (byte-identical). `true` → droplets OFF, stream-power
+    /// ON with the recommended config (K=3, m=0.5, n=1, iters=3, A_c=7.6 km²,
+    /// D=0.05, uncoupled). A UI opt-in to eyeball the effect; production default
+    /// unchanged until confirmed.
+    pub stream_power: bool,
     /// When `Some(dir)`, after the biome phase the run writes a v1 `.ymir`
     /// delivery container under `dir` (see [`ymir_core::export::container`]).
     /// `None` = no export. Explicit opt-in — the pipeline NEVER auto-exports
@@ -94,6 +102,7 @@ impl Default for HdParams {
             latitude_deg: 45.0,
             domain_km: 1024.0,
             manual_offset: None,
+            stream_power: false,
             export_dir: None,
         }
     }
@@ -316,6 +325,27 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // continent with ocean margin on the map (see the coarse preview / seed scan).
     let window_km = params.domain_km; // domain IS the map: window == domain == domain_km
     let mut upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
+    // EXPERIMENTAL opt-in (ADR 0001): swap the droplet pass for routed stream-power
+    // incision + hillslope regime split. A_c is 7.6 km² expressed in cells at THIS
+    // resolution (resolution-stable channel head); uncoupled vertical scale.
+    if params.stream_power {
+        let km_per_cell = window_km / params.target_size as f32; // window_km == domain_km
+        let a_c_cells = 7.6 / (km_per_cell * km_per_cell);
+        upscale.erosion = None; // droplets off — they collapse the SP valleys
+        upscale.stream_power = Some(StreamPowerConfig {
+            k: 3.0,
+            m: 0.5,
+            n: 1.0,
+            dt: 1.0,
+            iterations: 3,
+            sea_level: 0.5,
+            diffusion: 0.05,
+            diffusion_substeps: 4,
+            min_area_cells: a_c_cells,
+            threshold: 0.0,
+        });
+        eprintln!("[HD] stream-power incision ON (A_c {:.0} cells = 7.6 km²), droplets OFF", a_c_cells);
+    }
     // Land report FIRST (reads only `target_land_fraction`) so the seam-correct
     // torus centre of the largest mass is known before we choose the sampling roll.
     let land = c1_coarse_land_report(
