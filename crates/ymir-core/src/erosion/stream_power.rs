@@ -64,10 +64,11 @@ pub struct StreamPowerConfig {
 }
 
 /// Relief-v1 reference: physical critical drainage area (km²) for the channel head.
-/// Stored in KM² and converted to cells per resolution — a cells-based `A_c` is NOT
-/// resolution-stable (proven at 8192²: 50 cells = 7.6 km² at 1024² but 0.12 km² at
-/// 8192², so headwaters over-carved). See docs/adr/0001.
-pub const RELIEF_V1_A_C_KM2: f32 = 7.6;
+/// Stored in KM², converted to cells per resolution (a cells-based `A_c` is not
+/// resolution-stable). **0.1 km²** — a realistic humid-temperate drainage density; the
+/// earlier 7.6 km² put channel heads far too low, leaving the upper massif slopes
+/// undissected (channels reached only ~7–9 % of peak vs ~94 % now). See docs/adr/0001.
+pub const RELIEF_V1_A_C_KM2: f32 = 0.1;
 
 impl StreamPowerConfig {
     /// The `ref/relief-streampower-v1` reference config (ADR 0001) — the first
@@ -85,7 +86,8 @@ impl StreamPowerConfig {
             m: 0.5,
             n: 1.0,
             dt: 1.0,
-            iterations: 3,
+            iterations: 2, // bounded incision → floors sit at a plausible fraction of
+            // the local ridge (iters=3 planed them toward base level). See ADR §sculpt.
             sea_level: 0.5,
             diffusion: 0.05,
             diffusion_substeps: 4,
@@ -97,11 +99,11 @@ impl StreamPowerConfig {
     }
 }
 
-/// Relief-v1 erodibility K in the PHYSICAL law (`E = K·A_km²^m·S_phys^n`, A in km²,
-/// S = Δh_m/dist_m). Recalibrated from the old normalised-slope K=3: **K=3000
-/// reproduces the reference exactly** (1024², domain 400 km: drainage relief 682 m,
-/// per-order S1=25 S2=414 S3=307 S4=136 — identical to normalised K=3). See ADR 0001 §D.
-pub const RELIEF_V1_K: f32 = 3000.0;
+/// Relief-v1 erodibility K in the PHYSICAL law (`E = K·A_km²^m·S_phys^n`). **1500** —
+/// half the incision-reproducing K=3000, the "bounded incision" that keeps valley
+/// floors at a plausible fraction of the local ridge (with iters=2) instead of
+/// planing them to base level. See ADR 0001 §sculpt.
+pub const RELIEF_V1_K: f32 = 1500.0;
 
 impl Default for StreamPowerConfig {
     fn default() -> Self {

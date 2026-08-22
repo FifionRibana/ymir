@@ -1175,6 +1175,167 @@ fn calibrate_k_physical() {
     }
 }
 
+/// STEP A+B — render the RECOMMENDED sculpt config (A_c=0.1 km², iters=2, K×0.5) at
+/// 2048² + 8192² (where low A_c is resolvable), report upper-slope dissection +
+/// floor/ridge + per-order, and the basin-area distribution for navigability (TASK 4).
+#[test]
+#[ignore]
+fn sculpt_render() {
+    use std::path::Path;
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{RELIEF_V1_K, StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let domain = 400.0f32;
+    let base = ss.depth_scale_m as f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    std::fs::create_dir_all(&dir).unwrap();
+    eprintln!("\n=== STEP A+B — recommended sculpt (A_c=0.1 km², iters=2, K×0.5, amp 0.04) ===");
+    for t in [2048usize, 8192usize] {
+        let cell_km2 = (domain / t as f32).powi(2);
+        let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+        fc.erosion = None;
+        fc.bathymetry = None;
+        fc.amplitude_base = 0.04; // reduced FBM (visual review)
+        let t0 = Instant::now();
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        let mut cfg = StreamPowerConfig::relief_v1(cell_km2, base);
+        cfg.min_area_cells = 0.1 / cell_km2;
+        cfg.iterations = 2;
+        cfg.k = RELIEF_V1_K * 0.5;
+        let sp = incise(&fbm, &cfg);
+        let sp_ms = t0.elapsed().as_millis();
+        let hs = hillshade(&sp, domain, base);
+        hs.save_png_u8(&dir.join(format!("recommended_{t}.png"))).unwrap();
+        let (w, hh) = (sp.width, sp.height);
+        let (x0, y0, cw, ch) = (w / 2 - w / 8, hh / 2 - hh / 8, w / 4, hh / 4);
+        let mut crop = GridF32::new(cw, ch, 0.0);
+        for j in 0..ch {
+            for i in 0..cw {
+                crop.data[j * cw + i] = hs.data[(y0 + j) * w + (x0 + i)];
+            }
+        }
+        crop.save_png_u8(&dir.join(format!("recommended_{t}_crop.png"))).unwrap();
+
+        let sm: Vec<f32> = sp.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let peak = sm.iter().cloned().fold(f32::MIN, f32::max);
+        let dr = c1_drainage(&sp, None, &C1DrainageConfig::default(), &ss);
+        let a_c = cfg.min_area_cells;
+        let mut chan_elev: Vec<f32> = (0..w * hh).filter(|&k| dr.flow.accumulation.data[k] >= a_c && sp.data[k] > SEA).map(|k| sm[k]).collect();
+        chan_elev.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let (p90, mx) = if chan_elev.is_empty() { (0.0, 0.0) } else { (chan_elev[chan_elev.len() * 9 / 10], *chan_elev.last().unwrap()) };
+        let dens = chan_elev.len() as f32 * (domain / t as f32) / ((0..w * hh).filter(|&k| sp.data[k] > SEA).count() as f32 * cell_km2).max(1.0);
+        let (tab, _) = per_order_incision(&fbm, &sp, &ss);
+        eprintln!(
+            "  {t}²: SP {sp_ms} ms, peak {peak:.0} m | channels reach p90 {:.0}% / max {:.0}% of peak | \
+             drain.dens {dens:.2} km/km² | {}",
+            p90 / peak * 100.0, mx / peak * 100.0, fmt_orders(&tab),
+        );
+        // TASK 4 — basin-area distribution (mouth segments = downstream None).
+        let mut mouths: Vec<f32> = dr.rivers.segments.iter().enumerate()
+            .filter(|(_, s)| s.downstream.is_none())
+            .map(|(i, _)| dr.segment_drainage_km2[i]).collect();
+        mouths.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        if !mouths.is_empty() {
+            let (mmax, p90b, p50b) = (mouths[mouths.len() - 1], mouths[mouths.len() * 9 / 10], mouths[mouths.len() / 2]);
+            eprintln!("       basin area @mouths: max {mmax:.0} km², p90 {p90b:.0}, p50 {p50b:.0} ({} mouths)", mouths.len());
+        }
+    }
+    eprintln!("  renders → {}", dir.display());
+}
+
+/// TASK 1+2 — A_c × incision grid on the author's seed: does lowering A_c dissect the
+/// UPPER slopes, and does bounding incision stop floors being planed to base level?
+/// Metrics: drainage density (km/km²), channel-head reach (p90 channel elevation as %
+/// of peak), floor/local-ridge ratio, per-order incision. 1024², domain 400 km.
+#[test]
+#[ignore]
+fn sculpt_grid() {
+    use ymir_core::erosion::stream_power::{RELIEF_V1_K, StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (1024usize, 400.0f32);
+    let cell_km = domain / t as f32;
+    let cell_km2 = cell_km * cell_km;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let fm: Vec<f32> = fbm.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+    let peak = fm.iter().cloned().fold(f32::MIN, f32::max);
+    let (w, h) = (t, t);
+    eprintln!("\n=== TASK 1+2 — A_c × incision grid (seed {seed_u}, 1024², peak {peak:.0} m) ===");
+    eprintln!("  A_c km² | iters | K× | drain.dens km/km² | head reach %peak | floor/ridge | relief m | per-order");
+
+    let mut run = |a_c_km2: f32, iters: usize, kmult: f32| {
+        let mut cfg = StreamPowerConfig::relief_v1(cell_km2, ss.depth_scale_m as f32);
+        cfg.min_area_cells = a_c_km2 / cell_km2;
+        cfg.k = RELIEF_V1_K * kmult;
+        cfg.iterations = iters;
+        let sp = incise(&fbm, &cfg);
+        let sm: Vec<f32> = sp.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let dr = c1_drainage(&sp, None, &C1DrainageConfig::default(), &ss);
+        let a_c = cfg.min_area_cells;
+        // channel cells (A≥A_c land) — density + head reach.
+        let chan: Vec<usize> = (0..w * h).filter(|&k| dr.flow.accumulation.data[k] >= a_c && sp.data[k] > SEA).collect();
+        let land = (0..w * h).filter(|&k| sp.data[k] > SEA).count();
+        let dens = chan.len() as f32 * cell_km / (land as f32 * cell_km2).max(1.0);
+        let mut chan_elev: Vec<f32> = chan.iter().map(|&k| sm[k]).collect();
+        chan_elev.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let head_p90 = if chan_elev.is_empty() { 0.0 } else { chan_elev[chan_elev.len() * 9 / 10] };
+        // floor/local-ridge: for channel cells, ridge = max elev in ±10; median ratio + relief.
+        let (mut ratios, mut reliefs) = (Vec::new(), Vec::new());
+        for &k in chan.iter().step_by(7) {
+            let (x, y) = (k % w, k / w);
+            let mut ridge = sm[k];
+            for dy in -10i32..=10 {
+                for dx in -10i32..=10 {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    if nx >= 0 && ny >= 0 && nx < w as i32 && ny < h as i32 {
+                        ridge = ridge.max(sm[ny as usize * w + nx as usize]);
+                    }
+                }
+            }
+            if ridge > 1.0 {
+                ratios.push(sm[k] / ridge);
+                reliefs.push(ridge - sm[k]);
+            }
+        }
+        let med = |v: &mut Vec<f32>| {
+            if v.is_empty() {
+                return 0.0;
+            }
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            v[v.len() / 2]
+        };
+        let (tab, _) = per_order_incision(&fbm, &sp, &ss);
+        eprintln!(
+            "  {a_c_km2:>6.2} | {iters:>5} | {kmult:>3.1} | {dens:>16.2} | {:>15.0} | {:>11.2} | {:>7.0} | {}",
+            head_p90 / peak * 100.0,
+            med(&mut ratios),
+            med(&mut reliefs),
+            fmt_orders(&tab),
+        );
+    };
+
+    eprintln!("-- TASK 1: A_c sweep (iters=3, K×1.0) — does the network reach the upper slopes? --");
+    for a_c in [0.05f32, 0.1, 0.25, 0.5, 1.0] {
+        run(a_c, 3, 1.0);
+    }
+    eprintln!("-- TASK 2: incision bound at A_c=0.1 — do floors stop being planed? --");
+    for (it, km) in [(3usize, 1.0f32), (2, 0.5), (1, 1.0), (1, 0.5)] {
+        run(0.1, it, km);
+    }
+    eprintln!("  (want: head reach → high % of peak (upper slopes dissected); floor/ridge NOT ~0 (not planed);");
+    eprintln!("   drainage density plausible ~0.5–3 km/km²)");
+}
+
 /// TASK 2 — striation metric via a DIRECTIONAL POWER SPECTRUM. The old ±8 roughness
 /// ratio failed because the window (~16 cells) was the size of the ~8–11 cell period
 /// it tried to resolve. Here: on steep cells, extract a length-`win` (≥32) profile
@@ -1335,7 +1496,8 @@ fn striation_metric(field: &GridF32, slope: &[f32], min_deg: f32) -> (f32, f32, 
 fn relief_v1_regression() {
     use ymir_core::erosion::stream_power::{RELIEF_V1_A_C_KM2, StreamPowerConfig, incise};
     let ss = SteinSteinParams::default();
-    let (t, domain) = (1024usize, 400.0f32);
+    // 2048² (A_c=0.1 km² is sub-cell at 1024²) + amp 0.04 = the recommended config.
+    let (t, domain) = (2048usize, 400.0f32);
     let cell_km2 = (domain / t as f32).powi(2);
     let base = ss.depth_scale_m as f32;
     let a_c = RELIEF_V1_A_C_KM2 / cell_km2;
@@ -1345,6 +1507,7 @@ fn relief_v1_regression() {
     let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
     fcfg.erosion = None;
     fcfg.bathymetry = None;
+    fcfg.amplitude_base = 0.04;
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
     let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2, ss.depth_scale_m as f32));
 
@@ -1357,19 +1520,19 @@ fn relief_v1_regression() {
     let s2 = tab.iter().find(|(o, _)| *o == 2).map(|(_, m)| *m).unwrap_or(0.0);
     let s4 = tab.iter().find(|(o, _)| *o == 4).map(|(_, m)| *m).unwrap_or(0.0);
     eprintln!(
-        "relief-v1 @1024²: drainage relief {relief:.0} m, valley floor<5° {vf5_km:.0} km², \
-         largest flank {l1} cells, per-order {}",
+        "relief-v1 @2048² (A_c=0.1, iters=2, K=1500, amp 0.04): drainage relief {relief:.0} m, \
+         valley floor<5° {vf5_km:.0} km², largest flank {l1} cells, per-order {}",
         fmt_orders(&tab),
     );
-    // Tightened bounds around the exact reference (rebased after the physical-slope
-    // change — which reproduces the reference exactly at K=3000, so the numbers did
-    // NOT move: relief 682, S2 414, S4 136, valley floor 688, flank 4677). Ranges are
-    // ±~15–20 % to catch silent degradation, NOT loosened to pass.
-    assert!((580.0..=780.0).contains(&relief), "drainage relief {relief} m out of [580,780] (ref 682)");
-    assert!((340.0..=490.0).contains(&s2), "S2 incision {s2} m out of [340,490] (ref 414)");
-    assert!((100.0..=180.0).contains(&s4), "S4 incision {s4} m out of [100,180] (ref 136)");
-    assert!((560.0..=820.0).contains(&vf5_km), "valley floor<5° {vf5_km} km² out of [560,820] (ref 688)");
-    assert!(l1 > 3000, "largest steep flank {l1} cells (<3000 ⇒ degraded; ref 4677)");
+    // REBASED to the sculpt reference (A_c=0.1 km², iters=2, K=1500, amp 0.04, seed 42,
+    // 2048²): relief 397 m, valley floor<5° 5142 km², flank 113909 cells, S2 344, S4
+    // 162. Ranges are tight (±~20 %) around these measured values, NOT loosened — they
+    // catch silent degradation of the shipped sculpt config.
+    assert!((320.0..=480.0).contains(&relief), "drainage relief {relief} m out of [320,480] (ref 397)");
+    assert!((280.0..=420.0).contains(&s2), "S2 incision {s2} m out of [280,420] (ref 344)");
+    assert!((120.0..=210.0).contains(&s4), "S4 incision {s4} m out of [120,210] (ref 162)");
+    assert!((4000.0..=6500.0).contains(&vf5_km), "valley floor<5° {vf5_km} km² out of [4000,6500] (ref 5142)");
+    assert!(l1 > 60000, "largest steep flank {l1} cells (<60000 ⇒ degraded; ref 113909)");
 }
 
 /// Per-cell surface slope in DEGREES (central differences; `depth_scale` is the

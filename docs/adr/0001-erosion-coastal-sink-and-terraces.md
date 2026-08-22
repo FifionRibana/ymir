@@ -219,6 +219,54 @@ cells) read as "legible" or "over-incised" is now an author visual call.
 
 ---
 
+## Finding 6 — Sculpting: A_c too large + no incision bound (the "not sculpted" report)
+
+The first relief-v1 (A_c=7.6 km², iters=3, K=3000) produced an UNSCULPTED massif — no
+valleys/ridges perpendicular to the range, channel floors at 55–150 m under 3000 m
+flanks, and the FBM pattern surviving on the upper slopes. Two root causes, both
+measured:
+
+- **A_c far too large.** 7.6 km² channel-head area put channel heads very low, so the
+  UPPER SLOPES received hillslope diffusion only — no fluvial incision (channels
+  reached only **7–9 % of peak elevation**). Lowering A_c to **0.1 km²** (a realistic
+  humid-temperate drainage density; 76× lower) dissects the whole massif: channels now
+  reach **94 % of peak**, drainage density 2.79 km/km² @8192². NOTE: A_c must be
+  resolvable — 0.1 km² is sub-cell below ~2048² (it needs ~2.6 cells @2048², 42 @8192²).
+- **No incision bound (floors planed to base level).** Stream power ran on a static
+  field with no uplift, so channels graded down to sea level. Since Ymir's tectonics
+  already did the uplift, the fix is to LIMIT total incision, not add U: iters 3→2 and
+  K 3000→**1500** lifts floor/local-ridge from 0.21 to ~0.48 (floors at ~half the local
+  ridge, not planed) while keeping deep valleys. Validated at 8192² (SP 22.7 s).
+
+**W/D still widens downstream** (Finding 5 property preserved). Recommended sculpt =
+`relief_v1`: A_c 0.1 km², iters 2, K 1500, m 0.5, n 1, D 0.05, uncoupled, FBM
+`amplitude_base ≈ 0.04`. Renders for the author's visual review: `exports/sculpt/`
+(2048² + 8192² + crops). Still OFF by default (checkbox) pending that review.
+
+**Navigability (Finding 4 follow-up) — re-anchor on the measured basins.** The
+generated continent's basin area at river mouths: **max ~12–13 000 km² (Thames-scale),
+p90 ~300–500, p50 ~50 km²** (≈500–700 mouths). The Earth-calibrated thresholds
+(small_boat 500 / barge 5 000 / ship 50 000) leave almost everything non-navigable
+(ship unreachable by construction on a ~40 000 km² island; only the single trunk hits
+barge) — matching the "only small boats" report. **Proposal: keep ABSOLUTE km²
+thresholds (navigability is physical river size) but LOWER them, anchored just below
+the measured max so the distribution populates every class: stream 10 / small_boat 100
+/ barge 1 000 / ship 8 000 km².** Then p50 (~50) → small_boat, p90 (~400) → barge, the
+~13 000 trunk → ship-class. Absolute (not domain-scaled) because a given river size
+should classify the same on any map; lowered because a Thames-scale continent cannot
+meet Earth's 50 000 km² ship bar. Not applied (default unchanged) pending review.
+
+**Valley-type variety (lithology-K) — availability.** There is NO lithology / geology
+/ erodibility field in core; the only spatial rock proxy at the HD stage is the BINARY
+cratonic mask (`state.cratonic_mask`, coarse 64²). So a rich multi-class lithology-K is
+not available. Cheapest path (proposed, not built): upscale the cratonic mask to HD and
+derive a 2-class K (craton → low-K hard/narrow gorges, else → high-K soft/wide
+valleys), passed to `incise` as a per-cell K field. A richer palette needs a new
+tectonic lithology field — out of scope here. Deferred until the base sculpt is
+visually confirmed.
+
+---
+
 ## Finding 5 — FBM shrinks to a symmetry-breaking seed; width widens downstream; incision is resolution-dependent
 
 **The reframe (why this is possible now).** 64² → 8192² is 128× per axis, so pure
