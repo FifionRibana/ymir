@@ -1175,6 +1175,58 @@ fn calibrate_k_physical() {
     }
 }
 
+/// CLOSURE STEP 1 (read-only) — confirm the missing bounding closure. Reports the
+/// land slope distribution (share > 30/35/40/45°, max) for (a) the raw FBM, (b) the
+/// relief_v1 sculpt, at the review amp 0.04 AND the default amp 0.16, plus the >30°
+/// flank contiguity. If slopes far exceed a plausible angle of repose (~33°), the
+/// closure that bounds them (nonlinear hillslope diffusion with critical slope) is
+/// missing — the finding that justifies the chantier. 2048², domain 400 km, no
+/// pipeline change.
+#[test]
+#[ignore]
+fn step1_slope_distribution() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (2048usize, 400.0f32);
+    let base = ss.depth_scale_m as f32;
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+
+    let bins = |slope: &[f32], field: &GridF32| -> (f32, f32, f32, f32, f32) {
+        let land: Vec<f32> =
+            (0..field.data.len()).filter(|&k| field.data[k] > SEA).map(|k| slope[k]).collect();
+        let n = land.len().max(1) as f32;
+        let frac = |thr: f32| land.iter().filter(|&&s| s > thr).count() as f32 / n * 100.0;
+        let mx = land.iter().cloned().fold(0.0f32, f32::max);
+        (frac(30.0), frac(35.0), frac(40.0), frac(45.0), mx)
+    };
+
+    eprintln!("\n=== CLOSURE STEP 1 — land slope distribution (seed {seed_u}, {t}², {domain} km) ===");
+    eprintln!("  stage           amp | >30° | >35° | >40° | >45° |  max° | >30° largest flank (cells)");
+    for amp in [0.16f32, 0.04] {
+        let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+        fc.erosion = None;
+        fc.bathymetry = None;
+        fc.amplitude_base = amp as f64;
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        let cfg = StreamPowerConfig::relief_v1(cell_km2, base);
+        let sp = incise(&fbm, &cfg);
+        for (label, field) in [("FBM (raw)", &fbm), ("relief_v1 sculpt", &sp)] {
+            let slope = slope_deg_field(field, domain, base);
+            let (a30, a35, a40, a45, mx) = bins(&slope, field);
+            let (_, big, _) = flank_contiguity(&slope, field.width, field.height);
+            eprintln!(
+                "  {label:<16}{amp:>4.2} | {a30:>4.1} | {a35:>4.1} | {a40:>4.1} | {a45:>4.1} | {mx:>5.1} | {big}",
+            );
+        }
+    }
+    eprintln!("  (angle of repose ~33°; slopes far above it with no clustering into arêtes = the");
+    eprintln!("   bounding closure — nonlinear hillslope diffusion with critical slope — is absent)");
+}
+
 /// STEP A+B — render the RECOMMENDED sculpt config (A_c=0.1 km², iters=2, K×0.5) at
 /// 2048² + 8192² (where low A_c is resolvable), report upper-slope dissection +
 /// floor/ridge + per-order, and the basin-area distribution for navigability (TASK 4).
