@@ -1246,6 +1246,452 @@ fn calibrate_k_physical() {
 ///   [ v1 2048 | v2 2048 | v2 2048 amp0.01 ]
 ///   [ (blank) | v2 8192 | v2 8192 amp0.02 ]
 /// Run `closure_render` FIRST so the crops exist. Read-only (loads PNGs).
+/// Axial (0..π) orientation concentration of a set of angles: `R = |mean(e^{i2θ})|`
+/// (1 = all aligned, 0 = uniform) + a 12-bin histogram (fractions). Used to test the
+/// striation source: high `R` in the GRID frame ⇒ grid-aligned (D8 routing); high `R`
+/// in the LOCAL-GRADIENT frame ⇒ relief-aligned (anisotropic FBM). A grid-frame test
+/// ALONE cannot tell them apart, hence both frames.
+fn axial_concentration(angles: &[f32]) -> (f32, [f32; 12]) {
+    if angles.is_empty() {
+        return (0.0, [0.0; 12]);
+    }
+    let (mut cx, mut cy) = (0.0f64, 0.0f64);
+    let mut bins = [0.0f32; 12];
+    for &a in angles {
+        let t = (a.rem_euclid(std::f32::consts::PI)) as f64;
+        cx += (2.0 * t).cos();
+        cy += (2.0 * t).sin();
+        let b = ((t / std::f64::consts::PI * 12.0) as usize).min(11);
+        bins[b] += 1.0;
+    }
+    let n = angles.len() as f64;
+    let r = ((cx / n).powi(2) + (cy / n).powi(2)).sqrt() as f32;
+    for v in bins.iter_mut() {
+        *v /= angles.len() as f32;
+    }
+    (r, bins)
+}
+
+/// CLOSURE STEP 1 (read-only) — DISCRIMINATE the 8192² striation source: D8 routing vs
+/// anisotropic FBM. (1a) two-frame orientation histograms of channel segments at 2048²
+/// and 8192² — grid frame (D8 ⇒ peaks at 0/45/90/135°) vs local-gradient frame (FBM ⇒
+/// peaks relative to slope). (1b) the FREE ABLATION: relief-v2 at 8192² with isotropic,
+/// slope-blind noise (`max_anisotropy=1`, `amplitude_slope_factor=0`) vs the anisotropic
+/// default — if the comb dies, it is the FBM and no routing rewrite is needed. Saves
+/// iso/aniso 8192² crops for the eye. No flow.rs change.
+#[test]
+#[ignore]
+fn striation_source() {
+    use std::path::Path;
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let domain = 400.0f32;
+    let base = ss.depth_scale_m as f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // Build a relief-v2 field at (res, amp), optionally with ISOTROPIC slope-blind FBM.
+    let build = |res: usize, amp: f64, iso: bool| -> GridF32 {
+        let mut fc = FbmUpscaleConfig::c1_hd_production(res);
+        fc.erosion = None;
+        fc.bathymetry = None;
+        fc.amplitude_base = amp;
+        if iso {
+            fc.max_anisotropy = 1.0; // no directional stretching
+            fc.amplitude_slope_factor = 0.0; // amplitude independent of slope
+        }
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        let cell_km2 = (domain / res as f32).powi(2);
+        incise(&fbm, &StreamPowerConfig::relief_v2(cell_km2, base))
+    };
+
+    // ── (1a) Two-frame channel-segment orientations at 2048² and 8192². ──
+    let seg_orient = |f: &GridF32| -> (Vec<f32>, Vec<f32>) {
+        let (w, h) = (f.width, f.height);
+        let dr = c1_drainage(f, None, &C1DrainageConfig::default(), &ss);
+        let (mut grid, mut rel) = (Vec::new(), Vec::new());
+        for s in &dr.rivers.segments {
+            for win in s.points.windows(2) {
+                let (x0, y0) = (win[0].0 as i32, win[0].1 as i32);
+                let (dx, dy) = ((win[1].0 as i32 - x0) as f32, (win[1].1 as i32 - y0) as f32);
+                if dx == 0.0 && dy == 0.0 {
+                    continue;
+                }
+                let seg = dy.atan2(dx);
+                grid.push(seg);
+                // local gradient (central diff, clamped to interior).
+                let (xi, yi) =
+                    (x0.clamp(1, w as i32 - 2) as usize, y0.clamp(1, h as i32 - 2) as usize);
+                let k = yi * w + xi;
+                let gx = f.data[k + 1] - f.data[k - 1];
+                let gy = f.data[k + w] - f.data[k - w];
+                if gx == 0.0 && gy == 0.0 {
+                    continue;
+                }
+                rel.push(seg - gy.atan2(gx));
+            }
+        }
+        (grid, rel)
+    };
+
+    eprintln!("\n=== CLOSURE STEP 1 — striation source (seed {seed_u}) ===");
+    eprintln!("-- (1a) channel-segment orientation concentration R (1=aligned, 0=uniform) --");
+    eprintln!("   res  | R_grid | R_gradrel | grid histogram (0°..180°, 15° bins)");
+    for res in [2048usize, 8192] {
+        let f = build(res, 0.04, false);
+        let (grid, rel) = seg_orient(&f);
+        let (rg, bins) = axial_concentration(&grid);
+        let (rr, _) = axial_concentration(&rel);
+        let hb = bins.iter().map(|b| format!("{:.2}", b)).collect::<Vec<_>>().join(" ");
+        eprintln!("  {res:>5} | {rg:>6.3} | {rr:>9.3} | {hb}");
+    }
+    eprintln!(
+        "   (D8 ⇒ high R_grid, peaks at bins 0/3/6/9 = 0/45/90/135°; FBM ⇒ R_gradrel > R_grid)"
+    );
+
+    // ── (1b) The free ablation at 8192²: isotropic vs anisotropic FBM. ──
+    eprintln!("\n-- (1b) ablation @8192²: isotropic slope-blind FBM vs anisotropic default --");
+    eprintln!("   variant     | >30° | max° | upper-slope striation contour/gradient power");
+    let (fx, fy, fw) = (0.22f32, 0.03f32, 0.34f32);
+    for (label, iso) in [("anisotropic", false), ("isotropic", true)] {
+        let t0 = Instant::now();
+        let f = build(8192, 0.04, iso);
+        let ms = t0.elapsed().as_millis();
+        let slope = slope_deg_field(&f, domain, base);
+        let sm: Vec<f32> = f.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let land: Vec<usize> = (0..f.data.len()).filter(|&k| f.data[k] > SEA).collect();
+        let n = land.len().max(1) as f32;
+        let a30 = land.iter().filter(|&&k| slope[k] > 30.0).count() as f32 / n * 100.0;
+        let mx = land.iter().map(|&k| slope[k]).fold(0.0f32, f32::max);
+        let mut le: Vec<f32> = land.iter().map(|&k| sm[k]).collect();
+        le.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let e60 = le[le.len() * 6 / 10];
+        let upper: Vec<f32> =
+            (0..f.data.len()).map(|k| if sm[k] >= e60 { slope[k] } else { 0.0 }).collect();
+        let (_, aniso_pow) = striation_spectrum(&f, &upper, 20.0, 48);
+        eprintln!("   {label:<11} | {a30:>4.1}% | {mx:.0} | {aniso_pow:.2}  ({ms} ms)");
+        // Save the massif crop for the eye.
+        let hs = hillshade(&f, domain, base);
+        let (w, hh) = (f.width, f.height);
+        let (cx0, cy0, cw) =
+            ((fx * w as f32) as usize, (fy * hh as f32) as usize, (fw * w as f32) as usize);
+        let mut crop = GridF32::new(cw, cw, 0.5);
+        for j in 0..cw {
+            for i in 0..cw {
+                if cx0 + i < w && cy0 + j < hh {
+                    crop.data[j * cw + i] = hs.data[(cy0 + j) * w + (cx0 + i)];
+                }
+            }
+        }
+        crop.save_png_u8(&dir.join(format!("striation_8192_{label}.png"))).unwrap();
+    }
+    eprintln!("   → crops: exports/sculpt/striation_8192_anisotropic.png / _isotropic.png");
+    eprintln!("   (comb dies with isotropic ⇒ FBM is the source, no routing rewrite needed)");
+}
+
+/// CLOSURE STEP 1 (cont.) — isolate WHERE the 8192² contour-terraces are born: the FBM
+/// upscale, or the erosion. Renders hillshade crops of the RAW FBM (pre-incision) and
+/// the post relief-v2 field at 8192², isotropic slope-blind noise, + the upper-slope
+/// striation power of each. If the terraces are already in the raw FBM → the upscale;
+/// if they appear only after incision → the erosion coupling. No pipeline change.
+#[test]
+#[ignore]
+fn striation_stage() {
+    use std::path::Path;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base, res) = (400.0f32, ss.depth_scale_m as f32, 8192usize);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    let (fx, fy, fw) = (0.22f32, 0.03f32, 0.34f32);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(res);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    fc.max_anisotropy = 1.0;
+    fc.amplitude_slope_factor = 0.0;
+    let raw = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let cell_km2 = (domain / res as f32).powi(2);
+    let post = incise(&raw, &StreamPowerConfig::relief_v2(cell_km2, base));
+
+    eprintln!("\n=== CLOSURE STEP 1 — terrace stage @8192² isotropic (upscale vs erosion) ===");
+    eprintln!("   stage            | >30° | upper-slope striation contour/gradient power");
+    for (label, f) in [("raw FBM (pre)", &raw), ("relief-v2 (post)", &post)] {
+        let slope = slope_deg_field(f, domain, base);
+        let sm: Vec<f32> = f.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let land: Vec<usize> = (0..f.data.len()).filter(|&k| f.data[k] > SEA).collect();
+        let n = land.len().max(1) as f32;
+        let a30 = land.iter().filter(|&&k| slope[k] > 30.0).count() as f32 / n * 100.0;
+        let mut le: Vec<f32> = land.iter().map(|&k| sm[k]).collect();
+        le.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let e60 = le[le.len() * 6 / 10];
+        let upper: Vec<f32> =
+            (0..f.data.len()).map(|k| if sm[k] >= e60 { slope[k] } else { 0.0 }).collect();
+        let (_, pow) = striation_spectrum(f, &upper, 20.0, 48);
+        eprintln!("   {label:<16} | {a30:>4.1}% | {pow:.2}");
+        let hs = hillshade(f, domain, base);
+        let (w, hh) = (f.width, f.height);
+        let (cx0, cy0, cw) =
+            ((fx * w as f32) as usize, (fy * hh as f32) as usize, (fw * w as f32) as usize);
+        let mut crop = GridF32::new(cw, cw, 0.5);
+        for j in 0..cw {
+            for i in 0..cw {
+                if cx0 + i < w && cy0 + j < hh {
+                    crop.data[j * cw + i] = hs.data[(cy0 + j) * w + (cx0 + i)];
+                }
+            }
+        }
+        let tag = if label.starts_with("raw") { "rawfbm" } else { "post" };
+        crop.save_png_u8(&dir.join(format!("striation_stage_{tag}.png"))).unwrap();
+    }
+    eprintln!("   → crops: exports/sculpt/striation_stage_rawfbm.png / _post.png");
+}
+
+/// CLOSURE STEP 1 (verdict) — the terrace source is the FBM's FINEST OCTAVES. With 7
+/// octaves + base_frequency 1.0 the finest octave is ~390 m (≈8 px @8192², ≈2 px
+/// @2048²): sub-resolution at 2048² (aliased away → clean), fully resolved at 8192²
+/// where the drainage carves it into a ~390 m comb. Reducing the octave count coarsens
+/// the finest detail (→ 1.5–3 km) so the drainage template gives legible valleys at
+/// 8192². Reports raw-FBM + post-relief-v2 steep share & striation for octaves 7/5/4 at
+/// 8192², saves post crops. No pipeline change.
+#[test]
+#[ignore]
+fn fbm_octave_ablation() {
+    use std::path::Path;
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base, res) = (400.0f32, ss.depth_scale_m as f32, 8192usize);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    let (fx, fy, fw) = (0.22f32, 0.03f32, 0.34f32);
+    let cell_km2 = (domain / res as f32).powi(2);
+
+    let steep = |f: &GridF32, slope: &[f32]| -> (f32, f32) {
+        let land: Vec<usize> = (0..f.data.len()).filter(|&k| f.data[k] > SEA).collect();
+        let n = land.len().max(1) as f32;
+        (
+            land.iter().filter(|&&k| slope[k] > 30.0).count() as f32 / n * 100.0,
+            land.iter().map(|&k| slope[k]).fold(0.0f32, f32::max),
+        )
+    };
+
+    eprintln!("\n=== CLOSURE STEP 1 — FBM octave ablation @8192² (the terrace lever) ===");
+    eprintln!("   octaves | finest λ | raw >30° | post >30° | post striation | post max°");
+    for oct in [7usize, 5, 4] {
+        let mut fc = FbmUpscaleConfig::c1_hd_production(res);
+        fc.erosion = None;
+        fc.bathymetry = None;
+        fc.amplitude_base = 0.04;
+        fc.octaves = oct;
+        let raw = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        let (raw30, _) = steep(&raw, &slope_deg_field(&raw, domain, base));
+        let t0 = Instant::now();
+        let post = incise(&raw, &StreamPowerConfig::relief_v2(cell_km2, base));
+        let ms = t0.elapsed().as_millis();
+        let slope = slope_deg_field(&post, domain, base);
+        let (p30, mx) = steep(&post, &slope);
+        let sm: Vec<f32> = post.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let mut le: Vec<f32> =
+            (0..post.data.len()).filter(|&k| post.data[k] > SEA).map(|k| sm[k]).collect();
+        le.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let e60 = le[le.len() * 6 / 10];
+        let upper: Vec<f32> =
+            (0..post.data.len()).map(|k| if sm[k] >= e60 { slope[k] } else { 0.0 }).collect();
+        let (_, pow) = striation_spectrum(&post, &upper, 20.0, 48);
+        // finest octave wavelength in target px @8192: nscale=base_freq*1024/src_max²,
+        // finest freq = nscale*lac^(oct-1) cyc/coarse-cell; coarse cell = res/64 px.
+        let nscale = 1.0 * 1024.0 / (64.0f64 * 64.0);
+        let finest_cyc = nscale * 2.0f64.powi(oct as i32 - 1);
+        let lam_px = (res as f64 / 64.0) / finest_cyc;
+        eprintln!(
+            "   {oct:>7} | {lam_px:>5.0} px | {raw30:>7.1}% | {p30:>8.1}% | {pow:>13.2} | {mx:.0}  ({ms} ms)"
+        );
+        let hs = hillshade(&post, domain, base);
+        let (w, hh) = (post.width, post.height);
+        let (cx0, cy0, cw) =
+            ((fx * w as f32) as usize, (fy * hh as f32) as usize, (fw * w as f32) as usize);
+        let mut crop = GridF32::new(cw, cw, 0.5);
+        for j in 0..cw {
+            for i in 0..cw {
+                if cx0 + i < w && cy0 + j < hh {
+                    crop.data[j * cw + i] = hs.data[(cy0 + j) * w + (cx0 + i)];
+                }
+            }
+        }
+        crop.save_png_u8(&dir.join(format!("octave_{oct}_8192.png"))).unwrap();
+    }
+    eprintln!("   → crops: exports/sculpt/octave_{{7,5,4}}_8192.png");
+    eprintln!("   (fewer octaves ⇒ coarser finest detail ⇒ the comb should clear at 8192²)");
+}
+
+/// CLOSURE STEP 1 (mechanism) — the 8192² comb is the SMITH–BRETHERTON parallel-rilling
+/// instability of detachment-limited stream power (E=K·A^m·S^n, m<1 unstable on smooth
+/// slopes), under-damped by hillslope diffusion at fine resolution. Its two physical
+/// controls are the diffusion strength (sets the characteristic hillslope length / valley
+/// spacing) and A_c (how much surface is channel vs diffusing hillslope). Sweeps both at
+/// 8192², reports steep share + upper-slope striation, saves crops. If stronger diffusion
+/// and/or larger A_c clear the comb → the fix is a resolution-scaled damping, not a
+/// routing rewrite. No pipeline change.
+#[test]
+#[ignore]
+fn rilling_sweep() {
+    use std::path::Path;
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base, res) = (400.0f32, ss.depth_scale_m as f32, 8192usize);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    let (fx, fy, fw) = (0.22f32, 0.03f32, 0.34f32);
+    let cell_km2 = (domain / res as f32).powi(2);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(res);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let raw = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+
+    eprintln!("\n=== CLOSURE STEP 1 — rilling-instability sweep @8192² (diffusion × A_c) ===");
+    eprintln!("   D_mult | A_c km² | >30° | upper-slope striation | max°");
+    // (diffusion multiplier vs relief_v2 default 0.15, A_c km²).
+    for (dmult, ac) in [(1.0f32, 0.1f32), (4.0, 0.1), (1.0, 0.5), (4.0, 0.5)] {
+        let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+        cfg.diffusion *= dmult;
+        cfg.min_area_cells = ac / cell_km2;
+        let t0 = Instant::now();
+        let post = incise(&raw, &cfg);
+        let ms = t0.elapsed().as_millis();
+        let slope = slope_deg_field(&post, domain, base);
+        let land: Vec<usize> = (0..post.data.len()).filter(|&k| post.data[k] > SEA).collect();
+        let n = land.len().max(1) as f32;
+        let a30 = land.iter().filter(|&&k| slope[k] > 30.0).count() as f32 / n * 100.0;
+        let mx = land.iter().map(|&k| slope[k]).fold(0.0f32, f32::max);
+        let sm: Vec<f32> = post.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let mut le: Vec<f32> = land.iter().map(|&k| sm[k]).collect();
+        le.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let e60 = le[le.len() * 6 / 10];
+        let upper: Vec<f32> =
+            (0..post.data.len()).map(|k| if sm[k] >= e60 { slope[k] } else { 0.0 }).collect();
+        let (_, pow) = striation_spectrum(&post, &upper, 20.0, 48);
+        eprintln!("   {dmult:>6.1} | {ac:>7.2} | {a30:>4.1}% | {pow:>21.2} | {mx:.0}  ({ms} ms)");
+        let hs = hillshade(&post, domain, base);
+        let (w, hh) = (post.width, post.height);
+        let (cx0, cy0, cw) =
+            ((fx * w as f32) as usize, (fy * hh as f32) as usize, (fw * w as f32) as usize);
+        let mut crop = GridF32::new(cw, cw, 0.5);
+        for j in 0..cw {
+            for i in 0..cw {
+                if cx0 + i < w && cy0 + j < hh {
+                    crop.data[j * cw + i] = hs.data[(cy0 + j) * w + (cx0 + i)];
+                }
+            }
+        }
+        crop.save_png_u8(&dir.join(format!("rill_d{dmult:.0}_ac{ac:.2}.png"))).unwrap();
+    }
+    eprintln!("   → crops: exports/sculpt/rill_d*_ac*.png");
+    eprintln!(
+        "   (comb clears with higher D and/or larger A_c ⇒ rilling instability, fixable by damping)"
+    );
+}
+
+/// CLOSURE STEP 1 (clean-room) — discriminate REAL rilling (Smith–Bretherton, follows
+/// the slope) from a GRID/solver artifact (follows grid axes), on a SMOOTH plane tilted
+/// DIAGONALLY at 30°, no FBM, no coarse pipeline. If the rills run along the 30° downslope
+/// direction → real physics (fix = damping/routing). If they snap to 0/45/90° in the grid
+/// → D8 routing and/or the Gauss-Seidel sweep artifact (fix = the algorithm). Reports the
+/// channel-segment orientation concentration in the GRID frame and RELATIVE to the known
+/// 30° slope, for relief-v1 (linear symmetric diffusion) vs relief-v2 (GS diffusion), and
+/// saves hillshade crops. 2048², fast.
+#[test]
+#[ignore]
+fn synthetic_slope_rilling() {
+    use std::path::Path;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let (t, domain, base) = (2048usize, 400.0f32, ss.depth_scale_m as f32);
+    let theta = 30.0f32.to_radians();
+    let (cth, sth) = (theta.cos(), theta.sin());
+    // Smooth plane descending along the 30° direction from 0.92 to 0.50, + tiny
+    // deterministic hash noise (amp 0.002) to seed rilling without imposing a direction.
+    let hash = |x: usize, y: usize| -> f32 {
+        let mut h =
+            (x as u32).wrapping_mul(374761393).wrapping_add((y as u32).wrapping_mul(668265263));
+        h = (h ^ (h >> 13)).wrapping_mul(1274126177);
+        ((h ^ (h >> 16)) as f32 / u32::MAX as f32) - 0.5
+    };
+    let diag_max = (t as f32) * (cth + sth);
+    let mut d = vec![0.0f32; t * t];
+    for y in 0..t {
+        for x in 0..t {
+            let proj = (x as f32 * cth + y as f32 * sth) / diag_max; // 0..1 down-slope
+            d[y * t + x] = 0.92 - 0.42 * proj + 0.002 * hash(x, y);
+        }
+    }
+    let plane = GridF32::from_vec(t, t, d);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    let cell_km2 = (domain / t as f32).powi(2);
+
+    let orient = |f: &GridF32| -> (f32, f32) {
+        let (w, h) = (f.width, f.height);
+        let dr = c1_drainage(f, None, &C1DrainageConfig::default(), &ss);
+        let (mut grid, mut rel) = (Vec::new(), Vec::new());
+        for s in &dr.rivers.segments {
+            for win in s.points.windows(2) {
+                let (dx, dy) = (
+                    (win[1].0 as i32 - win[0].0 as i32) as f32,
+                    (win[1].1 as i32 - win[0].1 as i32) as f32,
+                );
+                if dx == 0.0 && dy == 0.0 {
+                    continue;
+                }
+                let seg = dy.atan2(dx);
+                grid.push(seg);
+                rel.push(seg - theta); // relative to the KNOWN downslope direction
+            }
+        }
+        let _ = (w, h);
+        (axial_concentration(&grid).0, axial_concentration(&rel).0)
+    };
+
+    eprintln!(
+        "\n=== CLOSURE STEP 1 — synthetic 30°-tilted plane (real rilling vs grid artifact) ==="
+    );
+    eprintln!(
+        "   config   | R_grid | R_slope-rel | (high R_slope-rel ⇒ rills follow the 30° slope = REAL;"
+    );
+    eprintln!("            |        |             |  high R_grid at 0/90° ⇒ grid/solver artifact)");
+    for (label, v2) in [("relief-v1", false), ("relief-v2", true)] {
+        let cfg = if v2 {
+            StreamPowerConfig::relief_v2(cell_km2, base)
+        } else {
+            StreamPowerConfig::relief_v1(cell_km2, base)
+        };
+        let post = incise(&plane, &cfg);
+        let (rg, rr) = orient(&post);
+        eprintln!("   {label:<9} | {rg:>6.3} | {rr:>11.3}");
+        hillshade(&post, domain, base)
+            .save_png_u8(&dir.join(format!("synthplane_{label}.png")))
+            .unwrap();
+    }
+    eprintln!(
+        "   → crops: exports/sculpt/synthplane_relief-v{{1,2}}.png (30° slope; rills should run ↘)"
+    );
+}
+
 #[test]
 #[ignore]
 fn closure_mosaic() {

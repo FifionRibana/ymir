@@ -434,3 +434,51 @@ reference cell). Still OFF by default; the viz "Closures relief-v2" checkbox and
 diagnostics drive it. `relief_v1` is byte-identical (its regression baseline is
 unchanged, not rebased). A v2 regression baseline is deferred until the author's
 visual verdict on exports/sculpt/closure_* settles.
+
+## Finding 8 — The 8192² "comb" is the Smith–Bretherton rilling instability (not FBM, not D8)
+
+The relief-v2 closures (Finding 7) are validated at 2048² (author: dendritic valleys +
+arêtes, v1 comb gone) but a fine parallel "comb"/terracing returns at 8192². STEP 1
+(read-only) discriminated the source; four hypotheses were tested and **three refuted**:
+
+1. **D8 routing artifact** (refuted). Two-frame channel-segment orientation: R_grid ≈
+   0.02–0.05 with the four D8 axes near-equally populated, R_gradrel ≈ 0.02 — the network
+   is directionally ISOTROPIC, not grid-biased.
+2. **Anisotropic FBM** (refuted). Free ablation at 8192² with `max_anisotropy=1`,
+   `amplitude_slope_factor=0` (isotropic, slope-blind noise): >30° 33.7→33.5 %, striation
+   0.69→0.68 — identical. FBM directionality is not the source.
+3. **FBM fine octaves** (refuted). octaves 7→4 (finest λ 8 px→64 px @8192²): post >30°
+   33.7→33.1 %, striation 0.69→0.67 — the raw FBM is smooth (~5.5 % steep) regardless;
+   the EROSION imposes ~33 % steep regardless of input detail.
+4. **Smith–Bretherton parallel rilling** (CONFIRMED). On a SMOOTH plane tilted 30° off the
+   grid, no FBM, the incision spontaneously forms regularly-spaced parallel rills running
+   straight DOWNSLOPE (↘, diagonal — following the slope, NOT the grid axes; v1 symmetric
+   diffusion and v2 GS give the identical concentration R=0.19, exonerating the solver).
+   This is the classic linear instability of detachment-limited stream power `E=K·A^m·S^n`
+   (m<1) on smooth slopes, damped only by hillslope diffusion.
+
+It explains everything the other hypotheses could not: the isotropic segment histogram
+(slopes face all directions, so the rills do too, globally); the resolution dependence
+(finer cells resolve the instability's short wavelength → denser rills — at 2048² it is
+sub-resolution/aliased away, hence the clean preview); FBM-independence (the instability
+generates its own pattern from any perturbation); and why more diffusion (×4) AND a larger
+A_c (×5) did NOT clear it (the regime split EXCLUDES channel cells from diffusion, so the
+rills — which are channels — are never damped laterally).
+
+**Verdict for STEP 2 (act on this, not before).** The fix is not a parameter tweak and not
+an FBM change. The standard remedies for the Smith–Bretherton instability, in increasing
+blast radius:
+  - (i) **Cross-rill / whole-field diffusion** — stop excluding channel cells from the
+    hillslope diffusion (or add a small isotropic smoothing across the network), so the
+    diffusion sets a finite valley spacing that damps sub-threshold rills. Smallest change,
+    stays in stream_power.rs; risk: softens genuine narrow channels.
+  - (ii) **Multi-flow-direction (MFD) routing for the INCISION** — single-flow (D8)
+    over-concentrates and accentuates rilling; MFD disperses flow across downslope
+    neighbours and is the documented damper. Rewrites how accumulation/receivers feed the
+    incision; can be scoped to the incision only, keeping D8 for rivers/lakes (Finding 7's
+    blast-radius note applies if it spreads to the whole chain).
+  - (iii) **A transport-limited / depositional term** — inter-rill deposition fills the
+    incipient lows and damps the instability; the largest change (a sediment budget).
+Recommend prototyping (i) first (cheapest, testable on the synthetic plane), then (ii) if
+the plane still washboards. Diagnostics (all #[ignore], read-only): `striation_source`,
+`striation_stage`, `fbm_octave_ablation`, `rilling_sweep`, `synthetic_slope_rilling`.
