@@ -627,6 +627,88 @@ fn sink_density_matrix() {
     eprintln!("  (delta/beach survives while dep≤5c > 0; carvedΔ>0 with a deep histogram = real incision.)");
 }
 
+/// PART A — settle the terrace attribution on the AUTHOR'S banded map
+/// (seed 10481999410520546993, domain 400 km — domain only relabels km, not shape).
+/// The decisive, LL-free test: does the exported height.u16 vary CONTINUOUSLY, or
+/// show long runs of identical codes with sharp jumps (data-side plateaux)? Perfect
+/// level sets in the DATA ⇒ real terraces; smooth codes ⇒ the banding is a Living
+/// Landz DISPLAY issue and deposition/transport rework leaves this chantier's scope.
+#[test]
+#[ignore]
+fn part_a_bigmap_terrace() {
+    use ymir_core::export::height::metric_height_u16;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let t = 2048usize; // proxy for 8192²: u16-code continuity is ~scale-invariant
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let eroded = run_erosion(&fbm, &ero_cfg(t), &seed, |_, _, _| true).heightmap; // f=0.25 default
+
+    eprintln!("\n=== PART A — seed {seed_u} @ {t}² (author's banded map) ===");
+    // S̃ closure levels (same test as seed 42 — does it behave the same?).
+    let s = &state.s;
+    let vals: Vec<f64> = (0..s.ny() * s.nx()).map(|k| s.get(k % s.nx(), k / s.nx())).collect();
+    let n = vals.len() as f32;
+    let at_heq = vals.iter().filter(|&&v| (v - 2.0).abs() < 1e-4).count();
+    eprintln!(
+        "  S̃: {:.0}% at h_eq=2.0 (equilibrium clamp), {:.0}% above h_eq — {}",
+        at_heq as f32 / n * 100.0,
+        vals.iter().filter(|&&v| v > 2.0 + 1e-4).count() as f32 / n * 100.0,
+        if at_heq == 0 { "clamp inactive (same as seed 42)" } else { "clamp ACTIVE" },
+    );
+
+    // Flat fraction (disentangle) on the eroded field transect.
+    let r = max_row(&eroded);
+    terrace_report("eroded (bigmap)", &row_of(&to_metres(&eroded, &ss), r));
+
+    // THE decisive test — raw exported u16 codes.
+    let mh = metric_height_u16(&eroded, &ss);
+    let (w, h) = (eroded.width, eroded.height);
+    eprintln!(
+        "  height.u16: range {:.0}..{:.0} m over 65535 codes ⇒ {:.3} m/code",
+        mh.min_m, mh.max_m, (mh.max_m - mh.min_m) / 65535.0
+    );
+    for (label, codes) in [
+        ("row", (0..w).map(|x| mh.codes[r * w + x]).collect::<Vec<u16>>()),
+        ("col", (0..h).map(|y| mh.codes[y * w + w / 2]).collect::<Vec<u16>>()),
+    ] {
+        // |Δcode| distribution + longest run of identical codes.
+        let (mut z, mut small, mut big) = (0usize, 0usize, 0usize); // Δ=0, 1..=8, >8
+        let (mut run, mut maxrun) = (1usize, 1usize);
+        for i in 1..codes.len() {
+            let d = (codes[i] as i32 - codes[i - 1] as i32).unsigned_abs();
+            match d {
+                0 => z += 1,
+                1..=8 => small += 1,
+                _ => big += 1,
+            }
+            if codes[i] == codes[i - 1] {
+                run += 1;
+                maxrun = maxrun.max(run);
+            } else {
+                run = 1;
+            }
+        }
+        let tot = (codes.len() - 1) as f32;
+        eprintln!(
+            "  [{label}] Δcode: =0 {:.0}%, 1–8 {:.0}%, >8 {:.0}%; longest identical-code run {maxrun} cells",
+            z as f32 / tot * 100.0,
+            small as f32 / tot * 100.0,
+            big as f32 / tot * 100.0,
+        );
+    }
+    eprintln!(
+        "  VERDICT: mostly Δ=0 with occasional >8 jumps + long identical runs ⇒ DATA plateaux (real \
+         terraces). Mostly 1–8 with short runs ⇒ CONTINUOUS data ⇒ banding is a Living Landz DISPLAY \
+         issue (deposition/transport rework leaves scope)."
+    );
+}
+
 /// PART B — locate the terrace source in the closure chain. Measures the S̃ field
 /// (crustal thickness) from the coarse pass for hard-clamp spikes at the global
 /// equilibrium level h_eq (2.0) and the Davis-Suppe cap h_max (2.5), and ties the
