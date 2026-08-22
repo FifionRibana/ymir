@@ -840,6 +840,219 @@ fn terrace_source_closure() {
     );
 }
 
+/// Median channel incision (m) at top-1% accumulation LAND cells: how much
+/// stream-power lowered the channels vs the pre-incision field. For K calibration.
+fn median_channel_incision_m(before: &GridF32, after: &GridF32, ss: &SteinSteinParams) -> f32 {
+    let dr = c1_drainage(before, None, &C1DrainageConfig::default(), ss);
+    let acc = &dr.flow.accumulation;
+    let mut accs = acc.data.clone();
+    accs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let thr = accs[(accs.len() as f64 * 0.99) as usize];
+    let mut inc: Vec<f32> = (0..before.data.len())
+        .filter(|&k| acc.data[k] >= thr && before.data[k] > SEA)
+        .map(|k| c1_altitude_norm_to_metres(before.data[k], ss) - c1_altitude_norm_to_metres(after.data[k], ss))
+        .collect();
+    if inc.is_empty() {
+        return 0.0;
+    }
+    inc.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    inc[inc.len() / 2]
+}
+
+/// V/U-ness of the highest-order channel: cross-section incision (m) below the rim.
+fn channel_incision_profile(field: &GridF32, ss: &SteinSteinParams) -> f32 {
+    let dr = c1_drainage(field, None, &C1DrainageConfig::default(), ss);
+    let (w, h) = (field.width, field.height);
+    let fm = to_metres(field, ss);
+    if let Some(seg) = dr.rivers.segments.iter().filter(|s| s.points.len() >= 3).max_by_key(|s| s.strahler_order) {
+        let mid = seg.points.len() / 2;
+        let (ax, ay) = seg.points[mid - 1];
+        let (bx, by) = seg.points[mid + 1];
+        let (tx, ty) = (bx as f32 - ax as f32, by as f32 - ay as f32);
+        let tl = (tx * tx + ty * ty).sqrt().max(1e-6);
+        let (px, py) = (-ty / tl, tx / tl);
+        let (cx, cy) = seg.points[mid];
+        let mut xs = Vec::new();
+        for o in -8i32..=8 {
+            let sx = (cx as f32 + px * o as f32).round().clamp(0.0, w as f32 - 1.0) as i32;
+            let sy = (cy as f32 + py * o as f32).round().clamp(0.0, h as f32 - 1.0) as i32;
+            xs.push(fm.get(sx, sy));
+        }
+        let bottom = xs.iter().cloned().fold(f32::MAX, f32::min);
+        return xs[0].max(xs[16]) - bottom;
+    }
+    0.0
+}
+
+/// Drainage relief: median, over top-1% accumulation LAND cells, of (max altitude
+/// in an 11×11 window − the cell), in metres. A carved valley network sits well
+/// BELOW its interfluves ⇒ this rises. Fixed-location (unlike the single-channel
+/// cross-section), so it's comparable across configs. The right incision metric —
+/// the local-minimum "carved%" measures PITS (a drained channel is not a local min).
+fn drainage_relief_m(field: &GridF32, ss: &SteinSteinParams) -> f32 {
+    let dr = c1_drainage(field, None, &C1DrainageConfig::default(), ss);
+    let acc = &dr.flow.accumulation;
+    let (w, h) = (field.width, field.height);
+    let mut accs = acc.data.clone();
+    accs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let thr = accs[(accs.len() as f64 * 0.99) as usize];
+    let mut rel: Vec<f32> = Vec::new();
+    let r = 5i32;
+    for y in 0..h {
+        for x in 0..w {
+            let k = y * w + x;
+            if acc.data[k] < thr || field.data[k] <= SEA {
+                continue;
+            }
+            let mut mx = field.data[k];
+            for dy in -r..=r {
+                for dx in -r..=r {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    if nx >= 0 && ny >= 0 && nx < w as i32 && ny < h as i32 {
+                        mx = mx.max(field.data[ny as usize * w + nx as usize]);
+                    }
+                }
+            }
+            rel.push(c1_altitude_norm_to_metres(mx, ss) - c1_altitude_norm_to_metres(field.data[k], ss));
+        }
+    }
+    if rel.is_empty() {
+        return 0.0;
+    }
+    rel.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    rel[rel.len() / 2]
+}
+
+/// PART B (relief) — the RIGHT incision metric across the coupling, on the real FBM
+/// field. Drainage relief = how deep channels sit below their interfluves (median,
+/// top-1% flow cells, 11×11 window). Rises = real valleys.
+#[test]
+#[ignore]
+fn stream_power_relief() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let t = 1024usize;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let sp = StreamPowerConfig { k: 1.0, iterations: 3, sea_level: SEA, ..Default::default() };
+    let spd = StreamPowerConfig { diffusion: 0.4, ..sp.clone() };
+
+    eprintln!("\n=== PART B (relief) — drainage relief (m), the incision metric ({t}²) ===");
+    let base = drainage_relief_m(&fbm, &ss);
+    eprintln!("  FBM baseline:              {base:.0} m");
+    let a = drainage_relief_m(&incise(&fbm, &sp), &ss);
+    eprintln!("  stream-power alone:        {a:.0} m  (Δ {:+.0})", a - base);
+    let b = drainage_relief_m(&incise(&fbm, &spd), &ss);
+    eprintln!("  stream-power + diffusion:  {b:.0} m  (Δ {:+.0})", b - base);
+    let dro = run_erosion(&fbm, &ero_cfg(t), &seed, |_, _, _| true).heightmap;
+    let c = drainage_relief_m(&dro, &ss);
+    eprintln!("  droplets alone (prod):     {c:.0} m  (Δ {:+.0})", c - base);
+    let both = run_erosion(&incise(&fbm, &spd), &ero_cfg(t), &seed, |_, _, _| true).heightmap;
+    let e = drainage_relief_m(&both, &ss);
+    eprintln!("  both (SP+diff then droplets): {e:.0} m  (Δ {:+.0})", e - base);
+    eprintln!("  (higher = channels sit deeper below interfluves = real dendritic valleys)");
+}
+
+/// PART B — routed stream-power incision prototype (Braun & Willett). Calibrates K,
+/// then compares stream-power alone / droplets alone / both on the real FBM field
+/// with STRUCTURE metrics + runtime, plus the staleness (drainage↔incision) check.
+#[test]
+#[ignore]
+fn stream_power_prototype() {
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise, incise_with_progress};
+    let ss = SteinSteinParams::default();
+    let t = 1024usize;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let (_, c0, carved0, m0) = structure_metrics(&fbm, &ss);
+    let prof0 = channel_incision_profile(&fbm, &ss);
+    eprintln!("\n=== PART B — stream-power incision ({t}², real FBM field) ===");
+    eprintln!(
+        "  FBM baseline: carved {:.0}%, maxStrahler {m0}, confluences {c0}, channel profile {prof0:.0} m",
+        carved0 * 100.0
+    );
+
+    // K calibration — pick K whose median channel incision is plausible (~200–400 m
+    // over 4 iterations), NOT chosen for appearance.
+    eprintln!("  K calibration (m=0.5, n=1, dt=1, iters=4): K | median channel incision | carvedΔ | maxS");
+    let mut chosen_k = 1.0f32;
+    let mut best_gap = f32::MAX;
+    for k in [0.25f32, 0.5, 1.0, 2.0, 4.0] {
+        let cfg = StreamPowerConfig { k, iterations: 4, sea_level: SEA, ..Default::default() };
+        let out = incise(&fbm, &cfg);
+        let med = median_channel_incision_m(&fbm, &out, &ss);
+        let (_, _, carved, maxs) = structure_metrics(&out, &ss);
+        eprintln!("    {k:>5.2} | {med:>6.0} m | {:>+3.0}% | {maxs}", (carved - carved0) * 100.0);
+        let gap = (med - 300.0).abs();
+        if (200.0..=400.0).contains(&med) && gap < best_gap {
+            best_gap = gap;
+            chosen_k = k;
+        }
+    }
+    eprintln!("  → chosen K = {chosen_k} (median channel incision closest to ~300 m within [200,400])");
+
+    // Coupling comparison: stream-power alone / droplets alone / both.
+    let spcfg = StreamPowerConfig { k: chosen_k, iterations: 4, sea_level: SEA, ..Default::default() };
+    let spcfg_diff = StreamPowerConfig { diffusion: 0.4, ..spcfg.clone() };
+
+    let run = |label: &str, out: &GridF32, dt_ms: u128| {
+        let (hist, confl, carved, maxs) = structure_metrics(out, &ss);
+        let prof = channel_incision_profile(out, &ss);
+        eprintln!(
+            "  [{label:<22}] carvedΔ {:>+3.0}% ({:>3.0}%) | maxS {maxs} | confl {confl:>5} | profile {prof:>4.0} m | {dt_ms} ms | hist {:?}",
+            (carved - carved0) * 100.0,
+            carved * 100.0,
+            &hist[1..=maxs.max(1) as usize],
+        );
+    };
+
+    let ti = Instant::now();
+    let sp = incise(&fbm, &spcfg);
+    run("stream-power alone", &sp, ti.elapsed().as_millis());
+
+    let ti = Instant::now();
+    let sp_d = incise(&fbm, &spcfg_diff);
+    run("stream-power + diffusion", &sp_d, ti.elapsed().as_millis());
+
+    let ti = Instant::now();
+    let dr = run_erosion(&fbm, &ero_cfg(t), &seed, |_, _, _| true).heightmap;
+    run("droplets alone (prod)", &dr, ti.elapsed().as_millis());
+
+    let ti = Instant::now();
+    let both = run_erosion(&sp, &ero_cfg(t), &seed, |_, _, _| true).heightmap;
+    run("both (SP then droplets)", &both, ti.elapsed().as_millis());
+
+    // Staleness — does the network reorganise across drainage↔incision iterations?
+    eprintln!("  staleness (per-iteration maxStrahler / carved% after each incision pass):");
+    let stale_cfg = StreamPowerConfig { k: chosen_k, iterations: 6, sea_level: SEA, ..Default::default() };
+    let mut last_maxs = 0u8;
+    let mut converged_at = 0usize;
+    incise_with_progress(&fbm, &stale_cfg, &mut |iter, f| {
+        let (_, _, carved, maxs) = structure_metrics(f, &ss);
+        eprintln!("    iter {}: maxStrahler {maxs}, carved {:.0}%", iter + 1, carved * 100.0);
+        if maxs == last_maxs && converged_at == 0 && iter > 0 {
+            converged_at = iter;
+        }
+        last_maxs = maxs;
+    });
+    eprintln!(
+        "  → {}",
+        if converged_at > 0 { format!("Strahler stable from iteration {}", converged_at + 1) } else { "still moving at iter 6".into() }
+    );
+    eprintln!("  baselines to beat (ADR 0001): droplets alone carved ~11%, 4/cell ~18% (maxS 6→3 = fragmented).");
+}
+
 fn emerged_frac(field: &GridF32) -> f32 {
     field.data.iter().filter(|&&v| v > SEA).count() as f32 / field.data.len() as f32
 }

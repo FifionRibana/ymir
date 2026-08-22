@@ -104,6 +104,36 @@ hierarchy is imposed by construction. Two pitfalls for whoever implements it:
 **Consequences.** The missing-valleys problem is out of scope for parameter tuning
 and is a separate chantier. The sink (Finding 2) fixes the balance/coast, not this.
 
+**Prototype results (measured, `erosion/stream_power.rs`, off by default).** Braun &
+Willett implicit scheme, real coarse→FBM field (1024²), using **drainage relief** =
+median (11×11 window-max − cell) over top-1 % flow cells, in metres — the correct
+incision metric. (The earlier "carved% / local-minimum fraction" was WRONG: a drained
+channel cell is higher than its downstream receiver, so it is NOT a local minimum; the
+local-minimum fraction measures PITS, not incision, and its sign is inverted.)
+
+| config | drainage relief | vs FBM | notes |
+|---|---|---|---|
+| FBM baseline | 258 m | — | |
+| **stream-power alone** (K=1,m=.5,n=1,dt=1,iters=3) | **323 m** | **+65** | carves; maxStrahler not fragmented (4); ~554 ms |
+| stream-power + diffusion D=0.4 | 230 m | −28 | D=0.4 OVER-smooths |
+| droplets alone (production) | 37 m | **−221** | droplets COLLAPSE relief (~7270 ms) |
+| both (SP then full droplets) | 24 m | −234 | droplets ERASE the SP valleys |
+
+Findings: stream-power **carves** (+25 % relief) and is **~13× faster** (554 ms vs
+7270 ms at 1024²); drainage↔incision **converges by iteration 2** (use N=2–3); K=1/dt=1
+calibrated to ~307 m median channel incision (a plausible valley depth, not tuned for
+looks). Crucially, **the production droplet pass is anti-incision** — it collapses
+drainage relief 258→37 m, the SAME deposition mechanism as the Finding-4 terraces — so
+droplets are the common cause of both symptoms. Coupling therefore cannot keep the
+full droplet pass; droplets must be reduced to a WEAK hillslope-texture pass (or
+dropped) so they don't erase the channels. Diffusion at 0.4 over-smooths; start near 0.
+
+**Recommended (for the implementation pass, NOT wired yet):** stream-power K=1, m=0.5,
+n=1, dt=1, iterations=2–3, sea_level=0.5, diffusion≈0–0.05; and REPLACE the production
+droplet pass with stream-power for channels + at most a weak droplet/diffusion pass for
+hillslope texture. Caveats: measured on seed 42, 1024²; the drainage-relief metric and
+K calibration should be re-confirmed at 8192² and on the author's seed before wiring.
+
 ---
 
 ## Finding 4 — Terraces are an EROSION-DEPOSITION artifact, NOT a tectonic/isostasy closure
