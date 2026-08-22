@@ -884,6 +884,246 @@ fn channel_incision_profile(field: &GridF32, ss: &SteinSteinParams) -> f32 {
     0.0
 }
 
+/// PART B — striation baseline + FBM knob sweep. Minimise FBM amplitude/anisotropy
+/// while keeping drainage ORGANIC (Strahler depth, confluences, no grid/radial
+/// alignment). Reports the striation metric + drainage health for each knob value.
+/// 1024², seed 42, relief-v1 incision on top of each FBM variant.
+#[test]
+#[ignore]
+fn fbm_striation() {
+    use ymir_core::erosion::stream_power::{RELIEF_V1_A_C_KM2, StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let (t, domain) = (1024usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let base_depth = ss.depth_scale_m as f32;
+    let a_c = RELIEF_V1_A_C_KM2 / cell_km2;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let sp = StreamPowerConfig::relief_v1(cell_km2);
+
+    let mut report = |label: String, mut fc: FbmUpscaleConfig| {
+        fc.erosion = None;
+        fc.bathymetry = None;
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        // Pre-incision striation (raw FBM, undiluted by stream-power valley walls).
+        let slope_fbm = slope_deg_field(&fbm, domain, base_depth);
+        let (_, _, asym_pre, wl_pre) = striation_metric(&fbm, &slope_fbm, 20.0);
+        let field = incise(&fbm, &sp);
+        let slope = slope_deg_field(&field, domain, base_depth);
+        let (rg, rc, asym, wl) = striation_metric(&field, &slope, 20.0);
+        let _ = (rg, rc, wl);
+        eprint!("  [pre-FBM asym {asym_pre:.2} λ {wl_pre:.1}]");
+        let dr = c1_drainage(&field, None, &C1DrainageConfig::default(), &ss);
+        let maxs = dr.rivers.segments.iter().map(|s| s.strahler_order).max().unwrap_or(0);
+        let confl = dr.rivers.segments.iter().filter(|s| s.upstream.len() >= 2).count();
+        let nseg = dr.rivers.segments.len();
+        let corr = channel_corridor(&field, &ss, a_c);
+        let (vf5, _, _, _) = valley_floor(&slope, &corr, &field, cell_km2);
+        eprintln!(
+            "  {label:<26}: striation asym {asym:.2} (grad {rg:.4} contour {rc:.4}) λ {wl:.1} cells | \
+             maxS {maxs} confl {confl} segs {nseg} vfloor<5° {vf5:.0} km²",
+        );
+    };
+
+    let b = || {
+        let mut c = FbmUpscaleConfig::c1_hd_production(t);
+        c.erosion = None;
+        c.bathymetry = None;
+        c
+    };
+    eprintln!("\n=== PART B — FBM striation baseline + knob sweep (relief-v1 incision, 1024²) ===");
+    report("BASELINE (prod FBM)".into(), b());
+    eprintln!("-- max_anisotropy (stretch along slope → filaments) --");
+    for a in [3.0f64, 2.0, 1.0] {
+        report(format!("max_anisotropy={a}"), FbmUpscaleConfig { max_anisotropy: a, ..b() });
+    }
+    eprintln!("-- amplitude_slope_factor (slope-selective amplitude) --");
+    for a in [3.0f64, 1.0, 0.0] {
+        report(format!("amp_slope_factor={a}"), FbmUpscaleConfig { amplitude_slope_factor: a, ..b() });
+    }
+    eprintln!("-- amplitude_base (overall FBM amplitude) --");
+    for a in [0.16f64, 0.08, 0.04, 0.02] {
+        report(format!("amplitude_base={a}"), FbmUpscaleConfig { amplitude_base: a, ..b() });
+    }
+    eprintln!("-- octaves --");
+    for o in [7usize, 5, 3] {
+        report(format!("octaves={o}"), FbmUpscaleConfig { octaves: o, ..b() });
+    }
+    eprintln!("  (want: striation asym → 1, λ large, WHILE maxS/confl/segs stay healthy = drainage organic.");
+    eprintln!("   the floor is the lowest amplitude/anisotropy before the network degenerates.)");
+}
+
+/// PART C — valley width/depth as a DISTRIBUTION per Strahler order. Not a target to
+/// maximise: the test is whether W/D WIDENS DOWNSTREAM (higher order = wider) and
+/// whether wide valleys EXIST (a tail), not a single median. 1024², relief-v1.
+#[test]
+#[ignore]
+fn valley_width_distribution() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let (t, domain) = (1024usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let cell_m = domain / t as f32 * 1000.0;
+    let base = ss.depth_scale_m as f32;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2));
+    let slope = slope_deg_field(&sp, domain, base);
+    let (w, h) = (t, t);
+    let fm: Vec<f32> = sp.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+    let dr = c1_drainage(&sp, None, &C1DrainageConfig::default(), &ss);
+    // Per segment: cross-section W/D at the midpoint, grouped by Strahler order.
+    let mut per: std::collections::HashMap<u8, Vec<f32>> = std::collections::HashMap::new();
+    for s in dr.rivers.segments.iter().filter(|s| s.points.len() >= 5) {
+        let mid = s.points.len() / 2;
+        let (ax, ay) = s.points[mid - 1];
+        let (bx, by) = s.points[mid + 1];
+        let (tx, ty) = (bx as f32 - ax as f32, by as f32 - ay as f32);
+        let tl = (tx * tx + ty * ty).sqrt().max(1e-6);
+        let (px, py) = (-ty / tl, tx / tl);
+        let (cx, cy) = (s.points[mid].0 as usize, s.points[mid].1 as usize);
+        let r = 40i32;
+        let samp = |o: i32| -> (f32, f32) {
+            let sx = (cx as f32 + px * o as f32).round().clamp(0.0, w as f32 - 1.0) as usize;
+            let sy = (cy as f32 + py * o as f32).round().clamp(0.0, h as f32 - 1.0) as usize;
+            (fm[sy * w + sx], slope[sy * w + sx])
+        };
+        let (mut bo, mut bmin) = (0i32, f32::MAX);
+        for o in -r..=r {
+            if samp(o).0 < bmin {
+                bmin = samp(o).0;
+                bo = o;
+            }
+        }
+        let side = |dir: i32| -> Option<(i32, f32)> {
+            let mut o = bo;
+            loop {
+                o += dir;
+                if o.abs() > r {
+                    return None;
+                }
+                let (a, sl) = samp(o);
+                if sl > 30.0 {
+                    return Some((o, a));
+                }
+            }
+        };
+        if let (Some((lo, la)), Some((ro, ra))) = (side(-1), side(1)) {
+            let width = (ro - lo) as f32 * cell_m;
+            let depth = la.min(ra) - bmin;
+            if depth > 1.0 {
+                per.entry(s.strahler_order).or_default().push(width / depth);
+            }
+        }
+    }
+    eprintln!("\n=== PART C — W/D distribution per Strahler order (relief-v1, 1024²) ===");
+    let mut orders: Vec<u8> = per.keys().copied().collect();
+    orders.sort();
+    let mut medians = Vec::new();
+    for o in &orders {
+        let v = per.get_mut(o).unwrap();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let (p10, med, p90) = (v[v.len() / 10], v[v.len() / 2], v[v.len() * 9 / 10]);
+        medians.push(med);
+        eprintln!("  S{o}: n={:>4} W/D p10/median/p90 = {p10:.1}/{med:.1}/{p90:.1}", v.len());
+    }
+    let widens = medians.windows(2).filter(|w| w[1] >= w[0]).count() >= medians.len().saturating_sub(1) / 2;
+    eprintln!(
+        "  → downstream widening: {} (median W/D {} with order); wide valleys exist if p90 has a high tail",
+        if widens { "YES ✓" } else { "NO — gorges everywhere" },
+        if widens { "RISES" } else { "does NOT rise" },
+    );
+}
+
+/// PART D — resolution dependence of incision. E = K·A^m·S^n with A in CELLS and S =
+/// Δnorm per cell: a finer cell samples the FBM detail at a steeper local gradient,
+/// so S (and incision) rises with resolution. Measure per-order incision at 512 /
+/// 1024 / 2048 to size the dependency; the clean fix is a PHYSICAL slope
+/// (Δh_m / cell_m) + A in km², not a per-resolution K.
+#[test]
+#[ignore]
+fn incision_resolution() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let domain = 400.0f32;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    eprintln!("\n=== PART D — incision vs resolution (relief-v1, A_c in km², domain {domain} km) ===");
+    for t in [512usize, 1024, 2048] {
+        let cell_km2 = (domain / t as f32).powi(2);
+        let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+        fcfg.erosion = None;
+        fcfg.bathymetry = None;
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+        let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2));
+        let (tab, _) = per_order_incision(&fbm, &sp, &ss);
+        eprintln!("  {t}²: {}", fmt_orders(&tab));
+    }
+    eprintln!("  (rising with resolution ⇒ S measured steeper on finer cells; fix = physical slope Δh_m/cell_m + A km²)");
+}
+
+/// B1 — striation metric. On STEEP cells (slope > `min_deg`), sample the altitude
+/// profile ALONG the gradient and ALONG the contour, and measure short-wavelength
+/// roughness (RMS of the 1-D Laplacian) in each. Anisotropic FBM elongates noise
+/// along the slope → filaments run downslope, wiggling ACROSS (contour) → contour
+/// roughness ≫ gradient roughness = striations. Returns (rough_grad, rough_contour,
+/// asymmetry contour/grad, dominant wavelength in cells along the contour).
+fn striation_metric(field: &GridF32, slope: &[f32], min_deg: f32) -> (f32, f32, f32, f32) {
+    let (w, h) = (field.width, field.height);
+    let r = 8i32;
+    let (mut sg, mut sc, mut n, mut wl_acc, mut wl_n) = (0.0f64, 0.0f64, 0u64, 0.0f64, 0u64);
+    for y in 2..h - 2 {
+        for x in 2..w - 2 {
+            let k = y * w + x;
+            if slope[k] < min_deg || field.data[k] <= SEA {
+                continue;
+            }
+            let gx = field.data[k + 1] - field.data[k - 1];
+            let gy = field.data[k + w] - field.data[k - w];
+            let gl = (gx * gx + gy * gy).sqrt().max(1e-9);
+            let (ux, uy) = (gx / gl, gy / gl); // gradient unit
+            let (cx, cy) = (-uy, ux); // contour unit
+            let prof = |dx: f32, dy: f32| -> Vec<f32> {
+                (-r..=r)
+                    .map(|i| field.sample_bilinear_periodic(x as f32 + dx * i as f32, y as f32 + dy * i as f32))
+                    .collect()
+            };
+            let rough = |p: &[f32]| -> f32 {
+                let mut s = 0.0;
+                for i in 1..p.len() - 1 {
+                    let l = p[i - 1] - 2.0 * p[i] + p[i + 1];
+                    s += (l * l) as f64;
+                }
+                (s / (p.len() - 2) as f64).sqrt() as f32
+            };
+            let pg = prof(ux, uy);
+            let pc = prof(cx, cy);
+            sg += rough(&pg) as f64;
+            sc += rough(&pc) as f64;
+            n += 1;
+            // wavelength along contour: mean-crossings of the detrended profile.
+            let mean = pc.iter().sum::<f32>() / pc.len() as f32;
+            let cross = (1..pc.len()).filter(|&i| (pc[i] - mean) * (pc[i - 1] - mean) < 0.0).count();
+            if cross > 0 {
+                wl_acc += (2.0 * r as f64) / cross as f64;
+                wl_n += 1;
+            }
+        }
+    }
+    if n == 0 {
+        return (0.0, 0.0, 0.0, 0.0);
+    }
+    let (rg, rc) = (sg / n as f64, sc / n as f64);
+    ((rg) as f32, (rc) as f32, (rc / rg.max(1e-12)) as f32, (wl_acc / wl_n.max(1) as f64) as f32)
+}
+
 /// PART A — regression guard for the `ref/relief-streampower-v1` config. NOT a
 /// tuning sweep: it asserts the key legibility metrics stay in collapse-catching
 /// ranges so a later change cannot silently degrade the relief (droplet-style

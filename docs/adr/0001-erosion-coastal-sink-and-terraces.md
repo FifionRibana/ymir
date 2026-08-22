@@ -219,6 +219,44 @@ cells) read as "legible" or "over-incised" is now an author visual call.
 
 ---
 
+## Finding 5 — FBM shrinks to a symmetry-breaking seed; width widens downstream; incision is resolution-dependent
+
+**The reframe (why this is possible now).** 64² → 8192² is 128× per axis, so pure
+interpolation gives a featureless surface (the bilinear baseline). Detail must be
+either INVENTED (FBM) or DERIVED (erosion physics). Until stream-power, FBM had to
+carry the detail because droplets destroyed relief; now that stream-power CREATES
+relief causally, FBM can shrink from "terrain generator" to "symmetry-breaking seed"
+— just enough initial irregularity for drainage to organise.
+
+**Measured (1024², relief-v1 incision on each FBM variant).**
+- **Amplitude is reducible ≥8× with drainage fully organic.** `amplitude_base`
+  0.16→0.02: FBM roughness 0.031→0.024, and maxStrahler (4–5), confluences (~680),
+  segments (~3140), valley floor (~680 km²) ALL stay healthy — the degeneracy floor
+  is BELOW 0.02, not reached. So a low-amplitude seed (≈0.02–0.04) keeps organic
+  drainage. Recommend that regime; confirm the visual striation drop by eye.
+- **The anisotropy knobs do NOT move the striation metric.** `max_anisotropy` 3→1
+  (isotropic), `amplitude_slope_factor` 3→0, `octaves` 7→3 all leave the
+  roughness-asymmetry (grad vs contour, ±8 cells) at ~0.83 (pre-incision ~0.80).
+  Either the visual striations are not controlled by these knobs, or the ±8-cell
+  asymmetry metric is too coarse to isolate them — an honest gap; amplitude_base is
+  the lever that demonstrably reduces overall FBM detail (and shifts the metric:
+  pre-FBM asym 0.80→0.69, λ 8.8→11.5 cells as amplitude falls).
+
+**Width is a healthy DISTRIBUTION, not a slot (corrects the 8192² single-channel
+read).** W/D per Strahler order (1024²): S1 median 2.7 (headwater gorges), S2 4.1,
+S3 8.8, S4 41.4 (wide trunks), with a fat tail (p90 up to 77). **W/D widens
+downstream** — gorges as chokepoint content upstream, wide buildable valleys at
+trunks/coast. No widening fix needed.
+
+**Incision is resolution-dependent (a real dependency, not to paper over).** Per-order
+incision rises with resolution (S4: 108 m @512² → 136 @1024² → 318 @2048²), because
+`S = Δnorm per cell` in `E = K·A^m·S^n` is measured steeper on finer cells (the FBM
+detail resolves sharper gradients). The clean fix is a PHYSICAL slope (`Δh_m /
+cell_m`) and area in km², so K is resolution-invariant — NOT a per-resolution K,
+which would mask the dependency and return at every scale change.
+
+---
+
 ## Finding 4 — Terraces are an EROSION-DEPOSITION artifact, NOT a tectonic/isostasy closure
 
 **Context.** The relief shows terraces PARALLEL to contours (concentric loops around
