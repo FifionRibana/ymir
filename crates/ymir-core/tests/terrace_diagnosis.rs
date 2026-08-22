@@ -884,6 +884,161 @@ fn channel_incision_profile(field: &GridF32, ss: &SteinSteinParams) -> f32 {
     0.0
 }
 
+/// Per-cell surface slope in DEGREES (central differences; `depth_scale` is the
+/// effective vertical scale, i.e. base × coupling factor; `domain_km` sets km/cell).
+fn slope_deg_field(field: &GridF32, domain_km: f32, depth_scale: f32) -> Vec<f32> {
+    let (w, h) = (field.width, field.height);
+    let cell_m = domain_km / w as f32 * 1000.0;
+    let norm_to_m = 2.0 * 1.13 * depth_scale;
+    let mut out = vec![0.0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let l = field.data[y * w + (x + w - 1) % w];
+            let r = field.data[y * w + (x + 1) % w];
+            let d = field.data[((y + h - 1) % h) * w + x];
+            let u = field.data[((y + 1) % h) * w + x];
+            let sx = (r - l) * 0.5 * norm_to_m / cell_m;
+            let sy = (u - d) * 0.5 * norm_to_m / cell_m;
+            out[y * w + x] = (sx * sx + sy * sy).sqrt().atan().to_degrees();
+        }
+    }
+    out
+}
+
+/// Channel corridor mask: cells with accumulation ≥ A_c, dilated by one ring.
+fn channel_corridor(field: &GridF32, ss: &SteinSteinParams, a_c: f32) -> Vec<bool> {
+    let dr = c1_drainage(field, None, &C1DrainageConfig::default(), ss);
+    let (w, h) = (field.width, field.height);
+    let chan: Vec<bool> = (0..w * h).map(|k| dr.flow.accumulation.data[k] >= a_c && field.data[k] > SEA).collect();
+    let mut corr = chan.clone();
+    for y in 0..h {
+        for x in 0..w {
+            if !chan[y * w + x] {
+                continue;
+            }
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, 1), (-1, 1), (1, -1)] {
+                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if nx >= 0 && ny >= 0 && nx < w as i32 && ny < h as i32 {
+                    corr[ny as usize * w + nx as usize] = true;
+                }
+            }
+        }
+    }
+    corr
+}
+
+/// (a) VALLEY-FLOOR: contiguous flat ground in the channel corridor. Returns
+/// (km² <5°, hexes <5°, km² <10°, hexes <10°).
+fn valley_floor(slope: &[f32], corridor: &[bool], field: &GridF32, cell_km2: f32) -> (f32, usize, f32, usize) {
+    let (mut c5, mut c10) = (0usize, 0usize);
+    for k in 0..slope.len() {
+        if corridor[k] && field.data[k] > SEA {
+            if slope[k] < 5.0 {
+                c5 += 1;
+            }
+            if slope[k] < 10.0 {
+                c10 += 1;
+            }
+        }
+    }
+    (c5 as f32 * cell_km2, c5, c10 as f32 * cell_km2, c10)
+}
+
+/// (c) FLANK CONTIGUITY: connected components (4-conn, non-periodic) of the >30°
+/// mask. Returns (num components ≥ 4 cells, largest, 2nd largest) in cells.
+fn flank_contiguity(slope: &[f32], w: usize, h: usize) -> (usize, usize, usize) {
+    let steep: Vec<bool> = slope.iter().map(|&s| s > 30.0).collect();
+    let mut seen = vec![false; w * h];
+    let mut sizes = Vec::new();
+    for start in 0..w * h {
+        if !steep[start] || seen[start] {
+            continue;
+        }
+        let mut sz = 0usize;
+        let mut stack = vec![start];
+        seen[start] = true;
+        while let Some(k) = stack.pop() {
+            sz += 1;
+            let (x, y) = (k % w, k / w);
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if nx >= 0 && ny >= 0 && nx < w as i32 && ny < h as i32 {
+                    let nk = ny as usize * w + nx as usize;
+                    if steep[nk] && !seen[nk] {
+                        seen[nk] = true;
+                        stack.push(nk);
+                    }
+                }
+            }
+        }
+        sizes.push(sz);
+    }
+    sizes.sort_unstable_by(|a, b| b.cmp(a));
+    let n = sizes.iter().filter(|&&s| s >= 4).count();
+    (n, sizes.first().copied().unwrap_or(0), sizes.get(1).copied().unwrap_or(0))
+}
+
+/// (b) cliff transition + valley width/depth from perpendicular profiles at trunk
+/// probes. Returns (median transition <10°→>30° in m, median valley width m, median
+/// depth m). `cell_m` = metres/cell; slope in degrees supplied per cell.
+fn profile_metrics(
+    field: &GridF32,
+    slope: &[f32],
+    depth_scale: f32,
+    probes: &[((usize, usize), (f32, f32))],
+    cell_m: f32,
+) -> (f32, f32, f32) {
+    let (w, h) = (field.width, field.height);
+    // Metres via the effective (coupled) depth scale: (norm − 0.5)·2·1.13·depth.
+    let fm: Vec<f32> = field.data.iter().map(|&n| (n - 0.5) * 2.0 * 1.13 * depth_scale).collect();
+    let (mut trans, mut widths, mut depths) = (Vec::new(), Vec::new(), Vec::new());
+    let r = 20i32;
+    for &((cx, cy), (px, py)) in probes {
+        let sample = |o: i32| -> (f32, f32) {
+            let sx = (cx as f32 + px * o as f32).round().clamp(0.0, w as f32 - 1.0) as usize;
+            let sy = (cy as f32 + py * o as f32).round().clamp(0.0, h as f32 - 1.0) as usize;
+            (fm[sy * w + sx], slope[sy * w + sx])
+        };
+        // bottom at o=0; walk +side: find last <10° (floor edge) then first >30° (flank).
+        let mut floor_edge = 0i32;
+        let mut flank = None;
+        for o in 0..=r {
+            let (_, sl) = sample(o);
+            if sl < 10.0 {
+                floor_edge = o;
+            }
+            if sl > 30.0 {
+                flank = Some(o);
+                break;
+            }
+        }
+        if let Some(fo) = flank {
+            trans.push((fo - floor_edge).max(0) as f32 * cell_m);
+            let (rim_alt, _) = sample(fo);
+            let (bot_alt, _) = sample(0);
+            depths.push(rim_alt - bot_alt);
+            // width: floor half-width ×2 (cells with slope<10° around bottom).
+            let mut hw = 0i32;
+            for o in 0..=r {
+                if sample(o).1 < 10.0 {
+                    hw = o;
+                } else {
+                    break;
+                }
+            }
+            widths.push((hw * 2).max(1) as f32 * cell_m);
+        }
+    }
+    let med = |v: &mut Vec<f32>| {
+        if v.is_empty() {
+            return 0.0;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[v.len() / 2]
+    };
+    (med(&mut trans), med(&mut widths), med(&mut depths))
+}
+
 /// Median incision (m) per Strahler order + whether the ordering is MONOTONE
 /// (S1 < S2 < ... — trunks carve more than headwaters, the physical target).
 fn per_order_incision(fbm: &GridF32, out: &GridF32, ss: &SteinSteinParams) -> (Vec<(u8, f32)>, bool) {
@@ -953,6 +1108,168 @@ fn stream_power_hillslope() {
         );
     }
     eprintln!("  (target: S1 → tens of m, ordering monotone S1<S2<S3<S4)");
+}
+
+/// TASK 4 — FROZEN config at production scale (8192², author seed, domain 400 km,
+/// UNCOUPLED). One drainage call to keep 67 M cells feasible. Reports the legibility
+/// metrics + per-order + runtime + peak RSS + K resolution-stability.
+#[test]
+#[ignore]
+fn stream_power_confirm8192() {
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let t = 8192usize;
+    let domain = 400.0f32;
+    let cell_m = domain / t as f32 * 1000.0; // 48.8 m/cell
+    let km2 = (domain / t as f32).powi(2);
+    let base = ss.depth_scale_m as f32;
+    let a_c = 50.0f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let t0 = Instant::now();
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let fbm_ms = t0.elapsed().as_millis();
+    let cfg = StreamPowerConfig {
+        k: 3.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA,
+        diffusion: 0.05, diffusion_substeps: 4, min_area_cells: a_c, threshold: 0.0,
+    };
+    let t0 = Instant::now();
+    let sp = incise(&fbm, &cfg);
+    let sp_ms = t0.elapsed().as_millis();
+
+    // Single drainage on the incised field — reused for corridor, probes, per-order.
+    let dr = c1_drainage(&sp, None, &C1DrainageConfig::default(), &ss);
+    let (w, h) = (t, t);
+    // slope (uncoupled: depth = base).
+    let slope = slope_deg_field(&sp, domain, base);
+    // corridor (A≥A_c, dilate 1).
+    let chan: Vec<bool> = (0..w * h).map(|k| dr.flow.accumulation.data[k] >= a_c && sp.data[k] > SEA).collect();
+    let mut corr = chan.clone();
+    for y in 1..h - 1 {
+        for x in 1..w - 1 {
+            if chan[y * w + x] {
+                for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                    corr[((y as i32 + dy) as usize) * w + (x as i32 + dx) as usize] = true;
+                }
+            }
+        }
+    }
+    let (v5k, v5h, v10k, v10h) = valley_floor(&slope, &corr, &sp, km2);
+    let (nc, l1, l2) = flank_contiguity(&slope, w, h);
+    // probes: top-Strahler segments.
+    let mut segs: Vec<_> = dr.rivers.segments.iter().filter(|s| s.points.len() >= 5).collect();
+    segs.sort_by_key(|s| std::cmp::Reverse(s.strahler_order));
+    let probes: Vec<((usize, usize), (f32, f32))> = segs.iter().take(16).map(|s| {
+        let mid = s.points.len() / 2;
+        let (ax, ay) = s.points[mid - 1];
+        let (bx, by) = s.points[mid + 1];
+        let (tx, ty) = (bx as f32 - ax as f32, by as f32 - ay as f32);
+        let tl = (tx * tx + ty * ty).sqrt().max(1e-6);
+        ((s.points[mid].0 as usize, s.points[mid].1 as usize), (-ty / tl, tx / tl))
+    }).collect();
+    let (tr, wd, dp) = profile_metrics(&sp, &slope, base, &probes, cell_m);
+    // per-order incision.
+    let fm: Vec<f32> = fbm.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+    let sm: Vec<f32> = sp.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+    let mut per: std::collections::HashMap<u8, Vec<f32>> = std::collections::HashMap::new();
+    for s in &dr.rivers.segments {
+        for &(x, y) in &s.points {
+            let k = y as usize * w + x as usize;
+            per.entry(s.strahler_order).or_default().push(fm[k] - sm[k]);
+        }
+    }
+    eprintln!("\n=== TASK 4 — FROZEN config @ {t}² (author seed, domain {domain} km, UNCOUPLED) ===");
+    eprintln!("  cfg: K=3 m=0.5 n=1 iters=3 A_c=50 D=0.05 θ=0 droplets=off, cf=1.0 (uncoupled)");
+    eprintln!("  runtime: FBM {fbm_ms} ms, stream-power {sp_ms} ms; peak RSS {} MB", peak_ws_mb());
+    eprintln!("  (a) valley floor: <5° {v5k:.0} km² ({v5h} hex) | <10° {v10k:.0} km² ({v10h} hex) @ {cell_m:.0} m/hex");
+    eprintln!("  (b) cliff transition <10°→>30°: {tr:.0} m; trunk valley width {wd:.0} m, depth {dp:.0} m (W/D {:.1})", if dp > 1.0 { wd / dp } else { 0.0 });
+    eprintln!("  (c) flanks (>30°): {nc} components, largest {l1}/{l2} cells");
+    let mut orders: Vec<u8> = per.keys().copied().collect();
+    orders.sort();
+    eprint!("  per-order incision: ");
+    for o in orders {
+        let v = per.get_mut(&o).unwrap();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        eprint!("S{o}={:.0}m ", v[v.len() / 2]);
+    }
+    eprintln!("\n  (vs 1024²: S1=25 S2=414 S3=307 S4=136 — resolution-stable ⇒ K holds)");
+}
+
+/// TASK 1/2/3 (criterion change) — judge LEGIBILITY: (a) valley-floor area,
+/// (b) cliff transition sharpness, (c) flank contiguity, + valley width/depth, over
+/// a K sweep (at full coupling) and a coupling sweep (at a chosen K). 1024², 400 km.
+#[test]
+#[ignore]
+fn stream_power_legible() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let t = 1024usize;
+    let domain = 400.0f32;
+    let cell_m = domain / t as f32 * 1000.0;
+    let km2 = (domain / t as f32).powi(2);
+    let base = ss.depth_scale_m as f32;
+    let a_c = 50.0f32;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let cfg = |k: f32| StreamPowerConfig {
+        k, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA,
+        diffusion: 0.05, diffusion_substeps: 4, min_area_cells: a_c, threshold: 0.0,
+    };
+    let report = |label: String, field: &GridF32, cf: f32| {
+        let depth = base * cf;
+        let slope = slope_deg_field(field, domain, depth);
+        let corr = channel_corridor(field, &ss, a_c);
+        let (v5k, v5h, v10k, v10h) = valley_floor(&slope, &corr, field, km2);
+        let (nc, l1, l2) = flank_contiguity(&slope, t, t);
+        let probes = channel_probes(field, &ss, 12);
+        let (tr, wd, dp) = profile_metrics(field, &slope, depth, &probes, cell_m);
+        // near-channel vs interfluve mean slope.
+        let (mut sc, mut nc_cells, mut si, mut ni) = (0.0f64, 0u64, 0.0f64, 0u64);
+        for k in 0..t * t {
+            if field.data[k] <= SEA {
+                continue;
+            }
+            if corr[k] {
+                sc += slope[k] as f64;
+                nc_cells += 1;
+            } else {
+                si += slope[k] as f64;
+                ni += 1;
+            }
+        }
+        let (tab, _) = per_order_incision(&fbm, field, &ss);
+        eprintln!(
+            "  {label}: vfloor <5° {v5k:.0}km²({v5h}h) <10° {v10k:.0}km²({v10h}h) | flanks {nc} comp (top {l1}/{l2}) | \
+             cliff transition {tr:.0}m width {wd:.0}m depth {dp:.0}m (W/D {:.1}) | slope chan {:.0}° inter {:.0}° | {}",
+            if dp > 1.0 { wd / dp } else { 0.0 },
+            sc / nc_cells.max(1) as f64,
+            si / ni.max(1) as f64,
+            fmt_orders(&tab),
+        );
+    };
+    eprintln!("\n=== TASK 2 — K sweep (A_c=50, D=0.05), FULL coupling cf=0.39, domain 400 km ===");
+    for k in [1.0f32, 2.0, 3.0, 5.0] {
+        let f = incise(&fbm, &cfg(k));
+        report(format!("K={k:.0} cf=.39"), &f, 0.39);
+    }
+    eprintln!("\n=== TASK 3 — coupling sweep at K=3 (want steep FLANKS, floors buildable) ===");
+    let f3 = incise(&fbm, &cfg(3.0));
+    for cf in [0.39f32, 0.55, 0.70, 1.0] {
+        report(format!("K=3 cf={cf:.2}"), &f3, cf);
+    }
+    eprintln!("  (recommend the cf that MAXIMISES flank steepness+sharpness while keeping enough contiguous valley floor;");
+    eprintln!("   reject if interfluves go uniformly steep = steep no longer concentrated near channels)");
 }
 
 /// TASK 4+5 — recommended regime-split config: coupled-vs-uncoupled per-order +
