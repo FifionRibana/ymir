@@ -88,6 +88,10 @@ pub struct HdParams {
     /// D=0.05, uncoupled). A UI opt-in to eyeball the effect; production default
     /// unchanged until confirmed.
     pub stream_power: bool,
+    /// EXPERIMENTAL: override the FBM `amplitude_base` for this run (`None` = the
+    /// production 0.16). Lets the author flip through the striation amplitude ladder
+    /// (0.16/0.08/0.04/0.02) with stream-power ON to see the striations shrink.
+    pub fbm_amplitude: Option<f64>,
     /// When `Some(dir)`, after the biome phase the run writes a v1 `.ymir`
     /// delivery container under `dir` (see [`ymir_core::export::container`]).
     /// `None` = no export. Explicit opt-in — the pipeline NEVER auto-exports
@@ -103,6 +107,7 @@ impl Default for HdParams {
             domain_km: 1024.0,
             manual_offset: None,
             stream_power: false,
+            fbm_amplitude: None,
             export_dir: None,
         }
     }
@@ -325,6 +330,9 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // continent with ocean margin on the map (see the coarse preview / seed scan).
     let window_km = params.domain_km; // domain IS the map: window == domain == domain_km
     let mut upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
+    if let Some(a) = params.fbm_amplitude {
+        upscale.amplitude_base = a; // striation-ladder override (default 0.16)
+    }
     // EXPERIMENTAL opt-in (ADR 0001): swap the droplet pass for routed stream-power
     // incision + hillslope regime split. A_c is 7.6 km² expressed in cells at THIS
     // resolution (resolution-stable channel head); uncoupled vertical scale.

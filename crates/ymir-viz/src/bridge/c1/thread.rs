@@ -200,6 +200,7 @@ mod tests {
                     domain_km: 1024.0,
                     manual_offset: None,
                     stream_power: false,
+                    fbm_amplitude: None,
                     export_dir: None,
                 },
             })

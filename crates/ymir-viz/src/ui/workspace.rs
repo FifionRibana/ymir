@@ -168,6 +168,8 @@ struct WorkspaceState {
     /// EXPERIMENTAL (ADR 0001): use routed stream-power incision instead of the
     /// droplet pass for the next HD run. Off by default (production unchanged).
     stream_power: bool,
+    /// EXPERIMENTAL: FBM amplitude_base for the striation ladder (0.16 = production).
+    fbm_amplitude: f32,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
     export_dir: String,
     // Derived / cache.
@@ -214,6 +216,7 @@ impl Default for WorkspaceState {
             bootstrapped: false,
             export_ymir: false,
             stream_power: false,
+            fbm_amplitude: 0.16,
             export_dir: "exports".to_string(),
             current: None,
             preview: None,
@@ -611,6 +614,7 @@ fn left_panel(
                             domain_km: ws.domain_km,
                             manual_offset: Some(off),
                             stream_power: ws.stream_power,
+                            fbm_amplitude: Some(ws.fbm_amplitude as f64),
                             export_dir,
                         };
                         let _ = bridge.submit_hd(spec, params);
@@ -638,6 +642,17 @@ fn left_panel(
                              routée + versants (ADR 0001). Vallées incisées, pas de terrasses de \
                              dépôt. Off = pipeline de production.",
                         );
+                        if ws.stream_power {
+                            let vals = [0.16f32, 0.08, 0.04, 0.02];
+                            let cur =
+                                vals.iter().position(|&v| (v - ws.fbm_amplitude).abs() < 1e-4).unwrap_or(0);
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("FBM amp").color(DIM2).size(11.0));
+                                if let Some(i) = seg_row(ui, &["0.16", "0.08", "0.04", "0.02"], cur) {
+                                    ws.fbm_amplitude = vals[i];
+                                }
+                            });
+                        }
                         ui.checkbox(
                             &mut ws.export_ymir,
                             egui::RichText::new("Exporter .ymir").color(DIM2).size(11.0),
@@ -1359,6 +1374,7 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         domain_km: ws.domain_km,
         manual_offset: None,
         stream_power: false, // preview is coarse-only; SP applies to the HD run
+        fbm_amplitude: None,
         export_dir: None,
     }
 }
