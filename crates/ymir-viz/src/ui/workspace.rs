@@ -182,6 +182,9 @@ struct WorkspaceState {
     preview_tex_offset: [i64; 2],
     /// Sub-cell drag accumulator (pixels) for smooth drag-to-pan on the preview.
     pan_accum: [f32; 2],
+    /// Zoom factor for the tectonic PREVIEW (1× = fit; >1 shows scroll bars to pan
+    /// the magnified view — distinct from `zoom`, the HD map zoom).
+    preview_zoom: f32,
     river_map: Option<RiverCellMap>,
     texture: Option<egui::TextureHandle>,
     tex_layer: Option<HdLayer>,
@@ -223,6 +226,7 @@ impl Default for WorkspaceState {
             preview_tex: None,
             preview_tex_offset: [0, 0],
             pan_accum: [0.0, 0.0],
+            preview_zoom: 1.0,
             river_map: None,
             texture: None,
             tex_layer: None,
@@ -1503,26 +1507,74 @@ fn render_preview(ui: &mut egui::Ui, ws: &mut WorkspaceState, preview: &PreviewS
         ws.preview_tex_offset = ws.offset_cells;
     }
     let handle = ws.preview_tex.as_ref().unwrap().clone();
+    let ss = SteinSteinParams::default();
+    let m = domain_metrics(&framed, SEA_NORM, &ss, ws.domain_km, ws.resolution);
+    let mpp = m_per_px(ws.domain_km, ws.resolution);
+
+    // Fixed toolbar: zoom controls + the verdict/metrics line (stays put while the
+    // magnified image scrolls beneath it).
+    let (vtag, vcol) = if m.verdict_pass {
+        ("île centrée ✓", OK_GREEN)
+    } else {
+        ("non conforme ✗", WARN_ORANGE)
+    };
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("Zoom").color(DIM2).size(11.0));
+        if ui.small_button("−").clicked() {
+            ws.preview_zoom = (ws.preview_zoom / 1.25).max(1.0);
+        }
+        ui.label(egui::RichText::new(format!("{:.0}%", ws.preview_zoom * 100.0)).color(COPPER_BRIGHT).monospace().size(11.0));
+        if ui.small_button("+").clicked() {
+            ws.preview_zoom = (ws.preview_zoom * 1.25).min(12.0);
+        }
+        if ui.small_button("⟲").clicked() {
+            ws.preview_zoom = 1.0;
+        }
+        ui.label(
+            egui::RichText::new(format!(
+                "masse {:.0} km · bbox {:.0}×{:.0}% · N{:.0} S{:.0} E{:.0} W{:.0} km · {:.0} m/px · {vtag}",
+                m.extent_km.0.max(m.extent_km.1),
+                m.bbox_frac_x * 100.0,
+                m.bbox_frac_y * 100.0,
+                m.margin_n_km,
+                m.margin_s_km,
+                m.margin_e_km,
+                m.margin_w_km,
+                mpp,
+            ))
+            .color(vcol)
+            .monospace()
+            .size(11.0),
+        );
+    });
+
+    // Scroll bars ("sliders") appear once the zoomed image exceeds the viewport.
+    // `drag_to_scroll(false)` keeps content-drag for RECADRAGE; the scroll bars pan
+    // the view. Wheel over the image zooms.
     let avail = ui.available_size();
     let side = avail.x.min(avail.y).max(1.0);
-    ui.add_space(((avail.y - side) * 0.5).max(0.0));
-    ui.horizontal(|ui| {
-        ui.add_space(((avail.x - side) * 0.5).max(0.0));
+    let img_side = side * ws.preview_zoom;
+    egui::ScrollArea::both().auto_shrink([false, false]).drag_to_scroll(false).show(ui, |ui| {
         let resp = ui
             .add(
-                egui::Image::new(egui::load::SizedTexture::new(handle.id(), egui::vec2(side, side)))
+                egui::Image::new(egui::load::SizedTexture::new(handle.id(), egui::vec2(img_side, img_side)))
                     .sense(egui::Sense::drag()),
             )
-            .on_hover_text("Glisser pour recadrer (rotation cyclique du tore)");
+            .on_hover_text("Glisser pour recadrer (rotation cyclique du tore) · molette pour zoomer · barres pour défiler");
         let r = resp.rect;
-        let pnt = ui.painter_at(r);
 
-        // Drag-to-pan: shift the framing by whole coarse cells (cyclic). Dragging
-        // the content right decreases the sampling origin. Sub-cell motion is
-        // accumulated so slow drags still register. Panning is pure relabelling —
-        // no recompute, no HD run.
+        // Wheel-to-zoom when hovering the image.
+        if resp.hovered() {
+            let scroll = ui.input(|i| i.raw_scroll_delta.y);
+            if scroll.abs() > 0.0 {
+                ws.preview_zoom = (ws.preview_zoom * (1.0 + scroll * 0.001)).clamp(1.0, 12.0);
+            }
+        }
+
+        // Drag-to-recadrage: shift the framing by whole coarse cells (cyclic). Uses
+        // the ZOOMED image size for pixels-per-cell so the feel is scale-correct.
         if resp.dragged() {
-            let ppc = (side / grid as f32).max(1.0);
+            let ppc = (img_side / grid as f32).max(1.0);
             let d = resp.drag_delta();
             ws.pan_accum[0] += d.x;
             ws.pan_accum[1] += d.y;
@@ -1540,16 +1592,8 @@ fn render_preview(ui: &mut egui::Ui, ws: &mut WorkspaceState, preview: &PreviewS
             ws.pan_accum = [0.0, 0.0];
         }
 
-        // Domain-as-map metrics for the CURRENT domain-km (no crop), on the framed
-        // field. Scales with the DOMAINE slider and updates instantly on pan.
-        let ss = SteinSteinParams::default();
-        let m = domain_metrics(&framed, SEA_NORM, &ss, ws.domain_km, ws.resolution);
-        let mpp = m_per_px(ws.domain_km, ws.resolution);
-
-        // Largest-mass bounding box (map frame, from the ocean margins) → the ocean
-        // margin all around is what makes the domain a usable island map. Row 0 of
-        // the coarse field (y=0 = south) is drawn at the image top, so the top gap
-        // is the SOUTH margin.
+        // Largest-mass bounding box (map frame, from the ocean margins), drawn on the
+        // image so it scrolls/zooms with it. Row 0 (y=0 = south) is at the top.
         let dk = ws.domain_km.max(1.0);
         let box_rect = egui::Rect::from_min_size(
             egui::pos2(
@@ -1558,43 +1602,11 @@ fn render_preview(ui: &mut egui::Ui, ws: &mut WorkspaceState, preview: &PreviewS
             ),
             egui::vec2(m.bbox_frac_x * r.width(), m.bbox_frac_y * r.height()),
         );
-        pnt.rect_stroke(
+        ui.painter_at(r).rect_stroke(
             box_rect,
             2.0,
             egui::Stroke::new(2.0, COPPER_BRIGHT),
             egui::StrokeKind::Middle,
-        );
-
-        // Verdict chip (top-left) — same figures as the left-panel readout.
-        let (vtag, vcol) = if m.verdict_pass {
-            ("île centrée ✓", OK_GREEN)
-        } else {
-            ("✗", WARN_ORANGE)
-        };
-        let vreason = if m.verdict_pass { String::new() } else { format!(" ({})", m.verdict_reason) };
-        let line = format!(
-            "aperçu — masse max {:.0} km · bbox {:.0}×{:.0}% · marges N{:.0} S{:.0} E{:.0} W{:.0} km · \
-             {:.0} m/px · {vtag}{vreason}",
-            m.extent_km.0.max(m.extent_km.1),
-            m.bbox_frac_x * 100.0,
-            m.bbox_frac_y * 100.0,
-            m.margin_n_km,
-            m.margin_s_km,
-            m.margin_e_km,
-            m.margin_w_km,
-            mpp,
-        );
-        let chip = egui::Rect::from_min_size(
-            r.min + egui::vec2(10.0, 10.0),
-            egui::vec2(r.width() - 20.0, 24.0),
-        );
-        pnt.rect_filled(chip, 6.0, C::from_rgba_unmultiplied(18, 18, 18, 210));
-        pnt.text(
-            chip.min + egui::vec2(8.0, 12.0),
-            egui::Align2::LEFT_CENTER,
-            line,
-            egui::FontId::monospace(11.0),
-            vcol,
         );
     });
 }
