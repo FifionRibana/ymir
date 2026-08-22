@@ -72,25 +72,43 @@ carve valleys — see Finding 3.
 **Context.** Ymir computes a full drainage network (`rivers.json`, Strahler orders,
 `flow_accumulation`), but the relief under the rivers shows no carved valley.
 
-**Measurement (real field, incision = fraction of top-1 % flow cells in a local
-altitude minimum; FBM floor 7 %).** No `(sink, density)` pair satisfies "incision
-rises AND the Strahler histogram deepens":
+**⚠️ METRIC CORRECTION.** This finding was first measured with a WRONG metric:
+"fraction of top-1 % flow cells in a local altitude minimum" (reported as 15 % in
+production, ~11 % here). That measures **PITS, not channels** — a drained channel
+cell is by construction HIGHER than its downstream receiver, so it is never a local
+minimum; only an undrained depression is. Its interpretation was therefore INVERTED
+(a low value is *good* drainage, not "uncarved terrain"). The correct quantity is
+**drainage relief** = median over top-1 % flow cells of (11×11 window-max − cell), in
+metres — how deep channels sit below their interfluves. See the prototype table below
+for the real numbers; the pit table is kept only to show what was refuted.
 
-| f | droplets/cell | net % | carved (Δ) | maxStrahler | confluences |
+**Pit-fraction table (mislabelled "carved" — the refuted metric; low = fewer pits):**
+
+| f | droplets/cell | net % | pit-fraction | maxStrahler | confluences |
 |---|---|---|---|---|---|
-| 1.0 | 0.95 | +1 | 11 % (+4) | 6 | 2366 |
-| 0.0 | 0.95 | +59 | 11 % (+4) | 6 | 2183 |
-| 0.25 | 4.0 | +76 | 18 % (+11) | **3** | 649 |
-| 0.0 | 4.0 | +87 | 17 % (+11) | **3** | 556 |
+| 1.0 | 0.95 | +1 | 11 % | 6 | 2366 |
+| 0.0 | 0.95 | +59 | 11 % | 6 | 2183 |
+| 0.25 | 4.0 | +76 | 18 % | **3** | 649 |
+| 0.0 | 4.0 | +87 | 17 % | **3** | 556 |
 
-The sink leaves incision at 11 %; more droplets raise it to ~18 % only by fragmenting
-the network (maxStrahler 6→3, confluences 2366→649 — grain, not drainage). On a
-synthetic smooth cone at production parameters, surface roughness barely changed
-(0.00005 → 0.00006): **no incision even on an ideal input.**
+More droplets raise the pit-fraction to ~18 % only by fragmenting the network
+(maxStrahler 6→3, confluences 2366→649 — grain, not drainage). On a synthetic smooth
+cone at production parameters, surface roughness barely changed (0.00005 → 0.00006):
+no reshaping even on an ideal input.
+
+**THE CENTRAL FINDING (drainage relief, the correct metric).** The production droplet
+pass does not sculpt relief — it DESTROYS it: drainage relief **258 m → 37 m (−86 %)**.
+Stream-power along the existing network RAISES it to **323 m (+25 %)** at ~13× the
+speed. We are not swapping one algorithm for a better one — we are removing something
+actively HARMFUL. This single mechanism explains all four symptoms of this ADR: the
+terraces (Finding 4 — depositional flats), the missing valleys (this finding), the
+net-zero balance and the coastal dump (Finding 2 — the droplets that reach the coast
+carry the sediment they refuse to incise with).
 
 **Root cause.** Droplets are stochastic and UNCORRELATED — nothing makes neighbouring
-rills converge into a shared, deepening channel, so a hierarchical valley network
-cannot emerge and heavy droplets just pit the surface.
+rills converge into a shared, deepening channel; they deposit in and around channels
+faster than they incise, so relief collapses and a hierarchical valley network cannot
+emerge.
 
 **Decision / proposed successor (NOT implemented).** Routed **stream-power incision**
 along the drainage network that is already computed (`flow_accumulation`, `rivers.json`

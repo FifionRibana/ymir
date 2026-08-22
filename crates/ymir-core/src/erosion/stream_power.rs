@@ -14,11 +14,14 @@
 //! Routing reuses [`crate::terrain::flow::compute_flow`] (depression fill, D8
 //! receivers, flow accumulation) — no re-implemented pit filling.
 
+use serde::{Deserialize, Serialize};
+
 use crate::grid::GridF32;
 use crate::terrain::flow::{D8_DIST, D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow};
 
 /// Stream-power incision tunables (prototype).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct StreamPowerConfig {
     /// Erodibility `K` (lumped with the timestep — see `dt`). Calibrated to a
     /// target channel-incision depth, not to appearance (see the diagnostic).

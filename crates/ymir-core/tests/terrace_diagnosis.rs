@@ -884,6 +884,224 @@ fn channel_incision_profile(field: &GridF32, ss: &SteinSteinParams) -> f32 {
     0.0
 }
 
+#[cfg(windows)]
+fn peak_ws_mb() -> u64 {
+    #[repr(C)]
+    #[derive(Default)]
+    struct Pmc {
+        cb: u32,
+        page_fault_count: u32,
+        peak_ws: usize,
+        ws: usize,
+        qppp: usize,
+        qpp: usize,
+        qpnpp: usize,
+        qnpp: usize,
+        pagefile: usize,
+        peak_pagefile: usize,
+    }
+    unsafe extern "system" {
+        fn GetCurrentProcess() -> isize;
+        fn K32GetProcessMemoryInfo(process: isize, counters: *mut Pmc, cb: u32) -> i32;
+    }
+    let mut pmc = Pmc { cb: std::mem::size_of::<Pmc>() as u32, ..Default::default() };
+    unsafe {
+        K32GetProcessMemoryInfo(GetCurrentProcess(), &mut pmc, pmc.cb);
+    }
+    (pmc.peak_ws / (1024 * 1024)) as u64
+}
+#[cfg(not(windows))]
+fn peak_ws_mb() -> u64 {
+    0
+}
+
+/// TASK 5 — re-confirm at higher resolution on the AUTHOR'S seed: does the K=1
+/// calibration still land major channels in 200–400 m, and what are the real
+/// slopes? (8192² deferred: tuning K at production scale is premature while
+/// headwaters over-carve — see TASK 3.) 4096², domain 400 km.
+#[test]
+#[ignore]
+fn stream_power_reconfirm() {
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::land_topology::slope_shares;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let t = 4096usize;
+    let domain_km = 400.0f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let ti = Instant::now();
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let fbm_ms = ti.elapsed().as_millis();
+
+    let cfg = StreamPowerConfig { k: 1.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA, diffusion: 0.0, diffusion_substeps: 4 };
+    let ti = Instant::now();
+    let sp = incise(&fbm, &cfg);
+    let sp_ms = ti.elapsed().as_millis();
+
+    eprintln!("\n=== TASK 5 — author seed {seed_u} @ {t}² (domain {domain_km} km) ===");
+    eprintln!("  FBM {fbm_ms} ms; stream-power {sp_ms} ms; peak RSS {} MB", peak_ws_mb());
+    eprintln!("  drainage relief: FBM {:.0} m → SP {:.0} m", drainage_relief_m(&fbm, &ss), drainage_relief_m(&sp, &ss));
+    let (_, c0, _, m0) = structure_metrics(&fbm, &ss);
+    let (_, c1, _, m1) = structure_metrics(&sp, &ss);
+    eprintln!("  Strahler/confluences: FBM maxS {m0}/{c0} → SP maxS {m1}/{c1}");
+
+    // Per-order incision — K-scaling check (major channels must stay 200–400 m).
+    let fbm_m = to_metres(&fbm, &ss);
+    let sp_m = to_metres(&sp, &ss);
+    let dr = c1_drainage(&sp, None, &C1DrainageConfig::default(), &ss);
+    let mut per: std::collections::HashMap<u8, Vec<f32>> = std::collections::HashMap::new();
+    for s in &dr.rivers.segments {
+        for &(x, y) in &s.points {
+            let k = y as usize * sp.width + x as usize;
+            per.entry(s.strahler_order).or_default().push(fbm_m.data[k] - sp_m.data[k]);
+        }
+    }
+    eprint!("  incision by order @ {t}²: ");
+    let mut orders: Vec<u8> = per.keys().copied().collect();
+    orders.sort();
+    for o in orders {
+        let v = per.get_mut(&o).unwrap();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        eprint!("S{o}={:.0}m ", v[v.len() / 2]);
+    }
+    eprintln!("\n  (vs 1024²: S1=379 S2=361 S3=285 S4=130 — resolution-independent ⇒ K holds; scaling ⇒ re-anchor)");
+
+    // TASK 6 at production-ish scale: land slope shares, FBM vs SP, coupled/uncoupled.
+    let base = ss.depth_scale_m as f32;
+    let sf = slope_shares(&fbm, SEA, domain_km, base);
+    let ss_sp = slope_shares(&sp, SEA, domain_km, base);
+    let ss_cpl = slope_shares(&sp, SEA, domain_km, base * domain_km / 1024.0);
+    eprintln!("  slope >15/30/45° @ domain {domain_km} km:");
+    eprintln!("    FBM (uncoupled):      {:>4.1}/{:>4.1}/{:>4.1}%", sf.0 * 100.0, sf.1 * 100.0, sf.2 * 100.0);
+    eprintln!("    SP  (uncoupled):      {:>4.1}/{:>4.1}/{:>4.1}%", ss_sp.0 * 100.0, ss_sp.1 * 100.0, ss_sp.2 * 100.0);
+    eprintln!("    SP  (coupled depth):  {:>4.1}/{:>4.1}/{:>4.1}%  (depth_scale ∝ domain — the compounding case)", ss_cpl.0 * 100.0, ss_cpl.1 * 100.0, ss_cpl.2 * 100.0);
+}
+
+/// Fixed cross-section probes: (centre cell, perpendicular unit) for the N
+/// highest-order channels of `field`, reused across configs so profiles compare.
+fn channel_probes(field: &GridF32, ss: &SteinSteinParams, n: usize) -> Vec<((usize, usize), (f32, f32))> {
+    let dr = c1_drainage(field, None, &C1DrainageConfig::default(), ss);
+    let mut segs: Vec<_> = dr.rivers.segments.iter().filter(|s| s.points.len() >= 5).collect();
+    segs.sort_by_key(|s| std::cmp::Reverse(s.strahler_order));
+    segs.iter()
+        .take(n)
+        .map(|s| {
+            let mid = s.points.len() / 2;
+            let (ax, ay) = s.points[mid - 1];
+            let (bx, by) = s.points[mid + 1];
+            let (tx, ty) = (bx as f32 - ax as f32, by as f32 - ay as f32);
+            let tl = (tx * tx + ty * ty).sqrt().max(1e-6);
+            ((s.points[mid].0 as usize, s.points[mid].1 as usize), (-ty / tl, tx / tl))
+        })
+        .collect()
+}
+
+/// Median cross-section (depth m below rim, floor half-width cells) at fixed probes.
+fn cross_section_stats(
+    field: &GridF32,
+    ss: &SteinSteinParams,
+    probes: &[((usize, usize), (f32, f32))],
+) -> (f32, f32) {
+    let (w, h) = (field.width, field.height);
+    let fm = to_metres(field, ss);
+    let (mut depths, mut widths) = (Vec::new(), Vec::new());
+    for &((cx, cy), (px, py)) in probes {
+        let mut xs = Vec::new();
+        for o in -8i32..=8 {
+            let sx = (cx as f32 + px * o as f32).round().clamp(0.0, w as f32 - 1.0) as i32;
+            let sy = (cy as f32 + py * o as f32).round().clamp(0.0, h as f32 - 1.0) as i32;
+            xs.push(fm.get(sx, sy));
+        }
+        let bottom = xs.iter().cloned().fold(f32::MAX, f32::min);
+        let rim = xs[0].max(xs[16]);
+        depths.push(rim - bottom);
+        // floor half-width: cells within 20% of the depth above the bottom.
+        let thr = bottom + 0.2 * (rim - bottom);
+        widths.push(xs.iter().filter(|&&v| v <= thr).count() as f32 / 2.0);
+    }
+    let med = |v: &mut Vec<f32>| {
+        if v.is_empty() {
+            return 0.0;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[v.len() / 2]
+    };
+    (med(&mut depths), med(&mut widths))
+}
+
+/// TASK 2/3/6 — stream-power tuning on the real FBM field: diffusion sweep (judged
+/// on fixed cross-sections), per-Strahler-order incision + m sweep, and land-slope
+/// shares before/after. 1024², read-only.
+#[test]
+#[ignore]
+fn stream_power_tuning() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::land_topology::slope_shares;
+    let ss = SteinSteinParams::default();
+    let t = 1024usize;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let sp = |k: f32, m: f32, d: f32| StreamPowerConfig {
+        k, m, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA, diffusion: d, diffusion_substeps: 4,
+    };
+    let base = incise(&fbm, &sp(1.0, 0.5, 0.0)); // fix probes on the D=0 carved field
+    let probes = channel_probes(&base, &ss, 12);
+
+    eprintln!("\n=== TASK 2 — diffusion sweep (K=1,m=0.5,n=1,iters=3), fixed cross-sections ===");
+    let (fd, fw) = cross_section_stats(&fbm, &ss, &probes);
+    eprintln!("  FBM (no incision):  depth {fd:>4.0} m, floor half-width {fw:.1} cells");
+    for d in [0.0f32, 0.01, 0.03, 0.05, 0.1] {
+        let f = incise(&fbm, &sp(1.0, 0.5, d));
+        let (dep, wid) = cross_section_stats(&f, &ss, &probes);
+        eprintln!("  D={d:>4.2}: cross-section depth {dep:>4.0} m, floor half-width {wid:.1} cells");
+    }
+    eprintln!("  (want depth preserved AND walls opened: floor width rising a little, not collapsing depth)");
+
+    eprintln!("\n=== TASK 3 — median incision per Strahler order + m sweep ===");
+    let fbm_m = to_metres(&fbm, &ss);
+    for m in [0.4f32, 0.5, 0.6] {
+        let f = incise(&fbm, &sp(1.0, m, 0.0));
+        let fm = to_metres(&f, &ss);
+        let dr = c1_drainage(&f, None, &C1DrainageConfig::default(), &ss);
+        let mut per: std::collections::HashMap<u8, Vec<f32>> = std::collections::HashMap::new();
+        for s in &dr.rivers.segments {
+            for &(x, y) in &s.points {
+                let k = y as usize * f.width + x as usize;
+                per.entry(s.strahler_order).or_default().push(fbm_m.data[k] - fm.data[k]);
+            }
+        }
+        eprint!("  m={m:.1}: incision by order ");
+        let mut orders: Vec<u8> = per.keys().copied().collect();
+        orders.sort();
+        for o in orders {
+            let v = per.get_mut(&o).unwrap();
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            eprint!("S{o}={:.0}m ", v[v.len() / 2]);
+        }
+        eprintln!();
+    }
+    eprintln!("  (small orders should be tens of m, not 300; m governs the large/small split)");
+
+    eprintln!("\n=== TASK 6 — land slope shares (>15/30/45°) before/after (domain 1024 km) ===");
+    let base_scale = ss.depth_scale_m as f32;
+    let s_fbm = slope_shares(&fbm, SEA, 1024.0, base_scale);
+    let s_sp = slope_shares(&incise(&fbm, &sp(1.0, 0.5, 0.05)), SEA, 1024.0, base_scale);
+    eprintln!("  FBM:                {:>4.1}% / {:>4.1}% / {:>4.1}%", s_fbm.0 * 100.0, s_fbm.1 * 100.0, s_fbm.2 * 100.0);
+    eprintln!("  stream-power (D=.05): {:>4.1}% / {:>4.1}% / {:>4.1}%", s_sp.0 * 100.0, s_sp.1 * 100.0, s_sp.2 * 100.0);
+    eprintln!("  (slopes rise with relief; feeds the cliff/unbuildable + vertical-scale decision — measure only)");
+}
+
 /// Drainage relief: median, over top-1% accumulation LAND cells, of (max altitude
 /// in an 11×11 window − the cell), in metres. A carved valley network sits well
 /// BELOW its interfluves ⇒ this rises. Fixed-location (unlike the single-channel

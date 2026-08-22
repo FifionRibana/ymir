@@ -394,6 +394,14 @@ pub fn upscale_from_c1_with_progress(
     progress(EroProgress::Relief);
     let mut result = upscale_with_fbm(&coarse, sea_level_normalized, seed, cfg);
 
+    // ADR 0001 — routed stream-power incision (prototype), applied AFTER the FBM and
+    // BEFORE droplet erosion: carve valleys along the drainage network, then let a
+    // (weak) droplet pass add hillslope texture. `None` (default) → skipped,
+    // byte-identical. OFF in production until confirmed at 8192².
+    if let Some(sp) = &cfg.stream_power {
+        result.heightmap = crate::erosion::stream_power::incise(&result.heightmap, sp);
+    }
+
     // #155 méso — HD hydraulic erosion (the dendritic dissection that makes
     // the macro ridge read as credible eroded mountains). Applied AFTER the
     // FBM, ONLY when `cfg.erosion` is Some (the canonical C1 HD product config

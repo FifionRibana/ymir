@@ -94,6 +94,17 @@ pub struct FbmUpscaleConfig {
     /// ON is [`FbmUpscaleConfig::c1_hd_production`].
     #[serde(default)]
     pub erosion: Option<ErosionConfig>,
+    /// **Routed stream-power incision** (ADR 0001, prototype). When `Some`,
+    /// [`upscale_from_c1`](crate::tectonics_c1::production_upscale::upscale_from_c1)
+    /// carves valleys along the drainage network (Braun & Willett) AFTER the FBM and
+    /// BEFORE droplet erosion — deterministic, hierarchy by construction, ~13× faster
+    /// than the droplet pass, and (unlike droplets) it RAISES drainage relief instead
+    /// of collapsing it. Default `None` → skipped, byte-identical, OFF in production
+    /// until confirmed at 8192². Pair it with a WEAK droplet pass (reduced
+    /// `ErosionConfig.num_droplets`) for hillslope texture — the full droplet pass
+    /// erases the carved valleys (measured relief 323 → 24 m).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream_power: Option<crate::erosion::stream_power::StreamPowerConfig>,
     /// **Submarine bathymetry re-map** (#submarine). When `Some`,
     /// [`upscale_from_c1`](crate::tectonics_c1::production_upscale::upscale_from_c1)
     /// re-maps the ocean floor toward the plateau→slope→abyss envelope AFTER the
@@ -154,6 +165,7 @@ impl Default for FbmUpscaleConfig {
             coast_warp_frequency: 0.5,
             coastal_amplitude_band: 0.0,
             erosion: None,
+            stream_power: None,
             bathymetry: None,
             target_land_fraction: None,
         }
