@@ -1239,6 +1239,95 @@ fn calibrate_k_physical() {
     }
 }
 
+/// CLOSURE mosaic — stitch the `closure_*_crop` renders into one comparison image
+/// (`exports/sculpt/closure_mosaic.png`) so v1 vs v2 and 2048² vs 8192² sit side by
+/// side. Each crop is resampled (box filter) to a common 512² panel; white separators
+/// between panels. Layout (2×3):
+///   [ v1 2048 | v2 2048 | v2 2048 amp0.01 ]
+///   [ (blank) | v2 8192 | v2 8192 amp0.02 ]
+/// Run `closure_render` FIRST so the crops exist. Read-only (loads PNGs).
+#[test]
+#[ignore]
+fn closure_mosaic() {
+    use std::path::Path;
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    const P: usize = 640; // panel edge
+    const S: usize = 12; // separator width
+    // Normalised crop window over the MASSIF (upper-left of this seed; the centre is a
+    // flat plateau). Same fractional window at every resolution → matched framing.
+    let (fx, fy, fw) = (0.22f32, 0.03f32, 0.34f32);
+    // Crop the massif window from a full render, box-resample to P×P, then contrast-
+    // stretch (hillshade sits near 0.5±small → stretch to [0,1] so structure is visible).
+    let to_panel = |g: &GridF32| -> GridF32 {
+        let (cx0, cy0) = ((fx * g.width as f32) as usize, (fy * g.height as f32) as usize);
+        let cw = (fw * g.width as f32) as usize;
+        let mut out = GridF32::new(P, P, 0.5);
+        let s = cw as f32 / P as f32;
+        for j in 0..P {
+            for i in 0..P {
+                let (x0, y0) = (cx0 + (i as f32 * s) as usize, cy0 + (j as f32 * s) as usize);
+                let (x1, y1) = (
+                    (cx0 + ((i + 1) as f32 * s) as usize).min(g.width),
+                    (cy0 + ((j + 1) as f32 * s) as usize).min(g.height),
+                );
+                let (mut acc, mut cnt) = (0.0f32, 0.0f32);
+                for y in y0..y1.max(y0 + 1) {
+                    for x in x0..x1.max(x0 + 1) {
+                        if x < g.width && y < g.height {
+                            acc += g.data[y * g.width + x];
+                            cnt += 1.0;
+                        }
+                    }
+                }
+                out.data[j * P + i] = if cnt > 0.0 { acc / cnt } else { 0.5 };
+            }
+        }
+        // Contrast stretch to the 2–98 percentile.
+        let mut v = out.data.clone();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let (lo, hi) = (v[v.len() * 2 / 100], v[v.len() * 98 / 100]);
+        let d = (hi - lo).max(1e-4);
+        for p in out.data.iter_mut() {
+            *p = ((*p - lo) / d).clamp(0.0, 1.0);
+        }
+        out
+    };
+    // (row, col, full-render filename) — None cell stays blank/white.
+    let cells: [(usize, usize, Option<&str>); 6] = [
+        (0, 0, Some("closure_v1_2048.png")),
+        (0, 1, Some("closure_v2_2048.png")),
+        (0, 2, Some("closure_v2_2048_amp01.png")),
+        (1, 0, None),
+        (1, 1, Some("closure_v2_8192.png")),
+        (1, 2, Some("closure_v2_8192_amp02.png")),
+    ];
+    let (cols, rows) = (3usize, 2usize);
+    let (mw, mh) = (cols * P + (cols - 1) * S, rows * P + (rows - 1) * S);
+    let mut mosaic = GridF32::new(mw, mh, 1.0); // white background = separators
+    for (r, c, name) in cells {
+        let Some(name) = name else { continue };
+        let path = dir.join(name);
+        let panel = match GridF32::load_png(&path) {
+            Ok(g) => to_panel(&g),
+            Err(e) => {
+                eprintln!("  missing {name}: {e} (run closure_render first)");
+                continue;
+            }
+        };
+        let (ox, oy) = (c * (P + S), r * (P + S));
+        for j in 0..P {
+            for i in 0..P {
+                mosaic.data[(oy + j) * mw + (ox + i)] = panel.data[j * P + i];
+            }
+        }
+    }
+    let out = dir.join("closure_mosaic.png");
+    mosaic.save_png_u8(&out).unwrap();
+    eprintln!("\n=== CLOSURE mosaic (massif window, contrast-stretched) → {} ===", out.display());
+    eprintln!("  row 0: v1 2048 | v2 2048 | v2 2048 amp0.01");
+    eprintln!("  row 1:  (blank) | v2 8192 | v2 8192 amp0.02");
+}
+
 /// CLOSURE STEP 1 (read-only) — confirm the missing bounding closure. Reports the
 /// land slope distribution (share > 30/35/40/45°, max) for (a) the raw FBM, (b) the
 /// relief_v1 sculpt, at the review amp 0.04 AND the default amp 0.16, plus the >30°
@@ -1369,6 +1458,7 @@ fn closure_render() {
     render("v2_2048_amp02", 2048, 0.02, true);
     render("v2_2048_amp01", 2048, 0.01, true);
     render("v2_8192", 8192, 0.04, true);
+    render("v2_8192_amp02", 8192, 0.02, true);
     eprintln!(
         "  (compare closure_v1_2048 vs closure_v2_2048; amp02/amp01 = can FBM drop further?)"
     );

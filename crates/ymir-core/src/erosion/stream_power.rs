@@ -137,6 +137,12 @@ impl StreamPowerConfig {
     /// default in the pipeline — driven by the viz checkbox / diagnostic pending the
     /// author's visual verdict. Same `A_c`, iters and K as v1.
     pub fn relief_v2(cell_km2: f32, depth_scale_m: f32) -> Self {
+        // NB: the 40 GS sweeps are enough — scaling them with resolution (tested up to
+        // 160 at 8192²) barely moved the residual steep share (33.7→32.9 %) at 4× the
+        // cost, so GS convergence is NOT the 8192² lever. The residual upper-slope
+        // striation at 8192² is FBM-TEMPLATE-driven: the finer FBM striae seed the
+        // initial drainage, so the dense fine channel network (A_c≈42 cells) incises
+        // ALONG the striae. The 2048² preview is clean. See ADR 0001 Finding 7.
         Self {
             critical_slope: RELIEF_V2_CRITICAL_SLOPE,
             lateral_erosion: RELIEF_V2_LATERAL,
