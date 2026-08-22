@@ -55,6 +55,34 @@ pub struct StreamPowerConfig {
     pub threshold: f32,
 }
 
+/// Relief-v1 reference: physical critical drainage area (km²) for the channel head.
+/// Stored in KM² and converted to cells per resolution — a cells-based `A_c` is NOT
+/// resolution-stable (proven at 8192²: 50 cells = 7.6 km² at 1024² but 0.12 km² at
+/// 8192², so headwaters over-carved). See docs/adr/0001.
+pub const RELIEF_V1_A_C_KM2: f32 = 7.6;
+
+impl StreamPowerConfig {
+    /// The `ref/relief-streampower-v1` reference config (ADR 0001) — the first
+    /// setting that produces legible relief: routed stream power on channels +
+    /// hillslope diffusion, droplets OFF, uncoupled vertical scale. `cell_km2` is the
+    /// run's cell area (`(domain_km / grid)²`), used to convert the physical `A_c`
+    /// (7.6 km²) to cells at THIS resolution. K=3, m=0.5, n=1, iters=3, D=0.05, θ=0.
+    pub fn relief_v1(cell_km2: f32) -> Self {
+        Self {
+            k: 3.0,
+            m: 0.5,
+            n: 1.0,
+            dt: 1.0,
+            iterations: 3,
+            sea_level: 0.5,
+            diffusion: 0.05,
+            diffusion_substeps: 4,
+            min_area_cells: RELIEF_V1_A_C_KM2 / cell_km2.max(1e-9),
+            threshold: 0.0,
+        }
+    }
+}
+
 impl Default for StreamPowerConfig {
     fn default() -> Self {
         Self {

@@ -884,6 +884,51 @@ fn channel_incision_profile(field: &GridF32, ss: &SteinSteinParams) -> f32 {
     0.0
 }
 
+/// PART A — regression guard for the `ref/relief-streampower-v1` config. NOT a
+/// tuning sweep: it asserts the key legibility metrics stay in collapse-catching
+/// ranges so a later change cannot silently degrade the relief (droplet-style
+/// collapse, lost valleys, over-smoothing). Seed 42, 1024², domain 400 km,
+/// uncoupled. #[ignore] (heavy); run before/after any erosion/upscale change.
+#[test]
+#[ignore]
+fn relief_v1_regression() {
+    use ymir_core::erosion::stream_power::{RELIEF_V1_A_C_KM2, StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let (t, domain) = (1024usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let base = ss.depth_scale_m as f32;
+    let a_c = RELIEF_V1_A_C_KM2 / cell_km2;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2));
+
+    let relief = drainage_relief_m(&sp, &ss);
+    let slope = slope_deg_field(&sp, domain, base);
+    let corr = channel_corridor(&sp, &ss, a_c);
+    let (vf5_km, _, _, _) = valley_floor(&slope, &corr, &sp, cell_km2);
+    let (_, l1, _) = flank_contiguity(&slope, t, t);
+    let (tab, _) = per_order_incision(&fbm, &sp, &ss);
+    let s2 = tab.iter().find(|(o, _)| *o == 2).map(|(_, m)| *m).unwrap_or(0.0);
+    let s4 = tab.iter().find(|(o, _)| *o == 4).map(|(_, m)| *m).unwrap_or(0.0);
+    eprintln!(
+        "relief-v1 @1024²: drainage relief {relief:.0} m, valley floor<5° {vf5_km:.0} km², \
+         largest flank {l1} cells, per-order {}",
+        fmt_orders(&tab),
+    );
+    // Collapse-catching bounds (generous; NOT tuning targets). Droplet-style collapse
+    // would push relief <100 m, S2 <150 m, and valley-floor near the whole map.
+    assert!(relief > 300.0, "drainage relief collapsed: {relief} m (expect >300)");
+    assert!((250.0..=700.0).contains(&s2), "S2 incision {s2} m out of [250,700]");
+    assert!((60.0..=300.0).contains(&s4), "S4 incision {s4} m out of [60,300]");
+    assert!((250.0..=1500.0).contains(&vf5_km), "valley floor<5° {vf5_km} km² out of [250,1500]");
+    assert!(l1 > 800, "largest steep flank {l1} cells (<800 ⇒ steep ground scattered, not flanks)");
+}
+
 /// Per-cell surface slope in DEGREES (central differences; `depth_scale` is the
 /// effective vertical scale, i.e. base × coupling factor; `domain_km` sets km/cell).
 fn slope_deg_field(field: &GridF32, domain_km: f32, depth_scale: f32) -> Vec<f32> {

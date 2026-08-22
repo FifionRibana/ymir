@@ -330,21 +330,14 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // resolution (resolution-stable channel head); uncoupled vertical scale.
     if params.stream_power {
         let km_per_cell = window_km / params.target_size as f32; // window_km == domain_km
-        let a_c_cells = 7.6 / (km_per_cell * km_per_cell);
+        let sp = StreamPowerConfig::relief_v1(km_per_cell * km_per_cell);
+        eprintln!(
+            "[HD] stream-power incision ON (relief-v1: A_c {:.0} cells = {} km²), droplets OFF",
+            sp.min_area_cells,
+            ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2,
+        );
         upscale.erosion = None; // droplets off — they collapse the SP valleys
-        upscale.stream_power = Some(StreamPowerConfig {
-            k: 3.0,
-            m: 0.5,
-            n: 1.0,
-            dt: 1.0,
-            iterations: 3,
-            sea_level: 0.5,
-            diffusion: 0.05,
-            diffusion_substeps: 4,
-            min_area_cells: a_c_cells,
-            threshold: 0.0,
-        });
-        eprintln!("[HD] stream-power incision ON (A_c {:.0} cells = 7.6 km²), droplets OFF", a_c_cells);
+        upscale.stream_power = Some(sp);
     }
     // Land report FIRST (reads only `target_land_fraction`) so the seam-correct
     // torus centre of the largest mass is known before we choose the sampling roll.
