@@ -43,6 +43,16 @@ pub struct StreamPowerConfig {
     /// Explicit diffusion sub-steps per iteration (stability: keep `diffusion /
     /// diffusion_substeps ≤ 0.2`).
     pub diffusion_substeps: usize,
+    /// **Critical drainage area `A_c`** (cells) — the LEM channel-head criterion.
+    /// Cells with accumulation `< min_area_cells` are in the HILLSLOPE regime and
+    /// receive NO fluvial incision (pure stream power over-carves steep headwaters
+    /// because `E = K·A^m·S^n` has no lower bound — those cells are physically
+    /// hillslopes, not channels). `0` (default) = fluvial everywhere (legacy).
+    pub min_area_cells: f32,
+    /// **Incision threshold `θ`** — `E = K·max(0, A^m·S^n − θ)`: no incision below a
+    /// critical stream power, so low-energy cells (again, headwaters) do not carve.
+    /// `0` (default) = no threshold (legacy).
+    pub threshold: f32,
 }
 
 impl Default for StreamPowerConfig {
@@ -56,6 +66,8 @@ impl Default for StreamPowerConfig {
             sea_level: 0.5,
             diffusion: 0.0,
             diffusion_substeps: 4,
+            min_area_cells: 0.0,
+            threshold: 0.0,
         }
     }
 }
@@ -146,32 +158,54 @@ pub fn incise_with_progress(
                 continue; // base level, fixed
             }
             let area = flow.accumulation.data[k].max(1.0);
-            let f = kdt * area.powf(cfg.m) / dist[k].powf(cfg.n);
+            if area < cfg.min_area_cells {
+                continue; // A_c: hillslope regime — no fluvial incision (channel head)
+            }
             let hr = field.data[r];
             let ho = field.data[k];
+            let a = area.powf(cfg.m) / dist[k].powf(cfg.n);
+            // Threshold gate: skip cells whose stream power A^m·S^n is below θ.
+            let sp_now = a * (ho - hr).max(0.0).powf(cfg.n);
+            if sp_now <= cfg.threshold {
+                continue;
+            }
+            let f = kdt * a;
             let hn = if (cfg.n - 1.0).abs() < 1e-6 {
-                // Closed form for n = 1: weighted average of old height and receiver.
-                (ho + f * hr) / (1.0 + f)
+                // Closed form, n=1, with the −θ threshold (the +kdt·θ term reduces
+                // incision): E = K·max(0, A·S − θ).
+                (ho + f * hr + kdt * cfg.threshold) / (1.0 + f)
             } else {
-                // Newton for general n: g(x) = x - ho + f·((x-hr)/1)^n = 0, x≥hr.
+                // Newton for general n with threshold: g(x) = x − ho + kdt·max(0,
+                // a·(x−hr)^n − θ) = 0, x ≥ hr.
                 let mut x = ho;
                 for _ in 0..8 {
                     let s = (x - hr).max(0.0);
-                    let g = x - ho + f * s.powf(cfg.n);
-                    let dg = 1.0 + f * cfg.n * s.powf(cfg.n - 1.0);
-                    x -= g / dg;
+                    let e = (a * s.powf(cfg.n) - cfg.threshold).max(0.0);
+                    let g = x - ho + kdt * e;
+                    let de = if a * s.powf(cfg.n) > cfg.threshold {
+                        kdt * a * cfg.n * s.powf(cfg.n - 1.0)
+                    } else {
+                        0.0
+                    };
+                    x -= g / (1.0 + de);
                     if x < hr {
                         x = hr;
                     }
                 }
                 x
             };
-            // Never incise below the receiver (no flow reversal); implicit form
-            // already guarantees this for n=1, clamp guards the Newton path.
-            field.data[k] = hn.max(hr);
+            // Never incise below the receiver (no reversal) or ABOVE the old height
+            // (the threshold term must not deposit).
+            field.data[k] = hn.clamp(hr, ho);
         }
 
-        // 5. Optional hillslope diffusion (explicit, land only), a few sub-steps.
+        // 5. Hillslope diffusion (explicit, a few sub-steps), interleaved with the
+        // incision each iteration so it holds interfluves WHILE channels incise (the
+        // coupled LEM, not a post-pass smooth). REGIME SPLIT: when `min_area_cells`
+        // is set, diffusion runs ONLY on hillslope cells (A < A_c) and stream power
+        // ONLY on channels (A ≥ A_c) — the standard channel-head partition that stops
+        // the fluvial law from over-carving physical hillslopes. `min_area_cells = 0`
+        // → diffuse everywhere (legacy).
         if cfg.diffusion > 0.0 && cfg.diffusion_substeps > 0 {
             let dsub = cfg.diffusion / cfg.diffusion_substeps as f32;
             for _ in 0..cfg.diffusion_substeps {
@@ -181,6 +215,11 @@ pub fn incise_with_progress(
                         let k = y * w + x;
                         if src[k] <= cfg.sea_level {
                             continue;
+                        }
+                        if cfg.min_area_cells > 0.0
+                            && flow.accumulation.data[k] >= cfg.min_area_cells
+                        {
+                            continue; // channel cell — stream power only, no diffusion
                         }
                         let lap = src[k - 1] + src[k + 1] + src[k - w] + src[k + w] - 4.0 * src[k];
                         field.data[k] = src[k] + dsub * lap;

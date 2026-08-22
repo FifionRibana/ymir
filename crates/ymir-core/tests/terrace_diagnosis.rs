@@ -884,6 +884,173 @@ fn channel_incision_profile(field: &GridF32, ss: &SteinSteinParams) -> f32 {
     0.0
 }
 
+/// Median incision (m) per Strahler order + whether the ordering is MONOTONE
+/// (S1 < S2 < ... — trunks carve more than headwaters, the physical target).
+fn per_order_incision(fbm: &GridF32, out: &GridF32, ss: &SteinSteinParams) -> (Vec<(u8, f32)>, bool) {
+    let fm = to_metres(fbm, ss);
+    let om = to_metres(out, ss);
+    let dr = c1_drainage(out, None, &C1DrainageConfig::default(), ss);
+    let mut per: std::collections::HashMap<u8, Vec<f32>> = std::collections::HashMap::new();
+    for s in &dr.rivers.segments {
+        for &(x, y) in &s.points {
+            let k = y as usize * out.width + x as usize;
+            per.entry(s.strahler_order).or_default().push(fm.data[k] - om.data[k]);
+        }
+    }
+    let mut orders: Vec<u8> = per.keys().copied().collect();
+    orders.sort();
+    let mut table = Vec::new();
+    for o in &orders {
+        let v = per.get_mut(o).unwrap();
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        table.push((*o, v[v.len() / 2]));
+    }
+    // Monotone up to the highest 4 orders (ignore sparse top order).
+    let mono = table.windows(2).take(3).all(|w| w[0].1 <= w[1].1 + 5.0);
+    (table, mono)
+}
+
+fn fmt_orders(t: &[(u8, f32)]) -> String {
+    t.iter().map(|(o, m)| format!("S{o}={m:.0}m")).collect::<Vec<_>>().join(" ")
+}
+
+/// TASK 1+2 — hillslope regime: sweep the incision threshold θ and the critical
+/// drainage area A_c, report the per-order table for each, and where the ordering
+/// becomes monotone (trunks > headwaters). 1024², seed 42.
+#[test]
+#[ignore]
+fn stream_power_hillslope() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    let ss = SteinSteinParams::default();
+    let t = 1024usize;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let km2 = c1_cell_area_km2(t);
+    let base = |th: f32, ac: f32| StreamPowerConfig {
+        k: 1.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA,
+        diffusion: 0.0, diffusion_substeps: 4, threshold: th, min_area_cells: ac,
+    };
+
+    eprintln!("\n=== TASK 1 — incision threshold θ sweep (K=1,m=.5,n=1,iters=3) ===");
+    for th in [0.0f32, 0.02, 0.05, 0.1, 0.15, 0.2] {
+        let (tab, mono) = per_order_incision(&fbm, &incise(&fbm, &base(th, 0.0)), &ss);
+        eprintln!("  θ={th:>5.1}: {}  {}", fmt_orders(&tab), if mono { "MONOTONE ✓" } else { "inverted" });
+    }
+    eprintln!("\n=== TASK 2 — critical drainage area A_c sweep ===");
+    for ac in [0.0f32, 5.0, 25.0, 100.0, 400.0] {
+        let (tab, mono) = per_order_incision(&fbm, &incise(&fbm, &base(0.0, ac)), &ss);
+        eprintln!(
+            "  A_c={ac:>5.0} cells ({:>5.1} km²): {}  {}",
+            ac * km2,
+            fmt_orders(&tab),
+            if mono { "MONOTONE ✓" } else { "inverted" }
+        );
+    }
+    eprintln!("  (target: S1 → tens of m, ordering monotone S1<S2<S3<S4)");
+}
+
+/// TASK 4+5 — recommended regime-split config: coupled-vs-uncoupled per-order +
+/// slopes, and the weak-droplet coupling (does a light texture pass preserve the SP
+/// valleys, unlike the full pass 323→24 m?). 1024², seed 42.
+#[test]
+#[ignore]
+fn stream_power_recommended() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::land_topology::slope_shares;
+    let ss = SteinSteinParams::default();
+    let t = 1024usize;
+    let cells = (t * t) as f64;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+
+    // Recommended: A_c=50, D=0.05, K=1, m=0.5, n=1, iters=3.
+    let cfg = StreamPowerConfig {
+        k: 1.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA,
+        diffusion: 0.05, diffusion_substeps: 4, min_area_cells: 50.0, threshold: 0.0,
+    };
+    let sp = incise(&fbm, &cfg);
+    let couple = 400.0f32 / 1024.0; // depth_scale ∝ domain (400 km) → relief ×0.39
+
+    eprintln!("\n=== TASK 4 — recommended config, coupled vs uncoupled (domain 400 km) ===");
+    let (tab, _) = per_order_incision(&fbm, &sp, &ss);
+    eprint!("  per-order UNCOUPLED: ");
+    for (o, m) in &tab {
+        eprint!("S{o}={m:.0}m ");
+    }
+    eprintln!("\n  per-order COUPLED  : {}", tab.iter().map(|(o, m)| format!("S{o}={:.0}m", m * couple)).collect::<Vec<_>>().join(" "));
+    eprintln!("  → coupling scales incision ×{couple:.2}; trunks S3/S4 fall to ~{:.0}/{:.0} m — marginal for city valleys.", tab.iter().find(|(o, _)| *o == 3).map(|(_, m)| m * couple).unwrap_or(0.0), tab.iter().find(|(o, _)| *o == 4).map(|(_, m)| m * couple).unwrap_or(0.0));
+
+    let base = ss.depth_scale_m as f32;
+    let s_un = slope_shares(&sp, SEA, 400.0, base);
+    let s_co = slope_shares(&sp, SEA, 400.0, base * couple);
+    eprintln!("  slopes >15/30/45°: uncoupled {:.0}/{:.0}/{:.0}% → coupled {:.0}/{:.0}/{:.0}%",
+        s_un.0 * 100.0, s_un.1 * 100.0, s_un.2 * 100.0, s_co.0 * 100.0, s_co.1 * 100.0, s_co.2 * 100.0);
+
+    eprintln!("\n=== TASK 5 — weak-droplet coupling (drainage relief must NOT collapse) ===");
+    let rel_sp = drainage_relief_m(&sp, &ss);
+    let mut weak = ero_cfg(t);
+    weak.num_droplets = (0.25 * cells) as usize; // weak hillslope texture (vs 0.95 prod)
+    let sp_weak = run_erosion(&sp, &weak, &seed, |_, _, _| true).heightmap;
+    let full = run_erosion(&sp, &ero_cfg(t), &seed, |_, _, _| true).heightmap;
+    eprintln!(
+        "  drainage relief: SP alone {rel_sp:.0} m → SP+weak(0.25/cell) {:.0} m → SP+full(0.95) {:.0} m",
+        drainage_relief_m(&sp_weak, &ss),
+        drainage_relief_m(&full, &ss),
+    );
+    eprintln!("  (weak must stay near SP-alone; full collapses it — the reason droplets can't run at full strength)");
+}
+
+/// TASK 3 — coupled regime split: hillslope diffusion (A < A_c) + stream power
+/// (A ≥ A_c), interleaved. Does it make the per-order ordering monotone AND open the
+/// valley cross-sections (V-walls) that plain SP + post-smooth could not? 1024².
+#[test]
+#[ignore]
+fn stream_power_regime() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let t = 1024usize;
+    let (state, _run) = coarse_state(SEED);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(SEED);
+    let mut fcfg = FbmUpscaleConfig::c1_hd_production(t);
+    fcfg.erosion = None;
+    fcfg.bathymetry = None;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
+    let cfg = |ac: f32, d: f32| StreamPowerConfig {
+        k: 1.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA,
+        diffusion: d, diffusion_substeps: 4, min_area_cells: ac, threshold: 0.0,
+    };
+    let probes = channel_probes(&incise(&fbm, &cfg(0.0, 0.0)), &ss, 12);
+    let (fd, _) = cross_section_stats(&fbm, &ss, &probes);
+    let (sd, _) = cross_section_stats(&incise(&fbm, &cfg(0.0, 0.0)), &ss, &probes);
+    eprintln!("\n=== TASK 3 — coupled regime split (hillslope diffusion A<A_c + channel SP) ===");
+    eprintln!("  reference cross-sections: FBM {fd:.0} m, SP-only(no diffusion) {sd:.0} m");
+    eprintln!("  A_c cells | D    | per-order incision | X-sect depth | relief | ordering");
+    for (ac, d) in [(50.0f32, 0.05f32), (100.0, 0.05), (100.0, 0.1), (200.0, 0.05), (100.0, 0.2)] {
+        let out = incise(&fbm, &cfg(ac, d));
+        let (tab, mono) = per_order_incision(&fbm, &out, &ss);
+        let (dep, _) = cross_section_stats(&out, &ss, &probes);
+        let rel = drainage_relief_m(&out, &ss);
+        eprintln!(
+            "  {ac:>5.0}    | {d:.2} | {:<34} | {dep:>4.0} m | {rel:>4.0} m | {}",
+            fmt_orders(&tab),
+            if mono { "MONOTONE ✓" } else { "inverted" },
+        );
+    }
+    eprintln!("  (want: monotone ordering, S1 tens of m, X-sect depth ABOVE the {sd:.0} m SP-only floor = V-walls open)");
+}
+
 #[cfg(windows)]
 fn peak_ws_mb() -> u64 {
     #[repr(C)]
@@ -939,7 +1106,7 @@ fn stream_power_reconfirm() {
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
     let fbm_ms = ti.elapsed().as_millis();
 
-    let cfg = StreamPowerConfig { k: 1.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA, diffusion: 0.0, diffusion_substeps: 4 };
+    let cfg = StreamPowerConfig { k: 1.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA, diffusion: 0.0, diffusion_substeps: 4, min_area_cells: 0.0, threshold: 0.0 };
     let ti = Instant::now();
     let sp = incise(&fbm, &cfg);
     let sp_ms = ti.elapsed().as_millis();
@@ -1054,6 +1221,7 @@ fn stream_power_tuning() {
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fcfg).heightmap;
     let sp = |k: f32, m: f32, d: f32| StreamPowerConfig {
         k, m, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA, diffusion: d, diffusion_substeps: 4,
+        min_area_cells: 0.0, threshold: 0.0,
     };
     let base = incise(&fbm, &sp(1.0, 0.5, 0.0)); // fix probes on the D=0 carved field
     let probes = channel_probes(&base, &ss, 12);

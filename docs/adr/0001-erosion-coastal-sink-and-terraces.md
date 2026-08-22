@@ -146,11 +146,39 @@ droplets are the common cause of both symptoms. Coupling therefore cannot keep t
 full droplet pass; droplets must be reduced to a WEAK hillslope-texture pass (or
 dropped) so they don't erase the channels. Diffusion at 0.4 over-smooths; start near 0.
 
-**Recommended (for the implementation pass, NOT wired yet):** stream-power K=1, m=0.5,
-n=1, dt=1, iterations=2–3, sea_level=0.5, diffusion≈0–0.05; and REPLACE the production
-droplet pass with stream-power for channels + at most a weak droplet/diffusion pass for
-hillslope texture. Caveats: measured on seed 42, 1024²; the drainage-relief metric and
-K calibration should be re-confirmed at 8192² and on the author's seed before wiring.
+**Hillslope regime (why pure stream power over-carves, and the fix).** Pure stream
+power is DETACHMENT-LIMITED WITH NO THRESHOLD — `E = K·A^m·S^n > 0` for any `A > 0`,
+so even a near-zero-area cell incises in proportion to its slope; headwaters are the
+steepest cells, so they over-carve. Physically those are HILLSLOPES (diffusion /
+mass-wasting), not channels — the fluvial law is applied where it does not apply.
+Measured on seed 42 (per-order median incision, m; want S1 small, trunks 200–400 m):
+
+- pure SP: S1=380 S2=366 S3=286 **S4=138** — inverted (headwaters carve most).
+- incision threshold `θ` (`E=K·max(0,A^m·S^n−θ)`): a razor window — θ=0.02 drops S1 to
+  39 m but collapses trunks (S4=11); θ≥0.05 kills all. Does NOT fix it.
+- critical area `A_c` (hillslope below, fluvial above): monotone only at an
+  implausibly sparse 400 km² channel head, trunks then ~100 m. Does NOT fix it alone.
+- **coupled regime split** (diffusion on hillslopes `A<A_c` + stream power on channels
+  `A≥A_c`, interleaved) — TASK 3 WAS needed and it WORKS: at A_c=50 cells, D=0.05,
+  **S1 → 30 m** (headwaters fixed) and the valley cross-section OPENS from 250 m
+  (SP-only) to **420 m** (V-walls; drainage relief 659 m). Residual: mid-order still
+  out-incises trunks (S2=338 > S4=115) — physically defensible (tributaries drop into
+  graded trunks), not the headwater pathology.
+
+**Coupling trade (measured, domain 400 km).** `depth_scale ↔ domain` coupling (×0.39
+relief) tames slopes — >15/30/45° from 23/9/4 % to 7/2/0 % — but halves valley depth
+(S4 115 → 45 m, marginal for city valleys). Raising K to restore depth re-raises
+slopes; the vertical-scale decision must weigh this. **Droplets are corrosive at ANY
+density**: SP relief 659 m → SP+weak(0.25/cell) 124 m → SP+full(0.95) 68 m, so a "weak
+texture pass" still costs ~80 % of the relief — recommend droplets ≈ off (hillslope
+diffusion + FBM base supply texture).
+
+**Recommended (implementation pass, NOT wired):** stream-power ON, K=1, m=0.5, n=1,
+iterations=3, sea_level=0.5, **A_c ≈ 50 cells, diffusion ≈ 0.05 (regime split)**, θ=0,
+droplets ≈ off; ship WITH `depth_scale ↔ domain` coupling. K is resolution-stable
+(per-order ~unchanged 1024²→4096²). Before flipping: re-confirm at 8192² on the
+author's seed (10481999410520546993), and settle the coupling-vs-valley-depth trade
+(whether to raise K under coupling, accepting more steep land).
 
 ---
 
