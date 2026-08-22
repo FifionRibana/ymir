@@ -363,3 +363,74 @@ equilibrium-height closures. Not touched here.
 stream-power" ordering is moot — both are the erosion chantier. When any tectonic
 closure IS eventually touched, re-check the pre-existing Picard non-convergence in
 that layer — [docs/issues/picard-nonconvergence-rectangular-smoke.md](../issues/picard-nonconvergence-rectangular-smoke.md).
+
+## Finding 7 — The relief needed a BOUNDING CLOSURE, not more tuning (slits & striations)
+
+**Context.** After Finding 6's sculpt (A_c 0.1, iters 2, K 1500) the author reviewed
+exports/sculpt at 8192² and rejected it: the FBM striations still drape the upper
+slopes *following isolines* (contours, not valleys), the rivers are ~1000 m deep but
+**one pixel wide** (slits, not valleys), and the massif is not sculpted. Diagnosis
+(shared and confirmed): tuning cannot fix this because two physical laws are absent.
+
+**STEP 1 — confirmed the gap (read-only, `step1_slope_distribution`).**
+- Hillslope law: a plain LINEAR Laplacian, constant `D` ([stream_power.rs] step 5) —
+  no slope dependence, no flux limiter.
+- **Nothing bounds the maximum slope anywhere in the pipeline** — no talus / angle of
+  repose / clamp (`erosion/thermal.rs` is an empty, commented-out placeholder).
+- Incision is purely vertical on the receiver cell; no lateral/bank erosion.
+- Land slope distribution (seed …6993, 2048²): raw FBM max ~70–80°, and the
+  stream-power incision itself STEEPENS it — >30° share 2.8 %→38.7 %, **max ~84°**
+  (≈ 2.5× the angle of repose) at amp 0.04. The near-vertical faces are the *walls of
+  the 1-px slits*. Lowering FBM amp barely moves the sculpted max (85→84°). → a
+  bounding closure is required.
+
+**STEP 2 — two closures, independently switchable, OFF by default.**
+- **(a) Nonlinear hillslope diffusion with a critical slope** (Roering): flux
+  `q = D·S/(1−(S/S_c)²)`, `S_c = tan(33°)`. The effective diffusivity diverges as
+  `S→S_c`, so slopes cannot exceed it (arêtes; the missing bound). **Scheme (the term
+  is stiff near S_c → explicit blows up):** backward Euler (unconditionally stable for
+  any step) + lagged-diffusivity Picard (re-freeze edge weights each outer pass) +
+  Gauss-Seidel inner solve (diagonally dominant → converges, deterministic in
+  row-major order); the denominator is floored (edge slope capped at 0.999·S_c) so
+  weights stay finite. Self-arresting: a bank dropping below S_c gets denom→1,
+  weight→D, and stops — so relief survives instead of planing to base level. Runs only
+  on hillslope cells (A<A_c); channel/sea cells are fixed Dirichlet values.
+- **(b) Channel lateral widening as HYDRAULIC GEOMETRY.** Floor half-width
+  `W = K_lat·A_km²^m` (the width–area law), planed perpendicular to flow toward the
+  channel floor. Trunks (high A) get wide floors, headwaters (low A) stay narrow
+  gorges — the width variety requested.
+
+**Resolution invariance (a real bug found at 8192²).** The first cut of both closures
+was resolution-DEPENDENT and collapsed back to slits at fine cells (v2_8192 W/D 3,
+>30° 46 %): the ±1-cell lateral reach widens 4× less at 4× finer cells, and the
+dimensionless diffusion weight carries an implicit 1/dx². Fixed: lateral reach is a
+PHYSICAL half-width in metres; the diffusion weight scales `(HILLSLOPE_REF_CELL_M/cell)²`
+(κΔt/dx²). After the fix the closures behave the same in metres at 2048² and 8192².
+
+**STEP 3 — shape metrics (2048², amp 0.04, `closure_grid`).**
+
+| config | >30° | max° | floor/ridge | crest curv | W/D S1→S5 | Strahler |
+|---|---|---|---|---|---|---|
+| v1 (none) | 38.7 % | 84 | 0.29 | 774 m | 0.64 → 6.3 | healthy |
+| +crit slope (a) | 20.6 % | 82 | 0.33 | 313 m | 2.3 → 9.1 | healthy |
+| +lateral (b) | 23.4 % | 84 | 0.27 | 640 m | 7.0 → 47.9 | healthy |
+| **+both (v2)** | **12.1 %** | 81 | 0.32 | **288 m** | **6.2 → 40.9** | healthy |
+
+- (a) collapses the steep SHARE (38.7→12.1 %) and halves crest curvature (774→288 m):
+  the pervasive striated slopes plane into arêtes. The **max stays ~80°** because
+  isolated fluvial cliffs (channel walls/knickpoints, deliberately excluded from the
+  hillslope closure) survive — arguably correct (cliffs are content, not the defect).
+- (b) is the decisive slit fix: W/D grows monotonically with order and is >1 on every
+  order (trunk S4 1.3→30.5) — the 1-px slit becomes a downstream-widening valley.
+- Drainage hierarchy intact across all four (no pathology traded).
+
+**FBM can drop further.** With the closures supplying the structure, amp 0.02 and 0.01
+hold up (W/D and steep share barely change) — structure now comes from the closures,
+not the noise. This is the real test of the reframe, and it passes.
+
+**Config.** `StreamPowerConfig::relief_v2` = relief_v1 + `critical_slope = tan(33°)`,
+`lateral_erosion = 4.0` m/√km², nonlinear `diffusion = 0.15` (at the 2048²/400 km
+reference cell). Still OFF by default; the viz "Closures relief-v2" checkbox and the
+diagnostics drive it. `relief_v1` is byte-identical (its regression baseline is
+unchanged, not rebased). A v2 regression baseline is deferred until the author's
+visual verdict on exports/sculpt/closure_* settles.

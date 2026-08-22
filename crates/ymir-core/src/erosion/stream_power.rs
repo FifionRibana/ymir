@@ -61,6 +61,33 @@ pub struct StreamPowerConfig {
     /// Vertical scale (m) for the physical slope: `Δh_m = Δnorm · 2 · 1.13 ·
     /// depth_scale_m` (the `c1_altitude_norm_to_metres` slope).
     pub depth_scale_m: f32,
+
+    // ─── CLOSURE (a): nonlinear hillslope diffusion with a critical slope ───────
+    /// **Critical slope `S_c`** (dimensionless gradient = `tan(angle)`; `0` = OFF,
+    /// use the legacy LINEAR Laplacian). Roering-type nonlinear flux `q = D·S /
+    /// (1 − (S/S_c)²)`: the effective diffusivity DIVERGES as `S → S_c`, so no slope
+    /// can exceed the critical angle — this is the closure that BOUNDS the maximum
+    /// slope (arêtes/planed ridges), which nothing else in the pipeline does. Start
+    /// at `tan(33°) ≈ 0.649`. Solved implicitly (see `hillslope_picard`) because the
+    /// term is stiff near `S_c` and an explicit scheme blows up. See docs/adr/0001.
+    pub critical_slope: f32,
+    /// Outer lagged-diffusivity (Picard) iterations for the nonlinear-diffusion
+    /// implicit solve. Each freezes the edge diffusivities from the current surface,
+    /// then does a backward-Euler solve; a few (3) converge the nonlinearity.
+    pub hillslope_picard: usize,
+    /// Inner Jacobi sweeps per backward-Euler solve. The implicit operator is
+    /// diagonally dominant (unconditionally stable for any step), so Jacobi converges;
+    /// ~40 sweeps suffice at these grid sizes.
+    pub hillslope_implicit_iters: usize,
+
+    // ─── CLOSURE (b): channel lateral (bank) widening ──────────────────────────
+    /// **Lateral bank erodibility `K_lat`** (`0` = OFF). After vertical incision,
+    /// channel cells erode their two banks (perpendicular to flow) at a lateral
+    /// stream power `K_lat·A_km²^m·S_lat` (S_lat = the physical bank gradient), so
+    /// trunk valleys (high `A`) grow wide floors while headwaters (low `A`) stay
+    /// narrow gorges — turning the 1-px/1000-m slit into a valley with a floor whose
+    /// width grows downstream. Banks are never cut below the channel floor.
+    pub lateral_erosion: f32,
 }
 
 /// Relief-v1 reference: physical critical drainage area (km²) for the channel head.
@@ -95,9 +122,49 @@ impl StreamPowerConfig {
             threshold: 0.0,
             cell_km,
             depth_scale_m,
+            // Closures OFF in v1 (byte-identical to the reviewed sculpt).
+            critical_slope: 0.0,
+            hillslope_picard: 3,
+            hillslope_implicit_iters: 40,
+            lateral_erosion: 0.0,
+        }
+    }
+
+    /// `relief-v2` — v1 plus the two bounding closures (ADR 0001, Finding 7): nonlinear
+    /// hillslope diffusion with a critical slope `S_c = tan(33°)` (bounds the maximum
+    /// slope → arêtes replace the near-vertical FBM/slit faces) and channel lateral
+    /// widening (`K_lat`, trunks get floors, headwaters stay gorges). Still OFF by
+    /// default in the pipeline — driven by the viz checkbox / diagnostic pending the
+    /// author's visual verdict. Same `A_c`, iters and K as v1.
+    pub fn relief_v2(cell_km2: f32, depth_scale_m: f32) -> Self {
+        Self {
+            critical_slope: RELIEF_V2_CRITICAL_SLOPE,
+            lateral_erosion: RELIEF_V2_LATERAL,
+            // The nonlinear closure needs more transport than the linear D=0.05 to plane
+            // arêtes; 0.15 collapses the steep share while keeping drainage relief ~350 m
+            // (D=0.3 over-planed it to ~240 m). See ADR 0001 Finding 7.
+            diffusion: RELIEF_V2_DIFFUSION,
+            ..Self::relief_v1(cell_km2, depth_scale_m)
         }
     }
 }
+
+/// `relief-v2` critical slope — `tan(33°)`, a mid-range angle of repose for fractured
+/// rock. Above it the nonlinear flux diverges and the slope cannot steepen further.
+pub const RELIEF_V2_CRITICAL_SLOPE: f32 = 0.6494; // tan(33°)
+/// `relief-v2` lateral width coefficient (m per √km²): channel floor half-width =
+/// `K_lat · A_km²^m`. Tuned so trunks (A~10⁴ km²) get ~0.4–0.8 km floors while
+/// headwaters (A~1 km²) stay sub-cell gorges — the width variety the author asked for.
+pub const RELIEF_V2_LATERAL: f32 = 4.0;
+/// `relief-v2` hillslope diffusivity for the NONLINEAR closure (higher than v1's linear
+/// 0.05 — the critical-slope denominator modulates it, and it must plane arêtes).
+/// Dimensionless at the reference cell [`HILLSLOPE_REF_CELL_M`]; scaled ∝ 1/cell² inside.
+pub const RELIEF_V2_DIFFUSION: f32 = 0.15;
+
+/// Reference cell size (m) at which the dimensionless hillslope [`StreamPowerConfig::diffusion`]
+/// is calibrated (2048² over a 400 km domain). The nonlinear implicit weight scales by
+/// `(HILLSLOPE_REF_CELL_M / cell_m)²` so the closure planes the same metres at any grid.
+pub const HILLSLOPE_REF_CELL_M: f32 = 400_000.0 / 2048.0;
 
 /// Relief-v1 erodibility K in the PHYSICAL law (`E = K·A_km²^m·S_phys^n`). **1500** —
 /// half the incision-reproducing K=3000, the "bounded incision" that keeps valley
@@ -120,6 +187,10 @@ impl Default for StreamPowerConfig {
             threshold: 0.0,
             cell_km: 1.0,
             depth_scale_m: 5000.0,
+            critical_slope: 0.0,
+            hillslope_picard: 3,
+            hillslope_implicit_iters: 40,
+            lateral_erosion: 0.0,
         }
     }
 }
@@ -256,6 +327,57 @@ pub fn incise_with_progress(
             field.data[k] = hn.clamp(hr, ho);
         }
 
+        // 4b. CLOSURE (b) — channel lateral (bank) widening, as HYDRAULIC GEOMETRY.
+        // A channel's floor half-width scales with discharge: W ∝ Q^b ∝ A^b (the
+        // standard width–area law; use b = m = 0.5). Each channel cell planes the banks
+        // perpendicular to flow out to a PHYSICAL half-width `K_lat · A_km²^m` (metres),
+        // so trunks (high A) grow wide floors and headwaters (low A) stay narrow gorges —
+        // and the reach is in metres, so it is RESOLUTION-INVARIANT (a ±1-cell bank
+        // erosion would widen 4× less at 4× finer cells → the slit returns at 8192²).
+        // Banks are planed toward the channel floor, never below it. Order-independent
+        // (delta buffer, deterministic min).
+        if cfg.lateral_erosion > 0.0 {
+            let mut newz = field.data.clone();
+            for &k in &stack {
+                let r = receiver[k];
+                if r == k || field.data[k] <= cfg.sea_level {
+                    continue;
+                }
+                let area = flow.accumulation.data[k].max(1.0);
+                if area < cfg.min_area_cells {
+                    continue; // hillslope, no channel → no banks
+                }
+                let d = flow.direction[k];
+                if d == DIR_NONE {
+                    continue;
+                }
+                let (fdx, fdy) = (D8_DX[d as usize], D8_DY[d as usize]);
+                let zc = field.data[k]; // channel floor
+                let half_w_m = cfg.lateral_erosion * (area * cell_km2).powf(cfg.m);
+                let half_cells = (half_w_m / cell_m).floor() as i32;
+                if half_cells < 1 {
+                    continue; // sub-cell floor (headwater gorge) — leave the 1-px channel
+                }
+                let (x, y) = (k % w, k / w);
+                for (px, py) in [(-fdy, fdx), (fdy, -fdx)] {
+                    for step in 1..=half_cells {
+                        let (bx, by) = (x as i32 + px * step, y as i32 + py * step);
+                        if bx < 0 || by < 0 || bx >= w as i32 || by >= h as i32 {
+                            break;
+                        }
+                        let b = by as usize * w + bx as usize;
+                        if field.data[b] <= cfg.sea_level || field.data[b] <= zc {
+                            break; // reached sea, or ground already at/below the floor
+                        }
+                        if zc < newz[b] {
+                            newz[b] = zc; // plane the bank down to the channel floor
+                        }
+                    }
+                }
+            }
+            field.data = newz;
+        }
+
         // 5. Hillslope diffusion (explicit, a few sub-steps), interleaved with the
         // incision each iteration so it holds interfluves WHILE channels incise (the
         // coupled LEM, not a post-pass smooth). REGIME SPLIT: when `min_area_cells`
@@ -263,7 +385,53 @@ pub fn incise_with_progress(
         // ONLY on channels (A ≥ A_c) — the standard channel-head partition that stops
         // the fluvial law from over-carving physical hillslopes. `min_area_cells = 0`
         // → diffuse everywhere (legacy).
-        if cfg.diffusion > 0.0 && cfg.diffusion_substeps > 0 {
+        if cfg.diffusion > 0.0 && cfg.critical_slope > 0.0 {
+            // CLOSURE (a) — NONLINEAR hillslope diffusion with critical slope S_c.
+            // Flux q = D·S/(1−(S/S_c)²): the effective edge diffusivity diverges as
+            // S→S_c, so slopes cannot exceed S_c (arêtes; the missing bound). The term
+            // is STIFF near S_c → an explicit scheme blows up, so we solve it IMPLICITLY:
+            // backward Euler (unconditionally stable for any step) with LAGGED-DIFFUSIVITY
+            // Picard (re-freeze edge weights each outer pass) and a Gauss-Seidel inner
+            // solve (the operator is diagonally dominant → GS converges, deterministic in
+            // row-major order). The denominator is floored (edge slope capped at 0.999·S_c)
+            // so weights stay finite; the self-arresting nature — a bank that drops below
+            // S_c gets denom→1, weight→D, and stops — is what leaves relief instead of
+            // planing to base level. Runs only on hillslope cells (A<A_c); channel/sea
+            // cells are fixed Dirichlet values, so slit tops get pulled down into flanks.
+            let sc = cfg.critical_slope;
+            let g = norm_to_m / cell_m; // Δnorm(edge) → physical gradient
+            // Resolution invariance: the implicit diffusion weight is κΔt/dx², so the
+            // dimensionless `diffusion` (calibrated at the reference cell) is scaled by
+            // (REF/cell)² — otherwise the same D smooths 16× fewer metres at 4× finer
+            // cells and the closure fails to plane at 8192² (see ADR 0001 Finding 7).
+            let dscale = (HILLSLOPE_REF_CELL_M / cell_m).powi(2);
+            let w_base = cfg.diffusion * dscale;
+            let z_old = field.data.clone(); // backward-Euler RHS (fixed over Picard)
+            for _p in 0..cfg.hillslope_picard.max(1) {
+                let coeff = field.data.clone(); // slopes lagged within this Picard pass
+                for _j in 0..cfg.hillslope_implicit_iters.max(1) {
+                    for y in 1..h - 1 {
+                        for x in 1..w - 1 {
+                            let k = y * w + x;
+                            if field.data[k] <= cfg.sea_level
+                                || (cfg.min_area_cells > 0.0
+                                    && flow.accumulation.data[k] >= cfg.min_area_cells)
+                            {
+                                continue; // channel/sea cell — fixed boundary value
+                            }
+                            let (mut sw, mut swz) = (0.0f32, 0.0f32);
+                            for nb in [k - 1, k + 1, k - w, k + w] {
+                                let s = ((coeff[k] - coeff[nb]).abs() * g / sc).min(0.999);
+                                let w_e = w_base / (1.0 - s * s).max(0.02);
+                                sw += w_e;
+                                swz += w_e * field.data[nb]; // Gauss-Seidel: latest values
+                            }
+                            field.data[k] = (z_old[k] + swz) / (1.0 + sw);
+                        }
+                    }
+                }
+            }
+        } else if cfg.diffusion > 0.0 && cfg.diffusion_substeps > 0 {
             let dsub = cfg.diffusion / cfg.diffusion_substeps as f32;
             for _ in 0..cfg.diffusion_substeps {
                 let src = field.data.clone();
@@ -319,6 +487,108 @@ mod tests {
         assert!(f1.data[w / 2] > 0.5, "the high ridge top must stay land");
     }
 
+    /// CLOSURE (a): nonlinear diffusion with a critical slope bounds the maximum
+    /// slope — a cliff far above `S_c` is planed toward `S_c` and never left steeper
+    /// than the linear scheme would leave it; result stays finite.
+    #[test]
+    fn critical_slope_bounds_max_slope() {
+        let (w, h) = (24usize, 24usize);
+        // A plateau (0.9) dropping to a bench (0.55) at mid-x: a near-vertical cliff.
+        let mut d = vec![0.0f32; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                d[y * w + x] = if x < w / 2 { 0.9 } else { 0.55 };
+            }
+        }
+        let f0 = GridF32::from_vec(w, h, d);
+        // No incision (K=0), diffusion only, so we isolate the hillslope closure.
+        let cell_km = 0.2f32;
+        let base = StreamPowerConfig {
+            k: 0.0,
+            iterations: 3,
+            sea_level: 0.5,
+            diffusion: 0.3,
+            cell_km,
+            depth_scale_m: 5000.0,
+            ..Default::default()
+        };
+        let max_slope = |f: &GridF32| -> f32 {
+            let norm_to_m = 2.0 * 1.13 * base.depth_scale_m;
+            let cell_m = cell_km * 1000.0;
+            // Interior only — boundary rows/cols are not diffused (loop is 1..w-1).
+            (0..w * h)
+                .filter(|&k| {
+                    let (x, y) = (k % w, k / w);
+                    x > 1 && y > 0 && y < h - 1
+                })
+                .map(|k| (f.data[k] - f.data[k - 1]).abs() * norm_to_m / cell_m)
+                .fold(0.0f32, f32::max)
+        };
+        let sc = 0.6494f32; // tan(33°)
+        let nonlin = StreamPowerConfig { critical_slope: sc, ..base.clone() };
+        let a = incise(&f0, &base); // linear
+        let b = incise(&f0, &nonlin); // nonlinear, bounded
+        assert!(b.data.iter().all(|v| v.is_finite()), "nonlinear diffusion must stay finite");
+        // The nonlinear closure planes the cliff MORE than linear (it targets S_c),
+        // so its residual max slope is lower.
+        assert!(
+            max_slope(&b) < max_slope(&a),
+            "critical-slope diffusion should reduce the max slope below linear: {} vs {}",
+            max_slope(&b),
+            max_slope(&a)
+        );
+    }
+
+    /// CLOSURE (b): lateral erosion lowers channel banks, widening the corridor —
+    /// more cells adjacent to the channel are lowered than with vertical incision alone.
+    #[test]
+    fn lateral_erosion_widens_channel() {
+        let (w, h) = (40usize, 40usize);
+        let cx = (w / 2) as f32;
+        // A V-shaped valley: high on the flanks (|x−cx|), sloping down to the sea at
+        // y=h−1. Off-centre cells drain TOWARD the centre column, so the centre is the
+        // high-accumulation channel and the flanks are hillslopes (low accumulation, no
+        // vertical incision) — lateral erosion is then the ONLY thing that lowers banks.
+        let mut d = vec![0.0f32; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                let t = y as f32 / (h as f32 - 1.0);
+                let flank = (x as f32 - cx).abs() / cx;
+                d[y * w + x] = 0.62 - 0.10 * t + 0.28 * flank;
+            }
+        }
+        let f0 = GridF32::from_vec(w, h, d);
+        let base = StreamPowerConfig {
+            k: 2.0,
+            iterations: 3,
+            sea_level: 0.5,
+            cell_km: 0.2,
+            depth_scale_m: 5000.0,
+            ..Default::default()
+        };
+        // lateral_erosion is now a half-width coefficient (m per √km²); use a large
+        // value so the physical floor half-width exceeds the 200 m cell here.
+        let widened = StreamPowerConfig { lateral_erosion: 200.0, ..base.clone() };
+        let a = incise(&f0, &base);
+        let b = incise(&f0, &widened);
+        // Total lowering on the two columns adjacent to the centre channel: lateral
+        // erosion pulls the banks down toward the channel floor, deeper than vertical
+        // incision alone (the count saturates, so measure depth).
+        let bank_incision = |f: &GridF32| -> f32 {
+            (1..h - 1)
+                .flat_map(|y| [(w / 2 - 1, y), (w / 2 + 1, y)])
+                .map(|(x, y)| (f0.data[y * w + x] - f.data[y * w + x]).max(0.0))
+                .sum()
+        };
+        assert!(b.data.iter().all(|v| v.is_finite()));
+        assert!(
+            bank_incision(&b) > bank_incision(&a) * 1.05,
+            "lateral erosion should deepen the banks: {} vs {}",
+            bank_incision(&b),
+            bank_incision(&a)
+        );
+    }
+
     /// n = 1 closed form and the Newton path agree at n = 1.0000001.
     #[test]
     fn newton_matches_closed_form_at_n1() {
@@ -331,7 +601,8 @@ mod tests {
         }
         let base = GridF32::from_vec(w, h, d);
         let a = incise(&base, &StreamPowerConfig { n: 1.0, iterations: 2, ..Default::default() });
-        let b = incise(&base, &StreamPowerConfig { n: 1.0000001, iterations: 2, ..Default::default() });
+        let b =
+            incise(&base, &StreamPowerConfig { n: 1.0000001, iterations: 2, ..Default::default() });
         let maxdiff = (0..w * h).map(|k| (a.data[k] - b.data[k]).abs()).fold(0.0f32, f32::max);
         assert!(maxdiff < 1e-3, "closed form vs Newton at n≈1 diverged: {maxdiff}");
     }

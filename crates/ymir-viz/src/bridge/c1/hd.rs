@@ -37,6 +37,7 @@ use ymir_core::cache::default_cache_dir;
 use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
 use ymir_core::climate::{ClimateResult, c1_biomes, c1_climate_windowed};
+use ymir_core::erosion::stream_power::StreamPowerConfig;
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
 use ymir_core::export::{height, hydro, vector};
 use ymir_core::grid::GridF32;
@@ -54,7 +55,6 @@ use ymir_core::tectonics_c1::land_topology::{
 };
 use ymir_core::tectonics_c1::production_upscale::EroProgress;
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
-use ymir_core::erosion::stream_power::StreamPowerConfig;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
 use super::events::C1Event;
@@ -88,6 +88,11 @@ pub struct HdParams {
     /// D=0.05, uncoupled). A UI opt-in to eyeball the effect; production default
     /// unchanged until confirmed.
     pub stream_power: bool,
+    /// EXPERIMENTAL (ADR 0001, Finding 7): with `stream_power` on, use the `relief_v2`
+    /// config — the two bounding CLOSURES (nonlinear hillslope diffusion with a
+    /// critical slope → arêtes; hydraulic-geometry lateral widening → valley floors).
+    /// `false` → `relief_v1` (v1 slits). A UI opt-in; production default unchanged.
+    pub closures: bool,
     /// EXPERIMENTAL: override the FBM `amplitude_base` for this run (`None` = the
     /// production 0.16). Lets the author flip through the striation amplitude ladder
     /// (0.16/0.08/0.04/0.02) with stream-power ON to see the striations shrink.
@@ -107,6 +112,7 @@ impl Default for HdParams {
             domain_km: 1024.0,
             manual_offset: None,
             stream_power: false,
+            closures: false,
             fbm_amplitude: None,
             export_dir: None,
         }
@@ -338,11 +344,23 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // resolution (resolution-stable channel head); uncoupled vertical scale.
     if params.stream_power {
         let km_per_cell = window_km / params.target_size as f32; // window_km == domain_km
-        let sp = StreamPowerConfig::relief_v1(km_per_cell * km_per_cell, ss.depth_scale_m as f32);
+        let cell_km2 = km_per_cell * km_per_cell;
+        let depth = ss.depth_scale_m as f32;
+        let sp = if params.closures {
+            StreamPowerConfig::relief_v2(cell_km2, depth)
+        } else {
+            StreamPowerConfig::relief_v1(cell_km2, depth)
+        };
         eprintln!(
-            "[HD] stream-power incision ON (relief-v1: A_c {:.0} cells = {} km²), droplets OFF",
+            "[HD] stream-power incision ON ({}: A_c {:.0} cells = {} km²{}), droplets OFF",
+            if params.closures { "relief-v2 + closures" } else { "relief-v1" },
             sp.min_area_cells,
             ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2,
+            if params.closures {
+                format!(", S_c=tan(33°), lat {:.0} m/√km²", sp.lateral_erosion)
+            } else {
+                String::new()
+            },
         );
         upscale.erosion = None; // droplets off — they collapse the SP valleys
         upscale.stream_power = Some(sp);
@@ -581,7 +599,15 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // coastline/cliffs (Y-B) + temperature/precipitation/biome (Y-C).
     if let Some(export_dir) = &params.export_dir {
         if let Err(e) = export_ymir_container(
-            spec, &ss, &eroded, &climate, &biomes, &drainage, lat, window_km, window_offset,
+            spec,
+            &ss,
+            &eroded,
+            &climate,
+            &biomes,
+            &drainage,
+            lat,
+            window_km,
+            window_offset,
             export_dir,
         ) {
             // Non-fatal: the product still ships to the UI; surface the reason.

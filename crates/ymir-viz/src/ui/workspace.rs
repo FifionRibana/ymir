@@ -32,8 +32,8 @@ use crate::bridge::c1::{
 };
 use crate::visualization::colormap::hypsometric_bipolar;
 use ymir_core::climate::biomes::Biome;
-use ymir_core::grid::GridF32;
 use ymir_core::climate::precipitation::precip_mm_per_year;
+use ymir_core::grid::GridF32;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{LakeType, Navigability};
 use ymir_core::tectonics_c1::land_topology::domain_metrics;
@@ -168,6 +168,9 @@ struct WorkspaceState {
     /// EXPERIMENTAL (ADR 0001): use routed stream-power incision instead of the
     /// droplet pass for the next HD run. Off by default (production unchanged).
     stream_power: bool,
+    /// EXPERIMENTAL (ADR 0001, Finding 7): with stream-power on, use `relief_v2` — the
+    /// two bounding closures (nonlinear hillslope diffusion + lateral widening).
+    closures: bool,
     /// EXPERIMENTAL: FBM amplitude_base for the striation ladder (0.16 = production).
     fbm_amplitude: f32,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
@@ -222,6 +225,7 @@ impl Default for WorkspaceState {
             bootstrapped: false,
             export_ymir: false,
             stream_power: false,
+            closures: false,
             fbm_amplitude: 0.16,
             export_dir: "exports".to_string(),
             current: None,
@@ -543,7 +547,11 @@ fn top_bar(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut WorkspaceState
                     let cells = ws.current.as_ref().map(|c| c.width * c.height).unwrap_or(0);
                     let stat = format!(
                         "{}² px  ·  {:.0} km  ·  {:.0} m/px  ·  {} cellules  ·  seed {}",
-                        ws.resolution, ws.domain_km, m_per_px(ws.domain_km, ws.resolution), cells, ws.seed
+                        ws.resolution,
+                        ws.domain_km,
+                        m_per_px(ws.domain_km, ws.resolution),
+                        cells,
+                        ws.seed
                     );
                     ui.label(egui::RichText::new(stat).color(DIM2).monospace().size(11.0));
                     // M1 island-continent verdict from the land-topology diagnostics.
@@ -622,6 +630,7 @@ fn left_panel(
                             domain_km: ws.domain_km,
                             manual_offset: Some(off),
                             stream_power: ws.stream_power,
+                            closures: ws.closures,
                             fbm_amplitude: Some(ws.fbm_amplitude as f64),
                             export_dir,
                         };
@@ -651,12 +660,23 @@ fn left_panel(
                              dépôt. Off = pipeline de production.",
                         );
                         if ws.stream_power {
-                            let vals = [0.16f32, 0.08, 0.04, 0.02];
+                            ui.checkbox(
+                                &mut ws.closures,
+                                egui::RichText::new("Closures relief-v2 (exp.)").color(DIM2).size(11.0),
+                            )
+                            .on_hover_text(
+                                "Ajoute les deux fermetures qui BORNENT le relief (ADR 0001, Finding \
+                                 7): diffusion de versant NON LINÉAIRE à pente critique (S_c=tan33° \
+                                 → arêtes, plus de striures) + élargissement latéral en géométrie \
+                                 hydraulique (planchers de vallée qui s'élargissent vers l'aval). \
+                                 Off = relief-v1 (slits 1 px).",
+                            );
+                            let vals = [0.16f32, 0.08, 0.04, 0.02, 0.01];
                             let cur =
                                 vals.iter().position(|&v| (v - ws.fbm_amplitude).abs() < 1e-4).unwrap_or(0);
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("FBM amp").color(DIM2).size(11.0));
-                                if let Some(i) = seg_row(ui, &["0.16", "0.08", "0.04", "0.02"], cur) {
+                                if let Some(i) = seg_row(ui, &["0.16", "0.08", "0.04", "0.02", "0.01"], cur) {
                                     ws.fbm_amplitude = vals[i];
                                 }
                             });
@@ -1382,6 +1402,7 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         domain_km: ws.domain_km,
         manual_offset: None,
         stream_power: false, // preview is coarse-only; SP applies to the HD run
+        closures: false,
         fbm_amplitude: None,
         export_dir: None,
     }
@@ -1461,12 +1482,7 @@ fn domain_readout(ui: &mut egui::Ui, ws: &WorkspaceState, mpp: f32) {
     );
 
     let Some(coarse) = framed_coarse(ws) else {
-        ui.label(
-            egui::RichText::new("· aperçu en cours…")
-                .color(DIM2)
-                .monospace()
-                .size(10.0),
-        );
+        ui.label(egui::RichText::new("· aperçu en cours…").color(DIM2).monospace().size(10.0));
         return;
     };
     let ss = SteinSteinParams::default();
