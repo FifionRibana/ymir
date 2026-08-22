@@ -185,6 +185,9 @@ struct WorkspaceState {
     /// Zoom factor for the tectonic PREVIEW (1× = fit; >1 shows scroll bars to pan
     /// the magnified view — distinct from `zoom`, the HD map zoom).
     preview_zoom: f32,
+    /// Pan CENTRE (uv, [0,1]²) of the zoomed HD result view — driven by the X/Y
+    /// scroll sliders; clamped so the zoom window stays inside the map.
+    map_pan: [f32; 2],
     river_map: Option<RiverCellMap>,
     texture: Option<egui::TextureHandle>,
     tex_layer: Option<HdLayer>,
@@ -233,6 +236,7 @@ impl Default for WorkspaceState {
             hover: None,
             hover_xy: None,
             zoom: 1.0,
+            map_pan: [0.5, 0.5],
         }
     }
 }
@@ -1640,18 +1644,36 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     }
     let handle = ws.texture.as_ref().unwrap().clone();
 
+    let z = ws.zoom.max(1.0);
+    let uv_half = 0.5 / z;
+    // Scroll sliders: pan the zoomed view (only shown when zoomed in). They set the
+    // uv-window CENTRE, clamped so the window stays inside the map. Y increases
+    // downward (top→bottom), like a vertical scroll bar.
+    if z > 1.0 {
+        let (lo, hi) = (uv_half, 1.0 - uv_half);
+        ws.map_pan[0] = ws.map_pan[0].clamp(lo, hi);
+        ws.map_pan[1] = ws.map_pan[1].clamp(lo, hi);
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Défilement").color(DIM2).size(11.0));
+            ui.label(egui::RichText::new("↔").color(DIM2).size(12.0));
+            ui.add(egui::Slider::new(&mut ws.map_pan[0], lo..=hi).show_value(false));
+            ui.label(egui::RichText::new("↕").color(DIM2).size(12.0));
+            ui.add(egui::Slider::new(&mut ws.map_pan[1], lo..=hi).show_value(false));
+        });
+    } else {
+        ws.map_pan = [0.5, 0.5];
+    }
     let avail = ui.available_size();
     let side = avail.x.min(avail.y).max(1.0);
     // Centre the square map both ways.
     ui.add_space(((avail.y - side) * 0.5).max(0.0));
     ui.horizontal(|ui| {
         ui.add_space(((avail.x - side) * 0.5).max(0.0));
-        // Zoom → centred uv sub-rect (pan deferred to step e).
-        let z = ws.zoom.max(1.0);
-        let uv_half = 0.5 / z;
+        // Zoom → uv sub-rect centred on the pan slider position.
+        let (cx, cy) = (ws.map_pan[0], ws.map_pan[1]);
         let uv = egui::Rect::from_min_max(
-            egui::pos2(0.5 - uv_half, 0.5 - uv_half),
-            egui::pos2(0.5 + uv_half, 0.5 + uv_half),
+            egui::pos2(cx - uv_half, cy - uv_half),
+            egui::pos2(cx + uv_half, cy + uv_half),
         );
         let resp = ui.add(
             egui::Image::new(egui::load::SizedTexture::new(handle.id(), egui::vec2(side, side)))
