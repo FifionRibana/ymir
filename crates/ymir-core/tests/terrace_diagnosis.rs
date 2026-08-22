@@ -992,41 +992,45 @@ fn profile_metrics(
     // Metres via the effective (coupled) depth scale: (norm − 0.5)·2·1.13·depth.
     let fm: Vec<f32> = field.data.iter().map(|&n| (n - 0.5) * 2.0 * 1.13 * depth_scale).collect();
     let (mut trans, mut widths, mut depths) = (Vec::new(), Vec::new(), Vec::new());
-    let r = 20i32;
+    let r = 40i32; // ±40 cells — enough at fine resolution to reach the flanks
     for &((cx, cy), (px, py)) in probes {
         let sample = |o: i32| -> (f32, f32) {
             let sx = (cx as f32 + px * o as f32).round().clamp(0.0, w as f32 - 1.0) as usize;
             let sy = (cy as f32 + py * o as f32).round().clamp(0.0, h as f32 - 1.0) as usize;
             (fm[sy * w + sx], slope[sy * w + sx])
         };
-        // bottom at o=0; walk +side: find last <10° (floor edge) then first >30° (flank).
-        let mut floor_edge = 0i32;
-        let mut flank = None;
-        for o in 0..=r {
-            let (_, sl) = sample(o);
-            if sl < 10.0 {
-                floor_edge = o;
-            }
-            if sl > 30.0 {
-                flank = Some(o);
-                break;
+        // Find the true channel bottom (min altitude) over the profile, then walk
+        // OUTWARD to each side to the first >30° flank; the floor edge is the last
+        // <10° cell before it. Robust at fine resolution (o=0 may be on a wall).
+        let mut bo = 0i32;
+        let mut bmin = f32::MAX;
+        for o in -r..=r {
+            let (a, _) = sample(o);
+            if a < bmin {
+                bmin = a;
+                bo = o;
             }
         }
-        if let Some(fo) = flank {
-            trans.push((fo - floor_edge).max(0) as f32 * cell_m);
-            let (rim_alt, _) = sample(fo);
-            let (bot_alt, _) = sample(0);
-            depths.push(rim_alt - bot_alt);
-            // width: floor half-width ×2 (cells with slope<10° around bottom).
-            let mut hw = 0i32;
-            for o in 0..=r {
-                if sample(o).1 < 10.0 {
-                    hw = o;
-                } else {
-                    break;
+        let side = |dir: i32| -> Option<(i32, f32, i32)> {
+            let (mut floor_edge, mut o) = (bo, bo);
+            loop {
+                o += dir;
+                if o.abs() > r {
+                    return None;
+                }
+                let (a, sl) = sample(o);
+                if sl < 10.0 {
+                    floor_edge = o;
+                }
+                if sl > 30.0 {
+                    return Some((o, a, floor_edge));
                 }
             }
-            widths.push((hw * 2).max(1) as f32 * cell_m);
+        };
+        if let (Some((fl_o, fl_a, fe_l)), Some((fr_o, fr_a, fe_r))) = (side(-1), side(1)) {
+            trans.push((((fl_o - fe_l).abs()).min((fr_o - fe_r).abs())) as f32 * cell_m);
+            widths.push((fr_o - fl_o).max(1) as f32 * cell_m);
+            depths.push(fl_a.min(fr_a) - bmin);
         }
     }
     let med = |v: &mut Vec<f32>| {
@@ -1125,7 +1129,11 @@ fn stream_power_confirm8192() {
     let cell_m = domain / t as f32 * 1000.0; // 48.8 m/cell
     let km2 = (domain / t as f32).powi(2);
     let base = ss.depth_scale_m as f32;
-    let a_c = 50.0f32;
+    // A_c in PHYSICAL km² (resolution-stable): 7.6 km² = the 50-cell value at 1024²
+    // that fixed headwaters. In CELLS it must scale with resolution, else the
+    // channel head shrinks and headwaters over-carve again at 8192².
+    let a_c_km2 = 7.6f32;
+    let a_c = a_c_km2 / km2; // cells at THIS resolution
     let (state, _run) = coarse_state(seed_u);
     let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
     let seed = WorldSeed::new(seed_u);
@@ -1139,6 +1147,7 @@ fn stream_power_confirm8192() {
         k: 3.0, m: 0.5, n: 1.0, dt: 1.0, iterations: 3, sea_level: SEA,
         diffusion: 0.05, diffusion_substeps: 4, min_area_cells: a_c, threshold: 0.0,
     };
+    eprintln!("  A_c = {a_c_km2} km² = {a_c:.0} cells at {t}²");
     let t0 = Instant::now();
     let sp = incise(&fbm, &cfg);
     let sp_ms = t0.elapsed().as_millis();

@@ -5,10 +5,33 @@ Diagnostic harness: `crates/ymir-core/tests/terrace_diagnosis.rs` (all `#[ignore
 commits `019113f`, `76ae09f`, `94fe11b`. Re-run:
 `cargo test -p ymir-core --test terrace_diagnosis --release -- --ignored --nocapture`.
 
-This ADR records four findings from a measurement campaign on why the C1 HD relief
-shows (a) terraces following isolines and (b) no carved dendritic valleys under a
+This ADR records findings from a measurement campaign on why the C1 HD relief showed
+(a) terraces following isolines and (b) no carved dendritic valleys under a
 fully-computed river network. Each is stated with the numbers, because the
 conclusions are counter-intuitive and will otherwise be re-litigated.
+
+## Decision summary (read this first)
+
+- **Droplet hydraulic erosion is REMOVED from the C1 HD pipeline**, not merely
+  reduced. It DESTROYS relief (drainage relief 258→37 m; 659→124 m even at a weak
+  0.25 droplets/cell) — it deposits in channels faster than it incises. It is the
+  common cause of the terraces (depositional flats), the missing valleys, the
+  net-zero mass balance and the coastal sediment dump. See Findings 3–4.
+- **Routed stream-power incision (Braun & Willett) + a hillslope REGIME SPLIT is the
+  replacement.** Recommended: `K=3, m=0.5, n=1, iterations=3, A_c≈50 cells,
+  diffusion≈0.05` (diffusion on hillslopes `A<A_c`, stream power on channels
+  `A≥A_c`), θ=0, droplets off, **UNCOUPLED vertical scale** (do NOT couple
+  depth_scale to domain). Off by default until confirmed at 8192².
+- **θ (incision threshold) and A_c (critical area) each FAILED ALONE** — record this
+  so the cheap options are not retried. Only the coupled regime split fixed the
+  headwater over-carving AND opened valley cross-sections. See Finding 3.
+- **The acceptance CRITERION is a LEGIBLE landscape** — buildable valley floors +
+  sharply-delimited steep flanks + moderate interfluves — **NOT minimal steep
+  ground.** An earlier "minimise unbuildable land / keep >45° under ~5 %" framing was
+  WRONG and cost a pass: steep ground is gameplay content (cliffs, passes, terracing
+  constraints). Judge on spatial structure (valley-floor area, cliff-transition
+  sharpness, flank contiguity), not a global steep-%. This is why the UNCOUPLED case
+  (steeper, more legible flanks) is preferred over the coupled one (too flat).
 
 ---
 
@@ -165,20 +188,34 @@ Measured on seed 42 (per-order median incision, m; want S1 small, trunks 200–4
   out-incises trunks (S2=338 > S4=115) — physically defensible (tributaries drop into
   graded trunks), not the headwater pathology.
 
-**Coupling trade (measured, domain 400 km).** `depth_scale ↔ domain` coupling (×0.39
-relief) tames slopes — >15/30/45° from 23/9/4 % to 7/2/0 % — but halves valley depth
-(S4 115 → 45 m, marginal for city valleys). Raising K to restore depth re-raises
-slopes; the vertical-scale decision must weigh this. **Droplets are corrosive at ANY
-density**: SP relief 659 m → SP+weak(0.25/cell) 124 m → SP+full(0.95) 68 m, so a "weak
-texture pass" still costs ~80 % of the relief — recommend droplets ≈ off (hillslope
-diffusion + FBM base supply texture).
+**Legibility over "minimal steep land" (criterion change — see Decision summary).**
+Judged on spatial structure (valley floor / cliff sharpness / flank contiguity),
+UNCOUPLED is the more legible: at K=3, cf=1.0, 1024²/400 km — trunk valley W/D ≈ 8.8
+(≈ the 2 km/300 m target), channel flanks 27° vs interfluves 10° (steep concentrated on
+flanks, not plateaux), largest contiguous flank 4677 cells, ~690 km² buildable floor.
+Coupling (cf=0.39) is TOO FLAT (W/D 38, 13° flanks). So do NOT couple depth_scale to
+domain. **Droplets are corrosive at ANY density**: SP relief 659 m → SP+weak
+(0.25/cell) 124 m → SP+full 68 m — recommend droplets ≈ off (hillslope diffusion + FBM
+base supply texture).
 
-**Recommended (implementation pass, NOT wired):** stream-power ON, K=1, m=0.5, n=1,
-iterations=3, sea_level=0.5, **A_c ≈ 50 cells, diffusion ≈ 0.05 (regime split)**, θ=0,
-droplets ≈ off; ship WITH `depth_scale ↔ domain` coupling. K is resolution-stable
-(per-order ~unchanged 1024²→4096²). Before flipping: re-confirm at 8192² on the
-author's seed (10481999410520546993), and settle the coupling-vs-valley-depth trade
-(whether to raise K under coupling, accepting more steep land).
+**A_c must be in km², not cells (8192² finding).** `min_area_cells` = 50 cells is
+7.6 km² at 1024² (removes headwaters) but only 0.12 km² at 8192², so at production
+resolution headwaters became "channels" again and over-carved (S1 25 → 680 m). The
+channel-head criterion MUST be a physical area (≈ 7.6 km²), converted to cells per
+resolution. With that fix, incision is resolution-stable.
+
+**Recommended (implementation pass, NOT wired):** stream-power ON, K=3, m=0.5, n=1,
+iterations=3, sea_level=0.5, **A_c ≈ 7.6 km² (converted to cells per resolution),
+diffusion ≈ 0.05 (regime split)**, θ=0, droplets ≈ off, **UNCOUPLED** vertical scale.
+8192² confirmation (author seed 10481999410520546993, A_c=7.6 km²=3188 cells, uncoupled):
+FBM 1.3 s, stream-power 33 s, peak RSS 3.9 GB; **headwaters fixed (S1=0), ordering
+concave (S2=646 S3=377 S4=240 S5=179)**, cliff transition 49 m (sharp), 42 855 hex of
+<5° floor. Two refinements for the NEXT pass: (i) trunk channels incise as narrow deep
+SLOTS (W/D ≈ 0.5, 98 m wide / 178 m deep) rather than wide buildable valleys — likely
+needs a lower A_c and/or stronger hillslope diffusion to widen trunk floors; (ii)
+incision is ~1.5× higher at 8192² than 1024² (S4 136→240) — K wants a mild
+per-resolution re-anchor. Whether the pervasive steep flanks (largest component 1.07 M
+cells) read as "legible" or "over-incised" is now an author visual call.
 
 ---
 
