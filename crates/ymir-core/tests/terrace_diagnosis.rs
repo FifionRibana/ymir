@@ -1069,6 +1069,84 @@ fn incision_resolution() {
     eprintln!("  (rising with resolution ⇒ S measured steeper on finer cells; fix = physical slope Δh_m/cell_m + A km²)");
 }
 
+/// Hillshade (NW light, 45° altitude) of an altitude field → grayscale [0,1], the
+/// clearest view of fine striations on steep flanks. Uses the effective metre scale.
+fn hillshade(field: &GridF32, domain_km: f32, depth_scale: f32) -> GridF32 {
+    let (w, h) = (field.width, field.height);
+    let cell_m = domain_km / w as f32 * 1000.0;
+    let norm_to_m = 2.0 * 1.13 * depth_scale;
+    let (lx, ly, lz) = (-0.5f32, 0.5, 0.707); // NW, 45° up
+    let mut out = GridF32::new(w, h, 0.0);
+    for y in 1..h - 1 {
+        for x in 1..w - 1 {
+            let dzdx = (field.data[y * w + x + 1] - field.data[y * w + x - 1]) * 0.5 * norm_to_m / cell_m;
+            let dzdy = (field.data[(y + 1) * w + x] - field.data[(y - 1) * w + x]) * 0.5 * norm_to_m / cell_m;
+            let inv = 1.0 / (dzdx * dzdx + dzdy * dzdy + 1.0).sqrt();
+            let shade = (-dzdx * lx - dzdy * ly + lz) * inv;
+            out.data[y * w + x] = shade.clamp(0.0, 1.0);
+        }
+    }
+    out
+}
+
+/// TASK 1 — render the FBM amplitude ladder (relief-v1 incision ON) as hillshade
+/// PNGs + drainage figures, so the author can SEE whether the striations disappear
+/// and the terrain still reads as terrain. Author seed, domain 400 km. Ladder at
+/// 2048²; one at 8192² for the recommended value.
+#[test]
+#[ignore]
+fn render_striation_ladder() {
+    use std::path::Path;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let domain = 400.0f32;
+    let base = ss.depth_scale_m as f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/relief_ladder");
+    std::fs::create_dir_all(&dir).unwrap();
+    eprintln!("\n=== TASK 1 — striation amplitude ladder (hillshade PNGs) → {} ===", dir.display());
+
+    let render = |t: usize, amp: f64| {
+        let cell_km2 = (domain / t as f32).powi(2);
+        let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+        fc.erosion = None;
+        fc.bathymetry = None;
+        fc.amplitude_base = amp;
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        let sp = incise(&fbm, &StreamPowerConfig::relief_v1(cell_km2));
+        let hs = hillshade(&sp, domain, base);
+        let path = dir.join(format!("amp{amp:.2}_{t}.png"));
+        hs.save_png_u8(&path).unwrap();
+        // Also a crop (central 1/4) so fine striations are visible without zoom.
+        let (w, hh) = (sp.width, sp.height);
+        let (x0, y0, cw, ch) = (w / 2 - w / 8, hh / 2 - hh / 8, w / 4, hh / 4);
+        let mut crop = GridF32::new(cw, ch, 0.0);
+        for j in 0..ch {
+            for i in 0..cw {
+                crop.data[j * cw + i] = hs.data[(y0 + j) * w + (x0 + i)];
+            }
+        }
+        crop.save_png_u8(&dir.join(format!("amp{amp:.2}_{t}_crop.png"))).unwrap();
+        let dr = c1_drainage(&sp, None, &C1DrainageConfig::default(), &ss);
+        let maxs = dr.rivers.segments.iter().map(|s| s.strahler_order).max().unwrap_or(0);
+        let confl = dr.rivers.segments.iter().filter(|s| s.upstream.len() >= 2).count();
+        let slope = slope_deg_field(&sp, domain, base);
+        let corr = channel_corridor(&sp, &ss, StreamPowerConfig::relief_v1(cell_km2).min_area_cells);
+        let (vf5, _, _, _) = valley_floor(&slope, &corr, &sp, cell_km2);
+        eprintln!("  amp {amp:.2} @{t}²: maxS {maxs}, confl {confl}, valley floor<5° {vf5:.0} km²  → {}", path.display());
+    };
+
+    for amp in [0.16f64, 0.08, 0.04, 0.02] {
+        render(2048, amp);
+    }
+    // Recommended value at production scale (provisional — the author's eye decides).
+    render(8192, 0.04);
+    eprintln!("  RECOMMEND (provisional): amp 0.04 — 4× reduction, drainage healthy; author confirms the visual.");
+}
+
 /// B1 — striation metric. On STEEP cells (slope > `min_deg`), sample the altitude
 /// profile ALONG the gradient and ALONG the contour, and measure short-wavelength
 /// roughness (RMS of the 1-D Laplacian) in each. Anisotropic FBM elongates noise
