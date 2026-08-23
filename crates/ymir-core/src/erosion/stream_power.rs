@@ -88,6 +88,16 @@ pub struct StreamPowerConfig {
     /// narrow gorges — turning the 1-px/1000-m slit into a valley with a floor whose
     /// width grows downstream. Banks are never cut below the channel floor.
     pub lateral_erosion: f32,
+
+    /// **Apply hillslope diffusion EVERYWHERE**, including channel cells (`false` =
+    /// legacy regime split: diffusion skips `A ≥ A_c`). The regime split's hard channel
+    /// exclusion is the non-physical element behind the Smith–Bretherton parallel-rilling
+    /// comb (ADR 0001 Finding 8): a rill that captures `A_c` escapes the diffusion that
+    /// should damp it, forever. The standard LEM `dz/dt = U − K·A^m·S^n + D∇²z` runs BOTH
+    /// terms on every cell — diffusion is simply dominated by incision where `A` is large,
+    /// so real channels/gorges survive while sub-threshold rills get damped. `true` sets a
+    /// finite valley spacing from the D/K balance instead of imposing it via `A_c`.
+    pub diffuse_channels: bool,
 }
 
 /// Relief-v1 reference: physical critical drainage area (km²) for the channel head.
@@ -127,6 +137,7 @@ impl StreamPowerConfig {
             hillslope_picard: 3,
             hillslope_implicit_iters: 40,
             lateral_erosion: 0.0,
+            diffuse_channels: false,
         }
     }
 
@@ -197,6 +208,7 @@ impl Default for StreamPowerConfig {
             hillslope_picard: 3,
             hillslope_implicit_iters: 40,
             lateral_erosion: 0.0,
+            diffuse_channels: false,
         }
     }
 }
@@ -420,10 +432,11 @@ pub fn incise_with_progress(
                         for x in 1..w - 1 {
                             let k = y * w + x;
                             if field.data[k] <= cfg.sea_level
-                                || (cfg.min_area_cells > 0.0
+                                || (!cfg.diffuse_channels
+                                    && cfg.min_area_cells > 0.0
                                     && flow.accumulation.data[k] >= cfg.min_area_cells)
                             {
-                                continue; // channel/sea cell — fixed boundary value
+                                continue; // sea, or (regime split) channel = fixed boundary
                             }
                             let (mut sw, mut swz) = (0.0f32, 0.0f32);
                             for nb in [k - 1, k + 1, k - w, k + w] {
@@ -447,10 +460,11 @@ pub fn incise_with_progress(
                         if src[k] <= cfg.sea_level {
                             continue;
                         }
-                        if cfg.min_area_cells > 0.0
+                        if !cfg.diffuse_channels
+                            && cfg.min_area_cells > 0.0
                             && flow.accumulation.data[k] >= cfg.min_area_cells
                         {
-                            continue; // channel cell — stream power only, no diffusion
+                            continue; // regime split: channel = stream power only
                         }
                         let lap = src[k - 1] + src[k + 1] + src[k - w] + src[k + w] - 4.0 * src[k];
                         field.data[k] = src[k] + dsub * lap;

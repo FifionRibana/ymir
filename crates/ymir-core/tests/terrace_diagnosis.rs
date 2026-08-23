@@ -1692,6 +1692,96 @@ fn synthetic_slope_rilling() {
     );
 }
 
+/// STEP 2a — QUANTIFY the Smith–Bretherton stability criterion on the 30° plane, IN
+/// METRES (before any fix code). Sweeps the hillslope diffusion `D` (applied EVERYWHERE
+/// via `diffuse_channels`, the LEM-correct form; linear-like via a huge `S_c` so the
+/// implicit solve stays stable at large D) and reports, at 2048² AND 8192²:
+///   - rill wavelength (m) of the unstable comb — must be the SAME in metres at both
+///     resolutions (else the resolution-invariance bug is back);
+///   - the steep >30° share (rill presence) → `D_crit` = the minimal `D` that damps it;
+///   - the emergent channel head `A*` (km²): the smallest drainage area still incised at
+///     `D_crit` vs the largest area damped — the gap tells whether legitimate gorges
+///     survive the damping (if min-incised-A > max-damped-A, they do).
+/// Incision `K` is relief_v1's; lateral OFF (isolate incision vs diffusion). Read-only.
+#[test]
+#[ignore]
+fn rill_stability() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let (domain, base) = (400.0f32, ss.depth_scale_m as f32);
+    let theta = 30.0f32.to_radians();
+    let (cth, sth) = (theta.cos(), theta.sin());
+    let hash = |x: usize, y: usize| -> f32 {
+        let mut h =
+            (x as u32).wrapping_mul(374761393).wrapping_add((y as u32).wrapping_mul(668265263));
+        h = (h ^ (h >> 13)).wrapping_mul(1274126177);
+        ((h ^ (h >> 16)) as f32 / u32::MAX as f32) - 0.5
+    };
+    let build_plane = |t: usize| -> GridF32 {
+        let diag_max = (t as f32) * (cth + sth);
+        let mut d = vec![0.0f32; t * t];
+        for y in 0..t {
+            for x in 0..t {
+                let proj = (x as f32 * cth + y as f32 * sth) / diag_max;
+                d[y * t + x] = 0.92 - 0.42 * proj + 0.002 * hash(x, y);
+            }
+        }
+        GridF32::from_vec(t, t, d)
+    };
+
+    eprintln!("\n=== STEP 2a — Smith–Bretherton stability on the 30° plane (IN METRES) ===");
+    eprintln!("   res  |    D | >30° | rill λ (m) | κΔt (m²) | A* min-incised / max-damped (km²)");
+    // 2048² only (fast): the physics + metre-invariance read here; the 8192² confirmation
+    // waits until the Gauss-Seidel diffusion is parallelised (single-threaded GS × 240
+    // sweeps × 67 M cells is minutes per D). Richer D sweep since it is cheap.
+    for t in [2048usize] {
+        let plane = build_plane(t);
+        let cell_km = domain / t as f32;
+        let cell_km2 = cell_km * cell_km;
+        let cell_m = cell_km * 1000.0;
+        let ds: &[f32] = &[0.0, 0.05, 0.15, 0.4, 1.0, 2.5, 5.0];
+        for &dval in ds {
+            let mut cfg = StreamPowerConfig::relief_v1(cell_km2, base);
+            cfg.critical_slope = 100.0; // huge S_c ⇒ linear-like, but implicit ⇒ stable at any D
+            cfg.diffuse_channels = true; // LEM-correct: diffuse everywhere
+            cfg.lateral_erosion = 0.0;
+            cfg.diffusion = dval;
+            let post = incise(&plane, &cfg);
+            let slope = slope_deg_field(&post, domain, base);
+            let land: Vec<usize> = (0..post.data.len()).filter(|&k| post.data[k] > SEA).collect();
+            let n = land.len().max(1) as f32;
+            let a30 = land.iter().filter(|&&k| slope[k] > 30.0).count() as f32 / n * 100.0;
+            // rill wavelength: contour-direction spectral peak on gentle cells → cells→m.
+            let (lam_cells, _) = striation_spectrum(&post, &slope, 5.0, 64);
+            let lam_m = lam_cells * cell_m;
+            // A*: incised = lowered > 20 m vs the plane. Drainage area (km²) of each cell.
+            let dr = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+            let norm_to_m = 2.0 * 1.13 * base;
+            let (mut min_inc_a, mut max_damp_a) = (f32::MAX, 0.0f32);
+            for &k in &land {
+                let lowered = (plane.data[k] - post.data[k]) * norm_to_m;
+                let a_km2 = dr.flow.accumulation.data[k] * cell_km2;
+                if lowered > 20.0 {
+                    min_inc_a = min_inc_a.min(a_km2);
+                } else {
+                    max_damp_a = max_damp_a.max(a_km2);
+                }
+            }
+            let kappa = dval * (400_000.0f32 / 2048.0).powi(2); // physical κΔt (m²)
+            let mi = if min_inc_a == f32::MAX { -1.0 } else { min_inc_a };
+            eprintln!(
+                "  {t:>5} | {dval:>4.2} | {a30:>4.1}% | {lam_m:>10.0} | {kappa:>8.0} | {mi:>9.2} / {max_damp_a:.2}"
+            );
+        }
+    }
+    eprintln!(
+        "   (D_crit = smallest D where >30% collapses to the planar baseline; rill λ in m must"
+    );
+    eprintln!(
+        "    match across resolutions; gorges survive if min-incised-A stays > max-damped-A)"
+    );
+}
+
 #[test]
 #[ignore]
 fn closure_mosaic() {
