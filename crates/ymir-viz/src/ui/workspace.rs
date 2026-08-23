@@ -171,6 +171,10 @@ struct WorkspaceState {
     /// EXPERIMENTAL (ADR 0001, Finding 7): with stream-power on, use `relief_v2` — the
     /// two bounding closures (nonlinear hillslope diffusion + lateral widening).
     closures: bool,
+    /// EXPERIMENTAL (ADR 0001, Finding 9): cross-rill diffusion (diffuse everywhere) to
+    /// damp the Smith–Bretherton comb; `cross_rill_d` is its coefficient.
+    cross_rill: bool,
+    cross_rill_d: f32,
     /// EXPERIMENTAL: FBM amplitude_base for the striation ladder (0.16 = production).
     fbm_amplitude: f32,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
@@ -226,6 +230,8 @@ impl Default for WorkspaceState {
             export_ymir: false,
             stream_power: false,
             closures: false,
+            cross_rill: false,
+            cross_rill_d: 0.40,
             fbm_amplitude: 0.16,
             export_dir: "exports".to_string(),
             current: None,
@@ -631,6 +637,8 @@ fn left_panel(
                             manual_offset: Some(off),
                             stream_power: ws.stream_power,
                             closures: ws.closures,
+                            cross_rill: ws.cross_rill,
+                            cross_rill_d: ws.cross_rill_d,
                             fbm_amplitude: Some(ws.fbm_amplitude as f64),
                             export_dir,
                         };
@@ -680,6 +688,30 @@ fn left_panel(
                                     ws.fbm_amplitude = vals[i];
                                 }
                             });
+                            ui.checkbox(
+                                &mut ws.cross_rill,
+                                egui::RichText::new("Anti-peigne (diffusion partout)").color(DIM2).size(11.0),
+                            )
+                            .on_hover_text(
+                                "STEP 2b (ADR 0001, Finding 9): applique la diffusion de versant \
+                                 PARTOUT (retire l'exclusion des chenaux du regime split) pour amortir \
+                                 l'instabilité de rilling de Smith–Bretherton (le peigne 8192²). NB: \
+                                 solveur GS non encore convergé/parallélisé — aperçu 2048² valable pour \
+                                 la direction, pas définitif.",
+                            );
+                            if ws.cross_rill {
+                                let dv = [0.25f32, 0.40, 0.55];
+                                let dc = dv
+                                    .iter()
+                                    .position(|&v| (v - ws.cross_rill_d).abs() < 1e-4)
+                                    .unwrap_or(1);
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new("D").color(DIM2).size(11.0));
+                                    if let Some(i) = seg_row(ui, &["0.25", "0.40", "0.55"], dc) {
+                                        ws.cross_rill_d = dv[i];
+                                    }
+                                });
+                            }
                         }
                         ui.checkbox(
                             &mut ws.export_ymir,
@@ -1403,6 +1435,8 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         manual_offset: None,
         stream_power: false, // preview is coarse-only; SP applies to the HD run
         closures: false,
+        cross_rill: false,
+        cross_rill_d: 0.40,
         fbm_amplitude: None,
         export_dir: None,
     }

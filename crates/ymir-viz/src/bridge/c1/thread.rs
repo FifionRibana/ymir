@@ -201,6 +201,8 @@ mod tests {
                     manual_offset: None,
                     stream_power: false,
                     closures: false,
+                    cross_rill: false,
+                    cross_rill_d: 0.40,
                     fbm_amplitude: None,
                     export_dir: None,
                 },

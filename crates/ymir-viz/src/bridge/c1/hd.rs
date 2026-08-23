@@ -93,6 +93,12 @@ pub struct HdParams {
     /// critical slope → arêtes; hydraulic-geometry lateral widening → valley floors).
     /// `false` → `relief_v1` (v1 slits). A UI opt-in; production default unchanged.
     pub closures: bool,
+    /// EXPERIMENTAL (ADR 0001, Finding 9): with `closures` on, apply hillslope diffusion
+    /// EVERYWHERE (`diffuse_channels`) at a super-critical D to damp the Smith–Bretherton
+    /// parallel-rilling comb. `false` → the regime split (combed at 8192²).
+    pub cross_rill: bool,
+    /// Cross-rill diffusion coefficient when `cross_rill` is on (2b sweep: 0.25/0.40/0.55).
+    pub cross_rill_d: f32,
     /// EXPERIMENTAL: override the FBM `amplitude_base` for this run (`None` = the
     /// production 0.16). Lets the author flip through the striation amplitude ladder
     /// (0.16/0.08/0.04/0.02) with stream-power ON to see the striations shrink.
@@ -113,6 +119,8 @@ impl Default for HdParams {
             manual_offset: None,
             stream_power: false,
             closures: false,
+            cross_rill: false,
+            cross_rill_d: 0.40,
             fbm_amplitude: None,
             export_dir: None,
         }
@@ -346,18 +354,33 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         let km_per_cell = window_km / params.target_size as f32; // window_km == domain_km
         let cell_km2 = km_per_cell * km_per_cell;
         let depth = ss.depth_scale_m as f32;
-        let sp = if params.closures {
+        let mut sp = if params.closures {
             StreamPowerConfig::relief_v2(cell_km2, depth)
         } else {
             StreamPowerConfig::relief_v1(cell_km2, depth)
         };
+        // STEP 2b (ADR 0001 Finding 9): cross-rill diffusion — diffuse EVERYWHERE (drop
+        // the regime split's channel exclusion) at a super-critical D, to damp the
+        // Smith–Bretherton parallel-rilling comb. Experimental, only atop closures.
+        if params.closures && params.cross_rill {
+            sp.diffuse_channels = true;
+            sp.diffusion = params.cross_rill_d;
+        }
         eprintln!(
             "[HD] stream-power incision ON ({}: A_c {:.0} cells = {} km²{}), droplets OFF",
             if params.closures { "relief-v2 + closures" } else { "relief-v1" },
             sp.min_area_cells,
             ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2,
             if params.closures {
-                format!(", S_c=tan(33°), lat {:.0} m/√km²", sp.lateral_erosion)
+                format!(
+                    ", S_c=tan(33°), lat {:.0} m/√km²{}",
+                    sp.lateral_erosion,
+                    if params.cross_rill {
+                        format!(", cross-rill D={:.2}", sp.diffusion)
+                    } else {
+                        String::new()
+                    },
+                )
             } else {
                 String::new()
             },
