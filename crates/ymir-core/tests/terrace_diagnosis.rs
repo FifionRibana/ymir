@@ -2458,6 +2458,225 @@ fn mfd_real() {
     eprintln!("   → crops: exports/sculpt/mfdreal_*.png");
 }
 
+/// Median floor/local-ridge over channel cells, with a PHYSICAL ridge window (`window_km`)
+/// instead of a fixed ±10-CELL window — the fixed-cell window measures a 4× smaller ridge
+/// in metres at 8192² than 2048², inflating the ratio (the cells-not-metres bug, 3rd time).
+fn floor_ridge_phys(
+    sm: &[f32],
+    acc: &GridF32,
+    field: &GridF32,
+    a_c: f32,
+    t: usize,
+    cell_km: f32,
+    window_km: f32,
+) -> f32 {
+    let r = (window_km / cell_km).round() as i32;
+    let mut ratios = Vec::new();
+    for k in (0..t * t).filter(|&k| acc.data[k] >= a_c && field.data[k] > SEA).step_by(7) {
+        let (x, y) = (k % t, k / t);
+        let mut ridge = sm[k];
+        for dy in -r..=r {
+            for dx in -r..=r {
+                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                    ridge = ridge.max(sm[ny as usize * t + nx as usize]);
+                }
+            }
+        }
+        if ridge > 1.0 {
+            ratios.push(sm[k] / ridge);
+        }
+    }
+    ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    if ratios.is_empty() { 0.0 } else { ratios[ratios.len() / 2] }
+}
+
+/// MFD TASK 1 — calibrate K on floor/local-ridge with a PHYSICAL ±1 km ridge window, at
+/// 2048² AND 8192². First shows the fixed-cell window is the source of the apparent
+/// resolution dependence (0.25 vs 0.72), then sweeps K to hit floor/ridge ≈ 0.4–0.5 at
+/// 8192². Reports per K: floor/ridge (phys), per-order incision, W/D per order, >30°,
+/// crest curvature, striation. Read-only.
+#[test]
+#[ignore]
+fn mfd_k_sweep() {
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{RELIEF_V1_K, StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base) = (400.0f32, ss.depth_scale_m as f32);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+
+    eprintln!("\n=== MFD TASK 1 — K calibration on PHYSICAL floor/ridge (±1 km window) ===");
+    // First: the metric artifact. Same field, ±10-cell vs ±1 km window, both resolutions.
+    eprintln!("-- metric-window check (MFD p2 K×2): fixed ±10 cells vs physical ±1 km --");
+    for t in [2048usize, 8192] {
+        let cell_km = domain / t as f32;
+        let cell_km2 = cell_km * cell_km;
+        let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+        fc.erosion = None;
+        fc.bathymetry = None;
+        fc.amplitude_base = 0.04;
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+        cfg.critical_slope = 0.0;
+        cfg.diffusion = 0.05;
+        cfg.diffuse_channels = true;
+        cfg.k = RELIEF_V1_K * 2.0;
+        cfg.mfd_exponent = Some(2.0);
+        let post = incise(&fbm, &cfg);
+        let sm: Vec<f32> = post.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let dr = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+        let a_c = 0.1 / cell_km2;
+        // fixed ±10-cell ratio (old metric):
+        let r10 =
+            floor_ridge_phys(&sm, &dr.flow.accumulation, &post, a_c, t, cell_km, 10.0 * cell_km);
+        let rphys = floor_ridge_phys(&sm, &dr.flow.accumulation, &post, a_c, t, cell_km, 1.0);
+        eprintln!("   {t}²: ±10 cells = {r10:.2}  |  ±1 km (phys) = {rphys:.2}");
+    }
+
+    eprintln!("-- K sweep at 8192² (MFD p2), target physical floor/ridge ≈ 0.4–0.5 --");
+    eprintln!("   K×   | ms | floor/ridge(1km) | >30° | curv | per-order incision | W/D S1→S5");
+    let t = 8192usize;
+    let cell_km = domain / t as f32;
+    let cell_km2 = cell_km * cell_km;
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let a_c = 0.1 / cell_km2;
+    for kmult in [2.0f32, 3.0, 4.0, 6.0] {
+        let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+        cfg.critical_slope = 0.0;
+        cfg.diffusion = 0.05;
+        cfg.diffuse_channels = true;
+        cfg.k = RELIEF_V1_K * kmult;
+        cfg.mfd_exponent = Some(2.0);
+        let t0 = Instant::now();
+        let post = incise(&fbm, &cfg);
+        let ms = t0.elapsed().as_millis();
+        let sm: Vec<f32> = post.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let slope = slope_deg_field(&post, domain, base);
+        let land: Vec<usize> = (0..post.data.len()).filter(|&k| post.data[k] > SEA).collect();
+        let n = land.len().max(1) as f32;
+        let a30 = land.iter().filter(|&&k| slope[k] > 30.0).count() as f32 / n * 100.0;
+        let dr = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+        let fr = floor_ridge_phys(&sm, &dr.flow.accumulation, &post, a_c, t, cell_km, 1.0);
+        let norm_to_m = 2.0 * 1.13 * base;
+        let mut le: Vec<f32> = land.iter().map(|&k| sm[k]).collect();
+        le.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let e60 = le[le.len() * 6 / 10];
+        let mut curv = Vec::new();
+        for &k in &land {
+            let (x, y) = (k % t, k / t);
+            if sm[k] >= e60 && slope[k] > 30.0 && x > 0 && x < t - 1 && y > 0 && y < t - 1 {
+                let lap = (post.data[k - 1] + post.data[k + 1] - 2.0 * post.data[k]).abs()
+                    + (post.data[k - t] + post.data[k + t] - 2.0 * post.data[k]).abs();
+                curv.push(lap * norm_to_m);
+            }
+        }
+        curv.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let crest = if curv.is_empty() { 0.0 } else { curv[curv.len() / 2] };
+        let (tab, _) = per_order_incision(&fbm, &post, &ss);
+        let wd = per_order_width_depth(&post, domain, base, &ss);
+        let wdstr =
+            wd.iter().map(|(o, _, _, r)| format!("S{o}:{r:.0}")).collect::<Vec<_>>().join(" ");
+        eprintln!(
+            "   ×{kmult:<3.0} | {ms:>5}ms | {fr:>15.2} | {a30:>4.1}% | {crest:>4.0} | {} | {wdstr}",
+            fmt_orders(&tab)
+        );
+    }
+    eprintln!(
+        "   (pick the LOWEST K giving floor/ridge ≈ 0.4–0.5 — deep valleys with legible flanks)"
+    );
+}
+
+/// MFD TASK 2/3 — RIVER MONOTONICITY: the exported long profile of every river segment must
+/// decrease toward the sea (water cannot climb). Runs c1_drainage on the MFD-incised field
+/// (AFTER incision — see production_upscale.rs:402 then the drainage call), walks each
+/// segment's points, and flags any REAL-elevation climb downstream. Attributes each climb to
+/// H2/pit-fill (the climbing cell sits on a pit-FILLED flat: filled > real) vs H1/misalignment
+/// (the cell is above the local terrain minimum). The permanent acceptance test. Read-only.
+#[test]
+#[ignore]
+fn river_monotonicity() {
+    use ymir_core::erosion::stream_power::{RELIEF_V1_K, StreamPowerConfig, incise};
+    use ymir_core::terrain::flow::{FlowConfig, compute_flow};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base) = (400.0f32, ss.depth_scale_m as f32);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let norm_to_m = 2.0 * 1.13 * base;
+
+    eprintln!("\n=== MFD TASK 2/3 — river long-profile monotonicity (8192², MFD p2 K×3) ===");
+    let t = 8192usize;
+    let cell_km2 = (domain / t as f32).powi(2);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+    cfg.critical_slope = 0.0;
+    cfg.diffusion = 0.05;
+    cfg.diffuse_channels = true;
+    cfg.k = RELIEF_V1_K * 3.0;
+    cfg.mfd_exponent = Some(2.0);
+    let post = incise(&fbm, &cfg);
+    let sm: Vec<f32> = post.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+    let dr = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    // pit-filled surface (to attribute climbs to filled flats).
+    let flow = compute_flow(&post, &FlowConfig { sea_level: SEA, ..Default::default() });
+    let is_filled = |k: usize| flow.filled.data[k] > post.data[k] + 1e-4;
+
+    let (mut segs, mut viol, mut worst, mut pitfill, mut misalign) =
+        (0usize, 0usize, 0.0f32, 0usize, 0usize);
+    for s in &dr.rivers.segments {
+        segs += 1;
+        let mut bad = false;
+        for w in s.points.windows(2) {
+            let a = sm[w[0].1 as usize * t + w[0].0 as usize];
+            let b = sm[w[1].1 as usize * t + w[1].0 as usize];
+            let climb = b - a; // downstream elevation change; > 0 = uphill
+            if climb > worst {
+                worst = climb;
+            }
+            if climb > 1.0 {
+                bad = true;
+                let dk = w[1].1 as usize * t + w[1].0 as usize;
+                if is_filled(dk) {
+                    pitfill += 1;
+                } else {
+                    misalign += 1;
+                }
+            }
+        }
+        if bad {
+            viol += 1;
+        }
+    }
+    eprintln!(
+        "   segments {segs}, WITH an uphill step: {viol} ({:.1}%), worst climb {worst:.0} m",
+        viol as f32 / segs.max(1) as f32 * 100.0
+    );
+    eprintln!(
+        "   climbing steps on pit-FILLED flats (H2/fill): {pitfill}  |  on real terrain (H1/misalign): {misalign}"
+    );
+    eprintln!(
+        "   → verdict: {}",
+        if pitfill > misalign {
+            "H2-like — rivers cross filled depressions (real floor dips then climbs to the sill)"
+        } else {
+            "H1-like — D8 segment rides the flank off the MFD thalweg"
+        }
+    );
+    let _ = norm_to_m;
+}
+
 #[test]
 #[ignore]
 fn closure_mosaic() {
