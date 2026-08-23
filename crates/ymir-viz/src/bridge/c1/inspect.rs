@@ -21,7 +21,7 @@ use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::precip_mm_per_year;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
-    potential_evaporation_mm, C1DrainageResult, LakeType, Navigability, C1_SEA_LEVEL_NORM,
+    C1_SEA_LEVEL_NORM, C1DrainageResult, LakeType, Navigability, potential_evaporation_mm,
 };
 use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
 

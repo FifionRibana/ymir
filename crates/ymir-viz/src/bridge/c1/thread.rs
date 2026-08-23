@@ -203,6 +203,8 @@ mod tests {
                     closures: false,
                     cross_rill: false,
                     cross_rill_d: 0.40,
+                    mfd: false,
+                    mfd_p: 2.0,
                     fbm_amplitude: None,
                     export_dir: None,
                 },

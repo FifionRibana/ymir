@@ -581,3 +581,48 @@ unnecessary if it works. Proposed scope: MFD for the stream-power accumulation/i
 D8 kept for rivers/lakes (blast radius contained), with light linear diffusion at most.
 Keep talus available as an optional arête/max-slope tool; keep the nonlinear diffusion too.
 All OFF by default.
+
+## Finding 11 — MFD routing PREVENTS the comb at the cause; it is the fix (not the solver)
+
+Prototyped multiple-flow-direction accumulation for the incision only (`mfd_exponent`,
+D8 kept for the receiver/stack + rivers/lakes). Attacks the CAUSE of the Smith–Bretherton
+rilling — single-flow concentration — rather than erasing the pattern after the fact.
+
+**Plane (clean-room 30°, two-sided criterion):** D8 → 39 % steep comb; ANY MFD p
+(10/4/2/1.1/1) → **0.2 %**, comb ELIMINATED, while a trunk still forms (max A highest at
+p≈2). Visually the washboard becomes a smooth slope with faint emergent channels. So the
+comb is purely a single-flow artifact and even light dispersion removes it.
+
+**Real terrain (2048²+8192², MFD incision, critical_slope=0 → NO GS solver):**
+
+| res | p / K | ms | >30° | stri | floor/ridge | dens | W/D S1→S5 | align p50 / off>20 m |
+|---|---|---|---|---|---|---|---|---|
+| 2048 | p2 K×1 | 1405 | 19.0 % | 0.89 | 0.40 | 2.55 | 5→57 | 30 m / 61 % |
+| 2048 | p2 K×2 | 1392 | 26.6 % | 0.99 | 0.25 | 2.40 | 5→85 | 19 m / 49 % |
+| 8192 | p2 K×2 | **25936** | 21.5 % | 1.05 | 0.72 | 2.35 | 2→68 | **6 m / 18 %** |
+
+- **Character (the win):** the 8192² crop shows DENDRITIC, ramified branching valley
+  networks — the headwater ramification the author reported missing — replacing the comb.
+  Striation isotropic (~1.0) confirms the directional comb is gone; the residual >30 %
+  share is genuine valley-wall/ridge steepness of dense dissection, not the washboard.
+- **Runtime:** 26 s @8192² vs the diffusion solver's 70 s — MFD is O(n), no Gauss-Seidel.
+  **The red-black/multigrid rewrite is NOT needed.**
+- **W/D widens downstream** (proper hierarchy), unlike talus (flat).
+- **K adjustment (predicted):** MFD disperses A → weaker incision. K×2 deepens valleys at
+  2048² (floor/ridge 0.40→0.25) but 8192² still sits at 0.72 → **8192² needs more K**
+  (≈×3–4) to avoid under-incision; this is the H-B trap by another route and must be tuned.
+- **Metre-invariance:** >30 % 19–27 % (2048²) vs 21.5 % (8192²) and striation ~0.9–1.05 both
+  — reasonably invariant (unlike talus). floor/ridge is NOT yet invariant (K-dependent).
+- **TASK 5 D8/MFD alignment:** at 8192² the D8 rivers sit in the MFD valleys (median offset
+  6 m, only 18 % above a carved hollow) — acceptable. At 2048² they diverge (30 m, 61 %) —
+  MFD carves broad shallow valleys the single-flow D8 line rides the flank of. Fix if it
+  matters at production res: route rivers on MFD too, or snap D8 segments to the carved
+  local minimum. At the 8192² production grid it is a minor issue.
+
+**Recommendation:** adopt **MFD p≈2 for the incision** as the comb fix; raise K (~×3 at
+8192²) and re-check floor/ridge; keep D8 for rivers/lakes; talus and nonlinear diffusion
+remain optional complements (arête bounding), all OFF by default. MFD makes both the
+diffusion-solver rewrite and talus unnecessary for the comb. Fallback if MFD ever fails:
+the non-conservative Lipschitz carve (fast-sweeping, bounded closure) noted in Finding 10.
+Pending: the author's visual verdict on the 8192² render (wired into the viz), then freeze
+the relief-v2 regression (rebase, not loosen).

@@ -99,6 +99,11 @@ pub struct HdParams {
     pub cross_rill: bool,
     /// Cross-rill diffusion coefficient when `cross_rill` is on (2b sweep: 0.25/0.40/0.55).
     pub cross_rill_d: f32,
+    /// EXPERIMENTAL (ADR 0001, Finding 11): MFD incision — disperse drainage area to prevent
+    /// the comb at its cause (dendritic valleys, no GS solver). Takes precedence over cross_rill.
+    pub mfd: bool,
+    /// MFD partition exponent when `mfd` is on (lower = more dispersed; p≈2 recommended).
+    pub mfd_p: f32,
     /// EXPERIMENTAL: override the FBM `amplitude_base` for this run (`None` = the
     /// production 0.16). Lets the author flip through the striation amplitude ladder
     /// (0.16/0.08/0.04/0.02) with stream-power ON to see the striations shrink.
@@ -121,6 +126,8 @@ impl Default for HdParams {
             closures: false,
             cross_rill: false,
             cross_rill_d: 0.40,
+            mfd: false,
+            mfd_p: 2.0,
             fbm_amplitude: None,
             export_dir: None,
         }
@@ -366,6 +373,17 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             sp.diffuse_channels = true;
             sp.diffusion = params.cross_rill_d;
         }
+        // ADR 0001 Finding 11: MFD incision — disperse the drainage area so the
+        // Smith–Bretherton comb never forms (attack the cause). No GS solver needed →
+        // critical_slope off, light linear hillslope only, K raised to offset dispersion.
+        // Takes precedence over cross-rill. Yields dendritic ramified valleys.
+        if params.closures && params.mfd {
+            sp.critical_slope = 0.0;
+            sp.diffusion = 0.05;
+            sp.diffuse_channels = true;
+            sp.k *= 3.0;
+            sp.mfd_exponent = Some(params.mfd_p);
+        }
         eprintln!(
             "[HD] stream-power incision ON ({}: A_c {:.0} cells = {} km²{}), droplets OFF",
             if params.closures { "relief-v2 + closures" } else { "relief-v1" },
@@ -375,7 +393,9 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
                 format!(
                     ", S_c=tan(33°), lat {:.0} m/√km²{}",
                     sp.lateral_erosion,
-                    if params.cross_rill {
+                    if params.mfd {
+                        format!(", MFD p={:.1} K×3", params.mfd_p)
+                    } else if params.cross_rill {
                         format!(", cross-rill D={:.2}", sp.diffusion)
                     } else {
                         String::new()

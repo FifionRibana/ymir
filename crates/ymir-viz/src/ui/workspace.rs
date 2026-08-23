@@ -175,6 +175,9 @@ struct WorkspaceState {
     /// damp the Smith–Bretherton comb; `cross_rill_d` is its coefficient.
     cross_rill: bool,
     cross_rill_d: f32,
+    /// EXPERIMENTAL (ADR 0001, Finding 11): MFD incision — dendritic valleys, no solver.
+    mfd: bool,
+    mfd_p: f32,
     /// EXPERIMENTAL: FBM amplitude_base for the striation ladder (0.16 = production).
     fbm_amplitude: f32,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
@@ -232,6 +235,8 @@ impl Default for WorkspaceState {
             closures: false,
             cross_rill: false,
             cross_rill_d: 0.40,
+            mfd: false,
+            mfd_p: 2.0,
             fbm_amplitude: 0.16,
             export_dir: "exports".to_string(),
             current: None,
@@ -639,6 +644,8 @@ fn left_panel(
                             closures: ws.closures,
                             cross_rill: ws.cross_rill,
                             cross_rill_d: ws.cross_rill_d,
+                            mfd: ws.mfd,
+                            mfd_p: ws.mfd_p,
                             fbm_amplitude: Some(ws.fbm_amplitude as f64),
                             export_dir,
                         };
@@ -709,6 +716,31 @@ fn left_panel(
                                     ui.label(egui::RichText::new("D").color(DIM2).size(11.0));
                                     if let Some(i) = seg_row(ui, &["0.25", "0.40", "0.55"], dc) {
                                         ws.cross_rill_d = dv[i];
+                                    }
+                                });
+                            }
+                            ui.checkbox(
+                                &mut ws.mfd,
+                                egui::RichText::new("MFD incision (dendritique)").color(DIM2).size(11.0),
+                            )
+                            .on_hover_text(
+                                "ADR 0001 Finding 11: routage MULTI-FLUX pour l'incision — disperse \
+                                 l'aire drainée pour EMPÊCHER le peigne de Smith–Bretherton à sa \
+                                 source (pas de lissage a posteriori, donc pas de remblai des \
+                                 vallées). Vallées dendritiques ramifiées, O(n), sans solveur GS \
+                                 (rapide à 8192²). K×3 pour compenser la dispersion. Prioritaire sur \
+                                 l'anti-peigne. Le correctif recommandé.",
+                            );
+                            if ws.mfd {
+                                let pv = [4.0f32, 2.0, 1.1];
+                                let pc = pv
+                                    .iter()
+                                    .position(|&v| (v - ws.mfd_p).abs() < 1e-4)
+                                    .unwrap_or(1);
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new("p").color(DIM2).size(11.0));
+                                    if let Some(i) = seg_row(ui, &["4", "2", "1.1"], pc) {
+                                        ws.mfd_p = pv[i];
                                     }
                                 });
                             }
@@ -1437,6 +1469,8 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         closures: false,
         cross_rill: false,
         cross_rill_d: 0.40,
+        mfd: false,
+        mfd_p: 2.0,
         fbm_amplitude: None,
         export_dir: None,
     }

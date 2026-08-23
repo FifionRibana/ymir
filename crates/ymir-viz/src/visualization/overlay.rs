@@ -247,9 +247,7 @@ mod tests {
         }
         draw_velocity_vectors(&mut rgba, nx, ny, &vx, &vy, &plate_id, 1.5);
 
-        let any_yellow = rgba
-            .chunks_exact(4)
-            .any(|c| c == VELOCITY_RGBA);
+        let any_yellow = rgba.chunks_exact(4).any(|c| c == VELOCITY_RGBA);
         assert!(any_yellow, "no arrow drawn for plate 0 with v̄ₓ=3");
 
         // Plate 1 quadrant (right half), excluding the column where
@@ -308,10 +306,7 @@ mod tests {
             (0..3).any(|i| pixel(i, j) == VELOCITY_RGBA)
                 || (13..16).any(|i| pixel(i, j) == VELOCITY_RGBA)
         });
-        assert!(
-            any_in_wrap,
-            "expected arrow near i ∈ {{0..2, 13..15}}; centroid mis-computed"
-        );
+        assert!(any_in_wrap, "expected arrow near i ∈ {{0..2, 13..15}}; centroid mis-computed");
         let any_at_anti_centroid = (0..ny).any(|j| pixel(8, j) == VELOCITY_RGBA);
         assert!(
             !any_at_anti_centroid,
