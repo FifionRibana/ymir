@@ -2677,6 +2677,108 @@ fn river_monotonicity() {
     let _ = norm_to_m;
 }
 
+/// DEFECT 1 fix — FLANK GRADING on MFD terrain, two variants (author's design): (A) talus
+/// alone → straight repose walls (gravitational transport); (B) talus + light LINEAR
+/// diffusion (D≈0.08) → straight near the crest, convex below (creep) — two processes, two
+/// places, and both explicit (no GS solver). At 2048² AND 8192². Reports floor/ridge (PHYSICAL
+/// ±1 km), crest curvature, >30°/>45°, max slope (does S_c bound it?), W/D per order, striation,
+/// runtime. Confirms the talus anti-invariance (12.5→26.8 % measured on COMBED terrain) is gone
+/// on comb-free MFD terrain. Saves A/B crops per resolution. Read-only.
+#[test]
+#[ignore]
+fn mfd_talus_flank() {
+    use std::path::Path;
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{RELIEF_V1_K, StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base) = (400.0f32, ss.depth_scale_m as f32);
+    let sc = 0.6494f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    let (fx, fy, fw) = (0.22f32, 0.03f32, 0.34f32);
+    let norm_to_m = 2.0 * 1.13 * base;
+
+    eprintln!("\n=== DEFECT 1 — flank grading on MFD terrain (talus A vs talus+linear B) ===");
+    eprintln!("   res var | ms | fr(1km) | >30° | >45° | max° | curv | stri | W/D S1→S5");
+    for t in [2048usize, 8192] {
+        let cell_km = domain / t as f32;
+        let cell_km2 = cell_km * cell_km;
+        let a_c = 0.1 / cell_km2;
+        let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+        fc.erosion = None;
+        fc.bathymetry = None;
+        fc.amplitude_base = 0.04;
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        for (var, lin) in [("A", 0.0f32), ("B", 0.08)] {
+            let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+            cfg.critical_slope = 0.0; // no GS solver
+            cfg.diffuse_channels = true;
+            cfg.k = RELIEF_V1_K * 3.0;
+            cfg.mfd_exponent = Some(2.0);
+            cfg.talus_slope = sc;
+            cfg.talus_passes = 4;
+            cfg.diffusion = lin; // A: none; B: light linear (explicit)
+            let t0 = Instant::now();
+            let post = incise(&fbm, &cfg);
+            let ms = t0.elapsed().as_millis();
+            let sm: Vec<f32> =
+                post.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+            let slope = slope_deg_field(&post, domain, base);
+            let land: Vec<usize> = (0..post.data.len()).filter(|&k| post.data[k] > SEA).collect();
+            let n = land.len().max(1) as f32;
+            let a30 = land.iter().filter(|&&k| slope[k] > 30.0).count() as f32 / n * 100.0;
+            let a45 = land.iter().filter(|&&k| slope[k] > 45.0).count() as f32 / n * 100.0;
+            let (_, maxs) = slope_violations(&post, cell_km, base, sc);
+            let maxdeg = maxs.atan().to_degrees();
+            let dr = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+            let fr = floor_ridge_phys(&sm, &dr.flow.accumulation, &post, a_c, t, cell_km, 1.0);
+            let mut le: Vec<f32> = land.iter().map(|&k| sm[k]).collect();
+            le.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let e60 = le[le.len() * 6 / 10];
+            let upper: Vec<f32> =
+                (0..post.data.len()).map(|k| if sm[k] >= e60 { slope[k] } else { 0.0 }).collect();
+            let (_, stri) = striation_spectrum(&post, &upper, 20.0, 48);
+            let mut curv = Vec::new();
+            for &k in &land {
+                let (x, y) = (k % t, k / t);
+                if sm[k] >= e60 && slope[k] > 30.0 && x > 0 && x < t - 1 && y > 0 && y < t - 1 {
+                    let lap = (post.data[k - 1] + post.data[k + 1] - 2.0 * post.data[k]).abs()
+                        + (post.data[k - t] + post.data[k + t] - 2.0 * post.data[k]).abs();
+                    curv.push(lap * norm_to_m);
+                }
+            }
+            curv.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let crest = if curv.is_empty() { 0.0 } else { curv[curv.len() / 2] };
+            let wd = per_order_width_depth(&post, domain, base, &ss);
+            let wdstr =
+                wd.iter().map(|(o, _, _, r)| format!("S{o}:{r:.0}")).collect::<Vec<_>>().join(" ");
+            eprintln!(
+                "   {t} {var}  | {ms:>5} | {fr:>7.2} | {a30:>4.1}% | {a45:>4.1}% | {maxdeg:>3.0} | {crest:>4.0} | {stri:.2} | {wdstr}"
+            );
+            let hs = hillshade(&post, domain, base);
+            let (cx0, cy0, cw) =
+                ((fx * t as f32) as usize, (fy * t as f32) as usize, (fw * t as f32) as usize);
+            let mut crop = GridF32::new(cw, cw, 0.5);
+            for j in 0..cw {
+                for i in 0..cw {
+                    if cx0 + i < t && cy0 + j < t {
+                        crop.data[j * cw + i] = hs.data[(cy0 + j) * t + (cx0 + i)];
+                    }
+                }
+            }
+            crop.save_png_u8(&dir.join(format!("flank_{var}_{t}.png"))).unwrap();
+        }
+    }
+    eprintln!(
+        "   (A straight repose flanks; B straight-then-convex. Watch fr NOT climbing (H-B backfill);"
+    );
+    eprintln!("    check S_c bounds max°, and anti-invariance gone: >30° should match 2048↔8192)");
+    eprintln!("   → crops: exports/sculpt/flank_{{A,B}}_{{2048,8192}}.png");
+}
+
 #[test]
 #[ignore]
 fn closure_mosaic() {
