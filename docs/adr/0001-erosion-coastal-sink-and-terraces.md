@@ -626,3 +626,39 @@ diffusion-solver rewrite and talus unnecessary for the comb. Fallback if MFD eve
 the non-conservative Lipschitz carve (fast-sweeping, bounded closure) noted in Finding 10.
 Pending: the author's visual verdict on the 8192² render (wired into the viz), then freeze
 the relief-v2 regression (rebase, not loosen).
+
+## Finding 12 — MFD defects: K doesn't set valley shape; uphill rivers = filled-depression crossings
+
+Two 8192² defects reported on the MFD renders. Diagnosed before fixing (TASK 1/2).
+
+**DEFECT 1 — "deep gorges, no intermediate slope" (crest-to-thalweg in a few pixels).**
+- The apparent resolution dependence of floor/local-ridge (0.25 @2048² vs 0.72 @8192², same
+  K) is largely the METRIC: the ±10-CELL ridge window is ±1953 m at 2048² but ±488 m at
+  8192², so it reads a nearer, lower ridge at 8192² → inflated ratio. With a PHYSICAL ±1 km
+  window the gap shrinks to 0.36 vs 0.63 (cells-not-metres bug, 3rd instance — fixed in the
+  metric; the residual 0.36↔0.63 is real: MFD disperses more at finer cells → weaker incision).
+- **K is not the lever.** Sweeping K×2→×6 @8192² moves per-order incision up (S1 124→166 m)
+  but floor/ridge only 0.63→0.55 (saturates against the receiver clamp; the ratio is set by
+  the unchanged local ridge). So the "0.4–0.5" target is unreachable by K.
+- Real cause: the MFD config turned OFF all slope-grading (`critical_slope=0`, light D=0.05)
+  to avoid the GS solver, leaving UNGRADED slot walls (curv 141–154, 22 % >30°). The fix is
+  FLANK GRADING, not K — and MFD having removed the comb, grading can now be added freely
+  (talus for straight repose flanks — cheap, complementary; or nonlinear critical-slope for
+  convex flanks — but that is the GS solver again).
+
+**DEFECT 2 — rivers run uphill (author's profile 400→250→80→50→70→80 m).** Acceptance test
+`river_monotonicity`: at 8192² MFD p2 K×3, **66 % of segments contain an uphill step, worst
++232 m**. Attribution of climbing steps: **61 % sit on pit-FILLED flats** (the river crosses a
+filled depression — real floor dips into the hollow then climbs back to the sill), 39 % on
+real terrain (D8 segment rides the flank off the MFD thalweg).
+- **H2-as-defined (network built before incision) is FALSE**: incision is
+  production_upscale.rs:402, drainage runs afterwards on the eroded field (hd.rs
+  `cached_c1_drainage_windowed(&eroded)`). The network is post-incision.
+- The dominant cause is filled-depression crossing (rivers traced on the pit-FILLED surface,
+  long profile read on REAL elevation), not staleness. Fixes: (i) a drainage CARVE / breach so
+  the real profile is monotone along the network (O(n), guarantees the acceptance test), and/or
+  treat genuine closed depressions as LAKES (do not route a flowing river through them); plus
+  (ii) snap D8 segments to the MFD thalweg (or route rivers on MFD) for the 39 % misalignment.
+
+The permanent acceptance test (every exported segment monotone to the sea) is in place;
+violations must go to ~0 before the relief-v2 baseline is frozen.
