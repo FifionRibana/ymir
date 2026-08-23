@@ -2868,6 +2868,151 @@ fn breach_monotone_test() {
     );
 }
 
+/// FINAL RENDER + thalweg + lake distribution (MFD + talus + breach), 8192². TASK 1: massif
+/// and high-mountain HEADWATER crops with the river network OVERLAID (black over hillshade),
+/// for variant A (talus) and B (talus+linear). TASK 2: thalweg check — share of river cells
+/// sitting in a LOCAL MINIMUM of the final terrain (physical ±150 m window) + offset
+/// distribution (a monotone-but-on-a-flank breach shows as low in-min share + offset tail).
+/// TASK 3: lake size distribution (pre-breach detection = what would populate lakes.json).
+/// Read-only, no production wiring.
+#[test]
+#[ignore]
+fn mfd_final_render() {
+    use std::path::Path;
+    use ymir_core::erosion::stream_power::{RELIEF_V1_K, StreamPowerConfig, incise};
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base, t) = (400.0f32, ss.depth_scale_m as f32, 8192usize);
+    let cell_km = domain / t as f32;
+    let cell_m = cell_km * 1000.0;
+    let cell_km2 = cell_km * cell_km;
+    let norm_to_m = 2.0 * 1.13 * base;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+
+    // Crop windows (normalised): massif (context) + a tighter high-mountain headwater zoom.
+    let windows = [("massif", 0.22f32, 0.03f32, 0.34f32), ("headwater", 0.30, 0.05, 0.12)];
+    let save_overlay = |field: &GridF32, rivers: &[bool], name: &str| {
+        let hs = hillshade(field, domain, base);
+        for &(wn, fx, fy, fw) in &windows {
+            let (cx0, cy0, cw) =
+                ((fx * t as f32) as usize, (fy * t as f32) as usize, (fw * t as f32) as usize);
+            let mut crop = GridF32::new(cw, cw, 0.5);
+            for j in 0..cw {
+                for i in 0..cw {
+                    let (x, y) = (cx0 + i, cy0 + j);
+                    if x < t && y < t {
+                        crop.data[j * cw + i] =
+                            if rivers[y * t + x] { 0.02 } else { hs.data[y * t + x] };
+                    }
+                }
+            }
+            crop.save_png_u8(&dir.join(format!("final_{name}_{wn}.png"))).unwrap();
+        }
+    };
+
+    eprintln!("\n=== FINAL — MFD+talus+breach, network overlay + thalweg + lakes (8192²) ===");
+    let mut lakes_reported = false;
+    for (var, lin) in [("A", 0.0f32), ("B", 0.08)] {
+        let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+        cfg.critical_slope = 0.0;
+        cfg.diffuse_channels = true;
+        cfg.k = RELIEF_V1_K * 3.0;
+        cfg.mfd_exponent = Some(2.0);
+        cfg.talus_slope = 0.6494;
+        cfg.talus_passes = 4;
+        cfg.diffusion = lin;
+        let post = incise(&fbm, &cfg);
+        let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+        let cur = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+        let dr = c1_drainage(&cur, None, &C1DrainageConfig::default(), &ss);
+        // river mask (segment points).
+        let mut rivers = vec![false; t * t];
+        for s in &dr.rivers.segments {
+            for &(x, y) in &s.points {
+                rivers[y as usize * t + x as usize] = true;
+            }
+        }
+        save_overlay(&cur, &rivers, var);
+        // TASK 2 — thalweg: river cell in local min (±150 m physical) + offset.
+        let r = (150.0 / cell_m).round().max(1.0) as i32;
+        let (mut in_min, mut nriv) = (0usize, 0usize);
+        let mut offs = Vec::new();
+        for s in &dr.rivers.segments {
+            for &(x, y) in &s.points {
+                let (x, y) = (x as i32, y as i32);
+                let mut lo = cur.data[y as usize * t + x as usize];
+                for dy in -r..=r {
+                    for dx in -r..=r {
+                        let (nx, ny) = (x + dx, y + dy);
+                        if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                            lo = lo.min(cur.data[ny as usize * t + nx as usize]);
+                        }
+                    }
+                }
+                let off = (cur.data[y as usize * t + x as usize] - lo) * norm_to_m;
+                if off < 0.5 {
+                    in_min += 1;
+                }
+                offs.push(off);
+                nriv += 1;
+            }
+        }
+        offs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let p50 = offs[offs.len() / 2];
+        let p90 = offs[offs.len() * 9 / 10];
+        eprintln!(
+            "  variant {var}: river cells {nriv} | in local-min (±150 m) {:.0}% | offset p50 {p50:.1} m / p90 {p90:.1} m",
+            in_min as f32 / nriv.max(1) as f32 * 100.0
+        );
+        // TASK 3 — lake size distribution (pre-breach = what populates lakes.json), once.
+        if !lakes_reported {
+            lakes_reported = true;
+            let mut areas: Vec<f32> = dr0.lakes.iter().map(|l| l.area_km2).collect();
+            areas.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let nlk = areas.len();
+            let total: f32 = areas.iter().sum();
+            let (mn, mx) =
+                (areas.first().copied().unwrap_or(0.0), areas.last().copied().unwrap_or(0.0));
+            let bins = [5.0f32, 10.0, 25.0, 100.0, 500.0, f32::MAX];
+            let mut hist = [0usize; 6];
+            for &a in &areas {
+                for (bi, &b) in bins.iter().enumerate() {
+                    if a < b {
+                        hist[bi] += 1;
+                        break;
+                    }
+                }
+            }
+            let small = areas.iter().filter(|&&a| a < 10.0).count();
+            let small_area: f32 = areas.iter().filter(|&&a| a < 10.0).sum();
+            eprintln!(
+                "  LAKES (pre-breach, ≥ lake_min_area 5 km²): count {nlk}, total {total:.0} km², min {mn:.1} / max {mx:.0} km²"
+            );
+            eprintln!("   histogram [5-10,10-25,25-100,100-500,500+]: {:?}", &hist[..5]);
+            eprintln!(
+                "   < 10 km²: {small} lakes ({:.0}% of count), {small_area:.0} km² ({:.0}% of area)",
+                small as f32 / nlk.max(1) as f32 * 100.0,
+                small_area / total.max(1.0) * 100.0
+            );
+        }
+    }
+    eprintln!(
+        "   → crops: exports/sculpt/final_{{A,B}}_{{massif,headwater}}.png (rivers overlaid in black)"
+    );
+    eprintln!(
+        "   (want: high in-local-min share + small offset = rivers in the thalweg; lake tail not tiny-pit-dominated)"
+    );
+}
+
 /// DEFECT 1 fix — FLANK GRADING on MFD terrain, two variants (author's design): (A) talus
 /// alone → straight repose walls (gravitational transport); (B) talus + light LINEAR
 /// diffusion (D≈0.08) → straight near the crest, convex below (creep) — two processes, two
