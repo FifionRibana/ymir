@@ -1782,6 +1782,166 @@ fn rill_stability() {
     );
 }
 
+/// STEP 2b — REMEDY (i) on REAL terrain: relief-v2 + `diffuse_channels=true` (diffusion
+/// everywhere, LEM-correct), short D sweep {0.15, 0.25, 0.40, 0.55} + D=1.0 as a
+/// non-monotonicity control. The question is not "does the comb die at 0.4?" but "is
+/// there a D that kills the comb WITHOUT killing the gorges?". Reports per D: >30° share
+/// + upper-slope striation (comb), W/D per Strahler order + floor/ridge + crest curvature
+/// (gorge survival — must keep widening downstream: ref v2 W/D 6.2→40.9, floor/ridge 0.32,
+/// curv 288 m), Strahler histogram + confluences (health). Plus a GS CONVERGENCE check at
+/// D=0.40 (40 vs 80 sweeps). Saves a massif crop per D. 2048², author seed. Read-only.
+#[test]
+#[ignore]
+fn cross_rill_2b() {
+    use std::path::Path;
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain, base) = (2048usize, 400.0f32, ss.depth_scale_m as f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    let (fx, fy, fw) = (0.22f32, 0.03f32, 0.34f32);
+    let norm_to_m = 2.0 * 1.13 * base;
+
+    // Measure comb + gorge-survival + health for one eroded field.
+    let measure = |post: &GridF32, a_c: f32| -> (f32, f32, f32, f32, String, String) {
+        let slope = slope_deg_field(post, domain, base);
+        let sm: Vec<f32> = post.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let land: Vec<usize> = (0..post.data.len()).filter(|&k| post.data[k] > SEA).collect();
+        let n = land.len().max(1) as f32;
+        let a30 = land.iter().filter(|&&k| slope[k] > 30.0).count() as f32 / n * 100.0;
+        let mut le: Vec<f32> = land.iter().map(|&k| sm[k]).collect();
+        le.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let e60 = le[le.len() * 6 / 10];
+        let upper: Vec<f32> =
+            (0..post.data.len()).map(|k| if sm[k] >= e60 { slope[k] } else { 0.0 }).collect();
+        let (_, striation) = striation_spectrum(post, &upper, 20.0, 48);
+        // crest curvature on steep upper cells.
+        let mut curv = Vec::new();
+        for &k in &land {
+            let (x, y) = (k % t, k / t);
+            if sm[k] >= e60 && slope[k] > 30.0 && x > 0 && x < t - 1 && y > 0 && y < t - 1 {
+                let lap = (post.data[k - 1] + post.data[k + 1] - 2.0 * post.data[k]).abs()
+                    + (post.data[k - t] + post.data[k + t] - 2.0 * post.data[k]).abs();
+                curv.push(lap * norm_to_m);
+            }
+        }
+        curv.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let crest = if curv.is_empty() { 0.0 } else { curv[curv.len() / 2] };
+        // floor/local-ridge on channel cells.
+        let dr = c1_drainage(post, None, &C1DrainageConfig::default(), &ss);
+        let chan: Vec<usize> = (0..post.data.len())
+            .filter(|&k| dr.flow.accumulation.data[k] >= a_c && post.data[k] > SEA)
+            .collect();
+        let mut ratios = Vec::new();
+        for &k in chan.iter().step_by(7) {
+            let (x, y) = (k % t, k / t);
+            let mut ridge = sm[k];
+            for dy in -10i32..=10 {
+                for dx in -10i32..=10 {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                        ridge = ridge.max(sm[ny as usize * t + nx as usize]);
+                    }
+                }
+            }
+            if ridge > 1.0 {
+                ratios.push(sm[k] / ridge);
+            }
+        }
+        ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let floor_ridge = if ratios.is_empty() { 0.0 } else { ratios[ratios.len() / 2] };
+        // W/D per order + Strahler histogram + confluences.
+        let wd = per_order_width_depth(post, domain, base, &ss);
+        let wdstr =
+            wd.iter().map(|(o, _, _, r)| format!("S{o} {r:.1}")).collect::<Vec<_>>().join(" ");
+        let mut hist: std::collections::HashMap<u8, usize> = std::collections::HashMap::new();
+        for s in &dr.rivers.segments {
+            *hist.entry(s.strahler_order).or_default() += 1;
+        }
+        let mut ho: Vec<u8> = hist.keys().copied().collect();
+        ho.sort();
+        let confl = dr.rivers.segments.iter().filter(|s| s.upstream.len() >= 2).count();
+        let hstr = format!(
+            "{} |confl {confl}",
+            ho.iter().map(|o| format!("S{o}:{}", hist[o])).collect::<Vec<_>>().join(" ")
+        );
+        (a30, striation, floor_ridge, crest, wdstr, hstr)
+    };
+
+    eprintln!(
+        "\n=== STEP 2b — remedy (i) cross-rill diffusion on real terrain (2048², seed {seed_u}) ==="
+    );
+    eprintln!(
+        "   SUCCESS: comb >30°→~1-2%; gorges: W/D keeps rising S1→S5 (ref 6.2→40.9), floor/ridge~0.32, curv~288m"
+    );
+    eprintln!(
+        "   D    | >30° | striation | floor/ridge | crest curv | W/D per order | Strahler/confl"
+    );
+    for dval in [0.15f32, 0.25, 0.40, 0.55, 1.0] {
+        let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+        cfg.diffuse_channels = true;
+        cfg.diffusion = dval;
+        let t0 = Instant::now();
+        let post = incise(&fbm, &cfg);
+        let ms = t0.elapsed().as_millis();
+        let (a30, stri, fr, crest, wd, hist) = measure(&post, cfg.min_area_cells);
+        let tag = if dval > 0.55 { " (control)" } else { "" };
+        eprintln!(
+            "   {dval:.2} | {a30:>4.1}% | {stri:>9.2} | {fr:>11.2} | {crest:>7.0} m | {wd} | {hist}{tag}  ({ms}ms)"
+        );
+        let hs = hillshade(&post, domain, base);
+        let (cx0, cy0, cw) =
+            ((fx * t as f32) as usize, (fy * t as f32) as usize, (fw * t as f32) as usize);
+        let mut crop = GridF32::new(cw, cw, 0.5);
+        for j in 0..cw {
+            for i in 0..cw {
+                if cx0 + i < t && cy0 + j < t {
+                    crop.data[j * cw + i] = hs.data[(cy0 + j) * t + (cx0 + i)];
+                }
+            }
+        }
+        crop.save_png_u8(&dir.join(format!("crossrill_d{dval:.2}.png"))).unwrap();
+    }
+
+    // GS convergence check at D=0.40: does doubling the sweeps change the answer?
+    eprintln!("\n-- GS convergence @D=0.40: 40 vs 80 implicit sweeps --");
+    let build = |iters: usize| -> GridF32 {
+        let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+        cfg.diffuse_channels = true;
+        cfg.diffusion = 0.40;
+        cfg.hillslope_implicit_iters = iters;
+        incise(&fbm, &cfg)
+    };
+    let f40 = build(40);
+    let f80 = build(80);
+    let maxdiff =
+        (0..f40.data.len()).map(|k| (f40.data[k] - f80.data[k]).abs()).fold(0.0f32, f32::max);
+    let (a40, ..) = measure(&f40, StreamPowerConfig::relief_v2(cell_km2, base).min_area_cells);
+    let (a80, ..) = measure(&f80, StreamPowerConfig::relief_v2(cell_km2, base).min_area_cells);
+    eprintln!(
+        "   max |Δnorm| 40↔80 = {maxdiff:.4} ({:.0} m); >30° 40={a40:.1}% 80={a80:.1}% → {}",
+        maxdiff * norm_to_m,
+        if maxdiff * norm_to_m < 15.0 {
+            "CONVERGED"
+        } else {
+            "NOT converged — 40 sweeps insufficient"
+        }
+    );
+    eprintln!(
+        "   → crops: exports/sculpt/crossrill_d*.png. Recommend the LOWEST D meeting both criteria."
+    );
+}
+
 #[test]
 #[ignore]
 fn closure_mosaic() {

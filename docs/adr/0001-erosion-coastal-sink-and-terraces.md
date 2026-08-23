@@ -482,3 +482,47 @@ blast radius:
 Recommend prototyping (i) first (cheapest, testable on the synthetic plane), then (ii) if
 the plane still washboards. Diagnostics (all #[ignore], read-only): `striation_source`,
 `striation_stage`, `fbm_octave_ablation`, `rilling_sweep`, `synthetic_slope_rilling`.
+
+## Finding 9 — Remedy (i): cross-rill diffusion works; the blocker is GS convergence
+
+STEP 2a quantified the Smith–Bretherton criterion on a 30° plane (D applied everywhere,
+linear-like via a huge S_c): D=0 → 39 % steep, D_crit ≈ 0.40 (physical κΔt ≈ 15 000 m²)
+damps it to <1 %; the relief-v2 default D=0.15 (4.9 %) is SUB-critical — why the comb
+persists. (The rill-wavelength metric is broken — it returns window×cell, no spectral peak;
+not needed for D_crit, so left as a known gap, fixable by transverse autocorrelation. A*
+is not cleanly measurable on a uniform plane, so gorge survival was tested on real terrain.)
+
+STEP 2b applied remedy (i) — `diffuse_channels = true` (the LEM-correct diffusion on every
+cell, removing the regime split's non-physical channel exclusion) — on real terrain (2048²,
+author seed, amp 0.04), short D sweep:
+
+| D | >30° | striation | floor/ridge | crest | W/D S1→S5 | Strahler/confl |
+|---|---|---|---|---|---|---|
+| 0.15 | 6.7 % | 0.67 | 0.49 | 270 | 3.4→22.4 | 2391..39 /1594 |
+| 0.25 | 5.2 % | 0.64 | 0.50 | 279 | 7.0→29.3 | 2345..33 /1580 |
+| 0.40 | 4.2 % | 0.61 | 0.50 | 278 | 7.1→(S5 5.9*) | 2346..17 /1545 |
+| 0.55 | 3.5 % | 0.60 | 0.50 | 269 | 7.2→41.7 | 2330..35 /1547 |
+| 1.00 | 2.6 % | 0.54 | 0.50 | 235 | 7.4→49.3 | 2295..31 /1500 |
+
+Findings:
+- **The channel exclusion WAS the driver.** At the same D=0.15, `diffuse_channels` alone
+  halves the steep share vs the regime split (12.1 %→6.7 %). Visually (crossrill_d0.55) the
+  comb is gone — coherent dendritic valleys + defined ridges replace the corduroy.
+- **Monotone on real terrain** (6.7→2.6 %); the plane's non-monotonic bump at D=1.0 does NOT
+  reproduce → it was GS-convergence noise on the plane, not physical.
+- **Gorges survive**: W/D keeps rising downstream at every D; Strahler histogram and
+  confluences stable — no pathology traded. (*S5 dips at D=0.40 only because S5:17 segments.)
+- **Cost**: floor/local-ridge rises 0.32→0.50 (valleys shallower — diffusion fills channels
+  a little) and headwaters widen with D (S1 W/D 3.4→7.2). Real but not disqualifying.
+
+**Blocker — the GS solver is NOT converged.** At D=0.40, 40 vs 80 implicit sweeps differ by
+max 0.059 norm = **671 m locally** (aggregate >30 % stable at 4.2/4.1 %). So the absolute
+heightfield is a provisional intermediate state, and the 8192² extrapolation would inherit
+it. Remedy (i) is the right direction, but before freezing a D or rendering at 8192²:
+  1. **Fix the diffusion solver** — the row-major Gauss-Seidel is single-threaded and
+     under-converged; move to red-black GS (parallelisable with rayon) with a residual-based
+     stop, or a V-cycle. This also makes 8192² tractable (single-thread GS × 240 sweeps ×
+     67 M cells is minutes/D otherwise).
+  2. Re-run the D sweep to the converged field, pick the LOWEST D meeting both criteria.
+  3. Produce an 8192² render for the author's visual verdict, THEN freeze the relief-v2
+     regression (rebase, not loosen). `diffuse_channels` stays OFF by default until then.
