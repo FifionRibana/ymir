@@ -1942,6 +1942,270 @@ fn cross_rill_2b() {
     );
 }
 
+/// Count land cells with any downhill neighbour steeper than `sc` (repose violations),
+/// and the max slope. Used to test whether talus is a closure (bounded residual) or a
+/// solver in disguise (unbounded passes).
+fn slope_violations(field: &GridF32, cell_km: f32, depth: f32, sc: f32) -> (usize, f32) {
+    use ymir_core::terrain::flow::{D8_DIST, D8_DX, D8_DY};
+    let (w, h) = (field.width, field.height);
+    let cell_m = cell_km * 1000.0;
+    let norm_to_m = 2.0 * 1.13 * depth;
+    let (mut viol, mut maxs) = (0usize, 0.0f32);
+    for y in 0..h {
+        for x in 0..w {
+            let k = y * w + x;
+            if field.data[k] <= SEA {
+                continue;
+            }
+            let mut bad = false;
+            for d in 0..8 {
+                let (nx, ny) = (x as i32 + D8_DX[d], y as i32 + D8_DY[d]);
+                if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                    continue;
+                }
+                let j = ny as usize * w + nx as usize;
+                let drop = field.data[k] - field.data[j];
+                if drop <= 0.0 {
+                    continue;
+                }
+                let s = drop * norm_to_m / (D8_DIST[d] * cell_m);
+                if s > maxs {
+                    maxs = s;
+                }
+                if s > sc * 1.02 {
+                    bad = true;
+                }
+            }
+            if bad {
+                viol += 1;
+            }
+        }
+    }
+    (viol, maxs)
+}
+
+/// TASK 3 — is talus a CLOSURE or a solver in disguise? Run talus (post relief-v2
+/// incision, everywhere) with 1/2/4/8 passes on real 2048² terrain and count the cells
+/// still exceeding S_c after each. If residuals fall to ~0 in a few BOUNDED passes it is
+/// a closure; if they need unbounded passes it is a solver. Read-only.
+#[test]
+#[ignore]
+fn talus_residual() {
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain, base) = (2048usize, 400.0f32, ss.depth_scale_m as f32);
+    let cell_km = domain / t as f32;
+    let cell_km2 = cell_km * cell_km;
+    let sc = 0.6494f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let land = (0..fbm.data.len()).filter(|&k| fbm.data[k] > SEA).count().max(1);
+    let (v0, mx0) = slope_violations(&fbm, cell_km, base, sc);
+    eprintln!("\n=== TASK 3 — talus residual vs passes (2048², S_c=tan33°, real terrain) ===");
+    eprintln!(
+        "   pre-talus (relief-v2 incision only): {v0} violating cells ({:.1}% of land), max slope {:.2}",
+        v0 as f32 / land as f32 * 100.0,
+        mx0
+    );
+    eprintln!("   passes | violating cells | % land | max slope");
+    for passes in [1usize, 2, 4, 8] {
+        let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+        cfg.critical_slope = 0.0; // OFF the nonlinear diffusion
+        cfg.diffusion = 0.0;
+        cfg.talus_slope = sc;
+        cfg.talus_passes = passes;
+        let post = incise(&fbm, &cfg);
+        let (v, mx) = slope_violations(&post, cell_km, base, sc);
+        eprintln!("   {passes:>6} | {v:>15} | {:>5.1}% | {mx:.2}", v as f32 / land as f32 * 100.0);
+    }
+    eprintln!(
+        "   (residual → ~0 in a few bounded passes ⇒ CLOSURE; needs unbounded ⇒ solver in disguise)"
+    );
+}
+
+/// TASK 2 + 2bis — TALUS vs NONLINEAR DIFFUSION head-to-head, at 2048² AND 8192². For
+/// each method: comb (>30°, max slope, striation), gorge survival (W/D per order,
+/// floor/ridge, crest curvature), drainage health (Strahler/confl), the HEADWATER
+/// ramification discriminator (drainage density km/km², S1 segment count, channel-head
+/// elevation as % of peak → "rivers start too low" as a number), A_c in km² AND cells,
+/// and RUNTIME. The deciding property: does each method give the SAME RESULT IN METRES at
+/// both resolutions? Saves a massif crop per method/res. Read-only.
+#[test]
+#[ignore]
+fn talus_vs_diffusion() {
+    use std::path::Path;
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base) = (400.0f32, ss.depth_scale_m as f32);
+    let sc = 0.6494f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    let (fx, fy, fw) = (0.22f32, 0.03f32, 0.34f32);
+
+    eprintln!("\n=== TASK 2/2bis — TALUS vs NONLINEAR DIFFUSION (seed {seed_u}) ===");
+    for t in [2048usize, 8192] {
+        let cell_km = domain / t as f32;
+        let cell_km2 = cell_km * cell_km;
+        let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+        fc.erosion = None;
+        fc.bathymetry = None;
+        fc.amplitude_base = 0.04;
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        let fm: Vec<f32> = fbm.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let peak = fm.iter().cloned().fold(f32::MIN, f32::max);
+        let a_c_cells = 0.1 / cell_km2;
+        eprintln!(
+            "\n-- {t}² (cell {:.0} m, A_c=0.1 km² = {:.1} cells, peak {peak:.0} m) --",
+            cell_km * 1000.0,
+            a_c_cells
+        );
+        eprintln!(
+            "   method              | ms | >30° | max° | stri | floor/ridge | curv | dens km/km² | S1segs | head%peak | W/D S1→Smax"
+        );
+
+        let methods: Vec<(&str, StreamPowerConfig)> = vec![
+            ("diffusion D=0.55", {
+                let mut c = StreamPowerConfig::relief_v2(cell_km2, base);
+                c.diffuse_channels = true;
+                c.diffusion = 0.55;
+                c
+            }),
+            ("diffusion D=1.00", {
+                let mut c = StreamPowerConfig::relief_v2(cell_km2, base);
+                c.diffuse_channels = true;
+                c.diffusion = 1.00;
+                c
+            }),
+            ("talus Sc=tan33", {
+                let mut c = StreamPowerConfig::relief_v2(cell_km2, base);
+                c.critical_slope = 0.0;
+                c.diffusion = 0.0;
+                c.talus_slope = sc;
+                c.talus_passes = 4;
+                c
+            }),
+            ("talus + lin D=0.15", {
+                let mut c = StreamPowerConfig::relief_v2(cell_km2, base);
+                c.critical_slope = 0.0;
+                c.diffusion = 0.15;
+                c.diffuse_channels = true;
+                c.talus_slope = sc;
+                c.talus_passes = 4;
+                c
+            }),
+        ];
+
+        for (label, cfg) in &methods {
+            let t0 = Instant::now();
+            let post = incise(&fbm, cfg);
+            let ms = t0.elapsed().as_millis();
+            let sm: Vec<f32> =
+                post.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+            let slope = slope_deg_field(&post, domain, base);
+            let land: Vec<usize> = (0..post.data.len()).filter(|&k| post.data[k] > SEA).collect();
+            let nland = land.len().max(1);
+            let a30 =
+                land.iter().filter(|&&k| slope[k] > 30.0).count() as f32 / nland as f32 * 100.0;
+            let (_, maxs) = slope_violations(&post, cell_km, base, sc);
+            let maxdeg = maxs.atan().to_degrees();
+            let mut le: Vec<f32> = land.iter().map(|&k| sm[k]).collect();
+            le.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let e60 = le[le.len() * 6 / 10];
+            let upper: Vec<f32> =
+                (0..post.data.len()).map(|k| if sm[k] >= e60 { slope[k] } else { 0.0 }).collect();
+            let (_, stri) = striation_spectrum(&post, &upper, 20.0, 48);
+            // floor/ridge + curvature.
+            let dr = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+            let chan: Vec<usize> = (0..post.data.len())
+                .filter(|&k| dr.flow.accumulation.data[k] >= a_c_cells && post.data[k] > SEA)
+                .collect();
+            let mut ratios = Vec::new();
+            for &k in chan.iter().step_by(7) {
+                let (x, y) = (k % t, k / t);
+                let mut ridge = sm[k];
+                for dy in -10i32..=10 {
+                    for dx in -10i32..=10 {
+                        let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                        if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                            ridge = ridge.max(sm[ny as usize * t + nx as usize]);
+                        }
+                    }
+                }
+                if ridge > 1.0 {
+                    ratios.push(sm[k] / ridge);
+                }
+            }
+            ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let fr = if ratios.is_empty() { 0.0 } else { ratios[ratios.len() / 2] };
+            let norm_to_m = 2.0 * 1.13 * base;
+            let mut curv = Vec::new();
+            for &k in &land {
+                let (x, y) = (k % t, k / t);
+                if sm[k] >= e60 && slope[k] > 30.0 && x > 0 && x < t - 1 && y > 0 && y < t - 1 {
+                    let lap = (post.data[k - 1] + post.data[k + 1] - 2.0 * post.data[k]).abs()
+                        + (post.data[k - t] + post.data[k + t] - 2.0 * post.data[k]).abs();
+                    curv.push(lap * norm_to_m);
+                }
+            }
+            curv.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let crest = if curv.is_empty() { 0.0 } else { curv[curv.len() / 2] };
+            // drainage density + S1 segments + channel-head elevation %peak.
+            let dens = chan.len() as f32 * cell_km / (nland as f32 * cell_km2);
+            let s1segs = dr.rivers.segments.iter().filter(|s| s.strahler_order == 1).count();
+            let mut heads: Vec<f32> = dr
+                .rivers
+                .segments
+                .iter()
+                .filter(|s| s.upstream.is_empty())
+                .filter_map(|s| s.points.first())
+                .map(|&(x, y)| sm[y as usize * t + x as usize] / peak * 100.0)
+                .collect();
+            heads.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let head_p50 = if heads.is_empty() { 0.0 } else { heads[heads.len() / 2] };
+            let wd = per_order_width_depth(&post, domain, base, &ss);
+            let wdstr =
+                wd.iter().map(|(o, _, _, r)| format!("S{o}:{r:.0}")).collect::<Vec<_>>().join(" ");
+            eprintln!(
+                "   {label:<19} | {ms:>5} | {a30:>4.1}% | {maxdeg:>3.0} | {stri:.2} | {fr:>11.2} | {crest:>4.0} | {dens:>11.2} | {s1segs:>6} | {head_p50:>8.0}% | {wdstr}"
+            );
+            let hs = hillshade(&post, domain, base);
+            let (cx0, cy0, cw) =
+                ((fx * t as f32) as usize, (fy * t as f32) as usize, (fw * t as f32) as usize);
+            let mut crop = GridF32::new(cw, cw, 0.5);
+            for j in 0..cw {
+                for i in 0..cw {
+                    if cx0 + i < t && cy0 + j < t {
+                        crop.data[j * cw + i] = hs.data[(cy0 + j) * t + (cx0 + i)];
+                    }
+                }
+            }
+            let tag = label.replace(' ', "").replace('=', "").replace('.', "").replace('+', "");
+            crop.save_png_u8(&dir.join(format!("tvd_{tag}_{t}.png"))).unwrap();
+        }
+    }
+    eprintln!(
+        "\n   METRE-INVARIANCE: compare each metric 2048² vs 8192² per method — the method whose"
+    );
+    eprintln!(
+        "   numbers match in metres wins (closure property). H-A/H-B: does dens/S1/head reach rise"
+    );
+    eprintln!(
+        "   at 8192² (resolution) or does talus keep more than diffusion at equal res (backfill)?"
+    );
+    eprintln!("   → crops: exports/sculpt/tvd_*_{{2048,8192}}.png");
+}
+
 #[test]
 #[ignore]
 fn closure_mosaic() {

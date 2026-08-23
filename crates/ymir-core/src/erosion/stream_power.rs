@@ -98,6 +98,25 @@ pub struct StreamPowerConfig {
     /// so real channels/gorges survive while sub-threshold rills get damped. `true` sets a
     /// finite valley spacing from the D/K balance instead of imposing it via `A_c`.
     pub diffuse_channels: bool,
+
+    // ─── CLOSURE (a′): TALUS / angle of repose (the C1-consistent alternative) ──
+    /// **Talus repose slope `S_c`** (dimensionless gradient = `tan(angle)`; `0` = OFF).
+    /// A CLOSURE, not a solver: sort land cells high→low and, in a single sweep, shed
+    /// the excess of any drop steeper than `S_c` to the downhill neighbours (mass
+    /// conserving). Guarantees `S ≤ S_c` by construction (up to residuals — see
+    /// `talus_passes`), O(n log n), deterministic, no convergence to monitor — unlike
+    /// the nonlinear diffusion's Gauss-Seidel. Produces STRAIGHT repose slopes (vs the
+    /// diffusion's convex ones). Runs everywhere; it BACKFILLS NOTHING into hollows (it
+    /// only bounds slope), so it should preserve headwater vallons the diffusion fills.
+    /// See docs/adr/0001 Finding 10.
+    pub talus_slope: f32,
+    /// Talus sweeps. One sorted sweep can leave residual over-steep cells (a transfer can
+    /// re-steepen a downstream slope); a few bounded passes clear them. If `k` is small and
+    /// bounded it is still a closure; if unbounded it is a solver in disguise (measured).
+    pub talus_passes: usize,
+    /// Fraction of the worst per-cell excess moved per pass (`≤ 0.5` keeps it stable /
+    /// non-reversing). Lower = gentler, more passes; higher = faster, risk of overshoot.
+    pub talus_factor: f32,
 }
 
 /// Relief-v1 reference: physical critical drainage area (km²) for the channel head.
@@ -138,6 +157,9 @@ impl StreamPowerConfig {
             hillslope_implicit_iters: 40,
             lateral_erosion: 0.0,
             diffuse_channels: false,
+            talus_slope: 0.0,
+            talus_passes: 1,
+            talus_factor: 0.5,
         }
     }
 
@@ -209,6 +231,9 @@ impl Default for StreamPowerConfig {
             hillslope_implicit_iters: 40,
             lateral_erosion: 0.0,
             diffuse_channels: false,
+            talus_slope: 0.0,
+            talus_passes: 1,
+            talus_factor: 0.5,
         }
     }
 }
@@ -394,6 +419,67 @@ pub fn incise_with_progress(
                 }
             }
             field.data = newz;
+        }
+
+        // 4c. CLOSURE (a′) — TALUS / angle of repose. Sort land cells high→low; in one
+        // sweep, shed the excess of any drop steeper than `talus_slope` to the downhill
+        // neighbours, mass-conserving (transfer, not carve). O(n log n), deterministic,
+        // no convergence loop — the C1-consistent alternative to the nonlinear-diffusion
+        // solver. `talus_passes` clears the residual re-steepening a single sweep leaves.
+        // Applied EVERYWHERE (no channel exclusion; Finding 8). See ADR 0001 Finding 10.
+        if cfg.talus_slope > 0.0 && cfg.talus_passes > 0 {
+            let base_drop = cfg.talus_slope * cell_m / norm_to_m; // cardinal repose drop (norm)
+            for _ in 0..cfg.talus_passes {
+                // Sort land cells by height desc (deterministic tiebreak on index).
+                let mut idx: Vec<usize> =
+                    (0..n).filter(|&k| field.data[k] > cfg.sea_level).collect();
+                idx.sort_unstable_by(|&a, &b| {
+                    field.data[b]
+                        .partial_cmp(&field.data[a])
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then(a.cmp(&b))
+                });
+                for &k in &idx {
+                    let (x, y) = ((k % w) as i32, (k / w) as i32);
+                    let zk = field.data[k];
+                    let (mut total, mut maxe) = (0.0f32, 0.0f32);
+                    let mut exc = [0.0f32; 8];
+                    for d in 0..8 {
+                        let (nx, ny) = (x + D8_DX[d], y + D8_DY[d]);
+                        if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                            continue;
+                        }
+                        let j = ny as usize * w + nx as usize;
+                        let zj = field.data[j];
+                        if zj >= zk {
+                            continue; // downhill only
+                        }
+                        // max allowed drop to this neighbour = S_c · dist (norm units).
+                        let e = (zk - zj) - base_drop * D8_DIST[d];
+                        if e > 0.0 {
+                            exc[d] = e;
+                            total += e;
+                            if e > maxe {
+                                maxe = e;
+                            }
+                        }
+                    }
+                    if total <= 0.0 {
+                        continue;
+                    }
+                    // Move a fraction of the WORST excess off k, split among the over-steep
+                    // neighbours in proportion to their deficit (mass conserving).
+                    let mv = cfg.talus_factor * maxe;
+                    field.data[k] = zk - mv;
+                    for d in 0..8 {
+                        if exc[d] > 0.0 {
+                            let (nx, ny) = (x + D8_DX[d], y + D8_DY[d]);
+                            let j = ny as usize * w + nx as usize;
+                            field.data[j] += mv * exc[d] / total;
+                        }
+                    }
+                }
+            }
         }
 
         // 5. Hillslope diffusion (explicit, a few sub-steps), interleaved with the
@@ -607,6 +693,45 @@ mod tests {
             bank_incision(&b),
             bank_incision(&a)
         );
+    }
+
+    /// CLOSURE (a′): talus bounds the max slope (angle of repose) and CONSERVES MASS
+    /// (it transfers, never carves). A tall central spike is reduced to ≤ S_c to its
+    /// neighbours within a few bounded passes; the total height sum is unchanged.
+    #[test]
+    fn talus_bounds_slope_and_conserves_mass() {
+        let (w, h) = (32usize, 32usize);
+        let mut d = vec![0.7f32; w * h];
+        d[16 * w + 16] = 0.97; // a tall spike on a plateau
+        let f0 = GridF32::from_vec(w, h, d);
+        let sc = 0.6494f32; // tan(33°)
+        let cell_km = 0.2f32;
+        let cfg = StreamPowerConfig {
+            k: 0.0, // no incision — isolate the talus closure
+            iterations: 1,
+            sea_level: 0.5,
+            cell_km,
+            depth_scale_m: 5000.0,
+            talus_slope: sc,
+            talus_passes: 30,
+            talus_factor: 0.5,
+            ..Default::default()
+        };
+        let f1 = incise(&f0, &cfg);
+        assert!(f1.data.iter().all(|v| v.is_finite()));
+        // Mass conserved (transfers only; spike not on the boundary).
+        let (s0, s1): (f64, f64) =
+            (f0.data.iter().map(|&v| v as f64).sum(), f1.data.iter().map(|&v| v as f64).sum());
+        assert!((s0 - s1).abs() < 1e-3, "talus must conserve mass: {s0} vs {s1}");
+        // Max cardinal slope now ≤ S_c (within tolerance) — the spike is a repose cone.
+        let norm_to_m = 2.0 * 1.13 * cfg.depth_scale_m;
+        let cell_m = cell_km * 1000.0;
+        let max_s = (0..w * h)
+            .filter(|&k| k % w > 0)
+            .map(|k| (f1.data[k] - f1.data[k - 1]).abs() * norm_to_m / cell_m)
+            .fold(0.0f32, f32::max);
+        assert!(max_s <= sc * 1.15, "talus should bound slope to ~S_c: {max_s} vs {sc}");
+        assert!(f1.data[16 * w + 16] < f0.data[16 * w + 16], "the spike must be lowered");
     }
 
     /// n = 1 closed form and the Newton path agree at n = 1.0000001.
