@@ -526,3 +526,58 @@ it. Remedy (i) is the right direction, but before freezing a D or rendering at 8
   2. Re-run the D sweep to the converged field, pick the LOWEST D meeting both criteria.
   3. Produce an 8192² render for the author's visual verdict, THEN freeze the relief-v2
      regression (rebase, not loosen). `diffuse_channels` stays OFF by default until then.
+
+## Finding 10 — Talus vs diffusion head-to-head: talus is not the fix; the cause is flow concentration
+
+The author asked whether TALUS (angle of repose, a C1-style closure) could replace the
+nonlinear-diffusion solver we reintroduced at the HD stage. Implemented it
+(`talus_slope`/`talus_passes`/`talus_factor`, mass-conserving high→low sweep, everywhere)
+and ran the head-to-head at 2048² AND 8192² (seed …6993, amp 0.04, A_c 0.1 km²):
+
+| res | method | ms | >30° | max° | floor/ridge | W/D S1→S5 | dens |
+|---|---|---|---|---|---|---|---|
+| 2048 | diffusion D=0.55 | 3870 | 3.5 % | 84 | 0.50 | 7→42 | 2.19 |
+| 2048 | talus Sc=tan33 (×4) | 2603 | 12.5 % | 58 | 0.43 | 2→9 (flat) | 1.87 |
+| 8192 | diffusion D=0.55 | 72493 | 3.3 % | 88 | 0.80 | 7→32 | 2.22 |
+| 8192 | talus Sc=tan33 (×4) | 47362 | 26.8 % | 77 | 0.72 | 2→3 (flat) | 2.37 |
+
+**Verdict — talus loses on the comb, decisively:**
+- **It does NOT damp the rilling.** >30° share: talus 12.5 %→26.8 % (2048→8192, WORSE and
+  DOUBLING), diffusion 3.5 %→3.3 % (low and metre-invariant). Visually the talus 8192² crop
+  is fully combed. Talus only *caps* slope; the comb is a rill/ridge ALTERNATION that must be
+  SMOOTHED ACROSS (transport between rills) — talus transports only downhill within a rill,
+  so the pattern survives. Diffusion smooths across → removes it.
+- **Metre-invariance** (the deciding criterion): diffusion is invariant on the comb metric
+  (3.5→3.3 %); talus is the opposite (12.5→26.8 %). Diffusion wins the closure property on
+  the metric that matters.
+- **Gorge structure**: diffusion W/D widens downstream (7→42, proper hierarchy); talus is FLAT
+  (~2 at every order) — uniform narrow gorges, no hierarchy. Diffusion wins.
+- **Talus's only win**: it bounds max slope better (58–77° vs 84–88°) with straight, low-
+  curvature slopes (curv 40 vs 269) — a complementary arête tool, not a comb fix.
+- **Runtime**: talus ~1.5× faster (48 s vs 70 s @8192) — modest, and it fails the task anyway.
+
+**TASK 3 — is talus a closure?** No: the mass-conserving talus converges GEOMETRICALLY
+(residuals halve per doubling of passes: 1→19.7 %, 2→8.2 %, 4→4.3 %, 8→2.3 %; one pass is
+worse than none). Lowering a cell re-steepens its uphill side, so a single sweep cannot
+bound S ≤ S_c — it is a solver in disguise, cheaper per pass but still iterative. (A
+NON-conserving Lipschitz carve via fast-sweeping would be a bounded closure but removes mass.)
+
+**H-A/H-B (headwater ramification):** channel-head elevation and drainage density rise
+modestly at 8192² for BOTH methods (head %peak 8→12 %, dens ~2.2) → the missing ramification
+is partly resolution (H-A), improving a little at 8192². And diffusion BACKFILLS valleys
+badly at 8192² (floor/ridge 0.50→0.80 — the melted look), i.e. killing the comb by smoothing
+also fills the headwater vallons (H-B). Talus fills less (0.72) but keeps the comb. So the two
+share a wavelength and diffusion cannot separate them.
+
+**RECOMMENDATION — attack the CAUSE, not the symptom. The solver rewrite is NOT the next
+step, and talus is not the fix.** The rilling instability is driven by flow CONCENTRATION
+(single-flow D8 over-concentrates on smooth slopes). Both diffusion and talus fight the
+symptom after the fact (diffusion smooths → fills valleys; talus caps → keeps the comb). The
+principled fix is **MFD / D∞ routing for the incision (remedy ii)**: dispersing flow across
+downslope neighbours suppresses the parallel channelisation, so the comb never forms and no
+aggressive smoothing (which fills valleys, H-B) is needed. It is O(n) accumulation — NOT an
+iterative solver — so it is C1-consistent and makes the red-black/multigrid rewrite
+unnecessary if it works. Proposed scope: MFD for the stream-power accumulation/incision only,
+D8 kept for rivers/lakes (blast radius contained), with light linear diffusion at most.
+Keep talus available as an optional arête/max-slope tool; keep the nonlinear diffusion too.
+All OFF by default.
