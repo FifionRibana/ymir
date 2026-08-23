@@ -662,3 +662,25 @@ real terrain (D8 segment rides the flank off the MFD thalweg).
 
 The permanent acceptance test (every exported segment monotone to the sea) is in place;
 violations must go to ~0 before the relief-v2 baseline is frozen.
+
+## Finding 13 — Monotone carve: ad-hoc breach converges too slowly; needs priority-flood
+
+DEFECT 2 fix attempt. `flow::carve_monotone` fills detected lakes to their flat sill surface
+(so a river crosses a lake level, not climbing out of the real hollow) then lowers each
+non-lake receiver to at most its donor along D8. Result at 8192² (MFD+talus), iterated
+(route → carve → repeat): climbing segments 3060 → 1287 → 977 → 799 → 680 → 577 over 5 passes
+— CONVERGING (geometric ~0.8/pass) but far from the categorical zero, worst climb stuck at
+198 m. Cause: "lower receiver to donor" along one routing is NOT a guaranteed monotone
+conditioning — re-pit-filling on the next re-route re-exposes reversals, and the many spurious
+depressions (816 k flooded cells) keep generating them. floor/ridge unaffected (0.69→0.70).
+
+The guaranteed tool is a PRIORITY-FLOOD conditioning (Barnes 2014 / Lindsay 2016), one pass:
+  - (a) **Priority-flood BREACH (least-cost), lakes excepted** — carves a monotone outlet
+    path for every sub-threshold pit, fills genuine lakes to sill. Matches the author's
+    intent (small pits drained, lakes flat), guaranteed monotone, but the most code.
+  - (b) **Fill flooded cells to sill (= export the `filled` surface)** — trivial, O(n) (it
+    IS `pit_fill`, already computed), GUARANTEED monotone by construction; but every small
+    pit becomes a flat pond rather than a drained channel (the author asked for carve).
+  - (c) **Hybrid**: fill lakes (≥ threshold) + bounded-length breach for small pits — middle.
+The acceptance test (`river_climbs`, lake-flat tolerated) is in place; whichever is chosen
+must drive it to zero before the relief-v2 baseline is frozen.

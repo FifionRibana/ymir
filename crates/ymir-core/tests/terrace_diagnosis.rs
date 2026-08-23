@@ -2677,6 +2677,112 @@ fn river_monotonicity() {
     let _ = norm_to_m;
 }
 
+/// Count river segments whose exported long profile CLIMBS (real elevation rises
+/// downstream by > 1 m). Flat steps (lakes) are tolerated (climb ≤ 0). Returns
+/// (violating_segments, total_segments, worst_climb_m).
+fn river_climbs(field: &GridF32, ss: &SteinSteinParams, t: usize) -> (usize, usize, f32) {
+    let sm: Vec<f32> = field.data.iter().map(|&n| c1_altitude_norm_to_metres(n, ss)).collect();
+    let dr = c1_drainage(field, None, &C1DrainageConfig::default(), ss);
+    let (mut viol, mut worst) = (0usize, 0.0f32);
+    for s in &dr.rivers.segments {
+        let mut bad = false;
+        for wnd in s.points.windows(2) {
+            let a = sm[wnd[0].1 as usize * t + wnd[0].0 as usize];
+            let b = sm[wnd[1].1 as usize * t + wnd[1].0 as usize];
+            let climb = b - a;
+            if climb > worst {
+                worst = climb;
+            }
+            if climb > 1.0 {
+                bad = true;
+            }
+        }
+        if bad {
+            viol += 1;
+        }
+    }
+    (viol, dr.rivers.segments.len(), worst)
+}
+
+/// DEFECT 2 fix — the MONOTONE CARVE (lake-aware). Incise (MFD+talus), detect lakes, carve
+/// the field so every non-lake receiver ≤ its donor, re-extract rivers on the carved field,
+/// and check the acceptance criterion (zero climbing segments, lakes tolerated) BEFORE vs
+/// AFTER. Reports carve stats (cells lowered, max carve depth) and floor/ridge before/after
+/// (the carve should also deepen thalwegs → help the 8192² under-incision). 8192². Read-only.
+#[test]
+#[ignore]
+fn carve_monotone_test() {
+    use ymir_core::erosion::stream_power::{RELIEF_V1_K, StreamPowerConfig, incise};
+    use ymir_core::terrain::flow::carve_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base) = (400.0f32, ss.depth_scale_m as f32);
+    let t = 8192usize;
+    let cell_km = domain / t as f32;
+    let cell_km2 = cell_km * cell_km;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+    cfg.critical_slope = 0.0;
+    cfg.diffuse_channels = true;
+    cfg.k = RELIEF_V1_K * 3.0;
+    cfg.mfd_exponent = Some(2.0);
+    cfg.talus_slope = 0.6494;
+    cfg.talus_passes = 4;
+    cfg.diffusion = 0.08;
+    let post = incise(&fbm, &cfg);
+
+    eprintln!("\n=== DEFECT 2 — monotone carve (lake-aware, ITERATED), 8192² MFD+talus ===");
+    let norm_to_m = 2.0 * 1.13 * base;
+    let a_c = 0.1 / cell_km2;
+    let (v0, segs, w0) = river_climbs(&post, &ss, t);
+    let sm0: Vec<f32> = post.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let nlakes = dr0.lake_map.iter().filter(|&&v| v != 0).count();
+    let fr0 = floor_ridge_phys(&sm0, &dr0.flow.accumulation, &post, a_c, t, cell_km, 1.0);
+    eprintln!(
+        "   lake cells {nlakes} | BEFORE climbing {v0}/{segs} (worst +{w0:.0} m), floor/ridge {fr0:.2}"
+    );
+    eprintln!("   pass | climbing segments | worst climb | cells carved (cum) | max cut");
+    // Iterate: route on the current field, carve along ITS routing, repeat. Carving only
+    // lowers, so each pass fixes the reversals the previous routing exposed → convergence.
+    let mut cur = post.clone();
+    for pass in 1..=5 {
+        let dr = c1_drainage(&cur, None, &C1DrainageConfig::default(), &ss);
+        cur = carve_monotone(&cur, &dr.flow.filled, &dr.flow.direction, &dr.lake_map, SEA, t, t);
+        let (mut lowered, mut maxcut) = (0usize, 0.0f32);
+        for k in 0..t * t {
+            let cut = (post.data[k] - cur.data[k]) * norm_to_m;
+            if cut > 0.01 {
+                lowered += 1;
+                if cut > maxcut {
+                    maxcut = cut;
+                }
+            }
+        }
+        let (v, segs1, wc) = river_climbs(&cur, &ss, t);
+        eprintln!("   {pass:>4} | {v:>17} | {wc:>10.0} m | {lowered:>18} | {maxcut:.0} m");
+        if v == 0 {
+            break;
+        }
+    }
+    let sm1: Vec<f32> = cur.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+    let dr1 = c1_drainage(&cur, None, &C1DrainageConfig::default(), &ss);
+    let (vf, _, _) = river_climbs(&cur, &ss, t);
+    let fr1 = floor_ridge_phys(&sm1, &dr1.flow.accumulation, &cur, a_c, t, cell_km, 1.0);
+    eprintln!("   floor/ridge(1km) AFTER {fr1:.2} (was {fr0:.2})");
+    eprintln!(
+        "   ACCEPTANCE (zero climbing segments): {}",
+        if vf == 0 { "PASS ✓" } else { "FAIL" }
+    );
+}
+
 /// DEFECT 1 fix — FLANK GRADING on MFD terrain, two variants (author's design): (A) talus
 /// alone → straight repose walls (gravitational transport); (B) talus + light LINEAR
 /// diffusion (D≈0.08) → straight near the crest, convex below (creep) — two processes, two

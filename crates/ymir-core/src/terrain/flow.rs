@@ -799,6 +799,62 @@ pub fn mfd_accumulation(
     acc
 }
 
+/// DRAINAGE CARVE (breach) — guarantee the exported river long profile is MONOTONICALLY
+/// NON-INCREASING toward the sea (water cannot climb; ADR 0001 Finding 12, DEFECT 2). The
+/// uphill artefact came from rivers traced on the pit-FILLED surface crossing filled
+/// depressions whose REAL floor dips then climbs to the sill. This lowers each downstream
+/// receiver to at most its donor's carved height, in donor→receiver order (decreasing
+/// `filled`, so a receiver is finalised only after all its donors) — O(n) after the sort,
+/// deterministic. **Lake cells are SKIPPED**: a genuine closed depression is a LAKE (flat
+/// surface), not a trench, so the carve leaves it at its level and the monotonicity test
+/// tolerates the flat crossing. Returns the carved heightmap; ocean is untouched.
+pub fn carve_monotone(
+    height: &GridF32,
+    filled: &GridF32,
+    direction: &[u8],
+    lake_map: &[u32],
+    sea_level: f32,
+    w: usize,
+    h: usize,
+) -> GridF32 {
+    let n = w * h;
+    let mut carved = height.clone();
+    // 1. FILL lakes to their flat surface (the pit-fill sill = `filled`), so a river
+    //    crossing a lake runs on flat water (real depression floor → surface): the
+    //    long profile is level there, not a climb out of the hollow. A lake is water,
+    //    not a trench — this is why we fill (raise) rather than carve (lower) them.
+    for k in 0..n {
+        if lake_map[k] != 0 {
+            carved.data[k] = filled.data[k];
+        }
+    }
+    // 2. CARVE the non-lake reversals: lower each downstream receiver to at most its
+    //    donor, in donor→receiver order (decreasing `filled`), so the real profile is
+    //    monotone non-increasing along the network between lakes.
+    let mut land: Vec<usize> = (0..n).filter(|&i| height.data[i] > sea_level).collect();
+    land.sort_unstable_by(|&a, &b| {
+        filled.data[b].partial_cmp(&filled.data[a]).unwrap_or(CmpOrd::Equal).then(b.cmp(&a))
+    });
+    for &k in &land {
+        let d = direction[k];
+        if d == DIR_NONE {
+            continue;
+        }
+        let (i, j) = (k % w, k / w);
+        let ni = ((i as i32 + D8_DX[d as usize]) % w as i32 + w as i32) as usize % w;
+        let nj = ((j as i32 + D8_DY[d as usize]) % h as i32 + h as i32) as usize % h;
+        let r = nj * w + ni;
+        // Lakes are already flat (step 1); don't carve into/out of them.
+        if lake_map[k] != 0 || lake_map[r] != 0 {
+            continue;
+        }
+        if carved.data[r] > carved.data[k] {
+            carved.data[r] = carved.data[k]; // receiver never above its donor → monotone
+        }
+    }
+    carved
+}
+
 fn compute_basins(direction: &[u8], is_ocean: &[bool], w: usize, h: usize) -> (Vec<u32>, u32) {
     let n = w * h;
     let mut basins = vec![0u32; n];
