@@ -199,17 +199,15 @@ pub fn compute_flow(heightmap: &GridF32, config: &FlowConfig) -> FlowResult {
     // distance gradient. It cannot create a pit (the bound keeps the toward-outlet
     // neighbour strictly lower) and never touches `filled` → the hydrology (lakes,
     // water balance, endorheic basins) is unchanged; only the TRACÉ wanders.
-    let flat_grad =
-        resolve_flats(&filled, &is_ocean, config.flat_perturbation.as_ref(), w, h);
+    let flat_grad = resolve_flats(&filled, &is_ocean, config.flat_perturbation.as_ref(), w, h);
 
     // Step 3+4: flow direction + accumulation. D8 (mono) by default; with `dinf`,
     // the flat pass routes on the CONTINUOUS flat_grad gradient (fractional split)
     // → `accumulation` is fractional, `direction` is the primary neighbour.
     let (direction, accumulation) = if config.dinf {
         let (dir, dir2, frac1) = compute_dinf(&filled, &flat_grad, &is_ocean, w, h);
-        let acc = compute_accumulation_dinf(
-            &filled, &flat_grad, &dir, &dir2, &frac1, &is_ocean, w, h,
-        );
+        let acc =
+            compute_accumulation_dinf(&filled, &flat_grad, &dir, &dir2, &frac1, &is_ocean, w, h);
         (dir, acc)
     } else {
         let dir = compute_d8(&filled, &flat_grad, &is_ocean, w, h);
@@ -276,7 +274,13 @@ fn pit_fill(heightmap: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> GridF
     filled
 }
 
-fn compute_d8(filled: &GridF32, flat_grad: &[f64], is_ocean: &[bool], w: usize, h: usize) -> Vec<u8> {
+fn compute_d8(
+    filled: &GridF32,
+    flat_grad: &[f64],
+    is_ocean: &[bool],
+    w: usize,
+    h: usize,
+) -> Vec<u8> {
     let n = w * h;
     let mut direction = vec![DIR_NONE; n];
 
@@ -725,6 +729,73 @@ fn compute_accumulation(
         acc.data[nidx] += acc.data[idx];
     }
 
+    acc
+}
+
+/// MULTIPLE-FLOW-DIRECTION accumulation (Freeman 1991 / Quinn 1991) on the pit-filled
+/// surface, for the STREAM-POWER INCISION ONLY (rivers/lakes keep D8 — this reads
+/// `filled`/`direction` from a D8 [`FlowResult`] and returns a separate accumulation
+/// grid; the caller decides which consumer uses it). Each cell spreads its accumulation
+/// to ALL lower neighbours weighted by `slopeᵖ / Σ slopeᵖ`. `p → ∞` recovers D8 (single
+/// steepest); `p → small` disperses. Dispersing the drainage area breaks the positive
+/// feedback (a rill captures area → incises → captures more) that drives the
+/// Smith–Bretherton parallel-rilling comb (ADR 0001 Finding 10), so the comb never forms
+/// — attacking the CAUSE rather than smoothing it away. Flat cells (no lower `filled`
+/// neighbour) fall back to the single D8 `direction` (which the Garbrecht–Martz flat pass
+/// already resolved). Deterministic (descending-`filled` order, index tiebreak).
+pub fn mfd_accumulation(
+    filled: &GridF32,
+    direction: &[u8],
+    sea_level: f32,
+    p: f32,
+    w: usize,
+    h: usize,
+) -> GridF32 {
+    let n = w * h;
+    let is_ocean: Vec<bool> = (0..n).map(|i| filled.data[i] <= sea_level).collect();
+    let mut land: Vec<usize> = (0..n).filter(|&i| !is_ocean[i]).collect();
+    land.sort_unstable_by(|&a, &b| {
+        filled.data[b].partial_cmp(&filled.data[a]).unwrap_or(CmpOrd::Equal).then(b.cmp(&a))
+    });
+    let mut acc = GridF32::new(w, h, 0.0);
+    for &i in &land {
+        acc.data[i] = 1.0;
+    }
+    let nbr = |i: usize, j: usize, d: usize| -> usize {
+        let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
+        let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
+        nj * w + ni
+    };
+    let (mut wj, mut nj_idx) = ([0.0f32; 8], [0usize; 8]);
+    for &c in &land {
+        let (ci, cj) = (c % w, c / w);
+        let zc = filled.data[c];
+        let (mut wsum, mut cnt) = (0.0f32, 0usize);
+        for d in 0..8 {
+            let m = nbr(ci, cj, d);
+            let drop = zc - filled.data[m];
+            if drop > 0.0 {
+                let slope = drop / D8_DIST[d];
+                let wgt = slope.powf(p);
+                wj[cnt] = wgt;
+                nj_idx[cnt] = m;
+                wsum += wgt;
+                cnt += 1;
+            }
+        }
+        let flow = acc.data[c];
+        if cnt == 0 || wsum <= 0.0 {
+            // Flat / no lower neighbour → single D8 fallback (already resolved).
+            let d = direction[c];
+            if d != DIR_NONE {
+                acc.data[nbr(ci, cj, d as usize)] += flow;
+            }
+            continue;
+        }
+        for k in 0..cnt {
+            acc.data[nj_idx[k]] += flow * wj[k] / wsum;
+        }
+    }
     acc
 }
 

@@ -17,7 +17,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::grid::GridF32;
-use crate::terrain::flow::{D8_DIST, D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow};
+use crate::terrain::flow::{
+    D8_DIST, D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow, mfd_accumulation,
+};
 
 /// Stream-power incision tunables (prototype).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -117,6 +119,17 @@ pub struct StreamPowerConfig {
     /// Fraction of the worst per-cell excess moved per pass (`≤ 0.5` keeps it stable /
     /// non-reversing). Lower = gentler, more passes; higher = faster, risk of overshoot.
     pub talus_factor: f32,
+
+    /// **MFD partition exponent `p`** for the incision drainage area (`None` = single-flow
+    /// D8, legacy). When `Some(p)`, the area `A` in `E = K·A^m·S^n` comes from MULTIPLE-
+    /// flow-direction accumulation (`slopeᵖ` split among lower neighbours) instead of D8.
+    /// Dispersing `A` breaks the rill capture→incise→capture feedback, so the Smith–
+    /// Bretherton comb never forms (ADR 0001 Finding 10 — attack the cause). `p → ∞` ≈ D8
+    /// (comb returns); small `p` disperses (channels blur). The stack/receiver update and
+    /// rivers/lakes stay D8 — MFD drives ONLY the incision area. Dispersion lowers peak
+    /// `A`, so `K` usually needs raising to keep trunk incision.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mfd_exponent: Option<f32>,
 }
 
 /// Relief-v1 reference: physical critical drainage area (km²) for the channel head.
@@ -160,6 +173,7 @@ impl StreamPowerConfig {
             talus_slope: 0.0,
             talus_passes: 1,
             talus_factor: 0.5,
+            mfd_exponent: None,
         }
     }
 
@@ -234,6 +248,7 @@ impl Default for StreamPowerConfig {
             talus_slope: 0.0,
             talus_passes: 1,
             talus_factor: 0.5,
+            mfd_exponent: None,
         }
     }
 }
@@ -260,6 +275,12 @@ pub fn incise_with_progress(
     for iter in 0..cfg.iterations {
         // 1. Route on the current surface (depression fill + D8 + accumulation).
         let flow = compute_flow(&field, &flow_cfg);
+        // MFD area for the incision ONLY (D8 receiver/stack + rivers/lakes stay D8). When
+        // set, the drainage area A is dispersed so the rilling feedback cannot run away.
+        let mfd_acc = cfg
+            .mfd_exponent
+            .map(|p| mfd_accumulation(&flow.filled, &flow.direction, cfg.sea_level, p, w, h));
+        let acc: &GridF32 = mfd_acc.as_ref().unwrap_or(&flow.accumulation);
 
         // 2. Receiver + distance per cell (base = points off-grid / no outlet /
         //    sub-sea). `receiver[k] == k` marks a fixed base node.
@@ -329,7 +350,7 @@ pub fn incise_with_progress(
             if r == k || field.data[k] <= cfg.sea_level {
                 continue; // base level, fixed
             }
-            let area = flow.accumulation.data[k].max(1.0);
+            let area = acc.data[k].max(1.0);
             if area < cfg.min_area_cells {
                 continue; // A_c: hillslope regime — no fluvial incision (channel head)
             }
@@ -386,7 +407,7 @@ pub fn incise_with_progress(
                 if r == k || field.data[k] <= cfg.sea_level {
                     continue;
                 }
-                let area = flow.accumulation.data[k].max(1.0);
+                let area = acc.data[k].max(1.0);
                 if area < cfg.min_area_cells {
                     continue; // hillslope, no channel → no banks
                 }
@@ -520,7 +541,7 @@ pub fn incise_with_progress(
                             if field.data[k] <= cfg.sea_level
                                 || (!cfg.diffuse_channels
                                     && cfg.min_area_cells > 0.0
-                                    && flow.accumulation.data[k] >= cfg.min_area_cells)
+                                    && acc.data[k] >= cfg.min_area_cells)
                             {
                                 continue; // sea, or (regime split) channel = fixed boundary
                             }
@@ -548,7 +569,7 @@ pub fn incise_with_progress(
                         }
                         if !cfg.diffuse_channels
                             && cfg.min_area_cells > 0.0
-                            && flow.accumulation.data[k] >= cfg.min_area_cells
+                            && acc.data[k] >= cfg.min_area_cells
                         {
                             continue; // regime split: channel = stream power only
                         }
@@ -715,6 +736,7 @@ mod tests {
             talus_slope: sc,
             talus_passes: 30,
             talus_factor: 0.5,
+            mfd_exponent: None,
             ..Default::default()
         };
         let f1 = incise(&f0, &cfg);

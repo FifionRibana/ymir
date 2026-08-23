@@ -2206,6 +2206,258 @@ fn talus_vs_diffusion() {
     eprintln!("   → crops: exports/sculpt/tvd_*_{{2048,8192}}.png");
 }
 
+/// MFD TASK 3 — the CLEAN-ROOM two-sided test on the smooth 30° plane. Sweep the MFD
+/// partition exponent p (D8, then 10/4/2/1.1/1) with incision only (no diffusion, no
+/// talus). Criterion is BOTH: (1) the comb must NOT appear (>30° low), AND (2) a main
+/// channel must STILL emerge (max drainage area stays high — an MFD that disperses so
+/// much no channel forms "passes" the comb test while destroying drainage). Saves plane
+/// crops. Fast (2048²). Read-only.
+#[test]
+#[ignore]
+fn mfd_plane_sweep() {
+    use std::path::Path;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let (t, domain, base) = (2048usize, 400.0f32, ss.depth_scale_m as f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let theta = 30.0f32.to_radians();
+    let (cth, sth) = (theta.cos(), theta.sin());
+    let hash = |x: usize, y: usize| -> f32 {
+        let mut h =
+            (x as u32).wrapping_mul(374761393).wrapping_add((y as u32).wrapping_mul(668265263));
+        h = (h ^ (h >> 13)).wrapping_mul(1274126177);
+        ((h ^ (h >> 16)) as f32 / u32::MAX as f32) - 0.5
+    };
+    let diag_max = (t as f32) * (cth + sth);
+    let mut d = vec![0.0f32; t * t];
+    for y in 0..t {
+        for x in 0..t {
+            let proj = (x as f32 * cth + y as f32 * sth) / diag_max;
+            d[y * t + x] = 0.92 - 0.42 * proj + 0.002 * hash(x, y);
+        }
+    }
+    let plane = GridF32::from_vec(t, t, d);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    let a_c = 0.1 / cell_km2;
+
+    eprintln!(
+        "\n=== MFD TASK 3 — 30° plane two-sided sweep (comb must die AND a channel must form) ==="
+    );
+    eprintln!("   p     | >30° | striation | max A (km²) | channel cells | verdict");
+    let variants: [(&str, Option<f32>); 6] = [
+        ("D8", None),
+        ("10", Some(10.0)),
+        ("4", Some(4.0)),
+        ("2", Some(2.0)),
+        ("1.1", Some(1.1)),
+        ("1", Some(1.0)),
+    ];
+    for (label, p) in variants {
+        let mut cfg = StreamPowerConfig::relief_v1(cell_km2, base);
+        cfg.diffusion = 0.0; // isolate MFD's effect on rilling (no diffusion, no talus)
+        cfg.mfd_exponent = p;
+        let post = incise(&plane, &cfg);
+        let slope = slope_deg_field(&post, domain, base);
+        let land: Vec<usize> = (0..post.data.len()).filter(|&k| post.data[k] > SEA).collect();
+        let n = land.len().max(1) as f32;
+        let a30 = land.iter().filter(|&&k| slope[k] > 30.0).count() as f32 / n * 100.0;
+        let (_, stri) = striation_spectrum(&post, &slope, 5.0, 64);
+        // channel definition: max drainage area (from the SAME MFD field the incision used)
+        // and the number of channel cells (A ≥ A_c).
+        let facc = if let Some(pp) = p {
+            let fl = ymir_core::terrain::flow::compute_flow(
+                &post,
+                &ymir_core::terrain::flow::FlowConfig { sea_level: SEA, ..Default::default() },
+            );
+            ymir_core::terrain::flow::mfd_accumulation(&fl.filled, &fl.direction, SEA, pp, t, t)
+        } else {
+            ymir_core::terrain::flow::compute_flow(
+                &post,
+                &ymir_core::terrain::flow::FlowConfig { sea_level: SEA, ..Default::default() },
+            )
+            .accumulation
+        };
+        let max_a = facc.data.iter().cloned().fold(0.0f32, f32::max) * cell_km2;
+        let chan = (0..t * t).filter(|&k| facc.data[k] >= a_c && post.data[k] > SEA).count();
+        let ok_comb = a30 < 6.0;
+        let ok_chan = max_a > 50.0; // a real trunk still concentrates
+        let verdict = match (ok_comb, ok_chan) {
+            (true, true) => "PASS (comb dead, channel lives)",
+            (true, false) => "over-dispersed (no channel)",
+            (false, true) => "comb survives",
+            (false, false) => "worst of both",
+        };
+        eprintln!(
+            "   {label:<5} | {a30:>4.1}% | {stri:>9.2} | {max_a:>11.0} | {chan:>13} | {verdict}"
+        );
+        hillshade(&post, domain, base)
+            .save_png_u8(&dir.join(format!("mfdplane_p{label}.png")))
+            .unwrap();
+    }
+    eprintln!("   → crops: exports/sculpt/mfdplane_p*.png (30° slope; want no comb + a trunk)");
+}
+
+/// MFD TASK 4 + 5 — real terrain at 2048² AND 8192². The recommended MFD incision config
+/// turns OFF the nonlinear-diffusion SOLVER (critical_slope=0) — MFD prevents the comb, so
+/// the expensive Gauss-Seidel is unnecessary — keeping only light linear hillslope + lateral
+/// widening. Sweeps p (4/2/1.1) and K (×1/×2, since MFD disperses A → weaker incision) at
+/// 2048², runs the recommended pair at 8192². Reports the full metric set + drainage density
+/// / S1 / head-reach + RUNTIME, plus TASK 5 D8/MFD ALIGNMENT (are the D8-traced rivers in the
+/// MFD-carved valley floors?). Metre-invariance = compare 2048² vs 8192². Read-only.
+#[test]
+#[ignore]
+fn mfd_real() {
+    use std::path::Path;
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{RELIEF_V1_K, StreamPowerConfig, incise};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base) = (400.0f32, ss.depth_scale_m as f32);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    let (fx, fy, fw) = (0.22f32, 0.03f32, 0.34f32);
+    let norm_to_m = 2.0 * 1.13 * base;
+
+    let mut report = |t: usize, label: &str, p: f32, kmult: f32, fbm: &GridF32, peak: f32| {
+        let cell_km = domain / t as f32;
+        let cell_km2 = cell_km * cell_km;
+        let a_c = 0.1 / cell_km2;
+        let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+        cfg.critical_slope = 0.0; // MFD prevents the comb → drop the GS solver
+        cfg.diffusion = 0.05; // light linear hillslope only
+        cfg.diffuse_channels = true;
+        cfg.k = RELIEF_V1_K * kmult;
+        cfg.mfd_exponent = Some(p);
+        let t0 = Instant::now();
+        let post = incise(fbm, &cfg);
+        let ms = t0.elapsed().as_millis();
+        let slope = slope_deg_field(&post, domain, base);
+        let sm: Vec<f32> = post.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let land: Vec<usize> = (0..post.data.len()).filter(|&k| post.data[k] > SEA).collect();
+        let nland = land.len().max(1);
+        let a30 = land.iter().filter(|&&k| slope[k] > 30.0).count() as f32 / nland as f32 * 100.0;
+        let (_, maxs) = slope_violations(&post, cell_km, base, 0.6494);
+        let maxdeg = maxs.atan().to_degrees();
+        let mut le: Vec<f32> = land.iter().map(|&k| sm[k]).collect();
+        le.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let e60 = le[le.len() * 6 / 10];
+        let upper: Vec<f32> =
+            (0..post.data.len()).map(|k| if sm[k] >= e60 { slope[k] } else { 0.0 }).collect();
+        let (_, stri) = striation_spectrum(&post, &upper, 20.0, 48);
+        // D8 drainage (the exported rivers) on the carved terrain.
+        let dr = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+        let chan: Vec<usize> = (0..post.data.len())
+            .filter(|&k| dr.flow.accumulation.data[k] >= a_c && post.data[k] > SEA)
+            .collect();
+        let mut ratios = Vec::new();
+        for &k in chan.iter().step_by(7) {
+            let (x, y) = (k % t, k / t);
+            let mut ridge = sm[k];
+            for dy in -10i32..=10 {
+                for dx in -10i32..=10 {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                        ridge = ridge.max(sm[ny as usize * t + nx as usize]);
+                    }
+                }
+            }
+            if ridge > 1.0 {
+                ratios.push(sm[k] / ridge);
+            }
+        }
+        ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let fr = if ratios.is_empty() { 0.0 } else { ratios[ratios.len() / 2] };
+        let dens = chan.len() as f32 * cell_km / (nland as f32 * cell_km2);
+        let s1 = dr.rivers.segments.iter().filter(|s| s.strahler_order == 1).count();
+        let confl = dr.rivers.segments.iter().filter(|s| s.upstream.len() >= 2).count();
+        let maxo = dr.rivers.segments.iter().map(|s| s.strahler_order).max().unwrap_or(0);
+        let mut heads: Vec<f32> = dr
+            .rivers
+            .segments
+            .iter()
+            .filter(|s| s.upstream.is_empty())
+            .filter_map(|s| s.points.first())
+            .map(|&(x, y)| sm[y as usize * t + x as usize] / peak * 100.0)
+            .collect();
+        heads.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let head_p50 = if heads.is_empty() { 0.0 } else { heads[heads.len() / 2] };
+        let wd = per_order_width_depth(&post, domain, base, &ss);
+        let wdstr =
+            wd.iter().map(|(o, _, _, r)| format!("S{o}:{r:.0}")).collect::<Vec<_>>().join(" ");
+        // TASK 5 — D8/MFD alignment: for D8 river cells, vertical offset above the local
+        // minimum (±3) of the carved terrain; share NOT sitting in a hollow (offset > 20 m).
+        let mut offs = Vec::new();
+        let mut off_hi = 0usize;
+        for s in &dr.rivers.segments {
+            for &(x, y) in &s.points {
+                let (x, y) = (x as usize, y as usize);
+                let mut lo = sm[y * t + x];
+                for dy in -3i32..=3 {
+                    for dx in -3i32..=3 {
+                        let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                        if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                            lo = lo.min(sm[ny as usize * t + nx as usize]);
+                        }
+                    }
+                }
+                let off = sm[y * t + x] - lo;
+                offs.push(off);
+                if off > 20.0 {
+                    off_hi += 1;
+                }
+            }
+        }
+        offs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let off_p50 = if offs.is_empty() { 0.0 } else { offs[offs.len() / 2] };
+        let off_share =
+            if offs.is_empty() { 0.0 } else { off_hi as f32 / offs.len() as f32 * 100.0 };
+        eprintln!(
+            "  {t} {label:<12} {ms:>6}ms | >30 {a30:>4.1}% max {maxdeg:>2.0}° stri {stri:.2} | fr {fr:.2} dens {dens:.2} S1 {s1} head {head_p50:.0}% Smax {maxo} confl {confl} | align p50 {off_p50:.0}m off>{off_share:.0}% | W/D {wdstr}"
+        );
+        let _ = norm_to_m;
+        let hs = hillshade(&post, domain, base);
+        let (cx0, cy0, cw) =
+            ((fx * t as f32) as usize, (fy * t as f32) as usize, (fw * t as f32) as usize);
+        let mut crop = GridF32::new(cw, cw, 0.5);
+        for j in 0..cw {
+            for i in 0..cw {
+                if cx0 + i < t && cy0 + j < t {
+                    crop.data[j * cw + i] = hs.data[(cy0 + j) * t + (cx0 + i)];
+                }
+            }
+        }
+        let tag = label.replace(' ', "").replace('=', "").replace('.', "").replace('×', "x");
+        crop.save_png_u8(&dir.join(format!("mfdreal_{tag}_{t}.png"))).unwrap();
+    };
+
+    eprintln!("\n=== MFD TASK 4/5 — real terrain (seed {seed_u}, MFD incision, no GS solver) ===");
+    for t in [2048usize, 8192] {
+        let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+        fc.erosion = None;
+        fc.bathymetry = None;
+        fc.amplitude_base = 0.04;
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        let peak =
+            fbm.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).fold(f32::MIN, f32::max);
+        eprintln!("-- {t}² (peak {peak:.0} m) --");
+        if t == 2048 {
+            report(t, "p4 Kx1", 4.0, 1.0, &fbm, peak);
+            report(t, "p2 Kx1", 2.0, 1.0, &fbm, peak);
+            report(t, "p2 Kx2", 2.0, 2.0, &fbm, peak);
+            report(t, "p1.1 Kx2", 1.1, 2.0, &fbm, peak);
+        } else {
+            report(t, "p2 Kx2", 2.0, 2.0, &fbm, peak);
+        }
+    }
+    eprintln!("   (want: comb dead + fr NOT climbing to 0.80 (no under-incision) + W/D widening +");
+    eprintln!(
+        "    alignment offset small = D8 rivers sit in MFD valleys; metre-invariance 2048↔8192)"
+    );
+    eprintln!("   → crops: exports/sculpt/mfdreal_*.png");
+}
+
 #[test]
 #[ignore]
 fn closure_mosaic() {
