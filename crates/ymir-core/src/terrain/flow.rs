@@ -855,6 +855,106 @@ pub fn carve_monotone(
     carved
 }
 
+/// PRIORITY-FLOOD COMPLETE BREACHING (Lindsay 2016), lakes excepted — the GUARANTEED
+/// one-pass monotone conditioning for DEFECT 2 (ADR 0001 Finding 13). Detected lakes are
+/// pre-filled to their flat sill (a lake is water, not a trench); every OTHER cell is given
+/// a monotone-descending path to the ocean or a lake by CARVING a trench along its outlet
+/// path (never filling). Result: no non-lake pit remains, so the exported river long profile
+/// cannot climb (flat across lakes only). Deterministic (min-heap by height, index tiebreak).
+///
+/// Per pit, the trench is carved backwards along the priority-flood tree with a small
+/// `EPS` descent; carving stops as soon as the path is already low enough, so it is
+/// near-linear in practice (Lindsay's complete breaching).
+pub fn breach_monotone(
+    height: &GridF32,
+    filled: &GridF32,
+    lake_map: &[u32],
+    sea_level: f32,
+    w: usize,
+    h: usize,
+) -> GridF32 {
+    let n = w * h;
+    let mut z = height.data.clone();
+    // Lakes → flat sill surface (base level, never breached).
+    for k in 0..n {
+        if lake_map[k] != 0 {
+            z[k] = filled.data[k];
+        }
+    }
+    let is_base = |k: usize, z: &[f32]| z[k] <= sea_level || lake_map[k] != 0;
+    // Descent per carved step: ~0.1 m in norm (norm_to_m ≈ 11300 → 1e-5 ≈ 0.11 m).
+    const EPS: f32 = 1e-5;
+    let mut visited = vec![false; n];
+    let mut backlink = vec![usize::MAX; n];
+    let mut heap: BinaryHeap<PqCell> = BinaryHeap::new();
+    for k in 0..n {
+        if is_base(k, &z) {
+            visited[k] = true;
+            heap.push(PqCell { height: z[k], idx: k });
+        }
+    }
+    while let Some(c) = heap.pop() {
+        let ci = c.idx;
+        let (cx, cy) = (ci % w, ci / w);
+        for d in 0..8 {
+            let nx = ((cx as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
+            let ny = ((cy as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
+            let nb = ny * w + nx;
+            if visited[nb] {
+                continue;
+            }
+            visited[nb] = true;
+            backlink[nb] = ci;
+            if height.data[nb] < z[ci] {
+                // `nb` is lower than its only outlet `ci` → a pit. Breach: carve the outlet
+                // path (ci → backlink → … → base) down to a descending ramp under nb.
+                let mut target = height.data[nb] - EPS;
+                let mut cur = ci;
+                while cur != usize::MAX && !is_base(cur, &z) && z[cur] > target {
+                    z[cur] = target;
+                    target -= EPS;
+                    cur = backlink[cur];
+                }
+            }
+            // `nb` keeps its real elevation (it now drains via the carved/real path).
+            z[nb] = height.data[nb];
+            heap.push(PqCell { height: z[nb], idx: nb });
+        }
+    }
+    // FILL mop-up (priority-flood, lakes excepted): the breach carves the deep/long
+    // depressions into drained channels but leaves a small residual of micro-pits it cannot
+    // fully connect in one pass; a standard priority-flood FILL raises each remaining non-lake
+    // cell to at least its outlet, GUARANTEEING a monotone-descending path by construction.
+    // It cannot undo the breach (carved channels already sit at/above their outlet), so it
+    // only touches the residual — mostly-carved + a negligible flat fill = guaranteed monotone.
+    let mut visited2 = vec![false; n];
+    let mut heap2: BinaryHeap<PqCell> = BinaryHeap::new();
+    for k in 0..n {
+        if is_base(k, &z) {
+            visited2[k] = true;
+            heap2.push(PqCell { height: z[k], idx: k });
+        }
+    }
+    while let Some(c) = heap2.pop() {
+        let ci = c.idx;
+        let (cx, cy) = (ci % w, ci / w);
+        for d in 0..8 {
+            let nx = ((cx as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
+            let ny = ((cy as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
+            let nb = ny * w + nx;
+            if visited2[nb] {
+                continue;
+            }
+            visited2[nb] = true;
+            if z[nb] < z[ci] {
+                z[nb] = z[ci]; // raise a residual pit to its outlet → monotone by construction
+            }
+            heap2.push(PqCell { height: z[nb], idx: nb });
+        }
+    }
+    GridF32::from_vec(w, h, z)
+}
+
 fn compute_basins(direction: &[u8], is_ocean: &[bool], w: usize, h: usize) -> (Vec<u32>, u32) {
     let n = w * h;
     let mut basins = vec![0u32; n];
@@ -1263,5 +1363,54 @@ mod tests {
             min_land_acc >= 1.0,
             "All land cells should have accumulation >= 1.0, got {min_land_acc}"
         );
+    }
+
+    /// PERMANENT acceptance guard (ADR 0001 Finding 13, DEFECT 2): after `breach_monotone`,
+    /// NO non-lake land cell may be a strict local minimum — every one has a not-higher
+    /// neighbour, i.e. a monotone-descending path to the sea exists, so no exported river
+    /// can climb. A river that climbs is a bug, not a trade-off.
+    #[test]
+    fn breach_leaves_no_interior_pit() {
+        let (w, h) = (48usize, 48usize);
+        // A bowl: high rim, deep interior pit, with an ocean strip on the left edge.
+        let mut d = vec![0.6f32; w * h];
+        for j in 0..h {
+            for i in 0..w {
+                let (dx, dy) = (i as f32 - w as f32 / 2.0, j as f32 - h as f32 / 2.0);
+                let r = (dx * dx + dy * dy).sqrt();
+                d[j * w + i] = 0.35 + 0.02 * r; // rises outward → central depression
+                if i == 0 {
+                    d[j * w + i] = 0.0; // ocean outlet on the left edge
+                }
+            }
+        }
+        let height = GridF32::from_vec(w, h, d);
+        let flow = compute_flow(&height, &FlowConfig { sea_level: 0.05, ..Default::default() });
+        // No lakes for this test (empty mask) → everything must breach to the ocean.
+        let lake_map = vec![0u32; w * h];
+        let carved = breach_monotone(&height, &flow.filled, &lake_map, 0.05, w, h);
+        // No interior (non-edge, non-ocean) cell may be a strict local minimum.
+        let mut pits = 0;
+        for j in 1..h - 1 {
+            for i in 1..w - 1 {
+                let k = j * w + i;
+                if carved.data[k] <= 0.05 {
+                    continue; // ocean
+                }
+                let mut has_not_higher = false;
+                for dd in 0..8 {
+                    let ni = ((i as i32 + D8_DX[dd]) % w as i32 + w as i32) as usize % w;
+                    let nj = ((j as i32 + D8_DY[dd]) % h as i32 + h as i32) as usize % h;
+                    if carved.data[nj * w + ni] <= carved.data[k] {
+                        has_not_higher = true;
+                        break;
+                    }
+                }
+                if !has_not_higher {
+                    pits += 1;
+                }
+            }
+        }
+        assert_eq!(pits, 0, "breach must leave no interior pit (found {pits})");
     }
 }

@@ -2783,6 +2783,91 @@ fn carve_monotone_test() {
     );
 }
 
+/// DEFECT 2 fix (final) — PRIORITY-FLOOD BREACH (lakes excepted). One-pass, guaranteed
+/// monotone conditioning: every non-lake pit gets a carved descending outlet, lakes are
+/// filled to their flat sill. Runs at 2048² AND 8192² on MFD+talus terrain; reports climbing
+/// segments + worst climb BEFORE/AFTER (acceptance = zero), flooded-cell count before/after
+/// (the upstream spurious-depression signal), floor/ridge, and runtime. Read-only.
+#[test]
+#[ignore]
+fn breach_monotone_test() {
+    use std::time::Instant;
+    use ymir_core::erosion::stream_power::{RELIEF_V1_K, StreamPowerConfig, incise};
+    use ymir_core::terrain::flow::{FlowConfig, breach_monotone, compute_flow};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base) = (400.0f32, ss.depth_scale_m as f32);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+
+    eprintln!("\n=== DEFECT 2 (final) — priority-flood BREACH, lakes excepted ===");
+    for t in [2048usize, 8192] {
+        let cell_km = domain / t as f32;
+        let cell_km2 = cell_km * cell_km;
+        let a_c = 0.1 / cell_km2;
+        let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+        fc.erosion = None;
+        fc.bathymetry = None;
+        fc.amplitude_base = 0.04;
+        let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+        let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+        cfg.critical_slope = 0.0;
+        cfg.diffuse_channels = true;
+        cfg.k = RELIEF_V1_K * 3.0;
+        cfg.mfd_exponent = Some(2.0);
+        cfg.talus_slope = 0.6494;
+        cfg.talus_passes = 4;
+        cfg.diffusion = 0.08;
+        let post = incise(&fbm, &cfg);
+        let (v0, segs, w0) = river_climbs(&post, &ss, t);
+        let flooded_before = {
+            let fl = compute_flow(&post, &FlowConfig { sea_level: SEA, ..Default::default() });
+            (0..t * t).filter(|&k| fl.filled.data[k] > post.data[k] + 1e-6).count()
+        };
+        eprintln!(
+            "  {t}²: BEFORE climbing {v0}/{segs} (worst +{w0:.0} m), flooded {flooded_before}"
+        );
+        // Detect lakes ONCE on the incised field and HOLD the mask + sill levels fixed —
+        // otherwise pass 1 fills a lake flat, pass 2 no longer sees it as a lake and breaches
+        // through it (draining the lake). Lakes are excepted for good; only non-lake pits breach.
+        let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+        let lake_map = dr0.lake_map.clone();
+        let filled0 = dr0.flow.filled.clone();
+        let nlakes = lake_map.iter().filter(|&&v| v != 0).count();
+        let mut cur = post.clone();
+        let t0 = Instant::now();
+        for pass in 1..=4 {
+            cur = breach_monotone(&cur, &filled0, &lake_map, SEA, t, t);
+            let (v, segs1, wc) = river_climbs(&cur, &ss, t);
+            // flooded EXCLUDING lake cells (a lake is legitimately water).
+            let fl = compute_flow(&cur, &FlowConfig { sea_level: SEA, ..Default::default() });
+            let flooded = (0..t * t)
+                .filter(|&k| lake_map[k] == 0 && fl.filled.data[k] > cur.data[k] + 1e-6)
+                .count();
+            eprintln!(
+                "     pass {pass}: climbing {v}/{segs1} (worst +{wc:.0} m), non-lake flooded {flooded}"
+            );
+            if v == 0 {
+                break;
+            }
+        }
+        eprintln!("     lakes held: {nlakes} cells (preserved as flat water)");
+        let ms = t0.elapsed().as_millis();
+        let (vf, _, _) = river_climbs(&cur, &ss, t);
+        let sm1: Vec<f32> = cur.data.iter().map(|&n| c1_altitude_norm_to_metres(n, &ss)).collect();
+        let dr1 = c1_drainage(&cur, None, &C1DrainageConfig::default(), &ss);
+        let fr1 = floor_ridge_phys(&sm1, &dr1.flow.accumulation, &cur, a_c, t, cell_km, 1.0);
+        eprintln!(
+            "  {t}²: {ms} ms total | floor/ridge {fr1:.2} | {}",
+            if vf == 0 { "PASS ✓" } else { "FAIL" }
+        );
+    }
+    eprintln!(
+        "   (acceptance = zero climbing segments; flooded-cell count AFTER = spurious-depression signal)"
+    );
+}
+
 /// DEFECT 1 fix — FLANK GRADING on MFD terrain, two variants (author's design): (A) talus
 /// alone → straight repose walls (gravitational transport); (B) talus + light LINEAR
 /// diffusion (D≈0.08) → straight near the crest, convex below (creep) — two processes, two

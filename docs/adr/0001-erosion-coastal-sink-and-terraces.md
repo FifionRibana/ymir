@@ -684,3 +684,35 @@ The guaranteed tool is a PRIORITY-FLOOD conditioning (Barnes 2014 / Lindsay 2016
   - (c) **Hybrid**: fill lakes (≥ threshold) + bounded-length breach for small pits — middle.
 The acceptance test (`river_climbs`, lake-flat tolerated) is in place; whichever is chosen
 must drive it to zero before the relief-v2 baseline is frozen.
+
+## Finding 14 — DEFECT 2 solved: priority-flood BREACH-then-FILL (lakes excepted), zero climbs
+
+`flow::breach_monotone` (Lindsay-style complete breaching + priority-flood fill mop-up, lakes
+excepted). Detected lakes are held at their flat sill (water, never breached); every other
+depression is carved a monotone outlet trench, and a final priority-flood FILL raises the
+small residual of micro-pits the breach cannot connect in one pass — guaranteeing a
+monotone-descending path to the sea BY CONSTRUCTION.
+
+Result (MFD+talus terrain, `breach_monotone_test`), ONE pass:
+
+| res | climbing segs | worst climb | non-lake flooded | lakes held |
+|---|---|---|---|---|
+| 2048² | 1527 → **0** | +193 → **0 m** | 57863 → 0 | 45 597 cells |
+| 8192² | 3060 → **0** | +195 → **0 m** | 1 099 074 → 0 | 816 019 cells |
+
+The acceptance criterion (zero exported segments whose long profile climbs; lake crossings
+flat/tolerated) is MET, guaranteed, single pass. Permanent guard: `flow::tests::
+breach_leaves_no_interior_pit` (non-ignored). The earlier lake-aware *carve* (Finding 13) only
+converged at ~1.25×/pass and re-detecting lakes each pass drained them — both fixed here
+(complete breach + fill; lake mask detected ONCE and held).
+
+**Upstream signal to instruct separately (per the author):** 816 019 flooded cells at 8192²
+(~1.2 % of area) is ANOMALOUS — MFD + talus + linear diffusion FABRICATE these spurious
+depressions (talus transfers and diffusion both create closed hollows). The breach handles
+them, but the NUMBER is an upstream symptom: a follow-up must find which step creates them and
+whether they are legitimate. Not addressed here.
+
+Still open after both defects: DEFECT 1's 8192² under-incision (floor/ridge ~0.70, K is not the
+lever — the conditioning does not deepen valleys); wiring breach + lake export into the
+production path (populate lakes.json / Wetland); and the headwater render with the network
+overlaid. relief-v2 baseline frozen only once DEFECT 1 depth is settled and the author confirms.
