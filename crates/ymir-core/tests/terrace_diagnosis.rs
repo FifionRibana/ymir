@@ -3628,6 +3628,112 @@ fn endorheic_water_balance() {
     eprintln!("   (expected: ~all EXO, dry<sea ≈ 0 — overflow the above-sea rim → ordinary lakes)");
 }
 
+/// DEFECT A/B/C audit — river-export selection + endpoints, Desert cells' precip, per-order
+/// width. Full corrected chain (relief-v3 + breach + maritime climate + below-sea lakes) at 2048².
+#[test]
+#[ignore]
+fn defect_abc_audit() {
+    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
+    use ymir_core::climate::{c1_biomes_classified, c1_climate};
+    use ymir_core::climate::biomes::Biome;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::drainage::{DrainageClimate, below_sea_basin_lakes};
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (2048usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
+    let dcfg = C1DrainageConfig::default();
+    let mut dr = c1_drainage(&field, None, &C1DrainageConfig::default(), &ss);
+    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    dr.lakes.extend(bs);
+
+    eprintln!("\n=== DEFECT A/B/C audit (2048², full corrected chain) ===");
+    // A — river endpoints. Segment ends at a SINK if its last point is within 1 cell of ocean
+    // (≤SEA) or a lake_map cell; else it HANGS. Orphan = downstream None AND hanging.
+    let near = |x: i32, y: i32, pred: &dyn Fn(usize) -> bool| -> bool {
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 && pred(ny as usize * t + nx as usize) {
+                    return true;
+                }
+            }
+        }
+        false
+    };
+    let (mut hang, mut orphan, mut mouth, mut into_lake) = (0usize, 0usize, 0usize, 0usize);
+    // Real DEFECT-A signal: segments that CROSS a lake (any interior point in a lake
+    // cell) and segments SOURCED inside a lake (first point in a lake) — the
+    // river/lake inconsistency (rivers from the breached field run through sinks).
+    let (mut cross_lake, mut src_in_lake) = (0usize, 0usize);
+    for s in &dr.rivers.segments {
+        let &(lx, ly) = s.points.last().unwrap();
+        let (lx, ly) = (lx as i32, ly as i32);
+        let at_sea = near(lx, ly, &|k| field.data[k] <= SEA);
+        let at_lake = near(lx, ly, &|k| dr.lake_map[k] != 0);
+        if at_sea { mouth += 1; } else if at_lake { into_lake += 1; } else {
+            hang += 1;
+            if s.downstream.is_none() { orphan += 1; }
+        }
+        let in_lake = |&(x, y): &(u32, u32)| dr.lake_map[y as usize * t + x as usize] != 0;
+        if s.points.iter().any(in_lake) { cross_lake += 1; }
+        if in_lake(&s.points[0]) { src_in_lake += 1; }
+    }
+    eprintln!("  A: selection = acc ≥ stream_threshold (extract_rivers, flow.rs); stream {} km²", dcfg.thresholds.stream_km2);
+    eprintln!("     BEFORE clip: {} segments | mouth(→sea) {mouth} | ends-at-lake {into_lake} | ends-mid-land {hang} (orphan {orphan})", dr.rivers.segments.len());
+    eprintln!("     BEFORE clip: CROSS-lake {cross_lake} | SOURCED-in-lake {src_in_lake}");
+    ymir_core::tectonics_c1::drainage::clip_rivers_to_lakes(&mut dr);
+    let (mut cross2, mut src2, mut orphan2) = (0usize, 0usize, 0usize);
+    for s in &dr.rivers.segments {
+        let in_lake = |&(x, y): &(u32, u32)| dr.lake_map[y as usize * t + x as usize] != 0;
+        if s.points.iter().any(in_lake) { cross2 += 1; }
+        if in_lake(&s.points[0]) { src2 += 1; }
+        let &(lx, ly) = s.points.last().unwrap();
+        let (lx, ly) = (lx as i32, ly as i32);
+        let at_sink = near(lx, ly, &|k| field.data[k] <= SEA) || near(lx, ly, &|k| dr.lake_map[k] != 0);
+        if s.downstream.is_none() && !at_sink { orphan2 += 1; }
+    }
+    eprintln!("     AFTER  clip: {} segments | CROSS-lake {cross2} | SOURCED-in-lake {src2} | truncated/orphan(no sink) {orphan2}", dr.rivers.segments.len());
+    // B — Desert cells: count + precip distribution.
+    let biomes = c1_biomes_classified(&field, &climate, &dr.lake_map);
+    let desert: Vec<usize> = (0..t * t).filter(|&k| biomes[k] == Biome::Desert).collect();
+    let mut dp: Vec<f32> = desert.iter().map(|&k| precip_mm_per_year(climate.precipitation.data[k])).collect();
+    dp.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let below_sea_desert = desert.iter().filter(|&&k| field.data[k] < SEA).count();
+    eprintln!("  B: Desert cells {} | precip mean {:.0} / p50 {:.0} / max {:.0} mm | {} are below-sea (exposed margins)",
+        desert.len(),
+        if dp.is_empty() { 0.0 } else { dp.iter().sum::<f32>() / dp.len() as f32 },
+        if dp.is_empty() { 0.0 } else { dp[dp.len() / 2] },
+        if dp.is_empty() { 0.0 } else { dp[dp.len() - 1] },
+        below_sea_desert);
+    // C — width per order via hydraulic geometry w = 1.2·sqrt(A_km²).
+    let mut per: std::collections::BTreeMap<u8, Vec<f32>> = std::collections::BTreeMap::new();
+    for (i, s) in dr.rivers.segments.iter().enumerate() {
+        let a = dr.segment_drainage_km2.get(i).copied().unwrap_or(0.0);
+        per.entry(s.strahler_order).or_default().push(1.2 * a.max(0.0).sqrt());
+    }
+    let cstr = per.iter().map(|(o, v)| {
+        let mut w = v.clone(); w.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        format!("S{o} {:.0}m(n{})", w[w.len() / 2], w.len())
+    }).collect::<Vec<_>>().join(" ");
+    eprintln!("  C: width per order (w=1.2·√A_km², median): {cstr}");
+}
+
 /// STEP 2+3 report — biomes from water_class + below-sea basins as typed lakes (2048²). Shows
 /// the biome distribution BEFORE (altitude rule → below-sea = Ocean) vs AFTER (water_class +
 /// lake_map), and the below-sea basins' water balance (count, exo/endo, water + dry-below-sea).

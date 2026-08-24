@@ -846,3 +846,53 @@ crossings; the breach guard stays green. 512 lib tests green; viz compiles.
 
 Still open (separate lot): the ×577 erosion-fabricated closed-depression signal (~8 650 vs 15
 tectonic) — which MFD/talus/diffusion step creates them, and are they legitimate.
+
+## Finding 19 — DEFECT B: exposed below-sea margins read as Desert because the precip model gives below-sea cells 0 mm
+
+After Finding 18, the HD biome map showed ~2 % **Desert** on an island whose median precipitation is
+~1130 mm. Report: the `Desert` predicate is `classify`'s `p_mm < 250` reading the LOCAL precipitation
+(not a drainage quantity, contrary to the first hypothesis). Measured on the Desert cells (2048², audit
+`defect_abc_audit`): **11 920 cells, precipitation ≡ 0 mm, 11 904 of them below sea**. Cause: the 1-D
+moisture scan treats every `n ≤ SEA` cell as ocean (a moisture source, orographic-only, `total =
+precip`), so the frontal/synoptic base is gated OUT below sea. When Finding 18 reclassifies an exposed
+below-sea margin (class-2 land) it then reads that 0 mm → Desert.
+
+Fix: the frontal base is elevation-independent synoptic rain that falls on below-sea LAND too (Death
+Valley, Dead-Sea shores get rain), so drop the `n > SEA` gate — `total = precip + frontal` everywhere.
+Open-ocean cells also gain the base, but every consumer masks them via `water_class`, so no land biome
+reads it. The frontal term is not part of the conserved orographic budget, so the moisture-conservation
+and windward/leeward tests are unaffected. Result: Desert **11 920 → 0**; exposed margins read ~1130 mm
+→ forest.
+
+## Finding 20 — DEFECT A: rivers ran through lakes / out of endorheic sinks; clip the exported network to the lake surfaces
+
+Report: `rivers.json` segments are selected by an ACCUMULATION THRESHOLD (`extract_rivers`,
+`terrain/flow.rs`: `is_river = acc ≥ stream_threshold`, 20 km²), NOT by traversal to an outlet. Because
+accumulation grows monotonically downstream, the exported topology is already complete to the sea — the
+audit finds **0 truncated / 0 orphan** terminal segments (all 540 trees reach a coast). The real defect
+is a river/lake FIELD INCONSISTENCY: the rivers are traced on the BREACHED (monotone) field, which
+drains every basin, while the final `lake_map` marks those basins as standing water (pre-breach lakes +
+below-sea balance). The visible result — measured at 2048² — is **44 segments crossing a lake polygon
+and 4 sourced inside a lake**: rivers slide through lakes and emerge as orphan reaches below endorheic
+sinks.
+
+Fix: `drainage::clip_rivers_to_lakes` splits each segment into its maximal runs of NON-lake points
+(profile sliced in parallel); a run that begins at a lake shore is that lake's outlet — kept (with the
+parent discharge) for an EXORHEIC lake, dropped for an ENDORHEIC one (the water dies in the closed
+basin). Links are remapped so `downstream = None` exactly when a reach ends at a sink (sea or lake). It
+touches ONLY the exported/rendered polylines — the routing field, lakes and `lake_map` are untouched, so
+a display width/threshold is a pure rendering hint while topology stays continuous to each sink. Wired
+into the HD run after the below-sea merge (covers both drainage paths). Result: CROSS-lake **44 → 0**,
+sourced-in-lake **4 → 0**, truncated/orphan **0**; unit guard `clip_rivers_terminate_at_lake_sinks`.
+
+## Finding 21 — DEFECT C: filiform rivers gain channel width + a long profile
+
+`rivers.json` exported only `drainage_km2` + navigability — no channel geometry, so consumers drew
+zero-width filaments. Added two parallel per-segment arrays to `C1DrainageResult` (round-tripped through
+the drainage cache sidecar): `segment_width_m` from the Leopold & Maddock hydraulic-geometry law
+`w = a·Q^b` (`CHANNEL_WIDTH_A = 1.2`, `CHANNEL_WIDTH_B = 0.5`, discharge `Q` proxied by the effective
+drainage area — so a dry/endorheic reach → 0 width, no channel), and `segment_profile_m`, the bed
+elevation (m) along each segment's own points, upstream→downstream. Both surface in `rivers.json`
+(`width_m`, `profile_m`). Per-Strahler-order median width (2048², post-clip) grows downstream —
+**S1 13 m · S2 21 m · S3 37 m · S4 68 m · S5 114 m** — sanity-matching a Thames-scale trunk
+(~16 000 km² → ~150 m) and metre-scale headwaters.

@@ -23,6 +23,13 @@ struct RiverSegmentView<'a> {
     drainage_km2: f32,
     /// Navigability class (`segment_navigability[i]`).
     navigability: Navigability,
+    /// Bankfull channel width in metres (`segment_width_m[i]`), hydraulic geometry
+    /// `w = 1.2·Q^0.5` (discharge ≈ effective drainage area). A rendering hint
+    /// (stroke width); topology stays continuous regardless of any display cutoff.
+    width_m: f32,
+    /// Long profile — bed elevation (m) at each `segment.points`, upstream→downstream
+    /// (`segment_profile_m[i]`).
+    profile_m: &'a [f32],
 }
 
 #[derive(Serialize)]
@@ -49,6 +56,8 @@ pub fn rivers_json(drainage: &C1DrainageResult) -> Vec<u8> {
                 .get(i)
                 .copied()
                 .unwrap_or(Navigability::NonNavigable),
+            width_m: drainage.segment_width_m.get(i).copied().unwrap_or(0.0),
+            profile_m: drainage.segment_profile_m.get(i).map(|v| v.as_slice()).unwrap_or(&[]),
         })
         .collect();
     let view = RiversView { coordinate_space: COORDINATE_SPACE, segments };
@@ -106,6 +115,8 @@ mod tests {
             rivers: RiverNetwork { segments: vec![seg] },
             segment_drainage_km2: vec![55_000.0],
             segment_navigability: vec![Navigability::Ship],
+            segment_width_m: vec![281.0],
+            segment_profile_m: vec![vec![1200.0, 1150.0, 1130.0]],
             lakes: vec![lake],
             lake_map: vec![0; 16],
             width: 4,

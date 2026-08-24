@@ -298,17 +298,23 @@ pub fn compute_precipitation_with_budget(
             }
             // `precip` so far is the OROGRAPHIC (transport) component, conserved.
             oro_precip_sum += precip as f64;
-            // FRONTAL/synoptic base (separate source, additive): on land, the
-            // belt's broad frontal rain — INDEPENDENT of slope. NOT part of the
-            // conserved orographic budget. Subsumes the old convective floor:
-            // wets the temperate interior to a moderate base (not the desert
-            // floor), with orography enhancing it on windward.
+            // FRONTAL/synoptic base (separate source, additive): the belt's broad
+            // frontal rain — INDEPENDENT of slope. NOT part of the conserved
+            // orographic budget. Subsumes the old convective floor: wets the
+            // temperate interior to a moderate base (not the desert floor), with
+            // orography enhancing it on windward.
             // (b) maritime enhancement: frontal base rises near the sea, decays inland.
+            // ADR 0001 Finding 19 (DEFECT B): frontal rain falls on BELOW-SEA cells
+            // too (it is elevation-independent) — enclosed below-sea LAND (exposed
+            // basin margins, class-2) then reads a real land precip instead of 0,
+            // so the Whittaker rule no longer classes those humid margins as Desert.
+            // Open-ocean cells also receive it, but every consumer masks them via
+            // `water_class`, so their raster value is never read as a land biome.
             let frontal = frontal_base
                 * (1.0
                     + params.maritime_enhance
                         * (-dist_from_sea_km / params.maritime_efold_km.max(1.0)).exp());
-            let mut total = if n > SEA_LEVEL_NORM { precip + frontal } else { precip };
+            let mut total = precip + frontal;
             total = total.min(max_precip_internal); // physical orographic ceiling
             if total > 0.0 {
                 p.set(i, j, total);

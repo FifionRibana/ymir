@@ -321,6 +321,8 @@ impl RawCodec for C1DrainageResult {
             "rivers": self.rivers,
             "seg_km2": self.segment_drainage_km2,
             "seg_nav": self.segment_navigability,
+            "seg_width": self.segment_width_m,
+            "seg_profile": self.segment_profile_m,
             "lakes": self.lakes,
         })
     }
@@ -357,6 +359,15 @@ impl RawCodec for C1DrainageResult {
             .map_err(|e| format!("drainage sidecar seg_km2: {e}"))?;
         let segment_navigability = serde_json::from_value(shape["seg_nav"].clone())
             .map_err(|e| format!("drainage sidecar seg_nav: {e}"))?;
+        // seg_width / seg_profile: default to empty on older sidecars (forward-compat).
+        let segment_width_m = shape
+            .get("seg_width")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        let segment_profile_m = shape
+            .get("seg_profile")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
         let lakes = serde_json::from_value(shape["lakes"].clone())
             .map_err(|e| format!("drainage sidecar lakes: {e}"))?;
 
@@ -365,6 +376,8 @@ impl RawCodec for C1DrainageResult {
             rivers,
             segment_drainage_km2,
             segment_navigability,
+            segment_width_m,
+            segment_profile_m,
             lakes,
             lake_map,
             width: w,

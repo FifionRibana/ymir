@@ -28,7 +28,7 @@ use crate::grid::GridF32;
 use crate::lakes::detection::{Lake, LakeConfig, detect_lakes};
 use crate::terrain::flow::{
     D8_DX, D8_DY, DIR_NONE, FlatPerturbation, FlowConfig, FlowResult, RiverConfig, RiverNetwork,
-    compute_flow, extract_rivers,
+    RiverSegment, compute_flow, extract_rivers,
 };
 
 use super::closures::oceanic_bathymetry::params::SteinSteinParams;
@@ -182,6 +182,13 @@ pub struct C1DrainageResult {
     pub segment_drainage_km2: Vec<f32>,
     /// Per-segment navigability class (parallel to `rivers.segments`).
     pub segment_navigability: Vec<Navigability>,
+    /// Per-segment bankfull channel WIDTH in metres (parallel to `rivers.segments`),
+    /// from hydraulic geometry `w = CHANNEL_WIDTH_A · Q^CHANNEL_WIDTH_B` with the
+    /// discharge proxied by the effective drainage area (`segment_drainage_km2`).
+    pub segment_width_m: Vec<f32>,
+    /// Per-segment LONG PROFILE: bed elevation (metres) at each of the segment's
+    /// points, upstream→downstream (parallel to `rivers.segments[i].points`).
+    pub segment_profile_m: Vec<Vec<f32>>,
     pub lakes: Vec<C1Lake>,
     pub lake_map: Vec<u32>,
     pub width: usize,
@@ -341,16 +348,163 @@ pub fn c1_drainage_windowed(
         }
     };
 
+    // DEFECT C — per-segment channel width (hydraulic geometry) + long profile.
+    // Width scales with the discharge proxied by the effective drainage area; a
+    // dry/endorheic reach (0 effective area) → 0 width (no channel). The profile
+    // is the bed elevation (m) along the segment's own points, upstream→downstream.
+    let segment_width_m: Vec<f32> = segment_drainage_km2
+        .iter()
+        .map(|&km2| CHANNEL_WIDTH_A * km2.max(0.0).powf(CHANNEL_WIDTH_B))
+        .collect();
+    let segment_profile_m: Vec<Vec<f32>> = rivers
+        .segments
+        .iter()
+        .map(|s| {
+            s.points
+                .iter()
+                .map(|&(x, y)| {
+                    c1_altitude_norm_to_metres(heightmap.data[y as usize * w + x as usize], ss)
+                })
+                .collect()
+        })
+        .collect();
+
     C1DrainageResult {
         flow,
         rivers,
         segment_drainage_km2,
         segment_navigability,
+        segment_width_m,
+        segment_profile_m,
         lakes,
         lake_map,
         width: w,
         height: h,
     }
+}
+
+/// DEFECT C — hydraulic-geometry width law `w = a·Q^b` (Leopold & Maddock).
+/// Discharge `Q` is proxied by the effective drainage area in km²; `b = 0.5` is
+/// the classic downstream bankfull-width exponent. `a` is anchored so a
+/// Thames-scale trunk (~16 000 km²) reads ~150 m and a ~1 km² headwater ~1 m.
+const CHANNEL_WIDTH_A: f32 = 1.2;
+const CHANNEL_WIDTH_B: f32 = 0.5;
+
+/// ADR 0001 Finding 20 (DEFECT A) — clip the river network against the FINAL lake
+/// surfaces so every watercourse terminates at its SINK instead of running through
+/// it. The routing field (breached, monotone) drains every basin, so `extract_rivers`
+/// traces straight across lakes and out of endorheic sinks; meanwhile `lake_map`
+/// marks those basins as standing water. The visible result is rivers crossing lake
+/// polygons and orphan reaches emerging below them.
+///
+/// Each segment is split into its maximal runs of consecutive NON-lake points; each
+/// run of ≥2 points becomes a segment (points + long profile sliced exactly). A run
+/// that starts at a lake shore is that lake's OUTLET: kept (with the parent discharge)
+/// for an EXORHEIC lake, dropped for an ENDORHEIC one (the water dies in the closed
+/// basin — no downstream watercourse). Links are remapped through parent head/tail so
+/// a segment's `downstream` is `None` exactly when it ends at a sink (sea or lake).
+///
+/// Touches ONLY the exported/rendered polylines and their parallel arrays — the
+/// routing field, lakes, and `lake_map` are untouched. A display width/threshold is a
+/// rendering attribute; topology stays continuous to each sink.
+pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
+    let w = dr.width;
+    let lake_map = &dr.lake_map;
+    let endorheic: std::collections::HashSet<u32> = dr
+        .lakes
+        .iter()
+        .filter(|lk| lk.lake_type == LakeType::Endorheic)
+        .map(|lk| lk.base.id)
+        .collect();
+    let in_lake = |&(x, y): &(u32, u32)| lake_map[y as usize * w + x as usize];
+
+    let src = std::mem::take(&mut dr.rivers.segments);
+    let src_km2 = std::mem::take(&mut dr.segment_drainage_km2);
+    let src_nav = std::mem::take(&mut dr.segment_navigability);
+    let src_prof = std::mem::take(&mut dr.segment_profile_m);
+
+    // Pass 1 — enumerate each parent's kept runs as (start, end) index ranges into
+    // its point list, so head/tail new-indices can be reserved before emission.
+    let runs: Vec<Vec<(usize, usize)>> = src
+        .iter()
+        .map(|s| {
+            let mut out = Vec::new();
+            let (mut a, n) = (0usize, s.points.len());
+            while a < n {
+                if in_lake(&s.points[a]) != 0 {
+                    a += 1;
+                    continue;
+                }
+                let mut b = a;
+                while b < n && in_lake(&s.points[b]) == 0 {
+                    b += 1;
+                }
+                // Drop an endorheic-lake outlet run (starts just after a lake cell
+                // whose lake is endorheic) — the closed basin has no outflow.
+                let is_outlet = a > 0;
+                let drop = is_outlet && endorheic.contains(&in_lake(&s.points[a - 1]));
+                if b - a >= 2 && !drop {
+                    out.push((a, b));
+                }
+                a = b + 1;
+            }
+            out
+        })
+        .collect();
+
+    // Reserve new indices: parent i's runs occupy a contiguous block.
+    let mut offset = vec![0usize; src.len() + 1];
+    for i in 0..src.len() {
+        offset[i + 1] = offset[i] + runs[i].len();
+    }
+    let head = |i: usize| runs[i].first().map(|_| offset[i]);
+    let tail = |i: usize| runs[i].last().map(|_| offset[i] + runs[i].len() - 1);
+
+    let mut segments = Vec::with_capacity(offset[src.len()]);
+    let mut km2 = Vec::with_capacity(offset[src.len()]);
+    let mut nav = Vec::with_capacity(offset[src.len()]);
+    let mut width_m = Vec::with_capacity(offset[src.len()]);
+    let mut profile_m = Vec::with_capacity(offset[src.len()]);
+
+    for (i, s) in src.iter().enumerate() {
+        let n = s.points.len();
+        for (ri, &(a, b)) in runs[i].iter().enumerate() {
+            let is_first = a == 0; // run holds the parent's true source
+            let reaches_end = b == n; // run reaches the parent's downstream end
+            // Endorheic outlet runs were dropped; any surviving run that starts at a
+            // lake shore is an exorheic outlet → inherit the parent discharge.
+            let q_km2 = src_km2.get(i).copied().unwrap_or(0.0);
+            let upstream = if is_first {
+                s.upstream.iter().filter_map(|&u| tail(u)).collect()
+            } else {
+                Vec::new()
+            };
+            let downstream = if reaches_end && ri == runs[i].len() - 1 {
+                s.downstream.and_then(head)
+            } else {
+                None // ends at a lake shore (its sink)
+            };
+            segments.push(RiverSegment {
+                points: s.points[a..b].to_vec(),
+                strahler_order: s.strahler_order,
+                avg_flow: s.avg_flow,
+                max_flow: s.max_flow,
+                basin_id: s.basin_id,
+                upstream,
+                downstream,
+            });
+            km2.push(q_km2);
+            nav.push(src_nav.get(i).copied().unwrap_or(Navigability::NonNavigable));
+            width_m.push(CHANNEL_WIDTH_A * q_km2.max(0.0).powf(CHANNEL_WIDTH_B));
+            profile_m.push(src_prof.get(i).map(|p| p[a..b].to_vec()).unwrap_or_default());
+        }
+    }
+
+    dr.rivers.segments = segments;
+    dr.segment_drainage_km2 = km2;
+    dr.segment_navigability = nav;
+    dr.segment_width_m = width_m;
+    dr.segment_profile_m = profile_m;
 }
 
 /// #drainage fix B — reference runoff depth (mm/yr) that maps a river's real
@@ -661,6 +815,74 @@ fn outlet_reaches_sea(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// DEFECT A guard — `clip_rivers_to_lakes` makes every watercourse terminate at
+    /// its sink: no segment retains a point inside a lake, an EXORHEIC lake keeps its
+    /// outlet reach, an ENDORHEIC lake's phantom outlet is dropped.
+    fn one_seg_crossing_lake(lake_type: LakeType) -> C1DrainageResult {
+        use crate::terrain::flow::{FlowResult, RiverNetwork};
+        let (w, h) = (10usize, 1usize);
+        let mut lake_map = vec![0u32; w * h];
+        lake_map[4] = 7;
+        lake_map[5] = 7; // a two-cell lake spanning x=4..=5
+        let seg = RiverSegment {
+            points: (0..w as u32).map(|x| (x, 0u32)).collect(),
+            strahler_order: 2,
+            avg_flow: 10.0,
+            max_flow: 20.0,
+            basin_id: 1,
+            upstream: vec![],
+            downstream: None,
+        };
+        let base = Lake {
+            id: 7,
+            surface_elevation: 0.5,
+            max_depth: 0.1,
+            area: 2,
+            basin_id: 1,
+            outlet: (0, 0),
+            shallow: false,
+        };
+        C1DrainageResult {
+            flow: FlowResult {
+                filled: GridF32::new(w, h, 0.0),
+                direction: vec![0; w * h],
+                accumulation: GridF32::new(w, h, 0.0),
+                basins: vec![0; w * h],
+                num_basins: 1,
+            },
+            rivers: RiverNetwork { segments: vec![seg] },
+            segment_drainage_km2: vec![100.0],
+            segment_navigability: vec![Navigability::NonNavigable],
+            segment_width_m: vec![12.0],
+            segment_profile_m: vec![(0..w).map(|x| x as f32).collect()],
+            lakes: vec![C1Lake { base, level_m: 0.0, depth_m: 1.0, area_km2: 1.0, lake_type }],
+            lake_map,
+            width: w,
+            height: h,
+        }
+    }
+
+    #[test]
+    fn clip_rivers_terminate_at_lake_sinks() {
+        let w = 10usize;
+        // Exorheic: inflow reach (x0..3) + outlet reach (x6..9) both survive.
+        let mut ex = one_seg_crossing_lake(LakeType::Exorheic);
+        clip_rivers_to_lakes(&mut ex);
+        assert_eq!(ex.rivers.segments.len(), 2, "exorheic: inflow + outlet reaches");
+        for (i, s) in ex.rivers.segments.iter().enumerate() {
+            assert!(
+                s.points.iter().all(|&(x, y)| ex.lake_map[y as usize * w + x as usize] == 0),
+                "no clipped point lies inside a lake"
+            );
+            assert_eq!(s.points.len(), ex.segment_profile_m[i].len(), "profile parallel to points");
+        }
+        // Endorheic: the closed basin has no outflow → only the inflow reach survives.
+        let mut en = one_seg_crossing_lake(LakeType::Endorheic);
+        clip_rivers_to_lakes(&mut en);
+        assert_eq!(en.rivers.segments.len(), 1, "endorheic: phantom outlet dropped");
+        assert!(en.rivers.segments[0].points.iter().all(|&(x, _)| x < 4));
+    }
 
     /// A tilted plane draining to an ocean edge: the stack runs at sea=0.5,
     /// produces rivers, and km² drainage areas are finite + monotone with

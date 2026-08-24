@@ -51,7 +51,7 @@ use ymir_core::tectonics_c1::cached_product::{
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
     C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, below_sea_basin_lakes,
-    c1_drainage_windowed,
+    c1_drainage_windowed, clip_rivers_to_lakes,
 };
 use ymir_core::tectonics_c1::land_topology::{
     IslandEval, LandTopology, evaluate_island, land_topology,
@@ -672,6 +672,17 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         drainage.lakes.extend(bs_lakes);
         eprintln!("[HD] below-sea basins: {} lakes ({exo} exorheic, {endo} endorheic)", exo + endo);
     }
+    // ADR Finding 20 (DEFECT A): the rivers were traced on the breached (monotone)
+    // field, so they run straight through lakes and out of endorheic sinks while the
+    // final lake_map marks those basins as water. Clip the exported network to that
+    // lake_map so every watercourse terminates at its sink (sea or lake); an endorheic
+    // basin's phantom outlet is dropped. Topology stays continuous — width is a hint.
+    let before_seg = drainage.rivers.segments.len();
+    clip_rivers_to_lakes(&mut drainage);
+    eprintln!(
+        "[HD] rivers clipped to lakes: {before_seg} → {} segments (terminate at sinks)",
+        drainage.rivers.segments.len()
+    );
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Drainage,
         regime: if drainage_hit { CacheRegime::Hit } else { CacheRegime::Miss },
