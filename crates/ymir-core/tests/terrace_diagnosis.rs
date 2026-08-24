@@ -3628,6 +3628,104 @@ fn endorheic_water_balance() {
     eprintln!("   (expected: ~all EXO, dry<sea ≈ 0 — overflow the above-sea rim → ordinary lakes)");
 }
 
+/// STEP 1 (read-only) — exorheic below-sea basins with no visible outlet: H1/H2/H3 verdict.
+/// For every below-sea (7-digit id) EXORHEIC lake, report water_class of its cells, whether a
+/// river reach LEAVES it, ocean surface-contiguity, and the depth/slope for lagoon-vs-wetland.
+#[test]
+#[ignore]
+fn below_sea_outlet_diagnosis() {
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::lakes::connectivity::water_class;
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageClimate, LakeType, below_sea_basin_lakes, clip_rivers_to_lakes,
+    };
+    use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (2048usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let cell_m = domain * 1000.0 / t as f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None; fc.bathymetry = None; fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 38.0, 27.0, &PrecipParams::default(), domain);
+    let dcfg = C1DrainageConfig::default();
+    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
+    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    dr.lakes.extend(bs);
+    clip_rivers_to_lakes(&mut dr);
+    let wc = water_class(&field, SEA);
+    let norm_m = |nrm: f32| c1_altitude_norm_to_metres(nrm, &ss);
+
+    eprintln!("\n=== STEP 1 — exorheic below-sea basins, no-outlet verdict (2048²) ===");
+    eprintln!("  outlet LABEL test: classify_sink (viz workspace.rs) checks `eroded ≤ 0.5` (SEA) BEFORE lake_map → a mouth in a below-sea lake reads 'mer'. The clip splits on lake_map. So the two disagree.");
+    let below: Vec<&_> = dr.lakes.iter().filter(|l| l.base.id >= 1_000_001 && l.lake_type == LakeType::Exorheic).collect();
+    eprintln!("  {} exorheic below-sea basins:", below.len());
+    for lk in &below {
+        let id = lk.base.id;
+        let cells: Vec<usize> = (0..t * t).filter(|&k| dr.lake_map[k] == id).collect();
+        let (mut c0, mut c1, mut c2) = (0usize, 0usize, 0usize);
+        for &k in &cells { match wc[k] { 0 => c0 += 1, 1 => c1 += 1, _ => c2 += 1 } }
+        // outlet reach: a river whose SOURCE (first point) is adjacent to the lake.
+        let outlet = dr.rivers.segments.iter().enumerate().find(|(_, s)| {
+            let &(fx, fy) = s.points.first().unwrap();
+            (-1i32..=1).any(|dy| (-1i32..=1).any(|dx| { let (nx, ny) = (fx as i32 + dx, fy as i32 + dy);
+                nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 && dr.lake_map[ny as usize * t + nx as usize] == id }))
+        });
+        // ocean surface-contiguity: BFS over ≤SEA water cells from the lake → reach a class-1 ocean cell?
+        let mut seen = std::collections::HashSet::new();
+        let mut q = std::collections::VecDeque::new();
+        for &k in &cells { seen.insert(k); q.push_back(k); }
+        let mut touches_ocean = false;
+        while let Some(k) = q.pop_front() {
+            let (x, y) = ((k % t) as i32, (k / t) as i32);
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] { let (nx, ny) = (x + dx, y + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 { let nk = ny as usize * t + nx as usize;
+                    if field.data[nk] <= SEA && !seen.contains(&nk) {
+                        if wc[nk] == 1 { touches_ocean = true; }
+                        seen.insert(nk); q.push_back(nk);
+                    }
+                }
+            }
+        }
+        // depth distribution + margin slope for lagoon-vs-wetland.
+        let mut depths: Vec<f32> = cells.iter().map(|&k| norm_m(lk.base.surface_elevation) - norm_m(field.data[k])).collect();
+        depths.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let shallow = depths.iter().filter(|&&d| d < 3.0).count();
+        // mean margin slope: |grad| at the lake shore cells (Sobel-ish, 1-cell).
+        let mut sl_sum = 0.0f32; let mut sl_n = 0usize;
+        for &k in &cells {
+            let (x, y) = ((k % t) as i32, (k / t) as i32);
+            let mut edge = false;
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] { let (nx, ny) = (x + dx, y + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 && dr.lake_map[ny as usize * t + nx as usize] != id { edge = true; } }
+            if edge {
+                let mpn = norm_m(1.0) - norm_m(0.0); // metres per unit norm
+                let gx = (field.get(x + 1, y) - field.get(x - 1, y)).abs();
+                let gy = (field.get(x, y + 1) - field.get(x, y - 1)).abs();
+                sl_sum += mpn * gx.max(gy) / (2.0 * cell_m); sl_n += 1;
+            }
+        }
+        let slope_pct = if sl_n > 0 { 100.0 * sl_sum / sl_n as f32 } else { 0.0 };
+        let verdict = if touches_ocean { "H3 (surface-contiguous with ocean → lagoon/sea-arm, not a lake)" }
+            else if outlet.is_some() { "H1 (outlet reach exists in data)" }
+            else { "H2 (exorheic label, NO spill path traced)" };
+        eprintln!("  #{id}: {} cells | wc land {c0} / OCEAN {c1} / enclosed {c2} | outlet_reach {} | ocean-contig {touches_ocean} | depth p50 {:.0}m max {:.0}m shallow<3m {}% | shore slope {:.1}% → {verdict}",
+            cells.len(), outlet.is_some(), depths[depths.len()/2], *depths.last().unwrap(), 100 * shallow / cells.len().max(1), slope_pct);
+    }
+}
+
 /// Finding 28 — inspection microscope DATA (what the four viz panels assemble from the
 /// EXPORTED drainage; nothing recomputed). Watercourse list (TASK 2), a river profile
 /// (TASK 3) and a lake sheet (TASK 4) at ratio 7.5 / centre 38° span 27°.

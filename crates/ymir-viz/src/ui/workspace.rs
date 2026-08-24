@@ -89,8 +89,17 @@ struct Watercourse {
     catchment_km2: f32,
     mouth_xy: (u32, u32),
     sink: Sink,
+    /// If the sink is a lake, its `lake_map` id (for the clickable chain).
+    sink_lake_id: Option<u32>,
     length_km: f32,
     tributaries: usize,
+}
+
+/// A navigation jump requested by a detail panel (the clickable hydrological chain).
+#[derive(Clone, Copy)]
+enum NavAction {
+    Lake(usize),
+    River(usize),
 }
 
 /// Which entity list the inspection panel is showing.
@@ -2410,9 +2419,12 @@ fn latitude_placement_widget(ui: &mut egui::Ui, centre: f32, span: f32) {
     p.text(egui::pos2(map_rect.center().x, y1 + 1.0), egui::Align2::CENTER_TOP, format!("{:.0}°", centre - span / 2.0), egui::FontId::monospace(9.0), COPPER_BRIGHT);
 }
 
-/// Classify where a mouth cell `(x,y)` drains: the sea, an exorheic lake, or an endorheic
-/// basin. Reads the eroded field (sea = 0.5) and the lake_map / lake types — no recompute.
-fn classify_sink(hd: &HdResult, x: u32, y: u32) -> Sink {
+/// Classify where a mouth cell `(x,y)` drains → (sink kind, the sink lake id if any). Reads
+/// the eroded field and lake_map / lake types — no recompute. NOTE (Finding 29): lake
+/// membership is tested BEFORE sea level, because a below-sea basin's water sits at/below
+/// 0 m — testing altitude first would mislabel a mouth-in-a-lake as "sea" (the microscope's
+/// river #1 ↔ lake #1000006 discrepancy). The clip already splits on `lake_map`; this now agrees.
+fn classify_sink(hd: &HdResult, x: u32, y: u32) -> (Sink, Option<u32>) {
     let (w, h) = (hd.width, hd.height);
     let endo: std::collections::HashSet<u32> = hd
         .drainage
@@ -2421,22 +2433,23 @@ fn classify_sink(hd: &HdResult, x: u32, y: u32) -> Sink {
         .filter(|l| l.lake_type == LakeType::Endorheic)
         .map(|l| l.base.id)
         .collect();
+    let mut sea = false;
     for dy in -1i32..=1 {
         for dx in -1i32..=1 {
             let (nx, ny) = (x as i32 + dx, y as i32 + dy);
             if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
                 let k = ny as usize * w + nx as usize;
-                if hd.eroded.data[k] <= 0.5 {
-                    return Sink::Sea;
-                }
                 let id = hd.drainage.lake_map[k];
                 if id != 0 {
-                    return if endo.contains(&id) { Sink::EndoLake } else { Sink::ExoLake };
+                    return (if endo.contains(&id) { Sink::EndoLake } else { Sink::ExoLake }, Some(id));
+                }
+                if hd.eroded.data[k] <= 0.5 {
+                    sea = true;
                 }
             }
         }
     }
-    Sink::Unknown
+    (if sea { Sink::Sea } else { Sink::Unknown }, None)
 }
 
 /// Aggregate the exported river SEGMENTS into browsable WATERCOURSES (Finding 28). A
@@ -2508,6 +2521,7 @@ fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Wate
         trunk.reverse(); // source → sink
         let pts: usize = trunk.iter().map(|&s| segs[s].points.len()).sum();
         let (mx, my) = *segs[r].points.last().unwrap();
+        let (sink, sink_lake_id) = classify_sink(hd, mx, my);
         out.push(Watercourse {
             trunk,
             tributaries: members.len().saturating_sub(1),
@@ -2518,7 +2532,8 @@ fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Wate
             width_source_m: d.segment_width_m.get(source).copied().unwrap_or(0.0),
             catchment_km2: d.segment_drainage_km2.get(r).copied().unwrap_or(0.0),
             mouth_xy: (mx, my),
-            sink: classify_sink(hd, mx, my),
+            sink,
+            sink_lake_id,
             length_km: pts as f32 * km_per_cell * ratio,
         });
     }
@@ -2555,6 +2570,7 @@ fn inspection_dock(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         }
     });
     ui.separator();
+    let mut nav: Option<NavAction> = None;
     ui.columns(2, |cols| {
         // ── Left: entity list ──
         egui::ScrollArea::vertical().id_salt("entity_list").show(&mut cols[0], |ui| {
@@ -2588,25 +2604,35 @@ fn inspection_dock(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             }
         });
         // ── Right: detail ──
-        egui::ScrollArea::vertical().id_salt("entity_detail").show(&mut cols[1], |ui| match ws.inspect_tab {
-            InspectTab::Rivers => match (ws.selected_river, &wcs) {
-                (Some(i), Some(wcs)) if i < wcs.len() => river_profile_panel(ui, &hd, &wcs[i]),
-                _ => { ui.add_space(20.0); ui.label(egui::RichText::new("Sélectionnez un cours d'eau.").color(DIM).size(11.0)); }
-            },
-            InspectTab::Lakes => match ws.selected_lake {
-                Some(i) if i < hd.drainage.lakes.len() => lake_sheet_panel(ui, &hd, i, ws.domain_km),
-                _ => { ui.add_space(20.0); ui.label(egui::RichText::new("Sélectionnez un lac.").color(DIM).size(11.0)); }
-            },
+        let out = egui::ScrollArea::vertical().id_salt("entity_detail").show(&mut cols[1], |ui| -> Option<NavAction> {
+            match ws.inspect_tab {
+                InspectTab::Rivers => match (ws.selected_river, &wcs) {
+                    (Some(i), Some(w)) if i < w.len() => river_profile_panel(ui, &hd, &w[i]),
+                    _ => { ui.add_space(20.0); ui.label(egui::RichText::new("Sélectionnez un cours d'eau.").color(DIM).size(11.0)); None }
+                },
+                InspectTab::Lakes => match ws.selected_lake {
+                    Some(i) if i < hd.drainage.lakes.len() => lake_sheet_panel(ui, &hd, i, ws.domain_km, wcs.as_deref().map(|v| v.as_slice())),
+                    _ => { ui.add_space(20.0); ui.label(egui::RichText::new("Sélectionnez un lac.").color(DIM).size(11.0)); None }
+                },
+            }
         });
+        nav = out.inner;
     });
+    // Apply the clickable-chain jump (Finding 29): follow the hydrological graph in one click.
+    match nav {
+        Some(NavAction::Lake(i)) => { ws.selected_lake = Some(i); ws.inspect_tab = InspectTab::Lakes; }
+        Some(NavAction::River(i)) => { ws.selected_river = Some(i); ws.inspect_tab = InspectTab::Rivers; }
+        None => {}
+    }
 }
 
 /// TASK 3 — river long profile: bed elevation source→sink (from `profile_m`) + the figures
 /// the inspector already carries. The SINK is marked explicitly; any climb is flagged (this
 /// doubles as the monotonicity inspector). Reads `segment_profile_m` / discharge / width.
-fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) {
+fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Option<NavAction> {
     let d = &hd.drainage;
     let (sl, sc) = sink_label(wc.sink);
+    let mut nav = None;
     ui.horizontal_wrapped(|ui| {
         let kv = |ui: &mut egui::Ui, k: &str, v: String| {
             ui.label(egui::RichText::new(format!("{k} ")).color(DIM).size(10.5));
@@ -2619,7 +2645,17 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) {
         kv(ui, "Ordre", format!("S{}", wc.order));
         kv(ui, "Largeur embouchure", format!("{:.0} m", wc.width_mouth_m));
         kv(ui, "Largeur source", format!("{:.0} m", wc.width_source_m));
-        ui.label(egui::RichText::new(sl).color(sc).strong().size(11.5));
+        // Clickable SINK (Finding 29): jump to the lake it drains into.
+        ui.label(egui::RichText::new("Exutoire ").color(DIM).size(10.5));
+        if let Some(id) = wc.sink_lake_id {
+            if ui.add(egui::Button::new(egui::RichText::new(format!("{sl} ⮕")).color(sc).strong().size(11.5)).frame(true)).on_hover_text("Aller au lac").clicked() {
+                if let Some(li) = hd.drainage.lakes.iter().position(|l| l.base.id == id) {
+                    nav = Some(NavAction::Lake(li));
+                }
+            }
+        } else {
+            ui.label(egui::RichText::new(sl).color(sc).strong().size(11.5));
+        }
     });
     // Bed profile source → sink by WALKING the flow field from the main-stem headwater
     // (the breached field is monotone, so this reflects the true bed — no dependence on
@@ -2648,7 +2684,7 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) {
     }
     if elev.len() < 2 {
         ui.label(egui::RichText::new("Profil indisponible.").color(DIM).size(11.0));
-        return;
+        return nav;
     }
     let (mut lo, mut hi) = (f32::MAX, f32::MIN);
     for &e in &elev { lo = lo.min(e); hi = hi.max(e); }
@@ -2684,13 +2720,15 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) {
     p.text(pts[n - 1] + egui::vec2(-2.0, -4.0), egui::Align2::RIGHT_BOTTOM, sl, egui::FontId::proportional(9.0), sc);
     p.text(egui::pos2(rect.left() + 4.0, rect.top() + 2.0), egui::Align2::LEFT_TOP, format!("{hi:.0} m"), egui::FontId::monospace(9.0), DIM);
     p.text(egui::pos2(rect.left() + 4.0, rect.bottom() - 2.0), egui::Align2::LEFT_BOTTOM, format!("{lo:.0} m"), egui::FontId::monospace(9.0), DIM);
+    nav
 }
 
 /// TASK 4 — lake sheet (Finding 28): the figures `C1Lake` carries + a couple computed
 /// UI-side from `lake_map` (shore length, inlet count), and the endorheic CONSEQUENCE spelt
 /// out (the content Living Landz should consume). Avg depth / inflow / evaporation are NOT
 /// exported (the water balance discards them) — stated as such, not faked.
-fn lake_sheet_panel(ui: &mut egui::Ui, hd: &HdResult, lake_idx: usize, domain_km: f32) {
+fn lake_sheet_panel(ui: &mut egui::Ui, hd: &HdResult, lake_idx: usize, domain_km: f32, wcs: Option<&[Watercourse]>) -> Option<NavAction> {
+    let mut nav = None;
     let lk = &hd.drainage.lakes[lake_idx];
     let (w, h) = (hd.width, hd.height);
     let km_per_cell = if w > 0 { domain_km / w as f32 } else { 0.0 };
@@ -2751,8 +2789,41 @@ fn lake_sheet_panel(ui: &mut egui::Ui, hd: &HdResult, lake_idx: usize, domain_km
     egui::Frame::default().fill(C::from_rgb(0x17, 0x1c, 0x1b)).inner_margin(8).corner_radius(5).show(ui, |ui| {
         ui.label(egui::RichText::new(msg).color(col).size(10.5));
     });
+    ui.add_space(6.0);
+    // Clickable hydrological chain (Finding 29): inlets (upstream) + the outlet (downstream).
+    // If the lake is EXORHEIC but no outlet reach is found, that inconsistency (H2) shows here.
+    if let Some(wcs) = wcs {
+        let adj = |mx: u32, my: u32| -> bool {
+            (-1i32..=1).any(|dy| (-1i32..=1).any(|dx| {
+                let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
+                nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h && hd.drainage.lake_map[ny as usize * w + nx as usize] == id
+            }))
+        };
+        ui.label(egui::RichText::new("CHAÎNE HYDROLOGIQUE").color(TEXT_BRIGHT).strong().size(10.5));
+        // Inlets: watercourses whose MOUTH sits on this lake.
+        let inflow_wcs: Vec<usize> = wcs.iter().enumerate().filter(|(_, wc)| adj(wc.mouth_xy.0, wc.mouth_xy.1)).map(|(i, _)| i).collect();
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(format!("Affluents ({}) :", inflow_wcs.len())).color(DIM).size(10.0));
+            for &wi in inflow_wcs.iter().take(12) {
+                if ui.add(egui::Button::new(egui::RichText::new(format!("#{}", wi + 1)).size(10.0)).frame(true)).clicked() {
+                    nav = Some(NavAction::River(wi));
+                }
+            }
+        });
+        // Outlet: a watercourse whose SOURCE leaves this lake.
+        let outlet = wcs.iter().position(|wc| wc.trunk.first().and_then(|&s| hd.drainage.rivers.segments[s].points.first()).map(|&(sx, sy)| adj(sx, sy)).unwrap_or(false));
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Exutoire :").color(DIM).size(10.0));
+            match outlet {
+                Some(wi) => { if ui.add(egui::Button::new(egui::RichText::new(format!("→ rivière #{} ⮕", wi + 1)).size(10.0)).frame(true)).clicked() { nav = Some(NavAction::River(wi)); } }
+                None if !endo => { ui.label(egui::RichText::new("⚠ AUCUN exutoire tracé — lac exoréique sans sortie (incohérence H2)").color(WARN_ORANGE).size(10.0)); }
+                None => { ui.label(egui::RichText::new("aucun (bassin fermé, cohérent)").color(DIM).size(10.0)); }
+            }
+        });
+    }
     ui.add_space(4.0);
     ui.label(egui::RichText::new("Profondeur moyenne · apport · évaporation : non exportés (bilan hydrique non surfacé — à ajouter côté données).").color(DIM).size(9.5));
+    nav
 }
 
 /// Draw the river network onto `rgba` (row-major, w×h): each segment as a polyline,

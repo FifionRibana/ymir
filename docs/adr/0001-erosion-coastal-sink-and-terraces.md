@@ -1080,3 +1080,35 @@ question). Each reads existing data; nothing is recomputed.
 Verified by `inspection_panels_data` (2048², ratio 7.5, centre 38° span 27°): 464 watercourses, river #1 a
 202 km monotone main stem (999→0 m) to the sea, largest lake a 128 km² endorheic basin (173 km shore, 21
 inlets, closed). Core lib 514 green (incl. the row-orientation regression); viz compiles.
+
+## Finding 29 — Exorheic below-sea basins with no outlet: the label overreaches (H2), + the clickable chain
+
+The microscope found a real inconsistency: a river declaring `sink = sea` whose mouth coincides with a
+below-sea lake, and several EXORHEIC lakes with no visible outlet. STEP 1 (read-only,
+`below_sea_outlet_diagnosis`, 3 exorheic below-sea basins): all **class-2 (enclosed)** — 0 ocean cells, so
+NOT the below-sea=ocean error; **no outlet reach leaves any of them**; **not ocean-contiguous**. Verdict
+**H2** — `below_sea_basin_lakes` declares exorheic from `a_eq ≥ a_spill` (drainage.rs:813 — inflow would
+exceed evaporation at the sill area, a THEORETICAL overflow) WITHOUT tracing a spill path to a sink, so the
+"exorheic" label has no outlet behind it. Not H1 (no reach exists), not H3 (not surface-connected).
+
+Point 5 (the label discrepancy): `classify_sink` tested `eroded ≤ 0.5` (sea) BEFORE `lake_map`, so a mouth
+sitting in a below-sea basin (water at/below 0 m) read "sea" while the clip had split it on `lake_map` — the
+two disagreed. Fixed to test lake membership FIRST (a VIEW-label fix; the data/export/clip are unchanged),
+so a mouth in a lake reads the lake, matching the clip.
+
+STEP 2 — physical nature. These basins are **100 % shallow (< 3 m, p50 0 m) with a ~0.1–0.3 % shore slope** —
+the WETLAND signature (shallow, flat, poorly drained, at sea level), NOT a lagoon (a lagoon/inland sea is
+deep open water, e.g. the 20 m basin the author saw). Proposed criterion, per cell of a below-sea basin:
+**wetland** if depth < ~3 m and shore slope < ~1 %, **lagoon / inland sea** if depth ≥ ~3 m. Living Landz's
+`Wetland` biome — a no-op for want of a source — would draw from these shallow margins (a future data-export
+addition, not done here). NOTE on naming: these are correctly class-2 (enclosed), so this is NOT a fifth
+"below-sea = ocean" occurrence; the recurring pattern here is different — **a regime labelled without
+verifying it against the traced network**. Because they have no traced outlet and are not ocean-connected,
+they are effectively TERMINAL (endorheic); the exorheic label is the defect (fix deferred per diagnosis-first
+— trace the spill path or reclassify; the chain below makes it visible meanwhile).
+
+STEP 3 — clickable hydrological chain (implemented): a river's SINK is a button → jumps to the lake; a lake
+lists its INLETS (clickable → upstream rivers) and its OUTLET (clickable → downstream river). When a lake is
+exorheic but no outlet reach is found, the outlet row reads "⚠ AUCUN exutoire tracé — incohérence H2" — so
+this very bug is visible in one click instead of a manual hunt. `NavAction` jumps switch tab + selection.
+Viz compiles; guards green.
