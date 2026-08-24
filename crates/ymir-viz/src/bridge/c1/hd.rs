@@ -36,7 +36,7 @@ use crossbeam_channel::Sender;
 use ymir_core::cache::default_cache_dir;
 use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
-use ymir_core::climate::{ClimateResult, c1_biomes_classified, c1_climate_windowed};
+use ymir_core::climate::{ClimateResult, c1_biomes_classified, c1_climate_placed, c1_climate_windowed};
 use ymir_core::erosion::stream_power::StreamPowerConfig;
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
 use ymir_core::export::{height, hydro, vector};
@@ -50,8 +50,8 @@ use ymir_core::tectonics_c1::cached_product::{
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
-    C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, below_sea_basin_lakes,
-    c1_drainage_windowed, clip_rivers_to_lakes,
+    C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, apply_geo_scale_ratio,
+    below_sea_basin_lakes, c1_drainage_windowed, clip_rivers_to_lakes,
 };
 use ymir_core::tectonics_c1::land_topology::{
     IslandEval, LandTopology, evaluate_island, land_topology,
@@ -112,6 +112,18 @@ pub struct HdParams {
     /// production 0.16). Lets the author flip through the striation amplitude ladder
     /// (0.16/0.08/0.04/0.02) with stream-power ON to see the striations shrink.
     pub fbm_amplitude: Option<f64>,
+    /// ADR 0001 Finding 24 — GEOGRAPHIC SCALE RATIO (hydrology only). The map DRAWS
+    /// `domain_km` but SIGNIFIES `domain_km · ratio` for the EXPORT-DERIVED hydrology
+    /// (catchment ×ratio², discharge ×ratio², channel width ×ratio, navigability
+    /// re-classed). A pure presentation multiplier — NOTHING that shapes the terrain
+    /// (incision, lake balance, climate, biomes) sees it. `1.0` (default) = identity.
+    pub geo_scale_ratio: f32,
+    /// ADR 0001 Finding 25 — CLIMATIC latitude SPAN in degrees, centred on
+    /// `latitude_deg`. Decouples the climate extent from the physical extent so a
+    /// small island can span several belts (tundra↔desert). `None` = the geographic
+    /// span `domain_km / 111` (identity). REAL physics: it drives temperature, wind
+    /// belts, precipitation and hence biomes (recomputed, not cached like the ratio).
+    pub latitude_span_deg: Option<f32>,
     /// When `Some(dir)`, after the biome phase the run writes a v1 `.ymir`
     /// delivery container under `dir` (see [`ymir_core::export::container`]).
     /// `None` = no export. Explicit opt-in — the pipeline NEVER auto-exports
@@ -133,6 +145,8 @@ impl Default for HdParams {
             mfd: false,
             mfd_p: 2.0,
             fbm_amplitude: None,
+            geo_scale_ratio: 1.0,
+            latitude_span_deg: None,
             export_dir: None,
         }
     }
@@ -617,7 +631,13 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     bail_if_cancelled!();
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Climate });
     let t = Instant::now();
-    let climate = c1_climate_windowed(&eroded, &ss, lat, &pp, window_km);
+    // Finding 25 — explicit CLIMATIC latitude span (else the geographic domain_km/111).
+    // `None` keeps the byte-identical windowed path; `Some` re-derives temperature + the
+    // per-belt precipitation over the wider span (real physics → biomes shift).
+    let climate = match params.latitude_span_deg {
+        Some(span) => c1_climate_placed(&eroded, &ss, lat, span, &pp, window_km),
+        None => c1_climate_windowed(&eroded, &ss, lat, &pp, window_km),
+    };
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Climate,
         regime: CacheRegime::Computed,
@@ -684,6 +704,14 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         drainage.lakes.extend(bs_lakes);
         eprintln!("[HD] below-sea basins: {} lakes ({exo} exorheic, {endo} endorheic)", exo + endo);
     }
+    // Finding 24 — geographic scale ratio: a PURE post-process on the export-derived
+    // hydrology (catchment/discharge/width/navigability), applied before the clip so the
+    // clipped reaches inherit the signified values. Identity at 1.0. Touches nothing
+    // physical (the terrain, climate and biomes above ran on the real domain_km).
+    apply_geo_scale_ratio(&mut drainage, params.geo_scale_ratio, &dcfg.thresholds);
+    if params.geo_scale_ratio != 1.0 {
+        eprintln!("[HD] geographic scale ratio {:.2} → hydrology signifies ×{:.1} area", params.geo_scale_ratio, params.geo_scale_ratio * params.geo_scale_ratio);
+    }
     // ADR Finding 20 (DEFECT A): the rivers were traced on the breached (monotone)
     // field, so they run straight through lakes and out of endorheic sinks while the
     // final lake_map marks those basins as water. Clip the exported network to that
@@ -718,6 +746,9 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // Explicit opt-in only (never automatic). Ships height (placeholder) +
     // coastline/cliffs (Y-B) + temperature/precipitation/biome (Y-C).
     if let Some(export_dir) = &params.export_dir {
+        // Resolved climatic span (explicit, else the geographic domain_km/111) so the
+        // manifest records the actual gradient behind the climate/biome layers.
+        let lat_span = params.latitude_span_deg.unwrap_or(window_km / 111.0);
         if let Err(e) = export_ymir_container(
             spec,
             &ss,
@@ -726,6 +757,8 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             &biomes,
             &drainage,
             lat,
+            lat_span,
+            params.geo_scale_ratio,
             window_km,
             window_offset,
             export_dir,
@@ -774,6 +807,8 @@ fn export_ymir_container(
     biomes: &[Biome],
     drainage: &C1DrainageResult,
     lat: f32,
+    lat_span_deg: f32,
+    geo_scale_ratio: f32,
     window_km: f32,
     window_offset: [f64; 2],
     root: &Path,
@@ -801,6 +836,8 @@ fn export_ymir_container(
         tectonic_domain_km: window_km as f64, // window == domain (no crop)
         window_offset_in_torus: window_offset,
         latitude_deg: lat as f64,
+        latitude_span_deg: lat_span_deg as f64,
+        geographic_scale_ratio: geo_scale_ratio as f64,
         stein_stein: *ss,
         // Honest metric bounds: sea anchored to 0 m; elevation/depth are the
         // field's real metric extrema (depth is the min, i.e. most negative).

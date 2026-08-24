@@ -3628,6 +3628,177 @@ fn endorheic_water_balance() {
     eprintln!("   (expected: ~all EXO, dry<sea ≈ 0 — overflow the above-sea rim → ordinary lakes)");
 }
 
+/// Findings 24–25 — RECOMMENDED render for this island: geographic ratio 7.5 (ships/barges
+/// reachable) + latitude centre 38° span 27° (subtropics→cool-temperate: desert↔tundra). Writes
+/// the hydrology overlay (signified widths, lakes by type) + the biome map, and reports tables.
+#[test]
+#[ignore]
+fn recommended_render() {
+    use std::path::Path;
+    use ymir_core::climate::biomes::Biome;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::climate::{c1_biomes_classified, c1_climate_placed};
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageThresholds, DrainageClimate, LakeType, Navigability, apply_geo_scale_ratio,
+        below_sea_basin_lakes, clip_rivers_to_lakes,
+    };
+    use ymir_core::terrain::flow::breach_monotone;
+    let (ratio, centre, span) = (7.5f32, 38.0f32, 27.0f32);
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (2048usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, centre, span, &PrecipParams::default(), domain);
+    let dcfg = C1DrainageConfig::default();
+    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
+    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    dr.lakes.extend(bs);
+    apply_geo_scale_ratio(&mut dr, ratio, &DrainageThresholds::default());
+    clip_rivers_to_lakes(&mut dr);
+    let biomes = c1_biomes_classified(&field, &climate, &dr.lake_map);
+
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    std::fs::create_dir_all(&dir).ok();
+    let endorheic: std::collections::HashSet<u32> = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).map(|l| l.base.id).collect();
+    // Hydrology overlay (signified widths).
+    let hs = hillshade(&field, domain, ss.depth_scale_m as f32);
+    let mut img = vec![0u8; t * t * 3];
+    let mut bio = vec![0u8; t * t * 3];
+    for k in 0..t * t {
+        let g = (hs.data[k].clamp(0.0, 1.0) * 255.0) as u8;
+        let id = dr.lake_map[k];
+        let c = if id != 0 { if endorheic.contains(&id) { [30, 150, 140] } else { [30, 90, 180] } } else { [g, g, g] };
+        img[k * 3] = c[0]; img[k * 3 + 1] = c[1]; img[k * 3 + 2] = c[2];
+        let bc = biomes[k].color();
+        bio[k * 3] = bc[0]; bio[k * 3 + 1] = bc[1]; bio[k * 3 + 2] = bc[2];
+    }
+    for (i, seg) in dr.rivers.segments.iter().enumerate() {
+        let nav = dr.segment_navigability.get(i).copied().unwrap_or(Navigability::NonNavigable);
+        let col = match nav { Navigability::Ship => [20, 70, 200], Navigability::Barge => [40, 110, 230], Navigability::SmallBoat => [90, 160, 240], Navigability::NonNavigable => [120, 150, 190] };
+        let r = ((seg.strahler_order as i32 - 2).max(0)).min(3);
+        for &(px, py) in &seg.points {
+            for dy in -r..=r { for dx in -r..=r {
+                let (nx, ny) = (px as i32 + dx, py as i32 + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 { let kk = (ny as usize * t + nx as usize) * 3; img[kk] = col[0]; img[kk + 1] = col[1]; img[kk + 2] = col[2]; }
+            }}
+        }
+    }
+    let save = |name: &str, buf3: &[u8]| {
+        let mut b = image::ImageBuffer::new(t as u32, t as u32);
+        for (k, px) in b.pixels_mut().enumerate() { *px = image::Rgb([buf3[k * 3], buf3[k * 3 + 1], buf3[k * 3 + 2]]); }
+        b.save(dir.join(name)).unwrap();
+    };
+    save("recommended_hydro.png", &img);
+    save("recommended_biomes.png", &bio);
+    let (mut sb, mut ba, mut sh) = (0usize, 0usize, 0usize);
+    for n in &dr.segment_navigability { match n { Navigability::SmallBoat => sb += 1, Navigability::Barge => ba += 1, Navigability::Ship => sh += 1, _ => {} } }
+    let wmax = dr.segment_width_m.iter().cloned().fold(0.0f32, f32::max);
+    let (mut tmin, mut tmax) = (f32::MAX, f32::MIN);
+    for &v in &climate.temperature.data { tmin = tmin.min(v); tmax = tmax.max(v); }
+    let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    let land = biomes.iter().filter(|b| **b != Biome::Ocean).count().max(1);
+    for b in &biomes { if *b != Biome::Ocean { *counts.entry(b.name()).or_insert(0) += 1; } }
+    let mut top: Vec<(&str, usize)> = counts.into_iter().collect();
+    top.sort_by(|a, b| b.1.cmp(&a.1));
+    let dist = top.iter().take(7).map(|(n, c)| format!("{} {:.0}%", n, 100.0 * *c as f32 / land as f32)).collect::<Vec<_>>().join(" · ");
+    eprintln!("\n=== RECOMMENDED render (ratio {ratio}, centre {centre}° span {span}°, 2048²) ===");
+    eprintln!("  hydrology: Sboat {sb} · barge {ba} · ship {sh} · largest width {wmax:.0} m");
+    eprintln!("  climate:   T {tmin:.0}…{tmax:.0} °C · biomes {dist}");
+    eprintln!("  → {}/recommended_hydro.png + recommended_biomes.png", dir.display());
+}
+
+/// Findings 24–25 — geographic scale ratio (hydrology) + latitude span (climate) audit (2048²).
+/// TASK 1: width/navigability across ratios 1/3/7.5/15. TASK 2: biome/temperature across spans
+/// 3.6°/10°/27° at centre 45°. Two INDEPENDENT controls; ratio touches only export-derived
+/// hydrology, span touches only the climate.
+#[test]
+#[ignore]
+fn scale_and_span_audit() {
+    use ymir_core::climate::biomes::Biome;
+    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
+    use ymir_core::climate::{c1_biomes_classified, c1_climate, c1_climate_placed};
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageThresholds, DrainageClimate, LakeType, Navigability, apply_geo_scale_ratio,
+        below_sea_basin_lakes, clip_rivers_to_lakes,
+    };
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (2048usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
+    let dcfg = C1DrainageConfig::default();
+    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let mut base = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
+    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    for k in 0..bs_map.len() { if bs_map[k] != 0 && base.lake_map[k] == 0 { base.lake_map[k] = bs_map[k]; } }
+    base.lakes.extend(bs);
+
+    eprintln!("\n=== Finding 24 — geographic scale ratio (hydrology only), 2048² ===");
+    eprintln!("  ratio | Sboat | barge | ship | largest reach (Q m³/s, width m)");
+    for ratio in [1.0f32, 3.0, 7.5, 15.0] {
+        let mut dr = base.clone();
+        apply_geo_scale_ratio(&mut dr, ratio, &DrainageThresholds::default());
+        clip_rivers_to_lakes(&mut dr);
+        let (mut sb, mut ba, mut sh) = (0usize, 0usize, 0usize);
+        for n in &dr.segment_navigability {
+            match n { Navigability::SmallBoat => sb += 1, Navigability::Barge => ba += 1, Navigability::Ship => sh += 1, _ => {} }
+        }
+        let (mut wmax, mut qmax) = (0.0f32, 0.0f32);
+        for i in 0..dr.rivers.segments.len() {
+            if dr.segment_width_m[i] > wmax { wmax = dr.segment_width_m[i]; qmax = dr.segment_discharge_m3s[i]; }
+        }
+        // per-order median widths
+        let mut per: std::collections::BTreeMap<u8, Vec<f32>> = std::collections::BTreeMap::new();
+        for (i, s) in dr.rivers.segments.iter().enumerate() { per.entry(s.strahler_order).or_default().push(dr.segment_width_m[i]); }
+        let ord = per.iter().map(|(o, v)| { let mut w = v.clone(); w.sort_by(|a, b| a.partial_cmp(b).unwrap()); format!("S{o} {:.0}m", w[w.len()/2]) }).collect::<Vec<_>>().join(" ");
+        eprintln!("  {ratio:>4} | {sb:5} | {ba:5} | {sh:4} | Q {qmax:.0} w {wmax:.0}m   [{ord}]");
+    }
+
+    eprintln!("\n=== Finding 25 — latitude span (climate only), centre 45°, 2048² ===");
+    eprintln!("  span° | T range °C | biome distribution");
+    for span in [3.6f32, 10.0, 27.0] {
+        let clim = c1_climate_placed(&field, &ss, 45.0, span, &PrecipParams::default(), domain);
+        let biomes = c1_biomes_classified(&field, &clim, &base.lake_map);
+        let (mut tmin, mut tmax) = (f32::MAX, f32::MIN);
+        for &v in &clim.temperature.data { tmin = tmin.min(v); tmax = tmax.max(v); }
+        let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+        let land = biomes.iter().filter(|b| **b != Biome::Ocean).count().max(1);
+        for b in &biomes { if *b != Biome::Ocean { *counts.entry(b.name()).or_insert(0) += 1; } }
+        let mut top: Vec<(&str, usize)> = counts.into_iter().collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1));
+        let dist = top.iter().take(6).map(|(n, c)| format!("{} {:.0}%", n, 100.0 * *c as f32 / land as f32)).collect::<Vec<_>>().join(" · ");
+        let _ = precip_mm_per_year(0.0);
+        eprintln!("  {span:>4} | {tmin:.0}…{tmax:.0} | {dist}");
+    }
+}
+
 /// Finding 22 — channel-width law audit (2048², CLIMATE discharge): sanity table vs real
 /// rivers, per-Strahler width in metres AND cells, lake-outlet discontinuity. TASK 1–3.
 #[test]

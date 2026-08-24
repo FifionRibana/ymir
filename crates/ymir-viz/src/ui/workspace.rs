@@ -152,6 +152,16 @@ struct WorkspaceState {
     /// (no crop). Pure relabelling of the 64² pattern: `m_per_px = domain_km ·
     /// 1000 / resolution`. Moving it recomputes NO tectonics (see `m_per_px`).
     domain_km: f32,
+    /// Finding 24 — geographic scale ratio: the map DRAWS `domain_km` but the exported
+    /// hydrology SIGNIFIES `domain_km · ratio`. Pure presentation multiplier on the
+    /// river width / discharge / navigability; NOTHING physical (terrain, climate,
+    /// biomes) sees it. Instant (post-process, no re-solve). 1.0 = identity.
+    geo_scale_ratio: f32,
+    /// Finding 25 — CLIMATIC latitude span (°) centred on `latitude`, INDEPENDENT of
+    /// `domain_km`. Widen it to cross several belts (tundra↔desert) on a small island.
+    /// REAL physics (temperature, wind, precip → biomes) — re-runs the climate. At the
+    /// geographic value `domain_km/111` the run is the byte-identical windowed path.
+    latitude_span_deg: f32,
     /// Framing offset (integer COARSE cells) applied to the coarse field for both
     /// the preview and the export (auto ± manual pan), stored mod grid. A cyclic
     /// rotation on the torus — no bounds, wraps at the edges. This is what
@@ -232,6 +242,8 @@ impl Default for WorkspaceState {
             channel_jitter: 0.3,
             dinf: false,
             domain_km: 1024.0,
+            geo_scale_ratio: 1.0,
+            latitude_span_deg: 1024.0 / 111.0, // geographic span at the default domain (identity)
             offset_cells: [0, 0],
             auto_offset_cells: [0, 0],
             panned: false,
@@ -655,6 +667,17 @@ fn left_panel(
                             mfd: ws.mfd,
                             mfd_p: ws.mfd_p,
                             fbm_amplitude: Some(ws.fbm_amplitude as f64),
+                            geo_scale_ratio: ws.geo_scale_ratio,
+                            // At the geographic span → None (byte-identical windowed climate);
+                            // otherwise the explicit span drives the placed (per-belt) climate.
+                            latitude_span_deg: {
+                                let geo = ws.domain_km / 111.0;
+                                if (ws.latitude_span_deg - geo).abs() < 0.05 {
+                                    None
+                                } else {
+                                    Some(ws.latitude_span_deg)
+                                }
+                            },
                             export_dir,
                         };
                         let _ = bridge.submit_hd(spec, params);
@@ -849,6 +872,17 @@ fn left_panel(
                         // — no tectonic pass). Shown once a preview exists.
                         domain_readout(ui, ws, mpp);
                         ui.add_space(10.0);
+                        // Finding 24 — geographic scale ratio (hydrology only). Instant:
+                        // a pure post-process on river width/discharge/navigability. The
+                        // terrain, climate and biomes stay on the real domain_km.
+                        field_label(ui, "ÉCHELLE GÉOGRAPHIQUE (hydrologie)");
+                        ui.add_space(1.0);
+                        ui.horizontal(|ui| {
+                            ui.add(egui::Slider::new(&mut ws.geo_scale_ratio, 1.0..=15.0).step_by(0.1).show_value(false));
+                            ui.label(egui::RichText::new(format!("×{:.1} · signifie {:.0} km", ws.geo_scale_ratio, ws.domain_km * ws.geo_scale_ratio)).color(COPPER_BRIGHT).monospace().size(12.0));
+                        });
+                        ui.label(egui::RichText::new("largeur/débit des rivières uniquement — n'affecte ni le relief ni les biomes").color(DIM).size(10.0));
+                        ui.add_space(10.0);
                         // Manual framing pan (cyclic; composes on top of the auto offset).
                         framing_controls(ui, ws);
                         ui.add_space(8.0);
@@ -879,6 +913,19 @@ fn left_panel(
                             });
                             ui.add_space(8.0);
                             latitude_slider(ui, &mut ws.latitude);
+                            // Finding 25 — climatic latitude SPAN, independent of the
+                            // physical size. Widen to cross belts (real physics → re-run).
+                            ui.add_space(10.0);
+                            let geo = ws.domain_km / 111.0;
+                            let tag = if (ws.latitude_span_deg - geo).abs() < 0.05 { "géographique" } else { "élargie" };
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Étendue latitudinale").color(C::from_rgb(0xbd, 0xbd, 0xbd)).size(11.5));
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(egui::RichText::new(format!("{:.1}° ({tag})", ws.latitude_span_deg)).color(COPPER_BRIGHT).monospace().size(13.0));
+                                });
+                            });
+                            ui.add(egui::Slider::new(&mut ws.latitude_span_deg, 1.0..=40.0).step_by(0.1).show_value(false));
+                            ui.label(egui::RichText::new("élargir pour croiser plusieurs ceintures (toundra ↔ désert)").color(DIM).size(10.0));
                         });
                     }
                     ui.separator();
@@ -1487,6 +1534,8 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         mfd: false,
         mfd_p: 2.0,
         fbm_amplitude: None,
+        geo_scale_ratio: 1.0,
+        latitude_span_deg: None,
         export_dir: None,
     }
 }

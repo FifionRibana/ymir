@@ -245,27 +245,47 @@ pub fn compute_precipitation_with_budget(
     altitude_m: impl Fn(f32) -> f32,
     params: &PrecipParams,
 ) -> (GridF32, f64, f64, f64) {
+    // span 0 → every row reads the SAME belt (the centre lat): the legacy single-belt
+    // behaviour, byte-identical. The span-aware path is [`compute_precipitation_span`].
+    compute_precipitation_span(heightmap, temperature, lat_deg, 0.0, km_per_cell, altitude_m, params)
+}
+
+/// As [`compute_precipitation_with_budget`] but with an EXPLICIT latitudinal `span_deg`
+/// centred on `centre_deg` (Finding 25 — TASK 2). The wind belt AND the frontal/synoptic
+/// base are evaluated PER ROW at that row's latitude, so a wide span crosses several belts
+/// (trade-wind vs westerly rows, a subtropical desert band). `span_deg == 0` collapses to
+/// the single-belt legacy behaviour (byte-identical).
+pub fn compute_precipitation_span(
+    heightmap: &GridF32,
+    temperature: &GridF32,
+    centre_deg: f32,
+    span_deg: f32,
+    km_per_cell: f32,
+    altitude_m: impl Fn(f32) -> f32,
+    params: &PrecipParams,
+) -> (GridF32, f64, f64, f64) {
+    use super::temperature::row_latitude_span;
     let (w, h) = (heightmap.width, heightmap.height);
     let mut p = GridF32::new(w, h, 0.0);
-    let dir = wind_zonal_dir(lat_deg);
     let dx_m = (km_per_cell * 1000.0).max(1.0);
     let mut evap_in = 0.0f64;
     let mut exit_out = 0.0f64;
     let mut oro_precip_sum = 0.0f64;
-    // FRONTAL / synoptic base (per the domain's belt; ~9° span → one value).
-    // #165 — Hadley subtropical subsidence deepens the zonal minimum so the ~30°
-    // belt reads as desert (the diagnostic gap); 0.0 amplitude → unchanged.
-    let frontal_base = params.k_frontal
-        * belt_factor(lat_deg)
-        * e_sat(super::temperature::sea_level_temperature(lat_deg))
-        * subtropical_suppression(lat_deg, params.subtropical_subsidence);
-
     let max_precip_internal = if params.max_precip_mm > 0.0 {
         params.max_precip_mm / PRECIP_MM_PER_UNIT
     } else {
         f32::MAX
     };
     for j in 0..h {
+        // Row latitude → its OWN wind belt + frontal base (a wide span crosses belts).
+        let lat_j = row_latitude_span(j, h, centre_deg, span_deg);
+        let dir = wind_zonal_dir(lat_j);
+        // FRONTAL / synoptic base at this row's belt. #165 — Hadley subtropical
+        // subsidence deepens the ~30° minimum so it reads as desert.
+        let frontal_base = params.k_frontal
+            * belt_factor(lat_j)
+            * e_sat(super::temperature::sea_level_temperature(lat_j))
+            * subtropical_suppression(lat_j, params.subtropical_subsidence);
         // Scan along the wind, upwind → downwind.
         let order: Vec<usize> = if dir > 0 { (0..w).collect() } else { (0..w).rev().collect() };
         let mut m = 0.0f32; // carried moisture flux

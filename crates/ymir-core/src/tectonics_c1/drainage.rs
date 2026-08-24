@@ -175,6 +175,7 @@ pub struct C1Lake {
 
 /// Full C1 drainage product: flow field, rivers (+ per-segment navigability /
 /// drainage area), and lakes (in metres / km² / typed).
+#[derive(Clone)]
 pub struct C1DrainageResult {
     pub flow: FlowResult,
     pub rivers: RiverNetwork,
@@ -547,6 +548,35 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     dr.segment_discharge_m3s = discharge;
     dr.segment_width_m = width_m;
     dr.segment_profile_m = profile_m;
+}
+
+/// ADR 0001 Finding 24 — GEOGRAPHIC SCALE RATIO (hydrology only). A pure PRESENTATION
+/// multiplier: the map DRAWS `real_km` of terrain but SIGNIFIES `real_km · ratio` (a
+/// Skyrim-style compression). It is NOT a physical quantity and touches NOTHING that
+/// shapes the terrain — it is applied here, on the already-computed drainage, to the
+/// EXPORT-DERIVED quantities ONLY:
+///   - effective catchment  = real catchment · ratio²   (area scales as length²)
+///   - discharge Q          = real discharge · ratio²   (Q = runoff · catchment)
+///   - channel width         = a·Q^b  ⇒  scales as ratio (√ of ratio²)
+///   - navigability class    re-evaluated on the effective catchment
+/// It does NOT touch: the routing field, rivers geometry, lakes, `lake_map`, and —
+/// crucially — NOT stream-power incision, the lake water balance, precipitation,
+/// temperature, or biomes (those run on the REAL 400 km quantities upstream, so every
+/// prior calibration holds). Being a post-process on derived arrays, it is instant and
+/// does NOT enter the drainage cache key. `ratio == 1.0` → identity (early return).
+pub fn apply_geo_scale_ratio(dr: &mut C1DrainageResult, ratio: f32, thresholds: &DrainageThresholds) {
+    if ratio == 1.0 {
+        return;
+    }
+    let area_scale = ratio * ratio;
+    for i in 0..dr.rivers.segments.len() {
+        let km2 = dr.segment_drainage_km2[i] * area_scale;
+        let q = dr.segment_discharge_m3s[i] * area_scale;
+        dr.segment_drainage_km2[i] = km2;
+        dr.segment_discharge_m3s[i] = q;
+        dr.segment_width_m[i] = CHANNEL_WIDTH_A * q.max(0.0).powf(CHANNEL_WIDTH_B);
+        dr.segment_navigability[i] = thresholds.classify(km2);
+    }
 }
 
 /// #drainage fix B — reference runoff depth (mm/yr) that maps a river's real

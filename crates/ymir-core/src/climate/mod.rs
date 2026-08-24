@@ -90,6 +90,37 @@ pub fn c1_climate_windowed(
     ClimateResult { temperature, precipitation }
 }
 
+/// [`c1_climate_windowed`] with an EXPLICIT latitudinal SPAN centred on `centre_deg`
+/// (ADR 0001 Finding 25 — TASK 2). The physical horizontal scale still comes from
+/// `window_km` (orographic distance, cell size); `span_deg` sets ONLY the CLIMATIC
+/// latitude extent — the thermal gradient and which wind belts the map crosses. This
+/// is REAL physics (temperature, wind, precipitation → biomes all change), so it is a
+/// separate control from the geographic scale ratio (a pure hydrology multiplier).
+/// `span_deg == window_km / 111` reproduces [`c1_climate_windowed`] to within the
+/// single-belt→per-belt precip refinement (negligible at that narrow span).
+pub fn c1_climate_placed(
+    heightmap: &GridF32,
+    ss: &SteinSteinParams,
+    centre_deg: f32,
+    span_deg: f32,
+    params: &PrecipParams,
+    window_km: f32,
+) -> ClimateResult {
+    let temperature = temperature::compute_temperature_span(heightmap, ss, centre_deg, span_deg);
+    let km_per_cell = window_km / heightmap.width as f32;
+    let precipitation = precipitation::compute_precipitation_span(
+        heightmap,
+        &temperature,
+        centre_deg,
+        span_deg,
+        km_per_cell,
+        |n| c1_altitude_norm_to_metres(n, ss),
+        params,
+    )
+    .0;
+    ClimateResult { temperature, precipitation }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

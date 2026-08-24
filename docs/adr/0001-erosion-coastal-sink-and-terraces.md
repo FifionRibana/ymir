@@ -950,3 +950,69 @@ every water body into one class. Both `width_m` and `lake_type` are now exported
 that is where the value is lost. Because channel width is sub-cell even at 8192² (Finding 22), LL MUST
 render rivers as a stroke sized by `width_m`, and distinguish lakes by `lake_type` (endorheic = saline, no
 fish, undrinkable). Added to the LL-side backlog.
+
+## Finding 24 — Geographic scale ratio: a presentation compression for the hydrology only
+
+The island is ~40 000 km² — smaller than the Thames basin (16 000 km² is one river). Even a single basin
+draining it all yields ~740 m³/s → ~136 m; realistically the largest is ~3 000 km² → ~37 m. There is
+physically no room for a great river at 400 km. This is a consequence of the CHOSEN SCALE, not a bug — and
+the fix is NOT to inflate runoff (that would over-carve the relief, overflow every lake, and rainforest the
+biomes, since one parameter feeds four calibrated systems). The correct device is scale COMPRESSION applied
+to DERIVED quantities: the map DRAWS `domain_km` but SIGNIFIES `domain_km · ratio` (a Skyrim-map convention),
+costing nothing physically because the terrain keeps its real, coherent values.
+
+`apply_geo_scale_ratio(dr, ratio, thresholds)` — a PURE post-process (instant, NOT in any cache; lives in
+`HdParams`, not `C1DrainageConfig`, because it is presentation, not physics). It scales ONLY:
+effective catchment `×ratio²`, discharge `×ratio²`, channel width `×ratio`, navigability re-classified on the
+scaled catchment. It does NOT touch: the routing field, rivers geometry, lakes, `lake_map`, **stream-power
+incision, the lake water balance, precipitation, temperature, biomes** — all of which ran upstream on the
+real 400 km quantities, so every prior calibration is untouched. `ratio == 1.0` → identity.
+
+Table (2048², seed reference; small_boat / barge / ship reaches; largest reach):
+
+| ratio | small_boat | barge | ship | largest Q, width |
+|------:|-----------:|------:|-----:|-----------------:|
+| 1.0   | 742 | 1 | 0 | 48 m³/s, 35 m |
+| 3.0   | 1665 | 686 | 0 | 430 m³/s, 104 m |
+| 7.5   | 811 | 1661 | 403 | 2688 m³/s, 259 m |
+| 15.0  | 383 | 1286 | 1391 | 10 751 m³/s, 518 m |
+
+Barges appear at ratio 3; ships become reachable at **7.5** (403 ship reaches, largest ~259 m). Recommended
+**ratio 7.5** for this island.
+
+## Finding 25 — Latitude span & centre: climatic diversity, a SEPARATE control
+
+A 400 km continent spans only ~3.6° of latitude → a single climatic belt, no deserts or tundra possible from
+area alone (climate depends on LATITUDE, not size). So the CLIMATIC latitude extent is decoupled from the
+physical extent: `c1_climate_placed(centre_deg, span_deg)` sets an explicit span (default `domain_km / 111`,
+byte-identical windowed path). `row_latitude_span` derives per-row latitude from (centre, span); temperature
+was already per-row, and precipitation's WIND BELT + frontal base are now evaluated PER ROW (`span == 0` →
+the single-belt legacy, so the public `compute_precipitation` and the h=1 tests stay byte-identical). A wide
+span crosses several belts — trade-wind vs westerly rows, the subtropical dry band — which is the point.
+
+This is REAL physics (temperature, wind, precip → biomes), so — unlike the ratio — it belongs in the climate
+computation and a change legitimately re-runs it. It is a SEPARATE slider from the ratio: a cosmetic river
+adjustment must not upend the biomes, and a wish for climatic diversity must not change the hydrology.
+
+Table (2048², centre 45°; land-biome distribution + temperature range):
+
+| span | T range | biomes |
+|-----:|:--------|:-------|
+| 3.6° | −13…13 °C | temperate forest 68% · rainforest 14% · taiga 14% · tundra 1% |
+| 10°  | −14…15 °C | temperate forest 69% · rainforest 13% · taiga 13% · tundra 2% |
+| 27°  | −20…19 °C | temperate forest 63% · taiga 16% · rainforest 10% · tundra 5% · **steppe 4%** |
+
+Diversity grows with span (tundra 1%→5%, steppe appears at 27°). A temperate CENTRE (45°) never reaches the
+subtropics, so no true desert — moving the CENTRE down does. Recommended for a diverse island: **centre 38°,
+span 27°** → T −15…22 °C, steppe 41% · temperate forest 19% · savanna 15% · rainforest 9% · taiga 9% ·
+tropical rainforest 3% · tundra 2% (a dry belt, a forest belt, alpine tundra — one island). Renders:
+`exports/sculpt/recommended_{hydro,biomes}.png`.
+
+## Finding 26 — Manifest: both factors recorded for the consumer
+
+A 100 m river on a 400 km island, or tundra beside desert, would read as a bug to anyone taking the exported
+data literally. So `ContinentMeta`/`Continent` (manifest `continent` block) now carry `geographic_scale_ratio`
+(default 1.0, serde-defaulted for old manifests) and `latitude_span_deg` (the climatic span behind the
+temperature/precip/biome layers). Living Landz must read the ratio before treating river sizes as literal,
+and the span to understand the climatic gradient. Both are independent knobs in the config, the UI (two
+sliders) and the manifest, as required.

@@ -111,6 +111,7 @@ impl Default for RiverConfig {
 // ── Results ─────────────────────────────────────────────────────────────
 
 /// Result of the heavy flow computation (Phase A).
+#[derive(Debug, Clone)]
 pub struct FlowResult {
     pub filled: GridF32,
     pub direction: Vec<u8>,
