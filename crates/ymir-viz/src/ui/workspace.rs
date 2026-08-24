@@ -1476,6 +1476,9 @@ fn preview_color_image(coarse: &ymir_core::grid::GridF32) -> egui::ColorImage {
         let [r, g, b] = relief_color(coarse.data[k]);
         rgba[k * 4..k * 4 + 4].copy_from_slice(&[r, g, b, 255]);
     }
+    // North-up view (Finding 27): mirror the south-first coarse field so the preview
+    // matches the generated HD map (both show north at the top).
+    flip_rows_rgba(&mut rgba, w, h);
     egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba)
 }
 
@@ -1736,7 +1739,9 @@ fn render_preview(ui: &mut egui::Ui, ws: &mut WorkspaceState, preview: &PreviewS
                 ws.pan_accum[0] -= step_x as f32 * ppc;
                 ws.pan_accum[1] -= step_y as f32 * ppc;
                 ws.offset_cells[0] = (ws.offset_cells[0] - step_x).rem_euclid(grid);
-                ws.offset_cells[1] = (ws.offset_cells[1] - step_y).rem_euclid(grid);
+                // North-up view (Finding 27): the preview is mirrored vertically, so a
+                // downward drag must roll the frame the opposite way to follow the cursor.
+                ws.offset_cells[1] = (ws.offset_cells[1] + step_y).rem_euclid(grid);
                 ws.panned = ws.offset_cells != ws.auto_offset_cells;
             }
         }
@@ -1856,10 +1861,11 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                 uv.min.x + (rel.x / resp.rect.width()).clamp(0.0, 0.999) * (uv.max.x - uv.min.x);
             let fy =
                 uv.min.y + (rel.y / resp.rect.height()).clamp(0.0, 0.999) * (uv.max.y - uv.min.y);
-            let x = (fx * hd.width as f32) as usize;
-            let y = (fy * hd.height as f32) as usize;
-            let cx = x.min(hd.width - 1);
-            let cy = y.min(hd.height - 1);
+            let cx = ((fx * hd.width as f32) as usize).min(hd.width - 1);
+            // The texture is north-up mirrored (Finding 27); the DATA cell is south-first,
+            // so the hovered data row is the mirror of the texture row.
+            let tex_row = ((fy * hd.height as f32) as usize).min(hd.height - 1);
+            let cy = (hd.height - 1) - tex_row;
             if let Some(rm) = ws.river_map.as_ref() {
                 ws.hover = Some(inspect_cell(&hd, rm, cx, cy));
                 ws.hover_xy = Some((cx, cy));
@@ -1870,7 +1876,8 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             let uvw = uv.max.x - uv.min.x;
             let uvh = uv.max.y - uv.min.y;
             let ncx = (cx as f32 + 0.5) / hd.width as f32;
-            let ncy = (cy as f32 + 0.5) / hd.height as f32;
+            // Screen v of the data cell = the texture (north-up) row, i.e. its mirror.
+            let ncy = ((hd.height - 1 - cy) as f32 + 0.5) / hd.height as f32;
             let sx = resp.rect.left() + ((ncx - uv.min.x) / uvw) * resp.rect.width();
             let sy = resp.rect.top() + ((ncy - uv.min.y) / uvh) * resp.rect.height();
             let bw = ((1.0 / hd.width as f32 / uvw) * resp.rect.width()).max(8.0);
@@ -1891,8 +1898,8 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                 egui::StrokeKind::Middle,
             );
 
-            // Hover coord readout (top-right).
-            let txt = format!("x {x}  y {y}");
+            // Hover coord readout (top-right) — the DATA cell (south-first indices).
+            let txt = format!("x {cx}  y {cy}");
             let anchor = egui::pos2(resp.rect.right() - 8.0, resp.rect.top() + 8.0);
             let galley = ui.painter().layout_no_wrap(
                 txt,
@@ -2178,7 +2185,22 @@ fn layer_color_image(
     if overlay {
         draw_river_overlay(&mut rgba, hd);
     }
+    // Finding 27 — the field is stored y=0=SOUTH (the export/LL contract); the VIEWER
+    // shows NORTH-UP, so mirror the texture rows here. The DATA, the export and the
+    // inspector's cell lookup all stay south-first; only the pixels are flipped.
+    flip_rows_rgba(&mut rgba, w, h);
     egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba)
+}
+
+/// Vertically mirror a row-major RGBA buffer in place: display row `j` ↔ data row
+/// `h-1-j`. Turns the south-first stored field into a north-up image (Finding 27).
+fn flip_rows_rgba(rgba: &mut [u8], w: usize, h: usize) {
+    for j in 0..h / 2 {
+        let (a, b) = (j * w * 4, (h - 1 - j) * w * 4);
+        for k in 0..w * 4 {
+            rgba.swap(a + k, b + k);
+        }
+    }
 }
 
 /// Draw the river network onto `rgba` (row-major, w×h): each segment as a polyline,

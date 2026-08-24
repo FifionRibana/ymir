@@ -3628,6 +3628,98 @@ fn endorheic_water_balance() {
     eprintln!("   (expected: ~all EXO, dry<sea ≈ 0 — overflow the above-sea rim → ordinary lakes)");
 }
 
+/// STEP 3 — southern-hemisphere mirror. All latitude functions use |lat|, so centre −45°
+/// must be the exact VERTICAL MIRROR of centre +45° (same span). Asserts the temperature
+/// field mirrors row-for-row and renders both biome maps for the eye.
+#[test]
+#[ignore]
+fn southern_hemisphere_mirror() {
+    use std::path::Path;
+    use ymir_core::climate::biomes::Biome;
+    use ymir_core::climate::precipitation::{PrecipParams, wind_zonal_dir};
+    use ymir_core::climate::{c1_biomes_classified, c1_climate_placed};
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain, span) = (2048usize, 400.0f32, 27.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let north = c1_climate_placed(&field, &ss, 45.0, span, &PrecipParams::default(), domain);
+    let south = c1_climate_placed(&field, &ss, -45.0, span, &PrecipParams::default(), domain);
+    // Temperature mirror on a FLAT field (isolate the latitude term — the real relief's
+    // altitude differs between row j and row ny-1-j, which is terrain asymmetry, not a
+    // climate bug): south row j must EXACTLY equal north row (ny-1-j).
+    let flat = GridF32::new(t, t, 0.62);
+    let nf = c1_climate_placed(&flat, &ss, 45.0, span, &PrecipParams::default(), domain);
+    let sf = c1_climate_placed(&flat, &ss, -45.0, span, &PrecipParams::default(), domain);
+    let row_mean = |g: &ymir_core::grid::GridF32, j: usize| (0..t).map(|i| g.data[j * t + i]).sum::<f32>() / t as f32;
+    let mut max_dev = 0.0f32;
+    for j in 0..t {
+        let d = (row_mean(&nf.temperature, j) - row_mean(&sf.temperature, t - 1 - j)).abs();
+        max_dev = max_dev.max(d);
+    }
+    eprintln!("\n=== STEP 3 — southern-hemisphere mirror (centre ±45°, span {span}°) ===");
+    eprintln!("  wind_zonal_dir: +45°→{} , −45°→{} (same sign: westerlies are W→E in BOTH hemispheres — correct)", wind_zonal_dir(45.0), wind_zonal_dir(-45.0));
+    eprintln!("  temperature mirror deviation on flat field (N[j] vs S[ny-1-j]): max {max_dev:.4} °C (≈0 ⇒ exact mirror)");
+    assert!(max_dev < 0.01, "south must be the exact vertical mirror of north (flat field)");
+    // Renders for the eye.
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    std::fs::create_dir_all(&dir).ok();
+    for (tag, clim) in [("north45", &north), ("south45", &south)] {
+        let biomes = c1_biomes_classified(&field, clim, &vec![0u32; t * t]);
+        let mut b = image::ImageBuffer::new(t as u32, t as u32);
+        for (k, px) in b.pixels_mut().enumerate() {
+            // north-up view: mirror rows (row 0 = south drawn at bottom).
+            let (x, y) = (k % t, k / t);
+            let src = (t - 1 - y) * t + x;
+            let c = biomes[src].color();
+            *px = image::Rgb([c[0], c[1], c[2]]);
+        }
+        b.save(dir.join(format!("hemisphere_{tag}.png"))).unwrap();
+    }
+    eprintln!("  → exports/sculpt/hemisphere_{{north45,south45}}.png (should be vertical mirrors)");
+}
+
+/// STEP 1 (read-only) — latitude-orientation verdict. On the DATA at centre 60°/span 40°
+/// (40°–80°): which grid row holds the high (polar) latitude, is it warmer or colder, and
+/// where does each consumer put it. Decides renderer-vs-computation without touching anything.
+#[test]
+#[ignore]
+fn latitude_orientation_diagnosis() {
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::climate::temperature::row_latitude_span;
+    let ss = SteinSteinParams::default();
+    let (t, domain) = (128usize, 400.0f32);
+    let land = GridF32::new(t, t, 0.62); // flat land everywhere → temperature is pure latitude
+    let (centre, span) = (60.0f32, 40.0f32);
+    let clim = c1_climate_placed(&land, &ss, centre, span, &PrecipParams::default(), domain);
+    let row_mean = |j: usize| {
+        (0..t).map(|i| clim.temperature.data[j * t + i]).sum::<f32>() / t as f32
+    };
+    let (lat0, latN) = (row_latitude_span(0, t, centre, span), row_latitude_span(t - 1, t, centre, span));
+    eprintln!("\n=== STEP 1 — latitude orientation (DATA, centre 60° span 40°) ===");
+    eprintln!("  row j=0     → latitude {lat0:.0}° , mean T {:.1} °C", row_mean(0));
+    eprintln!("  row j={:<4} → latitude {latN:.0}° , mean T {:.1} °C", t - 1, row_mean(t - 1));
+    eprintln!("  DATA: row 0 = {lat0:.0}° (WARM, south) ; row max = {latN:.0}° (COLD, polar).");
+    eprintln!("  CONVENTION (container header): row-major, y=0 = SOUTH edge → row 0 = south = LOW |lat|. Data HONOURS it.");
+    eprintln!("  EXPORT: writes the internal grid row-major (row 0 first) → y=0=south. LL reads south-first. CORRECT.");
+    eprintln!("  RENDERER (workspace.rs ~1748): 'Row 0 (y=0=south) is at the TOP' → south/warm at TOP, polar/cold (tundra) at BOTTOM.");
+    eprintln!("  VERDICT: computation + export CORRECT (match the documented y=0=south); the VIEW draws south-up → visual inversion. Fix the VIEW only.");
+    assert!(row_mean(0) > row_mean(t - 1), "row 0 (south, low lat) must be WARMER than the polar row — data sanity");
+}
+
 /// Findings 24–25 — RECOMMENDED render for this island: geographic ratio 7.5 (ships/barges
 /// reachable) + latitude centre 38° span 27° (subtropics→cool-temperate: desert↔tundra). Writes
 /// the hydrology overlay (signified widths, lakes by type) + the biome map, and reports tables.

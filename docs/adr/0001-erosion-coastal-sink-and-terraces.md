@@ -1016,3 +1016,34 @@ data literally. So `ContinentMeta`/`Continent` (manifest `continent` block) now 
 temperature/precip/biome layers). Living Landz must read the ratio before treating river sizes as literal,
 and the span to understand the climatic gradient. Both are independent knobs in the config, the UI (two
 sliders) and the manifest, as required.
+
+## Finding 27 — Latitude gradient looked inverted: the VIEW, not the data
+
+The author reported tundra at the BOTTOM of the map (centre 60°/span 40° → 40°–80°) where the polar 80°
+end should be at the top. STEP 1 (read-only) settled it on the DATA: `row_latitude_span(j=0)` =
+`centre − span/2` = the LOWEST latitude, and the container invariant is **row-major, `y = 0` = SOUTH**, so
+row 0 is the south (warm) edge — confirmed by the temperature field: row 0 = 40° = 6.1 °C, last row = 80° =
+−23.9 °C. The export writes the internal south-first grid row-major → honours `y=0=south`; **Living Landz
+reads it correctly.** The renderer, however, drew row 0 at the TOP pixel (workspace.rs: "Row 0 (y=0=south)
+is at the top") → south-up → the polar end at the bottom. **Verdict: computation + export CORRECT; the VIEW
+was upside-down.** Fixing `row_latitude` would have BROKEN the export/LL — the classic Ymir y-up trap.
+
+Convention each consumer assumes: export rasters — `y=0=south` (honoured); vector layers (coastline /
+cliffs / rivers / lakes) — same cell space as the rasters (honoured); LL reader — `y=0=south` (correct);
+the viz renderer + cell inspector — were drawing/reading row 0 at the top (the bug).
+
+Fix — VIEW ONLY (`flip_rows_rgba`): the HD texture and the coarse preview are mirrored vertically at build
+(north-up); the inspector's hover→cell lookup, the reticle, the coordinate readout and the preview
+drag-to-reframe are mirrored to match. `row_latitude`, the temperature/precip fields, the export and LL
+are UNTOUCHED. Regression test on the DATA (a display flip cannot fool it):
+`row_zero_is_south_and_warmer_northern_hemisphere` asserts row 0 is the lower latitude and, on a flat
+field, warmer than the polar row.
+
+STEP 3 — southern hemisphere. Every latitude function (`sea_level_temperature`, `belt_factor`,
+`wind_zonal_dir`, `subtropical_suppression`) already uses `|lat|`, so there is no sign to miss: centre −45°
+is the EXACT vertical mirror of +45° (`southern_hemisphere_mirror`: temperature deviation 0.0000 °C on a
+flat field). `wind_zonal_dir` returns the same sign for ±45° — correct, because the westerlies blow W→E in
+BOTH hemispheres (the zonal component does not flip across the equator; only the meridional one does, which
+the 1-D zonal transport does not use). A span crossing the equator (centre 0°) is handled per row via
+`|lat|` (ITCZ peak at 0°). So the southern hemisphere and equator crossings mirror consistently across
+temperature, wind and precipitation.

@@ -121,4 +121,27 @@ mod tests {
         assert!(sea_level_temperature(0.0) > sea_level_temperature(45.0));
         assert!(sea_level_temperature(45.0) > sea_level_temperature(90.0));
     }
+
+    /// Finding 27 — orientation invariant pinned on the DATA (a display flip cannot
+    /// fool this): with `y = 0 = SOUTH`, row 0 is the LOWER latitude, so in the northern
+    /// hemisphere row 0 is WARMER than the last (northern, polar) row. If this ever
+    /// fails, `row_latitude_*` / the temperature field was inverted — NOT the renderer.
+    #[test]
+    fn row_zero_is_south_and_warmer_northern_hemisphere() {
+        let ss = SteinSteinParams::default();
+        let ny = 64usize;
+        // row latitude: south edge (row 0) is the lower latitude.
+        assert!(
+            row_latitude_span(0, ny, 60.0, 40.0) < row_latitude_span(ny - 1, ny, 60.0, 40.0),
+            "row 0 must be the SOUTH (lower-latitude) edge"
+        );
+        // temperature field: flat land → row 0 (south) warmer than the polar last row.
+        let land = GridF32::new(8, ny, 0.62);
+        let t = compute_temperature_span(&land, &ss, 60.0, 40.0);
+        let row_mean = |j: usize| (0..8).map(|i| t.get(i as i32, j as i32)).sum::<f32>() / 8.0;
+        assert!(
+            row_mean(0) > row_mean(ny - 1),
+            "northern hemisphere: south row (0) must be warmer than the north row"
+        );
+    }
 }
