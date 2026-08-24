@@ -3628,23 +3628,20 @@ fn endorheic_water_balance() {
     eprintln!("   (expected: ~all EXO, dry<sea ≈ 0 — overflow the above-sea rim → ordinary lakes)");
 }
 
-/// River-overlay render (2048²) — the SAME visualization the viz overlay draws: relief base,
-/// rivers coloured by navigability, ORPHAN reaches (no downstream, not at a sink) in RED. Writes
-/// a PNG and reports the orphan count (0 on the clipped network). Mirrors DEFECT A validation.
+/// Finding 22 — channel-width law audit (2048², CLIMATE discharge): sanity table vs real
+/// rivers, per-Strahler width in metres AND cells, lake-outlet discontinuity. TASK 1–3.
 #[test]
 #[ignore]
-fn river_overlay_render() {
-    use std::path::Path;
+fn width_law_audit() {
     use ymir_core::climate::c1_climate;
     use ymir_core::climate::precipitation::PrecipParams;
     use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
-    use ymir_core::tectonics_c1::drainage::{
-        DrainageClimate, Navigability, below_sea_basin_lakes, clip_rivers_to_lakes,
-    };
+    use ymir_core::tectonics_c1::drainage::{DrainageClimate, below_sea_basin_lakes, clip_rivers_to_lakes};
     use ymir_core::terrain::flow::breach_monotone;
     let ss = SteinSteinParams::default();
     let seed_u = 10481999410520546993u64;
     let (t, domain) = (2048usize, 400.0f32);
+    let cell_m = domain * 1000.0 / t as f32;
     let cell_km2 = (domain / t as f32).powi(2);
     let (state, _run) = coarse_state(seed_u);
     let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
@@ -3659,19 +3656,140 @@ fn river_overlay_render() {
     let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
     let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
     let dcfg = C1DrainageConfig::default();
-    let mut dr = c1_drainage(&field, None, &C1DrainageConfig::default(), &ss);
     let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
     let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
     for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
     dr.lakes.extend(bs);
     clip_rivers_to_lakes(&mut dr);
 
-    // Relief base (greyscale hillshade), lakes tinted blue, rivers by navigability, orphans RED.
+    eprintln!("\n=== Finding 22 — width law w = 5·Q^0.5 (Q in m³/s), 2048² climate ===");
+    // TASK 1 — sanity table vs real rivers (Q = runoff·area → m³/s; a=5, b=0.5).
+    let sec_yr = 3.155_76e7f32;
+    let q = |area_km2: f32, r_mm: f32| area_km2 * r_mm * 1000.0 / sec_yr;
+    let wof = |qm3s: f32| 5.0 * qm3s.sqrt();
+    let (qh, qm, qt) = (q(5.0, 583.0), q(888.0, 583.0), q(16000.0, 583.0));
+    eprintln!("  TASK1 sanity (R=583 mm/yr): headwater 5km² Q={qh:.2} w={:.1}m | mid 888km² Q={qm:.1} w={:.0}m | Thames 16000km² Q={qt:.0} w={:.0}m", wof(qh), wof(qm), wof(qt));
+    eprintln!("        trunk/headwater width ratio = {:.0}× (was ~9× area-based on medians)", wof(qt) / wof(qh));
+    // TASK 1/3 — per-Strahler width distribution, metres AND cells (at 2048: {cell_m:.0} m/cell).
+    let mut per: std::collections::BTreeMap<u8, Vec<f32>> = std::collections::BTreeMap::new();
+    for (i, s) in dr.rivers.segments.iter().enumerate() {
+        per.entry(s.strahler_order).or_default().push(dr.segment_width_m.get(i).copied().unwrap_or(0.0));
+    }
+    eprintln!("  TASK1/3 per-order width (median [p90], metres / cells @ {:.0} m/cell):", cell_m);
+    for (o, v) in &per {
+        let mut w = v.clone(); w.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let med = w[w.len() / 2];
+        let p90 = w[(w.len() * 9 / 10).min(w.len() - 1)];
+        eprintln!("     S{o} (n{}): {med:.1} m [{p90:.1}] = {:.2} [{:.2}] cells", w.len(), med / cell_m, p90 / cell_m);
+    }
+    let all_w: Vec<f32> = dr.segment_width_m.iter().copied().filter(|&x| x > 0.0).collect();
+    let (wmin, wmax) = (all_w.iter().cloned().fold(f32::MAX, f32::min), all_w.iter().cloned().fold(0.0, f32::max));
+    eprintln!("     network width range {wmin:.1}–{wmax:.0} m (ratio {:.0}×) = {:.3}–{:.2} cells", wmax / wmin, wmin / cell_m, wmax / cell_m);
+    // TASK 2 — lake-outlet discontinuity: for each exorheic lake, max inflow width vs outlet width.
+    use ymir_core::tectonics_c1::drainage::LakeType;
+    let lake_id_at = |x: u32, y: u32| -> u32 {
+        for dy in -1i32..=1 { for dx in -1i32..=1 {
+            let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+            if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                let id = dr.lake_map[ny as usize * t + nx as usize];
+                if id != 0 { return id; }
+            }
+        }} 0
+    };
+    let exo: std::collections::HashSet<u32> = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Exorheic).map(|l| l.base.id).collect();
+    let mut inflow: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
+    let mut outflow: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
+    for (i, s) in dr.rivers.segments.iter().enumerate() {
+        let wq = dr.segment_width_m.get(i).copied().unwrap_or(0.0);
+        let &(fx, fy) = s.points.first().unwrap();
+        let &(lx, ly) = s.points.last().unwrap();
+        let lin = lake_id_at(lx, ly); // ends at a lake → inflow
+        if exo.contains(&lin) { let e = inflow.entry(lin).or_insert(0.0); *e = e.max(wq); }
+        let lout = lake_id_at(fx, fy); // starts at a lake → outlet
+        if exo.contains(&lout) { let e = outflow.entry(lout).or_insert(0.0); *e = e.max(wq); }
+    }
+    let mut ratios = Vec::new();
+    for (id, &win) in &inflow {
+        if let Some(&wout) = outflow.get(id) { if win > 0.0 { ratios.push(wout / win); } }
+    }
+    ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    if ratios.is_empty() {
+        eprintln!("  TASK2 lake-outlet: no exorheic lake with both inflow+outlet reaches at this res");
+    } else {
+        eprintln!("  TASK2 lake-outlet width ratio outlet/max-inflow: n={} min {:.2} median {:.2} max {:.2} (≈1 = continuous; discharge carries through the lake)", ratios.len(), ratios[0], ratios[ratios.len()/2], ratios[ratios.len()-1]);
+    }
+}
+
+/// River-overlay render (2048²) — the SAME visualization the viz overlay draws: relief base,
+/// rivers coloured by navigability, ORPHAN reaches (no downstream, not at a sink) in RED. Writes
+/// a PNG and reports the orphan count (0 on the clipped network). Mirrors DEFECT A validation.
+#[test]
+#[ignore]
+fn river_overlay_render() {
+    overlay_render(2048);
+}
+
+/// TASK 4 — the overlay render at PRODUCTION 8192². Slow (~minutes); confirms 0 orphans at
+/// scale, flaring toward the coast, no discontinuity at lake outlets, and width-in-cells.
+#[test]
+#[ignore]
+fn river_overlay_render_8192() {
+    overlay_render(8192);
+}
+
+/// Render the exact viz overlay to a PNG at resolution `t`: hillshade base, EVERY water body
+/// by lake_type (exorheic blue / endorheic teal — TASK 5), rivers coloured by navigability with
+/// thickness by Strahler order, ORPHAN reaches RED. Uses the CLIMATE discharge path so widths
+/// are physical. Reports orphan count, water-body count, per-order width in CELLS (TASK 3), and
+/// the lake-outlet discontinuity (TASK 2).
+fn overlay_render(t: usize) {
+    use std::path::Path;
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageClimate, LakeType, Navigability, below_sea_basin_lakes, clip_rivers_to_lakes,
+    };
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let domain = 400.0f32;
+    let cell_m = domain * 1000.0 / t as f32;
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
+    let dcfg = C1DrainageConfig::default();
+    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
+    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    dr.lakes.extend(bs);
+    clip_rivers_to_lakes(&mut dr);
+
+    let endorheic: std::collections::HashSet<u32> =
+        dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).map(|l| l.base.id).collect();
+    // Hillshade base; EVERY water body by type (TASK 5).
     let hs = hillshade(&field, domain, ss.depth_scale_m as f32);
     let mut img = vec![0u8; t * t * 3];
     for k in 0..t * t {
         let g = (hs.data[k].clamp(0.0, 1.0) * 255.0) as u8;
-        let c = if dr.lake_map[k] != 0 { [30, 90, 180] } else { [g, g, g] };
+        let id = dr.lake_map[k];
+        let c = if id != 0 {
+            if endorheic.contains(&id) { [30, 150, 140] } else { [30, 90, 180] }
+        } else {
+            [g, g, g]
+        };
         img[k * 3] = c[0];
         img[k * 3 + 1] = c[1];
         img[k * 3 + 2] = c[2];
@@ -3724,10 +3842,23 @@ fn river_overlay_render() {
     for (k, px) in buf.pixels_mut().enumerate() {
         *px = image::Rgb([img[k * 3], img[k * 3 + 1], img[k * 3 + 2]]);
     }
-    let path = dir.join("river_overlay_2048.png");
+    let path = dir.join(format!("river_overlay_{t}.png"));
     buf.save(&path).unwrap();
-    eprintln!("\n=== river overlay render (2048², clipped network) ===");
-    eprintln!("  {} segments | ORPHAN(red) {orphans} | → {}", dr.rivers.segments.len(), path.display());
+    // TASK 3 — width in CELLS per Strahler order (what LL renders).
+    let mut per: std::collections::BTreeMap<u8, Vec<f32>> = std::collections::BTreeMap::new();
+    for (i, s) in dr.rivers.segments.iter().enumerate() {
+        per.entry(s.strahler_order).or_default().push(dr.segment_width_m.get(i).copied().unwrap_or(0.0));
+    }
+    let n_bodies = dr.lakes.len();
+    eprintln!("\n=== overlay render ({t}², clipped, climate discharge) → {} ===", path.display());
+    eprintln!("  {} segments | ORPHAN(red) {orphans} | water bodies drawn {n_bodies} ({} endorheic)", dr.rivers.segments.len(), endorheic.len());
+    eprintln!("  TASK3 width per order in CELLS @ {:.0} m/cell (median [max]):", cell_m);
+    for (o, v) in &per {
+        let mut w = v.clone(); w.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let med = w[w.len() / 2];
+        let mx = *w.last().unwrap();
+        eprintln!("     S{o} (n{}): {:.2} [{:.2}] cells  ({:.0} [{:.0}] m)", w.len(), med / cell_m, mx / cell_m, med, mx);
+    }
 }
 
 /// DEFECT A/B/C audit — river-export selection + endpoints, Desert cells' precip, per-order

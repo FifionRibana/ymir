@@ -23,9 +23,12 @@ struct RiverSegmentView<'a> {
     drainage_km2: f32,
     /// Navigability class (`segment_navigability[i]`).
     navigability: Navigability,
+    /// Mean discharge in m³/s (`segment_discharge_m3s[i]`) — runoff × catchment.
+    discharge_m3s: f32,
     /// Bankfull channel width in metres (`segment_width_m[i]`), hydraulic geometry
-    /// `w = 1.2·Q^0.5` (discharge ≈ effective drainage area). A rendering hint
-    /// (stroke width); topology stays continuous regardless of any display cutoff.
+    /// `w = 5·Q^0.5` on the DISCHARGE. A rendering hint (stroke width) — topology
+    /// stays continuous regardless of any display cutoff, and at production scale
+    /// most reaches are sub-cell, so the consumer must render this as a stroke.
     width_m: f32,
     /// Long profile — bed elevation (m) at each `segment.points`, upstream→downstream
     /// (`segment_profile_m[i]`).
@@ -56,6 +59,7 @@ pub fn rivers_json(drainage: &C1DrainageResult) -> Vec<u8> {
                 .get(i)
                 .copied()
                 .unwrap_or(Navigability::NonNavigable),
+            discharge_m3s: drainage.segment_discharge_m3s.get(i).copied().unwrap_or(0.0),
             width_m: drainage.segment_width_m.get(i).copied().unwrap_or(0.0),
             profile_m: drainage.segment_profile_m.get(i).map(|v| v.as_slice()).unwrap_or(&[]),
         })
@@ -115,7 +119,8 @@ mod tests {
             rivers: RiverNetwork { segments: vec![seg] },
             segment_drainage_km2: vec![55_000.0],
             segment_navigability: vec![Navigability::Ship],
-            segment_width_m: vec![281.0],
+            segment_discharge_m3s: vec![520.0],
+            segment_width_m: vec![114.0],
             segment_profile_m: vec![vec![1200.0, 1150.0, 1130.0]],
             lakes: vec![lake],
             lake_map: vec![0; 16],

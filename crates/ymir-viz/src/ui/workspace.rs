@@ -1160,6 +1160,7 @@ fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
     };
     kv(ui, "Drainage", drainage);
     if let Some(r) = &c.river {
+        kv(ui, "Débit", format!("{:.1} m³/s", r.discharge_m3s));
         kv(ui, "Largeur chenal", format!("{:.0} m", r.width_m));
         kv(ui, "Bassin versant", format!("{:.0} km²", r.drainage_km2));
     }
@@ -2139,6 +2140,24 @@ fn layer_color_image(
 fn draw_river_overlay(rgba: &mut [u8], hd: &HdResult) {
     let (w, h) = (hd.width, hd.height);
     let d = &hd.drainage;
+    // TASK 5 — draw EVERY water body the export carries (detect_lakes AND below-sea basins,
+    // both in `lake_map`) so a channel never appears to stop in the void; distinguish by
+    // lake_type: exorheic (through-flow) deep blue, endorheic (closed, saline) teal.
+    let endorheic: std::collections::HashSet<u32> = d
+        .lakes
+        .iter()
+        .filter(|lk| lk.lake_type == LakeType::Endorheic)
+        .map(|lk| lk.base.id)
+        .collect();
+    for k in 0..w * h {
+        let id = d.lake_map[k];
+        if id != 0 {
+            let c = if endorheic.contains(&id) { [30, 150, 140] } else { [30, 90, 180] };
+            rgba[k * 4] = c[0];
+            rgba[k * 4 + 1] = c[1];
+            rgba[k * 4 + 2] = c[2];
+        }
+    }
     // Sea membership at the unified C1 sea level (eroded is normalised, sea = 0.5).
     let at_sink = |x: u32, y: u32| -> bool {
         let (x, y) = (x as i32, y as i32);

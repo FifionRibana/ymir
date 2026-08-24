@@ -896,3 +896,57 @@ elevation (m) along each segment's own points, upstream→downstream. Both surfa
 (`width_m`, `profile_m`). Per-Strahler-order median width (2048², post-clip) grows downstream —
 **S1 13 m · S2 21 m · S3 37 m · S4 68 m · S5 114 m** — sanity-matching a Thames-scale trunk
 (~16 000 km² → ~150 m) and metre-scale headwaters.
+
+## Finding 22 — DEFECT C corrected: width from DISCHARGE (m³/s), not drainage area
+
+Finding 21's law fed the drainage AREA in km² into `w = a·Q^b` — a coefficient calibrated for a
+discharge in m³/s. The inspector settled it: 888 km² of catchment read 36 m of width, and `36 = 1.2·√888`
+only because 888 (an area) was used as Q. A real discharge check: 888 km² at 583 mm/yr of runoff is
+~16 m³/s, so the dimensionally-correct width is `5·√16 ≈ 20 m`, not 36. The area-as-discharge error also
+compressed the distribution (area^0.5 grows too slowly) and — being area-only — could not respond to
+climate (a dry reach and a wet reach of equal area drew identically).
+
+Fix: carry a per-segment **discharge in m³/s** — `Q = runoff·catchment`, from `runoff_accumulation`
+(mm·km²/yr → m³/s via `runoff_km2_to_m3s`, 1 mm·km² = 1000 m³, `SECONDS_PER_YEAR = 3.156e7`) — and derive
+`w = a·Q^b` with **`a = 5.0`, `b = 0.5`** (mid-range natural-channel bankfull coefficient; `b` the classic
+downstream exponent). A dry/endorheic reach → Q=0 → 0 width. The viz relief-v3 path now computes the final
+drainage WITH the climate (breach first → climate on the conditioned field → drainage with discharge),
+where before it passed `climate=None` (pure geometry). `segment_discharge_m3s` is stored, cached, exported
+(`discharge_m3s`), and shown in the inspector ("Débit").
+
+Sanity table (R = 583 mm/yr, `w = 5·√Q`): headwater 5 km² → Q 0.09 → **1.5 m**; mid 888 km² → Q 16 →
+**20 m**; Thames-scale 16 000 km² → Q 296 → **86 m** (mean-annual anchored; bankfull would be larger). The
+ideal-extreme trunk/headwater width RATIO is **~57×** (vs the ~9× the compressed medians showed). The
+realized per-order medians stay modest (S1 5.8 m → S5 13.7 m at 2048²) because median catchments per order
+are not the extremes and runoff varies + endorheic sinks cut discharge — but the law is now physical and
+climate-responsive, which is the point.
+
+**Width is sub-cell at production.** At 8192² (49 m/cell) every reach is < 1 cell — per-order median
+0.04–0.14, MAX **0.55 cells**. The raster cannot express any flaring; a consumer MUST render channels as a
+stroke whose width comes from `width_m` (see the LL note below). Reported by `width_law_audit` +
+`river_overlay_render_8192`.
+
+## Finding 23 — DEFECT A/TASK 2 + TASK 5: lake-outlet width continuity + drawing every water body
+
+**Lake-outlet width (TASK 2).** The author saw channels wider ABOVE a depression than below it: the old
+per-reach area restarted small at the outlet. Now width comes from discharge, and `runoff_accumulation`
+routes flow ACROSS an exorheic lake (held flat, routed to its outlet), so the outlet reach's max discharge
+= the whole upstream catchment; `clip_rivers_to_lakes` makes the outlet reach INHERIT the parent
+discharge/width rather than recomputing from its local area. An exorheic outlet is therefore continuous
+with its inflow; an endorheic outlet is dropped (0 width — the water dies in the basin), which was already
+correct. (This seed's below-sea basins are all endorheic, so there is no exorheic through-flow lake to
+tabulate; the continuity is structural.)
+
+**Every water body in the overlay (TASK 5).** The Ymir map's river overlay drew rivers but NO lakes, so a
+channel terminating in a basin looked like it stopped in the void — the very "truncated outlet" impression
+that cost earlier passes. The export always carried the bodies (`detect_lakes` + below-sea, both in
+`lake_map`); the overlay just didn't read them. Fix: the overlay now fills every `lake_map` cell, coloured
+by `lake_type` — exorheic deep blue, **endorheic teal** — so the count drawn equals the count exported (gap
+→ 0) and the author can read regime at a glance. Confirmed at 8192²: 4178 river reaches, **0 orphans**, 6
+endorheic below-sea basins drawn in teal, channels terminating in them.
+
+**Consumer note (Living Landz — do NOT implement here).** LL renders rivers at CONSTANT width and flattens
+every water body into one class. Both `width_m` and `lake_type` are now exported but ignored downstream —
+that is where the value is lost. Because channel width is sub-cell even at 8192² (Finding 22), LL MUST
+render rivers as a stroke sized by `width_m`, and distinguish lakes by `lake_type` (endorheic = saline, no
+fish, undrinkable). Added to the LL-side backlog.

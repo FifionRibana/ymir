@@ -34,7 +34,9 @@ pub struct RiverCellInfo {
     pub segment: usize,
     pub navigability: Navigability,
     pub drainage_km2: f32,
-    /// Bankfull channel width in metres (`segment_width_m`, DEFECT C).
+    /// Mean discharge in m³/s (`segment_discharge_m3s`, Finding 22).
+    pub discharge_m3s: f32,
+    /// Bankfull channel width in metres (`segment_width_m`, Finding 22 — from discharge).
     pub width_m: f32,
 }
 
@@ -58,6 +60,7 @@ impl RiverCellMap {
                 segment: si,
                 navigability: d.segment_navigability[si],
                 drainage_km2: d.segment_drainage_km2[si],
+                discharge_m3s: d.segment_discharge_m3s.get(si).copied().unwrap_or(0.0),
                 width_m: d.segment_width_m.get(si).copied().unwrap_or(0.0),
             };
             for &(px, py) in &seg.points {

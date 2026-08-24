@@ -596,17 +596,19 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // while carrying the PRE-BREACH lakes (the breach flattens them, so post-breach detection
     // would find none — lakes.json must come from the pre-breach set). Uncached (experimental
     // viz path); the cached drainage below is bypassed when this override is present.
-    let (eroded, drainage_override) = if params.stream_power && params.closures && params.mfd {
+    // Returns the conditioned field + the PRE-BREACH drainage (its lakes/lake_map are
+    // the real water bodies; the breach flattens them so post-breach detection finds
+    // none). The FINAL, discharge-bearing drainage is computed below WITH the climate.
+    let (eroded, prebreach_override) = if params.stream_power && params.closures && params.mfd {
         let (gw, gh) = (eroded.width, eroded.height);
         let prebreach = c1_drainage_windowed(&eroded, None, &dcfg, &ss, window_km);
         let conditioned =
             breach_monotone(&eroded, &prebreach.flow.filled, &prebreach.lake_map, 0.5, gw, gh);
-        let mut dr = c1_drainage_windowed(&conditioned, None, &dcfg, &ss, window_km);
-        let nlk = prebreach.lakes.len();
-        dr.lakes = prebreach.lakes; // keep the real (pre-breach) lakes for lakes.json
-        dr.lake_map = prebreach.lake_map;
-        eprintln!("[HD] relief-v3 breach conditioning: monotone rivers + {nlk} lakes held flat");
-        (conditioned, Some(dr))
+        eprintln!(
+            "[HD] relief-v3 breach conditioning: monotone rivers + {} lakes held flat",
+            prebreach.lakes.len()
+        );
+        (conditioned, Some(prebreach))
     } else {
         (eroded, None)
     };
@@ -628,8 +630,18 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let drainage_hit = sidecar_exists("drainage", dkey.digest());
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Drainage });
     let t = Instant::now();
-    let mut drainage = if let Some(dr) = drainage_override {
-        dr // relief-v3: monotone rivers on the breached field + pre-breach lakes (uncached)
+    let mut drainage = if let Some(prebreach) = prebreach_override {
+        // relief-v3: final drainage on the breached field WITH the climate, so per-segment
+        // DISCHARGE (→ channel width, Finding 22) is real. The breached field has no pits,
+        // so its own lake detection is empty — carry the pre-breach lakes/lake_map instead.
+        let dclim = DrainageClimate {
+            precip_internal: &climate.precipitation,
+            temperature: &climate.temperature,
+        };
+        let mut dr = c1_drainage_windowed(&eroded, Some(&dclim), &dcfg, &ss, window_km);
+        dr.lakes = prebreach.lakes;
+        dr.lake_map = prebreach.lake_map;
+        dr
     } else {
         match cached_c1_drainage_windowed(
             &cache_dir,

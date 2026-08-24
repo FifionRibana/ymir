@@ -182,9 +182,12 @@ pub struct C1DrainageResult {
     pub segment_drainage_km2: Vec<f32>,
     /// Per-segment navigability class (parallel to `rivers.segments`).
     pub segment_navigability: Vec<Navigability>,
+    /// Per-segment mean DISCHARGE in m³/s (parallel to `rivers.segments`): the runoff
+    /// (`precip − PE`) accumulated over the reach's catchment, the water the channel
+    /// actually carries. Drives `segment_width_m` (Finding 22).
+    pub segment_discharge_m3s: Vec<f32>,
     /// Per-segment bankfull channel WIDTH in metres (parallel to `rivers.segments`),
-    /// from hydraulic geometry `w = CHANNEL_WIDTH_A · Q^CHANNEL_WIDTH_B` with the
-    /// discharge proxied by the effective drainage area (`segment_drainage_km2`).
+    /// hydraulic geometry `w = CHANNEL_WIDTH_A · Q^CHANNEL_WIDTH_B` on the DISCHARGE.
     pub segment_width_m: Vec<f32>,
     /// Per-segment LONG PROFILE: bed elevation (metres) at each of the segment's
     /// points, upstream→downstream (parallel to `rivers.segments[i].points`).
@@ -311,8 +314,15 @@ pub fn c1_drainage_windowed(
     // discharge → NonNavigable; allochthonous rivers (humid upstream) keep their
     // accumulated discharge across a dry reach (the Nile). Without `climate` →
     // geometric cell-count drainage area (byte-identical).
-    let (segment_drainage_km2, segment_navigability): (Vec<f32>, Vec<Navigability>) = match climate
-    {
+    // Also carry the per-segment DISCHARGE in m³/s (`runoff·area`, the water actually
+    // routed to the reach) — the physical quantity the channel-width law needs (see
+    // Finding 22). `dr_km2` stays the effective-area proxy that drives the km²
+    // navigability thresholds; discharge drives width.
+    let (segment_drainage_km2, segment_navigability, segment_discharge_m3s): (
+        Vec<f32>,
+        Vec<Navigability>,
+        Vec<f32>,
+    ) = match climate {
         Some(clim) => {
             let mut endorheic = vec![false; w * h];
             for lk in &lakes {
@@ -326,35 +336,46 @@ pub fn c1_drainage_windowed(
             }
             let discharge =
                 runoff_accumulation(heightmap, &flow, clim, cell_km2, Some(&endorheic), w, h);
-            let dr_km2: Vec<f32> = rivers
-                .segments
-                .iter()
-                .map(|s| {
-                    let q = s
-                        .points
-                        .iter()
-                        .map(|&(x, y)| discharge[y as usize * w + x as usize])
-                        .fold(0.0f32, f32::max);
-                    q / REFERENCE_RUNOFF_MM // discharge → effective km² at reference runoff depth
-                })
-                .collect();
+            // Per segment: `q` = max runoff_accum over its cells (mm·km²/yr). The reach's
+            // downstream-most cell carries the largest accumulation, so `max` = the
+            // cumulative catchment discharge at the mouth of the reach — and because
+            // `runoff_accumulation` carries flow ACROSS an exorheic lake (flat, routed to
+            // the outlet), a lake's outlet reach inherits the whole upstream catchment
+            // automatically (Finding 22, TASK 2). An endorheic reach reads 0 (the sink
+            // kills propagation), so its channel width is 0.
+            let mut dr_km2 = Vec::with_capacity(rivers.segments.len());
+            let mut q_m3s = Vec::with_capacity(rivers.segments.len());
+            for s in &rivers.segments {
+                let q = s
+                    .points
+                    .iter()
+                    .map(|&(x, y)| discharge[y as usize * w + x as usize])
+                    .fold(0.0f32, f32::max);
+                dr_km2.push(q / REFERENCE_RUNOFF_MM); // discharge → effective km² at reference depth
+                q_m3s.push(runoff_km2_to_m3s(q));
+            }
             let nav = dr_km2.iter().map(|&km2| cfg.thresholds.classify(km2)).collect();
-            (dr_km2, nav)
+            (dr_km2, nav, q_m3s)
         }
         None => {
             let dr_km2: Vec<f32> = rivers.segments.iter().map(|s| s.max_flow * cell_km2).collect();
             let nav = dr_km2.iter().map(|&km2| cfg.thresholds.classify(km2)).collect();
-            (dr_km2, nav)
+            // No climate → assume the reference runoff depth over the geometric area so a
+            // discharge-consistent width still results (Q = REFERENCE_RUNOFF · area).
+            let q_m3s = dr_km2
+                .iter()
+                .map(|&km2| runoff_km2_to_m3s(REFERENCE_RUNOFF_MM * km2))
+                .collect();
+            (dr_km2, nav, q_m3s)
         }
     };
 
-    // DEFECT C — per-segment channel width (hydraulic geometry) + long profile.
-    // Width scales with the discharge proxied by the effective drainage area; a
-    // dry/endorheic reach (0 effective area) → 0 width (no channel). The profile
-    // is the bed elevation (m) along the segment's own points, upstream→downstream.
-    let segment_width_m: Vec<f32> = segment_drainage_km2
+    // Finding 22 (DEFECT C corrected) — channel WIDTH from DISCHARGE, not area. Hydraulic
+    // geometry `w = a·Q^b` (Q in m³/s). A dry/endorheic reach (Q=0) → 0 width (no channel).
+    // The long profile is the bed elevation (m) along the segment's own points, up→down.
+    let segment_width_m: Vec<f32> = segment_discharge_m3s
         .iter()
-        .map(|&km2| CHANNEL_WIDTH_A * km2.max(0.0).powf(CHANNEL_WIDTH_B))
+        .map(|&q| CHANNEL_WIDTH_A * q.max(0.0).powf(CHANNEL_WIDTH_B))
         .collect();
     let segment_profile_m: Vec<Vec<f32>> = rivers
         .segments
@@ -374,6 +395,7 @@ pub fn c1_drainage_windowed(
         rivers,
         segment_drainage_km2,
         segment_navigability,
+        segment_discharge_m3s,
         segment_width_m,
         segment_profile_m,
         lakes,
@@ -383,12 +405,24 @@ pub fn c1_drainage_windowed(
     }
 }
 
-/// DEFECT C — hydraulic-geometry width law `w = a·Q^b` (Leopold & Maddock).
-/// Discharge `Q` is proxied by the effective drainage area in km²; `b = 0.5` is
-/// the classic downstream bankfull-width exponent. `a` is anchored so a
-/// Thames-scale trunk (~16 000 km²) reads ~150 m and a ~1 km² headwater ~1 m.
-const CHANNEL_WIDTH_A: f32 = 1.2;
+/// Finding 22 — hydraulic-geometry width law `w = a·Q^b` (Leopold & Maddock),
+/// with `Q` the real DISCHARGE in m³/s (NOT the drainage area — the earlier law
+/// fed km² into a coefficient calibrated for m³/s, compressing the whole
+/// distribution). `b = 0.5` is the classic downstream bankfull-width exponent;
+/// `a = 5.0` is the mid-range natural-channel coefficient (a·√Q). Anchored on
+/// mean-annual discharge, so a Thames-scale trunk (~65 m³/s mean) reads ~40 m and
+/// a headwater (~0.1 m³/s) ~1.5 m — the trunk/headwater RATIO (~50×) is the point.
+const CHANNEL_WIDTH_A: f32 = 5.0;
 const CHANNEL_WIDTH_B: f32 = 0.5;
+
+/// Seconds per (Julian) year — runoff volume/yr → mean discharge (m³/s).
+const SECONDS_PER_YEAR: f32 = 3.155_76e7;
+
+/// Convert an accumulated runoff volume in `mm·km²/yr` (the unit of
+/// `runoff_accumulation`) to a mean discharge in m³/s: 1 mm over 1 km² = 1000 m³.
+fn runoff_km2_to_m3s(mm_km2_yr: f32) -> f32 {
+    mm_km2_yr * 1000.0 / SECONDS_PER_YEAR
+}
 
 /// ADR 0001 Finding 20 (DEFECT A) — clip the river network against the FINAL lake
 /// surfaces so every watercourse terminates at its SINK instead of running through
@@ -421,6 +455,8 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     let src = std::mem::take(&mut dr.rivers.segments);
     let src_km2 = std::mem::take(&mut dr.segment_drainage_km2);
     let src_nav = std::mem::take(&mut dr.segment_navigability);
+    let src_q = std::mem::take(&mut dr.segment_discharge_m3s);
+    let src_width = std::mem::take(&mut dr.segment_width_m);
     let src_prof = std::mem::take(&mut dr.segment_profile_m);
 
     // Pass 1 — enumerate each parent's kept runs as (start, end) index ranges into
@@ -463,6 +499,7 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     let mut segments = Vec::with_capacity(offset[src.len()]);
     let mut km2 = Vec::with_capacity(offset[src.len()]);
     let mut nav = Vec::with_capacity(offset[src.len()]);
+    let mut discharge = Vec::with_capacity(offset[src.len()]);
     let mut width_m = Vec::with_capacity(offset[src.len()]);
     let mut profile_m = Vec::with_capacity(offset[src.len()]);
 
@@ -495,7 +532,11 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
             });
             km2.push(q_km2);
             nav.push(src_nav.get(i).copied().unwrap_or(Navigability::NonNavigable));
-            width_m.push(CHANNEL_WIDTH_A * q_km2.max(0.0).powf(CHANNEL_WIDTH_B));
+            // Inherit the parent's DISCHARGE + discharge-based width (Finding 22) — an
+            // exorheic outlet reach keeps the full upstream catchment's width; recomputing
+            // from the reach's local area would drop it across the lake (the author's bug).
+            discharge.push(src_q.get(i).copied().unwrap_or(0.0));
+            width_m.push(src_width.get(i).copied().unwrap_or(0.0));
             profile_m.push(src_prof.get(i).map(|p| p[a..b].to_vec()).unwrap_or_default());
         }
     }
@@ -503,6 +544,7 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     dr.rivers.segments = segments;
     dr.segment_drainage_km2 = km2;
     dr.segment_navigability = nav;
+    dr.segment_discharge_m3s = discharge;
     dr.segment_width_m = width_m;
     dr.segment_profile_m = profile_m;
 }
@@ -854,7 +896,8 @@ mod tests {
             rivers: RiverNetwork { segments: vec![seg] },
             segment_drainage_km2: vec![100.0],
             segment_navigability: vec![Navigability::NonNavigable],
-            segment_width_m: vec![12.0],
+            segment_discharge_m3s: vec![25.0],
+            segment_width_m: vec![25.0],
             segment_profile_m: vec![(0..w).map(|x| x as f32).collect()],
             lakes: vec![C1Lake { base, level_m: 0.0, depth_m: 1.0, area_km2: 1.0, lake_type }],
             lake_map,
