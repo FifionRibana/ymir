@@ -780,3 +780,38 @@ drives BOTH the spurious endorheic basins AND the steppe over-classification. Fi
 (raise the frontal-base floor for maritime); STEP 2+3 (biome from `water_class` + endorheic
 levels) waits for that — no freezing lake levels on a climate about to change. Diagnostics
 (#[ignore]): `water_class_diagnosis`, `endorheic_water_balance`, `climate_precip_diagnosis`.
+
+## Finding 17 — Maritime frontal base: precipitation from distance-to-ocean, not a global-mean constant
+
+Fix for Finding 16 (the under-produced maritime climate driving spurious endorheic basins + steppe
+biomes). The frontal base was `k_frontal·belt_factor(lat)·e_sat(T_sea)` — CONSTANT per latitude,
+anchored on the GLOBAL ZONAL MEAN (~450 mm at 45°), so an all-maritime island read as dry as a
+continental interior.
+
+**The law (b):** the frontal base is multiplied by `1 + maritime_enhance·exp(−dist_from_sea/efold)`,
+where `dist_from_sea` is the DOWNWIND distance over land since the last ocean cell — tracked in the
+EXISTING streamline scan (reset at ocean, += km_per_cell over land; no new field). Coast → maritime
+floor; deep continental interior → the bare `k_frontal` floor. A PHYSICAL quantity (proximity to the
+moisture source) that stays correct for a future large continent (its interior is genuinely far from
+the sea → dry), unlike a recalibrated constant. Params: `maritime_enhance = 1.7` (coast ≈ 2.7× floor,
+~450→~1200 mm), `maritime_efold_km = 600` (from the Earth coast↔interior contrast: Atlantic façade
+800–1500, continental interior 300–600 at 45°). Plus `max_precip_mm = 11000` — a physical orographic
+ceiling (Mawsynram/Cherrapunji) bounding the steep-cold-coast spikes that would otherwise pollute the
+lake-balance catchment means.
+
+**Result (2048², 45°, reference seed), before → after:**
+
+| metric | before | after |
+|---|---|---|
+| precip median | 448 | **1130** mm/yr |
+| leeward floor | 597 | 1111 |
+| min / max | 446 / 63120 | 767 / **11000 (capped)** |
+| TemperateGrassland | 45 % | **0 %** |
+| TemperateForest + Rainforest | 28 % | **73 %** |
+
+Median 448→1130 (humid temperate), the steppe over-classification is gone (grassland 45%→0%, forests
+73%), and the 63 120 mm spike is capped. Ocean advection was already working (windward 2298 vs leeward
+1111); the fix is the frontal FLOOR being maritime near the coast. 512 lib tests green (no test pinned
+absolute precip). **Relief is unaffected** — the C1 stream-power incision is drainage-AREA based and
+climate is computed post-erosion, so relief-v3's shape metrics (Finding 11) are unchanged. STEP 2+3
+(biome from water_class + endorheic levels) is now UNBLOCKED on the corrected climate.
