@@ -133,6 +133,10 @@ struct WorkspaceState {
     latitude: f32,
     mode: Mode,
     layer: HdLayer,
+    /// River-network overlay on the map (any layer): polylines, thickness by
+    /// Strahler order, colour by navigability — ORPHAN reaches (no downstream,
+    /// not ending at a sink) drawn RED so they stand out for validation.
+    river_overlay: bool,
     inspector_open: bool,
     // Expert params (exposed, wiring deferred — tagged in the UI).
     climat_open: bool,
@@ -201,6 +205,8 @@ struct WorkspaceState {
     river_map: Option<RiverCellMap>,
     texture: Option<egui::TextureHandle>,
     tex_layer: Option<HdLayer>,
+    /// Overlay state the cached `texture` was built with (rebuild when it flips).
+    tex_overlay: bool,
     hover: Option<CellInspection>,
     hover_xy: Option<(usize, usize)>,
     zoom: f32,
@@ -214,6 +220,7 @@ impl Default for WorkspaceState {
             latitude: 45.0,
             mode: Mode::Standard,
             layer: HdLayer::Relief,
+            river_overlay: false,
             inspector_open: true,
             climat_open: true,
             relief_open: false,
@@ -248,6 +255,7 @@ impl Default for WorkspaceState {
             river_map: None,
             texture: None,
             tex_layer: None,
+            tex_overlay: false,
             hover: None,
             hover_xy: None,
             zoom: 1.0,
@@ -1721,16 +1729,29 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         }
         return;
     }
-    // (Re)build the texture on layer/result change.
-    if ws.texture.is_none() || ws.tex_layer != Some(ws.layer) {
+    // River-network overlay toggle (validation: orphan reaches show RED).
+    ui.horizontal(|ui| {
+        if ui.checkbox(&mut ws.river_overlay, "Réseau hydro (overlay)").changed() {
+            ws.texture = None;
+        }
+        ui.label(
+            egui::RichText::new("épaisseur ∝ ordre de Strahler · orphelins en rouge")
+                .color(DIM2)
+                .size(10.5),
+        );
+    });
+    // (Re)build the texture on layer/result/overlay change.
+    if ws.texture.is_none() || ws.tex_layer != Some(ws.layer) || ws.tex_overlay != ws.river_overlay {
         let layer = ws.layer;
+        let overlay = ws.river_overlay;
         let img = {
             let hd = ws.current.as_ref().unwrap();
             let rm = ws.river_map.as_ref().unwrap();
-            layer_color_image(hd, layer, rm)
+            layer_color_image(hd, layer, rm, overlay)
         };
         ws.texture = Some(ui.ctx().load_texture("hd_map", img, egui::TextureOptions::NEAREST));
         ws.tex_layer = Some(ws.layer);
+        ws.tex_overlay = ws.river_overlay;
     }
     let handle = ws.texture.as_ref().unwrap().clone();
 
@@ -2080,7 +2101,12 @@ fn french_biome(b: Biome) -> &'static str {
 }
 
 // ── Layer → RGBA image (canonical palettes) ──────────────────────────────
-fn layer_color_image(hd: &HdResult, layer: HdLayer, river_map: &RiverCellMap) -> egui::ColorImage {
+fn layer_color_image(
+    hd: &HdResult,
+    layer: HdLayer,
+    river_map: &RiverCellMap,
+    overlay: bool,
+) -> egui::ColorImage {
     let (w, h) = (hd.width, hd.height);
     let mut rgba = vec![0u8; w * h * 4];
     for k in 0..w * h {
@@ -2099,7 +2125,69 @@ fn layer_color_image(hd: &HdResult, layer: HdLayer, river_map: &RiverCellMap) ->
         rgba[k * 4 + 2] = c[2];
         rgba[k * 4 + 3] = 255;
     }
+    if overlay {
+        draw_river_overlay(&mut rgba, hd);
+    }
     egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba)
+}
+
+/// Draw the river network onto `rgba` (row-major, w×h): each segment as a polyline,
+/// stroke thickness by Strahler order, colour by navigability — and any ORPHAN reach
+/// (no downstream link and NOT ending at a sink: sea or lake) in RED, so a broken /
+/// dangling segment is immediately visible for validation. Lakes are tinted first so
+/// rivers read against them. Pure raster pass — no effect on the exported data.
+fn draw_river_overlay(rgba: &mut [u8], hd: &HdResult) {
+    let (w, h) = (hd.width, hd.height);
+    let d = &hd.drainage;
+    // Sea membership at the unified C1 sea level (eroded is normalised, sea = 0.5).
+    let at_sink = |x: u32, y: u32| -> bool {
+        let (x, y) = (x as i32, y as i32);
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx >= 0 && ny >= 0 && nx < w as i32 && ny < h as i32 {
+                    let k = ny as usize * w + nx as usize;
+                    if hd.eroded.data[k] <= 0.5 || d.lake_map[k] != 0 {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    };
+    let put = |rgba: &mut [u8], x: i32, y: i32, c: [u8; 3]| {
+        if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
+            let k = (y as usize * w + x as usize) * 4;
+            rgba[k] = c[0];
+            rgba[k + 1] = c[1];
+            rgba[k + 2] = c[2];
+        }
+    };
+    for (i, seg) in d.rivers.segments.iter().enumerate() {
+        let &(lx, ly) = seg.points.last().unwrap();
+        let orphan = seg.downstream.is_none() && !at_sink(lx, ly);
+        let nav = d.segment_navigability.get(i).copied().unwrap_or(Navigability::NonNavigable);
+        let col = if orphan {
+            [230, 30, 30]
+        } else {
+            match nav {
+                Navigability::Ship => [20, 70, 200],
+                Navigability::Barge => [40, 110, 230],
+                Navigability::SmallBoat => [90, 160, 240],
+                Navigability::NonNavigable => [120, 150, 190],
+            }
+        };
+        // Thickness (half-width in cells) grows with Strahler order; orphans get a
+        // minimum of 1 so a single dangling cell is still visible.
+        let r = ((seg.strahler_order as i32 - 2).max(0)).min(2).max(orphan as i32);
+        for &(px, py) in &seg.points {
+            for dy in -r..=r {
+                for dx in -r..=r {
+                    put(rgba, px as i32 + dx, py as i32 + dy, col);
+                }
+            }
+        }
+    }
 }
 
 fn relief_color(norm: f32) -> [u8; 3] {

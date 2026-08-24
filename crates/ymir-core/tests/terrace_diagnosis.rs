@@ -3628,6 +3628,108 @@ fn endorheic_water_balance() {
     eprintln!("   (expected: ~all EXO, dry<sea ≈ 0 — overflow the above-sea rim → ordinary lakes)");
 }
 
+/// River-overlay render (2048²) — the SAME visualization the viz overlay draws: relief base,
+/// rivers coloured by navigability, ORPHAN reaches (no downstream, not at a sink) in RED. Writes
+/// a PNG and reports the orphan count (0 on the clipped network). Mirrors DEFECT A validation.
+#[test]
+#[ignore]
+fn river_overlay_render() {
+    use std::path::Path;
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageClimate, Navigability, below_sea_basin_lakes, clip_rivers_to_lakes,
+    };
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (2048usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
+    let dcfg = C1DrainageConfig::default();
+    let mut dr = c1_drainage(&field, None, &C1DrainageConfig::default(), &ss);
+    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    dr.lakes.extend(bs);
+    clip_rivers_to_lakes(&mut dr);
+
+    // Relief base (greyscale hillshade), lakes tinted blue, rivers by navigability, orphans RED.
+    let hs = hillshade(&field, domain, ss.depth_scale_m as f32);
+    let mut img = vec![0u8; t * t * 3];
+    for k in 0..t * t {
+        let g = (hs.data[k].clamp(0.0, 1.0) * 255.0) as u8;
+        let c = if dr.lake_map[k] != 0 { [30, 90, 180] } else { [g, g, g] };
+        img[k * 3] = c[0];
+        img[k * 3 + 1] = c[1];
+        img[k * 3 + 2] = c[2];
+    }
+    let at_sink = |x: u32, y: u32| -> bool {
+        let (x, y) = (x as i32, y as i32);
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                    let k = ny as usize * t + nx as usize;
+                    if field.data[k] <= SEA || dr.lake_map[k] != 0 { return true; }
+                }
+            }
+        }
+        false
+    };
+    let mut orphans = 0usize;
+    for (i, seg) in dr.rivers.segments.iter().enumerate() {
+        let &(lx, ly) = seg.points.last().unwrap();
+        let orphan = seg.downstream.is_none() && !at_sink(lx, ly);
+        if orphan { orphans += 1; }
+        let nav = dr.segment_navigability.get(i).copied().unwrap_or(Navigability::NonNavigable);
+        let col = if orphan { [230u8, 30, 30] } else {
+            match nav {
+                Navigability::Ship => [20, 70, 200],
+                Navigability::Barge => [40, 110, 230],
+                Navigability::SmallBoat => [90, 160, 240],
+                Navigability::NonNavigable => [120, 150, 190],
+            }
+        };
+        let r = ((seg.strahler_order as i32 - 2).max(0)).min(2).max(orphan as i32);
+        for &(px, py) in &seg.points {
+            for dy in -r..=r {
+                for dx in -r..=r {
+                    let (nx, ny) = (px as i32 + dx, py as i32 + dy);
+                    if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                        let k = (ny as usize * t + nx as usize) * 3;
+                        img[k] = col[0];
+                        img[k + 1] = col[1];
+                        img[k + 2] = col[2];
+                    }
+                }
+            }
+        }
+    }
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+    std::fs::create_dir_all(&dir).ok();
+    let mut buf = image::ImageBuffer::new(t as u32, t as u32);
+    for (k, px) in buf.pixels_mut().enumerate() {
+        *px = image::Rgb([img[k * 3], img[k * 3 + 1], img[k * 3 + 2]]);
+    }
+    let path = dir.join("river_overlay_2048.png");
+    buf.save(&path).unwrap();
+    eprintln!("\n=== river overlay render (2048², clipped network) ===");
+    eprintln!("  {} segments | ORPHAN(red) {orphans} | → {}", dr.rivers.segments.len(), path.display());
+}
+
 /// DEFECT A/B/C audit — river-export selection + endpoints, Desert cells' precip, per-order
 /// width. Full corrected chain (relief-v3 + breach + maritime climate + below-sea lakes) at 2048².
 #[test]
