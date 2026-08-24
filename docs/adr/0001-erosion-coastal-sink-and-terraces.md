@@ -815,3 +815,34 @@ Median 448→1130 (humid temperate), the steppe over-classification is gone (gra
 absolute precip). **Relief is unaffected** — the C1 stream-power incision is drainage-AREA based and
 climate is computed post-erosion, so relief-v3's shape metrics (Finding 11) are unchanged. STEP 2+3
 (biome from water_class + endorheic levels) is now UNBLOCKED on the corrected climate.
+
+## Finding 18 — STEP 2+3 wired: biomes from water_class + below-sea basins as typed water bodies
+
+On the climate-corrected pipeline (Finding 17), STEP 2+3 replace the altitude sea-membership with
+connectivity + a water balance:
+
+- **STEP 2 (biome from `water_class`)** — `compute_biomes` now takes `water_class` + `lake_map`
+  (empty slices → legacy altitude fallback, so the many `c1_biomes` test callers are unchanged).
+  `water_class==1` → Ocean; `lake_map!=0` → the new `Biome::Lake` (frozen id 11); else Whittaker
+  land — INCLUDING exposed below-sea land (not flooded to 0 m). `c1_biomes_classified` (new) is
+  wired into the HD run.
+- **STEP 3 (below-sea basins as typed lakes)** — `drainage::below_sea_basin_lakes` finds the
+  class-2 components (≥ `lake_min_area` 5 km²), floods each to its spill, and runs the water
+  balance `level = min(spill, evaporative)` reading INFLOW at the basin's LAND INLETS (the real
+  `runoff_accumulation` zeroes below-sea cells, so inflow can't be read on the basin itself —
+  the flaw in the earlier rough diagnostic). It returns typed `C1Lake`s (Exorheic/Endorheic, ids
+  offset ≥ 1_000_001) + a lake_map of the water cells. The HD run merges these into
+  `drainage.lakes`/`lake_map` before biomes + export.
+
+Result (2048², relief-v3, reference seed): **9 below-sea basins — 3 exorheic, 6 endorheic**, water
+536 km², dry-below-sea 616 km² (preserved, NOT flooded to 0 m); ~30 k cells reclassified OFF Ocean;
+`Biome::Lake` appears, exposed margins → land. The 6 endorheic (with the correct inlet inflow) match
+the accepted physics: coastal below-sea basins with small catchment/area ratios stay endorheic even
+in a humid climate (Salton-Sea-like) — CONTENT, not a defect. `lake_type` reaches `lakes.json`
+(C1Lake serializes it; a round-trip test pins it) → Living Landz can distinguish endorheic (salt, no
+fish, undrinkable, no shore agriculture) from exorheic; the LL Lake rule must consume the field
+(today it flattens all water to one class). The river-profile monotonicity test tolerates flat lake
+crossings; the breach guard stays green. 512 lib tests green; viz compiles.
+
+Still open (separate lot): the ×577 erosion-fabricated closed-depression signal (~8 650 vs 15
+tectonic) — which MFD/talus/diffusion step creates them, and are they legitimate.

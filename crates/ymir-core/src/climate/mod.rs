@@ -34,7 +34,21 @@ pub struct ClimateResult {
 /// Derived & re-runnable: recompute when the relief/climate change. `heightmap`
 /// marks ocean cells. Row-major `Vec<Biome>`.
 pub fn c1_biomes(heightmap: &GridF32, climate: &ClimateResult) -> Vec<biomes::Biome> {
-    biomes::compute_biomes(heightmap, &climate.temperature, &climate.precipitation)
+    // Legacy (altitude membership) — empty connectivity slices fall back to the old rule.
+    biomes::compute_biomes(heightmap, &climate.temperature, &climate.precipitation, &[], &[])
+}
+
+/// Whittaker biome map using CONNECTIVITY + drainage water (ADR 0001 Finding 18): sea-vs-inland
+/// membership from `water_class` (computed here at the C1 sea level), inland water surfaces from
+/// `lake_map` (real lakes + water-balanced below-sea basins). Below-sea enclosed basins no longer
+/// read as `Ocean`; their water surface reads as `Lake`, the exposed margin as land.
+pub fn c1_biomes_classified(
+    heightmap: &GridF32,
+    climate: &ClimateResult,
+    lake_map: &[u32],
+) -> Vec<biomes::Biome> {
+    let wc = crate::lakes::connectivity::water_class(heightmap, precipitation::SEA_LEVEL_NORM);
+    biomes::compute_biomes(heightmap, &climate.temperature, &climate.precipitation, &wc, lake_map)
 }
 
 /// Derive (temperature, precipitation) from the C1 relief at a centre latitude.

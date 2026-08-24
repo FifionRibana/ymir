@@ -2071,6 +2071,7 @@ fn french_biome(b: Biome) -> &'static str {
         Biome::Savanna => "Savane",
         Biome::TropicalSeasonalForest => "Forêt tropicale saisonnière",
         Biome::TropicalRainforest => "Forêt tropicale",
+        Biome::Lake => "Lac (eau intérieure)",
     }
 }
 

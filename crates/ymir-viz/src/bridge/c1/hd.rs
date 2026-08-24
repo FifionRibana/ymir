@@ -36,7 +36,7 @@ use crossbeam_channel::Sender;
 use ymir_core::cache::default_cache_dir;
 use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
-use ymir_core::climate::{ClimateResult, c1_biomes, c1_climate_windowed};
+use ymir_core::climate::{ClimateResult, c1_biomes_classified, c1_climate_windowed};
 use ymir_core::erosion::stream_power::StreamPowerConfig;
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
 use ymir_core::export::{height, hydro, vector};
@@ -49,7 +49,10 @@ use ymir_core::tectonics_c1::cached_product::{
     tectonic_key,
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
-use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult, c1_drainage_windowed};
+use ymir_core::tectonics_c1::drainage::{
+    C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, below_sea_basin_lakes,
+    c1_drainage_windowed,
+};
 use ymir_core::tectonics_c1::land_topology::{
     IslandEval, LandTopology, evaluate_island, land_topology,
 };
@@ -625,7 +628,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let drainage_hit = sidecar_exists("drainage", dkey.digest());
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Drainage });
     let t = Instant::now();
-    let drainage = if let Some(dr) = drainage_override {
+    let mut drainage = if let Some(dr) = drainage_override {
         dr // relief-v3: monotone rivers on the breached field + pre-breach lakes (uncached)
     } else {
         match cached_c1_drainage_windowed(
@@ -644,6 +647,31 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             }
         }
     };
+    // ADR 0001 Finding 18: below-sea ENCLOSED basins as typed water bodies. pit_fill/
+    // detect_lakes treat them as ocean, so they never enter the lake path; add them here via
+    // the water balance (level = min(spill, evaporative)), merging their water cells into the
+    // lake_map (only where empty) and their typed lakes into the list → lakes.json + biomes.
+    {
+        let dclim = DrainageClimate {
+            precip_internal: &climate.precipitation,
+            temperature: &climate.temperature,
+        };
+        let (bs_lakes, bs_map) = below_sea_basin_lakes(&eroded, &dclim, &dcfg, &ss, window_km);
+        let (mut endo, mut exo) = (0usize, 0usize);
+        for lk in &bs_lakes {
+            match lk.lake_type {
+                LakeType::Endorheic => endo += 1,
+                LakeType::Exorheic => exo += 1,
+            }
+        }
+        for k in 0..bs_map.len() {
+            if bs_map[k] != 0 && drainage.lake_map[k] == 0 {
+                drainage.lake_map[k] = bs_map[k];
+            }
+        }
+        drainage.lakes.extend(bs_lakes);
+        eprintln!("[HD] below-sea basins: {} lakes ({exo} exorheic, {endo} endorheic)", exo + endo);
+    }
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Drainage,
         regime: if drainage_hit { CacheRegime::Hit } else { CacheRegime::Miss },
@@ -654,7 +682,9 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     bail_if_cancelled!();
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Biomes });
     let t = Instant::now();
-    let biomes = c1_biomes(&eroded, &climate);
+    // ADR Finding 18: biomes from water_class + the drainage lake_map (below-sea enclosed
+    // basins → Lake / exposed land, not Ocean), instead of the altitude threshold.
+    let biomes = c1_biomes_classified(&eroded, &climate, &drainage.lake_map);
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Biomes,
         regime: CacheRegime::Computed,

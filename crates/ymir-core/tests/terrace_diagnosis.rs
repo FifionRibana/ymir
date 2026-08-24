@@ -3628,6 +3628,77 @@ fn endorheic_water_balance() {
     eprintln!("   (expected: ~all EXO, dry<sea ≈ 0 — overflow the above-sea rim → ordinary lakes)");
 }
 
+/// STEP 2+3 report — biomes from water_class + below-sea basins as typed lakes (2048²). Shows
+/// the biome distribution BEFORE (altitude rule → below-sea = Ocean) vs AFTER (water_class +
+/// lake_map), and the below-sea basins' water balance (count, exo/endo, water + dry-below-sea).
+#[test]
+#[ignore]
+fn step23_biomes_lakes() {
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::climate::{c1_biomes, c1_biomes_classified, c1_climate};
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::drainage::{DrainageClimate, LakeType, below_sea_basin_lakes};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (2048usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let field = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
+    let dcfg = C1DrainageConfig::default();
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
+    let (bs_lakes, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+
+    let (mut exo, mut endo, mut water, mut dry) = (0usize, 0usize, 0.0f32, 0.0f32);
+    for lk in &bs_lakes {
+        match lk.lake_type {
+            LakeType::Exorheic => exo += 1,
+            LakeType::Endorheic => endo += 1,
+        }
+        water += lk.area_km2;
+    }
+    // dry-below-sea = below-sea land cells (class-2) NOT flooded by a below-sea lake.
+    let wc = ymir_core::lakes::connectivity::water_class(&field, SEA);
+    dry = (0..t * t).filter(|&k| wc[k] == 2 && bs_map[k] == 0).count() as f32 * cell_km2;
+
+    let hist = |bio: &[ymir_core::climate::biomes::Biome]| -> String {
+        let mut m = std::collections::BTreeMap::new();
+        let land =
+            bio.iter().filter(|&&b| b != ymir_core::climate::biomes::Biome::Ocean).count().max(1);
+        for &b in bio {
+            *m.entry(format!("{b:?}")).or_insert(0usize) += 1;
+        }
+        m.iter()
+            .map(|(k, v)| format!("{k} {:.0}%", *v as f32 / land as f32 * 100.0))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let before = c1_biomes(&field, &climate);
+    let after = c1_biomes_classified(&field, &climate, &bs_map);
+    let ocean_b = before.iter().filter(|&&b| b == ymir_core::climate::biomes::Biome::Ocean).count();
+    let ocean_a = after.iter().filter(|&&b| b == ymir_core::climate::biomes::Biome::Ocean).count();
+    eprintln!("\n=== STEP 2+3 report (2048², relief-v3, seed {seed_u}) ===");
+    eprintln!(
+        "  below-sea basins: {} ({exo} exorheic, {endo} endorheic) | water {water:.0} km² | dry-below-sea {dry:.0} km²",
+        bs_lakes.len()
+    );
+    eprintln!(
+        "  Ocean cells: before {ocean_b} → after {ocean_a} (Δ = below-sea basins reclassified off Ocean)"
+    );
+    eprintln!("  biomes BEFORE (altitude): {}", hist(&before));
+    eprintln!("  biomes AFTER  (water_class + lakes): {}", hist(&after));
+}
+
 /// CLIMATE diagnosis — is the C1 precipitation under-produced for a maritime island? Reports
 /// (1) precip field distribution + windward/leeward contrast (is the ocean-moisture source
 /// working, or a flat ~689 mm field?); (2) coastal vs interior; (3) the biome histogram now vs

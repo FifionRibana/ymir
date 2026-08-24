@@ -489,6 +489,148 @@ fn water_balance_lakes(
     out
 }
 
+/// BELOW-SEA INLAND basins as water bodies (ADR 0001 Finding 18). `pit_fill`/`detect_lakes`
+/// treat every below-sea cell as ocean, so an enclosed below-sea basin (a `water_class`
+/// class-2 component) never enters the lake path. This finds those basins (≥ `lake_min_area`),
+/// runs the SAME water balance as [`water_balance_lakes`] — but reading catchment INFLOW at the
+/// basin's LAND INLETS (runoff_accumulation zeroes the below-sea basin cells themselves) — and
+/// returns the resulting typed lakes + a lake_map (ids offset ≥ 1_000_001 to avoid colliding
+/// with detected-lake ids) marking the WATER cells at the level `min(spill, evaporative)`. Cells
+/// above that level stay dry land (possibly below sea) — NOT flooded to 0 m.
+pub fn below_sea_basin_lakes(
+    heightmap: &GridF32,
+    climate: &DrainageClimate,
+    cfg: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    window_km: f32,
+) -> (Vec<C1Lake>, Vec<u32>) {
+    use crate::lakes::connectivity::water_class;
+    use std::collections::{HashSet, VecDeque};
+    let (w, h) = (heightmap.width, heightmap.height);
+    let n = w * h;
+    let cell_km2 = (window_km / w as f32).powi(2);
+    let flow =
+        compute_flow(heightmap, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM, ..Default::default() });
+    let wc = water_class(heightmap, C1_SEA_LEVEL_NORM);
+    let runoff = runoff_accumulation(heightmap, &flow, climate, cell_km2, None, w, h);
+    let min_cells = (cfg.lake_min_area_km2 / cell_km2).ceil().max(1.0) as usize;
+    let nb4 = |x: i32, y: i32| -> Option<usize> {
+        if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
+            Some(y as usize * w + x as usize)
+        } else {
+            None
+        }
+    };
+    let mut lake_map = vec![0u32; n];
+    let mut out = Vec::new();
+    let mut seen = vec![false; n];
+    let mut next_id = 1_000_001u32;
+    for s in 0..n {
+        if wc[s] != 2 || seen[s] {
+            continue;
+        }
+        // 1. the class-2 component (the below-sea enclosed basin).
+        let mut comp = Vec::new();
+        let mut q = VecDeque::new();
+        q.push_back(s);
+        seen[s] = true;
+        while let Some(k) = q.pop_front() {
+            comp.push(k);
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                if let Some(nk) = nb4(x + dx, y + dy) {
+                    if wc[nk] == 2 && !seen[nk] {
+                        seen[nk] = true;
+                        q.push_back(nk);
+                    }
+                }
+            }
+        }
+        if comp.len() < min_cells {
+            continue;
+        }
+        let in_basin: HashSet<usize> = comp.iter().copied().collect();
+        // 2. spill = lowest external-neighbour elevation (overflow sill).
+        let mut spill = f32::MAX;
+        for &k in &comp {
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                if let Some(nk) = nb4(x + dx, y + dy) {
+                    if !in_basin.contains(&nk) {
+                        spill = spill.min(heightmap.data[nk]);
+                    }
+                }
+            }
+        }
+        // 3. flood the depression up to spill (hypsometry) + gather catchment INFLOW at the
+        //    land inlets (max runoff among the flood cells and their neighbours that are land).
+        let mut floodset = in_basin.clone();
+        let mut fq: VecDeque<usize> = comp.iter().copied().collect();
+        let mut inflow = 0.0f32;
+        while let Some(k) = fq.pop_front() {
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                if let Some(nk) = nb4(x + dx, y + dy) {
+                    inflow = inflow.max(runoff[nk]); // land inlets carry the catchment runoff
+                    if heightmap.data[nk] < spill && !floodset.contains(&nk) {
+                        floodset.insert(nk);
+                        fq.push_back(nk);
+                    }
+                }
+            }
+        }
+        let mut fcells: Vec<usize> = floodset.into_iter().collect();
+        fcells.sort_by(|&a, &b| heightmap.data[a].partial_cmp(&heightmap.data[b]).unwrap());
+        let a_spill = fcells.len() as f32 * cell_km2;
+        let pe_lake = potential_evaporation_mm(climate.temperature.data[fcells[0]]).max(1.0);
+        let a_eq = inflow / pe_lake;
+        let (level, lake_type) = if a_eq >= a_spill {
+            (spill, LakeType::Exorheic)
+        } else {
+            let n_eq = (a_eq / cell_km2).floor().max(1.0) as usize;
+            (heightmap.data[fcells[n_eq.min(fcells.len()) - 1]], LakeType::Endorheic)
+        };
+        // 4. mark the WATER cells (≤ level) and build the typed lake.
+        let id = next_id;
+        next_id += 1;
+        let mut water = 0usize;
+        let mut floor = f32::MAX;
+        let (mut ox, mut oy) = (0u32, 0u32);
+        for &k in &fcells {
+            if heightmap.data[k] <= level {
+                lake_map[k] = id;
+                water += 1;
+                if heightmap.data[k] < floor {
+                    floor = heightmap.data[k];
+                    ox = (k % w) as u32;
+                    oy = (k / w) as u32;
+                }
+            }
+        }
+        if water == 0 {
+            continue;
+        }
+        let level_m = c1_altitude_norm_to_metres(level, ss);
+        let floor_m = c1_altitude_norm_to_metres(floor, ss);
+        out.push(C1Lake {
+            base: Lake {
+                id,
+                surface_elevation: level,
+                max_depth: level - floor,
+                area: water,
+                basin_id: flow.basins[fcells[0]],
+                outlet: (ox, oy),
+                shallow: (level_m - floor_m) < 10.0,
+            },
+            level_m,
+            depth_m: level_m - floor_m,
+            area_km2: water as f32 * cell_km2,
+            lake_type,
+        });
+    }
+    (out, lake_map)
+}
+
 /// Trace a lake's outlet downstream via D8; does it reach the sea (≤ 0.5)?
 /// (With priority-flood this is always true — the honest computation that would
 /// flag `Endorheic` if a future terminal basin ever existed.)
