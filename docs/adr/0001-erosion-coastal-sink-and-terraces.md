@@ -746,3 +746,37 @@ is unnecessary (and the re-breach fill would raise burned channels back anyway).
 ~6 % are the natural confluence/cutbank cells no D8-on-real network avoids. So: no MFD rewrite,
 no burn — the DEFECT-2 breach already delivers rivers-in-thalweg; the earlier rejection rested
 on my flawed omnidirectional metric.
+
+## Finding 16 — Below-sea basins are an altitude-classification bug; the endorheic result traces to an under-produced maritime climate
+
+The author saw inland below-sea basins rendered blue in the erosion view and classified `Ocean`
+in the biome view. STEP-1 diagnosis (`water_class_diagnosis`, 8192², reference seed):
+
+- **Q1**: biome Ocean = `heightmap ≤ SEA_LEVEL_NORM` (biomes.rs:148) — altitude, never `water_class`.
+  Same altitude-membership assumption in `pit_fill` (every below-sea cell seeded as ocean) and
+  `detect_lakes` (needs `filled > real`), so enclosed below-sea basins fall through every stage.
+- **Q2**: `water_class` WORKS — class 2 is ~330 k cells (non-empty). Not the bug.
+- **Q3**: `class2 ∩ flooded = 0` — because `pit_fill` treats the basins as ocean (root), so they
+  are never closed depressions in the drainage sense.
+- **Q4/Q5**: 15 real tectonic below-sea basins in the FBM (top 346 km²), ~8 650 more fabricated by
+  erosion; **all shallow, deepest 21 m below sea**; 4-conn vs 8-conn inland ≈ equal (basins real,
+  not a connectivity artifact). GEOMETRY CORRECTION: spill = 0.0 m for every basin → these are
+  COASTAL depressions bounded by the shoreline (rim at sea level), NOT high-rimmed inland basins.
+
+STEP-3 water balance (`endorheic_water_balance`, ≥5 km² basins) came out 5/6 ENDORHEIC with
+640 km² dry-land-below-sea — the OPPOSITE of the humid expectation. The balance is CORRECT
+(a lake evaporating PE ≈ 691 mm/yr needs catchment ≥ 3.5× its area; these are 1–2.5×). The cause
+is the CLIMATE (`climate_precip_diagnosis`, 2048²):
+
+- precip **mean 1009 mm but MEDIAN 448 mm** — half the land sits at the frontal-base floor
+  (`PRECIP_MM_PER_UNIT`/k_frontal → ~450 mm), anchored on the GLOBAL ZONAL MEAN.
+- Ocean advection works (windward 1923 vs leeward 597 mm/yr — strong orographic contrast); the
+  field is not flat. The problem is the frontal-base FLOOR being too dry for an all-maritime island.
+- Biome co-symptom: **45 % TemperateGrassland** now; at a maritime ~1.6× floor → grassland 0 %,
+  TemperateForest 56 % + Rainforest 17 % (the correct maritime-temperate mix).
+
+**Verdict**: the root is an UNDER-PRODUCED maritime frontal base (a climate-model issue), which
+drives BOTH the spurious endorheic basins AND the steppe over-classification. Fix is upstream
+(raise the frontal-base floor for maritime); STEP 2+3 (biome from `water_class` + endorheic
+levels) waits for that — no freezing lake levels on a climate about to change. Diagnostics
+(#[ignore]): `water_class_diagnosis`, `endorheic_water_balance`, `climate_precip_diagnosis`.

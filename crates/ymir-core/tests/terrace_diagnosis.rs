@@ -3298,6 +3298,419 @@ fn mfd_talus_flank() {
     eprintln!("   → crops: exports/sculpt/flank_{{A,B}}_{{2048,8192}}.png");
 }
 
+/// STEP 1 — WATER-CLASS diagnosis: are below-sea INLAND basins classified as ocean? Reports
+/// (Q1) the biome predicate (altitude, see biomes.rs:148 — inspected separately); (Q2) the
+/// water_class histogram (0 land / 1 ocean / 2 inland) on the reference seed at 8192²; (Q4)
+/// the enclosed below-sea basins (count, area km², depth below sea m); (Q3) overlap with the
+/// erosion-fabricated flooded cells (filled > terrain). Read-only, no changes.
+#[test]
+#[ignore]
+fn water_class_diagnosis() {
+    use ymir_core::erosion::stream_power::{RELIEF_V1_K, StreamPowerConfig, incise};
+    use ymir_core::lakes::connectivity::water_class;
+    use ymir_core::terrain::flow::{FlowConfig, breach_monotone, compute_flow};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base, t) = (400.0f32, ss.depth_scale_m as f32, 8192usize);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let norm_to_m = 2.0 * 1.13 * base;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let mut cfg = StreamPowerConfig::relief_v3(cell_km2, base);
+    cfg.mfd_exponent = Some(2.0);
+    let _ = RELIEF_V1_K;
+    let post = incise(&fbm, &cfg);
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let cur = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+
+    eprintln!("\n=== STEP 1 — water_class diagnosis (seed {seed_u}, 8192²) ===");
+    eprintln!(
+        "  Q1: biome Ocean predicate = `heightmap <= SEA_LEVEL_NORM` (biomes.rs:148) — ALTITUDE, not water_class"
+    );
+    for (label, field) in
+        [("fbm(pre-incis)", &fbm), ("relief-v3 incised", &post), ("breached", &cur)]
+    {
+        let wc = water_class(field, SEA);
+        let (c0, c1, c2) = (
+            wc.iter().filter(|&&v| v == 0).count(),
+            wc.iter().filter(|&&v| v == 1).count(),
+            wc.iter().filter(|&&v| v == 2).count(),
+        );
+        // Q4: enclosed below-sea basins = connected components of class 2 (4-conn).
+        let mut seen = vec![false; t * t];
+        let (mut nbasin, mut areas, mut depths) = (0usize, Vec::new(), Vec::new());
+        for start in 0..t * t {
+            if wc[start] != 2 || seen[start] {
+                continue;
+            }
+            nbasin += 1;
+            let mut q = std::collections::VecDeque::new();
+            q.push_back(start);
+            seen[start] = true;
+            let (mut cells, mut minz) = (0usize, f32::MAX);
+            while let Some(k) = q.pop_front() {
+                cells += 1;
+                minz = minz.min(field.data[k]);
+                let (x, y) = (k % t, k / t);
+                for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                        let nk = ny as usize * t + nx as usize;
+                        if wc[nk] == 2 && !seen[nk] {
+                            seen[nk] = true;
+                            q.push_back(nk);
+                        }
+                    }
+                }
+            }
+            areas.push(cells as f32 * cell_km2);
+            depths.push((SEA - minz) * norm_to_m); // metres below sea at the deepest
+        }
+        areas.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        depths.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        // Q3: overlap of class-2 cells with erosion-flooded cells (filled > terrain).
+        let fl = compute_flow(field, &FlowConfig { sea_level: SEA, ..Default::default() });
+        let flooded = (0..t * t).filter(|&k| fl.filled.data[k] > field.data[k] + 1e-6).count();
+        let overlap =
+            (0..t * t).filter(|&k| wc[k] == 2 && fl.filled.data[k] > field.data[k] + 1e-6).count();
+        let big = areas.iter().take(3).map(|a| format!("{a:.0}")).collect::<Vec<_>>().join(",");
+        let deep = depths.first().copied().unwrap_or(0.0);
+        eprintln!(
+            "  {label:<18}: class 0/1/2 = {c0}/{c1}/{c2} | inland basins {nbasin} (top km² {big}; deepest {deep:.0} m below sea) | \
+             flooded {flooded}, class2∩flooded {overlap}"
+        );
+    }
+    eprintln!(
+        "  (Q2: is class 2 non-empty? Q3: class2∩flooded overlap; Q4: basin count/area/depth)"
+    );
+
+    // Q5 — is class-2 over-reported by 4-connectivity? Recompute inland with 8-conn (matching
+    // the D8 drainage): a below-sea cell reachable from a grid edge through below-sea cells by
+    // 8-conn is really ocean-connected. If 8-conn class-2 ≪ 4-conn, water_class under-connects.
+    let field = &post;
+    let below = |k: usize| field.data[k] <= SEA;
+    for conn8 in [false, true] {
+        let mut ocean = vec![false; t * t];
+        let mut q = std::collections::VecDeque::new();
+        for x in 0..t {
+            for &k in &[x, (t - 1) * t + x] {
+                if below(k) && !ocean[k] {
+                    ocean[k] = true;
+                    q.push_back(k);
+                }
+            }
+        }
+        for y in 0..t {
+            for &k in &[y * t, y * t + t - 1] {
+                if below(k) && !ocean[k] {
+                    ocean[k] = true;
+                    q.push_back(k);
+                }
+            }
+        }
+        let neigh: &[(i32, i32)] = if conn8 {
+            &[(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, 1), (-1, 1), (1, -1)]
+        } else {
+            &[(-1, 0), (1, 0), (0, -1), (0, 1)]
+        };
+        while let Some(k) = q.pop_front() {
+            let (x, y) = (k % t, k / t);
+            for &(dx, dy) in neigh {
+                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                    let nk = ny as usize * t + nx as usize;
+                    if below(nk) && !ocean[nk] {
+                        ocean[nk] = true;
+                        q.push_back(nk);
+                    }
+                }
+            }
+        }
+        let inland = (0..t * t).filter(|&k| below(k) && !ocean[k]).count();
+        eprintln!(
+            "  Q5 {}-conn ocean flood → inland (class-2) cells: {inland}",
+            if conn8 { "8" } else { "4" }
+        );
+    }
+}
+
+/// STEP 3 (diagnostic) — per-basin WATER BALANCE for the below-sea class-2 basins (≥5 km²),
+/// mirroring `water_balance_lakes` (min(spill, evaporative level) + regime). Reports per basin:
+/// catchment (km²), inflow, evaporation, spill elevation, regime, final level, water area, and
+/// DRY-LAND-BELOW-SEA area. Expected on this humid 45° seed: ≈0 endorheic and ≈0 dry-land-below-sea
+/// (basins overflow their above-sea rim → ordinary lakes). Read-only.
+#[test]
+#[ignore]
+fn endorheic_water_balance() {
+    use std::collections::VecDeque;
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::lakes::connectivity::water_class;
+    use ymir_core::tectonics_c1::drainage::potential_evaporation_mm;
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, FlowConfig, compute_flow};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base, t) = (400.0f32, ss.depth_scale_m as f32, 8192usize);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let norm_to_m = 2.0 * 1.13 * base;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let field = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, base));
+    let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
+    let wc = water_class(&field, SEA);
+    let flow = compute_flow(&field, &FlowConfig { sea_level: SEA, ..Default::default() });
+
+    let n = t * t;
+    let mut runoff: Vec<f32> = (0..n)
+        .map(|k| {
+            let p = precip_mm_per_year(climate.precipitation.data[k]);
+            let pe = potential_evaporation_mm(climate.temperature.data[k]);
+            (p - pe).max(0.0) * cell_km2
+        })
+        .collect();
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_unstable_by(|&a, &b| {
+        flow.filled.data[b].partial_cmp(&flow.filled.data[a]).unwrap().then(b.cmp(&a))
+    });
+    for &k in &order {
+        let d = flow.direction[k];
+        if d as usize >= 8 {
+            continue;
+        }
+        let (x, y) = (k % t, k / t);
+        let nx = ((x as i32 + D8_DX[d as usize]) % t as i32 + t as i32) as usize % t;
+        let ny = ((y as i32 + D8_DY[d as usize]) % t as i32 + t as i32) as usize % t;
+        let add = runoff[k];
+        runoff[ny * t + nx] += add;
+    }
+
+    let min_cells = (5.0 / cell_km2).ceil() as usize;
+    let mut seen = vec![false; n];
+    let mut basins: Vec<Vec<usize>> = Vec::new();
+    for s in 0..n {
+        if wc[s] != 2 || seen[s] {
+            continue;
+        }
+        let mut comp = Vec::new();
+        let mut q = VecDeque::new();
+        q.push_back(s);
+        seen[s] = true;
+        while let Some(k) = q.pop_front() {
+            comp.push(k);
+            let (x, y) = (k % t, k / t);
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                    let nk = ny as usize * t + nx as usize;
+                    if wc[nk] == 2 && !seen[nk] {
+                        seen[nk] = true;
+                        q.push_back(nk);
+                    }
+                }
+            }
+        }
+        if comp.len() >= min_cells {
+            basins.push(comp);
+        }
+    }
+    basins.sort_by_key(|b| std::cmp::Reverse(b.len()));
+
+    // Climate sanity: mean precip vs PE over land — if precip ≈ PE, runoff ≈ 0 and the balance
+    // wrongly dries every basin (this is the same model water_balance_lakes uses).
+    {
+        let land: Vec<usize> = (0..n).filter(|&k| field.data[k] > SEA).collect();
+        let nl = land.len().max(1) as f32;
+        let mp: f32 =
+            land.iter().map(|&k| precip_mm_per_year(climate.precipitation.data[k])).sum::<f32>()
+                / nl;
+        let mpe: f32 = land
+            .iter()
+            .map(|&k| potential_evaporation_mm(climate.temperature.data[k]))
+            .sum::<f32>()
+            / nl;
+        let mrun: f32 = land
+            .iter()
+            .map(|&k| {
+                (precip_mm_per_year(climate.precipitation.data[k])
+                    - potential_evaporation_mm(climate.temperature.data[k]))
+                .max(0.0)
+            })
+            .sum::<f32>()
+            / nl;
+        eprintln!(
+            "=== STEP 3 climate over land: mean precip {mp:.0} mm/yr | mean PE {mpe:.0} mm/yr | mean runoff(P−PE) {mrun:.0} mm/yr ==="
+        );
+    }
+    eprintln!("=== STEP 3 — endorheic water balance, class-2 basins ≥5 km² (8192², 45° humid) ===");
+    eprintln!(
+        "   basin | area | catch km² | inflow | spill m | regime | level m | water km² | dry<sea km²"
+    );
+    let (mut n_endo, mut n_exo, mut total_dry) = (0usize, 0usize, 0.0f32);
+    for (bi, comp) in basins.iter().enumerate() {
+        let in_basin: std::collections::HashSet<usize> = comp.iter().copied().collect();
+        let mut spill = f32::MAX;
+        for &k in comp {
+            let (x, y) = (k % t, k / t);
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                    let nk = ny as usize * t + nx as usize;
+                    if !in_basin.contains(&nk) {
+                        spill = spill.min(field.data[nk]);
+                    }
+                }
+            }
+        }
+        let mut floodset = in_basin.clone();
+        let mut q: VecDeque<usize> = comp.iter().copied().collect();
+        while let Some(k) = q.pop_front() {
+            let (x, y) = (k % t, k / t);
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                    let nk = ny as usize * t + nx as usize;
+                    if field.data[nk] < spill && !floodset.contains(&nk) {
+                        floodset.insert(nk);
+                        q.push_back(nk);
+                    }
+                }
+            }
+        }
+        let mut fcells: Vec<usize> = floodset.into_iter().collect();
+        fcells.sort_by(|&a, &b| field.data[a].partial_cmp(&field.data[b]).unwrap());
+        let a_spill = fcells.len() as f32 * cell_km2;
+        let inflow = comp.iter().map(|&k| runoff[k]).fold(0.0f32, f32::max);
+        let pe_lake = potential_evaporation_mm(climate.temperature.data[fcells[0]]).max(1.0);
+        let a_eq = inflow / pe_lake;
+        let catch =
+            comp.iter().map(|&k| flow.accumulation.data[k]).fold(0.0f32, f32::max) * cell_km2;
+        let (level, regime, water_km2) = if a_eq >= a_spill {
+            (spill, "EXO", a_spill)
+        } else {
+            let n_eq = (a_eq / cell_km2).floor().max(1.0) as usize;
+            (field.data[fcells[n_eq.min(fcells.len()) - 1]], "endo", n_eq as f32 * cell_km2)
+        };
+        let level_m = (level - SEA) * norm_to_m;
+        let spill_m = (spill - SEA) * norm_to_m;
+        let dry = fcells.iter().filter(|&&k| field.data[k] > level && field.data[k] < SEA).count()
+            as f32
+            * cell_km2;
+        total_dry += dry;
+        if regime == "EXO" {
+            n_exo += 1
+        } else {
+            n_endo += 1
+        }
+        if bi < 12 {
+            eprintln!(
+                "   {bi:>5} | {:>4.0} | {catch:>9.0} | {inflow:>6.0} | {spill_m:>7.1} | {regime:<6} | {level_m:>7.1} | {water_km2:>9.0} | {dry:.1}",
+                comp.len() as f32 * cell_km2,
+            );
+        }
+    }
+    eprintln!(
+        "   TOTAL: {} basins ≥5km² | EXOrheic {n_exo}, endorheic {n_endo} | dry-land-below-sea {total_dry:.1} km²",
+        basins.len()
+    );
+    eprintln!("   (expected: ~all EXO, dry<sea ≈ 0 — overflow the above-sea rim → ordinary lakes)");
+}
+
+/// CLIMATE diagnosis — is the C1 precipitation under-produced for a maritime island? Reports
+/// (1) precip field distribution + windward/leeward contrast (is the ocean-moisture source
+/// working, or a flat ~689 mm field?); (2) coastal vs interior; (3) the biome histogram now vs
+/// at a scaled precip (frontal base raised to a maritime ~1100 mm). Frontal base is anchored on
+/// the GLOBAL zonal mean (~450–600 mm), which under-represents an all-maritime island. 2048².
+#[test]
+#[ignore]
+fn climate_precip_diagnosis() {
+    use ymir_core::climate::biomes::{Biome, classify};
+    use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, _domain) = (2048usize, 400.0f32);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let field = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
+
+    let land: Vec<usize> = (0..t * t).filter(|&k| field.data[k] > SEA).collect();
+    let nl = land.len().max(1);
+    let mut p: Vec<f32> =
+        land.iter().map(|&k| precip_mm_per_year(climate.precipitation.data[k])).collect();
+    p.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let mean = p.iter().sum::<f32>() / nl as f32;
+    eprintln!("\n=== CLIMATE precip diagnosis (2048², 45°, seed {seed_u}) ===");
+    eprintln!(
+        "  precip mm/yr: mean {mean:.0} | p10 {:.0} p50 {:.0} p90 {:.0} | min {:.0} max {:.0}",
+        p[nl / 10],
+        p[nl / 2],
+        p[nl * 9 / 10],
+        p[0],
+        p[nl - 1]
+    );
+    // windward (west third) vs leeward (east third) — wind W→E at 45° (westerlies).
+    let mean_x = |lo: f32, hi: f32| -> f32 {
+        let cells: Vec<f32> = land
+            .iter()
+            .filter(|&&k| {
+                let fx = (k % t) as f32 / t as f32;
+                fx >= lo && fx < hi
+            })
+            .map(|&k| precip_mm_per_year(climate.precipitation.data[k]))
+            .collect();
+        if cells.is_empty() { 0.0 } else { cells.iter().sum::<f32>() / cells.len() as f32 }
+    };
+    eprintln!(
+        "  windward (W 0-33%) {:.0} | mid {:.0} | leeward (E 66-100%) {:.0} mm/yr  (contrast = orographic source working?)",
+        mean_x(0.0, 0.33),
+        mean_x(0.33, 0.66),
+        mean_x(0.66, 1.0)
+    );
+    // biome histogram now vs at a maritime scale (×1.6 → ~1100 mm mean).
+    let hist = |scale: f32| -> std::collections::BTreeMap<String, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for &k in &land {
+            let b = classify(
+                climate.temperature.data[k],
+                precip_mm_per_year(climate.precipitation.data[k]) * scale,
+            );
+            *m.entry(format!("{:?}", b)).or_insert(0) += 1;
+        }
+        m
+    };
+    let fmt = |m: &std::collections::BTreeMap<String, usize>| -> String {
+        m.iter()
+            .map(|(k, v)| format!("{k} {:.0}%", *v as f32 / nl as f32 * 100.0))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let _ = Biome::Ocean;
+    eprintln!("  biomes @current ({mean:.0} mm): {}", fmt(&hist(1.0)));
+    eprintln!("  biomes @×1.6 (~{:.0} mm maritime): {}", mean * 1.6, fmt(&hist(1.6)));
+    eprintln!(
+        "  (flat field ⇒ ocean source weak; big steppe/desert share ⇒ sub-humid; ×1.6 shows the humid target)"
+    );
+}
+
 #[test]
 #[ignore]
 fn closure_mosaic() {
