@@ -721,15 +721,17 @@ fn left_panel(
                             }
                             ui.checkbox(
                                 &mut ws.mfd,
-                                egui::RichText::new("MFD incision (dendritique)").color(DIM2).size(11.0),
+                                egui::RichText::new("relief-v3 (MFD+talus+breach)").color(DIM2).size(11.0),
                             )
                             .on_hover_text(
-                                "ADR 0001 Finding 11: routage MULTI-FLUX pour l'incision — disperse \
-                                 l'aire drainée pour EMPÊCHER le peigne de Smith–Bretherton à sa \
-                                 source (pas de lissage a posteriori, donc pas de remblai des \
-                                 vallées). Vallées dendritiques ramifiées, O(n), sans solveur GS \
-                                 (rapide à 8192²). K×3 pour compenser la dispersion. Prioritaire sur \
-                                 l'anti-peigne. Le correctif recommandé.",
+                                "ADR 0001 Findings 11/14/15 — la chaîne relief-v3 complète: incision \
+                                 MULTI-FLUX (empêche le peigne de Smith–Bretherton à sa source → \
+                                 vallées dendritiques ramifiées, O(n), sans solveur GS) + gradage de \
+                                 versant par TALUS (angle de repos, flancs rectilignes) + K×3. Le \
+                                 champ est ensuite conditionné par BREACH (profils de rivière \
+                                 monotones garantis, rivières dans le thalweg) avec les LACS \
+                                 préservés à plat → lakes.json rempli. Le correctif final recommandé. \
+                                 Prioritaire sur l'anti-peigne.",
                             );
                             if ws.mfd {
                                 let pv = [4.0f32, 2.0, 1.1];

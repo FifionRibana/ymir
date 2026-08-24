@@ -200,7 +200,35 @@ impl StreamPowerConfig {
             ..Self::relief_v1(cell_km2, depth_scale_m)
         }
     }
+
+    /// `relief-v3` — the FINAL relief recipe (ADR 0001 Findings 11/14): MFD incision (prevents
+    /// the Smith–Bretherton comb at its cause, dendritic ramified valleys) + TALUS flank
+    /// grading (straight repose flanks, no GS solver) + light linear hillslope, K raised ×3 to
+    /// offset MFD dispersion. No nonlinear-diffusion solver. The exported field must then be
+    /// run through [`crate::terrain::flow::breach_monotone`] (lakes excepted) to guarantee
+    /// monotone river profiles — that conditioning is applied by the pipeline, not here. This
+    /// is the config wired into the production HD run.
+    pub fn relief_v3(cell_km2: f32, depth_scale_m: f32) -> Self {
+        Self {
+            k: RELIEF_V1_K * RELIEF_V3_K_MULT,
+            critical_slope: 0.0, // MFD prevents the comb → no Gauss-Seidel solver
+            diffusion: RELIEF_V3_DIFFUSION, // light linear hillslope (explicit)
+            diffuse_channels: true,
+            talus_slope: RELIEF_V2_CRITICAL_SLOPE, // tan(33°) repose flanks
+            talus_passes: 4,
+            talus_factor: 0.5,
+            mfd_exponent: Some(RELIEF_V3_MFD_P),
+            ..Self::relief_v2(cell_km2, depth_scale_m)
+        }
+    }
 }
+
+/// `relief-v3` MFD partition exponent (p≈2 keeps the strongest trunk while killing the comb).
+pub const RELIEF_V3_MFD_P: f32 = 2.0;
+/// `relief-v3` erodibility multiplier over `RELIEF_V1_K` (MFD disperses A → weaker incision).
+pub const RELIEF_V3_K_MULT: f32 = 3.0;
+/// `relief-v3` light linear hillslope diffusion (explicit; grades flanks, no backfill at 0.08).
+pub const RELIEF_V3_DIFFUSION: f32 = 0.08;
 
 /// `relief-v2` critical slope — `tan(33°)`, a mid-range angle of repose for fractured
 /// rock. Above it the nonlinear flux diverges and the slope cannot steepen further.

@@ -49,12 +49,13 @@ use ymir_core::tectonics_c1::cached_product::{
     tectonic_key,
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
-use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult};
+use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult, c1_drainage_windowed};
 use ymir_core::tectonics_c1::land_topology::{
     IslandEval, LandTopology, evaluate_island, land_topology,
 };
 use ymir_core::tectonics_c1::production_upscale::EroProgress;
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
+use ymir_core::terrain::flow::breach_monotone;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
 use super::events::C1Event;
@@ -373,16 +374,13 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             sp.diffuse_channels = true;
             sp.diffusion = params.cross_rill_d;
         }
-        // ADR 0001 Finding 11: MFD incision — disperse the drainage area so the
-        // Smith–Bretherton comb never forms (attack the cause). No GS solver needed →
-        // critical_slope off, light linear hillslope only, K raised to offset dispersion.
-        // Takes precedence over cross-rill. Yields dendritic ramified valleys.
+        // ADR 0001 Findings 11/14: the FINAL relief recipe (relief-v3) — MFD incision
+        // (comb prevented at the cause, dendritic valleys) + talus flank grading + light
+        // linear hillslope, K×3. No GS solver. The eroded field is then breach-conditioned
+        // (below) for monotone rivers + lakes. Takes precedence over cross-rill.
         if params.closures && params.mfd {
-            sp.critical_slope = 0.0;
-            sp.diffusion = 0.05;
-            sp.diffuse_channels = true;
-            sp.k *= 3.0;
-            sp.mfd_exponent = Some(params.mfd_p);
+            sp = StreamPowerConfig::relief_v3(cell_km2, depth);
+            sp.mfd_exponent = Some(params.mfd_p); // let the viz p selector override
         }
         eprintln!(
             "[HD] stream-power incision ON ({}: A_c {:.0} cells = {} km²{}), droplets OFF",
@@ -588,6 +586,28 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         }
     };
 
+    // ── relief-v3 conditioning (ADR 0001 Finding 14): breach the eroded field so exported
+    // river long-profiles are monotone, with detected lakes held flat. Done AFTER the cached
+    // eroded (in-memory, not re-cached): detect lakes on the pre-breach field, breach
+    // (lakes excepted), then compute drainage on the conditioned field for MONOTONE rivers
+    // while carrying the PRE-BREACH lakes (the breach flattens them, so post-breach detection
+    // would find none — lakes.json must come from the pre-breach set). Uncached (experimental
+    // viz path); the cached drainage below is bypassed when this override is present.
+    let (eroded, drainage_override) = if params.stream_power && params.closures && params.mfd {
+        let (gw, gh) = (eroded.width, eroded.height);
+        let prebreach = c1_drainage_windowed(&eroded, None, &dcfg, &ss, window_km);
+        let conditioned =
+            breach_monotone(&eroded, &prebreach.flow.filled, &prebreach.lake_map, 0.5, gw, gh);
+        let mut dr = c1_drainage_windowed(&conditioned, None, &dcfg, &ss, window_km);
+        let nlk = prebreach.lakes.len();
+        dr.lakes = prebreach.lakes; // keep the real (pre-breach) lakes for lakes.json
+        dr.lake_map = prebreach.lake_map;
+        eprintln!("[HD] relief-v3 breach conditioning: monotone rivers + {nlk} lakes held flat");
+        (conditioned, Some(dr))
+    } else {
+        (eroded, None)
+    };
+
     // ── Phase 2: climate (temperature + precipitation). ──
     bail_if_cancelled!();
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Climate });
@@ -605,19 +625,23 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let drainage_hit = sidecar_exists("drainage", dkey.digest());
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Drainage });
     let t = Instant::now();
-    let drainage = match cached_c1_drainage_windowed(
-        &cache_dir,
-        &ekey,
-        &eroded,
-        Some((lat, &pp)),
-        &dcfg,
-        &ss,
-        window_km,
-    ) {
-        Ok(d) => d,
-        Err(e) => {
-            let _ = tx.send(C1Event::HdFailed { error: format!("drainage: {e}") });
-            return;
+    let drainage = if let Some(dr) = drainage_override {
+        dr // relief-v3: monotone rivers on the breached field + pre-breach lakes (uncached)
+    } else {
+        match cached_c1_drainage_windowed(
+            &cache_dir,
+            &ekey,
+            &eroded,
+            Some((lat, &pp)),
+            &dcfg,
+            &ss,
+            window_km,
+        ) {
+            Ok(d) => d,
+            Err(e) => {
+                let _ = tx.send(C1Event::HdFailed { error: format!("drainage: {e}") });
+                return;
+            }
         }
     };
     let _ = tx.send(C1Event::HdPhaseDone {
