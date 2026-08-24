@@ -716,3 +716,33 @@ Still open after both defects: DEFECT 1's 8192² under-incision (floor/ridge ~0.
 lever — the conditioning does not deepen valleys); wiring breach + lake export into the
 production path (populate lakes.json / Wetland); and the headwater render with the network
 overlaid. relief-v2 baseline frozen only once DEFECT 1 depth is settled and the author confirms.
+
+## Finding 15 — The river "offset" was a metric artifact; rivers already sit in the thalweg
+
+The author ruled the 50 %-in-local-min / p90 32 m "offset" unacceptable and asked to extract
+rivers from the MFD network. Two things settle it (`thalweg_diagnosis`, 2048²):
+
+1. **MFD dominant-flow receiver ≡ D8 steepest** (92.9 % of land cells; the rest are flat-cell
+   tie-breaks). `argmaxⱼ slopeⱼᵖ = argmaxⱼ slopeⱼ` — the dominant MFD path IS the D8 line, so
+   extracting rivers from MFD returns the same polyline. It cannot change the offset.
+
+2. **The offset metric was wrong.** "River cell in an omnidirectional local min within ±150 m"
+   INCLUDES the downstream cell; a river always descends, so its downstream neighbour is always
+   lower → a descending river can NEVER be an omnidirectional local min. That number (p90 32 m)
+   was mostly the river's own DESCENT, not off-thalweg-ness. The correct test is TRANSVERSE:
+   is the river cell ≤ its two banks perpendicular to flow.
+
+Transverse thalweg residence:
+
+| field | in-thalweg | trans offset p50 | trans p90 |
+|---|---|---|---|
+| incised | 80 % | −2.5 m | 6.2 m |
+| **breached** | **94 %** | **−1.8 m** | **0.0 m** |
+| stream-burn + re-breach | 95 % | −4.8 m | 0.0 m |
+
+After the breach the rivers already sit in their valley bottoms: **94 % are at or below both
+banks, median 1.8 m below, p90 transverse offset 0.0 m.** Stream-burn adds ~1 pt (94→95 %) and
+is unnecessary (and the re-breach fill would raise burned channels back anyway). The residual
+~6 % are the natural confluence/cutbank cells no D8-on-real network avoids. So: no MFD rewrite,
+no burn — the DEFECT-2 breach already delivers rivers-in-thalweg; the earlier rejection rested
+on my flawed omnidirectional metric.

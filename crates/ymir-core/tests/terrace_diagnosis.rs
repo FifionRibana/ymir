@@ -3013,6 +3013,189 @@ fn mfd_final_render() {
     );
 }
 
+/// THALWEG diagnosis + fix. (1) Prove the MFD dominant-flow receiver == D8 steepest (so
+/// extracting rivers from MFD does NOT change the line). (2) Locate the offset: measure river
+/// in-local-min on the INCISED vs BREACHED field. (3) Prototype STREAM-BURN: carve river cells
+/// below their neighbours (→ local minima by construction) then re-breach for monotonicity, and
+/// re-measure. 2048², fast. Read-only.
+#[test]
+#[ignore]
+fn thalweg_diagnosis() {
+    use ymir_core::erosion::stream_power::{RELIEF_V1_K, StreamPowerConfig, incise};
+    use ymir_core::terrain::flow::{
+        D8_DIST, D8_DX, D8_DY, DIR_NONE, FlowConfig, breach_monotone, compute_flow,
+    };
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (domain, base, t) = (400.0f32, ss.depth_scale_m as f32, 2048usize);
+    let cell_km = domain / t as f32;
+    let cell_m = cell_km * 1000.0;
+    let cell_km2 = cell_km * cell_km;
+    let norm_to_m = 2.0 * 1.13 * base;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let mut cfg = StreamPowerConfig::relief_v2(cell_km2, base);
+    cfg.critical_slope = 0.0;
+    cfg.diffuse_channels = true;
+    cfg.k = RELIEF_V1_K * 3.0;
+    cfg.mfd_exponent = Some(2.0);
+    cfg.talus_slope = 0.6494;
+    cfg.talus_passes = 4;
+    cfg.diffusion = 0.08;
+    let post = incise(&fbm, &cfg);
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let cur = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+
+    // (1) MFD dominant receiver vs D8 steepest, on the breached field.
+    let flow = compute_flow(&cur, &FlowConfig { sea_level: SEA, ..Default::default() });
+    let (mut agree, mut land) = (0usize, 0usize);
+    for k in 0..t * t {
+        if cur.data[k] <= SEA || flow.direction[k] == DIR_NONE {
+            continue;
+        }
+        land += 1;
+        let (x, y) = ((k % t) as i32, (k / t) as i32);
+        // MFD dominant = neighbour with the largest slope^p (p=2) among lower filled nbrs.
+        let (mut best_w, mut best_d) = (0.0f32, DIR_NONE);
+        for d in 0..8 {
+            let (nx, ny) = (x + D8_DX[d], y + D8_DY[d]);
+            if nx < 0 || ny < 0 || nx >= t as i32 || ny >= t as i32 {
+                continue;
+            }
+            let nb = ny as usize * t + nx as usize;
+            let drop = flow.filled.data[k] - flow.filled.data[nb];
+            if drop > 0.0 {
+                let s = drop / D8_DIST[d];
+                let w = s * s; // p=2
+                if w > best_w {
+                    best_w = w;
+                    best_d = d as u8;
+                }
+            }
+        }
+        if best_d == flow.direction[k] {
+            agree += 1;
+        }
+    }
+    eprintln!("\n=== THALWEG diagnosis (2048²) ===");
+    eprintln!(
+        "(1) MFD-dominant receiver == D8 steepest: {:.1}% of land cells → they are the SAME network",
+        agree as f32 / land.max(1) as f32 * 100.0
+    );
+
+    // (2) TRANSVERSE thalweg test (the correct one): a river descends, so its downstream
+    // neighbour is always lower → it can NEVER be an omnidirectional local min. The valid
+    // question is whether it sits at the bottom of its CROSS-SECTION: is the river cell ≤ its
+    // two banks PERPENDICULAR to flow. Offset = river − min(left bank, right bank); ≤0 = in
+    // the thalweg. (Also report the omnidirectional ±150 m for contrast — it mostly measures
+    // the river's own descent, not off-thalweg-ness.)
+    let r = (150.0 / cell_m).round().max(1.0) as i32;
+    let measure = |field: &GridF32| -> (f32, f32, f32, f32) {
+        let dr = c1_drainage(field, None, &C1DrainageConfig::default(), &ss);
+        let (mut in_thalweg, mut n) = (0usize, 0usize);
+        let (mut trans_off, mut omni_off) = (Vec::new(), Vec::new());
+        for s in &dr.rivers.segments {
+            for w in s.points.windows(2) {
+                let (px, py) = (w[0].0 as i32, w[0].1 as i32);
+                let k = py as usize * t + px as usize;
+                // flow direction from this point to the next → perpendicular = (-dy, dx).
+                let (fx, fy) = (w[1].0 as i32 - px, w[1].1 as i32 - py);
+                if fx == 0 && fy == 0 {
+                    continue;
+                }
+                let (ppx, ppy) = (-fy.signum(), fx.signum());
+                let mut banks = f32::MAX;
+                for sgn in [-1i32, 1] {
+                    let (bx, by) = (px + ppx * sgn, py + ppy * sgn);
+                    if bx >= 0 && by >= 0 && bx < t as i32 && by < t as i32 {
+                        banks = banks.min(field.data[by as usize * t + bx as usize]);
+                    }
+                }
+                if banks < f32::MAX {
+                    let toff = (field.data[k] - banks) * norm_to_m;
+                    if toff <= 0.5 {
+                        in_thalweg += 1;
+                    }
+                    trans_off.push(toff);
+                    n += 1;
+                }
+                // omnidirectional ±150 m for contrast.
+                let mut lo = field.data[k];
+                for dy in -r..=r {
+                    for dx in -r..=r {
+                        let (nx, ny) = (px + dx, py + dy);
+                        if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                            lo = lo.min(field.data[ny as usize * t + nx as usize]);
+                        }
+                    }
+                }
+                omni_off.push((field.data[k] - lo) * norm_to_m);
+            }
+        }
+        trans_off.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        omni_off.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        (
+            in_thalweg as f32 / n.max(1) as f32 * 100.0,
+            trans_off[trans_off.len() / 2],
+            trans_off[trans_off.len() * 9 / 10],
+            omni_off[omni_off.len() * 9 / 10],
+        )
+    };
+    let (it0, tp50_0, tp90_0, op90_0) = measure(&post);
+    let (it1, tp50_1, tp90_1, op90_1) = measure(&cur);
+    eprintln!(
+        "(2) TRANSVERSE thalweg: in-thalweg%% / trans p50 / trans p90 | omni p90 (mostly descent):"
+    );
+    eprintln!("     incised  : {it0:.0}% / {tp50_0:.1} m / {tp90_0:.1} m | omni {op90_0:.0} m");
+    eprintln!("     breached : {it1:.0}% / {tp50_1:.1} m / {tp90_1:.1} m | omni {op90_1:.0} m");
+
+    // (3) STREAM-BURN prototype: carve river cells (D8 acc ≥ A_c) below their lowest
+    // neighbour by delta, then re-breach for monotonicity. Rivers become local minima by
+    // construction (terrain changed to the line, not the line moved).
+    let a_c = 0.1 / cell_km2;
+    let dr = c1_drainage(&cur, None, &C1DrainageConfig::default(), &ss);
+    let is_river: Vec<bool> =
+        (0..t * t).map(|k| dr.flow.accumulation.data[k] >= a_c && cur.data[k] > SEA).collect();
+    let delta = 5.0 / norm_to_m; // burn 5 m below the surrounding terrain
+    let mut burned = cur.clone();
+    for k in 0..t * t {
+        if !is_river[k] {
+            continue;
+        }
+        let (x, y) = ((k % t) as i32, (k / t) as i32);
+        let mut mn = f32::MAX;
+        for d in 0..8 {
+            let (nx, ny) = (x + D8_DX[d], y + D8_DY[d]);
+            if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                let nb = ny as usize * t + nx as usize;
+                if !is_river[nb] {
+                    mn = mn.min(cur.data[nb]);
+                }
+            }
+        }
+        if mn < f32::MAX {
+            burned.data[k] = burned.data[k].min(mn - delta);
+        }
+    }
+    let dr_b = c1_drainage(&burned, None, &C1DrainageConfig::default(), &ss);
+    let burned2 = breach_monotone(&burned, &dr_b.flow.filled, &dr_b.lake_map, SEA, t, t);
+    let (itb, tp50b, tp90b, _) = measure(&burned2);
+    let (vb, segb, wb) = river_climbs(&burned2, &ss, t);
+    eprintln!("(3) stream-burn (5 m) + re-breach:");
+    eprintln!(
+        "     burned   : {itb:.0}% in-thalweg / trans p50 {tp50b:.1} m / p90 {tp90b:.1} m | climbing {vb}/{segb} (worst +{wb:.0} m)"
+    );
+    eprintln!(
+        "   (transverse in-thalweg is the correct thalweg test; omnidirectional ≈ the river's own descent)"
+    );
+}
+
 /// DEFECT 1 fix — FLANK GRADING on MFD terrain, two variants (author's design): (A) talus
 /// alone → straight repose walls (gravitational transport); (B) talus + light LINEAR
 /// diffusion (D≈0.08) → straight near the crest, convex below (creep) — two processes, two
