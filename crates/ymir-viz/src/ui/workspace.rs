@@ -1151,6 +1151,10 @@ fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
         },
     };
     kv(ui, "Drainage", drainage);
+    if let Some(r) = &c.river {
+        kv(ui, "Largeur chenal", format!("{:.0} m", r.width_m));
+        kv(ui, "Bassin versant", format!("{:.0} km²", r.drainage_km2));
+    }
     kv(ui, "Ruissellement", format!("{:.0} mm/an", c.runoff_mm));
 
     group_title(ui, "BIOME");

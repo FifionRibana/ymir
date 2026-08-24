@@ -34,6 +34,8 @@ pub struct RiverCellInfo {
     pub segment: usize,
     pub navigability: Navigability,
     pub drainage_km2: f32,
+    /// Bankfull channel width in metres (`segment_width_m`, DEFECT C).
+    pub width_m: f32,
 }
 
 /// Reverse map: cell → the river segment passing through it (if any).
@@ -56,6 +58,7 @@ impl RiverCellMap {
                 segment: si,
                 navigability: d.segment_navigability[si],
                 drainage_km2: d.segment_drainage_km2[si],
+                width_m: d.segment_width_m.get(si).copied().unwrap_or(0.0),
             };
             for &(px, py) in &seg.points {
                 let k = py as usize * width + px as usize;
