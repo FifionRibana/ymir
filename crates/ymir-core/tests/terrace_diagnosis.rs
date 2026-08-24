@@ -3628,6 +3628,181 @@ fn endorheic_water_balance() {
     eprintln!("   (expected: ~all EXO, dry<sea ≈ 0 — overflow the above-sea rim → ordinary lakes)");
 }
 
+/// Finding 28 — inspection microscope DATA (what the four viz panels assemble from the
+/// EXPORTED drainage; nothing recomputed). Watercourse list (TASK 2), a river profile
+/// (TASK 3) and a lake sheet (TASK 4) at ratio 7.5 / centre 38° span 27°.
+#[test]
+#[ignore]
+fn inspection_panels_data() {
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageThresholds, DrainageClimate, LakeType, apply_geo_scale_ratio, below_sea_basin_lakes, clip_rivers_to_lakes,
+    };
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain, ratio) = (2048usize, 400.0f32, 7.5f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let km_per_cell = domain / t as f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 38.0, 27.0, &PrecipParams::default(), domain);
+    let dcfg = C1DrainageConfig::default();
+    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
+    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    dr.lakes.extend(bs);
+    apply_geo_scale_ratio(&mut dr, ratio, &DrainageThresholds::default());
+    clip_rivers_to_lakes(&mut dr);
+
+    // TASK 2 — aggregate segments → watercourses (mirror of the viz logic).
+    let segs = &dr.rivers.segments;
+    let n = segs.len();
+    let q = |i: usize| dr.segment_discharge_m3s.get(i).copied().unwrap_or(0.0);
+    let mut root = vec![0usize; n];
+    for i in 0..n { let mut j = i; for _ in 0..=n { match segs[j].downstream { Some(k) if k < n => j = k, _ => break } } root[i] = j; }
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+    for i in 0..n { groups.entry(root[i]).or_default().push(i); }
+    let endo: std::collections::HashSet<u32> = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).map(|l| l.base.id).collect();
+    let sink_of = |mx: u32, my: u32| -> &'static str {
+        for dy in -1i32..=1 { for dx in -1i32..=1 {
+            let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
+            if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                let k = ny as usize * t + nx as usize;
+                if field.data[k] <= SEA { return "mer"; }
+                let id = dr.lake_map[k];
+                if id != 0 { return if endo.contains(&id) { "bassin endoréique" } else { "lac exoréique" }; }
+            }
+        }} "?"
+    };
+    // longest-path (points) per segment → geographic main stem.
+    let mut pathlen = vec![0u32; n];
+    let mut ord: Vec<usize> = (0..n).collect();
+    ord.sort_by_key(|&i| segs[i].strahler_order);
+    for _ in 0..16 { let mut changed = false; for &i in &ord { let up = segs[i].upstream.iter().copied().filter(|&u| u < n).map(|u| pathlen[u]).max().unwrap_or(0); let v = up + segs[i].points.len() as u32; if v != pathlen[i] { pathlen[i] = v; changed = true; } } if !changed { break; } }
+    struct Wc { root: usize, segs: Vec<usize>, trunk: Vec<usize>, q: f32, sink: &'static str }
+    let mut wcs: Vec<Wc> = groups.into_iter().map(|(r, members)| {
+        let mut trunk = Vec::new(); let mut cur = r;
+        for _ in 0..=n { trunk.push(cur); match segs[cur].upstream.iter().copied().filter(|&u| u < n).max_by_key(|&u| pathlen[u]) { Some(nx) => cur = nx, None => break } }
+        trunk.reverse();
+        let (mx, my) = *segs[r].points.last().unwrap();
+        Wc { root: r, segs: members, trunk, q: q(r), sink: sink_of(mx, my) }
+    }).collect();
+    wcs.sort_by(|a, b| b.q.partial_cmp(&a.q).unwrap());
+    eprintln!("\n=== Finding 28 — inspection panels DATA (ratio {ratio}, centre 38° span 27°) ===");
+    eprintln!("  TASK 2 — {} watercourses (from {} segments). Top 8 by discharge:", wcs.len(), n);
+    for (i, wc) in wcs.iter().take(8).enumerate() {
+        eprintln!("     #{:<2} S{} · {:.0} m³/s · {} trib · {}", i + 1, segs[wc.root].strahler_order, wc.q, wc.segs.len().saturating_sub(1), wc.sink);
+    }
+    // TASK 3 — profile of the top watercourse by WALKING the flow field from its main-stem
+    // headwater (breached field → monotone; no dependence on clipped segment links).
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let norm_to_m = |nrm: f32| ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres(nrm, &ss);
+    let top = &wcs[0];
+    let mut elev: Vec<f32> = Vec::new();
+    let (sx, sy) = segs[*top.trunk.first().unwrap()].points[0];
+    let mut kk = sy as usize * t + sx as usize;
+    for _ in 0..(2 * t) {
+        elev.push(norm_to_m(field.data[kk]));
+        if field.data[kk] <= SEA || dr.lake_map[kk] != 0 { break; }
+        let dir = dr.flow.direction[kk];
+        if dir == DIR_NONE { break; }
+        let (nx, ny) = ((kk % t) as i32 + D8_DX[dir as usize], (kk / t) as i32 + D8_DY[dir as usize]);
+        if nx < 0 || ny < 0 || nx as usize >= t || ny as usize >= t { break; }
+        kk = ny as usize * t + nx as usize;
+    }
+    let (mut lo, mut hi, mut climb) = (f32::MAX, f32::MIN, 0.0f32);
+    for &e in &elev { lo = lo.min(e); hi = hi.max(e); }
+    for w in elev.windows(2) { climb = climb.max(w[1] - w[0]); }
+    let length_km = elev.len() as f32 * km_per_cell * ratio;
+    eprintln!("  TASK 3 — river #1 long profile: {} points · {:.0}→{:.0} m · length {:.0} km · max climb {:.1} m ({}) · width mouth {:.0} m / source {:.0} m · sink {}",
+        elev.len(), elev.first().copied().unwrap_or(0.0), elev.last().copied().unwrap_or(0.0), length_km, climb,
+        if climb > 1.0 { "NON-monotone" } else { "monotone ✓" },
+        dr.segment_width_m[top.root], dr.segment_width_m[*top.trunk.first().unwrap()], top.sink);
+    // Visual: render the long profile (source→sink) + the latitude globe strip to a PNG,
+    // replicating the two widgets so there is something to look at alongside the data.
+    {
+        use std::path::Path;
+        use ymir_core::climate::precipitation::wind_zonal_dir;
+        use ymir_core::climate::temperature::sea_level_temperature;
+        let (iw, ih) = (900usize, 340usize);
+        let mut img = vec![20u8; iw * ih * 3];
+        let put = |img: &mut [u8], x: i32, y: i32, c: [u8; 3]| {
+            if x >= 0 && y >= 0 && (x as usize) < iw && (y as usize) < ih {
+                let k = (y as usize * iw + x as usize) * 3; img[k] = c[0]; img[k + 1] = c[1]; img[k + 2] = c[2];
+            }
+        };
+        // Globe strip (left 120 px): thermal gradient + belt lines + map rectangle (centre 38 span 27).
+        let (centre, span) = (38.0f32, 27.0f32);
+        let y_of_lat = |lat: f32| (10.0 + (90.0 - lat) / 180.0 * (ih as f32 - 20.0)) as i32;
+        for yy in 10..ih as i32 - 10 {
+            let lat = 90.0 - (yy as f32 - 10.0) / (ih as f32 - 20.0) * 180.0;
+            let t = sea_level_temperature(lat);
+            let f = ((t + 25.0) / 52.0).clamp(0.0, 1.0);
+            let c = [(40.0 + 200.0 * f) as u8, (90.0 + 60.0 * (1.0 - (f - 0.5).abs() * 2.0)) as u8, (200.0 - 170.0 * f) as u8];
+            for xx in 10..110 { put(&mut img, xx, yy, c); }
+        }
+        for lat in [-60.0f32, -30.0, 0.0, 30.0, 60.0] { let y = y_of_lat(lat); for xx in 10..110 { put(&mut img, xx, y, [255, 255, 255]); } }
+        let (y0, y1) = (y_of_lat(centre + span / 2.0), y_of_lat(centre - span / 2.0));
+        for yy in y0..=y1 { put(&mut img, 10, yy, [230, 150, 60]); put(&mut img, 109, yy, [230, 150, 60]); }
+        for xx in 10..110 { put(&mut img, xx, y0, [230, 150, 60]); put(&mut img, xx, y1, [230, 150, 60]); }
+        let _ = wind_zonal_dir(45.0);
+        // Profile plot (right region): elevation source→sink.
+        let (px0, py0, pw, ph) = (150i32, 30i32, 720i32, 260i32);
+        for yy in py0..py0 + ph { for xx in px0..px0 + pw { put(&mut img, xx, yy, [24, 24, 30]); } }
+        let (mut lo2, mut hi2) = (f32::MAX, f32::MIN);
+        for &e in &elev { lo2 = lo2.min(e); hi2 = hi2.max(e); }
+        let sp = (hi2 - lo2).max(1.0);
+        let ne = elev.len();
+        let y0m = py0 + ph - 1 - ((0.0 - lo2) / sp * (ph as f32 - 2.0)) as i32; // sea level line
+        if lo2 <= 0.0 && hi2 >= 0.0 { for xx in px0..px0 + pw { put(&mut img, xx, y0m, [90, 150, 210]); } }
+        for i in 1..ne {
+            let x_a = px0 + ((i - 1) as f32 / (ne - 1) as f32 * (pw as f32 - 2.0)) as i32;
+            let x_b = px0 + (i as f32 / (ne - 1) as f32 * (pw as f32 - 2.0)) as i32;
+            let y_a = py0 + ph - 1 - ((elev[i - 1] - lo2) / sp * (ph as f32 - 2.0)) as i32;
+            let y_b = py0 + ph - 1 - ((elev[i] - lo2) / sp * (ph as f32 - 2.0)) as i32;
+            let steps = (x_b - x_a).abs().max((y_b - y_a).abs()).max(1);
+            for s in 0..=steps { let t = s as f32 / steps as f32; put(&mut img, x_a + ((x_b - x_a) as f32 * t) as i32, y_a + ((y_b - y_a) as f32 * t) as i32, [230, 150, 60]); }
+        }
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
+        std::fs::create_dir_all(&dir).ok();
+        let mut b = image::ImageBuffer::new(iw as u32, ih as u32);
+        for (k, pxl) in b.pixels_mut().enumerate() { *pxl = image::Rgb([img[k * 3], img[k * 3 + 1], img[k * 3 + 2]]); }
+        b.save(dir.join("microscope_globe_profile.png")).unwrap();
+        eprintln!("  VISUAL → exports/sculpt/microscope_globe_profile.png (globe strip + river #1 profile)");
+    }
+
+    // TASK 4 — lake sheet for the largest lake.
+    if let Some((li, lk)) = dr.lakes.iter().enumerate().max_by(|a, b| a.1.area_km2.partial_cmp(&b.1.area_km2).unwrap()) {
+        let id = lk.base.id;
+        let mut shore = 0usize;
+        for y in 0..t { for x in 0..t { if dr.lake_map[y * t + x] == id {
+            for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] { let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if nx < 0 || ny < 0 || nx as usize >= t || ny as usize >= t || dr.lake_map[ny as usize * t + nx as usize] != id { shore += 1; } }
+        }}}
+        let inlets = segs.iter().filter(|s| { let &(mx, my) = s.points.last().unwrap();
+            (-1i32..=1).any(|dy| (-1i32..=1).any(|dx| { let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
+                nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 && dr.lake_map[ny as usize * t + nx as usize] == id })) }).count();
+        let _ = li;
+        eprintln!("  TASK 4 — lake #{id} sheet: {:.1} km² · rive {:.0} km · niveau {:.0} m · prof.max {:.0} m · {} affluents · {} · exutoire {}",
+            lk.area_km2, shore as f32 * km_per_cell, lk.level_m, lk.depth_m, inlets,
+            if lk.lake_type == LakeType::Endorheic { "endoréique (salé, non potable, pas de poisson)" } else { "exoréique (eau douce)" },
+            if lk.lake_type == LakeType::Endorheic { "aucun (fermé)" } else { "oui" });
+    }
+}
+
 /// STEP 3 — southern-hemisphere mirror. All latitude functions use |lat|, so centre −45°
 /// must be the exact VERTICAL MIRROR of centre +45° (same span). Asserts the temperature
 /// field mirrors row-for-row and renders both biome maps for the eye.

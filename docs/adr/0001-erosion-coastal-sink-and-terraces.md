@@ -1047,3 +1047,36 @@ BOTH hemispheres (the zonal component does not flip across the equator; only the
 the 1-D zonal transport does not use). A span crossing the equator (centre 0°) is handled per row via
 `|lat|` (ITCZ peak at 0°). So the southern hemisphere and equator crossings mirror consistently across
 temperature, wind and precipitation.
+
+## Finding 28 — Inspection microscope: four viz panels, read-only, assembling exported data
+
+Over ten passes it was repeatedly the EYE that caught what aggregate metrics hid (striations, perched rivers,
+false lakes, inverted latitude). This tooling makes those visible in one glance. Four panels, **UI only** — no
+generation/export/data change; a microscope, not an editor (every editable field would raise a consistency
+question). Each reads existing data; nothing is recomputed.
+
+- **TASK 1 — latitude placement widget** (`latitude_placement_widget`): a −90…+90° strip (north up) painted with
+  the thermal gradient AND the wind BELTS as bands (trade easterlies / westerlies / polar easterlies, each with a
+  direction arrow), with the map rectangle `[centre−span/2, centre+span/2]` drawn over it. Live as the
+  centre/span sliders move. Makes the CONSEQUENCE of the span visible (how many belts it crosses) BEFORE
+  generating. Pure function of centre/span — reads no field.
+- **TASK 2 — entity lists** (`aggregate_watercourses` + `inspection_dock`): the 3183 segments are aggregated into
+  464 browsable WATERCOURSES — a watercourse = every segment sharing a terminal (post-clip `downstream==None`
+  mouth); its trunk = the LONGEST source→mouth path (river-length convention). Listed by discharge (rivers) /
+  area (lakes), select-and-highlight both ways (list click ↔ map hover, painter-drawn highlight, no texture
+  rebake). Reads `segment_discharge_m3s`, the upstream/downstream links, `points`.
+- **TASK 3 — river long profile** (`river_profile_panel`): bed elevation source→sink by WALKING the flow field
+  (`flow.direction` + `eroded`) from the main-stem headwater — NOT by stitching `segment_profile_m` across the
+  clip's best-effort links, which injected phantom junction steps (a 375 m false climb → 0 after the switch). The
+  breached field is monotone, so a REAL climb would stand out — this doubles as the monotonicity inspector. Shows
+  discharge / width mouth-vs-source / catchment / length / order and marks the SINK (sea / exorheic lake /
+  endorheic basin) explicitly.
+- **TASK 4 — lake sheet** (`lake_sheet_panel`): `C1Lake`'s area / level / max-depth / `lake_type`, plus shore
+  length and inlet count computed UI-side from `lake_map` + the river mouths (reads, not recomputes). The
+  endorheic CONSEQUENCE is spelt out (closed basin → salt, no fish, undrinkable, no shore agriculture — the
+  content LL should consume). Average depth / inflow / evaporation are NOT exported (the water balance discards
+  them) — stated as such, not faked; surfacing them is a future data-export addition.
+
+Verified by `inspection_panels_data` (2048², ratio 7.5, centre 38° span 27°): 464 watercourses, river #1 a
+202 km monotone main stem (999→0 m) to the sea, largest lake a 128 km² endorheic basin (173 km shore, 21
+inlets, closed). Core lib 514 green (incl. the row-orientation regression); viz compiles.

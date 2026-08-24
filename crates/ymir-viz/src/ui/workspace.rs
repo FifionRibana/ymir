@@ -32,10 +32,13 @@ use crate::bridge::c1::{
 };
 use crate::visualization::colormap::hypsometric_bipolar;
 use ymir_core::climate::biomes::Biome;
-use ymir_core::climate::precipitation::precip_mm_per_year;
+use ymir_core::climate::precipitation::{precip_mm_per_year, wind_zonal_dir};
+use ymir_core::climate::temperature::sea_level_temperature;
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{LakeType, Navigability};
+use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
 use ymir_core::tectonics_c1::land_topology::domain_metrics;
 
 // ── Palette (the mock's exact hex) ───────────────────────────────────────
@@ -60,6 +63,42 @@ impl Plugin for HdWorkspacePlugin {
         app.init_resource::<WorkspaceState>();
         app.add_systems(EguiPrimaryContextPass, draw_workspace);
     }
+}
+
+/// Which sink a watercourse terminates in (Finding 28 — inspection microscope).
+#[derive(Clone, Copy, PartialEq)]
+enum Sink {
+    Sea,
+    ExoLake,
+    EndoLake,
+    Unknown,
+}
+
+/// An aggregated WATERCOURSE (a trunk + its tributaries), assembled UI-side from the
+/// exported per-segment drainage — NOT recomputed. `segments` are every segment that
+/// drains to the same terminal; `trunk` is the source→sink main stem (the max-discharge
+/// choice at each confluence). Everything read from `C1DrainageResult`.
+#[derive(Clone)]
+struct Watercourse {
+    segments: Vec<usize>,
+    trunk: Vec<usize>, // source → sink
+    order: u8,
+    discharge_m3s: f32,
+    width_mouth_m: f32,
+    width_source_m: f32,
+    catchment_km2: f32,
+    mouth_xy: (u32, u32),
+    sink: Sink,
+    length_km: f32,
+    tributaries: usize,
+}
+
+/// Which entity list the inspection panel is showing.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum InspectTab {
+    #[default]
+    Rivers,
+    Lakes,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -213,6 +252,14 @@ struct WorkspaceState {
     /// scroll sliders; clamped so the zoom window stays inside the map.
     map_pan: [f32; 2],
     river_map: Option<RiverCellMap>,
+    /// Aggregated watercourses (rebuilt with each HD result). Assembly of exported data.
+    watercourses: Option<Arc<Vec<Watercourse>>>,
+    /// Selected entity (index into `watercourses` / `drainage.lakes`) for the microscope.
+    selected_river: Option<usize>,
+    selected_lake: Option<usize>,
+    /// segment index → watercourse index (for hover-select on the map).
+    seg_to_wc: Vec<usize>,
+    inspect_tab: InspectTab,
     texture: Option<egui::TextureHandle>,
     tex_layer: Option<HdLayer>,
     /// Overlay state the cached `texture` was built with (rebuild when it flips).
@@ -265,6 +312,11 @@ impl Default for WorkspaceState {
             pan_accum: [0.0, 0.0],
             preview_zoom: 1.0,
             river_map: None,
+            watercourses: None,
+            selected_river: None,
+            selected_lake: None,
+            seg_to_wc: Vec::new(),
+            inspect_tab: InspectTab::Rivers,
             texture: None,
             tex_layer: None,
             tex_overlay: false,
@@ -498,6 +550,17 @@ fn draw_workspace(
         if is_new {
             ws.current = Some(result.clone());
             ws.river_map = Some(RiverCellMap::from_drainage(&result.drainage));
+            let wcs = aggregate_watercourses(result, ws.domain_km, ws.geo_scale_ratio);
+            let mut seg2wc = vec![usize::MAX; result.drainage.rivers.segments.len()];
+            for (wi, wc) in wcs.iter().enumerate() {
+                for &s in &wc.segments {
+                    seg2wc[s] = wi;
+                }
+            }
+            ws.watercourses = Some(Arc::new(wcs));
+            ws.seg_to_wc = seg2wc;
+            ws.selected_river = None;
+            ws.selected_lake = None;
             ws.texture = None;
             ws.tex_layer = None;
             ws.hover = None;
@@ -926,6 +989,10 @@ fn left_panel(
                             });
                             ui.add(egui::Slider::new(&mut ws.latitude_span_deg, 1.0..=40.0).step_by(0.1).show_value(false));
                             ui.label(egui::RichText::new("élargir pour croiser plusieurs ceintures (toundra ↔ désert)").color(DIM).size(10.0));
+                            ui.add_space(8.0);
+                            // TASK 1 — placement widget: shows the map rectangle over the
+                            // latitude gradient + wind belts, live as the sliders move.
+                            latitude_placement_widget(ui, ws.latitude, ws.latitude_span_deg);
                         });
                     }
                     ui.separator();
@@ -1242,6 +1309,14 @@ fn central_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut Workspac
                     bottom: 14,
                 }))
                 .show_inside(ui, |ui| frieze(ui, &bridge.hd, ws));
+            // Inspection microscope (Finding 28) — entity lists + long profile / lake sheet.
+            if ws.current.is_some() {
+                egui::TopBottomPanel::bottom("inspection_dock")
+                    .resizable(true)
+                    .default_height(210.0)
+                    .frame(egui::Frame::default().fill(PANEL).inner_margin(8))
+                    .show_inside(ui, |ui| inspection_dock(ui, ws));
+            }
             // Map viewport (#0A0A0A).
             egui::CentralPanel::default()
                 .frame(egui::Frame::default().fill(VIEWPORT).inner_margin(0))
@@ -1870,6 +1945,27 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                 ws.hover = Some(inspect_cell(&hd, rm, cx, cy));
                 ws.hover_xy = Some((cx, cy));
             }
+            // Hover-select (Finding 28): hovering an entity selects it in the ACTIVE tab
+            // (leaves the other tab's selection alone; no tab-flipping as the cursor moves).
+            match ws.inspect_tab {
+                InspectTab::Rivers => {
+                    if let Some(info) = ws.river_map.as_ref().and_then(|rm| rm.at(cx, cy)) {
+                        if let Some(&wi) = ws.seg_to_wc.get(info.segment) {
+                            if wi != usize::MAX {
+                                ws.selected_river = Some(wi);
+                            }
+                        }
+                    }
+                }
+                InspectTab::Lakes => {
+                    let id = hd.drainage.lake_map[cy * hd.width + cx];
+                    if id != 0 {
+                        if let Some(li) = hd.drainage.lakes.iter().position(|l| l.base.id == id) {
+                            ws.selected_lake = Some(li);
+                        }
+                    }
+                }
+            }
 
             // Reticle: faint crosshair through the cell + a copper cell box.
             let pnt = ui.painter_at(resp.rect);
@@ -1912,6 +2008,53 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             );
             ui.painter().rect_filled(bg, 6.0, C::from_rgba_unmultiplied(18, 18, 18, 210));
             ui.painter().galley(egui::pos2(bg.left() + 6.0, bg.top() + 4.0), galley, TEXT);
+        }
+
+        // Selection highlight (Finding 28) — painter-drawn (cheap, no texture rebake). The
+        // north-up flip is honoured: a data cell's screen v uses its mirror row.
+        {
+            let (w, h) = (hd.width, hd.height);
+            let uvw = uv.max.x - uv.min.x;
+            let uvh = uv.max.y - uv.min.y;
+            let to_screen = |x: u32, y: u32| -> egui::Pos2 {
+                let ncx = (x as f32 + 0.5) / w as f32;
+                let ncy = ((h as u32 - 1 - y) as f32 + 0.5) / h as f32;
+                egui::pos2(
+                    resp.rect.left() + ((ncx - uv.min.x) / uvw) * resp.rect.width(),
+                    resp.rect.top() + ((ncy - uv.min.y) / uvh) * resp.rect.height(),
+                )
+            };
+            let pnt = ui.painter_at(resp.rect);
+            if ws.inspect_tab == InspectTab::Rivers {
+                if let Some(wc) = ws.selected_river.and_then(|i| ws.watercourses.as_ref().and_then(|w| w.get(i))) {
+                    let gold = C::from_rgb(255, 210, 70);
+                    for &s in &wc.segments {
+                        let pts: Vec<egui::Pos2> = hd.drainage.rivers.segments[s].points.iter().map(|&(px, py)| to_screen(px, py)).collect();
+                        if pts.len() >= 2 {
+                            pnt.add(egui::Shape::line(pts, egui::Stroke::new(2.0, gold)));
+                        }
+                    }
+                    // Mark the mouth.
+                    pnt.circle_filled(to_screen(wc.mouth_xy.0, wc.mouth_xy.1), 4.0, sink_label(wc.sink).1);
+                }
+            } else if let Some(lk) = ws.selected_lake.and_then(|i| hd.drainage.lakes.get(i)) {
+                let id = lk.base.id;
+                let cyan = C::from_rgba_unmultiplied(120, 230, 240, 220);
+                for y in 0..h {
+                    for x in 0..w {
+                        if hd.drainage.lake_map[y * w + x] == id {
+                            // boundary cells only (cheap outline).
+                            let edge = [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)].iter().any(|&(dx, dy)| {
+                                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                                nx < 0 || ny < 0 || nx as usize >= w || ny as usize >= h || hd.drainage.lake_map[ny as usize * w + nx as usize] != id
+                            });
+                            if edge {
+                                pnt.circle_filled(to_screen(x as u32, y as u32), 1.5, cyan);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Zoom controls (bottom-right).
@@ -2201,6 +2344,415 @@ fn flip_rows_rgba(rgba: &mut [u8], w: usize, h: usize) {
             rgba.swap(a + k, b + k);
         }
     }
+}
+
+/// TASK 1 — the latitude-placement widget (Finding 28). A vertical −90…+90° strip (north up,
+/// matching the map) painted with the thermal gradient AND the wind BELTS as bands (trade
+/// easterlies / westerlies / polar easterlies, with a direction arrow each), and the current
+/// map rectangle `[centre−span/2, centre+span/2]` drawn over it. Makes the CONSEQUENCE of the
+/// span visible — how many belts it crosses — before generating. Pure function of centre/span;
+/// no generation, no data read.
+fn latitude_placement_widget(ui: &mut egui::Ui, centre: f32, span: f32) {
+    let width = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 168.0), egui::Sense::hover());
+    let p = ui.painter_at(rect);
+    let h = rect.height();
+    let y_of = |lat: f32| rect.top() + (90.0 - lat) / 180.0 * h; // +90 top, −90 bottom
+    // Thermal gradient background (40 bands): cold blue → warm red via sea-level T.
+    let bands = 40usize;
+    for b in 0..bands {
+        let lat_hi = 90.0 - (b as f32 / bands as f32) * 180.0;
+        let lat_lo = 90.0 - ((b + 1) as f32 / bands as f32) * 180.0;
+        let t = sea_level_temperature((lat_hi + lat_lo) * 0.5);
+        let f = ((t + 25.0) / 52.0).clamp(0.0, 1.0); // -25..27 → 0..1
+        let col = C::from_rgb(
+            (40.0 + 200.0 * f) as u8,
+            (90.0 + 60.0 * (1.0 - (f - 0.5).abs() * 2.0)) as u8,
+            (200.0 - 170.0 * f) as u8,
+        );
+        p.rect_filled(
+            egui::Rect::from_min_max(egui::pos2(rect.left(), y_of(lat_hi)), egui::pos2(rect.right(), y_of(lat_lo))),
+            0.0,
+            col,
+        );
+    }
+    // Belt boundaries (±30, ±60) + a labelled arrow per belt.
+    let faint = C::from_rgba_unmultiplied(255, 255, 255, 60);
+    for lat in [-60.0f32, -30.0, 0.0, 30.0, 60.0] {
+        let y = y_of(lat);
+        p.line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)], egui::Stroke::new(1.0, faint));
+    }
+    let belt = |mid: f32, name: &str| {
+        let dir = wind_zonal_dir(mid);
+        let arrow = if dir > 0 { "→" } else { "←" };
+        p.text(
+            egui::pos2(rect.left() + 5.0, y_of(mid)),
+            egui::Align2::LEFT_CENTER,
+            format!("{arrow} {name}"),
+            egui::FontId::proportional(9.5),
+            C::from_rgba_unmultiplied(255, 255, 255, 200),
+        );
+    };
+    belt(75.0, "polaires");
+    belt(45.0, "westerlies");
+    belt(15.0, "alizés");
+    belt(-15.0, "alizés");
+    belt(-45.0, "westerlies");
+    belt(-75.0, "polaires");
+    // Equator marker.
+    p.text(egui::pos2(rect.right() - 4.0, y_of(0.0)), egui::Align2::RIGHT_CENTER, "0°", egui::FontId::monospace(9.0), C::from_rgba_unmultiplied(255, 255, 255, 150));
+    // The map rectangle at [centre−span/2, centre+span/2].
+    let (y0, y1) = (y_of(centre + span / 2.0), y_of(centre - span / 2.0));
+    let map_rect = egui::Rect::from_min_max(egui::pos2(rect.left() + 1.0, y0), egui::pos2(rect.right() - 1.0, y1));
+    p.rect_filled(map_rect, 2.0, C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, 40));
+    p.rect_stroke(map_rect, 2.0, egui::Stroke::new(2.0, COPPER_BRIGHT), egui::StrokeKind::Middle);
+    p.text(egui::pos2(map_rect.center().x, y0 - 1.0), egui::Align2::CENTER_BOTTOM, format!("{:.0}°", centre + span / 2.0), egui::FontId::monospace(9.0), COPPER_BRIGHT);
+    p.text(egui::pos2(map_rect.center().x, y1 + 1.0), egui::Align2::CENTER_TOP, format!("{:.0}°", centre - span / 2.0), egui::FontId::monospace(9.0), COPPER_BRIGHT);
+}
+
+/// Classify where a mouth cell `(x,y)` drains: the sea, an exorheic lake, or an endorheic
+/// basin. Reads the eroded field (sea = 0.5) and the lake_map / lake types — no recompute.
+fn classify_sink(hd: &HdResult, x: u32, y: u32) -> Sink {
+    let (w, h) = (hd.width, hd.height);
+    let endo: std::collections::HashSet<u32> = hd
+        .drainage
+        .lakes
+        .iter()
+        .filter(|l| l.lake_type == LakeType::Endorheic)
+        .map(|l| l.base.id)
+        .collect();
+    for dy in -1i32..=1 {
+        for dx in -1i32..=1 {
+            let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+            if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
+                let k = ny as usize * w + nx as usize;
+                if hd.eroded.data[k] <= 0.5 {
+                    return Sink::Sea;
+                }
+                let id = hd.drainage.lake_map[k];
+                if id != 0 {
+                    return if endo.contains(&id) { Sink::EndoLake } else { Sink::ExoLake };
+                }
+            }
+        }
+    }
+    Sink::Unknown
+}
+
+/// Aggregate the exported river SEGMENTS into browsable WATERCOURSES (Finding 28). A
+/// watercourse = every segment that drains to the same terminal (a `downstream == None`
+/// mouth after the lake-clip); its TRUNK is the source→sink main stem, chosen by taking
+/// the highest-discharge tributary at each confluence. Pure assembly of `C1DrainageResult`
+/// (discharge / width / catchment / points) — nothing is recomputed. `ratio` (the current
+/// geographic-scale slider) signifies the trunk length, consistent with the exported
+/// width/discharge. Sorted by discharge (biggest rivers first).
+fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Watercourse> {
+    let d = &hd.drainage;
+    let segs = &d.rivers.segments;
+    let n = segs.len();
+    let q = |i: usize| d.segment_discharge_m3s.get(i).copied().unwrap_or(0.0);
+    // root(i): follow downstream to the terminal (mouth); guard against any cycle.
+    let mut root = vec![0usize; n];
+    for i in 0..n {
+        let mut j = i;
+        for _ in 0..=n {
+            match segs[j].downstream {
+                Some(k) if k < n => j = k,
+                _ => break,
+            }
+        }
+        root[i] = j;
+    }
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+    for i in 0..n {
+        groups.entry(root[i]).or_default().push(i);
+    }
+    let km_per_cell = if hd.width > 0 { domain_km / hd.width as f32 } else { 0.0 };
+    // Longest upstream path (in points) per segment — memoised, so the trunk is the
+    // geographic main stem (river length), not the short high-discharge branch.
+    let mut pathlen = vec![0u32; n];
+    {
+        let mut order: Vec<usize> = (0..n).collect();
+        // process shallowest-first: a segment's pathlen needs its upstreams' — but the
+        // DAG has no cycles, so a simple relaxation to a fixed point over `order` (few
+        // passes) suffices; bound the passes by the deepest Strahler order.
+        order.sort_by_key(|&i| segs[i].strahler_order);
+        for _ in 0..16 {
+            let mut changed = false;
+            for &i in &order {
+                let up = segs[i].upstream.iter().copied().filter(|&u| u < n).map(|u| pathlen[u]).max().unwrap_or(0);
+                let v = up + segs[i].points.len() as u32;
+                if v != pathlen[i] {
+                    pathlen[i] = v;
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+    let mut out = Vec::with_capacity(groups.len());
+    for (r, members) in groups {
+        // Trunk: from the mouth, climb the LONGEST tributary at each confluence.
+        let mut trunk = Vec::new();
+        let mut cur = r;
+        for _ in 0..=n {
+            trunk.push(cur);
+            match segs[cur].upstream.iter().copied().filter(|&u| u < n).max_by_key(|&u| pathlen[u]) {
+                Some(next) => cur = next,
+                None => break,
+            }
+        }
+        let source = *trunk.last().unwrap();
+        trunk.reverse(); // source → sink
+        let pts: usize = trunk.iter().map(|&s| segs[s].points.len()).sum();
+        let (mx, my) = *segs[r].points.last().unwrap();
+        out.push(Watercourse {
+            trunk,
+            tributaries: members.len().saturating_sub(1),
+            segments: members,
+            order: segs[r].strahler_order,
+            discharge_m3s: q(r),
+            width_mouth_m: d.segment_width_m.get(r).copied().unwrap_or(0.0),
+            width_source_m: d.segment_width_m.get(source).copied().unwrap_or(0.0),
+            catchment_km2: d.segment_drainage_km2.get(r).copied().unwrap_or(0.0),
+            mouth_xy: (mx, my),
+            sink: classify_sink(hd, mx, my),
+            length_km: pts as f32 * km_per_cell * ratio,
+        });
+    }
+    out.sort_by(|a, b| b.discharge_m3s.partial_cmp(&a.discharge_m3s).unwrap_or(std::cmp::Ordering::Equal));
+    out
+}
+
+fn sink_label(s: Sink) -> (&'static str, C) {
+    match s {
+        Sink::Sea => ("→ mer", C::from_rgb(0x5a, 0x9a, 0xd0)),
+        Sink::ExoLake => ("→ lac exoréique", C::from_rgb(0x5a, 0x9a, 0xd0)),
+        Sink::EndoLake => ("→ bassin endoréique", C::from_rgb(0x3a, 0xb0, 0xa0)),
+        Sink::Unknown => ("→ ?", WARN_ORANGE),
+    }
+}
+
+/// TASK 2/3/4 — the inspection DOCK (Finding 28): entity lists (rivers as watercourses,
+/// lakes) on the left with select-and-highlight, and the selected entity's detail (river
+/// long profile OR lake sheet) on the right. A MICROSCOPE — read-only, nothing editable.
+fn inspection_dock(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
+    let hd = match ws.current.clone() {
+        Some(h) => h,
+        None => return,
+    };
+    let wcs = ws.watercourses.clone();
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("MICROSCOPE").color(TEXT_BRIGHT).strong().size(11.5));
+        ui.add_space(10.0);
+        if ui.selectable_label(ws.inspect_tab == InspectTab::Rivers, format!("Rivières ({})", wcs.as_ref().map(|w| w.len()).unwrap_or(0))).clicked() {
+            ws.inspect_tab = InspectTab::Rivers;
+        }
+        if ui.selectable_label(ws.inspect_tab == InspectTab::Lakes, format!("Lacs ({})", hd.drainage.lakes.len())).clicked() {
+            ws.inspect_tab = InspectTab::Lakes;
+        }
+    });
+    ui.separator();
+    ui.columns(2, |cols| {
+        // ── Left: entity list ──
+        egui::ScrollArea::vertical().id_salt("entity_list").show(&mut cols[0], |ui| {
+            match ws.inspect_tab {
+                InspectTab::Rivers => {
+                    if let Some(wcs) = &wcs {
+                        for (i, wc) in wcs.iter().enumerate() {
+                            let (sl, sc) = sink_label(wc.sink);
+                            let txt = format!("#{:<3} S{} · {:.0} m³/s · {} trib · {}", i + 1, wc.order, wc.discharge_m3s, wc.tributaries, sl);
+                            if ui.selectable_label(ws.selected_river == Some(i), egui::RichText::new(txt).color(sc).size(11.0)).clicked() {
+                                ws.selected_river = Some(i);
+                            }
+                        }
+                    }
+                }
+                InspectTab::Lakes => {
+                    let mut idx: Vec<usize> = (0..hd.drainage.lakes.len()).collect();
+                    idx.sort_by(|&a, &b| hd.drainage.lakes[b].area_km2.partial_cmp(&hd.drainage.lakes[a].area_km2).unwrap_or(std::cmp::Ordering::Equal));
+                    for i in idx {
+                        let lk = &hd.drainage.lakes[i];
+                        let (ty, tc) = match lk.lake_type {
+                            LakeType::Exorheic => ("exoréique", C::from_rgb(0x5a, 0x9a, 0xd0)),
+                            LakeType::Endorheic => ("endoréique (salé)", C::from_rgb(0x3a, 0xb0, 0xa0)),
+                        };
+                        let txt = format!("#{} · {:.0} km² · {:.0} m · {}", lk.base.id, lk.area_km2, lk.level_m, ty);
+                        if ui.selectable_label(ws.selected_lake == Some(i), egui::RichText::new(txt).color(tc).size(11.0)).clicked() {
+                            ws.selected_lake = Some(i);
+                        }
+                    }
+                }
+            }
+        });
+        // ── Right: detail ──
+        egui::ScrollArea::vertical().id_salt("entity_detail").show(&mut cols[1], |ui| match ws.inspect_tab {
+            InspectTab::Rivers => match (ws.selected_river, &wcs) {
+                (Some(i), Some(wcs)) if i < wcs.len() => river_profile_panel(ui, &hd, &wcs[i]),
+                _ => { ui.add_space(20.0); ui.label(egui::RichText::new("Sélectionnez un cours d'eau.").color(DIM).size(11.0)); }
+            },
+            InspectTab::Lakes => match ws.selected_lake {
+                Some(i) if i < hd.drainage.lakes.len() => lake_sheet_panel(ui, &hd, i, ws.domain_km),
+                _ => { ui.add_space(20.0); ui.label(egui::RichText::new("Sélectionnez un lac.").color(DIM).size(11.0)); }
+            },
+        });
+    });
+}
+
+/// TASK 3 — river long profile: bed elevation source→sink (from `profile_m`) + the figures
+/// the inspector already carries. The SINK is marked explicitly; any climb is flagged (this
+/// doubles as the monotonicity inspector). Reads `segment_profile_m` / discharge / width.
+fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) {
+    let d = &hd.drainage;
+    let (sl, sc) = sink_label(wc.sink);
+    ui.horizontal_wrapped(|ui| {
+        let kv = |ui: &mut egui::Ui, k: &str, v: String| {
+            ui.label(egui::RichText::new(format!("{k} ")).color(DIM).size(10.5));
+            ui.label(egui::RichText::new(v).color(COPPER_BRIGHT).monospace().size(11.0));
+            ui.add_space(10.0);
+        };
+        kv(ui, "Débit", format!("{:.0} m³/s", wc.discharge_m3s));
+        kv(ui, "Bassin", format!("{:.0} km²", wc.catchment_km2));
+        kv(ui, "Longueur", format!("{:.0} km", wc.length_km));
+        kv(ui, "Ordre", format!("S{}", wc.order));
+        kv(ui, "Largeur embouchure", format!("{:.0} m", wc.width_mouth_m));
+        kv(ui, "Largeur source", format!("{:.0} m", wc.width_source_m));
+        ui.label(egui::RichText::new(sl).color(sc).strong().size(11.5));
+    });
+    // Bed profile source → sink by WALKING the flow field from the main-stem headwater
+    // (the breached field is monotone, so this reflects the true bed — no dependence on
+    // the clip's segment links, which would inject phantom steps at junctions). Reads
+    // `flow.direction` + `eroded` (both exported); nothing recomputed.
+    let (w, h) = (hd.width, hd.height);
+    let ss = SteinSteinParams::default();
+    let mut elev: Vec<f32> = Vec::new();
+    if let Some(&(sx, sy)) = wc.trunk.first().and_then(|&s| d.rivers.segments[s].points.first()) {
+        let mut k = sy as usize * w + sx as usize;
+        for _ in 0..(w + h) {
+            elev.push(c1_altitude_norm_to_metres(hd.eroded.data[k], &ss));
+            if hd.eroded.data[k] <= 0.5 || d.lake_map[k] != 0 {
+                break; // reached the sink (sea or lake)
+            }
+            let dir = d.flow.direction[k];
+            if dir == DIR_NONE {
+                break;
+            }
+            let (nx, ny) = ((k % w) as i32 + D8_DX[dir as usize], (k / w) as i32 + D8_DY[dir as usize]);
+            if nx < 0 || ny < 0 || nx as usize >= w || ny as usize >= h {
+                break;
+            }
+            k = ny as usize * w + nx as usize;
+        }
+    }
+    if elev.len() < 2 {
+        ui.label(egui::RichText::new("Profil indisponible.").color(DIM).size(11.0));
+        return;
+    }
+    let (mut lo, mut hi) = (f32::MAX, f32::MIN);
+    for &e in &elev { lo = lo.min(e); hi = hi.max(e); }
+    let mut max_climb = 0.0f32;
+    for w in elev.windows(2) { max_climb = max_climb.max(w[1] - w[0]); }
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("Profil en long (source → exutoire)").color(DIM).size(10.5));
+        let (mtxt, mcol) = if max_climb > 1.0 {
+            (format!("⚠ remontée +{max_climb:.0} m"), WARN_ORANGE)
+        } else {
+            ("monotone ✓".to_string(), OK_GREEN)
+        };
+        ui.label(egui::RichText::new(mtxt).color(mcol).size(10.5));
+    });
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width().max(120.0), 120.0), egui::Sense::hover());
+    let p = ui.painter_at(rect);
+    p.rect_filled(rect, 3.0, C::from_rgb(0x14, 0x14, 0x18));
+    let span_e = (hi - lo).max(1.0);
+    let n = elev.len();
+    let x_of = |i: usize| rect.left() + 6.0 + (i as f32 / (n - 1) as f32) * (rect.width() - 12.0);
+    let y_of = |e: f32| rect.bottom() - 6.0 - ((e - lo) / span_e) * (rect.height() - 16.0);
+    // sea level (0 m) reference line if in range.
+    if lo <= 0.0 && hi >= 0.0 {
+        let y0 = y_of(0.0);
+        p.line_segment([egui::pos2(rect.left(), y0), egui::pos2(rect.right(), y0)], egui::Stroke::new(1.0, C::from_rgba_unmultiplied(0x5a, 0x9a, 0xd0, 90)));
+    }
+    let pts: Vec<egui::Pos2> = (0..n).map(|i| egui::pos2(x_of(i), y_of(elev[i]))).collect();
+    p.add(egui::Shape::line(pts.clone(), egui::Stroke::new(1.5, COPPER_BRIGHT)));
+    // Source (start) + sink (end) markers.
+    p.circle_filled(pts[0], 3.0, C::from_rgb(0x9a, 0x9a, 0x9a));
+    p.circle_filled(pts[n - 1], 4.0, sc);
+    p.text(pts[0] + egui::vec2(2.0, -4.0), egui::Align2::LEFT_BOTTOM, "source", egui::FontId::proportional(9.0), DIM);
+    p.text(pts[n - 1] + egui::vec2(-2.0, -4.0), egui::Align2::RIGHT_BOTTOM, sl, egui::FontId::proportional(9.0), sc);
+    p.text(egui::pos2(rect.left() + 4.0, rect.top() + 2.0), egui::Align2::LEFT_TOP, format!("{hi:.0} m"), egui::FontId::monospace(9.0), DIM);
+    p.text(egui::pos2(rect.left() + 4.0, rect.bottom() - 2.0), egui::Align2::LEFT_BOTTOM, format!("{lo:.0} m"), egui::FontId::monospace(9.0), DIM);
+}
+
+/// TASK 4 — lake sheet (Finding 28): the figures `C1Lake` carries + a couple computed
+/// UI-side from `lake_map` (shore length, inlet count), and the endorheic CONSEQUENCE spelt
+/// out (the content Living Landz should consume). Avg depth / inflow / evaporation are NOT
+/// exported (the water balance discards them) — stated as such, not faked.
+fn lake_sheet_panel(ui: &mut egui::Ui, hd: &HdResult, lake_idx: usize, domain_km: f32) {
+    let lk = &hd.drainage.lakes[lake_idx];
+    let (w, h) = (hd.width, hd.height);
+    let km_per_cell = if w > 0 { domain_km / w as f32 } else { 0.0 };
+    // Shore length: count lake-boundary edges (a lake cell with a non-lake 4-neighbour).
+    let id = lk.base.id;
+    let (mut shore_cells, mut inlets) = (0usize, 0usize);
+    for y in 0..h {
+        for x in 0..w {
+            if hd.drainage.lake_map[y * w + x] == id {
+                for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    if nx < 0 || ny < 0 || nx as usize >= w || ny as usize >= h || hd.drainage.lake_map[ny as usize * w + nx as usize] != id {
+                        shore_cells += 1;
+                    }
+                }
+            }
+        }
+    }
+    // Inlets: river reaches whose mouth is adjacent to this lake.
+    for s in &hd.drainage.rivers.segments {
+        let &(mx, my) = s.points.last().unwrap();
+        let mut adj = false;
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
+                if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h && hd.drainage.lake_map[ny as usize * w + nx as usize] == id {
+                    adj = true;
+                }
+            }
+        }
+        if adj { inlets += 1; }
+    }
+    let shore_km = shore_cells as f32 * km_per_cell;
+    let endo = lk.lake_type == LakeType::Endorheic;
+    let kv = |ui: &mut egui::Ui, k: &str, v: String| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(k).color(DIM).size(11.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(egui::RichText::new(v).color(COPPER_BRIGHT).monospace().size(11.5));
+            });
+        });
+    };
+    ui.label(egui::RichText::new(format!("Lac #{id}")).color(TEXT_BRIGHT).strong().size(12.5));
+    ui.add_space(2.0);
+    kv(ui, "Type", if endo { "endoréique".into() } else { "exoréique".into() });
+    kv(ui, "Superficie", format!("{:.1} km²", lk.area_km2));
+    kv(ui, "Rive (périmètre)", format!("{shore_km:.0} km"));
+    kv(ui, "Niveau", format!("{:.0} m", lk.level_m));
+    kv(ui, "Profondeur max", format!("{:.0} m", lk.depth_m));
+    kv(ui, "Affluents", format!("{inlets}"));
+    kv(ui, "Exutoire", if endo { "aucun (fermé)".into() } else { "oui → aval".into() });
+    ui.add_space(6.0);
+    let (msg, col) = if endo {
+        ("Bassin FERMÉ : l'eau s'évapore et CONCENTRE le sel → sel exploitable, pas de poisson, eau non potable, pas d'agriculture riveraine.", C::from_rgb(0x3a, 0xb0, 0xa0))
+    } else {
+        ("Lac de PASSAGE : eau douce, exutoire vers l'aval — poisson, eau potable, berges cultivables.", C::from_rgb(0x5a, 0x9a, 0xd0))
+    };
+    egui::Frame::default().fill(C::from_rgb(0x17, 0x1c, 0x1b)).inner_margin(8).corner_radius(5).show(ui, |ui| {
+        ui.label(egui::RichText::new(msg).color(col).size(10.5));
+    });
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new("Profondeur moyenne · apport · évaporation : non exportés (bilan hydrique non surfacé — à ajouter côté données).").color(DIM).size(9.5));
 }
 
 /// Draw the river network onto `rgba` (row-major, w×h): each segment as a polyline,
