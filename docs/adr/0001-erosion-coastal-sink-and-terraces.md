@@ -1251,3 +1251,36 @@ counting; the earlier run showed five byte-identical 18.272 km² "basins" that w
 Pattern again (Findings 27/29–33): the water LEVEL taken from a PROXY (the shoreline / the floor) instead of
 the AUTHORITY the regime defines (the sill from the flood for exorheic, the evaporative equilibrium for
 endorheic).
+
+## Finding 34 — Inflow read from river tracks (a stale footprint) instead of the runoff field
+
+Lake #1000104: 61 km², level −20 m, MAX DEPTH 0 m — a surface with no water, i.e. the evaporative level had
+collapsed onto the floor. Ten rivers pointed at it but stopped 1–2 cells short, and only 3 of 13 counted as
+inlets. The water balance read inflow AT THE LAND INLETS (rivers TOUCHING the lake), so inflow was under-read
+~4× → `a_eq` crushed → endorheic at floor level.
+
+An ORDERING problem (the author's suspicion, confirmed): rivers are extracted BEFORE `below_sea_basin_lakes`
+fills the depression to its sill, so the grown footprint ate the tracks' last cells and the touch-test missed
+them. Worse, even reading the runoff FIELD, `runoff_accumulation` ZEROES below-sea cells — so a tributary's
+accumulation is lost the instant it enters the water, and `max` over the pool saw only the largest single
+stream, not the sum.
+
+Fix — TOTAL inflow SUMMED at the shoreline, from the authority: for each below-sea WATER cell, add the
+accumulated `runoff` of every above-sea neighbour that DRAINS INTO it (each tributary counted once, at the
+shore, before the zeroing). Read from the FINAL footprint, so a track ending a cell short is irrelevant. The
+big lakes come right: #1000087 now inflow 7.7 m³/s (was 1.1), **level −11.2 m, MAX DEPTH 10.2 m (was 0),
+area 192.6 km²** — a real endorheic lake at its evaporative equilibrium, not a zero-depth footprint.
+
+Separating the inlet bug from `a_spill` (the author's explicit check): the exorheic/endorheic split moves
+only **238 → 216 (58 flipped)** at 8192², so the earlier 465 → 4 collapse was `a_spill` (fill-to-sill,
+Finding 33), NOT the inlet bug. What the inlet bug actually broke was the DEPTH of the large endorheic lakes
+(collapsed to the floor) — now corrected. Wetland moves again with the geometry: 17 → **193 km²** (the large
+endorheic lakes carry big shallow margins).
+
+TASK 4 — boundary: after the clip, river∩lake overlap is **0** (every cell is river, lake, or land — no
+unclaimed in-between; the two extents meet exactly, asserted by `boundary_and_gap_check`). The residual
+near-misses (a handful of mouths 2–3 cells out) are now caught by widening the microscope's inlet test to ±2
+cells, so a tributary ending a cell short still counts and reads as attached.
+
+Same pattern (Findings 27/29–34): the inlet set / inflow decided from a PROXY (river tracks traced against an
+earlier footprint) instead of the AUTHORITY (the runoff field at the final footprint).

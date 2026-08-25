@@ -3659,16 +3659,20 @@ fn authors_basin_8192() {
     let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
     let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
     eprintln!("\n=== Finding 33 — author's 8192² config (centre 45° span 40°) ===");
-    // TASK 1 — the max-inflow basin (the one the five big rivers feed).
-    let exo: Vec<_> = bsr.basins.iter().filter(|b| b.exorheic).collect();
-    let unfilled = exo.iter().filter(|b| (b.level_m - b.spill_level_m).abs() > 0.5).count();
-    eprintln!("  {} below-sea basins ({} exorheic, {} unfilled-yet-exorheic)", bsr.basins.len(), exo.len(), unfilled);
+    // TASK 3 — exorheic/endorheic split BEFORE vs AFTER the inlet fix (separates it from a_spill).
+    let exo_after = bsr.basins.iter().filter(|b| b.exorheic).count();
+    let exo_before = bsr.basins.iter().filter(|b| b.exorheic_before_inlet_fix).count();
+    let flipped = bsr.basins.iter().filter(|b| b.exorheic != b.exorheic_before_inlet_fix).count();
+    let collapsed = bsr.basins.iter().filter(|b| !b.exorheic && b.max_depth_m < 0.5).count();
+    let unfilled = bsr.basins.iter().filter(|b| b.exorheic && (b.level_m - b.spill_level_m).abs() > 0.5).count();
+    eprintln!("  {} below-sea basins | exorheic BEFORE inlet-fix {exo_before} → AFTER {exo_after} (flipped {flipped}) | unfilled-yet-exorheic {unfilled} | endorheic-at-floor(depth<0.5m) {collapsed}", bsr.basins.len());
+    // TASK 1 — the biggest lakes by inflow: their corrected state (max depth must be > 0).
     let mut top: Vec<_> = bsr.basins.iter().collect();
     top.sort_by(|a, b| b.inflow_m3s.partial_cmp(&a.inflow_m3s).unwrap());
     for b in top.iter().take(3) {
         let sw = bsr.spillways.iter().find(|s| s.lake_id == b.id);
-        eprintln!("     #{} inflow {:.1} m³/s: floor {:.1} · sill {:.1} · LEVEL {:.1} m · area {:.2} km² (@sill {:.2}) · {} · spillway {}",
-            b.id, b.inflow_m3s, b.floor_m, b.spill_level_m, b.level_m, b.area_km2, b.area_at_sill_km2,
+        eprintln!("     #{} inflow {:.1} m³/s: floor {:.1} · sill {:.1} · LEVEL {:.1} m · MAX DEPTH {:.1} m · area {:.1} km² (@sill {:.0}) · {} · spillway {}",
+            b.id, b.inflow_m3s, b.floor_m, b.spill_level_m, b.level_m, b.max_depth_m, b.area_km2, b.area_at_sill_km2,
             if b.exorheic { "EXORHEIC" } else { "endorheic" }, if sw.is_some() { "yes" } else { "NONE" });
     }
     // PART A — inventory count + size histogram (cells).
@@ -3688,6 +3692,66 @@ fn authors_basin_8192() {
     let lake = biomes.iter().filter(|b| **b == Biome::Lake).count();
     let wet_cells = bsr.wetland.iter().filter(|&&x| x != 0).count();
     eprintln!("  TASK 3 wetland: {:.0} km² ({wet_cells} cells) | biome Wetland {:.2}% · Lake {:.2}% of land", wet_cells as f32 * cell_km2, 100.0 * wet as f32 / land as f32, 100.0 * lake as f32 / land as f32);
+}
+
+/// Finding 34 TASK 4 — boundary check: no cell is both river and lake (unclaimed in-between);
+/// and quantify river terminations within 1/2/3 cells of a lake that don't touch it (near-misses).
+#[test]
+#[ignore]
+fn boundary_and_gap_check() {
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::drainage::{DrainageClimate, below_sea_basin_lakes, clip_rivers_to_lakes};
+    use ymir_core::terrain::flow::{RiverSegment, breach_monotone};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (2048usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None; fc.bathymetry = None; fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 38.0, 27.0, &PrecipParams::default(), domain);
+    let dcfg = C1DrainageConfig::default();
+    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    for k in 0..bsr.lake_map.len() { if bsr.lake_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bsr.lake_map[k]; } }
+    dr.lakes.extend(bsr.lakes);
+    for sw in &bsr.spillways {
+        dr.rivers.segments.push(RiverSegment { points: sw.points.clone(), strahler_order: 1, avg_flow: 0.0, max_flow: 0.0, basin_id: 0, upstream: vec![], downstream: None });
+        dr.segment_drainage_km2.push(sw.drainage_km2); dr.segment_navigability.push(sw.navigability);
+        dr.segment_discharge_m3s.push(sw.discharge_m3s); dr.segment_width_m.push(sw.width_m); dr.segment_profile_m.push(sw.profile_m.clone());
+    }
+    clip_rivers_to_lakes(&mut dr);
+    // TASK 4 — overlap: a river cell that is also a lake cell (unclaimed in-between).
+    let mut overlap = 0usize;
+    for s in &dr.rivers.segments { for &(x, y) in &s.points { if dr.lake_map[y as usize * t + x as usize] != 0 { overlap += 1; } } }
+    // Near-misses: river MOUTHS (downstream None) at distance 1/2/3 from a lake without touching.
+    let near = |mx: u32, my: u32, r: i32| -> bool {
+        for dy in -r..=r { for dx in -r..=r { let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
+            if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 && dr.lake_map[ny as usize * t + nx as usize] != 0 { return true; } } }
+        false
+    };
+    let (mut d1, mut d2, mut d3) = (0usize, 0usize, 0usize);
+    for s in &dr.rivers.segments {
+        if s.downstream.is_some() { continue; }
+        let &(mx, my) = s.points.last().unwrap();
+        if near(mx, my, 1) { continue; }
+        else if near(mx, my, 2) { d2 += 1; }
+        else if near(mx, my, 3) { d3 += 1; }
+        let _ = &mut d1;
+    }
+    eprintln!("\n=== Finding 34 TASK 4 — boundary + gap check (2048²) ===");
+    eprintln!("  river∩lake overlap cells (must be 0): {overlap}");
+    eprintln!("  river mouths NOT adjacent (dist>1) but within 2 cells: {d2} | within 3: {d3} (near-misses the ±1 inlet test missed)");
+    assert_eq!(overlap, 0, "no cell may be both river and lake");
 }
 
 /// Finding 33 TASK 1 — is every EXORHEIC below-sea basin FILLED to its sill? Report floor / sill

@@ -771,8 +771,13 @@ pub struct BasinSummary {
     pub floor_m: f32,
     /// The RETAINED water level (metres) — must equal the sill for an exorheic basin.
     pub level_m: f32,
+    /// Max depth (metres) at the retained level — was ~0 when the level collapsed to the floor.
+    pub max_depth_m: f32,
     /// Flooded area (km²) AT THE SILL (`a_spill`) — what an exorheic basin should cover.
     pub area_at_sill_km2: f32,
+    /// Regime under the OLD inlet reading (`max` runoff at land neighbours) — for the before/after
+    /// that separates the inlet bug (Finding 34) from `a_spill` growth (Finding 33).
+    pub exorheic_before_inlet_fix: bool,
 }
 
 /// Result of [`below_sea_basin_lakes`]: the typed lakes + their water `lake_map`, the traced
@@ -881,19 +886,14 @@ pub fn below_sea_basin_lakes(
         let mut q = VecDeque::new();
         q.push_back(s);
         seen[s] = true;
-        let mut inflow = 0.0f32;
         while let Some(k) = q.pop_front() {
             comp.push(k);
             let (x, y) = ((k % w) as i32, (k / w) as i32);
             for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
                 if let Some(nk) = nb4(x + dx, y + dy) {
-                    if underwater(nk) {
-                        if !seen[nk] {
-                            seen[nk] = true;
-                            q.push_back(nk);
-                        }
-                    } else {
-                        inflow = inflow.max(runoff[nk]); // land inlet: catchment runoff into the pool
+                    if underwater(nk) && !seen[nk] {
+                        seen[nk] = true;
+                        q.push_back(nk);
                     }
                 }
             }
@@ -903,6 +903,33 @@ pub fn below_sea_basin_lakes(
         let floor_norm = comp.iter().map(|&k| heightmap.data[k]).fold(f32::MAX, f32::min);
         if floor_norm >= C1_SEA_LEVEL_NORM {
             continue;
+        }
+        // Finding 34 — TOTAL INFLOW from the runoff FIELD (the authority), SUMMED at the shoreline:
+        // `runoff_accumulation` ZEROES below-sea cells, so a tributary's discharge is lost the
+        // instant it enters the water. Reading `max` over the pool therefore saw only the largest
+        // single stream, not the total. Instead SUM the accumulated runoff of every above-sea cell
+        // that drains INTO a below-sea pool cell — each tributary counted once, at the shore, before
+        // the zeroing. Read from the FINAL footprint, so a track ending a cell short is irrelevant.
+        let mut inflow = 0.0f32;
+        for &k in &comp {
+            if heightmap.data[k] > C1_SEA_LEVEL_NORM {
+                continue; // want the below-sea WATER cells (where zeroing happens)
+            }
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                if let Some(nk) = nb4(x + dx, y + dy) {
+                    if heightmap.data[nk] > C1_SEA_LEVEL_NORM {
+                        let dir = flow.direction[nk];
+                        if dir != DIR_NONE {
+                            let (tx, ty) =
+                                (nk as i32 % w as i32 + D8_DX[dir as usize], nk as i32 / w as i32 + D8_DY[dir as usize]);
+                            if nb4(tx, ty) == Some(k) {
+                                inflow += runoff[nk]; // this tributary enters the water here
+                            }
+                        }
+                    }
+                }
+            }
         }
         // 2. the sill (overflow level) = the pool's barrier to the ocean (uniform within the pool).
         let spill = comp.iter().map(|&k| barrier_q[k]).min().unwrap() as f32 / 1_000_000.0;
@@ -965,6 +992,18 @@ pub fn below_sea_basin_lakes(
         }
         // Per-basin balance summary for EVERY basin (Finding 32), in real units.
         let area_km2_bs = water as f32 * cell_km2;
+        // OLD inlet reading (max runoff at the pool's land neighbours) → its regime, for before/after.
+        let mut inflow_max = 0.0f32;
+        for &k in &comp {
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                if let Some(nk) = nb4(x + dx, y + dy) {
+                    if !underwater(nk) {
+                        inflow_max = inflow_max.max(runoff[nk]);
+                    }
+                }
+            }
+        }
         basins.push(BasinSummary {
             id,
             area_km2: area_km2_bs,
@@ -976,7 +1015,9 @@ pub fn below_sea_basin_lakes(
             spill_level_m: c1_altitude_norm_to_metres(spill, ss),
             floor_m,
             level_m,
+            max_depth_m: level_m - floor_m,
             area_at_sill_km2: a_spill,
+            exorheic_before_inlet_fix: (inflow_max / pe_lake) >= a_spill,
         });
         // Finding 30 + 32 — an EXORHEIC label REQUIRES a traced outlet (mass balance: a basin
         // that receives more than it evaporates MUST overflow). Follow the ocean priority-flood's

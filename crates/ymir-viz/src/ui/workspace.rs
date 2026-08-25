@@ -2763,12 +2763,14 @@ fn lake_sheet_panel(ui: &mut egui::Ui, hd: &HdResult, lake_idx: usize, domain_km
             }
         }
     }
-    // Inlets: river reaches whose mouth is adjacent to this lake.
+    // Inlets: river reaches whose mouth is WITHIN 2 CELLS of this lake (Finding 34 — tolerate the
+    // small gap left when the footprint grew after the tracks were traced; a track ending a cell
+    // short still counts as a tributary).
     for s in &hd.drainage.rivers.segments {
         let &(mx, my) = s.points.last().unwrap();
         let mut adj = false;
-        for dy in -1i32..=1 {
-            for dx in -1i32..=1 {
+        for dy in -2i32..=2 {
+            for dx in -2i32..=2 {
                 let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
                 if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h && hd.drainage.lake_map[ny as usize * w + nx as usize] == id {
                     adj = true;
@@ -2810,7 +2812,7 @@ fn lake_sheet_panel(ui: &mut egui::Ui, hd: &HdResult, lake_idx: usize, domain_km
     // If the lake is EXORHEIC but no outlet reach is found, that inconsistency (H2) shows here.
     if let Some(wcs) = wcs {
         let adj = |mx: u32, my: u32| -> bool {
-            (-1i32..=1).any(|dy| (-1i32..=1).any(|dx| {
+            (-2i32..=2).any(|dy| (-2i32..=2).any(|dx| {
                 let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
                 nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h && hd.drainage.lake_map[ny as usize * w + nx as usize] == id
             }))
