@@ -2571,6 +2571,14 @@ fn inspection_dock(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         if ui.selectable_label(ws.inspect_tab == InspectTab::Lakes, format!("Lacs ({})", hd.drainage.lakes.len())).clicked() {
             ws.inspect_tab = InspectTab::Lakes;
         }
+        // Finding 32 note: displayed discharges/areas are geo-ratio COMPRESSED (×ratio² on
+        // catchment), while the water balance reasons on REAL quantities. Flag it so the two
+        // are not read as homogeneous.
+        if (ws.geo_scale_ratio - 1.0).abs() > 0.01 {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(egui::RichText::new(format!("débits ×{:.0} compressés (échelle {:.1})", ws.geo_scale_ratio * ws.geo_scale_ratio, ws.geo_scale_ratio)).color(WARN_ORANGE).size(10.0));
+            });
+        }
     });
     ui.separator();
     let mut nav: Option<NavAction> = None;
@@ -2648,16 +2656,21 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Op
         kv(ui, "Ordre", format!("S{}", wc.order));
         kv(ui, "Largeur embouchure", format!("{:.0} m", wc.width_mouth_m));
         kv(ui, "Largeur source", format!("{:.0} m", wc.width_source_m));
-        // Clickable SINK (Finding 29): jump to the lake it drains into.
+        // Clickable SINK (Finding 29): jump to the lake it drains into. A SUB-threshold basin
+        // (Finding 32) is a real sink but not in the inventory list → labelled honestly, no jump.
         ui.label(egui::RichText::new("Exutoire ").color(DIM).size(10.5));
-        if let Some(id) = wc.sink_lake_id {
-            if ui.add(egui::Button::new(egui::RichText::new(format!("{sl} ⮕")).color(sc).strong().size(11.5)).frame(true)).on_hover_text("Aller au lac").clicked() {
-                if let Some(li) = hd.drainage.lakes.iter().position(|l| l.base.id == id) {
+        match wc.sink_lake_id.and_then(|id| hd.drainage.lakes.iter().position(|l| l.base.id == id)) {
+            Some(li) => {
+                if ui.add(egui::Button::new(egui::RichText::new(format!("{sl} ⮕")).color(sc).strong().size(11.5)).frame(true)).on_hover_text("Aller au lac").clicked() {
                     nav = Some(NavAction::Lake(li));
                 }
             }
-        } else {
-            ui.label(egui::RichText::new(sl).color(sc).strong().size(11.5));
+            None if wc.sink_lake_id.is_some() => {
+                ui.label(egui::RichText::new(format!("{sl} (sous-seuil, non listé)")).color(sc).size(11.0));
+            }
+            None => {
+                ui.label(egui::RichText::new(sl).color(sc).strong().size(11.5));
+            }
         }
     });
     // Bed profile source → sink by WALKING the flow field from the main-stem headwater

@@ -1184,3 +1184,36 @@ not `water_class`; a basin's sink-validity from an area threshold, not its enclo
 move: replace the proxy with the authority (`water_class`, the traced network, the documented convention) and
 pin it with a permanent invariant. When a new symptom appears, the first question is now *which proxy is
 standing in for which authority.*
+
+## Finding 32 — Spillways that were never traced: a bounded search, and a guard with a blind spot
+
+A basin fed by five rivers (real inflow ~19 m³/s vs ~0.135 m³/s evaporation — exorheic by a factor of ~150)
+still read TERMINAL. Cause: the per-basin spillway trace (Finding 30) was a Dijkstra bounded by a step
+budget (`64·(w+h)` pops); when the ocean lay beyond that budget the search returned nothing, so an exorheic
+basin got no outlet. Of 638 below-sea basins, 462 had spillways and 176 did not — and the invariant guard
+`exorheic_below_sea_basin_has_traced_spillway` only inspected INVENTORIED (≥ 5 km²) lakes, so it was blind
+exactly where these sub-threshold failures lived.
+
+Fix — route by a SINGLE priority-flood from the ocean (Barnes 2014), computed ONCE: `spill_receiver[k]` is
+the neighbour toward the ocean along the least-barrier (minimax-elevation) path. Following it from any basin
+cell crosses the lowest sill and reaches `water_class == 1` — guaranteed for every basin the flood reached
+(i.e. every one, the ocean being connected). O(n log n) once, so a distant or large basin costs the same as
+a coastal one; no budget to exceed. Result (2048², centre 38°/span 27°): **638 basins → 465 exorheic, ALL
+465 now traced (0 untraced), 173 endorheic** (legitimately terminal). The 176 gap was 173 legit endorheic +
+3 exorheic Dijkstra-failures, now closed. STEP 1 (the over-supplied basin): inflow 7.6 m³/s vs evaporation
+0.002 m³/s, `a_eq 159 ≫ a_spill`, EXORHEIC, spillway TRACED carrying the full inflow to the sea.
+
+`below_sea_basin_lakes` now returns a `BasinSummary` for EVERY basin (inventory + sub-threshold, real
+units); the guard iterates those and asserts exorheic ⟹ spillway regardless of area — the blind spot is
+closed. **Exorheic basins lacking a spillway = 0.**
+
+Display (STEP 3, separated from the data bug): the lake sheet resolves outlets from the WATERCOURSES (the
+appended spillways), not the inventory — so a traced outlet shows once the basin is selectable. A
+sub-threshold basin is a real sink but absent from the inventory list, so a river's sink button labels it
+honestly ("sous-seuil, non listé") instead of a dead jump. And the microscope now flags that displayed
+discharges are geo-ratio COMPRESSED (×ratio²) while the balance reasons on REAL quantities — reading the two
+as homogeneous is what made this bug look impossible at first (540 displayed m³/s was ~19 real).
+
+Same pattern as Findings 27/29–31: a property (a reachable sink) decided by a PROXY (a fixed search budget)
+instead of the AUTHORITY (the ocean-connected flood). Replace the proxy; pin the invariant over ALL cases,
+not the convenient subset.

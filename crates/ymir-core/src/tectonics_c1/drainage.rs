@@ -749,14 +749,31 @@ pub struct Spillway {
     pub chained_into: Option<u32>,
 }
 
+/// Per-basin water-balance summary for EVERY enclosed below-sea basin (Finding 32) — inventory
+/// AND sub-threshold — so the invariant can be checked over all of them, not just the exported
+/// ones. Real units (the water balance is on the true quantities, before any geographic ratio).
+#[derive(Clone, Copy)]
+pub struct BasinSummary {
+    pub id: u32,
+    pub area_km2: f32,
+    pub exorheic: bool,
+    pub inflow_m3s: f32,
+    pub evaporation_m3s: f32,
+    /// The two numbers the regime compared (in km²): equilibrium area vs sill area.
+    pub a_eq_km2: f32,
+    pub a_spill_km2: f32,
+    pub spill_level_m: f32,
+}
+
 /// Result of [`below_sea_basin_lakes`]: the typed lakes + their water `lake_map`, the traced
-/// spill paths (Finding 30 — every exorheic basin gets one), and a wetland mask (shallow
-/// through-flow margins → `Biome::Wetland`, the long-idle consumer biome's data source).
+/// spill paths (Finding 30 — every exorheic basin gets one), a wetland mask (shallow through-flow
+/// margins → `Biome::Wetland`), and a per-basin balance summary (Finding 32, every basin).
 pub struct BelowSeaResult {
     pub lakes: Vec<C1Lake>,
     pub lake_map: Vec<u32>,
     pub spillways: Vec<Spillway>,
     pub wetland: Vec<u8>,
+    pub basins: Vec<BasinSummary>,
 }
 
 pub fn below_sea_basin_lakes(
@@ -786,11 +803,47 @@ pub fn below_sea_basin_lakes(
     let mut lake_map = vec![0u32; n];
     let mut out = Vec::new();
     let mut spillways: Vec<Spillway> = Vec::new();
+    let mut basins: Vec<BasinSummary> = Vec::new();
     let mut wetland = vec![0u8; n];
     let mut seen = vec![false; n];
     let mut next_id = 1_000_001u32;
     let metres_per_norm =
         c1_altitude_norm_to_metres(1.0, ss) - c1_altitude_norm_to_metres(0.0, ss);
+
+    // Finding 32 — spillway routing by a SINGLE priority-flood from the ocean (Barnes 2014),
+    // computed ONCE. `spill_receiver[k]` is the neighbour toward the ocean along the LEAST-
+    // BARRIER (minimax-elevation) path; following it from any cell reaches `water_class == 1`
+    // over the lowest sill. This replaces the per-basin bounded Dijkstra, which failed for
+    // basins whose ocean was beyond its step budget — leaving exorheic basins with no outlet.
+    // O(n log n) once, so a distant/large basin is handled at the same cost as a coastal one.
+    let mut spill_receiver = vec![u32::MAX; n];
+    if wc.iter().any(|&c| c == 2) {
+        use std::cmp::Reverse;
+        use std::collections::BinaryHeap;
+        let quant = |e: f32| (e * 1_000_000.0) as i32;
+        let mut done = vec![false; n];
+        let mut pq: BinaryHeap<Reverse<(i32, u32)>> = BinaryHeap::new();
+        for k in 0..n {
+            if wc[k] == 1 {
+                done[k] = true;
+                pq.push(Reverse((quant(heightmap.data[k]), k as u32)));
+            }
+        }
+        while let Some(Reverse((c, k))) = pq.pop() {
+            let (x, y) = ((k as usize % w) as i32, (k as usize / w) as i32);
+            for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+                if let Some(nk) = nb4(x + dx, y + dy) {
+                    if !done[nk] {
+                        done[nk] = true;
+                        spill_receiver[nk] = k; // toward the ocean along the least-barrier path
+                        let nb = c.max(quant(heightmap.data[nk]));
+                        pq.push(Reverse((nb, nk as u32)));
+                    }
+                }
+            }
+        }
+    }
+
     for s in 0..n {
         if wc[s] != 2 || seen[s] {
             continue;
@@ -904,89 +957,84 @@ pub fn below_sea_basin_lakes(
                 lake_type,
             });
         }
-        // Finding 30 — an EXORHEIC label REQUIRES a traced outlet (mass balance: a basin that
-        // receives more than it evaporates MUST overflow). Trace the LEAST-SILL path from the
-        // basin to a sink — a Dijkstra minimising the MAXIMUM elevation crossed (the overflow
-        // sill), since below-sea cells confound plain flow routing. The path reaches the OCEAN
-        // (`water_class == 1`) or CHAINS into another below-sea basin. Bounded by a step budget.
+        // Per-basin balance summary for EVERY basin (Finding 32), in real units.
+        let area_km2_bs = water as f32 * cell_km2;
+        basins.push(BasinSummary {
+            id,
+            area_km2: area_km2_bs,
+            exorheic: lake_type == LakeType::Exorheic,
+            inflow_m3s: runoff_km2_to_m3s(inflow),
+            evaporation_m3s: runoff_km2_to_m3s(pe_lake * area_km2_bs),
+            a_eq_km2: a_eq,
+            a_spill_km2: a_spill,
+            spill_level_m: c1_altitude_norm_to_metres(spill, ss),
+        });
+        // Finding 30 + 32 — an EXORHEIC label REQUIRES a traced outlet (mass balance: a basin
+        // that receives more than it evaporates MUST overflow). Follow the ocean priority-flood's
+        // `spill_receiver` from the basin's pour point over the lowest sill to a sink — the OCEAN
+        // (`water_class == 1`) or, if the path first re-enters another below-sea basin, that basin
+        // (a chain). Guaranteed to reach a sink for every basin the flood reached (i.e. every one).
         if lake_type == LakeType::Exorheic {
-            use std::cmp::Reverse;
-            use std::collections::BinaryHeap;
-            let quant = |e: f32| (e * 1_000_000.0) as i32;
-            let mut best: std::collections::HashMap<usize, i32> = std::collections::HashMap::new();
-            let mut came: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
-            let mut heap: BinaryHeap<Reverse<(i32, usize)>> = BinaryHeap::new();
+            // Pour = the basin cell whose receiver leaves the basin (its outflow), lowest sill.
+            let mut pour: Option<usize> = None;
+            let mut pour_e = f32::MAX;
             for &k in &fcells {
-                if lake_map[k] == id {
-                    let c = quant(heightmap.data[k]);
-                    if best.get(&k).map_or(true, |&b| c < b) {
-                        best.insert(k, c);
-                        heap.push(Reverse((c, k)));
-                    }
-                }
-            }
-            let (mut sink_cell, mut chained, mut popped) = (None, None, 0usize);
-            let budget = 64 * (w + h);
-            while let Some(Reverse((c, k))) = heap.pop() {
-                if best.get(&k).is_some_and(|&b| c > b) {
+                if lake_map[k] != id {
                     continue;
                 }
-                popped += 1;
-                if popped > budget {
-                    break;
-                }
-                if wc[k] == 1 {
-                    sink_cell = Some(k);
-                    break; // reached the ocean
-                }
-                let lid = lake_map[k];
-                if lid != 0 && lid != id {
-                    sink_cell = Some(k);
-                    chained = Some(lid); // spilled into another below-sea basin (a chain)
-                    break;
-                }
-                let (x, y) = ((k % w) as i32, (k / w) as i32);
-                for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
-                    if let Some(nk) = nb4(x + dx, y + dy) {
-                        let nc = c.max(quant(heightmap.data[nk]));
-                        if best.get(&nk).map_or(true, |&b| nc < b) {
-                            best.insert(nk, nc);
-                            came.insert(nk, k);
-                            heap.push(Reverse((nc, nk)));
-                        }
-                    }
+                let r = spill_receiver[k];
+                if r != u32::MAX && lake_map[r as usize] != id && heightmap.data[r as usize] < pour_e
+                {
+                    pour_e = heightmap.data[r as usize];
+                    pour = Some(k);
                 }
             }
-            if let Some(end) = sink_cell {
-                // Reconstruct the path from the sink back to a basin cell, then reverse.
-                let mut path = vec![end];
-                let mut cur = end;
-                while let Some(&p) = came.get(&cur) {
-                    path.push(p);
-                    cur = p;
+            if let Some(p0) = pour {
+                let mut path = vec![p0];
+                let (mut cur, mut chained, mut steps) = (p0, None, 0usize);
+                loop {
+                    if wc[cur] == 1 {
+                        break; // reached the ocean
+                    }
+                    let lid = lake_map[cur];
+                    if lid != 0 && lid != id && cur != p0 {
+                        chained = Some(lid); // spilled into another below-sea basin (a chain)
+                        break;
+                    }
+                    let r = spill_receiver[cur];
+                    if r == u32::MAX {
+                        break;
+                    }
+                    cur = r as usize;
+                    path.push(cur);
+                    steps += 1;
+                    if steps > n {
+                        break;
+                    }
                 }
-                path.reverse(); // basin → sink
-                let points: Vec<(u32, u32)> = path.iter().map(|&k| ((k % w) as u32, (k / w) as u32)).collect();
-                let profile: Vec<f32> = path.iter().map(|&k| c1_altitude_norm_to_metres(heightmap.data[k], ss)).collect();
-                // discharge = surplus (inflow − evaporation); evaporation = pe_lake · area.
-                let area_km2 = water as f32 * cell_km2;
-                let surplus = (inflow - pe_lake * area_km2).max(0.0); // mm·km²/yr
-                let discharge_m3s = runoff_km2_to_m3s(surplus);
-                let drainage_km2 = surplus / REFERENCE_RUNOFF_MM;
-                spillways.push(Spillway {
-                    lake_id: id,
-                    points,
-                    discharge_m3s,
-                    drainage_km2,
-                    width_m: CHANNEL_WIDTH_A * discharge_m3s.max(0.0).powf(CHANNEL_WIDTH_B),
-                    navigability: cfg.thresholds.classify(drainage_km2),
-                    profile_m: profile,
-                    chained_into: chained,
-                });
+                if wc[cur] == 1 || chained.is_some() {
+                    let points: Vec<(u32, u32)> = path.iter().map(|&k| ((k % w) as u32, (k / w) as u32)).collect();
+                    let profile: Vec<f32> = path.iter().map(|&k| c1_altitude_norm_to_metres(heightmap.data[k], ss)).collect();
+                    // discharge = surplus (inflow − evaporation); evaporation = pe_lake · area.
+                    let area_km2 = water as f32 * cell_km2;
+                    let surplus = (inflow - pe_lake * area_km2).max(0.0); // mm·km²/yr
+                    let discharge_m3s = runoff_km2_to_m3s(surplus);
+                    let drainage_km2 = surplus / REFERENCE_RUNOFF_MM;
+                    spillways.push(Spillway {
+                        lake_id: id,
+                        points,
+                        discharge_m3s,
+                        drainage_km2,
+                        width_m: CHANNEL_WIDTH_A * discharge_m3s.max(0.0).powf(CHANNEL_WIDTH_B),
+                        navigability: cfg.thresholds.classify(drainage_km2),
+                        profile_m: profile,
+                        chained_into: chained,
+                    });
+                }
             }
         }
     }
-    BelowSeaResult { lakes: out, lake_map, spillways, wetland }
+    BelowSeaResult { lakes: out, lake_map, spillways, wetland, basins }
 }
 
 /// Trace a lake's outlet downstream via D8; does it reach the sea (≤ 0.5)?
@@ -1028,21 +1076,26 @@ mod tests {
     #[test]
     fn exorheic_below_sea_basin_has_traced_spillway() {
         use crate::lakes::connectivity::water_class;
-        let (w, h) = (24usize, 12usize);
-        let mut hm = GridF32::new(w, h, 0.7); // land
+        // A WIDE grid with the ocean at the far left and a below-sea pit at the far RIGHT — so a
+        // bounded per-basin search could miss the coast, but the ocean priority-flood cannot.
+        // Plus a TINY (sub-inventory) pit, to cover the blind spot: the invariant is checked over
+        // EVERY basin via `r.basins`, not just the inventoried (≥ 5 km²) lakes.
+        let (w, h) = (80usize, 12usize);
+        let mut hm = GridF32::new(w, h, 0.7);
         for y in 0..h {
-            hm.set(0, y, 0.2); // ocean column (class-1, border-connected)
+            hm.set(0, y, 0.2); // ocean column (class-1)
             hm.set(1, y, 0.2);
         }
+        // low lane at y=6 across the whole width (0.55) so a spill route exists to the coast.
+        for x in 2..w {
+            hm.set(x, 6, 0.55);
+        }
         for y in 5..8 {
-            for x in 5..8 {
-                hm.set(x, y, 0.4); // enclosed below-sea pit (class-2)
+            for x in 70..73 {
+                hm.set(x, y, 0.4); // FAR enclosed below-sea pit (large-ish)
             }
         }
-        for x in 2..5 {
-            hm.set(x, 6, 0.55); // a low sill lane toward the ocean (the overflow route)
-        }
-        // Very wet + cool → surplus ≫ 0 so the basin is unambiguously EXORHEIC.
+        hm.set(40, 6, 0.4); // a TINY 1-cell below-sea pit mid-grid (sub-inventory)
         let precip = GridF32::new(w, h, 1.0);
         let temp = GridF32::new(w, h, 10.0);
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
@@ -1051,22 +1104,23 @@ mod tests {
             &clim,
             &C1DrainageConfig::default(),
             &SteinSteinParams::default(),
-            24.0,
+            80.0,
         );
         let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
-        let exo: Vec<_> = r.lakes.iter().filter(|l| l.lake_type == LakeType::Exorheic).collect();
-        assert!(!exo.is_empty(), "the wet enclosed below-sea basin must classify EXORHEIC");
-        for lk in &exo {
+        // The INVARIANT over EVERY basin (any area): exorheic ⟹ a traced spillway reaching a sink.
+        let exo = r.basins.iter().filter(|b| b.exorheic).count();
+        assert!(exo > 0, "at least one below-sea basin must classify EXORHEIC");
+        for b in r.basins.iter().filter(|b| b.exorheic) {
             let sw = r
                 .spillways
                 .iter()
-                .find(|s| s.lake_id == lk.base.id)
-                .unwrap_or_else(|| panic!("exorheic basin #{} MUST have a traced spillway", lk.base.id));
+                .find(|s| s.lake_id == b.id)
+                .unwrap_or_else(|| panic!("EXORHEIC basin #{} ({:.2} km²) MUST have a traced spillway", b.id, b.area_km2));
             let &(lx, ly) = sw.points.last().unwrap();
             let end = ly as usize * w + lx as usize;
             assert!(
                 wc[end] == 1 || sw.chained_into.is_some(),
-                "the spillway must reach a SINK (the ocean or another basin), ended at wc={}",
+                "the spillway must reach a SINK (ocean or another basin), ended at wc={}",
                 wc[end]
             );
         }

@@ -3659,6 +3659,24 @@ fn sub_threshold_sink_report() {
     let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
     let wc = water_class(&field, SEA);
 
+    // Finding 32 — per-basin balance over EVERY basin (inventory + sub-threshold), real units.
+    let sp_ids: std::collections::HashSet<u32> = bsr.spillways.iter().map(|s| s.lake_id).collect();
+    let (mut exo, mut endo, mut exo_no_sw) = (0usize, 0usize, 0usize);
+    for b in &bsr.basins {
+        if b.exorheic { exo += 1; if !sp_ids.contains(&b.id) { exo_no_sw += 1; } } else { endo += 1; }
+    }
+    eprintln!("\n=== Finding 32 — spillway coverage over ALL {} below-sea basins ===", bsr.basins.len());
+    eprintln!("  regimes: {exo} exorheic ({} traced, {exo_no_sw} UNTRACED) | {endo} endorheic (legit, no outlet)", bsr.spillways.len());
+    eprintln!("  STEP 4 invariant: exorheic basins lacking a spillway = {exo_no_sw} (must be 0)");
+    // STEP 1 — the most over-supplied basin (the one the big rivers converge on): full balance.
+    if let Some(b) = bsr.basins.iter().max_by(|a, b| a.inflow_m3s.partial_cmp(&b.inflow_m3s).unwrap()) {
+        let sw = bsr.spillways.iter().find(|s| s.lake_id == b.id);
+        eprintln!("  STEP 1 max-inflow basin #{}: area {:.2} km² | inflow {:.1} m³/s | evap {:.3} m³/s | regime {} | balance compared a_eq {:.0} vs a_spill {:.0} km² | spill level {:.0} m | spillway {}",
+            b.id, b.area_km2, b.inflow_m3s, b.evaporation_m3s,
+            if b.exorheic { "EXORHEIC" } else { "endorheic" }, b.a_eq_km2, b.a_spill_km2, b.spill_level_m,
+            match sw { Some(s) => format!("TRACED, Q {:.1} m³/s → {}", s.discharge_m3s, if s.chained_into.is_some() { "chained" } else { "sea" }), None => "NONE".to_string() });
+    }
+
     // Basin sizes (all marked cells → per-id count).
     let mut area_cells: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
     for &id in bsr.lake_map.iter() { if id != 0 { *area_cells.entry(id).or_default() += 1; } }
