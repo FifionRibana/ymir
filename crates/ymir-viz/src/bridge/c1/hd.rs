@@ -36,7 +36,7 @@ use crossbeam_channel::Sender;
 use ymir_core::cache::default_cache_dir;
 use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
-use ymir_core::climate::{ClimateResult, c1_biomes_classified, c1_climate_placed, c1_climate_windowed};
+use ymir_core::climate::{ClimateResult, c1_biomes_classified_wet, c1_climate_placed, c1_climate_windowed};
 use ymir_core::erosion::stream_power::StreamPowerConfig;
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
 use ymir_core::export::{height, hydro, vector};
@@ -58,7 +58,7 @@ use ymir_core::tectonics_c1::land_topology::{
 };
 use ymir_core::tectonics_c1::production_upscale::EroProgress;
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
-use ymir_core::terrain::flow::breach_monotone;
+use ymir_core::terrain::flow::{RiverSegment, breach_monotone};
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
 use super::events::C1Event;
@@ -683,27 +683,56 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // detect_lakes treat them as ocean, so they never enter the lake path; add them here via
     // the water balance (level = min(spill, evaporative)), merging their water cells into the
     // lake_map (only where empty) and their typed lakes into the list → lakes.json + biomes.
-    {
+    let wetland_mask: Vec<u8> = {
         let dclim = DrainageClimate {
             precip_internal: &climate.precipitation,
             temperature: &climate.temperature,
         };
-        let (bs_lakes, bs_map) = below_sea_basin_lakes(&eroded, &dclim, &dcfg, &ss, window_km);
+        let bs = below_sea_basin_lakes(&eroded, &dclim, &dcfg, &ss, window_km);
         let (mut endo, mut exo) = (0usize, 0usize);
-        for lk in &bs_lakes {
+        for lk in &bs.lakes {
             match lk.lake_type {
                 LakeType::Endorheic => endo += 1,
                 LakeType::Exorheic => exo += 1,
             }
         }
-        for k in 0..bs_map.len() {
-            if bs_map[k] != 0 && drainage.lake_map[k] == 0 {
-                drainage.lake_map[k] = bs_map[k];
+        for k in 0..bs.lake_map.len() {
+            if bs.lake_map[k] != 0 && drainage.lake_map[k] == 0 {
+                drainage.lake_map[k] = bs.lake_map[k];
             }
         }
-        drainage.lakes.extend(bs_lakes);
-        eprintln!("[HD] below-sea basins: {} lakes ({exo} exorheic, {endo} endorheic)", exo + endo);
-    }
+        // Finding 30 — append each exorheic basin's traced SPILLWAY as a watercourse (so an
+        // exorheic label always has an outlet; may chain through basins before the sea).
+        let (mut to_sea, mut chained) = (0usize, 0usize);
+        for sw in &bs.spillways {
+            if sw.chained_into.is_some() {
+                chained += 1;
+            } else {
+                to_sea += 1;
+            }
+            drainage.rivers.segments.push(RiverSegment {
+                points: sw.points.clone(),
+                strahler_order: 1,
+                avg_flow: 0.0,
+                max_flow: 0.0,
+                basin_id: 0,
+                upstream: vec![],
+                downstream: None,
+            });
+            drainage.segment_drainage_km2.push(sw.drainage_km2);
+            drainage.segment_navigability.push(sw.navigability);
+            drainage.segment_discharge_m3s.push(sw.discharge_m3s);
+            drainage.segment_width_m.push(sw.width_m);
+            drainage.segment_profile_m.push(sw.profile_m.clone());
+        }
+        drainage.lakes.extend(bs.lakes);
+        eprintln!(
+            "[HD] below-sea basins: {} lakes ({exo} exorheic, {endo} endorheic); {} spillways ({to_sea} → sea, {chained} chained)",
+            exo + endo,
+            bs.spillways.len()
+        );
+        bs.wetland
+    };
     // Finding 24 — geographic scale ratio: a PURE post-process on the export-derived
     // hydrology (catchment/discharge/width/navigability), applied before the clip so the
     // clipped reaches inherit the signified values. Identity at 1.0. Touches nothing
@@ -735,7 +764,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let t = Instant::now();
     // ADR Finding 18: biomes from water_class + the drainage lake_map (below-sea enclosed
     // basins → Lake / exposed land, not Ocean), instead of the altitude threshold.
-    let biomes = c1_biomes_classified(&eroded, &climate, &drainage.lake_map);
+    let biomes = c1_biomes_classified_wet(&eroded, &climate, &drainage.lake_map, &wetland_mask);
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Biomes,
         regime: CacheRegime::Computed,

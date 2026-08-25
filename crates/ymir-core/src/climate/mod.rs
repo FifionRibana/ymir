@@ -35,7 +35,7 @@ pub struct ClimateResult {
 /// marks ocean cells. Row-major `Vec<Biome>`.
 pub fn c1_biomes(heightmap: &GridF32, climate: &ClimateResult) -> Vec<biomes::Biome> {
     // Legacy (altitude membership) — empty connectivity slices fall back to the old rule.
-    biomes::compute_biomes(heightmap, &climate.temperature, &climate.precipitation, &[], &[])
+    biomes::compute_biomes(heightmap, &climate.temperature, &climate.precipitation, &[], &[], &[])
 }
 
 /// Whittaker biome map using CONNECTIVITY + drainage water (ADR 0001 Finding 18): sea-vs-inland
@@ -47,8 +47,19 @@ pub fn c1_biomes_classified(
     climate: &ClimateResult,
     lake_map: &[u32],
 ) -> Vec<biomes::Biome> {
+    c1_biomes_classified_wet(heightmap, climate, lake_map, &[])
+}
+
+/// [`c1_biomes_classified`] with a WETLAND mask (ADR 0001 Finding 30): shallow through-flow
+/// below-sea margins read as `Biome::Wetland` instead of `Lake`. Empty mask → no wetlands.
+pub fn c1_biomes_classified_wet(
+    heightmap: &GridF32,
+    climate: &ClimateResult,
+    lake_map: &[u32],
+    wetland: &[u8],
+) -> Vec<biomes::Biome> {
     let wc = crate::lakes::connectivity::water_class(heightmap, precipitation::SEA_LEVEL_NORM);
-    biomes::compute_biomes(heightmap, &climate.temperature, &climate.precipitation, &wc, lake_map)
+    biomes::compute_biomes(heightmap, &climate.temperature, &climate.precipitation, &wc, lake_map, wetland)
 }
 
 /// Derive (temperature, precipitation) from the C1 relief at a centre latitude.

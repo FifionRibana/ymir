@@ -1112,3 +1112,39 @@ lists its INLETS (clickable → upstream rivers) and its OUTLET (clickable → d
 exorheic but no outlet reach is found, the outlet row reads "⚠ AUCUN exutoire tracé — incohérence H2" — so
 this very bug is visible in one click instead of a manual hunt. `NavAction` jumps switch tab + selection.
 Viz compiles; guards green.
+
+## Finding 30 — The exorheic label was right; the missing spill PATH was the bug. Trace it; export wetlands
+
+The Finding 29 remedy was backwards. Mass balance settles it: a basin that receives more than it
+evaporates MUST overflow — growing the surface raises evaporation, and `min(spill, evaporative)` already
+accounts for that, so `a_eq ≥ a_spill` means the water reaches the sill and SPILLS. The `Exorheic` label is
+correct; RELABELLING it endorheic would assert a basin that gains more than it loses and never overflows —
+a mass-balance violation. The defect is the MISSING outlet. Don't relabel — TRACE.
+
+**TASK 1 — trace the spill path.** Below-sea cells confound plain flow routing (every flow field treats
+`≤ 0.5` as ocean base, so directions point INTO the basin), so `below_sea_basin_lakes` now traces the
+LEAST-SILL path — a Dijkstra minimising the MAXIMUM elevation crossed (the true overflow sill) from the
+basin to a sink — and emits it as a watercourse with discharge = the SURPLUS (`inflow − pe·area`, not the
+full inflow: the basin evaporates its share). The path reaches the OCEAN (`water_class == 1`) or CHAINS into
+another below-sea basin. Result (2048², centre 38°/span 27°): all **3/3** exorheic basins now trace a
+spillway — 2 direct to the sea, **1 chained** through another basin — Q 0.4–0.9 m³/s, 3–5 m wide. The
+microscope's verdict flips **H2 → H1**: every exorheic lake's outlet now leads somewhere.
+
+**TASK 2 — invariant, not a computed label.** Permanent, non-ignored guard
+`exorheic_below_sea_basin_has_traced_spillway`: a wet enclosed below-sea basin classifies exorheic AND gets
+a spillway reaching a sink. Same spirit as `clip_rivers_terminate_at_lake_sinks` / the thalweg lesson — a
+regime is now checked against the traced network, not asserted. If it can't be satisfied, the guard fails
+(the point).
+
+**TASK 3 — wetland vs lagoon, EXPORTED to the consumer.** New `Biome::Wetland` (frozen id 12). The measured
+criterion (through-flow basins are 100 % shallow, < ~3 m, ~0.1–0.3 % slope) drives a per-cell wetland mask
+(`below_sea_basin_lakes` returns it; depth `< WETLAND_MAX_DEPTH_M = 3 m`); `c1_biomes_classified_wet` reads
+it so shallow margins are `Wetland`, deeper cells stay `Lake` (lagoon/inland sea). WHY they are fresh, for
+the consumer: they are fresh because water FLOWS THROUGH them (inflow > evaporation, the surplus spills) —
+`endorheic ⇒ salt` still holds, but these are not endorheic. Result: **231 km² of wetland (0.88 % of land)**,
+biome `Wetland` 0.88 % where it was 0. This is the data source Living Landz's long-idle `Wetland` biome
+always lacked — now on the wire, not just in the microscope.
+
+`below_sea_basin_lakes` returns a `BelowSeaResult { lakes, lake_map, spillways, wetland }`; the HD run appends
+the spillways to `rivers` before the clip and passes the wetland mask to the biomes. Core lib 515 green
+(new guard + frozen-ids incl. Wetland); viz compiles; erosion/relief chain untouched.

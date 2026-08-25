@@ -3661,15 +3661,35 @@ fn below_sea_outlet_diagnosis() {
     let dcfg = C1DrainageConfig::default();
     let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    use ymir_core::terrain::flow::RiverSegment;
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let spillways = bsr.spillways;
+    let wetland = bsr.wetland;
+    let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
     dr.lakes.extend(bs);
+    // Finding 30 — append the traced spillways as watercourses (mirror of the HD wiring).
+    let (mut to_sea, mut chained) = (0usize, 0usize);
+    for sw in &spillways {
+        if sw.chained_into.is_some() { chained += 1; } else { to_sea += 1; }
+        dr.rivers.segments.push(RiverSegment { points: sw.points.clone(), strahler_order: 1, avg_flow: 0.0, max_flow: 0.0, basin_id: 0, upstream: vec![], downstream: None });
+        dr.segment_drainage_km2.push(sw.drainage_km2);
+        dr.segment_navigability.push(sw.navigability);
+        dr.segment_discharge_m3s.push(sw.discharge_m3s);
+        dr.segment_width_m.push(sw.width_m);
+        dr.segment_profile_m.push(sw.profile_m.clone());
+    }
     clip_rivers_to_lakes(&mut dr);
     let wc = water_class(&field, SEA);
     let norm_m = |nrm: f32| c1_altitude_norm_to_metres(nrm, &ss);
 
-    eprintln!("\n=== STEP 1 — exorheic below-sea basins, no-outlet verdict (2048²) ===");
-    eprintln!("  outlet LABEL test: classify_sink (viz workspace.rs) checks `eroded ≤ 0.5` (SEA) BEFORE lake_map → a mouth in a below-sea lake reads 'mer'. The clip splits on lake_map. So the two disagree.");
+    eprintln!("\n=== Finding 30 — exorheic spillways traced + wetland export (2048²) ===");
+    eprintln!("  {} spillways traced ({to_sea} → sea, {chained} chained through another basin)", spillways.len());
+    for sw in &spillways {
+        let &(lx, ly) = sw.points.last().unwrap();
+        let sink = if field.data[ly as usize * t + lx as usize] <= SEA { "mer".to_string() } else if let Some(c) = sw.chained_into { format!("→ bassin #{c}") } else { "?".to_string() };
+        eprintln!("     spillway lac #{}: {} pts · Q {:.1} m³/s · width {:.0} m · sink {sink}", sw.lake_id, sw.points.len(), sw.discharge_m3s, sw.width_m);
+    }
     let below: Vec<&_> = dr.lakes.iter().filter(|l| l.base.id >= 1_000_001 && l.lake_type == LakeType::Exorheic).collect();
     eprintln!("  {} exorheic below-sea basins:", below.len());
     for lk in &below {
@@ -3721,9 +3741,20 @@ fn below_sea_outlet_diagnosis() {
         let verdict = if touches_ocean { "H3 (surface-contiguous with ocean → lagoon/sea-arm, not a lake)" }
             else if outlet.is_some() { "H1 (outlet reach exists in data)" }
             else { "H2 (exorheic label, NO spill path traced)" };
-        eprintln!("  #{id}: {} cells | wc land {c0} / OCEAN {c1} / enclosed {c2} | outlet_reach {} | ocean-contig {touches_ocean} | depth p50 {:.0}m max {:.0}m shallow<3m {}% | shore slope {:.1}% → {verdict}",
+        eprintln!("  #{id}: {} cells | wc land {c0} / OCEAN {c1} / enclosed {c2} | outlet_reach(after fix) {} | ocean-contig {touches_ocean} | depth p50 {:.0}m max {:.0}m shallow<3m {}% | shore slope {:.1}% → {verdict}",
             cells.len(), outlet.is_some(), depths[depths.len()/2], *depths.last().unwrap(), 100 * shallow / cells.len().max(1), slope_pct);
     }
+    // TASK 3 — wetland export: area + biome impact.
+    use ymir_core::climate::biomes::Biome;
+    use ymir_core::climate::c1_biomes_classified_wet;
+    let wet_cells = wetland.iter().filter(|&&x| x != 0).count();
+    let biomes = c1_biomes_classified_wet(&field, &climate, &dr.lake_map, &wetland);
+    let land = biomes.iter().filter(|b| **b != Biome::Ocean).count().max(1);
+    let wet_biome = biomes.iter().filter(|b| **b == Biome::Wetland).count();
+    let lake_biome = biomes.iter().filter(|b| **b == Biome::Lake).count();
+    eprintln!("  TASK 3 wetland export: {wet_cells} wetland cells = {:.0} km² ({:.2}% of land) | biome Wetland {:.2}% · Lake {:.2}% (were all Lake before)",
+        wet_cells as f32 * cell_km2, 100.0 * wet_cells as f32 / land as f32,
+        100.0 * wet_biome as f32 / land as f32, 100.0 * lake_biome as f32 / land as f32);
 }
 
 /// Finding 28 — inspection microscope DATA (what the four viz panels assemble from the
@@ -3759,7 +3790,7 @@ fn inspection_panels_data() {
     let dcfg = C1DrainageConfig::default();
     let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
     dr.lakes.extend(bs);
     apply_geo_scale_ratio(&mut dr, ratio, &DrainageThresholds::default());
@@ -4029,7 +4060,7 @@ fn recommended_render() {
     let dcfg = C1DrainageConfig::default();
     let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
     dr.lakes.extend(bs);
     apply_geo_scale_ratio(&mut dr, ratio, &DrainageThresholds::default());
@@ -4121,7 +4152,7 @@ fn scale_and_span_audit() {
     let dcfg = C1DrainageConfig::default();
     let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
     let mut base = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() { if bs_map[k] != 0 && base.lake_map[k] == 0 { base.lake_map[k] = bs_map[k]; } }
     base.lakes.extend(bs);
 
@@ -4194,7 +4225,7 @@ fn width_law_audit() {
     let dcfg = C1DrainageConfig::default();
     let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
     dr.lakes.extend(bs);
     clip_rivers_to_lakes(&mut dr);
@@ -4308,7 +4339,7 @@ fn overlay_render(t: usize) {
     let dcfg = C1DrainageConfig::default();
     let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
     dr.lakes.extend(bs);
     clip_rivers_to_lakes(&mut dr);
@@ -4427,7 +4458,7 @@ fn defect_abc_audit() {
     let dcfg = C1DrainageConfig::default();
     let mut dr = c1_drainage(&field, None, &C1DrainageConfig::default(), &ss);
     let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
-    let (bs, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
     dr.lakes.extend(bs);
 
@@ -4532,7 +4563,7 @@ fn step23_biomes_lakes() {
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    let (bs_lakes, bs_map) = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs_lakes, bs_map) = (bsr.lakes, bsr.lake_map);
 
     let (mut exo, mut endo, mut water, mut dry) = (0usize, 0usize, 0.0f32, 0.0f32);
     for lk in &bs_lakes {

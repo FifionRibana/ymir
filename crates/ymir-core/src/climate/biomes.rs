@@ -39,6 +39,11 @@ pub enum Biome {
     /// (enclosed water) / the drainage lake map, NOT from altitude, so a below-sea
     /// enclosed basin's water surface reads as a lake, not the sea (ADR 0001 Finding 18).
     Lake,
+    /// Through-flow WETLAND (ADR 0001 Finding 30): a shallow (< ~3 m), near-sea-level
+    /// below-sea basin margin where inflow exceeds evaporation and the surplus SPILLS —
+    /// so it is fresh/brackish, not salt (salt needs a truly endorheic terminus). This is
+    /// the data source for the consumer's long-idle `Wetland` biome.
+    Wetland,
 }
 
 impl Biome {
@@ -56,6 +61,7 @@ impl Biome {
             Biome::TropicalSeasonalForest => "tropical seasonal forest",
             Biome::TropicalRainforest => "tropical rainforest",
             Biome::Lake => "lake (inland water)",
+            Biome::Wetland => "wetland (through-flow, fresh)",
         }
     }
 
@@ -74,6 +80,7 @@ impl Biome {
             Biome::TropicalSeasonalForest => 9,
             Biome::TropicalRainforest => 10,
             Biome::Lake => 11,
+            Biome::Wetland => 12,
         }
     }
 
@@ -92,6 +99,7 @@ impl Biome {
             9 => Biome::TropicalSeasonalForest,
             10 => Biome::TropicalRainforest,
             11 => Biome::Lake,
+            12 => Biome::Wetland,
             _ => return None,
         })
     }
@@ -110,6 +118,7 @@ impl Biome {
             Biome::TropicalSeasonalForest => [120, 175, 70],
             Biome::TropicalRainforest => [20, 110, 50],
             Biome::Lake => [60, 110, 175],
+            Biome::Wetland => [95, 140, 120],
         }
     }
 }
@@ -158,15 +167,20 @@ pub fn compute_biomes(
     precipitation: &GridF32,
     water_class: &[u8],
     lake_map: &[u32],
+    wetland: &[u8],
 ) -> Vec<Biome> {
     let n = heightmap.width * heightmap.height;
     let has_wc = water_class.len() == n;
     let has_lakes = lake_map.len() == n;
+    let has_wet = wetland.len() == n;
     (0..n)
         .map(|k| {
             if has_wc {
                 if water_class[k] == 1 {
                     return Biome::Ocean; // edge-connected sea
+                }
+                if has_wet && wetland[k] != 0 {
+                    return Biome::Wetland; // shallow through-flow margin (Finding 30)
                 }
                 if has_lakes && lake_map[k] != 0 {
                     return Biome::Lake; // inland water surface (incl. below-sea basins)
@@ -205,13 +219,14 @@ mod tests {
             (Biome::TropicalSeasonalForest, 9),
             (Biome::TropicalRainforest, 10),
             (Biome::Lake, 11),
+            (Biome::Wetland, 12),
         ];
         for (biome, id) in table {
             assert_eq!(biome.to_u8(), id, "{biome:?} id must stay {id}");
             assert_eq!(Biome::from_u8(id), Some(biome), "id {id} must decode to {biome:?}");
         }
         assert_eq!(Biome::from_u8(BIOME_UNDEFINED_U8), None, "0 is the reserved sentinel");
-        assert_eq!(Biome::from_u8(12), None, "unknown ids decode to None");
+        assert_eq!(Biome::from_u8(13), None, "unknown ids decode to None");
     }
 
     /// The full climate contract: a hand-built (T, P) classifies to the biome
