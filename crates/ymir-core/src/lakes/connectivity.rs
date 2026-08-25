@@ -10,7 +10,9 @@
 //! Encoding (see [`WATER_CLASS_LAND`]/`_OCEAN`/`_INLAND`):
 //! - `0` land — altitude `> sea_level`.
 //! - `1` ocean — altitude `<= sea_level` AND reachable from a grid edge through
-//!   other below-sea cells (4-connected).
+//!   other below-sea cells (8-connected — a DIAGONAL contact is a real hydrological
+//!   connection, ADR 0001 Finding 35; a coastal pocket touching the sea only at a
+//!   corner IS sea, and 4-connectivity mis-classed it as enclosed inland).
 //! - `2` inland — altitude `<= sea_level` but NOT edge-reachable (enclosed).
 //!
 //! The caller passes the SAME `sea_level` the coastline isoline is traced at, so
@@ -29,7 +31,8 @@ pub const WATER_CLASS_INLAND: u8 = 2;
 
 /// Classify every cell as land / ocean / inland at `sea_level` (row-major
 /// `Vec<u8>`, length `width*height`). Deterministic: BFS from a fixed edge-cell
-/// order over 4-neighbours; the result depends only on the reachable set.
+/// order over 8-neighbours (Finding 35 — diagonal contact is a water connection);
+/// the result depends only on the reachable set.
 pub fn water_class(height: &GridF32, sea_level: f32) -> Vec<u8> {
     let w = height.width;
     let h = height.height;
@@ -59,27 +62,21 @@ pub fn water_class(height: &GridF32, sea_level: f32) -> Vec<u8> {
         seed(y * w + (w - 1), &mut ocean, &mut queue); // right
     }
 
-    // Flood over 4-connected below-sea neighbours.
+    // Flood over 8-connected below-sea neighbours (diagonal contact = water connection).
     while let Some(k) = queue.pop_front() {
-        let (x, y) = (k % w, k / w);
-        let visit = |nx: usize, ny: usize, ocean: &mut Vec<bool>, queue: &mut VecDeque<usize>| {
-            let nk = ny * w + nx;
-            if below(nk) && !ocean[nk] {
-                ocean[nk] = true;
-                queue.push_back(nk);
+        let (x, y) = ((k % w) as i32, (k / w) as i32);
+        for (dx, dy) in [
+            (-1i32, 0i32), (1, 0), (0, -1), (0, 1),
+            (-1, -1), (-1, 1), (1, -1), (1, 1),
+        ] {
+            let (nx, ny) = (x + dx, y + dy);
+            if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
+                let nk = ny as usize * w + nx as usize;
+                if below(nk) && !ocean[nk] {
+                    ocean[nk] = true;
+                    queue.push_back(nk);
+                }
             }
-        };
-        if x > 0 {
-            visit(x - 1, y, &mut ocean, &mut queue);
-        }
-        if x + 1 < w {
-            visit(x + 1, y, &mut ocean, &mut queue);
-        }
-        if y > 0 {
-            visit(x, y - 1, &mut ocean, &mut queue);
-        }
-        if y + 1 < h {
-            visit(x, y + 1, &mut ocean, &mut queue);
         }
     }
 
@@ -126,5 +123,21 @@ mod tests {
         assert_eq!(class[w + 1], WATER_CLASS_LAND, "interior high ground is land");
         // Determinism.
         assert_eq!(class, water_class(&grid, sea));
+    }
+
+    /// Finding 35 — a below-sea pocket touching the edge sea ONLY at a DIAGONAL corner is OCEAN
+    /// (8-connectivity), not enclosed inland. Under 4-connectivity it was mis-classed as inland,
+    /// which starved the priority-flood of a seed and produced aberrant sills.
+    #[test]
+    fn diagonal_contact_is_ocean_not_inland() {
+        let (w, h) = (5usize, 5usize);
+        let sea = 0.5f32;
+        let mut data = vec![0.7f32; w * h]; // land everywhere
+        data[0] = 0.3; // top-left corner = edge sea (ocean seed)
+        data[w + 1] = 0.3; // (1,1) touches the corner ONLY diagonally
+        let grid = GridF32::from_vec(w, h, data);
+        let class = water_class(&grid, sea);
+        assert_eq!(class[0], WATER_CLASS_OCEAN, "corner is edge sea");
+        assert_eq!(class[w + 1], WATER_CLASS_OCEAN, "diagonally-connected pocket IS ocean (8-conn)");
     }
 }

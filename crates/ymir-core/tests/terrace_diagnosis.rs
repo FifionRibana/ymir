@@ -3666,6 +3666,13 @@ fn authors_basin_8192() {
     let collapsed = bsr.basins.iter().filter(|b| !b.exorheic && b.max_depth_m < 0.5).count();
     let unfilled = bsr.basins.iter().filter(|b| b.exorheic && (b.level_m - b.spill_level_m).abs() > 0.5).count();
     eprintln!("  {} below-sea basins | exorheic BEFORE inlet-fix {exo_before} → AFTER {exo_after} (flipped {flipped}) | unfilled-yet-exorheic {unfilled} | endorheic-at-floor(depth<0.5m) {collapsed}", bsr.basins.len());
+    // Finding 35 — max sill / depth over below-sea basins (should be plausible, not 600 m).
+    let max_sill = bsr.basins.iter().map(|b| b.spill_level_m).fold(f32::MIN, f32::max);
+    let max_depth = bsr.basins.iter().map(|b| b.max_depth_m).fold(f32::MIN, f32::max);
+    let bad = bsr.basins.iter().filter(|b| b.spill_level_m > 100.0).count();
+    let max_exo_level = bsr.basins.iter().filter(|b| b.exorheic).map(|b| b.level_m).fold(f32::MIN, f32::max);
+    let absurd_exo = bsr.basins.iter().filter(|b| b.exorheic && b.level_m > 50.0).count();
+    eprintln!("  Finding 35: max sill {max_sill:.0} m | max depth {max_depth:.0} m | basins with sill>100m {bad} | max EXORHEIC level {max_exo_level:.0} m | exorheic filling >50m (absurd) {absurd_exo}");
     // TASK 1 — the biggest lakes by inflow: their corrected state (max depth must be > 0).
     let mut top: Vec<_> = bsr.basins.iter().collect();
     top.sort_by(|a, b| b.inflow_m3s.partial_cmp(&a.inflow_m3s).unwrap());
@@ -3748,9 +3755,23 @@ fn boundary_and_gap_check() {
         else if near(mx, my, 3) { d3 += 1; }
         let _ = &mut d1;
     }
-    eprintln!("\n=== Finding 34 TASK 4 — boundary + gap check (2048²) ===");
+    // Finding 35 — lake-lake overlap: total claimed area (cells) vs DISTINCT lake_map cells.
+    let claimed: usize = dr.lakes.iter().map(|l| l.base.area).sum();
+    let distinct = dr.lake_map.iter().filter(|&&x| x != 0).count();
+    // untagged mouths: river mouths on below-sea NON-ocean cells with no lake (would read not-sea).
+    let wc = ymir_core::lakes::connectivity::water_class(&field, SEA);
+    let mut untagged = 0usize;
+    for s in &dr.rivers.segments {
+        if s.downstream.is_some() { continue; }
+        let &(mx, my) = s.points.last().unwrap();
+        let k = my as usize * t + mx as usize;
+        if field.data[k] <= SEA && wc[k] != 1 && dr.lake_map[k] == 0 { untagged += 1; }
+    }
+    eprintln!("\n=== Finding 34/35 TASK 4 — boundary + overlap + tag check (2048²) ===");
     eprintln!("  river∩lake overlap cells (must be 0): {overlap}");
-    eprintln!("  river mouths NOT adjacent (dist>1) but within 2 cells: {d2} | within 3: {d3} (near-misses the ±1 inlet test missed)");
+    eprintln!("  lake-lake overlap: claimed {claimed} vs distinct {distinct} cells (equal ⇒ no two lakes share a cell)");
+    eprintln!("  river mouths on below-sea NON-ocean, no lake (untagged 'sea', must be ~0): {untagged}");
+    eprintln!("  near-misses dist 2: {d2} · dist 3: {d3} (now caught by the ±2 inlet test)");
     assert_eq!(overlap, 0, "no cell may be both river and lake");
 }
 

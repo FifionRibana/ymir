@@ -889,7 +889,8 @@ pub fn below_sea_basin_lakes(
         while let Some(k) = q.pop_front() {
             comp.push(k);
             let (x, y) = ((k % w) as i32, (k / w) as i32);
-            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+            // 8-connected (Finding 35): diagonally-touching underwater cells are one water body.
+            for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
                 if let Some(nk) = nb4(x + dx, y + dy) {
                     if underwater(nk) && !seen[nk] {
                         seen[nk] = true;
@@ -916,7 +917,7 @@ pub fn below_sea_basin_lakes(
                 continue; // want the below-sea WATER cells (where zeroing happens)
             }
             let (x, y) = ((k % w) as i32, (k / w) as i32);
-            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+            for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
                 if let Some(nk) = nb4(x + dx, y + dy) {
                     if heightmap.data[nk] > C1_SEA_LEVEL_NORM {
                         let dir = flow.direction[nk];
@@ -1173,6 +1174,28 @@ mod tests {
                 "the spillway must reach a SINK (ocean or another basin), ended at wc={}",
                 wc[end]
             );
+        }
+        // Finding 35 INVARIANTS (permanent):
+        // (a) NO TWO LAKE FOOTPRINTS OVERLAP — each `lake_map` cell carries exactly one id, and a
+        //     lake's cell-count equals its id's footprint (no lake was silently overwritten).
+        let mut count: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+        for &id in &r.lake_map {
+            if id != 0 {
+                *count.entry(id).or_default() += 1;
+            }
+        }
+        for lk in &r.lakes {
+            assert_eq!(
+                count.get(&lk.base.id).copied().unwrap_or(0),
+                lk.base.area,
+                "lake #{} footprint overlaps another (marked cells != claimed area)",
+                lk.base.id
+            );
+        }
+        // (b) A lake's max depth = level − floor, and the level is NEVER below the floor.
+        for b in &r.basins {
+            assert!(b.level_m >= b.floor_m - 1e-3, "level below floor for basin #{}", b.id);
+            assert!((b.max_depth_m - (b.level_m - b.floor_m)).abs() < 1e-3, "depth != level−floor for #{}", b.id);
         }
     }
 

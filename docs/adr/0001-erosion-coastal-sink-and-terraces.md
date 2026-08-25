@@ -1284,3 +1284,36 @@ cells, so a tributary ending a cell short still counts and reads as attached.
 
 Same pattern (Findings 27/29–34): the inlet set / inflow decided from a PROXY (river tracks traced against an
 earlier footprint) instead of the AUTHORITY (the runoff field at the final footprint).
+
+## Finding 35 — 4-connectivity for water: diagonal sea pockets mis-classed as inland
+
+Three symptoms with one cause. #1000337: area 396 km², level 613 m, MAX DEPTH 633 m (floor −20 m) — a
+coastal depression filling to 613 m, which DROWNED #28 (a mountain lake) inside its footprint (the overlap
+was not a display bug). The sill comes from the priority-flood ("min of the max altitude to cross to reach
+the ocean"); a −20 m coastal pocket needing a 613 m crossing is absurd. Root: **`water_class` flooded with
+4-CONNECTIVITY** (connectivity.rs) while the priority-flood barrier uses **8-connectivity** (D8). A coastal
+pocket touching the sea only at a DIAGONAL corner was therefore classed INLAND (class-2), so it was NOT a
+flood seed — and a basin whose natural low exit runs through that pocket had its barrier computed the long
+way, over a mountain (613 m). The author's connectivity count (330 448 inland at 4-conn vs 322 414 at 8-conn,
+~8000 cells) is exactly those diagonal-sea cells. A diagonal contact IS a hydrological connection, so
+**8-connectivity is the physical choice for water**.
+
+Fix: `water_class`'s border flood is now 8-connected (and the below-sea pool BFS + the inflow shoreline scan,
+for consistency). Results (8192², author's config): below-sea basins **400 → 21** (the diagonal sea pockets
+are now correctly OCEAN, including #1000337, which vanished — it can no longer drown #28); the **max exorheic
+fill level 613 m → 14 m**, and **exorheic basins filling above 50 m = 0** (no absurd fills). The 7 remaining
+basins with a >100 m sill are all ENDORHEIC — they sit at their evaporative level (~sea), the high sill being
+a real inland barrier they never reach (a Dead-Sea geometry), so their depth/area are correct. The three
+counts the author asked for: **river∩lake overlap 0, lake-lake overlap 0** (claimed cells ≤ distinct
+`lake_map` cells), **river mouths on below-sea non-ocean cells with no lake = 0** (all such mouths now read
+`water_class == 1`). Wetland moves again with the geometry: **193 → 233 km²**.
+
+TASK 3 — invariants extended, all permanent/non-ignored: (a) NO TWO LAKE FOOTPRINTS OVERLAP — each `lake_map`
+cell carries one id and every lake's cell-count equals its claimed area (a silently-overwritten lake fails);
+(b) a lake's MAX DEPTH = level − floor, and level is never below floor; (c) the exorheic⟹spillway invariant
+already iterates EVERY below-sea basin. The `detect_lakes` provenance's outlets are river reaches covered by
+`clip_rivers_terminate_at_lake_sinks`; the specific #28 case is resolved at the root (it is no longer drowned).
+
+Pattern again (Findings 27/29–35): connectivity read from a PROXY (4-conn, an incomplete adjacency) instead
+of the AUTHORITY for water bodies (8-conn, where a diagonal touch is a real connection). Every fix in this
+thread has been the same move — replace the proxy with the authority, and pin an invariant over ALL cases.
