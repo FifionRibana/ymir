@@ -1217,3 +1217,37 @@ as homogeneous is what made this bug look impossible at first (540 displayed m³
 Same pattern as Findings 27/29–31: a property (a reachable sink) decided by a PROXY (a fixed search budget)
 instead of the AUTHORITY (the ocean-connected flood). Replace the proxy; pin the invariant over ALL cases,
 not the convenient subset.
+
+## Finding 33 — Inventory threshold too high, and basins filled to the shoreline instead of the sill
+
+**PART A — the 5 km² inventory floor.** At 40 m/cell, 5 km² is 3125 cells — a plainly visible lake. Excluding
+it from `lakes.json` made rivers terminate in a body ABSENT from the export (invisible to the consumer);
+tributaries dying into nothing is worse than a few extra small lakes. The old fear (erosion-fabricated
+parasitic pits) is now handled by the breach conditioning, so it no longer applies. The below-sea inventory
+floor is now a few CELLS (`INVENTORY_MIN_CELLS = 4`, resolution-independent) — reject single-cell noise only.
+At 8192² (author's config): **43 inventoried below-sea lakes**, histogram by cells `[<4:0, 4–15:31, 16–63:4,
+64–255:1, 256–1023:6, ≥1024:1]`.
+
+**PART B — fill to the SILL, not the shoreline (the real defect).** An enclosed basin's sill is ABOVE sea
+(else the sea would enter it and it would be class-1). Yet `spill` was the min external neighbour of the
+below-sea (class-2) cells — only the ~0 m SHORELINE, not the overflow rim. So a deep bowl (floor −20 m, rim
++20 m) filled merely to 0 m: level 0 m, footprint tiny, an exorheic label on an UNFILLED basin. Fix: `spill`
+= the ocean priority-flood BARRIER at the basin (the least-max-elevation to escape — the true sill). A basin
+now fills to its rim. Consequence, all correct: `a_spill` (filled area at the sill) grows, so basins whose
+inflow cannot fill them to the rim become ENDORHEIC at the evaporative level — a basin overflows only if it
+actually fills. At 2048²: exorheic basins 465 → 4; survivors cover real areas (a merged 18.3 km² lake vs a
+former 0.04 km² footprint); deep pits fill to real sills (floor −6 m, sill +11 m). **0 unfilled-yet-exorheic**
+by construction (`level = spill` for exorheic; verified).
+
+**Merge.** A below-sea lake is now a connected pool of UNDERWATER cells (`barrier > height`) filled to the
+shared sill — adjacent sub-pockets behind the same sill MERGE automatically (no per-class-2-component double
+counting; the earlier run showed five byte-identical 18.272 km² "basins" that were one lake). At 8192²:
+**10 128 class-2 components → 400 merged below-sea lakes.**
+
+**TASK 3 re-verified.** Filling deeper shifts the wetland/lagoon split — less shallow margin qualifies, so
+**wetland 74 → 17 km²** at 8192². Guards green (the spillway invariant already iterates every basin via
+`BasinSummary`; the decoupling guard updated for the 4-cell floor).
+
+Pattern again (Findings 27/29–33): the water LEVEL taken from a PROXY (the shoreline / the floor) instead of
+the AUTHORITY the regime defines (the sill from the flood for exorheic, the evaporative equilibrium for
+endorheic).

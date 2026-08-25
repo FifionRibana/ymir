@@ -732,6 +732,11 @@ fn water_balance_lakes(
 /// a ~0.1–0.3 % shore slope — the wetland signature; deeper cells are a lagoon/inland sea.
 const WETLAND_MAX_DEPTH_M: f32 = 3.0;
 
+/// Finding 33 PART A — minimum below-sea basin size (in CELLS, resolution-independent) to enter
+/// the exported inventory (`lakes.json`). A few cells: reject single/double-cell noise, keep every
+/// visible lake so no river terminates in a body absent from the export.
+const INVENTORY_MIN_CELLS: usize = 4;
+
 /// A traced OVERFLOW path for an exorheic below-sea basin (ADR 0001 Finding 30). Mass balance:
 /// a basin receiving more than it evaporates MUST overflow, so an `Exorheic` label REQUIRES an
 /// outlet — this is the surplus (`inflow − evaporation`) routed downhill from the basin to its
@@ -763,6 +768,11 @@ pub struct BasinSummary {
     pub a_eq_km2: f32,
     pub a_spill_km2: f32,
     pub spill_level_m: f32,
+    pub floor_m: f32,
+    /// The RETAINED water level (metres) — must equal the sill for an exorheic basin.
+    pub level_m: f32,
+    /// Flooded area (km²) AT THE SILL (`a_spill`) — what an exorheic basin should cover.
+    pub area_at_sill_km2: f32,
 }
 
 /// Result of [`below_sea_basin_lakes`]: the typed lakes + their water `lake_map`, the traced
@@ -784,7 +794,7 @@ pub fn below_sea_basin_lakes(
     window_km: f32,
 ) -> BelowSeaResult {
     use crate::lakes::connectivity::water_class;
-    use std::collections::{HashSet, VecDeque};
+    use std::collections::VecDeque;
     let (w, h) = (heightmap.width, heightmap.height);
     let n = w * h;
     let cell_km2 = (window_km / w as f32).powi(2);
@@ -792,7 +802,13 @@ pub fn below_sea_basin_lakes(
         compute_flow(heightmap, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM, ..Default::default() });
     let wc = water_class(heightmap, C1_SEA_LEVEL_NORM);
     let runoff = runoff_accumulation(heightmap, &flow, climate, cell_km2, None, w, h);
-    let min_cells = (cfg.lake_min_area_km2 / cell_km2).ceil().max(1.0) as usize;
+    // Finding 33 PART A — the below-sea INVENTORY floor is now a few CELLS (reject single-cell
+    // noise only), NOT 5 km². At 40 m/cell, 5 km² is 3125 cells — a plainly visible lake that a
+    // river can terminate in; excluding it from lakes.json made those terminations land in a body
+    // absent from the export (invisible to the consumer). The old fear (erosion-fabricated
+    // parasitic pits) is handled by the breach conditioning, so it no longer applies.
+    let min_cells = INVENTORY_MIN_CELLS;
+    let _ = cfg.lake_min_area_km2; // (kept for the detected-lake path; below-sea uses the cell floor)
     let nb4 = |x: i32, y: i32| -> Option<usize> {
         if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
             Some(y as usize * w + x as usize)
@@ -816,17 +832,23 @@ pub fn below_sea_basin_lakes(
     // over the lowest sill. This replaces the per-basin bounded Dijkstra, which failed for
     // basins whose ocean was beyond its step budget — leaving exorheic basins with no outlet.
     // O(n log n) once, so a distant/large basin is handled at the same cost as a coastal one.
+    // `barrier_q[k]` (Finding 33) is the least MAX-elevation to reach the ocean from `k` — i.e.
+    // the true overflow SILL of the basin `k` sits in. A basin FILLS to this sill (not to the
+    // shoreline), so its level/area/depth derive from the authority (the flood), not the proxy
+    // (the min external neighbour of the below-sea cells, which is only the ~0 m shore).
+    let quant = |e: f32| (e * 1_000_000.0) as i32;
     let mut spill_receiver = vec![u32::MAX; n];
+    let mut barrier_q = vec![i32::MAX; n];
     if wc.iter().any(|&c| c == 2) {
         use std::cmp::Reverse;
         use std::collections::BinaryHeap;
-        let quant = |e: f32| (e * 1_000_000.0) as i32;
         let mut done = vec![false; n];
         let mut pq: BinaryHeap<Reverse<(i32, u32)>> = BinaryHeap::new();
         for k in 0..n {
             if wc[k] == 1 {
                 done[k] = true;
-                pq.push(Reverse((quant(heightmap.data[k]), k as u32)));
+                barrier_q[k] = quant(heightmap.data[k]);
+                pq.push(Reverse((barrier_q[k], k as u32)));
             }
         }
         while let Some(Reverse((c, k))) = pq.pop() {
@@ -837,6 +859,7 @@ pub fn below_sea_basin_lakes(
                         done[nk] = true;
                         spill_receiver[nk] = k; // toward the ocean along the least-barrier path
                         let nb = c.max(quant(heightmap.data[nk]));
+                        barrier_q[nk] = nb;
                         pq.push(Reverse((nb, nk as u32)));
                     }
                 }
@@ -844,63 +867,46 @@ pub fn below_sea_basin_lakes(
         }
     }
 
+    // Finding 33 — a below-sea LAKE is a connected pool of UNDERWATER cells (a cell is underwater
+    // when its escape barrier is above it: `barrier > height`), FILLED to the shared sill. This
+    // is the depression itself, so adjacent sub-pockets behind the same sill MERGE automatically
+    // (no per-class-2-component double counting). Kept only when the pool's floor is below sea.
+    let underwater = |k: usize| barrier_q[k] != i32::MAX && barrier_q[k] > quant(heightmap.data[k]);
     for s in 0..n {
-        if wc[s] != 2 || seen[s] {
+        if seen[s] || !underwater(s) {
             continue;
         }
-        // 1. the class-2 component (the below-sea enclosed basin).
+        // 1. the connected underwater pool (the filled depression, already at its sill).
         let mut comp = Vec::new();
         let mut q = VecDeque::new();
         q.push_back(s);
         seen[s] = true;
+        let mut inflow = 0.0f32;
         while let Some(k) = q.pop_front() {
             comp.push(k);
             let (x, y) = ((k % w) as i32, (k / w) as i32);
             for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
                 if let Some(nk) = nb4(x + dx, y + dy) {
-                    if wc[nk] == 2 && !seen[nk] {
-                        seen[nk] = true;
-                        q.push_back(nk);
+                    if underwater(nk) {
+                        if !seen[nk] {
+                            seen[nk] = true;
+                            q.push_back(nk);
+                        }
+                    } else {
+                        inflow = inflow.max(runoff[nk]); // land inlet: catchment runoff into the pool
                     }
                 }
             }
         }
-        // Finding 31 — DECOUPLE the inventory threshold from SINK VALIDITY. Every enclosed
-        // below-sea basin is a valid sink and gets marked in `lake_map` + a traced spillway,
-        // REGARDLESS of area, so a river ending in one never falls back to an "at sea" label.
-        // The `min_cells` (5 km²) threshold governs ONLY presence in the exported `lakes`
-        // inventory (below) — it must not decide routing.
-        let in_basin: HashSet<usize> = comp.iter().copied().collect();
-        // 2. spill = lowest external-neighbour elevation (overflow sill).
-        let mut spill = f32::MAX;
-        for &k in &comp {
-            let (x, y) = ((k % w) as i32, (k / w) as i32);
-            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
-                if let Some(nk) = nb4(x + dx, y + dy) {
-                    if !in_basin.contains(&nk) {
-                        spill = spill.min(heightmap.data[nk]);
-                    }
-                }
-            }
+        // Below-sea only: the pool's FLOOR must be below sea (else it is an ordinary above-sea
+        // lake handled by `detect_lakes`).
+        let floor_norm = comp.iter().map(|&k| heightmap.data[k]).fold(f32::MAX, f32::min);
+        if floor_norm >= C1_SEA_LEVEL_NORM {
+            continue;
         }
-        // 3. flood the depression up to spill (hypsometry) + gather catchment INFLOW at the
-        //    land inlets (max runoff among the flood cells and their neighbours that are land).
-        let mut floodset = in_basin.clone();
-        let mut fq: VecDeque<usize> = comp.iter().copied().collect();
-        let mut inflow = 0.0f32;
-        while let Some(k) = fq.pop_front() {
-            let (x, y) = ((k % w) as i32, (k / w) as i32);
-            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
-                if let Some(nk) = nb4(x + dx, y + dy) {
-                    inflow = inflow.max(runoff[nk]); // land inlets carry the catchment runoff
-                    if heightmap.data[nk] < spill && !floodset.contains(&nk) {
-                        floodset.insert(nk);
-                        fq.push_back(nk);
-                    }
-                }
-            }
-        }
-        let mut fcells: Vec<usize> = floodset.into_iter().collect();
+        // 2. the sill (overflow level) = the pool's barrier to the ocean (uniform within the pool).
+        let spill = comp.iter().map(|&k| barrier_q[k]).min().unwrap() as f32 / 1_000_000.0;
+        let mut fcells: Vec<usize> = comp.clone();
         fcells.sort_by(|&a, &b| heightmap.data[a].partial_cmp(&heightmap.data[b]).unwrap());
         let a_spill = fcells.len() as f32 * cell_km2;
         let pe_lake = potential_evaporation_mm(climate.temperature.data[fcells[0]]).max(1.0);
@@ -968,6 +974,9 @@ pub fn below_sea_basin_lakes(
             a_eq_km2: a_eq,
             a_spill_km2: a_spill,
             spill_level_m: c1_altitude_norm_to_metres(spill, ss),
+            floor_m,
+            level_m,
+            area_at_sill_km2: a_spill,
         });
         // Finding 30 + 32 — an EXORHEIC label REQUIRES a traced outlet (mass balance: a basin
         // that receives more than it evaporates MUST overflow). Follow the ocean priority-flood's
@@ -1163,11 +1172,12 @@ mod tests {
         // Marked as a sink despite being sub-threshold.
         let marked = r.lake_map.iter().filter(|&&x| x != 0).count();
         assert!(marked > 0, "a sub-threshold below-sea basin MUST still be marked (sink validity)");
-        // Not in the exported inventory (no micro-lakes in lakes.json).
+        // Inventory floor is now a few CELLS (Finding 33 PART A) — reject single-cell noise but
+        // keep visible lakes. The 2-cell pit here is below the 4-cell floor → marked, not listed.
         let cell_km2 = (24.0f32 / w as f32).powi(2);
         assert!(
-            r.lakes.iter().all(|l| l.area_km2 >= 5.0 - cell_km2),
-            "the inventory must keep the 5 km² threshold (no micro-lakes)"
+            r.lakes.iter().all(|l| l.area_km2 >= (INVENTORY_MIN_CELLS as f32 - 0.5) * cell_km2),
+            "the inventory must reject sub-{INVENTORY_MIN_CELLS}-cell noise"
         );
         // The SEA authority: a marked basin cell is never ocean.
         for k in 0..r.lake_map.len() {

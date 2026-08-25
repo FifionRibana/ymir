@@ -3628,6 +3628,109 @@ fn endorheic_water_balance() {
     eprintln!("   (expected: ~all EXO, dry<sea ≈ 0 — overflow the above-sea rim → ordinary lakes)");
 }
 
+/// Finding 33 — the author's EXACT config (8192², centre 45° span 40° ratio 7.5): the basin the
+/// five big rivers feed (floor/sill/level/area/regime/spillway), PART A inventory count + size
+/// histogram, and TASK 3 re-verified wetland/biome. Slow (~minutes).
+#[test]
+#[ignore]
+fn authors_basin_8192() {
+    use ymir_core::climate::biomes::Biome;
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::climate::c1_biomes_classified_wet;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::drainage::{DrainageClimate, below_sea_basin_lakes};
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (8192usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None; fc.bathymetry = None; fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 45.0, 40.0, &PrecipParams::default(), domain);
+    let dcfg = C1DrainageConfig::default();
+    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    eprintln!("\n=== Finding 33 — author's 8192² config (centre 45° span 40°) ===");
+    // TASK 1 — the max-inflow basin (the one the five big rivers feed).
+    let exo: Vec<_> = bsr.basins.iter().filter(|b| b.exorheic).collect();
+    let unfilled = exo.iter().filter(|b| (b.level_m - b.spill_level_m).abs() > 0.5).count();
+    eprintln!("  {} below-sea basins ({} exorheic, {} unfilled-yet-exorheic)", bsr.basins.len(), exo.len(), unfilled);
+    let mut top: Vec<_> = bsr.basins.iter().collect();
+    top.sort_by(|a, b| b.inflow_m3s.partial_cmp(&a.inflow_m3s).unwrap());
+    for b in top.iter().take(3) {
+        let sw = bsr.spillways.iter().find(|s| s.lake_id == b.id);
+        eprintln!("     #{} inflow {:.1} m³/s: floor {:.1} · sill {:.1} · LEVEL {:.1} m · area {:.2} km² (@sill {:.2}) · {} · spillway {}",
+            b.id, b.inflow_m3s, b.floor_m, b.spill_level_m, b.level_m, b.area_km2, b.area_at_sill_km2,
+            if b.exorheic { "EXORHEIC" } else { "endorheic" }, if sw.is_some() { "yes" } else { "NONE" });
+    }
+    // PART A — inventory count + size histogram (cells).
+    let mut hist = [0usize; 6]; // <4, 4-15, 16-63, 64-255, 256-1023, >=1024 cells
+    for lk in &bsr.lakes {
+        let cells = (lk.area_km2 / cell_km2).round() as usize;
+        let b = if cells < 4 { 0 } else if cells < 16 { 1 } else if cells < 64 { 2 } else if cells < 256 { 3 } else if cells < 1024 { 4 } else { 5 };
+        hist[b] += 1;
+    }
+    eprintln!("  PART A inventory: {} lakes (floor {} cells). Histogram by cells [<4,4-15,16-63,64-255,256-1023,>=1024]: {:?}", bsr.lakes.len(), 4, hist);
+    // TASK 3 — wetland area + biome distribution.
+    let mut lake_map = vec![0u32; t * t];
+    for k in 0..bsr.lake_map.len() { if bsr.lake_map[k] != 0 { lake_map[k] = bsr.lake_map[k]; } }
+    let biomes = c1_biomes_classified_wet(&field, &climate, &lake_map, &bsr.wetland);
+    let land = biomes.iter().filter(|b| **b != Biome::Ocean).count().max(1);
+    let wet = biomes.iter().filter(|b| **b == Biome::Wetland).count();
+    let lake = biomes.iter().filter(|b| **b == Biome::Lake).count();
+    let wet_cells = bsr.wetland.iter().filter(|&&x| x != 0).count();
+    eprintln!("  TASK 3 wetland: {:.0} km² ({wet_cells} cells) | biome Wetland {:.2}% · Lake {:.2}% of land", wet_cells as f32 * cell_km2, 100.0 * wet as f32 / land as f32, 100.0 * lake as f32 / land as f32);
+}
+
+/// Finding 33 TASK 1 — is every EXORHEIC below-sea basin FILLED to its sill? Report floor / sill
+/// / level / area-at-level / area-at-sill and count basins whose level < sill (unfilled). 2048².
+#[test]
+#[ignore]
+fn basin_fill_report() {
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::tectonics_c1::drainage::{DrainageClimate, below_sea_basin_lakes};
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (2048usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None; fc.bathymetry = None; fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 38.0, 27.0, &PrecipParams::default(), domain);
+    let dcfg = C1DrainageConfig::default();
+    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    eprintln!("\n=== Finding 33 TASK 1 — exorheic basin FILL (level vs sill), 2048² ===");
+    let exo: Vec<_> = bsr.basins.iter().filter(|b| b.exorheic).collect();
+    let unfilled = exo.iter().filter(|b| (b.level_m - b.spill_level_m).abs() > 0.5).count();
+    let area_lt_sill = exo.iter().filter(|b| b.area_km2 < b.area_at_sill_km2 - 1e-4).count();
+    eprintln!("  {} exorheic basins | UNFILLED (level < sill by >0.5 m) {unfilled} | area < area-at-sill {area_lt_sill}", exo.len());
+    // Top 6 by inflow (the big-catchment basins).
+    let mut top: Vec<_> = exo.clone();
+    top.sort_by(|a, b| b.inflow_m3s.partial_cmp(&a.inflow_m3s).unwrap());
+    for b in top.iter().take(6) {
+        eprintln!("     #{}: floor {:.1} m · sill {:.1} m · LEVEL {:.1} m · area@level {:.3} km² · area@sill {:.3} km² · inflow {:.1} m³/s",
+            b.id, b.floor_m, b.spill_level_m, b.level_m, b.area_km2, b.area_at_sill_km2, b.inflow_m3s);
+    }
+}
+
 /// Finding 31 — sub-threshold below-sea basins as sinks: population + inflows (TASK 1),
 /// sea-label violations before/after (TASK 2), over-supplied basin balance (TASK 3). 2048².
 #[test]
