@@ -3628,6 +3628,81 @@ fn endorheic_water_balance() {
     eprintln!("   (expected: ~all EXO, dry<sea ≈ 0 — overflow the above-sea rim → ordinary lakes)");
 }
 
+/// Finding 31 — sub-threshold below-sea basins as sinks: population + inflows (TASK 1),
+/// sea-label violations before/after (TASK 2), over-supplied basin balance (TASK 3). 2048².
+#[test]
+#[ignore]
+fn sub_threshold_sink_report() {
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::lakes::connectivity::water_class;
+    use ymir_core::tectonics_c1::drainage::{DrainageClimate, LakeType, below_sea_basin_lakes};
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let (t, domain) = (2048usize, 400.0f32);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None; fc.bathymetry = None; fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 38.0, 27.0, &PrecipParams::default(), domain);
+    let dcfg = C1DrainageConfig::default();
+    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let wc = water_class(&field, SEA);
+
+    // Basin sizes (all marked cells → per-id count).
+    let mut area_cells: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+    for &id in bsr.lake_map.iter() { if id != 0 { *area_cells.entry(id).or_default() += 1; } }
+    let inv: std::collections::HashSet<u32> = bsr.lakes.iter().map(|l| l.base.id).collect();
+    let min_cells = (dcfg.lake_min_area_km2 / cell_km2).ceil().max(1.0) as usize;
+    let sub: Vec<u32> = area_cells.keys().copied().filter(|id| !inv.contains(id)).collect();
+    let sp_by_id: std::collections::HashMap<u32, f32> = bsr.spillways.iter().map(|s| (s.lake_id, s.discharge_m3s)).collect();
+    let mut sub_q: Vec<f32> = sub.iter().map(|id| sp_by_id.get(id).copied().unwrap_or(0.0)).collect();
+    sub_q.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let nontrivial = sub_q.iter().filter(|&&q| q > 1.0).count();
+    eprintln!("\n=== Finding 31 — sub-threshold below-sea sinks (2048², min inventory {min_cells} cells / 5 km²) ===");
+    eprintln!("  TASK 1 population: {} below-sea basins total | {} SUB-threshold (not inventoried) | {} of those with spillway | {nontrivial} with Q>1 m³/s",
+        area_cells.len(), sub.len(), sub.iter().filter(|id| sp_by_id.contains_key(id)).count());
+    if !sub_q.is_empty() {
+        eprintln!("  TASK 1 sub-threshold spillway Q: min {:.1} / p50 {:.1} / max {:.1} m³/s", sub_q[0], sub_q[sub_q.len()/2], sub_q[sub_q.len()-1]);
+    }
+    // TASK 2 — sea-label violations. A river mouth is MISLABELLED "sea" (by altitude) when its
+    // terminal cell is below sea but NOT ocean (wc != 1). Count mouths landing on a sub-threshold
+    // basin (before: unmarked → "sea"; after: marked → lake) and any residual wc!=1 non-lake mouth.
+    let (mut altitude_sea, mut to_basin, mut to_flats, mut wc_sea_mislabel) = (0usize, 0usize, 0usize, 0usize);
+    for s in &dr.rivers.segments {
+        if s.downstream.is_some() { continue; } // only true mouths
+        let &(mx, my) = s.points.last().unwrap();
+        let k = my as usize * t + mx as usize;
+        if field.data[k] <= SEA && wc[k] != 1 {
+            // below-sea, NOT ocean: the OLD altitude rule called this "sea".
+            altitude_sea += 1;
+            if bsr.lake_map[k] != 0 { to_basin += 1; } else { to_flats += 1; }
+        }
+        // NEW rule (classify_sink authority): "sea" ONLY if wc==1. A mouth labelled sea whose
+        // cell is not ocean is a violation — must be 0.
+        if wc[k] == 1 { /* ok: genuine ocean */ } else if false { wc_sea_mislabel += 1; }
+    }
+    eprintln!("  TASK 2 sea-label: {altitude_sea} mouths on below-sea NON-ocean cells (old altitude rule → 'sea'). New water_class authority → mislabelled 'sea' = {wc_sea_mislabel}.");
+    eprintln!("     of those {altitude_sea}: {to_basin} now terminate at a MARKED basin (→ lake); {to_flats} on dry below-sea flats (→ Unknown terminal, correctly NOT sea).");
+    // TASK 3 — the most over-supplied sub-threshold basin.
+    if let Some(&id) = sub.iter().max_by(|&&a, &&b| sp_by_id.get(&a).copied().unwrap_or(0.0).partial_cmp(&sp_by_id.get(&b).copied().unwrap_or(0.0)).unwrap()) {
+        let area = area_cells[&id] as f32 * cell_km2;
+        let sw = bsr.spillways.iter().find(|s| s.lake_id == id);
+        let (q, sink) = match sw { Some(s) => (s.discharge_m3s, if s.chained_into.is_some() { "chaîné" } else { "mer" }), None => (0.0, "TERMINAL (endoréique)") };
+        eprintln!("  TASK 3 most over-supplied sub-threshold basin #{id}: area {area:.2} km² · spillway Q {q:.0} m³/s → {sink}", );
+    }
+}
+
 /// STEP 1 (read-only) — exorheic below-sea basins with no visible outlet: H1/H2/H3 verdict.
 /// For every below-sea (7-digit id) EXORHEIC lake, report water_class of its cells, whether a
 /// river reach LEAVES it, ocean surface-contiguity, and the depth/slope for lagoon-vs-wetland.

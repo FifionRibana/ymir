@@ -476,10 +476,14 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
                 while b < n && in_lake(&s.points[b]) == 0 {
                     b += 1;
                 }
-                // Drop an endorheic-lake outlet run (starts just after a lake cell
-                // whose lake is endorheic) — the closed basin has no outflow.
+                // Drop an outlet run (starts just after a lake cell) when the closed basin
+                // has no river outflow: an ENDORHEIC lake, OR any BELOW-SEA basin (id ≥
+                // 1_000_001, Finding 31) — the latter's outlet is its traced SPILLWAY (the
+                // physically-correct least-sill path), not the arbitrary breached-carve reach,
+                // so keeping the carve run here would double-count the outflow.
                 let is_outlet = a > 0;
-                let drop = is_outlet && endorheic.contains(&in_lake(&s.points[a - 1]));
+                let src_lake = if is_outlet { in_lake(&s.points[a - 1]) } else { 0 };
+                let drop = is_outlet && (endorheic.contains(&src_lake) || src_lake >= 1_000_001);
                 if b - a >= 2 && !drop {
                     out.push((a, b));
                 }
@@ -808,9 +812,11 @@ pub fn below_sea_basin_lakes(
                 }
             }
         }
-        if comp.len() < min_cells {
-            continue;
-        }
+        // Finding 31 — DECOUPLE the inventory threshold from SINK VALIDITY. Every enclosed
+        // below-sea basin is a valid sink and gets marked in `lake_map` + a traced spillway,
+        // REGARDLESS of area, so a river ending in one never falls back to an "at sea" label.
+        // The `min_cells` (5 km²) threshold governs ONLY presence in the exported `lakes`
+        // inventory (below) — it must not decide routing.
         let in_basin: HashSet<usize> = comp.iter().copied().collect();
         // 2. spill = lowest external-neighbour elevation (overflow sill).
         let mut spill = f32::MAX;
@@ -879,21 +885,25 @@ pub fn below_sea_basin_lakes(
         }
         let level_m = c1_altitude_norm_to_metres(level, ss);
         let floor_m = c1_altitude_norm_to_metres(floor, ss);
-        out.push(C1Lake {
-            base: Lake {
-                id,
-                surface_elevation: level,
-                max_depth: level - floor,
-                area: water,
-                basin_id: flow.basins[fcells[0]],
-                outlet: (ox, oy),
-                shallow: (level_m - floor_m) < 10.0,
-            },
-            level_m,
-            depth_m: level_m - floor_m,
-            area_km2: water as f32 * cell_km2,
-            lake_type,
-        });
+        // Inventory (lakes.json / microscope) keeps the 5 km² threshold — no micro-lakes.
+        // The basin is still marked + gets a spillway below regardless (sink validity).
+        if water >= min_cells {
+            out.push(C1Lake {
+                base: Lake {
+                    id,
+                    surface_elevation: level,
+                    max_depth: level - floor,
+                    area: water,
+                    basin_id: flow.basins[fcells[0]],
+                    outlet: (ox, oy),
+                    shallow: (level_m - floor_m) < 10.0,
+                },
+                level_m,
+                depth_m: level_m - floor_m,
+                area_km2: water as f32 * cell_km2,
+                lake_type,
+            });
+        }
         // Finding 30 — an EXORHEIC label REQUIRES a traced outlet (mass balance: a basin that
         // receives more than it evaporates MUST overflow). Trace the LEAST-SILL path from the
         // basin to a sink — a Dijkstra minimising the MAXIMUM elevation crossed (the overflow
@@ -1059,6 +1069,57 @@ mod tests {
                 "the spillway must reach a SINK (the ocean or another basin), ended at wc={}",
                 wc[end]
             );
+        }
+    }
+
+    /// Finding 31 INVARIANT (permanent, non-ignored) — SINK VALIDITY is decoupled from the
+    /// inventory threshold, and the SEA is `water_class` alone. A SUB-threshold enclosed
+    /// below-sea basin (< 5 km²) must still be MARKED in `lake_map` (so a river ending in it
+    /// is not mislabelled "sea"), must NOT appear in the exported inventory, and no marked
+    /// basin cell may be ocean (`water_class == 1`). This is the class of bug this thread kept
+    /// hitting: a property (the sea label, a sink) read from a proxy (altitude, an area
+    /// threshold) instead of the authority (`water_class`, the traced network).
+    #[test]
+    fn below_sea_sink_decoupled_from_inventory_and_sea_is_water_class() {
+        use crate::lakes::connectivity::water_class;
+        let (w, h) = (24usize, 12usize);
+        let mut hm = GridF32::new(w, h, 0.7);
+        for y in 0..h {
+            hm.set(0, y, 0.2); // ocean column (class-1)
+            hm.set(1, y, 0.2);
+        }
+        // A TINY enclosed below-sea pit (2 cells → ~2 km² at this scale, below the 5 km²
+        // inventory threshold), with a low sill lane toward the ocean.
+        hm.set(6, 6, 0.4);
+        hm.set(7, 6, 0.4);
+        for x in 2..6 {
+            hm.set(x, 6, 0.55);
+        }
+        let precip = GridF32::new(w, h, 1.0);
+        let temp = GridF32::new(w, h, 10.0);
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let r = below_sea_basin_lakes(
+            &hm,
+            &clim,
+            &C1DrainageConfig::default(),
+            &SteinSteinParams::default(),
+            24.0,
+        );
+        let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
+        // Marked as a sink despite being sub-threshold.
+        let marked = r.lake_map.iter().filter(|&&x| x != 0).count();
+        assert!(marked > 0, "a sub-threshold below-sea basin MUST still be marked (sink validity)");
+        // Not in the exported inventory (no micro-lakes in lakes.json).
+        let cell_km2 = (24.0f32 / w as f32).powi(2);
+        assert!(
+            r.lakes.iter().all(|l| l.area_km2 >= 5.0 - cell_km2),
+            "the inventory must keep the 5 km² threshold (no micro-lakes)"
+        );
+        // The SEA authority: a marked basin cell is never ocean.
+        for k in 0..r.lake_map.len() {
+            if r.lake_map[k] != 0 {
+                assert_ne!(wc[k], 1, "a marked below-sea basin cell must NOT be water_class==1 (ocean)");
+            }
         }
     }
 

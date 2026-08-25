@@ -2421,11 +2421,12 @@ fn latitude_placement_widget(ui: &mut egui::Ui, centre: f32, span: f32) {
 }
 
 /// Classify where a mouth cell `(x,y)` drains → (sink kind, the sink lake id if any). Reads
-/// the eroded field and lake_map / lake types — no recompute. NOTE (Finding 29): lake
-/// membership is tested BEFORE sea level, because a below-sea basin's water sits at/below
-/// 0 m — testing altitude first would mislabel a mouth-in-a-lake as "sea" (the microscope's
-/// river #1 ↔ lake #1000006 discrepancy). The clip already splits on `lake_map`; this now agrees.
-fn classify_sink(hd: &HdResult, x: u32, y: u32) -> (Sink, Option<u32>) {
+/// `lake_map`, lake types, and `water_class` — no recompute. NOTE (Finding 31): the SEA label
+/// is derived ONLY from `water_class == 1` (the authority — flood-fill from the domain borders),
+/// NEVER from altitude. A low-altitude cell that is an enclosed below-sea basin (class 2) is NOT
+/// the sea; testing altitude here mislabelled rivers draining into sub-threshold basins as
+/// "outlet = sea". Lake membership (any marked basin, regardless of inventory size) wins first.
+fn classify_sink(hd: &HdResult, wc: &[u8], x: u32, y: u32) -> (Sink, Option<u32>) {
     let (w, h) = (hd.width, hd.height);
     let endo: std::collections::HashSet<u32> = hd
         .drainage
@@ -2444,8 +2445,8 @@ fn classify_sink(hd: &HdResult, x: u32, y: u32) -> (Sink, Option<u32>) {
                 if id != 0 {
                     return (if endo.contains(&id) { Sink::EndoLake } else { Sink::ExoLake }, Some(id));
                 }
-                if hd.eroded.data[k] <= 0.5 {
-                    sea = true;
+                if wc.get(k).copied() == Some(1) {
+                    sea = true; // ONLY water_class==1 is the ocean
                 }
             }
         }
@@ -2462,6 +2463,7 @@ fn classify_sink(hd: &HdResult, x: u32, y: u32) -> (Sink, Option<u32>) {
 /// width/discharge. Sorted by discharge (biggest rivers first).
 fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Watercourse> {
     let d = &hd.drainage;
+    let wc = ymir_core::lakes::connectivity::water_class(&hd.eroded, 0.5);
     let segs = &d.rivers.segments;
     let n = segs.len();
     let q = |i: usize| d.segment_discharge_m3s.get(i).copied().unwrap_or(0.0);
@@ -2522,7 +2524,7 @@ fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Wate
         trunk.reverse(); // source → sink
         let pts: usize = trunk.iter().map(|&s| segs[s].points.len()).sum();
         let (mx, my) = *segs[r].points.last().unwrap();
-        let (sink, sink_lake_id) = classify_sink(hd, mx, my);
+        let (sink, sink_lake_id) = classify_sink(hd, &wc, mx, my);
         out.push(Watercourse {
             trunk,
             tributaries: members.len().saturating_sub(1),

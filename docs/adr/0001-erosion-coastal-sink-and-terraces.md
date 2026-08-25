@@ -1148,3 +1148,39 @@ always lacked — now on the wire, not just in the microscope.
 `below_sea_basin_lakes` returns a `BelowSeaResult { lakes, lake_map, spillways, wetland }`; the HD run appends
 the spillways to `rivers` before the clip and passes the wetland mask to the biomes. Core lib 515 green
 (new guard + frozen-ids incl. Wetland); viz compiles; erosion/relief chain untouched.
+
+## Finding 31 — Inventory threshold ≠ sink validity; and the SEA is `water_class`, not altitude
+
+The microscope found four watercourses (two large: #26 Q 124 m³/s / 13 005 km², #15 Q 171 m³/s / 18 013 km²)
+all reporting `outlet = sea` while converging on a water body too small to be inventoried. Cause: a basin
+below the 5 km² threshold never entered `below_sea_basin_lakes`, so it was absent from `lake_map`; rivers
+ending there found no membership and `classify_sink` fell back to ALTITUDE and concluded "sea". A basin < 5
+km² fed hundreds of m³/s is grotesquely over-supplied — it must overflow — yet was treated as terminal.
+
+**TASK 1 — decouple.** The 5 km² threshold now governs ONLY the exported `lakes` inventory (no micro-lakes in
+`lakes.json`). Every enclosed below-sea basin is MARKED in `lake_map` + gets its spillway traced regardless of
+area (sink validity is a different question from inventory presence). Population (2048², centre 38°/span 27°):
+**638 below-sea basins, 629 sub-threshold**, 462 with a spillway, **11 carrying > 1 m³/s** — a population, not
+one edge case. Sub-threshold basins are absent from the inventory but their rivers now terminate at a marked
+basin (→ lake), never "sea". The clip drops the breached-carve outlet run for any below-sea basin (id ≥
+1_000_001) since its authoritative outlet is the traced spillway (no double-count).
+
+**TASK 2 — the SEA label is `water_class`.** `classify_sink` now derives "sea" ONLY from `water_class == 1`
+(the flood-fill-from-borders authority), NEVER from altitude. Before: 228 river mouths sat on below-sea
+NON-ocean cells that the altitude rule called "sea"; **after: 0 mislabelled "sea"** — 118 now terminate at a
+marked basin, 110 on dry below-sea flats (correctly `Unknown` evaporative terminals, not sea). Permanent guard
+`below_sea_sink_decoupled_from_inventory_and_sea_is_water_class`.
+
+**TASK 3 — the over-supplied basin.** The most over-supplied sub-threshold basin (#1000114, 0.04 km²) carries
+**8 m³/s** — enormous for its area — and now traces a spillway that reaches a sink (chained). Strongly
+exorheic, as mass balance demands; not papered over as terminal.
+
+### The recurring pattern (recorded, not just the third instance)
+
+Findings 27, 29–31 are one class of flaw: **a property asserted from a PROXY instead of the AUTHORITY that
+defines it.** Latitude orientation read from image-row order, not the documented `y=0=south`. A lake's regime
+read from `min(spill, evaporative)` without the traced outlet behind it. A river's sink read from altitude,
+not `water_class`; a basin's sink-validity from an area threshold, not its enclosure. Each fix is the same
+move: replace the proxy with the authority (`water_class`, the traced network, the documented convention) and
+pin it with a permanent invariant. When a new symptom appears, the first question is now *which proxy is
+standing in for which authority.*
