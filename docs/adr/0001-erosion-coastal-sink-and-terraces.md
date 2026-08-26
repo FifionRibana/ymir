@@ -1522,3 +1522,29 @@ a coarser (2048²) run and in the author's pre-dd1b48a screenshot. The invariant
 UNREPRESENTABLE rather than merely absent at one config. Lake-vs-wetland stays a physics readout (Finding 37):
 a shallow-inflow below-sea basin equilibrates near its floor (endorheic, wetland margins); a well-fed deep one
 is a lake.
+
+## Finding 37c — Spillways follow the DOWNHILL flow from the escape saddle, not the ocean minimax
+
+The regenerated 8192² export (via `cargo viz`, which rebuilds — so it IS the committed code) showed the
+`exorheic-with-no-outlet` warning GONE after Finding 37b's clip reorder, but exposed the next layer: the
+below-sea spillways were routed by the ocean-minimax `spill_receiver` (Finding 32), which picks the
+least-MAX-elevation path to the sea. For a large basin that path threads UNDER other lakes and over higher
+ground — the export's river #1 (outlet of the below-sea lake #1000009 at ~0 m) ran UNDER lake #4 (a 106 m
+lake), and such paths have non-monotone profiles ("profil indisponible"). Root: a minimax path is not a
+DOWNHILL path; water does not climb.
+
+Fix: the per-basin flood already finds the local sill; it now also records the SADDLE and its lowest EXTERIOR
+escape neighbour (the far side of the divide). The spillway starts at the saddle, steps to that escape cell,
+then follows the DOWNHILL flow field (`flow.direction`) to a sink — the ocean or a DIFFERENT lake (a chain).
+Downhill by construction it never climbs (monotone profile) and never crosses a higher lake; it re-enters its
+own hollow only for a true loop → then invalid → endorheic. The ocean-minimax `spill_receiver` block is
+removed (dead). This also decides the regime honestly: a basin that fills to its sill but whose downhill trace
+cannot reach a sink is endorheic (a genuine closed basin), not "exorheic without an outlet".
+
+Method note (recurring): the earlier "0 cases" were measured with `upscale_with_fbm(stream_power)` — 11
+below-sea basins — while the viz's `cached_c1_eroded` runs the full production erosion — 21 basins. Only the
+regenerated EXPORT is faithful ground truth; the fix is verified there, not on a reconstructed terrain.
+
+Viz: the lake-sheet OUTLET is now the max-discharge watercourse whose source borders the lake AND whose mouth
+does not (a real outlet leaves; it does not also enter) — the earlier "first source-bordering" picked a
+phantom (#926) that was also an inlet; the true outlet (#397) carries the discharge.

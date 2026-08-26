@@ -905,41 +905,11 @@ pub fn below_sea_basin_lakes(
     let mut next_id = 1_000_001u32;
     let metres_per_norm = c1_altitude_norm_to_metres(1.0, ss) - c1_altitude_norm_to_metres(0.0, ss);
 
-    // Finding 32 — spillway routing by a SINGLE priority-flood from the ocean (Barnes 2014),
-    // computed ONCE. `spill_receiver[k]` is the neighbour toward the ocean along the LEAST-
-    // BARRIER (minimax-elevation) path; following it from any cell reaches `water_class == 1`
-    // over the lowest sill. This replaces the per-basin bounded Dijkstra, which failed for
-    // basins whose ocean was beyond its step budget — leaving exorheic basins with no outlet.
-    // O(n log n) once, so a distant/large basin is handled at the same cost as a coastal one.
-    // Finding 36 — this is used ONLY to TRACE the outlet path; the LEVEL a basin fills to is its
-    // LOCAL sill (below), never the ocean minimax barrier (which drowns everything under the pass).
+    // Finding 37c — the ocean-minimax `spill_receiver` (Finding 32) is GONE: it routed spillways by
+    // least-max-elevation to the ocean, which for a large basin threads UNDER other lakes / higher
+    // ground and gives a non-monotone profile (#1's path under the 106 m lake #4). Spillways now
+    // follow the DOWNHILL flow field from the escape saddle (below), which cannot climb.
     let quant = |e: f32| (e * 1_000_000.0) as i32;
-    let mut spill_receiver = vec![u32::MAX; n];
-    if wc.iter().any(|&c| c == 2) {
-        use std::cmp::Reverse;
-        use std::collections::BinaryHeap;
-        let mut done = vec![false; n];
-        let mut pq: BinaryHeap<Reverse<(i32, u32)>> = BinaryHeap::new();
-        for k in 0..n {
-            if wc[k] == 1 {
-                done[k] = true;
-                pq.push(Reverse((quant(heightmap.data[k]), k as u32)));
-            }
-        }
-        while let Some(Reverse((c, k))) = pq.pop() {
-            let (x, y) = ((k as usize % w) as i32, (k as usize / w) as i32);
-            for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
-                if let Some(nk) = nb4(x + dx, y + dy) {
-                    if !done[nk] {
-                        done[nk] = true;
-                        spill_receiver[nk] = k; // toward the ocean along the least-barrier path
-                        let nb = c.max(quant(heightmap.data[nk]));
-                        pq.push(Reverse((nb, nk as u32)));
-                    }
-                }
-            }
-        }
-    }
 
     // Finding 36 — a below-sea LAKE fills to its LOCAL sill (the lowest saddle on the rim of the
     // enclosed hollow), NOT the ocean-minimax barrier `barrier_q`. Using `barrier > height` as the
@@ -1012,7 +982,16 @@ pub fn below_sea_basin_lakes(
         // basins with NO sill: the old `sill_q == MAX` fallback then set the level to sea level (0 m),
         // yielding an "exorheic at 0 m" with no real outlet (Finding 37 POINT 1). `sill_opt` is `None`
         // when no escape exists within the window (a border-truncated basin) → it cannot be exorheic.
-        let (sill_opt, fcells): (Option<f32>, Vec<usize>) = {
+        // Also capture the SADDLE and its lowest EXTERIOR escape neighbour — the spillway starts there
+        // and runs DOWNHILL from the far side of the divide (Finding 37c), NOT along the ocean-minimax
+        // `spill_receiver` (which, for a large basin, threads UNDER other lakes / higher ground and
+        // yields a non-monotone profile).
+        let (sill_opt, fcells, saddle_opt, escape_opt): (
+            Option<f32>,
+            Vec<usize>,
+            Option<usize>,
+            Option<usize>,
+        ) = {
             use std::cmp::Reverse;
             use std::collections::{BinaryHeap, HashSet};
             let mut in_bowl: HashSet<usize> = HashSet::new();
@@ -1022,22 +1001,27 @@ pub fn below_sea_basin_lakes(
             queued.insert(floor_k);
             let mut bowl: Vec<usize> = Vec::new();
             let mut sill_q: Option<i32> = None;
+            let (mut saddle, mut escape) = (None, None);
             while let Some(Reverse((hq, c))) = heap.pop() {
                 let (x, y) = ((c % w) as i32, (c / w) as i32);
-                // Escape: a neighbour strictly LOWER than c that is NOT already finalised in the bowl.
+                // Escape: the LOWEST neighbour strictly below c that is NOT finalised in the bowl.
                 // A lower cell inside the bowl would have popped earlier; a lower cell still in the heap
                 // cannot exist (min-heap) — so an unfinalised lower neighbour is across the divide.
-                let mut escapes = false;
+                let mut best_e: Option<usize> = None;
                 for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
                     if let Some(e) = nb4(x + dx, y + dy) {
-                        if quant(heightmap.data[e]) < hq && !in_bowl.contains(&e) {
-                            escapes = true;
-                            break;
+                        if quant(heightmap.data[e]) < hq
+                            && !in_bowl.contains(&e)
+                            && best_e.map_or(true, |b| heightmap.data[e] < heightmap.data[b])
+                        {
+                            best_e = Some(e);
                         }
                     }
                 }
-                if escapes {
+                if let Some(e) = best_e {
                     sill_q = Some(hq);
+                    saddle = Some(c);
+                    escape = Some(e);
                     bowl.push(c); // the saddle cell is the pour point (part of the water body)
                     in_bowl.insert(c);
                     break;
@@ -1053,7 +1037,7 @@ pub fn below_sea_basin_lakes(
                     }
                 }
             }
-            (sill_q.map(|q| q as f32 / 1_000_000.0), bowl)
+            (sill_q.map(|q| q as f32 / 1_000_000.0), bowl, saddle, escape)
         };
         let a_spill = fcells.len() as f32 * cell_km2;
         let pe_lake = potential_evaporation_mm(climate.temperature.data[floor_k]).max(1.0);
@@ -1065,57 +1049,50 @@ pub fn below_sea_basin_lakes(
         let overflow = sill_opt.is_some() && a_eq >= a_spill;
         let traced: Option<(Vec<usize>, Option<u32>)> = if overflow {
             let in_bowl: std::collections::HashSet<usize> = fcells.iter().copied().collect();
-            // Pour = the bowl cell whose ocean-ward receiver LEAVES the bowl at the lowest exterior.
-            let mut pour: Option<usize> = None;
-            let mut pour_e = f32::MAX;
-            for &k in &fcells {
-                let r = spill_receiver[k];
-                if r != u32::MAX
-                    && !in_bowl.contains(&(r as usize))
-                    && heightmap.data[r as usize] < pour_e
-                {
-                    pour_e = heightmap.data[r as usize];
-                    pour = Some(k);
+            // Finding 37c — the spillway starts at the SADDLE, crosses to its lowest EXTERIOR escape
+            // cell (across the divide), then follows the DOWNHILL flow field to a sink: the OCEAN or a
+            // DIFFERENT lake (a chain). Downhill by construction, it never climbs (monotone profile)
+            // and never threads under higher ground / other lakes the way the ocean-minimax
+            // `spill_receiver` did (that produced #1's path UNDER the 106 m lake #4). It re-enters its
+            // own hollow only for a true loop → then INVALID → endorheic.
+            match (saddle_opt, escape_opt) {
+                (Some(s0), Some(e0)) => {
+                    let mut path = vec![s0, e0];
+                    let (mut cur, mut chained, mut steps, mut valid) = (e0, None, 0usize, false);
+                    loop {
+                        if wc[cur] == 1 {
+                            valid = true; // reached the OCEAN
+                            break;
+                        }
+                        // THIS lake is not marked yet (marking happens after), so any non-zero
+                        // lake_map cell belongs to an ALREADY-PROCESSED, different lake → a valid chain.
+                        let lid = lake_map[cur];
+                        if lid != 0 {
+                            chained = Some(lid);
+                            valid = true;
+                            break;
+                        }
+                        if in_bowl.contains(&cur) {
+                            break; // re-entered its OWN hollow → a loop → INVALID → endorheic
+                        }
+                        let d = flow.direction[cur];
+                        if d == DIR_NONE {
+                            break;
+                        }
+                        let (cx, cy) = ((cur % w) as i32, (cur / w) as i32);
+                        let nx = (cx + D8_DX[d as usize]).rem_euclid(w as i32) as usize;
+                        let ny = (cy + D8_DY[d as usize]).rem_euclid(h as i32) as usize;
+                        cur = ny * w + nx;
+                        path.push(cur);
+                        steps += 1;
+                        if steps > n {
+                            break;
+                        }
+                    }
+                    if valid { Some((path, chained)) } else { None }
                 }
+                _ => None,
             }
-            pour.and_then(|p0| {
-                let mut path = vec![p0];
-                let (mut cur, mut chained, mut steps, mut valid) = (p0, None, 0usize, false);
-                loop {
-                    if wc[cur] == 1 {
-                        valid = true; // reached the OCEAN — a different object (invariant 2)
-                        break;
-                    }
-                    // Invariant 2 — an outlet may not RE-ENTER the lake it leaves (a loop, case A).
-                    if cur != p0 && in_bowl.contains(&cur) {
-                        break; // dipped back into its own hollow → INVALID → endorheic
-                    }
-                    let lid = lake_map[cur];
-                    if lid != 0 && cur != p0 {
-                        chained = Some(lid); // spilled into a DIFFERENT below-sea lake (a valid chain)
-                        valid = true;
-                        break;
-                    }
-                    // NOTE (Finding 37b) — invariant 3 as a LEVEL/SEA threshold ("no cell below the
-                    // lake's level" or "no interior sub-sea cell") was measured to FALSE-POSITIVE: the
-                    // first over-triggers on a below-sea lake overflowing to the sea (#1000004, level
-                    // 22 m → ocean at −1.8 m), the second demotes legitimate below-sea CHAINS (7 of 8
-                    // at 8192², pockets that spill over a sub-sea sill into a lower pocket toward the
-                    // ocean). The false-positive-free catch is invariant 2 above (never re-enter one's
-                    // OWN hollow); a chain re-enters a DIFFERENT pocket and stays valid. See ADR 37b.
-                    let r = spill_receiver[cur];
-                    if r == u32::MAX {
-                        break;
-                    }
-                    cur = r as usize;
-                    path.push(cur);
-                    steps += 1;
-                    if steps > n {
-                        break;
-                    }
-                }
-                if valid { Some((path, chained)) } else { None }
-            })
         } else {
             None
         };

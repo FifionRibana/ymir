@@ -3076,20 +3076,31 @@ fn lake_sheet_panel(
                 }
             }
         });
-        // Outlet: a watercourse whose SOURCE leaves this lake. An ENDORHEIC lake is CLOSED — it has
-        // no outlet, so do not look for one (Finding 37b: a phantom carve reach touching the basin on
-        // both sides otherwise showed as an "outlet" #154 that was ALSO an inlet, contradicting the
-        // "aucun (fermé)" header).
+        // Outlet: the watercourse that DRAINS this lake — its SOURCE borders the lake, its MOUTH does
+        // NOT (a real outlet leaves; it does not also enter), and among those it carries the most
+        // discharge (the main stem, not a brook that merely rises next to the shore). An ENDORHEIC
+        // lake is CLOSED → no outlet (Finding 37b: otherwise a phantom carve reach touching the basin
+        // on both sides showed as an "outlet" #154/#926 that was ALSO an inlet).
         let outlet = if endo {
             None
         } else {
-            wcs.iter().position(|wc| {
-                wc.trunk
-                    .first()
-                    .and_then(|&s| hd.drainage.rivers.segments[s].points.first())
-                    .map(|&(sx, sy)| adj(sx, sy))
-                    .unwrap_or(false)
-            })
+            wcs.iter()
+                .enumerate()
+                .filter(|(_, wc)| {
+                    let source_here = wc
+                        .trunk
+                        .first()
+                        .and_then(|&s| hd.drainage.rivers.segments[s].points.first())
+                        .map(|&(sx, sy)| adj(sx, sy))
+                        .unwrap_or(false);
+                    source_here && !adj(wc.mouth_xy.0, wc.mouth_xy.1)
+                })
+                .max_by(|a, b| {
+                    a.1.discharge_m3s
+                        .partial_cmp(&b.1.discharge_m3s)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map(|(i, _)| i)
         };
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Exutoire :").color(DIM).size(10.0));
