@@ -1317,3 +1317,132 @@ already iterates EVERY below-sea basin. The `detect_lakes` provenance's outlets 
 Pattern again (Findings 27/29–35): connectivity read from a PROXY (4-conn, an incomplete adjacency) instead
 of the AUTHORITY for water bodies (8-conn, where a diagonal touch is a real connection). Every fix in this
 thread has been the same move — replace the proxy with the authority, and pin an invariant over ALL cases.
+
+## Finding 36 — Below-sea lakes filled to the OCEAN barrier, not their local sill (94 % of the footprint was drowned green); and a method rule
+
+### Method rule (recorded first, because it cost a full round)
+
+Every invariant counter MUST be measured in the PRODUCTION configuration, and preferably at both
+resolutions, with the 2048² numbers kept EXPLICITLY separate from the 8192² ones. Finding 35's headline
+(below-sea basins 400 → 21, "max exorheic fill 613 → 14 m") was measured on a diagnostic terrain — a bare
+`incise` erosion at first domain 400 then 1024 km — on which this basin classifies ENDORHEIC and never fills
+to its sill. The PRODUCTION export (`seed…_8192.ymir`, domain **400 km**, geo-ratio 7.5, full
+relief-v3 + closures + MFD erosion + breach) still carried #1000020 at **level 613 m, depth 633 m, area
+396 km², EXORHEIC** — exactly the screenshot. This is the same class of error the whole thread keeps hitting
+(A_c-in-cells, the lateral half-width, the measurement window, the 2048² overlap counters): a result validated
+at one resolution/config says NOTHING about another. Diagnostics now read `domain_km` from the manifest and
+carry `YMIR_DOMAIN_KM`; the proof of the defect was run against the exported `lake_mask.u32` / `height.u16`
+directly (ground truth), not a re-derivation.
+
+### The proof (on the export itself, `export_footprint_proof`)
+
+For #1000020 (level 613.2 m, floor −19.9 m): claimed 283.8 km² of which the genuine HOLLOW (cells ≤ 0 m,
+below sea) is **16.9 km²** and the GREEN SWALLOWED (cells > 0 m, drowned only to reach the sill) is
+**266.9 km² — 94 %**. The ≤ 613 m region connected to the floor spans **146 871 km²**: 613 m is not the rim of
+a 17 km² hollow, it is the minimax pass to the ocean. Cells above the level = 0, disconnected = 21 (both
+existing guards were satisfied — see below). The author was right; the earlier "footprint is sound" reading
+was an artefact of the wrong (bare-`incise`) terrain, where the basin is endorheic at ~54 m.
+
+### Root cause
+
+`below_sea_basin_lakes` set the fill level to `spill = min(barrier_q)` — the ocean-minimax barrier from the
+priority-flood — and grew the pool as `underwater(k) = barrier_q[k] > height[k]`, which includes EVERY cell
+under the continental pass (a 400 m green hillside behind a 613 m col satisfies `613 > 400`). For a hollow
+enclosed behind high terrain the barrier is the far-away ocean col, so the lake rose to it and drowned the
+green in between. The barrier SEARCH is correct (613 m is genuinely the lowest col to the ocean, no detour);
+the FILL MODEL is wrong — a lake fills to its LOCAL sill and overflows there, chaining downhill, it does not
+rise to the continental pass.
+
+### The fix
+
+A below-sea lake is the connected ENCLOSED below-sea component (`water_class == 2`, the real hollow). A SINGLE
+priority-flood outward from its floor finds, in one pass, both the LOCAL sill (the first rim cell with an
+unvisited strictly-lower neighbour — the lowest saddle from which water descends to a different sink) and the
+bounded bowl (cells ≤ sill connected to the floor, already in height order). The lake fills to
+`min(local_sill, evaporative)`. `barrier_q`/`spill_receiver` are kept ONLY to trace the outlet path
+(Finding 32), never to set the level. Effect on the faithful production terrain (8192², 400 km): the top
+below-sea lake goes from **level 198.7 m / depth 207 m / 142.2 km²** to **85.5 m / 87.7 m / 19.0 km²** (−87 %
+area), filling to its local sill (85.5 m) instead of chasing the 472.7 m ocean barrier; `claimed/valid` 1.00×,
+0 cells above level, 0 disconnected. (The exact export figures need a viz re-export at the author's config;
+the fix is proven on the faithful terrain + the deterministic unit test.)
+
+### Two new plausibility invariants (permanent, non-ignored)
+
+Both existing guards were BLIND to this because they check internal CONSISTENCY, not PLAUSIBILITY:
+`depth == level − floor` is satisfied by 613 − (−20) = 633, and the overlap check compares cell SETS which are
+genuinely disjoint here (#28 falls inside #1000020's OUTLINE, not its cell set). The missing guards:
+
+- **TASK 2** — every lake cell is ≤ the lake's level AND connected to the floor through cells also ≤ level
+  (no disjoint puddles swept in by an altitude-only test).
+- **TASK 3** — a lake's level never exceeds the ARRIVAL altitude of its inlets (water cannot flow uphill; the
+  monotonicity guard being green means the profiles match the terrain, so it is the LEVEL that was wrong).
+
+`below_sea_lake_fills_to_local_sill_not_ocean_barrier` pins both on a deep pit behind a high (0.9) ocean ridge
+with a low (0.52) local saddle: the old model filled to 0.9, the fix to 0.52.
+
+### The 56 untagged mouths (Finding 35's blind spot, now labelled)
+
+A river ending on an enclosed below-sea cell (class 2) with no inventoried lake is a **sub-sea evaporative
+sink**, a THIRD sink label — never `outlet = sea` (that would contradict `water_class`, the authority, and
+reinstate the −20 m altitude proxy Finding 31 removed). `Sink::SubSeaSink` renders "→ puits sous-marin
+(évaporatif)" in the inspector.
+
+Pattern again (Findings 27/29–35): the level read from a PROXY (the ocean-minimax barrier) instead of the
+AUTHORITY (the hollow's own local sill). And a second pattern this Finding adds to the list: a counter is only
+as trustworthy as the CONFIG it was measured in — Finding 35's "613 → 14 m" was true of a terrain the product
+never ships.
+
+## Finding 37 — The exorheic-outlet invariant over the WHOLE population; and extending watercourses to their sources
+
+### POINT 1 — Exorheic without an outlet, and the guard's third blind spot
+
+The exorheic⟹spillway guard (`exorheic_below_sea_basin_has_traced_spillway`) iterated ONLY below-sea
+`r.basins`, on a small SYNTHETIC grid. Measured on the SHIPPED 8192² export (`export_exorheic_outlet_audit`,
+a river source bordering the lake footprint = a traced outlet): **detect_lakes 28 exorheic / 0 without an
+outlet; below-sea 21 exorheic / 21 WITHOUT one**. So every below-sea exorheic lake in the export shipped with
+no emitted outflow — and the guard never saw it, because it ran on a convenient subset (a synthetic grid) that
+happened to pass. This is the THIRD occurrence of the same blind-spot pattern: an invariant asserted over a
+convenient subset (below-sea only / a synthetic grid / one resolution) rather than the whole population. The
+21 violations are a downstream symptom of Finding 36 (the old barrier-fill produced over-large exorheic
+below-sea lakes whose spillway tracing did not emit); with the local-sill fill in place the same audit,
+reproduced through the full hd.rs chain (`exorheic_outlet_audit`), reports **detect_lakes 24 / 0 and below-sea
+3 / 0** — zero without an outlet. detect_lakes was never the culprit (its exorheic label comes from
+`outlet_reaches_sea`, so the path exists by construction); the fix was Finding 36 plus COVERAGE.
+
+Fix: `exorheic_lakes_missing_outlet(dr)` checks the WHOLE `dr.lakes` population, both provenances, uniformly —
+every exorheic lake must have a river segment whose source borders its footprint (a detect-lake's overflow
+reach, or a below-sea basin's appended spillway, which after clipping starts just outside the pool). The
+permanent guard `every_exorheic_lake_needs_a_traced_outlet` pins it (positive + negative control across
+provenances), and `run_hd` calls it on the PRODUCTION network after the clip — a loud warning plus a
+`debug_assert`, so a mislabelled regime fails rather than ships. If a lake can never get an outlet, its regime
+is wrong and it must be endorheic.
+
+### POINT 2 — Rivers start at the 20 km² threshold, not at their source
+
+The width law `w = a·√Q` is correct; the author's ~37 m at a "source" is a real ~50 km² basin, plausible. The
+defect is that the first EXPORTED point is where accumulation crosses the extraction threshold `stream_km2`
+(**20 km²**), not the channel head — so the steepest relative width growth (0.1→20 km²: area ×200, width ×14)
+is thrown away and the profile looks flat (44→52 m). Fix (author's proposal, better than lowering the global
+threshold, which would export every micro-gully): keep `stream_km2` to decide WHICH watercourses exist, then
+walk each retained one UPSTREAM to the erosion regime-split critical area **A_c = `RELIEF_V1_A_C_KM2` = 0.1
+km²** — the river starts where stream-power starts. `RiverConfig`/`DrainageThresholds` gain `head_km2` (0 =
+byte-identical, the default) and `full_tree`. Retention (a dense cell is kept only if its downstream reaches
+`stream_km2`) keeps the watercourse COUNT stable; only the upstream extent grows.
+
+Cost at production (8192²/400 km, serialized-segments proxy; real `rivers.json` ≈ 1.5–2× with `profile_m`):
+
+| option | segments | points | proxy size | monotonicity |
+| --- | --- | --- | --- | --- |
+| baseline (20 km²) | 516 | 55 951 | ~0.7 MB | 0 violations |
+| main-stem → A_c | 17 149 (×33) | 661 k | ~9.8 MB | 0 violations |
+| full-tree → A_c | 93 780 (×182) | 1.92 M | ~34 MB | 0 violations |
+
+The extension restores a real width range — full-tree order-1 headwaters average **0.23 m** (×7.5 geo-ratio ≈
+1.7 m displayed) rising to the trunk mouths (7.6 m real ≈ 57 m displayed) — instead of the flat 44→52 m. The
+monotonicity guard holds on BOTH extended networks (0 violations): steep headwater profiles do not break it.
+The inspector label "Largeur source" → "Largeur au 1er point" (honest until the walk reaches the source).
+Decision (author): wire **main-stem** as the production default — `run_hd` sets `head_km2 = RELIEF_V1_A_C_KM2`,
+`full_tree = false` (×33 segments / ~10 MB, one headwater tail per watercourse), NOT the full tree (×182 / ~34
+MB) despite its higher fidelity, to keep the export moderate. `head_km2`/`full_tree` live in
+`DrainageThresholds`/`RiverConfig` (default 0 = byte-identical, so every core test is unchanged); only the viz
+export path opts in. Headwaters sit on steep terrain with sub-cell widths — data-correct, render as strokes.

@@ -100,11 +100,28 @@ pub struct RiverConfig {
     pub stream_threshold: f32,
     pub river_threshold: f32,
     pub major_river_threshold: f32,
+    /// ADR 0001 Finding 37 — extend each RETAINED watercourse (one that reaches `stream_threshold`
+    /// somewhere) UPSTREAM to this accumulation, in the SAME cell units as `stream_threshold`. The
+    /// natural value is the erosion regime split's critical area A_c (where the fluvial regime, and
+    /// thus the channel, begins). `<= 0` OR `>= stream_threshold` ⟹ NO extension (the first exported
+    /// point stays at `stream_threshold`) — the byte-identical default. The watercourse COUNT is
+    /// unchanged (retention still decides WHICH exist); only their upstream extent grows.
+    pub head_threshold: f32,
+    /// With extension on: `true` ramifies the WHOLE upstream tree down to `head_threshold` (dense
+    /// dendritic network — filter by Strahler order at render time); `false` extends only the MAIN
+    /// STEM (the max-accumulation branch at each confluence — one headwater tail per watercourse).
+    pub full_tree: bool,
 }
 
 impl Default for RiverConfig {
     fn default() -> Self {
-        Self { stream_threshold: 500.0, river_threshold: 2000.0, major_river_threshold: 10000.0 }
+        Self {
+            stream_threshold: 500.0,
+            river_threshold: 2000.0,
+            major_river_threshold: 10000.0,
+            head_threshold: 0.0, // no upstream extension → byte-identical
+            full_tree: true,
+        }
     }
 }
 
@@ -1021,8 +1038,75 @@ pub fn extract_rivers(
     let dir = &flow_result.direction;
     let basins = &flow_result.basins;
 
-    // Identify river cells
-    let is_river: Vec<bool> = (0..n).map(|i| acc.data[i] >= config.stream_threshold).collect();
+    let stream = config.stream_threshold;
+    // Downstream cell of `k` (toroidal D8), if any.
+    let ds_idx = |k: usize| -> Option<usize> {
+        let d = dir[k];
+        if d == DIR_NONE {
+            return None;
+        }
+        let (i, j) = (k % width, k / width);
+        let ni = ((i as i32 + D8_DX[d as usize]) % width as i32 + width as i32) as usize % width;
+        let nj = ((j as i32 + D8_DY[d as usize]) % height as i32 + height as i32) as usize % height;
+        Some(nj * width + ni)
+    };
+
+    // Identify river cells. Finding 37: with `head_threshold` in (0, stream) the network extends
+    // UPSTREAM from `stream` down to `head_threshold` for every watercourse that reaches `stream`.
+    let head = if config.head_threshold > 0.0 { config.head_threshold.min(stream) } else { stream };
+    let is_river: Vec<bool> = if head >= stream {
+        // No extension → the original mask (byte-identical).
+        (0..n).map(|i| acc.data[i] >= stream).collect()
+    } else {
+        let dense: Vec<bool> = (0..n).map(|i| acc.data[i] >= head).collect();
+        // Dense cells in DECREASING accumulation → downstream processed before upstream.
+        let mut order: Vec<usize> = (0..n).filter(|&i| dense[i]).collect();
+        order.sort_by(|&a, &b| {
+            acc.data[b].partial_cmp(&acc.data[a]).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        // RETENTION: keep a dense cell only if its downstream reaches `stream` (so a sub-`stream`
+        // gully draining to a small pit is NOT exported — the watercourse count stays stable).
+        let mut retained = vec![false; n];
+        for &k in &order {
+            if acc.data[k] >= stream {
+                retained[k] = true;
+            } else if let Some(ds) = ds_idx(k) {
+                if dense[ds] && retained[ds] {
+                    retained[k] = true;
+                }
+            }
+        }
+        if config.full_tree {
+            (0..n).map(|i| dense[i] && retained[i]).collect()
+        } else {
+            // MAIN STEM: keep every ≥ stream cell; in the extension, keep only the max-accumulation
+            // upstream branch feeding each cell (one headwater tail per watercourse).
+            let mut best_up = vec![usize::MAX; n];
+            for &k in &order {
+                if acc.data[k] >= stream || !retained[k] {
+                    continue;
+                }
+                if let Some(ds) = ds_idx(k) {
+                    if best_up[ds] == usize::MAX || acc.data[k] > acc.data[best_up[ds]] {
+                        best_up[ds] = k;
+                    }
+                }
+            }
+            let mut ms: Vec<bool> =
+                (0..n).map(|i| dense[i] && retained[i] && acc.data[i] >= stream).collect();
+            for &k in &order {
+                if acc.data[k] >= stream || !retained[k] {
+                    continue;
+                }
+                if let Some(ds) = ds_idx(k) {
+                    if ms[ds] && best_up[ds] == k {
+                        ms[k] = true;
+                    }
+                }
+            }
+            ms
+        }
+    };
 
     // Count upstream river neighbors for each cell
     let mut upstream_count = vec![0u8; n];

@@ -105,11 +105,31 @@ pub struct DrainageThresholds {
     pub barge_km2: f32,
     /// Ship navigable. ~50 000 km².
     pub ship_km2: f32,
+    /// ADR 0001 Finding 37 — extend retained watercourses UPSTREAM to this area (the channel head).
+    /// `0` = no extension (the first exported point stays at `stream_km2`, byte-identical). The
+    /// natural value is the erosion regime-split critical area A_c (`RELIEF_V1_A_C_KM2`, ~0.1 km²).
+    #[serde(default)]
+    pub head_km2: f32,
+    /// With extension on: `true` ramifies the whole upstream tree to `head_km2`; `false` extends the
+    /// main stem only. Defaults to `true` (dense tree; render-time filterable by Strahler order).
+    #[serde(default = "default_true")]
+    pub full_tree: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for DrainageThresholds {
     fn default() -> Self {
-        Self { stream_km2: 20.0, small_boat_km2: 500.0, barge_km2: 5_000.0, ship_km2: 50_000.0 }
+        Self {
+            stream_km2: 20.0,
+            small_boat_km2: 500.0,
+            barge_km2: 5_000.0,
+            ship_km2: 50_000.0,
+            head_km2: 0.0,
+            full_tree: true,
+        }
     }
 }
 
@@ -254,6 +274,14 @@ pub fn c1_drainage_windowed(
         // small-boat / barge km² tiers so the existing consumers stay coherent.
         river_threshold: to_cells(cfg.thresholds.small_boat_km2),
         major_river_threshold: to_cells(cfg.thresholds.barge_km2),
+        // Finding 37 — extend retained watercourses upstream to A_c (fluvial-regime start), or 0 to
+        // keep the first exported point at `stream_km2` (byte-identical). Driven by the config.
+        head_threshold: if cfg.thresholds.head_km2 > 0.0 {
+            to_cells(cfg.thresholds.head_km2)
+        } else {
+            0.0
+        },
+        full_tree: cfg.thresholds.full_tree,
     };
     let rivers = extract_rivers(&flow, &river_cfg, w, h);
 
@@ -363,10 +391,8 @@ pub fn c1_drainage_windowed(
             let nav = dr_km2.iter().map(|&km2| cfg.thresholds.classify(km2)).collect();
             // No climate → assume the reference runoff depth over the geometric area so a
             // discharge-consistent width still results (Q = REFERENCE_RUNOFF · area).
-            let q_m3s = dr_km2
-                .iter()
-                .map(|&km2| runoff_km2_to_m3s(REFERENCE_RUNOFF_MM * km2))
-                .collect();
+            let q_m3s =
+                dr_km2.iter().map(|&km2| runoff_km2_to_m3s(REFERENCE_RUNOFF_MM * km2)).collect();
             (dr_km2, nav, q_m3s)
         }
     };
@@ -554,6 +580,44 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     dr.segment_profile_m = profile_m;
 }
 
+/// Finding 37 — the exorheic-outlet invariant over the WHOLE lake population (not a subset). EVERY
+/// lake marked `Exorheic`, of EVERY provenance, must have a TRACED OUTLET: a river segment whose
+/// source (first point) borders the lake footprint — a detect-lake's overflow reach, OR a below-sea
+/// basin's appended spillway (which, after `clip_rivers_to_lakes`, starts just outside the pool).
+/// Returns the ids of exorheic lakes with NO such outlet. A non-empty result means a regime was
+/// labelled exorheic without an emitted outflow: the label is wrong (the lake should be endorheic).
+/// Must be called AFTER spillways are appended and `clip_rivers_to_lakes` has run. The earlier guard
+/// (`exorheic_below_sea_basin_has_traced_spillway`) checked ONLY below-sea basins on a synthetic
+/// grid; the 21 exorheic below-sea lakes shipped WITHOUT an outlet in the 8192² export slipped
+/// through that subset (same blind-spot pattern as Finding 36's config subset — see ADR Finding 37).
+pub fn exorheic_lakes_missing_outlet(dr: &C1DrainageResult) -> Vec<u32> {
+    let (w, h) = (dr.width, dr.height);
+    let sources: Vec<(u32, u32)> =
+        dr.rivers.segments.iter().filter_map(|s| s.points.first().copied()).collect();
+    let borders = |sx: u32, sy: u32, id: u32| -> bool {
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                let (nx, ny) = (sx as i32 + dx, sy as i32 + dy);
+                if nx >= 0
+                    && ny >= 0
+                    && (nx as usize) < w
+                    && (ny as usize) < h
+                    && dr.lake_map[ny as usize * w + nx as usize] == id
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    };
+    dr.lakes
+        .iter()
+        .filter(|lk| lk.lake_type == LakeType::Exorheic)
+        .map(|lk| lk.base.id)
+        .filter(|&id| !sources.iter().any(|&(sx, sy)| borders(sx, sy, id)))
+        .collect()
+}
+
 /// ADR 0001 Finding 24 — GEOGRAPHIC SCALE RATIO (hydrology only). A pure PRESENTATION
 /// multiplier: the map DRAWS `real_km` of terrain but SIGNIFIES `real_km · ratio` (a
 /// Skyrim-style compression). It is NOT a physical quantity and touches NOTHING that
@@ -568,7 +632,11 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
 /// temperature, or biomes (those run on the REAL 400 km quantities upstream, so every
 /// prior calibration holds). Being a post-process on derived arrays, it is instant and
 /// does NOT enter the drainage cache key. `ratio == 1.0` → identity (early return).
-pub fn apply_geo_scale_ratio(dr: &mut C1DrainageResult, ratio: f32, thresholds: &DrainageThresholds) {
+pub fn apply_geo_scale_ratio(
+    dr: &mut C1DrainageResult,
+    ratio: f32,
+    thresholds: &DrainageThresholds,
+) {
     if ratio == 1.0 {
         return;
     }
@@ -828,8 +896,7 @@ pub fn below_sea_basin_lakes(
     let mut wetland = vec![0u8; n];
     let mut seen = vec![false; n];
     let mut next_id = 1_000_001u32;
-    let metres_per_norm =
-        c1_altitude_norm_to_metres(1.0, ss) - c1_altitude_norm_to_metres(0.0, ss);
+    let metres_per_norm = c1_altitude_norm_to_metres(1.0, ss) - c1_altitude_norm_to_metres(0.0, ss);
 
     // Finding 32 — spillway routing by a SINGLE priority-flood from the ocean (Barnes 2014),
     // computed ONCE. `spill_receiver[k]` is the neighbour toward the ocean along the LEAST-
@@ -837,13 +904,10 @@ pub fn below_sea_basin_lakes(
     // over the lowest sill. This replaces the per-basin bounded Dijkstra, which failed for
     // basins whose ocean was beyond its step budget — leaving exorheic basins with no outlet.
     // O(n log n) once, so a distant/large basin is handled at the same cost as a coastal one.
-    // `barrier_q[k]` (Finding 33) is the least MAX-elevation to reach the ocean from `k` — i.e.
-    // the true overflow SILL of the basin `k` sits in. A basin FILLS to this sill (not to the
-    // shoreline), so its level/area/depth derive from the authority (the flood), not the proxy
-    // (the min external neighbour of the below-sea cells, which is only the ~0 m shore).
+    // Finding 36 — this is used ONLY to TRACE the outlet path; the LEVEL a basin fills to is its
+    // LOCAL sill (below), never the ocean minimax barrier (which drowns everything under the pass).
     let quant = |e: f32| (e * 1_000_000.0) as i32;
     let mut spill_receiver = vec![u32::MAX; n];
-    let mut barrier_q = vec![i32::MAX; n];
     if wc.iter().any(|&c| c == 2) {
         use std::cmp::Reverse;
         use std::collections::BinaryHeap;
@@ -852,8 +916,7 @@ pub fn below_sea_basin_lakes(
         for k in 0..n {
             if wc[k] == 1 {
                 done[k] = true;
-                barrier_q[k] = quant(heightmap.data[k]);
-                pq.push(Reverse((barrier_q[k], k as u32)));
+                pq.push(Reverse((quant(heightmap.data[k]), k as u32)));
             }
         }
         while let Some(Reverse((c, k))) = pq.pop() {
@@ -864,7 +927,6 @@ pub fn below_sea_basin_lakes(
                         done[nk] = true;
                         spill_receiver[nk] = k; // toward the ocean along the least-barrier path
                         let nb = c.max(quant(heightmap.data[nk]));
-                        barrier_q[nk] = nb;
                         pq.push(Reverse((nb, nk as u32)));
                     }
                 }
@@ -872,16 +934,21 @@ pub fn below_sea_basin_lakes(
         }
     }
 
-    // Finding 33 — a below-sea LAKE is a connected pool of UNDERWATER cells (a cell is underwater
-    // when its escape barrier is above it: `barrier > height`), FILLED to the shared sill. This
-    // is the depression itself, so adjacent sub-pockets behind the same sill MERGE automatically
-    // (no per-class-2-component double counting). Kept only when the pool's floor is below sea.
-    let underwater = |k: usize| barrier_q[k] != i32::MAX && barrier_q[k] > quant(heightmap.data[k]);
+    // Finding 36 — a below-sea LAKE fills to its LOCAL sill (the lowest saddle on the rim of the
+    // enclosed hollow), NOT the ocean-minimax barrier `barrier_q`. Using `barrier > height` as the
+    // pool test and `min barrier_q` as the level floods everything under the CONTINENTAL pass: for
+    // the author's #1000020 the real hollow is 17 km² but the lake rose to the 613 m ocean pass and
+    // drowned 267 km² of green (94% of its footprint). The genuine hollow is the connected ENCLOSED
+    // below-sea component (`water_class == 2`). A SINGLE priority-flood outward from its floor finds,
+    // in one pass, both the local sill (the first rim cell from which water can descend to a DIFFERENT
+    // sink) and the bounded bowl (cells ≤ sill connected to the floor, in height order). The lake then
+    // fills to min(local_sill, evaporative). `barrier_q`/`spill_receiver` are kept only to TRACE the
+    // outlet path (Finding 32), never to set the level.
     for s in 0..n {
-        if seen[s] || !underwater(s) {
+        if seen[s] || wc[s] != 2 {
             continue;
         }
-        // 1. the connected underwater pool (the filled depression, already at its sill).
+        // 1. the PIT = the connected enclosed-below-sea component (8-conn) — the real depression.
         let mut comp = Vec::new();
         let mut q = VecDeque::new();
         q.push_back(s);
@@ -889,41 +956,39 @@ pub fn below_sea_basin_lakes(
         while let Some(k) = q.pop_front() {
             comp.push(k);
             let (x, y) = ((k % w) as i32, (k / w) as i32);
-            // 8-connected (Finding 35): diagonally-touching underwater cells are one water body.
+            // 8-connected (Finding 35): diagonally-touching enclosed cells are one water body.
             for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
                 if let Some(nk) = nb4(x + dx, y + dy) {
-                    if underwater(nk) && !seen[nk] {
+                    if wc[nk] == 2 && !seen[nk] {
                         seen[nk] = true;
                         q.push_back(nk);
                     }
                 }
             }
         }
-        // Below-sea only: the pool's FLOOR must be below sea (else it is an ordinary above-sea
-        // lake handled by `detect_lakes`).
-        let floor_norm = comp.iter().map(|&k| heightmap.data[k]).fold(f32::MAX, f32::min);
-        if floor_norm >= C1_SEA_LEVEL_NORM {
-            continue;
+        let floor_k = *comp
+            .iter()
+            .min_by(|&&a, &&b| heightmap.data[a].partial_cmp(&heightmap.data[b]).unwrap())
+            .unwrap();
+        if heightmap.data[floor_k] >= C1_SEA_LEVEL_NORM {
+            continue; // (defensive — wc == 2 already implies a below-sea floor)
         }
-        // Finding 34 — TOTAL INFLOW from the runoff FIELD (the authority), SUMMED at the shoreline:
-        // `runoff_accumulation` ZEROES below-sea cells, so a tributary's discharge is lost the
-        // instant it enters the water. Reading `max` over the pool therefore saw only the largest
-        // single stream, not the total. Instead SUM the accumulated runoff of every above-sea cell
-        // that drains INTO a below-sea pool cell — each tributary counted once, at the shore, before
-        // the zeroing. Read from the FINAL footprint, so a track ending a cell short is irrelevant.
+        // Finding 34 — TOTAL INFLOW from the runoff FIELD, SUMMED at the shoreline: `runoff_accumulation`
+        // ZEROES below-sea cells, so a tributary's discharge is lost the instant it enters the water.
+        // SUM the accumulated runoff of every above-sea cell that drains INTO a hollow cell — each
+        // tributary counted once, at the shore, before the zeroing.
         let mut inflow = 0.0f32;
         for &k in &comp {
-            if heightmap.data[k] > C1_SEA_LEVEL_NORM {
-                continue; // want the below-sea WATER cells (where zeroing happens)
-            }
             let (x, y) = ((k % w) as i32, (k / w) as i32);
             for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
                 if let Some(nk) = nb4(x + dx, y + dy) {
                     if heightmap.data[nk] > C1_SEA_LEVEL_NORM {
                         let dir = flow.direction[nk];
                         if dir != DIR_NONE {
-                            let (tx, ty) =
-                                (nk as i32 % w as i32 + D8_DX[dir as usize], nk as i32 / w as i32 + D8_DY[dir as usize]);
+                            let (tx, ty) = (
+                                nk as i32 % w as i32 + D8_DX[dir as usize],
+                                nk as i32 / w as i32 + D8_DY[dir as usize],
+                            );
                             if nb4(tx, ty) == Some(k) {
                                 inflow += runoff[nk]; // this tributary enters the water here
                             }
@@ -932,12 +997,53 @@ pub fn below_sea_basin_lakes(
                 }
             }
         }
-        // 2. the sill (overflow level) = the pool's barrier to the ocean (uniform within the pool).
-        let spill = comp.iter().map(|&k| barrier_q[k]).min().unwrap() as f32 / 1_000_000.0;
-        let mut fcells: Vec<usize> = comp.clone();
-        fcells.sort_by(|&a, &b| heightmap.data[a].partial_cmp(&heightmap.data[b]).unwrap());
+        // 2+3. LOCAL SILL + BOWL in one priority-flood outward from the floor (Barnes 2014). Pop the
+        // lowest reachable cell; the FIRST cell with an unvisited strictly-lower neighbour is the
+        // lowest saddle (water spills there and runs downhill to a different sink) → `spill`. Every
+        // cell popped before it (all connected, height ≤ spill) is the bowl, already in height order.
+        let (spill, fcells): (f32, Vec<usize>) = {
+            use std::cmp::Reverse;
+            use std::collections::BinaryHeap;
+            let mut fseen: std::collections::HashSet<usize> = std::collections::HashSet::new();
+            let mut heap: BinaryHeap<Reverse<(i32, usize)>> = BinaryHeap::new();
+            heap.push(Reverse((quant(heightmap.data[floor_k]), floor_k)));
+            fseen.insert(floor_k);
+            let mut bowl: Vec<usize> = Vec::new();
+            let mut sill_q = i32::MAX;
+            while let Some(Reverse((hq, c))) = heap.pop() {
+                let (x, y) = ((c % w) as i32, (c / w) as i32);
+                // Escape check: an unvisited neighbour strictly LOWER than c means c is the saddle
+                // (that neighbour is across the divide, draining to a different sink).
+                let mut escapes = false;
+                for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+                    if let Some(e) = nb4(x + dx, y + dy) {
+                        if !fseen.contains(&e) && quant(heightmap.data[e]) < hq {
+                            escapes = true;
+                            break;
+                        }
+                    }
+                }
+                if escapes {
+                    sill_q = hq;
+                    bowl.push(c); // the saddle cell is the pour point (part of the water body)
+                    break;
+                }
+                bowl.push(c);
+                for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+                    if let Some(e) = nb4(x + dx, y + dy) {
+                        if !fseen.contains(&e) {
+                            fseen.insert(e);
+                            heap.push(Reverse((quant(heightmap.data[e]), e)));
+                        }
+                    }
+                }
+            }
+            let sill =
+                if sill_q == i32::MAX { C1_SEA_LEVEL_NORM } else { sill_q as f32 / 1_000_000.0 };
+            (sill, bowl)
+        };
         let a_spill = fcells.len() as f32 * cell_km2;
-        let pe_lake = potential_evaporation_mm(climate.temperature.data[fcells[0]]).max(1.0);
+        let pe_lake = potential_evaporation_mm(climate.temperature.data[floor_k]).max(1.0);
         let a_eq = inflow / pe_lake;
         let (level, lake_type) = if a_eq >= a_spill {
             (spill, LakeType::Exorheic)
@@ -999,7 +1105,7 @@ pub fn below_sea_basin_lakes(
             let (x, y) = ((k % w) as i32, (k / w) as i32);
             for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
                 if let Some(nk) = nb4(x + dx, y + dy) {
-                    if !underwater(nk) {
+                    if heightmap.data[nk] > C1_SEA_LEVEL_NORM {
                         inflow_max = inflow_max.max(runoff[nk]);
                     }
                 }
@@ -1034,7 +1140,9 @@ pub fn below_sea_basin_lakes(
                     continue;
                 }
                 let r = spill_receiver[k];
-                if r != u32::MAX && lake_map[r as usize] != id && heightmap.data[r as usize] < pour_e
+                if r != u32::MAX
+                    && lake_map[r as usize] != id
+                    && heightmap.data[r as usize] < pour_e
                 {
                     pour_e = heightmap.data[r as usize];
                     pour = Some(k);
@@ -1064,8 +1172,12 @@ pub fn below_sea_basin_lakes(
                     }
                 }
                 if wc[cur] == 1 || chained.is_some() {
-                    let points: Vec<(u32, u32)> = path.iter().map(|&k| ((k % w) as u32, (k / w) as u32)).collect();
-                    let profile: Vec<f32> = path.iter().map(|&k| c1_altitude_norm_to_metres(heightmap.data[k], ss)).collect();
+                    let points: Vec<(u32, u32)> =
+                        path.iter().map(|&k| ((k % w) as u32, (k / w) as u32)).collect();
+                    let profile: Vec<f32> = path
+                        .iter()
+                        .map(|&k| c1_altitude_norm_to_metres(heightmap.data[k], ss))
+                        .collect();
                     // discharge = surplus (inflow − evaporation); evaporation = pe_lake · area.
                     let area_km2 = water as f32 * cell_km2;
                     let surplus = (inflow - pe_lake * area_km2).max(0.0); // mm·km²/yr
@@ -1162,11 +1274,12 @@ mod tests {
         let exo = r.basins.iter().filter(|b| b.exorheic).count();
         assert!(exo > 0, "at least one below-sea basin must classify EXORHEIC");
         for b in r.basins.iter().filter(|b| b.exorheic) {
-            let sw = r
-                .spillways
-                .iter()
-                .find(|s| s.lake_id == b.id)
-                .unwrap_or_else(|| panic!("EXORHEIC basin #{} ({:.2} km²) MUST have a traced spillway", b.id, b.area_km2));
+            let sw = r.spillways.iter().find(|s| s.lake_id == b.id).unwrap_or_else(|| {
+                panic!(
+                    "EXORHEIC basin #{} ({:.2} km²) MUST have a traced spillway",
+                    b.id, b.area_km2
+                )
+            });
             let &(lx, ly) = sw.points.last().unwrap();
             let end = ly as usize * w + lx as usize;
             assert!(
@@ -1195,8 +1308,138 @@ mod tests {
         // (b) A lake's max depth = level − floor, and the level is NEVER below the floor.
         for b in &r.basins {
             assert!(b.level_m >= b.floor_m - 1e-3, "level below floor for basin #{}", b.id);
-            assert!((b.max_depth_m - (b.level_m - b.floor_m)).abs() < 1e-3, "depth != level−floor for #{}", b.id);
+            assert!(
+                (b.max_depth_m - (b.level_m - b.floor_m)).abs() < 1e-3,
+                "depth != level−floor for #{}",
+                b.id
+            );
         }
+    }
+
+    /// Finding 36 INVARIANTS (permanent, non-ignored) — a below-sea lake fills to its LOCAL sill, and
+    /// its footprint is a real bowl, not "everything under the continental pass". The prior model set
+    /// `level = min(barrier_q)` (the ocean-minimax barrier) and flooded every cell under it: for the
+    /// author's #1000020 the true hollow was 17 km² but the lake rose to the 613 m ocean pass and
+    /// drowned 267 km² of green (94%). Both existing guards were BLIND to it — "depth == level − floor"
+    /// is satisfied by 613 − (−20) = 633 (internal consistency, not plausibility), and the overlap
+    /// check compared cell SETS which are genuinely disjoint. These two are the missing plausibility
+    /// guards. TASK 2: every lake cell is ≤ level AND connected to the floor through cells ≤ level.
+    /// TASK 3: a lake's level never exceeds the ARRIVAL altitude of its inlets (water cannot flow uphill).
+    #[test]
+    fn below_sea_lake_fills_to_local_sill_not_ocean_barrier() {
+        use crate::lakes::connectivity::water_class;
+        // A deep pit behind a HIGH ocean ridge (0.9) but with a LOW local saddle (0.52). The ocean
+        // minimax barrier is 0.9; the local sill is 0.52. The OLD model filled to 0.9 (drowning the
+        // whole shelf); the fix fills to 0.52. A right-hand ramp feeds the pit so it overflows.
+        let (w, h) = (30usize, 3usize);
+        let mut hm = GridF32::new(w, h, 0.7);
+        for y in 0..h {
+            hm.set(0, y, 0.2); // ocean column (class-1)
+            hm.set(1, y, 0.9); // HIGH ridge — the only path to the ocean (barrier_q = 0.9)
+        }
+        for x in 2..=18 {
+            hm.set(x, 1, 0.51); // above-sea shelf below the saddle (the pit spills onto it)
+        }
+        hm.set(19, 1, 0.52); // the pit's LOCAL sill (lowest rim saddle)
+        for (i, x) in (20..=23).enumerate() {
+            hm.set(x, 1, 0.30 + 0.02 * i as f32); // enclosed below-sea pit floor (4 cells → inventoried)
+        }
+        for (i, x) in (24..=28).enumerate() {
+            hm.set(x, 1, 0.55 + 0.01 * i as f32); // ramp draining LEFT into the pit (inflow ⟹ overflow)
+        }
+        let precip = GridF32::new(w, h, 1.0);
+        let temp = GridF32::new(w, h, 10.0);
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let ss = SteinSteinParams::default();
+        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 30.0);
+        let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
+        assert!(!r.lakes.is_empty(), "the below-sea pit must be inventoried");
+        // REGRESSION: the pit filled to its LOCAL sill (~0.52), NOT the 0.9 ocean barrier. In metres
+        // that is the difference between a 2-cell shore pond and a shelf-drowning flood.
+        let a = r.lakes.iter().max_by(|x, y| x.base.area.cmp(&y.base.area)).unwrap();
+        assert!(
+            a.base.surface_elevation < 0.60,
+            "lake filled to {:.3} — it rose toward the 0.9 ocean barrier instead of its 0.52 local sill",
+            a.base.surface_elevation
+        );
+        // Recompute flow to read inlet arrival altitudes (TASK 3).
+        let flow =
+            compute_flow(&hm, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM, ..Default::default() });
+        for lk in &r.lakes {
+            let id = lk.base.id;
+            let level = lk.base.surface_elevation;
+            let claimed: Vec<usize> = (0..w * h).filter(|&k| r.lake_map[k] == id).collect();
+            // TASK 2a — every claimed cell is at or below the lake level.
+            for &k in &claimed {
+                assert!(
+                    hm.data[k] <= level + 1e-4,
+                    "lake #{id}: cell {k} at {:.3} is ABOVE the lake level {:.3}",
+                    hm.data[k],
+                    level
+                );
+            }
+            // TASK 2b — every claimed cell is connected to the floor through cells also ≤ level.
+            let floor = *claimed
+                .iter()
+                .min_by(|&&x, &&y| hm.data[x].partial_cmp(&hm.data[y]).unwrap())
+                .unwrap();
+            let mut inset = vec![false; w * h];
+            for &k in &claimed {
+                inset[k] = true;
+            }
+            let mut reach = vec![false; w * h];
+            let mut q = std::collections::VecDeque::new();
+            q.push_back(floor);
+            reach[floor] = true;
+            while let Some(k) = q.pop_front() {
+                let (x, y) = ((k % w) as i32, (k / w) as i32);
+                for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
+                        let nk = ny as usize * w + nx as usize;
+                        if inset[nk] && !reach[nk] {
+                            reach[nk] = true;
+                            q.push_back(nk);
+                        }
+                    }
+                }
+            }
+            let disconnected = claimed.iter().filter(|&&k| !reach[k]).count();
+            assert_eq!(
+                disconnected, 0,
+                "lake #{id}: {disconnected} cells ≤level but DISCONNECTED from the floor (disjoint puddles)"
+            );
+            // TASK 3 — the level never exceeds the ARRIVAL altitude of any inlet (no uphill flow).
+            let mut min_inlet = f32::MAX;
+            for k in 0..w * h {
+                if hm.data[k] <= C1_SEA_LEVEL_NORM {
+                    continue; // inlets are above-sea land cells
+                }
+                let dir = flow.direction[k];
+                if dir == DIR_NONE {
+                    continue;
+                }
+                let (tx, ty) = (
+                    k as i32 % w as i32 + D8_DX[dir as usize],
+                    k as i32 / w as i32 + D8_DY[dir as usize],
+                );
+                if tx >= 0 && ty >= 0 && (tx as usize) < w && (ty as usize) < h {
+                    let tk = ty as usize * w + tx as usize;
+                    if r.lake_map[tk] == id {
+                        min_inlet = min_inlet.min(hm.data[k]);
+                    }
+                }
+            }
+            if min_inlet != f32::MAX {
+                assert!(
+                    level <= min_inlet + 1e-4,
+                    "lake #{id}: level {:.3} EXCEEDS its lowest inlet arrival {:.3} — rivers would flow uphill",
+                    level,
+                    min_inlet
+                );
+            }
+        }
+        let _ = &wc;
     }
 
     /// Finding 31 INVARIANT (permanent, non-ignored) — SINK VALIDITY is decoupled from the
@@ -1246,7 +1489,10 @@ mod tests {
         // The SEA authority: a marked basin cell is never ocean.
         for k in 0..r.lake_map.len() {
             if r.lake_map[k] != 0 {
-                assert_ne!(wc[k], 1, "a marked below-sea basin cell must NOT be water_class==1 (ocean)");
+                assert_ne!(
+                    wc[k], 1,
+                    "a marked below-sea basin cell must NOT be water_class==1 (ocean)"
+                );
             }
         }
     }
@@ -1318,6 +1564,83 @@ mod tests {
         clip_rivers_to_lakes(&mut en);
         assert_eq!(en.rivers.segments.len(), 1, "endorheic: phantom outlet dropped");
         assert!(en.rivers.segments[0].points.iter().all(|&(x, _)| x < 4));
+    }
+
+    /// Finding 37 INVARIANT (permanent, non-ignored) — the exorheic-outlet guard over the WHOLE
+    /// lake population, ACROSS PROVENANCES. The prior guard iterated only below-sea `r.basins` on a
+    /// synthetic grid, so the 21 exorheic below-sea lakes shipped without an outlet in the 8192²
+    /// export slipped through (subset blind spot, third occurrence — see ADR Finding 37). This
+    /// checks the checker itself: an exorheic lake with a bordering outlet segment passes; one
+    /// without is flagged; an endorheic lake is never required to have one.
+    #[test]
+    fn every_exorheic_lake_needs_a_traced_outlet() {
+        use crate::terrain::flow::{FlowResult, RiverNetwork};
+        let (w, h) = (12usize, 1usize);
+        let mut lake_map = vec![0u32; w * h];
+        lake_map[4] = 7; // lake A (exorheic, WILL have an outlet segment)
+        lake_map[5] = 7;
+        lake_map[9] = 9; // lake B (exorheic, NO outlet segment)
+        lake_map[1] = 11; // lake C (endorheic — never required to have an outlet)
+        let mk_lake = |id: u32, lake_type: LakeType| C1Lake {
+            base: Lake {
+                id,
+                surface_elevation: 0.5,
+                max_depth: 0.1,
+                area: 1,
+                basin_id: 1,
+                outlet: (0, 0),
+                shallow: false,
+            },
+            level_m: 0.0,
+            depth_m: 1.0,
+            area_km2: 1.0,
+            lake_type,
+        };
+        let outlet_seg = |sx: u32| RiverSegment {
+            points: vec![(sx, 0), (sx + 1, 0)],
+            strahler_order: 1,
+            avg_flow: 1.0,
+            max_flow: 1.0,
+            basin_id: 1,
+            upstream: vec![],
+            downstream: None,
+        };
+        let mk = |segs: Vec<RiverSegment>| C1DrainageResult {
+            flow: FlowResult {
+                filled: GridF32::new(w, h, 0.0),
+                direction: vec![0; w * h],
+                accumulation: GridF32::new(w, h, 0.0),
+                basins: vec![0; w * h],
+                num_basins: 1,
+            },
+            segment_drainage_km2: vec![1.0; segs.len()],
+            segment_navigability: vec![Navigability::NonNavigable; segs.len()],
+            segment_discharge_m3s: vec![1.0; segs.len()],
+            segment_width_m: vec![1.0; segs.len()],
+            segment_profile_m: segs.iter().map(|s| vec![0.0; s.points.len()]).collect(),
+            rivers: RiverNetwork { segments: segs },
+            lakes: vec![
+                mk_lake(7, LakeType::Exorheic),
+                mk_lake(9, LakeType::Exorheic),
+                mk_lake(11, LakeType::Endorheic),
+            ],
+            lake_map: lake_map.clone(),
+            width: w,
+            height: h,
+        };
+        // A has an outlet segment (source x=6 borders lake cell 5); B has none; C is endorheic.
+        let dr = mk(vec![outlet_seg(6)]);
+        assert_eq!(
+            exorheic_lakes_missing_outlet(&dr),
+            vec![9],
+            "only lake B (exorheic, no bordering outlet) must be flagged; C is endorheic"
+        );
+        // Give B an outlet too (source x=8 borders lake cell 9) → no lake is flagged.
+        let dr = mk(vec![outlet_seg(6), outlet_seg(8)]);
+        assert!(
+            exorheic_lakes_missing_outlet(&dr).is_empty(),
+            "every exorheic lake now has a bordering outlet"
+        );
     }
 
     /// A tilted plane draining to an ocean edge: the stack runs at sea=0.5,

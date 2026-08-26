@@ -36,7 +36,9 @@ use crossbeam_channel::Sender;
 use ymir_core::cache::default_cache_dir;
 use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
-use ymir_core::climate::{ClimateResult, c1_biomes_classified_wet, c1_climate_placed, c1_climate_windowed};
+use ymir_core::climate::{
+    ClimateResult, c1_biomes_classified_wet, c1_climate_placed, c1_climate_windowed,
+};
 use ymir_core::erosion::stream_power::StreamPowerConfig;
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
 use ymir_core::export::{height, hydro, vector};
@@ -52,6 +54,7 @@ use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinPar
 use ymir_core::tectonics_c1::drainage::{
     C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, apply_geo_scale_ratio,
     below_sea_basin_lakes, c1_drainage_windowed, clip_rivers_to_lakes,
+    exorheic_lakes_missing_outlet,
 };
 use ymir_core::tectonics_c1::land_topology::{
     IslandEval, LandTopology, evaluate_island, land_topology,
@@ -480,7 +483,13 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     );
 
     let pp = PrecipParams::default();
-    let dcfg = C1DrainageConfig::default();
+    // Finding 37 POINT 2 — extend exported watercourses UPSTREAM from the 20 km² extraction threshold
+    // to the fluvial-regime critical area A_c (the channel head), MAIN-STEM only (author's choice:
+    // one headwater tail per watercourse; ×33 segments vs the full tree's ×182). The watercourse
+    // COUNT is unchanged; only their upstream extent grows, restoring a real source→mouth width range.
+    let mut dcfg = C1DrainageConfig::default();
+    dcfg.thresholds.head_km2 = ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2;
+    dcfg.thresholds.full_tree = false;
     let cache_dir = default_cache_dir();
     let lat = params.latitude_deg;
 
@@ -739,7 +748,11 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // physical (the terrain, climate and biomes above ran on the real domain_km).
     apply_geo_scale_ratio(&mut drainage, params.geo_scale_ratio, &dcfg.thresholds);
     if params.geo_scale_ratio != 1.0 {
-        eprintln!("[HD] geographic scale ratio {:.2} → hydrology signifies ×{:.1} area", params.geo_scale_ratio, params.geo_scale_ratio * params.geo_scale_ratio);
+        eprintln!(
+            "[HD] geographic scale ratio {:.2} → hydrology signifies ×{:.1} area",
+            params.geo_scale_ratio,
+            params.geo_scale_ratio * params.geo_scale_ratio
+        );
     }
     // ADR Finding 20 (DEFECT A): the rivers were traced on the breached (monotone)
     // field, so they run straight through lakes and out of endorheic sinks while the
@@ -752,6 +765,18 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         "[HD] rivers clipped to lakes: {before_seg} → {} segments (terminate at sinks)",
         drainage.rivers.segments.len()
     );
+    // Finding 37 — the exorheic-outlet invariant, over the WHOLE lake population (both provenances),
+    // on the PRODUCTION network (not a synthetic-grid subset). A non-empty result means a lake was
+    // labelled exorheic without an emitted outflow — the label is wrong. Loud in dev, hard in debug.
+    let missing = exorheic_lakes_missing_outlet(&drainage);
+    if !missing.is_empty() {
+        eprintln!(
+            "[HD] WARNING Finding 37: {} exorheic lake(s) with NO traced outlet: {:?}",
+            missing.len(),
+            &missing[..missing.len().min(12)]
+        );
+    }
+    debug_assert!(missing.is_empty(), "exorheic lakes without a traced outlet: {missing:?}");
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Drainage,
         regime: if drainage_hit { CacheRegime::Hit } else { CacheRegime::Miss },

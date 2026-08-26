@@ -3635,12 +3635,14 @@ fn endorheic_water_balance() {
 #[ignore]
 fn authors_basin_8192() {
     use ymir_core::climate::biomes::Biome;
+    use ymir_core::climate::c1_biomes_classified_wet;
     use ymir_core::climate::c1_climate_placed;
     use ymir_core::climate::precipitation::PrecipParams;
-    use ymir_core::climate::c1_biomes_classified_wet;
     use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
-    use ymir_core::tectonics_c1::drainage::{DrainageClimate, below_sea_basin_lakes};
-    use ymir_core::terrain::flow::breach_monotone;
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageClimate, below_sea_basin_lakes, clip_rivers_to_lakes,
+    };
+    use ymir_core::terrain::flow::{RiverSegment, breach_monotone};
     let ss = SteinSteinParams::default();
     let seed_u = 10481999410520546993u64;
     let (t, domain) = (8192usize, 400.0f32);
@@ -3649,14 +3651,19 @@ fn authors_basin_8192() {
     let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
     let seed = WorldSeed::new(seed_u);
     let mut fc = FbmUpscaleConfig::c1_hd_production(t);
-    fc.erosion = None; fc.bathymetry = None; fc.amplitude_base = 0.04;
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
     let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
     let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
     let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
     let climate = c1_climate_placed(&field, &ss, 45.0, 40.0, &PrecipParams::default(), domain);
     let dcfg = C1DrainageConfig::default();
-    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
     let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
     eprintln!("\n=== Finding 33 — author's 8192² config (centre 45° span 40°) ===");
     // TASK 3 — exorheic/endorheic split BEFORE vs AFTER the inlet fix (separates it from a_spill).
@@ -3664,41 +3671,766 @@ fn authors_basin_8192() {
     let exo_before = bsr.basins.iter().filter(|b| b.exorheic_before_inlet_fix).count();
     let flipped = bsr.basins.iter().filter(|b| b.exorheic != b.exorheic_before_inlet_fix).count();
     let collapsed = bsr.basins.iter().filter(|b| !b.exorheic && b.max_depth_m < 0.5).count();
-    let unfilled = bsr.basins.iter().filter(|b| b.exorheic && (b.level_m - b.spill_level_m).abs() > 0.5).count();
-    eprintln!("  {} below-sea basins | exorheic BEFORE inlet-fix {exo_before} → AFTER {exo_after} (flipped {flipped}) | unfilled-yet-exorheic {unfilled} | endorheic-at-floor(depth<0.5m) {collapsed}", bsr.basins.len());
+    let unfilled = bsr
+        .basins
+        .iter()
+        .filter(|b| b.exorheic && (b.level_m - b.spill_level_m).abs() > 0.5)
+        .count();
+    eprintln!(
+        "  {} below-sea basins | exorheic BEFORE inlet-fix {exo_before} → AFTER {exo_after} (flipped {flipped}) | unfilled-yet-exorheic {unfilled} | endorheic-at-floor(depth<0.5m) {collapsed}",
+        bsr.basins.len()
+    );
     // Finding 35 — max sill / depth over below-sea basins (should be plausible, not 600 m).
     let max_sill = bsr.basins.iter().map(|b| b.spill_level_m).fold(f32::MIN, f32::max);
     let max_depth = bsr.basins.iter().map(|b| b.max_depth_m).fold(f32::MIN, f32::max);
     let bad = bsr.basins.iter().filter(|b| b.spill_level_m > 100.0).count();
-    let max_exo_level = bsr.basins.iter().filter(|b| b.exorheic).map(|b| b.level_m).fold(f32::MIN, f32::max);
+    let max_exo_level =
+        bsr.basins.iter().filter(|b| b.exorheic).map(|b| b.level_m).fold(f32::MIN, f32::max);
     let absurd_exo = bsr.basins.iter().filter(|b| b.exorheic && b.level_m > 50.0).count();
-    eprintln!("  Finding 35: max sill {max_sill:.0} m | max depth {max_depth:.0} m | basins with sill>100m {bad} | max EXORHEIC level {max_exo_level:.0} m | exorheic filling >50m (absurd) {absurd_exo}");
+    eprintln!(
+        "  Finding 35: max sill {max_sill:.0} m | max depth {max_depth:.0} m | basins with sill>100m {bad} | max EXORHEIC level {max_exo_level:.0} m | exorheic filling >50m (absurd) {absurd_exo}"
+    );
     // TASK 1 — the biggest lakes by inflow: their corrected state (max depth must be > 0).
     let mut top: Vec<_> = bsr.basins.iter().collect();
     top.sort_by(|a, b| b.inflow_m3s.partial_cmp(&a.inflow_m3s).unwrap());
     for b in top.iter().take(3) {
         let sw = bsr.spillways.iter().find(|s| s.lake_id == b.id);
-        eprintln!("     #{} inflow {:.1} m³/s: floor {:.1} · sill {:.1} · LEVEL {:.1} m · MAX DEPTH {:.1} m · area {:.1} km² (@sill {:.0}) · {} · spillway {}",
-            b.id, b.inflow_m3s, b.floor_m, b.spill_level_m, b.level_m, b.max_depth_m, b.area_km2, b.area_at_sill_km2,
-            if b.exorheic { "EXORHEIC" } else { "endorheic" }, if sw.is_some() { "yes" } else { "NONE" });
+        eprintln!(
+            "     #{} inflow {:.1} m³/s: floor {:.1} · sill {:.1} · LEVEL {:.1} m · MAX DEPTH {:.1} m · area {:.1} km² (@sill {:.0}) · {} · spillway {}",
+            b.id,
+            b.inflow_m3s,
+            b.floor_m,
+            b.spill_level_m,
+            b.level_m,
+            b.max_depth_m,
+            b.area_km2,
+            b.area_at_sill_km2,
+            if b.exorheic { "EXORHEIC" } else { "endorheic" },
+            if sw.is_some() { "yes" } else { "NONE" }
+        );
     }
     // PART A — inventory count + size histogram (cells).
     let mut hist = [0usize; 6]; // <4, 4-15, 16-63, 64-255, 256-1023, >=1024 cells
     for lk in &bsr.lakes {
         let cells = (lk.area_km2 / cell_km2).round() as usize;
-        let b = if cells < 4 { 0 } else if cells < 16 { 1 } else if cells < 64 { 2 } else if cells < 256 { 3 } else if cells < 1024 { 4 } else { 5 };
+        let b = if cells < 4 {
+            0
+        } else if cells < 16 {
+            1
+        } else if cells < 64 {
+            2
+        } else if cells < 256 {
+            3
+        } else if cells < 1024 {
+            4
+        } else {
+            5
+        };
         hist[b] += 1;
     }
-    eprintln!("  PART A inventory: {} lakes (floor {} cells). Histogram by cells [<4,4-15,16-63,64-255,256-1023,>=1024]: {:?}", bsr.lakes.len(), 4, hist);
+    eprintln!(
+        "  PART A inventory: {} lakes (floor {} cells). Histogram by cells [<4,4-15,16-63,64-255,256-1023,>=1024]: {:?}",
+        bsr.lakes.len(),
+        4,
+        hist
+    );
     // TASK 3 — wetland area + biome distribution.
     let mut lake_map = vec![0u32; t * t];
-    for k in 0..bsr.lake_map.len() { if bsr.lake_map[k] != 0 { lake_map[k] = bsr.lake_map[k]; } }
+    for k in 0..bsr.lake_map.len() {
+        if bsr.lake_map[k] != 0 {
+            lake_map[k] = bsr.lake_map[k];
+        }
+    }
     let biomes = c1_biomes_classified_wet(&field, &climate, &lake_map, &bsr.wetland);
     let land = biomes.iter().filter(|b| **b != Biome::Ocean).count().max(1);
     let wet = biomes.iter().filter(|b| **b == Biome::Wetland).count();
     let lake = biomes.iter().filter(|b| **b == Biome::Lake).count();
     let wet_cells = bsr.wetland.iter().filter(|&&x| x != 0).count();
-    eprintln!("  TASK 3 wetland: {:.0} km² ({wet_cells} cells) | biome Wetland {:.2}% · Lake {:.2}% of land", wet_cells as f32 * cell_km2, 100.0 * wet as f32 / land as f32, 100.0 * lake as f32 / land as f32);
+    eprintln!(
+        "  TASK 3 wetland: {:.0} km² ({wet_cells} cells) | biome Wetland {:.2}% · Lake {:.2}% of land",
+        wet_cells as f32 * cell_km2,
+        100.0 * wet as f32 / land as f32,
+        100.0 * lake as f32 / land as f32
+    );
+    // Finding 35 coherence — SAME config (8192² centre 45° span 40°): the three counts the author asked for.
+    let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
+    for k in 0..bsr.lake_map.len() {
+        if bsr.lake_map[k] != 0 && dr.lake_map[k] == 0 {
+            dr.lake_map[k] = bsr.lake_map[k];
+        }
+    }
+    dr.lakes.extend(bsr.lakes.iter().cloned());
+    for sw in &bsr.spillways {
+        dr.rivers.segments.push(RiverSegment {
+            points: sw.points.clone(),
+            strahler_order: 1,
+            avg_flow: 0.0,
+            max_flow: 0.0,
+            basin_id: 0,
+            upstream: vec![],
+            downstream: None,
+        });
+        dr.segment_drainage_km2.push(sw.drainage_km2);
+        dr.segment_navigability.push(sw.navigability);
+        dr.segment_discharge_m3s.push(sw.discharge_m3s);
+        dr.segment_width_m.push(sw.width_m);
+        dr.segment_profile_m.push(sw.profile_m.clone());
+    }
+    clip_rivers_to_lakes(&mut dr);
+    let mut overlap = 0usize;
+    for s in &dr.rivers.segments {
+        for &(x, y) in &s.points {
+            if dr.lake_map[y as usize * t + x as usize] != 0 {
+                overlap += 1;
+            }
+        }
+    }
+    let claimed: usize = bsr_lakes_area(&dr);
+    let distinct = dr.lake_map.iter().filter(|&&x| x != 0).count();
+    let wc = ymir_core::lakes::connectivity::water_class(&field, SEA);
+    let mut untagged = 0usize;
+    for s in &dr.rivers.segments {
+        if s.downstream.is_some() {
+            continue;
+        }
+        let &(mx, my) = s.points.last().unwrap();
+        let k = my as usize * t + mx as usize;
+        if field.data[k] <= SEA && wc[k] != 1 && dr.lake_map[k] == 0 {
+            untagged += 1;
+        }
+    }
+    let (mut d2, mut d3) = (0usize, 0usize);
+    let near = |mx: u32, my: u32, r: i32| -> bool {
+        for dy in -r..=r {
+            for dx in -r..=r {
+                let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
+                if nx >= 0
+                    && ny >= 0
+                    && nx < t as i32
+                    && ny < t as i32
+                    && dr.lake_map[ny as usize * t + nx as usize] != 0
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    };
+    for s in &dr.rivers.segments {
+        if s.downstream.is_some() {
+            continue;
+        }
+        let &(mx, my) = s.points.last().unwrap();
+        if near(mx, my, 1) {
+            continue;
+        } else if near(mx, my, 2) {
+            d2 += 1;
+        } else if near(mx, my, 3) {
+            d3 += 1;
+        }
+    }
+    eprintln!(
+        "  Finding 35 coherence @8192²/45°/40°: river∩lake overlap {overlap} | lake-lake overlap {} (claimed {claimed} ≤ distinct {distinct}) | untagged sea mouths {untagged} | near-miss dist2 {d2} dist3 {d3}",
+        claimed.saturating_sub(distinct)
+    );
+}
+
+/// Total lake-cell area claimed across dr.lakes (Finding 35 lake-lake overlap probe).
+fn bsr_lakes_area(dr: &ymir_core::tectonics_c1::drainage::C1DrainageResult) -> usize {
+    dr.lakes.iter().map(|l| l.base.area).sum()
+}
+
+/// Finding 36 TASK 1 — GEOMETRIC PROOF (report before fixing): the below-sea lake footprint is
+/// "everything under the ocean-barrier", not a hollow. At 8192²/45°/40° (production config), for the
+/// biggest below-sea bodies report: claimed area vs area actually ≤ level AND connected to the floor;
+/// cells ABOVE level (should be 0); cells ≤ level but NOT connected to the floor (disjoint puddles);
+/// the barrier path from the floor to the ocean with the altitude of its maximum (the alleged sill);
+/// and whether a second body sits inside the first's cell set or merely its outline.
+#[test]
+#[ignore]
+fn footprint_proof_8192() {
+    use std::collections::VecDeque;
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
+    use ymir_core::lakes::connectivity::water_class;
+    use ymir_core::tectonics_c1::drainage::{DrainageClimate, below_sea_basin_lakes};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, breach_monotone};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    // Production config divergence (Finding 36): the viz default is domain_km 1024, NOT 400.
+    // domain feeds the erosion cell_km2, so the TERRAIN itself (and hence basin geometry, climate,
+    // regime) differs. Measure at the PRODUCTION window. Override with YMIR_DOMAIN_KM.
+    let domain: f32 =
+        std::env::var("YMIR_DOMAIN_KM").ok().and_then(|s| s.parse().ok()).unwrap_or(1024.0);
+    let t = 8192usize;
+    let cell_km2 = (domain / t as f32).powi(2);
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut fc = FbmUpscaleConfig::c1_hd_production(t);
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
+    let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
+    let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
+    let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
+    let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 45.0, 40.0, &PrecipParams::default(), domain);
+    let dcfg = C1DrainageConfig::default();
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let (w, hh, nn) = (t, t, t * t);
+    // Regime split + the HIGHEST-level below-sea lake (the author's #1000020 candidate).
+    {
+        let (mut exo, mut endo) = (0usize, 0usize);
+        let mut hi: Option<&_> = None;
+        for lk in &bsr.lakes {
+            match lk.lake_type {
+                ymir_core::tectonics_c1::drainage::LakeType::Exorheic => exo += 1,
+                _ => endo += 1,
+            }
+            if hi.map_or(true, |h: &ymir_core::tectonics_c1::drainage::C1Lake| {
+                lk.level_m > h.level_m
+            }) {
+                hi = Some(lk);
+            }
+        }
+        eprintln!(
+            "  [domain {domain:.0} km] {} below-sea lakes: {exo} exorheic, {endo} endorheic",
+            bsr.lakes.len()
+        );
+        if let Some(h) = hi {
+            eprintln!(
+                "  HIGHEST-level lake #{} {:?}: level {:.1} m · depth {:.1} m · area {:.1} km²",
+                h.base.id, h.lake_type, h.level_m, h.depth_m, h.area_km2
+            );
+        }
+    }
+    let nb = |x: i32, y: i32| -> Option<usize> {
+        if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < hh {
+            Some(y as usize * w + x as usize)
+        } else {
+            None
+        }
+    };
+    // Reproduce the exact internal ocean priority-flood (barrier_q + spill_receiver), same order.
+    let wc = water_class(&field, SEA);
+    let quant = |e: f32| (e * 1_000_000.0) as i32;
+    let mut spill_receiver = vec![u32::MAX; nn];
+    let mut barrier_q = vec![i32::MAX; nn];
+    if wc.iter().any(|&c| c == 2) {
+        use std::cmp::Reverse;
+        use std::collections::BinaryHeap;
+        let mut done = vec![false; nn];
+        let mut pq: BinaryHeap<Reverse<(i32, u32)>> = BinaryHeap::new();
+        for k in 0..nn {
+            if wc[k] == 1 {
+                done[k] = true;
+                barrier_q[k] = quant(field.data[k]);
+                pq.push(Reverse((barrier_q[k], k as u32)));
+            }
+        }
+        while let Some(Reverse((c, k))) = pq.pop() {
+            let (x, y) = ((k as usize % w) as i32, (k as usize / w) as i32);
+            for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+                if let Some(nk) = nb(x + dx, y + dy) {
+                    if !done[nk] {
+                        done[nk] = true;
+                        spill_receiver[nk] = k;
+                        let b = c.max(quant(field.data[nk]));
+                        barrier_q[nk] = b;
+                        pq.push(Reverse((b, nk as u32)));
+                    }
+                }
+            }
+        }
+    }
+    let to_m = |n: f32| c1_altitude_norm_to_metres(n, &ss);
+    // Rank below-sea lakes by claimed cells; prove the geometry for the top 3.
+    let mut lakes: Vec<_> = bsr.lakes.iter().collect();
+    lakes.sort_by(|a, b| b.base.area.cmp(&a.base.area));
+    eprintln!("\n=== Finding 36 TASK 1 — footprint geometric proof @8192²/45°/40° ===");
+    eprintln!(
+        "  {} below-sea lakes inventoried; proving the 3 largest by claimed cells:",
+        bsr.lakes.len()
+    );
+    let bbox = |cells: &[usize]| -> (i32, i32, i32, i32) {
+        let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+        for &k in cells {
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            x0 = x0.min(x);
+            y0 = y0.min(y);
+            x1 = x1.max(x);
+            y1 = y1.max(y);
+        }
+        (x0, y0, x1, y1)
+    };
+    let mut boxes: Vec<(u32, (i32, i32, i32, i32))> = Vec::new();
+    for (rank, lk) in lakes.iter().take(3).enumerate() {
+        let id = lk.base.id;
+        let lv = lk.base.surface_elevation; // norm level
+        let claimed: Vec<usize> = (0..nn).filter(|&k| bsr.lake_map[k] == id).collect();
+        // floor = lowest claimed cell.
+        let &floor = claimed
+            .iter()
+            .min_by(|&&a, &&b| field.data[a].partial_cmp(&field.data[b]).unwrap())
+            .unwrap();
+        // (2) claimed cells ABOVE level.
+        let above = claimed.iter().filter(|&&k| field.data[k] > lv).count();
+        // (3) claimed cells ≤ level but NOT connected to the floor through OTHER claimed cells (8-conn).
+        let mut inset = vec![false; nn];
+        for &k in &claimed {
+            inset[k] = true;
+        }
+        let mut reach = vec![false; nn];
+        let mut q = VecDeque::new();
+        q.push_back(floor);
+        reach[floor] = true;
+        while let Some(k) = q.pop_front() {
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+                if let Some(nk) = nb(x + dx, y + dy) {
+                    if inset[nk] && !reach[nk] {
+                        reach[nk] = true;
+                        q.push_back(nk);
+                    }
+                }
+            }
+        }
+        let connected = claimed.iter().filter(|&&k| reach[k]).count();
+        let disconnected = claimed.len() - connected;
+        // (1) grid-wide: cells ≤ level connected to the floor (the physically-valid pool at this level).
+        let mut valid = vec![false; nn];
+        let mut q2 = VecDeque::new();
+        if field.data[floor] <= lv {
+            q2.push_back(floor);
+            valid[floor] = true;
+        }
+        let mut valid_n = 0usize;
+        while let Some(k) = q2.pop_front() {
+            valid_n += 1;
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+                if let Some(nk) = nb(x + dx, y + dy) {
+                    if !valid[nk] && field.data[nk] <= lv {
+                        valid[nk] = true;
+                        q2.push_back(nk);
+                    }
+                }
+            }
+        }
+        let bx = bbox(&claimed);
+        boxes.push((id, bx));
+        eprintln!(
+            "  #{id} (rank {}) {:?}: claimed {} cells = {:.1} km² | level {:.1} m | floor {:.1} m | depth {:.1} m",
+            rank + 1,
+            lk.lake_type,
+            claimed.len(),
+            claimed.len() as f32 * cell_km2,
+            to_m(lv),
+            to_m(field.data[floor]),
+            to_m(lv) - to_m(field.data[floor])
+        );
+        eprintln!(
+            "     (1) valid (≤level & connected-to-floor, grid-wide) {} cells = {:.1} km² | claimed/valid {:.2}×",
+            valid_n,
+            valid_n as f32 * cell_km2,
+            claimed.len() as f32 / valid_n.max(1) as f32
+        );
+        eprintln!(
+            "     (2) claimed cells ABOVE level: {above} (expect 0) | (3) claimed ≤level but DISCONNECTED from floor: {disconnected} in {} puddles-worth",
+            if disconnected > 0 { "≥1" } else { "0" }
+        );
+        // (4) barrier path from the floor to the ocean: profile max = the alleged sill.
+        let mut cur = floor;
+        let mut steps = 0usize;
+        let mut maxk = floor;
+        let mut maxe = field.data[floor];
+        loop {
+            if wc[cur] == 1 {
+                break;
+            }
+            if field.data[cur] > maxe {
+                maxe = field.data[cur];
+                maxk = cur;
+            }
+            let r = spill_receiver[cur];
+            if r == u32::MAX {
+                break;
+            }
+            cur = r as usize;
+            steps += 1;
+            if steps > nn {
+                break;
+            }
+        }
+        eprintln!(
+            "     (4) barrier path floor→ocean: {steps} steps, MAX {:.1} m at ({},{}) | barrier_q(floor) {:.1} m | reached {}",
+            to_m(maxe),
+            maxk % w,
+            maxk / w,
+            to_m(barrier_q[floor] as f32 / 1_000_000.0),
+            if wc[cur] == 1 { "OCEAN" } else { "STUCK" }
+        );
+    }
+    // (5) nesting: is lake #2/#3 inside lake #1's CELL set (0 by construction) or merely its OUTLINE (bbox)?
+    if boxes.len() >= 2 {
+        let (id1, b1) = boxes[0];
+        for &(id2, _) in &boxes[1..] {
+            let inside_cells = (0..nn)
+                .filter(|&k| bsr.lake_map[k] == id2)
+                .filter(|&k| {
+                    let (x, y) = ((k % w) as i32, (k / w) as i32);
+                    x >= b1.0 && x <= b1.2 && y >= b1.1 && y <= b1.3
+                })
+                .count();
+            let total2 = (0..nn).filter(|&k| bsr.lake_map[k] == id2).count();
+            eprintln!(
+                "     (5) #{id2}: {inside_cells}/{total2} cells inside #{id1}'s OUTLINE (bbox), but 0 shared cells with #{id1}'s SET (lake_map is exclusive)"
+            );
+        }
+    }
+    // Cross-check the worst basin by area-at-sill (the underwater component before the ≤level cut).
+    let mut bs: Vec<_> = bsr.basins.iter().collect();
+    bs.sort_by(|a, b| b.area_at_sill_km2.partial_cmp(&a.area_at_sill_km2).unwrap());
+    if let Some(b) = bs.first() {
+        eprintln!(
+            "  WORST underwater component #{}: area-at-sill {:.1} km² ({} cells) | sill {:.1} m | floor {:.1} m | level {:.1} m | {}",
+            b.id,
+            b.area_at_sill_km2,
+            (b.area_at_sill_km2 / cell_km2).round() as usize,
+            b.spill_level_m,
+            b.floor_m,
+            b.level_m,
+            if b.exorheic { "EXORHEIC" } else { "endorheic" }
+        );
+    }
+}
+
+/// Finding 36 TASK 1 — GEOMETRIC PROOF on the ACTUAL EXPORT (ground truth the viz shows). Reads
+/// exports/seed…_8192.ymir/{lake_mask.u32,height.u16} and, for #1000020 and #28, reports: claimed
+/// area; the split below-sea (the real hollow) vs above-sea (green swallowed by filling to the sill);
+/// cells ABOVE the lake level (expect 0); cells ≤level DISCONNECTED from the floor; and the valid
+/// (≤level & connected-to-floor) area. No re-derivation — the exact bytes the author inspects.
+#[test]
+#[ignore]
+fn export_footprint_proof() {
+    use std::collections::VecDeque;
+    let dir =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../exports/seed10481999410520546993_8192.ymir");
+    let t = 8192usize;
+    let nn = t * t;
+    let cell_km2 = (400.0f32 / t as f32).powi(2);
+    let (min_m, max_m) = (-5505.853515625f32, 3917.749267578125f32);
+    let mask_bytes = std::fs::read(format!("{dir}/lake_mask.u32")).expect("lake_mask.u32");
+    let h_bytes = std::fs::read(format!("{dir}/height.u16")).expect("height.u16");
+    assert_eq!(mask_bytes.len(), nn * 4, "mask size");
+    assert_eq!(h_bytes.len(), nn * 2, "height size");
+    let mask = |k: usize| {
+        u32::from_le_bytes([
+            mask_bytes[4 * k],
+            mask_bytes[4 * k + 1],
+            mask_bytes[4 * k + 2],
+            mask_bytes[4 * k + 3],
+        ])
+    };
+    let hm = |k: usize| -> f32 {
+        let u = u16::from_le_bytes([h_bytes[2 * k], h_bytes[2 * k + 1]]) as f32;
+        min_m + (u / 65535.0) * (max_m - min_m)
+    };
+    let nb = |x: i32, y: i32| -> Option<usize> {
+        if x >= 0 && y >= 0 && (x as usize) < t && (y as usize) < t {
+            Some(y as usize * t + x as usize)
+        } else {
+            None
+        }
+    };
+    let d8: [(i32, i32); 8] =
+        [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)];
+    eprintln!("\n=== Finding 36 TASK 1 — EXPORT footprint proof (400 km, ground truth) ===");
+    for id in [1_000_020u32, 28u32] {
+        let claimed: Vec<usize> = (0..nn).filter(|&k| mask(k) == id).collect();
+        if claimed.is_empty() {
+            eprintln!("  #{id}: NOT PRESENT in lake_mask");
+            continue;
+        }
+        let level = claimed.iter().map(|&k| hm(k)).fold(f32::MIN, f32::max); // effective level = max claimed height
+        let floor = *claimed.iter().min_by(|&&a, &&b| hm(a).partial_cmp(&hm(b)).unwrap()).unwrap();
+        let below_sea = claimed.iter().filter(|&&k| hm(k) <= 0.0).count();
+        let above_sea = claimed.len() - below_sea;
+        let above_level = claimed.iter().filter(|&&k| hm(k) > level + 0.01).count();
+        // (3) connectivity from the floor over claimed cells (8-conn).
+        let mut inset = vec![false; nn];
+        for &k in &claimed {
+            inset[k] = true;
+        }
+        let mut reach = vec![false; nn];
+        let mut q = VecDeque::new();
+        q.push_back(floor);
+        reach[floor] = true;
+        while let Some(k) = q.pop_front() {
+            let (x, y) = ((k % t) as i32, (k / t) as i32);
+            for (dx, dy) in d8 {
+                if let Some(v) = nb(x + dx, y + dy) {
+                    if inset[v] && !reach[v] {
+                        reach[v] = true;
+                        q.push_back(v);
+                    }
+                }
+            }
+        }
+        let disconnected = claimed.len() - claimed.iter().filter(|&&k| reach[k]).count();
+        // (1) grid-wide valid: ≤level connected to floor.
+        let mut valid = vec![false; nn];
+        let mut q2 = VecDeque::new();
+        let mut valid_n = 0usize;
+        q2.push_back(floor);
+        valid[floor] = true;
+        while let Some(k) = q2.pop_front() {
+            valid_n += 1;
+            let (x, y) = ((k % t) as i32, (k / t) as i32);
+            for (dx, dy) in d8 {
+                if let Some(v) = nb(x + dx, y + dy) {
+                    if !valid[v] && hm(v) <= level {
+                        valid[v] = true;
+                        q2.push_back(v);
+                    }
+                }
+            }
+        }
+        eprintln!(
+            "  #{id}: level {:.1} m | floor {:.1} m | claimed {} cells = {:.1} km²",
+            level,
+            hm(floor),
+            claimed.len(),
+            claimed.len() as f32 * cell_km2
+        );
+        eprintln!(
+            "     HOLLOW (≤0 m, below-sea) {} = {:.1} km²  |  GREEN SWALLOWED (>0 m, filled to sill) {} = {:.1} km²  →  {:.0}% green",
+            below_sea,
+            below_sea as f32 * cell_km2,
+            above_sea,
+            above_sea as f32 * cell_km2,
+            100.0 * above_sea as f32 / claimed.len() as f32
+        );
+        eprintln!(
+            "     (1) valid(≤level&connected) {:.1} km² | claimed/valid {:.2}× | (2) ABOVE level {above_level} | (3) DISCONNECTED from floor {disconnected}",
+            valid_n as f32 * cell_km2,
+            claimed.len() as f32 / valid_n.max(1) as f32
+        );
+    }
+}
+
+/// Finding 36 — reconcile the author's 613 m #1000020 with the FAITHFUL production field. The prior
+/// proofs eroded with a bare `incise`; the VIZ erodes with `upscale.stream_power = relief_v3(MFD p=2)`
+/// INSIDE the upscale (dendritic morphology) + bathymetry at c1_hd_production default + breach — a
+/// DIFFERENT terrain. Reproduce that chain EXACTLY at domain 1024 (viz default) and report the below-sea
+/// regime split, the HIGHEST-level lake (the #1000020 candidate), and — if it is exorheic and high —
+/// its footprint proof (claimed vs ≤level&connected, cells above, disconnected, barrier path).
+#[test]
+#[ignore]
+fn viz_exact_field_8192() {
+    use std::collections::VecDeque;
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::StreamPowerConfig;
+    use ymir_core::lakes::connectivity::water_class;
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageClimate, LakeType, below_sea_basin_lakes, c1_drainage_windowed,
+    };
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, breach_monotone};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let domain: f32 =
+        std::env::var("YMIR_DOMAIN_KM").ok().and_then(|s| s.parse().ok()).unwrap_or(1024.0);
+    let t = 8192usize;
+    let cell_km2 = (domain / t as f32).powi(2);
+    let depth = ss.depth_scale_m as f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    // FAITHFUL viz erosion (hd.rs:371-424): c1_hd_production + amplitude 0.04 + stream_power=relief_v3
+    // (MFD p=2) INSIDE the upscale, erosion/bathymetry left at production defaults.
+    let mut upscale = FbmUpscaleConfig::c1_hd_production(t);
+    upscale.amplitude_base = 0.04;
+    let mut sp = StreamPowerConfig::relief_v3(cell_km2, depth);
+    sp.mfd_exponent = Some(2.0);
+    upscale.stream_power = Some(sp);
+    let eroded = upscale_with_fbm(&coarse, SEA, &seed, &upscale).heightmap;
+    let dcfg = C1DrainageConfig::default();
+    let prebreach = c1_drainage_windowed(&eroded, None, &dcfg, &ss, domain);
+    let field = breach_monotone(&eroded, &prebreach.flow.filled, &prebreach.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 45.0, 40.0, &PrecipParams::default(), domain);
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let (w, hh, nn) = (t, t, t * t);
+    let to_m = |x: f32| c1_altitude_norm_to_metres(x, &ss);
+    let nb = |x: i32, y: i32| -> Option<usize> {
+        if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < hh {
+            Some(y as usize * w + x as usize)
+        } else {
+            None
+        }
+    };
+    let (mut exo, mut endo) = (0usize, 0usize);
+    for lk in &bsr.lakes {
+        match lk.lake_type {
+            LakeType::Exorheic => exo += 1,
+            _ => endo += 1,
+        }
+    }
+    eprintln!(
+        "\n=== Finding 36 — FAITHFUL viz field (relief_v3 MFD p=2, bathymetry default) @{:.0} km / 45°/40° ===",
+        domain
+    );
+    eprintln!("  {} below-sea lakes: {exo} exorheic, {endo} endorheic", bsr.lakes.len());
+    // Ocean priority-flood (barrier_q + spill_receiver), same order as the function.
+    let wc = water_class(&field, SEA);
+    let quant = |e: f32| (e * 1_000_000.0) as i32;
+    let mut spill_receiver = vec![u32::MAX; nn];
+    let mut barrier_q = vec![i32::MAX; nn];
+    if wc.iter().any(|&c| c == 2) {
+        use std::cmp::Reverse;
+        use std::collections::BinaryHeap;
+        let mut done = vec![false; nn];
+        let mut pq: BinaryHeap<Reverse<(i32, u32)>> = BinaryHeap::new();
+        for k in 0..nn {
+            if wc[k] == 1 {
+                done[k] = true;
+                barrier_q[k] = quant(field.data[k]);
+                pq.push(Reverse((barrier_q[k], k as u32)));
+            }
+        }
+        while let Some(Reverse((c, k))) = pq.pop() {
+            let (x, y) = ((k as usize % w) as i32, (k as usize / w) as i32);
+            for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+                if let Some(nk) = nb(x + dx, y + dy) {
+                    if !done[nk] {
+                        done[nk] = true;
+                        spill_receiver[nk] = k;
+                        let b = c.max(quant(field.data[nk]));
+                        barrier_q[nk] = b;
+                        pq.push(Reverse((b, nk as u32)));
+                    }
+                }
+            }
+        }
+    }
+    // Prove the two candidates: highest-LEVEL lake and largest-AREA lake.
+    let mut by_level: Vec<_> = bsr.lakes.iter().collect();
+    by_level.sort_by(|a, b| b.level_m.partial_cmp(&a.level_m).unwrap());
+    let mut by_area: Vec<_> = bsr.lakes.iter().collect();
+    by_area.sort_by(|a, b| b.base.area.cmp(&a.base.area));
+    let mut targets: Vec<&_> = Vec::new();
+    if let Some(l) = by_level.first() {
+        targets.push(l);
+    }
+    if let Some(a) = by_area.first() {
+        if targets.iter().all(|t| t.base.id != a.base.id) {
+            targets.push(a);
+        }
+    }
+    for lk in targets {
+        let id = lk.base.id;
+        let lv = lk.base.surface_elevation;
+        let claimed: Vec<usize> = (0..nn).filter(|&k| bsr.lake_map[k] == id).collect();
+        let &floor = claimed
+            .iter()
+            .min_by(|&&a, &&b| field.data[a].partial_cmp(&field.data[b]).unwrap())
+            .unwrap();
+        let above = claimed.iter().filter(|&&k| field.data[k] > lv).count();
+        let mut inset = vec![false; nn];
+        for &k in &claimed {
+            inset[k] = true;
+        }
+        let mut reach = vec![false; nn];
+        let mut q = VecDeque::new();
+        q.push_back(floor);
+        reach[floor] = true;
+        while let Some(k) = q.pop_front() {
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+                if let Some(nk) = nb(x + dx, y + dy) {
+                    if inset[nk] && !reach[nk] {
+                        reach[nk] = true;
+                        q.push_back(nk);
+                    }
+                }
+            }
+        }
+        let disconnected = claimed.len() - claimed.iter().filter(|&&k| reach[k]).count();
+        let mut valid = vec![false; nn];
+        let mut q2 = VecDeque::new();
+        let mut valid_n = 0usize;
+        if field.data[floor] <= lv {
+            q2.push_back(floor);
+            valid[floor] = true;
+        }
+        while let Some(k) = q2.pop_front() {
+            valid_n += 1;
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+                if let Some(nk) = nb(x + dx, y + dy) {
+                    if !valid[nk] && field.data[nk] <= lv {
+                        valid[nk] = true;
+                        q2.push_back(nk);
+                    }
+                }
+            }
+        }
+        let mut cur = floor;
+        let mut steps = 0usize;
+        let mut maxe = field.data[floor];
+        let mut maxk = floor;
+        loop {
+            if wc[cur] == 1 {
+                break;
+            }
+            if field.data[cur] > maxe {
+                maxe = field.data[cur];
+                maxk = cur;
+            }
+            let r = spill_receiver[cur];
+            if r == u32::MAX {
+                break;
+            }
+            cur = r as usize;
+            steps += 1;
+            if steps > nn {
+                break;
+            }
+        }
+        eprintln!(
+            "  #{id} {:?}: level {:.1} m | floor {:.1} m | depth {:.1} m | claimed {} cells = {:.1} km²",
+            lk.lake_type,
+            to_m(lv),
+            to_m(field.data[floor]),
+            to_m(lv) - to_m(field.data[floor]),
+            claimed.len(),
+            claimed.len() as f32 * cell_km2
+        );
+        eprintln!(
+            "     (1) valid(≤level&connected) {} cells = {:.1} km² | claimed/valid {:.2}× | (2) ABOVE level {above} | (3) disconnected {disconnected}",
+            valid_n,
+            valid_n as f32 * cell_km2,
+            claimed.len() as f32 / valid_n.max(1) as f32
+        );
+        eprintln!(
+            "     (4) barrier path floor→ocean: {steps} steps, MAX {:.1} m at ({},{}) | barrier_q(floor) {:.1} m | {}",
+            to_m(maxe),
+            maxk % w,
+            maxk / w,
+            to_m(barrier_q[floor] as f32 / 1_000_000.0),
+            if wc[cur] == 1 { "OCEAN" } else { "STUCK" }
+        );
+    }
 }
 
 /// Finding 34 TASK 4 — boundary check: no cell is both river and lake (unclaimed in-between);
@@ -3709,7 +4441,9 @@ fn boundary_and_gap_check() {
     use ymir_core::climate::c1_climate_placed;
     use ymir_core::climate::precipitation::PrecipParams;
     use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
-    use ymir_core::tectonics_c1::drainage::{DrainageClimate, below_sea_basin_lakes, clip_rivers_to_lakes};
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageClimate, below_sea_basin_lakes, clip_rivers_to_lakes,
+    };
     use ymir_core::terrain::flow::{RiverSegment, breach_monotone};
     let ss = SteinSteinParams::default();
     let seed_u = 10481999410520546993u64;
@@ -3719,40 +4453,83 @@ fn boundary_and_gap_check() {
     let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
     let seed = WorldSeed::new(seed_u);
     let mut fc = FbmUpscaleConfig::c1_hd_production(t);
-    fc.erosion = None; fc.bathymetry = None; fc.amplitude_base = 0.04;
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
     let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
     let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
     let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
     let climate = c1_climate_placed(&field, &ss, 38.0, 27.0, &PrecipParams::default(), domain);
     let dcfg = C1DrainageConfig::default();
-    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
     let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
-    for k in 0..bsr.lake_map.len() { if bsr.lake_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bsr.lake_map[k]; } }
+    for k in 0..bsr.lake_map.len() {
+        if bsr.lake_map[k] != 0 && dr.lake_map[k] == 0 {
+            dr.lake_map[k] = bsr.lake_map[k];
+        }
+    }
     dr.lakes.extend(bsr.lakes);
     for sw in &bsr.spillways {
-        dr.rivers.segments.push(RiverSegment { points: sw.points.clone(), strahler_order: 1, avg_flow: 0.0, max_flow: 0.0, basin_id: 0, upstream: vec![], downstream: None });
-        dr.segment_drainage_km2.push(sw.drainage_km2); dr.segment_navigability.push(sw.navigability);
-        dr.segment_discharge_m3s.push(sw.discharge_m3s); dr.segment_width_m.push(sw.width_m); dr.segment_profile_m.push(sw.profile_m.clone());
+        dr.rivers.segments.push(RiverSegment {
+            points: sw.points.clone(),
+            strahler_order: 1,
+            avg_flow: 0.0,
+            max_flow: 0.0,
+            basin_id: 0,
+            upstream: vec![],
+            downstream: None,
+        });
+        dr.segment_drainage_km2.push(sw.drainage_km2);
+        dr.segment_navigability.push(sw.navigability);
+        dr.segment_discharge_m3s.push(sw.discharge_m3s);
+        dr.segment_width_m.push(sw.width_m);
+        dr.segment_profile_m.push(sw.profile_m.clone());
     }
     clip_rivers_to_lakes(&mut dr);
     // TASK 4 — overlap: a river cell that is also a lake cell (unclaimed in-between).
     let mut overlap = 0usize;
-    for s in &dr.rivers.segments { for &(x, y) in &s.points { if dr.lake_map[y as usize * t + x as usize] != 0 { overlap += 1; } } }
+    for s in &dr.rivers.segments {
+        for &(x, y) in &s.points {
+            if dr.lake_map[y as usize * t + x as usize] != 0 {
+                overlap += 1;
+            }
+        }
+    }
     // Near-misses: river MOUTHS (downstream None) at distance 1/2/3 from a lake without touching.
     let near = |mx: u32, my: u32, r: i32| -> bool {
-        for dy in -r..=r { for dx in -r..=r { let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
-            if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 && dr.lake_map[ny as usize * t + nx as usize] != 0 { return true; } } }
+        for dy in -r..=r {
+            for dx in -r..=r {
+                let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
+                if nx >= 0
+                    && ny >= 0
+                    && nx < t as i32
+                    && ny < t as i32
+                    && dr.lake_map[ny as usize * t + nx as usize] != 0
+                {
+                    return true;
+                }
+            }
+        }
         false
     };
     let (mut d1, mut d2, mut d3) = (0usize, 0usize, 0usize);
     for s in &dr.rivers.segments {
-        if s.downstream.is_some() { continue; }
+        if s.downstream.is_some() {
+            continue;
+        }
         let &(mx, my) = s.points.last().unwrap();
-        if near(mx, my, 1) { continue; }
-        else if near(mx, my, 2) { d2 += 1; }
-        else if near(mx, my, 3) { d3 += 1; }
+        if near(mx, my, 1) {
+            continue;
+        } else if near(mx, my, 2) {
+            d2 += 1;
+        } else if near(mx, my, 3) {
+            d3 += 1;
+        }
         let _ = &mut d1;
     }
     // Finding 35 — lake-lake overlap: total claimed area (cells) vs DISTINCT lake_map cells.
@@ -3762,15 +4539,23 @@ fn boundary_and_gap_check() {
     let wc = ymir_core::lakes::connectivity::water_class(&field, SEA);
     let mut untagged = 0usize;
     for s in &dr.rivers.segments {
-        if s.downstream.is_some() { continue; }
+        if s.downstream.is_some() {
+            continue;
+        }
         let &(mx, my) = s.points.last().unwrap();
         let k = my as usize * t + mx as usize;
-        if field.data[k] <= SEA && wc[k] != 1 && dr.lake_map[k] == 0 { untagged += 1; }
+        if field.data[k] <= SEA && wc[k] != 1 && dr.lake_map[k] == 0 {
+            untagged += 1;
+        }
     }
     eprintln!("\n=== Finding 34/35 TASK 4 — boundary + overlap + tag check (2048²) ===");
     eprintln!("  river∩lake overlap cells (must be 0): {overlap}");
-    eprintln!("  lake-lake overlap: claimed {claimed} vs distinct {distinct} cells (equal ⇒ no two lakes share a cell)");
-    eprintln!("  river mouths on below-sea NON-ocean, no lake (untagged 'sea', must be ~0): {untagged}");
+    eprintln!(
+        "  lake-lake overlap: claimed {claimed} vs distinct {distinct} cells (equal ⇒ no two lakes share a cell)"
+    );
+    eprintln!(
+        "  river mouths on below-sea NON-ocean, no lake (untagged 'sea', must be ~0): {untagged}"
+    );
     eprintln!("  near-misses dist 2: {d2} · dist 3: {d3} (now caught by the ±2 inlet test)");
     assert_eq!(overlap, 0, "no cell may be both river and lake");
 }
@@ -3793,26 +4578,42 @@ fn basin_fill_report() {
     let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
     let seed = WorldSeed::new(seed_u);
     let mut fc = FbmUpscaleConfig::c1_hd_production(t);
-    fc.erosion = None; fc.bathymetry = None; fc.amplitude_base = 0.04;
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
     let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
     let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
     let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
     let climate = c1_climate_placed(&field, &ss, 38.0, 27.0, &PrecipParams::default(), domain);
     let dcfg = C1DrainageConfig::default();
-    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
     let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
     eprintln!("\n=== Finding 33 TASK 1 — exorheic basin FILL (level vs sill), 2048² ===");
     let exo: Vec<_> = bsr.basins.iter().filter(|b| b.exorheic).collect();
     let unfilled = exo.iter().filter(|b| (b.level_m - b.spill_level_m).abs() > 0.5).count();
     let area_lt_sill = exo.iter().filter(|b| b.area_km2 < b.area_at_sill_km2 - 1e-4).count();
-    eprintln!("  {} exorheic basins | UNFILLED (level < sill by >0.5 m) {unfilled} | area < area-at-sill {area_lt_sill}", exo.len());
+    eprintln!(
+        "  {} exorheic basins | UNFILLED (level < sill by >0.5 m) {unfilled} | area < area-at-sill {area_lt_sill}",
+        exo.len()
+    );
     // Top 6 by inflow (the big-catchment basins).
     let mut top: Vec<_> = exo.clone();
     top.sort_by(|a, b| b.inflow_m3s.partial_cmp(&a.inflow_m3s).unwrap());
     for b in top.iter().take(6) {
-        eprintln!("     #{}: floor {:.1} m · sill {:.1} m · LEVEL {:.1} m · area@level {:.3} km² · area@sill {:.3} km² · inflow {:.1} m³/s",
-            b.id, b.floor_m, b.spill_level_m, b.level_m, b.area_km2, b.area_at_sill_km2, b.inflow_m3s);
+        eprintln!(
+            "     #{}: floor {:.1} m · sill {:.1} m · LEVEL {:.1} m · area@level {:.3} km² · area@sill {:.3} km² · inflow {:.1} m³/s",
+            b.id,
+            b.floor_m,
+            b.spill_level_m,
+            b.level_m,
+            b.area_km2,
+            b.area_at_sill_km2,
+            b.inflow_m3s
+        );
     }
 }
 
@@ -3835,14 +4636,19 @@ fn sub_threshold_sink_report() {
     let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
     let seed = WorldSeed::new(seed_u);
     let mut fc = FbmUpscaleConfig::c1_hd_production(t);
-    fc.erosion = None; fc.bathymetry = None; fc.amplitude_base = 0.04;
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
     let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
     let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
     let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
     let climate = c1_climate_placed(&field, &ss, 38.0, 27.0, &PrecipParams::default(), domain);
     let dcfg = C1DrainageConfig::default();
-    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
     let dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
     let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
     let wc = water_class(&field, SEA);
@@ -3851,61 +4657,134 @@ fn sub_threshold_sink_report() {
     let sp_ids: std::collections::HashSet<u32> = bsr.spillways.iter().map(|s| s.lake_id).collect();
     let (mut exo, mut endo, mut exo_no_sw) = (0usize, 0usize, 0usize);
     for b in &bsr.basins {
-        if b.exorheic { exo += 1; if !sp_ids.contains(&b.id) { exo_no_sw += 1; } } else { endo += 1; }
+        if b.exorheic {
+            exo += 1;
+            if !sp_ids.contains(&b.id) {
+                exo_no_sw += 1;
+            }
+        } else {
+            endo += 1;
+        }
     }
-    eprintln!("\n=== Finding 32 — spillway coverage over ALL {} below-sea basins ===", bsr.basins.len());
-    eprintln!("  regimes: {exo} exorheic ({} traced, {exo_no_sw} UNTRACED) | {endo} endorheic (legit, no outlet)", bsr.spillways.len());
+    eprintln!(
+        "\n=== Finding 32 — spillway coverage over ALL {} below-sea basins ===",
+        bsr.basins.len()
+    );
+    eprintln!(
+        "  regimes: {exo} exorheic ({} traced, {exo_no_sw} UNTRACED) | {endo} endorheic (legit, no outlet)",
+        bsr.spillways.len()
+    );
     eprintln!("  STEP 4 invariant: exorheic basins lacking a spillway = {exo_no_sw} (must be 0)");
     // STEP 1 — the most over-supplied basin (the one the big rivers converge on): full balance.
-    if let Some(b) = bsr.basins.iter().max_by(|a, b| a.inflow_m3s.partial_cmp(&b.inflow_m3s).unwrap()) {
+    if let Some(b) =
+        bsr.basins.iter().max_by(|a, b| a.inflow_m3s.partial_cmp(&b.inflow_m3s).unwrap())
+    {
         let sw = bsr.spillways.iter().find(|s| s.lake_id == b.id);
-        eprintln!("  STEP 1 max-inflow basin #{}: area {:.2} km² | inflow {:.1} m³/s | evap {:.3} m³/s | regime {} | balance compared a_eq {:.0} vs a_spill {:.0} km² | spill level {:.0} m | spillway {}",
-            b.id, b.area_km2, b.inflow_m3s, b.evaporation_m3s,
-            if b.exorheic { "EXORHEIC" } else { "endorheic" }, b.a_eq_km2, b.a_spill_km2, b.spill_level_m,
-            match sw { Some(s) => format!("TRACED, Q {:.1} m³/s → {}", s.discharge_m3s, if s.chained_into.is_some() { "chained" } else { "sea" }), None => "NONE".to_string() });
+        eprintln!(
+            "  STEP 1 max-inflow basin #{}: area {:.2} km² | inflow {:.1} m³/s | evap {:.3} m³/s | regime {} | balance compared a_eq {:.0} vs a_spill {:.0} km² | spill level {:.0} m | spillway {}",
+            b.id,
+            b.area_km2,
+            b.inflow_m3s,
+            b.evaporation_m3s,
+            if b.exorheic { "EXORHEIC" } else { "endorheic" },
+            b.a_eq_km2,
+            b.a_spill_km2,
+            b.spill_level_m,
+            match sw {
+                Some(s) => format!(
+                    "TRACED, Q {:.1} m³/s → {}",
+                    s.discharge_m3s,
+                    if s.chained_into.is_some() { "chained" } else { "sea" }
+                ),
+                None => "NONE".to_string(),
+            }
+        );
     }
 
     // Basin sizes (all marked cells → per-id count).
     let mut area_cells: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
-    for &id in bsr.lake_map.iter() { if id != 0 { *area_cells.entry(id).or_default() += 1; } }
+    for &id in bsr.lake_map.iter() {
+        if id != 0 {
+            *area_cells.entry(id).or_default() += 1;
+        }
+    }
     let inv: std::collections::HashSet<u32> = bsr.lakes.iter().map(|l| l.base.id).collect();
     let min_cells = (dcfg.lake_min_area_km2 / cell_km2).ceil().max(1.0) as usize;
     let sub: Vec<u32> = area_cells.keys().copied().filter(|id| !inv.contains(id)).collect();
-    let sp_by_id: std::collections::HashMap<u32, f32> = bsr.spillways.iter().map(|s| (s.lake_id, s.discharge_m3s)).collect();
-    let mut sub_q: Vec<f32> = sub.iter().map(|id| sp_by_id.get(id).copied().unwrap_or(0.0)).collect();
+    let sp_by_id: std::collections::HashMap<u32, f32> =
+        bsr.spillways.iter().map(|s| (s.lake_id, s.discharge_m3s)).collect();
+    let mut sub_q: Vec<f32> =
+        sub.iter().map(|id| sp_by_id.get(id).copied().unwrap_or(0.0)).collect();
     sub_q.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let nontrivial = sub_q.iter().filter(|&&q| q > 1.0).count();
-    eprintln!("\n=== Finding 31 — sub-threshold below-sea sinks (2048², min inventory {min_cells} cells / 5 km²) ===");
-    eprintln!("  TASK 1 population: {} below-sea basins total | {} SUB-threshold (not inventoried) | {} of those with spillway | {nontrivial} with Q>1 m³/s",
-        area_cells.len(), sub.len(), sub.iter().filter(|id| sp_by_id.contains_key(id)).count());
+    eprintln!(
+        "\n=== Finding 31 — sub-threshold below-sea sinks (2048², min inventory {min_cells} cells / 5 km²) ==="
+    );
+    eprintln!(
+        "  TASK 1 population: {} below-sea basins total | {} SUB-threshold (not inventoried) | {} of those with spillway | {nontrivial} with Q>1 m³/s",
+        area_cells.len(),
+        sub.len(),
+        sub.iter().filter(|id| sp_by_id.contains_key(id)).count()
+    );
     if !sub_q.is_empty() {
-        eprintln!("  TASK 1 sub-threshold spillway Q: min {:.1} / p50 {:.1} / max {:.1} m³/s", sub_q[0], sub_q[sub_q.len()/2], sub_q[sub_q.len()-1]);
+        eprintln!(
+            "  TASK 1 sub-threshold spillway Q: min {:.1} / p50 {:.1} / max {:.1} m³/s",
+            sub_q[0],
+            sub_q[sub_q.len() / 2],
+            sub_q[sub_q.len() - 1]
+        );
     }
     // TASK 2 — sea-label violations. A river mouth is MISLABELLED "sea" (by altitude) when its
     // terminal cell is below sea but NOT ocean (wc != 1). Count mouths landing on a sub-threshold
     // basin (before: unmarked → "sea"; after: marked → lake) and any residual wc!=1 non-lake mouth.
-    let (mut altitude_sea, mut to_basin, mut to_flats, mut wc_sea_mislabel) = (0usize, 0usize, 0usize, 0usize);
+    let (mut altitude_sea, mut to_basin, mut to_flats, mut wc_sea_mislabel) =
+        (0usize, 0usize, 0usize, 0usize);
     for s in &dr.rivers.segments {
-        if s.downstream.is_some() { continue; } // only true mouths
+        if s.downstream.is_some() {
+            continue;
+        } // only true mouths
         let &(mx, my) = s.points.last().unwrap();
         let k = my as usize * t + mx as usize;
         if field.data[k] <= SEA && wc[k] != 1 {
             // below-sea, NOT ocean: the OLD altitude rule called this "sea".
             altitude_sea += 1;
-            if bsr.lake_map[k] != 0 { to_basin += 1; } else { to_flats += 1; }
+            if bsr.lake_map[k] != 0 {
+                to_basin += 1;
+            } else {
+                to_flats += 1;
+            }
         }
         // NEW rule (classify_sink authority): "sea" ONLY if wc==1. A mouth labelled sea whose
         // cell is not ocean is a violation — must be 0.
-        if wc[k] == 1 { /* ok: genuine ocean */ } else if false { wc_sea_mislabel += 1; }
+        if wc[k] == 1 { /* ok: genuine ocean */
+        } else if false {
+            wc_sea_mislabel += 1;
+        }
     }
-    eprintln!("  TASK 2 sea-label: {altitude_sea} mouths on below-sea NON-ocean cells (old altitude rule → 'sea'). New water_class authority → mislabelled 'sea' = {wc_sea_mislabel}.");
-    eprintln!("     of those {altitude_sea}: {to_basin} now terminate at a MARKED basin (→ lake); {to_flats} on dry below-sea flats (→ Unknown terminal, correctly NOT sea).");
+    eprintln!(
+        "  TASK 2 sea-label: {altitude_sea} mouths on below-sea NON-ocean cells (old altitude rule → 'sea'). New water_class authority → mislabelled 'sea' = {wc_sea_mislabel}."
+    );
+    eprintln!(
+        "     of those {altitude_sea}: {to_basin} now terminate at a MARKED basin (→ lake); {to_flats} on dry below-sea flats (→ Unknown terminal, correctly NOT sea)."
+    );
     // TASK 3 — the most over-supplied sub-threshold basin.
-    if let Some(&id) = sub.iter().max_by(|&&a, &&b| sp_by_id.get(&a).copied().unwrap_or(0.0).partial_cmp(&sp_by_id.get(&b).copied().unwrap_or(0.0)).unwrap()) {
+    if let Some(&id) = sub.iter().max_by(|&&a, &&b| {
+        sp_by_id
+            .get(&a)
+            .copied()
+            .unwrap_or(0.0)
+            .partial_cmp(&sp_by_id.get(&b).copied().unwrap_or(0.0))
+            .unwrap()
+    }) {
         let area = area_cells[&id] as f32 * cell_km2;
         let sw = bsr.spillways.iter().find(|s| s.lake_id == id);
-        let (q, sink) = match sw { Some(s) => (s.discharge_m3s, if s.chained_into.is_some() { "chaîné" } else { "mer" }), None => (0.0, "TERMINAL (endoréique)") };
-        eprintln!("  TASK 3 most over-supplied sub-threshold basin #{id}: area {area:.2} km² · spillway Q {q:.0} m³/s → {sink}", );
+        let (q, sink) = match sw {
+            Some(s) => (s.discharge_m3s, if s.chained_into.is_some() { "chaîné" } else { "mer" }),
+            None => (0.0, "TERMINAL (endoréique)"),
+        };
+        eprintln!(
+            "  TASK 3 most over-supplied sub-threshold basin #{id}: area {area:.2} km² · spillway Q {q:.0} m³/s → {sink}",
+        );
     }
 }
 
@@ -3933,27 +4812,48 @@ fn below_sea_outlet_diagnosis() {
     let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
     let seed = WorldSeed::new(seed_u);
     let mut fc = FbmUpscaleConfig::c1_hd_production(t);
-    fc.erosion = None; fc.bathymetry = None; fc.amplitude_base = 0.04;
+    fc.erosion = None;
+    fc.bathymetry = None;
+    fc.amplitude_base = 0.04;
     let fbm = upscale_with_fbm(&coarse, SEA, &seed, &fc).heightmap;
     let post = incise(&fbm, &StreamPowerConfig::relief_v3(cell_km2, ss.depth_scale_m as f32));
     let dr0 = c1_drainage(&post, None, &C1DrainageConfig::default(), &ss);
     let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
     let climate = c1_climate_placed(&field, &ss, 38.0, 27.0, &PrecipParams::default(), domain);
     let dcfg = C1DrainageConfig::default();
-    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
     use ymir_core::terrain::flow::RiverSegment;
     let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
     let spillways = bsr.spillways;
     let wetland = bsr.wetland;
     let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
-    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    for k in 0..bs_map.len() {
+        if bs_map[k] != 0 && dr.lake_map[k] == 0 {
+            dr.lake_map[k] = bs_map[k];
+        }
+    }
     dr.lakes.extend(bs);
     // Finding 30 — append the traced spillways as watercourses (mirror of the HD wiring).
     let (mut to_sea, mut chained) = (0usize, 0usize);
     for sw in &spillways {
-        if sw.chained_into.is_some() { chained += 1; } else { to_sea += 1; }
-        dr.rivers.segments.push(RiverSegment { points: sw.points.clone(), strahler_order: 1, avg_flow: 0.0, max_flow: 0.0, basin_id: 0, upstream: vec![], downstream: None });
+        if sw.chained_into.is_some() {
+            chained += 1;
+        } else {
+            to_sea += 1;
+        }
+        dr.rivers.segments.push(RiverSegment {
+            points: sw.points.clone(),
+            strahler_order: 1,
+            avg_flow: 0.0,
+            max_flow: 0.0,
+            basin_id: 0,
+            upstream: vec![],
+            downstream: None,
+        });
         dr.segment_drainage_km2.push(sw.drainage_km2);
         dr.segment_navigability.push(sw.navigability);
         dr.segment_discharge_m3s.push(sw.discharge_m3s);
@@ -3965,65 +4865,131 @@ fn below_sea_outlet_diagnosis() {
     let norm_m = |nrm: f32| c1_altitude_norm_to_metres(nrm, &ss);
 
     eprintln!("\n=== Finding 30 — exorheic spillways traced + wetland export (2048²) ===");
-    eprintln!("  {} spillways traced ({to_sea} → sea, {chained} chained through another basin)", spillways.len());
+    eprintln!(
+        "  {} spillways traced ({to_sea} → sea, {chained} chained through another basin)",
+        spillways.len()
+    );
     for sw in &spillways {
         let &(lx, ly) = sw.points.last().unwrap();
-        let sink = if field.data[ly as usize * t + lx as usize] <= SEA { "mer".to_string() } else if let Some(c) = sw.chained_into { format!("→ bassin #{c}") } else { "?".to_string() };
-        eprintln!("     spillway lac #{}: {} pts · Q {:.1} m³/s · width {:.0} m · sink {sink}", sw.lake_id, sw.points.len(), sw.discharge_m3s, sw.width_m);
+        let sink = if field.data[ly as usize * t + lx as usize] <= SEA {
+            "mer".to_string()
+        } else if let Some(c) = sw.chained_into {
+            format!("→ bassin #{c}")
+        } else {
+            "?".to_string()
+        };
+        eprintln!(
+            "     spillway lac #{}: {} pts · Q {:.1} m³/s · width {:.0} m · sink {sink}",
+            sw.lake_id,
+            sw.points.len(),
+            sw.discharge_m3s,
+            sw.width_m
+        );
     }
-    let below: Vec<&_> = dr.lakes.iter().filter(|l| l.base.id >= 1_000_001 && l.lake_type == LakeType::Exorheic).collect();
+    let below: Vec<&_> = dr
+        .lakes
+        .iter()
+        .filter(|l| l.base.id >= 1_000_001 && l.lake_type == LakeType::Exorheic)
+        .collect();
     eprintln!("  {} exorheic below-sea basins:", below.len());
     for lk in &below {
         let id = lk.base.id;
         let cells: Vec<usize> = (0..t * t).filter(|&k| dr.lake_map[k] == id).collect();
         let (mut c0, mut c1, mut c2) = (0usize, 0usize, 0usize);
-        for &k in &cells { match wc[k] { 0 => c0 += 1, 1 => c1 += 1, _ => c2 += 1 } }
+        for &k in &cells {
+            match wc[k] {
+                0 => c0 += 1,
+                1 => c1 += 1,
+                _ => c2 += 1,
+            }
+        }
         // outlet reach: a river whose SOURCE (first point) is adjacent to the lake.
         let outlet = dr.rivers.segments.iter().enumerate().find(|(_, s)| {
             let &(fx, fy) = s.points.first().unwrap();
-            (-1i32..=1).any(|dy| (-1i32..=1).any(|dx| { let (nx, ny) = (fx as i32 + dx, fy as i32 + dy);
-                nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 && dr.lake_map[ny as usize * t + nx as usize] == id }))
+            (-1i32..=1).any(|dy| {
+                (-1i32..=1).any(|dx| {
+                    let (nx, ny) = (fx as i32 + dx, fy as i32 + dy);
+                    nx >= 0
+                        && ny >= 0
+                        && nx < t as i32
+                        && ny < t as i32
+                        && dr.lake_map[ny as usize * t + nx as usize] == id
+                })
+            })
         });
         // ocean surface-contiguity: BFS over ≤SEA water cells from the lake → reach a class-1 ocean cell?
         let mut seen = std::collections::HashSet::new();
         let mut q = std::collections::VecDeque::new();
-        for &k in &cells { seen.insert(k); q.push_back(k); }
+        for &k in &cells {
+            seen.insert(k);
+            q.push_back(k);
+        }
         let mut touches_ocean = false;
         while let Some(k) = q.pop_front() {
             let (x, y) = ((k % t) as i32, (k / t) as i32);
-            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] { let (nx, ny) = (x + dx, y + dy);
-                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 { let nk = ny as usize * t + nx as usize;
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                    let nk = ny as usize * t + nx as usize;
                     if field.data[nk] <= SEA && !seen.contains(&nk) {
-                        if wc[nk] == 1 { touches_ocean = true; }
-                        seen.insert(nk); q.push_back(nk);
+                        if wc[nk] == 1 {
+                            touches_ocean = true;
+                        }
+                        seen.insert(nk);
+                        q.push_back(nk);
                     }
                 }
             }
         }
         // depth distribution + margin slope for lagoon-vs-wetland.
-        let mut depths: Vec<f32> = cells.iter().map(|&k| norm_m(lk.base.surface_elevation) - norm_m(field.data[k])).collect();
+        let mut depths: Vec<f32> = cells
+            .iter()
+            .map(|&k| norm_m(lk.base.surface_elevation) - norm_m(field.data[k]))
+            .collect();
         depths.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let shallow = depths.iter().filter(|&&d| d < 3.0).count();
         // mean margin slope: |grad| at the lake shore cells (Sobel-ish, 1-cell).
-        let mut sl_sum = 0.0f32; let mut sl_n = 0usize;
+        let mut sl_sum = 0.0f32;
+        let mut sl_n = 0usize;
         for &k in &cells {
             let (x, y) = ((k % t) as i32, (k / t) as i32);
             let mut edge = false;
-            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] { let (nx, ny) = (x + dx, y + dy);
-                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 && dr.lake_map[ny as usize * t + nx as usize] != id { edge = true; } }
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx >= 0
+                    && ny >= 0
+                    && nx < t as i32
+                    && ny < t as i32
+                    && dr.lake_map[ny as usize * t + nx as usize] != id
+                {
+                    edge = true;
+                }
+            }
             if edge {
                 let mpn = norm_m(1.0) - norm_m(0.0); // metres per unit norm
                 let gx = (field.get(x + 1, y) - field.get(x - 1, y)).abs();
                 let gy = (field.get(x, y + 1) - field.get(x, y - 1)).abs();
-                sl_sum += mpn * gx.max(gy) / (2.0 * cell_m); sl_n += 1;
+                sl_sum += mpn * gx.max(gy) / (2.0 * cell_m);
+                sl_n += 1;
             }
         }
         let slope_pct = if sl_n > 0 { 100.0 * sl_sum / sl_n as f32 } else { 0.0 };
-        let verdict = if touches_ocean { "H3 (surface-contiguous with ocean → lagoon/sea-arm, not a lake)" }
-            else if outlet.is_some() { "H1 (outlet reach exists in data)" }
-            else { "H2 (exorheic label, NO spill path traced)" };
-        eprintln!("  #{id}: {} cells | wc land {c0} / OCEAN {c1} / enclosed {c2} | outlet_reach(after fix) {} | ocean-contig {touches_ocean} | depth p50 {:.0}m max {:.0}m shallow<3m {}% | shore slope {:.1}% → {verdict}",
-            cells.len(), outlet.is_some(), depths[depths.len()/2], *depths.last().unwrap(), 100 * shallow / cells.len().max(1), slope_pct);
+        let verdict = if touches_ocean {
+            "H3 (surface-contiguous with ocean → lagoon/sea-arm, not a lake)"
+        } else if outlet.is_some() {
+            "H1 (outlet reach exists in data)"
+        } else {
+            "H2 (exorheic label, NO spill path traced)"
+        };
+        eprintln!(
+            "  #{id}: {} cells | wc land {c0} / OCEAN {c1} / enclosed {c2} | outlet_reach(after fix) {} | ocean-contig {touches_ocean} | depth p50 {:.0}m max {:.0}m shallow<3m {}% | shore slope {:.1}% → {verdict}",
+            cells.len(),
+            outlet.is_some(),
+            depths[depths.len() / 2],
+            *depths.last().unwrap(),
+            100 * shallow / cells.len().max(1),
+            slope_pct
+        );
     }
     // TASK 3 — wetland export: area + biome impact.
     use ymir_core::climate::biomes::Biome;
@@ -4033,9 +4999,13 @@ fn below_sea_outlet_diagnosis() {
     let land = biomes.iter().filter(|b| **b != Biome::Ocean).count().max(1);
     let wet_biome = biomes.iter().filter(|b| **b == Biome::Wetland).count();
     let lake_biome = biomes.iter().filter(|b| **b == Biome::Lake).count();
-    eprintln!("  TASK 3 wetland export: {wet_cells} wetland cells = {:.0} km² ({:.2}% of land) | biome Wetland {:.2}% · Lake {:.2}% (were all Lake before)",
-        wet_cells as f32 * cell_km2, 100.0 * wet_cells as f32 / land as f32,
-        100.0 * wet_biome as f32 / land as f32, 100.0 * lake_biome as f32 / land as f32);
+    eprintln!(
+        "  TASK 3 wetland export: {wet_cells} wetland cells = {:.0} km² ({:.2}% of land) | biome Wetland {:.2}% · Lake {:.2}% (were all Lake before)",
+        wet_cells as f32 * cell_km2,
+        100.0 * wet_cells as f32 / land as f32,
+        100.0 * wet_biome as f32 / land as f32,
+        100.0 * lake_biome as f32 / land as f32
+    );
 }
 
 /// Finding 28 — inspection microscope DATA (what the four viz panels assemble from the
@@ -4048,7 +5018,8 @@ fn inspection_panels_data() {
     use ymir_core::climate::precipitation::PrecipParams;
     use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
     use ymir_core::tectonics_c1::drainage::{
-        DrainageThresholds, DrainageClimate, LakeType, apply_geo_scale_ratio, below_sea_basin_lakes, clip_rivers_to_lakes,
+        DrainageClimate, DrainageThresholds, LakeType, apply_geo_scale_ratio,
+        below_sea_basin_lakes, clip_rivers_to_lakes,
     };
     use ymir_core::terrain::flow::breach_monotone;
     let ss = SteinSteinParams::default();
@@ -4069,10 +5040,18 @@ fn inspection_panels_data() {
     let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
     let climate = c1_climate_placed(&field, &ss, 38.0, 27.0, &PrecipParams::default(), domain);
     let dcfg = C1DrainageConfig::default();
-    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
-    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
+    for k in 0..bs_map.len() {
+        if bs_map[k] != 0 && dr.lake_map[k] == 0 {
+            dr.lake_map[k] = bs_map[k];
+        }
+    }
     dr.lakes.extend(bs);
     apply_geo_scale_ratio(&mut dr, ratio, &DrainageThresholds::default());
     clip_rivers_to_lakes(&mut dr);
@@ -4082,65 +5061,159 @@ fn inspection_panels_data() {
     let n = segs.len();
     let q = |i: usize| dr.segment_discharge_m3s.get(i).copied().unwrap_or(0.0);
     let mut root = vec![0usize; n];
-    for i in 0..n { let mut j = i; for _ in 0..=n { match segs[j].downstream { Some(k) if k < n => j = k, _ => break } } root[i] = j; }
-    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
-    for i in 0..n { groups.entry(root[i]).or_default().push(i); }
-    let endo: std::collections::HashSet<u32> = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).map(|l| l.base.id).collect();
-    let sink_of = |mx: u32, my: u32| -> &'static str {
-        for dy in -1i32..=1 { for dx in -1i32..=1 {
-            let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
-            if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
-                let k = ny as usize * t + nx as usize;
-                if field.data[k] <= SEA { return "mer"; }
-                let id = dr.lake_map[k];
-                if id != 0 { return if endo.contains(&id) { "bassin endoréique" } else { "lac exoréique" }; }
+    for i in 0..n {
+        let mut j = i;
+        for _ in 0..=n {
+            match segs[j].downstream {
+                Some(k) if k < n => j = k,
+                _ => break,
             }
-        }} "?"
+        }
+        root[i] = j;
+    }
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+    for i in 0..n {
+        groups.entry(root[i]).or_default().push(i);
+    }
+    let endo: std::collections::HashSet<u32> =
+        dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).map(|l| l.base.id).collect();
+    let sink_of = |mx: u32, my: u32| -> &'static str {
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                    let k = ny as usize * t + nx as usize;
+                    if field.data[k] <= SEA {
+                        return "mer";
+                    }
+                    let id = dr.lake_map[k];
+                    if id != 0 {
+                        return if endo.contains(&id) {
+                            "bassin endoréique"
+                        } else {
+                            "lac exoréique"
+                        };
+                    }
+                }
+            }
+        }
+        "?"
     };
     // longest-path (points) per segment → geographic main stem.
     let mut pathlen = vec![0u32; n];
     let mut ord: Vec<usize> = (0..n).collect();
     ord.sort_by_key(|&i| segs[i].strahler_order);
-    for _ in 0..16 { let mut changed = false; for &i in &ord { let up = segs[i].upstream.iter().copied().filter(|&u| u < n).map(|u| pathlen[u]).max().unwrap_or(0); let v = up + segs[i].points.len() as u32; if v != pathlen[i] { pathlen[i] = v; changed = true; } } if !changed { break; } }
-    struct Wc { root: usize, segs: Vec<usize>, trunk: Vec<usize>, q: f32, sink: &'static str }
-    let mut wcs: Vec<Wc> = groups.into_iter().map(|(r, members)| {
-        let mut trunk = Vec::new(); let mut cur = r;
-        for _ in 0..=n { trunk.push(cur); match segs[cur].upstream.iter().copied().filter(|&u| u < n).max_by_key(|&u| pathlen[u]) { Some(nx) => cur = nx, None => break } }
-        trunk.reverse();
-        let (mx, my) = *segs[r].points.last().unwrap();
-        Wc { root: r, segs: members, trunk, q: q(r), sink: sink_of(mx, my) }
-    }).collect();
+    for _ in 0..16 {
+        let mut changed = false;
+        for &i in &ord {
+            let up = segs[i]
+                .upstream
+                .iter()
+                .copied()
+                .filter(|&u| u < n)
+                .map(|u| pathlen[u])
+                .max()
+                .unwrap_or(0);
+            let v = up + segs[i].points.len() as u32;
+            if v != pathlen[i] {
+                pathlen[i] = v;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    struct Wc {
+        root: usize,
+        segs: Vec<usize>,
+        trunk: Vec<usize>,
+        q: f32,
+        sink: &'static str,
+    }
+    let mut wcs: Vec<Wc> = groups
+        .into_iter()
+        .map(|(r, members)| {
+            let mut trunk = Vec::new();
+            let mut cur = r;
+            for _ in 0..=n {
+                trunk.push(cur);
+                match segs[cur]
+                    .upstream
+                    .iter()
+                    .copied()
+                    .filter(|&u| u < n)
+                    .max_by_key(|&u| pathlen[u])
+                {
+                    Some(nx) => cur = nx,
+                    None => break,
+                }
+            }
+            trunk.reverse();
+            let (mx, my) = *segs[r].points.last().unwrap();
+            Wc { root: r, segs: members, trunk, q: q(r), sink: sink_of(mx, my) }
+        })
+        .collect();
     wcs.sort_by(|a, b| b.q.partial_cmp(&a.q).unwrap());
     eprintln!("\n=== Finding 28 — inspection panels DATA (ratio {ratio}, centre 38° span 27°) ===");
     eprintln!("  TASK 2 — {} watercourses (from {} segments). Top 8 by discharge:", wcs.len(), n);
     for (i, wc) in wcs.iter().take(8).enumerate() {
-        eprintln!("     #{:<2} S{} · {:.0} m³/s · {} trib · {}", i + 1, segs[wc.root].strahler_order, wc.q, wc.segs.len().saturating_sub(1), wc.sink);
+        eprintln!(
+            "     #{:<2} S{} · {:.0} m³/s · {} trib · {}",
+            i + 1,
+            segs[wc.root].strahler_order,
+            wc.q,
+            wc.segs.len().saturating_sub(1),
+            wc.sink
+        );
     }
     // TASK 3 — profile of the top watercourse by WALKING the flow field from its main-stem
     // headwater (breached field → monotone; no dependence on clipped segment links).
     use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
-    let norm_to_m = |nrm: f32| ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres(nrm, &ss);
+    let norm_to_m = |nrm: f32| {
+        ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres(nrm, &ss)
+    };
     let top = &wcs[0];
     let mut elev: Vec<f32> = Vec::new();
     let (sx, sy) = segs[*top.trunk.first().unwrap()].points[0];
     let mut kk = sy as usize * t + sx as usize;
     for _ in 0..(2 * t) {
         elev.push(norm_to_m(field.data[kk]));
-        if field.data[kk] <= SEA || dr.lake_map[kk] != 0 { break; }
+        if field.data[kk] <= SEA || dr.lake_map[kk] != 0 {
+            break;
+        }
         let dir = dr.flow.direction[kk];
-        if dir == DIR_NONE { break; }
-        let (nx, ny) = ((kk % t) as i32 + D8_DX[dir as usize], (kk / t) as i32 + D8_DY[dir as usize]);
-        if nx < 0 || ny < 0 || nx as usize >= t || ny as usize >= t { break; }
+        if dir == DIR_NONE {
+            break;
+        }
+        let (nx, ny) =
+            ((kk % t) as i32 + D8_DX[dir as usize], (kk / t) as i32 + D8_DY[dir as usize]);
+        if nx < 0 || ny < 0 || nx as usize >= t || ny as usize >= t {
+            break;
+        }
         kk = ny as usize * t + nx as usize;
     }
     let (mut lo, mut hi, mut climb) = (f32::MAX, f32::MIN, 0.0f32);
-    for &e in &elev { lo = lo.min(e); hi = hi.max(e); }
-    for w in elev.windows(2) { climb = climb.max(w[1] - w[0]); }
+    for &e in &elev {
+        lo = lo.min(e);
+        hi = hi.max(e);
+    }
+    for w in elev.windows(2) {
+        climb = climb.max(w[1] - w[0]);
+    }
     let length_km = elev.len() as f32 * km_per_cell * ratio;
-    eprintln!("  TASK 3 — river #1 long profile: {} points · {:.0}→{:.0} m · length {:.0} km · max climb {:.1} m ({}) · width mouth {:.0} m / source {:.0} m · sink {}",
-        elev.len(), elev.first().copied().unwrap_or(0.0), elev.last().copied().unwrap_or(0.0), length_km, climb,
+    eprintln!(
+        "  TASK 3 — river #1 long profile: {} points · {:.0}→{:.0} m · length {:.0} km · max climb {:.1} m ({}) · width mouth {:.0} m / source {:.0} m · sink {}",
+        elev.len(),
+        elev.first().copied().unwrap_or(0.0),
+        elev.last().copied().unwrap_or(0.0),
+        length_km,
+        climb,
         if climb > 1.0 { "NON-monotone" } else { "monotone ✓" },
-        dr.segment_width_m[top.root], dr.segment_width_m[*top.trunk.first().unwrap()], top.sink);
+        dr.segment_width_m[top.root],
+        dr.segment_width_m[*top.trunk.first().unwrap()],
+        top.sink
+    );
     // Visual: render the long profile (source→sink) + the latitude globe strip to a PNG,
     // replicating the two widgets so there is something to look at alongside the data.
     {
@@ -4151,7 +5224,10 @@ fn inspection_panels_data() {
         let mut img = vec![20u8; iw * ih * 3];
         let put = |img: &mut [u8], x: i32, y: i32, c: [u8; 3]| {
             if x >= 0 && y >= 0 && (x as usize) < iw && (y as usize) < ih {
-                let k = (y as usize * iw + x as usize) * 3; img[k] = c[0]; img[k + 1] = c[1]; img[k + 2] = c[2];
+                let k = (y as usize * iw + x as usize) * 3;
+                img[k] = c[0];
+                img[k + 1] = c[1];
+                img[k + 2] = c[2];
             }
         };
         // Globe strip (left 120 px): thermal gradient + belt lines + map rectangle (centre 38 span 27).
@@ -4161,55 +5237,133 @@ fn inspection_panels_data() {
             let lat = 90.0 - (yy as f32 - 10.0) / (ih as f32 - 20.0) * 180.0;
             let t = sea_level_temperature(lat);
             let f = ((t + 25.0) / 52.0).clamp(0.0, 1.0);
-            let c = [(40.0 + 200.0 * f) as u8, (90.0 + 60.0 * (1.0 - (f - 0.5).abs() * 2.0)) as u8, (200.0 - 170.0 * f) as u8];
-            for xx in 10..110 { put(&mut img, xx, yy, c); }
+            let c = [
+                (40.0 + 200.0 * f) as u8,
+                (90.0 + 60.0 * (1.0 - (f - 0.5).abs() * 2.0)) as u8,
+                (200.0 - 170.0 * f) as u8,
+            ];
+            for xx in 10..110 {
+                put(&mut img, xx, yy, c);
+            }
         }
-        for lat in [-60.0f32, -30.0, 0.0, 30.0, 60.0] { let y = y_of_lat(lat); for xx in 10..110 { put(&mut img, xx, y, [255, 255, 255]); } }
+        for lat in [-60.0f32, -30.0, 0.0, 30.0, 60.0] {
+            let y = y_of_lat(lat);
+            for xx in 10..110 {
+                put(&mut img, xx, y, [255, 255, 255]);
+            }
+        }
         let (y0, y1) = (y_of_lat(centre + span / 2.0), y_of_lat(centre - span / 2.0));
-        for yy in y0..=y1 { put(&mut img, 10, yy, [230, 150, 60]); put(&mut img, 109, yy, [230, 150, 60]); }
-        for xx in 10..110 { put(&mut img, xx, y0, [230, 150, 60]); put(&mut img, xx, y1, [230, 150, 60]); }
+        for yy in y0..=y1 {
+            put(&mut img, 10, yy, [230, 150, 60]);
+            put(&mut img, 109, yy, [230, 150, 60]);
+        }
+        for xx in 10..110 {
+            put(&mut img, xx, y0, [230, 150, 60]);
+            put(&mut img, xx, y1, [230, 150, 60]);
+        }
         let _ = wind_zonal_dir(45.0);
         // Profile plot (right region): elevation source→sink.
         let (px0, py0, pw, ph) = (150i32, 30i32, 720i32, 260i32);
-        for yy in py0..py0 + ph { for xx in px0..px0 + pw { put(&mut img, xx, yy, [24, 24, 30]); } }
+        for yy in py0..py0 + ph {
+            for xx in px0..px0 + pw {
+                put(&mut img, xx, yy, [24, 24, 30]);
+            }
+        }
         let (mut lo2, mut hi2) = (f32::MAX, f32::MIN);
-        for &e in &elev { lo2 = lo2.min(e); hi2 = hi2.max(e); }
+        for &e in &elev {
+            lo2 = lo2.min(e);
+            hi2 = hi2.max(e);
+        }
         let sp = (hi2 - lo2).max(1.0);
         let ne = elev.len();
         let y0m = py0 + ph - 1 - ((0.0 - lo2) / sp * (ph as f32 - 2.0)) as i32; // sea level line
-        if lo2 <= 0.0 && hi2 >= 0.0 { for xx in px0..px0 + pw { put(&mut img, xx, y0m, [90, 150, 210]); } }
+        if lo2 <= 0.0 && hi2 >= 0.0 {
+            for xx in px0..px0 + pw {
+                put(&mut img, xx, y0m, [90, 150, 210]);
+            }
+        }
         for i in 1..ne {
             let x_a = px0 + ((i - 1) as f32 / (ne - 1) as f32 * (pw as f32 - 2.0)) as i32;
             let x_b = px0 + (i as f32 / (ne - 1) as f32 * (pw as f32 - 2.0)) as i32;
             let y_a = py0 + ph - 1 - ((elev[i - 1] - lo2) / sp * (ph as f32 - 2.0)) as i32;
             let y_b = py0 + ph - 1 - ((elev[i] - lo2) / sp * (ph as f32 - 2.0)) as i32;
             let steps = (x_b - x_a).abs().max((y_b - y_a).abs()).max(1);
-            for s in 0..=steps { let t = s as f32 / steps as f32; put(&mut img, x_a + ((x_b - x_a) as f32 * t) as i32, y_a + ((y_b - y_a) as f32 * t) as i32, [230, 150, 60]); }
+            for s in 0..=steps {
+                let t = s as f32 / steps as f32;
+                put(
+                    &mut img,
+                    x_a + ((x_b - x_a) as f32 * t) as i32,
+                    y_a + ((y_b - y_a) as f32 * t) as i32,
+                    [230, 150, 60],
+                );
+            }
         }
         let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
         std::fs::create_dir_all(&dir).ok();
         let mut b = image::ImageBuffer::new(iw as u32, ih as u32);
-        for (k, pxl) in b.pixels_mut().enumerate() { *pxl = image::Rgb([img[k * 3], img[k * 3 + 1], img[k * 3 + 2]]); }
+        for (k, pxl) in b.pixels_mut().enumerate() {
+            *pxl = image::Rgb([img[k * 3], img[k * 3 + 1], img[k * 3 + 2]]);
+        }
         b.save(dir.join("microscope_globe_profile.png")).unwrap();
-        eprintln!("  VISUAL → exports/sculpt/microscope_globe_profile.png (globe strip + river #1 profile)");
+        eprintln!(
+            "  VISUAL → exports/sculpt/microscope_globe_profile.png (globe strip + river #1 profile)"
+        );
     }
 
     // TASK 4 — lake sheet for the largest lake.
-    if let Some((li, lk)) = dr.lakes.iter().enumerate().max_by(|a, b| a.1.area_km2.partial_cmp(&b.1.area_km2).unwrap()) {
+    if let Some((li, lk)) =
+        dr.lakes.iter().enumerate().max_by(|a, b| a.1.area_km2.partial_cmp(&b.1.area_km2).unwrap())
+    {
         let id = lk.base.id;
         let mut shore = 0usize;
-        for y in 0..t { for x in 0..t { if dr.lake_map[y * t + x] == id {
-            for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] { let (nx, ny) = (x as i32 + dx, y as i32 + dy);
-                if nx < 0 || ny < 0 || nx as usize >= t || ny as usize >= t || dr.lake_map[ny as usize * t + nx as usize] != id { shore += 1; } }
-        }}}
-        let inlets = segs.iter().filter(|s| { let &(mx, my) = s.points.last().unwrap();
-            (-1i32..=1).any(|dy| (-1i32..=1).any(|dx| { let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
-                nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 && dr.lake_map[ny as usize * t + nx as usize] == id })) }).count();
+        for y in 0..t {
+            for x in 0..t {
+                if dr.lake_map[y * t + x] == id {
+                    for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                        let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                        if nx < 0
+                            || ny < 0
+                            || nx as usize >= t
+                            || ny as usize >= t
+                            || dr.lake_map[ny as usize * t + nx as usize] != id
+                        {
+                            shore += 1;
+                        }
+                    }
+                }
+            }
+        }
+        let inlets = segs
+            .iter()
+            .filter(|s| {
+                let &(mx, my) = s.points.last().unwrap();
+                (-1i32..=1).any(|dy| {
+                    (-1i32..=1).any(|dx| {
+                        let (nx, ny) = (mx as i32 + dx, my as i32 + dy);
+                        nx >= 0
+                            && ny >= 0
+                            && nx < t as i32
+                            && ny < t as i32
+                            && dr.lake_map[ny as usize * t + nx as usize] == id
+                    })
+                })
+            })
+            .count();
         let _ = li;
-        eprintln!("  TASK 4 — lake #{id} sheet: {:.1} km² · rive {:.0} km · niveau {:.0} m · prof.max {:.0} m · {} affluents · {} · exutoire {}",
-            lk.area_km2, shore as f32 * km_per_cell, lk.level_m, lk.depth_m, inlets,
-            if lk.lake_type == LakeType::Endorheic { "endoréique (salé, non potable, pas de poisson)" } else { "exoréique (eau douce)" },
-            if lk.lake_type == LakeType::Endorheic { "aucun (fermé)" } else { "oui" });
+        eprintln!(
+            "  TASK 4 — lake #{id} sheet: {:.1} km² · rive {:.0} km · niveau {:.0} m · prof.max {:.0} m · {} affluents · {} · exutoire {}",
+            lk.area_km2,
+            shore as f32 * km_per_cell,
+            lk.level_m,
+            lk.depth_m,
+            inlets,
+            if lk.lake_type == LakeType::Endorheic {
+                "endoréique (salé, non potable, pas de poisson)"
+            } else {
+                "exoréique (eau douce)"
+            },
+            if lk.lake_type == LakeType::Endorheic { "aucun (fermé)" } else { "oui" }
+        );
     }
 }
 
@@ -4248,15 +5402,23 @@ fn southern_hemisphere_mirror() {
     let flat = GridF32::new(t, t, 0.62);
     let nf = c1_climate_placed(&flat, &ss, 45.0, span, &PrecipParams::default(), domain);
     let sf = c1_climate_placed(&flat, &ss, -45.0, span, &PrecipParams::default(), domain);
-    let row_mean = |g: &ymir_core::grid::GridF32, j: usize| (0..t).map(|i| g.data[j * t + i]).sum::<f32>() / t as f32;
+    let row_mean = |g: &ymir_core::grid::GridF32, j: usize| {
+        (0..t).map(|i| g.data[j * t + i]).sum::<f32>() / t as f32
+    };
     let mut max_dev = 0.0f32;
     for j in 0..t {
         let d = (row_mean(&nf.temperature, j) - row_mean(&sf.temperature, t - 1 - j)).abs();
         max_dev = max_dev.max(d);
     }
     eprintln!("\n=== STEP 3 — southern-hemisphere mirror (centre ±45°, span {span}°) ===");
-    eprintln!("  wind_zonal_dir: +45°→{} , −45°→{} (same sign: westerlies are W→E in BOTH hemispheres — correct)", wind_zonal_dir(45.0), wind_zonal_dir(-45.0));
-    eprintln!("  temperature mirror deviation on flat field (N[j] vs S[ny-1-j]): max {max_dev:.4} °C (≈0 ⇒ exact mirror)");
+    eprintln!(
+        "  wind_zonal_dir: +45°→{} , −45°→{} (same sign: westerlies are W→E in BOTH hemispheres — correct)",
+        wind_zonal_dir(45.0),
+        wind_zonal_dir(-45.0)
+    );
+    eprintln!(
+        "  temperature mirror deviation on flat field (N[j] vs S[ny-1-j]): max {max_dev:.4} °C (≈0 ⇒ exact mirror)"
+    );
     assert!(max_dev < 0.01, "south must be the exact vertical mirror of north (flat field)");
     // Renders for the eye.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
@@ -4290,19 +5452,30 @@ fn latitude_orientation_diagnosis() {
     let land = GridF32::new(t, t, 0.62); // flat land everywhere → temperature is pure latitude
     let (centre, span) = (60.0f32, 40.0f32);
     let clim = c1_climate_placed(&land, &ss, centre, span, &PrecipParams::default(), domain);
-    let row_mean = |j: usize| {
-        (0..t).map(|i| clim.temperature.data[j * t + i]).sum::<f32>() / t as f32
-    };
-    let (lat0, latN) = (row_latitude_span(0, t, centre, span), row_latitude_span(t - 1, t, centre, span));
+    let row_mean =
+        |j: usize| (0..t).map(|i| clim.temperature.data[j * t + i]).sum::<f32>() / t as f32;
+    let (lat0, latN) =
+        (row_latitude_span(0, t, centre, span), row_latitude_span(t - 1, t, centre, span));
     eprintln!("\n=== STEP 1 — latitude orientation (DATA, centre 60° span 40°) ===");
     eprintln!("  row j=0     → latitude {lat0:.0}° , mean T {:.1} °C", row_mean(0));
     eprintln!("  row j={:<4} → latitude {latN:.0}° , mean T {:.1} °C", t - 1, row_mean(t - 1));
     eprintln!("  DATA: row 0 = {lat0:.0}° (WARM, south) ; row max = {latN:.0}° (COLD, polar).");
-    eprintln!("  CONVENTION (container header): row-major, y=0 = SOUTH edge → row 0 = south = LOW |lat|. Data HONOURS it.");
-    eprintln!("  EXPORT: writes the internal grid row-major (row 0 first) → y=0=south. LL reads south-first. CORRECT.");
-    eprintln!("  RENDERER (workspace.rs ~1748): 'Row 0 (y=0=south) is at the TOP' → south/warm at TOP, polar/cold (tundra) at BOTTOM.");
-    eprintln!("  VERDICT: computation + export CORRECT (match the documented y=0=south); the VIEW draws south-up → visual inversion. Fix the VIEW only.");
-    assert!(row_mean(0) > row_mean(t - 1), "row 0 (south, low lat) must be WARMER than the polar row — data sanity");
+    eprintln!(
+        "  CONVENTION (container header): row-major, y=0 = SOUTH edge → row 0 = south = LOW |lat|. Data HONOURS it."
+    );
+    eprintln!(
+        "  EXPORT: writes the internal grid row-major (row 0 first) → y=0=south. LL reads south-first. CORRECT."
+    );
+    eprintln!(
+        "  RENDERER (workspace.rs ~1748): 'Row 0 (y=0=south) is at the TOP' → south/warm at TOP, polar/cold (tundra) at BOTTOM."
+    );
+    eprintln!(
+        "  VERDICT: computation + export CORRECT (match the documented y=0=south); the VIEW draws south-up → visual inversion. Fix the VIEW only."
+    );
+    assert!(
+        row_mean(0) > row_mean(t - 1),
+        "row 0 (south, low lat) must be WARMER than the polar row — data sanity"
+    );
 }
 
 /// Findings 24–25 — RECOMMENDED render for this island: geographic ratio 7.5 (ships/barges
@@ -4317,7 +5490,7 @@ fn recommended_render() {
     use ymir_core::climate::{c1_biomes_classified, c1_climate_placed};
     use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
     use ymir_core::tectonics_c1::drainage::{
-        DrainageThresholds, DrainageClimate, LakeType, Navigability, apply_geo_scale_ratio,
+        DrainageClimate, DrainageThresholds, LakeType, Navigability, apply_geo_scale_ratio,
         below_sea_basin_lakes, clip_rivers_to_lakes,
     };
     use ymir_core::terrain::flow::breach_monotone;
@@ -4339,10 +5512,18 @@ fn recommended_render() {
     let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
     let climate = c1_climate_placed(&field, &ss, centre, span, &PrecipParams::default(), domain);
     let dcfg = C1DrainageConfig::default();
-    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
-    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
+    for k in 0..bs_map.len() {
+        if bs_map[k] != 0 && dr.lake_map[k] == 0 {
+            dr.lake_map[k] = bs_map[k];
+        }
+    }
     dr.lakes.extend(bs);
     apply_geo_scale_ratio(&mut dr, ratio, &DrainageThresholds::default());
     clip_rivers_to_lakes(&mut dr);
@@ -4350,7 +5531,8 @@ fn recommended_render() {
 
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../exports/sculpt");
     std::fs::create_dir_all(&dir).ok();
-    let endorheic: std::collections::HashSet<u32> = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).map(|l| l.base.id).collect();
+    let endorheic: std::collections::HashSet<u32> =
+        dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).map(|l| l.base.id).collect();
     // Hydrology overlay (signified widths).
     let hs = hillshade(&field, domain, ss.depth_scale_m as f32);
     let mut img = vec![0u8; t * t * 3];
@@ -4358,40 +5540,81 @@ fn recommended_render() {
     for k in 0..t * t {
         let g = (hs.data[k].clamp(0.0, 1.0) * 255.0) as u8;
         let id = dr.lake_map[k];
-        let c = if id != 0 { if endorheic.contains(&id) { [30, 150, 140] } else { [30, 90, 180] } } else { [g, g, g] };
-        img[k * 3] = c[0]; img[k * 3 + 1] = c[1]; img[k * 3 + 2] = c[2];
+        let c = if id != 0 {
+            if endorheic.contains(&id) { [30, 150, 140] } else { [30, 90, 180] }
+        } else {
+            [g, g, g]
+        };
+        img[k * 3] = c[0];
+        img[k * 3 + 1] = c[1];
+        img[k * 3 + 2] = c[2];
         let bc = biomes[k].color();
-        bio[k * 3] = bc[0]; bio[k * 3 + 1] = bc[1]; bio[k * 3 + 2] = bc[2];
+        bio[k * 3] = bc[0];
+        bio[k * 3 + 1] = bc[1];
+        bio[k * 3 + 2] = bc[2];
     }
     for (i, seg) in dr.rivers.segments.iter().enumerate() {
         let nav = dr.segment_navigability.get(i).copied().unwrap_or(Navigability::NonNavigable);
-        let col = match nav { Navigability::Ship => [20, 70, 200], Navigability::Barge => [40, 110, 230], Navigability::SmallBoat => [90, 160, 240], Navigability::NonNavigable => [120, 150, 190] };
+        let col = match nav {
+            Navigability::Ship => [20, 70, 200],
+            Navigability::Barge => [40, 110, 230],
+            Navigability::SmallBoat => [90, 160, 240],
+            Navigability::NonNavigable => [120, 150, 190],
+        };
         let r = ((seg.strahler_order as i32 - 2).max(0)).min(3);
         for &(px, py) in &seg.points {
-            for dy in -r..=r { for dx in -r..=r {
-                let (nx, ny) = (px as i32 + dx, py as i32 + dy);
-                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 { let kk = (ny as usize * t + nx as usize) * 3; img[kk] = col[0]; img[kk + 1] = col[1]; img[kk + 2] = col[2]; }
-            }}
+            for dy in -r..=r {
+                for dx in -r..=r {
+                    let (nx, ny) = (px as i32 + dx, py as i32 + dy);
+                    if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                        let kk = (ny as usize * t + nx as usize) * 3;
+                        img[kk] = col[0];
+                        img[kk + 1] = col[1];
+                        img[kk + 2] = col[2];
+                    }
+                }
+            }
         }
     }
     let save = |name: &str, buf3: &[u8]| {
         let mut b = image::ImageBuffer::new(t as u32, t as u32);
-        for (k, px) in b.pixels_mut().enumerate() { *px = image::Rgb([buf3[k * 3], buf3[k * 3 + 1], buf3[k * 3 + 2]]); }
+        for (k, px) in b.pixels_mut().enumerate() {
+            *px = image::Rgb([buf3[k * 3], buf3[k * 3 + 1], buf3[k * 3 + 2]]);
+        }
         b.save(dir.join(name)).unwrap();
     };
     save("recommended_hydro.png", &img);
     save("recommended_biomes.png", &bio);
     let (mut sb, mut ba, mut sh) = (0usize, 0usize, 0usize);
-    for n in &dr.segment_navigability { match n { Navigability::SmallBoat => sb += 1, Navigability::Barge => ba += 1, Navigability::Ship => sh += 1, _ => {} } }
+    for n in &dr.segment_navigability {
+        match n {
+            Navigability::SmallBoat => sb += 1,
+            Navigability::Barge => ba += 1,
+            Navigability::Ship => sh += 1,
+            _ => {}
+        }
+    }
     let wmax = dr.segment_width_m.iter().cloned().fold(0.0f32, f32::max);
     let (mut tmin, mut tmax) = (f32::MAX, f32::MIN);
-    for &v in &climate.temperature.data { tmin = tmin.min(v); tmax = tmax.max(v); }
+    for &v in &climate.temperature.data {
+        tmin = tmin.min(v);
+        tmax = tmax.max(v);
+    }
     let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
     let land = biomes.iter().filter(|b| **b != Biome::Ocean).count().max(1);
-    for b in &biomes { if *b != Biome::Ocean { *counts.entry(b.name()).or_insert(0) += 1; } }
+    for b in &biomes {
+        if *b != Biome::Ocean {
+            *counts.entry(b.name()).or_insert(0) += 1;
+        }
+    }
     let mut top: Vec<(&str, usize)> = counts.into_iter().collect();
     top.sort_by(|a, b| b.1.cmp(&a.1));
-    let dist = top.iter().take(7).map(|(n, c)| format!("{} {:.0}%", n, 100.0 * *c as f32 / land as f32)).collect::<Vec<_>>().join(" · ");
+    let dist = top
+        .iter()
+        .take(7)
+        .map(|(n, c)| format!("{} {:.0}%", n, 100.0 * *c as f32 / land as f32))
+        .collect::<Vec<_>>()
+        .join(" · ");
     eprintln!("\n=== RECOMMENDED render (ratio {ratio}, centre {centre}° span {span}°, 2048²) ===");
     eprintln!("  hydrology: Sboat {sb} · barge {ba} · ship {sh} · largest width {wmax:.0} m");
     eprintln!("  climate:   T {tmin:.0}…{tmax:.0} °C · biomes {dist}");
@@ -4410,7 +5633,7 @@ fn scale_and_span_audit() {
     use ymir_core::climate::{c1_biomes_classified, c1_climate, c1_climate_placed};
     use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
     use ymir_core::tectonics_c1::drainage::{
-        DrainageThresholds, DrainageClimate, LakeType, Navigability, apply_geo_scale_ratio,
+        DrainageClimate, DrainageThresholds, LakeType, Navigability, apply_geo_scale_ratio,
         below_sea_basin_lakes, clip_rivers_to_lakes,
     };
     use ymir_core::terrain::flow::breach_monotone;
@@ -4431,10 +5654,18 @@ fn scale_and_span_audit() {
     let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
     let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
     let dcfg = C1DrainageConfig::default();
-    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
     let mut base = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
-    for k in 0..bs_map.len() { if bs_map[k] != 0 && base.lake_map[k] == 0 { base.lake_map[k] = bs_map[k]; } }
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
+    for k in 0..bs_map.len() {
+        if bs_map[k] != 0 && base.lake_map[k] == 0 {
+            base.lake_map[k] = bs_map[k];
+        }
+    }
     base.lakes.extend(bs);
 
     eprintln!("\n=== Finding 24 — geographic scale ratio (hydrology only), 2048² ===");
@@ -4445,16 +5676,34 @@ fn scale_and_span_audit() {
         clip_rivers_to_lakes(&mut dr);
         let (mut sb, mut ba, mut sh) = (0usize, 0usize, 0usize);
         for n in &dr.segment_navigability {
-            match n { Navigability::SmallBoat => sb += 1, Navigability::Barge => ba += 1, Navigability::Ship => sh += 1, _ => {} }
+            match n {
+                Navigability::SmallBoat => sb += 1,
+                Navigability::Barge => ba += 1,
+                Navigability::Ship => sh += 1,
+                _ => {}
+            }
         }
         let (mut wmax, mut qmax) = (0.0f32, 0.0f32);
         for i in 0..dr.rivers.segments.len() {
-            if dr.segment_width_m[i] > wmax { wmax = dr.segment_width_m[i]; qmax = dr.segment_discharge_m3s[i]; }
+            if dr.segment_width_m[i] > wmax {
+                wmax = dr.segment_width_m[i];
+                qmax = dr.segment_discharge_m3s[i];
+            }
         }
         // per-order median widths
         let mut per: std::collections::BTreeMap<u8, Vec<f32>> = std::collections::BTreeMap::new();
-        for (i, s) in dr.rivers.segments.iter().enumerate() { per.entry(s.strahler_order).or_default().push(dr.segment_width_m[i]); }
-        let ord = per.iter().map(|(o, v)| { let mut w = v.clone(); w.sort_by(|a, b| a.partial_cmp(b).unwrap()); format!("S{o} {:.0}m", w[w.len()/2]) }).collect::<Vec<_>>().join(" ");
+        for (i, s) in dr.rivers.segments.iter().enumerate() {
+            per.entry(s.strahler_order).or_default().push(dr.segment_width_m[i]);
+        }
+        let ord = per
+            .iter()
+            .map(|(o, v)| {
+                let mut w = v.clone();
+                w.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                format!("S{o} {:.0}m", w[w.len() / 2])
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
         eprintln!("  {ratio:>4} | {sb:5} | {ba:5} | {sh:4} | Q {qmax:.0} w {wmax:.0}m   [{ord}]");
     }
 
@@ -4464,13 +5713,25 @@ fn scale_and_span_audit() {
         let clim = c1_climate_placed(&field, &ss, 45.0, span, &PrecipParams::default(), domain);
         let biomes = c1_biomes_classified(&field, &clim, &base.lake_map);
         let (mut tmin, mut tmax) = (f32::MAX, f32::MIN);
-        for &v in &clim.temperature.data { tmin = tmin.min(v); tmax = tmax.max(v); }
+        for &v in &clim.temperature.data {
+            tmin = tmin.min(v);
+            tmax = tmax.max(v);
+        }
         let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
         let land = biomes.iter().filter(|b| **b != Biome::Ocean).count().max(1);
-        for b in &biomes { if *b != Biome::Ocean { *counts.entry(b.name()).or_insert(0) += 1; } }
+        for b in &biomes {
+            if *b != Biome::Ocean {
+                *counts.entry(b.name()).or_insert(0) += 1;
+            }
+        }
         let mut top: Vec<(&str, usize)> = counts.into_iter().collect();
         top.sort_by(|a, b| b.1.cmp(&a.1));
-        let dist = top.iter().take(6).map(|(n, c)| format!("{} {:.0}%", n, 100.0 * *c as f32 / land as f32)).collect::<Vec<_>>().join(" · ");
+        let dist = top
+            .iter()
+            .take(6)
+            .map(|(n, c)| format!("{} {:.0}%", n, 100.0 * *c as f32 / land as f32))
+            .collect::<Vec<_>>()
+            .join(" · ");
         let _ = precip_mm_per_year(0.0);
         eprintln!("  {span:>4} | {tmin:.0}…{tmax:.0} | {dist}");
     }
@@ -4484,7 +5745,9 @@ fn width_law_audit() {
     use ymir_core::climate::c1_climate;
     use ymir_core::climate::precipitation::PrecipParams;
     use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
-    use ymir_core::tectonics_c1::drainage::{DrainageClimate, below_sea_basin_lakes, clip_rivers_to_lakes};
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageClimate, below_sea_basin_lakes, clip_rivers_to_lakes,
+    };
     use ymir_core::terrain::flow::breach_monotone;
     let ss = SteinSteinParams::default();
     let seed_u = 10481999410520546993u64;
@@ -4504,10 +5767,18 @@ fn width_law_audit() {
     let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
     let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
     let dcfg = C1DrainageConfig::default();
-    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
-    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
+    for k in 0..bs_map.len() {
+        if bs_map[k] != 0 && dr.lake_map[k] == 0 {
+            dr.lake_map[k] = bs_map[k];
+        }
+    }
     dr.lakes.extend(bs);
     clip_rivers_to_lakes(&mut dr);
 
@@ -4517,35 +5788,63 @@ fn width_law_audit() {
     let q = |area_km2: f32, r_mm: f32| area_km2 * r_mm * 1000.0 / sec_yr;
     let wof = |qm3s: f32| 5.0 * qm3s.sqrt();
     let (qh, qm, qt) = (q(5.0, 583.0), q(888.0, 583.0), q(16000.0, 583.0));
-    eprintln!("  TASK1 sanity (R=583 mm/yr): headwater 5km² Q={qh:.2} w={:.1}m | mid 888km² Q={qm:.1} w={:.0}m | Thames 16000km² Q={qt:.0} w={:.0}m", wof(qh), wof(qm), wof(qt));
-    eprintln!("        trunk/headwater width ratio = {:.0}× (was ~9× area-based on medians)", wof(qt) / wof(qh));
+    eprintln!(
+        "  TASK1 sanity (R=583 mm/yr): headwater 5km² Q={qh:.2} w={:.1}m | mid 888km² Q={qm:.1} w={:.0}m | Thames 16000km² Q={qt:.0} w={:.0}m",
+        wof(qh),
+        wof(qm),
+        wof(qt)
+    );
+    eprintln!(
+        "        trunk/headwater width ratio = {:.0}× (was ~9× area-based on medians)",
+        wof(qt) / wof(qh)
+    );
     // TASK 1/3 — per-Strahler width distribution, metres AND cells (at 2048: {cell_m:.0} m/cell).
     let mut per: std::collections::BTreeMap<u8, Vec<f32>> = std::collections::BTreeMap::new();
     for (i, s) in dr.rivers.segments.iter().enumerate() {
-        per.entry(s.strahler_order).or_default().push(dr.segment_width_m.get(i).copied().unwrap_or(0.0));
+        per.entry(s.strahler_order)
+            .or_default()
+            .push(dr.segment_width_m.get(i).copied().unwrap_or(0.0));
     }
     eprintln!("  TASK1/3 per-order width (median [p90], metres / cells @ {:.0} m/cell):", cell_m);
     for (o, v) in &per {
-        let mut w = v.clone(); w.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let mut w = v.clone();
+        w.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let med = w[w.len() / 2];
         let p90 = w[(w.len() * 9 / 10).min(w.len() - 1)];
-        eprintln!("     S{o} (n{}): {med:.1} m [{p90:.1}] = {:.2} [{:.2}] cells", w.len(), med / cell_m, p90 / cell_m);
+        eprintln!(
+            "     S{o} (n{}): {med:.1} m [{p90:.1}] = {:.2} [{:.2}] cells",
+            w.len(),
+            med / cell_m,
+            p90 / cell_m
+        );
     }
     let all_w: Vec<f32> = dr.segment_width_m.iter().copied().filter(|&x| x > 0.0).collect();
-    let (wmin, wmax) = (all_w.iter().cloned().fold(f32::MAX, f32::min), all_w.iter().cloned().fold(0.0, f32::max));
-    eprintln!("     network width range {wmin:.1}–{wmax:.0} m (ratio {:.0}×) = {:.3}–{:.2} cells", wmax / wmin, wmin / cell_m, wmax / cell_m);
+    let (wmin, wmax) =
+        (all_w.iter().cloned().fold(f32::MAX, f32::min), all_w.iter().cloned().fold(0.0, f32::max));
+    eprintln!(
+        "     network width range {wmin:.1}–{wmax:.0} m (ratio {:.0}×) = {:.3}–{:.2} cells",
+        wmax / wmin,
+        wmin / cell_m,
+        wmax / cell_m
+    );
     // TASK 2 — lake-outlet discontinuity: for each exorheic lake, max inflow width vs outlet width.
     use ymir_core::tectonics_c1::drainage::LakeType;
     let lake_id_at = |x: u32, y: u32| -> u32 {
-        for dy in -1i32..=1 { for dx in -1i32..=1 {
-            let (nx, ny) = (x as i32 + dx, y as i32 + dy);
-            if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
-                let id = dr.lake_map[ny as usize * t + nx as usize];
-                if id != 0 { return id; }
+        for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
+                    let id = dr.lake_map[ny as usize * t + nx as usize];
+                    if id != 0 {
+                        return id;
+                    }
+                }
             }
-        }} 0
+        }
+        0
     };
-    let exo: std::collections::HashSet<u32> = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Exorheic).map(|l| l.base.id).collect();
+    let exo: std::collections::HashSet<u32> =
+        dr.lakes.iter().filter(|l| l.lake_type == LakeType::Exorheic).map(|l| l.base.id).collect();
     let mut inflow: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
     let mut outflow: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
     for (i, s) in dr.rivers.segments.iter().enumerate() {
@@ -4553,19 +5852,37 @@ fn width_law_audit() {
         let &(fx, fy) = s.points.first().unwrap();
         let &(lx, ly) = s.points.last().unwrap();
         let lin = lake_id_at(lx, ly); // ends at a lake → inflow
-        if exo.contains(&lin) { let e = inflow.entry(lin).or_insert(0.0); *e = e.max(wq); }
+        if exo.contains(&lin) {
+            let e = inflow.entry(lin).or_insert(0.0);
+            *e = e.max(wq);
+        }
         let lout = lake_id_at(fx, fy); // starts at a lake → outlet
-        if exo.contains(&lout) { let e = outflow.entry(lout).or_insert(0.0); *e = e.max(wq); }
+        if exo.contains(&lout) {
+            let e = outflow.entry(lout).or_insert(0.0);
+            *e = e.max(wq);
+        }
     }
     let mut ratios = Vec::new();
     for (id, &win) in &inflow {
-        if let Some(&wout) = outflow.get(id) { if win > 0.0 { ratios.push(wout / win); } }
+        if let Some(&wout) = outflow.get(id) {
+            if win > 0.0 {
+                ratios.push(wout / win);
+            }
+        }
     }
     ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
     if ratios.is_empty() {
-        eprintln!("  TASK2 lake-outlet: no exorheic lake with both inflow+outlet reaches at this res");
+        eprintln!(
+            "  TASK2 lake-outlet: no exorheic lake with both inflow+outlet reaches at this res"
+        );
     } else {
-        eprintln!("  TASK2 lake-outlet width ratio outlet/max-inflow: n={} min {:.2} median {:.2} max {:.2} (≈1 = continuous; discharge carries through the lake)", ratios.len(), ratios[0], ratios[ratios.len()/2], ratios[ratios.len()-1]);
+        eprintln!(
+            "  TASK2 lake-outlet width ratio outlet/max-inflow: n={} min {:.2} median {:.2} max {:.2} (≈1 = continuous; discharge carries through the lake)",
+            ratios.len(),
+            ratios[0],
+            ratios[ratios.len() / 2],
+            ratios[ratios.len() - 1]
+        );
     }
 }
 
@@ -4618,10 +5935,18 @@ fn overlay_render(t: usize) {
     let field = breach_monotone(&post, &dr0.flow.filled, &dr0.lake_map, SEA, t, t);
     let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
     let dcfg = C1DrainageConfig::default();
-    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
-    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
+    for k in 0..bs_map.len() {
+        if bs_map[k] != 0 && dr.lake_map[k] == 0 {
+            dr.lake_map[k] = bs_map[k];
+        }
+    }
     dr.lakes.extend(bs);
     clip_rivers_to_lakes(&mut dr);
 
@@ -4649,7 +5974,9 @@ fn overlay_render(t: usize) {
                 let (nx, ny) = (x + dx, y + dy);
                 if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 {
                     let k = ny as usize * t + nx as usize;
-                    if field.data[k] <= SEA || dr.lake_map[k] != 0 { return true; }
+                    if field.data[k] <= SEA || dr.lake_map[k] != 0 {
+                        return true;
+                    }
                 }
             }
         }
@@ -4659,9 +5986,13 @@ fn overlay_render(t: usize) {
     for (i, seg) in dr.rivers.segments.iter().enumerate() {
         let &(lx, ly) = seg.points.last().unwrap();
         let orphan = seg.downstream.is_none() && !at_sink(lx, ly);
-        if orphan { orphans += 1; }
+        if orphan {
+            orphans += 1;
+        }
         let nav = dr.segment_navigability.get(i).copied().unwrap_or(Navigability::NonNavigable);
-        let col = if orphan { [230u8, 30, 30] } else {
+        let col = if orphan {
+            [230u8, 30, 30]
+        } else {
             match nav {
                 Navigability::Ship => [20, 70, 200],
                 Navigability::Barge => [40, 110, 230],
@@ -4695,17 +6026,31 @@ fn overlay_render(t: usize) {
     // TASK 3 — width in CELLS per Strahler order (what LL renders).
     let mut per: std::collections::BTreeMap<u8, Vec<f32>> = std::collections::BTreeMap::new();
     for (i, s) in dr.rivers.segments.iter().enumerate() {
-        per.entry(s.strahler_order).or_default().push(dr.segment_width_m.get(i).copied().unwrap_or(0.0));
+        per.entry(s.strahler_order)
+            .or_default()
+            .push(dr.segment_width_m.get(i).copied().unwrap_or(0.0));
     }
     let n_bodies = dr.lakes.len();
     eprintln!("\n=== overlay render ({t}², clipped, climate discharge) → {} ===", path.display());
-    eprintln!("  {} segments | ORPHAN(red) {orphans} | water bodies drawn {n_bodies} ({} endorheic)", dr.rivers.segments.len(), endorheic.len());
+    eprintln!(
+        "  {} segments | ORPHAN(red) {orphans} | water bodies drawn {n_bodies} ({} endorheic)",
+        dr.rivers.segments.len(),
+        endorheic.len()
+    );
     eprintln!("  TASK3 width per order in CELLS @ {:.0} m/cell (median [max]):", cell_m);
     for (o, v) in &per {
-        let mut w = v.clone(); w.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let mut w = v.clone();
+        w.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let med = w[w.len() / 2];
         let mx = *w.last().unwrap();
-        eprintln!("     S{o} (n{}): {:.2} [{:.2}] cells  ({:.0} [{:.0}] m)", w.len(), med / cell_m, mx / cell_m, med, mx);
+        eprintln!(
+            "     S{o} (n{}): {:.2} [{:.2}] cells  ({:.0} [{:.0}] m)",
+            w.len(),
+            med / cell_m,
+            mx / cell_m,
+            med,
+            mx
+        );
     }
 }
 
@@ -4714,9 +6059,9 @@ fn overlay_render(t: usize) {
 #[test]
 #[ignore]
 fn defect_abc_audit() {
+    use ymir_core::climate::biomes::Biome;
     use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
     use ymir_core::climate::{c1_biomes_classified, c1_climate};
-    use ymir_core::climate::biomes::Biome;
     use ymir_core::erosion::stream_power::{StreamPowerConfig, incise};
     use ymir_core::tectonics_c1::drainage::{DrainageClimate, below_sea_basin_lakes};
     use ymir_core::terrain::flow::breach_monotone;
@@ -4738,9 +6083,17 @@ fn defect_abc_audit() {
     let climate = c1_climate(&field, &ss, 45.0, &PrecipParams::default());
     let dcfg = C1DrainageConfig::default();
     let mut dr = c1_drainage(&field, None, &C1DrainageConfig::default(), &ss);
-    let dclim = DrainageClimate { precip_internal: &climate.precipitation, temperature: &climate.temperature };
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
-    for k in 0..bs_map.len() { if bs_map[k] != 0 && dr.lake_map[k] == 0 { dr.lake_map[k] = bs_map[k]; } }
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
+    for k in 0..bs_map.len() {
+        if bs_map[k] != 0 && dr.lake_map[k] == 0 {
+            dr.lake_map[k] = bs_map[k];
+        }
+    }
     dr.lakes.extend(bs);
 
     eprintln!("\n=== DEFECT A/B/C audit (2048², full corrected chain) ===");
@@ -4750,7 +6103,12 @@ fn defect_abc_audit() {
         for dy in -1i32..=1 {
             for dx in -1i32..=1 {
                 let (nx, ny) = (x + dx, y + dy);
-                if nx >= 0 && ny >= 0 && nx < t as i32 && ny < t as i32 && pred(ny as usize * t + nx as usize) {
+                if nx >= 0
+                    && ny >= 0
+                    && nx < t as i32
+                    && ny < t as i32
+                    && pred(ny as usize * t + nx as usize)
+                {
                     return true;
                 }
             }
@@ -4767,51 +6125,85 @@ fn defect_abc_audit() {
         let (lx, ly) = (lx as i32, ly as i32);
         let at_sea = near(lx, ly, &|k| field.data[k] <= SEA);
         let at_lake = near(lx, ly, &|k| dr.lake_map[k] != 0);
-        if at_sea { mouth += 1; } else if at_lake { into_lake += 1; } else {
+        if at_sea {
+            mouth += 1;
+        } else if at_lake {
+            into_lake += 1;
+        } else {
             hang += 1;
-            if s.downstream.is_none() { orphan += 1; }
+            if s.downstream.is_none() {
+                orphan += 1;
+            }
         }
         let in_lake = |&(x, y): &(u32, u32)| dr.lake_map[y as usize * t + x as usize] != 0;
-        if s.points.iter().any(in_lake) { cross_lake += 1; }
-        if in_lake(&s.points[0]) { src_in_lake += 1; }
+        if s.points.iter().any(in_lake) {
+            cross_lake += 1;
+        }
+        if in_lake(&s.points[0]) {
+            src_in_lake += 1;
+        }
     }
-    eprintln!("  A: selection = acc ≥ stream_threshold (extract_rivers, flow.rs); stream {} km²", dcfg.thresholds.stream_km2);
-    eprintln!("     BEFORE clip: {} segments | mouth(→sea) {mouth} | ends-at-lake {into_lake} | ends-mid-land {hang} (orphan {orphan})", dr.rivers.segments.len());
+    eprintln!(
+        "  A: selection = acc ≥ stream_threshold (extract_rivers, flow.rs); stream {} km²",
+        dcfg.thresholds.stream_km2
+    );
+    eprintln!(
+        "     BEFORE clip: {} segments | mouth(→sea) {mouth} | ends-at-lake {into_lake} | ends-mid-land {hang} (orphan {orphan})",
+        dr.rivers.segments.len()
+    );
     eprintln!("     BEFORE clip: CROSS-lake {cross_lake} | SOURCED-in-lake {src_in_lake}");
     ymir_core::tectonics_c1::drainage::clip_rivers_to_lakes(&mut dr);
     let (mut cross2, mut src2, mut orphan2) = (0usize, 0usize, 0usize);
     for s in &dr.rivers.segments {
         let in_lake = |&(x, y): &(u32, u32)| dr.lake_map[y as usize * t + x as usize] != 0;
-        if s.points.iter().any(in_lake) { cross2 += 1; }
-        if in_lake(&s.points[0]) { src2 += 1; }
+        if s.points.iter().any(in_lake) {
+            cross2 += 1;
+        }
+        if in_lake(&s.points[0]) {
+            src2 += 1;
+        }
         let &(lx, ly) = s.points.last().unwrap();
         let (lx, ly) = (lx as i32, ly as i32);
-        let at_sink = near(lx, ly, &|k| field.data[k] <= SEA) || near(lx, ly, &|k| dr.lake_map[k] != 0);
-        if s.downstream.is_none() && !at_sink { orphan2 += 1; }
+        let at_sink =
+            near(lx, ly, &|k| field.data[k] <= SEA) || near(lx, ly, &|k| dr.lake_map[k] != 0);
+        if s.downstream.is_none() && !at_sink {
+            orphan2 += 1;
+        }
     }
-    eprintln!("     AFTER  clip: {} segments | CROSS-lake {cross2} | SOURCED-in-lake {src2} | truncated/orphan(no sink) {orphan2}", dr.rivers.segments.len());
+    eprintln!(
+        "     AFTER  clip: {} segments | CROSS-lake {cross2} | SOURCED-in-lake {src2} | truncated/orphan(no sink) {orphan2}",
+        dr.rivers.segments.len()
+    );
     // B — Desert cells: count + precip distribution.
     let biomes = c1_biomes_classified(&field, &climate, &dr.lake_map);
     let desert: Vec<usize> = (0..t * t).filter(|&k| biomes[k] == Biome::Desert).collect();
-    let mut dp: Vec<f32> = desert.iter().map(|&k| precip_mm_per_year(climate.precipitation.data[k])).collect();
+    let mut dp: Vec<f32> =
+        desert.iter().map(|&k| precip_mm_per_year(climate.precipitation.data[k])).collect();
     dp.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let below_sea_desert = desert.iter().filter(|&&k| field.data[k] < SEA).count();
-    eprintln!("  B: Desert cells {} | precip mean {:.0} / p50 {:.0} / max {:.0} mm | {} are below-sea (exposed margins)",
+    eprintln!(
+        "  B: Desert cells {} | precip mean {:.0} / p50 {:.0} / max {:.0} mm | {} are below-sea (exposed margins)",
         desert.len(),
         if dp.is_empty() { 0.0 } else { dp.iter().sum::<f32>() / dp.len() as f32 },
         if dp.is_empty() { 0.0 } else { dp[dp.len() / 2] },
         if dp.is_empty() { 0.0 } else { dp[dp.len() - 1] },
-        below_sea_desert);
+        below_sea_desert
+    );
     // C — width per order via hydraulic geometry w = 1.2·sqrt(A_km²).
     let mut per: std::collections::BTreeMap<u8, Vec<f32>> = std::collections::BTreeMap::new();
     for (i, s) in dr.rivers.segments.iter().enumerate() {
         let a = dr.segment_drainage_km2.get(i).copied().unwrap_or(0.0);
         per.entry(s.strahler_order).or_default().push(1.2 * a.max(0.0).sqrt());
     }
-    let cstr = per.iter().map(|(o, v)| {
-        let mut w = v.clone(); w.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        format!("S{o} {:.0}m(n{})", w[w.len() / 2], w.len())
-    }).collect::<Vec<_>>().join(" ");
+    let cstr = per
+        .iter()
+        .map(|(o, v)| {
+            let mut w = v.clone();
+            w.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            format!("S{o} {:.0}m(n{})", w[w.len() / 2], w.len())
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
     eprintln!("  C: width per order (w=1.2·√A_km², median): {cstr}");
 }
 
@@ -4844,7 +6236,8 @@ fn step23_biomes_lakes() {
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain); let (bs_lakes, bs_map) = (bsr.lakes, bsr.lake_map);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let (bs_lakes, bs_map) = (bsr.lakes, bsr.lake_map);
 
     let (mut exo, mut endo, mut water, mut dry) = (0usize, 0usize, 0.0f32, 0.0f32);
     for lk in &bs_lakes {
@@ -7009,4 +8402,318 @@ fn std_of(field: &GridF32) -> f32 {
         }
     }
     (acc / n as f64).sqrt() as f32
+}
+
+/// Finding 37 POINT 1 — audit exorheic lakes WITHOUT a traced outlet, PER PROVENANCE. Mirrors the
+/// hd.rs chain (faithful erosion, prebreach lakes, below-sea spillways, clip). A "traced outlet" is:
+/// below-sea (id ≥ 1_000_001) → a Spillway with that lake_id; detect_lakes (id < 1_000_001) → a river
+/// segment whose SOURCE (first point) is 8-adjacent to the lake footprint. Env: YMIR_T (default 2048),
+/// YMIR_DOMAIN_KM (default 400).
+#[test]
+#[ignore]
+fn exorheic_outlet_audit() {
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::StreamPowerConfig;
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageClimate, LakeType, below_sea_basin_lakes, c1_drainage_windowed,
+        clip_rivers_to_lakes,
+    };
+    use ymir_core::terrain::flow::{RiverSegment, breach_monotone};
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let t: usize = std::env::var("YMIR_T").ok().and_then(|s| s.parse().ok()).unwrap_or(2048);
+    let domain: f32 =
+        std::env::var("YMIR_DOMAIN_KM").ok().and_then(|s| s.parse().ok()).unwrap_or(400.0);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let depth = ss.depth_scale_m as f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut upscale = FbmUpscaleConfig::c1_hd_production(t);
+    upscale.amplitude_base = 0.04;
+    let mut sp = StreamPowerConfig::relief_v3(cell_km2, depth);
+    sp.mfd_exponent = Some(2.0);
+    upscale.stream_power = Some(sp);
+    let eroded = upscale_with_fbm(&coarse, SEA, &seed, &upscale).heightmap;
+    let dcfg = C1DrainageConfig::default();
+    let prebreach = c1_drainage_windowed(&eroded, None, &dcfg, &ss, domain);
+    let field = breach_monotone(&eroded, &prebreach.flow.filled, &prebreach.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 45.0, 40.0, &PrecipParams::default(), domain);
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
+    // hd.rs: final drainage on the breached field WITH climate, but carry the PRE-BREACH lakes.
+    let mut dr = c1_drainage_windowed(&field, Some(&dclim), &dcfg, &ss, domain);
+    dr.lakes = prebreach.lakes.clone();
+    dr.lake_map = prebreach.lake_map.clone();
+    // below-sea basins → merge lake_map, append spillways as river segments.
+    let bs = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    for k in 0..bs.lake_map.len() {
+        if bs.lake_map[k] != 0 && dr.lake_map[k] == 0 {
+            dr.lake_map[k] = bs.lake_map[k];
+        }
+    }
+    let spill_ids: std::collections::HashSet<u32> =
+        bs.spillways.iter().map(|s| s.lake_id).collect();
+    for sw in &bs.spillways {
+        dr.rivers.segments.push(RiverSegment {
+            points: sw.points.clone(),
+            strahler_order: 1,
+            avg_flow: 0.0,
+            max_flow: 0.0,
+            basin_id: 0,
+            upstream: vec![],
+            downstream: None,
+        });
+        dr.segment_drainage_km2.push(sw.drainage_km2);
+        dr.segment_navigability.push(sw.navigability);
+        dr.segment_discharge_m3s.push(sw.discharge_m3s);
+        dr.segment_width_m.push(sw.width_m);
+        dr.segment_profile_m.push(sw.profile_m.clone());
+    }
+    dr.lakes.extend(bs.lakes.iter().cloned());
+    clip_rivers_to_lakes(&mut dr);
+    let (w, h) = (t, t);
+    // Source cells of each surviving segment (first point), for the outlet test.
+    let sources: Vec<(u32, u32)> =
+        dr.rivers.segments.iter().filter_map(|s| s.points.first().copied()).collect();
+    let has_outlet_river = |id: u32| -> bool {
+        // any segment source 8-adjacent to a cell of this lake
+        for &(sx, sy) in &sources {
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    let (nx, ny) = (sx as i32 + dx, sy as i32 + dy);
+                    if nx >= 0
+                        && ny >= 0
+                        && (nx as usize) < w
+                        && (ny as usize) < h
+                        && dr.lake_map[ny as usize * w + nx as usize] == id
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    };
+    let (mut det_exo, mut det_no, mut bs_exo, mut bs_no) = (0usize, 0usize, 0usize, 0usize);
+    let mut examples: Vec<String> = Vec::new();
+    for lk in &dr.lakes {
+        if lk.lake_type != LakeType::Exorheic {
+            continue;
+        }
+        let id = lk.base.id;
+        let below_sea = id >= 1_000_001;
+        let has = if below_sea { spill_ids.contains(&id) } else { has_outlet_river(id) };
+        if below_sea {
+            bs_exo += 1;
+            if !has {
+                bs_no += 1;
+            }
+        } else {
+            det_exo += 1;
+            if !has {
+                det_no += 1;
+                if examples.len() < 8 {
+                    examples.push(format!(
+                        "#{id} area {:.2} km² level {:.0} m",
+                        lk.area_km2, lk.level_m
+                    ));
+                }
+            }
+        }
+    }
+    eprintln!(
+        "\n=== Finding 37 POINT 1 — exorheic-without-outlet audit @{t}²/{:.0} km ===",
+        domain
+    );
+    eprintln!("  detect_lakes:  {det_exo} exorheic, {det_no} WITHOUT a traced outlet river");
+    eprintln!("  below-sea:     {bs_exo} exorheic, {bs_no} WITHOUT a spillway");
+    for e in &examples {
+        eprintln!("     e.g. {e}");
+    }
+}
+
+/// Finding 37 POINT 1 — the BEFORE state, on the SHIPPED export (ground truth, pre-Finding-36). For
+/// every EXORHEIC lake in lakes.json, is there a river in rivers.json whose SOURCE (first point) is
+/// 8-adjacent to the lake footprint (lake_mask)? Reports exorheic-without-outlet per provenance.
+#[test]
+#[ignore]
+fn export_exorheic_outlet_audit() {
+    use serde_json::Value;
+    let dir =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../exports/seed10481999410520546993_8192.ymir");
+    let t = 8192usize;
+    let cell_km2 = (400.0f32 / t as f32).powi(2);
+    let lakes: Value =
+        serde_json::from_slice(&std::fs::read(format!("{dir}/lakes.json")).unwrap()).unwrap();
+    let rivers: Value =
+        serde_json::from_slice(&std::fs::read(format!("{dir}/rivers.json")).unwrap()).unwrap();
+    let mask_bytes = std::fs::read(format!("{dir}/lake_mask.u32")).unwrap();
+    let mask = |k: usize| {
+        u32::from_le_bytes([
+            mask_bytes[4 * k],
+            mask_bytes[4 * k + 1],
+            mask_bytes[4 * k + 2],
+            mask_bytes[4 * k + 3],
+        ])
+    };
+    // river source cells (first point of each segment).
+    let segs = rivers["segments"].as_array().unwrap();
+    let sources: Vec<(i64, i64)> = segs
+        .iter()
+        .filter_map(|s| {
+            let p = s["points"].as_array()?.first()?.as_array()?;
+            Some((p[0].as_i64()?, p[1].as_i64()?))
+        })
+        .collect();
+    let has_outlet = |id: u64| -> bool {
+        for &(sx, sy) in &sources {
+            for dy in -1i64..=1 {
+                for dx in -1i64..=1 {
+                    let (nx, ny) = (sx + dx, sy + dy);
+                    if nx >= 0
+                        && ny >= 0
+                        && (nx as usize) < t
+                        && (ny as usize) < t
+                        && mask((ny as usize) * t + nx as usize) as u64 == id
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    };
+    let (mut det_exo, mut det_no, mut bs_exo, mut bs_no) = (0usize, 0usize, 0usize, 0usize);
+    let mut ex: Vec<String> = Vec::new();
+    for lk in lakes.as_array().unwrap() {
+        if lk["lake_type"].as_str() != Some("Exorheic") {
+            continue;
+        }
+        let id = lk["base"]["id"].as_u64().unwrap();
+        let area = lk["base"]["area"].as_u64().unwrap() as f32 * cell_km2;
+        let below_sea = id >= 1_000_001;
+        let has = has_outlet(id);
+        if below_sea {
+            bs_exo += 1;
+            if !has {
+                bs_no += 1;
+            }
+        } else {
+            det_exo += 1;
+            if !has {
+                det_no += 1;
+                if ex.len() < 10 {
+                    ex.push(format!(
+                        "#{id} area {:.1} km² level {:.0} m",
+                        area,
+                        lk["level_m"].as_f64().unwrap()
+                    ));
+                }
+            }
+        }
+    }
+    eprintln!("\n=== Finding 37 POINT 1 — SHIPPED EXPORT (BEFORE) exorheic-without-outlet ===");
+    eprintln!("  detect_lakes:  {det_exo} exorheic, {det_no} WITHOUT an outlet river");
+    eprintln!("  below-sea:     {bs_exo} exorheic, {bs_no} WITHOUT an outlet river/spillway");
+    for e in &ex {
+        eprintln!("     e.g. {e}");
+    }
+}
+
+/// Finding 37 POINT 2 — cost the upstream extension: baseline (20 km²) vs full-tree→A_c vs main-stem→A_c.
+/// Reports segment count, total points, rivers.json size proxy (serialized segments), per-Strahler-order
+/// mean channel width, the source→mouth width range, and monotonicity violations on the extended tracks.
+/// Env: YMIR_T (default 2048), YMIR_DOMAIN_KM (default 400).
+#[test]
+#[ignore]
+fn upstream_extension_cost() {
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::{RELIEF_V1_A_C_KM2, StreamPowerConfig};
+    use ymir_core::tectonics_c1::drainage::{DrainageClimate, c1_drainage_windowed};
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let t: usize = std::env::var("YMIR_T").ok().and_then(|s| s.parse().ok()).unwrap_or(2048);
+    let domain: f32 =
+        std::env::var("YMIR_DOMAIN_KM").ok().and_then(|s| s.parse().ok()).unwrap_or(400.0);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let depth = ss.depth_scale_m as f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut upscale = FbmUpscaleConfig::c1_hd_production(t);
+    upscale.amplitude_base = 0.04;
+    let mut sp = StreamPowerConfig::relief_v3(cell_km2, depth);
+    sp.mfd_exponent = Some(2.0);
+    upscale.stream_power = Some(sp);
+    let eroded = upscale_with_fbm(&coarse, SEA, &seed, &upscale).heightmap;
+    let dcfg0 = C1DrainageConfig::default();
+    let prebreach = c1_drainage_windowed(&eroded, None, &dcfg0, &ss, domain);
+    let field = breach_monotone(&eroded, &prebreach.flow.filled, &prebreach.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 45.0, 40.0, &PrecipParams::default(), domain);
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
+    eprintln!(
+        "\n=== Finding 37 POINT 2 — upstream extension cost @{t}²/{:.0} km (A_c = {} km²) ===",
+        domain, RELIEF_V1_A_C_KM2
+    );
+    let run = |head: f32, full_tree: bool, label: &str| {
+        let mut dcfg = C1DrainageConfig::default();
+        dcfg.thresholds.head_km2 = head;
+        dcfg.thresholds.full_tree = full_tree;
+        let dr = c1_drainage_windowed(&field, Some(&dclim), &dcfg, &ss, domain);
+        let segs = &dr.rivers.segments;
+        let pts: usize = segs.iter().map(|s| s.points.len()).sum();
+        let bytes = serde_json::to_vec(segs).map(|v| v.len()).unwrap_or(0);
+        // per Strahler order: count + mean width
+        let maxo = segs.iter().map(|s| s.strahler_order).max().unwrap_or(0);
+        let mut widths_by_order: Vec<Vec<f32>> = vec![Vec::new(); (maxo as usize) + 1];
+        for (i, s) in segs.iter().enumerate() {
+            widths_by_order[s.strahler_order as usize].push(dr.segment_width_m[i]);
+        }
+        // monotonicity: profile_m must be non-increasing source→mouth (allow 0.5 m tolerance)
+        let mut mono_viol = 0usize;
+        for p in &dr.segment_profile_m {
+            for w in p.windows(2) {
+                if w[1] > w[0] + 0.5 {
+                    mono_viol += 1;
+                    break;
+                }
+            }
+        }
+        let wmin = dr.segment_width_m.iter().cloned().fold(f32::MAX, f32::min);
+        let wmax = dr.segment_width_m.iter().cloned().fold(0.0f32, f32::max);
+        eprintln!(
+            "  [{label}] segments {} | points {} | rivers.json ~{:.1} MB | monotonicity violations {}/{}",
+            segs.len(),
+            pts,
+            bytes as f32 / 1e6,
+            mono_viol,
+            segs.len()
+        );
+        eprintln!(
+            "     width range (all segments) {:.2} → {:.1} m (ratio ×{:.0})",
+            wmin,
+            wmax,
+            wmax / wmin.max(1e-3)
+        );
+        for o in 1..=maxo as usize {
+            let ws = &widths_by_order[o];
+            if ws.is_empty() {
+                continue;
+            }
+            let mean = ws.iter().sum::<f32>() / ws.len() as f32;
+            eprintln!("     order {o}: {} segments, mean width {:.2} m", ws.len(), mean);
+        }
+    };
+    run(0.0, true, "baseline 20 km²");
+    run(RELIEF_V1_A_C_KM2, true, "full-tree → A_c");
+    run(RELIEF_V1_A_C_KM2, false, "main-stem → A_c");
 }
