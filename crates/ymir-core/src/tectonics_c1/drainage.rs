@@ -1044,20 +1044,23 @@ pub fn below_sea_basin_lakes(
             }
             (sill_q.map(|q| q as f32 / 1_000_000.0), bowl, saddle, escape)
         };
-        // Finding 38 — the WATER BODY is the enclosed region `comp` itself (all its below-sea cells),
-        // NOT the flood bowl `fcells`: the flood grows over LAND to reach the global sill and would
-        // otherwise sweep in an ADJACENT region's below-sea pocket via a land lane (two lakes then
-        // claim the same cell — the no-overlap invariant broke). `comp` is one `water_class == 2`
-        // connected component, so regions stay disjoint. `fcells`/`saddle`/`escape` are kept ONLY to
-        // locate the sill and trace the outlet.
-        let a_spill = comp.len() as f32 * cell_km2;
+        // Finding 38 — `a_spill` is the area to fill to the SILL (the flood bowl `fcells`, region + land
+        // up to the overflow col), so a DEEPLY ENCLOSED region (col far above sea, e.g. #1000022's 471 m)
+        // gets a HUGE `a_spill` ⟹ `a_eq < a_spill` ⟹ endorheic — it fills to sea level, NOT the col.
+        // Only a region whose col is near sea (a coastal pocket) can overflow. This is what stops the
+        // merge from re-opening the Finding 36 over-flood (a 471 m below-sea "lake"). The FOOTPRINT is
+        // still the region `comp` (marked below), so mouths are covered without over-filling.
+        let a_spill = fcells.len() as f32 * cell_km2;
         let pe_lake = potential_evaporation_mm(climate.temperature.data[floor_k]).max(1.0);
         let a_eq = inflow / pe_lake;
-        // Finding 37 POINT 2 — the regime is a CONCLUSION, not a prediction. A basin is EXORHEIC only
-        // if it BOTH overflows (inflow fills to the sill: a_eq ≥ a_spill, and a sill exists) AND a
-        // spillway can actually be TRACED from its pour point to a sink. Attempt the trace FIRST; the
-        // label follows. "Exorheic without an outlet" is thus UNREPRESENTABLE, not merely guarded.
-        let overflow = sill_opt.is_some() && a_eq >= a_spill;
+        // Finding 37 POINT 2 / Finding 38 — the regime is a CONCLUSION. A below-sea basin is EXORHEIC
+        // only if it overflows a NEAR-SEA col (`sill ≤ sea + a small margin`): a below-sea inland sea
+        // sits at ~sea level, so it can spill only over a rim within a metre or two of sea — it can NOT
+        // climb to a far, high col (#1000022's 471 m). A high-col region is enclosed → endorheic. On
+        // top of that it must fill to the sill (`a_eq ≥ a_spill`) AND trace a downhill outlet to a sink.
+        let overflow_margin = 2.0 / metres_per_norm; // a below-sea sea spills over a rim within ~2 m of sea
+        let near_sea_sill = sill_opt.map_or(false, |s| s <= C1_SEA_LEVEL_NORM + overflow_margin);
+        let overflow = near_sea_sill && a_eq >= a_spill;
         let traced: Option<(Vec<usize>, Option<u32>)> = if overflow {
             // Re-entry into THIS lake's own water body = the region `comp` (the loop / case A).
             let in_bowl: std::collections::HashSet<usize> = comp.iter().copied().collect();
@@ -1108,24 +1111,16 @@ pub fn below_sea_basin_lakes(
         } else {
             None
         };
-        // Finding 38 — the region fills as ONE inland sea to its GLOBAL sill (when one exists): the
-        // whole region ≤ sill is connected to the floor, so every below-sea cell (and the shore slivers
-        // where the mouths ended) is covered — `claimed/valid` stays 1.00×. The regime is a conclusion:
-        // EXORHEIC if the overflow was traced to a sink, else ENDORHEIC (a full inland sea that loses to
-        // evaporation without a persistent outlet). Only a border-truncated region with NO sill falls
-        // back to the evaporative level. Valid for C1's SHALLOW below-sea shelf (sill ~0 m, STEP 1); a
-        // high sill would over-fill, but the ocean-depth ceiling keeps below-sea rims near sea level.
-        let (level, lake_type) = match sill_opt {
-            Some(sill) => {
-                (sill, if traced.is_some() { LakeType::Exorheic } else { LakeType::Endorheic })
-            }
-            None => {
-                // Border-truncated region with no sill: evaporative level over the REGION (comp).
-                let mut cs: Vec<usize> = comp.clone();
-                cs.sort_by(|&a, &b| heightmap.data[a].partial_cmp(&heightmap.data[b]).unwrap());
-                let n_eq = (a_eq / cell_km2).floor().max(1.0) as usize;
-                (heightmap.data[cs[n_eq.min(cs.len()) - 1]], LakeType::Endorheic)
-            }
+        // Finding 38 — regime & surface. EXORHEIC only if the basin overflows a NEAR-SEA sill AND a
+        // downhill outlet traces to a sink → the surface sits at that (low) sill. Otherwise it is an
+        // ENDORHEIC below-sea INLAND SEA whose surface sits at SEA LEVEL: it fills its shallow shelf to
+        // ~0 m and loses the rest to evaporation — it does NOT climb to a far-away high col (that was the
+        // 471 m over-flood #1000022 showed). Either way the surface is at/just above sea, so marking the
+        // region capped at sea (below) keeps every cell ≤ level and claimed/valid at 1.00×.
+        let lake_type = if traced.is_some() { LakeType::Exorheic } else { LakeType::Endorheic };
+        let level = match (lake_type, sill_opt) {
+            (LakeType::Exorheic, Some(sill)) => sill,
+            _ => C1_SEA_LEVEL_NORM,
         };
         // Invariant 1 (Finding 37 TASK 2) — A LAKE MUST HAVE WATER. A hollow with NO supply (no inflow)
         // AND no computed depth (an endorheic basin whose evaporative level collapses onto its floor)
@@ -1300,16 +1295,18 @@ mod tests {
             hm.set(0, y, 0.2); // ocean column (class-1)
             hm.set(1, y, 0.2);
         }
-        // low lane at y=6 across the whole width (0.55) so a spill route exists to the coast.
+        // low NEAR-SEA lane at y=6 across the whole width (0.50015 ≈ +1.7 m) so a below-sea sea can
+        // legitimately overflow it to the coast (Finding 38 — a high lane would be an enclosed rim →
+        // endorheic, no over-flood).
         for x in 2..w {
-            hm.set(x, 6, 0.55);
+            hm.set(x, 6, 0.50015);
         }
         for y in 5..8 {
             for x in 70..73 {
-                hm.set(x, y, 0.4); // FAR enclosed below-sea pit (large-ish)
+                hm.set(x, y, 0.498); // FAR enclosed below-sea pit (≈ −22 m)
             }
         }
-        hm.set(40, 6, 0.4); // a TINY 1-cell below-sea pit mid-grid (sub-inventory)
+        hm.set(40, 6, 0.498); // a TINY 1-cell below-sea pit mid-grid (sub-inventory)
         let precip = GridF32::new(w, h, 1.0);
         let temp = GridF32::new(w, h, 10.0);
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
@@ -1494,7 +1491,57 @@ mod tests {
     }
 
     /// Finding 37 TASK 2 INVARIANTS (permanent, non-ignored) — the three that close the class:
-    /// (1) a LAKE MUST HAVE WATER (a dry depression is not inventoried nor marked); (2) an OUTLET
+    /// Finding 38 INVARIANT (permanent) — a DEEPLY ENCLOSED below-sea region (its overflow col far
+    /// above sea) is an ENDORHEIC inland sea at SEA LEVEL, NOT a lake filled to the high col. This is
+    /// the anti-regression for Finding 36: the merge fills a region as one body, and without capping
+    /// the level it would fill #1000022's basin to its 471 m col. The guarantee: `a_spill` is the area
+    /// to the col (the flood bowl), so an enclosed region has a huge `a_spill` ⟹ endorheic ⟹ the
+    /// surface sits at sea level, and the footprint (the region, capped at sea) stays ≤ that level.
+    #[test]
+    fn deeply_enclosed_below_sea_is_endorheic_at_sea_level() {
+        let (w, h) = (24usize, 24usize);
+        let mut hm = GridF32::new(w, h, 0.51); // land at ~113 m everywhere
+        for y in 0..h {
+            hm.set(0, y, 0.2); // ocean column (class-1) at the far left
+        }
+        // A below-sea pit at the centre (norm 0.498 ≈ −22 m), enclosed by the 0.51 land. Its ONLY
+        // rim gap is a HIGH col at (13,11) = 0.505 (≈ 56 m) leading to a slightly lower exterior — so
+        // the flood's escape (the overflow col) is 56 m up, nothing near sea.
+        for x in 11..=13 {
+            for y in 11..=13 {
+                hm.set(x, y, 0.498);
+            }
+        }
+        hm.set(13, 11, 0.505); // the col (high)
+        hm.set(14, 11, 0.504); // a lower exterior beyond the col
+        let precip = GridF32::new(w, h, 1.0);
+        let temp = GridF32::new(w, h, 10.0);
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let ss = SteinSteinParams::default();
+        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0);
+        assert!(!r.lakes.is_empty(), "the enclosed pit must be a below-sea lake");
+        let lk = &r.lakes[0];
+        assert_eq!(
+            lk.lake_type,
+            LakeType::Endorheic,
+            "an enclosed high-col region cannot overflow → endorheic"
+        );
+        // The surface is at SEA LEVEL, not the 56 m col — no return to the Finding 36 over-flood.
+        assert!(
+            lk.level_m.abs() < 20.0,
+            "enclosed below-sea sea must sit at ~0 m, got level {:.0} m (the 56 m col = the over-flood)",
+            lk.level_m
+        );
+        // Every marked cell is at or below the level (footprint capped at sea) — claimed/valid 1.00×.
+        for k in 0..w * h {
+            if r.lake_map[k] != 0 {
+                assert!(hm.data[k] <= C1_SEA_LEVEL_NORM + 1e-4, "a marked cell is above sea level");
+            }
+        }
+    }
+
+    /// Finding 38 INVARIANT (permanent) — (1) a LAKE MUST HAVE WATER (a dry depression is not
+    /// inventoried nor marked); (2) an OUTLET
     /// ARRIVES ELSEWHERE (its sink is the ocean or a DIFFERENT lake, never its own footprint);
     /// (3) an OUTLET MAY NOT RUN THROUGH A RETAINING POCKET (no interior spillway cell below sea
     /// level that is not the ocean). A deep below-sea pit fed by a ramp overflows a low sill into an
@@ -1511,11 +1558,12 @@ mod tests {
         hm.set(1, 1, 0.40);
         hm.set(2, 1, 0.45);
         hm.set(3, 1, 0.49);
-        hm.set(4, 1, 0.52); // the pit's LOCAL SILL (land, just above sea)
+        hm.set(4, 1, 0.5001); // the pit's LOCAL SILL — a NEAR-SEA col (Finding 38: a below-sea sea can
+        // only overflow a rim within ~2 m of sea; a high col would make it endorheic instead).
         for x in 5..=8 {
-            hm.set(x, 1, 0.30); // enclosed below-sea pit floor (4 cells)
+            hm.set(x, 1, 0.498); // enclosed below-sea pit floor (4 cells, ≈ −22 m)
         }
-        // A ramp draining LEFT into the pit (inflow ⟹ overflow over the 0.52 sill toward the sea arm).
+        // A ramp draining LEFT into the pit (inflow ⟹ overflow over the near-sea sill toward the sea arm).
         for (i, x) in (9..=22).enumerate() {
             hm.set(x, 1, 0.60 + 0.02 * i as f32);
         }

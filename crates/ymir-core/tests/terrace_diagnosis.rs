@@ -9122,8 +9122,15 @@ fn merge_verify_on_export() {
             _ => endo += 1,
         }
     }
+    let max_lvl = bsr.lakes.iter().map(|l| l.level_m).fold(f32::MIN, f32::max);
+    let max_dep = bsr.lakes.iter().map(|l| l.depth_m).fold(f32::MIN, f32::max);
     eprintln!("\n=== Finding 38 STEP 2/3 — merge verified on the EXPORT terrain ===");
-    eprintln!("  below-sea lakes {} ({exo} exorheic, {endo} endorheic)", bsr.lakes.len());
+    eprintln!(
+        "  below-sea lakes {} ({exo} exorheic, {endo} endorheic) | MAX level {:.0} m | MAX depth {:.0} m (must be ~0 / ~20, NOT 471)",
+        bsr.lakes.len(),
+        max_lvl,
+        max_dep
+    );
     // mouths on an orphan below-sea cell (no lake, no ocean), by discharge.
     let segs = rivers["segments"].as_array().unwrap();
     let (mut n1, mut n10, mut n100) = (0usize, 0usize, 0usize);

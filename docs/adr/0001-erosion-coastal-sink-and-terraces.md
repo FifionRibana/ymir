@@ -1579,3 +1579,23 @@ opposite). The lake COUNT and exo/endo split from that loaded field are quantiza
 re-fragments `water_class`); the real counts come from the regenerated export. Every existing guard stays
 green (8 below-sea drainage guards + the lib suite). The author regenerates to confirm on ground truth — the
 measurements are the hypothesis, his export is the verdict.
+
+### Finding 38b — the merge's first cut re-opened the over-flood; the near-sea overflow rule
+
+The first merge (fill to the flood's escape col) shipped a REGRESSION the author's regenerated export caught
+immediately: lake #1000022 at **level 471 m, depth 491 m** — exactly the Finding 36 over-flood, back. Root:
+STEP 1 measured the "global sill" as the lowest LAND cell ADJACENT to the region (~0.1 m), but the flood's
+real escape is the lowest col leading to a LOWER exterior — and for a deeply enclosed region that col is 471 m
+up (the low shore cells are local pits that drain back in). Filling to 471 m is the defect. And
+`merge_verify_on_export` FALSELY passed it, because loading the u16 export height re-fragments `water_class`
+into small pockets with nearby low cols — the quantization hid the very case that fails at full precision. The
+fourth "reconstructed terrain lied" of the thread, now with a name.
+
+Fix: a below-sea INLAND SEA sits at ~sea level; it can overflow only a NEAR-SEA col (`sill ≤ sea + ~2 m`).
+A high col means the region is enclosed → ENDORHEIC, surface at sea level (it never climbs to a far col). And
+`a_spill` is the area to the sill (the flood bowl), so a large enclosed basin is endorheic on the balance too.
+Verified: `deeply_enclosed_below_sea_is_endorheic_at_sea_level` (a 56 m-col pit must be endorheic at 0 m, not
+filled to 56 m) — a deterministic guard the quantized export check could not provide. On the export terrain the
+three numbers now hold together: mouths 0/0/0, claimed/valid 1.000× (0 over-flood), and **MAX below-sea level
+2 m / depth 22 m** (not 471). The two exorheic synthetic guards were re-based to near-sea sills (their old
+0.52 / 0.55 sills were 226 m / 565 m — they had been asserting the over-flood behaviour).
