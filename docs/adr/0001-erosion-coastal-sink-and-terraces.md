@@ -1446,3 +1446,44 @@ Decision (author): wire **main-stem** as the production default — `run_hd` set
 MB) despite its higher fidelity, to keep the export moderate. `head_km2`/`full_tree` live in
 `DrainageThresholds`/`RiverConfig` (default 0 = byte-identical, so every core test is unchanged); only the viz
 export path opts in. Headwaters sit on steep terrain with sub-cell widths — data-correct, render as strokes.
+
+### Regime as a CONCLUSION, not a prediction (the 0 m level, and the structural fix)
+
+A lake still shipped exorheic at level **exactly 0 m** with no outlet. Origin: the local-sill flood
+(`drainage.rs`, the `sill = if sill_q == i32::MAX { C1_SEA_LEVEL_NORM }` fallback) returned SEA LEVEL when it
+found NO escape — and an enclosed basin's sill is necessarily above 0, so a level landing precisely on 0 is
+neither a sill nor an evaporative equilibrium, it is that cap. The flood found no escape because it marked
+bowl membership at PUSH time, not POP: a saddle's downhill neighbour, pushed earlier by a sibling, read as
+"seen", so the escape was masked and `sill_q` stayed `MAX`. Two fixes: (1) mark the bowl at POP (finalised) —
+a not-yet-finalised strictly-lower neighbour is a real escape — and make the sill an `Option` (`None` = no
+escape within the window → the basin CANNOT be exorheic, no more 0 m cap). (2) Invert the regime: today it was
+a PREDICTION (`a_eq ≥ a_spill` ⟹ exorheic, trace a spillway or not), which let the label stand with nothing
+behind it — the same proxy-vs-authority defect as the six before. Now the spillway is TRACED FIRST and the
+label follows: `traced ⟹ exorheic (level = local sill)`, `no trace ⟹ endorheic (level = evaporative)`.
+"Exorheic without an outlet" is now UNREPRESENTABLE, not merely forbidden by a guard. Why the earlier guard
+missed it: the regime was decided inside `below_sea_basin_lakes` BEFORE `run_hd`'s check ran, and the check
+only warned (release) — it never reclassified. Under the inversion (faithful 8192²): prediction 8 exorheic →
+inversion 8, **demoted 0, promoted 0, exorheic-without-spillway 0**; the one basin at ~0 m is a real
+through-flow pocket WITH a spillway (its sill genuinely sits near sea level), not the fallback.
+
+Lake-vs-wetland is then a physics readout, not a threshold pick. The deepest below-sea basin (#1000010, floor
+−2.2 m): local sill 472.7 m but it fills only to the EVAPORATIVE level 85.5 m (`a_eq` 19 km² < `a_spill` 127
+km² ⟹ endorheic, nowhere near the sill), mean depth 25.6 m, 9 % of the footprint < 3 m — a deep endorheic
+LAKE, not a wetland. A shallow-inflow basin like the author's #1000007 (~1 m³/s into a 20 m depression) gives
+`a_eq ≪ a_spill` ⟹ endorheic at a low evaporative level near the floor, shallow ⟹ the wetland instinct is
+physically supported; its exact sill/evaporative numbers need a post-fix re-export to read on the shipped terrain.
+
+### POINT 4 (structure, for the next lot — NOT implemented here)
+
+`rivers.json` is a FLAT list of segments. Each `RiverSegment` is ONE reach (a polyline of `points`) between
+topological nodes, with `strahler_order`, `upstream: Vec<usize>`, `downstream: Option<usize>`, and parallel
+per-segment arrays (drainage/discharge/width/navigability/profile). `extract_rivers` traces from headwaters and
+SPLITS at junction cells (`upstream_count ≥ 2`), so a confluence is NOT an object — it is implicit in the graph
+(the tributary reaches each `downstream = Some(trunk reach)`; the shared cell is the tributaries' last point =
+the trunk reach's first). There is NO first-class watercourse or main-stem object and NO tributary→stem
+attachment beyond the generic graph; the viz `aggregate_watercourses` reconstructs a trunk (group by terminal,
+longest/max-discharge path) UI-side only, ephemerally. The main-stem UPSTREAM extension adds reaches in the
+< 20 km² region along the max-accumulation branch, but the exported unit is still the reach and a "watercourse"
+still bundles trunk + all ≥ 20 km² tributaries as separate reaches. Gap vs the Azgaar target: a named main stem
+carrying an ordered source→mouth profile, plus each maximal tributary as its own watercourse with (profile,
+discharge, width, Strahler) and a link {joins stem S at point P} — an aggregation pass over the per-mouth trees.

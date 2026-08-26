@@ -8717,3 +8717,135 @@ fn upstream_extension_cost() {
     run(RELIEF_V1_A_C_KM2, true, "full-tree → A_c");
     run(RELIEF_V1_A_C_KM2, false, "main-stem → A_c");
 }
+
+/// Finding 37 POINT 2+3 — regime inversion count + the #1000007 verdict. Reports, on the faithful
+/// production field: how many below-sea basins the prediction (a_eq≥a_spill) would call exorheic vs
+/// how many the trace-first inversion concludes are exorheic (demoted = lost the label for want of a
+/// traceable outlet; promoted must be 0); asserts every exorheic basin has a spillway and none sits
+/// at level 0 m; then the sill / evaporative level / inflow / evaporation / depth+slope over the
+/// footprint of the #1000007-like basin (floor nearest −20 m). Env YMIR_T (2048), YMIR_DOMAIN_KM (400).
+#[test]
+#[ignore]
+fn regime_inversion_and_1000007() {
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::StreamPowerConfig;
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageClimate, below_sea_basin_lakes, c1_drainage_windowed,
+    };
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let t: usize = std::env::var("YMIR_T").ok().and_then(|s| s.parse().ok()).unwrap_or(2048);
+    let domain: f32 =
+        std::env::var("YMIR_DOMAIN_KM").ok().and_then(|s| s.parse().ok()).unwrap_or(400.0);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let cell_m = domain * 1000.0 / t as f32;
+    let depth = ss.depth_scale_m as f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut upscale = FbmUpscaleConfig::c1_hd_production(t);
+    upscale.amplitude_base = 0.04;
+    let mut sp = StreamPowerConfig::relief_v3(cell_km2, depth);
+    sp.mfd_exponent = Some(2.0);
+    upscale.stream_power = Some(sp);
+    let eroded = upscale_with_fbm(&coarse, SEA, &seed, &upscale).heightmap;
+    let dcfg = C1DrainageConfig::default();
+    let prebreach = c1_drainage_windowed(&eroded, None, &dcfg, &ss, domain);
+    let field = breach_monotone(&eroded, &prebreach.flow.filled, &prebreach.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 45.0, 40.0, &PrecipParams::default(), domain);
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let spill_ids: std::collections::HashSet<u32> =
+        bsr.spillways.iter().map(|s| s.lake_id).collect();
+    let pred = bsr.basins.iter().filter(|b| b.predicted_exorheic).count();
+    let exo = bsr.basins.iter().filter(|b| b.exorheic).count();
+    let demoted = bsr.basins.iter().filter(|b| b.predicted_exorheic && !b.exorheic).count();
+    let promoted = bsr.basins.iter().filter(|b| !b.predicted_exorheic && b.exorheic).count();
+    let exo_no_spill =
+        bsr.basins.iter().filter(|b| b.exorheic && !spill_ids.contains(&b.id)).count();
+    let exo_at_zero = bsr.basins.iter().filter(|b| b.exorheic && b.level_m.abs() < 0.5).count();
+    // The ACTUAL old bug signature: exorheic at ~0 m WITHOUT a spillway (the fallback level, no outlet).
+    let bug_sig = bsr
+        .basins
+        .iter()
+        .filter(|b| b.exorheic && b.level_m.abs() < 0.5 && !spill_ids.contains(&b.id))
+        .count();
+    eprintln!("\n=== Finding 37 POINT 2 — regime inversion @{t}²/{:.0} km ===", domain);
+    eprintln!(
+        "  {} below-sea basins | prediction exorheic {pred} → inversion exorheic {exo}",
+        bsr.basins.len()
+    );
+    eprintln!(
+        "  demoted (predicted exo, no traceable outlet → endorheic) {demoted} | promoted {promoted} (must be 0)"
+    );
+    eprintln!(
+        "  exorheic WITHOUT spillway {exo_no_spill} (must be 0) | exorheic at ~0 m {exo_at_zero} (of which WITHOUT outlet = the old bug: {bug_sig}, must be 0)"
+    );
+    // POINT 3 — the deepest SUBSTANTIAL basin (max depth among area > 2 km²) — the author's #1000007
+    // is a deep basin, not a 4-cell through-flow pocket.
+    let cand = bsr
+        .basins
+        .iter()
+        .filter(|b| b.area_km2 > 2.0)
+        .max_by(|a, b| a.max_depth_m.partial_cmp(&b.max_depth_m).unwrap());
+    if let Some(b) = cand
+        .or_else(|| bsr.basins.iter().max_by(|a, b| a.area_km2.partial_cmp(&b.area_km2).unwrap()))
+    {
+        let id = b.id;
+        let cells: Vec<usize> = (0..t * t).filter(|&k| bsr.lake_map[k] == id).collect();
+        let lvl = b.level_m;
+        let depths: Vec<f32> =
+            cells.iter().map(|&k| lvl - c1_altitude_norm_to_metres(field.data[k], &ss)).collect();
+        let mean_d =
+            if depths.is_empty() { 0.0 } else { depths.iter().sum::<f32>() / depths.len() as f32 };
+        let shallow = depths.iter().filter(|&&d| d < 3.0).count();
+        // mean slope (max 4-neighbour rise / cell_m) over the footprint, in %.
+        let mut slope_sum = 0.0f32;
+        let mut sn = 0usize;
+        for &k in &cells {
+            let (x, y) = ((k % t) as i32, (k / t) as i32);
+            let h0 = c1_altitude_norm_to_metres(field.data[k], &ss);
+            let mut mx = 0.0f32;
+            for (dx, dy) in [(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx >= 0 && ny >= 0 && (nx as usize) < t && (ny as usize) < t {
+                    let hn =
+                        c1_altitude_norm_to_metres(field.data[ny as usize * t + nx as usize], &ss);
+                    mx = mx.max((hn - h0).abs());
+                }
+            }
+            slope_sum += mx / cell_m;
+            sn += 1;
+        }
+        let mean_slope = if sn == 0 { 0.0 } else { 100.0 * slope_sum / sn as f32 };
+        eprintln!(
+            "  POINT 3 — basin #{id} (floor {:.1} m): {}",
+            b.floor_m,
+            if b.exorheic { "EXORHEIC" } else { "ENDORHEIC" }
+        );
+        eprintln!(
+            "     LOCAL SILL {:.1} m | LEVEL (evaporative if endo) {:.1} m | max depth {:.1} m | area {:.1} km² ({} cells)",
+            b.spill_level_m,
+            b.level_m,
+            b.max_depth_m,
+            b.area_km2,
+            cells.len()
+        );
+        eprintln!(
+            "     inflow {:.2} m³/s | evaporation {:.2} m³/s | a_eq {:.2} km² vs a_spill {:.2} km²",
+            b.inflow_m3s, b.evaporation_m3s, b.a_eq_km2, b.a_spill_km2
+        );
+        eprintln!(
+            "     footprint: mean depth {:.1} m | {shallow}/{} cells < 3 m ({:.0}% shallow/wetland) | mean slope {:.2}%",
+            mean_d,
+            cells.len(),
+            100.0 * shallow as f32 / cells.len().max(1) as f32,
+            mean_slope
+        );
+    }
+}

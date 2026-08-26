@@ -846,6 +846,10 @@ pub struct BasinSummary {
     /// Regime under the OLD inlet reading (`max` runoff at land neighbours) — for the before/after
     /// that separates the inlet bug (Finding 34) from `a_spill` growth (Finding 33).
     pub exorheic_before_inlet_fix: bool,
+    /// Finding 37 POINT 2 — the PREDICTION (would overflow: a sill exists AND `a_eq ≥ a_spill`), before
+    /// the trace confirms it. `predicted_exorheic && !exorheic` = a basin the balance said would spill
+    /// but for which NO outlet could be traced → correctly demoted to endorheic by the inversion.
+    pub predicted_exorheic: bool,
 }
 
 /// Result of [`below_sea_basin_lakes`]: the typed lakes + their water `lake_map`, the traced
@@ -998,59 +1002,115 @@ pub fn below_sea_basin_lakes(
             }
         }
         // 2+3. LOCAL SILL + BOWL in one priority-flood outward from the floor (Barnes 2014). Pop the
-        // lowest reachable cell; the FIRST cell with an unvisited strictly-lower neighbour is the
-        // lowest saddle (water spills there and runs downhill to a different sink) → `spill`. Every
-        // cell popped before it (all connected, height ≤ spill) is the bowl, already in height order.
-        let (spill, fcells): (f32, Vec<usize>) = {
+        // lowest reachable cell; the FIRST cell with a NOT-YET-FINALISED strictly-lower neighbour is
+        // the lowest saddle (water spills there and runs downhill to a different sink). Bowl membership
+        // is marked at POP time (finalised), NOT at push — marking at push masked the escape (a saddle's
+        // downhill neighbour, pushed earlier by a sibling, read as "seen"), which is exactly what left
+        // basins with NO sill: the old `sill_q == MAX` fallback then set the level to sea level (0 m),
+        // yielding an "exorheic at 0 m" with no real outlet (Finding 37 POINT 1). `sill_opt` is `None`
+        // when no escape exists within the window (a border-truncated basin) → it cannot be exorheic.
+        let (sill_opt, fcells): (Option<f32>, Vec<usize>) = {
             use std::cmp::Reverse;
-            use std::collections::BinaryHeap;
-            let mut fseen: std::collections::HashSet<usize> = std::collections::HashSet::new();
+            use std::collections::{BinaryHeap, HashSet};
+            let mut in_bowl: HashSet<usize> = HashSet::new();
+            let mut queued: HashSet<usize> = HashSet::new();
             let mut heap: BinaryHeap<Reverse<(i32, usize)>> = BinaryHeap::new();
             heap.push(Reverse((quant(heightmap.data[floor_k]), floor_k)));
-            fseen.insert(floor_k);
+            queued.insert(floor_k);
             let mut bowl: Vec<usize> = Vec::new();
-            let mut sill_q = i32::MAX;
+            let mut sill_q: Option<i32> = None;
             while let Some(Reverse((hq, c))) = heap.pop() {
                 let (x, y) = ((c % w) as i32, (c / w) as i32);
-                // Escape check: an unvisited neighbour strictly LOWER than c means c is the saddle
-                // (that neighbour is across the divide, draining to a different sink).
+                // Escape: a neighbour strictly LOWER than c that is NOT already finalised in the bowl.
+                // A lower cell inside the bowl would have popped earlier; a lower cell still in the heap
+                // cannot exist (min-heap) — so an unfinalised lower neighbour is across the divide.
                 let mut escapes = false;
                 for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
                     if let Some(e) = nb4(x + dx, y + dy) {
-                        if !fseen.contains(&e) && quant(heightmap.data[e]) < hq {
+                        if quant(heightmap.data[e]) < hq && !in_bowl.contains(&e) {
                             escapes = true;
                             break;
                         }
                     }
                 }
                 if escapes {
-                    sill_q = hq;
+                    sill_q = Some(hq);
                     bowl.push(c); // the saddle cell is the pour point (part of the water body)
+                    in_bowl.insert(c);
                     break;
                 }
                 bowl.push(c);
+                in_bowl.insert(c);
                 for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
                     if let Some(e) = nb4(x + dx, y + dy) {
-                        if !fseen.contains(&e) {
-                            fseen.insert(e);
+                        if !queued.contains(&e) {
+                            queued.insert(e);
                             heap.push(Reverse((quant(heightmap.data[e]), e)));
                         }
                     }
                 }
             }
-            let sill =
-                if sill_q == i32::MAX { C1_SEA_LEVEL_NORM } else { sill_q as f32 / 1_000_000.0 };
-            (sill, bowl)
+            (sill_q.map(|q| q as f32 / 1_000_000.0), bowl)
         };
         let a_spill = fcells.len() as f32 * cell_km2;
         let pe_lake = potential_evaporation_mm(climate.temperature.data[floor_k]).max(1.0);
         let a_eq = inflow / pe_lake;
-        let (level, lake_type) = if a_eq >= a_spill {
-            (spill, LakeType::Exorheic)
+        // Finding 37 POINT 2 — the regime is a CONCLUSION, not a prediction. A basin is EXORHEIC only
+        // if it BOTH overflows (inflow fills to the sill: a_eq ≥ a_spill, and a sill exists) AND a
+        // spillway can actually be TRACED from its pour point to a sink. Attempt the trace FIRST; the
+        // label follows. "Exorheic without an outlet" is thus UNREPRESENTABLE, not merely guarded.
+        let overflow = sill_opt.is_some() && a_eq >= a_spill;
+        let traced: Option<(Vec<usize>, Option<u32>)> = if overflow {
+            let in_bowl: std::collections::HashSet<usize> = fcells.iter().copied().collect();
+            // Pour = the bowl cell whose ocean-ward receiver LEAVES the bowl at the lowest exterior.
+            let mut pour: Option<usize> = None;
+            let mut pour_e = f32::MAX;
+            for &k in &fcells {
+                let r = spill_receiver[k];
+                if r != u32::MAX
+                    && !in_bowl.contains(&(r as usize))
+                    && heightmap.data[r as usize] < pour_e
+                {
+                    pour_e = heightmap.data[r as usize];
+                    pour = Some(k);
+                }
+            }
+            pour.and_then(|p0| {
+                let mut path = vec![p0];
+                let (mut cur, mut chained, mut steps) = (p0, None, 0usize);
+                loop {
+                    if wc[cur] == 1 {
+                        break; // reached the ocean
+                    }
+                    let lid = lake_map[cur];
+                    if lid != 0 && !in_bowl.contains(&cur) && cur != p0 {
+                        chained = Some(lid); // spilled into another (already-marked) below-sea basin
+                        break;
+                    }
+                    let r = spill_receiver[cur];
+                    if r == u32::MAX {
+                        break;
+                    }
+                    cur = r as usize;
+                    path.push(cur);
+                    steps += 1;
+                    if steps > n {
+                        break;
+                    }
+                }
+                if wc[cur] == 1 || chained.is_some() { Some((path, chained)) } else { None }
+            })
+        } else {
+            None
+        };
+        let (level, lake_type) = if traced.is_some() {
+            (sill_opt.unwrap(), LakeType::Exorheic)
         } else {
             let n_eq = (a_eq / cell_km2).floor().max(1.0) as usize;
             (heightmap.data[fcells[n_eq.min(fcells.len()) - 1]], LakeType::Endorheic)
         };
+        // `spill` for the basin summary: the real local sill if one exists, else the (endorheic) level.
+        let spill = sill_opt.unwrap_or(level);
         // 4. mark the WATER cells (≤ level) and build the typed lake.
         let id = next_id;
         next_id += 1;
@@ -1125,76 +1185,31 @@ pub fn below_sea_basin_lakes(
             max_depth_m: level_m - floor_m,
             area_at_sill_km2: a_spill,
             exorheic_before_inlet_fix: (inflow_max / pe_lake) >= a_spill,
+            predicted_exorheic: overflow,
         });
-        // Finding 30 + 32 — an EXORHEIC label REQUIRES a traced outlet (mass balance: a basin
-        // that receives more than it evaporates MUST overflow). Follow the ocean priority-flood's
-        // `spill_receiver` from the basin's pour point over the lowest sill to a sink — the OCEAN
-        // (`water_class == 1`) or, if the path first re-enters another below-sea basin, that basin
-        // (a chain). Guaranteed to reach a sink for every basin the flood reached (i.e. every one).
-        if lake_type == LakeType::Exorheic {
-            // Pour = the basin cell whose receiver leaves the basin (its outflow), lowest sill.
-            let mut pour: Option<usize> = None;
-            let mut pour_e = f32::MAX;
-            for &k in &fcells {
-                if lake_map[k] != id {
-                    continue;
-                }
-                let r = spill_receiver[k];
-                if r != u32::MAX
-                    && lake_map[r as usize] != id
-                    && heightmap.data[r as usize] < pour_e
-                {
-                    pour_e = heightmap.data[r as usize];
-                    pour = Some(k);
-                }
-            }
-            if let Some(p0) = pour {
-                let mut path = vec![p0];
-                let (mut cur, mut chained, mut steps) = (p0, None, 0usize);
-                loop {
-                    if wc[cur] == 1 {
-                        break; // reached the ocean
-                    }
-                    let lid = lake_map[cur];
-                    if lid != 0 && lid != id && cur != p0 {
-                        chained = Some(lid); // spilled into another below-sea basin (a chain)
-                        break;
-                    }
-                    let r = spill_receiver[cur];
-                    if r == u32::MAX {
-                        break;
-                    }
-                    cur = r as usize;
-                    path.push(cur);
-                    steps += 1;
-                    if steps > n {
-                        break;
-                    }
-                }
-                if wc[cur] == 1 || chained.is_some() {
-                    let points: Vec<(u32, u32)> =
-                        path.iter().map(|&k| ((k % w) as u32, (k / w) as u32)).collect();
-                    let profile: Vec<f32> = path
-                        .iter()
-                        .map(|&k| c1_altitude_norm_to_metres(heightmap.data[k], ss))
-                        .collect();
-                    // discharge = surplus (inflow − evaporation); evaporation = pe_lake · area.
-                    let area_km2 = water as f32 * cell_km2;
-                    let surplus = (inflow - pe_lake * area_km2).max(0.0); // mm·km²/yr
-                    let discharge_m3s = runoff_km2_to_m3s(surplus);
-                    let drainage_km2 = surplus / REFERENCE_RUNOFF_MM;
-                    spillways.push(Spillway {
-                        lake_id: id,
-                        points,
-                        discharge_m3s,
-                        drainage_km2,
-                        width_m: CHANNEL_WIDTH_A * discharge_m3s.max(0.0).powf(CHANNEL_WIDTH_B),
-                        navigability: cfg.thresholds.classify(drainage_km2),
-                        profile_m: profile,
-                        chained_into: chained,
-                    });
-                }
-            }
+        // Finding 37 POINT 2 — the spillway was ALREADY traced (before the regime decision), and its
+        // existence is WHY this basin is exorheic. Emit it from the traced path — no second trace, no
+        // way for an exorheic label to stand without one.
+        if let Some((path, chained)) = &traced {
+            let points: Vec<(u32, u32)> =
+                path.iter().map(|&k| ((k % w) as u32, (k / w) as u32)).collect();
+            let profile: Vec<f32> =
+                path.iter().map(|&k| c1_altitude_norm_to_metres(heightmap.data[k], ss)).collect();
+            // discharge = surplus (inflow − evaporation); evaporation = pe_lake · area.
+            let area_km2 = water as f32 * cell_km2;
+            let surplus = (inflow - pe_lake * area_km2).max(0.0); // mm·km²/yr
+            let discharge_m3s = runoff_km2_to_m3s(surplus);
+            let drainage_km2 = surplus / REFERENCE_RUNOFF_MM;
+            spillways.push(Spillway {
+                lake_id: id,
+                points,
+                discharge_m3s,
+                drainage_km2,
+                width_m: CHANNEL_WIDTH_A * discharge_m3s.max(0.0).powf(CHANNEL_WIDTH_B),
+                navigability: cfg.thresholds.classify(drainage_km2),
+                profile_m: profile,
+                chained_into: *chained,
+            });
         }
     }
     BelowSeaResult { lakes: out, lake_map, spillways, wetland, basins }
