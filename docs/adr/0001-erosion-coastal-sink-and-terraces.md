@@ -1548,3 +1548,34 @@ regenerated EXPORT is faithful ground truth; the fix is verified there, not on a
 Viz: the lake-sheet OUTLET is now the max-discharge watercourse whose source borders the lake AND whose mouth
 does not (a real outlet leaves; it does not also enter) — the earlier "first source-bordering" picked a
 phantom (#926) that was also an inlet; the true outlet (#397) carries the discharge.
+
+## Finding 38 — Fill each enclosed below-sea region as ONE water body (68 orphan mouths → 0)
+
+Finding 36 fixed the 613 m over-flood by filling from the floor to the LOCAL sill — but that fragmented
+large below-sea regions: the flood stopped at the first internal saddle, leaving a thin shore sliver
+(~−0.1 m, just above the lake's evaporative level) uncovered. On the shipped 8192² export, **68 river mouths
+(up to 234 m³/s displayed) terminated on those slivers** — `water_class == 2`, `lake_map == 0`, neither lake
+nor sea. A river of that size evaporating on a shore is a mass-conservation break at continental scale.
+
+STEP 1 (measured on the export, the real terrain — `below_sea_region_structure_export`): **24** `wc == 2`
+regions, each with **1 lake covering ~99.9 %** and a THIN orphan sliver (0.4–1.2 km²); floor −19.9 m; **global
+sill ~0.1 m for every region** (the lowest LAND rim — nothing like the 613 m ocean pass). So the fix is safe:
+filling each region to its ~0 m global sill covers the slivers without over-flooding land.
+
+STEP 2 — the merge. The per-basin flood's escape now triggers ONLY at a `wc != 2` neighbour (a LAND rim or the
+OCEAN); an internal `wc == 2` saddle belongs to the same enclosed region and is ABSORBED. So the flood locates
+the region's GLOBAL sill instead of fragmenting at the first internal saddle. The WATER BODY is the region
+`comp` itself (its `water_class == 2` connected component), NOT the flood bowl `fcells` — the flood grows over
+land to reach the sill and would otherwise sweep an adjacent region's pocket via a land lane (two lakes then
+claim one cell). The footprint is capped at SEA LEVEL (only below-sea cells marked, never the 0→sill land ring
+where adjacent rims meet), so regions stay disjoint. A region with NO inflow is a DRY salt flat and is dropped
+(this also removes the tiny no-inflow pockets). The regime is still a conclusion: exorheic iff the downhill
+outlet traces to a sink, else an endorheic inland sea at its rim.
+
+STEP 3 — verified on the REAL export terrain (`merge_verify_on_export`, loading height/precip/temp and
+re-running below_sea): **mouths on an orphan below-sea cell 68/65/16 → 0/0/0**; **claimed/valid worst 1.000×,
+lakes over 1.00× = 0** (no over-flood — the Finding 36 guarantee holds, we did not trade a defect for its
+opposite). The lake COUNT and exo/endo split from that loaded field are quantization artefacts (u16 height
+re-fragments `water_class`); the real counts come from the regenerated export. Every existing guard stays
+green (8 below-sea drainage guards + the lib suite). The author regenerates to confirm on ground truth — the
+measurements are the hypothesis, his export is the verdict.

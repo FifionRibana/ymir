@@ -1004,14 +1004,19 @@ pub fn below_sea_basin_lakes(
             let (mut saddle, mut escape) = (None, None);
             while let Some(Reverse((hq, c))) = heap.pop() {
                 let (x, y) = ((c % w) as i32, (c / w) as i32);
-                // Escape: the LOWEST neighbour strictly below c that is NOT finalised in the bowl.
-                // A lower cell inside the bowl would have popped earlier; a lower cell still in the heap
-                // cannot exist (min-heap) — so an unfinalised lower neighbour is across the divide.
+                // Escape: the LOWEST neighbour strictly below c that is NOT finalised in the bowl AND is
+                // OUTSIDE the below-sea region (`wc != 2`) — a LAND rim or the OCEAN. Finding 38: an
+                // internal `wc == 2` saddle belongs to the SAME enclosed region (another sub-pocket), so
+                // it is ABSORBED, not treated as an escape; the flood therefore fills the WHOLE region as
+                // one water body up to its GLOBAL sill (the lowest land/ocean rim, ~0 m here), instead of
+                // fragmenting at the first internal saddle and leaving the shore slivers where 68 river
+                // mouths (up to 234 m³/s displayed) terminated on nothing.
                 let mut best_e: Option<usize> = None;
                 for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
                     if let Some(e) = nb4(x + dx, y + dy) {
                         if quant(heightmap.data[e]) < hq
                             && !in_bowl.contains(&e)
+                            && wc[e] != 2
                             && best_e.map_or(true, |b| heightmap.data[e] < heightmap.data[b])
                         {
                             best_e = Some(e);
@@ -1039,7 +1044,13 @@ pub fn below_sea_basin_lakes(
             }
             (sill_q.map(|q| q as f32 / 1_000_000.0), bowl, saddle, escape)
         };
-        let a_spill = fcells.len() as f32 * cell_km2;
+        // Finding 38 — the WATER BODY is the enclosed region `comp` itself (all its below-sea cells),
+        // NOT the flood bowl `fcells`: the flood grows over LAND to reach the global sill and would
+        // otherwise sweep in an ADJACENT region's below-sea pocket via a land lane (two lakes then
+        // claim the same cell — the no-overlap invariant broke). `comp` is one `water_class == 2`
+        // connected component, so regions stay disjoint. `fcells`/`saddle`/`escape` are kept ONLY to
+        // locate the sill and trace the outlet.
+        let a_spill = comp.len() as f32 * cell_km2;
         let pe_lake = potential_evaporation_mm(climate.temperature.data[floor_k]).max(1.0);
         let a_eq = inflow / pe_lake;
         // Finding 37 POINT 2 — the regime is a CONCLUSION, not a prediction. A basin is EXORHEIC only
@@ -1048,7 +1059,8 @@ pub fn below_sea_basin_lakes(
         // label follows. "Exorheic without an outlet" is thus UNREPRESENTABLE, not merely guarded.
         let overflow = sill_opt.is_some() && a_eq >= a_spill;
         let traced: Option<(Vec<usize>, Option<u32>)> = if overflow {
-            let in_bowl: std::collections::HashSet<usize> = fcells.iter().copied().collect();
+            // Re-entry into THIS lake's own water body = the region `comp` (the loop / case A).
+            let in_bowl: std::collections::HashSet<usize> = comp.iter().copied().collect();
             // Finding 37c — the spillway starts at the SADDLE, crosses to its lowest EXTERIOR escape
             // cell (across the divide), then follows the DOWNHILL flow field to a sink: the OCEAN or a
             // DIFFERENT lake (a chain). Downhill by construction, it never climbs (monotone profile)
@@ -1096,31 +1108,52 @@ pub fn below_sea_basin_lakes(
         } else {
             None
         };
-        let (level, lake_type) = if traced.is_some() {
-            (sill_opt.unwrap(), LakeType::Exorheic)
-        } else {
-            let n_eq = (a_eq / cell_km2).floor().max(1.0) as usize;
-            (heightmap.data[fcells[n_eq.min(fcells.len()) - 1]], LakeType::Endorheic)
+        // Finding 38 — the region fills as ONE inland sea to its GLOBAL sill (when one exists): the
+        // whole region ≤ sill is connected to the floor, so every below-sea cell (and the shore slivers
+        // where the mouths ended) is covered — `claimed/valid` stays 1.00×. The regime is a conclusion:
+        // EXORHEIC if the overflow was traced to a sink, else ENDORHEIC (a full inland sea that loses to
+        // evaporation without a persistent outlet). Only a border-truncated region with NO sill falls
+        // back to the evaporative level. Valid for C1's SHALLOW below-sea shelf (sill ~0 m, STEP 1); a
+        // high sill would over-fill, but the ocean-depth ceiling keeps below-sea rims near sea level.
+        let (level, lake_type) = match sill_opt {
+            Some(sill) => {
+                (sill, if traced.is_some() { LakeType::Exorheic } else { LakeType::Endorheic })
+            }
+            None => {
+                // Border-truncated region with no sill: evaporative level over the REGION (comp).
+                let mut cs: Vec<usize> = comp.clone();
+                cs.sort_by(|&a, &b| heightmap.data[a].partial_cmp(&heightmap.data[b]).unwrap());
+                let n_eq = (a_eq / cell_km2).floor().max(1.0) as usize;
+                (heightmap.data[cs[n_eq.min(cs.len()) - 1]], LakeType::Endorheic)
+            }
         };
         // Invariant 1 (Finding 37 TASK 2) — A LAKE MUST HAVE WATER. A hollow with NO supply (no inflow)
         // AND no computed depth (an endorheic basin whose evaporative level collapses onto its floor)
         // is a DRY DEPRESSION: it belongs in the relief, not in the water bodies. Do not mark it, do
         // not inventory it, do not emit a spillway — its absence of a physical water path is the point.
-        let floor_norm_bowl = heightmap.data[fcells[0]]; // fcells is height-sorted ascending
-        let is_dry = inflow <= 0.0 && (level - floor_norm_bowl) * metres_per_norm < 0.5;
+        // Finding 38 — with `level = sill` the depth is always > 0 (fabricated by the fill), so it can
+        // no longer stand in for "has water". A region with NO supply is a DRY salt flat regardless of
+        // how deep its rim is: exclude on inflow alone. (This also drops the tiny no-inflow below-sea
+        // pockets the author flagged.) A region with any runoff inflow keeps its inland sea.
+        let is_dry = inflow <= 0.0;
         if is_dry {
             continue;
         }
         // `spill` for the basin summary: the real local sill if one exists, else the (endorheic) level.
         let spill = sill_opt.unwrap_or(level);
-        // 4. mark the WATER cells (≤ level) and build the typed lake.
+        // 4. mark the WATER cells = the whole enclosed region `comp` (every below-sea cell of this
+        // `water_class == 2` component). The surface is at `level` (the sill, possibly just above sea),
+        // but the footprint is the region, capped at sea so the thin 0→sill LAND ring — where adjacent
+        // regions' rims meet — is never marked twice. Iterating `comp` (not the land-crossing flood
+        // `fcells`) keeps regions disjoint AND covers the shore slivers where the mouths ended.
+        let mark_level = level.min(C1_SEA_LEVEL_NORM);
         let id = next_id;
         next_id += 1;
         let mut water = 0usize;
         let mut floor = f32::MAX;
         let (mut ox, mut oy) = (0u32, 0u32);
-        for &k in &fcells {
-            if heightmap.data[k] <= level {
+        for &k in &comp {
+            if heightmap.data[k] <= mark_level {
                 lake_map[k] = id;
                 water += 1;
                 // Finding 30 — wetland vs lagoon by DEPTH: a shallow (< 3 m) water cell is a

@@ -8937,3 +8937,273 @@ fn spillway_validity_audit() {
         bsr.basins.len()
     );
 }
+
+/// Finding 38 STEP 1 — below-sea REGION structure, measured on the SHIPPED export (ground truth,
+/// the real 21 basins). Reads water_class.u8 / lake_mask.u32 / height.u16 / rivers.json and reports:
+/// wc==2 connected REGIONS (8-conn), per region its cells / distinct lakes / ORPHAN (lake_map==0)
+/// cells / floor / GLOBAL sill (lowest land rim) vs the MAX lake level inside it; the count of river
+/// MOUTHS terminating on an orphan below-sea cell by discharge threshold; and the sub-pocket area/depth.
+#[test]
+#[ignore]
+fn below_sea_region_structure_export() {
+    use serde_json::Value;
+    use std::collections::VecDeque;
+    let dir =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../exports/seed10481999410520546993_8192.ymir");
+    let t = 8192usize;
+    let nn = t * t;
+    let cell_km2 = (400.0f32 / t as f32).powi(2);
+    let (min_m, max_m) = (-5505.853515625f32, 3917.749267578125f32);
+    let wcb = std::fs::read(format!("{dir}/water_class.u8")).expect("water_class");
+    let mb = std::fs::read(format!("{dir}/lake_mask.u32")).expect("lake_mask");
+    let hb = std::fs::read(format!("{dir}/height.u16")).expect("height");
+    let rivers: Value =
+        serde_json::from_slice(&std::fs::read(format!("{dir}/rivers.json")).unwrap()).unwrap();
+    let wc = |k: usize| wcb[k];
+    let lm =
+        |k: usize| u32::from_le_bytes([mb[4 * k], mb[4 * k + 1], mb[4 * k + 2], mb[4 * k + 3]]);
+    let hm = |k: usize| -> f32 {
+        let u = u16::from_le_bytes([hb[2 * k], hb[2 * k + 1]]) as f32;
+        min_m + (u / 65535.0) * (max_m - min_m)
+    };
+    let d8: [(i32, i32); 8] =
+        [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)];
+    let nb = |x: i32, y: i32| -> Option<usize> {
+        if x >= 0 && y >= 0 && (x as usize) < t && (y as usize) < t {
+            Some(y as usize * t + x as usize)
+        } else {
+            None
+        }
+    };
+    // 1. wc==2 connected regions (8-conn).
+    let mut seen = vec![false; nn];
+    let mut regions: Vec<Vec<usize>> = Vec::new();
+    for s in 0..nn {
+        if wc(s) != 2 || seen[s] {
+            continue;
+        }
+        let mut comp = Vec::new();
+        let mut q = VecDeque::new();
+        q.push_back(s);
+        seen[s] = true;
+        while let Some(k) = q.pop_front() {
+            comp.push(k);
+            let (x, y) = ((k % t) as i32, (k / t) as i32);
+            for (dx, dy) in d8 {
+                if let Some(v) = nb(x + dx, y + dy) {
+                    if wc(v) == 2 && !seen[v] {
+                        seen[v] = true;
+                        q.push_back(v);
+                    }
+                }
+            }
+        }
+        regions.push(comp);
+    }
+    regions.sort_by(|a, b| b.len().cmp(&a.len()));
+    eprintln!("\n=== Finding 38 STEP 1 — below-sea region structure (EXPORT, real terrain) ===");
+    eprintln!("  {} wc==2 REGIONS. Top 8 by cells:", regions.len());
+    for (ri, comp) in regions.iter().take(8).enumerate() {
+        let mut ids = std::collections::HashSet::new();
+        let mut orphan = 0usize;
+        let mut floor = f32::MAX;
+        for &k in comp {
+            let l = lm(k);
+            if l != 0 {
+                ids.insert(l);
+            } else {
+                orphan += 1;
+            }
+            floor = floor.min(hm(k));
+        }
+        // global sill: lowest LAND (wc==0) cell on the region's boundary.
+        let mut gsill = f32::MAX;
+        for &k in comp {
+            let (x, y) = ((k % t) as i32, (k / t) as i32);
+            for (dx, dy) in d8 {
+                if let Some(v) = nb(x + dx, y + dy) {
+                    if wc(v) == 0 {
+                        gsill = gsill.min(hm(v));
+                    }
+                }
+            }
+        }
+        eprintln!(
+            "   region {ri}: {} cells ({:.1} km²) | {} lakes | ORPHAN {} cells ({:.1} km²) | floor {:.1}m | GLOBAL sill {:.1}m",
+            comp.len(),
+            comp.len() as f32 * cell_km2,
+            ids.len(),
+            orphan,
+            orphan as f32 * cell_km2,
+            floor,
+            gsill
+        );
+    }
+    // 2. river mouths terminating on an ORPHAN below-sea cell, by exported discharge threshold.
+    let segs = rivers["segments"].as_array().unwrap();
+    let (mut n1, mut n10, mut n100) = (0usize, 0usize, 0usize);
+    let mut maxq = 0.0f64;
+    for s in segs {
+        if !s["downstream"].is_null() {
+            continue;
+        }
+        let p = s["points"].as_array().unwrap();
+        let last = p.last().unwrap().as_array().unwrap();
+        let (mx, my) = (last[0].as_i64().unwrap() as usize, last[1].as_i64().unwrap() as usize);
+        let k = my * t + mx;
+        let q = s["discharge_m3s"].as_f64().unwrap_or(0.0);
+        if hm(k) <= 0.0 && wc(k) != 1 && lm(k) == 0 {
+            if q >= 1.0 {
+                n1 += 1;
+            }
+            if q >= 10.0 {
+                n10 += 1;
+            }
+            if q >= 100.0 {
+                n100 += 1;
+            }
+            maxq = maxq.max(q);
+        }
+    }
+    eprintln!(
+        "  MOUTHS on an orphan below-sea cell (no lake, no sea): ≥1 m³/s {n1} | ≥10 {n10} | ≥100 {n100} | max {:.0} m³/s",
+        maxq
+    );
+    eprintln!(
+        "  (this is the 68 — a river of {:.0} m³/s terminating on nothing is the mass-conservation break)",
+        maxq
+    );
+}
+
+/// Finding 38 STEP 2/3 — VERIFY the merge on the REAL export terrain: load height/precip/temp from the
+/// shipped rasters, re-run below_sea_basin_lakes with the merge, and measure — mouths on an orphan
+/// below-sea cell (must → 0), claimed/valid ratio (must be 1.00×), and the exo/endo split.
+#[test]
+#[ignore]
+fn merge_verify_on_export() {
+    use serde_json::Value;
+    use std::collections::VecDeque;
+    use ymir_core::grid::GridF32;
+    use ymir_core::lakes::connectivity::water_class;
+    use ymir_core::tectonics_c1::drainage::{DrainageClimate, LakeType, below_sea_basin_lakes};
+    let dir =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../exports/seed10481999410520546993_8192.ymir");
+    let t = 8192usize;
+    let nn = t * t;
+    let cell_km2 = (400.0f32 / t as f32).powi(2);
+    let (min_m, max_m) = (-5505.853515625f32, 3917.749267578125f32);
+    let k_alt = 2.0 * 1.1302 * 5000.0; // c1_altitude_norm_to_metres slope; norm = 0.5 + m/k_alt
+    let hb = std::fs::read(format!("{dir}/height.u16")).unwrap();
+    let pb = std::fs::read(format!("{dir}/precipitation.u16")).unwrap();
+    let tb = std::fs::read(format!("{dir}/temperature.i16")).unwrap();
+    let rivers: Value =
+        serde_json::from_slice(&std::fs::read(format!("{dir}/rivers.json")).unwrap()).unwrap();
+    let mut hd = vec![0f32; nn];
+    let mut pd = vec![0f32; nn];
+    let mut td = vec![0f32; nn];
+    for k in 0..nn {
+        let u = u16::from_le_bytes([hb[2 * k], hb[2 * k + 1]]) as f32;
+        let m = min_m + (u / 65535.0) * (max_m - min_m);
+        hd[k] = 0.5 + m / k_alt;
+        pd[k] = u16::from_le_bytes([pb[2 * k], pb[2 * k + 1]]) as f32;
+        td[k] = i16::from_le_bytes([tb[2 * k], tb[2 * k + 1]]) as f32 / 100.0;
+    }
+    let field = GridF32::from_vec(t, t, hd);
+    let precip = GridF32::from_vec(t, t, pd);
+    let temp = GridF32::from_vec(t, t, td);
+    let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+    let ss = SteinSteinParams::default();
+    let bsr = below_sea_basin_lakes(&field, &clim, &C1DrainageConfig::default(), &ss, 400.0);
+    let wc = water_class(&field, SEA);
+    let (mut exo, mut endo) = (0usize, 0usize);
+    for lk in &bsr.lakes {
+        match lk.lake_type {
+            LakeType::Exorheic => exo += 1,
+            _ => endo += 1,
+        }
+    }
+    eprintln!("\n=== Finding 38 STEP 2/3 — merge verified on the EXPORT terrain ===");
+    eprintln!("  below-sea lakes {} ({exo} exorheic, {endo} endorheic)", bsr.lakes.len());
+    // mouths on an orphan below-sea cell (no lake, no ocean), by discharge.
+    let segs = rivers["segments"].as_array().unwrap();
+    let (mut n1, mut n10, mut n100) = (0usize, 0usize, 0usize);
+    for s in segs {
+        if !s["downstream"].is_null() {
+            continue;
+        }
+        let p = s["points"].as_array().unwrap();
+        let last = p.last().unwrap().as_array().unwrap();
+        let (mx, my) = (last[0].as_i64().unwrap() as usize, last[1].as_i64().unwrap() as usize);
+        let k = my * t + mx;
+        let q = s["discharge_m3s"].as_f64().unwrap_or(0.0);
+        if field.data[k] <= SEA && wc[k] != 1 && bsr.lake_map[k] == 0 {
+            if q >= 1.0 {
+                n1 += 1;
+            }
+            if q >= 10.0 {
+                n10 += 1;
+            }
+            if q >= 100.0 {
+                n100 += 1;
+            }
+        }
+    }
+    eprintln!(
+        "  MOUTHS on orphan below-sea cell: ≥1 m³/s {n1} | ≥10 {n10} | ≥100 {n100}  (was 68/65/16 → must be ~0)"
+    );
+    // claimed/valid per lake (valid = 8-conn flood ≤ max-claimed-height from the floor).
+    let nb = |x: i32, y: i32| {
+        if x >= 0 && y >= 0 && (x as usize) < t && (y as usize) < t {
+            Some(y as usize * t + x as usize)
+        } else {
+            None
+        }
+    };
+    let d8: [(i32, i32); 8] =
+        [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)];
+    let mut worst = 1.0f32;
+    let mut worst_id = 0u32;
+    let mut over = 0usize; // lakes with claimed > valid (the over-flood direction — the danger)
+    for lk in &bsr.lakes {
+        let id = lk.base.id;
+        let claimed: Vec<usize> = (0..nn).filter(|&k| bsr.lake_map[k] == id).collect();
+        if claimed.is_empty() {
+            continue;
+        }
+        let lvl = claimed.iter().map(|&k| field.data[k]).fold(f32::MIN, f32::max);
+        let floor = *claimed
+            .iter()
+            .min_by(|&&a, &&b| field.data[a].partial_cmp(&field.data[b]).unwrap())
+            .unwrap();
+        let mut vis = vec![false; nn];
+        let mut q = VecDeque::new();
+        q.push_back(floor);
+        vis[floor] = true;
+        let mut valid = 0usize;
+        while let Some(k) = q.pop_front() {
+            valid += 1;
+            let (x, y) = ((k % t) as i32, (k / t) as i32);
+            for (dx, dy) in d8 {
+                if let Some(v) = nb(x + dx, y + dy) {
+                    if !vis[v] && field.data[v] <= lvl {
+                        vis[v] = true;
+                        q.push_back(v);
+                    }
+                }
+            }
+        }
+        let ratio = claimed.len() as f32 / valid.max(1) as f32;
+        if ratio > 1.0001 {
+            over += 1;
+        }
+        if (ratio - 1.0).abs() > (worst - 1.0).abs() {
+            worst = ratio;
+            worst_id = id;
+        }
+        let _ = cell_km2;
+    }
+    eprintln!(
+        "  claimed/valid worst = {:.3}× (lake #{worst_id}) | lakes OVER 1.00× (over-flood) = {over} (must be 0)",
+        worst
+    );
+}
