@@ -1487,3 +1487,38 @@ longest/max-discharge path) UI-side only, ephemerally. The main-stem UPSTREAM ex
 still bundles trunk + all ≥ 20 km² tributaries as separate reaches. Gap vs the Azgaar target: a named main stem
 carrying an ordered source→mouth profile, plus each maximal tributary as its own watercourse with (profile,
 discharge, width, Strahler) and a link {joins stem S at point P} — an aggregation pass over the per-mouth trees.
+
+## Finding 37b — Absence must stay absence: remove the 0 m fallback, and the three closing invariants
+
+The eighth instance of the pattern, and its sharpest form: a MISSING value (no escape saddle) was replaced by
+a DEFAULT (`C1_SEA_LEVEL_NORM`, 0 m) instead of propagated as absence. `Option::None` was the correct
+representation and it had been collapsed into a number — which then FABRICATED lakes: a fictitious 0 m sill
+authorised a spillway trace that should never have existed (a loop back into the basin's own −20 m floor), and
+gave a level to objects with no physical basis for one (a hollow with no inlet and no outlet). Record it
+specifically: **absence must stay absence.**
+
+Fixes. (1) The sill flood already returns `Option<f32>` (`None` = no escape); the residual
+`sill_opt.unwrap_or(level)` is display-only and `has_sill` now records the truth. A basin with no sill is
+endorheic BY ABSENCE — no 0 m cap. (2) The inversion was too weak: it required a spillway to be TRACED but not
+to ARRIVE SOMEWHERE ELSE, so a path returning into the lake kept the exorheic label. Three invariants now close
+the class, applied to lakes of EVERY provenance (`below_sea_spillway_obeys_invariants`, permanent):
+
+1. **A lake must have water** — strictly positive inflow OR a positive computed depth. A hollow with no supply
+   and no outflow is a DRY DEPRESSION: not marked, not inventoried, no spillway (it belongs in the relief).
+2. **An outlet must arrive elsewhere** — its sink is the ocean or a DIFFERENT lake, never its own footprint
+   (catches the loop, case A).
+3. **An outlet may not loop back into its own hollow** — every non-terminal spillway cell must lie OUTSIDE the
+   source lake's own bowl. This is the false-positive-free form. Invariant 3 as a LEVEL/SEA THRESHOLD was
+   MEASURED to fail both ways and is NOT used: "no cell below the lake's LEVEL" demotes a legitimate below-sea
+   lake overflowing to the sea (#1000004, level 22 m → ocean at −1.8 m); "no interior SUB-SEA non-ocean cell"
+   demotes legitimate below-sea CHAINS — **7 of the 8 exorheic basins at 8192²**, pockets that spill over a
+   sub-sea sill into a lower pocket toward the ocean (level < 0, the whole descent is below sea by nature).
+   Both are real outlets. The loop (case A) is caught precisely by "never re-enter one's OWN bowl": a chain
+   re-enters a DIFFERENT pocket and stays valid; a loop re-enters the same one and is rejected → endorheic.
+
+Method-rule payoff: measured at the PRODUCTION config (8192² / 45° / 40°) with the inversion (dd1b48a) already
+in place, cases A/B/C were ALREADY ABSENT — 0 loops, 0 lakes at ~0 m, 0 dry depressions; they appeared only in
+a coarser (2048²) run and in the author's pre-dd1b48a screenshot. The invariants make the class structurally
+UNREPRESENTABLE rather than merely absent at one config. Lake-vs-wetland stays a physics readout (Finding 37):
+a shallow-inflow below-sea basin equilibrates near its floor (endorheic, wetland margins); a well-fed deep one
+is a lake.

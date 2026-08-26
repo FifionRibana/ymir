@@ -8766,6 +8766,10 @@ fn regime_inversion_and_1000007() {
     let exo = bsr.basins.iter().filter(|b| b.exorheic).count();
     let demoted = bsr.basins.iter().filter(|b| b.predicted_exorheic && !b.exorheic).count();
     let promoted = bsr.basins.iter().filter(|b| !b.predicted_exorheic && b.exorheic).count();
+    let no_sill = bsr.basins.iter().filter(|b| !b.has_sill).count();
+    eprintln!(
+        "  basins with NO local sill (would have hit the 0 m fallback) {no_sill} → all endorheic by absence"
+    );
     let exo_no_spill =
         bsr.basins.iter().filter(|b| b.exorheic && !spill_ids.contains(&b.id)).count();
     let exo_at_zero = bsr.basins.iter().filter(|b| b.exorheic && b.level_m.abs() < 0.5).count();
@@ -8848,4 +8852,88 @@ fn regime_inversion_and_1000007() {
             mean_slope
         );
     }
+}
+
+/// Finding 37 follow-up — spillway VALIDITY audit: per exorheic below-sea lake, does its spillway
+/// (a) end in its OWN footprint (a loop), (b) descend below the lake's LEVEL, (c) end at the ocean /
+/// another lake? Plus dry-depression count (inflow≈0 & depth≈0). Decides how to write invariants 2/3.
+#[test]
+#[ignore]
+fn spillway_validity_audit() {
+    use ymir_core::climate::c1_climate_placed;
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::erosion::stream_power::StreamPowerConfig;
+    use ymir_core::lakes::connectivity::water_class;
+    use ymir_core::tectonics_c1::drainage::{
+        DrainageClimate, LakeType, below_sea_basin_lakes, c1_drainage_windowed,
+    };
+    use ymir_core::terrain::flow::breach_monotone;
+    let ss = SteinSteinParams::default();
+    let seed_u = 10481999410520546993u64;
+    let t: usize = std::env::var("YMIR_T").ok().and_then(|s| s.parse().ok()).unwrap_or(2048);
+    let domain: f32 =
+        std::env::var("YMIR_DOMAIN_KM").ok().and_then(|s| s.parse().ok()).unwrap_or(400.0);
+    let cell_km2 = (domain / t as f32).powi(2);
+    let depth = ss.depth_scale_m as f32;
+    let (state, _run) = coarse_state(seed_u);
+    let coarse = c1_coarse_normalized_altitude(&state, &IsostasyConfig::c1_default(), &ss, None);
+    let seed = WorldSeed::new(seed_u);
+    let mut upscale = FbmUpscaleConfig::c1_hd_production(t);
+    upscale.amplitude_base = 0.04;
+    let mut sp = StreamPowerConfig::relief_v3(cell_km2, depth);
+    sp.mfd_exponent = Some(2.0);
+    upscale.stream_power = Some(sp);
+    let eroded = upscale_with_fbm(&coarse, SEA, &seed, &upscale).heightmap;
+    let dcfg = C1DrainageConfig::default();
+    let prebreach = c1_drainage_windowed(&eroded, None, &dcfg, &ss, domain);
+    let field = breach_monotone(&eroded, &prebreach.flow.filled, &prebreach.lake_map, SEA, t, t);
+    let climate = c1_climate_placed(&field, &ss, 45.0, 40.0, &PrecipParams::default(), domain);
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let wc = water_class(&field, SEA);
+    eprintln!("\n=== Finding 37 follow-up — spillway validity @{t}²/{:.0} km ===", domain);
+    let (mut loops, mut below, mut ok) = (0usize, 0usize, 0usize);
+    for sw in &bsr.spillways {
+        let lk = bsr.lakes.iter().find(|l| l.base.id == sw.lake_id);
+        let level = lk.map(|l| l.level_m).unwrap_or(f32::NAN);
+        let &(mx, my) = sw.points.last().unwrap();
+        let end = my as usize * t + mx as usize;
+        let ends_own = bsr.lake_map[end] == sw.lake_id;
+        let min_prof = sw.profile_m.iter().cloned().fold(f32::MAX, f32::min);
+        let dips = min_prof < level - 0.5;
+        if ends_own {
+            loops += 1;
+        }
+        if dips {
+            below += 1;
+        }
+        if !ends_own
+            && !dips
+            && (wc[end] == 1 || (bsr.lake_map[end] != 0 && bsr.lake_map[end] != sw.lake_id))
+        {
+            ok += 1;
+        }
+        if ends_own || dips {
+            eprintln!(
+                "  spillway #{}: level {:.1} m | min profile {:.1} m | ends_own_lake {} | end wc {} | dips_below {}",
+                sw.lake_id, level, min_prof, ends_own, wc[end], dips
+            );
+        }
+    }
+    eprintln!(
+        "  spillways {} total | loops (end in own lake) {loops} | descend below level {below} | clean {ok}",
+        bsr.spillways.len()
+    );
+    // Invariant 1 candidates — inventoried lakes with ~0 inflow AND ~0 depth (dry depressions).
+    let dry = bsr.basins.iter().filter(|b| b.inflow_m3s < 1e-6 && b.max_depth_m < 0.5).count();
+    let exo = bsr.basins.iter().filter(|b| b.exorheic).count();
+    let endo = bsr.basins.len() - exo;
+    let at0 = bsr.lakes.iter().filter(|l| l.level_m.abs() < 0.5).count();
+    eprintln!(
+        "  basins {} ({exo} exo, {endo} endo) | dry-depression candidates {dry} | inventoried lakes at ~0 m {at0}",
+        bsr.basins.len()
+    );
 }

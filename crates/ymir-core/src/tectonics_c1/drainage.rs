@@ -850,6 +850,9 @@ pub struct BasinSummary {
     /// the trace confirms it. `predicted_exorheic && !exorheic` = a basin the balance said would spill
     /// but for which NO outlet could be traced → correctly demoted to endorheic by the inversion.
     pub predicted_exorheic: bool,
+    /// Finding 37 TASK 1 — whether a real LOCAL SILL was found (an escape saddle within the window).
+    /// `false` = no escape → the basin is endorheic by ABSENCE (no fabricated sea-level fallback).
+    pub has_sill: bool,
 }
 
 /// Result of [`below_sea_basin_lakes`]: the typed lakes + their water `lake_map`, the traced
@@ -1077,16 +1080,29 @@ pub fn below_sea_basin_lakes(
             }
             pour.and_then(|p0| {
                 let mut path = vec![p0];
-                let (mut cur, mut chained, mut steps) = (p0, None, 0usize);
+                let (mut cur, mut chained, mut steps, mut valid) = (p0, None, 0usize, false);
                 loop {
                     if wc[cur] == 1 {
-                        break; // reached the ocean
-                    }
-                    let lid = lake_map[cur];
-                    if lid != 0 && !in_bowl.contains(&cur) && cur != p0 {
-                        chained = Some(lid); // spilled into another (already-marked) below-sea basin
+                        valid = true; // reached the OCEAN — a different object (invariant 2)
                         break;
                     }
+                    // Invariant 2 — an outlet may not RE-ENTER the lake it leaves (a loop, case A).
+                    if cur != p0 && in_bowl.contains(&cur) {
+                        break; // dipped back into its own hollow → INVALID → endorheic
+                    }
+                    let lid = lake_map[cur];
+                    if lid != 0 && cur != p0 {
+                        chained = Some(lid); // spilled into a DIFFERENT below-sea lake (a valid chain)
+                        valid = true;
+                        break;
+                    }
+                    // NOTE (Finding 37b) — invariant 3 as a LEVEL/SEA threshold ("no cell below the
+                    // lake's level" or "no interior sub-sea cell") was measured to FALSE-POSITIVE: the
+                    // first over-triggers on a below-sea lake overflowing to the sea (#1000004, level
+                    // 22 m → ocean at −1.8 m), the second demotes legitimate below-sea CHAINS (7 of 8
+                    // at 8192², pockets that spill over a sub-sea sill into a lower pocket toward the
+                    // ocean). The false-positive-free catch is invariant 2 above (never re-enter one's
+                    // OWN hollow); a chain re-enters a DIFFERENT pocket and stays valid. See ADR 37b.
                     let r = spill_receiver[cur];
                     if r == u32::MAX {
                         break;
@@ -1098,7 +1114,7 @@ pub fn below_sea_basin_lakes(
                         break;
                     }
                 }
-                if wc[cur] == 1 || chained.is_some() { Some((path, chained)) } else { None }
+                if valid { Some((path, chained)) } else { None }
             })
         } else {
             None
@@ -1109,6 +1125,15 @@ pub fn below_sea_basin_lakes(
             let n_eq = (a_eq / cell_km2).floor().max(1.0) as usize;
             (heightmap.data[fcells[n_eq.min(fcells.len()) - 1]], LakeType::Endorheic)
         };
+        // Invariant 1 (Finding 37 TASK 2) — A LAKE MUST HAVE WATER. A hollow with NO supply (no inflow)
+        // AND no computed depth (an endorheic basin whose evaporative level collapses onto its floor)
+        // is a DRY DEPRESSION: it belongs in the relief, not in the water bodies. Do not mark it, do
+        // not inventory it, do not emit a spillway — its absence of a physical water path is the point.
+        let floor_norm_bowl = heightmap.data[fcells[0]]; // fcells is height-sorted ascending
+        let is_dry = inflow <= 0.0 && (level - floor_norm_bowl) * metres_per_norm < 0.5;
+        if is_dry {
+            continue;
+        }
         // `spill` for the basin summary: the real local sill if one exists, else the (endorheic) level.
         let spill = sill_opt.unwrap_or(level);
         // 4. mark the WATER cells (≤ level) and build the typed lake.
@@ -1186,6 +1211,7 @@ pub fn below_sea_basin_lakes(
             area_at_sill_km2: a_spill,
             exorheic_before_inlet_fix: (inflow_max / pe_lake) >= a_spill,
             predicted_exorheic: overflow,
+            has_sill: sill_opt.is_some(),
         });
         // Finding 37 POINT 2 — the spillway was ALREADY traced (before the regime decision), and its
         // existence is WHY this basin is exorheic. Emit it from the traced path — no second trace, no
@@ -1455,6 +1481,82 @@ mod tests {
             }
         }
         let _ = &wc;
+    }
+
+    /// Finding 37 TASK 2 INVARIANTS (permanent, non-ignored) — the three that close the class:
+    /// (1) a LAKE MUST HAVE WATER (a dry depression is not inventoried nor marked); (2) an OUTLET
+    /// ARRIVES ELSEWHERE (its sink is the ocean or a DIFFERENT lake, never its own footprint);
+    /// (3) an OUTLET MAY NOT RUN THROUGH A RETAINING POCKET (no interior spillway cell below sea
+    /// level that is not the ocean). A deep below-sea pit fed by a ramp overflows a low sill into an
+    /// arm of the sea — the outlet reaches `water_class == 1` directly.
+    #[test]
+    fn below_sea_spillway_obeys_invariants() {
+        use crate::lakes::connectivity::water_class;
+        let (w, h) = (24usize, 3usize);
+        let mut hm = GridF32::new(w, h, 0.9); // high walls everywhere
+        for y in 0..h {
+            hm.set(0, y, 0.2); // ocean column (class-1)
+        }
+        // An arm of the sea reaching inland to x=3 (all ≤ sea, 8-connected to the border → ocean).
+        hm.set(1, 1, 0.40);
+        hm.set(2, 1, 0.45);
+        hm.set(3, 1, 0.49);
+        hm.set(4, 1, 0.52); // the pit's LOCAL SILL (land, just above sea)
+        for x in 5..=8 {
+            hm.set(x, 1, 0.30); // enclosed below-sea pit floor (4 cells)
+        }
+        // A ramp draining LEFT into the pit (inflow ⟹ overflow over the 0.52 sill toward the sea arm).
+        for (i, x) in (9..=22).enumerate() {
+            hm.set(x, 1, 0.60 + 0.02 * i as f32);
+        }
+        let precip = GridF32::new(w, h, 1.0);
+        let temp = GridF32::new(w, h, 10.0);
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let ss = SteinSteinParams::default();
+        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0);
+        let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
+        assert!(!r.lakes.is_empty(), "the fed below-sea pit must be inventoried");
+        // Invariant 1 — no inventoried lake is dry: each has inflow > 0 OR a positive depth.
+        for lk in &r.lakes {
+            let b = r.basins.iter().find(|b| b.id == lk.base.id).unwrap();
+            assert!(
+                b.inflow_m3s > 0.0 || lk.depth_m > 0.0,
+                "lake #{} is a DRY depression (no inflow, no depth) — must not be inventoried",
+                lk.base.id
+            );
+        }
+        // Invariants 2 & 3 — every spillway.
+        for sw in &r.spillways {
+            let &(ex, ey) = sw.points.last().unwrap();
+            let end = ey as usize * w + ex as usize;
+            // (2) arrives elsewhere: ocean or a DIFFERENT lake, never its own footprint.
+            assert_ne!(
+                r.lake_map[end], sw.lake_id,
+                "spillway #{} loops back into its own lake",
+                sw.lake_id
+            );
+            assert!(
+                wc[end] == 1 || (r.lake_map[end] != 0 && r.lake_map[end] != sw.lake_id),
+                "spillway #{} does not arrive at a different object (ocean/other lake)",
+                sw.lake_id
+            );
+            // (3, false-positive-free form) no interior point re-enters the source lake's own footprint
+            // (the loop catch). A LEVEL/SEA threshold was measured to demote legitimate below-sea chains
+            // and sea-overflowing lakes (ADR 37b), so the invariant is "never re-enter one's OWN hollow".
+            for &(px, py) in &sw.points[1..sw.points.len().saturating_sub(1)] {
+                let k = py as usize * w + px as usize;
+                assert_ne!(
+                    r.lake_map[k], sw.lake_id,
+                    "spillway #{} re-enters its own footprint at ({px},{py}) — a loop",
+                    sw.lake_id
+                );
+            }
+        }
+        // The pit overflows to the sea arm → EXORHEIC with a spillway.
+        assert!(
+            r.spillways.iter().any(|s| s.lake_id == r.lakes[0].base.id),
+            "the fed pit must have a spillway"
+        );
     }
 
     /// Finding 31 INVARIANT (permanent, non-ignored) — SINK VALIDITY is decoupled from the
