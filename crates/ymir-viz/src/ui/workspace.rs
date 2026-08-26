@@ -3076,14 +3076,21 @@ fn lake_sheet_panel(
                 }
             }
         });
-        // Outlet: a watercourse whose SOURCE leaves this lake.
-        let outlet = wcs.iter().position(|wc| {
-            wc.trunk
-                .first()
-                .and_then(|&s| hd.drainage.rivers.segments[s].points.first())
-                .map(|&(sx, sy)| adj(sx, sy))
-                .unwrap_or(false)
-        });
+        // Outlet: a watercourse whose SOURCE leaves this lake. An ENDORHEIC lake is CLOSED — it has
+        // no outlet, so do not look for one (Finding 37b: a phantom carve reach touching the basin on
+        // both sides otherwise showed as an "outlet" #154 that was ALSO an inlet, contradicting the
+        // "aucun (fermé)" header).
+        let outlet = if endo {
+            None
+        } else {
+            wcs.iter().position(|wc| {
+                wc.trunk
+                    .first()
+                    .and_then(|&s| hd.drainage.rivers.segments[s].points.first())
+                    .map(|&(sx, sy)| adj(sx, sy))
+                    .unwrap_or(false)
+            })
+        };
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Exutoire :").color(DIM).size(10.0));
             match outlet {

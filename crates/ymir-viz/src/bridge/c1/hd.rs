@@ -692,7 +692,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // detect_lakes treat them as ocean, so they never enter the lake path; add them here via
     // the water balance (level = min(spill, evaporative)), merging their water cells into the
     // lake_map (only where empty) and their typed lakes into the list → lakes.json + biomes.
-    let wetland_mask: Vec<u8> = {
+    let wetland_mask = {
         let dclim = DrainageClimate {
             precip_internal: &climate.precipitation,
             temperature: &climate.temperature,
@@ -710,42 +710,58 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
                 drainage.lake_map[k] = bs.lake_map[k];
             }
         }
-        // Finding 30 — append each exorheic basin's traced SPILLWAY as a watercourse (so an
-        // exorheic label always has an outlet; may chain through basins before the sea).
-        let (mut to_sea, mut chained) = (0usize, 0usize);
-        for sw in &bs.spillways {
-            if sw.chained_into.is_some() {
-                chained += 1;
-            } else {
-                to_sea += 1;
-            }
-            drainage.rivers.segments.push(RiverSegment {
-                points: sw.points.clone(),
-                strahler_order: 1,
-                avg_flow: 0.0,
-                max_flow: 0.0,
-                basin_id: 0,
-                upstream: vec![],
-                downstream: None,
-            });
-            drainage.segment_drainage_km2.push(sw.drainage_km2);
-            drainage.segment_navigability.push(sw.navigability);
-            drainage.segment_discharge_m3s.push(sw.discharge_m3s);
-            drainage.segment_width_m.push(sw.width_m);
-            drainage.segment_profile_m.push(sw.profile_m.clone());
-        }
+        let (to_sea, chained) = (
+            bs.spillways.iter().filter(|s| s.chained_into.is_none()).count(),
+            bs.spillways.iter().filter(|s| s.chained_into.is_some()).count(),
+        );
         drainage.lakes.extend(bs.lakes);
         eprintln!(
             "[HD] below-sea basins: {} lakes ({exo} exorheic, {endo} endorheic); {} spillways ({to_sea} → sea, {chained} chained)",
             exo + endo,
             bs.spillways.len()
         );
-        bs.wetland
+        // Finding 37b — do NOT append the spillways here: `clip_rivers_to_lakes` (below) drops any
+        // outlet run whose source lake is below-sea (id ≥ 1_000_001) to strip the phantom carve
+        // reach, and it CANNOT tell that reach from a legitimate appended spillway — so it deleted
+        // the outlets it was meant to preserve (the 8 "exorheic with no traced outlet" warnings).
+        // Return the spillways and append them AFTER the clip, scaled to match.
+        (bs.wetland, bs.spillways)
     };
-    // Finding 24 — geographic scale ratio: a PURE post-process on the export-derived
-    // hydrology (catchment/discharge/width/navigability), applied before the clip so the
-    // clipped reaches inherit the signified values. Identity at 1.0. Touches nothing
-    // physical (the terrain, climate and biomes above ran on the real domain_km).
+    let (wetland_mask, below_sea_spillways) = wetland_mask;
+    // ADR Finding 20 (DEFECT A): the rivers were traced on the breached (monotone) field, so they
+    // run straight through lakes and out of endorheic sinks while the final lake_map marks those
+    // basins as water. Clip the exported network to that lake_map so every watercourse terminates at
+    // its sink; an endorheic basin's phantom outlet is dropped. Done BEFORE appending the below-sea
+    // spillways (Finding 37b) — the clip drops below-sea outlet runs (id ≥ 1_000_001) to strip the
+    // phantom carve reach, and cannot tell it from a legitimate spillway, so it would delete the very
+    // outlets it should keep (the "exorheic with no traced outlet" warnings). Clip first, append after.
+    let before_seg = drainage.rivers.segments.len();
+    clip_rivers_to_lakes(&mut drainage);
+    eprintln!(
+        "[HD] rivers clipped to lakes: {before_seg} → {} segments (terminate at sinks)",
+        drainage.rivers.segments.len()
+    );
+    // Append the below-sea spillways (the real outlets). Unscaled here; the geo-scale pass below
+    // scales AND reclassifies navigability for the whole network, spillways included.
+    for sw in &below_sea_spillways {
+        drainage.rivers.segments.push(RiverSegment {
+            points: sw.points.clone(),
+            strahler_order: 1,
+            avg_flow: 0.0,
+            max_flow: 0.0,
+            basin_id: 0,
+            upstream: vec![],
+            downstream: None,
+        });
+        drainage.segment_drainage_km2.push(sw.drainage_km2);
+        drainage.segment_navigability.push(sw.navigability);
+        drainage.segment_discharge_m3s.push(sw.discharge_m3s);
+        drainage.segment_width_m.push(sw.width_m);
+        drainage.segment_profile_m.push(sw.profile_m.clone());
+    }
+    // Finding 24 — geographic scale ratio: a PURE post-process on the export-derived hydrology
+    // (catchment/discharge/width/navigability). Applied AFTER the clip + spillway append so every
+    // exported reach, spillways included, carries the signified values. Identity at 1.0.
     apply_geo_scale_ratio(&mut drainage, params.geo_scale_ratio, &dcfg.thresholds);
     if params.geo_scale_ratio != 1.0 {
         eprintln!(
@@ -754,17 +770,6 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             params.geo_scale_ratio * params.geo_scale_ratio
         );
     }
-    // ADR Finding 20 (DEFECT A): the rivers were traced on the breached (monotone)
-    // field, so they run straight through lakes and out of endorheic sinks while the
-    // final lake_map marks those basins as water. Clip the exported network to that
-    // lake_map so every watercourse terminates at its sink (sea or lake); an endorheic
-    // basin's phantom outlet is dropped. Topology stays continuous — width is a hint.
-    let before_seg = drainage.rivers.segments.len();
-    clip_rivers_to_lakes(&mut drainage);
-    eprintln!(
-        "[HD] rivers clipped to lakes: {before_seg} → {} segments (terminate at sinks)",
-        drainage.rivers.segments.len()
-    );
     // Finding 37 — the exorheic-outlet invariant, over the WHOLE lake population (both provenances),
     // on the PRODUCTION network (not a synthetic-grid subset). A non-empty result means a lake was
     // labelled exorheic without an emitted outflow — the label is wrong. Loud in dev, hard in debug.
