@@ -3087,13 +3087,19 @@ fn lake_sheet_panel(
             wcs.iter()
                 .enumerate()
                 .filter(|(_, wc)| {
-                    let source_here = wc
-                        .trunk
-                        .first()
-                        .and_then(|&s| hd.drainage.rivers.segments[s].points.first())
-                        .map(|&(sx, sy)| adj(sx, sy))
-                        .unwrap_or(false);
-                    source_here && !adj(wc.mouth_xy.0, wc.mouth_xy.1)
+                    // The outlet REACH leaves the lake — a SEGMENT (anywhere in the watercourse, not
+                    // just its far-upstream trunk source) whose FIRST point borders the shore — while
+                    // the watercourse's MOUTH is elsewhere (it drains AWAY, it does not also enter).
+                    // trunk.first alone missed it: a normal lake's outlet reach is a MIDDLE segment of
+                    // a watercourse whose source is a tributary far upstream (#397 on #4).
+                    let leaves = wc.segments.iter().any(|&s| {
+                        hd.drainage.rivers.segments[s]
+                            .points
+                            .first()
+                            .map(|&(sx, sy)| adj(sx, sy))
+                            .unwrap_or(false)
+                    });
+                    leaves && !adj(wc.mouth_xy.0, wc.mouth_xy.1)
                 })
                 .max_by(|a, b| {
                     a.1.discharge_m3s
