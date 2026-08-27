@@ -1692,3 +1692,22 @@ detected lake #26 (arriving "at sea" at #26's 197 m surface) and #1000020's thro
 trace sees only the below-sea lake_map, not detected lakes. To be diagnosed on its own. The waterfall at river
 #1's mouth (1736 m³/s reaching the sea at 49 m) is accepted by the author as a future coastal-cliff concern, not
 a drainage defect.
+
+### Finding 39 spillway chaining — a below-sea outlet stops at the FIRST basin it reaches
+
+Follow-up to the previous open item. A below-sea SPILLWAY traced only against the below-sea lake_map, so it
+ran UNDER a DETECTED lake instead of stopping in it: river #11 (outlet of #1000020 at 267 m) threaded through
+detected lake #17 (211 m) on its way to #1000019 (115 m), arriving "at #17's altitude". The physical chain is
+#1000020 → #17 → #1000019 (each overflowing into the next lower basin), not a pass-through.
+
+Fix: `below_sea_basin_lakes` takes an optional `detected_lake_map`; the downhill trace now halts and chains at
+the first cell belonging to ANY lake — detected or below-sea — that it enters (below-sea takes precedence when
+both are present). hd.rs passes `drainage.lake_map` (the detected lakes, before the below-sea merge overwrites
+it). `None` (every existing caller/guard) is byte-identical to the pre-fix trace. viz compiles; lib suite 522
+green (10 drainage guards).
+
+On river #1's 49 m coastal "waterfall" (1736 m³/s reaching the sea at the below-sea lake's fill level): NOT a
+routing bug — a consequence of not RE-INCISING the spillway after the fill. In nature an overflow outlet incises
+and lowers the lake; the model leaves the outlet at the fill elevation, so a large river can end on a coastal
+step. Defensible as a young-landscape snapshot; a future spillway-incision pass (lower the sill, partially drain
+the lake) is the realistic fix if undesired. Left to the author's call — not folded in here.

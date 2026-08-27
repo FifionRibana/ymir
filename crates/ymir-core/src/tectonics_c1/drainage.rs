@@ -872,6 +872,10 @@ pub fn below_sea_basin_lakes(
     cfg: &C1DrainageConfig,
     ss: &SteinSteinParams,
     window_km: f32,
+    // Finding 39 — the DETECTED lakes' lake_map (small ids), so a below-sea spillway CHAINS into the
+    // FIRST basin it enters — detected OR below-sea — instead of threading UNDER it. `None` = only
+    // below-sea lakes are visible to the trace (byte-identical to the pre-fix behaviour).
+    detected_lake_map: Option<&[u32]>,
 ) -> BelowSeaResult {
     use crate::lakes::connectivity::water_class;
     use std::collections::VecDeque;
@@ -1096,9 +1100,13 @@ pub fn below_sea_basin_lakes(
                         }
                         // THIS lake is not marked yet (marking happens after), so any non-zero
                         // lake_map cell belongs to an ALREADY-PROCESSED, different lake → a valid chain.
+                        // Finding 39 — also stop at a DETECTED lake (the `detected_lake_map`): the
+                        // spillway must halt at the FIRST basin it reaches, not run UNDER it (river #11
+                        // through the 211 m lake #17). Below-sea takes precedence when both are present.
                         let lid = lake_map[cur];
-                        if lid != 0 {
-                            chained = Some(lid);
+                        let did = detected_lake_map.map_or(0, |d| d[cur]);
+                        if lid != 0 || did != 0 {
+                            chained = Some(if lid != 0 { lid } else { did });
                             valid = true;
                             break;
                         }
@@ -1342,6 +1350,7 @@ mod tests {
             &C1DrainageConfig::default(),
             &SteinSteinParams::default(),
             80.0,
+            None,
         );
         let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
         // The INVARIANT over EVERY basin (any area): exorheic ⟹ a traced spillway reaching a sink.
@@ -1425,7 +1434,7 @@ mod tests {
         let temp = GridF32::new(w, h, 10.0);
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
         let ss = SteinSteinParams::default();
-        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 30.0);
+        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 30.0, None);
         let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
         assert!(!r.lakes.is_empty(), "the below-sea pit must be inventoried");
         // REGRESSION: the pit filled to its LOCAL sill (~0.52), NOT the 0.9 ocean barrier. In metres
@@ -1566,7 +1575,7 @@ mod tests {
         let temp = GridF32::new(w, h, 10.0);
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
         let ss = SteinSteinParams::default();
-        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0);
+        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0, None);
         assert!(!r.lakes.is_empty(), "the enclosed pit must be a below-sea lake");
         let lk = &r.lakes[0];
         assert_eq!(
@@ -1608,7 +1617,7 @@ mod tests {
         }
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
         let ss = SteinSteinParams::default();
-        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0);
+        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0, None);
         assert!(!r.lakes.is_empty(), "the fed pit must still be a (terminal) below-sea lake");
         let lk = &r.lakes[0];
         assert_eq!(
@@ -1654,7 +1663,7 @@ mod tests {
         let temp = GridF32::new(w, h, 10.0);
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
         let ss = SteinSteinParams::default();
-        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0);
+        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0, None);
         let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
         assert!(!r.lakes.is_empty(), "the fed below-sea pit must be inventoried");
         // Invariant 1 — no inventoried lake is dry: each has inflow > 0 OR a positive depth.
@@ -1732,6 +1741,7 @@ mod tests {
             &C1DrainageConfig::default(),
             &SteinSteinParams::default(),
             24.0,
+            None,
         );
         let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
         // Marked as a sink despite being sub-threshold.

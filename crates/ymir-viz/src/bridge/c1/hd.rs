@@ -697,7 +697,10 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             precip_internal: &climate.precipitation,
             temperature: &climate.temperature,
         };
-        let bs = below_sea_basin_lakes(&eroded, &dclim, &dcfg, &ss, window_km);
+        // Pass the DETECTED lakes (drainage.lake_map, before the below-sea merge overwrites it) so a
+        // below-sea spillway chains into the first basin it reaches — detected OR below-sea (Finding 39).
+        let bs =
+            below_sea_basin_lakes(&eroded, &dclim, &dcfg, &ss, window_km, Some(&drainage.lake_map));
         let (mut endo, mut exo) = (0usize, 0usize);
         for lk in &bs.lakes {
             match lk.lake_type {

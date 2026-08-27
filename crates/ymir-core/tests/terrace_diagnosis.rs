@@ -3664,7 +3664,7 @@ fn authors_basin_8192() {
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     eprintln!("\n=== Finding 33 — author's 8192² config (centre 45° span 40°) ===");
     // TASK 3 — exorheic/endorheic split BEFORE vs AFTER the inlet fix (separates it from a_spill).
     let exo_after = bsr.basins.iter().filter(|b| b.exorheic).count();
@@ -3882,7 +3882,7 @@ fn footprint_proof_8192() {
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let (w, hh, nn) = (t, t, t * t);
     // Regime split + the HIGHEST-level below-sea lake (the author's #1000020 candidate).
     {
@@ -4269,7 +4269,7 @@ fn viz_exact_field_8192() {
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let (w, hh, nn) = (t, t, t * t);
     let to_m = |x: f32| c1_altitude_norm_to_metres(x, &ss);
     let nb = |x: i32, y: i32| -> Option<usize> {
@@ -4467,7 +4467,7 @@ fn boundary_and_gap_check() {
         temperature: &climate.temperature,
     };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     for k in 0..bsr.lake_map.len() {
         if bsr.lake_map[k] != 0 && dr.lake_map[k] == 0 {
             dr.lake_map[k] = bsr.lake_map[k];
@@ -4591,7 +4591,7 @@ fn basin_fill_report() {
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     eprintln!("\n=== Finding 33 TASK 1 — exorheic basin FILL (level vs sill), 2048² ===");
     let exo: Vec<_> = bsr.basins.iter().filter(|b| b.exorheic).collect();
     let unfilled = exo.iter().filter(|b| (b.level_m - b.spill_level_m).abs() > 0.5).count();
@@ -4650,7 +4650,7 @@ fn sub_threshold_sink_report() {
         temperature: &climate.temperature,
     };
     let dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let wc = water_class(&field, SEA);
 
     // Finding 32 — per-basin balance over EVERY basin (inventory + sub-threshold), real units.
@@ -4827,7 +4827,7 @@ fn below_sea_outlet_diagnosis() {
     };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
     use ymir_core::terrain::flow::RiverSegment;
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let spillways = bsr.spillways;
     let wetland = bsr.wetland;
     let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
@@ -5045,7 +5045,7 @@ fn inspection_panels_data() {
         temperature: &climate.temperature,
     };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() {
         if bs_map[k] != 0 && dr.lake_map[k] == 0 {
@@ -5517,7 +5517,7 @@ fn recommended_render() {
         temperature: &climate.temperature,
     };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() {
         if bs_map[k] != 0 && dr.lake_map[k] == 0 {
@@ -5659,7 +5659,7 @@ fn scale_and_span_audit() {
         temperature: &climate.temperature,
     };
     let mut base = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() {
         if bs_map[k] != 0 && base.lake_map[k] == 0 {
@@ -5772,7 +5772,7 @@ fn width_law_audit() {
         temperature: &climate.temperature,
     };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() {
         if bs_map[k] != 0 && dr.lake_map[k] == 0 {
@@ -5940,7 +5940,7 @@ fn overlay_render(t: usize) {
         temperature: &climate.temperature,
     };
     let mut dr = c1_drainage(&field, Some(&dclim), &C1DrainageConfig::default(), &ss);
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() {
         if bs_map[k] != 0 && dr.lake_map[k] == 0 {
@@ -6087,7 +6087,7 @@ fn defect_abc_audit() {
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let (bs, bs_map) = (bsr.lakes, bsr.lake_map);
     for k in 0..bs_map.len() {
         if bs_map[k] != 0 && dr.lake_map[k] == 0 {
@@ -6236,7 +6236,7 @@ fn step23_biomes_lakes() {
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let (bs_lakes, bs_map) = (bsr.lakes, bsr.lake_map);
 
     let (mut exo, mut endo, mut water, mut dry) = (0usize, 0usize, 0.0f32, 0.0f32);
@@ -8449,7 +8449,7 @@ fn exorheic_outlet_audit() {
     dr.lakes = prebreach.lakes.clone();
     dr.lake_map = prebreach.lake_map.clone();
     // below-sea basins → merge lake_map, append spillways as river segments.
-    let bs = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bs = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     for k in 0..bs.lake_map.len() {
         if bs.lake_map[k] != 0 && dr.lake_map[k] == 0 {
             dr.lake_map[k] = bs.lake_map[k];
@@ -8759,7 +8759,7 @@ fn regime_inversion_and_1000007() {
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let spill_ids: std::collections::HashSet<u32> =
         bsr.spillways.iter().map(|s| s.lake_id).collect();
     let pred = bsr.basins.iter().filter(|b| b.predicted_exorheic).count();
@@ -8892,7 +8892,7 @@ fn spillway_validity_audit() {
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain);
+    let bsr = below_sea_basin_lakes(&field, &dclim, &dcfg, &ss, domain, None);
     let wc = water_class(&field, SEA);
     eprintln!("\n=== Finding 37 follow-up — spillway validity @{t}²/{:.0} km ===", domain);
     let (mut loops, mut below, mut ok) = (0usize, 0usize, 0usize);
@@ -9117,7 +9117,7 @@ fn merge_verify_on_export() {
     let temp = GridF32::from_vec(t, t, td);
     let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
     let ss = SteinSteinParams::default();
-    let bsr = below_sea_basin_lakes(&field, &clim, &C1DrainageConfig::default(), &ss, 400.0);
+    let bsr = below_sea_basin_lakes(&field, &clim, &C1DrainageConfig::default(), &ss, 400.0, None);
     let wc = water_class(&field, SEA);
     // #1000022 (the author's lake) corrected state: the re-run lake whose footprint overlaps the
     // shipped #1000022 mask the most — report its regime, level, area, depth, and spillway discharge.
