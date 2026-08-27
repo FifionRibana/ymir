@@ -994,6 +994,7 @@ pub fn below_sea_basin_lakes(
         ) = {
             use std::cmp::Reverse;
             use std::collections::{BinaryHeap, HashSet};
+            let comp_set: HashSet<usize> = comp.iter().copied().collect();
             let mut in_bowl: HashSet<usize> = HashSet::new();
             let mut queued: HashSet<usize> = HashSet::new();
             let mut heap: BinaryHeap<Reverse<(i32, usize)>> = BinaryHeap::new();
@@ -1005,18 +1006,20 @@ pub fn below_sea_basin_lakes(
             while let Some(Reverse((hq, c))) = heap.pop() {
                 let (x, y) = ((c % w) as i32, (c / w) as i32);
                 // Escape: the LOWEST neighbour strictly below c that is NOT finalised in the bowl AND is
-                // OUTSIDE the below-sea region (`wc != 2`) — a LAND rim or the OCEAN. Finding 38: an
-                // internal `wc == 2` saddle belongs to the SAME enclosed region (another sub-pocket), so
-                // it is ABSORBED, not treated as an escape; the flood therefore fills the WHOLE region as
-                // one water body up to its GLOBAL sill (the lowest land/ocean rim, ~0 m here), instead of
-                // fragmenting at the first internal saddle and leaving the shore slivers where 68 river
-                // mouths (up to 234 m³/s displayed) terminated on nothing.
+                // OUTSIDE THIS region's own component (`!comp_set`). Finding 39 refines Finding 38: an
+                // internal saddle belongs to the SAME `comp` (another sub-pocket of this region) → it is
+                // ABSORBED (the flood fills the whole component before escaping, so no shore sliver is
+                // left for an orphan mouth). But a descent to a DIFFERENT below-sea region (a wc==2 cell
+                // NOT in this comp) is a real POUR POINT — the lake overflows/chains there at that LOW
+                // col, it does NOT climb on to the far continental pass. The old `wc != 2` test absorbed
+                // neighbouring regions too, pushing the sill up to the 613 m ocean pass and re-opening
+                // the Finding 36 over-flood the instant a humid basin (net_evap 0) filled to it.
                 let mut best_e: Option<usize> = None;
                 for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
                     if let Some(e) = nb4(x + dx, y + dy) {
                         if quant(heightmap.data[e]) < hq
                             && !in_bowl.contains(&e)
-                            && wc[e] != 2
+                            && !comp_set.contains(&e)
                             && best_e.map_or(true, |b| heightmap.data[e] < heightmap.data[b])
                         {
                             best_e = Some(e);
@@ -1044,26 +1047,38 @@ pub fn below_sea_basin_lakes(
             }
             (sill_q.map(|q| q as f32 / 1_000_000.0), bowl, saddle, escape)
         };
-        // Finding 38 — `a_spill` is the area to fill to the SILL (the flood bowl `fcells`, region + land
-        // up to the overflow col), so a DEEPLY ENCLOSED region (col far above sea, e.g. #1000022's 471 m)
-        // gets a HUGE `a_spill` ⟹ `a_eq < a_spill` ⟹ endorheic — it fills to sea level, NOT the col.
-        // Only a region whose col is near sea (a coastal pocket) can overflow. This is what stops the
-        // merge from re-opening the Finding 36 over-flood (a 471 m below-sea "lake"). The FOOTPRINT is
-        // still the region `comp` (marked below), so mouths are covered without over-filling.
-        let a_spill = fcells.len() as f32 * cell_km2;
-        let pe_lake = potential_evaporation_mm(climate.temperature.data[floor_k]).max(1.0);
-        let a_eq = inflow / pe_lake;
-        // Finding 37 POINT 2 / Finding 38 — the regime is a CONCLUSION. A below-sea basin is EXORHEIC
-        // only if it overflows a NEAR-SEA col (`sill ≤ sea + a small margin`): a below-sea inland sea
-        // sits at ~sea level, so it can spill only over a rim within a metre or two of sea — it can NOT
-        // climb to a far, high col (#1000022's 471 m). A high-col region is enclosed → endorheic. On
-        // top of that it must fill to the sill (`a_eq ≥ a_spill`) AND trace a downhill outlet to a sink.
-        let overflow_margin = 2.0 / metres_per_norm; // a below-sea sea spills over a rim within ~2 m of sea
-        let near_sea_sill = sill_opt.map_or(false, |s| s <= C1_SEA_LEVEL_NORM + overflow_margin);
-        let overflow = near_sea_sill && a_eq >= a_spill;
+        // Finding 39 — WATER-BALANCE CLOSURE (replaces the Finding 38b geometric near-sea rule). A
+        // below-sea basin OVERFLOWS (exorheic) iff its catchment INFLOW exceeds what the basin can
+        // evaporate when filled to its sill; otherwise it is ENDORHEIC, ponding at the level where
+        // evaporation balances inflow. DISCHARGE is the discriminant, NOT the sill height: a deep-rimmed
+        // basin (#1000022's 471 m col) fed by rivers (961 m³/s signified) in a HUMID climate fills to
+        // the col and spills — that high level is now JUSTIFIED BY INFLOW, exactly the case Finding 36's
+        // geometric ban wrongly conflated with an unjustified fill. This unifies 36 (arid, low inflow →
+        // stays low) and 38b (humid, high inflow → fills & overflows) under one physical law.
+        //
+        // NO DOUBLE COUNT (precaution 1): `runoff = max(0, precip − PE)` (the inflow source) and
+        // `net_evap = max(0, PE − precip)` (the surface loss) are COMPLEMENTARY — for any cell exactly
+        // one is nonzero. `runoff_accumulation` sources runoff ONLY from above-sea land and ZEROES the
+        // below-sea region, so the lake's own precipitation is never in `inflow`; the surface term
+        // charges `net_evap` over the flooded area. A submerged cell therefore contributes to EITHER
+        // inflow (humid: net_evap = 0 there) OR surface evaporation (arid: runoff = 0 there), never both.
+        let a_spill = fcells.len() as f32 * cell_km2; // area to fill the whole bowl to its sill
+        let pe_floor = potential_evaporation_mm(climate.temperature.data[floor_k]);
+        let precip_floor = precip_mm_per_year(climate.precip_internal.data[floor_k]);
+        let net_evap = (pe_floor - precip_floor).max(0.0); // mm/yr the SURFACE loses net of its own rain
+        let pe_lake = pe_floor.max(1.0); // gross PE, kept for the before/after diagnostic below
+        // Equilibrium surface where net evaporation balances inflow (km²). net_evap == 0 (a HUMID
+        // climate that cannot close the basin) ⇒ infinite equilibrium ⇒ the basin MUST overflow.
+        let a_eq = if net_evap > 0.0 { inflow / net_evap } else { f32::INFINITY };
+        // Precaution 2 — the reformulated anti-over-flood guard: a HIGH level is admissible ONLY when
+        // INFLOW JUSTIFIES it (`a_eq ≥ a_spill`: inflow fills the whole bowl to the sill). The GEOMETRIC
+        // invariant is untouched — the footprint is the priority-flood bowl `fcells` (cells ≤ level, all
+        // connected to the floor), so `claimed == valid` by construction (no over-flood).
+        let fills_to_sill = a_eq >= a_spill;
+        let overflow = fills_to_sill; // candidate; confirmed EXORHEIC only if an outlet also traces
         let traced: Option<(Vec<usize>, Option<u32>)> = if overflow {
-            // Re-entry into THIS lake's own water body = the region `comp` (the loop / case A).
-            let in_bowl: std::collections::HashSet<usize> = comp.iter().copied().collect();
+            // Re-entry into THIS lake's own water body = its flood bowl `fcells` (the loop / case A).
+            let in_bowl: std::collections::HashSet<usize> = fcells.iter().copied().collect();
             // Finding 37c — the spillway starts at the SADDLE, crosses to its lowest EXTERIOR escape
             // cell (across the divide), then follows the DOWNHILL flow field to a sink: the OCEAN or a
             // DIFFERENT lake (a chain). Downhill by construction, it never climbs (monotone profile)
@@ -1111,16 +1126,24 @@ pub fn below_sea_basin_lakes(
         } else {
             None
         };
-        // Finding 38 — regime & surface. EXORHEIC only if the basin overflows a NEAR-SEA sill AND a
-        // downhill outlet traces to a sink → the surface sits at that (low) sill. Otherwise it is an
-        // ENDORHEIC below-sea INLAND SEA whose surface sits at SEA LEVEL: it fills its shallow shelf to
-        // ~0 m and loses the rest to evaporation — it does NOT climb to a far-away high col (that was the
-        // 471 m over-flood #1000022 showed). Either way the surface is at/just above sea, so marking the
-        // region capped at sea (below) keeps every cell ≤ level and claimed/valid at 1.00×.
+        // Finding 39 — regime & surface from the water balance. EXORHEIC iff the inflow fills the bowl
+        // to the sill AND a downhill outlet traces to a sink → the surface sits AT the sill (the lake
+        // spills there). If it would fill to the sill but no outlet traces (border-truncated / true
+        // loop) it is a brim-full ENDORHEIC basin, still at the sill. Otherwise ENDORHEIC BELOW the
+        // sill: the surface sits at the level where the bowl area reaches the evaporative equilibrium
+        // `a_eq` — read off the priority-flood bowl's HYPSOMETRY (precaution 3): `fcells` sorted by
+        // elevation IS the area-vs-level table the flood already swept (floor→sill), so
+        // `area(level = sorted[i]) = (i+1)·cell_km2` and the level is `sorted[⌊a_eq/cell⌋−1]`.
         let lake_type = if traced.is_some() { LakeType::Exorheic } else { LakeType::Endorheic };
-        let level = match (lake_type, sill_opt) {
-            (LakeType::Exorheic, Some(sill)) => sill,
-            _ => C1_SEA_LEVEL_NORM,
+        let level = if fills_to_sill {
+            sill_opt.unwrap_or_else(|| {
+                fcells.iter().map(|&k| heightmap.data[k]).fold(f32::MIN, f32::max)
+            })
+        } else {
+            let mut sorted: Vec<f32> = fcells.iter().map(|&k| heightmap.data[k]).collect();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let n_eq = ((a_eq / cell_km2).floor() as usize).clamp(1, sorted.len());
+            sorted[n_eq - 1]
         };
         // Invariant 1 (Finding 37 TASK 2) — A LAKE MUST HAVE WATER. A hollow with NO supply (no inflow)
         // AND no computed depth (an endorheic basin whose evaporative level collapses onto its floor)
@@ -1136,19 +1159,22 @@ pub fn below_sea_basin_lakes(
         }
         // `spill` for the basin summary: the real local sill if one exists, else the (endorheic) level.
         let spill = sill_opt.unwrap_or(level);
-        // 4. mark the WATER cells = the whole enclosed region `comp` (every below-sea cell of this
-        // `water_class == 2` component). The surface is at `level` (the sill, possibly just above sea),
-        // but the footprint is the region, capped at sea so the thin 0→sill LAND ring — where adjacent
-        // regions' rims meet — is never marked twice. Iterating `comp` (not the land-crossing flood
-        // `fcells`) keeps regions disjoint AND covers the shore slivers where the mouths ended.
-        let mark_level = level.min(C1_SEA_LEVEL_NORM);
+        // 4. mark the WATER cells = the priority-flood BOWL `fcells` up to the surface `level`. Finding
+        // 39: the footprint is now the whole depression under the water (the region `comp` PLUS any land
+        // ring the level submerges), so a filled-to-the-sill lake actually COVERS everything below its
+        // surface — the physically-correct montane lake, not a vertical-walled sliver at the region. The
+        // bowl is a single priority-flood from the floor, so every marked cell is ≤ level AND connected
+        // to the lowest point ⟹ `claimed == valid` (the geometric invariant). Claim only cells still
+        // free (`lake_map == 0`) so two adjacent bowls sharing a ridge stay DISJOINT; the escape at the
+        // separating land stops a bowl before it can reach another region, so `comp`s never merge.
+        let mark_level = level;
         let id = next_id;
         next_id += 1;
         let mut water = 0usize;
         let mut floor = f32::MAX;
         let (mut ox, mut oy) = (0u32, 0u32);
-        for &k in &comp {
-            if heightmap.data[k] <= mark_level {
+        for &k in &fcells {
+            if heightmap.data[k] <= mark_level && lake_map[k] == 0 {
                 lake_map[k] = id;
                 water += 1;
                 // Finding 30 — wetland vs lagoon by DEPTH: a shallow (< 3 m) water cell is a
@@ -1206,8 +1232,8 @@ pub fn below_sea_basin_lakes(
             area_km2: area_km2_bs,
             exorheic: lake_type == LakeType::Exorheic,
             inflow_m3s: runoff_km2_to_m3s(inflow),
-            evaporation_m3s: runoff_km2_to_m3s(pe_lake * area_km2_bs),
-            a_eq_km2: a_eq,
+            evaporation_m3s: runoff_km2_to_m3s(net_evap * area_km2_bs),
+            a_eq_km2: if a_eq.is_finite() { a_eq } else { a_spill }, // humid ⇒ ∞; report the sill area it fills
             a_spill_km2: a_spill,
             spill_level_m: c1_altitude_norm_to_metres(spill, ss),
             floor_m,
@@ -1226,9 +1252,9 @@ pub fn below_sea_basin_lakes(
                 path.iter().map(|&k| ((k % w) as u32, (k / w) as u32)).collect();
             let profile: Vec<f32> =
                 path.iter().map(|&k| c1_altitude_norm_to_metres(heightmap.data[k], ss)).collect();
-            // discharge = surplus (inflow − evaporation); evaporation = pe_lake · area.
+            // discharge = surplus (inflow − net evaporation); net_evap = max(0, PE − precip) · area.
             let area_km2 = water as f32 * cell_km2;
-            let surplus = (inflow - pe_lake * area_km2).max(0.0); // mm·km²/yr
+            let surplus = (inflow - net_evap * area_km2).max(0.0); // mm·km²/yr
             let discharge_m3s = runoff_km2_to_m3s(surplus);
             let drainage_km2 = surplus / REFERENCE_RUNOFF_MM;
             spillways.push(Spillway {
@@ -1491,30 +1517,52 @@ mod tests {
     }
 
     /// Finding 37 TASK 2 INVARIANTS (permanent, non-ignored) — the three that close the class:
-    /// Finding 38 INVARIANT (permanent) — a DEEPLY ENCLOSED below-sea region (its overflow col far
-    /// above sea) is an ENDORHEIC inland sea at SEA LEVEL, NOT a lake filled to the high col. This is
-    /// the anti-regression for Finding 36: the merge fills a region as one body, and without capping
-    /// the level it would fill #1000022's basin to its 471 m col. The guarantee: `a_spill` is the area
-    /// to the col (the flood bowl), so an enclosed region has a huge `a_spill` ⟹ endorheic ⟹ the
-    /// surface sits at sea level, and the footprint (the region, capped at sea) stays ≤ that level.
-    #[test]
-    fn deeply_enclosed_below_sea_is_endorheic_at_sea_level() {
+    /// Finding 39 INVARIANT (permanent) — DISCHARGE IS THE DISCRIMINANT for a deeply-enclosed below-sea
+    /// basin (its overflow col far above sea), NOT the col height. The SAME geometry gives OPPOSITE
+    /// regimes under two climates, which is the whole point of the water-balance closure and the
+    /// resolution of the Finding 36 ↔ 38b conflict:
+    ///   • HUMID (precip ≫ PE ⟹ net_evap = 0): inflow cannot be evaporated, so the basin fills to its
+    ///     56 m col and OVERFLOWS (exorheic, spillway) — the high level is JUSTIFIED by inflow (this is
+    ///     the #1000022 case; Finding 38b wrongly forced it endorheic-at-sea).
+    ///   • ARID SINK (a cool humid catchment feeding a hot evaporating floor, PE_floor ≫ precip):
+    ///     the surface evaporates the inflow well below the col ⟹ ENDORHEIC, level near the floor (the
+    ///     Caspian/Finding 36 case — preserved, because inflow no longer justifies the fill).
+    /// Either way the footprint is the priority-flood bowl (every marked cell ≤ level), so the geometric
+    /// invariant (claimed == valid, no over-flood) holds regardless of regime.
+    fn enclosed_basin_geometry() -> (usize, usize, GridF32) {
         let (w, h) = (24usize, 24usize);
         let mut hm = GridF32::new(w, h, 0.51); // land at ~113 m everywhere
         for y in 0..h {
             hm.set(0, y, 0.2); // ocean column (class-1) at the far left
         }
-        // A below-sea pit at the centre (norm 0.498 ≈ −22 m), enclosed by the 0.51 land. Its ONLY
-        // rim gap is a HIGH col at (13,11) = 0.505 (≈ 56 m) leading to a slightly lower exterior — so
-        // the flood's escape (the overflow col) is 56 m up, nothing near sea.
+        // A below-sea pit at the centre (norm 0.498 ≈ −22 m), enclosed by the 0.51 land. Its ONLY rim
+        // gap is a HIGH col at (13,11) = 0.505 (≈ 56 m) leading to a slightly lower exterior — the
+        // flood's escape (the overflow col) is 56 m up, nothing near sea.
         for x in 11..=13 {
             for y in 11..=13 {
                 hm.set(x, y, 0.498);
             }
         }
         hm.set(13, 11, 0.505); // the col (high)
-        hm.set(14, 11, 0.504); // a lower exterior beyond the col
-        let precip = GridF32::new(w, h, 1.0);
+        // A descending lane from the col to the ocean so an exorheic outlet can trace downhill to sea.
+        for x in 1..14 {
+            hm.set(x, 11, 0.503 - (14 - x) as f32 * 0.0001);
+        }
+        for x in 11..=13 {
+            for y in 12..=13 {
+                hm.set(x, y, 0.498); // restore the pit body (lane touched only row 11)
+            }
+        }
+        hm.set(11, 11, 0.498);
+        hm.set(12, 11, 0.498);
+        hm.set(13, 11, 0.505);
+        (w, h, hm)
+    }
+
+    #[test]
+    fn humid_enclosed_below_sea_fills_to_col_and_overflows() {
+        let (w, h, hm) = enclosed_basin_geometry();
+        let precip = GridF32::new(w, h, 1.0); // 16500 mm/yr — precip ≫ PE ⟹ net_evap 0
         let temp = GridF32::new(w, h, 10.0);
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
         let ss = SteinSteinParams::default();
@@ -1523,21 +1571,56 @@ mod tests {
         let lk = &r.lakes[0];
         assert_eq!(
             lk.lake_type,
-            LakeType::Endorheic,
-            "an enclosed high-col region cannot overflow → endorheic"
+            LakeType::Exorheic,
+            "a HUMID enclosed basin (net_evap 0) must fill to its col and overflow — inflow justifies it"
         );
-        // The surface is at SEA LEVEL, not the 56 m col — no return to the Finding 36 over-flood.
         assert!(
-            lk.level_m.abs() < 20.0,
-            "enclosed below-sea sea must sit at ~0 m, got level {:.0} m (the 56 m col = the over-flood)",
+            lk.level_m > 20.0,
+            "the surface must sit at the ~56 m col (justified by inflow), got {:.0} m",
             lk.level_m
         );
-        // Every marked cell is at or below the level (footprint capped at sea) — claimed/valid 1.00×.
+        assert!(
+            r.spillways.iter().any(|s| s.lake_id == lk.base.id),
+            "an exorheic basin MUST emit a traced spillway"
+        );
+        // Geometric invariant survives the high level — every marked cell ≤ the level.
         for k in 0..w * h {
-            if r.lake_map[k] != 0 {
-                assert!(hm.data[k] <= C1_SEA_LEVEL_NORM + 1e-4, "a marked cell is above sea level");
+            if r.lake_map[k] == lk.base.id {
+                assert!(
+                    hm.data[k] <= lk.base.surface_elevation + 1e-4,
+                    "a marked cell is above the lake surface"
+                );
             }
         }
+    }
+
+    #[test]
+    fn arid_sink_enclosed_below_sea_stays_endorheic_below_col() {
+        let (w, h, hm) = enclosed_basin_geometry();
+        // Cool humid catchment (generates inflow) feeding a HOT evaporating floor (closes the basin
+        // well below the col): PE_floor(30 °C) ≈ 2600 mm/yr ≫ precip 800 mm/yr ⟹ net_evap > 0.
+        let precip = GridF32::new(w, h, 800.0 / crate::climate::precipitation::PRECIP_MM_PER_UNIT);
+        let mut temp = GridF32::new(w, h, 5.0); // cool catchment → runoff = 800 − PE(5) > 0
+        for x in 11..=13 {
+            for y in 11..=13 {
+                temp.set(x, y, 30.0); // hot pit surface → high PE, evaporates the inflow
+            }
+        }
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let ss = SteinSteinParams::default();
+        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0);
+        assert!(!r.lakes.is_empty(), "the fed pit must still be a (terminal) below-sea lake");
+        let lk = &r.lakes[0];
+        assert_eq!(
+            lk.lake_type,
+            LakeType::Endorheic,
+            "an ARID-sink enclosed basin evaporates its inflow below the col → endorheic"
+        );
+        assert!(
+            lk.level_m < 20.0,
+            "the surface must stay near the floor (below the 56 m col), got {:.0} m",
+            lk.level_m
+        );
     }
 
     /// Finding 38 INVARIANT (permanent) — (1) a LAKE MUST HAVE WATER (a dry depression is not

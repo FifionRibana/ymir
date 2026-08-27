@@ -1599,3 +1599,74 @@ filled to 56 m) — a deterministic guard the quantized export check could not p
 three numbers now hold together: mouths 0/0/0, claimed/valid 1.000× (0 over-flood), and **MAX below-sea level
 2 m / depth 22 m** (not 471). The two exorheic synthetic guards were re-based to near-sea sills (their old
 0.52 / 0.55 sills were 226 m / 565 m — they had been asserting the over-flood behaviour).
+
+### Finding 39 — DISCHARGE is the discriminant: the water-balance closure for below-sea basins
+
+The author inspected lake #1000022 on the shipped export: **8 affluents (four at ~190 m³/s signified) feeding a
+1.4 km² lake that neither grows nor overflows**. Measured on the shipped rasters (`lake_water_balance`): mean
+T 6.8 °C, precip 991 mm/yr, PE 600 mm/yr ⟹ **net evaporation ≈ 0** (a HUMID climate, it rains more than it
+evaporates); inflow **961 m³/s signified** (17 m³/s map); evaporation over the footprint **≈ 0**. A closed lake
+requires PE > precip (an ARID climate) so evaporation can destroy the inflow; here the climate is a net water
+SURPLUS. **Mass is not conserved** — even ignoring the rain credit, ~900 km² of surface (640× the footprint)
+would be needed to evaporate the inflow. Finding 38b's near-sea rule forced #1000022 endorheic-at-sea purely on
+its sill height, blind to the balance.
+
+This exposed the Finding 36 ↔ 38b conflict for what it was: **not two behaviours to arbitrate with an exception,
+but one physical law**. Finding 36 corrected a fill to a barrier WITH NO INFLOW to justify it; #1000022 has
+961 m³/s that DO justify it. DISCHARGE is the discriminant; the geometric rule conflated the two because it only
+read the sill's height.
+
+The law (replacing the near-sea rule in `below_sea_basin_lakes`):
+
+    net_evap = max(0, PE − precip)                 # what the SURFACE loses net of its own rain
+    a_eq     = inflow / net_evap  (∞ if net_evap 0) # surface where evaporation balances inflow
+    fills_to_sill = a_eq ≥ a_spill                 # inflow reaches the sill ⟹ overflow candidate
+    EXORHEIC   iff fills_to_sill AND a downhill outlet traces to a sink → level = the sill (spill inflow − evap)
+    ENDORHEIC  otherwise → level = the hypsometric height where the bowl area reaches a_eq (arid, low-inflow)
+
+Arid, low-inflow basins stay low (Finding 36 preserved — inflow no longer justifies the fill); humid,
+high-inflow basins fill and overflow (#1000022).
+
+**Precaution 1 — no double count.** `runoff = max(0, precip − PE)` (the inflow source) and
+`net_evap = max(0, PE − precip)` (the surface loss) are COMPLEMENTARY: for any cell exactly one is nonzero.
+`runoff_accumulation` sources runoff only from above-sea land and zeroes the below-sea region, so the lake's own
+precipitation is never in `inflow`; a submerged cell contributes to EITHER inflow (humid: net_evap 0 there) OR
+surface evaporation (arid: runoff 0 there), never both. No precipitation is counted twice.
+
+**Precaution 2 — the guard is reformulated, not removed.** The old guard forbade a high level; the new one
+forbids a high level NOT JUSTIFIED BY INFLOW (`a_eq ≥ a_spill`). The GEOMETRIC invariant is untouched: the
+footprint is the priority-flood bowl `fcells` (every cell ≤ level AND connected to the floor), so
+`claimed == valid` by construction — the net that caught 38b's regression still stands.
+
+**Precaution 3 — the hypsometric curve is the flood's own sweep.** `fcells` (floor→sill) sorted by elevation
+IS the area-vs-level table: `area(level = sorted[i]) = (i+1)·cell_km2`; the endorheic level is `sorted[⌊a_eq/cell⌋−1]`.
+No separate sweep, monotone, non-iterative.
+
+**The escape-col refinement (the subtle part).** The first cut of the law re-opened the over-flood on the loaded
+terrain (**MAX level 613 m, claimed/valid 1.952×, 3 lakes over-flooded**): in a humid climate net_evap is 0
+everywhere, so a_eq is ∞ and EVERY basin "fills to its sill" — and Finding 38's `wc != 2` escape test ABSORBED
+neighbouring below-sea regions, pushing the sill up to the 613 m continental ocean pass. Fix: the escape is the
+lowest neighbour OUTSIDE THIS region's OWN component (`!comp_set`), not merely outside all below-sea water. An
+internal saddle (same `comp`) is still absorbed (no orphan-mouth sliver), but a descent to a DIFFERENT region is
+a real POUR POINT — the lake overflows/chains there at that LOW col instead of climbing to the far pass. This is
+the unification the whole thread was missing: full-component coverage (Finding 38's goal) AND low sills
+(no over-flood) at once.
+
+Verified on the loaded export terrain (`merge_verify_on_export`, precip units corrected mm/yr → internal):
+mouths **0/0/0**, claimed/valid **1.000× (0 over-flood)**, **MAX below-sea level 14 m / depth 34 m** (not 471,
+not 613). Regime flips from 91-endorheic (38b) toward through-flow (most humid below-sea pockets overflow their
+low cols). Deterministic guards (the discriminant): `humid_enclosed_below_sea_fills_to_col_and_overflows`
+(net_evap 0 ⟹ exorheic to the 56 m col, with a spillway) and `arid_sink_enclosed_below_sea_stays_endorheic_below_col`
+(a cool catchment feeding a hot floor ⟹ endorheic near the floor) — SAME geometry, OPPOSITE regimes, discharge
+the only difference. Full lib suite green (522).
+
+**#1000022 remains for the author's regenerated export.** On the loaded terrain its overlapping re-run lake reads
+endorheic 0 m / 1.2 km² / inflow 0 — the FIFTH "reconstructed terrain lied": u16 height re-fragments
+`water_class` and reroutes the flow, so the affluents' 961 m³/s never reach it at full precision's expense. The
+LAW is proven by the guards; whether #1000022 flips to the expected exorheic through-flow lake (spilling ≈ its
+inflow) is for the full-precision export to confirm. The wetland/biome distribution moves again (more through-flow
+water, fewer closed sinks) — measured on the regenerated export, not the loaded one.
+
+The remaining `[HD] WARNING Finding 37: exorheic lake with no traced outlet` (#1000008) is a SEPARATE case, not
+folded into this change: below_sea now labels Exorheic only when `traced.is_some()`, so the below-sea class is
+closed by construction — #1000008 is to be re-checked on regeneration and diagnosed on its own if it survives.

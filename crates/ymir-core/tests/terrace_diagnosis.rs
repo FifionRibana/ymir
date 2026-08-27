@@ -9098,6 +9098,10 @@ fn merge_verify_on_export() {
     let tb = std::fs::read(format!("{dir}/temperature.i16")).unwrap();
     let rivers: Value =
         serde_json::from_slice(&std::fs::read(format!("{dir}/rivers.json")).unwrap()).unwrap();
+    // precipitation.u16 is stored in mm/yr (unit "mm_per_year" = precip_mm_per_year(internal)); the
+    // DrainageClimate expects INTERNAL units (precip_mm_per_year multiplies by PRECIP_MM_PER_UNIT), so
+    // divide back or the water balance sees ×16500 precip → net_evap 0 everywhere → every basin humid.
+    const PRECIP_MM_PER_UNIT: f32 = 16500.0;
     let mut hd = vec![0f32; nn];
     let mut pd = vec![0f32; nn];
     let mut td = vec![0f32; nn];
@@ -9105,7 +9109,7 @@ fn merge_verify_on_export() {
         let u = u16::from_le_bytes([hb[2 * k], hb[2 * k + 1]]) as f32;
         let m = min_m + (u / 65535.0) * (max_m - min_m);
         hd[k] = 0.5 + m / k_alt;
-        pd[k] = u16::from_le_bytes([pb[2 * k], pb[2 * k + 1]]) as f32;
+        pd[k] = u16::from_le_bytes([pb[2 * k], pb[2 * k + 1]]) as f32 / PRECIP_MM_PER_UNIT;
         td[k] = i16::from_le_bytes([tb[2 * k], tb[2 * k + 1]]) as f32 / 100.0;
     }
     let field = GridF32::from_vec(t, t, hd);
@@ -9115,6 +9119,39 @@ fn merge_verify_on_export() {
     let ss = SteinSteinParams::default();
     let bsr = below_sea_basin_lakes(&field, &clim, &C1DrainageConfig::default(), &ss, 400.0);
     let wc = water_class(&field, SEA);
+    // #1000022 (the author's lake) corrected state: the re-run lake whose footprint overlaps the
+    // shipped #1000022 mask the most — report its regime, level, area, depth, and spillway discharge.
+    {
+        let lm = std::fs::read(format!("{dir}/lake_mask.u32")).unwrap();
+        let shipped: std::collections::HashSet<usize> = (0..nn)
+            .filter(|&k| {
+                u32::from_le_bytes([lm[4 * k], lm[4 * k + 1], lm[4 * k + 2], lm[4 * k + 3]])
+                    == 1_000_022
+            })
+            .collect();
+        let mut overlap: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+        for &k in &shipped {
+            let id = bsr.lake_map[k];
+            if id != 0 {
+                *overlap.entry(id).or_insert(0) += 1;
+            }
+        }
+        if let Some((&best, &ov)) = overlap.iter().max_by_key(|&(_, &c)| c) {
+            if let Some(lk) = bsr.lakes.iter().find(|l| l.base.id == best) {
+                let sw = bsr.spillways.iter().find(|s| s.lake_id == best);
+                eprintln!(
+                    "  #1000022 → re-run lake #{best}: {:?} | level {:.0} m | depth {:.0} m | area {:.1} km² | overlap {ov}/{} shipped cells | spillway {:.1} m³/s (map) = {:.0} (×56.2)",
+                    lk.lake_type,
+                    lk.level_m,
+                    lk.depth_m,
+                    lk.area_km2,
+                    shipped.len(),
+                    sw.map_or(0.0, |s| s.discharge_m3s),
+                    sw.map_or(0.0, |s| s.discharge_m3s * 56.2),
+                );
+            }
+        }
+    }
     let (mut exo, mut endo) = (0usize, 0usize);
     for lk in &bsr.lakes {
         match lk.lake_type {
@@ -9213,4 +9250,125 @@ fn merge_verify_on_export() {
         "  claimed/valid worst = {:.3}× (lake #{worst_id}) | lakes OVER 1.00× (over-flood) = {over} (must be 0)",
         worst
     );
+}
+
+/// WATER BALANCE of a below-sea endorheic lake — is its footprint consistent with the inflow it
+/// receives? Reads the SHIPPED rasters (lake_mask.u32 / temperature.i16 / precipitation.u16) and
+/// rivers.json (discharge is the geo-SCALED ×56.2 value shown in the viz). For a closed lake the
+/// steady state requires inflow == net evaporation over the water surface; if inflow ≫ evaporation
+/// the footprint is too small (it would rise until it overflows or spreads to the equilibrium area).
+/// The inflow/evaporation ratio is invariant under the geo scale (both inflow and area scale ×56.2).
+///
+/// Run: cargo test -p ymir-core --test terrace_diagnosis --release lake_water_balance -- --ignored --nocapture
+#[test]
+#[ignore]
+fn lake_water_balance() {
+    use serde_json::Value;
+    use std::collections::HashSet;
+    use ymir_core::tectonics_c1::drainage::potential_evaporation_mm;
+    let dir =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../exports/seed10481999410520546993_8192.ymir");
+    let t = 8192usize;
+    let nn = t * t;
+    let cell_km2 = (400.0f32 / t as f32).powi(2);
+    let ratio = 56.2f64; // geo scale hydrology multiplier (from the [HD] log)
+    let sec_yr = 3.155_76e7f64;
+    let lm = std::fs::read(format!("{dir}/lake_mask.u32")).unwrap();
+    let tb = std::fs::read(format!("{dir}/temperature.i16")).unwrap();
+    let pb = std::fs::read(format!("{dir}/precipitation.u16")).unwrap();
+    let rivers: Value =
+        serde_json::from_slice(&std::fs::read(format!("{dir}/rivers.json")).unwrap()).unwrap();
+
+    // Inventory every below-sea lake id (≥ 1_000_001) present in the shipped mask.
+    use std::collections::HashMap;
+    let mut sizes: HashMap<u32, usize> = HashMap::new();
+    for k in 0..nn {
+        let id = u32::from_le_bytes([lm[4 * k], lm[4 * k + 1], lm[4 * k + 2], lm[4 * k + 3]]);
+        if id >= 1_000_001 {
+            *sizes.entry(id).or_insert(0) += 1;
+        }
+    }
+    let mut ids: Vec<(u32, usize)> = sizes.into_iter().collect();
+    ids.sort_by_key(|&(id, _)| id);
+    eprintln!("\n=== below-sea lakes in the shipped lake_mask.u32 ===");
+    for &(id, n) in &ids {
+        eprintln!("  #{id}: {} cells = {:.2} km² (map)", n, n as f32 * cell_km2);
+    }
+
+    for &target in &[1_000_022u32] {
+        let cells: Vec<usize> = (0..nn)
+            .filter(|&k| {
+                u32::from_le_bytes([lm[4 * k], lm[4 * k + 1], lm[4 * k + 2], lm[4 * k + 3]]) == target
+            })
+            .collect();
+        if cells.is_empty() {
+            eprintln!("\n#{target}: NOT PRESENT in the shipped mask — skipping");
+            continue;
+        }
+        let area_km2 = cells.len() as f64 * cell_km2 as f64;
+        let (mut tsum, mut psum) = (0f64, 0f64);
+        for &k in &cells {
+            tsum += i16::from_le_bytes([tb[2 * k], tb[2 * k + 1]]) as f64 / 100.0;
+            psum += u16::from_le_bytes([pb[2 * k], pb[2 * k + 1]]) as f64;
+        }
+        let tmean = (tsum / cells.len() as f64) as f32;
+        let pmean = psum / cells.len() as f64; // mm/yr
+        let pe = potential_evaporation_mm(tmean) as f64; // mm/yr over open water
+        let net_evap_mm = (pe - pmean).max(0.0); // open water gains precip, loses PE
+        // net evaporation as a volumetric sink over the MAP footprint
+        let evap_map_m3s = net_evap_mm * 1000.0 / sec_yr * area_km2;
+
+        // Affluents: mouths (downstream == null) whose last point sits in/adjacent to the footprint.
+        let cellset: HashSet<usize> = cells.iter().copied().collect();
+        let d8: [(i32, i32); 9] =
+            [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)];
+        let mut aff: Vec<f64> = Vec::new();
+        for s in rivers["segments"].as_array().unwrap() {
+            if !s["downstream"].is_null() {
+                continue;
+            }
+            let p = s["points"].as_array().unwrap();
+            let last = p.last().unwrap().as_array().unwrap();
+            let (mx, my) = (last[0].as_i64().unwrap(), last[1].as_i64().unwrap());
+            let touches = d8.iter().any(|&(dx, dy)| {
+                let (x, y) = (mx + dx as i64, my + dy as i64);
+                x >= 0 && y >= 0 && (x as usize) < t && (y as usize) < t
+                    && cellset.contains(&((y as usize) * t + x as usize))
+            });
+            if touches {
+                aff.push(s["discharge_m3s"].as_f64().unwrap_or(0.0)); // SCALED ×56.2
+            }
+        }
+        aff.sort_by(|a, b| b.partial_cmp(a).unwrap());
+        let inflow_scaled: f64 = aff.iter().sum(); // signified m³/s
+        let inflow_map = inflow_scaled / ratio; // map m³/s (undo the ×56.2)
+        // Area that would balance this inflow by net evaporation alone.
+        let equil_area_km2 =
+            inflow_map / (net_evap_mm * 1000.0 / sec_yr).max(1e-9);
+
+        eprintln!("\n=== WATER BALANCE — lake #{target} ===");
+        eprintln!(
+            "  footprint {:.2} km² (map) = {:.0} km² (signified ×{ratio}) | mean T {:.1}°C | precip {:.0} mm/yr | PE {:.0} mm/yr | net-evap {:.0} mm/yr",
+            area_km2, area_km2 * ratio, tmean, pmean, pe, net_evap_mm
+        );
+        eprintln!("  {} affluent mouth(s); top discharges (signified m³/s): {:?}",
+            aff.len(),
+            aff.iter().take(8).map(|q| q.round()).collect::<Vec<_>>());
+        eprintln!(
+            "  INFLOW  = {:.2} m³/s (map) = {:.0} m³/s (signified)",
+            inflow_map, inflow_scaled
+        );
+        eprintln!(
+            "  EVAPORATION over footprint = {:.4} m³/s (map) = {:.2} m³/s (signified)",
+            evap_map_m3s, evap_map_m3s * ratio
+        );
+        eprintln!(
+            "  ⇒ inflow / evaporation = {:.0}×   (a CLOSED lake needs ≈ 1×)",
+            inflow_map / evap_map_m3s.max(1e-9)
+        );
+        eprintln!(
+            "  ⇒ equilibrium area (evap balances inflow) = {:.0} km² (map) = {:.0} km² (signified)  vs actual {:.2} km²",
+            equil_area_km2, equil_area_km2 * ratio, area_km2
+        );
+    }
 }
