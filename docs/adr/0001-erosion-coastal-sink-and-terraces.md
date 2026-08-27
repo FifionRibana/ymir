@@ -1753,3 +1753,31 @@ Guard: `arid_sink_enclosed_below_sea_stays_endorheic_below_col` now also asserts
 below-sea cells — both would fail before this fix. On the loaded (arid) export, `merge_verify` shows mouths
 0/0/0 and 0 over-flood. Lib suite 522 green (10 drainage guards); viz compiles. The author regenerates for the
 ground-truth verdict.
+
+### Finding 40 — chained below-sea balances solved in topological order (upstream spill propagated)
+
+Point 5 of the arid characterisation. When basin A overflows INTO basin B (a chain), A's spill is part of B's
+inflow and can flip B's regime. The solver evaluated basins in SCAN order and never fed the spill forward, so a
+downstream basin was decided on its LOCAL inflow alone — the factor-4-inlet trap, one basin down. Latent on the
+humid seed (net_evap ≈ 0 → everything overflows anyway) and on the current arid export (a single Q = 0.06 chain),
+but a real defect that would silently mis-set regimes along any arid chain.
+
+Constructed test `chained_below_sea_balance_propagates_upstream_spill`: an arid A → B → sea chain where A's large
+cool-wet catchment fills it to its col and spills a big discharge into B; B's own catchment is tiny, so on LOCAL
+inflow B is endorheic (sits at sea level), but A's spill is enough to fill B to its ~90 m sea-col and make it
+EXORHEIC. The test FAILED before the fix (B endorheic, level 0) and passes after.
+
+Fix — a TOPOLOGICAL FIXPOINT over the chain DAG inside `below_sea_basin_lakes`:
+- Stable region labels (`region_of`, 8-connected wc==2 components) identify a spillway's chain target by
+  GEOMETRY, not by whichever lake is marked yet — so the routing is independent of scan order.
+- The whole region scan repeats; each pass feeds the previous pass's spills through `extra_inflow[region]`, so
+  after ≤ chain-depth passes every basin sees local + all upstream spill. Flow is downhill (a DAG) → it converges
+  (exact-equality early-out; a 16-pass safety bound). A chain-free terrain converges in one pass, byte-identical
+  to the old single scan.
+- Each exorheic basin's surplus is added to `next_extra[receiver]`; a post-pass fills the display `chained_into`
+  now that every region is marked.
+
+This changes chained RECEIVERS on every seed (the humid seed has 6 chains) — the intended correctness gain, not a
+regression, since a receiver now accounts for the water it actually gets. Guards: 11 drainage tests green;
+merge_verify on the arid export holds (mouths 0/0/0, 0 over-flood, MAX level 14 m). Lib 523 green; viz compiles.
+The author regenerates humid + arid for the ground-truth verdict.

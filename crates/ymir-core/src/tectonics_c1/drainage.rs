@@ -900,6 +900,34 @@ pub fn below_sea_basin_lakes(
             None
         }
     };
+    // Finding 40 — STABLE region labels (8-connected `wc == 2` components) so a spillway's chain target
+    // is identified by geometry, not by whichever lake happens to be marked already. Drives both the
+    // chain routing in the trace and the topological fixpoint below. Label 0 = not below-sea.
+    let (region_of, num_regions) = {
+        let mut lab = vec![0u32; n];
+        let mut next = 0u32;
+        let mut stack = Vec::new();
+        for s0 in 0..n {
+            if wc[s0] != 2 || lab[s0] != 0 {
+                continue;
+            }
+            next += 1;
+            lab[s0] = next;
+            stack.push(s0);
+            while let Some(k) = stack.pop() {
+                let (x, y) = ((k % w) as i32, (k / w) as i32);
+                for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+                    if let Some(nk) = nb4(x + dx, y + dy) {
+                        if wc[nk] == 2 && lab[nk] == 0 {
+                            lab[nk] = next;
+                            stack.push(nk);
+                        }
+                    }
+                }
+            }
+        }
+        (lab, next as usize)
+    };
     let mut lake_map = vec![0u32; n];
     let mut out = Vec::new();
     let mut spillways: Vec<Spillway> = Vec::new();
@@ -925,10 +953,27 @@ pub fn below_sea_basin_lakes(
     // sink) and the bounded bowl (cells ≤ sill connected to the floor, in height order). The lake then
     // fills to min(local_sill, evaporative). `barrier_q`/`spill_receiver` are kept only to TRACE the
     // outlet path (Finding 32), never to set the level.
-    for s in 0..n {
-        if seen[s] || wc[s] != 2 {
-            continue;
-        }
+    //
+    // Finding 40 — TOPOLOGICAL fixpoint over the chain DAG. A basin that overflows spills its SURPLUS
+    // into its receiver, which becomes part of the receiver's inflow and can change its regime (endorheic
+    // → exorheic). Solved by repeating the whole scan: each pass feeds the previous pass's spills via
+    // `extra_inflow[region]`, so after ≤ chain-depth passes every basin sees its FULL inflow (local +
+    // all upstream spill). Flow is downhill (a DAG) → this converges; the 16-pass bound is a safety net.
+    let mut extra_inflow = vec![0.0f32; num_regions + 1];
+    for _pass in 0..16 {
+        let mut next_extra = vec![0.0f32; num_regions + 1];
+        lake_map.iter_mut().for_each(|v| *v = 0);
+        out.clear();
+        spillways.clear();
+        basins.clear();
+        wetland.iter_mut().for_each(|v| *v = 0);
+        seen.iter_mut().for_each(|v| *v = false);
+        next_id = 1_000_001;
+        for s in 0..n {
+            if seen[s] || wc[s] != 2 {
+                continue;
+            }
+            let own_label = region_of[s];
         // 1. the PIT = the connected enclosed-below-sea component (8-conn) — the real depression.
         let mut comp = Vec::new();
         let mut q = VecDeque::new();
@@ -978,6 +1023,10 @@ pub fn below_sea_basin_lakes(
                 }
             }
         }
+        // Finding 40 — add the SPILL fed by upstream basins that chain into this one (0 on the first
+        // pass; filled in by the previous pass's chained spills). This is what makes a downstream basin
+        // see its full inflow and possibly flip endorheic → exorheic.
+        let inflow = inflow + extra_inflow[own_label as usize];
         // 2+3. LOCAL SILL + BOWL in one priority-flood outward from the floor (Barnes 2014). Pop the
         // lowest reachable cell; the FIRST cell with a NOT-YET-FINALISED strictly-lower neighbour is
         // the lowest saddle (water spills there and runs downhill to a different sink). Bowl membership
@@ -1080,7 +1129,7 @@ pub fn below_sea_basin_lakes(
         // connected to the floor), so `claimed == valid` by construction (no over-flood).
         let fills_to_sill = a_eq >= a_spill;
         let overflow = fills_to_sill; // candidate; confirmed EXORHEIC only if an outlet also traces
-        let traced: Option<(Vec<usize>, Option<u32>)> = if overflow {
+        let traced: Option<(Vec<usize>, Option<u32>, Option<u32>)> = if overflow {
             // Re-entry into THIS lake's own water body = its flood bowl `fcells` (the loop / case A).
             let in_bowl: std::collections::HashSet<usize> = fcells.iter().copied().collect();
             // Finding 37c — the spillway starts at the SADDLE, crosses to its lowest EXTERIOR escape
@@ -1092,21 +1141,28 @@ pub fn below_sea_basin_lakes(
             match (saddle_opt, escape_opt) {
                 (Some(s0), Some(e0)) => {
                     let mut path = vec![s0, e0];
-                    let (mut cur, mut chained, mut steps, mut valid) = (e0, None, 0usize, false);
+                    let (mut cur, mut chained, mut chained_region, mut steps, mut valid) =
+                        (e0, None, None, 0usize, false);
                     loop {
                         if wc[cur] == 1 {
                             valid = true; // reached the OCEAN
                             break;
                         }
-                        // THIS lake is not marked yet (marking happens after), so any non-zero
-                        // lake_map cell belongs to an ALREADY-PROCESSED, different lake → a valid chain.
-                        // Finding 39 — also stop at a DETECTED lake (the `detected_lake_map`): the
-                        // spillway must halt at the FIRST basin it reaches, not run UNDER it (river #11
-                        // through the 211 m lake #17). Below-sea takes precedence when both are present.
-                        let lid = lake_map[cur];
+                        // Finding 40 — the chain target is identified by GEOMETRY (`region_of`), not by
+                        // whichever lake is marked yet: a cell in a DIFFERENT below-sea region is a valid
+                        // chain regardless of processing order, and its region label routes the spill
+                        // (`next_extra`) topologically. Finding 39 — also stop at a DETECTED lake so the
+                        // spillway halts at the FIRST basin it reaches, not run UNDER it (river #11 under
+                        // the 211 m lake #17). `chained` is the DISPLAY id (0 until the target is marked).
+                        let rid = region_of[cur];
                         let did = detected_lake_map.map_or(0, |d| d[cur]);
-                        if lid != 0 || did != 0 {
-                            chained = Some(if lid != 0 { lid } else { did });
+                        if (rid != 0 && rid != own_label) || did != 0 {
+                            if rid != 0 && rid != own_label {
+                                chained_region = Some(rid);
+                            }
+                            let lid = lake_map[cur];
+                            chained =
+                                if lid != 0 { Some(lid) } else if did != 0 { Some(did) } else { None };
                             valid = true;
                             break;
                         }
@@ -1127,7 +1183,7 @@ pub fn below_sea_basin_lakes(
                             break;
                         }
                     }
-                    if valid { Some((path, chained)) } else { None }
+                    if valid { Some((path, chained, chained_region)) } else { None }
                 }
                 _ => None,
             }
@@ -1267,7 +1323,7 @@ pub fn below_sea_basin_lakes(
         // Finding 37 POINT 2 — the spillway was ALREADY traced (before the regime decision), and its
         // existence is WHY this basin is exorheic. Emit it from the traced path — no second trace, no
         // way for an exorheic label to stand without one.
-        if let Some((path, chained)) = &traced {
+        if let Some((path, chained, chained_region)) = &traced {
             let points: Vec<(u32, u32)> =
                 path.iter().map(|&k| ((k % w) as u32, (k / w) as u32)).collect();
             let profile: Vec<f32> =
@@ -1275,6 +1331,11 @@ pub fn below_sea_basin_lakes(
             // discharge = surplus (inflow − net evaporation); net_evap = max(0, PE − precip) · area.
             let area_km2 = water as f32 * cell_km2;
             let surplus = (inflow - net_evap * area_km2).max(0.0); // mm·km²/yr
+            // Finding 40 — feed this surplus to the receiver basin's inflow on the NEXT pass, so a chain
+            // A → B → … solves in topological order (each basin sees local + all upstream spill).
+            if let Some(m) = chained_region {
+                next_extra[*m as usize] += surplus;
+            }
             let discharge_m3s = runoff_km2_to_m3s(surplus);
             let drainage_km2 = surplus / REFERENCE_RUNOFF_MM;
             spillways.push(Spillway {
@@ -1288,6 +1349,24 @@ pub fn below_sea_basin_lakes(
                 chained_into: *chained,
             });
         }
+        }
+        // Finding 40 — resolve each chaining spillway's DISPLAY receiver now that EVERY region is marked
+        // (the trace ran before its target was necessarily marked, so `chained_into` was left None). The
+        // spill routing (`next_extra`, keyed by region) was already correct; this only fills the id.
+        for sw in spillways.iter_mut() {
+            if sw.chained_into.is_none() {
+                let &(lx, ly) = sw.points.last().unwrap();
+                let end = ly as usize * w + lx as usize;
+                if lake_map[end] != 0 && lake_map[end] != sw.lake_id {
+                    sw.chained_into = Some(lake_map[end]);
+                }
+            }
+        }
+        // Converged when this pass's spills equal the ones it was fed (deterministic sum, exact eq).
+        if next_extra == extra_inflow {
+            break;
+        }
+        extra_inflow = next_extra;
     }
     BelowSeaResult { lakes: out, lake_map, spillways, wetland, basins }
 }
@@ -1965,6 +2044,75 @@ mod tests {
             assert!(lk.level_m.is_finite() && lk.depth_m.is_finite() && lk.depth_m >= 0.0);
             assert!(lk.area_km2 > 0.0);
         }
+    }
+
+    /// Finding 40 INVARIANT (permanent) — CHAINED water balances must be solved in TOPOLOGICAL order,
+    /// with an upstream basin's SPILL fed as INFLOW to its receiver. An arid chain A → B → sea: A has a
+    /// large cool-wet catchment → it fills to its col and spills a big discharge INTO B; B's own
+    /// catchment is tiny, so on LOCAL inflow alone B is endorheic (sits at sea level). But B RECEIVES
+    /// A's spill, which is enough to fill B to its own sea-col and make it EXORHEIC. If the solver
+    /// ignores the upstream spill (scan order, no propagation), B is mis-classified endorheic — the
+    /// factor-4-inlet trap, one basin downstream. This asserts the propagated outcome.
+    #[test]
+    fn chained_below_sea_balance_propagates_upstream_spill() {
+        let (w, h) = (30usize, 3usize);
+        let mut hm = GridF32::new(w, h, 0.9); // walls
+        for x in 0..w {
+            hm.set(x, 0, 0.9);
+            hm.set(x, 2, 0.9);
+        }
+        hm.set(0, 1, 0.20); // ocean
+        hm.set(1, 1, 0.508); // B → sea col (~90 m), B's LOWEST rim → B spills to the sea
+        for x in 2..=6 {
+            hm.set(x, 1, 0.498); // B pit (≈ −22 m)
+        }
+        hm.set(7, 1, 0.512); // A → B col (~135 m, higher than B's sea col so B never spills back to A)
+        for x in 8..=12 {
+            hm.set(x, 1, 0.498); // A pit
+        }
+        for (i, x) in (13..=28).enumerate() {
+            hm.set(x, 1, 0.514 + 0.006 * i as f32); // ramp ASCENDING away from A → drains INTO A
+        }
+        hm.set(29, 1, 0.9);
+        // Precip is ZERO by default so runoff exists ONLY where we place a catchment — this pins each
+        // basin's LOCAL inflow exactly (no stray runoff off the surrounding walls). A big cool-wet ramp
+        // feeds A; a single tiny cool cell feeds B (so B is not dry, but locally endorheic). Hot pits
+        // (30 °C) give a large net evaporation so a basin overflows only when its inflow is large.
+        let unit = crate::climate::precipitation::PRECIP_MM_PER_UNIT;
+        let mut precip = GridF32::new(w, h, 0.0);
+        let mut temp = GridF32::new(w, h, 30.0); // hot by default (walls/pits evaporate, no runoff)
+        for x in 13..=28 {
+            precip.set(x, 1, 3000.0 / unit); // A's catchment: wet
+            temp.set(x, 1, 5.0); // and cool → runoff = 3000 − PE(5) ≈ 2470 per cell, all into A
+        }
+        precip.set(4, 0, 600.0 / unit); // B's tiny tributary (wall cell above B's pit)
+        temp.set(4, 0, 5.0); // cool → runoff ≈ 70, drains down into B; B alone is endorheic
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let r = below_sea_basin_lakes(
+            &hm,
+            &clim,
+            &C1DrainageConfig::default(),
+            &SteinSteinParams::default(),
+            30.0,
+            None,
+        );
+        // Identify B = the lake occupying the pit at x∈[2,6] (its outlet floor is a low-x cell).
+        let b_id = r.lake_map[1 * w + 4];
+        assert_ne!(b_id, 0, "pit B must be a below-sea lake");
+        let b = r.lakes.iter().find(|l| l.base.id == b_id).expect("B in the inventory");
+        // WITHOUT the upstream spill B is endorheic at sea level; WITH it (topological solve) B fills to
+        // its ~90 m sea-col and spills. The whole point of Finding 40:
+        assert_eq!(
+            b.lake_type,
+            LakeType::Exorheic,
+            "B must become EXORHEIC once A's spill is fed to it (got {:?} — upstream spill ignored)",
+            b.lake_type
+        );
+        assert!(
+            b.level_m > 50.0,
+            "B must fill to its ~90 m sea-col once fed, got level {:.0} m",
+            b.level_m
+        );
     }
 
     /// Navigability classification is monotone in drainage area.
