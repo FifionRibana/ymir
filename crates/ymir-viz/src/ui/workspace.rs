@@ -2836,14 +2836,28 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Op
             }
         }
     });
-    // Bed profile source → sink by WALKING the flow field from the main-stem headwater
-    // (the breached field is monotone, so this reflects the true bed — no dependence on
-    // the clip's segment links, which would inject phantom steps at junctions). Reads
-    // `flow.direction` + `eroded` (both exported); nothing recomputed.
+    // Bed profile source → sink. For a normal river we WALK the flow field from the main-stem
+    // headwater (the breached field is monotone, so this reflects the true bed — no dependence on
+    // the clip's segment links, which would inject phantom steps at junctions; reads
+    // `flow.direction` + `eroded`, both exported). But a below-sea SPILLWAY is the one watercourse
+    // whose bed is NOT a flow-field streamline: it crosses a divide the flow field itself routes
+    // BACK into the lake, so re-walking gives a flat lake-level profile (the "49 m → 49 m" the author
+    // saw). A spillway is an appended segment (`max_flow == 0`); plot its exported `profile_m` (the
+    // real spillway bed, descending to the sink) instead. Finding 39.
     let (w, h) = (hd.width, hd.height);
     let ss = SteinSteinParams::default();
+    let is_spillway =
+        wc.trunk.first().and_then(|&s| d.rivers.segments.get(s)).is_some_and(|s| s.max_flow == 0.0);
     let mut elev: Vec<f32> = Vec::new();
-    if let Some(&(sx, sy)) = wc.trunk.first().and_then(|&s| d.rivers.segments[s].points.first()) {
+    if is_spillway {
+        for &s in &wc.trunk {
+            if let Some(pr) = d.segment_profile_m.get(s) {
+                elev.extend(pr.iter().copied());
+            }
+        }
+    } else if let Some(&(sx, sy)) =
+        wc.trunk.first().and_then(|&s| d.rivers.segments[s].points.first())
+    {
         let mut k = sy as usize * w + sx as usize;
         for _ in 0..(w + h) {
             elev.push(c1_altitude_norm_to_metres(hd.eroded.data[k], &ss));
@@ -3210,9 +3224,13 @@ fn draw_river_overlay(rgba: &mut [u8], hd: &HdResult) {
                 Navigability::NonNavigable => [120, 150, 190],
             }
         };
-        // Thickness (half-width in cells) grows with Strahler order; orphans get a
-        // minimum of 1 so a single dangling cell is still visible.
-        let r = ((seg.strahler_order as i32 - 2).max(0)).min(2).max(orphan as i32);
+        // Thickness (half-width in cells) grows with Strahler order; orphans get a minimum of 1 so a
+        // single dangling cell is still visible. Finding 39 — a below-sea SPILLWAY (`max_flow == 0`)
+        // is a lake's OUTLET: if the lake is drawn, its outlet must be too, even when it is a 2–3 cell
+        // stub to the adjacent sea. Give it the same minimum so it never vanishes.
+        let is_spillway = seg.max_flow == 0.0;
+        let r =
+            ((seg.strahler_order as i32 - 2).max(0)).min(2).max(orphan as i32).max(is_spillway as i32);
         for &(px, py) in &seg.points {
             for dy in -r..=r {
                 for dx in -r..=r {

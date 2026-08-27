@@ -1711,3 +1711,22 @@ routing bug — a consequence of not RE-INCISING the spillway after the fill. In
 and lowers the lake; the model leaves the outlet at the fill elevation, so a large river can end on a coastal
 step. Defensible as a young-landscape snapshot; a future spillway-incision pass (lower the sill, partially drain
 the lake) is the realistic fix if undesired. Left to the author's call — not folded in here.
+
+### Finding 39 viz — spillway profile & outlet visibility
+
+Two viz-only display fixes (no pipeline change) for the author's inspection findings:
+
+1. The long-profile inspector re-WALKED the flow field from the source; for a below-sea SPILLWAY that is
+   wrong — the spillway crosses a divide the flow field routes BACK into the lake, so the walk returned a
+   flat lake-level profile (the "49 m → 49 m" on river #1, whose exported `profile_m` actually descends
+   48 → −20 m). Fixed: a spillway (an appended segment, `max_flow == 0`) plots its exported `profile_m`
+   (the real bed) instead of re-walking. Normal rivers keep the flow-walk (avoids junction phantom steps).
+2. The overlay drew a spillway at Strahler-1 thickness (r = 0) → a 2–3 cell coastal stub was invisible.
+   The author's rule: if a lake is drawn, its outlet must be too. Fixed: a spillway gets the same minimum
+   thickness as an orphan reach, so a drawn lake's outlet never vanishes.
+
+Characterisation confirmed the tiny below-sea pits (#1000005/10/14/21/24, ~4 cells, 0.01–0.04 km²) each DO
+have a traced outlet at the same discharge as their affluent (invariant holds); they were merely too short
+to see. #1000012 has no extracted affluent — it is fed by diffuse catchment runoff below the stream
+threshold, overflowing at ~20 m³/s (signified). The min-inventory floor (4 cells) that admits these coastal
+micro-pits is left as-is by the author's call ("c'est un seuil, tant pis").
