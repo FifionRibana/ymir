@@ -705,16 +705,47 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
                 LakeType::Exorheic => exo += 1,
             }
         }
-        for k in 0..bs.lake_map.len() {
-            if bs.lake_map[k] != 0 && drainage.lake_map[k] == 0 {
-                drainage.lake_map[k] = bs.lake_map[k];
+        // Finding 39 CLEANUP — a below-sea lake FILLED BY THE WATER BALANCE now covers depressions
+        // that `detect_lakes` had already found as separate (small-id) lakes; those detected lakes are
+        // SUBMERGED (their cells lie inside the below-sea footprint, at/below its surface). The below-sea
+        // lake SUPERSEDES them: overwrite the lake_map with the below-sea id wherever it has water (NOT
+        // "only where empty" — that left the old lakes as stale holes inside the new one). A detected
+        // lake that loses ALL its cells is DROPPED from the inventory; otherwise it survived as a
+        // contour inside the big lake and fired the exorheic-without-outlet canary (its outlet was
+        // clipped under the new water). A partially-covered detected lake keeps its uncovered cells and
+        // stays (resized) — so no cell is ever orphaned (a lake_map id with no lake).
+        use std::collections::{HashMap, HashSet};
+        let mut det_before: HashMap<u32, usize> = HashMap::new();
+        for &id in &drainage.lake_map {
+            if id != 0 && id < 1_000_001 {
+                *det_before.entry(id).or_default() += 1;
             }
         }
+        let mut det_after: HashMap<u32, usize> = HashMap::new();
+        for k in 0..bs.lake_map.len() {
+            if bs.lake_map[k] != 0 {
+                drainage.lake_map[k] = bs.lake_map[k]; // below-sea water supersedes a detected lake
+            } else if drainage.lake_map[k] != 0 && drainage.lake_map[k] < 1_000_001 {
+                *det_after.entry(drainage.lake_map[k]).or_default() += 1;
+            }
+        }
+        let absorbed: HashSet<u32> = det_before
+            .keys()
+            .copied()
+            .filter(|id| det_after.get(id).copied().unwrap_or(0) == 0)
+            .collect();
+        let n_absorbed = absorbed.len();
+        drainage.lakes.retain(|lk| lk.base.id >= 1_000_001 || !absorbed.contains(&lk.base.id));
         let (to_sea, chained) = (
             bs.spillways.iter().filter(|s| s.chained_into.is_none()).count(),
             bs.spillways.iter().filter(|s| s.chained_into.is_some()).count(),
         );
         drainage.lakes.extend(bs.lakes);
+        if n_absorbed > 0 {
+            eprintln!(
+                "[HD] below-sea cleanup: {n_absorbed} detected lake(s) submerged by a filled below-sea lake → dropped"
+            );
+        }
         eprintln!(
             "[HD] below-sea basins: {} lakes ({exo} exorheic, {endo} endorheic); {} spillways ({to_sea} → sea, {chained} chained)",
             exo + endo,

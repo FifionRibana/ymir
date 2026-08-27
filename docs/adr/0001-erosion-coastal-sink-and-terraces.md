@@ -1670,3 +1670,25 @@ water, fewer closed sinks) — measured on the regenerated export, not the loade
 The remaining `[HD] WARNING Finding 37: exorheic lake with no traced outlet` (#1000008) is a SEPARATE case, not
 folded into this change: below_sea now labels Exorheic only when `traced.is_some()`, so the below-sea class is
 closed by construction — #1000008 is to be re-checked on regeneration and diagnosed on its own if it survives.
+
+### Finding 39 cleanup — drop detected lakes submerged by a filled below-sea lake
+
+The author's regenerated export confirmed the law (21 below-sea lakes, 18 exorheic / 3 endorheic, sizes right —
+the big lakes now cover the deep depressions that had high-discharge affluents). But `detect_lakes` had already
+found separate small-id lakes INSIDE those depressions, and the below-sea merge only wrote its ids "where the
+lake_map was empty" — so each submerged detected lake survived as a stale CONTOUR inside the new big lake
+(#19/#21 inside #1000019, #20/#22/#23 inside #1000020, #25 inside #1000018, #28 inside #1000023) and fired the
+exorheic-without-outlet canary (its outlet was clipped under the new water): `[19,20,21,22,23,25,28]` — exactly
+the contained set.
+
+Fix (hd.rs merge): the below-sea water SUPERSEDES a detected lake — overwrite the lake_map with the below-sea id
+wherever it has water (not only where empty), then DROP every detected lake that loses all its cells. A
+partially-covered detected lake keeps its uncovered cells and stays (resized), so no cell is orphaned. The canary
+goes silent for the submerged set.
+
+Still open (a SEPARATE defect, not folded in): a below-sea SPILLWAY appended after `clip_rivers_to_lakes`
+(Finding 37b) is never truncated where it crosses a NON-submerged lake, so #1000023's outlet runs through
+detected lake #26 (arriving "at sea" at #26's 197 m surface) and #1000020's through #17 (211 m). The spillway
+trace sees only the below-sea lake_map, not detected lakes. To be diagnosed on its own. The waterfall at river
+#1's mouth (1736 m³/s reaching the sea at 49 m) is accepted by the author as a future coastal-cliff concern, not
+a drainage defect.
