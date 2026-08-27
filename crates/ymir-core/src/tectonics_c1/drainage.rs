@@ -1153,6 +1153,15 @@ pub fn below_sea_basin_lakes(
             let n_eq = ((a_eq / cell_km2).floor() as usize).clamp(1, sorted.len());
             sorted[n_eq - 1]
         };
+        // Finding 39 regression fix — a below-sea basin's SURFACE never reads below sea: the whole
+        // enclosed region IS the water body (a would-be-sea depression), so the footprint always covers
+        // it up to at least sea level. This restores the Finding 38 guarantee — every below-sea cell is
+        // inside the sink, so no river mouth lands on an unmarked shelf (the 3 arid orphan mouths) — and
+        // kills the flat-floor depth-0 artefact: an arid basin whose evaporative level collapses onto a
+        // flat floor now reads as a sea-level inland sea of depth sea−floor, not a 0-depth sheet marked
+        // over the whole floor. A basin whose balance rises ABOVE sea (humid: #1000009 fills to 44.8 m,
+        // #1000022 to its col) keeps that higher surface — Finding 39's fill is unchanged there.
+        let surface = level.max(C1_SEA_LEVEL_NORM);
         // Invariant 1 (Finding 37 TASK 2) — A LAKE MUST HAVE WATER. A hollow with NO supply (no inflow)
         // AND no computed depth (an endorheic basin whose evaporative level collapses onto its floor)
         // is a DRY DEPRESSION: it belongs in the relief, not in the water bodies. Do not mark it, do
@@ -1167,15 +1176,16 @@ pub fn below_sea_basin_lakes(
         }
         // `spill` for the basin summary: the real local sill if one exists, else the (endorheic) level.
         let spill = sill_opt.unwrap_or(level);
-        // 4. mark the WATER cells = the priority-flood BOWL `fcells` up to the surface `level`. Finding
-        // 39: the footprint is now the whole depression under the water (the region `comp` PLUS any land
-        // ring the level submerges), so a filled-to-the-sill lake actually COVERS everything below its
-        // surface — the physically-correct montane lake, not a vertical-walled sliver at the region. The
-        // bowl is a single priority-flood from the floor, so every marked cell is ≤ level AND connected
-        // to the lowest point ⟹ `claimed == valid` (the geometric invariant). Claim only cells still
-        // free (`lake_map == 0`) so two adjacent bowls sharing a ridge stay DISJOINT; the escape at the
-        // separating land stops a bowl before it can reach another region, so `comp`s never merge.
-        let mark_level = level;
+        // 4. mark the WATER cells = the priority-flood BOWL `fcells` up to the SURFACE. Finding 39: the
+        // footprint is the whole depression under the surface (the region `comp` PLUS any land ring the
+        // surface submerges), so a filled lake COVERS everything below its surface — the montane lake,
+        // not a vertical-walled sliver. `surface = level.max(sea)` also guarantees the ENTIRE below-sea
+        // region is claimed (Finding 38), so no mouth lands on an unmarked shelf. `fcells` runs from the
+        // floor up to the sill, so `fcells ≤ surface` is a connected flood from the lowest point ⟹
+        // `claimed == valid` (no over-flood). Claim only free cells (`lake_map == 0`) so two adjacent
+        // bowls sharing a ridge stay DISJOINT; the escape at the separating land stops a bowl before it
+        // can reach another region, so `comp`s never merge.
+        let mark_level = surface;
         let id = next_id;
         next_id += 1;
         let mut water = 0usize;
@@ -1187,7 +1197,7 @@ pub fn below_sea_basin_lakes(
                 water += 1;
                 // Finding 30 — wetland vs lagoon by DEPTH: a shallow (< 3 m) water cell is a
                 // through-flow wetland margin; a deeper one is open water (lagoon/inland sea).
-                if (level - heightmap.data[k]) * metres_per_norm < WETLAND_MAX_DEPTH_M {
+                if (surface - heightmap.data[k]) * metres_per_norm < WETLAND_MAX_DEPTH_M {
                     wetland[k] = 1;
                 }
                 if heightmap.data[k] < floor {
@@ -1200,7 +1210,9 @@ pub fn below_sea_basin_lakes(
         if water == 0 {
             continue;
         }
-        let level_m = c1_altitude_norm_to_metres(level, ss);
+        // Finding 39 regression fix — report the SURFACE (never below sea), so a below-sea basin's
+        // level/depth describe the inland-sea/pan (depth = surface − floor), not a collapsed 0-depth sheet.
+        let level_m = c1_altitude_norm_to_metres(surface, ss);
         let floor_m = c1_altitude_norm_to_metres(floor, ss);
         // Inventory (lakes.json / microscope) keeps the 5 km² threshold — no micro-lakes.
         // The basin is still marked + gets a spillway below regardless (sink validity).
@@ -1208,8 +1220,8 @@ pub fn below_sea_basin_lakes(
             out.push(C1Lake {
                 base: Lake {
                     id,
-                    surface_elevation: level,
-                    max_depth: level - floor,
+                    surface_elevation: surface,
+                    max_depth: surface - floor,
                     area: water,
                     basin_id: flow.basins[fcells[0]],
                     outlet: (ox, oy),
@@ -1605,6 +1617,7 @@ mod tests {
 
     #[test]
     fn arid_sink_enclosed_below_sea_stays_endorheic_below_col() {
+        use crate::lakes::connectivity::water_class;
         let (w, h, hm) = enclosed_basin_geometry();
         // Cool humid catchment (generates inflow) feeding a HOT evaporating floor (closes the basin
         // well below the col): PE_floor(30 °C) ≈ 2600 mm/yr ≫ precip 800 mm/yr ⟹ net_evap > 0.
@@ -1629,6 +1642,23 @@ mod tests {
             lk.level_m < 20.0,
             "the surface must stay near the floor (below the 56 m col), got {:.0} m",
             lk.level_m
+        );
+        // Finding 39 regression fix — the below-sea region is a would-be-sea depression, so it reads as
+        // an inland sea at sea level: depth = sea − floor > 0 (NOT the collapsed 0-depth sheet the
+        // evaporative level gave on a flat floor), and the WHOLE below-sea region is marked (no
+        // unmarked shelf for a river mouth to strand on). Both would fail before the fix.
+        assert!(
+            lk.depth_m > 5.0,
+            "an arid below-sea basin must read as a sea-level inland sea (depth = sea−floor), not a \
+             0-depth sheet; got depth {:.1} m",
+            lk.depth_m
+        );
+        let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
+        let unmarked_below_sea =
+            (0..w * h).filter(|&k| wc[k] == 2 && r.lake_map[k] == 0).count();
+        assert_eq!(
+            unmarked_below_sea, 0,
+            "every below-sea cell of the region must be inside the sink (no orphan shelf); {unmarked_below_sea} unmarked"
         );
     }
 

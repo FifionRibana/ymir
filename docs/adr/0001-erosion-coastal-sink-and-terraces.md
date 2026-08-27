@@ -1730,3 +1730,26 @@ have a traced outlet at the same discharge as their affluent (invariant holds); 
 to see. #1000012 has no extracted affluent — it is fed by diffuse catchment runoff below the stream
 threshold, overflowing at ~20 m³/s (signified). The min-inventory floor (4 cells) that admits these coastal
 micro-pits is left as-is by the author's call ("c'est un seuil, tant pis").
+
+### Finding 39 regression fix — below-sea surface never below sea (arid orphans + depth-0 pans)
+
+The author's ARID regeneration (latitude 25°, span 10° → subtropical desert belt, 9 exorheic / 12 endorheic vs
+the humid 18/3) exposed two coupled regressions that Finding 39's `fcells ≤ level` marking introduced when the
+evaporative level collapses BELOW sea:
+1. **3 orphan mouths (20–32 m³/s)** — a river ended on a below-sea shelf cell (≈ −0.1 m) that was NOT marked,
+   because the endorheic level had collapsed onto the deep floor and the marking covered only the low floor,
+   leaving the shelf (still below-sea) outside every sink. Finding 38's guarantee (the whole below-sea region
+   IS the water body) was silently lost.
+2. **2 depth-0 "lakes"** (#1000018, #1000003 at −20 m, area 420 / 316 km²) — on a FLAT floor the hypsometric
+   level sits on the floor, so `level − floor = 0` while the marking flooded the whole flat floor.
+
+Both share one root and one fix: a below-sea basin is a would-be-sea depression, so its SURFACE never reads
+below sea — `surface = level.max(sea)`, used for the footprint, the level/depth, and the wetland test. The whole
+region is then always claimed (every below-sea cell is inside the sink → no orphan shelf), and an arid basin
+reads as a sea-level inland sea of depth `sea − floor` (not a 0-depth sheet). A basin whose balance rises ABOVE
+sea (humid: #1000009 at 44.8 m, #1000022 at its col) keeps that higher surface — Finding 39's fill is unchanged.
+
+Guard: `arid_sink_enclosed_below_sea_stays_endorheic_below_col` now also asserts depth > 0 and ZERO unmarked
+below-sea cells — both would fail before this fix. On the loaded (arid) export, `merge_verify` shows mouths
+0/0/0 and 0 over-flood. Lib suite 522 green (10 drainage guards); viz compiles. The author regenerates for the
+ground-truth verdict.
