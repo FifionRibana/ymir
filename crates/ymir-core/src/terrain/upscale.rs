@@ -31,6 +31,32 @@ pub struct FbmUpscaleConfig {
     pub submarine_damping: f64,
     /// Base frequency of the first octave, in cycles per source pixel. Default: 1.0.
     pub base_frequency: f64,
+    /// **Flow-conditioning relief budget** β (C-1, closures roadmap §1). The
+    /// additive isotropic FBM is the sole creator of closed depressions (16
+    /// tectonic → 90 682 after the FBM): a pit forms wherever the noise out-slopes
+    /// the bed and reverses the descent. When `> 0`, two coupled mechanisms
+    /// suppress that:
+    ///
+    /// 1. **Amplitude cap** (this knob). The noise amplitude is bounded by a relief
+    ///    budget `amplitude ≤ β · slope_mag / (nscale·S)`, where the divisor
+    ///    `nscale·S` (S = Σ(persistence·lacunarity)ᵒ) converts a bed slope into the
+    ///    FBM amplitude whose summed per-octave downslope rise equals it. Smaller β
+    ///    = stricter (fewer pits, less detail); the limit β → 0 recovers the smooth
+    ///    coarse bed (its 16 depressions). On a flat (slope → 0) the cap → 0 and
+    ///    removes the fabricated pit; on a steep flank it is generous (texture
+    ///    kept).
+    /// 2. **Downslope stretch** (fixed [`FLOW_STRETCH`], not tuned here). The noise
+    ///    is elongated along the bed gradient so its along-flow derivative shrinks —
+    ///    a bed displaced laterally without a counter-slope, while the contour axis
+    ///    still carries relief.
+    ///
+    /// Both depend only on the coarse slope field and config, so they are identical
+    /// at every `target_size` (band policy unchanged; low bands still bit-identical
+    /// across resolutions). Default `0.0` (OFF → byte-identical to the pre-C-1
+    /// additive noise; all determinism/byte guards stay green). The canonical HD
+    /// product ([`FbmUpscaleConfig::c1_hd_production`]) turns it ON.
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub flow_conditioning: f64,
     /// **Sub-domain window ORIGIN** in normalized coarse coordinates `[0,1]`
     /// `(x, y)`. The upscale samples only the window `[origin, origin+size]²`
     /// of the coarse field instead of the whole (periodic) torus, so a fraction
@@ -144,6 +170,13 @@ fn is_full_sample_size(s: &f64) -> bool {
     *s == 1.0
 }
 
+/// A zero (OFF) flow-conditioning strength serializes to nothing (keeps the
+/// pre-C-1 eroded cache key byte-identical for un-conditioned configs).
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero_f64(v: &f64) -> bool {
+    *v == 0.0
+}
+
 impl Default for FbmUpscaleConfig {
     fn default() -> Self {
         Self {
@@ -156,6 +189,7 @@ impl Default for FbmUpscaleConfig {
             max_anisotropy: 3.0,
             submarine_damping: 0.3,
             base_frequency: 1.0,
+            flow_conditioning: 0.0,
             sample_origin: [0.0, 0.0],
             sample_size: 1.0,
             domain_warp_strength: 0.0,
@@ -213,6 +247,13 @@ impl FbmUpscaleConfig {
             coastal_amplitude_band: 0.30,
             amplitude_base: 0.16,
             submarine_damping: 0.0,
+            // C-1 (closures roadmap §1): flow-condition the FBM so it stops being
+            // the sole creator of closed depressions. β = 0.1 cuts the post-FBM pit
+            // population ~13× at 8192² / ~28× at 2048² while PRESERVING mountain
+            // morphology (steep-slope shares and local relief are held or sharpened
+            // — the downslope stretch concentrates relief into coherent valleys).
+            // See the C-1 section of docs/adr/0001 for the trajectory table.
+            flow_conditioning: 0.1,
             // M1 #190 regression fix: NO sea-level calibration by default (it lands
             // on the flat shelf → speckled coasts). Opt-in only. See docstring.
             target_land_fraction: None,
@@ -254,6 +295,15 @@ fn smoothstep(x: f64, lo: f64, hi: f64) -> f64 {
 // Thresholds for isotropic/anisotropic blending (slope magnitude).
 const ISOTROPY_LOW: f64 = 0.01;
 const ISOTROPY_HIGH: f64 = 0.05;
+
+// C-1: fixed downslope elongation applied by the flow conditioning. The noise is
+// stretched ×`FLOW_STRETCH` along the bed gradient (its along-flow frequency is
+// divided by this), so the along-flow derivative shrinks and the noise cannot
+// reverse the descent, while the across-flow (contour) axis keeps full-frequency
+// relief. This is a structural part of the method, not a tuning knob (stretching
+// only lowers a frequency, so it never crosses Nyquist — the band policy holds).
+// The tuning knob is the relief budget `flow_conditioning` (β) on the amplitude.
+const FLOW_STRETCH: f64 = 8.0;
 
 // Maximum angular perturbation (radians, ~17 degrees).
 const ANGLE_PERTURBATION_MAX: f64 = 0.3;
@@ -337,6 +387,19 @@ pub fn upscale_with_fbm(
     let nscale = config.base_frequency * NOISE_REF_TARGET / (src_max * src_max);
     let ascale = ANGLE_PERTURBATION_FREQ * NOISE_REF_TARGET / src_max;
 
+    // C-1 relief budget: the divisor `nscale · S` converts a slope (Δh per coarse
+    // cell) into the FBM amplitude whose summed per-octave downslope rise equals
+    // that slope. `S = Σ (persistence·lacunarity)ᵒ` is the octave gradient sum
+    // (≈ `octaves` at the p·l = 1 default). Precomputed once — config-only, so it
+    // is identical at every resolution. See `flow_conditioning` doc.
+    let flow_budget_divisor = if config.flow_conditioning > 0.0 {
+        let ratio = config.persistence * config.lacunarity;
+        let s: f64 = (0..config.octaves).map(|o| ratio.powi(o as i32)).sum();
+        nscale * s
+    } else {
+        0.0 // unused when conditioning is OFF
+    };
+
     // Process each output row in parallel
     let row_data: Vec<(Vec<f32>, Vec<f32>)> = (0..dst_h)
         .into_par_iter()
@@ -396,6 +459,16 @@ pub fn upscale_with_fbm(
                     * (1.0 + slope_mag as f64 * config.amplitude_slope_factor)
                     * altitude_factor;
 
+                // C-1 relief-budget cap (β = config.flow_conditioning): on a flat
+                // (slope → 0) no flow direction exists, so any additive bump is a
+                // fabricated pit; the cap → 0 there and removes it. On a slope the
+                // cap scales with the bed slope, and the downslope stretch below
+                // does the along-flow reversal suppression.
+                if config.flow_conditioning > 0.0 {
+                    let cap = config.flow_conditioning * slope_mag as f64 / flow_budget_divisor;
+                    amplitude = amplitude.min(cap);
+                }
+
                 // #151: coastal amplitude taper — damp the FBM to ~0 AT the
                 // sea-level contour so it doesn't feather the coastline by
                 // flipping near-sea cells land↔ocean; full amplitude inland
@@ -450,7 +523,31 @@ pub fn upscale_with_fbm(
                 };
 
                 // 8. Sample FBM
-                let noise_val = if aniso_blend < 0.001 {
+                let noise_val = if config.flow_conditioning > 0.0 {
+                    // C-1 flow-aligned sample: STRETCH features DOWNSLOPE by
+                    // `flow_conditioning = E` — pass the slope direction with
+                    // `ratio = 1/E < 1`, which LOWERS the along-slope frequency
+                    // (wavelength ×E) while leaving the across-slope (contour)
+                    // frequency untouched. The along-flow derivative shrinks by ≈E
+                    // so the noise cannot reverse the descent; the contour axis
+                    // still carries full-frequency relief (downslope flutes, not
+                    // transverse ridges). Stretching only ever LOWERS a frequency,
+                    // so it never crosses Nyquist — the band policy holds (compressing
+                    // the contour axis instead would alias into salt-and-pepper pits).
+                    // Applied at ALL slopes (unlike the legacy `aniso_blend`, which
+                    // stays isotropic on gentle slopes — exactly where pits form); on
+                    // a true flat the amplitude cap has already zeroed the noise, so
+                    // the ill-defined slope_dir there is harmless.
+                    noise.fbm_anisotropic(
+                        nx,
+                        ny,
+                        perturbed_dir,
+                        1.0 / FLOW_STRETCH,
+                        config.octaves,
+                        config.lacunarity,
+                        config.persistence,
+                    )
+                } else if aniso_blend < 0.001 {
                     // Pure isotropic — skip aniso sample
                     noise.fbm(nx, ny, config.octaves, config.lacunarity, config.persistence)
                 } else if aniso_blend > 0.999 {
@@ -688,6 +785,65 @@ mod tests {
         assert_eq!(result.heightmap.height, 128);
         assert_eq!(result.slope.width, 80);
         assert_eq!(result.slope.height, 128);
+    }
+
+    /// Count interior cells strictly lower than all 8 neighbours (closed pits).
+    fn local_minima(g: &GridF32) -> usize {
+        let (w, h) = (g.width, g.height);
+        let mut n = 0;
+        for y in 1..h - 1 {
+            for x in 1..w - 1 {
+                let v = g.data[y * w + x];
+                let mut is_min = true;
+                for dy in -1i32..=1 {
+                    for dx in -1i32..=1 {
+                        if dx == 0 && dy == 0 {
+                            continue;
+                        }
+                        if g.data[(y as i32 + dy) as usize * w + (x as i32 + dx) as usize] <= v {
+                            is_min = false;
+                        }
+                    }
+                }
+                if is_min {
+                    n += 1;
+                }
+            }
+        }
+        n
+    }
+
+    /// C-1 permanent guard: on a uniform tilted ramp the un-conditioned additive
+    /// FBM fabricates many closed pits (noise out-slopes the gentle bed); the
+    /// flow-conditioned FBM must fabricate far fewer, because the amplitude cap and
+    /// downslope stretch keep the noise from reversing the descent. Falsifiable and
+    /// resolution-cheap — the C-1 acceptance in miniature.
+    #[test]
+    fn flow_conditioning_suppresses_fabricated_pits() {
+        let n = 48;
+        let mut coarse = GridF32::new(n, n, 0.0);
+        for j in 0..n {
+            for i in 0..n {
+                // a gentle land ramp well above sea (0.5): 0.6 → 0.9 across x.
+                coarse.set(i, j, 0.6 + i as f32 / n as f32 * 0.3);
+            }
+        }
+        let seed = WorldSeed::new(42);
+        let base =
+            FbmUpscaleConfig { target_size: 384, amplitude_base: 0.04, ..Default::default() };
+        let off = upscale_with_fbm(&coarse, 0.5, &seed, &base).heightmap;
+        let on = upscale_with_fbm(
+            &coarse,
+            0.5,
+            &seed,
+            &FbmUpscaleConfig { flow_conditioning: 0.1, ..base.clone() },
+        )
+        .heightmap;
+        let (m_off, m_on) = (local_minima(&off), local_minima(&on));
+        assert!(
+            m_on * 4 < m_off,
+            "conditioning must cut fabricated pits >4×: off {m_off}, on {m_on}"
+        );
     }
 
     #[test]
