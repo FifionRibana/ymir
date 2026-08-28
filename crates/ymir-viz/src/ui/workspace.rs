@@ -279,7 +279,6 @@ struct WorkspaceState {
     tex_overlay: bool,
     hover: Option<CellInspection>,
     hover_xy: Option<(usize, usize)>,
-    zoom: f32,
     /// Active map tool: SELECT (microscope — hover/click inspects an entity) or PAN
     /// (hand — click-drag moves the view). Wheel/CTRL-wheel work in either tool.
     tool: MapTool,
@@ -287,6 +286,12 @@ struct WorkspaceState {
     pipeline_collapsed: bool,
     /// Bird-eye minimap shown over the canvas.
     minimap: bool,
+    /// Microscope SELECTION drawer (left) open.
+    micro_open: bool,
+    /// Absolute on-screen size (px) of the FULL map square — the camera scale. `0` = fit on the
+    /// next frame. Kept absolute (not derived from the panel-dependent available size) so resizing
+    /// the side panels does NOT rescale the canvas.
+    map_px: f32,
 }
 
 /// Map interaction tool (mock: two buttons — select / hand).
@@ -353,11 +358,12 @@ impl Default for WorkspaceState {
             tex_overlay: false,
             hover: None,
             hover_xy: None,
-            zoom: 1.0,
             map_pan: [0.5, 0.5],
             tool: MapTool::Select,
             pipeline_collapsed: false,
             minimap: true,
+            micro_open: true,
+            map_px: 0.0,
         }
     }
 }
@@ -635,8 +641,40 @@ fn draw_workspace(
 
     top_bar(ctx, &bridge, &mut ws);
     left_panel(ctx, &bridge, &mut ws, hd_running);
+    microscope_drawer(ctx, &mut ws);
     right_panel(ctx, &mut ws);
     central_panel(ctx, &bridge, &mut ws);
+}
+
+/// Microscope SELECTION as a LEFT drawer (second left panel), resizable, collapsible to a thin
+/// re-open strip. Holds the entity list; the selected element's DETAIL shows in the right zone.
+fn microscope_drawer(ctx: &egui::Context, ws: &mut WorkspaceState) {
+    if ws.current.is_none() {
+        return;
+    }
+    if !ws.micro_open {
+        egui::SidePanel::left("micro_closed")
+            .exact_width(28.0)
+            .frame(egui::Frame::default().fill(PANEL2).inner_margin(4))
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    if ui
+                        .button(egui::RichText::new("⌖").size(15.0))
+                        .on_hover_text("Ouvrir le microscope")
+                        .clicked()
+                    {
+                        ws.micro_open = true;
+                    }
+                });
+            });
+        return;
+    }
+    egui::SidePanel::left("microscope")
+        .default_width(248.0)
+        .width_range(180.0..=420.0)
+        .resizable(true)
+        .frame(egui::Frame::default().fill(PANEL).inner_margin(10))
+        .show(ctx, |ui| microscope_list(ui, ws));
 }
 
 // ── Top bar ──────────────────────────────────────────────────────────────
@@ -1203,17 +1241,16 @@ fn right_panel(ctx: &egui::Context, ws: &mut WorkspaceState) {
         return;
     }
     egui::SidePanel::right("inspector")
-        .exact_width(282.0)
+        .default_width(320.0)
+        .width_range(240.0..=620.0)
+        .resizable(true)
         .frame(egui::Frame::default().fill(PANEL).inner_margin(0))
         .show(ctx, |ui| {
             ui.spacing_mut().item_spacing = egui::vec2(8.0, 6.0);
             block(ui, 15, 13, 13, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
-                        egui::RichText::new("Inspection de cellule")
-                            .color(TEXT_BRIGHT)
-                            .strong()
-                            .size(12.5),
+                        egui::RichText::new("Inspection").color(TEXT_BRIGHT).strong().size(12.5),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("›").on_hover_text("Replier").clicked() {
@@ -1223,34 +1260,31 @@ fn right_panel(ctx: &egui::Context, ws: &mut WorkspaceState) {
                 });
             });
             ui.separator();
-            match &ws.hover {
-                Some(c) => {
-                    let c = *c;
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        block(ui, 15, 14, 14, |ui| inspection(ui, &c));
-                    });
-                }
-                None => {
-                    ui.add_space(48.0);
-                    ui.vertical_centered(|ui| {
-                        ui.label(
-                            egui::RichText::new("⊹")
-                                .color(C::from_rgb(0x4a, 0x4a, 0x4a))
-                                .size(22.0),
-                        );
-                        ui.add_space(6.0);
+            let hover = ws.hover; // copy before the &mut borrow below
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                // Primary: the selected element's detail (microscope).
+                block(ui, 15, 14, 14, |ui| microscope_detail(ui, ws));
+                // Secondary: the cell currently under the cursor.
+                ui.separator();
+                match hover {
+                    Some(c) => {
+                        group_title(ui, "CELLULE SURVOLÉE");
+                        block(ui, 8, 14, 14, |ui| inspection(ui, &c));
+                    }
+                    None => {
+                        ui.add_space(10.0);
                         ui.label(
                             egui::RichText::new(if ws.current.is_some() {
-                                "Survolez la carte pour inspecter\nles grandeurs d'une cellule."
+                                "Survolez la carte pour inspecter une cellule."
                             } else {
                                 "Générez un continent."
                             })
                             .color(C::from_rgb(0x7a, 0x7a, 0x7a))
-                            .size(12.0),
+                            .size(11.5),
                         );
-                    });
+                    }
                 }
-            }
+            });
         });
 }
 
@@ -1391,15 +1425,8 @@ fn central_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut Workspac
                         frieze(ui, &bridge.hd, ws);
                     }
                 });
-            // Inspection microscope (Finding 28) — entity lists + long profile / lake sheet.
-            if ws.current.is_some() {
-                egui::TopBottomPanel::bottom("inspection_dock")
-                    .resizable(true)
-                    .default_height(210.0)
-                    .frame(egui::Frame::default().fill(PANEL).inner_margin(8))
-                    .show_inside(ui, |ui| inspection_dock(ui, ws));
-            }
-            // Map viewport (#0A0A0A).
+            // Map viewport (#0A0A0A) — the microscope entity list is now the LEFT drawer and its
+            // detail the RIGHT zone, so the canvas takes the full central area.
             egui::CentralPanel::default()
                 .frame(egui::Frame::default().fill(VIEWPORT).inner_margin(0))
                 .show_inside(ui, |ui| map(ui, ws));
@@ -1944,110 +1971,103 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     }
     let handle = ws.texture.as_ref().unwrap().clone();
 
-    let z = ws.zoom.max(1.0);
-    let uv_half = 0.5 / z;
-    // Clamp the pan CENTRE so the zoom window stays inside the map; recentre at fit.
-    if z > 1.0 {
-        let (lo, hi) = (uv_half, 1.0 - uv_half);
-        ws.map_pan[0] = ws.map_pan[0].clamp(lo, hi);
-        ws.map_pan[1] = ws.map_pan[1].clamp(lo, hi);
-    } else {
-        ws.map_pan = [0.5, 0.5];
+    // ── Camera (item 11): an ABSOLUTE on-screen scale `map_px` (the full-map size in px) + a uv
+    //    pan centre. The scale is FIXED (not derived from the panel-dependent available size), so
+    //    resizing the side panels does NOT rescale the canvas. The map is painted freely and
+    //    clipped to the viewport (fills it); drag pans, CTRL+wheel zooms on the cursor, wheel
+    //    scrolls, SHIFT+wheel scrolls horizontally.
+    let hd = ws.current.clone().unwrap();
+    let (w, h) = (hd.width, hd.height);
+    let vp = ui.available_rect_before_wrap();
+    let resp = ui.interact(vp, ui.id().with("map_canvas"), egui::Sense::click_and_drag());
+    let fit = vp.width().min(vp.height()).max(64.0);
+    if ws.map_px <= 0.0 {
+        ws.map_px = fit; // fit on the first frame
     }
-    let avail = ui.available_size();
-    let side = avail.x.min(avail.y).max(1.0);
-    // Centre the square map in the canvas (fills the shorter dimension; pan/zoom to explore).
-    ui.add_space(((avail.y - side) * 0.5).max(0.0));
-    ui.horizontal(|ui| {
-        ui.add_space(((avail.x - side) * 0.5).max(0.0));
-        let (cx, cy) = (ws.map_pan[0], ws.map_pan[1]);
-        let uv = egui::Rect::from_min_max(
-            egui::pos2(cx - uv_half, cy - uv_half),
-            egui::pos2(cx + uv_half, cy + uv_half),
-        );
-        // The canvas senses click+drag (pan with the hand tool / middle button) and wheel.
-        let resp = ui.add(
-            egui::Image::new(egui::load::SizedTexture::new(handle.id(), egui::vec2(side, side)))
-                .uv(uv)
-                .sense(egui::Sense::click_and_drag()),
-        );
+    ws.map_pan[0] = ws.map_pan[0].clamp(0.0, 1.0);
+    ws.map_pan[1] = ws.map_pan[1].clamp(0.0, 1.0);
 
-        // ── Canvas navigation (mock): drag-to-pan, CTRL+wheel zoom around the cursor,
-        //    wheel = vertical scroll, SHIFT+wheel = horizontal (egui routes it to scroll.x).
-        let uv_span = 2.0 * uv_half;
-        let pan_drag = (ws.tool == MapTool::Pan && resp.dragged())
-            || resp.dragged_by(egui::PointerButton::Middle);
-        if pan_drag && z > 1.0 {
-            let d = resp.drag_delta();
-            ws.map_pan[0] -= d.x / side * uv_span; // drag right → view slides left
-            ws.map_pan[1] -= d.y / side * uv_span;
-        }
-        if resp.hovered() {
-            let (scroll, zoom_delta, mods) =
-                ui.ctx().input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.modifiers));
-            // CTRL+wheel (or pinch) → zoom. egui usually routes CTRL+wheel into zoom_delta; the
-            // scroll.y fallback covers the case it does not.
-            let zf = if (zoom_delta - 1.0).abs() > 1e-3 {
-                zoom_delta
-            } else if (mods.ctrl || mods.command) && scroll.y != 0.0 {
-                1.0 + scroll.y / 400.0
-            } else {
-                1.0
-            };
-            if (zf - 1.0).abs() > 1e-4 {
-                let new_z = (z * zf).clamp(1.0, 12.0);
-                if let Some(p) = resp.hover_pos() {
-                    // keep the uv under the cursor fixed while zooming.
-                    let rel = p - resp.rect.min;
-                    let cur_u =
-                        uv.min.x + (rel.x / resp.rect.width()).clamp(0.0, 1.0) * uv_span;
-                    let cur_v =
-                        uv.min.y + (rel.y / resp.rect.height()).clamp(0.0, 1.0) * uv_span;
-                    let k = 1.0 - z / new_z;
-                    ws.map_pan[0] += (cur_u - ws.map_pan[0]) * k;
-                    ws.map_pan[1] += (cur_v - ws.map_pan[1]) * k;
-                }
-                ws.zoom = new_z;
-            } else if z > 1.0 && !mods.ctrl && !mods.command && (scroll.x != 0.0 || scroll.y != 0.0)
-            {
-                ws.map_pan[0] -= scroll.x / side * uv_span;
-                ws.map_pan[1] -= scroll.y / side * uv_span;
+    // ── Navigation input. ──
+    let pan_drag = (ws.tool == MapTool::Pan && resp.dragged())
+        || resp.dragged_by(egui::PointerButton::Middle);
+    if pan_drag {
+        let d = resp.drag_delta();
+        ws.map_pan[0] -= d.x / ws.map_px; // drag right -> view slides left
+        ws.map_pan[1] -= d.y / ws.map_px;
+    }
+    if resp.hovered() {
+        let (scroll, zoom_delta, mods) =
+            ui.ctx().input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.modifiers));
+        let zf = if (zoom_delta - 1.0).abs() > 1e-3 {
+            zoom_delta
+        } else if (mods.ctrl || mods.command) && scroll.y != 0.0 {
+            1.0 + scroll.y / 400.0
+        } else {
+            1.0
+        };
+        if (zf - 1.0).abs() > 1e-4 {
+            let new_px = (ws.map_px * zf).clamp(fit * 0.5, fit * 16.0);
+            if let Some(pos) = resp.hover_pos() {
+                // keep the uv under the cursor fixed while zooming.
+                let map_min = vp.center() - egui::vec2(ws.map_pan[0], ws.map_pan[1]) * ws.map_px;
+                let cur_u = (pos.x - map_min.x) / ws.map_px;
+                let cur_v = (pos.y - map_min.y) / ws.map_px;
+                ws.map_pan[0] = cur_u + (vp.center().x - pos.x) / new_px;
+                ws.map_pan[1] = cur_v + (vp.center().y - pos.y) / new_px;
             }
-            let icon = if pan_drag {
-                egui::CursorIcon::Grabbing
-            } else if ws.tool == MapTool::Pan {
-                egui::CursorIcon::Grab
-            } else {
-                egui::CursorIcon::Crosshair
-            };
-            ui.ctx().set_cursor_icon(icon);
+            ws.map_px = new_px;
+        } else if !mods.ctrl && !mods.command && (scroll.x != 0.0 || scroll.y != 0.0) {
+            ws.map_pan[0] -= scroll.x / ws.map_px;
+            ws.map_pan[1] -= scroll.y / ws.map_px;
         }
+        let icon = if pan_drag {
+            egui::CursorIcon::Grabbing
+        } else if ws.tool == MapTool::Pan {
+            egui::CursorIcon::Grab
+        } else {
+            egui::CursorIcon::Crosshair
+        };
+        ui.ctx().set_cursor_icon(icon);
+    }
+    ws.map_pan[0] = ws.map_pan[0].clamp(0.0, 1.0);
+    ws.map_pan[1] = ws.map_pan[1].clamp(0.0, 1.0);
 
-        // Overlays (painter-drawn boxes, matching the mock's absolute divs).
-        let hd = ws.current.clone().unwrap();
-        overlay_chip(ui, resp.rect, ws.layer);
-        legend_box(ui, resp.rect, ws.layer);
+    // ── Transform for this frame + paint the (clipped) map. ──
+    let map_px = ws.map_px;
+    let map_min = vp.center() - egui::vec2(ws.map_pan[0], ws.map_pan[1]) * map_px;
+    let map_rect = egui::Rect::from_min_size(map_min, egui::vec2(map_px, map_px));
+    let to_screen = |x: u32, y: u32| -> egui::Pos2 {
+        let ncx = (x as f32 + 0.5) / w as f32;
+        let ncy = ((h as u32 - 1 - y) as f32 + 0.5) / h as f32;
+        map_min + egui::vec2(ncx, ncy) * map_px
+    };
+    let pnt = ui.painter_at(vp);
+    pnt.image(
+        handle.id(),
+        map_rect,
+        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+        C::WHITE,
+    );
 
-        // Hover → cell → inspect.
-        ws.hover = None;
-        ws.hover_xy = None;
-        if let Some(pos) = resp.hover_pos() {
-            let rel = pos - resp.rect.min;
-            let fx =
-                uv.min.x + (rel.x / resp.rect.width()).clamp(0.0, 0.999) * (uv.max.x - uv.min.x);
-            let fy =
-                uv.min.y + (rel.y / resp.rect.height()).clamp(0.0, 0.999) * (uv.max.y - uv.min.y);
-            let cx = ((fx * hd.width as f32) as usize).min(hd.width - 1);
-            // The texture is north-up mirrored (Finding 27); the DATA cell is south-first,
-            // so the hovered data row is the mirror of the texture row.
-            let tex_row = ((fy * hd.height as f32) as usize).min(hd.height - 1);
-            let cy = (hd.height - 1) - tex_row;
+    overlay_chip(ui, vp, ws.layer);
+    legend_box(ui, vp, ws.layer);
+
+    // Hover -> cell -> inspect (only when the cursor is over the map, not the letterbox).
+    ws.hover = None;
+    ws.hover_xy = None;
+    if let Some(pos) = resp.hover_pos() {
+        let fx = (pos.x - map_min.x) / map_px;
+        let fy = (pos.y - map_min.y) / map_px;
+        if (0.0..1.0).contains(&fx) && (0.0..1.0).contains(&fy) {
+            let cx = ((fx * w as f32) as usize).min(w - 1);
+            // The texture is north-up mirrored (Finding 27); the DATA cell is the mirror row.
+            let tex_row = ((fy * h as f32) as usize).min(h - 1);
+            let cy = (h - 1) - tex_row;
             if let Some(rm) = ws.river_map.as_ref() {
                 ws.hover = Some(inspect_cell(&hd, rm, cx, cy));
                 ws.hover_xy = Some((cx, cy));
             }
-            // Hover-select (Finding 28): only with the SELECT (microscope) tool — the hand tool
-            // pans without disturbing the current selection. Selects in the ACTIVE tab.
+            // Hover-select only with the SELECT tool (the hand pans without touching selection).
             if ws.tool == MapTool::Select {
                 match ws.inspect_tab {
                     InspectTab::Rivers => {
@@ -2071,126 +2091,93 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                     }
                 }
             }
-
             // Reticle: faint crosshair through the cell + a copper cell box.
-            let pnt = ui.painter_at(resp.rect);
-            let uvw = uv.max.x - uv.min.x;
-            let uvh = uv.max.y - uv.min.y;
-            let ncx = (cx as f32 + 0.5) / hd.width as f32;
-            // Screen v of the data cell = the texture (north-up) row, i.e. its mirror.
-            let ncy = ((hd.height - 1 - cy) as f32 + 0.5) / hd.height as f32;
-            let sx = resp.rect.left() + ((ncx - uv.min.x) / uvw) * resp.rect.width();
-            let sy = resp.rect.top() + ((ncy - uv.min.y) / uvh) * resp.rect.height();
-            let bw = ((1.0 / hd.width as f32 / uvw) * resp.rect.width()).max(8.0);
-            let bh = ((1.0 / hd.height as f32 / uvh) * resp.rect.height()).max(8.0);
+            let s = to_screen(cx as u32, cy as u32);
+            let cell = (map_px / w as f32).max(8.0);
             let faint = C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, 90);
             pnt.line_segment(
-                [egui::pos2(sx, resp.rect.top()), egui::pos2(sx, resp.rect.bottom())],
+                [egui::pos2(s.x, vp.top()), egui::pos2(s.x, vp.bottom())],
                 egui::Stroke::new(1.0, faint),
             );
             pnt.line_segment(
-                [egui::pos2(resp.rect.left(), sy), egui::pos2(resp.rect.right(), sy)],
+                [egui::pos2(vp.left(), s.y), egui::pos2(vp.right(), s.y)],
                 egui::Stroke::new(1.0, faint),
             );
             pnt.rect_stroke(
-                egui::Rect::from_center_size(egui::pos2(sx, sy), egui::vec2(bw, bh)),
+                egui::Rect::from_center_size(s, egui::vec2(cell, cell)),
                 0.0,
                 egui::Stroke::new(1.5, COPPER_BRIGHT),
                 egui::StrokeKind::Middle,
             );
-
-            // Hover coord readout (top-right) — the DATA cell (south-first indices).
-            let txt = format!("x {cx}  y {cy}");
-            let anchor = egui::pos2(resp.rect.right() - 8.0, resp.rect.top() + 8.0);
-            let galley = ui.painter().layout_no_wrap(
-                txt,
+            // Hover coord readout (top-right of the viewport).
+            let galley = pnt.layout_no_wrap(
+                format!("x {cx}  y {cy}"),
                 egui::FontId::monospace(10.5),
                 C::from_rgb(0x9a, 0x9a, 0x9a),
             );
             let bg = egui::Rect::from_min_size(
-                egui::pos2(anchor.x - galley.size().x - 10.0, anchor.y),
+                egui::pos2(vp.right() - 8.0 - galley.size().x - 12.0, vp.top() + 8.0),
                 galley.size() + egui::vec2(12.0, 8.0),
             );
-            ui.painter().rect_filled(bg, 6.0, C::from_rgba_unmultiplied(18, 18, 18, 210));
-            ui.painter().galley(egui::pos2(bg.left() + 6.0, bg.top() + 4.0), galley, TEXT);
+            pnt.rect_filled(bg, 6.0, C::from_rgba_unmultiplied(18, 18, 18, 210));
+            pnt.galley(egui::pos2(bg.left() + 6.0, bg.top() + 4.0), galley, TEXT);
         }
+    }
 
-        // Selection highlight (Finding 28) — painter-drawn (cheap, no texture rebake). The
-        // north-up flip is honoured: a data cell's screen v uses its mirror row.
+    // Selection highlight (Finding 28) — painter-drawn.
+    if ws.inspect_tab == InspectTab::Rivers {
+        if let Some(wc) =
+            ws.selected_river.and_then(|i| ws.watercourses.as_ref().and_then(|v| v.get(i)))
         {
-            let (w, h) = (hd.width, hd.height);
-            let uvw = uv.max.x - uv.min.x;
-            let uvh = uv.max.y - uv.min.y;
-            let to_screen = |x: u32, y: u32| -> egui::Pos2 {
-                let ncx = (x as f32 + 0.5) / w as f32;
-                let ncy = ((h as u32 - 1 - y) as f32 + 0.5) / h as f32;
-                egui::pos2(
-                    resp.rect.left() + ((ncx - uv.min.x) / uvw) * resp.rect.width(),
-                    resp.rect.top() + ((ncy - uv.min.y) / uvh) * resp.rect.height(),
-                )
-            };
-            let pnt = ui.painter_at(resp.rect);
-            if ws.inspect_tab == InspectTab::Rivers {
-                if let Some(wc) =
-                    ws.selected_river.and_then(|i| ws.watercourses.as_ref().and_then(|w| w.get(i)))
-                {
-                    let gold = C::from_rgb(255, 210, 70);
-                    for &s in &wc.segments {
-                        let pts: Vec<egui::Pos2> = hd.drainage.rivers.segments[s]
-                            .points
-                            .iter()
-                            .map(|&(px, py)| to_screen(px, py))
-                            .collect();
-                        if pts.len() >= 2 {
-                            pnt.add(egui::Shape::line(pts, egui::Stroke::new(2.0, gold)));
-                        }
-                    }
-                    // Mark the mouth.
-                    pnt.circle_filled(
-                        to_screen(wc.mouth_xy.0, wc.mouth_xy.1),
-                        4.0,
-                        sink_label(wc.sink).1,
-                    );
+            let gold = C::from_rgb(255, 210, 70);
+            for &s in &wc.segments {
+                let pts: Vec<egui::Pos2> = hd.drainage.rivers.segments[s]
+                    .points
+                    .iter()
+                    .map(|&(px, py)| to_screen(px, py))
+                    .collect();
+                if pts.len() >= 2 {
+                    pnt.add(egui::Shape::line(pts, egui::Stroke::new(2.0, gold)));
                 }
-            } else if let Some(lk) = ws.selected_lake.and_then(|i| hd.drainage.lakes.get(i)) {
-                let id = lk.base.id;
-                let cyan = C::from_rgba_unmultiplied(120, 230, 240, 220);
-                for y in 0..h {
-                    for x in 0..w {
-                        if hd.drainage.lake_map[y * w + x] == id {
-                            // boundary cells only (cheap outline).
-                            let edge =
-                                [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)].iter().any(|&(dx, dy)| {
-                                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
-                                    nx < 0
-                                        || ny < 0
-                                        || nx as usize >= w
-                                        || ny as usize >= h
-                                        || hd.drainage.lake_map[ny as usize * w + nx as usize] != id
-                                });
-                            if edge {
-                                pnt.circle_filled(to_screen(x as u32, y as u32), 1.5, cyan);
-                            }
-                        }
+            }
+            pnt.circle_filled(to_screen(wc.mouth_xy.0, wc.mouth_xy.1), 4.0, sink_label(wc.sink).1);
+        }
+    } else if let Some(lk) = ws.selected_lake.and_then(|i| hd.drainage.lakes.get(i)) {
+        let id = lk.base.id;
+        let cyan = C::from_rgba_unmultiplied(120, 230, 240, 220);
+        for y in 0..h {
+            for x in 0..w {
+                if hd.drainage.lake_map[y * w + x] == id {
+                    let edge = [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)].iter().any(|&(dx, dy)| {
+                        let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                        nx < 0
+                            || ny < 0
+                            || nx as usize >= w
+                            || ny as usize >= h
+                            || hd.drainage.lake_map[ny as usize * w + nx as usize] != id
+                    });
+                    if edge {
+                        pnt.circle_filled(to_screen(x as u32, y as u32), 1.5, cyan);
                     }
                 }
             }
         }
+    }
 
-        // Floating tool bar (top-left): select / hand + the overlay & minimap toggles.
-        canvas_toolbar(ui, resp.rect, ws);
-        // Bird-eye minimap (bottom-left) showing the current view window.
-        if ws.minimap {
-            minimap_overlay(ui, resp.rect, ws, &hd, uv);
-        }
-        // Zoom controls (bottom-right).
-        zoom_controls(ui, resp.rect, ws);
-        // ESC clears the current selection (deselect).
-        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-            ws.selected_river = None;
-            ws.selected_lake = None;
-        }
-    });
+    // Floating tool bar (top-left), minimap (bottom-left), zoom controls (bottom-right).
+    canvas_toolbar(ui, vp, ws);
+    if ws.minimap {
+        let uv = egui::Rect::from_min_max(
+            egui::pos2((vp.left() - map_min.x) / map_px, (vp.top() - map_min.y) / map_px),
+            egui::pos2((vp.right() - map_min.x) / map_px, (vp.bottom() - map_min.y) / map_px),
+        );
+        minimap_overlay(ui, vp, ws, &hd, uv);
+    }
+    zoom_controls(ui, vp, ws);
+    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        ws.selected_river = None;
+        ws.selected_lake = None;
+    }
 }
 
 /// Floating canvas tool bar (mock): SELECT (microscope) / PAN (hand) tools, plus the hydro
@@ -2413,21 +2400,25 @@ fn zoom_controls(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) {
             .max_rect(area)
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
+    // The zoom is the absolute camera scale `map_px` relative to the fit size for THIS viewport.
+    let fit = rect.width().min(rect.height()).max(64.0);
+    let cur = if ws.map_px <= 0.0 { fit } else { ws.map_px };
     child.horizontal(|ui| {
         if ui.small_button("−").clicked() {
-            ws.zoom = (ws.zoom / 1.25).max(1.0);
+            ws.map_px = (cur / 1.25).max(fit * 0.5);
         }
         ui.label(
-            egui::RichText::new(format!("{:.0}%", ws.zoom * 100.0))
+            egui::RichText::new(format!("{:.0}%", cur / fit * 100.0))
                 .monospace()
                 .color(C::from_rgb(0xbb, 0xbb, 0xbb))
                 .size(11.0),
         );
         if ui.small_button("+").clicked() {
-            ws.zoom = (ws.zoom * 1.25).min(9.0);
+            ws.map_px = (cur * 1.25).min(fit * 16.0);
         }
         if ui.small_button("⤢").on_hover_text("Recadrer").clicked() {
-            ws.zoom = 1.0;
+            ws.map_px = fit;
+            ws.map_pan = [0.5, 0.5];
         }
     });
 }
@@ -2804,10 +2795,9 @@ fn sink_label(s: Sink) -> (&'static str, C) {
     }
 }
 
-/// TASK 2/3/4 — the inspection DOCK (Finding 28): entity lists (rivers as watercourses,
-/// lakes) on the left with select-and-highlight, and the selected entity's detail (river
-/// long profile OR lake sheet) on the right. A MICROSCOPE — read-only, nothing editable.
-fn inspection_dock(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
+/// Microscope SELECTION drawer (left, Finding 28): entity tabs (rivers as watercourses / lakes)
+/// + a selectable list. Click a selected row again to DESELECT it. Read-only.
+fn microscope_list(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     let hd = match ws.current.clone() {
         Some(h) => h,
         None => return,
@@ -2815,7 +2805,13 @@ fn inspection_dock(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     let wcs = ws.watercourses.clone();
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("MICROSCOPE").color(TEXT_BRIGHT).strong().size(11.5));
-        ui.add_space(10.0);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button("‹").on_hover_text("Replier le microscope").clicked() {
+                ws.micro_open = false;
+            }
+        });
+    });
+    ui.horizontal(|ui| {
         if ui
             .selectable_label(
                 ws.inspect_tab == InspectTab::Rivers,
@@ -2834,125 +2830,113 @@ fn inspection_dock(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         {
             ws.inspect_tab = InspectTab::Lakes;
         }
-        // Finding 32 note: displayed discharges/areas are geo-ratio COMPRESSED (×ratio² on
-        // catchment), while the water balance reasons on REAL quantities. Flag it so the two
-        // are not read as homogeneous.
-        if (ws.geo_scale_ratio - 1.0).abs() > 0.01 {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "débits ×{:.0} compressés (échelle {:.1})",
-                        ws.geo_scale_ratio * ws.geo_scale_ratio,
-                        ws.geo_scale_ratio
-                    ))
-                    .color(WARN_ORANGE)
-                    .size(10.0),
-                );
-            });
-        }
     });
     ui.separator();
-    let mut nav: Option<NavAction> = None;
-    ui.columns(2, |cols| {
-        // ── Left: entity list ──
-        egui::ScrollArea::vertical().id_salt("entity_list").show(&mut cols[0], |ui| {
-            match ws.inspect_tab {
-                InspectTab::Rivers => {
-                    if let Some(wcs) = &wcs {
-                        for (i, wc) in wcs.iter().enumerate() {
-                            let (sl, sc) = sink_label(wc.sink);
-                            let txt = format!(
-                                "#{:<3} S{} · {:.0} m³/s · {} trib · {}",
-                                i + 1,
-                                wc.order,
-                                wc.discharge_m3s,
-                                wc.tributaries,
-                                sl
-                            );
-                            if ui
-                                .selectable_label(
-                                    ws.selected_river == Some(i),
-                                    egui::RichText::new(txt).color(sc).size(11.0),
-                                )
-                                .clicked()
-                            {
-                                ws.selected_river = Some(i);
-                            }
-                        }
-                    }
-                }
-                InspectTab::Lakes => {
-                    let mut idx: Vec<usize> = (0..hd.drainage.lakes.len()).collect();
-                    idx.sort_by(|&a, &b| {
-                        hd.drainage.lakes[b]
-                            .area_km2
-                            .partial_cmp(&hd.drainage.lakes[a].area_km2)
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                    });
-                    for i in idx {
-                        let lk = &hd.drainage.lakes[i];
-                        let (ty, tc) = match lk.lake_type {
-                            LakeType::Exorheic => ("exoréique", C::from_rgb(0x5a, 0x9a, 0xd0)),
-                            LakeType::Endorheic => {
-                                ("endoréique (salé)", C::from_rgb(0x3a, 0xb0, 0xa0))
-                            }
-                        };
-                        let txt = format!(
-                            "#{} · {:.0} km² · {:.0} m · {}",
-                            lk.base.id, lk.area_km2, lk.level_m, ty
-                        );
-                        if ui
-                            .selectable_label(
-                                ws.selected_lake == Some(i),
-                                egui::RichText::new(txt).color(tc).size(11.0),
-                            )
-                            .clicked()
-                        {
-                            ws.selected_lake = Some(i);
-                        }
+    egui::ScrollArea::vertical().id_salt("entity_list").show(ui, |ui| match ws.inspect_tab {
+        InspectTab::Rivers => {
+            if let Some(wcs) = &wcs {
+                for (i, wc) in wcs.iter().enumerate() {
+                    let (sl, sc) = sink_label(wc.sink);
+                    let txt = format!(
+                        "#{:<3} S{} · {:.0} m³/s · {} trib · {}",
+                        i + 1,
+                        wc.order,
+                        wc.discharge_m3s,
+                        wc.tributaries,
+                        sl
+                    );
+                    if ui
+                        .selectable_label(
+                            ws.selected_river == Some(i),
+                            egui::RichText::new(txt).color(sc).size(11.0),
+                        )
+                        .clicked()
+                    {
+                        // Toggle: re-clicking the selected row deselects it.
+                        ws.selected_river = (ws.selected_river != Some(i)).then_some(i);
                     }
                 }
             }
-        });
-        // ── Right: detail ──
-        let out = egui::ScrollArea::vertical().id_salt("entity_detail").show(
-            &mut cols[1],
-            |ui| -> Option<NavAction> {
-                match ws.inspect_tab {
-                    InspectTab::Rivers => match (ws.selected_river, &wcs) {
-                        (Some(i), Some(w)) if i < w.len() => river_profile_panel(ui, &hd, &w[i]),
-                        _ => {
-                            ui.add_space(20.0);
-                            ui.label(
-                                egui::RichText::new("Sélectionnez un cours d'eau.")
-                                    .color(DIM)
-                                    .size(11.0),
-                            );
-                            None
-                        }
-                    },
-                    InspectTab::Lakes => match ws.selected_lake {
-                        Some(i) if i < hd.drainage.lakes.len() => lake_sheet_panel(
-                            ui,
-                            &hd,
-                            i,
-                            ws.domain_km,
-                            wcs.as_deref().map(|v| v.as_slice()),
-                        ),
-                        _ => {
-                            ui.add_space(20.0);
-                            ui.label(
-                                egui::RichText::new("Sélectionnez un lac.").color(DIM).size(11.0),
-                            );
-                            None
-                        }
-                    },
+        }
+        InspectTab::Lakes => {
+            let mut idx: Vec<usize> = (0..hd.drainage.lakes.len()).collect();
+            idx.sort_by(|&a, &b| {
+                hd.drainage.lakes[b]
+                    .area_km2
+                    .partial_cmp(&hd.drainage.lakes[a].area_km2)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            for i in idx {
+                let lk = &hd.drainage.lakes[i];
+                let (ty, tc) = match lk.lake_type {
+                    LakeType::Exorheic => ("exoréique", C::from_rgb(0x5a, 0x9a, 0xd0)),
+                    LakeType::Endorheic => ("endoréique (salé)", C::from_rgb(0x3a, 0xb0, 0xa0)),
+                };
+                let txt =
+                    format!("#{} · {:.0} km² · {:.0} m · {}", lk.base.id, lk.area_km2, lk.level_m, ty);
+                if ui
+                    .selectable_label(
+                        ws.selected_lake == Some(i),
+                        egui::RichText::new(txt).color(tc).size(11.0),
+                    )
+                    .clicked()
+                {
+                    ws.selected_lake = (ws.selected_lake != Some(i)).then_some(i);
                 }
-            },
-        );
-        nav = out.inner;
+            }
+        }
     });
-    // Apply the clickable-chain jump (Finding 29): follow the hydrological graph in one click.
+}
+
+/// Microscope DETAIL (right inspection zone, Finding 28): the selected river long profile OR
+/// lake sheet. The clickable hydrological chain (Finding 29) jumps between entities.
+fn microscope_detail(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
+    let hd = match ws.current.clone() {
+        Some(h) => h,
+        None => return,
+    };
+    let wcs = ws.watercourses.clone();
+    // Geo-ratio note: displayed discharges/areas are ×ratio² compressed vs the real balance.
+    if (ws.geo_scale_ratio - 1.0).abs() > 0.01 {
+        ui.label(
+            egui::RichText::new(format!(
+                "débits ×{:.0} compressés (échelle {:.1})",
+                ws.geo_scale_ratio * ws.geo_scale_ratio,
+                ws.geo_scale_ratio
+            ))
+            .color(WARN_ORANGE)
+            .size(10.0),
+        );
+    }
+    let nav = match ws.inspect_tab {
+        InspectTab::Rivers => match (ws.selected_river, &wcs) {
+            (Some(i), Some(w)) if i < w.len() => river_profile_panel(ui, &hd, &w[i]),
+            _ => {
+                ui.add_space(20.0);
+                ui.label(
+                    egui::RichText::new("Sélectionnez un cours d'eau (microscope à gauche).")
+                        .color(DIM)
+                        .size(11.0),
+                );
+                None
+            }
+        },
+        InspectTab::Lakes => match ws.selected_lake {
+            Some(i) if i < hd.drainage.lakes.len() => {
+                lake_sheet_panel(ui, &hd, i, ws.domain_km, wcs.as_deref().map(|v| v.as_slice()))
+            }
+            _ => {
+                ui.add_space(20.0);
+                ui.label(
+                    egui::RichText::new("Sélectionnez un lac (microscope à gauche).")
+                        .color(DIM)
+                        .size(11.0),
+                );
+                None
+            }
+        },
+    };
+    // Clickable-chain jump (Finding 29): follow the hydrological graph in one click.
     match nav {
         Some(NavAction::Lake(i)) => {
             ws.selected_lake = Some(i);
