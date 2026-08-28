@@ -2199,16 +2199,28 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         if let Some(wc) =
             ws.selected_river.and_then(|i| ws.watercourses.as_ref().and_then(|v| v.get(i)))
         {
-            let gold = C::from_rgb(255, 210, 70);
-            for &s in &wc.segments {
+            // Main TRUNK in orange, the secondary sources (tributaries) in yellow. Draw tributaries
+            // first (underneath), then the trunk on top so the main stem reads clearly.
+            let orange = C::from_rgb(255, 150, 40);
+            let yellow = C::from_rgb(255, 220, 90);
+            let trunk: std::collections::HashSet<usize> = wc.trunk.iter().copied().collect();
+            let draw = |pnt: &egui::Painter, s: usize, col: C, wdt: f32| {
                 let pts: Vec<egui::Pos2> = hd.drainage.rivers.segments[s]
                     .points
                     .iter()
                     .map(|&(px, py)| to_screen(px, py))
                     .collect();
                 if pts.len() >= 2 {
-                    pnt.add(egui::Shape::line(pts, egui::Stroke::new(2.0, gold)));
+                    pnt.add(egui::Shape::line(pts, egui::Stroke::new(wdt, col)));
                 }
+            };
+            for &s in &wc.segments {
+                if !trunk.contains(&s) {
+                    draw(&pnt, s, yellow, 1.6);
+                }
+            }
+            for &s in &wc.trunk {
+                draw(&pnt, s, orange, 2.4);
             }
             pnt.circle_filled(to_screen(wc.mouth_xy.0, wc.mouth_xy.1), 4.0, sink_label(wc.sink).1);
             // Profile-hover tracking point: mirror the long-profile cursor onto the river highlight
