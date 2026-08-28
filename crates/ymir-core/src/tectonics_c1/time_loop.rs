@@ -49,7 +49,7 @@
 //! `crate::tectonics_v2::advection`. No reimplementation here
 //! (W1 watchpoint of Issue #120).
 
-use crate::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use crate::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use crate::tectonics_v2::advection::{step_upwind, step_upwind_masked};
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use crate::tectonics_v2::workflow::drainage::compute_drainage_targets;
@@ -58,8 +58,8 @@ use crate::tectonics_v2::workflow::phase_a_common::compute_sea_level_ref_s_space
 use super::boundary_classification::{
     classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
 };
-use super::closures::accretion::{apply_accretion_step, AccretionParams, ConvergenceTracker};
-use super::closures::davis_suppe::source_term::{apply_davis_suppe_step_routed, DavisSuppeParams};
+use super::closures::accretion::{AccretionParams, ConvergenceTracker, apply_accretion_step};
+use super::closures::davis_suppe::source_term::{DavisSuppeParams, apply_davis_suppe_step_routed};
 use super::closures::equilibrium_height::params::EquilibriumHeightParams;
 use super::closures::equilibrium_height::source_term::apply_equilibrium_height_step;
 use super::closures::erosion::params::ErosionParams;
@@ -67,9 +67,9 @@ use super::closures::erosion::source_term::{apply_erosion_step_craton, compute_d
 use super::closures::oceanic_bathymetry::params::SteinSteinParams;
 use super::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
 use super::closures::rifting::{
-    apply_rifting_split, apply_rifting_thinning, DivergenceTracker, RiftingParams,
+    DivergenceTracker, RiftingParams, apply_rifting_split, apply_rifting_thinning,
 };
-use super::closures::subduction::{apply_subduction_step, SubductionParams};
+use super::closures::subduction::{SubductionParams, apply_subduction_step};
 use super::distance_field::wedge_distance_intra_plate_typed;
 use super::kinematics::PlateKinematics;
 use super::state::C1State;
@@ -174,20 +174,60 @@ pub fn run_advection_only<F>(
         // Advect S̃ (no-flux rigid boundary when rigid; #145).
         match &rigid_mask {
             Some(m) => step_upwind_masked(
-                nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy, m, &mut s_next,
+                nx,
+                ny,
+                config.dx,
+                config.dy,
+                dt,
+                &idx_x,
+                &idx_y,
+                &state.s,
+                &vx,
+                &vy,
+                m,
+                &mut s_next,
             ),
             None => step_upwind(
-                nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy, &mut s_next,
+                nx,
+                ny,
+                config.dx,
+                config.dy,
+                dt,
+                &idx_x,
+                &idx_y,
+                &state.s,
+                &vx,
+                &vy,
+                &mut s_next,
             ),
         }
         // Advect age (same no-flux rigid boundary; #145).
         match &rigid_mask {
             Some(m) => step_upwind_masked(
-                nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.age, &vx, &vy, m,
+                nx,
+                ny,
+                config.dx,
+                config.dy,
+                dt,
+                &idx_x,
+                &idx_y,
+                &state.age,
+                &vx,
+                &vy,
+                m,
                 &mut age_next,
             ),
             None => step_upwind(
-                nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.age, &vx, &vy,
+                nx,
+                ny,
+                config.dx,
+                config.dy,
+                dt,
+                &idx_x,
+                &idx_y,
+                &state.age,
+                &vx,
+                &vy,
                 &mut age_next,
             ),
         }
@@ -221,12 +261,7 @@ fn apply_continental_rigidity(vx: &mut [f64], vy: &mut [f64], state: &C1State) {
 /// in [`step_upwind_masked`]. Rebuilt wherever the velocity field is rebuilt
 /// (once in gallery, per-step on the Track-D path).
 fn continental_rigid_mask(state: &C1State) -> Vec<bool> {
-    state
-        .plate_type
-        .data()
-        .iter()
-        .map(|t| matches!(t, PlateType::Continental))
-        .collect()
+    state.plate_type.data().iter().map(|t| matches!(t, PlateType::Continental)).collect()
 }
 
 /// Populate the per-cell velocity slices from the plate-id map
@@ -328,7 +363,10 @@ impl Default for C1Closures {
             // stalling at S̃≈1.5 (the diagnostic limiter is the rate, not the EH
             // ceiling). Calibrated by the achieved equilibrium. DavisSuppeParams::
             // default() keeps None (off) for the phase-1.2/1.3 imprint tests + v2.
-            davis_suppe: DavisSuppeParams { oc_coupling_boost: Some(6.0), ..DavisSuppeParams::default() },
+            davis_suppe: DavisSuppeParams {
+                oc_coupling_boost: Some(6.0),
+                ..DavisSuppeParams::default()
+            },
             equilibrium_height: EquilibriumHeightParams::default(),
             // #155 A′ — canonical C1 activates craton erosion-resistance
             // (anchored mid-band ~5×). Pairs with the init thickness
@@ -533,9 +571,8 @@ pub fn run_with_closures<F>(
     // the static cache of `boundary` + `wedge_d` becomes stale.
     // Recompute every step costs ~ 200 µs at 64² — well inside
     // the Phase 2 W4 budget.
-    let any_track_d_enabled = closures.subduction.enabled
-        || closures.accretion.enabled
-        || closures.rifting.enabled;
+    let any_track_d_enabled =
+        closures.subduction.enabled || closures.accretion.enabled || closures.rifting.enabled;
 
     // Outer cache for the Track-D-disabled path (Phase 1.x +
     // Track A/B regression — `plate_id` is invariant, the cache
@@ -563,16 +600,10 @@ pub fn run_with_closures<F>(
     // Trackers — internal to the run when Track D is enabled
     // (Q-E1.2 Option (c) confirmed). Dropped at function exit;
     // not part of the saveable `C1State`.
-    let mut convergence_tracker = if closures.accretion.enabled {
-        Some(ConvergenceTracker::new())
-    } else {
-        None
-    };
-    let mut divergence_tracker = if closures.rifting.enabled {
-        Some(DivergenceTracker::new())
-    } else {
-        None
-    };
+    let mut convergence_tracker =
+        if closures.accretion.enabled { Some(ConvergenceTracker::new()) } else { None };
+    let mut divergence_tracker =
+        if closures.rifting.enabled { Some(DivergenceTracker::new()) } else { None };
 
     let mut s_next = Field2D::new(nx, ny);
     let mut age_next = Field2D::new(nx, ny);
@@ -629,21 +660,59 @@ pub fn run_with_closures<F>(
         match &rigid_mask {
             Some(m) => {
                 step_upwind_masked(
-                    nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy, m,
+                    nx,
+                    ny,
+                    config.dx,
+                    config.dy,
+                    dt,
+                    &idx_x,
+                    &idx_y,
+                    &state.s,
+                    &vx,
+                    &vy,
+                    m,
                     &mut s_next,
                 );
                 step_upwind_masked(
-                    nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.age, &vx, &vy, m,
+                    nx,
+                    ny,
+                    config.dx,
+                    config.dy,
+                    dt,
+                    &idx_x,
+                    &idx_y,
+                    &state.age,
+                    &vx,
+                    &vy,
+                    m,
                     &mut age_next,
                 );
             }
             None => {
                 step_upwind(
-                    nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.s, &vx, &vy,
+                    nx,
+                    ny,
+                    config.dx,
+                    config.dy,
+                    dt,
+                    &idx_x,
+                    &idx_y,
+                    &state.s,
+                    &vx,
+                    &vy,
                     &mut s_next,
                 );
                 step_upwind(
-                    nx, ny, config.dx, config.dy, dt, &idx_x, &idx_y, &state.age, &vx, &vy,
+                    nx,
+                    ny,
+                    config.dx,
+                    config.dy,
+                    dt,
+                    &idx_x,
+                    &idx_y,
+                    &state.age,
+                    &vx,
+                    &vy,
                     &mut age_next,
                 );
             }
@@ -746,13 +815,9 @@ pub fn run_with_closures<F>(
             // formula's slope factor reads `altitude` directly and
             // therefore sees the S-S modulation.
             if closures.erosion.enabled {
-                let sea_level_ref =
-                    compute_sea_level_ref_s_space(&state.s, &config.iso_config);
-                let drainage_map = compute_drainage_targets(
-                    &state.s,
-                    sea_level_ref,
-                    config.drainage_max_distance,
-                );
+                let sea_level_ref = compute_sea_level_ref_s_space(&state.s, &config.iso_config);
+                let drainage_map =
+                    compute_drainage_targets(&state.s, sea_level_ref, config.drainage_max_distance);
                 let drainage_areas = compute_drainage_areas(&drainage_map);
                 // #155 A′: craton-aware erosion (resist from params; 1.0 = byte-identical).
                 apply_erosion_step_craton(
@@ -943,7 +1008,7 @@ mod tests {
 
         let kinematics = PlateKinematics { velocities: vec![(0.01, 0.005)] };
         let config = C1TimeLoopConfig {
-        rigid_continental_crust: false,
+            rigid_continental_crust: false,
             n_steps: 100,
             dx: 1.0 / nx as f64,
             dy: 1.0 / ny as f64,
@@ -972,7 +1037,7 @@ mod tests {
         let mut state = uniform_single_plate_state(nx, ny);
         let kinematics = PlateKinematics { velocities: vec![(0.01, 0.0)] };
         let config = C1TimeLoopConfig {
-        rigid_continental_crust: false,
+            rigid_continental_crust: false,
             n_steps: 7,
             dx: 1.0 / nx as f64,
             dy: 1.0 / ny as f64,

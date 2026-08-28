@@ -195,7 +195,7 @@ fn apply_profile(t: f64, shape: ProfileShape) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+    use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
     fn build_plates(
         nx: usize,
@@ -324,8 +324,7 @@ mod tests {
             for i in 0..nx {
                 let here = s.get(i, j);
                 assert!(
-                    here.is_finite()
-                        && (0.20 - 1e-12..=0.95 + 1e-12).contains(&here),
+                    here.is_finite() && (0.20 - 1e-12..=0.95 + 1e-12).contains(&here),
                     "cell ({},{}) value {} out of [oceanic=0.20, continental=0.95]",
                     i,
                     j,
@@ -421,10 +420,7 @@ mod tests {
                 }
             }
         }
-        assert!(
-            count_oceanic > 0,
-            "no oceanic cells found in 64² × 8 plates @ 30% continental"
-        );
+        assert!(count_oceanic > 0, "no oceanic cells found in 64² × 8 plates @ 30% continental");
     }
 
     /// Linear and Pow{1.0} produce identical fields (Pow with

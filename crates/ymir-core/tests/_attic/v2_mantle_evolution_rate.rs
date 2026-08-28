@@ -26,8 +26,8 @@
 use ymir_core::tectonics_v2::field::PeriodicIndex;
 use ymir_core::tectonics_v2::mantle::pattern::pattern_div_max;
 use ymir_core::tectonics_v2::mantle::{
-    build_mantle_pattern, generate_stream_function, generate_stream_function_at_time,
-    StreamFunctionBuilder, StreamFunctionConfig,
+    StreamFunctionBuilder, StreamFunctionConfig, build_mantle_pattern, generate_stream_function,
+    generate_stream_function_at_time,
 };
 
 const SEED: u64 = 42;
@@ -64,8 +64,7 @@ fn generate_stream_function_matches_builder_sample_at_t_zero() {
     for &(nx, ny) in &[(16_usize, 16_usize), (32, 32), (64, 64), (24, 40)] {
         let cfg = StreamFunctionConfig { num_modes: NUM_MODES, seed: SEED };
         let legacy = generate_stream_function(nx, ny, &cfg);
-        let via_builder = StreamFunctionBuilder::new(nx, ny, &cfg)
-            .sample_at_time(nx, ny, 0.0, 0.0);
+        let via_builder = StreamFunctionBuilder::new(nx, ny, &cfg).sample_at_time(nx, ny, 0.0, 0.0);
         assert_eq!(
             legacy.data(),
             via_builder.data(),
@@ -157,10 +156,7 @@ fn evolution_rate_preserves_div_freeness_multistep() {
     let psi0 = builder.sample_at_time(n, n, 0.0, evolution_rate);
     let mut pattern = build_mantle_pattern(&psi0, dx, dx, &idx_x, &idx_y);
     let div0 = pattern_div_max(&pattern, dx, dx, &idx_x, &idx_y);
-    assert!(
-        div0 < 1e-10,
-        "div_v_mantle_max at t=0 = {div0:.3e}, expected < 1e-10",
-    );
+    assert!(div0 < 1e-10, "div_v_mantle_max at t=0 = {div0:.3e}, expected < 1e-10",);
     for step in 1..=20 {
         let t = step as f64 * dt;
         let psi_t = builder.sample_at_time(n, n, t, evolution_rate);

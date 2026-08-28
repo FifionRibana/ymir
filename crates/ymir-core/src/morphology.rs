@@ -165,9 +165,7 @@ mod tests {
     fn two_separate_blobs() {
         // Two 2×2 blocks far apart → 2 components, largest = half.
         let m = land_morphology(
-            &mask_from(16, 16, |i, j| {
-                (i < 2 && j < 2) || (i >= 14 && j >= 14)
-            }),
+            &mask_from(16, 16, |i, j| (i < 2 && j < 2) || (i >= 14 && j >= 14)),
             16,
             16,
         );

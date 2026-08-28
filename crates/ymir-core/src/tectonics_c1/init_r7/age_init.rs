@@ -120,11 +120,7 @@ pub struct AgeInitParams {
 
 impl Default for AgeInitParams {
     fn default() -> Self {
-        Self {
-            continental_baseline: 7.0,
-            oceanic_baseline: 0.5,
-            ridge_value: 0.0,
-        }
+        Self { continental_baseline: 7.0, oceanic_baseline: 0.5, ridge_value: 0.0 }
     }
 }
 
@@ -170,12 +166,10 @@ pub fn init_age_field_ridge_aligned(
         for i in 0..nx {
             let value = match plate_type.get(i, j) {
                 PlateType::Continental => params.continental_baseline,
-                PlateType::Oceanic => {
-                    match boundary_info.boundary_type.get(i, j) {
-                        BoundaryType::Divergent => params.ridge_value,
-                        _ => params.oceanic_baseline,
-                    }
-                }
+                PlateType::Oceanic => match boundary_info.boundary_type.get(i, j) {
+                    BoundaryType::Divergent => params.ridge_value,
+                    _ => params.oceanic_baseline,
+                },
             };
             age.set(i, j, value);
         }
@@ -219,20 +213,12 @@ mod tests {
         let plate_type = all_oceanic(nx, ny);
         // Plate 0 west, plate 1 east → divergent across the
         // i = nx / 2 boundary.
-        let kinematics = PlateKinematics {
-            velocities: vec![(-0.02, 0.0), (0.01, 0.0)],
-        };
+        let kinematics = PlateKinematics { velocities: vec![(-0.02, 0.0), (0.01, 0.0)] };
         let boundary_info = classify_boundaries(&plate_id, &kinematics);
         let params = AgeInitParams::default();
 
         let mut age = Field2D::new(nx, ny);
-        init_age_field_ridge_aligned(
-            &mut age,
-            &plate_id,
-            &plate_type,
-            &boundary_info,
-            &params,
-        );
+        init_age_field_ridge_aligned(&mut age, &plate_id, &plate_type, &boundary_info, &params);
 
         let left_edge = nx / 2 - 1;
         let right_edge = nx / 2;
@@ -275,20 +261,12 @@ mod tests {
         let plate_type = all_oceanic(nx, ny);
         // Plate 0 east, plate 1 west → CONVERGENT across
         // i = nx / 2 boundary.
-        let kinematics = PlateKinematics {
-            velocities: vec![(0.02, 0.0), (-0.01, 0.0)],
-        };
+        let kinematics = PlateKinematics { velocities: vec![(0.02, 0.0), (-0.01, 0.0)] };
         let boundary_info = classify_boundaries(&plate_id, &kinematics);
         let params = AgeInitParams::default();
 
         let mut age = Field2D::new(nx, ny);
-        init_age_field_ridge_aligned(
-            &mut age,
-            &plate_id,
-            &plate_type,
-            &boundary_info,
-            &params,
-        );
+        init_age_field_ridge_aligned(&mut age, &plate_id, &plate_type, &boundary_info, &params);
 
         // No cell should have ridge_value = 0.0 in this scenario.
         // (Periodic wraparound at i = 0 / nx - 1 is Divergent in
@@ -326,20 +304,12 @@ mod tests {
         // Mixed kinematics — at least some divergent boundary
         // exists, but plate_type is Continental everywhere, so
         // continental_baseline must override per the trichotomy.
-        let kinematics = PlateKinematics {
-            velocities: vec![(-0.02, 0.0), (0.01, 0.0)],
-        };
+        let kinematics = PlateKinematics { velocities: vec![(-0.02, 0.0), (0.01, 0.0)] };
         let boundary_info = classify_boundaries(&plate_id, &kinematics);
         let params = AgeInitParams::default();
 
         let mut age = Field2D::new(nx, ny);
-        init_age_field_ridge_aligned(
-            &mut age,
-            &plate_id,
-            &plate_type,
-            &boundary_info,
-            &params,
-        );
+        init_age_field_ridge_aligned(&mut age, &plate_id, &plate_type, &boundary_info, &params);
 
         for j in 0..ny {
             for i in 0..nx {
@@ -359,28 +329,14 @@ mod tests {
         let ny = 8;
         let plate_id = two_plate_field(nx, ny);
         let plate_type = all_oceanic(nx, ny);
-        let kinematics = PlateKinematics {
-            velocities: vec![(-0.02, 0.0), (0.01, 0.0)],
-        };
+        let kinematics = PlateKinematics { velocities: vec![(-0.02, 0.0), (0.01, 0.0)] };
         let boundary_info = classify_boundaries(&plate_id, &kinematics);
         let params = AgeInitParams::default();
 
         let mut age_a = Field2D::new(nx, ny);
         let mut age_b = Field2D::new(nx, ny);
-        init_age_field_ridge_aligned(
-            &mut age_a,
-            &plate_id,
-            &plate_type,
-            &boundary_info,
-            &params,
-        );
-        init_age_field_ridge_aligned(
-            &mut age_b,
-            &plate_id,
-            &plate_type,
-            &boundary_info,
-            &params,
-        );
+        init_age_field_ridge_aligned(&mut age_a, &plate_id, &plate_type, &boundary_info, &params);
+        init_age_field_ridge_aligned(&mut age_b, &plate_id, &plate_type, &boundary_info, &params);
 
         for j in 0..ny {
             for i in 0..nx {

@@ -61,8 +61,8 @@
 
 use rayon::prelude::*;
 
-use crate::tectonics_v2::field::Field2D;
 use super::operator::StokesGrid;
+use crate::tectonics_v2::field::Field2D;
 
 /// Compressed Sparse Row matrix on a `2·N` packed velocity layout.
 ///
@@ -192,8 +192,8 @@ pub fn assemble_picard_csr(
                 let eta_c_top = eta_corner_fn(im, i, j, jp);
                 let eta_c_bot = eta_corner_fn(im, i, jm, j);
 
-                let diag = 2.0 * (eta_cc_r + eta_cc_l) * inv_dx2
-                    + (eta_c_top + eta_c_bot) * inv_dy2;
+                let diag =
+                    2.0 * (eta_cc_r + eta_cc_l) * inv_dx2 + (eta_c_top + eta_c_bot) * inv_dy2;
 
                 buf.push((lin_x(i, j), diag));
                 buf.push((lin_x(ip, j), -2.0 * eta_cc_r * inv_dx2));
@@ -225,8 +225,8 @@ pub fn assemble_picard_csr(
                 let eta_c_right = eta_corner_fn(i, ip, jm, j);
                 let eta_c_left = eta_corner_fn(im, i, jm, j);
 
-                let diag = 2.0 * (eta_cc_t + eta_cc_b) * inv_dy2
-                    + (eta_c_right + eta_c_left) * inv_dx2;
+                let diag =
+                    2.0 * (eta_cc_t + eta_cc_b) * inv_dy2 + (eta_c_right + eta_c_left) * inv_dx2;
 
                 buf.push((lin_y(i, j), diag));
                 buf.push((lin_y(i, jp), -2.0 * eta_cc_t * inv_dy2));
@@ -279,13 +279,7 @@ pub fn assemble_picard_csr(
         row_ptr.push(col_idx.len());
     }
 
-    CsrMatrix {
-        n_rows: n_dofs,
-        n_cols: n_dofs,
-        row_ptr,
-        col_idx,
-        values,
-    }
+    CsrMatrix { n_rows: n_dofs, n_cols: n_dofs, row_ptr, col_idx, values }
 }
 
 #[cfg(test)]
@@ -334,10 +328,7 @@ mod tests {
     }
 
     fn max_abs_diff(a: &[f64], b: &[f64]) -> f64 {
-        a.iter()
-            .zip(b.iter())
-            .map(|(x, y)| (x - y).abs())
-            .fold(0.0f64, f64::max)
+        a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).fold(0.0f64, f64::max)
     }
 
     /// Relative parity metric. The matrix-free `apply_momentum` and
@@ -382,13 +373,9 @@ mod tests {
         let mut y_mf_vy = vec![0.0; n];
         apply_momentum(&grid, &eta, None, &x[..n], &x[n..], &mut y_mf_vx, &mut y_mf_vy);
 
-        let rel = relative_parity(&y_csr[..n], &y_mf_vx)
-            .max(relative_parity(&y_csr[n..], &y_mf_vy));
-        assert!(
-            rel < 1e-14,
-            "csr vs matrix-free relative parity = {:.3e}",
-            rel
-        );
+        let rel =
+            relative_parity(&y_csr[..n], &y_mf_vx).max(relative_parity(&y_csr[n..], &y_mf_vy));
+        assert!(rel < 1e-14, "csr vs matrix-free relative parity = {:.3e}", rel);
     }
 
     #[test]
@@ -406,11 +393,9 @@ mod tests {
             csr.apply(&x, &mut y_csr);
             let mut y_mf_vx = vec![0.0; n];
             let mut y_mf_vy = vec![0.0; n];
-            apply_momentum(
-                &grid, &eta, None, &x[..n], &x[n..], &mut y_mf_vx, &mut y_mf_vy,
-            );
-            let rel = relative_parity(&y_csr[..n], &y_mf_vx)
-                .max(relative_parity(&y_csr[n..], &y_mf_vy));
+            apply_momentum(&grid, &eta, None, &x[..n], &x[n..], &mut y_mf_vx, &mut y_mf_vy);
+            let rel =
+                relative_parity(&y_csr[..n], &y_mf_vx).max(relative_parity(&y_csr[n..], &y_mf_vy));
             assert!(
                 rel < 1e-14,
                 "csr vs matrix-free relative parity on seed {} = {:.3e}",
@@ -443,22 +428,10 @@ mod tests {
         csr.apply(&x, &mut y_csr);
         let mut y_mf_vx = vec![0.0; n];
         let mut y_mf_vy = vec![0.0; n];
-        apply_momentum(
-            &grid,
-            &eta,
-            Some(&drag),
-            &x[..n],
-            &x[n..],
-            &mut y_mf_vx,
-            &mut y_mf_vy,
-        );
-        let rel = relative_parity(&y_csr[..n], &y_mf_vx)
-            .max(relative_parity(&y_csr[n..], &y_mf_vy));
-        assert!(
-            rel < 1e-14,
-            "csr vs matrix-free with drag relative parity = {:.3e}",
-            rel
-        );
+        apply_momentum(&grid, &eta, Some(&drag), &x[..n], &x[n..], &mut y_mf_vx, &mut y_mf_vy);
+        let rel =
+            relative_parity(&y_csr[..n], &y_mf_vx).max(relative_parity(&y_csr[n..], &y_mf_vy));
+        assert!(rel < 1e-14, "csr vs matrix-free with drag relative parity = {:.3e}", rel);
     }
 
     #[test]

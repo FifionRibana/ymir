@@ -126,10 +126,9 @@ impl BasalDragConfig {
     pub fn describe(&self) -> String {
         match self {
             BasalDragConfig::Disabled => "Disabled".to_string(),
-            BasalDragConfig::Enabled(law) => format!(
-                "Enabled (Br = {:.3}, S exponent = {:.1})",
-                law.br, law.s_exponent,
-            ),
+            BasalDragConfig::Enabled(law) => {
+                format!("Enabled (Br = {:.3}, S exponent = {:.1})", law.br, law.s_exponent,)
+            }
         }
     }
 }
@@ -219,7 +218,11 @@ mod tests {
                 let expected = 0.1 * s.get(i, j).powi(2);
                 assert!(
                     (out.get(i, j) - expected).abs() < 1e-14,
-                    "cell ({},{}) = {}, expected {}", i, j, out.get(i, j), expected,
+                    "cell ({},{}) = {}, expected {}",
+                    i,
+                    j,
+                    out.get(i, j),
+                    expected,
                 );
             }
         }
@@ -233,22 +236,10 @@ mod tests {
 
     #[test]
     fn parse_accepts_enabled_and_disabled_tokens() {
-        assert!(matches!(
-            BasalDragConfig::parse("disabled").unwrap(),
-            BasalDragConfig::Disabled
-        ));
-        assert!(matches!(
-            BasalDragConfig::parse("off").unwrap(),
-            BasalDragConfig::Disabled
-        ));
-        assert!(matches!(
-            BasalDragConfig::parse("enabled").unwrap(),
-            BasalDragConfig::Enabled(_)
-        ));
-        assert!(matches!(
-            BasalDragConfig::parse("on").unwrap(),
-            BasalDragConfig::Enabled(_)
-        ));
+        assert!(matches!(BasalDragConfig::parse("disabled").unwrap(), BasalDragConfig::Disabled));
+        assert!(matches!(BasalDragConfig::parse("off").unwrap(), BasalDragConfig::Disabled));
+        assert!(matches!(BasalDragConfig::parse("enabled").unwrap(), BasalDragConfig::Enabled(_)));
+        assert!(matches!(BasalDragConfig::parse("on").unwrap(), BasalDragConfig::Enabled(_)));
     }
 
     #[test]

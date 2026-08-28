@@ -82,5 +82,5 @@
 pub mod merge;
 pub mod params;
 
-pub use merge::{apply_accretion_step, AccretionStats, ConvergenceTracker};
+pub use merge::{AccretionStats, ConvergenceTracker, apply_accretion_step};
 pub use params::{AccretionParams, VelocityMergeMethod};

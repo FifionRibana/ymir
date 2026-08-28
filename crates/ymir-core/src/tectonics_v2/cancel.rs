@@ -67,12 +67,8 @@ pub fn clear() {
 /// a few microseconds, dominated by the inner-loop iteration
 /// cadence rather than the atomic ordering.
 pub fn is_cancelled() -> bool {
-    CURRENT_TOKEN.with(|cell| {
-        cell.borrow()
-            .as_ref()
-            .map(|a| a.load(Ordering::Relaxed))
-            .unwrap_or(false)
-    })
+    CURRENT_TOKEN
+        .with(|cell| cell.borrow().as_ref().map(|a| a.load(Ordering::Relaxed)).unwrap_or(false))
 }
 
 #[cfg(test)]

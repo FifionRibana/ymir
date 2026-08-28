@@ -11,11 +11,9 @@
 use std::path::PathBuf;
 
 use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
-use ymir_core::tectonics_v2::boundaries::{
-    horizontal_oceanic_strip, BoundaryRates,
-};
+use ymir_core::tectonics_v2::boundaries::{BoundaryRates, horizontal_oceanic_strip};
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
 use ymir_core::tectonics_v2::rheology::YieldingLaw;
@@ -28,8 +26,7 @@ fn run_step5_mini(k_sub: f64) -> (f64, f64) {
     let preset = Preset::by_name("dynamic-accidented").unwrap();
     let layout = horizontal_oceanic_strip(nx, ny);
     let layout_name = layout.name.to_string();
-    let rates = BoundaryRates::baseline_uncalibrated()
-        .with_k_sub(k_sub);
+    let rates = BoundaryRates::baseline_uncalibrated().with_k_sub(k_sub);
     let boundary = layout.into_config(rates);
     let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
     let cfg = BaselineConfig {
@@ -52,10 +49,7 @@ fn run_step5_mini(k_sub: f64) -> (f64, f64) {
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
         yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05,
-            ..BasalDragLaw::default()
-        }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: layout_name,
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
@@ -66,7 +60,7 @@ fn run_step5_mini(k_sub: f64) -> (f64, f64) {
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     let r = run_baseline(&cfg);
     let na = r.metrics.newton.as_ref().expect("newton aggregate");
@@ -98,6 +92,7 @@ fn residual_below_one_percent_with_high_k_sub_and_active_clamp() {
     assert!(
         residual < 0.01,
         "mass_balance_residual = {} ≥ 1% with active clamp (clamp_mean={}) — flux accounting under-captures",
-        residual, clamp_mean,
+        residual,
+        clamp_mean,
     );
 }

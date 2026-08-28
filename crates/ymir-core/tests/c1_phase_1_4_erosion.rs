@@ -85,7 +85,7 @@ use std::path::{Path, PathBuf};
 
 use image::{ImageBuffer, Rgb};
 
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
 use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
@@ -98,7 +98,7 @@ use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::field::Field2D;
 
 const GRID_SIZE: usize = 64;
@@ -107,8 +107,7 @@ const N_STEPS: usize = 300;
 const S_VIZ_MAX: f64 = 3.0;
 
 fn output_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/reports/c1_phase_1_4_erosion")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/reports/c1_phase_1_4_erosion")
 }
 
 fn setup() -> (C1State, PlateKinematics, C1TimeLoopConfig) {
@@ -142,22 +141,10 @@ fn global_max(state: &C1State) -> f64 {
 /// independently.
 fn phase_1_4_closures() -> C1Closures {
     C1Closures {
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     }
 }
@@ -257,23 +244,17 @@ fn erosion_preserves_davis_suppe_imprint_partially() {
     let snapshot_steps: [usize; 4] = [49, 99, 199, 299];
 
     let started = std::time::Instant::now();
-    run_with_closures(
-        &mut state,
-        &mut kinematics,
-        &config,
-        &closures,
-        |step, current_state| {
-            assert!(
-                current_state.s.data().iter().all(|v| v.is_finite()),
-                "non-finite S̃ at step {}",
-                step + 1
-            );
-            if snapshot_steps.contains(&step) {
-                print_s_stats(&format!("{:03}", step + 1), current_state);
-                dump_snapshot(current_state, step + 1, &dir);
-            }
-        },
-    );
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |step, current_state| {
+        assert!(
+            current_state.s.data().iter().all(|v| v.is_finite()),
+            "non-finite S̃ at step {}",
+            step + 1
+        );
+        if snapshot_steps.contains(&step) {
+            print_s_stats(&format!("{:03}", step + 1), current_state);
+            dump_snapshot(current_state, step + 1, &dir);
+        }
+    });
     let elapsed = started.elapsed();
 
     // Re-classify boundaries + recompute wedge distance.
@@ -315,11 +296,7 @@ fn erosion_preserves_davis_suppe_imprint_partially() {
     let wedge_mean = wedge_values.iter().sum::<f64>() / n.max(1) as f64;
 
     let bucket_mean: [f64; 3] = std::array::from_fn(|b| {
-        if bucket_count[b] > 0 {
-            bucket_sum[b] / bucket_count[b] as f64
-        } else {
-            f64::NAN
-        }
+        if bucket_count[b] > 0 { bucket_sum[b] / bucket_count[b] as f64 } else { f64::NAN }
     });
     let h_crit_at = |d: f64| -> f64 {
         closures.davis_suppe.h_max * (1.0 - (-d / closures.davis_suppe.l_taper).exp())
@@ -337,24 +314,16 @@ fn erosion_preserves_davis_suppe_imprint_partially() {
 
     eprintln!();
     eprintln!("c1_phase_1_4 T2 imprint preservation evidence (composite):");
-    eprintln!(
-        "  wedge_p95  = {wedge_p95:.3}  (RIGID #145; legacy 0.696; band [1.3, 2.1])"
-    );
+    eprintln!("  wedge_p95  = {wedge_p95:.3}  (RIGID #145; legacy 0.696; band [1.3, 2.1])");
     eprintln!(
         "  taper fill = {fill_near:.3}/{fill_mid:.3}/{fill_far:.3} (near>mid>far = source critical taper; rigid)"
     );
     eprintln!(
         "  asymmetry  = {asymmetry:.2}   (informational; legacy >1 was an advection toe-pile artifact, see stage_5b)"
     );
-    eprintln!(
-        "  fill_near  = {fill_near:.3}  (threshold > 0.05)"
-    );
-    eprintln!(
-        "  Note (#145): rigid continental crust no longer advects out of the wedge →"
-    );
-    eprintln!(
-        "        wedge sits HIGH (p95 ≈ 1.64) and follows the source taper (fill ↓ with"
-    );
+    eprintln!("  fill_near  = {fill_near:.3}  (threshold > 0.05)");
+    eprintln!("  Note (#145): rigid continental crust no longer advects out of the wedge →");
+    eprintln!("        wedge sits HIGH (p95 ≈ 1.64) and follows the source taper (fill ↓ with");
     eprintln!(
         "        distance), not the legacy advection toe-pile. Wedge stronger, more faithful to DS."
     );
@@ -362,17 +331,10 @@ fn erosion_preserves_davis_suppe_imprint_partially() {
     eprintln!(
         "  wedge mean = {wedge_mean:.3}, wedge p99 = {wedge_p99:.3}, global_max = {g_max:.3}"
     );
-    eprintln!(
-        "  wall time  = {:.2?} ({:.2?} per step)",
-        elapsed,
-        elapsed / N_STEPS as u32
-    );
+    eprintln!("  wall time  = {:.2?} ({:.2?} per step)", elapsed, elapsed / N_STEPS as u32);
     eprintln!("  output dir = {}", dir.display());
 
-    assert!(
-        bucket_count[0] > 0 && bucket_count[2] > 0,
-        "T2: profile buckets empty"
-    );
+    assert!(bucket_count[0] > 0 && bucket_count[2] > 0, "T2: profile buckets empty");
 
     // Sub-assertion 1 — wedge_p95 bulk preservation + LIFT (RIGID transport, #145).
     // Under rigid continental crust the wedge is no longer dispersed by advection,
@@ -418,34 +380,16 @@ fn all_closures_disabled_matches_phase_1_1() {
     // would cap the global max and fail this assertion.
     let (mut state, mut kinematics, config) = setup();
     let closures = C1Closures {
-        davis_suppe: DavisSuppeParams {
-            enabled: false,
-            ..DavisSuppeParams::default()
-        },
+        davis_suppe: DavisSuppeParams { enabled: false, ..DavisSuppeParams::default() },
         equilibrium_height: EquilibriumHeightParams {
             enabled: false,
             ..EquilibriumHeightParams::default()
         },
-        erosion: ErosionParams {
-            enabled: false,
-            ..ErosionParams::default()
-        },
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        erosion: ErosionParams { enabled: false, ..ErosionParams::default() },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
     };
 
     run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
@@ -479,9 +423,7 @@ fn print_s_stats(tag: &str, state: &C1State) {
         sq += (v - mean) * (v - mean);
     }
     let std = (sq / data.len() as f64).sqrt();
-    eprintln!(
-        "c1_phase_1_4: cycle_{tag} S̃ min={min:.4} mean={mean:.4} max={max:.4} std={std:.4e}"
-    );
+    eprintln!("c1_phase_1_4: cycle_{tag} S̃ min={min:.4} mean={mean:.4} max={max:.4} std={std:.4e}");
 }
 
 fn dump_snapshot(state: &C1State, cycle: usize, dir: &Path) {

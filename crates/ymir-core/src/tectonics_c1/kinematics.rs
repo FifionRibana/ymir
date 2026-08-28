@@ -50,14 +50,14 @@ impl PlateKinematics {
         // enough to move every plate ~2-3 cells worth — visible
         // signal without aliasing.
         let base: [(f64, f64); 8] = [
-            (0.01, 0.00),    // plate 0 — east
-            (-0.01, 0.00),   // plate 1 — west (converges with 0 on E/W axis)
-            (0.00, 0.01),    // plate 2 — north
-            (0.00, -0.01),   // plate 3 — south (converges with 2 on N/S axis)
-            (0.008, 0.008),  // plate 4 — NE
+            (0.01, 0.00),     // plate 0 — east
+            (-0.01, 0.00),    // plate 1 — west (converges with 0 on E/W axis)
+            (0.00, 0.01),     // plate 2 — north
+            (0.00, -0.01),    // plate 3 — south (converges with 2 on N/S axis)
+            (0.008, 0.008),   // plate 4 — NE
             (-0.008, -0.008), // plate 5 — SW (diverges from 4)
-            (0.005, -0.005), // plate 6 — SE
-            (-0.005, 0.005), // plate 7 — NW
+            (0.005, -0.005),  // plate 6 — SE
+            (-0.005, 0.005),  // plate 7 — NW
         ];
 
         let velocities = (0..num_plates).map(|p| base[p % base.len()]).collect();
@@ -69,10 +69,7 @@ impl PlateKinematics {
     /// Returns `0.0` for an empty plate set; the caller guards
     /// against division by zero with a small floor.
     pub fn max_velocity(&self) -> f64 {
-        self.velocities
-            .iter()
-            .map(|(vx, vy)| (vx * vx + vy * vy).sqrt())
-            .fold(0.0, f64::max)
+        self.velocities.iter().map(|(vx, vy)| (vx * vx + vy * vy).sqrt()).fold(0.0, f64::max)
     }
 
     pub fn num_plates(&self) -> usize {

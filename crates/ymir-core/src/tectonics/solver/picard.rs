@@ -460,11 +460,7 @@ mod tests {
         // so the result is 5 minus a tiny rational correction.
         for k in 0..n * n {
             let rel = (eta.data()[k] - 5.0).abs() / 5.0;
-            assert!(
-                rel < 1e-3,
-                "Yielded eta should be ~5.0, got {}",
-                eta.data()[k]
-            );
+            assert!(rel < 1e-3, "Yielded eta should be ~5.0, got {}", eta.data()[k]);
         }
     }
 
@@ -490,11 +486,7 @@ mod tests {
         // collapses to η_visc = 100 up to a (100/5000)^4 = 1.6e-7 correction.
         for k in 0..n * n {
             let rel = (eta.data()[k] - 100.0).abs() / 100.0;
-            assert!(
-                rel < 1e-3,
-                "Low strain should essentially not yield: {}",
-                eta.data()[k]
-            );
+            assert!(rel < 1e-3, "Low strain should essentially not yield: {}", eta.data()[k]);
         }
     }
 

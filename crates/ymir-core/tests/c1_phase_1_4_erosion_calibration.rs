@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 
 use image::{ImageBuffer, Rgb};
 
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
 use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
@@ -43,7 +43,7 @@ use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::field::Field2D;
 
 const GRID_SIZE: usize = 64;
@@ -52,8 +52,7 @@ const N_STEPS: usize = 300;
 const S_VIZ_MAX: f64 = 3.0;
 
 fn output_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/reports/c1_phase_1_4_erosion")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/reports/c1_phase_1_4_erosion")
 }
 
 #[test]
@@ -70,22 +69,10 @@ fn erosion_calibration_visual_review() {
     // `docs/reports/c1_phase_1_4_erosion/`. Phase 2 Track A gets its
     // own gallery (Stage D, Issue #129).
     let closures = C1Closures {
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     };
     let config = C1TimeLoopConfig {
@@ -117,18 +104,12 @@ fn erosion_calibration_visual_review() {
     let snapshot_steps: [usize; 4] = [49, 99, 199, 299];
 
     let started = std::time::Instant::now();
-    run_with_closures(
-        &mut state,
-        &mut kinematics,
-        &config,
-        &closures,
-        |step, current_state| {
-            if snapshot_steps.contains(&step) {
-                print_s_stats(&format!("{:03}", step + 1), current_state);
-                dump_snapshot(current_state, step + 1, &dir);
-            }
-        },
-    );
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |step, current_state| {
+        if snapshot_steps.contains(&step) {
+            print_s_stats(&format!("{:03}", step + 1), current_state);
+            dump_snapshot(current_state, step + 1, &dir);
+        }
+    });
     let elapsed = started.elapsed();
     let final_mass: f64 = state.s.data().iter().sum();
     let mass_delta = final_mass - initial_mass;
@@ -174,11 +155,7 @@ fn erosion_calibration_visual_review() {
     let wedge_p99 = wedge_values[(n * 99) / 100];
 
     let bucket_mean: [f64; 3] = std::array::from_fn(|b| {
-        if bucket_count[b] > 0 {
-            bucket_sum[b] / bucket_count[b] as f64
-        } else {
-            f64::NAN
-        }
+        if bucket_count[b] > 0 { bucket_sum[b] / bucket_count[b] as f64 } else { f64::NAN }
     });
     let h_crit_at = |d: f64| -> f64 {
         closures.davis_suppe.h_max * (1.0 - (-d / closures.davis_suppe.l_taper).exp())
@@ -204,43 +181,25 @@ fn erosion_calibration_visual_review() {
         "  wedge cells    = {n} ({:.1} %)",
         100.0 * n as f64 / (state.nx() * state.ny()) as f64
     );
-    eprintln!(
-        "  wedge mean     = {wedge_mean:.4}   (Phase 1.3 baseline: 0.166)"
-    );
-    eprintln!(
-        "  wedge p95      = {wedge_p95:.4}   (Phase 1.3 baseline: 0.376)"
-    );
-    eprintln!(
-        "  wedge p99      = {wedge_p99:.4}   (Phase 1.3 baseline: 2.17)"
-    );
-    eprintln!(
-        "  wedge max      = {wedge_max:.4}   (Phase 1.3 baseline: 2.18)"
-    );
+    eprintln!("  wedge mean     = {wedge_mean:.4}   (Phase 1.3 baseline: 0.166)");
+    eprintln!("  wedge p95      = {wedge_p95:.4}   (Phase 1.3 baseline: 0.376)");
+    eprintln!("  wedge p99      = {wedge_p99:.4}   (Phase 1.3 baseline: 2.17)");
+    eprintln!("  wedge max      = {wedge_max:.4}   (Phase 1.3 baseline: 2.18)");
     eprintln!();
     eprintln!("  per-distance bucket fill profile (mean S̃ per bucket vs h_crit at mid):");
     for (b, &(lo, hi)) in bucket_edges.iter().enumerate() {
         let mid = (lo + hi) / 2.0;
         let h_crit_mid = h_crit_at(mid);
-        let fill = if h_crit_mid > 0.0 {
-            bucket_mean[b] / h_crit_mid
-        } else {
-            f64::NAN
-        };
+        let fill = if h_crit_mid > 0.0 { bucket_mean[b] / h_crit_mid } else { f64::NAN };
         eprintln!(
             "    d ∈ ({lo:>4.1}, {hi:>4.1}]  count={:>4}  mean S̃={:.4}  h_crit(mid)={:.4}  fill={:.3}",
             bucket_count[b], bucket_mean[b], h_crit_mid, fill
         );
     }
     eprintln!();
-    eprintln!(
-        "  fill_near (d∈0-5)   = {fill_near:.3}   (Phase 1.3 baseline: 0.207)"
-    );
-    eprintln!(
-        "  fill_far  (d∈10-20) = {fill_far:.3}   (Phase 1.3 baseline: 0.046)"
-    );
-    eprintln!(
-        "  asymmetry (near/far) = {asymmetry:.3}   (Phase 1.3 baseline: 2.12)"
-    );
+    eprintln!("  fill_near (d∈0-5)   = {fill_near:.3}   (Phase 1.3 baseline: 0.207)");
+    eprintln!("  fill_far  (d∈10-20) = {fill_far:.3}   (Phase 1.3 baseline: 0.046)");
+    eprintln!("  asymmetry (near/far) = {asymmetry:.3}   (Phase 1.3 baseline: 2.12)");
     eprintln!();
     eprintln!(
         "  wall time      = {:.2?} ({:.2?} per step) — Phase 1.3 baseline: 29 ms / 96 µs",

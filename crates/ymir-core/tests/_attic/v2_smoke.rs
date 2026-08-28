@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use ymir_core::tectonics_v2::diagnostics::harness::{run_baseline, BaselineConfig};
+use ymir_core::tectonics_v2::diagnostics::harness::{BaselineConfig, run_baseline};
 use ymir_core::tectonics_v2::scales::Scales;
 
 #[test]
@@ -37,11 +37,7 @@ fn coupled_loop_is_finite_and_mass_conserved() {
 
     // Step 1 additions: Newton must converge on every step.
     let newton = result.metrics.newton.as_ref().expect("Step 1 Newton aggregate present");
-    assert_eq!(
-        newton.diverged, 0,
-        "Newton diverged on the smoke run: {:?}",
-        newton,
-    );
+    assert_eq!(newton.diverged, 0, "Newton diverged on the smoke run: {:?}", newton,);
     assert!(newton.converged > 0, "no Newton solve recorded as converged");
 
     eprintln!(

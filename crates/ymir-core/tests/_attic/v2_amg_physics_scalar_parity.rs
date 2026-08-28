@@ -30,7 +30,7 @@
 use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use ymir_core::tectonics_v2::boundaries::{BoundaryConfig, BoundaryRates};
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
 use ymir_core::tectonics_v2::mantle::MantleConfig;
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
@@ -81,7 +81,7 @@ fn build_step0_config(seed: u64, linear_solver: LinearSolverConfig) -> BaselineC
         linear_solver,
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -119,7 +119,7 @@ fn build_step3_config(seed: u64, linear_solver: LinearSolverConfig) -> BaselineC
         linear_solver,
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -131,10 +131,12 @@ fn build_step6_config(
 ) -> Result<BaselineConfig, String> {
     let scales = Scales::default();
     let vcfg = VoronoiConfig { num_plates, continental_ratio };
-    let rates = BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
+    let rates =
+        BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
     let recycling_config = RecyclingConfig::default();
-    let boundary = BoundaryConfig::enabled_voronoi_closed(64, 64, &vcfg, seed, rates, recycling_config)
-        .map_err(|e| format!("boundary: {:?}", e))?;
+    let boundary =
+        BoundaryConfig::enabled_voronoi_closed(64, 64, &vcfg, seed, rates, recycling_config)
+            .map_err(|e| format!("boundary: {:?}", e))?;
     let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
     Ok(BaselineConfig {
         seed,
@@ -167,15 +169,11 @@ fn build_step6_config(
         linear_solver,
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     })
 }
 
-fn check_parity(
-    case: &str,
-    cfg_jacobi: BaselineConfig,
-    cfg_amg: BaselineConfig,
-) {
+fn check_parity(case: &str, cfg_jacobi: BaselineConfig, cfg_amg: BaselineConfig) {
     use std::time::Instant;
     let t0 = Instant::now();
     let res_j = run_baseline(&cfg_jacobi);
@@ -194,27 +192,34 @@ fn check_parity(
     let cg_mean_a = res_a.metrics.cg_iter_mean;
 
     eprintln!("=== {} (steps = {}) ===", case, PHASE43_STEPS);
-    eprintln!("  JacobiCG  wallclock {:.2}s  vmax_peak={:.4e}  mass_drift={:.4e}  yf_cell={:.4e}  CG_mean={:.1}",
-        dt_j, peak_v_j, mass_j, yf_j, cg_mean_j);
-    eprintln!("  AmgCG     wallclock {:.2}s  vmax_peak={:.4e}  mass_drift={:.4e}  yf_cell={:.4e}  CG_mean={:.1}",
-        dt_a, peak_v_a, mass_a, yf_a, cg_mean_a);
+    eprintln!(
+        "  JacobiCG  wallclock {:.2}s  vmax_peak={:.4e}  mass_drift={:.4e}  yf_cell={:.4e}  CG_mean={:.1}",
+        dt_j, peak_v_j, mass_j, yf_j, cg_mean_j
+    );
+    eprintln!(
+        "  AmgCG     wallclock {:.2}s  vmax_peak={:.4e}  mass_drift={:.4e}  yf_cell={:.4e}  CG_mean={:.1}",
+        dt_a, peak_v_a, mass_a, yf_a, cg_mean_a
+    );
     eprintln!("  wallclock ratio AMG/Jacobi = {:.3}x", dt_a / dt_j.max(1e-10));
 
     let rel_peak = ((peak_v_a - peak_v_j).abs() / peak_v_j.abs().max(1e-300)).max(0.0);
     let abs_mass_diff = (mass_a - mass_j).abs();
     let rel_mass = abs_mass_diff / mass_j.abs().max(1e-12);
-    let rel_yf = if yf_j.abs() > 1e-12 {
-        (yf_a - yf_j).abs() / yf_j.abs()
-    } else {
-        (yf_a - yf_j).abs()
-    };
-    eprintln!("  rel_diff: vmax_peak={:.3e}  mass_drift_abs={:.3e} (rel={:.3e})  yf={:.3e}  (tol {:.0e})",
-        rel_peak, abs_mass_diff, rel_mass, rel_yf, PARITY_REL_TOL);
+    let rel_yf =
+        if yf_j.abs() > 1e-12 { (yf_a - yf_j).abs() / yf_j.abs() } else { (yf_a - yf_j).abs() };
+    eprintln!(
+        "  rel_diff: vmax_peak={:.3e}  mass_drift_abs={:.3e} (rel={:.3e})  yf={:.3e}  (tol {:.0e})",
+        rel_peak, abs_mass_diff, rel_mass, rel_yf, PARITY_REL_TOL
+    );
 
     assert!(
         rel_peak < PARITY_REL_TOL,
         "{}: vmax_peak parity {:.3e} > tol {:.0e} (Jacobi {:.4e}, AMG {:.4e})",
-        case, rel_peak, PARITY_REL_TOL, peak_v_j, peak_v_a,
+        case,
+        rel_peak,
+        PARITY_REL_TOL,
+        peak_v_j,
+        peak_v_a,
     );
     // Mass drift is already a relative number in the solver's
     // reporting. Require absolute equivalence below 1e-6 or
@@ -224,20 +229,25 @@ fn check_parity(
         assert!(
             rel_mass < PARITY_REL_TOL,
             "{}: mass_drift parity {:.3e} > tol {:.0e}",
-            case, rel_mass, PARITY_REL_TOL,
+            case,
+            rel_mass,
+            PARITY_REL_TOL,
         );
     } else {
         assert!(
             abs_mass_diff < 1e-6,
             "{}: mass_drift absolute parity {:.3e} > 1e-6 (both below relative threshold floor)",
-            case, abs_mass_diff,
+            case,
+            abs_mass_diff,
         );
     }
     if yf_j.abs() > 1e-6 {
         assert!(
             rel_yf < PARITY_REL_TOL,
             "{}: yielding_cell_fraction parity {:.3e} > tol {:.0e}",
-            case, rel_yf, PARITY_REL_TOL,
+            case,
+            rel_yf,
+            PARITY_REL_TOL,
         );
     }
 }
@@ -259,7 +269,8 @@ fn step3_physics_scalar_parity() {
 #[test]
 fn step6_physics_scalar_parity() {
     let cfg_j = build_step6_config(42, 8, 0.4, LinearSolverConfig::JacobiCG).unwrap();
-    let cfg_a = build_step6_config(42, 8, 0.4, LinearSolverConfig::AmgCG(AmgConfig::default())).unwrap();
+    let cfg_a =
+        build_step6_config(42, 8, 0.4, LinearSolverConfig::AmgCG(AmgConfig::default())).unwrap();
     check_parity("step6_voronoi", cfg_j, cfg_a);
 }
 
@@ -269,6 +280,7 @@ fn step7_physics_scalar_parity() {
     // regression scenario; full slab-pull activation is a
     // separate Phase 4 scope question not under α merge).
     let cfg_j = build_step6_config(42, 8, 0.4, LinearSolverConfig::JacobiCG).unwrap();
-    let cfg_a = build_step6_config(42, 8, 0.4, LinearSolverConfig::AmgCG(AmgConfig::default())).unwrap();
+    let cfg_a =
+        build_step6_config(42, 8, 0.4, LinearSolverConfig::AmgCG(AmgConfig::default())).unwrap();
     check_parity("step7_slab_off_shape", cfg_j, cfg_a);
 }

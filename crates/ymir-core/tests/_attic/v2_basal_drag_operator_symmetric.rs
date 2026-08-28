@@ -11,9 +11,11 @@
 //! (e.g. biased to `(im, j)` on vx but to `(i, j)` on vy), the
 //! bilinear form would pick up an asymmetric coupling.
 
-use ymir_core::tectonics_v2::basal_drag::{build_drag_diagonal_field, BasalDragConfig, BasalDragLaw};
+use ymir_core::tectonics_v2::basal_drag::{
+    BasalDragConfig, BasalDragLaw, build_drag_diagonal_field,
+};
 use ymir_core::tectonics_v2::field::Field2D;
-use ymir_core::tectonics_v2::stokes::operator::{apply_momentum, StokesGrid};
+use ymir_core::tectonics_v2::stokes::operator::{StokesGrid, apply_momentum};
 
 fn dot(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
@@ -69,10 +71,7 @@ fn drag_augmented_operator_is_symmetric_on_random_inputs() {
     let rhs = dot(&ux, &awx) + dot(&uy, &awy);
     let rel = (lhs - rhs).abs() / lhs.abs().max(rhs.abs()).max(1.0);
     eprintln!("⟨Au, w⟩ = {lhs:.6e} vs ⟨u, Aw⟩ = {rhs:.6e}; rel = {rel:.3e}");
-    assert!(
-        rel < 1e-12,
-        "drag-augmented operator asymmetric: rel = {rel} (spec: < 1e-12)",
-    );
+    assert!(rel < 1e-12, "drag-augmented operator asymmetric: rel = {rel} (spec: < 1e-12)",);
 }
 
 /// Sanity guard: the disabled variant must produce the same output

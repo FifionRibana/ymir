@@ -25,9 +25,9 @@
 
 use ymir_core::tectonics_v2::field::{Field2D, PeriodicIndex};
 use ymir_core::tectonics_v2::forcing::{BodyForce, MantleForce, SimulationState, VectorField};
-use ymir_core::tectonics_v2::mantle::{build_mantle_diagonal_field, MantleConfig};
 use ymir_core::tectonics_v2::mantle::pattern::build_mantle_pattern;
-use ymir_core::tectonics_v2::stokes::{solve_sheet, Grid, SheetConfig};
+use ymir_core::tectonics_v2::mantle::{MantleConfig, build_mantle_diagonal_field};
+use ymir_core::tectonics_v2::stokes::{Grid, SheetConfig, solve_sheet};
 
 struct RelaxationRun {
     alignment: f64,
@@ -76,31 +76,22 @@ fn run_relaxation(coupling: f64, mf: f64) -> RelaxationRun {
 
     // Mantle diagonal: coupling · S̃. No drag to sum — total_diag
     // is just the mantle contribution.
-    let mantle_cfg = MantleConfig::Enabled {
-        mf, coupling, num_modes: 1, seed: 42, evolution_rate: 0.0,
-    };
-    let mantle_diag = build_mantle_diagonal_field(&mantle_cfg, &s)
-        .expect("enabled → Some");
+    let mantle_cfg =
+        MantleConfig::Enabled { mf, coupling, num_modes: 1, seed: 42, evolution_rate: 0.0 };
+    let mantle_diag = build_mantle_diagonal_field(&mantle_cfg, &s).expect("enabled → Some");
 
     // Constant-RHS contribution: coupling · S̃ · Mf · v_pattern.
     let mut fx = Field2D::new(nx, ny);
     let mut fy = Field2D::new(nx, ny);
-    let state = SimulationState {
-        nx, ny, dx, dy, idx_x: &idx_x, idx_y: &idx_y, s: &s,
-    };
-    MantleForce::new(mf, coupling, &pattern, &s).accumulate(
-        &state,
-        &mut VectorField { fx: &mut fx, fy: &mut fy },
-    );
+    let state = SimulationState { nx, ny, dx, dy, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+    MantleForce::new(mf, coupling, &pattern, &s)
+        .accumulate(&state, &mut VectorField { fx: &mut fx, fy: &mut fy });
 
     let mut vx = vec![0.0; nx * ny];
     let mut vy = vec![0.0; nx * ny];
     let cfg = SheetConfig::default();
-    let stats = solve_sheet(
-        &grid, &eta, Some(&mantle_diag),
-        fx.data(), fy.data(),
-        &mut vx, &mut vy, &cfg,
-    );
+    let stats =
+        solve_sheet(&grid, &eta, Some(&mantle_diag), fx.data(), fy.data(), &mut vx, &mut vy, &cfg);
     assert!(stats.converged, "CG failed to converge: {:?}", stats);
 
     // Alignment metric: α = <v, v_m_scaled> / |v_m_scaled|²
@@ -122,8 +113,12 @@ fn run_relaxation(coupling: f64, mf: f64) -> RelaxationRun {
         norm_m_sq += vmx * vmx + vmy * vmy;
         let v_mag = (vx_k * vx_k + vy_k * vy_k).sqrt();
         let vm_mag = (vmx * vmx + vmy * vmy).sqrt();
-        if v_mag > peak_v { peak_v = v_mag; }
-        if vm_mag > peak_vm { peak_vm = vm_mag; }
+        if v_mag > peak_v {
+            peak_v = v_mag;
+        }
+        if vm_mag > peak_vm {
+            peak_vm = vm_mag;
+        }
     }
     let alignment = if norm_m_sq > 0.0 { dot / norm_m_sq } else { 0.0 };
     RelaxationRun { alignment, peak_v, peak_v_mantle_scaled: peak_vm }
@@ -136,11 +131,7 @@ fn strong_coupling_tracks_mantle_closely() {
         "coupling=10: alignment = {:.3}, peak|v| = {:.3e}, peak|Mf·v_m| = {:.3e}",
         r.alignment, r.peak_v, r.peak_v_mantle_scaled,
     );
-    assert!(
-        r.alignment > 0.95,
-        "alignment at coupling=10 = {:.3} (spec: > 0.95)",
-        r.alignment,
-    );
+    assert!(r.alignment > 0.95, "alignment at coupling=10 = {:.3} (spec: > 0.95)", r.alignment,);
 }
 
 #[test]
@@ -150,11 +141,7 @@ fn weak_coupling_tracks_mantle_loosely() {
         "coupling=0.3: alignment = {:.3}, peak|v| = {:.3e}, peak|Mf·v_m| = {:.3e}",
         r.alignment, r.peak_v, r.peak_v_mantle_scaled,
     );
-    assert!(
-        r.alignment > 0.3,
-        "alignment at coupling=0.3 = {:.3} (spec: > 0.3)",
-        r.alignment,
-    );
+    assert!(r.alignment > 0.3, "alignment at coupling=0.3 = {:.3} (spec: > 0.3)", r.alignment,);
     // Sanity: weak coupling should NOT clamp v to v_mantle —
     // alignment strictly below strong-coupling result.
     assert!(
@@ -174,7 +161,9 @@ fn alignment_is_monotonic_in_coupling() {
         assert!(
             r.alignment > prev - 1e-6,
             "alignment non-monotonic at coupling={} (prev={}, current={})",
-            c, prev, r.alignment,
+            c,
+            prev,
+            r.alignment,
         );
         prev = r.alignment;
     }

@@ -97,14 +97,8 @@ fn erosion_loop(
         nx * ny,
         "drainage_areas length must match grid (nx · ny)"
     );
-    debug_assert_eq!(
-        altitude.width, nx,
-        "altitude width must match S̃ grid"
-    );
-    debug_assert_eq!(
-        altitude.height, ny,
-        "altitude height must match S̃ grid"
-    );
+    debug_assert_eq!(altitude.width, nx, "altitude width must match S̃ grid");
+    debug_assert_eq!(altitude.height, ny, "altitude height must match S̃ grid");
 
     let k = params.k;
     let m = params.m;
@@ -236,11 +230,7 @@ mod tests {
     use super::*;
 
     fn flat_altitude(nx: usize, ny: usize, value: f32) -> GridF32 {
-        GridF32 {
-            width: nx,
-            height: ny,
-            data: vec![value; nx * ny],
-        }
+        GridF32 { width: nx, height: ny, data: vec![value; nx * ny] }
     }
 
     fn ramp_altitude_x(nx: usize, ny: usize) -> GridF32 {
@@ -252,11 +242,7 @@ mod tests {
                 data[j * nx + i] = i as f32 / nx as f32;
             }
         }
-        GridF32 {
-            width: nx,
-            height: ny,
-            data,
-        }
+        GridF32 { width: nx, height: ny, data }
     }
 
     fn filled_field(nx: usize, ny: usize, value: f64) -> Field2D {
@@ -279,14 +265,7 @@ mod tests {
         let drainage_areas = vec![10u32; nx * ny];
         let params = ErosionParams::default();
         let before = s.data().to_vec();
-        apply_erosion_step(
-            &mut s,
-            &altitude,
-            &drainage_areas,
-            &params,
-            1.0,
-            1.0 / nx as f64,
-        );
+        apply_erosion_step(&mut s, &altitude, &drainage_areas, &params, 1.0, 1.0 / nx as f64);
         for k in 0..before.len() {
             assert_eq!(
                 before[k],
@@ -306,20 +285,9 @@ mod tests {
         let drainage_areas = vec![0u32; nx * ny]; // every cell A = 0
         let params = ErosionParams::default();
         let before = s.data().to_vec();
-        apply_erosion_step(
-            &mut s,
-            &altitude,
-            &drainage_areas,
-            &params,
-            1.0,
-            1.0 / nx as f64,
-        );
+        apply_erosion_step(&mut s, &altitude, &drainage_areas, &params, 1.0, 1.0 / nx as f64);
         for k in 0..before.len() {
-            assert_eq!(
-                before[k],
-                s.data()[k],
-                "A = 0 → no erosion; mismatch at flat index {k}"
-            );
+            assert_eq!(before[k], s.data()[k], "A = 0 → no erosion; mismatch at flat index {k}");
         }
     }
 
@@ -418,14 +386,7 @@ mod tests {
             ..ErosionParams::default()
         };
         let before = s.data().to_vec();
-        apply_erosion_step(
-            &mut s,
-            &altitude,
-            &drainage_areas,
-            &params,
-            1.0,
-            1.0 / nx as f64,
-        );
+        apply_erosion_step(&mut s, &altitude, &drainage_areas, &params, 1.0, 1.0 / nx as f64);
         for k in 0..before.len() {
             assert_eq!(
                 before[k],
@@ -454,24 +415,14 @@ mod tests {
         };
         let dx = 1.0 / nx as f64;
         // Verify the test premise: unclamped formula does predict undershoot.
-        let predicted = 1.0
-            - params.k
-                * (1000.0_f64).powf(params.m)
-                * (1.0_f64).powf(params.n)
-                * 1.0;
+        let predicted =
+            1.0 - params.k * (1000.0_f64).powf(params.m) * (1.0_f64).powf(params.n) * 1.0;
         assert!(
             predicted < params.floor,
             "test premise: unclamped prediction {predicted} must undershoot floor {}",
             params.floor
         );
-        apply_erosion_step(
-            &mut s,
-            &altitude,
-            &drainage_areas,
-            &params,
-            1.0,
-            dx,
-        );
+        apply_erosion_step(&mut s, &altitude, &drainage_areas, &params, 1.0, dx);
         // Every interior cell with slope > 0 should be clamped
         // at the floor (the ramp gives slope ≈ 1 everywhere).
         let (i, j) = (2, 2);
@@ -499,10 +450,7 @@ mod tests {
         //   1 (B) drains to 2 (C), path_length = 2
         //   2 (C) drains to 3 (D), path_length = 1
         //   3 (D) drains to itself (sink), path_length = 0
-        let map = DrainageMap {
-            target_idx: vec![1, 2, 3, 3],
-            path_length: vec![3, 2, 1, 0],
-        };
+        let map = DrainageMap { target_idx: vec![1, 2, 3, 3], path_length: vec![3, 2, 1, 0] };
         let areas = compute_drainage_areas(&map);
         assert_eq!(
             areas,

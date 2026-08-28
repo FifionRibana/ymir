@@ -11,9 +11,9 @@
 //! the `None` variant — distinguishing them from collision-band and
 //! rift cells whose `S̃` evolves away from the reference 1.0.
 
+use super::super::field::Field2D;
 use super::boundary_flag::{BoundaryFlag, BoundaryFlagField};
 use super::plate_type::{PlateType, PlateTypeField};
-use super::super::field::Field2D;
 
 /// Mean + standard deviation aggregate.
 #[derive(Clone, Copy, Debug, Default)]
@@ -31,23 +31,15 @@ fn mean_std_of<'a, I: Iterator<Item = &'a f64>>(it: I) -> MeanStd {
     }
     let mean: f64 = values.iter().sum::<f64>() / n as f64;
     let var: f64 = values.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
-    MeanStd {
-        mean,
-        std: var.sqrt(),
-        count: n,
-    }
+    MeanStd { mean, std: var.sqrt(), count: n }
 }
 
 /// Mean + std of `S̃` over oceanic cells.
 pub fn s_oceanic(s: &Field2D, plate_types: &PlateTypeField) -> MeanStd {
-    let it = s
-        .data()
-        .iter()
-        .zip(plate_types.data().iter())
-        .filter_map(|(v, &t)| match t {
-            PlateType::Oceanic => Some(v),
-            _ => None,
-        });
+    let it = s.data().iter().zip(plate_types.data().iter()).filter_map(|(v, &t)| match t {
+        PlateType::Oceanic => Some(v),
+        _ => None,
+    });
     mean_std_of(it)
 }
 
@@ -59,15 +51,13 @@ pub fn s_continental_interior(
     plate_types: &PlateTypeField,
     flags: &BoundaryFlagField,
 ) -> MeanStd {
-    let mut it_iter = s
-        .data()
-        .iter()
-        .zip(plate_types.data().iter())
-        .zip(flags.data().iter())
-        .filter_map(|((v, &t), &f)| match (t, f) {
-            (PlateType::Continental, BoundaryFlag::None) => Some(v),
-            _ => None,
-        });
+    let mut it_iter =
+        s.data().iter().zip(plate_types.data().iter()).zip(flags.data().iter()).filter_map(
+            |((v, &t), &f)| match (t, f) {
+                (PlateType::Continental, BoundaryFlag::None) => Some(v),
+                _ => None,
+            },
+        );
     let owned: Vec<&f64> = it_iter.by_ref().collect();
     mean_std_of(owned.into_iter())
 }
@@ -82,25 +72,13 @@ pub fn s_continental_collision_mean(
 ) -> Option<f64> {
     let mut sum = 0.0_f64;
     let mut count = 0usize;
-    for ((v, &t), &f) in s
-        .data()
-        .iter()
-        .zip(plate_types.data().iter())
-        .zip(flags.data().iter())
-    {
-        if matches!(
-            (t, f),
-            (PlateType::Continental, BoundaryFlag::ContinentalCollision)
-        ) {
+    for ((v, &t), &f) in s.data().iter().zip(plate_types.data().iter()).zip(flags.data().iter()) {
+        if matches!((t, f), (PlateType::Continental, BoundaryFlag::ContinentalCollision)) {
             sum += v;
             count += 1;
         }
     }
-    if count == 0 {
-        None
-    } else {
-        Some(sum / count as f64)
-    }
+    if count == 0 { None } else { Some(sum / count as f64) }
 }
 
 /// Count of distinct boundary-mechanism variants with a non-zero
@@ -281,12 +259,8 @@ mod tests {
         let mut fl = BoundaryFlagField::filled(nx, ny, BoundaryFlag::None);
         fl.set(0, 0, BoundaryFlag::OceanicSubduction);
         fl.set(1, 0, BoundaryFlag::ContinentalCollision);
-        let active = BoundaryMechanismActive {
-            sub: true,
-            spread: true,
-            coll_v: true,
-            rift_v: true,
-        };
+        let active =
+            BoundaryMechanismActive { sub: true, spread: true, coll_v: true, rift_v: true };
         let d = boundary_type_diversity(&pt, &fl, active);
         assert_eq!(d, 2);
     }

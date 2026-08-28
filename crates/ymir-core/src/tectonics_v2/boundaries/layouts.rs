@@ -6,9 +6,7 @@
 //! layout is designed to isolate one physical effect of the
 //! source/sink machinery.
 
-use super::boundary_flag::{
-    BoundaryConfig, BoundaryFlag, BoundaryFlagField, BoundaryRates,
-};
+use super::boundary_flag::{BoundaryConfig, BoundaryFlag, BoundaryFlagField, BoundaryRates};
 use super::plate_type::{PlateType, PlateTypeField};
 
 /// A named pair (plate_types, flags) that the harness consumes.
@@ -23,8 +21,12 @@ pub struct BoundaryLayout {
 }
 
 impl BoundaryLayout {
-    pub fn nx(&self) -> usize { self.plate_types.nx() }
-    pub fn ny(&self) -> usize { self.plate_types.ny() }
+    pub fn nx(&self) -> usize {
+        self.plate_types.nx()
+    }
+    pub fn ny(&self) -> usize {
+        self.plate_types.ny()
+    }
 
     /// Wrap into a [`BoundaryConfig::Enabled`] with the given rates,
     /// using the Step 5 back-compat builder
@@ -81,11 +83,7 @@ pub fn horizontal_oceanic_strip(nx: usize, ny: usize) -> BoundaryLayout {
         }
     }
 
-    BoundaryLayout {
-        plate_types,
-        flags,
-        name: "horizontal_oceanic_strip",
-    }
+    BoundaryLayout { plate_types, flags, name: "horizontal_oceanic_strip" }
 }
 
 /// Vertical rift line through an otherwise continental domain.
@@ -97,11 +95,7 @@ pub fn vertical_rift_line(nx: usize, ny: usize) -> BoundaryLayout {
     for j in 0..ny {
         flags.set(rift_i, j, BoundaryFlag::Rift);
     }
-    BoundaryLayout {
-        plate_types,
-        flags,
-        name: "vertical_rift_line",
-    }
+    BoundaryLayout { plate_types, flags, name: "vertical_rift_line" }
 }
 
 /// Balanced sub/spread layout: one rift row and one oceanic-
@@ -125,11 +119,7 @@ pub fn balanced_sub_spread(nx: usize, ny: usize) -> BoundaryLayout {
         flags.set(i, rift_j, BoundaryFlag::Rift);
         flags.set(i, sub_j, BoundaryFlag::OceanicSubduction);
     }
-    BoundaryLayout {
-        plate_types,
-        flags,
-        name: "balanced_sub_spread",
-    }
+    BoundaryLayout { plate_types, flags, name: "balanced_sub_spread" }
 }
 
 /// Continental collision band at the middle of the grid.
@@ -141,11 +131,7 @@ pub fn continental_collision_band(nx: usize, ny: usize) -> BoundaryLayout {
     for i in 0..nx {
         flags.set(i, coll_j, BoundaryFlag::ContinentalCollision);
     }
-    BoundaryLayout {
-        plate_types,
-        flags,
-        name: "continental_collision_band",
-    }
+    BoundaryLayout { plate_types, flags, name: "continental_collision_band" }
 }
 
 /// CLI token → layout builder. Unknown tokens error out with a

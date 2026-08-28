@@ -1,6 +1,6 @@
 //! Integration tests for the `ViscosityLaw` and smooth-saturate parity.
 
-use ymir_core::tectonics_v2::rheology::{smooth_saturate, ViscosityLaw};
+use ymir_core::tectonics_v2::rheology::{ViscosityLaw, smooth_saturate};
 
 fn approx_rel(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol * a.abs().max(b.abs()).max(1e-12)
@@ -62,8 +62,8 @@ fn asymptotes_are_consistent() {
     let law = ViscosityLaw::default();
     let expected_floor = law.b_prefactor * (law.strain_rate_floor).powf(1.0 / law.n - 1.0);
     let cap = law.eta_max_cap;
-    let expected_eff = expected_floor / (1.0 + (expected_floor / cap).powf(law.k_saturation))
-        .powf(1.0 / law.k_saturation);
+    let expected_eff = expected_floor
+        / (1.0 + (expected_floor / cap).powf(law.k_saturation)).powf(1.0 / law.k_saturation);
     let eta_at_zero = law.eta_effective(0.0);
     assert!(
         approx_rel(eta_at_zero, expected_eff, 1.0e-12),

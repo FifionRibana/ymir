@@ -23,10 +23,10 @@ use std::time::Instant;
 use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use ymir_core::tectonics_v2::boundaries::{BoundaryConfig, BoundaryRates};
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
 use ymir_core::tectonics_v2::mantle::{
-    MantleConfig, COUPLING_DEFAULT, MF_DEFAULT, NUM_MODES_DEFAULT,
+    COUPLING_DEFAULT, MF_DEFAULT, MantleConfig, NUM_MODES_DEFAULT,
 };
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
 use ymir_core::tectonics_v2::recycling::RecyclingConfig;
@@ -78,7 +78,7 @@ fn build_step3_config(linear_solver: LinearSolverConfig) -> BaselineConfig {
         linear_solver,
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -117,10 +117,7 @@ fn build_step6_config(linear_solver: LinearSolverConfig) -> BaselineConfig {
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
         yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05,
-            ..BasalDragLaw::default()
-        }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: format!("voronoi_seed{}_n8", SEED),
         slab_pull: SlabPullConfig::Disabled,
@@ -131,7 +128,7 @@ fn build_step6_config(linear_solver: LinearSolverConfig) -> BaselineConfig {
         linear_solver,
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -177,7 +174,11 @@ struct RunSummary {
     cg_capped_count: usize,
 }
 
-fn measure(label: &str, ls: LinearSolverConfig, mk: &dyn Fn(LinearSolverConfig) -> BaselineConfig) -> RunSummary {
+fn measure(
+    label: &str,
+    ls: LinearSolverConfig,
+    mk: &dyn Fn(LinearSolverConfig) -> BaselineConfig,
+) -> RunSummary {
     let mut wc = Vec::with_capacity(RUNS);
     let mut cg_mean = 0.0;
     let mut newton_mean = 0.0;
@@ -195,18 +196,11 @@ fn measure(label: &str, ls: LinearSolverConfig, mk: &dyn Fn(LinearSolverConfig) 
         let dt = t0.elapsed().as_secs_f64();
         wc.push(dt);
         cg_mean = r.metrics.cg_iter_mean;
-        let stats = r
-            .metrics
-            .extrapolation
-            .as_ref()
-            .expect("ExtrapolationStats present for steps > 0");
+        let stats =
+            r.metrics.extrapolation.as_ref().expect("ExtrapolationStats present for steps > 0");
         newton_mean = stats.newton_outer_iters_mean();
         fallback_rate = stats.fallback_rate();
-        let na = r
-            .metrics
-            .newton
-            .as_ref()
-            .expect("NewtonAggregate present");
+        let na = r.metrics.newton.as_ref().expect("NewtonAggregate present");
         converged_total += na.converged;
         steps_total += na.converged + na.stalled + na.diverged + na.capped;
         peak_v = r.metrics.vmax_peak;
@@ -227,11 +221,8 @@ fn measure(label: &str, ls: LinearSolverConfig, mk: &dyn Fn(LinearSolverConfig) 
     let wc_mean = wc.iter().sum::<f64>() / wc.len() as f64;
     let wc_var = wc.iter().map(|x| (x - wc_mean).powi(2)).sum::<f64>() / wc.len() as f64;
     let wc_std = wc_var.sqrt();
-    let convergence_pct = if steps_total > 0 {
-        converged_total as f64 / steps_total as f64
-    } else {
-        0.0
-    };
+    let convergence_pct =
+        if steps_total > 0 { converged_total as f64 / steps_total as f64 } else { 0.0 };
     RunSummary {
         wc_mean,
         wc_std,
@@ -253,15 +244,11 @@ fn measure(label: &str, ls: LinearSolverConfig, mk: &dyn Fn(LinearSolverConfig) 
 #[test]
 #[ignore]
 fn baseline_32sq_step6_step8_only() {
-    let threads = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1);
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     eprintln!("=== Step 8.5b 32² baseline RE-RUN (step6 + step8 only) ===");
     eprintln!("Hardware threads (available_parallelism): {}", threads);
     eprintln!("RAYON_NUM_THREADS env: {:?}", std::env::var("RAYON_NUM_THREADS").ok());
-    eprintln!(
-        "Configuration: NX={NX}, STEPS={STEPS}, RUNS={RUNS}, SEED={SEED}"
-    );
+    eprintln!("Configuration: NX={NX}, STEPS={STEPS}, RUNS={RUNS}, SEED={SEED}");
     eprintln!();
 
     let cases: &[(&str, &dyn Fn(LinearSolverConfig) -> BaselineConfig)] = &[
@@ -271,29 +258,36 @@ fn baseline_32sq_step6_step8_only() {
 
     for (case, mk) in cases {
         eprintln!("--- {} ---", case);
-        let jac = measure(
-            &format!("{} Jacobi", case),
-            LinearSolverConfig::JacobiCG,
-            *mk,
-        );
-        let amg = measure(
-            &format!("{} AMG", case),
-            LinearSolverConfig::AmgCG(AmgConfig::default()),
-            *mk,
-        );
+        let jac = measure(&format!("{} Jacobi", case), LinearSolverConfig::JacobiCG, *mk);
+        let amg =
+            measure(&format!("{} AMG", case), LinearSolverConfig::AmgCG(AmgConfig::default()), *mk);
         eprintln!(
             "| {} | Jacobi | {:.2} ± {:.2} | {:.1} | {:.2} | {:.1} | {:.0} | {:.4e} | {:.4e} | {:.4e} | {} |",
             case,
-            jac.wc_mean, jac.wc_std, jac.cg_mean, jac.newton_mean,
-            jac.fallback_rate * 100.0, jac.convergence_pct * 100.0,
-            jac.peak_v, jac.mass_drift, jac.yf_max, jac.cg_capped_count,
+            jac.wc_mean,
+            jac.wc_std,
+            jac.cg_mean,
+            jac.newton_mean,
+            jac.fallback_rate * 100.0,
+            jac.convergence_pct * 100.0,
+            jac.peak_v,
+            jac.mass_drift,
+            jac.yf_max,
+            jac.cg_capped_count,
         );
         eprintln!(
             "| {} | AMG | {:.2} ± {:.2} | {:.1} | {:.2} | {:.1} | {:.0} | {:.4e} | {:.4e} | {:.4e} | {} |",
             case,
-            amg.wc_mean, amg.wc_std, amg.cg_mean, amg.newton_mean,
-            amg.fallback_rate * 100.0, amg.convergence_pct * 100.0,
-            amg.peak_v, amg.mass_drift, amg.yf_max, amg.cg_capped_count,
+            amg.wc_mean,
+            amg.wc_std,
+            amg.cg_mean,
+            amg.newton_mean,
+            amg.fallback_rate * 100.0,
+            amg.convergence_pct * 100.0,
+            amg.peak_v,
+            amg.mass_drift,
+            amg.yf_max,
+            amg.cg_capped_count,
         );
         let ratio = amg.wc_mean / jac.wc_mean.max(1e-12);
         eprintln!("    -> AMG/Jacobi wallclock ratio: {:.3}x", ratio);
@@ -304,15 +298,11 @@ fn baseline_32sq_step6_step8_only() {
 #[test]
 #[ignore]
 fn baseline_32sq_measurement() {
-    let threads = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(1);
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     eprintln!("=== Step 8.5b 32² baseline measurement ===");
     eprintln!("Hardware threads (available_parallelism): {}", threads);
     eprintln!("RAYON_NUM_THREADS env: {:?}", std::env::var("RAYON_NUM_THREADS").ok());
-    eprintln!(
-        "Configuration: NX={NX}, STEPS={STEPS}, RUNS={RUNS}, SEED={SEED}"
-    );
+    eprintln!("Configuration: NX={NX}, STEPS={STEPS}, RUNS={RUNS}, SEED={SEED}");
     eprintln!();
 
     let cases: &[(&str, &dyn Fn(LinearSolverConfig) -> BaselineConfig)] = &[
@@ -322,22 +312,17 @@ fn baseline_32sq_measurement() {
         ("step8_mantle_on_slab_off", &build_step8_config),
     ];
 
-    eprintln!("| Case | Precond | Wallclock (s) | CG mean | Newton mean | Fallback % | Conv % | peak\\|v\\| | mass_drift | yf_max | CG max |");
+    eprintln!(
+        "| Case | Precond | Wallclock (s) | CG mean | Newton mean | Fallback % | Conv % | peak\\|v\\| | mass_drift | yf_max | CG max |"
+    );
     eprintln!("|---|---|---|---|---|---|---|---|---|---|---|");
     for (case, mk) in cases {
         eprintln!();
         eprintln!("--- {} ---", case);
 
-        let jac = measure(
-            &format!("{} Jacobi", case),
-            LinearSolverConfig::JacobiCG,
-            *mk,
-        );
-        let amg = measure(
-            &format!("{} AMG", case),
-            LinearSolverConfig::AmgCG(AmgConfig::default()),
-            *mk,
-        );
+        let jac = measure(&format!("{} Jacobi", case), LinearSolverConfig::JacobiCG, *mk);
+        let amg =
+            measure(&format!("{} AMG", case), LinearSolverConfig::AmgCG(AmgConfig::default()), *mk);
 
         eprintln!(
             "| {} | Jacobi | {:.2} ± {:.2} | {:.1} | {:.2} | {:.1} | {:.0} | {:.4e} | {:.4e} | {:.4e} | {} |",

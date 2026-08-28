@@ -44,9 +44,9 @@ use crate::tectonics_v2::field::Field2D;
 
 use crate::tectonics_c1::kinematics::PlateKinematics;
 use crate::tectonics_c1::state::C1State;
-use crate::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use crate::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 
-use super::phase_a_common::{apply_post_tectonic, extract_per_plate_type, PostTectonicInput};
+use super::phase_a_common::{PostTectonicInput, apply_post_tectonic, extract_per_plate_type};
 use super::{CycleOutputCommon, WorkflowConfig};
 
 /// Inputs to [`run_phase_a_cycle_c1`].
@@ -133,10 +133,9 @@ pub fn run_phase_a_cycle_c1(
     run_with_closures(state, kinematics, time_loop_config, closures, |_, _| {});
 
     match wf {
-        WorkflowConfig::Disabled => PhaseACycleOutputC1 {
-            common: CycleOutputCommon::default(),
-            new_cratonic_factor: None,
-        },
+        WorkflowConfig::Disabled => {
+            PhaseACycleOutputC1 { common: CycleOutputCommon::default(), new_cratonic_factor: None }
+        }
         WorkflowConfig::Enabled(params) => {
             // Capture the pre-reclassification per-plate type for
             // the D4 "was continental at init" gate. Must happen
@@ -191,8 +190,8 @@ mod tests {
         let closures = C1Closures::default();
         let iso_config = IsostasyConfig::default();
         let time_loop_config = C1TimeLoopConfig {
-        // #145 5d — production runs the buoyancy fix (rigid continental crust).
-        rigid_continental_crust: true,
+            // #145 5d — production runs the buoyancy fix (rigid continental crust).
+            rigid_continental_crust: true,
             n_steps: 300,
             dx: 1.0 / grid as f64,
             dy: 1.0 / grid as f64,
@@ -215,10 +214,7 @@ mod tests {
 
         // Sanity 1 — no NaN / Inf in `S̃`.
         for &v in state.s.data() {
-            assert!(
-                v.is_finite(),
-                "non-finite S̃ in state after 300 steps + post-pass"
-            );
+            assert!(v.is_finite(), "non-finite S̃ in state after 300 steps + post-pass");
         }
 
         // Sanity 2 — sea-level was computed by the Enabled
@@ -240,7 +236,9 @@ mod tests {
         assert!(
             output.common.mass_drift.abs() < drift_budget,
             "macro_redistribution mass drift {} exceeds {:.3e} budget (1e-9 × |mass| = {:.3e}); macro_redistribution must conserve mass",
-            output.common.mass_drift, drift_budget, drift_budget
+            output.common.mass_drift,
+            drift_budget,
+            drift_budget
         );
 
         // Sanity 4 — cratonic_config was None → no recompute.

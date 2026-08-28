@@ -36,17 +36,17 @@
 //! acceptance tests — those land in Stage E4 (4 invariants on
 //! erosion behaviour at 64²×300).
 
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
-use ymir_core::tectonics_c1::boundary_classification::{classify_boundaries, BoundaryType};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
+use ymir_core::tectonics_c1::boundary_classification::{BoundaryType, classify_boundaries};
 use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
 use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::workflow::phase_a_common::{
-    apply_post_tectonic, extract_per_plate_type, PostTectonicInput,
+    PostTectonicInput, apply_post_tectonic, extract_per_plate_type,
 };
 use ymir_core::tectonics_v2::workflow::{PhaseAParams, WorkflowParams};
 
@@ -58,24 +58,12 @@ const SEED: u64 = 42;
 /// on holding the Phase 1.4 regime stable post-#129.
 fn phase_1_4_closures() -> C1Closures {
     C1Closures {
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
         // Track D (Issue #132) — disabled to preserve Phase 1.4
         // regression invariants.
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     }
 }
@@ -196,14 +184,8 @@ fn compute_isostasy_deterministic_given_same_s() {
         isostasy_a.peak_altitude_m, isostasy_b.peak_altitude_m,
         "peak_altitude_m must be bit-identical"
     );
-    assert_eq!(
-        isostasy_a.max_depth_m, isostasy_b.max_depth_m,
-        "max_depth_m must be bit-identical"
-    );
-    assert_eq!(
-        isostasy_a.land_ratio, isostasy_b.land_ratio,
-        "land_ratio must be bit-identical"
-    );
+    assert_eq!(isostasy_a.max_depth_m, isostasy_b.max_depth_m, "max_depth_m must be bit-identical");
+    assert_eq!(isostasy_a.land_ratio, isostasy_b.land_ratio, "land_ratio must be bit-identical");
 }
 
 #[test]
@@ -305,27 +287,17 @@ fn apply_post_tectonic_mutates_s_via_macro_redistribution() {
     }
 
     let total_cells = state.nx() * state.ny();
-    eprintln!(
-        "c1_phase_1_4 I2-T3 architectural lock — apply_post_tectonic mutates s via macro:"
-    );
+    eprintln!("c1_phase_1_4 I2-T3 architectural lock — apply_post_tectonic mutates s via macro:");
     eprintln!(
         "  S̃ cells mutated     = {mutated_cells} / {total_cells} ({:.1} %)",
         100.0 * mutated_cells as f64 / total_cells as f64
     );
     eprintln!("  S̃ max delta         = {max_s_delta:.4e}");
     eprintln!("  altitude max delta  = {max_altitude_delta:.4e}");
-    eprintln!(
-        "  → per-step altitude (stage 4a, on post-erosion S̃) differs from end-of-cycle"
-    );
-    eprintln!(
-        "    altitude (post-everything S̃) by max {max_altitude_delta:.4e} due to"
-    );
-    eprintln!(
-        "    macro_redistribution mutation. This is design, not bug — see"
-    );
-    eprintln!(
-        "    `time_loop.rs` § \"End-of-cycle apply_post_tectonic consistency\"."
-    );
+    eprintln!("  → per-step altitude (stage 4a, on post-erosion S̃) differs from end-of-cycle");
+    eprintln!("    altitude (post-everything S̃) by max {max_altitude_delta:.4e} due to");
+    eprintln!("    macro_redistribution mutation. This is design, not bug — see");
+    eprintln!("    `time_loop.rs` § \"End-of-cycle apply_post_tectonic consistency\".");
 
     // Assertions — proves the architectural property.
     assert!(

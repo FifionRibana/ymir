@@ -61,10 +61,7 @@ pub struct NewtonResult {
 impl NewtonResult {
     /// Returns true for any successful convergence (residual or state).
     pub fn is_converged(&self) -> bool {
-        matches!(
-            self.outcome,
-            NewtonOutcome::ConvergedOnResidual | NewtonOutcome::ConvergedOnState
-        )
+        matches!(self.outcome, NewtonOutcome::ConvergedOnResidual | NewtonOutcome::ConvergedOnState)
     }
 }
 
@@ -406,8 +403,7 @@ pub fn solve_velocity_newton(
         // Compute the effective Newton step actually applied (α·δv), used
         // below for the state-based convergence criterion and the
         // oscillation detector.
-        let actual_step: Vec<f64> =
-            ws.jfnk_delta_v.iter().map(|x| final_alpha * x).collect();
+        let actual_step: Vec<f64> = ws.jfnk_delta_v.iter().map(|x| final_alpha * x).collect();
 
         // Oscillation detection: two consecutive Newton steps with a
         // strongly negative cosine signal back-and-forth motion. Skip the
@@ -415,10 +411,8 @@ pub fn solve_velocity_newton(
         // gave up with α = 0) to avoid spurious NaN.
         if k >= newton_config.min_iterations_before_classification {
             if let Some(ref prev) = prev_delta_v {
-                let dot: f64 =
-                    actual_step.iter().zip(prev.iter()).map(|(a, b)| a * b).sum();
-                let n_curr: f64 =
-                    actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
+                let dot: f64 = actual_step.iter().zip(prev.iter()).map(|(a, b)| a * b).sum();
+                let n_curr: f64 = actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
                 let n_prev: f64 = prev.iter().map(|x| x * x).sum::<f64>().sqrt();
                 let denom = n_curr * n_prev;
                 if denom > 1e-30 {
@@ -460,10 +454,8 @@ pub fn solve_velocity_newton(
         if k >= newton_config.min_iterations_before_classification
             && residual_history.len() > newton_config.trend_window
         {
-            let v_state_norm: f64 =
-                v_old.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-30);
-            let step_norm: f64 =
-                actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
+            let v_state_norm: f64 = v_old.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-30);
+            let step_norm: f64 = actual_step.iter().map(|x| x * x).sum::<f64>().sqrt();
             let relative_step = step_norm / v_state_norm;
 
             let trend_idx = residual_history.len() - 1 - newton_config.trend_window;
@@ -489,11 +481,9 @@ pub fn solve_velocity_newton(
             let path_state_frozen =
                 relative_step < newton_config.state_tolerance && trend_descending;
             let near_tolerance = f_norm
-                < newton_config.tolerance
-                    * b_norm
-                    * newton_config.stagnation_residual_multiplier;
-            let path_residual_stagnant = near_tolerance
-                && window_spread < newton_config.stagnation_spread_threshold;
+                < newton_config.tolerance * b_norm * newton_config.stagnation_residual_multiplier;
+            let path_residual_stagnant =
+                near_tolerance && window_spread < newton_config.stagnation_spread_threshold;
 
             if path_state_frozen || path_residual_stagnant {
                 let reason = if path_state_frozen {
@@ -503,11 +493,7 @@ pub fn solve_velocity_newton(
                 };
                 debug!(
                     newton_iter = k,
-                    relative_step,
-                    f_norm,
-                    window_spread,
-                    reason,
-                    "state-based convergence"
+                    relative_step, f_norm, window_spread, reason, "state-based convergence"
                 );
                 unpack_velocity(&ws.v_packed, grid);
                 let final_residual = f_norm / b_norm;
@@ -558,11 +544,8 @@ pub fn solve_velocity_newton(
         NewtonOutcome::MaxIterations
     };
 
-    let final_residual = residual_history
-        .last()
-        .copied()
-        .map(|r| r / b_norm_global)
-        .unwrap_or(f64::NAN);
+    let final_residual =
+        residual_history.last().copied().map(|r| r / b_norm_global).unwrap_or(f64::NAN);
 
     debug!(
         outcome = ?final_outcome,

@@ -83,12 +83,13 @@ fn stein_stein_reproduces_5_age_points() {
     ];
 
     eprintln!("c1_phase_2 Stage V Test 1 — Stein-Stein 1992 5-point quantitative anchor:");
-    eprintln!(
-        "  Reference: Stein & Stein (1992), Nature 359:123-129, Table 1 (GDH1 plate model)"
-    );
+    eprintln!("  Reference: Stein & Stein (1992), Nature 359:123-129, Table 1 (GDH1 plate model)");
     eprintln!("  Tolerance: ±50.0 m");
     eprintln!();
-    eprintln!("    {:>8} | {:>12} | {:>12} | {:>10}", "Age (Ma)", "S-S pub (m)", "Computed (m)", "Error (m)");
+    eprintln!(
+        "    {:>8} | {:>12} | {:>12} | {:>10}",
+        "Age (Ma)", "S-S pub (m)", "Computed (m)", "Error (m)"
+    );
     eprintln!("    {:->8}-+-{:->12}-+-{:->12}-+-{:->10}", "", "", "", "");
 
     let mut max_error_m = 0.0_f64;
@@ -135,7 +136,10 @@ fn ridge_axis_shallower_than_asymptote() {
     let asymptote_depth = stein_stein_depth(1000.0, &params);
 
     eprintln!("c1_phase_2 Stage V Test 2 — ridge_axis_shallower_than_asymptote:");
-    eprintln!("  ridge_depth (t = 0 Ma)        = {:.3} m (params.ridge_depth_m = {})", ridge_depth, params.ridge_depth_m);
+    eprintln!(
+        "  ridge_depth (t = 0 Ma)        = {:.3} m (params.ridge_depth_m = {})",
+        ridge_depth, params.ridge_depth_m
+    );
     eprintln!(
         "  asymptote_depth (t = 1000 Ma) = {:.3} m (params.asymptotic_depth_m = {})",
         asymptote_depth, params.asymptotic_depth_m
@@ -255,9 +259,7 @@ fn continental_cells_unmodified() {
     eprintln!(
         "  Continental cells: {continental_changed} / {continental_count} modified (expected 0)"
     );
-    eprintln!(
-        "  Oceanic cells:     {oceanic_changed} / {oceanic_count} modified (expected > 0)"
-    );
+    eprintln!("  Oceanic cells:     {oceanic_changed} / {oceanic_count} modified (expected > 0)");
     eprintln!(
         "  Sample oceanic altitude post-S-S: {sample_oceanic_altitude:.4} \
          (age = 50 → age_ma ≈ 33 → depth ≈ 5000 m → altitude ≈ −1.0)"

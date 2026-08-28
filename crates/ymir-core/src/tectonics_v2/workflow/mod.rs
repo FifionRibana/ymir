@@ -43,9 +43,9 @@ pub mod phase_a_common;
 // (consumes `Field2D + sea_level + iso_config`, no
 // `BaselineResult`); H1 audit § 2.2 confirmed it is safe to un-gate.
 // See `docs/migrations/harness_paradigm_agnostic.md`.
+pub mod phase_a_c1;
 #[cfg(feature = "v2_legacy")]
 pub mod phase_a_v2;
-pub mod phase_a_c1;
 pub mod phase_b;
 
 use serde::{Deserialize, Serialize};
@@ -55,12 +55,12 @@ use crate::terrain::upscale::FbmUpscaleConfig;
 
 pub use macro_redistribution::RedistributionStats;
 
+pub use phase_a_c1::{PhaseACycleInputC1, PhaseACycleOutputC1, run_phase_a_cycle_c1};
 #[cfg(feature = "v2_legacy")]
 pub use phase_a_v2::{
     final_state_to_continuation_v2, run_phase_a_cycle_v2, run_phase_a_cycle_with_progress_v2,
     run_phase_a_loop_v2,
 };
-pub use phase_a_c1::{run_phase_a_cycle_c1, PhaseACycleInputC1, PhaseACycleOutputC1};
 pub use phase_b::run_phase_b;
 
 /// Top-level workflow on/off switch.
@@ -95,10 +95,7 @@ pub struct WorkflowParams {
 
 impl Default for WorkflowParams {
     fn default() -> Self {
-        Self {
-            phase_a: PhaseAParams::default(),
-            phase_b: PhaseBParams::default(),
-        }
+        Self { phase_a: PhaseAParams::default(), phase_b: PhaseBParams::default() }
     }
 }
 

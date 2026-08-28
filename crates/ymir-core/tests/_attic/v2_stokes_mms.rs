@@ -21,14 +21,9 @@
 use std::f64::consts::PI;
 
 use ymir_core::tectonics_v2::field::Field2D;
-use ymir_core::tectonics_v2::stokes::{solve_sheet, Grid, SheetConfig};
+use ymir_core::tectonics_v2::stokes::{Grid, SheetConfig, solve_sheet};
 
-fn build_mms(
-    nx: usize,
-    ny: usize,
-    dx: f64,
-    dy: f64,
-) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+fn build_mms(nx: usize, ny: usize, dx: f64, dy: f64) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
     let n = nx * ny;
     let mut fx = vec![0.0; n];
     let mut fy = vec![0.0; n];

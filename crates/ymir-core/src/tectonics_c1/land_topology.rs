@@ -251,7 +251,10 @@ pub fn land_topology(altitude_norm: &GridF32, sea_level_norm: f32) -> LandTopolo
         straddles_x: m.straddles_x,
         straddles_y: m.straddles_y,
         bbox_min: (m.roll_x, m.roll_y),
-        bbox_max: (m.roll_x + m.extent_x.saturating_sub(1), m.roll_y + m.extent_y.saturating_sub(1)),
+        bbox_max: (
+            m.roll_x + m.extent_x.saturating_sub(1),
+            m.roll_y + m.extent_y.saturating_sub(1),
+        ),
         bbox_km: (m.extent_x as f32 * km_per_cell, m.extent_y as f32 * km_per_cell),
         center_cell: (m.center_x, m.center_y),
         roll_origin: (m.roll_x, m.roll_y),
@@ -686,8 +689,7 @@ pub fn domain_metrics(
             *sizes.entry(ds.find(k)).or_insert(0) += 1;
         }
     }
-    let largest_root =
-        sizes.iter().max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0))).map(|(&r, _)| r);
+    let largest_root = sizes.iter().max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0))).map(|(&r, _)| r);
 
     // Map-frame (un-rolled) bounding box of the largest mass → per-side margins.
     let (mut x0, mut x1, mut y0, mut y1) = (w, 0usize, h, 0usize);
@@ -739,14 +741,10 @@ pub fn domain_metrics(
         }
     }
     let border_depth_median_m = median_f32(&mut ring);
-    let border_depth_frac = if asymptotic_depth_m > 0.0 {
-        border_depth_median_m / asymptotic_depth_m
-    } else {
-        0.0
-    };
+    let border_depth_frac =
+        if asymptotic_depth_m > 0.0 { border_depth_median_m / asymptotic_depth_m } else { 0.0 };
     let border_depth_ok = border_depth_frac >= BORDER_DEPTH_MIN_FRAC;
-    let deepest_ocean_m =
-        (0..n).filter(|&k| !is_land(k)).map(depth_m).fold(0.0f32, f32::max);
+    let deepest_ocean_m = (0..n).filter(|&k| !is_land(k)).map(depth_m).fold(0.0f32, f32::max);
 
     // Distance-from-coastline (periodic multi-source BFS over ocean) → median
     // depth per ring → first distance whose median reaches 90 % of the asymptote.

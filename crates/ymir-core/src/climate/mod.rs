@@ -59,7 +59,14 @@ pub fn c1_biomes_classified_wet(
     wetland: &[u8],
 ) -> Vec<biomes::Biome> {
     let wc = crate::lakes::connectivity::water_class(heightmap, precipitation::SEA_LEVEL_NORM);
-    biomes::compute_biomes(heightmap, &climate.temperature, &climate.precipitation, &wc, lake_map, wetland)
+    biomes::compute_biomes(
+        heightmap,
+        &climate.temperature,
+        &climate.precipitation,
+        &wc,
+        lake_map,
+        wetland,
+    )
 }
 
 /// Derive (temperature, precipitation) from the C1 relief at a centre latitude.

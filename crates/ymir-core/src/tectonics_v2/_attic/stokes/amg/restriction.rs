@@ -54,13 +54,7 @@ pub fn transpose_to_restriction(p: &CsrMatrix) -> CsrMatrix {
         }
     }
 
-    CsrMatrix {
-        n_rows: n_coarse,
-        n_cols: n_fine,
-        row_ptr,
-        col_idx,
-        values,
-    }
+    CsrMatrix { n_rows: n_coarse, n_cols: n_fine, row_ptr, col_idx, values }
 }
 
 #[cfg(test)]
@@ -111,14 +105,7 @@ mod tests {
         apply_csr_t(&p, &x, &mut y_pt);
         for k in 0..y_r.len() {
             let rel = (y_r[k] - y_pt[k]).abs() / y_pt[k].abs().max(1e-300);
-            assert!(
-                rel < 1e-14,
-                "R·x[{}] = {:.6e}, Pᵀ·x[{}] = {:.6e}",
-                k,
-                y_r[k],
-                k,
-                y_pt[k]
-            );
+            assert!(rel < 1e-14, "R·x[{}] = {:.6e}, Pᵀ·x[{}] = {:.6e}", k, y_r[k], k, y_pt[k]);
         }
     }
 

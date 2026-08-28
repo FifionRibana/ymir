@@ -134,16 +134,8 @@ pub fn apply_stein_stein_bathymetry(
     }
     let nx = altitude.width;
     let ny = altitude.height;
-    debug_assert_eq!(
-        age.nx(),
-        nx,
-        "Stein-Stein: age field nx must match altitude grid"
-    );
-    debug_assert_eq!(
-        age.ny(),
-        ny,
-        "Stein-Stein: age field ny must match altitude grid"
-    );
+    debug_assert_eq!(age.nx(), nx, "Stein-Stein: age field nx must match altitude grid");
+    debug_assert_eq!(age.ny(), ny, "Stein-Stein: age field ny must match altitude grid");
     debug_assert_eq!(
         plate_type.nx(),
         nx,
@@ -317,10 +309,7 @@ mod tests {
     fn apply_bathymetry_skips_disabled() {
         let (mut altitude, age, plate_type) = split_continental_oceanic(4, 4);
         let initial = altitude.data.clone();
-        let params = SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        };
+        let params = SteinSteinParams { enabled: false, ..SteinSteinParams::default() };
 
         apply_stein_stein_bathymetry(&mut altitude, &age, &plate_type, &params);
 

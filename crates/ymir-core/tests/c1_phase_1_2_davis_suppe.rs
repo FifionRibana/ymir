@@ -51,7 +51,7 @@ use std::path::{Path, PathBuf};
 
 use image::{ImageBuffer, Rgb};
 
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
 use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
@@ -65,7 +65,7 @@ use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
 use ymir_core::tectonics_c1::time_loop::{
-    run_advection_only, run_with_closures, C1Closures, C1TimeLoopConfig,
+    C1Closures, C1TimeLoopConfig, run_advection_only, run_with_closures,
 };
 use ymir_core::tectonics_v2::field::Field2D;
 
@@ -80,8 +80,7 @@ const N_STEPS: usize = 300;
 const S_VIZ_MAX: f64 = 3.0;
 
 fn output_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/reports/c1_phase_1_2_davis_suppe")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/reports/c1_phase_1_2_davis_suppe")
 }
 
 #[test]
@@ -115,26 +114,11 @@ fn davis_suppe_wedge_body_invariants() {
             enabled: false,
             ..EquilibriumHeightParams::default()
         },
-        erosion: ErosionParams {
-            enabled: false,
-            ..ErosionParams::default()
-        },
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        erosion: ErosionParams { enabled: false, ..ErosionParams::default() },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
     };
     let h_max = closures.davis_suppe.h_max;
 
@@ -153,23 +137,17 @@ fn davis_suppe_wedge_body_invariants() {
     let snapshot_steps: [usize; 4] = [49, 99, 199, 299];
 
     let started = std::time::Instant::now();
-    run_with_closures(
-        &mut state,
-        &mut kinematics,
-        &config,
-        &closures,
-        |step, current_state| {
-            assert!(
-                current_state.s.data().iter().all(|v| v.is_finite()),
-                "non-finite S̃ at step {}",
-                step + 1
-            );
-            if snapshot_steps.contains(&step) {
-                print_s_stats(&format!("{:03}", step + 1), current_state);
-                dump_snapshot(current_state, step + 1, &dir);
-            }
-        },
-    );
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |step, current_state| {
+        assert!(
+            current_state.s.data().iter().all(|v| v.is_finite()),
+            "non-finite S̃ at step {}",
+            step + 1
+        );
+        if snapshot_steps.contains(&step) {
+            print_s_stats(&format!("{:03}", step + 1), current_state);
+            dump_snapshot(current_state, step + 1, &dir);
+        }
+    });
     let elapsed = started.elapsed();
 
     // Re-classify boundaries + recompute wedge distance on the
@@ -223,11 +201,7 @@ fn davis_suppe_wedge_body_invariants() {
     let wedge_p99 = wedge_values[(n * 99) / 100];
 
     let bucket_mean: [f64; 3] = std::array::from_fn(|b| {
-        if bucket_count[b] > 0 {
-            bucket_sum[b] / bucket_count[b] as f64
-        } else {
-            f64::NAN
-        }
+        if bucket_count[b] > 0 { bucket_sum[b] / bucket_count[b] as f64 } else { f64::NAN }
     });
     let h_crit_at = |d: f64| -> f64 {
         closures.davis_suppe.h_max * (1.0 - (-d / closures.davis_suppe.l_taper).exp())
@@ -242,17 +216,11 @@ fn davis_suppe_wedge_body_invariants() {
     eprintln!("c1_phase_1_2: wedge S̃  p95                 = {wedge_p95:.4}");
     eprintln!("c1_phase_1_2: wedge S̃  p99                 = {wedge_p99:.4}");
     eprintln!("c1_phase_1_2: wedge S̃  max                 = {wedge_max:.4}");
-    eprintln!(
-        "c1_phase_1_2: h_critical profile (mean S̃ per distance bucket):"
-    );
+    eprintln!("c1_phase_1_2: h_critical profile (mean S̃ per distance bucket):");
     for (b, &(lo, hi)) in bucket_edges.iter().enumerate() {
         let mid = (lo + hi) / 2.0;
         let h_crit_mid = h_crit_at(mid);
-        let fill = if h_crit_mid > 0.0 {
-            bucket_mean[b] / h_crit_mid
-        } else {
-            f64::NAN
-        };
+        let fill = if h_crit_mid > 0.0 { bucket_mean[b] / h_crit_mid } else { f64::NAN };
         eprintln!(
             "    d ∈ ({lo:>4.1}, {hi:>4.1}]  count = {:>5}  mean S̃ = {:.4}  h_crit(mid) = {:.4}  fill = {:.3}",
             bucket_count[b], bucket_mean[b], h_crit_mid, fill
@@ -264,15 +232,9 @@ fn davis_suppe_wedge_body_invariants() {
     let fill_near = bucket_mean[0] / h_crit_at(2.5);
     let fill_far = bucket_mean[2] / h_crit_at(15.0);
     let asymmetry = bucket_mean[0] / bucket_mean[2]; // near / far
-    eprintln!(
-        "c1_phase_1_2: fill_near (d∈0-5)  / h_crit(2.5)   = {fill_near:.3}  (need > 0.5)"
-    );
-    eprintln!(
-        "c1_phase_1_2: fill_far  (d∈10-20)/ h_crit(15.0)  = {fill_far:.3}  (informational)"
-    );
-    eprintln!(
-        "c1_phase_1_2: asymmetry mean(0-5) / mean(10-20)  = {asymmetry:.3}  (need > 1.5)"
-    );
+    eprintln!("c1_phase_1_2: fill_near (d∈0-5)  / h_crit(2.5)   = {fill_near:.3}  (need > 0.5)");
+    eprintln!("c1_phase_1_2: fill_far  (d∈10-20)/ h_crit(15.0)  = {fill_far:.3}  (informational)");
+    eprintln!("c1_phase_1_2: asymmetry mean(0-5) / mean(10-20)  = {asymmetry:.3}  (need > 1.5)");
     eprintln!(
         "c1_phase_1_2: global_max (boundary pile-up) = {global_max:.2}  (no Phase 1.2 bound — Phase 1.4 erosion sink)",
     );
@@ -371,10 +333,7 @@ fn davis_suppe_disabled_matches_phase_1_1() {
     };
     run_advection_only(&mut state, &kinematics, &config, |_, _| {});
     let final_max = state.s.data().iter().cloned().fold(0.0_f64, f64::max);
-    eprintln!(
-        "c1_phase_1_2_disabled: final max S̃ = {:.2} (Phase 1.1 baseline ~1080)",
-        final_max
-    );
+    eprintln!("c1_phase_1_2_disabled: final max S̃ = {:.2} (Phase 1.1 baseline ~1080)", final_max);
     // The 100 threshold gives plenty of headroom for tiny
     // numerical differences from Phase 1.1 (which reported 1080)
     // without conflating any closure leak.
@@ -403,9 +362,7 @@ fn print_s_stats(tag: &str, state: &C1State) {
         sq += (v - mean) * (v - mean);
     }
     let std = (sq / data.len() as f64).sqrt();
-    eprintln!(
-        "c1_phase_1_2: cycle_{tag} S̃ min={min:.4} mean={mean:.4} max={max:.4} std={std:.4e}"
-    );
+    eprintln!("c1_phase_1_2: cycle_{tag} S̃ min={min:.4} mean={mean:.4} max={max:.4} std={std:.4e}");
 }
 
 fn dump_snapshot(state: &C1State, cycle: usize, dir: &Path) {
@@ -417,11 +374,7 @@ fn dump_snapshot(state: &C1State, cycle: usize, dir: &Path) {
     save_s_fixed_palette_png(&state.s, S_VIZ_MAX, &s_path);
 }
 
-fn save_hypsometric_png(
-    heightmap: &ymir_core::grid::GridF32,
-    sea_norm: f32,
-    path: &Path,
-) {
+fn save_hypsometric_png(heightmap: &ymir_core::grid::GridF32, sea_norm: f32, path: &Path) {
     let nx = heightmap.width;
     let ny = heightmap.height;
     let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(nx as u32, ny as u32);

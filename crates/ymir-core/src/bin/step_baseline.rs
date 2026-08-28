@@ -19,18 +19,18 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use ymir_core::tectonics_v2::diagnostics::ar_sweep::{self, ArSweepResults};
 use ymir_core::tectonics_v2::diagnostics::bi_sweep::{self, BiSweepResults};
 use ymir_core::tectonics_v2::diagnostics::br_sweep::{self, BrSweepResults};
-use ymir_core::tectonics_v2::diagnostics::comparison::{parse_step_report, StepReference};
+use ymir_core::tectonics_v2::diagnostics::comparison::{StepReference, parse_step_report};
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
 use ymir_core::tectonics_v2::diagnostics::mms_bench;
 use ymir_core::tectonics_v2::diagnostics::report::{
-    write_markdown_report, ReportInputs, ReportKind,
+    ReportInputs, ReportKind, write_markdown_report,
 };
-use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
 use ymir_core::tectonics_v2::rheology::YieldingLaw;
 use ymir_core::tectonics_v2::scales::Scales;
@@ -48,10 +48,9 @@ impl ForcingSelection {
             "gpe" => Ok(Self::Gpe),
             "sinusoidal" => Ok(Self::Sinusoidal),
             "both" => Ok(Self::Both),
-            other => Err(format!(
-                "unknown --forcing value '{}'; expected gpe|sinusoidal|both",
-                other,
-            )),
+            other => {
+                Err(format!("unknown --forcing value '{}'; expected gpe|sinusoidal|both", other,))
+            }
         }
     }
 }
@@ -111,21 +110,67 @@ fn parse_args() -> Result<Args, String> {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--seed" => { i += 1; seed = args[i].parse().map_err(|e| format!("bad --seed: {e}"))?; }
-            "--grids" => { i += 1; grids_str = args[i].clone(); }
-            "--steps" => { i += 1; steps = args[i].parse().map_err(|e| format!("bad --steps: {e}"))?; }
-            "--output-dir" | "--output" => { i += 1; output_dir = PathBuf::from(&args[i]); }
-            "--preset" => { i += 1; preset_name = args[i].clone(); }
-            "--nonlinear-solver" => { i += 1; nonlinear_str = args[i].clone(); }
-            "--compare-to" => { i += 1; compare_to = Some(PathBuf::from(&args[i])); }
-            "--compare-to-physics" => { i += 1; compare_to_physics = Some(PathBuf::from(&args[i])); }
-            "--compare-to-regression" => { i += 1; compare_to_regression = Some(PathBuf::from(&args[i])); }
-            "--forcing" => { i += 1; forcing_str = args[i].clone(); }
-            "--sinusoidal-amplitude" => { i += 1; sin_amp = args[i].parse().map_err(|e| format!("bad --sinusoidal-amplitude: {e}"))?; }
-            "--yielding-config" => { i += 1; yielding_str = Some(args[i].clone()); }
-            "--bi" => { i += 1; bi = args[i].parse().map_err(|e| format!("bad --bi: {e}"))?; }
-            "--basal-drag-config" => { i += 1; basal_drag_str = Some(args[i].clone()); }
-            "--br" => { i += 1; br = args[i].parse().map_err(|e| format!("bad --br: {e}"))?; }
+            "--seed" => {
+                i += 1;
+                seed = args[i].parse().map_err(|e| format!("bad --seed: {e}"))?;
+            }
+            "--grids" => {
+                i += 1;
+                grids_str = args[i].clone();
+            }
+            "--steps" => {
+                i += 1;
+                steps = args[i].parse().map_err(|e| format!("bad --steps: {e}"))?;
+            }
+            "--output-dir" | "--output" => {
+                i += 1;
+                output_dir = PathBuf::from(&args[i]);
+            }
+            "--preset" => {
+                i += 1;
+                preset_name = args[i].clone();
+            }
+            "--nonlinear-solver" => {
+                i += 1;
+                nonlinear_str = args[i].clone();
+            }
+            "--compare-to" => {
+                i += 1;
+                compare_to = Some(PathBuf::from(&args[i]));
+            }
+            "--compare-to-physics" => {
+                i += 1;
+                compare_to_physics = Some(PathBuf::from(&args[i]));
+            }
+            "--compare-to-regression" => {
+                i += 1;
+                compare_to_regression = Some(PathBuf::from(&args[i]));
+            }
+            "--forcing" => {
+                i += 1;
+                forcing_str = args[i].clone();
+            }
+            "--sinusoidal-amplitude" => {
+                i += 1;
+                sin_amp =
+                    args[i].parse().map_err(|e| format!("bad --sinusoidal-amplitude: {e}"))?;
+            }
+            "--yielding-config" => {
+                i += 1;
+                yielding_str = Some(args[i].clone());
+            }
+            "--bi" => {
+                i += 1;
+                bi = args[i].parse().map_err(|e| format!("bad --bi: {e}"))?;
+            }
+            "--basal-drag-config" => {
+                i += 1;
+                basal_drag_str = Some(args[i].clone());
+            }
+            "--br" => {
+                i += 1;
+                br = args[i].parse().map_err(|e| format!("bad --br: {e}"))?;
+            }
             "--help" | "-h" => {
                 println!(
                     "Usage: step_baseline [--seed N] [--grids N1,N2,...] [--steps N] \
@@ -147,7 +192,9 @@ fn parse_args() -> Result<Args, String> {
     let mut grids: Vec<(usize, usize)> = Vec::new();
     for tok in grids_str.split(',') {
         let tok = tok.trim();
-        if tok.is_empty() { continue; }
+        if tok.is_empty() {
+            continue;
+        }
         if let Some((a, b)) = tok.split_once('x') {
             let nx: usize = a.parse().map_err(|e| format!("bad grid {tok}: {e}"))?;
             let ny: usize = b.parse().map_err(|e| format!("bad grid {tok}: {e}"))?;
@@ -189,7 +236,10 @@ fn parse_args() -> Result<Args, String> {
         None => None,
     };
     Ok(Args {
-        seed, grids, steps, output_dir,
+        seed,
+        grids,
+        steps,
+        output_dir,
         preset: Preset::by_name(&preset_name)?,
         nonlinear: NonlinearChoice::parse(&nonlinear_str)?,
         compare_to,
@@ -224,11 +274,7 @@ fn run_scenario(
     let mut configs = Vec::new();
     let mut metrics = Vec::new();
 
-    println!(
-        "\n=== scenario: {} (writing {}) ===",
-        kind.label(),
-        report_file,
-    );
+    println!("\n=== scenario: {} (writing {}) ===", kind.label(), report_file,);
 
     // Physics: amplified perturbation so GPE response is visible at
     // Ar = 0.1. Regression: 0.02 to preserve the Step-1 mirror.
@@ -250,10 +296,9 @@ fn run_scenario(
     // Basal drag default per-scenario: physics Enabled(Br),
     // regression Disabled. `--basal-drag-config` overrides.
     let basal_drag = args.basal_drag_override.unwrap_or_else(|| match kind {
-        ForceKind::Gpe => BasalDragConfig::Enabled(BasalDragLaw {
-            br: args.br,
-            ..BasalDragLaw::default()
-        }),
+        ForceKind::Gpe => {
+            BasalDragConfig::Enabled(BasalDragLaw { br: args.br, ..BasalDragLaw::default() })
+        }
         ForceKind::Sinusoidal => BasalDragConfig::Disabled,
     });
 
@@ -307,7 +352,10 @@ fn run_scenario(
             let (c, s, d, cap) = na.outcome_percentages();
             println!(
                 "  Newton outcomes — conv {:.1}%, stall {:.1}%, div {:.1}%, cap {:.1}%; η_max/η_min mean {:.2}, max {:.2}",
-                c, s, d, cap,
+                c,
+                s,
+                d,
+                cap,
                 na.eta_contrast_mean(),
                 na.eta_contrast_max(),
             );
@@ -349,7 +397,10 @@ fn run_scenario(
 fn main() -> ExitCode {
     let args = match parse_args() {
         Ok(a) => a,
-        Err(e) => { eprintln!("argument error: {e}"); return ExitCode::from(2); }
+        Err(e) => {
+            eprintln!("argument error: {e}");
+            return ExitCode::from(2);
+        }
     };
 
     let scales = Scales::default();
@@ -376,20 +427,30 @@ fn main() -> ExitCode {
     // inheriting a leftover regression-mirror comparison that
     // points at the wrong scenario (the bug Step 4 caught where
     // physics was being compared against Step-3 regression).
-    let resolve_previous = |kind: ReportKind, override_path: Option<&PathBuf>| -> Option<StepReference> {
-        let path = override_path
-            .cloned()
-            .or_else(|| args.compare_to.clone())
-            .unwrap_or_else(|| ymir_core::tectonics_v2::diagnostics::report::default_previous_report_for(kind, &args.output_dir));
+    let resolve_previous = |kind: ReportKind,
+                            override_path: Option<&PathBuf>|
+     -> Option<StepReference> {
+        let path =
+            override_path.cloned().or_else(|| args.compare_to.clone()).unwrap_or_else(|| {
+                ymir_core::tectonics_v2::diagnostics::report::default_previous_report_for(
+                    kind,
+                    &args.output_dir,
+                )
+            });
         if !path.exists() {
-            eprintln!("note: previous-step report not found at {:?} — comparison block will be omitted", path);
+            eprintln!(
+                "note: previous-step report not found at {:?} — comparison block will be omitted",
+                path
+            );
             return None;
         }
         match parse_step_report(&path) {
             Ok(r) => {
                 println!(
                     "{:?} → parsed previous report {:?} ({} grids)",
-                    kind, path, r.grids.len(),
+                    kind,
+                    path,
+                    r.grids.len(),
                 );
                 Some(r)
             }
@@ -421,14 +482,16 @@ fn main() -> ExitCode {
     let br_sweep_res: Option<BrSweepResults> = if run_gpe {
         println!("-- running Br sweep (64²·{} steps × 5 points) --", args.steps);
         let br_values = [0.01_f64, 0.05, 0.10, 0.20, 0.30];
-        let res = br_sweep::run_br_sweep(
-            args.seed, args.steps, &args.preset, 0.2, &br_values,
-        );
+        let res = br_sweep::run_br_sweep(args.seed, args.steps, &args.preset, 0.2, &br_values);
         for p in &res.points {
             println!(
                 "  Br={:.3}: peak|v|={:.3e} CG={:.1} Newton_iter={:.1} conv={:.0}% wallclock {:.3}s",
-                p.br, p.peak_v, p.cg_iter_mean, p.newton_iter_mean,
-                p.newton_converged_pct, p.wallclock_s,
+                p.br,
+                p.peak_v,
+                p.cg_iter_mean,
+                p.newton_iter_mean,
+                p.newton_converged_pct,
+                p.wallclock_s,
             );
         }
         Some(res)
@@ -445,13 +508,16 @@ fn main() -> ExitCode {
     // physics run is compared against step{N-1}_physics_report.md,
     // the regression run against step{N-1}_regression_report.md.
     let regression_vmax: Option<f64> = if run_sin {
-        let previous_regression = resolve_previous(
-            ReportKind::Step4Regression,
-            args.compare_to_regression.as_ref(),
-        );
+        let previous_regression =
+            resolve_previous(ReportKind::Step4Regression, args.compare_to_regression.as_ref());
         match run_scenario(
-            &args, ForceKind::Sinusoidal, ReportKind::Step4Regression,
-            "step4_regression_report.md", &scales, previous_regression.as_ref(), &mms,
+            &args,
+            ForceKind::Sinusoidal,
+            ReportKind::Step4Regression,
+            "step4_regression_report.md",
+            &scales,
+            previous_regression.as_ref(),
+            &mms,
             None,
             None,
             None,
@@ -467,13 +533,16 @@ fn main() -> ExitCode {
         None
     };
     if run_gpe {
-        let previous_physics = resolve_previous(
-            ReportKind::Step4Physics,
-            args.compare_to_physics.as_ref(),
-        );
+        let previous_physics =
+            resolve_previous(ReportKind::Step4Physics, args.compare_to_physics.as_ref());
         if let Err(e) = run_scenario(
-            &args, ForceKind::Gpe, ReportKind::Step4Physics,
-            "step4_physics_report.md", &scales, previous_physics.as_ref(), &mms,
+            &args,
+            ForceKind::Gpe,
+            ReportKind::Step4Physics,
+            "step4_physics_report.md",
+            &scales,
+            previous_physics.as_ref(),
+            &mms,
             ar_sweep_res.as_ref(),
             bi_sweep_res.as_ref(),
             br_sweep_res.as_ref(),

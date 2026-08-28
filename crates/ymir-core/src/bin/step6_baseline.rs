@@ -23,16 +23,16 @@ use std::process::ExitCode;
 
 use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use ymir_core::tectonics_v2::boundaries::{
-    horizontal_oceanic_strip, BoundaryConfig, BoundaryRates,
+    BoundaryConfig, BoundaryRates, horizontal_oceanic_strip,
 };
 use ymir_core::tectonics_v2::diagnostics::comparison::parse_step_report;
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
 use ymir_core::tectonics_v2::diagnostics::mms_bench;
 use ymir_core::tectonics_v2::diagnostics::num_plates_sweep::run_num_plates_sweep;
 use ymir_core::tectonics_v2::diagnostics::report::{
-    default_previous_report_for, write_markdown_report, ReportInputs, ReportKind,
+    ReportInputs, ReportKind, default_previous_report_for, write_markdown_report,
 };
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
 use ymir_core::tectonics_v2::recycling::RecyclingConfig;
@@ -64,13 +64,18 @@ fn parse_args() -> Result<Args, String> {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--seed" => { i += 1; a.seed = args[i].parse().map_err(|e| format!("bad --seed: {e}"))?; }
+            "--seed" => {
+                i += 1;
+                a.seed = args[i].parse().map_err(|e| format!("bad --seed: {e}"))?;
+            }
             "--grids" => {
                 i += 1;
                 let mut grids = Vec::new();
                 for tok in args[i].split(',') {
                     let tok = tok.trim();
-                    if tok.is_empty() { continue; }
+                    if tok.is_empty() {
+                        continue;
+                    }
                     if let Some((x, y)) = tok.split_once('x') {
                         let nx: usize = x.parse().map_err(|e| format!("{tok}: {e}"))?;
                         let ny: usize = y.parse().map_err(|e| format!("{tok}: {e}"))?;
@@ -80,13 +85,31 @@ fn parse_args() -> Result<Args, String> {
                         grids.push((n, n));
                     }
                 }
-                if !grids.is_empty() { a.grids = grids; }
+                if !grids.is_empty() {
+                    a.grids = grids;
+                }
             }
-            "--steps" => { i += 1; a.steps = args[i].parse().map_err(|e| format!("bad --steps: {e}"))?; }
-            "--output-dir" | "--output" => { i += 1; a.output_dir = PathBuf::from(&args[i]); }
-            "--preset" => { i += 1; a.preset = Preset::by_name(&args[i])?; }
-            "--num-plates" => { i += 1; a.num_plates = args[i].parse().map_err(|e| format!("bad --num-plates: {e}"))?; }
-            "--continental-ratio" => { i += 1; a.continental_ratio = args[i].parse().map_err(|e| format!("bad --continental-ratio: {e}"))?; }
+            "--steps" => {
+                i += 1;
+                a.steps = args[i].parse().map_err(|e| format!("bad --steps: {e}"))?;
+            }
+            "--output-dir" | "--output" => {
+                i += 1;
+                a.output_dir = PathBuf::from(&args[i]);
+            }
+            "--preset" => {
+                i += 1;
+                a.preset = Preset::by_name(&args[i])?;
+            }
+            "--num-plates" => {
+                i += 1;
+                a.num_plates = args[i].parse().map_err(|e| format!("bad --num-plates: {e}"))?;
+            }
+            "--continental-ratio" => {
+                i += 1;
+                a.continental_ratio =
+                    args[i].parse().map_err(|e| format!("bad --continental-ratio: {e}"))?;
+            }
             "--help" | "-h" => {
                 println!(
                     "Usage: step6_baseline [--seed N] [--grids N1,N2,...] [--steps N] \
@@ -111,25 +134,17 @@ fn run_voronoi_config(
     ymir_core::tectonics_v2::diagnostics::metrics::SolverConfigDump,
 ) {
     let scales = Scales::default();
-    let vcfg = VoronoiConfig {
-        num_plates: args.num_plates,
-        continental_ratio: args.continental_ratio,
-    };
+    let vcfg =
+        VoronoiConfig { num_plates: args.num_plates, continental_ratio: args.continental_ratio };
     // k_sub retained as the only rate; k_spread/k_arc/k_coll_v/k_rift_v
     // are ignored in Closed mode, so we zero them to make the config
     // dump unambiguous.
-    let rates = BoundaryRates {
-        k_sub: 0.5,
-        k_arc: 0.0,
-        k_spread: 0.0,
-        k_coll_v: 0.0,
-        k_rift_v: 0.0,
-    };
+    let rates =
+        BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
     let recycling_config = RecyclingConfig::default();
-    let boundary = BoundaryConfig::enabled_voronoi_closed(
-        nx, ny, &vcfg, args.seed, rates, recycling_config,
-    )
-    .expect("recycling config valid");
+    let boundary =
+        BoundaryConfig::enabled_voronoi_closed(nx, ny, &vcfg, args.seed, rates, recycling_config)
+            .expect("recycling config valid");
     let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
     let cfg = BaselineConfig {
         seed: args.seed,
@@ -151,10 +166,7 @@ fn run_voronoi_config(
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
         yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05,
-            ..BasalDragLaw::default()
-        }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: format!("voronoi_seed{}_n{}", args.seed, args.num_plates),
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
@@ -165,7 +177,7 @@ fn run_voronoi_config(
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     println!("-- running Voronoi physics {}×{} for {} steps --", nx, ny, args.steps);
     let r = run_baseline(&cfg);
@@ -213,10 +225,7 @@ fn run_regression_config(
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
         yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05,
-            ..BasalDragLaw::default()
-        }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: "horizontal_oceanic_strip".into(),
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
@@ -227,7 +236,7 @@ fn run_regression_config(
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     println!("-- running Step 5-shape regression {}×{} for {} steps --", nx, ny, args.steps);
     let r = run_baseline(&cfg);
@@ -244,13 +253,21 @@ fn run_regression_config(
 fn main() -> ExitCode {
     let args = match parse_args() {
         Ok(a) => a,
-        Err(e) => { eprintln!("argument error: {e}"); return ExitCode::from(2); }
+        Err(e) => {
+            eprintln!("argument error: {e}");
+            return ExitCode::from(2);
+        }
     };
     let scales = Scales::default();
     println!("{}", scales.report());
     println!(
         "preset: {} | seed: {} | num_plates: {} | continental_ratio: {:.2} | grids: {:?} | steps: {}",
-        args.preset.name, args.seed, args.num_plates, args.continental_ratio, args.grids, args.steps,
+        args.preset.name,
+        args.seed,
+        args.num_plates,
+        args.continental_ratio,
+        args.grids,
+        args.steps,
     );
     std::fs::create_dir_all(&args.output_dir).ok();
 
@@ -279,18 +296,15 @@ fn main() -> ExitCode {
 
     // -------- Voronoi sweep --------
     println!("\n=== Voronoi num_plates × seed sweep ===");
-    let sweep = run_num_plates_sweep(
-        &[4, 8, 12, 16],
-        &[42, 43, 44, 45],
-        args.steps,
-        &args.preset,
-        0.2,
-    );
+    let sweep =
+        run_num_plates_sweep(&[4, 8, 12, 16], &[42, 43, 44, 45], args.steps, &args.preset, 0.2);
     for p in &sweep.points {
         println!(
             "  num_plates={:>2} seed={}: plate_count={:?} cont_frac={:.3} s_oceanic={:.4} s_cont={:.4} residual={:.3e} wallclock={:.2}s",
-            p.num_plates, p.seed,
-            p.plate_count, p.continental_fraction.unwrap_or(f64::NAN),
+            p.num_plates,
+            p.seed,
+            p.plate_count,
+            p.continental_fraction.unwrap_or(f64::NAN),
             p.s_oceanic_mean.unwrap_or(f64::NAN),
             p.s_continental_interior_mean.unwrap_or(f64::NAN),
             p.mass_conservation_residual.unwrap_or(f64::NAN),

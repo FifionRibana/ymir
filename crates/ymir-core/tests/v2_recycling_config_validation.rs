@@ -18,10 +18,7 @@ fn fractions_not_summing_to_one_rejected() {
         mantle_loss_fraction: 0.0,
         mantle_delay_steps: 10,
     };
-    assert!(matches!(
-        cfg.validate(),
-        Err(RecyclingConfigError::FractionsDoNotSumToOne { .. })
-    ));
+    assert!(matches!(cfg.validate(), Err(RecyclingConfigError::FractionsDoNotSumToOne { .. })));
 }
 
 #[test]
@@ -34,10 +31,7 @@ fn negative_fraction_rejected() {
         mantle_loss_fraction: 0.0,
         mantle_delay_steps: 10,
     };
-    assert!(matches!(
-        cfg.validate(),
-        Err(RecyclingConfigError::NegativeFraction { .. })
-    ));
+    assert!(matches!(cfg.validate(), Err(RecyclingConfigError::NegativeFraction { .. })));
 }
 
 #[test]

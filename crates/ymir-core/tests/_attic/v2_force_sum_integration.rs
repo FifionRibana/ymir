@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, run_baseline,
 };
 use ymir_core::tectonics_v2::forcing::{ForceSum, GpeForce, SinusoidalForce};
 use ymir_core::tectonics_v2::scales::Scales;

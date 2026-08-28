@@ -117,12 +117,8 @@ impl ConvergenceTracker {
         // Per-pair (convergent_edges, divergent_edges) aggregate.
         let mut pair_verdicts: HashMap<(u16, u16), (usize, usize)> = HashMap::new();
 
-        let neighbours: [(i32, i32, f64, f64); 4] = [
-            (1, 0, 1.0, 0.0),
-            (-1, 0, -1.0, 0.0),
-            (0, 1, 0.0, 1.0),
-            (0, -1, 0.0, -1.0),
-        ];
+        let neighbours: [(i32, i32, f64, f64); 4] =
+            [(1, 0, 1.0, 0.0), (-1, 0, -1.0, 0.0), (0, 1, 0.0, 1.0), (0, -1, 0.0, -1.0)];
 
         for j in 0..ny {
             for i in 0..nx {
@@ -146,11 +142,7 @@ impl ConvergenceTracker {
                     if pid_n == pid_c {
                         continue;
                     }
-                    let pair = if pid_c < pid_n {
-                        (pid_c, pid_n)
-                    } else {
-                        (pid_n, pid_c)
-                    };
+                    let pair = if pid_c < pid_n { (pid_c, pid_n) } else { (pid_n, pid_c) };
                     // Canonical perspective: compute v_rel = v_a − v_b
                     // and a normal pointing from a's side toward b's
                     // side. If pid_c is a (pair.0), the outward normal
@@ -160,11 +152,8 @@ impl ConvergenceTracker {
                     let (vx_b, vy_b) = kinematics.velocities[pair.1 as usize];
                     let vrel_x = vx_a - vx_b;
                     let vrel_y = vy_a - vy_b;
-                    let (n_x, n_y) = if pid_c == pair.0 {
-                        (nx_norm, ny_norm)
-                    } else {
-                        (-nx_norm, -ny_norm)
-                    };
+                    let (n_x, n_y) =
+                        if pid_c == pair.0 { (nx_norm, ny_norm) } else { (-nx_norm, -ny_norm) };
                     let dot = vrel_x * n_x + vrel_y * n_y;
                     let entry = pair_verdicts.entry(pair).or_insert((0, 0));
                     if dot > DOT_FLOOR {
@@ -186,8 +175,7 @@ impl ConvergenceTracker {
 
         // Update counters: increment net-convergent pairs, reset
         // every other tracked pair to 0.
-        let mut all_pairs: HashSet<(u16, u16)> =
-            self.convergence_counts.keys().copied().collect();
+        let mut all_pairs: HashSet<(u16, u16)> = self.convergence_counts.keys().copied().collect();
         all_pairs.extend(current_convergent.iter().copied());
         for pair in all_pairs {
             if current_convergent.contains(&pair) {
@@ -409,11 +397,8 @@ mod tests {
         // counts to zero net verdict.
         let nx = 9;
         let ny = 4;
-        let (s, mut plate_id, mut kinematics) = three_plate_fixture(
-            nx,
-            ny,
-            [(0.01, 0.0), (-0.01, 0.0), (0.0, 0.0)],
-        );
+        let (s, mut plate_id, mut kinematics) =
+            three_plate_fixture(nx, ny, [(0.01, 0.0), (-0.01, 0.0), (0.0, 0.0)]);
         let mut tracker = ConvergenceTracker::new();
         tracker.update(&plate_id, &kinematics);
         // Pair (0, 1) is registered as convergent on the interior
@@ -424,13 +409,7 @@ mod tests {
             "after one update the convergent (0, 1) pair should have count = 1"
         );
         let params = AccretionParams::default(); // threshold = 50
-        let stats = apply_accretion_step(
-            &mut plate_id,
-            &s,
-            &mut kinematics,
-            &tracker,
-            &params,
-        );
+        let stats = apply_accretion_step(&mut plate_id, &s, &mut kinematics, &tracker, &params);
         assert_eq!(stats.merges_count, 0, "no merge expected below threshold");
         assert_eq!(stats.plates_remaining, 3);
         // Plate 1 cells must still be plate 1.
@@ -448,13 +427,7 @@ mod tests {
         let mut tracker = ConvergenceTracker::new();
         tracker.convergence_counts.insert((0, 1), 50);
         let params = AccretionParams::default();
-        let stats = apply_accretion_step(
-            &mut plate_id,
-            &s,
-            &mut kinematics,
-            &tracker,
-            &params,
-        );
+        let stats = apply_accretion_step(&mut plate_id, &s, &mut kinematics, &tracker, &params);
         assert_eq!(stats.merges_count, 1);
         assert_eq!(stats.plates_remaining, 1);
         // Every cell now belongs to the winner plate 0.
@@ -474,18 +447,11 @@ mod tests {
         let ny = 4;
         let v_a = (0.01, 0.0);
         let v_b = (-0.01, 0.005);
-        let (s, mut plate_id, _plate_type, mut kinematics) =
-            two_plate_fixture(nx, ny, v_a, v_b);
+        let (s, mut plate_id, _plate_type, mut kinematics) = two_plate_fixture(nx, ny, v_a, v_b);
         let mut tracker = ConvergenceTracker::new();
         tracker.convergence_counts.insert((0, 1), 50);
         let params = AccretionParams::default();
-        let _stats = apply_accretion_step(
-            &mut plate_id,
-            &s,
-            &mut kinematics,
-            &tracker,
-            &params,
-        );
+        let _stats = apply_accretion_step(&mut plate_id, &s, &mut kinematics, &tracker, &params);
         let expected_vx = (v_a.0 + v_b.0) / 2.0;
         let expected_vy = (v_a.1 + v_b.1) / 2.0;
         let (got_vx, got_vy) = kinematics.velocities[0];
@@ -510,28 +476,15 @@ mod tests {
         // has clear divergent verdict (no wrap symmetry).
         let nx = 9;
         let ny = 4;
-        let (s, mut plate_id, mut kinematics) = three_plate_fixture(
-            nx,
-            ny,
-            [(-0.01, 0.0), (0.01, 0.0), (0.0, 0.0)],
-        );
+        let (s, mut plate_id, mut kinematics) =
+            three_plate_fixture(nx, ny, [(-0.01, 0.0), (0.01, 0.0), (0.0, 0.0)]);
         let mut tracker = ConvergenceTracker::new();
         tracker.convergence_counts.insert((0, 1), 50);
         // Tracker update on the divergent kinematics — must reset.
         tracker.update(&plate_id, &kinematics);
-        assert_eq!(
-            tracker.get(0, 1),
-            0,
-            "counter for diverging pair must reset to 0"
-        );
+        assert_eq!(tracker.get(0, 1), 0, "counter for diverging pair must reset to 0");
         let params = AccretionParams::default();
-        let stats = apply_accretion_step(
-            &mut plate_id,
-            &s,
-            &mut kinematics,
-            &tracker,
-            &params,
-        );
+        let stats = apply_accretion_step(&mut plate_id, &s, &mut kinematics, &tracker, &params);
         assert_eq!(stats.merges_count, 0, "no merge — counter was reset");
         assert_eq!(stats.plates_remaining, 3);
     }
@@ -546,19 +499,10 @@ mod tests {
             two_plate_fixture(nx, ny, (0.01, 0.0), (-0.01, 0.0));
         let mut tracker = ConvergenceTracker::new();
         tracker.convergence_counts.insert((0, 1), 100);
-        let params = AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        };
+        let params = AccretionParams { enabled: false, ..AccretionParams::default() };
         let plate_id_before: Vec<u16> = plate_id.data().to_vec();
         let kinematics_before = kinematics.velocities.clone();
-        let stats = apply_accretion_step(
-            &mut plate_id,
-            &s,
-            &mut kinematics,
-            &tracker,
-            &params,
-        );
+        let stats = apply_accretion_step(&mut plate_id, &s, &mut kinematics, &tracker, &params);
         assert_eq!(stats.merges_count, 0);
         assert_eq!(stats.plates_remaining, 0); // default-disabled placeholder
         assert_eq!(plate_id.data(), plate_id_before.as_slice());
@@ -588,19 +532,12 @@ mod tests {
                 s.set(i, j, 1.0);
             }
         }
-        let mut kinematics = PlateKinematics {
-            velocities: vec![(0.01, 0.0), (-0.01, 0.0), (0.0, 0.01)],
-        };
+        let mut kinematics =
+            PlateKinematics { velocities: vec![(0.01, 0.0), (-0.01, 0.0), (0.0, 0.01)] };
         let mut tracker = ConvergenceTracker::new();
         tracker.convergence_counts.insert((0, 1), 50);
         let params = AccretionParams::default();
-        let stats = apply_accretion_step(
-            &mut plate_id,
-            &s,
-            &mut kinematics,
-            &tracker,
-            &params,
-        );
+        let stats = apply_accretion_step(&mut plate_id, &s, &mut kinematics, &tracker, &params);
         assert_eq!(stats.merges_count, 1);
         assert_eq!(stats.plates_remaining, 2);
         // Surviving ids: {0, 2}. Plate 1 is a gap.

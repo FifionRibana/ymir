@@ -80,8 +80,12 @@ fn sanity_seed154_relabel() {
     let mpx = 505.0 / 8192.0 * 1000.0;
     eprintln!(
         "seed 154 @ 505 km / 8192: {:.1} m/px, traverse {:.0} km, margins N{:.0} S{:.0} E{:.0} W{:.0}",
-        m505.m_per_cell, m505.extent_km.0.max(m505.extent_km.1),
-        m505.margin_n_km, m505.margin_s_km, m505.margin_e_km, m505.margin_w_km,
+        m505.m_per_cell,
+        m505.extent_km.0.max(m505.extent_km.1),
+        m505.margin_n_km,
+        m505.margin_s_km,
+        m505.margin_e_km,
+        m505.margin_w_km,
     );
     assert!((m505.m_per_cell - mpx).abs() < 0.5, "m/px {} vs {mpx}", m505.m_per_cell);
     assert!((m505.m_per_cell - 61.6).abs() < 1.0, "expected ~61.6 m/px");
@@ -144,7 +148,10 @@ fn scan_domain_map_seeds() {
         full_pass,
         full_pass as f32 / N_SCAN as f32 * 100.0,
     );
-    eprintln!("  first {} geometric-pass seeds (not band, no border land, ≤60%/axis):", N_REPORT.min(geom_pass.len()));
+    eprintln!(
+        "  first {} geometric-pass seeds (not band, no border land, ≤60%/axis):",
+        N_REPORT.min(geom_pass.len())
+    );
     for (seed, m) in geom_pass.iter().take(N_REPORT) {
         eprintln!("  {}", row(*seed, m));
     }
@@ -192,8 +199,14 @@ fn scan_domain_map_seeds() {
          domain 1024 km (baseline)        : {:>4.1}% / {:>4.1}% / {:>4.1}%\n  \
          domain  375 km, COUPLED depth    : {:>4.1}% / {:>4.1}% / {:>4.1}%  (slopes preserved)\n  \
          domain  375 km, UNCOUPLED depth  : {:>4.1}% / {:>4.1}% / {:>4.1}%  (×2.73 gradients)",
-        ref1024.0 * 100.0, ref1024.1 * 100.0, ref1024.2 * 100.0,
-        coupled.0 * 100.0, coupled.1 * 100.0, coupled.2 * 100.0,
-        uncoupled.0 * 100.0, uncoupled.1 * 100.0, uncoupled.2 * 100.0,
+        ref1024.0 * 100.0,
+        ref1024.1 * 100.0,
+        ref1024.2 * 100.0,
+        coupled.0 * 100.0,
+        coupled.1 * 100.0,
+        coupled.2 * 100.0,
+        uncoupled.0 * 100.0,
+        uncoupled.1 * 100.0,
+        uncoupled.2 * 100.0,
     );
 }

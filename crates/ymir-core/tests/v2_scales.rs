@@ -5,7 +5,7 @@
 //! surface through the crate's external API (which is all a
 //! downstream crate would see).
 
-use ymir_core::tectonics_v2::scales::{Scales, GRAVITY, SECONDS_PER_MYR};
+use ymir_core::tectonics_v2::scales::{GRAVITY, SECONDS_PER_MYR, Scales};
 
 fn approx_rel(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol * a.abs().max(b.abs()).max(1.0)

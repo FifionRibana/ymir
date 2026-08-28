@@ -159,14 +159,20 @@ fn rolled_export_is_one_contiguous_continent() {
         topo.wraps_y,
         topo.center_cell,
     );
-    assert!(topo.straddles_x || topo.straddles_y, "seed {seed} must straddle a seam for this guard");
+    assert!(
+        topo.straddles_x || topo.straddles_y,
+        "seed {seed} must straddle a seam for this guard"
+    );
 
     // The roll run_hd computes: centre the mass, integer coarse cells.
     let g = grid as i64;
     let roll_x = ((topo.center_cell.0 as i64) - g / 2).rem_euclid(g) as usize;
     let roll_y = ((topo.center_cell.1 as i64) - g / 2).rem_euclid(g) as usize;
     let offset = [roll_x as f64 / grid as f64, roll_y as f64 / grid as f64];
-    eprintln!("roll ({roll_x},{roll_y}) cells → window_offset_in_torus [{:.3},{:.3}]", offset[0], offset[1]);
+    eprintln!(
+        "roll ({roll_x},{roll_y}) cells → window_offset_in_torus [{:.3},{:.3}]",
+        offset[0], offset[1]
+    );
     assert_ne!(offset, [0.0, 0.0], "a straddling seed must have a non-zero framing offset");
 
     let cache = std::env::temp_dir().join("ymir_rolled_export_seam");
@@ -228,8 +234,8 @@ fn rolled_export_is_one_contiguous_continent() {
     // largest area + traverse; FBM shifts them only slightly).
     let rolled_topo = land_topology(&rolled, SEA);
     let area_ratio = rolled_topo.largest_area_km2 / topo.largest_area_km2;
-    let trav_ratio = rolled_topo.bbox_km.0.max(rolled_topo.bbox_km.1)
-        / topo.bbox_km.0.max(topo.bbox_km.1);
+    let trav_ratio =
+        rolled_topo.bbox_km.0.max(rolled_topo.bbox_km.1) / topo.bbox_km.0.max(topo.bbox_km.1);
     eprintln!("exported vs preview: area ×{area_ratio:.2}, traverse ×{trav_ratio:.2}");
     assert!((0.8..=1.25).contains(&area_ratio), "largest area must match the preview (±25%)");
     assert!((0.85..=1.15).contains(&trav_ratio), "traverse must match the preview (±15%)");

@@ -37,21 +37,17 @@ use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::stokes::amg::{AmgConfig, AmgPreconditioner};
 use ymir_core::tectonics_v2::stokes::nullspace;
 use ymir_core::tectonics_v2::stokes::operator::{
-    apply_momentum, apply_tangent, StokesGrid, TangentContext,
+    StokesGrid, TangentContext, apply_momentum, apply_tangent,
 };
 use ymir_core::tectonics_v2::stokes::precond::VelocityJacobi;
 use ymir_core::tectonics_v2::stokes::snapshot::{
-    field_from_vec, LinearStokesSnapshot, ReferenceSolution, SNAPSHOT_FORMAT_VERSION,
+    LinearStokesSnapshot, ReferenceSolution, SNAPSHOT_FORMAT_VERSION, field_from_vec,
 };
 use ymir_core::tectonics_v2::stokes::solver::{ConjugateGradient, LinearSolver, SolverStats};
 use ymir_core::tectonics_v2::stokes::sparse_assembly::assemble_picard_csr;
 
-const ALL_CASES: &[&str] = &[
-    "step0_quiescent",
-    "step3_floor_yielding",
-    "step6_voronoi",
-    "step7_slab_off",
-];
+const ALL_CASES: &[&str] =
+    &["step0_quiescent", "step3_floor_yielding", "step6_voronoi", "step7_slab_off"];
 // step8_activated and step8_activated_128 intentionally omitted
 // — α merge scope excludes them; scalar-parity testing of step8
 // waits for Step 8.5a.2.
@@ -85,7 +81,9 @@ fn parse_args() -> Result<Args, String> {
                 a.output_dir = PathBuf::from(&raw[i]);
             }
             "--help" | "-h" => {
-                eprintln!("Usage: gen_reference_solutions [--all | --case NAME] [--output-dir PATH]");
+                eprintln!(
+                    "Usage: gen_reference_solutions [--all | --case NAME] [--output-dir PATH]"
+                );
                 for c in ALL_CASES {
                     eprintln!("  {c}");
                 }
@@ -118,10 +116,7 @@ struct Replay {
 fn build_replay(snap: &LinearStokesSnapshot) -> Replay {
     let grid = StokesGrid::new(snap.nx, snap.ny, snap.dx, snap.dy);
     let eta_center = field_from_vec(snap.eta_center.clone(), snap.nx, snap.ny);
-    let drag_diag = snap
-        .drag_diag
-        .as_ref()
-        .map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
+    let drag_diag = snap.drag_diag.as_ref().map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
     let ctx = TangentContext {
         eta_center: eta_center.clone(),
         c_center: field_from_vec(
@@ -149,18 +144,17 @@ fn build_replay(snap: &LinearStokesSnapshot) -> Replay {
     rhs_pack.extend_from_slice(&snap.rhs_vx);
     rhs_pack.extend_from_slice(&snap.rhs_vy);
     let b_norm: f64 = rhs_pack.iter().map(|v| v * v).sum::<f64>().sqrt();
-    Replay {
-        grid,
-        eta_center,
-        drag_diag,
-        ctx,
-        rhs_pack,
-        b_norm,
-        n_cells: snap.n_cells(),
-    }
+    Replay { grid, eta_center, drag_diag, ctx, rhs_pack, b_norm, n_cells: snap.n_cells() }
 }
 
-fn solve_jacobi(replay: &Replay, diag_vx: &[f64], diag_vy: &[f64], diag_floor: f64, tol: f64, max_iter: usize) -> (Vec<f64>, SolverStats) {
+fn solve_jacobi(
+    replay: &Replay,
+    diag_vx: &[f64],
+    diag_vy: &[f64],
+    diag_floor: f64,
+    tol: f64,
+    max_iter: usize,
+) -> (Vec<f64>, SolverStats) {
     let vjac = VelocityJacobi::from_diagonal(diag_vx, diag_vy, diag_floor);
     let n = replay.n_cells;
     let cg = ConjugateGradient::new(tol, max_iter);
@@ -193,9 +187,13 @@ fn solve_jacobi(replay: &Replay, diag_vx: &[f64], diag_vy: &[f64], diag_floor: f
     (x_pack, stats)
 }
 
-fn solve_amg(replay: &Replay, snap: &LinearStokesSnapshot, tol: f64, max_iter: usize) -> (Vec<f64>, SolverStats) {
-    let a_picard =
-        assemble_picard_csr(&replay.grid, &replay.eta_center, replay.drag_diag.as_ref());
+fn solve_amg(
+    replay: &Replay,
+    snap: &LinearStokesSnapshot,
+    tol: f64,
+    max_iter: usize,
+) -> (Vec<f64>, SolverStats) {
+    let a_picard = assemble_picard_csr(&replay.grid, &replay.eta_center, replay.drag_diag.as_ref());
     let precond = AmgPreconditioner::build(&a_picard, snap.n_cells(), AmgConfig::default());
     let n = replay.n_cells;
     let cg = ConjugateGradient::new(tol, max_iter);
@@ -234,11 +232,7 @@ fn rel_diff_max(a: &[f64], b: &[f64]) -> f64 {
     if norm_b == 0.0 {
         return 0.0;
     }
-    let diff = a
-        .iter()
-        .zip(b.iter())
-        .map(|(x, y)| (x - y).abs())
-        .fold(0.0_f64, f64::max);
+    let diff = a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).fold(0.0_f64, f64::max);
     diff / norm_b
 }
 
@@ -288,7 +282,8 @@ fn main() -> ExitCode {
         // constant C depends on the Krylov path — different for Jacobi
         // and AMG. Measuring rel_diff/tol empirically absorbs C into κ.)
         let t0 = Instant::now();
-        let (x_coarse_a, stats_coarse_a) = solve_amg(&replay, &snap, KAPPA_TOL_COARSE, KAPPA_MAX_ITER);
+        let (x_coarse_a, stats_coarse_a) =
+            solve_amg(&replay, &snap, KAPPA_TOL_COARSE, KAPPA_MAX_ITER);
         let (x_coarse_j, stats_coarse_j) = solve_jacobi(
             &replay,
             &snap.diag_vx,
@@ -305,9 +300,13 @@ fn main() -> ExitCode {
         let kappa = rel / denom;
         eprintln!(
             "[{case}] κ estimate: AMG(it={}) rel={:.3e}  Jacobi(it={}) rel={:.3e}  max={:.3e}  κ≈{:.3e} ({:.1}s)",
-            stats_coarse_a.iterations, rel_a,
-            stats_coarse_j.iterations, rel_j,
-            rel, kappa, t_coarse,
+            stats_coarse_a.iterations,
+            rel_a,
+            stats_coarse_j.iterations,
+            rel_j,
+            rel,
+            kappa,
+            t_coarse,
         );
 
         // --- Save.

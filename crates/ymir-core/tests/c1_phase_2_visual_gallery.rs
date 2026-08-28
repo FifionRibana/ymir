@@ -46,7 +46,7 @@ use std::path::{Path, PathBuf};
 use image::{ImageBuffer, Rgb};
 
 use ymir_core::grid::GridF32;
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
 use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
@@ -54,7 +54,7 @@ use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
 use ymir_core::tectonics_v2::field::Field2D;
 
@@ -82,18 +82,9 @@ fn phase_2_bathymetry_visual_gallery() {
     // preserve the committed PNG references (Track A's
     // Architecture C signature).
     let closures = C1Closures {
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     };
     let config = C1TimeLoopConfig {
@@ -119,31 +110,16 @@ fn phase_2_bathymetry_visual_gallery() {
 
     let snapshot_steps: [usize; 4] = [49, 99, 199, 299];
     let started = std::time::Instant::now();
-    run_with_closures(
-        &mut state,
-        &mut kinematics,
-        &config,
-        &closures,
-        |step, current_state| {
-            if snapshot_steps.contains(&step) {
-                print_stats(
-                    &format!("{:03}", step + 1),
-                    current_state,
-                    &iso_config,
-                    &closures,
-                );
-                dump_snapshot(current_state, step + 1, &dir, &iso_config, &closures);
-            }
-        },
-    );
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |step, current_state| {
+        if snapshot_steps.contains(&step) {
+            print_stats(&format!("{:03}", step + 1), current_state, &iso_config, &closures);
+            dump_snapshot(current_state, step + 1, &dir, &iso_config, &closures);
+        }
+    });
     let elapsed = started.elapsed();
 
     eprintln!();
-    eprintln!(
-        "  wall time      = {:.2?} ({:.2?} / step)",
-        elapsed,
-        elapsed / N_STEPS as u32
-    );
+    eprintln!("  wall time      = {:.2?} ({:.2?} / step)", elapsed, elapsed / N_STEPS as u32);
     eprintln!("  output dir     = {}", dir.display());
     eprintln!("  files          = 10 PNGs (cycle_NNN_altitude.png + cycle_NNN_s.png × 5)");
     eprintln!();
@@ -153,12 +129,8 @@ fn phase_2_bathymetry_visual_gallery() {
         "    oceanic age distribution: min={:.4} max={:.4} mean={:.4} median={:.4}",
         final_age_stats.min, final_age_stats.max, final_age_stats.mean, final_age_stats.median,
     );
-    eprintln!(
-        "    Stage A baseline:         min≈0     max≈6958   mean≈4.67   median≈0"
-    );
-    eprintln!(
-        "    Pile-up consistency: same run reproduces Stage A density-advection finding."
-    );
+    eprintln!("    Stage A baseline:         min≈0     max≈6958   mean≈4.67   median≈0");
+    eprintln!("    Pile-up consistency: same run reproduces Stage A density-advection finding.");
 }
 
 struct AgeStats {

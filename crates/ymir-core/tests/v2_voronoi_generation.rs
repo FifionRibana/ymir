@@ -1,6 +1,6 @@
 //! Step 6 — Voronoi tessellation: determinism + counts + edge cases.
 
-use ymir_core::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+use ymir_core::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
 #[test]
 fn determinism_byte_for_byte() {

@@ -31,9 +31,9 @@
 
 use ymir_core::tectonics_v2::boundaries::PlateType;
 use ymir_core::tectonics_v2::init::{
-    init_s_field, FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
-    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
-    InitContext, InitMode, PlateInitData, ProfileShape,
+    FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
+    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT, InitContext,
+    InitMode, PlateInitData, ProfileShape, init_s_field,
 };
 use ymir_core::tectonics_v2::voronoi::{
     VoronoiConfig, VoronoiPlates, compute_dist_to_inter_plate_boundary, generate_voronoi,
@@ -55,10 +55,7 @@ fn build_voronoi(nx: usize, ny: usize) -> VoronoiPlates {
     generate_voronoi(
         nx,
         ny,
-        &VoronoiConfig {
-            num_plates: SC_NUM_PLATES,
-            continental_ratio: SC_CONTINENTAL_RATIO,
-        },
+        &VoronoiConfig { num_plates: SC_NUM_PLATES, continental_ratio: SC_CONTINENTAL_RATIO },
         SC_SEED,
     )
 }
@@ -249,12 +246,8 @@ fn run_acceptance_intra_plate_heterogeneity(
         "Acceptance #7 — RadialProfileWithFBM{{amplitude={}, scale={}, …}} on single_continent {} (seed=12):",
         FBM_AMPLITUDE_DEFAULT, FBM_SCALE_DEFAULT, label
     );
-    eprintln!(
-        "  Per-plate breakdown (interior = continental ∧ t > 0.5):"
-    );
-    eprintln!(
-        "  pid type           cells_int  σ_radial   σ_total    σ_fbm_iso  L_plate"
-    );
+    eprintln!("  Per-plate breakdown (interior = continental ∧ t > 0.5):");
+    eprintln!("  pid type           cells_int  σ_radial   σ_total    σ_fbm_iso  L_plate");
 
     let mut continental_metrics: Vec<(usize, usize, f64, f64, f64, f64)> = Vec::new();
     for pid in 0..plates.num_plates {
@@ -276,7 +269,14 @@ fn run_acceptance_intra_plate_heterogeneity(
             lp
         );
         if matches!(pt, PlateType::Continental) && cells_int > 0 {
-            continental_metrics.push((pid, cells_int, sigma_radial, sigma_total, sigma_fbm_iso, lp));
+            continental_metrics.push((
+                pid,
+                cells_int,
+                sigma_radial,
+                sigma_total,
+                sigma_fbm_iso,
+                lp,
+            ));
         }
     }
     assert!(
@@ -288,12 +288,9 @@ fn run_acceptance_intra_plate_heterogeneity(
 
     const SIGMA_FBM_LOWER_BOUND: f64 = 0.040;
     if strict_per_plate {
-        eprintln!(
-            "  Acceptance: σ_fbm_isolated ≥ 0.040 required for every continental plate."
-        );
+        eprintln!("  Acceptance: σ_fbm_isolated ≥ 0.040 required for every continental plate.");
         let mut failures: Vec<String> = Vec::new();
-        for &(pid, cells_int, sigma_radial, sigma_total, sigma_fbm_iso, lp)
-            in &continental_metrics
+        for &(pid, cells_int, sigma_radial, sigma_total, sigma_fbm_iso, lp) in &continental_metrics
         {
             if sigma_fbm_iso < SIGMA_FBM_LOWER_BOUND {
                 failures.push(format!(

@@ -15,14 +15,17 @@
 
 use std::path::PathBuf;
 
-use ymir_core::tectonics_v2::stokes::operator::{apply_momentum, StokesGrid};
-use ymir_core::tectonics_v2::stokes::snapshot::{field_from_vec, LinearStokesSnapshot};
+use ymir_core::tectonics_v2::stokes::operator::{StokesGrid, apply_momentum};
+use ymir_core::tectonics_v2::stokes::snapshot::{LinearStokesSnapshot, field_from_vec};
 use ymir_core::tectonics_v2::stokes::sparse_assembly::assemble_picard_csr;
 
 fn bench_data_path(case: &str) -> PathBuf {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR not set");
-    PathBuf::from(manifest_dir).join("..").join("..").join("bench_data").join(format!("{}.bin", case))
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    PathBuf::from(manifest_dir)
+        .join("..")
+        .join("..")
+        .join("bench_data")
+        .join(format!("{}.bin", case))
 }
 
 fn seeded_zero_mean(seed: u64, n_cells: usize) -> Vec<f64> {
@@ -47,10 +50,7 @@ fn max_abs(x: &[f64]) -> f64 {
 }
 
 fn max_abs_diff(a: &[f64], b: &[f64]) -> f64 {
-    a.iter()
-        .zip(b.iter())
-        .map(|(x, y)| (x - y).abs())
-        .fold(0.0_f64, f64::max)
+    a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).fold(0.0_f64, f64::max)
 }
 
 fn check_snapshot_parity(case: &str) {
@@ -64,10 +64,7 @@ fn check_snapshot_parity(case: &str) {
     };
     let grid = StokesGrid::new(snap.nx, snap.ny, snap.dx, snap.dy);
     let eta = field_from_vec(snap.eta_center.clone(), snap.nx, snap.ny);
-    let drag = snap
-        .drag_diag
-        .as_ref()
-        .map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
+    let drag = snap.drag_diag.as_ref().map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
 
     let csr = assemble_picard_csr(&grid, &eta, drag.as_ref());
     let n = snap.n_cells();
@@ -81,18 +78,9 @@ fn check_snapshot_parity(case: &str) {
 
         let mut y_mf_vx = vec![0.0; n];
         let mut y_mf_vy = vec![0.0; n];
-        apply_momentum(
-            &grid,
-            &eta,
-            drag.as_ref(),
-            &x[..n],
-            &x[n..],
-            &mut y_mf_vx,
-            &mut y_mf_vy,
-        );
+        apply_momentum(&grid, &eta, drag.as_ref(), &x[..n], &x[n..], &mut y_mf_vx, &mut y_mf_vy);
         let norm = max_abs(&y_mf_vx).max(max_abs(&y_mf_vy)).max(1e-300);
-        let diff = max_abs_diff(&y_csr[..n], &y_mf_vx)
-            .max(max_abs_diff(&y_csr[n..], &y_mf_vy));
+        let diff = max_abs_diff(&y_csr[..n], &y_mf_vx).max(max_abs_diff(&y_csr[n..], &y_mf_vy));
         let rel = diff / (norm * 9.0);
         assert!(
             rel < 1e-14,

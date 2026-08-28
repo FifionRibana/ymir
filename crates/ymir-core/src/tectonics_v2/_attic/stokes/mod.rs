@@ -42,7 +42,7 @@ pub mod solver;
 pub mod sparse_assembly;
 
 use crate::tectonics_v2::field::Field2D;
-use operator::{apply_momentum, momentum_diagonal, StokesGrid};
+use operator::{StokesGrid, apply_momentum, momentum_diagonal};
 use precond::VelocityJacobi;
 use solver::{ConjugateGradient, LinearSolver, SolverStats};
 

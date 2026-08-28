@@ -95,8 +95,8 @@ pub fn compute_q_sub_conv(
 
 #[cfg(test)]
 mod tests {
-    use crate::tectonics_v2::boundaries::boundary_flag::BoundaryFlag;
     use super::*;
+    use crate::tectonics_v2::boundaries::boundary_flag::BoundaryFlag;
 
     fn make_env(nx: usize, ny: usize) -> (PeriodicIndex, PeriodicIndex, f64) {
         (PeriodicIndex::new(nx), PeriodicIndex::new(ny), 1.0 / nx as f64)

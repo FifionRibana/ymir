@@ -5,11 +5,11 @@
 //! Run: cargo test -p ymir-core --test m1_regression_seed42 -- --ignored --nocapture
 
 use ymir_core::tectonics::isostasy::IsostasyConfig;
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::land_topology::{evaluate_island, land_topology};
 use ymir_core::tectonics_c1::production_upscale::{c1_coarse_raw_altitude, c1_normalize_coarse};
-use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 
 /// Local slope of the hypsometric curve at altitude `thr`: cells per unit raw
@@ -26,7 +26,11 @@ fn quantile(sorted: &[f32], q: f32) -> f32 {
     sorted[idx]
 }
 
-fn coarse_raw(seed: u64, grid: usize, init: &Phase2InitParams) -> (ymir_core::grid::GridF32, C1TimeLoopConfig) {
+fn coarse_raw(
+    seed: u64,
+    grid: usize,
+    init: &Phase2InitParams,
+) -> (ymir_core::grid::GridF32, C1TimeLoopConfig) {
     let run = C1TimeLoopConfig {
         rigid_continental_crust: true,
         n_steps: 300,

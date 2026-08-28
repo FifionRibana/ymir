@@ -41,7 +41,7 @@ use std::f64::consts::TAU;
 use ymir_core::tectonics_v2::field::{Field2D, PeriodicIndex};
 use ymir_core::tectonics_v2::presets::YieldingConfig;
 use ymir_core::tectonics_v2::rheology::{StrainRate, ViscosityLaw, YieldingLaw};
-use ymir_core::tectonics_v2::stokes::operator::{apply_jacobian, TangentContext, StokesGrid};
+use ymir_core::tectonics_v2::stokes::operator::{StokesGrid, TangentContext, apply_jacobian};
 
 fn dot(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
@@ -59,10 +59,7 @@ fn jacobian_symmetric_with_yielding() {
     let dy = 1.0 / ny as f64;
     let grid = StokesGrid::new(nx, ny, dx, dy);
     let ylaw = YieldingLaw::default();
-    let law = ViscosityLaw {
-        yielding: YieldingConfig::Enabled(ylaw),
-        ..Default::default()
-    };
+    let law = ViscosityLaw { yielding: YieldingConfig::Enabled(ylaw), ..Default::default() };
 
     let n2 = nx * ny;
     let mut vx_k = vec![0.0; n2];
@@ -101,15 +98,8 @@ fn jacobian_symmetric_with_yielding() {
     let lhs = dot(&jux, &wx) + dot(&juy, &wy);
     let rhs = dot(&ux, &jwx) + dot(&uy, &jwy);
     let rel = (lhs - rhs).abs() / lhs.abs().max(rhs.abs()).max(1.0);
-    eprintln!(
-        "⟨J u, w⟩ = {:.6e}, ⟨u, J w⟩ = {:.6e}, rel = {:.3e}",
-        lhs, rhs, rel,
-    );
-    assert!(
-        rel < 1e-10,
-        "Jacobian asymmetric with yielding active: rel = {}",
-        rel,
-    );
+    eprintln!("⟨J u, w⟩ = {:.6e}, ⟨u, J w⟩ = {:.6e}, rel = {:.3e}", lhs, rhs, rel,);
+    assert!(rel < 1e-10, "Jacobian asymmetric with yielding active: rel = {}", rel,);
 }
 
 /// Build an η field at cell centres with yielding enabled, then feed
@@ -128,10 +118,7 @@ fn picard_block_symmetric_with_yielding_eta() {
     let dy = 1.0 / ny as f64;
     let grid = StokesGrid::new(nx, ny, dx, dy);
     let ylaw = YieldingLaw::default();
-    let law = ViscosityLaw {
-        yielding: YieldingConfig::Enabled(ylaw),
-        ..Default::default()
-    };
+    let law = ViscosityLaw { yielding: YieldingConfig::Enabled(ylaw), ..Default::default() };
     let idx_x = PeriodicIndex::new(nx);
     let idx_y = PeriodicIndex::new(ny);
 

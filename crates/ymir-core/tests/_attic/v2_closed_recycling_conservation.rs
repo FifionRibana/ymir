@@ -10,11 +10,11 @@
 use std::path::PathBuf;
 
 use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
-use ymir_core::tectonics_v2::boundaries::{horizontal_oceanic_strip, BoundaryRates};
 use ymir_core::tectonics_v2::boundaries::boundary_flag::{BoundaryConfig, RecyclingModeInit};
 use ymir_core::tectonics_v2::boundaries::crust_geometry::CrustGeometry;
+use ymir_core::tectonics_v2::boundaries::{BoundaryRates, horizontal_oceanic_strip};
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
 use ymir_core::tectonics_v2::recycling::RecyclingConfig;
@@ -29,9 +29,7 @@ fn run_closed_mini(mantle_loss_fraction: f64) -> (f64, f64, f64, f64, f64) {
     let layout = horizontal_oceanic_strip(nx, ny);
     // Static layout carried into Closed mode: we use the Step 5
     // horizontal_oceanic_strip so subduction + rift cells exist.
-    let geometry = CrustGeometry::from_static(
-        layout.plate_types, layout.flags, layout.name,
-    );
+    let geometry = CrustGeometry::from_static(layout.plate_types, layout.flags, layout.name);
     let rates = BoundaryRates::baseline_uncalibrated().with_k_spread(0.05);
     // Closed mode config: spread carries whatever is left after
     // immediate + loss. Adjust `spread_fraction` to match.
@@ -74,10 +72,7 @@ fn run_closed_mini(mantle_loss_fraction: f64) -> (f64, f64, f64, f64, f64) {
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
         yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05,
-            ..BasalDragLaw::default()
-        }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: "horizontal_oceanic_strip_closed".into(),
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
@@ -88,7 +83,7 @@ fn run_closed_mini(mantle_loss_fraction: f64) -> (f64, f64, f64, f64, f64) {
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     let r = run_baseline(&cfg);
     let na = r.metrics.newton.as_ref().expect("newton aggregate");
@@ -119,7 +114,10 @@ fn recycling_with_5pct_loss_accumulates_expected_mass() {
     let (residual, mantle_loss_int, m_sub, _, _) = run_closed_mini(0.05);
     println!(
         "5pct-loss: residual={:.3e} mantle_loss_int={:.3e} m_sub_total={:.3e} ratio={:.3e}",
-        residual, mantle_loss_int, m_sub, mantle_loss_int / m_sub.max(1e-30),
+        residual,
+        mantle_loss_int,
+        m_sub,
+        mantle_loss_int / m_sub.max(1e-30),
     );
     // Conservation residual still < 1e-6 with the 5-way balance.
     assert!(

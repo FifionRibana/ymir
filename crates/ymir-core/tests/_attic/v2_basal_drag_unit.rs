@@ -5,7 +5,7 @@
 //! submodule; this file exercises the external-callable surface.
 
 use ymir_core::tectonics_v2::basal_drag::{
-    build_drag_diagonal_field, drag_diagonal_at_cell, BasalDragConfig, BasalDragLaw,
+    BasalDragConfig, BasalDragLaw, build_drag_diagonal_field, drag_diagonal_at_cell,
 };
 use ymir_core::tectonics_v2::field::Field2D;
 
@@ -13,20 +13,11 @@ use ymir_core::tectonics_v2::field::Field2D;
 fn drag_diagonal_at_cell_equals_br_times_s_squared_at_default_exponent() {
     // Default exponent is 2.0 (decision D1). Verify the algebraic
     // form to 1e-14 over a spread of Br and S values.
-    let cases: [(f64, f64); 5] = [
-        (0.01, 0.2),
-        (0.05, 1.0),
-        (0.10, 1.5),
-        (0.20, 0.7),
-        (0.30, 1.2),
-    ];
+    let cases: [(f64, f64); 5] = [(0.01, 0.2), (0.05, 1.0), (0.10, 1.5), (0.20, 0.7), (0.30, 1.2)];
     for (br, s) in cases {
         let expected = br * s * s;
         let got = drag_diagonal_at_cell(br, s, 2.0);
-        assert!(
-            (got - expected).abs() < 1e-14,
-            "br={br}, s={s}: got {got}, expected {expected}",
-        );
+        assert!((got - expected).abs() < 1e-14, "br={br}, s={s}: got {got}, expected {expected}",);
     }
 }
 
@@ -76,22 +67,10 @@ fn enabled_returns_populated_field_matching_algebra() {
 
 #[test]
 fn parse_round_trips_known_tokens() {
-    assert!(matches!(
-        BasalDragConfig::parse("enabled").unwrap(),
-        BasalDragConfig::Enabled(_),
-    ));
-    assert!(matches!(
-        BasalDragConfig::parse("on").unwrap(),
-        BasalDragConfig::Enabled(_),
-    ));
-    assert!(matches!(
-        BasalDragConfig::parse("disabled").unwrap(),
-        BasalDragConfig::Disabled,
-    ));
-    assert!(matches!(
-        BasalDragConfig::parse("off").unwrap(),
-        BasalDragConfig::Disabled,
-    ));
+    assert!(matches!(BasalDragConfig::parse("enabled").unwrap(), BasalDragConfig::Enabled(_),));
+    assert!(matches!(BasalDragConfig::parse("on").unwrap(), BasalDragConfig::Enabled(_),));
+    assert!(matches!(BasalDragConfig::parse("disabled").unwrap(), BasalDragConfig::Disabled,));
+    assert!(matches!(BasalDragConfig::parse("off").unwrap(), BasalDragConfig::Disabled,));
 }
 
 #[test]

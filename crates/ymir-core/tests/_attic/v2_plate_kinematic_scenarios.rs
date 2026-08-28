@@ -35,7 +35,7 @@
 use ymir_core::tectonics_v2::boundaries::{BoundaryConfig, BoundaryRates};
 use ymir_core::tectonics_v2::cratonic::{CratonicConfig, CratonicConfigEnabled};
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
 use ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig;
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
@@ -156,10 +156,7 @@ fn motion_without_mantle() {
         zero_l2_sq += b * b;
     }
     let rel = (diff_l2_sq / zero_l2_sq).sqrt();
-    eprintln!(
-        "[motion_without_mantle] drift-vs-zero relative L2 = {:.4} (threshold 0.05)",
-        rel
-    );
+    eprintln!("[motion_without_mantle] drift-vs-zero relative L2 = {:.4} (threshold 0.05)", rel);
     eprintln!(
         "[motion_without_mantle] vmax_peak drift={:.4e}, zero={:.4e}",
         result_drift.metrics.vmax_peak, result_zero.metrics.vmax_peak
@@ -202,10 +199,7 @@ fn convergence_scenario() {
         steps,
         YieldingConfig::Disabled,
         CratonicConfig::Disabled,
-        PlateKinematicConfig::PerPlate {
-            velocities,
-            boundary_smoothing_width: 1.5,
-        },
+        PlateKinematicConfig::PerPlate { velocities, boundary_smoothing_width: 1.5 },
     );
     let result = run_baseline(&cfg);
     let yielding_fraction = result.metrics.yielding_cell_fraction.unwrap_or(0.0);
@@ -396,18 +390,10 @@ fn with_cratonic() {
             craton_count += 1;
         }
     }
-    let variance = if craton_count > 0 {
-        variance_sum / craton_count as f64
-    } else {
-        0.0
-    };
+    let variance = if craton_count > 0 { variance_sum / craton_count as f64 } else { 0.0 };
 
-    let peak_y_craton = result
-        .metrics
-        .newton
-        .as_ref()
-        .and_then(|n| n.peak_yielding_in_craton)
-        .unwrap_or(0.0);
+    let peak_y_craton =
+        result.metrics.newton.as_ref().and_then(|n| n.peak_yielding_in_craton).unwrap_or(0.0);
 
     eprintln!(
         "[with_cratonic] craton cells = {}, variance |v - v_drift|² = {:.4e}",
@@ -463,14 +449,8 @@ fn with_cratonic() {
 #[test]
 #[ignore]
 fn cg_ratio_under_drift_within_acceptance() {
-    let velocities = vec![
-        (0.05, 0.0),
-        (-0.04, 0.03),
-        (0.0, 0.04),
-        (-0.03, -0.04),
-        (0.03, 0.02),
-        (0.0, 0.0),
-    ];
+    let velocities =
+        vec![(0.05, 0.0), (-0.04, 0.03), (0.0, 0.04), (-0.03, -0.04), (0.03, 0.02), (0.0, 0.0)];
     let cfg_zero = build_scenario(
         velocities.len(),
         30,
@@ -493,10 +473,7 @@ fn cg_ratio_under_drift_within_acceptance() {
             b_factor: 8.0,
             ..CratonicConfigEnabled::default()
         }),
-        PlateKinematicConfig::PerPlate {
-            velocities,
-            boundary_smoothing_width: 6.0,
-        },
+        PlateKinematicConfig::PerPlate { velocities, boundary_smoothing_width: 6.0 },
     );
 
     let result_zero = run_baseline(&cfg_zero);

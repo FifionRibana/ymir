@@ -52,10 +52,7 @@ fn field_stats(field: &Field2D) -> (f64, f64, f64) {
 /// write a small colour-bar strip next to it. The colour-bar path
 /// is derived from the image path by inserting `_colorbar` before
 /// the extension.
-pub fn save_heightmap(
-    field: &Field2D,
-    png_path: &Path,
-) -> Result<HeightmapMetadata, String> {
+pub fn save_heightmap(field: &Field2D, png_path: &Path) -> Result<HeightmapMetadata, String> {
     let nx = field.nx();
     let ny = field.ny();
     let (min, max, mean) = field_stats(field);
@@ -67,11 +64,7 @@ pub fn save_heightmap(
         .iter()
         .map(|&v| {
             // Uniform-field fallback: if span is tiny, pin to mid-grey.
-            if max - min < 1e-10 {
-                0.5
-            } else {
-                (((v - min) / span).clamp(0.0, 1.0)) as f32
-            }
+            if max - min < 1e-10 { 0.5 } else { (((v - min) / span).clamp(0.0, 1.0)) as f32 }
         })
         .collect();
     let grid = GridF32::from_vec(nx, ny, data);
@@ -99,13 +92,7 @@ pub fn save_heightmap(
     };
     cb_grid.save_png_u16(&colorbar_path)?;
 
-    Ok(HeightmapMetadata {
-        png_path: png_path.to_path_buf(),
-        colorbar_path,
-        min,
-        max,
-        mean,
-    })
+    Ok(HeightmapMetadata { png_path: png_path.to_path_buf(), colorbar_path, min, max, mean })
 }
 
 #[cfg(test)]

@@ -65,10 +65,8 @@ pub fn water_class(height: &GridF32, sea_level: f32) -> Vec<u8> {
     // Flood over 8-connected below-sea neighbours (diagonal contact = water connection).
     while let Some(k) = queue.pop_front() {
         let (x, y) = ((k % w) as i32, (k / w) as i32);
-        for (dx, dy) in [
-            (-1i32, 0i32), (1, 0), (0, -1), (0, 1),
-            (-1, -1), (-1, 1), (1, -1), (1, 1),
-        ] {
+        for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
+        {
             let (nx, ny) = (x + dx, y + dy);
             if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
                 let nk = ny as usize * w + nx as usize;
@@ -138,6 +136,10 @@ mod tests {
         let grid = GridF32::from_vec(w, h, data);
         let class = water_class(&grid, sea);
         assert_eq!(class[0], WATER_CLASS_OCEAN, "corner is edge sea");
-        assert_eq!(class[w + 1], WATER_CLASS_OCEAN, "diagonally-connected pocket IS ocean (8-conn)");
+        assert_eq!(
+            class[w + 1],
+            WATER_CLASS_OCEAN,
+            "diagonally-connected pocket IS ocean (8-conn)"
+        );
     }
 }

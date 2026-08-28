@@ -60,11 +60,15 @@ fn build_step10_config(age_field: AgeFieldConfig, label: &str) -> BaselineConfig
     let scales = Scales::default();
     let preset = Preset::by_name("dynamic-accidented").unwrap();
     let vcfg = VoronoiConfig { num_plates: 8, continental_ratio: 0.3 };
-    let rates = BoundaryRates {
-        k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0,
-    };
+    let rates =
+        BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
     let boundary = BoundaryConfig::enabled_voronoi_closed(
-        NX, NY, &vcfg, SEED, rates, RecyclingConfig::default(),
+        NX,
+        NY,
+        &vcfg,
+        SEED,
+        rates,
+        RecyclingConfig::default(),
     )
     .expect("recycling config valid");
     let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
@@ -88,12 +92,8 @@ fn build_step10_config(age_field: AgeFieldConfig, label: &str) -> BaselineConfig
         force_kind: ForceKind::Gpe,
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
-        yielding: YieldingConfig::Enabled(YieldingLaw {
-            bi: 0.15, ..Default::default()
-        }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05, ..BasalDragLaw::default()
-        }),
+        yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: format!("voronoi_seed{}_n8_step10_{}", SEED, label),
         slab_pull: SlabPullConfig::Disabled,
@@ -110,7 +110,7 @@ fn build_step10_config(age_field: AgeFieldConfig, label: &str) -> BaselineConfig
         linear_solver: LinearSolverConfig::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -148,14 +148,8 @@ fn print_summary(label: &str, dt: f64, r: &BaselineResult) {
             "  age_at_oceanic_cells_mean       : {:.4}",
             na.age_at_oceanic_cells_mean_final.unwrap_or(0.0)
         );
-        println!(
-            "  ridge_resets total              : {}",
-            na.age_ridge_resets_total.unwrap_or(0)
-        );
-        println!(
-            "  arc_resets total                : {}",
-            na.age_arc_resets_total.unwrap_or(0)
-        );
+        println!("  ridge_resets total              : {}", na.age_ridge_resets_total.unwrap_or(0));
+        println!("  arc_resets total                : {}", na.age_arc_resets_total.unwrap_or(0));
         println!(
             "  collision_max_events total      : {}",
             na.age_collision_max_events_total.unwrap_or(0)
@@ -196,11 +190,7 @@ fn step10_physics_baseline_64sq() {
 
     // Acceptance #10: mass conservation preserved.
     let mass_res = na.mass_conservation_residual.expect("mass residual populated");
-    assert!(
-        mass_res < 1e-6,
-        "mass_conservation_residual = {} ≥ 1e-6",
-        mass_res
-    );
+    assert!(mass_res < 1e-6, "mass_conservation_residual = {} ≥ 1e-6", mass_res);
 
     // Acceptance #8 (soft): mean oceanic age generally smaller
     // than continental — ridge resets fire frequently on oceanic

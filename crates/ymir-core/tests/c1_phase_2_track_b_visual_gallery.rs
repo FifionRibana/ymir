@@ -61,15 +61,15 @@ use std::path::{Path, PathBuf};
 use image::{ImageBuffer, Rgb};
 
 use ymir_core::grid::GridF32;
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
 use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
 use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
-use ymir_core::tectonics_c1::init_r7::{init_c1_state_phase_2_r7, Phase2InitParams};
+use ymir_core::tectonics_c1::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
 use ymir_core::tectonics_v2::field::Field2D;
 
@@ -80,8 +80,7 @@ const S_VIZ_MAX: f64 = 3.0;
 const ALTITUDE_PALETTE_HALF_RANGE: f32 = 1.13;
 
 fn output_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/reports/c1_phase_2_track_b_init_r7")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/reports/c1_phase_2_track_b_init_r7")
 }
 
 #[test]
@@ -98,18 +97,9 @@ fn phase_2_track_b_visual_gallery() {
     // committed PNG references match the Track B-only behaviour
     // (no subduction / accretion / rifting events).
     let closures = C1Closures {
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     };
     let config = C1TimeLoopConfig {
@@ -124,9 +114,7 @@ fn phase_2_track_b_visual_gallery() {
     eprintln!(
         "c1_phase_2_track_b Stage D visual gallery — grid={GRID_SIZE}², steps={N_STEPS}, seed={SEED}"
     );
-    eprintln!(
-        "  init: Phase 2 R7 (boundary displacement + cluster BFS + ridge age)"
-    );
+    eprintln!("  init: Phase 2 R7 (boundary displacement + cluster BFS + ridge age)");
     eprintln!(
         "  closures: DS={} EH={} erosion={} S-S={} (full Phase 2 stack)",
         closures.davis_suppe.enabled,
@@ -140,49 +128,27 @@ fn phase_2_track_b_visual_gallery() {
 
     let snapshot_steps: [usize; 4] = [49, 99, 199, 299];
     let started = std::time::Instant::now();
-    run_with_closures(
-        &mut state,
-        &mut kinematics,
-        &config,
-        &closures,
-        |step, current_state| {
-            if snapshot_steps.contains(&step) {
-                print_stats(
-                    &format!("{:03}", step + 1),
-                    current_state,
-                    &iso_config,
-                    &closures,
-                );
-                dump_snapshot(current_state, step + 1, &dir, &iso_config, &closures);
-            }
-        },
-    );
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |step, current_state| {
+        if snapshot_steps.contains(&step) {
+            print_stats(&format!("{:03}", step + 1), current_state, &iso_config, &closures);
+            dump_snapshot(current_state, step + 1, &dir, &iso_config, &closures);
+        }
+    });
     let elapsed = started.elapsed();
 
     eprintln!();
-    eprintln!(
-        "  wall time = {:.2?} ({:.2?} / step)",
-        elapsed,
-        elapsed / N_STEPS as u32
-    );
+    eprintln!("  wall time = {:.2?} ({:.2?} / step)", elapsed, elapsed / N_STEPS as u32);
     eprintln!("  output dir = {}", dir.display());
     eprintln!("  files = 10 PNGs (cycle_NNN_altitude.png + cycle_NNN_s.png × 5)");
     eprintln!();
 
     let final_age_stats = age_stats_oceanic(&state);
-    eprintln!(
-        "  Phase 2 Track B age distribution (cycle 300, oceanic cells):"
-    );
+    eprintln!("  Phase 2 Track B age distribution (cycle 300, oceanic cells):");
     eprintln!(
         "    min={:.4} max={:.4} mean={:.4} median={:.4}",
-        final_age_stats.min,
-        final_age_stats.max,
-        final_age_stats.mean,
-        final_age_stats.median,
+        final_age_stats.min, final_age_stats.max, final_age_stats.mean, final_age_stats.median,
     );
-    eprintln!(
-        "    Track A baseline (Phase 1.1 init): min≈0 max≈6958 mean≈4.67 median≈0"
-    );
+    eprintln!("    Track A baseline (Phase 1.1 init): min≈0 max≈6958 mean≈4.67 median≈0");
     eprintln!(
         "    Track B improvement: pile-up factor ~43 % lower; ridge cells present from init."
     );
@@ -199,9 +165,7 @@ fn phase_2_track_b_seed_diversity_gallery() {
     let iso_config = IsostasyConfig::default();
     let closures = C1Closures::default();
 
-    eprintln!(
-        "c1_phase_2_track_b Stage D seed_diversity_gallery — cycle_000 at seeds {seeds:?}"
-    );
+    eprintln!("c1_phase_2_track_b Stage D seed_diversity_gallery — cycle_000 at seeds {seeds:?}");
     eprintln!(
         "  per-seed continental fraction + bounding-box extent (forward signal toward §7.2):"
     );
@@ -215,10 +179,18 @@ fn phase_2_track_b_seed_diversity_gallery() {
             for i in 0..GRID_SIZE {
                 if matches!(state.plate_type.get(i, j), PlateType::Continental) {
                     continental += 1;
-                    if i < min_i { min_i = i; }
-                    if i > max_i { max_i = i; }
-                    if j < min_j { min_j = j; }
-                    if j > max_j { max_j = j; }
+                    if i < min_i {
+                        min_i = i;
+                    }
+                    if i > max_i {
+                        max_i = i;
+                    }
+                    if j < min_j {
+                        min_j = j;
+                    }
+                    if j > max_j {
+                        max_j = j;
+                    }
                 }
             }
         }
@@ -306,8 +278,12 @@ fn print_stats(tag: &str, state: &C1State, iso_config: &IsostasyConfig, closures
     let mut a_max = f32::NEG_INFINITY;
     let mut a_sum = 0.0_f64;
     for &v in &altitude.data {
-        if v < a_min { a_min = v; }
-        if v > a_max { a_max = v; }
+        if v < a_min {
+            a_min = v;
+        }
+        if v > a_max {
+            a_max = v;
+        }
         a_sum += v as f64;
     }
     let a_mean = a_sum / altitude.data.len() as f64;

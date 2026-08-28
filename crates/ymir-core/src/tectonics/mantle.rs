@@ -85,13 +85,8 @@ impl MantleFlow {
             modes.push(MantleMode { kx, ky, amplitude, phase });
         }
 
-        let mut flow = MantleFlow {
-            modes,
-            vx: Field2D::new(nx, ny),
-            vy: Field2D::new(nx, ny),
-            nx,
-            ny,
-        };
+        let mut flow =
+            MantleFlow { modes, vx: Field2D::new(nx, ny), vy: Field2D::new(nx, ny), nx, ny };
         flow.recompute_field();
         flow
     }

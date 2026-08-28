@@ -23,10 +23,12 @@
 //! verified by the Step 10 physics test
 //! (`v2_step10_physics_and_regression`) at 64² × 100 steps.
 
-use ymir_core::tectonics_v2::age_field::advection::{step_age_advect, QUIESCENT_GROWTH_RATE};
+use ymir_core::tectonics_v2::age_field::advection::{QUIESCENT_GROWTH_RATE, step_age_advect};
 use ymir_core::tectonics_v2::age_field::events::apply_age_events;
 use ymir_core::tectonics_v2::age_field::{AgeFieldConfigEnabled, AgeFieldState};
-use ymir_core::tectonics_v2::boundaries::{BoundaryFlag, BoundaryFlagField, PlateType, PlateTypeField};
+use ymir_core::tectonics_v2::boundaries::{
+    BoundaryFlag, BoundaryFlagField, PlateType, PlateTypeField,
+};
 use ymir_core::tectonics_v2::field::{Field2D, PeriodicIndex};
 
 #[test]
@@ -47,16 +49,16 @@ fn v2_age_field_initialization() {
     for j in 0..ny {
         for i in 0..nx {
             let in_continental = (2..4).contains(&i) && (2..4).contains(&j);
-            let expected = if in_continental {
-                cfg.continental_age_init
-            } else {
-                cfg.oceanic_age_init
-            };
+            let expected =
+                if in_continental { cfg.continental_age_init } else { cfg.oceanic_age_init };
             assert_eq!(
                 state.current.get(i, j),
                 expected,
                 "cell ({},{}) age: got {}, expected {}",
-                i, j, state.current.get(i, j), expected
+                i,
+                j,
+                state.current.get(i, j),
+                expected
             );
         }
     }
@@ -97,8 +99,17 @@ fn v2_age_field_bounds() {
 
     for step in 0..n_steps {
         step_age_advect(
-            nx, ny, 1.0, 1.0, dt, &idx_x, &idx_y,
-            &state.current, &vx, &vy, &mut state.next,
+            nx,
+            ny,
+            1.0,
+            1.0,
+            dt,
+            &idx_x,
+            &idx_y,
+            &state.current,
+            &vx,
+            &vy,
+            &mut state.next,
         );
         std::mem::swap(&mut state.current, &mut state.next);
         let _ = apply_age_events(&flags, &plate_type, &s_init, &idx_x, &idx_y, &mut state.current);
@@ -114,7 +125,9 @@ fn v2_age_field_bounds() {
         assert!(
             amax <= age_init_max + elapsed + 1e-12,
             "step {}: age_max = {} exceeds age_init_max + elapsed = {}",
-            step, amax, age_init_max + elapsed
+            step,
+            amax,
+            age_init_max + elapsed
         );
     }
 }
@@ -158,8 +171,8 @@ fn v2_age_field_advection_mms() {
         for j in 0..ny {
             for i in 0..nx {
                 let x = (i as f64 + 0.5) * dx;
-                let analytic =
-                    (2.0 * std::f64::consts::PI * (x - total_t)).sin() + total_t * QUIESCENT_GROWTH_RATE;
+                let analytic = (2.0 * std::f64::consts::PI * (x - total_t)).sin()
+                    + total_t * QUIESCENT_GROWTH_RATE;
                 let err = a.get(i, j) - analytic;
                 sse += err * err;
             }
@@ -203,8 +216,17 @@ fn v2_age_field_quiescent_growth() {
 
     for step in 1..=10 {
         step_age_advect(
-            nx, ny, 1.0, 1.0, dt, &idx_x, &idx_y,
-            &state.current, &vx, &vy, &mut state.next,
+            nx,
+            ny,
+            1.0,
+            1.0,
+            dt,
+            &idx_x,
+            &idx_y,
+            &state.current,
+            &vx,
+            &vy,
+            &mut state.next,
         );
         std::mem::swap(&mut state.current, &mut state.next);
         let counts = apply_age_events(&flags, &plate_type, &s, &idx_x, &idx_y, &mut state.current);
@@ -217,7 +239,9 @@ fn v2_age_field_quiescent_growth() {
             assert!(
                 (v - expected).abs() < 1e-12,
                 "step {}: cell got {}, expected {}",
-                step, v, expected
+                step,
+                v,
+                expected
             );
         }
     }
@@ -246,8 +270,17 @@ fn v2_age_field_ridge_reset() {
     flags.set(2, 2, BoundaryFlag::Rift);
 
     step_age_advect(
-        nx, ny, 1.0, 1.0, dt, &idx_x, &idx_y,
-        &state.current, &vx, &vy, &mut state.next,
+        nx,
+        ny,
+        1.0,
+        1.0,
+        dt,
+        &idx_x,
+        &idx_y,
+        &state.current,
+        &vx,
+        &vy,
+        &mut state.next,
     );
     std::mem::swap(&mut state.current, &mut state.next);
     // Before events: every cell at oceanic_age_init + dt = 1.1.
@@ -263,7 +296,9 @@ fn v2_age_field_ridge_reset() {
             assert!(
                 (state.current.get(i, j) - 1.1).abs() < 1e-12,
                 "non-ridge cell ({},{}) age {} != 1.1",
-                i, j, state.current.get(i, j)
+                i,
+                j,
+                state.current.get(i, j)
             );
         }
     }

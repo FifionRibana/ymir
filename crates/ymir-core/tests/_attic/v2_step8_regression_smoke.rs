@@ -42,13 +42,18 @@ fn build_step7_shape_config(mantle: MantleConfig) -> BaselineConfig {
     let vcfg = VoronoiConfig { num_plates: 8, continental_ratio: 0.3 };
     let rates =
         BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
-    let boundary =
-        BoundaryConfig::enabled_voronoi_closed(nx, ny, &vcfg, 42, rates, RecyclingConfig::default())
-            .expect("recycling config valid");
+    let boundary = BoundaryConfig::enabled_voronoi_closed(
+        nx,
+        ny,
+        &vcfg,
+        42,
+        rates,
+        RecyclingConfig::default(),
+    )
+    .expect("recycling config valid");
     let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
-    let slab = SlabPullConfig::Enabled {
-        sp: 1.5, tau_slab: 0.5, k_slab_accum: 1.0, epsilon: 1.0e-6,
-    };
+    let slab =
+        SlabPullConfig::Enabled { sp: 1.5, tau_slab: 0.5, k_slab_accum: 1.0, epsilon: 1.0e-6 };
     BaselineConfig {
         seed: 42,
         grid_nx: nx,
@@ -69,9 +74,7 @@ fn build_step7_shape_config(mantle: MantleConfig) -> BaselineConfig {
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
         yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05, ..BasalDragLaw::default()
-        }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: "voronoi_seed42_n8".into(),
         slab_pull: slab,
@@ -82,7 +85,7 @@ fn build_step7_shape_config(mantle: MantleConfig) -> BaselineConfig {
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -140,10 +143,7 @@ fn disabled_runs_are_bit_deterministic() {
         na2.mass_conservation_residual.unwrap(),
         "mass_conservation_residual not deterministic under MantleConfig::Disabled — Step 8 code path has a side-effect",
     );
-    assert_eq!(
-        r1.metrics.vmax_peak, r2.metrics.vmax_peak,
-        "vmax_peak not deterministic",
-    );
+    assert_eq!(r1.metrics.vmax_peak, r2.metrics.vmax_peak, "vmax_peak not deterministic",);
     assert_eq!(
         na1.yielding_cell_fraction_max.unwrap_or(0.0),
         na2.yielding_cell_fraction_max.unwrap_or(0.0),

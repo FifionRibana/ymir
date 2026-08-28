@@ -25,7 +25,7 @@ use ymir_core::tectonics_v2::basal_drag::BasalDragConfig;
 use ymir_core::tectonics_v2::boundaries::{BoundaryConfig, BoundaryRates};
 use ymir_core::tectonics_v2::cratonic::{CratonicConfig, CratonicConfigEnabled};
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force,
 };
 use ymir_core::tectonics_v2::init::InitMode;
 use ymir_core::tectonics_v2::mantle::MantleConfig;
@@ -36,7 +36,8 @@ use ymir_core::tectonics_v2::scales::Scales;
 use ymir_core::tectonics_v2::slab::SlabPullConfig;
 use ymir_core::tectonics_v2::voronoi::VoronoiConfig;
 use ymir_core::tectonics_v2::workflow::{
-    final_state_to_continuation_v2, run_phase_a_cycle_v2, PhaseAParams, WorkflowConfig, WorkflowParams,
+    PhaseAParams, WorkflowConfig, WorkflowParams, final_state_to_continuation_v2,
+    run_phase_a_cycle_v2,
 };
 
 fn build_minimal_cycle_config(steps: usize, scratch: &str) -> BaselineConfig {
@@ -121,10 +122,7 @@ fn v2_workflow_continuation_no_transient() {
     let cfg_1 = build_minimal_cycle_config(5, "cycle_1");
     let cycle_1 = run_phase_a_cycle_v2(&cfg_1, &wf);
     let vmax_1 = cycle_1.baseline.metrics.vmax_peak;
-    assert!(
-        vmax_1 > 0.0,
-        "cycle 1 must produce non-trivial dynamics: vmax_peak = {vmax_1}"
-    );
+    assert!(vmax_1 > 0.0, "cycle 1 must produce non-trivial dynamics: vmax_peak = {vmax_1}");
 
     // Cycle 2: 1 step from continuation. With the warm-start contract
     // honoured, vmax_2 = peak|v| at step 1 of cycle 2 ≈ peak|v| in
@@ -184,11 +182,7 @@ fn v2_workflow_cratonic_recompute_flips_eroded_plate() {
     // aggressive-but-bounded `α = 5.0` would no longer cross the
     // 0.95 retention threshold.
     let wf = WorkflowConfig::Enabled(WorkflowParams {
-        phase_a: PhaseAParams {
-            alpha: 5.0,
-            isostatic_rebound_ratio: 0.0,
-            ..Default::default()
-        },
+        phase_a: PhaseAParams { alpha: 5.0, isostatic_rebound_ratio: 0.0, ..Default::default() },
         phase_b: Default::default(),
     });
 
@@ -201,7 +195,8 @@ fn v2_workflow_cratonic_recompute_flips_eroded_plate() {
     // metric scales with the flipped plate's area-fraction of the
     // domain.
     let change = cycle
-        .common.craton_recomputation_change
+        .common
+        .craton_recomputation_change
         .expect("change metric must be populated under CratonicConfig::Enabled");
     assert!(
         change > 0.0,
@@ -244,7 +239,8 @@ fn v2_workflow_cratonic_recompute_preserves_stable_craton() {
 
     // BFS distances unchanged → recomputed factor identical.
     let change = cycle
-        .common.craton_recomputation_change
+        .common
+        .craton_recomputation_change
         .expect("craton_recomputation_change must be populated");
     assert!(
         change < 1e-12,

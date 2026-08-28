@@ -40,7 +40,7 @@ use super::coarse_solve::LuFactorisation;
 use super::coloring::greedy_coloring;
 use super::prolongation::build_prolongation;
 use super::restriction::transpose_to_restriction;
-use super::splitting::{classical_rs_splitting, CfType};
+use super::splitting::{CfType, classical_rs_splitting};
 use super::strong_connections::compute_strong_connections;
 use super::{AmgConfig, AmgHierarchy, AmgLevel};
 
@@ -180,25 +180,13 @@ pub fn build_hierarchy(a_0: CsrMatrix, cfg: AmgConfig) -> AmgHierarchy {
         // Step 8.5b Phase 3: compute algebraic greedy coloring of
         // the level's operator so RBGS can smooth in parallel.
         let colors = greedy_coloring(&current);
-        levels.push(AmgLevel {
-            a: current,
-            p: Some(p),
-            r: Some(r),
-            coarse_lu: None,
-            colors,
-        });
+        levels.push(AmgLevel { a: current, p: Some(p), r: Some(r), coarse_lu: None, colors });
         current = a_next;
     }
 
     // Hit max_levels cap — factorise the current level as coarsest.
     let lu = LuFactorisation::factor(&current);
-    levels.push(AmgLevel {
-        a: current,
-        p: None,
-        r: None,
-        coarse_lu: Some(lu),
-        colors: Vec::new(),
-    });
+    levels.push(AmgLevel { a: current, p: None, r: None, coarse_lu: Some(lu), colors: Vec::new() });
     AmgHierarchy { levels }
 }
 
@@ -267,10 +255,7 @@ mod tests {
             row_ptr: vec![0, 4, 8, 12, 16],
             col_idx: vec![0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3],
             values: vec![
-                1.0, 2.0, 7.0, 8.0,
-                3.0, 4.0, 9.0, 10.0,
-                11.0, 12.0, 5.0, 6.0,
-                13.0, 14.0, 7.0, 8.0,
+                1.0, 2.0, 7.0, 8.0, 3.0, 4.0, 9.0, 10.0, 11.0, 12.0, 5.0, 6.0, 13.0, 14.0, 7.0, 8.0,
             ],
         };
         let top_left = extract_diagonal_block(&a, 0, 2);
@@ -292,10 +277,7 @@ mod tests {
             assert_eq!(h1.levels[k].a.row_ptr, h2.levels[k].a.row_ptr);
             assert_eq!(h1.levels[k].a.col_idx, h2.levels[k].a.col_idx);
             for i in 0..h1.levels[k].a.values.len() {
-                assert_eq!(
-                    h1.levels[k].a.values[i].to_bits(),
-                    h2.levels[k].a.values[i].to_bits()
-                );
+                assert_eq!(h1.levels[k].a.values[i].to_bits(), h2.levels[k].a.values[i].to_bits());
             }
         }
     }

@@ -33,18 +33,16 @@
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
 use ymir_core::tectonics_c1::closures::accretion::{
-    apply_accretion_step, AccretionParams, ConvergenceTracker, VelocityMergeMethod,
+    AccretionParams, ConvergenceTracker, VelocityMergeMethod, apply_accretion_step,
 };
 use ymir_core::tectonics_c1::closures::rifting::{
-    apply_rifting_split, apply_rifting_thinning, DivergenceTracker, RiftingParams,
+    DivergenceTracker, RiftingParams, apply_rifting_split, apply_rifting_thinning,
 };
-use ymir_core::tectonics_c1::closures::subduction::{
-    apply_subduction_step, SubductionParams,
-};
-use ymir_core::tectonics_c1::init_r7::{init_c1_state_phase_2_r7, Phase2InitParams};
+use ymir_core::tectonics_c1::closures::subduction::{SubductionParams, apply_subduction_step};
+use ymir_core::tectonics_c1::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 
 const GRID: usize = 64;
 const SHORT_RUN: usize = 100;
@@ -80,18 +78,9 @@ fn phase_2_full_stack_closures() -> C1Closures {
 /// "Track A/B identity preserved" assertions.
 fn track_d_disabled_closures() -> C1Closures {
     C1Closures {
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     }
 }
@@ -204,41 +193,23 @@ impl TrackDParams {
     fn only_subduction() -> Self {
         Self {
             subduction: SubductionParams::default(),
-            accretion: AccretionParams {
-                enabled: false,
-                ..AccretionParams::default()
-            },
-            rifting: RiftingParams {
-                enabled: false,
-                ..RiftingParams::default()
-            },
+            accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+            rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         }
     }
 
     fn only_accretion() -> Self {
         Self {
-            subduction: SubductionParams {
-                enabled: false,
-                ..SubductionParams::default()
-            },
+            subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
             accretion: AccretionParams::default(),
-            rifting: RiftingParams {
-                enabled: false,
-                ..RiftingParams::default()
-            },
+            rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         }
     }
 
     fn only_rifting() -> Self {
         Self {
-            subduction: SubductionParams {
-                enabled: false,
-                ..SubductionParams::default()
-            },
-            accretion: AccretionParams {
-                enabled: false,
-                ..AccretionParams::default()
-            },
+            subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+            accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
             rifting: RiftingParams::default(),
         }
     }
@@ -263,7 +234,11 @@ fn subduction_consumes_oceanic_mass_at_convergent_oceanic_continental() {
     );
     eprintln!(
         "subduction integration ({} steps, seed 42): cells_consumed = {}, total = {:.4}, arc = {:.4}, reassigned = {}",
-        SHORT_RUN, stats.cells_consumed, stats.total_mass_consumed, stats.arc_mass_distributed, stats.plate_ids_reassigned,
+        SHORT_RUN,
+        stats.cells_consumed,
+        stats.total_mass_consumed,
+        stats.arc_mass_distributed,
+        stats.plate_ids_reassigned,
     );
     assert!(
         stats.cells_consumed > 0,
@@ -290,7 +265,8 @@ fn subduction_distributes_arc_volcanism_locally() {
     );
     eprintln!(
         "arc distribution ({} steps): arc / consumed ratio = {:.4} (default arc_efficiency = 0.5)",
-        SHORT_RUN, stats.arc_mass_distributed / stats.total_mass_consumed.max(1e-12)
+        SHORT_RUN,
+        stats.arc_mass_distributed / stats.total_mass_consumed.max(1e-12)
     );
     assert!(
         stats.arc_mass_distributed > 0.0,
@@ -349,21 +325,9 @@ fn subduction_isolation_disabled_matches_track_b() {
 
     let closures_track_b = track_d_disabled_closures();
     let config = make_config(SHORT_RUN);
-    run_with_closures(
-        &mut state_a,
-        &mut kinematics_a,
-        &config,
-        &closures_track_b,
-        |_, _| {},
-    );
+    run_with_closures(&mut state_a, &mut kinematics_a, &config, &closures_track_b, |_, _| {});
 
-    run_with_closures(
-        &mut state_b,
-        &mut kinematics_b,
-        &config,
-        &closures_track_b,
-        |_, _| {},
-    );
+    run_with_closures(&mut state_b, &mut kinematics_b, &config, &closures_track_b, |_, _| {});
 
     assert_eq!(
         state_a.s.data(),
@@ -400,7 +364,8 @@ fn accretion_merges_plates_after_sustained_convergence() {
     if stats.merges_count == 0 {
         eprintln!(
             "  Note: no accretion merges fired at seed 42 / {} steps — Phase 1.1 kinematics random-cycle may interrupt sustained convergence before threshold ({} steps)",
-            FULL_RUN, AccretionParams::default().merge_time_threshold
+            FULL_RUN,
+            AccretionParams::default().merge_time_threshold
         );
     }
 }
@@ -435,9 +400,7 @@ fn accretion_velocity_mass_weighted_average() {
     let _ = plate_type;
     let v_a = (0.01, 0.0);
     let v_b = (-0.005, 0.01);
-    let mut kinematics = PlateKinematics {
-        velocities: vec![v_a, v_b],
-    };
+    let mut kinematics = PlateKinematics { velocities: vec![v_a, v_b] };
     let mut tracker = ConvergenceTracker::new();
     tracker.convergence_counts.insert((0, 1), 50);
     let params = AccretionParams::default();
@@ -448,13 +411,7 @@ fn accretion_velocity_mass_weighted_average() {
     let expected_vx = (v_a.0 * mass_a as f64 + v_b.0 * mass_b as f64) / total_mass;
     let expected_vy = (v_a.1 * mass_a as f64 + v_b.1 * mass_b as f64) / total_mass;
 
-    let _stats = apply_accretion_step(
-        &mut plate_id,
-        &s,
-        &mut kinematics,
-        &tracker,
-        &params,
-    );
+    let _stats = apply_accretion_step(&mut plate_id, &s, &mut kinematics, &tracker, &params);
 
     let (got_vx, got_vy) = kinematics.velocities[0];
     eprintln!(
@@ -487,20 +444,8 @@ fn accretion_isolation_disabled_matches_track_b() {
     let closures = track_d_disabled_closures();
     let config = make_config(SHORT_RUN);
 
-    run_with_closures(
-        &mut state_a,
-        &mut kinematics_a,
-        &config,
-        &closures,
-        |_, _| {},
-    );
-    run_with_closures(
-        &mut state_b,
-        &mut kinematics_b,
-        &config,
-        &closures,
-        |_, _| {},
-    );
+    run_with_closures(&mut state_a, &mut kinematics_a, &config, &closures, |_, _| {});
+    run_with_closures(&mut state_b, &mut kinematics_b, &config, &closures, |_, _| {});
 
     assert_eq!(state_a.s.data(), state_b.s.data());
     assert_eq!(state_a.plate_id.data(), state_b.plate_id.data());
@@ -526,10 +471,7 @@ fn rifting_thinning_at_divergent_continental() {
         "rifting thinning ({} steps, seed 42): cells_thinned = {}, mass_removed = {:.4}",
         SHORT_RUN, stats.cells_thinned, stats.total_mass_removed
     );
-    assert!(
-        stats.cells_thinned > 0,
-        "rifting thinning must fire on continental divergent cells"
-    );
+    assert!(stats.cells_thinned > 0, "rifting thinning must fire on continental divergent cells");
     assert!(stats.total_mass_removed > 0.0);
 }
 
@@ -595,9 +537,7 @@ fn rifting_split_velocity_perpendicular_offset() {
     }
     let v_a = (-0.01, 0.0);
     let v_b = (0.01, 0.0);
-    let mut kinematics = PlateKinematics {
-        velocities: vec![v_a, v_b, (0.0, 0.0)],
-    };
+    let mut kinematics = PlateKinematics { velocities: vec![v_a, v_b, (0.0, 0.0)] };
     let mut tracker = DivergenceTracker::new();
     tracker.divergence_counts.insert((0, 1), 75);
     let params = RiftingParams::default();
@@ -637,20 +577,8 @@ fn rifting_isolation_disabled_matches_track_b() {
     let closures = track_d_disabled_closures();
     let config = make_config(SHORT_RUN);
 
-    run_with_closures(
-        &mut state_a,
-        &mut kinematics_a,
-        &config,
-        &closures,
-        |_, _| {},
-    );
-    run_with_closures(
-        &mut state_b,
-        &mut kinematics_b,
-        &config,
-        &closures,
-        |_, _| {},
-    );
+    run_with_closures(&mut state_a, &mut kinematics_a, &config, &closures, |_, _| {});
+    run_with_closures(&mut state_b, &mut kinematics_b, &config, &closures, |_, _| {});
 
     assert_eq!(state_a.s.data(), state_b.s.data());
     assert_eq!(state_a.plate_id.data(), state_b.plate_id.data());
@@ -673,20 +601,8 @@ fn boundary_events_deterministic_given_seed() {
     let (mut state_a, mut kinematics_a) = phase_2_r7_init(seed);
     let (mut state_b, mut kinematics_b) = phase_2_r7_init(seed);
 
-    run_with_closures(
-        &mut state_a,
-        &mut kinematics_a,
-        &config,
-        &closures,
-        |_, _| {},
-    );
-    run_with_closures(
-        &mut state_b,
-        &mut kinematics_b,
-        &config,
-        &closures,
-        |_, _| {},
-    );
+    run_with_closures(&mut state_a, &mut kinematics_a, &config, &closures, |_, _| {});
+    run_with_closures(&mut state_b, &mut kinematics_b, &config, &closures, |_, _| {});
 
     assert_eq!(
         state_a.s.data(),
@@ -768,8 +684,7 @@ fn track_c_escalation_criterion_event_frequency() {
             n_steps,
             &TrackDParams::all_default(),
         );
-        let total_events =
-            stats.cells_consumed + stats.merges_count + stats.splits_count;
+        let total_events = stats.cells_consumed + stats.merges_count + stats.splits_count;
         if total_events > 0 {
             seeds_with_events += 1;
         }
@@ -800,12 +715,8 @@ fn track_c_escalation_criterion_event_frequency() {
     let threshold = 4;
     if seeds_with_events < threshold {
         eprintln!();
-        eprintln!(
-            "ARCHITECTURAL FINDING: Track C constrained kinematics escalation"
-        );
-        eprintln!(
-            "  may be prioritized — event frequency under Phase 1.1 kinematics is below"
-        );
+        eprintln!("ARCHITECTURAL FINDING: Track C constrained kinematics escalation");
+        eprintln!("  may be prioritized — event frequency under Phase 1.1 kinematics is below");
         eprintln!(
             "  the visible-event threshold ({}/{} seeds vs ≥ 4/5)",
             seeds_with_events,

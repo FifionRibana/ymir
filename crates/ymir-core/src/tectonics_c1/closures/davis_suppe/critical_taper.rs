@@ -191,14 +191,8 @@ mod tests {
         // (λ_b=0.95), submerged (ρ_w/ρ≈0.4), basal dip β≈2°.
         // Observed α+β ≈ 3.5° (canonical low-taper, overpressured
         // case — the test that a formula must respect λ to pass).
-        let predicted = critical_taper_angle_with_beta(
-            0.85,
-            1.57,
-            0.95,
-            0.95,
-            0.4,
-            2.0_f64.to_radians(),
-        );
+        let predicted =
+            critical_taper_angle_with_beta(0.85, 1.57, 0.95, 0.95, 0.4, 2.0_f64.to_radians());
         let expected = 3.5_f64.to_radians();
         let tol = 2.0_f64.to_radians();
         if (predicted - expected).abs() >= tol {
@@ -231,12 +225,7 @@ mod tests {
             a.to_degrees(),
             b.to_degrees()
         );
-        assert!(
-            b < c,
-            "Expected b < c: b={:.2}°, c={:.2}°",
-            b.to_degrees(),
-            c.to_degrees()
-        );
+        assert!(b < c, "Expected b < c: b={:.2}°, c={:.2}°", b.to_degrees(), c.to_degrees());
     }
 
     #[test]

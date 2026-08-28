@@ -29,12 +29,12 @@
 //! `v2_workflow_disabled_regression::workflow_disabled_run_phase_a_cycle_is_bit_identical_to_run_baseline`
 //! pins this contract byte-for-byte.
 
-use super::phase_a_common::{apply_post_tectonic, extract_per_plate_type, PostTectonicInput};
+use super::phase_a_common::{PostTectonicInput, apply_post_tectonic, extract_per_plate_type};
 use super::{CycleOutputCommon, CycleOutputV2, PhaseAOutputV2, WorkflowConfig};
 use crate::tectonics::isostasy::IsostasyConfig;
 use crate::tectonics_v2::cratonic::CratonicConfig;
 use crate::tectonics_v2::diagnostics::harness::{
-    run_baseline_with_progress, BaselineConfig, ContinuationState, FinalState, StepProgress,
+    BaselineConfig, ContinuationState, FinalState, StepProgress, run_baseline_with_progress,
 };
 
 /// Run a single Phase A cycle on the v2 path. Thin wrapper over
@@ -82,10 +82,7 @@ where
     match wf {
         WorkflowConfig::Disabled => {
             let baseline = run_baseline_with_progress(cfg, on_progress);
-            CycleOutputV2 {
-                baseline,
-                common: CycleOutputCommon::default(),
-            }
+            CycleOutputV2 { baseline, common: CycleOutputCommon::default() }
         }
         WorkflowConfig::Enabled(params) => {
             // Step 1 — Tectonic (v2-specific).
@@ -179,10 +176,7 @@ where
                 baseline.final_state.cratonic_factor = Some(new_factor);
             }
 
-            CycleOutputV2 {
-                baseline,
-                common: pt_result.common,
-            }
+            CycleOutputV2 { baseline, common: pt_result.common }
         }
     }
 }

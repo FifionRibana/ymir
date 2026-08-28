@@ -78,29 +78,61 @@ impl Scales {
     }
 
     /// Nondim length x/L*.
-    pub fn to_nondim_length(&self, x: f64) -> f64 { x / self.length }
-    pub fn to_dim_length(&self, xt: f64) -> f64 { xt * self.length }
+    pub fn to_nondim_length(&self, x: f64) -> f64 {
+        x / self.length
+    }
+    pub fn to_dim_length(&self, xt: f64) -> f64 {
+        xt * self.length
+    }
 
-    pub fn to_nondim_thickness(&self, s: f64) -> f64 { s / self.thickness }
-    pub fn to_dim_thickness(&self, st: f64) -> f64 { st * self.thickness }
+    pub fn to_nondim_thickness(&self, s: f64) -> f64 {
+        s / self.thickness
+    }
+    pub fn to_dim_thickness(&self, st: f64) -> f64 {
+        st * self.thickness
+    }
 
-    pub fn to_nondim_time(&self, t: f64) -> f64 { t / self.time }
-    pub fn to_dim_time(&self, tt: f64) -> f64 { tt * self.time }
+    pub fn to_nondim_time(&self, t: f64) -> f64 {
+        t / self.time
+    }
+    pub fn to_dim_time(&self, tt: f64) -> f64 {
+        tt * self.time
+    }
 
-    pub fn to_nondim_velocity(&self, v: f64) -> f64 { v / self.velocity }
-    pub fn to_dim_velocity(&self, vt: f64) -> f64 { vt * self.velocity }
+    pub fn to_nondim_velocity(&self, v: f64) -> f64 {
+        v / self.velocity
+    }
+    pub fn to_dim_velocity(&self, vt: f64) -> f64 {
+        vt * self.velocity
+    }
 
-    pub fn to_nondim_viscosity(&self, eta: f64) -> f64 { eta / self.viscosity }
-    pub fn to_dim_viscosity(&self, etat: f64) -> f64 { etat * self.viscosity }
+    pub fn to_nondim_viscosity(&self, eta: f64) -> f64 {
+        eta / self.viscosity
+    }
+    pub fn to_dim_viscosity(&self, etat: f64) -> f64 {
+        etat * self.viscosity
+    }
 
-    pub fn to_nondim_stress(&self, sigma: f64) -> f64 { sigma / self.stress }
-    pub fn to_dim_stress(&self, st: f64) -> f64 { st * self.stress }
+    pub fn to_nondim_stress(&self, sigma: f64) -> f64 {
+        sigma / self.stress
+    }
+    pub fn to_dim_stress(&self, st: f64) -> f64 {
+        st * self.stress
+    }
 
-    pub fn to_nondim_pressure(&self, p: f64) -> f64 { p / self.pressure }
-    pub fn to_dim_pressure(&self, pt: f64) -> f64 { pt * self.pressure }
+    pub fn to_nondim_pressure(&self, p: f64) -> f64 {
+        p / self.pressure
+    }
+    pub fn to_dim_pressure(&self, pt: f64) -> f64 {
+        pt * self.pressure
+    }
 
-    pub fn to_nondim_body_force(&self, f: f64) -> f64 { f / self.body_force }
-    pub fn to_dim_body_force(&self, ft: f64) -> f64 { ft * self.body_force }
+    pub fn to_nondim_body_force(&self, f: f64) -> f64 {
+        f / self.body_force
+    }
+    pub fn to_dim_body_force(&self, ft: f64) -> f64 {
+        ft * self.body_force
+    }
 
     /// Argand number `Ar = ρ*·g·(S*)²/(η*·v*)`.
     ///

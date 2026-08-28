@@ -247,7 +247,15 @@ pub fn compute_precipitation_with_budget(
 ) -> (GridF32, f64, f64, f64) {
     // span 0 → every row reads the SAME belt (the centre lat): the legacy single-belt
     // behaviour, byte-identical. The span-aware path is [`compute_precipitation_span`].
-    compute_precipitation_span(heightmap, temperature, lat_deg, 0.0, km_per_cell, altitude_m, params)
+    compute_precipitation_span(
+        heightmap,
+        temperature,
+        lat_deg,
+        0.0,
+        km_per_cell,
+        altitude_m,
+        params,
+    )
 }
 
 /// As [`compute_precipitation_with_budget`] but with an EXPLICIT latitudinal `span_deg`

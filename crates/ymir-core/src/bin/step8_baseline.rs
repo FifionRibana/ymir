@@ -212,10 +212,7 @@ fn build_baseline_config(
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
         yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05,
-            ..BasalDragLaw::default()
-        }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: format!("voronoi_seed{}_n{}", args.seed, args.num_plates),
         slab_pull: slab,
@@ -226,7 +223,7 @@ fn build_baseline_config(
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     })
 }
 
@@ -244,13 +241,8 @@ fn run_one(
     let r = run_baseline(&cfg);
     let m = &r.metrics;
     let yielding = m.newton.as_ref().and_then(|n| n.yielding_cell_fraction_max).unwrap_or(0.0);
-    let peak_v_mantle = m
-        .newton
-        .as_ref()
-        .and_then(|n| n.peak_v_solved_mantle_run)
-        .unwrap_or(0.0);
-    let eps_ratio =
-        m.newton.as_ref().and_then(|n| n.epsilon_ii_max_to_floor_ratio).unwrap_or(0.0);
+    let peak_v_mantle = m.newton.as_ref().and_then(|n| n.peak_v_solved_mantle_run).unwrap_or(0.0);
+    let eps_ratio = m.newton.as_ref().and_then(|n| n.epsilon_ii_max_to_floor_ratio).unwrap_or(0.0);
     let div_max = m.newton.as_ref().and_then(|n| n.div_v_mantle_max).unwrap_or(0.0);
     println!(
         "  wallclock: {:.3}s; CG/Newton mean: {:.1}/{}; mass_conservation_residual: {:.3e}; peak|v|: {:.3e} (peak|v_solved|: {:.3e}); yielding: {:.3e}; ε̇_II/floor: {:.2e}; div_v_mantle_max: {:.2e}",
@@ -300,11 +292,8 @@ fn run_mf_sweep(args: &Args) -> Vec<MfSweepRow> {
         println!("-- Mf sweep: Mf = {} --", mf);
         let r = run_baseline(&cfg);
         let m = &r.metrics;
-        let (conv_pct, _, _, _) = m
-            .newton
-            .as_ref()
-            .map(|n| n.outcome_percentages())
-            .unwrap_or((0.0, 0.0, 0.0, 0.0));
+        let (conv_pct, _, _, _) =
+            m.newton.as_ref().map(|n| n.outcome_percentages()).unwrap_or((0.0, 0.0, 0.0, 0.0));
         rows.push(MfSweepRow {
             mf,
             peak_v: m
@@ -381,10 +370,8 @@ fn render_mf_sweep_markdown(rows: &[MfSweepRow], args: &Args) -> String {
         s.push_str("**Flag — non-monotonic `peak|v_solved|` with `Mf`.** The amplitude scaling is linear by construction (fixed pattern times `Mf`); a non-monotonic response signals either a solver convergence issue at a specific point, continuation-ramp interaction, or numerical noise dominating. Investigate the specific row before accepting the sweep.\n\n");
     }
     // Yielding activation threshold.
-    let first_active = rows
-        .iter()
-        .position(|r| r.yielding_cell_fraction_max > 0.0)
-        .map(|idx| rows[idx].mf);
+    let first_active =
+        rows.iter().position(|r| r.yielding_cell_fraction_max > 0.0).map(|idx| rows[idx].mf);
     if let Some(mf_crit) = first_active {
         s.push_str(&format!(
             "**Yielding activation threshold (observed).** Yielding first fires at `Mf ≥ {:.2}` in this sweep. The critical `Mf` is a physical property measured, not prescribed; at smaller `Mf` the mantle bootstrap does not push `ε̇_II` above the regularisation floor.\n\n",
@@ -424,7 +411,9 @@ fn main() -> ExitCode {
     let mms = mms_bench::run_all();
 
     // -------- Physics --------
-    println!("\n=== Step 8 physics baseline (mantle Enabled, slab-pull Disabled per Step 8 exception) ===");
+    println!(
+        "\n=== Step 8 physics baseline (mantle Enabled, slab-pull Disabled per Step 8 exception) ==="
+    );
     let mut phys_metrics = Vec::new();
     let mut phys_configs = Vec::new();
     for (nx, ny) in &args.grids {
@@ -435,14 +424,13 @@ fn main() -> ExitCode {
             seed: args.mantle_seed,
             evolution_rate: 0.0,
         };
-        let cfg =
-            match build_baseline_config(&args, *nx, *ny, mantle, "step8_physics_heightmaps") {
-                Ok(c) => c,
-                Err(e) => {
-                    eprintln!("physics build failed: {e}");
-                    return ExitCode::from(1);
-                }
-            };
+        let cfg = match build_baseline_config(&args, *nx, *ny, mantle, "step8_physics_heightmaps") {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("physics build failed: {e}");
+                return ExitCode::from(1);
+            }
+        };
         let (m, c) = run_one("Step 8 physics", cfg);
         phys_metrics.push(m);
         phys_configs.push(c);
