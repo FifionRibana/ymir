@@ -33,12 +33,10 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::Sender;
 
-use ymir_core::cache::default_cache_dir;
+use ymir_core::cache::{cached, default_cache_dir};
 use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
-use ymir_core::climate::{
-    ClimateResult, c1_biomes_classified_wet, c1_climate_placed, c1_climate_windowed,
-};
+use ymir_core::climate::{ClimateResult, c1_biomes_classified_wet};
 use ymir_core::erosion::stream_power::StreamPowerConfig;
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
 use ymir_core::export::{height, hydro, vector};
@@ -46,9 +44,9 @@ use ymir_core::grid::GridF32;
 use ymir_core::lakes::connectivity;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::cached_product::{
-    c1_coarse_land_report, cached_c1_drainage_windowed, cached_c1_eroded,
-    cached_c1_eroded_with_progress, coarse_normalized_sweep, drainage_key_windowed, eroded_key,
-    tectonic_key,
+    HdDrainageBundle, c1_coarse_land_report, cached_c1_drainage_windowed, cached_c1_eroded,
+    cached_c1_eroded_with_progress, cached_c1_climate, climate_key, coarse_normalized_sweep,
+    eroded_key, hd_drainage_key, tectonic_key,
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
@@ -358,6 +356,115 @@ pub fn preview_shape(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>) 
 /// Cancellable BETWEEN phases (the cached/opaque calls have no interior
 /// cancel hook — adding one would reopen `ymir-core`). On any core error,
 /// emits `HdFailed` and returns.
+/// #190 — build the FINAL HD drainage + wetland mask (the climate-dependent tail of the pipeline):
+/// base drainage with real discharge, the below-sea water-balance merge + cleanup (Findings 18/39),
+/// the river clip, the spillway append and the geographic-scale post-process. A PURE function of
+/// exactly the inputs `hd_drainage_key` folds — so caching it under that key is stale-proof.
+fn build_hd_drainage(
+    eroded: &GridF32,
+    climate: &ClimateResult,
+    prebreach: Option<C1DrainageResult>,
+    dcfg: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    window_km: f32,
+    geo_scale_ratio: f32,
+) -> HdDrainageBundle {
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
+    // relief-v3: final drainage on the breached field, carrying the pre-breach lakes; legacy path
+    // (prebreach None): plain drainage on the raw eroded. Both with the climate discharge (Finding 22).
+    let mut drainage = if let Some(prebreach) = prebreach {
+        let mut dr = c1_drainage_windowed(eroded, Some(&dclim), dcfg, ss, window_km);
+        dr.lakes = prebreach.lakes;
+        dr.lake_map = prebreach.lake_map;
+        dr
+    } else {
+        c1_drainage_windowed(eroded, Some(&dclim), dcfg, ss, window_km)
+    };
+    let (wetland_mask, below_sea_spillways) = {
+        let bs =
+            below_sea_basin_lakes(eroded, &dclim, dcfg, ss, window_km, Some(&drainage.lake_map));
+        let (mut endo, mut exo) = (0usize, 0usize);
+        for lk in &bs.lakes {
+            match lk.lake_type {
+                LakeType::Endorheic => endo += 1,
+                LakeType::Exorheic => exo += 1,
+            }
+        }
+        use std::collections::{HashMap, HashSet};
+        let mut det_before: HashMap<u32, usize> = HashMap::new();
+        for &id in &drainage.lake_map {
+            if id != 0 && id < 1_000_001 {
+                *det_before.entry(id).or_default() += 1;
+            }
+        }
+        let mut det_after: HashMap<u32, usize> = HashMap::new();
+        for k in 0..bs.lake_map.len() {
+            if bs.lake_map[k] != 0 {
+                drainage.lake_map[k] = bs.lake_map[k];
+            } else if drainage.lake_map[k] != 0 && drainage.lake_map[k] < 1_000_001 {
+                *det_after.entry(drainage.lake_map[k]).or_default() += 1;
+            }
+        }
+        let absorbed: HashSet<u32> = det_before
+            .keys()
+            .copied()
+            .filter(|id| det_after.get(id).copied().unwrap_or(0) == 0)
+            .collect();
+        let n_absorbed = absorbed.len();
+        drainage.lakes.retain(|lk| lk.base.id >= 1_000_001 || !absorbed.contains(&lk.base.id));
+        let (to_sea, chained) = (
+            bs.spillways.iter().filter(|s| s.chained_into.is_none()).count(),
+            bs.spillways.iter().filter(|s| s.chained_into.is_some()).count(),
+        );
+        drainage.lakes.extend(bs.lakes);
+        if n_absorbed > 0 {
+            eprintln!(
+                "[HD] below-sea cleanup: {n_absorbed} detected lake(s) submerged by a filled below-sea lake -> dropped"
+            );
+        }
+        eprintln!(
+            "[HD] below-sea basins: {} lakes ({exo} exorheic, {endo} endorheic); {} spillways ({to_sea} -> sea, {chained} chained)",
+            exo + endo,
+            bs.spillways.len()
+        );
+        (bs.wetland, bs.spillways)
+    };
+    let before_seg = drainage.rivers.segments.len();
+    clip_rivers_to_lakes(&mut drainage);
+    eprintln!(
+        "[HD] rivers clipped to lakes: {before_seg} -> {} segments (terminate at sinks)",
+        drainage.rivers.segments.len()
+    );
+    for sw in &below_sea_spillways {
+        drainage.rivers.segments.push(RiverSegment {
+            points: sw.points.clone(),
+            strahler_order: 1,
+            avg_flow: 0.0,
+            max_flow: 0.0,
+            basin_id: 0,
+            upstream: vec![],
+            downstream: None,
+        });
+        drainage.segment_drainage_km2.push(sw.drainage_km2);
+        drainage.segment_navigability.push(sw.navigability);
+        drainage.segment_discharge_m3s.push(sw.discharge_m3s);
+        drainage.segment_width_m.push(sw.width_m);
+        drainage.segment_profile_m.push(sw.profile_m.clone());
+    }
+    apply_geo_scale_ratio(&mut drainage, geo_scale_ratio, &dcfg.thresholds);
+    if geo_scale_ratio != 1.0 {
+        eprintln!(
+            "[HD] geographic scale ratio {geo_scale_ratio:.2} -> hydrology signifies x{:.1} area",
+            geo_scale_ratio * geo_scale_ratio
+        );
+    }
+    HdDrainageBundle { drainage, wetland: wetland_mask }
+}
+
+
 pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel: &Arc<AtomicBool>) {
     cancel.store(false, Ordering::Relaxed);
     let _ = tx.send(C1Event::HdStarted { spec: spec.clone(), params: params.clone() });
@@ -625,7 +732,17 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // none). The FINAL, discharge-bearing drainage is computed below WITH the climate.
     let (eroded, prebreach_override) = if params.stream_power && params.closures && params.mfd {
         let (gw, gh) = (eroded.width, eroded.height);
-        let prebreach = c1_drainage_windowed(&eroded, None, &dcfg, &ss, window_km);
+        // #190 — the PRE-BREACH drainage is CLIMATE-INDEPENDENT (climate=None), so it is cached on
+        // the eroded key alone: it HITs on any climate/scale change (the field is unchanged).
+        let prebreach = match cached_c1_drainage_windowed(
+            &cache_dir, &ekey, &eroded, None, &dcfg, &ss, window_km,
+        ) {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = tx.send(C1Event::HdFailed { error: format!("prebreach: {e}") });
+                return;
+            }
+        };
         let conditioned =
             breach_monotone(&eroded, &prebreach.flow.filled, &prebreach.lake_map, 0.5, gw, gh);
         eprintln!(
@@ -644,167 +761,66 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // Finding 25 — explicit CLIMATIC latitude span (else the geographic domain_km/111).
     // `None` keeps the byte-identical windowed path; `Some` re-derives temperature + the
     // per-belt precipitation over the wider span (real physics → biomes shift).
-    let climate = match params.latitude_span_deg {
-        Some(span) => c1_climate_placed(&eroded, &ss, lat, span, &pp, window_km),
-        None => c1_climate_windowed(&eroded, &ss, lat, &pp, window_km),
+    // #190 — the climate is cached: keyed on (ekey, lat, span, precip params) it HITs when the same
+    // (latitude, span) is re-selected. The conditioned `eroded` it reads is deterministic from ekey.
+    let climate_hit =
+        sidecar_exists("climate", climate_key(&ekey, lat, params.latitude_span_deg, &pp, window_km).digest());
+    let climate = match cached_c1_climate(
+        &cache_dir,
+        &ekey,
+        &eroded,
+        &ss,
+        lat,
+        params.latitude_span_deg,
+        &pp,
+        window_km,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = tx.send(C1Event::HdFailed { error: format!("climate: {e}") });
+            return;
+        }
     };
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Climate,
-        regime: CacheRegime::Computed,
+        regime: if climate_hit { CacheRegime::Hit } else { CacheRegime::Miss },
         elapsed: t.elapsed(),
     });
 
     // ── Phase 3: drainage (rivers + lakes + water balance). ──
     bail_if_cancelled!();
-    let dkey = drainage_key_windowed(&ekey, &dcfg, &ss, Some((lat, &pp)), window_km);
-    let drainage_hit = sidecar_exists("drainage", dkey.digest());
+    let hd_dr_key = hd_drainage_key(
+        &ekey,
+        &dcfg,
+        &ss,
+        lat,
+        &pp,
+        params.latitude_span_deg,
+        params.geo_scale_ratio,
+        window_km,
+    );
+    let drainage_hit = sidecar_exists("hd_drainage", hd_dr_key.digest());
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Drainage });
     let t = Instant::now();
-    let mut drainage = if let Some(prebreach) = prebreach_override {
-        // relief-v3: final drainage on the breached field WITH the climate, so per-segment
-        // DISCHARGE (→ channel width, Finding 22) is real. The breached field has no pits,
-        // so its own lake detection is empty — carry the pre-breach lakes/lake_map instead.
-        let dclim = DrainageClimate {
-            precip_internal: &climate.precipitation,
-            temperature: &climate.temperature,
-        };
-        let mut dr = c1_drainage_windowed(&eroded, Some(&dclim), &dcfg, &ss, window_km);
-        dr.lakes = prebreach.lakes;
-        dr.lake_map = prebreach.lake_map;
-        dr
-    } else {
-        match cached_c1_drainage_windowed(
-            &cache_dir,
-            &ekey,
+    // #190 — the FINAL drainage (base + below-sea merge + clip + spillways + geo-scale) and the
+    // wetland mask are cached as ONE bundle under a COMPLETE key; the same params re-selected HIT.
+    let (mut drainage, wetland_mask) = match cached(&cache_dir, "hd_drainage", &hd_dr_key, || {
+        build_hd_drainage(
             &eroded,
-            Some((lat, &pp)),
+            &climate,
+            prebreach_override,
             &dcfg,
             &ss,
             window_km,
-        ) {
-            Ok(d) => d,
-            Err(e) => {
-                let _ = tx.send(C1Event::HdFailed { error: format!("drainage: {e}") });
-                return;
-            }
-        }
-    };
-    // ADR 0001 Finding 18: below-sea ENCLOSED basins as typed water bodies. pit_fill/
-    // detect_lakes treat them as ocean, so they never enter the lake path; add them here via
-    // the water balance (level = min(spill, evaporative)), merging their water cells into the
-    // lake_map (only where empty) and their typed lakes into the list → lakes.json + biomes.
-    let wetland_mask = {
-        let dclim = DrainageClimate {
-            precip_internal: &climate.precipitation,
-            temperature: &climate.temperature,
-        };
-        // Pass the DETECTED lakes (drainage.lake_map, before the below-sea merge overwrites it) so a
-        // below-sea spillway chains into the first basin it reaches — detected OR below-sea (Finding 39).
-        let bs =
-            below_sea_basin_lakes(&eroded, &dclim, &dcfg, &ss, window_km, Some(&drainage.lake_map));
-        let (mut endo, mut exo) = (0usize, 0usize);
-        for lk in &bs.lakes {
-            match lk.lake_type {
-                LakeType::Endorheic => endo += 1,
-                LakeType::Exorheic => exo += 1,
-            }
-        }
-        // Finding 39 CLEANUP — a below-sea lake FILLED BY THE WATER BALANCE now covers depressions
-        // that `detect_lakes` had already found as separate (small-id) lakes; those detected lakes are
-        // SUBMERGED (their cells lie inside the below-sea footprint, at/below its surface). The below-sea
-        // lake SUPERSEDES them: overwrite the lake_map with the below-sea id wherever it has water (NOT
-        // "only where empty" — that left the old lakes as stale holes inside the new one). A detected
-        // lake that loses ALL its cells is DROPPED from the inventory; otherwise it survived as a
-        // contour inside the big lake and fired the exorheic-without-outlet canary (its outlet was
-        // clipped under the new water). A partially-covered detected lake keeps its uncovered cells and
-        // stays (resized) — so no cell is ever orphaned (a lake_map id with no lake).
-        use std::collections::{HashMap, HashSet};
-        let mut det_before: HashMap<u32, usize> = HashMap::new();
-        for &id in &drainage.lake_map {
-            if id != 0 && id < 1_000_001 {
-                *det_before.entry(id).or_default() += 1;
-            }
-        }
-        let mut det_after: HashMap<u32, usize> = HashMap::new();
-        for k in 0..bs.lake_map.len() {
-            if bs.lake_map[k] != 0 {
-                drainage.lake_map[k] = bs.lake_map[k]; // below-sea water supersedes a detected lake
-            } else if drainage.lake_map[k] != 0 && drainage.lake_map[k] < 1_000_001 {
-                *det_after.entry(drainage.lake_map[k]).or_default() += 1;
-            }
-        }
-        let absorbed: HashSet<u32> = det_before
-            .keys()
-            .copied()
-            .filter(|id| det_after.get(id).copied().unwrap_or(0) == 0)
-            .collect();
-        let n_absorbed = absorbed.len();
-        drainage.lakes.retain(|lk| lk.base.id >= 1_000_001 || !absorbed.contains(&lk.base.id));
-        let (to_sea, chained) = (
-            bs.spillways.iter().filter(|s| s.chained_into.is_none()).count(),
-            bs.spillways.iter().filter(|s| s.chained_into.is_some()).count(),
-        );
-        drainage.lakes.extend(bs.lakes);
-        if n_absorbed > 0 {
-            eprintln!(
-                "[HD] below-sea cleanup: {n_absorbed} detected lake(s) submerged by a filled below-sea lake → dropped"
-            );
-        }
-        eprintln!(
-            "[HD] below-sea basins: {} lakes ({exo} exorheic, {endo} endorheic); {} spillways ({to_sea} → sea, {chained} chained)",
-            exo + endo,
-            bs.spillways.len()
-        );
-        // Finding 37b — do NOT append the spillways here: `clip_rivers_to_lakes` (below) drops any
-        // outlet run whose source lake is below-sea (id ≥ 1_000_001) to strip the phantom carve
-        // reach, and it CANNOT tell that reach from a legitimate appended spillway — so it deleted
-        // the outlets it was meant to preserve (the 8 "exorheic with no traced outlet" warnings).
-        // Return the spillways and append them AFTER the clip, scaled to match.
-        (bs.wetland, bs.spillways)
-    };
-    let (wetland_mask, below_sea_spillways) = wetland_mask;
-    // ADR Finding 20 (DEFECT A): the rivers were traced on the breached (monotone) field, so they
-    // run straight through lakes and out of endorheic sinks while the final lake_map marks those
-    // basins as water. Clip the exported network to that lake_map so every watercourse terminates at
-    // its sink; an endorheic basin's phantom outlet is dropped. Done BEFORE appending the below-sea
-    // spillways (Finding 37b) — the clip drops below-sea outlet runs (id ≥ 1_000_001) to strip the
-    // phantom carve reach, and cannot tell it from a legitimate spillway, so it would delete the very
-    // outlets it should keep (the "exorheic with no traced outlet" warnings). Clip first, append after.
-    let before_seg = drainage.rivers.segments.len();
-    clip_rivers_to_lakes(&mut drainage);
-    eprintln!(
-        "[HD] rivers clipped to lakes: {before_seg} → {} segments (terminate at sinks)",
-        drainage.rivers.segments.len()
-    );
-    // Append the below-sea spillways (the real outlets). Unscaled here; the geo-scale pass below
-    // scales AND reclassifies navigability for the whole network, spillways included.
-    for sw in &below_sea_spillways {
-        drainage.rivers.segments.push(RiverSegment {
-            points: sw.points.clone(),
-            strahler_order: 1,
-            avg_flow: 0.0,
-            max_flow: 0.0,
-            basin_id: 0,
-            upstream: vec![],
-            downstream: None,
-        });
-        drainage.segment_drainage_km2.push(sw.drainage_km2);
-        drainage.segment_navigability.push(sw.navigability);
-        drainage.segment_discharge_m3s.push(sw.discharge_m3s);
-        drainage.segment_width_m.push(sw.width_m);
-        drainage.segment_profile_m.push(sw.profile_m.clone());
-    }
-    // Finding 24 — geographic scale ratio: a PURE post-process on the export-derived hydrology
-    // (catchment/discharge/width/navigability). Applied AFTER the clip + spillway append so every
-    // exported reach, spillways included, carries the signified values. Identity at 1.0.
-    apply_geo_scale_ratio(&mut drainage, params.geo_scale_ratio, &dcfg.thresholds);
-    if params.geo_scale_ratio != 1.0 {
-        eprintln!(
-            "[HD] geographic scale ratio {:.2} → hydrology signifies ×{:.1} area",
             params.geo_scale_ratio,
-            params.geo_scale_ratio * params.geo_scale_ratio
-        );
-    }
+        )
+    }) {
+        Ok(b) => (b.drainage, b.wetland),
+        Err(e) => {
+            let _ = tx.send(C1Event::HdFailed { error: format!("drainage: {e}") });
+            return;
+        }
+    };
     // Finding 37 — the exorheic-outlet invariant, over the WHOLE lake population (both provenances),
     // on the PRODUCTION network (not a synthetic-grid subset). A non-empty result means a lake was
     // labelled exorheic without an emitted outflow — the label is wrong. Loud in dev, hard in debug.

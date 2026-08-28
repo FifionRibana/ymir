@@ -26,10 +26,10 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::cache::{
-    ALGO_DRAINAGE, ALGO_TECTONICS, ALGO_UPSCALE_EROSION, CacheKey, RawCodec, cached,
-    cached_fallible,
+    ALGO_CLIMATE, ALGO_DRAINAGE, ALGO_HD_DRAINAGE, ALGO_TECTONICS, ALGO_UPSCALE_EROSION, CacheKey,
+    RawCodec, cached, cached_fallible,
 };
-use crate::climate::c1_climate_windowed;
+use crate::climate::{ClimateResult, c1_climate_placed, c1_climate_windowed};
 use crate::climate::precipitation::PrecipParams;
 use crate::export::raw;
 use crate::grid::GridF32;
@@ -472,6 +472,133 @@ pub fn cached_c1_drainage_windowed(
         }
         None => c1_drainage_windowed(heightmap, None, cfg, ss, window_km),
     })
+}
+
+// ── Climate cache (#190) ─────────────────────────────────────────────────────
+// The climate (temperature + precipitation) is a pure function of the eroded relief,
+// the centre latitude and the climatic span. It is recomputed on every HD run today;
+// cache it so re-selecting the SAME (latitude, span) is a HIT.
+
+impl RawCodec for ClimateResult {
+    fn shape(&self) -> Value {
+        serde_json::json!({ "width": self.temperature.width, "height": self.temperature.height })
+    }
+    fn write_raw(&self, stem: &Path) -> Result<(), String> {
+        self.temperature.save_raw(&part(stem, "temp"))?;
+        self.precipitation.save_raw(&part(stem, "precip"))?;
+        Ok(())
+    }
+    fn read_raw(stem: &Path, shape: &Value) -> Result<Self, String> {
+        let w = shape["width"].as_u64().ok_or("climate sidecar: width")? as usize;
+        let h = shape["height"].as_u64().ok_or("climate sidecar: height")? as usize;
+        Ok(ClimateResult {
+            temperature: GridF32::load_raw(&part(stem, "temp"), w, h)?,
+            precipitation: GridF32::load_raw(&part(stem, "precip"), w, h)?,
+        })
+    }
+}
+
+/// Cache key for the climate step — chained onto the eroded key (relief change → new
+/// digest) plus the centre latitude, the climatic span (`None` = geographic default),
+/// and the precip params. Any of these changing re-invalidates the climate.
+pub fn climate_key(
+    eroded: &CacheKey,
+    latitude_deg: f32,
+    span_deg: Option<f32>,
+    pp: &PrecipParams,
+    window_km: f32,
+) -> CacheKey {
+    let mut k = CacheKey::derived_from(eroded)
+        .with("climate_lat", &latitude_deg)
+        .with("climate_span", &span_deg)
+        .with("climate_precip", pp);
+    if window_km != C1_DOMAIN_KM {
+        k = k.with("climate_window_km", &window_km);
+    }
+    k.algo(ALGO_CLIMATE)
+}
+
+/// Compute-or-load the climate. `span` = `Some` uses the placed (explicit-span) path,
+/// `None` the windowed path — byte-identical to the direct calls in the HD pipeline.
+#[allow(clippy::too_many_arguments)]
+pub fn cached_c1_climate(
+    cache_dir: &Path,
+    eroded: &CacheKey,
+    heightmap: &GridF32,
+    ss: &SteinSteinParams,
+    latitude_deg: f32,
+    span_deg: Option<f32>,
+    pp: &PrecipParams,
+    window_km: f32,
+) -> Result<ClimateResult, String> {
+    let key = climate_key(eroded, latitude_deg, span_deg, pp, window_km);
+    cached(cache_dir, "climate", &key, || match span_deg {
+        Some(span) => c1_climate_placed(heightmap, ss, latitude_deg, span, pp, window_km),
+        None => c1_climate_windowed(heightmap, ss, latitude_deg, pp, window_km),
+    })
+}
+
+// ── HD relief-v3 drainage bundle cache (#190) ────────────────────────────────
+// The FINAL drainage (after the below-sea water-balance merge, river clip, spillway
+// append and geographic-scale) plus the wetland mask — the climate-dependent,
+// per-run-recomputed tail of the HD pipeline. The relief-v3 path bypassed the plain
+// drainage cache (it needs the breached field + climate + carried pre-breach lakes and
+// the whole post-process), so this bundles the final product under a COMPLETE key.
+
+/// The final HD drainage + wetland mask, cached as one unit.
+pub struct HdDrainageBundle {
+    pub drainage: C1DrainageResult,
+    pub wetland: Vec<u8>,
+}
+
+impl RawCodec for HdDrainageBundle {
+    fn shape(&self) -> Value {
+        // Reuse the drainage shape (dims + structured network) verbatim; the wetland is a
+        // plain w*h u8 raster restored from those dims.
+        self.drainage.shape()
+    }
+    fn write_raw(&self, stem: &Path) -> Result<(), String> {
+        self.drainage.write_raw(stem)?;
+        raw::save_u8(&part(stem, "wetland"), &self.wetland)?;
+        Ok(())
+    }
+    fn read_raw(stem: &Path, shape: &Value) -> Result<Self, String> {
+        let drainage = C1DrainageResult::read_raw(stem, shape)?;
+        let n = drainage.width * drainage.height;
+        let wetland = raw::load_u8(&part(stem, "wetland"))?;
+        if wetland.len() != n {
+            return Err(format!("hd_drainage wetland: expected {n}, got {}", wetland.len()));
+        }
+        Ok(HdDrainageBundle { drainage, wetland })
+    }
+}
+
+/// Cache key for the HD relief-v3 drainage bundle. COMPLETE by construction — it folds
+/// every input the final drainage depends on: the eroded key (tectonics + upscale +
+/// relief), the drainage config + Stein-Stein, the centre latitude + precip params +
+/// climatic span (they set the discharge via climate), the geographic scale ratio (it
+/// scales discharge / navigability / width / area), and the window. Missing any one
+/// would be the stale-cache bug — see the key-completeness note in `cache.rs`.
+#[allow(clippy::too_many_arguments)]
+pub fn hd_drainage_key(
+    eroded: &CacheKey,
+    cfg: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    latitude_deg: f32,
+    pp: &PrecipParams,
+    span_deg: Option<f32>,
+    geo_scale_ratio: f32,
+    window_km: f32,
+) -> CacheKey {
+    CacheKey::derived_from(eroded)
+        .with("hd_dr_cfg", cfg)
+        .with("hd_dr_ss", ss)
+        .with("hd_dr_lat", &latitude_deg)
+        .with("hd_dr_precip", pp)
+        .with("hd_dr_span", &span_deg)
+        .with("hd_dr_geo_scale", &geo_scale_ratio)
+        .with("hd_dr_window_km", &window_km)
+        .algo(ALGO_HD_DRAINAGE)
 }
 
 #[cfg(test)]
@@ -997,5 +1124,69 @@ mod tests {
             drainage_key(&ek, &cfg, &ss, Some((45.0, &pp))).digest(),
             "climate (water balance) must be in the drainage key"
         );
+    }
+
+    /// #190 — the climate + HD-drainage-bundle caches: KEY COMPLETENESS (the load-bearing safety
+    /// property — a missing key input serves stale terrain) and codec round-trip (a HIT returns the
+    /// same payload without recomputing). The turbofish `|| panic!` on the HIT proves the cache does
+    /// NOT recompute.
+    #[test]
+    fn climate_and_hd_drainage_cache_key_and_round_trip() {
+        let dir = tmp("hd_cache");
+        let (init, run, clo, ss, up) = inputs();
+        let (seed, grid) = (42u64, 32usize);
+        let h = cached_c1_eroded(&dir, seed, grid, &init, &run, &clo, &ss, &up).unwrap();
+        let ek = eroded_key(&tectonic_key(seed, grid, &init, &run, &clo), &ss, &up);
+        let cfg = C1DrainageConfig::default();
+        let pp = PrecipParams::default();
+        let w = C1_DOMAIN_KM;
+
+        // Climate: MISS then HIT return the same grids.
+        let cm = cached_c1_climate(&dir, &ek, &h, &ss, 45.0, Some(10.0), &pp, w).unwrap();
+        let cm2 = cached_c1_climate(&dir, &ek, &h, &ss, 45.0, Some(10.0), &pp, w).unwrap();
+        assert_eq!(cm.temperature.data, cm2.temperature.data);
+        assert_eq!(cm.precipitation.data, cm2.precipitation.data);
+
+        // Climate key completeness: latitude AND span both change the digest.
+        assert_ne!(
+            climate_key(&ek, 45.0, Some(10.0), &pp, w).digest(),
+            climate_key(&ek, 25.0, Some(10.0), &pp, w).digest(),
+            "latitude must be in the climate key"
+        );
+        assert_ne!(
+            climate_key(&ek, 45.0, Some(10.0), &pp, w).digest(),
+            climate_key(&ek, 45.0, Some(40.0), &pp, w).digest(),
+            "climatic span must be in the climate key"
+        );
+
+        // HD-drainage-bundle key completeness: span AND geo-scale both change the digest.
+        assert_ne!(
+            hd_drainage_key(&ek, &cfg, &ss, 45.0, &pp, Some(10.0), 7.5, w).digest(),
+            hd_drainage_key(&ek, &cfg, &ss, 45.0, &pp, Some(40.0), 7.5, w).digest(),
+            "climatic span must be in the HD-drainage key"
+        );
+        assert_ne!(
+            hd_drainage_key(&ek, &cfg, &ss, 45.0, &pp, Some(10.0), 7.5, w).digest(),
+            hd_drainage_key(&ek, &cfg, &ss, 45.0, &pp, Some(10.0), 1.0, w).digest(),
+            "geographic scale ratio must be in the HD-drainage key"
+        );
+
+        // HD-drainage bundle codec round-trip: MISS writes (drainage rasters + wetland), HIT reads —
+        // the closure MUST NOT run on the HIT (it panics if it does).
+        let dr = cached_c1_drainage(&dir, &ek, &h, None, &cfg, &ss).unwrap();
+        let n = dr.width * dr.height;
+        let key = hd_drainage_key(&ek, &cfg, &ss, 45.0, &pp, Some(10.0), 7.5, w);
+        let miss = cached::<HdDrainageBundle>(&dir, "hd_drainage", &key, || HdDrainageBundle {
+            drainage: cached_c1_drainage(&dir, &ek, &h, None, &cfg, &ss).unwrap(),
+            wetland: vec![1u8; n],
+        })
+        .unwrap();
+        let hit = cached::<HdDrainageBundle>(&dir, "hd_drainage", &key, || {
+            panic!("HD-drainage HIT must not recompute the bundle")
+        })
+        .unwrap();
+        assert_eq!(miss.drainage.width, hit.drainage.width);
+        assert_eq!(miss.drainage.lake_map, hit.drainage.lake_map);
+        assert_eq!(hit.wetland, vec![1u8; n], "wetland mask must round-trip");
     }
 }
