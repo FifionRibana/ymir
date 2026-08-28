@@ -312,16 +312,15 @@ impl Default for WorkspaceState {
             export_ymir: false,
             // relief-v3 is the PRODUCTION default (#190): the author has generated + validated every
             // map through stream-power + closures + MFD for many rounds. Leaving it opt-in silently
-            // reverted a fresh run to the old droplet terrain. FBM amplitude stays the UI default
-            // (0.16); the 0.04 the production seed used is a per-seed choice and the subject of the
-            // next chantier (FBM conditioning), so it is NOT baked in here.
+            // reverted a fresh run to the old droplet terrain. FBM amplitude defaults to 0.04 (the
+            // production seed's value — fine relief detail); the toggle stays in Expert mode only.
             stream_power: true,
             closures: true,
             cross_rill: false,
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
-            fbm_amplitude: 0.16,
+            fbm_amplitude: 0.04, // #190 — the production seed's amplitude (fine relief detail)
             export_dir: "exports".to_string(),
             current: None,
             preview: None,
@@ -777,74 +776,87 @@ fn left_panel(
                         request_preview(ws, bridge, false);
                     }
                     ui.add_enabled_ui(!hd_running, |ui| {
-                        ui.checkbox(
-                            &mut ws.stream_power,
-                            egui::RichText::new("Incision stream-power (exp.)").color(DIM2).size(11.0),
-                        )
-                        .on_hover_text(
-                            "Remplace l'érosion par gouttelettes par l'incision stream-power \
-                             routée + versants (ADR 0001). Vallées incisées, pas de terrasses de \
-                             dépôt. Off = pipeline de production.",
-                        );
-                        if ws.stream_power {
+                        // relief-v3 is the PRODUCTION recipe and the default (#190). In STANDARD mode it
+                        // is FORCED ON — only the tuning (FBM amplitude, MFD p) is exposed, so a run can
+                        // never silently fall back to the old droplet/relief-v1 terrain. EXPERT mode keeps
+                        // the full enable/disable toggles for experimentation.
+                        if ws.mode == Mode::Expert {
                             ui.checkbox(
-                                &mut ws.closures,
-                                egui::RichText::new("Closures relief-v2 (exp.)").color(DIM2).size(11.0),
+                                &mut ws.stream_power,
+                                egui::RichText::new("Incision stream-power (exp.)").color(DIM2).size(11.0),
                             )
                             .on_hover_text(
-                                "Ajoute les deux fermetures qui BORNENT le relief (ADR 0001, Finding \
-                                 7): diffusion de versant NON LINÉAIRE à pente critique (S_c=tan33° \
-                                 → arêtes, plus de striures) + élargissement latéral en géométrie \
-                                 hydraulique (planchers de vallée qui s'élargissent vers l'aval). \
-                                 Off = relief-v1 (slits 1 px).",
+                                "Remplace l'érosion par gouttelettes par l'incision stream-power \
+                                 routée + versants (ADR 0001). Off = ancien pipeline gouttelettes.",
                             );
+                            if ws.stream_power {
+                                ui.checkbox(
+                                    &mut ws.closures,
+                                    egui::RichText::new("Closures relief-v2 (exp.)").color(DIM2).size(11.0),
+                                )
+                                .on_hover_text(
+                                    "Les deux fermetures qui BORNENT le relief (ADR 0001, Finding 7): \
+                                     diffusion de versant NON LINÉAIRE à pente critique + élargissement \
+                                     latéral. Off = relief-v1 (slits 1 px).",
+                                );
+                                ui.checkbox(
+                                    &mut ws.cross_rill,
+                                    egui::RichText::new("Anti-peigne (diffusion partout)").color(DIM2).size(11.0),
+                                )
+                                .on_hover_text(
+                                    "STEP 2b (ADR 0001, Finding 9): diffusion de versant PARTOUT pour \
+                                     amortir le rilling de Smith–Bretherton. Solveur GS non convergé.",
+                                );
+                                if ws.cross_rill {
+                                    let dv = [0.25f32, 0.40, 0.55];
+                                    let dc = dv
+                                        .iter()
+                                        .position(|&v| (v - ws.cross_rill_d).abs() < 1e-4)
+                                        .unwrap_or(1);
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("D").color(DIM2).size(11.0));
+                                        if let Some(i) = seg_row(ui, &["0.25", "0.40", "0.55"], dc) {
+                                            ws.cross_rill_d = dv[i];
+                                        }
+                                    });
+                                }
+                                ui.checkbox(
+                                    &mut ws.mfd,
+                                    egui::RichText::new("relief-v3 (MFD+talus+breach)").color(DIM2).size(11.0),
+                                )
+                                .on_hover_text(
+                                    "ADR 0001 Findings 11/14/15 — la chaîne relief-v3 complète: incision \
+                                     MULTI-FLUX + gradage TALUS + K×3, conditionnée par BREACH (profils \
+                                     monotones, lacs à plat). Le correctif final recommandé.",
+                                );
+                            }
+                        } else {
+                            // STANDARD — the production recipe, forced on. No fallback toggle.
+                            ws.stream_power = true;
+                            ws.closures = true;
+                            ws.mfd = true;
+                            ws.cross_rill = false;
+                            ui.label(
+                                egui::RichText::new("Relief : stream-power + relief-v3 (défaut production)")
+                                    .color(DIM2)
+                                    .size(11.0),
+                            )
+                            .on_hover_text(
+                                "Recette de production (ADR 0001): incision stream-power routée + closures \
+                                 relief-v2 + MFD/talus/breach relief-v3. Réglages avancés en mode Expert.",
+                            );
+                        }
+                        // Tuning exposed in BOTH modes (only when the recipe is on).
+                        if ws.stream_power {
                             let vals = [0.16f32, 0.08, 0.04, 0.02, 0.01];
                             let cur =
-                                vals.iter().position(|&v| (v - ws.fbm_amplitude).abs() < 1e-4).unwrap_or(0);
+                                vals.iter().position(|&v| (v - ws.fbm_amplitude).abs() < 1e-4).unwrap_or(2);
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("FBM amp").color(DIM2).size(11.0));
                                 if let Some(i) = seg_row(ui, &["0.16", "0.08", "0.04", "0.02", "0.01"], cur) {
                                     ws.fbm_amplitude = vals[i];
                                 }
                             });
-                            ui.checkbox(
-                                &mut ws.cross_rill,
-                                egui::RichText::new("Anti-peigne (diffusion partout)").color(DIM2).size(11.0),
-                            )
-                            .on_hover_text(
-                                "STEP 2b (ADR 0001, Finding 9): applique la diffusion de versant \
-                                 PARTOUT (retire l'exclusion des chenaux du regime split) pour amortir \
-                                 l'instabilité de rilling de Smith–Bretherton (le peigne 8192²). NB: \
-                                 solveur GS non encore convergé/parallélisé — aperçu 2048² valable pour \
-                                 la direction, pas définitif.",
-                            );
-                            if ws.cross_rill {
-                                let dv = [0.25f32, 0.40, 0.55];
-                                let dc = dv
-                                    .iter()
-                                    .position(|&v| (v - ws.cross_rill_d).abs() < 1e-4)
-                                    .unwrap_or(1);
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new("D").color(DIM2).size(11.0));
-                                    if let Some(i) = seg_row(ui, &["0.25", "0.40", "0.55"], dc) {
-                                        ws.cross_rill_d = dv[i];
-                                    }
-                                });
-                            }
-                            ui.checkbox(
-                                &mut ws.mfd,
-                                egui::RichText::new("relief-v3 (MFD+talus+breach)").color(DIM2).size(11.0),
-                            )
-                            .on_hover_text(
-                                "ADR 0001 Findings 11/14/15 — la chaîne relief-v3 complète: incision \
-                                 MULTI-FLUX (empêche le peigne de Smith–Bretherton à sa source → \
-                                 vallées dendritiques ramifiées, O(n), sans solveur GS) + gradage de \
-                                 versant par TALUS (angle de repos, flancs rectilignes) + K×3. Le \
-                                 champ est ensuite conditionné par BREACH (profils de rivière \
-                                 monotones garantis, rivières dans le thalweg) avec les LACS \
-                                 préservés à plat → lakes.json rempli. Le correctif final recommandé. \
-                                 Prioritaire sur l'anti-peigne.",
-                            );
                             if ws.mfd {
                                 let pv = [4.0f32, 2.0, 1.1];
                                 let pc = pv
