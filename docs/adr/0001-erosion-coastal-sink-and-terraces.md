@@ -1781,3 +1781,96 @@ This changes chained RECEIVERS on every seed (the humid seed has 6 chains) — t
 regression, since a receiver now accounts for the water it actually gets. Guards: 11 drainage tests green;
 merge_verify on the arid export holds (mouths 0/0/0, 0 over-flood, MAX level 14 m). Lib 523 green; viz compiles.
 The author regenerates humid + arid for the ground-truth verdict.
+
+---
+
+## Finding 41 — the closed-depression population: the FBM is the sole creator; maturity is not the cure
+
+The continent carries ~thousands of closed depressions where tectonics produces ~15 — it looks *Scottish*
+(lake-riddled, glacially over-deepened) by accident, not by glaciation (glacial erosion is planned M6, the
+`erosion/glacial.rs` file is empty). The question: are the hollows a TRANSIENT that erosion maturity removes
+(→ a young/mature knob: Scotland → France) or a STEADY STATE that a process regenerates each pass?
+
+Measured on the PRODUCTION terrain (8192², coarse grid 64 → `upscale_with_fbm` amplitude 0.04 → relief-v3
+`incise`), reproduction validated against the shipped export (**94 % of land cells within 5 m**, the rest being
+breach + lakes — so this is the product, not a proxy). Diagnostic: `tests/depression_investigation.rs`
+(`#[ignore]`). A "closed depression" = an 8-connected component the priority-flood raises by > 0.1 m.
+
+**THE FBM IS THE SOLE CREATOR.** Population per stage:
+
+| stage | pits | ≤2-cell | median depth |
+|---|---|---|---|
+| coarse post-isostasy | **16** | 11 | 115 m |
+| **after FBM upscale** | **90 682** | 70 335 | 3.2 m |
+| after relief-v3 incision (2 iter, production) | 75 060 | 51 968 | 2.1 m |
+
+16 → 90 682 across the FBM upscale. Attribution at the production 2 iterations, one sub-process removed:
+full relief-v3 **75 060** · NO talus **104 838** · NO hillslope diffusion **99 975** · NO MFD **79 577**. Every
+erosion process REDUCES the count (talus −30 k, diffusion −25 k, MFD −4.5 k); NONE creates any. The hollows are
+born in the FBM noise field and the erosion closures only chip at them.
+
+**THE MATURITY KNOB IS INSUFFICIENT.** Incision-iteration curve (pits at 1 / 2 / 4 / 8 / 16 passes):
+**78 464 / 75 060 / 64 936 / 53 379 / 47 777**. Monotone decrease but decelerating to a plateau near **~45 k**
+— still ~3000× the tectonic 16 — and reaching that far planes the channels we deliberately bounded at 2
+iterations (the 55 m-floor-under-3000 m-crest failure). Maturity alone does NOT deliver "France": erosion
+integrates the drainage far too slowly to erase FBM noise without destroying the relief.
+
+**SIZE DISTRIBUTION (production 2-iter, pre-breach).** 75 060 pits: median area **2 cells**, p90 7, max 87 428
+(the big lakes); **69 % are ≤ 2 cells**, median depth 2.1 m — numerical residue, not landforms. ~**7 731 are
+≥ 10 m** deep (the author's "≈8 650" genuine hollows), ~1 000 ≥ 50 m; of these only ~49 clear the detection
+threshold to become inventoried lakes. Total fill volume ~1.5×10¹¹ m³.
+
+**THE THRESHOLD-FILL KNOB — described and DELIBERATELY NOT TAKEN.** A depression-fill with a depth/volume
+threshold, run on the eroded field BEFORE `c1_drainage_windowed`, is cheap (the flood is already computed;
+raise sub-threshold components to `filled`) and composes with the breach (fewer carved channels) and the
+below-sea invariants (it only shrinks the input population; the kept lakes still satisfy mouths/over-flood).
+It is a direct, controllable dial (0 = identity → higher = France). **We did not take it: it MASKS the
+non-physical FBM noise instead of removing its cause.** The author chose to fix the source — FBM conditioning
+so the upscale does not inject closed hollows in the first place — as a separate chantier. Recorded here
+because the fill is the obvious shortcut someone will otherwise retry; the decision is deliberate.
+
+## The recurring class (Findings 27, 29–40): a property asserted from a PROXY instead of the AUTHORITY that defines it
+
+Nearly every defect of this thread was the same mistake in a new costume: a property was read off a convenient
+PROXY rather than established from the AUTHORITY that actually defines it. The instances:
+
+- **latitude** from the image ROW ORDER, not the documented `y = 0 = south` (Finding 27);
+- **a lake's regime** from a balance PREDICTION, not the traced outlet network (Findings 37/37b — "regime is a
+  conclusion, not a prediction");
+- **a river's sink** from ALTITUDE, not `water_class` (a below-sea cell read as "→ sea");
+- **sink validity** from an AREA threshold, not enclosure (a real sink excluded because it was sub-inventory);
+- **reachability** from a fixed SEARCH BUDGET, not the ocean-connected flood (a bounded per-basin search that
+  missed a far coast the ocean flood finds);
+- **water connectivity** from 4-conn, not 8-conn (diagonally-touching below-sea cells split into two bodies);
+- **a basin's inflow** from tributary tracks against an EARLIER footprint, not the final one (the factor-4
+  inlet undercount that flipped a regime to endorheic-at-floor);
+- **chained inflow** from scan order, not the topological order of the chain (Finding 40 — a receiver decided
+  before its upstream contributor's spill was known);
+- and the sharpest form — **a MISSING VALUE replaced by a DEFAULT (0 m)** instead of propagated as absence
+  (Finding 37 TASK 1): `Option::None` was the correct representation of "no sill" and was collapsed into a
+  number, fabricating an "exorheic at 0 m" with no real outlet. Absence must stay absence.
+
+**The remedy that worked every time:** replace the proxy with the authority (the documented axis, the traced
+network, `water_class`, enclosure, the ocean flood, 8-conn, the final footprint, the topological order,
+`Option::None`), THEN pin an INVARIANT over the WHOLE population — every lake, every mouth, every basin — not a
+convenient subset. The bugs that survived longest hid in the cases the first invariant did not cover.
+
+**Two method rules, earned the hard way:**
+1. **Measure invariant counters in the PRODUCTION configuration, at both resolutions.** A result validated at
+   2048² says nothing about 8192² (resolution re-fragments the field, shifts thresholds, changes counts).
+2. **A reconstructed terrain is not the product.** Recomputing from the exported rasters MISLED US SIX times —
+   including a `merge_verify` whose over-flood was masked by u16 height quantisation re-fragmenting
+   `water_class`, and the arid/humid regime splits that a reconstructed field reported wrongly. The author's
+   full-precision export is the verdict; a reconstruction is only ever a hypothesis.
+
+## Backlog (open, deliberately deferred)
+
+- **FBM conditioning** (the next chantier) — condition the upscale so it does not inject the ~90 k closed
+  hollows (of which ~7.7 k are ≥ 10 m); Finding 41 is its brief.
+- **Trunk / tributary separation** (Azgaar-style) — the structure is described in Finding 37 POINT 4; not
+  implemented. Watercourses are aggregated (a trunk + its tributaries) but the export does not label the split.
+- **Empty erosion modules** — `erosion/thermal.rs`, `coastal.rs`, `aeolian.rs`, `glacial.rs` are all stubs
+  (M5/M6). Glacial in particular is what would legitimately produce over-deepened lake districts.
+- **Consumer-side (Living Landz ignores these today)** — `width_m` (channel width, exported, unused);
+  `lake_type` (exorheic/endorheic, exported, unused); and the **Wetland biome**, which has a data source (the
+  below-sea shallow/through-flow mask) but no consumer.
