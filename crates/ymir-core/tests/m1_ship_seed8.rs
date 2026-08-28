@@ -121,7 +121,12 @@ fn ship_seed8_full_pipeline() {
     // ── Eroded (tectonics → windowed HD upscale → 64M-droplet erosion). ──
     let t = Instant::now();
     let eroded = cached_c1_eroded(&cache, seed, grid, &init, &run, &clo, &ss, &upscale).unwrap();
-    eprintln!("[stage] eroded {}² in {:.0} s (peak {} MB)", eroded.width, t.elapsed().as_secs_f32(), peak_ws_mb());
+    eprintln!(
+        "[stage] eroded {}² in {:.0} s (peak {} MB)",
+        eroded.width,
+        t.elapsed().as_secs_f32(),
+        peak_ws_mb()
+    );
 
     // ── Climate (windowed). ──
     let t = Instant::now();
@@ -159,6 +164,8 @@ fn ship_seed8_full_pipeline() {
         tectonic_domain_km: C1_DOMAIN_KM as f64,
         window_offset_in_torus: origin,
         latitude_deg: lat as f64,
+        latitude_span_deg: window_km as f64 / 111.0, // geographic-span identity (Finding 25)
+        geographic_scale_ratio: 1.0,                 // identity (Finding 24)
         stein_stein: ss,
         sea_level_m: 0.0,
         max_elevation_m: height_layer.max_m as f64,
@@ -167,7 +174,9 @@ fn ship_seed8_full_pipeline() {
     let dir = std::env::temp_dir().join("ymir_ship_seed8_out").join(format!("{}.ymir", meta.name));
     let mut writer = ContinentWriter::new(&dir, meta).unwrap();
     writer.add_raster_u16("height", &height_layer.codes).unwrap();
-    writer.set_metric_range("height", height_layer.min_m as f64, height_layer.max_m as f64).unwrap();
+    writer
+        .set_metric_range("height", height_layer.min_m as f64, height_layer.max_m as f64)
+        .unwrap();
 
     let coastline = vector::coastline_geojson(&eroded);
     writer.add_vector_file("coastline", "coastline.geojson", &coastline).unwrap();
