@@ -288,6 +288,11 @@ struct WorkspaceState {
     minimap: bool,
     /// Microscope SELECTION drawer (left) open.
     micro_open: bool,
+    /// The selected river's profile PATH cells (source→sink), parallel to the plotted profile —
+    /// so a hover on the long profile can place a matching point on the map highlight.
+    profile_path: Vec<(u32, u32)>,
+    /// Fraction (0=source, 1=sink) currently hovered on the long profile, or `None`.
+    profile_hover: Option<f32>,
     /// Absolute on-screen size (px) of the FULL map square — the camera scale. `0` = fit on the
     /// next frame. Kept absolute (not derived from the panel-dependent available size) so resizing
     /// the side panels does NOT rescale the canvas.
@@ -364,6 +369,8 @@ impl Default for WorkspaceState {
             minimap: true,
             micro_open: true,
             map_px: 0.0,
+            profile_path: Vec::new(),
+            profile_hover: None,
         }
     }
 }
@@ -2141,6 +2148,18 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                 }
             }
             pnt.circle_filled(to_screen(wc.mouth_xy.0, wc.mouth_xy.1), 4.0, sink_label(wc.sink).1);
+            // Profile-hover tracking point: mirror the long-profile cursor onto the river highlight
+            // at the same length-from-source (Finding 29 UI).
+            if let Some(fx) = ws.profile_hover {
+                let np = ws.profile_path.len();
+                if np >= 2 {
+                    let i = ((fx * (np - 1) as f32).round() as usize).min(np - 1);
+                    let (px, py) = ws.profile_path[i];
+                    let sp = to_screen(px, py);
+                    pnt.circle_filled(sp, 5.0, C::WHITE);
+                    pnt.circle_stroke(sp, 5.0, egui::Stroke::new(1.5, COPPER_BRIGHT));
+                }
+            }
         }
     } else if let Some(lk) = ws.selected_lake.and_then(|i| hd.drainage.lakes.get(i)) {
         let id = lk.base.id;
@@ -2910,7 +2929,7 @@ fn microscope_detail(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     }
     let nav = match ws.inspect_tab {
         InspectTab::Rivers => match (ws.selected_river, &wcs) {
-            (Some(i), Some(w)) if i < w.len() => river_profile_panel(ui, &hd, &w[i]),
+            (Some(i), Some(w)) if i < w.len() => river_profile_panel(ui, ws, &hd, &w[i]),
             _ => {
                 ui.add_space(20.0);
                 ui.label(
@@ -2953,7 +2972,12 @@ fn microscope_detail(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
 /// TASK 3 — river long profile: bed elevation source→sink (from `profile_m`) + the figures
 /// the inspector already carries. The SINK is marked explicitly; any climb is flagged (this
 /// doubles as the monotonicity inspector). Reads `segment_profile_m` / discharge / width.
-fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Option<NavAction> {
+fn river_profile_panel(
+    ui: &mut egui::Ui,
+    ws: &mut WorkspaceState,
+    hd: &HdResult,
+    wc: &Watercourse,
+) -> Option<NavAction> {
     let d = &hd.drainage;
     let (sl, sc) = sink_label(wc.sink);
     let mut nav = None;
@@ -3064,10 +3088,13 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Op
     let is_spillway =
         wc.trunk.first().and_then(|&s| d.rivers.segments.get(s)).is_some_and(|s| s.max_flow == 0.0);
     let mut elev: Vec<f32> = Vec::new();
+    // Cells parallel to `elev` (source→sink) so a profile-hover can place a point on the map.
+    let mut path: Vec<(u32, u32)> = Vec::new();
     if is_spillway {
         for &s in &wc.trunk {
-            if let Some(pr) = d.segment_profile_m.get(s) {
+            if let (Some(pr), Some(seg)) = (d.segment_profile_m.get(s), d.rivers.segments.get(s)) {
                 elev.extend(pr.iter().copied());
+                path.extend(seg.points.iter().copied());
             }
         }
     } else if let Some(&(sx, sy)) =
@@ -3076,6 +3103,7 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Op
         let mut k = sy as usize * w + sx as usize;
         for _ in 0..(w + h) {
             elev.push(c1_altitude_norm_to_metres(hd.eroded.data[k], &ss));
+            path.push(((k % w) as u32, (k / w) as u32));
             if hd.eroded.data[k] <= 0.5 || d.lake_map[k] != 0 {
                 break; // reached the sink (sea or lake)
             }
@@ -3091,6 +3119,10 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Op
             k = ny as usize * w + nx as usize;
         }
     }
+    // Share the path with the map (it draws the tracking point on the highlight). Truncated to the
+    // longer of the two so `path`/`elev` stay parallel; cleared hover until the plot is hovered.
+    ws.profile_path = path;
+    ws.profile_hover = None;
     if elev.len() < 2 {
         ui.label(egui::RichText::new("Profil indisponible.").color(DIM).size(11.0));
         return nav;
@@ -3174,6 +3206,7 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Op
         let i1 = (i0 + 1).min(n - 1);
         let t = fi - i0 as f32;
         let e = elev[i0] * (1.0 - t) + elev[i1] * t;
+        ws.profile_hover = Some(fx); // the map draws a matching point on the river highlight
         let sx = x0 + fx * xw;
         let sy = y_of(e);
         let length_km = fx * wc.length_km;
