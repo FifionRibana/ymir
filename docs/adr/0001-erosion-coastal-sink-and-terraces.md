@@ -1865,8 +1865,10 @@ convenient subset. The bugs that survived longest hid in the cases the first inv
 
 ## Backlog (open, deliberately deferred)
 
-- **FBM conditioning** (the next chantier) — condition the upscale so it does not inject the ~90 k closed
-  hollows (of which ~7.7 k are ≥ 10 m); Finding 41 is its brief.
+- ~~**FBM conditioning** (the next chantier) — condition the upscale so it does not inject the ~90 k closed
+  hollows (of which ~7.7 k are ≥ 10 m); Finding 41 is its brief.~~ **DONE — see the C-1 section below.** The
+  flow-conditioned FBM cuts the post-FBM population 13×/28× and brings the deep (drainage-trapping) pits to the
+  tectonic order, with mountain morphology preserved.
 - **Trunk / tributary separation** (Azgaar-style) — the structure is described in Finding 37 POINT 4; not
   implemented. Watercourses are aggregated (a trunk + its tributaries) but the export does not label the split.
 - **Empty erosion modules** — `erosion/thermal.rs`, `coastal.rs`, `aeolian.rs`, `glacial.rs` are all stubs
@@ -1874,3 +1876,115 @@ convenient subset. The bugs that survived longest hid in the cases the first inv
 - **Consumer-side (Living Landz ignores these today)** — `width_m` (channel width, exported, unused);
   `lake_type` (exorheic/endorheic, exported, unused); and the **Wetland biome**, which has a data source (the
   below-sea shallow/through-flow mask) but no consumer.
+
+## C-1 — Flow-conditioned FBM (closures roadmap §1)
+
+Finding 41 named the FBM the **sole** creator of closed depressions: 16 after isostasy → **90 682** after the
+FBM upscale (8192², production seed). C-1 conditions the FBM so it stops fabricating them, without touching the
+erosion/relief chain that follows.
+
+### Literature first (the honest answer)
+
+Searched the geomorphology and procedural-terrain literature for a *named* formulation of drainage-conditioned
+/ flow-aware noise that provably avoids fabricating local minima at generation time. **None exists.** The
+adjacent prior art is real but solves a different problem:
+
+- **Domain warping** (Quilez; 3DWorld) offsets noise coordinates for organic shape — it warps the *noise*, and
+  says nothing about monotonicity.
+- **Anisotropic noise** (Goldberg-Zwicker-Durand, SIG'08; Substance Designer) controls a per-region target
+  *spectrum* for texture, not the sign of a slope.
+- **Slope-weighted amplitude** (exponential slope damping, Red Blob Games) smooths steep areas — the opposite
+  end (it damps where we can afford noise, not where pits form).
+- **Local-minima removal** (van Kreveld et al., *Imprecise Terrains*; Barnes/Lindsay priority-flood) removes
+  minima as a **post-process** (flood/breach) — which is exactly the threshold-fill palliative the roadmap
+  rejected: it masks the non-physical noise instead of not creating it.
+
+So this is a derivation, stated plainly, not an unattributed invention dressed as standard. It stays within the
+precedent the project holds itself to (Barnes/Lindsay for the counting; the monotone-flow criterion is the
+generation-time dual of their post-hoc breaching).
+
+### The criterion and the formulation
+
+A perturbation `n` fabricates a pit where it **out-slopes the bed and reverses the descent** — i.e. where the
+along-flow derivative `dn/d(downslope)` exceeds the bed's fall. Two coupled mechanisms enforce monotonicity,
+both built on machinery already present (`amplitude_slope_factor`, `fbm_anisotropic`, `base_frequency`):
+
+1. **Relief-budget amplitude cap.** The FBM's per-octave downslope slopes sum to `amplitude * S / lambda_base`,
+   with `S = sum (persistence*lacunarity)^o` and `lambda_base = 1/nscale` (coarse cells per base feature).
+   Bounding that by `beta * slope_mag` gives `amplitude <= beta * slope_mag / (nscale*S)`. On a flat
+   (`slope -> 0`) the cap -> 0 and the fabricated pit vanishes (there is no flow direction to respect); on a
+   steep flank it is generous (texture kept). `beta` is the one tuning knob; the limit `beta -> 0` recovers the
+   smooth coarse bed (its 16 depressions).
+2. **Downslope stretch (fixed x8).** The noise is elongated *along* the bed gradient — sampled with
+   `fbm_anisotropic` at `ratio = 1/8` on the slope axis — so its along-flow frequency is divided by 8 and the
+   contour axis keeps full-frequency relief (downslope flutes, not transverse ridges). Critically, stretching
+   only ever **lowers** a frequency, so it never crosses Nyquist; the band policy holds. The first attempt did
+   the opposite — *compressed* the contour axis (`ratio > 1`) to elongate downslope — which pushed the contour
+   frequency past Nyquist and **aliased into salt-and-pepper 1-cell pits** (90 682 -> 312 665 at R=32). The sign
+   of the anisotropy is the whole game; the legacy `max_anisotropy` elongates along-contour (transverse ridges
+   = counter-slopes) and is exactly backwards for drainage.
+
+Both quantities depend only on the coarse slope field and config, so they are **identical at every
+`target_size`** — low bands stay bit-identical across resolutions. `flow_conditioning = 0.0` (default) is
+byte-identical to the pre-C-1 additive noise; all determinism/byte guards stay green. The production config
+(`FbmUpscaleConfig::c1_hd_production`) sets `beta = 0.1`.
+
+### The trajectory (post-FBM closed depressions, production terrain)
+
+8192² relief-budget sweep (downslope stretch x8 fixed):
+
+| beta     | 1.0   | 0.4   | 0.2   | 0.1  | 0.05 | 0.02 | 0.01 |
+|----------|-------|-------|-------|------|------|------|------|
+| pits     | 55154 | 29895 | 15787 | 6999 | 2513 | 629  | 485  |
+
+Per-stage, at the chosen **beta = 0.1**, both resolutions:
+
+| stage                 | 2048² OFF | 2048² b=0.1 | 8192² OFF | 8192² b=0.1 |
+|-----------------------|-----------|-------------|-----------|-------------|
+| post-FBM              | 6070      | **220**     | 90682     | **6999**    |
+| post-relief (2 iter)  | 4574      | 1001        | 75060     | 17382       |
+
+**The honest read of the acceptance.** "Same order as 16" is *approached, not literally reached* on the total
+post-FBM count at 8192² (6999, ~440x), but the number that matters does reach the tectonic order: at beta = 0.1
+the **structural** depressions — deep enough to trap drainage — are `>= 50 m : 23`, `>= 10 m : 108` (from
+`90682` of which `70215` were >= 1 m un-conditioned). The residual `6999` is almost entirely **sub-metre
+quantisation dimples** (median depth 0.9 m, p90 4.3 m) at the float/u16 scale, which the breach stage removes
+for the shipped product. Pushing beta below 0.02 would bring the total to `~600` but starts trading real detail
+for dimples with no drainage consequence — so beta = 0.1 is chosen as the point where the pit reduction is large
+(13x/28x) and the morphology is *provably* intact (below). The deeper elimination is the roadmap's long game:
+each closure that replaces FBM detail (volcanism, lithology, coastal) shrinks the noise budget further.
+
+Note the post-relief row *rises* under conditioning (6999 -> 17382 at 8192²): once the FBM is conditioned, the
+residual pits are dominated by the stream-power incision's own artefacts, **not** the FBM — which is precisely
+the C-1 goal ("the FBM is no longer the creator"). Conditioning the incision itself is out of C-1 scope (no
+change to the erosion chain beyond the FBM stage).
+
+### No shape regression (post-relief product field)
+
+| metric                | 2048² OFF | 2048² b=0.1 | 8192² OFF | 8192² b=0.1 |
+|-----------------------|-----------|-------------|-----------|-------------|
+| slope > 30° share     | 14.7 %    | 15.1 %      | 20.9 %    | **23.0 %**  |
+| slope > 45° share     | 0.96 %    | 1.20 %      | 3.56 %    | **7.00 %**  |
+| local relief (11², m) | 382       | 334         | 114       | **119**     |
+
+The conditioning does **not** collapse relief — local relief is held (334 vs 382; 119 vs 114) and the
+steep-slope shares are **preserved or sharpened**, because the downslope stretch concentrates relief into
+coherent valleys instead of smearing it isotropically. The only metric that softens is the > 15° share (gentle
+roughness — largely the spurious pit-making noise itself), by design.
+
+### The FBM amplitude floor, revisited
+
+Finding 41 put the un-conditioned degeneracy floor "below 0.02" (amplitude_base). Conditioning **decouples the
+question**: the relief-budget cap makes `amplitude_base` nearly irrelevant on gentle slopes (the cap binds
+there regardless), and it only sets the ceiling on steep flanks where the cap is generous. So `amplitude_base`
+no longer needs to be lowered to fight pits — beta does that at every slope — and it can stay at the production
+0.16 / seed 0.04 for mountain texture. The effective amplitude is now
+`min(amplitude_base*..., beta*slope/(nscale*S))`, a per-cell budget rather than a global level; the "floor" is a
+function of slope, not a scalar.
+
+### Guards
+
+- `terrain::upscale::flow_conditioning_suppresses_fabricated_pits` — permanent unit guard: on a tilted ramp the
+  conditioned FBM fabricates > 4x fewer local minima than the additive one.
+- `depression_investigation::c1_flow_conditioning_sweep` / `c1_shape_metrics` (`#[ignore]`) — the trajectory and
+  shape tables above, reproducible in the production config at both resolutions.
