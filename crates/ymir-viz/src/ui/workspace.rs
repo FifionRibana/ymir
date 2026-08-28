@@ -280,6 +280,20 @@ struct WorkspaceState {
     hover: Option<CellInspection>,
     hover_xy: Option<(usize, usize)>,
     zoom: f32,
+    /// Active map tool: SELECT (microscope — hover/click inspects an entity) or PAN
+    /// (hand — click-drag moves the view). Wheel/CTRL-wheel work in either tool.
+    tool: MapTool,
+    /// Pipeline frieze collapsed (hidden) to give the canvas more room.
+    pipeline_collapsed: bool,
+    /// Bird-eye minimap shown over the canvas.
+    minimap: bool,
+}
+
+/// Map interaction tool (mock: two buttons — select / hand).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MapTool {
+    Select,
+    Pan,
 }
 
 impl Default for WorkspaceState {
@@ -341,6 +355,9 @@ impl Default for WorkspaceState {
             hover_xy: None,
             zoom: 1.0,
             map_pan: [0.5, 0.5],
+            tool: MapTool::Select,
+            pipeline_collapsed: false,
+            minimap: true,
         }
     }
 }
@@ -1330,15 +1347,50 @@ fn central_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut Workspac
     egui::CentralPanel::default()
         .frame(egui::Frame::default().fill(C::from_rgb(0x0f, 0x0f, 0x0f)).inner_margin(0))
         .show(ctx, |ui| {
-            // Pipeline frieze — a top strip (#161616) matching the mock.
+            // Pipeline frieze — a top strip (#161616) matching the mock. Collapsible (a thin bar
+            // remains to re-expand it), so the canvas can take the full height.
             egui::TopBottomPanel::top("frieze_strip")
                 .frame(egui::Frame::default().fill(PANEL2).inner_margin(egui::Margin {
                     left: 16,
                     right: 16,
-                    top: 11,
-                    bottom: 14,
+                    top: 8,
+                    bottom: if ws.pipeline_collapsed { 8 } else { 14 },
                 }))
-                .show_inside(ui, |ui| frieze(ui, &bridge.hd, ws));
+                .show_inside(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        let chevron = if ws.pipeline_collapsed { "▸" } else { "▾" };
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(format!("{chevron} PIPELINE"))
+                                        .color(DIM2)
+                                        .size(9.5),
+                                )
+                                .frame(false),
+                            )
+                            .on_hover_text("Replier / déplier le pipeline")
+                            .clicked()
+                        {
+                            ws.pipeline_collapsed = !ws.pipeline_collapsed;
+                        }
+                        if let HdState::Running { current: Some(p), progress, .. } = &bridge.hd {
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let pct = progress
+                                    .map(|(d, t)| format!(" {}%", if t > 0 { d * 100 / t } else { 0 }))
+                                    .unwrap_or_default();
+                                ui.label(
+                                    egui::RichText::new(format!("{}{} …", p.label(), pct))
+                                        .color(COPPER_BRIGHT)
+                                        .size(10.5),
+                                );
+                                ui.spinner();
+                            });
+                        }
+                    });
+                    if !ws.pipeline_collapsed {
+                        frieze(ui, &bridge.hd, ws);
+                    }
+                });
             // Inspection microscope (Finding 28) — entity lists + long profile / lake sheet.
             if ws.current.is_some() {
                 egui::TopBottomPanel::bottom("inspection_dock")
@@ -1394,23 +1446,8 @@ fn canonical_node(layer: HdLayer) -> usize {
 }
 
 fn frieze(ui: &mut egui::Ui, hd: &HdState, ws: &mut WorkspaceState) {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("PIPELINE").color(DIM2).size(9.5));
-        if let HdState::Running { current: Some(p), progress, .. } = hd {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let pct = progress
-                    .map(|(d, t)| format!(" {}%", if t > 0 { d * 100 / t } else { 0 }))
-                    .unwrap_or_default();
-                ui.label(
-                    egui::RichText::new(format!("{}{} …", p.label(), pct))
-                        .color(COPPER_BRIGHT)
-                        .size(10.5),
-                );
-                ui.spinner();
-            });
-        }
-    });
-    ui.add_space(6.0);
+    // Header (PIPELINE label + running indicator) is drawn by the collapsible wrapper.
+    ui.add_space(2.0);
     let full = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(egui::vec2(full, 44.0), egui::Sense::hover());
     let painter = ui.painter_at(rect);
@@ -1889,17 +1926,6 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         }
         return;
     }
-    // River-network overlay toggle (validation: orphan reaches show RED).
-    ui.horizontal(|ui| {
-        if ui.checkbox(&mut ws.river_overlay, "Réseau hydro (overlay)").changed() {
-            ws.texture = None;
-        }
-        ui.label(
-            egui::RichText::new("épaisseur ∝ ordre de Strahler · orphelins en rouge")
-                .color(DIM2)
-                .size(10.5),
-        );
-    });
     // (Re)build the texture on layer/result/overlay change.
     if ws.texture.is_none() || ws.tex_layer != Some(ws.layer) || ws.tex_overlay != ws.river_overlay
     {
@@ -1920,40 +1946,82 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
 
     let z = ws.zoom.max(1.0);
     let uv_half = 0.5 / z;
-    // Scroll sliders: pan the zoomed view (only shown when zoomed in). They set the
-    // uv-window CENTRE, clamped so the window stays inside the map. Y increases
-    // downward (top→bottom), like a vertical scroll bar.
+    // Clamp the pan CENTRE so the zoom window stays inside the map; recentre at fit.
     if z > 1.0 {
         let (lo, hi) = (uv_half, 1.0 - uv_half);
         ws.map_pan[0] = ws.map_pan[0].clamp(lo, hi);
         ws.map_pan[1] = ws.map_pan[1].clamp(lo, hi);
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Défilement").color(DIM2).size(11.0));
-            ui.label(egui::RichText::new("↔").color(DIM2).size(12.0));
-            ui.add(egui::Slider::new(&mut ws.map_pan[0], lo..=hi).show_value(false));
-            ui.label(egui::RichText::new("↕").color(DIM2).size(12.0));
-            ui.add(egui::Slider::new(&mut ws.map_pan[1], lo..=hi).show_value(false));
-        });
     } else {
         ws.map_pan = [0.5, 0.5];
     }
     let avail = ui.available_size();
     let side = avail.x.min(avail.y).max(1.0);
-    // Centre the square map both ways.
+    // Centre the square map in the canvas (fills the shorter dimension; pan/zoom to explore).
     ui.add_space(((avail.y - side) * 0.5).max(0.0));
     ui.horizontal(|ui| {
         ui.add_space(((avail.x - side) * 0.5).max(0.0));
-        // Zoom → uv sub-rect centred on the pan slider position.
         let (cx, cy) = (ws.map_pan[0], ws.map_pan[1]);
         let uv = egui::Rect::from_min_max(
             egui::pos2(cx - uv_half, cy - uv_half),
             egui::pos2(cx + uv_half, cy + uv_half),
         );
+        // The canvas senses click+drag (pan with the hand tool / middle button) and wheel.
         let resp = ui.add(
             egui::Image::new(egui::load::SizedTexture::new(handle.id(), egui::vec2(side, side)))
                 .uv(uv)
-                .sense(egui::Sense::hover()),
+                .sense(egui::Sense::click_and_drag()),
         );
+
+        // ── Canvas navigation (mock): drag-to-pan, CTRL+wheel zoom around the cursor,
+        //    wheel = vertical scroll, SHIFT+wheel = horizontal (egui routes it to scroll.x).
+        let uv_span = 2.0 * uv_half;
+        let pan_drag = (ws.tool == MapTool::Pan && resp.dragged())
+            || resp.dragged_by(egui::PointerButton::Middle);
+        if pan_drag && z > 1.0 {
+            let d = resp.drag_delta();
+            ws.map_pan[0] -= d.x / side * uv_span; // drag right → view slides left
+            ws.map_pan[1] -= d.y / side * uv_span;
+        }
+        if resp.hovered() {
+            let (scroll, zoom_delta, mods) =
+                ui.ctx().input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.modifiers));
+            // CTRL+wheel (or pinch) → zoom. egui usually routes CTRL+wheel into zoom_delta; the
+            // scroll.y fallback covers the case it does not.
+            let zf = if (zoom_delta - 1.0).abs() > 1e-3 {
+                zoom_delta
+            } else if (mods.ctrl || mods.command) && scroll.y != 0.0 {
+                1.0 + scroll.y / 400.0
+            } else {
+                1.0
+            };
+            if (zf - 1.0).abs() > 1e-4 {
+                let new_z = (z * zf).clamp(1.0, 12.0);
+                if let Some(p) = resp.hover_pos() {
+                    // keep the uv under the cursor fixed while zooming.
+                    let rel = p - resp.rect.min;
+                    let cur_u =
+                        uv.min.x + (rel.x / resp.rect.width()).clamp(0.0, 1.0) * uv_span;
+                    let cur_v =
+                        uv.min.y + (rel.y / resp.rect.height()).clamp(0.0, 1.0) * uv_span;
+                    let k = 1.0 - z / new_z;
+                    ws.map_pan[0] += (cur_u - ws.map_pan[0]) * k;
+                    ws.map_pan[1] += (cur_v - ws.map_pan[1]) * k;
+                }
+                ws.zoom = new_z;
+            } else if z > 1.0 && !mods.ctrl && !mods.command && (scroll.x != 0.0 || scroll.y != 0.0)
+            {
+                ws.map_pan[0] -= scroll.x / side * uv_span;
+                ws.map_pan[1] -= scroll.y / side * uv_span;
+            }
+            let icon = if pan_drag {
+                egui::CursorIcon::Grabbing
+            } else if ws.tool == MapTool::Pan {
+                egui::CursorIcon::Grab
+            } else {
+                egui::CursorIcon::Crosshair
+            };
+            ui.ctx().set_cursor_icon(icon);
+        }
 
         // Overlays (painter-drawn boxes, matching the mock's absolute divs).
         let hd = ws.current.clone().unwrap();
@@ -1978,23 +2046,27 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                 ws.hover = Some(inspect_cell(&hd, rm, cx, cy));
                 ws.hover_xy = Some((cx, cy));
             }
-            // Hover-select (Finding 28): hovering an entity selects it in the ACTIVE tab
-            // (leaves the other tab's selection alone; no tab-flipping as the cursor moves).
-            match ws.inspect_tab {
-                InspectTab::Rivers => {
-                    if let Some(info) = ws.river_map.as_ref().and_then(|rm| rm.at(cx, cy)) {
-                        if let Some(&wi) = ws.seg_to_wc.get(info.segment) {
-                            if wi != usize::MAX {
-                                ws.selected_river = Some(wi);
+            // Hover-select (Finding 28): only with the SELECT (microscope) tool — the hand tool
+            // pans without disturbing the current selection. Selects in the ACTIVE tab.
+            if ws.tool == MapTool::Select {
+                match ws.inspect_tab {
+                    InspectTab::Rivers => {
+                        if let Some(info) = ws.river_map.as_ref().and_then(|rm| rm.at(cx, cy)) {
+                            if let Some(&wi) = ws.seg_to_wc.get(info.segment) {
+                                if wi != usize::MAX {
+                                    ws.selected_river = Some(wi);
+                                }
                             }
                         }
                     }
-                }
-                InspectTab::Lakes => {
-                    let id = hd.drainage.lake_map[cy * hd.width + cx];
-                    if id != 0 {
-                        if let Some(li) = hd.drainage.lakes.iter().position(|l| l.base.id == id) {
-                            ws.selected_lake = Some(li);
+                    InspectTab::Lakes => {
+                        let id = hd.drainage.lake_map[cy * hd.width + cx];
+                        if id != 0 {
+                            if let Some(li) =
+                                hd.drainage.lakes.iter().position(|l| l.base.id == id)
+                            {
+                                ws.selected_lake = Some(li);
+                            }
                         }
                     }
                 }
@@ -2105,9 +2177,100 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             }
         }
 
+        // Floating tool bar (top-left): select / hand + the overlay & minimap toggles.
+        canvas_toolbar(ui, resp.rect, ws);
+        // Bird-eye minimap (bottom-left) showing the current view window.
+        if ws.minimap {
+            minimap_overlay(ui, resp.rect, ws, &hd, uv);
+        }
         // Zoom controls (bottom-right).
         zoom_controls(ui, resp.rect, ws);
+        // ESC clears the current selection (deselect).
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            ws.selected_river = None;
+            ws.selected_lake = None;
+        }
     });
+}
+
+/// Floating canvas tool bar (mock): SELECT (microscope) / PAN (hand) tools, plus the hydro
+/// overlay and minimap toggles. Painted as a small pill at the canvas top-left.
+fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) {
+    let bar = egui::Rect::from_min_size(
+        egui::pos2(rect.left() + 10.0, rect.top() + 10.0),
+        egui::vec2(0.0, 0.0),
+    );
+    let mut child = ui.new_child(
+        egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(bar.min, egui::vec2(360.0, 34.0))),
+    );
+    child.horizontal(|ui| {
+        egui::Frame::default()
+            .fill(C::from_rgba_unmultiplied(18, 18, 18, 235))
+            .stroke(egui::Stroke::new(1.0, C::from_rgb(0x2e, 0x2e, 0x2e)))
+            .corner_radius(6.0)
+            .inner_margin(egui::Margin::symmetric(6, 4))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let sel = seg_label(ui, "⌖ Sélection", ws.tool == MapTool::Select);
+                    if sel.clicked() {
+                        ws.tool = MapTool::Select;
+                    }
+                    sel.on_hover_text("Survol/clic inspecte une entité (microscope).");
+                    let pan = seg_label(ui, "✋ Main", ws.tool == MapTool::Pan);
+                    if pan.clicked() {
+                        ws.tool = MapTool::Pan;
+                    }
+                    pan.on_hover_text("Clic-glisser déplace la vue (pan).");
+                    ui.separator();
+                    if ui
+                        .checkbox(&mut ws.river_overlay, egui::RichText::new("Réseau").size(11.0))
+                        .on_hover_text("Réseau hydro (épaisseur ∝ Strahler ; orphelins en rouge)")
+                        .changed()
+                    {
+                        ws.texture = None;
+                    }
+                    ui.checkbox(&mut ws.minimap, egui::RichText::new("Minimap").size(11.0));
+                });
+            });
+    });
+}
+
+/// Bird-eye minimap: the whole map thumbnail with the current view window outlined.
+fn minimap_overlay(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    ws: &WorkspaceState,
+    hd: &HdResult,
+    uv: egui::Rect,
+) {
+    let _ = hd;
+    let side = 132.0f32;
+    let mm = egui::Rect::from_min_size(
+        egui::pos2(rect.left() + 10.0, rect.bottom() - side - 10.0),
+        egui::vec2(side, side),
+    );
+    let p = ui.painter_at(rect);
+    p.rect_filled(mm, 4.0, C::from_rgba_unmultiplied(10, 10, 10, 220));
+    if let Some(tex) = ws.texture.as_ref() {
+        // Full map thumbnail (uv 0..1) inside the minimap frame.
+        let inner = mm.shrink(3.0);
+        egui::Image::new(egui::load::SizedTexture::new(tex.id(), inner.size()))
+            .uv(egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)))
+            .paint_at(ui, inner);
+        // View window rectangle (uv → minimap coords).
+        let inner_sz = inner.size();
+        let win = egui::Rect::from_min_max(
+            egui::pos2(inner.left() + uv.min.x * inner_sz.x, inner.top() + uv.min.y * inner_sz.y),
+            egui::pos2(inner.left() + uv.max.x * inner_sz.x, inner.top() + uv.max.y * inner_sz.y),
+        );
+        p.rect_stroke(
+            win,
+            0.0,
+            egui::Stroke::new(1.5, COPPER_BRIGHT),
+            egui::StrokeKind::Middle,
+        );
+    }
+    p.rect_stroke(mm, 4.0, egui::Stroke::new(1.0, C::from_rgb(0x2e, 0x2e, 0x2e)), egui::StrokeKind::Middle);
 }
 
 fn overlay_chip(ui: &mut egui::Ui, rect: egui::Rect, layer: HdLayer) {
