@@ -611,6 +611,9 @@ fn draw_workspace(
             ws.texture = None;
             ws.tex_layer = None;
             ws.hover = None;
+            // Default zoom 100% (fit) on a fresh map — refit next frame, recentred.
+            ws.map_px = 0.0;
+            ws.map_pan = [0.5, 0.5];
         }
     }
     // Latch a fresh tectonic-shape preview → show it (and drop any stale HD map
