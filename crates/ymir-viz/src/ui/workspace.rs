@@ -1905,6 +1905,7 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     {
         let layer = ws.layer;
         let overlay = ws.river_overlay;
+        let t_tex = std::time::Instant::now();
         let img = {
             let hd = ws.current.as_ref().unwrap();
             let rm = ws.river_map.as_ref().unwrap();
@@ -1913,6 +1914,7 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         ws.texture = Some(ui.ctx().load_texture("hd_map", img, egui::TextureOptions::NEAREST));
         ws.tex_layer = Some(ws.layer);
         ws.tex_overlay = ws.river_overlay;
+        eprintln!("[HD timing] map texture rebuild {:.1}s (UI thread)", t_tex.elapsed().as_secs_f32());
     }
     let handle = ws.texture.as_ref().unwrap().clone();
 

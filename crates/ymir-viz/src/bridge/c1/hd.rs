@@ -536,6 +536,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     }
     // Land report FIRST (reads only `target_land_fraction`) so the seam-correct
     // torus centre of the largest mass is known before we choose the sampling roll.
+    let t_land = Instant::now();
     let land = c1_coarse_land_report(
         spec.seed,
         spec.grid_size,
@@ -545,6 +546,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         &ss,
         upscale.target_land_fraction,
     );
+    eprintln!("[HD timing] coarse land report {:.1}s", t_land.elapsed().as_secs_f32());
     let _ = land.centroid; // superseded by the seam-correct centre below
     let land_topology = land.topology;
 
@@ -624,6 +626,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // with mid-erosion cancel (a cancelled build is NOT cached).
     bail_if_cancelled!();
     let eroded_hit = sidecar_exists("eroded", ekey.digest());
+    let t_ero = Instant::now();
     let eroded = if eroded_hit {
         for phase in [HdPhase::Tectonic, HdPhase::Relief, HdPhase::Erosion] {
             let _ = tx.send(C1Event::HdPhaseStarted { phase });
@@ -719,6 +722,11 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             }
         }
     };
+    eprintln!(
+        "[HD timing] eroded {} ({:.1}s)",
+        if eroded_hit { "HIT" } else { "MISS" },
+        t_ero.elapsed().as_secs_f32()
+    );
 
     // ── relief-v3 conditioning (ADR 0001 Finding 14): breach the eroded field so exported
     // river long-profiles are monotone, with detected lakes held flat. Done AFTER the cached
@@ -734,6 +742,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         let (gw, gh) = (eroded.width, eroded.height);
         // #190 — the PRE-BREACH drainage is CLIMATE-INDEPENDENT (climate=None), so it is cached on
         // the eroded key alone: it HITs on any climate/scale change (the field is unchanged).
+        let t_pre = Instant::now();
         let prebreach = match cached_c1_drainage_windowed(
             &cache_dir, &ekey, &eroded, None, &dcfg, &ss, window_km,
         ) {
@@ -743,11 +752,14 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
                 return;
             }
         };
+        eprintln!("[HD timing] prebreach drainage {:.1}s", t_pre.elapsed().as_secs_f32());
+        let t_breach = Instant::now();
         let conditioned =
             breach_monotone(&eroded, &prebreach.flow.filled, &prebreach.lake_map, 0.5, gw, gh);
         eprintln!(
-            "[HD] relief-v3 breach conditioning: monotone rivers + {} lakes held flat",
-            prebreach.lakes.len()
+            "[HD] relief-v3 breach conditioning: monotone rivers + {} lakes held flat ({:.1}s)",
+            prebreach.lakes.len(),
+            t_breach.elapsed().as_secs_f32()
         );
         (conditioned, Some(prebreach))
     } else {
@@ -786,6 +798,11 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         regime: if climate_hit { CacheRegime::Hit } else { CacheRegime::Miss },
         elapsed: t.elapsed(),
     });
+    eprintln!(
+        "[HD timing] climate {} ({:.1}s)",
+        if climate_hit { "HIT" } else { "MISS" },
+        t.elapsed().as_secs_f32()
+    );
 
     // ── Phase 3: drainage (rivers + lakes + water balance). ──
     bail_if_cancelled!();
@@ -838,6 +855,11 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         regime: if drainage_hit { CacheRegime::Hit } else { CacheRegime::Miss },
         elapsed: t.elapsed(),
     });
+    eprintln!(
+        "[HD timing] drainage {} ({:.1}s)",
+        if drainage_hit { "HIT" } else { "MISS" },
+        t.elapsed().as_secs_f32()
+    );
 
     // ── Phase 4: biomes (Whittaker classification). ──
     bail_if_cancelled!();
@@ -851,6 +873,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         regime: CacheRegime::Computed,
         elapsed: t.elapsed(),
     });
+    eprintln!("[HD timing] biomes ({:.1}s)", t.elapsed().as_secs_f32());
 
     // ── Optional: write the v1 `.ymir` delivery container. ──
     // Explicit opt-in only (never automatic). Ships height (placeholder) +
@@ -859,6 +882,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         // Resolved climatic span (explicit, else the geographic domain_km/111) so the
         // manifest records the actual gradient behind the climate/biome layers.
         let lat_span = params.latitude_span_deg.unwrap_or(window_km / 111.0);
+        let t_exp = Instant::now();
         if let Err(e) = export_ymir_container(
             spec,
             &ss,
@@ -876,6 +900,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             // Non-fatal: the product still ships to the UI; surface the reason.
             let _ = tx.send(C1Event::HdFailed { error: format!("export .ymir: {e}") });
         }
+        eprintln!("[HD timing] export .ymir ({:.1}s)", t_exp.elapsed().as_secs_f32());
     }
 
     // Telemetry: emerged fraction measured AFTER FBM+erosion on the window grid.
@@ -899,6 +924,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         biomes,
         land_topology,
     });
+    eprintln!("[HD timing] run_hd TOTAL {:.1}s (render is separate, on the UI thread)", t_all.elapsed().as_secs_f32());
     let _ = tx.send(C1Event::HdCompleted { result, elapsed: t_all.elapsed() });
 }
 
