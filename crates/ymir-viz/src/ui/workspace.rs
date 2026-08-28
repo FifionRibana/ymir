@@ -310,11 +310,16 @@ impl Default for WorkspaceState {
             seed_dirty: false,
             bootstrapped: false,
             export_ymir: false,
-            stream_power: false,
-            closures: false,
+            // relief-v3 is the PRODUCTION default (#190): the author has generated + validated every
+            // map through stream-power + closures + MFD for many rounds. Leaving it opt-in silently
+            // reverted a fresh run to the old droplet terrain. FBM amplitude stays the UI default
+            // (0.16); the 0.04 the production seed used is a per-seed choice and the subject of the
+            // next chantier (FBM conditioning), so it is NOT baked in here.
+            stream_power: true,
+            closures: true,
             cross_rill: false,
             cross_rill_d: 0.40,
-            mfd: false,
+            mfd: true,
             mfd_p: 2.0,
             fbm_amplitude: 0.16,
             export_dir: "exports".to_string(),
