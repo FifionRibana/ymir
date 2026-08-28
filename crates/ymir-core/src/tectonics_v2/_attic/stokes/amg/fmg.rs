@@ -38,10 +38,7 @@ pub fn fmg_cycle(h: &AmgHierarchy, cfg: &AmgConfig, b: &[f64], x: &mut [f64]) {
     if n_levels == 1 {
         // Degenerate case — only the coarse level exists. Solve
         // and return.
-        let lu = h.levels[0]
-            .coarse_lu
-            .as_ref()
-            .expect("single-level hierarchy must be factored");
+        let lu = h.levels[0].coarse_lu.as_ref().expect("single-level hierarchy must be factored");
         lu.solve(b, x);
         return;
     }
@@ -50,10 +47,7 @@ pub fn fmg_cycle(h: &AmgHierarchy, cfg: &AmgConfig, b: &[f64], x: &mut [f64]) {
     let mut b_levels: Vec<Vec<f64>> = Vec::with_capacity(n_levels);
     b_levels.push(b.to_vec());
     for k in 0..(n_levels - 1) {
-        let r = h.levels[k]
-            .r
-            .as_ref()
-            .expect("non-coarsest level must have R");
+        let r = h.levels[k].r.as_ref().expect("non-coarsest level must have R");
         let mut b_next = vec![0.0f64; r.n_rows];
         r.apply(&b_levels[k], &mut b_next);
         b_levels.push(b_next);
@@ -61,19 +55,13 @@ pub fn fmg_cycle(h: &AmgHierarchy, cfg: &AmgConfig, b: &[f64], x: &mut [f64]) {
 
     // --- Phase 2: solve the coarsest grid directly ---
     let coarsest = n_levels - 1;
-    let lu = h.levels[coarsest]
-        .coarse_lu
-        .as_ref()
-        .expect("coarsest level must have LU");
+    let lu = h.levels[coarsest].coarse_lu.as_ref().expect("coarsest level must have LU");
     let mut x_current = vec![0.0f64; b_levels[coarsest].len()];
     lu.solve(&b_levels[coarsest], &mut x_current);
 
     // --- Phase 3: prolongate + V-cycle at each finer level ---
     for k in (0..coarsest).rev() {
-        let p = h.levels[k]
-            .p
-            .as_ref()
-            .expect("non-coarsest level must have P");
+        let p = h.levels[k].p.as_ref().expect("non-coarsest level must have P");
         let mut x_k = vec![0.0f64; p.n_rows];
         p.apply(&x_current, &mut x_k);
         v_cycle_level(h, cfg, k, &b_levels[k], &mut x_k);
@@ -175,11 +163,7 @@ mod tests {
              r_fmg = {:.3e} (×{:.3e}), FMG advantage = {:.2}×",
             r0, r_v, v_reduction, r_f, f_reduction, advantage,
         );
-        assert!(
-            advantage >= 2.0,
-            "FMG advantage over V-cycle = {:.2}× (expected ≥ 2×)",
-            advantage
-        );
+        assert!(advantage >= 2.0, "FMG advantage over V-cycle = {:.2}× (expected ≥ 2×)", advantage);
     }
 
     #[test]

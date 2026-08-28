@@ -149,9 +149,7 @@ pub fn build(
     orientation: OrogenicOrientation,
 ) -> Field2D {
     assert!(
-        peak_value.is_finite()
-            && base_continental_value.is_finite()
-            && oceanic_value.is_finite(),
+        peak_value.is_finite() && base_continental_value.is_finite() && oceanic_value.is_finite(),
         "orogenic build: peak/base/oceanic must be finite (got {peak_value}, \
          {base_continental_value}, {oceanic_value})",
     );
@@ -206,18 +204,12 @@ pub fn build(
     let mut plate_axis: Vec<(f64, f64)> = vec![(1.0, 0.0); plate_meta.len()];
     let fallback_axis = match orientation {
         OrogenicOrientation::PlateMainAxisPca => (1.0, 0.0),
-        OrogenicOrientation::Fixed { angle_rad } => {
-            (angle_rad.cos(), angle_rad.sin())
-        }
+        OrogenicOrientation::Fixed { angle_rad } => (angle_rad.cos(), angle_rad.sin()),
     };
     for (pid, acc) in plate_meta.iter().enumerate() {
         plate_axis[pid] = match orientation {
-            OrogenicOrientation::Fixed { angle_rad } => {
-                (angle_rad.cos(), angle_rad.sin())
-            }
-            OrogenicOrientation::PlateMainAxisPca => {
-                acc.principal_axis().unwrap_or(fallback_axis)
-            }
+            OrogenicOrientation::Fixed { angle_rad } => (angle_rad.cos(), angle_rad.sin()),
+            OrogenicOrientation::PlateMainAxisPca => acc.principal_axis().unwrap_or(fallback_axis),
         };
     }
 
@@ -258,8 +250,8 @@ pub fn build(
             let dp_over_sigma = d_perp / width_sigma;
             let trans = (-(dp_over_sigma * dp_over_sigma)).exp();
             let ridge_amount = long_mod * trans;
-            let value = base_continental_value
-                + (peak_value - base_continental_value) * ridge_amount;
+            let value =
+                base_continental_value + (peak_value - base_continental_value) * ridge_amount;
             s.set(i, j, value);
         }
     }
@@ -444,7 +436,7 @@ impl PlateAccum {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+    use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
     fn build_plates(
         nx: usize,
@@ -476,12 +468,8 @@ mod tests {
         let ny = 64;
         let plates = build_plates(nx, ny, 42, 8, 0.4);
         let p = make_init_data(&plates);
-        let s = build(
-            nx, ny, &p,
-            1.20, 0.85, 0.20,
-            0.40, 0.08,
-            OrogenicOrientation::PlateMainAxisPca,
-        );
+        let s =
+            build(nx, ny, &p, 1.20, 0.85, 0.20, 0.40, 0.08, OrogenicOrientation::PlateMainAxisPca);
         for j in 0..ny {
             for i in 0..nx {
                 if matches!(plates.plate_type.get(i, j), PlateType::Oceanic) {
@@ -506,21 +494,13 @@ mod tests {
         let ny = 64;
         let plates = build_plates(nx, ny, 42, 8, 0.4);
         let p = make_init_data(&plates);
-        let s_oro = build(
-            nx, ny, &p,
-            1.20, 0.85, 0.20,
-            0.40, 0.08,
-            OrogenicOrientation::PlateMainAxisPca,
-        );
+        let s_oro =
+            build(nx, ny, &p, 1.20, 0.85, 0.20, 0.40, 0.08, OrogenicOrientation::PlateMainAxisPca);
         let count_cont_from_plate_type = (0..ny)
             .flat_map(|j| (0..nx).map(move |i| (i, j)))
             .filter(|&(i, j)| matches!(plates.plate_type.get(i, j), PlateType::Continental))
             .count();
-        let count_cont_from_oro = s_oro
-            .data()
-            .iter()
-            .filter(|&&v| v > 0.20 + 1e-9)
-            .count();
+        let count_cont_from_oro = s_oro.data().iter().filter(|&&v| v > 0.20 + 1e-9).count();
         // Orogenic continental cells all have S̃ ≥ base = 0.85 > 0.20.
         // Oceanic cells have S̃ = 0.20. So `S̃ > 0.20 + eps` strictly
         // identifies the continental subset.
@@ -554,12 +534,8 @@ mod tests {
         let ny = 128;
         let plates = build_plates(nx, ny, 42, 4, 0.6);
         let p = make_init_data(&plates);
-        let s = build(
-            nx, ny, &p,
-            1.20, 0.85, 0.20,
-            0.40, 0.08,
-            OrogenicOrientation::PlateMainAxisPca,
-        );
+        let s =
+            build(nx, ny, &p, 1.20, 0.85, 0.20, 0.40, 0.08, OrogenicOrientation::PlateMainAxisPca);
         // Global max over all cells — independent of which exact
         // (i, j) cell falls on the ridge axis. Robust to half-cell
         // rounding and PCA orientation.
@@ -571,10 +547,7 @@ mod tests {
         );
         // Sanity: max must not exceed peak (formula is bounded by
         // construction: ridge_amount ∈ [0, 1] ⇒ S̃ ∈ [base, peak]).
-        assert!(
-            max_s <= 1.20 + 1e-12,
-            "max(S̃) = {max_s} exceeded peak = 1.20",
-        );
+        assert!(max_s <= 1.20 + 1e-12, "max(S̃) = {max_s} exceeded peak = 1.20",);
     }
 
     /// Acceptance #5 — far from the ridge (longitudinally outside
@@ -588,12 +561,8 @@ mod tests {
         let ny = 64;
         let plates = build_plates(nx, ny, 42, 8, 0.4);
         let p = make_init_data(&plates);
-        let s = build(
-            nx, ny, &p,
-            1.20, 0.85, 0.20,
-            0.40, 0.08,
-            OrogenicOrientation::PlateMainAxisPca,
-        );
+        let s =
+            build(nx, ny, &p, 1.20, 0.85, 0.20, 0.40, 0.08, OrogenicOrientation::PlateMainAxisPca);
         // For each continental cell, value can be no lower than the
         // base when ridge_amount = 0. Conversely, ridge_amount > 0
         // requires the cell to be inside `half_length` longitudinally
@@ -638,14 +607,10 @@ mod tests {
         let plates_b = build_plates(nx, ny, 42, 8, 0.4);
         let pa = make_init_data(&plates_a);
         let pb = make_init_data(&plates_b);
-        let sa = build(
-            nx, ny, &pa, 1.20, 0.85, 0.20, 0.40, 0.08,
-            OrogenicOrientation::PlateMainAxisPca,
-        );
-        let sb = build(
-            nx, ny, &pb, 1.20, 0.85, 0.20, 0.40, 0.08,
-            OrogenicOrientation::PlateMainAxisPca,
-        );
+        let sa =
+            build(nx, ny, &pa, 1.20, 0.85, 0.20, 0.40, 0.08, OrogenicOrientation::PlateMainAxisPca);
+        let sb =
+            build(nx, ny, &pb, 1.20, 0.85, 0.20, 0.40, 0.08, OrogenicOrientation::PlateMainAxisPca);
         assert_eq!(sa.data(), sb.data());
     }
 
@@ -734,10 +699,7 @@ mod tests {
         }
         let (ux, uy) = acc.principal_axis().expect("non-degenerate axis");
         // Direction is unsigned (axis), so test |ux| ≈ 1, |uy| ≈ 0.
-        assert!(
-            ux.abs() > 0.95 && uy.abs() < 0.05,
-            "expected x-axis, got ({ux}, {uy})",
-        );
+        assert!(ux.abs() > 0.95 && uy.abs() < 0.05, "expected x-axis, got ({ux}, {uy})",);
     }
 
     /// PCA detects an elongated cluster along y.
@@ -754,10 +716,7 @@ mod tests {
             acc.accumulate_covariance(16, j, nx, ny);
         }
         let (ux, uy) = acc.principal_axis().expect("non-degenerate axis");
-        assert!(
-            uy.abs() > 0.95 && ux.abs() < 0.05,
-            "expected y-axis, got ({ux}, {uy})",
-        );
+        assert!(uy.abs() > 0.95 && ux.abs() < 0.05, "expected y-axis, got ({ux}, {uy})",);
     }
 
     /// Fixed orientation path: regardless of plate shape, the
@@ -770,12 +729,17 @@ mod tests {
         let ny = 64;
         let plates = build_plates(nx, ny, 42, 8, 0.4);
         let p = make_init_data(&plates);
-        let s_pca = build(
-            nx, ny, &p, 1.20, 0.85, 0.20, 0.40, 0.08,
-            OrogenicOrientation::PlateMainAxisPca,
-        );
+        let s_pca =
+            build(nx, ny, &p, 1.20, 0.85, 0.20, 0.40, 0.08, OrogenicOrientation::PlateMainAxisPca);
         let s_fix = build(
-            nx, ny, &p, 1.20, 0.85, 0.20, 0.40, 0.08,
+            nx,
+            ny,
+            &p,
+            1.20,
+            0.85,
+            0.20,
+            0.40,
+            0.08,
             OrogenicOrientation::Fixed { angle_rad: std::f64::consts::FRAC_PI_2 },
         );
         // The two fields must differ on at least one continental

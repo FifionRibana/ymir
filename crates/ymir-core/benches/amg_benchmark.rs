@@ -22,7 +22,7 @@
 
 use std::path::PathBuf;
 
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::stokes::amg::setup::build_hierarchy;
@@ -30,12 +30,12 @@ use ymir_core::tectonics_v2::stokes::amg::vcycle::v_cycle;
 use ymir_core::tectonics_v2::stokes::amg::{AmgConfig, AmgPreconditioner};
 use ymir_core::tectonics_v2::stokes::nullspace;
 use ymir_core::tectonics_v2::stokes::operator::{
-    apply_momentum, apply_tangent, StokesGrid, TangentContext,
+    StokesGrid, TangentContext, apply_momentum, apply_tangent,
 };
 use ymir_core::tectonics_v2::stokes::precond::VelocityJacobi;
-use ymir_core::tectonics_v2::stokes::snapshot::{field_from_vec, LinearStokesSnapshot};
+use ymir_core::tectonics_v2::stokes::snapshot::{LinearStokesSnapshot, field_from_vec};
 use ymir_core::tectonics_v2::stokes::solver::{ConjugateGradient, LinearSolver, SolverStats};
-use ymir_core::tectonics_v2::stokes::sparse_assembly::{assemble_picard_csr, CsrMatrix};
+use ymir_core::tectonics_v2::stokes::sparse_assembly::{CsrMatrix, assemble_picard_csr};
 
 // ---------------------------------------------------------------------------
 // Poisson synthetic cases
@@ -60,8 +60,8 @@ fn poisson_constant(n: usize) -> PoissonCase {
         for i in 0..n {
             let x = (i as f64 + 0.5) * dx;
             let y = (j as f64 + 0.5) * dy;
-            rhs[j * n + i] = (2.0 * std::f64::consts::PI * x).sin()
-                * (2.0 * std::f64::consts::PI * y).sin();
+            rhs[j * n + i] =
+                (2.0 * std::f64::consts::PI * x).sin() * (2.0 * std::f64::consts::PI * y).sin();
         }
     }
     nullspace::subtract_mean(&mut rhs);
@@ -183,10 +183,7 @@ struct StokesReplay {
 fn build_stokes_replay(snap: &LinearStokesSnapshot) -> StokesReplay {
     let grid = StokesGrid::new(snap.nx, snap.ny, snap.dx, snap.dy);
     let eta_center = field_from_vec(snap.eta_center.clone(), snap.nx, snap.ny);
-    let drag_diag = snap
-        .drag_diag
-        .as_ref()
-        .map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
+    let drag_diag = snap.drag_diag.as_ref().map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
     // Tangent context: reconstructed from stored per-cell fields. At
     // Newton outer iter 0 with initial v = 0, exx/eyy/exy are all
     // zero, so apply_tangent contributes nothing — but for captures
@@ -318,11 +315,7 @@ fn solve_stokes_amg(
     cfg: AmgConfig,
 ) -> SolverStats {
     // Build the sparse Picard CSR from the snapshot.
-    let a_picard = assemble_picard_csr(
-        &replay.grid,
-        &replay.eta_center,
-        replay.drag_diag.as_ref(),
-    );
+    let a_picard = assemble_picard_csr(&replay.grid, &replay.eta_center, replay.drag_diag.as_ref());
     let precond = AmgPreconditioner::build(&a_picard, snap.n_cells(), cfg);
 
     let n = replay.grid.n_cells();
@@ -469,8 +462,8 @@ fn bench_stokes(c: &mut Criterion, name: &str, snap: LinearStokesSnapshot) {
 /// the workspace root or from inside the crate (cargo sets CWD to
 /// the package dir, `bench_data/` lives at the workspace root).
 fn bench_data_dir() -> PathBuf {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR not set; run under cargo");
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set; run under cargo");
     PathBuf::from(manifest_dir).join("..").join("..").join("bench_data")
 }
 

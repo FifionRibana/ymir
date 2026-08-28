@@ -19,7 +19,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::field::build;
-    use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+    use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
     /// 32×32 grid, 2 plates, opposing horizontal velocities. Dumps
     /// `vx` as ASCII (one char per cell, sign + 2-digit fractional)
@@ -78,17 +78,10 @@ mod tests {
             println!();
         }
 
-        let max_mag = vx
-            .iter()
-            .zip(vy.iter())
-            .map(|(&a, &b)| (a * a + b * b).sqrt())
-            .fold(0.0_f64, f64::max);
+        let max_mag =
+            vx.iter().zip(vy.iter()).map(|(&a, &b)| (a * a + b * b).sqrt()).fold(0.0_f64, f64::max);
         let mean_mag = {
-            let total: f64 = vx
-                .iter()
-                .zip(vy.iter())
-                .map(|(&a, &b)| (a * a + b * b).sqrt())
-                .sum();
+            let total: f64 = vx.iter().zip(vy.iter()).map(|(&a, &b)| (a * a + b * b).sqrt()).sum();
             total / (nx * ny) as f64
         };
         println!("\nmax|v| = {:.4} (assigned magnitude = 0.5000)", max_mag);

@@ -60,11 +60,8 @@ impl MetricHeight {
 /// Build the quantised metric `height` raster for the normalized `eroded` field.
 /// Deterministic: same field + params → same codes and range.
 pub fn metric_height_u16(eroded_norm: &GridF32, ss: &SteinSteinParams) -> MetricHeight {
-    let metres: Vec<f32> = eroded_norm
-        .data
-        .iter()
-        .map(|&n| altitude_norm_to_metres_sea_anchored(n, ss))
-        .collect();
+    let metres: Vec<f32> =
+        eroded_norm.data.iter().map(|&n| altitude_norm_to_metres_sea_anchored(n, ss)).collect();
 
     let (mut min_m, mut max_m) = (f32::INFINITY, f32::NEG_INFINITY);
     for &m in &metres {
@@ -76,7 +73,9 @@ pub fn metric_height_u16(eroded_norm: &GridF32, ss: &SteinSteinParams) -> Metric
 
     let codes: Vec<u16> = metres
         .iter()
-        .map(|&m| (((m - min_m) / span) * u16::MAX as f32).round().clamp(0.0, u16::MAX as f32) as u16)
+        .map(|&m| {
+            (((m - min_m) / span) * u16::MAX as f32).round().clamp(0.0, u16::MAX as f32) as u16
+        })
         .collect();
 
     MetricHeight { codes, min_m, max_m }

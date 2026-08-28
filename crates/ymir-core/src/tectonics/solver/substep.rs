@@ -166,24 +166,14 @@ impl StateSnapshot {
         grid.vx.data_mut().copy_from_slice(self.vx.data());
         grid.vy.data_mut().copy_from_slice(self.vy.data());
         grid.rho.data_mut().copy_from_slice(self.rho.data());
-        grid.eta_multiplier
-            .data_mut()
-            .copy_from_slice(self.eta_multiplier.data());
-        grid.plastic_strain
-            .data_mut()
-            .copy_from_slice(self.plastic_strain.data());
+        grid.eta_multiplier.data_mut().copy_from_slice(self.eta_multiplier.data());
+        grid.plastic_strain.data_mut().copy_from_slice(self.plastic_strain.data());
         grid.basal_friction = self.basal_friction;
         plate_ctx.ids.clone_from(&self.plate_ids);
         plate_ctx.plates.clone_from(&self.plates);
         plate_ctx.traction = self.traction.clone();
-        plate_ctx
-            .disp_x
-            .data_mut()
-            .copy_from_slice(self.disp_x.data());
-        plate_ctx
-            .disp_y
-            .data_mut()
-            .copy_from_slice(self.disp_y.data());
+        plate_ctx.disp_x.data_mut().copy_from_slice(self.disp_x.data());
+        plate_ctx.disp_y.data_mut().copy_from_slice(self.disp_y.data());
         plate_ctx.next_id = self.next_id;
     }
 }

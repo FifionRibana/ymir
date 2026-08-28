@@ -31,7 +31,7 @@ use super::{PhaseBOutput, WorkflowConfig};
 use crate::erosion::hydraulic::run_erosion;
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
-use crate::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use crate::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use crate::tectonics_v2::field::Field2D;
 use crate::terrain::upscale::upscale_with_fbm;
 
@@ -58,11 +58,7 @@ use crate::terrain::upscale::upscale_with_fbm;
 /// without having to fabricate a `BaselineResult` shell with dummy
 /// `metrics` / `config_dump`. Behaviour is bit-identical for the
 /// Phase 5 test callers; they pass `&last_cycle.baseline.final_state.s_field`.
-pub fn run_phase_b(
-    s_field: &Field2D,
-    wf: &WorkflowConfig,
-    seed: u64,
-) -> Option<PhaseBOutput> {
+pub fn run_phase_b(s_field: &Field2D, wf: &WorkflowConfig, seed: u64) -> Option<PhaseBOutput> {
     match wf {
         WorkflowConfig::Disabled => None,
         WorkflowConfig::Enabled(params) => {
@@ -74,8 +70,7 @@ pub fn run_phase_b(
             // for S̃-space erosion) is correctly used here, because
             // upscale_with_fbm + run_erosion both operate in heightmap
             // [0, 1] space.
-            let isostasy =
-                compute_isostasy(s_field, &IsostasyConfig::default());
+            let isostasy = compute_isostasy(s_field, &IsostasyConfig::default());
             let coarse = isostasy.heightmap;
             let sea_level = isostasy.sea_level_normalized;
 
@@ -145,18 +140,15 @@ fn compute_deviation_stats(a: &GridF32, b: &GridF32) -> (f64, f64) {
     if n == 0 {
         return (0.0, 0.0);
     }
-    let mut deltas: Vec<f64> = a
-        .data
-        .iter()
-        .zip(b.data.iter())
-        .map(|(&x, &y)| (x - y).abs() as f64)
-        .collect();
+    let mut deltas: Vec<f64> =
+        a.data.iter().zip(b.data.iter()).map(|(&x, &y)| (x - y).abs() as f64).collect();
     let max = deltas.iter().copied().fold(0.0_f64, f64::max);
     // p95: index = floor(0.95 · (n - 1)). select_nth_unstable
     // partitions the slice in O(n) so we don't pay the full sort cost.
     let p95_idx = ((0.95 * (n - 1) as f64) as usize).min(n - 1);
-    deltas
-        .select_nth_unstable_by(p95_idx, |x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+    deltas.select_nth_unstable_by(p95_idx, |x, y| {
+        x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
+    });
     let p95 = deltas[p95_idx];
     (max, p95)
 }

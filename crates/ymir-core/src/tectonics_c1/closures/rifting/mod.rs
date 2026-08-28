@@ -92,5 +92,5 @@ pub mod source_term;
 pub mod split;
 
 pub use params::RiftingParams;
-pub use source_term::{apply_rifting_thinning, RiftingThinningStats};
-pub use split::{apply_rifting_split, DivergenceTracker, RiftingSplitStats};
+pub use source_term::{RiftingThinningStats, apply_rifting_thinning};
+pub use split::{DivergenceTracker, RiftingSplitStats, apply_rifting_split};

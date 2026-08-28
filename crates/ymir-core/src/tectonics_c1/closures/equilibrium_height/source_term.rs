@@ -38,11 +38,7 @@ use super::params::EquilibriumHeightParams;
 ///   [`EquilibriumHeightParams`])
 /// - `dt`: time step in the same units as `1 / (k_collapse ·
 ///   length)`
-pub fn apply_equilibrium_height_step(
-    s: &mut Field2D,
-    params: &EquilibriumHeightParams,
-    dt: f64,
-) {
+pub fn apply_equilibrium_height_step(s: &mut Field2D, params: &EquilibriumHeightParams, dt: f64) {
     if !params.enabled {
         return;
     }
@@ -94,10 +90,7 @@ mod tests {
         // S̃ uniformly under h_eq → asymmetric closure must not act.
         let params = EquilibriumHeightParams::default();
         let initial = 1.0;
-        assert!(
-            initial < params.h_eq,
-            "test premise: initial S̃ must be below h_eq"
-        );
+        assert!(initial < params.h_eq, "test premise: initial S̃ must be below h_eq");
         let mut s = fill_with(4, 4, initial);
         let before = s.data().to_vec();
         apply_equilibrium_height_step(&mut s, &params, 1.0);
@@ -164,10 +157,8 @@ mod tests {
         // enabled = false → bit-identical pre/post regardless of
         // input values (including cells well above h_eq). Mirrors
         // the W4 closure-isolation discipline used by Davis-Suppe.
-        let params = EquilibriumHeightParams {
-            enabled: false,
-            ..EquilibriumHeightParams::default()
-        };
+        let params =
+            EquilibriumHeightParams { enabled: false, ..EquilibriumHeightParams::default() };
         let mut s = fill_with(4, 4, 5.0); // uniformly above h_eq
         // Sprinkle non-uniform values so a forgotten branch can't
         // pass by accident on a uniform field.
@@ -197,10 +188,8 @@ mod tests {
         // « 1` and the clamp never triggers. On large-excess
         // boundary outliers the clamp triggering is the intended
         // one-step cap (see module docstring).
-        let params = EquilibriumHeightParams {
-            k_collapse: 100.0,
-            ..EquilibriumHeightParams::default()
-        };
+        let params =
+            EquilibriumHeightParams { k_collapse: 100.0, ..EquilibriumHeightParams::default() };
         let initial = 3.0;
         let dt = 1.0;
         let predicted_unclamped =

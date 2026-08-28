@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use ymir_core::tectonics_v2::boundaries::{BoundaryConfig, BoundaryRates};
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
 use ymir_core::tectonics_v2::mantle::MantleConfig;
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
@@ -69,10 +69,7 @@ fn step6_config(steps: usize) -> BaselineConfig {
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
         yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05,
-            ..BasalDragLaw::default()
-        }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: "voronoi_seed42_n8".into(),
         slab_pull: SlabPullConfig::Disabled,
@@ -83,7 +80,7 @@ fn step6_config(steps: usize) -> BaselineConfig {
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -92,11 +89,7 @@ fn extrapolation_stats_are_present_and_consistent() {
     // Run 8 steps so step indices ≥ 2 fire the extrapolation path
     // (`steps - 2 = 6` attempts maximum).
     let r = run_baseline(&step6_config(8));
-    let stats = r
-        .metrics
-        .extrapolation
-        .as_ref()
-        .expect("steps > 0 ⇒ ExtrapolationStats populated");
+    let stats = r.metrics.extrapolation.as_ref().expect("steps > 0 ⇒ ExtrapolationStats populated");
 
     // `applied + |fallback| = attempted` is the bookkeeping
     // invariant — every attempt either succeeds or falls back.
@@ -161,7 +154,7 @@ fn extrapolation_fallback_rate_under_50_percent_on_typical_run() {
 #[ignore]
 fn bench_step8_jacobi_100step() {
     use ymir_core::tectonics_v2::mantle::{
-        MantleConfig, COUPLING_DEFAULT, MF_DEFAULT, NUM_MODES_DEFAULT,
+        COUPLING_DEFAULT, MF_DEFAULT, MantleConfig, NUM_MODES_DEFAULT,
     };
     let mut cfg = step6_config(100);
     cfg.mantle = MantleConfig::Enabled {
@@ -186,10 +179,7 @@ fn bench_step8_jacobi_100step() {
         stats.fallback_indices.len(),
         stats.fallback_indices,
     );
-    eprintln!(
-        "  newton outer iters mean: {:.2}",
-        stats.newton_outer_iters_mean(),
-    );
+    eprintln!("  newton outer iters mean: {:.2}", stats.newton_outer_iters_mean(),);
 }
 
 #[test]

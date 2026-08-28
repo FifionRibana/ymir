@@ -62,17 +62,17 @@
 //!   until a downstream consumer (e.g. orographic precipitation
 //!   in the future climate module) motivates exposing it.
 
-use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
+use ymir_core::erosion::hydraulic::{ErosionConfig, run_erosion};
 use ymir_core::seed::WorldSeed;
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
 use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
-use ymir_core::terrain::flow::{compute_flow, FlowConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
+use ymir_core::terrain::flow::{FlowConfig, compute_flow};
 
 const GRID: usize = 64;
 const SEED: u64 = 42;
@@ -85,22 +85,10 @@ const SEED: u64 = 42;
 /// rationale on holding the Phase 1.4 thresholds stable.
 fn phase_1_4_closures() -> C1Closures {
     C1Closures {
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     }
 }
@@ -203,39 +191,23 @@ fn c1_continental_drainage_functional() {
         }
     }
     let continental_fraction = n_continental as f64 / n_cells as f64;
-    let mean_continental_accum = if n_continental > 0 {
-        sum_continental_accum / n_continental as f64
-    } else {
-        0.0
-    };
-    let non_leaf_fraction = if n_continental > 0 {
-        non_leaf_continental as f64 / n_continental as f64
-    } else {
-        0.0
-    };
-    let downstream_fraction = if n_continental > 0 {
-        downstream_continental as f64 / n_continental as f64
-    } else {
-        0.0
-    };
-    let major_fraction = if n_continental > 0 {
-        major_continental as f64 / n_continental as f64
-    } else {
-        0.0
-    };
+    let mean_continental_accum =
+        if n_continental > 0 { sum_continental_accum / n_continental as f64 } else { 0.0 };
+    let non_leaf_fraction =
+        if n_continental > 0 { non_leaf_continental as f64 / n_continental as f64 } else { 0.0 };
+    let downstream_fraction =
+        if n_continental > 0 { downstream_continental as f64 / n_continental as f64 } else { 0.0 };
+    let major_fraction =
+        if n_continental > 0 { major_continental as f64 / n_continental as f64 } else { 0.0 };
 
-    eprintln!(
-        "c1_phase_1_4 D-T1 — continental drainage functional (Phase-1.4-regime-tagged):"
-    );
+    eprintln!("c1_phase_1_4 D-T1 — continental drainage functional (Phase-1.4-regime-tagged):");
     eprintln!("  num_cells              = {n_cells}");
     eprintln!(
         "  n_continental          = {n_continental}    ({:.1} % of grid, sea_level = {sea_level:.3})",
         100.0 * continental_fraction
     );
     eprintln!("  num_basins (global)    = {}", flow.num_basins);
-    eprintln!(
-        "  max  continental accum = {max_continental_accum:.1}    (threshold: > 5)"
-    );
+    eprintln!("  max  continental accum = {max_continental_accum:.1}    (threshold: > 5)");
     eprintln!("  mean continental accum = {mean_continental_accum:.2}");
     eprintln!(
         "  non-leaf  (accum > 1)  = {non_leaf_continental:>3} cells  ({:>4.1} % of continental, threshold: > 25 %)",
@@ -322,10 +294,7 @@ fn c1_post_run_altitude_consumable_by_downstream() {
     // Stage 1 — isostasy. Smoke: altitude finite, in [0, 1].
     let isostasy = compute_isostasy(&state.s, &iso_config);
     let altitude = isostasy.heightmap;
-    assert!(
-        altitude.data.iter().all(|h| h.is_finite()),
-        "altitude contains non-finite values"
-    );
+    assert!(altitude.data.iter().all(|h| h.is_finite()), "altitude contains non-finite values");
     assert!(
         altitude.data.iter().all(|&h| (0.0..=1.0).contains(&h)),
         "altitude contains values outside [0, 1]"
@@ -333,10 +302,7 @@ fn c1_post_run_altitude_consumable_by_downstream() {
 
     // Stage 2 — compute_flow. Smoke: accumulation + filled both
     // finite; no panic.
-    let flow_config = FlowConfig {
-        sea_level: isostasy.sea_level_normalized,
-        ..Default::default()
-    };
+    let flow_config = FlowConfig { sea_level: isostasy.sea_level_normalized, ..Default::default() };
     let flow = compute_flow(&altitude, &flow_config);
     assert!(
         flow.accumulation.data.iter().all(|a| a.is_finite() && *a >= 0.0),

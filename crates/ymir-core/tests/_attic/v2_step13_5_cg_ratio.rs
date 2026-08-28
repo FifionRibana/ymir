@@ -81,13 +81,8 @@ fn build_cfg(init_mode: InitMode, label: &str) -> BaselineConfig {
     // single_continent Voronoï shape — same as Step 13's CG ratio
     // suite for layout consistency.
     let vcfg = VoronoiConfig { num_plates: 4, continental_ratio: 0.5 };
-    let rates = BoundaryRates {
-        k_sub: 0.5,
-        k_arc: 0.0,
-        k_spread: 0.0,
-        k_coll_v: 0.0,
-        k_rift_v: 0.0,
-    };
+    let rates =
+        BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
     let boundary = BoundaryConfig::enabled_voronoi_closed(
         NX,
         NY,
@@ -118,14 +113,8 @@ fn build_cfg(init_mode: InitMode, label: &str) -> BaselineConfig {
         force_kind: ForceKind::Gpe,
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.0,
-        yielding: YieldingConfig::Enabled(YieldingLaw {
-            bi: 0.15,
-            ..Default::default()
-        }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05,
-            ..BasalDragLaw::default()
-        }),
+        yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: format!("v2_step13_5_cg_ratio_{}", label),
         slab_pull: SlabPullConfig::Disabled,
@@ -153,10 +142,7 @@ fn cg_iter_mean(label: &str, init_mode: InitMode) -> (f64, f64) {
     let dt = t0.elapsed().as_secs_f64();
     let m = &r.metrics;
     let mean = m.cg_iter_mean;
-    println!(
-        "  {:<32} : cg_iter_mean = {:.2} (wallclock {:.2}s)",
-        label, mean, dt
-    );
+    println!("  {:<32} : cg_iter_mean = {:.2} (wallclock {:.2}s)", label, mean, dt);
     (mean, dt)
 }
 
@@ -170,27 +156,18 @@ fn oceanic_fbm_cg_ratio_acceptance() {
         "  Config : 64² × {} steps, mantle on, slab off, yielding on, single_continent Voronoï (seed=12)",
         STEPS
     );
-    println!(
-        "  Init   : RadialProfileWithFBM with continental FBM enabled in both runs;"
-    );
-    println!(
-        "           only `apply_fbm_to_oceanic` differs (false vs true)."
-    );
+    println!("  Init   : RadialProfileWithFBM with continental FBM enabled in both runs;");
+    println!("           only `apply_fbm_to_oceanic` differs (false vs true).");
     println!();
 
-    let (baseline_mean, _) =
-        cg_iter_mean("oceanic_disabled (Step 13)", radial_fbm_mode(false));
+    let (baseline_mean, _) = cg_iter_mean("oceanic_disabled (Step 13)", radial_fbm_mode(false));
 
-    let (oceanic_mean, _) =
-        cg_iter_mean("oceanic_enabled (Step 13.5)", radial_fbm_mode(true));
+    let (oceanic_mean, _) = cg_iter_mean("oceanic_enabled (Step 13.5)", radial_fbm_mode(true));
 
     let ratio = oceanic_mean / baseline_mean.max(1e-12);
 
     println!();
-    println!(
-        "  oceanic_enabled / oceanic_disabled = {:.3}× (acceptance: ∈ [0.90, 1.10])",
-        ratio
-    );
+    println!("  oceanic_enabled / oceanic_disabled = {:.3}× (acceptance: ∈ [0.90, 1.10])", ratio);
 
     const RATIO_LIMIT_LOW: f64 = 0.90;
     const RATIO_LIMIT_HIGH: f64 = 1.10;

@@ -18,7 +18,7 @@ use ymir_core::tectonics_v2::stokes::nonlinear_solver::{
     NewtonConfig, NewtonSolver, NonlinearOutcome, NonlinearSolver,
 };
 use ymir_core::tectonics_v2::stokes::solver::ConjugateGradient;
-use ymir_core::tectonics_v2::stokes::{operator::apply_momentum, Grid};
+use ymir_core::tectonics_v2::stokes::{Grid, operator::apply_momentum};
 
 fn build_rhs_from_target(
     nx: usize,
@@ -43,9 +43,7 @@ fn build_rhs_from_target(
     }
     ymir_core::tectonics_v2::stokes::nullspace::project_velocity(&mut vx_target, &mut vy_target);
     // Evaluate the nonlinear operator at the target — that's our RHS.
-    let sr = StrainRate::compute(
-        nx, ny, dx, dy, &grid.idx_x, &grid.idx_y, &vx_target, &vy_target,
-    );
+    let sr = StrainRate::compute(nx, ny, dx, dy, &grid.idx_x, &grid.idx_y, &vx_target, &vy_target);
     let eta = rheology::build_eta_field(law, &sr.eps_ii_center, None);
     let mut rhs_x = vec![0.0; nx * ny];
     let mut rhs_y = vec![0.0; nx * ny];
@@ -127,7 +125,8 @@ fn newton_trail_is_superlinear_for_n3() {
     assert!(
         ratio_1 >= 100.0 && ratio_2 >= 100.0,
         "Newton tail did not show the expected super-linear factor-of-100 reductions: {:.1}× then {:.1}×",
-        ratio_1, ratio_2,
+        ratio_1,
+        ratio_2,
     );
 }
 

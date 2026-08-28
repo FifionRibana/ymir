@@ -34,7 +34,39 @@ pub struct ClimateResult {
 /// Derived & re-runnable: recompute when the relief/climate change. `heightmap`
 /// marks ocean cells. Row-major `Vec<Biome>`.
 pub fn c1_biomes(heightmap: &GridF32, climate: &ClimateResult) -> Vec<biomes::Biome> {
-    biomes::compute_biomes(heightmap, &climate.temperature, &climate.precipitation)
+    // Legacy (altitude membership) — empty connectivity slices fall back to the old rule.
+    biomes::compute_biomes(heightmap, &climate.temperature, &climate.precipitation, &[], &[], &[])
+}
+
+/// Whittaker biome map using CONNECTIVITY + drainage water (ADR 0001 Finding 18): sea-vs-inland
+/// membership from `water_class` (computed here at the C1 sea level), inland water surfaces from
+/// `lake_map` (real lakes + water-balanced below-sea basins). Below-sea enclosed basins no longer
+/// read as `Ocean`; their water surface reads as `Lake`, the exposed margin as land.
+pub fn c1_biomes_classified(
+    heightmap: &GridF32,
+    climate: &ClimateResult,
+    lake_map: &[u32],
+) -> Vec<biomes::Biome> {
+    c1_biomes_classified_wet(heightmap, climate, lake_map, &[])
+}
+
+/// [`c1_biomes_classified`] with a WETLAND mask (ADR 0001 Finding 30): shallow through-flow
+/// below-sea margins read as `Biome::Wetland` instead of `Lake`. Empty mask → no wetlands.
+pub fn c1_biomes_classified_wet(
+    heightmap: &GridF32,
+    climate: &ClimateResult,
+    lake_map: &[u32],
+    wetland: &[u8],
+) -> Vec<biomes::Biome> {
+    let wc = crate::lakes::connectivity::water_class(heightmap, precipitation::SEA_LEVEL_NORM);
+    biomes::compute_biomes(
+        heightmap,
+        &climate.temperature,
+        &climate.precipitation,
+        &wc,
+        lake_map,
+        wetland,
+    )
 }
 
 /// Derive (temperature, precipitation) from the C1 relief at a centre latitude.
@@ -73,6 +105,37 @@ pub fn c1_climate_windowed(
         |n| c1_altitude_norm_to_metres(n, ss),
         params,
     );
+    ClimateResult { temperature, precipitation }
+}
+
+/// [`c1_climate_windowed`] with an EXPLICIT latitudinal SPAN centred on `centre_deg`
+/// (ADR 0001 Finding 25 — TASK 2). The physical horizontal scale still comes from
+/// `window_km` (orographic distance, cell size); `span_deg` sets ONLY the CLIMATIC
+/// latitude extent — the thermal gradient and which wind belts the map crosses. This
+/// is REAL physics (temperature, wind, precipitation → biomes all change), so it is a
+/// separate control from the geographic scale ratio (a pure hydrology multiplier).
+/// `span_deg == window_km / 111` reproduces [`c1_climate_windowed`] to within the
+/// single-belt→per-belt precip refinement (negligible at that narrow span).
+pub fn c1_climate_placed(
+    heightmap: &GridF32,
+    ss: &SteinSteinParams,
+    centre_deg: f32,
+    span_deg: f32,
+    params: &PrecipParams,
+    window_km: f32,
+) -> ClimateResult {
+    let temperature = temperature::compute_temperature_span(heightmap, ss, centre_deg, span_deg);
+    let km_per_cell = window_km / heightmap.width as f32;
+    let precipitation = precipitation::compute_precipitation_span(
+        heightmap,
+        &temperature,
+        centre_deg,
+        span_deg,
+        km_per_cell,
+        |n| c1_altitude_norm_to_metres(n, ss),
+        params,
+    )
+    .0;
     ClimateResult { temperature, precipitation }
 }
 

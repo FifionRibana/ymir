@@ -106,9 +106,17 @@ pub fn detect_boundaries(
                 let c_s = vy[lin(i, j)].max(0.0);
                 let mut best_c = c_e;
                 let mut best_idx: u8 = 0;
-                if c_w > best_c { best_c = c_w; best_idx = 1; }
-                if c_n > best_c { best_c = c_n; best_idx = 2; }
-                if c_s > best_c { best_idx = 3; }
+                if c_w > best_c {
+                    best_c = c_w;
+                    best_idx = 1;
+                }
+                if c_n > best_c {
+                    best_c = c_n;
+                    best_idx = 2;
+                }
+                if c_s > best_c {
+                    best_idx = 3;
+                }
                 let _ = best_c;
 
                 let neighbor = match best_idx {
@@ -164,9 +172,7 @@ mod tests {
         let pid = PlateIdField::new(nx, ny);
         let mut out = BoundaryFlagField::filled(nx, ny, BoundaryFlag::None);
         let cfg = DetectionConfig { threshold };
-        detect_boundaries(
-            nx, ny, dx, dy, &idx_x, &idx_y, vx, vy, plate_type, &pid, &cfg, &mut out,
-        );
+        detect_boundaries(nx, ny, dx, dy, &idx_x, &idx_y, vx, vy, plate_type, &pid, &cfg, &mut out);
         out
     }
 

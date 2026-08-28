@@ -52,10 +52,8 @@ fn rms_err(n: usize, coupling: f64, mf: f64) -> f64 {
     let mut fx = Field2D::new(n, n);
     let mut fy = Field2D::new(n, n);
     let state = SimulationState { nx: n, ny: n, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
-    MantleForce::new(mf, coupling, &pattern, &s).accumulate(
-        &state,
-        &mut VectorField { fx: &mut fx, fy: &mut fy },
-    );
+    MantleForce::new(mf, coupling, &pattern, &s)
+        .accumulate(&state, &mut VectorField { fx: &mut fx, fy: &mut fy });
 
     // Analytic expectation: uniform S = 1 ⇒ S_face = 1 ⇒
     // fx_face = coupling · mf · v_mantle_x_face (and similarly fy).
@@ -81,7 +79,8 @@ fn rhs_matches_analytic_at_machine_precision() {
             err < 1e-12,
             "N={}: RMS err {:.3e} exceeds f64 noise — \
              MantleForce assembly diverges from analytic expectation",
-            n, err,
+            n,
+            err,
         );
     }
 }

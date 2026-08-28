@@ -185,12 +185,10 @@ mod tests {
 
     #[test]
     fn lu_solves_diagonal_system() {
-        let a = csr_from_dense(4, &[
-            2.0, 0.0, 0.0, 0.0,
-            0.0, 3.0, 0.0, 0.0,
-            0.0, 0.0, 5.0, 0.0,
-            0.0, 0.0, 0.0, 7.0,
-        ]);
+        let a = csr_from_dense(
+            4,
+            &[2.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 7.0],
+        );
         let lu = LuFactorisation::factor(&a);
         let b = [4.0, 9.0, 25.0, 49.0];
         let mut x = vec![0.0; 4];
@@ -227,11 +225,7 @@ mod tests {
         // column 0: |A[0,0]| = |A[2,0]| = 2. Partial pivoting
         // must leave row 0 at position 0 (lowest-index tiebreak),
         // not swap with row 2.
-        let a = csr_from_dense(3, &[
-            2.0, 1.0, 1.0,
-            0.0, 3.0, 2.0,
-            2.0, 0.0, 4.0,
-        ]);
+        let a = csr_from_dense(3, &[2.0, 1.0, 1.0, 0.0, 3.0, 2.0, 2.0, 0.0, 4.0]);
         let lu = LuFactorisation::factor(&a);
         // perm[0] should still be 0 — no tie-induced swap.
         assert_eq!(lu.perm[0], 0);

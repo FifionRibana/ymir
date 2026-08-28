@@ -21,9 +21,9 @@
 use std::path::PathBuf;
 
 use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
-use ymir_core::tectonics_v2::boundaries::{horizontal_oceanic_strip, BoundaryRates};
+use ymir_core::tectonics_v2::boundaries::{BoundaryRates, horizontal_oceanic_strip};
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
 use ymir_core::tectonics_v2::rheology::YieldingLaw;
@@ -62,10 +62,7 @@ fn run_step5_parity_mini() -> (f64, f64, f64, f64) {
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
         yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05,
-            ..BasalDragLaw::default()
-        }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: "horizontal_oceanic_strip".into(),
         slab_pull: ymir_core::tectonics_v2::slab::SlabPullConfig::Disabled,
@@ -76,7 +73,7 @@ fn run_step5_parity_mini() -> (f64, f64, f64, f64) {
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     let r = run_baseline(&cfg);
     let na = r.metrics.newton.as_ref().expect("newton aggregate");

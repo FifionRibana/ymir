@@ -48,26 +48,21 @@ pub fn parse_step_report(path: &Path) -> Result<StepReference, String> {
             if let Some((a, b)) = rest.split_once('×') {
                 let nx: usize = a.trim().parse().unwrap_or(0);
                 let ny: usize = b.trim().parse().unwrap_or(0);
-                current = Some(GridReference {
-                    grid: (nx, ny),
-                    ..Default::default()
-                });
+                current = Some(GridReference { grid: (nx, ny), ..Default::default() });
             }
         } else if let Some(rest) = line.strip_prefix("- wallclock total: `") {
             let val = extract_backtick_f64(rest, " s");
             if let Some(g) = current.as_mut() {
                 g.wallclock_seconds = val;
             }
-        } else if let Some(rest) =
-            line.strip_prefix("- CG iterations per sheet solve — mean: `")
+        } else if let Some(rest) = line.strip_prefix("- CG iterations per sheet solve — mean: `")
         {
             // Step 0 format.
             let val = extract_backtick_f64_leading(rest);
             if let Some(g) = current.as_mut() {
                 g.cg_iters_mean = val;
             }
-        } else if let Some(rest) =
-            line.strip_prefix("- CG iterations per Newton step — mean: `")
+        } else if let Some(rest) = line.strip_prefix("- CG iterations per Newton step — mean: `")
         {
             // Step 1+ format (Newton wraps every linear solve).
             let val = extract_backtick_f64_leading(rest);
@@ -196,7 +191,11 @@ pub fn render_grid_comparison(
             };
             out.push_str(&format!(
                 "| CG iters / linear solve (mean) | {:.1} | {:.1} | ×{:.2} [{}]{} |\n",
-                c0, cur_cg_iters_mean, ratio, tier.label(), note,
+                c0,
+                cur_cg_iters_mean,
+                ratio,
+                tier.label(),
+                note,
             ));
         }
     }

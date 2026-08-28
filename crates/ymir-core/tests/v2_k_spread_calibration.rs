@@ -18,7 +18,7 @@
 //! alone.
 
 use ymir_core::tectonics_v2::boundaries::{
-    calibrate_k_spread, CalibrationError, KSpreadCalibration, K_SPREAD_BRACKET,
+    CalibrationError, K_SPREAD_BRACKET, KSpreadCalibration, calibrate_k_spread,
 };
 
 #[test]

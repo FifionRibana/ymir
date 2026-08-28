@@ -159,22 +159,15 @@ pub fn apply_subduction_step(
     // convention in `boundary_classification::classify_boundaries`
     // (normal points from central cell toward neighbour, so
     // `v_rel · n̂ > 0` ⇔ convergent).
-    let neighbours: [(i32, i32, f64, f64); 4] = [
-        (1, 0, 1.0, 0.0),
-        (-1, 0, -1.0, 0.0),
-        (0, 1, 0.0, 1.0),
-        (0, -1, 0.0, -1.0),
-    ];
+    let neighbours: [(i32, i32, f64, f64); 4] =
+        [(1, 0, 1.0, 0.0), (-1, 0, -1.0, 0.0), (0, 1, 0.0, 1.0), (0, -1, 0.0, -1.0)];
 
     let mut stats = SubductionStats::default();
 
     for j in 0..ny {
         for i in 0..nx {
             // Filter 1: cell must be on a Convergent boundary.
-            if !matches!(
-                boundary_info.boundary_type.get(i, j),
-                BoundaryType::Convergent
-            ) {
+            if !matches!(boundary_info.boundary_type.get(i, j), BoundaryType::Convergent) {
                 continue;
             }
             // Filter 2: cell must be Oceanic (subducting side).
@@ -253,9 +246,7 @@ pub fn apply_subduction_step(
             // Floor-triggered plate_id reassignment. #145 PROTOTYPE: require
             // >=2 convergent continental neighbours so a 1px finger tip (1
             // neighbour) cannot promote (kills grid-aligned false-land lines).
-            if s_after < params.plate_id_reassign_threshold
-                && continental_convergent_count >= 2
-            {
+            if s_after < params.plate_id_reassign_threshold && continental_convergent_count >= 2 {
                 plate_id.set(i, j, continental_pid);
                 plate_type.set(i, j, PlateType::Continental);
                 stats.plate_ids_reassigned += 1;
@@ -315,12 +306,8 @@ fn distribute_arc_mass(
             continental_cells.push((i, j));
         }
         if depth < arc_distance {
-            let neighbours = [
-                (idx_x.next(i), j),
-                (idx_x.prev(i), j),
-                (i, idx_y.next(j)),
-                (i, idx_y.prev(j)),
-            ];
+            let neighbours =
+                [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))];
             for (ni, nj) in neighbours {
                 if visited.insert((ni, nj)) {
                     queue.push_back((ni, nj, depth + 1));
@@ -367,23 +354,14 @@ mod tests {
         plate_type_right: PlateType,
         v_left: f64,
         v_right: f64,
-    ) -> (
-        Field2D,
-        PlateIdField,
-        PlateTypeField,
-        BoundaryInfo,
-        PlateKinematics,
-    ) {
+    ) -> (Field2D, PlateIdField, PlateTypeField, BoundaryInfo, PlateKinematics) {
         let mut s = Field2D::new(nx, ny);
         let mut plate_id = PlateIdField::new(nx, ny);
         let mut plate_type = PlateTypeField::filled(nx, ny, PlateType::Continental);
         for j in 0..ny {
             for i in 0..nx {
-                let (pid, pt) = if i < nx / 2 {
-                    (0_u16, plate_type_left)
-                } else {
-                    (1_u16, plate_type_right)
-                };
+                let (pid, pt) =
+                    if i < nx / 2 { (0_u16, plate_type_left) } else { (1_u16, plate_type_right) };
                 plate_id.set(i, j, pid);
                 plate_type.set(i, j, pt);
                 let s_init = match pt {
@@ -393,9 +371,7 @@ mod tests {
                 s.set(i, j, s_init);
             }
         }
-        let kinematics = PlateKinematics {
-            velocities: vec![(v_left, 0.0), (v_right, 0.0)],
-        };
+        let kinematics = PlateKinematics { velocities: vec![(v_left, 0.0), (v_right, 0.0)] };
         let boundary_info = classify_boundaries(&plate_id, &kinematics);
         (s, plate_id, plate_type, boundary_info, kinematics)
     }
@@ -473,9 +449,7 @@ mod tests {
         let dt = 0.69;
 
         // Snapshot continental cells' initial S̃.
-        let s_before: Vec<f64> = (0..nx / 2)
-            .map(|i| s.get(i, 0))
-            .collect();
+        let s_before: Vec<f64> = (0..nx / 2).map(|i| s.get(i, 0)).collect();
 
         let _stats = apply_subduction_step(
             &mut s,
@@ -595,10 +569,7 @@ mod tests {
                 0.01,
                 -0.01,
             );
-        let params = SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        };
+        let params = SubductionParams { enabled: false, ..SubductionParams::default() };
         let dt = 0.69;
 
         let s_before: Vec<f64> = s.data().to_vec();
@@ -653,10 +624,7 @@ mod tests {
                 0.01,
                 -0.01,
             );
-        let params = SubductionParams {
-            consumption_rate: 50.0,
-            ..SubductionParams::default()
-        };
+        let params = SubductionParams { consumption_rate: 50.0, ..SubductionParams::default() };
         let dt = 1.0;
 
         let stats = apply_subduction_step(
@@ -720,9 +688,8 @@ mod tests {
         }
         // West pushes east (+), east pushes west (−), strip stationary →
         // both continental neighbours converge on the strip.
-        let kinematics = PlateKinematics {
-            velocities: vec![(0.01, 0.0), (0.0, 0.0), (-0.01, 0.0)],
-        };
+        let kinematics =
+            PlateKinematics { velocities: vec![(0.01, 0.0), (0.0, 0.0), (-0.01, 0.0)] };
         let boundary_info = classify_boundaries(&plate_id, &kinematics);
         let params = SubductionParams { consumption_rate: 50.0, ..SubductionParams::default() };
         let stats = apply_subduction_step(

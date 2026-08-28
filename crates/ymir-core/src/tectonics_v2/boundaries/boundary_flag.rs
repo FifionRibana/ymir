@@ -54,15 +54,15 @@ pub struct BoundaryFlagField {
 
 impl BoundaryFlagField {
     pub fn filled(nx: usize, ny: usize, f: BoundaryFlag) -> Self {
-        Self {
-            nx,
-            ny,
-            data: vec![f; nx * ny],
-        }
+        Self { nx, ny, data: vec![f; nx * ny] }
     }
 
-    pub fn nx(&self) -> usize { self.nx }
-    pub fn ny(&self) -> usize { self.ny }
+    pub fn nx(&self) -> usize {
+        self.nx
+    }
+    pub fn ny(&self) -> usize {
+        self.ny
+    }
 
     #[inline]
     pub fn get(&self, i: usize, j: usize) -> BoundaryFlag {
@@ -74,7 +74,9 @@ impl BoundaryFlagField {
         self.data[j * self.nx + i] = f;
     }
 
-    pub fn data(&self) -> &[BoundaryFlag] { &self.data }
+    pub fn data(&self) -> &[BoundaryFlag] {
+        &self.data
+    }
 
     /// Encoding for the layout PNG: None=0, Rift=1, Subduction=2,
     /// OceanicSubduction=3, ContinentalCollision=4.
@@ -114,13 +116,7 @@ impl BoundaryRates {
     /// without calibration gives a run that will not hit
     /// `s_oceanic_mean ∈ [0.18, 0.22]`.
     pub fn baseline_uncalibrated() -> Self {
-        Self {
-            k_sub: 0.5,
-            k_arc: 0.15,
-            k_spread: 0.5,
-            k_coll_v: 0.05,
-            k_rift_v: 0.02,
-        }
+        Self { k_sub: 0.5, k_arc: 0.15, k_spread: 0.5, k_coll_v: 0.05, k_rift_v: 0.02 }
     }
 
     pub fn with_k_spread(mut self, k: f64) -> Self {
@@ -139,9 +135,7 @@ impl BoundaryRates {
     /// callers may treat a `false` return as grounds to refuse to
     /// start a run.
     pub fn ordering_is_physical(&self) -> bool {
-        self.k_sub > self.k_arc
-            && self.k_arc > self.k_coll_v
-            && self.k_arc > self.k_rift_v
+        self.k_sub > self.k_arc && self.k_arc > self.k_coll_v && self.k_arc > self.k_rift_v
     }
 }
 
@@ -188,8 +182,12 @@ impl RecyclingModeInit {
             RecyclingModeInit::Open => "Open (Step 5 rate-based)".to_string(),
             RecyclingModeInit::Closed(cfg) => format!(
                 "Closed (arc={:.3}, coll_v={:.3}, rift_v={:.3}, spread={:.3}, mantle_loss={:.3}, delay={} steps)",
-                cfg.arc_fraction, cfg.coll_v_fraction, cfg.rift_v_fraction,
-                cfg.spread_fraction, cfg.mantle_loss_fraction, cfg.mantle_delay_steps,
+                cfg.arc_fraction,
+                cfg.coll_v_fraction,
+                cfg.rift_v_fraction,
+                cfg.spread_fraction,
+                cfg.mantle_loss_fraction,
+                cfg.mantle_delay_steps,
             ),
         }
     }
@@ -279,11 +277,9 @@ impl BoundaryConfig {
     pub fn parse(s: &str) -> Result<Self, String> {
         match s {
             "disabled" | "off" => Ok(BoundaryConfig::Disabled),
-            "enabled" | "on" => Err(
-                "--boundary-config=enabled requires a --layout argument; \
+            "enabled" | "on" => Err("--boundary-config=enabled requires a --layout argument; \
                  the CLI builds the enabled variant from a named layout"
-                    .to_string(),
-            ),
+                .to_string()),
             other => Err(format!(
                 "unknown --boundary-config value '{}'; expected disabled|enabled",
                 other,
@@ -295,15 +291,15 @@ impl BoundaryConfig {
     pub fn describe(&self) -> String {
         match self {
             BoundaryConfig::Disabled => "Disabled".to_string(),
-            BoundaryConfig::Enabled {
-                rates,
-                recycling_mode,
-                geometry,
-            } => format!(
+            BoundaryConfig::Enabled { rates, recycling_mode, geometry } => format!(
                 "Enabled [{}] (layout='{}', k_sub={:.3}, k_arc={:.3}, k_spread={:.3}, k_coll-v={:.3}, k_rift-v={:.3})",
                 recycling_mode.describe(),
                 geometry.layout_name,
-                rates.k_sub, rates.k_arc, rates.k_spread, rates.k_coll_v, rates.k_rift_v,
+                rates.k_sub,
+                rates.k_arc,
+                rates.k_spread,
+                rates.k_coll_v,
+                rates.k_rift_v,
             ),
         }
     }
@@ -331,7 +327,9 @@ mod tests {
     #[test]
     fn describe_shows_all_rates_when_enabled() {
         let plate_type = super::super::plate_type::PlateTypeField::filled(
-            2, 2, super::super::plate_type::PlateType::Continental,
+            2,
+            2,
+            super::super::plate_type::PlateType::Continental,
         );
         let flags = BoundaryFlagField::filled(2, 2, BoundaryFlag::None);
         let cfg = BoundaryConfig::enabled_static(

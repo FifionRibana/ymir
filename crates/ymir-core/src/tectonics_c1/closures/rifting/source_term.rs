@@ -72,21 +72,14 @@ pub fn apply_rifting_thinning(
     let idx_x = PeriodicIndex::new(nx);
     let idx_y = PeriodicIndex::new(ny);
 
-    let neighbours: [(i32, i32, f64, f64); 4] = [
-        (1, 0, 1.0, 0.0),
-        (-1, 0, -1.0, 0.0),
-        (0, 1, 0.0, 1.0),
-        (0, -1, 0.0, -1.0),
-    ];
+    let neighbours: [(i32, i32, f64, f64); 4] =
+        [(1, 0, 1.0, 0.0), (-1, 0, -1.0, 0.0), (0, 1, 0.0, 1.0), (0, -1, 0.0, -1.0)];
 
     let mut stats = RiftingThinningStats::default();
 
     for j in 0..ny {
         for i in 0..nx {
-            if !matches!(
-                boundary_info.boundary_type.get(i, j),
-                BoundaryType::Divergent
-            ) {
+            if !matches!(boundary_info.boundary_type.get(i, j), BoundaryType::Divergent) {
                 continue;
             }
             if plate_type.get(i, j) != PlateType::Continental {
@@ -170,13 +163,7 @@ mod tests {
         ny: usize,
         plate_types: [PlateType; 3],
         velocities: [(f64, f64); 3],
-    ) -> (
-        Field2D,
-        PlateIdField,
-        PlateTypeField,
-        PlateKinematics,
-        BoundaryInfo,
-    ) {
+    ) -> (Field2D, PlateIdField, PlateTypeField, PlateKinematics, BoundaryInfo) {
         assert_eq!(nx % 3, 0, "three_plate_fixture: nx must be divisible by 3");
         let mut s = Field2D::new(nx, ny);
         let mut plate_id = PlateIdField::new(nx, ny);
@@ -234,7 +221,13 @@ mod tests {
             dt,
         );
 
-        assert!(stats.cells_thinned >= ny * 2, "expected ≥ {} cells thinned (2 boundary cols × {} rows), got {}", ny * 2, ny, stats.cells_thinned);
+        assert!(
+            stats.cells_thinned >= ny * 2,
+            "expected ≥ {} cells thinned (2 boundary cols × {} rows), got {}",
+            ny * 2,
+            ny,
+            stats.cells_thinned
+        );
         assert!(stats.total_mass_removed > 0.0);
         assert!(
             s.get(2, 0) < s_before_2,

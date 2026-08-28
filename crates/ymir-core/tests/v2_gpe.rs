@@ -20,10 +20,7 @@ fn build_state<'a>(
     idx_y: &'a PeriodicIndex,
     s: &'a Field2D,
 ) -> SimulationState<'a> {
-    SimulationState {
-        nx, ny, dx, dy: dx,
-        idx_x, idx_y, s,
-    }
+    SimulationState { nx, ny, dx, dy: dx, idx_x, idx_y, s }
 }
 
 #[test]
@@ -109,8 +106,7 @@ fn force_is_small_on_mildly_perturbed_baseline_s_field() {
         &build_state(nx, ny, dx, &idx_x, &idx_y, &s),
         &mut VectorField { fx: &mut fx, fy: &mut fy },
     );
-    let peak = fx.data().iter().chain(fy.data().iter())
-        .fold(0.0_f64, |a, &v| a.max(v.abs()));
+    let peak = fx.data().iter().chain(fy.data().iter()).fold(0.0_f64, |a, &v| a.max(v.abs()));
     // Expected ~ Ar · (1 + α) · α · k ~ 0.1·1·0.02·2π ~ 1.3e-2. Sanity bound ≤ 0.1.
     assert!(peak < 0.1, "GPE peak on mild field = {}, too large", peak);
     assert!(peak > 1e-4, "GPE peak on mild field = {}, suspiciously small", peak);

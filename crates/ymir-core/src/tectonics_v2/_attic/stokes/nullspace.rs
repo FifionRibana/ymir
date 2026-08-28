@@ -31,11 +31,7 @@ pub fn subtract_mean(data: &mut [f64]) {
 
 /// Return the arithmetic mean of `data`.
 pub fn mean(data: &[f64]) -> f64 {
-    if data.is_empty() {
-        0.0
-    } else {
-        par_sum(data) / data.len() as f64
-    }
+    if data.is_empty() { 0.0 } else { par_sum(data) / data.len() as f64 }
 }
 
 /// Project a velocity pair (vx, vy) onto the zero-mean-per-component

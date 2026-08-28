@@ -24,7 +24,7 @@
 //! relying on grid-total mass change.
 
 use ymir_core::tectonics_v2::field::Field2D;
-use ymir_core::tectonics_v2::workflow::{macro_redistribution, PhaseAParams};
+use ymir_core::tectonics_v2::workflow::{PhaseAParams, macro_redistribution};
 
 /// 32² periodic continental field with a small two-frequency relief.
 /// Range `[0.6, 0.8]` — strictly above the test sea-level reference
@@ -75,10 +75,7 @@ fn v2_workflow_macro_mass_balanced() {
     let stats = macro_redistribution::apply(&mut s, &params, 0.5);
 
     let mass_after: f64 = s.data().iter().sum();
-    assert!(
-        stats.total_eroded > 0.0,
-        "macro redistribution must engage on the relief field"
-    );
+    assert!(stats.total_eroded > 0.0, "macro redistribution must engage on the relief field");
     let drift = (mass_after - mass_before).abs();
     // Post-R3: conservation is structural, drift floor is IEEE-754
     // (~ N · ε · Δh̄). The legacy `1e-6` headroom from
@@ -104,11 +101,7 @@ fn v2_workflow_macro_applied_everywhere() {
 
     let probes = [(16, 16), (15, 16), (16, 15), (14, 14)];
     for &(i, j) in &probes {
-        assert!(
-            s.get(i, j) > 0.5,
-            "probe ({i}, {j}) must start continental, got {}",
-            s.get(i, j)
-        );
+        assert!(s.get(i, j) > 0.5, "probe ({i}, {j}) must start continental, got {}", s.get(i, j));
     }
     let initial: Vec<f64> = probes.iter().map(|&(i, j)| s.get(i, j)).collect();
 

@@ -22,4 +22,4 @@ pub use sinusoidal::{SinusoidalForce, ZeroForce};
 // the old `tectonics_v2::forcing::{mantle_force, slab_pull, …}` paths
 // under feature so callers compile bit-identically.
 #[cfg(feature = "v2_legacy")]
-pub use super::_attic::forcing::{mantle_force, slab_pull, MantleForce, SlabPullForce};
+pub use super::_attic::forcing::{MantleForce, SlabPullForce, mantle_force, slab_pull};

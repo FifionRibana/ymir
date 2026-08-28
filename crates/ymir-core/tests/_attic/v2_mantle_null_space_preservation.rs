@@ -19,10 +19,10 @@
 use ymir_core::tectonics_v2::field::{Field2D, PeriodicIndex};
 use ymir_core::tectonics_v2::forcing::{BodyForce, MantleForce, SimulationState, VectorField};
 use ymir_core::tectonics_v2::mantle::{
-    build_mantle_diagonal_field, build_mantle_pattern, generate_stream_function, MantleConfig,
-    StreamFunctionConfig,
+    MantleConfig, StreamFunctionConfig, build_mantle_diagonal_field, build_mantle_pattern,
+    generate_stream_function,
 };
-use ymir_core::tectonics_v2::stokes::{solve_sheet, Grid, SheetConfig};
+use ymir_core::tectonics_v2::stokes::{Grid, SheetConfig, solve_sheet};
 
 #[test]
 fn solver_projects_null_space_even_when_mantle_rhs_has_nonzero_mean() {
@@ -44,29 +44,20 @@ fn solver_projects_null_space_even_when_mantle_rhs_has_nonzero_mean() {
         }
     }
 
-    let psi = generate_stream_function(
-        nx, ny,
-        &StreamFunctionConfig { num_modes: 4, seed: 99 },
-    );
+    let psi = generate_stream_function(nx, ny, &StreamFunctionConfig { num_modes: 4, seed: 99 });
     let pattern = build_mantle_pattern(&psi, dx, dy, &idx_x, &idx_y);
 
     let mf = 1.0;
     let coupling = 1.0;
-    let cfg = MantleConfig::Enabled {
-        mf, coupling, num_modes: 4, seed: 99, evolution_rate: 0.0,
-    };
+    let cfg = MantleConfig::Enabled { mf, coupling, num_modes: 4, seed: 99, evolution_rate: 0.0 };
     let mantle_diag = build_mantle_diagonal_field(&cfg, &s).expect("enabled → Some");
 
     // Assemble constant-RHS part.
     let mut fx = Field2D::new(nx, ny);
     let mut fy = Field2D::new(nx, ny);
-    let state = SimulationState {
-        nx, ny, dx, dy, idx_x: &idx_x, idx_y: &idx_y, s: &s,
-    };
-    MantleForce::new(mf, coupling, &pattern, &s).accumulate(
-        &state,
-        &mut VectorField { fx: &mut fx, fy: &mut fy },
-    );
+    let state = SimulationState { nx, ny, dx, dy, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+    MantleForce::new(mf, coupling, &pattern, &s)
+        .accumulate(&state, &mut VectorField { fx: &mut fx, fy: &mut fy });
 
     // Inject a deliberate non-zero-mean perturbation on top of
     // the MantleForce output. The spec's concern is that the
@@ -76,8 +67,12 @@ fn solver_projects_null_space_even_when_mantle_rhs_has_nonzero_mean() {
     // force the scenario: add uniform constants 0.5 and −0.3
     // across the domain. After the solve, `|mean(v)|` must
     // still be at machine noise.
-    for v in fx.data_mut().iter_mut() { *v += 0.5; }
-    for v in fy.data_mut().iter_mut() { *v -= 0.3; }
+    for v in fx.data_mut().iter_mut() {
+        *v += 0.5;
+    }
+    for v in fy.data_mut().iter_mut() {
+        *v -= 0.3;
+    }
 
     // Sanity: the injected means dominate now.
     let mean_fx: f64 = fx.data().iter().sum::<f64>() / (nx * ny) as f64;
@@ -86,7 +81,8 @@ fn solver_projects_null_space_even_when_mantle_rhs_has_nonzero_mean() {
     assert!(
         mean_fx.abs() > 0.1 && mean_fy.abs() > 0.1,
         "|mean(f)| ({:.3e}, {:.3e}) should be ~0.5, 0.3 after injection",
-        mean_fx.abs(), mean_fy.abs(),
+        mean_fx.abs(),
+        mean_fy.abs(),
     );
 
     let fx_slice = fx.data().to_vec();
@@ -95,21 +91,20 @@ fn solver_projects_null_space_even_when_mantle_rhs_has_nonzero_mean() {
     let mut vy = vec![0.0; nx * ny];
     let cfg_solve = SheetConfig::default();
     let stats = solve_sheet(
-        &grid, &eta, Some(&mantle_diag),
-        &fx_slice, &fy_slice,
-        &mut vx, &mut vy, &cfg_solve,
+        &grid,
+        &eta,
+        Some(&mantle_diag),
+        &fx_slice,
+        &fy_slice,
+        &mut vx,
+        &mut vy,
+        &cfg_solve,
     );
     assert!(stats.converged, "CG did not converge: {:?}", stats);
 
     let mean_vx: f64 = vx.iter().sum::<f64>() / vx.len() as f64;
     let mean_vy: f64 = vy.iter().sum::<f64>() / vy.len() as f64;
     eprintln!("|mean(vx)| = {:.3e}, |mean(vy)| = {:.3e}", mean_vx.abs(), mean_vy.abs());
-    assert!(
-        mean_vx.abs() < 1e-15,
-        "|mean(vx)| = {:.3e} (spec: < 1e-15)", mean_vx.abs(),
-    );
-    assert!(
-        mean_vy.abs() < 1e-15,
-        "|mean(vy)| = {:.3e} (spec: < 1e-15)", mean_vy.abs(),
-    );
+    assert!(mean_vx.abs() < 1e-15, "|mean(vx)| = {:.3e} (spec: < 1e-15)", mean_vx.abs(),);
+    assert!(mean_vy.abs() < 1e-15, "|mean(vy)| = {:.3e} (spec: < 1e-15)", mean_vy.abs(),);
 }

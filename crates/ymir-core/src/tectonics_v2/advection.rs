@@ -25,15 +25,8 @@ use super::field::{Field2D, PeriodicIndex};
 /// `cfl_factor ∈ [0.3, 0.5]` is typical; 0.3 is safer with nonlinear
 /// source feedback (per `solver-scaling.md` §4.6).
 pub fn cfl_dt(dx: f64, dy: f64, vx: &[f64], vy: &[f64], cfl_factor: f64) -> f64 {
-    let vmax = vx
-        .iter()
-        .chain(vy.iter())
-        .fold(0.0_f64, |acc, &v| acc.max(v.abs()));
-    if vmax == 0.0 {
-        f64::INFINITY
-    } else {
-        cfl_factor * dx.min(dy) / vmax
-    }
+    let vmax = vx.iter().chain(vy.iter()).fold(0.0_f64, |acc, &v| acc.max(v.abs()));
+    if vmax == 0.0 { f64::INFINITY } else { cfl_factor * dx.min(dy) / vmax }
 }
 
 /// Advance `S̃` by one forward-Euler step using first-order upwind
@@ -94,8 +87,8 @@ pub fn step_upwind(
             let flux_y_bot = vy_bot * s_up_bot;
             let flux_y_top = vy_top * s_up_top;
 
-            let dsdt = -((flux_x_right - flux_x_left) * inv_dx
-                + (flux_y_top - flux_y_bot) * inv_dy);
+            let dsdt =
+                -((flux_x_right - flux_x_left) * inv_dx + (flux_y_top - flux_y_bot) * inv_dy);
             s_next.set(i, j, s.get(i, j) + dt * dsdt);
         }
     }
@@ -149,8 +142,8 @@ pub fn step_upwind_masked(
             let flux_y_bot = if here || rigid[lin(i, jm)] { 0.0 } else { vy_bot * s_up_bot };
             let flux_y_top = if here || rigid[lin(i, jp)] { 0.0 } else { vy_top * s_up_top };
 
-            let dsdt = -((flux_x_right - flux_x_left) * inv_dx
-                + (flux_y_top - flux_y_bot) * inv_dy);
+            let dsdt =
+                -((flux_x_right - flux_x_left) * inv_dx + (flux_y_top - flux_y_bot) * inv_dy);
             s_next.set(i, j, s.get(i, j) + dt * dsdt);
         }
     }

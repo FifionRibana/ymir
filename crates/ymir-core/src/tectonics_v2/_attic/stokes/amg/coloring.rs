@@ -111,11 +111,7 @@ mod tests {
         let mut membership = vec![usize::MAX; n];
         for (c, grp) in colors.iter().enumerate() {
             for &i in grp {
-                assert_eq!(
-                    membership[i],
-                    usize::MAX,
-                    "row {i} assigned to two colors",
-                );
+                assert_eq!(membership[i], usize::MAX, "row {i} assigned to two colors",);
                 membership[i] = c;
             }
         }
@@ -197,13 +193,7 @@ mod tests {
             values.extend_from_slice(&[1.0, 2.0]);
             row_ptr.push(col_idx.len());
         }
-        let a = CsrMatrix {
-            n_rows: n,
-            n_cols: n,
-            row_ptr,
-            col_idx,
-            values,
-        };
+        let a = CsrMatrix { n_rows: n, n_cols: n, row_ptr, col_idx, values };
         let colors = greedy_coloring(&a);
         validate_coloring(&a, &colors);
         assert_eq!(colors.len(), 2);
@@ -218,10 +208,7 @@ mod tests {
         let a = build_poisson_laplacian_csr(8);
         let colors = greedy_coloring(&a);
         for grp in &colors {
-            assert!(
-                grp.windows(2).all(|w| w[0] < w[1]),
-                "group not sorted: {grp:?}"
-            );
+            assert!(grp.windows(2).all(|w| w[0] < w[1]), "group not sorted: {grp:?}");
         }
     }
 }

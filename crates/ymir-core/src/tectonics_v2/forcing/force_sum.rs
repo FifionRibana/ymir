@@ -44,8 +44,12 @@ impl ForceSum {
         self
     }
 
-    pub fn len(&self) -> usize { self.terms.len() }
-    pub fn is_empty(&self) -> bool { self.terms.is_empty() }
+    pub fn len(&self) -> usize {
+        self.terms.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.terms.is_empty()
+    }
 
     /// List of term names, in the order they were pushed. Reported
     /// as `term_names` in the diagnostic markdown.
@@ -55,7 +59,9 @@ impl ForceSum {
 }
 
 impl Default for ForceSum {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BodyForce for ForceSum {
@@ -64,21 +70,19 @@ impl BodyForce for ForceSum {
             term.accumulate(state, out);
         }
     }
-    fn name(&self) -> &'static str { "ForceSum" }
+    fn name(&self) -> &'static str {
+        "ForceSum"
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::super::field::{Field2D, PeriodicIndex};
     use super::super::sinusoidal::SinusoidalForce;
+    use super::*;
 
     fn env(nx: usize, ny: usize) -> (PeriodicIndex, PeriodicIndex, Field2D) {
-        (
-            PeriodicIndex::new(nx),
-            PeriodicIndex::new(ny),
-            Field2D::filled(nx, ny, 1.0),
-        )
+        (PeriodicIndex::new(nx), PeriodicIndex::new(ny), Field2D::filled(nx, ny, 1.0))
     }
 
     #[test]
@@ -86,13 +90,11 @@ mod tests {
         let nx = 4;
         let ny = 4;
         let (idx_x, idx_y, s) = env(nx, ny);
-        let st = SimulationState { nx, ny, dx: 0.25, dy: 0.25, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+        let st =
+            SimulationState { nx, ny, dx: 0.25, dy: 0.25, idx_x: &idx_x, idx_y: &idx_y, s: &s };
         let mut fx = Field2D::filled(nx, ny, 3.0);
         let mut fy = Field2D::filled(nx, ny, -1.0);
-        ForceSum::new().accumulate(
-            &st,
-            &mut VectorField { fx: &mut fx, fy: &mut fy },
-        );
+        ForceSum::new().accumulate(&st, &mut VectorField { fx: &mut fx, fy: &mut fy });
         for v in fx.data().iter() {
             assert_eq!(*v, 3.0);
         }
@@ -106,7 +108,8 @@ mod tests {
         let nx = 8;
         let ny = 8;
         let (idx_x, idx_y, s) = env(nx, ny);
-        let st = SimulationState { nx, ny, dx: 0.125, dy: 0.125, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+        let st =
+            SimulationState { nx, ny, dx: 0.125, dy: 0.125, idx_x: &idx_x, idx_y: &idx_y, s: &s };
         let sin = SinusoidalForce::new(10.0, 1.0);
         let mut fx_direct = Field2D::new(nx, ny);
         let mut fy_direct = Field2D::new(nx, ny);
@@ -129,7 +132,8 @@ mod tests {
         let nx = 8;
         let ny = 8;
         let (idx_x, idx_y, s) = env(nx, ny);
-        let st = SimulationState { nx, ny, dx: 0.125, dy: 0.125, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+        let st =
+            SimulationState { nx, ny, dx: 0.125, dy: 0.125, idx_x: &idx_x, idx_y: &idx_y, s: &s };
         let a = SinusoidalForce::new(3.0, 1.0);
         let b = SinusoidalForce::new(-2.0, 1.0);
 

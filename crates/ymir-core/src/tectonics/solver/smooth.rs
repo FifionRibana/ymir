@@ -66,8 +66,7 @@ mod tests {
     #[test]
     fn smooth_saturate_monotonic() {
         let x_max = 1e4;
-        let xs: Vec<f64> =
-            (0..100).map(|i| 10.0_f64.powf(i as f64 / 10.0 - 5.0)).collect();
+        let xs: Vec<f64> = (0..100).map(|i| 10.0_f64.powf(i as f64 / 10.0 - 5.0)).collect();
         for w in xs.windows(2) {
             let f1 = smooth_saturate(w[0], x_max);
             let f2 = smooth_saturate(w[1], x_max);

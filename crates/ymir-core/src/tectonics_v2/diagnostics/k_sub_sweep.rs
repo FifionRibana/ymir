@@ -16,9 +16,9 @@
 
 use std::path::PathBuf;
 
-use super::harness::{run_baseline, BaselineConfig, BaselineResult, ForceKind, NonlinearChoice};
+use super::harness::{BaselineConfig, BaselineResult, ForceKind, NonlinearChoice, run_baseline};
 use crate::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
-use crate::tectonics_v2::boundaries::{horizontal_oceanic_strip, BoundaryRates};
+use crate::tectonics_v2::boundaries::{BoundaryRates, horizontal_oceanic_strip};
 use crate::tectonics_v2::forcing::{ForceSum, GpeForce};
 use crate::tectonics_v2::presets::{Preset, YieldingConfig};
 use crate::tectonics_v2::rheology::YieldingLaw;
@@ -120,9 +120,8 @@ pub fn run_k_sub_sweep(
             peak_v_mono = false;
         }
     }
-    let mass_residual_ok = points
-        .iter()
-        .all(|p| p.mass_balance_residual.map(|r| r < 0.01).unwrap_or(false));
+    let mass_residual_ok =
+        points.iter().all(|p| p.mass_balance_residual.map(|r| r < 0.01).unwrap_or(false));
     KSubSweepResults {
         points,
         peak_v_mono_ok: peak_v_mono,
@@ -134,9 +133,8 @@ pub fn run_k_sub_sweep(
 fn summarise(k_sub: f64, r: &BaselineResult) -> KSubSweepPoint {
     let m = &r.metrics;
     let newton = m.newton.as_ref();
-    let (conv_pct, newton_iter_mean) = newton
-        .map(|n| (n.outcome_percentages().0, n.outer_iters_mean()))
-        .unwrap_or((0.0, 0.0));
+    let (conv_pct, newton_iter_mean) =
+        newton.map(|n| (n.outcome_percentages().0, n.outer_iters_mean())).unwrap_or((0.0, 0.0));
     KSubSweepPoint {
         k_sub,
         wallclock_s: m.wallclock_total.as_secs_f64(),
@@ -178,10 +176,8 @@ pub fn render_markdown(res: &KSubSweepResults) -> String {
             .clamp_activation_fraction_mean
             .map(|v| format!("`{:.3e}`", v))
             .unwrap_or_else(|| "`—`".into());
-        let mbr = p
-            .mass_balance_residual
-            .map(|v| format!("`{:.3e}`", v))
-            .unwrap_or_else(|| "`—`".into());
+        let mbr =
+            p.mass_balance_residual.map(|v| format!("`{:.3e}`", v)).unwrap_or_else(|| "`—`".into());
         s.push_str(&format!(
             "| `{:.2}` | {} | {} | {} | `{:.3e}` | `{:.1}` | `{:.1}` | {} | {} | `{:.0}%` | `{:.2}` |\n",
             p.k_sub,

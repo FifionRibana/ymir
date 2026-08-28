@@ -33,23 +33,33 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::Sender;
 
-use ymir_core::cache::default_cache_dir;
+use ymir_core::cache::{cached, default_cache_dir};
 use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year};
-use ymir_core::climate::{ClimateResult, c1_biomes, c1_climate_windowed};
+use ymir_core::climate::{ClimateResult, c1_biomes_classified_wet};
+use ymir_core::erosion::stream_power::StreamPowerConfig;
 use ymir_core::export::container::{ContinentMeta, ContinentWriter, Grid};
 use ymir_core::export::{height, hydro, vector};
 use ymir_core::grid::GridF32;
 use ymir_core::lakes::connectivity;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::cached_product::{
-    c1_land_centroid, cached_c1_drainage_windowed, cached_c1_eroded,
-    cached_c1_eroded_with_progress, drainage_key_windowed, eroded_key, tectonic_key,
+    HdDrainageBundle, c1_coarse_land_report, cached_c1_climate, cached_c1_drainage_windowed,
+    cached_c1_eroded, cached_c1_eroded_with_progress, climate_key, coarse_normalized_sweep,
+    conditioned_eroded_key, drainage_key_windowed, eroded_key, hd_drainage_key, tectonic_key,
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
-use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, C1DrainageResult};
-use ymir_core::tectonics_c1::production_upscale::{C1_DOMAIN_KM, EroProgress};
+use ymir_core::tectonics_c1::drainage::{
+    C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, apply_geo_scale_ratio,
+    below_sea_basin_lakes, c1_drainage_windowed, clip_rivers_to_lakes,
+    exorheic_lakes_missing_outlet,
+};
+use ymir_core::tectonics_c1::land_topology::{
+    IslandEval, LandTopology, evaluate_island, land_topology,
+};
+use ymir_core::tectonics_c1::production_upscale::EroProgress;
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
+use ymir_core::terrain::flow::{RiverSegment, breach_monotone};
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
 use super::events::C1Event;
@@ -63,11 +73,58 @@ use super::spec::C1RunSpec;
 pub struct HdParams {
     pub target_size: usize,
     pub latitude_deg: f32,
-    /// Physical size (km) of the exported/rendered PLAYABLE window. The HD grid
-    /// (`target_size²`) renders this sub-domain of the 1024 km tectonic torus, so
-    /// `km_per_cell = window_km / target_size` (328 km @ 8192² → 40 m/cell). The
-    /// window is centred on the continent (land centroid). Default 328.0.
-    pub window_km: f32,
+    /// Physical size (km) the tectonic domain represents — the domain IS the map
+    /// (M1 #190, no crop). The whole torus renders at `target_size²`, so
+    /// `m_per_px = domain_km · 1000 / target_size` (1024 km @ 2048² → 500 m/px).
+    /// A pure relabelling of the 64² tectonic pattern: it stamps the manifest
+    /// scale and drives climate/drainage km/cell, but NOT the tectonic sim. The
+    /// tectonic cache key does not include it. Default 1024.0.
+    pub domain_km: f32,
+    /// Framing ROLL to apply at the coarse sampling origin (normalised `[0,1)`).
+    /// `None` → `run_hd` centres the largest mass automatically (the default). When
+    /// the UI has computed a framing (auto ± manual pan) it passes `Some(offset)`
+    /// so the export matches exactly what the preview showed. Determinism: passing
+    /// the same value `run_hd` would auto-compute yields a byte-identical export.
+    pub manual_offset: Option<[f64; 2]>,
+    /// EXPERIMENTAL (ADR 0001): replace droplet erosion with routed stream-power
+    /// incision + hillslope regime split for this run. `false` (default) → the
+    /// production droplet pass (byte-identical). `true` → droplets OFF, stream-power
+    /// ON with the recommended config (K=3, m=0.5, n=1, iters=3, A_c=7.6 km²,
+    /// D=0.05, uncoupled). A UI opt-in to eyeball the effect; production default
+    /// unchanged until confirmed.
+    pub stream_power: bool,
+    /// EXPERIMENTAL (ADR 0001, Finding 7): with `stream_power` on, use the `relief_v2`
+    /// config — the two bounding CLOSURES (nonlinear hillslope diffusion with a
+    /// critical slope → arêtes; hydraulic-geometry lateral widening → valley floors).
+    /// `false` → `relief_v1` (v1 slits). A UI opt-in; production default unchanged.
+    pub closures: bool,
+    /// EXPERIMENTAL (ADR 0001, Finding 9): with `closures` on, apply hillslope diffusion
+    /// EVERYWHERE (`diffuse_channels`) at a super-critical D to damp the Smith–Bretherton
+    /// parallel-rilling comb. `false` → the regime split (combed at 8192²).
+    pub cross_rill: bool,
+    /// Cross-rill diffusion coefficient when `cross_rill` is on (2b sweep: 0.25/0.40/0.55).
+    pub cross_rill_d: f32,
+    /// EXPERIMENTAL (ADR 0001, Finding 11): MFD incision — disperse drainage area to prevent
+    /// the comb at its cause (dendritic valleys, no GS solver). Takes precedence over cross_rill.
+    pub mfd: bool,
+    /// MFD partition exponent when `mfd` is on (lower = more dispersed; p≈2 recommended).
+    pub mfd_p: f32,
+    /// EXPERIMENTAL: override the FBM `amplitude_base` for this run (`None` = the
+    /// production 0.16). Lets the author flip through the striation amplitude ladder
+    /// (0.16/0.08/0.04/0.02) with stream-power ON to see the striations shrink.
+    pub fbm_amplitude: Option<f64>,
+    /// ADR 0001 Finding 24 — GEOGRAPHIC SCALE RATIO (hydrology only). The map DRAWS
+    /// `domain_km` but SIGNIFIES `domain_km · ratio` for the EXPORT-DERIVED hydrology
+    /// (catchment ×ratio², discharge ×ratio², channel width ×ratio, navigability
+    /// re-classed). A pure presentation multiplier — NOTHING that shapes the terrain
+    /// (incision, lake balance, climate, biomes) sees it. `1.0` (default) = identity.
+    pub geo_scale_ratio: f32,
+    /// ADR 0001 Finding 25 — CLIMATIC latitude SPAN in degrees, centred on
+    /// `latitude_deg`. Decouples the climate extent from the physical extent so a
+    /// small island can span several belts (tundra↔desert). `None` = the geographic
+    /// span `domain_km / 111` (identity). REAL physics: it drives temperature, wind
+    /// belts, precipitation and hence biomes (recomputed, not cached like the ratio).
+    pub latitude_span_deg: Option<f32>,
     /// When `Some(dir)`, after the biome phase the run writes a v1 `.ymir`
     /// delivery container under `dir` (see [`ymir_core::export::container`]).
     /// `None` = no export. Explicit opt-in — the pipeline NEVER auto-exports
@@ -77,7 +134,23 @@ pub struct HdParams {
 
 impl Default for HdParams {
     fn default() -> Self {
-        Self { target_size: 2048, latitude_deg: 45.0, window_km: 328.0, export_dir: None }
+        Self {
+            target_size: 2048,
+            latitude_deg: 45.0,
+            domain_km: 1024.0,
+            manual_offset: None,
+            // relief-v3 is the production default (#190) — stream-power + closures + MFD ON.
+            stream_power: true,
+            closures: true,
+            cross_rill: false,
+            cross_rill_d: 0.40,
+            mfd: true,
+            mfd_p: 2.0,
+            fbm_amplitude: None,
+            geo_scale_ratio: 1.0,
+            latitude_span_deg: None,
+            export_dir: None,
+        }
     }
 }
 
@@ -150,6 +223,9 @@ pub struct HdResult {
     pub drainage: C1DrainageResult,
     /// Per-cell Whittaker biome (row-major `width × height`).
     pub biomes: Vec<Biome>,
+    /// M1 land-topology of the full coarse torus (island-continent judgement:
+    /// number of masses, largest area, wrap flags). Independent of the window.
+    pub land_topology: LandTopology,
 }
 
 impl fmt::Debug for HdResult {
@@ -213,10 +289,182 @@ fn hd_run_config(spec: &C1RunSpec) -> C1TimeLoopConfig {
     }
 }
 
+/// Fast tectonic-shape preview: the calibrated COARSE continent (one ~1-2 s
+/// tectonic pass, NO HD upscale/erosion) so a seed can be judged BEFORE the
+/// ~20-min HD run. Carries the coarse normalized field (for a heightmap render),
+/// the island verdict ([`IslandEval`] — border-clean? area? wraps?), and the
+/// export-window rectangle in normalized torus coords (matching `run_hd`).
+pub struct PreviewShape {
+    /// Coarse normalized altitude (sea = 0.5), calibrated at the HD tlf, in the
+    /// UNROLLED torus frame. The UI applies the framing roll (auto ± manual pan) at
+    /// render time, so panning is pure relabelling — no tectonic recompute — and
+    /// the domain-as-map metrics recompute instantly for any offset.
+    pub coarse: GridF32,
+    /// Auto-computed framing offset (integer COARSE CELLS) that centres the largest
+    /// landmass: `(center_cell − grid/2) mod grid`. The UI seeds the current offset
+    /// from this on every new preview and offers a "snap to auto" back to it.
+    pub auto_offset_cells: [i64; 2],
+    /// Island verdict on the coarse field (largest-mass summary for the Debug log).
+    pub eval: IslandEval,
+}
+
+impl fmt::Debug for PreviewShape {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PreviewShape")
+            .field("grid", &self.coarse.width)
+            .field("largest_km2", &self.eval.topo.largest_area_km2)
+            .field("border_clean", &self.eval.border_clean)
+            .finish()
+    }
+}
+
+/// Run only the coarse tectonic pass + calibration for `spec`, emitting a
+/// [`C1Event::PreviewReady`]. Cheap (no erosion); used by the "Aperçu" button.
+pub fn preview_shape(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>) {
+    let t = Instant::now();
+    let run = hd_run_config(spec);
+    let ss = SteinSteinParams::default();
+    // Same sea-level calibration the HD run uses (read it off the HD config so
+    // the preview coastline matches what will be exported).
+    let tlf = FbmUpscaleConfig::c1_hd_production(params.target_size).target_land_fraction;
+    let coarse = coarse_normalized_sweep(
+        spec.seed,
+        spec.grid_size,
+        &spec.init_params,
+        &run,
+        &spec.closures,
+        &ss,
+        &[tlf.unwrap_or(0.29)],
+    )
+    .remove(0)
+    .1;
+    let eval = evaluate_island(&coarse, vector::SEA_LEVEL_NORM, 25.0, 1);
+    // The domain IS the map (M1 #190): no crop. Return the UNROLLED coarse field +
+    // the auto framing offset (centre the largest mass). The UI applies the roll
+    // (auto ± manual pan) at render time, so panning is instant (no recompute) and
+    // what the user frames is exactly what `run_hd` exports.
+    let topo = land_topology(&coarse, vector::SEA_LEVEL_NORM);
+    let g = spec.grid_size as i64;
+    let (cx, cy) = topo.center_cell;
+    let auto_offset_cells =
+        [((cx as i64) - g / 2).rem_euclid(g), ((cy as i64) - g / 2).rem_euclid(g)];
+    let preview = Arc::new(PreviewShape { coarse, auto_offset_cells, eval });
+    let _ = tx.send(C1Event::PreviewReady { preview, elapsed: t.elapsed() });
+}
+
 /// Drive the HD chain on the worker thread, emitting per-phase events.
 /// Cancellable BETWEEN phases (the cached/opaque calls have no interior
 /// cancel hook — adding one would reopen `ymir-core`). On any core error,
 /// emits `HdFailed` and returns.
+/// #190 — build the FINAL HD drainage + wetland mask (the climate-dependent tail of the pipeline):
+/// base drainage with real discharge, the below-sea water-balance merge + cleanup (Findings 18/39),
+/// the river clip, the spillway append and the geographic-scale post-process. A PURE function of
+/// exactly the inputs `hd_drainage_key` folds — so caching it under that key is stale-proof.
+fn build_hd_drainage(
+    eroded: &GridF32,
+    climate: &ClimateResult,
+    prebreach: Option<C1DrainageResult>,
+    dcfg: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    window_km: f32,
+    geo_scale_ratio: f32,
+) -> HdDrainageBundle {
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
+    // relief-v3: final drainage on the breached field, carrying the pre-breach lakes; legacy path
+    // (prebreach None): plain drainage on the raw eroded. Both with the climate discharge (Finding 22).
+    let mut drainage = if let Some(prebreach) = prebreach {
+        let mut dr = c1_drainage_windowed(eroded, Some(&dclim), dcfg, ss, window_km);
+        dr.lakes = prebreach.lakes;
+        dr.lake_map = prebreach.lake_map;
+        dr
+    } else {
+        c1_drainage_windowed(eroded, Some(&dclim), dcfg, ss, window_km)
+    };
+    let (wetland_mask, below_sea_spillways) = {
+        let bs =
+            below_sea_basin_lakes(eroded, &dclim, dcfg, ss, window_km, Some(&drainage.lake_map));
+        let (mut endo, mut exo) = (0usize, 0usize);
+        for lk in &bs.lakes {
+            match lk.lake_type {
+                LakeType::Endorheic => endo += 1,
+                LakeType::Exorheic => exo += 1,
+            }
+        }
+        use std::collections::{HashMap, HashSet};
+        let mut det_before: HashMap<u32, usize> = HashMap::new();
+        for &id in &drainage.lake_map {
+            if id != 0 && id < 1_000_001 {
+                *det_before.entry(id).or_default() += 1;
+            }
+        }
+        let mut det_after: HashMap<u32, usize> = HashMap::new();
+        for k in 0..bs.lake_map.len() {
+            if bs.lake_map[k] != 0 {
+                drainage.lake_map[k] = bs.lake_map[k];
+            } else if drainage.lake_map[k] != 0 && drainage.lake_map[k] < 1_000_001 {
+                *det_after.entry(drainage.lake_map[k]).or_default() += 1;
+            }
+        }
+        let absorbed: HashSet<u32> = det_before
+            .keys()
+            .copied()
+            .filter(|id| det_after.get(id).copied().unwrap_or(0) == 0)
+            .collect();
+        let n_absorbed = absorbed.len();
+        drainage.lakes.retain(|lk| lk.base.id >= 1_000_001 || !absorbed.contains(&lk.base.id));
+        let (to_sea, chained) = (
+            bs.spillways.iter().filter(|s| s.chained_into.is_none()).count(),
+            bs.spillways.iter().filter(|s| s.chained_into.is_some()).count(),
+        );
+        drainage.lakes.extend(bs.lakes);
+        if n_absorbed > 0 {
+            eprintln!(
+                "[HD] below-sea cleanup: {n_absorbed} detected lake(s) submerged by a filled below-sea lake -> dropped"
+            );
+        }
+        eprintln!(
+            "[HD] below-sea basins: {} lakes ({exo} exorheic, {endo} endorheic); {} spillways ({to_sea} -> sea, {chained} chained)",
+            exo + endo,
+            bs.spillways.len()
+        );
+        (bs.wetland, bs.spillways)
+    };
+    let before_seg = drainage.rivers.segments.len();
+    clip_rivers_to_lakes(&mut drainage);
+    eprintln!(
+        "[HD] rivers clipped to lakes: {before_seg} -> {} segments (terminate at sinks)",
+        drainage.rivers.segments.len()
+    );
+    for sw in &below_sea_spillways {
+        drainage.rivers.segments.push(RiverSegment {
+            points: sw.points.clone(),
+            strahler_order: 1,
+            avg_flow: 0.0,
+            max_flow: 0.0,
+            basin_id: 0,
+            upstream: vec![],
+            downstream: None,
+        });
+        drainage.segment_drainage_km2.push(sw.drainage_km2);
+        drainage.segment_navigability.push(sw.navigability);
+        drainage.segment_discharge_m3s.push(sw.discharge_m3s);
+        drainage.segment_width_m.push(sw.width_m);
+        drainage.segment_profile_m.push(sw.profile_m.clone());
+    }
+    apply_geo_scale_ratio(&mut drainage, geo_scale_ratio, &dcfg.thresholds);
+    if geo_scale_ratio != 1.0 {
+        eprintln!(
+            "[HD] geographic scale ratio {geo_scale_ratio:.2} -> hydrology signifies x{:.1} area",
+            geo_scale_ratio * geo_scale_ratio
+        );
+    }
+    HdDrainageBundle { drainage, wetland: wetland_mask }
+}
+
+
 pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel: &Arc<AtomicBool>) {
     cancel.store(false, Ordering::Relaxed);
     let _ = tx.send(C1Event::HdStarted { spec: spec.clone(), params: params.clone() });
@@ -225,26 +473,133 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let run = hd_run_config(spec);
     let ss = SteinSteinParams::default();
 
-    // ── Playable window: render a `window_km` sub-domain of the 1024 km torus at
-    // `target_size`, CENTRED on the continent (land centroid). This is what makes
-    // km_per_cell = window_km/target_size land at ~40 m instead of the torus's
-    // 125 m. The tectonic sim stays full-torus; only the HD render is windowed.
-    let window_km = params.window_km;
-    let wf = (window_km / C1_DOMAIN_KM) as f64;
-    let centroid =
-        c1_land_centroid(spec.seed, spec.grid_size, &spec.init_params, &run, &spec.closures, &ss);
-    // Centre the window on the centroid, clamped so it stays inside the torus
-    // (no wrap — documented; the 0.32-wide window has ample room).
-    let win_origin = [
-        (centroid[0] - wf * 0.5).clamp(0.0, 1.0 - wf),
-        (centroid[1] - wf * 0.5).clamp(0.0, 1.0 - wf),
-    ];
+    // ── The domain IS the map (M1 #190): NO crop, ever. The whole torus renders at
+    // `target_size` (sample_origin [0,0], sample_size 1.0). m_per_px =
+    // domain_km·1000/target_size, so the export size is chosen for the cell budget
+    // (e.g. 24576² → ~42 m/px at 1024 km). Seed selection — not a window — puts a
+    // continent with ocean margin on the map (see the coarse preview / seed scan).
+    let window_km = params.domain_km; // domain IS the map: window == domain == domain_km
     let mut upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
-    upscale.sample_origin = win_origin;
-    upscale.sample_size = wf;
+    if let Some(a) = params.fbm_amplitude {
+        upscale.amplitude_base = a; // striation-ladder override (default 0.16)
+    }
+    // EXPERIMENTAL opt-in (ADR 0001): swap the droplet pass for routed stream-power
+    // incision + hillslope regime split. A_c is 7.6 km² expressed in cells at THIS
+    // resolution (resolution-stable channel head); uncoupled vertical scale.
+    if params.stream_power {
+        let km_per_cell = window_km / params.target_size as f32; // window_km == domain_km
+        let cell_km2 = km_per_cell * km_per_cell;
+        let depth = ss.depth_scale_m as f32;
+        let mut sp = if params.closures {
+            StreamPowerConfig::relief_v2(cell_km2, depth)
+        } else {
+            StreamPowerConfig::relief_v1(cell_km2, depth)
+        };
+        // STEP 2b (ADR 0001 Finding 9): cross-rill diffusion — diffuse EVERYWHERE (drop
+        // the regime split's channel exclusion) at a super-critical D, to damp the
+        // Smith–Bretherton parallel-rilling comb. Experimental, only atop closures.
+        if params.closures && params.cross_rill {
+            sp.diffuse_channels = true;
+            sp.diffusion = params.cross_rill_d;
+        }
+        // ADR 0001 Findings 11/14: the FINAL relief recipe (relief-v3) — MFD incision
+        // (comb prevented at the cause, dendritic valleys) + talus flank grading + light
+        // linear hillslope, K×3. No GS solver. The eroded field is then breach-conditioned
+        // (below) for monotone rivers + lakes. Takes precedence over cross-rill.
+        if params.closures && params.mfd {
+            sp = StreamPowerConfig::relief_v3(cell_km2, depth);
+            sp.mfd_exponent = Some(params.mfd_p); // let the viz p selector override
+        }
+        eprintln!(
+            "[HD] stream-power incision ON ({}: A_c {:.0} cells = {} km²{}), droplets OFF",
+            if params.closures { "relief-v2 + closures" } else { "relief-v1" },
+            sp.min_area_cells,
+            ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2,
+            if params.closures {
+                format!(
+                    ", S_c=tan(33°), lat {:.0} m/√km²{}",
+                    sp.lateral_erosion,
+                    if params.mfd {
+                        format!(", MFD p={:.1} K×3", params.mfd_p)
+                    } else if params.cross_rill {
+                        format!(", cross-rill D={:.2}", sp.diffusion)
+                    } else {
+                        String::new()
+                    },
+                )
+            } else {
+                String::new()
+            },
+        );
+        upscale.erosion = None; // droplets off — they collapse the SP valleys
+        upscale.stream_power = Some(sp);
+    }
+    // Land report FIRST (reads only `target_land_fraction`) so the seam-correct
+    // torus centre of the largest mass is known before we choose the sampling roll.
+    let t_land = Instant::now();
+    let land = c1_coarse_land_report(
+        spec.seed,
+        spec.grid_size,
+        &spec.init_params,
+        &run,
+        &spec.closures,
+        &ss,
+        upscale.target_land_fraction,
+    );
+    eprintln!("[HD timing] coarse land report {:.1}s", t_land.elapsed().as_secs_f32());
+    let _ = land.centroid; // superseded by the seam-correct centre below
+    let land_topology = land.topology;
+
+    // ── Framing ROLL (M1 #190): shift the coarse SAMPLING ORIGIN so the largest
+    // landmass is contiguous and centred in the exported (whole) domain. A mass
+    // straddling the torus seam would otherwise export split across the border
+    // (Living Landz reads it as two landmasses). This is a ROLL, not a crop:
+    // sample_size stays 1.0, the whole torus is exported, no cell is discarded.
+    //
+    // Offset = integer coarse cells (exact, cache-stable): roll the mass centre to
+    // the domain centre — origin = (center_cell − grid/2) mod grid. Because the FBM
+    // + coast warp are evaluated in TORUS coords (sx = origin + i·scale), the noise
+    // rolls WITH the terrain, so the exported continent is the one the preview shows.
+    let g = spec.grid_size as i64;
+    let (cx, cy) = land_topology.center_cell;
+    let roll_x = ((cx as i64) - g / 2).rem_euclid(g) as usize;
+    let roll_y = ((cy as i64) - g / 2).rem_euclid(g) as usize;
+    let auto_offset = [roll_x as f64 / g as f64, roll_y as f64 / g as f64];
+    // Use the UI framing (auto ± manual pan) when supplied; else auto-centre.
+    let window_offset = params.manual_offset.unwrap_or(auto_offset);
+    upscale.sample_origin = window_offset;
+    upscale.sample_size = 1.0;
+
+    // Telemetry — judge the seed as an island continent. A largest landmass that
+    // WRAPS the torus is a band with no coast; a finite mass touching the map edge
+    // is split across the border (see the domain-as-map verdict in the preview).
+    let t = &land_topology;
+    eprintln!(
+        "[C1 land] seed {} — {} landmass(es); largest {:.0} km² ({:.1}% of torus), \
+         wraps x={} y={}, bbox {:.0}×{:.0} km; coarse emerged {:.1}%; roll ({},{}) cells → offset [{:.3},{:.3}]",
+        spec.seed,
+        t.num_landmasses,
+        t.largest_area_km2,
+        t.largest_area_frac * 100.0,
+        t.wraps_x,
+        t.wraps_y,
+        t.bbox_km.0,
+        t.bbox_km.1,
+        t.emerged_fraction * 100.0,
+        roll_x,
+        roll_y,
+        window_offset[0],
+        window_offset[1],
+    );
 
     let pp = PrecipParams::default();
-    let dcfg = C1DrainageConfig::default();
+    // Finding 37 POINT 2 — extend exported watercourses UPSTREAM from the 20 km² extraction threshold
+    // to the fluvial-regime critical area A_c (the channel head), MAIN-STEM only (author's choice:
+    // one headwater tail per watercourse; ×33 segments vs the full tree's ×182). The watercourse
+    // COUNT is unchanged; only their upstream extent grows, restoring a real source→mouth width range.
+    let mut dcfg = C1DrainageConfig::default();
+    dcfg.thresholds.head_km2 = ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2;
+    dcfg.thresholds.full_tree = false;
     let cache_dir = default_cache_dir();
     let lat = params.latitude_deg;
 
@@ -271,6 +626,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // with mid-erosion cancel (a cancelled build is NOT cached).
     bail_if_cancelled!();
     let eroded_hit = sidecar_exists("eroded", ekey.digest());
+    let t_ero = Instant::now();
     let eroded = if eroded_hit {
         for phase in [HdPhase::Tectonic, HdPhase::Relief, HdPhase::Erosion] {
             let _ = tx.send(C1Event::HdPhaseStarted { phase });
@@ -366,68 +722,212 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             }
         }
     };
+    eprintln!(
+        "[HD timing] eroded {} ({:.1}s)",
+        if eroded_hit { "HIT" } else { "MISS" },
+        t_ero.elapsed().as_secs_f32()
+    );
+
+    // ── relief-v3 conditioning (ADR 0001 Finding 14): breach the eroded field so exported
+    // river long-profiles are monotone, with detected lakes held flat. Done AFTER the cached
+    // eroded (in-memory, not re-cached): detect lakes on the pre-breach field, breach
+    // (lakes excepted), then compute drainage on the conditioned field for MONOTONE rivers
+    // while carrying the PRE-BREACH lakes (the breach flattens them, so post-breach detection
+    // would find none — lakes.json must come from the pre-breach set). Uncached (experimental
+    // viz path); the cached drainage below is bypassed when this override is present.
+    // Returns the conditioned field + the PRE-BREACH drainage (its lakes/lake_map are
+    // the real water bodies; the breach flattens them so post-breach detection finds
+    // none). The FINAL, discharge-bearing drainage is computed below WITH the climate.
+    // #190 — the hd_drainage bundle key, computed EARLY so we can tell whether the pre-breach drainage
+    // is still needed (it is not when BOTH the conditioned eroded and the final drainage are HITs).
+    let hd_dr_key = hd_drainage_key(
+        &ekey, &dcfg, &ss, lat, &pp, params.latitude_span_deg, params.geo_scale_ratio, window_km,
+    );
+    let bundle_hit = sidecar_exists("hd_drainage", hd_dr_key.digest());
+    let (eroded, prebreach_override) = if params.stream_power && params.closures && params.mfd {
+        let (gw, gh) = (eroded.width, eroded.height);
+        // #190 — the CONDITIONED eroded (the breach output) is CACHED: a pure GridF32 keyed on the
+        // pre-breach drainage key + the breach version. On a HIT the ~50 s breach is skipped entirely.
+        let prebreach_key = drainage_key_windowed(&ekey, &dcfg, &ss, None, window_km);
+        let cond_key = conditioned_eroded_key(&prebreach_key);
+        let cond_hit = sidecar_exists("conditioned", cond_key.digest());
+        // The pre-breach drainage is climate-independent (cached on the eroded key). It is needed ONLY
+        // to RUN the breach (cond MISS) or to carry the pre-breach lakes into build_hd_drainage
+        // (bundle MISS); on a full HIT it is not loaded at all.
+        let prebreach = if !cond_hit || !bundle_hit {
+            let t_pre = Instant::now();
+            let p = match cached_c1_drainage_windowed(
+                &cache_dir, &ekey, &eroded, None, &dcfg, &ss, window_km,
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    let _ = tx.send(C1Event::HdFailed { error: format!("prebreach: {e}") });
+                    return;
+                }
+            };
+            eprintln!("[HD timing] prebreach drainage {:.1}s", t_pre.elapsed().as_secs_f32());
+            Some(p)
+        } else {
+            None
+        };
+        let t_breach = Instant::now();
+        let conditioned = match cached::<GridF32>(&cache_dir, "conditioned", &cond_key, || {
+            let p = prebreach.as_ref().expect("prebreach is present on a conditioned MISS");
+            breach_monotone(&eroded, &p.flow.filled, &p.lake_map, 0.5, gw, gh)
+        }) {
+            Ok(g) => g,
+            Err(e) => {
+                let _ = tx.send(C1Event::HdFailed { error: format!("breach: {e}") });
+                return;
+            }
+        };
+        eprintln!(
+            "[HD] relief-v3 breach conditioning {} ({:.1}s)",
+            if cond_hit { "HIT" } else { "MISS" },
+            t_breach.elapsed().as_secs_f32()
+        );
+        (conditioned, prebreach)
+    } else {
+        (eroded, None)
+    };
 
     // ── Phase 2: climate (temperature + precipitation). ──
     bail_if_cancelled!();
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Climate });
     let t = Instant::now();
-    let climate = c1_climate_windowed(&eroded, &ss, lat, &pp, window_km);
-    let _ = tx.send(C1Event::HdPhaseDone {
-        phase: HdPhase::Climate,
-        regime: CacheRegime::Computed,
-        elapsed: t.elapsed(),
-    });
-
-    // ── Phase 3: drainage (rivers + lakes + water balance). ──
-    bail_if_cancelled!();
-    let dkey = drainage_key_windowed(&ekey, &dcfg, &ss, Some((lat, &pp)), window_km);
-    let drainage_hit = sidecar_exists("drainage", dkey.digest());
-    let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Drainage });
-    let t = Instant::now();
-    let drainage = match cached_c1_drainage_windowed(
+    // Finding 25 — explicit CLIMATIC latitude span (else the geographic domain_km/111).
+    // `None` keeps the byte-identical windowed path; `Some` re-derives temperature + the
+    // per-belt precipitation over the wider span (real physics → biomes shift).
+    // #190 — the climate is cached: keyed on (ekey, lat, span, precip params) it HITs when the same
+    // (latitude, span) is re-selected. The conditioned `eroded` it reads is deterministic from ekey.
+    let climate_hit =
+        sidecar_exists("climate", climate_key(&ekey, lat, params.latitude_span_deg, &pp, window_km).digest());
+    let climate = match cached_c1_climate(
         &cache_dir,
         &ekey,
         &eroded,
-        Some((lat, &pp)),
-        &dcfg,
         &ss,
+        lat,
+        params.latitude_span_deg,
+        &pp,
         window_km,
     ) {
-        Ok(d) => d,
+        Ok(c) => c,
+        Err(e) => {
+            let _ = tx.send(C1Event::HdFailed { error: format!("climate: {e}") });
+            return;
+        }
+    };
+    let _ = tx.send(C1Event::HdPhaseDone {
+        phase: HdPhase::Climate,
+        regime: if climate_hit { CacheRegime::Hit } else { CacheRegime::Miss },
+        elapsed: t.elapsed(),
+    });
+    eprintln!(
+        "[HD timing] climate {} ({:.1}s)",
+        if climate_hit { "HIT" } else { "MISS" },
+        t.elapsed().as_secs_f32()
+    );
+
+    // ── Phase 3: drainage (rivers + lakes + water balance). ──
+    bail_if_cancelled!();
+    // `hd_dr_key` + `bundle_hit` were computed EARLY (before the breach) to gate the pre-breach load.
+    let drainage_hit = bundle_hit;
+    let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Drainage });
+    let t = Instant::now();
+    // #190 — the FINAL drainage (base + below-sea merge + clip + spillways + geo-scale) and the
+    // wetland mask are cached as ONE bundle under a COMPLETE key; the same params re-selected HIT.
+    let (mut drainage, wetland_mask) = match cached(&cache_dir, "hd_drainage", &hd_dr_key, || {
+        build_hd_drainage(
+            &eroded,
+            &climate,
+            prebreach_override,
+            &dcfg,
+            &ss,
+            window_km,
+            params.geo_scale_ratio,
+        )
+    }) {
+        Ok(b) => (b.drainage, b.wetland),
         Err(e) => {
             let _ = tx.send(C1Event::HdFailed { error: format!("drainage: {e}") });
             return;
         }
     };
+    // Finding 37 — the exorheic-outlet invariant, over the WHOLE lake population (both provenances),
+    // on the PRODUCTION network (not a synthetic-grid subset). A non-empty result means a lake was
+    // labelled exorheic without an emitted outflow — the label is wrong. Loud in dev, hard in debug.
+    let missing = exorheic_lakes_missing_outlet(&drainage);
+    if !missing.is_empty() {
+        eprintln!(
+            "[HD] WARNING Finding 37: {} exorheic lake(s) with NO traced outlet: {:?}",
+            missing.len(),
+            &missing[..missing.len().min(12)]
+        );
+    }
+    debug_assert!(missing.is_empty(), "exorheic lakes without a traced outlet: {missing:?}");
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Drainage,
         regime: if drainage_hit { CacheRegime::Hit } else { CacheRegime::Miss },
         elapsed: t.elapsed(),
     });
+    eprintln!(
+        "[HD timing] drainage {} ({:.1}s)",
+        if drainage_hit { "HIT" } else { "MISS" },
+        t.elapsed().as_secs_f32()
+    );
 
     // ── Phase 4: biomes (Whittaker classification). ──
     bail_if_cancelled!();
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Biomes });
     let t = Instant::now();
-    let biomes = c1_biomes(&eroded, &climate);
+    // ADR Finding 18: biomes from water_class + the drainage lake_map (below-sea enclosed
+    // basins → Lake / exposed land, not Ocean), instead of the altitude threshold.
+    let biomes = c1_biomes_classified_wet(&eroded, &climate, &drainage.lake_map, &wetland_mask);
     let _ = tx.send(C1Event::HdPhaseDone {
         phase: HdPhase::Biomes,
         regime: CacheRegime::Computed,
         elapsed: t.elapsed(),
     });
+    eprintln!("[HD timing] biomes ({:.1}s)", t.elapsed().as_secs_f32());
 
     // ── Optional: write the v1 `.ymir` delivery container. ──
     // Explicit opt-in only (never automatic). Ships height (placeholder) +
     // coastline/cliffs (Y-B) + temperature/precipitation/biome (Y-C).
     if let Some(export_dir) = &params.export_dir {
+        // Resolved climatic span (explicit, else the geographic domain_km/111) so the
+        // manifest records the actual gradient behind the climate/biome layers.
+        let lat_span = params.latitude_span_deg.unwrap_or(window_km / 111.0);
+        let t_exp = Instant::now();
         if let Err(e) = export_ymir_container(
-            spec, &ss, &eroded, &climate, &biomes, &drainage, lat, window_km, win_origin,
+            spec,
+            &ss,
+            &eroded,
+            &climate,
+            &biomes,
+            &drainage,
+            lat,
+            lat_span,
+            params.geo_scale_ratio,
+            window_km,
+            window_offset,
             export_dir,
         ) {
             // Non-fatal: the product still ships to the UI; surface the reason.
             let _ = tx.send(C1Event::HdFailed { error: format!("export .ymir: {e}") });
         }
+        eprintln!("[HD timing] export .ymir ({:.1}s)", t_exp.elapsed().as_secs_f32());
     }
+
+    // Telemetry: emerged fraction measured AFTER FBM+erosion on the window grid.
+    // It differs from the coarse target (resolution-dependent until the FBM band
+    // policy is fixed — separate issue); reported, not compensated.
+    let post_emerged =
+        eroded.data.iter().filter(|&&v| v > 0.5).count() as f32 / eroded.data.len().max(1) as f32;
+    eprintln!(
+        "[C1 land] post-FBM+erosion emerged fraction (window) = {:.1}%",
+        post_emerged * 100.0
+    );
 
     // ── Done — ship the full product. ──
     let result = Arc::new(HdResult {
@@ -438,7 +938,9 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         precipitation: climate.precipitation,
         drainage,
         biomes,
+        land_topology,
     });
+    eprintln!("[HD timing] run_hd TOTAL {:.1}s (render is separate, on the UI thread)", t_all.elapsed().as_secs_f32());
     let _ = tx.send(C1Event::HdCompleted { result, elapsed: t_all.elapsed() });
 }
 
@@ -457,6 +959,8 @@ fn export_ymir_container(
     biomes: &[Biome],
     drainage: &C1DrainageResult,
     lat: f32,
+    lat_span_deg: f32,
+    geo_scale_ratio: f32,
     window_km: f32,
     window_offset: [f64; 2],
     root: &Path,
@@ -471,17 +975,21 @@ fn export_ymir_container(
     //   inverse). The min_m/max_m are stamped on the "height" layer below.
     let height = height::metric_height_u16(eroded, ss);
 
-    // The HD grid renders the `window_km` sub-domain of the 1024 km torus, so
-    // km_per_cell = window_km / width (the writer computes it). The tectonic
-    // torus stays the context; the window origin is the land-centred crop.
+    // The domain IS the map (M1 #190): the HD grid renders the WHOLE torus, so
+    // window_km == tectonic_domain_km (no crop). window_offset_in_torus carries the
+    // framing ROLL (normalised 0..1) applied at the coarse sampling origin so the
+    // continent is contiguous/centred — Living Landz reads it to know where the
+    // frame sits on the torus. km_per_cell = window_km / width = domain_km / width.
     let meta = ContinentMeta {
         name: format!("seed{}_{}", spec.seed, w),
         seed: spec.seed,
         grid: Grid { width: w, height: h },
         window_km: window_km as f64,
-        tectonic_domain_km: C1_DOMAIN_KM as f64,
+        tectonic_domain_km: window_km as f64, // window == domain (no crop)
         window_offset_in_torus: window_offset,
         latitude_deg: lat as f64,
+        latitude_span_deg: lat_span_deg as f64,
+        geographic_scale_ratio: geo_scale_ratio as f64,
         stein_stein: *ss,
         // Honest metric bounds: sea anchored to 0 m; elevation/depth are the
         // field's real metric extrema (depth is the min, i.e. most negative).

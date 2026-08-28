@@ -50,10 +50,10 @@
 pub mod pattern;
 pub mod stream_function;
 
-pub use pattern::{build_mantle_pattern, MantlePattern};
+pub use pattern::{MantlePattern, build_mantle_pattern};
 pub use stream_function::{
-    generate_stream_function, generate_stream_function_at_time, StreamFunctionBuilder,
-    StreamFunctionConfig,
+    StreamFunctionBuilder, StreamFunctionConfig, generate_stream_function,
+    generate_stream_function_at_time,
 };
 
 use crate::tectonics_v2::field::Field2D;
@@ -239,7 +239,11 @@ mod tests {
             }
         }
         let cfg = MantleConfig::Enabled {
-            mf: 1.0, coupling: 2.5, num_modes: 1, seed: 1, evolution_rate: 0.0,
+            mf: 1.0,
+            coupling: 2.5,
+            num_modes: 1,
+            seed: 1,
+            evolution_rate: 0.0,
         };
         let d = build_mantle_diagonal_field(&cfg, &s).expect("enabled → Some");
         for j in 0..3 {

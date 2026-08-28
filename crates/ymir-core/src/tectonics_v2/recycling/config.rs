@@ -63,10 +63,7 @@ impl RecyclingConfig {
             + self.mantle_loss_fraction;
         let tol = 1e-9;
         if (sum - 1.0).abs() > tol {
-            return Err(RecyclingConfigError::FractionsDoNotSumToOne {
-                sum,
-                tolerance: tol,
-            });
+            return Err(RecyclingConfigError::FractionsDoNotSumToOne { sum, tolerance: tol });
         }
         // Each fraction must be ≥ 0 (negative fractions have no
         // physical meaning and would allow net mass creation).
@@ -78,10 +75,7 @@ impl RecyclingConfig {
             ("mantle_loss_fraction", self.mantle_loss_fraction),
         ] {
             if v < 0.0 {
-                return Err(RecyclingConfigError::NegativeFraction {
-                    name,
-                    value: v,
-                });
+                return Err(RecyclingConfigError::NegativeFraction { name, value: v });
             }
         }
         if self.mantle_delay_steps == 0 {
@@ -106,15 +100,12 @@ impl std::fmt::Display for RecyclingConfigError {
                 "recycling fractions must sum to 1.0 (±{:.0e}), observed {:.15}",
                 tolerance, sum,
             ),
-            Self::NegativeFraction { name, value } => write!(
-                f,
-                "recycling fraction '{}' must be ≥ 0, got {}",
-                name, value,
-            ),
-            Self::ZeroMantleDelay => write!(
-                f,
-                "mantle_delay_steps must be ≥ 1 (ring buffer of size 0 is undefined)",
-            ),
+            Self::NegativeFraction { name, value } => {
+                write!(f, "recycling fraction '{}' must be ≥ 0, got {}", name, value,)
+            }
+            Self::ZeroMantleDelay => {
+                write!(f, "mantle_delay_steps must be ≥ 1 (ring buffer of size 0 is undefined)",)
+            }
         }
     }
 }
@@ -188,10 +179,7 @@ mod tests {
             mantle_loss_fraction: 0.0,
             mantle_delay_steps: 10,
         };
-        assert!(matches!(
-            cfg.validate(),
-            Err(RecyclingConfigError::FractionsDoNotSumToOne { .. })
-        ));
+        assert!(matches!(cfg.validate(), Err(RecyclingConfigError::FractionsDoNotSumToOne { .. })));
     }
 
     #[test]
@@ -204,31 +192,19 @@ mod tests {
             mantle_loss_fraction: 0.0,
             mantle_delay_steps: 10,
         };
-        assert!(matches!(
-            cfg.validate(),
-            Err(RecyclingConfigError::NegativeFraction { .. })
-        ));
+        assert!(matches!(cfg.validate(), Err(RecyclingConfigError::NegativeFraction { .. })));
     }
 
     #[test]
     fn zero_delay_rejected() {
-        let cfg = RecyclingConfig {
-            mantle_delay_steps: 0,
-            ..RecyclingConfig::default()
-        };
-        assert!(matches!(
-            cfg.validate(),
-            Err(RecyclingConfigError::ZeroMantleDelay)
-        ));
+        let cfg = RecyclingConfig { mantle_delay_steps: 0, ..RecyclingConfig::default() };
+        assert!(matches!(cfg.validate(), Err(RecyclingConfigError::ZeroMantleDelay)));
     }
 
     #[test]
     fn immediate_accumulators_max_pending_picks_largest() {
-        let a = ImmediateAccumulators {
-            arc_pending: 0.3,
-            coll_v_pending: 0.5,
-            rift_v_pending: 0.1,
-        };
+        let a =
+            ImmediateAccumulators { arc_pending: 0.3, coll_v_pending: 0.5, rift_v_pending: 0.1 };
         assert_eq!(a.max_pending(), 0.5);
         assert!((a.sum() - 0.9).abs() < 1e-14);
     }

@@ -152,9 +152,7 @@ impl ViscosityLaw {
             crate::tectonics_v2::presets::YieldingConfig::Enabled(ylaw) => {
                 let eta_v = self.eta_visc_effective(eps_ii);
                 let eta_p = eta_plastic(eps_ii, self.strain_rate_floor, ylaw.bi);
-                d_eta_eff_d_eps_ii(
-                    eta_v, dv, eta_p, eps_ii, self.strain_rate_floor, ylaw.sharpness,
-                )
+                d_eta_eff_d_eps_ii(eta_v, dv, eta_p, eps_ii, self.strain_rate_floor, ylaw.sharpness)
             }
         }
     }
@@ -192,20 +190,14 @@ impl ViscosityLaw {
     /// Bi. The viscous branch and its derivative are unchanged
     /// (Bi has no role there).
     #[inline]
-    pub fn d_eta_effective_d_eps_ii_with_bi_override(
-        &self,
-        eps_ii: f64,
-        bi_override: f64,
-    ) -> f64 {
+    pub fn d_eta_effective_d_eps_ii_with_bi_override(&self, eps_ii: f64, bi_override: f64) -> f64 {
         let dv = self.d_eta_visc_effective_d_eps_ii(eps_ii);
         match self.yielding {
             crate::tectonics_v2::presets::YieldingConfig::Disabled => dv,
             crate::tectonics_v2::presets::YieldingConfig::Enabled(ylaw) => {
                 let eta_v = self.eta_visc_effective(eps_ii);
                 let eta_p = eta_plastic(eps_ii, self.strain_rate_floor, bi_override);
-                d_eta_eff_d_eps_ii(
-                    eta_v, dv, eta_p, eps_ii, self.strain_rate_floor, ylaw.sharpness,
-                )
+                d_eta_eff_d_eps_ii(eta_v, dv, eta_p, eps_ii, self.strain_rate_floor, ylaw.sharpness)
             }
         }
     }
@@ -586,11 +578,7 @@ pub fn build_eta_plastic_field(
 
 /// Blend `η_visc` and `η_plastic` field-by-field. Output is the
 /// effective viscosity consumed by the operator layer.
-pub fn blend_eta_fields(
-    eta_visc: &Field2D,
-    eta_plastic: &Field2D,
-    sharpness: f64,
-) -> Field2D {
+pub fn blend_eta_fields(eta_visc: &Field2D, eta_plastic: &Field2D, sharpness: f64) -> Field2D {
     debug_assert_eq!(eta_visc.nx(), eta_plastic.nx());
     debug_assert_eq!(eta_visc.ny(), eta_plastic.ny());
     let nx = eta_visc.nx();
@@ -598,11 +586,7 @@ pub fn blend_eta_fields(
     let mut out = Field2D::new(nx, ny);
     for j in 0..ny {
         for i in 0..nx {
-            out.set(
-                i,
-                j,
-                eta_effective(eta_visc.get(i, j), eta_plastic.get(i, j), sharpness),
-            );
+            out.set(i, j, eta_effective(eta_visc.get(i, j), eta_plastic.get(i, j), sharpness));
         }
     }
     out
@@ -667,7 +651,13 @@ mod tests {
             // Relative tolerance scaled to 1e-6 is plenty given the
             // analytic derivative is accurate to machine precision.
             let rel = (analytic - fd).abs() / analytic.abs().max(fd.abs()).max(1e-12);
-            assert!(rel < 1e-5, "d_eta/d_eps_II FD mismatch at x={}: analytic {} vs FD {}", x, analytic, fd);
+            assert!(
+                rel < 1e-5,
+                "d_eta/d_eps_II FD mismatch at x={}: analytic {} vs FD {}",
+                x,
+                analytic,
+                fd
+            );
         }
     }
 
@@ -809,14 +799,16 @@ mod tests {
             let ev = visc.eta_effective(x);
             let dv = visc.d_eta_effective_d_eps_ii(x);
             let ep = eta_plastic(x, floor, yld.bi);
-            let analytic =
-                d_eta_eff_d_eps_ii(ev, dv, ep, x, floor, yld.sharpness);
+            let analytic = d_eta_eff_d_eps_ii(ev, dv, ep, x, floor, yld.sharpness);
             let fd = (eta_eff_of(x + h) - eta_eff_of(x - h)) / (2.0 * h);
             let rel = (analytic - fd).abs() / analytic.abs().max(fd.abs()).max(1e-12);
             assert!(
                 rel < 1e-6,
                 "d_eta_eff FD mismatch at ε̇={}: analytic={}, fd={}, rel={}",
-                x, analytic, fd, rel,
+                x,
+                analytic,
+                fd,
+                rel,
             );
         }
     }
@@ -839,11 +831,7 @@ mod tests {
         let eta_e = blend_eta_fields(&eta_v, &eta_p, yld.sharpness);
         for j in 0..6 {
             for i in 0..6 {
-                let expected = eta_effective(
-                    eta_v.get(i, j),
-                    eta_p.get(i, j),
-                    yld.sharpness,
-                );
+                let expected = eta_effective(eta_v.get(i, j), eta_p.get(i, j), yld.sharpness);
                 assert!(approx(eta_e.get(i, j), expected, 1e-14));
             }
         }

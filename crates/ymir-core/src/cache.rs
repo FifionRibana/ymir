@@ -54,6 +54,22 @@ pub const ALGO_UPSCALE_EROSION: u32 = 1;
 /// that step (see above).
 pub const ALGO_DRAINAGE: u32 = 2;
 
+/// Version of the climate build (`c1_climate_placed` / `c1_climate_windowed`).
+/// ⚠️ BUMP on ANY code change to that step (see above).
+pub const ALGO_CLIMATE: u32 = 1;
+
+/// Version of the relief-v3 BREACH conditioning (`breach_monotone` applied to the eroded
+/// field with the pre-breach lakes). ⚠️ BUMP on ANY code change to `breach_monotone` — a
+/// stale conditioned field would carry the OLD breach into every downstream layer.
+pub const ALGO_BREACH: u32 = 1;
+
+/// Version of the HD relief-v3 drainage BUNDLE (final drainage after the below-sea
+/// water-balance merge + river clip + spillway append + geographic-scale, plus the
+/// wetland mask). ⚠️ BUMP on ANY code change to that whole post-eroded chain — it
+/// spans `c1_drainage`, `below_sea_basin_lakes`, `clip_rivers_to_lakes`,
+/// `apply_geo_scale_ratio` and the hd.rs orchestration that stitches them.
+pub const ALGO_HD_DRAINAGE: u32 = 1;
+
 // ── Cache key ──────────────────────────────────────────────────────────────
 
 /// An ordered set of named inputs, hashed to a content address.

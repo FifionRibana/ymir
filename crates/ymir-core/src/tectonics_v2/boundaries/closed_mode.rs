@@ -124,10 +124,7 @@ pub fn count_immediate_eligibilities(
 
 /// Count oceanic cells flagged `Rift` (eligible for spread
 /// distribution).
-pub fn count_spread_eligibility(
-    plate_types: &PlateTypeField,
-    flags: &BoundaryFlagField,
-) -> usize {
+pub fn count_spread_eligibility(plate_types: &PlateTypeField, flags: &BoundaryFlagField) -> usize {
     plate_types
         .data()
         .iter()
@@ -197,11 +194,10 @@ pub fn distribute_immediate(
             let f = flags.get(i, j);
             let mut add = 0.0_f64;
             if q_arc_per_cell != 0.0 {
-                let has_sub_neighbour =
-                    flags.get(ip, j).is_subduction()
-                        || flags.get(im, j).is_subduction()
-                        || flags.get(i, jp).is_subduction()
-                        || flags.get(i, jm).is_subduction();
+                let has_sub_neighbour = flags.get(ip, j).is_subduction()
+                    || flags.get(im, j).is_subduction()
+                    || flags.get(i, jp).is_subduction()
+                    || flags.get(i, jm).is_subduction();
                 if has_sub_neighbour {
                     add += q_arc_per_cell;
                 }
@@ -264,7 +260,9 @@ mod tests {
         let flags = BoundaryFlagField::filled(4, 4, BoundaryFlag::None);
         let rates = BoundaryRates::baseline_uncalibrated();
         let mut div = Field2D::new(4, 4);
-        for v in div.data_mut().iter_mut() { *v = -1.0; } // convergent everywhere
+        for v in div.data_mut().iter_mut() {
+            *v = -1.0;
+        } // convergent everywhere
         let mut out = Field2D::new(4, 4);
         compute_q_sub_only(&pt, &flags, &rates, &div, &mut out);
         for &v in out.data() {
@@ -300,11 +298,8 @@ mod tests {
         let idx_x = PeriodicIndex::new(nx);
         let idx_y = PeriodicIndex::new(ny);
 
-        let mut accs = ImmediateAccumulators {
-            arc_pending: 0.1,
-            coll_v_pending: 0.0,
-            rift_v_pending: 0.0,
-        };
+        let mut accs =
+            ImmediateAccumulators { arc_pending: 0.1, coll_v_pending: 0.0, rift_v_pending: 0.0 };
         let mut out = Field2D::new(nx, ny);
         let dt = 0.01;
         let cell_area = 1.0 / (nx * ny) as f64;
@@ -327,11 +322,8 @@ mod tests {
         flags.set(0, 0, BoundaryFlag::OceanicSubduction);
         let idx_x = PeriodicIndex::new(nx);
         let idx_y = PeriodicIndex::new(ny);
-        let mut accs = ImmediateAccumulators {
-            arc_pending: 0.1,
-            coll_v_pending: 0.05,
-            rift_v_pending: 0.02,
-        };
+        let mut accs =
+            ImmediateAccumulators { arc_pending: 0.1, coll_v_pending: 0.05, rift_v_pending: 0.02 };
         let mut out = Field2D::new(nx, ny);
         distribute_immediate(&pt, &flags, &mut accs, &idx_x, &idx_y, 0.01, 0.01, &mut out);
         // No continental cells → arc, coll, rift all roll over.

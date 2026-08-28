@@ -17,18 +17,18 @@
 //! render system re-fires `field_to_rgba` on the cached snapshot
 //! with no channel round-trip.
 
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, bounded};
 
 use ymir_core::tectonics_v2::workflow::PhaseAParams;
 
 use super::commands::C1Command;
 use super::events::{C1Event, C1RunKind};
-use super::hd::{HdParams, HdPhaseRecord, HdState};
+use super::hd::{HdParams, HdPhaseRecord, HdState, PreviewShape};
 use super::snapshot::C1Snapshot;
 use super::spec::C1RunSpec;
 use super::thread::spawn_c1_thread;
@@ -95,12 +95,8 @@ impl C1RunState {
     pub fn latest_snapshot(&self) -> Option<&C1Snapshot> {
         match self {
             C1RunState::Idle => None,
-            C1RunState::Running { latest_snapshot, .. } => {
-                latest_snapshot.as_deref()
-            }
-            C1RunState::Completed { final_snapshot, .. } => {
-                Some(final_snapshot.as_ref())
-            }
+            C1RunState::Running { latest_snapshot, .. } => latest_snapshot.as_deref(),
+            C1RunState::Completed { final_snapshot, .. } => Some(final_snapshot.as_ref()),
             C1RunState::Failed { .. } => None,
         }
     }
@@ -117,6 +113,9 @@ pub struct C1SolverBridge {
     /// HD pipeline state (step b/5) — independent of the coarse tectonic
     /// `state` so the live gallery view and HD generation coexist.
     pub hd: HdState,
+    /// Latest fast tectonic-shape preview (coarse continent + island verdict),
+    /// for judging a seed before the HD run. `None` until the first preview.
+    pub preview: Option<Arc<PreviewShape>>,
 }
 
 impl C1SolverBridge {
@@ -149,6 +148,14 @@ impl C1SolverBridge {
             .map_err(|_| "c1 bridge channel send failed")
     }
 
+    /// Queue a fast tectonic-shape preview (coarse continent only) so a seed
+    /// can be judged before the long HD run. Emits `PreviewReady`.
+    pub fn submit_preview(&self, spec: C1RunSpec, params: HdParams) -> Result<(), &'static str> {
+        self.commands_tx
+            .send(C1Command::PreviewShape { spec, params })
+            .map_err(|_| "c1 bridge channel send failed")
+    }
+
     /// MVP Option C cancel — does NOT interrupt the current run
     /// (see `commands.rs` docstring). Sets the AtomicBool; the
     /// worker checks the flag between commands.
@@ -177,6 +184,7 @@ impl Plugin for C1BridgePlugin {
             cancel_flag: cancel,
             state: C1RunState::Idle,
             hd: HdState::Idle,
+            preview: None,
         });
 
         app.add_systems(Update, poll_c1_events);
@@ -207,26 +215,17 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
                 let (spec, kind, total, started_at, mut cumulative) =
                     match std::mem::take(&mut bridge.state) {
                         C1RunState::Running {
-                            spec,
-                            kind,
-                            total,
-                            started_at,
-                            cumulative,
-                            ..
+                            spec, kind, total, started_at, cumulative, ..
                         } => (spec, kind, total, started_at, cumulative),
                         other => {
                             bridge.state = other;
                             continue;
                         }
                     };
-                cumulative.subduction_cells +=
-                    snapshot.stats.subduction.cells_consumed;
-                cumulative.accretion_merges +=
-                    snapshot.stats.accretion.merges_count;
-                cumulative.rifting_splits +=
-                    snapshot.stats.rifting_split.splits_count;
-                cumulative.thinning_cells +=
-                    snapshot.stats.rifting_thinning.cells_thinned;
+                cumulative.subduction_cells += snapshot.stats.subduction.cells_consumed;
+                cumulative.accretion_merges += snapshot.stats.accretion.merges_count;
+                cumulative.rifting_splits += snapshot.stats.rifting_split.splits_count;
+                cumulative.thinning_cells += snapshot.stats.rifting_thinning.cells_thinned;
                 cumulative
                     .new_plate_ids
                     .extend(snapshot.stats.rifting_split.new_plate_ids_created.iter().copied());
@@ -241,19 +240,12 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
                     cumulative,
                 };
             }
-            C1Event::Completed {
-                spec,
-                final_snapshot,
-                elapsed,
-            } => {
+            C1Event::Completed { spec, final_snapshot, elapsed } => {
                 // Transfer cumulative + kind from Running → Completed.
-                let (kind, cumulative) =
-                    match std::mem::take(&mut bridge.state) {
-                        C1RunState::Running {
-                            kind, cumulative, ..
-                        } => (kind, cumulative),
-                        _ => (C1RunKind::Gallery, C1CumulativeStats::default()),
-                    };
+                let (kind, cumulative) = match std::mem::take(&mut bridge.state) {
+                    C1RunState::Running { kind, cumulative, .. } => (kind, cumulative),
+                    _ => (C1RunKind::Gallery, C1CumulativeStats::default()),
+                };
                 bridge.state = C1RunState::Completed {
                     spec,
                     kind,
@@ -268,7 +260,8 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
 
             // ── HD pipeline (step b/5 + e progress) — drives `bridge.hd`. ──
             C1Event::HdStarted { params, .. } => {
-                bridge.hd = HdState::Running { params, current: None, progress: None, done: Vec::new() };
+                bridge.hd =
+                    HdState::Running { params, current: None, progress: None, done: Vec::new() };
             }
             C1Event::HdPhaseStarted { phase } => {
                 if let HdState::Running { current, progress, .. } = &mut bridge.hd {
@@ -299,6 +292,9 @@ fn poll_c1_events(mut bridge: ResMut<C1SolverBridge>) {
             }
             C1Event::HdFailed { error } => {
                 bridge.hd = HdState::Failed { error };
+            }
+            C1Event::PreviewReady { preview, .. } => {
+                bridge.preview = Some(preview);
             }
         }
     }

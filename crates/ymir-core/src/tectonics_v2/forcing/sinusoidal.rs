@@ -60,5 +60,7 @@ pub struct ZeroForce;
 
 impl BodyForce for ZeroForce {
     fn accumulate(&self, _state: &SimulationState, _out: &mut VectorField) {}
-    fn name(&self) -> &'static str { "ZeroForce" }
+    fn name(&self) -> &'static str {
+        "ZeroForce"
+    }
 }

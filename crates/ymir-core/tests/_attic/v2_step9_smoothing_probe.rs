@@ -41,22 +41,24 @@ fn step9_smoothing_width_calibration_probe() {
     let scales = Scales::default();
     let preset = Preset::by_name("dynamic-accidented").unwrap();
     let vcfg = VoronoiConfig { num_plates: 8, continental_ratio: 0.3 };
-    let rates = BoundaryRates {
-        k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0,
-    };
+    let rates =
+        BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
 
     let widths = [0.05_f64, 0.08, 0.10, 0.12, 0.15, 0.20];
     println!();
     println!("Step 9 smoothing-width calibration probe");
-    println!(
-        "  64x64, 20 steps, Cr=0.3, K=5, seed=42, target ≤ K·1.05 = 5.25"
-    );
+    println!("  64x64, 20 steps, Cr=0.3, K=5, seed=42, target ≤ K·1.05 = 5.25");
     println!();
     println!("{:>14} | {:>14} | {:>14}", "smoothing_w", "eta_contrast", "<= 5.25 ?");
     for w in widths {
         let crcfg = CratonicConfigEnabled { smoothing_width: w, ..Default::default() };
         let boundary = BoundaryConfig::enabled_voronoi_closed(
-            nx, ny, &vcfg, 42, rates, RecyclingConfig::default(),
+            nx,
+            ny,
+            &vcfg,
+            42,
+            rates,
+            RecyclingConfig::default(),
         )
         .expect("recycling config valid");
         let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
@@ -74,16 +76,18 @@ fn step9_smoothing_width_calibration_probe() {
             newton_cfg: NewtonConfig::default(),
             picard_cfg: PicardConfig::default(),
             heightmap_fractions: Vec::new(),
-            output_dir: PathBuf::from(format!("target/v2_step9_smoothing_probe_w{}", (w * 100.0) as u32)),
+            output_dir: PathBuf::from(format!(
+                "target/v2_step9_smoothing_probe_w{}",
+                (w * 100.0) as u32
+            )),
             force,
             force_kind: ForceKind::Gpe,
             sinusoidal_amplitude: 0.0,
             s_perturbation_amplitude: 0.2,
-            yielding: YieldingConfig::Enabled(YieldingLaw {
-                bi: 0.15, ..Default::default()
-            }),
+            yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
             basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-                br: 0.05, ..BasalDragLaw::default()
+                br: 0.05,
+                ..BasalDragLaw::default()
             }),
             boundary,
             boundary_layout_name: format!("voronoi_seed42_n8_w{}", (w * 100.0) as u32),

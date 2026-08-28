@@ -42,11 +42,11 @@ use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::stokes::amg::{AmgConfig, AmgPreconditioner};
 use ymir_core::tectonics_v2::stokes::nullspace;
 use ymir_core::tectonics_v2::stokes::operator::{
-    apply_momentum, apply_tangent, StokesGrid, TangentContext,
+    StokesGrid, TangentContext, apply_momentum, apply_tangent,
 };
 use ymir_core::tectonics_v2::stokes::precond::VelocityJacobi;
 use ymir_core::tectonics_v2::stokes::snapshot::{
-    field_from_vec, LinearStokesSnapshot, ReferenceSolution,
+    LinearStokesSnapshot, ReferenceSolution, field_from_vec,
 };
 use ymir_core::tectonics_v2::stokes::solver::{ConjugateGradient, LinearSolver};
 use ymir_core::tectonics_v2::stokes::sparse_assembly::assemble_picard_csr;
@@ -89,10 +89,7 @@ struct Replay {
 fn build_replay(snap: &LinearStokesSnapshot) -> Replay {
     let grid = StokesGrid::new(snap.nx, snap.ny, snap.dx, snap.dy);
     let eta_center = field_from_vec(snap.eta_center.clone(), snap.nx, snap.ny);
-    let drag_diag = snap
-        .drag_diag
-        .as_ref()
-        .map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
+    let drag_diag = snap.drag_diag.as_ref().map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
     let ctx = TangentContext {
         eta_center: eta_center.clone(),
         c_center: field_from_vec(
@@ -168,9 +165,12 @@ fn solve_jacobi(replay: &Replay) -> (Vec<f64>, bool, usize) {
     (x_pack, stats.converged(), stats.iterations)
 }
 
-fn solve_amg(replay: &Replay, snap: &LinearStokesSnapshot, cfg: AmgConfig) -> (Vec<f64>, bool, usize) {
-    let a_picard =
-        assemble_picard_csr(&replay.grid, &replay.eta_center, replay.drag_diag.as_ref());
+fn solve_amg(
+    replay: &Replay,
+    snap: &LinearStokesSnapshot,
+    cfg: AmgConfig,
+) -> (Vec<f64>, bool, usize) {
+    let a_picard = assemble_picard_csr(&replay.grid, &replay.eta_center, replay.drag_diag.as_ref());
     let precond = AmgPreconditioner::build(&a_picard, snap.n_cells(), cfg);
     let n = replay.n_cells;
     let cg = ConjugateGradient::new(replay.tol, replay.max_iter);
@@ -206,12 +206,8 @@ fn solve_amg(replay: &Replay, snap: &LinearStokesSnapshot, cfg: AmgConfig) -> (V
 fn relative_max_diff_vs_reference(x: &[f64], ref_sol: &ReferenceSolution) -> f64 {
     let n = ref_sol.x_vx.len();
     assert_eq!(x.len(), 2 * n);
-    let norm_ref = ref_sol
-        .x_vx
-        .iter()
-        .chain(ref_sol.x_vy.iter())
-        .map(|v| v.abs())
-        .fold(0.0_f64, f64::max);
+    let norm_ref =
+        ref_sol.x_vx.iter().chain(ref_sol.x_vy.iter()).map(|v| v.abs()).fold(0.0_f64, f64::max);
     if norm_ref == 0.0 {
         return 0.0;
     }
@@ -271,25 +267,21 @@ fn check_scalar_parity(case: &str) {
         case, conv_a, iters_a, rel_a,
     );
 
-    assert!(
-        conv_j,
-        "{}: JacobiCG did not converge at tol={:.0e}",
-        case, tol_test
-    );
-    assert!(
-        conv_a,
-        "{}: AmgCG did not converge at tol={:.0e}",
-        case, tol_test
-    );
+    assert!(conv_j, "{}: JacobiCG did not converge at tol={:.0e}", case, tol_test);
+    assert!(conv_a, "{}: AmgCG did not converge at tol={:.0e}", case, tol_test);
     assert!(
         rel_j <= threshold,
         "{}: JacobiCG rel_diff_vs_ref {:.3e} exceeds threshold {:.3e}",
-        case, rel_j, threshold
+        case,
+        rel_j,
+        threshold
     );
     assert!(
         rel_a <= threshold,
         "{}: AmgCG rel_diff_vs_ref {:.3e} exceeds threshold {:.3e}",
-        case, rel_a, threshold
+        case,
+        rel_a,
+        threshold
     );
 }
 

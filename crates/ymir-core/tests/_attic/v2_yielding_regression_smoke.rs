@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use ymir_core::tectonics_v2::diagnostics::harness::{run_baseline, BaselineConfig, ForceKind};
+use ymir_core::tectonics_v2::diagnostics::harness::{BaselineConfig, ForceKind, run_baseline};
 use ymir_core::tectonics_v2::forcing::{ForceSum, SinusoidalForce};
 use ymir_core::tectonics_v2::presets::YieldingConfig;
 use ymir_core::tectonics_v2::scales::Scales;
@@ -40,11 +40,7 @@ fn yielding_disabled_regression_stays_within_5pct_of_step2() {
     assert!(r.metrics.max_abs_mean_vx < 1.0e-10);
     assert!(r.metrics.max_abs_mean_vy < 1.0e-10);
     let newton = r.metrics.newton.as_ref().unwrap();
-    assert_eq!(
-        newton.diverged, 0,
-        "Newton diverged under Disabled yielding: {:?}",
-        newton,
-    );
+    assert_eq!(newton.diverged, 0, "Newton diverged under Disabled yielding: {:?}", newton,);
     // Yielding aggregate slots stay None — the match arm short-
     // circuits before touching any plastic field.
     assert!(newton.bi_diagnostic.is_none());

@@ -18,6 +18,4 @@ pub mod buffer;
 pub mod config;
 
 pub use buffer::{DelayedRecycler, RecyclingBuffer};
-pub use config::{
-    ImmediateAccumulators, RecyclingConfig, RecyclingConfigError,
-};
+pub use config::{ImmediateAccumulators, RecyclingConfig, RecyclingConfigError};

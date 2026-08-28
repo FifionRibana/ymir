@@ -26,10 +26,10 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::cache::{
-    ALGO_DRAINAGE, ALGO_TECTONICS, ALGO_UPSCALE_EROSION, CacheKey, RawCodec, cached,
-    cached_fallible,
+    ALGO_BREACH, ALGO_CLIMATE, ALGO_DRAINAGE, ALGO_HD_DRAINAGE, ALGO_TECTONICS,
+    ALGO_UPSCALE_EROSION, CacheKey, RawCodec, cached, cached_fallible,
 };
-use crate::climate::c1_climate_windowed;
+use crate::climate::{ClimateResult, c1_climate_placed, c1_climate_windowed};
 use crate::climate::precipitation::PrecipParams;
 use crate::export::raw;
 use crate::grid::GridF32;
@@ -38,12 +38,14 @@ use crate::terrain::flow::FlowResult;
 use crate::terrain::upscale::FbmUpscaleConfig;
 
 use super::closures::oceanic_bathymetry::SteinSteinParams;
+use super::drainage::C1_SEA_LEVEL_NORM;
 use super::drainage::{C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage_windowed};
 use super::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use super::kinematics::PlateKinematics;
+use super::land_topology::{IslandCriteria, LandTopology, is_island_fit, land_topology};
 use super::production_upscale::{
-    C1_DOMAIN_KM, EroProgress, c1_coarse_normalized_altitude, c1_land_centroid_normalized,
-    upscale_from_c1_with_progress,
+    C1_DOMAIN_KM, EroProgress, c1_coarse_normalized_altitude, c1_coarse_raw_altitude,
+    c1_land_centroid_normalized, c1_normalize_coarse, upscale_from_c1_with_progress,
 };
 use super::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 
@@ -173,12 +175,126 @@ pub fn c1_land_centroid(
     run: &C1TimeLoopConfig,
     closures: &C1Closures,
     ss: &SteinSteinParams,
+    target_land_fraction: Option<f32>,
 ) -> [f64; 2] {
     let mut state = init_c1_state_phase_2_r7(grid, seed, init);
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     run_with_closures(&mut state, &mut kin, run, closures, |_, _| {});
-    let coarse = c1_coarse_normalized_altitude(&state, &run.iso_config, ss);
+    let coarse = c1_coarse_normalized_altitude(&state, &run.iso_config, ss, target_land_fraction);
     c1_land_centroid_normalized(&coarse)
+}
+
+/// Coarse-field land report (M1): the window-origin centroid AND the land-topology
+/// diagnostics, from ONE coarse pass (avoids a second tectonic run). Computed on
+/// the calibrated coarse field (the same one the upscale renders), so the metrics
+/// describe the continent that will actually be exported.
+pub struct CoarseLandReport {
+    /// Normalized land centroid `[u, v]` (window-origin anchor).
+    pub centroid: [f64; 2],
+    /// Full-torus land topology (number of masses, largest, wrap flags, bbox).
+    pub topology: LandTopology,
+}
+
+/// Run the coarse C1 sim and report both the land centroid and the land topology.
+pub fn c1_coarse_land_report(
+    seed: u64,
+    grid: usize,
+    init: &Phase2InitParams,
+    run: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    ss: &SteinSteinParams,
+    target_land_fraction: Option<f32>,
+) -> CoarseLandReport {
+    let mut state = init_c1_state_phase_2_r7(grid, seed, init);
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    run_with_closures(&mut state, &mut kin, run, closures, |_, _| {});
+    let coarse = c1_coarse_normalized_altitude(&state, &run.iso_config, ss, target_land_fraction);
+    CoarseLandReport {
+        centroid: c1_land_centroid_normalized(&coarse),
+        topology: land_topology(&coarse, C1_SEA_LEVEL_NORM),
+    }
+}
+
+/// Sweep the normalized coarse field of ONE tectonic config across many target
+/// land fractions, running the (expensive) coarse tectonic pass ONCE and
+/// producing each `tlf`'s field by re-thresholding the same raw altitude (cheap).
+/// Returns `(tlf, normalized_field)` per fraction; the caller derives topology /
+/// border-clean metrics. Window/margin budgets are a POST-HOC predicate on those
+/// metrics — not swept here. Deterministic in the tectonic key.
+#[allow(clippy::too_many_arguments)]
+pub fn coarse_normalized_sweep(
+    seed: u64,
+    grid: usize,
+    init: &Phase2InitParams,
+    run: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    ss: &SteinSteinParams,
+    target_land_fractions: &[f32],
+) -> Vec<(f32, GridF32)> {
+    let mut state = init_c1_state_phase_2_r7(grid, seed, init);
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    run_with_closures(&mut state, &mut kin, run, closures, |_, _| {});
+    let raw = c1_coarse_raw_altitude(&state, &run.iso_config, ss);
+    target_land_fractions.iter().map(|&f| (f, c1_normalize_coarse(raw.clone(), Some(f)))).collect()
+}
+
+/// A tectonic configuration whose largest landmass passes [`is_island_fit`].
+#[derive(Debug, Clone, Copy)]
+pub struct IslandHit {
+    pub seed: u64,
+    pub num_plates: usize,
+    pub seed_cluster_count: usize,
+    pub topology: LandTopology,
+    pub centroid: [f64; 2],
+}
+
+/// Seed/plate search (M1 #190) — the tool that closes the geometric budget.
+/// Scans `plate_counts × cluster_counts × seeds` and returns the FIRST config
+/// whose largest landmass does not wrap the torus and fits the export window
+/// with an ocean margin (via [`is_island_fit`]). Reuses [`c1_coarse_land_report`]
+/// (coarse only — cheap vs HD erosion), so the search runs one tectonic pass per
+/// candidate. Deterministic: the scan order is exactly the input order.
+#[allow(clippy::too_many_arguments)]
+pub fn find_island_config(
+    grid: usize,
+    base_init: &Phase2InitParams,
+    run: &C1TimeLoopConfig,
+    closures: &C1Closures,
+    ss: &SteinSteinParams,
+    target_land_fraction: Option<f32>,
+    plate_counts: &[usize],
+    cluster_counts: &[usize],
+    seeds: &[u64],
+    criteria: &IslandCriteria,
+) -> Option<IslandHit> {
+    for &num_plates in plate_counts {
+        for &seed_cluster_count in cluster_counts {
+            let mut init = base_init.clone();
+            init.num_plates = num_plates;
+            init.cluster.seed_cluster_count = seed_cluster_count;
+            for &seed in seeds {
+                let report = c1_coarse_land_report(
+                    seed,
+                    grid,
+                    &init,
+                    run,
+                    closures,
+                    ss,
+                    target_land_fraction,
+                );
+                if is_island_fit(&report.topology, criteria) {
+                    return Some(IslandHit {
+                        seed,
+                        num_plates,
+                        seed_cluster_count,
+                        topology: report.topology,
+                        centroid: report.centroid,
+                    });
+                }
+            }
+        }
+    }
+    None
 }
 
 // ── Drainage (composite) cache ─────────────────────────────────────────────
@@ -205,6 +321,9 @@ impl RawCodec for C1DrainageResult {
             "rivers": self.rivers,
             "seg_km2": self.segment_drainage_km2,
             "seg_nav": self.segment_navigability,
+            "seg_q": self.segment_discharge_m3s,
+            "seg_width": self.segment_width_m,
+            "seg_profile": self.segment_profile_m,
             "lakes": self.lakes,
         })
     }
@@ -241,6 +360,19 @@ impl RawCodec for C1DrainageResult {
             .map_err(|e| format!("drainage sidecar seg_km2: {e}"))?;
         let segment_navigability = serde_json::from_value(shape["seg_nav"].clone())
             .map_err(|e| format!("drainage sidecar seg_nav: {e}"))?;
+        // seg_q / seg_width / seg_profile: default to empty on older sidecars (forward-compat).
+        let segment_discharge_m3s = shape
+            .get("seg_q")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        let segment_width_m = shape
+            .get("seg_width")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        let segment_profile_m = shape
+            .get("seg_profile")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
         let lakes = serde_json::from_value(shape["lakes"].clone())
             .map_err(|e| format!("drainage sidecar lakes: {e}"))?;
 
@@ -249,6 +381,9 @@ impl RawCodec for C1DrainageResult {
             rivers,
             segment_drainage_km2,
             segment_navigability,
+            segment_discharge_m3s,
+            segment_width_m,
+            segment_profile_m,
             lakes,
             lake_map,
             width: w,
@@ -339,9 +474,145 @@ pub fn cached_c1_drainage_windowed(
     })
 }
 
+// ── Climate cache (#190) ─────────────────────────────────────────────────────
+// The climate (temperature + precipitation) is a pure function of the eroded relief,
+// the centre latitude and the climatic span. It is recomputed on every HD run today;
+// cache it so re-selecting the SAME (latitude, span) is a HIT.
+
+impl RawCodec for ClimateResult {
+    fn shape(&self) -> Value {
+        serde_json::json!({ "width": self.temperature.width, "height": self.temperature.height })
+    }
+    fn write_raw(&self, stem: &Path) -> Result<(), String> {
+        self.temperature.save_raw(&part(stem, "temp"))?;
+        self.precipitation.save_raw(&part(stem, "precip"))?;
+        Ok(())
+    }
+    fn read_raw(stem: &Path, shape: &Value) -> Result<Self, String> {
+        let w = shape["width"].as_u64().ok_or("climate sidecar: width")? as usize;
+        let h = shape["height"].as_u64().ok_or("climate sidecar: height")? as usize;
+        Ok(ClimateResult {
+            temperature: GridF32::load_raw(&part(stem, "temp"), w, h)?,
+            precipitation: GridF32::load_raw(&part(stem, "precip"), w, h)?,
+        })
+    }
+}
+
+/// Cache key for the climate step — chained onto the eroded key (relief change → new
+/// digest) plus the centre latitude, the climatic span (`None` = geographic default),
+/// and the precip params. Any of these changing re-invalidates the climate.
+pub fn climate_key(
+    eroded: &CacheKey,
+    latitude_deg: f32,
+    span_deg: Option<f32>,
+    pp: &PrecipParams,
+    window_km: f32,
+) -> CacheKey {
+    let mut k = CacheKey::derived_from(eroded)
+        .with("climate_lat", &latitude_deg)
+        .with("climate_span", &span_deg)
+        .with("climate_precip", pp);
+    if window_km != C1_DOMAIN_KM {
+        k = k.with("climate_window_km", &window_km);
+    }
+    k.algo(ALGO_CLIMATE)
+}
+
+/// Compute-or-load the climate. `span` = `Some` uses the placed (explicit-span) path,
+/// `None` the windowed path — byte-identical to the direct calls in the HD pipeline.
+#[allow(clippy::too_many_arguments)]
+pub fn cached_c1_climate(
+    cache_dir: &Path,
+    eroded: &CacheKey,
+    heightmap: &GridF32,
+    ss: &SteinSteinParams,
+    latitude_deg: f32,
+    span_deg: Option<f32>,
+    pp: &PrecipParams,
+    window_km: f32,
+) -> Result<ClimateResult, String> {
+    let key = climate_key(eroded, latitude_deg, span_deg, pp, window_km);
+    cached(cache_dir, "climate", &key, || match span_deg {
+        Some(span) => c1_climate_placed(heightmap, ss, latitude_deg, span, pp, window_km),
+        None => c1_climate_windowed(heightmap, ss, latitude_deg, pp, window_km),
+    })
+}
+
+/// Cache key for the relief-v3 CONDITIONED eroded field (the `breach_monotone` output). Chained
+/// onto the PRE-BREACH drainage key (which itself folds the eroded key + drainage config + ss), so
+/// any change to the eroded relief OR the pre-breach lakes OR the breach code re-invalidates it.
+/// The conditioned field is a pure `GridF32` — cache it with the plain `GridF32` codec.
+pub fn conditioned_eroded_key(prebreach_key: &CacheKey) -> CacheKey {
+    CacheKey::derived_from(prebreach_key).algo(ALGO_BREACH)
+}
+
+// ── HD relief-v3 drainage bundle cache (#190) ────────────────────────────────
+// The FINAL drainage (after the below-sea water-balance merge, river clip, spillway
+// append and geographic-scale) plus the wetland mask — the climate-dependent,
+// per-run-recomputed tail of the HD pipeline. The relief-v3 path bypassed the plain
+// drainage cache (it needs the breached field + climate + carried pre-breach lakes and
+// the whole post-process), so this bundles the final product under a COMPLETE key.
+
+/// The final HD drainage + wetland mask, cached as one unit.
+pub struct HdDrainageBundle {
+    pub drainage: C1DrainageResult,
+    pub wetland: Vec<u8>,
+}
+
+impl RawCodec for HdDrainageBundle {
+    fn shape(&self) -> Value {
+        // Reuse the drainage shape (dims + structured network) verbatim; the wetland is a
+        // plain w*h u8 raster restored from those dims.
+        self.drainage.shape()
+    }
+    fn write_raw(&self, stem: &Path) -> Result<(), String> {
+        self.drainage.write_raw(stem)?;
+        raw::save_u8(&part(stem, "wetland"), &self.wetland)?;
+        Ok(())
+    }
+    fn read_raw(stem: &Path, shape: &Value) -> Result<Self, String> {
+        let drainage = C1DrainageResult::read_raw(stem, shape)?;
+        let n = drainage.width * drainage.height;
+        let wetland = raw::load_u8(&part(stem, "wetland"))?;
+        if wetland.len() != n {
+            return Err(format!("hd_drainage wetland: expected {n}, got {}", wetland.len()));
+        }
+        Ok(HdDrainageBundle { drainage, wetland })
+    }
+}
+
+/// Cache key for the HD relief-v3 drainage bundle. COMPLETE by construction — it folds
+/// every input the final drainage depends on: the eroded key (tectonics + upscale +
+/// relief), the drainage config + Stein-Stein, the centre latitude + precip params +
+/// climatic span (they set the discharge via climate), the geographic scale ratio (it
+/// scales discharge / navigability / width / area), and the window. Missing any one
+/// would be the stale-cache bug — see the key-completeness note in `cache.rs`.
+#[allow(clippy::too_many_arguments)]
+pub fn hd_drainage_key(
+    eroded: &CacheKey,
+    cfg: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    latitude_deg: f32,
+    pp: &PrecipParams,
+    span_deg: Option<f32>,
+    geo_scale_ratio: f32,
+    window_km: f32,
+) -> CacheKey {
+    CacheKey::derived_from(eroded)
+        .with("hd_dr_cfg", cfg)
+        .with("hd_dr_ss", ss)
+        .with("hd_dr_lat", &latitude_deg)
+        .with("hd_dr_precip", pp)
+        .with("hd_dr_span", &span_deg)
+        .with("hd_dr_geo_scale", &geo_scale_ratio)
+        .with("hd_dr_window_km", &window_km)
+        .algo(ALGO_HD_DRAINAGE)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::drainage::c1_drainage;
+    use super::super::land_topology::{evaluate_island, harvest_islands};
     use super::super::production_upscale::upscale_from_c1;
     use super::*;
     use crate::tectonics::isostasy::IsostasyConfig;
@@ -373,6 +644,280 @@ mod tests {
             SteinSteinParams::default(),
             FbmUpscaleConfig::c1_hd_production(128),
         )
+    }
+
+    /// Island-budget sweep with the BORDER-CLEAN predicate (M1 #190 reframe). NOT
+    /// a unit test — runs a real coarse-tectonic scan (minutes). The window is
+    /// SIZED to the largest landmass (`traverse + 2·margin`); a config is accepted
+    /// iff the largest mass does not wrap, the window cell size is in the 30–50 m
+    /// band, and NO land (of any mass) lies on the window border ring. Compactness
+    /// is reported, never selected on. Cheap: one tectonic pass per (plates,
+    /// clusters, seed), all tlf by re-thresholding. Raw rows → CSV. Run:
+    ///   cargo test -p ymir-core --lib sweep_island_budget -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn sweep_island_budget() {
+        let grid = 64usize;
+        let run = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / grid as f64,
+            dy: 1.0 / grid as f64,
+            iso_config: IsostasyConfig::c1_default(),
+            drainage_max_distance: 30,
+        };
+        let base = Phase2InitParams::default();
+        let clo = C1Closures::default();
+        let ss = SteinSteinParams::default();
+
+        // Option 3: push tlf lower to shrink the ISOLATED island under the 360 km
+        // in-band ceiling — but guard on AREA, not just traverse (a smaller tlf can
+        // give a tinier, more tentacular island: barely-reduced window for far less
+        // land). Floor at 25 000 km² (seed 8 is 31 232) and report compactness so
+        // land-vs-resolution is arbitrated on numbers. Low cc (isolation), same as
+        // Stage B; fragmentation is the CAUSE of the satellite-clip, not the cure.
+        let plate_counts = [12usize, 16, 20];
+        let cluster_counts = [1usize, 2, 3];
+        let seeds: Vec<u64> = (0..20).collect();
+        let tlfs = [0.10f32, 0.08, 0.06];
+        let margin_km = 25.0f32;
+        let ring_cells = 1usize;
+        let min_area_km2 = 25_000.0f32;
+        let km_per_cell = C1_DOMAIN_KM / grid as f32;
+
+        struct Row {
+            np: usize,
+            cc: usize,
+            seed: u64,
+            tlf: f32,
+            masses: usize,
+            area: f32,
+            frac: f32,
+            traverse: f32,
+            window_km: f32,
+            m_per_cell: f32,
+            res_ok: bool,
+            wx: bool,
+            wy: bool,
+            clean: bool,
+            sats: usize,
+            compact: f32,
+        }
+        impl Row {
+            fn accepted(&self) -> bool {
+                !self.wx && !self.wy && self.res_ok && self.clean
+            }
+        }
+
+        let mut rows: Vec<Row> = Vec::new();
+        for &np in &plate_counts {
+            for &cc in &cluster_counts {
+                let mut init = base.clone();
+                init.num_plates = np;
+                init.cluster.seed_cluster_count = cc;
+                for &seed in &seeds {
+                    for (tlf, field) in
+                        coarse_normalized_sweep(seed, grid, &init, &run, &clo, &ss, &tlfs)
+                    {
+                        let e = evaluate_island(&field, C1_SEA_LEVEL_NORM, margin_km, ring_cells);
+                        rows.push(Row {
+                            np,
+                            cc,
+                            seed,
+                            tlf,
+                            masses: e.topo.num_landmasses,
+                            area: e.topo.largest_area_km2,
+                            frac: e.topo.largest_area_frac,
+                            traverse: e.topo.bbox_km.0.max(e.topo.bbox_km.1),
+                            window_km: e.window_km,
+                            m_per_cell: e.m_per_cell,
+                            res_ok: e.resolution_ok,
+                            wx: e.topo.wraps_x,
+                            wy: e.topo.wraps_y,
+                            clean: e.border_clean,
+                            sats: e.satellites_inside,
+                            compact: e.compactness,
+                        });
+                    }
+                }
+            }
+        }
+
+        // ── Persist raw rows (CSV). ──
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
+        let _ = std::fs::create_dir_all(&dir);
+        let csv_path = dir.join("island_sweep.csv");
+        let mut csv = String::from(
+            "num_plates,seed_cluster_count,seed,tlf,num_landmasses,largest_area_km2,\
+             largest_area_frac,traverse_km,window_km,m_per_cell,resolution_ok,wraps_x,wraps_y,\
+             border_clean,satellites_inside,compactness\n",
+        );
+        for r in &rows {
+            csv.push_str(&format!(
+                "{},{},{},{:.3},{},{:.1},{:.4},{:.1},{:.1},{:.2},{},{},{},{},{},{:.3}\n",
+                r.np,
+                r.cc,
+                r.seed,
+                r.tlf,
+                r.masses,
+                r.area,
+                r.frac,
+                r.traverse,
+                r.window_km,
+                r.m_per_cell,
+                r.res_ok,
+                r.wx,
+                r.wy,
+                r.clean,
+                r.sats,
+                r.compact
+            ));
+        }
+        std::fs::write(&csv_path, csv).unwrap();
+        eprintln!(
+            "rows: {} — CSV: {}\nwindow SIZED to island (traverse + 2·{margin_km:.0} km); ring \
+             {ring_cells} cell = {:.0} km; resolution band 30-50 m/cell → window ∈ [246,400] km",
+            rows.len(),
+            csv_path.display(),
+            ring_cells as f32 * km_per_cell
+        );
+
+        // ── Distributions per target_land_fraction. ──
+        for &tlf in &tlfs {
+            let rt: Vec<&Row> = rows.iter().filter(|r| (r.tlf - tlf).abs() < 1e-6).collect();
+            let total = rt.len();
+            let wrap = rt.iter().filter(|r| r.wx || r.wy).count();
+            let nonwrap = total - wrap;
+            let clean: Vec<&&Row> = rt.iter().filter(|r| r.accepted()).collect();
+            let clean_floor = clean.iter().filter(|r| r.area >= min_area_km2).count();
+            eprintln!(
+                "--- tlf {tlf:.2}: {total} configs, {wrap} wrap, {nonwrap} non-wrap, \
+                 {} BORDER-CLEAN ({} ≥ {:.0}k km²)",
+                clean.len(),
+                clean_floor,
+                min_area_km2 / 1000.0
+            );
+            if let Some(b) = clean.iter().max_by(|a, b| a.area.partial_cmp(&b.area).unwrap()) {
+                eprintln!(
+                    "    largest clean: seed {} → area {:.0} km² ({:.0}%), window {:.0} km \
+                     ({:.1} m/cell), {} satellites, compactness {:.2}",
+                    b.seed,
+                    b.area,
+                    b.frac * 100.0,
+                    b.window_km,
+                    b.m_per_cell,
+                    b.sats,
+                    b.compact
+                );
+            }
+        }
+
+        // ── Recommendation: BORDER-CLEAN first, then LARGEST area, then finest cell. ──
+        eprintln!("=== recommendation ===");
+        // Border-clean AND in-band AND non-wrap AND area ≥ floor; then LARGEST area.
+        let best = rows.iter().filter(|r| r.accepted() && r.area >= min_area_km2).max_by(|a, b| {
+            a.area
+                .partial_cmp(&b.area)
+                .unwrap()
+                .then(b.m_per_cell.partial_cmp(&a.m_per_cell).unwrap())
+        });
+        match best {
+            Some(r) => {
+                eprintln!(
+                    "RECOMMENDED (reproduce): num_plates={} seed_cluster_count={} seed={} \
+                     target_land_fraction={:.2} window_km={:.0} margin_km={:.0} ring_cells={ring_cells}",
+                    r.np, r.cc, r.seed, r.tlf, r.window_km, margin_km
+                );
+                eprintln!(
+                    "  → largest island {:.0} km² ({:.0}%), traverse {:.0} km, {:.1} m/cell, \
+                     {} satellites inside, compactness {:.2} (reported only)",
+                    r.area,
+                    r.frac * 100.0,
+                    r.traverse,
+                    r.m_per_cell,
+                    r.sats,
+                    r.compact
+                );
+
+                // ── Step 4: multi-continent harvest on the recommended config. ──
+                let mut init = base.clone();
+                init.num_plates = r.np;
+                init.cluster.seed_cluster_count = r.cc;
+                let fields = coarse_normalized_sweep(r.seed, grid, &init, &run, &clo, &ss, &tlfs);
+                let field = &fields.iter().find(|(t, _)| (t - r.tlf).abs() < 1e-6).unwrap().1;
+                let cands = harvest_islands(field, C1_SEA_LEVEL_NORM, margin_km, ring_cells);
+                let placeable: Vec<_> = cands.iter().filter(|c| c.placeable()).collect();
+                eprintln!(
+                    "=== harvest === {} landmasses, {} independently placeable continents:",
+                    cands.len(),
+                    placeable.len()
+                );
+                for c in placeable.iter().take(12) {
+                    eprintln!(
+                        "  area {:.0} km², traverse {:.0} km, window {:.0} km ({:.1} m/cell)",
+                        c.area_km2, c.traverse_km, c.window_km, c.m_per_cell
+                    );
+                }
+            }
+            None => {
+                // Report the closest miss and WHY (resolution vs border).
+                let nonwrap: Vec<&Row> = rows.iter().filter(|r| !(r.wx || r.wy)).collect();
+                let dirty = nonwrap.iter().filter(|r| r.res_ok && !r.clean).count();
+                let too_fine = nonwrap.iter().filter(|r| r.m_per_cell < 30.0).count();
+                let too_coarse = nonwrap.iter().filter(|r| r.m_per_cell > 50.0).count();
+                let min_sats =
+                    nonwrap.iter().filter(|r| r.res_ok).map(|r| r.sats).min().unwrap_or(0);
+                eprintln!(
+                    "NO BORDER-CLEAN config. Of {} non-wrapping: {} in-band but border-dirty \
+                     (min {} satellites clip the window), {} too fine (<30 m), {} too coarse \
+                     (>50 m).",
+                    nonwrap.len(),
+                    dirty,
+                    min_sats,
+                    too_fine,
+                    too_coarse
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn find_island_config_scans_deterministically() {
+        let (init, run, clo, ss, _up) = inputs();
+        let crit =
+            IslandCriteria { window_km: 328.0, ocean_margin_km: 20.0, min_traverse_km: 50.0 };
+        let scan = || {
+            find_island_config(
+                32,
+                &init,
+                &run,
+                &clo,
+                &ss,
+                Some(0.29),
+                &[8, 12],
+                &[1, 3],
+                &[42, 7],
+                &crit,
+            )
+            .map(|h| (h.seed, h.num_plates, h.seed_cluster_count))
+        };
+        // Same inputs → same result (Some or None), and a hit must satisfy the
+        // predicate on its own reported topology.
+        assert_eq!(scan(), scan(), "the (plates × clusters × seeds) scan is deterministic");
+        if let Some(hit) = find_island_config(
+            32,
+            &init,
+            &run,
+            &clo,
+            &ss,
+            Some(0.29),
+            &[8, 12],
+            &[1, 3],
+            &[42, 7],
+            &crit,
+        ) {
+            assert!(is_island_fit(&hit.topology, &crit), "a returned hit must fit the criteria");
+        }
     }
 
     #[test]
@@ -587,5 +1132,69 @@ mod tests {
             drainage_key(&ek, &cfg, &ss, Some((45.0, &pp))).digest(),
             "climate (water balance) must be in the drainage key"
         );
+    }
+
+    /// #190 — the climate + HD-drainage-bundle caches: KEY COMPLETENESS (the load-bearing safety
+    /// property — a missing key input serves stale terrain) and codec round-trip (a HIT returns the
+    /// same payload without recomputing). The turbofish `|| panic!` on the HIT proves the cache does
+    /// NOT recompute.
+    #[test]
+    fn climate_and_hd_drainage_cache_key_and_round_trip() {
+        let dir = tmp("hd_cache");
+        let (init, run, clo, ss, up) = inputs();
+        let (seed, grid) = (42u64, 32usize);
+        let h = cached_c1_eroded(&dir, seed, grid, &init, &run, &clo, &ss, &up).unwrap();
+        let ek = eroded_key(&tectonic_key(seed, grid, &init, &run, &clo), &ss, &up);
+        let cfg = C1DrainageConfig::default();
+        let pp = PrecipParams::default();
+        let w = C1_DOMAIN_KM;
+
+        // Climate: MISS then HIT return the same grids.
+        let cm = cached_c1_climate(&dir, &ek, &h, &ss, 45.0, Some(10.0), &pp, w).unwrap();
+        let cm2 = cached_c1_climate(&dir, &ek, &h, &ss, 45.0, Some(10.0), &pp, w).unwrap();
+        assert_eq!(cm.temperature.data, cm2.temperature.data);
+        assert_eq!(cm.precipitation.data, cm2.precipitation.data);
+
+        // Climate key completeness: latitude AND span both change the digest.
+        assert_ne!(
+            climate_key(&ek, 45.0, Some(10.0), &pp, w).digest(),
+            climate_key(&ek, 25.0, Some(10.0), &pp, w).digest(),
+            "latitude must be in the climate key"
+        );
+        assert_ne!(
+            climate_key(&ek, 45.0, Some(10.0), &pp, w).digest(),
+            climate_key(&ek, 45.0, Some(40.0), &pp, w).digest(),
+            "climatic span must be in the climate key"
+        );
+
+        // HD-drainage-bundle key completeness: span AND geo-scale both change the digest.
+        assert_ne!(
+            hd_drainage_key(&ek, &cfg, &ss, 45.0, &pp, Some(10.0), 7.5, w).digest(),
+            hd_drainage_key(&ek, &cfg, &ss, 45.0, &pp, Some(40.0), 7.5, w).digest(),
+            "climatic span must be in the HD-drainage key"
+        );
+        assert_ne!(
+            hd_drainage_key(&ek, &cfg, &ss, 45.0, &pp, Some(10.0), 7.5, w).digest(),
+            hd_drainage_key(&ek, &cfg, &ss, 45.0, &pp, Some(10.0), 1.0, w).digest(),
+            "geographic scale ratio must be in the HD-drainage key"
+        );
+
+        // HD-drainage bundle codec round-trip: MISS writes (drainage rasters + wetland), HIT reads —
+        // the closure MUST NOT run on the HIT (it panics if it does).
+        let dr = cached_c1_drainage(&dir, &ek, &h, None, &cfg, &ss).unwrap();
+        let n = dr.width * dr.height;
+        let key = hd_drainage_key(&ek, &cfg, &ss, 45.0, &pp, Some(10.0), 7.5, w);
+        let miss = cached::<HdDrainageBundle>(&dir, "hd_drainage", &key, || HdDrainageBundle {
+            drainage: cached_c1_drainage(&dir, &ek, &h, None, &cfg, &ss).unwrap(),
+            wetland: vec![1u8; n],
+        })
+        .unwrap();
+        let hit = cached::<HdDrainageBundle>(&dir, "hd_drainage", &key, || {
+            panic!("HD-drainage HIT must not recompute the bundle")
+        })
+        .unwrap();
+        assert_eq!(miss.drainage.width, hit.drainage.width);
+        assert_eq!(miss.drainage.lake_map, hit.drainage.lake_map);
+        assert_eq!(hit.wetland, vec![1u8; n], "wetland mask must round-trip");
     }
 }

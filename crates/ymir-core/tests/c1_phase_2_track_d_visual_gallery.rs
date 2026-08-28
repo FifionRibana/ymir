@@ -64,12 +64,12 @@ use std::path::{Path, PathBuf};
 use image::{ImageBuffer, Rgb};
 
 use ymir_core::grid::GridF32;
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
-use ymir_core::tectonics_c1::init_r7::{init_c1_state_phase_2_r7, Phase2InitParams};
+use ymir_core::tectonics_c1::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::field::Field2D;
 
 const GRID_SIZE: usize = 64;
@@ -125,23 +125,12 @@ fn phase_2_track_d_visual_gallery() {
 
     let snapshot_steps: [usize; 4] = [49, 99, 199, 299];
     let started = std::time::Instant::now();
-    run_with_closures(
-        &mut state,
-        &mut kinematics,
-        &config,
-        &closures,
-        |step, current_state| {
-            if snapshot_steps.contains(&step) {
-                print_stats(
-                    &format!("{:03}", step + 1),
-                    current_state,
-                    &iso_config,
-                    &closures,
-                );
-                dump_snapshot(current_state, step + 1, &dir, &iso_config, &closures);
-            }
-        },
-    );
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |step, current_state| {
+        if snapshot_steps.contains(&step) {
+            print_stats(&format!("{:03}", step + 1), current_state, &iso_config, &closures);
+            dump_snapshot(current_state, step + 1, &dir, &iso_config, &closures);
+        }
+    });
     let elapsed = started.elapsed();
     let per_step_us = elapsed.as_secs_f64() * 1.0e6 / N_STEPS as f64;
 
@@ -152,18 +141,14 @@ fn phase_2_track_d_visual_gallery() {
         elapsed / N_STEPS as u32
     );
     eprintln!("  output dir     = {}", dir.display());
-    eprintln!(
-        "  files          = 10 PNGs (cycle_NNN_altitude.png + cycle_NNN_s.png × 5)"
-    );
+    eprintln!("  files          = 10 PNGs (cycle_NNN_altitude.png + cycle_NNN_s.png × 5)");
     eprintln!();
     eprintln!("  Phase 3 optimisation forward signal:");
     if per_step_us > 800.0 {
         eprintln!(
             "    ARCHITECTURAL FINDING: per-step cost {per_step_us:.1} µs exceeds Stage E4 budget 800 µs."
         );
-        eprintln!(
-            "    Source likely Track D per-step boundary recompute (~200 µs)."
-        );
+        eprintln!("    Source likely Track D per-step boundary recompute (~200 µs).");
         eprintln!(
             "    Phase 3+ optimisation: conditional skip when no Track D event fired previous step."
         );
@@ -173,7 +158,11 @@ fn phase_2_track_d_visual_gallery() {
         );
     }
     eprintln!();
-    eprintln!("  Post-run plate count = {} (was {} at init)", kinematics.velocities.len(), state.num_plates);
+    eprintln!(
+        "  Post-run plate count = {} (was {} at init)",
+        kinematics.velocities.len(),
+        state.num_plates
+    );
 }
 
 #[test]
@@ -195,21 +184,13 @@ fn phase_2_track_d_seed_diversity_gallery() {
         drainage_max_distance: 30,
     };
 
-    eprintln!(
-        "c1_phase_2_track_d Stage A seed_diversity_gallery — cycle_300 at seeds {seeds:?}"
-    );
+    eprintln!("c1_phase_2_track_d Stage A seed_diversity_gallery — cycle_300 at seeds {seeds:?}");
     eprintln!("  Per-seed final-state stats (forward signal toward §7.2 cross-track gate):");
 
     for &seed in seeds.iter() {
         let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &init_params);
         let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
-        run_with_closures(
-            &mut state,
-            &mut kinematics,
-            &config,
-            &closures,
-            |_, _| {},
-        );
+        run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
 
         let total = GRID_SIZE * GRID_SIZE;
         let mut continental = 0;
@@ -230,8 +211,7 @@ fn phase_2_track_d_seed_diversity_gallery() {
             }
             seen.len()
         };
-        let new_plates_count =
-            kinematics.velocities.len().saturating_sub(state.num_plates);
+        let new_plates_count = kinematics.velocities.len().saturating_sub(state.num_plates);
 
         eprintln!(
             "    seed = {seed:>5}  continental = {continental:>4} / {total}  plates_remaining = {plates_remaining:>3}  new_plate_ids (rift) = {new_plates_count}"
@@ -255,17 +235,10 @@ fn phase_2_track_d_seed_diversity_gallery() {
 
     eprintln!();
     eprintln!("  output dir = {}", dir.display());
-    eprintln!(
-        "  files = 6 PNGs (seed_NNNNN_altitude.png + seed_NNNNN_s.png × 3 seeds)"
-    );
+    eprintln!("  files = 6 PNGs (seed_NNNNN_altitude.png + seed_NNNNN_s.png × 3 seeds)");
 }
 
-fn print_stats(
-    tag: &str,
-    state: &C1State,
-    iso_config: &IsostasyConfig,
-    closures: &C1Closures,
-) {
+fn print_stats(tag: &str, state: &C1State, iso_config: &IsostasyConfig, closures: &C1Closures) {
     let data = state.s.data();
     let mut s_min = f64::INFINITY;
     let mut s_max = f64::NEG_INFINITY;

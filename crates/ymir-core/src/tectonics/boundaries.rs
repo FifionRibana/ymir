@@ -178,12 +178,8 @@ pub fn compute_boundary_sources(
             let my_plate = plate_ids[k];
             let my_type = plate_type_from_mean_thickness(plates[my_plate].mean_thickness);
 
-            let neighbors = [
-                (idx_x.next(i), j),
-                (idx_x.prev(i), j),
-                (i, idx_y.next(j)),
-                (i, idx_y.prev(j)),
-            ];
+            let neighbors =
+                [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))];
 
             let mut is_boundary = false;
             let mut convergence_sum = 0.0_f64;
@@ -218,10 +214,8 @@ pub fn compute_boundary_sources(
                     let vx_here = 0.5 * (grid.vx.get(i, j) + grid.vx.get(idx_x.next(i), j));
                     let vy_here = 0.5 * (grid.vy.get(i, j) + grid.vy.get(i, idx_y.next(j)));
 
-                    let vx_there =
-                        0.5 * (grid.vx.get(ni, nj) + grid.vx.get(idx_x.next(ni), nj));
-                    let vy_there =
-                        0.5 * (grid.vy.get(ni, nj) + grid.vy.get(ni, idx_y.next(nj)));
+                    let vx_there = 0.5 * (grid.vx.get(ni, nj) + grid.vx.get(idx_x.next(ni), nj));
+                    let vy_there = 0.5 * (grid.vy.get(ni, nj) + grid.vy.get(ni, idx_y.next(nj)));
 
                     // Relative velocity in normal direction
                     // Positive = diverging, Negative = converging

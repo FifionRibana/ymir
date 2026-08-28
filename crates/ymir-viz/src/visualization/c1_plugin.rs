@@ -33,7 +33,7 @@ use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy_egui::input::EguiWantsInput;
-use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
+use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics_v2::workflow::PhaseAParams;
@@ -42,12 +42,11 @@ use crate::bridge::c1::{
     C1CumulativeStats, C1RunKind, C1RunSpec, C1RunState, C1SolverBridge, HdParams, HdState,
 };
 use crate::camera::CursorWorldPos;
-use crate::visualization::c1_viz::{derive_altitude_field, field_to_rgba, C1Field};
+use crate::visualization::c1_viz::{C1Field, derive_altitude_field, field_to_rgba};
 use crate::visualization::overlay::{draw_velocity_vectors, draw_voronoi_boundaries};
 
 const C1_SPRITE_BASE_SIZE: f32 = 600.0;
 const C1_SPRITE_Z: f32 = 12.0;
-
 
 /// Which C1 pipeline the panel will submit on Run (Issue #139 Stage
 /// E3). Default `Gallery` (the Issue #137 contract). Run-locked: set
@@ -81,12 +80,7 @@ pub struct HypsometricScale {
 
 impl Default for HypsometricScale {
     fn default() -> Self {
-        Self {
-            land_scale_m: 8000.0,
-            land_gamma: 1.0,
-            ocean_scale_m: 5000.0,
-            ocean_gamma: 1.0,
-        }
+        Self { land_scale_m: 8000.0, land_gamma: 1.0, ocean_scale_m: 5000.0, ocean_gamma: 1.0 }
     }
 }
 
@@ -171,10 +165,7 @@ impl Default for C1VizState {
             // n_cycles=5 would cut mid-overshoot. PhaseAParams CORE
             // default stays 5 (shared with v2); this is the C1 viz
             // workflow default only.
-            pending_phase_a: PhaseAParams {
-                n_cycles: 12,
-                ..PhaseAParams::default()
-            },
+            pending_phase_a: PhaseAParams { n_cycles: 12, ..PhaseAParams::default() },
             show_voronoi_boundaries: false,
             show_velocity_vectors: false,
             // C1-tuned default: 0.01 × 500 = 5 cells, comfortably
@@ -220,19 +211,12 @@ fn sprite_size(nx: usize, ny: usize) -> Vec2 {
         return Vec2::splat(C1_SPRITE_BASE_SIZE);
     }
     let longer = nx.max(ny) as f32;
-    Vec2::new(
-        C1_SPRITE_BASE_SIZE * nx as f32 / longer,
-        C1_SPRITE_BASE_SIZE * ny as f32 / longer,
-    )
+    Vec2::new(C1_SPRITE_BASE_SIZE * nx as f32 / longer, C1_SPRITE_BASE_SIZE * ny as f32 / longer)
 }
 
 fn setup_c1_sprite(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let mut image = Image::new_fill(
-        Extent3d {
-            width: 1,
-            height: 1,
-            depth_or_array_layers: 1,
-        },
+        Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
         TextureDimension::D2,
         &[10, 10, 10, 255],
         TextureFormat::Rgba8UnormSrgb,
@@ -247,11 +231,7 @@ fn setup_c1_sprite(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     });
 
     commands.spawn((
-        Sprite {
-            image: handle,
-            custom_size: Some(sprite_size(1, 1)),
-            ..default()
-        },
+        Sprite { image: handle, custom_size: Some(sprite_size(1, 1)), ..default() },
         Transform::from_xyz(0.0, 0.0, C1_SPRITE_Z),
         Visibility::Inherited,
         C1VizSprite,
@@ -273,8 +253,8 @@ fn update_c1_texture(
     let nx = snapshot.nx;
     let ny = snapshot.ny;
     let field_idx = viz.field as u8;
-    let overlay_bits = (viz.show_voronoi_boundaries as u8)
-        | ((viz.show_velocity_vectors as u8) << 1);
+    let overlay_bits =
+        (viz.show_voronoi_boundaries as u8) | ((viz.show_velocity_vectors as u8) << 1);
     let sig = (nx, ny, snapshot.step, field_idx, overlay_bits);
     if viz.last_signature == Some(sig) {
         return;
@@ -290,11 +270,7 @@ fn update_c1_texture(
     // Resize Image + sprite if grid changed.
     if image.width() as usize != nx || image.height() as usize != ny {
         *image = Image::new(
-            Extent3d {
-                width: nx as u32,
-                height: ny as u32,
-                depth_or_array_layers: 1,
-            },
+            Extent3d { width: nx as u32, height: ny as u32, depth_or_array_layers: 1 },
             TextureDimension::D2,
             vec![0u8; nx * ny * 4],
             TextureFormat::Rgba8UnormSrgb,
@@ -314,15 +290,7 @@ fn update_c1_texture(
     }
     if viz.show_velocity_vectors {
         let (vx, vy) = snapshot.expand_per_cell_velocities();
-        draw_velocity_vectors(
-            &mut rgba,
-            nx,
-            ny,
-            &vx,
-            &vy,
-            &snapshot.plate_id,
-            viz.arrow_scale,
-        );
+        draw_velocity_vectors(&mut rgba, nx, ny, &vx, &vy, &snapshot.plate_id, viz.arrow_scale);
     }
 
     if let Some(data) = image.data.as_mut() {
@@ -374,32 +342,19 @@ fn update_c1_hover(
         viz.altitude_cache = Some((step, altitude));
     }
 
-    let altitude_nondim = viz
-        .altitude_cache
-        .as_ref()
-        .map(|(_, grid)| grid.get(i as i32, j as i32))
-        .unwrap_or(0.0);
+    let altitude_nondim =
+        viz.altitude_cache.as_ref().map(|(_, grid)| grid.get(i as i32, j as i32)).unwrap_or(0.0);
     let s = snapshot.s[j * nx + i];
     let age = snapshot.age[j * nx + i];
 
-    viz.hover = Some(HoverReadout {
-        i,
-        j,
-        s,
-        age,
-        altitude_nondim,
-    });
+    viz.hover = Some(HoverReadout { i, j, s, age, altitude_nondim });
 }
 
 /// Fixed corner panel rendering the hover readout (Issue #139 Stage
 /// E1, anchored bottom-right). Non-dim altitude is shown FIRST as
 /// the verification value (W3 global). Meters (Stage E3 hypsometric
 /// lens) will be added below, labelled "(after hypsometric curve)".
-fn c1_hover_panel(
-    mut contexts: EguiContexts,
-    viz: Res<C1VizState>,
-    hypso: Res<HypsometricScale>,
-) {
+fn c1_hover_panel(mut contexts: EguiContexts, viz: Res<C1VizState>, hypso: Res<HypsometricScale>) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
@@ -452,10 +407,9 @@ fn c1_control_panel(
 
     let is_running = matches!(bridge.state, C1RunState::Running { .. });
 
-    egui::Window::new("C1 Engine Controls")
-        .default_pos([20.0, 80.0])
-        .default_width(320.0)
-        .show(ctx, |ui| {
+    egui::Window::new("C1 Engine Controls").default_pos([20.0, 80.0]).default_width(320.0).show(
+        ctx,
+        |ui| {
             // Pipeline toggle (run-locked, Issue #139 Stage E3).
             ui.horizontal(|ui| {
                 ui.label("Pipeline:");
@@ -525,35 +479,26 @@ fn c1_control_panel(
                         egui::Grid::new("c1_workflow_cadence").show(ui, |ui| {
                             ui.label("n_cycles");
                             ui.add(
-                                egui::Slider::new(
-                                    &mut viz.pending_phase_a.n_cycles,
-                                    1..=20,
-                                )
-                                .text("(default 5)"),
+                                egui::Slider::new(&mut viz.pending_phase_a.n_cycles, 1..=20)
+                                    .text("(default 5)"),
                             );
                             ui.end_row();
 
                             ui.label("k_cycle");
                             ui.add(
-                                egui::Slider::new(
-                                    &mut viz.pending_phase_a.k_cycle,
-                                    1..=100,
-                                )
-                                .text("(default 20)"),
+                                egui::Slider::new(&mut viz.pending_phase_a.k_cycle, 1..=100)
+                                    .text("(default 20)"),
                             );
                             ui.end_row();
                         });
-                        let total = viz.pending_phase_a.n_cycles
-                            * viz.pending_phase_a.k_cycle;
+                        let total = viz.pending_phase_a.n_cycles * viz.pending_phase_a.k_cycle;
                         ui.weak(format!(
                             "total tectonic steps = {} × {} = {}",
-                            viz.pending_phase_a.n_cycles,
-                            viz.pending_phase_a.k_cycle,
-                            total
+                            viz.pending_phase_a.n_cycles, viz.pending_phase_a.k_cycle, total
                         ));
                         // Calibration warning — the A1-c lesson.
-                        let off_calibration = viz.pending_phase_a.k_cycle != 20
-                            || viz.pending_phase_a.n_cycles != 5;
+                        let off_calibration =
+                            viz.pending_phase_a.k_cycle != 20 || viz.pending_phase_a.n_cycles != 5;
                         if off_calibration {
                             ui.colored_label(
                                 egui::Color32::from_rgb(220, 160, 40),
@@ -590,18 +535,9 @@ fn c1_control_panel(
                     );
                     ui.separator();
                     ui.label("Track D (Issue #132):");
-                    ui.checkbox(
-                        &mut viz.pending_spec.closures.subduction.enabled,
-                        "Subduction",
-                    );
-                    ui.checkbox(
-                        &mut viz.pending_spec.closures.accretion.enabled,
-                        "Accretion",
-                    );
-                    ui.checkbox(
-                        &mut viz.pending_spec.closures.rifting.enabled,
-                        "Rifting",
-                    );
+                    ui.checkbox(&mut viz.pending_spec.closures.subduction.enabled, "Subduction");
+                    ui.checkbox(&mut viz.pending_spec.closures.accretion.enabled, "Accretion");
+                    ui.checkbox(&mut viz.pending_spec.closures.rifting.enabled, "Rifting");
                 });
                 if is_running {
                     ui.weak("(disabled during run; closures are run-locked)");
@@ -611,10 +547,7 @@ fn c1_control_panel(
             // Run controls.
             ui.separator();
             ui.horizontal(|ui| {
-                if ui
-                    .add_enabled(!is_running, egui::Button::new("▶ Run"))
-                    .clicked()
-                {
+                if ui.add_enabled(!is_running, egui::Button::new("▶ Run")).clicked() {
                     // Dispatch by pipeline (set at submit; run-locked).
                     match *active_pipeline {
                         ActivePipeline::Gallery => {
@@ -628,10 +561,7 @@ fn c1_control_panel(
                         }
                     }
                 }
-                if ui
-                    .add_enabled(is_running, egui::Button::new("■ Cancel"))
-                    .clicked()
-                {
+                if ui.add_enabled(is_running, egui::Button::new("■ Cancel")).clicked() {
                     bridge.request_cancel();
                 }
             });
@@ -694,7 +624,10 @@ fn c1_control_panel(
                     );
                 }
                 HdState::Failed { error } => {
-                    ui.colored_label(egui::Color32::from_rgb(0xE1, 0x78, 0x46), format!("HD : {error}"));
+                    ui.colored_label(
+                        egui::Color32::from_rgb(0xE1, 0x78, 0x46),
+                        format!("HD : {error}"),
+                    );
                 }
             }
 
@@ -702,28 +635,23 @@ fn c1_control_panel(
             ui.separator();
             ui.horizontal(|ui| {
                 ui.label("Field:");
-                egui::ComboBox::from_id_salt("c1_field")
-                    .selected_text(viz.field.label())
-                    .show_ui(ui, |ui| {
+                egui::ComboBox::from_id_salt("c1_field").selected_text(viz.field.label()).show_ui(
+                    ui,
+                    |ui| {
                         for &f in C1Field::ALL {
                             ui.selectable_value(&mut viz.field, f, f.label());
                         }
-                    });
+                    },
+                );
             });
             ui.weak(viz.field.legend_caption());
 
             // Overlays.
             ui.separator();
             ui.collapsing("Overlays", |ui| {
-                ui.checkbox(
-                    &mut viz.show_voronoi_boundaries,
-                    "Voronoi boundaries",
-                );
+                ui.checkbox(&mut viz.show_voronoi_boundaries, "Voronoi boundaries");
                 ui.horizontal(|ui| {
-                    let resp = ui.checkbox(
-                        &mut viz.show_velocity_vectors,
-                        "Velocity arrows",
-                    );
+                    let resp = ui.checkbox(&mut viz.show_velocity_vectors, "Velocity arrows");
                     resp.on_hover_text(
                         "Init-time per-plate velocities only. Mid-run \
                          mutations from accretion / rifting splits NOT \
@@ -753,10 +681,7 @@ fn c1_control_panel(
                     ui.end_row();
 
                     ui.label("land gamma");
-                    ui.add(
-                        egui::Slider::new(&mut hypso.land_gamma, 0.3..=3.0)
-                            .text("tunable"),
-                    );
+                    ui.add(egui::Slider::new(&mut hypso.land_gamma, 0.3..=3.0).text("tunable"));
                     ui.end_row();
 
                     ui.label("ocean scale (m)");
@@ -785,12 +710,7 @@ fn c1_control_panel(
                         ui.label("Idle. Press ▶ Run to start.");
                     }
                     C1RunState::Running {
-                        kind,
-                        step,
-                        total,
-                        latest_snapshot,
-                        cumulative,
-                        ..
+                        kind, step, total, latest_snapshot, cumulative, ..
                     } => {
                         // Workflow shows a per-cycle counter; gallery
                         // shows the flat step counter.
@@ -820,12 +740,7 @@ fn c1_control_panel(
                             );
                         }
                     }
-                    C1RunState::Completed {
-                        elapsed,
-                        final_snapshot,
-                        cumulative,
-                        ..
-                    } => {
+                    C1RunState::Completed { elapsed, final_snapshot, cumulative, .. } => {
                         ui.label(format!(
                             "Completed in {:.2?} ({} steps)",
                             elapsed,
@@ -845,7 +760,8 @@ fn c1_control_panel(
                     }
                 }
             });
-        });
+        },
+    );
 }
 
 /// Render the Track D live-stats grid. `per_step` is the current
@@ -861,40 +777,26 @@ fn render_live_stats_grid(
     cumulative: &C1CumulativeStats,
     is_completed: bool,
 ) {
-    let live_label = if is_completed {
-        "final live plates"
-    } else {
-        "live plates"
-    };
+    let live_label = if is_completed { "final live plates" } else { "live plates" };
     egui::Grid::new("c1_live_stats").show(ui, |ui| {
         ui.label(live_label);
         ui.label(format!("{live_plates} (init {init_plates})"));
         ui.end_row();
 
         // High-frequency events: cumulative + per-step.
-        let sub_per = per_step
-            .map(|s| s.subduction.cells_consumed)
-            .unwrap_or(0);
+        let sub_per = per_step.map(|s| s.subduction.cells_consumed).unwrap_or(0);
         ui.label("subduction cells");
         if per_step.is_some() {
-            ui.label(format!(
-                "{}/step ({} total)",
-                sub_per, cumulative.subduction_cells
-            ));
+            ui.label(format!("{}/step ({} total)", sub_per, cumulative.subduction_cells));
         } else {
             ui.label(format!("{} total", cumulative.subduction_cells));
         }
         ui.end_row();
 
-        let thin_per = per_step
-            .map(|s| s.rifting_thinning.cells_thinned)
-            .unwrap_or(0);
+        let thin_per = per_step.map(|s| s.rifting_thinning.cells_thinned).unwrap_or(0);
         ui.label("rifting cells thinned");
         if per_step.is_some() {
-            ui.label(format!(
-                "{}/step ({} total)",
-                thin_per, cumulative.thinning_cells
-            ));
+            ui.label(format!("{}/step ({} total)", thin_per, cumulative.thinning_cells));
         } else {
             ui.label(format!("{} total", cumulative.thinning_cells));
         }
@@ -953,15 +855,9 @@ mod tests {
         //   world.x = -150 → u = (-150 + 300)/600 = 0.25 → i = 16.
         // If the vertical term were (world.y + half)/size (the wrong
         // sign), v would be 0.75 → j = 48, failing this assert.
-        assert_eq!(
-            world_to_cell(Vec2::new(-150.0, 150.0), N, N),
-            Some((16, 16))
-        );
+        assert_eq!(world_to_cell(Vec2::new(-150.0, 150.0), N, N), Some((16, 16)));
         // Symmetric lower-right point → large i and j.
-        assert_eq!(
-            world_to_cell(Vec2::new(150.0, -150.0), N, N),
-            Some((48, 48))
-        );
+        assert_eq!(world_to_cell(Vec2::new(150.0, -150.0), N, N), Some((48, 48)));
     }
 
     #[test]
@@ -987,10 +883,7 @@ mod tests {
     #[test]
     fn hypsometric_meters_land_gamma_curves() {
         // γ = 2 compresses low elevations: alt 0.5 → 8000·0.25 = 2000.
-        let s = HypsometricScale {
-            land_gamma: 2.0,
-            ..HypsometricScale::default()
-        };
+        let s = HypsometricScale { land_gamma: 2.0, ..HypsometricScale::default() };
         assert!((hypsometric_meters(0.5, &s) - 2000.0).abs() < 1e-3);
         // Ocean side is independent of land gamma.
         assert!((hypsometric_meters(-0.5, &s) + 2500.0).abs() < 1e-3);

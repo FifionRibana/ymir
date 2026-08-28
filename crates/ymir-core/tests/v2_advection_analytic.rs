@@ -98,12 +98,7 @@ fn numerical_diffusion_reported_without_gating() {
         step_upwind(nx, ny, dx, dy, dt_exact, &idx_x, &idx_y, &s, &vx, &vy, &mut s_next);
         std::mem::swap(&mut s, &mut s_next);
     }
-    let l2 = s.data()
-        .iter()
-        .zip(s0.iter())
-        .map(|(a, b)| (a - b).powi(2))
-        .sum::<f64>()
-        .sqrt()
+    let l2 = s.data().iter().zip(s0.iter()).map(|(a, b)| (a - b).powi(2)).sum::<f64>().sqrt()
         / (nx as f64 * ny as f64).sqrt();
     eprintln!("first-order upwind L² error after one period: {:.3e}", l2);
     // Sanity bound: shouldn't be crazy (<1, given amplitude < 0.5).

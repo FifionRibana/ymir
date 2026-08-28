@@ -95,11 +95,7 @@ impl C1Snapshot {
     /// convention). For the pre-run / cycle-0 snapshot the caller
     /// passes `step = 0` (the convention is "first event has
     /// step = 0; n_steps events total after the run completes").
-    pub fn from_state(
-        step: usize,
-        state: &C1State,
-        plate_velocities: &[(f64, f64)],
-    ) -> Self {
+    pub fn from_state(step: usize, state: &C1State, plate_velocities: &[(f64, f64)]) -> Self {
         let nx = state.nx();
         let ny = state.ny();
         let n_cells = nx * ny;
@@ -163,11 +159,7 @@ impl C1Snapshot {
             // beyond the init-time `plate_velocities.len()`. New
             // plates fall back to (0, 0) — a known MVP limitation
             // (see module docstring).
-            let (vxp, vyp) = self
-                .plate_velocities
-                .get(pid as usize)
-                .copied()
-                .unwrap_or((0.0, 0.0));
+            let (vxp, vyp) = self.plate_velocities.get(pid as usize).copied().unwrap_or((0.0, 0.0));
             vx.push(vxp);
             vy.push(vyp);
         }
@@ -186,8 +178,6 @@ impl C1Snapshot {
     /// `compute_isostasy` driver reconstructs a temporary one for
     /// the per-frame altitude derivation).
     pub fn kinematics(&self) -> PlateKinematics {
-        PlateKinematics {
-            velocities: self.plate_velocities.clone(),
-        }
+        PlateKinematics { velocities: self.plate_velocities.clone() }
     }
 }

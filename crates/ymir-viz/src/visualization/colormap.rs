@@ -67,11 +67,11 @@ fn lerp_stops(stops: &[(f64, [u8; 3])], t: f64) -> [u8; 4] {
 /// Choice: D5 says "younger to older gradient, e.g. greens to browns".
 pub fn age_colormap(t: f64) -> [u8; 4] {
     const STOPS: &[(f64, [u8; 3])] = &[
-        (0.00, [40, 100, 90]),    // teal — freshly reset
-        (0.25, [120, 150, 60]),   // olive
-        (0.50, [180, 150, 70]),   // tan
-        (0.75, [180, 100, 50]),   // ochre
-        (1.00, [200, 60, 30]),    // burnt-orange — oldest
+        (0.00, [40, 100, 90]),  // teal — freshly reset
+        (0.25, [120, 150, 60]), // olive
+        (0.50, [180, 150, 70]), // tan
+        (0.75, [180, 100, 50]), // ochre
+        (1.00, [200, 60, 30]),  // burnt-orange — oldest
     ];
     lerp_stops(STOPS, t)
 }
@@ -136,11 +136,11 @@ pub fn hypsometric_bipolar(t: f32, sea_norm: f32) -> [u8; 4] {
 /// the log axis; this function does no additional scaling.
 pub fn log_hot(t: f64) -> [u8; 4] {
     const STOPS: &[(f64, [u8; 3])] = &[
-        (0.00, [10, 0, 30]),      // dark purple — quiescent
-        (0.25, [80, 10, 80]),     // violet
-        (0.50, [200, 40, 40]),    // red
-        (0.75, [240, 150, 30]),   // orange
-        (1.00, [250, 250, 200]),  // pale yellow — saturated yielding / fast flow
+        (0.00, [10, 0, 30]),     // dark purple — quiescent
+        (0.25, [80, 10, 80]),    // violet
+        (0.50, [200, 40, 40]),   // red
+        (0.75, [240, 150, 30]),  // orange
+        (1.00, [250, 250, 200]), // pale yellow — saturated yielding / fast flow
     ];
     lerp_stops(STOPS, t)
 }

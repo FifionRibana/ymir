@@ -105,6 +105,37 @@ pub struct PrecipParams {
     /// temperate belts intact (the gaussian is narrow, centred on ~28°).
     #[serde(default)]
     pub subtropical_subsidence: f32,
+
+    /// **(b) MARITIME frontal enhancement** — the physical fix for maritime landmasses
+    /// (ADR 0001 Finding 17). The bare frontal base is anchored on the GLOBAL ZONAL MEAN
+    /// (mixing wet coasts + dry continental interiors), so it under-wets an all-maritime
+    /// island. Here the frontal base is multiplied by
+    /// `1 + maritime_enhance · exp(−dist_from_sea / maritime_efold_km)`, where `dist_from_sea`
+    /// is the DOWNWIND distance over land since the last ocean cell (tracked in the streamline
+    /// scan — reuses the existing transport, no new field). Near the coast → maritime floor;
+    /// deep in a continental interior → the bare `k_frontal` floor. A PHYSICAL quantity
+    /// (proximity to the moisture source), not a per-configuration constant — so it stays
+    /// correct when a larger continent with a real dry interior is generated. `0` → off
+    /// (byte-identical: bare frontal base everywhere).
+    #[serde(default)]
+    pub maritime_enhance: f32,
+    /// Downwind e-folding length (km) of the maritime enhancement over land (moisture
+    /// depletion inland). Calibrated on the Earth coast↔interior contrast.
+    #[serde(default = "default_maritime_efold_km")]
+    pub maritime_efold_km: f32,
+    /// Physical orographic CEILING (mm/yr) on total cell precip — bounds the rare
+    /// steep-cold-coast spikes (measured max ~63 000 mm is unphysical and would pollute the
+    /// catchment-inflow means of the lake water balance). ~11 000 mm/yr ≈ Mawsynram/
+    /// Cherrapunji, the wettest places on Earth. `0` → no cap.
+    #[serde(default = "default_max_precip_mm")]
+    pub max_precip_mm: f32,
+}
+
+fn default_maritime_efold_km() -> f32 {
+    600.0
+}
+fn default_max_precip_mm() -> f32 {
+    11000.0
 }
 
 /// #165 — frontal-base multiplier from Hadley subtropical subsidence. Returns a
@@ -159,7 +190,20 @@ impl Default for PrecipParams {
         // intact (narrow gaussian on the subtropical high). 0.45 ≈ the observed
         // subtropical/mid-latitude precip ratio (subsidence removes ~half the
         // frontal base); 0.0 = off (byte-identical pre-fix).
-        Self { k_evap: 0.20, k_oro: 0.5, k_frontal: 0.0035, subtropical_subsidence: 0.45 }
+        // (b) maritime_enhance 1.7 / efold 600 km (ADR Finding 17): the coast gets ~2.7× the
+        // bare frontal floor (~450→~1200 mm at 45°, the Atlantic-façade maritime value),
+        // decaying to the bare floor ~600 km inland (continental interiors 300–600 mm). An
+        // all-maritime 400 km island stays > ~900 mm everywhere → humid temperate forest, and
+        // the below-sea coastal basins overflow. max_precip 11000 mm caps the steep-coast spikes.
+        Self {
+            k_evap: 0.20,
+            k_oro: 0.5,
+            k_frontal: 0.0035,
+            subtropical_subsidence: 0.45,
+            maritime_enhance: 1.7,
+            maritime_efold_km: 600.0,
+            max_precip_mm: 11000.0,
+        }
     }
 }
 
@@ -176,7 +220,15 @@ pub fn compute_precipitation(
     altitude_m: impl Fn(f32) -> f32,
     params: &PrecipParams,
 ) -> GridF32 {
-    compute_precipitation_with_budget(heightmap, temperature, lat_deg, km_per_cell, altitude_m, params).0
+    compute_precipitation_with_budget(
+        heightmap,
+        temperature,
+        lat_deg,
+        km_per_cell,
+        altitude_m,
+        params,
+    )
+    .0
 }
 
 /// As [`compute_precipitation`] but also returns the OROGRAPHIC moisture budget
@@ -193,26 +245,60 @@ pub fn compute_precipitation_with_budget(
     altitude_m: impl Fn(f32) -> f32,
     params: &PrecipParams,
 ) -> (GridF32, f64, f64, f64) {
+    // span 0 → every row reads the SAME belt (the centre lat): the legacy single-belt
+    // behaviour, byte-identical. The span-aware path is [`compute_precipitation_span`].
+    compute_precipitation_span(
+        heightmap,
+        temperature,
+        lat_deg,
+        0.0,
+        km_per_cell,
+        altitude_m,
+        params,
+    )
+}
+
+/// As [`compute_precipitation_with_budget`] but with an EXPLICIT latitudinal `span_deg`
+/// centred on `centre_deg` (Finding 25 — TASK 2). The wind belt AND the frontal/synoptic
+/// base are evaluated PER ROW at that row's latitude, so a wide span crosses several belts
+/// (trade-wind vs westerly rows, a subtropical desert band). `span_deg == 0` collapses to
+/// the single-belt legacy behaviour (byte-identical).
+pub fn compute_precipitation_span(
+    heightmap: &GridF32,
+    temperature: &GridF32,
+    centre_deg: f32,
+    span_deg: f32,
+    km_per_cell: f32,
+    altitude_m: impl Fn(f32) -> f32,
+    params: &PrecipParams,
+) -> (GridF32, f64, f64, f64) {
+    use super::temperature::row_latitude_span;
     let (w, h) = (heightmap.width, heightmap.height);
     let mut p = GridF32::new(w, h, 0.0);
-    let dir = wind_zonal_dir(lat_deg);
     let dx_m = (km_per_cell * 1000.0).max(1.0);
     let mut evap_in = 0.0f64;
     let mut exit_out = 0.0f64;
     let mut oro_precip_sum = 0.0f64;
-    // FRONTAL / synoptic base (per the domain's belt; ~9° span → one value).
-    // #165 — Hadley subtropical subsidence deepens the zonal minimum so the ~30°
-    // belt reads as desert (the diagnostic gap); 0.0 amplitude → unchanged.
-    let frontal_base = params.k_frontal
-        * belt_factor(lat_deg)
-        * e_sat(super::temperature::sea_level_temperature(lat_deg))
-        * subtropical_suppression(lat_deg, params.subtropical_subsidence);
-
+    let max_precip_internal = if params.max_precip_mm > 0.0 {
+        params.max_precip_mm / PRECIP_MM_PER_UNIT
+    } else {
+        f32::MAX
+    };
     for j in 0..h {
+        // Row latitude → its OWN wind belt + frontal base (a wide span crosses belts).
+        let lat_j = row_latitude_span(j, h, centre_deg, span_deg);
+        let dir = wind_zonal_dir(lat_j);
+        // FRONTAL / synoptic base at this row's belt. #165 — Hadley subtropical
+        // subsidence deepens the ~30° minimum so it reads as desert.
+        let frontal_base = params.k_frontal
+            * belt_factor(lat_j)
+            * e_sat(super::temperature::sea_level_temperature(lat_j))
+            * subtropical_suppression(lat_j, params.subtropical_subsidence);
         // Scan along the wind, upwind → downwind.
         let order: Vec<usize> = if dir > 0 { (0..w).collect() } else { (0..w).rev().collect() };
         let mut m = 0.0f32; // carried moisture flux
         let mut prev_alt = 0.0f32; // altitude of the previous (upwind) cell
+        let mut dist_from_sea_km = 0.0f32; // (b) downwind distance over land since the sea
         for &i in &order {
             let n = heightmap.get(i as i32, j as i32);
             let t = temperature.get(i as i32, j as i32);
@@ -224,12 +310,14 @@ pub fn compute_precipitation_with_budget(
                 let add = params.k_evap * (cap - m).max(0.0);
                 m += add;
                 evap_in += add as f64;
+                dist_from_sea_km = 0.0; // reset the maritime distance at the moisture source
             } else {
                 // land: orographic precip on the along-wind ASCENT (windward).
                 let ascent = ((alt - prev_alt) / dx_m).max(0.0); // m/m
                 let oro = (params.k_oro * m * ascent).min(m);
                 precip += oro;
                 m -= oro;
+                dist_from_sea_km += km_per_cell; // downwind distance over land
             }
             // capacity cap: air can't carry more than e_sat(T) → excess falls out.
             if m > cap {
@@ -238,16 +326,24 @@ pub fn compute_precipitation_with_budget(
             }
             // `precip` so far is the OROGRAPHIC (transport) component, conserved.
             oro_precip_sum += precip as f64;
-            // FRONTAL/synoptic base (separate source, additive): on land, the
-            // belt's broad frontal rain — INDEPENDENT of slope. NOT part of the
-            // conserved orographic budget. Subsumes the old convective floor:
-            // wets the temperate interior to a moderate base (not the desert
-            // floor), with orography enhancing it on windward.
-            let total = if n > SEA_LEVEL_NORM {
-                precip + frontal_base
-            } else {
-                precip
-            };
+            // FRONTAL/synoptic base (separate source, additive): the belt's broad
+            // frontal rain — INDEPENDENT of slope. NOT part of the conserved
+            // orographic budget. Subsumes the old convective floor: wets the
+            // temperate interior to a moderate base (not the desert floor), with
+            // orography enhancing it on windward.
+            // (b) maritime enhancement: frontal base rises near the sea, decays inland.
+            // ADR 0001 Finding 19 (DEFECT B): frontal rain falls on BELOW-SEA cells
+            // too (it is elevation-independent) — enclosed below-sea LAND (exposed
+            // basin margins, class-2) then reads a real land precip instead of 0,
+            // so the Whittaker rule no longer classes those humid margins as Desert.
+            // Open-ocean cells also receive it, but every consumer masks them via
+            // `water_class`, so their raster value is never read as a land biome.
+            let frontal = frontal_base
+                * (1.0
+                    + params.maritime_enhance
+                        * (-dist_from_sea_km / params.maritime_efold_km.max(1.0)).exp());
+            let mut total = precip + frontal;
+            total = total.min(max_precip_internal); // physical orographic ceiling
             if total > 0.0 {
                 p.set(i, j, total);
             }
@@ -279,7 +375,14 @@ mod tests {
             hm.set(i, 0, 0.55 + (10.0 - d) * 0.03);
         }
         let t = GridF32::new(w, 1, 10.0); // uniform mild air
-        let p = compute_precipitation(&hm, &t, 45.0, 0.5, |n| (n - 0.5) * 11300.0, &PrecipParams::default());
+        let p = compute_precipitation(
+            &hm,
+            &t,
+            45.0,
+            0.5,
+            |n| (n - 0.5) * 11300.0,
+            &PrecipParams::default(),
+        );
         // windward (west of peak, i 10..20) should out-rain leeward (i 20..30).
         let windward: f32 = (10..20).map(|i| p.get(i as i32, 0)).sum();
         let leeward: f32 = (21..30).map(|i| p.get(i as i32, 0)).sum();
@@ -299,8 +402,14 @@ mod tests {
             }
         }
         let t = GridF32::new(w, 3, 8.0);
-        let (_p, evap_in, exit_out, oro_sum) =
-            compute_precipitation_with_budget(&hm, &t, 45.0, 0.5, |n| (n - 0.5) * 11300.0, &PrecipParams::default());
+        let (_p, evap_in, exit_out, oro_sum) = compute_precipitation_with_budget(
+            &hm,
+            &t,
+            45.0,
+            0.5,
+            |n| (n - 0.5) * 11300.0,
+            &PrecipParams::default(),
+        );
         // OROGRAPHIC conservation: evap_in == orographic_precip + exit (exact).
         // (The convective baseline is a separate additive source, not in this budget.)
         let residual = (evap_in - (oro_sum + exit_out)).abs();

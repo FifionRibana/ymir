@@ -24,24 +24,22 @@
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
 use ymir_core::tectonics_c1::closures::accretion::{
-    apply_accretion_step, AccretionParams, ConvergenceTracker,
+    AccretionParams, ConvergenceTracker, apply_accretion_step,
 };
 use ymir_core::tectonics_c1::closures::rifting::{
-    apply_rifting_split, apply_rifting_thinning, DivergenceTracker, RiftingParams,
+    DivergenceTracker, RiftingParams, apply_rifting_split, apply_rifting_thinning,
 };
-use ymir_core::tectonics_c1::closures::subduction::{
-    apply_subduction_step, SubductionParams,
-};
-use ymir_core::tectonics_c1::init_r7::{init_c1_state_phase_2_r7, Phase2InitParams};
+use ymir_core::tectonics_c1::closures::subduction::{SubductionParams, apply_subduction_step};
+use ymir_core::tectonics_c1::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::cratonic::CratonicConfigEnabled;
 use ymir_core::tectonics_v2::workflow::phase_a_common::{
-    apply_post_tectonic, extract_per_plate_type, PostTectonicInput,
+    PostTectonicInput, apply_post_tectonic, extract_per_plate_type,
 };
 use ymir_core::tectonics_v2::workflow::{
-    run_phase_a_cycle_c1, PhaseACycleInputC1, WorkflowConfig, WorkflowParams,
+    PhaseACycleInputC1, WorkflowConfig, WorkflowParams, run_phase_a_cycle_c1,
 };
 
 const GRID: usize = 64;
@@ -66,18 +64,9 @@ fn phase_2_r7_init(seed: u64) -> (C1State, PlateKinematics) {
 
 fn track_d_disabled_closures() -> C1Closures {
     C1Closures {
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     }
 }
@@ -252,15 +241,8 @@ fn ninth_bit_identical_preservation_phase_2_r7() {
     // Path B — manual decomposition (run_with_closures +
     // apply_post_tectonic).
     let (mut state_b, mut kinematics_b) = phase_2_r7_init(seed);
-    run_with_closures(
-        &mut state_b,
-        &mut kinematics_b,
-        &time_loop_config,
-        &closures,
-        |_, _| {},
-    );
-    let original_per_plate_type =
-        extract_per_plate_type(&state_b.plate_id, &state_b.plate_type);
+    run_with_closures(&mut state_b, &mut kinematics_b, &time_loop_config, &closures, |_, _| {});
+    let original_per_plate_type = extract_per_plate_type(&state_b.plate_id, &state_b.plate_type);
     let cratonic_cfg_b: Option<&CratonicConfigEnabled> = None;
     let _post_b = apply_post_tectonic(PostTectonicInput {
         s_field: &mut state_b.s,
@@ -312,13 +294,7 @@ fn acceptance_phase_2_gate_seed_diversity_300_steps() {
     let mut final_states: Vec<(u64, Vec<u16>)> = Vec::new();
     for &seed in seeds.iter() {
         let (mut state, mut kinematics) = phase_2_r7_init(seed);
-        run_with_closures(
-            &mut state,
-            &mut kinematics,
-            &config,
-            &closures,
-            |_, _| {},
-        );
+        run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
         final_states.push((seed, state.plate_id.data().to_vec()));
     }
 
@@ -330,11 +306,7 @@ fn acceptance_phase_2_gate_seed_diversity_300_steps() {
         for j in (i + 1)..final_states.len() {
             let (seed_i, plate_id_i) = &final_states[i];
             let (seed_j, plate_id_j) = &final_states[j];
-            let mismatch = plate_id_i
-                .iter()
-                .zip(plate_id_j.iter())
-                .filter(|(a, b)| a != b)
-                .count();
+            let mismatch = plate_id_i.iter().zip(plate_id_j.iter()).filter(|(a, b)| a != b).count();
             let divergence = mismatch as f64 / total_cells as f64;
             divergences.push((*seed_i, *seed_j, divergence));
         }

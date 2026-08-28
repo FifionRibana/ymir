@@ -183,11 +183,14 @@ pub fn compute_dist_to_inter_plate_boundary(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+    use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
-    fn make_plates(nx: usize, ny: usize, seed: u64, num_plates: usize)
-        -> crate::tectonics_v2::voronoi::VoronoiPlates
-    {
+    fn make_plates(
+        nx: usize,
+        ny: usize,
+        seed: u64,
+        num_plates: usize,
+    ) -> crate::tectonics_v2::voronoi::VoronoiPlates {
         let cfg = VoronoiConfig { num_plates, continental_ratio: 0.3 };
         generate_voronoi(nx, ny, &cfg, seed)
     }
@@ -219,12 +222,19 @@ mod tests {
                 }
                 let idx = j * nx + i;
                 if let Some(tgt) = expected_target {
-                    assert_eq!(bfs.distance.get(i, j), 0.0,
+                    assert_eq!(
+                        bfs.distance.get(i, j),
+                        0.0,
                         "boundary cell ({},{}) expected dist 0, got {}",
-                        i, j, bfs.distance.get(i, j));
-                    assert_eq!(bfs.target_plate_id[idx], tgt,
+                        i,
+                        j,
+                        bfs.distance.get(i, j)
+                    );
+                    assert_eq!(
+                        bfs.target_plate_id[idx], tgt,
                         "boundary cell ({},{}) expected target plate {}, got {}",
-                        i, j, tgt, bfs.target_plate_id[idx]);
+                        i, j, tgt, bfs.target_plate_id[idx]
+                    );
                 }
             }
         }
@@ -286,9 +296,15 @@ mod tests {
                         if !nd.is_finite() {
                             continue;
                         }
-                        assert!((d - nd).abs() <= 1.0 + 1e-12,
+                        assert!(
+                            (d - nd).abs() <= 1.0 + 1e-12,
                             "Chebyshev neighbours ({},{}) and ({},{}) differ by {} > 1",
-                            i, j, ni, nj, (d - nd).abs());
+                            i,
+                            j,
+                            ni,
+                            nj,
+                            (d - nd).abs()
+                        );
                     }
                 }
             }

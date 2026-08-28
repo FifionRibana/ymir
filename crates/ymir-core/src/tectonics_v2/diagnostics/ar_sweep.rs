@@ -17,7 +17,7 @@
 
 use std::path::PathBuf;
 
-use super::harness::{run_baseline, BaselineConfig, BaselineResult, ForceKind, NonlinearChoice};
+use super::harness::{BaselineConfig, BaselineResult, ForceKind, NonlinearChoice, run_baseline};
 use crate::tectonics_v2::forcing::{ForceSum, GpeForce};
 use crate::tectonics_v2::presets::Preset;
 
@@ -99,16 +99,8 @@ fn summarise(ar: f64, r: &BaselineResult) -> ArSweepPoint {
     let var_initial = m.variance_series.first().copied().unwrap_or(f64::NAN);
     let var_final = m.variance_series.last().copied().unwrap_or(f64::NAN);
     let var_ratio = if var_initial > 0.0 { var_final / var_initial } else { f64::NAN };
-    let max_grad_peak = m
-        .max_grad_s_series
-        .iter()
-        .copied()
-        .fold(f64::NEG_INFINITY, f64::max);
-    let newton_pct = m
-        .newton
-        .as_ref()
-        .map(|n| n.outcome_percentages().0)
-        .unwrap_or(0.0);
+    let max_grad_peak = m.max_grad_s_series.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let newton_pct = m.newton.as_ref().map(|n| n.outcome_percentages().0).unwrap_or(0.0);
     ArSweepPoint {
         ar,
         wallclock_s: m.wallclock_total.as_secs_f64(),

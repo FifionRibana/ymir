@@ -126,20 +126,12 @@ where
     let s_lo = probe(lo);
     iterations.push(CalibrationIter { k_spread: lo, s_oceanic_mean: s_lo });
     if s_lo >= t_lo && s_lo <= t_hi {
-        return Ok(CalibrationResult {
-            k_spread: lo,
-            iterations,
-            final_s_oceanic_mean: s_lo,
-        });
+        return Ok(CalibrationResult { k_spread: lo, iterations, final_s_oceanic_mean: s_lo });
     }
     let s_hi = probe(hi);
     iterations.push(CalibrationIter { k_spread: hi, s_oceanic_mean: s_hi });
     if s_hi >= t_lo && s_hi <= t_hi {
-        return Ok(CalibrationResult {
-            k_spread: hi,
-            iterations,
-            final_s_oceanic_mean: s_hi,
-        });
+        return Ok(CalibrationResult { k_spread: hi, iterations, final_s_oceanic_mean: s_hi });
     }
     // Target-straddling requires the two endpoints to sit on
     // opposite sides of the target band. The spec's canonical case
@@ -148,26 +140,17 @@ where
     let below_lo = s_lo < t_lo && s_hi < t_lo;
     let above_hi = s_lo > t_hi && s_hi > t_hi;
     if below_lo {
-        return Err(CalibrationError::OutOfRange {
-            bound: hi,
-            s_oceanic_at_bound: s_hi,
-        });
+        return Err(CalibrationError::OutOfRange { bound: hi, s_oceanic_at_bound: s_hi });
     }
     if above_hi {
-        return Err(CalibrationError::OutOfRange {
-            bound: lo,
-            s_oceanic_at_bound: s_lo,
-        });
+        return Err(CalibrationError::OutOfRange { bound: lo, s_oceanic_at_bound: s_lo });
     }
     // We might also have the pathological ordering `s_lo > t_hi`
     // and `s_hi < t_lo` (anti-monotone). Treat it the same as
     // OutOfRange — the monotonicity assumption is violated, so the
     // bisection can't run.
     if s_lo > t_hi && s_hi < t_lo {
-        return Err(CalibrationError::OutOfRange {
-            bound: hi,
-            s_oceanic_at_bound: s_hi,
-        });
+        return Err(CalibrationError::OutOfRange { bound: hi, s_oceanic_at_bound: s_hi });
     }
 
     // Normalise so that mid-value response is compared monotonically:
@@ -216,10 +199,7 @@ where
             break;
         }
     }
-    Err(CalibrationError::MaxItersReached {
-        last_k: last_mid,
-        last_s_oceanic: last_s,
-    })
+    Err(CalibrationError::MaxItersReached { last_k: last_mid, last_s_oceanic: last_s })
 }
 
 #[cfg(test)]
@@ -258,7 +238,8 @@ mod tests {
         let result = calibrate_k_spread(&cfg, response);
         assert!(
             matches!(result, Err(CalibrationError::MaxItersReached { .. })),
-            "expected MaxItersReached, got {:?}", result,
+            "expected MaxItersReached, got {:?}",
+            result,
         );
     }
 

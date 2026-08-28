@@ -101,16 +101,10 @@ fn rectangular_simulation_smoke_test() {
 
             // Per-step invariants: every thickness cell is finite.
             for (k, &s) in snap.s_field.data().iter().enumerate() {
-                assert!(
-                    s.is_finite(),
-                    "non-finite thickness at step {step}, index {k}: {s}"
-                );
+                assert!(s.is_finite(), "non-finite thickness at step {step}, index {k}: {s}");
             }
             // Velocity is also finite.
-            assert!(
-                stats.max_velocity.is_finite(),
-                "non-finite max_velocity at step {step}"
-            );
+            assert!(stats.max_velocity.is_finite(), "non-finite max_velocity at step {step}");
             true
         },
     );

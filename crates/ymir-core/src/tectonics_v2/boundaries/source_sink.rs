@@ -22,9 +22,9 @@
 //! field carries the "where spreading happens" information, and
 //! modulation by local divergence is Step 6 work.
 
+use super::super::field::{Field2D, PeriodicIndex};
 use super::boundary_flag::{BoundaryFlag, BoundaryFlagField, BoundaryRates};
 use super::plate_type::{PlateType, PlateTypeField};
-use super::super::field::{Field2D, PeriodicIndex};
 
 /// Compute `div(v)_cell[i,j] = (vx[i+1,j]-vx[i,j])/dx + (vy[i,j+1]-vy[i,j])/dy`
 /// on the staggered MAC grid, directly from face velocities.
@@ -199,8 +199,7 @@ mod tests {
             for i in 0..nx {
                 let xc = (i as f64 + 0.5) * dx;
                 let yc = (j as f64 + 0.5) * dy;
-                let expected =
-                    2.0 * PI * (2.0 * PI * xc).cos() - 2.0 * PI * (2.0 * PI * yc).cos();
+                let expected = 2.0 * PI * (2.0 * PI * xc).cos() - 2.0 * PI * (2.0 * PI * yc).cos();
                 err += (div.get(i, j) - expected).powi(2);
                 count += 1;
             }

@@ -74,12 +74,7 @@ pub struct ContinentalClusterParams {
 
 impl Default for ContinentalClusterParams {
     fn default() -> Self {
-        Self {
-            enabled: true,
-            continental_fraction: 0.29,
-            seed_cluster_count: 1,
-            seed: 0,
-        }
+        Self { enabled: true, continental_fraction: 0.29, seed_cluster_count: 1, seed: 0 }
     }
 }
 
@@ -96,14 +91,10 @@ impl Default for ContinentalClusterParams {
 /// 8-plate typical scale.
 ///
 /// O(`nx · ny`) time, single pass over cells.
-pub fn build_plate_adjacency(
-    plate_id_field: &PlateIdField,
-    num_plates: usize,
-) -> Vec<Vec<u16>> {
+pub fn build_plate_adjacency(plate_id_field: &PlateIdField, num_plates: usize) -> Vec<Vec<u16>> {
     let nx = plate_id_field.nx();
     let ny = plate_id_field.ny();
-    let mut adjacency_sets: Vec<HashSet<u16>> =
-        (0..num_plates).map(|_| HashSet::new()).collect();
+    let mut adjacency_sets: Vec<HashSet<u16>> = (0..num_plates).map(|_| HashSet::new()).collect();
 
     let offsets: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
     let nx_i = nx as i32;
@@ -184,8 +175,7 @@ pub fn assign_continental_clusters(
     // — a non-zero seed always plants at least one continental
     // plate; a fraction `>= 1.0` clamps to all plates continental.
     let target_continental =
-        ((num_plates as f64 * params.continental_fraction).round() as usize)
-            .clamp(1, num_plates);
+        ((num_plates as f64 * params.continental_fraction).round() as usize).clamp(1, num_plates);
 
     // Step 1 — initialise all plates as Oceanic.
     for t in per_plate_type.iter_mut() {
@@ -251,9 +241,7 @@ mod tests {
 
     /// Fully-connected adjacency for `n` plates (complete graph).
     fn complete_adjacency(n: usize) -> Vec<Vec<u16>> {
-        (0..n)
-            .map(|i| (0..n).filter(|j| *j != i).map(|j| j as u16).collect())
-            .collect()
+        (0..n).map(|i| (0..n).filter(|j| *j != i).map(|j| j as u16).collect()).collect()
     }
 
     /// Ring adjacency: 0-1-2-...-(n-1)-0.
@@ -308,10 +296,8 @@ mod tests {
 
         assign_continental_clusters(&mut types, &adj, &params);
 
-        let continental_count = types
-            .iter()
-            .filter(|t| matches!(t, PlateType::Continental))
-            .count();
+        let continental_count =
+            types.iter().filter(|t| matches!(t, PlateType::Continental)).count();
         let actual_fraction = continental_count as f64 / num_plates as f64;
         let tolerance = (1.0 / num_plates as f64).max(0.05);
         let diff = (actual_fraction - params.continental_fraction).abs();
@@ -405,10 +391,7 @@ mod tests {
         assign_continental_clusters(&mut types, &adj, &params);
 
         for i in 0..8 {
-            assert_eq!(
-                types[i], initial[i],
-                "`enabled = false` must not touch plate {i}"
-            );
+            assert_eq!(types[i], initial[i], "`enabled = false` must not touch plate {i}");
         }
     }
 
@@ -432,10 +415,8 @@ mod tests {
 
         assign_continental_clusters(&mut types, &adj, &params);
 
-        let continental_count = types
-            .iter()
-            .filter(|t| matches!(t, PlateType::Continental))
-            .count();
+        let continental_count =
+            types.iter().filter(|t| matches!(t, PlateType::Continental)).count();
         // Disconnected component has 2 plates; target was 3.
         // Achievable count is 2.
         assert_eq!(

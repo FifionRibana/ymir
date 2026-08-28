@@ -13,9 +13,7 @@
 //! bit patterns across any of `num_threads ∈ {1, 2, 4, 8}`.
 
 use rayon::ThreadPoolBuilder;
-use ymir_core::tectonics_v2::stokes::parallel_reduce::{
-    par_axpy, par_dot, par_max_abs, par_norm2,
-};
+use ymir_core::tectonics_v2::stokes::parallel_reduce::{par_axpy, par_dot, par_max_abs, par_norm2};
 
 const THREAD_COUNTS: &[usize] = &[1, 2, 4, 8];
 
@@ -33,10 +31,8 @@ where
     F: FnOnce() -> R + Send,
     R: Send,
 {
-    let pool = ThreadPoolBuilder::new()
-        .num_threads(num_threads)
-        .build()
-        .expect("build local rayon pool");
+    let pool =
+        ThreadPoolBuilder::new().num_threads(num_threads).build().expect("build local rayon pool");
     pool.install(f)
 }
 
@@ -62,11 +58,7 @@ fn par_norm2_is_bit_identical_across_thread_counts() {
     let reference = run_on_pool(1, || par_norm2(&a));
     for &nt in THREAD_COUNTS {
         let got = run_on_pool(nt, || par_norm2(&a));
-        assert_eq!(
-            got.to_bits(),
-            reference.to_bits(),
-            "par_norm2 diverged at {nt} threads"
-        );
+        assert_eq!(got.to_bits(), reference.to_bits(), "par_norm2 diverged at {nt} threads");
     }
 }
 
@@ -97,11 +89,7 @@ fn par_max_abs_is_bit_identical_across_thread_counts() {
     let reference = run_on_pool(1, || par_max_abs(&a));
     for &nt in THREAD_COUNTS {
         let got = run_on_pool(nt, || par_max_abs(&a));
-        assert_eq!(
-            got.to_bits(),
-            reference.to_bits(),
-            "par_max_abs diverged at {nt} threads"
-        );
+        assert_eq!(got.to_bits(), reference.to_bits(), "par_max_abs diverged at {nt} threads");
     }
 }
 
@@ -112,16 +100,10 @@ fn par_dot_is_bit_identical_across_runs_on_same_pool() {
     // claim above; this is a minimum floor.
     let n = 10_000;
     let (a, b) = fixture(n);
-    let pool = ThreadPoolBuilder::new()
-        .num_threads(8)
-        .build()
-        .unwrap();
+    let pool = ThreadPoolBuilder::new().num_threads(8).build().unwrap();
     let r0 = pool.install(|| par_dot(&a, &b));
     for _ in 0..50 {
-        assert_eq!(
-            pool.install(|| par_dot(&a, &b)).to_bits(),
-            r0.to_bits()
-        );
+        assert_eq!(pool.install(|| par_dot(&a, &b)).to_bits(), r0.to_bits());
     }
 }
 

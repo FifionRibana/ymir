@@ -56,10 +56,6 @@ pub struct EquilibriumHeightParams {
 
 impl Default for EquilibriumHeightParams {
     fn default() -> Self {
-        Self {
-            enabled: true,
-            h_eq: 2.0,
-            k_collapse: 2.0,
-        }
+        Self { enabled: true, h_eq: 2.0, k_collapse: 2.0 }
     }
 }

@@ -34,8 +34,8 @@
 
 use rayon::prelude::*;
 
-use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use super::super::rheology::{StrainRate, ViscosityLaw};
+use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 
 /// Geometry needed by the momentum operator. Borrows nothing; η is
 /// passed as an argument to the apply/diagonal routines.
@@ -50,14 +50,7 @@ pub struct StokesGrid {
 
 impl StokesGrid {
     pub fn new(nx: usize, ny: usize, dx: f64, dy: f64) -> Self {
-        Self {
-            nx,
-            ny,
-            dx,
-            dy,
-            idx_x: PeriodicIndex::new(nx),
-            idx_y: PeriodicIndex::new(ny),
-        }
+        Self { nx, ny, dx, dy, idx_x: PeriodicIndex::new(nx), idx_y: PeriodicIndex::new(ny) }
     }
 
     #[inline]
@@ -143,11 +136,8 @@ pub fn apply_momentum(
     // cell's output depends only on read-only inputs and the cell
     // index, so execution order is irrelevant to the numeric result
     // (bit-identical across thread counts).
-    out_vx
-        .par_chunks_mut(nx)
-        .zip(out_vy.par_chunks_mut(nx))
-        .enumerate()
-        .for_each(|(j, (row_vx, row_vy))| {
+    out_vx.par_chunks_mut(nx).zip(out_vy.par_chunks_mut(nx)).enumerate().for_each(
+        |(j, (row_vx, row_vy))| {
             let jp = grid.idx_y.next(j);
             let jm = grid.idx_y.prev(j);
             for i in 0..nx {
@@ -197,7 +187,8 @@ pub fn apply_momentum(
 
                 row_vy[i] = -(d_sigma_xy_dx + d_sigma_yy_dy);
             }
-        });
+        },
+    );
 
     // ---------- Basal drag augmentation (Step 4) ----------
     //
@@ -213,11 +204,8 @@ pub fn apply_momentum(
     if let Some(drag) = drag_diag {
         debug_assert_eq!(drag.nx(), nx);
         debug_assert_eq!(drag.ny(), ny);
-        out_vx
-            .par_chunks_mut(nx)
-            .zip(out_vy.par_chunks_mut(nx))
-            .enumerate()
-            .for_each(|(j, (row_vx, row_vy))| {
+        out_vx.par_chunks_mut(nx).zip(out_vy.par_chunks_mut(nx)).enumerate().for_each(
+            |(j, (row_vx, row_vy))| {
                 let jm = grid.idx_y.prev(j);
                 for i in 0..nx {
                     let im = grid.idx_x.prev(i);
@@ -227,7 +215,8 @@ pub fn apply_momentum(
                     row_vx[i] += drag_x * vx[lin(i, j)];
                     row_vy[i] += drag_y * vy[lin(i, j)];
                 }
-            });
+            },
+        );
     }
 }
 
@@ -266,11 +255,8 @@ pub fn momentum_diagonal(
 
     // Step 8.5b: parallelise over rows — same rationale as
     // `apply_momentum` (cell-local writes, read-only inputs).
-    diag_vx
-        .par_chunks_mut(nx)
-        .zip(diag_vy.par_chunks_mut(nx))
-        .enumerate()
-        .for_each(|(j, (row_vx, row_vy))| {
+    diag_vx.par_chunks_mut(nx).zip(diag_vy.par_chunks_mut(nx)).enumerate().for_each(
+        |(j, (row_vx, row_vy))| {
             let jp = grid.idx_y.next(j);
             let jm = grid.idx_y.prev(j);
             for i in 0..nx {
@@ -291,7 +277,8 @@ pub fn momentum_diagonal(
                 row_vy[i] = (eta_c_right + eta_c_left) * inv_dx2
                     + 2.0 * (eta_top_cc + eta_bot_cc) * inv_dy2;
             }
-        });
+        },
+    );
 
     // Basal drag: augment the diagonal with `drag_face_*` (arithmetic
     // 2-point cell-to-face average of the cell-centered `drag_diag`),
@@ -300,11 +287,8 @@ pub fn momentum_diagonal(
     if let Some(drag) = drag_diag {
         debug_assert_eq!(drag.nx(), nx);
         debug_assert_eq!(drag.ny(), ny);
-        diag_vx
-            .par_chunks_mut(nx)
-            .zip(diag_vy.par_chunks_mut(nx))
-            .enumerate()
-            .for_each(|(j, (row_vx, row_vy))| {
+        diag_vx.par_chunks_mut(nx).zip(diag_vy.par_chunks_mut(nx)).enumerate().for_each(
+            |(j, (row_vx, row_vy))| {
                 let jm = grid.idx_y.prev(j);
                 for i in 0..nx {
                     let im = grid.idx_x.prev(i);
@@ -313,7 +297,8 @@ pub fn momentum_diagonal(
                     row_vx[i] += drag_x;
                     row_vy[i] += drag_y;
                 }
-            });
+            },
+        );
     }
 }
 
@@ -420,11 +405,7 @@ impl TangentContext {
                         let eps = sr.eps_ii_center.get(i, j);
                         let m = state.eta_multiplier.get(i, j);
                         let bi_eff = global_bi * state.bi_multiplier.get(i, j);
-                        eta_center.set(
-                            i,
-                            j,
-                            law.eta_effective_with_bi_override(eps, bi_eff) * m,
-                        );
+                        eta_center.set(i, j, law.eta_effective_with_bi_override(eps, bi_eff) * m);
                         c_center.set(
                             i,
                             j,
@@ -507,24 +488,21 @@ pub fn apply_tangent(
     // Average-of-products on the shear term keeps it consistent with
     // the definition of `ε̇_II_cc`.
     let mut s_cc = Field2D::new(nx, ny);
-    s_cc.data_mut()
-        .par_chunks_mut(nx)
-        .enumerate()
-        .for_each(|(j, s_row)| {
-            let jp = idx_y.next(j);
-            for i in 0..nx {
-                let ip = idx_x.next(i);
-                let pxy_avg = 0.25
-                    * (ctx.exy_corner.get(i, j) * dexy_co.get(i, j)
-                        + ctx.exy_corner.get(ip, j) * dexy_co.get(ip, j)
-                        + ctx.exy_corner.get(i, jp) * dexy_co.get(i, jp)
-                        + ctx.exy_corner.get(ip, jp) * dexy_co.get(ip, jp));
-                let contract = ctx.exx_center.get(i, j) * dexx_cc.get(i, j)
-                    + ctx.eyy_center.get(i, j) * deyy_cc.get(i, j)
-                    + 2.0 * pxy_avg;
-                s_row[i] = ctx.c_center.get(i, j) * contract;
-            }
-        });
+    s_cc.data_mut().par_chunks_mut(nx).enumerate().for_each(|(j, s_row)| {
+        let jp = idx_y.next(j);
+        for i in 0..nx {
+            let ip = idx_x.next(i);
+            let pxy_avg = 0.25
+                * (ctx.exy_corner.get(i, j) * dexy_co.get(i, j)
+                    + ctx.exy_corner.get(ip, j) * dexy_co.get(ip, j)
+                    + ctx.exy_corner.get(i, jp) * dexy_co.get(i, jp)
+                    + ctx.exy_corner.get(ip, jp) * dexy_co.get(ip, jp));
+            let contract = ctx.exx_center.get(i, j) * dexx_cc.get(i, j)
+                + ctx.eyy_center.get(i, j) * deyy_cc.get(i, j)
+                + 2.0 * pxy_avg;
+            s_row[i] = ctx.c_center.get(i, j) * contract;
+        }
+    });
 
     // --- 3. Newton-extra stress components ---
     //   σ^N_xx[cc] = S(δv) · ε̇_xx(v_k)
@@ -546,18 +524,15 @@ pub fn apply_tangent(
                 let im = idx_x.prev(i);
                 sxx_row[i] = s_cc.get(i, j) * ctx.exx_center.get(i, j);
                 syy_row[i] = s_cc.get(i, j) * ctx.eyy_center.get(i, j);
-                let s_avg = 0.25
-                    * (s_cc.get(im, jm) + s_cc.get(i, jm) + s_cc.get(im, j) + s_cc.get(i, j));
+                let s_avg =
+                    0.25 * (s_cc.get(im, jm) + s_cc.get(i, jm) + s_cc.get(im, j) + s_cc.get(i, j));
                 sxy_row[i] = s_avg * ctx.exy_corner.get(i, j);
             }
         });
 
     // --- 4. Divergence: adds to existing out (caller placed Picard there). ---
-    out_vx
-        .par_chunks_mut(nx)
-        .zip(out_vy.par_chunks_mut(nx))
-        .enumerate()
-        .for_each(|(j, (row_vx, row_vy))| {
+    out_vx.par_chunks_mut(nx).zip(out_vy.par_chunks_mut(nx)).enumerate().for_each(
+        |(j, (row_vx, row_vy))| {
             let jp = idx_y.next(j);
             let jm = idx_y.prev(j);
             for i in 0..nx {
@@ -570,7 +545,8 @@ pub fn apply_tangent(
                 let d_sigma_yy_dy = (sigma_yy_cc.get(i, j) - sigma_yy_cc.get(i, jm)) * inv_dy;
                 row_vy[i] += -(d_sigma_xy_dx + d_sigma_yy_dy);
             }
-        });
+        },
+    );
 }
 
 /// Apply the full Newton Jacobian `J δv = A_picard δv + A_tangent δv`.

@@ -42,20 +42,20 @@ use std::path::{Path, PathBuf};
 use image::{ImageBuffer, Rgb};
 
 use ymir_core::grid::GridF32;
-use ymir_core::morphology::{land_morphology, LandMorphology};
-use ymir_core::tectonics_c1::boundary_classification::{classify_boundaries, BoundaryType};
-use ymir_core::tectonics::isostasy::{compute_isostasy, compute_isostasy_craton, IsostasyConfig};
+use ymir_core::morphology::{LandMorphology, land_morphology};
+use ymir_core::seed::WorldSeed;
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy, compute_isostasy_craton};
+use ymir_core::tectonics_c1::boundary_classification::{BoundaryType, classify_boundaries};
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::SteinSteinParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
-use ymir_core::tectonics_c1::init_r7::{init_c1_state_phase_2_r7, Phase2InitParams};
+use ymir_core::tectonics_c1::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
+use ymir_core::tectonics_c1::production_upscale::{c1_production_altitude, upscale_from_c1};
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
 use ymir_core::tectonics_v2::field::Field2D;
-use ymir_core::seed::WorldSeed;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
-use ymir_core::tectonics_c1::production_upscale::{c1_production_altitude, upscale_from_c1};
-use ymir_core::tectonics_c1::closures::oceanic_bathymetry::SteinSteinParams;
 
 const GRID_SIZE: usize = 64;
 const N_STEPS: usize = 300;
@@ -108,7 +108,10 @@ fn c165_eroded(seed: u64, iso: &IsostasyConfig) -> GridF32 {
 /// tiles use, so the whole integration grid is one terrain per seed) then
 /// `cached_c1_drainage` (chained on the eroded key; cached too). Replaces the
 /// old direct `init → run → upscale → c1_drainage` rebuild — fast + coherent.
-fn c165_drainage(seed: u64, iso: &IsostasyConfig) -> ymir_core::tectonics_c1::drainage::C1DrainageResult {
+fn c165_drainage(
+    seed: u64,
+    iso: &IsostasyConfig,
+) -> ymir_core::tectonics_c1::drainage::C1DrainageResult {
     use ymir_core::climate::precipitation::PrecipParams;
     use ymir_core::tectonics_c1::cached_product::{cached_c1_drainage, eroded_key, tectonic_key};
     use ymir_core::tectonics_c1::drainage::C1DrainageConfig;
@@ -257,8 +260,7 @@ fn closure_morphology_loo_ablation() {
             let mut closures = C1Closures::default();
             (ab.mutate)(&mut closures);
 
-            let mut state =
-                init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
+            let mut state = init_c1_state_phase_2_r7(GRID_SIZE, seed, &Phase2InitParams::default());
             let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
             let config = C1TimeLoopConfig {
                 rigid_continental_crust: true,
@@ -278,17 +280,11 @@ fn closure_morphology_loo_ablation() {
             if traj {
                 dump_altitude(&state, 0, &dir, "traj42", &iso_config, &closures);
             }
-            run_with_closures(
-                &mut state,
-                &mut kinematics,
-                &config,
-                &closures,
-                |step, st| {
-                    if traj && traj_steps.contains(&step) {
-                        dump_altitude(st, step + 1, &dir, "traj42", &iso_config, &closures);
-                    }
-                },
-            );
+            run_with_closures(&mut state, &mut kinematics, &config, &closures, |step, st| {
+                if traj && traj_steps.contains(&step) {
+                    dump_altitude(st, step + 1, &dir, "traj42", &iso_config, &closures);
+                }
+            });
 
             // Final-state altitude (post-isostasy + Architecture-C S-S
             // re-apply, matching the gallery render).
@@ -357,7 +353,9 @@ fn resolution_expression_64_128_256() {
     let seed = 42u64;
     let grids: [usize; 3] = [64, 128, 256];
 
-    eprintln!("#145 follow-up — S̃→altitude expression vs resolution (seed {seed}, full rigid stack)");
+    eprintln!(
+        "#145 follow-up — S̃→altitude expression vs resolution (seed {seed}, full rigid stack)"
+    );
     eprintln!("  physical time held constant (n_steps = 300·grid/64)");
     eprintln!(
         "  {:>5} {:>7} {:>6} | {:>9} {:>9} | {:>9} {:>9} | {:>8}",
@@ -453,11 +451,21 @@ fn mesh_convergence_sweep() {
 
     eprintln!("#145 follow-up — MESH CONVERGENCE sweep (seed {seed}, full rigid stack)");
     eprintln!("  physical time constant (n_steps = 300·grid/64)");
-    eprintln!("  wedge = ANY cell S̃>{OROGEN_S} (DS/accretion thickening, incl. oceanic margin piles)");
+    eprintln!(
+        "  wedge = ANY cell S̃>{OROGEN_S} (DS/accretion thickening, incl. oceanic margin piles)"
+    );
     eprintln!(
         "  {:>5} {:>7} {:>6} {:>8} | {:>7} {:>6} {:>11} | {:>9} {:>9} | {:>8}",
-        "grid", "n_steps", "land%", "largest", "wedge%", "wedgeN", "wedge d̄coast", "S̃→64 r",
-        "alt→64 r", "time"
+        "grid",
+        "n_steps",
+        "land%",
+        "largest",
+        "wedge%",
+        "wedgeN",
+        "wedge d̄coast",
+        "S̃→64 r",
+        "alt→64 r",
+        "time"
     );
 
     // Reference 64² fields (block-averaged to 64² = identity) for the
@@ -653,7 +661,10 @@ fn boundary_ab_test_64() {
         let mut n = 0;
         for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
             let (ni, nj) = (i as i32 + di, j as i32 + dj);
-            if ni < 0 || nj < 0 || ni >= grid as i32 || nj >= grid as i32
+            if ni < 0
+                || nj < 0
+                || ni >= grid as i32
+                || nj >= grid as i32
                 || !mask[idx(ni as usize, nj as usize)]
             {
                 n += 1;
@@ -704,11 +715,21 @@ fn boundary_ab_test_64() {
     let enrichment = if base_conv_rate > 1e-9 { changed_conv_rate / base_conv_rate } else { 0.0 };
 
     eprintln!("#145 /btw test #1 — boundary origin at 64² (seed {seed}, full rigid stack)");
-    eprintln!("  convergent-adjacent coast = {coast_conv}/{coast_total} ({:.1}%)", 100.0 * base_conv_rate);
+    eprintln!(
+        "  convergent-adjacent coast = {coast_conv}/{coast_total} ({:.1}%)",
+        100.0 * base_conv_rate
+    );
     eprintln!("  (1a) coast jaggedness (ocean-neighbours/coast-cell):");
-    eprintln!("       convergent-adjacent = {rough_conv:.3}   elsewhere = {rough_else:.3}   ratio = {:.3}", if rough_else>1e-9 {rough_conv/rough_else} else {0.0});
+    eprintln!(
+        "       convergent-adjacent = {rough_conv:.3}   elsewhere = {rough_else:.3}   ratio = {:.3}",
+        if rough_else > 1e-9 { rough_conv / rough_else } else { 0.0 }
+    );
     eprintln!("  (1b) coast changes (init≠final) = {changed} cells; {changed_conv} at convergent");
-    eprintln!("       changed-conv rate = {:.1}%  vs base {:.1}%  → enrichment = {enrichment:.2}×", 100.0*changed_conv_rate, 100.0*base_conv_rate);
+    eprintln!(
+        "       changed-conv rate = {:.1}%  vs base {:.1}%  → enrichment = {enrichment:.2}×",
+        100.0 * changed_conv_rate,
+        100.0 * base_conv_rate
+    );
     eprintln!();
     eprintln!("  A (grid noise, dynamics don't imprint): jaggedness ratio ≈1 AND enrichment ≈1.");
     eprintln!("  B (tectonic edge-shaping): jaggedness higher at convergent AND enrichment >1.");
@@ -728,7 +749,10 @@ fn dilate(mask: &[bool], grid: usize, r: usize) -> Vec<bool> {
                 }
                 for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
                     let (ni, nj) = (i as i32 + di, j as i32 + dj);
-                    if ni >= 0 && nj >= 0 && ni < grid as i32 && nj < grid as i32
+                    if ni >= 0
+                        && nj >= 0
+                        && ni < grid as i32
+                        && nj < grid as i32
                         && cur[idx(ni as usize, nj as usize)]
                     {
                         next[idx(i, j)] = true;
@@ -781,8 +805,7 @@ fn contrast_counterfactual_gamma() {
         for &grid in grids.iter() {
             let n_steps = 300 * grid / 64;
             let band_cells = (BAND_PHYS_CELLS / 64.0 * grid as f64).round() as usize;
-            let mut state =
-                init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+            let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
             let kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
 
             // Continental/oceanic boundary band (static under advection-only).
@@ -807,7 +830,10 @@ fn contrast_counterfactual_gamma() {
             for _ in 0..n_steps {
                 // One real advection step (rigid no-flux), then smooth.
                 ymir_core::tectonics_c1::time_loop::run_advection_only(
-                    &mut state, &kin, &step_cfg, |_, _| {},
+                    &mut state,
+                    &kin,
+                    &step_cfg,
+                    |_, _| {},
                 );
                 if lambda > 0.0 {
                     smooth_band(&mut state.s, &band, grid, lambda);
@@ -857,11 +883,13 @@ fn upscale_from_c1_structure_converges() {
     const HALF: f32 = ALT_HALF; // fixed normalisation half-range (sea at 0.0 → 0.5)
     let cfg = FbmUpscaleConfig { target_size: 1024, ..Default::default() };
 
-    eprintln!("#147 FOLLOWUPS-#6 contract regression — upscale_from_c1 structure convergence (seed {seed})");
+    eprintln!(
+        "#147 FOLLOWUPS-#6 contract regression — upscale_from_c1 structure convergence (seed {seed})"
+    );
     eprintln!("  structure-convergence (NOT identity); coarse normalised sea=0.5, target 1024²");
 
     let mut coarse_ds: Vec<Vec<f64>> = Vec::new(); // coarse-altitude →64
-    let mut up_ds: Vec<Vec<f64>> = Vec::new();      // upscaled →64
+    let mut up_ds: Vec<Vec<f64>> = Vec::new(); // upscaled →64
     let mut up_land: Vec<f64> = Vec::new();
     let mut up_largest: Vec<f64> = Vec::new();
     let grids = [64usize, 256];
@@ -909,7 +937,10 @@ fn upscale_from_c1_structure_converges() {
         let m = land_morphology(&mask, up.heightmap.width, up.heightmap.height);
         eprintln!(
             "  grid {grid}²→{}²: upscaled land%={:.1} perim/A={:.3} n_comp={} largest={:.3}",
-            up_grid, 100.0 * m.area_fraction, m.perimeter_over_area, m.n_components,
+            up_grid,
+            100.0 * m.area_fraction,
+            m.perimeter_over_area,
+            m.n_components,
             m.largest_component_fraction
         );
         up_land.push(m.area_fraction);
@@ -1012,26 +1043,49 @@ fn coast_palette_check() {
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     let closures = C1Closures::default();
     let config = C1TimeLoopConfig {
-        rigid_continental_crust: true, n_steps: 300,
-        dx: 1.0 / 64.0, dy: 1.0 / 64.0,
-        iso_config: iso_config.clone(), drainage_max_distance: 30,
+        rigid_continental_crust: true,
+        n_steps: 300,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso_config.clone(),
+        drainage_max_distance: 30,
     };
     run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
     let band = std::env::var("FBM_BAND").ok().and_then(|s| s.parse().ok()).unwrap_or(0.20);
     let cfg = FbmUpscaleConfig {
-        target_size: 2048, coast_warp_strength: 0.8, coast_warp_frequency: 0.5,
-        coastal_amplitude_band: band, amplitude_base: 0.16, submarine_damping: 0.0,
+        target_size: 2048,
+        coast_warp_strength: 0.8,
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: band,
+        amplitude_base: 0.16,
+        submarine_damping: 0.0,
         ..Default::default()
     };
     let up = upscale_from_c1(
-        &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+        &state,
+        &iso_config,
+        &closures.oceanic_bathymetry,
+        &WorldSeed::new(seed),
+        &cfg,
     );
     // 3-way render of coastal crops: hypso (user's view) vs gray (real
     // height) vs hillshade (relief, no palette bands).
     for (cname, x0, y0) in [("a", 900usize, 1050usize), ("b", 1150, 850), ("c", 600, 1500)] {
-        save_heightmap01_crop(&up.heightmap, x0, y0, 460, &dir.join(format!("coast_{cname}_hypso.png")));
+        save_heightmap01_crop(
+            &up.heightmap,
+            x0,
+            y0,
+            460,
+            &dir.join(format!("coast_{cname}_hypso.png")),
+        );
         save_gray01_crop(&up.heightmap, x0, y0, 460, &dir.join(format!("coast_{cname}_gray.png")));
-        save_hillshade_crop(&up.heightmap, x0, y0, 460, &dir.join(format!("coast_{cname}_hill.png")));
+        save_hillshade_crop(
+            &up.heightmap,
+            x0,
+            y0,
+            460,
+            &dir.join(format!("coast_{cname}_hill.png")),
+        );
     }
     save_heightmap01(&up.heightmap, &dir.join("full_hypso.png"));
     // Band-width sweep (grayscale crop "a") — does a WIDER coastal taper
@@ -1039,24 +1093,47 @@ fn coast_palette_check() {
     for band in [0.06_f64, 0.15, 0.30] {
         let c2 = FbmUpscaleConfig { coastal_amplitude_band: band, ..cfg.clone() };
         let u2 = upscale_from_c1(
-            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &c2,
+            &state,
+            &iso_config,
+            &closures.oceanic_bathymetry,
+            &WorldSeed::new(seed),
+            &c2,
         );
-        save_gray01_crop(&u2.heightmap, 900, 1050, 460,
-            &dir.join(format!("band_{:03}_gray.png", (band * 100.0) as i32)));
+        save_gray01_crop(
+            &u2.heightmap,
+            900,
+            1050,
+            460,
+            &dir.join(format!("band_{:03}_gray.png", (band * 100.0) as i32)),
+        );
     }
     // Full continents at a few band widths (hypsometric) for the look call.
     for band in [0.06_f64, 0.20, 0.35] {
         let c2 = FbmUpscaleConfig { coastal_amplitude_band: band, ..cfg.clone() };
         let u2 = upscale_from_c1(
-            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &c2,
+            &state,
+            &iso_config,
+            &closures.oceanic_bathymetry,
+            &WorldSeed::new(seed),
+            &c2,
         );
-        save_heightmap01(&u2.heightmap, &dir.join(format!("full_band_{:03}.png", (band * 100.0) as i32)));
+        save_heightmap01(
+            &u2.heightmap,
+            &dir.join(format!("full_band_{:03}.png", (band * 100.0) as i32)),
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
 
 /// Bresenham line into an RGB image (clamped).
-fn draw_line(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>, x0: i32, y0: i32, x1: i32, y1: i32, c: [u8; 3]) {
+fn draw_line(
+    img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>,
+    x0: i32,
+    y0: i32,
+    x1: i32,
+    y1: i32,
+    c: [u8; 3],
+) {
     let (w, h) = (img.width() as i32, img.height() as i32);
     let dx = (x1 - x0).abs();
     let dy = -(y1 - y0).abs();
@@ -1065,11 +1142,21 @@ fn draw_line(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>, x0: i32, y0: i32, x1: i32,
     let (mut x, mut y) = (x0, y0);
     let mut err = dx + dy;
     loop {
-        if x >= 0 && y >= 0 && x < w && y < h { img.put_pixel(x as u32, y as u32, Rgb(c)); }
-        if x == x1 && y == y1 { break; }
+        if x >= 0 && y >= 0 && x < w && y < h {
+            img.put_pixel(x as u32, y as u32, Rgb(c));
+        }
+        if x == x1 && y == y1 {
+            break;
+        }
         let e2 = 2 * err;
-        if e2 >= dy { err += dy; x += sx; }
-        if e2 <= dx { err += dx; y += sy; }
+        if e2 >= dy {
+            err += dy;
+            x += sx;
+        }
+        if e2 <= dx {
+            err += dx;
+            y += sy;
+        }
     }
 }
 
@@ -1096,9 +1183,12 @@ fn profile_convergent_arc_seed42() {
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     let closures = C1Closures::default();
     let config = C1TimeLoopConfig {
-        rigid_continental_crust: true, n_steps: 300,
-        dx: 1.0 / grid as f64, dy: 1.0 / grid as f64,
-        iso_config: iso_config.clone(), drainage_max_distance: 30,
+        rigid_continental_crust: true,
+        n_steps: 300,
+        dx: 1.0 / grid as f64,
+        dy: 1.0 / grid as f64,
+        iso_config: iso_config.clone(),
+        drainage_max_distance: 30,
     };
     run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
 
@@ -1109,60 +1199,81 @@ fn profile_convergent_arc_seed42() {
 
     // Convergent cells adjacent to land (the orogen sites along the coast).
     let mut conv: Vec<(usize, usize)> = Vec::new();
-    for j in 0..grid { for i in 0..grid {
-        if matches!(binfo.boundary_type.get(i, j), BoundaryType::Convergent) {
-            conv.push((i, j));
+    for j in 0..grid {
+        for i in 0..grid {
+            if matches!(binfo.boundary_type.get(i, j), BoundaryType::Convergent) {
+                conv.push((i, j));
+            }
         }
-    }}
+    }
     // COAST convergences (south half): convergent cells with BOTH a
     // continental and an oceanic 4-neighbour → a real coast convergence
     // with a well-defined inward normal (excludes mid-ocean convergences,
     // which gave degenerate normal=0 cuts).
     let has_both = |ci: usize, cj: usize| {
         let (mut land, mut sea) = (false, false);
-        for (di, dj) in [(-1i32,0i32),(1,0),(0,-1),(0,1)] {
+        for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
             let (a, b) = (ci as i32 + di, cj as i32 + dj);
-            if a>=0 && b>=0 && (a as usize)<grid && (b as usize)<grid {
-                if cont(a as usize, b as usize) { land = true; } else { sea = true; }
+            if a >= 0 && b >= 0 && (a as usize) < grid && (b as usize) < grid {
+                if cont(a as usize, b as usize) {
+                    land = true;
+                } else {
+                    sea = true;
+                }
             }
         }
         land && sea
     };
-    let mut south: Vec<(usize, usize)> = conv.iter().copied()
-        .filter(|&(i, j)| j < grid / 2 && has_both(i, j)).collect();
+    let mut south: Vec<(usize, usize)> =
+        conv.iter().copied().filter(|&(i, j)| j < grid / 2 && has_both(i, j)).collect();
     south.sort_by_key(|&(i, _)| i);
-    eprintln!("seed {seed}: {} convergent cells total, {} south COAST convergences", conv.len(), south.len());
+    eprintln!(
+        "seed {seed}: {} convergent cells total, {} south COAST convergences",
+        conv.len(),
+        south.len()
+    );
     eprintln!("  south coast-convergent cells (i,j): {south:?}");
 
     // 3 cut centres spread along the south arc.
     let centres: Vec<(usize, usize)> = if south.len() >= 3 {
         [south.len() / 5, south.len() / 2, 4 * south.len() / 5].iter().map(|&k| south[k]).collect()
-    } else { south.clone() };
+    } else {
+        south.clone()
+    };
 
     // Inward normal at a cell: toward continental neighbours.
     let normal = |ci: usize, cj: usize| -> (f64, f64) {
         let (mut nx, mut ny) = (0.0, 0.0);
-        for dj in -1i32..=1 { for di in -1i32..=1 {
-            if di == 0 && dj == 0 { continue; }
-            let (a, b) = (ci as i32 + di, cj as i32 + dj);
-            if a >= 0 && b >= 0 && (a as usize) < grid && (b as usize) < grid {
-                let s = if cont(a as usize, b as usize) { 1.0 } else { -1.0 };
-                nx += s * di as f64; ny += s * dj as f64;
+        for dj in -1i32..=1 {
+            for di in -1i32..=1 {
+                if di == 0 && dj == 0 {
+                    continue;
+                }
+                let (a, b) = (ci as i32 + di, cj as i32 + dj);
+                if a >= 0 && b >= 0 && (a as usize) < grid && (b as usize) < grid {
+                    let s = if cont(a as usize, b as usize) { 1.0 } else { -1.0 };
+                    nx += s * di as f64;
+                    ny += s * dj as f64;
+                }
             }
-        }}
+        }
         let n = (nx * nx + ny * ny).sqrt().max(1e-9);
         (nx / n, ny / n)
     };
 
     for (ci, &(cx, cy)) in centres.iter().enumerate() {
         let (nx, ny) = normal(cx, cy);
-        eprintln!("  cut {ci}: centre=({cx},{cy}) inward_normal=({nx:.2},{ny:.2})  [t<0 ocean → t=0 convergence → t>0 interior]");
+        eprintln!(
+            "  cut {ci}: centre=({cx},{cy}) inward_normal=({nx:.2},{ny:.2})  [t<0 ocean → t=0 convergence → t>0 interior]"
+        );
         // Sample t = -10..=12 cells along the inward normal.
         let mut rows: Vec<(i32, f64, f64, u8, char)> = Vec::new();
         for t in -10i32..=12 {
             let i = (cx as f64 + t as f64 * nx).round();
             let j = (cy as f64 + t as f64 * ny).round();
-            if i < 0.0 || j < 0.0 || i >= grid as f64 || j >= grid as f64 { continue; }
+            if i < 0.0 || j < 0.0 || i >= grid as f64 || j >= grid as f64 {
+                continue;
+            }
             let (i, j) = (i as usize, j as usize);
             let s = state.s.get(i, j);
             let a = alt.get(i as i32, j as i32) as f64;
@@ -1172,7 +1283,8 @@ fn profile_convergent_arc_seed42() {
         }
         // CSV (plate_type: C continental [altitude = isostasy(S̃)] / O
         // oceanic [altitude = Stein-Stein bathymetry, S̃ NOT used]).
-        let mut csv = String::from("dist_cells,s_thickness,coarse_altitude,convergent,plate_type\n");
+        let mut csv =
+            String::from("dist_cells,s_thickness,coarse_altitude,convergent,plate_type\n");
         for &(t, s, a, cv, pt) in &rows {
             csv.push_str(&format!("{t},{s:.4},{a:.4},{cv},{pt}\n"));
         }
@@ -1180,14 +1292,18 @@ fn profile_convergent_arc_seed42() {
         // Console table.
         eprintln!("    dist  S̃       altitude  pt  conv");
         for &(t, s, a, cv, pt) in &rows {
-            eprintln!("    {t:>4}  {s:>6.3}  {a:>+7.3}   {pt}  {}", if cv == 1 { "<-- CONV" } else { "" });
+            eprintln!(
+                "    {t:>4}  {s:>6.3}  {a:>+7.3}   {pt}  {}",
+                if cv == 1 { "<-- CONV" } else { "" }
+            );
         }
 
         // PNG plot: S̃ (blue) + altitude (brown), each normalised to its
         // own range; gray vertical marker at t=0; gray baseline.
         let (w, h) = (640i32, 360i32);
         let (ml, mr, mt, mb) = (40i32, 20, 20, 30);
-        let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::from_pixel(w as u32, h as u32, Rgb([250, 250, 250]));
+        let mut img =
+            ImageBuffer::<Rgb<u8>, Vec<u8>>::from_pixel(w as u32, h as u32, Rgb([250, 250, 250]));
         let smin = rows.iter().map(|r| r.1).fold(f64::MAX, f64::min);
         let smax = rows.iter().map(|r| r.1).fold(f64::MIN, f64::max);
         let amin = rows.iter().map(|r| r.2).fold(f64::MAX, f64::min);
@@ -1204,10 +1320,22 @@ fn profile_convergent_arc_seed42() {
         }
         for k in 1..rows.len() {
             let (x0, x1) = (xof(k as i32 - 1), xof(k as i32));
-            draw_line(&mut img,
-                x0, yof(rows[k - 1].1, smin, smax), x1, yof(rows[k].1, smin, smax), [30, 60, 200]);
-            draw_line(&mut img,
-                x0, yof(rows[k - 1].2, amin, amax), x1, yof(rows[k].2, amin, amax), [160, 90, 30]);
+            draw_line(
+                &mut img,
+                x0,
+                yof(rows[k - 1].1, smin, smax),
+                x1,
+                yof(rows[k].1, smin, smax),
+                [30, 60, 200],
+            );
+            draw_line(
+                &mut img,
+                x0,
+                yof(rows[k - 1].2, amin, amax),
+                x1,
+                yof(rows[k].2, amin, amax),
+                [160, 90, 30],
+            );
         }
         img.save(dir.join(format!("seed{seed:05}_cut{ci}.png"))).unwrap();
         eprintln!("    S̃ range [{smin:.3},{smax:.3}]  altitude range [{amin:.3},{amax:.3}]");
@@ -1232,8 +1360,12 @@ fn export_relief_compare() {
     let ss = SteinSteinParams::default();
     let seeds: [u64; 7] = [2, 42, 99, 1337, 1988, 2026, 4138];
     let cfg = FbmUpscaleConfig {
-        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
-        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        target_size: 1024,
+        coast_warp_strength: 1.5,
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30,
+        amplitude_base: 0.16,
+        submarine_damping: 0.0,
         ..Default::default()
     };
     eprintln!("#151 relief compare — altitude(1024² prod) / raw S̃ / convergence map, per seed");
@@ -1242,9 +1374,12 @@ fn export_relief_compare() {
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300,
-            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
-            iso_config: iso_config.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
 
@@ -1255,18 +1390,22 @@ fn export_relief_compare() {
         let binfo = classify_boundaries(&state.plate_id, &kin);
         let grid = 64usize;
         let mut bimg = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
-        for j in 0..grid { for i in 0..grid {
-            let base = if matches!(state.plate_type.get(i, j), PlateType::Continental) {
-                [60, 130, 60]
-            } else { [40, 80, 160] };
-            let col = match binfo.boundary_type.get(i, j) {
-                BoundaryType::Convergent => [220, 30, 30],
-                BoundaryType::Divergent => [40, 220, 220],
-                BoundaryType::Transform => [230, 220, 40],
-                _ => base,
-            };
-            put_block(&mut bimg, i, grid - 1 - j, 8, col);
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                let base = if matches!(state.plate_type.get(i, j), PlateType::Continental) {
+                    [60, 130, 60]
+                } else {
+                    [40, 80, 160]
+                };
+                let col = match binfo.boundary_type.get(i, j) {
+                    BoundaryType::Convergent => [220, 30, 30],
+                    BoundaryType::Divergent => [40, 220, 220],
+                    BoundaryType::Transform => [230, 220, 40],
+                    _ => base,
+                };
+                put_block(&mut bimg, i, grid - 1 - j, 8, col);
+            }
+        }
         bimg.save(dir.join(format!("seed{seed:05}_boundaries.png"))).unwrap();
         eprintln!("  seed {seed} done");
     }
@@ -1293,14 +1432,21 @@ fn pin_f3_ocean_lines() {
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300,
-            dx: 1.0 / grid as f64, dy: 1.0 / grid as f64,
-            iso_config: iso_config.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / grid as f64,
+            dy: 1.0 / grid as f64,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
 
-        let mut amin = f64::INFINITY; let mut amax = f64::NEG_INFINITY;
-        for &v in state.age.data() { amin = amin.min(v); amax = amax.max(v); }
+        let mut amin = f64::INFINITY;
+        let mut amax = f64::NEG_INFINITY;
+        for &v in state.age.data() {
+            amin = amin.min(v);
+            amax = amax.max(v);
+        }
         let arange = (amax - amin).max(1e-9);
 
         // (1) Coarse production altitude (Stein-Stein), 64² scaled ×8.
@@ -1310,51 +1456,78 @@ fn pin_f3_ocean_lines() {
         // Counterfactual: 3×3 MEDIAN-filtered age → despikes the
         // pile-up cells, then Stein-Stein. Do the dark dots vanish?
         let mut age_med = state.age.clone();
-        for j in 0..grid { for i in 0..grid {
-            let mut nb: Vec<f64> = Vec::with_capacity(9);
-            for dj in -1i32..=1 { for di in -1i32..=1 {
-                let (ni, nj) = (i as i32 + di, j as i32 + dj);
-                if ni>=0 && nj>=0 && (ni as usize)<grid && (nj as usize)<grid {
-                    nb.push(state.age.get(ni as usize, nj as usize));
+        for j in 0..grid {
+            for i in 0..grid {
+                let mut nb: Vec<f64> = Vec::with_capacity(9);
+                for dj in -1i32..=1 {
+                    for di in -1i32..=1 {
+                        let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                        if ni >= 0 && nj >= 0 && (ni as usize) < grid && (nj as usize) < grid {
+                            nb.push(state.age.get(ni as usize, nj as usize));
+                        }
+                    }
                 }
-            }}
-            nb.sort_by(|a,b| a.partial_cmp(b).unwrap());
-            age_med.set(i, j, nb[nb.len()/2]);
-        }}
-        let alt_med = c1_production_altitude(&state.s, &age_med, &state.plate_type, &iso_config, &ss);
-        save_altitude_scaled(&alt_med, &dir.join(format!("f3_seed{seed:05}_altitude_median.png")), 8);
+                nb.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                age_med.set(i, j, nb[nb.len() / 2]);
+            }
+        }
+        let alt_med =
+            c1_production_altitude(&state.s, &age_med, &state.plate_type, &iso_config, &ss);
+        save_altitude_scaled(
+            &alt_med,
+            &dir.join(format!("f3_seed{seed:05}_altitude_median.png")),
+            8,
+        );
 
         // Despiked age, SAME normalisation as the before-age, to verify the
         // median kills ONLY spikes and preserves any legitimate age gradient.
         let mut aimg2 = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
-        for j in 0..grid { for i in 0..grid {
-            let g = (((age_med.get(i, j) - amin) / arange).clamp(0.0, 1.0) * 255.0) as u8;
-            put_block(&mut aimg2, i, grid - 1 - j, 8, [g, g, g]);
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                let g = (((age_med.get(i, j) - amin) / arange).clamp(0.0, 1.0) * 255.0) as u8;
+                put_block(&mut aimg2, i, grid - 1 - j, 8, [g, g, g]);
+            }
+        }
         aimg2.save(dir.join(format!("f3_seed{seed:05}_age_median.png"))).unwrap();
 
         // (2a) Age field, grayscale normalised to its range.
         let mut aimg = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
-        for j in 0..grid { for i in 0..grid {
-            let g = (((state.age.get(i, j) - amin) / arange) * 255.0) as u8;
-            put_block(&mut aimg, i, grid - 1 - j, 8, [g, g, g]);
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                let g = (((state.age.get(i, j) - amin) / arange) * 255.0) as u8;
+                put_block(&mut aimg, i, grid - 1 - j, 8, [g, g, g]);
+            }
+        }
         aimg.save(dir.join(format!("f3_seed{seed:05}_age.png"))).unwrap();
 
         // (2b) Plate boundaries (cell 4-adjacent to a different plate_id) in red over ocean.
         let idx = |i: usize, j: usize| state.plate_id.get(i, j);
         let mut bimg = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(grid as u32 * 8, grid as u32 * 8);
-        for j in 0..grid { for i in 0..grid {
-            let mut bnd = false;
-            for (di, dj) in [(-1i32,0i32),(1,0),(0,-1),(0,1)] {
-                let (ni, nj) = (i as i32 + di, j as i32 + dj);
-                if ni>=0 && nj>=0 && (ni as usize)<grid && (nj as usize)<grid
-                    && idx(ni as usize, nj as usize) != idx(i, j) { bnd = true; }
+        for j in 0..grid {
+            for i in 0..grid {
+                let mut bnd = false;
+                for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                    let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                    if ni >= 0
+                        && nj >= 0
+                        && (ni as usize) < grid
+                        && (nj as usize) < grid
+                        && idx(ni as usize, nj as usize) != idx(i, j)
+                    {
+                        bnd = true;
+                    }
+                }
+                let oceanic = matches!(state.plate_type.get(i, j), PlateType::Oceanic);
+                let col = if bnd {
+                    [255, 0, 0]
+                } else if oceanic {
+                    [40, 80, 160]
+                } else {
+                    [60, 130, 60]
+                };
+                put_block(&mut bimg, i, grid - 1 - j, 8, col);
             }
-            let oceanic = matches!(state.plate_type.get(i,j), PlateType::Oceanic);
-            let col = if bnd { [255,0,0] } else if oceanic { [40,80,160] } else { [60,130,60] };
-            put_block(&mut bimg, i, grid - 1 - j, 8, col);
-        }}
+        }
         bimg.save(dir.join(format!("f3_seed{seed:05}_bounds.png"))).unwrap();
         eprintln!("  seed {seed}: age range [{amin:.3},{amax:.3}]");
     }
@@ -1376,22 +1549,35 @@ fn export_warp_sweep() {
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300,
-            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
-            iso_config: iso_config.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         for warp in [0.8_f64, 1.2, 1.6, 2.0] {
             let cfg = FbmUpscaleConfig {
-                target_size: 2048, coast_warp_strength: warp, coast_warp_frequency: 0.5,
-                coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+                target_size: 2048,
+                coast_warp_strength: warp,
+                coast_warp_frequency: 0.5,
+                coastal_amplitude_band: 0.30,
+                amplitude_base: 0.16,
+                submarine_damping: 0.0,
                 ..Default::default()
             };
             let up = upscale_from_c1(
-                &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+                &state,
+                &iso_config,
+                &closures.oceanic_bathymetry,
+                &WorldSeed::new(seed),
+                &cfg,
             );
-            save_heightmap01(&up.heightmap,
-                &dir.join(format!("warp_seed{seed:05}_{:02}.png", (warp * 10.0) as i32)));
+            save_heightmap01(
+                &up.heightmap,
+                &dir.join(format!("warp_seed{seed:05}_{:02}.png", (warp * 10.0) as i32)),
+            );
         }
         eprintln!("  seed {seed} done");
     }
@@ -1422,13 +1608,20 @@ fn export_hd_production() {
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300,
-            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
-            iso_config: iso_config.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let up = upscale_from_c1(
-            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+            &state,
+            &iso_config,
+            &closures.oceanic_bathymetry,
+            &WorldSeed::new(seed),
+            &cfg,
         );
         save_heightmap01(&up.heightmap, &dir.join(format!("hd_seed{seed:05}.png")));
         eprintln!("  seed {seed:>5} done");
@@ -1453,32 +1646,43 @@ fn export_border_fbm_pin() {
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     let closures = C1Closures::default();
     let config = C1TimeLoopConfig {
-        rigid_continental_crust: true, n_steps: 300,
-        dx: 1.0 / 64.0, dy: 1.0 / 64.0,
-        iso_config: iso_config.clone(), drainage_max_distance: 30,
+        rigid_continental_crust: true,
+        n_steps: 300,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: iso_config.clone(),
+        drainage_max_distance: 30,
     };
     run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
     // Match the fbm2048 case the artefact was reported in (no coast warp,
     // default amplitude); vary only the slope-driven FBM terms. 1024² for
     // viewability.
     let base = FbmUpscaleConfig {
-        target_size: 1024, coast_warp_strength: 0.0, amplitude_base: 0.08,
+        target_size: 1024,
+        coast_warp_strength: 0.0,
+        amplitude_base: 0.08,
         ..Default::default()
     };
     let variants: [(&str, f64, f64); 4] = [
         // tag, max_anisotropy, amplitude_slope_factor
         ("default", 3.0, 3.0),
-        ("aniso1", 1.0, 3.0),     // isotropic → streaks gone?
-        ("slopefac0", 3.0, 0.0),  // no slope amplitude boost
-        ("both", 1.0, 0.0),       // both off
+        ("aniso1", 1.0, 3.0),    // isotropic → streaks gone?
+        ("slopefac0", 3.0, 0.0), // no slope amplitude boost
+        ("both", 1.0, 0.0),      // both off
     ];
     eprintln!("#151 border-FBM pin (seed {seed}) — aniso/slope-boost counterfactual");
     for (tag, aniso, sfac) in &variants {
         let cfg = FbmUpscaleConfig {
-            max_anisotropy: *aniso, amplitude_slope_factor: *sfac, ..base.clone()
+            max_anisotropy: *aniso,
+            amplitude_slope_factor: *sfac,
+            ..base.clone()
         };
         let up = upscale_from_c1(
-            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+            &state,
+            &iso_config,
+            &closures.oceanic_bathymetry,
+            &WorldSeed::new(seed),
+            &cfg,
         );
         save_heightmap01(&up.heightmap, &dir.join(format!("border_{tag}.png")));
         eprintln!("  {tag}: aniso={aniso} slope_factor={sfac}");
@@ -1517,20 +1721,36 @@ fn export_fbm_2048_isolate() {
     let band = std::env::var("FBM_BAND").ok().and_then(|s| s.parse().ok()).unwrap_or(0.0);
     let subdamp = std::env::var("FBM_SUBDAMP").ok().and_then(|s| s.parse().ok()).unwrap_or(0.3);
     let cfg = FbmUpscaleConfig {
-        target_size: 2048, max_anisotropy: aniso, amplitude_slope_factor: sfac,
-        amplitude_base: amp, coastal_amplitude_band: band, submarine_damping: subdamp,
+        target_size: 2048,
+        max_anisotropy: aniso,
+        amplitude_slope_factor: sfac,
+        amplitude_base: amp,
+        coastal_amplitude_band: band,
+        submarine_damping: subdamp,
         ..Default::default()
     };
     let up = upscale_from_c1(
-        &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+        &state,
+        &iso_config,
+        &closures.oceanic_bathymetry,
+        &WorldSeed::new(seed),
+        &cfg,
     );
     // Filename tag from an env var so before/after runs don't clobber.
     let tag = std::env::var("FBM_TAG").unwrap_or_else(|_| "x".into());
     save_heightmap01(&up.heightmap, &dir.join(format!("fbm2048_{tag}.png")));
     // Native-resolution crops (no downscale) so fine anisotropic streaks
     // are visible. 384² windows over the bridge/peninsula + lower interior.
-    for (cname, x0, y0) in [("bridge", 820usize, 760usize), ("lower", 520, 1180), ("lowedge", 640, 1560)] {
-        save_heightmap01_crop(&up.heightmap, x0, y0, 384, &dir.join(format!("crop_{cname}_{tag}.png")));
+    for (cname, x0, y0) in
+        [("bridge", 820usize, 760usize), ("lower", 520, 1180), ("lowedge", 640, 1560)]
+    {
+        save_heightmap01_crop(
+            &up.heightmap,
+            x0,
+            y0,
+            384,
+            &dir.join(format!("crop_{cname}_{tag}.png")),
+        );
     }
     eprintln!("  fbm2048_{tag}: {}² (+3 native crops)", up.heightmap.width);
 }
@@ -1575,7 +1795,11 @@ fn export_coast_warp_4096() {
         };
         let t0 = std::time::Instant::now();
         let up = upscale_from_c1(
-            &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+            &state,
+            &iso_config,
+            &closures.oceanic_bathymetry,
+            &WorldSeed::new(seed),
+            &cfg,
         );
         save_heightmap01(&up.heightmap, &dir.join(format!("coast4096_{tag}.png")));
         eprintln!("  [{tag:>7}] {}² in {:.2?}", up.heightmap.width, t0.elapsed());
@@ -1596,12 +1820,7 @@ fn export_coast_warp() {
     let seeds: [u64; 2] = [42, 1988];
     // Isolate the coast warp: amplitude/damping at defaults; vary only
     // coast_warp_strength (coarse cells). 0.0 = baseline (blocky).
-    let strengths: [(&str, f64); 4] = [
-        ("off", 0.0),
-        ("c05", 0.5),
-        ("c08", 0.8),
-        ("c12", 1.2),
-    ];
+    let strengths: [(&str, f64); 4] = [("off", 0.0), ("c05", 0.5), ("c08", 0.8), ("c12", 1.2)];
     eprintln!("#151 coastline warp — seeds {seeds:?}, coast_warp_strength sweep (coarse cells)");
     for &seed in &seeds {
         let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
@@ -1623,7 +1842,11 @@ fn export_coast_warp() {
                 ..Default::default()
             };
             let up = upscale_from_c1(
-                &state, &iso_config, &closures.oceanic_bathymetry, &WorldSeed::new(seed), &cfg,
+                &state,
+                &iso_config,
+                &closures.oceanic_bathymetry,
+                &WorldSeed::new(seed),
+                &cfg,
             );
             save_heightmap01(&up.heightmap, &dir.join(format!("coast_seed{seed:05}_{tag}.png")));
         }
@@ -1701,10 +1924,7 @@ fn export_hd_upscaled() {
                 cfg,
             );
             let dt = t0.elapsed();
-            save_heightmap01(
-                &up.heightmap,
-                &dir.join(format!("hd_seed{seed:05}_{tag}_1024.png")),
-            );
+            save_heightmap01(&up.heightmap, &dir.join(format!("hd_seed{seed:05}_{tag}_1024.png")));
             eprintln!("  seed {seed:>5} [{tag:>7}]: {}² HD in {:.2?}", up.heightmap.width, dt);
         }
     }
@@ -1767,7 +1987,10 @@ fn advection_only_visual_64_256() {
             drainage_max_distance: 30,
         };
         ymir_core::tectonics_c1::time_loop::run_advection_only(
-            &mut state, &kin, &config, |_, _| {},
+            &mut state,
+            &kin,
+            &config,
+            |_, _| {},
         );
         let scale = (512 / grid).max(1) as u32;
         save_s_scaled(&state.s, &dir.join(format!("advonly_grid{grid:04}_s.png")), scale);
@@ -1821,7 +2044,9 @@ fn init_convergence_check() {
         eprintln!("  {:>4}² | {ra:>9.4} {rc:>9.4} {ro:>9.4}", grid);
     }
     eprintln!();
-    eprintln!("  init all r ~0.045 ⇒ NON-CONVERGENCE IS THE INIT (grid-dependent R7), not advection.");
+    eprintln!(
+        "  init all r ~0.045 ⇒ NON-CONVERGENCE IS THE INIT (grid-dependent R7), not advection."
+    );
 }
 
 /// Render S̃ with a stretched low range (`[0, 0.6]` → full ramp) so
@@ -1850,7 +2075,10 @@ fn boundary_band(cont: &[bool], grid: usize, r: usize) -> Vec<bool> {
             let c = cont[idx(i, j)];
             for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
                 let (ni, nj) = (i as i32 + di, j as i32 + dj);
-                if ni >= 0 && nj >= 0 && ni < grid as i32 && nj < grid as i32
+                if ni >= 0
+                    && nj >= 0
+                    && ni < grid as i32
+                    && nj < grid as i32
                     && cont[idx(ni as usize, nj as usize)] != c
                 {
                     seed[idx(i, j)] = true;
@@ -1940,10 +2168,7 @@ fn mesh_convergence_attribution() {
 
     eprintln!("#147 — counterfactual ATTRIBUTION sweep (seed {seed}, rigid, post-Fix-#1)");
     eprintln!("  isolate accretion pile (B) vs curtain (C) in the residual non-convergence");
-    eprintln!(
-        "  {:<18} {:>5} | {:>8} {:>9}",
-        "variant", "grid", "wedge%", "S̃→64 r"
-    );
+    eprintln!("  {:<18} {:>5} | {:>8} {:>9}", "variant", "grid", "wedge%", "S̃→64 r");
 
     for v in &variants {
         let mut ref64: Vec<f64> = Vec::new();
@@ -1951,8 +2176,7 @@ fn mesh_convergence_attribution() {
             let mut closures = C1Closures::default();
             (v.mutate)(&mut closures);
             let n_steps = 300 * grid / 64;
-            let mut state =
-                init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+            let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
             let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
             let config = C1TimeLoopConfig {
                 rigid_continental_crust: true,
@@ -2010,7 +2234,10 @@ fn dist_to_coast(cont: &[bool], grid: usize) -> Vec<usize> {
             let mut coast = i == 0 || j == 0 || i == grid - 1 || j == grid - 1;
             for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
                 let (ni, nj) = (i as i32 + di, j as i32 + dj);
-                if ni >= 0 && nj >= 0 && ni < grid as i32 && nj < grid as i32
+                if ni >= 0
+                    && nj >= 0
+                    && ni < grid as i32
+                    && nj < grid as i32
                     && !cont[idx(ni as usize, nj as usize)]
                 {
                     coast = true;
@@ -2126,7 +2353,13 @@ fn save_s(s: &Field2D, path: &Path) {
     save_s_scaled(s, path, SCALE);
 }
 
-fn put_block(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>, i: usize, row: usize, scale: u32, rgb: [u8; 3]) {
+fn put_block(
+    img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>,
+    i: usize,
+    row: usize,
+    scale: u32,
+    rgb: [u8; 3],
+) {
     for dy in 0..scale {
         for dx in 0..scale {
             img.put_pixel(i as u32 * scale + dx, row as u32 * scale + dy, Rgb(rgb));
@@ -2199,8 +2432,12 @@ fn measure_ridge_hd_amplitude() {
     let iso_config = IsostasyConfig::c1_default();
     let ss = SteinSteinParams::default();
     let cfg = FbmUpscaleConfig {
-        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
-        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        target_size: 1024,
+        coast_warp_strength: 1.5,
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30,
+        amplitude_base: 0.16,
+        submarine_damping: 0.0,
         ..Default::default()
     };
     eprintln!("#155 (a) ridge HD amplitude — hillshade of upscale_from_c1 (1024²)");
@@ -2209,15 +2446,24 @@ fn measure_ridge_hd_amplitude() {
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300,
-            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
-            iso_config: iso_config.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let up = upscale_from_c1(&state, &iso_config, &ss, &WorldSeed::new(seed), &cfg);
         let h = &up.heightmap;
         // Full-frame hillshade (palette-free relief).
-        save_hillshade_crop(h, 0, 0, h.width, &dir.join(format!("seed{seed:05}_hillshade_full.png")));
+        save_hillshade_crop(
+            h,
+            0,
+            0,
+            h.width,
+            &dir.join(format!("seed{seed:05}_hillshade_full.png")),
+        );
         // Also grayscale full (continuous height, no palette bands).
         save_gray01_crop(h, 0, 0, h.width, &dir.join(format!("seed{seed:05}_gray_full.png")));
         eprintln!("  seed {seed}: HD {}² hillshade + gray written", h.width);
@@ -2250,9 +2496,12 @@ fn measure_oc_vs_passive_margin() {
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300,
-            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
-            iso_config: iso_config.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
 
@@ -2260,23 +2509,30 @@ fn measure_oc_vs_passive_margin() {
         let mut bi = classify_boundaries(&state.plate_id, &kin);
         retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(
-            &state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0,
-        );
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
         let alt = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
 
-        let is_cont = |i: usize, j: usize| matches!(state.plate_type.get(i, j), PlateType::Continental);
+        let is_cont =
+            |i: usize, j: usize| matches!(state.plate_type.get(i, j), PlateType::Continental);
         // Manhattan dist-to-ocean over continental cells (multi-source BFS).
         let mut d_ocean = vec![usize::MAX; grid * grid];
         let mut q = std::collections::VecDeque::new();
-        for j in 0..grid { for i in 0..grid {
-            if !is_cont(i, j) { d_ocean[j * grid + i] = 0; q.push_back((i, j)); }
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                if !is_cont(i, j) {
+                    d_ocean[j * grid + i] = 0;
+                    q.push_back((i, j));
+                }
+            }
+        }
         while let Some((i, j)) = q.pop_front() {
             let dc = d_ocean[j * grid + i];
             for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
                 let (ni, nj) = (i as i32 + di, j as i32 + dj);
-                if ni < 0 || nj < 0 || ni as usize >= grid || nj as usize >= grid { continue; }
+                if ni < 0 || nj < 0 || ni as usize >= grid || nj as usize >= grid {
+                    continue;
+                }
                 let (ni, nj) = (ni as usize, nj as usize);
                 if d_ocean[nj * grid + ni] > dc + 1 {
                     d_ocean[nj * grid + ni] = dc + 1;
@@ -2297,17 +2553,25 @@ fn measure_oc_vs_passive_margin() {
         let norm = |a: f64| ((a + half) / (2.0 * half)).clamp(0.0, 1.0);
         let (mut oc_sum, mut oc_n) = (0.0f64, 0usize);
         let (mut pa_sum, mut pa_n) = (0.0f64, 0usize);
-        for j in 0..grid { for i in 0..grid {
-            if !is_cont(i, j) { continue; }
-            let a = norm(alt.get(i as i32, j as i32) as f64);
-            let dw = wd.get(i, j);
-            if is_oc.get(i, j) && dw >= 1.0 && dw <= 6.0 {
-                oc_sum += a; oc_n += 1;
-            } else if !is_oc.get(i, j) {
-                let do_ = d_ocean[j * grid + i];
-                if do_ >= 1 && do_ <= 6 { pa_sum += a; pa_n += 1; }
+        for j in 0..grid {
+            for i in 0..grid {
+                if !is_cont(i, j) {
+                    continue;
+                }
+                let a = norm(alt.get(i as i32, j as i32) as f64);
+                let dw = wd.get(i, j);
+                if is_oc.get(i, j) && dw >= 1.0 && dw <= 6.0 {
+                    oc_sum += a;
+                    oc_n += 1;
+                } else if !is_oc.get(i, j) {
+                    let do_ = d_ocean[j * grid + i];
+                    if do_ >= 1 && do_ <= 6 {
+                        pa_sum += a;
+                        pa_n += 1;
+                    }
+                }
             }
-        }}
+        }
         let oc_mean = oc_sum / oc_n.max(1) as f64;
         let pa_mean = pa_sum / pa_n.max(1) as f64;
         eprintln!(
@@ -2329,67 +2593,94 @@ fn measure_oc_vs_passive_margin() {
 #[test]
 #[ignore]
 fn measure_aerosion_proxy() {
+    use ymir_core::erosion::hydraulic::{ErosionConfig, run_erosion};
     use ymir_core::tectonics_c1::boundary_classification::{
         classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
     };
     use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
-    use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
     let dir = output_dir().join("aerosion_proxy");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso_config = IsostasyConfig::c1_default();
     let ss = SteinSteinParams::default();
     let grid = 64usize;
     let cfg = FbmUpscaleConfig {
-        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
-        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        target_size: 1024,
+        coast_warp_strength: 1.5,
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30,
+        amplitude_base: 0.16,
+        submarine_damping: 0.0,
         ..Default::default()
     };
-    let ero_cfg = ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
-    eprintln!("#155 (a-erosion) proxy — droplet hydraulic erosion on C1 HD; O-C/passive ratio pre vs post");
+    let ero_cfg =
+        ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
+    eprintln!(
+        "#155 (a-erosion) proxy — droplet hydraulic erosion on C1 HD; O-C/passive ratio pre vs post"
+    );
     for &seed in &[42u64, 1988u64, 1337u64] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300,
-            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
-            iso_config: iso_config.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
 
         let mut bi = classify_boundaries(&state.plate_id, &kin);
         retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(
-            &state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0,
-        );
-        let is_cont = |i: usize, j: usize| matches!(state.plate_type.get(i, j), PlateType::Continental);
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let is_cont =
+            |i: usize, j: usize| matches!(state.plate_type.get(i, j), PlateType::Continental);
         // dist-to-ocean (Manhattan) for the passive band.
         let mut d_ocean = vec![usize::MAX; grid * grid];
         let mut q = std::collections::VecDeque::new();
-        for j in 0..grid { for i in 0..grid {
-            if !is_cont(i, j) { d_ocean[j * grid + i] = 0; q.push_back((i, j)); }
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                if !is_cont(i, j) {
+                    d_ocean[j * grid + i] = 0;
+                    q.push_back((i, j));
+                }
+            }
+        }
         while let Some((i, j)) = q.pop_front() {
             let dc = d_ocean[j * grid + i];
             for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
                 let (ni, nj) = (i as i32 + di, j as i32 + dj);
-                if ni < 0 || nj < 0 || ni as usize >= grid || nj as usize >= grid { continue; }
+                if ni < 0 || nj < 0 || ni as usize >= grid || nj as usize >= grid {
+                    continue;
+                }
                 let (ni, nj) = (ni as usize, nj as usize);
-                if d_ocean[nj * grid + ni] > dc + 1 { d_ocean[nj * grid + ni] = dc + 1; q.push_back((ni, nj)); }
+                if d_ocean[nj * grid + ni] > dc + 1 {
+                    d_ocean[nj * grid + ni] = dc + 1;
+                    q.push_back((ni, nj));
+                }
             }
         }
         // Coarse band membership: 0 = none, 1 = O-C, 2 = passive.
         let mut band = vec![0u8; grid * grid];
-        for j in 0..grid { for i in 0..grid {
-            if !is_cont(i, j) { continue; }
-            let dw = wd.get(i, j);
-            if is_oc.get(i, j) && dw >= 1.0 && dw <= 6.0 { band[j * grid + i] = 1; }
-            else if !is_oc.get(i, j) {
-                let do_ = d_ocean[j * grid + i];
-                if do_ >= 1 && do_ <= 6 { band[j * grid + i] = 2; }
+        for j in 0..grid {
+            for i in 0..grid {
+                if !is_cont(i, j) {
+                    continue;
+                }
+                let dw = wd.get(i, j);
+                if is_oc.get(i, j) && dw >= 1.0 && dw <= 6.0 {
+                    band[j * grid + i] = 1;
+                } else if !is_oc.get(i, j) {
+                    let do_ = d_ocean[j * grid + i];
+                    if do_ >= 1 && do_ <= 6 {
+                        band[j * grid + i] = 2;
+                    }
+                }
             }
-        }}
+        }
 
         let up = upscale_from_c1(&state, &iso_config, &ss, &WorldSeed::new(seed), &cfg);
         let h0 = up.heightmap.clone();
@@ -2400,12 +2691,19 @@ fn measure_aerosion_proxy() {
         // Mean HD height over the coarse band's HD blocks.
         let mean_over_band = |hd: &GridF32, target: u8| -> f64 {
             let (mut s, mut n) = (0.0f64, 0usize);
-            for j in 0..grid { for i in 0..grid {
-                if band[j * grid + i] != target { continue; }
-                for jj in 0..scale { for ii in 0..scale {
-                    s += hd.get((i * scale + ii) as i32, (j * scale + jj) as i32) as f64; n += 1;
-                }}
-            }}
+            for j in 0..grid {
+                for i in 0..grid {
+                    if band[j * grid + i] != target {
+                        continue;
+                    }
+                    for jj in 0..scale {
+                        for ii in 0..scale {
+                            s += hd.get((i * scale + ii) as i32, (j * scale + jj) as i32) as f64;
+                            n += 1;
+                        }
+                    }
+                }
+            }
             s / n.max(1) as f64
         };
         // ARTIFACT GUARD ([[feedback_ratio_across_affine_rescaled_spaces]]):
@@ -2418,9 +2716,16 @@ fn measure_aerosion_proxy() {
         let (oc1, pa1) = (mean_over_band(h1, 1), mean_over_band(h1, 2));
         eprintln!(
             "  seed {seed:5}: PRE  O-C={oc0:.4} passive={pa0:.4} GAP={:+.4}  | POST O-C={oc1:.4} passive={pa1:.4} GAP={:+.4}",
-            oc0 - pa0, oc1 - pa1,
+            oc0 - pa0,
+            oc1 - pa1,
         );
-        save_hillshade_crop(h1, 0, 0, h1.width, &dir.join(format!("seed{seed:05}_eroded_hillshade.png")));
+        save_hillshade_crop(
+            h1,
+            0,
+            0,
+            h1.width,
+            &dir.join(format!("seed{seed:05}_eroded_hillshade.png")),
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -2442,7 +2747,7 @@ fn measure_aerosion_proxy() {
 #[test]
 #[ignore]
 fn triptych_consistent_norm() {
-    use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
+    use ymir_core::erosion::hydraulic::{ErosionConfig, run_erosion};
     let dir = output_dir().join("triptych_norm");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso_config = IsostasyConfig::c1_default();
@@ -2450,25 +2755,38 @@ fn triptych_consistent_norm() {
     // Flat config: pure bicubic upscale of the normalized coarse (NO FBM,
     // NO warp) → macro ossature at 1024², same normalization as prod.
     let cfg_flat = FbmUpscaleConfig {
-        target_size: 1024, amplitude_base: 0.0, coast_warp_strength: 0.0,
-        coastal_amplitude_band: 0.0, ..Default::default()
+        target_size: 1024,
+        amplitude_base: 0.0,
+        coast_warp_strength: 0.0,
+        coastal_amplitude_band: 0.0,
+        ..Default::default()
     };
     // Prod #151 config (the real aval).
     let cfg_prod = FbmUpscaleConfig {
-        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
-        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        target_size: 1024,
+        coast_warp_strength: 1.5,
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30,
+        amplitude_base: 0.16,
+        submarine_damping: 0.0,
         ..Default::default()
     };
-    let ero_cfg = ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
-    eprintln!("#155 (a) closure — consistent-norm hillshade triptych (coarse-bicubic / upscale / eroded)");
+    let ero_cfg =
+        ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
+    eprintln!(
+        "#155 (a) closure — consistent-norm hillshade triptych (coarse-bicubic / upscale / eroded)"
+    );
     for &seed in &[1337u64, 1988u64, 42u64] {
         let mut state = init_c1_state_phase_2_r7(64, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300,
-            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
-            iso_config: iso_config.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
 
@@ -2477,9 +2795,27 @@ fn triptych_consistent_norm() {
         let eroded = run_erosion(&up.heightmap, &ero_cfg, &WorldSeed::new(seed), |_, _, _| true);
 
         let w = coarse.heightmap.width;
-        save_hillshade_crop(&coarse.heightmap, 0, 0, w, &dir.join(format!("seed{seed:05}_1_coarse_norm.png")));
-        save_hillshade_crop(&up.heightmap, 0, 0, w, &dir.join(format!("seed{seed:05}_2_upscale_norm.png")));
-        save_hillshade_crop(&eroded.heightmap, 0, 0, w, &dir.join(format!("seed{seed:05}_3_eroded_norm.png")));
+        save_hillshade_crop(
+            &coarse.heightmap,
+            0,
+            0,
+            w,
+            &dir.join(format!("seed{seed:05}_1_coarse_norm.png")),
+        );
+        save_hillshade_crop(
+            &up.heightmap,
+            0,
+            0,
+            w,
+            &dir.join(format!("seed{seed:05}_2_upscale_norm.png")),
+        );
+        save_hillshade_crop(
+            &eroded.heightmap,
+            0,
+            0,
+            w,
+            &dir.join(format!("seed{seed:05}_3_eroded_norm.png")),
+        );
         eprintln!("  seed {seed}: triptych written ({w}²)");
     }
     eprintln!("  out = {}", dir.display());
@@ -2508,44 +2844,53 @@ fn triptych_consistent_norm() {
 #[test]
 #[ignore]
 fn probe_meso_viability() {
+    use ymir_core::erosion::hydraulic::{ErosionConfig, run_erosion};
     use ymir_core::tectonics_c1::boundary_classification::{
         classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
     };
     use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
-    use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
     let dir = output_dir().join("meso_viability");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso_config = IsostasyConfig::c1_default();
     let ss = SteinSteinParams::default();
     let grid = 64usize;
     let cfg = FbmUpscaleConfig {
-        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
-        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        target_size: 1024,
+        coast_warp_strength: 1.5,
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30,
+        amplitude_base: 0.16,
+        submarine_damping: 0.0,
         ..Default::default()
     };
-    let ero_cfg = ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
+    let ero_cfg =
+        ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
     let lambda = 3.0_f64; // thrust spacing in coarse cells (~2-3 ridges in d∈0..8)
-    let amp = 0.8_f64;     // S̃ modulation amplitude (wedge S̃ ~1-2)
+    let amp = 0.8_f64; // S̃ modulation amplitude (wedge S̃ ~1-2)
     let band_max = 9.0_f64;
-    let half = 1.13_f64;   // production_upscale::ALTITUDE_NORM_HALF_RANGE (consistent norm)
-    eprintln!("#155 méso viability — synthetic imbricate stack (λ={lambda} cells, amp={amp}) through the full aval");
+    let half = 1.13_f64; // production_upscale::ALTITUDE_NORM_HALF_RANGE (consistent norm)
+    eprintln!(
+        "#155 méso viability — synthetic imbricate stack (λ={lambda} cells, amp={amp}) through the full aval"
+    );
     for &seed in &[1988u64, 42u64] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300,
-            dx: 1.0 / 64.0, dy: 1.0 / 64.0,
-            iso_config: iso_config.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
 
         let mut bi = classify_boundaries(&state.plate_id, &kin);
         retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(
-            &state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0,
-        );
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
 
         let _ = half;
         // Aval pass on the current state, tagged. Captures shared refs but
@@ -2553,42 +2898,73 @@ fn probe_meso_viability() {
         // two calls (C1State is not Clone → inject in place rather than clone).
         let aval = |st: &C1State, tag: &str| {
             let up = upscale_from_c1(st, &iso_config, &ss, &WorldSeed::new(seed), &cfg);
-            let eroded = run_erosion(&up.heightmap, &ero_cfg, &WorldSeed::new(seed), |_, _, _| true);
-            save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_{tag}_upscale.png")));
-            save_hillshade_crop(&eroded.heightmap, 0, 0, eroded.heightmap.width, &dir.join(format!("seed{seed:05}_{tag}_eroded.png")));
+            let eroded =
+                run_erosion(&up.heightmap, &ero_cfg, &WorldSeed::new(seed), |_, _, _| true);
+            save_hillshade_crop(
+                &up.heightmap,
+                0,
+                0,
+                up.heightmap.width,
+                &dir.join(format!("seed{seed:05}_{tag}_upscale.png")),
+            );
+            save_hillshade_crop(
+                &eroded.heightmap,
+                0,
+                0,
+                eroded.heightmap.width,
+                &dir.join(format!("seed{seed:05}_{tag}_eroded.png")),
+            );
             // Transverse d-shell profile (upscale only, HD already [0,1]):
             // did the injected oscillation (peaks at d≈λ,2λ) survive the
             // upscale, before erosion reorganises?
             let scale = up.heightmap.width / grid;
             let mut shells = vec![(0.0f64, 0usize); 20];
-            for j in 0..grid { for i in 0..grid {
-                if !is_oc.get(i, j) { continue; }
-                let d = wd.get(i, j);
-                if d < 0.5 || d > 10.0 { continue; }
-                let sh = ((d / 0.5) as usize).min(19);
-                let mut s = 0.0; let mut n = 0;
-                for jj in 0..scale { for ii in 0..scale {
-                    s += up.heightmap.get((i*scale+ii) as i32, (j*scale+jj) as i32) as f64; n += 1;
-                }}
-                shells[sh].0 += s / n.max(1) as f64; shells[sh].1 += 1;
-            }}
-            let prof: Vec<String> = shells.iter().enumerate().filter(|(_, c)| c.1 > 0)
-                .map(|(k, c)| format!("d{:.1}:{:.3}", k as f64 * 0.5, c.0 / c.1 as f64)).collect();
+            for j in 0..grid {
+                for i in 0..grid {
+                    if !is_oc.get(i, j) {
+                        continue;
+                    }
+                    let d = wd.get(i, j);
+                    if d < 0.5 || d > 10.0 {
+                        continue;
+                    }
+                    let sh = ((d / 0.5) as usize).min(19);
+                    let mut s = 0.0;
+                    let mut n = 0;
+                    for jj in 0..scale {
+                        for ii in 0..scale {
+                            s += up.heightmap.get((i * scale + ii) as i32, (j * scale + jj) as i32)
+                                as f64;
+                            n += 1;
+                        }
+                    }
+                    shells[sh].0 += s / n.max(1) as f64;
+                    shells[sh].1 += 1;
+                }
+            }
+            let prof: Vec<String> = shells
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.1 > 0)
+                .map(|(k, c)| format!("d{:.1}:{:.3}", k as f64 * 0.5, c.0 / c.1 as f64))
+                .collect();
             eprintln!("  seed {seed} [{tag}] transverse HD profile [0,1]: {}", prof.join(" "));
         };
 
         aval(&state, "base");
         // Inject the synthetic imbricate stack into S̃ at O-C wedge cells.
-        for j in 0..grid { for i in 0..grid {
-            if is_oc.get(i, j) {
-                let d = wd.get(i, j);
-                if d >= 0.5 && d <= band_max {
-                    let m = amp * (std::f64::consts::TAU * d / lambda).cos();
-                    let v = (state.s.get(i, j) + m).max(0.1);
-                    state.s.set(i, j, v);
+        for j in 0..grid {
+            for i in 0..grid {
+                if is_oc.get(i, j) {
+                    let d = wd.get(i, j);
+                    if d >= 0.5 && d <= band_max {
+                        let m = amp * (std::f64::consts::TAU * d / lambda).cos();
+                        let v = (state.s.get(i, j) + m).max(0.1);
+                        state.s.set(i, j, v);
+                    }
                 }
             }
-        }}
+        }
         aval(&state, "inj");
     }
     eprintln!("  out = {}", dir.display());
@@ -2619,42 +2995,78 @@ fn probe_meso_localize() {
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: iso_config.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let mut bi = classify_boundaries(&state.plate_id, &kin);
         retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
 
         let shell_profile = |field: &dyn Fn(usize, usize) -> f64| -> Vec<String> {
             let mut shells = vec![(0.0f64, 0usize); 20];
-            for j in 0..grid { for i in 0..grid {
-                if !is_oc.get(i, j) { continue; }
-                let d = wd.get(i, j);
-                if d < 0.5 || d > 10.0 { continue; }
-                let sh = ((d / 0.5) as usize).min(19);
-                shells[sh].0 += field(i, j); shells[sh].1 += 1;
-            }}
-            shells.iter().enumerate().filter(|(_, c)| c.1 > 0)
-                .map(|(k, c)| format!("d{:.1}:{:.3}", k as f64 * 0.5, c.0 / c.1 as f64)).collect()
+            for j in 0..grid {
+                for i in 0..grid {
+                    if !is_oc.get(i, j) {
+                        continue;
+                    }
+                    let d = wd.get(i, j);
+                    if d < 0.5 || d > 10.0 {
+                        continue;
+                    }
+                    let sh = ((d / 0.5) as usize).min(19);
+                    shells[sh].0 += field(i, j);
+                    shells[sh].1 += 1;
+                }
+            }
+            shells
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.1 > 0)
+                .map(|(k, c)| format!("d{:.1}:{:.3}", k as f64 * 0.5, c.0 / c.1 as f64))
+                .collect()
         };
 
-        let alt_base = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
-        eprintln!("  seed {seed} [base] S̃   : {}", shell_profile(&|i, j| state.s.get(i, j)).join(" "));
-        eprintln!("  seed {seed} [base] alt : {}", shell_profile(&|i, j| alt_base.get(i as i32, j as i32) as f64).join(" "));
+        let alt_base =
+            c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
+        eprintln!(
+            "  seed {seed} [base] S̃   : {}",
+            shell_profile(&|i, j| state.s.get(i, j)).join(" ")
+        );
+        eprintln!(
+            "  seed {seed} [base] alt : {}",
+            shell_profile(&|i, j| alt_base.get(i as i32, j as i32) as f64).join(" ")
+        );
         // inject
-        for j in 0..grid { for i in 0..grid {
-            if is_oc.get(i, j) { let d = wd.get(i, j);
-                if d >= 0.5 && d <= band_max {
-                    let v = (state.s.get(i, j) + amp * (std::f64::consts::TAU * d / lambda).cos()).max(0.1);
-                    state.s.set(i, j, v);
-                }}
-        }}
-        let alt_inj = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
-        eprintln!("  seed {seed} [inj ] S̃   : {}", shell_profile(&|i, j| state.s.get(i, j)).join(" "));
-        eprintln!("  seed {seed} [inj ] alt : {}", shell_profile(&|i, j| alt_inj.get(i as i32, j as i32) as f64).join(" "));
+        for j in 0..grid {
+            for i in 0..grid {
+                if is_oc.get(i, j) {
+                    let d = wd.get(i, j);
+                    if d >= 0.5 && d <= band_max {
+                        let v = (state.s.get(i, j)
+                            + amp * (std::f64::consts::TAU * d / lambda).cos())
+                        .max(0.1);
+                        state.s.set(i, j, v);
+                    }
+                }
+            }
+        }
+        let alt_inj =
+            c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso_config, &ss);
+        eprintln!(
+            "  seed {seed} [inj ] S̃   : {}",
+            shell_profile(&|i, j| state.s.get(i, j)).join(" ")
+        );
+        eprintln!(
+            "  seed {seed} [inj ] alt : {}",
+            shell_profile(&|i, j| alt_inj.get(i as i32, j as i32) as f64).join(" ")
+        );
     }
 }
 
@@ -2700,60 +3112,104 @@ fn probe_meso_distinction() {
     let sea_norm = 500.0_f64 / (500.0 + 4000.0);
     let sea_frac = 0.4_f64;
     let cap = 0.92_f64;
-    eprintln!("#155 méso distinction — inj h_raw under BASE fixed range (buoy={buoy:.4}, sea_norm={sea_norm:.4})");
+    eprintln!(
+        "#155 méso distinction — inj h_raw under BASE fixed range (buoy={buoy:.4}, sea_norm={sea_norm:.4})"
+    );
     for &seed in &[1988u64, 42u64] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: iso_config.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso_config.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let mut bi = classify_boundaries(&state.plate_id, &kin);
         retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
 
         // BASE fixed range (replicate compute_isostasy steps 1-2 on base S̃).
-        let hraw_base: Vec<f64> = (0..grid*grid).map(|k| state.s.get(k % grid, k / grid) * buoy).collect();
+        let hraw_base: Vec<f64> =
+            (0..grid * grid).map(|k| state.s.get(k % grid, k / grid) * buoy).collect();
         let hmin = hraw_base.iter().cloned().fold(f64::INFINITY, f64::min);
         let hmax = hraw_base.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        let mut sorted = hraw_base.clone(); sorted.sort_by(|a,b| a.partial_cmp(b).unwrap());
-        let hcap = sorted[((cap * (sorted.len()-1) as f64).round() as usize).min(sorted.len()-1)];
+        let mut sorted = hraw_base.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let hcap =
+            sorted[((cap * (sorted.len() - 1) as f64).round() as usize).min(sorted.len() - 1)];
         let hsea = hmin + sea_frac * (hcap - hmin).max(1e-10);
         let normalize = |h: f64| -> f64 {
-            if h <= hsea { ((h - hmin) / (hsea - hmin).max(1e-10)) * sea_norm }
-            else { sea_norm + ((h - hsea) / (hmax - hsea).max(1e-10)) * (1.0 - sea_norm) }.clamp(0.0, 1.0)
+            if h <= hsea {
+                ((h - hmin) / (hsea - hmin).max(1e-10)) * sea_norm
+            } else {
+                sea_norm + ((h - hsea) / (hmax - hsea).max(1e-10)) * (1.0 - sea_norm)
+            }
+            .clamp(0.0, 1.0)
         };
 
-        let shell = |f: &dyn Fn(usize,usize)->f64| -> Vec<f64> {
-            let mut sh = vec![(0.0,0usize); 20];
-            for j in 0..grid { for i in 0..grid {
-                if !is_oc.get(i,j) { continue; }
-                let d = wd.get(i,j); if d < 0.5 || d > 10.0 { continue; }
-                let k = ((d/0.5) as usize).min(19); sh[k].0 += f(i,j); sh[k].1 += 1;
-            }}
-            sh.iter().map(|c| if c.1>0 { c.0/c.1 as f64 } else { f64::NAN }).collect()
+        let shell = |f: &dyn Fn(usize, usize) -> f64| -> Vec<f64> {
+            let mut sh = vec![(0.0, 0usize); 20];
+            for j in 0..grid {
+                for i in 0..grid {
+                    if !is_oc.get(i, j) {
+                        continue;
+                    }
+                    let d = wd.get(i, j);
+                    if d < 0.5 || d > 10.0 {
+                        continue;
+                    }
+                    let k = ((d / 0.5) as usize).min(19);
+                    sh[k].0 += f(i, j);
+                    sh[k].1 += 1;
+                }
+            }
+            sh.iter().map(|c| if c.1 > 0 { c.0 / c.1 as f64 } else { f64::NAN }).collect()
         };
         // base normalized (base range) vs inj normalized (SAME base range).
-        let base_norm = shell(&|i,j| normalize(state.s.get(i,j) * buoy));
+        let base_norm = shell(&|i, j| normalize(state.s.get(i, j) * buoy));
         // inject
-        for j in 0..grid { for i in 0..grid {
-            if is_oc.get(i,j) { let d = wd.get(i,j);
-                if d >= 0.5 && d <= band_max {
-                    state.s.set(i, j, (state.s.get(i,j) + amp*(std::f64::consts::TAU*d/lambda).cos()).max(0.1));
-                }}
-        }}
-        let inj_fixed = shell(&|i,j| normalize(state.s.get(i,j) * buoy));
-        let osc = |v: &[f64]| { // crest(d≈3,6) − trough(d≈4.5,7.5) mean
-            let g=|x:f64| v[(x/0.5) as usize];
-            ((g(3.0)+g(6.0))/2.0) - ((g(4.5)+g(7.5))/2.0)
+        for j in 0..grid {
+            for i in 0..grid {
+                if is_oc.get(i, j) {
+                    let d = wd.get(i, j);
+                    if d >= 0.5 && d <= band_max {
+                        state.s.set(
+                            i,
+                            j,
+                            (state.s.get(i, j) + amp * (std::f64::consts::TAU * d / lambda).cos())
+                                .max(0.1),
+                        );
+                    }
+                }
+            }
+        }
+        let inj_fixed = shell(&|i, j| normalize(state.s.get(i, j) * buoy));
+        let osc = |v: &[f64]| {
+            // crest(d≈3,6) − trough(d≈4.5,7.5) mean
+            let g = |x: f64| v[(x / 0.5) as usize];
+            ((g(3.0) + g(6.0)) / 2.0) - ((g(4.5) + g(7.5)) / 2.0)
         };
-        let fmt=|v:&[f64]| v.iter().enumerate().filter(|(_,x)|x.is_finite()).map(|(k,x)| format!("d{:.1}:{:.3}",k as f64*0.5,x)).collect::<Vec<_>>().join(" ");
+        let fmt = |v: &[f64]| {
+            v.iter()
+                .enumerate()
+                .filter(|(_, x)| x.is_finite())
+                .map(|(k, x)| format!("d{:.1}:{:.3}", k as f64 * 0.5, x))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
         eprintln!("  seed {seed} base(baseRange)    : {}", fmt(&base_norm));
         eprintln!("  seed {seed} inj (baseRange FIX): {}", fmt(&inj_fixed));
-        eprintln!("  seed {seed} crest-trough osc: base={:+.4}  inj(fixed)={:+.4}  (inj>base ⇒ structure expresses under fixed range = CASE 1)", osc(&base_norm), osc(&inj_fixed));
+        eprintln!(
+            "  seed {seed} crest-trough osc: base={:+.4}  inj(fixed)={:+.4}  (inj>base ⇒ structure expresses under fixed range = CASE 1)",
+            osc(&base_norm),
+            osc(&inj_fixed)
+        );
     }
 }
 
@@ -2783,19 +3239,33 @@ fn probe_meso_cap() {
     let grid = 64usize;
     let (lambda, amp, band_max) = (3.0_f64, 0.8_f64, 9.0_f64);
     let cfg = FbmUpscaleConfig {
-        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
-        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        target_size: 1024,
+        coast_warp_strength: 1.5,
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30,
+        amplitude_base: 0.16,
+        submarine_damping: 0.0,
         ..Default::default()
     };
     // shell crest(d≈3,6)−trough(d≈4.5,7.5) over O-C cells, on a coarse GridF32.
-    let osc_coarse = |alt: &GridF32, isoc: &dyn Fn(usize,usize)->bool, wd: &Field2D| -> f64 {
+    let osc_coarse = |alt: &GridF32, isoc: &dyn Fn(usize, usize) -> bool, wd: &Field2D| -> f64 {
         let (mut cs, mut cn, mut ts, mut tn) = (0.0, 0usize, 0.0, 0usize);
-        for j in 0..grid { for i in 0..grid {
-            if !isoc(i, j) { continue; }
-            let d = wd.get(i, j); let a = alt.get(i as i32, j as i32) as f64;
-            if (2.5..=3.5).contains(&d) || (5.5..=6.5).contains(&d) { cs += a; cn += 1; }
-            else if (4.0..=5.0).contains(&d) || (7.0..=8.0).contains(&d) { ts += a; tn += 1; }
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                if !isoc(i, j) {
+                    continue;
+                }
+                let d = wd.get(i, j);
+                let a = alt.get(i as i32, j as i32) as f64;
+                if (2.5..=3.5).contains(&d) || (5.5..=6.5).contains(&d) {
+                    cs += a;
+                    cn += 1;
+                } else if (4.0..=5.0).contains(&d) || (7.0..=8.0).contains(&d) {
+                    ts += a;
+                    tn += 1;
+                }
+            }
+        }
         cs / cn.max(1) as f64 - ts / tn.max(1) as f64
     };
     eprintln!("#155 méso cap — step1 decompress (coarse osc + saturation), step2 upscale survival");
@@ -2804,25 +3274,39 @@ fn probe_meso_cap() {
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: base_iso.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: base_iso.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let mut bi = classify_boundaries(&state.plate_id, &kin);
         retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
         let isoc = |i: usize, j: usize| is_oc.get(i, j);
 
         // s_base and s_inj (synthetic imbricate stack), no state mutation yet.
         let s_base = state.s.clone();
         let mut s_inj = state.s.clone();
-        for j in 0..grid { for i in 0..grid {
-            if is_oc.get(i, j) { let d = wd.get(i, j);
-                if d >= 0.5 && d <= band_max {
-                    s_inj.set(i, j, (s_base.get(i, j) + amp*(std::f64::consts::TAU*d/lambda).cos()).max(0.1));
-                }}
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                if is_oc.get(i, j) {
+                    let d = wd.get(i, j);
+                    if d >= 0.5 && d <= band_max {
+                        s_inj.set(
+                            i,
+                            j,
+                            (s_base.get(i, j) + amp * (std::f64::consts::TAU * d / lambda).cos())
+                                .max(0.1),
+                        );
+                    }
+                }
+            }
+        }
 
         // Step 1: blur isolation — coarse decompression at σ=2 vs σ=0.
         for sigma in [2.0f32, 0.0] {
@@ -2831,7 +3315,9 @@ fn probe_meso_cap() {
             let ab = c1_production_altitude(&s_base, &state.age, &state.plate_type, &iso, &ss);
             let ai = c1_production_altitude(&s_inj, &state.age, &state.plate_type, &iso, &ss);
             let (ob, oi) = (osc_coarse(&ab, &isoc, &wd), osc_coarse(&ai, &isoc, &wd));
-            eprintln!("  seed {seed} σ={sigma}: coarse osc base={ob:+.4} inj={oi:+.4} (inj≫base@σ0 ⇒ blur was the wall)");
+            eprintln!(
+                "  seed {seed} σ={sigma}: coarse osc base={ob:+.4} inj={oi:+.4} (inj≫base@σ0 ⇒ blur was the wall)"
+            );
         }
 
         // Step 2: does the DECOMPRESSED structure survive upscale+FBM? Use
@@ -2847,18 +3333,38 @@ fn probe_meso_cap() {
         // HD osc: same crest/trough d-bands, mean over each coarse cell's HD block.
         let hd_band = |lo: f64, hi1: f64, lo2: f64, hi2: f64| -> f64 {
             let (mut s, mut n) = (0.0, 0usize);
-            for j in 0..grid { for i in 0..grid {
-                if !is_oc.get(i, j) { continue; }
-                let d = wd.get(i, j);
-                if (d>=lo && d<=hi1) || (d>=lo2 && d<=hi2) {
-                    for jj in 0..scale { for ii in 0..scale { s += up.heightmap.get((i*scale+ii) as i32,(j*scale+jj) as i32) as f64; n+=1; }}
+            for j in 0..grid {
+                for i in 0..grid {
+                    if !is_oc.get(i, j) {
+                        continue;
+                    }
+                    let d = wd.get(i, j);
+                    if (d >= lo && d <= hi1) || (d >= lo2 && d <= hi2) {
+                        for jj in 0..scale {
+                            for ii in 0..scale {
+                                s += up
+                                    .heightmap
+                                    .get((i * scale + ii) as i32, (j * scale + jj) as i32)
+                                    as f64;
+                                n += 1;
+                            }
+                        }
+                    }
                 }
-            }}
+            }
             s / n.max(1) as f64
         };
-        let oc_hd = hd_band(2.5,3.5,5.5,6.5) - hd_band(4.0,5.0,7.0,8.0);
-        eprintln!("  seed {seed} STEP2 σ=0: coarse osc={oc_coarse:+.4}  HD osc={oc_hd:+.4}  (HD≈coarse ⇒ survives upscale; HD≪coarse ⇒ smoothed = CASE 3 upscale wall)");
-        save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_sigma0_inj_upscale.png")));
+        let oc_hd = hd_band(2.5, 3.5, 5.5, 6.5) - hd_band(4.0, 5.0, 7.0, 8.0);
+        eprintln!(
+            "  seed {seed} STEP2 σ=0: coarse osc={oc_coarse:+.4}  HD osc={oc_hd:+.4}  (HD≈coarse ⇒ survives upscale; HD≪coarse ⇒ smoothed = CASE 3 upscale wall)"
+        );
+        save_hillshade_crop(
+            &up.heightmap,
+            0,
+            0,
+            up.heightmap.width,
+            &dir.join(format!("seed{seed:05}_sigma0_inj_upscale.png")),
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -2888,60 +3394,101 @@ fn probe_sigma_sweep() {
     let (lambda, amp, band_max) = (3.0_f64, 0.8_f64, 9.0_f64);
     let sigmas = [0.0f32, 0.5, 1.0, 1.5, 2.0];
     let cfg = FbmUpscaleConfig {
-        target_size: 1024, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
-        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        target_size: 1024,
+        coast_warp_strength: 1.5,
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30,
+        amplitude_base: 0.16,
+        submarine_damping: 0.0,
         ..Default::default()
     };
-    eprintln!("#155 σ sweep — (A) méso unlock coarse osc / (B) real-production HD hillshades for artefacts");
+    eprintln!(
+        "#155 σ sweep — (A) méso unlock coarse osc / (B) real-production HD hillshades for artefacts"
+    );
     for &seed in &[1988u64, 42u64, 1337u64, 4138u64] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: base_iso.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: base_iso.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let mut bi = classify_boundaries(&state.plate_id, &kin);
         retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
 
         let s_base = state.s.clone();
         let mut s_inj = state.s.clone();
-        for j in 0..grid { for i in 0..grid {
-            if is_oc.get(i, j) { let d = wd.get(i, j);
-                if d >= 0.5 && d <= band_max {
-                    s_inj.set(i, j, (s_base.get(i, j) + amp*(std::f64::consts::TAU*d/lambda).cos()).max(0.1));
-                }}
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                if is_oc.get(i, j) {
+                    let d = wd.get(i, j);
+                    if d >= 0.5 && d <= band_max {
+                        s_inj.set(
+                            i,
+                            j,
+                            (s_base.get(i, j) + amp * (std::f64::consts::TAU * d / lambda).cos())
+                                .max(0.1),
+                        );
+                    }
+                }
+            }
+        }
         let osc_coarse = |alt: &GridF32| -> f64 {
             let (mut cs, mut cn, mut ts, mut tn) = (0.0, 0usize, 0.0, 0usize);
-            for j in 0..grid { for i in 0..grid {
-                if !is_oc.get(i, j) { continue; }
-                let d = wd.get(i, j); let a = alt.get(i as i32, j as i32) as f64;
-                if (2.5..=3.5).contains(&d) || (5.5..=6.5).contains(&d) { cs += a; cn += 1; }
-                else if (4.0..=5.0).contains(&d) || (7.0..=8.0).contains(&d) { ts += a; tn += 1; }
-            }}
+            for j in 0..grid {
+                for i in 0..grid {
+                    if !is_oc.get(i, j) {
+                        continue;
+                    }
+                    let d = wd.get(i, j);
+                    let a = alt.get(i as i32, j as i32) as f64;
+                    if (2.5..=3.5).contains(&d) || (5.5..=6.5).contains(&d) {
+                        cs += a;
+                        cn += 1;
+                    } else if (4.0..=5.0).contains(&d) || (7.0..=8.0).contains(&d) {
+                        ts += a;
+                        tn += 1;
+                    }
+                }
+            }
             cs / cn.max(1) as f64 - ts / tn.max(1) as f64
         };
 
         for &sigma in &sigmas {
-            let mut iso = base_iso.clone(); iso.altitude_smoothing_sigma = sigma;
+            let mut iso = base_iso.clone();
+            iso.altitude_smoothing_sigma = sigma;
             // (A) méso unlock — injected coarse osc.
             let ai = c1_production_altitude(&s_inj, &state.age, &state.plate_type, &iso, &ss);
             eprintln!("  seed {seed} σ={sigma}: méso inj coarse osc = {:+.4}", osc_coarse(&ai));
             // (B) REAL production HD hillshade (artefacts: steps / striping / feathering).
             state.s = s_base.clone();
             let up_real = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
-            save_hillshade_crop(&up_real.heightmap, 0, 0, up_real.heightmap.width,
-                &dir.join(format!("seed{seed:05}_s{sigma:.1}_real.png")));
+            save_hillshade_crop(
+                &up_real.heightmap,
+                0,
+                0,
+                up_real.heightmap.width,
+                &dir.join(format!("seed{seed:05}_s{sigma:.1}_real.png")),
+            );
             // (A-visual) injected HD hillshade for the franc-O-C seeds.
             if seed == 1988 || seed == 1337 {
                 state.s = s_inj.clone();
                 let up_inj = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
-                save_hillshade_crop(&up_inj.heightmap, 0, 0, up_inj.heightmap.width,
-                    &dir.join(format!("seed{seed:05}_s{sigma:.1}_inj.png")));
+                save_hillshade_crop(
+                    &up_inj.heightmap,
+                    0,
+                    0,
+                    up_inj.heightmap.width,
+                    &dir.join(format!("seed{seed:05}_s{sigma:.1}_inj.png")),
+                );
             }
         }
     }
@@ -2971,36 +3518,75 @@ fn probe_sigma_macro() {
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: base_iso.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: base_iso.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let mut bi = classify_boundaries(&state.plate_id, &kin);
         retarget_upper_plate_continental(&mut bi, &state.plate_id, &state.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &state.plate_id, &state.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
-        let is_cont = |i: usize, j: usize| matches!(state.plate_type.get(i, j), PlateType::Continental);
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&state.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let is_cont =
+            |i: usize, j: usize| matches!(state.plate_type.get(i, j), PlateType::Continental);
         // dist-to-ocean for the passive band.
-        let mut d_ocean = vec![usize::MAX; grid*grid];
+        let mut d_ocean = vec![usize::MAX; grid * grid];
         let mut q = std::collections::VecDeque::new();
-        for j in 0..grid { for i in 0..grid { if !is_cont(i,j) { d_ocean[j*grid+i]=0; q.push_back((i,j)); } }}
-        while let Some((i,j)) = q.pop_front() { let dc=d_ocean[j*grid+i];
-            for (di,dj) in [(-1i32,0i32),(1,0),(0,-1),(0,1)] { let (ni,nj)=(i as i32+di,j as i32+dj);
-                if ni<0||nj<0||ni as usize>=grid||nj as usize>=grid {continue;}
-                let (ni,nj)=(ni as usize,nj as usize);
-                if d_ocean[nj*grid+ni]>dc+1 { d_ocean[nj*grid+ni]=dc+1; q.push_back((ni,nj)); }}}
+        for j in 0..grid {
+            for i in 0..grid {
+                if !is_cont(i, j) {
+                    d_ocean[j * grid + i] = 0;
+                    q.push_back((i, j));
+                }
+            }
+        }
+        while let Some((i, j)) = q.pop_front() {
+            let dc = d_ocean[j * grid + i];
+            for (di, dj) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                let (ni, nj) = (i as i32 + di, j as i32 + dj);
+                if ni < 0 || nj < 0 || ni as usize >= grid || nj as usize >= grid {
+                    continue;
+                }
+                let (ni, nj) = (ni as usize, nj as usize);
+                if d_ocean[nj * grid + ni] > dc + 1 {
+                    d_ocean[nj * grid + ni] = dc + 1;
+                    q.push_back((ni, nj));
+                }
+            }
+        }
         for &sigma in &[2.0f32, 0.5, 0.0] {
-            let mut iso = base_iso.clone(); iso.altitude_smoothing_sigma = sigma;
+            let mut iso = base_iso.clone();
+            iso.altitude_smoothing_sigma = sigma;
             let alt = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso, &ss);
             let (mut ocs, mut ocn, mut pas, mut pan) = (0.0f64, 0usize, 0.0f64, 0usize);
-            for j in 0..grid { for i in 0..grid {
-                if !is_cont(i,j) { continue; }
-                let a = alt.get(i as i32, j as i32) as f64; let dw = wd.get(i,j);
-                if is_oc.get(i,j) && dw>=1.0 && dw<=6.0 { ocs += a; ocn += 1; }
-                else if !is_oc.get(i,j) { let d=d_ocean[j*grid+i]; if d>=1 && d<=6 { pas += a; pan += 1; } }
-            }}
-            let (ocm, pam) = (ocs/ocn.max(1) as f64, pas/pan.max(1) as f64);
-            eprintln!("  seed {seed} σ={sigma}: O-C band={ocm:.4} passive={pam:.4} GAP={:+.4}", ocm - pam);
+            for j in 0..grid {
+                for i in 0..grid {
+                    if !is_cont(i, j) {
+                        continue;
+                    }
+                    let a = alt.get(i as i32, j as i32) as f64;
+                    let dw = wd.get(i, j);
+                    if is_oc.get(i, j) && dw >= 1.0 && dw <= 6.0 {
+                        ocs += a;
+                        ocn += 1;
+                    } else if !is_oc.get(i, j) {
+                        let d = d_ocean[j * grid + i];
+                        if d >= 1 && d <= 6 {
+                            pas += a;
+                            pan += 1;
+                        }
+                    }
+                }
+            }
+            let (ocm, pam) = (ocs / ocn.max(1) as f64, pas / pan.max(1) as f64);
+            eprintln!(
+                "  seed {seed} σ={sigma}: O-C band={ocm:.4} passive={pam:.4} GAP={:+.4}",
+                ocm - pam
+            );
         }
     }
 }
@@ -3019,7 +3605,7 @@ fn probe_sigma_macro() {
 #[test]
 #[ignore]
 fn probe_meso_erosion_orientation() {
-    use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
+    use ymir_core::erosion::hydraulic::{ErosionConfig, run_erosion};
     let dir = output_dir().join("meso_erosion_orient");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso = IsostasyConfig::c1_default(); // σ=0.5
@@ -3031,27 +3617,46 @@ fn probe_meso_erosion_orientation() {
         amplitude_base: 0.30,        // 0.16 → 0.30 (taller méso ridges)
         max_anisotropy: 8.0,         // 3.0 → 8.0 (long margin-parallel stretch)
         amplitude_slope_factor: 5.0, // 3.0 → 5.0 (amplitude on the ridge flanks)
-        coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
-        coastal_amplitude_band: 0.30, submarine_damping: 0.0,
+        coast_warp_strength: 1.5,
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30,
+        submarine_damping: 0.0,
         ..Default::default()
     };
-    let ero_cfg = ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
-    eprintln!("#155 méso B viability — isotropic erosion on oriented FBM: cordilleras or dendritic?");
+    let ero_cfg =
+        ErosionConfig { num_droplets: 2_000_000, batch_size: 50_000, ..Default::default() };
+    eprintln!(
+        "#155 méso B viability — isotropic erosion on oriented FBM: cordilleras or dendritic?"
+    );
     for &seed in &[1988u64, 42u64] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: iso.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
-        save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width,
-            &dir.join(format!("seed{seed:05}_1_oriented_fbm.png")));
+        save_hillshade_crop(
+            &up.heightmap,
+            0,
+            0,
+            up.heightmap.width,
+            &dir.join(format!("seed{seed:05}_1_oriented_fbm.png")),
+        );
         let eroded = run_erosion(&up.heightmap, &ero_cfg, &WorldSeed::new(seed), |_, _, _| true);
-        save_hillshade_crop(&eroded.heightmap, 0, 0, eroded.heightmap.width,
-            &dir.join(format!("seed{seed:05}_2_eroded.png")));
+        save_hillshade_crop(
+            &eroded.heightmap,
+            0,
+            0,
+            eroded.heightmap.width,
+            &dir.join(format!("seed{seed:05}_2_eroded.png")),
+        );
         eprintln!("  seed {seed}: oriented-FBM + eroded hillshades written");
     }
     eprintln!("  out = {}", dir.display());
@@ -3061,11 +3666,13 @@ fn probe_meso_erosion_orientation() {
 fn save_binarymap(h: &GridF32, sea: f32, path: &Path) {
     let (nx, ny) = (h.width, h.height);
     let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(nx as u32, ny as u32);
-    for j in 0..ny { for i in 0..nx {
-        let v = h.get(i as i32, j as i32);
-        let c = if v > sea { Rgb([70, 140, 70]) } else { Rgb([40, 80, 160]) };
-        img.put_pixel(i as u32, (ny - 1 - j) as u32, c);
-    }}
+    for j in 0..ny {
+        for i in 0..nx {
+            let v = h.get(i as i32, j as i32);
+            let c = if v > sea { Rgb([70, 140, 70]) } else { Rgb([40, 80, 160]) };
+            img.put_pixel(i as u32, (ny - 1 - j) as u32, c);
+        }
+    }
     img.save(path).expect("save binarymap PNG");
 }
 
@@ -3079,27 +3686,38 @@ fn save_binarymap(h: &GridF32, sea: f32, path: &Path) {
 #[test]
 #[ignore]
 fn product_etat_des_lieux() {
-    use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
+    use ymir_core::erosion::hydraulic::{ErosionConfig, run_erosion};
     let dir = output_dir().join("product_2048");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso = IsostasyConfig::c1_default(); // σ=0.5
     let ss = SteinSteinParams::default();
     let grid = 64usize;
     let cfg = FbmUpscaleConfig {
-        target_size: 2048, coast_warp_strength: 1.5, coast_warp_frequency: 0.5,
-        coastal_amplitude_band: 0.30, amplitude_base: 0.16, submarine_damping: 0.0,
+        target_size: 2048,
+        coast_warp_strength: 1.5,
+        coast_warp_frequency: 0.5,
+        coastal_amplitude_band: 0.30,
+        amplitude_base: 0.16,
+        submarine_damping: 0.0,
         ..Default::default()
     };
-    let ero_cfg = ErosionConfig { num_droplets: 4_000_000, batch_size: 100_000, ..Default::default() };
+    let ero_cfg =
+        ErosionConfig { num_droplets: 4_000_000, batch_size: 100_000, ..Default::default() };
     let sea = 0.5f32; // upscale_from_c1 maps sea level to 0.5
-    eprintln!("#155 product état-des-lieux — 2048², all seeds, hypsometric + binarymap (C1 σ0.5 + upscale + erosion)");
+    eprintln!(
+        "#155 product état-des-lieux — 2048², all seeds, hypsometric + binarymap (C1 σ0.5 + upscale + erosion)"
+    );
     for &seed in &[2u64, 42, 99, 1337, 1988, 2026, 4138] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: iso.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
@@ -3109,7 +3727,11 @@ fn product_etat_des_lieux() {
         save_binarymap(h, sea, &dir.join(format!("seed{seed:05}_binary.png")));
         save_hillshade_crop(h, 0, 0, h.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
         let land = h.data.iter().filter(|&&v| v > sea).count();
-        eprintln!("  seed {seed}: {}² written, land = {:.1}%", h.width, 100.0 * land as f64 / (h.width*h.height) as f64);
+        eprintln!(
+            "  seed {seed}: {}² written, land = {:.1}%",
+            h.width,
+            100.0 * land as f64 / (h.width * h.height) as f64
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -3129,15 +3751,22 @@ fn hd_production_acceptance() {
     let grid = 64usize;
     let cfg = FbmUpscaleConfig::c1_hd_production(2048);
     eprintln!("#155 HD production acceptance — c1_hd_production(2048), seeds 1988/42/2026");
-    eprintln!("  cfg: target={} erosion={}", cfg.target_size,
-        cfg.erosion.as_ref().map(|e| e.num_droplets).unwrap_or(0));
+    eprintln!(
+        "  cfg: target={} erosion={}",
+        cfg.target_size,
+        cfg.erosion.as_ref().map(|e| e.num_droplets).unwrap_or(0)
+    );
     for &seed in &[1988u64, 42, 2026] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: iso.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
 
@@ -3152,12 +3781,22 @@ fn hd_production_acceptance() {
         let d1 = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg_det);
         let d2 = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg_det);
         let det = d1.heightmap.data == d2.heightmap.data;
-        eprintln!("  seed {seed}: {}² in {dt:.2?}  det(512²)={}  sediment={}  slope_ok={}  land={:.1}%",
-            up1.heightmap.width, if det {"OK"} else {"MISMATCH"}, sed,
+        eprintln!(
+            "  seed {seed}: {}² in {dt:.2?}  det(512²)={}  sediment={}  slope_ok={}  land={:.1}%",
+            up1.heightmap.width,
+            if det { "OK" } else { "MISMATCH" },
+            sed,
             up1.slope.data.iter().any(|&s| s > 0.0),
-            100.0 * land as f64 / (up1.heightmap.width*up1.heightmap.height) as f64);
+            100.0 * land as f64 / (up1.heightmap.width * up1.heightmap.height) as f64
+        );
         save_heightmap01(&up1.heightmap, &dir.join(format!("seed{seed:05}_hypso.png")));
-        save_hillshade_crop(&up1.heightmap, 0, 0, up1.heightmap.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
+        save_hillshade_crop(
+            &up1.heightmap,
+            0,
+            0,
+            up1.heightmap.width,
+            &dir.join(format!("seed{seed:05}_hillshade.png")),
+        );
         assert!(det, "seed {seed}: HD production not deterministic run×2 (512²)");
         assert!(sed, "seed {seed}: sediment hook missing");
     }
@@ -3185,48 +3824,82 @@ fn probe_interior_craton() {
     let grid = 64usize;
     let cfg = FbmUpscaleConfig::c1_hd_production(1024); // 1024² for speed
     let delta = 1.0f64; // S̃ bump in craton cores (→ ~+0.17 raw altitude)
-    eprintln!("#155 interior craton — does the aval dress a gentle craton gradient into relief? (Δ={delta})");
+    eprintln!(
+        "#155 interior craton — does the aval dress a gentle craton gradient into relief? (Δ={delta})"
+    );
     for &seed in &[42u64, 2026, 1988] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: iso.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
-        let n_craton = (0..grid*grid).filter(|k| state.cratonic_mask.get(k % grid, k / grid)).count();
+        let n_craton =
+            (0..grid * grid).filter(|k| state.cratonic_mask.get(k % grid, k / grid)).count();
 
         // BASELINE (flat interior).
         let up_base = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
-        save_hillshade_crop(&up_base.heightmap, 0, 0, up_base.heightmap.width, &dir.join(format!("seed{seed:05}_1_base.png")));
+        save_hillshade_crop(
+            &up_base.heightmap,
+            0,
+            0,
+            up_base.heightmap.width,
+            &dir.join(format!("seed{seed:05}_1_base.png")),
+        );
 
         // Smooth craton field → gentle large-scale gradient.
         let mut cf = GridF32::new(grid, grid, 0.0);
-        for j in 0..grid { for i in 0..grid {
-            if state.cratonic_mask.get(i, j) { cf.set(i, j, 1.0); }
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                if state.cratonic_mask.get(i, j) {
+                    cf.set(i, j, 1.0);
+                }
+            }
+        }
         let cf = cf.gaussian_blur(4.0);
         // BUMP continental S̃ post-loop (advection-free, large-scale).
-        for j in 0..grid { for i in 0..grid {
-            if matches!(state.plate_type.get(i, j), PlateType::Continental) {
-                let add = delta * cf.get(i as i32, j as i32) as f64;
-                state.s.set(i, j, state.s.get(i, j) + add);
+        for j in 0..grid {
+            for i in 0..grid {
+                if matches!(state.plate_type.get(i, j), PlateType::Continental) {
+                    let add = delta * cf.get(i as i32, j as i32) as f64;
+                    state.s.set(i, j, state.s.get(i, j) + add);
+                }
             }
-        }}
+        }
         let up_bump = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
-        save_hillshade_crop(&up_bump.heightmap, 0, 0, up_bump.heightmap.width, &dir.join(format!("seed{seed:05}_2_craton_bumped.png")));
-        save_heightmap01(&up_bump.heightmap, &dir.join(format!("seed{seed:05}_2_craton_hypso.png")));
+        save_hillshade_crop(
+            &up_bump.heightmap,
+            0,
+            0,
+            up_bump.heightmap.width,
+            &dir.join(format!("seed{seed:05}_2_craton_bumped.png")),
+        );
+        save_heightmap01(
+            &up_bump.heightmap,
+            &dir.join(format!("seed{seed:05}_2_craton_hypso.png")),
+        );
 
         // Interior relief proxy: std of HD altitude over land cells (>0.5).
         let interior_std = |h: &GridF32| -> f64 {
             let land: Vec<f64> = h.data.iter().filter(|&&v| v > 0.5).map(|&v| v as f64).collect();
-            if land.is_empty() { return 0.0; }
+            if land.is_empty() {
+                return 0.0;
+            }
             let m = land.iter().sum::<f64>() / land.len() as f64;
             (land.iter().map(|v| (v - m).powi(2)).sum::<f64>() / land.len() as f64).sqrt()
         };
-        eprintln!("  seed {seed}: cratons={} cells  land-alt std base={:.4} bumped={:.4}",
-            n_craton, interior_std(&up_base.heightmap), interior_std(&up_bump.heightmap));
+        eprintln!(
+            "  seed {seed}: cratons={} cells  land-alt std base={:.4} bumped={:.4}",
+            n_craton,
+            interior_std(&up_base.heightmap),
+            interior_std(&up_bump.heightmap)
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -3254,26 +3927,52 @@ fn probe_craton_calibration() {
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default(); // A′ active
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: iso.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
         let scale = up.heightmap.width / grid;
         let (mut cs, mut cn, mut ns, mut nn) = (0.0f64, 0usize, 0.0f64, 0usize);
-        for j in 0..grid { for i in 0..grid {
-            let craton = state.cratonic_mask.get(i, j);
-            for jj in 0..scale { for ii in 0..scale {
-                let v = up.heightmap.get((i*scale+ii) as i32, (j*scale+jj) as i32) as f64;
-                if v <= 0.5 { continue; } // land only
-                let m = (v - 0.5) * 2.0 * max_elev_m;
-                if craton { cs += m; cn += 1; } else { ns += m; nn += 1; }
-            }}
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                let craton = state.cratonic_mask.get(i, j);
+                for jj in 0..scale {
+                    for ii in 0..scale {
+                        let v = up.heightmap.get((i * scale + ii) as i32, (j * scale + jj) as i32)
+                            as f64;
+                        if v <= 0.5 {
+                            continue;
+                        } // land only
+                        let m = (v - 0.5) * 2.0 * max_elev_m;
+                        if craton {
+                            cs += m;
+                            cn += 1;
+                        } else {
+                            ns += m;
+                            nn += 1;
+                        }
+                    }
+                }
+            }
+        }
         let (cm, nm) = (cs / cn.max(1) as f64, ns / nn.max(1) as f64);
-        eprintln!("  seed {seed}: craton land mean = {cm:.0} m  non-craton = {nm:.0} m  craton above = {:.0} m  (target shield ~300-500)", cm - nm);
+        eprintln!(
+            "  seed {seed}: craton land mean = {cm:.0} m  non-craton = {nm:.0} m  craton above = {:.0} m  (target shield ~300-500)",
+            cm - nm
+        );
         save_heightmap01(&up.heightmap, &dir.join(format!("seed{seed:05}_hypso.png")));
-        save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
+        save_hillshade_crop(
+            &up.heightmap,
+            0,
+            0,
+            up.heightmap.width,
+            &dir.join(format!("seed{seed:05}_hillshade.png")),
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -3293,14 +3992,20 @@ fn product_etat_des_lieux_aprime() {
     let grid = 64usize;
     let cfg = FbmUpscaleConfig::c1_hd_production(2048); // erosion wired internally
     let sea = 0.5f32;
-    eprintln!("#155 post-A′ état-des-lieux — 2048², all seeds, via c1_hd_production (A′ default-on)");
+    eprintln!(
+        "#155 post-A′ état-des-lieux — 2048², all seeds, via c1_hd_production (A′ default-on)"
+    );
     for &seed in &[2u64, 42, 99, 1337, 1988, 2026, 4138] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default(); // A′ active
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: iso.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
@@ -3309,7 +4014,11 @@ fn product_etat_des_lieux_aprime() {
         save_binarymap(h, sea, &dir.join(format!("seed{seed:05}_binary.png")));
         save_hillshade_crop(h, 0, 0, h.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
         let land = h.data.iter().filter(|&&v| v > sea).count();
-        eprintln!("  seed {seed}: {}² written, land = {:.1}%", h.width, 100.0 * land as f64 / (h.width*h.height) as f64);
+        eprintln!(
+            "  seed {seed}: {}² written, land = {:.1}%",
+            h.width,
+            100.0 * land as f64 / (h.width * h.height) as f64
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -3327,14 +4036,28 @@ fn probe_prominence_attribution() {
     use ymir_core::tectonics_c1::boundary_classification::{
         classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
     };
-    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
     use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
     let iso = IsostasyConfig::c1_default();
     let grid = 64usize;
     let h_eq = 2.0f64;
-    let p95 = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[(v.len()*95/100).min(v.len()-1)] };
-    let med = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[v.len()/2] };
-    eprintln!("#155 prominence attribution — end-of-loop S̃ by zone (margin orogen / craton / platform)");
+    let p95 = |mut v: Vec<f64>| -> f64 {
+        if v.is_empty() {
+            return f64::NAN;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() * 95 / 100).min(v.len() - 1)]
+    };
+    let med = |mut v: Vec<f64>| -> f64 {
+        if v.is_empty() {
+            return f64::NAN;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[v.len() / 2]
+    };
+    eprintln!(
+        "#155 prominence attribution — end-of-loop S̃ by zone (margin orogen / craton / platform)"
+    );
     for &seed in &[42u64, 2026, 1988] {
         // Geometry (zones) — from a default init (plate_id identical across variants).
         let geom = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
@@ -3342,33 +4065,60 @@ fn probe_prominence_attribution() {
         let mut bi = classify_boundaries(&geom.plate_id, &kin0);
         retarget_upper_plate_continental(&mut bi, &geom.plate_id, &geom.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &geom.plate_id, &geom.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
-        let is_cont = |i: usize, j: usize| matches!(geom.plate_type.get(i, j), PlateType::Continental);
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let is_cont =
+            |i: usize, j: usize| matches!(geom.plate_type.get(i, j), PlateType::Continental);
         // EXCLUSIVE zones (de-confound craton∩wedge overlap): 1 pure orogen
         // (wedge ∧ ¬craton), 2 pure craton (craton ∧ ¬wedge), 3 platform,
         // 4 craton∩wedge (reported apart). wedge = O-C && wd<max_d.
-        let mut zone = vec![0u8; grid*grid];
-        for j in 0..grid { for i in 0..grid {
-            if !is_cont(i, j) { continue; }
-            let wedge = is_oc.get(i, j) && wd.get(i, j) < 30.0;
-            let crat = geom.cratonic_mask.get(i, j);
-            zone[j*grid+i] = match (wedge, crat) {
-                (true, false) => 1,
-                (false, true) => 2,
-                (false, false) => 3,
-                (true, true) => 4,
-            };
-        }}
+        let mut zone = vec![0u8; grid * grid];
+        for j in 0..grid {
+            for i in 0..grid {
+                if !is_cont(i, j) {
+                    continue;
+                }
+                let wedge = is_oc.get(i, j) && wd.get(i, j) < 30.0;
+                let crat = geom.cratonic_mask.get(i, j);
+                zone[j * grid + i] = match (wedge, crat) {
+                    (true, false) => 1,
+                    (false, true) => 2,
+                    (false, false) => 3,
+                    (true, true) => 4,
+                };
+            }
+        }
         let zsamp = |st: &C1State, z: u8| -> Vec<f64> {
             let mut v = Vec::new();
-            for j in 0..grid { for i in 0..grid { if zone[j*grid+i]==z { v.push(st.s.get(i,j)); } }} v
+            for j in 0..grid {
+                for i in 0..grid {
+                    if zone[j * grid + i] == z {
+                        v.push(st.s.get(i, j));
+                    }
+                }
+            }
+            v
         };
 
         let run = |ratio: f64, resist: f64| -> C1State {
-            let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams { craton_thickness_ratio: ratio, ..Default::default() });
+            let mut state = init_c1_state_phase_2_r7(
+                grid,
+                seed,
+                &Phase2InitParams { craton_thickness_ratio: ratio, ..Default::default() },
+            );
             let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-            let closures = C1Closures { erosion: ErosionParams { craton_resist: resist, ..ErosionParams::default() }, ..C1Closures::default() };
-            let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+            let closures = C1Closures {
+                erosion: ErosionParams { craton_resist: resist, ..ErosionParams::default() },
+                ..C1Closures::default()
+            };
+            let config = C1TimeLoopConfig {
+                rigid_continental_crust: true,
+                n_steps: 300,
+                dx: 1.0 / 64.0,
+                dy: 1.0 / 64.0,
+                iso_config: iso.clone(),
+                drainage_max_distance: 30,
+            };
             run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
             state
         };
@@ -3379,17 +4129,26 @@ fn probe_prominence_attribution() {
 
         // A′ (default: ratio 1.25, resist 0.2).
         let a = run(1.25, 0.2);
-        let (mg, cr, pf) = (p95(zsamp(&a,1)), p95(zsamp(&a,2)), p95(zsamp(&a,3)));
-        let mg_med = med(zsamp(&a,1)); let cr_med = med(zsamp(&a,2));
-        let above_heq = zsamp(&a,1).iter().filter(|&&v| v > h_eq).count();
-        let n_mg = zsamp(&a,1).len();
-        eprintln!("  seed {seed} [A′]: margin p95={mg:.3} (med {mg_med:.3}) craton p95={cr:.3} (med {cr_med:.3}, t0={craton_t0:.3}) platform p95={pf:.3}  ratio mg/cr={:.2}  margin>h_eq: {}/{} ({:.0}%)",
-            mg/cr.max(1e-6), above_heq, n_mg, 100.0*above_heq as f64/n_mg.max(1) as f64);
+        let (mg, cr, pf) = (p95(zsamp(&a, 1)), p95(zsamp(&a, 2)), p95(zsamp(&a, 3)));
+        let mg_med = med(zsamp(&a, 1));
+        let cr_med = med(zsamp(&a, 2));
+        let above_heq = zsamp(&a, 1).iter().filter(|&&v| v > h_eq).count();
+        let n_mg = zsamp(&a, 1).len();
+        eprintln!(
+            "  seed {seed} [A′]: margin p95={mg:.3} (med {mg_med:.3}) craton p95={cr:.3} (med {cr_med:.3}, t0={craton_t0:.3}) platform p95={pf:.3}  ratio mg/cr={:.2}  margin>h_eq: {}/{} ({:.0}%)",
+            mg / cr.max(1e-6),
+            above_heq,
+            n_mg,
+            100.0 * above_heq as f64 / n_mg.max(1) as f64
+        );
 
         // Counterfactual: NO craton differential (ratio 1.0, resist 1.0).
         let cf = run(1.0, 1.0);
-        let (mgc, crc) = (p95(zsamp(&cf,1)), p95(zsamp(&cf,2)));
-        eprintln!("  seed {seed} [CF no-craton-diff]: margin p95={mgc:.3} craton p95={crc:.3}  ratio mg/cr={:.2}  (re-opens if > A′)", mgc/crc.max(1e-6));
+        let (mgc, crc) = (p95(zsamp(&cf, 1)), p95(zsamp(&cf, 2)));
+        eprintln!(
+            "  seed {seed} [CF no-craton-diff]: margin p95={mgc:.3} craton p95={crc:.3}  ratio mg/cr={:.2}  (re-opens if > A′)",
+            mgc / crc.max(1e-6)
+        );
     }
 }
 
@@ -3407,11 +4166,17 @@ fn probe_orogen_equilibrium() {
     use ymir_core::tectonics_c1::boundary_classification::{
         classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
     };
-    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
     use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
     let iso = IsostasyConfig::c1_default();
     let grid = 64usize;
-    let p95 = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[(v.len()*95/100).min(v.len()-1)] };
+    let p95 = |mut v: Vec<f64>| -> f64 {
+        if v.is_empty() {
+            return f64::NAN;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() * 95 / 100).min(v.len() - 1)]
+    };
     eprintln!("#155 orogen equilibrium — margin S̃ p95: baseline vs erosion-OFF (DS h_max=2.5)");
     for &seed in &[42u64, 1988, 2026] {
         let geom = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
@@ -3419,24 +4184,53 @@ fn probe_orogen_equilibrium() {
         let mut bi = classify_boundaries(&geom.plate_id, &kin0);
         retarget_upper_plate_continental(&mut bi, &geom.plate_id, &geom.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &geom.plate_id, &geom.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
-        let mut margin = vec![false; grid*grid];
-        for j in 0..grid { for i in 0..grid {
-            if matches!(geom.plate_type.get(i,j), PlateType::Continental) && is_oc.get(i,j) && wd.get(i,j) < 30.0 { margin[j*grid+i] = true; }
-        }}
-        let msamp = |st: &C1State| -> Vec<f64> { let mut v=Vec::new(); for j in 0..grid { for i in 0..grid { if margin[j*grid+i] { v.push(st.s.get(i,j)); } }} v };
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let mut margin = vec![false; grid * grid];
+        for j in 0..grid {
+            for i in 0..grid {
+                if matches!(geom.plate_type.get(i, j), PlateType::Continental)
+                    && is_oc.get(i, j)
+                    && wd.get(i, j) < 30.0
+                {
+                    margin[j * grid + i] = true;
+                }
+            }
+        }
+        let msamp = |st: &C1State| -> Vec<f64> {
+            let mut v = Vec::new();
+            for j in 0..grid {
+                for i in 0..grid {
+                    if margin[j * grid + i] {
+                        v.push(st.s.get(i, j));
+                    }
+                }
+            }
+            v
+        };
         let run = |erosion_on: bool| -> C1State {
             let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
             let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
             let mut closures = C1Closures::default();
-            if !erosion_on { closures.erosion = ErosionParams { enabled: false, ..ErosionParams::default() }; }
-            let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+            if !erosion_on {
+                closures.erosion = ErosionParams { enabled: false, ..ErosionParams::default() };
+            }
+            let config = C1TimeLoopConfig {
+                rigid_continental_crust: true,
+                n_steps: 300,
+                dx: 1.0 / 64.0,
+                dy: 1.0 / 64.0,
+                iso_config: iso.clone(),
+                drainage_max_distance: 30,
+            };
             run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
             state
         };
         let base = p95(msamp(&run(true)));
         let no_ero = p95(msamp(&run(false)));
-        eprintln!("  seed {seed}: margin p95 baseline={base:.3}  erosion-OFF={no_ero:.3}  (rises→2.5 = erosion brakes; stays low = DS rate)  [DS h_max=2.5]");
+        eprintln!(
+            "  seed {seed}: margin p95 baseline={base:.3}  erosion-OFF={no_ero:.3}  (rises→2.5 = erosion brakes; stays low = DS rate)  [DS h_max=2.5]"
+        );
     }
 }
 
@@ -3456,48 +4250,105 @@ fn probe_worn_shield_sweep() {
     use ymir_core::tectonics_c1::boundary_classification::{
         classify_boundaries, oc_override_seed_mask, retarget_upper_plate_continental,
     };
-    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
     use ymir_core::tectonics_c1::closures::erosion::params::ErosionParams;
+    use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate_typed;
     let dir = output_dir().join("worn_shield");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso = IsostasyConfig::c1_default();
     let ss = SteinSteinParams::default();
     let grid = 64usize;
     let cfg = FbmUpscaleConfig::c1_hd_production(1024);
-    let p95 = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[(v.len()*95/100).min(v.len()-1)] };
-    let mean = |v: &[f64]| -> f64 { if v.is_empty() { return f64::NAN; } v.iter().sum::<f64>()/v.len() as f64 };
-    eprintln!("#155 worn-shield sweep — RENDERED altitude by zone vs craton_resist (ratio_craton=1.25 fixed)");
+    let p95 = |mut v: Vec<f64>| -> f64 {
+        if v.is_empty() {
+            return f64::NAN;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() * 95 / 100).min(v.len() - 1)]
+    };
+    let mean = |v: &[f64]| -> f64 {
+        if v.is_empty() {
+            return f64::NAN;
+        }
+        v.iter().sum::<f64>() / v.len() as f64
+    };
+    eprintln!(
+        "#155 worn-shield sweep — RENDERED altitude by zone vs craton_resist (ratio_craton=1.25 fixed)"
+    );
     for &seed in &[2026u64, 42, 1988] {
         let geom = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let kin0 = PlateKinematics::preset_phase_1_1(geom.num_plates);
         let mut bi = classify_boundaries(&geom.plate_id, &kin0);
         retarget_upper_plate_continental(&mut bi, &geom.plate_id, &geom.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &geom.plate_id, &geom.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
         // zone: 1 orogen(wedge¬craton), 2 craton(craton¬wedge), 3 platform, 4 both
-        let mut zone = vec![0u8; grid*grid];
-        for j in 0..grid { for i in 0..grid {
-            if !matches!(geom.plate_type.get(i,j), PlateType::Continental) { continue; }
-            let w = is_oc.get(i,j) && wd.get(i,j) < 30.0; let c = geom.cratonic_mask.get(i,j);
-            zone[j*grid+i] = match (w,c) { (true,false)=>1, (false,true)=>2, (false,false)=>3, (true,true)=>4 };
-        }}
+        let mut zone = vec![0u8; grid * grid];
+        for j in 0..grid {
+            for i in 0..grid {
+                if !matches!(geom.plate_type.get(i, j), PlateType::Continental) {
+                    continue;
+                }
+                let w = is_oc.get(i, j) && wd.get(i, j) < 30.0;
+                let c = geom.cratonic_mask.get(i, j);
+                zone[j * grid + i] = match (w, c) {
+                    (true, false) => 1,
+                    (false, true) => 2,
+                    (false, false) => 3,
+                    (true, true) => 4,
+                };
+            }
+        }
         eprintln!("  --- seed {seed} ---");
         for &resist in &[0.2f64, 0.33, 0.5, 0.7] {
             let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
             let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-            let closures = C1Closures { erosion: ErosionParams { craton_resist: resist, ..ErosionParams::default() }, ..C1Closures::default() };
-            let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+            let closures = C1Closures {
+                erosion: ErosionParams { craton_resist: resist, ..ErosionParams::default() },
+                ..C1Closures::default()
+            };
+            let config = C1TimeLoopConfig {
+                rigid_continental_crust: true,
+                n_steps: 300,
+                dx: 1.0 / 64.0,
+                dy: 1.0 / 64.0,
+                iso_config: iso.clone(),
+                drainage_max_distance: 30,
+            };
             run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
             let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
             let scale = up.heightmap.width / grid;
-            let zalt = |z: u8| -> Vec<f64> { let mut v=Vec::new(); for j in 0..grid { for i in 0..grid { if zone[j*grid+i]==z { for jj in 0..scale { for ii in 0..scale { let a=up.heightmap.get((i*scale+ii) as i32,(j*scale+jj) as i32) as f64; if a>0.5 { v.push(a); } }} } }} v };
+            let zalt = |z: u8| -> Vec<f64> {
+                let mut v = Vec::new();
+                for j in 0..grid {
+                    for i in 0..grid {
+                        if zone[j * grid + i] == z {
+                            for jj in 0..scale {
+                                for ii in 0..scale {
+                                    let a = up
+                                        .heightmap
+                                        .get((i * scale + ii) as i32, (j * scale + jj) as i32)
+                                        as f64;
+                                    if a > 0.5 {
+                                        v.push(a);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                v
+            };
             let (oro, crat, plat) = (zalt(1), zalt(2), zalt(3));
             let to_m = |norm: f64| (norm - 0.5) * 8000.0; // conversion-dependent, flagged
             let crat_p95 = p95(crat.clone());
             let prom = p95(oro.clone()) / crat_p95.max(1e-6);
             let inverted = mean(&crat) < mean(&plat); // craton below platform = inverted
-            eprintln!("    resist={resist} ({:.0}×): craton p95={crat_p95:.3} (~{:.0} m above sea) prominence oro/cra={prom:.2}  inverted(vs platform)={inverted}",
-                1.0/resist, to_m(crat_p95));
+            eprintln!(
+                "    resist={resist} ({:.0}×): craton p95={crat_p95:.3} (~{:.0} m above sea) prominence oro/cra={prom:.2}  inverted(vs platform)={inverted}",
+                1.0 / resist,
+                to_m(crat_p95)
+            );
         }
     }
     eprintln!("  out = {}", dir.display());
@@ -3523,8 +4374,19 @@ fn probe_jordan_sweep() {
     let ss = SteinSteinParams::default();
     let grid = 64usize;
     let cfg = FbmUpscaleConfig::c1_hd_production(1024);
-    let p95 = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[(v.len()*95/100).min(v.len()-1)] };
-    let mean = |v: &[f64]| -> f64 { if v.is_empty() { return f64::NAN; } v.iter().sum::<f64>()/v.len() as f64 };
+    let p95 = |mut v: Vec<f64>| -> f64 {
+        if v.is_empty() {
+            return f64::NAN;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() * 95 / 100).min(v.len() - 1)]
+    };
+    let mean = |v: &[f64]| -> f64 {
+        if v.is_empty() {
+            return f64::NAN;
+        }
+        v.iter().sum::<f64>() / v.len() as f64
+    };
     let to_m = |n: f64| (n - 0.5) * 8000.0; // conversion-dependent, flagged
     eprintln!("#155 B-Jordan sweep — RENDERED altitude by zone vs craton_rho_crust");
     for &seed in &[2026u64, 42, 1988] {
@@ -3533,33 +4395,81 @@ fn probe_jordan_sweep() {
         let mut bi = classify_boundaries(&geom.plate_id, &kin0);
         retarget_upper_plate_continental(&mut bi, &geom.plate_id, &geom.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &geom.plate_id, &geom.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
-        let mut zone = vec![0u8; grid*grid];
-        for j in 0..grid { for i in 0..grid {
-            if !matches!(geom.plate_type.get(i,j), PlateType::Continental) { continue; }
-            let w = is_oc.get(i,j) && wd.get(i,j) < 30.0; let c = geom.cratonic_mask.get(i,j);
-            zone[j*grid+i] = match (w,c) { (true,false)=>1, (false,true)=>2, (false,false)=>3, (true,true)=>4 };
-        }}
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let mut zone = vec![0u8; grid * grid];
+        for j in 0..grid {
+            for i in 0..grid {
+                if !matches!(geom.plate_type.get(i, j), PlateType::Continental) {
+                    continue;
+                }
+                let w = is_oc.get(i, j) && wd.get(i, j) < 30.0;
+                let c = geom.cratonic_mask.get(i, j);
+                zone[j * grid + i] = match (w, c) {
+                    (true, false) => 1,
+                    (false, true) => 2,
+                    (false, false) => 3,
+                    (true, true) => 4,
+                };
+            }
+        }
         // C1 loop once (defaults A′: resist 0.2, thick 1.25). Jordan is altitude-only.
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso0.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso0.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         eprintln!("  --- seed {seed} ---");
         for rho in [None, Some(2850.0f32), Some(2900.0), Some(2950.0)] {
-            let mut iso = iso0.clone(); iso.craton_rho_crust = rho;
+            let mut iso = iso0.clone();
+            iso.craton_rho_crust = rho;
             let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
             let scale = up.heightmap.width / grid;
-            let zalt = |z: u8| -> Vec<f64> { let mut v=Vec::new(); for j in 0..grid { for i in 0..grid { if zone[j*grid+i]==z { for jj in 0..scale { for ii in 0..scale { let a=up.heightmap.get((i*scale+ii) as i32,(j*scale+jj) as i32) as f64; if a>0.5 { v.push(a); } }} } }} v };
+            let zalt = |z: u8| -> Vec<f64> {
+                let mut v = Vec::new();
+                for j in 0..grid {
+                    for i in 0..grid {
+                        if zone[j * grid + i] == z {
+                            for jj in 0..scale {
+                                for ii in 0..scale {
+                                    let a = up
+                                        .heightmap
+                                        .get((i * scale + ii) as i32, (j * scale + jj) as i32)
+                                        as f64;
+                                    if a > 0.5 {
+                                        v.push(a);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                v
+            };
             let (oro, crat, plat, cw) = (zalt(1), zalt(2), zalt(3), zalt(4));
             // orogen p95 = max of pure-orogen (z1) and craton∩wedge (z4) where present.
-            let oro_p95 = { let mut a=oro.clone(); a.extend(cw.clone()); p95(a) };
+            let oro_p95 = {
+                let mut a = oro.clone();
+                a.extend(cw.clone());
+                p95(a)
+            };
             let crat_p95 = p95(crat.clone());
             let prom = oro_p95 / crat_p95.max(1e-6);
             let alt_inv = !crat.is_empty() && mean(&crat) < mean(&plat);
-            eprintln!("    rho={:?}: craton p95={crat_p95:.3} (~{:.0}m) orogen p95={oro_p95:.3} (~{:.0}m) prom={prom:.2}  craton<platform(altInv)={alt_inv}  [z4 craton∩wedge p95={:.3}]",
-                rho, to_m(crat_p95), to_m(oro_p95), p95(cw));
+            eprintln!(
+                "    rho={:?}: craton p95={crat_p95:.3} (~{:.0}m) orogen p95={oro_p95:.3} (~{:.0}m) prom={prom:.2}  craton<platform(altInv)={alt_inv}  [z4 craton∩wedge p95={:.3}]",
+                rho,
+                to_m(crat_p95),
+                to_m(oro_p95),
+                p95(cw)
+            );
         }
     }
     eprintln!("  out done");
@@ -3586,13 +4496,32 @@ fn probe_jordan_render() {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso0.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso0.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
-        for (tag, rho) in [("none", None), ("2850", Some(2850.0f32)), ("2900", Some(2900.0)), ("2950", Some(2950.0))] {
-            let mut iso = iso0.clone(); iso.craton_rho_crust = rho;
+        for (tag, rho) in [
+            ("none", None),
+            ("2850", Some(2850.0f32)),
+            ("2900", Some(2900.0)),
+            ("2950", Some(2950.0)),
+        ] {
+            let mut iso = iso0.clone();
+            iso.craton_rho_crust = rho;
             let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
             save_heightmap01(&up.heightmap, &dir.join(format!("seed{seed:05}_rho{tag}_hypso.png")));
-            save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_rho{tag}_hillshade.png")));
+            save_hillshade_crop(
+                &up.heightmap,
+                0,
+                0,
+                up.heightmap.width,
+                &dir.join(format!("seed{seed:05}_rho{tag}_hillshade.png")),
+            );
             eprintln!("  seed {seed} rho={tag}: written");
         }
     }
@@ -3636,9 +4565,17 @@ fn probe_vertical_scale_ceiling() {
     let grid = 64usize;
     let h_eq = 2.0f64;
     let max_elev = iso.max_elevation_m;
-    let p95 = |mut v: Vec<f64>| -> f64 { if v.is_empty() { return f64::NAN; } v.sort_by(|a,b| a.partial_cmp(b).unwrap()); v[(v.len()*95/100).min(v.len()-1)] };
-    eprintln!("#155 vertical-scale + ceiling — max_elevation_m={max_elev}, sea_norm={:.3}, EH h_eq={h_eq}",
-        iso.max_depth_m / (iso.max_depth_m + iso.max_elevation_m));
+    let p95 = |mut v: Vec<f64>| -> f64 {
+        if v.is_empty() {
+            return f64::NAN;
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[(v.len() * 95 / 100).min(v.len() - 1)]
+    };
+    eprintln!(
+        "#155 vertical-scale + ceiling — max_elevation_m={max_elev}, sea_norm={:.3}, EH h_eq={h_eq}",
+        iso.max_depth_m / (iso.max_depth_m + iso.max_elevation_m)
+    );
     for &seed in &[42u64, 1988, 2026] {
         // Zones (margin orogen) — same construction as probe_prominence_attribution.
         let geom = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
@@ -3646,26 +4583,37 @@ fn probe_vertical_scale_ceiling() {
         let mut bi = classify_boundaries(&geom.plate_id, &kin0);
         retarget_upper_plate_continental(&mut bi, &geom.plate_id, &geom.plate_type);
         let oc_seed = oc_override_seed_mask(&bi, &geom.plate_id, &geom.plate_type);
-        let (wd, is_oc) = wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
+        let (wd, is_oc) =
+            wedge_distance_intra_plate_typed(&geom.plate_id, &bi.upper_plate_mask, &oc_seed, 30.0);
 
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default(); // A′ active
         let config = C1TimeLoopConfig {
-            rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0,
-            iso_config: iso.clone(), drainage_max_distance: 30,
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
         };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
 
         // S̃ ceiling on the margin orogen (raw, consistent space).
         let mut margin = Vec::new();
         let mut s_global_max = f64::NEG_INFINITY;
-        for j in 0..grid { for i in 0..grid {
-            let s = state.s.get(i, j);
-            s_global_max = s_global_max.max(s);
-            if matches!(geom.plate_type.get(i,j), PlateType::Continental)
-                && is_oc.get(i,j) && wd.get(i,j) < 30.0 { margin.push(s); }
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                let s = state.s.get(i, j);
+                s_global_max = s_global_max.max(s);
+                if matches!(geom.plate_type.get(i, j), PlateType::Continental)
+                    && is_oc.get(i, j)
+                    && wd.get(i, j) < 30.0
+                {
+                    margin.push(s);
+                }
+            }
+        }
         let n_margin = margin.len();
         let n_at_ceiling = margin.iter().filter(|&&s| s >= 1.9).count();
         let margin_p95 = p95(margin.clone());
@@ -3681,11 +4629,19 @@ fn probe_vertical_scale_ceiling() {
         let hd_guess_m = (hd_land_max_norm as f64 - 0.5) * 2.0 * max_elev as f64;
 
         eprintln!("  seed {seed}:");
-        eprintln!("    S̃: global_max={s_global_max:.3}  margin orogen p95={margin_p95:.3}  cells≥1.9: {n_at_ceiling}/{n_margin}  (EH h_eq={h_eq})");
-        eprintln!("    model peak_altitude_m = {peak_m:.0} m  (= fraction of max_elevation_m={max_elev:.0}; the ramp's land ceiling)");
-        eprintln!("    HD land-max norm={hd_land_max_norm:.3} → guess-convention {hd_guess_m:.0} m  vs target 6000-8000");
+        eprintln!(
+            "    S̃: global_max={s_global_max:.3}  margin orogen p95={margin_p95:.3}  cells≥1.9: {n_at_ceiling}/{n_margin}  (EH h_eq={h_eq})"
+        );
+        eprintln!(
+            "    model peak_altitude_m = {peak_m:.0} m  (= fraction of max_elevation_m={max_elev:.0}; the ramp's land ceiling)"
+        );
+        eprintln!(
+            "    HD land-max norm={hd_land_max_norm:.3} → guess-convention {hd_guess_m:.0} m  vs target 6000-8000"
+        );
     }
-    eprintln!("  ATTRIBUTION: EH caps S̃ at 2.0 → peak_altitude_m is a fraction of 4000 → conversion codomain tops at 4000 < 6000-8000.");
+    eprintln!(
+        "  ATTRIBUTION: EH caps S̃ at 2.0 → peak_altitude_m is a fraction of 4000 → conversion codomain tops at 4000 < 6000-8000."
+    );
 }
 
 /// #155 vertical-scale chantier — characterise the LAND-ceiling repair BEFORE
@@ -3700,25 +4656,48 @@ fn probe_land_ceiling_repair() {
     let iso = IsostasyConfig::c1_default();
     let grid = 64usize;
     let buoy = 1.0 - iso.rho_crust / iso.rho_mantle;
-    let buoy_c = match iso.craton_rho_crust { Some(r) => 1.0 - r / iso.rho_mantle, None => buoy };
-    let pct = |v: &[f64], q: f64| -> f64 { if v.is_empty() { return f64::NAN; } let mut s = v.to_vec(); s.sort_by(|a,b| a.partial_cmp(b).unwrap()); s[((q*(s.len()-1) as f64).round() as usize).min(s.len()-1)] };
-    eprintln!("#155 land-ceiling repair — raw h by plate_type (buoy cont={buoy:.4} craton={buoy_c:.4})");
+    let buoy_c = match iso.craton_rho_crust {
+        Some(r) => 1.0 - r / iso.rho_mantle,
+        None => buoy,
+    };
+    let pct = |v: &[f64], q: f64| -> f64 {
+        if v.is_empty() {
+            return f64::NAN;
+        }
+        let mut s = v.to_vec();
+        s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        s[((q * (s.len() - 1) as f64).round() as usize).min(s.len() - 1)]
+    };
+    eprintln!(
+        "#155 land-ceiling repair — raw h by plate_type (buoy cont={buoy:.4} craton={buoy_c:.4})"
+    );
     for &seed in &[42u64, 1988, 2026] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         // raw h = S̃ * buoyancy (craton density on cratonic cells), global vs continental.
         let mut h_all = Vec::new();
         let mut h_cont = Vec::new();
-        for j in 0..grid { for i in 0..grid {
-            let k = j*grid+i;
-            let b = if state.cratonic_mask.data()[k] { buoy_c } else { buoy };
-            let h = state.s.get(i,j) * b as f64;
-            h_all.push(h);
-            if matches!(state.plate_type.get(i,j), PlateType::Continental) { h_cont.push(h); }
-        }}
+        for j in 0..grid {
+            for i in 0..grid {
+                let k = j * grid + i;
+                let b = if state.cratonic_mask.data()[k] { buoy_c } else { buoy };
+                let h = state.s.get(i, j) * b as f64;
+                h_all.push(h);
+                if matches!(state.plate_type.get(i, j), PlateType::Continental) {
+                    h_cont.push(h);
+                }
+            }
+        }
         let h_min = h_all.iter().cloned().fold(f64::INFINITY, f64::min);
         let h_max_glob = h_all.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let h_max_cont = h_cont.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
@@ -3727,13 +4706,29 @@ fn probe_land_ceiling_repair() {
         let h_sea = h_min + iso.sea_level_fraction as f64 * h_range;
         let land: Vec<f64> = h_all.iter().cloned().filter(|&h| h > h_sea).collect();
         let land_cont: Vec<f64> = h_cont.iter().cloned().filter(|&h| h > h_sea).collect();
-        eprintln!("  seed {seed}: h_min={h_min:.3} h_sea={h_sea:.3} | h_max GLOBAL={h_max_glob:.3} CONTINENTAL={h_max_cont:.3} (ratio {:.2})", h_max_glob/h_max_cont.max(1e-6));
-        eprintln!("    land cells (h>h_sea): {} total, {} continental | land p50={:.3} p95={:.3} p99={:.3} max={:.3}",
-            land.len(), land_cont.len(), pct(&land,0.5), pct(&land,0.95), pct(&land,0.99), pct(&land,1.0));
+        eprintln!(
+            "  seed {seed}: h_min={h_min:.3} h_sea={h_sea:.3} | h_max GLOBAL={h_max_glob:.3} CONTINENTAL={h_max_cont:.3} (ratio {:.2})",
+            h_max_glob / h_max_cont.max(1e-6)
+        );
+        eprintln!(
+            "    land cells (h>h_sea): {} total, {} continental | land p50={:.3} p95={:.3} p99={:.3} max={:.3}",
+            land.len(),
+            land_cont.len(),
+            pct(&land, 0.5),
+            pct(&land, 0.95),
+            pct(&land, 0.99),
+            pct(&land, 1.0)
+        );
         // over-saturation: under a candidate ceiling C, land cells with h>=C clamp to 1.0.
-        for &(tag, c) in &[("maxCont", h_max_cont), ("landP99", pct(&land,0.99)), ("landP95", pct(&land,0.95))] {
+        for &(tag, c) in
+            &[("maxCont", h_max_cont), ("landP99", pct(&land, 0.99)), ("landP95", pct(&land, 0.95))]
+        {
             let clamp = land.iter().filter(|&&h| h >= c).count();
-            eprintln!("    ceiling {tag}={c:.3} → {clamp}/{} land cells clamp to 1.0 ({:.1}%)", land.len(), 100.0*clamp as f64/land.len().max(1) as f64);
+            eprintln!(
+                "    ceiling {tag}={c:.3} → {clamp}/{} land cells clamp to 1.0 ({:.1}%)",
+                land.len(),
+                100.0 * clamp as f64 / land.len().max(1) as f64
+            );
         }
     }
 }
@@ -3747,7 +4742,7 @@ fn probe_land_ceiling_repair() {
 #[test]
 #[ignore]
 fn probe_land_ceiling_acceptance() {
-    use ymir_core::tectonics::isostasy::{compute_isostasy_craton, compute_isostasy_c1};
+    use ymir_core::tectonics::isostasy::{compute_isostasy_c1, compute_isostasy_craton};
     let dir = output_dir().join("land_ceiling_accept");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso = IsostasyConfig::c1_default();
@@ -3759,21 +4754,42 @@ fn probe_land_ceiling_acceptance() {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
-        let continental: Vec<bool> = (0..grid*grid).map(|k| matches!(state.plate_type.get(k%grid, k/grid), PlateType::Continental)).collect();
+        let continental: Vec<bool> = (0..grid * grid)
+            .map(|k| matches!(state.plate_type.get(k % grid, k / grid), PlateType::Continental))
+            .collect();
         let phantom = compute_isostasy_craton(&state.s, &iso, state.cratonic_mask.data());
-        let repaired = compute_isostasy_c1(&state.s, &iso, Some(state.cratonic_mask.data()), &continental);
+        let repaired =
+            compute_isostasy_c1(&state.s, &iso, Some(state.cratonic_mask.data()), &continental);
         // over-saturation: land cells (coarse) at exactly 1.0 in the repaired map.
         let clamp = repaired.heightmap.data.iter().filter(|&&v| v >= 0.999).count();
-        let land = repaired.heightmap.data.iter().filter(|&&v| v > repaired.sea_level_normalized).count();
+        let land =
+            repaired.heightmap.data.iter().filter(|&&v| v > repaired.sea_level_normalized).count();
         // production render (repaired path).
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
         let hd_max = up.heightmap.data.iter().cloned().fold(0.0f32, f32::max);
-        eprintln!("  seed {seed}: peak_altitude_m phantom={:.0} → repaired={:.0} m  | coarse land-clamp@1.0: {clamp}/{land} ({:.1}%)  | HD land-max norm={hd_max:.3}",
-            phantom.peak_altitude_m, repaired.peak_altitude_m, 100.0*clamp as f64/land.max(1) as f64);
+        eprintln!(
+            "  seed {seed}: peak_altitude_m phantom={:.0} → repaired={:.0} m  | coarse land-clamp@1.0: {clamp}/{land} ({:.1}%)  | HD land-max norm={hd_max:.3}",
+            phantom.peak_altitude_m,
+            repaired.peak_altitude_m,
+            100.0 * clamp as f64 / land.max(1) as f64
+        );
         save_heightmap01(&up.heightmap, &dir.join(format!("seed{seed:05}_hypso.png")));
-        save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
+        save_hillshade_crop(
+            &up.heightmap,
+            0,
+            0,
+            up.heightmap.width,
+            &dir.join(format!("seed{seed:05}_hillshade.png")),
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -3787,7 +4803,7 @@ fn probe_land_ceiling_acceptance() {
 #[ignore]
 fn probe_sea_unification_acceptance() {
     use ymir_core::tectonics_c1::production_upscale::{
-        c1_production_altitude, c1_altitude_norm_to_metres, c1_metres_to_altitude_norm,
+        c1_altitude_norm_to_metres, c1_metres_to_altitude_norm, c1_production_altitude,
     };
     let dir = output_dir().join("sea_unify_accept");
     std::fs::create_dir_all(&dir).expect("create dir");
@@ -3797,37 +4813,62 @@ fn probe_sea_unification_acceptance() {
     let half = 1.13f32;
     let cfg = FbmUpscaleConfig::c1_hd_production(1024);
     // norm→m contract anchors (independent of any seed).
-    eprintln!("#155 Maillon 2 — norm→m contract: sea(0.5)={:.1}m  norm1.0={:.0}m  norm0.0={:.0}m  roundtrip(2772m)={:.4}",
-        c1_altitude_norm_to_metres(0.5, &ss), c1_altitude_norm_to_metres(1.0, &ss),
-        c1_altitude_norm_to_metres(0.0, &ss), c1_metres_to_altitude_norm(2772.0, &ss));
+    eprintln!(
+        "#155 Maillon 2 — norm→m contract: sea(0.5)={:.1}m  norm1.0={:.0}m  norm0.0={:.0}m  roundtrip(2772m)={:.4}",
+        c1_altitude_norm_to_metres(0.5, &ss),
+        c1_altitude_norm_to_metres(1.0, &ss),
+        c1_altitude_norm_to_metres(0.0, &ss),
+        c1_metres_to_altitude_norm(2772.0, &ss)
+    );
     for &seed in &[42u64, 1988, 2026] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         // coarse production altitude (sea-centred metres/scale). Continental
         // sea-level cells should be ~0 → offset (alt+1.13)/2.26 = 0.5 exactly.
         let coarse = c1_production_altitude(&state.s, &state.age, &state.plate_type, &iso, &ss);
         // continental cells: min |alt| ≈ the coast (alt≈0); land = alt>0.
-        let mut cont_land = 0usize; let mut cont = 0usize; let mut min_abs = f32::INFINITY;
-        for j in 0..grid { for i in 0..grid {
-            if matches!(state.plate_type.get(i,j), PlateType::Continental) {
-                cont += 1;
-                let a = coarse.get(i as i32, j as i32);
-                min_abs = min_abs.min(a.abs());
-                if a > 0.0 { cont_land += 1; }
+        let mut cont_land = 0usize;
+        let mut cont = 0usize;
+        let mut min_abs = f32::INFINITY;
+        for j in 0..grid {
+            for i in 0..grid {
+                if matches!(state.plate_type.get(i, j), PlateType::Continental) {
+                    cont += 1;
+                    let a = coarse.get(i as i32, j as i32);
+                    min_abs = min_abs.min(a.abs());
+                    if a > 0.0 {
+                        cont_land += 1;
+                    }
+                }
             }
-        }}
+        }
         // production HD render.
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
-        let off = |a: f32| ((a + half) / (2.0*half)).clamp(0.0,1.0);
+        let off = |a: f32| ((a + half) / (2.0 * half)).clamp(0.0, 1.0);
         let coast_norm = off(0.0); // continental sea (alt 0) under the offset
         let land_max_norm = up.heightmap.data.iter().cloned().fold(0.0f32, f32::max);
-        eprintln!("  seed {seed}: continental coast alt(coarse) min|alt|={min_abs:.4} (→0) | coast→norm {coast_norm:.4} (want 0.5) | HD land-max norm={land_max_norm:.3} = {:.0}m | cont land {cont_land}/{cont}",
-            c1_altitude_norm_to_metres(land_max_norm, &ss));
+        eprintln!(
+            "  seed {seed}: continental coast alt(coarse) min|alt|={min_abs:.4} (→0) | coast→norm {coast_norm:.4} (want 0.5) | HD land-max norm={land_max_norm:.3} = {:.0}m | cont land {cont_land}/{cont}",
+            c1_altitude_norm_to_metres(land_max_norm, &ss)
+        );
         save_heightmap01(&up.heightmap, &dir.join(format!("seed{seed:05}_hypso.png")));
-        save_hillshade_crop(&up.heightmap, 0, 0, up.heightmap.width, &dir.join(format!("seed{seed:05}_hillshade.png")));
+        save_hillshade_crop(
+            &up.heightmap,
+            0,
+            0,
+            up.heightmap.width,
+            &dir.join(format!("seed{seed:05}_hillshade.png")),
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -3841,9 +4882,11 @@ fn probe_sea_unification_acceptance() {
 #[test]
 #[ignore]
 fn probe_drainage_etat_des_lieux() {
-    use ymir_core::terrain::flow::{compute_flow, extract_rivers, FlowConfig, RiverConfig, DIR_NONE, D8_DX, D8_DY};
-    use ymir_core::lakes::detection::{detect_lakes, LakeConfig};
+    use ymir_core::lakes::detection::{LakeConfig, detect_lakes};
     use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+    use ymir_core::terrain::flow::{
+        D8_DX, D8_DY, DIR_NONE, FlowConfig, RiverConfig, compute_flow, extract_rivers,
+    };
     let dir = output_dir().join("drainage_etat");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso = IsostasyConfig::c1_default();
@@ -3851,12 +4894,21 @@ fn probe_drainage_etat_des_lieux() {
     let grid = 64usize;
     let target = 512usize;
     let cfg = FbmUpscaleConfig::c1_hd_production(target);
-    eprintln!("#155 W7 drainage état-des-lieux — existing stack on C1 HD product ({target}², sea=0.5)");
+    eprintln!(
+        "#155 W7 drainage état-des-lieux — existing stack on C1 HD product ({target}², sea=0.5)"
+    );
     for &seed in &[42u64, 1988, 2026] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
         let h = &up.heightmap;
@@ -3865,64 +4917,109 @@ fn probe_drainage_etat_des_lieux() {
         // The unified scale puts sea at 0.5.
         let flow = compute_flow(h, &FlowConfig { sea_level: 0.5, ..Default::default() });
         let rivers = extract_rivers(&flow, &RiverConfig::default(), w, ht);
-        let lakes = detect_lakes(h, &flow.filled, &flow.direction, &flow.basins, &LakeConfig::default());
+        let lakes =
+            detect_lakes(h, &flow.filled, &flow.direction, &flow.basins, &LakeConfig::default());
 
         // Strahler histogram.
         let mut strahler = [0usize; 12];
-        for s in &rivers.segments { strahler[(s.strahler_order as usize).min(11)] += 1; }
+        for s in &rivers.segments {
+            strahler[(s.strahler_order as usize).min(11)] += 1;
+        }
         let max_acc = flow.accumulation.data.iter().cloned().fold(0.0f32, f32::max);
 
         // Endorheic vs exorheic: trace each lake outlet downstream; reaches sea?
         let is_sea = |k: usize| h.data[k] <= 0.5;
-        let mut endorheic = 0; let mut exorheic = 0;
+        let mut endorheic = 0;
+        let mut exorheic = 0;
         for lk in &lakes.lakes {
             let (mut x, mut y) = (lk.outlet.0 as usize, lk.outlet.1 as usize);
-            let mut steps = 0; let mut reached_sea = false;
+            let mut steps = 0;
+            let mut reached_sea = false;
             loop {
-                let k = y*w + x;
-                if is_sea(k) { reached_sea = true; break; }
+                let k = y * w + x;
+                if is_sea(k) {
+                    reached_sea = true;
+                    break;
+                }
                 let d = flow.direction[k];
-                if d == DIR_NONE || steps > w*ht { break; }
+                if d == DIR_NONE || steps > w * ht {
+                    break;
+                }
                 x = ((x as i32 + D8_DX[d as usize]).rem_euclid(w as i32)) as usize;
                 y = ((y as i32 + D8_DY[d as usize]).rem_euclid(ht as i32)) as usize;
                 steps += 1;
             }
-            if reached_sea { exorheic += 1; } else { endorheic += 1; }
+            if reached_sea {
+                exorheic += 1;
+            } else {
+                endorheic += 1;
+            }
         }
         // Lake levels/depths in metres (Maillon-2 contract).
         let (mut max_area, mut deepest_m, mut highest_lake_m) = (0usize, 0.0f32, f32::MIN);
         for lk in &lakes.lakes {
             max_area = max_area.max(lk.area);
-            deepest_m = deepest_m.max(c1_altitude_norm_to_metres(lk.surface_elevation, &ss) - c1_altitude_norm_to_metres(lk.surface_elevation - lk.max_depth, &ss));
-            highest_lake_m = highest_lake_m.max(c1_altitude_norm_to_metres(lk.surface_elevation, &ss));
+            deepest_m = deepest_m.max(
+                c1_altitude_norm_to_metres(lk.surface_elevation, &ss)
+                    - c1_altitude_norm_to_metres(lk.surface_elevation - lk.max_depth, &ss),
+            );
+            highest_lake_m =
+                highest_lake_m.max(c1_altitude_norm_to_metres(lk.surface_elevation, &ss));
         }
         let land = h.data.iter().filter(|&&v| v > 0.5).count();
-        eprintln!("  seed {seed}: land {:.1}% | basins {} max_acc {max_acc:.0} | rivers {} segs, Strahler {:?}",
-            100.0*land as f64/(w*ht) as f64, flow.num_basins, rivers.segments.len(), &strahler[1..7]);
-        eprintln!("    lakes {} (exorheic {exorheic} / endorheic {endorheic}) | max area {max_area} cells | deepest {deepest_m:.0} m | highest level {highest_lake_m:.0} m",
-            lakes.lakes.len());
+        eprintln!(
+            "  seed {seed}: land {:.1}% | basins {} max_acc {max_acc:.0} | rivers {} segs, Strahler {:?}",
+            100.0 * land as f64 / (w * ht) as f64,
+            flow.num_basins,
+            rivers.segments.len(),
+            &strahler[1..7]
+        );
+        eprintln!(
+            "    lakes {} (exorheic {exorheic} / endorheic {endorheic}) | max area {max_area} cells | deepest {deepest_m:.0} m | highest level {highest_lake_m:.0} m",
+            lakes.lakes.len()
+        );
 
         // Render overlay (hypso + rivers blue + lakes).
-        let mut img = vec![0u8; w*ht*3];
-        for k in 0..w*ht {
-            let v = h.data[k].clamp(0.0,1.0);
-            let (r,g,b) = if v <= 0.5 { (30,60,(120.0+200.0*v) as u8) } else { let t=(v-0.5)*2.0; (((60.0+150.0*t) as u8),((120.0+80.0*t) as u8),60) };
-            img[k*3]=r; img[k*3+1]=g; img[k*3+2]=b;
+        let mut img = vec![0u8; w * ht * 3];
+        for k in 0..w * ht {
+            let v = h.data[k].clamp(0.0, 1.0);
+            let (r, g, b) = if v <= 0.5 {
+                (30, 60, (120.0 + 200.0 * v) as u8)
+            } else {
+                let t = (v - 0.5) * 2.0;
+                (((60.0 + 150.0 * t) as u8), ((120.0 + 80.0 * t) as u8), 60)
+            };
+            img[k * 3] = r;
+            img[k * 3 + 1] = g;
+            img[k * 3 + 2] = b;
         }
         let stream = RiverConfig::default().stream_threshold;
-        for k in 0..w*ht {
-            if lakes.lake_map[k] != 0 { img[k*3]=30; img[k*3+1]=90; img[k*3+2]=180; }
-            else if flow.accumulation.data[k] >= stream && h.data[k] > 0.5 { img[k*3]=40; img[k*3+1]=110; img[k*3+2]=230; }
+        for k in 0..w * ht {
+            if lakes.lake_map[k] != 0 {
+                img[k * 3] = 30;
+                img[k * 3 + 1] = 90;
+                img[k * 3 + 2] = 180;
+            } else if flow.accumulation.data[k] >= stream && h.data[k] > 0.5 {
+                img[k * 3] = 40;
+                img[k * 3 + 1] = 110;
+                img[k * 3 + 2] = 230;
+            }
         }
         // Origin-bottom (data row j → image row ht-1-j), matching the
         // product-wide convention (save_heightmap01/binarymap/hillshade_crop +
         // viz hydrology). The extraction reads the same GridF32 indexing as
         // every consumer; only this render's orientation was the Y-flip.
         let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
-        for j in 0..ht { for i in 0..w {
-            let k = j*w + i;
-            buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb([img[k*3],img[k*3+1],img[k*3+2]]));
-        }}
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                buf.put_pixel(
+                    i as u32,
+                    (ht - 1 - j) as u32,
+                    image::Rgb([img[k * 3], img[k * 3 + 1], img[k * 3 + 2]]),
+                );
+            }
+        }
         buf.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
     }
     eprintln!("  out = {}", dir.display());
@@ -3947,7 +5044,9 @@ fn probe_c1_drainage_acceptance() {
     let dir = output_dir().join("drainage_accept");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso = IsostasyConfig::c1_default();
-    eprintln!("#155 drainage acceptance — c1_drainage on the SHARED cached 2048² C1 product (c165_eroded + cached_c1_drainage); km² navigability is resolution-independent by design.");
+    eprintln!(
+        "#155 drainage acceptance — c1_drainage on the SHARED cached 2048² C1 product (c165_eroded + cached_c1_drainage); km² navigability is resolution-independent by design."
+    );
     for &seed in &[42u64, 1988, 2026] {
         let h = c165_eroded(seed, &iso); // HIT — the shared terrain
         let dr = c165_drainage(seed, &iso); // cached drainage, chained on the eroded key
@@ -3955,15 +5054,32 @@ fn probe_c1_drainage_acceptance() {
         let land_km2 = h.data.iter().filter(|&&v| v > 0.5).count() as f32 * c1_cell_area_km2(w);
         let mut nav = [0usize; 4];
         for n in &dr.segment_navigability {
-            nav[match n { Navigability::NonNavigable=>0, Navigability::SmallBoat=>1, Navigability::Barge=>2, Navigability::Ship=>3 }] += 1;
+            nav[match n {
+                Navigability::NonNavigable => 0,
+                Navigability::SmallBoat => 1,
+                Navigability::Barge => 2,
+                Navigability::Ship => 3,
+            }] += 1;
         }
         let max_drain = dr.segment_drainage_km2.iter().cloned().fold(0.0f32, f32::max);
         let exo = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Exorheic).count();
         let endo = dr.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).count();
-        let (deepest, highest, biggest) = dr.lakes.iter().fold((0.0f32, f32::MIN, 0.0f32), |(d, hh, a), l| (d.max(l.depth_m), hh.max(l.level_m), a.max(l.area_km2)));
-        eprintln!("  seed {seed} @2048²: land {land_km2:.0} km² | rivers {} (nonNav {} smallBoat {} barge {} ship {}) maxDrain {max_drain:.0} km²",
-            dr.rivers.segments.len(), nav[0], nav[1], nav[2], nav[3]);
-        eprintln!("    lakes {} (exo {exo}/endo {endo}) deepest {deepest:.0} m, highest level {highest:.0} m, biggest {biggest:.0} km²", dr.lakes.len());
+        let (deepest, highest, biggest) =
+            dr.lakes.iter().fold((0.0f32, f32::MIN, 0.0f32), |(d, hh, a), l| {
+                (d.max(l.depth_m), hh.max(l.level_m), a.max(l.area_km2))
+            });
+        eprintln!(
+            "  seed {seed} @2048²: land {land_km2:.0} km² | rivers {} (nonNav {} smallBoat {} barge {} ship {}) maxDrain {max_drain:.0} km²",
+            dr.rivers.segments.len(),
+            nav[0],
+            nav[1],
+            nav[2],
+            nav[3]
+        );
+        eprintln!(
+            "    lakes {} (exo {exo}/endo {endo}) deepest {deepest:.0} m, highest level {highest:.0} m, biggest {biggest:.0} km²",
+            dr.lakes.len()
+        );
 
         // render overlay (origin-bottom, the product convention). Base hypso +
         // lakes + NAVIGABLE rivers by tier (small-boat→barge→ship); non-navigable
@@ -3971,8 +5087,15 @@ fn probe_c1_drainage_acceptance() {
         let mut img = vec![0u8; w * ht * 3];
         for k in 0..w * ht {
             let v = h.data[k].clamp(0.0, 1.0);
-            let (r, g, b) = if v <= 0.5 { (30, 60, (120.0 + 200.0 * v) as u8) } else { let t = (v - 0.5) * 2.0; (((60.0 + 150.0 * t) as u8), ((120.0 + 80.0 * t) as u8), 60) };
-            img[k * 3] = r; img[k * 3 + 1] = g; img[k * 3 + 2] = b;
+            let (r, g, b) = if v <= 0.5 {
+                (30, 60, (120.0 + 200.0 * v) as u8)
+            } else {
+                let t = (v - 0.5) * 2.0;
+                (((60.0 + 150.0 * t) as u8), ((120.0 + 80.0 * t) as u8), 60)
+            };
+            img[k * 3] = r;
+            img[k * 3 + 1] = g;
+            img[k * 3 + 2] = b;
         }
         for (si, seg) in dr.rivers.segments.iter().enumerate() {
             let col = match dr.segment_navigability[si] {
@@ -3981,13 +5104,31 @@ fn probe_c1_drainage_acceptance() {
                 Navigability::SmallBoat => [90, 160, 240],
                 Navigability::NonNavigable => continue,
             };
-            for &(px, py) in &seg.points { let k = py as usize * w + px as usize; img[k * 3] = col[0]; img[k * 3 + 1] = col[1]; img[k * 3 + 2] = col[2]; }
+            for &(px, py) in &seg.points {
+                let k = py as usize * w + px as usize;
+                img[k * 3] = col[0];
+                img[k * 3 + 1] = col[1];
+                img[k * 3 + 2] = col[2];
+            }
         }
         for k in 0..w * ht {
-            if dr.lake_map[k] != 0 { img[k * 3] = 30; img[k * 3 + 1] = 90; img[k * 3 + 2] = 180; }
+            if dr.lake_map[k] != 0 {
+                img[k * 3] = 30;
+                img[k * 3 + 1] = 90;
+                img[k * 3 + 2] = 180;
+            }
         }
         let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
-        for j in 0..ht { for i in 0..w { let k = j * w + i; buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb([img[k * 3], img[k * 3 + 1], img[k * 3 + 2]])); } }
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                buf.put_pixel(
+                    i as u32,
+                    (ht - 1 - j) as u32,
+                    image::Rgb([img[k * 3], img[k * 3 + 1], img[k * 3 + 2]]),
+                );
+            }
+        }
         buf.save(dir.join(format!("seed{seed:05}_drainage.png"))).unwrap();
     }
     eprintln!("  out = {}", dir.display());
@@ -4002,7 +5143,7 @@ fn probe_c1_drainage_acceptance() {
 #[test]
 #[ignore]
 fn probe_drainage_overlays() {
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, Navigability};
+    use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, Navigability, c1_drainage};
     let dir = output_dir().join("drainage_overlays");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso = IsostasyConfig::c1_default();
@@ -4013,19 +5154,30 @@ fn probe_drainage_overlays() {
     // hillshade grayscale for one cell (same lighting as save_hillshade_crop).
     let shade_at = |h: &GridF32, i: usize, j: usize| -> f64 {
         let z = 60.0_f64;
-        let (lx, ly, lz) = { let (a,b,c)=(1.0_f64,1.0,2.0); let n=(a*a+b*b+c*c).sqrt(); (a/n,b/n,c/n) };
+        let (lx, ly, lz) = {
+            let (a, b, c) = (1.0_f64, 1.0, 2.0);
+            let n = (a * a + b * b + c * c).sqrt();
+            (a / n, b / n, c / n)
+        };
         let (gx, gy) = (i as i32, j as i32);
-        let dzdx = (h.get(gx+1, gy) - h.get(gx-1, gy)) as f64 * z;
-        let dzdy = (h.get(gx, gy+1) - h.get(gx, gy-1)) as f64 * z;
-        let nn = (dzdx*dzdx + dzdy*dzdy + 1.0).sqrt();
-        ((-dzdx*lx - dzdy*ly + lz)/nn).clamp(0.0, 1.0)
+        let dzdx = (h.get(gx + 1, gy) - h.get(gx - 1, gy)) as f64 * z;
+        let dzdy = (h.get(gx, gy + 1) - h.get(gx, gy - 1)) as f64 * z;
+        let nn = (dzdx * dzdx + dzdy * dzdy + 1.0).sqrt();
+        ((-dzdx * lx - dzdy * ly + lz) / nn).clamp(0.0, 1.0)
     };
 
     for &seed in &[2026u64, 1988, 42, 1337] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
 
         let targets: &[usize] = &[1024];
@@ -4037,49 +5189,85 @@ fn probe_drainage_overlays() {
             let dr = c1_drainage(h, None, &dcfg, &ss);
 
             // ---- (1) rivers on hillshade ----
-            let mut riv = vec![0u8; w*ht*3];
-            for j in 0..ht { for i in 0..w {
-                let k = j*w+i;
-                let g = if h.data[k] <= 0.5 { 70u8 } else { (shade_at(h, i, j)*255.0) as u8 };
-                let c = if h.data[k] <= 0.5 { [40,70,120] } else { [g,g,g] };
-                riv[k*3]=c[0]; riv[k*3+1]=c[1]; riv[k*3+2]=c[2];
-            }}
+            let mut riv = vec![0u8; w * ht * 3];
+            for j in 0..ht {
+                for i in 0..w {
+                    let k = j * w + i;
+                    let g = if h.data[k] <= 0.5 { 70u8 } else { (shade_at(h, i, j) * 255.0) as u8 };
+                    let c = if h.data[k] <= 0.5 { [40, 70, 120] } else { [g, g, g] };
+                    riv[k * 3] = c[0];
+                    riv[k * 3 + 1] = c[1];
+                    riv[k * 3 + 2] = c[2];
+                }
+            }
             // Lakes drawn first (the filled flat basins) — rivers are then MASKED
             // under lakes (the viz convention): a flat filled basin is a lake, not
             // a blocky fill-front "river". This separates real valley rivers from
             // the D8-on-flats artifact.
-            let put = |img: &mut [u8], k: usize, c: [u8;3]| { img[k*3]=c[0]; img[k*3+1]=c[1]; img[k*3+2]=c[2]; };
-            for k in 0..w*ht { if dr.lake_map[k]!=0 { put(&mut riv, k, [35,80,160]); } }
+            let put = |img: &mut [u8], k: usize, c: [u8; 3]| {
+                img[k * 3] = c[0];
+                img[k * 3 + 1] = c[1];
+                img[k * 3 + 2] = c[2];
+            };
+            for k in 0..w * ht {
+                if dr.lake_map[k] != 0 {
+                    put(&mut riv, k, [35, 80, 160]);
+                }
+            }
             // navigable tiers + faint non-navigable streams, NOT over lake cells.
             for (si, seg) in dr.rivers.segments.iter().enumerate() {
                 let (col, thick) = match dr.segment_navigability[si] {
-                    Navigability::Ship => ([10u8,50,170], 2i32),
-                    Navigability::Barge => ([30,90,210], 1),
-                    Navigability::SmallBoat => ([80,150,235], 0),
-                    Navigability::NonNavigable => ([120,170,210], 0), // faint, shows valley-following
+                    Navigability::Ship => ([10u8, 50, 170], 2i32),
+                    Navigability::Barge => ([30, 90, 210], 1),
+                    Navigability::SmallBoat => ([80, 150, 235], 0),
+                    Navigability::NonNavigable => ([120, 170, 210], 0), // faint, shows valley-following
                 };
                 for &(px, py) in &seg.points {
-                    for dj in -thick..=thick { for di in -thick..=thick {
-                        let ni=(px as i32+di).rem_euclid(w as i32) as usize; let nj=(py as i32+dj).rem_euclid(ht as i32) as usize;
-                        let k = nj*w+ni;
-                        if dr.lake_map[k]==0 { put(&mut riv, k, col); }
-                    }}
+                    for dj in -thick..=thick {
+                        for di in -thick..=thick {
+                            let ni = (px as i32 + di).rem_euclid(w as i32) as usize;
+                            let nj = (py as i32 + dj).rem_euclid(ht as i32) as usize;
+                            let k = nj * w + ni;
+                            if dr.lake_map[k] == 0 {
+                                put(&mut riv, k, col);
+                            }
+                        }
+                    }
                 }
             }
             let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
-            for j in 0..ht { for i in 0..w { let k=j*w+i; buf.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb([riv[k*3],riv[k*3+1],riv[k*3+2]])); }}
+            for j in 0..ht {
+                for i in 0..w {
+                    let k = j * w + i;
+                    buf.put_pixel(
+                        i as u32,
+                        (ht - 1 - j) as u32,
+                        image::Rgb([riv[k * 3], riv[k * 3 + 1], riv[k * 3 + 2]]),
+                    );
+                }
+            }
             buf.save(dir.join(format!("seed{seed:05}_{target}_rivers_hillshade.png"))).unwrap();
 
             // ---- (2) lakes on hypso ----
             let mut buf2 = image::ImageBuffer::new(w as u32, ht as u32);
-            for j in 0..ht { for i in 0..w {
-                let k=j*w+i;
-                let c = if dr.lake_map[k]!=0 { [40,90,190] } else { hypsometric(h.data[k].clamp(0.0,1.0), 0.5) };
-                buf2.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(c));
-            }}
+            for j in 0..ht {
+                for i in 0..w {
+                    let k = j * w + i;
+                    let c = if dr.lake_map[k] != 0 {
+                        [40, 90, 190]
+                    } else {
+                        hypsometric(h.data[k].clamp(0.0, 1.0), 0.5)
+                    };
+                    buf2.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(c));
+                }
+            }
             buf2.save(dir.join(format!("seed{seed:05}_{target}_lakes_hypso.png"))).unwrap();
 
-            eprintln!("  seed {seed} @{target}²: {} rivers, {} lakes → overlays written", dr.rivers.segments.len(), dr.lakes.len());
+            eprintln!(
+                "  seed {seed} @{target}²: {} rivers, {} lakes → overlays written",
+                dr.rivers.segments.len(),
+                dr.lakes.len()
+            );
         }
     }
     eprintln!("  out = {}", dir.display());
@@ -4095,7 +5283,7 @@ fn probe_drainage_overlays() {
 #[test]
 #[ignore]
 fn probe_flat_routing_diagnostic() {
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, c1_drainage};
     use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
     use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
     let iso = IsostasyConfig::c1_default();
@@ -4105,76 +5293,123 @@ fn probe_flat_routing_diagnostic() {
     // steepest-descent direction on a given heightmap (eps=0 semantics): NONE if
     // no strictly-lower neighbour.
     let d8_eps0 = |h: &GridF32, i: usize, j: usize, w: usize, ht: usize| -> u8 {
-        let my = h.data[j*w+i];
-        let mut best = 0.0f32; let mut dir = DIR_NONE;
+        let my = h.data[j * w + i];
+        let mut best = 0.0f32;
+        let mut dir = DIR_NONE;
         for d in 0..8 {
             let ni = ((i as i32 + D8_DX[d]).rem_euclid(w as i32)) as usize;
             let nj = ((j as i32 + D8_DY[d]).rem_euclid(ht as i32)) as usize;
             let dist = if d % 2 == 0 { 1.0 } else { 1.414 };
-            let s = (my - h.data[nj*w+ni]) / dist;
-            if s > best { best = s; dir = d as u8; }
+            let s = (my - h.data[nj * w + ni]) / dist;
+            if s > best {
+                best = s;
+                dir = d as u8;
+            }
         }
         dir
     };
-    let pct = |v: &[f32], q: f32| -> f32 { if v.is_empty() {return f32::NAN;} let mut s=v.to_vec(); s.sort_by(|a,b| a.partial_cmp(b).unwrap()); s[((q*(s.len()-1) as f32) as usize).min(s.len()-1)] };
+    let pct = |v: &[f32], q: f32| -> f32 {
+        if v.is_empty() {
+            return f32::NAN;
+        }
+        let mut s = v.to_vec();
+        s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        s[((q * (s.len() - 1) as f32) as usize).min(s.len() - 1)]
+    };
     eprintln!("#155 flat-routing diagnostic — eps=0 counterfactual + filled/native split");
     for &seed in &[1988u64, 2026] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         for &target in &[1024usize, 2048] {
             let cfg = FbmUpscaleConfig::c1_hd_production(target);
             let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
-            let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+            let h = &up.heightmap;
+            let (w, ht) = (h.width, h.height);
             let dr = c1_drainage(h, None, &dcfg, &ss);
             let cell_km2 = c1_cell_area_km2(w);
             let stream_cells = (dcfg.thresholds.stream_km2 / cell_km2).max(1.0);
 
             // land gradient distribution → flat threshold (15% of median land grad).
-            let mut grads = vec![0.0f32; w*ht];
+            let mut grads = vec![0.0f32; w * ht];
             let mut land_grads = Vec::new();
-            for j in 0..ht { for i in 0..w {
-                let (gx, gy) = h.gradient_at(i, j); let g = (gx*gx+gy*gy).sqrt();
-                grads[j*w+i] = g;
-                if h.data[j*w+i] > 0.5 { land_grads.push(g); }
-            }}
+            for j in 0..ht {
+                for i in 0..w {
+                    let (gx, gy) = h.gradient_at(i, j);
+                    let g = (gx * gx + gy * gy).sqrt();
+                    grads[j * w + i] = g;
+                    if h.data[j * w + i] > 0.5 {
+                        land_grads.push(g);
+                    }
+                }
+            }
             let med = pct(&land_grads, 0.5);
             let flat_thr = 0.15 * med;
 
-            let (mut land, mut flat, mut filled_flat, mut native_flat) = (0usize,0usize,0usize,0usize);
-            let (mut eps_driven, mut eps_filled, mut eps_native) = (0usize,0usize,0usize);
+            let (mut land, mut flat, mut filled_flat, mut native_flat) =
+                (0usize, 0usize, 0usize, 0usize);
+            let (mut eps_driven, mut eps_filled, mut eps_native) = (0usize, 0usize, 0usize);
             let (mut native_above_stream, mut native_flat_total) = (0usize, 0usize);
-            for j in 0..ht { for i in 0..w {
-                let k = j*w+i;
-                if h.data[k] <= 0.5 { continue; }
-                land += 1;
-                if grads[k] >= flat_thr { continue; }
-                flat += 1;
-                let raised = dr.flow.filled.data[k] - h.data[k];
-                let is_filled = raised > 1e-5;
-                if is_filled { filled_flat += 1; } else { native_flat += 1; }
-                // eps-driven: compute_flow gave a direction, eps=0 gives NONE.
-                let dir_filled = dr.flow.direction[k];
-                let dir_orig = d8_eps0(h, i, j, w, ht);
-                if dir_filled != DIR_NONE && dir_orig == DIR_NONE {
-                    eps_driven += 1;
-                    if is_filled { eps_filled += 1; } else { eps_native += 1; }
+            for j in 0..ht {
+                for i in 0..w {
+                    let k = j * w + i;
+                    if h.data[k] <= 0.5 {
+                        continue;
+                    }
+                    land += 1;
+                    if grads[k] >= flat_thr {
+                        continue;
+                    }
+                    flat += 1;
+                    let raised = dr.flow.filled.data[k] - h.data[k];
+                    let is_filled = raised > 1e-5;
+                    if is_filled {
+                        filled_flat += 1;
+                    } else {
+                        native_flat += 1;
+                    }
+                    // eps-driven: compute_flow gave a direction, eps=0 gives NONE.
+                    let dir_filled = dr.flow.direction[k];
+                    let dir_orig = d8_eps0(h, i, j, w, ht);
+                    if dir_filled != DIR_NONE && dir_orig == DIR_NONE {
+                        eps_driven += 1;
+                        if is_filled {
+                            eps_filled += 1;
+                        } else {
+                            eps_native += 1;
+                        }
+                    }
+                    // native plateau: does flow accumulation exceed the stream threshold
+                    // (→ FALSE channels) or stay diffuse (correct)?
+                    if !is_filled {
+                        native_flat_total += 1;
+                        if dr.flow.accumulation.data[k] >= stream_cells {
+                            native_above_stream += 1;
+                        }
+                    }
                 }
-                // native plateau: does flow accumulation exceed the stream threshold
-                // (→ FALSE channels) or stay diffuse (correct)?
-                if !is_filled {
-                    native_flat_total += 1;
-                    if dr.flow.accumulation.data[k] >= stream_cells { native_above_stream += 1; }
-                }
-            }}
-            eprintln!("  seed {seed} @{target}²: land {land} | flat {flat} ({:.1}% land, thr={flat_thr:.2e}) = filled {filled_flat} + native {native_flat}",
-                100.0*flat as f64/land.max(1) as f64);
-            eprintln!("    eps-driven (dir from fill, NONE at eps=0): {eps_driven} ({:.1}% of flat) = filled {eps_filled} + native {eps_native}",
-                100.0*eps_driven as f64/flat.max(1) as f64);
-            eprintln!("    native plateau flats above stream-threshold (FALSE channels): {native_above_stream}/{native_flat_total} ({:.1}%)",
-                100.0*native_above_stream as f64/native_flat_total.max(1) as f64);
+            }
+            eprintln!(
+                "  seed {seed} @{target}²: land {land} | flat {flat} ({:.1}% land, thr={flat_thr:.2e}) = filled {filled_flat} + native {native_flat}",
+                100.0 * flat as f64 / land.max(1) as f64
+            );
+            eprintln!(
+                "    eps-driven (dir from fill, NONE at eps=0): {eps_driven} ({:.1}% of flat) = filled {eps_filled} + native {eps_native}",
+                100.0 * eps_driven as f64 / flat.max(1) as f64
+            );
+            eprintln!(
+                "    native plateau flats above stream-threshold (FALSE channels): {native_above_stream}/{native_flat_total} ({:.1}%)",
+                100.0 * native_above_stream as f64 / native_flat_total.max(1) as f64
+            );
         }
     }
 }
@@ -4187,7 +5422,7 @@ fn probe_flat_routing_diagnostic() {
 #[test]
 #[ignore]
 fn probe_flat_routing_fix_render() {
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, c1_drainage};
     use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
     let dir = output_dir().join("flat_fix");
     std::fs::create_dir_all(&dir).expect("create dir");
@@ -4196,33 +5431,58 @@ fn probe_flat_routing_fix_render() {
     let dcfg = C1DrainageConfig::default();
     let grid = 64usize;
     let shade = |h: &GridF32, i: usize, j: usize| -> f64 {
-        let z=60.0_f64; let (lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};
-        let dzdx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32)) as f64*z;
-        let dzdy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1)) as f64*z;
-        let n=(dzdx*dzdx+dzdy*dzdy+1.0).sqrt(); ((-dzdx*lx-dzdy*ly+lz)/n).clamp(0.0,1.0)
+        let z = 60.0_f64;
+        let (lx, ly, lz) = {
+            let (a, b, c) = (1.0_f64, 1.0, 2.0);
+            let nn = (a * a + b * b + c * c).sqrt();
+            (a / nn, b / nn, c / nn)
+        };
+        let dzdx = (h.get(i as i32 + 1, j as i32) - h.get(i as i32 - 1, j as i32)) as f64 * z;
+        let dzdy = (h.get(i as i32, j as i32 + 1) - h.get(i as i32, j as i32 - 1)) as f64 * z;
+        let n = (dzdx * dzdx + dzdy * dzdy + 1.0).sqrt();
+        ((-dzdx * lx - dzdy * ly + lz) / n).clamp(0.0, 1.0)
     };
-    for &(seed, target) in &[(1988u64,2048usize),(2026,2048),(1337,1024)] {
+    for &(seed, target) in &[(1988u64, 2048usize), (2026, 2048), (1337, 1024)] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let cfg = FbmUpscaleConfig::c1_hd_production(target);
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
-        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
         let dr = c1_drainage(h, None, &dcfg, &ss);
         let stream = (dcfg.thresholds.stream_km2 / c1_cell_area_km2(w)).max(1.0);
         // FULL accumulation network over hillshade, UNMASKED (so bars would show).
         let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
-        for j in 0..ht { for i in 0..w {
-            let k=j*w+i;
-            let c = if h.data[k] <= 0.5 { [40,70,120] }
-                else if dr.flow.accumulation.data[k] >= stream { [40,110,230] }
-                else { let g=(shade(h,i,j)*255.0) as u8; [g,g,g] };
-            buf.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(c));
-        }}
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let c = if h.data[k] <= 0.5 {
+                    [40, 70, 120]
+                } else if dr.flow.accumulation.data[k] >= stream {
+                    [40, 110, 230]
+                } else {
+                    let g = (shade(h, i, j) * 255.0) as u8;
+                    [g, g, g]
+                };
+                buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(c));
+            }
+        }
         buf.save(dir.join(format!("seed{seed:05}_{target}_accum.png"))).unwrap();
-        eprintln!("  seed {seed} @{target}²: {} rivers, {} lakes", dr.rivers.segments.len(), dr.lakes.len());
+        eprintln!(
+            "  seed {seed} @{target}²: {} rivers, {} lakes",
+            dr.rivers.segments.len(),
+            dr.lakes.len()
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -4236,7 +5496,7 @@ fn probe_flat_routing_fix_render() {
 #[test]
 #[ignore]
 fn probe_flat_fix_validation() {
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, Navigability};
+    use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, Navigability, c1_drainage};
     let dir = output_dir().join("flat_fix_validation");
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso = IsostasyConfig::c1_default();
@@ -4244,33 +5504,68 @@ fn probe_flat_fix_validation() {
     let dcfg = C1DrainageConfig::default();
     let grid = 64usize;
     let shade = |h: &GridF32, i: usize, j: usize| -> u8 {
-        let z=60.0_f64; let (lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};
-        let dzdx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32)) as f64*z;
-        let dzdy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1)) as f64*z;
-        let n=(dzdx*dzdx+dzdy*dzdy+1.0).sqrt(); (((-dzdx*lx-dzdy*ly+lz)/n).clamp(0.0,1.0)*255.0) as u8
+        let z = 60.0_f64;
+        let (lx, ly, lz) = {
+            let (a, b, c) = (1.0_f64, 1.0, 2.0);
+            let nn = (a * a + b * b + c * c).sqrt();
+            (a / nn, b / nn, c / nn)
+        };
+        let dzdx = (h.get(i as i32 + 1, j as i32) - h.get(i as i32 - 1, j as i32)) as f64 * z;
+        let dzdy = (h.get(i as i32, j as i32 + 1) - h.get(i as i32, j as i32 - 1)) as f64 * z;
+        let n = (dzdx * dzdx + dzdy * dzdy + 1.0).sqrt();
+        (((-dzdx * lx - dzdy * ly + lz) / n).clamp(0.0, 1.0) * 255.0) as u8
     };
     // crop render: hillshade + navigable rivers (masked under lakes), origin-bottom.
-    let render_crop = |h:&GridF32, dr:&ymir_core::tectonics_c1::drainage::C1DrainageResult, x0:usize,y0:usize,sz:usize, path:&std::path::Path| {
-        let w=h.width;
-        let mut buf=image::ImageBuffer::new(sz as u32, sz as u32);
+    let render_crop = |h: &GridF32,
+                       dr: &ymir_core::tectonics_c1::drainage::C1DrainageResult,
+                       x0: usize,
+                       y0: usize,
+                       sz: usize,
+                       path: &std::path::Path| {
+        let w = h.width;
+        let mut buf = image::ImageBuffer::new(sz as u32, sz as u32);
         // base
-        for jj in 0..sz { for ii in 0..sz {
-            let (i,j)=(x0+ii,y0+jj); let k=j*w+i;
-            let c = if h.data[k]<=0.5 {[40,70,120]} else if dr.lake_map[k]!=0 {[35,80,160]} else {let g=shade(h,i,j);[g,g,g]};
-            buf.put_pixel(ii as u32,(sz-1-jj) as u32, image::Rgb(c));
-        }}
+        for jj in 0..sz {
+            for ii in 0..sz {
+                let (i, j) = (x0 + ii, y0 + jj);
+                let k = j * w + i;
+                let c = if h.data[k] <= 0.5 {
+                    [40, 70, 120]
+                } else if dr.lake_map[k] != 0 {
+                    [35, 80, 160]
+                } else {
+                    let g = shade(h, i, j);
+                    [g, g, g]
+                };
+                buf.put_pixel(ii as u32, (sz - 1 - jj) as u32, image::Rgb(c));
+            }
+        }
         // navigable rivers (skip lake cells), thicker for higher tiers
-        for (si,seg) in dr.rivers.segments.iter().enumerate() {
-            let (col,th)=match dr.segment_navigability[si]{Navigability::Ship=>([10u8,50,170],1i32),Navigability::Barge=>([30,90,210],0),Navigability::SmallBoat=>([90,150,235],0),Navigability::NonNavigable=>([140,180,215],0)};
-            for &(px,py) in &seg.points {
-                let (px,py)=(px as usize,py as usize);
-                if px<x0||py<y0||px>=x0+sz||py>=y0+sz {continue}
-                for dj in -th..=th { for di in -th..=th {
-                    let (ii,jj)=((px as i32-x0 as i32+di),(py as i32-y0 as i32+dj));
-                    if ii<0||jj<0||ii>=sz as i32||jj>=sz as i32 {continue}
-                    let k=py*w+px; if dr.lake_map[k]!=0 {continue}
-                    buf.put_pixel(ii as u32,(sz as i32-1-jj) as u32, image::Rgb(col));
-                }}
+        for (si, seg) in dr.rivers.segments.iter().enumerate() {
+            let (col, th) = match dr.segment_navigability[si] {
+                Navigability::Ship => ([10u8, 50, 170], 1i32),
+                Navigability::Barge => ([30, 90, 210], 0),
+                Navigability::SmallBoat => ([90, 150, 235], 0),
+                Navigability::NonNavigable => ([140, 180, 215], 0),
+            };
+            for &(px, py) in &seg.points {
+                let (px, py) = (px as usize, py as usize);
+                if px < x0 || py < y0 || px >= x0 + sz || py >= y0 + sz {
+                    continue;
+                }
+                for dj in -th..=th {
+                    for di in -th..=th {
+                        let (ii, jj) = ((px as i32 - x0 as i32 + di), (py as i32 - y0 as i32 + dj));
+                        if ii < 0 || jj < 0 || ii >= sz as i32 || jj >= sz as i32 {
+                            continue;
+                        }
+                        let k = py * w + px;
+                        if dr.lake_map[k] != 0 {
+                            continue;
+                        }
+                        buf.put_pixel(ii as u32, (sz as i32 - 1 - jj) as u32, image::Rgb(col));
+                    }
+                }
             }
         }
         buf.save(path).unwrap();
@@ -4279,32 +5574,99 @@ fn probe_flat_fix_validation() {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let cfg = FbmUpscaleConfig::c1_hd_production(2048);
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg);
-        let h=&up.heightmap; let (w,ht)=(h.width,h.height);
-        let dr=c1_drainage(h,None,&dcfg,&ss);
-        let sz=512usize;
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
+        let dr = c1_drainage(h, None, &dcfg, &ss);
+        let sz = 512usize;
         // centroids: filled-depression flats vs native flats (land, low orig grad, not filled).
-        let (mut fx,mut fy,mut fn_,mut nx,mut ny,mut nn)=(0u64,0u64,0u64,0u64,0u64,0u64);
-        let mut lg=Vec::new();
-        for j in 0..ht { for i in 0..w { if h.data[j*w+i]>0.5 { let (gx,gy)=h.gradient_at(i,j); lg.push((gx*gx+gy*gy).sqrt()); }}}
-        lg.sort_by(|a,b|a.partial_cmp(b).unwrap()); let med=lg[lg.len()/2]; let flat_thr=0.15*med;
-        for j in 0..ht { for i in 0..w { let k=j*w+i; if h.data[k]<=0.5 {continue}
-            let raised=dr.flow.filled.data[k]-h.data[k];
-            let (gx,gy)=h.gradient_at(i,j); let g=(gx*gx+gy*gy).sqrt();
-            if raised>1e-5 { fx+=i as u64; fy+=j as u64; fn_+=1; }
-            else if g<flat_thr { nx+=i as u64; ny+=j as u64; nn+=1; }
-        }}
-        let clamp=|c:i64,sz:usize,max:usize| (c-(sz as i64)/2).max(0).min(max as i64-sz as i64) as usize;
-        if fn_>0 { let (cx,cy)=((fx/fn_) as i64,(fy/fn_) as i64); render_crop(h,&dr,clamp(cx,sz,w),clamp(cy,sz,ht),sz,&dir.join(format!("seed{seed:05}_filled_interior.png"))); }
-        if nn>0 { let (cx,cy)=((nx/nn) as i64,(ny/nn) as i64); render_crop(h,&dr,clamp(cx,sz,w),clamp(cy,sz,ht),sz,&dir.join(format!("seed{seed:05}_native_plateau.png"))); }
+        let (mut fx, mut fy, mut fn_, mut nx, mut ny, mut nn) =
+            (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+        let mut lg = Vec::new();
+        for j in 0..ht {
+            for i in 0..w {
+                if h.data[j * w + i] > 0.5 {
+                    let (gx, gy) = h.gradient_at(i, j);
+                    lg.push((gx * gx + gy * gy).sqrt());
+                }
+            }
+        }
+        lg.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let med = lg[lg.len() / 2];
+        let flat_thr = 0.15 * med;
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                if h.data[k] <= 0.5 {
+                    continue;
+                }
+                let raised = dr.flow.filled.data[k] - h.data[k];
+                let (gx, gy) = h.gradient_at(i, j);
+                let g = (gx * gx + gy * gy).sqrt();
+                if raised > 1e-5 {
+                    fx += i as u64;
+                    fy += j as u64;
+                    fn_ += 1;
+                } else if g < flat_thr {
+                    nx += i as u64;
+                    ny += j as u64;
+                    nn += 1;
+                }
+            }
+        }
+        let clamp = |c: i64, sz: usize, max: usize| {
+            (c - (sz as i64) / 2).max(0).min(max as i64 - sz as i64) as usize
+        };
+        if fn_ > 0 {
+            let (cx, cy) = ((fx / fn_) as i64, (fy / fn_) as i64);
+            render_crop(
+                h,
+                &dr,
+                clamp(cx, sz, w),
+                clamp(cy, sz, ht),
+                sz,
+                &dir.join(format!("seed{seed:05}_filled_interior.png")),
+            );
+        }
+        if nn > 0 {
+            let (cx, cy) = ((nx / nn) as i64, (ny / nn) as i64);
+            render_crop(
+                h,
+                &dr,
+                clamp(cx, sz, w),
+                clamp(cy, sz, ht),
+                sz,
+                &dir.join(format!("seed{seed:05}_native_plateau.png")),
+            );
+        }
         // full lakes/hypso (invariance)
-        let mut buf=image::ImageBuffer::new(w as u32, ht as u32);
-        for j in 0..ht { for i in 0..w { let k=j*w+i; let c= if dr.lake_map[k]!=0 {[40,90,190]} else {hypsometric(h.data[k].clamp(0.0,1.0),0.5)}; buf.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(c)); }}
+        let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let c = if dr.lake_map[k] != 0 {
+                    [40, 90, 190]
+                } else {
+                    hypsometric(h.data[k].clamp(0.0, 1.0), 0.5)
+                };
+                buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(c));
+            }
+        }
         buf.save(dir.join(format!("seed{seed:05}_lakes_hypso_full.png"))).unwrap();
-        eprintln!("  seed {seed}: filled-flat {fn_} cells, native-flat {nn} cells, {} lakes", dr.lakes.len());
+        eprintln!(
+            "  seed {seed}: filled-flat {fn_} cells, native-flat {nn} cells, {} lakes",
+            dr.lakes.len()
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -4317,90 +5679,189 @@ fn probe_flat_fix_validation() {
 #[test]
 #[ignore]
 fn probe_quasi_flat_residual() {
-    use ymir_core::terrain::flow::{compute_flow, FlowConfig, RiverConfig, DIR_NONE, D8_DX, D8_DY};
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
-    use ymir_core::tectonics_c1::production_upscale::{c1_cell_area_km2, c1_altitude_norm_to_metres, C1_DOMAIN_KM};
+    use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, c1_drainage};
+    use ymir_core::tectonics_c1::production_upscale::{
+        C1_DOMAIN_KM, c1_altitude_norm_to_metres, c1_cell_area_km2,
+    };
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE, FlowConfig, RiverConfig, compute_flow};
     let iso = IsostasyConfig::c1_default();
     let ss = SteinSteinParams::default();
     // gradient bins in norm/cell; converted to m/km via the contracts.
     let bins = [0.0f32, 1e-5, 1e-4, 1e-3, 1e-2, f32::INFINITY];
-    let binname = ["<1e-5","1e-5..1e-4","1e-4..1e-3","1e-3..1e-2",">=1e-2"];
+    let binname = ["<1e-5", "1e-5..1e-4", "1e-4..1e-3", "1e-3..1e-2", ">=1e-2"];
     // local directional coherence: fraction of drainage-neighbours (5x5) sharing dir.
-    let coherence = |dir:&[u8], acc:&GridF32, stream:f32, w:usize, ht:usize, k:usize| -> f32 {
-        let d=dir[k]; if d==DIR_NONE {return 0.0}
-        let (ci,cj)=(k%w,k/w); let (mut same,mut tot)=(0u32,0u32);
-        for dj in -2i32..=2 { for di in -2i32..=2 {
-            if di==0&&dj==0 {continue}
-            let ni=(ci as i32+di).rem_euclid(w as i32) as usize; let nj=(cj as i32+dj).rem_euclid(ht as i32) as usize;
-            let m=nj*w+ni; if acc.data[m]>=stream && dir[m]!=DIR_NONE { tot+=1; if dir[m]==d {same+=1} }
-        }}
-        if tot==0 {0.0} else {same as f32/tot as f32}
-    };
+    let coherence =
+        |dir: &[u8], acc: &GridF32, stream: f32, w: usize, ht: usize, k: usize| -> f32 {
+            let d = dir[k];
+            if d == DIR_NONE {
+                return 0.0;
+            }
+            let (ci, cj) = (k % w, k / w);
+            let (mut same, mut tot) = (0u32, 0u32);
+            for dj in -2i32..=2 {
+                for di in -2i32..=2 {
+                    if di == 0 && dj == 0 {
+                        continue;
+                    }
+                    let ni = (ci as i32 + di).rem_euclid(w as i32) as usize;
+                    let nj = (cj as i32 + dj).rem_euclid(ht as i32) as usize;
+                    let m = nj * w + ni;
+                    if acc.data[m] >= stream && dir[m] != DIR_NONE {
+                        tot += 1;
+                        if dir[m] == d {
+                            same += 1
+                        }
+                    }
+                }
+            }
+            if tot == 0 { 0.0 } else { same as f32 / tot as f32 }
+        };
     // --- counterfactual: synthetic uniform slopes (parallel-on-planar baseline) ---
-    eprintln!("#155 quasi-flat residual — synthetic uniform-slope counterfactual (parallel baseline):");
+    eprintln!(
+        "#155 quasi-flat residual — synthetic uniform-slope counterfactual (parallel baseline):"
+    );
     for &sg in &[1e-4f32, 1e-3, 5e-3] {
-        let n=512usize; let mut hm=GridF32::new(n,n,0.0);
-        for j in 0..n { for i in 0..n { hm.set(i,j, (0.75 - i as f32*sg).max(0.2)); }}
-        let fl=compute_flow(&hm,&FlowConfig{sea_level:0.5,..Default::default()});
-        let stream=RiverConfig::default().stream_threshold;
-        let (mut cs,mut cn)=(0.0f32,0u32);
-        for k in 0..n*n { if hm.data[k]>0.5 && fl.accumulation.data[k]>=stream { cs+=coherence(&fl.direction,&fl.accumulation,stream,n,n,k); cn+=1; }}
-        eprintln!("  slope {sg:.0e} norm/cell (~{:.1} m/km): mean dir-coherence over drainage = {:.2} (1.0 = fully parallel)",
-            sg*c1_altitude_norm_to_metres_delta(&ss)/(C1_DOMAIN_KM/n as f32), if cn>0 {cs/cn as f32} else {0.0});
+        let n = 512usize;
+        let mut hm = GridF32::new(n, n, 0.0);
+        for j in 0..n {
+            for i in 0..n {
+                hm.set(i, j, (0.75 - i as f32 * sg).max(0.2));
+            }
+        }
+        let fl = compute_flow(&hm, &FlowConfig { sea_level: 0.5, ..Default::default() });
+        let stream = RiverConfig::default().stream_threshold;
+        let (mut cs, mut cn) = (0.0f32, 0u32);
+        for k in 0..n * n {
+            if hm.data[k] > 0.5 && fl.accumulation.data[k] >= stream {
+                cs += coherence(&fl.direction, &fl.accumulation, stream, n, n, k);
+                cn += 1;
+            }
+        }
+        eprintln!(
+            "  slope {sg:.0e} norm/cell (~{:.1} m/km): mean dir-coherence over drainage = {:.2} (1.0 = fully parallel)",
+            sg * c1_altitude_norm_to_metres_delta(&ss) / (C1_DOMAIN_KM / n as f32),
+            if cn > 0 { cs / cn as f32 } else { 0.0 }
+        );
     }
     // --- real terrain ---
-    let grid=64usize; let dcfg=C1DrainageConfig::default();
+    let grid = 64usize;
+    let dcfg = C1DrainageConfig::default();
     for &seed in &[1988u64, 2026] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
         let closures = C1Closures::default();
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &closures, |_, _| {});
         let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &cfg_2048());
-        let h=&up.heightmap; let (w,ht)=(h.width,h.height);
-        let dr=c1_drainage(h,None,&dcfg,&ss);
-        let f=&dr.flow.filled.data;
-        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
-        let m_per_km = c1_altitude_norm_to_metres_delta(&ss)/(C1_DOMAIN_KM/w as f32);
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
+        let dr = c1_drainage(h, None, &dcfg, &ss);
+        let f = &dr.flow.filled.data;
+        let stream = (dcfg.thresholds.stream_km2 / c1_cell_area_km2(w)).max(1.0);
+        let m_per_km = c1_altitude_norm_to_metres_delta(&ss) / (C1_DOMAIN_KM / w as f32);
         // recompute exact-flat (GM-resolved) membership on filled.
-        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
-        let mut bin_tot=[0u64;5]; let mut bin_nonexact=[0u64;5]; let mut bin_coh=[0.0f64;5];
-        let (mut drain,mut land)=(0u64,0u64);
-        let (mut resid,mut resid_fringe)=(0u64,0u64);
-        for j in 0..ht { for i in 0..w { let k=j*w+i;
-            if h.data[k]<=0.5 {continue} land+=1;
-            if dr.flow.accumulation.data[k] < stream {continue} drain+=1;
-            let (gx,gy)=h.gradient_at(i,j); let g=(gx*gx+gy*gy).sqrt();
-            let mut b=4; for t in 0..5 { if g>=bins[t]&&g<bins[t+1]{b=t;break} }
-            bin_tot[b]+=1; bin_coh[b]+=coherence(&dr.flow.direction,&dr.flow.accumulation,stream,w,ht,k) as f64;
-            // exact-flat? no strictly-lower filled neighbour AND an exact-equal one.
-            let (mut hl,mut he)=(false,false);
-            for d in 0..8 { let mm=nb(i,j,d); if f[mm]<f[k]{hl=true} else if f[mm]==f[k]{he=true} }
-            let exact_flat = !hl && he;
-            if !exact_flat { bin_nonexact[b]+=1; }
-            // residual band = low-gradient (<1e-4) AND not exact-flat (GM skipped it).
-            if g<1e-4 && !exact_flat {
-                resid+=1;
-                // fringe: adjacent to a filled cell (filled>h → partially-filled depression edge)?
-                let mut fr=false; for d in 0..8 { let mm=nb(i,j,d); if dr.flow.filled.data[mm]-h.data[mm]>1e-5 {fr=true} }
-                if fr {resid_fringe+=1;}
+        let nb = |i: usize, j: usize, d: usize| {
+            let ni = ((i as i32 + D8_DX[d]).rem_euclid(w as i32)) as usize;
+            let nj = ((j as i32 + D8_DY[d]).rem_euclid(ht as i32)) as usize;
+            nj * w + ni
+        };
+        let mut bin_tot = [0u64; 5];
+        let mut bin_nonexact = [0u64; 5];
+        let mut bin_coh = [0.0f64; 5];
+        let (mut drain, mut land) = (0u64, 0u64);
+        let (mut resid, mut resid_fringe) = (0u64, 0u64);
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                if h.data[k] <= 0.5 {
+                    continue;
+                }
+                land += 1;
+                if dr.flow.accumulation.data[k] < stream {
+                    continue;
+                }
+                drain += 1;
+                let (gx, gy) = h.gradient_at(i, j);
+                let g = (gx * gx + gy * gy).sqrt();
+                let mut b = 4;
+                for t in 0..5 {
+                    if g >= bins[t] && g < bins[t + 1] {
+                        b = t;
+                        break;
+                    }
+                }
+                bin_tot[b] += 1;
+                bin_coh[b] +=
+                    coherence(&dr.flow.direction, &dr.flow.accumulation, stream, w, ht, k) as f64;
+                // exact-flat? no strictly-lower filled neighbour AND an exact-equal one.
+                let (mut hl, mut he) = (false, false);
+                for d in 0..8 {
+                    let mm = nb(i, j, d);
+                    if f[mm] < f[k] {
+                        hl = true
+                    } else if f[mm] == f[k] {
+                        he = true
+                    }
+                }
+                let exact_flat = !hl && he;
+                if !exact_flat {
+                    bin_nonexact[b] += 1;
+                }
+                // residual band = low-gradient (<1e-4) AND not exact-flat (GM skipped it).
+                if g < 1e-4 && !exact_flat {
+                    resid += 1;
+                    // fringe: adjacent to a filled cell (filled>h → partially-filled depression edge)?
+                    let mut fr = false;
+                    for d in 0..8 {
+                        let mm = nb(i, j, d);
+                        if dr.flow.filled.data[mm] - h.data[mm] > 1e-5 {
+                            fr = true
+                        }
+                    }
+                    if fr {
+                        resid_fringe += 1;
+                    }
+                }
             }
-        }}
-        eprintln!("  seed {seed} @2048² (m/km factor {m_per_km:.0}): drainage cells {drain} ({:.1}% of land)", 100.0*drain as f64/land.max(1) as f64);
-        for b in 0..5 {
-            let coh = if bin_tot[b]>0 {bin_coh[b]/bin_tot[b] as f64} else {0.0};
-            eprintln!("    grad {:>10} ({:>6.1} m/km lo): {:>7} drainage ({:>4.1}%), non-exact {:>7} ({:>4.1}%), coherence {:.2}",
-                binname[b], bins[b]*m_per_km, bin_tot[b], 100.0*bin_tot[b] as f64/drain.max(1) as f64,
-                bin_nonexact[b], 100.0*bin_nonexact[b] as f64/bin_tot[b].max(1) as f64, coh);
         }
-        eprintln!("    RESIDUAL band (grad<1e-4 & non-exact-flat): {resid} cells = {:.2}% of drainage, {:.3}% of land | fringe-of-depression {:.0}%",
-            100.0*resid as f64/drain.max(1) as f64, 100.0*resid as f64/land.max(1) as f64, 100.0*resid_fringe as f64/resid.max(1) as f64);
+        eprintln!(
+            "  seed {seed} @2048² (m/km factor {m_per_km:.0}): drainage cells {drain} ({:.1}% of land)",
+            100.0 * drain as f64 / land.max(1) as f64
+        );
+        for b in 0..5 {
+            let coh = if bin_tot[b] > 0 { bin_coh[b] / bin_tot[b] as f64 } else { 0.0 };
+            eprintln!(
+                "    grad {:>10} ({:>6.1} m/km lo): {:>7} drainage ({:>4.1}%), non-exact {:>7} ({:>4.1}%), coherence {:.2}",
+                binname[b],
+                bins[b] * m_per_km,
+                bin_tot[b],
+                100.0 * bin_tot[b] as f64 / drain.max(1) as f64,
+                bin_nonexact[b],
+                100.0 * bin_nonexact[b] as f64 / bin_tot[b].max(1) as f64,
+                coh
+            );
+        }
+        eprintln!(
+            "    RESIDUAL band (grad<1e-4 & non-exact-flat): {resid} cells = {:.2}% of drainage, {:.3}% of land | fringe-of-depression {:.0}%",
+            100.0 * resid as f64 / drain.max(1) as f64,
+            100.0 * resid as f64 / land.max(1) as f64,
+            100.0 * resid_fringe as f64 / resid.max(1) as f64
+        );
     }
 }
-fn cfg_2048() -> FbmUpscaleConfig { FbmUpscaleConfig::c1_hd_production(2048) }
-fn c1_altitude_norm_to_metres_delta(ss:&SteinSteinParams)->f32 {
+fn cfg_2048() -> FbmUpscaleConfig {
+    FbmUpscaleConfig::c1_hd_production(2048)
+}
+fn c1_altitude_norm_to_metres_delta(ss: &SteinSteinParams) -> f32 {
     use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
-    c1_altitude_norm_to_metres(1.0,ss)-c1_altitude_norm_to_metres(0.0,ss)
+    c1_altitude_norm_to_metres(1.0, ss) - c1_altitude_norm_to_metres(0.0, ss)
 }
 
 /// #155 ladder-residual LOCATOR — confirm the mechanism on the WORST flagged
@@ -4412,55 +5873,220 @@ fn c1_altitude_norm_to_metres_delta(ss:&SteinSteinParams)->f32 {
 #[test]
 #[ignore]
 fn probe_ladder_locator() {
-    use ymir_core::terrain::flow::{DIR_NONE, D8_DX, D8_DY};
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, c1_drainage};
     use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
     let dir = output_dir().join("ladder_locator");
     std::fs::create_dir_all(&dir).expect("create dir");
-    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default();
-    let dcfg = C1DrainageConfig::default(); let grid=64usize;
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
     // 8 distinct hues for D8 directions.
-    let huecol = |d:u8| -> [u8;3] { match d {0=>[230,30,30],1=>[230,140,20],2=>[220,220,30],3=>[60,200,40],4=>[30,200,200],5=>[40,90,230],6=>[150,40,220],7=>[230,40,150],_=>[120,120,120]} };
-    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=40.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*200.0+30.0)as u8};
+    let huecol = |d: u8| -> [u8; 3] {
+        match d {
+            0 => [230, 30, 30],
+            1 => [230, 140, 20],
+            2 => [220, 220, 30],
+            3 => [60, 200, 40],
+            4 => [30, 200, 200],
+            5 => [40, 90, 230],
+            6 => [150, 40, 220],
+            7 => [230, 40, 150],
+            _ => [120, 120, 120],
+        }
+    };
+    let shade = |h: &GridF32, i: usize, j: usize| -> u8 {
+        let z = 40.0_f64;
+        let (lx, ly, lz) = {
+            let (a, b, c) = (1.0_f64, 1.0, 2.0);
+            let nn = (a * a + b * b + c * c).sqrt();
+            (a / nn, b / nn, c / nn)
+        };
+        let dx = (h.get(i as i32 + 1, j as i32) - h.get(i as i32 - 1, j as i32)) as f64 * z;
+        let dy = (h.get(i as i32, j as i32 + 1) - h.get(i as i32, j as i32 - 1)) as f64 * z;
+        let n = (dx * dx + dy * dy + 1.0).sqrt();
+        (((-dx * lx - dy * ly + lz) / n).clamp(0.0, 1.0) * 200.0 + 30.0) as u8
+    };
     for &seed in &[1988u64, 2026] {
-        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
-        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
-        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
-        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
-        let h=&up.heightmap; let(w,ht)=(h.width,h.height); let dr=c1_drainage(h,None,&dcfg,&ss);
-        let f=&dr.flow.filled.data; let dirf=&dr.flow.direction; let acc=&dr.flow.accumulation;
-        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
-        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
-        let coh=|k:usize|->f32{let d=dirf[k];if d==DIR_NONE{return 0.0}let(ci,cj)=(k%w,k/w);let(mut s,mut t)=(0u32,0u32);for dj in -2i32..=2{for di in -2i32..=2{if di==0&&dj==0{continue}let ni=(ci as i32+di).rem_euclid(w as i32)as usize;let nj=(cj as i32+dj).rem_euclid(ht as i32)as usize;let m=nj*w+ni;if acc.data[m]>=stream&&dirf[m]!=DIR_NONE{t+=1;if dirf[m]==d{s+=1}}}}if t==0{0.0}else{s as f32/t as f32}};
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(
+            &state,
+            &iso,
+            &ss,
+            &WorldSeed::new(seed),
+            &FbmUpscaleConfig::c1_hd_production(2048),
+        );
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
+        let dr = c1_drainage(h, None, &dcfg, &ss);
+        let f = &dr.flow.filled.data;
+        let dirf = &dr.flow.direction;
+        let acc = &dr.flow.accumulation;
+        let stream = (dcfg.thresholds.stream_km2 / c1_cell_area_km2(w)).max(1.0);
+        let nb = |i: usize, j: usize, d: usize| {
+            let ni = ((i as i32 + D8_DX[d]).rem_euclid(w as i32)) as usize;
+            let nj = ((j as i32 + D8_DY[d]).rem_euclid(ht as i32)) as usize;
+            nj * w + ni
+        };
+        let coh = |k: usize| -> f32 {
+            let d = dirf[k];
+            if d == DIR_NONE {
+                return 0.0;
+            }
+            let (ci, cj) = (k % w, k / w);
+            let (mut s, mut t) = (0u32, 0u32);
+            for dj in -2i32..=2 {
+                for di in -2i32..=2 {
+                    if di == 0 && dj == 0 {
+                        continue;
+                    }
+                    let ni = (ci as i32 + di).rem_euclid(w as i32) as usize;
+                    let nj = (cj as i32 + dj).rem_euclid(ht as i32) as usize;
+                    let m = nj * w + ni;
+                    if acc.data[m] >= stream && dirf[m] != DIR_NONE {
+                        t += 1;
+                        if dirf[m] == d {
+                            s += 1
+                        }
+                    }
+                }
+            }
+            if t == 0 { 0.0 } else { s as f32 / t as f32 }
+        };
         // suspect mask: drainage, low grad, non-exact-flat, high coherence.
-        let mut suspect=vec![false;w*ht];
-        for j in 0..ht{for i in 0..w{let k=j*w+i;if h.data[k]<=0.5||acc.data[k]<stream{continue}
-            let(gx,gy)=h.gradient_at(i,j);let g=(gx*gx+gy*gy).sqrt();if g>=1e-4{continue}
-            let(mut hl,mut he)=(false,false);for d in 0..8{let m=nb(i,j,d);if f[m]<f[k]{hl=true}else if f[m]==f[k]{he=true}}
-            let exact=!hl&&he; if exact{continue}
-            if coh(k)>=0.7{suspect[k]=true}
-        }}
+        let mut suspect = vec![false; w * ht];
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                if h.data[k] <= 0.5 || acc.data[k] < stream {
+                    continue;
+                }
+                let (gx, gy) = h.gradient_at(i, j);
+                let g = (gx * gx + gy * gy).sqrt();
+                if g >= 1e-4 {
+                    continue;
+                }
+                let (mut hl, mut he) = (false, false);
+                for d in 0..8 {
+                    let m = nb(i, j, d);
+                    if f[m] < f[k] {
+                        hl = true
+                    } else if f[m] == f[k] {
+                        he = true
+                    }
+                }
+                let exact = !hl && he;
+                if exact {
+                    continue;
+                }
+                if coh(k) >= 0.7 {
+                    suspect[k] = true
+                }
+            }
+        }
         // largest suspect cluster (BFS), get centroid.
-        let mut seen=vec![false;w*ht]; let(mut best_n,mut bx,mut by)=(0usize,0usize,0usize);
-        for s0 in 0..w*ht{if !suspect[s0]||seen[s0]{continue}let mut q=std::collections::VecDeque::new();q.push_back(s0);seen[s0]=true;let(mut cnt,mut sx,mut sy)=(0u64,0u64,0u64);
-            while let Some(c)=q.pop_front(){cnt+=1;sx+=(c%w)as u64;sy+=(c/w)as u64;let(ci,cj)=(c%w,c/w);for d in 0..8{let m=nb(ci,cj,d);if suspect[m]&&!seen[m]{seen[m]=true;q.push_back(m)}}}
-            if cnt as usize>best_n{best_n=cnt as usize;bx=(sx/cnt)as usize;by=(sy/cnt)as usize}}
-        let total_suspect:usize=suspect.iter().filter(|&&x|x).count();
-        eprintln!("  seed {seed}: suspect cells {total_suspect} ({:.3}% land-ish), largest cluster {best_n} cells @ ({bx},{by})",100.0*total_suspect as f64/(w*ht)as f64);
-        if best_n==0 {eprintln!("    no high-coherence low-grad non-exact cluster → ladder NOT a coherent parallel artifact"); continue;}
+        let mut seen = vec![false; w * ht];
+        let (mut best_n, mut bx, mut by) = (0usize, 0usize, 0usize);
+        for s0 in 0..w * ht {
+            if !suspect[s0] || seen[s0] {
+                continue;
+            }
+            let mut q = std::collections::VecDeque::new();
+            q.push_back(s0);
+            seen[s0] = true;
+            let (mut cnt, mut sx, mut sy) = (0u64, 0u64, 0u64);
+            while let Some(c) = q.pop_front() {
+                cnt += 1;
+                sx += (c % w) as u64;
+                sy += (c / w) as u64;
+                let (ci, cj) = (c % w, c / w);
+                for d in 0..8 {
+                    let m = nb(ci, cj, d);
+                    if suspect[m] && !seen[m] {
+                        seen[m] = true;
+                        q.push_back(m)
+                    }
+                }
+            }
+            if cnt as usize > best_n {
+                best_n = cnt as usize;
+                bx = (sx / cnt) as usize;
+                by = (sy / cnt) as usize
+            }
+        }
+        let total_suspect: usize = suspect.iter().filter(|&&x| x).count();
+        eprintln!(
+            "  seed {seed}: suspect cells {total_suspect} ({:.3}% land-ish), largest cluster {best_n} cells @ ({bx},{by})",
+            100.0 * total_suspect as f64 / (w * ht) as f64
+        );
+        if best_n == 0 {
+            eprintln!(
+                "    no high-coherence low-grad non-exact cluster → ladder NOT a coherent parallel artifact"
+            );
+            continue;
+        }
         // hard zoom 96px on the worst cluster, color drainage by D8 dir.
-        let sz=96usize; let x0=(bx as i64-48).max(0).min(w as i64-sz as i64)as usize; let y0=(by as i64-48).max(0).min(ht as i64-sz as i64)as usize;
-        let mut buf=image::ImageBuffer::new(sz as u32,sz as u32);
-        let(mut raised,mut adj_flat)=(0u64,0u64); let mut cnt=0u64;
-        for jj in 0..sz{for ii in 0..sz{let(i,j)=(x0+ii,y0+jj);let k=j*w+i;
-            let c= if h.data[k]<=0.5 {[40,70,120]}
-                else if acc.data[k]>=stream && dirf[k]!=DIR_NONE { if suspect[k]{cnt+=1; if f[k]-h.data[k]>1e-5{raised+=1} let mut af=false;for d in 0..8{let m=nb(i,j,d);let(mut hl2,mut he2)=(false,false);for e in 0..8{let mm=nb(m%w,m/w,e);if f[mm]<f[m]{hl2=true}else if f[mm]==f[m]{he2=true}}if !hl2&&he2{af=true}}if af{adj_flat+=1}} huecol(dirf[k]) }
-                else {let g=shade(h,i,j);[g,g,g]};
-            buf.put_pixel(ii as u32,(sz-1-jj)as u32,image::Rgb(c));
-        }}
+        let sz = 96usize;
+        let x0 = (bx as i64 - 48).max(0).min(w as i64 - sz as i64) as usize;
+        let y0 = (by as i64 - 48).max(0).min(ht as i64 - sz as i64) as usize;
+        let mut buf = image::ImageBuffer::new(sz as u32, sz as u32);
+        let (mut raised, mut adj_flat) = (0u64, 0u64);
+        let mut cnt = 0u64;
+        for jj in 0..sz {
+            for ii in 0..sz {
+                let (i, j) = (x0 + ii, y0 + jj);
+                let k = j * w + i;
+                let c = if h.data[k] <= 0.5 {
+                    [40, 70, 120]
+                } else if acc.data[k] >= stream && dirf[k] != DIR_NONE {
+                    if suspect[k] {
+                        cnt += 1;
+                        if f[k] - h.data[k] > 1e-5 {
+                            raised += 1
+                        }
+                        let mut af = false;
+                        for d in 0..8 {
+                            let m = nb(i, j, d);
+                            let (mut hl2, mut he2) = (false, false);
+                            for e in 0..8 {
+                                let mm = nb(m % w, m / w, e);
+                                if f[mm] < f[m] {
+                                    hl2 = true
+                                } else if f[mm] == f[m] {
+                                    he2 = true
+                                }
+                            }
+                            if !hl2 && he2 {
+                                af = true
+                            }
+                        }
+                        if af {
+                            adj_flat += 1
+                        }
+                    }
+                    huecol(dirf[k])
+                } else {
+                    let g = shade(h, i, j);
+                    [g, g, g]
+                };
+                buf.put_pixel(ii as u32, (sz - 1 - jj) as u32, image::Rgb(c));
+            }
+        }
         buf.save(dir.join(format!("seed{seed:05}_ladder_dirhue.png"))).unwrap();
-        eprintln!("    zoom @({x0},{y0}) 96px: suspect-in-crop {cnt}, raised-by-fill {raised}, adjacent-to-resolved-flat {adj_flat}");
+        eprintln!(
+            "    zoom @({x0},{y0}) 96px: suspect-in-crop {cnt}, raised-by-fill {raised}, adjacent-to-resolved-flat {adj_flat}"
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -4472,44 +6098,118 @@ fn probe_ladder_locator() {
 #[test]
 #[ignore]
 fn probe_ladder_reconcile() {
-    use ymir_core::terrain::flow::{DIR_NONE, D8_DX, D8_DY};
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, c1_drainage};
     use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
     let dir = output_dir().join("ladder_reconcile");
     std::fs::create_dir_all(&dir).expect("create dir");
-    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default();
-    let dcfg = C1DrainageConfig::default(); let grid=64usize;
-    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=50.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*200.0+40.0)as u8};
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    let shade = |h: &GridF32, i: usize, j: usize| -> u8 {
+        let z = 50.0_f64;
+        let (lx, ly, lz) = {
+            let (a, b, c) = (1.0_f64, 1.0, 2.0);
+            let nn = (a * a + b * b + c * c).sqrt();
+            (a / nn, b / nn, c / nn)
+        };
+        let dx = (h.get(i as i32 + 1, j as i32) - h.get(i as i32 - 1, j as i32)) as f64 * z;
+        let dy = (h.get(i as i32, j as i32 + 1) - h.get(i as i32, j as i32 - 1)) as f64 * z;
+        let n = (dx * dx + dy * dy + 1.0).sqrt();
+        (((-dx * lx - dy * ly + lz) / n).clamp(0.0, 1.0) * 200.0 + 40.0) as u8
+    };
     for &seed in &[1988u64, 2026] {
-        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
-        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
-        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
-        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
-        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,None,&dcfg,&ss);
-        let f=&dr.flow.filled.data; let acc=&dr.flow.accumulation;
-        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
-        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(
+            &state,
+            &iso,
+            &ss,
+            &WorldSeed::new(seed),
+            &FbmUpscaleConfig::c1_hd_production(2048),
+        );
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
+        let dr = c1_drainage(h, None, &dcfg, &ss);
+        let f = &dr.flow.filled.data;
+        let acc = &dr.flow.accumulation;
+        let stream = (dcfg.thresholds.stream_km2 / c1_cell_area_km2(w)).max(1.0);
+        let nb = |i: usize, j: usize, d: usize| {
+            let ni = ((i as i32 + D8_DX[d]).rem_euclid(w as i32)) as usize;
+            let nj = ((j as i32 + D8_DY[d]).rem_euclid(ht as i32)) as usize;
+            nj * w + ni
+        };
         // exact-flat (GM-resolved) membership.
-        let mut exact=vec![false;w*ht];
-        for j in 0..ht{for i in 0..w{let k=j*w+i;if h.data[k]<=0.5{continue}let(mut hl,mut he)=(false,false);for d in 0..8{let m=nb(i,j,d);if f[m]<f[k]{hl=true}else if f[m]==f[k]{he=true}}exact[k]=!hl&&he;}}
-        let mut buf=image::ImageBuffer::new(w as u32,ht as u32);
-        for j in 0..ht{for i in 0..w{let k=j*w+i;
-            let lake=dr.lake_map[k]!=0;
-            // lake outline: lake cell adjacent to non-lake.
-            let lake_edge= lake && (0..8).any(|d|{let m=nb(i,j,d);dr.lake_map[m]==0});
-            let c= if h.data[k]<=0.5 {[25,45,90]}
-                else if lake_edge {[180,240,255]}
-                else if lake {[60,200,220]}
-                else if acc.data[k]>=stream {[40,110,235]}      // rivers
-                else if exact[k] {let g=shade(h,i,j);[ (g as u16*9/10+60) as u8, (g as u16*9/10+50) as u8, (g/3) as u8 ]} // resolved-flat = yellow tint
-                else {let g=shade(h,i,j);[g,g,g]};
-            buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
-        }}
+        let mut exact = vec![false; w * ht];
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                if h.data[k] <= 0.5 {
+                    continue;
+                }
+                let (mut hl, mut he) = (false, false);
+                for d in 0..8 {
+                    let m = nb(i, j, d);
+                    if f[m] < f[k] {
+                        hl = true
+                    } else if f[m] == f[k] {
+                        he = true
+                    }
+                }
+                exact[k] = !hl && he;
+            }
+        }
+        let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let lake = dr.lake_map[k] != 0;
+                // lake outline: lake cell adjacent to non-lake.
+                let lake_edge = lake
+                    && (0..8).any(|d| {
+                        let m = nb(i, j, d);
+                        dr.lake_map[m] == 0
+                    });
+                let c = if h.data[k] <= 0.5 {
+                    [25, 45, 90]
+                } else if lake_edge {
+                    [180, 240, 255]
+                } else if lake {
+                    [60, 200, 220]
+                } else if acc.data[k] >= stream {
+                    [40, 110, 235]
+                }
+                // rivers
+                else if exact[k] {
+                    let g = shade(h, i, j);
+                    [(g as u16 * 9 / 10 + 60) as u8, (g as u16 * 9 / 10 + 50) as u8, (g / 3) as u8]
+                }
+                // resolved-flat = yellow tint
+                else {
+                    let g = shade(h, i, j);
+                    [g, g, g]
+                };
+                buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(c));
+            }
+        }
         buf.save(dir.join(format!("seed{seed:05}_reconcile.png"))).unwrap();
-        let nlake:usize=dr.lake_map.iter().filter(|&&x|x!=0).count();
-        let nexact:usize=exact.iter().filter(|&&x|x).count();
-        eprintln!("  seed {seed}: lake cells {nlake} ({:.2}%), resolved-flat cells {nexact} ({:.2}%) [yellow], rivers blue", 100.0*nlake as f64/(w*ht)as f64, 100.0*nexact as f64/(w*ht)as f64);
+        let nlake: usize = dr.lake_map.iter().filter(|&&x| x != 0).count();
+        let nexact: usize = exact.iter().filter(|&&x| x).count();
+        eprintln!(
+            "  seed {seed}: lake cells {nlake} ({:.2}%), resolved-flat cells {nexact} ({:.2}%) [yellow], rivers blue",
+            100.0 * nlake as f64 / (w * ht) as f64,
+            100.0 * nexact as f64 / (w * ht) as f64
+        );
     }
     eprintln!("  out = {}", dir.display());
 }
@@ -4521,35 +6221,139 @@ fn probe_ladder_reconcile() {
 #[test]
 #[ignore]
 fn probe_yellow_fan_mechanism() {
-    use ymir_core::terrain::flow::{DIR_NONE, D8_DX, D8_DY};
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
-    let dir = output_dir().join("yellow_fan"); std::fs::create_dir_all(&dir).unwrap();
-    let iso=IsostasyConfig::c1_default(); let ss=SteinSteinParams::default(); let dcfg=C1DrainageConfig::default(); let grid=64usize;
-    let huecol=|d:u8|->[u8;3]{match d{0=>[230,30,30],1=>[230,140,20],2=>[220,220,30],3=>[60,200,40],4=>[30,200,200],5=>[40,90,230],6=>[150,40,220],7=>[230,40,150],_=>[110,110,110]}};
-    for &seed in &[1988u64,2026]{
-        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
-        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
-        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
-        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
-        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,None,&dcfg,&ss);
-        let f=&dr.flow.filled.data; let dirf=&dr.flow.direction;
-        let nb=|i:usize,j:usize,d:usize|{let ni=((i as i32+D8_DX[d]).rem_euclid(w as i32))as usize;let nj=((j as i32+D8_DY[d]).rem_euclid(ht as i32))as usize;nj*w+ni};
+    use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, c1_drainage};
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let dir = output_dir().join("yellow_fan");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    let huecol = |d: u8| -> [u8; 3] {
+        match d {
+            0 => [230, 30, 30],
+            1 => [230, 140, 20],
+            2 => [220, 220, 30],
+            3 => [60, 200, 40],
+            4 => [30, 200, 200],
+            5 => [40, 90, 230],
+            6 => [150, 40, 220],
+            7 => [230, 40, 150],
+            _ => [110, 110, 110],
+        }
+    };
+    for &seed in &[1988u64, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(
+            &state,
+            &iso,
+            &ss,
+            &WorldSeed::new(seed),
+            &FbmUpscaleConfig::c1_hd_production(2048),
+        );
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
+        let dr = c1_drainage(h, None, &dcfg, &ss);
+        let f = &dr.flow.filled.data;
+        let dirf = &dr.flow.direction;
+        let nb = |i: usize, j: usize, d: usize| {
+            let ni = ((i as i32 + D8_DX[d]).rem_euclid(w as i32)) as usize;
+            let nj = ((j as i32 + D8_DY[d]).rem_euclid(ht as i32)) as usize;
+            nj * w + ni
+        };
         // exact-flat NON-lake cells.
-        let mut ef=vec![false;w*ht];
-        for j in 0..ht{for i in 0..w{let k=j*w+i;if h.data[k]<=0.5||dr.lake_map[k]!=0{continue}let(mut hl,mut he)=(false,false);for d in 0..8{let m=nb(i,j,d);if f[m]<f[k]{hl=true}else if f[m]==f[k]{he=true}}ef[k]=!hl&&he;}}
+        let mut ef = vec![false; w * ht];
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                if h.data[k] <= 0.5 || dr.lake_map[k] != 0 {
+                    continue;
+                }
+                let (mut hl, mut he) = (false, false);
+                for d in 0..8 {
+                    let m = nb(i, j, d);
+                    if f[m] < f[k] {
+                        hl = true
+                    } else if f[m] == f[k] {
+                        he = true
+                    }
+                }
+                ef[k] = !hl && he;
+            }
+        }
         // largest connected ef cluster.
-        let mut seen=vec![false;w*ht];let(mut bn,mut bx,mut by,mut bw,mut bh,mut bi,mut bj)=(0usize,0usize,0usize,0usize,0usize,0usize,0usize);
-        for s0 in 0..w*ht{if !ef[s0]||seen[s0]{continue}let mut q=std::collections::VecDeque::new();q.push_back(s0);seen[s0]=true;let(mut c,mut sx,mut sy,mut mni,mut mxi,mut mnj,mut mxj)=(0u64,0u64,0u64,w,0usize,ht,0usize);
-            while let Some(z)=q.pop_front(){c+=1;let(zi,zj)=(z%w,z/w);sx+=zi as u64;sy+=zj as u64;mni=mni.min(zi);mxi=mxi.max(zi);mnj=mnj.min(zj);mxj=mxj.max(zj);for d in 0..8{let m=nb(zi,zj,d);if ef[m]&&!seen[m]{seen[m]=true;q.push_back(m)}}}
-            if c as usize>bn{bn=c as usize;bx=(sx/c)as usize;by=(sy/c)as usize;bw=mxi-mni+1;bh=mxj-mnj+1;bi=mni;bj=mnj;}}
-        eprintln!("  seed {seed}: largest non-lake resolved-flat = {bn} cells, bbox {bw}x{bh} @({bi},{bj}), centroid ({bx},{by})");
-        let sz=128usize;let x0=(bx as i64-64).max(0).min(w as i64-sz as i64)as usize;let y0=(by as i64-64).max(0).min(ht as i64-sz as i64)as usize;
-        let mut buf=image::ImageBuffer::new(sz as u32,sz as u32);
-        for jj in 0..sz{for ii in 0..sz{let(i,j)=(x0+ii,y0+jj);let k=j*w+i;
-            let c= if h.data[k]<=0.5{[30,50,90]} else if dr.lake_map[k]!=0{[60,200,220]} else if ef[k]{huecol(dirf[k])} else {[235,235,235]};
-            buf.put_pixel(ii as u32,(sz-1-jj)as u32,image::Rgb(c));
-        }}
+        let mut seen = vec![false; w * ht];
+        let (mut bn, mut bx, mut by, mut bw, mut bh, mut bi, mut bj) =
+            (0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
+        for s0 in 0..w * ht {
+            if !ef[s0] || seen[s0] {
+                continue;
+            }
+            let mut q = std::collections::VecDeque::new();
+            q.push_back(s0);
+            seen[s0] = true;
+            let (mut c, mut sx, mut sy, mut mni, mut mxi, mut mnj, mut mxj) =
+                (0u64, 0u64, 0u64, w, 0usize, ht, 0usize);
+            while let Some(z) = q.pop_front() {
+                c += 1;
+                let (zi, zj) = (z % w, z / w);
+                sx += zi as u64;
+                sy += zj as u64;
+                mni = mni.min(zi);
+                mxi = mxi.max(zi);
+                mnj = mnj.min(zj);
+                mxj = mxj.max(zj);
+                for d in 0..8 {
+                    let m = nb(zi, zj, d);
+                    if ef[m] && !seen[m] {
+                        seen[m] = true;
+                        q.push_back(m)
+                    }
+                }
+            }
+            if c as usize > bn {
+                bn = c as usize;
+                bx = (sx / c) as usize;
+                by = (sy / c) as usize;
+                bw = mxi - mni + 1;
+                bh = mxj - mnj + 1;
+                bi = mni;
+                bj = mnj;
+            }
+        }
+        eprintln!(
+            "  seed {seed}: largest non-lake resolved-flat = {bn} cells, bbox {bw}x{bh} @({bi},{bj}), centroid ({bx},{by})"
+        );
+        let sz = 128usize;
+        let x0 = (bx as i64 - 64).max(0).min(w as i64 - sz as i64) as usize;
+        let y0 = (by as i64 - 64).max(0).min(ht as i64 - sz as i64) as usize;
+        let mut buf = image::ImageBuffer::new(sz as u32, sz as u32);
+        for jj in 0..sz {
+            for ii in 0..sz {
+                let (i, j) = (x0 + ii, y0 + jj);
+                let k = j * w + i;
+                let c = if h.data[k] <= 0.5 {
+                    [30, 50, 90]
+                } else if dr.lake_map[k] != 0 {
+                    [60, 200, 220]
+                } else if ef[k] {
+                    huecol(dirf[k])
+                } else {
+                    [235, 235, 235]
+                };
+                buf.put_pixel(ii as u32, (sz - 1 - jj) as u32, image::Rgb(c));
+            }
+        }
         buf.save(dir.join(format!("seed{seed:05}_yellowfan_dir.png"))).unwrap();
     }
     eprintln!("  out = {}", dir.display());
@@ -4563,56 +6367,159 @@ fn probe_yellow_fan_mechanism() {
 #[test]
 #[ignore]
 fn probe_nonlake_flooded_zones() {
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
-    use ymir_core::tectonics_c1::production_upscale::{c1_cell_area_km2, c1_altitude_norm_to_metres};
-    let dir = output_dir().join("nonlake_flooded"); std::fs::create_dir_all(&dir).unwrap();
-    let iso=IsostasyConfig::c1_default(); let ss=SteinSteinParams::default(); let dcfg=C1DrainageConfig::default(); let grid=64usize;
-    let m_per_norm = c1_altitude_norm_to_metres(1.0,&ss)-c1_altitude_norm_to_metres(0.0,&ss);
-    for &seed in &[1988u64,2026,42,1337]{
-        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
-        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
-        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
-        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
-        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,None,&dcfg,&ss);
-        let cell_km2=c1_cell_area_km2(w);
-        let depth=|k:usize|->f32{(dr.flow.filled.data[k]-h.data[k]).max(0.0)};
+    use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, c1_drainage};
+    use ymir_core::tectonics_c1::production_upscale::{
+        c1_altitude_norm_to_metres, c1_cell_area_km2,
+    };
+    let dir = output_dir().join("nonlake_flooded");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    let m_per_norm = c1_altitude_norm_to_metres(1.0, &ss) - c1_altitude_norm_to_metres(0.0, &ss);
+    for &seed in &[1988u64, 2026, 42, 1337] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(
+            &state,
+            &iso,
+            &ss,
+            &WorldSeed::new(seed),
+            &FbmUpscaleConfig::c1_hd_production(2048),
+        );
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
+        let dr = c1_drainage(h, None, &dcfg, &ss);
+        let cell_km2 = c1_cell_area_km2(w);
+        let depth = |k: usize| -> f32 { (dr.flow.filled.data[k] - h.data[k]).max(0.0) };
         // residual flooded non-lake cells.
-        let mut res=vec![false;w*ht]; let mut nres=0u64;
-        for k in 0..w*ht{ if h.data[k]>0.5 && dr.lake_map[k]==0 && depth(k)>1e-6 {res[k]=true;nres+=1;} }
+        let mut res = vec![false; w * ht];
+        let mut nres = 0u64;
+        for k in 0..w * ht {
+            if h.data[k] > 0.5 && dr.lake_map[k] == 0 && depth(k) > 1e-6 {
+                res[k] = true;
+                nres += 1;
+            }
+        }
         // connected components.
-        let mut seen=vec![false;w*ht]; let mut comps:Vec<(u64,f32,f32,usize,usize,usize,usize)>=Vec::new(); // area,maxd_norm,sumd,mni,mxi,mnj,mxj
-        for s0 in 0..w*ht{ if !res[s0]||seen[s0]{continue}
-            let mut q=std::collections::VecDeque::new();q.push_back(s0);seen[s0]=true;
-            let(mut a,mut md,mut sd,mut mni,mut mxi,mut mnj,mut mxj)=(0u64,0.0f32,0.0f32,w,0usize,ht,0usize);
-            while let Some(c)=q.pop_front(){a+=1;let d=depth(c);md=md.max(d);sd+=d;let(ci,cj)=(c%w,c/w);mni=mni.min(ci);mxi=mxi.max(ci);mnj=mnj.min(cj);mxj=mxj.max(cj);
-                for dy in -1i32..=1{for dx in -1i32..=1{if dx==0&&dy==0{continue}let ni=((ci as i32+dx).rem_euclid(w as i32))as usize;let nj=((cj as i32+dy).rem_euclid(ht as i32))as usize;let m=nj*w+ni;if res[m]&&!seen[m]{seen[m]=true;q.push_back(m)}}}}
-            comps.push((a,md,sd,mni,mxi,mnj,mxj));
+        let mut seen = vec![false; w * ht];
+        let mut comps: Vec<(u64, f32, f32, usize, usize, usize, usize)> = Vec::new(); // area,maxd_norm,sumd,mni,mxi,mnj,mxj
+        for s0 in 0..w * ht {
+            if !res[s0] || seen[s0] {
+                continue;
+            }
+            let mut q = std::collections::VecDeque::new();
+            q.push_back(s0);
+            seen[s0] = true;
+            let (mut a, mut md, mut sd, mut mni, mut mxi, mut mnj, mut mxj) =
+                (0u64, 0.0f32, 0.0f32, w, 0usize, ht, 0usize);
+            while let Some(c) = q.pop_front() {
+                a += 1;
+                let d = depth(c);
+                md = md.max(d);
+                sd += d;
+                let (ci, cj) = (c % w, c / w);
+                mni = mni.min(ci);
+                mxi = mxi.max(ci);
+                mnj = mnj.min(cj);
+                mxj = mxj.max(cj);
+                for dy in -1i32..=1 {
+                    for dx in -1i32..=1 {
+                        if dx == 0 && dy == 0 {
+                            continue;
+                        }
+                        let ni = ((ci as i32 + dx).rem_euclid(w as i32)) as usize;
+                        let nj = ((cj as i32 + dy).rem_euclid(ht as i32)) as usize;
+                        let m = nj * w + ni;
+                        if res[m] && !seen[m] {
+                            seen[m] = true;
+                            q.push_back(m)
+                        }
+                    }
+                }
+            }
+            comps.push((a, md, sd, mni, mxi, mnj, mxj));
         }
-        comps.sort_by(|x,y|y.0.cmp(&x.0));
+        comps.sort_by(|x, y| y.0.cmp(&x.0));
         // size histogram (km²) + depth-of-max histogram (m) + shape.
-        let szbins=[0.0,1.0,10.0,100.0,1000.0,f32::INFINITY]; let mut szh=[0u64;5]; let mut szarea=[0.0f64;5];
-        let dpbins=[0.0,1.0,3.0,6.0,10.0,f32::INFINITY]; let mut dph=[0u64;5];
-        for &(a,md,_,mni,mxi,mnj,mxj) in &comps{
-            let km2=a as f32*cell_km2; let mdm=md*m_per_norm;
-            for t in 0..5{if km2>=szbins[t]&&km2<szbins[t+1]{szh[t]+=1;szarea[t]+=a as f64*cell_km2 as f64;break}}
-            for t in 0..5{if mdm>=dpbins[t]&&mdm<dpbins[t+1]{dph[t]+=1;break}}
-            let _=(mni,mxi,mnj,mxj);
+        let szbins = [0.0, 1.0, 10.0, 100.0, 1000.0, f32::INFINITY];
+        let mut szh = [0u64; 5];
+        let mut szarea = [0.0f64; 5];
+        let dpbins = [0.0, 1.0, 3.0, 6.0, 10.0, f32::INFINITY];
+        let mut dph = [0u64; 5];
+        for &(a, md, _, mni, mxi, mnj, mxj) in &comps {
+            let km2 = a as f32 * cell_km2;
+            let mdm = md * m_per_norm;
+            for t in 0..5 {
+                if km2 >= szbins[t] && km2 < szbins[t + 1] {
+                    szh[t] += 1;
+                    szarea[t] += a as f64 * cell_km2 as f64;
+                    break;
+                }
+            }
+            for t in 0..5 {
+                if mdm >= dpbins[t] && mdm < dpbins[t + 1] {
+                    dph[t] += 1;
+                    break;
+                }
+            }
+            let _ = (mni, mxi, mnj, mxj);
         }
-        let land:u64=(0..w*ht).filter(|&k|h.data[k]>0.5).count() as u64;
-        let lake_cells:u64=dr.lake_map.iter().filter(|&&x|x!=0).count() as u64;
-        eprintln!("  seed {seed} @2048²: residual non-lake flooded {nres} cells ({:.2}% land, {:.0} km²) in {} components | named-lake cells {} ({:.2}% land)",
-            100.0*nres as f64/land.max(1)as f64, nres as f64*cell_km2 as f64, comps.len(), lake_cells, 100.0*lake_cells as f64/land.max(1)as f64);
-        eprintln!("    size km² [<1 |1-10|10-100|100-1k|>1k]: count {:?} area {:?}", szh, szarea.iter().map(|x|*x as u64).collect::<Vec<_>>());
+        let land: u64 = (0..w * ht).filter(|&k| h.data[k] > 0.5).count() as u64;
+        let lake_cells: u64 = dr.lake_map.iter().filter(|&&x| x != 0).count() as u64;
+        eprintln!(
+            "  seed {seed} @2048²: residual non-lake flooded {nres} cells ({:.2}% land, {:.0} km²) in {} components | named-lake cells {} ({:.2}% land)",
+            100.0 * nres as f64 / land.max(1) as f64,
+            nres as f64 * cell_km2 as f64,
+            comps.len(),
+            lake_cells,
+            100.0 * lake_cells as f64 / land.max(1) as f64
+        );
+        eprintln!(
+            "    size km² [<1 |1-10|10-100|100-1k|>1k]: count {:?} area {:?}",
+            szh,
+            szarea.iter().map(|x| *x as u64).collect::<Vec<_>>()
+        );
         eprintln!("    max-depth m [<1|1-3|3-6|6-10|>=10]: {:?}", dph);
         // top 5 components: area km², max depth m, fill ratio (compact vs filiform).
-        for (r,&(a,md,sd,mni,mxi,mnj,mxj)) in comps.iter().take(5).enumerate(){
-            let bbox=((mxi-mni+1)*(mxj-mnj+1)) as f32; let fill=a as f32/bbox.max(1.0);
-            eprintln!("    #{r}: {:.1} km², max {:.1} m, mean {:.1} m, fill-ratio {:.2} ({}x{})", a as f32*cell_km2, md*m_per_norm, (sd/a as f32)*m_per_norm, fill, mxi-mni+1, mxj-mnj+1);
+        for (r, &(a, md, sd, mni, mxi, mnj, mxj)) in comps.iter().take(5).enumerate() {
+            let bbox = ((mxi - mni + 1) * (mxj - mnj + 1)) as f32;
+            let fill = a as f32 / bbox.max(1.0);
+            eprintln!(
+                "    #{r}: {:.1} km², max {:.1} m, mean {:.1} m, fill-ratio {:.2} ({}x{})",
+                a as f32 * cell_km2,
+                md * m_per_norm,
+                (sd / a as f32) * m_per_norm,
+                fill,
+                mxi - mni + 1,
+                mxj - mnj + 1
+            );
         }
         // marked map: hypso + residual in magenta.
-        let mut buf=image::ImageBuffer::new(w as u32,ht as u32);
-        for j in 0..ht{for i in 0..w{let k=j*w+i; let c= if res[k]{[230,40,200]} else if dr.lake_map[k]!=0{[40,90,190]} else {hypsometric(h.data[k].clamp(0.0,1.0),0.5)}; buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));}}
+        let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let c = if res[k] {
+                    [230, 40, 200]
+                } else if dr.lake_map[k] != 0 {
+                    [40, 90, 190]
+                } else {
+                    hypsometric(h.data[k].clamp(0.0, 1.0), 0.5)
+                };
+                buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(c));
+            }
+        }
         buf.save(dir.join(format!("seed{seed:05}_nonlake_marked.png"))).unwrap();
     }
     eprintln!("  out = {}", dir.display());
@@ -4625,28 +6532,67 @@ fn probe_nonlake_flooded_zones() {
 #[test]
 #[ignore]
 fn probe_clean_product_2048() {
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig};
+    use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, c1_drainage};
     use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
-    let dir = output_dir().join("clean_product"); std::fs::create_dir_all(&dir).unwrap();
-    let iso=IsostasyConfig::c1_default(); let ss=SteinSteinParams::default(); let dcfg=C1DrainageConfig::default(); let grid=64usize;
-    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=55.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*255.0)as u8};
-    for &seed in &[1988u64,2026]{
-        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
-        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
-        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
-        let up=upscale_from_c1(&state,&iso,&ss,&WorldSeed::new(seed),&FbmUpscaleConfig::c1_hd_production(2048));
-        let h=&up.heightmap;let(w,ht)=(h.width,h.height);let dr=c1_drainage(h,None,&dcfg,&ss);
-        let stream=(dcfg.thresholds.stream_km2/c1_cell_area_km2(w)).max(1.0);
+    let dir = output_dir().join("clean_product");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let dcfg = C1DrainageConfig::default();
+    let grid = 64usize;
+    let shade = |h: &GridF32, i: usize, j: usize| -> u8 {
+        let z = 55.0_f64;
+        let (lx, ly, lz) = {
+            let (a, b, c) = (1.0_f64, 1.0, 2.0);
+            let nn = (a * a + b * b + c * c).sqrt();
+            (a / nn, b / nn, c / nn)
+        };
+        let dx = (h.get(i as i32 + 1, j as i32) - h.get(i as i32 - 1, j as i32)) as f64 * z;
+        let dy = (h.get(i as i32, j as i32 + 1) - h.get(i as i32, j as i32 - 1)) as f64 * z;
+        let n = (dx * dx + dy * dy + 1.0).sqrt();
+        (((-dx * lx - dy * ly + lz) / n).clamp(0.0, 1.0) * 255.0) as u8
+    };
+    for &seed in &[1988u64, 2026] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let up = upscale_from_c1(
+            &state,
+            &iso,
+            &ss,
+            &WorldSeed::new(seed),
+            &FbmUpscaleConfig::c1_hd_production(2048),
+        );
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
+        let dr = c1_drainage(h, None, &dcfg, &ss);
+        let stream = (dcfg.thresholds.stream_km2 / c1_cell_area_km2(w)).max(1.0);
         // PRODUCT convention: ocean, lakes, rivers (acc>=stream masked under lakes), else hillshade.
-        let mut buf=image::ImageBuffer::new(w as u32,ht as u32);
-        for j in 0..ht{for i in 0..w{let k=j*w+i;
-            let c= if h.data[k]<=0.5 {[30,60,(120.0+200.0*h.data[k]) as u8]}
-                else if dr.lake_map[k]!=0 {[40,90,190]}
-                else if dr.flow.accumulation.data[k]>=stream {[40,110,230]}
-                else {let g=shade(h,i,j);[g,g,g]};
-            buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
-        }}
+        let mut buf = image::ImageBuffer::new(w as u32, ht as u32);
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let c = if h.data[k] <= 0.5 {
+                    [30, 60, (120.0 + 200.0 * h.data[k]) as u8]
+                } else if dr.lake_map[k] != 0 {
+                    [40, 90, 190]
+                } else if dr.flow.accumulation.data[k] >= stream {
+                    [40, 110, 230]
+                } else {
+                    let g = shade(h, i, j);
+                    [g, g, g]
+                };
+                buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(c));
+            }
+        }
         buf.save(dir.join(format!("seed{seed:05}_clean_product.png"))).unwrap();
         eprintln!("  seed {seed}: clean product written");
     }
@@ -4659,28 +6605,60 @@ fn probe_clean_product_2048() {
 #[test]
 #[ignore]
 fn probe_orogen_fraction() {
-    let iso = IsostasyConfig::c1_default(); let grid=64usize;
-    let buoy=1.0-iso.rho_crust/iso.rho_mantle;
-    let buoy_c=match iso.craton_rho_crust { Some(r)=>1.0-r/iso.rho_mantle, None=>buoy };
-    let pct=|v:&[f32],q:f32|->f32{let mut s=v.to_vec();s.sort_by(|a,b|a.partial_cmp(b).unwrap());s[((q*(s.len()-1)as f32)as usize).min(s.len()-1)]};
+    let iso = IsostasyConfig::c1_default();
+    let grid = 64usize;
+    let buoy = 1.0 - iso.rho_crust / iso.rho_mantle;
+    let buoy_c = match iso.craton_rho_crust {
+        Some(r) => 1.0 - r / iso.rho_mantle,
+        None => buoy,
+    };
+    let pct = |v: &[f32], q: f32| -> f32 {
+        let mut s = v.to_vec();
+        s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        s[((q * (s.len() - 1) as f32) as usize).min(s.len() - 1)]
+    };
     eprintln!("#155 orogen-render fraction elucidation (64²)");
-    for &seed in &[1988u64,2026,42]{
-        let mut state=init_c1_state_phase_2_r7(grid,seed,&Phase2InitParams::default());
-        let mut kin=PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config=C1TimeLoopConfig{rigid_continental_crust:true,n_steps:300,dx:1.0/64.0,dy:1.0/64.0,iso_config:iso.clone(),drainage_max_distance:30};
-        run_with_closures(&mut state,&mut kin,&config,&C1Closures::default(),|_,_|{});
-        let mut raw=vec![0.0f32;grid*grid]; let mut raw_cont=Vec::new();
-        for j in 0..grid{for i in 0..grid{let k=j*grid+i;let b=if state.cratonic_mask.data()[k]{buoy_c}else{buoy};let h=(state.s.get(i,j) as f32)*b;raw[k]=h;if matches!(state.plate_type.get(i,j),PlateType::Continental){raw_cont.push(h);}}}
-        let h_min_g=raw.iter().cloned().fold(f32::INFINITY,f32::min);
-        let h_min_c=raw_cont.iter().cloned().fold(f32::INFINITY,f32::min);
-        let land_cap=raw_cont.iter().cloned().fold(f32::NEG_INFINITY,f32::max);
-        let h_cap=pct(&raw,0.92); let h_range=(h_cap-h_min_g).max(1e-10); let h_sea=h_min_g+0.4*h_range;
-        let frac_g=(land_cap-h_sea)/(land_cap-h_min_g);
-        let frac_c=(land_cap-h_sea)/(land_cap-h_min_c).max(1e-10);
+    for &seed in &[1988u64, 2026, 42] {
+        let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
+        let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
+        run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
+        let mut raw = vec![0.0f32; grid * grid];
+        let mut raw_cont = Vec::new();
+        for j in 0..grid {
+            for i in 0..grid {
+                let k = j * grid + i;
+                let b = if state.cratonic_mask.data()[k] { buoy_c } else { buoy };
+                let h = (state.s.get(i, j) as f32) * b;
+                raw[k] = h;
+                if matches!(state.plate_type.get(i, j), PlateType::Continental) {
+                    raw_cont.push(h);
+                }
+            }
+        }
+        let h_min_g = raw.iter().cloned().fold(f32::INFINITY, f32::min);
+        let h_min_c = raw_cont.iter().cloned().fold(f32::INFINITY, f32::min);
+        let land_cap = raw_cont.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let h_cap = pct(&raw, 0.92);
+        let h_range = (h_cap - h_min_g).max(1e-10);
+        let h_sea = h_min_g + 0.4 * h_range;
+        let frac_g = (land_cap - h_sea) / (land_cap - h_min_g);
+        let frac_c = (land_cap - h_sea) / (land_cap - h_min_c).max(1e-10);
         // fixed-Airy alternative: orogen elevation = (land_cap - h_sea) directly (raw above sea),
         // vs the range-normalized fraction.
-        eprintln!("  seed {seed}: land_cap={land_cap:.3} h_sea={h_sea:.3} h_min global={h_min_g:.3} continental={h_min_c:.3}",);
-        eprintln!("    fraction (land_cap-h_sea)/(land_cap-h_min): GLOBAL={frac_g:.3}  CONTINENTAL={frac_c:.3}  (global<continental ⇒ ocean h_min drives the <1)");
+        eprintln!(
+            "  seed {seed}: land_cap={land_cap:.3} h_sea={h_sea:.3} h_min global={h_min_g:.3} continental={h_min_c:.3}",
+        );
+        eprintln!(
+            "    fraction (land_cap-h_sea)/(land_cap-h_min): GLOBAL={frac_g:.3}  CONTINENTAL={frac_c:.3}  (global<continental ⇒ ocean h_min drives the <1)"
+        );
     }
 }
 
@@ -4692,60 +6670,114 @@ fn probe_orogen_fraction() {
 #[ignore]
 fn probe_climate_acceptance() {
     use ymir_core::climate::c1_climate;
-    use ymir_core::climate::precipitation::{compute_precipitation_with_budget, PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::climate::precipitation::{
+        PrecipParams, SEA_LEVEL_NORM, compute_precipitation_with_budget,
+    };
     use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
-    let dir = output_dir().join("climate"); std::fs::create_dir_all(&dir).unwrap();
-    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
-    let lat = 45.0f32; let pp = PrecipParams::default();
+    let dir = output_dir().join("climate");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let lat = 45.0f32;
+    let pp = PrecipParams::default();
     eprintln!("#165 c1_climate acceptance — 2048², latitude {lat}° (westerlies, W→E)");
     for &seed in &[1988u64, 2026, 42] {
         let heightmap = c165_eroded(seed, &iso);
-        let h = &heightmap; let (w, ht) = (h.width, h.height);
+        let h = &heightmap;
+        let (w, ht) = (h.width, h.height);
         let clim = c1_climate(h, &ss, lat, &pp);
 
         // (1) CONSERVATION
         let temp = &clim.temperature;
-        let (_p, evap_in, exit_out, oro_sum) = compute_precipitation_with_budget(h, temp, lat, c1_km_per_cell(w), |n| c1_altitude_norm_to_metres(n, &ss), &pp);
+        let (_p, evap_in, exit_out, oro_sum) = compute_precipitation_with_budget(
+            h,
+            temp,
+            lat,
+            c1_km_per_cell(w),
+            |n| c1_altitude_norm_to_metres(n, &ss),
+            &pp,
+        );
         let psum: f64 = clim.precipitation.data.iter().map(|&v| v as f64).sum();
         // OROGRAPHIC conservation (the convective baseline is a separate source).
         let residual = (evap_in - (oro_sum + exit_out)).abs();
         // (2) MAGNITUDE — windward (W-facing ascending) vs leeward (descending) land precip.
         let dx_m = c1_km_per_cell(w) * 1000.0;
         let (mut wp, mut wn, mut lp, mut ln) = (0.0f64, 0u64, 0.0f64, 0u64);
-        for j in 0..ht { for i in 1..w-1 {
-            let k = j*w+i; if h.data[k] <= SEA_LEVEL_NORM { continue; }
-            // along-wind (eastward) slope: cell to its west (i-1).
-            let altw = c1_altitude_norm_to_metres(h.data[k-1], &ss).max(0.0);
-            let alt = c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
-            let asc = (alt - altw)/dx_m; // >0 = ascending eastward = windward (W-facing)
-            let pr = clim.precipitation.data[k] as f64;
-            if asc > 1e-4 { wp += pr; wn += 1; } else if asc < -1e-4 { lp += pr; ln += 1; }
-        }}
-        let (wm, lm) = (wp/wn.max(1) as f64, lp/ln.max(1) as f64);
+        for j in 0..ht {
+            for i in 1..w - 1 {
+                let k = j * w + i;
+                if h.data[k] <= SEA_LEVEL_NORM {
+                    continue;
+                }
+                // along-wind (eastward) slope: cell to its west (i-1).
+                let altw = c1_altitude_norm_to_metres(h.data[k - 1], &ss).max(0.0);
+                let alt = c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
+                let asc = (alt - altw) / dx_m; // >0 = ascending eastward = windward (W-facing)
+                let pr = clim.precipitation.data[k] as f64;
+                if asc > 1e-4 {
+                    wp += pr;
+                    wn += 1;
+                } else if asc < -1e-4 {
+                    lp += pr;
+                    ln += 1;
+                }
+            }
+        }
+        let (wm, lm) = (wp / wn.max(1) as f64, lp / ln.max(1) as f64);
         // T stats
         let tmin = temp.data.iter().cloned().fold(f32::INFINITY, f32::min);
         let tmax = temp.data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-        eprintln!("  seed {seed}: CONSERVE evap={evap_in:.0} = oro_precip {oro_sum:.0} + exit {exit_out:.0} (resid {residual:.2e}) | total precip(incl convective) {psum:.0}");
-        eprintln!("    MAGNITUDE windward mean {wm:.3} / leeward mean {lm:.3} = ratio {:.1}× (want ~3-10×) | T [{tmin:.0}, {tmax:.0}]°C", wm/lm.max(1e-9));
+        eprintln!(
+            "  seed {seed}: CONSERVE evap={evap_in:.0} = oro_precip {oro_sum:.0} + exit {exit_out:.0} (resid {residual:.2e}) | total precip(incl convective) {psum:.0}"
+        );
+        eprintln!(
+            "    MAGNITUDE windward mean {wm:.3} / leeward mean {lm:.3} = ratio {:.1}× (want ~3-10×) | T [{tmin:.0}, {tmax:.0}]°C",
+            wm / lm.max(1e-9)
+        );
 
         // (3) STRUCTURE — precip (blue) + temperature (cyan→red) maps, origin-bottom.
         // Robust scale: clamp at the land-precip P90 + sqrt, so the windward/leeward
         // GRADIENT is visible (a few steep-coast outliers must not compress it — the
         // measure-the-structure-not-the-compressed-output lesson).
-        let mut landp: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| clim.precipitation.data[k]).collect();
-        landp.sort_by(|a,b| a.partial_cmp(b).unwrap());
-        let p90 = if landp.is_empty() { 1e-6 } else { landp[(landp.len()*90/100).min(landp.len()-1)].max(1e-6) };
+        let mut landp: Vec<f32> = (0..w * ht)
+            .filter(|&k| h.data[k] > SEA_LEVEL_NORM)
+            .map(|k| clim.precipitation.data[k])
+            .collect();
+        landp.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let p90 = if landp.is_empty() {
+            1e-6
+        } else {
+            landp[(landp.len() * 90 / 100).min(landp.len() - 1)].max(1e-6)
+        };
         let mut pb = image::ImageBuffer::new(w as u32, ht as u32);
         let mut tb = image::ImageBuffer::new(w as u32, ht as u32);
-        for j in 0..ht { for i in 0..w { let k=j*w+i;
-            let sea = h.data[k] <= SEA_LEVEL_NORM;
-            // precip map: ocean dark, land tan(dry)→blue(wet), sqrt of precip/P90.
-            let pc = if sea { [20,40,80] } else { let t=(clim.precipitation.data[k]/p90).clamp(0.0,1.0).sqrt(); [ (210.0-180.0*t) as u8, (200.0-120.0*t) as u8, (170.0+85.0*t).min(255.0) as u8 ] };
-            pb.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(pc));
-            // temp map: blue(cold)→red(hot), [-20,30].
-            let tt = ((temp.data[k]+20.0)/50.0).clamp(0.0,1.0); let tc=[ (40.0+200.0*tt) as u8, 60u8, (240.0-200.0*tt) as u8 ];
-            tb.put_pixel(i as u32,(ht-1-j) as u32, image::Rgb(if sea {[30,50,90]} else {tc}));
-        }}
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let sea = h.data[k] <= SEA_LEVEL_NORM;
+                // precip map: ocean dark, land tan(dry)→blue(wet), sqrt of precip/P90.
+                let pc = if sea {
+                    [20, 40, 80]
+                } else {
+                    let t = (clim.precipitation.data[k] / p90).clamp(0.0, 1.0).sqrt();
+                    [
+                        (210.0 - 180.0 * t) as u8,
+                        (200.0 - 120.0 * t) as u8,
+                        (170.0 + 85.0 * t).min(255.0) as u8,
+                    ]
+                };
+                pb.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(pc));
+                // temp map: blue(cold)→red(hot), [-20,30].
+                let tt = ((temp.data[k] + 20.0) / 50.0).clamp(0.0, 1.0);
+                let tc = [(40.0 + 200.0 * tt) as u8, 60u8, (240.0 - 200.0 * tt) as u8];
+                tb.put_pixel(
+                    i as u32,
+                    (ht - 1 - j) as u32,
+                    image::Rgb(if sea { [30, 50, 90] } else { tc }),
+                );
+            }
+        }
         pb.save(dir.join(format!("seed{seed:05}_precip.png"))).unwrap();
         tb.save(dir.join(format!("seed{seed:05}_temp.png"))).unwrap();
     }
@@ -4761,35 +6793,68 @@ fn probe_climate_acceptance() {
 fn probe_precip_structure() {
     use ymir_core::climate::c1_climate;
     use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
-    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
     let pp = PrecipParams::default();
     eprintln!("#165 precip structure (512², 45° westerlies W→E)");
     for &seed in &[1988u64, 2026, 42] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
-        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(512));
-        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let up = upscale_from_c1(
+            &state,
+            &iso,
+            &ss,
+            &WorldSeed::new(seed),
+            &FbmUpscaleConfig::c1_hd_production(512),
+        );
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
         let clim = c1_climate(h, &ss, 45.0, &pp);
         // per-row W-half vs E-half land precip.
         let (mut wsum, mut wn, mut esum, mut en) = (0.0f64, 0u64, 0.0f64, 0u64);
         for j in 0..ht {
-            let land: Vec<usize> = (0..w).filter(|&i| h.data[j*w+i] > SEA_LEVEL_NORM).collect();
-            if land.len() < 4 { continue; }
-            let mid = land[land.len()/2];
+            let land: Vec<usize> = (0..w).filter(|&i| h.data[j * w + i] > SEA_LEVEL_NORM).collect();
+            if land.len() < 4 {
+                continue;
+            }
+            let mid = land[land.len() / 2];
             for &i in &land {
-                let p = clim.precipitation.data[j*w+i] as f64;
-                if i < mid { wsum += p; wn += 1; } else { esum += p; en += 1; }
+                let p = clim.precipitation.data[j * w + i] as f64;
+                if i < mid {
+                    wsum += p;
+                    wn += 1;
+                } else {
+                    esum += p;
+                    en += 1;
+                }
             }
         }
-        let (wm, em) = (wsum/wn.max(1) as f64, esum/en.max(1) as f64);
+        let (wm, em) = (wsum / wn.max(1) as f64, esum / en.max(1) as f64);
         // land precip percentiles.
-        let mut lp: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| clim.precipitation.data[k]).collect();
-        lp.sort_by(|a,b| a.partial_cmp(b).unwrap());
-        let pct = |q: f32| lp[((q*(lp.len()-1) as f32) as usize).min(lp.len()-1)];
-        eprintln!("  seed {seed}: W-half mean {wm:.4} / E-half mean {em:.4} = {:.2}× (>1 = rain shadow eastward) | land precip p10={:.4} p50={:.4} p90={:.4} max={:.4}",
-            wm/em.max(1e-9), pct(0.1), pct(0.5), pct(0.9), pct(1.0));
+        let mut lp: Vec<f32> = (0..w * ht)
+            .filter(|&k| h.data[k] > SEA_LEVEL_NORM)
+            .map(|k| clim.precipitation.data[k])
+            .collect();
+        lp.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let pct = |q: f32| lp[((q * (lp.len() - 1) as f32) as usize).min(lp.len() - 1)];
+        eprintln!(
+            "  seed {seed}: W-half mean {wm:.4} / E-half mean {em:.4} = {:.2}× (>1 = rain shadow eastward) | land precip p10={:.4} p50={:.4} p90={:.4} max={:.4}",
+            wm / em.max(1e-9),
+            pct(0.1),
+            pct(0.5),
+            pct(0.9),
+            pct(1.0)
+        );
     }
 }
 
@@ -4804,59 +6869,152 @@ fn probe_climate_maps() {
     use ymir_core::climate::c1_climate;
     use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
     use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
-    let dir = output_dir().join("climate_maps"); std::fs::create_dir_all(&dir).unwrap();
-    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let dir = output_dir().join("climate_maps");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
     let pp = PrecipParams::default();
     // hillshade (origin-bottom) for the relief panel.
-    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=55.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*255.0)as u8};
+    let shade = |h: &GridF32, i: usize, j: usize| -> u8 {
+        let z = 55.0_f64;
+        let (lx, ly, lz) = {
+            let (a, b, c) = (1.0_f64, 1.0, 2.0);
+            let nn = (a * a + b * b + c * c).sqrt();
+            (a / nn, b / nn, c / nn)
+        };
+        let dx = (h.get(i as i32 + 1, j as i32) - h.get(i as i32 - 1, j as i32)) as f64 * z;
+        let dy = (h.get(i as i32, j as i32 + 1) - h.get(i as i32, j as i32 - 1)) as f64 * z;
+        let n = (dx * dx + dy * dy + 1.0).sqrt();
+        (((-dx * lx - dy * ly + lz) / n).clamp(0.0, 1.0) * 255.0) as u8
+    };
     for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
         let heightmap = c165_eroded(seed, &iso);
-        let h = &heightmap; let (w, ht) = (h.width, h.height);
+        let h = &heightmap;
+        let (w, ht) = (h.width, h.height);
         let clim = c1_climate(h, &ss, 45.0, &pp);
-        let pr = &clim.precipitation.data; let temp = &clim.temperature.data;
+        let pr = &clim.precipitation.data;
+        let temp = &clim.temperature.data;
         let dx_m = c1_km_per_cell(w) * 1000.0;
         // land precip stats.
-        let mut lp: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| pr[k]).collect();
-        lp.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let mut lp: Vec<f32> =
+            (0..w * ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| pr[k]).collect();
+        lp.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let n = lp.len().max(1);
-        let p50 = lp[n/2]; let pmax = lp[n-1].max(1e-6); let pmin = lp[0].max(1e-6);
+        let p50 = lp[n / 2];
+        let pmax = lp[n - 1].max(1e-6);
+        let pmin = lp[0].max(1e-6);
         let floor = lp.iter().filter(|&&v| v < 0.015).count();
-        eprintln!("  seed {seed}: land {n} | precip p50={p50:.4} max={pmax:.4} | floor(<0.015) {:.0}% | log range [{:.2},{:.2}]",
-            100.0*floor as f64/n as f64, pmin.log10(), pmax.log10());
+        eprintln!(
+            "  seed {seed}: land {n} | precip p50={p50:.4} max={pmax:.4} | floor(<0.015) {:.0}% | log range [{:.2},{:.2}]",
+            100.0 * floor as f64 / n as f64,
+            pmin.log10(),
+            pmax.log10()
+        );
         // FIXED-reference colormap (NOT field min/max — those are dominated by the
         // steep-coast windward outliers and squash the uniform temperate base).
         // Absolute anchors: desert P_DRY → tan, temperate base ~0.036 → moderate,
         // heavy rain P_WET → blue. Honest across seeds + vs the floor.
-        const P_DRY: f32 = 0.005; const P_WET: f32 = 0.5;
-        let lnmin = P_DRY.ln(); let lnmax = P_WET.ln();
-        let put = |buf:&mut image::RgbImage, i:usize, j:usize, c:[u8;3]| buf.put_pixel(i as u32, (ht-1-j) as u32, image::Rgb(c));
-        let (mut blog, mut blin, mut bslp, mut btmp, mut brel) = (image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32));
-        for j in 0..ht { for i in 0..w { let k=j*w+i;
-            let sea = h.data[k] <= SEA_LEVEL_NORM;
-            let p = pr[k];
-            // LOG
-            let tl = if sea {0.0} else { ((p.max(1e-6).ln()-lnmin)/(lnmax-lnmin)).clamp(0.0,1.0) };
-            put(&mut blog,i,j, if sea {[20,40,80]} else {[ (215.0-185.0*tl) as u8,(205.0-125.0*tl) as u8,(165.0+90.0*tl) as u8 ]});
-            // LINEAR (fixed P_WET clamp, not /max — so the base isn't squashed)
-            let tlin = if sea {0.0} else { (p/P_WET).clamp(0.0,1.0) };
-            put(&mut blin,i,j, if sea {[20,40,80]} else {[ (215.0-185.0*tlin) as u8,(205.0-125.0*tlin) as u8,(165.0+90.0*tlin) as u8 ]});
-            // SLOPES: windward (ascending eastward) tinted by precip-blue, leeward red.
-            let cslp = if sea {[20,40,80]} else {
-                let altw = if i>0 {c1_altitude_norm_to_metres(h.data[k-1],&ss).max(0.0)} else {0.0};
-                let asc = (c1_altitude_norm_to_metres(h.data[k],&ss).max(0.0)-altw)/dx_m;
-                let b = (tl*255.0) as u8;
-                if asc > 1e-4 { [ (60.0-40.0*tl) as u8, (120.0+100.0*tl).min(255.0) as u8, b.max(120) ] } // windward, precip-blue
-                else if asc < -1e-4 { [ 180, (80.0+60.0*tl) as u8, 60 ] } // leeward orange
-                else { [140,140,140] }
-            };
-            put(&mut bslp,i,j,cslp);
-            // TEMP
-            let tt=((temp[k]+20.0)/50.0).clamp(0.0,1.0);
-            put(&mut btmp,i,j, if sea {[30,50,90]} else {[ (40.0+200.0*tt) as u8,60,(240.0-200.0*tt) as u8 ]});
-            // RELIEF (hillshade)
-            let g = if sea {70} else { shade(h,i,j) };
-            put(&mut brel,i,j, if sea {[40,70,120]} else {[g,g,g]});
-        }}
+        const P_DRY: f32 = 0.005;
+        const P_WET: f32 = 0.5;
+        let lnmin = P_DRY.ln();
+        let lnmax = P_WET.ln();
+        let put = |buf: &mut image::RgbImage, i: usize, j: usize, c: [u8; 3]| {
+            buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(c))
+        };
+        let (mut blog, mut blin, mut bslp, mut btmp, mut brel) = (
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+        );
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let sea = h.data[k] <= SEA_LEVEL_NORM;
+                let p = pr[k];
+                // LOG
+                let tl = if sea {
+                    0.0
+                } else {
+                    ((p.max(1e-6).ln() - lnmin) / (lnmax - lnmin)).clamp(0.0, 1.0)
+                };
+                put(
+                    &mut blog,
+                    i,
+                    j,
+                    if sea {
+                        [20, 40, 80]
+                    } else {
+                        [
+                            (215.0 - 185.0 * tl) as u8,
+                            (205.0 - 125.0 * tl) as u8,
+                            (165.0 + 90.0 * tl) as u8,
+                        ]
+                    },
+                );
+                // LINEAR (fixed P_WET clamp, not /max — so the base isn't squashed)
+                let tlin = if sea { 0.0 } else { (p / P_WET).clamp(0.0, 1.0) };
+                put(
+                    &mut blin,
+                    i,
+                    j,
+                    if sea {
+                        [20, 40, 80]
+                    } else {
+                        [
+                            (215.0 - 185.0 * tlin) as u8,
+                            (205.0 - 125.0 * tlin) as u8,
+                            (165.0 + 90.0 * tlin) as u8,
+                        ]
+                    },
+                );
+                // SLOPES: windward (ascending eastward) tinted by precip-blue, leeward red.
+                let cslp = if sea {
+                    [20, 40, 80]
+                } else {
+                    let altw = if i > 0 {
+                        c1_altitude_norm_to_metres(h.data[k - 1], &ss).max(0.0)
+                    } else {
+                        0.0
+                    };
+                    let asc = (c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0) - altw) / dx_m;
+                    let b = (tl * 255.0) as u8;
+                    if asc > 1e-4 {
+                        [
+                            (60.0 - 40.0 * tl) as u8,
+                            (120.0 + 100.0 * tl).min(255.0) as u8,
+                            b.max(120),
+                        ]
+                    }
+                    // windward, precip-blue
+                    else if asc < -1e-4 {
+                        [180, (80.0 + 60.0 * tl) as u8, 60]
+                    }
+                    // leeward orange
+                    else {
+                        [140, 140, 140]
+                    }
+                };
+                put(&mut bslp, i, j, cslp);
+                // TEMP
+                let tt = ((temp[k] + 20.0) / 50.0).clamp(0.0, 1.0);
+                put(
+                    &mut btmp,
+                    i,
+                    j,
+                    if sea {
+                        [30, 50, 90]
+                    } else {
+                        [(40.0 + 200.0 * tt) as u8, 60, (240.0 - 200.0 * tt) as u8]
+                    },
+                );
+                // RELIEF (hillshade)
+                let g = if sea { 70 } else { shade(h, i, j) };
+                put(&mut brel, i, j, if sea { [40, 70, 120] } else { [g, g, g] });
+            }
+        }
         brel.save(dir.join(format!("seed{seed:05}_relief.png"))).unwrap();
         blog.save(dir.join(format!("seed{seed:05}_precip_LOG.png"))).unwrap();
         blin.save(dir.join(format!("seed{seed:05}_precip_LINEAR.png"))).unwrap();
@@ -4876,43 +7034,118 @@ fn probe_climate_control_survey() {
     use ymir_core::climate::c1_climate;
     use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
     use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
-    let dir = output_dir().join("climate_control"); std::fs::create_dir_all(&dir).unwrap();
-    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let dir = output_dir().join("climate_control");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
     let pp = PrecipParams::default();
-    let shade=|h:&GridF32,i:usize,j:usize|->u8{let z=55.0_f64;let(lx,ly,lz)={let(a,b,c)=(1.0_f64,1.0,2.0);let nn=(a*a+b*b+c*c).sqrt();(a/nn,b/nn,c/nn)};let dx=(h.get(i as i32+1,j as i32)-h.get(i as i32-1,j as i32))as f64*z;let dy=(h.get(i as i32,j as i32+1)-h.get(i as i32,j as i32-1))as f64*z;let n=(dx*dx+dy*dy+1.0).sqrt();(((-dx*lx-dy*ly+lz)/n).clamp(0.0,1.0)*255.0)as u8};
-    eprintln!("#165 climate control survey (1024², 45° westerlies; windward=WEST). margin = mean altitude(m) of the 6 westmost/eastmost land cells per row.");
+    let shade = |h: &GridF32, i: usize, j: usize| -> u8 {
+        let z = 55.0_f64;
+        let (lx, ly, lz) = {
+            let (a, b, c) = (1.0_f64, 1.0, 2.0);
+            let nn = (a * a + b * b + c * c).sqrt();
+            (a / nn, b / nn, c / nn)
+        };
+        let dx = (h.get(i as i32 + 1, j as i32) - h.get(i as i32 - 1, j as i32)) as f64 * z;
+        let dy = (h.get(i as i32, j as i32 + 1) - h.get(i as i32, j as i32 - 1)) as f64 * z;
+        let n = (dx * dx + dy * dy + 1.0).sqrt();
+        (((-dx * lx - dy * ly + lz) / n).clamp(0.0, 1.0) * 255.0) as u8
+    };
+    eprintln!(
+        "#165 climate control survey (1024², 45° westerlies; windward=WEST). margin = mean altitude(m) of the 6 westmost/eastmost land cells per row."
+    );
     for &seed in &[1337u64, 4138, 42, 99] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
-        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(1024));
-        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
-        let alt = |k:usize| c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
+        let up = upscale_from_c1(
+            &state,
+            &iso,
+            &ss,
+            &WorldSeed::new(seed),
+            &FbmUpscaleConfig::c1_hd_production(1024),
+        );
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
+        let alt = |k: usize| c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
         // west/east margin relief: per row, the 6 westmost & 6 eastmost land cells.
-        let (mut wsum,mut wn,mut esum,mut en)=(0.0f64,0u64,0.0f64,0u64);
+        let (mut wsum, mut wn, mut esum, mut en) = (0.0f64, 0u64, 0.0f64, 0u64);
         for j in 0..ht {
-            let land:Vec<usize>=(0..w).filter(|&i| h.data[j*w+i]>SEA_LEVEL_NORM).collect();
-            if land.len()<12 {continue;}
-            for &i in land.iter().take(6) { wsum+=alt(j*w+i) as f64; wn+=1; }
-            for &i in land.iter().rev().take(6) { esum+=alt(j*w+i) as f64; en+=1; }
+            let land: Vec<usize> = (0..w).filter(|&i| h.data[j * w + i] > SEA_LEVEL_NORM).collect();
+            if land.len() < 12 {
+                continue;
+            }
+            for &i in land.iter().take(6) {
+                wsum += alt(j * w + i) as f64;
+                wn += 1;
+            }
+            for &i in land.iter().rev().take(6) {
+                esum += alt(j * w + i) as f64;
+                en += 1;
+            }
         }
-        let (wm,em)=(wsum/wn.max(1) as f64, esum/en.max(1) as f64);
-        let clim = c1_climate(h,&ss,45.0,&pp);
-        let mut lp:Vec<f32>=(0..w*ht).filter(|&k|h.data[k]>SEA_LEVEL_NORM).map(|k|clim.precipitation.data[k]).collect();
-        lp.sort_by(|a,b|a.partial_cmp(b).unwrap()); let nl=lp.len().max(1);
-        let floor=100.0*lp.iter().filter(|&&v|v<0.015).count() as f64/nl as f64;
-        eprintln!("  seed {seed}: WEST margin {wm:.0} m / EAST margin {em:.0} m | floor {floor:.0}% | (low west = passive windward = control candidate)");
+        let (wm, em) = (wsum / wn.max(1) as f64, esum / en.max(1) as f64);
+        let clim = c1_climate(h, &ss, 45.0, &pp);
+        let mut lp: Vec<f32> = (0..w * ht)
+            .filter(|&k| h.data[k] > SEA_LEVEL_NORM)
+            .map(|k| clim.precipitation.data[k])
+            .collect();
+        lp.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let nl = lp.len().max(1);
+        let floor = 100.0 * lp.iter().filter(|&&v| v < 0.015).count() as f64 / nl as f64;
+        eprintln!(
+            "  seed {seed}: WEST margin {wm:.0} m / EAST margin {em:.0} m | floor {floor:.0}% | (low west = passive windward = control candidate)"
+        );
         // renders: hillshade + precip LOG.
-        let mut lpmin=f32::MAX; let mut lpmax=0.0f32; for &v in &lp {lpmin=lpmin.min(v.max(1e-6));lpmax=lpmax.max(v);}
-        let (lnmin,lnmax)=(lpmin.ln(), lpmax.max(1e-6).ln());
-        let mut bh=image::RgbImage::new(w as u32,ht as u32); let mut bp=image::RgbImage::new(w as u32,ht as u32);
-        for j in 0..ht{for i in 0..w{let k=j*w+i; let sea=h.data[k]<=SEA_LEVEL_NORM;
-            let g=if sea{70}else{shade(h,i,j)};
-            bh.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(if sea{[40,70,120]}else{[g,g,g]}));
-            let tl=if sea{0.0}else{((clim.precipitation.data[k].max(1e-6).ln()-lnmin)/(lnmax-lnmin)).clamp(0.0,1.0)};
-            bp.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(if sea{[20,40,80]}else{[(215.0-185.0*tl)as u8,(205.0-125.0*tl)as u8,(165.0+90.0*tl)as u8]}));
-        }}
+        let mut lpmin = f32::MAX;
+        let mut lpmax = 0.0f32;
+        for &v in &lp {
+            lpmin = lpmin.min(v.max(1e-6));
+            lpmax = lpmax.max(v);
+        }
+        let (lnmin, lnmax) = (lpmin.ln(), lpmax.max(1e-6).ln());
+        let mut bh = image::RgbImage::new(w as u32, ht as u32);
+        let mut bp = image::RgbImage::new(w as u32, ht as u32);
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let sea = h.data[k] <= SEA_LEVEL_NORM;
+                let g = if sea { 70 } else { shade(h, i, j) };
+                bh.put_pixel(
+                    i as u32,
+                    (ht - 1 - j) as u32,
+                    image::Rgb(if sea { [40, 70, 120] } else { [g, g, g] }),
+                );
+                let tl = if sea {
+                    0.0
+                } else {
+                    ((clim.precipitation.data[k].max(1e-6).ln() - lnmin) / (lnmax - lnmin))
+                        .clamp(0.0, 1.0)
+                };
+                bp.put_pixel(
+                    i as u32,
+                    (ht - 1 - j) as u32,
+                    image::Rgb(if sea {
+                        [20, 40, 80]
+                    } else {
+                        [
+                            (215.0 - 185.0 * tl) as u8,
+                            (205.0 - 125.0 * tl) as u8,
+                            (165.0 + 90.0 * tl) as u8,
+                        ]
+                    }),
+                );
+            }
+        }
         bh.save(dir.join(format!("seed{seed:05}_relief.png"))).unwrap();
         bp.save(dir.join(format!("seed{seed:05}_precip_log.png"))).unwrap();
     }
@@ -4931,59 +7164,132 @@ fn probe_oro_depletion() {
     use ymir_core::climate::c1_climate;
     use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM};
     use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
-    let dir = output_dir().join("climate_maps"); std::fs::create_dir_all(&dir).unwrap();
-    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let dir = output_dir().join("climate_maps");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
     // orographic ONLY: frontal base off (the uniform base masks the depletion profile).
     let pp = PrecipParams { k_frontal: 0.0, ..PrecipParams::default() };
     let bins_km = [0.0f32, 10.0, 30.0, 60.0, 120.0, 250.0, f32::INFINITY];
-    eprintln!("#165 orographic depletion — oro/ascent (∝ moisture flux M) by distance-from-windward-coast (km), 1024², 45° W→E");
+    eprintln!(
+        "#165 orographic depletion — oro/ascent (∝ moisture flux M) by distance-from-windward-coast (km), 1024², 45° W→E"
+    );
     for &seed in &[1988u64, 2026, 42, 99] {
         let mut state = init_c1_state_phase_2_r7(grid, seed, &Phase2InitParams::default());
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-        let config = C1TimeLoopConfig { rigid_continental_crust: true, n_steps: 300, dx: 1.0/64.0, dy: 1.0/64.0, iso_config: iso.clone(), drainage_max_distance: 30 };
+        let config = C1TimeLoopConfig {
+            rigid_continental_crust: true,
+            n_steps: 300,
+            dx: 1.0 / 64.0,
+            dy: 1.0 / 64.0,
+            iso_config: iso.clone(),
+            drainage_max_distance: 30,
+        };
         run_with_closures(&mut state, &mut kin, &config, &C1Closures::default(), |_, _| {});
-        let up = upscale_from_c1(&state, &iso, &ss, &WorldSeed::new(seed), &FbmUpscaleConfig::c1_hd_production(1024));
-        let h = &up.heightmap; let (w, ht) = (h.width, h.height);
+        let up = upscale_from_c1(
+            &state,
+            &iso,
+            &ss,
+            &WorldSeed::new(seed),
+            &FbmUpscaleConfig::c1_hd_production(1024),
+        );
+        let h = &up.heightmap;
+        let (w, ht) = (h.width, h.height);
         let clim = c1_climate(h, &ss, 45.0, &pp); // orographic-only
         let oro = &clim.precipitation.data;
-        let km_cell = c1_km_per_cell(w); let dx_m = km_cell * 1000.0;
-        let alt = |k:usize| c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
-        let mut sum = [0.0f64; 6]; let mut cnt = [0u64; 6];
+        let km_cell = c1_km_per_cell(w);
+        let dx_m = km_cell * 1000.0;
+        let alt = |k: usize| c1_altitude_norm_to_metres(h.data[k], &ss).max(0.0);
+        let mut sum = [0.0f64; 6];
+        let mut cnt = [0u64; 6];
         for j in 0..ht {
-            let mut dist_cells = 0u32; let mut in_land = false;
-            for i in 0..w { let k=j*w+i;
+            let mut dist_cells = 0u32;
+            let mut in_land = false;
+            for i in 0..w {
+                let k = j * w + i;
                 let land = h.data[k] > SEA_LEVEL_NORM;
                 if land {
-                    if !in_land { dist_cells = 0; in_land = true; } else { dist_cells += 1; }
-                    if i>0 {
-                        let asc = (alt(k) - alt(k-1)) / dx_m; // along +x (wind) ascent, m/m
+                    if !in_land {
+                        dist_cells = 0;
+                        in_land = true;
+                    } else {
+                        dist_cells += 1;
+                    }
+                    if i > 0 {
+                        let asc = (alt(k) - alt(k - 1)) / dx_m; // along +x (wind) ascent, m/m
                         if asc > 1e-4 {
                             let r = oro[k] as f64 / asc as f64; // ∝ M
                             let dkm = dist_cells as f32 * km_cell;
-                            for b in 0..6 { if dkm>=bins_km[b] && dkm<bins_km[b+1] { sum[b]+=r; cnt[b]+=1; break; } }
+                            for b in 0..6 {
+                                if dkm >= bins_km[b] && dkm < bins_km[b + 1] {
+                                    sum[b] += r;
+                                    cnt[b] += 1;
+                                    break;
+                                }
+                            }
                         }
                     }
-                } else { in_land = false; }
+                } else {
+                    in_land = false;
+                }
             }
         }
-        let means: Vec<f64> = (0..6).map(|b| if cnt[b]>0 {sum[b]/cnt[b] as f64} else {f64::NAN}).collect();
+        let means: Vec<f64> =
+            (0..6).map(|b| if cnt[b] > 0 { sum[b] / cnt[b] as f64 } else { f64::NAN }).collect();
         let m0 = means[0];
         // e-folding: first bin whose mean < 0.37*m0.
-        let efold = (0..6).find(|&b| means[b].is_finite() && means[b] < 0.37*m0).map(|b| (bins_km[b]+bins_km[b+1].min(300.0))*0.5);
-        eprintln!("  seed {seed}: oro/ascent by dist[0-10|10-30|30-60|60-120|120-250|250+]km = {:?}",
-            means.iter().map(|v| (v*1000.0).round()/1000.0).collect::<Vec<_>>());
-        eprintln!("    -> {} | e-fold(<37% of coastal) ~{:?} km",
-            if means.iter().take(4).filter(|v|v.is_finite()).count()>=2 && means[3].is_finite() && means[3] < 0.6*m0 {"COLLAPSE = DEPLETION"} else {"~CONSTANT = low-relief (not depletion)"}, efold);
+        let efold = (0..6)
+            .find(|&b| means[b].is_finite() && means[b] < 0.37 * m0)
+            .map(|b| (bins_km[b] + bins_km[b + 1].min(300.0)) * 0.5);
+        eprintln!(
+            "  seed {seed}: oro/ascent by dist[0-10|10-30|30-60|60-120|120-250|250+]km = {:?}",
+            means.iter().map(|v| (v * 1000.0).round() / 1000.0).collect::<Vec<_>>()
+        );
+        eprintln!(
+            "    -> {} | e-fold(<37% of coastal) ~{:?} km",
+            if means.iter().take(4).filter(|v| v.is_finite()).count() >= 2
+                && means[3].is_finite()
+                && means[3] < 0.6 * m0
+            {
+                "COLLAPSE = DEPLETION"
+            } else {
+                "~CONSTANT = low-relief (not depletion)"
+            },
+            efold
+        );
         if seed == 1988 {
             // render orographic-only LOG.
-            let mut lp:Vec<f32>=(0..w*ht).filter(|&k|h.data[k]>SEA_LEVEL_NORM).map(|k|oro[k]).collect();
-            lp.sort_by(|a,b|a.partial_cmp(b).unwrap()); let pmax=lp[lp.len()-1].max(1e-6);
-            let (lnmin,lnmax)=(1e-4f32.ln(), pmax.ln());
-            let mut b=image::RgbImage::new(w as u32,ht as u32);
-            for j in 0..ht{for i in 0..w{let k=j*w+i;let sea=h.data[k]<=SEA_LEVEL_NORM;
-                let tl=if sea{0.0}else{((oro[k].max(1e-4).ln()-lnmin)/(lnmax-lnmin)).clamp(0.0,1.0)};
-                b.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(if sea{[20,40,80]}else{[(215.0-185.0*tl)as u8,(205.0-125.0*tl)as u8,(165.0+90.0*tl)as u8]}));
-            }}
+            let mut lp: Vec<f32> =
+                (0..w * ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| oro[k]).collect();
+            lp.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let pmax = lp[lp.len() - 1].max(1e-6);
+            let (lnmin, lnmax) = (1e-4f32.ln(), pmax.ln());
+            let mut b = image::RgbImage::new(w as u32, ht as u32);
+            for j in 0..ht {
+                for i in 0..w {
+                    let k = j * w + i;
+                    let sea = h.data[k] <= SEA_LEVEL_NORM;
+                    let tl = if sea {
+                        0.0
+                    } else {
+                        ((oro[k].max(1e-4).ln() - lnmin) / (lnmax - lnmin)).clamp(0.0, 1.0)
+                    };
+                    b.put_pixel(
+                        i as u32,
+                        (ht - 1 - j) as u32,
+                        image::Rgb(if sea {
+                            [20, 40, 80]
+                        } else {
+                            [
+                                (215.0 - 185.0 * tl) as u8,
+                                (205.0 - 125.0 * tl) as u8,
+                                (165.0 + 90.0 * tl) as u8,
+                            ]
+                        }),
+                    );
+                }
+            }
             b.save(dir.join("seed01988_precip_OROGRAPHIC_ONLY.png")).unwrap();
         }
     }
@@ -4998,41 +7304,115 @@ fn probe_oro_depletion() {
 #[test]
 #[ignore]
 fn probe_climate_biomes() {
-    use ymir_core::climate::{c1_climate, c1_biomes};
-    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year, SEA_LEVEL_NORM};
     use ymir_core::climate::biomes::Biome;
-    let dir = output_dir().join("climate_maps"); std::fs::create_dir_all(&dir).unwrap();
-    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM, precip_mm_per_year};
+    use ymir_core::climate::{c1_biomes, c1_climate};
+    let dir = output_dir().join("climate_maps");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
     let pp = PrecipParams::default();
     // mm/yr bands (legend baked in): desert / steppe / temperate-dry / oceanic / wet.
-    let precip_band = |mm: f32| -> [u8;3] {
-        if mm < 250.0 {[225,200,140]} else if mm < 500.0 {[200,195,110]} else if mm < 800.0 {[150,180,90]}
-        else if mm < 1500.0 {[80,150,200]} else {[30,90,200]}
+    let precip_band = |mm: f32| -> [u8; 3] {
+        if mm < 250.0 {
+            [225, 200, 140]
+        } else if mm < 500.0 {
+            [200, 195, 110]
+        } else if mm < 800.0 {
+            [150, 180, 90]
+        } else if mm < 1500.0 {
+            [80, 150, 200]
+        } else {
+            [30, 90, 200]
+        }
     };
-    let temp_band = |t: f32| -> [u8;3] {
-        if t < -10.0 {[230,235,245]} else if t < 0.0 {[150,180,230]} else if t < 10.0 {[120,190,120]}
-        else if t < 20.0 {[220,210,120]} else {[220,110,70]}
+    let temp_band = |t: f32| -> [u8; 3] {
+        if t < -10.0 {
+            [230, 235, 245]
+        } else if t < 0.0 {
+            [150, 180, 230]
+        } else if t < 10.0 {
+            [120, 190, 120]
+        } else if t < 20.0 {
+            [220, 210, 120]
+        } else {
+            [220, 110, 70]
+        }
     };
-    eprintln!("#165 biomes + mm/yr (2048², 45° westerlies). precip bands: desert<250 steppe250-500 tempDry500-800 oceanic800-1500 wet>1500 mm/yr");
+    eprintln!(
+        "#165 biomes + mm/yr (2048², 45° westerlies). precip bands: desert<250 steppe250-500 tempDry500-800 oceanic800-1500 wet>1500 mm/yr"
+    );
     for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
         let heightmap = c165_eroded(seed, &iso);
-        let h = &heightmap; let (w, ht) = (h.width, h.height);
+        let h = &heightmap;
+        let (w, ht) = (h.width, h.height);
         let clim = c1_climate(h, &ss, 45.0, &pp);
         let biomes = c1_biomes(h, &clim);
         // biome histogram over LAND.
-        let order = [Biome::Tundra, Biome::BorealForest, Biome::TemperateGrassland, Biome::TemperateForest, Biome::TemperateRainforest, Biome::Desert, Biome::Savanna, Biome::TropicalSeasonalForest, Biome::TropicalRainforest];
-        let mut land = 0u64; let mut cnt = std::collections::HashMap::new();
-        for &b in &biomes { if b != Biome::Ocean { land += 1; *cnt.entry(b).or_insert(0u64) += 1; } }
-        let hist: Vec<String> = order.iter().filter_map(|b| { let c=*cnt.get(b).unwrap_or(&0); if c>0 {Some(format!("{} {:.0}%", b.name(), 100.0*c as f64/land.max(1) as f64))} else {None} }).collect();
+        let order = [
+            Biome::Tundra,
+            Biome::BorealForest,
+            Biome::TemperateGrassland,
+            Biome::TemperateForest,
+            Biome::TemperateRainforest,
+            Biome::Desert,
+            Biome::Savanna,
+            Biome::TropicalSeasonalForest,
+            Biome::TropicalRainforest,
+        ];
+        let mut land = 0u64;
+        let mut cnt = std::collections::HashMap::new();
+        for &b in &biomes {
+            if b != Biome::Ocean {
+                land += 1;
+                *cnt.entry(b).or_insert(0u64) += 1;
+            }
+        }
+        let hist: Vec<String> = order
+            .iter()
+            .filter_map(|b| {
+                let c = *cnt.get(b).unwrap_or(&0);
+                if c > 0 {
+                    Some(format!("{} {:.0}%", b.name(), 100.0 * c as f64 / land.max(1) as f64))
+                } else {
+                    None
+                }
+            })
+            .collect();
         eprintln!("  seed {seed}: {}", hist.join(" | "));
         // renders.
-        let put=|buf:&mut image::RgbImage,i:usize,j:usize,c:[u8;3]|buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
-        let (mut bb, mut bpm, mut bt) = (image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32), image::RgbImage::new(w as u32,ht as u32));
-        for j in 0..ht{for i in 0..w{let k=j*w+i; let sea=h.data[k]<=SEA_LEVEL_NORM;
-            put(&mut bb,i,j, biomes[k].color());
-            put(&mut bpm,i,j, if sea {[30,50,90]} else {precip_band(precip_mm_per_year(clim.precipitation.data[k]))});
-            put(&mut bt,i,j, if sea {[30,50,90]} else {temp_band(clim.temperature.data[k])});
-        }}
+        let put = |buf: &mut image::RgbImage, i: usize, j: usize, c: [u8; 3]| {
+            buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(c))
+        };
+        let (mut bb, mut bpm, mut bt) = (
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+            image::RgbImage::new(w as u32, ht as u32),
+        );
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let sea = h.data[k] <= SEA_LEVEL_NORM;
+                put(&mut bb, i, j, biomes[k].color());
+                put(
+                    &mut bpm,
+                    i,
+                    j,
+                    if sea {
+                        [30, 50, 90]
+                    } else {
+                        precip_band(precip_mm_per_year(clim.precipitation.data[k]))
+                    },
+                );
+                put(
+                    &mut bt,
+                    i,
+                    j,
+                    if sea { [30, 50, 90] } else { temp_band(clim.temperature.data[k]) },
+                );
+            }
+        }
         bb.save(dir.join(format!("seed{seed:05}_BIOMES.png"))).unwrap();
         bpm.save(dir.join(format!("seed{seed:05}_precip_MMBANDS.png"))).unwrap();
         bt.save(dir.join(format!("seed{seed:05}_temp_CBANDS.png"))).unwrap();
@@ -5053,131 +7433,275 @@ fn probe_climate_biomes() {
 #[test]
 #[ignore]
 fn probe_climate_verdict_grid() {
-    use ymir_core::climate::{c1_climate, c1_biomes};
-    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year, SEA_LEVEL_NORM};
     use ymir_core::climate::biomes::Biome;
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM, precip_mm_per_year};
+    use ymir_core::climate::{c1_biomes, c1_climate};
     use ymir_core::tectonics_c1::production_upscale::{c1_altitude_norm_to_metres, c1_km_per_cell};
-    let dir = output_dir().join("climate_verdict"); std::fs::create_dir_all(&dir).unwrap();
-    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
+    let dir = output_dir().join("climate_verdict");
+    std::fs::create_dir_all(&dir).unwrap();
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
     let pp = PrecipParams::default();
     let lat = 45.0f32;
     let alt_m = |n: f32| c1_altitude_norm_to_metres(n, &ss).max(0.0);
     // interior is SEC when the rain-shadow biomes (desert + steppe) dominate it.
     let dry = |b: Biome| matches!(b, Biome::Desert | Biome::TemperateGrassland);
     eprintln!("#165 A/B verdict grid — 2048², 45° westerlies (wind W→E); windward = WEST margin.");
-    eprintln!("  coast: HAUTE>3000m / BASSE<2000m (2-3km INTERM). interior SEC if desert+steppe >50%.");
-    let mut global_min = f32::INFINITY; let mut global_max = 0.0f32;
+    eprintln!(
+        "  coast: HAUTE>3000m / BASSE<2000m (2-3km INTERM). interior SEC if desert+steppe >50%."
+    );
+    let mut global_min = f32::INFINITY;
+    let mut global_max = 0.0f32;
     for &seed in &[42u64, 99, 1337, 4138, 1988, 2026] {
         let heightmap = c165_eroded(seed, &iso);
-        let h = &heightmap; let (w, ht) = (h.width, h.height);
+        let h = &heightmap;
+        let (w, ht) = (h.width, h.height);
         let km_cell = c1_km_per_cell(w);
         let clim = c1_climate(h, &ss, lat, &pp);
         let biomes = c1_biomes(h, &clim);
-        let w_band = (80.0 / km_cell) as usize;   // windward coastal band: first 80 km of land
-        let i_start = (150.0 / km_cell) as usize;  // interior begins 150 km inland of the W coast
+        let w_band = (80.0 / km_cell) as usize; // windward coastal band: first 80 km of land
+        let i_start = (150.0 / km_cell) as usize; // interior begins 150 km inland of the W coast
         let mut wind_alts: Vec<f32> = Vec::new();
-        let mut best_row = (ht/2, -1.0f32);        // row with the tallest windward peak → transect
-        let mut interior_cnt: std::collections::HashMap<Biome, u64> = std::collections::HashMap::new();
-        let mut interior_land = 0u64; let mut interior_dry = 0u64;
+        let mut best_row = (ht / 2, -1.0f32); // row with the tallest windward peak → transect
+        let mut interior_cnt: std::collections::HashMap<Biome, u64> =
+            std::collections::HashMap::new();
+        let mut interior_land = 0u64;
+        let mut interior_dry = 0u64;
         let mut interior_precip: Vec<f32> = Vec::new();
         for j in 0..ht {
             let mut i0 = None;
-            for i in 0..w { if h.data[j*w+i] > SEA_LEVEL_NORM { i0 = Some(i); break; } }
-            let Some(i0) = i0 else { continue; };
-            let mut row_peak = 0.0f32;
-            for i in i0..(i0+w_band).min(w) {
-                let k = j*w+i; if h.data[k] > SEA_LEVEL_NORM { let a = alt_m(h.data[k]); wind_alts.push(a); row_peak = row_peak.max(a); }
+            for i in 0..w {
+                if h.data[j * w + i] > SEA_LEVEL_NORM {
+                    i0 = Some(i);
+                    break;
+                }
             }
-            if row_peak > best_row.1 { best_row = (j, row_peak); }
-            for i in (i0+i_start)..w {
-                let k = j*w+i; if h.data[k] > SEA_LEVEL_NORM {
+            let Some(i0) = i0 else {
+                continue;
+            };
+            let mut row_peak = 0.0f32;
+            for i in i0..(i0 + w_band).min(w) {
+                let k = j * w + i;
+                if h.data[k] > SEA_LEVEL_NORM {
+                    let a = alt_m(h.data[k]);
+                    wind_alts.push(a);
+                    row_peak = row_peak.max(a);
+                }
+            }
+            if row_peak > best_row.1 {
+                best_row = (j, row_peak);
+            }
+            for i in (i0 + i_start)..w {
+                let k = j * w + i;
+                if h.data[k] > SEA_LEVEL_NORM {
                     interior_land += 1;
                     let b = biomes[k];
                     *interior_cnt.entry(b).or_insert(0) += 1;
-                    if dry(b) { interior_dry += 1; }
+                    if dry(b) {
+                        interior_dry += 1;
+                    }
                     interior_precip.push(precip_mm_per_year(clim.precipitation.data[k]));
                 }
             }
         }
-        wind_alts.sort_by(|a,b| a.partial_cmp(b).unwrap());
-        interior_precip.sort_by(|a,b| a.partial_cmp(b).unwrap());
-        let pct = |v:&Vec<f32>, p:f64| if v.is_empty() {0.0} else { v[(((v.len()-1) as f64)*p) as usize] };
+        wind_alts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        interior_precip.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let pct = |v: &Vec<f32>, p: f64| {
+            if v.is_empty() { 0.0 } else { v[(((v.len() - 1) as f64) * p) as usize] }
+        };
         let wind_max = wind_alts.last().copied().unwrap_or(0.0);
         let wind_p95 = pct(&wind_alts, 0.95);
         let int_p50 = pct(&interior_precip, 0.5);
         let int_p90 = pct(&interior_precip, 0.9);
-        let dry_frac = if interior_land>0 {100.0*interior_dry as f64/interior_land as f64} else {0.0};
-        let dom = interior_cnt.iter().max_by_key(|(_,c)| **c).map(|(b,_)| b.name()).unwrap_or("-");
-        let coast = if wind_max > 3000.0 {"HAUTE"} else if wind_max < 2000.0 {"BASSE"} else {"INTERM"};
-        let hum = if dry_frac > 50.0 {"SEC"} else {"HUMIDE"};
+        let dry_frac = if interior_land > 0 {
+            100.0 * interior_dry as f64 / interior_land as f64
+        } else {
+            0.0
+        };
+        let dom =
+            interior_cnt.iter().max_by_key(|(_, c)| **c).map(|(b, _)| b.name()).unwrap_or("-");
+        let coast = if wind_max > 3000.0 {
+            "HAUTE"
+        } else if wind_max < 2000.0 {
+            "BASSE"
+        } else {
+            "INTERM"
+        };
+        let hum = if dry_frac > 50.0 { "SEC" } else { "HUMIDE" };
         let case = match (coast, hum) {
-            ("HAUTE","SEC")    => "ombre légitime (Patagonie) [correct]",
-            ("BASSE","HUMIDE") => "océanique [correct]",
-            ("BASSE","SEC")    => "PROBLÈME (pluie ne pénètre pas)",
-            ("HAUTE","HUMIDE") => "improbable (haut + humide)",
-            _                  => "intermédiaire (coast 2-3km)",
+            ("HAUTE", "SEC") => "ombre légitime (Patagonie) [correct]",
+            ("BASSE", "HUMIDE") => "océanique [correct]",
+            ("BASSE", "SEC") => "PROBLÈME (pluie ne pénètre pas)",
+            ("HAUTE", "HUMIDE") => "improbable (haut + humide)",
+            _ => "intermédiaire (coast 2-3km)",
         };
         // full-land precip range (mm/yr) — the actual min/max behind the fixed
         // bands (the ">1500 wet" band's real extent = the coastal-dump outliers).
-        let mut land_p: Vec<f32> = (0..w*ht).filter(|&k| h.data[k] > SEA_LEVEL_NORM).map(|k| precip_mm_per_year(clim.precipitation.data[k])).collect();
-        land_p.sort_by(|a,b| a.partial_cmp(b).unwrap());
-        let lp = |p:f64| if land_p.is_empty() {0.0} else { land_p[(((land_p.len()-1) as f64)*p) as usize] };
-        let (l_min, l_max) = (land_p.first().copied().unwrap_or(0.0), land_p.last().copied().unwrap_or(0.0));
-        global_min = global_min.min(l_min); global_max = global_max.max(l_max);
-        eprintln!("  seed {seed}: windward max {wind_max:.0}m p95 {wind_p95:.0}m [{coast}] | interior dom={dom} dry={dry_frac:.0}% precip p50 {int_p50:.0} p90 {int_p90:.0} mm [{hum}] => {case}");
-        eprintln!("    land precip mm/yr: min {l_min:.0} p50 {:.0} p90 {:.0} p99 {:.0} max {l_max:.0}", lp(0.5), lp(0.9), lp(0.99));
+        let mut land_p: Vec<f32> = (0..w * ht)
+            .filter(|&k| h.data[k] > SEA_LEVEL_NORM)
+            .map(|k| precip_mm_per_year(clim.precipitation.data[k]))
+            .collect();
+        land_p.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let lp = |p: f64| {
+            if land_p.is_empty() { 0.0 } else { land_p[(((land_p.len() - 1) as f64) * p) as usize] }
+        };
+        let (l_min, l_max) =
+            (land_p.first().copied().unwrap_or(0.0), land_p.last().copied().unwrap_or(0.0));
+        global_min = global_min.min(l_min);
+        global_max = global_max.max(l_max);
+        eprintln!(
+            "  seed {seed}: windward max {wind_max:.0}m p95 {wind_p95:.0}m [{coast}] | interior dom={dom} dry={dry_frac:.0}% precip p50 {int_p50:.0} p90 {int_p90:.0} mm [{hum}] => {case}"
+        );
+        eprintln!(
+            "    land precip mm/yr: min {l_min:.0} p50 {:.0} p90 {:.0} p99 {:.0} max {l_max:.0}",
+            lp(0.5),
+            lp(0.9),
+            lp(0.99)
+        );
         // CONTINGENCY biome × (temperature °C, altitude m): for each biome, the T and
         // alt distributions of the cells classified into it. taiga T is bounded -5..+5
         // BY the Whittaker thresholds (so T alone is near-tautological); the ALTITUDE
         // column is the real discriminator — taiga at high alt = legitimate alpine cold
         // (lapse correct), taiga at low alt = lapse too steep / threshold mis-set.
-        let mut contingency: std::collections::HashMap<Biome, (Vec<f32>, Vec<f32>)> = std::collections::HashMap::new();
-        for k in 0..w*ht { if h.data[k] > SEA_LEVEL_NORM { let e = contingency.entry(biomes[k]).or_default(); e.0.push(clim.temperature.data[k]); e.1.push(alt_m(h.data[k])); } }
+        let mut contingency: std::collections::HashMap<Biome, (Vec<f32>, Vec<f32>)> =
+            std::collections::HashMap::new();
+        for k in 0..w * ht {
+            if h.data[k] > SEA_LEVEL_NORM {
+                let e = contingency.entry(biomes[k]).or_default();
+                e.0.push(clim.temperature.data[k]);
+                e.1.push(alt_m(h.data[k]));
+            }
+        }
         let land_n = land_p.len().max(1) as f64;
-        let bo = [Biome::Tundra, Biome::BorealForest, Biome::TemperateGrassland, Biome::TemperateForest, Biome::TemperateRainforest, Biome::Desert, Biome::Savanna, Biome::TropicalSeasonalForest, Biome::TropicalRainforest];
-        for b in bo { if let Some((ts, az)) = contingency.get(&b) { if !ts.is_empty() {
-            let (mut t, mut a) = (ts.clone(), az.clone());
-            t.sort_by(|x,y| x.partial_cmp(y).unwrap()); a.sort_by(|x,y| x.partial_cmp(y).unwrap());
-            let q = |v:&Vec<f32>, p:f64| v[(((v.len()-1) as f64)*p) as usize];
-            eprintln!("      {:>24}: {:>4.0}% | T°C [min {:>5.1} p50 {:>5.1} max {:>5.1}] | alt m [min {:>5.0} p50 {:>5.0} max {:>5.0}]",
-                b.name(), 100.0*ts.len() as f64/land_n, t[0], q(&t,0.5), *t.last().unwrap(), a[0], q(&a,0.5), *a.last().unwrap());
-        }}}
+        let bo = [
+            Biome::Tundra,
+            Biome::BorealForest,
+            Biome::TemperateGrassland,
+            Biome::TemperateForest,
+            Biome::TemperateRainforest,
+            Biome::Desert,
+            Biome::Savanna,
+            Biome::TropicalSeasonalForest,
+            Biome::TropicalRainforest,
+        ];
+        for b in bo {
+            if let Some((ts, az)) = contingency.get(&b) {
+                if !ts.is_empty() {
+                    let (mut t, mut a) = (ts.clone(), az.clone());
+                    t.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                    a.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                    let q = |v: &Vec<f32>, p: f64| v[(((v.len() - 1) as f64) * p) as usize];
+                    eprintln!(
+                        "      {:>24}: {:>4.0}% | T°C [min {:>5.1} p50 {:>5.1} max {:>5.1}] | alt m [min {:>5.0} p50 {:>5.0} max {:>5.0}]",
+                        b.name(),
+                        100.0 * ts.len() as f64 / land_n,
+                        t[0],
+                        q(&t, 0.5),
+                        *t.last().unwrap(),
+                        a[0],
+                        q(&a, 0.5),
+                        *a.last().unwrap()
+                    );
+                }
+            }
+        }
         // renders — ALL on COMMON FIXED scales (shared across the 6 seeds) so the
         // interiors are directly comparable. Precip uses the anchored mm/yr BANDS
         // (desert/steppe/temperate-dry/oceanic/wet); the coastal outliers (40k-158k
         // mm, <0.1 %) fold into the top "wet" band so they don't wash out the
         // interior (300-1500 mm), which stays fully distinguishable. Biomes use the
         // shared categorical palette. NO per-seed normalisation.
-        let precip_band = |mm: f32| -> [u8;3] {
-            if mm < 250.0 {[225,200,140]} else if mm < 500.0 {[200,195,110]} else if mm < 800.0 {[150,180,90]}
-            else if mm < 1500.0 {[80,150,200]} else {[30,90,200]}
+        let precip_band = |mm: f32| -> [u8; 3] {
+            if mm < 250.0 {
+                [225, 200, 140]
+            } else if mm < 500.0 {
+                [200, 195, 110]
+            } else if mm < 800.0 {
+                [150, 180, 90]
+            } else if mm < 1500.0 {
+                [80, 150, 200]
+            } else {
+                [30, 90, 200]
+            }
         };
         // temperature bands at the Whittaker thermal THRESHOLDS used by classify():
         // tundra <-5, taiga -5..+5, temperate +5..+20, warm/tropical >+20. So the
         // panel colour = the thermal CLASS of each cell (read against the biome map).
-        let temp_band = |t: f32| -> [u8;3] {
-            if t < -5.0 {[225,235,248]} else if t < 5.0 {[90,140,205]} else if t < 20.0 {[110,190,110]} else {[225,120,70]}
+        let temp_band = |t: f32| -> [u8; 3] {
+            if t < -5.0 {
+                [225, 235, 248]
+            } else if t < 5.0 {
+                [90, 140, 205]
+            } else if t < 20.0 {
+                [110, 190, 110]
+            } else {
+                [225, 120, 70]
+            }
         };
-        let put=|buf:&mut image::RgbImage,i:usize,j:usize,c:[u8;3]|buf.put_pixel(i as u32,(ht-1-j)as u32,image::Rgb(c));
+        let put = |buf: &mut image::RgbImage, i: usize, j: usize, c: [u8; 3]| {
+            buf.put_pixel(i as u32, (ht - 1 - j) as u32, image::Rgb(c))
+        };
         let mut relief = image::RgbImage::new(w as u32, ht as u32);
         let mut bb = image::RgbImage::new(w as u32, ht as u32);
         let mut pm = image::RgbImage::new(w as u32, ht as u32);
         let mut tm = image::RgbImage::new(w as u32, ht as u32);
-        for j in 0..ht { for i in 0..w { let k=j*w+i; let sea = h.data[k] <= SEA_LEVEL_NORM;
-            if sea { put(&mut relief,i,j,[30,50,90]); }
-            else { let g=((alt_m(h.data[k])/6000.0)*255.0).min(255.0) as u8; put(&mut relief,i,j,[g,g,g]); }
-            put(&mut bb,i,j, biomes[k].color());
-            put(&mut pm,i,j, if sea {[30,50,90]} else {precip_band(precip_mm_per_year(clim.precipitation.data[k]))});
-            put(&mut tm,i,j, if sea {[40,45,70]} else {temp_band(clim.temperature.data[k])});
-        }}
+        for j in 0..ht {
+            for i in 0..w {
+                let k = j * w + i;
+                let sea = h.data[k] <= SEA_LEVEL_NORM;
+                if sea {
+                    put(&mut relief, i, j, [30, 50, 90]);
+                } else {
+                    let g = ((alt_m(h.data[k]) / 6000.0) * 255.0).min(255.0) as u8;
+                    put(&mut relief, i, j, [g, g, g]);
+                }
+                put(&mut bb, i, j, biomes[k].color());
+                put(
+                    &mut pm,
+                    i,
+                    j,
+                    if sea {
+                        [30, 50, 90]
+                    } else {
+                        precip_band(precip_mm_per_year(clim.precipitation.data[k]))
+                    },
+                );
+                put(
+                    &mut tm,
+                    i,
+                    j,
+                    if sea { [40, 45, 70] } else { temp_band(clim.temperature.data[k]) },
+                );
+            }
+        }
         // red tint on the measured windward band (first 80 km of land per row).
         for j in 0..ht {
-            let mut i0=None; for i in 0..w { if h.data[j*w+i] > SEA_LEVEL_NORM { i0=Some(i); break; } }
-            if let Some(i0)=i0 { for i in i0..(i0+w_band).min(w) { let k=j*w+i; if h.data[k]>SEA_LEVEL_NORM {
-                let y=(ht-1-j) as u32; let p=relief.get_pixel(i as u32,y).0;
-                relief.put_pixel(i as u32,y, image::Rgb([(p[0] as u16+90).min(255) as u8, p[1]/2, p[2]/2])); } } }
+            let mut i0 = None;
+            for i in 0..w {
+                if h.data[j * w + i] > SEA_LEVEL_NORM {
+                    i0 = Some(i);
+                    break;
+                }
+            }
+            if let Some(i0) = i0 {
+                for i in i0..(i0 + w_band).min(w) {
+                    let k = j * w + i;
+                    if h.data[k] > SEA_LEVEL_NORM {
+                        let y = (ht - 1 - j) as u32;
+                        let p = relief.get_pixel(i as u32, y).0;
+                        relief.put_pixel(
+                            i as u32,
+                            y,
+                            image::Rgb([(p[0] as u16 + 90).min(255) as u8, p[1] / 2, p[2] / 2]),
+                        );
+                    }
+                }
+            }
         }
-        relief.save(dir.join(format!("seed{seed:05}_relief_wind{:.0}m_{coast}.png", wind_max))).unwrap();
+        relief
+            .save(dir.join(format!("seed{seed:05}_relief_wind{:.0}m_{coast}.png", wind_max)))
+            .unwrap();
         bb.save(dir.join(format!("seed{seed:05}_biomes.png"))).unwrap();
         pm.save(dir.join(format!("seed{seed:05}_precip_MMBANDS.png"))).unwrap();
         tm.save(dir.join(format!("seed{seed:05}_temp_CBANDS.png"))).unwrap();
@@ -5185,43 +7709,92 @@ fn probe_climate_verdict_grid() {
         // COMMON FIXED scale clamped to 2000 mm (interior readable, coastal outliers
         // clamp at the top) + biome strip (shared palette).
         const TRANSECT_MM_MAX: f32 = 2000.0;
-        let jr = best_row.0; let th = 400usize;
+        let jr = best_row.0;
+        let th = 400usize;
         let mut tr = image::RgbImage::new(w as u32, th as u32);
-        for p in tr.pixels_mut() { *p = image::Rgb([20,20,28]); }
+        for p in tr.pixels_mut() {
+            *p = image::Rgb([20, 20, 28]);
+        }
         for i in 0..w {
-            let k=jr*w+i;
-            let a = if h.data[k]>SEA_LEVEL_NORM {alt_m(h.data[k])} else {0.0};
-            let ay = (((a/6000.0).min(1.0))*(th as f32 - 40.0)) as usize;
+            let k = jr * w + i;
+            let a = if h.data[k] > SEA_LEVEL_NORM { alt_m(h.data[k]) } else { 0.0 };
+            let ay = (((a / 6000.0).min(1.0)) * (th as f32 - 40.0)) as usize;
             let mm = precip_mm_per_year(clim.precipitation.data[k]);
-            let my = (((mm/TRANSECT_MM_MAX).min(1.0))*(th as f32 - 40.0)) as usize;
-            if ay < th { tr.put_pixel(i as u32, (th-1-ay) as u32, image::Rgb([200,200,200])); }
-            if my < th { tr.put_pixel(i as u32, (th-1-my) as u32, image::Rgb([60,200,230])); }
-            let c = if h.data[k]<=SEA_LEVEL_NORM {[30,50,90]} else {biomes[k].color()};
-            for y in 0..30 { tr.put_pixel(i as u32, (th-1-y) as u32, image::Rgb(c)); }
+            let my = (((mm / TRANSECT_MM_MAX).min(1.0)) * (th as f32 - 40.0)) as usize;
+            if ay < th {
+                tr.put_pixel(i as u32, (th - 1 - ay) as u32, image::Rgb([200, 200, 200]));
+            }
+            if my < th {
+                tr.put_pixel(i as u32, (th - 1 - my) as u32, image::Rgb([60, 200, 230]));
+            }
+            let c = if h.data[k] <= SEA_LEVEL_NORM { [30, 50, 90] } else { biomes[k].color() };
+            for y in 0..30 {
+                tr.put_pixel(i as u32, (th - 1 - y) as u32, image::Rgb(c));
+            }
         }
         tr.save(dir.join(format!("seed{seed:05}_transect_row{jr}.png"))).unwrap();
     }
     // shared legend reference PNGs (colour swatches in a fixed order — the named
     // mapping is printed below; no font rendering in-image).
-    let precip_legend: [(&str,[u8;3]);5] = [("desert <250",[225,200,140]),("steppe 250-500",[200,195,110]),("temperate-dry 500-800",[150,180,90]),("oceanic 800-1500",[80,150,200]),("wet >1500",[30,90,200])];
-    let biome_legend: [(&str,[u8;3]);6] = [("steppe",Biome::TemperateGrassland.color()),("temperate forest",Biome::TemperateForest.color()),("temperate rainforest",Biome::TemperateRainforest.color()),("boreal/taiga",Biome::BorealForest.color()),("tundra",Biome::Tundra.color()),("desert",Biome::Desert.color())];
-    let save_legend = |name: &str, items: &[(&str,[u8;3])]| {
-        let (sw, sh) = (120u32, 60u32); let mut img = image::RgbImage::new(sw*items.len() as u32, sh);
-        for (n,(_,c)) in items.iter().enumerate() { for x in 0..sw { for y in 0..sh { img.put_pixel(n as u32*sw+x, y, image::Rgb(*c)); } } }
+    let precip_legend: [(&str, [u8; 3]); 5] = [
+        ("desert <250", [225, 200, 140]),
+        ("steppe 250-500", [200, 195, 110]),
+        ("temperate-dry 500-800", [150, 180, 90]),
+        ("oceanic 800-1500", [80, 150, 200]),
+        ("wet >1500", [30, 90, 200]),
+    ];
+    let biome_legend: [(&str, [u8; 3]); 6] = [
+        ("steppe", Biome::TemperateGrassland.color()),
+        ("temperate forest", Biome::TemperateForest.color()),
+        ("temperate rainforest", Biome::TemperateRainforest.color()),
+        ("boreal/taiga", Biome::BorealForest.color()),
+        ("tundra", Biome::Tundra.color()),
+        ("desert", Biome::Desert.color()),
+    ];
+    let save_legend = |name: &str, items: &[(&str, [u8; 3])]| {
+        let (sw, sh) = (120u32, 60u32);
+        let mut img = image::RgbImage::new(sw * items.len() as u32, sh);
+        for (n, (_, c)) in items.iter().enumerate() {
+            for x in 0..sw {
+                for y in 0..sh {
+                    img.put_pixel(n as u32 * sw + x, y, image::Rgb(*c));
+                }
+            }
+        }
         img.save(dir.join(name)).unwrap();
     };
-    let temp_legend: [(&str,[u8;3]);4] = [("tundra <-5C",[225,235,248]),("taiga -5..+5C",[90,140,205]),("temperate +5..+20C",[110,190,110]),("warm/tropical >+20C",[225,120,70])];
+    let temp_legend: [(&str, [u8; 3]); 4] = [
+        ("tundra <-5C", [225, 235, 248]),
+        ("taiga -5..+5C", [90, 140, 205]),
+        ("temperate +5..+20C", [110, 190, 110]),
+        ("warm/tropical >+20C", [225, 120, 70]),
+    ];
     save_legend("legend_precip_bands.png", &precip_legend);
     save_legend("legend_biomes.png", &biome_legend);
     save_legend("legend_temp_bands.png", &temp_legend);
     eprintln!("  out = {}", dir.display());
     eprintln!("  COMMON SCALES (shared across all 6 seeds — directly comparable):");
-    eprintln!("    actual land precip EXTENT across all 6 seeds: min {global_min:.0} → max {global_max:.0} mm/yr (the top 'wet >1500' band spans up to this max — the coastal-dump outliers).");
-    eprintln!("    precip MMBANDS (fixed, outliers fold into top band): {}", precip_legend.iter().map(|(n,c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | "));
-    eprintln!("    biomes (shared palette): {}", biome_legend.iter().map(|(n,c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | "));
-    eprintln!("    temp CBANDS (fixed, at the Whittaker classify() thresholds -5/+5/+20°C): {}", temp_legend.iter().map(|(n,c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | "));
-    eprintln!("    relief grey=alt(0-6000m), red tint=windward 80km band. transect grey=alt(0-6000m) cyan=precip(0-2000mm FIXED clamp) bottom=biome strip.");
-    eprintln!("    legends: legend_precip_bands.png, legend_biomes.png, legend_temp_bands.png (swatch order = the lists above).");
+    eprintln!(
+        "    actual land precip EXTENT across all 6 seeds: min {global_min:.0} → max {global_max:.0} mm/yr (the top 'wet >1500' band spans up to this max — the coastal-dump outliers)."
+    );
+    eprintln!(
+        "    precip MMBANDS (fixed, outliers fold into top band): {}",
+        precip_legend.iter().map(|(n, c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | ")
+    );
+    eprintln!(
+        "    biomes (shared palette): {}",
+        biome_legend.iter().map(|(n, c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | ")
+    );
+    eprintln!(
+        "    temp CBANDS (fixed, at the Whittaker classify() thresholds -5/+5/+20°C): {}",
+        temp_legend.iter().map(|(n, c)| format!("{n}={c:?}")).collect::<Vec<_>>().join(" | ")
+    );
+    eprintln!(
+        "    relief grey=alt(0-6000m), red tint=windward 80km band. transect grey=alt(0-6000m) cyan=precip(0-2000mm FIXED clamp) bottom=biome strip."
+    );
+    eprintln!(
+        "    legends: legend_precip_bands.png, legend_biomes.png, legend_temp_bands.png (swatch order = the lists above)."
+    );
 }
 
 /// #165 FRONTAL/OROGRAPHIC RATIO DIAGNOSTIC — decompose interior precipitation
@@ -5239,37 +7812,93 @@ fn probe_climate_verdict_grid() {
 #[ignore]
 fn probe_frontal_oro_ratio() {
     use ymir_core::climate::c1_climate;
-    use ymir_core::climate::precipitation::{PrecipParams, precip_mm_per_year, belt_factor, e_sat, SEA_LEVEL_NORM};
+    use ymir_core::climate::precipitation::{
+        PrecipParams, SEA_LEVEL_NORM, belt_factor, e_sat, precip_mm_per_year,
+    };
     use ymir_core::climate::temperature::sea_level_temperature;
     use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
-    let iso = IsostasyConfig::c1_default(); let ss = SteinSteinParams::default(); let grid = 64usize;
-    let pp = PrecipParams::default(); let lat = 45.0f32;
+    let iso = IsostasyConfig::c1_default();
+    let ss = SteinSteinParams::default();
+    let grid = 64usize;
+    let pp = PrecipParams::default();
+    let lat = 45.0f32;
     let alt_m = |n: f32| c1_altitude_norm_to_metres(n, &ss).max(0.0);
-    let frontal_mm = precip_mm_per_year(pp.k_frontal * belt_factor(lat) * e_sat(sea_level_temperature(lat)));
-    eprintln!("#165 frontal/orographic ratio — 2048°, 45° westerlies. frontal base = {frontal_mm:.0} mm (UNIFORM floor on all land).");
-    eprintln!("  oro surcharge = precip_total - frontal_base (relief-modulated). windward = first 80km land; interior = >150km inland.");
+    let frontal_mm =
+        precip_mm_per_year(pp.k_frontal * belt_factor(lat) * e_sat(sea_level_temperature(lat)));
+    eprintln!(
+        "#165 frontal/orographic ratio — 2048°, 45° westerlies. frontal base = {frontal_mm:.0} mm (UNIFORM floor on all land)."
+    );
+    eprintln!(
+        "  oro surcharge = precip_total - frontal_base (relief-modulated). windward = first 80km land; interior = >150km inland."
+    );
     // 3 representative seeds: tallest wall (1988), intermediate coast (99), craton (42).
     for &seed in &[1988u64, 99, 42] {
         let heightmap = c165_eroded(seed, &iso);
-        let h = &heightmap; let (w, ht) = (h.width, h.height);
+        let h = &heightmap;
+        let (w, ht) = (h.width, h.height);
         let clim = c1_climate(h, &ss, lat, &pp);
-        let w_band = (80.0 / (1024.0/w as f32)) as usize;
-        let i_start = (150.0 / (1024.0/w as f32)) as usize;
-        let (mut wind_oro, mut int_oro, mut int_tot): (Vec<f32>, Vec<f32>, Vec<f32>) = (vec![], vec![], vec![]);
+        let w_band = (80.0 / (1024.0 / w as f32)) as usize;
+        let i_start = (150.0 / (1024.0 / w as f32)) as usize;
+        let (mut wind_oro, mut int_oro, mut int_tot): (Vec<f32>, Vec<f32>, Vec<f32>) =
+            (vec![], vec![], vec![]);
         for j in 0..ht {
-            let mut i0 = None; for i in 0..w { if h.data[j*w+i] > SEA_LEVEL_NORM { i0 = Some(i); break; } }
-            let Some(i0) = i0 else { continue; };
-            for i in i0..(i0+w_band).min(w) { let k=j*w+i; if h.data[k] > SEA_LEVEL_NORM { wind_oro.push((precip_mm_per_year(clim.precipitation.data[k])-frontal_mm).max(0.0)); } }
-            for i in (i0+i_start)..w { let k=j*w+i; if h.data[k] > SEA_LEVEL_NORM { let tot=precip_mm_per_year(clim.precipitation.data[k]); int_tot.push(tot); int_oro.push((tot-frontal_mm).max(0.0)); } }
+            let mut i0 = None;
+            for i in 0..w {
+                if h.data[j * w + i] > SEA_LEVEL_NORM {
+                    i0 = Some(i);
+                    break;
+                }
+            }
+            let Some(i0) = i0 else {
+                continue;
+            };
+            for i in i0..(i0 + w_band).min(w) {
+                let k = j * w + i;
+                if h.data[k] > SEA_LEVEL_NORM {
+                    wind_oro.push(
+                        (precip_mm_per_year(clim.precipitation.data[k]) - frontal_mm).max(0.0),
+                    );
+                }
+            }
+            for i in (i0 + i_start)..w {
+                let k = j * w + i;
+                if h.data[k] > SEA_LEVEL_NORM {
+                    let tot = precip_mm_per_year(clim.precipitation.data[k]);
+                    int_tot.push(tot);
+                    int_oro.push((tot - frontal_mm).max(0.0));
+                }
+            }
         }
-        for v in [&mut wind_oro, &mut int_oro, &mut int_tot] { v.sort_by(|a,b| a.partial_cmp(b).unwrap()); }
-        let pct = |v:&Vec<f32>, p:f64| if v.is_empty() {0.0} else { v[(((v.len()-1) as f64)*p) as usize] };
-        let frontal_share = if !int_tot.is_empty() { 100.0*frontal_mm/(pct(&int_tot,0.5)).max(1.0) } else {0.0};
+        for v in [&mut wind_oro, &mut int_oro, &mut int_tot] {
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        }
+        let pct = |v: &Vec<f32>, p: f64| {
+            if v.is_empty() { 0.0 } else { v[(((v.len() - 1) as f64) * p) as usize] }
+        };
+        let frontal_share = if !int_tot.is_empty() {
+            100.0 * frontal_mm / (pct(&int_tot, 0.5)).max(1.0)
+        } else {
+            0.0
+        };
         eprintln!("  seed {seed}:");
-        eprintln!("    windward oro surcharge: p50 {:.0} p90 {:.0} max {:.0} mm", pct(&wind_oro,0.5), pct(&wind_oro,0.9), wind_oro.last().copied().unwrap_or(0.0));
-        eprintln!("    interior oro surcharge: p50 {:.0} p90 {:.0} max {:.0} mm  (interior total p50 {:.0} mm; frontal share of median = {:.0}%)", pct(&int_oro,0.5), pct(&int_oro,0.9), int_oro.last().copied().unwrap_or(0.0), pct(&int_tot,0.5), frontal_share);
+        eprintln!(
+            "    windward oro surcharge: p50 {:.0} p90 {:.0} max {:.0} mm",
+            pct(&wind_oro, 0.5),
+            pct(&wind_oro, 0.9),
+            wind_oro.last().copied().unwrap_or(0.0)
+        );
+        eprintln!(
+            "    interior oro surcharge: p50 {:.0} p90 {:.0} max {:.0} mm  (interior total p50 {:.0} mm; frontal share of median = {:.0}%)",
+            pct(&int_oro, 0.5),
+            pct(&int_oro, 0.9),
+            int_oro.last().copied().unwrap_or(0.0),
+            pct(&int_tot, 0.5),
+            frontal_share
+        );
     }
-    eprintln!("  READING: interior oro p50≈0 + frontal share≈100% ⇒ frontal SATURATES (the verdict-grid finding); windward oro max = the orographic headroom available above a lowered floor.");
+    eprintln!(
+        "  READING: interior oro p50≈0 + frontal share≈100% ⇒ frontal SATURATES (the verdict-grid finding); windward oro max = the orographic headroom available above a lowered floor."
+    );
 }
 
 /// #165 amont — HYPSOMETRIC diagnostic. Are the interiors too HIGH (too little
@@ -5433,8 +8062,16 @@ fn probe_hypsometry() {
             "  seed {seed}: land {all_n} cells ({:.0} km²) | interior {int_n} cells, <900m {:.1}% (<500m {:.1}%, ≥3000m {:.1}%)",
             all_n as f64 * cell_area,
             if int_n > 0 { 100.0 * below900[2] as f64 / int_n as f64 } else { 0.0 },
-            if int_n > 0 { 100.0 * alts[2].iter().filter(|&&x| x < 500.0).count() as f64 / int_n as f64 } else { 0.0 },
-            if int_n > 0 { 100.0 * alts[2].iter().filter(|&&x| x >= 3000.0).count() as f64 / int_n as f64 } else { 0.0 },
+            if int_n > 0 {
+                100.0 * alts[2].iter().filter(|&&x| x < 500.0).count() as f64 / int_n as f64
+            } else {
+                0.0
+            },
+            if int_n > 0 {
+                100.0 * alts[2].iter().filter(|&&x| x >= 3000.0).count() as f64 / int_n as f64
+            } else {
+                0.0
+            },
         );
     }
 
@@ -5469,7 +8106,9 @@ fn probe_hypsometry() {
         "  EARTH anchor (land): <500m ≈52%, <1000m ≈71%, <2000m ≈86%, <3000m ≈94%, mean ≈840 m."
     );
     eprintln!("  out = {}", dir.display());
-    eprintln!("  CSV: hypsometry_bands.csv (per-seed + AGGREGATE + EARTH band fractions), hypsometry_summary.csv (frac<500/900/1000/2000, ≥3000, mean, median, per region).");
+    eprintln!(
+        "  CSV: hypsometry_bands.csv (per-seed + AGGREGATE + EARTH band fractions), hypsometry_summary.csv (frac<500/900/1000/2000, ≥3000, mean, median, per region)."
+    );
 }
 
 /// #165 RELIEF DIAGNOSIS — *why* is the continental floor at 1000-2000 m?
@@ -5621,7 +8260,8 @@ fn probe_floor_diagnosis() {
             let (cnt, n) = bands(h);
             for b in 0..6 {
                 let frac = if n > 0 { cnt[b] as f64 / n as f64 } else { 0.0 };
-                writeln!(prepost, "{seed},{stage},{},{},{:.5}", band_label[b], cnt[b], frac).unwrap();
+                writeln!(prepost, "{seed},{stage},{},{},{:.5}", band_label[b], cnt[b], frac)
+                    .unwrap();
             }
         }
         let (pre_cnt, pre_n) = bands(&pre);
@@ -5675,8 +8315,7 @@ fn probe_floor_diagnosis() {
             }
         }
         let to_km3 = 1e-3; // km²·m → km³
-        let dep_land_pct =
-            if deposited > 0.0 { 100.0 * dep_land / deposited } else { 0.0 };
+        let dep_land_pct = if deposited > 0.0 { 100.0 * dep_land / deposited } else { 0.0 };
         writeln!(
             massf,
             "{seed},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1},{}",
@@ -5712,7 +8351,15 @@ fn probe_floor_diagnosis() {
         let (cnt, n) = bands(h);
         for b in 0..6 {
             let frac = if n > 0 { cnt[b] as f64 / n as f64 } else { 0.0 };
-            writeln!(prepost, "LEVERAGE_{seed},{stage},{},{},{:.5}", band_label[b], cnt[b], frac, seed = BOOST_SEED).unwrap();
+            writeln!(
+                prepost,
+                "LEVERAGE_{seed},{stage},{},{},{:.5}",
+                band_label[b],
+                cnt[b],
+                frac,
+                seed = BOOST_SEED
+            )
+            .unwrap();
         }
     }
     eprintln!(
@@ -5738,7 +8385,9 @@ fn probe_floor_diagnosis() {
         100.0 * pct(post0[0], post0n),
     );
     eprintln!("  out = {}", dir.display());
-    eprintln!("  CSV: floor_prepost_bands.csv (pre/post/leverage band fractions), floor_mass_balance.csv (eroded/deposited volumes, Δ by start band).");
+    eprintln!(
+        "  CSV: floor_prepost_bands.csv (pre/post/leverage band fractions), floor_mass_balance.csv (eroded/deposited volumes, Δ by start band)."
+    );
 }
 
 /// Fraction helper (count / total, 0 when empty).
@@ -5864,12 +8513,8 @@ fn probe_floor_thickness() {
             &iso,
             &ss,
         );
-        let cont: Vec<bool> = state
-            .plate_type
-            .data()
-            .iter()
-            .map(|t| matches!(t, PlateType::Continental))
-            .collect();
+        let cont: Vec<bool> =
+            state.plate_type.data().iter().map(|t| matches!(t, PlateType::Continental)).collect();
         let craton = state.cratonic_mask.data();
 
         // Partition continental cells into craton vs non-craton; collect S̃ and
@@ -5923,7 +8568,8 @@ fn probe_floor_thickness() {
                 em_nc.push(altm);
             }
         }
-        let f500 = |v: &[f32]| v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+        let f500 =
+            |v: &[f32]| v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
         let (_e1, em_cr_mean, _, _, _, em_cr_med) = describe(&mut em_cr.clone());
         let (_e2, em_nc_mean, _, _, _, em_nc_med) = describe(&mut em_nc.clone());
         let em_total = em_cr.len() + em_nc.len();
@@ -5957,8 +8603,9 @@ fn probe_floor_thickness() {
             "    → {:.0}% of non-craton continental at baseline S̃≈1.0 (|S̃-1|<0.1) = uniform-floor signature",
             100.0 * frac_baseline
         );
-        let shp: Vec<String> =
-            (0..7).map(|b| format!("{}:{:.0}%", s_label[b], 100.0 * pct(s_hist[b], sn as u64))).collect();
+        let shp: Vec<String> = (0..7)
+            .map(|b| format!("{}:{:.0}%", s_label[b], 100.0 * pct(s_hist[b], sn as u64)))
+            .collect();
         eprintln!("    S̃ histogram (non-craton): {}", shp.join("  "));
         eprintln!(
             "    coarse altitude non-craton: mean {amean:.0} m, median {amed:.0} m, frac<500m {:.1}%",
@@ -5991,8 +8638,8 @@ fn probe_floor_thickness() {
             }
         }
         let (sn_off, smean_off, sstd_off, _, _, _) = describe(&mut s_nc_off.clone());
-        let frac_alt_lt500_off =
-            alt_nc_off.iter().filter(|&&m| m < 500.0).count() as f64 / alt_nc_off.len().max(1) as f64;
+        let frac_alt_lt500_off = alt_nc_off.iter().filter(|&&m| m < 500.0).count() as f64
+            / alt_nc_off.len().max(1) as f64;
         writeln!(
             csv,
             "{seed},off,cont_noncraton,{sn_off},{smean_off:.4},{sstd_off:.4},{:.4},,,,,{frac_alt_lt500_off:.4},",
@@ -6019,18 +8666,17 @@ fn probe_floor_thickness() {
         &iso,
         &ss,
     );
-    let cont: Vec<bool> = state
-        .plate_type
-        .data()
-        .iter()
-        .map(|t| matches!(t, PlateType::Continental))
-        .collect();
+    let cont: Vec<bool> =
+        state.plate_type.data().iter().map(|t| matches!(t, PlateType::Continental)).collect();
     // coarse continental LAND (altitude > 0) hypsometry.
-    let coarse_land: Vec<f32> =
-        (0..coarse.data.len()).filter(|&k| cont[k] && coarse.data[k] > 0.0).map(|k| coarse.data[k] * depth_scale).collect();
+    let coarse_land: Vec<f32> = (0..coarse.data.len())
+        .filter(|&k| cont[k] && coarse.data[k] > 0.0)
+        .map(|k| coarse.data[k] * depth_scale)
+        .collect();
     let coarse_frac500 =
         coarse_land.iter().filter(|&&m| m < 500.0).count() as f64 / coarse_land.len().max(1) as f64;
-    let coarse_mean = coarse_land.iter().map(|&x| x as f64).sum::<f64>() / coarse_land.len().max(1) as f64;
+    let coarse_mean =
+        coarse_land.iter().map(|&x| x as f64).sum::<f64>() / coarse_land.len().max(1) as f64;
     // pre-erosion FBM 2048² (build_pre logic, erosion off).
     let run = C1TimeLoopConfig {
         rigid_continental_crust: true,
@@ -6053,7 +8699,8 @@ fn probe_floor_thickness() {
         .filter(|&&n| n > SEA_LEVEL_NORM)
         .map(|&n| c1_altitude_norm_to_metres(n, &ss))
         .collect();
-    let fbm_frac500 = fbm_land.iter().filter(|&&m| m < 500.0).count() as f64 / fbm_land.len().max(1) as f64;
+    let fbm_frac500 =
+        fbm_land.iter().filter(|&&m| m < 500.0).count() as f64 / fbm_land.len().max(1) as f64;
     let fbm_mean = fbm_land.iter().map(|&x| x as f64).sum::<f64>() / fbm_land.len().max(1) as f64;
     eprintln!(
         "\n  DECOMPOSE born-high (seed 42): coarse iso land (pre-FBM) mean {coarse_mean:.0} m, frac<500m {:.1}% \
@@ -6108,12 +8755,8 @@ fn probe_craton_density_sweep() {
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     run_with_closures(&mut state, &mut kin, &run, &C1Closures::default(), |_, _| {});
 
-    let cont: Vec<bool> = state
-        .plate_type
-        .data()
-        .iter()
-        .map(|t| matches!(t, PlateType::Continental))
-        .collect();
+    let cont: Vec<bool> =
+        state.plate_type.data().iter().map(|t| matches!(t, PlateType::Continental)).collect();
     let craton = state.cratonic_mask.data().to_vec();
     let median = |v: &mut Vec<f32>| -> f32 {
         if v.is_empty() {
@@ -6122,20 +8765,29 @@ fn probe_craton_density_sweep() {
         v.sort_by(|a, b| a.partial_cmp(b).unwrap());
         v[(v.len() - 1) / 2]
     };
-    let f500 = |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+    let f500 =
+        |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
 
     eprintln!(
         "#165 craton calibration (seed {seed}) — sweep craton_rho_crust. Target: emergent \
          craton median ~400-600 m (worn shield). Bound: ≤3000 kg/m³ (crust; 3300=mantle). \
          Current c1_default = 2900 → craton median 1814 m (measured). Non-craton = invariant to watch."
     );
-    eprintln!("  rho   | craton: med  frac<500 | non-craton: med  frac<500 | ALL land frac<500 | bound");
+    eprintln!(
+        "  rho   | craton: med  frac<500 | non-craton: med  frac<500 | ALL land frac<500 | bound"
+    );
 
     for &rho in &[2750.0f32, 2900.0, 2950.0, 3000.0, 3050.0, 3100.0, 3200.0] {
         let mut iso = base_iso.clone();
         iso.craton_rho_crust = Some(rho);
-        let coarse =
-            c1_production_altitude_craton(&state.s, &state.age, &state.plate_type, &craton, &iso, &ss);
+        let coarse = c1_production_altitude_craton(
+            &state.s,
+            &state.age,
+            &state.plate_type,
+            &craton,
+            &iso,
+            &ss,
+        );
         let mut em_cr: Vec<f32> = Vec::new();
         let mut em_nc: Vec<f32> = Vec::new();
         let mut em_all: Vec<f32> = Vec::new();
@@ -6199,7 +8851,8 @@ fn probe_craton_fraction() {
         v.sort_by(|a, b| a.partial_cmp(b).unwrap());
         v[(v.len() - 1) / 2]
     };
-    let f500 = |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+    let f500 =
+        |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
 
     // Build a tectonic state with the craton special-treatment either ON (c1
     // canonical) or dialed to NORMAL crust (thickness 1.0 + resist 1.0 + density
@@ -6242,7 +8895,12 @@ fn probe_craton_fraction() {
         let (state, iso) = build(seed, true);
         let n = state.nx() * state.ny();
         let coarse = c1_production_altitude_craton(
-            &state.s, &state.age, &state.plate_type, state.cratonic_mask.data(), &iso, &ss,
+            &state.s,
+            &state.age,
+            &state.plate_type,
+            state.cratonic_mask.data(),
+            &iso,
+            &ss,
         );
         let craton = state.cratonic_mask.data();
         let (mut cont, mut cra, mut em_cont, mut em_cra) = (0u64, 0u64, 0u64, 0u64);
@@ -6281,7 +8939,12 @@ fn probe_craton_fraction() {
         let (state, iso) = build(42, special);
         let n = state.nx() * state.ny();
         let coarse = c1_production_altitude_craton(
-            &state.s, &state.age, &state.plate_type, state.cratonic_mask.data(), &iso, &ss,
+            &state.s,
+            &state.age,
+            &state.plate_type,
+            state.cratonic_mask.data(),
+            &iso,
+            &ss,
         );
         let craton = state.cratonic_mask.data();
         let (mut em_all, mut em_cr, mut em_nc): (Vec<f32>, Vec<f32>, Vec<f32>) =
@@ -6341,7 +9004,8 @@ fn probe_craton_bimodal() {
         v.sort_by(|a, b| a.partial_cmp(b).unwrap());
         v[(v.len() - 1) / 2]
     };
-    let f500 = |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
+    let f500 =
+        |v: &[f32]| 100.0 * v.iter().filter(|&&m| m < 500.0).count() as f64 / v.len().max(1) as f64;
 
     // Build the state for a given shield fraction (rebuilds tectonics — the
     // thickness boost applies to the narrowed shield mask).
@@ -6382,13 +9046,20 @@ fn probe_craton_bimodal() {
             "\n  seed {seed}: continental {cont}, cratonic AREA {area} ({:.0}% of continental)",
             100.0 * area as f64 / cont.max(1) as f64
         );
-        eprintln!("  shield_frac | shield cells | ALL land<500 | SHIELD med | platform+nc med | platform+nc<500");
+        eprintln!(
+            "  shield_frac | shield cells | ALL land<500 | SHIELD med | platform+nc med | platform+nc<500"
+        );
 
         for shield in [None, Some(0.30f64), Some(0.20), Some(0.15), Some(0.10)] {
             let state = build(seed, shield);
             let n = state.nx() * state.ny();
             let coarse = c1_production_altitude_craton(
-                &state.s, &state.age, &state.plate_type, state.cratonic_mask.data(), &iso, &ss,
+                &state.s,
+                &state.age,
+                &state.plate_type,
+                state.cratonic_mask.data(),
+                &iso,
+                &ss,
             );
             let mask = state.cratonic_mask.data(); // = shield when Some, full area when None
             let (mut em_all, mut em_sh, mut em_lo): (Vec<f32>, Vec<f32>, Vec<f32>) =
@@ -6451,12 +9122,12 @@ fn probe_craton_bimodal() {
 #[ignore]
 fn probe_latitude_slider() {
     use ymir_core::climate::biomes::Biome;
+    use ymir_core::climate::precipitation::SEA_LEVEL_NORM;
     use ymir_core::climate::precipitation::{
-        belt_factor, precip_mm_per_year, wind_zonal_dir, PrecipParams,
+        PrecipParams, belt_factor, precip_mm_per_year, wind_zonal_dir,
     };
     use ymir_core::climate::temperature::sea_level_temperature;
     use ymir_core::climate::{c1_biomes, c1_climate};
-    use ymir_core::climate::precipitation::SEA_LEVEL_NORM;
 
     let iso = IsostasyConfig::c1_default();
     let ss = SteinSteinParams::default();
@@ -6476,9 +9147,15 @@ fn probe_latitude_slider() {
     };
 
     let order = [
-        Biome::TropicalRainforest, Biome::TropicalSeasonalForest, Biome::Savanna, Biome::Desert,
-        Biome::TemperateGrassland, Biome::TemperateForest, Biome::TemperateRainforest,
-        Biome::BorealForest, Biome::Tundra,
+        Biome::TropicalRainforest,
+        Biome::TropicalSeasonalForest,
+        Biome::Savanna,
+        Biome::Desert,
+        Biome::TemperateGrassland,
+        Biome::TemperateForest,
+        Biome::TemperateRainforest,
+        Biome::BorealForest,
+        Biome::Tundra,
     ];
 
     eprintln!(
@@ -6486,7 +9163,9 @@ fn probe_latitude_slider() {
          (<30°), westerly=W→E (30-60°), polar=E→W (≥60°). Real zonal precip anchor: ITCZ ~0° \
          very wet, subtropics ~30° desert (<250), westerlies ~45-60° moderate, poles dry."
     );
-    eprintln!("  lat | wind | belt | T_sea | land T med | precip mm/yr (p10/med/p90) | dominant biomes");
+    eprintln!(
+        "  lat | wind | belt | T_sea | land T med | precip mm/yr (p10/med/p90) | dominant biomes"
+    );
 
     for &lat in &[0.0f32, 15.0, 30.0, 45.0, 60.0, 75.0] {
         let clim = c1_climate(h, &ss, lat, &pp);
@@ -6504,17 +9183,14 @@ fn probe_latitude_slider() {
             _ => "E→W east",
         };
         let t_med = pct(&mut temps, 0.5);
-        let (p10, pmed, p90) = (pct(&mut precip, 0.1), pct(&mut precip, 0.5), pct(&mut precip, 0.9));
+        let (p10, pmed, p90) =
+            (pct(&mut precip, 0.1), pct(&mut precip, 0.5), pct(&mut precip, 0.9));
         let hist: Vec<String> = order
             .iter()
             .filter_map(|b| {
                 let c = *cnt.get(b).unwrap_or(&0);
                 let f = 100.0 * c as f64 / n as f64;
-                if f >= 8.0 {
-                    Some(format!("{} {:.0}%", b.name(), f))
-                } else {
-                    None
-                }
+                if f >= 8.0 { Some(format!("{} {:.0}%", b.name(), f)) } else { None }
             })
             .collect();
         eprintln!(
@@ -6562,7 +9238,8 @@ fn probe_submarine_relief() {
 
     // Depth bands (metres BELOW sea, positive depth), lower edges.
     let edges = [0.0f32, 200.0, 1000.0, 3000.0, 5000.0];
-    let band_label = ["0-200 shelf", "200-1000 slope", "1000-3000", "3000-5000 abyss", "5000+ trench"];
+    let band_label =
+        ["0-200 shelf", "200-1000 slope", "1000-3000", "3000-5000 abyss", "5000+ trench"];
     let band_of = |d: f32| -> usize {
         let mut b = 0;
         for (k, &e) in edges.iter().enumerate() {
@@ -6622,7 +9299,8 @@ fn probe_submarine_relief() {
         agg_n += n;
         depths.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let median = if n > 0 { depths[(n as usize - 1) / 2] } else { 0.0 };
-        let mean = if n > 0 { depths.iter().map(|&x| x as f64).sum::<f64>() / n as f64 } else { 0.0 };
+        let mean =
+            if n > 0 { depths.iter().map(|&x| x as f64).sum::<f64>() / n as f64 } else { 0.0 };
         let std = if n > 0 {
             (depths.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / n as f64).sqrt()
         } else {
@@ -6640,7 +9318,11 @@ fn probe_submarine_relief() {
         eprintln!("    depth bands: {}", bands.join(" | "));
         let prof: Vec<String> = (0..4)
             .map(|b| {
-                format!("{}km {:.0}m", dist_label[b], if dn[b] > 0 { dsum[b] / dn[b] as f64 } else { 0.0 })
+                format!(
+                    "{}km {:.0}m",
+                    dist_label[b],
+                    if dn[b] > 0 { dsum[b] / dn[b] as f64 } else { 0.0 }
+                )
             })
             .collect();
         eprintln!("    coast→offshore mean depth: {}", prof.join("  "));
@@ -6676,7 +9358,7 @@ fn probe_submarine_relief() {
 #[ignore]
 fn probe_integration_grid() {
     use ymir_core::climate::biomes::Biome;
-    use ymir_core::climate::precipitation::{precip_mm_per_year, PrecipParams, SEA_LEVEL_NORM};
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM, precip_mm_per_year};
     use ymir_core::climate::{c1_biomes, c1_climate};
     use ymir_core::tectonics_c1::drainage::Navigability;
     use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
@@ -6711,12 +9393,28 @@ fn probe_integration_grid() {
         }
     };
     let precip_band = |mm: f32| -> [u8; 3] {
-        if mm < 250.0 { [225, 200, 140] } else if mm < 500.0 { [200, 195, 110] }
-        else if mm < 800.0 { [150, 180, 90] } else if mm < 1500.0 { [80, 150, 200] } else { [30, 90, 200] }
+        if mm < 250.0 {
+            [225, 200, 140]
+        } else if mm < 500.0 {
+            [200, 195, 110]
+        } else if mm < 800.0 {
+            [150, 180, 90]
+        } else if mm < 1500.0 {
+            [80, 150, 200]
+        } else {
+            [30, 90, 200]
+        }
     };
     let temp_band = |t: f32| -> [u8; 3] {
-        if t < -5.0 { [225, 235, 248] } else if t < 5.0 { [90, 140, 205] }
-        else if t < 20.0 { [110, 190, 110] } else { [225, 120, 70] }
+        if t < -5.0 {
+            [225, 235, 248]
+        } else if t < 5.0 {
+            [90, 140, 205]
+        } else if t < 20.0 {
+            [110, 190, 110]
+        } else {
+            [225, 120, 70]
+        }
     };
 
     eprintln!(
@@ -6751,8 +9449,22 @@ fn probe_integration_grid() {
                 put(&mut relief, i, j, rc);
                 // drainage base = dimmed relief (so rivers/lakes pop).
                 put(&mut drain, i, j, [rc[0] / 2 + 30, rc[1] / 2 + 30, rc[2] / 2 + 30]);
-                put(&mut pm, i, j, if sea { [25, 40, 75] } else { precip_band(precip_mm_per_year(clim.precipitation.data[k])) });
-                put(&mut tm, i, j, if sea { [25, 40, 75] } else { temp_band(clim.temperature.data[k]) });
+                put(
+                    &mut pm,
+                    i,
+                    j,
+                    if sea {
+                        [25, 40, 75]
+                    } else {
+                        precip_band(precip_mm_per_year(clim.precipitation.data[k]))
+                    },
+                );
+                put(
+                    &mut tm,
+                    i,
+                    j,
+                    if sea { [25, 40, 75] } else { temp_band(clim.temperature.data[k]) },
+                );
                 put(&mut bb, i, j, biomes[k].color());
             }
         }
@@ -6774,7 +9486,17 @@ fn probe_integration_grid() {
                 Navigability::NonNavigable => continue,
             };
             for &(px, py) in &seg.points {
-                for (dx, dy) in [(0i32, 0i32), (1, 0), (-1, 0), (0, 1), (0, -1), (2, 0), (-2, 0), (0, 2), (0, -2)] {
+                for (dx, dy) in [
+                    (0i32, 0i32),
+                    (1, 0),
+                    (-1, 0),
+                    (0, 1),
+                    (0, -1),
+                    (2, 0),
+                    (-2, 0),
+                    (0, 2),
+                    (0, -2),
+                ] {
                     if (dx.abs() + dy.abs()) > rad + 1 {
                         continue;
                     }
@@ -6792,17 +9514,25 @@ fn probe_integration_grid() {
         let th = 360usize;
         let jr = ht / 2;
         let mut tr = image::RgbImage::new(w as u32, th as u32);
-        for p in tr.pixels_mut() { *p = image::Rgb([20, 20, 28]); }
+        for p in tr.pixels_mut() {
+            *p = image::Rgb([20, 20, 28]);
+        }
         for i in 0..w {
             let k = jr * w + i;
             let a = if h.data[k] > SEA_LEVEL_NORM { alt_m(h.data[k]) } else { 0.0 };
             let ay = (((a / 6000.0).clamp(0.0, 1.0)) * (th as f32 - 40.0)) as usize;
             let mm = precip_mm_per_year(clim.precipitation.data[k]);
             let my = (((mm / TR_MM).min(1.0)) * (th as f32 - 40.0)) as usize;
-            if ay < th { tr.put_pixel(i as u32, (th - 1 - ay) as u32, image::Rgb([200, 200, 200])); }
-            if my < th { tr.put_pixel(i as u32, (th - 1 - my) as u32, image::Rgb([60, 200, 230])); }
+            if ay < th {
+                tr.put_pixel(i as u32, (th - 1 - ay) as u32, image::Rgb([200, 200, 200]));
+            }
+            if my < th {
+                tr.put_pixel(i as u32, (th - 1 - my) as u32, image::Rgb([60, 200, 230]));
+            }
             let c = if h.data[k] <= SEA_LEVEL_NORM { [30, 50, 90] } else { biomes[k].color() };
-            for y in 0..28 { tr.put_pixel(i as u32, (th - 1 - y) as u32, image::Rgb(c)); }
+            for y in 0..28 {
+                tr.put_pixel(i as u32, (th - 1 - y) as u32, image::Rgb(c));
+            }
         }
 
         relief.save(dir.join(format!("seed{seed:05}_relief.png"))).unwrap();
@@ -6812,8 +9542,16 @@ fn probe_integration_grid() {
         bb.save(dir.join(format!("seed{seed:05}_biomes.png"))).unwrap();
         tr.save(dir.join(format!("seed{seed:05}_transect.png"))).unwrap();
 
-        let nav: usize = dr.segment_navigability.iter().filter(|n| !matches!(n, Navigability::NonNavigable)).count();
-        eprintln!("  seed {seed}: tiles written | rivers {} (navigable {nav}), lakes {}", dr.rivers.segments.len(), dr.lakes.len());
+        let nav: usize = dr
+            .segment_navigability
+            .iter()
+            .filter(|n| !matches!(n, Navigability::NonNavigable))
+            .count();
+        eprintln!(
+            "  seed {seed}: tiles written | rivers {} (navigable {nav}), lakes {}",
+            dr.rivers.segments.len(),
+            dr.lakes.len()
+        );
     }
     eprintln!("  out = {}", dir.display());
     eprintln!("  assemble: python image_grid_integration.py");
@@ -6841,8 +9579,8 @@ fn probe_integration_grid() {
 #[test]
 #[ignore]
 fn probe_drainage_lake_audit() {
-    use ymir_core::climate::precipitation::{precip_mm_per_year, PrecipParams, SEA_LEVEL_NORM};
     use ymir_core::climate::c1_climate;
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM, precip_mm_per_year};
     use ymir_core::tectonics_c1::drainage::LakeType;
     use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
 
@@ -6864,7 +9602,8 @@ fn probe_drainage_lake_audit() {
          land in lakes, 0 endorheic.)"
     );
 
-    let (mut agg_lake_cells, mut agg_land_cells, mut agg_exo, mut agg_endo) = (0u64, 0u64, 0u64, 0u64);
+    let (mut agg_lake_cells, mut agg_land_cells, mut agg_exo, mut agg_endo) =
+        (0u64, 0u64, 0u64, 0u64);
     let mut agg_precip = [0u64; 3]; // lake cells by precip band, aggregate
     for &seed in &seeds {
         let h = c165_eroded(seed, &iso);
@@ -6880,7 +9619,13 @@ fn probe_drainage_lake_audit() {
             if dr.lake_map[k] != 0 {
                 lake_cells += 1;
                 let mm = precip_mm_per_year(clim.precipitation.data[k]);
-                let b = if mm < 250.0 { 0 } else if mm < 500.0 { 1 } else { 2 };
+                let b = if mm < 250.0 {
+                    0
+                } else if mm < 500.0 {
+                    1
+                } else {
+                    2
+                };
                 pband[b] += 1;
             }
         }
@@ -6911,15 +9656,20 @@ fn probe_drainage_lake_audit() {
         eprintln!("    size (km²): {}", sz.join(" | "));
         eprintln!(
             "    lake area by precip: {} {:.0}% | {} {:.0}% | {} {:.0}%  ← arid-zone lake area that fill-and-spill overflows (should be endorheic)",
-            precip_label[0], 100.0 * pband[0] as f64 / lake_cells.max(1) as f64,
-            precip_label[1], 100.0 * pband[1] as f64 / lake_cells.max(1) as f64,
-            precip_label[2], 100.0 * pband[2] as f64 / lake_cells.max(1) as f64,
+            precip_label[0],
+            100.0 * pband[0] as f64 / lake_cells.max(1) as f64,
+            precip_label[1],
+            100.0 * pband[1] as f64 / lake_cells.max(1) as f64,
+            precip_label[2],
+            100.0 * pband[2] as f64 / lake_cells.max(1) as f64,
         );
         agg_lake_cells += lake_cells;
         agg_land_cells += land_cells;
         agg_exo += exo;
         agg_endo += endo;
-        for b in 0..3 { agg_precip[b] += pband[b]; }
+        for b in 0..3 {
+            agg_precip[b] += pband[b];
+        }
     }
 
     eprintln!("\n  AGGREGATE (6 seeds):");
@@ -6959,8 +9709,8 @@ fn probe_drainage_lake_audit() {
 #[ignore]
 fn probe_river_routing_audit() {
     use ymir_core::climate::c1_climate;
-    use ymir_core::climate::precipitation::{precip_mm_per_year, PrecipParams, SEA_LEVEL_NORM};
-    use ymir_core::tectonics_c1::drainage::{potential_evaporation_mm, LakeType, Navigability};
+    use ymir_core::climate::precipitation::{PrecipParams, SEA_LEVEL_NORM, precip_mm_per_year};
+    use ymir_core::tectonics_c1::drainage::{LakeType, Navigability, potential_evaporation_mm};
 
     let iso = IsostasyConfig::c1_default();
     let ss = SteinSteinParams::default();
@@ -7003,7 +9753,8 @@ fn probe_river_routing_audit() {
                 }
                 if pi > 0 {
                     let (qx, qy) = seg.points[pi - 1];
-                    let (dx, dy) = ((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum());
+                    let (dx, dy) =
+                        ((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum());
                     steps += 1;
                     if dx == 0 || dy == 0 {
                         cardinal_steps += 1;
@@ -7055,7 +9806,9 @@ fn probe_river_routing_audit() {
 fn probe_flat_tracing_compare() {
     use ymir_core::climate::c1_climate;
     use ymir_core::climate::precipitation::PrecipParams;
-    use ymir_core::tectonics_c1::drainage::{c1_drainage, C1DrainageConfig, C1DrainageResult, DrainageClimate};
+    use ymir_core::tectonics_c1::drainage::{
+        C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage,
+    };
     use ymir_core::tectonics_c1::production_upscale::c1_cell_area_km2;
 
     let dir = output_dir().join("flat_tracing");
@@ -7068,7 +9821,8 @@ fn probe_flat_tracing_compare() {
     let h = c165_eroded(seed, &iso);
     let (w, ht) = (h.width, h.height);
     let clim = c1_climate(&h, &ss, 45.0, &pp);
-    let dc = DrainageClimate { precip_internal: &clim.precipitation, temperature: &clim.temperature };
+    let dc =
+        DrainageClimate { precip_internal: &clim.precipitation, temperature: &clim.temperature };
 
     let cfg_off = C1DrainageConfig { flat_perturbation: None, ..Default::default() };
     let cfg_on = C1DrainageConfig::default(); // Some(FlatPerturbation::default())
@@ -7077,7 +9831,8 @@ fn probe_flat_tracing_compare() {
 
     let eps = 1e-6f32;
     // flat mask from the OFF flow (the pit-filled flats: filled raised above h).
-    let is_flat: Vec<bool> = (0..w * ht).map(|k| (dr_off.flow.filled.data[k] - h.data[k]) > eps).collect();
+    let is_flat: Vec<bool> =
+        (0..w * ht).map(|k| (dr_off.flow.filled.data[k] - h.data[k]) > eps).collect();
 
     // straightness on flats only, OFF vs ON, + lake area (invariant).
     let straight_on_flats = |dr: &C1DrainageResult| -> (f64, u64) {
@@ -7088,10 +9843,15 @@ fn probe_flat_tracing_compare() {
                 let (px, py) = seg.points[pi];
                 let (qx, qy) = seg.points[pi - 1];
                 let k = py as usize * w + px as usize;
-                if !is_flat[k] { prev = None; continue; }
+                if !is_flat[k] {
+                    prev = None;
+                    continue;
+                }
                 let dxy = ((px as i32 - qx as i32).signum(), (py as i32 - qy as i32).signum());
                 steps += 1;
-                if prev == Some(dxy) { straight += 1; }
+                if prev == Some(dxy) {
+                    straight += 1;
+                }
                 prev = Some(dxy);
             }
         }
@@ -7104,12 +9864,28 @@ fn probe_flat_tracing_compare() {
     let (s_off, n_off) = straight_on_flats(&dr_off);
     let (s_on, n_on) = straight_on_flats(&dr_on);
     eprintln!("#fixA flat-tracing seed {seed}:");
-    eprintln!("  straightness ON FLATS: OFF {s_off:.0}% ({n_off} steps) → ON {s_on:.0}% ({n_on} steps)");
-    eprintln!("  lake area: OFF {:.2}% → ON {:.2}% (invariant — must match)", lake_area(&dr_off), lake_area(&dr_on));
-    eprintln!("  endorheic lakes: OFF {} → ON {} | cell km² {:.2}",
-        dr_off.lakes.iter().filter(|l| l.lake_type == ymir_core::tectonics_c1::drainage::LakeType::Endorheic).count(),
-        dr_on.lakes.iter().filter(|l| l.lake_type == ymir_core::tectonics_c1::drainage::LakeType::Endorheic).count(),
-        c1_cell_area_km2(w));
+    eprintln!(
+        "  straightness ON FLATS: OFF {s_off:.0}% ({n_off} steps) → ON {s_on:.0}% ({n_on} steps)"
+    );
+    eprintln!(
+        "  lake area: OFF {:.2}% → ON {:.2}% (invariant — must match)",
+        lake_area(&dr_off),
+        lake_area(&dr_on)
+    );
+    eprintln!(
+        "  endorheic lakes: OFF {} → ON {} | cell km² {:.2}",
+        dr_off
+            .lakes
+            .iter()
+            .filter(|l| l.lake_type == ymir_core::tectonics_c1::drainage::LakeType::Endorheic)
+            .count(),
+        dr_on
+            .lakes
+            .iter()
+            .filter(|l| l.lake_type == ymir_core::tectonics_c1::drainage::LakeType::Endorheic)
+            .count(),
+        c1_cell_area_km2(w)
+    );
 
     // pick the flat-heavy crop (most river-on-flat cells, OFF).
     const CROP: usize = 384;
@@ -7117,7 +9893,9 @@ fn probe_flat_tracing_compare() {
     for seg in &dr_off.rivers.segments {
         for &(px, py) in &seg.points {
             let k = py as usize * w + px as usize;
-            if is_flat[k] { rof[k] = 1; }
+            if is_flat[k] {
+                rof[k] = 1;
+            }
         }
     }
     let stride = 64usize;
@@ -7127,20 +9905,31 @@ fn probe_flat_tracing_compare() {
         let mut x = 0;
         while x + CROP <= w {
             let mut c = 0u64;
-            for j in y..y + CROP { for i in x..x + CROP { c += rof[j * w + i] as u64; } }
-            if c > best { best = c; bxy = (x, y); }
+            for j in y..y + CROP {
+                for i in x..x + CROP {
+                    c += rof[j * w + i] as u64;
+                }
+            }
+            if c > best {
+                best = c;
+                bxy = (x, y);
+            }
             x += stride;
         }
         y += stride;
     }
     let (cx, cy) = bxy;
-    eprintln!("  crop {CROP}² at ({cx},{cy}) — {best} river-on-flat cells (OFF). Rendered OFF/ON for eyeballing.");
+    eprintln!(
+        "  crop {CROP}² at ({cx},{cy}) — {best} river-on-flat cells (OFF). Rendered OFF/ON for eyeballing."
+    );
 
     let scale = 2usize;
     let render = |dr: &C1DrainageResult, tag: &str| {
         let mut river = vec![false; w * ht];
         for seg in &dr.rivers.segments {
-            for &(px, py) in &seg.points { river[py as usize * w + px as usize] = true; }
+            for &(px, py) in &seg.points {
+                river[py as usize * w + px as usize] = true;
+            }
         }
         let mut buf = image::ImageBuffer::new((CROP * scale) as u32, (CROP * scale) as u32);
         for jj in 0..CROP * scale {
@@ -7160,8 +9949,12 @@ fn probe_flat_tracing_compare() {
                         [(55.0 + 95.0 * t) as u8, (75.0 + 60.0 * t) as u8, 45]
                     }
                 };
-                if river[k] { px = [120, 205, 255]; }
-                if dr.lake_map[k] != 0 { px = [30, 90, 180]; }
+                if river[k] {
+                    px = [120, 205, 255];
+                }
+                if dr.lake_map[k] != 0 {
+                    px = [30, 90, 180];
+                }
                 buf.put_pixel(ii as u32, (CROP * scale - 1 - jj) as u32, image::Rgb(px));
             }
         }
@@ -7197,7 +9990,9 @@ fn probe_residual_rectilinear() {
     std::fs::create_dir_all(&dir).expect("create dir");
     let iso = IsostasyConfig::c1_default();
     let seeds: [u64; 2] = [42, 2026];
-    eprintln!("#fixA residual rectilinear — run-length of straight steps on flats (short=D8 staircase→D∞, long=comb→tune perturbation), by flat size + discharge. Cached ON drainage.");
+    eprintln!(
+        "#fixA residual rectilinear — run-length of straight steps on flats (short=D8 staircase→D∞, long=comb→tune perturbation), by flat size + discharge. Cached ON drainage."
+    );
 
     for &seed in &seeds {
         let h = c165_eroded(seed, &iso);
@@ -7321,7 +10116,11 @@ fn probe_residual_rectilinear() {
         eprintln!("\n  seed {seed}: straight steps on flats = {total_straight}");
         eprintln!(
             "    run-length of straight steps:  len1 {:.0}% | 2-4 {:.0}% | 5-8 {:.0}% | 9-16 {:.0}% | 17+ {:.0}%",
-            pct(run_buckets[0]), pct(run_buckets[1]), pct(run_buckets[2]), pct(run_buckets[3]), pct(run_buckets[4])
+            pct(run_buckets[0]),
+            pct(run_buckets[1]),
+            pct(run_buckets[2]),
+            pct(run_buckets[3]),
+            pct(run_buckets[4])
         );
         let long = pct(run_buckets[3]) + pct(run_buckets[4]);
         let short = pct(run_buckets[1]) + pct(run_buckets[2]);
@@ -7331,13 +10130,24 @@ fn probe_residual_rectilinear() {
         let sline = |lbl: &str, st: &[u64; 3], sr: &[u64; 3]| {
             eprintln!(
                 "    {lbl}: [{:.0}% / {} steps] [{:.0}% / {}] [{:.0}% / {}]",
-                100.0 * sr[0] as f64 / st[0].max(1) as f64, st[0],
-                100.0 * sr[1] as f64 / st[1].max(1) as f64, st[1],
-                100.0 * sr[2] as f64 / st[2].max(1) as f64, st[2],
+                100.0 * sr[0] as f64 / st[0].max(1) as f64,
+                st[0],
+                100.0 * sr[1] as f64 / st[1].max(1) as f64,
+                st[1],
+                100.0 * sr[2] as f64 / st[2].max(1) as f64,
+                st[2],
             );
         };
-        sline("straightness by flat size  (small<100 / med / large>5k cells)", &sz_steps, &sz_straight);
-        sline("straightness by discharge  (<50 / 50-1k / >1k km²)         ", &dq_steps, &dq_straight);
+        sline(
+            "straightness by flat size  (small<100 / med / large>5k cells)",
+            &sz_steps,
+            &sz_straight,
+        );
+        sline(
+            "straightness by discharge  (<50 / 50-1k / >1k km²)         ",
+            &dq_steps,
+            &dq_straight,
+        );
 
         // render the flat-heavy crop, color rivers by run length (green short → red long).
         const CROP: usize = 384;
@@ -7397,7 +10207,9 @@ fn probe_residual_rectilinear() {
             }
         }
         buf.save(dir.join(format!("seed{seed:05}_residual_runlen.png"))).unwrap();
-        eprintln!("    crop {CROP}² at ({cx},{cy}) → seed{seed:05}_residual_runlen.png (green=short staircase, red=long comb)");
+        eprintln!(
+            "    crop {CROP}² at ({cx},{cy}) → seed{seed:05}_residual_runlen.png (green=short staircase, red=long comb)"
+        );
     }
     eprintln!("\n  out = {}", dir.display());
 }
@@ -7439,7 +10251,9 @@ fn probe_direction_parallelism() {
     let dir_index = |sdx: i32, sdy: i32| -> Option<usize> {
         (0..8).find(|&d| D8_DX_T[d] == sdx && D8_DY_T[d] == sdy)
     };
-    eprintln!("#fixA direction parallelism — 8-dir histogram + local orientation order R2 (parallel=comb), large flats vs small vs slope. Cached ON drainage.");
+    eprintln!(
+        "#fixA direction parallelism — 8-dir histogram + local orientation order R2 (parallel=comb), large flats vs small vs slope. Cached ON drainage."
+    );
 
     for &seed in &seeds {
         let h = c165_eroded(seed, &iso);
@@ -7516,7 +10330,9 @@ fn probe_direction_parallelism() {
                 hist[class(k)][cdir[k] as usize] += 1;
             }
         }
-        eprintln!("\n  seed {seed}: 8-dir histogram (N=cardinal · X=diagonal), share of river steps");
+        eprintln!(
+            "\n  seed {seed}: 8-dir histogram (N=cardinal · X=diagonal), share of river steps"
+        );
         for c in 0..4 {
             let tot: u64 = hist[c].iter().sum();
             if tot == 0 {
@@ -7533,7 +10349,15 @@ fn probe_direction_parallelism() {
                 .sum();
             eprintln!(
                 "    {:16} N[{:.0} {:.0} {:.0} {:.0}] X[{:.0} {:.0} {:.0} {:.0}] | diag {diag:.0}% maxbin {maxbin:.0}% entropy {ent:.2}/3 (low=parallel) | {tot} steps",
-                cname[c], pc(0), pc(2), pc(4), pc(6), pc(1), pc(3), pc(5), pc(7)
+                cname[c],
+                pc(0),
+                pc(2),
+                pc(4),
+                pc(6),
+                pc(1),
+                pc(3),
+                pc(5),
+                pc(7)
             );
         }
 
@@ -7569,7 +10393,10 @@ fn probe_direction_parallelism() {
                 r2_cnt[cl] += 1;
             }
         }
-        eprintln!("    local orientation order R2 (window {}², 1=parallel/comb, 0=isotropic):", 2 * r + 1);
+        eprintln!(
+            "    local orientation order R2 (window {}², 1=parallel/comb, 0=isotropic):",
+            2 * r + 1
+        );
         for c in 0..4 {
             if r2_cnt[c] > 0 {
                 eprintln!("      {:16} R2 = {:.2}", cname[c], r2_sum[c] / r2_cnt[c] as f64);
@@ -7607,8 +10434,14 @@ fn probe_direction_parallelism() {
         let (cx, cy) = bxy;
         // 8 distinct hues for the 8 D8 directions.
         let hue: [[u8; 3]; 8] = [
-            [240, 60, 60], [240, 160, 40], [230, 230, 50], [80, 220, 60],
-            [40, 220, 200], [60, 130, 240], [150, 70, 240], [240, 70, 200],
+            [240, 60, 60],
+            [240, 160, 40],
+            [230, 230, 50],
+            [80, 220, 60],
+            [40, 220, 200],
+            [60, 130, 240],
+            [150, 70, 240],
+            [240, 70, 200],
         ];
         let scale = 2usize;
         let mut buf = image::ImageBuffer::new((CROP * scale) as u32, (CROP * scale) as u32);
@@ -7635,7 +10468,9 @@ fn probe_direction_parallelism() {
             }
         }
         buf.save(dir.join(format!("seed{seed:05}_direction_hue.png"))).unwrap();
-        eprintln!("    crop {CROP}² at ({cx},{cy}) → seed{seed:05}_direction_hue.png (one hue per D8 dir; mono-hue flat = parallel)");
+        eprintln!(
+            "    crop {CROP}² at ({cx},{cy}) → seed{seed:05}_direction_hue.png (one hue per D8 dir; mono-hue flat = parallel)"
+        );
     }
     eprintln!("\n  out = {}", dir.display());
 }
@@ -7654,7 +10489,7 @@ fn probe_dinf_compare() {
     use ymir_core::climate::c1_climate;
     use ymir_core::climate::precipitation::PrecipParams;
     use ymir_core::tectonics_c1::drainage::{
-        c1_drainage, C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType,
+        C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, c1_drainage,
     };
 
     let dir = output_dir().join("flat_tracing");
@@ -7679,10 +10514,13 @@ fn probe_dinf_compare() {
         cos2[d] = (2.0 * th).cos();
         sin2[d] = (2.0 * th).sin();
     }
-    let dir_index =
-        |sdx: i32, sdy: i32| -> Option<usize> { (0..8).find(|&d| D8_DX_T[d] == sdx && D8_DY_T[d] == sdy) };
+    let dir_index = |sdx: i32, sdy: i32| -> Option<usize> {
+        (0..8).find(|&d| D8_DX_T[d] == sdx && D8_DY_T[d] == sdy)
+    };
 
-    eprintln!("#fixA D∞ vs D8 — seed {seed} (large flats). Diagonal share + R2 on large flats, hydrology guards, hue crops.");
+    eprintln!(
+        "#fixA D∞ vs D8 — seed {seed} (large flats). Diagonal share + R2 on large flats, hydrology guards, hue crops."
+    );
 
     for &dinf in &[false, true] {
         let cfg = C1DrainageConfig { dinf, ..Default::default() };
@@ -7804,8 +10642,14 @@ fn probe_dinf_compare() {
         }
         let (cx, cy) = bxy;
         let hue: [[u8; 3]; 8] = [
-            [240, 60, 60], [240, 160, 40], [230, 230, 50], [80, 220, 60],
-            [40, 220, 200], [60, 130, 240], [150, 70, 240], [240, 70, 200],
+            [240, 60, 60],
+            [240, 160, 40],
+            [230, 230, 50],
+            [80, 220, 60],
+            [40, 220, 200],
+            [60, 130, 240],
+            [150, 70, 240],
+            [240, 70, 200],
         ];
         let sc = 2usize;
         let mut buf = image::ImageBuffer::new((CROP * sc) as u32, (CROP * sc) as u32);

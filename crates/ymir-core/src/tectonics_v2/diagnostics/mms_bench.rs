@@ -16,12 +16,10 @@ use std::f64::consts::PI;
 
 use crate::tectonics_v2::field::Field2D;
 use crate::tectonics_v2::rheology::{self, StrainRate, ViscosityLaw};
-use crate::tectonics_v2::stokes::nonlinear_solver::{
-    NewtonConfig, NewtonSolver, NonlinearSolver,
-};
+use crate::tectonics_v2::stokes::nonlinear_solver::{NewtonConfig, NewtonSolver, NonlinearSolver};
 use crate::tectonics_v2::stokes::operator::apply_momentum;
 use crate::tectonics_v2::stokes::solver::ConjugateGradient;
-use crate::tectonics_v2::stokes::{solve_sheet, Grid, SheetConfig};
+use crate::tectonics_v2::stokes::{Grid, SheetConfig, solve_sheet};
 
 #[derive(Clone, Debug)]
 pub struct MmsResults {
@@ -81,9 +79,9 @@ fn mms_gpe(sizes: &[usize]) -> MmsSeries {
 }
 
 fn gpe_smooth_error(n: usize) -> f64 {
-    use std::f64::consts::TAU;
     use crate::tectonics_v2::field::PeriodicIndex;
     use crate::tectonics_v2::forcing::{BodyForce, GpeForce, SimulationState, VectorField};
+    use std::f64::consts::TAU;
 
     let nx = n;
     let ny = n;
@@ -105,10 +103,7 @@ fn gpe_smooth_error(n: usize) -> f64 {
     let mut fx = Field2D::new(nx, ny);
     let mut fy = Field2D::new(nx, ny);
     let st = SimulationState { nx, ny, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
-    GpeForce::with_ar(ar).accumulate(
-        &st,
-        &mut VectorField { fx: &mut fx, fy: &mut fy },
-    );
+    GpeForce::with_ar(ar).accumulate(&st, &mut VectorField { fx: &mut fx, fy: &mut fy });
 
     let mut sq = 0.0_f64;
     let mut count = 0_usize;
@@ -195,10 +190,7 @@ fn variable_eta_error(n: usize) -> f64 {
         for i in 0..nx {
             let xc = (i as f64 + 0.5) * dx;
             let yc = (j as f64 + 0.5) * dy;
-            eta.set(
-                i, j,
-                1.0 + 0.5 * (2.0 * PI * xc).sin() * (2.0 * PI * yc).cos(),
-            );
+            eta.set(i, j, 1.0 + 0.5 * (2.0 * PI * xc).sin() * (2.0 * PI * yc).cos());
             let xf = i as f64 * dx;
             let yf = (j as f64 + 0.5) * dy;
             vx_ex[j * nx + i] = (2.0 * PI * xf).sin() * (2.0 * PI * yf).cos();
@@ -242,9 +234,7 @@ fn newton_tail_at_n3(n: usize) -> NewtonTail {
         }
     }
     crate::tectonics_v2::stokes::nullspace::project_velocity(&mut vx_t, &mut vy_t);
-    let sr = StrainRate::compute(
-        nx, ny, dx, dy, &grid.idx_x, &grid.idx_y, &vx_t, &vy_t,
-    );
+    let sr = StrainRate::compute(nx, ny, dx, dy, &grid.idx_x, &grid.idx_y, &vx_t, &vy_t);
     let eta = rheology::build_eta_field(&law, &sr.eps_ii_center, None);
     let mut rhs_x = vec![0.0; nx * ny];
     let mut rhs_y = vec![0.0; nx * ny];
@@ -295,10 +285,7 @@ pub fn render_markdown(results: &MmsResults) -> String {
             .get(k)
             .map(|s| format!("{:.3}", s))
             .unwrap_or_else(|| "—".into());
-        s.push_str(&format!(
-            "| {} | {:.3e} | {} |\n",
-            n, results.const_eta.errors[k], slope_str,
-        ));
+        s.push_str(&format!("| {} | {:.3e} | {} |\n", n, results.const_eta.errors[k], slope_str,));
     }
     s.push_str(&format!(
         "\nFinal slope: `{:.3}` (expected ≥ 1.7; quadratic target = 2.0).\n\n",
@@ -329,16 +316,9 @@ pub fn render_markdown(results: &MmsResults) -> String {
     s.push_str("Smooth manufactured `S = 1 + 0.1·sin(2πx)·cos(2πy)` at `Ar = 2`. Validates the GPE discretisation introduced at Step 2 against the analytic `-Ar·S·∇S`.\n\n");
     s.push_str("| N | v_err RMS | slope to next |\n|---|---|---|\n");
     for (k, n) in results.gpe.sizes.iter().enumerate() {
-        let slope_str = results
-            .gpe
-            .slopes
-            .get(k)
-            .map(|s| format!("{:.3}", s))
-            .unwrap_or_else(|| "—".into());
-        s.push_str(&format!(
-            "| {} | {:.3e} | {} |\n",
-            n, results.gpe.errors[k], slope_str,
-        ));
+        let slope_str =
+            results.gpe.slopes.get(k).map(|s| format!("{:.3}", s)).unwrap_or_else(|| "—".into());
+        s.push_str(&format!("| {} | {:.3e} | {} |\n", n, results.gpe.errors[k], slope_str,));
     }
     s.push_str(&format!(
         "\nFinal slope: `{:.3}` (expected ≥ 1.7).\n\n",

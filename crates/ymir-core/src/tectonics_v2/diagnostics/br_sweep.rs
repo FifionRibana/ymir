@@ -22,7 +22,7 @@
 
 use std::path::PathBuf;
 
-use super::harness::{run_baseline, BaselineConfig, BaselineResult, ForceKind, NonlinearChoice};
+use super::harness::{BaselineConfig, BaselineResult, ForceKind, NonlinearChoice, run_baseline};
 use crate::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use crate::tectonics_v2::forcing::{ForceSum, GpeForce};
 use crate::tectonics_v2::presets::{Preset, YieldingConfig};
@@ -83,10 +83,7 @@ pub fn run_br_sweep(
             // Yielding disabled: isolate the Br effect (prompt
             // §"pour isoler l'effet Br").
             yielding: YieldingConfig::Disabled,
-            basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-                br,
-                s_exponent: 2.0,
-            }),
+            basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br, s_exponent: 2.0 }),
             boundary: crate::tectonics_v2::boundaries::BoundaryConfig::Disabled,
             boundary_layout_name: String::new(),
             slab_pull: crate::tectonics_v2::slab::SlabPullConfig::Disabled,
@@ -108,9 +105,8 @@ pub fn run_br_sweep(
 fn summarise(br: f64, r: &BaselineResult) -> BrSweepPoint {
     let m = &r.metrics;
     let newton = m.newton.as_ref();
-    let (conv_pct, newton_iter_mean) = newton
-        .map(|n| (n.outcome_percentages().0, n.outer_iters_mean()))
-        .unwrap_or((0.0, 0.0));
+    let (conv_pct, newton_iter_mean) =
+        newton.map(|n| (n.outcome_percentages().0, n.outer_iters_mean())).unwrap_or((0.0, 0.0));
     let drag_vs_visc = newton.and_then(|n| n.drag_vs_visc_diagonal_ratio);
     let energy = newton.and_then(|n| n.basal_drag_energy_ratio);
     BrSweepPoint {

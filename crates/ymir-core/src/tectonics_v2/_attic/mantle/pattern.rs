@@ -76,8 +76,12 @@ impl std::fmt::Debug for MantlePattern {
 }
 
 impl MantlePattern {
-    pub fn nx(&self) -> usize { self.v_mantle_x.nx() }
-    pub fn ny(&self) -> usize { self.v_mantle_x.ny() }
+    pub fn nx(&self) -> usize {
+        self.v_mantle_x.nx()
+    }
+    pub fn ny(&self) -> usize {
+        self.v_mantle_x.ny()
+    }
 
     /// Peak `|v_mantle|` over the domain (sampled by taking the
     /// max of `|v_x|` and `|v_y|` cell-by-cell). Used by the
@@ -91,7 +95,9 @@ impl MantlePattern {
                 let vx = self.v_mantle_x.get(i, j);
                 let vy = self.v_mantle_y.get(i, j);
                 let mag = (vx * vx + vy * vy).sqrt();
-                if mag > peak { peak = mag; }
+                if mag > peak {
+                    peak = mag;
+                }
             }
         }
         peak
@@ -186,7 +192,9 @@ pub fn pattern_div_max(
             let dvx = (pattern.v_mantle_x.get(ip, j) - pattern.v_mantle_x.get(i, j)) * inv_dx;
             let dvy = (pattern.v_mantle_y.get(i, jp) - pattern.v_mantle_y.get(i, j)) * inv_dy;
             let div = dvx + dvy;
-            if div.abs() > max { max = div.abs(); }
+            if div.abs() > max {
+                max = div.abs();
+            }
         }
     }
     max
@@ -194,8 +202,8 @@ pub fn pattern_div_max(
 
 #[cfg(test)]
 mod tests {
+    use super::super::stream_function::{StreamFunctionConfig, generate_stream_function};
     use super::*;
-    use super::super::stream_function::{generate_stream_function, StreamFunctionConfig};
 
     /// Core contract: curl of nodal ψ gives discrete-div-free
     /// velocity on the staggered grid at any resolution.
@@ -205,17 +213,11 @@ mod tests {
             let dx = 1.0 / n as f64;
             let idx_x = PeriodicIndex::new(n);
             let idx_y = PeriodicIndex::new(n);
-            let psi = generate_stream_function(
-                n, n,
-                &StreamFunctionConfig { num_modes: 6, seed: 42 },
-            );
+            let psi =
+                generate_stream_function(n, n, &StreamFunctionConfig { num_modes: 6, seed: 42 });
             let pattern = build_mantle_pattern(&psi, dx, dx, &idx_x, &idx_y);
             let div = pattern_div_max(&pattern, dx, dx, &idx_x, &idx_y);
-            assert!(
-                div < 1.0e-10,
-                "div max at N={} is {} (expected < 1e-10)",
-                n, div,
-            );
+            assert!(div < 1.0e-10, "div max at N={} is {} (expected < 1e-10)", n, div,);
         }
     }
 
@@ -242,10 +244,7 @@ mod tests {
         let dx = 1.0 / n as f64;
         let idx_x = PeriodicIndex::new(n);
         let idx_y = PeriodicIndex::new(n);
-        let psi = generate_stream_function(
-            n, n,
-            &StreamFunctionConfig { num_modes: 4, seed: 7 },
-        );
+        let psi = generate_stream_function(n, n, &StreamFunctionConfig { num_modes: 4, seed: 7 });
         let pattern = build_mantle_pattern(&psi, dx, dx, &idx_x, &idx_y);
         let peak = pattern.peak_magnitude();
         assert!(peak > 0.01, "peak |v_mantle| = {}, expected nontrivial", peak);
@@ -258,12 +257,12 @@ mod tests {
         let dx = 1.0 / n as f64;
         let idx_x = PeriodicIndex::new(n);
         let idx_y = PeriodicIndex::new(n);
-        let mut psi_a = generate_stream_function(
-            n, n,
-            &StreamFunctionConfig { num_modes: 4, seed: 3 },
-        );
+        let mut psi_a =
+            generate_stream_function(n, n, &StreamFunctionConfig { num_modes: 4, seed: 3 });
         let mut psi_b = psi_a.clone();
-        for v in psi_b.data_mut().iter_mut() { *v *= 3.0; }
+        for v in psi_b.data_mut().iter_mut() {
+            *v *= 3.0;
+        }
         let pat_a = build_mantle_pattern(&psi_a, dx, dx, &idx_x, &idx_y);
         let pat_b = build_mantle_pattern(&psi_b, dx, dx, &idx_x, &idx_y);
         for k in 0..n * n {

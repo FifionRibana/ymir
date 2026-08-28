@@ -250,7 +250,9 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
             out.push_str("> Target: wallclock and CG-iters ratios within `[0.95, 1.05]` of Step 6 physics; **scalar parity** on `mass_conservation_residual`, `peak|v|`, `yielding_cell_fraction_max` — by construction, neither slab nor mantle contributions enter, so the operator and RHS reproduce Step 6 exactly.\n\n");
         }
         ReportKind::Step8MfSweep => {
-            out.push_str("# Step 8 — Mf sweep (peak|v_solved| scaling, yielding activation threshold)\n\n");
+            out.push_str(
+                "# Step 8 — Mf sweep (peak|v_solved| scaling, yielding activation threshold)\n\n",
+            );
             out.push_str("> **Step 8 sensitivity report.**\n");
             out.push_str("> Sweeps `Mf ∈ {0.3, 0.6, 1.0, 1.5, 2.0}` at 64² × 300 steps with all other parameters (coupling, num_modes, seed) fixed at the Step 8 baseline. **Seed unique across the sweep** — the Fourier pattern is fixed; only the amplitude `Mf` varies, so the sweep isolates the amplitude axis. Expected: `peak|v_solved|` monotonically non-decreasing with `Mf`; `yielding_cell_fraction_max` threshold-like (zero below some critical `Mf`, positive above — the critical value is a physical measurement, not prescribed).\n\n");
         }
@@ -1112,7 +1114,9 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                     out.push_str(
                         "The Step 8 baseline above holds **slab-pull Disabled** by deliberate choice. During Step 8 development, running the nominal spec configuration (Step 7 physics + mantle Enabled) produced catastrophic numerical divergence within 15–20 timesteps at 64² × Mf=1.0, `coupling=1.0`, slab-pull at Step 7's `(Sp=1.5, τ_slab=0.5, k_slab_accum=1.0)`. The runaway is physically real (captured in the `v2_mantle_runaway_diagnostic` ignored test); it is not a bug in the mantle or slab implementations individually.\n\n",
                     );
-                    out.push_str("**Trajectory** (20 steps at 64², mantle+slab, baseline parameters):\n\n");
+                    out.push_str(
+                        "**Trajectory** (20 steps at 64², mantle+slab, baseline parameters):\n\n",
+                    );
                     out.push_str("| steps | peak\\|v_solved\\| | peak\\|f_slab\\| | alignment |\n");
                     out.push_str("|---|---|---|---|\n");
                     out.push_str("| 5 | `9.6e0` | `9.8e0` | `+0.22` |\n");
@@ -1123,7 +1127,9 @@ pub fn build_markdown(inputs: &ReportInputs) -> String {
                         "**Closed-loop gain analysis (Step 8 regime, bootstrapped).** Once mantle forcing pulls `v ~ O(Mf) = O(1)`, the power-law rheology exits the floor-dominated band: `ε̇_II ~ v/L = O(1)` → `η_newton ≈ ε̇^{1/n−1} ≈ 1`, so the viscous diagonal `2·η·k² ≈ 80` at `k=1` on a 64² grid. In the same regime the discrete divergence operator in `Q_sub_conv = k_slab · max(0,−div v)` amplifies `|div v|_max ≈ 2·|v|/dx = 128·|v|` at grid spacing `dx = 1/64`. Then `m_subducted ≈ Q · τ_slab = 64·v`, and `f_slab = Sp · m ≈ 1.5 · 64 · v = 96·v`. The slab contribution to the momentum balance scales as `96·v` while the viscous dissipation scales as `80·v` — closed-loop gain\n\n",
                     );
                     out.push_str("```\n");
-                    out.push_str("G_activated = (Sp · k_slab_accum · τ_slab · (2/dx)) / (2·η_op·k²)\n");
+                    out.push_str(
+                        "G_activated = (Sp · k_slab_accum · τ_slab · (2/dx)) / (2·η_op·k²)\n",
+                    );
                     out.push_str("            ≈ (1.5 · 1 · 0.5 · 128) / 80\n");
                     out.push_str("            ≈ 96 / 80\n");
                     out.push_str("            ≈ 1.2  > 1\n");

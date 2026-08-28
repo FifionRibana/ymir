@@ -42,9 +42,9 @@ use ymir_core::tectonics_v2::boundaries::PlateType;
 use ymir_core::tectonics_v2::diagnostics::heightmap::save_heightmap;
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::init::{
-    init_s_field, FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
-    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
-    InitContext, InitMode, PlateInitData, ProfileShape,
+    FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
+    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT, InitContext,
+    InitMode, PlateInitData, ProfileShape, init_s_field,
 };
 use ymir_core::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
@@ -62,10 +62,7 @@ fn dump_step13_init_modes_64sq() {
     let plates = generate_voronoi(
         NX,
         NY,
-        &VoronoiConfig {
-            num_plates: NUM_PLATES,
-            continental_ratio: CONTINENTAL_RATIO,
-        },
+        &VoronoiConfig { num_plates: NUM_PLATES, continental_ratio: CONTINENTAL_RATIO },
         SEED,
     );
 
@@ -85,10 +82,7 @@ fn dump_step13_init_modes_64sq() {
     };
 
     let modes: Vec<(&str, InitMode)> = vec![
-        (
-            "uniform",
-            InitMode::Uniform { boundary_smoothing_width: 1.0 },
-        ),
+        ("uniform", InitMode::Uniform { boundary_smoothing_width: 1.0 }),
         (
             "radial_smoothstep",
             InitMode::RadialProfile {
@@ -138,10 +132,7 @@ fn dump_step13_init_modes_64sq() {
         NUM_PLATES,
         CONTINENTAL_RATIO * 100.0
     );
-    println!(
-        "Output dir: {}",
-        out_dir.canonicalize().unwrap_or(out_dir.clone()).display()
-    );
+    println!("Output dir: {}", out_dir.canonicalize().unwrap_or(out_dir.clone()).display());
     println!();
 
     let mut fields: Vec<(String, Field2D)> = Vec::new();
@@ -187,16 +178,12 @@ fn dump_step13_init_modes_64sq() {
     }
 
     // Context maps.
-    let pt_meta = save_heightmap(
-        &plates.plate_type.to_heightmap(),
-        &out_dir.join("plate_type_64sq.png"),
-    )
-    .expect("save plate type");
-    let pid_meta = save_heightmap(
-        &plates.plate_id.to_heightmap(),
-        &out_dir.join("plate_id_64sq.png"),
-    )
-    .expect("save plate id");
+    let pt_meta =
+        save_heightmap(&plates.plate_type.to_heightmap(), &out_dir.join("plate_type_64sq.png"))
+            .expect("save plate type");
+    let pid_meta =
+        save_heightmap(&plates.plate_id.to_heightmap(), &out_dir.join("plate_id_64sq.png"))
+            .expect("save plate id");
     println!();
     println!("Context maps:");
     println!("  plate_type : {}", pt_meta.png_path.display());
@@ -262,25 +249,12 @@ fn dump_step13_galerie_multi_preset() {
     }
 
     let presets = [
-        PresetCfg {
-            label: "single_continent",
-            seed: 12,
-            num_plates: 4,
-            continental_ratio: 0.5,
-        },
-        PresetCfg {
-            label: "convergence",
-            seed: 23,
-            num_plates: 6,
-            continental_ratio: 0.4,
-        },
+        PresetCfg { label: "single_continent", seed: 12, num_plates: 4, continental_ratio: 0.5 },
+        PresetCfg { label: "convergence", seed: 23, num_plates: 6, continental_ratio: 0.4 },
     ];
 
     let modes: Vec<(&str, InitMode)> = vec![
-        (
-            "uniform",
-            InitMode::Uniform { boundary_smoothing_width: 1.0 },
-        ),
+        ("uniform", InitMode::Uniform { boundary_smoothing_width: 1.0 }),
         (
             "radial_smoothstep",
             InitMode::RadialProfile {
@@ -324,10 +298,7 @@ fn dump_step13_galerie_multi_preset() {
 
     println!();
     println!("Step 13 Phase 7 — multi-preset gallery (64²)");
-    println!(
-        "Output dir: {}",
-        out_dir.canonicalize().unwrap_or(out_dir.clone()).display()
-    );
+    println!("Output dir: {}", out_dir.canonicalize().unwrap_or(out_dir.clone()).display());
 
     let tile_w = NX;
     let tile_h = NY;
@@ -373,8 +344,8 @@ fn dump_step13_galerie_multi_preset() {
             let s = init_s_field(*mode, &ctx);
 
             // Per-(preset, mode) PNG with dynamic range for stats.
-            let png_path = out_dir
-                .join(format!("galerie_{}_{}_64sq.png", preset.label, mode_label));
+            let png_path =
+                out_dir.join(format!("galerie_{}_{}_64sq.png", preset.label, mode_label));
             let meta = save_heightmap(&s, &png_path).expect("save individual png");
 
             // Continental-only mean + std-dev for the report table.
@@ -429,7 +400,6 @@ fn dump_step13_galerie_multi_preset() {
     );
 }
 
-
 /// Step 13.5 Phase 4 — sanity visual for the oceanic FBM
 /// extension. 1×4 patchwork on `single_continent` (64²,
 /// seed=12, 4 plates, 50 % continental) showing the same
@@ -462,10 +432,7 @@ fn dump_step13_5_oceanic_amplitude_sweep() {
     let plates = generate_voronoi(
         NX,
         NY,
-        &VoronoiConfig {
-            num_plates: SC_NUM_PLATES,
-            continental_ratio: SC_CONTINENTAL_RATIO,
-        },
+        &VoronoiConfig { num_plates: SC_NUM_PLATES, continental_ratio: SC_CONTINENTAL_RATIO },
         SC_SEED,
     );
     let plate_data = PlateInitData {
@@ -473,13 +440,8 @@ fn dump_step13_5_oceanic_amplitude_sweep() {
         plate_type: &plates.plate_type,
         seed_coords: Some(&plates.seed_coords),
     };
-    let ctx = InitContext {
-        nx: NX,
-        ny: NY,
-        seed: SC_SEED,
-        amplitude: 0.0,
-        plate_data: Some(plate_data),
-    };
+    let ctx =
+        InitContext { nx: NX, ny: NY, seed: SC_SEED, amplitude: 0.0, plate_data: Some(plate_data) };
 
     let cases: Vec<(&str, bool, f64)> = vec![
         ("step13_default_oceanic_uniform", false, 0.10),
@@ -499,10 +461,7 @@ fn dump_step13_5_oceanic_amplitude_sweep() {
         SC_NUM_PLATES,
         SC_CONTINENTAL_RATIO * 100.0
     );
-    println!(
-        "Output dir: {}",
-        out_dir.canonicalize().unwrap_or(out_dir.clone()).display()
-    );
+    println!("Output dir: {}", out_dir.canonicalize().unwrap_or(out_dir.clone()).display());
     println!();
 
     let mut fields: Vec<(String, Field2D)> = Vec::new();
@@ -536,9 +495,15 @@ fn dump_step13_5_oceanic_amplitude_sweep() {
                     let v = s.get(i, j);
                     o_sum += v;
                     o_count += 1;
-                    if v > o_max { o_max = v; }
-                    if v < o_min { o_min = v; }
-                    if (v - OCEANIC_CLAMP_MAX).abs() < 1e-12 { o_clipped += 1; }
+                    if v > o_max {
+                        o_max = v;
+                    }
+                    if v < o_min {
+                        o_min = v;
+                    }
+                    if (v - OCEANIC_CLAMP_MAX).abs() < 1e-12 {
+                        o_clipped += 1;
+                    }
                 }
             }
         }
@@ -560,7 +525,12 @@ fn dump_step13_5_oceanic_amplitude_sweep() {
 
         println!(
             "  {:<33} : oceanic mean={:.4}, std={:.4}, range=[{:.4}, {:.4}], clip={:.1}%",
-            label, o_mean, o_std, o_min, o_max, clip_frac * 100.0
+            label,
+            o_mean,
+            o_std,
+            o_min,
+            o_max,
+            clip_frac * 100.0
         );
 
         fields.push((label.to_string(), s));
@@ -622,7 +592,6 @@ fn dump_step13_5_oceanic_amplitude_sweep() {
     );
 }
 
-
 /// Step 13.5 Phase 7 — multi-preset gallery for the oceanic FBM
 /// extension. 2 rows (presets: single_continent, convergence) ×
 /// 2 cols (modes: oceanic disabled, oceanic enabled with the
@@ -643,37 +612,20 @@ fn dump_step13_5_galerie_oceanic_disabled_vs_enabled() {
     }
 
     let presets = [
-        PresetCfg {
-            label: "single_continent",
-            seed: 12,
-            num_plates: 4,
-            continental_ratio: 0.5,
-        },
-        PresetCfg {
-            label: "convergence",
-            seed: 23,
-            num_plates: 6,
-            continental_ratio: 0.4,
-        },
+        PresetCfg { label: "single_continent", seed: 12, num_plates: 4, continental_ratio: 0.5 },
+        PresetCfg { label: "convergence", seed: 23, num_plates: 6, continental_ratio: 0.4 },
     ];
 
-    let modes: Vec<(&'static str, bool)> = vec![
-        ("oceanic_disabled", false),
-        ("oceanic_enabled", true),
-    ];
+    let modes: Vec<(&'static str, bool)> =
+        vec![("oceanic_disabled", false), ("oceanic_enabled", true)];
 
     let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/reports/step13_5_visual_checkpoint");
     std::fs::create_dir_all(&out_dir).expect("create output dir");
 
     println!();
-    println!(
-        "Step 13.5 Phase 7 — multi-preset oceanic-FBM gallery (64²)"
-    );
-    println!(
-        "Output dir: {}",
-        out_dir.canonicalize().unwrap_or(out_dir.clone()).display()
-    );
+    println!("Step 13.5 Phase 7 — multi-preset oceanic-FBM gallery (64²)");
+    println!("Output dir: {}", out_dir.canonicalize().unwrap_or(out_dir.clone()).display());
 
     let tile_w = NX;
     let tile_h = NY;
@@ -744,7 +696,9 @@ fn dump_step13_5_galerie_oceanic_disabled_vs_enabled() {
                         let v = s.get(i, j);
                         o_sum += v;
                         o_count += 1;
-                        if v > o_max { o_max = v; }
+                        if v > o_max {
+                            o_max = v;
+                        }
                     }
                 }
             }
@@ -794,11 +748,11 @@ fn dump_step13_5_galerie_oceanic_disabled_vs_enabled() {
     println!("Standard patchwork (full S, fixed [0, 1]):");
     println!("  {}", patch_path.display());
     println!();
-    println!(
-        "Oceanic-zoomed patchwork (oceanic [0, 0.49] → [0, 1], continental blanked):"
-    );
+    println!("Oceanic-zoomed patchwork (oceanic [0, 0.49] → [0, 1], continental blanked):");
     println!("  {}", zoom_path.display());
     println!();
     println!("  Rows  (top → bottom): single_continent | convergence");
-    println!("  Cols  (left → right): oceanic_disabled (Step 13) | oceanic_enabled (Step 13.5, amp=0.15)");
+    println!(
+        "  Cols  (left → right): oceanic_disabled (Step 13) | oceanic_enabled (Step 13.5, amp=0.15)"
+    );
 }

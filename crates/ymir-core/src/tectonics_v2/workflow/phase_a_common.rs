@@ -66,14 +66,14 @@
 //! state shape. C1 in Phase 1.3 has no cratonic-factor evolution,
 //! so it discards. Phase 1.4+ may add one.
 
-use crate::tectonics::isostasy::{percentile_copy, IsostasyConfig, SeaLevelMode};
+use crate::tectonics::isostasy::{IsostasyConfig, SeaLevelMode, percentile_copy};
 use crate::tectonics_v2::boundaries::{PlateType, PlateTypeField};
-use crate::tectonics_v2::cratonic::factor::build_cratonic_factor_field;
 use crate::tectonics_v2::cratonic::CratonicConfigEnabled;
+use crate::tectonics_v2::cratonic::factor::build_cratonic_factor_field;
 use crate::tectonics_v2::field::Field2D;
 use crate::tectonics_v2::voronoi::{PlateIdField, VoronoiPlates};
 
-use super::{macro_redistribution, CycleOutputCommon, PhaseAParams};
+use super::{CycleOutputCommon, PhaseAParams, macro_redistribution};
 
 /// Inputs to [`apply_post_tectonic`].
 ///
@@ -164,11 +164,9 @@ pub fn apply_post_tectonic(mut input: PostTectonicInput<'_>) -> PostTectonicOutp
     // initial_per_plate_type are all present.
     let mut new_cratonic_factor: Option<Field2D> = None;
     let mut craton_change: Option<f64> = None;
-    if let (Some(crcfg), Some(plate_id), Some(orig)) = (
-        input.cratonic_cfg,
-        input.plate_id,
-        input.initial_per_plate_type,
-    ) {
+    if let (Some(crcfg), Some(plate_id), Some(orig)) =
+        (input.cratonic_cfg, input.plate_id, input.initial_per_plate_type)
+    {
         let factor = recompute_cratonic_factor_for_cycle(
             plate_id,
             orig,
@@ -270,10 +268,10 @@ pub fn extract_per_plate_type(
 /// thread-safe, no caching.
 pub fn compute_sea_level_ref_s_space(s: &Field2D, iso_cfg: &IsostasyConfig) -> f64 {
     let s_data = s.data();
-    let (s_min, s_max) = s_data.iter().copied().fold(
-        (f64::INFINITY, f64::NEG_INFINITY),
-        |(lo, hi), v| (lo.min(v), hi.max(v)),
-    );
+    let (s_min, s_max) = s_data
+        .iter()
+        .copied()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| (lo.min(v), hi.max(v)));
     // Cap the upper end per the sea-level mode (Issue #141). MinMax
     // caps at s_max (original, byte-identical); PercentileCapped caps
     // at the cap-percentile of S̃ — coherent with the h-space branch
@@ -353,11 +351,8 @@ fn recompute_cratonic_factor_for_cycle(
     // Apply D4 retention rule to derive the new per_plate_type.
     let mut updated_per_plate_type: Vec<PlateType> = Vec::with_capacity(num_plates);
     for p in 0..num_plates {
-        let frac = if total_count[p] > 0 {
-            cont_count[p] as f64 / total_count[p] as f64
-        } else {
-            0.0
-        };
+        let frac =
+            if total_count[p] > 0 { cont_count[p] as f64 / total_count[p] as f64 } else { 0.0 };
         let was_continental = matches!(initial_per_plate_type[p], PlateType::Continental);
         let new_type = if was_continental && frac >= cfg.craton_retention_threshold {
             PlateType::Continental
@@ -411,7 +406,7 @@ fn measure_craton_change(old: &Field2D, new: &Field2D) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tectonics::isostasy::{compute_isostasy, SeaLevelMode};
+    use crate::tectonics::isostasy::{SeaLevelMode, compute_isostasy};
 
     /// W2 dual-space coherence (Issue #141): under the SAME sea-level
     /// mode, the h-space land set (`compute_isostasy` land_ratio) must
@@ -432,10 +427,7 @@ mod tests {
         for k in 0..(n * n / 40) {
             s.data_mut()[k] = 2.1;
         }
-        let cfg = IsostasyConfig {
-            sea_level_mode: mode,
-            ..Default::default()
-        };
+        let cfg = IsostasyConfig { sea_level_mode: mode, ..Default::default() };
 
         let sea_ref = compute_sea_level_ref_s_space(&s, &cfg);
         let s_land = s.data().iter().filter(|&&v| v > sea_ref).count();

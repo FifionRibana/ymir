@@ -68,9 +68,9 @@ use serde::{Deserialize, Serialize};
 use super::super::boundaries::PlateType;
 use super::super::field::Field2D;
 use super::super::voronoi::compute_dist_to_inter_plate_boundary;
-use super::orogenic_profile::{min_image_delta, OrogenicOrientation, PlateAccum};
-use super::radial_profile::{self, ProfileShape};
 use super::PlateInitData;
+use super::orogenic_profile::{OrogenicOrientation, PlateAccum, min_image_delta};
+use super::radial_profile::{self, ProfileShape};
 
 /// Radial dome parameters for the composite mode. Mirrors the subset
 /// of [`super::radial_profile`] inputs the composite actually uses
@@ -152,13 +152,11 @@ pub fn build(
         "composite build: continental/peak/base/oceanic must be finite",
     );
     assert!(
-        orogenic_ridge.half_length_ratio > 0.0
-            && orogenic_ridge.half_length_ratio.is_finite(),
+        orogenic_ridge.half_length_ratio > 0.0 && orogenic_ridge.half_length_ratio.is_finite(),
         "composite build: half_length_ratio must be > 0",
     );
     assert!(
-        orogenic_ridge.width_sigma_ratio > 0.0
-            && orogenic_ridge.width_sigma_ratio.is_finite(),
+        orogenic_ridge.width_sigma_ratio > 0.0 && orogenic_ridge.width_sigma_ratio.is_finite(),
         "composite build: width_sigma_ratio must be > 0",
     );
 
@@ -212,9 +210,7 @@ pub fn build(
     for (pid, acc) in plate_meta.iter().enumerate() {
         plate_axis[pid] = match orogenic_ridge.orientation {
             OrogenicOrientation::Fixed { angle_rad } => (angle_rad.cos(), angle_rad.sin()),
-            OrogenicOrientation::PlateMainAxisPca => {
-                acc.principal_axis().unwrap_or(fallback_axis)
-            }
+            OrogenicOrientation::PlateMainAxisPca => acc.principal_axis().unwrap_or(fallback_axis),
         };
     }
 
@@ -223,8 +219,7 @@ pub fn build(
         CompositeCap::UsePeakOrogenic => orogenic_ridge.peak_value,
         CompositeCap::Fixed { value } => value,
     };
-    let ridge_amplitude =
-        orogenic_ridge.peak_value - orogenic_ridge.base_continental_value;
+    let ridge_amplitude = orogenic_ridge.peak_value - orogenic_ridge.base_continental_value;
     let nxf = nx as f64;
     let nyf = ny as f64;
     let mut s = Field2D::new(nx, ny);
@@ -278,7 +273,7 @@ pub fn build(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+    use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
     fn build_plates(
         nx: usize,
@@ -302,10 +297,7 @@ mod tests {
     }
 
     fn default_radial() -> CompositeRadialParams {
-        CompositeRadialParams {
-            continental_value: 0.95,
-            profile_shape: ProfileShape::Smoothstep,
-        }
+        CompositeRadialParams { continental_value: 0.95, profile_shape: ProfileShape::Smoothstep }
     }
 
     fn default_orogenic_ridge() -> CompositeOrogenicRidgeParams {
@@ -328,8 +320,11 @@ mod tests {
         let plates = build_plates(nx, ny, 42, 8, 0.4);
         let p = make_init_data(&plates);
         let s = build(
-            nx, ny, &p,
-            default_radial(), default_orogenic_ridge(),
+            nx,
+            ny,
+            &p,
+            default_radial(),
+            default_orogenic_ridge(),
             0.20,
             CompositeCap::UsePeakOrogenic,
         );
@@ -359,19 +354,18 @@ mod tests {
         ridge.peak_value = 0.85;
         ridge.base_continental_value = 0.85;
         let s_composite = build(
-            nx, ny, &p,
-            default_radial(), ridge,
+            nx,
+            ny,
+            &p,
+            default_radial(),
+            ridge,
             0.20,
             // Use Fixed cap = 1.0 so a hypothetical residual ridge
             // (none expected here) wouldn't be silently clamped to a
             // value tied to the now-zeroed peak.
             CompositeCap::Fixed { value: 1.0 },
         );
-        let s_radial = radial_profile::build(
-            nx, ny, &p,
-            0.95, 0.20,
-            ProfileShape::Smoothstep,
-        );
+        let s_radial = radial_profile::build(nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep);
         for (a, b) in s_composite.data().iter().zip(s_radial.data().iter()) {
             assert!(
                 (a - b).abs() < 1e-12,
@@ -397,8 +391,11 @@ mod tests {
             profile_shape: ProfileShape::Smoothstep,
         };
         let s = build(
-            nx, ny, &p,
-            flat_radial, default_orogenic_ridge(),
+            nx,
+            ny,
+            &p,
+            flat_radial,
+            default_orogenic_ridge(),
             0.20,
             // Cap high so the test reads the raw additive value.
             CompositeCap::Fixed { value: 5.0 },
@@ -430,16 +427,16 @@ mod tests {
         let plates = build_plates(nx, ny, 42, 8, 0.4);
         let p = make_init_data(&plates);
         let s = build(
-            nx, ny, &p,
-            default_radial(), default_orogenic_ridge(),
+            nx,
+            ny,
+            &p,
+            default_radial(),
+            default_orogenic_ridge(),
             0.20,
             CompositeCap::Fixed { value: 1.10 },
         );
         let max_s = s.data().iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        assert!(
-            max_s <= 1.10 + 1e-12,
-            "max(S̃) = {max_s} > cap 1.10",
-        );
+        assert!(max_s <= 1.10 + 1e-12, "max(S̃) = {max_s} > cap 1.10",);
         // At least one cell must hit (or come very close to) the cap
         // — otherwise the cap is moot for these defaults and the test
         // is not exercising the clip path.
@@ -459,12 +456,22 @@ mod tests {
         let pa = make_init_data(&plates_a);
         let pb = make_init_data(&plates_b);
         let sa = build(
-            nx, ny, &pa, default_radial(), default_orogenic_ridge(),
-            0.20, CompositeCap::UsePeakOrogenic,
+            nx,
+            ny,
+            &pa,
+            default_radial(),
+            default_orogenic_ridge(),
+            0.20,
+            CompositeCap::UsePeakOrogenic,
         );
         let sb = build(
-            nx, ny, &pb, default_radial(), default_orogenic_ridge(),
-            0.20, CompositeCap::UsePeakOrogenic,
+            nx,
+            ny,
+            &pb,
+            default_radial(),
+            default_orogenic_ridge(),
+            0.20,
+            CompositeCap::UsePeakOrogenic,
         );
         assert_eq!(sa.data(), sb.data());
     }
@@ -482,8 +489,11 @@ mod tests {
         let plates = build_plates(nx, ny, 42, 4, 0.6);
         let p = make_init_data(&plates);
         let s = build(
-            nx, ny, &p,
-            default_radial(), default_orogenic_ridge(),
+            nx,
+            ny,
+            &p,
+            default_radial(),
+            default_orogenic_ridge(),
             0.20,
             CompositeCap::UsePeakOrogenic, // cap = 1.20
         );
@@ -497,9 +507,6 @@ mod tests {
             max_s >= 1.19,
             "composite max(S̃) = {max_s}, expected ≥ 1.19 (cap = 1.20, large-plate setup)",
         );
-        assert!(
-            max_s <= 1.20 + 1e-12,
-            "composite max(S̃) = {max_s} > cap 1.20",
-        );
+        assert!(max_s <= 1.20 + 1e-12, "composite max(S̃) = {max_s} > cap 1.20",);
     }
 }

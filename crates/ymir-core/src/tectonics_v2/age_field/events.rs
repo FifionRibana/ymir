@@ -122,12 +122,8 @@ pub fn apply_age_events(
             }
             // And has at least one subducting neighbour (4-cell
             // periodic stencil — same as Q_arc).
-            let neigh = [
-                (idx_x.next(i), j),
-                (idx_x.prev(i), j),
-                (i, idx_y.next(j)),
-                (i, idx_y.prev(j)),
-            ];
+            let neigh =
+                [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))];
             if neigh.iter().any(|&(ni, nj)| flags.get(ni, nj).is_subduction()) {
                 is_arc[j * nx + i] = true;
             }
@@ -167,9 +163,8 @@ pub fn apply_age_events(
                     (i, idx_y.prev(j)),
                 ];
                 for (ni, nj) in neigh {
-                    let n_is_continental =
-                        matches!(plate_type.get(ni, nj), PlateType::Continental)
-                            || is_continental_thickness(s.get(ni, nj));
+                    let n_is_continental = matches!(plate_type.get(ni, nj), PlateType::Continental)
+                        || is_continental_thickness(s.get(ni, nj));
                     if n_is_continental {
                         let na = a_snapshot.get(ni, nj);
                         if na > max_age {
@@ -350,7 +345,7 @@ mod tests {
         let mut flags = BoundaryFlagField::filled(nx, ny, BoundaryFlag::None);
         flags.set(1, 0, BoundaryFlag::OceanicSubduction);
         flags.set(1, 1, BoundaryFlag::Rift); // continental cell flagged
-                                              // both Rift and arc-eligible
+        // both Rift and arc-eligible
         let mut plate_type = PlateTypeField::filled(nx, ny, PlateType::Oceanic);
         plate_type.set(1, 1, PlateType::Continental);
         let mut s = Field2D::filled(nx, ny, 0.2);

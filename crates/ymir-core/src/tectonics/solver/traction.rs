@@ -17,10 +17,7 @@ impl TractionField {
 
     /// Uniform traction everywhere.
     pub fn uniform(nx: usize, ny: usize, tx: f64, ty: f64) -> Self {
-        Self {
-            tx: Field2D::filled(nx, ny, tx),
-            ty: Field2D::filled(nx, ny, ty),
-        }
+        Self { tx: Field2D::filled(nx, ny, tx), ty: Field2D::filled(nx, ny, ty) }
     }
 
     /// Two plates converging: left half pushes right (+speed), right half pushes left (-speed).

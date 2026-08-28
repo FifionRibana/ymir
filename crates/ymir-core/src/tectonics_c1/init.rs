@@ -35,8 +35,8 @@
 
 use crate::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
 use crate::tectonics_v2::field::Field2D;
-use crate::tectonics_v2::init::{init_s_field, InitContext, InitMode, PlateInitData};
-use crate::tectonics_v2::voronoi::{generate_voronoi, PlateIdField, VoronoiConfig};
+use crate::tectonics_v2::init::{InitContext, InitMode, PlateInitData, init_s_field};
+use crate::tectonics_v2::voronoi::{PlateIdField, VoronoiConfig, generate_voronoi};
 
 use super::state::{BoolField, C1State};
 
@@ -127,8 +127,7 @@ pub(crate) fn build_phase_1_1_cratonic_mask(
     seed_coords: &[(f64, f64)],
 ) -> BoolField {
     let x_threshold = nx as f64 / 2.0;
-    let cratonic_plate: Vec<bool> =
-        seed_coords.iter().map(|(x, _y)| *x < x_threshold).collect();
+    let cratonic_plate: Vec<bool> = seed_coords.iter().map(|(x, _y)| *x < x_threshold).collect();
 
     let mut mask = BoolField::filled(nx, ny, false);
     for j in 0..ny {

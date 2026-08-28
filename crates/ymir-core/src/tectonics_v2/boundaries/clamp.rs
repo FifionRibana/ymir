@@ -33,11 +33,7 @@ pub struct ClampStats {
 
 impl ClampStats {
     pub fn activation_fraction(&self) -> f64 {
-        if self.cells == 0 {
-            0.0
-        } else {
-            self.activations as f64 / self.cells as f64
-        }
+        if self.cells == 0 { 0.0 } else { self.activations as f64 / self.cells as f64 }
     }
 }
 
@@ -56,11 +52,7 @@ pub fn apply_clamp_with_tracking(s: &mut Field2D) -> ClampStats {
             activations += 1;
         }
     }
-    ClampStats {
-        activations,
-        cells: nx * ny,
-        injected_flux: injected,
-    }
+    ClampStats { activations, cells: nx * ny, injected_flux: injected }
 }
 
 #[cfg(test)]
@@ -103,11 +95,7 @@ mod tests {
 
     #[test]
     fn activation_fraction_is_count_over_cells() {
-        let stats = ClampStats {
-            activations: 3,
-            cells: 12,
-            injected_flux: 0.0,
-        };
+        let stats = ClampStats { activations: 3, cells: 12, injected_flux: 0.0 };
         assert!((stats.activation_fraction() - 0.25).abs() < 1e-12);
     }
 }

@@ -8,7 +8,7 @@
 //! land in the upcoming UI rewrite.
 
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 
 pub mod workspace;
 

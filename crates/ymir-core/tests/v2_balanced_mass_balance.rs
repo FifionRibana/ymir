@@ -15,7 +15,7 @@
 //! floating-point sums).
 
 use ymir_core::tectonics_v2::boundaries::{
-    apply_clamp_with_tracking, balanced_sub_spread, compute_source_sink_terms, BoundaryRates,
+    BoundaryRates, apply_clamp_with_tracking, balanced_sub_spread, compute_source_sink_terms,
 };
 use ymir_core::tectonics_v2::field::{Field2D, PeriodicIndex};
 
@@ -80,16 +80,23 @@ fn balanced_layout_with_matched_rates_has_machine_drift() {
     // clamp never fires and the test isolates pure arithmetic
     // drift.
     let mut s = Field2D::new(nx, ny);
-    for v in s.data_mut().iter_mut() { *v = 2.0; } // well above drain depth
+    for v in s.data_mut().iter_mut() {
+        *v = 2.0;
+    } // well above drain depth
     let mass_initial: f64 = s.data().iter().sum();
     let mut q = Field2D::new(nx, ny);
     let mut q_sub_scratch = Field2D::new(nx, ny);
     let dt = 0.02;
     for _step in 0..50 {
         compute_source_sink_terms(
-            &layout.plate_types, &layout.flags, &rates,
-            &div_v, &idx_x, &idx_y,
-            &mut q_sub_scratch, &mut q,
+            &layout.plate_types,
+            &layout.flags,
+            &rates,
+            &div_v,
+            &idx_x,
+            &idx_y,
+            &mut q_sub_scratch,
+            &mut q,
         );
         for (cell, &q_val) in s.data_mut().iter_mut().zip(q.data().iter()) {
             *cell += dt * q_val;
@@ -101,11 +108,7 @@ fn balanced_layout_with_matched_rates_has_machine_drift() {
     }
     let mass_final: f64 = s.data().iter().sum();
     let drift = (mass_final - mass_initial).abs() / mass_initial.abs().max(1.0);
-    assert!(
-        drift < 1.0e-8,
-        "balanced layout mass drift = {} (should be < 1e-8)",
-        drift,
-    );
+    assert!(drift < 1.0e-8, "balanced layout mass drift = {} (should be < 1e-8)", drift,);
     // Suppress the underscored `dx, dy` warnings if any.
     let _ = (dx, dy);
 }

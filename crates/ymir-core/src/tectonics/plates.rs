@@ -176,8 +176,7 @@ impl PlateConfig {
     /// The aspect ratio is consumed at construction time and not stored.
     pub fn with_resolution_aspect(mut self, resolution: usize, aspect_ratio: f32) -> Self {
         self.grid_width = resolution;
-        self.grid_height =
-            ((resolution as f32) / aspect_ratio).round().max(1.0) as usize;
+        self.grid_height = ((resolution as f32) / aspect_ratio).round().max(1.0) as usize;
         self
     }
 
@@ -295,14 +294,8 @@ pub fn generate_plates(config: &PlateConfig, seed: &WorldSeed) -> PlateInitResul
             for x in 0..nx {
                 let k = y * nx + x;
                 if plate_ids[k] == plate_idx {
-                    let dist_sq = toroidal_distance_sq_2d(
-                        x as f32,
-                        y as f32,
-                        sx,
-                        sy,
-                        nx as f32,
-                        ny as f32,
-                    );
+                    let dist_sq =
+                        toroidal_distance_sq_2d(x as f32, y as f32, sx, sy, nx as f32, ny as f32);
                     plate_cells.push((k, dist_sq));
                 }
             }
@@ -443,14 +436,8 @@ pub fn recompute_voronoi(
                 if !plate.active {
                     continue;
                 }
-                let dist = toroidal_distance_sq_2d(
-                    x as f32,
-                    y as f32,
-                    plate.seed_x,
-                    plate.seed_y,
-                    w,
-                    h,
-                );
+                let dist =
+                    toroidal_distance_sq_2d(x as f32, y as f32, plate.seed_x, plate.seed_y, w, h);
                 if dist < best_dist || (dist == best_dist && plate.id < best_id) {
                     best_dist = dist;
                     best_id = plate.id;
@@ -729,12 +716,8 @@ pub fn apply_subduction_consumption(
             }
 
             let my_id = ids[k];
-            let neighbors = [
-                (idx_x.next(i), j),
-                (idx_x.prev(i), j),
-                (i, idx_y.next(j)),
-                (i, idx_y.prev(j)),
-            ];
+            let neighbors =
+                [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))];
 
             for &(ni, nj) in &neighbors {
                 let nk = nj * nx + ni;
@@ -1129,14 +1112,7 @@ pub fn compute_viscosity_multiplier(
             if plate.plate_type != PlateType::Continental || !plate.active {
                 continue;
             }
-            let dist = toroidal_distance_2d(
-                i as f32,
-                j as f32,
-                plate.seed_x,
-                plate.seed_y,
-                w,
-                h,
-            );
+            let dist = toroidal_distance_2d(i as f32, j as f32, plate.seed_x, plate.seed_y, w, h);
             if dist > max_radius[pid] {
                 max_radius[pid] = dist;
             }
@@ -1160,14 +1136,7 @@ pub fn compute_viscosity_multiplier(
                 continue;
             }
 
-            let dist = toroidal_distance_2d(
-                i as f32,
-                j as f32,
-                plate.seed_x,
-                plate.seed_y,
-                w,
-                h,
-            );
+            let dist = toroidal_distance_2d(i as f32, j as f32, plate.seed_x, plate.seed_y, w, h);
             let d_norm = (dist / radius).min(1.0);
 
             // Decay: f = (1 - d^p), from 1 at center to 0 at edge
@@ -1278,10 +1247,7 @@ mod tests {
         // = 12 % 7 = 5, not at column 0.
         let wrapped_x = blurred.data[3 * nx + 0]; // (0, 3) via x-wrap
         let bogus_wrap = blurred.data[3 * nx + 5]; // (5, 3) — wrap-with-ny bug
-        assert!(
-            wrapped_x > 1e-3,
-            "x-wrap should deposit energy at (0, 3) but got {wrapped_x}"
-        );
+        assert!(wrapped_x > 1e-3, "x-wrap should deposit energy at (0, 3) but got {wrapped_x}");
         assert!(
             wrapped_x > bogus_wrap * 5.0,
             "x-wrap landed at wrong cell: (0,3)={wrapped_x} vs (5,3)={bogus_wrap}. \

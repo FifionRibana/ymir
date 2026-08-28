@@ -234,9 +234,9 @@ mod tests {
         // Post-Phase-2.6 invariant: the setup pipeline builds at
         // least one level per hierarchy, with an LU-factored
         // coarsest level at the end.
+        use crate::tectonics_v2::field::Field2D;
         use crate::tectonics_v2::stokes::operator::StokesGrid;
         use crate::tectonics_v2::stokes::sparse_assembly::assemble_picard_csr;
-        use crate::tectonics_v2::field::Field2D;
         let nx = 16;
         let ny = 16;
         let grid = StokesGrid::new(nx, ny, 1.0 / nx as f64, 1.0 / ny as f64);

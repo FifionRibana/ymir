@@ -15,15 +15,13 @@ use std::f64::consts::TAU;
 
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::presets::YieldingConfig;
-use ymir_core::tectonics_v2::rheology::{
-    build_eta_field, StrainRate, ViscosityLaw, YieldingLaw,
-};
+use ymir_core::tectonics_v2::rheology::{StrainRate, ViscosityLaw, YieldingLaw, build_eta_field};
+use ymir_core::tectonics_v2::stokes::Grid;
 use ymir_core::tectonics_v2::stokes::nonlinear_solver::{
     NewtonConfig, NewtonSolver, NonlinearSolver,
 };
 use ymir_core::tectonics_v2::stokes::operator::apply_momentum;
 use ymir_core::tectonics_v2::stokes::solver::ConjugateGradient;
-use ymir_core::tectonics_v2::stokes::Grid;
 
 #[test]
 fn newton_superlinear_with_yielding() {
@@ -31,10 +29,7 @@ fn newton_superlinear_with_yielding() {
     let dx = 1.0 / n as f64;
     let grid = Grid::new(n, n, dx, dx);
     let ylaw = YieldingLaw { bi: 0.15, sharpness: 4.0 };
-    let law = ViscosityLaw {
-        yielding: YieldingConfig::Enabled(ylaw),
-        ..Default::default()
-    };
+    let law = ViscosityLaw { yielding: YieldingConfig::Enabled(ylaw), ..Default::default() };
 
     // Target velocity that activates yielding in a fraction of cells.
     // Avoid the pathological lines where both ε̇ components vanish.
@@ -74,9 +69,7 @@ fn newton_superlinear_with_yielding() {
     // exercise the branch.
     let yielding_cells = {
         use ymir_core::tectonics_v2::diagnostics::newton_metrics::yielding_cell_fraction;
-        let sr = StrainRate::compute(
-            n, n, dx, dx, &grid.idx_x, &grid.idx_y, &vx, &vy,
-        );
+        let sr = StrainRate::compute(n, n, dx, dx, &grid.idx_x, &grid.idx_y, &vx, &vy);
         let mut visc_only = law;
         visc_only.yielding = YieldingConfig::Disabled;
         let eta_v = build_eta_field(&visc_only, &sr.eps_ii_center, None);
@@ -111,11 +104,7 @@ fn newton_superlinear_with_yielding() {
     let len = residuals.len();
     assert!(len >= 3, "Newton finished too early to probe convergence");
     for w in residuals.windows(2) {
-        assert!(
-            w[1] <= w[0],
-            "Newton residual non-monotone: {} → {}",
-            w[0], w[1],
-        );
+        assert!(w[1] <= w[0], "Newton residual non-monotone: {} → {}", w[0], w[1],);
     }
     // The last residual must be at the convergence tolerance.
     assert!(
@@ -125,10 +114,6 @@ fn newton_superlinear_with_yielding() {
     );
     // Cap the iteration count — Newton on this problem converges in
     // ~30-40 iters at strong yielding; 60 is a generous safety.
-    assert!(
-        outcome.outer_iters() < 60,
-        "Newton took {} iters (cap 60)",
-        outcome.outer_iters(),
-    );
+    assert!(outcome.outer_iters() < 60, "Newton took {} iters (cap 60)", outcome.outer_iters(),);
     let _ = Field2D::filled(1, 1, 0.0);
 }

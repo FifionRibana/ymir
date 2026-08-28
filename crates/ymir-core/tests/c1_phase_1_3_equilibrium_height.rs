@@ -41,7 +41,7 @@ use std::path::{Path, PathBuf};
 
 use image::{ImageBuffer, Rgb};
 
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
 use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::davis_suppe::source_term::DavisSuppeParams;
@@ -54,7 +54,7 @@ use ymir_core::tectonics_c1::distance_field::wedge_distance_intra_plate;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::field::Field2D;
 
 const GRID_SIZE: usize = 64;
@@ -102,26 +102,11 @@ fn equilibrium_height_caps_global_max() {
     let closures = C1Closures {
         davis_suppe: DavisSuppeParams::default(),
         equilibrium_height: EquilibriumHeightParams::default(),
-        erosion: ErosionParams {
-            enabled: false,
-            ..ErosionParams::default()
-        },
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        erosion: ErosionParams { enabled: false, ..ErosionParams::default() },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
     };
     let h_eq = closures.equilibrium_height.h_eq;
 
@@ -152,26 +137,11 @@ fn davis_suppe_imprint_preserved_with_equilibrium() {
     let closures = C1Closures {
         davis_suppe: DavisSuppeParams::default(),
         equilibrium_height: EquilibriumHeightParams::default(),
-        erosion: ErosionParams {
-            enabled: false,
-            ..ErosionParams::default()
-        },
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        erosion: ErosionParams { enabled: false, ..ErosionParams::default() },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
     };
 
     eprintln!(
@@ -192,23 +162,17 @@ fn davis_suppe_imprint_preserved_with_equilibrium() {
     let snapshot_steps: [usize; 4] = [49, 99, 199, 299];
 
     let started = std::time::Instant::now();
-    run_with_closures(
-        &mut state,
-        &mut kinematics,
-        &config,
-        &closures,
-        |step, current_state| {
-            assert!(
-                current_state.s.data().iter().all(|v| v.is_finite()),
-                "non-finite S̃ at step {}",
-                step + 1
-            );
-            if snapshot_steps.contains(&step) {
-                print_s_stats(&format!("{:03}", step + 1), current_state);
-                dump_snapshot(current_state, step + 1, &dir);
-            }
-        },
-    );
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |step, current_state| {
+        assert!(
+            current_state.s.data().iter().all(|v| v.is_finite()),
+            "non-finite S̃ at step {}",
+            step + 1
+        );
+        if snapshot_steps.contains(&step) {
+            print_s_stats(&format!("{:03}", step + 1), current_state);
+            dump_snapshot(current_state, step + 1, &dir);
+        }
+    });
     let elapsed = started.elapsed();
 
     // Re-classify boundaries + recompute wedge distance on the
@@ -253,11 +217,7 @@ fn davis_suppe_imprint_preserved_with_equilibrium() {
     let wedge_p99 = wedge_values[(n * 99) / 100];
 
     let bucket_mean: [f64; 3] = std::array::from_fn(|b| {
-        if bucket_count[b] > 0 {
-            bucket_sum[b] / bucket_count[b] as f64
-        } else {
-            f64::NAN
-        }
+        if bucket_count[b] > 0 { bucket_sum[b] / bucket_count[b] as f64 } else { f64::NAN }
     });
     let h_crit_at = |d: f64| -> f64 {
         closures.davis_suppe.h_max * (1.0 - (-d / closures.davis_suppe.l_taper).exp())
@@ -279,11 +239,7 @@ fn davis_suppe_imprint_preserved_with_equilibrium() {
     for (b, &(lo, hi)) in bucket_edges.iter().enumerate() {
         let mid = (lo + hi) / 2.0;
         let h_crit_mid = h_crit_at(mid);
-        let fill = if h_crit_mid > 0.0 {
-            bucket_mean[b] / h_crit_mid
-        } else {
-            f64::NAN
-        };
+        let fill = if h_crit_mid > 0.0 { bucket_mean[b] / h_crit_mid } else { f64::NAN };
         eprintln!(
             "    d ∈ ({lo:>4.1}, {hi:>4.1}]  count = {:>5}  mean S̃ = {:.4}  h_crit = {:.4}  fill = {:.3}",
             bucket_count[b], bucket_mean[b], h_crit_mid, fill
@@ -298,16 +254,18 @@ fn davis_suppe_imprint_preserved_with_equilibrium() {
     );
     eprintln!("c1_phase_1_3 T2: output dir = {}", dir.display());
     eprintln!("c1_phase_1_3 T2 imprint preservation evidence (composite):");
-    eprintln!("  wedge_p95: {wedge_p95:.3}   (RIGID #145; legacy 0.376; band [1.6, 2.0], below h_eq)");
-    eprintln!("  taper fill: {fill_near:.3}/{fill_mid:.3}/{fill_far:.3} (near>mid>far = source critical taper)");
-    eprintln!("  asymmetry: {asymmetry:.2}    (informational; legacy >1.5 was an advection toe-pile, see stage_5b)");
+    eprintln!(
+        "  wedge_p95: {wedge_p95:.3}   (RIGID #145; legacy 0.376; band [1.6, 2.0], below h_eq)"
+    );
+    eprintln!(
+        "  taper fill: {fill_near:.3}/{fill_mid:.3}/{fill_far:.3} (near>mid>far = source critical taper)"
+    );
+    eprintln!(
+        "  asymmetry: {asymmetry:.2}    (informational; legacy >1.5 was an advection toe-pile, see stage_5b)"
+    );
     eprintln!("  fill_near: {fill_near:.3}   (threshold > 0.1)");
-    eprintln!(
-        "  Note: fill_near drop is the *expected* consequence of the equilibrium clamp on"
-    );
-    eprintln!(
-        "        Davis-Suppe outliers (top 1% of wedge cells, capped at h_eq). The bulk"
-    );
+    eprintln!("  Note: fill_near drop is the *expected* consequence of the equilibrium clamp on");
+    eprintln!("        Davis-Suppe outliers (top 1% of wedge cells, capped at h_eq). The bulk");
     eprintln!(
         "        wedge body (wedge_p95) sits below h_eq and is bit-identical Phase 1.2 ↔ 1.3."
     );
@@ -369,31 +327,13 @@ fn equilibrium_alone_caps_initial_state() {
     // additional mass into the pile-up.
     let (mut state, mut kinematics, config) = setup();
     let closures = C1Closures {
-        davis_suppe: DavisSuppeParams {
-            enabled: false,
-            ..DavisSuppeParams::default()
-        },
+        davis_suppe: DavisSuppeParams { enabled: false, ..DavisSuppeParams::default() },
         equilibrium_height: EquilibriumHeightParams::default(),
-        erosion: ErosionParams {
-            enabled: false,
-            ..ErosionParams::default()
-        },
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        erosion: ErosionParams { enabled: false, ..ErosionParams::default() },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
     };
     let h_eq = closures.equilibrium_height.h_eq;
 
@@ -422,42 +362,22 @@ fn both_closures_disabled_matches_phase_1_1() {
     // would cap global_max below 100 and fail this assertion.
     let (mut state, mut kinematics, config) = setup();
     let closures = C1Closures {
-        davis_suppe: DavisSuppeParams {
-            enabled: false,
-            ..DavisSuppeParams::default()
-        },
+        davis_suppe: DavisSuppeParams { enabled: false, ..DavisSuppeParams::default() },
         equilibrium_height: EquilibriumHeightParams {
             enabled: false,
             ..EquilibriumHeightParams::default()
         },
-        erosion: ErosionParams {
-            enabled: false,
-            ..ErosionParams::default()
-        },
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        erosion: ErosionParams { enabled: false, ..ErosionParams::default() },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
     };
 
     run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
 
     let g_max = global_max(&state);
-    eprintln!(
-        "c1_phase_1_3 T4: global_max = {g_max:.3} (need > 100, Phase 1.1 baseline ≈ 1080)"
-    );
+    eprintln!("c1_phase_1_3 T4: global_max = {g_max:.3} (need > 100, Phase 1.1 baseline ≈ 1080)");
     assert!(
         g_max > 100.0,
         "T4 Phase 1.1 baseline broken: global_max = {g_max:.3} ≤ 100 — \
@@ -483,9 +403,7 @@ fn print_s_stats(tag: &str, state: &C1State) {
         sq += (v - mean) * (v - mean);
     }
     let std = (sq / data.len() as f64).sqrt();
-    eprintln!(
-        "c1_phase_1_3: cycle_{tag} S̃ min={min:.4} mean={mean:.4} max={max:.4} std={std:.4e}"
-    );
+    eprintln!("c1_phase_1_3: cycle_{tag} S̃ min={min:.4} mean={mean:.4} max={max:.4} std={std:.4e}");
 }
 
 fn dump_snapshot(state: &C1State, cycle: usize, dir: &Path) {
@@ -497,11 +415,7 @@ fn dump_snapshot(state: &C1State, cycle: usize, dir: &Path) {
     save_s_fixed_palette_png(&state.s, S_VIZ_MAX, &s_path);
 }
 
-fn save_hypsometric_png(
-    heightmap: &ymir_core::grid::GridF32,
-    sea_norm: f32,
-    path: &Path,
-) {
+fn save_hypsometric_png(heightmap: &ymir_core::grid::GridF32, sea_norm: f32, path: &Path) {
     let nx = heightmap.width;
     let ny = heightmap.height;
     let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(nx as u32, ny as u32);
