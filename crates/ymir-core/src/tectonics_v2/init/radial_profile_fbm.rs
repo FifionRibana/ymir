@@ -236,14 +236,7 @@ pub fn build(
 
     // Phase 2 base — radial profile on continental cells, flat
     // oceanic_value on oceanic cells.
-    let mut s = radial_profile::build(
-        nx,
-        ny,
-        p,
-        continental_value,
-        oceanic_value,
-        profile_shape,
-    );
+    let mut s = radial_profile::build(nx, ny, p, continental_value, oceanic_value, profile_shape);
 
     // FBM generator. `Fbm::<Perlin>::new(u32)` seeds the underlying
     // Perlin sources; subsequent `set_*` calls configure the multi-
@@ -291,8 +284,7 @@ pub fn build(
         // D3 — derive oceanic seed: explicit `Some(seed)` wins,
         // otherwise XOR the continental seed with the magic
         // constant for reasonable independence.
-        let seed_oceanic =
-            fbm_seed_oceanic.unwrap_or(fbm_seed ^ FBM_SEED_OCEANIC_XOR_MAGIC);
+        let seed_oceanic = fbm_seed_oceanic.unwrap_or(fbm_seed ^ FBM_SEED_OCEANIC_XOR_MAGIC);
         // D4 — derive oceanic scale: explicit `Some(scale)` wins,
         // otherwise reuse the continental scale.
         let scale_oceanic = fbm_scale_oceanic.unwrap_or(fbm_scale);
@@ -339,7 +331,7 @@ pub fn build(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+    use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
     fn build_plates(
         nx: usize,
@@ -445,10 +437,7 @@ mod tests {
                 }
             }
         }
-        assert!(
-            count_oceanic > 0,
-            "no oceanic cells found in 64² × 8 plates @ 40% continental"
-        );
+        assert!(count_oceanic > 0, "no oceanic cells found in 64² × 8 plates @ 40% continental");
     }
 
     /// Acceptance: variation introduced by FBM is bounded by
@@ -463,8 +452,7 @@ mod tests {
         let p = make_init_data(&plates);
         let (amplitude, o, persist, lac, scale, seed) = defaults();
 
-        let s_radial =
-            radial_profile::build(nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep);
+        let s_radial = radial_profile::build(nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep);
         let s_fbm = build(
             nx,
             ny,
@@ -606,8 +594,7 @@ mod tests {
         let ny = 32;
         let plates = build_plates(nx, ny, 42, 6, 0.4);
         let p = make_init_data(&plates);
-        let s_radial =
-            radial_profile::build(nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep);
+        let s_radial = radial_profile::build(nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep);
         let s_fbm = build(
             nx,
             ny,
@@ -644,8 +631,18 @@ mod tests {
         // Step 13-equivalent build: oceanic FBM disabled, the
         // amplitude/scale/seed defaults are written but never read.
         let s_step13 = build(
-            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
-            a, o, persist, lac, scale, seed,
+            nx,
+            ny,
+            &p,
+            0.95,
+            0.20,
+            ProfileShape::Smoothstep,
+            a,
+            o,
+            persist,
+            lac,
+            scale,
+            seed,
             false,
             FBM_AMPLITUDE_OCEANIC_DEFAULT,
             None,
@@ -657,16 +654,29 @@ mod tests {
         // output stays byte-identical to the disabled-default
         // build above.
         let s_with_unused_params = build(
-            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
-            a, o, persist, lac, scale, seed,
+            nx,
+            ny,
+            &p,
+            0.95,
+            0.20,
+            ProfileShape::Smoothstep,
+            a,
+            o,
+            persist,
+            lac,
+            scale,
+            seed,
             false,        // <-- the gate
             0.42,         // bogus amplitude — must not be applied
             Some(0.07),   // bogus scale       — idem
             Some(0xDEAD), // bogus seed        — idem
         );
-        assert_eq!(s_step13.data(), s_with_unused_params.data(),
+        assert_eq!(
+            s_step13.data(),
+            s_with_unused_params.data(),
             "apply_fbm_to_oceanic = false must short-circuit before \
-             reading any of the oceanic FBM parameters");
+             reading any of the oceanic FBM parameters"
+        );
     }
 
     /// Step 13.5 acceptance #2 — with the flag enabled and any
@@ -682,8 +692,18 @@ mod tests {
         let (a, o, persist, lac, scale, seed) = defaults();
 
         let s = build(
-            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
-            a, o, persist, lac, scale, seed,
+            nx,
+            ny,
+            &p,
+            0.95,
+            0.20,
+            ProfileShape::Smoothstep,
+            a,
+            o,
+            persist,
+            lac,
+            scale,
+            seed,
             true,
             0.10,
             None,
@@ -712,9 +732,12 @@ mod tests {
             }
         }
         var /= count as f64;
-        assert!(var > 0.0,
+        assert!(
+            var > 0.0,
             "oceanic FBM enabled but oceanic variance is zero (count={}, mean={:.6})",
-            count, mean);
+            count,
+            mean
+        );
     }
 
     /// Step 13.5 acceptance #3 — across an amplitude sweep
@@ -732,8 +755,18 @@ mod tests {
 
         for amp_oceanic in [0.05, 0.10, 0.20, 0.30, 0.40] {
             let s = build(
-                nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
-                a, o, persist, lac, scale, seed,
+                nx,
+                ny,
+                &p,
+                0.95,
+                0.20,
+                ProfileShape::Smoothstep,
+                a,
+                o,
+                persist,
+                lac,
+                scale,
+                seed,
                 true,
                 amp_oceanic,
                 None,
@@ -745,12 +778,23 @@ mod tests {
                         continue;
                     }
                     let v = s.get(i, j);
-                    assert!(v <= OCEANIC_CLAMP_MAX + 1e-15,
+                    assert!(
+                        v <= OCEANIC_CLAMP_MAX + 1e-15,
                         "oceanic cell ({},{}) at amplitude={} crossed clamp: {} > {}",
-                        i, j, amp_oceanic, v, OCEANIC_CLAMP_MAX);
-                    assert!(v >= 0.0,
+                        i,
+                        j,
+                        amp_oceanic,
+                        v,
+                        OCEANIC_CLAMP_MAX
+                    );
+                    assert!(
+                        v >= 0.0,
                         "oceanic cell ({},{}) at amplitude={} below zero: {}",
-                        i, j, amp_oceanic, v);
+                        i,
+                        j,
+                        amp_oceanic,
+                        v
+                    );
                 }
             }
         }
@@ -770,14 +814,40 @@ mod tests {
         let (a, o, persist, lac, scale, seed) = defaults();
 
         let s_a = build(
-            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
-            a, o, persist, lac, scale, seed,
-            true, 0.10, None, Some(1),
+            nx,
+            ny,
+            &p,
+            0.95,
+            0.20,
+            ProfileShape::Smoothstep,
+            a,
+            o,
+            persist,
+            lac,
+            scale,
+            seed,
+            true,
+            0.10,
+            None,
+            Some(1),
         );
         let s_b = build(
-            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
-            a, o, persist, lac, scale, seed,
-            true, 0.10, None, Some(999),
+            nx,
+            ny,
+            &p,
+            0.95,
+            0.20,
+            ProfileShape::Smoothstep,
+            a,
+            o,
+            persist,
+            lac,
+            scale,
+            seed,
+            true,
+            0.10,
+            None,
+            Some(999),
         );
 
         let mut oceanic_diff_count = 0usize;
@@ -790,16 +860,21 @@ mod tests {
                     oceanic_diff_count += 1;
                 }
                 if matches!(pt, PlateType::Continental) {
-                    assert_eq!(va, vb,
+                    assert_eq!(
+                        va, vb,
                         "continental cell ({},{}) differs between oceanic-seed \
                          variants — continental field must be insulated from \
-                         oceanic seed: {} vs {}", i, j, va, vb);
+                         oceanic seed: {} vs {}",
+                        i, j, va, vb
+                    );
                 }
             }
         }
-        assert!(oceanic_diff_count > 0,
+        assert!(
+            oceanic_diff_count > 0,
             "no oceanic cells differ between distinct fbm_seed_oceanic values \
-             — the oceanic FBM is not actually consuming the seed");
+             — the oceanic FBM is not actually consuming the seed"
+        );
     }
 
     /// Step 13.5 acceptance #5 — `fbm_seed_oceanic = None`
@@ -818,20 +893,47 @@ mod tests {
         let derived = seed ^ FBM_SEED_OCEANIC_XOR_MAGIC;
 
         let s_default = build(
-            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
-            a, o, persist, lac, scale, seed,
-            true, 0.10, None,
+            nx,
+            ny,
+            &p,
+            0.95,
+            0.20,
+            ProfileShape::Smoothstep,
+            a,
+            o,
+            persist,
+            lac,
+            scale,
+            seed,
+            true,
+            0.10,
+            None,
             None, // <-- derive from fbm_seed
         );
         let s_explicit = build(
-            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
-            a, o, persist, lac, scale, seed,
-            true, 0.10, None,
+            nx,
+            ny,
+            &p,
+            0.95,
+            0.20,
+            ProfileShape::Smoothstep,
+            a,
+            o,
+            persist,
+            lac,
+            scale,
+            seed,
+            true,
+            0.10,
+            None,
             Some(derived), // <-- explicit derivation
         );
-        assert_eq!(s_default.data(), s_explicit.data(),
+        assert_eq!(
+            s_default.data(),
+            s_explicit.data(),
             "fbm_seed_oceanic = None must derive from fbm_seed XOR 0x{:X}",
-            FBM_SEED_OCEANIC_XOR_MAGIC);
+            FBM_SEED_OCEANIC_XOR_MAGIC
+        );
     }
 
     /// Step 13.5 acceptance #6 — different `fbm_scale_oceanic`
@@ -849,14 +951,40 @@ mod tests {
         let (a, o, persist, lac, scale, seed) = defaults();
 
         let s_short_wave = build(
-            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
-            a, o, persist, lac, scale, seed,
-            true, 0.10, Some(0.05), Some(1),
+            nx,
+            ny,
+            &p,
+            0.95,
+            0.20,
+            ProfileShape::Smoothstep,
+            a,
+            o,
+            persist,
+            lac,
+            scale,
+            seed,
+            true,
+            0.10,
+            Some(0.05),
+            Some(1),
         );
         let s_long_wave = build(
-            nx, ny, &p, 0.95, 0.20, ProfileShape::Smoothstep,
-            a, o, persist, lac, scale, seed,
-            true, 0.10, Some(0.20), Some(1),
+            nx,
+            ny,
+            &p,
+            0.95,
+            0.20,
+            ProfileShape::Smoothstep,
+            a,
+            o,
+            persist,
+            lac,
+            scale,
+            seed,
+            true,
+            0.10,
+            Some(0.20),
+            Some(1),
         );
 
         let mut oceanic_diff_count = 0usize;
@@ -870,9 +998,11 @@ mod tests {
                 }
             }
         }
-        assert!(oceanic_diff_count > 0,
+        assert!(
+            oceanic_diff_count > 0,
             "no oceanic cells differ between fbm_scale_oceanic = 0.05 and 0.20 — \
-             the scale parameter is not being applied");
+             the scale parameter is not being applied"
+        );
     }
 
     /// Sanity: distinct seeds produce distinct fields (FBM is

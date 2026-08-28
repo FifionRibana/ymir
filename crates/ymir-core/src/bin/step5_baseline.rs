@@ -23,17 +23,17 @@ use std::time::Instant;
 
 use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use ymir_core::tectonics_v2::boundaries::{
-    boundary_type_diversity, build_layout, calibrate_k_spread, BoundaryConfig, BoundaryLayout,
-    BoundaryMechanismActive, BoundaryRates, KSpreadCalibration,
+    BoundaryConfig, BoundaryLayout, BoundaryMechanismActive, BoundaryRates, KSpreadCalibration,
+    boundary_type_diversity, build_layout, calibrate_k_spread,
 };
-use ymir_core::tectonics_v2::diagnostics::comparison::{parse_step_report, StepReference};
+use ymir_core::tectonics_v2::diagnostics::comparison::{StepReference, parse_step_report};
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
-use ymir_core::tectonics_v2::diagnostics::k_sub_sweep::{run_k_sub_sweep, KSubSweepResults};
+use ymir_core::tectonics_v2::diagnostics::k_sub_sweep::{KSubSweepResults, run_k_sub_sweep};
 use ymir_core::tectonics_v2::diagnostics::mms_bench;
 use ymir_core::tectonics_v2::diagnostics::report::{
-    default_previous_report_for, write_markdown_report, ReportInputs, ReportKind,
+    ReportInputs, ReportKind, default_previous_report_for, write_markdown_report,
 };
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
 use ymir_core::tectonics_v2::rheology::YieldingLaw;
@@ -81,13 +81,18 @@ fn parse_args() -> Result<Args, String> {
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
-            "--seed" => { i += 1; a.seed = args[i].parse().map_err(|e| format!("bad --seed: {e}"))?; }
+            "--seed" => {
+                i += 1;
+                a.seed = args[i].parse().map_err(|e| format!("bad --seed: {e}"))?;
+            }
             "--grids" => {
                 i += 1;
                 let mut grids: Vec<(usize, usize)> = Vec::new();
                 for tok in args[i].split(',') {
                     let tok = tok.trim();
-                    if tok.is_empty() { continue; }
+                    if tok.is_empty() {
+                        continue;
+                    }
                     if let Some((x, y)) = tok.split_once('x') {
                         let nx: usize = x.parse().map_err(|e| format!("bad grid {tok}: {e}"))?;
                         let ny: usize = y.parse().map_err(|e| format!("bad grid {tok}: {e}"))?;
@@ -97,18 +102,49 @@ fn parse_args() -> Result<Args, String> {
                         grids.push((n, n));
                     }
                 }
-                if grids.is_empty() { return Err("--grids produced no grid sizes".into()); }
+                if grids.is_empty() {
+                    return Err("--grids produced no grid sizes".into());
+                }
                 a.grids = grids;
             }
-            "--steps" => { i += 1; a.steps = args[i].parse().map_err(|e| format!("bad --steps: {e}"))?; }
-            "--output-dir" | "--output" => { i += 1; a.output_dir = PathBuf::from(&args[i]); }
-            "--preset" => { i += 1; a.preset = Preset::by_name(&args[i])?; }
-            "--layout" => { i += 1; a.layout_name = args[i].clone(); }
-            "--k-sub" => { i += 1; a.k_sub = args[i].parse().map_err(|e| format!("bad --k-sub: {e}"))?; }
-            "--bi" => { i += 1; a.bi = args[i].parse().map_err(|e| format!("bad --bi: {e}"))?; }
-            "--br" => { i += 1; a.br = args[i].parse().map_err(|e| format!("bad --br: {e}"))?; }
-            "--k-spread" => { i += 1; a.k_spread_override = Some(args[i].parse().map_err(|e| format!("bad --k-spread: {e}"))?); }
-            "--calibration-steps" => { i += 1; a.calibration_steps = args[i].parse().map_err(|e| format!("bad --calibration-steps: {e}"))?; }
+            "--steps" => {
+                i += 1;
+                a.steps = args[i].parse().map_err(|e| format!("bad --steps: {e}"))?;
+            }
+            "--output-dir" | "--output" => {
+                i += 1;
+                a.output_dir = PathBuf::from(&args[i]);
+            }
+            "--preset" => {
+                i += 1;
+                a.preset = Preset::by_name(&args[i])?;
+            }
+            "--layout" => {
+                i += 1;
+                a.layout_name = args[i].clone();
+            }
+            "--k-sub" => {
+                i += 1;
+                a.k_sub = args[i].parse().map_err(|e| format!("bad --k-sub: {e}"))?;
+            }
+            "--bi" => {
+                i += 1;
+                a.bi = args[i].parse().map_err(|e| format!("bad --bi: {e}"))?;
+            }
+            "--br" => {
+                i += 1;
+                a.br = args[i].parse().map_err(|e| format!("bad --br: {e}"))?;
+            }
+            "--k-spread" => {
+                i += 1;
+                a.k_spread_override =
+                    Some(args[i].parse().map_err(|e| format!("bad --k-spread: {e}"))?);
+            }
+            "--calibration-steps" => {
+                i += 1;
+                a.calibration_steps =
+                    args[i].parse().map_err(|e| format!("bad --calibration-steps: {e}"))?;
+            }
             "--help" | "-h" => {
                 println!(
                     "Usage: step5_baseline [--seed N] [--grids N1,N2,...] [--steps N] \
@@ -127,10 +163,7 @@ fn parse_args() -> Result<Args, String> {
     Ok(a)
 }
 
-fn resolve_previous(
-    kind: ReportKind,
-    output_dir: &std::path::Path,
-) -> Option<StepReference> {
+fn resolve_previous(kind: ReportKind, output_dir: &std::path::Path) -> Option<StepReference> {
     let path = default_previous_report_for(kind, output_dir);
     if !path.exists() {
         eprintln!("note: previous report not found at {:?} — comparison block omitted", path);
@@ -186,18 +219,14 @@ fn layout_ascii(layout: &BoundaryLayout) -> String {
 /// Run one boundary-enabled 64²·calibration_steps simulation at the
 /// supplied `k_spread` and return the final `s_oceanic_mean`. Used
 /// as the calibration closure.
-fn calibration_probe(
-    args: &Args,
-    k_spread: f64,
-) -> f64 {
+fn calibration_probe(args: &Args, k_spread: f64) -> f64 {
     let nx = 64;
     let ny = 64;
     let scales = Scales::default();
     let layout = build_layout(&args.layout_name, nx, ny).expect("valid layout");
     let layout_name = layout.name.to_string();
-    let rates = BoundaryRates::baseline_uncalibrated()
-        .with_k_spread(k_spread)
-        .with_k_sub(args.k_sub);
+    let rates =
+        BoundaryRates::baseline_uncalibrated().with_k_spread(k_spread).with_k_sub(args.k_sub);
     let boundary = layout.into_config(rates);
     let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
     let cfg = BaselineConfig {
@@ -241,14 +270,10 @@ fn calibration_probe(
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     let r = run_baseline(&cfg);
-    r.metrics
-        .newton
-        .as_ref()
-        .and_then(|n| n.s_oceanic_mean)
-        .unwrap_or(f64::NAN)
+    r.metrics.newton.as_ref().and_then(|n| n.s_oceanic_mean).unwrap_or(f64::NAN)
 }
 
 struct ScenarioResult {
@@ -334,7 +359,10 @@ fn run_scenario_multi_grid(
 fn main() -> ExitCode {
     let args = match parse_args() {
         Ok(a) => a,
-        Err(e) => { eprintln!("argument error: {e}"); return ExitCode::from(2); }
+        Err(e) => {
+            eprintln!("argument error: {e}");
+            return ExitCode::from(2);
+        }
     };
     let scales = Scales::default();
     println!("{}", scales.report());
@@ -354,10 +382,12 @@ fn main() -> ExitCode {
             println!("--k-spread={} supplied → skipping calibration", k);
             ymir_core::tectonics_v2::boundaries::CalibrationResult {
                 k_spread: k,
-                iterations: vec![ymir_core::tectonics_v2::boundaries::calibration::CalibrationIter {
-                    k_spread: k,
-                    s_oceanic_mean: f64::NAN,
-                }],
+                iterations: vec![
+                    ymir_core::tectonics_v2::boundaries::calibration::CalibrationIter {
+                        k_spread: k,
+                        s_oceanic_mean: f64::NAN,
+                    },
+                ],
                 final_s_oceanic_mean: f64::NAN,
             }
         }
@@ -439,16 +469,11 @@ fn main() -> ExitCode {
             p.wallclock_s,
         );
     }
-    println!(
-        "  monotonicity: s_oceanic strictly ↓ with k_sub? {}",
-        k_sub_sweep.s_oceanic_mono_ok,
-    );
+    println!("  monotonicity: s_oceanic strictly ↓ with k_sub? {}", k_sub_sweep.s_oceanic_mono_ok,);
 
     // -------- Reference variant (Step 4 physics-yielding-Enabled) --------
     println!("\n=== Step 5 reference variant (Step 4 physics with yielding Enabled) ===");
-    let reference_builder = |_nx: usize, _ny: usize| {
-        (BoundaryConfig::Disabled, String::new())
-    };
+    let reference_builder = |_nx: usize, _ny: usize| (BoundaryConfig::Disabled, String::new());
     let reference_variant = run_scenario_multi_grid(
         &args,
         reference_builder,
@@ -558,9 +583,7 @@ fn main() -> ExitCode {
     }
     let _ = physics.max_vmax;
     let _ = boundary_type_diversity;
-    let _ = BoundaryMechanismActive {
-        sub: true, spread: true, coll_v: true, rift_v: true,
-    };
+    let _ = BoundaryMechanismActive { sub: true, spread: true, coll_v: true, rift_v: true };
 
     ExitCode::SUCCESS
 }

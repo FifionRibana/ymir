@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use super::harness::{run_baseline, BaselineConfig, BaselineResult, ForceKind, NonlinearChoice};
+use super::harness::{BaselineConfig, BaselineResult, ForceKind, NonlinearChoice, run_baseline};
 use crate::tectonics_v2::basal_drag::BasalDragConfig;
 use crate::tectonics_v2::forcing::{ForceSum, GpeForce};
 use crate::tectonics_v2::presets::{Preset, YieldingConfig};
@@ -107,17 +107,17 @@ fn summarise(bi: f64, r: &BaselineResult) -> BiSweepPoint {
     let m = &r.metrics;
     let (s_min, s_max, s_mean, s_std) = s_stats(m);
     let newton = m.newton.as_ref();
-    let (conv_pct, newton_iter_mean) = newton
-        .map(|n| (n.outcome_percentages().0, n.outer_iters_mean()))
-        .unwrap_or((0.0, 0.0));
-    let yield_frac = newton
-        .and_then(|n| n.yielding_cell_fraction_max)
-        .unwrap_or(0.0);
+    let (conv_pct, newton_iter_mean) =
+        newton.map(|n| (n.outcome_percentages().0, n.outer_iters_mean())).unwrap_or((0.0, 0.0));
+    let yield_frac = newton.and_then(|n| n.yielding_cell_fraction_max).unwrap_or(0.0);
     let yield_int = newton.and_then(|n| n.yielding_intensity_max).unwrap_or(0.0);
     BiSweepPoint {
         bi,
         wallclock_s: m.wallclock_total.as_secs_f64(),
-        s_min, s_max, s_mean, s_std,
+        s_min,
+        s_max,
+        s_mean,
+        s_std,
         yielding_cell_fraction_max: yield_frac,
         yielding_intensity_max: yield_int,
         newton_converged_pct: conv_pct,

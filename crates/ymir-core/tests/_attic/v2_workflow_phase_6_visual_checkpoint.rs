@@ -42,20 +42,20 @@ use ymir_core::tectonics_v2::basal_drag::BasalDragConfig;
 use ymir_core::tectonics_v2::boundaries::{BoundaryConfig, BoundaryRates};
 use ymir_core::tectonics_v2::cratonic::CratonicConfig;
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force,
 };
 use ymir_core::tectonics_v2::diagnostics::heightmap::save_heightmap;
 use ymir_core::tectonics_v2::field::Field2D;
-use ymir_core::tectonics_v2::init::{init_s_field, InitContext, InitMode, PlateInitData};
+use ymir_core::tectonics_v2::init::{InitContext, InitMode, PlateInitData, init_s_field};
 use ymir_core::tectonics_v2::mantle::MantleConfig;
 use ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig;
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
 use ymir_core::tectonics_v2::recycling::RecyclingConfig;
 use ymir_core::tectonics_v2::scales::Scales;
 use ymir_core::tectonics_v2::slab::SlabPullConfig;
-use ymir_core::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+use ymir_core::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 use ymir_core::tectonics_v2::workflow::{
-    run_phase_a_loop_v2, run_phase_b, PhaseAParams, PhaseBParams, WorkflowConfig, WorkflowParams,
+    PhaseAParams, PhaseBParams, WorkflowConfig, WorkflowParams, run_phase_a_loop_v2, run_phase_b,
 };
 
 const NX: usize = 32;
@@ -205,8 +205,14 @@ fn dump_step12_phase_a_evolution_galerie() {
             preset.seed, preset.num_plates, preset.continental_ratio
         ));
         report_lines.push(String::new());
-        report_lines.push("| cycle | peak S̃ | mass drift | erosion volume | sea_level | craton change |".to_string());
-        report_lines.push("|------:|------:|-----------:|---------------:|----------:|--------------:|".to_string());
+        report_lines.push(
+            "| cycle | peak S̃ | mass drift | erosion volume | sea_level | craton change |"
+                .to_string(),
+        );
+        report_lines.push(
+            "|------:|------:|-----------:|---------------:|----------:|--------------:|"
+                .to_string(),
+        );
         let mut cum_drift = 0.0_f64;
         for (i, c) in phase_a.cycles.iter().enumerate() {
             let peak_s: f64 = c
@@ -218,13 +224,17 @@ fn dump_step12_phase_a_evolution_galerie() {
                 .copied()
                 .fold(f64::NEG_INFINITY, f64::max);
             cum_drift += c.common.mass_drift;
-            let craton = c.common.craton_recomputation_change.map_or("—".to_string(), |v| format!("{v:.4}"));
+            let craton = c
+                .common
+                .craton_recomputation_change
+                .map_or("—".to_string(), |v| format!("{v:.4}"));
             report_lines.push(format!(
                 "| {i} | {peak_s:.4} | {:+.5} | {:.5} | {:.4} | {craton} |",
                 c.common.mass_drift, c.common.erosion_volume_removed, c.common.sea_level_normalized
             ));
         }
-        report_lines.push(format!("  Cumulative mass drift over {N_CYCLES} cycles: {cum_drift:+.5}"));
+        report_lines
+            .push(format!("  Cumulative mass drift over {N_CYCLES} cycles: {cum_drift:+.5}"));
         report_lines.push(String::new());
 
         let after_s = phase_a.cycles.last().unwrap().baseline.final_state.s_field.clone();
@@ -297,10 +307,7 @@ fn dump_step12_phase_b_hd_zoom() {
         phase_a: PhaseAParams { n_cycles: N_CYCLES, k_cycle: K_CYCLE, alpha: ALPHA, beta: 0.0 },
         phase_b: PhaseBParams {
             hd_grid_size: 512,
-            erosion: ErosionConfig {
-                num_droplets: 500_000,
-                ..ErosionConfig::default()
-            },
+            erosion: ErosionConfig { num_droplets: 500_000, ..ErosionConfig::default() },
             ..PhaseBParams::default()
         },
     });
@@ -412,7 +419,12 @@ fn build_64sq_cfg_and_wf(
     let rates =
         BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
     let boundary = BoundaryConfig::enabled_voronoi_closed(
-        nx, ny, &vcfg, preset.seed, rates, RecyclingConfig::default(),
+        nx,
+        ny,
+        &vcfg,
+        preset.seed,
+        rates,
+        RecyclingConfig::default(),
     )
     .expect("boundary");
     let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
@@ -430,7 +442,10 @@ fn build_64sq_cfg_and_wf(
         newton_cfg: Default::default(),
         picard_cfg: Default::default(),
         heightmap_fractions: Vec::new(),
-        output_dir: PathBuf::from(format!("target/v2_workflow_phase6/{}_{}", scratch, preset.label)),
+        output_dir: PathBuf::from(format!(
+            "target/v2_workflow_phase6/{}_{}",
+            scratch, preset.label
+        )),
         force,
         force_kind: ForceKind::Gpe,
         sinusoidal_amplitude: 0.0,
@@ -453,10 +468,7 @@ fn build_64sq_cfg_and_wf(
         phase_a: PhaseAParams { n_cycles, k_cycle: K_CYCLE, alpha, beta: 0.0 },
         phase_b: PhaseBParams {
             hd_grid_size: 1024,
-            erosion: ErosionConfig {
-                num_droplets: hd_droplets,
-                ..ErosionConfig::default()
-            },
+            erosion: ErosionConfig { num_droplets: hd_droplets, ..ErosionConfig::default() },
             ..PhaseBParams::default()
         },
     });
@@ -508,9 +520,7 @@ fn dump_step12_phase_6_64sq_full() {
     let force_proto = || build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
 
     println!();
-    println!(
-        "Step 12 Phase 6 heavy — 64² Phase A × {N_CYCLES} cycles + HD 1024² Phase B"
-    );
+    println!("Step 12 Phase 6 heavy — 64² Phase A × {N_CYCLES} cycles + HD 1024² Phase B");
     println!("  presets: {}, {}", PRESETS[0].label, PRESETS[1].label);
     println!();
 
@@ -518,9 +528,7 @@ fn dump_step12_phase_6_64sq_full() {
     // total, laid out 2 rows × 2 cols.
     let mut tiles: Vec<(String, Field2D)> = Vec::with_capacity(4);
     let mut report_lines: Vec<String> = vec![
-        format!(
-            "Step 12 Phase 6 heavy — 64² Phase A × {N_CYCLES} cycles + HD 1024² Phase B"
-        ),
+        format!("Step 12 Phase 6 heavy — 64² Phase A × {N_CYCLES} cycles + HD 1024² Phase B"),
         String::new(),
     ];
 
@@ -580,10 +588,7 @@ fn dump_step12_phase_6_64sq_full() {
             phase_a: PhaseAParams { n_cycles: N_CYCLES, k_cycle: K_CYCLE, alpha: ALPHA, beta: 0.0 },
             phase_b: PhaseBParams {
                 hd_grid_size: 1024,
-                erosion: ErosionConfig {
-                    num_droplets: 1_000_000,
-                    ..ErosionConfig::default()
-                },
+                erosion: ErosionConfig { num_droplets: 1_000_000, ..ErosionConfig::default() },
                 ..PhaseBParams::default()
             },
         });
@@ -595,13 +600,8 @@ fn dump_step12_phase_6_64sq_full() {
             plate_type: &plates.plate_type,
             seed_coords: Some(&plates.seed_coords),
         };
-        let ctx = InitContext {
-            nx,
-            ny,
-            seed: preset.seed,
-            amplitude: 0.2,
-            plate_data: Some(plate_data),
-        };
+        let ctx =
+            InitContext { nx, ny, seed: preset.seed, amplitude: 0.2, plate_data: Some(plate_data) };
         let init_s = init_s_field(InitMode::Checkerboard, &ctx);
         tiles.push((format!("{}_before", preset.label), init_s));
 
@@ -621,14 +621,15 @@ fn dump_step12_phase_6_64sq_full() {
 
         // Phase B HD 1024².
         let phase_b_start = Instant::now();
-        let phase_b = run_phase_b(&last.baseline.final_state.s_field, &wf, cfg.seed).expect("phase b");
+        let phase_b =
+            run_phase_b(&last.baseline.final_state.s_field, &wf, cfg.seed).expect("phase b");
         let phase_b_elapsed = phase_b_start.elapsed().as_secs_f64();
 
         // Cumulative mass drift over Phase A.
         let cum_drift: f64 = phase_a.cycles.iter().map(|c| c.common.mass_drift).sum();
-        let initial_mass_estimate =
-            ((preset.continental_ratio + (1.0 - preset.continental_ratio) * 0.2) as f64)
-                * (nx * ny) as f64; // continental ≈ 1.0, oceanic ≈ 0.2
+        let initial_mass_estimate = ((preset.continental_ratio
+            + (1.0 - preset.continental_ratio) * 0.2) as f64)
+            * (nx * ny) as f64; // continental ≈ 1.0, oceanic ≈ 0.2
         let drift_fraction = cum_drift.abs() / initial_mass_estimate;
 
         // Write per-preset HD output.
@@ -647,9 +648,22 @@ fn dump_step12_phase_6_64sq_full() {
             drift_fraction * 100.0,
             initial_mass_estimate
         );
-        println!("                  peak S̃ trajectory: {:?}", phase_a.cycles.iter().map(|c| {
-            c.baseline.final_state.s_field.data().iter().copied().fold(f64::NEG_INFINITY, f64::max)
-        }).collect::<Vec<_>>());
+        println!(
+            "                  peak S̃ trajectory: {:?}",
+            phase_a
+                .cycles
+                .iter()
+                .map(|c| {
+                    c.baseline
+                        .final_state
+                        .s_field
+                        .data()
+                        .iter()
+                        .copied()
+                        .fold(f64::NEG_INFINITY, f64::max)
+                })
+                .collect::<Vec<_>>()
+        );
         println!(
             "                  Phase A range=[{:.4}, {:.4}], mean={:.4}",
             lowres_meta.min, lowres_meta.max, lowres_meta.mean
@@ -679,9 +693,16 @@ fn dump_step12_phase_6_64sq_full() {
             "  seed={} num_plates={} cont_ratio={:.2}",
             preset.seed, preset.num_plates, preset.continental_ratio
         ));
-        report_lines.push(format!("  Phase A wallclock : {:.2} s ({:.2} s/cycle)", phase_a_elapsed, mean_per_cycle));
+        report_lines.push(format!(
+            "  Phase A wallclock : {:.2} s ({:.2} s/cycle)",
+            phase_a_elapsed, mean_per_cycle
+        ));
         report_lines.push(format!("  Phase B wallclock : {:.2} s", phase_b_elapsed));
-        report_lines.push(format!("  Cumulative mass drift : {:+.3} ({:.2} % of initial mass)", cum_drift, drift_fraction * 100.0));
+        report_lines.push(format!(
+            "  Cumulative mass drift : {:+.3} ({:.2} % of initial mass)",
+            cum_drift,
+            drift_fraction * 100.0
+        ));
         report_lines.push(format!(
             "  D5 metrics : p95={:.4} (acceptance), L_∞={:.4} (diagnostic)",
             phase_b.grand_scale_deviation_p95, phase_b.grand_scale_deviation
@@ -769,7 +790,8 @@ fn dump_step12_phase_6_aggressive_demo() {
         "**Note:** This is a *visual demo* configuration, not a recommended baseline. \
          The D8 defaults (α=0.01, N=5) are the issue's prescribed conservative starting point; \
          this variant runs with 5× α + 3× cycles to make acceptance #6 (non-polygonal contours) \
-         visually evident.".to_string(),
+         visually evident."
+            .to_string(),
         String::new(),
     ];
 
@@ -778,18 +800,26 @@ fn dump_step12_phase_6_aggressive_demo() {
             build_64sq_cfg_and_wf(preset, N_CYCLES_AGG, ALPHA_AGG, HD_DROPLETS_AGG, "aggressive");
 
         // Init S̃ for the patchwork "before" tile.
-        let plates = generate_voronoi(64, 64, &VoronoiConfig {
-            num_plates: preset.num_plates,
-            continental_ratio: preset.continental_ratio,
-        }, preset.seed);
+        let plates = generate_voronoi(
+            64,
+            64,
+            &VoronoiConfig {
+                num_plates: preset.num_plates,
+                continental_ratio: preset.continental_ratio,
+            },
+            preset.seed,
+        );
         let plate_data = PlateInitData {
             plate_id: &plates.plate_id,
             plate_type: &plates.plate_type,
             seed_coords: Some(&plates.seed_coords),
         };
         let ctx = InitContext {
-            nx: 64, ny: 64, seed: preset.seed,
-            amplitude: 0.2, plate_data: Some(plate_data),
+            nx: 64,
+            ny: 64,
+            seed: preset.seed,
+            amplitude: 0.2,
+            plate_data: Some(plate_data),
         };
         let init_s = init_s_field(InitMode::Checkerboard, &ctx);
         tiles.push((format!("{}_before", preset.label), init_s));
@@ -803,14 +833,15 @@ fn dump_step12_phase_6_aggressive_demo() {
         tiles.push((format!("{}_after", preset.label), after_s.clone()));
 
         let phase_b_start = Instant::now();
-        let phase_b = run_phase_b(&last.baseline.final_state.s_field, &wf, cfg.seed).expect("phase b");
+        let phase_b =
+            run_phase_b(&last.baseline.final_state.s_field, &wf, cfg.seed).expect("phase b");
         let phase_b_elapsed = phase_b_start.elapsed().as_secs_f64();
 
         // Aggregate metrics.
         let cum_drift: f64 = phase_a.cycles.iter().map(|c| c.common.mass_drift).sum();
-        let initial_mass_estimate =
-            ((preset.continental_ratio + (1.0 - preset.continental_ratio) * 0.2) as f64)
-                * (64.0 * 64.0);
+        let initial_mass_estimate = ((preset.continental_ratio
+            + (1.0 - preset.continental_ratio) * 0.2) as f64)
+            * (64.0 * 64.0);
         let drift_fraction = cum_drift.abs() / initial_mass_estimate;
         let peaks: Vec<f64> = phase_a
             .cycles
@@ -839,16 +870,23 @@ fn dump_step12_phase_6_aggressive_demo() {
 
         println!(
             "  [{:<16}] Phase A 64² × {} cycles α={} : {:.2} s ({:.2} s/cycle)",
-            preset.label, N_CYCLES_AGG, ALPHA_AGG, phase_a_elapsed,
+            preset.label,
+            N_CYCLES_AGG,
+            ALPHA_AGG,
+            phase_a_elapsed,
             phase_a_elapsed / N_CYCLES_AGG as f64
         );
         println!(
             "                  cum mass drift = {:+.3} ({:.2} % of initial mass {:.1})",
-            cum_drift, drift_fraction * 100.0, initial_mass_estimate
+            cum_drift,
+            drift_fraction * 100.0,
+            initial_mass_estimate
         );
         println!(
             "                  peak S̃ first→last = {:.4} → {:.4} (drift {:.3} %)",
-            peak_first, peak_last, peak_drift_total * 100.0
+            peak_first,
+            peak_last,
+            peak_drift_total * 100.0
         );
         println!(
             "                  Phase A range=[{:.4}, {:.4}], mean={:.4}",
@@ -871,16 +909,20 @@ fn dump_step12_phase_6_aggressive_demo() {
         ));
         report_lines.push(format!(
             "  Phase A wallclock : {:.2} s ({:.2} s/cycle)",
-            phase_a_elapsed, phase_a_elapsed / N_CYCLES_AGG as f64
+            phase_a_elapsed,
+            phase_a_elapsed / N_CYCLES_AGG as f64
         ));
         report_lines.push(format!("  Phase B wallclock : {:.2} s", phase_b_elapsed));
         report_lines.push(format!(
             "  Cumulative mass drift : {:+.3} ({:.2} % of initial mass)",
-            cum_drift, drift_fraction * 100.0
+            cum_drift,
+            drift_fraction * 100.0
         ));
         report_lines.push(format!(
             "  Peak S̃ trajectory : first {:.4}, last {:.4}, drift {:.3} %",
-            peak_first, peak_last, peak_drift_total * 100.0
+            peak_first,
+            peak_last,
+            peak_drift_total * 100.0
         ));
         report_lines.push(format!(
             "  D5 metrics : p95={:.4}, L_∞={:.4}",
@@ -911,8 +953,7 @@ fn dump_step12_phase_6_aggressive_demo() {
     let patch_path = out_dir.join("patchwork_phase_a_evolution_64sq_aggressive.png");
     save_heightmap(&patch, &patch_path).expect("save patchwork");
     let patch_up = nn_upscale(&patch, 6);
-    let patch_up_path =
-        out_dir.join("patchwork_phase_a_evolution_64sq_aggressive_x6.png");
+    let patch_up_path = out_dir.join("patchwork_phase_a_evolution_64sq_aggressive_x6.png");
     save_heightmap(&patch_up, &patch_up_path).expect("save patchwork (NN-upscaled)");
 
     println!();
@@ -962,12 +1003,7 @@ fn apply_erosion_with_alpha_field(
                 if s_i <= sea_level_ref {
                     continue;
                 }
-                let neighbors = [
-                    (i, prev_y[j]),
-                    (next_x[i], j),
-                    (i, next_y[j]),
-                    (prev_x[i], j),
-                ];
+                let neighbors = [(i, prev_y[j]), (next_x[i], j), (i, next_y[j]), (prev_x[i], j)];
                 let mut max_slope = 0.0_f64;
                 let mut best_idx = 0_usize;
                 let mut best_h = s_data[neighbors[0].1 * nx + neighbors[0].0];
@@ -1023,8 +1059,8 @@ fn build_alpha_noise_field(nx: usize, ny: usize, alpha_base: f64, magnitude: f64
     for j in 0..ny {
         for i in 0..nx {
             let n1 = (i as f64 * kx).sin() * (j as f64 * ky).cos();
-            let n2 = ((i as f64 + 7.0) * kx * 1.3 + 0.7).cos()
-                * ((j as f64 + 11.0) * ky * 0.9).sin();
+            let n2 =
+                ((i as f64 + 7.0) * kx * 1.3 + 0.7).cos() * ((j as f64 + 11.0) * ky * 0.9).sin();
             let noise = (n1 + n2) * 0.5;
             f.set(i, j, alpha_base * (1.0 + magnitude * noise));
         }
@@ -1046,8 +1082,7 @@ fn run_custom_phase_a_loop(
     let mut drifts = Vec::with_capacity(n_cycles);
     let mut last_s: Option<Field2D> = None;
     for cycle_idx in 0..n_cycles {
-        let mut baseline =
-            ymir_core::tectonics_v2::diagnostics::harness::run_baseline(cfg);
+        let mut baseline = ymir_core::tectonics_v2::diagnostics::harness::run_baseline(cfg);
         let mass_before: f64 = baseline.final_state.s_field.data().iter().sum();
         // S̃-space sea_level (Phase 3.5 fix).
         let s_data = baseline.final_state.s_field.data();
@@ -1103,38 +1138,51 @@ fn dump_step12_phase_6_curvature_variants() {
         // (label, alpha, beta, n_cycles, use_custom_alpha_field)
         ("v1_beta05_alpha005_n15", 0.05, 0.5, 15, false),
         ("v2_beta05_alpha002_n30", 0.02, 0.5, 30, false),
-        ("v3_alpha_noise_n15",      0.05, 0.0, 15, true),
+        ("v3_alpha_noise_n15", 0.05, 0.0, 15, true),
     ];
 
-    let mut all_lines: Vec<String> = vec![
-        "Step 12 Phase 6 — D2 curvature variants probe".to_string(),
-        String::new(),
-    ];
+    let mut all_lines: Vec<String> =
+        vec!["Step 12 Phase 6 — D2 curvature variants probe".to_string(), String::new()];
 
     for (label, alpha, beta, n_cycles, use_custom) in variants {
-        println!("=== Variant: {label} (α={alpha}, β={beta}, N={n_cycles}, custom={use_custom}) ===");
+        println!(
+            "=== Variant: {label} (α={alpha}, β={beta}, N={n_cycles}, custom={use_custom}) ==="
+        );
         let variant_start = Instant::now();
         let mut tiles: Vec<(String, Field2D)> = Vec::with_capacity(4);
 
         for preset in PRESETS.iter() {
-            let plates = generate_voronoi(64, 64, &VoronoiConfig {
-                num_plates: preset.num_plates,
-                continental_ratio: preset.continental_ratio,
-            }, preset.seed);
+            let plates = generate_voronoi(
+                64,
+                64,
+                &VoronoiConfig {
+                    num_plates: preset.num_plates,
+                    continental_ratio: preset.continental_ratio,
+                },
+                preset.seed,
+            );
             let plate_data = PlateInitData {
                 plate_id: &plates.plate_id,
                 plate_type: &plates.plate_type,
                 seed_coords: Some(&plates.seed_coords),
             };
             let ctx = InitContext {
-                nx: 64, ny: 64, seed: preset.seed,
-                amplitude: 0.2, plate_data: Some(plate_data),
+                nx: 64,
+                ny: 64,
+                seed: preset.seed,
+                amplitude: 0.2,
+                plate_data: Some(plate_data),
             };
             let init_s = init_s_field(InitMode::Checkerboard, &ctx);
             tiles.push((format!("{}_before", preset.label), init_s));
 
-            let (mut cfg, wf) =
-                build_64sq_cfg_and_wf(preset, n_cycles, alpha, 5_000_000, &format!("variants_{label}"));
+            let (mut cfg, wf) = build_64sq_cfg_and_wf(
+                preset,
+                n_cycles,
+                alpha,
+                5_000_000,
+                &format!("variants_{label}"),
+            );
 
             let after_s: Field2D;
             let cum_drift: f64;

@@ -88,7 +88,9 @@ impl SyncSlicePtr {
     #[inline(always)]
     unsafe fn write(&self, i: usize, v: f64) {
         debug_assert!(i < self.len);
-        unsafe { *self.ptr.add(i) = v; }
+        unsafe {
+            *self.ptr.add(i) = v;
+        }
     }
 }
 
@@ -156,7 +158,9 @@ fn update_row(a: &CsrMatrix, b: &[f64], sync: &SyncSlicePtr, i: usize) {
     if diag.abs() > 1e-300 {
         // Safe: all workers in this for_each write to distinct
         // indices (disjoint colour partition).
-        unsafe { sync.write(i, acc / diag); }
+        unsafe {
+            sync.write(i, acc / diag);
+        }
     }
 }
 
@@ -247,11 +251,7 @@ mod tests {
             );
             prev = r_norm;
         }
-        assert!(
-            prev < r0_norm / 10.0,
-            "30 RBGS sweeps gave only {:.3}× reduction",
-            r0_norm / prev,
-        );
+        assert!(prev < r0_norm / 10.0, "30 RBGS sweeps gave only {:.3}× reduction", r0_norm / prev,);
     }
 
     #[test]

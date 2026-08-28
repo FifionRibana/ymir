@@ -45,11 +45,7 @@ use super::splitting::CfType;
 ///
 /// Output dimensions: `n_rows = cf.len()` (fine), `n_cols = |C|`
 /// (coarse).
-pub fn build_prolongation(
-    a: &CsrMatrix,
-    strong: &[Vec<usize>],
-    cf: &[CfType],
-) -> CsrMatrix {
+pub fn build_prolongation(a: &CsrMatrix, strong: &[Vec<usize>], cf: &[CfType]) -> CsrMatrix {
     let n = cf.len();
     assert_eq!(a.n_rows, n);
     assert_eq!(a.n_cols, n);
@@ -193,18 +189,12 @@ pub fn build_prolongation(
         row_ptr.push(col_idx.len());
     }
 
-    CsrMatrix {
-        n_rows: n,
-        n_cols: n_coarse,
-        row_ptr,
-        col_idx,
-        values,
-    }
+    CsrMatrix { n_rows: n, n_cols: n_coarse, row_ptr, col_idx, values }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::splitting::{classical_rs_splitting, CfType};
+    use super::super::splitting::{CfType, classical_rs_splitting};
     use super::super::strong_connections::{
         build_poisson_laplacian_csr, compute_strong_connections,
     };

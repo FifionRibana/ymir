@@ -20,9 +20,11 @@
 //!   2. `apply_momentum` augments drag but `momentum_diagonal`
 //!      forgot to, or vice versa.
 
-use ymir_core::tectonics_v2::basal_drag::{build_drag_diagonal_field, BasalDragConfig, BasalDragLaw};
+use ymir_core::tectonics_v2::basal_drag::{
+    BasalDragConfig, BasalDragLaw, build_drag_diagonal_field,
+};
 use ymir_core::tectonics_v2::field::Field2D;
-use ymir_core::tectonics_v2::stokes::operator::{apply_momentum, momentum_diagonal, StokesGrid};
+use ymir_core::tectonics_v2::stokes::operator::{StokesGrid, apply_momentum, momentum_diagonal};
 
 fn probe_diagonal(
     grid: &StokesGrid,

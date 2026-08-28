@@ -15,9 +15,9 @@
 //! Outputs go to stderr via `eprintln!` — `cargo test -- --nocapture`
 //! to see them.
 
+use ymir_core::tectonics_v2::stokes::amg::AmgConfig;
 use ymir_core::tectonics_v2::stokes::amg::setup::build_hierarchy;
 use ymir_core::tectonics_v2::stokes::amg::vcycle::v_cycle;
-use ymir_core::tectonics_v2::stokes::amg::AmgConfig;
 use ymir_core::tectonics_v2::stokes::nullspace;
 use ymir_core::tectonics_v2::stokes::solver::{ConjugateGradient, LinearSolver};
 use ymir_core::tectonics_v2::stokes::sparse_assembly::CsrMatrix;
@@ -68,8 +68,8 @@ fn sin_sin_rhs(n: usize) -> Vec<f64> {
         for i in 0..n {
             let x = (i as f64 + 0.5) / n as f64;
             let y = (j as f64 + 0.5) / n as f64;
-            rhs[j * n + i] = (2.0 * std::f64::consts::PI * x).sin()
-                * (2.0 * std::f64::consts::PI * y).sin();
+            rhs[j * n + i] =
+                (2.0 * std::f64::consts::PI * x).sin() * (2.0 * std::f64::consts::PI * y).sin();
         }
     }
     // Match the bench: subtract mean once at construction.
@@ -100,11 +100,7 @@ fn reviewer_requested_projection_diagnostic() {
     );
     // sin(2πx)·sin(2πy) has exact zero mean on a uniform grid of
     // full periods — residual should be ≤ ε_mach · ‖rhs‖.
-    assert!(
-        mean_rhs.abs() <= 1e-14 * norm_rhs,
-        "rhs mean too large: {:.3e}",
-        mean_rhs
-    );
+    assert!(mean_rhs.abs() <= 1e-14 * norm_rhs, "rhs mean too large: {:.3e}", mean_rhs);
 
     // --- Measurement 2: subtract_mean idempotency on a seeded
     // arbitrary vector ---

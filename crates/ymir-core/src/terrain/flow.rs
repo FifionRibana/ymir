@@ -100,17 +100,35 @@ pub struct RiverConfig {
     pub stream_threshold: f32,
     pub river_threshold: f32,
     pub major_river_threshold: f32,
+    /// ADR 0001 Finding 37 — extend each RETAINED watercourse (one that reaches `stream_threshold`
+    /// somewhere) UPSTREAM to this accumulation, in the SAME cell units as `stream_threshold`. The
+    /// natural value is the erosion regime split's critical area A_c (where the fluvial regime, and
+    /// thus the channel, begins). `<= 0` OR `>= stream_threshold` ⟹ NO extension (the first exported
+    /// point stays at `stream_threshold`) — the byte-identical default. The watercourse COUNT is
+    /// unchanged (retention still decides WHICH exist); only their upstream extent grows.
+    pub head_threshold: f32,
+    /// With extension on: `true` ramifies the WHOLE upstream tree down to `head_threshold` (dense
+    /// dendritic network — filter by Strahler order at render time); `false` extends only the MAIN
+    /// STEM (the max-accumulation branch at each confluence — one headwater tail per watercourse).
+    pub full_tree: bool,
 }
 
 impl Default for RiverConfig {
     fn default() -> Self {
-        Self { stream_threshold: 500.0, river_threshold: 2000.0, major_river_threshold: 10000.0 }
+        Self {
+            stream_threshold: 500.0,
+            river_threshold: 2000.0,
+            major_river_threshold: 10000.0,
+            head_threshold: 0.0, // no upstream extension → byte-identical
+            full_tree: true,
+        }
     }
 }
 
 // ── Results ─────────────────────────────────────────────────────────────
 
 /// Result of the heavy flow computation (Phase A).
+#[derive(Debug, Clone)]
 pub struct FlowResult {
     pub filled: GridF32,
     pub direction: Vec<u8>,
@@ -199,17 +217,15 @@ pub fn compute_flow(heightmap: &GridF32, config: &FlowConfig) -> FlowResult {
     // distance gradient. It cannot create a pit (the bound keeps the toward-outlet
     // neighbour strictly lower) and never touches `filled` → the hydrology (lakes,
     // water balance, endorheic basins) is unchanged; only the TRACÉ wanders.
-    let flat_grad =
-        resolve_flats(&filled, &is_ocean, config.flat_perturbation.as_ref(), w, h);
+    let flat_grad = resolve_flats(&filled, &is_ocean, config.flat_perturbation.as_ref(), w, h);
 
     // Step 3+4: flow direction + accumulation. D8 (mono) by default; with `dinf`,
     // the flat pass routes on the CONTINUOUS flat_grad gradient (fractional split)
     // → `accumulation` is fractional, `direction` is the primary neighbour.
     let (direction, accumulation) = if config.dinf {
         let (dir, dir2, frac1) = compute_dinf(&filled, &flat_grad, &is_ocean, w, h);
-        let acc = compute_accumulation_dinf(
-            &filled, &flat_grad, &dir, &dir2, &frac1, &is_ocean, w, h,
-        );
+        let acc =
+            compute_accumulation_dinf(&filled, &flat_grad, &dir, &dir2, &frac1, &is_ocean, w, h);
         (dir, acc)
     } else {
         let dir = compute_d8(&filled, &flat_grad, &is_ocean, w, h);
@@ -276,7 +292,13 @@ fn pit_fill(heightmap: &GridF32, is_ocean: &[bool], w: usize, h: usize) -> GridF
     filled
 }
 
-fn compute_d8(filled: &GridF32, flat_grad: &[f64], is_ocean: &[bool], w: usize, h: usize) -> Vec<u8> {
+fn compute_d8(
+    filled: &GridF32,
+    flat_grad: &[f64],
+    is_ocean: &[bool],
+    w: usize,
+    h: usize,
+) -> Vec<u8> {
     let n = w * h;
     let mut direction = vec![DIR_NONE; n];
 
@@ -728,6 +750,229 @@ fn compute_accumulation(
     acc
 }
 
+/// MULTIPLE-FLOW-DIRECTION accumulation (Freeman 1991 / Quinn 1991) on the pit-filled
+/// surface, for the STREAM-POWER INCISION ONLY (rivers/lakes keep D8 — this reads
+/// `filled`/`direction` from a D8 [`FlowResult`] and returns a separate accumulation
+/// grid; the caller decides which consumer uses it). Each cell spreads its accumulation
+/// to ALL lower neighbours weighted by `slopeᵖ / Σ slopeᵖ`. `p → ∞` recovers D8 (single
+/// steepest); `p → small` disperses. Dispersing the drainage area breaks the positive
+/// feedback (a rill captures area → incises → captures more) that drives the
+/// Smith–Bretherton parallel-rilling comb (ADR 0001 Finding 10), so the comb never forms
+/// — attacking the CAUSE rather than smoothing it away. Flat cells (no lower `filled`
+/// neighbour) fall back to the single D8 `direction` (which the Garbrecht–Martz flat pass
+/// already resolved). Deterministic (descending-`filled` order, index tiebreak).
+pub fn mfd_accumulation(
+    filled: &GridF32,
+    direction: &[u8],
+    sea_level: f32,
+    p: f32,
+    w: usize,
+    h: usize,
+) -> GridF32 {
+    let n = w * h;
+    let is_ocean: Vec<bool> = (0..n).map(|i| filled.data[i] <= sea_level).collect();
+    let mut land: Vec<usize> = (0..n).filter(|&i| !is_ocean[i]).collect();
+    land.sort_unstable_by(|&a, &b| {
+        filled.data[b].partial_cmp(&filled.data[a]).unwrap_or(CmpOrd::Equal).then(b.cmp(&a))
+    });
+    let mut acc = GridF32::new(w, h, 0.0);
+    for &i in &land {
+        acc.data[i] = 1.0;
+    }
+    let nbr = |i: usize, j: usize, d: usize| -> usize {
+        let ni = ((i as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
+        let nj = ((j as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
+        nj * w + ni
+    };
+    let (mut wj, mut nj_idx) = ([0.0f32; 8], [0usize; 8]);
+    for &c in &land {
+        let (ci, cj) = (c % w, c / w);
+        let zc = filled.data[c];
+        let (mut wsum, mut cnt) = (0.0f32, 0usize);
+        for d in 0..8 {
+            let m = nbr(ci, cj, d);
+            let drop = zc - filled.data[m];
+            if drop > 0.0 {
+                let slope = drop / D8_DIST[d];
+                let wgt = slope.powf(p);
+                wj[cnt] = wgt;
+                nj_idx[cnt] = m;
+                wsum += wgt;
+                cnt += 1;
+            }
+        }
+        let flow = acc.data[c];
+        if cnt == 0 || wsum <= 0.0 {
+            // Flat / no lower neighbour → single D8 fallback (already resolved).
+            let d = direction[c];
+            if d != DIR_NONE {
+                acc.data[nbr(ci, cj, d as usize)] += flow;
+            }
+            continue;
+        }
+        for k in 0..cnt {
+            acc.data[nj_idx[k]] += flow * wj[k] / wsum;
+        }
+    }
+    acc
+}
+
+/// DRAINAGE CARVE (breach) — guarantee the exported river long profile is MONOTONICALLY
+/// NON-INCREASING toward the sea (water cannot climb; ADR 0001 Finding 12, DEFECT 2). The
+/// uphill artefact came from rivers traced on the pit-FILLED surface crossing filled
+/// depressions whose REAL floor dips then climbs to the sill. This lowers each downstream
+/// receiver to at most its donor's carved height, in donor→receiver order (decreasing
+/// `filled`, so a receiver is finalised only after all its donors) — O(n) after the sort,
+/// deterministic. **Lake cells are SKIPPED**: a genuine closed depression is a LAKE (flat
+/// surface), not a trench, so the carve leaves it at its level and the monotonicity test
+/// tolerates the flat crossing. Returns the carved heightmap; ocean is untouched.
+pub fn carve_monotone(
+    height: &GridF32,
+    filled: &GridF32,
+    direction: &[u8],
+    lake_map: &[u32],
+    sea_level: f32,
+    w: usize,
+    h: usize,
+) -> GridF32 {
+    let n = w * h;
+    let mut carved = height.clone();
+    // 1. FILL lakes to their flat surface (the pit-fill sill = `filled`), so a river
+    //    crossing a lake runs on flat water (real depression floor → surface): the
+    //    long profile is level there, not a climb out of the hollow. A lake is water,
+    //    not a trench — this is why we fill (raise) rather than carve (lower) them.
+    for k in 0..n {
+        if lake_map[k] != 0 {
+            carved.data[k] = filled.data[k];
+        }
+    }
+    // 2. CARVE the non-lake reversals: lower each downstream receiver to at most its
+    //    donor, in donor→receiver order (decreasing `filled`), so the real profile is
+    //    monotone non-increasing along the network between lakes.
+    let mut land: Vec<usize> = (0..n).filter(|&i| height.data[i] > sea_level).collect();
+    land.sort_unstable_by(|&a, &b| {
+        filled.data[b].partial_cmp(&filled.data[a]).unwrap_or(CmpOrd::Equal).then(b.cmp(&a))
+    });
+    for &k in &land {
+        let d = direction[k];
+        if d == DIR_NONE {
+            continue;
+        }
+        let (i, j) = (k % w, k / w);
+        let ni = ((i as i32 + D8_DX[d as usize]) % w as i32 + w as i32) as usize % w;
+        let nj = ((j as i32 + D8_DY[d as usize]) % h as i32 + h as i32) as usize % h;
+        let r = nj * w + ni;
+        // Lakes are already flat (step 1); don't carve into/out of them.
+        if lake_map[k] != 0 || lake_map[r] != 0 {
+            continue;
+        }
+        if carved.data[r] > carved.data[k] {
+            carved.data[r] = carved.data[k]; // receiver never above its donor → monotone
+        }
+    }
+    carved
+}
+
+/// PRIORITY-FLOOD COMPLETE BREACHING (Lindsay 2016), lakes excepted — the GUARANTEED
+/// one-pass monotone conditioning for DEFECT 2 (ADR 0001 Finding 13). Detected lakes are
+/// pre-filled to their flat sill (a lake is water, not a trench); every OTHER cell is given
+/// a monotone-descending path to the ocean or a lake by CARVING a trench along its outlet
+/// path (never filling). Result: no non-lake pit remains, so the exported river long profile
+/// cannot climb (flat across lakes only). Deterministic (min-heap by height, index tiebreak).
+///
+/// Per pit, the trench is carved backwards along the priority-flood tree with a small
+/// `EPS` descent; carving stops as soon as the path is already low enough, so it is
+/// near-linear in practice (Lindsay's complete breaching).
+pub fn breach_monotone(
+    height: &GridF32,
+    filled: &GridF32,
+    lake_map: &[u32],
+    sea_level: f32,
+    w: usize,
+    h: usize,
+) -> GridF32 {
+    let n = w * h;
+    let mut z = height.data.clone();
+    // Lakes → flat sill surface (base level, never breached).
+    for k in 0..n {
+        if lake_map[k] != 0 {
+            z[k] = filled.data[k];
+        }
+    }
+    let is_base = |k: usize, z: &[f32]| z[k] <= sea_level || lake_map[k] != 0;
+    // Descent per carved step: ~0.1 m in norm (norm_to_m ≈ 11300 → 1e-5 ≈ 0.11 m).
+    const EPS: f32 = 1e-5;
+    let mut visited = vec![false; n];
+    let mut backlink = vec![usize::MAX; n];
+    let mut heap: BinaryHeap<PqCell> = BinaryHeap::new();
+    for k in 0..n {
+        if is_base(k, &z) {
+            visited[k] = true;
+            heap.push(PqCell { height: z[k], idx: k });
+        }
+    }
+    while let Some(c) = heap.pop() {
+        let ci = c.idx;
+        let (cx, cy) = (ci % w, ci / w);
+        for d in 0..8 {
+            let nx = ((cx as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
+            let ny = ((cy as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
+            let nb = ny * w + nx;
+            if visited[nb] {
+                continue;
+            }
+            visited[nb] = true;
+            backlink[nb] = ci;
+            if height.data[nb] < z[ci] {
+                // `nb` is lower than its only outlet `ci` → a pit. Breach: carve the outlet
+                // path (ci → backlink → … → base) down to a descending ramp under nb.
+                let mut target = height.data[nb] - EPS;
+                let mut cur = ci;
+                while cur != usize::MAX && !is_base(cur, &z) && z[cur] > target {
+                    z[cur] = target;
+                    target -= EPS;
+                    cur = backlink[cur];
+                }
+            }
+            // `nb` keeps its real elevation (it now drains via the carved/real path).
+            z[nb] = height.data[nb];
+            heap.push(PqCell { height: z[nb], idx: nb });
+        }
+    }
+    // FILL mop-up (priority-flood, lakes excepted): the breach carves the deep/long
+    // depressions into drained channels but leaves a small residual of micro-pits it cannot
+    // fully connect in one pass; a standard priority-flood FILL raises each remaining non-lake
+    // cell to at least its outlet, GUARANTEEING a monotone-descending path by construction.
+    // It cannot undo the breach (carved channels already sit at/above their outlet), so it
+    // only touches the residual — mostly-carved + a negligible flat fill = guaranteed monotone.
+    let mut visited2 = vec![false; n];
+    let mut heap2: BinaryHeap<PqCell> = BinaryHeap::new();
+    for k in 0..n {
+        if is_base(k, &z) {
+            visited2[k] = true;
+            heap2.push(PqCell { height: z[k], idx: k });
+        }
+    }
+    while let Some(c) = heap2.pop() {
+        let ci = c.idx;
+        let (cx, cy) = (ci % w, ci / w);
+        for d in 0..8 {
+            let nx = ((cx as i32 + D8_DX[d]) % w as i32 + w as i32) as usize % w;
+            let ny = ((cy as i32 + D8_DY[d]) % h as i32 + h as i32) as usize % h;
+            let nb = ny * w + nx;
+            if visited2[nb] {
+                continue;
+            }
+            visited2[nb] = true;
+            if z[nb] < z[ci] {
+                z[nb] = z[ci]; // raise a residual pit to its outlet → monotone by construction
+            }
+            heap2.push(PqCell { height: z[nb], idx: nb });
+        }
+    }
+    GridF32::from_vec(w, h, z)
+}
+
 fn compute_basins(direction: &[u8], is_ocean: &[bool], w: usize, h: usize) -> (Vec<u32>, u32) {
     let n = w * h;
     let mut basins = vec![0u32; n];
@@ -793,8 +1038,75 @@ pub fn extract_rivers(
     let dir = &flow_result.direction;
     let basins = &flow_result.basins;
 
-    // Identify river cells
-    let is_river: Vec<bool> = (0..n).map(|i| acc.data[i] >= config.stream_threshold).collect();
+    let stream = config.stream_threshold;
+    // Downstream cell of `k` (toroidal D8), if any.
+    let ds_idx = |k: usize| -> Option<usize> {
+        let d = dir[k];
+        if d == DIR_NONE {
+            return None;
+        }
+        let (i, j) = (k % width, k / width);
+        let ni = ((i as i32 + D8_DX[d as usize]) % width as i32 + width as i32) as usize % width;
+        let nj = ((j as i32 + D8_DY[d as usize]) % height as i32 + height as i32) as usize % height;
+        Some(nj * width + ni)
+    };
+
+    // Identify river cells. Finding 37: with `head_threshold` in (0, stream) the network extends
+    // UPSTREAM from `stream` down to `head_threshold` for every watercourse that reaches `stream`.
+    let head = if config.head_threshold > 0.0 { config.head_threshold.min(stream) } else { stream };
+    let is_river: Vec<bool> = if head >= stream {
+        // No extension → the original mask (byte-identical).
+        (0..n).map(|i| acc.data[i] >= stream).collect()
+    } else {
+        let dense: Vec<bool> = (0..n).map(|i| acc.data[i] >= head).collect();
+        // Dense cells in DECREASING accumulation → downstream processed before upstream.
+        let mut order: Vec<usize> = (0..n).filter(|&i| dense[i]).collect();
+        order.sort_by(|&a, &b| {
+            acc.data[b].partial_cmp(&acc.data[a]).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        // RETENTION: keep a dense cell only if its downstream reaches `stream` (so a sub-`stream`
+        // gully draining to a small pit is NOT exported — the watercourse count stays stable).
+        let mut retained = vec![false; n];
+        for &k in &order {
+            if acc.data[k] >= stream {
+                retained[k] = true;
+            } else if let Some(ds) = ds_idx(k) {
+                if dense[ds] && retained[ds] {
+                    retained[k] = true;
+                }
+            }
+        }
+        if config.full_tree {
+            (0..n).map(|i| dense[i] && retained[i]).collect()
+        } else {
+            // MAIN STEM: keep every ≥ stream cell; in the extension, keep only the max-accumulation
+            // upstream branch feeding each cell (one headwater tail per watercourse).
+            let mut best_up = vec![usize::MAX; n];
+            for &k in &order {
+                if acc.data[k] >= stream || !retained[k] {
+                    continue;
+                }
+                if let Some(ds) = ds_idx(k) {
+                    if best_up[ds] == usize::MAX || acc.data[k] > acc.data[best_up[ds]] {
+                        best_up[ds] = k;
+                    }
+                }
+            }
+            let mut ms: Vec<bool> =
+                (0..n).map(|i| dense[i] && retained[i] && acc.data[i] >= stream).collect();
+            for &k in &order {
+                if acc.data[k] >= stream || !retained[k] {
+                    continue;
+                }
+                if let Some(ds) = ds_idx(k) {
+                    if ms[ds] && best_up[ds] == k {
+                        ms[k] = true;
+                    }
+                }
+            }
+            ms
+        }
+    };
 
     // Count upstream river neighbors for each cell
     let mut upstream_count = vec![0u8; n];
@@ -1136,5 +1448,54 @@ mod tests {
             min_land_acc >= 1.0,
             "All land cells should have accumulation >= 1.0, got {min_land_acc}"
         );
+    }
+
+    /// PERMANENT acceptance guard (ADR 0001 Finding 13, DEFECT 2): after `breach_monotone`,
+    /// NO non-lake land cell may be a strict local minimum — every one has a not-higher
+    /// neighbour, i.e. a monotone-descending path to the sea exists, so no exported river
+    /// can climb. A river that climbs is a bug, not a trade-off.
+    #[test]
+    fn breach_leaves_no_interior_pit() {
+        let (w, h) = (48usize, 48usize);
+        // A bowl: high rim, deep interior pit, with an ocean strip on the left edge.
+        let mut d = vec![0.6f32; w * h];
+        for j in 0..h {
+            for i in 0..w {
+                let (dx, dy) = (i as f32 - w as f32 / 2.0, j as f32 - h as f32 / 2.0);
+                let r = (dx * dx + dy * dy).sqrt();
+                d[j * w + i] = 0.35 + 0.02 * r; // rises outward → central depression
+                if i == 0 {
+                    d[j * w + i] = 0.0; // ocean outlet on the left edge
+                }
+            }
+        }
+        let height = GridF32::from_vec(w, h, d);
+        let flow = compute_flow(&height, &FlowConfig { sea_level: 0.05, ..Default::default() });
+        // No lakes for this test (empty mask) → everything must breach to the ocean.
+        let lake_map = vec![0u32; w * h];
+        let carved = breach_monotone(&height, &flow.filled, &lake_map, 0.05, w, h);
+        // No interior (non-edge, non-ocean) cell may be a strict local minimum.
+        let mut pits = 0;
+        for j in 1..h - 1 {
+            for i in 1..w - 1 {
+                let k = j * w + i;
+                if carved.data[k] <= 0.05 {
+                    continue; // ocean
+                }
+                let mut has_not_higher = false;
+                for dd in 0..8 {
+                    let ni = ((i as i32 + D8_DX[dd]) % w as i32 + w as i32) as usize % w;
+                    let nj = ((j as i32 + D8_DY[dd]) % h as i32 + h as i32) as usize % h;
+                    if carved.data[nj * w + ni] <= carved.data[k] {
+                        has_not_higher = true;
+                        break;
+                    }
+                }
+                if !has_not_higher {
+                    pits += 1;
+                }
+            }
+        }
+        assert_eq!(pits, 0, "breach must leave no interior pit (found {pits})");
     }
 }

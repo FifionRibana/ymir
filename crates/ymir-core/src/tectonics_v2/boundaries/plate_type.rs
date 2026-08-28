@@ -33,15 +33,15 @@ pub struct PlateTypeField {
 
 impl PlateTypeField {
     pub fn filled(nx: usize, ny: usize, t: PlateType) -> Self {
-        Self {
-            nx,
-            ny,
-            data: vec![t; nx * ny],
-        }
+        Self { nx, ny, data: vec![t; nx * ny] }
     }
 
-    pub fn nx(&self) -> usize { self.nx }
-    pub fn ny(&self) -> usize { self.ny }
+    pub fn nx(&self) -> usize {
+        self.nx
+    }
+    pub fn ny(&self) -> usize {
+        self.ny
+    }
 
     #[inline]
     pub fn get(&self, i: usize, j: usize) -> PlateType {
@@ -53,7 +53,9 @@ impl PlateTypeField {
         self.data[j * self.nx + i] = t;
     }
 
-    pub fn data(&self) -> &[PlateType] { &self.data }
+    pub fn data(&self) -> &[PlateType] {
+        &self.data
+    }
 
     /// Render as an f64 heightmap (0.0 = Oceanic, 1.0 = Continental)
     /// for PNG layout visualisation in the report.
@@ -92,11 +94,8 @@ mod tests {
         f.set(2, 1, PlateType::Oceanic);
         for j in 0..3 {
             for i in 0..4 {
-                let expected = if (i, j) == (2, 1) {
-                    PlateType::Oceanic
-                } else {
-                    PlateType::Continental
-                };
+                let expected =
+                    if (i, j) == (2, 1) { PlateType::Oceanic } else { PlateType::Continental };
                 assert_eq!(f.get(i, j), expected);
             }
         }

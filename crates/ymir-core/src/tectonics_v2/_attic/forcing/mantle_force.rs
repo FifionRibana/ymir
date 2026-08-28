@@ -45,8 +45,8 @@
 //! handle. The `v2_mantle_null_space_preservation` test checks
 //! that `|mean(v_solved)|` stays below `1e-15` after the solve.
 
-use crate::tectonics_v2::field::Field2D;
 use super::super::mantle::MantlePattern;
+use crate::tectonics_v2::field::Field2D;
 use crate::tectonics_v2::forcing::body_force::{BodyForce, SimulationState, VectorField};
 
 /// Constant-RHS contribution of the mantle forcing.
@@ -101,16 +101,18 @@ impl<'a> BodyForce for MantleForce<'a> {
         }
     }
 
-    fn name(&self) -> &'static str { "MantleForce" }
+    fn name(&self) -> &'static str {
+        "MantleForce"
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::mantle::{
+        StreamFunctionConfig, build_mantle_pattern, generate_stream_function,
+    };
     use super::*;
     use crate::tectonics_v2::field::PeriodicIndex;
-    use super::super::super::mantle::{
-        build_mantle_pattern, generate_stream_function, StreamFunctionConfig,
-    };
 
     fn env(n: usize) -> (PeriodicIndex, PeriodicIndex, Field2D, f64) {
         let dx = 1.0 / n as f64;
@@ -134,11 +136,10 @@ mod tests {
         let s = Field2D::filled(n, n, 1.0);
         let mut fx = Field2D::new(n, n);
         let mut fy = Field2D::new(n, n);
-        let state = SimulationState { nx: n, ny: n, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
-        MantleForce::new(0.0, 1.5, &pat, &s).accumulate(
-            &state,
-            &mut VectorField { fx: &mut fx, fy: &mut fy },
-        );
+        let state =
+            SimulationState { nx: n, ny: n, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+        MantleForce::new(0.0, 1.5, &pat, &s)
+            .accumulate(&state, &mut VectorField { fx: &mut fx, fy: &mut fy });
         for v in fx.data().iter().chain(fy.data().iter()) {
             assert_eq!(*v, 0.0);
         }
@@ -152,11 +153,10 @@ mod tests {
         let s = Field2D::filled(n, n, 1.0);
         let mut fx = Field2D::new(n, n);
         let mut fy = Field2D::new(n, n);
-        let state = SimulationState { nx: n, ny: n, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
-        MantleForce::new(1.0, 0.0, &pat, &s).accumulate(
-            &state,
-            &mut VectorField { fx: &mut fx, fy: &mut fy },
-        );
+        let state =
+            SimulationState { nx: n, ny: n, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+        MantleForce::new(1.0, 0.0, &pat, &s)
+            .accumulate(&state, &mut VectorField { fx: &mut fx, fy: &mut fy });
         for v in fx.data().iter().chain(fy.data().iter()) {
             assert_eq!(*v, 0.0);
         }
@@ -168,20 +168,17 @@ mod tests {
         let n = 16;
         let (pat, idx_x, idx_y, dx) = build_pat(n, 42);
         let s = Field2D::filled(n, n, 1.0);
-        let state = SimulationState { nx: n, ny: n, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+        let state =
+            SimulationState { nx: n, ny: n, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
 
         let mut fx1 = Field2D::new(n, n);
         let mut fy1 = Field2D::new(n, n);
-        MantleForce::new(1.0, 1.0, &pat, &s).accumulate(
-            &state,
-            &mut VectorField { fx: &mut fx1, fy: &mut fy1 },
-        );
+        MantleForce::new(1.0, 1.0, &pat, &s)
+            .accumulate(&state, &mut VectorField { fx: &mut fx1, fy: &mut fy1 });
         let mut fx3 = Field2D::new(n, n);
         let mut fy3 = Field2D::new(n, n);
-        MantleForce::new(3.0, 1.0, &pat, &s).accumulate(
-            &state,
-            &mut VectorField { fx: &mut fx3, fy: &mut fy3 },
-        );
+        MantleForce::new(3.0, 1.0, &pat, &s)
+            .accumulate(&state, &mut VectorField { fx: &mut fx3, fy: &mut fy3 });
         for k in 0..n * n {
             assert!((fx3.data()[k] - 3.0 * fx1.data()[k]).abs() < 1e-14);
             assert!((fy3.data()[k] - 3.0 * fy1.data()[k]).abs() < 1e-14);
@@ -202,13 +199,12 @@ mod tests {
         let s = Field2D::filled(n, n, s0);
         let mut fx = Field2D::new(n, n);
         let mut fy = Field2D::new(n, n);
-        let state = SimulationState { nx: n, ny: n, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+        let state =
+            SimulationState { nx: n, ny: n, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
         let mf = 1.5;
         let c = 2.0;
-        MantleForce::new(mf, c, &pat, &s).accumulate(
-            &state,
-            &mut VectorField { fx: &mut fx, fy: &mut fy },
-        );
+        MantleForce::new(mf, c, &pat, &s)
+            .accumulate(&state, &mut VectorField { fx: &mut fx, fy: &mut fy });
         let factor = c * s0 * mf;
         for k in 0..n * n {
             let expected_x = factor * pat.v_mantle_x.data()[k];
@@ -225,7 +221,8 @@ mod tests {
         let n = 8;
         let (idx_x, idx_y, s, dx) = env(n);
         let (pat, _, _, _) = build_pat(n, 42);
-        let state = SimulationState { nx: n, ny: n, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+        let state =
+            SimulationState { nx: n, ny: n, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
         let force = MantleForce::new(1.0, 1.0, &pat, &s);
         let mut fx1 = Field2D::new(n, n);
         let mut fy1 = Field2D::new(n, n);

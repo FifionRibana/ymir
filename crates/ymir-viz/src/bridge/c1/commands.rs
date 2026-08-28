@@ -43,16 +43,16 @@ pub enum C1Command {
     /// Total tectonic steps = `n_cycles × k_cycle`, NEVER `n_steps`
     /// (the A1-c over-erosion guard). The gallery `RunBaseline` path
     /// is left untouched (W4).
-    RunWorkflow {
-        spec: C1RunSpec,
-        phase_a: PhaseAParams,
-    },
+    RunWorkflow { spec: C1RunSpec, phase_a: PhaseAParams },
     /// Launch the HD production chain (UI rewrite step b/5): tectonics →
     /// upscale → erosion → bathymetry → drainage → climate → biomes, via
     /// the cached `ymir-core` production functions, on the worker thread.
     /// Emits `HdStarted → (HdPhaseStarted → HdPhaseDone) × 4 → HdCompleted`
     /// (or `HdFailed`). Cancellable between phases.
     RunHd { spec: C1RunSpec, params: HdParams },
+    /// Fast tectonic-shape preview (coarse continent only, no HD erosion) so a
+    /// seed can be judged before the long HD run. Emits `PreviewReady`.
+    PreviewShape { spec: C1RunSpec, params: HdParams },
     /// Set the shared cancel flag. Does NOT interrupt the
     /// current run — see module docstring.
     Cancel,

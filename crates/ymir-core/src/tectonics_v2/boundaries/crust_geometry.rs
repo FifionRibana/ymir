@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use super::super::boundary_detection::DetectionConfig;
-use super::super::voronoi::{generate_voronoi, PlateIdField, VoronoiConfig};
+use super::super::voronoi::{PlateIdField, VoronoiConfig, generate_voronoi};
 use super::boundary_flag::{BoundaryFlag, BoundaryFlagField};
 use super::plate_type::{PlateType, PlateTypeField};
 
@@ -85,16 +85,17 @@ impl CrustGeometry {
             boundary_flag: BoundaryFlagField::filled(nx, ny, BoundaryFlag::None),
             detection_config: DetectionConfig::default(),
             geometry_kind: GeometryKind::Voronoi,
-            layout_name: format!(
-                "voronoi_seed{}_n{}",
-                seed, config.num_plates,
-            ),
+            layout_name: format!("voronoi_seed{}_n{}", seed, config.num_plates,),
             seed_coords: Some(plates.seed_coords),
         }
     }
 
-    pub fn nx(&self) -> usize { self.plate_type.nx() }
-    pub fn ny(&self) -> usize { self.plate_type.ny() }
+    pub fn nx(&self) -> usize {
+        self.plate_type.nx()
+    }
+    pub fn ny(&self) -> usize {
+        self.plate_type.ny()
+    }
 
     pub fn is_dynamic(&self) -> bool {
         matches!(self.geometry_kind, GeometryKind::Voronoi)
@@ -103,11 +104,7 @@ impl CrustGeometry {
     /// Count cells whose plate_type is Continental. Used by the
     /// physics report's type-distribution metric.
     pub fn continental_cell_count(&self) -> usize {
-        self.plate_type
-            .data()
-            .iter()
-            .filter(|&&t| matches!(t, PlateType::Continental))
-            .count()
+        self.plate_type.data().iter().filter(|&&t| matches!(t, PlateType::Continental)).count()
     }
 
     /// Count distinct plate ids observed in the grid (typically

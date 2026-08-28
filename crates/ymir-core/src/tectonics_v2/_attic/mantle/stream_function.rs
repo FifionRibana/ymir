@@ -112,11 +112,7 @@ impl StreamFunctionBuilder {
         let mut rng = ChaCha8Rng::seed_from_u64(config.seed);
         let base_modes = draw_modes(&mut rng, config.num_modes);
         let psi_t0 = sample_nodal_unscaled(nx, ny, &base_modes);
-        let raw_max = psi_t0
-            .data()
-            .iter()
-            .map(|v| v.abs())
-            .fold(0.0_f64, f64::max);
+        let raw_max = psi_t0.data().iter().map(|v| v.abs()).fold(0.0_f64, f64::max);
         let init_norm = if raw_max > 0.0 { raw_max } else { 1.0 };
         Self { base_modes, init_norm }
     }
@@ -169,11 +165,7 @@ impl StreamFunctionBuilder {
 /// Output is bit-identical to the pre-R6 implementation. For
 /// multi-step rebuilds with phase drift, use
 /// [`StreamFunctionBuilder`] directly.
-pub fn generate_stream_function(
-    nx: usize,
-    ny: usize,
-    config: &StreamFunctionConfig,
-) -> Field2D {
+pub fn generate_stream_function(nx: usize, ny: usize, config: &StreamFunctionConfig) -> Field2D {
     StreamFunctionBuilder::new(nx, ny, config).sample_at_time(nx, ny, 0.0, 0.0)
 }
 
@@ -273,7 +265,10 @@ mod tests {
         let b = generate_stream_function(32, 32, &StreamFunctionConfig { num_modes: 6, seed: 43 });
         let mut differ = false;
         for (va, vb) in a.data().iter().zip(b.data().iter()) {
-            if (va - vb).abs() > 1e-12 { differ = true; break; }
+            if (va - vb).abs() > 1e-12 {
+                differ = true;
+                break;
+            }
         }
         assert!(differ, "seeds 42 vs 43 produced identical fields");
     }
@@ -282,10 +277,8 @@ mod tests {
     /// mode cancelled, which is degenerate).
     #[test]
     fn normalisation_hits_unit_max() {
-        let psi = generate_stream_function(
-            64, 64,
-            &StreamFunctionConfig { num_modes: 6, seed: 42 },
-        );
+        let psi =
+            generate_stream_function(64, 64, &StreamFunctionConfig { num_modes: 6, seed: 42 });
         let max = psi.data().iter().cloned().map(f64::abs).fold(0.0_f64, f64::max);
         assert!((max - 1.0).abs() < 1e-12, "max |ψ| = {}, expected 1", max);
     }
@@ -300,10 +293,8 @@ mod tests {
     /// Verify mean ≈ 0.
     #[test]
     fn mean_is_zero_on_periodic_grid() {
-        let psi = generate_stream_function(
-            32, 32,
-            &StreamFunctionConfig { num_modes: 6, seed: 42 },
-        );
+        let psi =
+            generate_stream_function(32, 32, &StreamFunctionConfig { num_modes: 6, seed: 42 });
         let mean: f64 = psi.data().iter().sum::<f64>() / (32 * 32) as f64;
         assert!(mean.abs() < 1e-12, "mean ψ = {}, expected ≈ 0", mean);
     }

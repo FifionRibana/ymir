@@ -194,7 +194,20 @@ mod tests {
         cmd_tx
             .send(C1Command::RunHd {
                 spec: small_spec(10, 42),
-                params: HdParams { target_size: target, latitude_deg: 45.0, export_dir: None },
+                params: HdParams {
+                    target_size: target,
+                    latitude_deg: 45.0,
+                    domain_km: 1024.0,
+                    manual_offset: None,
+                    stream_power: false,
+                    closures: false,
+                    cross_rill: false,
+                    cross_rill_d: 0.40,
+                    mfd: false,
+                    mfd_p: 2.0,
+                    fbm_amplitude: None,
+                    export_dir: None,
+                },
             })
             .expect("send RunHd");
 
@@ -1412,6 +1425,10 @@ pub fn spawn_c1_thread(
                         // touch `retained` (re-derives deterministically /
                         // from cache).
                         super::hd::run_hd(&spec, &params, &events_tx, &cancel);
+                    }
+                    C1Command::PreviewShape { spec, params } => {
+                        // Coarse-only shape preview (fast) — judge a seed before HD.
+                        super::hd::preview_shape(&spec, &params, &events_tx);
                     }
                     C1Command::Cancel => {
                         // MVP Option C — set the flag; takes

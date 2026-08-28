@@ -8,7 +8,7 @@
 //! space check.
 
 use ymir_core::tectonics_v2::field::Field2D;
-use ymir_core::tectonics_v2::stokes::{solve_sheet, Grid, SheetConfig};
+use ymir_core::tectonics_v2::stokes::{Grid, SheetConfig, solve_sheet};
 
 #[test]
 fn solve_returns_zero_mean_velocity() {

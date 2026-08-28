@@ -26,7 +26,7 @@ use rand_chacha::ChaCha8Rng;
 use super::boundaries::plate_type::PlateType;
 
 pub mod distance;
-pub use distance::{compute_dist_to_inter_plate_boundary, InterPlateBoundaryDist};
+pub use distance::{InterPlateBoundaryDist, compute_dist_to_inter_plate_boundary};
 
 /// Cell-centred plate-id field, shape `nx × ny`, `u16` payload
 /// (supports up to 65535 plates — well beyond the §3.4 range `[5, 15]`).
@@ -39,23 +39,19 @@ pub struct PlateIdField {
 
 impl PlateIdField {
     pub fn new(nx: usize, ny: usize) -> Self {
-        Self {
-            nx,
-            ny,
-            data: vec![0; nx * ny],
-        }
+        Self { nx, ny, data: vec![0; nx * ny] }
     }
 
     pub fn filled(nx: usize, ny: usize, id: u16) -> Self {
-        Self {
-            nx,
-            ny,
-            data: vec![id; nx * ny],
-        }
+        Self { nx, ny, data: vec![id; nx * ny] }
     }
 
-    pub fn nx(&self) -> usize { self.nx }
-    pub fn ny(&self) -> usize { self.ny }
+    pub fn nx(&self) -> usize {
+        self.nx
+    }
+    pub fn ny(&self) -> usize {
+        self.ny
+    }
 
     #[inline]
     pub fn get(&self, i: usize, j: usize) -> u16 {
@@ -67,7 +63,9 @@ impl PlateIdField {
         self.data[j * self.nx + i] = id;
     }
 
-    pub fn data(&self) -> &[u16] { &self.data }
+    pub fn data(&self) -> &[u16] {
+        &self.data
+    }
 
     /// Render as an f64 heightmap (plate_id cast to f64) for PNG
     /// visualisation in the physics report.
@@ -94,10 +92,7 @@ pub struct VoronoiConfig {
 
 impl Default for VoronoiConfig {
     fn default() -> Self {
-        Self {
-            num_plates: 8,
-            continental_ratio: 0.3,
-        }
+        Self { num_plates: 8, continental_ratio: 0.3 }
     }
 }
 
@@ -118,14 +113,7 @@ pub struct VoronoiPlates {
 /// periodic domain `[0, nx) × [0, ny)` using the minimum-image
 /// convention.
 #[inline]
-fn periodic_dist_sq(
-    ax: f64,
-    ay: f64,
-    bx: f64,
-    by: f64,
-    nx: f64,
-    ny: f64,
-) -> f64 {
+fn periodic_dist_sq(ax: f64, ay: f64, bx: f64, by: f64, nx: f64, ny: f64) -> f64 {
     let mut dx = (ax - bx).abs();
     let mut dy = (ay - by).abs();
     if dx > 0.5 * nx {
@@ -144,12 +132,7 @@ fn periodic_dist_sq(
 ///
 /// The same `(nx, ny, config, seed)` tuple produces the same result
 /// byte-for-byte.
-pub fn generate_voronoi(
-    nx: usize,
-    ny: usize,
-    config: &VoronoiConfig,
-    seed: u64,
-) -> VoronoiPlates {
+pub fn generate_voronoi(nx: usize, ny: usize, config: &VoronoiConfig, seed: u64) -> VoronoiPlates {
     assert!(config.num_plates >= 1, "num_plates must be ≥ 1");
     assert!(nx >= 1 && ny >= 1);
 
@@ -172,11 +155,8 @@ pub fn generate_voronoi(
     let mut per_plate_type: Vec<PlateType> = Vec::with_capacity(config.num_plates);
     for _ in 0..config.num_plates {
         let u: f64 = rng.random::<f64>();
-        let t = if u < config.continental_ratio {
-            PlateType::Continental
-        } else {
-            PlateType::Oceanic
-        };
+        let t =
+            if u < config.continental_ratio { PlateType::Continental } else { PlateType::Oceanic };
         per_plate_type.push(t);
     }
 
@@ -295,18 +275,11 @@ mod tests {
         // spec's [0.15, 0.45] which is looser around the mean.
         let cfg = VoronoiConfig::default();
         let v = generate_voronoi(64, 64, &cfg, 42);
-        let n_continental = v
-            .per_plate_type
-            .iter()
-            .filter(|&&t| matches!(t, PlateType::Continental))
-            .count();
+        let n_continental =
+            v.per_plate_type.iter().filter(|&&t| matches!(t, PlateType::Continental)).count();
         let frac = n_continental as f64 / v.per_plate_type.len() as f64;
         // With seed 42 the sample is deterministic — this is a
         // regression check, not a statistical one.
-        assert!(
-            (0.0..=1.0).contains(&frac),
-            "continental fraction out of range: {}",
-            frac,
-        );
+        assert!((0.0..=1.0).contains(&frac), "continental fraction out of range: {}", frac,);
     }
 }

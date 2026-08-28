@@ -175,7 +175,14 @@ pub fn apply_davis_suppe_step(
     dt: f64,
 ) {
     apply_davis_suppe_step_inner(
-        s, plate_id, boundary, wedge_distance, kinematics, params, dt, None,
+        s,
+        plate_id,
+        boundary,
+        wedge_distance,
+        kinematics,
+        params,
+        dt,
+        None,
     );
 }
 
@@ -199,7 +206,14 @@ pub fn apply_davis_suppe_step_routed(
     oc_wedge: &crate::tectonics_c1::state::BoolField,
 ) {
     apply_davis_suppe_step_inner(
-        s, plate_id, boundary, wedge_distance, kinematics, params, dt, Some(oc_wedge),
+        s,
+        plate_id,
+        boundary,
+        wedge_distance,
+        kinematics,
+        params,
+        dt,
+        Some(oc_wedge),
     );
 }
 
@@ -300,13 +314,7 @@ mod tests {
         target_j: usize,
         wedge_d: f64,
         initial_s: f64,
-    ) -> (
-        Field2D,
-        PlateIdField,
-        BoundaryInfo,
-        Field2D,
-        PlateKinematics,
-    ) {
+    ) -> (Field2D, PlateIdField, BoundaryInfo, Field2D, PlateKinematics) {
         let mut s = Field2D::new(nx, ny);
         for j in 0..ny {
             for i in 0..nx {
@@ -319,10 +327,7 @@ mod tests {
         let mut bt = BoundaryTypeField::filled(nx, ny, BoundaryType::Internal);
         bt.set(nx - 1, target_j, BoundaryType::Convergent);
         let upper = BoolField::filled(nx, ny, false);
-        let boundary = BoundaryInfo {
-            boundary_type: bt,
-            upper_plate_mask: upper,
-        };
+        let boundary = BoundaryInfo { boundary_type: bt, upper_plate_mask: upper };
         // Wedge distance: max everywhere except the target cell
         // (= wedge_d) and the Convergent cell (= 0). The
         // `apply_davis_suppe_step` only reads the cells it visits
@@ -361,8 +366,7 @@ mod tests {
         let d = 4.0_f64;
         let initial_s = 0.2;
         let params = DavisSuppeParams::default();
-        let (mut s, plate_id, boundary, wd, kin) =
-            build_test_scenario(8, 8, 3, 4, d, initial_s);
+        let (mut s, plate_id, boundary, wd, kin) = build_test_scenario(8, 8, 3, 4, d, initial_s);
         apply_davis_suppe_step(&mut s, &plate_id, &boundary, &wd, &kin, &params, 1.0);
         let s_after = s.get(3, 4);
         assert!(
@@ -387,8 +391,7 @@ mod tests {
         let d = 4.0_f64;
         let params = DavisSuppeParams { enabled: false, ..DavisSuppeParams::default() };
         let initial_s = 0.2;
-        let (mut s, plate_id, boundary, wd, kin) =
-            build_test_scenario(8, 8, 3, 4, d, initial_s);
+        let (mut s, plate_id, boundary, wd, kin) = build_test_scenario(8, 8, 3, 4, d, initial_s);
         let s_before = s.data().to_vec();
         apply_davis_suppe_step(&mut s, &plate_id, &boundary, &wd, &kin, &params, 1.0);
         let s_after = s.data();
@@ -428,10 +431,7 @@ mod tests {
         let mut bt = BoundaryTypeField::filled(nx, ny, BoundaryType::Internal);
         bt.set(conv_i, conv_j, BoundaryType::Convergent);
         let upper = BoolField::filled(nx, ny, false);
-        let boundary = BoundaryInfo {
-            boundary_type: bt,
-            upper_plate_mask: upper,
-        };
+        let boundary = BoundaryInfo { boundary_type: bt, upper_plate_mask: upper };
         // Without the skip, a Convergent cell with d = 0 would
         // see: h_crit(0) = 0, driving = 0 - 0 = 0 → still 0.
         // So we force d = 1 on the Convergent cell to manufacture
@@ -499,11 +499,7 @@ mod tests {
                 }
             }
         }
-        let mean_source = if active_count > 0 {
-            mass_added / active_count as f64
-        } else {
-            0.0
-        };
+        let mean_source = if active_count > 0 { mass_added / active_count as f64 } else { 0.0 };
         let total_cells = s_after.len();
         let pct = |n: usize| 100.0 * n as f64 / total_cells as f64;
 
@@ -511,10 +507,7 @@ mod tests {
             "Phase 1.2 Stage 4 dry-run (1 step, dt={dt:.2}, coupling={:.2}, h_max={:.2}, L_taper={:.1}, L_decay={:.1}):",
             params.coupling, params.h_max, params.l_taper, params.l_decay
         );
-        eprintln!(
-            "  active cells   = {active_count} ({:.1} %)",
-            pct(active_count)
-        );
+        eprintln!("  active cells   = {active_count} ({:.1} %)", pct(active_count));
         eprintln!("  total mass added = {mass_added:.4}");
         eprintln!("  max source       = {max_source:.4}");
         eprintln!("  mean source      = {mean_source:.4}");
@@ -523,16 +516,12 @@ mod tests {
         // (overestimate; the relaxation slows as h approaches h_crit).
         let projected_max_300 = max_source * 300.0;
         let projected_mean_300 = mean_source * 300.0;
-        eprintln!(
-            "  linear projection to 300 steps (upper bound — relaxation will slow):"
-        );
+        eprintln!("  linear projection to 300 steps (upper bound — relaxation will slow):");
         eprintln!(
             "    max single-cell  delta_max(300) ≈ {projected_max_300:.3}  (vs h_max = {:.2})",
             params.h_max
         );
-        eprintln!(
-            "    typical  delta_mean(300)        ≈ {projected_mean_300:.3}"
-        );
+        eprintln!("    typical  delta_mean(300)        ≈ {projected_mean_300:.3}");
 
         // Sanity asserts. At least some cells should be active
         // (the silent-plate finding tells us not 100% of cells, but

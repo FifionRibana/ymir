@@ -33,14 +33,16 @@ use std::time::Instant;
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::stokes::amg::setup::{build_hierarchy, extract_diagonal_block};
 use ymir_core::tectonics_v2::stokes::amg::smoother::sequential_gs_sweep;
-use ymir_core::tectonics_v2::stokes::amg::splitting::{classical_rs_splitting, CfType};
+use ymir_core::tectonics_v2::stokes::amg::splitting::{CfType, classical_rs_splitting};
 use ymir_core::tectonics_v2::stokes::amg::strong_connections::compute_strong_connections;
 use ymir_core::tectonics_v2::stokes::amg::{AmgConfig, AmgPreconditioner};
 use ymir_core::tectonics_v2::stokes::nullspace;
-use ymir_core::tectonics_v2::stokes::operator::{apply_momentum, apply_tangent, StokesGrid, TangentContext};
-use ymir_core::tectonics_v2::stokes::snapshot::{field_from_vec, LinearStokesSnapshot};
+use ymir_core::tectonics_v2::stokes::operator::{
+    StokesGrid, TangentContext, apply_momentum, apply_tangent,
+};
+use ymir_core::tectonics_v2::stokes::snapshot::{LinearStokesSnapshot, field_from_vec};
 use ymir_core::tectonics_v2::stokes::solver::{ConjugateGradient, LinearSolver, SolverStats};
-use ymir_core::tectonics_v2::stokes::sparse_assembly::{assemble_picard_csr, CsrMatrix};
+use ymir_core::tectonics_v2::stokes::sparse_assembly::{CsrMatrix, assemble_picard_csr};
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -75,10 +77,7 @@ struct StokesReplay {
 fn build_replay(snap: &LinearStokesSnapshot) -> StokesReplay {
     let grid = StokesGrid::new(snap.nx, snap.ny, snap.dx, snap.dy);
     let eta_center = field_from_vec(snap.eta_center.clone(), snap.nx, snap.ny);
-    let drag_diag = snap
-        .drag_diag
-        .as_ref()
-        .map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
+    let drag_diag = snap.drag_diag.as_ref().map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
     let ctx = TangentContext {
         eta_center: eta_center.clone(),
         c_center: field_from_vec(
@@ -117,8 +116,7 @@ fn build_replay(snap: &LinearStokesSnapshot) -> StokesReplay {
 }
 
 fn solve_amg(replay: &StokesReplay, snap: &LinearStokesSnapshot, cfg: AmgConfig) -> SolverStats {
-    let a_picard =
-        assemble_picard_csr(&replay.grid, &replay.eta_center, replay.drag_diag.as_ref());
+    let a_picard = assemble_picard_csr(&replay.grid, &replay.eta_center, replay.drag_diag.as_ref());
     let precond = AmgPreconditioner::build(&a_picard, snap.n_cells(), cfg);
     let n = replay.grid.n_cells();
     let cg = ConjugateGradient::new(replay.cfg_tol, replay.cfg_max_iter);
@@ -160,11 +158,7 @@ const STEP3_GATE: usize = 15;
 const STEP6_GATE: usize = 40;
 const STEP7_GATE: usize = 40;
 
-fn measure_multi_run(
-    case: &str,
-    gate_iters: usize,
-    n_runs: usize,
-) -> Option<(usize, f64, f64)> {
+fn measure_multi_run(case: &str, gate_iters: usize, n_runs: usize) -> Option<(usize, f64, f64)> {
     let snap = load_or_skip(case)?;
     let replay = build_replay(&snap);
     let cfg = AmgConfig::default();
@@ -200,13 +194,7 @@ fn measure_multi_run(
         std * 1000.0,
         gate_iters,
     );
-    assert!(
-        iters <= gate_iters,
-        "{} AMG iter count {} exceeds gate {}",
-        case,
-        iters,
-        gate_iters,
-    );
+    assert!(iters <= gate_iters, "{} AMG iter count {} exceeds gate {}", case, iters, gate_iters,);
     Some((iters, mean, std))
 }
 
@@ -261,11 +249,7 @@ fn report_hierarchy_structure(case: &str, label: &str, a: &CsrMatrix, cfg: AmgCo
     eprintln!("[hier] {:<22} {} hierarchy — {} levels", case, label, h.levels.len());
     for (idx, lvl) in h.levels.iter().enumerate() {
         let n = lvl.a.n_rows;
-        let ratio = if idx == 0 {
-            1.0
-        } else {
-            n as f64 / h.levels[idx - 1].a.n_rows as f64
-        };
+        let ratio = if idx == 0 { 1.0 } else { n as f64 / h.levels[idx - 1].a.n_rows as f64 };
         // If we can still compute a splitting on this level (it's
         // not the coarsest), report C/F fractions too.
         let c_frac = if lvl.p.is_some() {
@@ -297,19 +281,11 @@ fn infinity_norm(v: &[f64]) -> f64 {
 /// Manually replay a V-cycle on a scalar hierarchy, instrumenting
 /// residual norms at every transition. Uses only the public API
 /// of the AMG submodules (no modification to production code).
-fn instrumented_vcycle(
-    case: &str,
-    label: &str,
-    snap: &LinearStokesSnapshot,
-    cfg: AmgConfig,
-) {
+fn instrumented_vcycle(case: &str, label: &str, snap: &LinearStokesSnapshot, cfg: AmgConfig) {
     // Build the Picard CSR, extract the u-u block, build hierarchy.
     let grid = StokesGrid::new(snap.nx, snap.ny, snap.dx, snap.dy);
     let eta = field_from_vec(snap.eta_center.clone(), snap.nx, snap.ny);
-    let drag = snap
-        .drag_diag
-        .as_ref()
-        .map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
+    let drag = snap.drag_diag.as_ref().map(|v| field_from_vec(v.clone(), snap.nx, snap.ny));
     let a_picard = assemble_picard_csr(&grid, &eta, drag.as_ref());
     let n = snap.n_cells();
     let a_uu = extract_diagonal_block(&a_picard, 0, n);
@@ -348,7 +324,8 @@ fn instrumented_vcycle(
         // Fresh residual at this level.
         let mut ax_k = vec![0.0f64; residuals[k].len()];
         hierarchy.levels[k].a.apply(&xs[k], &mut ax_k);
-        let fine_residual: Vec<f64> = residuals[k].iter().zip(ax_k.iter()).map(|(b, a)| b - a).collect();
+        let fine_residual: Vec<f64> =
+            residuals[k].iter().zip(ax_k.iter()).map(|(b, a)| b - a).collect();
         let r_pre = infinity_norm(&fine_residual);
         // Restrict to next level.
         let r_op = hierarchy.levels[k].r.as_ref().expect("non-coarsest has R");
@@ -366,10 +343,7 @@ fn instrumented_vcycle(
 
     // Coarsest: LU solve.
     let coarsest = n_levels - 1;
-    let lu = hierarchy.levels[coarsest]
-        .coarse_lu
-        .as_ref()
-        .expect("coarsest has LU");
+    let lu = hierarchy.levels[coarsest].coarse_lu.as_ref().expect("coarsest has LU");
     let mut x_coarse = vec![0.0f64; residuals[coarsest].len()];
     lu.solve(&residuals[coarsest], &mut x_coarse);
     xs[coarsest] = x_coarse;
@@ -393,13 +367,10 @@ fn instrumented_vcycle(
         // Residual after full V-cycle up through level k.
         let mut ax_post = vec![0.0f64; xs[k].len()];
         hierarchy.levels[k].a.apply(&xs[k], &mut ax_post);
-        let post_r: Vec<f64> = residuals[k].iter().zip(ax_post.iter()).map(|(b, a)| b - a).collect();
+        let post_r: Vec<f64> =
+            residuals[k].iter().zip(ax_post.iter()).map(|(b, a)| b - a).collect();
         let r_post = infinity_norm(&post_r);
-        eprintln!(
-            "       level {:>2} | after prolongate+post-smooth ||r||_∞ = {:.3e}",
-            k,
-            r_post,
-        );
+        eprintln!("       level {:>2} | after prolongate+post-smooth ||r||_∞ = {:.3e}", k, r_post,);
     }
 
     // Final residual at level 0.
@@ -445,10 +416,7 @@ fn phase3_1_diagnostic_step6_vs_step8() {
     {
         let grid = StokesGrid::new(snap6.nx, snap6.ny, snap6.dx, snap6.dy);
         let eta = field_from_vec(snap6.eta_center.clone(), snap6.nx, snap6.ny);
-        let drag = snap6
-            .drag_diag
-            .as_ref()
-            .map(|v| field_from_vec(v.clone(), snap6.nx, snap6.ny));
+        let drag = snap6.drag_diag.as_ref().map(|v| field_from_vec(v.clone(), snap6.nx, snap6.ny));
         let a = assemble_picard_csr(&grid, &eta, drag.as_ref());
         let a_uu = extract_diagonal_block(&a, 0, snap6.n_cells());
         report_hierarchy_structure("step6_voronoi", "u-u", &a_uu, cfg);
@@ -456,10 +424,7 @@ fn phase3_1_diagnostic_step6_vs_step8() {
     {
         let grid = StokesGrid::new(snap8.nx, snap8.ny, snap8.dx, snap8.dy);
         let eta = field_from_vec(snap8.eta_center.clone(), snap8.nx, snap8.ny);
-        let drag = snap8
-            .drag_diag
-            .as_ref()
-            .map(|v| field_from_vec(v.clone(), snap8.nx, snap8.ny));
+        let drag = snap8.drag_diag.as_ref().map(|v| field_from_vec(v.clone(), snap8.nx, snap8.ny));
         let a = assemble_picard_csr(&grid, &eta, drag.as_ref());
         let a_uu = extract_diagonal_block(&a, 0, snap8.n_cells());
         report_hierarchy_structure("step8_activated", "u-u", &a_uu, cfg);

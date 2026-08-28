@@ -30,6 +30,7 @@ use std::time::Instant;
 
 use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use ymir_core::tectonics_v2::boundaries::BoundaryConfig;
+use ymir_core::tectonics_v2::boundaries::BoundaryRates;
 use ymir_core::tectonics_v2::cratonic::{CratonicConfig, CratonicConfigEnabled};
 use ymir_core::tectonics_v2::diagnostics::harness::{
     BaselineConfig, BaselineResult, ForceKind, NonlinearChoice, build_force, run_baseline,
@@ -46,7 +47,6 @@ use ymir_core::tectonics_v2::stokes::nonlinear_solver::NewtonConfig;
 use ymir_core::tectonics_v2::stokes::picard::PicardConfig;
 use ymir_core::tectonics_v2::stokes::solver::LinearSolverConfig;
 use ymir_core::tectonics_v2::voronoi::VoronoiConfig;
-use ymir_core::tectonics_v2::boundaries::BoundaryRates;
 
 const NX: usize = 64;
 const NY: usize = 64;
@@ -63,11 +63,15 @@ fn build_step9_config(cratonic: CratonicConfig, label: &str) -> BaselineConfig {
     let scales = Scales::default();
     let preset = Preset::by_name("dynamic-accidented").unwrap();
     let vcfg = VoronoiConfig { num_plates: 8, continental_ratio: 0.3 };
-    let rates = BoundaryRates {
-        k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0,
-    };
+    let rates =
+        BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
     let boundary = BoundaryConfig::enabled_voronoi_closed(
-        NX, NY, &vcfg, SEED, rates, RecyclingConfig::default(),
+        NX,
+        NY,
+        &vcfg,
+        SEED,
+        rates,
+        RecyclingConfig::default(),
     )
     .expect("recycling config valid");
     let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
@@ -91,12 +95,8 @@ fn build_step9_config(cratonic: CratonicConfig, label: &str) -> BaselineConfig {
         force_kind: ForceKind::Gpe,
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
-        yielding: YieldingConfig::Enabled(YieldingLaw {
-            bi: 0.15, ..Default::default()
-        }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05, ..BasalDragLaw::default()
-        }),
+        yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: format!("voronoi_seed{}_n8_step9_{}", SEED, label),
         slab_pull: SlabPullConfig::Disabled,
@@ -107,7 +107,7 @@ fn build_step9_config(cratonic: CratonicConfig, label: &str) -> BaselineConfig {
         linear_solver: LinearSolverConfig::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -120,10 +120,7 @@ fn print_summary(label: &str, dt: f64, r: &BaselineResult) {
     println!("  CG iters mean       : {:.1}", m.cg_iter_mean);
     println!("  Newton outer mean   : {:.2}", na.outer_iters_mean());
     println!("  peak|v|             : {:.3e}", m.vmax_peak);
-    println!(
-        "  yielding_cell_fraction_max : {:.4}",
-        na.yielding_cell_fraction_max.unwrap_or(0.0)
-    );
+    println!("  yielding_cell_fraction_max : {:.4}", na.yielding_cell_fraction_max.unwrap_or(0.0));
     if let Some(cr) = na.cr_diagnostic {
         println!("  --- Step 9 cratonic metrics ---");
         println!("  Cr (config)                 : {}", cr);
@@ -228,10 +225,7 @@ fn step9_cr_sweep_64sq() {
         "Cr", "crat_frac", "yield_craton", "yield_mobile", "eta_contrast"
     );
     for (cr, cf, yc, ym, ec) in &points {
-        println!(
-            "{:>5.2} | {:>14.4} | {:>14.4} | {:>14.4} | {:>14.3}",
-            cr, cf, yc, ym, ec
-        );
+        println!("{:>5.2} | {:>14.4} | {:>14.4} | {:>14.4} | {:>14.3}", cr, cf, yc, ym, ec);
     }
     // Acceptance #9: cratonic_cell_fraction monotone non-decreasing in Cr.
     let mut prev = 0.0_f64;
@@ -239,7 +233,9 @@ fn step9_cr_sweep_64sq() {
         assert!(
             *cf >= prev - 1e-12,
             "cratonic_cell_fraction not monotone at Cr={}: {} < prev {}",
-            cr, cf, prev
+            cr,
+            cf,
+            prev
         );
         prev = *cf;
     }
@@ -281,11 +277,15 @@ fn build_step9_immunity_demo_config(cratonic: CratonicConfig, label: &str) -> Ba
     let scales = Scales::default();
     let preset = Preset::by_name("dynamic-accidented").unwrap();
     let vcfg = VoronoiConfig { num_plates: 8, continental_ratio: 0.3 };
-    let rates = BoundaryRates {
-        k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0,
-    };
+    let rates =
+        BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
     let boundary = BoundaryConfig::enabled_voronoi_closed(
-        IMMUNITY_NX, IMMUNITY_NY, &vcfg, SEED, rates, RecyclingConfig::default(),
+        IMMUNITY_NX,
+        IMMUNITY_NY,
+        &vcfg,
+        SEED,
+        rates,
+        RecyclingConfig::default(),
     )
     .expect("recycling config valid");
     let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
@@ -309,12 +309,8 @@ fn build_step9_immunity_demo_config(cratonic: CratonicConfig, label: &str) -> Ba
         force_kind: ForceKind::Gpe,
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.2,
-        yielding: YieldingConfig::Enabled(YieldingLaw {
-            bi: 0.15, ..Default::default()
-        }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05, ..BasalDragLaw::default()
-        }),
+        yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: format!("voronoi_seed{}_n8_step9_immunity_{}", SEED, label),
         slab_pull: SlabPullConfig::Disabled,
@@ -334,7 +330,7 @@ fn build_step9_immunity_demo_config(cratonic: CratonicConfig, label: &str) -> Ba
         linear_solver: LinearSolverConfig::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -347,18 +343,12 @@ fn print_immunity_summary(label: &str, dt: f64, r: &BaselineResult) {
     println!("  CG iters mean       : {:.1}", m.cg_iter_mean);
     println!("  Newton outer mean   : {:.2}", na.outer_iters_mean());
     println!("  peak|v|             : {:.3e}", m.vmax_peak);
-    println!(
-        "  yielding_cell_fraction_max : {:.4}",
-        na.yielding_cell_fraction_max.unwrap_or(0.0)
-    );
+    println!("  yielding_cell_fraction_max : {:.4}", na.yielding_cell_fraction_max.unwrap_or(0.0));
     if let Some(cr) = na.cr_diagnostic {
         println!("  --- Step 9 cratonic metrics ---");
         println!("  Cr (config)                 : {}", cr);
         println!("  K_viscous (config)          : {}", na.k_viscous_diagnostic.unwrap_or(0.0));
-        println!(
-            "  cratonic_cell_fraction      : {:.4}",
-            na.cratonic_cell_fraction.unwrap_or(0.0)
-        );
+        println!("  cratonic_cell_fraction      : {:.4}", na.cratonic_cell_fraction.unwrap_or(0.0));
         println!(
             "  peak_yielding_in_craton     : {:.6}  (acceptance #6 ≤ 0.01)",
             na.peak_yielding_in_craton.unwrap_or(0.0)
@@ -450,12 +440,7 @@ fn step9_immunity_demo_b_factor_sweep_32sq() {
     println!("=== Step 9 B_factor sweep, 32x32 Step 8 shape, 100 steps ===");
     println!(
         "{:>8} | {:>12} | {:>12} | {:>12} | {:>10} | {:>10}",
-        "B_factor",
-        "peak_yc (#6)",
-        "peak_ym",
-        "y_total_max",
-        "CG mean",
-        "peak|v|"
+        "B_factor", "peak_yc (#6)", "peak_ym", "y_total_max", "CG mean", "peak|v|"
     );
     for (b, yc, ym, yt, cg, pv) in &points {
         println!(
@@ -468,16 +453,13 @@ fn step9_immunity_demo_b_factor_sweep_32sq() {
     // ≤ 0.01 is reported. We do NOT panic the test if no value
     // passes — the table is the diagnostic, and a fail-everywhere
     // result triggers a remontée per discipline.
-    let passing = points
-        .iter()
-        .find(|(_, yc, _, _, _, _)| *yc <= 0.01)
-        .map(|(b, _, _, _, _, _)| *b);
+    let passing =
+        points.iter().find(|(_, yc, _, _, _, _)| *yc <= 0.01).map(|(b, _, _, _, _, _)| *b);
     println!();
     match passing {
-        Some(b) => println!(
-            "Acceptance #6 (peak_yielding_in_craton ≤ 0.01) PASS at B_factor = {}",
-            b
-        ),
+        Some(b) => {
+            println!("Acceptance #6 (peak_yielding_in_craton ≤ 0.01) PASS at B_factor = {}", b)
+        }
         None => println!(
             "Acceptance #6 NOT MET at any B_factor in [1, 10]. \
              Remontée required — do NOT extend B_factor beyond 10 \
@@ -507,11 +489,7 @@ fn step9_immunity_demo_step8_enabled_32sq() {
     let dt = t0.elapsed().as_secs_f64();
     print_immunity_summary("Enabled (Cr=0.3, K=5)", dt, &r);
 
-    let na = r
-        .metrics
-        .newton
-        .as_ref()
-        .expect("newton aggregate");
+    let na = r.metrics.newton.as_ref().expect("newton aggregate");
     let peak_yc = na.peak_yielding_in_craton.unwrap_or(0.0);
     let peak_ym = na.peak_yielding_in_mobile_belt.unwrap_or(0.0);
     let yfrac_total = na.yielding_cell_fraction_max.unwrap_or(0.0);
@@ -544,4 +522,3 @@ fn step9_immunity_demo_step8_enabled_32sq() {
         peak_ym
     );
 }
-

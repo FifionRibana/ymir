@@ -384,7 +384,10 @@ mod tests {
             assert!(
                 (got - bi).abs() < 1e-15,
                 "bi_with_cratonic_immunity({}, {}, 1.0) = {} ≠ {}",
-                bi, f, got, bi
+                bi,
+                f,
+                got,
+                bi
             );
         }
     }

@@ -34,22 +34,40 @@ fn build_cfg(
     let scales = Scales::default();
     let preset = Preset::by_name("dynamic-accidented").unwrap();
     let vcfg = VoronoiConfig { num_plates: 8, continental_ratio: 0.3 };
-    let rates = BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
-    let boundary = BoundaryConfig::enabled_voronoi_closed(nx, ny, &vcfg, 42, rates, RecyclingConfig::default()).unwrap();
+    let rates =
+        BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
+    let boundary = BoundaryConfig::enabled_voronoi_closed(
+        nx,
+        ny,
+        &vcfg,
+        42,
+        rates,
+        RecyclingConfig::default(),
+    )
+    .unwrap();
     BaselineConfig {
-        seed: 42, grid_nx: nx, grid_ny: ny,
-        domain_lx: 1.0, domain_ly: 1.0, steps,
-        cfl_factor: 0.3, total_time_nondim: total_time,
-        preset, nonlinear: NonlinearChoice::Newton,
-        newton_cfg: Default::default(), picard_cfg: Default::default(),
+        seed: 42,
+        grid_nx: nx,
+        grid_ny: ny,
+        domain_lx: 1.0,
+        domain_ly: 1.0,
+        steps,
+        cfl_factor: 0.3,
+        total_time_nondim: total_time,
+        preset,
+        nonlinear: NonlinearChoice::Newton,
+        newton_cfg: Default::default(),
+        picard_cfg: Default::default(),
         heightmap_fractions: Vec::new(),
         output_dir: PathBuf::from("target/mantle_diag_scratch"),
         force: build_force(ForceKind::Gpe, &scales, 10.0, 1.0),
         force_kind: ForceKind::Gpe,
-        sinusoidal_amplitude: 0.0, s_perturbation_amplitude: 0.2,
+        sinusoidal_amplitude: 0.0,
+        s_perturbation_amplitude: 0.2,
         yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
         basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
-        boundary, boundary_layout_name: "voronoi_seed42_n8".into(),
+        boundary,
+        boundary_layout_name: "voronoi_seed42_n8".into(),
         slab_pull: slab,
         mantle,
         cratonic: ymir_core::tectonics_v2::cratonic::CratonicConfig::Disabled,
@@ -58,7 +76,7 @@ fn build_cfg(
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     }
 }
 
@@ -87,8 +105,15 @@ fn print_metrics(label: &str, r: &ymir_core::tectonics_v2::diagnostics::harness:
 fn mantle_only_20_steps_reports_metrics() {
     let cfg = build_cfg(
         SlabPullConfig::Disabled,
-        MantleConfig::Enabled { mf: 1.0, coupling: 1.0, num_modes: 6, seed: 42, evolution_rate: 0.0 },
-        20, 0.4,
+        MantleConfig::Enabled {
+            mf: 1.0,
+            coupling: 1.0,
+            num_modes: 6,
+            seed: 42,
+            evolution_rate: 0.0,
+        },
+        20,
+        0.4,
     );
     let r = run_baseline(&cfg);
     print_metrics("mantle-only (slab Disabled)", &r);
@@ -103,8 +128,15 @@ fn mantle_plus_slab_runaway_characterisation() {
     for steps in [5, 10, 15, 20] {
         let cfg = build_cfg(
             SlabPullConfig::Enabled { sp: 1.5, tau_slab: 0.5, k_slab_accum: 1.0, epsilon: 1.0e-6 },
-            MantleConfig::Enabled { mf: 1.0, coupling: 1.0, num_modes: 6, seed: 42, evolution_rate: 0.0 },
-            steps, steps as f64 * 0.02,
+            MantleConfig::Enabled {
+                mf: 1.0,
+                coupling: 1.0,
+                num_modes: 6,
+                seed: 42,
+                evolution_rate: 0.0,
+            },
+            steps,
+            steps as f64 * 0.02,
         );
         let r = run_baseline(&cfg);
         print_metrics(&format!("mantle+slab @ {} steps", steps), &r);

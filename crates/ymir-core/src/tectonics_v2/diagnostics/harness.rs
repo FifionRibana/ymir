@@ -12,30 +12,29 @@ use std::time::Instant;
 use super::heightmap::{HeightmapMetadata, save_heightmap};
 use super::metrics::{IterationHistogram, Metrics, SolverConfigDump, condition_number_estimate};
 use super::newton_metrics::{
-    NewtonAggregate, cap_activation_fraction, eta_contrast,
-    eta_contrast_at_cratonic_boundary, yielding_cell_fraction,
-    yielding_cell_fraction_in_region, yielding_intensity,
+    NewtonAggregate, cap_activation_fraction, eta_contrast, eta_contrast_at_cratonic_boundary,
+    yielding_cell_fraction, yielding_cell_fraction_in_region, yielding_intensity,
 };
 use crate::tectonics_v2::advection::{cfl_dt, integrated_mass, step_upwind};
+use crate::tectonics_v2::age_field::{
+    AgeFieldConfig, AgeFieldState, advection::step_age_advect, events::apply_age_events,
+};
 use crate::tectonics_v2::basal_drag::{BasalDragConfig, build_drag_diagonal_field};
 use crate::tectonics_v2::boundaries::{
     BoundaryConfig, BoundaryMechanismActive, apply_clamp_with_tracking, compute_source_sink_terms,
     div_v_cell, interface_mask, s_continental_collision_mean, s_continental_interior, s_oceanic,
 };
-use crate::tectonics_v2::age_field::{
-    advection::step_age_advect, events::apply_age_events, AgeFieldConfig, AgeFieldState,
-};
 use crate::tectonics_v2::cratonic::{
-    factor::build_cratonic_factor_field, CratonicConfig, CratonicState,
+    CratonicConfig, CratonicState, factor::build_cratonic_factor_field,
 };
 use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
-use crate::tectonics_v2::forcing::{MantleForce, SlabPullForce};
 use crate::tectonics_v2::forcing::{
     BodyForce, ForceSum, GpeForce, SimulationState, SinusoidalForce, VectorField,
 };
+use crate::tectonics_v2::forcing::{MantleForce, SlabPullForce};
 use crate::tectonics_v2::mantle::{
-    build_mantle_diagonal_field, build_mantle_pattern, MantleConfig, MantlePattern,
-    StreamFunctionBuilder, StreamFunctionConfig,
+    MantleConfig, MantlePattern, StreamFunctionBuilder, StreamFunctionConfig,
+    build_mantle_diagonal_field, build_mantle_pattern,
 };
 use crate::tectonics_v2::presets::{Preset, YieldingConfig};
 use crate::tectonics_v2::rheology::{self, StrainRate, ViscosityLaw};
@@ -47,8 +46,8 @@ use crate::tectonics_v2::slab::{
 use crate::tectonics_v2::stokes::Grid;
 use crate::tectonics_v2::stokes::continuation::run_continuation;
 use crate::tectonics_v2::stokes::nonlinear_solver::{
-    evaluate_residual_norm, NewtonConfig, NewtonSolver, NonlinearOutcome, NonlinearSolver,
-    SnapshotSpec,
+    NewtonConfig, NewtonSolver, NonlinearOutcome, NonlinearSolver, SnapshotSpec,
+    evaluate_residual_norm,
 };
 use crate::tectonics_v2::stokes::nullspace;
 use crate::tectonics_v2::stokes::picard::{PicardConfig, PicardSolver};
@@ -731,10 +730,7 @@ where
             // Step 8.6 follow-up — when continuing, reuse the prior
             // age field; otherwise compute the §4.11 D2/D7 static
             // identification from the (just-computed or carried) S̃.
-            let from_continuation = cfg
-                .continuation
-                .as_ref()
-                .and_then(|c| c.age.clone());
+            let from_continuation = cfg.continuation.as_ref().and_then(|c| c.age.clone());
             match from_continuation {
                 Some(age) => Some(AgeFieldState::from_existing(age, &age_cfg)),
                 None => Some(AgeFieldState::from_initial_thickness(&s, &age_cfg)),
@@ -942,10 +938,8 @@ where
                     num_plates = p;
                 }
             }
-            let mut per_plate_type: Vec<crate::tectonics_v2::boundaries::PlateType> = vec![
-                crate::tectonics_v2::boundaries::PlateType::Oceanic;
-                num_plates
-            ];
+            let mut per_plate_type: Vec<crate::tectonics_v2::boundaries::PlateType> =
+                vec![crate::tectonics_v2::boundaries::PlateType::Oceanic; num_plates];
             for j in 0..ny {
                 for i in 0..nx {
                     let pid = plate_id.get(i, j) as usize;
@@ -960,11 +954,7 @@ where
                 seed_coords: Vec::new(),
             };
             // Step 8.6 follow-up — continuation override.
-            let factor = match cfg
-                .continuation
-                .as_ref()
-                .and_then(|c| c.cratonic_factor.clone())
-            {
+            let factor = match cfg.continuation.as_ref().and_then(|c| c.cratonic_factor.clone()) {
                 Some(cf) => cf,
                 None => build_cratonic_factor_field(&plates, crcfg),
             };
@@ -987,11 +977,8 @@ where
     let mut mantle_pattern: Option<MantlePattern> = None;
     let mantle_psi_builder: Option<StreamFunctionBuilder> = if is_mantle_enabled {
         if let MantleConfig::Enabled { num_modes, seed, .. } = cfg.mantle {
-            let builder = StreamFunctionBuilder::new(
-                nx,
-                ny,
-                &StreamFunctionConfig { num_modes, seed },
-            );
+            let builder =
+                StreamFunctionBuilder::new(nx, ny, &StreamFunctionConfig { num_modes, seed });
             let psi = builder.sample_at_time(nx, ny, 0.0, 0.0);
             mantle_pattern = Some(build_mantle_pattern(&psi, dx, dy, &idx_x, &idx_y));
             Some(builder)
@@ -1023,9 +1010,8 @@ where
     // essentially zero by construction. We track the max over
     // the run as well, though it is constant.
     if let Some(p) = mantle_pattern.as_ref() {
-        div_v_mantle_max_run = crate::tectonics_v2::mantle::pattern::pattern_div_max(
-            p, dx, dy, &idx_x, &idx_y,
-        );
+        div_v_mantle_max_run =
+            crate::tectonics_v2::mantle::pattern::pattern_div_max(p, dx, dy, &idx_x, &idx_y);
     }
 
     std::fs::create_dir_all(&cfg.output_dir).ok();
@@ -1043,8 +1029,11 @@ where
     // now that `newton_agg` exists. The factor field is static
     // (D7), so `cratonic_cell_fraction` and `continental_cell_fraction`
     // are sampled once and survive untouched into the report.
-    if let (CratonicConfig::Enabled(crcfg), Some(cstate), BoundaryConfig::Enabled { geometry, .. }) =
-        (&cfg.cratonic, cratonic_state.as_ref(), &cfg.boundary)
+    if let (
+        CratonicConfig::Enabled(crcfg),
+        Some(cstate),
+        BoundaryConfig::Enabled { geometry, .. },
+    ) = (&cfg.cratonic, cratonic_state.as_ref(), &cfg.boundary)
     {
         let total = (nx * ny) as f64;
         let cratonic_count = cstate.factor.data().iter().filter(|&&v| v > 0.5).count();
@@ -1052,9 +1041,7 @@ where
             .plate_type
             .data()
             .iter()
-            .filter(|&&t| {
-                matches!(t, crate::tectonics_v2::boundaries::PlateType::Continental)
-            })
+            .filter(|&&t| matches!(t, crate::tectonics_v2::boundaries::PlateType::Continental))
             .count();
         newton_agg.cr_diagnostic = Some(crcfg.cr);
         newton_agg.k_viscous_diagnostic = Some(crcfg.k_viscous);
@@ -1134,7 +1121,11 @@ where
     }
 
     let sr_after_ramp = StrainRate::compute(nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy);
-    let eta_after_ramp = rheology::build_eta_field(&law_final, &sr_after_ramp.eps_ii_center, cratonic_state.as_ref());
+    let eta_after_ramp = rheology::build_eta_field(
+        &law_final,
+        &sr_after_ramp.eps_ii_center,
+        cratonic_state.as_ref(),
+    );
     newton_agg.cap_fraction_ramp_max = newton_agg
         .cap_fraction_ramp_max
         .max(cap_activation_fraction(&eta_after_ramp, law_final.eta_max_cap));
@@ -1343,9 +1334,7 @@ where
                 // drift preserves `div(v_mantle) ≡ 0` to f64 precision
                 // at every t.
                 if evolution_rate > 0.0 {
-                    let builder = mantle_psi_builder
-                        .as_ref()
-                        .expect("enabled → psi builder");
+                    let builder = mantle_psi_builder.as_ref().expect("enabled → psi builder");
                     let t_nondim = step as f64 * dt_target;
                     let psi = builder.sample_at_time(nx, ny, t_nondim, evolution_rate);
                     mantle_pattern
@@ -1358,7 +1347,10 @@ where
                     // the worst case over the whole evolving pattern.
                     let div_step = crate::tectonics_v2::mantle::pattern::pattern_div_max(
                         mantle_pattern.as_ref().expect("enabled → pattern"),
-                        dx, dy, &idx_x, &idx_y,
+                        dx,
+                        dy,
+                        &idx_x,
+                        &idx_y,
                     );
                     if div_step > div_v_mantle_max_run {
                         div_v_mantle_max_run = div_step;
@@ -1367,19 +1359,23 @@ where
                 let pattern = mantle_pattern.as_ref().expect("enabled → pattern");
                 let f_mantle_x = slab_f_buf_mantle_x.as_mut().expect("enabled → buf");
                 let f_mantle_y = slab_f_buf_mantle_y.as_mut().expect("enabled → buf");
-                for v in f_mantle_x.data_mut().iter_mut() { *v = 0.0; }
-                for v in f_mantle_y.data_mut().iter_mut() { *v = 0.0; }
+                for v in f_mantle_x.data_mut().iter_mut() {
+                    *v = 0.0;
+                }
+                for v in f_mantle_y.data_mut().iter_mut() {
+                    *v = 0.0;
+                }
                 let mantle_state =
                     SimulationState { nx, ny, dx, dy, idx_x: &idx_x, idx_y: &idx_y, s: &s };
-                MantleForce::new(mf, coupling, pattern, &s).accumulate(
-                    &mantle_state,
-                    &mut VectorField { fx: f_mantle_x, fy: f_mantle_y },
-                );
+                MantleForce::new(mf, coupling, pattern, &s)
+                    .accumulate(&mantle_state, &mut VectorField { fx: f_mantle_x, fy: f_mantle_y });
                 let peak_f_mantle_step = {
                     let mut peak = 0.0_f64;
                     for (a, b) in f_mantle_x.data().iter().zip(f_mantle_y.data().iter()) {
                         let mag = (a * a + b * b).sqrt();
-                        if mag > peak { peak = mag; }
+                        if mag > peak {
+                            peak = mag;
+                        }
                     }
                     peak
                 };
@@ -1393,7 +1389,9 @@ where
                     let mut peak = 0.0_f64;
                     for (a, b) in fx.data().iter().zip(fy.data().iter()) {
                         let mag = (a * a + b * b).sqrt();
-                        if mag > peak { peak = mag; }
+                        if mag > peak {
+                            peak = mag;
+                        }
                     }
                     peak
                 };
@@ -1432,31 +1430,29 @@ where
         // so the Stokes operator sees `A + (drag + mantle) · I`.
         let drag_diag_step = build_drag_diagonal_field(&cfg.basal_drag, &s);
         let mantle_diag_step = build_mantle_diagonal_field(&cfg.mantle, &s);
-        let total_diag_step: Option<Field2D> = match (drag_diag_step.as_ref(), mantle_diag_step.as_ref()) {
-            (None, None) => None,
-            (Some(d), None) => Some(d.clone()),
-            (None, Some(m)) => Some(m.clone()),
-            (Some(d), Some(m)) => {
-                let mut t = Field2D::new(d.nx(), d.ny());
-                let dd = d.data();
-                let md = m.data();
-                let td = t.data_mut();
-                for k in 0..dd.len() {
-                    td[k] = dd[k] + md[k];
+        let total_diag_step: Option<Field2D> =
+            match (drag_diag_step.as_ref(), mantle_diag_step.as_ref()) {
+                (None, None) => None,
+                (Some(d), None) => Some(d.clone()),
+                (None, Some(m)) => Some(m.clone()),
+                (Some(d), Some(m)) => {
+                    let mut t = Field2D::new(d.nx(), d.ny());
+                    let dd = d.data();
+                    let md = m.data();
+                    let td = t.data_mut();
+                    for k in 0..dd.len() {
+                        td[k] = dd[k] + md[k];
+                    }
+                    Some(t)
                 }
-                Some(t)
-            }
-        };
+            };
         // Phase 0 capture hook: when the harness reaches the target
         // step, build a `SnapshotSpec` and pass it down so the Newton
         // solver serialises its first outer-iter CG inputs. `None` at
         // every other step keeps the code path bit-identical.
         let capture_for_step = cfg.capture.as_ref().and_then(|c| {
             if c.at_step == step {
-                Some(SnapshotSpec {
-                    path: c.path.clone(),
-                    case_label: c.case_label.clone(),
-                })
+                Some(SnapshotSpec { path: c.path.clone(), case_label: c.case_label.clone() })
             } else {
                 None
             }
@@ -1489,16 +1485,10 @@ where
         let snapshot_vy = vy.clone();
         if step >= 2 {
             if let Some((prev_vx, prev_vy)) = &prev_iter_start_v {
-                let mut v_extrap_x: Vec<f64> = vx
-                    .iter()
-                    .zip(prev_vx.iter())
-                    .map(|(a, b)| 2.0 * a - b)
-                    .collect();
-                let mut v_extrap_y: Vec<f64> = vy
-                    .iter()
-                    .zip(prev_vy.iter())
-                    .map(|(a, b)| 2.0 * a - b)
-                    .collect();
+                let mut v_extrap_x: Vec<f64> =
+                    vx.iter().zip(prev_vx.iter()).map(|(a, b)| 2.0 * a - b).collect();
+                let mut v_extrap_y: Vec<f64> =
+                    vy.iter().zip(prev_vy.iter()).map(|(a, b)| 2.0 * a - b).collect();
                 // Project the extrapolated guess onto the zero-mean
                 // velocity subspace. Newton's compute_residual does
                 // its own projection on the residual side, but the
@@ -1579,22 +1569,21 @@ where
         // we took at the iter's start (= `v(t_k)`) so the next
         // iter's setup can use it as the "two steps ago" history.
         prev_iter_start_v = Some((snapshot_vx, snapshot_vy));
-        extrap_stats
-            .newton_outer_iters_per_step
-            .push(outcome.outer_iters());
+        extrap_stats.newton_outer_iters_per_step.push(outcome.outer_iters());
 
         // Step 8 metric: peak|v_solved| per step, running max.
         if is_mantle_enabled {
-            let peak_v_step = vx.iter().zip(vy.iter())
-                .fold(0.0_f64, |acc, (a, b)| {
-                    let m = (a * a + b * b).sqrt();
-                    if m > acc { m } else { acc }
-                });
+            let peak_v_step = vx.iter().zip(vy.iter()).fold(0.0_f64, |acc, (a, b)| {
+                let m = (a * a + b * b).sqrt();
+                if m > acc { m } else { acc }
+            });
             peak_v_solved_run = peak_v_solved_run.max(peak_v_step);
             // Alignment: <v_solved, Mf·v_pattern> / |Mf·v_pattern|².
             // Direction-aware magnitude alignment, matches the
             // contract probed in v2_mantle_relaxation.
-            if let (Some(pat), MantleConfig::Enabled { mf, .. }) = (mantle_pattern.as_ref(), cfg.mantle) {
+            if let (Some(pat), MantleConfig::Enabled { mf, .. }) =
+                (mantle_pattern.as_ref(), cfg.mantle)
+            {
                 let mut dot = 0.0_f64;
                 let mut norm_m_sq = 0.0_f64;
                 for k in 0..nx * ny {
@@ -1611,7 +1600,8 @@ where
         }
 
         let sr = StrainRate::compute(nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy);
-        let eta_cc = rheology::build_eta_field(&law_final, &sr.eps_ii_center, cratonic_state.as_ref());
+        let eta_cc =
+            rheology::build_eta_field(&law_final, &sr.eps_ii_center, cratonic_state.as_ref());
         newton_agg.cap_fraction_steady_max = newton_agg
             .cap_fraction_steady_max
             .max(cap_activation_fraction(&eta_cc, law_final.eta_max_cap));
@@ -1670,7 +1660,11 @@ where
             // `law_final.eta_effective` with yielding flipped off.
             let mut eta_visc_only = law_final;
             eta_visc_only.yielding = crate::tectonics_v2::presets::YieldingConfig::Disabled;
-            let eta_visc_cc = rheology::build_eta_field(&eta_visc_only, &sr.eps_ii_center, cratonic_state.as_ref());
+            let eta_visc_cc = rheology::build_eta_field(
+                &eta_visc_only,
+                &sr.eps_ii_center,
+                cratonic_state.as_ref(),
+            );
             let frac = yielding_cell_fraction(&eta_visc_cc, &eta_cc);
             let intensity = yielding_intensity(&eta_visc_cc, &eta_cc);
             newton_agg.bi_diagnostic = Some(ylaw.bi);
@@ -1685,29 +1679,18 @@ where
             // Disabled the metrics stay `None` and acceptance
             // checks for them are skipped.
             if let Some(cstate) = cratonic_state.as_ref() {
-                let frac_craton = yielding_cell_fraction_in_region(
-                    &eta_visc_cc,
-                    &eta_cc,
-                    &cstate.factor,
-                    true,
-                );
-                let frac_mobile = yielding_cell_fraction_in_region(
-                    &eta_visc_cc,
-                    &eta_cc,
-                    &cstate.factor,
-                    false,
-                );
+                let frac_craton =
+                    yielding_cell_fraction_in_region(&eta_visc_cc, &eta_cc, &cstate.factor, true);
+                let frac_mobile =
+                    yielding_cell_fraction_in_region(&eta_visc_cc, &eta_cc, &cstate.factor, false);
                 let contrast =
                     eta_contrast_at_cratonic_boundary(&cstate.eta_multiplier, &cstate.factor);
-                newton_agg.peak_yielding_in_craton = Some(
-                    newton_agg.peak_yielding_in_craton.unwrap_or(0.0).max(frac_craton),
-                );
-                newton_agg.peak_yielding_in_mobile_belt = Some(
-                    newton_agg.peak_yielding_in_mobile_belt.unwrap_or(0.0).max(frac_mobile),
-                );
-                newton_agg.peak_eta_contrast_at_boundary = Some(
-                    newton_agg.peak_eta_contrast_at_boundary.unwrap_or(1.0).max(contrast),
-                );
+                newton_agg.peak_yielding_in_craton =
+                    Some(newton_agg.peak_yielding_in_craton.unwrap_or(0.0).max(frac_craton));
+                newton_agg.peak_yielding_in_mobile_belt =
+                    Some(newton_agg.peak_yielding_in_mobile_belt.unwrap_or(0.0).max(frac_mobile));
+                newton_agg.peak_eta_contrast_at_boundary =
+                    Some(newton_agg.peak_eta_contrast_at_boundary.unwrap_or(1.0).max(contrast));
             }
 
             // Floor-domination diagnostic: domain-level ε̇_II
@@ -1779,8 +1762,17 @@ where
             // boundary detection has been refreshed.
             if let Some(state) = age_state.as_mut() {
                 step_age_advect(
-                    nx, ny, dx, dy, dt, &idx_x, &idx_y,
-                    &state.current, &vx, &vy, &mut state.next,
+                    nx,
+                    ny,
+                    dx,
+                    dy,
+                    dt,
+                    &idx_x,
+                    &idx_y,
+                    &state.current,
+                    &vx,
+                    &vy,
+                    &mut state.next,
                 );
                 std::mem::swap(&mut state.current, &mut state.next);
             }
@@ -2074,9 +2066,7 @@ where
             // `AgeFieldConfig::Disabled`, `age_state` is None and
             // no PNG is written.
             if let Some(state) = age_state.as_ref() {
-                let path_a = cfg
-                    .output_dir
-                    .join(format!("a_{}x{}_t{:04}.png", nx, ny, completed));
+                let path_a = cfg.output_dir.join(format!("a_{}x{}_t{:04}.png", nx, ny, completed));
                 let _ = save_snapshot(&state.current, &path_a);
             }
         }
@@ -2397,16 +2387,14 @@ where
             if count_oce > 0 { Some(sum_oce / count_oce as f64) } else { None };
         newton_agg.age_ridge_resets_total = Some(age_event_counts_run.ridge_resets);
         newton_agg.age_arc_resets_total = Some(age_event_counts_run.arc_resets);
-        newton_agg.age_collision_max_events_total =
-            Some(age_event_counts_run.collision_max_events);
-        newton_agg.age_collision_max_age_mean = Some(if age_event_counts_run.collision_max_events
-            == 0
-        {
-            0.0
-        } else {
-            age_event_counts_run.collision_max_age_sum
-                / age_event_counts_run.collision_max_events as f64
-        });
+        newton_agg.age_collision_max_events_total = Some(age_event_counts_run.collision_max_events);
+        newton_agg.age_collision_max_age_mean =
+            Some(if age_event_counts_run.collision_max_events == 0 {
+                0.0
+            } else {
+                age_event_counts_run.collision_max_age_sum
+                    / age_event_counts_run.collision_max_events as f64
+            });
     }
 
     let cg_iter_mean = newton_agg.cg_iters_per_newton_mean();

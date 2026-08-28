@@ -25,7 +25,7 @@
 
 use ymir_core::tectonics_v2::boundaries::{BoundaryConfig, BoundaryRates};
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force, run_baseline,
 };
 use ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig;
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};

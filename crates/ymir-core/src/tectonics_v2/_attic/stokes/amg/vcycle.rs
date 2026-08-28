@@ -33,13 +33,7 @@ pub fn v_cycle(h: &AmgHierarchy, cfg: &AmgConfig, b: &[f64], x: &mut [f64]) {
 /// Apply a V-cycle starting from level `k` of the hierarchy. Public
 /// for use by FMG (`super::fmg`); external callers should prefer
 /// the level-0 entry point [`v_cycle`].
-pub fn v_cycle_level(
-    h: &AmgHierarchy,
-    cfg: &AmgConfig,
-    k: usize,
-    b: &[f64],
-    x: &mut [f64],
-) {
+pub fn v_cycle_level(h: &AmgHierarchy, cfg: &AmgConfig, k: usize, b: &[f64], x: &mut [f64]) {
     let lvl = &h.levels[k];
 
     // Coarsest level: direct LU solve.
@@ -143,11 +137,7 @@ mod tests {
             let r_new = residual_norm(&a, &b, &x);
             ratios.push(r_new / last);
             if r_new < r0 * 1e-6 {
-                eprintln!(
-                    "v_cycle converged in {} cycles; per-cycle ratios {:?}",
-                    k + 1,
-                    ratios
-                );
+                eprintln!("v_cycle converged in {} cycles; per-cycle ratios {:?}", k + 1, ratios);
                 return;
             }
             last = r_new;

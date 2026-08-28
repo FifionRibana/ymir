@@ -40,13 +40,13 @@ use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
 use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::cratonic::CratonicConfigEnabled;
 use ymir_core::tectonics_v2::workflow::phase_a_common::{
-    apply_post_tectonic, extract_per_plate_type, PostTectonicInput,
+    PostTectonicInput, apply_post_tectonic, extract_per_plate_type,
 };
 use ymir_core::tectonics_v2::workflow::{
-    run_phase_a_cycle_c1, PhaseACycleInputC1, WorkflowConfig, WorkflowParams,
+    PhaseACycleInputC1, WorkflowConfig, WorkflowParams, run_phase_a_cycle_c1,
 };
 
 const GRID: usize = 32;
@@ -83,28 +83,13 @@ fn phase_1_3_closures() -> C1Closures {
     C1Closures {
         davis_suppe: DavisSuppeParams::default(),
         equilibrium_height: EquilibriumHeightParams::default(),
-        erosion: ErosionParams {
-            enabled: false,
-            ..ErosionParams::default()
-        },
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
+        erosion: ErosionParams { enabled: false, ..ErosionParams::default() },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
         // Track D (Issue #132) — disabled to preserve the
         // Phase 1.3 decomposition contract.
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
     }
 }
 
@@ -132,10 +117,7 @@ fn c1_phase_a_cycle_smoke_integration() {
         &wf,
     );
 
-    assert!(
-        state.s.data().iter().all(|v| v.is_finite()),
-        "no NaN/Inf in S̃ after smoke run"
-    );
+    assert!(state.s.data().iter().all(|v| v.is_finite()), "no NaN/Inf in S̃ after smoke run");
     assert!(
         output.common.sea_level_normalized > 0.0,
         "Enabled post-pass must compute sea_level_normalized; got {}",
@@ -260,34 +242,16 @@ fn c1_phase_a_with_disabled_closures_matches_phase_1_1() {
     //       at machine-precision floor (1e-10 relative budget,
     //       same as Phase 1.1 invariant).
     let closures_off = C1Closures {
-        davis_suppe: DavisSuppeParams {
-            enabled: false,
-            ..DavisSuppeParams::default()
-        },
+        davis_suppe: DavisSuppeParams { enabled: false, ..DavisSuppeParams::default() },
         equilibrium_height: EquilibriumHeightParams {
             enabled: false,
             ..EquilibriumHeightParams::default()
         },
-        erosion: ErosionParams {
-            enabled: false,
-            ..ErosionParams::default()
-        },
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        erosion: ErosionParams { enabled: false, ..ErosionParams::default() },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
     };
     let time_loop_config = make_time_loop_config(50);
     let iso_config = IsostasyConfig::default();
@@ -324,13 +288,7 @@ fn c1_phase_a_with_disabled_closures_matches_phase_1_1() {
     // (b) Direct `run_with_closures` with the same closures_off.
     let mut state_b = init_c1_state_phase_1_1(GRID, SEED);
     let initial_mass_b: f64 = state_b.s.data().iter().sum();
-    run_with_closures(
-        &mut state_b,
-        &mut kinematics,
-        &time_loop_config,
-        &closures_off,
-        |_, _| {},
-    );
+    run_with_closures(&mut state_b, &mut kinematics, &time_loop_config, &closures_off, |_, _| {});
     let final_mass_b: f64 = state_b.s.data().iter().sum();
 
     // Both paths must produce bit-identical S̃ — wrapper Disabled
@@ -383,9 +341,7 @@ fn c1_phase_a_with_cratonic_enabled_produces_factor() {
         &wf,
     );
 
-    let factor = output
-        .new_cratonic_factor
-        .expect("cratonic_config Enabled must produce a factor");
+    let factor = output.new_cratonic_factor.expect("cratonic_config Enabled must produce a factor");
     assert_eq!(factor.nx(), GRID, "cratonic factor must match grid width");
     assert_eq!(factor.ny(), GRID, "cratonic factor must match grid height");
     for &v in factor.data() {

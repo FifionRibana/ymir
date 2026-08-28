@@ -88,19 +88,27 @@ impl BodyForce for GpeForce {
         }
     }
 
-    fn name(&self) -> &'static str { "GpeForce" }
+    fn name(&self) -> &'static str {
+        "GpeForce"
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::super::field::{Field2D, PeriodicIndex};
+    use super::*;
 
     fn linear_idx(nx: usize, i: usize, j: usize) -> usize {
         j * nx + i
     }
 
-    fn state_env(nx: usize, ny: usize, _dx: f64, _dy: f64, s_fill: impl Fn(usize, usize) -> f64) -> (PeriodicIndex, PeriodicIndex, Field2D) {
+    fn state_env(
+        nx: usize,
+        ny: usize,
+        _dx: f64,
+        _dy: f64,
+        s_fill: impl Fn(usize, usize) -> f64,
+    ) -> (PeriodicIndex, PeriodicIndex, Field2D) {
         let idx_x = PeriodicIndex::new(nx);
         let idx_y = PeriodicIndex::new(ny);
         let mut s = Field2D::new(nx, ny);
@@ -117,7 +125,15 @@ mod tests {
         let (idx_x, idx_y, s) = state_env(8, 8, 0.125, 0.125, |_, _| 1.0);
         let mut fx = Field2D::new(8, 8);
         let mut fy = Field2D::new(8, 8);
-        let st = SimulationState { nx: 8, ny: 8, dx: 0.125, dy: 0.125, idx_x: &idx_x, idx_y: &idx_y, s: &s };
+        let st = SimulationState {
+            nx: 8,
+            ny: 8,
+            dx: 0.125,
+            dy: 0.125,
+            idx_x: &idx_x,
+            idx_y: &idx_y,
+            s: &s,
+        };
         let mut out = VectorField { fx: &mut fx, fy: &mut fy };
         GpeForce::with_ar(2.0).accumulate(&st, &mut out);
         for v in fx.data().iter().chain(fy.data().iter()) {
@@ -131,7 +147,8 @@ mod tests {
         let ny = 16;
         let dx = 1.0 / nx as f64;
         let (idx_x, idx_y, s) = state_env(nx, ny, dx, dx, |i, j| {
-            1.0 + 0.1 * ((i as f64 / nx as f64) * std::f64::consts::TAU).sin()
+            1.0 + 0.1
+                * ((i as f64 / nx as f64) * std::f64::consts::TAU).sin()
                 * ((j as f64 / ny as f64) * std::f64::consts::TAU).cos()
         });
         let st = SimulationState { nx, ny, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
@@ -160,19 +177,15 @@ mod tests {
         let nx = 8;
         let ny = 8;
         let dx = 0.125;
-        let (idx_x, idx_y, s) = state_env(nx, ny, dx, dx, |i, j| {
-            1.0 + 0.2 * (i as f64 + j as f64).sin()
-        });
+        let (idx_x, idx_y, s) =
+            state_env(nx, ny, dx, dx, |i, j| 1.0 + 0.2 * (i as f64 + j as f64).sin());
         let st = SimulationState { nx, ny, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
 
         let gpe = GpeForce::with_ar(2.0);
 
         let mut fx_once = Field2D::new(nx, ny);
         let mut fy_once = Field2D::new(nx, ny);
-        gpe.accumulate(
-            &st,
-            &mut VectorField { fx: &mut fx_once, fy: &mut fy_once },
-        );
+        gpe.accumulate(&st, &mut VectorField { fx: &mut fx_once, fy: &mut fy_once });
 
         let mut fx_twice = Field2D::new(nx, ny);
         let mut fy_twice = Field2D::new(nx, ny);
@@ -204,10 +217,7 @@ mod tests {
         let st = SimulationState { nx, ny, dx, dy: dx, idx_x: &idx_x, idx_y: &idx_y, s: &s };
         let mut fx = Field2D::new(nx, ny);
         let mut fy = Field2D::new(nx, ny);
-        GpeForce::with_ar(2.0).accumulate(
-            &st,
-            &mut VectorField { fx: &mut fx, fy: &mut fy },
-        );
+        GpeForce::with_ar(2.0).accumulate(&st, &mut VectorField { fx: &mut fx, fy: &mut fy });
         let sum_fx: f64 = fx.data().iter().sum();
         let sum_fy: f64 = fy.data().iter().sum();
         assert!(sum_fx.abs() < 1e-12, "Σfx = {}", sum_fx);
@@ -233,10 +243,7 @@ mod tests {
         let mut fx = Field2D::new(nx, ny);
         let mut fy = Field2D::new(nx, ny);
         let ar = 2.0;
-        GpeForce::with_ar(ar).accumulate(
-            &st,
-            &mut VectorField { fx: &mut fx, fy: &mut fy },
-        );
+        GpeForce::with_ar(ar).accumulate(&st, &mut VectorField { fx: &mut fx, fy: &mut fy });
 
         // Probe at a face away from zero-gradient points.
         let i0 = 10;

@@ -388,14 +388,7 @@ pub fn apply_ssor(
     }
 }
 
-fn ssor_sweep(
-    r: &[f64],
-    coeffs: &[[f64; 5]],
-    nx: usize,
-    ny: usize,
-    omega: f64,
-    z: &mut [f64],
-) {
+fn ssor_sweep(r: &[f64], coeffs: &[[f64; 5]], nx: usize, ny: usize, omega: f64, z: &mut [f64]) {
     let wrap_x = |i: i32| -> usize { ((i % nx as i32) + nx as i32) as usize % nx };
     let wrap_y = |j: i32| -> usize { ((j % ny as i32) + ny as i32) as usize % ny };
 
@@ -854,10 +847,7 @@ mod tests {
 
         for &val in precond.iter() {
             assert!(val.is_finite());
-            assert!(
-                val > 0.0 && val < 10.0,
-                "expected normal preconditioner magnitude, got {val}"
-            );
+            assert!(val > 0.0 && val < 10.0, "expected normal preconditioner magnitude, got {val}");
         }
     }
 }

@@ -9,7 +9,7 @@
 use std::f64::consts::PI;
 use ymir_core::tectonics_v2::boundaries::boundary_flag::{BoundaryFlag, BoundaryFlagField};
 use ymir_core::tectonics_v2::boundaries::plate_type::{PlateType, PlateTypeField};
-use ymir_core::tectonics_v2::boundary_detection::{detect_boundaries, DetectionConfig};
+use ymir_core::tectonics_v2::boundary_detection::{DetectionConfig, detect_boundaries};
 use ymir_core::tectonics_v2::field::PeriodicIndex;
 use ymir_core::tectonics_v2::voronoi::PlateIdField;
 
@@ -33,9 +33,7 @@ fn sinusoidal_vx_produces_mixed_rift_and_subduction() {
     let pid = PlateIdField::new(nx, ny);
     let mut out = BoundaryFlagField::filled(nx, ny, BoundaryFlag::None);
     let cfg = DetectionConfig { threshold: 1e-4 };
-    detect_boundaries(
-        nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy, &plate_type, &pid, &cfg, &mut out,
-    );
+    detect_boundaries(nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy, &plate_type, &pid, &cfg, &mut out);
 
     let mut rift = 0usize;
     let mut sub = 0usize;
@@ -68,9 +66,7 @@ fn zero_velocity_means_all_none() {
     let pid = PlateIdField::new(nx, ny);
     let mut out = BoundaryFlagField::filled(nx, ny, BoundaryFlag::Rift);
     let cfg = DetectionConfig::default();
-    detect_boundaries(
-        nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy, &plate_type, &pid, &cfg, &mut out,
-    );
+    detect_boundaries(nx, ny, dx, dy, &idx_x, &idx_y, &vx, &vy, &plate_type, &pid, &cfg, &mut out);
     for &f in out.data() {
         assert!(matches!(f, BoundaryFlag::None));
     }

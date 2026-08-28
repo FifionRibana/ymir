@@ -24,7 +24,7 @@ use ymir_core::tectonics_v2::basal_drag::BasalDragConfig;
 use ymir_core::tectonics_v2::boundaries::{BoundaryConfig, BoundaryRates};
 use ymir_core::tectonics_v2::cratonic::CratonicConfig;
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force,
 };
 use ymir_core::tectonics_v2::init::InitMode;
 use ymir_core::tectonics_v2::mantle::MantleConfig;
@@ -35,14 +35,10 @@ use ymir_core::tectonics_v2::scales::Scales;
 use ymir_core::tectonics_v2::slab::SlabPullConfig;
 use ymir_core::tectonics_v2::voronoi::VoronoiConfig;
 use ymir_core::tectonics_v2::workflow::{
-    run_phase_a_loop_v2, run_phase_b, PhaseAParams, PhaseBParams, WorkflowConfig, WorkflowParams,
+    PhaseAParams, PhaseBParams, WorkflowConfig, WorkflowParams, run_phase_a_loop_v2, run_phase_b,
 };
 
-fn build_phase_b_input_config(
-    grid_size: usize,
-    k_cycle: usize,
-    scratch: &str,
-) -> BaselineConfig {
+fn build_phase_b_input_config(grid_size: usize, k_cycle: usize, scratch: &str) -> BaselineConfig {
     let scales = Scales::default();
     let preset = Preset::by_name("dynamic-accidented").unwrap();
     let vcfg = VoronoiConfig { num_plates: 4, continental_ratio: 0.5 };
@@ -114,10 +110,7 @@ fn run_phase_a_then_b(
         },
         phase_b: PhaseBParams {
             hd_grid_size,
-            erosion: ErosionConfig {
-                num_droplets: droplets,
-                ..ErosionConfig::default()
-            },
+            erosion: ErosionConfig { num_droplets: droplets, ..ErosionConfig::default() },
             ..PhaseBParams::default()
         },
     });
@@ -160,7 +153,8 @@ fn v2_workflow_phase_b_pipeline_runs_end_to_end_256() {
     assert!(
         phase_b.grand_scale_deviation_p95 <= phase_b.grand_scale_deviation,
         "p95 ({}) must be ≤ L_∞ ({})",
-        phase_b.grand_scale_deviation_p95, phase_b.grand_scale_deviation
+        phase_b.grand_scale_deviation_p95,
+        phase_b.grand_scale_deviation
     );
 }
 
@@ -229,22 +223,15 @@ fn v2_workflow_phase_b_deviation_stats_probe() {
     // L_∞ summary; recompute the full deltas here by re-running the
     // upscale inline. This is a probe — minor duplication is fine.
     use ymir_core::seed::WorldSeed;
-    use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+    use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
     use ymir_core::terrain::upscale::upscale_with_fbm;
-    let isostasy = compute_isostasy(
-        &last_cycle.baseline.final_state.s_field,
-        &IsostasyConfig::default(),
-    );
-    let mut fbm_cfg =
-        ymir_core::terrain::upscale::FbmUpscaleConfig::default();
+    let isostasy =
+        compute_isostasy(&last_cycle.baseline.final_state.s_field, &IsostasyConfig::default());
+    let mut fbm_cfg = ymir_core::terrain::upscale::FbmUpscaleConfig::default();
     fbm_cfg.target_size = 256;
     let world_seed = WorldSeed::new(cfg.seed);
-    let upscaled = upscale_with_fbm(
-        &isostasy.heightmap,
-        isostasy.sea_level_normalized,
-        &world_seed,
-        &fbm_cfg,
-    );
+    let upscaled =
+        upscale_with_fbm(&isostasy.heightmap, isostasy.sea_level_normalized, &world_seed, &fbm_cfg);
     let baseline_hd = upscaled.heightmap;
 
     let phase_b = run_phase_b(&last_cycle.baseline.final_state.s_field, &wf, cfg.seed).unwrap();
@@ -280,7 +267,9 @@ fn v2_workflow_phase_b_deviation_stats_probe() {
         }
     }
 
-    eprintln!("== Phase B deviation stats probe (32² Phase A × 3 cycles → HD 256, 100k droplets) ==");
+    eprintln!(
+        "== Phase B deviation stats probe (32² Phase A × 3 cycles → HD 256, 100k droplets) =="
+    );
     eprintln!("  n cells       = {n}");
     eprintln!("  max (L_∞)     = {max_d:.4}");
     eprintln!("  mean          = {mean:.5}");
@@ -292,11 +281,7 @@ fn v2_workflow_phase_b_deviation_stats_probe() {
         let lo = bin_edges[k];
         let hi = bin_edges[k + 1];
         let frac = bins[k] as f64 / n as f64;
-        eprintln!(
-            "    [{lo:.3}, {hi:.3})  {:8} cells   ({:5.2}%)",
-            bins[k],
-            frac * 100.0
-        );
+        eprintln!("    [{lo:.3}, {hi:.3})  {:8} cells   ({:5.2}%)", bins[k], frac * 100.0);
     }
     eprintln!(
         "  cells with |Δ| > 0.10: {} ({:.3}%)",
@@ -313,8 +298,5 @@ fn v2_workflow_phase_b_2048_validation() {
     let phase_b = run_phase_a_then_b(64, 20, 5, 2048, 5_000_000, "validation_2048");
     assert_eq!(phase_b.heightmap.width, 2048);
     assert_eq!(phase_b.heightmap.height, 2048);
-    eprintln!(
-        "[Phase 5 heavy] grand_scale_deviation = {:.4}",
-        phase_b.grand_scale_deviation
-    );
+    eprintln!("[Phase 5 heavy] grand_scale_deviation = {:.4}", phase_b.grand_scale_deviation);
 }

@@ -48,15 +48,15 @@
 //!   dropped at end — internal to the run per Q-E1.2 Option (c)).
 
 use ymir_core::tectonics::isostasy::IsostasyConfig;
-use ymir_core::tectonics_c1::closures::accretion::ConvergenceTracker;
-use ymir_core::tectonics_c1::closures::rifting::DivergenceTracker;
-use ymir_core::tectonics_c1::closures::subduction::apply_subduction_step;
-use ymir_core::tectonics_c1::closures::rifting::{apply_rifting_thinning, apply_rifting_split};
-use ymir_core::tectonics_c1::closures::accretion::apply_accretion_step;
 use ymir_core::tectonics_c1::boundary_classification::classify_boundaries;
+use ymir_core::tectonics_c1::closures::accretion::ConvergenceTracker;
+use ymir_core::tectonics_c1::closures::accretion::apply_accretion_step;
+use ymir_core::tectonics_c1::closures::rifting::DivergenceTracker;
+use ymir_core::tectonics_c1::closures::rifting::{apply_rifting_split, apply_rifting_thinning};
+use ymir_core::tectonics_c1::closures::subduction::apply_subduction_step;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 
 const GRID: usize = 32;
 const SEED: u64 = 42;
@@ -95,8 +95,7 @@ fn mass_conservation_holds_per_step_100_run() {
     //
     // We capture pre-Track-D and post-Track-D `S̃` sums each step,
     // verifying the delta matches `consumed − arc + thinning`.
-    let dt = 0.5 * (1.0 / GRID as f64)
-        / kinematics.max_velocity().max(1e-12);
+    let dt = 0.5 * (1.0 / GRID as f64) / kinematics.max_velocity().max(1e-12);
 
     let mut accumulated_consumed = 0.0_f64;
     let mut accumulated_arc_distributed = 0.0_f64;
@@ -114,25 +113,19 @@ fn mass_conservation_holds_per_step_100_run() {
     let mut convergence_tracker = ConvergenceTracker::new();
     let mut divergence_tracker = DivergenceTracker::new();
 
-    run_with_closures(
-        &mut state,
-        &mut kinematics,
-        &config,
-        &closures,
-        |_step, current_state| {
-            // current_state is POST-step (Track D + all closures).
-            // We can compare against pre_track_d_s to measure the
-            // step's net mass change. But we don't have the per-
-            // closure breakdown from this callback — we'd need to
-            // instrument run_with_closures itself.
-            //
-            // For E4 simplicity: compare initial vs final after
-            // the loop. The per-step accumulation lives in a
-            // separate diagnostic helper.
-            let _ = current_state;
-            let _ = pre_track_d_s.len(); // suppress unused warning
-        },
-    );
+    run_with_closures(&mut state, &mut kinematics, &config, &closures, |_step, current_state| {
+        // current_state is POST-step (Track D + all closures).
+        // We can compare against pre_track_d_s to measure the
+        // step's net mass change. But we don't have the per-
+        // closure breakdown from this callback — we'd need to
+        // instrument run_with_closures itself.
+        //
+        // For E4 simplicity: compare initial vs final after
+        // the loop. The per-step accumulation lives in a
+        // separate diagnostic helper.
+        let _ = current_state;
+        let _ = pre_track_d_s.len(); // suppress unused warning
+    });
 
     // After the run, kinematics may have been mutated (accretion
     // merges, rifting splits). Verify final state is finite.
@@ -212,9 +205,7 @@ fn mass_conservation_holds_per_step_100_run() {
     eprintln!("  accumulated consumed        = {accumulated_consumed:.9}");
     eprintln!("  accumulated arc_distributed = {accumulated_arc_distributed:.9}");
     eprintln!("  accumulated thinning        = {accumulated_thinning:.9}");
-    eprintln!(
-        "  expected delta              = consumed − arc + thinning = {expected_delta:.9}"
-    );
+    eprintln!("  expected delta              = consumed − arc + thinning = {expected_delta:.9}");
     eprintln!("  drift                       = |delta − expected| = {drift:.3e}");
     eprintln!("  tolerance                   = {TOLERANCE:.3e}");
     eprintln!();
@@ -222,12 +213,8 @@ fn mass_conservation_holds_per_step_100_run() {
     eprintln!("  initial total mass          = {initial_total_mass:.9}");
     eprintln!("  final total mass            = {final_total_mass:.9}");
     eprintln!("  mass delta                  = {mass_delta:.9}");
-    eprintln!(
-        "  (this delta includes Phase 1-2 closures + advection + Track D;"
-    );
-    eprintln!(
-        "   the Track-D-only path above isolates Track D's contribution.)"
-    );
+    eprintln!("  (this delta includes Phase 1-2 closures + advection + Track D;");
+    eprintln!("   the Track-D-only path above isolates Track D's contribution.)");
 
     assert!(
         drift < TOLERANCE,

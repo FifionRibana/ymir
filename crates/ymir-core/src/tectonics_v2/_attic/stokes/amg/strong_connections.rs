@@ -130,13 +130,7 @@ pub(crate) fn build_poisson_laplacian_csr(n: usize) -> CsrMatrix {
             row_ptr.push(col_idx.len());
         }
     }
-    CsrMatrix {
-        n_rows: total,
-        n_cols: total,
-        row_ptr,
-        col_idx,
-        values,
-    }
+    CsrMatrix { n_rows: total, n_cols: total, row_ptr, col_idx, values }
 }
 
 #[cfg(test)]
@@ -154,13 +148,7 @@ mod tests {
             // of magnitude 1 and one positive diagonal of magnitude 4.
             // max(-a_ij) = 1; θ·max = 0.25. All 4 off-diagonals are
             // strong.
-            assert_eq!(
-                row.len(),
-                4,
-                "row {} has {} strong connections, expected 4",
-                i,
-                row.len()
-            );
+            assert_eq!(row.len(), 4, "row {} has {} strong connections, expected 4", i, row.len());
             // Sorted ascending.
             assert!(
                 row.windows(2).all(|w| w[0] < w[1]),

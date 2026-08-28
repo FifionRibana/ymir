@@ -15,7 +15,7 @@
 
 use std::path::PathBuf;
 
-use super::harness::{run_baseline, BaselineConfig, BaselineResult, ForceKind, NonlinearChoice};
+use super::harness::{BaselineConfig, BaselineResult, ForceKind, NonlinearChoice, run_baseline};
 use crate::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use crate::tectonics_v2::boundaries::{BoundaryConfig, BoundaryRates};
 use crate::tectonics_v2::forcing::{ForceSum, GpeForce};
@@ -65,18 +65,12 @@ pub fn run_num_plates_sweep(
         let mut sum = ForceSum::new();
         sum.push(Box::new(GpeForce::with_ar(0.1)));
         let vcfg = VoronoiConfig { num_plates: n, continental_ratio: 0.3 };
-        let rates = BoundaryRates {
-            k_sub: 0.5,
-            k_arc: 0.0,
-            k_spread: 0.0,
-            k_coll_v: 0.0,
-            k_rift_v: 0.0,
-        };
+        let rates =
+            BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
         let recycling_config = RecyclingConfig::default();
-        let boundary = BoundaryConfig::enabled_voronoi_closed(
-            nx, ny, &vcfg, sd, rates, recycling_config,
-        )
-        .expect("recycling config valid");
+        let boundary =
+            BoundaryConfig::enabled_voronoi_closed(nx, ny, &vcfg, sd, rates, recycling_config)
+                .expect("recycling config valid");
         let cfg = BaselineConfig {
             seed: sd,
             grid_nx: nx,
@@ -97,7 +91,10 @@ pub fn run_num_plates_sweep(
             sinusoidal_amplitude: 0.0,
             s_perturbation_amplitude,
             yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
-            basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
+            basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
+                br: 0.05,
+                ..BasalDragLaw::default()
+            }),
             boundary,
             boundary_layout_name: format!("voronoi_seed{}_n{}", sd, n),
             slab_pull: crate::tectonics_v2::slab::SlabPullConfig::Disabled,
@@ -113,18 +110,16 @@ pub fn run_num_plates_sweep(
         let r: BaselineResult = run_baseline(&cfg);
         points.push(summarise(n, sd, &r));
     }
-    let conservation_ok = points
-        .iter()
-        .all(|p| p.mass_conservation_residual.map(|r| r < 1.0e-6).unwrap_or(false));
+    let conservation_ok =
+        points.iter().all(|p| p.mass_conservation_residual.map(|r| r < 1.0e-6).unwrap_or(false));
     NumPlatesSweepResults { points, conservation_ok }
 }
 
 fn summarise(num_plates: usize, seed: u64, r: &BaselineResult) -> NumPlatesSweepPoint {
     let m = &r.metrics;
     let newton = m.newton.as_ref();
-    let (conv_pct, _) = newton
-        .map(|n| (n.outcome_percentages().0, n.outer_iters_mean()))
-        .unwrap_or((0.0, 0.0));
+    let (conv_pct, _) =
+        newton.map(|n| (n.outcome_percentages().0, n.outer_iters_mean())).unwrap_or((0.0, 0.0));
     NumPlatesSweepPoint {
         num_plates,
         seed,
@@ -150,7 +145,8 @@ pub fn render_markdown(res: &NumPlatesSweepResults) -> String {
     s.push_str("|---|---|---|---|---|---|---|---|---|---|---|---|\n");
     for p in &res.points {
         let pc = p.plate_count.map(|v| format!("`{}`", v)).unwrap_or_else(|| "`—`".into());
-        let cf = p.continental_fraction.map(|v| format!("`{:.3}`", v)).unwrap_or_else(|| "`—`".into());
+        let cf =
+            p.continental_fraction.map(|v| format!("`{:.3}`", v)).unwrap_or_else(|| "`—`".into());
         let so = p.s_oceanic_mean.map(|v| format!("`{:.4}`", v)).unwrap_or_else(|| "`—`".into());
         let sc = p
             .s_continental_interior_mean

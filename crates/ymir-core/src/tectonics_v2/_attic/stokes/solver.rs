@@ -118,9 +118,7 @@ impl LinearSolver for ConjugateGradient {
 
         // r = b - A x — cell-local, deterministic across thread counts.
         matvec(x, &mut r);
-        r.par_iter_mut()
-            .zip(b.par_iter())
-            .for_each(|(ri, bi)| *ri = *bi - *ri);
+        r.par_iter_mut().zip(b.par_iter()).for_each(|(ri, bi)| *ri = *bi - *ri);
 
         let b_norm = par_norm2(b).max(1.0);
         let r0_norm = par_norm2(&r);
@@ -151,9 +149,7 @@ impl LinearSolver for ConjugateGradient {
         // unwind).
         const CANCEL_CHECK_INTERVAL: usize = 16;
         for iter in 1..=self.max_iter {
-            if iter % CANCEL_CHECK_INTERVAL == 0
-                && crate::tectonics_v2::cancel::is_cancelled()
-            {
+            if iter % CANCEL_CHECK_INTERVAL == 0 && crate::tectonics_v2::cancel::is_cancelled() {
                 return SolverStats {
                     iterations: iter - 1,
                     final_residual: par_norm2(&r),
@@ -197,9 +193,7 @@ impl LinearSolver for ConjugateGradient {
             let beta = rz_new / rz;
             rz = rz_new;
             // p = z + β p   (cell-local, order-independent)
-            p.par_iter_mut()
-                .zip(z.par_iter())
-                .for_each(|(pi, zi)| *pi = *zi + beta * *pi);
+            p.par_iter_mut().zip(z.par_iter()).for_each(|(pi, zi)| *pi = *zi + beta * *pi);
         }
 
         SolverStats {

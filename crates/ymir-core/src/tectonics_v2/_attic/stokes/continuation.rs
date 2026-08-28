@@ -13,13 +13,13 @@
 //! adaptive retry are out of scope for Step 1 — the fallback for
 //! mid-run Newton trouble is the dual-track Picard path.
 
-use crate::tectonics_v2::cratonic::CratonicState;
-use crate::tectonics_v2::field::Field2D;
 use super::super::presets::ContinuationConfig;
 use super::super::rheology::ViscosityLaw;
 use super::nonlinear_solver::{NewtonSolver, NonlinearOutcome, NonlinearSolver};
 use super::operator::StokesGrid;
 use super::solver::LinearSolver;
+use crate::tectonics_v2::cratonic::CratonicState;
+use crate::tectonics_v2::field::Field2D;
 
 /// Result record for a full continuation ramp.
 #[derive(Clone, Debug)]
@@ -60,7 +60,8 @@ pub fn run_continuation(
     for &n_current in &schedule.n_steps {
         let mut law_k = *law_final;
         law_k.n = n_current;
-        let outcome = newton.solve(grid, &law_k, drag_diag, cratonic, rhs_x, rhs_y, vx, vy, linear_solver);
+        let outcome =
+            newton.solve(grid, &law_k, drag_diag, cratonic, rhs_x, rhs_y, vx, vy, linear_solver);
         if let NonlinearOutcome::Converged { linear_iters_total: lit, .. } = &outcome {
             linear_iters_total = linear_iters_total.saturating_add(*lit);
         }

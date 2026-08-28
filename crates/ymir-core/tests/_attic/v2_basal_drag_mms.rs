@@ -57,9 +57,11 @@
 
 use std::f64::consts::PI;
 
-use ymir_core::tectonics_v2::basal_drag::{build_drag_diagonal_field, BasalDragConfig, BasalDragLaw};
+use ymir_core::tectonics_v2::basal_drag::{
+    BasalDragConfig, BasalDragLaw, build_drag_diagonal_field,
+};
 use ymir_core::tectonics_v2::field::Field2D;
-use ymir_core::tectonics_v2::stokes::{solve_sheet, Grid, SheetConfig};
+use ymir_core::tectonics_v2::stokes::{Grid, SheetConfig, solve_sheet};
 
 const BR: f64 = 0.1;
 
@@ -135,28 +137,16 @@ fn error_for_grid(n: usize) -> f64 {
     let grid = Grid::new(nx, ny, dx, dy);
     let (eta, s, fx, fy, vx_ex, vy_ex) = build_mms(nx, ny, dx, dy);
     let drag_cfg = BasalDragConfig::Enabled(BasalDragLaw { br: BR, s_exponent: 2.0 });
-    let drag_diag = build_drag_diagonal_field(&drag_cfg, &s)
-        .expect("Enabled drag config must produce a field");
+    let drag_diag =
+        build_drag_diagonal_field(&drag_cfg, &s).expect("Enabled drag config must produce a field");
 
     let mut vx = vec![0.0; nx * ny];
     let mut vy = vec![0.0; nx * ny];
     let mut cfg = SheetConfig::default();
     cfg.tol = 1.0e-12;
     cfg.max_iter = 10_000;
-    let stats = solve_sheet(
-        &grid,
-        &eta,
-        Some(&drag_diag),
-        &fx,
-        &fy,
-        &mut vx,
-        &mut vy,
-        &cfg,
-    );
-    assert!(
-        stats.converged,
-        "CG did not converge at N={n}: {stats:?}",
-    );
+    let stats = solve_sheet(&grid, &eta, Some(&drag_diag), &fx, &fy, &mut vx, &mut vy, &cfg);
+    assert!(stats.converged, "CG did not converge at N={n}: {stats:?}",);
 
     let err: Vec<f64> = vx
         .iter()

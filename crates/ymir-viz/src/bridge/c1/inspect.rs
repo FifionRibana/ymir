@@ -21,7 +21,7 @@ use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::precip_mm_per_year;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
-    potential_evaporation_mm, C1DrainageResult, LakeType, Navigability, C1_SEA_LEVEL_NORM,
+    C1_SEA_LEVEL_NORM, C1DrainageResult, LakeType, Navigability, potential_evaporation_mm,
 };
 use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
 
@@ -34,6 +34,10 @@ pub struct RiverCellInfo {
     pub segment: usize,
     pub navigability: Navigability,
     pub drainage_km2: f32,
+    /// Mean discharge in m³/s (`segment_discharge_m3s`, Finding 22).
+    pub discharge_m3s: f32,
+    /// Bankfull channel width in metres (`segment_width_m`, Finding 22 — from discharge).
+    pub width_m: f32,
 }
 
 /// Reverse map: cell → the river segment passing through it (if any).
@@ -56,6 +60,8 @@ impl RiverCellMap {
                 segment: si,
                 navigability: d.segment_navigability[si],
                 drainage_km2: d.segment_drainage_km2[si],
+                discharge_m3s: d.segment_discharge_m3s.get(si).copied().unwrap_or(0.0),
+                width_m: d.segment_width_m.get(si).copied().unwrap_or(0.0),
             };
             for &(px, py) in &seg.points {
                 let k = py as usize * width + px as usize;

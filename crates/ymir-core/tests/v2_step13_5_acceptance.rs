@@ -35,11 +35,11 @@
 use ymir_core::tectonics_v2::boundaries::PlateType;
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::init::{
-    init_s_field, FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
-    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
-    InitContext, InitMode, OCEANIC_CLAMP_MAX, PlateInitData, ProfileShape,
+    FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
+    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT, InitContext,
+    InitMode, OCEANIC_CLAMP_MAX, PlateInitData, ProfileShape, init_s_field,
 };
-use ymir_core::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig, VoronoiPlates};
+use ymir_core::tectonics_v2::voronoi::{VoronoiConfig, VoronoiPlates, generate_voronoi};
 
 const SC_SEED: u64 = 12;
 const SC_NUM_PLATES: usize = 4;
@@ -51,10 +51,7 @@ fn build_voronoi(nx: usize, ny: usize) -> VoronoiPlates {
     generate_voronoi(
         nx,
         ny,
-        &VoronoiConfig {
-            num_plates: SC_NUM_PLATES,
-            continental_ratio: SC_CONTINENTAL_RATIO,
-        },
+        &VoronoiConfig { num_plates: SC_NUM_PLATES, continental_ratio: SC_CONTINENTAL_RATIO },
         SC_SEED,
     )
 }
@@ -168,14 +165,10 @@ fn fbm_oceanic_calibration_probe() {
         SC_NUM_PLATES,
         SC_CONTINENTAL_RATIO * 100.0
     );
-    eprintln!(
-        "Per (amplitude, scale) cell: σ_fbm_oceanic_isolated, max(S̃), clip%."
-    );
+    eprintln!("Per (amplitude, scale) cell: σ_fbm_oceanic_isolated, max(S̃), clip%.");
     eprintln!("Target: σ ∈ [0.02, 0.08], max ≤ 0.49, clip% small.");
     eprintln!();
-    eprintln!(
-        "amp \\ scale  |    0.05         0.10         0.15         0.20"
-    );
+    eprintln!("amp \\ scale  |    0.05         0.10         0.15         0.20");
 
     for amp in [0.05_f64, 0.10, 0.15, 0.20, 0.25] {
         eprint!("amp={:.2}      |", amp);
@@ -183,12 +176,7 @@ fn fbm_oceanic_calibration_probe() {
             let s = init_s_field(build_with_oceanic(amp, scale), &ctx);
             let (_, sigma, max_s, _min_s, clip_frac) =
                 oceanic_stats(&plates, &s_baseline, &s, nx, ny);
-            eprint!(
-                "  σ={:.4}/{:.3}/{:>3.0}%",
-                sigma,
-                max_s,
-                clip_frac * 100.0
-            );
+            eprint!("  σ={:.4}/{:.3}/{:>3.0}%", sigma, max_s, clip_frac * 100.0);
         }
         eprintln!();
     }
@@ -265,22 +253,10 @@ fn run_oceanic_fbm_amplitude_target(nx: usize, ny: usize, label: &str) {
         SC_NUM_PLATES,
         SC_CONTINENTAL_RATIO * 100.0
     );
-    eprintln!(
-        "  oceanic cells           : {}",
-        count
-    );
-    eprintln!(
-        "  σ_fbm_oceanic_isolated  : {:.4} (target [0.02, 0.08])",
-        sigma
-    );
-    eprintln!(
-        "  max(S̃_oceanic)          : {:.4} (≤ {} required)",
-        max_s, OCEANIC_CLAMP_MAX
-    );
-    eprintln!(
-        "  clip fraction           : {:.2}% (≤ 0.49 clamp)",
-        clip_frac * 100.0
-    );
+    eprintln!("  oceanic cells           : {}", count);
+    eprintln!("  σ_fbm_oceanic_isolated  : {:.4} (target [0.02, 0.08])", sigma);
+    eprintln!("  max(S̃_oceanic)          : {:.4} (≤ {} required)", max_s, OCEANIC_CLAMP_MAX);
+    eprintln!("  clip fraction           : {:.2}% (≤ 0.49 clamp)", clip_frac * 100.0);
 
     assert!(
         count > 0,

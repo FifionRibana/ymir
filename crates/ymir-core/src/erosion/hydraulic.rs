@@ -29,6 +29,30 @@ pub struct ErosionConfig {
     /// Reference grid size for parameter calibration. The algorithm scales
     /// step size automatically for larger or smaller grids. Default: 256.
     pub reference_size: usize,
+    /// Fraction of a droplet's remaining sediment load DEPOSITED at the coast when
+    /// it terminates below `sea_level` (the terminal coastal dump). **Default 0.25**
+    /// (a partial sea SINK): deposit 25 % at the shoreline — enough to keep a
+    /// delta/beach at river mouths (measured deposition ≤5 cells ~47 %) — and let
+    /// the remaining 75 % leave the system (still counted as eroded). This turns the
+    /// net balance strongly erosive (measured net +1 % → +47 % on the reference
+    /// field) instead of the old net-zero coastal-dump lock. `1.0` reproduces the
+    /// pre-sink behaviour (whole load deposited); `0.0` is a total sink (abrupt
+    /// coast). A config that sets `1.0` serializes identically to a legacy config
+    /// (skip_serializing_if), so the pre-sink cache stays valid for it; the new
+    /// default 0.25 DOES enter the cache key and correctly rebuilds derived stages.
+    /// See docs/adr/0001-erosion-coastal-sink-and-terraces.md.
+    #[serde(default = "one_f32", skip_serializing_if = "is_one_f32")]
+    pub coastal_deposit_fraction: f32,
+}
+
+/// serde deserialize default for a legacy config that predates the field: the
+/// pre-sink behaviour was "deposit the whole load" (1.0), NOT the new 0.25 default.
+fn one_f32() -> f32 {
+    1.0
+}
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_one_f32(v: &f32) -> bool {
+    *v == 1.0
 }
 
 impl Default for ErosionConfig {
@@ -47,6 +71,9 @@ impl Default for ErosionConfig {
             sea_level: 0.1,
             batch_size: 50_000,
             reference_size: 256,
+            // Partial coastal sink (see field doc + ADR 0001): net-erosive balance,
+            // deltas preserved, network hierarchy preserved. Was 1.0 (deposit all).
+            coastal_deposit_fraction: 0.25,
         }
     }
 }
@@ -291,8 +318,14 @@ fn simulate_droplet(
             below_sea_steps += 1;
             if below_sea_steps > config.coastal_deposition_range {
                 if sediment > 0.0 {
-                    apply_brush(hmap, sediment_map, brush, x, y, sediment);
-                    stats.total_deposited += sediment as f64;
+                    // Partial coastal sink: deposit `f` of the load at the shoreline,
+                    // the remaining `1 − f` leaves the system (still counted eroded).
+                    // f == 1.0 (default) → deposit all (byte-identical to before).
+                    let keep = sediment * config.coastal_deposit_fraction;
+                    if keep > 0.0 {
+                        apply_brush(hmap, sediment_map, brush, x, y, keep);
+                        stats.total_deposited += keep as f64;
+                    }
                 }
                 return step;
             }

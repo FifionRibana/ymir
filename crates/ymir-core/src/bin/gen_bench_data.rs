@@ -31,11 +31,10 @@ use std::time::Instant;
 
 use ymir_core::tectonics_v2::basal_drag::{BasalDragConfig, BasalDragLaw};
 use ymir_core::tectonics_v2::boundaries::{BoundaryConfig, BoundaryRates};
-use ymir_core::tectonics_v2::voronoi::VoronoiConfig;
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, run_baseline, BaselineConfig, ForceKind, HarnessCaptureSpec, NonlinearChoice,
+    BaselineConfig, ForceKind, HarnessCaptureSpec, NonlinearChoice, build_force, run_baseline,
 };
-use ymir_core::tectonics_v2::mantle::{MantleConfig, COUPLING_DEFAULT, MF_DEFAULT};
+use ymir_core::tectonics_v2::mantle::{COUPLING_DEFAULT, MF_DEFAULT, MantleConfig};
 use ymir_core::tectonics_v2::presets::{Preset, YieldingConfig};
 use ymir_core::tectonics_v2::recycling::RecyclingConfig;
 use ymir_core::tectonics_v2::rheology::YieldingLaw;
@@ -43,6 +42,7 @@ use ymir_core::tectonics_v2::scales::Scales;
 use ymir_core::tectonics_v2::slab::SlabPullConfig;
 use ymir_core::tectonics_v2::stokes::nonlinear_solver::NewtonConfig;
 use ymir_core::tectonics_v2::stokes::picard::PicardConfig;
+use ymir_core::tectonics_v2::voronoi::VoronoiConfig;
 
 const ALL_CASES: &[&str] = &[
     "step0_quiescent",
@@ -147,8 +147,7 @@ fn dispatch(case: &str, args: &Args) -> Result<(), String> {
         "step8_activated_128" => capture_step8_activated(args, 128, 50, &path)?,
         other => return Err(format!("unknown case '{}'", other)),
     };
-    let meta = std::fs::metadata(&path)
-        .map_err(|e| format!("stat {}: {}", path.display(), e))?;
+    let meta = std::fs::metadata(&path).map_err(|e| format!("stat {}: {}", path.display(), e))?;
     println!(
         "[gen_bench_data]  ✓ '{}' {:.2} MB in {:.1}s",
         case,
@@ -203,7 +202,7 @@ fn capture_step0_quiescent(args: &Args, path: &PathBuf) -> Result<(), String> {
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -249,7 +248,7 @@ fn capture_step3_floor_yielding(args: &Args, path: &PathBuf) -> Result<(), Strin
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -258,11 +257,13 @@ fn capture_step3_floor_yielding(args: &Args, path: &PathBuf) -> Result<(), Strin
 /// step6_voronoi: Step 6 shape — Voronoi closed boundaries, yielding +
 /// basal drag. Captured at step 50 (Voronoi pattern stabilised).
 fn capture_step6_voronoi(args: &Args, path: &PathBuf) -> Result<(), String> {
-    let cfg = build_step6_shape_config(args, 64, 64, 51, HarnessCaptureSpec {
-        at_step: 50,
-        path: path.clone(),
-        case_label: "step6_voronoi".into(),
-    })?;
+    let cfg = build_step6_shape_config(
+        args,
+        64,
+        64,
+        51,
+        HarnessCaptureSpec { at_step: 50, path: path.clone(), case_label: "step6_voronoi".into() },
+    )?;
     let _ = run_baseline(&cfg);
     Ok(())
 }
@@ -270,11 +271,17 @@ fn capture_step6_voronoi(args: &Args, path: &PathBuf) -> Result<(), String> {
 /// step7_slab_off: Step 7 regression shape (slab Disabled) — identical
 /// to Step 6 shape, running slightly longer. Captured at step 100.
 fn capture_step7_slab_off(args: &Args, path: &PathBuf) -> Result<(), String> {
-    let cfg = build_step6_shape_config(args, 64, 64, 101, HarnessCaptureSpec {
-        at_step: 100,
-        path: path.clone(),
-        case_label: "step7_slab_off".into(),
-    })?;
+    let cfg = build_step6_shape_config(
+        args,
+        64,
+        64,
+        101,
+        HarnessCaptureSpec {
+            at_step: 100,
+            path: path.clone(),
+            case_label: "step7_slab_off".into(),
+        },
+    )?;
     let _ = run_baseline(&cfg);
     Ok(())
 }
@@ -290,14 +297,18 @@ fn capture_step8_activated(
     path: &PathBuf,
 ) -> Result<(), String> {
     let scales = Scales::default();
-    let vcfg = VoronoiConfig {
-        num_plates: args.num_plates,
-        continental_ratio: args.continental_ratio,
-    };
-    let rates = BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
+    let vcfg =
+        VoronoiConfig { num_plates: args.num_plates, continental_ratio: args.continental_ratio };
+    let rates =
+        BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
     let recycling_config = RecyclingConfig::default();
     let boundary = BoundaryConfig::enabled_voronoi_closed(
-        grid_n, grid_n, &vcfg, args.seed, rates, recycling_config,
+        grid_n,
+        grid_n,
+        &vcfg,
+        args.seed,
+        rates,
+        recycling_config,
     )
     .map_err(|e| format!("boundary config invalid: {:?}", e))?;
     let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
@@ -343,7 +354,7 @@ fn capture_step8_activated(
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     };
     let _ = run_baseline(&cfg);
     Ok(())
@@ -357,16 +368,14 @@ fn build_step6_shape_config(
     capture: HarnessCaptureSpec,
 ) -> Result<BaselineConfig, String> {
     let scales = Scales::default();
-    let vcfg = VoronoiConfig {
-        num_plates: args.num_plates,
-        continental_ratio: args.continental_ratio,
-    };
-    let rates = BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
+    let vcfg =
+        VoronoiConfig { num_plates: args.num_plates, continental_ratio: args.continental_ratio };
+    let rates =
+        BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
     let recycling_config = RecyclingConfig::default();
-    let boundary = BoundaryConfig::enabled_voronoi_closed(
-        nx, ny, &vcfg, args.seed, rates, recycling_config,
-    )
-    .map_err(|e| format!("boundary config invalid: {:?}", e))?;
+    let boundary =
+        BoundaryConfig::enabled_voronoi_closed(nx, ny, &vcfg, args.seed, rates, recycling_config)
+            .map_err(|e| format!("boundary config invalid: {:?}", e))?;
     let force = build_force(ForceKind::Gpe, &scales, 10.0, 1.0);
     Ok(BaselineConfig {
         seed: args.seed,
@@ -399,6 +408,6 @@ fn build_step6_shape_config(
         linear_solver: Default::default(),
         init_mode: ymir_core::tectonics_v2::init::InitMode::Checkerboard,
         continuation: None,
-            plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
+        plate_kinematic: ymir_core::tectonics_v2::plate_kinematic::PlateKinematicConfig::Zero,
     })
 }

@@ -11,12 +11,12 @@ use std::f64::consts::PI;
 
 use ymir_core::tectonics_v2::presets::ContinuationConfig;
 use ymir_core::tectonics_v2::rheology::ViscosityLaw;
+use ymir_core::tectonics_v2::stokes::Grid;
 use ymir_core::tectonics_v2::stokes::continuation::run_continuation;
 use ymir_core::tectonics_v2::stokes::nonlinear_solver::{
     NewtonConfig, NewtonSolver, NonlinearOutcome,
 };
 use ymir_core::tectonics_v2::stokes::solver::ConjugateGradient;
-use ymir_core::tectonics_v2::stokes::Grid;
 
 #[test]
 fn continuation_ramp_converges_every_rung() {

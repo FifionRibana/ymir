@@ -24,10 +24,10 @@
 
 use std::path::PathBuf;
 
-use ymir_core::tectonics_v2::diagnostics::harness::{run_baseline, BaselineConfig};
+use ymir_core::tectonics_v2::diagnostics::harness::{BaselineConfig, run_baseline};
 use ymir_core::tectonics_v2::scales::Scales;
 use ymir_core::tectonics_v2::workflow::{
-    run_phase_a_cycle_v2, run_phase_a_loop_v2, run_phase_b, WorkflowConfig,
+    WorkflowConfig, run_phase_a_cycle_v2, run_phase_a_loop_v2, run_phase_b,
 };
 
 fn build_test_config(scratch_subdir: &str) -> BaselineConfig {
@@ -41,10 +41,8 @@ fn build_test_config(scratch_subdir: &str) -> BaselineConfig {
     cfg.steps = 20;
     cfg.total_time_nondim = 0.4;
     cfg.heightmap_fractions = Vec::new();
-    cfg.output_dir = PathBuf::from(format!(
-        "target/v2_workflow_disabled_regression/{}",
-        scratch_subdir
-    ));
+    cfg.output_dir =
+        PathBuf::from(format!("target/v2_workflow_disabled_regression/{}", scratch_subdir));
     cfg
 }
 
@@ -82,17 +80,10 @@ fn workflow_disabled_run_phase_a_loop_returns_single_passthrough_cycle() {
     // does not mutate cfg — the regression contract holds.
     let mut cfg = build_test_config("loop_single");
     let output = run_phase_a_loop_v2(&mut cfg, &WorkflowConfig::Disabled);
-    assert_eq!(
-        output.cycles.len(),
-        1,
-        "Disabled loop must collapse to a single cycle"
-    );
+    assert_eq!(output.cycles.len(), 1, "Disabled loop must collapse to a single cycle");
     assert_eq!(output.cycles[0].common.erosion_volume_removed, 0.0);
     // cfg.continuation is unchanged under Disabled — None remains None.
-    assert!(
-        cfg.continuation.is_none(),
-        "Disabled loop must not mutate cfg.continuation"
-    );
+    assert!(cfg.continuation.is_none(), "Disabled loop must not mutate cfg.continuation");
 }
 
 #[test]

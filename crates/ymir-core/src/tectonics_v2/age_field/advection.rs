@@ -167,7 +167,13 @@ mod tests {
             std::mem::swap(&mut a, &mut a_next);
             let expected = 3.0 + (k as f64) * dt;
             for v in a.data() {
-                assert!(approx(*v, expected, 1e-12), "step {}: got {}, expected {}", k, v, expected);
+                assert!(
+                    approx(*v, expected, 1e-12),
+                    "step {}: got {}, expected {}",
+                    k,
+                    v,
+                    expected
+                );
             }
         }
     }

@@ -35,8 +35,8 @@ use ymir_core::tectonics_v2::diagnostics::harness::{
 };
 use ymir_core::tectonics_v2::init::{
     FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
-    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
-    InitMode, ProfileShape,
+    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT, InitMode,
+    ProfileShape,
 };
 use ymir_core::tectonics_v2::mantle::{
     COUPLING_DEFAULT, MF_DEFAULT, MantleConfig, NUM_MODES_DEFAULT,
@@ -62,17 +62,9 @@ fn build_cfg(init_mode: InitMode, label: &str) -> BaselineConfig {
     let preset = Preset::by_name("dynamic-accidented").unwrap();
     // single_continent Voronoï shape — same as the
     // v2_step13_acceptance suite for layout consistency.
-    let vcfg = VoronoiConfig {
-        num_plates: 4,
-        continental_ratio: 0.5,
-    };
-    let rates = BoundaryRates {
-        k_sub: 0.5,
-        k_arc: 0.0,
-        k_spread: 0.0,
-        k_coll_v: 0.0,
-        k_rift_v: 0.0,
-    };
+    let vcfg = VoronoiConfig { num_plates: 4, continental_ratio: 0.5 };
+    let rates =
+        BoundaryRates { k_sub: 0.5, k_arc: 0.0, k_spread: 0.0, k_coll_v: 0.0, k_rift_v: 0.0 };
     let boundary = BoundaryConfig::enabled_voronoi_closed(
         NX,
         NY,
@@ -103,14 +95,8 @@ fn build_cfg(init_mode: InitMode, label: &str) -> BaselineConfig {
         force_kind: ForceKind::Gpe,
         sinusoidal_amplitude: 0.0,
         s_perturbation_amplitude: 0.0,
-        yielding: YieldingConfig::Enabled(YieldingLaw {
-            bi: 0.15,
-            ..Default::default()
-        }),
-        basal_drag: BasalDragConfig::Enabled(BasalDragLaw {
-            br: 0.05,
-            ..BasalDragLaw::default()
-        }),
+        yielding: YieldingConfig::Enabled(YieldingLaw { bi: 0.15, ..Default::default() }),
+        basal_drag: BasalDragConfig::Enabled(BasalDragLaw { br: 0.05, ..BasalDragLaw::default() }),
         boundary,
         boundary_layout_name: format!("v2_step13_cg_ratio_{}", label),
         slab_pull: SlabPullConfig::Disabled,
@@ -141,10 +127,7 @@ fn cg_iter_mean(label: &str, init_mode: InitMode) -> (f64, f64) {
     let dt = t0.elapsed().as_secs_f64();
     let m = &r.metrics;
     let mean = m.cg_iter_mean;
-    println!(
-        "  {:<28} : cg_iter_mean = {:.2} (wallclock {:.2}s)",
-        label, mean, dt
-    );
+    println!("  {:<28} : cg_iter_mean = {:.2} (wallclock {:.2}s)", label, mean, dt);
     (mean, dt)
 }
 
@@ -158,10 +141,8 @@ fn cg_ratio_acceptance() {
     );
     println!();
 
-    let (uniform_mean, _) = cg_iter_mean(
-        "Uniform (baseline)",
-        InitMode::Uniform { boundary_smoothing_width: 1.0 },
-    );
+    let (uniform_mean, _) =
+        cg_iter_mean("Uniform (baseline)", InitMode::Uniform { boundary_smoothing_width: 1.0 });
 
     let (radial_mean, _) = cg_iter_mean(
         "RadialProfile",
@@ -196,14 +177,8 @@ fn cg_ratio_acceptance() {
     let fbm_ratio = radial_fbm_mean / uniform_mean.max(1e-12);
 
     println!();
-    println!(
-        "  RadialProfile         / Uniform = {:.3}× (acceptance: ≤ 1.10)",
-        radial_ratio
-    );
-    println!(
-        "  RadialProfileWithFBM  / Uniform = {:.3}× (acceptance: ≤ 1.10)",
-        fbm_ratio
-    );
+    println!("  RadialProfile         / Uniform = {:.3}× (acceptance: ≤ 1.10)", radial_ratio);
+    println!("  RadialProfileWithFBM  / Uniform = {:.3}× (acceptance: ≤ 1.10)", fbm_ratio);
 
     const RATIO_LIMIT: f64 = 1.10;
     assert!(

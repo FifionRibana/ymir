@@ -27,11 +27,11 @@ use std::path::{Path, PathBuf};
 
 use image::{ImageBuffer, Rgb};
 
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_advection_only, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1TimeLoopConfig, run_advection_only};
 use ymir_core::tectonics_v2::field::Field2D;
 
 const GRID_SIZE: usize = 64;
@@ -39,8 +39,7 @@ const SEED: u64 = 42;
 const N_STEPS: usize = 300;
 
 fn output_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/reports/c1_phase_1_1_advection")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/reports/c1_phase_1_1_advection")
 }
 
 #[test]
@@ -97,9 +96,11 @@ fn c1_phase_1_1_advection_sanity() {
     let drift = (final_mass - initial_mass).abs() / initial_mass;
     eprintln!("c1_phase_1_1: final mass   = {:.6}", final_mass);
     eprintln!("c1_phase_1_1: mass drift    = {:.3e} (threshold 1e-6)", drift);
-    eprintln!("c1_phase_1_1: wall time     = {:.2?} ({:.2?} per step)",
+    eprintln!(
+        "c1_phase_1_1: wall time     = {:.2?} ({:.2?} per step)",
         elapsed,
-        elapsed / N_STEPS as u32);
+        elapsed / N_STEPS as u32
+    );
     eprintln!("c1_phase_1_1: output dir    = {}", dir.display());
 
     assert!(
@@ -126,9 +127,7 @@ fn print_s_stats(tag: &str, state: &C1State) {
         sq += (v - mean) * (v - mean);
     }
     let std = (sq / data.len() as f64).sqrt();
-    eprintln!(
-        "c1_phase_1_1: cycle_{tag} S̃ min={min:.4} mean={mean:.4} max={max:.4} std={std:.4e}"
-    );
+    eprintln!("c1_phase_1_1: cycle_{tag} S̃ min={min:.4} mean={mean:.4} max={max:.4} std={std:.4e}");
 }
 
 /// Absolute palette bound for the fixed-scale `S̃` snapshot. Initial
@@ -189,11 +188,7 @@ fn save_s_fixed_palette_png(s: &Field2D, s_max: f64, path: &Path) {
 /// Render a `GridF32` heightmap in `[0, 1]` to a PNG using a
 /// 4-stop hypsometric palette: deep blue → light blue at sea
 /// level, then green → brown → white above.
-fn save_hypsometric_png(
-    heightmap: &ymir_core::grid::GridF32,
-    sea_norm: f32,
-    path: &Path,
-) {
+fn save_hypsometric_png(heightmap: &ymir_core::grid::GridF32, sea_norm: f32, path: &Path) {
     let nx = heightmap.width;
     let ny = heightmap.height;
     let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(nx as u32, ny as u32);

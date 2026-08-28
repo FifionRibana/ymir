@@ -14,7 +14,7 @@
 //! primary guard. Wallclock is logged for the engineer to eyeball.
 
 use ymir_core::tectonics_v2::basal_drag::BasalDragConfig;
-use ymir_core::tectonics_v2::diagnostics::harness::{run_baseline, BaselineConfig, ForceKind};
+use ymir_core::tectonics_v2::diagnostics::harness::{BaselineConfig, ForceKind, run_baseline};
 use ymir_core::tectonics_v2::forcing::{ForceSum, SinusoidalForce};
 use ymir_core::tectonics_v2::presets::YieldingConfig;
 use ymir_core::tectonics_v2::scales::Scales;
@@ -46,12 +46,7 @@ fn drag_disabled_regression_matches_step3_cg_iters() {
         result.metrics.cg_iter_max,
     );
     assert!(
-        result
-            .metrics
-            .newton
-            .as_ref()
-            .map(|n| n.outcome_percentages().0 == 100.0)
-            .unwrap_or(false),
+        result.metrics.newton.as_ref().map(|n| n.outcome_percentages().0 == 100.0).unwrap_or(false),
         "expected 100% Newton convergence under drag Disabled, got {:?}",
         result.metrics.newton,
     );

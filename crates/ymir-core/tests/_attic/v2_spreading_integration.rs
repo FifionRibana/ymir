@@ -6,9 +6,7 @@
 
 use std::path::PathBuf;
 
-use ymir_core::tectonics_v2::diagnostics::harness::{
-    run_baseline, BaselineConfig, ForceKind,
-};
+use ymir_core::tectonics_v2::diagnostics::harness::{BaselineConfig, ForceKind, run_baseline};
 use ymir_core::tectonics_v2::field::Field2D;
 use ymir_core::tectonics_v2::forcing::{ForceSum, GpeForce};
 use ymir_core::tectonics_v2::scales::Scales;
@@ -57,7 +55,9 @@ fn gaussian_plateau_spreads_under_gpe() {
 
     eprintln!(
         "variance_series: first = {:.3e}, last = {:.3e}, Δ = {:+.2}%",
-        v0, vn, 100.0 * (vn - v0) / v0,
+        v0,
+        vn,
+        100.0 * (vn - v0) / v0,
     );
 
     assert!(v0 > 0.0, "initial variance should be positive");
@@ -69,7 +69,8 @@ fn gaussian_plateau_spreads_under_gpe() {
     assert!(
         vn <= v0 * 1.01,
         "variance increased under pure GPE: {} -> {} (> 1% of initial)",
-        v0, vn,
+        v0,
+        vn,
     );
     // Mass conserved (advection is separate from the force term).
     assert!(r.metrics.mass_drift_relative.abs() < 1e-10);

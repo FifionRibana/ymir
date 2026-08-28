@@ -28,27 +28,28 @@ use serde::{Deserialize, Serialize};
 
 use super::boundaries::{PlateType, PlateTypeField};
 use super::field::Field2D;
-use super::voronoi::{compute_dist_to_inter_plate_boundary, PlateIdField};
+use super::voronoi::{PlateIdField, compute_dist_to_inter_plate_boundary};
 
 pub mod composite_profile;
 pub mod orogenic_profile;
 pub mod radial_profile;
 pub mod radial_profile_fbm;
 pub use composite_profile::{
-    CompositeCap, CompositeOrogenicRidgeParams, CompositeRadialParams,
-    COMPOSITE_RADIAL_CONTINENTAL_DEFAULT,
+    COMPOSITE_RADIAL_CONTINENTAL_DEFAULT, CompositeCap, CompositeOrogenicRidgeParams,
+    CompositeRadialParams,
 };
 pub use orogenic_profile::{
-    OrogenicOrientation, OROGENIC_BASE_VALUE_DEFAULT, OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
-    OROGENIC_OCEANIC_VALUE_DEFAULT, OROGENIC_PEAK_VALUE_DEFAULT, OROGENIC_WIDTH_SIGMA_RATIO_DEFAULT,
+    OROGENIC_BASE_VALUE_DEFAULT, OROGENIC_HALF_LENGTH_RATIO_DEFAULT,
+    OROGENIC_OCEANIC_VALUE_DEFAULT, OROGENIC_PEAK_VALUE_DEFAULT,
+    OROGENIC_WIDTH_SIGMA_RATIO_DEFAULT, OrogenicOrientation,
 };
 pub use radial_profile::{
-    ProfileShape, CONTINENTAL_VALUE_DEFAULT, OCEANIC_VALUE_DEFAULT, POW_EXPONENT_DEFAULT,
+    CONTINENTAL_VALUE_DEFAULT, OCEANIC_VALUE_DEFAULT, POW_EXPONENT_DEFAULT, ProfileShape,
 };
 pub use radial_profile_fbm::{
     FBM_AMPLITUDE_DEFAULT, FBM_AMPLITUDE_OCEANIC_DEFAULT, FBM_LACUNARITY_DEFAULT,
-    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT,
-    FBM_SEED_DEFAULT, FBM_SEED_OCEANIC_XOR_MAGIC, OCEANIC_CLAMP_MAX,
+    FBM_OCTAVES_DEFAULT, FBM_PERSISTENCE_DEFAULT, FBM_SCALE_DEFAULT, FBM_SEED_DEFAULT,
+    FBM_SEED_OCEANIC_XOR_MAGIC, OCEANIC_CLAMP_MAX,
 };
 
 /// Per-plate-type reference S̃ values, dimensionless. `0.2` for
@@ -74,10 +75,7 @@ pub enum InitMode {
     /// Gaussian decay from each plate's Voronoï seed (centroid).
     /// `sigma_*` measured in cells; per-type sigmas allow different
     /// continental and oceanic profile widths.
-    Gaussian {
-        sigma_continental: f64,
-        sigma_oceanic: f64,
-    },
+    Gaussian { sigma_continental: f64, sigma_oceanic: f64 },
     /// Convolution of binary classification mask with a periodic
     /// Gaussian kernel. `sigma` measured in cells.
     Convolution { sigma: f64 },
@@ -89,11 +87,7 @@ pub enum InitMode {
     /// get `S̃ = oceanic_value` uniform. See
     /// [`radial_profile`] module docstring for the algorithm and
     /// degenerate-case behaviour.
-    RadialProfile {
-        continental_value: f64,
-        oceanic_value: f64,
-        profile_shape: ProfileShape,
-    },
+    RadialProfile { continental_value: f64, oceanic_value: f64, profile_shape: ProfileShape },
     /// Step 13 — radial profile + isotropic FBM noise on
     /// continental cells, for intra-plate thickness heterogeneity
     /// (province texture).
@@ -226,13 +220,9 @@ pub struct InitContext<'a> {
 pub fn init_s_field(mode: InitMode, ctx: &InitContext<'_>) -> Field2D {
     match mode {
         InitMode::Checkerboard => match &ctx.plate_data {
-            Some(p) => checkerboard_plate_aware(
-                ctx.nx,
-                ctx.ny,
-                ctx.seed,
-                ctx.amplitude,
-                p.plate_type,
-            ),
+            Some(p) => {
+                checkerboard_plate_aware(ctx.nx, ctx.ny, ctx.seed, ctx.amplitude, p.plate_type)
+            }
             None => checkerboard_agnostic(ctx.nx, ctx.ny, ctx.seed, ctx.amplitude),
         },
         InitMode::Uniform { boundary_smoothing_width } => {
@@ -261,11 +251,7 @@ pub fn init_s_field(mode: InitMode, ctx: &InitContext<'_>) -> Field2D {
             );
             convolution(ctx.nx, ctx.ny, p, sigma)
         }
-        InitMode::RadialProfile {
-            continental_value,
-            oceanic_value,
-            profile_shape,
-        } => {
+        InitMode::RadialProfile { continental_value, oceanic_value, profile_shape } => {
             let p = ctx.plate_data.as_ref().expect(
                 "InitMode::RadialProfile requires plate data — pair with \
                  BoundaryConfig::Enabled",
@@ -341,25 +327,12 @@ pub fn init_s_field(mode: InitMode, ctx: &InitContext<'_>) -> Field2D {
                 orientation,
             )
         }
-        InitMode::Composite {
-            radial,
-            orogenic_ridge,
-            oceanic_value,
-            cap,
-        } => {
+        InitMode::Composite { radial, orogenic_ridge, oceanic_value, cap } => {
             let p = ctx.plate_data.as_ref().expect(
                 "InitMode::Composite requires plate data — pair with \
                  BoundaryConfig::Enabled",
             );
-            composite_profile::build(
-                ctx.nx,
-                ctx.ny,
-                p,
-                radial,
-                orogenic_ridge,
-                oceanic_value,
-                cap,
-            )
+            composite_profile::build(ctx.nx, ctx.ny, p, radial, orogenic_ridge, oceanic_value, cap)
         }
     }
 }
@@ -428,12 +401,7 @@ fn checkerboard_plate_aware(
 /// `init::radial_profile`). Bit-identical with the pre-refactor
 /// implementation by construction — see that utility's module
 /// docstring.
-fn uniform(
-    nx: usize,
-    ny: usize,
-    p: &PlateInitData<'_>,
-    boundary_smoothing_width: f64,
-) -> Field2D {
+fn uniform(nx: usize, ny: usize, p: &PlateInitData<'_>, boundary_smoothing_width: f64) -> Field2D {
     let bfs = compute_dist_to_inter_plate_boundary(nx, ny, p.plate_id);
 
     // Per-cell own value + per-plate-id S̃ value lookup, in one scan.
@@ -598,9 +566,13 @@ fn convolution(nx: usize, ny: usize, p: &PlateInitData<'_>, sigma: f64) -> Field
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+    use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
-    fn build_test_plates(nx: usize, ny: usize, seed: u64) -> crate::tectonics_v2::voronoi::VoronoiPlates {
+    fn build_test_plates(
+        nx: usize,
+        ny: usize,
+        seed: u64,
+    ) -> crate::tectonics_v2::voronoi::VoronoiPlates {
         let cfg = VoronoiConfig { num_plates: 8, continental_ratio: 0.3 };
         generate_voronoi(nx, ny, &cfg, seed)
     }
@@ -705,10 +677,7 @@ mod tests {
         let ny = 64;
         let plates = build_test_plates(nx, ny, 42);
         let ctx = ctx_with_plates(nx, ny, 42, 0.0, &plates);
-        let s = init_s_field(
-            InitMode::Uniform { boundary_smoothing_width: 1.0 },
-            &ctx,
-        );
+        let s = init_s_field(InitMode::Uniform { boundary_smoothing_width: 1.0 }, &ctx);
 
         for &v in s.data() {
             assert!(
@@ -722,14 +691,10 @@ mod tests {
             .data()
             .iter()
             .filter(|&&v| {
-                (v - OCEANIC_S_DEFAULT).abs() < 1e-12
-                    || (v - CONTINENTAL_S_DEFAULT).abs() < 1e-12
+                (v - OCEANIC_S_DEFAULT).abs() < 1e-12 || (v - CONTINENTAL_S_DEFAULT).abs() < 1e-12
             })
             .count();
-        assert!(
-            interior > 0,
-            "uniform produced no purely-interior cells in 64² grid (8 plates)"
-        );
+        assert!(interior > 0, "uniform produced no purely-interior cells in 64² grid (8 plates)");
     }
 
     /// Gaussian peaks at each plate's Voronoï seed and decays with
@@ -743,10 +708,7 @@ mod tests {
         let sigma = 5.0;
         let ctx = ctx_with_plates(nx, ny, 42, 0.0, &plates);
         let s = init_s_field(
-            InitMode::Gaussian {
-                sigma_continental: sigma,
-                sigma_oceanic: sigma,
-            },
+            InitMode::Gaussian { sigma_continental: sigma, sigma_oceanic: sigma },
             &ctx,
         );
 
@@ -823,11 +785,7 @@ mod tests {
         // σ=2 cells the Gaussian envelope at the step's centre
         // produces a finite-difference ≤ ~0.16. Keep a generous
         // bound at 0.4.
-        assert!(
-            max_grad < 0.4,
-            "convolution produced a too-steep gradient: {}",
-            max_grad
-        );
+        assert!(max_grad < 0.4, "convolution produced a too-steep gradient: {}", max_grad);
     }
 
     /// Determinism: same `(seed, nx, ny, mode)` → byte-identical S̃

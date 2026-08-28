@@ -97,4 +97,4 @@ pub mod params;
 pub mod source_term;
 
 pub use params::SubductionParams;
-pub use source_term::{apply_subduction_step, SubductionStats};
+pub use source_term::{SubductionStats, apply_subduction_step};

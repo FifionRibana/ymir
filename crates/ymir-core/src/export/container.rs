@@ -91,10 +91,28 @@ pub struct Continent {
     /// Centre latitude (°) the climate/biome layers were DERIVED at, so a
     /// consumer knows the placement behind `temperature`/`precipitation`/`biome`.
     pub latitude_deg: f64,
+    /// Finding 25 — CLIMATIC latitude span (°) the temperature/precipitation/biome
+    /// layers were derived over, centred on `latitude_deg`. Decoupled from the
+    /// physical extent: a small island may deliberately span several belts. A
+    /// consumer reads this to know the climatic gradient behind those layers.
+    #[serde(default)]
+    pub latitude_span_deg: f64,
+    /// Finding 24 — GEOGRAPHIC SCALE RATIO. The map DRAWS `window_km` of terrain but
+    /// the exported HYDROLOGY (river `width_m`, `discharge_m3s`, `drainage_km2`,
+    /// navigability) SIGNIFIES `window_km · ratio` (catchment ×ratio²). A pure
+    /// presentation compression: terrain, climate and biomes are NOT scaled. `1.0` =
+    /// identity. A consumer MUST read this before treating river sizes as literal.
+    #[serde(default = "one_f64")]
+    pub geographic_scale_ratio: f64,
     pub vertical_scale: VerticalScale,
     pub sea_level_m: f64,
     pub max_elevation_m: f64,
     pub max_depth_m: f64,
+}
+
+/// serde default for `geographic_scale_ratio` on manifests written before Finding 24.
+fn one_f64() -> f64 {
+    1.0
 }
 
 /// One layer entry. A single flat struct covers both raster and vector layers;
@@ -152,6 +170,10 @@ pub struct ContinentMeta {
     pub window_offset_in_torus: [f64; 2],
     /// Centre latitude (°) the climate/biome layers were derived at.
     pub latitude_deg: f64,
+    /// Finding 25 — climatic latitude span (°), centred on `latitude_deg`.
+    pub latitude_span_deg: f64,
+    /// Finding 24 — geographic scale ratio for the exported hydrology (1.0 = identity).
+    pub geographic_scale_ratio: f64,
     /// Vertical scale is derived from these Stein-Stein params.
     pub stein_stein: SteinSteinParams,
     pub sea_level_m: f64,
@@ -177,6 +199,8 @@ impl ContinentMeta {
             tectonic_domain_km: self.tectonic_domain_km,
             window_offset_in_torus: self.window_offset_in_torus,
             latitude_deg: self.latitude_deg,
+            latitude_span_deg: self.latitude_span_deg,
+            geographic_scale_ratio: self.geographic_scale_ratio,
             vertical_scale: VerticalScale {
                 altitude_norm_half_range,
                 depth_scale_m: ss.depth_scale_m,
@@ -451,6 +475,8 @@ mod tests {
             tectonic_domain_km: 1024.0,
             window_offset_in_torus: [0.0, 0.0],
             latitude_deg: 45.0,
+            latitude_span_deg: 1024.0 / 111.0,
+            geographic_scale_ratio: 1.0,
             stein_stein: SteinSteinParams::default(),
             sea_level_m: 0.0,
             max_elevation_m: 5650.0,
@@ -555,6 +581,34 @@ mod tests {
                     assert_eq!(layer.endianness, None, "u8 carries no byte order");
                 }
                 _ => {}
+            }
+        }
+    }
+
+    /// The playable-window contract: km_per_cell = window_km / width lands in the
+    /// 30–50 m target (328 km @ 8192² = 40.0 m/cell), and every raster layer the
+    /// writer stamps shares the window grid dims.
+    #[test]
+    fn window_km_per_cell_in_target_range_and_layers_share_dims() {
+        let (w, h) = (8192usize, 8192usize);
+        let mut meta = tiny_meta(4, 4); // reused shell; overwrite the window fields
+        meta.grid = Grid { width: w, height: h };
+        meta.window_km = 328.0;
+        let m = ContinentWriter::new(&std::env::temp_dir().join("ymir_window_km"), meta)
+            .unwrap()
+            .manifest()
+            .clone();
+
+        let m_per_cell = m.continent.km_per_cell * 1000.0;
+        assert!((39.9..40.1).contains(&m_per_cell), "328 km @ 8192² ≈ 40 m/cell, got {m_per_cell}");
+        assert!((30.0..=50.0).contains(&m_per_cell), "km_per_cell must be in the 30–50 m band");
+
+        // Every raster layer declares the window grid dims (they cannot diverge —
+        // all are rendered on the one eroded window grid).
+        for layer in &m.layers {
+            if layer.kind == "raster" {
+                assert_eq!(layer.width, Some(w), "{} width", layer.id);
+                assert_eq!(layer.height, Some(h), "{} height", layer.id);
             }
         }
     }

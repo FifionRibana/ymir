@@ -247,10 +247,7 @@ mod tests {
         // picks N → descent through rows 3, 2, 1 (oceanic). length=3.
         for i in 0..nx {
             let lin = 4 * nx + i;
-            assert_eq!(
-                map.target_idx[lin], nx + i,
-                "peak ({i}, 4) should drain N to ({i}, 1)"
-            );
+            assert_eq!(map.target_idx[lin], nx + i, "peak ({i}, 4) should drain N to ({i}, 1)");
             assert_eq!(map.path_length[lin], 3);
         }
 
@@ -357,10 +354,7 @@ mod tests {
 
         for i in 0..nx {
             let lin = 8 * nx + i; // peak row
-            assert_eq!(
-                map.path_length[lin], cap as u8,
-                "peak row should saturate at cap={cap}"
-            );
+            assert_eq!(map.path_length[lin], cap as u8, "peak row should saturate at cap={cap}");
             assert_eq!(map.target_idx[lin], 5 * nx + i);
         }
 
@@ -439,9 +433,9 @@ mod tests {
     #[ignore]
     fn drainage_path_length_distribution_diagnostic() {
         use crate::tectonics_v2::init::{
-            init_s_field, InitContext, InitMode, PlateInitData, ProfileShape,
+            InitContext, InitMode, PlateInitData, ProfileShape, init_s_field,
         };
-        use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+        use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
         let nx = 32;
         let ny = 32;
@@ -492,22 +486,14 @@ mod tests {
             let bar = "#".repeat((pct / 2.0).round() as usize);
             println!("  len {:>2}: {:>5} ({:>5.1} %) {}", len, count, pct, bar);
         }
-        let mean = hist
-            .iter()
-            .enumerate()
-            .map(|(len, count)| (len * count) as f64)
-            .sum::<f64>()
+        let mean = hist.iter().enumerate().map(|(len, count)| (len * count) as f64).sum::<f64>()
             / continental_count.max(1) as f64;
         let max_len = hist.iter().rposition(|&c| c > 0).unwrap_or(0);
         println!("Mean path_length over continental cells: {:.2}", mean);
         println!("Max path_length: {}", max_len);
 
         assert!(continental_count > 0, "expected some continental cells");
-        assert!(
-            mean > 0.5,
-            "drainage should produce non-trivial paths (mean > 0.5), got {}",
-            mean
-        );
+        assert!(mean > 0.5, "drainage should produce non-trivial paths (mean > 0.5), got {}", mean);
     }
 
     /// Phase R1 diagnostic — same scenario as
@@ -527,9 +513,9 @@ mod tests {
     #[ignore]
     fn drainage_long_distance_diagnostic() {
         use crate::tectonics_v2::init::{
-            init_s_field, InitContext, InitMode, PlateInitData, ProfileShape,
+            InitContext, InitMode, PlateInitData, ProfileShape, init_s_field,
         };
-        use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+        use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
         let nx = 64;
         let ny = 64;
@@ -584,11 +570,7 @@ mod tests {
             let bar = "#".repeat((pct / 2.0).round() as usize);
             println!("  len {:>2}: {:>5} ({:>5.1} %) {}", len, count, pct, bar);
         }
-        let mean = hist
-            .iter()
-            .enumerate()
-            .map(|(len, count)| (len * count) as f64)
-            .sum::<f64>()
+        let mean = hist.iter().enumerate().map(|(len, count)| (len * count) as f64).sum::<f64>()
             / continental_count.max(1) as f64;
         let max_len = hist.iter().rposition(|&c| c > 0).unwrap_or(0);
         println!("Mean path_length over continental cells: {:.2}", mean);

@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    run_baseline, BaselineConfig, NonlinearChoice,
+    BaselineConfig, NonlinearChoice, run_baseline,
 };
 use ymir_core::tectonics_v2::scales::Scales;
 

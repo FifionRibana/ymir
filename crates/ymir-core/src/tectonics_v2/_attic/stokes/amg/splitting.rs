@@ -156,11 +156,8 @@ pub fn classical_rs_splitting(strong: &[Vec<usize>]) -> Vec<CfType> {
         }
         // Collect i's C-neighbours from strong[i] (as a BTreeSet
         // so the intersection check is O(log N) per j).
-        let c_nbrs_i: BTreeSet<usize> = strong[i]
-            .iter()
-            .filter(|&&k| cf[k] == CfType::Coarse)
-            .copied()
-            .collect();
+        let c_nbrs_i: BTreeSet<usize> =
+            strong[i].iter().filter(|&&k| cf[k] == CfType::Coarse).copied().collect();
 
         for &j in &strong[i] {
             if cf[j] != CfType::Fine {
@@ -180,7 +177,9 @@ pub fn classical_rs_splitting(strong: &[Vec<usize>]) -> Vec<CfType> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::strong_connections::{build_poisson_laplacian_csr, compute_strong_connections};
+    use super::super::strong_connections::{
+        build_poisson_laplacian_csr, compute_strong_connections,
+    };
     use super::*;
 
     fn count_coarse_fine(cf: &[CfType]) -> (usize, usize) {
@@ -214,11 +213,7 @@ mod tests {
                 continue;
             }
             let has_c = strong[i].iter().any(|&j| cf[j] == CfType::Coarse);
-            assert!(
-                has_c,
-                "F-point {} has no C-neighbour in its strong set {:?}",
-                i, strong[i],
-            );
+            assert!(has_c, "F-point {} has no C-neighbour in its strong set {:?}", i, strong[i],);
         }
     }
 
@@ -253,11 +248,7 @@ mod tests {
         let first = classical_rs_splitting(&strong);
         for run in 0..100 {
             let next = classical_rs_splitting(&strong);
-            assert_eq!(
-                first, next,
-                "splitting non-deterministic at run {} — D9 violated",
-                run
-            );
+            assert_eq!(first, next, "splitting non-deterministic at run {} — D9 violated", run);
         }
     }
 

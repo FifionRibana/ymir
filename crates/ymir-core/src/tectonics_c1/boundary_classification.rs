@@ -196,10 +196,7 @@ const V_REL_FLOOR: f64 = 1e-12;
 ///
 /// See module docstring for the algorithm and the upper-plate
 /// heuristic.
-pub fn classify_boundaries(
-    plate_id: &PlateIdField,
-    kinematics: &PlateKinematics,
-) -> BoundaryInfo {
+pub fn classify_boundaries(plate_id: &PlateIdField, kinematics: &PlateKinematics) -> BoundaryInfo {
     let nx = plate_id.nx();
     let ny = plate_id.ny();
     let idx_x = PeriodicIndex::new(nx);
@@ -215,10 +212,10 @@ pub fn classify_boundaries(
     // expects (positive dot = velocity component pointing toward
     // neighbour = convergent if also into the neighbour's volume).
     let neighbours: [(i32, i32, f64, f64); 4] = [
-        (1, 0, 1.0, 0.0),    // East
-        (-1, 0, -1.0, 0.0),  // West
-        (0, 1, 0.0, 1.0),    // North
-        (0, -1, 0.0, -1.0),  // South
+        (1, 0, 1.0, 0.0),   // East
+        (-1, 0, -1.0, 0.0), // West
+        (0, 1, 0.0, 1.0),   // North
+        (0, -1, 0.0, -1.0), // South
     ];
 
     for j in 0..ny {
@@ -350,12 +347,9 @@ pub fn retarget_upper_plate_continental(
             // Differing-plate 4-neighbours = the boundary partners.
             let mut has_oceanic_diff = false;
             let mut has_continental_diff = false;
-            for (ni, nj) in [
-                (idx_x.next(i), j),
-                (idx_x.prev(i), j),
-                (i, idx_y.next(j)),
-                (i, idx_y.prev(j)),
-            ] {
+            for (ni, nj) in
+                [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))]
+            {
                 if plate_id.get(ni, nj) == pid_c {
                     continue;
                 }
@@ -405,17 +399,13 @@ pub fn oc_override_seed_mask(
                 continue;
             }
             let pid_c = plate_id.get(i, j);
-            let has_oceanic_diff = [
-                (idx_x.next(i), j),
-                (idx_x.prev(i), j),
-                (i, idx_y.next(j)),
-                (i, idx_y.prev(j)),
-            ]
-            .into_iter()
-            .any(|(ni, nj)| {
-                plate_id.get(ni, nj) != pid_c
-                    && matches!(plate_type.get(ni, nj), PlateType::Oceanic)
-            });
+            let has_oceanic_diff =
+                [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))]
+                    .into_iter()
+                    .any(|(ni, nj)| {
+                        plate_id.get(ni, nj) != pid_c
+                            && matches!(plate_type.get(ni, nj), PlateType::Oceanic)
+                    });
             if has_oceanic_diff {
                 mask.set(i, j, true);
             }
@@ -480,21 +470,45 @@ mod tests {
         // --- O-C: continental (cells 0,1) overriding oceanic (2,3). ---
         // Seed the mask "wrong" (cont=false, ocean=true) to see the flip.
         let mut oc = make_boundary(false, true);
-        retarget_upper_plate_continental(&mut oc, &plate_id, &pt(PlateType::Continental, PlateType::Oceanic));
+        retarget_upper_plate_continental(
+            &mut oc,
+            &plate_id,
+            &pt(PlateType::Continental, PlateType::Oceanic),
+        );
         assert!(oc.upper_plate_mask.get(1, 0), "O-C: continental cell must become upper=true");
         assert!(!oc.upper_plate_mask.get(2, 0), "O-C: oceanic cell must become lower=false");
 
         // --- C-C: both continental → strictly untouched. ---
         let mut cc = make_boundary(false, true);
-        retarget_upper_plate_continental(&mut cc, &plate_id, &pt(PlateType::Continental, PlateType::Continental));
-        assert!(!cc.upper_plate_mask.get(1, 0), "C-C: cell 1 mask must stay false (velocity fallback)");
-        assert!(cc.upper_plate_mask.get(2, 0), "C-C: cell 2 mask must stay true (velocity fallback)");
+        retarget_upper_plate_continental(
+            &mut cc,
+            &plate_id,
+            &pt(PlateType::Continental, PlateType::Continental),
+        );
+        assert!(
+            !cc.upper_plate_mask.get(1, 0),
+            "C-C: cell 1 mask must stay false (velocity fallback)"
+        );
+        assert!(
+            cc.upper_plate_mask.get(2, 0),
+            "C-C: cell 2 mask must stay true (velocity fallback)"
+        );
 
         // --- O-O: both oceanic → strictly untouched. ---
         let mut oo = make_boundary(true, false);
-        retarget_upper_plate_continental(&mut oo, &plate_id, &pt(PlateType::Oceanic, PlateType::Oceanic));
-        assert!(oo.upper_plate_mask.get(1, 0), "O-O: cell 1 mask must stay true (velocity fallback)");
-        assert!(!oo.upper_plate_mask.get(2, 0), "O-O: cell 2 mask must stay false (velocity fallback)");
+        retarget_upper_plate_continental(
+            &mut oo,
+            &plate_id,
+            &pt(PlateType::Oceanic, PlateType::Oceanic),
+        );
+        assert!(
+            oo.upper_plate_mask.get(1, 0),
+            "O-O: cell 1 mask must stay true (velocity fallback)"
+        );
+        assert!(
+            !oo.upper_plate_mask.get(2, 0),
+            "O-O: cell 2 mask must stay false (velocity fallback)"
+        );
     }
 
     #[test]
@@ -506,9 +520,7 @@ mod tests {
         let ny = 8;
         let plate_id = build_plate_id(nx, ny, |i, _j| if i < nx / 2 { 0 } else { 1 });
         // Plate 0 faster so it's the upper plate on the boundary.
-        let kinematics = PlateKinematics {
-            velocities: vec![(0.02, 0.0), (-0.01, 0.0)],
-        };
+        let kinematics = PlateKinematics { velocities: vec![(0.02, 0.0), (-0.01, 0.0)] };
 
         let info = classify_boundaries(&plate_id, &kinematics);
 
@@ -548,7 +560,10 @@ mod tests {
         // Divergent (interior + wrap).
         let counts = info.counts();
         assert!(counts[0] > 0, "Internal count should be > 0 (interior of plates)");
-        assert!(counts[1] >= 2 * ny, "Convergent count should cover both sides of interior boundary");
+        assert!(
+            counts[1] >= 2 * ny,
+            "Convergent count should cover both sides of interior boundary"
+        );
         assert!(counts[2] >= 2 * ny, "Divergent count should cover the wrap-around boundary");
     }
 
@@ -559,23 +574,15 @@ mod tests {
         let nx = 16;
         let ny = 8;
         let plate_id = build_plate_id(nx, ny, |i, _j| if i < nx / 2 { 0 } else { 1 });
-        let kinematics = PlateKinematics {
-            velocities: vec![(-0.02, 0.0), (0.01, 0.0)],
-        };
+        let kinematics = PlateKinematics { velocities: vec![(-0.02, 0.0), (0.01, 0.0)] };
 
         let info = classify_boundaries(&plate_id, &kinematics);
 
         let left_edge_col = nx / 2 - 1;
         let right_edge_col = nx / 2;
         for j in 0..ny {
-            assert_eq!(
-                info.boundary_type.get(left_edge_col, j),
-                BoundaryType::Divergent,
-            );
-            assert_eq!(
-                info.boundary_type.get(right_edge_col, j),
-                BoundaryType::Divergent,
-            );
+            assert_eq!(info.boundary_type.get(left_edge_col, j), BoundaryType::Divergent,);
+            assert_eq!(info.boundary_type.get(right_edge_col, j), BoundaryType::Divergent,);
             // No cell on the designed divergent boundary should be
             // upper-plate (upper-plate only set on Convergent). The
             // wrap-around boundary at cols 15/0 may carry an
@@ -600,9 +607,7 @@ mod tests {
         let nx = 16;
         let ny = 8;
         let plate_id = build_plate_id(nx, ny, |i, _j| if i < nx / 2 { 0 } else { 1 });
-        let kinematics = PlateKinematics {
-            velocities: vec![(0.0, 0.01), (0.0, -0.01)],
-        };
+        let kinematics = PlateKinematics { velocities: vec![(0.0, 0.01), (0.0, -0.01)] };
 
         let info = classify_boundaries(&plate_id, &kinematics);
 
@@ -645,16 +650,15 @@ mod tests {
             upper,
             pct(upper)
         );
-        eprintln!(
-            "  Total cells = {} (= 64²)",
-            state.nx() * state.ny()
-        );
+        eprintln!("  Total cells = {} (= 64²)", state.nx() * state.ny());
 
         // Sanity: counts sum to total grid size, Internal dominates,
         // at least some Convergent / Divergent / Ambiguous detected.
         assert_eq!(counts.iter().sum::<usize>(), state.nx() * state.ny());
-        assert!(counts[0] > counts[1] + counts[2] + counts[3] + counts[4],
-            "Internal should dominate over boundary cells on the v2 default 8-plate layout");
+        assert!(
+            counts[0] > counts[1] + counts[2] + counts[3] + counts[4],
+            "Internal should dominate over boundary cells on the v2 default 8-plate layout"
+        );
         assert!(counts[1] > 0, "expected some Convergent cells");
         assert!(counts[2] > 0, "expected some Divergent cells");
     }
@@ -693,9 +697,8 @@ mod tests {
         // divergent across the j=4 line. The faster-than-zero y
         // components for plates 1 and 2 give a clear cosine = 1
         // on the divergent edge.
-        let kinematics = PlateKinematics {
-            velocities: vec![(0.02, 0.0), (-0.01, -0.02), (0.0, 0.02)],
-        };
+        let kinematics =
+            PlateKinematics { velocities: vec![(0.02, 0.0), (-0.01, -0.02), (0.0, 0.02)] };
 
         let info = classify_boundaries(&plate_id, &kinematics);
 

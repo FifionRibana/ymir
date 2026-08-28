@@ -19,8 +19,7 @@
 //! by exactly `Δt · k_coll-v`; every other cell must stay at 1.0.
 
 use ymir_core::tectonics_v2::boundaries::{
-    compute_source_sink_terms, continental_collision_band, BoundaryFlag, BoundaryRates,
-    PlateType,
+    BoundaryFlag, BoundaryRates, PlateType, compute_source_sink_terms, continental_collision_band,
 };
 use ymir_core::tectonics_v2::field::{Field2D, PeriodicIndex};
 
@@ -74,7 +73,10 @@ fn source_sink_on_static_continental_collision_band_exact_cell_delta() {
             assert!(
                 (got - expected).abs() < 1e-14,
                 "cell ({},{}): expected {}, got {}",
-                i, j, expected, got,
+                i,
+                j,
+                expected,
+                got,
             );
             // Sanity: non-collision cells are bit-identical to
             // before. This is what "strictly unchanged" means —
@@ -103,8 +105,14 @@ fn source_sink_all_none_layout_has_zero_q() {
     let mut q = Field2D::new(nx, ny);
     let mut q_sub_scratch = Field2D::new(nx, ny);
     compute_source_sink_terms(
-        &plate_types, &flags, &rates, &div_v, &idx_x, &idx_y,
-        &mut q_sub_scratch, &mut q,
+        &plate_types,
+        &flags,
+        &rates,
+        &div_v,
+        &idx_x,
+        &idx_y,
+        &mut q_sub_scratch,
+        &mut q,
     );
     for &v in q.data() {
         assert_eq!(v, 0.0);

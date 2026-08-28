@@ -30,14 +30,14 @@
 
 use std::path::PathBuf;
 
-use crate::tectonics_v2::cratonic::CratonicState;
-use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 use super::super::rheology::{self, StrainRate, ViscosityLaw};
 use super::nullspace;
-use super::operator::{apply_momentum, momentum_diagonal, StokesGrid, TangentContext};
+use super::operator::{StokesGrid, TangentContext, apply_momentum, momentum_diagonal};
 use super::precond::VelocityJacobi;
 use super::snapshot::{LinearStokesSnapshot, SNAPSHOT_FORMAT_VERSION};
 use super::solver::{ConjugateGradient, LinearSolver, SolverStats};
+use crate::tectonics_v2::cratonic::CratonicState;
+use crate::tectonics_v2::field::{Field2D, PeriodicIndex};
 
 /// Configuration for the Newton solver.
 #[derive(Clone, Copy, Debug)]
@@ -257,11 +257,7 @@ pub struct NewtonSolver {
 
 impl NewtonSolver {
     pub fn new(cfg: NewtonConfig) -> Self {
-        Self {
-            cfg,
-            capture: None,
-            linear_solver: super::solver::LinearSolverConfig::default(),
-        }
+        Self { cfg, capture: None, linear_solver: super::solver::LinearSolverConfig::default() }
     }
 
     pub fn with_capture(cfg: NewtonConfig, spec: SnapshotSpec) -> Self {
@@ -272,7 +268,10 @@ impl NewtonSolver {
         }
     }
 
-    pub fn with_linear_solver(cfg: NewtonConfig, linear: super::solver::LinearSolverConfig) -> Self {
+    pub fn with_linear_solver(
+        cfg: NewtonConfig,
+        linear: super::solver::LinearSolverConfig,
+    ) -> Self {
         Self { cfg, capture: None, linear_solver: linear }
     }
 }
@@ -308,8 +307,18 @@ pub fn evaluate_residual_norm(
     let mut sr_out: Option<StrainRate> = None;
     let mut eta_out: Option<crate::tectonics_v2::field::Field2D> = None;
     compute_residual(
-        grid, law, drag_diag, cratonic, vx, vy, rhs_x, rhs_y,
-        &mut r_x, &mut r_y, &mut sr_out, &mut eta_out,
+        grid,
+        law,
+        drag_diag,
+        cratonic,
+        vx,
+        vy,
+        rhs_x,
+        rhs_y,
+        &mut r_x,
+        &mut r_y,
+        &mut sr_out,
+        &mut eta_out,
     );
     vec_norm(&r_x, &r_y)
 }
@@ -332,16 +341,8 @@ fn compute_residual(
     sr_out: &mut Option<StrainRate>,
     eta_out: &mut Option<crate::tectonics_v2::field::Field2D>,
 ) {
-    let sr = StrainRate::compute(
-        grid.nx,
-        grid.ny,
-        grid.dx,
-        grid.dy,
-        &grid.idx_x,
-        &grid.idx_y,
-        vx,
-        vy,
-    );
+    let sr =
+        StrainRate::compute(grid.nx, grid.ny, grid.dx, grid.dy, &grid.idx_x, &grid.idx_y, vx, vy);
     let eta = rheology::build_eta_field(law, &sr.eps_ii_center, cratonic);
     apply_momentum(grid, &eta, drag_diag, vx, vy, out_x, out_y);
     for k in 0..out_x.len() {
@@ -381,7 +382,10 @@ impl NonlinearSolver for NewtonSolver {
         let mut r_y = vec![0.0; n];
         let mut sr_k: Option<StrainRate> = None;
         let mut eta_k: Option<crate::tectonics_v2::field::Field2D> = None;
-        compute_residual(grid, law, drag_diag, cratonic, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y, &mut sr_k, &mut eta_k);
+        compute_residual(
+            grid, law, drag_diag, cratonic, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y, &mut sr_k,
+            &mut eta_k,
+        );
         let r0_norm = vec_norm(&r_x, &r_y);
         trace.residuals.push(r0_norm);
         // Effective absolute tolerance: the Newton residual cannot go
@@ -440,9 +444,12 @@ impl NonlinearSolver for NewtonSolver {
             if trace.residuals.len() >= 4 {
                 let m = trace.residuals.len();
                 let deltas = [
-                    (trace.residuals[m - 3] - trace.residuals[m - 2]) / trace.residuals[m - 3].max(1e-300),
-                    (trace.residuals[m - 2] - trace.residuals[m - 1]) / trace.residuals[m - 2].max(1e-300),
-                    (trace.residuals[m - 4] - trace.residuals[m - 3]) / trace.residuals[m - 4].max(1e-300),
+                    (trace.residuals[m - 3] - trace.residuals[m - 2])
+                        / trace.residuals[m - 3].max(1e-300),
+                    (trace.residuals[m - 2] - trace.residuals[m - 1])
+                        / trace.residuals[m - 2].max(1e-300),
+                    (trace.residuals[m - 4] - trace.residuals[m - 3])
+                        / trace.residuals[m - 4].max(1e-300),
                 ];
                 let conv_threshold = self.cfg.abs_tol.max(self.cfg.rel_tol * r0_norm);
                 let far_from_convergence = prev_resid > 10.0 * conv_threshold;
@@ -467,8 +474,12 @@ impl NonlinearSolver for NewtonSolver {
 
             // Solve J δv = -r_k.
             let mut rhs_pack = Vec::with_capacity(2 * n);
-            for v in &r_x { rhs_pack.push(-v); }
-            for v in &r_y { rhs_pack.push(-v); }
+            for v in &r_x {
+                rhs_pack.push(-v);
+            }
+            for v in &r_y {
+                rhs_pack.push(-v);
+            }
             {
                 let (bx, by) = rhs_pack.split_at_mut(n);
                 nullspace::project_velocity(bx, by);
@@ -526,7 +537,15 @@ impl NonlinearSolver for NewtonSolver {
                 // Basal drag's Jacobian is diagonal (Br·S̃²·I) and
                 // therefore lives entirely in the Picard block; no
                 // extra contribution from apply_tangent.
-                apply_momentum(grid, &ctx.eta_center, drag_diag, vx_in, vy_in, &mut tmp_ax, &mut tmp_ay);
+                apply_momentum(
+                    grid,
+                    &ctx.eta_center,
+                    drag_diag,
+                    vx_in,
+                    vy_in,
+                    &mut tmp_ax,
+                    &mut tmp_ay,
+                );
                 out_x.copy_from_slice(&tmp_ax);
                 out_y.copy_from_slice(&tmp_ay);
                 super::operator::apply_tangent(grid, &ctx, vx_in, vy_in, out_x, out_y);
@@ -548,8 +567,7 @@ impl NonlinearSolver for NewtonSolver {
                         &ctx.eta_center,
                         drag_diag,
                     );
-                    let amg_precond =
-                        super::amg::AmgPreconditioner::build(&a_picard, n, amg_cfg);
+                    let amg_precond = super::amg::AmgPreconditioner::build(&a_picard, n, amg_cfg);
                     let mut precond = |r: &[f64], z: &mut [f64]| amg_precond.apply(r, z);
                     cg.solve(&mut matvec, &mut precond, &rhs_pack, &mut dv_pack)
                 }
@@ -579,8 +597,18 @@ impl NonlinearSolver for NewtonSolver {
                 let mut sr_trial: Option<StrainRate> = None;
                 let mut eta_trial: Option<crate::tectonics_v2::field::Field2D> = None;
                 compute_residual(
-                    grid, law, drag_diag, cratonic, &v_trial_x, &v_trial_y, rhs_x, rhs_y,
-                    &mut r_trial_x, &mut r_trial_y, &mut sr_trial, &mut eta_trial,
+                    grid,
+                    law,
+                    drag_diag,
+                    cratonic,
+                    &v_trial_x,
+                    &v_trial_y,
+                    rhs_x,
+                    rhs_y,
+                    &mut r_trial_x,
+                    &mut r_trial_y,
+                    &mut sr_trial,
+                    &mut eta_trial,
                 );
                 let r_trial_norm = vec_norm(&r_trial_x, &r_trial_y);
                 let r_trial_sq = r_trial_norm * r_trial_norm;
@@ -600,10 +628,20 @@ impl NonlinearSolver for NewtonSolver {
                 // if the residual doesn't go down.
                 accepted_resid = vec_norm(&r_trial_x, &r_trial_y);
                 accepted_sr = Some(StrainRate::compute(
-                    grid.nx, grid.ny, grid.dx, grid.dy, &grid.idx_x, &grid.idx_y,
-                    &v_trial_x, &v_trial_y,
+                    grid.nx,
+                    grid.ny,
+                    grid.dx,
+                    grid.dy,
+                    &grid.idx_x,
+                    &grid.idx_y,
+                    &v_trial_x,
+                    &v_trial_y,
                 ));
-                accepted_eta = Some(rheology::build_eta_field(law, &accepted_sr.as_ref().unwrap().eps_ii_center, cratonic));
+                accepted_eta = Some(rheology::build_eta_field(
+                    law,
+                    &accepted_sr.as_ref().unwrap().eps_ii_center,
+                    cratonic,
+                ));
             }
             trace.alphas.push(alpha);
             trace.residuals.push(accepted_resid);
@@ -619,9 +657,7 @@ impl NonlinearSolver for NewtonSolver {
             prev_resid = accepted_resid;
 
             // Convergence (residual contract — primary criterion).
-            if accepted_resid <= abs_tol_eff
-                || accepted_resid <= self.cfg.rel_tol * r0_norm
-            {
+            if accepted_resid <= abs_tol_eff || accepted_resid <= self.cfg.rel_tol * r0_norm {
                 return NonlinearOutcome::Converged {
                     outer_iters: k + 1,
                     final_residual: accepted_resid,
@@ -674,9 +710,7 @@ impl NonlinearSolver for NewtonSolver {
             // `cos(step_k, step_{k-1}) < oscillation_cosine_threshold`
             // → Oscillating. Same gate as (a).
             if (k + 1) >= self.cfg.min_iterations_before_classification {
-                if let (Some(px), Some(py)) =
-                    (prev_step_x.as_ref(), prev_step_y.as_ref())
-                {
+                if let (Some(px), Some(py)) = (prev_step_x.as_ref(), prev_step_y.as_ref()) {
                     let dot: f64 = step_x.iter().zip(px).map(|(a, b)| a * b).sum::<f64>()
                         + step_y.iter().zip(py).map(|(a, b)| a * b).sum::<f64>();
                     let n_curr = vec_norm(&step_x, &step_y);
@@ -747,7 +781,8 @@ mod tests {
             vx_k[k] = ((k as f64 * 0.7).sin()) * 0.3;
             vy_k[k] = ((k as f64 * 1.3).cos()) * 0.2;
         }
-        let sr = StrainRate::compute(nx, ny, grid.dx, grid.dy, &grid.idx_x, &grid.idx_y, &vx_k, &vy_k);
+        let sr =
+            StrainRate::compute(nx, ny, grid.dx, grid.dy, &grid.idx_x, &grid.idx_y, &vx_k, &vy_k);
         let ctx = TangentContext::from_strain_rate(&grid, &law, &sr, None);
 
         let mut ux = vec![0.0; n2];

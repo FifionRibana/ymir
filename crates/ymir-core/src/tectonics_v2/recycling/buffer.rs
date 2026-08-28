@@ -54,12 +54,7 @@ impl std::fmt::Debug for DelayedRecycler {
 
 impl DelayedRecycler {
     pub fn new(delay: usize) -> Self {
-        Self {
-            inner: RecyclingBuffer::new(delay),
-            held: 0.0,
-            in_transit: 0.0,
-            delay: delay.max(1),
-        }
+        Self { inner: RecyclingBuffer::new(delay), held: 0.0, in_transit: 0.0, delay: delay.max(1) }
     }
 
     /// Deposit newly-subducted mass into the buffer's current head

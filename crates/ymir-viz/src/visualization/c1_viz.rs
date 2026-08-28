@@ -75,9 +75,7 @@ impl C1Field {
             C1Field::Age => "Age: 0 (ridge / rift-spawned) → run max",
             C1Field::PlateId => "Plate ID: 12-color hash-mod hue",
             C1Field::PlateType => "Oceanic (cyan) / Continental (beige)",
-            C1Field::Altitude => {
-                "Altitude (Architecture C, [-1.13, +1.13]; sea level @ 0.5)"
-            }
+            C1Field::Altitude => "Altitude (Architecture C, [-1.13, +1.13]; sea level @ 0.5)",
             C1Field::Cratonic => "Cratonic: false (black) / true (white)",
         }
     }
@@ -251,8 +249,7 @@ pub fn derive_altitude_field(snapshot: &C1Snapshot) -> GridF32 {
 
     // 2. Reconstruct PlateTypeField from Vec<u8> encoding
     //    (0 = Oceanic, 1 = Continental).
-    let mut plate_type_field =
-        PlateTypeField::filled(nx, ny, PlateType::Oceanic);
+    let mut plate_type_field = PlateTypeField::filled(nx, ny, PlateType::Oceanic);
     for j in 0..ny {
         for i in 0..nx {
             let pt = if snapshot.plate_type[j * nx + i] == 0 {
@@ -293,9 +290,7 @@ fn render_altitude(snapshot: &C1Snapshot, rgba: &mut [u8]) {
     for j in 0..ny {
         for i in 0..nx {
             let raw = altitude.get(i as i32, j as i32);
-            let t = ((raw + ALTITUDE_HALF_RANGE)
-                / (2.0 * ALTITUDE_HALF_RANGE))
-                .clamp(0.0, 1.0);
+            let t = ((raw + ALTITUDE_HALF_RANGE) / (2.0 * ALTITUDE_HALF_RANGE)).clamp(0.0, 1.0);
             let [r, g, b, a] = hypsometric_bipolar(t, SEA_NORM);
             let k = (j * nx + i) * 4;
             rgba[k] = r;
@@ -332,8 +327,7 @@ fn render_cratonic(snapshot: &C1Snapshot, rgba: &mut [u8]) {
 /// 8-plate init) and the new-rift ids spawned by Track D (up to
 /// ~12 total in a 300-step run) all map to distinct hues.
 fn plate_id_color(pid: u16) -> [u8; 4] {
-    let h = (pid as f32 * (360.0 / PLATE_ID_PALETTE_SIZE as f32))
-        % 360.0;
+    let h = (pid as f32 * (360.0 / PLATE_ID_PALETTE_SIZE as f32)) % 360.0;
     hsv_to_rgba(h, 0.7, 0.8)
 }
 
@@ -361,9 +355,7 @@ fn hsv_to_rgba(h: f32, s: f32, v: f32) -> [u8; 4] {
 /// Live diagnostics summary derived from a snapshot — helper for
 /// the Stage E5 stats panel. Returns `(live_plates, subduction_cells,
 /// accretion_merges, rifting_splits, rifting_cells_thinned)`.
-pub fn snapshot_event_summary(
-    snapshot: &C1Snapshot,
-) -> (usize, usize, usize, usize, usize) {
+pub fn snapshot_event_summary(snapshot: &C1Snapshot) -> (usize, usize, usize, usize, usize) {
     let stats: &C1StepStats = &snapshot.stats;
     (
         snapshot.live_plate_count,

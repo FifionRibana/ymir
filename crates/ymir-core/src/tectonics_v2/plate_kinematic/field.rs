@@ -41,7 +41,7 @@
 //! `d = width`. Same overall family of behaviour, but smooth by
 //! construction.
 
-use super::super::voronoi::{compute_dist_to_inter_plate_boundary, PlateIdField};
+use super::super::voronoi::{PlateIdField, compute_dist_to_inter_plate_boundary};
 
 /// Build the `(vx, vy)` initial velocity buffers from a per-plate
 /// assignment.
@@ -70,10 +70,7 @@ pub fn build(
         "boundary_smoothing_width must be a positive finite scalar; got {}",
         boundary_smoothing_width
     );
-    assert!(
-        !velocities.is_empty(),
-        "velocities must not be empty (one entry per plate)",
-    );
+    assert!(!velocities.is_empty(), "velocities must not be empty (one entry per plate)",);
 
     // Step 13 Phase 1: BFS distance computation delegated to the
     // shared `compute_dist_to_inter_plate_boundary` utility (also
@@ -103,7 +100,10 @@ pub fn build(
             let (vx, vy) = *velocities.get(pid).unwrap_or_else(|| {
                 panic!(
                     "plate_id[{}, {}] = {} out of range for velocities of length {}",
-                    i, j, pid, velocities.len()
+                    i,
+                    j,
+                    pid,
+                    velocities.len()
                 )
             });
             own_vx[j * nx + i] = vx;
@@ -150,14 +150,19 @@ pub fn build(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+    use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
     use std::collections::VecDeque;
 
     fn build_test_plates(nx: usize, ny: usize, seed: u64, num_plates: usize) {
         let _ = (nx, ny, seed, num_plates);
     }
 
-    fn make_plates(nx: usize, ny: usize, seed: u64, num_plates: usize) -> crate::tectonics_v2::voronoi::VoronoiPlates {
+    fn make_plates(
+        nx: usize,
+        ny: usize,
+        seed: u64,
+        num_plates: usize,
+    ) -> crate::tectonics_v2::voronoi::VoronoiPlates {
         build_test_plates(nx, ny, seed, num_plates);
         let cfg = VoronoiConfig { num_plates, continental_ratio: 0.3 };
         generate_voronoi(nx, ny, &cfg, seed)
@@ -245,12 +250,20 @@ mod tests {
                     assert!(
                         (vx[idx] - ex_vx).abs() < 1e-15,
                         "interior cell ({},{}) plate {}: vx {} != expected {}",
-                        i, j, pid, vx[idx], ex_vx
+                        i,
+                        j,
+                        pid,
+                        vx[idx],
+                        ex_vx
                     );
                     assert!(
                         (vy[idx] - ex_vy).abs() < 1e-15,
                         "interior cell ({},{}) plate {}: vy {} != expected {}",
-                        i, j, pid, vy[idx], ex_vy
+                        i,
+                        j,
+                        pid,
+                        vy[idx],
+                        ex_vy
                     );
                     interior_count += 1;
                 }
@@ -274,17 +287,11 @@ mod tests {
         let nx = 64;
         let ny = 64;
         let plates = make_plates(nx, ny, 42, 4);
-        let velocities: Vec<(f64, f64)> = (0..plates.num_plates)
-            .map(|p| (0.5 * ((p % 2) as f64) - 0.25, 0.0))
-            .collect();
-        let max_delta_per_component = velocities
-            .iter()
-            .flat_map(|&(a, b)| [a, b])
-            .fold(0.0_f64, f64::max)
-            - velocities
-                .iter()
-                .flat_map(|&(a, b)| [a, b])
-                .fold(0.0_f64, f64::min);
+        let velocities: Vec<(f64, f64)> =
+            (0..plates.num_plates).map(|p| (0.5 * ((p % 2) as f64) - 0.25, 0.0)).collect();
+        let max_delta_per_component =
+            velocities.iter().flat_map(|&(a, b)| [a, b]).fold(0.0_f64, f64::max)
+                - velocities.iter().flat_map(|&(a, b)| [a, b]).fold(0.0_f64, f64::min);
 
         let (vx, vy) = build(nx, ny, &plates.plate_id, &velocities, 1.5);
 
@@ -337,11 +344,8 @@ mod tests {
 
         let (vx, vy) = build(nx, ny, &plates.plate_id, &velocities, 1.5);
 
-        let max_out_mag = vx
-            .iter()
-            .zip(vy.iter())
-            .map(|(&a, &b)| (a * a + b * b).sqrt())
-            .fold(0.0_f64, f64::max);
+        let max_out_mag =
+            vx.iter().zip(vy.iter()).map(|(&a, &b)| (a * a + b * b).sqrt()).fold(0.0_f64, f64::max);
 
         assert!(
             max_out_mag <= max_input_mag + 1e-12,

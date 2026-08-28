@@ -27,9 +27,14 @@
 use std::f64::consts::PI;
 
 use ymir_core::tectonics_v2::field::Field2D;
-use ymir_core::tectonics_v2::stokes::{solve_sheet, Grid, SheetConfig};
+use ymir_core::tectonics_v2::stokes::{Grid, SheetConfig, solve_sheet};
 
-fn build_mms(nx: usize, ny: usize, dx: f64, dy: f64) -> (Field2D, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+fn build_mms(
+    nx: usize,
+    ny: usize,
+    dx: f64,
+    dy: f64,
+) -> (Field2D, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
     let mut eta = Field2D::new(nx, ny);
     let n = nx * ny;
     let mut fx = vec![0.0; n];
@@ -42,8 +47,7 @@ fn build_mms(nx: usize, ny: usize, dx: f64, dy: f64) -> (Field2D, Vec<f64>, Vec<
             // η at cell centre.
             let xc = (i as f64 + 0.5) * dx;
             let yc = (j as f64 + 0.5) * dy;
-            let e =
-                1.0 + 0.5 * (2.0 * PI * xc).sin() * (2.0 * PI * yc).cos();
+            let e = 1.0 + 0.5 * (2.0 * PI * xc).sin() * (2.0 * PI * yc).cos();
             eta.set(i, j, e);
 
             // vx, fx at (i dx, (j+0.5) dy).
@@ -51,22 +55,14 @@ fn build_mms(nx: usize, ny: usize, dx: f64, dy: f64) -> (Field2D, Vec<f64>, Vec<
             let yf = (j as f64 + 0.5) * dy;
             vx_exact[j * nx + i] = (2.0 * PI * xf).sin() * (2.0 * PI * yf).cos();
             fx[j * nx + i] = 8.0 * PI * PI * (2.0 * PI * xf).sin() * (2.0 * PI * yf).cos()
-                - 4.0
-                    * PI
-                    * PI
-                    * (4.0 * PI * xf).cos()
-                    * (2.0 * PI * yf).cos().powi(2);
+                - 4.0 * PI * PI * (4.0 * PI * xf).cos() * (2.0 * PI * yf).cos().powi(2);
 
             // vy, fy at ((i+0.5) dx, j dy).
             let xf2 = (i as f64 + 0.5) * dx;
             let yf2 = j as f64 * dy;
             vy_exact[j * nx + i] = -(2.0 * PI * xf2).cos() * (2.0 * PI * yf2).sin();
             fy[j * nx + i] = -8.0 * PI * PI * (2.0 * PI * xf2).cos() * (2.0 * PI * yf2).sin()
-                - 2.0
-                    * PI
-                    * PI
-                    * (4.0 * PI * xf2).sin()
-                    * (4.0 * PI * yf2).sin();
+                - 2.0 * PI * PI * (4.0 * PI * xf2).sin() * (4.0 * PI * yf2).sin();
         }
     }
     (eta, fx, fy, vx_exact, vy_exact)
@@ -113,9 +109,5 @@ fn variable_eta_second_order_convergence() {
         eprintln!("  slope v({}→{}) = {:.3}", sizes[k], sizes[k + 1], slope);
     }
     let slope_final = (errs[errs.len() - 2] / errs[errs.len() - 1]).log2();
-    assert!(
-        slope_final >= 1.7,
-        "final slope = {:.3} (expected ≥ 1.7)",
-        slope_final,
-    );
+    assert!(slope_final >= 1.7, "final slope = {:.3} (expected ≥ 1.7)", slope_final,);
 }

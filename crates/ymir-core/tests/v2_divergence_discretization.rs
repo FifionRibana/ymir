@@ -35,8 +35,7 @@ fn run_divergence_at(nx: usize, ny: usize) -> f64 {
         for i in 0..nx {
             let xc = (i as f64 + 0.5) * dx;
             let yc = (j as f64 + 0.5) * dy;
-            let expected =
-                2.0 * PI * (2.0 * PI * xc).cos() - 2.0 * PI * (2.0 * PI * yc).cos();
+            let expected = 2.0 * PI * (2.0 * PI * xc).cos() - 2.0 * PI * (2.0 * PI * yc).cos();
             let got = div.get(i, j);
             sum_sq += (got - expected).powi(2);
             n += 1;
@@ -52,12 +51,16 @@ fn divergence_converges_at_order_at_least_1_7() {
     let e128 = run_divergence_at(128, 128);
     let slope_32_to_64 = (e32 / e64).log2();
     let slope_64_to_128 = (e64 / e128).log2();
-    println!("div MMS: e32={} e64={} e128={} slopes {} {}",
-        e32, e64, e128, slope_32_to_64, slope_64_to_128);
+    println!(
+        "div MMS: e32={} e64={} e128={} slopes {} {}",
+        e32, e64, e128, slope_32_to_64, slope_64_to_128
+    );
     assert!(
         slope_64_to_128 >= 1.7,
         "final slope {} below 1.7 bound (e64={}, e128={})",
-        slope_64_to_128, e64, e128,
+        slope_64_to_128,
+        e64,
+        e128,
     );
 }
 

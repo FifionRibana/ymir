@@ -53,8 +53,8 @@
 //! computed from the *same* `S̃` state, even when its target cell is
 //! also a source that gets eroded.
 
-use super::drainage::compute_drainage_targets;
 use super::PhaseAParams;
+use super::drainage::compute_drainage_targets;
 use crate::tectonics_v2::field::Field2D;
 
 /// Per-call diagnostics emitted alongside the in-place mutation.
@@ -132,8 +132,7 @@ pub fn apply(
     }
 
     // Pass 1bis — drainage targets on the same snapshot.
-    let drainage =
-        compute_drainage_targets(s, sea_level_reference, params.max_drainage_distance);
+    let drainage = compute_drainage_targets(s, sea_level_reference, params.max_drainage_distance);
 
     // Snapshot mass for the conservation diagnostic.
     let mass_before: f64 = s.data().iter().sum();
@@ -242,8 +241,15 @@ mod tests {
         );
         // Stats consistency
         assert!(stats.total_eroded > 0.0);
-        assert!((stats.total_deposited - stats.total_eroded * (1.0 - params.isostatic_rebound_ratio)).abs() < 1e-12);
-        assert!((stats.total_rebound - stats.total_eroded * params.isostatic_rebound_ratio).abs() < 1e-12);
+        assert!(
+            (stats.total_deposited - stats.total_eroded * (1.0 - params.isostatic_rebound_ratio))
+                .abs()
+                < 1e-12
+        );
+        assert!(
+            (stats.total_rebound - stats.total_eroded * params.isostatic_rebound_ratio).abs()
+                < 1e-12
+        );
         assert!(stats.mass_balance_check < tol);
     }
 
@@ -329,9 +335,8 @@ mod tests {
             "continental mass should decrease: {continental_before} → {continental_after}"
         );
         // Total mass conservation
-        let drift = ((oceanic_after + continental_after)
-            - (oceanic_before + continental_before))
-            .abs();
+        let drift =
+            ((oceanic_after + continental_after) - (oceanic_before + continental_before)).abs();
         assert!(drift < 1e-10, "drift {drift}");
     }
 
@@ -352,11 +357,7 @@ mod tests {
             let stats = apply(&mut s, &params, sea_level);
             assert!(stats.total_eroded.is_finite());
             // No runaway: total_eroded per cycle must stay bounded.
-            assert!(
-                stats.peak_delta_h < 0.5,
-                "peak_dh {} exploded in cycle",
-                stats.peak_delta_h
-            );
+            assert!(stats.peak_delta_h < 0.5, "peak_dh {} exploded in cycle", stats.peak_delta_h);
         }
 
         // Count cells originally above S̃ = 0.8 that are still above
@@ -444,9 +445,9 @@ mod tests {
     #[ignore]
     fn macro_active_medley_diagnostic() {
         use crate::tectonics_v2::init::{
-            init_s_field, InitContext, InitMode, PlateInitData, ProfileShape,
+            InitContext, InitMode, PlateInitData, ProfileShape, init_s_field,
         };
-        use crate::tectonics_v2::voronoi::{generate_voronoi, VoronoiConfig};
+        use crate::tectonics_v2::voronoi::{VoronoiConfig, generate_voronoi};
 
         let nx = 32;
         let ny = 32;
@@ -468,9 +469,7 @@ mod tests {
         let sea_level = 0.5;
         let params = PhaseAParams::default();
 
-        println!(
-            "\n=== R2 macro_redistribution diagnostic — 32² active-medley-like INIT ==="
-        );
+        println!("\n=== R2 macro_redistribution diagnostic — 32² active-medley-like INIT ===");
         println!(
             "params: α={}, rebound={}, max_distance={}",
             params.alpha, params.isostatic_rebound_ratio, params.max_drainage_distance

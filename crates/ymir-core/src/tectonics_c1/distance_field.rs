@@ -345,7 +345,7 @@ pub fn wedge_distance_intra_plate_typed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tectonics_c1::boundary_classification::{BoundaryTypeField, BoundaryType};
+    use crate::tectonics_c1::boundary_classification::{BoundaryType, BoundaryTypeField};
     use crate::tectonics_c1::state::BoolField;
 
     /// Build a [`BoundaryInfo`] where each cell takes its boundary
@@ -362,18 +362,16 @@ mod tests {
                 bt.set(i, j, f(i, j));
             }
         }
-        BoundaryInfo {
-            boundary_type: bt,
-            upper_plate_mask: BoolField::filled(nx, ny, false),
-        }
+        BoundaryInfo { boundary_type: bt, upper_plate_mask: BoolField::filled(nx, ny, false) }
     }
 
     #[test]
     fn distance_zero_at_convergent_cells() {
         // Single isolated Convergent cell at (4, 4) on an 8x8
         // grid. Distance to itself is 0.
-        let boundary =
-            build_boundary(8, 8, |i, j| if (i, j) == (4, 4) { BoundaryType::Convergent } else { BoundaryType::Internal });
+        let boundary = build_boundary(8, 8, |i, j| {
+            if (i, j) == (4, 4) { BoundaryType::Convergent } else { BoundaryType::Internal }
+        });
         let dist = distance_to_convergent_boundary(&boundary, 10.0);
         assert_eq!(dist.get(4, 4), 0.0);
     }
@@ -557,7 +555,7 @@ mod tests {
         let ny = 16;
         let plate_id = build_plate_id_inline(nx, ny, |i, _| if i < 8 { 0 } else { 1 });
         let mut mask = BoolField::filled(nx, ny, false);
-        mask.set(2, 4, true);  // plate 0 seed
+        mask.set(2, 4, true); // plate 0 seed
         mask.set(12, 12, true); // plate 1 seed
 
         let max_d = 20.0;
@@ -569,7 +567,10 @@ mod tests {
         // Cell near plate 0 seed (on plate 0): reached.
         assert!(dist.get(0, 0) < max_d, "plate 0 cell (0,0) should be reachable from plate 0 seed");
         // Cell near plate 1 seed (on plate 1): reached.
-        assert!(dist.get(15, 15) < max_d, "plate 1 cell (15,15) should be reachable from plate 1 seed");
+        assert!(
+            dist.get(15, 15) < max_d,
+            "plate 1 cell (15,15) should be reachable from plate 1 seed"
+        );
 
         // Cross-plate sanity: a cell on plate 0 with the same
         // (i, j) as the plate 1 seed would be (12, 12) but
@@ -580,7 +581,11 @@ mod tests {
         // Its distance to plate 1 seed would have been small (~5
         // cardinal) but the intra-plate constraint blocks it.
         let d_07_12 = dist.get(7, 12);
-        assert!(d_07_12 > 5.0, "plate 0 cell (7,12) should be reached via plate 0 seed only; got {}", d_07_12);
+        assert!(
+            d_07_12 > 5.0,
+            "plate 0 cell (7,12) should be reached via plate 0 seed only; got {}",
+            d_07_12
+        );
     }
 
     /// Cycle-0 stats for the actual Phase 1.1 init state — pre-
@@ -622,7 +627,9 @@ mod tests {
         }
         let mean = sum / total;
 
-        eprintln!("Phase 1.1 cycle-0 distance-to-Convergent stats (64² seed 42, L_decay = {l_decay:.1}, max = {max_d:.1}):");
+        eprintln!(
+            "Phase 1.1 cycle-0 distance-to-Convergent stats (64² seed 42, L_decay = {l_decay:.1}, max = {max_d:.1}):"
+        );
         eprintln!("  min                = {min:.4}");
         eprintln!("  mean               = {mean:.4}");
         eprintln!("  max                = {max:.4}");
@@ -670,8 +677,7 @@ mod tests {
 
         let l_decay = 6.0_f64;
         let max_d = 5.0 * l_decay;
-        let dist =
-            wedge_distance_intra_plate(&state.plate_id, &boundary.upper_plate_mask, max_d);
+        let dist = wedge_distance_intra_plate(&state.plate_id, &boundary.upper_plate_mask, max_d);
         let data = dist.data();
         let total = data.len() as f64;
 
@@ -695,11 +701,7 @@ mod tests {
                 reached_sample += 1;
             }
         }
-        let mean = if reached_sample > 0 {
-            sum / reached_sample as f64
-        } else {
-            f64::NAN
-        };
+        let mean = if reached_sample > 0 { sum / reached_sample as f64 } else { f64::NAN };
 
         eprintln!(
             "Phase 1.1 cycle-0 wedge distance stats (64² seed 42, intra-plate, L_decay = {l_decay:.1}, max = {max_d:.1}):"
@@ -749,11 +751,8 @@ mod tests {
         for p in 0..num_plates {
             let seeds = per_plate_seeds[p];
             let reached = per_plate_reached[p];
-            let mean_d = if reached > 0 {
-                per_plate_mean_sum[p] / reached as f64
-            } else {
-                f64::NAN
-            };
+            let mean_d =
+                if reached > 0 { per_plate_mean_sum[p] / reached as f64 } else { f64::NAN };
             let mag = (vx_kin[p] * vx_kin[p] + vy_kin[p] * vy_kin[p]).sqrt();
             eprintln!(
                 "    plate {p}: v=({:>+.4}, {:>+.4}), |v|={:.4} — seeds={:>3}  reached={:>4}  mean_d={:.2}",
@@ -762,7 +761,10 @@ mod tests {
         }
 
         // Sanity asserts.
-        assert_eq!(seeds_total, 111, "wedge seed count should match Stage 2 upper_plate_mask count");
+        assert_eq!(
+            seeds_total, 111,
+            "wedge seed count should match Stage 2 upper_plate_mask count"
+        );
         assert!(reached_total > seeds_total, "intra-plate expansion should reach interior cells");
         // At least one plate should be totally silent (no seeds),
         // confirming the symmetric-pair finding.

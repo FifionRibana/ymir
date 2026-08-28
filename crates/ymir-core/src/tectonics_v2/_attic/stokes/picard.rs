@@ -14,14 +14,14 @@
 //! [`NewtonSolver`] so the test `picard_parity` can substitute one
 //! for the other transparently.
 
-use crate::tectonics_v2::cratonic::CratonicState;
-use crate::tectonics_v2::field::Field2D;
 use super::super::rheology::{self, StrainRate, ViscosityLaw};
 use super::nonlinear_solver::{NonlinearOutcome, NonlinearSolver, NonlinearTrace};
 use super::nullspace;
-use super::operator::{apply_momentum, momentum_diagonal, StokesGrid};
+use super::operator::{StokesGrid, apply_momentum, momentum_diagonal};
 use super::precond::VelocityJacobi;
 use super::solver::{ConjugateGradient, LinearSolver, SolverStats};
+use crate::tectonics_v2::cratonic::CratonicState;
+use crate::tectonics_v2::field::Field2D;
 
 #[derive(Clone, Copy, Debug)]
 pub struct PicardConfig {
@@ -83,10 +83,8 @@ fn compute_residual(
     out_x: &mut [f64],
     out_y: &mut [f64],
 ) {
-    let sr = StrainRate::compute(
-        grid.nx, grid.ny, grid.dx, grid.dy,
-        &grid.idx_x, &grid.idx_y, vx, vy,
-    );
+    let sr =
+        StrainRate::compute(grid.nx, grid.ny, grid.dx, grid.dy, &grid.idx_x, &grid.idx_y, vx, vy);
     let eta = rheology::build_eta_field(law, &sr.eps_ii_center, cratonic);
     apply_momentum(grid, &eta, drag_diag, vx, vy, out_x, out_y);
     for k in 0..out_x.len() {
@@ -140,9 +138,12 @@ impl NonlinearSolver for PicardSolver {
             if trace.residuals.len() >= 4 {
                 let m = trace.residuals.len();
                 let deltas = [
-                    (trace.residuals[m - 3] - trace.residuals[m - 2]) / trace.residuals[m - 3].max(1e-300),
-                    (trace.residuals[m - 2] - trace.residuals[m - 1]) / trace.residuals[m - 2].max(1e-300),
-                    (trace.residuals[m - 4] - trace.residuals[m - 3]) / trace.residuals[m - 4].max(1e-300),
+                    (trace.residuals[m - 3] - trace.residuals[m - 2])
+                        / trace.residuals[m - 3].max(1e-300),
+                    (trace.residuals[m - 2] - trace.residuals[m - 1])
+                        / trace.residuals[m - 2].max(1e-300),
+                    (trace.residuals[m - 4] - trace.residuals[m - 3])
+                        / trace.residuals[m - 4].max(1e-300),
                 ];
                 let conv_threshold = self.cfg.abs_tol.max(self.cfg.rel_tol * r0_norm);
                 let far_from_convergence = prev_resid > 10.0 * conv_threshold;
@@ -153,8 +154,14 @@ impl NonlinearSolver for PicardSolver {
 
             // Freeze η at the current iterate.
             let sr = StrainRate::compute(
-                grid.nx, grid.ny, grid.dx, grid.dy,
-                &grid.idx_x, &grid.idx_y, vx, vy,
+                grid.nx,
+                grid.ny,
+                grid.dx,
+                grid.dy,
+                &grid.idx_x,
+                &grid.idx_y,
+                vx,
+                vy,
             );
             let eta = rheology::build_eta_field(law, &sr.eps_ii_center, cratonic);
 
@@ -202,7 +209,9 @@ impl NonlinearSolver for PicardSolver {
             trace.alphas.push(omega);
 
             // Residual at the new iterate.
-            compute_residual(grid, law, drag_diag, cratonic, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y);
+            compute_residual(
+                grid, law, drag_diag, cratonic, vx, vy, rhs_x, rhs_y, &mut r_x, &mut r_y,
+            );
             let r_norm = vec_norm(&r_x, &r_y);
             trace.residuals.push(r_norm);
             prev_resid = r_norm;

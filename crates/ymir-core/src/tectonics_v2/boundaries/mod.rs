@@ -40,22 +40,21 @@ pub use boundary_flag::{
     PlateTypeFieldShared, RecyclingModeInit,
 };
 pub use calibration::{
-    calibrate_k_spread, CalibrationError, CalibrationResult, KSpreadCalibration,
-    K_SPREAD_BRACKET,
+    CalibrationError, CalibrationResult, K_SPREAD_BRACKET, KSpreadCalibration, calibrate_k_spread,
 };
-pub use clamp::{apply_clamp_with_tracking, ClampStats, S_MIN};
+pub use clamp::{ClampStats, S_MIN, apply_clamp_with_tracking};
 pub use closed_mode::{
     compute_q_sub_only, count_immediate_eligibilities, count_spread_eligibility,
     distribute_delayed, distribute_immediate, integrate_sub_mass,
 };
 pub use crust_geometry::{CrustGeometry, CrustGeometryShared, GeometryKind};
 pub use layouts::{
-    balanced_sub_spread, build_layout, continental_collision_band, horizontal_oceanic_strip,
-    vertical_rift_line, BoundaryLayout,
+    BoundaryLayout, balanced_sub_spread, build_layout, continental_collision_band,
+    horizontal_oceanic_strip, vertical_rift_line,
 };
 pub use plate_type::{PlateType, PlateTypeField};
 pub use source_sink::{compute_source_sink_terms, convergent_component, div_v_cell};
 pub use stats::{
-    boundary_type_diversity, interface_mask, s_continental_collision_mean,
-    s_continental_interior, s_oceanic, BoundaryMechanismActive, MeanStd,
+    BoundaryMechanismActive, MeanStd, boundary_type_diversity, interface_mask,
+    s_continental_collision_mean, s_continental_interior, s_oceanic,
 };

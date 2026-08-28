@@ -87,10 +87,7 @@ pub enum PlateKinematicConfig {
     ///
     /// Validation contract (enforced at harness entry, Phase 3):
     /// `velocities.len()` must equal the Voronoï plate count.
-    PerPlate {
-        velocities: Vec<(f64, f64)>,
-        boundary_smoothing_width: f64,
-    },
+    PerPlate { velocities: Vec<(f64, f64)>, boundary_smoothing_width: f64 },
 }
 
 impl Default for PlateKinematicConfig {
@@ -120,10 +117,7 @@ mod tests {
 
     #[test]
     fn default_is_zero() {
-        assert!(matches!(
-            PlateKinematicConfig::default(),
-            PlateKinematicConfig::Zero
-        ));
+        assert!(matches!(PlateKinematicConfig::default(), PlateKinematicConfig::Zero));
         assert!(PlateKinematicConfig::default().is_zero());
     }
 
@@ -133,10 +127,12 @@ mod tests {
             velocities: vec![(0.0, 0.0); 4],
             boundary_smoothing_width: 1.5,
         };
-        assert!(!cfg.is_zero(),
+        assert!(
+            !cfg.is_zero(),
             "PerPlate is structurally non-zero even with all-zero entries — \
              the variant itself triggers the build path so the regression \
-             contract attaches to the Zero variant only");
+             contract attaches to the Zero variant only"
+        );
     }
 
     /// Round-trip through JSON to validate the panel / preset path

@@ -43,16 +43,14 @@
 //! (kinematics sampling), so the cadrable issue is naturally on
 //! the critical path of Phase 2 closeout, not a Track B blocker.
 
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
 use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
 use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
-use ymir_core::tectonics_c1::init_r7::{
-    init_c1_state_phase_2_r7, Phase2InitParams, R7InitParams,
-};
+use ymir_core::tectonics_c1::init_r7::{Phase2InitParams, R7InitParams, init_c1_state_phase_2_r7};
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
 
 const GRID: usize = 64;
@@ -93,11 +91,7 @@ fn spearman_correlation(pairs: &[(f64, f64)]) -> f64 {
         vb += db * db;
     }
     let denom = (va * vb).sqrt();
-    if denom == 0.0 {
-        0.0
-    } else {
-        cov / denom
-    }
+    if denom == 0.0 { 0.0 } else { cov / denom }
 }
 
 fn make_time_loop_config() -> C1TimeLoopConfig {
@@ -131,15 +125,9 @@ fn acceptance_track_b1_non_rectilinear() {
         }
     }
     let frac = 100.0 * reassigned as f64 / total as f64;
-    eprintln!(
-        "Acceptance Track B1 — non_rectilinear (post-composition):"
-    );
-    eprintln!(
-        "    reassigned = {reassigned} / {total} ({frac:.2} %)"
-    );
-    eprintln!(
-        "    Stage V Test 1 baseline: 14.01 % (single-stage R7 vs Voronoi)"
-    );
+    eprintln!("Acceptance Track B1 — non_rectilinear (post-composition):");
+    eprintln!("    reassigned = {reassigned} / {total} ({frac:.2} %)");
+    eprintln!("    Stage V Test 1 baseline: 14.01 % (single-stage R7 vs Voronoi)");
     if (frac - 14.01).abs() > 1.0 {
         eprintln!(
             "    ARCHITECTURAL NOTE: post-composition reassignment fraction differs from Stage V Test 1 baseline; pipeline composition affects R7 signature."
@@ -261,10 +249,18 @@ fn acceptance_track_b2_continent_cadrable() {
         for i in 0..GRID {
             if matches!(state.plate_type.get(i, j), PlateType::Continental) {
                 continental_count += 1;
-                if i < min_i { min_i = i; }
-                if i > max_i { max_i = i; }
-                if j < min_j { min_j = j; }
-                if j > max_j { max_j = j; }
+                if i < min_i {
+                    min_i = i;
+                }
+                if i > max_i {
+                    max_i = i;
+                }
+                if j < min_j {
+                    min_j = j;
+                }
+                if j > max_j {
+                    max_j = j;
+                }
             }
         }
     }
@@ -312,26 +308,16 @@ fn acceptance_track_b2_continent_cadrable() {
 /// < -0.4 → Path 3.A SUFFICIENT.
 #[test]
 fn acceptance_track_b3_age_ridge_aligned_substantively() {
-    let mut state =
-        init_c1_state_phase_2_r7(GRID, SEED, &Phase2InitParams::default());
+    let mut state = init_c1_state_phase_2_r7(GRID, SEED, &Phase2InitParams::default());
     let mut kinematics = PlateKinematics::preset_phase_1_1(state.num_plates);
     // Track B3 acceptance — Track D disabled so the Spearman
     // baseline (-0.5233) compares cleanly against the Track A
     // baseline (-0.476). Track D mutates plate_id mid-run which
     // would skew the age-altitude correlation.
     let closures = C1Closures {
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     };
     let config = make_time_loop_config();
@@ -373,10 +359,7 @@ fn acceptance_track_b3_age_ridge_aligned_substantively() {
     }
 
     let oceanic_count = pairs.len();
-    assert!(
-        oceanic_count > 0,
-        "Track B3: no oceanic cells in Phase 2 R7 state at seed {SEED}"
-    );
+    assert!(oceanic_count > 0, "Track B3: no oceanic cells in Phase 2 R7 state at seed {SEED}");
 
     let ages: Vec<f64> = pairs.iter().map(|&(a, _)| a).collect();
     let altitudes: Vec<f64> = pairs.iter().map(|&(_, b)| b).collect();
@@ -391,9 +374,7 @@ fn acceptance_track_b3_age_ridge_aligned_substantively() {
     let rho_track_a_baseline = -0.476;
 
     eprintln!("    oceanic cells = {oceanic_count} / {}", GRID * GRID);
-    eprintln!(
-        "    age distribution: min = {age_min:.4} max = {age_max:.4} mean = {age_mean:.4}"
-    );
+    eprintln!("    age distribution: min = {age_min:.4} max = {age_max:.4} mean = {age_mean:.4}");
     eprintln!(
         "    altitude distribution: min = {alt_min:.4} max = {alt_max:.4} mean = {alt_mean:.4}"
     );

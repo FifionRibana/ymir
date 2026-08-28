@@ -114,12 +114,8 @@ impl DivergenceTracker {
 
         let mut pair_verdicts: HashMap<(u16, u16), (usize, usize)> = HashMap::new();
 
-        let neighbours: [(i32, i32, f64, f64); 4] = [
-            (1, 0, 1.0, 0.0),
-            (-1, 0, -1.0, 0.0),
-            (0, 1, 0.0, 1.0),
-            (0, -1, 0.0, -1.0),
-        ];
+        let neighbours: [(i32, i32, f64, f64); 4] =
+            [(1, 0, 1.0, 0.0), (-1, 0, -1.0, 0.0), (0, 1, 0.0, 1.0), (0, -1, 0.0, -1.0)];
 
         for j in 0..ny {
             for i in 0..nx {
@@ -143,20 +139,13 @@ impl DivergenceTracker {
                     if pid_n == pid_c {
                         continue;
                     }
-                    let pair = if pid_c < pid_n {
-                        (pid_c, pid_n)
-                    } else {
-                        (pid_n, pid_c)
-                    };
+                    let pair = if pid_c < pid_n { (pid_c, pid_n) } else { (pid_n, pid_c) };
                     let (vx_a, vy_a) = kinematics.velocities[pair.0 as usize];
                     let (vx_b, vy_b) = kinematics.velocities[pair.1 as usize];
                     let vrel_x = vx_a - vx_b;
                     let vrel_y = vy_a - vy_b;
-                    let (n_x, n_y) = if pid_c == pair.0 {
-                        (nx_norm, ny_norm)
-                    } else {
-                        (-nx_norm, -ny_norm)
-                    };
+                    let (n_x, n_y) =
+                        if pid_c == pair.0 { (nx_norm, ny_norm) } else { (-nx_norm, -ny_norm) };
                     let dot = vrel_x * n_x + vrel_y * n_y;
                     let entry = pair_verdicts.entry(pair).or_insert((0, 0));
                     if dot > DOT_FLOOR {
@@ -175,8 +164,7 @@ impl DivergenceTracker {
             }
         }
 
-        let mut all_pairs: HashSet<(u16, u16)> =
-            self.divergence_counts.keys().copied().collect();
+        let mut all_pairs: HashSet<(u16, u16)> = self.divergence_counts.keys().copied().collect();
         all_pairs.extend(current_divergent.iter().copied());
         for pair in all_pairs {
             if current_divergent.contains(&pair) {
@@ -262,10 +250,7 @@ pub fn apply_rifting_split(
 
         // Thickness condition: min S̃ across rift strip <
         // threshold.
-        let min_s = rift_strip
-            .iter()
-            .map(|&(i, j)| s.get(i, j))
-            .fold(f64::INFINITY, f64::min);
+        let min_s = rift_strip.iter().map(|&(i, j)| s.get(i, j)).fold(f64::INFINITY, f64::min);
         if min_s >= params.split_thickness_threshold {
             continue;
         }
@@ -280,11 +265,8 @@ pub fn apply_rifting_split(
         let vrel_y = vy_a - vy_b;
         let vrel_mag = (vrel_x * vrel_x + vrel_y * vrel_y).sqrt();
         // Right-hand-rule perpendicular: rotate v_rel by +90°.
-        let (perp_x, perp_y) = if vrel_mag > DOT_FLOOR {
-            (-vrel_y / vrel_mag, vrel_x / vrel_mag)
-        } else {
-            (1.0, 0.0)
-        };
+        let (perp_x, perp_y) =
+            if vrel_mag > DOT_FLOOR { (-vrel_y / vrel_mag, vrel_x / vrel_mag) } else { (1.0, 0.0) };
         let new_vx = vx_a + perp_x * params.split_velocity_offset;
         let new_vy = vy_a + perp_y * params.split_velocity_offset;
         kinematics.velocities.push((new_vx, new_vy));
@@ -325,12 +307,8 @@ fn find_rift_strip(
             if plate_type.get(i, j) != PlateType::Continental {
                 continue;
             }
-            let neighbours = [
-                (idx_x.next(i), j),
-                (idx_x.prev(i), j),
-                (i, idx_y.next(j)),
-                (i, idx_y.prev(j)),
-            ];
+            let neighbours =
+                [(idx_x.next(i), j), (idx_x.prev(i), j), (i, idx_y.next(j)), (i, idx_y.prev(j))];
             for (ni, nj) in neighbours {
                 if plate_id.get(ni, nj) == b {
                     strip.push((i, j));
@@ -356,13 +334,7 @@ mod tests {
         ny: usize,
         plate_types: [PlateType; 3],
         velocities: [(f64, f64); 3],
-    ) -> (
-        Field2D,
-        Field2D,
-        PlateIdField,
-        PlateTypeField,
-        PlateKinematics,
-    ) {
+    ) -> (Field2D, Field2D, PlateIdField, PlateTypeField, PlateKinematics) {
         assert_eq!(nx % 3, 0);
         let mut s = Field2D::new(nx, ny);
         let mut age = Field2D::new(nx, ny);
@@ -417,10 +389,7 @@ mod tests {
             &tracker,
             &params,
         );
-        assert_eq!(
-            stats.splits_count, 0,
-            "no split — thickness condition not met"
-        );
+        assert_eq!(stats.splits_count, 0, "no split — thickness condition not met");
 
         // Scenario B — thickness condition met (S̃ = 0.5 at strip),
         // but counter below threshold. → no split.
@@ -448,10 +417,7 @@ mod tests {
             &tracker2,
             &params,
         );
-        assert_eq!(
-            stats2.splits_count, 0,
-            "no split — time condition not met"
-        );
+        assert_eq!(stats2.splits_count, 0, "no split — time condition not met");
     }
 
     #[test]
@@ -624,10 +590,7 @@ mod tests {
         }
         let mut tracker = DivergenceTracker::new();
         tracker.divergence_counts.insert((0, 1), 100);
-        let params = RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        };
+        let params = RiftingParams { enabled: false, ..RiftingParams::default() };
         let dt = 0.69;
 
         let s_before: Vec<f64> = s.data().to_vec();

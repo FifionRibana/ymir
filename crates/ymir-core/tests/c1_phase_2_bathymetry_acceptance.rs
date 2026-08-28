@@ -99,21 +99,21 @@
 //! ±50 m) and Stage A Test 1 (regime ordering preserved at run
 //! boundary); Test 3 would add noise, not signal.
 
-use ymir_core::erosion::hydraulic::{run_erosion, ErosionConfig};
+use ymir_core::erosion::hydraulic::{ErosionConfig, run_erosion};
 use ymir_core::seed::WorldSeed;
-use ymir_core::tectonics::isostasy::{compute_isostasy, IsostasyConfig};
+use ymir_core::tectonics::isostasy::{IsostasyConfig, compute_isostasy};
 use ymir_core::tectonics_c1::closures::accretion::AccretionParams;
 use ymir_core::tectonics_c1::closures::equilibrium_height::params::EquilibriumHeightParams;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
+use ymir_core::tectonics_c1::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
 use ymir_core::tectonics_c1::closures::rifting::RiftingParams;
 use ymir_core::tectonics_c1::closures::subduction::SubductionParams;
-use ymir_core::tectonics_c1::closures::oceanic_bathymetry::source_term::apply_stein_stein_bathymetry;
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::state::C1State;
-use ymir_core::tectonics_c1::time_loop::{run_with_closures, C1Closures, C1TimeLoopConfig};
+use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
-use ymir_core::terrain::flow::{compute_flow, FlowConfig};
+use ymir_core::terrain::flow::{FlowConfig, compute_flow};
 
 const GRID: usize = 64;
 const SEED: u64 = 42;
@@ -167,29 +167,17 @@ fn spearman_correlation(pairs: &[(f64, f64)]) -> f64 {
         vb += db * db;
     }
     let denom = (va * vb).sqrt();
-    if denom == 0.0 {
-        0.0
-    } else {
-        cov / denom
-    }
+    if denom == 0.0 { 0.0 } else { cov / denom }
 }
 
 fn mean(values: &[f64]) -> f64 {
-    if values.is_empty() {
-        f64::NAN
-    } else {
-        values.iter().sum::<f64>() / values.len() as f64
-    }
+    if values.is_empty() { f64::NAN } else { values.iter().sum::<f64>() / values.len() as f64 }
 }
 
 /// Median of a sorted slice. Even-`n` uses the lower of the two
 /// midpoints (deterministic, no `f64` averaging needed here).
 fn median_sorted(sorted: &[f64]) -> f64 {
-    if sorted.is_empty() {
-        f64::NAN
-    } else {
-        sorted[sorted.len() / 2]
-    }
+    if sorted.is_empty() { f64::NAN } else { sorted[sorted.len() / 2] }
 }
 
 /// **Test 1 — KEY acceptance.** After a 300-step Phase 2 Track A
@@ -206,18 +194,9 @@ fn bathymetry_modulated_by_age_after_300_steps() {
     // acceptance assertions (S-S anchor 5-point ±50 m would be
     // disturbed by subduction/accretion/rifting mid-run).
     let closures = C1Closures {
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     };
 
@@ -234,11 +213,7 @@ fn bathymetry_modulated_by_age_after_300_steps() {
     let started = std::time::Instant::now();
     run_with_closures(&mut state, &mut kinematics, &config, &closures, |_, _| {});
     let elapsed = started.elapsed();
-    eprintln!(
-        "  run wall time: {:.2?} ({:.2?} / step)",
-        elapsed,
-        elapsed / N_STEPS as u32
-    );
+    eprintln!("  run wall time: {:.2?} ({:.2?} / step)", elapsed, elapsed / N_STEPS as u32);
 
     // Architecture C observability: re-apply S-S at the run
     // boundary. The per-step S-S effects are transient — the next
@@ -288,16 +263,8 @@ fn bathymetry_modulated_by_age_after_300_steps() {
     ages_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let age_median = median_sorted(&ages_sorted);
 
-    let young: Vec<f64> = pairs
-        .iter()
-        .filter(|&&(a, _)| a < age_median)
-        .map(|&(_, b)| b)
-        .collect();
-    let old: Vec<f64> = pairs
-        .iter()
-        .filter(|&&(a, _)| a >= age_median)
-        .map(|&(_, b)| b)
-        .collect();
+    let young: Vec<f64> = pairs.iter().filter(|&&(a, _)| a < age_median).map(|&(_, b)| b).collect();
+    let old: Vec<f64> = pairs.iter().filter(|&&(a, _)| a >= age_median).map(|&(_, b)| b).collect();
     let mean_young = mean(&young);
     let mean_old = mean(&old);
     let delta = mean_old - mean_young; // expected NEGATIVE (old deeper → lower altitude)
@@ -312,9 +279,7 @@ fn bathymetry_modulated_by_age_after_300_steps() {
     eprintln!(
         "    age distribution: min={age_min:.4} max={age_max:.4} mean={age_mean:.4} median={age_median:.4}"
     );
-    eprintln!(
-        "    altitude distrib: min={alt_min:.4} max={alt_max:.4} mean={alt_mean:.4}"
-    );
+    eprintln!("    altitude distrib: min={alt_min:.4} max={alt_max:.4} mean={alt_mean:.4}");
     eprintln!("  ─── Age-altitude correlation ─────────────────");
     eprintln!(
         "    Spearman ρ:        {rho:+.4}  (negative expected — older = deeper = lower altitude)"
@@ -361,9 +326,7 @@ fn bathymetry_modulated_by_age_after_300_steps() {
     if !young.is_empty() && !old.is_empty() {
         eprintln!("  ─── Architecture C verdict ───────────────────");
         eprintln!("    Architecture C VALIDATED: S-S imprint observable at run boundary.");
-        eprintln!(
-            "    Age-modulated bathymetry produces a clear young/old altitude gradient."
-        );
+        eprintln!("    Age-modulated bathymetry produces a clear young/old altitude gradient.");
     }
 }
 
@@ -380,22 +343,10 @@ fn disabled_matches_phase_1_4() {
     // to keep the Path A regime aligned with Phase 1.4.
     let (mut state_a, mut kinematics_a, config_a) = setup();
     let closures_a = C1Closures {
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     };
     run_with_closures(&mut state_a, &mut kinematics_a, &config_a, &closures_a, |_, _| {});
@@ -417,22 +368,10 @@ fn disabled_matches_phase_1_4() {
         // C1Closures::default) rather than hardcoding ErosionParams::default
         // (=1.0) — Path B must match Path A's `..C1Closures::default()`.
         erosion: C1Closures::default().erosion,
-        oceanic_bathymetry: SteinSteinParams {
-            enabled: false,
-            ..SteinSteinParams::default()
-        },
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        oceanic_bathymetry: SteinSteinParams { enabled: false, ..SteinSteinParams::default() },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
     };
     run_with_closures(&mut state_b, &mut kinematics_b, &config_b, &closures_b, |_, _| {});
 
@@ -456,12 +395,8 @@ fn disabled_matches_phase_1_4() {
 
     eprintln!("c1_phase_2 Stage A Test 2 — disabled_matches_phase_1_4");
     eprintln!("  grid = {GRID}², steps = {N_STEPS}");
-    eprintln!(
-        "  Path A (struct-update): S-S off via `..C1Closures::default()`"
-    );
-    eprintln!(
-        "  Path B (explicit fields): S-S off via fully-named C1Closures literal"
-    );
+    eprintln!("  Path A (struct-update): S-S off via `..C1Closures::default()`");
+    eprintln!("  Path B (explicit fields): S-S off via fully-named C1Closures literal");
     eprintln!(
         "  S̃ mismatches: {mismatch_count} / {total_cells} cells (max |Δ| = {max_abs_delta:.3e})"
     );
@@ -475,9 +410,7 @@ fn disabled_matches_phase_1_4() {
          the stage-4 isostasy is being computed even when only S-S is enabled).",
     );
 
-    eprintln!(
-        "  Phase 1.4 regression guarantee PRESERVED — S-S off ≡ Phase 1.4 closure stack."
-    );
+    eprintln!("  Phase 1.4 regression guarantee PRESERVED — S-S off ≡ Phase 1.4 closure stack.");
 }
 
 /// **Test 3 — downstream smoke.** Phase 2 Track A produces a
@@ -506,18 +439,9 @@ fn disabled_matches_phase_1_4() {
 fn downstream_pipeline_accepts_phase_2_altitude() {
     let (mut state, mut kinematics, config) = setup();
     let closures = C1Closures {
-        subduction: SubductionParams {
-            enabled: false,
-            ..SubductionParams::default()
-        },
-        accretion: AccretionParams {
-            enabled: false,
-            ..AccretionParams::default()
-        },
-        rifting: RiftingParams {
-            enabled: false,
-            ..RiftingParams::default()
-        },
+        subduction: SubductionParams { enabled: false, ..SubductionParams::default() },
+        accretion: AccretionParams { enabled: false, ..AccretionParams::default() },
+        rifting: RiftingParams { enabled: false, ..RiftingParams::default() },
         ..C1Closures::default()
     };
 
@@ -541,34 +465,22 @@ fn downstream_pipeline_accepts_phase_2_altitude() {
     );
 
     let alt_min = altitude.data.iter().cloned().fold(f32::INFINITY, f32::min);
-    let alt_max = altitude
-        .data
-        .iter()
-        .cloned()
-        .fold(f32::NEG_INFINITY, f32::max);
+    let alt_max = altitude.data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let any_non_finite = altitude.data.iter().any(|v| !v.is_finite());
-    eprintln!(
-        "  post-S-S altitude range: [{alt_min:.4}, {alt_max:.4}]  (bipolar Architecture C)"
-    );
+    eprintln!("  post-S-S altitude range: [{alt_min:.4}, {alt_max:.4}]  (bipolar Architecture C)");
     assert!(
         !any_non_finite,
         "post-S-S altitude buffer contains non-finite values; check S-S apply path"
     );
 
     // Smoke 1 — D8 flow routing.
-    let flow_config = FlowConfig {
-        sea_level: isostasy.sea_level_normalized,
-        ..FlowConfig::default()
-    };
+    let flow_config =
+        FlowConfig { sea_level: isostasy.sea_level_normalized, ..FlowConfig::default() };
     let flow = compute_flow(&altitude, &flow_config);
     eprintln!(
         "  compute_flow: accepted bipolar altitude without panic; num_basins = {}, max accum = {:.1}",
         flow.num_basins,
-        flow.accumulation
-            .data
-            .iter()
-            .cloned()
-            .fold(0.0_f32, f32::max),
+        flow.accumulation.data.iter().cloned().fold(0.0_f32, f32::max),
     );
     assert!(
         flow.accumulation.data.iter().all(|v| v.is_finite()),
@@ -583,34 +495,18 @@ fn downstream_pipeline_accepts_phase_2_altitude() {
     // runtime acceptable — this is a consumability check, not an
     // erosion-effect validation. Same pattern as
     // c1_phase_1_4_downstream.rs:332-355.
-    let erosion_config = ErosionConfig {
-        num_droplets: 1_000,
-        ..ErosionConfig::default()
-    };
+    let erosion_config = ErosionConfig { num_droplets: 1_000, ..ErosionConfig::default() };
     let world_seed = WorldSeed::new(SEED);
     let eroded = run_erosion(&altitude, &erosion_config, &world_seed, |_, _, _| true);
-    let eroded_min = eroded
-        .heightmap
-        .data
-        .iter()
-        .cloned()
-        .fold(f32::INFINITY, f32::min);
-    let eroded_max = eroded
-        .heightmap
-        .data
-        .iter()
-        .cloned()
-        .fold(f32::NEG_INFINITY, f32::max);
+    let eroded_min = eroded.heightmap.data.iter().cloned().fold(f32::INFINITY, f32::min);
+    let eroded_max = eroded.heightmap.data.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let any_non_finite_eroded = eroded.heightmap.data.iter().any(|v| !v.is_finite());
     eprintln!(
         "  run_erosion:  accepted bipolar altitude without panic; {} droplets; \
          post-erosion range [{eroded_min:.4}, {eroded_max:.4}]",
         erosion_config.num_droplets
     );
-    assert!(
-        !any_non_finite_eroded,
-        "post-erosion altitude buffer contains non-finite values"
-    );
+    assert!(!any_non_finite_eroded, "post-erosion altitude buffer contains non-finite values");
     assert!(
         eroded.sediment.data.iter().all(|s| s.is_finite() && *s >= 0.0),
         "run_erosion produced non-finite or negative sediment"
@@ -629,7 +525,5 @@ fn downstream_pipeline_accepts_phase_2_altitude() {
         "post-erosion altitude range [{eroded_min}, {eroded_max}] escapes ±3.0 sanity bound"
     );
 
-    eprintln!(
-        "  Phase 2 Track A altitude consumable by downstream pipeline (D8 + HD erosion)."
-    );
+    eprintln!("  Phase 2 Track A altitude consumable by downstream pipeline (D8 + HD erosion).");
 }

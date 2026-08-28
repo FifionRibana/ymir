@@ -21,7 +21,7 @@ use ymir_core::tectonics_v2::basal_drag::BasalDragConfig;
 use ymir_core::tectonics_v2::boundaries::{BoundaryConfig, BoundaryRates};
 use ymir_core::tectonics_v2::cratonic::CratonicConfig;
 use ymir_core::tectonics_v2::diagnostics::harness::{
-    build_force, BaselineConfig, ForceKind, NonlinearChoice,
+    BaselineConfig, ForceKind, NonlinearChoice, build_force,
 };
 use ymir_core::tectonics_v2::init::InitMode;
 use ymir_core::tectonics_v2::mantle::MantleConfig;
@@ -32,7 +32,7 @@ use ymir_core::tectonics_v2::scales::Scales;
 use ymir_core::tectonics_v2::slab::SlabPullConfig;
 use ymir_core::tectonics_v2::voronoi::VoronoiConfig;
 use ymir_core::tectonics_v2::workflow::{
-    run_phase_a_loop_v2, PhaseAParams, WorkflowConfig, WorkflowParams,
+    PhaseAParams, WorkflowConfig, WorkflowParams, run_phase_a_loop_v2,
 };
 
 fn build_phase4_config(grid_size: usize, k_cycle: usize, scratch: &str) -> BaselineConfig {
@@ -140,13 +140,7 @@ fn run_5cycle_integration(grid_size: usize, scratch: &str) {
         .cycles
         .iter()
         .map(|c| {
-            c.baseline
-                .final_state
-                .s_field
-                .data()
-                .iter()
-                .copied()
-                .fold(f64::NEG_INFINITY, f64::max)
+            c.baseline.final_state.s_field.data().iter().copied().fold(f64::NEG_INFINITY, f64::max)
         })
         .collect();
     let peak_3 = peaks[3];

@@ -38,12 +38,10 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use ymir_core::tectonics_c1::boundary_classification::{
-    classify_boundaries, BoundaryType,
-};
+use ymir_core::tectonics_c1::boundary_classification::{BoundaryType, classify_boundaries};
 use ymir_core::tectonics_c1::init::init_c1_state_phase_1_1;
 use ymir_core::tectonics_c1::init_r7::{
-    build_plate_adjacency, init_c1_state_phase_2_r7, Phase2InitParams, R7InitParams,
+    Phase2InitParams, R7InitParams, build_plate_adjacency, init_c1_state_phase_2_r7,
 };
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_v2::boundaries::plate_type::PlateType;
@@ -107,9 +105,21 @@ fn r7_init_deterministic_given_seed() {
         for i in 0..GRID {
             assert_eq!(state_a.s.get(i, j), state_b.s.get(i, j), "S̃ mismatch at ({i}, {j})");
             assert_eq!(state_a.age.get(i, j), state_b.age.get(i, j), "age mismatch at ({i}, {j})");
-            assert_eq!(state_a.plate_id.get(i, j), state_b.plate_id.get(i, j), "plate_id mismatch at ({i}, {j})");
-            assert_eq!(state_a.plate_type.get(i, j), state_b.plate_type.get(i, j), "plate_type mismatch at ({i}, {j})");
-            assert_eq!(state_a.cratonic_mask.get(i, j), state_b.cratonic_mask.get(i, j), "cratonic_mask mismatch at ({i}, {j})");
+            assert_eq!(
+                state_a.plate_id.get(i, j),
+                state_b.plate_id.get(i, j),
+                "plate_id mismatch at ({i}, {j})"
+            );
+            assert_eq!(
+                state_a.plate_type.get(i, j),
+                state_b.plate_type.get(i, j),
+                "plate_type mismatch at ({i}, {j})"
+            );
+            assert_eq!(
+                state_a.cratonic_mask.get(i, j),
+                state_b.cratonic_mask.get(i, j),
+                "cratonic_mask mismatch at ({i}, {j})"
+            );
         }
     }
 }
@@ -151,9 +161,7 @@ fn r7_init_different_seeds_produce_different_continents() {
 /// Helper — collect per-plate `PlateType` from the cell-level
 /// field via `plate_id` lookup. Returns indexed `Vec<PlateType>`
 /// of length `num_plates`.
-fn per_plate_type_from_state(
-    state: &ymir_core::tectonics_c1::state::C1State,
-) -> Vec<PlateType> {
+fn per_plate_type_from_state(state: &ymir_core::tectonics_c1::state::C1State) -> Vec<PlateType> {
     let mut per_plate: Vec<Option<PlateType>> = vec![None; state.num_plates];
     for j in 0..state.ny() {
         for i in 0..state.nx() {
@@ -177,10 +185,8 @@ fn r7_continental_fraction_within_target() {
     let num_plates = state.num_plates;
 
     let per_plate = per_plate_type_from_state(&state);
-    let continental_count = per_plate
-        .iter()
-        .filter(|t| matches!(t, PlateType::Continental))
-        .count();
+    let continental_count =
+        per_plate.iter().filter(|t| matches!(t, PlateType::Continental)).count();
     let actual_fraction = continental_count as f64 / num_plates as f64;
     let tolerance = (1.0 / num_plates as f64).max(0.05);
     let diff = (actual_fraction - target).abs();
@@ -416,9 +422,7 @@ fn r7_phase_1_1_init_preserved_unchanged() {
         }
     }
     let frac = continental_count as f64 / total as f64;
-    eprintln!(
-        "    continental cell fraction = {frac:.3} ({continental_count} / {total})"
-    );
+    eprintln!("    continental cell fraction = {frac:.3} ({continental_count} / {total})");
     assert!(
         (0.20..=0.45).contains(&frac),
         "Phase 1.1 continental cell fraction {frac:.3} must be in [0.20, 0.45]"
@@ -432,9 +436,7 @@ fn r7_phase_1_1_init_preserved_unchanged() {
     let counts = info.counts();
     let convergent = counts[1];
     let divergent = counts[2];
-    eprintln!(
-        "    boundary counts: Convergent = {convergent}, Divergent = {divergent}"
-    );
+    eprintln!("    boundary counts: Convergent = {convergent}, Divergent = {divergent}");
     assert!(
         convergent > 0 || divergent > 0,
         "Phase 1.1 kinematics must produce at least some Convergent or Divergent boundaries"

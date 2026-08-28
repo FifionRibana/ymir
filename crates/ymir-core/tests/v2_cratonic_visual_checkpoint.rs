@@ -42,11 +42,9 @@ fn dump_for_grid(nx: usize, ny: usize, label: &str) {
         .join("../../docs/reports/step9_visual_checkpoint");
     std::fs::create_dir_all(&out_dir).expect("create output dir");
 
-    let factor_meta = save_heightmap(
-        &factor,
-        &out_dir.join(format!("cratonic_factor_{}.png", label)),
-    )
-    .expect("save factor png");
+    let factor_meta =
+        save_heightmap(&factor, &out_dir.join(format!("cratonic_factor_{}.png", label)))
+            .expect("save factor png");
     let pt_meta = save_heightmap(
         &plates.plate_type.to_heightmap(),
         &out_dir.join(format!("plate_type_{}.png", label)),
