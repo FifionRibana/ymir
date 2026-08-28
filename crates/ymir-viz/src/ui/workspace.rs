@@ -293,6 +293,9 @@ struct WorkspaceState {
     profile_path: Vec<(u32, u32)>,
     /// Fraction (0=source, 1=sink) currently hovered on the long profile, or `None`.
     profile_hover: Option<f32>,
+    /// Pending "frame this element" request from a microscope double-click: (uv centre, uv extent).
+    /// The map consumes it (pan to the centre, zoom so the extent fits) then clears it.
+    focus_target: Option<([f32; 2], f32)>,
     /// Absolute on-screen size (px) of the FULL map square — the camera scale. `0` = fit on the
     /// next frame. Kept absolute (not derived from the panel-dependent available size) so resizing
     /// the side panels does NOT rescale the canvas.
@@ -371,8 +374,58 @@ impl Default for WorkspaceState {
             map_px: 0.0,
             profile_path: Vec::new(),
             profile_hover: None,
+            focus_target: None,
         }
     }
+}
+
+/// Convert a DATA-cell bounding box to a texture-uv (centre, extent) for the map camera, honouring
+/// the north-up mirror (data cell y → texture row h-1-y). `extent` is the larger uv side.
+fn bbox_to_uv(minx: u32, maxx: u32, miny: u32, maxy: u32, w: usize, h: usize) -> ([f32; 2], f32) {
+    let (wf, hf) = (w as f32, h as f32);
+    let ux0 = minx as f32 / wf;
+    let ux1 = (maxx + 1) as f32 / wf;
+    let uy0 = (h as u32 - 1 - maxy) as f32 / hf; // min data-y is the BOTTOM texture row
+    let uy1 = (h as u32 - miny) as f32 / hf;
+    let cx = (ux0 + ux1) * 0.5;
+    let cy = (uy0 + uy1) * 0.5;
+    let ext = (ux1 - ux0).max(uy1 - uy0).max(1.0 / wf);
+    ([cx, cy], ext)
+}
+
+/// Bounding box (uv centre + extent) of a watercourse's cells, for double-click framing.
+fn river_bbox_uv(hd: &HdResult, wc: &Watercourse) -> Option<([f32; 2], f32)> {
+    let (mut minx, mut miny, mut maxx, mut maxy) = (u32::MAX, u32::MAX, 0u32, 0u32);
+    let mut any = false;
+    for &s in &wc.segments {
+        for &(x, y) in &hd.drainage.rivers.segments[s].points {
+            minx = minx.min(x);
+            maxx = maxx.max(x);
+            miny = miny.min(y);
+            maxy = maxy.max(y);
+            any = true;
+        }
+    }
+    any.then(|| bbox_to_uv(minx, maxx, miny, maxy, hd.width, hd.height))
+}
+
+/// Bounding box (uv centre + extent) of a lake's footprint, for double-click framing.
+fn lake_bbox_uv(hd: &HdResult, lake_id: u32) -> Option<([f32; 2], f32)> {
+    let (w, h) = (hd.width, hd.height);
+    let (mut minx, mut miny, mut maxx, mut maxy) = (u32::MAX, u32::MAX, 0u32, 0u32);
+    let mut any = false;
+    for y in 0..h {
+        for x in 0..w {
+            if hd.drainage.lake_map[y * w + x] == lake_id {
+                minx = minx.min(x as u32);
+                maxx = maxx.max(x as u32);
+                miny = miny.min(y as u32);
+                maxy = maxy.max(y as u32);
+                any = true;
+            }
+        }
+    }
+    any.then(|| bbox_to_uv(minx, maxx, miny, maxy, w, h))
 }
 
 fn seg_label(ui: &mut egui::Ui, text: &str, active: bool) -> egui::Response {
@@ -2039,6 +2092,13 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         };
         ui.ctx().set_cursor_icon(icon);
     }
+    // Consume a pending microscope double-click "frame element": centre on it + fit its extent
+    // (with a margin), clamped to the zoom range.
+    if let Some((center, ext)) = ws.focus_target.take() {
+        ws.map_pan = center;
+        let target = (vp.width().min(vp.height()) * 0.8) / ext.max(1e-4);
+        ws.map_px = target.clamp(fit * 0.5, fit * 16.0);
+    }
     ws.map_pan[0] = ws.map_pan[0].clamp(0.0, 1.0);
     ws.map_pan[1] = ws.map_pan[1].clamp(0.0, 1.0);
 
@@ -2867,14 +2927,18 @@ fn microscope_list(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                         wc.tributaries,
                         sl
                     );
-                    if ui
-                        .selectable_label(
-                            ws.selected_river == Some(i),
-                            egui::RichText::new(txt).color(sc).size(11.0),
-                        )
-                        .clicked()
-                    {
-                        // Toggle: re-clicking the selected row deselects it.
+                    let r = ui.selectable_label(
+                        ws.selected_river == Some(i),
+                        egui::RichText::new(txt).color(sc).size(11.0),
+                    );
+                    if r.double_clicked() {
+                        // Double-click: select AND frame the river on the map.
+                        ws.selected_river = Some(i);
+                        if let Some(bb) = river_bbox_uv(&hd, wc) {
+                            ws.focus_target = Some(bb);
+                        }
+                    } else if r.clicked() {
+                        // Single click toggles (re-click deselects).
                         ws.selected_river = (ws.selected_river != Some(i)).then_some(i);
                     }
                 }
@@ -2896,13 +2960,17 @@ fn microscope_list(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                 };
                 let txt =
                     format!("#{} · {:.0} km² · {:.0} m · {}", lk.base.id, lk.area_km2, lk.level_m, ty);
-                if ui
-                    .selectable_label(
-                        ws.selected_lake == Some(i),
-                        egui::RichText::new(txt).color(tc).size(11.0),
-                    )
-                    .clicked()
-                {
+                let id = lk.base.id;
+                let r = ui.selectable_label(
+                    ws.selected_lake == Some(i),
+                    egui::RichText::new(txt).color(tc).size(11.0),
+                );
+                if r.double_clicked() {
+                    ws.selected_lake = Some(i);
+                    if let Some(bb) = lake_bbox_uv(&hd, id) {
+                        ws.focus_target = Some(bb);
+                    }
+                } else if r.clicked() {
                     ws.selected_lake = (ws.selected_lake != Some(i)).then_some(i);
                 }
             }
