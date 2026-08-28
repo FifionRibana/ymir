@@ -2957,6 +2957,30 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Op
     let d = &hd.drainage;
     let (sl, sc) = sink_label(wc.sink);
     let mut nav = None;
+    // SOURCE basin (Finding 29, upstream side): if the watercourse's source cell borders a lake, that
+    // lake OVERFLOWS into this river — expose it, clickable, to walk the hydrological chain UPSTREAM.
+    let source_lake = wc
+        .trunk
+        .first()
+        .and_then(|&s| d.rivers.segments.get(s))
+        .and_then(|seg| seg.points.first())
+        .and_then(|&(sx, sy)| {
+            let (w, h) = (hd.width, hd.height);
+            let mut found = 0u32;
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    let (x, y) = (sx as i32 + dx, sy as i32 + dy);
+                    if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
+                        let id = d.lake_map[y as usize * w + x as usize];
+                        if id != 0 {
+                            found = id;
+                        }
+                    }
+                }
+            }
+            (found != 0).then_some(found)
+        })
+        .and_then(|id| hd.drainage.lakes.iter().position(|l| l.base.id == id));
     ui.horizontal_wrapped(|ui| {
         let kv = |ui: &mut egui::Ui, k: &str, v: String| {
             ui.label(egui::RichText::new(format!("{k} ")).color(DIM).size(10.5));
@@ -2971,6 +2995,31 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Op
         // Finding 37 — honest label: the first exported point sits at `stream_km2` (~20 km²), NOT the
         // true source, until the upstream extension (head_km2 = A_c) is enabled. Then it IS the source.
         kv(ui, "Largeur au 1er point", format!("{:.0} m", wc.width_source_m));
+        // Clickable SOURCE basin (Finding 29, upstream): the lake that overflows into this river.
+        if let Some(li) = source_lake {
+            let lk = &hd.drainage.lakes[li];
+            let (ty, tc) = match lk.lake_type {
+                LakeType::Exorheic => ("exoréique", C::from_rgb(0x5a, 0x9a, 0xd0)),
+                LakeType::Endorheic => ("endoréique", C::from_rgb(0x3a, 0xb0, 0xa0)),
+            };
+            ui.label(egui::RichText::new("Source ").color(DIM).size(10.5));
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new(format!("⬅ lac #{} ({ty})", lk.base.id))
+                            .color(tc)
+                            .strong()
+                            .size(11.5),
+                    )
+                    .frame(true),
+                )
+                .on_hover_text("Aller au bassin source (remonter la chaîne)")
+                .clicked()
+            {
+                nav = Some(NavAction::Lake(li));
+            }
+            ui.add_space(10.0);
+        }
         // Clickable SINK (Finding 29): jump to the lake it drains into. A SUB-threshold basin
         // (Finding 32) is a real sink but not in the inventory list → labelled honestly, no jump.
         ui.label(egui::RichText::new("Exutoire ").color(DIM).size(10.5));
@@ -3064,7 +3113,7 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Op
         };
         ui.label(egui::RichText::new(mtxt).color(mcol).size(10.5));
     });
-    let (rect, _) = ui.allocate_exact_size(
+    let (rect, plot_resp) = ui.allocate_exact_size(
         egui::vec2(ui.available_width().max(120.0), 120.0),
         egui::Sense::hover(),
     );
@@ -3115,6 +3164,37 @@ fn river_profile_panel(ui: &mut egui::Ui, hd: &HdResult, wc: &Watercourse) -> Op
         egui::FontId::monospace(9.0),
         DIM,
     );
+    // Hover readout: abscissa (length from the source), a vertical cursor bar, a point tracking the
+    // profile, and the interpolated bed height at that abscissa.
+    let (x0, xw) = (rect.left() + 6.0, (rect.width() - 12.0).max(1.0));
+    if let Some(pos) = plot_resp.hover_pos() {
+        let fx = ((pos.x - x0) / xw).clamp(0.0, 1.0);
+        let fi = fx * (n - 1) as f32;
+        let i0 = fi.floor() as usize;
+        let i1 = (i0 + 1).min(n - 1);
+        let t = fi - i0 as f32;
+        let e = elev[i0] * (1.0 - t) + elev[i1] * t;
+        let sx = x0 + fx * xw;
+        let sy = y_of(e);
+        let length_km = fx * wc.length_km;
+        // vertical cursor bar + point on the profile.
+        p.line_segment(
+            [egui::pos2(sx, rect.top()), egui::pos2(sx, rect.bottom())],
+            egui::Stroke::new(1.0, C::from_rgba_unmultiplied(0xC9, 0x85, 0x3F, 120)),
+        );
+        p.circle_filled(egui::pos2(sx, sy), 3.5, COPPER_BRIGHT);
+        // readout chip (top, following the cursor side).
+        let txt = format!("{length_km:.0} km · {e:.0} m");
+        let galley = p.layout_no_wrap(txt, egui::FontId::monospace(10.0), TEXT);
+        let pad = egui::vec2(10.0, 6.0);
+        let left = (sx + 8.0).min(rect.right() - galley.size().x - pad.x);
+        let bgr = egui::Rect::from_min_size(
+            egui::pos2(left.max(rect.left() + 2.0), rect.top() + 3.0),
+            galley.size() + pad,
+        );
+        p.rect_filled(bgr, 4.0, C::from_rgba_unmultiplied(18, 18, 18, 225));
+        p.galley(bgr.min + pad * 0.5, galley, TEXT);
+    }
     nav
 }
 
