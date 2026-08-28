@@ -26,8 +26,8 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::cache::{
-    ALGO_CLIMATE, ALGO_DRAINAGE, ALGO_HD_DRAINAGE, ALGO_TECTONICS, ALGO_UPSCALE_EROSION, CacheKey,
-    RawCodec, cached, cached_fallible,
+    ALGO_BREACH, ALGO_CLIMATE, ALGO_DRAINAGE, ALGO_HD_DRAINAGE, ALGO_TECTONICS,
+    ALGO_UPSCALE_EROSION, CacheKey, RawCodec, cached, cached_fallible,
 };
 use crate::climate::{ClimateResult, c1_climate_placed, c1_climate_windowed};
 use crate::climate::precipitation::PrecipParams;
@@ -536,6 +536,14 @@ pub fn cached_c1_climate(
         Some(span) => c1_climate_placed(heightmap, ss, latitude_deg, span, pp, window_km),
         None => c1_climate_windowed(heightmap, ss, latitude_deg, pp, window_km),
     })
+}
+
+/// Cache key for the relief-v3 CONDITIONED eroded field (the `breach_monotone` output). Chained
+/// onto the PRE-BREACH drainage key (which itself folds the eroded key + drainage config + ss), so
+/// any change to the eroded relief OR the pre-breach lakes OR the breach code re-invalidates it.
+/// The conditioned field is a pure `GridF32` — cache it with the plain `GridF32` codec.
+pub fn conditioned_eroded_key(prebreach_key: &CacheKey) -> CacheKey {
+    CacheKey::derived_from(prebreach_key).algo(ALGO_BREACH)
 }
 
 // ── HD relief-v3 drainage bundle cache (#190) ────────────────────────────────

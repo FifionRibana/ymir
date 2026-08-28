@@ -58,6 +58,11 @@ pub const ALGO_DRAINAGE: u32 = 2;
 /// ⚠️ BUMP on ANY code change to that step (see above).
 pub const ALGO_CLIMATE: u32 = 1;
 
+/// Version of the relief-v3 BREACH conditioning (`breach_monotone` applied to the eroded
+/// field with the pre-breach lakes). ⚠️ BUMP on ANY code change to `breach_monotone` — a
+/// stale conditioned field would carry the OLD breach into every downstream layer.
+pub const ALGO_BREACH: u32 = 1;
+
 /// Version of the HD relief-v3 drainage BUNDLE (final drainage after the below-sea
 /// water-balance merge + river clip + spillway append + geographic-scale, plus the
 /// wetland mask). ⚠️ BUMP on ANY code change to that whole post-eroded chain — it

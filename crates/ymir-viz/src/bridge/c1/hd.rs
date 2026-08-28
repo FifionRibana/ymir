@@ -44,9 +44,9 @@ use ymir_core::grid::GridF32;
 use ymir_core::lakes::connectivity;
 use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::cached_product::{
-    HdDrainageBundle, c1_coarse_land_report, cached_c1_drainage_windowed, cached_c1_eroded,
-    cached_c1_eroded_with_progress, cached_c1_climate, climate_key, coarse_normalized_sweep,
-    eroded_key, hd_drainage_key, tectonic_key,
+    HdDrainageBundle, c1_coarse_land_report, cached_c1_climate, cached_c1_drainage_windowed,
+    cached_c1_eroded, cached_c1_eroded_with_progress, climate_key, coarse_normalized_sweep,
+    conditioned_eroded_key, drainage_key_windowed, eroded_key, hd_drainage_key, tectonic_key,
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
@@ -738,30 +738,55 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // Returns the conditioned field + the PRE-BREACH drainage (its lakes/lake_map are
     // the real water bodies; the breach flattens them so post-breach detection finds
     // none). The FINAL, discharge-bearing drainage is computed below WITH the climate.
+    // #190 — the hd_drainage bundle key, computed EARLY so we can tell whether the pre-breach drainage
+    // is still needed (it is not when BOTH the conditioned eroded and the final drainage are HITs).
+    let hd_dr_key = hd_drainage_key(
+        &ekey, &dcfg, &ss, lat, &pp, params.latitude_span_deg, params.geo_scale_ratio, window_km,
+    );
+    let bundle_hit = sidecar_exists("hd_drainage", hd_dr_key.digest());
     let (eroded, prebreach_override) = if params.stream_power && params.closures && params.mfd {
         let (gw, gh) = (eroded.width, eroded.height);
-        // #190 — the PRE-BREACH drainage is CLIMATE-INDEPENDENT (climate=None), so it is cached on
-        // the eroded key alone: it HITs on any climate/scale change (the field is unchanged).
-        let t_pre = Instant::now();
-        let prebreach = match cached_c1_drainage_windowed(
-            &cache_dir, &ekey, &eroded, None, &dcfg, &ss, window_km,
-        ) {
-            Ok(p) => p,
+        // #190 — the CONDITIONED eroded (the breach output) is CACHED: a pure GridF32 keyed on the
+        // pre-breach drainage key + the breach version. On a HIT the ~50 s breach is skipped entirely.
+        let prebreach_key = drainage_key_windowed(&ekey, &dcfg, &ss, None, window_km);
+        let cond_key = conditioned_eroded_key(&prebreach_key);
+        let cond_hit = sidecar_exists("conditioned", cond_key.digest());
+        // The pre-breach drainage is climate-independent (cached on the eroded key). It is needed ONLY
+        // to RUN the breach (cond MISS) or to carry the pre-breach lakes into build_hd_drainage
+        // (bundle MISS); on a full HIT it is not loaded at all.
+        let prebreach = if !cond_hit || !bundle_hit {
+            let t_pre = Instant::now();
+            let p = match cached_c1_drainage_windowed(
+                &cache_dir, &ekey, &eroded, None, &dcfg, &ss, window_km,
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    let _ = tx.send(C1Event::HdFailed { error: format!("prebreach: {e}") });
+                    return;
+                }
+            };
+            eprintln!("[HD timing] prebreach drainage {:.1}s", t_pre.elapsed().as_secs_f32());
+            Some(p)
+        } else {
+            None
+        };
+        let t_breach = Instant::now();
+        let conditioned = match cached::<GridF32>(&cache_dir, "conditioned", &cond_key, || {
+            let p = prebreach.as_ref().expect("prebreach is present on a conditioned MISS");
+            breach_monotone(&eroded, &p.flow.filled, &p.lake_map, 0.5, gw, gh)
+        }) {
+            Ok(g) => g,
             Err(e) => {
-                let _ = tx.send(C1Event::HdFailed { error: format!("prebreach: {e}") });
+                let _ = tx.send(C1Event::HdFailed { error: format!("breach: {e}") });
                 return;
             }
         };
-        eprintln!("[HD timing] prebreach drainage {:.1}s", t_pre.elapsed().as_secs_f32());
-        let t_breach = Instant::now();
-        let conditioned =
-            breach_monotone(&eroded, &prebreach.flow.filled, &prebreach.lake_map, 0.5, gw, gh);
         eprintln!(
-            "[HD] relief-v3 breach conditioning: monotone rivers + {} lakes held flat ({:.1}s)",
-            prebreach.lakes.len(),
+            "[HD] relief-v3 breach conditioning {} ({:.1}s)",
+            if cond_hit { "HIT" } else { "MISS" },
             t_breach.elapsed().as_secs_f32()
         );
-        (conditioned, Some(prebreach))
+        (conditioned, prebreach)
     } else {
         (eroded, None)
     };
@@ -806,17 +831,8 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
 
     // ── Phase 3: drainage (rivers + lakes + water balance). ──
     bail_if_cancelled!();
-    let hd_dr_key = hd_drainage_key(
-        &ekey,
-        &dcfg,
-        &ss,
-        lat,
-        &pp,
-        params.latitude_span_deg,
-        params.geo_scale_ratio,
-        window_km,
-    );
-    let drainage_hit = sidecar_exists("hd_drainage", hd_dr_key.digest());
+    // `hd_dr_key` + `bundle_hit` were computed EARLY (before the breach) to gate the pre-breach load.
+    let drainage_hit = bundle_hit;
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Drainage });
     let t = Instant::now();
     // #190 — the FINAL drainage (base + below-sea merge + clip + spillways + geo-scale) and the
