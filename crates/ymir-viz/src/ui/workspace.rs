@@ -112,6 +112,7 @@ enum InspectTab {
     #[default]
     Rivers,
     Lakes,
+    Volcanoes,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -246,6 +247,11 @@ struct WorkspaceState {
     mfd_p: f32,
     /// EXPERIMENTAL: FBM amplitude_base for the striation ladder (0.16 = production).
     fbm_amplitude: f32,
+    /// EXPERIMENTAL (C-2, closures roadmap §2): inject volcanic edifices (arcs /
+    /// hotspot chains / rifts) derived from the tectonic state. Off by default
+    /// (production byte-identical). Arc volcanism is barely visible on seeds with
+    /// few O-C margins — the hotspot chains and rifts carry the render.
+    volcanism: bool,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
     export_dir: String,
     // Derived / cache.
@@ -270,6 +276,7 @@ struct WorkspaceState {
     /// Selected entity (index into `watercourses` / `drainage.lakes`) for the microscope.
     selected_river: Option<usize>,
     selected_lake: Option<usize>,
+    selected_volcano: Option<usize>,
     /// segment index → watercourse index (for hover-select on the map).
     seg_to_wc: Vec<usize>,
     inspect_tab: InspectTab,
@@ -286,6 +293,8 @@ struct WorkspaceState {
     pipeline_collapsed: bool,
     /// Bird-eye minimap shown over the canvas.
     minimap: bool,
+    /// Show map symbols (C-2 volcano markers) over the canvas.
+    show_symbols: bool,
     /// Microscope SELECTION drawer (left) open.
     micro_open: bool,
     /// The selected river's profile PATH cells (source→sink), parallel to the plotted profile —
@@ -348,6 +357,7 @@ impl Default for WorkspaceState {
             mfd: true,
             mfd_p: 2.0,
             fbm_amplitude: 0.04, // #190 — the production seed's amplitude (fine relief detail)
+            volcanism: false,    // C-2 opt-in (Expert); production byte-identical
             export_dir: "exports".to_string(),
             current: None,
             preview: None,
@@ -359,6 +369,7 @@ impl Default for WorkspaceState {
             watercourses: None,
             selected_river: None,
             selected_lake: None,
+            selected_volcano: None,
             seg_to_wc: Vec::new(),
             inspect_tab: InspectTab::Rivers,
             texture: None,
@@ -370,6 +381,7 @@ impl Default for WorkspaceState {
             tool: MapTool::Select,
             pipeline_collapsed: false,
             minimap: true,
+            show_symbols: true,
             micro_open: true,
             map_px: 0.0,
             profile_path: Vec::new(),
@@ -877,6 +889,14 @@ fn left_panel(
                                 }
                             },
                             export_dir,
+                            // C-2 opt-in. `domain_km` is overwritten with the run's
+                            // geometric span in the bridge, so only `enabled` matters here.
+                            volcanism: ws.volcanism.then(|| {
+                                ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig {
+                                    enabled: true,
+                                    ..Default::default()
+                                }
+                            }),
                         };
                         let _ = bridge.submit_hd(spec, params);
                     }
@@ -948,6 +968,19 @@ fn left_panel(
                                      monotones, lacs à plat). Le correctif final recommandé.",
                                 );
                             }
+                            // C-2 volcanism (independent of the relief chain).
+                            ui.checkbox(
+                                &mut ws.volcanism,
+                                egui::RichText::new("Volcanisme (C-2)").color(DIM2).size(11.0),
+                            )
+                            .on_hover_text(
+                                "Closures roadmap §2 — édifices dérivés de la tectonique: arcs \
+                                 insulaires (subduction), chaînes de points chauds (âge croissant), \
+                                 rifts. Lacs de cratère acides si l'édifice dégaze. Le volcanisme \
+                                 d'arc est peu visible sur les seeds à peu de marges O-C — regarder \
+                                 les chaînes de hotspot et les rifts. Le log [HD volcanism] indique \
+                                 ce qui a été produit.",
+                            );
                         } else {
                             // STANDARD — the production recipe, forced on. No fallback toggle.
                             ws.stream_power = true;
@@ -1412,6 +1445,8 @@ fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
             Some(l) => match l.lake_type {
                 LakeType::Exorheic => "Lac (exoréique)".to_string(),
                 LakeType::Endorheic => "Lac (endoréique)".to_string(),
+                LakeType::CraterAcidic => "Lac de cratère (acide)".to_string(),
+                LakeType::CraterNeutral => "Lac de cratère (eau douce)".to_string(),
             },
             None => "—".to_string(),
         },
@@ -1471,17 +1506,22 @@ fn central_panel(ctx: &egui::Context, bridge: &C1SolverBridge, ws: &mut Workspac
                             ws.pipeline_collapsed = !ws.pipeline_collapsed;
                         }
                         if let HdState::Running { current: Some(p), progress, .. } = &bridge.hd {
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                let pct = progress
-                                    .map(|(d, t)| format!(" {}%", if t > 0 { d * 100 / t } else { 0 }))
-                                    .unwrap_or_default();
-                                ui.label(
-                                    egui::RichText::new(format!("{}{} …", p.label(), pct))
-                                        .color(COPPER_BRIGHT)
-                                        .size(10.5),
-                                );
-                                ui.spinner();
-                            });
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    let pct = progress
+                                        .map(|(d, t)| {
+                                            format!(" {}%", if t > 0 { d * 100 / t } else { 0 })
+                                        })
+                                        .unwrap_or_default();
+                                    ui.label(
+                                        egui::RichText::new(format!("{}{} …", p.label(), pct))
+                                            .color(COPPER_BRIGHT)
+                                            .size(10.5),
+                                    );
+                                    ui.spinner();
+                                },
+                            );
                         }
                     });
                     if !ws.pipeline_collapsed {
@@ -1772,6 +1812,7 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         geo_scale_ratio: 1.0,
         latitude_span_deg: None,
         export_dir: None,
+        volcanism: None,
     }
 }
 
@@ -2030,7 +2071,10 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         ws.texture = Some(ui.ctx().load_texture("hd_map", img, egui::TextureOptions::NEAREST));
         ws.tex_layer = Some(ws.layer);
         ws.tex_overlay = ws.river_overlay;
-        eprintln!("[HD timing] map texture rebuild {:.1}s (UI thread)", t_tex.elapsed().as_secs_f32());
+        eprintln!(
+            "[HD timing] map texture rebuild {:.1}s (UI thread)",
+            t_tex.elapsed().as_secs_f32()
+        );
     }
     let handle = ws.texture.as_ref().unwrap().clone();
 
@@ -2051,8 +2095,8 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     ws.map_pan[1] = ws.map_pan[1].clamp(0.0, 1.0);
 
     // ── Navigation input. ──
-    let pan_drag = (ws.tool == MapTool::Pan && resp.dragged())
-        || resp.dragged_by(egui::PointerButton::Middle);
+    let pan_drag =
+        (ws.tool == MapTool::Pan && resp.dragged()) || resp.dragged_by(egui::PointerButton::Middle);
     if pan_drag {
         let d = resp.drag_delta();
         ws.map_pan[0] -= d.x / ws.map_px; // drag right -> view slides left
@@ -2152,13 +2196,14 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                     InspectTab::Lakes => {
                         let id = hd.drainage.lake_map[cy * hd.width + cx];
                         if id != 0 {
-                            if let Some(li) =
-                                hd.drainage.lakes.iter().position(|l| l.base.id == id)
+                            if let Some(li) = hd.drainage.lakes.iter().position(|l| l.base.id == id)
                             {
                                 ws.selected_lake = Some(li);
                             }
                         }
                     }
+                    // Volcanoes are picked from the microscope list, not the map hover.
+                    InspectTab::Volcanoes => {}
                 }
             }
             // Reticle: faint crosshair through the cell + a copper cell box.
@@ -2258,6 +2303,36 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         }
     }
 
+    // C-2 volcano markers — shown when the "Symboles" toggle is on (default). A
+    // triangle at each crater: red = active/degassing, grey = extinct. The selected
+    // one is enlarged with a white ring. A selected volcano stays ringed even with
+    // symbols off, so the microscope selection is never lost.
+    for (i, vo) in hd
+        .volcanoes
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| ws.show_symbols || ws.selected_volcano == Some(*i))
+    {
+        let c = to_screen(vo.center_px.0 as u32, vo.center_px.1 as u32);
+        let sel = ws.selected_volcano == Some(i);
+        let s = if sel { 9.0 } else { 6.0 };
+        let fill =
+            if vo.active { C::from_rgb(0xe0, 0x50, 0x30) } else { C::from_rgb(0x8a, 0x8a, 0x8a) };
+        let tri = vec![
+            egui::pos2(c.x, c.y - s),
+            egui::pos2(c.x - s * 0.9, c.y + s * 0.7),
+            egui::pos2(c.x + s * 0.9, c.y + s * 0.7),
+        ];
+        pnt.add(egui::Shape::convex_polygon(
+            tri,
+            fill,
+            egui::Stroke::new(1.5, C::from_rgb(0x20, 0x14, 0x10)),
+        ));
+        if sel {
+            pnt.circle_stroke(c, s + 3.0, egui::Stroke::new(2.0, C::WHITE));
+        }
+    }
+
     // Floating tool bar (top-left), minimap (bottom-left), zoom controls (bottom-right).
     canvas_toolbar(ui, vp, ws);
     if ws.minimap {
@@ -2271,6 +2346,7 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
     if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
         ws.selected_river = None;
         ws.selected_lake = None;
+        ws.selected_volcano = None;
     }
 }
 
@@ -2282,7 +2358,8 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
         egui::vec2(0.0, 0.0),
     );
     let mut child = ui.new_child(
-        egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(bar.min, egui::vec2(360.0, 34.0))),
+        egui::UiBuilder::new()
+            .max_rect(egui::Rect::from_min_size(bar.min, egui::vec2(360.0, 34.0))),
     );
     child.horizontal(|ui| {
         egui::Frame::default()
@@ -2311,6 +2388,10 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                         ws.texture = None;
                     }
                     ui.checkbox(&mut ws.minimap, egui::RichText::new("Minimap").size(11.0));
+                    ui.checkbox(&mut ws.show_symbols, egui::RichText::new("Symboles").size(11.0))
+                        .on_hover_text(
+                            "Marqueurs sur la carte (volcans : ▲ rouge actif / gris éteint)",
+                        );
                 });
             });
     });
@@ -2344,14 +2425,14 @@ fn minimap_overlay(
             egui::pos2(inner.left() + uv.min.x * inner_sz.x, inner.top() + uv.min.y * inner_sz.y),
             egui::pos2(inner.left() + uv.max.x * inner_sz.x, inner.top() + uv.max.y * inner_sz.y),
         );
-        p.rect_stroke(
-            win,
-            0.0,
-            egui::Stroke::new(1.5, COPPER_BRIGHT),
-            egui::StrokeKind::Middle,
-        );
+        p.rect_stroke(win, 0.0, egui::Stroke::new(1.5, COPPER_BRIGHT), egui::StrokeKind::Middle);
     }
-    p.rect_stroke(mm, 4.0, egui::Stroke::new(1.0, C::from_rgb(0x2e, 0x2e, 0x2e)), egui::StrokeKind::Middle);
+    p.rect_stroke(
+        mm,
+        4.0,
+        egui::Stroke::new(1.0, C::from_rgb(0x2e, 0x2e, 0x2e)),
+        egui::StrokeKind::Middle,
+    );
 }
 
 fn overlay_chip(ui: &mut egui::Ui, rect: egui::Rect, layer: HdLayer) {
@@ -2924,6 +3005,16 @@ fn microscope_list(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         {
             ws.inspect_tab = InspectTab::Lakes;
         }
+        if !hd.volcanoes.is_empty()
+            && ui
+                .selectable_label(
+                    ws.inspect_tab == InspectTab::Volcanoes,
+                    format!("Volcans ({})", hd.volcanoes.len()),
+                )
+                .clicked()
+        {
+            ws.inspect_tab = InspectTab::Volcanoes;
+        }
     });
     ui.separator();
     egui::ScrollArea::vertical().id_salt("entity_list").show(ui, |ui| match ws.inspect_tab {
@@ -2969,9 +3060,15 @@ fn microscope_list(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                 let (ty, tc) = match lk.lake_type {
                     LakeType::Exorheic => ("exoréique", C::from_rgb(0x5a, 0x9a, 0xd0)),
                     LakeType::Endorheic => ("endoréique (salé)", C::from_rgb(0x3a, 0xb0, 0xa0)),
+                    LakeType::CraterAcidic => ("cratère (acide)", C::from_rgb(0xc9, 0xc0, 0x3a)),
+                    LakeType::CraterNeutral => {
+                        ("cratère (eau douce)", C::from_rgb(0x6a, 0x8a, 0xc0))
+                    }
                 };
-                let txt =
-                    format!("#{} · {:.0} km² · {:.0} m · {}", lk.base.id, lk.area_km2, lk.level_m, ty);
+                let txt = format!(
+                    "#{} · {:.0} km² · {:.0} m · {}",
+                    lk.base.id, lk.area_km2, lk.level_m, ty
+                );
                 let id = lk.base.id;
                 let r = ui.selectable_label(
                     ws.selected_lake == Some(i),
@@ -2984,6 +3081,51 @@ fn microscope_list(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                     }
                 } else if r.clicked() {
                     ws.selected_lake = (ws.selected_lake != Some(i)).then_some(i);
+                }
+            }
+        }
+        InspectTab::Volcanoes => {
+            let km_per_cell = ws.domain_km / hd.width as f32;
+            // Active (degassing) first, then by crater size.
+            let mut idx: Vec<usize> = (0..hd.volcanoes.len()).collect();
+            idx.sort_by(|&a, &b| {
+                let (va, vb) = (&hd.volcanoes[a], &hd.volcanoes[b]);
+                vb.active.cmp(&va.active).then(
+                    vb.radius_px.partial_cmp(&va.radius_px).unwrap_or(std::cmp::Ordering::Equal),
+                )
+            });
+            for i in idx {
+                let v = &hd.volcanoes[i];
+                let (state, col) = if v.active {
+                    ("ACTIF (dégazage)", C::from_rgb(0xe0, 0x62, 0x40))
+                } else {
+                    ("éteint", C::from_rgb(0x9a, 0x9a, 0x9a))
+                };
+                let dia_km = 2.0 * v.radius_px * km_per_cell;
+                let txt = format!("#{:<2} {state} · cratère Ø {dia_km:.1} km", i + 1);
+                let r = ui.selectable_label(
+                    ws.selected_volcano == Some(i),
+                    egui::RichText::new(txt).color(col).size(11.0),
+                );
+                if r.double_clicked() {
+                    ws.selected_volcano = Some(i);
+                    // Frame the volcano. center_px is in DATA space; the camera uv is
+                    // TEXTURE space (north-up flipped), so reuse bbox_to_uv (which flips
+                    // y via h-1-y) with a small box around the crater centre — passing
+                    // data y directly would land at the vertically mirrored spot.
+                    let (cx, cy) = (v.center_px.0 as u32, v.center_px.1 as u32);
+                    let r_px = (v.radius_px.max(4.0) * 2.0) as u32;
+                    let ([bu, bv], ext) = bbox_to_uv(
+                        cx.saturating_sub(r_px),
+                        (cx + r_px).min(hd.width as u32 - 1),
+                        cy.saturating_sub(r_px),
+                        (cy + r_px).min(hd.height as u32 - 1),
+                        hd.width,
+                        hd.height,
+                    );
+                    ws.focus_target = Some(([bu, bv], ext));
+                } else if r.clicked() {
+                    ws.selected_volcano = (ws.selected_volcano != Some(i)).then_some(i);
                 }
             }
         }
@@ -3031,6 +3173,39 @@ fn microscope_detail(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                 ui.add_space(20.0);
                 ui.label(
                     egui::RichText::new("Sélectionnez un lac (microscope à gauche).")
+                        .color(DIM)
+                        .size(11.0),
+                );
+                None
+            }
+        },
+        InspectTab::Volcanoes => match ws.selected_volcano.and_then(|i| hd.volcanoes.get(i)) {
+            Some(v) => {
+                ui.add_space(8.0);
+                let (state, col) = if v.active {
+                    ("volcan ACTIF (dégazage)", C::from_rgb(0xe0, 0x62, 0x40))
+                } else {
+                    ("volcan éteint", C::from_rgb(0xb0, 0xb0, 0xb0))
+                };
+                ui.label(egui::RichText::new(state).color(col).strong().size(13.0));
+                let dia_km = 2.0 * v.radius_px * (ws.domain_km / hd.width as f32);
+                for line in [
+                    format!("cratère : Ø {dia_km:.1} km"),
+                    if v.active {
+                        "eau de cratère : acide (pH < 2) si un lac s'y forme — sinon relief sec"
+                    } else {
+                        "eau de cratère : eau douce si un lac s'y forme — sinon relief sec"
+                    }
+                    .to_string(),
+                ] {
+                    ui.label(egui::RichText::new(line).color(DIM).size(11.0));
+                }
+                None
+            }
+            None => {
+                ui.add_space(20.0);
+                ui.label(
+                    egui::RichText::new("Sélectionnez un volcan (microscope à gauche).")
                         .color(DIM)
                         .size(11.0),
                 );
@@ -3108,6 +3283,8 @@ fn river_profile_panel(
             let (ty, tc) = match lk.lake_type {
                 LakeType::Exorheic => ("exoréique", C::from_rgb(0x5a, 0x9a, 0xd0)),
                 LakeType::Endorheic => ("endoréique", C::from_rgb(0x3a, 0xb0, 0xa0)),
+                LakeType::CraterAcidic => ("cratère (acide)", C::from_rgb(0xc9, 0xc0, 0x3a)),
+                LakeType::CraterNeutral => ("cratère (eau douce)", C::from_rgb(0x6a, 0x8a, 0xc0)),
             };
             ui.label(egui::RichText::new("Source ").color(DIM).size(10.5));
             if ui
@@ -3591,8 +3768,10 @@ fn draw_river_overlay(rgba: &mut [u8], hd: &HdResult) {
         // is a lake's OUTLET: if the lake is drawn, its outlet must be too, even when it is a 2–3 cell
         // stub to the adjacent sea. Give it the same minimum so it never vanishes.
         let is_spillway = seg.max_flow == 0.0;
-        let r =
-            ((seg.strahler_order as i32 - 2).max(0)).min(2).max(orphan as i32).max(is_spillway as i32);
+        let r = ((seg.strahler_order as i32 - 2).max(0))
+            .min(2)
+            .max(orphan as i32)
+            .max(is_spillway as i32);
         for &(px, py) in &seg.points {
             for dy in -r..=r {
                 for dx in -r..=r {

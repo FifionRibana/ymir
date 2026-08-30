@@ -120,7 +120,19 @@ fn ship_seed8_full_pipeline() {
 
     // ── Eroded (tectonics → windowed HD upscale → 64M-droplet erosion). ──
     let t = Instant::now();
-    let eroded = cached_c1_eroded(&cache, seed, grid, &init, &run, &clo, &ss, &upscale).unwrap();
+    let eroded = cached_c1_eroded(
+        &cache,
+        seed,
+        grid,
+        &init,
+        &run,
+        &clo,
+        &ss,
+        &upscale,
+        &ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig::default(),
+    )
+    .unwrap()
+    .heightmap;
     eprintln!(
         "[stage] eroded {}² in {:.0} s (peak {} MB)",
         eroded.width,

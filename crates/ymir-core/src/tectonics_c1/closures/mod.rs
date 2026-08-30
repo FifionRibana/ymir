@@ -61,3 +61,4 @@ pub mod erosion;
 pub mod oceanic_bathymetry;
 pub mod rifting;
 pub mod subduction;
+pub mod volcanism;

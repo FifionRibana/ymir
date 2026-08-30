@@ -46,7 +46,7 @@ use ymir_core::tectonics::isostasy::IsostasyConfig;
 use ymir_core::tectonics_c1::cached_product::{
     HdDrainageBundle, c1_coarse_land_report, cached_c1_climate, cached_c1_drainage_windowed,
     cached_c1_eroded, cached_c1_eroded_with_progress, climate_key, coarse_normalized_sweep,
-    conditioned_eroded_key, drainage_key_windowed, eroded_key, hd_drainage_key, tectonic_key,
+    conditioned_eroded_key, drainage_key_windowed, eroded_key_full, hd_drainage_key, tectonic_key,
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
@@ -59,7 +59,7 @@ use ymir_core::tectonics_c1::land_topology::{
 };
 use ymir_core::tectonics_c1::production_upscale::EroProgress;
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
-use ymir_core::terrain::flow::{RiverSegment, breach_monotone};
+use ymir_core::terrain::flow::{RiverSegment, breach_monotone_protected};
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
 use super::events::C1Event;
@@ -130,6 +130,12 @@ pub struct HdParams {
     /// `None` = no export. Explicit opt-in — the pipeline NEVER auto-exports
     /// (WP-0). The container directory is `dir/<name>.ymir/`.
     pub export_dir: Option<PathBuf>,
+    /// C-2 volcanism (closures roadmap §2). `None` (default) → OFF, byte-identical
+    /// to the pre-C-2 terrain. `Some(cfg)` → derive edifices from the tectonic
+    /// state and inject them at HD after the FBM. `domain_km` is overwritten with
+    /// `params.domain_km` (the geometric span) at use, so the caller need only set
+    /// `enabled: true` and any tuning.
+    pub volcanism: Option<ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig>,
 }
 
 impl Default for HdParams {
@@ -150,6 +156,7 @@ impl Default for HdParams {
             geo_scale_ratio: 1.0,
             latitude_span_deg: None,
             export_dir: None,
+            volcanism: None,
         }
     }
 }
@@ -226,6 +233,10 @@ pub struct HdResult {
     /// M1 land-topology of the full coarse torus (island-continent judgement:
     /// number of masses, largest area, wrap flags). Independent of the window.
     pub land_topology: LandTopology,
+    /// C-2 volcanic edifices placed in this render (crater centre in DATA-space
+    /// pixels, radius, activity, kind, setting). Empty when volcanism is off. The
+    /// UI lists these in the microscope and marks them on the map.
+    pub volcanoes: Vec<ymir_core::tectonics_c1::closures::volcanism::CraterRecord>,
 }
 
 impl fmt::Debug for HdResult {
@@ -391,6 +402,8 @@ fn build_hd_drainage(
             match lk.lake_type {
                 LakeType::Endorheic => endo += 1,
                 LakeType::Exorheic => exo += 1,
+                // Crater types are assigned later (post-drainage), never here.
+                LakeType::CraterAcidic | LakeType::CraterNeutral => {}
             }
         }
         use std::collections::{HashMap, HashSet};
@@ -463,7 +476,6 @@ fn build_hd_drainage(
     }
     HdDrainageBundle { drainage, wetland: wetland_mask }
 }
-
 
 pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel: &Arc<AtomicBool>) {
     cancel.store(false, Ordering::Relaxed);
@@ -603,9 +615,22 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let cache_dir = default_cache_dir();
     let lat = params.latitude_deg;
 
-    // Cache keys (for HIT/MISS detection via sidecar existence).
+    // C-2 volcanism config for this run — geometric domain_km (never geo_scale_ratio,
+    // which shapes nothing). None → disabled → byte-identical terrain.
+    let volc = {
+        let mut v = params
+            .volcanism
+            .clone()
+            .unwrap_or_else(ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig::default);
+        v.domain_km = params.domain_km;
+        v
+    };
+
+    // Cache keys (for HIT/MISS detection via sidecar existence). ekey MUST include
+    // volcanism identically to `cached_c1_eroded` (shared `eroded_key_full`), or a
+    // volcanism-on/off pair would share the drainage cache derived from ekey.
     let tkey = tectonic_key(spec.seed, spec.grid_size, &spec.init_params, &run, &spec.closures);
-    let ekey = eroded_key(&tkey, &ss, &upscale);
+    let ekey = eroded_key_full(&tkey, &ss, &upscale, &volc);
     let sidecar_exists = |step: &str, digest: String| -> bool {
         cache_dir.join(format!("{step}_{digest}.json")).exists()
     };
@@ -645,6 +670,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             &spec.closures,
             &ss,
             &upscale,
+            &volc,
         ) {
             Ok(g) => g,
             Err(e) => {
@@ -700,6 +726,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             &spec.closures,
             &ss,
             &upscale,
+            &volc,
             &mut progress,
             &|| cancel.load(Ordering::Relaxed),
         );
@@ -722,6 +749,22 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             }
         }
     };
+    // Split the bundle: the heightmap flows on as before; the craters (empty when
+    // volcanism is off) travel to the lake-typing stage. Bundled with the terrain
+    // through the cache, so a HIT carries its craters too (no silent mistyping).
+    let craters = eroded.craters;
+    let eroded = eroded.heightmap;
+    if volc.enabled {
+        // Always log when enabled (0 records at a coarse target ≠ "did not run" —
+        // per-mechanism edifice counts print from the core miss path above).
+        let active = craters.iter().filter(|c| c.active).count();
+        eprintln!(
+            "[HD volcanism] {} resolved crater records ({} active/acidic, {} extinct)",
+            craters.len(),
+            active,
+            craters.len() - active
+        );
+    }
     eprintln!(
         "[HD timing] eroded {} ({:.1}s)",
         if eroded_hit { "HIT" } else { "MISS" },
@@ -741,7 +784,14 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // #190 — the hd_drainage bundle key, computed EARLY so we can tell whether the pre-breach drainage
     // is still needed (it is not when BOTH the conditioned eroded and the final drainage are HITs).
     let hd_dr_key = hd_drainage_key(
-        &ekey, &dcfg, &ss, lat, &pp, params.latitude_span_deg, params.geo_scale_ratio, window_km,
+        &ekey,
+        &dcfg,
+        &ss,
+        lat,
+        &pp,
+        params.latitude_span_deg,
+        params.geo_scale_ratio,
+        window_km,
     );
     let bundle_hit = sidecar_exists("hd_drainage", hd_dr_key.digest());
     let (eroded, prebreach_override) = if params.stream_power && params.closures && params.mfd {
@@ -770,10 +820,43 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         } else {
             None
         };
+        // C-2: protect ACTIVE crater bowls from the breach so they survive as closed
+        // depressions for the (climate-dependent) crater-lake stage. Climate-INDEPENDENT
+        // (crater cells only), so it belongs in this cached, climate-free conditioning.
+        let crater_protect: Option<Vec<bool>> = if volc.enabled {
+            let mut m = vec![false; gw * gh];
+            for c in craters.iter().filter(|c| c.active) {
+                let (cx, cy, r) = (c.center_px.0, c.center_px.1, c.radius_px.max(1.0));
+                let (i0, i1) =
+                    ((cx - r).floor().max(0.0) as usize, ((cx + r).ceil() as usize).min(gw - 1));
+                let (j0, j1) =
+                    ((cy - r).floor().max(0.0) as usize, ((cy + r).ceil() as usize).min(gh - 1));
+                for j in j0..=j1 {
+                    for i in i0..=i1 {
+                        if ((i as f32 + 0.5 - cx).powi(2) + (j as f32 + 0.5 - cy).powi(2)).sqrt()
+                            <= r
+                        {
+                            m[j * gw + i] = true;
+                        }
+                    }
+                }
+            }
+            Some(m)
+        } else {
+            None
+        };
         let t_breach = Instant::now();
         let conditioned = match cached::<GridF32>(&cache_dir, "conditioned", &cond_key, || {
             let p = prebreach.as_ref().expect("prebreach is present on a conditioned MISS");
-            breach_monotone(&eroded, &p.flow.filled, &p.lake_map, 0.5, gw, gh)
+            breach_monotone_protected(
+                &eroded,
+                &p.flow.filled,
+                &p.lake_map,
+                0.5,
+                gw,
+                gh,
+                crater_protect.as_deref(),
+            )
         }) {
             Ok(g) => g,
             Err(e) => {
@@ -800,8 +883,10 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // per-belt precipitation over the wider span (real physics → biomes shift).
     // #190 — the climate is cached: keyed on (ekey, lat, span, precip params) it HITs when the same
     // (latitude, span) is re-selected. The conditioned `eroded` it reads is deterministic from ekey.
-    let climate_hit =
-        sidecar_exists("climate", climate_key(&ekey, lat, params.latitude_span_deg, &pp, window_km).digest());
+    let climate_hit = sidecar_exists(
+        "climate",
+        climate_key(&ekey, lat, params.latitude_span_deg, &pp, window_km).digest(),
+    );
     let climate = match cached_c1_climate(
         &cache_dir,
         &ekey,
@@ -877,6 +962,39 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         t.elapsed().as_secs_f32()
     );
 
+    // ── C-2 crater-lake DETECTION + typing. The generic lake detection discards a
+    // crater as sub-threshold (~1.2 km² < the 5 km² noise floor), so a dedicated
+    // pass fills the ACTIVE craters (reconstructed → closed bowls) with the SAME
+    // water balance and adds them as CraterAcidic lakes. Done AFTER the drainage
+    // invariant checks and BEFORE export/biomes (which read the updated lake_map).
+    if volc.enabled {
+        use ymir_core::tectonics_c1::drainage::{DrainageClimate, runoff_accumulation};
+        use ymir_core::terrain::flow::{FlowConfig, compute_flow};
+        let (gw, gh) = (eroded.width, eroded.height);
+        let cell_km2 = (window_km / gw as f32).powi(2);
+        let flow = compute_flow(
+            &eroded,
+            &FlowConfig { sea_level: 0.5, flat_perturbation: None, dinf: false },
+        );
+        let dclim = DrainageClimate {
+            precip_internal: &climate.precipitation,
+            temperature: &climate.temperature,
+        };
+        let runoff = runoff_accumulation(&eroded, &flow, &dclim, cell_km2, None, gw, gh);
+        let (held, dry) = ymir_core::tectonics_c1::closures::volcanism::detect_crater_lakes(
+            &eroded,
+            &flow.filled,
+            &runoff,
+            &climate.temperature,
+            &craters,
+            cell_km2,
+            &ss,
+            &mut drainage.lakes,
+            &mut drainage.lake_map,
+        );
+        eprintln!("[HD volcanism] crater lakes: {held} acidic | {dry} dry craters");
+    }
+
     // ── Phase 4: biomes (Whittaker classification). ──
     bail_if_cancelled!();
     let _ = tx.send(C1Event::HdPhaseStarted { phase: HdPhase::Biomes });
@@ -939,8 +1057,12 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         drainage,
         biomes,
         land_topology,
+        volcanoes: craters,
     });
-    eprintln!("[HD timing] run_hd TOTAL {:.1}s (render is separate, on the UI thread)", t_all.elapsed().as_secs_f32());
+    eprintln!(
+        "[HD timing] run_hd TOTAL {:.1}s (render is separate, on the UI thread)",
+        t_all.elapsed().as_secs_f32()
+    );
     let _ = tx.send(C1Event::HdCompleted { result, elapsed: t_all.elapsed() });
 }
 

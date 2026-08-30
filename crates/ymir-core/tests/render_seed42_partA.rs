@@ -47,8 +47,19 @@ fn render_seed42_partA() {
         upscale.sample_size = wf;
 
         let t = Instant::now();
-        let eroded =
-            cached_c1_eroded(&cache, seed, grid, &init, &run, &clo, &ss, &upscale).unwrap();
+        let eroded = cached_c1_eroded(
+            &cache,
+            seed,
+            grid,
+            &init,
+            &run,
+            &clo,
+            &ss,
+            &upscale,
+            &ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig::default(),
+        )
+        .unwrap()
+        .heightmap;
         let (w, h) = (eroded.width, eroded.height);
         let n = w * h;
         let d = &eroded.data;

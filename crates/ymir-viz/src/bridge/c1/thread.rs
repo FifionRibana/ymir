@@ -207,6 +207,7 @@ mod tests {
                     mfd_p: 2.0,
                     fbm_amplitude: None,
                     export_dir: None,
+                    volcanism: None,
                 },
             })
             .expect("send RunHd");

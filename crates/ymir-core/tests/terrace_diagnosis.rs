@@ -6244,6 +6244,7 @@ fn step23_biomes_lakes() {
         match lk.lake_type {
             LakeType::Exorheic => exo += 1,
             LakeType::Endorheic => endo += 1,
+            _ => {}
         }
         water += lk.area_km2;
     }
@@ -9298,7 +9299,8 @@ fn lake_water_balance() {
     for &target in &[1_000_022u32] {
         let cells: Vec<usize> = (0..nn)
             .filter(|&k| {
-                u32::from_le_bytes([lm[4 * k], lm[4 * k + 1], lm[4 * k + 2], lm[4 * k + 3]]) == target
+                u32::from_le_bytes([lm[4 * k], lm[4 * k + 1], lm[4 * k + 2], lm[4 * k + 3]])
+                    == target
             })
             .collect();
         if cells.is_empty() {
@@ -9332,7 +9334,10 @@ fn lake_water_balance() {
             let (mx, my) = (last[0].as_i64().unwrap(), last[1].as_i64().unwrap());
             let touches = d8.iter().any(|&(dx, dy)| {
                 let (x, y) = (mx + dx as i64, my + dy as i64);
-                x >= 0 && y >= 0 && (x as usize) < t && (y as usize) < t
+                x >= 0
+                    && y >= 0
+                    && (x as usize) < t
+                    && (y as usize) < t
                     && cellset.contains(&((y as usize) * t + x as usize))
             });
             if touches {
@@ -9343,24 +9348,31 @@ fn lake_water_balance() {
         let inflow_scaled: f64 = aff.iter().sum(); // signified m³/s
         let inflow_map = inflow_scaled / ratio; // map m³/s (undo the ×56.2)
         // Area that would balance this inflow by net evaporation alone.
-        let equil_area_km2 =
-            inflow_map / (net_evap_mm * 1000.0 / sec_yr).max(1e-9);
+        let equil_area_km2 = inflow_map / (net_evap_mm * 1000.0 / sec_yr).max(1e-9);
 
         eprintln!("\n=== WATER BALANCE — lake #{target} ===");
         eprintln!(
             "  footprint {:.2} km² (map) = {:.0} km² (signified ×{ratio}) | mean T {:.1}°C | precip {:.0} mm/yr | PE {:.0} mm/yr | net-evap {:.0} mm/yr",
-            area_km2, area_km2 * ratio, tmean, pmean, pe, net_evap_mm
+            area_km2,
+            area_km2 * ratio,
+            tmean,
+            pmean,
+            pe,
+            net_evap_mm
         );
-        eprintln!("  {} affluent mouth(s); top discharges (signified m³/s): {:?}",
+        eprintln!(
+            "  {} affluent mouth(s); top discharges (signified m³/s): {:?}",
             aff.len(),
-            aff.iter().take(8).map(|q| q.round()).collect::<Vec<_>>());
+            aff.iter().take(8).map(|q| q.round()).collect::<Vec<_>>()
+        );
         eprintln!(
             "  INFLOW  = {:.2} m³/s (map) = {:.0} m³/s (signified)",
             inflow_map, inflow_scaled
         );
         eprintln!(
             "  EVAPORATION over footprint = {:.4} m³/s (map) = {:.2} m³/s (signified)",
-            evap_map_m3s, evap_map_m3s * ratio
+            evap_map_m3s,
+            evap_map_m3s * ratio
         );
         eprintln!(
             "  ⇒ inflow / evaporation = {:.0}×   (a CLOSED lake needs ≈ 1×)",
@@ -9368,7 +9380,9 @@ fn lake_water_balance() {
         );
         eprintln!(
             "  ⇒ equilibrium area (evap balances inflow) = {:.0} km² (map) = {:.0} km² (signified)  vs actual {:.2} km²",
-            equil_area_km2, equil_area_km2 * ratio, area_km2
+            equil_area_km2,
+            equil_area_km2 * ratio,
+            area_km2
         );
     }
 }

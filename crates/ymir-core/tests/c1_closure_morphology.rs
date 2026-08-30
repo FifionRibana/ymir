@@ -99,8 +99,10 @@ fn c165_eroded(seed: u64, iso: &IsostasyConfig) -> GridF32 {
         &C1Closures::default(),
         &SteinSteinParams::default(),
         &FbmUpscaleConfig::c1_hd_production(2048),
+        &ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig::default(),
     )
     .expect("cached #165 eroded heightmap")
+    .heightmap
 }
 
 /// #viz — the C1 DRAINAGE product on the SHARED cached terrain. Calls
@@ -9643,6 +9645,7 @@ fn probe_drainage_lake_audit() {
             match lk.lake_type {
                 LakeType::Exorheic => exo += 1,
                 LakeType::Endorheic => endo += 1,
+                _ => {}
             }
         }
         let lake_frac = 100.0 * lake_cells as f64 / land_cells.max(1) as f64;
