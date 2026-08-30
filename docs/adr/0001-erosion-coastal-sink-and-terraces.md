@@ -2388,3 +2388,107 @@ Measured again on a bench that NOW runs the breach with the protect mask (faithf
 depths 100–203 m (Pavin/Kawah-Ijen scale). This is a bench that reproduces the production breach; the SHIPPED
 export remains the verdict and must be re-generated (VOLCANISM_ALGO 4 forces the recompute) and audited before
 C-2 is closed.
+
+### Method rule 3 (earned in C-2): a bench must reproduce the WHOLE production chain
+
+"A reconstructed terrain is not the product" (rule 2) was not enough: in C-2 a bench MISSED
+the crater-breach defect THREE times because it ran `detect_crater_lakes` on the reconstructed
+eroded field WITHOUT the relief-v3 breach the production pipeline applies next — so it reported
+crater lakes the shipped export did not have. The sharper rule: a bench that omits a downstream
+stage measures a terrain that never ships. Any measurement runs the FULL production chain
+through the stage whose effect it claims (here: FBM → volcanism → erosion → BREACH → drainage),
+and the author's export remains the final verdict. This is the seventh occurrence of the
+proxy-vs-authority family (Findings 27, 29-41, and the C-2 crater lakes); the failure mode is
+always the same — a convenient partial computation stands in for the whole, and the gap it
+leaves is exactly where the defect hides.
+
+## C-3 — Lithological heterogeneity: the C1 signal, measured
+
+C-3 needs a spatially-varying erodibility K driven CAUSALLY (not from noise). Measured what C1 actually
+carries (`c3_lithology_probe`, full 300-step production chain, two seeds):
+
+| source                              | coverage of continental | causal? |
+|-------------------------------------|-------------------------|---------|
+| craton BASE (geometric placeholder) | 49-50 %                 | NO — the rule is `seed_x < nx/2` (left half), a stand-in the init flags as non-final |
+| cratonic shield (stored mask)       | 7 %                     | NO — FBM-noise-refined (#165 select_shield_mask) |
+| rift (age ~ 0, rift-spawned)        | 1-8 %                   | YES (rifting stamps age = 0) |
+| volcanic footprints (C-2 placement) | 10-13 %                 | YES (edifice basal discs) |
+| GENERIC continental (no signal)     | ~79-88 %                | — |
+
+**The C1 limitation (a real finding, recorded as such).** A fully causal lithology is NOT available today,
+and the reason is in C1, not in C-3:
+- `age` is UNIFORM at exactly 7.00 over 92 % of continental cells — the time loop writes nothing into it for
+  continental crust, so it cannot separate old craton from young accreted terrane;
+- `plate_type` is BINARY (Oceanic / Continental) — no arc / terrane variant;
+- the closures do NOT record terrane provenance: subduction turns Oceanic → Continental but leaves no marker,
+  accretion discards the loser plate id, so accreted arc crust is indistinguishable from ancient continent;
+- the `cratonic_mask` is a geometric placeholder (seed-band) whose HD-visible shield extent is FBM-noise-refined.
+
+So the only genuinely-causal, non-noise signals (rift + volcanic) cover ~15-20 % of the continent; the craton
+base covers ~50 % but by an arbitrary geometric rule, not physics.
+
+**Specification of what would make a causal lithology available** (the option-2 investment, which also unblocks
+C-4 coastal, whose cliff retreat needs rock resistance): the closures already KNOW what they do at the moment
+they act — record it as an advected class field. Subduction writes "arc / accreted terrane" on the cells it
+reassigns Oceanic → Continental; accretion writes "sutured terrane" on the merged strip; rifting already stamps
+age = 0 (young). That is a trace of the existing physics, not a new mechanism, and it would carry a multi-class
+lithology over the WHOLE continent rather than the 15-20 % the current fields expose.
+
+### C-3 — hard-vs-soft (not a continuum), and the missing deposition stage
+
+Auditing Stock & Montgomery 1999 ON THE SOURCE (`docs/refs/stock1999.pdf`) recast the closure. K by class,
+m = 0.4, n = 1 (stable base-level case; NOT the Kauai m = 0.1/n = 0.2 exponents): granite/metamorphic
+10⁻⁷–10⁻⁶, volcaniclastic 10⁻⁵–10⁻⁴, young mudstone 10⁻⁴–10⁻² m^0.2/yr; measured spread "1 to 5 orders of
+magnitude" softer than hard rock. The load-bearing NUANCE: "K between granitoids and metasediments is NOT
+significant" — the contrast is HARD CLASS vs SOFT CLASS, not a continuum. Consequences:
+- a continental basement treated as uniformly HARD is PHYSICALLY CORRECT (crystalline + metasedimentary are
+  both hard), so a "generic hard bulk" is not a coverage failure — the FBM-floor-everywhere expectation was
+  misframed;
+- the craton placeholder (`seed_x < nx/2`) is not merely arbitrary but USELESS here: it would separate hard
+  from hard. Dropped, nothing to justify;
+- what must be differentiated are the SOFT zones, minority by nature: rift, volcaniclastic, young sedimentary
+  basins.
+
+**The missing deposition stage (a stated limitation).** Ymir's PRODUCTION erosion is relief-v3 stream-power —
+DETACHMENT-LIMITED, pure incision, no aggradation. A deposition/`sediment` field DOES exist but only in the
+DROPLET pass (`erosion/hydraulic.rs`, `deposition_rate`, `coastal_deposit_fraction = 0.25`), which production
+does not run; isostasy carries no subsidence/foreland/flexure signal. So there is NO causal signal for
+sedimentary basins in the shipped chain. Low-relief or endorheic areas could be used as a geometric proxy, but
+that would repeat the craton mistake (lithology from geometry, not physics) — rejected. The soft class
+therefore reduces to RIFT (age = 0, ~1-8 %) + VOLCANICLASTIC (edifice footprints, ~10-13 %); everything else is
+hard basement at a single low K. Adding real sedimentary basins would need a deposition stage (a
+transport-limited erosion pass or a flexural-subsidence + fill model) — recorded as the specification, not
+built. Note the detachment-limited production regime is exactly the domain Stock & Montgomery calibrated K for.
+
+### C-3 — the spread is a MEASUREMENT, and the two effects, separated
+
+The soft↔hard multiplier was SWEPT, not predicted (`tests/c3_lithology_sweep.rs`, the WHOLE production
+chain — `upscale_from_c1_with_progress`, export recipe relief-v3, droplets off — lithology OFF then
+×3/×10/×30/×100 soft, both resolutions, production seed; report
+`docs/reports/c1_continental_buoyancy/closure_morphology/c3_lithology_sweep.md`). Class coverage came out
+hard 95.7 % / rift-soft 1.6 % / volcaniclastic 2.7 % at BOTH resolutions (area-preserving), confirming the
+minority-by-nature soft class.
+
+**Method rule 3 honoured.** The K field is built and threaded exactly as production does it (coarse hard = 1.0
+with rift soft, bilinear-upscaled and registered to the altitude with the same `(sample_origin, sample_size)`;
+volcaniclastic stamped at HD on the edifice basal discs; per-cell K into `incise_lithology`), not a
+reconstruction of the incision stage alone.
+
+**Hard = ×1.0 (reference), soft ABOVE — the design that separates the two effects the author asked to keep
+apart.** Because the ~96 % hard bulk stays at the relief-v3 reference K, the HARD-class morphometrics are FLAT
+across the whole sweep (2048²: local-relief/slope/steep‰/incision = 329/6.9/147/155 at every multiplier;
+8192²: 119/9.8/227/77 at every multiplier). So effect (a) "global slowdown" is ZERO by construction — there is
+nothing to disentangle from effect (b) "the contrast". The rejected alternative (hard ×0.3, soft ×1.0) would
+have moved 96 % of the continent and confounded the two. The contrast (effect b) is monotone and physical:
+softer K erodes DOWN → relief and channel incision fall, valleys open (higher W/D). VOLC (2048²) relief 612→303,
+incision 329→98; SOFT incision 51→12.
+
+**C-1 survives the whole sweep.** Closed-depression count 2048² 982→977, 8192² 17516→17114 — a slight DECREASE,
+never a flood; land fraction stable (15.7→15.2 %, 16.6→16.4 %). Softening does not fabricate pits.
+
+**Chosen multipliers.** soft (rift) = ×10 (≈1 order, mid of the S&M range, a clearly visible contrast with C-1
+intact); volcaniclastic = ×3 FIXED and decoupled from the soft sweep (S&M intermediate class, deliberately mild
+so the C-2 edifice morphology is dissected, not flattened — ×30/×100 halve the volcanic relief, erasing the
+cones just built). Gated OFF by default (`LithologyConfig::enabled = false`) → byte-identical production; the
+eroded cache key is byte-identical when disabled (config skipped from serialization, `LITHOLOGY_ALGO` appended
+only when enabled).

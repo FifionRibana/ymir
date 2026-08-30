@@ -8238,7 +8238,7 @@ fn stream_power_prototype() {
         StreamPowerConfig { k: chosen_k, iterations: 6, sea_level: SEA, ..Default::default() };
     let mut last_maxs = 0u8;
     let mut converged_at = 0usize;
-    incise_with_progress(&fbm, &stale_cfg, &mut |iter, f| {
+    incise_with_progress(&fbm, &stale_cfg, None, &mut |iter, f| {
         let (_, _, carved, maxs) = structure_metrics(f, &ss);
         eprintln!("    iter {}: maxStrahler {maxs}, carved {:.0}%", iter + 1, carved * 100.0);
         if maxs == last_maxs && converged_at == 0 && iter > 0 {

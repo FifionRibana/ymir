@@ -136,6 +136,15 @@ pub struct HdParams {
     /// `params.domain_km` (the geometric span) at use, so the caller need only set
     /// `enabled: true` and any tuning.
     pub volcanism: Option<ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig>,
+    /// C-3 lithological heterogeneity (closures roadmap §3). `None` (default) → OFF,
+    /// byte-identical (uniform erodibility). `Some(cfg)` with `enabled` → build the
+    /// per-cell erodibility multiplier (hard basement ×1.0, rift-soft + volcaniclastic
+    /// ABOVE, causal — never noise/geometry) and thread it into the stream-power
+    /// incision. Only takes effect with `stream_power` on (that is where K threads in).
+    pub lithology: Option<ymir_core::tectonics_c1::closures::lithology::LithologyConfig>,
+    /// Debug microscope: derive the coarse tectonic labels (rift/subduction/craton/…)
+    /// for the overlay. Costs one extra ~1 s coarse pass; `false` (default) skips it.
+    pub emit_tectonic_labels: bool,
 }
 
 impl Default for HdParams {
@@ -157,6 +166,8 @@ impl Default for HdParams {
             latitude_span_deg: None,
             export_dir: None,
             volcanism: None,
+            lithology: None,
+            emit_tectonic_labels: false,
         }
     }
 }
@@ -237,6 +248,20 @@ pub struct HdResult {
     /// pixels, radius, activity, kind, setting). Empty when volcanism is off. The
     /// UI lists these in the microscope and marks them on the map.
     pub volcanoes: Vec<ymir_core::tectonics_c1::closures::volcanism::CraterRecord>,
+    /// Debug microscope (C-2/C-3): coarse tectonic labels (rift, subduction,
+    /// collision, craton, lithology class) for the overlay. `None` when not requested
+    /// (`HdParams::emit_tectonic_labels`). Nearest-sampled to the HD window via
+    /// `sample_origin`/`sample_size`, so every overlay registers with the terrain.
+    pub tectonic: Option<ymir_core::tectonics_c1::debug_labels::CoarseTectonicLabels>,
+    /// Volcanic edifices (torus-UV centre + basal diameter km) for the lithology
+    /// overlay's volcaniclastic footprints. Empty when volcanism is off.
+    pub edifices: Vec<ymir_core::tectonics_c1::closures::volcanism::Edifice>,
+    /// The window sampling the overlays register against (same as the terrain upscale).
+    pub sample_origin: [f64; 2],
+    pub sample_size: f64,
+    /// Physical km per HD cell (`sample_size · domain_km / width`) — for the basal-disc
+    /// radius of the volcaniclastic overlay.
+    pub km_per_cell: f32,
 }
 
 impl fmt::Debug for HdResult {
@@ -545,6 +570,18 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         );
         upscale.erosion = None; // droplets off — they collapse the SP valleys
         upscale.stream_power = Some(sp);
+        // C-3 lithology — attach the per-cell erodibility multiplier config (the K
+        // field is built inside upscale_from_c1). Only meaningful with stream-power on
+        // (this branch). None/disabled → uniform K, byte-identical.
+        if let Some(litho) = &params.lithology {
+            upscale.lithology = litho.clone();
+            if litho.enabled {
+                eprintln!(
+                    "[HD] C-3 lithology ON (soft rift ×{:.0}, volcaniclastic ×{:.0})",
+                    litho.soft_multiplier, litho.volcanic_multiplier
+                );
+            }
+        }
     }
     // Land report FIRST (reads only `target_land_fraction`) so the seam-correct
     // torus centre of the largest mass is known before we choose the sampling roll.
@@ -1047,6 +1084,39 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         post_emerged * 100.0
     );
 
+    // ── Debug microscope (C-2/C-3): derive the coarse tectonic labels + volcanic
+    // footprints for the overlay. One extra ~1 s coarse pass, opt-in. The labels come
+    // from the SAME derivation production erodes (deterministic in seed), so they
+    // register with the terrain via `sample_origin`/`sample_size`.
+    let km_per_cell = upscale.sample_size as f32 * params.domain_km / eroded.width as f32;
+    let (tectonic, edifices) = if params.emit_tectonic_labels {
+        use ymir_core::tectonics_c1::closures::volcanism::place_edifices;
+        use ymir_core::tectonics_c1::debug_labels::{derive_tectonic_labels, run_coarse_tectonics};
+        let (state, kin) = run_coarse_tectonics(
+            spec.seed,
+            spec.grid_size,
+            &spec.init_params,
+            &run,
+            &spec.closures,
+        );
+        let labels = derive_tectonic_labels(&state, &kin);
+        let edi = if volc.enabled {
+            place_edifices(
+                &state,
+                &kin,
+                &ymir_core::seed::WorldSeed::new(spec.seed),
+                volc.domain_km,
+                &volc,
+            )
+        } else {
+            Vec::new()
+        };
+        eprintln!("[HD microscope] tectonic labels derived ({} edifices)", edi.len());
+        (Some(labels), edi)
+    } else {
+        (None, Vec::new())
+    };
+
     // ── Done — ship the full product. ──
     let result = Arc::new(HdResult {
         width: eroded.width,
@@ -1058,6 +1128,11 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         biomes,
         land_topology,
         volcanoes: craters,
+        tectonic,
+        edifices,
+        sample_origin: upscale.sample_origin,
+        sample_size: upscale.sample_size,
+        km_per_cell,
     });
     eprintln!(
         "[HD timing] run_hd TOTAL {:.1}s (render is separate, on the UI thread)",

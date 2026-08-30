@@ -95,9 +95,16 @@ pub fn eroded_key_full(
     volcanism: &VolcanismConfig,
 ) -> CacheKey {
     let key = eroded_key(tectonic, ss, upscale_cfg);
-    if volcanism.enabled {
+    let key = if volcanism.enabled {
         key.with("volcanism", volcanism)
             .with("volc_algo", &super::closures::volcanism::VOLCANISM_ALGO)
+    } else {
+        key
+    };
+    // C-3 lithology rides in `upscale_cfg` (skipped when disabled), so only its ALGO
+    // version needs appending here, and only when enabled → disabled key unchanged.
+    if upscale_cfg.lithology.enabled {
+        key.with("litho_algo", &super::closures::lithology::LITHOLOGY_ALGO)
     } else {
         key
     }

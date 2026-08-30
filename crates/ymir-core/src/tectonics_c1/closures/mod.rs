@@ -58,6 +58,7 @@ pub mod accretion;
 pub mod davis_suppe;
 pub mod equilibrium_height;
 pub mod erosion;
+pub mod lithology;
 pub mod oceanic_bathymetry;
 pub mod rifting;
 pub mod subduction;

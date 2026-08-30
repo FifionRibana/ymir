@@ -151,6 +151,19 @@ pub struct FbmUpscaleConfig {
     /// The canonical HD config sets `Some(0.29)` (Earth-like ocean fraction).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_land_fraction: Option<f32>,
+    /// **C-3 lithological heterogeneity** (closures roadmap §3). When
+    /// `lithology.enabled`, `upscale_from_c1` builds a per-cell erodibility
+    /// MULTIPLIER (hard basement 1.0, softer on rift + volcaniclastic footprints,
+    /// derived causally from the tectonic state — never noise/geometry) and threads
+    /// it into the stream-power incision. Default (`enabled = false`) → uniform K,
+    /// byte-identical. Only read when `stream_power` is also `Some`. See
+    /// [`crate::tectonics_c1::closures::lithology`]. Skipped from serialization when
+    /// disabled, so a lithology-off eroded cache key is byte-identical to pre-C-3.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::tectonics_c1::closures::lithology::LithologyConfig::is_disabled"
+    )]
+    pub lithology: crate::tectonics_c1::closures::lithology::LithologyConfig,
 }
 
 /// serde default for [`FbmUpscaleConfig::sample_size`] (a missing field must
@@ -202,6 +215,7 @@ impl Default for FbmUpscaleConfig {
             stream_power: None,
             bathymetry: None,
             target_land_fraction: None,
+            lithology: crate::tectonics_c1::closures::lithology::LithologyConfig::default(),
         }
     }
 }

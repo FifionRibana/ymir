@@ -427,7 +427,39 @@ pub fn upscale_from_c1_with_progress(
     // (weak) droplet pass add hillslope texture. `None` (default) → skipped,
     // byte-identical. OFF in production until confirmed at 8192².
     if let Some(sp) = &cfg.stream_power {
-        result.heightmap = crate::erosion::stream_power::incise(&result.heightmap, sp);
+        // C-3 lithology — build the per-cell erodibility multiplier (hard basement
+        // 1.0, softer on rift + volcaniclastic footprints) and thread it into the
+        // incision. Registered with the SAME (sample_origin, sample_size) mapping as
+        // the altitude, so it aligns with the terrain. Disabled → `None`, uniform K,
+        // byte-identical.
+        let k_field = if cfg.lithology.enabled {
+            use crate::tectonics_c1::closures::lithology;
+            let (w, h) = (result.heightmap.width, result.heightmap.height);
+            let coarse_k = lithology::build_coarse_k(state, &cfg.lithology);
+            let mut kf =
+                lithology::upscale_k_to_hd(&coarse_k, w, h, cfg.sample_origin, cfg.sample_size);
+            if volcanism.enabled && !edifices.is_empty() {
+                let km_per_hd_cell = cfg.sample_size as f32 * volcanism.domain_km / w as f32;
+                lithology::stamp_volcanic_k(
+                    &mut kf,
+                    edifices,
+                    cfg.sample_origin,
+                    cfg.sample_size,
+                    km_per_hd_cell,
+                    w,
+                    h,
+                    &cfg.lithology,
+                );
+            }
+            Some(kf)
+        } else {
+            None
+        };
+        result.heightmap = crate::erosion::stream_power::incise_lithology(
+            &result.heightmap,
+            sp,
+            k_field.as_deref(),
+        );
     }
 
     // #155 méso — HD hydraulic erosion (the dendritic dissection that makes

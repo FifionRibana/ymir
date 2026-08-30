@@ -284,15 +284,28 @@ impl Default for StreamPowerConfig {
 /// Incise `height` in place-of-a-clone and return the eroded field. Runs
 /// `cfg.iterations` drainage↔incision passes.
 pub fn incise(height: &GridF32, cfg: &StreamPowerConfig) -> GridF32 {
-    incise_with_progress(height, cfg, &mut |_, _| {})
+    incise_with_progress(height, cfg, None, &mut |_, _| {})
+}
+
+/// [`incise`] with a per-cell erodibility MULTIPLIER (`k_field`, C-3 lithology:
+/// `1.0` = hard basement / reference, `> 1` = softer rock erodes more) applied on
+/// top of `cfg.k`. `None` → uniform (byte-identical to plain [`incise`]).
+pub fn incise_lithology(
+    height: &GridF32,
+    cfg: &StreamPowerConfig,
+    k_field: Option<&[f32]>,
+) -> GridF32 {
+    incise_with_progress(height, cfg, k_field, &mut |_, _| {})
 }
 
 /// [`incise`] with a per-iteration callback `(iteration_index, &current_field)` —
 /// used by the diagnostic to measure whether the network reorganises between
-/// iterations (staleness) and to profile runtime.
+/// iterations (staleness) and to profile runtime. `k_field` (C-3) is an optional
+/// per-cell erodibility multiplier on `cfg.k`; `None` → uniform.
 pub fn incise_with_progress(
     height: &GridF32,
     cfg: &StreamPowerConfig,
+    k_field: Option<&[f32]>,
     progress: &mut dyn FnMut(usize, &GridF32),
 ) -> GridF32 {
     let (w, h) = (height.width, height.height);
@@ -369,7 +382,7 @@ pub fn incise_with_progress(
         // PHYSICAL law: E = K · A_km²^m · S_phys^n, S_phys = Δh_m / dist_m. Heights
         // stay in NORM; K/θ carry the units. For n=1 the norm→m factor cancels in the
         // area term (f = kdt·A_km²^m / dist_m) and appears only on θ.
-        let kdt = cfg.k * cfg.dt;
+        let k_base_dt = cfg.k * cfg.dt;
         let norm_to_m = 2.0 * 1.13 * cfg.depth_scale_m;
         let cell_m = cfg.cell_km * 1000.0;
         let cell_km2 = cfg.cell_km * cfg.cell_km;
@@ -382,6 +395,8 @@ pub fn incise_with_progress(
             if area < cfg.min_area_cells {
                 continue; // A_c: hillslope regime — no fluvial incision (channel head)
             }
+            // C-3: per-cell erodibility (lithology). None → uniform (kf = 1).
+            let kdt = k_base_dt * k_field.map_or(1.0, |kf| kf[k]);
             let hr = field.data[r];
             let ho = field.data[k];
             let am = (area * cell_km2).powf(cfg.m); // A_km²^m

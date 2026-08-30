@@ -78,6 +78,7 @@
 pub mod boundary_classification;
 pub mod cached_product;
 pub mod closures;
+pub mod debug_labels;
 pub mod distance_field;
 pub mod drainage;
 pub mod init;
