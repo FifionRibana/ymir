@@ -252,6 +252,11 @@ struct WorkspaceState {
     /// (production byte-identical). Arc volcanism is barely visible on seeds with
     /// few O-C margins — the hotspot chains and rifts carry the render.
     volcanism: bool,
+    /// EXPERIMENTAL (C-3, closures roadmap §3): lithological heterogeneity — a
+    /// causal per-cell erodibility multiplier (hard basement ×1.0, rift-soft ×10,
+    /// volcaniclastic ×3). Off by default (production byte-identical). Only bites
+    /// with stream-power on.
+    lithology: bool,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
     export_dir: String,
     // Derived / cache.
@@ -284,6 +289,10 @@ struct WorkspaceState {
     tex_layer: Option<HdLayer>,
     /// Overlay state the cached `texture` was built with (rebuild when it flips).
     tex_overlay: bool,
+    /// Tectonic-debug overlays (the microscope) currently enabled.
+    overlays: TectonicOverlays,
+    /// Overlay settings the cached `texture` was built with (rebuild on change).
+    tex_overlays: TectonicOverlays,
     hover: Option<CellInspection>,
     hover_xy: Option<(usize, usize)>,
     /// Active map tool: SELECT (microscope — hover/click inspects an entity) or PAN
@@ -358,6 +367,7 @@ impl Default for WorkspaceState {
             mfd_p: 2.0,
             fbm_amplitude: 0.04, // #190 — the production seed's amplitude (fine relief detail)
             volcanism: false,    // C-2 opt-in (Expert); production byte-identical
+            lithology: false,    // C-3 opt-in (Expert); production byte-identical
             export_dir: "exports".to_string(),
             current: None,
             preview: None,
@@ -375,6 +385,8 @@ impl Default for WorkspaceState {
             texture: None,
             tex_layer: None,
             tex_overlay: false,
+            overlays: TectonicOverlays::default(),
+            tex_overlays: TectonicOverlays::default(),
             hover: None,
             hover_xy: None,
             map_pan: [0.5, 0.5],
@@ -897,6 +909,19 @@ fn left_panel(
                                     ..Default::default()
                                 }
                             }),
+                            // C-3 opt-in. Chosen multipliers (see the sweep report):
+                            // soft rift ×10, volcaniclastic ×3. `enabled` gates it.
+                            lithology: ws.lithology.then(|| {
+                                ymir_core::tectonics_c1::closures::lithology::LithologyConfig {
+                                    enabled: true,
+                                    soft_multiplier: 10.0,
+                                    volcanic_multiplier: 3.0,
+                                    rift_age_threshold: 1.0,
+                                }
+                            }),
+                            // Debug microscope overlay — derive the tectonic labels so
+                            // the overlay panel has data (one cheap coarse pass).
+                            emit_tectonic_labels: true,
                         };
                         let _ = bridge.submit_hd(spec, params);
                     }
@@ -980,6 +1005,18 @@ fn left_panel(
                                  d'arc est peu visible sur les seeds à peu de marges O-C — regarder \
                                  les chaînes de hotspot et les rifts. Le log [HD volcanism] indique \
                                  ce qui a été produit.",
+                            );
+                            // C-3 lithology (needs stream-power on to bite).
+                            ui.checkbox(
+                                &mut ws.lithology,
+                                egui::RichText::new("Lithologie (C-3)").color(DIM2).size(11.0),
+                            )
+                            .on_hover_text(
+                                "Closures roadmap §3 — hétérogénéité lithologique CAUSALE (jamais du \
+                                 bruit): érodabilité par cellule, socle dur ×1 (référence), rift tendre \
+                                 ×10, footprints volcaniclastiques ×3. La roche tendre s'érode plus → \
+                                 vallées ouvertes; le socle dur retient le relief. N'agit qu'avec la \
+                                 stream-power. Le log [HD C-3 lithology] confirme.",
                             );
                         } else {
                             // STANDARD — the production recipe, forced on. No fallback toggle.
@@ -1813,6 +1850,8 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         latitude_span_deg: None,
         export_dir: None,
         volcanism: None,
+        lithology: None,
+        emit_tectonic_labels: false, // preview is coarse-only; overlays need the HD run
     }
 }
 
@@ -2058,19 +2097,24 @@ fn map(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         return;
     }
     // (Re)build the texture on layer/result/overlay change.
-    if ws.texture.is_none() || ws.tex_layer != Some(ws.layer) || ws.tex_overlay != ws.river_overlay
+    if ws.texture.is_none()
+        || ws.tex_layer != Some(ws.layer)
+        || ws.tex_overlay != ws.river_overlay
+        || ws.tex_overlays != ws.overlays
     {
         let layer = ws.layer;
         let overlay = ws.river_overlay;
+        let overlays = ws.overlays;
         let t_tex = std::time::Instant::now();
         let img = {
             let hd = ws.current.as_ref().unwrap();
             let rm = ws.river_map.as_ref().unwrap();
-            layer_color_image(hd, layer, rm, overlay)
+            layer_color_image(hd, layer, rm, overlay, overlays)
         };
         ws.texture = Some(ui.ctx().load_texture("hd_map", img, egui::TextureOptions::NEAREST));
         ws.tex_layer = Some(ws.layer);
         ws.tex_overlay = ws.river_overlay;
+        ws.tex_overlays = ws.overlays;
         eprintln!(
             "[HD timing] map texture rebuild {:.1}s (UI thread)",
             t_tex.elapsed().as_secs_f32()
@@ -2392,6 +2436,63 @@ fn canvas_toolbar(ui: &mut egui::Ui, rect: egui::Rect, ws: &mut WorkspaceState) 
                         .on_hover_text(
                             "Marqueurs sur la carte (volcans : ▲ rouge actif / gris éteint)",
                         );
+                    // ── Microscope tectonique — un MENU compact (toggles empilés) pour
+                    //    superposer les couches causales sur la vue courante. Disponible
+                    //    quand les labels ont été dérivés (run HD ; pas l'aperçu coarse).
+                    let has_labels =
+                        ws.current.as_ref().and_then(|h| h.tectonic.as_ref()).is_some();
+                    if has_labels {
+                        ui.separator();
+                        let n_on = [
+                            ws.overlays.rift,
+                            ws.overlays.subduction,
+                            ws.overlays.collision,
+                            ws.overlays.craton,
+                            ws.overlays.divergent,
+                            ws.overlays.lithology,
+                        ]
+                        .iter()
+                        .filter(|b| **b)
+                        .count();
+                        let btn = if n_on > 0 {
+                            format!("🔬 Tectonique ({n_on}) ▾")
+                        } else {
+                            "🔬 Tectonique ▾".to_string()
+                        };
+                        ui.menu_button(egui::RichText::new(btn).size(11.0), |ui| {
+                            ui.set_min_width(180.0);
+                            let mut chk =
+                                |ui: &mut egui::Ui, on: &mut bool, label, hint, col: [u8; 3]| {
+                                    let txt = egui::RichText::new(label)
+                                        .size(12.0)
+                                        .color(C::from_rgb(col[0], col[1], col[2]));
+                                    if ui.checkbox(on, txt).on_hover_text(hint).changed() {
+                                        ws.texture = None;
+                                    }
+                                };
+                            chk(ui, &mut ws.overlays.rift, "Rift (tendre C-3)", "Croûte jeune (age≈0), la classe tendre C-3 — teal", [40, 185, 175]);
+                            chk(ui, &mut ws.overlays.subduction, "Subduction", "Marge continentale chevauchante (orange) + slab océanique plongeant (bleu)", [245, 140, 30]);
+                            chk(ui, &mut ws.overlays.collision, "Collision / accrétion", "Convergence continent-continent (empreinte orogène) — magenta", [230, 60, 200]);
+                            chk(ui, &mut ws.overlays.craton, "Craton (socle dur)", "Bouclier cratonique dur (intérieur continental ancien) — or", [205, 178, 100]);
+                            chk(ui, &mut ws.overlays.divergent, "Divergent", "Frontières divergentes (axes d'accrétion) — cyan", [50, 220, 220]);
+                            chk(ui, &mut ws.overlays.lithology, "Litho C-3 (classes)", "Classes lithologiques : rift tendre (teal) + footprints volcaniclastiques (violet)", [175, 70, 210]);
+                            ui.separator();
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("opacité").size(11.0).color(DIM2));
+                                if ui
+                                    .add(
+                                        egui::Slider::new(&mut ws.overlays.opacity, 0.15..=0.9)
+                                            .show_value(false),
+                                    )
+                                    .changed()
+                                {
+                                    ws.texture = None;
+                                }
+                            });
+                        })
+                        .response
+                        .on_hover_text("Superpose des couches tectoniques causales sur la vue courante");
+                    }
                 });
             });
     });
@@ -2678,12 +2779,141 @@ fn french_biome(b: Biome) -> &'static str {
     }
 }
 
+/// Tectonic-debug OVERLAY toggles (the "microscope"): semi-transparent causal
+/// layers the author superimposes on any base view to SEE where each closure acts.
+/// Registered to the terrain via the HD window (`hd.sample_origin`/`sample_size`).
+#[derive(Clone, Copy, PartialEq)]
+struct TectonicOverlays {
+    /// Rift-soft (continental `age≈0`) — the C-3 soft class, teal.
+    rift: bool,
+    /// Subduction: overriding continental margin (orange) + subducting slab (blue).
+    subduction: bool,
+    /// Continental collision / accretion footprint (C-C convergent), magenta.
+    collision: bool,
+    /// Hard cratonic shield, gold.
+    craton: bool,
+    /// Divergent (spreading) boundaries, cyan.
+    divergent: bool,
+    /// C-3 lithology CLASS: rift-soft (teal) + volcaniclastic footprints (violet).
+    lithology: bool,
+    /// Blend strength (0 = base only, 1 = full tint).
+    opacity: f32,
+}
+
+impl Default for TectonicOverlays {
+    fn default() -> Self {
+        Self {
+            rift: false,
+            subduction: false,
+            collision: false,
+            craton: false,
+            divergent: false,
+            lithology: false,
+            opacity: 0.55,
+        }
+    }
+}
+
+impl TectonicOverlays {
+    fn any(&self) -> bool {
+        self.rift
+            || self.subduction
+            || self.collision
+            || self.craton
+            || self.divergent
+            || self.lithology
+    }
+}
+
+/// Blend the enabled tectonic overlays into the data-space RGBA (BEFORE the north-up
+/// flip, so it registers with the coarse labels). Mask layers are nearest-sampled
+/// from `hd.tectonic`; the volcaniclastic footprints are rasterised from `hd.edifices`
+/// (the same basal discs the C-3 K field stamps).
+fn blend_tectonic_overlays(rgba: &mut [u8], hd: &HdResult, ov: TectonicOverlays) {
+    let Some(lab) = hd.tectonic.as_ref() else { return };
+    let (w, h) = (hd.width, hd.height);
+    let (nx, ny) = (lab.nx, lab.ny);
+    let a = ov.opacity.clamp(0.0, 1.0);
+    let sx0 = hd.sample_origin[0] * nx as f64;
+    let sy0 = hd.sample_origin[1] * ny as f64;
+    let dx = hd.sample_size * nx as f64 / w as f64;
+    let dy = hd.sample_size * ny as f64 / h as f64;
+    let blend = |rgba: &mut [u8], k: usize, tint: [u8; 3]| {
+        for c in 0..3 {
+            let base = rgba[k * 4 + c] as f32;
+            rgba[k * 4 + c] = (base * (1.0 - a) + tint[c] as f32 * a) as u8;
+        }
+    };
+    // Mask layers, priority low→high (later overrides at a shared cell).
+    for j in 0..h {
+        let cj = ((sy0 + j as f64 * dy).round() as isize).rem_euclid(ny as isize) as usize;
+        for i in 0..w {
+            let ci = ((sx0 + i as f64 * dx).round() as isize).rem_euclid(nx as isize) as usize;
+            let ck = cj * nx + ci;
+            let k = j * w + i;
+            let mut tint: Option<[u8; 3]> = None;
+            if ov.craton && lab.craton[ck] {
+                tint = Some([205, 178, 100]); // gold shield
+            }
+            if ov.divergent && lab.divergent[ck] {
+                tint = Some([50, 220, 220]); // cyan
+            }
+            if ov.collision && lab.collision[ck] {
+                tint = Some([230, 60, 200]); // magenta
+            }
+            if ov.subduction && lab.subduction_slab[ck] {
+                tint = Some([70, 130, 225]); // subducting slab, blue
+            }
+            if ov.subduction && lab.subduction_upper[ck] {
+                tint = Some([245, 140, 30]); // overriding margin, orange
+            }
+            if (ov.rift || ov.lithology) && lab.rift[ck] {
+                tint = Some([40, 185, 175]); // rift-soft, teal
+            }
+            if let Some(t) = tint {
+                blend(rgba, k, t);
+            }
+        }
+    }
+    // Volcaniclastic footprints (only for the lithology class overlay) — rasterise the
+    // edifice basal discs, exactly as `lithology::stamp_volcanic_k` does at HD.
+    if ov.lithology {
+        let (so, ss) =
+            ([hd.sample_origin[0] as f32, hd.sample_origin[1] as f32], hd.sample_size as f32);
+        for e in &hd.edifices {
+            let fx = (e.center_uv.0 - so[0]).rem_euclid(1.0) / ss;
+            let fy = (e.center_uv.1 - so[1]).rem_euclid(1.0) / ss;
+            if fx >= 1.0 || fy >= 1.0 {
+                continue;
+            }
+            let (cx, cy) = (fx * w as f32, fy * h as f32);
+            let rb = (e.basal_diameter_km * 0.5) / hd.km_per_cell;
+            if rb < 1.0 {
+                continue;
+            }
+            let (i0, i1) =
+                ((cx - rb).floor().max(0.0) as usize, ((cx + rb).ceil() as usize).min(w - 1));
+            let (j0, j1) =
+                ((cy - rb).floor().max(0.0) as usize, ((cy + rb).ceil() as usize).min(h - 1));
+            for j in j0..=j1 {
+                for i in i0..=i1 {
+                    let d = ((i as f32 + 0.5 - cx).powi(2) + (j as f32 + 0.5 - cy).powi(2)).sqrt();
+                    if d <= rb {
+                        blend(rgba, j * w + i, [175, 70, 210]); // volcaniclastic, violet
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ── Layer → RGBA image (canonical palettes) ──────────────────────────────
 fn layer_color_image(
     hd: &HdResult,
     layer: HdLayer,
     river_map: &RiverCellMap,
     overlay: bool,
+    tectonic: TectonicOverlays,
 ) -> egui::ColorImage {
     let (w, h) = (hd.width, hd.height);
     let mut rgba = vec![0u8; w * h * 4];
@@ -2705,6 +2935,9 @@ fn layer_color_image(
     }
     if overlay {
         draw_river_overlay(&mut rgba, hd);
+    }
+    if tectonic.any() {
+        blend_tectonic_overlays(&mut rgba, hd, tectonic);
     }
     // Finding 27 — the field is stored y=0=SOUTH (the export/LL contract); the VIEWER
     // shows NORTH-UP, so mirror the texture rows here. The DATA, the export and the

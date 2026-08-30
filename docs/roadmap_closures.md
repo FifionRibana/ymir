@@ -110,7 +110,7 @@ celles du volcanisme sont **volontaires** et doivent être reconnues comme telle
 filtrées avec le bruit. Faire le conditionnement d'abord met ce critère en place avant
 d'en avoir besoin.
 
-### 3. Hétérogénéité lithologique
+### 3. Hétérogénéité lithologique — 🔬 IMPLÉMENTÉ, en attente de validation visuelle (voir ADR 0001, section « C-3 »)
 
 **La seule des quatre qui REMPLACE du bruit par de la structure.** Volcanisme et érosion
 côtière *ajoutent* du relief ; la lithologie change la façon dont **tout le reste**
@@ -121,9 +121,20 @@ jusqu'au bout.
 vallées larges dans la tendre —, les crêtes et corniches que le FBM ne sait pas
 structurer, et le placement des minerais côté Living Landz.
 
-**État :** un `K` spatialement variable est déjà à moitié spécifié dans les échanges ; une
-piste à 2 classes dérivée du masque cratonique a été décrite comme chemin le moins cher,
-en notant qu'aucun champ lithologique n'existe encore au stade HD.
+**État :** livré. `K` par cellule = multiplicateur d'érodabilité CAUSAL (jamais du bruit) :
+socle dur ×1 (référence relief-v3), rift tendre ×10, footprints volcaniclastiques ×3 —
+tous des signaux déjà présents dans l'état tectonique (rift `age=0`, édifices C-2), donc
+aucun nouveau champ advecté. Le spread a été MESURÉ, pas prédit : balayage ×3/×10/×30/×100
+sur la chaîne de production complète, deux résolutions
+(`tests/c3_lithology_sweep.rs`, rapport `docs/reports/.../closure_morphology/c3_lithology_sweep.md`).
+Deux effets séparés par design : socle dur = référence intacte (colonnes HARD plates sur
+tout le balayage → pas de ralentissement global), seul le contraste bouge. C-1 survit
+(dépressions 982→977 à 2048², 17516→17114 à 8192²). Désactivé par défaut → production
+byte-identique. Toggle viz « Lithologie (C-3) » (mode Expert, avec la stream-power).
+Reste : la validation visuelle de l'auteur sur l'export, puis marquer ✅ FAIT.
+
+La déposition manque (érosion production détachment-limited) → pas de bassins sédimentaires
+causaux ; enregistré comme limitation dans l'ADR, non comblé par du bruit ou de la géométrie.
 
 ### 4. Érosion côtière
 

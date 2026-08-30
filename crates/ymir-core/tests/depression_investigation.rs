@@ -232,7 +232,7 @@ fn depression_population_investigation() {
     eprintln!("\n--- STEP 2: iteration curve (relief-v3, per pass) ---");
     let mut sp16 = sp.clone();
     sp16.iterations = 16;
-    let final16 = incise_with_progress(&fbm, &sp16, &mut |iter, f| {
+    let final16 = incise_with_progress(&fbm, &sp16, None, &mut |iter, f| {
         dep_summary(&format!("after incision iter {}", iter + 1), &count_depressions(f));
     });
 
