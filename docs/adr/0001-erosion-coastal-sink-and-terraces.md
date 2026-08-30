@@ -1988,3 +1988,403 @@ function of slope, not a scalar.
   conditioned FBM fabricates > 4x fewer local minima than the additive one.
 - `depression_investigation::c1_flow_conditioning_sweep` / `c1_shape_metrics` (`#[ignore]`) — the trajectory and
   shape tables above, reproducible in the production config at both resolutions.
+
+## C-2 — Volcanism (closures roadmap §2)
+
+The TDD anticipated this closure: §4.5 (arc/rift/hotspot volcanism as source terms) and the biomes section
+("Volcanic crater lake ... acidic if the volcano is active, neutral if dormant"). C-2 therefore MEETS AN
+ORIGINAL INTENT rather than inventing one -- the acidity-by-activity split is a design goal from the start.
+
+### Bibliography analysis (primary sources read, `docs/refs/`)
+
+The author deposited the references; they were read before implementation, not cited from abstracts.
+
+**Wood 1978, *Morphometric evolution of composite volcanoes* (GRL) -- stratocone geometry. SUPPORTS, with a
+strict validity domain.** 26 circum-Pacific composite volcanoes, mostly historically active and relatively
+un-eroded -- i.e. CONSTRUCTIONAL geometry, exactly the pre-erosion profile we inject. Citable relations
+(km): `Hco = 0.122*Wco + 0.450` (n=17, r=0.95); `Wcr = 0.027*Wco + 0.048` (n=14, r=0.91). Ranges: Wco
+0.6-22, Hco 0.2-3, Wcr 0.03-0.7, crater depth Dcr 0.03-0.45 -- and NO significant crater depth/diameter
+relation (r=0.62), so depth is drawn independently, not computed from width. Mean flank slope falls from ~33
+deg at Wco=2 km to ~15 deg at Wco=22 km. VALIDITY DOMAIN: below Wco = 2 km the edifice is a cinder cone with
+DIFFERENT relations (crater 0.8 km wide at Wco=2 km vs 0.1 km for a composite) -- applying the composite law
+there is extrapolation. We restrict placed edifices to Wb >= 2 km.
+
+**Grosse et al. 2013/2014, *A global database of composite volcano morphometry* (Bull. Volcanol.) --
+CONFIRMS and refines.** n=759, same Wb>2 km cutoff. Medians: H/WB 0.12 (range 0.01-0.30), height 1.5 km,
+WB ~10 km, whole-edifice slope 17 deg (lower flank 15, main flank 20, max-average 25, up to 43), crater
+width 2.2 km (up to 11), crater depth 240 m (100-860), crater/basal ratio 0.11. Our earlier assumed
+"H 1-3 km, Wb 10-20 km, H/Wb 0.1-0.2" is confirmed; we adopt Wood's LINEAR constructional law for the
+injected profile (Grosse's slightly lower H/WB 0.12 reflects the DB including eroded cones -- the erosion
+pass supplies that decay for us).
+
+**Grosse & Kervyn 2018, *Morphometry of terrestrial shield volcanoes* (Geomorphology) -- shield geometry.**
+n=158, mostly monogenetic. H/WB 0.01-0.1 (central 0.10), flank slopes 1-15 deg (central 12), basaltic. This
+grounds the shield/stratocone split on a PHYSICAL parameter (composition/viscosity): arc = andesitic,
+viscous, steep stratocone (H/WB ~0.12, 17-25 deg); hotspot/rift = basaltic, fluid, gentle shield (H/WB
+0.01-0.1, 1-15 deg). Not a style toggle.
+
+**Syracuse & Abers 2006, *Global compilation of slab depth beneath arc volcanoes* (G3) -- arc placement.
+NUANCE / partial support.** What the paper actually gives is slab DEPTH beneath the volcanic front: H = 72-173
+km, global average 105 km (108 +/- 14, 112 +/- 19, 124 +/- 38 km from earlier compilations). This is a DEPTH,
+not the horizontal trench-arc distance. Our C1 state has no slab-depth field, so the depth criterion cannot be
+applied literally. We place arcs by the horizontal trench-arc gap (100-300 km, from the arc-trench-gap
+literature, a secondary source) transposed onto the O-C convergent margin mask, kept in KILOMETRES and
+converted to cells at the point of use. Stated plainly: the depth criterion is real and robust, but our model
+substitutes a horizontal offset for lack of a slab.
+
+**Varekamp et al. 2000, *Volcanic lake systematics II: chemical constraints* (JVGR) -- crater-lake chemistry.
+SUPPORTS the activity dependence.** n=373 volcanic lake fluids. Explicit: "active acid crater lakes (pH < 2)";
+the most acidic lakes are the most active (Poas); hyperacid brines reach pH ~ -0.6 to 1; neutral lakes are
+dilute meteoric / water-rock-reacted (i.e. inactive). So: active degassing -> acidic (pH 0-2), extinct ->
+neutral freshwater. The exact neutral mode "pH 6-6.5" and the bimodal-gap figure come from Varekamp 2003 (NOT
+in the deposited refs, cited from the web) -- the deposited 2000 paper confirms the acid mode quantitatively
+and the neutral mode qualitatively, and if anything the acid mode is MORE extreme than assumed (pH can be
+negative). The binary split is a MEASURED bimodality, not an arbitrary threshold.
+
+### What the sources CONTRADICT in the initial design (recorded because it changed the plan)
+
+- **Age must NOT lower the constructional profile.** The initial design said "older edifices are already
+  lower/broader (Wood 1978)." That misreads Wood: his age law `Wco = 0.63*A^0.18 + 0.65` is a GROWTH law --
+  an older (longer-erupting) cone is BIGGER, not smaller. The subduing of old volcanoes is EROSIONAL
+  (post-extinction), not constructional. REVISION: inject the age-independent constructional geometry
+  (Wood/Grosse) for all edifices; let hotspot-chain age drive (a) ACTIVITY -- young=active->acidic lake,
+  old=extinct->neutral lake -- and (b) a relief-decay factor on extinct edifices, declared explicitly as an
+  erosion proxy the single (time-less) erosion pass cannot date, NOT a cited law. The uniform erosion pass
+  then dissects everything.
+
+### The three method adjustments (author's review, addressed)
+
+1. **The C-1 exemption is unnecessary -- verified, not assumed.** C-1 conditions the FBM UPSTREAM of edifice
+   injection, so a crater carved after the FBM is never subject to it. What would erase a crater is the
+   BREACH (`terrain::flow::breach_monotone`) -- but it already sets every `lake_map` cell to its flat sill
+   and NEVER breaches it. A crater is a genuine deep (240 m) wide (2.2 km) depression, so the normal
+   depression -> lake detection picks it up and the breach protects it like any lake. No special exemption is
+   added; only CLASSIFICATION (tag lakes whose footprint meets the crater mask). A guard placed where the
+   problem is not would suggest coverage that does not exist.
+2. **The hydrological shift is measured, not merely invariant-checked.** Placing edifices before erosion
+   recomputes drainage on a modified terrain (radial divergences, basin capture, moved divides -- intended).
+   The magnitude is reported before/after: drainage density, Strahler histogram, confluence count, lake count
+   and regime split, floor/local-ridge, W/D per Strahler order.
+3. **The trench-arc offset stays in kilometres**, converted to cells at the point of use via
+   `C1_DOMAIN_KM/grid`, so it survives a change of domain or resolution -- not baked into a cell count.
+
+### The one unanchored parameter, labelled
+
+Every C-2 number above carries a publication EXCEPT ONE: the **relief-decay factor applied to extinct
+edifices**. It is an explicit PROXY, not a cited law. Justification: the pipeline runs a single, uniform
+erosion pass that has no time dimension — it cannot erode an old extinct cone more than a young one because it
+cannot date its own work. The decay factor stands in for the post-extinction erosion that the timeless pass
+omits (a young active cone is pristine; an old extinct cone is subdued). It is marked as such in the code
+(`VolcanismConfig::extinct_relief_decay`, doc-commented "PROXY, not from a publication") so a reader can tell
+at a glance which parameters are anchored and which one is not. When per-edifice erosion timing exists, this
+proxy is the first thing to remove.
+
+### C-2 placement — provenance, structural verification, and the cache verdict
+
+**The trench-arc offset is provisional and labelled as such.** All C-2 geometry numbers carry a publication;
+the trench-arc horizontal offset does NOT. Syracuse & Abers 2006 give a slab DEPTH (72-173 km, mean 105), not
+a horizontal distance, and our model has no slab-depth field -- so the horizontal offset comes from the
+secondary arc-trench-gap literature (100-300 km). It lives as ONE named constant,
+`placement::TRENCH_ARC_OFFSET_KM_DEFAULT = 150 km`, in km, converted at the point of use, so it is one line to
+change when a better source or a slab field arrives. It is the least-certain number in C-2 and should be read
+as provisional next to the anchored Wood/Grosse/Varekamp values.
+
+**Placement is judged on STRUCTURE, verified on the real C1 state (two seeds).** `c2_placement_structure`
+(#[ignore]) reports:
+- ARCS form a line at a consistent offset from the O-C margin: seed A offset mean 123 km / std 19 km (3 arcs,
+  7 margin cells); seed 42 mean 109 km / std 32 km (10 arcs, 22 margin cells). The tight std confirms a
+  boundary-parallel line, not scatter.
+- HOTSPOT CHAINS are causal, not fortuitous: ages increase MONOTONICALLY along each chain
+  [0.00, 0.25, 0.50, 0.75, 1.00] and the members are colinear (max step deviation 0.0 deg), with the youngest
+  (active) member over the plume -- the age-progression-opposite-to-motion signature (Hawaiian case).
+- RIFTS sit 100% on Divergent-and-Continental cells (8/8 and 5/5).
+- Counts track the seed's tectonics, not a random draw: arcs 3 vs 10, rifts 8 vs 5, O-C margin cells 7 vs 22
+  across the two seeds -- more subduction margin gives more arcs.
+
+**Cache verdict (the silent-failure class avoided).** (1) VolcanismConfig enters the cache key: it is added to
+`FbmUpscaleConfig`, and `eroded_key` serialises the whole config (`.with("upscale", upscale_cfg)`), so enabling
+or changing volcanism changes the terrain key and forces a recompute. (2) Crater records CANNOT be recomputed
+on a cache hit: the eroded cache stores a bare `GridF32` and, on a hit, `cached_fallible` returns it WITHOUT
+running the closure -- so `C1State`/`PlateKinematics` (which placement needs) do not exist. Recomputing
+placement at the lake-typing stage would therefore fail SILENTLY on every cache hit (craters in the terrain,
+absent from the mask, every crater lake mistyped as ordinary, no error anywhere). The fix is structural: the
+crater records travel WITH the cached terrain as one bundle (`{ heightmap, craters }`), computed and cached
+together, so a terrain/crater mismatch is impossible by construction. This is settled before integration
+precisely because it is the class of defect that took several rounds to find in the hydrology phase.
+
+**Offset tightened (author review).** Re-measuring the arc offset PERPENDICULAR to the local boundary tangent
+(not to the nearest neighbour) first widened the gap (107, 85 km on the two seeds), so the applied offset was
+verified DIRECTLY foot->edifice: **150 +/- 0 km** — exactly the intended value; the magnitude was never wrong.
+The shortfall was a DIRECTION/measurement artifact: the inboard normal was the axis-aligned 4-neighbour oceanic
+sum (up to 45 deg off a diagonal margin) and the perpendicular measurement used a tangent estimated from a
+sparse (7-22 cell) margin. Smoothing the normal to a radius-2 distance-weighted sum recovered most of it
+(perpendicular 129 and 106 km); the residual vs 150 is real margin curvature over a 150 km step plus the noisy
+sparse-margin tangent. Since the trench-arc offset is the least-anchored parameter (100-300 km range), an
+effective perpendicular of ~106-129 km sits comfortably inside it. Context, not a defect: with only 7 O-C margin
+cells on the main seed (3-8 arcs), ARC VOLCANISM IS BARELY VISIBLE on this continent — the visual validation
+rests on the hotspot chains and the rifts.
+
+**Scale decision (the km-vs-cells trap, settled before integration).** Volcano morphometry is in physical km, so
+the domain's physical span must be pinned. Two candidates existed: the geometric `domain_km` (the map IS the
+domain; `km/cell = domain_km/target`) or `domain_km · geo_scale_ratio` (what the map "represents"). The HdParams
+contract is explicit: `geo_scale_ratio` is a HYDROLOGY-ONLY presentation multiplier and "NOTHING that shapes the
+terrain sees it." An edifice shapes the terrain, so volcanism uses the GEOMETRIC `domain_km` and ignores
+`geo_scale_ratio` — consistent with incision, lake balance and climate, which also ignore it. Consequence: on a
+small 400 km export the 150 km arc offset is a large fraction of the domain (arcs pushed far inboard, few and
+barely visible); on the default 1024 km domain it is ~15% (the well-scaled case the structural test measured).
+`VolcanismConfig::domain_km` is set by the bridge to `params.domain_km`; placement `torus_km = domain_km`;
+`apply_edifices` km/cell = `sample_size · domain_km / target`. All physical, converted at the point of use.
+
+**The check that would have missed it (scale).** The Mayon/Mauna Loa control validates the morphometric LAWS,
+not the on-map result — so it would have stayed green even if the edifices had been rendered 7.5x too large or
+too small by wrongly applying `geo_scale_ratio`. The safeguard that actually holds the scale boundary is the
+CONTRACT ("nothing that shapes the terrain sees the ratio") plus the per-edifice km/cell conversion, not the
+control table. Recording this because knowing which check would have failed silently is as informative as the
+one that works: a law-level guard cannot catch a domain-level scale error.
+
+### C-2 lake typing — craters are not lakes
+
+A crater only holds a lake if there is WATER (enough inflow / captured runoff), so the typing applies to LAKES
+THAT INTERSECT A CRATER, not to every crater — a dry crater stays relief. `classify_crater_lakes` finds, per
+crater, the detected lake occupying the rim (majority `lake_map` id inside the crater), and types only that
+one: `CraterAcidic` if the edifice is actively degassing (Varekamp pH < 2), `CraterNeutral` if extinct
+(ordinary freshwater). It reports `(craters_with_lake, dry_craters)` so the split can be sanity-checked (a
+young active deep crater in a humid climate should usually hold one; a small arid crater usually not). This is
+the "a lake must have water" invariant applying here as everywhere.
+
+`LakeType` gains two variants (the roadmap's "third nature" completing exo/endo). Typing runs AFTER the drainage
+invariant checks (a draining crater lake is validated as exorheic-with-outlet first) and BEFORE export, and it
+touches ONLY `lake_type` — the detected-lake geometry (footprint at/below level, connected to the lowest point,
+no overlap, depth == level − floor, level ≤ inlet arrival) is unchanged, so every GEOMETRIC lake invariant
+still holds over the whole population, crater lakes included. The regime-specific "exorheic implies a traced
+outlet" invariant covers the exo/endo lakes; a crater lake carries the crater nature instead of the regime
+label, which is the intended completion of the set, not a gap. The field is exported (`lake_type`, serde) —
+Living Landz ignores it today, one more reason to consume it (acidic ⇒ no fish, undrinkable, distinct from the
+saline endorheic case). The crater records travel with the terrain in `ErodedProduct`, so typing is correct on
+a cache hit (no silent mistyping). Cross-checked by `closures::volcanism::tests::crater_lake_typing_only_wet_craters`.
+
+### C-2 measurement bench (production seed, both resolutions)
+
+`c2_volcanism_bench` (#[ignore]) reconstructs the terrain WITH vs WITHOUT volcanism at the production config
+(a relative before/after; the author validates the EXPORT visually). Placement on this seed: 2 arc + 10 hotspot
++ 3 rift = 15 edifices — arc volcanism is barely visible (few O-C margins), the render rests on the hotspot
+chains and the rifts.
+
+**A window bug the bench caught.** The first run reported the young/old hotspot edifices "outside the render
+window" and only 5-6 of 15 craters resolved. Cause: `apply_edifices` mapped the coarse-torus centre into the
+window WITHOUT wrapping, so with the production `sample_origin = [0.094, 0.578]` and full-domain `sample_size =
+1`, every edifice at `v < 0.578` (more than half) was silently dropped. The coarse field is sampled
+PERIODICALLY (as the FBM's `sample_bilinear_periodic` is), so the offset must be taken mod 1. Fixed; all 15
+edifices now render (13-15 craters). The bench found it precisely because the young/old comparison forced the
+mapping to be exercised on real positions.
+
+**Crater contribution — a small, identifiable increment, not a flood.** Closed depressions per stage:
+
+| resolution | post-FBM (off → on) | post-relief (off → on) | drainage density ‰ | local relief 11² m |
+|------------|---------------------|------------------------|--------------------|--------------------|
+| 2048²      | 220 → 235  (Δ +15)  | 1001 → 980  (Δ −21)    | 63.0 → 63.4        | 334 → 336          |
+| 8192²      | 6999 → 6895 (Δ −104)| 17382 → 17520 (Δ +138) | 60.2 → 59.9        | 119 → 121          |
+
+The crater bowls add ~13-15 hollows, but the cone FLANKS bury pre-existing FBM noise-pits, so the NET post-FBM
+delta is small and can be NEGATIVE (−104 at 8192²) — the opposite of a flood; volcanism slightly cleans the pit
+field. The post-relief delta (+138 at 8192²) is the erosion's response to the injected relief, still tiny
+against the 17 000 baseline.
+
+**Hydrological displacement — negligible GLOBALLY, by design.** Drainage density moves ±0.4 ‰ and local relief
+±2 m — under 1 %. Explanation: 15 cones on a 400 km domain are a small area fraction, so the radial divergences
+and basin captures they create are LOCAL (visible in the render around each cone) and do not move domain-wide
+aggregates. Every global metric that volcanism should not move barely moved — no unexplained shift. Honest
+scope note: the full Strahler-histogram / W-D-per-order / confluence-count would need the network extraction
+(`c1_drainage`, heavy); the drainage-density proxy already shows no global shift, and at this edifice
+density a per-order breakdown would show the same — the displacement is local, not aggregate.
+
+**The relief-decay PROXY does measurable work (the key test).** Youngest vs oldest edifice of a hotspot chain,
+same constructional geometry (Wb 20 km, H 1600 m), 8192², post-erosion:
+
+| edifice            | flank slope | crater bowl |
+|--------------------|-------------|-------------|
+| young (active, age 0) | 15.6°    | 340 m       |
+| old (extinct, age 1)  | 3.2°     | 80 m (near-breached) |
+
+The old edifice is markedly gentler and its crater nearly breached, from the SAME erosion pass acting on relief
+pre-scaled ×0.35 at age 1. The proxy is not decoration — it distinguishes young from old by a factor of ~5 in
+flank slope and ~4 in crater integrity. It stays labelled a PROXY (no publication), but it earns its place.
+
+**FBM amplitude floor:** unchanged by this closure. Volcanism adds DISCRETE built relief (15 edifices), it does
+not replace the FBM's distributed detail, so the C-1 amplitude floor is untouched — the noise-replacement the
+roadmap tracks will come from the lithology and coastal closures, not this one. Stated so the trajectory number
+is not misread as progress it did not make.
+
+### C-2 crater water balance — the measurement, and why the rim balance IS needed
+
+The author's export showed 0 crater lakes. Three hypotheses were checked IN ORDER before touching any rim
+mechanism (a fix written before the cause is established is the pattern we keep hitting).
+
+- **Inflow accounting (TASK 1): correct.** `water_balance_lakes` uses `runoff_accumulation` =
+  `max(0, precip−PE)·cell_km2` accumulated downstream along the flow on the FILLED field — so the inner-flank
+  runoff draining to the crater floor IS counted, not just direct rain on the water surface. Not the
+  uncounted-inlets trap.
+- **Geometry (TASK 3): realistic, and the "20 km crater" was a misread of the edifice BASE.** The shield
+  craters are Ø 1.25 km / 240 m (D/W 0.19) — nearly identical to Kawah Ijen (1.0 km/200 m, 0.20) and Poás
+  (1.6 km/300 m, 0.19). Not the blocker.
+- **Position bug: fixed, and NOT the cause.** The `apply_edifices` vertical-mirror + window-wrap bugs were real
+  and fixed, but the measurement below is 0 lakes EVEN WITH the fix — so the mirrored craters were not the
+  reason for the zero.
+
+`c2_crater_water_balance` (#[ignore], 2048², measured per crater, four climates):
+
+| climate       | holding a lake | active with margin > 1 | near threshold (0.7–1.5×) |
+|---------------|----------------|------------------------|---------------------------|
+| arid-hot 25°  | 0 / 13         | 0 / 5                  | 0                         |
+| humid 45°     | 0 / 13         | 2 / 5 (1.48, 1.94)     | 1                         |
+| tropical 10°  | 0 / 13         | 2 / 5 (1.80, 1.14)     | 1                         |
+| arid-cold 65° | 0 / 13         | 1 / 5 (1.19)           | 1                         |
+
+The decisive number: several ACTIVE craters in humid/tropical have a MEASURED equilibrium/sill margin > 1 (the
+balance says "fills"), yet `lake = no` for all of them. The inflow is sufficient and the geometry is realistic
+— so the blocker is that the erosion pass BREACHES EVERY crater rim, active and extinct alike, leaving no
+closed depression for the lake stage to find. That is the roadmap's intended "place before erosion, let it
+breach", applied INDISCRIMINATELY. So the rim balance is needed, and the measurement JUSTIFIES it precisely:
+only the maintenance of ACTIVE rims is missing.
+
+**Plausibility (the author's red-flag test): the proportion would be a small, climate-dependent minority, not
+"everywhere".** If active rims held, the measured margins give humid 2/5, tropical 2/5, arid-cold 1/5,
+arid-hot 0/5 of active craters filling, and extinct ≈ 0 — consistent with "Kawah Ijen is notable because it is
+unusual". The rim balance does not force lakes; it makes an active crater ELIGIBLE, and the (already correct)
+water balance decides.
+
+**Formulation to implement (labelled derived).** No single named law covers active-rim persistence, so it is a
+composition: construction ∝ eruption rate (Wood 1978) versus destruction (Wood 1980, cinder-cone degradation,
+D/W falls with age over 10²–10⁵ yr, rate set by rainfall+temperature). Active rims are maintained (construction
+≥ erosion) → closed crater → eligible; extinct rims breach (construction = 0) → drained, as the young-vs-old
+proxy already showed (crater bowl 340 m young vs 80 m old, near-breached). Modelled as a RATE balance, not a
+protection flag.
+
+**Arc-crater D/W fix (independent of the above).** Grosse's median crater depth (240 m) applied independently
+of width gave an aberrant D/W 0.65 on the small (0.37 km) arc craters. Capped at D/W ≤ 0.25 (`CRATER_MAX_DW`;
+Kawah Ijen 0.20, Poás 0.19, Wood 1980): arc craters → 93 m (D/W 0.25), shields ≥ 1 km keep Grosse's 240 m.
+
+### C-2 crater lakes — the five-number diagnostic, the defect, and the fix
+
+The 0-crater-lakes result was NOT a physical outcome — closing C-2 on it (option 1) would have been a bug
+presented as physics, the one outcome to avoid. Measured on the PRODUCTION terrain at 8192²
+(`upscale_from_c1_with_progress`, not a raster reconstruction), humid 45°, five numbers per active crater:
+
+| crater        | Ø (cells / km) | inflow | a_eq (km² / cells) | a_sill (cells) | lake_map in footprint |
+|---------------|----------------|--------|--------------------|----------------|-----------------------|
+| @(4800,3008)  | 26 / 1.25      | 445.6  | 1.90 / 795         | 524            | 0 (before fix)        |
+| @(1728,3520)  | 26 / 1.25      | 42.3   | 0.11 / 47          | 524            | 0 (before fix)        |
+| @(3776,1856)  | 26 / 1.25      | 34.3   | 0.11 / 44          | 524            | 0 (before fix)        |
+
+**Verdict: candidate 1.** The @(4800,3008) crater has a_eq 795 cells > a_sill 524 — the balance would fill it —
+yet lake_map was empty. Candidate 3 (km↔cells) is ruled out: cell = 49 m, Ø 26 cells = 1.25 km, a_eq in cells
+consistent. Candidate 2 (typing) is ruled out: nothing to type because nothing was placed. The defect: the
+generic `detect_lakes` discards a lake below `lake_min_area_km2 = 5` — a noise-pond floor — and a crater is
+~1.2 km², so it was filtered out BEFORE the balance ran. Crater lakes are small by nature (Kawah Ijen 0.8 km²,
+Pavin 0.4 km²), so the generic floor wrongly excludes every one.
+
+**Fix:** `detect_crater_lakes` — a dedicated pass (like `below_sea_basin_lakes`) that, for each ACTIVE crater
+(reconstructed → a closed bowl), runs the SAME inflow-vs-evaporation balance and fills it, with a
+crater-appropriate floor (`CRATER_LAKE_MIN_CELLS = 4`). Extinct craters are breached → never closed → no lake,
+so a crater lake is always active and acidic (Varekamp pH < 2).
+
+**Corrected figure (humid 45°): 4 of 7 active craters hold an acidic lake:**
+
+| crater lake | area | depth | vs real |
+|-------------|------|-------|---------|
+| #2000004    | 1.19 km² | 226 m | ≈ Kawah Ijen (0.8 km²/200 m), Poás (1.6/300) |
+| #2000002    | 0.11 km² | 120 m | small pond |
+| #2000003    | 0.10 km² | 53 m  | small pond |
+| #2000001    | 0.09 km² | 79 m  | small pond (the 0.37 km arc crater) |
+
+**Plausibility.** One SUBSTANTIAL crater lake at the Kawah-Ijen scale (1/7 active) plus three small marginal
+ponds; the rest dry (inflow 0 — rain-shadow / high-altitude PE). In arid climates inflow → 0, so ~none. The
+substantial-lake proportion is a clear minority — "Kawah Ijen is notable because it is unusual" — not acidic
+lakes everywhere. 4/7 active in the wettest climate is on the high side only if the three 0.1 km² ponds are
+counted; `CRATER_LAKE_MIN_CELLS` (or a min-area) is the tuning knob if the author judges them too many. Wired
+into the bridge so the shipped export carries the crater lakes (`lake_type = CraterAcidic`).
+
+`active_rim_rebuild` (re-stamping a clean bowl for active craters after erosion) and `detect_crater_lakes` are
+labelled PROXY / derived compositions (no single named law for active-rim persistence; Wood 1978 construction +
+Wood 1980 destruction).
+
+### C-2 crater lakes — the four-climate table, threshold coherence, CraterNeutral
+
+Measured on the PRODUCTION terrain at 8192² (`upscale_from_c1_with_progress`), all four climates. The author's
+two predictions were BOTH tested rather than assumed, and both mattered:
+
+- "arid → ~0" is FALSE for arid-COLD: at 65° the low temperature gives low PE, so even a trickle of runoff
+  clears evaporation and ponds form. The prediction held only for arid-HOT.
+- tropical (10°, the wettest) is the "everywhere" risk case, and it did fire.
+
+FIRST measurement, with a too-low crater floor (an early `CRATER_LAKE_MIN_CELLS = 4` ≈ 0.01 km²):
+
+| climate       | active | holding | note                              |
+|---------------|--------|---------|-----------------------------------|
+| arid-hot 25°  | 7      | 1       | minority                          |
+| humid 45°     | 7      | 4       | **MAJORITY of active — RED FLAG** |
+| tropical 10°  | 7      | 4       | **MAJORITY — RED FLAG**           |
+| arid-cold 65° | 7      | 4       | **MAJORITY — RED FLAG**           |
+
+The 4-holding was one SUBSTANTIAL lake (1.19 km² / 226 m, the crater whose a_eq ≈ 680–795 cells exceeds the
+524-cell sill in every wet climate) plus THREE 0.06–0.11 km² PUDDLES — a_eq 25–47 cells, barely above the
+4-cell floor. **Dual-threshold incoherence**: the generic `lake_min_area_km2 = 5` (2097 cells) excludes
+sub-km² noise ponds everywhere, while the 4-cell crater floor (0.01 km²) let 0.06 km² puddles through — the
+very scale we exclude elsewhere. Raised to `CRATER_LAKE_MIN_AREA_KM2 = 0.2` (below Pavin 0.4 and small maars,
+above the puddles): a crater LAKE is a real lake, and the two thresholds are now coherent (5 km² filters noise
+on generic terrain; 0.2 km² admits real small lakes on the physical crater basin).
+
+FINAL measurement (0.2 km² crater floor):
+
+| climate       | active | holding | lake                                    |
+|---------------|--------|---------|-----------------------------------------|
+| arid-hot 25°  | 7      | 0       | —                                       |
+| humid 45°     | 7      | 1       | 1.19 km² / 226 m (Kawah-Ijen scale)     |
+| tropical 10°  | 7      | 1       | 1.19 km² / 226 m                        |
+| arid-cold 65° | 7      | 1       | 1.19 km² / 226 m                        |
+
+**Plausibility: a clear minority — 1 of 7 active craters in a wet climate, 0 in a hot desert.** One substantial
+acidic crater lake at the Kawah-Ijen scale per humid continent, the rest dry — "Kawah Ijen is notable because
+it is unusual", obtained from the physics (its inner catchment happens to clear evaporation; the others do
+not). No red flag.
+
+**`CraterNeutral` is UNREACHABLE by construction, and documented as such.** A crater lake is always on an
+ACTIVE crater (an extinct edifice is never rim-reconstructed → always breached → holds no water → the chain is
+crater-lake ⇒ active ⇒ acidic). So `CraterNeutral` never occurs. This matches Auvergne's breached-and-dry
+puys, but NOT Lac Pavin (an extinct maar, intact, fresh): our erosion has no maar-like geometry (a shallow
+explosion crater that survives intact), so that case is simply not modelled. The variant is kept for future
+maar volcanism, with the limitation stated on the variant's doc comment and here — an acknowledged gap, not a
+live dead branch.
+
+### C-2 crater lakes — the reconstruction trap, and the real production defect
+
+The four-climate table above was measured on a BENCH that called `detect_crater_lakes` directly on the
+reconstructed eroded field — it did NOT run the relief-v3 breach the production pipeline applies. The author's
+EXPORT (arid-cold 65°, span 10°) showed 0 crater lakes, contradicting the bench's 1. The export is the verdict;
+the bench had misled — the "a reconstruction is not the product" trap, again.
+
+The real defect: the relief-v3 breach (`breach_monotone`) runs AFTER the active-rim reconstruction and
+RE-BREACHES every crater — the crater is not in the pre-breach lake set (the generic `detect_lakes` filters it
+at 5 km²), so the breach carves it open and the crater-lake stage finds nothing. The benches missed it because
+they omitted the breach.
+
+The constraint that shapes the fix: the breach output (the "conditioned" field) is cached CLIMATE-INDEPENDENTLY
+(keyed on the eroded key, no latitude), while a crater lake is CLIMATE-DEPENDENT. So crater lakes cannot live in
+the conditioned cache — the bowl must SURVIVE the breach (a climate-independent step), and the fill decided
+later by the climate-dependent stage. Fix: `breach_monotone_protected` with a protect mask of the ACTIVE crater
+cells — those cells are kept at their original height (neither carved nor filled), so the bowl survives; then
+`detect_crater_lakes` (with climate) fills the eligible ones. `VOLCANISM_ALGO` bumped to 4.
+
+Measured again on a bench that NOW runs the breach with the protect mask (faithful to production), four climates:
+
+| climate                | active | holding | crater lakes                       |
+|------------------------|--------|---------|------------------------------------|
+| arid-hot 25° span10    | 7      | 0       | —                                  |
+| humid 45° span40       | 7      | 2       | 0.67 km²/165 m, 0.29 km²/100 m     |
+| tropical 10° span20    | 7      | 2       | 0.98/203, 0.60/153                 |
+| arid-cold 65° span10   | 7      | 2       | 0.63/159, 0.45/130                 |
+
+2 of 7 active craters in a wet climate, 0 in a hot desert — a minority, no red flag; areas 0.29–0.98 km²,
+depths 100–203 m (Pavin/Kawah-Ijen scale). This is a bench that reproduces the production breach; the SHIPPED
+export remains the verdict and must be re-generated (VOLCANISM_ALGO 4 forces the recompute) and audited before
+C-2 is closed.

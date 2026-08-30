@@ -183,7 +183,19 @@ fn rolled_export_is_one_contiguous_continent() {
         up.erosion = None; // speed; contiguity is set by the coarse sampling + roll
         up.sample_origin = sample_origin;
         up.sample_size = 1.0;
-        cached_c1_eroded(&cache, seed, grid, &init, &run, &clo, &ss, &up).unwrap()
+        cached_c1_eroded(
+            &cache,
+            seed,
+            grid,
+            &init,
+            &run,
+            &clo,
+            &ss,
+            &up,
+            &ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig::default(),
+        )
+        .unwrap()
+        .heightmap
     };
 
     // Baseline: NO roll (origin [0,0]) → the straddler is split across the border.

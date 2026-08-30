@@ -48,7 +48,15 @@ pub const ALGO_TECTONICS: u32 = 1;
 /// Version of the HD altitude build (`upscale_from_c1`: isostasy, Stein-Stein,
 /// FBM, hydraulic erosion). ⚠️ BUMP on ANY code change to that step — including
 /// the production-altitude / continental-floor code (see above).
-pub const ALGO_UPSCALE_EROSION: u32 = 1;
+///
+/// v2 (C-2): the eroded cache PAYLOAD FORMAT changed from a bare `GridF32` to the
+/// `{ heightmap, craters }` bundle (`ErodedProduct`). The bump is REQUIRED even
+/// though volcanism is OFF by default: an old v1 entry is a bare `.raw` with no
+/// `.craters.json`, and the new reader expects both — reading it would fail or
+/// phantom-craters. Bumping gives old entries a different digest so they are never
+/// read by the new bundle codec (chosen over a tolerant legacy read, which would
+/// outlive its usefulness).
+pub const ALGO_UPSCALE_EROSION: u32 = 2;
 
 /// Version of the drainage build (`c1_drainage`). ⚠️ BUMP on ANY code change to
 /// that step (see above).

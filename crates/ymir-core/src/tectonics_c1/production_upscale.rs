@@ -363,7 +363,9 @@ pub fn upscale_from_c1(
     seed: &WorldSeed,
     cfg: &FbmUpscaleConfig,
 ) -> UpscaleResult {
-    upscale_from_c1_with_progress(state, iso, ss, seed, cfg, &mut |_| {}, &|| false)
+    // No volcanism (empty edifice list, disabled config) → byte-identical.
+    let volc = crate::tectonics_c1::closures::volcanism::VolcanismConfig::default();
+    upscale_from_c1_with_progress(state, iso, ss, seed, cfg, &[], &volc, &mut |_| {}, &|| false).0
 }
 
 /// [`upscale_from_c1`] with sub-phase progress emission + mid-erosion cancel.
@@ -371,15 +373,18 @@ pub fn upscale_from_c1(
 /// `cancel()` is polled inside erosion (returns `true` → `run_erosion` stops
 /// early, leaving a partial heightmap the caller must discard). Byte-identical
 /// to `upscale_from_c1` when `progress`/`cancel` are the no-op defaults.
+#[allow(clippy::too_many_arguments)]
 pub fn upscale_from_c1_with_progress(
     state: &C1State,
     iso: &IsostasyConfig,
     ss: &SteinSteinParams,
     seed: &WorldSeed,
     cfg: &FbmUpscaleConfig,
+    edifices: &[crate::tectonics_c1::closures::volcanism::Edifice],
+    volcanism: &crate::tectonics_c1::closures::volcanism::VolcanismConfig,
     progress: &mut dyn FnMut(EroProgress),
     cancel: &dyn Fn() -> bool,
-) -> UpscaleResult {
+) -> (UpscaleResult, Vec<crate::tectonics_c1::closures::volcanism::CraterRecord>) {
     // CONTRACT (Issue #147 #6): the upscale reads the laundered
     // ALTITUDE (isostasy + Stein-Stein, convergent r~0.88), NOT raw S̃
     // (non-convergent r~0.51). This is what makes the upscale robust to
@@ -393,6 +398,29 @@ pub fn upscale_from_c1_with_progress(
 
     progress(EroProgress::Relief);
     let mut result = upscale_with_fbm(&coarse, sea_level_normalized, seed, cfg);
+
+    // C-2 volcanism — inject the derived edifices at HD resolution, AFTER the FBM
+    // and BEFORE erosion, so the SAME erosion chain dissects the flanks and
+    // breaches the old craters. Physical km/cell: the HD grid spans `sample_size`
+    // of the coarse torus, itself `domain_km` across, so km/cell =
+    // sample_size·domain_km/width (geometric domain_km, NOT geo_scale_ratio — an
+    // edifice shapes the terrain). None/disabled → no-op, byte-identical.
+    let mut craters = Vec::new();
+    if volcanism.enabled && !edifices.is_empty() {
+        let full_range_m = 2.0 * ALTITUDE_NORM_HALF_RANGE as f32 * ss.depth_scale_m as f32;
+        let km_per_hd_cell =
+            cfg.sample_size as f32 * volcanism.domain_km / result.heightmap.width as f32;
+        let applied = crate::tectonics_c1::closures::volcanism::apply_edifices(
+            &mut result.heightmap,
+            edifices,
+            cfg.sample_origin,
+            cfg.sample_size,
+            km_per_hd_cell,
+            full_range_m,
+            volcanism,
+        );
+        craters = applied.craters;
+    }
 
     // ADR 0001 — routed stream-power incision (prototype), applied AFTER the FBM and
     // BEFORE droplet erosion: carve valleys along the drainage network, then let a
@@ -425,6 +453,24 @@ pub fn upscale_from_c1_with_progress(
             UpscaleResult { heightmap: eroded.heightmap, slope, sediment: Some(eroded.sediment) };
     }
 
+    // C-2 active-rim reconstruction — the erosion above breaches every crater rim;
+    // an ACTIVE volcano rebuilds its rim (construction ≥ erosion), so its crater
+    // re-closes here and the downstream lake stage detects + holds it. Extinct
+    // craters stay breached. Runs after ALL erosion, before bathymetry (which only
+    // touches sub-sea cells). No-op when volcanism is off or no crater is active.
+    if volcanism.enabled && !craters.is_empty() {
+        let full_range_m = 2.0 * ALTITUDE_NORM_HALF_RANGE as f32 * ss.depth_scale_m as f32;
+        let km_per_hd_cell =
+            cfg.sample_size as f32 * volcanism.domain_km / result.heightmap.width as f32;
+        crate::tectonics_c1::closures::volcanism::reconstruct_active_rims(
+            &mut result.heightmap,
+            &craters,
+            volcanism,
+            km_per_hd_cell,
+            full_range_m,
+        );
+    }
+
     // #submarine — re-map the ocean floor toward the plateau→slope→abyss envelope
     // (the diagnostic found a uniform ~−2600 m slab). Applied LAST, on the final
     // ocean cells, ONLY when `cfg.bathymetry` is Some. Touches sub-sea cells only
@@ -448,7 +494,7 @@ pub fn upscale_from_c1_with_progress(
         );
     }
 
-    result
+    (result, craters)
 }
 
 #[cfg(test)]

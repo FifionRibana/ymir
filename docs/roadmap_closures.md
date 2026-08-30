@@ -79,7 +79,18 @@ critère, pas un simple facteur d'amplitude.
 **Critère de succès, déjà mesuré :** le compte de cuvettes après FBM doit rester du même
 ordre que les **16** tectoniques. Net, falsifiable, référence en main.
 
-### 2. Volcanisme
+### 2. Volcanisme — ✅ FAIT (voir ADR 0001, section « C-2 »)
+
+**Livré :** édifices dérivés de la tectonique C1 (arcs insulaires sur marge de subduction,
+chaînes de points chauds d'âge croissant le long du mouvement de plaque, rifts) ; géométrie
+ancrée (Wood 1978 strato `H=0.122·Wb+0.45`, Grosse & Kervyn 2018 boucliers H/Wb 0.01–0.1,
+Wb ≥ 2 km, cratère D/W ≤ 0.25) ; injection HD après FBM, avant érosion, avec reconstruction
+du rebord des cratères **actifs** (construction ≥ érosion) protégée du breach relief-v3 ;
+`LakeType::CraterAcidic` (Varekamp 2000, pH < 2 sur cratère actif), portée à l'export,
+détectée par une passe dédiée contournant le plancher générique de 5 km². Confirmé **sur
+l'export** : minorité climat-dépendante de lacs de cratère acides (0 en désert chaud → 2–3
+en humide/tropical, échelle Kawah Ijen/Pavin), pas « partout ». Marqueurs actif/éteint dans
+la viz (toggle Symboles). `CraterNeutral` inatteignable par construction (documenté).
 
 **Pourquoi tôt :** bien délimité — il ajoute du relief construit **sans toucher au
 drainage**, donc il ne rouvre pas la chaîne hydrologique stabilisée sur une dizaine de

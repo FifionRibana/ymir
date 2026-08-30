@@ -166,7 +166,8 @@ fn c1_export_audit() {
         // distinct lake ids in lakes.json (one `"id"` per lake record).
         let lj = std::fs::read_to_string(format!("{dir}/lakes.json")).unwrap_or_default();
         let n_lakes = lj.matches("\"lake_type\"").count();
-        let rj_bytes = std::fs::metadata(format!("{dir}/rivers.json")).map(|m| m.len()).unwrap_or(0);
+        let rj_bytes =
+            std::fs::metadata(format!("{dir}/rivers.json")).map(|m| m.len()).unwrap_or(0);
 
         let (s15, s30, s45) = slope_shares_hd(&field, 11302.0, 400.0 / 8192.0);
         let lr = local_relief_median_m(&field, 11302.0);

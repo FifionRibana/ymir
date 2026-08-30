@@ -891,11 +891,32 @@ pub fn breach_monotone(
     w: usize,
     h: usize,
 ) -> GridF32 {
+    breach_monotone_protected(height, filled, lake_map, sea_level, w, h, None)
+}
+
+/// [`breach_monotone`] with a `protect` mask: cells set `true` are kept at their
+/// ORIGINAL height (neither carved nor filled) and treated as inert barriers, so a
+/// legitimate closed depression survives the breach — used for ACTIVE volcanic
+/// crater bowls (C-2), which must stay closed for the climate-dependent crater-lake
+/// stage to fill them (the generic breach otherwise flattens or breaches every pit,
+/// climate-independently, in a cache the crater lakes cannot live in). `None` →
+/// exactly [`breach_monotone`].
+pub fn breach_monotone_protected(
+    height: &GridF32,
+    filled: &GridF32,
+    lake_map: &[u32],
+    sea_level: f32,
+    w: usize,
+    h: usize,
+    protect: Option<&[bool]>,
+) -> GridF32 {
     let n = w * h;
+    let prot = |k: usize| protect.is_some_and(|p| p[k]);
     let mut z = height.data.clone();
-    // Lakes → flat sill surface (base level, never breached).
+    // Lakes → flat sill surface (base level, never breached). Protected cells keep
+    // their original bowl (not flattened).
     for k in 0..n {
-        if lake_map[k] != 0 {
+        if lake_map[k] != 0 && !prot(k) {
             z[k] = filled.data[k];
         }
     }
@@ -905,8 +926,14 @@ pub fn breach_monotone(
     let mut visited = vec![false; n];
     let mut backlink = vec![usize::MAX; n];
     let mut heap: BinaryHeap<PqCell> = BinaryHeap::new();
+    // Protected cells are inert: marked visited (never carved/filled), not sources.
     for k in 0..n {
-        if is_base(k, &z) {
+        if prot(k) {
+            visited[k] = true;
+        }
+    }
+    for k in 0..n {
+        if !visited[k] && is_base(k, &z) {
             visited[k] = true;
             heap.push(PqCell { height: z[k], idx: k });
         }
@@ -948,7 +975,12 @@ pub fn breach_monotone(
     let mut visited2 = vec![false; n];
     let mut heap2: BinaryHeap<PqCell> = BinaryHeap::new();
     for k in 0..n {
-        if is_base(k, &z) {
+        if prot(k) {
+            visited2[k] = true; // inert: never filled
+        }
+    }
+    for k in 0..n {
+        if !visited2[k] && is_base(k, &z) {
             visited2[k] = true;
             heap2.push(PqCell { height: z[k], idx: k });
         }

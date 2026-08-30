@@ -29,8 +29,8 @@ use crate::cache::{
     ALGO_BREACH, ALGO_CLIMATE, ALGO_DRAINAGE, ALGO_HD_DRAINAGE, ALGO_TECTONICS,
     ALGO_UPSCALE_EROSION, CacheKey, RawCodec, cached, cached_fallible,
 };
-use crate::climate::{ClimateResult, c1_climate_placed, c1_climate_windowed};
 use crate::climate::precipitation::PrecipParams;
+use crate::climate::{ClimateResult, c1_climate_placed, c1_climate_windowed};
 use crate::export::raw;
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
@@ -38,6 +38,7 @@ use crate::terrain::flow::FlowResult;
 use crate::terrain::upscale::FbmUpscaleConfig;
 
 use super::closures::oceanic_bathymetry::SteinSteinParams;
+use super::closures::volcanism::{CraterRecord, VolcanismConfig, place_edifices};
 use super::drainage::C1_SEA_LEVEL_NORM;
 use super::drainage::{C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage_windowed};
 use super::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
@@ -81,6 +82,66 @@ pub fn eroded_key(
         .algo(ALGO_UPSCALE_EROSION)
 }
 
+/// The FULL eroded key including the C-2 volcanism config. The volcanism entry is
+/// added ONLY when enabled, so a disabled run keeps the exact pre-C-2 key. This is
+/// the SINGLE source of truth for the eroded digest — both `cached_c1_eroded` and
+/// the viz bridge's hit-detection / drainage-parent key must use it, or a
+/// volcanism-on and a volcanism-off run would silently share the same drainage
+/// cache entry (the terrain differs, the drainage would not).
+pub fn eroded_key_full(
+    tectonic: &CacheKey,
+    ss: &SteinSteinParams,
+    upscale_cfg: &FbmUpscaleConfig,
+    volcanism: &VolcanismConfig,
+) -> CacheKey {
+    let key = eroded_key(tectonic, ss, upscale_cfg);
+    if volcanism.enabled {
+        key.with("volcanism", volcanism)
+            .with("volc_algo", &super::closures::volcanism::VOLCANISM_ALGO)
+    } else {
+        key
+    }
+}
+
+/// The cached eroded HD product: the heightmap AND the volcanic craters placed in
+/// it, bundled so they are computed and cached TOGETHER. A hit that returned the
+/// terrain without its craters would mistype every crater lake silently — the
+/// bundle makes that mismatch impossible by construction (C-2, ADR 0001).
+pub struct ErodedProduct {
+    /// The eroded HD heightmap (post-FBM, post-volcanism, post-erosion, norm).
+    pub heightmap: GridF32,
+    /// Craters placed by the volcanism closure, in HD pixel coords. Empty when
+    /// volcanism is disabled.
+    pub craters: Vec<CraterRecord>,
+}
+
+impl RawCodec for ErodedProduct {
+    fn shape(&self) -> Value {
+        serde_json::json!({ "width": self.heightmap.width, "height": self.heightmap.height })
+    }
+    fn write_raw(&self, stem: &Path) -> Result<(), String> {
+        self.heightmap.save_raw(&stem.with_extension("raw"))?;
+        // Craters ride in a sibling JSON so they travel with the terrain. Always
+        // written (an empty list when volcanism is off) so the reader can require
+        // it — under ALGO v2 an old bare-.raw entry has a different digest and is
+        // never read here.
+        let json = serde_json::to_string(&self.craters)
+            .map_err(|e| format!("crater serialize error: {e}"))?;
+        std::fs::write(stem.with_extension("craters.json"), json)
+            .map_err(|e| format!("crater write error: {e}"))
+    }
+    fn read_raw(stem: &Path, shape: &Value) -> Result<Self, String> {
+        let w = shape["width"].as_u64().ok_or("sidecar: missing width")? as usize;
+        let h = shape["height"].as_u64().ok_or("sidecar: missing height")? as usize;
+        let heightmap = GridF32::load_raw(&stem.with_extension("raw"), w, h)?;
+        let cj = std::fs::read_to_string(stem.with_extension("craters.json"))
+            .map_err(|e| format!("crater read error: {e}"))?;
+        let craters: Vec<CraterRecord> =
+            serde_json::from_str(&cj).map_err(|e| format!("crater parse error: {e}"))?;
+        Ok(ErodedProduct { heightmap, craters })
+    }
+}
+
 /// Build the C1 eroded HD heightmap, reusing the cached `.raw` if the inputs are
 /// unchanged. On a MISS this runs the full (expensive) build: `init` →
 /// `run_with_closures` → `upscale_from_c1`; on a HIT it loads the heightmap and
@@ -99,7 +160,8 @@ pub fn cached_c1_eroded(
     closures: &C1Closures,
     ss: &SteinSteinParams,
     upscale_cfg: &FbmUpscaleConfig,
-) -> Result<GridF32, String> {
+    volcanism: &VolcanismConfig,
+) -> Result<ErodedProduct, String> {
     cached_c1_eroded_with_progress(
         cache_dir,
         seed,
@@ -109,6 +171,7 @@ pub fn cached_c1_eroded(
         closures,
         ss,
         upscale_cfg,
+        volcanism,
         &mut |_| {},
         &|| false,
     )
@@ -130,10 +193,16 @@ pub fn cached_c1_eroded_with_progress(
     closures: &C1Closures,
     ss: &SteinSteinParams,
     upscale_cfg: &FbmUpscaleConfig,
+    volcanism: &VolcanismConfig,
     progress: &mut dyn FnMut(EroProgress),
     cancel: &dyn Fn() -> bool,
-) -> Result<GridF32, String> {
-    let key = eroded_key(&tectonic_key(seed, grid, init, run, closures), ss, upscale_cfg);
+) -> Result<ErodedProduct, String> {
+    // Volcanism enters the cache key ONLY when enabled, so a disabled run keeps the
+    // pre-C-2 terrain key (the ALGO v2 bump already forces the one-time recompute
+    // for the payload-format change). Enabling or changing it → new digest →
+    // recompute, so a config change can never serve a stale terrain.
+    let key =
+        eroded_key_full(&tectonic_key(seed, grid, init, run, closures), ss, upscale_cfg, volcanism);
     cached_fallible(cache_dir, "eroded", &key, || {
         let mut state = init_c1_state_phase_2_r7(grid, seed, init);
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
@@ -144,19 +213,39 @@ pub fn cached_c1_eroded_with_progress(
         if cancel() {
             return Err("cancelled".to_string());
         }
-        let up = upscale_from_c1_with_progress(
+        // C-2: derive the edifices from the FINAL tectonic state + kinematics (both
+        // live only here, on the miss path — hence bundling craters with the
+        // terrain rather than recomputing at typing time). `torus_km = domain_km`
+        // (geometric span). Empty when disabled.
+        let edifices =
+            place_edifices(&state, &kin, &WorldSeed::new(seed), volcanism.domain_km, volcanism);
+        if volcanism.enabled {
+            use super::closures::volcanism::VolcanoSetting;
+            let n = |s: VolcanoSetting| edifices.iter().filter(|e| e.setting == s).count();
+            eprintln!(
+                "[HD volcanism] edifices: {} arc + {} hotspot + {} rift = {} (domain {:.0} km)",
+                n(VolcanoSetting::Arc),
+                n(VolcanoSetting::Hotspot),
+                n(VolcanoSetting::Rift),
+                edifices.len(),
+                volcanism.domain_km,
+            );
+        }
+        let (up, craters) = upscale_from_c1_with_progress(
             &state,
             &run.iso_config,
             ss,
             &WorldSeed::new(seed),
             upscale_cfg,
+            &edifices,
+            volcanism,
             progress,
             cancel,
         );
         if cancel() {
             return Err("cancelled".to_string());
         }
-        Ok(up.heightmap)
+        Ok(ErodedProduct { heightmap: up.heightmap, craters })
     })
 }
 
@@ -646,6 +735,43 @@ mod tests {
         )
     }
 
+    /// C-2 PERMANENT GUARD (author review #2): enabling volcanism MUST invalidate
+    /// the eroded cache key AND change the terrain — never silently serve the
+    /// volcano-free entry. A key that failed to invalidate would report success
+    /// while every downstream measurement ran on a terrain with no volcanoes. So
+    /// this is tested, not announced: generate WITH and WITHOUT, assert the digests
+    /// differ and the two heightmaps differ; the OFF path carries no craters.
+    #[test]
+    fn volcanism_invalidates_key_and_changes_terrain() {
+        let dir = tmp("volcanism_invalidate");
+        let (init, run, clo, ss, up) = inputs();
+        let (seed, grid) = (42u64, 32usize);
+        let off = VolcanismConfig::default(); // disabled
+        let on = VolcanismConfig { enabled: true, domain_km: 400.0, ..Default::default() };
+
+        // The full eroded digest must change when volcanism is enabled.
+        let tk = tectonic_key(seed, grid, &init, &run, &clo);
+        let ka = eroded_key_full(&tk, &ss, &up, &off);
+        let kb = eroded_key_full(&tk, &ss, &up, &on);
+        assert_ne!(ka.digest(), kb.digest(), "enabled volcanism must change the eroded digest");
+
+        // …and the terrain it addresses must actually differ (edifices injected).
+        let a = cached_c1_eroded(&dir, seed, grid, &init, &run, &clo, &ss, &up, &off).unwrap();
+        let b = cached_c1_eroded(&dir, seed, grid, &init, &run, &clo, &ss, &up, &on).unwrap();
+        assert!(a.craters.is_empty(), "disabled volcanism must place no craters");
+        let changed = a
+            .heightmap
+            .data
+            .iter()
+            .zip(&b.heightmap.data)
+            .filter(|(x, y)| (**x - **y).abs() > 1e-6)
+            .count();
+        assert!(
+            changed > 0,
+            "volcanism ON must change the terrain; diff 0 would mean the key did not invalidate"
+        );
+    }
+
     /// Island-budget sweep with the BORDER-CLEAN predicate (M1 #190 reframe). NOT
     /// a unit test — runs a real coarse-tectonic scan (minutes). The window is
     /// SIZED to the largest landmass (`traverse + 2·margin`); a config is accepted
@@ -928,9 +1054,33 @@ mod tests {
         let grid = 32usize;
 
         // MISS — full build.
-        let a = cached_c1_eroded(&dir, seed, grid, &init, &run, &clo, &ss, &up).unwrap();
+        let a = cached_c1_eroded(
+            &dir,
+            seed,
+            grid,
+            &init,
+            &run,
+            &clo,
+            &ss,
+            &up,
+            &VolcanismConfig::default(),
+        )
+        .unwrap()
+        .heightmap;
         // HIT — must be byte-identical (same field reloaded, downstream identical).
-        let b = cached_c1_eroded(&dir, seed, grid, &init, &run, &clo, &ss, &up).unwrap();
+        let b = cached_c1_eroded(
+            &dir,
+            seed,
+            grid,
+            &init,
+            &run,
+            &clo,
+            &ss,
+            &up,
+            &VolcanismConfig::default(),
+        )
+        .unwrap()
+        .heightmap;
         assert_eq!((a.width, a.height), (b.width, b.height));
         assert_eq!(a.data, b.data, "HIT must reload byte-identical to MISS");
 
@@ -1033,11 +1183,35 @@ mod tests {
         let (seed, grid) = (42u64, 64usize);
 
         let t0 = Instant::now();
-        let miss = cached_c1_eroded(&dir, seed, grid, &init, &run, &clo, &ss, &up).unwrap();
+        let miss = cached_c1_eroded(
+            &dir,
+            seed,
+            grid,
+            &init,
+            &run,
+            &clo,
+            &ss,
+            &up,
+            &VolcanismConfig::default(),
+        )
+        .unwrap()
+        .heightmap;
         let miss_t = t0.elapsed();
 
         let t1 = Instant::now();
-        let hit = cached_c1_eroded(&dir, seed, grid, &init, &run, &clo, &ss, &up).unwrap();
+        let hit = cached_c1_eroded(
+            &dir,
+            seed,
+            grid,
+            &init,
+            &run,
+            &clo,
+            &ss,
+            &up,
+            &VolcanismConfig::default(),
+        )
+        .unwrap()
+        .heightmap;
         let hit_t = t1.elapsed();
 
         assert_eq!(miss.data, hit.data, "HIT must be byte-identical to MISS");
@@ -1058,7 +1232,19 @@ mod tests {
         let seed = 7u64;
         let grid = 32usize;
 
-        let cached_out = cached_c1_eroded(&dir, seed, grid, &init, &run, &clo, &ss, &up).unwrap();
+        let cached_out = cached_c1_eroded(
+            &dir,
+            seed,
+            grid,
+            &init,
+            &run,
+            &clo,
+            &ss,
+            &up,
+            &VolcanismConfig::default(),
+        )
+        .unwrap()
+        .heightmap;
 
         let mut state = init_c1_state_phase_2_r7(grid, seed, &init);
         let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
@@ -1096,7 +1282,19 @@ mod tests {
         let dir = tmp("drainage");
         let (init, run, clo, ss, up) = inputs();
         let (seed, grid) = (42u64, 32usize);
-        let h = cached_c1_eroded(&dir, seed, grid, &init, &run, &clo, &ss, &up).unwrap();
+        let h = cached_c1_eroded(
+            &dir,
+            seed,
+            grid,
+            &init,
+            &run,
+            &clo,
+            &ss,
+            &up,
+            &VolcanismConfig::default(),
+        )
+        .unwrap()
+        .heightmap;
         let ek = eroded_key(&tectonic_key(seed, grid, &init, &run, &clo), &ss, &up);
         let cfg = C1DrainageConfig::default();
 
@@ -1143,7 +1341,19 @@ mod tests {
         let dir = tmp("hd_cache");
         let (init, run, clo, ss, up) = inputs();
         let (seed, grid) = (42u64, 32usize);
-        let h = cached_c1_eroded(&dir, seed, grid, &init, &run, &clo, &ss, &up).unwrap();
+        let h = cached_c1_eroded(
+            &dir,
+            seed,
+            grid,
+            &init,
+            &run,
+            &clo,
+            &ss,
+            &up,
+            &VolcanismConfig::default(),
+        )
+        .unwrap()
+        .heightmap;
         let ek = eroded_key(&tectonic_key(seed, grid, &init, &run, &clo), &ss, &up);
         let cfg = C1DrainageConfig::default();
         let pp = PrecipParams::default();
