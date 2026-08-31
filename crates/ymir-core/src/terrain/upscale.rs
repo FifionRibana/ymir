@@ -164,6 +164,17 @@ pub struct FbmUpscaleConfig {
         skip_serializing_if = "crate::tectonics_c1::closures::lithology::LithologyConfig::is_disabled"
     )]
     pub lithology: crate::tectonics_c1::closures::lithology::LithologyConfig,
+    /// **C-3b inherited structure** (closures roadmap §3b). When `fracture.enabled`,
+    /// `upscale_from_c1` builds a DIRECTIONAL fracture field (density × strike, causal
+    /// from plate kinematics) and threads it into the stream-power incision so valleys
+    /// align on the tectonic fabric (anisotropic K, no relief added → C-1 survives).
+    /// Default (`enabled = false`) → byte-identical. Only read when `stream_power` is
+    /// `Some`. See [`crate::tectonics_c1::closures::fracture`].
+    #[serde(
+        default,
+        skip_serializing_if = "crate::tectonics_c1::closures::fracture::FractureConfig::is_disabled"
+    )]
+    pub fracture: crate::tectonics_c1::closures::fracture::FractureConfig,
 }
 
 /// serde default for [`FbmUpscaleConfig::sample_size`] (a missing field must
@@ -216,6 +227,7 @@ impl Default for FbmUpscaleConfig {
             bathymetry: None,
             target_land_fraction: None,
             lithology: crate::tectonics_c1::closures::lithology::LithologyConfig::default(),
+            fracture: crate::tectonics_c1::closures::fracture::FractureConfig::default(),
         }
     }
 }

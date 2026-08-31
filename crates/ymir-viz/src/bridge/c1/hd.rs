@@ -142,6 +142,11 @@ pub struct HdParams {
     /// ABOVE, causal — never noise/geometry) and thread it into the stream-power
     /// incision. Only takes effect with `stream_power` on (that is where K threads in).
     pub lithology: Option<ymir_core::tectonics_c1::closures::lithology::LithologyConfig>,
+    /// C-3b inherited structure (closures roadmap §3b). `None` (default) → OFF,
+    /// byte-identical. `Some(cfg)` with `enabled` → modulate erodibility ISOTROPICALLY
+    /// by fracture density (proximity to plate contacts): intact craton retains relief
+    /// (×1 reference), fractured belts erode more. Only bites with `stream_power` on.
+    pub fracture: Option<ymir_core::tectonics_c1::closures::fracture::FractureConfig>,
     /// Debug microscope: derive the coarse tectonic labels (rift/subduction/craton/…)
     /// for the overlay. Costs one extra ~1 s coarse pass; `false` (default) skips it.
     pub emit_tectonic_labels: bool,
@@ -167,6 +172,7 @@ impl Default for HdParams {
             export_dir: None,
             volcanism: None,
             lithology: None,
+            fracture: None,
             emit_tectonic_labels: false,
         }
     }
@@ -581,6 +587,18 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
                     litho.soft_multiplier, litho.volcanic_multiplier
                 );
             }
+        }
+        // C-3b inherited structure — fracture-density erodibility (domain_km = the
+        // geometric span, like volcanism). None/disabled → uniform, byte-identical.
+        if let Some(mut fr) = params.fracture.clone() {
+            fr.domain_km = params.domain_km;
+            if fr.enabled {
+                eprintln!(
+                    "[HD] C-3b fracture ON (amplitude ×{:.0}, decay {:.0} km)",
+                    fr.amplitude, fr.decay_km
+                );
+            }
+            upscale.fracture = fr;
         }
     }
     // Land report FIRST (reads only `target_land_fraction`) so the seam-correct

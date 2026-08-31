@@ -103,8 +103,15 @@ pub fn eroded_key_full(
     };
     // C-3 lithology rides in `upscale_cfg` (skipped when disabled), so only its ALGO
     // version needs appending here, and only when enabled → disabled key unchanged.
-    if upscale_cfg.lithology.enabled {
+    let key = if upscale_cfg.lithology.enabled {
         key.with("litho_algo", &super::closures::lithology::LITHOLOGY_ALGO)
+    } else {
+        key
+    };
+    // C-3b fracture — same pattern: config rides in `upscale_cfg`, append the ALGO only
+    // when enabled so a disabled key is byte-identical to pre-C-3b.
+    if upscale_cfg.fracture.enabled {
+        key.with("fracture_algo", &super::closures::fracture::FRACTURE_ALGO)
     } else {
         key
     }
@@ -246,6 +253,7 @@ pub fn cached_c1_eroded_with_progress(
             upscale_cfg,
             &edifices,
             volcanism,
+            Some(&kin), // C-3b: kin for the fracture field (alive here on the miss path)
             progress,
             cancel,
         );
