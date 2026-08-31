@@ -295,6 +295,7 @@ fn run_sweep(target: usize) {
             &cfg,
             &edifices,
             &volc,
+            None,
             &mut |_| {},
             &|| false,
         );

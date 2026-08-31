@@ -2492,3 +2492,113 @@ so the C-2 edifice morphology is dissected, not flattened — ×30/×100 halve t
 cones just built). Gated OFF by default (`LithologyConfig::enabled = false`) → byte-identical production; the
 eroded cache key is byte-identical when disabled (config skipped from serialization, `LITHOLOGY_ALGO` appended
 only when enabled).
+
+## C-3b — Inherited structure: fracture density (shipped), orientation (measured out)
+
+C-3 established the basement is lithologically UNIFORM and hard — physics, not a gap. C-3b's premise: a mature
+basement's structure is TECTONIC, not lithological — the same rock, but CUT by fractures. Density → erodibility
+is well founded (Molnar 2007, *Tectonics, fracturing of rock, and erosion*: tectonics erodes mostly by
+fracturing → plucking; Clarke & Burbank 2011; Zondervan et al.: ~1–2 orders of K, and fracturing homogenises the
+inter-lithology contrast by ~1 order; domain of validity: bedrock rivers, brittle upper crust <~10 km,
+detachment-limited — the relief-v3 regime). Orientation → fabric is standard too (Anderson 1905; World Stress
+Map, Heidbach/Zoback: intraplate SHmax ∥ plate motion at first order → the topographic fabric strikes ⊥ SHmax).
+
+### The orientation was BUILT, MEASURED, and dropped — a characterised limitation
+
+The directional closure (valleys aligned on the fabric via anisotropic incision) was implemented in full and
+measured on the whole chain (`c3b_fracture_sweep`, both resolutions). It does not work, and the measurement says
+why, twice:
+- **Rate anisotropy cannot re-route drainage.** `K_eff = K·(1 + a·|flow·strike|)` just raised total erosion
+  (relief 332→222, a global-rate confound). The mean-preserving form `K·(1+a·align)/(1+a·(1-align))` removed
+  that confound (relief held 332→334) and yet fabric alignment |flow·strike| STILL fell (0.639→0.536, both
+  resolutions) and closed depressions ROSE (1001→2146). The incision RATE acts on a receiver fixed by topography;
+  it cannot reorient the network, so it cannot align valleys. The lock is flow ROUTING.
+- **Routing is out of reach, and would be an artefact anyway.** Biasing `compute_flow` has a blast radius over
+  C-1, river extraction, lakes, the whole hydro chain stabilised across ~15 passes. And C1's directional field is
+  too poor to feed it: per-plate CONSTANT velocities, no per-cell strain, no deformation history → a uniform
+  per-plate strike → a continent-wide identical grain, an artefact as visible as the Smith–Bretherton comb. The
+  premise is also weak: the Appalachian trellis is FOLDED STRATA (out of scope), not fractures; real
+  fracture-controlled drainage (rectangular patterns on jointed granite) is provincial and subtle, not
+  continental.
+
+**Specification for a future directional closure** (what it would take, recorded not built): a per-cell stress
+or strain-rate field (not constant per-plate velocities), a deformation HISTORY (to carry paleo-stress, since
+today's fabric is inherited from past orogenies), OR folded-strata layering — plus a routing coupling in
+`compute_flow` with its C-1/rivers/lakes regression budget. None exists in C1 today.
+
+### FBM floor — a ROADMAP correction (not a C-3b failure)
+
+The C-3b brief made "the FBM floor must shrink" a pass/fail criterion. That was mis-posed. The FBM fills the
+128× upscale — wavelengths from the coarse cell (~6 km) down to the HD cell (~49 m). NO tectonic closure holds
+information BELOW the coarse cell, so no closure can replace the noise IN ITS OWN BAND; closures add structure at
+scales ≥ the coarse cell, and sub-coarse detail can only come from erosion, which needs a symmetry-breaking seed
+— the C-1 degeneracy floor. So lowering the FBM amplitude floor is unreachable IN PRINCIPLE by any closure, C-4
+included. This is the limit of what closures can do against the noise, recorded as a result. C-1's flow
+conditioning (stop the FBM fabricating depressions) remains the right and achievable goal; REPLACING the FBM's
+own band does not.
+
+### What ships — density only, causal, C-1-preserving
+
+Erodibility is modulated ISOTROPICALLY by fracture DENSITY: `K = 1 + amplitude · density`, `density ∈ [0,1]`.
+Density = `exp(-dist_to_contact / decay)` where the contacts are the DYNAMIC boundary classification's
+CONVERGENT + TRANSFORM cells (orogens + shear — the fracturing regimes; divergent = rift is C-3's domain). It is
+NOT `cratonic_mask` (the FBM-noise-refined field C-3 rejected) and NOT the geometric craton placeholder
+(`seed_x < nx/2`) — the same discipline that settled C-3. The intact craton EMERGES as the region far from every
+contact, at `density → 0 → K = 1` (the reference — global-slowdown nil by construction, the C-3 design that
+survives).
+
+Measured (whole chain, both resolutions, `c3b_fracture_sweep`), with the narrow orogenic belt (`decay = 25 km`)
+that keeps the craton the MAJORITY (coverage: craton 53 %, transition 27 %, belt 20 %):
+- **8192² (the export verdict):** CRATON relief flat across the sweep (105→104 m — the reference holds exactly);
+  BELT relief RISES with amplitude (398→538 m at ×16, +35 % — at export resolution, fracturing DISSECTS the
+  orogen into more valleys); closed depressions FALL (17382→15639 — C-1 improves, unlike the anisotropic test
+  that pushed pits to 2146). Contrast (belt/craton) 3.8→5.2.
+- **2048²:** craton nearly flat (284→249), belt relief falls (1109→780 — at coarse resolution the extra erosion
+  wears the orogen down rather than dissecting it); pits stable ~1000. The sign flip with resolution is expected
+  (the 1 km relief window resolves dissection only at HD).
+
+**Chosen:** `amplitude = ×6`, `decay = 25 km`. The limiting factor is NOT the physics (Molnar's 1–2 orders
+leaves room to ×8+) but the LAKE POPULATION: fracturing the belt dissects it into more small enclosed basins →
+more small lakes, and the hydro chain's most laborious machinery (inventory thresholds, sink validity, submarine
+basins, outlet invariants, stabilised across ~15 passes) is exactly what small lakes exercise. ×6 gives real
+visibility over ×4 without doubling that pressure; ×8 is measured safe ON THIS SEED but a wider orogenic belt or
+an arid climate could react differently, so margin is kept until C-4 (which also touches the coast). Gated OFF by
+default → byte-identical; the eroded key adds `FRACTURE_ALGO` only when enabled.
+
+**The contrast is DISCRETE BY NATURE — the correct result, recorded so it is not re-discovered as a
+disappointment.** With ~20 % fractured belt over a basement that C-3 established is UNIFORMLY HARD (anchored on
+Stock & Montgomery), this closure can only produce REGIONAL VARIETY (one orogenic province more dissected than
+the shield), NOT a change in the continent's overall appearance. The author's export read — "a bit better but
+subtle; a few more, smaller lakes" — is exactly the expected signature. Asking C-3b for more would mean either
+inventing lithological variety in the craton (contradicts C-3 / the source) or the directional mechanism
+(measured out above). Subtle-but-causal is the ceiling here, and it is the right ceiling.
+
+### Fossil sutures — deferred with a specification
+
+Accretion welds terranes along a suture that becomes a fossil zone of weakness INSIDE a plate. C1's accretion
+records WHEN/how-many merges fire (`AccretionStats` counters) but NOT WHERE — after the merge the seam is inside
+a uniform `plate_id` region, unrecoverable, and `age` is degenerate (7.0 over 92 % continental). The current
+density DOES capture ACTIVE collision/subduction belts (they are Convergent boundaries). Fossil sutures would
+need recording the weld location at merge time (snapshot `plate_id` before reassignment in
+`accretion::merge::apply_accretion_step`, accumulate a suture mask on `C1State` with snapshot handling) — the
+plumbing is specified, not built in this pass, since the boundary-contact density already covers the active
+belts. `FractureConfig::suture_multiplier` + the `suture_mask` argument of `derive_coarse_density` are the hooks.
+
+### C-3b lake population — a FRAGILITY point to watch (not a blocker)
+
+The ×6 export (production seed, 8192², humid) validated: C-2 crater lakes UNCHANGED (1 acidic / 6 dry, on and
+off), and the Finding 37 canary already fires at BASELINE (1 exorheic lake with no traced outlet, `1000023`) — so
+C-3b does not break a clean invariant; it adds ONE more (→2, `[54, 1000033]`), a real belt-dissection basin with
+an outlet-tracer edge case, not a broken lake. That residual baseline orphan is filed as its own issue (the
+Finding 37 inversion, commit `dd1b48a`, has a residual geometric hole — the ID shifting `1000023 → 1000033` under
+the terrain change points at the tracer, not a specific basin).
+
+The number that deserves the watch, though, is the SUBMARINE basins: the ×6 run reports `below-sea basins: 43
+lakes (43 exorheic, 0 endorheic); 62 spillways (37 → sea, 25 chained)` — roughly DOUBLE the prior baseline (~21).
+Belt dissection carves more coastal/below-sea depressions, so this is consistent with the mechanism, but the
+submarine-basin population is the part of the pipeline that cost the most to stabilise (Findings 36→40), and it
+has just doubled. Record this as the FRAGILITY POINT: if a future seed with a larger orogenic belt, a stronger
+amplitude, or C-4's coastal erosion pushes it further, the submarine sink/outlet machinery is where it will crack
+FIRST. (The exact same-seed OFF submarine count was not re-printed here — that export was a cache HIT — so the
+~21 is the author's prior baseline; a dedicated OFF MISS run would pin the delta. The crater-lake population is
+untouched, so the doubling is concentrated in the coastal/below-sea class, not the whole lake population.)

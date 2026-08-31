@@ -29,14 +29,34 @@ place d'une physique manquante, et c'est pourquoi il fabrique des artefacts.
 Deux lectures du même chantier, l'une immédiate, l'autre de fond :
 
 - **court terme** — empêcher le FBM de créer des dépressions ;
-- **fond** — **remplacer progressivement le FBM par les closures manquantes**. Chaque
-  closure ajoutée réduit la part de bruit nécessaire, jusqu'à ce qu'il redevienne ce
-  qu'il aurait dû être : une simple **graine de brisure de symétrie**.
+- **fond** — **ajouter de la STRUCTURE CAUSALE aux échelles ≥ cellule grossière**, ce
+  qu'aucune closure ne faisait avant. Formulation corrigée en C-3b : « remplacer
+  progressivement le FBM » était inatteignable — aucune closure ne détient d'information
+  SOUS la cellule grossière (~6 km), donc aucune ne peut le remplacer dans sa propre bande
+  (~6 km → 49 m), que seule l'érosion comble à partir d'une graine de brisure de symétrie.
+  Ce qui reste vrai et acquis : les closures retirent au FBM la charge de représenter une
+  physique aux échelles qu'elles couvrent, et l'empêchent de fabriquer des artefacts (C-1).
+  Le FBM ne disparaît pas ; il redevient une **graine de détail sous-grossier**, pas le
+  porteur d'une structure qu'il n'a jamais eu les moyens de représenter. (Ce critère vaut
+  aussi pour C-4 : l'érosion côtière sera jugée sur l'ajout de structure littorale causale,
+  pas sur un rétrécissement du plancher FBM qu'elle ne peut pas produire non plus.)
 
 Règle qui accompagne cette trajectoire : à mesure que les closures arrivent, **le FBM doit
 rétrécir, pas cohabiter**. Deux sources de détail — une causale, une aléatoire — qui se
 superposent sans se coordonner reproduiraient le problème des stries, qui a coûté
 plusieurs passes à diagnostiquer.
+
+**Correction (établie en C-3b) — jusqu'où le FBM peut rétrécir.** Le FBM comble le 128×
+d'upscale : des longueurs d'onde de la cellule grossière (~6 km) à la cellule HD (~49 m).
+**Aucune closure tectonique ne détient d'information SOUS la cellule grossière.** Les
+closures ajoutent donc de la structure aux échelles ≥ cellule grossière ; elles **ne
+peuvent pas remplacer le bruit DANS SA PROPRE BANDE** (le détail sous-grossier ne peut venir
+que de l'érosion, qui exige une graine de brisure de symétrie — le plancher de dégénérescence
+de C-1). Faire *baisser le plancher d'amplitude FBM* est donc **inatteignable par principe**,
+pour C-3b comme pour C-4. Ce que les closures font, et doivent faire, c'est empêcher le FBM
+de fabriquer des artefacts (C-1) et lui retirer la charge de représenter une physique aux
+échelles qu'elles couvrent — pas le supprimer sous la cellule grossière. Consigné à l'ADR
+(section « C-3b »).
 
 ## Ce qui a été écarté, et pourquoi
 
@@ -110,7 +130,7 @@ celles du volcanisme sont **volontaires** et doivent être reconnues comme telle
 filtrées avec le bruit. Faire le conditionnement d'abord met ce critère en place avant
 d'en avoir besoin.
 
-### 3. Hétérogénéité lithologique — 🔬 IMPLÉMENTÉ, en attente de validation visuelle (voir ADR 0001, section « C-3 »)
+### 3. Hétérogénéité lithologique — ✅ FAIT (voir ADR 0001, section « C-3 »)
 
 **La seule des quatre qui REMPLACE du bruit par de la structure.** Volcanisme et érosion
 côtière *ajoutent* du relief ; la lithologie change la façon dont **tout le reste**
@@ -135,6 +155,37 @@ Reste : la validation visuelle de l'auteur sur l'export, puis marquer ✅ FAIT.
 
 La déposition manque (érosion production détachment-limited) → pas de bassins sédimentaires
 causaux ; enregistré comme limitation dans l'ADR, non comblé par du bruit ou de la géométrie.
+
+### 3b. Structure héritée (fracturation) — ✅ FAIT (densité seule ; voir ADR 0001, section « C-3b »)
+
+**Pourquoi.** C-3 a établi que le socle est lithologiquement uniforme et dur — de la physique,
+pas un manque. La structure d'un socle mûr n'est donc pas lithologique mais **tectonique** :
+la même roche, mais **découpée** par des fractures. La densité de fracturation contrôle
+l'érodabilité (Molnar 2007 : la tectonique érode surtout en fracturant → plucking).
+
+**Ce qui est livré — la densité seule, isotrope.** `K = 1 + amplitude·densité`, densité =
+proximité aux contacts tectoniques (frontières **convergentes + transformantes** de la
+classification dynamique — jamais `cratonic_mask` ni le placeholder géométrique). Le craton
+intact **émerge** loin des contacts à `K=1` (référence, ralentissement global nul par
+construction) ; les ceintures orogéniques fracturées s'érodent/disséquent plus. Mesuré sur la
+chaîne complète, deux résolutions : à 8192² (l'export) le craton tient exactement (105→104 m)
+et la ceinture gagne de la dissection (398→538 m à ×16), **C-1 s'améliore** (pits 17382→15639).
+Défauts : amplitude ×4, ceinture étroite (decay 25 km, craton = 53 % majoritaire). Gated OFF →
+byte-identique.
+
+**Ce qui a été écarté — l'orientation, mesurée puis abandonnée.** Le closure directionnel
+(vallées alignées sur la fabrique via incision anisotrope) a été **implémenté et mesuré** : il
+ne marche pas. Le taux d'incision ne peut pas réorienter un récepteur figé par la topo
+(alignement 0.639→0.536 à relief préservé, pits 1001→2146). Le verrou est le **routage**, mais
+son rayon d'impact couvre C-1/rivières/lacs et le champ directionnel de C1 est trop pauvre
+(vitesses constantes par plaque, pas de strain, pas d'histoire) → grain uniforme = artefact.
+Et la premisse est faible (le treillis appalachien = plis stratifiés, hors-scope). Limitation
+caractérisée + spécifiée à l'ADR.
+
+**Sutures fossiles** différées avec spécification (l'accrétion n'enregistre pas *où* elle soude ;
+la densité-frontières capte déjà les collisions actives).
+
+Reste : validation visuelle de l'auteur sur l'export, puis ✅ FAIT.
 
 ### 4. Érosion côtière
 

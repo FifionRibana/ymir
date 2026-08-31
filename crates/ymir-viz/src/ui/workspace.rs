@@ -257,6 +257,11 @@ struct WorkspaceState {
     /// volcaniclastic ×3). Off by default (production byte-identical). Only bites
     /// with stream-power on.
     lithology: bool,
+    /// EXPERIMENTAL (C-3b, closures roadmap §3b): inherited structure — fracture-density
+    /// erodibility (intact craton ×1 reference, fractured belts near plate contacts
+    /// erode more). Off by default (production byte-identical). Only bites with
+    /// stream-power on.
+    fracture: bool,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
     export_dir: String,
     // Derived / cache.
@@ -368,6 +373,7 @@ impl Default for WorkspaceState {
             fbm_amplitude: 0.04, // #190 — the production seed's amplitude (fine relief detail)
             volcanism: false,    // C-2 opt-in (Expert); production byte-identical
             lithology: false,    // C-3 opt-in (Expert); production byte-identical
+            fracture: false,     // C-3b opt-in (Expert); production byte-identical
             export_dir: "exports".to_string(),
             current: None,
             preview: None,
@@ -919,6 +925,17 @@ fn left_panel(
                                     rift_age_threshold: 1.0,
                                 }
                             }),
+                            // C-3b opt-in. Chosen from the sweep: amplitude ×6 (visible
+                            // over ×4 without doubling the lake-population pressure that
+                            // ×8 would add), narrow orogenic belt (decay 25 km).
+                            fracture: ws.fracture.then(|| {
+                                ymir_core::tectonics_c1::closures::fracture::FractureConfig {
+                                    enabled: true,
+                                    amplitude: 6.0,
+                                    decay_km: 25.0,
+                                    ..Default::default()
+                                }
+                            }),
                             // Debug microscope overlay — derive the tectonic labels so
                             // the overlay panel has data (one cheap coarse pass).
                             emit_tectonic_labels: true,
@@ -1017,6 +1034,19 @@ fn left_panel(
                                  ×10, footprints volcaniclastiques ×3. La roche tendre s'érode plus → \
                                  vallées ouvertes; le socle dur retient le relief. N'agit qu'avec la \
                                  stream-power. Le log [HD C-3 lithology] confirme.",
+                            );
+                            // C-3b inherited structure (needs stream-power on to bite).
+                            ui.checkbox(
+                                &mut ws.fracture,
+                                egui::RichText::new("Structure héritée (C-3b)").color(DIM2).size(11.0),
+                            )
+                            .on_hover_text(
+                                "Closures roadmap §3b — densité de fracturation CAUSALE (proximité des \
+                                 contacts tectoniques, jamais du bruit ni cratonic_mask): érodabilité \
+                                 isotrope, craton intact ×1 (référence, garde son relief), ceintures \
+                                 fracturées près des orogènes/transformants s'érodent/disséquent plus. \
+                                 L'orientation a été écartée (non atteignable avec C1 — voir ADR). N'agit \
+                                 qu'avec la stream-power. Le log [HD C-3b fracture] confirme.",
                             );
                         } else {
                             // STANDARD — the production recipe, forced on. No fallback toggle.
@@ -1851,6 +1881,7 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         export_dir: None,
         volcanism: None,
         lithology: None,
+        fracture: None,
         emit_tectonic_labels: false, // preview is coarse-only; overlays need the HD run
     }
 }

@@ -287,9 +287,10 @@ pub fn incise(height: &GridF32, cfg: &StreamPowerConfig) -> GridF32 {
     incise_with_progress(height, cfg, None, &mut |_, _| {})
 }
 
-/// [`incise`] with a per-cell erodibility MULTIPLIER (`k_field`, C-3 lithology:
-/// `1.0` = hard basement / reference, `> 1` = softer rock erodes more) applied on
-/// top of `cfg.k`. `None` → uniform (byte-identical to plain [`incise`]).
+/// [`incise`] with a per-cell erodibility MULTIPLIER (`k_field`, C-3 lithology + C-3b
+/// fracture density: `1.0` = hard basement / reference, `> 1` = softer / more-fractured
+/// rock erodes more) applied on top of `cfg.k`. `None` → uniform (byte-identical to
+/// plain [`incise`]).
 pub fn incise_lithology(
     height: &GridF32,
     cfg: &StreamPowerConfig,
@@ -395,7 +396,8 @@ pub fn incise_with_progress(
             if area < cfg.min_area_cells {
                 continue; // A_c: hillslope regime — no fluvial incision (channel head)
             }
-            // C-3: per-cell erodibility (lithology). None → uniform (kf = 1).
+            // C-3 lithology + C-3b fracture density: per-cell erodibility multiplier.
+            // None → uniform (kf = 1, byte-identical).
             let kdt = k_base_dt * k_field.map_or(1.0, |kf| kf[k]);
             let hr = field.data[r];
             let ho = field.data[k];

@@ -365,7 +365,10 @@ pub fn upscale_from_c1(
 ) -> UpscaleResult {
     // No volcanism (empty edifice list, disabled config) → byte-identical.
     let volc = crate::tectonics_c1::closures::volcanism::VolcanismConfig::default();
-    upscale_from_c1_with_progress(state, iso, ss, seed, cfg, &[], &volc, &mut |_| {}, &|| false).0
+    upscale_from_c1_with_progress(state, iso, ss, seed, cfg, &[], &volc, None, &mut |_| {}, &|| {
+        false
+    })
+    .0
 }
 
 /// [`upscale_from_c1`] with sub-phase progress emission + mid-erosion cancel.
@@ -382,6 +385,10 @@ pub fn upscale_from_c1_with_progress(
     cfg: &FbmUpscaleConfig,
     edifices: &[crate::tectonics_c1::closures::volcanism::Edifice],
     volcanism: &crate::tectonics_c1::closures::volcanism::VolcanismConfig,
+    // C-3b: plate kinematics for the fracture field (velocities → SHmax → strike). The
+    // final `kin` lives only on the miss path (with `state`), so it is passed in like
+    // `edifices`. `None` → no fracture field (byte-identical).
+    kin: Option<&crate::tectonics_c1::kinematics::PlateKinematics>,
     progress: &mut dyn FnMut(EroProgress),
     cancel: &dyn Fn() -> bool,
 ) -> (UpscaleResult, Vec<crate::tectonics_c1::closures::volcanism::CraterRecord>) {
@@ -432,7 +439,7 @@ pub fn upscale_from_c1_with_progress(
         // incision. Registered with the SAME (sample_origin, sample_size) mapping as
         // the altitude, so it aligns with the terrain. Disabled → `None`, uniform K,
         // byte-identical.
-        let k_field = if cfg.lithology.enabled {
+        let mut k_field = if cfg.lithology.enabled {
             use crate::tectonics_c1::closures::lithology;
             let (w, h) = (result.heightmap.width, result.heightmap.height);
             let coarse_k = lithology::build_coarse_k(state, &cfg.lithology);
@@ -455,6 +462,34 @@ pub fn upscale_from_c1_with_progress(
         } else {
             None
         };
+        // C-3b inherited structure — fold the ISOTROPIC fracture-density erodibility
+        // (K = 1 + amplitude · density, causal from proximity to plate contacts +
+        // sutures) into the same per-cell K field. Intact craton → density 0 → ×1
+        // reference; belts near contacts erode more. Needs `kin` (boundary
+        // classification); disabled or no `kin` → unchanged, byte-identical.
+        let (w, h) = (result.heightmap.width, result.heightmap.height);
+        if cfg.fracture.enabled {
+            if let Some(kinm) = kin {
+                let dk = crate::tectonics_c1::closures::fracture::build_hd_density_k(
+                    state,
+                    kinm,
+                    &cfg.fracture,
+                    None, // Phase B: suture mask
+                    w,
+                    h,
+                    cfg.sample_origin,
+                    cfg.sample_size,
+                );
+                match &mut k_field {
+                    Some(kf) => {
+                        for (v, d) in kf.iter_mut().zip(dk.iter()) {
+                            *v *= *d;
+                        }
+                    }
+                    None => k_field = Some(dk),
+                }
+            }
+        }
         result.heightmap = crate::erosion::stream_power::incise_lithology(
             &result.heightmap,
             sp,
