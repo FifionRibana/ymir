@@ -51,8 +51,8 @@ use ymir_core::tectonics_c1::cached_product::{
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
     C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, apply_geo_scale_ratio,
-    below_sea_basin_lakes, c1_drainage_windowed, clip_rivers_to_lakes,
-    exorheic_lakes_missing_outlet,
+    below_sea_basin_lakes_infil, c1_drainage_windowed_infil, classify_lakes_water_balance,
+    clip_rivers_to_lakes, exorheic_lakes_missing_outlet,
 };
 use ymir_core::tectonics_c1::land_topology::{
     IslandEval, LandTopology, evaluate_island, land_topology,
@@ -147,6 +147,11 @@ pub struct HdParams {
     /// by fracture density (proximity to plate contacts): intact craton retains relief
     /// (×1 reference), fractured belts erode more. Only bites with `stream_power` on.
     pub fracture: Option<ymir_core::tectonics_c1::closures::fracture::FractureConfig>,
+    /// H-1 infiltration (the first subsurface term). `None` (default) → OFF, the pre-H-1
+    /// water balance byte-identical. `Some(cfg)` with `enabled` → a causal permeability
+    /// field (lithology matrix + fracture density, double porosity) sets the fraction of
+    /// the precipitation surplus that infiltrates and never reaches a lake by surface flow.
+    pub infiltration: Option<ymir_core::tectonics_c1::closures::infiltration::InfiltrationConfig>,
     /// Debug microscope: derive the coarse tectonic labels (rift/subduction/craton/…)
     /// for the overlay. Costs one extra ~1 s coarse pass; `false` (default) skips it.
     pub emit_tectonic_labels: bool,
@@ -173,6 +178,7 @@ impl Default for HdParams {
             volcanism: None,
             lithology: None,
             fracture: None,
+            infiltration: None,
             emit_tectonic_labels: false,
         }
     }
@@ -402,6 +408,7 @@ pub fn preview_shape(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>) 
 /// base drainage with real discharge, the below-sea water-balance merge + cleanup (Findings 18/39),
 /// the river clip, the spillway append and the geographic-scale post-process. A PURE function of
 /// exactly the inputs `hd_drainage_key` folds — so caching it under that key is stale-proof.
+#[allow(clippy::too_many_arguments)]
 fn build_hd_drainage(
     eroded: &GridF32,
     climate: &ClimateResult,
@@ -410,6 +417,8 @@ fn build_hd_drainage(
     ss: &SteinSteinParams,
     window_km: f32,
     geo_scale_ratio: f32,
+    // H-1: per-cell infiltrated fraction (None → pre-H-1 balance, byte-identical).
+    infiltration: Option<&[f32]>,
 ) -> HdDrainageBundle {
     let dclim = DrainageClimate {
         precip_internal: &climate.precipitation,
@@ -417,17 +426,72 @@ fn build_hd_drainage(
     };
     // relief-v3: final drainage on the breached field, carrying the pre-breach lakes; legacy path
     // (prebreach None): plain drainage on the raw eroded. Both with the climate discharge (Finding 22).
-    let mut drainage = if let Some(prebreach) = prebreach {
-        let mut dr = c1_drainage_windowed(eroded, Some(&dclim), dcfg, ss, window_km);
+    let (mut drainage, carried_geometric_lakes) = if let Some(prebreach) = prebreach {
+        let mut dr =
+            c1_drainage_windowed_infil(eroded, Some(&dclim), dcfg, ss, window_km, infiltration);
+        // The pre-breach lakes are the GEOMETRICALLY correct ones (the breach destroys the
+        // depressions) — but they were detected with `climate = None`, so they carry NO
+        // water balance. Their geometry is adopted; their classification is fixed below.
         dr.lakes = prebreach.lakes;
         dr.lake_map = prebreach.lake_map;
-        dr
+        (dr, true)
     } else {
-        c1_drainage_windowed(eroded, Some(&dclim), dcfg, ss, window_km)
+        (c1_drainage_windowed_infil(eroded, Some(&dclim), dcfg, ss, window_km, infiltration), false)
     };
+    // H-1 — THE MISSING LINK, and a CORRECTION, so it runs BY DEFAULT (not gated): lakes
+    // classified without ever seeing the climate are simply wrong. The relief-v3 path
+    // carries the climate-free pre-breach lakes, so they were exorheic by pure geometry
+    // ("the outlet reaches the sea"). Run the balance on them and adopt the CLASSIFICATION
+    // ONLY — geometry, levels and footprints stay untouched (adopting an endorheic
+    // equilibrium LEVEL would be H-2 by the back door). Crater types (C-2) are never
+    // overwritten. The optional H-1 INFILTRATION rides in `infiltration` (measured a
+    // secondary term: 0–3 lakes, against 53–100 % from this reclassification alone).
+    if carried_geometric_lakes {
+        let (w, h) = (eroded.width, eroded.height);
+        let cell_km2 = (window_km / w as f32).powi(2);
+        let verdicts = classify_lakes_water_balance(
+            eroded,
+            &drainage.flow,
+            &dclim,
+            cell_km2,
+            &drainage.lakes,
+            &drainage.lake_map,
+            infiltration,
+            w,
+            h,
+        );
+        let (mut flipped, mut flipped_km2) = (0usize, 0.0f32);
+        for lk in drainage.lakes.iter_mut() {
+            if !matches!(lk.lake_type, LakeType::Exorheic | LakeType::Endorheic) {
+                continue; // crater lakes keep their C-2 chemistry
+            }
+            if let Some(v) = verdicts.iter().find(|v| v.id == lk.base.id) {
+                if v.lake_type != lk.lake_type {
+                    flipped += 1;
+                    flipped_km2 += lk.area_km2;
+                }
+                lk.lake_type = v.lake_type;
+            }
+        }
+        let endo = drainage.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).count();
+        eprintln!(
+            "[HD] H-1 surface water balance: {} lake(s) reclassified ({:.0} km²) → {} endorheic / {} total",
+            flipped,
+            flipped_km2,
+            endo,
+            drainage.lakes.len()
+        );
+    }
     let (wetland_mask, below_sea_spillways) = {
-        let bs =
-            below_sea_basin_lakes(eroded, &dclim, dcfg, ss, window_km, Some(&drainage.lake_map));
+        let bs = below_sea_basin_lakes_infil(
+            eroded,
+            &dclim,
+            dcfg,
+            ss,
+            window_km,
+            Some(&drainage.lake_map),
+            infiltration,
+        );
         let (mut endo, mut exo) = (0usize, 0usize);
         for lk in &bs.lakes {
             match lk.lake_type {
@@ -667,6 +731,10 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let mut dcfg = C1DrainageConfig::default();
     dcfg.thresholds.head_km2 = ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2;
     dcfg.thresholds.full_tree = false;
+    // H-1: the infiltration TUNABLES ride in the drainage config so BOTH drainage cache
+    // keys fold them (the per-cell field is derived from the same seed/tectonic configs
+    // already covered by the eroded key). None → key byte-identical to pre-H-1.
+    dcfg.infiltration = params.infiltration.clone().filter(|c| c.enabled);
     let cache_dir = default_cache_dir();
     let lat = params.latitude_deg;
 
@@ -977,6 +1045,51 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     let t = Instant::now();
     // #190 — the FINAL drainage (base + below-sea merge + clip + spillways + geo-scale) and the
     // wetland mask are cached as ONE bundle under a COMPLETE key; the same params re-selected HIT.
+    // H-1 — build the per-cell INFILTRATED FRACTION from the causal permeability
+    // (lithology matrix + fracture density, double porosity; no slope term — the
+    // literature does not support one). Costs one cheap coarse tectonic pass. Disabled →
+    // `None` → the pre-H-1 balance, byte-identical.
+    let infil_field: Option<Vec<f32>> = dcfg.infiltration.as_ref().map(|ic| {
+        use ymir_core::tectonics_c1::closures::infiltration::build_hd_infiltration;
+        use ymir_core::tectonics_c1::closures::volcanism::place_edifices;
+        use ymir_core::tectonics_c1::debug_labels::run_coarse_tectonics;
+        let (st, kn) = run_coarse_tectonics(
+            spec.seed,
+            spec.grid_size,
+            &spec.init_params,
+            &run,
+            &spec.closures,
+        );
+        let edi = if volc.enabled {
+            place_edifices(
+                &st,
+                &kn,
+                &ymir_core::seed::WorldSeed::new(spec.seed),
+                volc.domain_km,
+                &volc,
+            )
+        } else {
+            Vec::new()
+        };
+        let km_per_cell = upscale.sample_size as f32 * params.domain_km / eroded.width as f32;
+        eprintln!(
+            "[HD] H-1 infiltration ON (f_cap {:.2}, k_ref {:.1e} m/day)",
+            ic.f_cap, ic.k_ref_m_per_day
+        );
+        build_hd_infiltration(
+            &st,
+            &kn,
+            &upscale.lithology,
+            &upscale.fracture,
+            ic,
+            &edi,
+            eroded.width,
+            eroded.height,
+            upscale.sample_origin,
+            upscale.sample_size,
+            km_per_cell,
+        )
+    });
     let (mut drainage, wetland_mask) = match cached(&cache_dir, "hd_drainage", &hd_dr_key, || {
         build_hd_drainage(
             &eroded,
@@ -986,6 +1099,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             &ss,
             window_km,
             params.geo_scale_ratio,
+            infil_field.as_deref(),
         )
     }) {
         Ok(b) => (b.drainage, b.wetland),
@@ -1035,7 +1149,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             precip_internal: &climate.precipitation,
             temperature: &climate.temperature,
         };
-        let runoff = runoff_accumulation(&eroded, &flow, &dclim, cell_km2, None, gw, gh);
+        let runoff = runoff_accumulation(&eroded, &flow, &dclim, cell_km2, None, None, gw, gh);
         let (held, dry) = ymir_core::tectonics_c1::closures::volcanism::detect_crater_lakes(
             &eroded,
             &flow.filled,

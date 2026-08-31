@@ -2602,3 +2602,109 @@ amplitude, or C-4's coastal erosion pushes it further, the submarine sink/outlet
 FIRST. (The exact same-seed OFF submarine count was not re-printed here — that export was a cache HIT — so the
 ~21 is the author's prior baseline; a dedicated OFF MISS run would pin the delta. The crater-lake population is
 untouched, so the doubling is concentrated in the coastal/below-sea class, not the whole lake population.)
+
+## H-1 — Infiltration: the first subsurface term (before C-4)
+
+### Ordering: H-1 / H-2 come before coastal erosion (C-4)
+
+Sill incision (H-2) drains exorheic basins — the outlet carves its col, the lake retreats, the water re-emerges as
+a river — which MOVES the coastline (river mouths, deltas, the littoral base level). Sculpting the coast (C-4)
+first would work a shoreline H-2 then displaces, redoing the work. So the hydrology chain (H-1 then H-2) precedes
+C-4. Recorded in the roadmap.
+
+### The problem, and why H-1 is light
+
+The water balance reads `runoff = max(0, precip − PE)`: the ENTIRE precipitation surplus becomes surface runoff.
+Ymir has NO subsurface water. In reality a significant fraction INFILTRATES and never reaches a lake by surface
+flow, so the model over-supplies every basin — a direct contributor to the Finding-39 behaviour the diagnostic
+measured (92 lakes, 91 exorheic, 0 endorheic, 6220 km², the ten largest holding 74 %). H-1 adds the first
+subsurface term. Its blast radius is SMALL: it changes the BALANCE only, not geometry or routing; some basins flip
+endorheic and levels drop — a step forward that breaks nothing.
+
+### Literature (verified), and how it composes with Budyko
+
+- **Runoff coefficient / SCS Curve Number** (Rational method; USDA-SCS): the fraction of rainfall that becomes
+  DIRECT runoff, integrating infiltration, evaporation, interception, depression storage. CN ≈ 30 (permeable, high
+  infiltration) → 100 (impermeable / water). The coefficient RISES with lower soil permeability, STEEPER slope,
+  and sparser vegetation; falls on flat permeable ground. So infiltration ∝ permeability, and slope reduces it —
+  both physical, both in the literature.
+- **Baseflow Index (BFI)** — the groundwater share of streamflow, a proxy for the infiltrated fraction: 0.55–0.80
+  in the Housatonic basin (USGS), controlled by BEDROCK PERMEABILITY (permeable/porous bedrock → high BFI;
+  crystalline/impermeable → low). Crystalline-bedrock recharge (Kenogami) is a modest fraction.
+- **The "20–50 % infiltration" figure is a HYPOTHESIS, not established** — the published span is wider and
+  geology/climate-dependent (BFI 0.4–0.8; crystalline lower). The exact fraction is therefore a swept PROXY
+  (labelled in code + here), not asserted.
+- **Composition with Budyko** — the one place an error would be invisible, so stated explicitly. Budyko bounds the
+  SUPPLY side: `AET = min(precip, PE)`, and `runoff = precip − AET = max(0, precip − PE)`. Infiltration does NOT
+  touch AET; it SPLITS the runoff (post-Budyko) between surface flow and groundwater:
+  `surface_runoff = (precip − AET) · (1 − f_infil)`. The infiltrated `(precip − AET) · f_infil` leaves the surface
+  balance. The double-count trap (which caught the project once, on rain-credit vs catchment runoff): infiltrated
+  water must NOT reduce AET, and must NOT reappear as inflow anywhere. First approximation: infiltrated water is
+  lost to deep groundwater (not returned as baseflow) — which under-supplies slightly, the DESIRED direction.
+  Refinement path (not now): delayed baseflow return, re-emerging as river discharge downstream.
+- **No named prior art** couples a tectonic-closure permeability field (lithology + fracture density) to an
+  infiltration split in a terrain generator — the bricks (SCS-CN, BFI, Budyko) are standard, the assembly is a
+  LABELLED derivation.
+
+### Floor leakage — the second subsurface mechanism (its own issue, not H-1)
+
+A lake perched above the water table LEAKS THROUGH ITS FLOOR — the only mechanism that can empty a basin
+COMPLETELY without an outlet (karst, disappearing rivers). It is a DIFFERENT mechanism from infiltration (it acts
+on a standing lake, not on the runoff supply) and it needs a water-table datum Ymir does not have. It belongs in
+its OWN issue, not H-1 — recorded, not implemented blind.
+
+### What H-1 ACTUALLY delivered — the water balance restored to surface lakes
+
+The issue framed H-1 as "add infiltration so over-supplied basins flip endorheic". The measurement found the
+premise was wrong, and the real defect underneath it.
+
+**The defect.** In the production relief-v3 path the pre-breach drainage runs with `climate = None`
+(`hd.rs:886`) — the pure-GEOMETRY path, which fills every lake to its sill and calls it "Exorheic if the outlet
+reaches the sea", with NO water balance. `build_hd_drainage` then OVERWRITES the climate-computed lakes with
+those (`hd.rs:432-433`), because the pre-breach GEOMETRY is the correct one (the breach destroys the
+depressions). Net effect: **the shipped surface lakes never saw a water balance at all.** The decisive
+cross-check: in the arid-hot export every one of the 11 endorheic lakes has an id ≥ 1 000 001 — they are
+BELOW-SEA basins, the only class that is climate-aware. Not one surface lake was ever endorheic, in any climate.
+So Finding 39 ("net_evap ≈ 0 makes everything exorheic") held only for below-sea basins; for the 91 surface
+lakes, 6220 km², the ten largest at 74 % of the area, the exorheic verdict was GEOMETRIC.
+
+**The fix, shipped as the production DEFAULT (not gated) because it is a correction, not an option.** The
+carried pre-breach lakes are reclassified by the water balance
+(`drainage::classify_lakes_water_balance`, read-only). GEOMETRY, LEVELS and FOOTPRINTS are untouched — adopting
+an endorheic equilibrium level would be H-2 by the back door; crater types (C-2) are never overwritten.
+`ALGO_HD_DRAINAGE` bumped to 2. **This changes `lake_type` on every existing map, hence biomes and rendering —
+that IS the correction, not a side effect.**
+
+**Measured (whole chain, both resolutions, four climates, `tests/h1_infiltration_sweep.rs`).** Shipped
+population, geometry only: 2048² 67 lakes / 2247 km² / **exo 67, endo 0**; 8192² 58 lakes / 2199 km² / **exo 58,
+endo 0**. After reclassification (no infiltration):
+
+| climate | 2048² exo/endo | 8192² exo/endo |
+|---|---|---|
+| tropical 10° | 24 / 43 | 25 / 33 |
+| arid-hot 25° | 3 / 64 | 0 / 58 |
+| humid 45° | 27 / 40 | 27 / 31 |
+| arid-cold 65° | 14 / 53 | 12 / 46 |
+
+**53–100 % of surface lakes are endorheic once the balance is applied — including 45 % in HUMID.**
+
+**Infiltration is a SECONDARY term, measured and set aside as a lever — not forgotten.** On top of the
+reclassification it adds **0 to 3 lakes** (2048²: +2/0/0/0; 8192²: +3/0/+1/+1). The applied fraction stays INSIDE
+the published range without being forced: intact crystalline 0.000, rift 0.025, volcaniclastic 0.189, fully
+fractured 0.700 (BFI 0.4–0.8), field-wide mean ~0.10 with p90 0.625 — the median is 0 because the intact
+cratonic majority is genuinely impermeable. So the criterion stated in advance is answered: the range did not
+have to be left, and the effect is still marginal. **Infiltration is not the dominant lever.** It is kept because
+it is physically sound (Heath conductivities, Barenblatt double porosity, no unsupported slope term) and it is
+GATED OFF by default.
+
+**H-1 reduced H-2's scope — a real result of doing them in this order.** Sill incision now applies to the
+EXORHEIC remainder only: **3–27 lakes depending on climate, not 91**. And the endorheic ones would shrink on
+their own — measured 1798 → 483 km² (tropical, 2048²), REPORTED and deliberately NOT APPLIED. H-2's blast radius
+is far smaller than the author accepted as "the price of progress".
+
+### Corollary to method rule 3: a bench/production gap can indict PRODUCTION
+
+Method rule 3 says a bench must reproduce the WHOLE chain. The corollary, earned here: **when a bench and
+production diverge, the gap sometimes points at a defect in PRODUCTION, not in the bench.** The discard above was
+exposed by a FAILED bench of mine — it measured the final drainage's lakes, which production throws away, and
+returned 0 lakes. The omitted stage was the revealer. Do not assume the bench is the party at fault.

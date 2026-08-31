@@ -187,10 +187,36 @@ la densité-frontières capte déjà les collisions actives).
 
 Reste : validation visuelle de l'auteur sur l'export, puis ✅ FAIT.
 
-### 4. Érosion côtière
+### H-1 / H-2. Chaîne hydro : infiltration puis incision de seuil — 🔬 EN COURS (AVANT C-4)
+
+**Pourquoi elles passent AVANT l'érosion côtière (C-4).** L'incision de seuil (H-2) vidange
+les bassins exoréiques : l'exutoire creuse son col, le lac se retire, l'eau ressort en
+rivière → **le trait de côte bouge** (embouchures, deltas, niveau de base littoral). Faire
+C-4 avant reviendrait à sculpter un littoral que H-2 déplacerait ensuite — on reprendrait le
+travail. Diagnostic à l'appui (voir `closure_morphology/comb_and_lake_diagnosis.md`) : 92
+lacs, 91 exoréiques, 0 endoréique, 6220 km² d'eau, les 10 plus grands tenant 74 % de l'aire —
+des bassins remplis au col, pas des mares de bruit. La chaîne hydro doit d'abord assécher ce
+qui doit l'être, PUIS on sculpte la côte qui en résulte.
+
+**H-1 — infiltration (la plus légère, en premier).** Le bilan lit `runoff = max(0, precip −
+PE)` : tout le surplus devient ruissellement de surface. En réalité une fraction **s'infiltre**
+et n'atteint jamais un lac par écoulement de surface. Ymir n'a **aucune eau souterraine**. H-1
+ajoute ce premier terme : un champ de perméabilité CAUSAL (classes lithologiques C-3 + densité
+de fracturation C-3b — la roche fracturée/volcaniclastique infiltre plus que le socle
+cristallin intact ; jamais du bruit) module la fraction infiltrée. Rayon d'impact **petit** :
+change le BILAN, pas la géométrie ni le routage. Des bassins basculent en endoréique, des
+niveaux baissent — un pas correct qui ne casse rien. Gated OFF → byte-identique.
+
+**H-2 — incision de seuil (la lourde, ensuite).** Le cadran France↔Écosse mesuré au
+diagnostic : un lac exoréique a un exutoire → son seuil s'inciserait et le vidangerait, mais
+le modèle le gèle. H-2 draîne les exoréiques ; rayon d'impact = toute la chaîne hydro
+(rivières, embouchures, côte, biomes). Spécifié, pas encore ouvert.
+
+### 4. Érosion côtière — APRÈS H-1/H-2
 
 **Pourquoi en dernier :** elle travaille sur un littoral dont la forme dépend de tout
-l'amont. La faire après lithologie et volcanisme lui donne un trait de côte déjà
+l'amont — y compris de H-2, qui déplace le trait de côte (voir ci-dessus). La faire après
+lithologie, volcanisme et la chaîne hydro lui donne un trait de côte déjà
 structuré à sculpter, plutôt qu'à reprendre ensuite.
 
 **Ce qu'elle apporte :** falaises, plages, plateformes d'abrasion — la morphologie

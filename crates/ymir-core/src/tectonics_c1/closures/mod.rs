@@ -59,6 +59,7 @@ pub mod davis_suppe;
 pub mod equilibrium_height;
 pub mod erosion;
 pub mod fracture;
+pub mod infiltration;
 pub mod lithology;
 pub mod oceanic_bathymetry;
 pub mod rifting;
