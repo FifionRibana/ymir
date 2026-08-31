@@ -207,10 +207,30 @@ cristallin intact ; jamais du bruit) module la fraction infiltrée. Rayon d'impa
 change le BILAN, pas la géométrie ni le routage. Des bassins basculent en endoréique, des
 niveaux baissent — un pas correct qui ne casse rien. Gated OFF → byte-identique.
 
-**H-2 — incision de seuil (la lourde, ensuite).** Le cadran France↔Écosse mesuré au
-diagnostic : un lac exoréique a un exutoire → son seuil s'inciserait et le vidangerait, mais
-le modèle le gèle. H-2 draîne les exoréiques ; rayon d'impact = toute la chaîne hydro
-(rivières, embouchures, côte, biomes). Spécifié, pas encore ouvert.
+**H-1 — ce qu'elle a RÉELLEMENT livré (voir ADR « H-1 »).** La mesure a invalidé la prémisse.
+Le vrai défaut était que **les lacs de surface ne voyaient JAMAIS le bilan hydrique** : le
+pré-breach tourne avec `climate = None` et sa classification purement géométrique écrase
+celle calculée avec le climat. Finding 39 ne valait donc que pour les bassins **sous-marins**.
+Correctif livré **par défaut** (ce n'est pas une option : une classification fausse ne se
+gate pas) → **53 à 100 % des lacs de surface sont endoréiques** une fois le bilan appliqué,
+dont 45 % en humide. ⚠️ change `lake_type`, donc biomes et rendu, sur toute carte existante.
+L'**infiltration** elle-même est un terme **secondaire mesuré** (+0 à 3 lacs), conservé car
+physiquement juste et **gated OFF**.
+
+**H-2 — incision de seuil : périmètre EFFONDRÉ par H-1.** Un lac exoréique a un exutoire →
+son seuil s'inciserait et le vidangerait, mais le modèle le gèle. Or H-1 a montré que le
+reliquat exoréique n'est que de **3 à 27 lacs selon le climat, pas 91**, et que les
+endoréiques se rétractent d'eux-mêmes (mesuré 1798 → 483 km² en tropical, **rapporté et non
+appliqué**). Le rayon d'impact est donc bien plus petit qu'anticipé — **résultat direct de
+l'ordre H-1 puis H-2**.
+
+**Le critère de jugement de H-2 est prêt** (et il a fallu le réparer d'abord) : la métrique
+naïve de plaine contiguë n'était pas une propriété du continent mais du pas de grille
+(×4.97 entre 2048² et 8192²). La métrique retenue — **fermeture morphologique à 200 m de
+distance de pontage physique, puis composantes connexes** — converge à **×1.03**. La variante
+« au pas hexagonal » a été **écartée par la mesure** (×3.25). H-2 se jugera sur la plus grande
+plaine et l'aire totale de plaine (3024/3129 km² et 10643/9989 km² aujourd'hui), les deux
+seuls agrégats qui convergent.
 
 ### 4. Érosion côtière — APRÈS H-1/H-2
 

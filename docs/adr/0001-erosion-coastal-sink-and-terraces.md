@@ -2702,6 +2702,45 @@ EXORHEIC remainder only: **3–27 lakes depending on climate, not 91**. And the 
 their own — measured 1798 → 483 km² (tropical, 2048²), REPORTED and deliberately NOT APPLIED. H-2's blast radius
 is far smaller than the author accepted as "the price of progress".
 
+### The CONTIGUOUS PLAIN metric — made grid-stable BEFORE H-2 judges anything on it
+
+H-2 will be judged on the plain area it gains, so the measure had to converge first. The
+naive definition (connected components of dry land under 5°) is NOT a property of the
+continent but of the GRID STEP: largest piece **1074 km² at 2048² against 216 km² at 8192²
+(×4.97)**, for a comparable total flat area (9891 vs 7493 km²) — fine relief resolves and
+fragments what the coarse grid smoothed over. Two candidate definitions were implemented and
+COMPARED on that convergence test (`tests/plain_metric.rs`), not argued:
+
+| definition | 2048² | 8192² | ratio |
+|---|---|---|---|
+| naive (no bridging) | 1074 | 216 | ×4.97 |
+| (a) bridge 100 m | 1074 | 871 | ×1.23 |
+| **(a) bridge 200 m** | **3025** | **3129** | **×1.03** |
+| (a) bridge 400 m | 5613 | 6079 | ×1.08 |
+| (a) bridge 800 m | 9256 | 13990 | ×1.51 |
+| (b) hex-pitch resample | 2759 | 850 | ×3.25 |
+
+**Chosen: (a) — a morphological CLOSING at a PHYSICAL bridging distance of 200 m** (converted
+to cells per resolution: 1.0 cell at 2048², 4.1 at 8192²), then the `land_topology`
+union-find on the closed mask. Rationale confirmed by measurement: a plain stays usable when
+the accidents crossing it are passable, and 200 m is the smallest distance that converges
+(×1.03). Beyond 400 m the metric RE-DIVERGES (×1.51 at 800 m) — over-bridging swallows real
+relief, differently at each resolution. **(b) was rejected by the test**: resampling to the
+hex pitch still inherits the fine-grid fragmentation (at 8192² more fine cells are steep, so
+fewer hex cells pass the majority vote) and gives ×3.25.
+
+For the chosen metric: largest plain **3024 / 3129 km²** (1164 / 1204 hex at 1 km-edge hexes),
+total plain 10643 / 9989 km² (×1.07); pieces ≥1000 km²: 2 / 1; ≥500: 4 / 3; ≥100: 17 / 12.
+The LARGEST and the TOTAL converge; the ranking BELOW the first piece does not (2nd piece
+1346 vs 716 km²) — so the criterion is the largest piece and the total, not the detailed
+ranking. Note the raw flat-area total itself still differs ×1.32 between resolutions; that
+(a)-200 m converges despite it is the point — the bridging absorbs exactly the micro-relief
+that differs.
+
+The metric is CLIMATE-INVARIANT as it stands (it reads the geometric lake footprints, which
+neither the climate nor the H-1 reclassification resizes) — it will move only under H-2,
+which is precisely what makes it the right instrument to judge H-2.
+
 ### Corollary to method rule 3: a bench/production gap can indict PRODUCTION
 
 Method rule 3 says a bench must reproduce the WHOLE chain. The corollary, earned here: **when a bench and
