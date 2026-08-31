@@ -149,6 +149,7 @@ fn c2_crater_climates() {
         &cfg,
         &edifices,
         &volc,
+        None,
         &mut |_| {},
         &|| false,
     );
