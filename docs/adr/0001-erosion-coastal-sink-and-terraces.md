@@ -2697,10 +2697,70 @@ have to be left, and the effect is still marginal. **Infiltration is not the dom
 it is physically sound (Heath conductivities, Barenblatt double porosity, no unsupported slope term) and it is
 GATED OFF by default.
 
-**H-1 reduced H-2's scope — a real result of doing them in this order.** Sill incision now applies to the
-EXORHEIC remainder only: **3–27 lakes depending on climate, not 91**. And the endorheic ones would shrink on
-their own — measured 1798 → 483 km² (tropical, 2048²), REPORTED and deliberately NOT APPLIED. H-2's blast radius
-is far smaller than the author accepted as "the price of progress".
+**⚠️ SUPERSEDED BY H-1b — this scope figure was computed on a BUGGY criterion.** It read: "H-1 reduced H-2's
+scope: sill incision now applies to the exorheic remainder only, **3–27 lakes depending on climate, not 91**, and
+the endorheic ones would shrink on their own (1798 → 483 km², tropical, reported not applied), so H-2's blast
+radius is far smaller than the author accepted as the price of progress." The endorheic count behind it was
+inflated by the gross-PE defect found in H-1b below. Left visible rather than silently replaced — the corrected
+figure is in H-1b.
+
+### H-1b — the endorheic criterion was too strict, and the two water balances disagreed
+
+40 endorheic out of 67 in a HUMID climate was physically suspect: an endorheic basin means evaporation absorbs
+the ENTIRE catchment inflow (Dead Sea / Great Salt Lake regime), and France, Scotland and Scandinavia have
+essentially none. Audited (`tests/h1b_endorheic_criterion.rs`) — and the defect was NOT the suspected one.
+
+**Not the area-vs-level test.** The leading hypothesis was that `a_eq ≥ a_sill` compares the equilibrium AREA
+with the area AT THE SILL, hence requires filling the whole basin to the col, whereas a real lake overflows as
+soon as its LEVEL reaches the sill. Recorded because it was the plausible suspect and it was WRONG: for a
+monotone hypsometry (area grows with level), "the level reaches the sill" and "the area reaches the sill area"
+are the SAME statement. The area test is equivalent to the physical one.
+
+**The defect was the EVAPORATION term, and the two paths disagreed.** The surface balance used GROSS potential
+evaporation (`a_eq = inflow / PE`), ignoring that a lake also RECEIVES rain on its own surface — the loss per unit
+area is `PE − P`, not `PE`. Measured at 45° humid: PE 575–886 mm/yr against P 1122–1154 mm/yr, so **`PE − P` is
+NEGATIVE on every lake** — endorheism is physically impossible there. Meanwhile the BELOW-SEA path
+(`drainage.rs:1266`) ALREADY used `net_evap = max(0, PE − precip)`, with the degenerate case handled EXPLICITLY
+(`net_evap == 0 ⇒ a_eq = ∞ ⇒ the basin MUST overflow`). **Two different criteria for one physics.**
+
+**Fixed by adopting the below-sea formulation on the surface path**, via a shared helper
+(`lake_net_evap_terms`) so the two cannot drift apart again. NO ε: the degenerate case is explicit, not clamped.
+**No double count**, by the same complementarity the below-sea comment already argued: `runoff_accumulation`
+clamps its source to `max(0, P − PE)`, so when `net_evap > 0` (arid) the lake's own cells contribute ZERO runoff
+and `inflow` is purely external; when `net_evap == 0` (humid) `inflow` is not used at all. Exactly one of the two
+terms is nonzero. `ALGO_HD_DRAINAGE` bumped to 3.
+
+**Corrected surface population (2048², four climates) — ordered by climate, as the physics requires:**
+
+| climate | endorheic BEFORE (gross PE) | endorheic AFTER (net) | exorheic AFTER |
+|---|---|---|---|
+| tropical 10° | 42 (1792 km²) | **0** | 67 |
+| arid-hot 25° | 64 (2217 km²) | **63** (2206 km²) | 4 |
+| humid 45° | 40 (1767 km²) | **0** | 67 |
+| arid-cold 65° | 53 (2115 km²) | **5** (723 km²) | 62 |
+
+Endorheic basins now exist essentially only in HOT-ARID. Cold-arid keeps 5 because cold holds PE low, so net
+evaporation stays small despite little rain — Siberian lakes drain, they are not sebkhas. The below-sea path was
+already net, so the two populations now AGREE (humid: 0 endorheic on both).
+
+**Infiltration's measured effect is now EXACTLY ZERO on surface classification** (identical columns in all four
+climates): in humid/tropical `net_evap = 0 ⇒ a_eq = ∞` regardless of inflow; in arid the population sits far from
+the threshold, so a ~10 % inflow cut flips nothing. The earlier "+0 to 3 lakes" was itself an artefact of the
+buggy criterion. Infiltration stays gated OFF, kept for its physical soundness and for the discharge / below-sea
+paths, and is now definitively recorded as NOT a lever on the lake regime.
+
+**H-2 RE-DIMENSIONED.** The exorheic remainder is **4 to 67 lakes depending on climate — and in HUMID, the
+author's target climate, it is ALL 67**. H-1 did NOT collapse H-2's scope; the blast radius returns to the
+initial estimate.
+
+### Two lessons from H-1b
+
+1. **The area-vs-level test was not the defect** — the leading hypothesis, measured and refuted. Worth recording
+   precisely because it was the plausible suspect.
+2. **A visual validation on a SINGLE climate can confirm a BUG.** The author validated "0 → several endorheic in
+   humid" as the expected behaviour; it was the gross-PE artefact. The reclassification fix keeps all its value,
+   but its real effect is elsewhere — hot-arid goes 0 → 63 endorheic, which the geometric path never produced.
+   Look where the mechanism is supposed to act MOST STRONGLY, not where the production map happens to sit.
 
 ### The CONTIGUOUS PLAIN metric — made grid-stable BEFORE H-2 judges anything on it
 

@@ -79,7 +79,11 @@ pub const ALGO_BREACH: u32 = 1;
 /// `2` — H-1: the surface lakes carried from the climate-free pre-breach drainage are now
 /// RECLASSIFIED by the water balance (they were exorheic by pure geometry, having never
 /// seen a climate). Changes `lake_type` on every existing map, hence biomes and rendering.
-pub const ALGO_HD_DRAINAGE: u32 = 2;
+/// `3` — H-1b: the surface balance now uses NET evaporation (`max(0, PE − precip)`) like the
+/// below-sea path already did, instead of gross PE — the two paths applied two different
+/// criteria to the same physics. Humid/tropical basins can no longer be endorheic (rain
+/// exceeds evaporation there); hot-arid ones still are.
+pub const ALGO_HD_DRAINAGE: u32 = 3;
 
 // ── Cache key ──────────────────────────────────────────────────────────────
 

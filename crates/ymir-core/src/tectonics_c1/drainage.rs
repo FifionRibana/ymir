@@ -763,6 +763,18 @@ pub fn runoff_accumulation(
     acc
 }
 
+/// H-1b — the two terms of a lake's net surface loss at its floor cell: gross potential
+/// evaporation and the precipitation falling ON the lake. Shared by the surface and
+/// below-sea balances so the two cannot drift apart again (they did: the surface path used
+/// gross PE while the below-sea path used the net, two criteria for one physics).
+#[inline]
+fn lake_net_evap_terms(climate: &DrainageClimate, floor_k: usize) -> (f32, f32) {
+    (
+        potential_evaporation_mm(climate.temperature.data[floor_k]),
+        precip_mm_per_year(climate.precip_internal.data[floor_k]),
+    )
+}
+
 /// H-1 — the water-balance VERDICT for one lake, computed WITHOUT mutating anything.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LakeBalanceVerdict {
@@ -810,8 +822,10 @@ pub fn classify_lakes_water_balance(
         }
         cells.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         let inflow = cells.iter().map(|&(k, _)| runoff_accum[k]).fold(0.0f32, f32::max);
-        let pe_lake = potential_evaporation_mm(climate.temperature.data[cells[0].0]).max(1.0);
-        let a_eq_km2 = inflow / pe_lake;
+        // H-1b — NET evaporation (see `water_balance_lakes` and the below-sea path :1266).
+        let (pe_lake, precip_lake) = lake_net_evap_terms(climate, cells[0].0);
+        let net_evap = (pe_lake - precip_lake).max(0.0);
+        let a_eq_km2 = if net_evap > 0.0 { inflow / net_evap } else { f32::INFINITY };
         let a_sill_km2 = lk.base.area as f32 * cell_km2;
         out.push(LakeBalanceVerdict {
             id: lk.base.id,
@@ -869,8 +883,20 @@ fn water_balance_lakes(
         // Sort by elevation ascending → the lake's hypsometry (floor first).
         cells.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         let inflow = cells.iter().map(|&(k, _)| runoff_accum[k]).fold(0.0f32, f32::max);
-        let pe_lake = potential_evaporation_mm(climate.temperature.data[cells[0].0]).max(1.0);
-        let a_eq_km2 = inflow / pe_lake; // surface where evaporation = inflow
+        // H-1b — NET evaporation, the SAME formulation the below-sea path already used
+        // (`net_evap = max(0, PE − precip)`, :1266): a lake also RECEIVES rain on its own
+        // surface, so the loss per unit area is PE − P, not PE. Using gross PE overstated
+        // the loss and made humid basins endorheic, which is physically impossible (rain
+        // exceeds evaporation there): measured 40/67 endorheic in humid → 0 once corrected.
+        // The degenerate case is EXPLICIT, not clamped: net_evap == 0 ⇒ infinite
+        // equilibrium ⇒ the basin MUST overflow. No double count, by the same
+        // complementarity as the below-sea path — `runoff_accumulation` clamps its source
+        // to max(0, P − PE), so when net_evap > 0 (arid) the lake's own cells contribute
+        // ZERO runoff and `inflow` is purely external; when net_evap == 0 (humid) `inflow`
+        // is not used at all. Exactly one of the two terms is nonzero.
+        let (pe_lake, precip_lake) = lake_net_evap_terms(climate, cells[0].0);
+        let net_evap = (pe_lake - precip_lake).max(0.0);
+        let a_eq_km2 = if net_evap > 0.0 { inflow / net_evap } else { f32::INFINITY };
         let a_sill_km2 = lk.area as f32 * cell_km2;
 
         if a_eq_km2 >= a_sill_km2 {
