@@ -775,6 +775,92 @@ fn lake_net_evap_terms(climate: &DrainageClimate, floor_k: usize) -> (f32, f32) 
     )
 }
 
+/// H-1c — APPLY the water balance to already-detected lakes: classify AND, for the
+/// endorheic ones, shrink them to their evaporative EQUILIBRIUM (level, footprint, area),
+/// draining the cells above it from `lake_map`. This is the balance's own consequence, NOT
+/// sill incision: a closed basin settles where evaporation equals inflow, so leaving it
+/// filled to its col is physically impossible.
+///
+/// It closes the SECOND half of the same discard H-1 fixed: the relief-v3 path carries the
+/// climate-free pre-breach lakes, so `water_balance_lakes`'s output was thrown away — H-1
+/// restored the CLASSIFICATION attribute, this restores the GEOMETRY attribute. One defect,
+/// two attributes, found in two steps.
+///
+/// Exorheic lakes keep their sill geometry (they overflow, so the sill IS their level);
+/// crater lakes (C-2) are returned untouched; a basin whose inflow cannot sustain a single
+/// cell DRIES UP and is dropped. `lake_map` is mutated, so callers MUST enumerate river
+/// inlets / clip river tracks AFTER this runs, never before (orphaned mouths otherwise).
+#[allow(clippy::too_many_arguments)]
+pub fn apply_lake_water_balance(
+    heightmap: &GridF32,
+    flow: &FlowResult,
+    climate: &DrainageClimate,
+    cell_km2: f32,
+    ss: &SteinSteinParams,
+    lakes: &[C1Lake],
+    lake_map: &mut [u32],
+    infiltration: Option<&[f32]>,
+    w: usize,
+    h: usize,
+) -> Vec<C1Lake> {
+    let n = w * h;
+    let runoff_accum =
+        runoff_accumulation(heightmap, flow, climate, cell_km2, None, infiltration, w, h);
+    let mut out = Vec::with_capacity(lakes.len());
+    for lk in lakes {
+        // Crater lakes carry C-2 chemistry and their own balance — never touched here.
+        if matches!(lk.lake_type, LakeType::CraterAcidic | LakeType::CraterNeutral) {
+            out.push(lk.clone());
+            continue;
+        }
+        let mut cells: Vec<(usize, f32)> =
+            (0..n).filter(|&k| lake_map[k] == lk.base.id).map(|k| (k, heightmap.data[k])).collect();
+        if cells.is_empty() {
+            continue;
+        }
+        cells.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let inflow = cells.iter().map(|&(k, _)| runoff_accum[k]).fold(0.0f32, f32::max);
+        let (pe_lake, precip_lake) = lake_net_evap_terms(climate, cells[0].0);
+        let net_evap = (pe_lake - precip_lake).max(0.0);
+        let a_eq_km2 = if net_evap > 0.0 { inflow / net_evap } else { f32::INFINITY };
+        let a_sill_km2 = lk.base.area as f32 * cell_km2;
+
+        if a_eq_km2 >= a_sill_km2 {
+            // Overflows its sill → EXORHEIC, geometry unchanged (the sill IS its level).
+            let mut e = lk.clone();
+            e.lake_type = LakeType::Exorheic;
+            out.push(e);
+        } else {
+            // ENDORHEIC: settle at the equilibrium surface, drain the cells above it.
+            let n_eq = (a_eq_km2 / cell_km2).floor() as usize;
+            for &(k, _) in cells.iter().skip(n_eq.max(1)) {
+                lake_map[k] = 0; // exposed floor — no longer flooded
+            }
+            if n_eq == 0 {
+                if let Some(&(k0, _)) = cells.first() {
+                    lake_map[k0] = 0; // inflow cannot sustain one cell → the basin dries up
+                }
+                continue;
+            }
+            let level = cells[n_eq - 1].1;
+            let level_m = c1_altitude_norm_to_metres(level, ss);
+            let floor_m = c1_altitude_norm_to_metres(cells[0].1, ss);
+            let mut base = lk.base.clone();
+            base.surface_elevation = level;
+            base.max_depth = level - cells[0].1;
+            base.area = n_eq;
+            out.push(C1Lake {
+                base,
+                level_m,
+                depth_m: level_m - floor_m,
+                area_km2: n_eq as f32 * cell_km2,
+                lake_type: LakeType::Endorheic,
+            });
+        }
+    }
+    out
+}
+
 /// H-1 — the water-balance VERDICT for one lake, computed WITHOUT mutating anything.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LakeBalanceVerdict {

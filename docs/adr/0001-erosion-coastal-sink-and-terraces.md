@@ -2753,6 +2753,51 @@ paths, and is now definitively recorded as NOT a lever on the lake regime.
 author's target climate, it is ALL 67**. H-1 did NOT collapse H-2's scope; the blast radius returns to the
 initial estimate.
 
+### H-1c — the SAME discard, the other attribute: endorheic basins now settle at equilibrium
+
+H-1 restored the water balance's CLASSIFICATION to the carried pre-breach lakes. Its GEOMETRY
+half was still discarded: `water_balance_lakes` also SHRINKS endorheic lakes to their
+evaporative equilibrium and drains the cells above it, and that output was thrown away by the
+same carry-over. So every endorheic lake was reported as a closed basin while still drawn
+filled to its col — physically impossible. **One defect, two attributes, found in two steps.**
+This is NOT sill incision running early: the equilibrium level is the balance's own
+consequence (a closed basin settles where evaporation equals inflow), whereas H-2 carves an
+outlet. `apply_lake_water_balance` replaces the classify-only pass; `ALGO_HD_DRAINAGE` → 4.
+
+**Ordering guarantee (the orphaned-mouth defect, already fixed twice).** The apply runs BEFORE
+`below_sea_basin_lakes_infil` and BEFORE `clip_rivers_to_lakes`, so both see the FINAL
+footprint: river tracks are clipped to the retreated outline instead of ending in the void.
+Inlets are enumerated after the footprint is known, never before.
+
+**Measured (2048², four climates, `tests/h1c_endorheic_shrink.rs`).** Before: 67 lakes,
+2247 km² water; plain largest 3025 km² (1164 hex), total 10643 km².
+
+| climate | lakes after | water km² | floor exposed | exposed-floor slope | plain largest / total |
+|---|---|---|---|---|---|
+| tropical 10° | 67 (0 endo) | 2247 | 0 | — | 3025 / 10643 |
+| arid-hot 25° | **27** (23 endo) | 2247 → **168** | **2079 km²** | p50 **0.0°**, p90 3.4°, **92 % < 5°** | **4106** / **12610** |
+| humid 45° | 67 (0 endo) | 2247 | 0 | — | 3025 / 10643 |
+| arid-cold 65° | 67 (5 endo) | 2247 → 1635 | 612 km² | p50 0.0°, p90 1.8°, **95 % < 5°** | 3025 / 11233 |
+
+**THE EXPOSED FLOOR IS FLAT — measured, not assumed.** 92–95 % under 5°, median 0.0°. The
+"buildable plain" argument holds. In arid-hot, 40 of 67 lakes dry up ENTIRELY (inflow cannot
+sustain one cell), water falls 93 %, and the plain gains **+1081 km² on the largest piece
+(+36 %) and +1967 km² in total (+18 %) — WITHOUT carving a single sill.**
+
+**8192² confirms, and the plain metric keeps its convergence AFTER the shrink** — arid-hot:
+58 → 17 lakes, water 2199 → 31 km², floor exposed 2168 km², **97 % under 5°**, plain
+3129 → 3999 km² largest and 9989 → 12188 total. Against 2048²'s 4106 / 12610 that is ×1.03 on
+both aggregates, the same ratio the metric was validated at — so it survives a geometry change
+of this size. (Arid-cold is resolution-sensitive: 612 km² of floor at 2048² against 52 km² at
+8192², for the same 5 endorheic basins — the equilibrium areas are small enough to sit near
+the cell scale. Noted; it does not affect the arid-hot conclusion.)
+
+**The split H-2 will be judged against, and the honest reverse.** The gain above is due to the
+BALANCE ALONE. But in HUMID and TROPICAL, H-1c changes NOTHING (no endorheic basin exists
+there, correctly). So in the author's TARGET climate the France↔Scotland dial rests
+**entirely** on H-2's sill incision. H-1c has established the baseline; it has not moved the
+humid map.
+
 ### Two lessons from H-1b
 
 1. **The area-vs-level test was not the defect** — the leading hypothesis, measured and refuted. Worth recording

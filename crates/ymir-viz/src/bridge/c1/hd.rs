@@ -51,7 +51,7 @@ use ymir_core::tectonics_c1::cached_product::{
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
     C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, apply_geo_scale_ratio,
-    below_sea_basin_lakes_infil, c1_drainage_windowed_infil, classify_lakes_water_balance,
+    apply_lake_water_balance, below_sea_basin_lakes_infil, c1_drainage_windowed_infil,
     clip_rivers_to_lakes, exorheic_lakes_missing_outlet,
 };
 use ymir_core::tectonics_c1::land_topology::{
@@ -449,37 +449,37 @@ fn build_hd_drainage(
     if carried_geometric_lakes {
         let (w, h) = (eroded.width, eroded.height);
         let cell_km2 = (window_km / w as f32).powi(2);
-        let verdicts = classify_lakes_water_balance(
+        let before_n = drainage.lakes.len();
+        let before_km2: f32 = drainage.lakes.iter().map(|l| l.area_km2).sum();
+        // H-1c — APPLY the balance: classify AND settle endorheic basins at their
+        // evaporative equilibrium (level + footprint), draining the exposed floor from
+        // `lake_map`. Runs BEFORE `below_sea_basin_lakes_infil` and BEFORE
+        // `clip_rivers_to_lakes` so both see the FINAL footprint — river tracks are clipped
+        // to the retreated outline instead of ending in the void (the orphaned-mouth defect
+        // already fixed twice: enumerate inlets AFTER the footprint is known).
+        let lakes_in = std::mem::take(&mut drainage.lakes);
+        drainage.lakes = apply_lake_water_balance(
             eroded,
             &drainage.flow,
             &dclim,
             cell_km2,
-            &drainage.lakes,
-            &drainage.lake_map,
+            ss,
+            &lakes_in,
+            &mut drainage.lake_map,
             infiltration,
             w,
             h,
         );
-        let (mut flipped, mut flipped_km2) = (0usize, 0.0f32);
-        for lk in drainage.lakes.iter_mut() {
-            if !matches!(lk.lake_type, LakeType::Exorheic | LakeType::Endorheic) {
-                continue; // crater lakes keep their C-2 chemistry
-            }
-            if let Some(v) = verdicts.iter().find(|v| v.id == lk.base.id) {
-                if v.lake_type != lk.lake_type {
-                    flipped += 1;
-                    flipped_km2 += lk.area_km2;
-                }
-                lk.lake_type = v.lake_type;
-            }
-        }
         let endo = drainage.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).count();
+        let after_km2: f32 = drainage.lakes.iter().map(|l| l.area_km2).sum();
         eprintln!(
-            "[HD] H-1 surface water balance: {} lake(s) reclassified ({:.0} km²) → {} endorheic / {} total",
-            flipped,
-            flipped_km2,
-            endo,
-            drainage.lakes.len()
+            "[HD] H-1c surface water balance APPLIED: {} → {} lakes | {:.0} → {:.0} km² water ({:.0} km² floor exposed) | {} endorheic",
+            before_n,
+            drainage.lakes.len(),
+            before_km2,
+            after_km2,
+            (before_km2 - after_km2).max(0.0),
+            endo
         );
     }
     let (wetland_mask, below_sea_spillways) = {

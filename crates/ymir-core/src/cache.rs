@@ -83,7 +83,11 @@ pub const ALGO_BREACH: u32 = 1;
 /// below-sea path already did, instead of gross PE — the two paths applied two different
 /// criteria to the same physics. Humid/tropical basins can no longer be endorheic (rain
 /// exceeds evaporation there); hot-arid ones still are.
-pub const ALGO_HD_DRAINAGE: u32 = 3;
+/// `4` — H-1c: the balance is now APPLIED, not only read. Endorheic basins settle at their
+/// evaporative equilibrium (level + footprint), draining the exposed floor from `lake_map` —
+/// the GEOMETRY half of the same discard H-1 fixed for the classification. Lake outlines,
+/// river clipping, wetlands and biomes all move.
+pub const ALGO_HD_DRAINAGE: u32 = 4;
 
 // ── Cache key ──────────────────────────────────────────────────────────────
 
