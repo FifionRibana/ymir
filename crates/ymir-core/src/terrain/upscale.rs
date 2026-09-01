@@ -232,6 +232,90 @@ impl Default for FbmUpscaleConfig {
     }
 }
 
+/// The two competing terms of the per-cell FBM amplitude. The effective amplitude is the
+/// SMALLER: a configured LEVEL versus the C-1 relief BUDGET. Named because which one binds
+/// is a load-bearing fact — in production the cap binds at EVERY cell, which makes
+/// `amplitude_base` inert (ADR "The DEAD KNOB"); a silent `min` hid that for three closures.
+#[derive(Debug, Clone, Copy)]
+pub struct AmplitudeTerms {
+    /// The configured level: `amplitude_base · (1 + slope·factor) · submarine_damping`.
+    pub base: f64,
+    /// The C-1 relief budget `β · slope / divisor`. `None` when `flow_conditioning == 0`
+    /// (the pre-C-1 regime, where `base` genuinely drives the terrain).
+    pub cap: Option<f64>,
+}
+
+impl AmplitudeTerms {
+    /// The amplitude actually applied — the smaller of the two terms.
+    #[inline]
+    #[must_use]
+    pub fn effective(&self) -> f64 {
+        match self.cap {
+            Some(c) => self.base.min(c),
+            None => self.base,
+        }
+    }
+    /// `true` when the relief budget is what limits this cell — i.e. `amplitude_base` has
+    /// NO effect here. In production this is true everywhere.
+    #[inline]
+    #[must_use]
+    pub fn cap_binds(&self) -> bool {
+        matches!(self.cap, Some(c) if c < self.base)
+    }
+}
+
+/// Inputs to [`production_hd_config`] — everything the SHIPPED HD path varies per run.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProductionHdOpts {
+    pub target_size: usize,
+    /// Geometric domain span (km) — the domain IS the map. NEVER `geo_scale_ratio`.
+    pub domain_km: f32,
+    /// Vertical scale for the stream-power incision (`SteinSteinParams::depth_scale_m`).
+    pub depth_scale_m: f32,
+    /// Framing roll of the coarse sampling origin, and the sampled fraction (always 1.0 —
+    /// the whole torus renders).
+    pub sample_origin: [f64; 2],
+    pub sample_size: f64,
+    /// FBM base amplitude. ⚠️ INERT on this path — the C-1 relief-budget cap binds at every
+    /// cell (proven byte-identical at 4×; see ADR "The DEAD KNOB"). Kept so the config
+    /// states what it *would* be, and so the guard test can assert the cap still binds.
+    pub amplitude_base: f64,
+    /// MFD partition exponent for relief-v3.
+    pub mfd_p: f32,
+    pub lithology: crate::tectonics_c1::closures::lithology::LithologyConfig,
+    pub fracture: crate::tectonics_c1::closures::fracture::FractureConfig,
+}
+
+/// **THE single source of truth for the SHIPPED HD config.** Returns exactly what
+/// production runs — relief-v3 stream-power incision, droplets off, the C-1 conditioning,
+/// the closures' configs — with NO further mutation expected from the caller.
+///
+/// This exists because `c1_hd_production` is NOT production: the viz used to build it and
+/// then mutate amplitude, sampling, erosion, stream-power, lithology and fracture, so any
+/// bench calling `c1_hd_production` got something else than what ships. That divergence
+/// occurred SEVEN times, most recently hiding an inert `amplitude_base` for three closures.
+/// A rule that must be remembered seven times is a design flaw: the viz and the benches now
+/// call THIS, and `production_upscale_config_is_the_shipped_one` guards it.
+#[must_use]
+pub fn production_hd_config(o: &ProductionHdOpts) -> FbmUpscaleConfig {
+    let mut cfg = FbmUpscaleConfig::c1_hd_production(o.target_size);
+    cfg.amplitude_base = o.amplitude_base;
+    cfg.sample_origin = o.sample_origin;
+    cfg.sample_size = o.sample_size;
+    // relief-v3 replaces the droplet pass: droplets collapse the stream-power valleys.
+    cfg.erosion = None;
+    let km_per_cell = o.domain_km / o.target_size as f32;
+    let cell_km2 = km_per_cell * km_per_cell;
+    let mut sp =
+        crate::erosion::stream_power::StreamPowerConfig::relief_v3(cell_km2, o.depth_scale_m);
+    sp.mfd_exponent = Some(o.mfd_p);
+    sp.iterations = 2;
+    cfg.stream_power = Some(sp);
+    cfg.lithology = o.lithology.clone();
+    cfg.fracture = o.fracture.clone();
+    cfg
+}
+
 impl FbmUpscaleConfig {
     /// Canonical C1 HD product config (#155) — the #151 coastline params
     /// + HD hydraulic erosion ON (the validated 2048² état-des-lieux
@@ -481,19 +565,26 @@ pub fn upscale_with_fbm(
                 let altitude_factor =
                     if base_height > sea_level { 1.0 } else { config.submarine_damping };
 
-                let mut amplitude = config.amplitude_base
-                    * (1.0 + slope_mag as f64 * config.amplitude_slope_factor)
-                    * altitude_factor;
-
-                // C-1 relief-budget cap (β = config.flow_conditioning): on a flat
-                // (slope → 0) no flow direction exists, so any additive bump is a
-                // fabricated pit; the cap → 0 there and removes it. On a slope the
-                // cap scales with the bed slope, and the downslope stretch below
-                // does the along-flow reversal suppression.
-                if config.flow_conditioning > 0.0 {
-                    let cap = config.flow_conditioning * slope_mag as f64 / flow_budget_divisor;
-                    amplitude = amplitude.min(cap);
-                }
+                // AMPLITUDE COMPOSITION, made EXPLICIT (see ADR "The DEAD KNOB"). Two terms
+                // compete and the SMALLER wins; the silent `min` that used to live here is
+                // exactly what hid, for three closures, that the cap wins EVERYWHERE in
+                // production — making `amplitude_base` (and the viz amplitude selector, and
+                // the striation ladder) inert. Named terms so the fact is legible and
+                // `amplitude_cap_binds_everywhere_in_production` can assert it.
+                let terms = AmplitudeTerms {
+                    // (1) the configured LEVEL, slope-boosted and submarine-damped.
+                    base: config.amplitude_base
+                        * (1.0 + slope_mag as f64 * config.amplitude_slope_factor)
+                        * altitude_factor,
+                    // (2) the C-1 relief BUDGET cap (β = flow_conditioning): on a flat
+                    // (slope → 0) no flow direction exists, so any additive bump is a
+                    // fabricated pit; the cap → 0 there and removes it. On a slope it scales
+                    // with the bed slope. `None` when conditioning is off (pre-C-1 regime,
+                    // where the base term genuinely drives the terrain).
+                    cap: (config.flow_conditioning > 0.0)
+                        .then(|| config.flow_conditioning * slope_mag as f64 / flow_budget_divisor),
+                };
+                let mut amplitude = terms.effective();
 
                 // #151: coastal amplitude taper — damp the FBM to ~0 AT the
                 // sea-level contour so it doesn't feather the coastline by
@@ -905,5 +996,79 @@ mod tests {
             max_diff < 1e-6,
             "Flat interior should be isotropic regardless of max_anisotropy, max_diff={max_diff}"
         );
+    }
+}
+
+#[cfg(test)]
+mod production_config_guards {
+    use super::*;
+
+    fn opts() -> ProductionHdOpts {
+        ProductionHdOpts {
+            target_size: 2048,
+            domain_km: 400.0,
+            depth_scale_m: 5000.0,
+            sample_origin: [0.09375, 0.578125],
+            sample_size: 1.0,
+            amplitude_base: 0.04,
+            mfd_p: 2.0,
+            lithology: Default::default(),
+            fracture: Default::default(),
+        }
+    }
+
+    /// NON-REGRESSION: `production_hd_config` must return the SHIPPED recipe. It exists so
+    /// the viz and the benches consume ONE config; if either side drifts, this breaks.
+    /// Guards the seventh bench/production divergence (ADR "The DEAD KNOB").
+    #[test]
+    fn production_upscale_config_is_the_shipped_one() {
+        let c = production_hd_config(&opts());
+        // relief-v3: stream-power ON, droplets OFF (they collapse the SP valleys).
+        let sp = c.stream_power.as_ref().expect("relief-v3 ships stream-power incision");
+        assert!(c.erosion.is_none(), "droplets must be OFF on the shipped path");
+        assert_eq!(sp.mfd_exponent, Some(2.0), "relief-v3 is MFD");
+        assert_eq!(sp.iterations, 2, "production runs 2 incision iterations");
+        // C-1 conditioning ON — this is what makes the amplitude cap bind (below).
+        assert!(c.flow_conditioning > 0.0, "C-1 flow conditioning ships ON");
+        // The framing is the whole torus, rolled — never a crop.
+        assert_eq!(c.sample_size, 1.0, "the domain IS the map: no crop");
+        assert_eq!(c.amplitude_base, 0.04, "the shipped amplitude value (inert, see below)");
+    }
+
+    /// THE INERTNESS, ASSERTED. In production the C-1 relief budget is smaller than the
+    /// configured level at every plausible slope, so `amplitude_base` changes nothing —
+    /// proven byte-identical at 4× in `tests/amplitude_anomaly.rs`. This pins the fact: if
+    /// β, the divisor or the base ever make the LEVEL bind again, the knob comes back to
+    /// life and this test tells whoever changed it.
+    #[test]
+    fn amplitude_cap_binds_everywhere_in_production() {
+        let c = production_hd_config(&opts());
+        // `flow_budget_divisor` in the loop is nscale·S; use the same order of magnitude by
+        // sweeping the ratio over a wide range of slopes and divisors.
+        for divisor in [1.0f64, 4.0, 16.0, 64.0] {
+            for slope in [0.0f64, 0.001, 0.01, 0.05, 0.2, 0.5, 1.0] {
+                let terms = AmplitudeTerms {
+                    base: c.amplitude_base * (1.0 + slope * c.amplitude_slope_factor),
+                    cap: Some(c.flow_conditioning * slope / divisor),
+                };
+                assert!(
+                    terms.cap_binds() || terms.base == 0.0 || slope == 0.0,
+                    "the relief budget must bind (slope {slope}, divisor {divisor}): \
+                     base {} vs cap {:?}",
+                    terms.base,
+                    terms.cap
+                );
+                assert_eq!(terms.effective(), terms.base.min(terms.cap.unwrap()));
+            }
+        }
+    }
+
+    /// With conditioning OFF (the pre-C-1 regime) the configured level DOES drive the
+    /// terrain — which is why Finding 5's amplitude sweep was valid when it was made.
+    #[test]
+    fn without_conditioning_the_base_term_drives() {
+        let t = AmplitudeTerms { base: 0.16, cap: None };
+        assert_eq!(t.effective(), 0.16);
+        assert!(!t.cap_binds());
     }
 }

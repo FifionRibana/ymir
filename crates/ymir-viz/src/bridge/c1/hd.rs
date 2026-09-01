@@ -586,14 +586,52 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // (e.g. 24576² → ~42 m/px at 1024 km). Seed selection — not a window — puts a
     // continent with ocean margin on the map (see the coarse preview / seed scan).
     let window_km = params.domain_km; // domain IS the map: window == domain == domain_km
-    let mut upscale = FbmUpscaleConfig::c1_hd_production(params.target_size);
-    if let Some(a) = params.fbm_amplitude {
-        upscale.amplitude_base = a; // striation-ladder override (default 0.16)
-    }
+    // THE SHIPPED PATH goes through ONE core function — `production_hd_config` — so a bench
+    // and production cannot diverge (they did seven times; see ADR "The DEAD KNOB"). The
+    // experimental relief-v1/v2 / cross-rill branches below keep the legacy mutation chain,
+    // being opt-ins that never ship. `sample_origin` is assigned after the framing roll is
+    // computed (it is an OPT of the function, not a drift).
+    let ships_relief_v3 =
+        params.stream_power && params.closures && params.mfd && !params.cross_rill;
+    let mut upscale = if ships_relief_v3 {
+        ymir_core::terrain::upscale::production_hd_config(
+            &ymir_core::terrain::upscale::ProductionHdOpts {
+                target_size: params.target_size,
+                domain_km: params.domain_km,
+                depth_scale_m: ss.depth_scale_m as f32,
+                sample_origin: [0.0, 0.0], // set below, once the framing roll is known
+                sample_size: 1.0,
+                // ⚠️ INERT on this path (the C-1 relief-budget cap binds everywhere) — kept
+                // so the config states the intended level. See ADR "The DEAD KNOB".
+                amplitude_base: params.fbm_amplitude.unwrap_or(0.04),
+                mfd_p: params.mfd_p,
+                lithology: params.lithology.clone().unwrap_or_default(),
+                fracture: {
+                    let mut f = params.fracture.clone().unwrap_or_default();
+                    f.domain_km = params.domain_km;
+                    f
+                },
+            },
+        )
+    } else {
+        let mut u = FbmUpscaleConfig::c1_hd_production(params.target_size);
+        if let Some(a) = params.fbm_amplitude {
+            u.amplitude_base = a; // striation-ladder override — INERT while conditioning is on
+        }
+        u
+    };
     // EXPERIMENTAL opt-in (ADR 0001): swap the droplet pass for routed stream-power
     // incision + hillslope regime split. A_c is 7.6 km² expressed in cells at THIS
     // resolution (resolution-stable channel head); uncoupled vertical scale.
-    if params.stream_power {
+    if ships_relief_v3 {
+        eprintln!(
+            "[HD] SHIPPED relief-v3 config from production_hd_config (MFD p={:.1}, C-3 litho {}, C-3b fracture {})",
+            params.mfd_p,
+            if upscale.lithology.enabled { "ON" } else { "off" },
+            if upscale.fracture.enabled { "ON" } else { "off" }
+        );
+    }
+    if params.stream_power && !ships_relief_v3 {
         let km_per_cell = window_km / params.target_size as f32; // window_km == domain_km
         let cell_km2 = km_per_cell * km_per_cell;
         let depth = ss.depth_scale_m as f32;
