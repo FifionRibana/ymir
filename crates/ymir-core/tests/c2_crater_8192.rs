@@ -40,7 +40,7 @@ fn climate_row(
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    let runoff = runoff_accumulation(eroded, flow, &dclim, cell_km2, None, w, h);
+    let runoff = runoff_accumulation(eroded, flow, &dclim, cell_km2, None, None, w, h);
 
     // detect on a fresh (zero) lake_map so we measure ONLY the crater lakes.
     let mut lakes = Vec::new();

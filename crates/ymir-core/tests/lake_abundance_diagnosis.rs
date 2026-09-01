@@ -95,7 +95,8 @@ fn lake_abundance() {
     let exo = lakes.iter().filter(|l| l.lake_type == "Exorheic").count();
     let endo = lakes.iter().filter(|l| l.lake_type == "Endorheic").count();
     let crater = lakes.iter().filter(|l| l.lake_type.starts_with("Crater")).count();
-    let exo_area: f32 = lakes.iter().filter(|l| l.lake_type == "Exorheic").map(|l| l.area_km2).sum();
+    let exo_area: f32 =
+        lakes.iter().filter(|l| l.lake_type == "Exorheic").map(|l| l.area_km2).sum();
     eprintln!("\nsill-incision estimate (exorheic lakes = have an outlet → would incise/drain):");
     eprintln!(
         "  exorheic {exo} ({:.0}% by count, {:.0}% by area) | endorheic {endo} | crater {crater}",

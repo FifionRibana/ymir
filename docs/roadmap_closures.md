@@ -187,10 +187,56 @@ la densité-frontières capte déjà les collisions actives).
 
 Reste : validation visuelle de l'auteur sur l'export, puis ✅ FAIT.
 
-### 4. Érosion côtière
+### H-1 / H-2. Chaîne hydro : infiltration puis incision de seuil — 🔬 EN COURS (AVANT C-4)
+
+**Pourquoi elles passent AVANT l'érosion côtière (C-4).** L'incision de seuil (H-2) vidange
+les bassins exoréiques : l'exutoire creuse son col, le lac se retire, l'eau ressort en
+rivière → **le trait de côte bouge** (embouchures, deltas, niveau de base littoral). Faire
+C-4 avant reviendrait à sculpter un littoral que H-2 déplacerait ensuite — on reprendrait le
+travail. Diagnostic à l'appui (voir `closure_morphology/comb_and_lake_diagnosis.md`) : 92
+lacs, 91 exoréiques, 0 endoréique, 6220 km² d'eau, les 10 plus grands tenant 74 % de l'aire —
+des bassins remplis au col, pas des mares de bruit. La chaîne hydro doit d'abord assécher ce
+qui doit l'être, PUIS on sculpte la côte qui en résulte.
+
+**H-1 — infiltration (la plus légère, en premier).** Le bilan lit `runoff = max(0, precip −
+PE)` : tout le surplus devient ruissellement de surface. En réalité une fraction **s'infiltre**
+et n'atteint jamais un lac par écoulement de surface. Ymir n'a **aucune eau souterraine**. H-1
+ajoute ce premier terme : un champ de perméabilité CAUSAL (classes lithologiques C-3 + densité
+de fracturation C-3b — la roche fracturée/volcaniclastique infiltre plus que le socle
+cristallin intact ; jamais du bruit) module la fraction infiltrée. Rayon d'impact **petit** :
+change le BILAN, pas la géométrie ni le routage. Des bassins basculent en endoréique, des
+niveaux baissent — un pas correct qui ne casse rien. Gated OFF → byte-identique.
+
+**H-1 — ce qu'elle a RÉELLEMENT livré (voir ADR « H-1 »).** La mesure a invalidé la prémisse.
+Le vrai défaut était que **les lacs de surface ne voyaient JAMAIS le bilan hydrique** : le
+pré-breach tourne avec `climate = None` et sa classification purement géométrique écrase
+celle calculée avec le climat. Finding 39 ne valait donc que pour les bassins **sous-marins**.
+Correctif livré **par défaut** (ce n'est pas une option : une classification fausse ne se
+gate pas) → **53 à 100 % des lacs de surface sont endoréiques** une fois le bilan appliqué,
+dont 45 % en humide. ⚠️ change `lake_type`, donc biomes et rendu, sur toute carte existante.
+L'**infiltration** elle-même est un terme **secondaire mesuré** (+0 à 3 lacs), conservé car
+physiquement juste et **gated OFF**.
+
+**H-2 — incision de seuil : périmètre EFFONDRÉ par H-1.** Un lac exoréique a un exutoire →
+son seuil s'inciserait et le vidangerait, mais le modèle le gèle. Or H-1 a montré que le
+reliquat exoréique n'est que de **3 à 27 lacs selon le climat, pas 91**, et que les
+endoréiques se rétractent d'eux-mêmes (mesuré 1798 → 483 km² en tropical, **rapporté et non
+appliqué**). Le rayon d'impact est donc bien plus petit qu'anticipé — **résultat direct de
+l'ordre H-1 puis H-2**.
+
+**Le critère de jugement de H-2 est prêt** (et il a fallu le réparer d'abord) : la métrique
+naïve de plaine contiguë n'était pas une propriété du continent mais du pas de grille
+(×4.97 entre 2048² et 8192²). La métrique retenue — **fermeture morphologique à 200 m de
+distance de pontage physique, puis composantes connexes** — converge à **×1.03**. La variante
+« au pas hexagonal » a été **écartée par la mesure** (×3.25). H-2 se jugera sur la plus grande
+plaine et l'aire totale de plaine (3024/3129 km² et 10643/9989 km² aujourd'hui), les deux
+seuls agrégats qui convergent.
+
+### 4. Érosion côtière — APRÈS H-1/H-2
 
 **Pourquoi en dernier :** elle travaille sur un littoral dont la forme dépend de tout
-l'amont. La faire après lithologie et volcanisme lui donne un trait de côte déjà
+l'amont — y compris de H-2, qui déplace le trait de côte (voir ci-dessus). La faire après
+lithologie, volcanisme et la chaîne hydro lui donne un trait de côte déjà
 structuré à sculpter, plutôt qu'à reprendre ensuite.
 
 **Ce qu'elle apporte :** falaises, plages, plateformes d'abrasion — la morphologie

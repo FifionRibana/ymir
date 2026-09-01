@@ -76,7 +76,10 @@ pub const ALGO_BREACH: u32 = 1;
 /// wetland mask). ⚠️ BUMP on ANY code change to that whole post-eroded chain — it
 /// spans `c1_drainage`, `below_sea_basin_lakes`, `clip_rivers_to_lakes`,
 /// `apply_geo_scale_ratio` and the hd.rs orchestration that stitches them.
-pub const ALGO_HD_DRAINAGE: u32 = 1;
+/// `2` — H-1: the surface lakes carried from the climate-free pre-breach drainage are now
+/// RECLASSIFIED by the water balance (they were exorheic by pure geometry, having never
+/// seen a climate). Changes `lake_type` on every existing map, hence biomes and rendering.
+pub const ALGO_HD_DRAINAGE: u32 = 2;
 
 // ── Cache key ──────────────────────────────────────────────────────────────
 

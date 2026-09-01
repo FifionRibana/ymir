@@ -262,6 +262,10 @@ struct WorkspaceState {
     /// erode more). Off by default (production byte-identical). Only bites with
     /// stream-power on.
     fracture: bool,
+    /// EXPERIMENTAL (H-1): infiltration — a causal permeability field (lithology matrix +
+    /// fracture density, double porosity) removes part of the precipitation surplus from
+    /// the SURFACE balance, so over-supplied basins can flip endorheic. Off by default.
+    infiltration: bool,
     /// Destination directory for the `.ymir` container (`<dir>/<name>.ymir/`).
     export_dir: String,
     // Derived / cache.
@@ -374,6 +378,7 @@ impl Default for WorkspaceState {
             volcanism: false,    // C-2 opt-in (Expert); production byte-identical
             lithology: false,    // C-3 opt-in (Expert); production byte-identical
             fracture: false,     // C-3b opt-in (Expert); production byte-identical
+            infiltration: false, // H-1 opt-in (Expert); production byte-identical
             export_dir: "exports".to_string(),
             current: None,
             preview: None,
@@ -936,6 +941,14 @@ fn left_panel(
                                     ..Default::default()
                                 }
                             }),
+                            // H-1 opt-in. Defaults anchored on the BFI upper range
+                            // (f_cap 0.7) and the rainfall supply rate (k_ref).
+                            infiltration: ws.infiltration.then(|| {
+                                ymir_core::tectonics_c1::closures::infiltration::InfiltrationConfig {
+                                    enabled: true,
+                                    ..Default::default()
+                                }
+                            }),
                             // Debug microscope overlay — derive the tectonic labels so
                             // the overlay panel has data (one cheap coarse pass).
                             emit_tectonic_labels: true,
@@ -1047,6 +1060,20 @@ fn left_panel(
                                  fracturées près des orogènes/transformants s'érodent/disséquent plus. \
                                  L'orientation a été écartée (non atteignable avec C1 — voir ADR). N'agit \
                                  qu'avec la stream-power. Le log [HD C-3b fracture] confirme.",
+                            );
+                            // H-1 infiltration (agit sur le BILAN hydrique, pas la géométrie).
+                            ui.checkbox(
+                                &mut ws.infiltration,
+                                egui::RichText::new("Infiltration (H-1)").color(DIM2).size(11.0),
+                            )
+                            .on_hover_text(
+                                "H-1 — premier terme SOUTERRAIN. Un champ de perméabilité CAUSAL \
+                                 (matrice lithologique + densité de fracturation, double porosité — \
+                                 la fracturation gagne 5-6 ordres, cf. Heath) retire une fraction du \
+                                 surplus de précipitation du bilan de SURFACE. Des bassins \
+                                 sur-alimentés peuvent basculer en endoréique et des niveaux baisser. \
+                                 Ne touche ni la géométrie ni le routage. Pas de terme de pente (la \
+                                 littérature ne le soutient pas). Le log [HD H-1 infiltration] confirme.",
                             );
                         } else {
                             // STANDARD — the production recipe, forced on. No fallback toggle.
@@ -1882,6 +1909,7 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         volcanism: None,
         lithology: None,
         fracture: None,
+        infiltration: None,
         emit_tectonic_labels: false, // preview is coarse-only; overlays need the HD run
     }
 }

@@ -100,7 +100,8 @@ fn comb_diagnosis() {
         return;
     }
     let rivers: Rivers =
-        serde_json::from_slice(&std::fs::read(Path::new(DIR).join("rivers.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(Path::new(DIR).join("rivers.json")).unwrap())
+            .unwrap();
     let h = load_height();
     let segs = &rivers.segments;
     eprintln!("\n=== COMB DIAGNOSIS — export {DIR} ===");
@@ -130,8 +131,7 @@ fn comb_diagnosis() {
         .iter()
         .filter(|s| s.strahler_order == 1 && seg_axiality(s) > 0.9 && s.points.len() >= 5)
         .collect();
-    let normal: Vec<&Seg> =
-        segs.iter().filter(|s| s.strahler_order >= 3).collect();
+    let normal: Vec<&Seg> = segs.iter().filter(|s| s.strahler_order >= 3).collect();
     eprintln!(
         "comb candidates (order 1, axiality>0.9, ≥5 pts): {} ({:.1}% of segments)",
         comb.len(),
@@ -185,8 +185,7 @@ fn comb_diagnosis() {
     eprintln!("  offset(cells):   -12   -8   -4   -2   -1    0   +1   +2   +4   +8  +12");
     eprintln!("  COMB  (o1):    {}", fmt(&ccomb));
     eprintln!("  TRUNK (o≥3):   {}", fmt(&ctrunk));
-    let groove =
-        |c: &[f32; 25]| ((c[8] + c[16]) * 0.5 - c[12]).max((c[4] + c[20]) * 0.5 - c[12]);
+    let groove = |c: &[f32; 25]| ((c[8] + c[16]) * 0.5 - c[12]).max((c[4] + c[20]) * 0.5 - c[12]);
     eprintln!(
         "  groove depth (mean flank − channel): COMB {:.0} m | TRUNK {:.0} m",
         groove(&ccomb),

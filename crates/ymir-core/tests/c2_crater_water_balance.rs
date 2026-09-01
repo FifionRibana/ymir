@@ -121,7 +121,7 @@ fn c2_crater_water_balance() {
             precip_internal: &climate.precipitation,
             temperature: &climate.temperature,
         };
-        let runoff = runoff_accumulation(&eroded, &flow, &dclim, cell_km2, None, w, h);
+        let runoff = runoff_accumulation(&eroded, &flow, &dclim, cell_km2, None, None, w, h);
         // Actual detected/typed lakes (the pipeline's own verdict).
         let mut dr = c1_drainage_windowed(&eroded, Some(&dclim), &dcfg, &ss, DOMAIN_KM);
         let (held, dry) = ymir_core::tectonics_c1::closures::volcanism::classify_crater_lakes(

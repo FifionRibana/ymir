@@ -181,6 +181,13 @@ pub struct C1DrainageConfig {
     /// #drainage fix A — D∞ continuous-direction flow on the flats (Tarboton).
     /// `false` → mono D8 (byte-identical). See `FlowConfig::dinf`.
     pub dinf: bool,
+    /// **H-1 infiltration** — the knobs mapping permeability → infiltrated fraction. The
+    /// per-cell FIELD is threaded separately (it is HD-sized); only the TUNABLES live here
+    /// so both drainage cache keys (`drainage_key_windowed`, `hd_drainage_key`, which fold
+    /// this config) invalidate when they change. `None` (default) → no infiltration,
+    /// byte-identical. See [`crate::tectonics_c1::closures::infiltration`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub infiltration: Option<crate::tectonics_c1::closures::infiltration::InfiltrationConfig>,
 }
 
 impl Default for C1DrainageConfig {
@@ -192,6 +199,7 @@ impl Default for C1DrainageConfig {
             lake_min_area_km2: 5.0,
             flat_perturbation: Some(FlatPerturbation::default()),
             dinf: false,
+            infiltration: None, // H-1 opt-in; production byte-identical until validated
         }
     }
 }
@@ -264,6 +272,21 @@ pub fn c1_drainage_windowed(
     ss: &SteinSteinParams,
     window_km: f32,
 ) -> C1DrainageResult {
+    c1_drainage_windowed_infil(heightmap, climate, cfg, ss, window_km, None)
+}
+
+/// [`c1_drainage_windowed`] with the H-1 per-cell INFILTRATED FRACTION. The fraction is
+/// applied at the SINGLE runoff-generation site, so it propagates coherently to the lake
+/// water balance, the segment discharge and every downstream consumer. `None` →
+/// byte-identical to [`c1_drainage_windowed`].
+pub fn c1_drainage_windowed_infil(
+    heightmap: &GridF32,
+    climate: Option<&DrainageClimate>,
+    cfg: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    window_km: f32,
+    infiltration: Option<&[f32]>,
+) -> C1DrainageResult {
     let (w, h) = (heightmap.width, heightmap.height);
     let cell_km2 = {
         let s = window_km / w as f32;
@@ -326,6 +349,7 @@ pub fn c1_drainage_windowed(
             ss,
             &lake_result.lakes,
             &mut lake_map,
+            infiltration,
             w,
             h,
         ),
@@ -381,8 +405,16 @@ pub fn c1_drainage_windowed(
                     }
                 }
             }
-            let discharge =
-                runoff_accumulation(heightmap, &flow, clim, cell_km2, Some(&endorheic), w, h);
+            let discharge = runoff_accumulation(
+                heightmap,
+                &flow,
+                clim,
+                cell_km2,
+                Some(&endorheic),
+                infiltration,
+                w,
+                h,
+            );
             // Per segment: `q` = max runoff_accum over its cells (mm·km²/yr). The reach's
             // downstream-most cell carries the largest accumulation, so `max` = the
             // cumulative catchment discharge at the mouth of the reach — and because
@@ -685,12 +717,16 @@ const REFERENCE_RUNOFF_MM: f32 = 300.0;
 /// Runoff (`max(0, precip − PE)·cell_km2`) accumulated downstream along the flow
 /// on the FILLED field. Exposed (crate-wide) so the C-2 measurement bench can read
 /// the SAME inflow the water balance uses, per crater — not an estimate.
+#[allow(clippy::too_many_arguments)]
 pub fn runoff_accumulation(
     heightmap: &GridF32,
     flow: &FlowResult,
     climate: &DrainageClimate,
     cell_km2: f32,
     sinks: Option<&[bool]>,
+    // H-1: per-cell INFILTRATED FRACTION of the precipitation surplus (0 = all runs off).
+    // `None` → 0 everywhere, byte-identical to the pre-H-1 balance.
+    infiltration: Option<&[f32]>,
     w: usize,
     h: usize,
 ) -> Vec<f32> {
@@ -700,7 +736,11 @@ pub fn runoff_accumulation(
         if heightmap.data[k] > C1_SEA_LEVEL_NORM {
             let p = precip_mm_per_year(climate.precip_internal.data[k]);
             let pe = potential_evaporation_mm(climate.temperature.data[k]);
-            acc[k] = (p - pe).max(0.0) * cell_km2;
+            // Budyko bounds the SUPPLY (AET = min(precip, PE)); H-1 only SPLITS the
+            // post-Budyko surplus between surface flow and groundwater. The infiltrated
+            // part leaves the surface balance and is never re-added (no double count).
+            let f_infil = infiltration.map_or(0.0, |f| f[k].clamp(0.0, 1.0));
+            acc[k] = (p - pe).max(0.0) * cell_km2 * (1.0 - f_infil);
         }
     }
     let mut order: Vec<usize> = (0..n).filter(|&k| heightmap.data[k] > C1_SEA_LEVEL_NORM).collect();
@@ -723,6 +763,70 @@ pub fn runoff_accumulation(
     acc
 }
 
+/// H-1 — the water-balance VERDICT for one lake, computed WITHOUT mutating anything.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LakeBalanceVerdict {
+    /// The lake this verdict is about (`Lake::id`).
+    pub id: u32,
+    /// Exorheic (inflow fills past the sill) or Endorheic (evaporation wins).
+    pub lake_type: LakeType,
+    /// Equilibrium surface where evaporation balances inflow (km²). For an endorheic
+    /// verdict this is the area the lake WOULD shrink to — reported, NOT applied.
+    pub a_eq_km2: f32,
+    /// The lake's current (sill) surface (km²).
+    pub a_sill_km2: f32,
+}
+
+/// H-1 — CLASSIFY the water balance of already-detected lakes WITHOUT touching their
+/// geometry. The production relief-v3 path carries the CLIMATE-FREE pre-breach lakes into
+/// the final result (their geometry is the correct one — the breach destroys the
+/// depressions), which meant those lakes never saw a water balance at all: they were
+/// exorheic by pure geometry ("the outlet reaches the sea"). This runs the balance on them
+/// and returns the verdicts; the caller decides what to adopt. `lake_map` is READ-ONLY
+/// here, levels and footprints are untouched — adopting an endorheic equilibrium LEVEL is
+/// a separate concern (that is H-2 territory).
+#[allow(clippy::too_many_arguments)]
+#[must_use]
+pub fn classify_lakes_water_balance(
+    heightmap: &GridF32,
+    flow: &FlowResult,
+    climate: &DrainageClimate,
+    cell_km2: f32,
+    lakes: &[C1Lake],
+    lake_map: &[u32],
+    infiltration: Option<&[f32]>,
+    w: usize,
+    h: usize,
+) -> Vec<LakeBalanceVerdict> {
+    let n = w * h;
+    let runoff_accum =
+        runoff_accumulation(heightmap, flow, climate, cell_km2, None, infiltration, w, h);
+    let mut out = Vec::with_capacity(lakes.len());
+    for lk in lakes {
+        let mut cells: Vec<(usize, f32)> =
+            (0..n).filter(|&k| lake_map[k] == lk.base.id).map(|k| (k, heightmap.data[k])).collect();
+        if cells.is_empty() {
+            continue;
+        }
+        cells.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        let inflow = cells.iter().map(|&(k, _)| runoff_accum[k]).fold(0.0f32, f32::max);
+        let pe_lake = potential_evaporation_mm(climate.temperature.data[cells[0].0]).max(1.0);
+        let a_eq_km2 = inflow / pe_lake;
+        let a_sill_km2 = lk.base.area as f32 * cell_km2;
+        out.push(LakeBalanceVerdict {
+            id: lk.base.id,
+            lake_type: if a_eq_km2 >= a_sill_km2 {
+                LakeType::Exorheic
+            } else {
+                LakeType::Endorheic
+            },
+            a_eq_km2,
+            a_sill_km2,
+        });
+    }
+    out
+}
+
 /// #drainage — the WATER BALANCE: a basin overflows (exorheic) only if its
 /// catchment INFLOW exceeds the lake's EVAPORATION at the sill; otherwise it is
 /// ENDORHEIC (terminal), stabilising at the level where evaporation = inflow.
@@ -743,13 +847,17 @@ fn water_balance_lakes(
     ss: &SteinSteinParams,
     lakes: &[Lake],
     lake_map: &mut [u32],
+    // H-1: per-cell infiltrated fraction (the SAME field the discharge path uses, so the
+    // balance and the discharge cannot disagree). `None` → pre-H-1 behaviour.
+    infiltration: Option<&[f32]>,
     w: usize,
     h: usize,
 ) -> Vec<C1Lake> {
     let n = w * h;
     // 1-2. Runoff (max(0, precip − PE)·cell_km2) accumulated downstream. No sinks
     //      here: we want the full catchment inflow REACHING each candidate lake.
-    let runoff_accum = runoff_accumulation(heightmap, flow, climate, cell_km2, None, w, h);
+    let runoff_accum =
+        runoff_accumulation(heightmap, flow, climate, cell_km2, None, infiltration, w, h);
     // 3. Per lake: inflow vs evaporation → exorheic (overflow) or endorheic level.
     let mut out = Vec::with_capacity(lakes.len());
     for lk in lakes {
@@ -898,6 +1006,22 @@ pub fn below_sea_basin_lakes(
     // below-sea lakes are visible to the trace (byte-identical to the pre-fix behaviour).
     detected_lake_map: Option<&[u32]>,
 ) -> BelowSeaResult {
+    below_sea_basin_lakes_infil(heightmap, climate, cfg, ss, window_km, detected_lake_map, None)
+}
+
+/// [`below_sea_basin_lakes`] with the H-1 per-cell INFILTRATED FRACTION — the SAME field
+/// the surface balance uses, so a below-sea basin's inflow is reduced coherently.
+/// `None` → byte-identical to [`below_sea_basin_lakes`].
+#[allow(clippy::too_many_arguments)]
+pub fn below_sea_basin_lakes_infil(
+    heightmap: &GridF32,
+    climate: &DrainageClimate,
+    cfg: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    window_km: f32,
+    detected_lake_map: Option<&[u32]>,
+    infiltration: Option<&[f32]>,
+) -> BelowSeaResult {
     use crate::lakes::connectivity::water_class;
     use std::collections::VecDeque;
     let (w, h) = (heightmap.width, heightmap.height);
@@ -906,7 +1030,7 @@ pub fn below_sea_basin_lakes(
     let flow =
         compute_flow(heightmap, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM, ..Default::default() });
     let wc = water_class(heightmap, C1_SEA_LEVEL_NORM);
-    let runoff = runoff_accumulation(heightmap, &flow, climate, cell_km2, None, w, h);
+    let runoff = runoff_accumulation(heightmap, &flow, climate, cell_km2, None, infiltration, w, h);
     // Finding 33 PART A — the below-sea INVENTORY floor is now a few CELLS (reject single-cell
     // noise only), NOT 5 km². At 40 m/cell, 5 km² is 3125 cells — a plainly visible lake that a
     // river can terminate in; excluding it from lakes.json made those terminations land in a body
