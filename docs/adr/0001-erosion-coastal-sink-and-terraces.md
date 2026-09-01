@@ -282,6 +282,13 @@ relief causally, FBM can shrink from "terrain generator" to "symmetry-breaking s
   segments (~3140), valley floor (~680 km²) ALL stay healthy — the degeneracy floor
   is BELOW 0.02, not reached. So a low-amplitude seed (≈0.02–0.04) keeps organic
   drainage. Recommend that regime; confirm the visual striation drop by eye.
+  > **⚠️ VALID WHEN MADE, DOES NOT TRANSFER (H-1c round).** This was measured PRE-C-1, when
+  > `flow_conditioning = 0` and `amplitude_base` genuinely drove the terrain — the numbers above
+  > are sound for that configuration. It does NOT carry to the conditioned production path: since
+  > C-1 the relief-budget cap binds at every cell and `amplitude_base` is entirely inert (proven
+  > byte-identical at 4×, see "The DEAD KNOB" below). Any amplitude sweep run AFTER C-1 measured
+  > nothing, and the "degeneracy floor below 0.02" must not be quoted as a property of the shipped
+  > pipeline.
 - **The anisotropy knobs do NOT move the striation metric.** `max_anisotropy` 3→1
   (isotropic), `amplitude_slope_factor` 3→0, `octaves` 7→3 all leave the
   roughness-asymmetry (grad vs contour, ±8 cells) at ~0.83 (pre-incision ~0.80).
@@ -1982,6 +1989,45 @@ no longer needs to be lowered to fight pits — beta does that at every slope �
 `min(amplitude_base*..., beta*slope/(nscale*S))`, a per-cell budget rather than a global level; the "floor" is a
 function of slope, not a scalar.
 
+> **⚠️ CORRECTED (H-1c round) — this entry UNDERSTATED it, and the qualifier was wrong.**
+> "Nearly irrelevant on gentle slopes … only sets the ceiling on steep flanks" left the door open that
+> `amplitude_base` still mattered somewhere. It does not. **It is ENTIRELY INERT on the production path**, at
+> every slope. Proof: building the production terrain at `amplitude_base = 0.16` and `= 0.04` (a 4× difference)
+> yields a **BYTE-IDENTICAL heightmap** — 0 of 4 194 304 cells differ, max |Δ| = 0.0 m, and the pre-breach lake
+> footprint is identical to the cell (58 895 cells, 67 lakes). A single cell where the cap did NOT bind would
+> have diverged; none did, so `min(amplitude_base·…, cap)` selects the cap EVERYWHERE (`flow_conditioning = 0.1`
+> in `c1_hd_production`). See `tests/amplitude_anomaly.rs`.
+
+### The DEAD KNOB, and what it invalidates backwards
+
+`amplitude_base` — and with it the viz's `fbm_amplitude` selector, the rendered amplitude ladder
+(`exports/relief_ladder/`, 0.16/0.08/0.04/0.02) and **every amplitude sweep run since C-1** — act on a parameter
+with NO EFFECT whenever `flow_conditioning > 0`, which has been the production default since C-1. They were valid
+BEFORE C-1; C-1 silently neutralised them.
+
+**Be precise about what survives.** The QUALITATIVE conclusions hold: the noise was real, the striations were
+real, the closures did what was measured of them, and the pit counts / striation spectra / shape metrics were all
+measured on genuine terrain. What does NOT hold is any statement of the form **"the FBM floor sits at 0.02"** or
+"amplitude is reducible ≥8×" (Finding 5, and the trajectory criterion invoked in C-2, C-3 and C-3b): those
+**never measured anything** — the terrain did not change as the number moved. Corrected here visibly rather than
+silently; the earlier entries are left in place with this correction pointing at them.
+
+**The real lever is `flow_conditioning` (β) alone**, and it carries TWO ROLES in one parameter: the relief-budget
+CAP (`β·slope/divisor`) and the downslope STRETCH (`1/FLOW_STRETCH`). Any future "make the FBM shrink" work must
+move β, not the amplitude — and should first separate the two roles, because a single knob doing both cannot be
+tuned against either. Note this composes with the roadmap correction already recorded under C-3b (closures cannot
+lower the FBM floor in its own band): the floor was not merely unreachable, the knob measuring it was inert.
+
+**Structural remedy (the seventh bench/production divergence).** `c1_hd_production` is NOT production: the viz
+builds it then mutates amplitude, sample origin, erosion, stream-power, lithology and fracture. Any bench calling
+it gets something else than what ships — which is how this went unnoticed. The fix is a single
+`production_hd_config(target, opts)` returning exactly the shipped config, consumed UNMUTATED by the viz and
+called by benches, plus a non-regression test comparing the viz's effective config against it. Divergence becomes
+impossible to WRITE rather than forbidden by instruction — a rule that must be remembered seven times is a design
+flaw, not a discipline failure. And no public structure may keep a field that does nothing: the amplitude
+composition is to be made EXPLICIT (a named cap, β's two roles separated) rather than a silent `min` inside a
+loop, which is exactly what hid the inertness for three closures.
+
 ### Guards
 
 - `terrain::upscale::flow_conditioning_suppresses_fabricated_pits` — permanent unit guard: on a tilted ramp the
@@ -2797,6 +2843,62 @@ BALANCE ALONE. But in HUMID and TROPICAL, H-1c changes NOTHING (no endorheic bas
 there, correctly). So in the author's TARGET climate the France↔Scotland dial rests
 **entirely** on H-2's sill incision. H-1c has established the baseline; it has not moved the
 humid map.
+
+### The H-1c figures ARE production values (an alert raised and withdrawn on evidence)
+
+Mid-round I flagged that the H-1 benches inherited `c1_hd_production`'s `amplitude_base = 0.16` while the viz
+overrides to 0.04, and warned the H-1c numbers were not production values. **That alert is WITHDRAWN**: the
+parameter is inert (above), so the benches produced exactly the shipped terrain. The exposed floor
+(2079–2168 km²), the +36 % on the largest plain, the ×1.03 convergence and the 92–97 % under 5° stand as
+PRODUCTION figures. Recorded because the alert was published; the retraction must be as visible as the alarm.
+
+### The COASTLINE barbing is in the CONTOUR, not the terrain — and it shrinks C-4
+
+Diagnosed on the arid-hot export (`tests/h1c_phantom_and_coast.rs`). The TERRAIN crosses 0 m cleanly — the mean
+profile perpendicular to the shore descends 49.9 → 2.8 m over 8 cells then goes negative, with no serration. The
+CONTOUR does not: mean step **0.78 cell** (sub-cellular, marching-squares vertices on cell edges), step directions
+peaked on the DIAGONALS, and 8 % of turns above 80°.
+
+The mechanism is **gradient pinning**, and it refuted the flat-shelf hypothesis both of us favoured. Sharp turns
+are near-uniform across low-to-medium slopes and vanish only on steep shores:
+
+| shore slope | vertices | mean turn | turns > 80° |
+|---|---|---|---|
+| < 0.5° | 9 671 | 16.1° | 8.6 % |
+| 0.5–2° | 3 076 | 19.2° | **12.2 %** |
+| 2–5° | 10 940 | 18.0° | 8.1 % |
+| 5–15° | 4 607 | 21.1° | 8.3 % |
+| **> 15°** | 3 839 | 16.8° | **1.9 %** |
+
+The steeper the shore, the more tightly the 0 m crossing is pinned inside one cell and the smoother the contour;
+on gentle ground it wanders at sub-cell scale. So the remedy is GEOMETRIC (sub-cellular interpolation or contour
+smoothing), not morphological.
+
+**C-4's SCOPE IS REDUCED, and that is an acquired gain.** Coastal erosion will NOT have to fix the barbing — it
+only has to sculpt real coastal morphology (cliffs, beaches, abrasion platforms). The C-4 issue as written
+assumed otherwise; corrected here.
+
+### Below-sea SPILLWAYS are mischaracterised as rivers (pre-existing, surfaced by arid-hot)
+
+Rivers #1–#6 of the discharge ranking run 0 m → −20 m draining 88 468 km² at Strahler 1. Measured signature:
+**2 points** (one grid step — the "1 km" is the `geo_scale_ratio ×7.5` length), **end at exactly −20.0 m on every
+one** (a constant, not a terrain elevation), and they come in **near-identical PAIRS** (88468/88449, 62094/62094,
+8846/8846) — a probable DOUBLE EMISSION, a separate bug from the typing.
+
+The shrinkage hypothesis is **REFUTED by measurement**: 0 % of these segments lie on floor exposed by H-1c, while
+**51.9 % of the real order-≥3 trunks do** — the trunks legitimately cross the drained bed. These are the
+below-sea basin SPILLWAYS (50 in that run: 32 to sea, 18 chained) injected into `rivers.json`. Pre-existing;
+arid-hot merely lifted them to the head of the discharge sort.
+
+**Decision (consumer-informed): a distinct `Spillway` type.** Living Landz uses `strahler_order` for RENDERING
+only (stroke width, display filtering), never for game logic, so a closed-basin outflow can be rendered as a
+watercourse of given width without needing an order. `width_m` stays meaningful (it derives from discharge).
+"Order 1 with 88 468 km² of basin" is what is absurd, not the object's existence — a spillway is a real flow and
+must stay on the map.
+
+**CONSUMER BACKLOG** — this ADDS a type Living Landz must handle, alongside `width_m`, `lake_type` and the
+`Wetland` biome: all exported or exportable and still ignored downstream. Recorded rather than assumed to be
+noticed.
 
 ### Two lessons from H-1b
 
