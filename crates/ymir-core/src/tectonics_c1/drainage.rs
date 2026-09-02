@@ -1632,7 +1632,91 @@ pub fn below_sea_basin_lakes_infil(
         }
         extra_inflow = next_extra;
     }
+    break_reciprocal_spill_cycles(&mut out, &mut lake_map, &mut spillways, w);
     BelowSeaResult { lakes: out, lake_map, spillways, wetland, basins }
+}
+
+/// Two below-sea basins whose free surfaces differ by LESS than this are hydraulically ONE
+/// water body: the water communicates over their shared col. 10 cm — far above the vertical
+/// quantisation of the height field, far below any free-surface difference the model can
+/// meaningfully resolve, and it makes the merge decision independent of quantisation noise
+/// (floating-point equality would make it depend on it).
+pub const SAME_WATER_BODY_TOL_M: f32 = 0.10;
+
+/// Break RECIPROCAL spill cycles (A → B and B → A across the SAME col), measured at 7 pairs
+/// = 14 of 51 spillways on the production seed. They violate the assumption Finding 40's
+/// fixed point rests on — "flow is downhill, so the chain graph is a DAG" — which was
+/// ASSERTED, never verified: a 2-cycle is not a DAG, which is also why such a pair does not
+/// converge exactly (88 468 vs 88 449) while others stabilise.
+///
+/// Two cases, one physical rule:
+/// - **levels differ by more than [`SAME_WATER_BODY_TOL_M`]** → the HIGHER basin spills into
+///   the lower; the reverse direction is impossible, so the lower basin's spillway is dropped;
+/// - **levels equal within tolerance** → they are ONE water body sharing a free surface over
+///   the col. Keeping them apart is the artefact, so they are MERGED (one id, one footprint,
+///   one outflow) — the correct description, not a convenience.
+///
+/// NOTE (scoped): this corrects the OUTPUT. The fixed point above still propagated the cyclic
+/// `extra_inflow` while both directions existed, so the levels it produced already include
+/// that double contribution; removing it inside the iteration is a deeper change, measured
+/// and reported separately.
+fn break_reciprocal_spill_cycles(
+    out: &mut Vec<C1Lake>,
+    lake_map: &mut [u32],
+    spillways: &mut Vec<Spillway>,
+    _w: usize,
+) {
+    use std::collections::HashMap;
+    let level_of: HashMap<u32, f32> = out.iter().map(|l| (l.base.id, l.level_m)).collect();
+    let target: HashMap<u32, u32> =
+        spillways.iter().filter_map(|s| s.chained_into.map(|t| (s.lake_id, t))).collect();
+    let mut drop_spill: std::collections::HashSet<u32> = Default::default();
+    let mut merges: Vec<(u32, u32)> = Vec::new(); // (keep, absorb)
+    for (&a, &b) in &target {
+        if a >= b || target.get(&b) != Some(&a) {
+            continue; // each pair once, and only reciprocal ones
+        }
+        match (level_of.get(&a), level_of.get(&b)) {
+            (Some(&la), Some(&lb)) if (la - lb).abs() > SAME_WATER_BODY_TOL_M => {
+                // The higher spills into the lower; drop the impossible uphill direction.
+                drop_spill.insert(if la > lb { b } else { a });
+            }
+            _ => {
+                // One free surface over the col → one water body.
+                merges.push((a, b));
+                drop_spill.insert(b);
+            }
+        }
+    }
+    if drop_spill.is_empty() {
+        return;
+    }
+    spillways.retain(|s| !drop_spill.contains(&s.lake_id));
+    for (keep, absorb) in merges {
+        for v in lake_map.iter_mut() {
+            if *v == absorb {
+                *v = keep;
+            }
+        }
+        let absorbed = out.iter().find(|l| l.base.id == absorb).cloned();
+        if let (Some(abs), Some(k)) = (absorbed, out.iter_mut().find(|l| l.base.id == keep)) {
+            k.base.area += abs.base.area;
+            k.area_km2 += abs.area_km2;
+            // one free surface: keep the higher level and the deeper depth of the two
+            k.level_m = k.level_m.max(abs.level_m);
+            k.depth_m = k.depth_m.max(abs.depth_m);
+        }
+        out.retain(|l| l.base.id != absorb);
+    }
+    // A spillway may still name a merged-away receiver — re-point it at the survivor.
+    let alive: std::collections::HashSet<u32> = out.iter().map(|l| l.base.id).collect();
+    for s in spillways.iter_mut() {
+        if let Some(t) = s.chained_into {
+            if !alive.contains(&t) {
+                s.chained_into = None; // its receiver was absorbed; treat as an open outflow
+            }
+        }
+    }
 }
 
 /// Trace a lake's outlet downstream via D8; does it reach the sea (≤ 0.5)?
