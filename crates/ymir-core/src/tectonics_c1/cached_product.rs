@@ -40,7 +40,9 @@ use crate::terrain::upscale::FbmUpscaleConfig;
 use super::closures::oceanic_bathymetry::SteinSteinParams;
 use super::closures::volcanism::{CraterRecord, VolcanismConfig, place_edifices};
 use super::drainage::C1_SEA_LEVEL_NORM;
-use super::drainage::{C1DrainageConfig, C1DrainageResult, DrainageClimate, c1_drainage_windowed};
+use super::drainage::{
+    C1DrainageConfig, C1DrainageResult, DrainageClimate, SegmentKind, c1_drainage_windowed,
+};
 use super::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use super::kinematics::PlateKinematics;
 use super::land_topology::{IslandCriteria, LandTopology, is_island_fit, land_topology};
@@ -428,6 +430,8 @@ impl RawCodec for C1DrainageResult {
             "seg_q": self.segment_discharge_m3s,
             "seg_width": self.segment_width_m,
             "seg_profile": self.segment_profile_m,
+            "seg_kind": self.segment_kind,
+            "seg_src_lake": self.segment_source_lake,
             "lakes": self.lakes,
         })
     }
@@ -458,8 +462,9 @@ impl RawCodec for C1DrainageResult {
 
         // NB: separate `from_value` calls (not a shared closure) so each infers
         // its own target type from the struct field it feeds.
-        let rivers = serde_json::from_value(shape["rivers"].clone())
-            .map_err(|e| format!("drainage sidecar rivers: {e}"))?;
+        let rivers: crate::terrain::flow::RiverNetwork =
+            serde_json::from_value(shape["rivers"].clone())
+                .map_err(|e| format!("drainage sidecar rivers: {e}"))?;
         let segment_drainage_km2 = serde_json::from_value(shape["seg_km2"].clone())
             .map_err(|e| format!("drainage sidecar seg_km2: {e}"))?;
         let segment_navigability = serde_json::from_value(shape["seg_nav"].clone())
@@ -480,6 +485,38 @@ impl RawCodec for C1DrainageResult {
         let lakes = serde_json::from_value(shape["lakes"].clone())
             .map_err(|e| format!("drainage sidecar lakes: {e}"))?;
 
+        let n_seg = rivers.segments.len();
+        // Old sidecars predate the segment KIND (H-1e); default them to watercourses, which
+        // is what the drainage extraction alone produces. ALGO_DRAINAGE is bumped so this
+        // path is not silently relied on.
+        // A LENGTH MISMATCH IS AN ERROR, not something to pad or truncate: an unconditional
+        // `resize(n_seg, …)` here silently cut 13165 stored kinds down to 10186 and reported
+        // zero spillways on the cache-HIT path — the desync it was hiding lived in
+        // `clip_rivers_to_lakes`. Only an ABSENT/EMPTY array is tolerated (legacy sidecar).
+        let mut segment_kind: Vec<SegmentKind> = shape
+            .get("seg_kind")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        if segment_kind.is_empty() {
+            segment_kind.resize(n_seg, SegmentKind::Watercourse);
+        } else if segment_kind.len() != n_seg {
+            return Err(format!(
+                "drainage sidecar seg_kind: {} entries for {n_seg} segments",
+                segment_kind.len()
+            ));
+        }
+        let mut segment_source_lake: Vec<Option<u32>> = shape
+            .get("seg_src_lake")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        if segment_source_lake.is_empty() {
+            segment_source_lake.resize(n_seg, None);
+        } else if segment_source_lake.len() != n_seg {
+            return Err(format!(
+                "drainage sidecar seg_src_lake: {} entries for {n_seg} segments",
+                segment_source_lake.len()
+            ));
+        }
         Ok(C1DrainageResult {
             flow: FlowResult { filled, direction, accumulation, basins, num_basins },
             rivers,
@@ -488,6 +525,8 @@ impl RawCodec for C1DrainageResult {
             segment_discharge_m3s,
             segment_width_m,
             segment_profile_m,
+            segment_kind,
+            segment_source_lake,
             lakes,
             lake_map,
             width: w,

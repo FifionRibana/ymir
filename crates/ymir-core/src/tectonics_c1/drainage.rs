@@ -239,10 +239,51 @@ pub struct C1DrainageResult {
     /// Per-segment LONG PROFILE: bed elevation (metres) at each of the segment's
     /// points, upstream→downstream (parallel to `rivers.segments[i].points`).
     pub segment_profile_m: Vec<Vec<f32>>,
+    /// Per-segment KIND (parallel to `rivers.segments`). A below-sea basin's outflow is a
+    /// real flow but NOT a hierarchised watercourse: giving it a Strahler order produced the
+    /// absurdity the author caught — "order 1 draining 88 468 km²" at the head of the
+    /// discharge sort. The kind is authoritative; `strahler_order` is MEANINGLESS on a
+    /// [`SegmentKind::Spillway`] and must be ignored there.
+    pub segment_kind: Vec<SegmentKind>,
+    /// For a [`SegmentKind::Spillway`], the below-sea basin it drains — `None` when that
+    /// basin is BELOW the lake-inventory floor and therefore absent from the exported lake
+    /// list. `None` means "a real basin, not inventoried": the consumer must never be handed
+    /// an id it cannot resolve. Always `None` for a watercourse.
+    pub segment_source_lake: Vec<Option<u32>>,
     pub lakes: Vec<C1Lake>,
     pub lake_map: Vec<u32>,
     pub width: usize,
     pub height: usize,
+}
+
+impl C1DrainageResult {
+    /// EVERY per-segment array has exactly one row per `rivers.segments` entry. Adding a
+    /// parallel array and forgetting one of the places that rebuilds them silently shifts
+    /// every row past the split — call this after any structural mutation of the network.
+    #[must_use]
+    pub fn segment_arrays_aligned(&self) -> bool {
+        let n = self.rivers.segments.len();
+        self.segment_drainage_km2.len() == n
+            && self.segment_navigability.len() == n
+            && self.segment_discharge_m3s.len() == n
+            && self.segment_width_m.len() == n
+            && self.segment_profile_m.len() == n
+            && self.segment_kind.len() == n
+            && self.segment_source_lake.len() == n
+    }
+}
+
+/// What a segment of the exported network IS. Living Landz uses `strahler_order` for
+/// RENDERING only (stroke width, display filtering), never for game logic — so a spillway
+/// can be drawn as a watercourse of its own width without needing an order, and the order
+/// must simply not be read for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SegmentKind {
+    /// A hierarchised watercourse: `strahler_order` is meaningful.
+    Watercourse,
+    /// The outflow of a closed below-sea basin over its col. Real flow, no hierarchy:
+    /// `strahler_order` is meaningless; `width_m` (from discharge) is what to render.
+    Spillway,
 }
 
 /// Extract the drainage network (rivers + lakes) from the C1 HD product
@@ -467,6 +508,9 @@ pub fn c1_drainage_windowed_infil(
         })
         .collect();
 
+    // Everything the drainage extraction produces is a hierarchised watercourse; spillways
+    // are appended later (they come from the below-sea pass) and carry their own kind.
+    let n_seg = rivers.segments.len();
     C1DrainageResult {
         flow,
         rivers,
@@ -475,6 +519,8 @@ pub fn c1_drainage_windowed_infil(
         segment_discharge_m3s,
         segment_width_m,
         segment_profile_m,
+        segment_kind: vec![SegmentKind::Watercourse; n_seg],
+        segment_source_lake: vec![None; n_seg],
         lakes,
         lake_map,
         width: w,
@@ -535,6 +581,12 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     let src_q = std::mem::take(&mut dr.segment_discharge_m3s);
     let src_width = std::mem::take(&mut dr.segment_width_m);
     let src_prof = std::mem::take(&mut dr.segment_profile_m);
+    // EVERY parallel array must be rebuilt here, or the survivors desynchronise from
+    // `rivers.segments` and every consumer reads the wrong row. Forgetting these two cost a
+    // measurement: the 16 `Spillway` tags landed at indices 13149..13165 while the segments
+    // they described sat at 10170..10186 (see ADR, the completeness trap for composites).
+    let src_kind = std::mem::take(&mut dr.segment_kind);
+    let src_srclake = std::mem::take(&mut dr.segment_source_lake);
 
     // Pass 1 — enumerate each parent's kept runs as (start, end) index ranges into
     // its point list, so head/tail new-indices can be reserved before emission.
@@ -583,6 +635,8 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     let mut discharge = Vec::with_capacity(offset[src.len()]);
     let mut width_m = Vec::with_capacity(offset[src.len()]);
     let mut profile_m = Vec::with_capacity(offset[src.len()]);
+    let mut kind = Vec::with_capacity(offset[src.len()]);
+    let mut source_lake = Vec::with_capacity(offset[src.len()]);
 
     for (i, s) in src.iter().enumerate() {
         let n = s.points.len();
@@ -619,6 +673,10 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
             discharge.push(src_q.get(i).copied().unwrap_or(0.0));
             width_m.push(src_width.get(i).copied().unwrap_or(0.0));
             profile_m.push(src_prof.get(i).map(|p| p[a..b].to_vec()).unwrap_or_default());
+            // A clipped run IS what its parent was: splitting a watercourse at a lake shore
+            // yields watercourses, splitting a spillway yields spillway reaches.
+            kind.push(src_kind.get(i).copied().unwrap_or(SegmentKind::Watercourse));
+            source_lake.push(src_srclake.get(i).copied().flatten());
         }
     }
 
@@ -628,6 +686,9 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     dr.segment_discharge_m3s = discharge;
     dr.segment_width_m = width_m;
     dr.segment_profile_m = profile_m;
+    dr.segment_kind = kind;
+    dr.segment_source_lake = source_lake;
+    debug_assert!(dr.segment_arrays_aligned(), "clip desynchronised a parallel array");
 }
 
 /// Finding 37 — the exorheic-outlet invariant over the WHOLE lake population (not a subset). EVERY
@@ -2262,6 +2323,8 @@ mod tests {
             segment_discharge_m3s: vec![25.0],
             segment_width_m: vec![25.0],
             segment_profile_m: vec![(0..w).map(|x| x as f32).collect()],
+            segment_kind: vec![SegmentKind::Watercourse],
+            segment_source_lake: vec![None],
             lakes: vec![C1Lake { base, level_m: 0.0, depth_m: 1.0, area_km2: 1.0, lake_type }],
             lake_map,
             width: w,
@@ -2342,6 +2405,8 @@ mod tests {
             segment_discharge_m3s: vec![1.0; segs.len()],
             segment_width_m: vec![1.0; segs.len()],
             segment_profile_m: segs.iter().map(|s| vec![0.0; s.points.len()]).collect(),
+            segment_kind: vec![SegmentKind::Watercourse; segs.len()],
+            segment_source_lake: vec![None; segs.len()],
             rivers: RiverNetwork { segments: segs },
             lakes: vec![
                 mk_lake(7, LakeType::Exorheic),

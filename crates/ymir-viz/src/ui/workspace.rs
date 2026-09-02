@@ -36,7 +36,7 @@ use ymir_core::climate::precipitation::{precip_mm_per_year, wind_zonal_dir};
 use ymir_core::climate::temperature::sea_level_temperature;
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
-use ymir_core::tectonics_c1::drainage::{LakeType, Navigability};
+use ymir_core::tectonics_c1::drainage::{LakeType, Navigability, SegmentKind};
 use ymir_core::tectonics_c1::land_topology::domain_metrics;
 use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
 use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
@@ -97,6 +97,13 @@ struct Watercourse {
     sink_lake_id: Option<u32>,
     length_km: f32,
     tributaries: usize,
+    /// What the trunk mouth IS (`segment_kind`). `Spillway` = the outflow of a closed
+    /// below-sea basin over its col — a real flow with NO hierarchy, so `order` is
+    /// meaningless for it and the list must not present it as a river.
+    kind: SegmentKind,
+    /// For a `Spillway`, the below-sea basin it drains — `None` when that basin sits
+    /// below the lake-inventory floor (absent from `drainage.lakes`).
+    source_lake_id: Option<u32>,
 }
 
 /// A navigation jump requested by a detail panel (the clickable hydrological chain).
@@ -3244,10 +3251,20 @@ fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Wate
             sink,
             sink_lake_id,
             length_km: pts as f32 * km_per_cell * ratio,
+            kind: d.segment_kind.get(r).copied().unwrap_or(SegmentKind::Watercourse),
+            source_lake_id: d.segment_source_lake.get(r).copied().flatten(),
         });
     }
+    // WATERCOURSES FIRST, then discharge. A spillway carries the whole catchment of its
+    // closed basin, so on discharge alone it outranks every real river (Finding 41: the
+    // author's list opened on six spillways, "the first real river is #7"). The kind is
+    // the primary key so the head of the list is a river again; spillways stay browsable
+    // at the tail, where their discharge is honest but their rank no longer misleads.
     out.sort_by(|a, b| {
-        b.discharge_m3s.partial_cmp(&a.discharge_m3s).unwrap_or(std::cmp::Ordering::Equal)
+        let key = |w: &Watercourse| u8::from(w.kind == SegmentKind::Spillway);
+        key(a).cmp(&key(b)).then(
+            b.discharge_m3s.partial_cmp(&a.discharge_m3s).unwrap_or(std::cmp::Ordering::Equal),
+        )
     });
     out
 }
@@ -3314,14 +3331,28 @@ fn microscope_list(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
             if let Some(wcs) = &wcs {
                 for (i, wc) in wcs.iter().enumerate() {
                     let (sl, sc) = sink_label(wc.sink);
-                    let txt = format!(
-                        "#{:<3} S{} · {:.0} m³/s · {} trib · {}",
-                        i + 1,
-                        wc.order,
-                        wc.discharge_m3s,
-                        wc.tributaries,
-                        sl
-                    );
+                    // A spillway has no Strahler order (emitted as 1 regardless of
+                    // catchment) and no tributaries — show what it IS instead.
+                    let txt = if wc.kind == SegmentKind::Spillway {
+                        format!(
+                            "#{:<3} déversoir · {:.0} m³/s · bassin {} · {}",
+                            i + 1,
+                            wc.discharge_m3s,
+                            wc.source_lake_id
+                                .map(|id| id.to_string())
+                                .unwrap_or_else(|| "hors inventaire".into()),
+                            sl
+                        )
+                    } else {
+                        format!(
+                            "#{:<3} S{} · {:.0} m³/s · {} trib · {}",
+                            i + 1,
+                            wc.order,
+                            wc.discharge_m3s,
+                            wc.tributaries,
+                            sl
+                        )
+                    };
                     let r = ui.selectable_label(
                         ws.selected_river == Some(i),
                         egui::RichText::new(txt).color(sc).size(11.0),
@@ -4120,4 +4151,161 @@ fn drainage_color(hd: &HdResult, river_map: &RiverCellMap, k: usize) -> [u8; 3] 
         };
     }
     col
+}
+
+#[cfg(test)]
+mod spillway_typing_bench {
+    //! STEP 3b — the PRACTICAL SYMPTOM of the spillway mischaracterisation, measured on the
+    //! production path. The author's report was "the first real river is #7": the microscope
+    //! Rivières list, sorted by discharge, opened on six SPILLWAYS — an order-1 segment
+    //! draining 88 468 km² outranks every genuine river because it carries the whole
+    //! catchment of a closed below-sea basin.
+    //!
+    //! This bench lives HERE, next to `aggregate_watercourses`, so it exercises the SAME
+    //! function the microscope calls (method rule 3: reproduce the production chain, not a
+    //! reconstruction of it). It goes through `run_hd` end to end, so the segments, their
+    //! kinds and the sort are all the shipped ones.
+    //!
+    //! Run: cargo test -p ymir-viz --release spillway_sort -- --ignored --nocapture
+
+    use super::*;
+    use crate::bridge::c1::C1RunSpec;
+    use crate::bridge::c1::events::C1Event;
+    use crate::bridge::c1::hd::{HdParams, run_hd};
+    use crossbeam_channel::bounded;
+    use std::sync::atomic::AtomicBool;
+    use ymir_core::tectonics_c1::closures::fracture::FractureConfig;
+    use ymir_core::tectonics_c1::closures::infiltration::InfiltrationConfig;
+    use ymir_core::tectonics_c1::closures::lithology::LithologyConfig;
+    use ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig;
+
+    const PSEED: u64 = 10_481_999_410_520_546_993;
+    const DOMAIN_KM: f32 = 400.0;
+
+    fn head_of_list(target: usize, lat: f32, label: &str) {
+        let spec = C1RunSpec { seed: PSEED, ..C1RunSpec::default() };
+        let params = HdParams {
+            target_size: target,
+            latitude_deg: lat,
+            latitude_span_deg: Some(10.0),
+            domain_km: DOMAIN_KM,
+            manual_offset: None,
+            // relief-v3 = the shipped triple (stream_power + closures + mfd, cross_rill off).
+            stream_power: true,
+            closures: true,
+            cross_rill: false,
+            cross_rill_d: 0.40,
+            mfd: true,
+            mfd_p: 2.0,
+            fbm_amplitude: None,
+            geo_scale_ratio: 1.0,
+            export_dir: None,
+            volcanism: Some(VolcanismConfig {
+                enabled: true,
+                domain_km: DOMAIN_KM,
+                ..Default::default()
+            }),
+            lithology: Some(LithologyConfig { enabled: true, ..Default::default() }),
+            fracture: Some(FractureConfig {
+                enabled: true,
+                amplitude: 6.0,
+                decay_km: 25.0,
+                domain_km: DOMAIN_KM,
+                ..Default::default()
+            }),
+            infiltration: Some(InfiltrationConfig { enabled: true, ..Default::default() }),
+            emit_tectonic_labels: false,
+        };
+        let (tx, rx) = bounded(256);
+        let cancel = Arc::new(AtomicBool::new(false));
+        std::thread::spawn(move || run_hd(&spec, &params, &tx, &cancel));
+        let mut result = None;
+        while let Ok(e) = rx.recv() {
+            match e {
+                C1Event::HdCompleted { result: r, .. } => {
+                    result = Some(r);
+                    break;
+                }
+                C1Event::HdFailed { .. } => panic!("HD run failed"),
+                _ => {}
+            }
+        }
+        let hd = result.expect("HdCompleted");
+        let raw_sw =
+            hd.drainage.segment_kind.iter().filter(|k| **k == SegmentKind::Spillway).count();
+        eprintln!(
+            "RAW segments: {} | segment_kind len {} | tagged Spillway: {}",
+            hd.drainage.rivers.segments.len(),
+            hd.drainage.segment_kind.len(),
+            raw_sw
+        );
+        let wcs = aggregate_watercourses(&hd, DOMAIN_KM, 1.0);
+        let n_sw = wcs.iter().filter(|w| w.kind == SegmentKind::Spillway).count();
+        let first_sw = wcs.iter().position(|w| w.kind == SegmentKind::Spillway);
+        let first_river = wcs.iter().position(|w| w.kind == SegmentKind::Watercourse);
+
+        eprintln!("\n=========  DISCHARGE SORT HEAD — {label} {lat}° @ {target}²  =========");
+        eprintln!(
+            "entries: {} | watercourses: {} | spillways: {}",
+            wcs.len(),
+            wcs.len() - n_sw,
+            n_sw
+        );
+        eprintln!(
+            "first WATERCOURSE at rank {:?} | first SPILLWAY at rank {:?}",
+            first_river.map(|i| i + 1),
+            first_sw.map(|i| i + 1)
+        );
+        eprintln!("\ntop 10:");
+        for (i, w) in wcs.iter().take(10).enumerate() {
+            eprintln!(
+                "  #{:<3} {:>10} · Q {:>9.0} m³/s · A {:>9.0} km² · S{} · {} trib · {}",
+                i + 1,
+                if w.kind == SegmentKind::Spillway { "SPILLWAY" } else { "river" },
+                w.discharge_m3s,
+                w.catchment_km2,
+                w.order,
+                w.tributaries,
+                sink_label(w.sink).0
+            );
+        }
+        if n_sw > 0 {
+            eprintln!("\nspillway block (first 8 of {n_sw}):");
+            for (i, w) in
+                wcs.iter().enumerate().filter(|(_, w)| w.kind == SegmentKind::Spillway).take(8)
+            {
+                eprintln!(
+                    "  #{:<4} Q {:>9.0} m³/s · A {:>9.0} km² · source_lake {:?}",
+                    i + 1,
+                    w.discharge_m3s,
+                    w.catchment_km2,
+                    w.source_lake_id
+                );
+            }
+            let dangling = wcs
+                .iter()
+                .filter(|w| w.kind == SegmentKind::Spillway && w.source_lake_id.is_none())
+                .count();
+            eprintln!(
+                "\nspillways with NO inventoried source lake: {dangling} / {n_sw} (null by \
+                 convention — a real basin below the lake-inventory floor)"
+            );
+        }
+        // THE assertion: a spillway can no longer head the list while any river exists.
+        if first_river.is_some() {
+            assert_eq!(first_river, Some(0), "the head of the discharge sort must be a river");
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn spillway_sort_arid_hot_2048() {
+        head_of_list(2048, 25.0, "arid-hot");
+    }
+
+    #[test]
+    #[ignore]
+    fn spillway_sort_arid_hot_8192() {
+        head_of_list(8192, 25.0, "arid-hot");
+    }
 }

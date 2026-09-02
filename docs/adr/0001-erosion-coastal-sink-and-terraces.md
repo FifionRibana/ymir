@@ -2900,6 +2900,49 @@ must stay on the map.
 `Wetland` biome: all exported or exportable and still ignored downstream. Recorded rather than assumed to be
 noticed.
 
+### Reciprocal spill cycles — Finding 40's DAG assumption was ASSERTED, not verified
+
+Finding 40's fixed point rests on "flow is downhill, so the chain graph is a DAG". Measured on
+the production seed (arid-hot 8192², `tests/spillway_duplication.rs`): **7 reciprocal pairs
+(A → B and B → A) = 14 of 51 spillways**, each pair tracing from the SAME col cell with
+identical drainage. A 2-cycle is not a DAG — the assumption was never checked. It also
+explains the near-equal-but-not-equal figures (88 468 vs 88 449): a cycle does not converge
+exactly, while other pairs stabilise on the same value.
+
+Two hypotheses were refuted on the way, and both are worth recording because they were the
+plausible ones: emission is strictly ONE spillway per basin (51 distinct `lake_id` for 51
+spillways), so it is not a per-sill-cell loop; and the duplicate starts are the SAME cell, not
+adjacent, so it is not a col flat over several cells either.
+
+**Fix — one physical rule, two cases.** Levels differing by more than
+`SAME_WATER_BODY_TOL_M` (0.10 m): the HIGHER basin spills into the lower, so the impossible
+uphill spillway is dropped. Levels equal within tolerance: the basins share one free surface
+over the col — they ARE one water body, so they are MERGED (one id, one footprint, one
+outflow). Result: pairs 7 → 0, spillways 51 → 44, below-sea lakes 43 → 39 (4 pairs merged, 3
+level-differentiated), and 0 spillways left pointing at an absent receiver.
+
+**The tolerance pattern, worth reusing.** 0.10 m is chosen ABOVE the height field's vertical
+quantisation and BELOW any free-surface difference the model can resolve, so the merge
+decision depends on neither quantisation noise nor an arbitrary pick. That is the shape a
+physical threshold should have; floating-point equality would have made it depend on noise.
+
+### DEBT — the cyclic inflow still sits in the non-merged basins' levels
+
+The fix corrects the OUTPUT, not the ITERATION. While both directions of a cycle existed, the
+fixed point fed each basin the other's full surplus through `extra_inflow`, so the levels it
+produced already contain that double contribution. Removing it inside the iteration is a
+deeper change, deliberately left out of that lot.
+
+**Magnitude, so nobody rediscovers it as a phantom.** Because the two members of a reciprocal
+pair had near-identical surpluses, each received approximately its PARTNER'S ENTIRE surplus —
+i.e. **up to ~2× its legitimate inflow**. The seven dropped directions carried, in
+drainage-equivalent: **1589, 1106, 162, 33, 29, 18 and 10 km² (≈ 2947 km² total)**. The two
+largest are the ones the author saw at the head of the discharge sort. Since the exorheic test
+is `a_eq = inflow / net_evap ≥ a_sill`, a doubled inflow can by itself flip a basin exorheic —
+so the 14 basins involved in cycles are the ones whose REGIME is least trustworthy today. The
+37 non-merged basins keep levels computed with that contribution. Invisible now; it will
+surface when H-2 recomputes everything, and this is what it will be.
+
 ### Two lessons from H-1b
 
 1. **The area-vs-level test was not the defect** — the leading hypothesis, measured and refuted. Worth recording
@@ -2954,3 +2997,95 @@ Method rule 3 says a bench must reproduce the WHOLE chain. The corollary, earned
 production diverge, the gap sometimes points at a defect in PRODUCTION, not in the bench.** The discard above was
 exposed by a FAILED bench of mine — it measured the final drainage's lakes, which production throws away, and
 returned 0 lakes. The omitted stage was the revealer. Do not assume the bench is the party at fault.
+
+### Step 3b — the `Spillway` TYPE: what the layer says, and the desync the measurement caught
+
+**The symptom.** A below-sea basin's outflow was emitted as a plain `RiverSegment` with
+`strahler_order = 1`. Sorted by discharge, the microscope river list opened on SIX spillways
+("the first real river is #7"): a spillway carries its whole closed basin's catchment, so on
+discharge alone it outranks every genuine river while advertising the order of a headwater.
+
+**The fix is a TYPE, not a filter.** `segment_kind: Vec<SegmentKind>` with
+`SegmentKind { Watercourse, Spillway }`, plus `segment_source_lake: Vec<Option<u32>>`, both
+parallel to `rivers.segments` and both exported in `rivers.json`. A spillway is a REAL flow
+and stays on the map; what changes is that the consumer can tell what it is. The contract
+written into the export docstrings:
+
+- `kind == "Spillway"` ⇒ **`strahler_order` MUST NOT be read** (it is 1 regardless of
+  catchment). Render from `width_m`, which comes from discharge and is meaningful.
+- `source_lake_id == null` on a spillway means **"a real basin, NOT inventoried"** — the
+  source sits below the lake-inventory floor and is therefore absent from `lakes.json`. The
+  consumer is never handed an id it cannot resolve. Always `null` on a watercourse.
+
+Living Landz uses `strahler_order` for RENDERING only (stroke width, display filtering),
+never for game logic — which is why typing suffices and no renumbering scheme is needed.
+
+**Why the dangling count changed from 8 to 16.** The earlier "8" was ARITHMETIC —
+`spillways − lakes` (16 − 8 at the time) — which only bounds the count and silently cancels
+against basins that ARE inventoried. The real figure is a SET-MEMBERSHIP count: spillways
+whose `lake_id` is absent from the lake list. That is **16 of 43 at 8192²** (6 of 16 at
+2048²). The two numbers were never in conflict; the first was the wrong instrument.
+
+**The measurement caught a desync that the typing alone would have shipped broken.**
+Checking the practical symptom (rather than declaring the sort fixed) reported
+`segment_kind` length **13165 for 10186 segments**. `clip_rivers_to_lakes` rebuilds every
+per-segment array and the two new ones had not been added to it: the 16 `Spillway` tags sat
+at indices 13149..13165 while the segments they described sat at 10170..10186. On the
+cache-HIT path a `resize(n_seg, Watercourse)` then TRUNCATED the array and reported zero
+spillways — a silent-repair call hiding a structural bug. Three changes, in that order of
+importance:
+
+1. `clip_rivers_to_lakes` rebuilds `segment_kind` / `segment_source_lake` too (a clipped run
+   inherits its parent's kind).
+2. `C1DrainageResult::segment_arrays_aligned()` — one invariant over ALL seven parallel
+   arrays, `debug_assert`ed after the clip and after the spillway append.
+3. The sidecar read now **errors** on a length mismatch instead of padding/truncating; only
+   an ABSENT/EMPTY array is tolerated (legacy sidecars).
+
+This is the completeness trap for composites, third occurrence: it is not enough to add a
+field to the struct and the codec — every site that REBUILDS the parallel arrays is part of
+the type.
+
+**The verdict, in the production config at both resolutions** (`spillway_typing_bench` in
+`ui/workspace.rs`, which calls the very `aggregate_watercourses` the microscope calls, via
+`run_hd` end to end):
+
+| | 2048² | 8192² |
+|---|---|---|
+| list entries | 1359 | 792 |
+| watercourses / spillways | 1343 / 16 | 749 / 43 |
+| first spillway at rank | **#1344** | **#750** |
+| biggest spillway | 944 km², 9 m³/s | 1572 km², 15 m³/s |
+| biggest real river | 1087 km², 10 m³/s | 110 km², 1 m³/s |
+| spillways with `source_lake_id == null` | 6 / 16 | 16 / 43 |
+
+Before the fix at 2048² that 944 km² spillway sat at **#5**, above four real rivers. At
+8192² the biggest spillway (15 m³/s) outranked the biggest river (1 m³/s) by ~14×. The sort
+key is now `kind` first, then discharge, so a spillway CANNOT head the list while any river
+exists — that part is a property of the comparator, not of the terrain; the table is what
+the terrain adds.
+
+**One number to correct, and why.** Step 3a reported a spillway draining **88 468 km²**;
+production reports **1572 km²** for the largest. Both are right for what they measured:
+`tests/spillway_duplication.rs` calls `below_sea_basin_lakes` on the raw eroded field, WITHOUT
+infiltration and WITHOUT the H-1c water balance, so its basins are the un-shrunk ones and its
+inflow the un-infiltrated one. Method rule 3 again, from the other side: a partial bench is
+fine for a topology question (it found the reciprocal cycles) and worthless for a magnitude.
+**Magnitudes come from the production chain.**
+
+**An anomaly observed and NOT acted on** (it is not step 3b's): the largest real river's
+catchment is **1087 km² at 2048² but 110 km² at 8192²**, and the list has FEWER entries at the
+finer grid (792 vs 1359). A watercourse is assembled by following `downstream` to a terminal,
+so this says the 8192² network fragments into more, shorter, disconnected trunks rather than
+resolving into longer ones. That is a hierarchy defect worth its own diagnosis, on the same
+list of candidates as the contour.
+
+### Consumer backlog (fields the export now offers that Living Landz does not yet read)
+
+| field | layer | what to do with it |
+|---|---|---|
+| `width_m` | `rivers.json` | stroke width; topology stays continuous below any display cutoff |
+| `kind` | `rivers.json` | `"Spillway"` ⇒ do not read `strahler_order`; render from `width_m` |
+| `source_lake_id` | `rivers.json` | link a spillway to its basin; `null` = real basin, not inventoried |
+| `lake_type` | `lakes.json` | `Endorheic` = salt, `CraterAcidic` = acid — habitability / resource logic |
+| `Wetland` | biome raster | the traced marsh footprint, not a rainfall proxy |

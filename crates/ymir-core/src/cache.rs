@@ -60,7 +60,7 @@ pub const ALGO_UPSCALE_EROSION: u32 = 2;
 
 /// Version of the drainage build (`c1_drainage`). ⚠️ BUMP on ANY code change to
 /// that step (see above).
-pub const ALGO_DRAINAGE: u32 = 2;
+pub const ALGO_DRAINAGE: u32 = 2; // H-1e: segments carry a KIND (Watercourse|Spillway) + source basin
 
 /// Version of the climate build (`c1_climate_placed` / `c1_climate_windowed`).
 /// ⚠️ BUMP on ANY code change to that step (see above).

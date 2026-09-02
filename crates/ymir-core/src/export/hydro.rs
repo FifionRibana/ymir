@@ -7,7 +7,7 @@
 
 use serde::Serialize;
 
-use crate::tectonics_c1::drainage::{C1DrainageResult, Navigability};
+use crate::tectonics_c1::drainage::{C1DrainageResult, Navigability, SegmentKind};
 use crate::terrain::flow::RiverSegment;
 
 /// Coordinate space tag written into `rivers.json` so a consumer never guesses.
@@ -33,6 +33,17 @@ struct RiverSegmentView<'a> {
     /// Long profile — bed elevation (m) at each `segment.points`, upstream→downstream
     /// (`segment_profile_m[i]`).
     profile_m: &'a [f32],
+    /// **What this segment IS** (`segment_kind[i]`). `"Watercourse"` = a hierarchised river,
+    /// `strahler_order` meaningful. `"Spillway"` = the outflow of a closed below-sea basin
+    /// over its col: a REAL flow, but with no hierarchy — **`strahler_order` MUST NOT be
+    /// read for it** (it is emitted as 1 regardless of catchment, which is what produced the
+    /// absurd "order 1 draining 88 468 km²"). Render a spillway from `width_m`.
+    kind: SegmentKind,
+    /// For a `Spillway`, the below-sea basin it drains — `null` when that basin sits BELOW
+    /// the lake-inventory floor and is therefore ABSENT from `lakes.json`. `null` means
+    /// "a real basin, not inventoried": the consumer is never handed an id it cannot
+    /// resolve. Always `null` on a watercourse.
+    source_lake_id: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -62,6 +73,8 @@ pub fn rivers_json(drainage: &C1DrainageResult) -> Vec<u8> {
             discharge_m3s: drainage.segment_discharge_m3s.get(i).copied().unwrap_or(0.0),
             width_m: drainage.segment_width_m.get(i).copied().unwrap_or(0.0),
             profile_m: drainage.segment_profile_m.get(i).map(|v| v.as_slice()).unwrap_or(&[]),
+            kind: drainage.segment_kind.get(i).copied().unwrap_or(SegmentKind::Watercourse),
+            source_lake_id: drainage.segment_source_lake.get(i).copied().flatten(),
         })
         .collect();
     let view = RiversView { coordinate_space: COORDINATE_SPACE, segments };
@@ -122,6 +135,8 @@ mod tests {
             segment_discharge_m3s: vec![520.0],
             segment_width_m: vec![114.0],
             segment_profile_m: vec![vec![1200.0, 1150.0, 1130.0]],
+            segment_kind: vec![SegmentKind::Watercourse],
+            segment_source_lake: vec![None],
             lakes: vec![lake],
             lake_map: vec![0; 16],
             width: 4,

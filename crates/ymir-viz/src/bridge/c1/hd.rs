@@ -50,9 +50,9 @@ use ymir_core::tectonics_c1::cached_product::{
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
-    C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, apply_geo_scale_ratio,
-    apply_lake_water_balance, below_sea_basin_lakes_infil, c1_drainage_windowed_infil,
-    clip_rivers_to_lakes, exorheic_lakes_missing_outlet,
+    C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, SegmentKind,
+    apply_geo_scale_ratio, apply_lake_water_balance, below_sea_basin_lakes_infil,
+    c1_drainage_windowed_infil, clip_rivers_to_lakes, exorheic_lakes_missing_outlet,
 };
 use ymir_core::tectonics_c1::land_topology::{
     IslandEval, LandTopology, evaluate_island, land_topology,
@@ -546,22 +546,37 @@ fn build_hd_drainage(
         "[HD] rivers clipped to lakes: {before_seg} -> {} segments (terminate at sinks)",
         drainage.rivers.segments.len()
     );
+    // A below-sea basin's outflow is a REAL flow and must stay on the map, but it is not a
+    // hierarchised watercourse — giving it a Strahler order produced "order 1 draining
+    // 88 468 km²" at the head of the discharge sort. It is tagged `Spillway`: the KIND is
+    // authoritative, `strahler_order` must not be read for it, and `width_m` (from
+    // discharge) is what to render. `segment_source_lake` is `None` when the source basin
+    // sits BELOW the lake-inventory floor, so the consumer is never handed an id absent
+    // from `lakes.json`.
+    let inventoried: std::collections::HashSet<u32> =
+        drainage.lakes.iter().map(|l| l.base.id).collect();
     for sw in &below_sea_spillways {
         drainage.rivers.segments.push(RiverSegment {
             points: sw.points.clone(),
-            strahler_order: 1,
+            strahler_order: 1, // MEANINGLESS on a spillway — see `segment_kind`
             avg_flow: 0.0,
             max_flow: 0.0,
             basin_id: 0,
             upstream: vec![],
             downstream: None,
         });
+        drainage.segment_kind.push(SegmentKind::Spillway);
+        drainage.segment_source_lake.push(inventoried.contains(&sw.lake_id).then_some(sw.lake_id));
         drainage.segment_drainage_km2.push(sw.drainage_km2);
         drainage.segment_navigability.push(sw.navigability);
         drainage.segment_discharge_m3s.push(sw.discharge_m3s);
         drainage.segment_width_m.push(sw.width_m);
         drainage.segment_profile_m.push(sw.profile_m.clone());
     }
+    debug_assert!(
+        drainage.segment_arrays_aligned(),
+        "spillway append desynchronised a parallel array"
+    );
     apply_geo_scale_ratio(&mut drainage, geo_scale_ratio, &dcfg.thresholds);
     if geo_scale_ratio != 1.0 {
         eprintln!(

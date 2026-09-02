@@ -206,8 +206,14 @@ mod tests {
                     mfd: false,
                     mfd_p: 2.0,
                     fbm_amplitude: None,
+                    geo_scale_ratio: 1.0,
+                    latitude_span_deg: None,
                     export_dir: None,
                     volcanism: None,
+                    lithology: None,
+                    fracture: None,
+                    infiltration: None,
+                    emit_tectonic_labels: false,
                 },
             })
             .expect("send RunHd");
