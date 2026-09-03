@@ -603,7 +603,25 @@ pub fn incise_with_progress(
                 }
             }
         } else if cfg.diffusion > 0.0 && cfg.diffusion_substeps > 0 {
-            let dsub = cfg.diffusion / cfg.diffusion_substeps as f32;
+            // RESOLUTION INVARIANCE — the same κΔt/dx² normalisation the NONLINEAR branch
+            // above already applies (Finding 7). `lap` is a 5-point Laplacian in NORMALISED
+            // height per CELL², so a bare dimensionless weight means an implied physical
+            // diffusivity κΔt = dsub·dx² that shrinks as dx²: 760 m² per substep at 2048²
+            // against 48 m² at 8192² (×16), planing length 78 m against 20 m. Finding 7's fix
+            // lived only in the `critical_slope > 0` arm, and `relief_v3` sets
+            // `critical_slope = 0` — so the shipped config took the branch WITHOUT it (ADR
+            // Finding 43: a fix that lives in one arm of an `if` is a fix for one config).
+            //
+            // `dscale == 1.0` EXACTLY at the reference cell (2048² over 400 km), so this is
+            // byte-identical at 2048² by construction and moves only finer grids — the
+            // reference stays intact, as with C-3's hard basement at ×1.
+            //
+            // ⚠️ This closes the regression. It is NOT the hypsometry fix, and was measured
+            // NOT to be: `diffusion = 0` versus shipped is 3 m at 2048², where the weight is
+            // by definition correctly calibrated, so the term is too weak to matter at either
+            // resolution. See ADR Finding 43 for the predicted-vs-measured effect.
+            let dscale = (HILLSLOPE_REF_CELL_M / cell_m).powi(2);
+            let dsub = cfg.diffusion * dscale / cfg.diffusion_substeps as f32;
             for _ in 0..cfg.diffusion_substeps {
                 let src = field.data.clone();
                 for y in 1..h - 1 {
