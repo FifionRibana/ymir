@@ -4312,20 +4312,20 @@ mod spillway_typing_bench {
 
 #[cfg(test)]
 mod network_fragmentation_bench {
-    //! DIAGNOSTIC ONLY â€” the network FRAGMENTS as resolution increases (largest assembled
-    //! catchment 1087 kmÂ² at 2048Â² against 110 kmÂ² at 8192Â², with FEWER list entries on the
+    //! DIAGNOSTIC ONLY — the network FRAGMENTS as resolution increases (largest assembled
+    //! catchment 1087 km² at 2048² against 110 km² at 8192², with FEWER list entries on the
     //! finer grid: 792 against 1359). The opposite of the expected behaviour, and it hits the
     //! MEASURING INSTRUMENT: the microscope assembles watercourses by following `downstream`
     //! to a terminal, so if the assembly breaks at high resolution, every measurement that
     //! reads that list describes truncated fragments.
     //!
     //! Four questions, four measurements, no fix:
-    //!   1. WHERE the assembly breaks â€” terminals that are neither sea, lake nor sub-sea sink,
+    //!   1. WHERE the assembly breaks — terminals that are neither sea, lake nor sub-sea sink,
     //!      and whether the raster still has a receiver there.
-    //!   2. ASSEMBLY or NETWORK â€” the mouth's area read from the flow-accumulation RASTER
+    //!   2. ASSEMBLY or NETWORK — the mouth's area read from the flow-accumulation RASTER
     //!      (independent of segmentation) beside the assembled figure.
-    //!   3. WHY FEWER ENTRIES â€” the km2-to-cell threshold conversion and the network's extent.
-    //!   4. Is `clip_rivers_to_lakes` involved â€” how many terminations it creates at each grid.
+    //!   3. WHY FEWER ENTRIES — the km2-to-cell threshold conversion and the network's extent.
+    //!   4. Is `clip_rivers_to_lakes` involved — how many terminations it creates at each grid.
     //!
     //! Run: cargo test -p ymir-viz --release network_fragmentation -- --ignored --nocapture
 
@@ -4407,7 +4407,7 @@ mod network_fragmentation_bench {
         let segs = &d.rivers.segments;
         let wcs = aggregate_watercourses(&hd, DOMAIN_KM, 1.0);
 
-        eprintln!("\n============  NETWORK FRAGMENTATION â€” {lat} deg @ {target}^2  ============");
+        eprintln!("\n============  NETWORK FRAGMENTATION — {lat} deg @ {target}^2  ============");
         eprintln!(
             "cell = {:.4} km2 ({:.0} m); segments {} | watercourse entries {} | river cells {}",
             cell_km2,
@@ -4417,7 +4417,7 @@ mod network_fragmentation_bench {
             segs.iter().map(|s| s.points.len()).sum::<usize>()
         );
 
-        // 1. TERMINAL AUDIT â€” where does the chain stop, and is that legitimate?
+        // 1. TERMINAL AUDIT — where does the chain stop, and is that legitimate?
         let mut term_sea = 0usize;
         let mut term_lake = 0usize;
         let mut term_subsea = 0usize;
@@ -4457,7 +4457,7 @@ mod network_fragmentation_bench {
             segs.len(),
             term_none_with_receiver
         );
-        // Isolated fragments: no upstream AND no downstream â€” a reach chained to nothing.
+        // Isolated fragments: no upstream AND no downstream — a reach chained to nothing.
         let isolated =
             segs.iter().filter(|s| s.upstream.is_empty() && s.downstream.is_none()).count();
         eprintln!(
@@ -4517,7 +4517,7 @@ mod network_fragmentation_bench {
             .find(|(_, s)| s.points.iter().any(|&(x, y)| x == bx && y == by))
             .map(|(i, _)| d.segment_drainage_km2[i]);
         eprintln!(
-            "\n2. MOUTH â€” max raster accumulation on land at ({bx},{by}) = {:.0} km2 \
+            "\n2. MOUTH — max raster accumulation on land at ({bx},{by}) = {:.0} km2 \
              GEOMETRIC\n   assembled effective area of the segment covering that cell: {}\n   \
              list head: {:.0} km2 effective, {:.1} m3/s",
             best_acc * cell_km2,
@@ -4736,7 +4736,7 @@ mod network_fragmentation_bench {
             nrm[nrm.len() - 1]
         );
 
-        // 3. THRESHOLDS â€” km2 converted to cells at THIS resolution, and how much of the
+        // 3. THRESHOLDS — km2 converted to cells at THIS resolution, and how much of the
         //    raster clears them. A finer grid must have MORE cells above a physical threshold.
         let th = C1DrainageConfig::default().thresholds;
         let stream_cells = (th.stream_km2 / cell_km2).max(1.0);
@@ -4755,7 +4755,7 @@ mod network_fragmentation_bench {
             segs.iter().map(|s| s.points.len()).sum::<usize>()
         );
 
-        // 4. CLIPPING â€” a run that ends at a lake shore gets `downstream = None`. Count the
+        // 4. CLIPPING — a run that ends at a lake shore gets `downstream = None`. Count the
         //    terminations the clip creates, and the lake footprint the network must cross.
         let lake_cells = d.lake_map.iter().filter(|&&id| id != 0).count();
         let starts_at_lake = segs

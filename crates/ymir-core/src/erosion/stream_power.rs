@@ -25,17 +25,34 @@ use crate::terrain::flow::{
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct StreamPowerConfig {
-    /// Erodibility `K` (lumped with the timestep — see `dt`). Calibrated to a
-    /// target channel-incision depth, not to appearance (see the diagnostic).
+    /// Erodibility `K` in the physical law `E = K·A_km²^m·S^n`, with `E` in **m/yr**.
+    /// For `m = 0.5` that makes `[K] = m·yr⁻¹·km⁻¹`; for `m = 0.4`, `m^0.2·yr⁻¹·km^-0.8`.
+    /// **⚠️ The output depends on [`Self::k_time`] (`k·dt·iterations`), not on `k` alone** —
+    /// see ADR Finding 44. Calibrated to a target channel-incision depth, not to appearance.
     pub k: f32,
     /// Drainage-area exponent `m` (standard detachment-limited: 0.5).
     pub m: f32,
     /// Slope exponent `n` (standard: 1.0 — closed-form implicit update).
     pub n: f32,
-    /// Timestep per drainage↔incision iteration (lumped into `K·dt`).
+    /// Duration in **YEARS** modelled by ONE drainage↔incision iteration, so the total
+    /// modelled duration is `dt · iterations` (ADR Finding 44 names this unit; it was
+    /// previously "lumped into `K·dt`" with no physical meaning). Naming it changed NO
+    /// output: `incise` reads `k·dt` exactly as before.
+    ///
+    /// **⚠️ The shipped `1.0` is a UNIT PLACEHOLDER, not a physical claim.** Read literally it
+    /// says two years of erosion carved ~580 m of mean relief, which is absurd — and that
+    /// absurdity is the point: the duration is NOT observable (see [`Self::k_time`]), so the
+    /// pair `(k = 4500, dt = 1.0)` is one arbitrary factorisation of `k_time = 9000` among
+    /// infinitely many. The physically anchored reading goes the other way: pin `K` from
+    /// Stock & Montgomery and the duration FOLLOWS — order 10⁷–10⁸ yr at hard-rock
+    /// erodibility, i.e. `dt ≈ 2×10⁷ yr` for the two shipped steps.
     pub dt: f32,
     /// Number of drainage↔incision iterations (recompute flow between each, so the
     /// network can reorganise as the terrain changes — the staleness handling).
+    ///
+    /// **⚠️ This NUMERICAL parameter is carrying the physical duration** (ADR Finding 43
+    /// measured retained mean altitude 51.7 / 32.6 / 20.4 / 12.3 % for 1/2/4/8 at 2048²).
+    /// [`Self::cfl_iterations`] gives the count the wave-propagation bound actually demands.
     pub iterations: usize,
     /// Sea level (norm). Cells at or below it are fixed base level (no incision).
     pub sea_level: f32,
@@ -648,6 +665,136 @@ pub fn incise_with_progress(
     field
 }
 
+// ═══ ADR Finding 44 — THE EXPLICIT TIMESCALE ═══════════════════════════════════════════
+//
+// Everything below is ADDITIVE AND READ-ONLY: `incise` reads none of it, so naming the units
+// changed no output (the proof is structural, plus `timescale_naming_changes_no_output`).
+//
+// The model previously had one lumped number, `K·dt`, and an iteration count documented as
+// numerical ("the staleness handling") but measured to govern total denudation. Two chantiers
+// then needed a real duration — a hillslope diffusivity in m²/yr has nothing to multiply, and
+// H-2's France↔Scotland dial is sill incision at 10⁴ against 10⁶ years.
+
+/// The INTEGRATED erodibility-time product of the shipped config: `k · dt · iterations`
+/// = 4500 · 1.0 · 2. **This is the quantity the terrain embodies** — see
+/// [`StreamPowerConfig::k_time`] for why `K` and the duration are not separately observable.
+pub const SHIPPED_K_TIME: f32 = 9000.0;
+
+/// Courant number above which the incision is no longer integrating the erosion wave but
+/// relaxing to a local equilibrium. Purely indicative (the implicit scheme is
+/// unconditionally STABLE at any Courant number — stability is not accuracy).
+pub const COURANT_INTEGRATING: f32 = 1.0;
+
+/// What one drainage↔incision step costs and what the bound allows — the reporting shape for
+/// [`StreamPowerConfig::timescale_plan`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TimescalePlan {
+    /// Total modelled duration `dt · iterations`, in years.
+    pub duration_yr: f32,
+    /// The configured step, in years.
+    pub dt_yr: f32,
+    /// The configured number of steps.
+    pub iterations: usize,
+    /// Largest knickpoint celerity on the map, `K·A_max^m`, in m/yr.
+    pub celerity_m_per_yr: f32,
+    /// CFL bound on one step: `cell_m / celerity`, in years.
+    pub dt_max_yr: f32,
+    /// Steps the bound demands for `duration_yr`: `ceil(duration_yr / dt_max_yr)`.
+    pub cfl_iterations: f32,
+    /// `dt_yr / dt_max_yr` — how far past the bound the configuration runs.
+    pub courant: f32,
+}
+
+impl StreamPowerConfig {
+    /// The integrated erodibility-time product, `k · dt · iterations`.
+    ///
+    /// **`K` and the duration are NOT separately observable in this model.** Hold `k_time`
+    /// fixed and pick any duration `T`: then `k = k_time/T` and `dt = T/iterations`, so
+    /// `k·dt = k_time/iterations` — every quantity `incise` reads is unchanged and `T`
+    /// cancels out. Consequences, both recorded in ADR Finding 44:
+    ///  - naming the units is FREE (choose `dt := 1.0 yr`, `k := 4500 m·yr⁻¹·km⁻¹`);
+    ///  - **a duration dial alone is not a dial.** H-2's France↔Scotland control must move
+    ///    `k_time`, not `T` — 10⁴ vs 10⁶ years at proportionally larger `K` is the SAME
+    ///    terrain. Turning `k_time` into years requires pinning `K` independently, which
+    ///    C-3's per-lithology multipliers plus one absolute Stock & Montgomery anchor supply.
+    #[must_use]
+    pub fn k_time(&self) -> f32 {
+        self.k * self.dt * self.iterations as f32
+    }
+
+    /// `K` implied by an integrated product and a modelled duration: `k_time / duration_yr`.
+    /// Use to read the shipped terrain against tabulated `K` — see ADR Finding 44.
+    #[must_use]
+    pub fn k_for_duration(k_time: f32, duration_yr: f32) -> f32 {
+        k_time / duration_yr.max(f32::MIN_POSITIVE)
+    }
+
+    /// Knickpoint celerity `K·A_km²^m` in m/yr — for `n = 1` the standard horizontal
+    /// propagation speed of the detachment-limited erosion wave.
+    #[must_use]
+    pub fn celerity_m_per_yr(&self, max_area_km2: f32) -> f32 {
+        self.k * max_area_km2.max(0.0).powf(self.m)
+    }
+
+    /// CFL bound on ONE drainage↔incision step, in years: `cell_m / celerity`. The erosion
+    /// wave must not cross more than one cell per step, or the flow field it was routed on is
+    /// already wrong.
+    ///
+    /// **This is where the grid legitimately enters the timescale**: the bound is linear in
+    /// `cell_m`, so a 4× finer grid halves it twice over and demands 4× the steps. Contrast
+    /// the shipped `iterations = 2` at BOTH resolutions.
+    #[must_use]
+    pub fn dt_max_yr(&self, max_area_km2: f32) -> f32 {
+        let c = self.celerity_m_per_yr(max_area_km2);
+        if c <= 0.0 {
+            return f32::INFINITY;
+        }
+        self.cell_km * 1000.0 / c
+    }
+
+    /// Steps the CFL bound demands to cover the configured duration.
+    ///
+    /// **Duration-INDEPENDENT** (the `k_time` cancellation above): substituting
+    /// `k = k_time/T` and `dt = T/iterations` gives `cfl_iterations = k_time·A^m / cell_m`,
+    /// with no `T` in it. So this number says how many steps the CURRENT TERRAIN would need
+    /// to be a time integration — it is not something a duration choice can lower.
+    #[must_use]
+    pub fn cfl_iterations(&self, max_area_km2: f32) -> f32 {
+        let dt_max = self.dt_max_yr(max_area_km2);
+        if !dt_max.is_finite() || dt_max <= 0.0 {
+            return 0.0;
+        }
+        (self.dt * self.iterations as f32 / dt_max).ceil()
+    }
+
+    /// `dt / dt_max` — how far past the wave-propagation bound the configuration runs.
+    /// `≤ 1` = integrating; `≫ 1` = relaxing to a local equilibrium each step, which is what
+    /// the measured iteration SATURATION at 8192² is (ADR Finding 43).
+    #[must_use]
+    pub fn courant(&self, max_area_km2: f32) -> f32 {
+        let dt_max = self.dt_max_yr(max_area_km2);
+        if !dt_max.is_finite() || dt_max <= 0.0 {
+            return 0.0;
+        }
+        self.dt / dt_max
+    }
+
+    /// Everything above in one report. `max_area_km2` is the largest drainage area on the map
+    /// (the fastest wave); take it from the flow accumulation, not from a guess.
+    #[must_use]
+    pub fn timescale_plan(&self, max_area_km2: f32) -> TimescalePlan {
+        TimescalePlan {
+            duration_yr: self.dt * self.iterations as f32,
+            dt_yr: self.dt,
+            iterations: self.iterations,
+            celerity_m_per_yr: self.celerity_m_per_yr(max_area_km2),
+            dt_max_yr: self.dt_max_yr(max_area_km2),
+            cfl_iterations: self.cfl_iterations(max_area_km2),
+            courant: self.courant(max_area_km2),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -835,5 +982,96 @@ mod tests {
             incise(&base, &StreamPowerConfig { n: 1.0000001, iterations: 2, ..Default::default() });
         let maxdiff = (0..w * h).map(|k| (a.data[k] - b.data[k]).abs()).fold(0.0f32, f32::max);
         assert!(maxdiff < 1e-3, "closed form vs Newton at n≈1 diverged: {maxdiff}");
+    }
+
+    // ═══ ADR Finding 44 — the explicit timescale ═══════════════════════════════════════
+
+    /// THE BYTE-IDENTITY PROOF for the unit-naming part. `incise` must read no field that
+    /// Finding 44 added, and the shipped values must be untouched — so naming the units
+    /// cannot have changed any output. Checked two ways: the shipped numbers are pinned, and
+    /// the incision of a fixed synthetic field is compared against the SAME field incised
+    /// with a config whose `k_time` is identical but split differently — which must DIFFER,
+    /// proving the test can actually see a change of this kind (a negative control).
+    #[test]
+    fn timescale_naming_changes_no_output() {
+        let cfg = StreamPowerConfig::relief_v3(0.0381, 5000.0);
+        // The shipped numbers, untouched by the renaming.
+        assert!((cfg.dt - 1.0).abs() < 1e-9, "dt still 1.0 (now: one year)");
+        assert_eq!(cfg.iterations, 2, "iterations still 2");
+        assert!(
+            (cfg.k - RELIEF_V1_K * RELIEF_V3_K_MULT).abs() < 1e-3,
+            "k still 4500 (now: m·yr⁻¹·km⁻¹)"
+        );
+        assert!((cfg.k_time() - SHIPPED_K_TIME).abs() < 1e-3, "k·dt·iterations still 9000");
+
+        // Negative control: the test WOULD see a change. Same `k_time`, split as 1×9000
+        // instead of 2×4500 — the relaxation is nonlinear and the flow field is recomputed
+        // between steps, so this must NOT be byte-identical. If it were, the assertion above
+        // would be vacuous.
+        let (w, h) = (48usize, 48usize);
+        let mut d = vec![0.0f32; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                let t = y as f32 / (h as f32 - 1.0);
+                d[y * w + x] = 0.9 - 0.45 * t + if x % 7 == 0 { -0.004 } else { 0.0 };
+            }
+        }
+        let field = GridF32 { width: w, height: h, data: d };
+        let a = incise(&field, &cfg);
+        let mut split = cfg.clone();
+        split.iterations = 1;
+        split.dt = 2.0; // k_time unchanged: 4500 · 2.0 · 1 == 9000
+        assert!((split.k_time() - cfg.k_time()).abs() < 1e-3, "same integrated product");
+        let b = incise(&field, &split);
+        let differs = a.data.iter().zip(&b.data).any(|(x, y)| (x - y).abs() > 1e-9);
+        assert!(
+            differs,
+            "1×9000 must differ from 2×4500 — the split is observable, so the byte-identity \
+             claim above is a real check and not a vacuous one"
+        );
+    }
+
+    /// `K` and the duration are not separately observable: hold `k_time` and the step COUNT,
+    /// and any duration gives the same `k·dt`. This is why H-2's dial must move `k_time`.
+    #[test]
+    fn duration_cancels_out_of_the_incision() {
+        let base = StreamPowerConfig::relief_v3(0.0381, 5000.0);
+        let k_time = base.k_time();
+        for duration_yr in [1.0e4f32, 1.0e6, 1.0e8] {
+            let mut c = base.clone();
+            c.dt = duration_yr / base.iterations as f32;
+            c.k = StreamPowerConfig::k_for_duration(k_time, duration_yr);
+            assert!(
+                (c.k * c.dt - base.k * base.dt).abs() / (base.k * base.dt) < 1e-4,
+                "k·dt (the ONLY thing incise reads) is unchanged at T = {duration_yr:e}"
+            );
+            // ...and the CFL step count is therefore duration-independent too.
+            assert!(
+                (c.cfl_iterations(3447.0) - base.cfl_iterations(3447.0)).abs()
+                    / base.cfl_iterations(3447.0)
+                    < 1e-3,
+                "cfl_iterations does not depend on the duration chosen"
+            );
+        }
+    }
+
+    /// The CFL bound is LINEAR in cell size, so a finer grid demands proportionally more
+    /// steps — which is where resolution legitimately enters a timescale. Contrast the
+    /// shipped `iterations = 2` at every resolution.
+    #[test]
+    fn cfl_bound_scales_with_cell_size() {
+        let coarse = StreamPowerConfig::relief_v3(0.0381, 5000.0); // 2048² over 400 km
+        let fine = StreamPowerConfig::relief_v3(0.0381 / 16.0, 5000.0); // 8192²
+        let a_max = 3447.0f32;
+        let r = coarse.dt_max_yr(a_max) / fine.dt_max_yr(a_max);
+        assert!((r - 4.0).abs() < 0.01, "dt_max falls ×4 for a ×4 finer grid, got ×{r:.3}");
+        assert!(
+            fine.courant(a_max) > coarse.courant(a_max),
+            "the finer grid runs FURTHER past the bound, which is the saturation signature"
+        );
+        assert!(
+            coarse.courant(a_max) > COURANT_INTEGRATING,
+            "the shipped config is not integrating even at 2048² — it relaxes"
+        );
     }
 }

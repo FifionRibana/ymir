@@ -3100,35 +3100,35 @@ check, the typing would have passed as working. **A tolerance clause must distin
 it tolerates from the case it hides**: absent/empty (legacy) is tolerated, a wrong length is
 now an error. Whenever a `resize`, a `unwrap_or_default`, a `saturating_*` or a `.get(i)` sits
 on a path where the two lengths are supposed to be equal BY CONSTRUCTION, it is not
-defensiveness â€” it is a silencer.
+defensiveness — it is a silencer.
 
 **The structural remedy eliminates the CLASS, not the instance.**
 `C1DrainageResult::segment_arrays_aligned()` checks all seven parallel arrays in one call,
 asserted at every site that mutates the network. Seven separate length checks would have had
 the same defect as the seven separate arrays: adding an eighth would silently skip it. This is
-the third occurrence of the composite-completeness trap (sidecar codec â†’ the `AmplitudeTerms`
-composition â†’ here) and the first time the remedy is a single invariant rather than a fix.
+the third occurrence of the composite-completeness trap (sidecar codec → the `AmplitudeTerms`
+composition → here) and the first time the remedy is a single invariant rather than a fix.
 
 **A bench that BOUNDS is not a bench that MEASURES.** "8 dangling ids" came from
-`spillways âˆ’ lakes`. That subtraction bounds the count from below and cancels silently against
+`spillways − lakes`. That subtraction bounds the count from below and cancels silently against
 every basin that IS inventoried; the set-membership count is 16. A difference of cardinals is
 not a count of a set.
 
-**Refinement of method rule 3 â€” a partial bench is VALID FOR A TOPOLOGY QUESTION AND WORTHLESS
+**Refinement of method rule 3 — a partial bench is VALID FOR A TOPOLOGY QUESTION AND WORTHLESS
 FOR A MAGNITUDE.** `tests/spillway_duplication.rs` runs `below_sea_basin_lakes` on the raw
 eroded field, without infiltration and without the H-1c water balance. It correctly found the
-reciprocal chain cycles â€” a structural property that does not depend on the missing stages â€”
-and it reported a spillway draining 88 468 kmÂ² where production has 1572 kmÂ². Both numbers are
+reciprocal chain cycles — a structural property that does not depend on the missing stages —
+and it reported a spillway draining 88 468 km² where production has 1572 km². Both numbers are
 right for what they measured. Rule 3 ("a bench must reproduce the whole production chain")
 stands; this is the finer statement of WHY, and of what a partial bench may still be trusted
-for: **structure, connectivity, degeneracy â€” yes. Any number that will be quoted â€” no.**
+for: **structure, connectivity, degeneracy — yes. Any number that will be quoted — no.**
 
 
-## Finding 42 â€” the "network fragments with resolution" anomaly: it is the TERRAIN'S HYPSOMETRY, and none of the four suspects
+## Finding 42 — the "network fragments with resolution" anomaly: it is the TERRAIN'S HYPSOMETRY, and none of the four suspects
 
-Step 3b filed an anomaly: the largest assembled catchment was **1087 kmÂ² at 2048Â² but 110 kmÂ²
-at 8192Â²**, with **fewer** microscope entries on the finer grid (792 against 1359). The
-network appeared to FRAGMENT as resolution increased â€” the opposite of the expected behaviour,
+Step 3b filed an anomaly: the largest assembled catchment was **1087 km² at 2048² but 110 km²
+at 8192²**, with **fewer** microscope entries on the finer grid (792 against 1359). The
+network appeared to FRAGMENT as resolution increased — the opposite of the expected behaviour,
 and it hits the measuring instrument itself, since the microscope assembles watercourses by
 following `downstream` to a terminal.
 
@@ -3136,31 +3136,31 @@ Four candidates were named and each was measured on the full production chain at
 resolutions (`network_fragmentation_bench` in `ui/workspace.rs`, through `run_hd`, calling the
 very `aggregate_watercourses` the microscope calls). **All four are cleared.**
 
-| | 2048Â² | 8192Â² |
+| | 2048² | 8192² |
 |---|---|---|
 | segments / entries / river cells | 10 186 / 1359 / 74 897 | 12 464 / 792 / 291 508 |
 | terminals: sea / lake / sub-sea / **none of these** | 92 / 1251 / 0 / **16** | 97 / 692 / 0 / **3** |
-| of those, still having a D8 receiver | 16 (all 0 kmÂ²) | 3 (all 0 kmÂ²) |
+| of those, still having a D8 receiver | 16 (all 0 km²) | 3 (all 0 km²) |
 | isolated fragments (no upstream, no downstream) | 666 (6.5 %) | 560 (4.5 %) |
-| duplicate terminals (terminals âˆ’ distinct last cells) | 46 of 1359 | 26 of 792 |
-| lake cells | 3790 kmÂ² (2.37 %) | 1625 kmÂ² (1.02 %) |
-| `stream_km2` 20 kmÂ² â†’ cells | 524.3 | 8388.6 |
+| duplicate terminals (terminals − distinct last cells) | 46 of 1359 | 26 of 792 |
+| lake cells | 3790 km² (2.37 %) | 1625 km² (1.02 %) |
+| `stream_km2` 20 km² → cells | 524.3 | 8388.6 |
 | cells clearing it | 11 857 | 45 513 |
 | **exported channel LENGTH** | **14 605 km** | **14 284 km** |
 
-1. **ASSEMBLY â€” not broken.** Only 16 (2048Â²) and 3 (8192Â²) terminals are neither sea, lake
-   nor sub-sea sink, and every one of them carries 0 kmÂ². 87â€“92 % of terminals are LAKE
+1. **ASSEMBLY — not broken.** Only 16 (2048²) and 3 (8192²) terminals are neither sea, lake
+   nor sub-sea sink, and every one of them carries 0 km². 87–92 % of terminals are LAKE
    INFLOWS, which is the clip's designed behaviour.
-2. **THRESHOLDS â€” correct and physical.** `stream_km2` is in kmÂ² and converts per resolution
-   (524 â†’ 8389 cells); the cells clearing it go 11 857 â†’ 45 513 (Ã—3.84 for a Ã—4 linear
+2. **THRESHOLDS — correct and physical.** `stream_km2` is in km² and converts per resolution
+   (524 → 8389 cells); the cells clearing it go 11 857 → 45 513 (×3.84 for a ×4 linear
    refinement) and the exported channel LENGTH converges: **14 605 km against 14 284 km,
-   Ã—0.98.** The network is not shrinking or fragmenting in extent â€” it is resolution-stable.
-3. **FEWER ENTRIES â€” lake area, not fragmentation.** An entry is a terminal, and terminals are
-   dominated by lake inflows. The lake footprint is 3790 kmÂ² at 2048Â² but 1625 kmÂ² at 8192Â²,
-   so the network crosses fewer lakes and produces fewer terminations (1251 â†’ 692). Entry
+   ×0.98.** The network is not shrinking or fragmenting in extent — it is resolution-stable.
+3. **FEWER ENTRIES — lake area, not fragmentation.** An entry is a terminal, and terminals are
+   dominated by lake inflows. The lake footprint is 3790 km² at 2048² but 1625 km² at 8192²,
+   so the network crosses fewer lakes and produces fewer terminations (1251 → 692). Entry
    count TRACKS LAKE AREA. Counter-intuitive only until the terminal census is read.
-4. **CLIPPING â€” the dominant source of terminals, and behaving as designed.** 1251 of 1359
-   terminals at 2048Â² end at a lake shore against 78 segments that RESTART on the far side:
+4. **CLIPPING — the dominant source of terminals, and behaving as designed.** 1251 of 1359
+   terminals at 2048² end at a lake shore against 78 segments that RESTART on the far side:
    many tributaries in, one outlet out, plus the deliberate drop of endorheic and below-sea
    outlet runs. What this exposes is a SEMANTIC point, not a bug: the microscope's
    "watercourse" is a REACH BETWEEN WATER BODIES, not a river system, so its head is the
@@ -3169,141 +3169,141 @@ very `aggregate_watercourses` the microscope calls). **All four are cleared.**
 ### What the number actually was
 
 The quantity the list labels "catchment" is `segment_drainage_km2= runoff_accumulation / 300 mm`
-â€” a runoff-EQUIVALENT area at a reference depth, not a geometric catchment. Read beside the
+— a runoff-EQUIVALENT area at a reference depth, not a geometric catchment. Read beside the
 flow-accumulation RASTER (a geometric cell count, independent of segmentation) it separates
 cleanly:
 
-| at the sea mouths | 2048Â² | 8192Â² |
+| at the sea mouths | 2048² | 8192² |
 |---|---|---|
-| summed GEOMETRIC area | 9519 kmÂ² | 6377 kmÂ² (Ã—0.67) |
-| summed EFFECTIVE area | 12 169 kmÂ² | 603 kmÂ² (Ã—0.05) |
+| summed GEOMETRIC area | 9519 km² | 6377 km² (×0.67) |
+| summed EFFECTIVE area | 12 169 km² | 603 km² (×0.05) |
 | effective / geometric | **1.278** | **0.094** |
 
-An "effective area" 1.278Ã— the geometric one is not a contradiction â€” it means the catchment's
+An "effective area" 1.278× the geometric one is not a contradiction — it means the catchment's
 mean net runoff exceeds the 300 mm reference. The ratio IS that mean over 300 mm. So the
-figure moved because **the water moved**, and the Ã—0.67 on the geometric side is Finding 41
+figure moved because **the water moved**, and the ×0.67 on the geometric side is Finding 41
 (more closed depressions at a finer grid capture more catchment before it reaches the sea).
 
 Two side observations, both minor and both real: 46/26 **duplicate terminals** (two terminal
-segments on one cell â€” the pairs visible in the discharge sort: 1459/1459, 738/738), and
+segments on one cell — the pairs visible in the discharge sort: 1459/1459, 738/738), and
 666/560 **isolated fragments** which each become a list entry carrying their PARENT'S
-inherited area â€” which is how an S1, 0-tributary row shows 1087 kmÂ² beside the genuine S4,
+inherited area — which is how an S1, 0-tributary row shows 1087 km² beside the genuine S4,
 394-tributary trunk. Also checked and cleared: the 3/5 sea mouths with a real catchment and
-ZERO discharge are **not** the endorheic mask killing a route to the sea (0 of them are â€”
+ZERO discharge are **not** the endorheic mask killing a route to the sea (0 of them are —
 re-accumulated with and without the mask), they are genuinely arid catchments.
 
 ### The cause, and a hypothesis of mine that the measurement refuted
 
-Mean land precipitation is **1219 mm/yr at 2048Â² and 712 mm/yr at 8192Â²** (Ã—0.58), and
-`max(0, p âˆ’ pe)` follows at Ã—0.33 (620.4 â†’ 207.3 mm/yr; wet-cell fraction 12.92 % â†’ 7.59 %).
+Mean land precipitation is **1219 mm/yr at 2048² and 712 mm/yr at 8192²** (×0.58), and
+`max(0, p − pe)` follows at ×0.33 (620.4 → 207.3 mm/yr; wet-cell fraction 12.92 % → 7.59 %).
 
-I hypothesised a discretisation defect in the transport: `oro = k_oroÂ·mÂ·ascent` removes a
-FRACTION of the carried moisture per CELL, so the flux should decay as `(1 âˆ’ k_oroÂ·S)^N` and
+I hypothesised a discretisation defect in the transport: `oro = k_oro·m·ascent` removes a
+FRACTION of the carried moisture per CELL, so the flux should decay as `(1 − k_oro·S)^N` and
 depend on the cell count. **`tests/precip_resolution_invariance.rs` refutes it**: on the SAME
 analytic continent (ocean, then a 100 km ramp to a 2000 m plateau over a 400 km domain) the
-land mean is **391 mm/yr at 512Â², 1024Â², 2048Â², 4096Â² AND 8192Â² â€” ratio 1.000**, interior/coast
+land mean is **391 mm/yr at 512², 1024², 2048², 4096² AND 8192² — ratio 1.000**, interior/coast
 contrast identical. `k_oro` is not the binding constraint; the CAPACITY CAP `m > e_sat(T)` is,
 and that depends on the altitude PROFILE, not on how many cells sample it. The transport is
 resolution-invariant.
 
 So the climate is faithfully reporting a terrain that differs. And it differs by a lot:
 
-| land statistic | 2048Â² | 8192Â² | ratio |
+| land statistic | 2048² | 8192² | ratio |
 |---|---|---|---|
-| mean altitude | 287 m | 693 m | **Ã—2.42** |
-| hypsometry p10 / p50 / p90 / p99 / max | 6 / 167 / 796 / 1407 / 2684 m | 30 / 447 / 1606 / 3259 / 4145 m | Ã—5.0 / Ã—2.68 / Ã—2.02 / Ã—2.32 / Ã—1.54 |
-| raw normalised above 0.5: mean | 0.02540 | 0.06130 | Ã—2.41 |
-| mean temperature | 19.82 Â°C | 17.20 Â°C | âˆ’2.62 Â°C |
-| emerged fraction | 14.95 % | 16.43 % | Ã—1.10 |
+| mean altitude | 287 m | 693 m | **×2.42** |
+| hypsometry p10 / p50 / p90 / p99 / max | 6 / 167 / 796 / 1407 / 2684 m | 30 / 447 / 1606 / 3259 / 4145 m | ×5.0 / ×2.68 / ×2.02 / ×2.32 / ×1.54 |
+| raw normalised above 0.5: mean | 0.02540 | 0.06130 | ×2.41 |
+| mean temperature | 19.82 °C | 17.20 °C | −2.62 °C |
+| emerged fraction | 14.95 % | 16.43 % | ×1.10 |
 
 **VERDICT: the exported terrain's HYPSOMETRY is not resolution-stable.** The whole
-distribution inflates ~Ã—2â€“2.7 (not just the peaks), for the same seed, the same domain and
+distribution inflates ~×2–2.7 (not just the peaks), for the same seed, the same domain and
 essentially the same emerged fraction. Everything altitude-dependent reads a different world
 at each grid: temperature, PE, the moisture capacity, precipitation, biomes, and every
 hydrological figure downstream of the runoff. The "fragmenting network" was a symptom;
-the network is the one thing that IS stable (channel length Ã—0.98).
+the network is the one thing that IS stable (channel length ×0.98).
 
 This is upstream of H-2 and upstream of the contour, and it is the same family as the comb
 (a property that degrades with resolution) with a different culprit.
 
 ### Cost of each remedy, so the ordering can be decided
 
-- **Assembly, thresholds, clipping** â€” no defect, no cost. The only thing worth changing is
+- **Assembly, thresholds, clipping** — no defect, no cost. The only thing worth changing is
   the microscope's SEMANTICS (chain reaches across an exorheic lake via `sink_lake_id` so a
   river SYSTEM is one entry): viz-only, no core change, no cache bump. Low cost, and it makes
   the instrument say what the author expects it to say.
-- **The "catchment" label** â€” export the GEOMETRIC catchment (`flow.accumulation Ã— cell_km2`)
+- **The "catchment" label** — export the GEOMETRIC catchment (`flow.accumulation × cell_km2`)
   under `catchment_km2` and let the runoff-derived quantity be what it already is, the
   discharge. A few lines plus an `ALGO_DRAINAGE` bump. The catch: `navigability` classifies on
-  the runoff-derived figure today, and its thresholds (500 / 5000 / 50 000 kmÂ²) were written
-  as AREAS â€” so the classes shift and need a re-look. Low code, moderate validation.
-- **Duplicate terminals / isolated fragments inheriting a parent's area** â€” a few lines in
+  the runoff-derived figure today, and its thresholds (500 / 5000 / 50 000 km²) were written
+  as AREAS — so the classes shift and need a re-look. Low code, moderate validation.
+- **Duplicate terminals / isolated fragments inheriting a parent's area** — a few lines in
   `clip_rivers_to_lakes` (read the area at the run's OWN downstream-most cell instead of
   inheriting, EXCEPT for an exorheic outlet run where Finding 22 requires inheritance) plus an
   `ALGO_DRAINAGE` bump. Low cost, cosmetic effect: it removes the phantom high-area rows.
-- **The hypsometry** â€” unknown until diagnosed, and the diagnosis is NOT done. What is already
+- **The hypsometry** — unknown until diagnosed, and the diagnosis is NOT done. What is already
   excluded: the FBM octave count is fixed at 7 and does NOT scale with `target_size`, and the
-  hillslope diffusion is explicitly renormalised (`HILLSLOPE_REF_CELL_M`, âˆ1/cellÂ²). The
+  hillslope diffusion is explicitly renormalised (`HILLSLOPE_REF_CELL_M`, ∝1/cell²). The
   candidates left, each cheap to test on the raw upscaled field before erosion:
   (a) the C-1 relief-budget CAP (`AmplitudeTerms.cap`, the one that made `amplitude_base`
   inert) evaluating differently per grid; (b) `flow_conditioning = 0.1`, a per-cell downslope
-  stretch; (c) the stream-power incision â€” `relief_v3(cell_km2, â€¦)` is parameterised by cell
+  stretch; (c) the stream-power incision — `relief_v3(cell_km2, …)` is parameterised by cell
   area and runs a FIXED 2 iterations, so the erosion may simply do less relative work at
-  8192Â²; (d) the sea-level / `target_land_fraction` calibration. The decisive first
+  8192²; (d) the sea-level / `target_land_fraction` calibration. The decisive first
   measurement is one bench reporting the hypsometry of the RAW FBM field and of the ERODED
   field at both resolutions: it splits the search in two at the cost of one run.
 
 
-## Finding 43 â€” the hypsometry bisection: the INCISION, and Finding 7's fix on a branch the shipped config does not take
+## Finding 43 — the hypsometry bisection: the INCISION, and Finding 7's fix on a branch the shipped config does not take
 
-Finding 42 left one question: at which stage does the Ã—2.42 hypsometry inflation appear?
+Finding 42 left one question: at which stage does the ×2.42 hypsometry inflation appear?
 `tests/hypsometry_bisection.rs` builds the terrain in three stages through
 `production_hd_config` and reports the full distribution after each, at both resolutions.
 Only one thing changes per stage, so the answer is a reading, not an inference.
 
-### The bisection â€” the answer is unambiguous
+### The bisection — the answer is unambiguous
 
 Over the EMERGED cells, metres (`norm>0.5` is the raw normalised mean above sea level, an
 audit of the metric conversion):
 
 | stage | grid | land cells | emerged % | mean | p10 | p50 | p90 | p99 | max | norm>0.5 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 1. coarse only (no FBM, no incision) | 2048Â² | 708 014 | 16.88 | 865 | 95 | 679 | 1836 | 3399 | 4132 | 0.07658 |
-| 1. coarse only | 8192Â² | 11 327 963 | 16.88 | 866 | 95 | 679 | 1836 | 3399 | 4148 | 0.07659 |
-| | **ratio** | â€” | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** |
-| 2. + FBM (no incision) | 2048Â² | 708 014 | 16.88 | 865 | 95 | 679 | 1836 | 3399 | 4142 | 0.07659 |
-| 2. + FBM | 8192Â² | 11 327 963 | 16.88 | 866 | 95 | 679 | 1836 | 3398 | 4153 | 0.07660 |
-| | **ratio** | â€” | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** |
-| 3. PRODUCTION (+ relief-v3 incision) | 2048Â² | 627 228 | 14.95 | 282 | 6 | 161 | 787 | 1407 | 2684 | 0.02498 |
-| 3. PRODUCTION | 8192Â² | 11 031 073 | 16.44 | 685 | 29 | 445 | 1606 | 3259 | 4145 | 0.06065 |
-| | **ratio** | â€” | 1.10 | **2.43** | **4.54** | **2.75** | **2.04** | **2.32** | 1.54 | **2.43** |
+| 1. coarse only (no FBM, no incision) | 2048² | 708 014 | 16.88 | 865 | 95 | 679 | 1836 | 3399 | 4132 | 0.07658 |
+| 1. coarse only | 8192² | 11 327 963 | 16.88 | 866 | 95 | 679 | 1836 | 3399 | 4148 | 0.07659 |
+| | **ratio** | — | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** |
+| 2. + FBM (no incision) | 2048² | 708 014 | 16.88 | 865 | 95 | 679 | 1836 | 3399 | 4142 | 0.07659 |
+| 2. + FBM | 8192² | 11 327 963 | 16.88 | 866 | 95 | 679 | 1836 | 3398 | 4153 | 0.07660 |
+| | **ratio** | — | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** | **1.00** |
+| 3. PRODUCTION (+ relief-v3 incision) | 2048² | 627 228 | 14.95 | 282 | 6 | 161 | 787 | 1407 | 2684 | 0.02498 |
+| 3. PRODUCTION | 8192² | 11 031 073 | 16.44 | 685 | 29 | 445 | 1606 | 3259 | 4145 | 0.06065 |
+| | **ratio** | — | 1.10 | **2.43** | **4.54** | **2.75** | **2.04** | **2.32** | 1.54 | **2.43** |
 
 **Stages 1 and 2 are invariant to the digit, on every percentile. The entire inflation is
-created by the INCISION.** And the sign matters: the incision does not build the 8192Â² terrain
+created by the INCISION.** And the sign matters: the incision does not build the 8192² terrain
 taller, it **fails to erode it**. From the same 865/866 m starting point it removes **67 % of
-the mean land altitude at 2048Â² (865 â†’ 282 m) but only 21 % at 8192Â² (866 â†’ 685 m)**.
+the mean land altitude at 2048² (865 → 282 m) but only 21 % at 8192² (866 → 685 m)**.
 
-### The C-1 relief budget cap is CLEARED â€” twice
+### The C-1 relief budget cap is CLEARED — twice
 
-The promoted suspect was the cap, `Î²Â·slope_mag/(nscaleÂ·S)`, on the argument that a slope
+The promoted suspect was the cap, `β·slope_mag/(nscale·S)`, on the argument that a slope
 measured over a 49 m cell is far steeper than over a 195 m cell. **That mechanism does not
 apply here**: the slope the cap reads is not an HD-cell gradient. It comes from
-`slope_map = compute_terrain_analysis(coarse)` â€” computed on the **64Â² coarse grid** with
-`gradient_at_periodic` and then sampled at coarse-pixel coordinates â€” and `nscale` is
-`base_frequency Â· 1024 / src_maxÂ²`, a function of the COARSE size alone. Neither term reads
+`slope_map = compute_terrain_analysis(coarse)` — computed on the **64² coarse grid** with
+`gradient_at_periodic` and then sampled at coarse-pixel coordinates — and `nscale` is
+`base_frequency · 1024 / src_max²`, a function of the COARSE size alone. Neither term reads
 `target_size`, so the cap field is identical at every resolution by construction.
 
-Measured through its effect, which is what stage 2 âˆ’ stage 1 is (the FBM's added relief, in
+Measured through its effect, which is what stage 2 − stage 1 is (the FBM's added relief, in
 metres, over all cells):
 
 | grid | mean | p1 | p50 | p99 | min | max |
 |---|---|---|---|---|---|---|
-| 2048Â² | 0.01 | âˆ’1.74 | 0.00 | 2.03 | âˆ’36.93 | 35.75 |
-| 8192Â² | 0.01 | âˆ’1.73 | 0.00 | 2.03 | âˆ’37.13 | 36.06 |
+| 2048² | 0.01 | −1.74 | 0.00 | 2.03 | −36.93 | 35.75 |
+| 8192² | 0.01 | −1.73 | 0.00 | 2.03 | −37.13 | 36.06 |
 
 Identical. The cap is invariant, by reading AND by measurement. Two things worth keeping from
-this table anyway: it **quantifies the DEAD KNOB** â€” the cap crushes the whole FBM to within
-Â±2 m over 98 % of cells, median contribution 0.00 m â€” and it confirms that the FBM is not what
+this table anyway: it **quantifies the DEAD KNOB** — the cap crushes the whole FBM to within
+±2 m over 98 % of cells, median contribution 0.00 m — and it confirms that the FBM is not what
 gives the C-1 terrain its relief.
 
 ### The exclusion list, so nothing is re-suspected
@@ -3312,76 +3312,76 @@ gives the C-1 terrain its relief.
 |---|---|---|
 | FBM octaves | excluded (code) | fixed at 7, does not scale with `target_size` |
 | FBM base frequency / feature size | excluded (measured) | stage 2 ratio 1.00 |
-| C-1 relief budget cap | **excluded (code + measured)** | coarse-only inputs; stage 2 âˆ’ stage 1 identical |
+| C-1 relief budget cap | **excluded (code + measured)** | coarse-only inputs; stage 2 − stage 1 identical |
 | `flow_conditioning = 0.1` | excluded (code + measured) | its only two uses are the cap and the noise-sign gate, both coarse-driven; stage 2 ratio 1.00 |
 | coarse upscale / bilinear | excluded (measured) | stage 1 ratio 1.00 on every percentile |
-| `target_land_fraction` calibration | excluded (code) | `None` in `c1_hd_production` AND untouched by `production_hd_config` â€” the calibration never runs in production |
-| framing roll `sample_origin` | excluded (code) | `roll_x/roll_y` are computed on the coarse 64Â² grid, identical at both resolutions; `sample_size = 1.0` (whole torus, no crop) |
-| nonlinear hillslope diffusion | excluded (code) | renormalised by `(HILLSLOPE_REF_CELL_M/cell_m)Â²` â€” but see below, relief-v3 does not take that branch |
-| `min_area_cells`, `lateral_erosion`, talus drop | excluded (code) | all three are expressed physically (`A_c/cell_km2`, metres, `talus_slopeÂ·cell_m`) |
+| `target_land_fraction` calibration | excluded (code) | `None` in `c1_hd_production` AND untouched by `production_hd_config` — the calibration never runs in production |
+| framing roll `sample_origin` | excluded (code) | `roll_x/roll_y` are computed on the coarse 64² grid, identical at both resolutions; `sample_size = 1.0` (whole torus, no crop) |
+| nonlinear hillslope diffusion | excluded (code) | renormalised by `(HILLSLOPE_REF_CELL_M/cell_m)²` — but see below, relief-v3 does not take that branch |
+| `min_area_cells`, `lateral_erosion`, talus drop | excluded (code) | all three are expressed physically (`A_c/cell_km2`, metres, `talus_slope·cell_m`) |
 | **stream-power incision** | **THE STAGE (measured)** | stage 3 ratio 2.43 from an invariant 865/866 m start |
 
 
 ### A correction to Finding 3, forced by stage 2
 
-Finding 3 recorded "Incision is resolution-dependent" (per-order incision 108 m @512Â² â†’ 136
-@1024Â² â†’ 318 @2048Â²) and attributed it to "the FBM detail resolving sharper gradients on finer
+Finding 3 recorded "Incision is resolution-dependent" (per-order incision 108 m @512² → 136
+@1024² → 318 @2048²) and attributed it to "the FBM detail resolving sharper gradients on finer
 cells". **That explanation no longer holds for the shipped config.** Stage 2 measures the
-FBM's total contribution at Â±2 m over 98 % of cells with a median of 0.00 m â€” C-1 flow
+FBM's total contribution at ±2 m over 98 % of cells with a median of 0.00 m — C-1 flow
 conditioning (which did not exist when Finding 3 was written) caps it out of existence. So the
 FBM cannot be the source of a resolution-dependent gradient field today. The observation in
 Finding 3 stands; its stated cause is superseded.
 
-Note also the direction: Finding 3 measured incision RISING with resolution over 512Â²â†’2048Â²,
-whereas Finding 43 measures the erosion doing proportionally LESS work at 8192Â² than at 2048Â²
+Note also the direction: Finding 3 measured incision RISING with resolution over 512²→2048²,
+whereas Finding 43 measures the erosion doing proportionally LESS work at 8192² than at 2048²
 (67 % of the mean altitude removed against 21 %). Different metrics (per-order incision depth
 vs mean land altitude) and a different regime (pre-C-1 vs relief-v3), so they are not in
-contradiction â€” but nobody should quote the one as support for the other.
+contradiction — but nobody should quote the one as support for the other.
 
 ### Finding 7's fix exists, and the shipped config takes the other branch
 
 `incise` has TWO hillslope-diffusion branches:
 
-- `cfg.critical_slope > 0.0` â†’ the nonlinear implicit closure, which carries Finding 7's
+- `cfg.critical_slope > 0.0` → the nonlinear implicit closure, which carries Finding 7's
   renormalisation: `let dscale = (HILLSLOPE_REF_CELL_M / cell_m).powi(2); let w_base =
-  cfg.diffusion * dscale;` with the comment *"otherwise the same D smooths 16Ã— fewer metres at
-  4Ã— finer cells and the closure fails to plane at 8192Â²"*.
-- `cfg.critical_slope == 0.0` â†’ the linear explicit branch: `let dsub = cfg.diffusion /
-  cfg.diffusion_substeps as f32; â€¦ field.data[k] = src[k] + dsub * lap;` where `lap` is the
-  5-point Laplacian in NORMALISED height per CELLÂ². **No `dscale`, no `cell_m`.**
+  cfg.diffusion * dscale;` with the comment *"otherwise the same D smooths 16× fewer metres at
+  4× finer cells and the closure fails to plane at 8192²"*.
+- `cfg.critical_slope == 0.0` → the linear explicit branch: `let dsub = cfg.diffusion /
+  cfg.diffusion_substeps as f32; … field.data[k] = src[k] + dsub * lap;` where `lap` is the
+  5-point Laplacian in NORMALISED height per CELL². **No `dscale`, no `cell_m`.**
 
-`relief_v3` sets `critical_slope: 0.0` ("MFD prevents the comb â†’ no Gauss-Seidel solver") and
+`relief_v3` sets `critical_slope: 0.0` ("MFD prevents the comb → no Gauss-Seidel solver") and
 `diffuse_channels: true`. So the shipped configuration takes the branch WITHOUT the fix, and
-applies it to every cell. The implied physical diffusivity is `ÎºÎ”t = dsub Â· dxÂ²`, i.e. it
-shrinks as `dxÂ²`: with `dsub = 0.08/4` over 4 substeps Ã— 2 iterations, `ÎºÎ”t` is 760 mÂ² per
-substep at 2048Â² against 48 mÂ² at 8192Â² (**Ã—16**), and the planing length âˆš(ÎºÎ”tÂ·n) is **78 m
-against 20 m** (Ã—3.9).
+applies it to every cell. The implied physical diffusivity is `κΔt = dsub · dx²`, i.e. it
+shrinks as `dx²`: with `dsub = 0.08/4` over 4 substeps × 2 iterations, `κΔt` is 760 m² per
+substep at 2048² against 48 m² at 8192² (**×16**), and the planing length √(κΔt·n) is **78 m
+against 20 m** (×3.9).
 
 This is the defect Finding 7 identified and fixed, **regressed by a branch change rather than
-by an edit to the fix** â€” the ADR's claim "after the fix the closures behave the same in
-metres at 2048Â² and 8192Â²" is true of the branch it was written about and false of the one
+by an edit to the fix** — the ADR's claim "after the fix the closures behave the same in
+metres at 2048² and 8192²" is true of the branch it was written about and false of the one
 that ships. A fix that lives in one arm of an `if` is not a fix; it is a fix for one config.
 
 ### The family: cells versus metres, sixth instance
 
 Every previous instance was a quantity written per CELL where physics needs it per METRE:
-the Â±1-cell lateral reach (Finding 7), the dimensionless diffusion weight (Finding 7), the
+the ±1-cell lateral reach (Finding 7), the dimensionless diffusion weight (Finding 7), the
 `min_area_cells` channel head, the drainage thresholds, the `decay_km` fracture distance. This
 one is the same shape with a twist worth naming: **the units were correct in the abstract
 (`diffusion` is documented as "dimensionless at the reference cell") and the conversion simply
-was not applied on this path.** The lesson is not "use physical units" â€” that was already
-known and written down â€” it is that **a units convention needs a single conversion site, not a
+was not applied on this path.** The lesson is not "use physical units" — that was already
+known and written down — it is that **a units convention needs a single conversion site, not a
 convention plus discipline at each use.**
 
 
-### The sub-bisection inside stage 3 â€” and it refutes the ranking I had just proposed
+### The sub-bisection inside stage 3 — and it refutes the ranking I had just proposed
 
 Having found the missing `dscale` on the linear branch, I ranked it as the cause. **The
 measurement says no.** Each variant changes exactly ONE term from the shipped config; the
-diagnostic is the 8192Â²/2048Â² ratio, and `retained` is post-incision mean over the invariant
+diagnostic is the 8192²/2048² ratio, and `retained` is post-incision mean over the invariant
 865/866 m pre-incision mean.
 
-| variant | mean 2048Â² | mean 8192Â² | RATIO | retained 2048Â² | retained 8192Â² | p50 2k | p50 8k |
+| variant | mean 2048² | mean 8192² | RATIO | retained 2048² | retained 8192² | p50 2k | p50 8k |
 |---|---|---|---|---|---|---|---|
 | shipped relief-v3 | 282 | 685 | 2.43 | 32.6 % | 79.2 % | 161 | 445 |
 | MFD off (D8 area) | 310 | 676 | 2.18 | 35.8 % | 78.1 % | 193 | 480 |
@@ -3392,46 +3392,46 @@ diagnostic is the 8192Â²/2048Â² ratio, and `retained` is post-incision mean 
 | `iterations = 4` | 177 | 662 | **3.75** | 20.4 % | 76.5 % | 95 | 427 |
 | `iterations = 8` | 107 | 625 | **5.86** | 12.3 % | 72.2 % | 60 | 399 |
 
-**Removing the diffusion entirely changes nothing** â€” 282 â†’ 279 m at 2048Â², 685 â†’ 685 m at
-8192Â², ratio 2.43 â†’ 2.45. So the missing `dscale` is a REAL latent defect (Finding 7's fix is
+**Removing the diffusion entirely changes nothing** — 282 → 279 m at 2048², 685 → 685 m at
+8192², ratio 2.43 → 2.45. So the missing `dscale` is a REAL latent defect (Finding 7's fix is
 genuinely bypassed on the branch relief-v3 takes) but it is **not the cause of the inflation**,
 and my ranking of it was wrong. It also carries its own news: **the "light linear hillslope"
-closure that relief-v3 documents as grading flanks is INERT** â€” a third dead knob, alongside
-`amplitude_base` and the striation ladder. MFD (2.43 â†’ 2.18) and the talus (â†’ 2.31) are minor
+closure that relief-v3 documents as grading flanks is INERT** — a third dead knob, alongside
+`amplitude_base` and the striation ladder. MFD (2.43 → 2.18) and the talus (→ 2.31) are minor
 contributors; lateral widening is nil.
 
-**The signature is in `iterations`, and it is not a knob to retune â€” it is a diagnosis.**
-Iterating does not close the gap, it WIDENS it: 1.59 â†’ 2.43 â†’ 3.75 â†’ 5.86 for 1/2/4/8. Read
+**The signature is in `iterations`, and it is not a knob to retune — it is a diagnosis.**
+Iterating does not close the gap, it WIDENS it: 1.59 → 2.43 → 3.75 → 5.86 for 1/2/4/8. Read
 the `retained` columns instead of the ratio and the reason is plain:
 
-- at 2048Â², each doubling keeps eating the landscape: 51.7 % â†’ 32.6 % â†’ 20.4 % â†’ 12.3 %;
-- at 8192Â², iterating barely does anything: 82.4 % â†’ 79.2 % â†’ 76.5 % â†’ 72.2 %.
+- at 2048², each doubling keeps eating the landscape: 51.7 % → 32.6 % → 20.4 % → 12.3 %;
+- at 8192², iterating barely does anything: 82.4 % → 79.2 % → 76.5 % → 72.2 %.
 
-**At 8192Â² the incision is essentially SATURATED after one sweep.** No amount of repetition
+**At 8192² the incision is essentially SATURATED after one sweep.** No amount of repetition
 reaches the rest of the land. That is the fact to explain, and it is not about how hard each
-link is incised â€” it is about HOW MUCH OF THE LAND the channel term can touch at all.
+link is incised — it is about HOW MUCH OF THE LAND the channel term can touch at all.
 
 ### The corroborating number, already in hand
 
-The incision runs only where `area >= min_area_cells = A_c/cell_km2`. `A_c = 0.1 kmÂ²` is
-PHYSICALLY CONSTANT â€” 2.6 cells at 2048Â², 41.9 at 8192Â² â€” so the threshold is not the bug.
+The incision runs only where `area >= min_area_cells = A_c/cell_km2`. `A_c = 0.1 km²` is
+PHYSICALLY CONSTANT — 2.6 cells at 2048², 41.9 at 8192² — so the threshold is not the bug.
 But the FRACTION OF LAND CELLS that clears it is not constant, because the number of cells
-with accumulation â‰¥ a falls off sub-linearly (the areaâ€“frequency law). From the Finding 42
+with accumulation ≥ a falls off sub-linearly (the area–frequency law). From the Finding 42
 bench:
 
-| | 2048Â² | 8192Â² |
+| | 2048² | 8192² |
 |---|---|---|
 | land cells | 626 951 | 11 024 627 |
-| cells clearing `A_c = 0.1 kmÂ²` | 347 578 | 1 110 919 |
+| cells clearing `A_c = 0.1 km²` | 347 578 | 1 110 919 |
 | **fraction of land in the FLUVIAL regime** | **55.4 %** | **10.1 %** |
 
-So at 2048Â² the channel term erodes more than half the land; at 8192Â² it reaches a tenth of
-it, and the other 90 % is handed to the hillslope term â€” which the variant table just showed
+So at 2048² the channel term erodes more than half the land; at 8192² it reaches a tenth of
+it, and the other 90 % is handed to the hillslope term — which the variant table just showed
 does NOTHING. Refining the grid transfers land from an agent that erodes to an agent that
 does not.
 
 (Measured on the drainage phase's D8 accumulation on the eroded field, not on the incision's
-own MFD accumulation â€” corroborating, not the primary evidence. The primary evidence is the
+own MFD accumulation — corroborating, not the primary evidence. The primary evidence is the
 `no regime split` variant.)
 
 
@@ -3439,157 +3439,157 @@ own MFD accumulation â€” corroborating, not the primary evidence. The prima
 
 `min_area_cells = 0` makes every cell incise, removing the fluvial/hillslope partition:
 
-| variant | mean 2048Â² | mean 8192Â² | RATIO | retained 2048Â² | retained 8192Â² |
+| variant | mean 2048² | mean 8192² | RATIO | retained 2048² | retained 8192² |
 |---|---|---|---|---|---|
 | shipped relief-v3 | 282 | 685 | 2.43 | 32.6 % | 79.2 % |
 | **no regime split (`A_c = 0`)** | **172** | **320** | **1.85** | 19.9 % | 37.0 % |
 
-The ratio falls from 2.43 to 1.85 â€” a large move, **but it does not collapse to 1.00.** So the
+The ratio falls from 2.43 to 1.85 — a large move, **but it does not collapse to 1.00.** So the
 partition is the dominant carrier and it is NOT the whole story. The decomposition, computed
 two ways that agree:
 
-- excess mean altitude at 8192Â² over 2048Â²: **403 m** shipped, **148 m** without the split;
+- excess mean altitude at 8192² over 2048²: **403 m** shipped, **148 m** without the split;
 - retained-fraction gap: **46.6 pp** shipped, **17.1 pp** without the split.
 
 **The regime partition accounts for 63 % of the excess. A residual 37 % lives in the incision
 term itself**, present even when every cell incises.
 
-**MECHANISM 1 (63 %) â€” a physically-correct threshold whose PARTITION OF THE DOMAIN is not.**
-`A_c = 0.1 kmÂ²` is constant in kmÂ² (2.6 cells at 2048Â², 41.9 at 8192Â²), so the threshold is
-right. But the number of cells with accumulation â‰¥ a falls off sub-linearly (the
-areaâ€“frequency law), so the FRACTION of land in the fluvial regime is **55.4 % at 2048Â²
-against 10.1 % at 8192Â²**. Refining the grid moves 45 % of the land from the channel term to
-the hillslope term â€” and the variant table shows the hillslope term does NOTHING
+**MECHANISM 1 (63 %) — a physically-correct threshold whose PARTITION OF THE DOMAIN is not.**
+`A_c = 0.1 km²` is constant in km² (2.6 cells at 2048², 41.9 at 8192²), so the threshold is
+right. But the number of cells with accumulation ≥ a falls off sub-linearly (the
+area–frequency law), so the FRACTION of land in the fluvial regime is **55.4 % at 2048²
+against 10.1 % at 8192²**. Refining the grid moves 45 % of the land from the channel term to
+the hillslope term — and the variant table shows the hillslope term does NOTHING
 (`diffusion = 0` changes the result by 3 m). Land is transferred from an agent that erodes to
 an agent that does not.
 
 This is NOT the cells-versus-metres family, and calling it that would misdirect the fix: every
-unit here is already physical. It is a new shape worth its own name â€” **a correct threshold
+unit here is already physical. It is a new shape worth its own name — **a correct threshold
 feeding an inert branch.** The partition is legitimate physics (hillslopes should not incise
 fluvially); the defect is that the other half of the physics was never made to work.
 
-**MECHANISM 2 (37 %) â€” not yet isolated.** Present with `A_c = 0`, so it is inside the
-`h_new = (ho + fÂ·hr)/(1+f)` relaxation, `f = KÂ·dtÂ·A_kmÂ²^m / dist_m`, run a FIXED 2 iterations.
+**MECHANISM 2 (37 %) — not yet isolated.** Present with `A_c = 0`, so it is inside the
+`h_new = (ho + f·hr)/(1+f)` relaxation, `f = K·dt·A_km²^m / dist_m`, run a FIXED 2 iterations.
 Two leads, both visible in the variant table: MFD dispersal (turning it off moved the ratio
-2.43 â†’ 2.18, and the incision's MFD partition is applied per CELL, so it compounds 4Ã— more
+2.43 → 2.18, and the incision's MFD partition is applied per CELL, so it compounds 4× more
 often along the same physical path, diluting `A` and hence `f`), and the iteration count
-itself (`retained` at 2048Â² keeps falling with iterations, 51.7 â†’ 12.3 %, while at 8192Â² it
-barely moves, 82.4 â†’ 72.2 % â€” the sweep saturates on the fine grid). One more sub-bisection
+itself (`retained` at 2048² keeps falling with iterations, 51.7 → 12.3 %, while at 8192² it
+barely moves, 82.4 → 72.2 % — the sweep saturates on the fine grid). One more sub-bisection
 would separate them; it was not run.
 
-### What the fix costs â€” and why it is NOT one line
+### What the fix costs — and why it is NOT one line
 
 The tempting one-liner is applying Finding 7's `dscale` to the linear branch. **The
 measurement predicts it will barely move the hypsometry**, and this is the most useful thing
-this round produced: `diffusion = 0` versus shipped is a 3 m difference at 2048Â², where the
+this round produced: `diffusion = 0` versus shipped is a 3 m difference at 2048², where the
 weight is by definition correctly calibrated. So the hillslope term is not merely
-mis-normalised at 8192Â² â€” it is **too weak to matter at either resolution**. Restoring the
-`dxÂ²` normalisation would make 8192Â² match 2048Â², i.e. match ~nothing.
+mis-normalised at 8192² — it is **too weak to matter at either resolution**. Restoring the
+`dx²` normalisation would make 8192² match 2048², i.e. match ~nothing.
 
 | remedy | code | validation | expected effect |
 |---|---|---|---|
-| apply `dscale` to the linear branch | **one line** | `ALGO_*` bump; 8192Â² moves | real defect, closes Finding 7's regression â€” but ~nil on hypsometry (predicted, worth verifying since a prediction is cheap here) |
-| calibrate the hillslope diffusivity to a PHYSICAL Îº | design work | full recalibration of everything altitude-dependent | the actual lever on mechanism 1. Needs the timescale question answered first: the incision has `dt = 1.0` and a fixed iteration count, so there is no explicit time for a Îº in mÂ²/yr to multiply |
+| apply `dscale` to the linear branch | **one line** | `ALGO_*` bump; 8192² moves | real defect, closes Finding 7's regression — but ~nil on hypsometry (predicted, worth verifying since a prediction is cheap here) |
+| calibrate the hillslope diffusivity to a PHYSICAL κ | design work | full recalibration of everything altitude-dependent | the actual lever on mechanism 1. Needs the timescale question answered first: the incision has `dt = 1.0` and a fixed iteration count, so there is no explicit time for a κ in m²/yr to multiply |
 | isolate mechanism 2 (MFD dilution vs iteration saturation) | bench only | none | one more sub-bisection, ~10 min of compute |
-| lower `A_c` at fine grids | one line | recalibration | would equalise the partition, but by making the channel network non-physical â€” a fix to the metric, not the terrain. NOT recommended |
+| lower `A_c` at fine grids | one line | recalibration | would equalise the partition, but by making the channel network non-physical — a fix to the metric, not the terrain. NOT recommended |
 
 **So the honest cost is: the diagnosis is done to 63 %, the remaining 37 % needs one more
 bench, and the fix is a PHYSICS CALIBRATION rather than a units patch.** The units patch
 should still be applied because Finding 7's regression is real, but it must not be presented
-as the hypsometry fix â€” and shipping it in the belief that it is would burn a recalibration
+as the hypsometry fix — and shipping it in the belief that it is would burn a recalibration
 cycle for a 3 m effect.
 
-A note on the instrument: `A_c = 0` is a diagnostic, not a candidate config. It planes 2048Â²
-from 282 m to 172 m â€” the terrain that made it would be wrong at both resolutions.
+A note on the instrument: `A_c = 0` is a diagnostic, not a candidate config. It planes 2048²
+from 282 m to 172 m — the terrain that made it would be wrong at both resolutions.
 
 
-### Parked, in this order â€” recorded so none of it is lost
+### Parked, in this order — recorded so none of it is lost
 
 Ordered by the author after Finding 42. Hypsometry (Finding 43) comes first because the
 contour is measured on shores whose altitude and slope depend on the grid, and because the
 microscope semantics change what he reads while judging.
 
-1. **Isolate mechanism 2** of Finding 43 (MFD dilution vs iteration saturation) â€” bench only,
+1. **Isolate mechanism 2** of Finding 43 (MFD dilution vs iteration saturation) — bench only,
    ~10 min of compute. Then decide the hypsometry fix.
-2. **Microscope semantics** â€” chain reaches through an exorheic lake via `sink_lake_id` so a
-   river SYSTEM is one entry instead of one entry per lake inflow (87â€“92 % of entries are lake
+2. **Microscope semantics** — chain reaches through an exorheic lake via `sink_lake_id` so a
+   river SYSTEM is one entry instead of one entry per lake inflow (87–92 % of entries are lake
    inflows today). Viz only, no core change, no cache bump. Low cost, and it makes the
    instrument say what the author expects of it. AFTER hypsometry, since it changes what he
    reads while judging.
-3. **The `catchment` label** â€” export the geometric area (`flow.accumulation Ã— cell_km2`) as
+3. **The `catchment` label** — export the geometric area (`flow.accumulation × cell_km2`) as
    `catchment_km2` and let the runoff-derived quantity be the discharge it already is. THE
    TRAP: `navigability` classifies on the runoff quantity while its thresholds (500 / 5000 /
-   50 000 kmÂ²) are written as AREAS, so the classes will move. Medium validation cost.
-4. **Duplicated terminals and isolated fragments** â€” 46/26 terminals share a last cell; 666/560
+   50 000 km²) are written as AREAS, so the classes will move. Medium validation cost.
+4. **Duplicated terminals and isolated fragments** — 46/26 terminals share a last cell; 666/560
    segments have neither upstream nor downstream and each becomes a list entry carrying its
-   PARENT'S inherited area (how an S1 row with 0 tributaries shows 1087 kmÂ² beside the real S4
-   trunk). Few lines in `clip_rivers_to_lakes` â€” read the area at the run's OWN downstream-most
+   PARENT'S inherited area (how an S1 row with 0 tributaries shows 1087 km² beside the real S4
+   trunk). Few lines in `clip_rivers_to_lakes` — read the area at the run's OWN downstream-most
    cell, EXCEPT for an exorheic outlet run where Finding 22 requires inheritance. Cosmetic.
-5. **The contour** (step 4) â€” LAST, because it is measured on grid-dependent shores. Barb
-   metric before/after BY SLOPE CLASS (baseline: turns > 80Â° = 8.6 / 12.2 / 8.1 / 8.3 / 1.9 %
-   for < 0.5Â°, 0.5â€“2Â°, 2â€“5Â°, 5â€“15Â°, > 15Â°; axial R 0.09; mean step 0.78 cell). The falsifiable
+5. **The contour** (step 4) — LAST, because it is measured on grid-dependent shores. Barb
+   metric before/after BY SLOPE CLASS (baseline: turns > 80° = 8.6 / 12.2 / 8.1 / 8.3 / 1.9 %
+   for < 0.5°, 0.5–2°, 2–5°, 5–15°, > 15°; axial R 0.09; mean step 0.78 cell). The falsifiable
    prediction: gradient pinning means the improvement must concentrate on LOW-SLOPE shores; if
    it is uniform or lands on steep shores, the mechanism is not the one identified. And report
-   the sea-level offset (âˆ’0.06 m median today) after smoothing â€” it is the end-to-end coherence
+   the sea-level offset (−0.06 m median today) after smoothing — it is the end-to-end coherence
    check between P3-A, the export roll and the Living Landz reader, and it must not drift
    unnoticed.
-6. **Finding 37 residual orphan** â€” issue draft in `ISSUE_finding37_residual_orphan.md`, not
+6. **Finding 37 residual orphan** — issue draft in `ISSUE_finding37_residual_orphan.md`, not
    filed on GitHub (`gh` unavailable in this environment).
 
 
-### Mechanism 2, split â€” and a flaw in my own bench design
+### Mechanism 2, split — and a flaw in my own bench design
 
-Every variant sits on `A_c = 0`, so mechanism 1 is out of the way and the residual Ã—1.85 is
+Every variant sits on `A_c = 0`, so mechanism 1 is out of the way and the residual ×1.85 is
 what is being attributed. `A_c = 0` is a DIAGNOSTIC instrument only, never a candidate config.
 
-| variant | mean 2048Â² | mean 8192Â² | RATIO | excess (m) | share of residual excess |
+| variant | mean 2048² | mean 8192² | RATIO | excess (m) | share of residual excess |
 |---|---|---|---|---|---|
-| `A_c = 0` (residual baseline) | 172 | 320 | 1.85 | 147 | â€” |
+| `A_c = 0` (residual baseline) | 172 | 320 | 1.85 | 147 | — |
 | **`A_c = 0` + MFD off** | 116 | 189 | 1.63 | **73** | **50 %** (74 m of 147) |
 | `A_c = 0` + `iterations = 1` | 400 | 528 | **1.32** | 128 | 13 % (19 m of 147) |
 | `A_c = 0` + MFD off + `iters = 1` | 334 | 435 | 1.30 | 102 | 31 % (46 m of 147) |
 
 **The two metrics rank the mechanisms differently, and the ratio is the one that lies.**
 `iterations = 1` gives the best RATIO (1.32) while removing almost none of the EXCESS (19 m of
-147). The reason is visible in the means: dropping to one sweep raises BOTH resolutions (172 â†’
-400 and 320 â†’ 528), so both move toward the invariant un-eroded 865/866 m â€” and as total
-erosion â†’ 0 the ratio â†’ 1.00 trivially. Confirmed by the combination: adding `iters = 1` to
-MFD-off makes the excess WORSE (73 â†’ 102 m) while the ratio still looks better (1.63 â†’ 1.30).
+147). The reason is visible in the means: dropping to one sweep raises BOTH resolutions (172 →
+400 and 320 → 528), so both move toward the invariant un-eroded 865/866 m — and as total
+erosion → 0 the ratio → 1.00 trivially. Confirmed by the combination: adding `iters = 1` to
+MFD-off makes the excess WORSE (73 → 102 m) while the ratio still looks better (1.63 → 1.30).
 
 **This is a defect in the instrument I built.** I introduced the ratio as "the diagnostic"; it
 is only valid at COMPARABLE TOTAL EROSION. When a variant changes how much erosion happens at
 all, the ratio measures proximity to the invariant limit rather than agreement between grids.
-The excess in METRES is the correct attribution instrument here â€” and it is also the one the
+The excess in METRES is the correct attribution instrument here — and it is also the one the
 consumers feel, since temperature is a lapse rate on absolute altitude (the 287 vs 693 m gap
-is 2.62 Â°C, not a percentage).
+is 2.62 °C, not a percentage).
 
 **Verdict on mechanism 2:**
 
-- **MFD dispersal owns half the residual (74 m of 147 m â‰ˆ 18 % of the original 403 m excess).**
-  The mechanism is confirmed and it IS a cells-versus-metres instance â€” the genuine sixth: the
-  MFD partition is applied PER CELL, so over the same physical path it composes 4Ã— more often
-  at 8192Â², diluting `A` and hence `f = KÂ·dtÂ·A_kmÂ²^m / dist_m`. A partition RATE expressed per
+- **MFD dispersal owns half the residual (74 m of 147 m ≈ 18 % of the original 403 m excess).**
+  The mechanism is confirmed and it IS a cells-versus-metres instance — the genuine sixth: the
+  MFD partition is applied PER CELL, so over the same physical path it composes 4× more often
+  at 8192², diluting `A` and hence `f = K·dt·A_km²^m / dist_m`. A partition RATE expressed per
   cell instead of per unit distance.
 - **The iteration count is NOT an independent divergence mechanism** (13 % by excess). It is a
   global erosion-AMOUNT knob. Its apparent ratio improvement is the artefact above. This also
-  means retuning `iterations` per resolution would be a fix to the metric, not to the terrain â€”
+  means retuning `iterations` per resolution would be a fix to the metric, not to the terrain —
   the same trap as lowering `A_c` at fine grids.
-- **~50 % of the residual (73 m â‰ˆ 18 % of the original excess) remains UNATTRIBUTED.** It is
-  still there with `A_c = 0` and MFD off. Untested candidates: the `f âˆ 1/dist_m` link
-  compression itself, the talus sweep (which moved the full-config ratio 2.43 â†’ 2.31), and the
+- **~50 % of the residual (73 m ≈ 18 % of the original excess) remains UNATTRIBUTED.** It is
+  still there with `A_c = 0` and MFD off. Untested candidates: the `f ∝ 1/dist_m` link
+  compression itself, the talus sweep (which moved the full-config ratio 2.43 → 2.31), and the
   cardinal-versus-diagonal `dist` handling. Said plainly rather than rounded away.
 
 ### Attribution of the original 403 m excess
 
 | mechanism | share | evidence |
 |---|---|---|
-| 1 â€” regime partition feeding an inert branch | **63 %** (255 m) | `A_c = 0` drops the excess 403 â†’ 148 m |
-| 2a â€” MFD dispersal composing per cell | **18 %** (74 m) | MFD off on top of `A_c = 0` drops 147 â†’ 73 m |
-| 2b â€” unattributed, inside the relaxation | **18 %** (73 m) | survives `A_c = 0` + MFD off |
+| 1 — regime partition feeding an inert branch | **63 %** (255 m) | `A_c = 0` drops the excess 403 → 148 m |
+| 2a — MFD dispersal composing per cell | **18 %** (74 m) | MFD off on top of `A_c = 0` drops 147 → 73 m |
+| 2b — unattributed, inside the relaxation | **18 %** (73 m) | survives `A_c = 0` + MFD off |
 | iteration count | **not a divergence mechanism** | changes erosion amount, not grid agreement |
 
 
-## Finding 44 â€” STRUCTURAL GAP: the model has no explicit TIMESCALE, and two chantiers now need one
+## Finding 44 — STRUCTURAL GAP: the model has no explicit TIMESCALE, and two chantiers now need one
 
 Specified, not implemented. This was a calibration caveat inside Finding 43; two independent
 requirements now converge on it, which makes it a gap in its own right.
@@ -3598,50 +3598,50 @@ requirements now converge on it, which makes it a gap in its own right.
 
 | parameter | value | what the code says it is |
 |---|---|---|
-| `dt` | 1.0 | *"Timestep per drainageâ†”incision iteration (**lumped into `KÂ·dt`**)"* |
-| `k` | 4500 | *"Erodibility `K` (**lumped with the timestep** â€” see `dt`). Calibrated to a target channel-incision depth, not to appearance"* |
-| `iterations` | 2 | *"Number of drainageâ†”incision iterations (recompute flow between each, so the network can reorganise as the terrain changes â€” **the staleness handling**)"* |
+| `dt` | 1.0 | *"Timestep per drainage↔incision iteration (**lumped into `K·dt`**)"* |
+| `k` | 4500 | *"Erodibility `K` (**lumped with the timestep** — see `dt`). Calibrated to a target channel-incision depth, not to appearance"* |
+| `iterations` | 2 | *"Number of drainage↔incision iterations (recompute flow between each, so the network can reorganise as the terrain changes — **the staleness handling**)"* |
 
-So the model carries ONE lumped number, `KÂ·dt = 4500`, and an iteration count whose documented
+So the model carries ONE lumped number, `K·dt = 4500`, and an iteration count whose documented
 purpose is **numerical** (flow-field staleness). But Finding 43 measured that the iteration
-count is what actually governs total denudation: retained mean altitude at 2048Â² goes
-**51.7 % â†’ 32.6 % â†’ 20.4 % â†’ 12.3 %** for 1/2/4/8 iterations. **A numerical parameter is
+count is what actually governs total denudation: retained mean altitude at 2048² goes
+**51.7 % → 32.6 % → 20.4 % → 12.3 %** for 1/2/4/8 iterations. **A numerical parameter is
 carrying the physical duration.** That conflation IS the gap.
 
 ### Why two chantiers need it
 
 - **The hypsometry remedy (Finding 43).** Mechanism 1 is a correct threshold feeding an inert
-  hillslope branch. Making that branch work means giving it a real diffusivity `Îº`, and
-  `âˆ‚h/âˆ‚t = Îºâˆ‡Â²h` has `[Îº] = mÂ²/yr`. **There is no year for it to multiply.** Calibrating a
-  physical Îº before the timescale exists would be premature â€” there is literally nothing to
+  hillslope branch. Making that branch work means giving it a real diffusivity `κ`, and
+  `∂h/∂t = κ∇²h` has `[κ] = m²/yr`. **There is no year for it to multiply.** Calibrating a
+  physical κ before the timescale exists would be premature — there is literally nothing to
   multiply it by, so any value chosen would be a fitted dimensionless weight wearing physical
   units, which is worse than the honest dimensionless weight there now.
-- **H-2's temporal dial (the Franceâ†”Scotland control).** Sill incision at 10â´ against 10â¶
+- **H-2's temporal dial (the France↔Scotland control).** Sill incision at 10â´ against 10â¶
   years IS the mechanism. It cannot be expressed against `dt = 1.0` with a fixed iteration
   count, because there is no axis along which 10â´ and 10â¶ differ.
 
 ### What the specification must settle
 
 1. **The meaning of `dt`.** The natural definition: `dt` is the duration, IN YEARS, modelled
-   by one drainageâ†”incision iteration; total modelled duration `T = iterations Â· dt`.
+   by one drainage↔incision iteration; total modelled duration `T = iterations · dt`.
 2. **Separating the two roles of `iterations`.** Today one integer serves both the physical
    duration and the flow-field staleness bound. They must be decoupled: the author (or H-2)
    sets the target `T`, and the iteration count is DERIVED as `ceil(T / dt_max)` where
-   `dt_max` is a numerical bound â€” how far the terrain may move before the flow field must be
+   `dt_max` is a numerical bound — how far the terrain may move before the flow field must be
    recomputed, and how large the implicit relaxation step may be before it over-relaxes.
 3. **Where resolution enters.** `dt_max` legitimately depends on cell size. That is the
-   correct place for the grid to appear â€” and it would also address mechanism 2's iteration
+   correct place for the grid to appear — and it would also address mechanism 2's iteration
    saturation, since the sweep count would no longer be a fixed 2 at both grids. **So the
    timescale work sits UPSTREAM of the hypsometry remedy, not beside it.**
 4. **Which parameters become dimensionally meaningful once `T` exists:**
-   - `K` in the stream-power law: with `E = KÂ·A_kmÂ²^mÂ·S^n` in m/yr and m = 0.5,
-     `[K] = mÂ·yrâ»Â¹Â·kmâ»Â¹` â€” Stock & Montgomery's tabulated values become directly usable
+   - `K` in the stream-power law: with `E = K·A_km²^m·S^n` in m/yr and m = 0.5,
+     `[K] = mÂ·yrâ»Â¹Â·kmâ»Â¹` — Stock & Montgomery's tabulated values become directly usable
      instead of being re-fitted;
-   - `Îº` hillslope diffusivity in mÂ²/yr â€” soil-creep literature becomes usable (this is
+   - `κ` hillslope diffusivity in m²/yr — soil-creep literature becomes usable (this is
      mechanism 1's remedy);
    - H-2's sill-incision duration, and any drainage timescale it needs;
    - unaffected, because already dimensional: the talus repose slope (dimensionless by
-     nature), the lateral half-width `K_latÂ·A^m` (metres), `A_c` (kmÂ²), the fracture
+     nature), the lateral half-width `K_lat·A^m` (metres), `A_c` (km²), the fracture
      `decay_km`.
 
 ### The gap can be closed WITHOUT changing a single output
@@ -3650,60 +3650,60 @@ Worth stating because it removes the usual objection. Define `dt := 1.0 yr` and
 `K := 4500 mÂ·yrâ»Â¹Â·kmâ»Â¹`. Then `KÂ·dt` is unchanged, every existing terrain is reproduced
 **byte-identically**, and the units exist. The dial becomes available afterwards, by varying
 `T`, against a reference that was never disturbed. Same discipline as C-3's hard basement at
-Ã—1, where holding the reference at unity made the global slowdown nil by construction.
+×1, where holding the reference at unity made the global slowdown nil by construction.
 
-The hard part is not naming the units â€” it is (2) and (3): deriving the iteration count from a
+The hard part is not naming the units — it is (2) and (3): deriving the iteration count from a
 duration and a stability bound instead of pinning it at 2. That is where the recalibration
 lands, and it should be done ONCE, before either the hypsometry remedy or H-2 spends a cycle
 on a dial that does not exist yet.
 
-### Method point â€” a stale EXPLANATION propagating between findings
+### Method point — a stale EXPLANATION propagating between findings
 
 Finding 3's cause ("the FBM detail resolving sharper gradients on finer cells") was correct
 when written and was silently invalidated by a later change (C-1 flow conditioning, which caps
-the FBM's whole contribution to Â±2 m â€” Finding 43 stage 2). It survived because nothing
+the FBM's whole contribution to ±2 m — Finding 43 stage 2). It survived because nothing
 re-checks an explanation when its premise moves; the OBSERVATION kept being true, so the
 finding kept looking healthy. **An observation and its explanation have different lifetimes,
 and only the observation is protected by being measured.** This is how a wrong model survives:
 not through a false measurement, but through a true measurement still carrying a dead
 explanation. Practical rule, alongside the other method notes: when a finding is cited as
-support, cite its MEASUREMENT, and re-derive the mechanism against the current code â€” and
+support, cite its MEASUREMENT, and re-derive the mechanism against the current code — and
 never chain two findings' explanations without checking that both premises still hold. Here
 the two were also of different metrics, different regimes, and opposite signs.
 
 
 ### The unit patch, shipped and MEASURED against my own prediction
 
-`dscale = (HILLSLOPE_REF_CELL_M / cell_m)Â²` applied to the linear explicit diffusion branch,
-closing Finding 7's regression. `dscale == 1.0` EXACTLY at the reference cell (2048Â² over
-400 km), so the reference is preserved by construction â€” the same discipline as C-3's hard
-basement at Ã—1.
+`dscale = (HILLSLOPE_REF_CELL_M / cell_m)²` applied to the linear explicit diffusion branch,
+closing Finding 7's regression. `dscale == 1.0` EXACTLY at the reference cell (2048² over
+400 km), so the reference is preserved by construction — the same discipline as C-3's hard
+basement at ×1.
 
-| | 2048Â² | 8192Â² | ratio |
+| | 2048² | 8192² | ratio |
 |---|---|---|---|
 | before the patch (mean land altitude) | 282 | 685 | 2.43 |
 | **after the patch** | **282** | **702** | **2.49** |
-| p10 | 6 â†’ 6 | 29 â†’ 42 | |
-| p50 | 161 â†’ 161 | 445 â†’ 468 | |
-| emerged % | 14.95 â†’ 14.95 | 16.44 â†’ 16.04 | |
+| p10 | 6 → 6 | 29 → 42 | |
+| p50 | 161 → 161 | 445 → 468 | |
+| emerged % | 14.95 → 14.95 | 16.44 → 16.04 | |
 
 **My prediction was right on magnitude and WRONG ON SIGN.** I forecast "~3 m, effectively
-nil". Measured: 2048Â² is byte-identical (as designed), and 8192Â² moves **+17 m â€” upward** â€”
-so the ratio gets slightly WORSE, 2.43 â†’ 2.49. Small, as predicted; unhelpful, which I did not
+nil". Measured: 2048² is byte-identical (as designed), and 8192² moves **+17 m — upward** —
+so the ratio gets slightly WORSE, 2.43 → 2.49. Small, as predicted; unhelpful, which I did not
 predict.
 
 **Why, and it matters more than the patch.** A linear Laplacian is MASS-CONSERVING: it moves
 material from convex to concave, so it lowers ridges and FILLS valleys in equal measure. With
 `diffuse_channels = true` it backfills the very channels the incision just cut (the ADR
-already observed "diffusion BACKFILLS valleys" in a different context). Making it 16Ã— stronger
-at 8192Â² therefore raises the mean rather than denuding the hillslopes.
+already observed "diffusion BACKFILLS valleys" in a different context). Making it 16× stronger
+at 8192² therefore raises the mean rather than denuding the hillslopes.
 
-**Consequence for mechanism 1's remedy â€” it is NOT "make the diffusion work harder".** The
+**Consequence for mechanism 1's remedy — it is NOT "make the diffusion work harder".** The
 inert branch cannot be fixed by restoring its strength, because the term is the wrong KIND of
 term for the job: lowering the un-channelled 90 % of fine-grid land requires an agent that
 REMOVES mass from hillslopes and delivers it to the channel network, not a conservative
 smoother that redistributes it locally. That is a transport-limited hillslope law with an
-explicit sediment flux â€” which is also the thing that has no time to integrate against
+explicit sediment flux — which is also the thing that has no time to integrate against
 (Finding 44). So the remedy for mechanism 1 now depends on the timescale gap, not merely
 benefits from it.
 
@@ -3711,6 +3711,138 @@ benefits from it.
 inconsistency (Finding 7's fix lived in one arm of an `if`), it is byte-identical at the
 reference resolution, and its effect on the hypsometry is +17 m in the wrong direction.
 Reverting it is a one-line call if the author prefers to hold the dimensional fix until the
-hillslope law is redesigned â€” the argument for keeping it is that a dimensionally wrong term
+hillslope law is redesigned — the argument for keeping it is that a dimensionally wrong term
 is harder to reason about than a dimensionally right one, not that it improves the output.
 
+
+### Finding 44 — IMPLEMENTED: units named at unchanged output, and the derived step count
+
+Everything added is **additive and read-only**: `incise` reads no new field, so the unit naming
+cannot have changed any output. `StreamPowerConfig` gains `k_time()`, `k_for_duration()`,
+`celerity_m_per_yr()`, `dt_max_yr()`, `cfl_iterations()`, `courant()`, `timescale_plan()`, plus
+`SHIPPED_K_TIME = 9000` and `COURANT_INTEGRATING = 1.0`.
+
+**The byte-identity proof, with a negative control.** `timescale_naming_changes_no_output`
+pins the shipped numbers (`dt = 1.0`, `iterations = 2`, `k = 4500`, `k_time() = 9000`) — but a
+pinning test alone could be vacuous, so it also proves it CAN see a change of this kind:
+incising a fixed synthetic field with `1 × 9000` instead of `2 × 4500` (same `k_time`) must and
+does differ, because the relaxation is nonlinear and the flow field is recomputed between
+steps. So "byte-identical" here is a checked claim, not an assumed one.
+
+**`K` and the duration are not separately observable.** Hold `k_time` and the step count, pick
+any `T`: then `k = k_time/T` and `dt = T/iterations`, so `k·dt = k_time/iterations` — every
+quantity `incise` reads is unchanged and `T` cancels.
+`duration_cancels_out_of_the_incision` pins it at T = 10⁴, 10⁶ and 10⁸ yr. Two consequences:
+
+- naming the units is FREE, which is why this landed at unchanged output;
+- **a duration dial alone is NOT a dial.** H-2's France↔Scotland control must move `k_time`;
+  10⁴ against 10⁶ years at proportionally larger `K` is the SAME terrain. Reading `k_time` as
+  years requires pinning `K` independently — which C-3's per-lithology multipliers plus one
+  absolute Stock & Montgomery anchor supply. **This is a correction to how H-2 was framed:**
+  the dial is an integrated erodibility-time product, not a time.
+
+**The `dt = 1.0` placeholder, stated as such.** Read literally it says two years of erosion
+carved ~580 m of mean relief. That absurdity is diagnostic, not embarrassing: `(k = 4500,
+dt = 1.0)` is one arbitrary factorisation of `k_time = 9000` among infinitely many. The
+anchored reading runs the other way — pin `K`, and the duration follows.
+
+**What `dt_max` depends on.** The CFL bound for the detachment-limited erosion wave: for
+`n = 1` the knickpoint celerity is `c = K·A_km²^m` (m/yr), and the wave must not cross more
+than one cell per step, so `dt_max = cell_m / c`. **Linear in cell size** — that is where the
+grid legitimately enters a timescale, and `cfl_bound_scales_with_cell_size` pins the ×4.
+
+### The measured cross-resolution behaviour — and it is a diagnosis, not a config
+
+`A_max` is an input, taken from the production measurement (max flow accumulation on land,
+full chain via `production_hd_config`): 3447 km² at 2048², 1611 km² at 8192².
+
+| grid | cell (m) | A_max km² | celerity m/yr | dt_max (yr) | **CFL steps** | shipped | **Courant** |
+|---|---|---|---|---|---|---|---|
+| 2048² | 195.3 | 3447 | 264 200 | 7.39e-4 | **2706** | 2 | **1353** |
+| 8192² | 48.8 | 1611 | 180 618 | 2.70e-4 | **7399** | 2 | **3699** |
+
+`dt_max` falls ×2.73 overall, and that is TWO effects: **×4 from the cell size** (the bound is
+linear in `cell_m`) times **×0.68 from `A_max` itself dropping** 3447 → 1611 km² (Finding 41 —
+more closed basins capture more catchment at a finer grid). Holding `A_max` fixed gives exactly
+×4. Reporting the ×2.73 as if it were the cell-size effect alone would have been the same
+mistake as the ratio-versus-excess confusion: two effects in one number.
+
+**THE ITERATION SATURATION IS EXPLAINED, and it is not a knob.** At Courant ≫ 1 the implicit
+update is STABLE but not INTEGRATING — stability is not accuracy. With
+`f = K·dt·A^m/dist_m ≫ 1` the update `h ← (h + f·h_r)/(1 + f)` drives each cell essentially
+onto its receiver's height in ONE step, so the terrain reaches a local relaxed state
+immediately and further sweeps do little. 8192² sits **2.7× further past the bound**, which is
+why it saturates harder: retained mean altitude 82.4 → 72.2 % over 1→8 iterations, against
+51.7 → 12.3 % at 2048².
+
+**And the derived count is NOT an adoptable configuration.** 7399 steps at 8192², each a full
+flow recompute plus incision over 67 M cells. So deriving the count honestly does not fix the
+model — **it reveals that the model is not time-integrating at all**, at either resolution
+(Courant 1353 even at 2048²). The shipped terrain is the fixed point of two local relaxations,
+not the result of an erosion episode. That is a legitimate way to make terrain; it is not a way
+to express a duration, which is exactly what H-2 asked for.
+
+### K anchoring — the debt C-3 left open, closed to an order of magnitude
+
+Stock & Montgomery 1999, audited on the source (ADR C-3): hard rock 10⁻⁷–10⁻⁶ with `A` in m²
+at m = 0.4. Ymir's law takes `A` in km², so `K_ours = 10³^(2m)·K_lit ≈ 251·K_lit` at m = 0.4.
+With `k_time = 9000`:
+
+| K_lit | K_ours | implied duration |
+|---|---|---|
+| 1e-7 (hard rock, low) | 2.51e-5 | 3.58e8 yr = **358 Myr** |
+| 1e-6 (hard rock, high) | 2.51e-4 | 3.58e7 yr = **36 Myr** |
+
+**⚠️ Caveat stated, not buried: the table is fitted at m = 0.4 and Ymir ships m = 0.5.** A
+tabulated `K` is only valid at the exponent it was fitted with, so this is an ORDER OF
+MAGNITUDE and not a calibration. What it establishes: the shipped terrain's integrated `K·T`
+is consistent with an episode of order **10⁷–10⁸ years at hard-rock erodibility** — a plausible
+orogenic-to-cratonic duration. It does not validate the value; it says the lumped constant is
+not absurd once read dimensionally, which is the first time that could be said at all.
+
+### Where this leaves the hypsometry remedy
+
+The timescale work was expected to address mechanism 2's iteration saturation on the way. It
+does something better and less convenient: it shows the saturation is not a step-count problem
+to be retuned but a consequence of running 10³× past the wave bound. Both resolutions are
+outside the integrating regime; 8192² is further outside. So:
+
+- retuning `iterations` per resolution remains a fix to the metric, not the terrain
+  (confirmed from a second direction);
+- mechanism 1's remedy still needs a transport-limited hillslope law with an explicit sediment
+  flux — and it now has a year to integrate against, which it did not before;
+- but that law must be posed in a regime where the model integrates, which the shipped
+  configuration does not. **That is the real next question, and it is bigger than a
+  calibration.**
+
+### Two method points, to stand prominently
+
+**A RATIO IS ONLY VALID AT COMPARABLE TOTAL EFFECT.** `iterations = 1` gave the best
+8192²/2048² ratio (1.32 against 1.85) while removing almost none of the excess (19 m of 147),
+because lowering total erosion moves BOTH grids toward the invariant un-eroded limit where the
+ratio → 1.00 trivially. Proof by combination: adding `iters = 1` to MFD-off makes the excess
+WORSE (73 → 102 m) while the ratio still improves. The **excess in metres** is the instrument —
+and it is also what the consumers experience, since temperature is a lapse rate on ABSOLUTE
+altitude (the 287/693 m gap is 2.62 °C, not a percentage). This chantier was reasoned in ratios
+throughout and the ratio was the wrong instrument.
+
+**CITE A FINDING'S MEASUREMENT, AND RE-DERIVE THE MECHANISM AGAINST CURRENT CODE.** An
+observation and its explanation do not have the same lifespan, and only the observation is
+protected by the measurement. Finding 3's cause was correct when written and was silently
+invalidated by C-1 flow conditioning; it survived because nothing re-checks an explanation when
+its premise moves, and the observation kept being true. That is how a wrong model survives —
+not through a false measurement, but through a true measurement dragging a dead explanation.
+Never chain two findings' explanations without checking that both premises still hold.
+
+### A tooling defect of my own, repaired
+
+Appending to the ADR and to two source files through PowerShell `Get-Content -Raw` +
+`Add-Content -Encoding utf8` **double-encoded every non-ASCII character** (PowerShell 5.1's
+`Get-Content` reads UTF-8 as cp1252, then re-encodes). 275 lines were corrupted across three
+files. Repaired by inverting the double encoding per line, except for five characters that were
+IRRECOVERABLE — cp1252 leaves 0x81/0x8D/0x8F/0x90/0x9D undefined, so those bytes were destroyed
+rather than transformed (`∝`, `↔`, `10⁴`, superscripts) and had to be restored by hand. Zero
+replacement characters remain. **Use the Write tool or Python for any append to a file with
+non-ASCII content; `Add-Content` is not safe here.** Recorded because it was silent: the files
+compiled and read fine to a grep, and the corruption only surfaced when a `cat -A` was needed
+for an unrelated reason.

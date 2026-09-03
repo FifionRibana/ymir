@@ -269,7 +269,7 @@ fn hypsometry_raw_vs_eroded() {
 /// Stage-3 SUB-BISECTION. The first bisection put the whole inflation in the incision
 /// (stages 1 and 2 are invariant to 1.00 on every percentile). This isolates WHICH term of
 /// `relief_v3` carries it: each variant changes exactly ONE thing from the shipped config,
-/// and the diagnostic is the 8192Â²/2048Â² RATIO â€” the variant whose ratio collapses toward
+/// and the diagnostic is the 8192²/2048² RATIO — the variant whose ratio collapses toward
 /// 1.00 is the culprit.
 #[derive(Clone, Copy)]
 enum Variant {
@@ -381,11 +381,11 @@ fn incision_term_sub_bisection() {
     let ref_2048 = hypsometry(&build(2048, Stage::PlusFbm), &ss).mean_m;
     let ref_8192 = hypsometry(&build(8192, Stage::PlusFbm), &ss).mean_m;
     eprintln!(
-        "\n==========  STAGE-3 SUB-BISECTION â€” which incision term inflates?  ==========\n\
-         pre-incision mean land altitude: {ref_2048:.0} m @ 2048Â² | {ref_8192:.0} m @ 8192Â² \
+        "\n==========  STAGE-3 SUB-BISECTION — which incision term inflates?  ==========\n\
+         pre-incision mean land altitude: {ref_2048:.0} m @ 2048² | {ref_8192:.0} m @ 8192² \
          (invariant)\n\n\
          'retained' = post-incision mean / pre-incision mean. The RATIO column is the \
-         diagnostic:\n hunting a variant whose 8192Â²/2048Â² ratio collapses toward 1.00.\n"
+         diagnostic:\n hunting a variant whose 8192²/2048² ratio collapses toward 1.00.\n"
     );
     eprintln!(
         "{:<22} {:>9} {:>9} {:>8} {:>9} {:>9} {:>8} {:>8}",
@@ -421,7 +421,7 @@ fn incision_term_sub_bisection() {
 
 /// The decisive variant on its own (the full sub-bisection takes ~10 min; this is the pair
 /// that settles the mechanism). `min_area_cells = 0` makes EVERY cell incise, removing the
-/// fluvial/hillslope regime split â€” the one term whose *reach over the land* is
+/// fluvial/hillslope regime split — the one term whose *reach over the land* is
 /// resolution-dependent even though its threshold is physically constant.
 #[test]
 #[ignore]
@@ -430,8 +430,8 @@ fn regime_split_is_the_carrier() {
     let ref_2048 = hypsometry(&build(2048, Stage::PlusFbm), &ss).mean_m;
     let ref_8192 = hypsometry(&build(8192, Stage::PlusFbm), &ss).mean_m;
     eprintln!(
-        "\n=====  REGIME SPLIT â€” the decisive variant  =====\n\
-         pre-incision {ref_2048:.0} m @ 2048Â² | {ref_8192:.0} m @ 8192Â²\n"
+        "\n=====  REGIME SPLIT — the decisive variant  =====\n\
+         pre-incision {ref_2048:.0} m @ 2048² | {ref_8192:.0} m @ 8192²\n"
     );
     eprintln!(
         "{:<26} {:>9} {:>9} {:>8} {:>9} {:>9}",
@@ -453,17 +453,17 @@ fn regime_split_is_the_carrier() {
 }
 
 /// MECHANISM-2 SPLIT. With the regime partition removed (`A_c = 0`, mechanism 1 out of the
-/// way) a residual Ã—1.85 remains â€” 37 % of the excess. Two candidates were visible in the
+/// way) a residual ×1.85 remains — 37 % of the excess. Two candidates were visible in the
 /// first sub-bisection and this separates them:
 ///
 ///  - **MFD dispersal**: the partition is applied PER CELL, so over the same physical path it
-///    composes 4Ã— more often at 8192Â², diluting `A` and hence `f = KÂ·dtÂ·A^m/dist_m`.
+///    composes 4× more often at 8192², diluting `A` and hence `f = K·dt·A^m/dist_m`.
 ///  - **Iteration saturation**: a fixed 2 sweeps, whose reach in the landscape is not a
 ///    physical quantity.
 ///
 /// Each variant sits ON TOP of `A_c = 0`, so whatever moves the ratio toward 1.00 owns the
 /// residual. `A_c = 0` remains a DIAGNOSTIC instrument and is never a candidate config (it
-/// planes 2048Â² from 282 m to 172 m).
+/// planes 2048² from 282 m to 172 m).
 #[derive(Clone, Copy)]
 enum Mech2 {
     NoSplit,
@@ -559,9 +559,9 @@ fn mechanism2_split() {
     let ref_8192 = hypsometry(&build(8192, Stage::PlusFbm), &ss).mean_m;
     eprintln!(
         "\n=====  MECHANISM-2 SPLIT (MFD dilution vs iteration saturation)  =====\n\
-         pre-incision {ref_2048:.0} m @ 2048Â² | {ref_8192:.0} m @ 8192Â²\n\
+         pre-incision {ref_2048:.0} m @ 2048² | {ref_8192:.0} m @ 8192²\n\
          every variant sits on A_c = 0, so mechanism 1 is out of the way. Whatever pulls the\n\
-         RATIO toward 1.00 owns the residual (baseline Ã—1.85). 'excess' = mean8192 âˆ’ mean2048.\n"
+         RATIO toward 1.00 owns the residual (baseline ×1.85). 'excess' = mean8192 − mean2048.\n"
     );
     eprintln!(
         "{:<30} {:>9} {:>9} {:>8} {:>9} {:>9} {:>9}",
@@ -591,7 +591,7 @@ fn mechanism2_split() {
         );
         if i > 0 {
             eprintln!(
-                "{:<30} â†’ removes {:.0}% of the residual excess ({:.0} m of {:.0} m)",
+                "{:<30} → removes {:.0}% of the residual excess ({:.0} m of {:.0} m)",
                 "",
                 100.0 * (base_excess - excess) / base_excess.max(1e-9),
                 base_excess - excess,
@@ -600,4 +600,111 @@ fn mechanism2_split() {
         }
     }
     // Diagnostic only: report, never gate.
+}
+
+/// ADR Finding 44 — the timescale REPORT: what `dt_max` depends on, how the derived step
+/// count behaves across resolutions, and what duration the shipped `k_time` corresponds to
+/// once `K` is read against Stock & Montgomery.
+///
+/// `A_max` is an INPUT here, taken from the production measurement in
+/// `network_fragmentation_bench` (max flow accumulation on land, full chain via
+/// `production_hd_config`): 3447 km² at 2048², 1611 km² at 8192². Not a guess and not a
+/// reconstruction — the arithmetic below is a report over measured inputs.
+///
+/// Run: cargo test -p ymir-core --release --test hypsometry_bisection timescale -- --ignored --nocapture
+#[test]
+#[ignore]
+fn timescale_plan_report() {
+    use ymir_core::erosion::stream_power::{SHIPPED_K_TIME, StreamPowerConfig};
+
+    // (target, cell_km², A_max km² measured on the production chain)
+    let cases = [(2048usize, 400.0f32 / 2048.0, 3447.0f32), (8192, 400.0 / 8192.0, 1611.0)];
+
+    eprintln!(
+        "\n==========  FINDING 44 — THE TIMESCALE, MEASURED  ==========\n\
+         CFL bound: dt_max = cell_m / (K·A_max^m). The erosion wave must not cross more than\n\
+         one cell per step, or the flow field it was routed on is already wrong.\n"
+    );
+    eprintln!(
+        "{:>7} {:>9} {:>10} {:>14} {:>12} {:>13} {:>11} {:>10}",
+        "grid",
+        "cell (m)",
+        "A_max km²",
+        "celerity m/yr",
+        "dt_max (yr)",
+        "CFL steps",
+        "shipped",
+        "Courant"
+    );
+    let mut plans = Vec::new();
+    for (target, cell_km, a_max) in cases {
+        let sp = StreamPowerConfig::relief_v3(cell_km * cell_km, 5000.0);
+        let p = sp.timescale_plan(a_max);
+        eprintln!(
+            "{:>7} {:>9.1} {:>10.0} {:>14.0} {:>12.2e} {:>13.0} {:>11} {:>10.0}",
+            format!("{target}²"),
+            cell_km * 1000.0,
+            a_max,
+            p.celerity_m_per_yr,
+            p.dt_max_yr,
+            p.cfl_iterations,
+            p.iterations,
+            p.courant
+        );
+        plans.push((target, p));
+    }
+
+    let (_, a) = plans[0];
+    let (_, b) = plans[1];
+    eprintln!(
+        "\nCROSS-RESOLUTION\n  dt_max falls ×{:.2} overall, and that is TWO effects: ×4 from the \
+         cell size (the bound is\n  linear in cell_m, where the grid legitimately enters a timescale) times ×0.68 from\n  the measured A_max itself dropping 3447 → 1611 km² (Finding 41: more closed\n  basins capture more catchment at a finer grid). Holding A_max fixed gives exactly\n  ×4, pinned by `cfl_bound_scales_with_cell_size`.\n  The DERIVED step count \
+         goes {:.0} → {:.0} (×{:.2}), against a SHIPPED 2 at both.\n  Courant {:.0} → {:.0}: \
+         the configuration runs {:.0}× and {:.0}× past the bound.",
+        a.dt_max_yr / b.dt_max_yr,
+        a.cfl_iterations,
+        b.cfl_iterations,
+        b.cfl_iterations / a.cfl_iterations,
+        a.courant,
+        b.courant,
+        a.courant,
+        b.courant
+    );
+    eprintln!(
+        "\n  ⇒ THE SATURATION IS EXPLAINED, and it is not a knob. At Courant ≫ 1 the implicit\n  \
+         update is STABLE but not INTEGRATING: each step drives a cell to its receiver's height\n  \
+         (f = K·dt·A^m/dist_m ≫ 1 ⇒ h → h_r), so the terrain reaches a LOCAL RELAXED STATE in\n  \
+         one sweep and further sweeps do little. 8192² sits {:.1}× further past the bound than\n  \
+         2048², which is why it saturates harder (retained 82.4 → 72.2 % over 1→8 iterations,\n  \
+         against 51.7 → 12.3 % at 2048²).\n\n  \
+         ⇒ AND THE DERIVED COUNT IS NOT AN ADOPTABLE CONFIG: {:.0} steps at 8192², each a full\n  \
+         flow recompute + incision over 67 M cells. Deriving the count honestly does not fix\n  \
+         the model — it reveals that the model is NOT time-integrating at all.",
+        b.courant / a.courant,
+        b.cfl_iterations
+    );
+
+    // ── K ANCHORING. `k_time` is the observable; K follows from a chosen duration.
+    // Stock & Montgomery 1999 (audited on the source, ADR C-3): hard rock 1e-7–1e-6, with
+    // A in m² and m = 0.4. Ymir's law takes A in km², so K_ours = 1e3^(2m)·K_lit ≈ 251·K_lit
+    // at m = 0.4.  âš ï¸ Ymir ships m = 0.5, and a tabulated K is only valid at the exponent it
+    // was fitted with — so this is an ORDER OF MAGNITUDE, stated as such, not a calibration.
+    eprintln!(
+        "\nK ANCHORING (order of magnitude, m = 0.4 table against a shipped m = 0.5 — caveat stated)"
+    );
+    let conv = 1.0e3f32.powf(2.0 * 0.4); // A m² → km² at m = 0.4
+    for (k_lit, label) in [(1.0e-7f32, "hard rock, low"), (1.0e-6, "hard rock, high")] {
+        let k_ours = k_lit * conv;
+        let t = SHIPPED_K_TIME / k_ours;
+        eprintln!(
+            "  K_lit {k_lit:.0e} ({label}) → K_ours {k_ours:.2e} → duration {t:.2e} yr = {:.0} Myr",
+            t / 1.0e6
+        );
+    }
+    eprintln!(
+        "  ⇒ the shipped terrain's integrated K·T is consistent with an episode of order\n  \
+         10â·–10â¸ years at hard-rock erodibility — a plausible orogenic-to-cratonic duration,\n  \
+         which is the anchoring debt C-3 left open. It does NOT validate the value; it says the\n  \
+         lumped constant is not absurd once read dimensionally."
+    );
 }
