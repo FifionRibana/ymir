@@ -3089,3 +3089,167 @@ list of candidates as the contour.
 | `source_lake_id` | `rivers.json` | link a spillway to its basin; `null` = real basin, not inventoried |
 | `lake_type` | `lakes.json` | `Endorheic` = salt, `CraterAcidic` = acid — habitability / resource logic |
 | `Wetland` | biome raster | the traced marsh footprint, not a rainfall proxy |
+
+### Method notes earned at step 3b
+
+**A "repairing" `resize` can MASK the defect it looks like it is absorbing.** The desync above
+was invisible because the sidecar read ended with `segment_kind.resize(n_seg, Watercourse)`.
+That line looks like tolerance for legacy caches; what it actually did was truncate 13165
+correct-but-misplaced tags down to 10186 and report zero spillways. Without the discharge-sort
+check, the typing would have passed as working. **A tolerance clause must distinguish the case
+it tolerates from the case it hides**: absent/empty (legacy) is tolerated, a wrong length is
+now an error. Whenever a `resize`, a `unwrap_or_default`, a `saturating_*` or a `.get(i)` sits
+on a path where the two lengths are supposed to be equal BY CONSTRUCTION, it is not
+defensiveness â€” it is a silencer.
+
+**The structural remedy eliminates the CLASS, not the instance.**
+`C1DrainageResult::segment_arrays_aligned()` checks all seven parallel arrays in one call,
+asserted at every site that mutates the network. Seven separate length checks would have had
+the same defect as the seven separate arrays: adding an eighth would silently skip it. This is
+the third occurrence of the composite-completeness trap (sidecar codec â†’ the `AmplitudeTerms`
+composition â†’ here) and the first time the remedy is a single invariant rather than a fix.
+
+**A bench that BOUNDS is not a bench that MEASURES.** "8 dangling ids" came from
+`spillways âˆ’ lakes`. That subtraction bounds the count from below and cancels silently against
+every basin that IS inventoried; the set-membership count is 16. A difference of cardinals is
+not a count of a set.
+
+**Refinement of method rule 3 â€” a partial bench is VALID FOR A TOPOLOGY QUESTION AND WORTHLESS
+FOR A MAGNITUDE.** `tests/spillway_duplication.rs` runs `below_sea_basin_lakes` on the raw
+eroded field, without infiltration and without the H-1c water balance. It correctly found the
+reciprocal chain cycles â€” a structural property that does not depend on the missing stages â€”
+and it reported a spillway draining 88 468 kmÂ² where production has 1572 kmÂ². Both numbers are
+right for what they measured. Rule 3 ("a bench must reproduce the whole production chain")
+stands; this is the finer statement of WHY, and of what a partial bench may still be trusted
+for: **structure, connectivity, degeneracy â€” yes. Any number that will be quoted â€” no.**
+
+
+## Finding 42 â€” the "network fragments with resolution" anomaly: it is the TERRAIN'S HYPSOMETRY, and none of the four suspects
+
+Step 3b filed an anomaly: the largest assembled catchment was **1087 kmÂ² at 2048Â² but 110 kmÂ²
+at 8192Â²**, with **fewer** microscope entries on the finer grid (792 against 1359). The
+network appeared to FRAGMENT as resolution increased â€” the opposite of the expected behaviour,
+and it hits the measuring instrument itself, since the microscope assembles watercourses by
+following `downstream` to a terminal.
+
+Four candidates were named and each was measured on the full production chain at both
+resolutions (`network_fragmentation_bench` in `ui/workspace.rs`, through `run_hd`, calling the
+very `aggregate_watercourses` the microscope calls). **All four are cleared.**
+
+| | 2048Â² | 8192Â² |
+|---|---|---|
+| segments / entries / river cells | 10 186 / 1359 / 74 897 | 12 464 / 792 / 291 508 |
+| terminals: sea / lake / sub-sea / **none of these** | 92 / 1251 / 0 / **16** | 97 / 692 / 0 / **3** |
+| of those, still having a D8 receiver | 16 (all 0 kmÂ²) | 3 (all 0 kmÂ²) |
+| isolated fragments (no upstream, no downstream) | 666 (6.5 %) | 560 (4.5 %) |
+| duplicate terminals (terminals âˆ’ distinct last cells) | 46 of 1359 | 26 of 792 |
+| lake cells | 3790 kmÂ² (2.37 %) | 1625 kmÂ² (1.02 %) |
+| `stream_km2` 20 kmÂ² â†’ cells | 524.3 | 8388.6 |
+| cells clearing it | 11 857 | 45 513 |
+| **exported channel LENGTH** | **14 605 km** | **14 284 km** |
+
+1. **ASSEMBLY â€” not broken.** Only 16 (2048Â²) and 3 (8192Â²) terminals are neither sea, lake
+   nor sub-sea sink, and every one of them carries 0 kmÂ². 87â€“92 % of terminals are LAKE
+   INFLOWS, which is the clip's designed behaviour.
+2. **THRESHOLDS â€” correct and physical.** `stream_km2` is in kmÂ² and converts per resolution
+   (524 â†’ 8389 cells); the cells clearing it go 11 857 â†’ 45 513 (Ã—3.84 for a Ã—4 linear
+   refinement) and the exported channel LENGTH converges: **14 605 km against 14 284 km,
+   Ã—0.98.** The network is not shrinking or fragmenting in extent â€” it is resolution-stable.
+3. **FEWER ENTRIES â€” lake area, not fragmentation.** An entry is a terminal, and terminals are
+   dominated by lake inflows. The lake footprint is 3790 kmÂ² at 2048Â² but 1625 kmÂ² at 8192Â²,
+   so the network crosses fewer lakes and produces fewer terminations (1251 â†’ 692). Entry
+   count TRACKS LAKE AREA. Counter-intuitive only until the terminal census is read.
+4. **CLIPPING â€” the dominant source of terminals, and behaving as designed.** 1251 of 1359
+   terminals at 2048Â² end at a lake shore against 78 segments that RESTART on the far side:
+   many tributaries in, one outlet out, plus the deliberate drop of endorheic and below-sea
+   outlet runs. What this exposes is a SEMANTIC point, not a bug: the microscope's
+   "watercourse" is a REACH BETWEEN WATER BODIES, not a river system, so its head is the
+   largest reach and not the largest river.
+
+### What the number actually was
+
+The quantity the list labels "catchment" is `segment_drainage_km2= runoff_accumulation / 300 mm`
+â€” a runoff-EQUIVALENT area at a reference depth, not a geometric catchment. Read beside the
+flow-accumulation RASTER (a geometric cell count, independent of segmentation) it separates
+cleanly:
+
+| at the sea mouths | 2048Â² | 8192Â² |
+|---|---|---|
+| summed GEOMETRIC area | 9519 kmÂ² | 6377 kmÂ² (Ã—0.67) |
+| summed EFFECTIVE area | 12 169 kmÂ² | 603 kmÂ² (Ã—0.05) |
+| effective / geometric | **1.278** | **0.094** |
+
+An "effective area" 1.278Ã— the geometric one is not a contradiction â€” it means the catchment's
+mean net runoff exceeds the 300 mm reference. The ratio IS that mean over 300 mm. So the
+figure moved because **the water moved**, and the Ã—0.67 on the geometric side is Finding 41
+(more closed depressions at a finer grid capture more catchment before it reaches the sea).
+
+Two side observations, both minor and both real: 46/26 **duplicate terminals** (two terminal
+segments on one cell â€” the pairs visible in the discharge sort: 1459/1459, 738/738), and
+666/560 **isolated fragments** which each become a list entry carrying their PARENT'S
+inherited area â€” which is how an S1, 0-tributary row shows 1087 kmÂ² beside the genuine S4,
+394-tributary trunk. Also checked and cleared: the 3/5 sea mouths with a real catchment and
+ZERO discharge are **not** the endorheic mask killing a route to the sea (0 of them are â€”
+re-accumulated with and without the mask), they are genuinely arid catchments.
+
+### The cause, and a hypothesis of mine that the measurement refuted
+
+Mean land precipitation is **1219 mm/yr at 2048Â² and 712 mm/yr at 8192Â²** (Ã—0.58), and
+`max(0, p âˆ’ pe)` follows at Ã—0.33 (620.4 â†’ 207.3 mm/yr; wet-cell fraction 12.92 % â†’ 7.59 %).
+
+I hypothesised a discretisation defect in the transport: `oro = k_oroÂ·mÂ·ascent` removes a
+FRACTION of the carried moisture per CELL, so the flux should decay as `(1 âˆ’ k_oroÂ·S)^N` and
+depend on the cell count. **`tests/precip_resolution_invariance.rs` refutes it**: on the SAME
+analytic continent (ocean, then a 100 km ramp to a 2000 m plateau over a 400 km domain) the
+land mean is **391 mm/yr at 512Â², 1024Â², 2048Â², 4096Â² AND 8192Â² â€” ratio 1.000**, interior/coast
+contrast identical. `k_oro` is not the binding constraint; the CAPACITY CAP `m > e_sat(T)` is,
+and that depends on the altitude PROFILE, not on how many cells sample it. The transport is
+resolution-invariant.
+
+So the climate is faithfully reporting a terrain that differs. And it differs by a lot:
+
+| land statistic | 2048Â² | 8192Â² | ratio |
+|---|---|---|---|
+| mean altitude | 287 m | 693 m | **Ã—2.42** |
+| hypsometry p10 / p50 / p90 / p99 / max | 6 / 167 / 796 / 1407 / 2684 m | 30 / 447 / 1606 / 3259 / 4145 m | Ã—5.0 / Ã—2.68 / Ã—2.02 / Ã—2.32 / Ã—1.54 |
+| raw normalised above 0.5: mean | 0.02540 | 0.06130 | Ã—2.41 |
+| mean temperature | 19.82 Â°C | 17.20 Â°C | âˆ’2.62 Â°C |
+| emerged fraction | 14.95 % | 16.43 % | Ã—1.10 |
+
+**VERDICT: the exported terrain's HYPSOMETRY is not resolution-stable.** The whole
+distribution inflates ~Ã—2â€“2.7 (not just the peaks), for the same seed, the same domain and
+essentially the same emerged fraction. Everything altitude-dependent reads a different world
+at each grid: temperature, PE, the moisture capacity, precipitation, biomes, and every
+hydrological figure downstream of the runoff. The "fragmenting network" was a symptom;
+the network is the one thing that IS stable (channel length Ã—0.98).
+
+This is upstream of H-2 and upstream of the contour, and it is the same family as the comb
+(a property that degrades with resolution) with a different culprit.
+
+### Cost of each remedy, so the ordering can be decided
+
+- **Assembly, thresholds, clipping** â€” no defect, no cost. The only thing worth changing is
+  the microscope's SEMANTICS (chain reaches across an exorheic lake via `sink_lake_id` so a
+  river SYSTEM is one entry): viz-only, no core change, no cache bump. Low cost, and it makes
+  the instrument say what the author expects it to say.
+- **The "catchment" label** â€” export the GEOMETRIC catchment (`flow.accumulation Ã— cell_km2`)
+  under `catchment_km2` and let the runoff-derived quantity be what it already is, the
+  discharge. A few lines plus an `ALGO_DRAINAGE` bump. The catch: `navigability` classifies on
+  the runoff-derived figure today, and its thresholds (500 / 5000 / 50 000 kmÂ²) were written
+  as AREAS â€” so the classes shift and need a re-look. Low code, moderate validation.
+- **Duplicate terminals / isolated fragments inheriting a parent's area** â€” a few lines in
+  `clip_rivers_to_lakes` (read the area at the run's OWN downstream-most cell instead of
+  inheriting, EXCEPT for an exorheic outlet run where Finding 22 requires inheritance) plus an
+  `ALGO_DRAINAGE` bump. Low cost, cosmetic effect: it removes the phantom high-area rows.
+- **The hypsometry** â€” unknown until diagnosed, and the diagnosis is NOT done. What is already
+  excluded: the FBM octave count is fixed at 7 and does NOT scale with `target_size`, and the
+  hillslope diffusion is explicitly renormalised (`HILLSLOPE_REF_CELL_M`, âˆ1/cellÂ²). The
+  candidates left, each cheap to test on the raw upscaled field before erosion:
+  (a) the C-1 relief-budget CAP (`AmplitudeTerms.cap`, the one that made `amplitude_base`
+  inert) evaluating differently per grid; (b) `flow_conditioning = 0.1`, a per-cell downslope
+  stretch; (c) the stream-power incision â€” `relief_v3(cell_km2, â€¦)` is parameterised by cell
+  area and runs a FIXED 2 iterations, so the erosion may simply do less relative work at
+  8192Â²; (d) the sea-level / `target_land_fraction` calibration. The decisive first
+  measurement is one bench reporting the hypsometry of the RAW FBM field and of the ERODED
+  field at both resolutions: it splits the search in two at the cost of one run.
+

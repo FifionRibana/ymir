@@ -4309,3 +4309,506 @@ mod spillway_typing_bench {
         head_of_list(8192, 25.0, "arid-hot");
     }
 }
+
+#[cfg(test)]
+mod network_fragmentation_bench {
+    //! DIAGNOSTIC ONLY â€” the network FRAGMENTS as resolution increases (largest assembled
+    //! catchment 1087 kmÂ² at 2048Â² against 110 kmÂ² at 8192Â², with FEWER list entries on the
+    //! finer grid: 792 against 1359). The opposite of the expected behaviour, and it hits the
+    //! MEASURING INSTRUMENT: the microscope assembles watercourses by following `downstream`
+    //! to a terminal, so if the assembly breaks at high resolution, every measurement that
+    //! reads that list describes truncated fragments.
+    //!
+    //! Four questions, four measurements, no fix:
+    //!   1. WHERE the assembly breaks â€” terminals that are neither sea, lake nor sub-sea sink,
+    //!      and whether the raster still has a receiver there.
+    //!   2. ASSEMBLY or NETWORK â€” the mouth's area read from the flow-accumulation RASTER
+    //!      (independent of segmentation) beside the assembled figure.
+    //!   3. WHY FEWER ENTRIES â€” the km2-to-cell threshold conversion and the network's extent.
+    //!   4. Is `clip_rivers_to_lakes` involved â€” how many terminations it creates at each grid.
+    //!
+    //! Run: cargo test -p ymir-viz --release network_fragmentation -- --ignored --nocapture
+
+    use super::*;
+    use crate::bridge::c1::C1RunSpec;
+    use crate::bridge::c1::events::C1Event;
+    use crate::bridge::c1::hd::{HdParams, run_hd};
+    use crossbeam_channel::bounded;
+    use std::sync::atomic::AtomicBool;
+    use ymir_core::tectonics_c1::closures::fracture::FractureConfig;
+    use ymir_core::tectonics_c1::closures::infiltration::InfiltrationConfig;
+    use ymir_core::tectonics_c1::closures::lithology::LithologyConfig;
+    use ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig;
+    use ymir_core::tectonics_c1::drainage::C1DrainageConfig;
+
+    const PSEED: u64 = 10_481_999_410_520_546_993;
+    const DOMAIN_KM: f32 = 400.0;
+
+    fn production_run(target: usize, lat: f32) -> Arc<HdResult> {
+        let spec = C1RunSpec { seed: PSEED, ..C1RunSpec::default() };
+        let params = HdParams {
+            target_size: target,
+            latitude_deg: lat,
+            latitude_span_deg: Some(10.0),
+            domain_km: DOMAIN_KM,
+            manual_offset: None,
+            stream_power: true,
+            closures: true,
+            cross_rill: false,
+            cross_rill_d: 0.40,
+            mfd: true,
+            mfd_p: 2.0,
+            fbm_amplitude: None,
+            geo_scale_ratio: 1.0,
+            export_dir: None,
+            volcanism: Some(VolcanismConfig {
+                enabled: true,
+                domain_km: DOMAIN_KM,
+                ..Default::default()
+            }),
+            lithology: Some(LithologyConfig { enabled: true, ..Default::default() }),
+            fracture: Some(FractureConfig {
+                enabled: true,
+                amplitude: 6.0,
+                decay_km: 25.0,
+                domain_km: DOMAIN_KM,
+                ..Default::default()
+            }),
+            infiltration: Some(InfiltrationConfig { enabled: true, ..Default::default() }),
+            emit_tectonic_labels: false,
+        };
+        let (tx, rx) = bounded(256);
+        let cancel = Arc::new(AtomicBool::new(false));
+        std::thread::spawn(move || run_hd(&spec, &params, &tx, &cancel));
+        loop {
+            match rx.recv().expect("worker channel") {
+                C1Event::HdCompleted { result, .. } => return result,
+                C1Event::HdFailed { error } => panic!("HD run failed: {error}"),
+                _ => {}
+            }
+        }
+    }
+
+    /// The numbers question 2 needs across resolutions: normalised mouth position + both
+    /// readings of its catchment (raster-geometric and assembled-effective).
+    struct MouthProbe {
+        uv: (f64, f64),
+        geom_km2: f32,
+        effective_km2: f32,
+    }
+
+    fn report(target: usize, lat: f32) -> MouthProbe {
+        let hd = production_run(target, lat);
+        let d = &hd.drainage;
+        let (w, h) = (hd.width, hd.height);
+        let n = w * h;
+        let cell_km2 = (DOMAIN_KM / w as f32) * (DOMAIN_KM / h as f32);
+        let wc = ymir_core::lakes::connectivity::water_class(&hd.eroded, 0.5);
+        let segs = &d.rivers.segments;
+        let wcs = aggregate_watercourses(&hd, DOMAIN_KM, 1.0);
+
+        eprintln!("\n============  NETWORK FRAGMENTATION â€” {lat} deg @ {target}^2  ============");
+        eprintln!(
+            "cell = {:.4} km2 ({:.0} m); segments {} | watercourse entries {} | river cells {}",
+            cell_km2,
+            DOMAIN_KM * 1000.0 / w as f32,
+            segs.len(),
+            wcs.len(),
+            segs.iter().map(|s| s.points.len()).sum::<usize>()
+        );
+
+        // 1. TERMINAL AUDIT â€” where does the chain stop, and is that legitimate?
+        let mut term_sea = 0usize;
+        let mut term_lake = 0usize;
+        let mut term_subsea = 0usize;
+        let mut term_none = 0usize;
+        let mut term_none_max_km2 = 0.0f32;
+        let mut term_none_with_receiver = 0usize;
+        let mut terminals = 0usize;
+        for (i, s) in segs.iter().enumerate() {
+            if s.downstream.is_some() {
+                continue;
+            }
+            terminals += 1;
+            let (mx, my) = *s.points.last().unwrap();
+            let (sink, _) = classify_sink(&hd, &wc, mx, my);
+            match sink {
+                Sink::Sea => term_sea += 1,
+                Sink::ExoLake | Sink::EndoLake => term_lake += 1,
+                Sink::SubSeaSink => term_subsea += 1,
+                Sink::Unknown => {
+                    term_none += 1;
+                    let a = d.segment_drainage_km2.get(i).copied().unwrap_or(0.0);
+                    term_none_max_km2 = term_none_max_km2.max(a);
+                    // Does the RASTER still route out of this cell? A `None` here while the
+                    // D8 field has a receiver is an assembly break, not a real terminus.
+                    let k = my as usize * w + mx as usize;
+                    if d.flow.direction[k] != DIR_NONE {
+                        term_none_with_receiver += 1;
+                    }
+                }
+            }
+        }
+        eprintln!(
+            "\n1. TERMINALS ({terminals} of {} segments)\n   to sea {term_sea} | to lake \
+             {term_lake} | to sub-sea sink {term_subsea} | NONE OF THESE {term_none}\n   of \
+             those: {} still have a D8 receiver in the raster (assembly break, not a \
+             terminus); largest {term_none_max_km2:.0} km2",
+            segs.len(),
+            term_none_with_receiver
+        );
+        // Isolated fragments: no upstream AND no downstream â€” a reach chained to nothing.
+        let isolated =
+            segs.iter().filter(|s| s.upstream.is_empty() && s.downstream.is_none()).count();
+        eprintln!(
+            "   isolated fragments (no upstream AND no downstream): {isolated} ({:.1} % of segments)",
+            100.0 * isolated as f32 / segs.len().max(1) as f32
+        );
+
+        // Follow the chain down from the largest reach and say where it stops.
+        let big = (0..segs.len())
+            .max_by(|&a, &b| {
+                d.segment_drainage_km2[a]
+                    .partial_cmp(&d.segment_drainage_km2[b])
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap_or(0);
+        let mut hops = 0usize;
+        let mut cur = big;
+        while let Some(nx) = segs[cur].downstream {
+            if nx >= segs.len() || hops > segs.len() {
+                break;
+            }
+            cur = nx;
+            hops += 1;
+        }
+        let (ex, ey) = *segs[cur].points.last().unwrap();
+        let (esink, _) = classify_sink(&hd, &wc, ex, ey);
+        eprintln!(
+            "   largest reach (#{big}, {:.0} km2 eff) -> {hops} hop(s) -> terminal #{cur} at \
+             ({ex},{ey}) {} | D8 receiver {} | raster area there {:.0} km2",
+            d.segment_drainage_km2[big],
+            sink_label(esink).0,
+            if d.flow.direction[ey as usize * w + ex as usize] == DIR_NONE {
+                "NONE"
+            } else {
+                "yes"
+            },
+            d.flow.accumulation.data[ey as usize * w + ex as usize] * cell_km2
+        );
+
+        // 2. RASTER vs ASSEMBLY at the mouth. The raster accumulation is a GEOMETRIC cell
+        //    count, untouched by segmentation; `segment_drainage_km2` is an EFFECTIVE area
+        //    derived from the runoff accumulation. Reading both separates the two causes.
+        let mut best_k = 0usize;
+        let mut best_acc = -1.0f32;
+        for k in 0..n {
+            let a = d.flow.accumulation.data[k];
+            if a > best_acc && wc[k] == ymir_core::lakes::connectivity::WATER_CLASS_LAND {
+                best_acc = a;
+                best_k = k;
+            }
+        }
+        let (bx, by) = ((best_k % w) as u32, (best_k / w) as u32);
+        // The assembled figure at that same cell: the segment whose points contain it.
+        let at_cell = segs
+            .iter()
+            .enumerate()
+            .find(|(_, s)| s.points.iter().any(|&(x, y)| x == bx && y == by))
+            .map(|(i, _)| d.segment_drainage_km2[i]);
+        eprintln!(
+            "\n2. MOUTH â€” max raster accumulation on land at ({bx},{by}) = {:.0} km2 \
+             GEOMETRIC\n   assembled effective area of the segment covering that cell: {}\n   \
+             list head: {:.0} km2 effective, {:.1} m3/s",
+            best_acc * cell_km2,
+            at_cell.map(|a| format!("{a:.0} km2")).unwrap_or_else(|| "NOT ON THE NETWORK".into()),
+            wcs.first().map(|x| x.catchment_km2).unwrap_or(0.0),
+            wcs.first().map(|x| x.discharge_m3s).unwrap_or(0.0)
+        );
+        let max_seg_eff = d.segment_drainage_km2.iter().copied().fold(0.0f32, f32::max);
+        let max_geom_km2 =
+            d.flow.accumulation.data.iter().copied().fold(0.0f32, f32::max) * cell_km2;
+        eprintln!(
+            "   max over ALL segments: {max_seg_eff:.0} km2 effective | max raster accumulation \
+             anywhere: {max_geom_km2:.0} km2 geometric\n   that max-accumulation cell: lake_map \
+             = {} | water_class = {}",
+            d.lake_map[best_k], wc[best_k]
+        );
+
+        // 2b. THE decisive pair: at every SEA-terminating mouth, the GEOMETRIC area (raster) and
+        //     the EFFECTIVE area (runoff-derived) side by side. If geometric holds across
+        //     resolutions while effective collapses, the topology is intact and the collapse is
+        //     the runoff/climate integration — not the network, not the segmentation.
+        let mut sea_mouths: Vec<(f32, f32)> = Vec::new(); // (geometric, effective)
+        for (i, s) in segs.iter().enumerate() {
+            if s.downstream.is_some() {
+                continue;
+            }
+            let (mx, my) = *s.points.last().unwrap();
+            if classify_sink(&hd, &wc, mx, my).0 != Sink::Sea {
+                continue;
+            }
+            let k = my as usize * w + mx as usize;
+            sea_mouths.push((
+                d.flow.accumulation.data[k] * cell_km2,
+                d.segment_drainage_km2.get(i).copied().unwrap_or(0.0),
+            ));
+        }
+        sea_mouths.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        eprintln!("\n2b. SEA MOUTHS ({} of them), by GEOMETRIC area — top 5:", sea_mouths.len());
+        for (g, e) in sea_mouths.iter().take(5) {
+            eprintln!(
+                "   geometric {g:>8.0} km2 | effective {e:>8.0} km2 | effective/geometric {:.3}",
+                e / g.max(1e-6)
+            );
+        }
+        let tot_g: f32 = sea_mouths.iter().map(|x| x.0).sum();
+        let tot_e: f32 = sea_mouths.iter().map(|x| x.1).sum();
+        eprintln!(
+            "   summed over all sea mouths: geometric {tot_g:.0} km2 | effective {tot_e:.0} km2 \
+             | ratio {:.3}",
+            tot_e / tot_g.max(1e-6)
+        );
+        let dry_big = sea_mouths.iter().filter(|(g, e)| *g >= 100.0 && *e <= 0.0).count();
+        eprintln!(
+            "   sea mouths with geometric >= 100 km2 but effective == 0: {dry_big} (a mouth with \
+             a real catchment and NO discharge)"
+        );
+
+        // 2c. Is that zero the ENDORHEIC MASK or genuine aridity? Re-accumulate runoff with and
+        //     without the endorheic sink mask (infiltration omitted in BOTH — it is a
+        //     discriminant, not a production figure). If unmasked is large where masked is 0,
+        //     a lake declared endorheic is killing a route that geometrically reaches the sea.
+        let dclim = ymir_core::tectonics_c1::drainage::DrainageClimate {
+            precip_internal: &hd.precipitation,
+            temperature: &hd.temperature,
+        };
+        let mut endo_mask = vec![false; n];
+        for lk in d.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic) {
+            for k in 0..n {
+                if d.lake_map[k] == lk.base.id {
+                    endo_mask[k] = true;
+                }
+            }
+        }
+        let unmasked = ymir_core::tectonics_c1::drainage::runoff_accumulation(
+            &hd.eroded, &d.flow, &dclim, cell_km2, None, None, w, h,
+        );
+        let masked = ymir_core::tectonics_c1::drainage::runoff_accumulation(
+            &hd.eroded,
+            &d.flow,
+            &dclim,
+            cell_km2,
+            Some(&endo_mask),
+            None,
+            w,
+            h,
+        );
+        let mut killed = 0usize;
+        let mut killed_max_g = 0.0f32;
+        for s in segs.iter().filter(|s| s.downstream.is_none()) {
+            let (mx, my) = *s.points.last().unwrap();
+            if classify_sink(&hd, &wc, mx, my).0 != Sink::Sea {
+                continue;
+            }
+            let k = my as usize * w + mx as usize;
+            let g = d.flow.accumulation.data[k] * cell_km2;
+            if g >= 100.0 && masked[k] <= 0.0 && unmasked[k] > 0.0 {
+                killed += 1;
+                killed_max_g = killed_max_g.max(g);
+            }
+        }
+        eprintln!(
+            "   of those, killed by the ENDORHEIC MASK (unmasked runoff > 0, masked == 0): \
+             {killed}, largest {killed_max_g:.0} km2 geometric\n   endorheic lake cells: {} | \
+             endorheic lakes: {}",
+            endo_mask.iter().filter(|&&b| b).count(),
+            d.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).count()
+        );
+
+        // 2d. DUPLICATE MOUTHS — the sea-mouth table shows the same geometric area twice over
+        //     (1459/1459, 738/738). Count distinct terminal cells against terminals.
+        let distinct_terminal_cells: std::collections::HashSet<(u32, u32)> = segs
+            .iter()
+            .filter(|s| s.downstream.is_none())
+            .map(|s| *s.points.last().unwrap())
+            .collect();
+        eprintln!(
+            "\n2d. DUPLICATE TERMINALS — {terminals} terminals for {} distinct last cells \
+             ({} duplicated)",
+            distinct_terminal_cells.len(),
+            terminals - distinct_terminal_cells.len()
+        );
+
+        // 2e. `segment_drainage_km2` is runoff_accum / 300 mm — a runoff-EQUIVALENT area, so
+        //     effective/geometric IS the catchment's mean net runoff over 300 mm/yr. If that
+        //     mean moves with resolution, the "catchment" moves with it while the topology
+        //     stands still. Read the climate terms directly, over land.
+        let mut n_land = 0usize;
+        let mut sum_p = 0.0f64;
+        let mut sum_pe = 0.0f64;
+        let mut sum_net = 0.0f64;
+        let mut n_wet = 0usize;
+        for k in 0..n {
+            if hd.eroded.data[k] <= 0.5 {
+                continue;
+            }
+            n_land += 1;
+            let p = ymir_core::climate::precipitation::precip_mm_per_year(hd.precipitation.data[k]);
+            let pe =
+                ymir_core::tectonics_c1::drainage::potential_evaporation_mm(hd.temperature.data[k]);
+            sum_p += p as f64;
+            sum_pe += pe as f64;
+            sum_net += (p - pe).max(0.0) as f64;
+            if p > pe {
+                n_wet += 1;
+            }
+        }
+        let nl = n_land.max(1) as f64;
+        eprintln!(
+            "\n2e. CLIMATE TERMS over land ({n_land} cells)\n   mean precip {:.0} mm/yr | mean PE \
+             {:.0} mm/yr | mean net runoff max(0,p-pe) {:.1} mm/yr\n   cells with p > pe: {n_wet} \
+             ({:.2} %) | net runoff / 300 mm reference = {:.3}",
+            sum_p / nl,
+            sum_pe / nl,
+            sum_net / nl,
+            100.0 * n_wet as f64 / nl,
+            sum_net / nl / 300.0
+        );
+
+        // 2f. The transport is resolution-invariant on FIXED geometry (see
+        //     `tests/precip_resolution_invariance.rs`: 391 mm/yr at every grid from 512² to
+        //     8192²), so a production difference in mean precipitation must come from the
+        //     TERRAIN. Measure the terrain the climate reads: altitude, roughness, temperature.
+        let mut sum_alt = 0.0f64;
+        let mut sum_t = 0.0f64;
+        let mut sum_slope = 0.0f64;
+        let m_per_cell = DOMAIN_KM * 1000.0 / w as f32;
+        let ss = ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams::default();
+        let to_m = |nrm: f32| {
+            ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres(nrm, &ss)
+        };
+        for k in 0..n {
+            if hd.eroded.data[k] <= 0.5 {
+                continue;
+            }
+            sum_alt += to_m(hd.eroded.data[k]) as f64;
+            sum_t += hd.temperature.data[k] as f64;
+            let (x, y) = (k % w, k / w);
+            let (gx, gy) = (
+                hd.eroded.get((x + 1) as i32, y as i32) - hd.eroded.get(x as i32 - 1, y as i32),
+                hd.eroded.get(x as i32, (y + 1) as i32) - hd.eroded.get(x as i32, y as i32 - 1),
+            );
+            // Central differences → gradient magnitude in normalised units per 2 cells.
+            let dz_m = to_m(0.5 + (gx * gx + gy * gy).sqrt() / 2.0) - to_m(0.5);
+            sum_slope += (dz_m / m_per_cell).atan().to_degrees() as f64;
+        }
+        // HYPSOMETRY — does the whole distribution shift, or only the peaks? That decides
+        // whether the cause is a global vertical scale or added fine relief.
+        let mut alts: Vec<f32> =
+            (0..n).filter(|&k| hd.eroded.data[k] > 0.5).map(|k| to_m(hd.eroded.data[k])).collect();
+        alts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let q = |f: f32| alts[((alts.len() as f32 - 1.0) * f) as usize];
+        eprintln!(
+            "\n2f. THE TERRAIN THE CLIMATE READS (land)\n   mean altitude {:.0} m | mean \
+             temperature {:.2} C | mean slope {:.2} deg | emerged {:.2} %\n   hypsometry p10 \
+             {:.0} | p50 {:.0} | p90 {:.0} | p99 {:.0} | max {:.0} m",
+            sum_alt / nl,
+            sum_t / nl,
+            sum_slope / nl,
+            100.0 * nl / n as f64,
+            q(0.10),
+            q(0.50),
+            q(0.90),
+            q(0.99),
+            alts[alts.len() - 1]
+        );
+        // Audit line — the same statistics in RAW NORMALISED units, so the metric figures can
+        // be checked against the linear `c1_altitude_norm_to_metres` map without trusting it.
+        let mut nrm: Vec<f32> =
+            (0..n).filter(|&k| hd.eroded.data[k] > 0.5).map(|k| hd.eroded.data[k]).collect();
+        nrm.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        eprintln!(
+            "   raw normalised (sea level 0.5): mean {:.5} | p50 {:.5} | p90 {:.5} | max {:.5}",
+            nrm.iter().map(|&v| v as f64).sum::<f64>() / nrm.len() as f64,
+            nrm[nrm.len() / 2],
+            nrm[nrm.len() * 9 / 10],
+            nrm[nrm.len() - 1]
+        );
+
+        // 3. THRESHOLDS â€” km2 converted to cells at THIS resolution, and how much of the
+        //    raster clears them. A finer grid must have MORE cells above a physical threshold.
+        let th = C1DrainageConfig::default().thresholds;
+        let stream_cells = (th.stream_km2 / cell_km2).max(1.0);
+        let head_km2 = ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2;
+        let head_cells = (head_km2 / cell_km2).max(1.0);
+        let above_stream = (0..n).filter(|&k| d.flow.accumulation.data[k] >= stream_cells).count();
+        let above_head = (0..n).filter(|&k| d.flow.accumulation.data[k] >= head_cells).count();
+        eprintln!(
+            "\n3. THRESHOLDS (physical km2, converted per resolution)\n   stream {:.0} km2 = \
+             {stream_cells:.1} cells -> {above_stream} cells clear it ({:.0} km2 of channel)\n   \
+             head {head_km2:.2} km2 = {head_cells:.1} cells -> {above_head} cells clear it\n   \
+             land cells: {} | river cells actually exported: {}",
+            th.stream_km2,
+            above_stream as f32 * cell_km2,
+            (0..n).filter(|&k| wc[k] == ymir_core::lakes::connectivity::WATER_CLASS_LAND).count(),
+            segs.iter().map(|s| s.points.len()).sum::<usize>()
+        );
+
+        // 4. CLIPPING â€” a run that ends at a lake shore gets `downstream = None`. Count the
+        //    terminations the clip creates, and the lake footprint the network must cross.
+        let lake_cells = d.lake_map.iter().filter(|&&id| id != 0).count();
+        let starts_at_lake = segs
+            .iter()
+            .filter(|s| {
+                let (sx, sy) = s.points[0];
+                (-1i32..=1).any(|dy| {
+                    (-1i32..=1).any(|dx| {
+                        let (nx, ny) = (sx as i32 + dx, sy as i32 + dy);
+                        nx >= 0
+                            && ny >= 0
+                            && (nx as usize) < w
+                            && (ny as usize) < h
+                            && d.lake_map[ny as usize * w + nx as usize] != 0
+                    })
+                })
+            })
+            .count();
+        eprintln!(
+            "\n4. CLIPPING\n   lake cells {lake_cells} ({:.0} km2, {:.2} % of the grid) | lakes \
+             {}\n   terminations at a lake shore: {term_lake} | segments STARTING at a lake \
+             shore: {starts_at_lake}",
+            lake_cells as f32 * cell_km2,
+            100.0 * lake_cells as f32 / n as f32,
+            d.lakes.len()
+        );
+        MouthProbe {
+            uv: (bx as f64 / w as f64, by as f64 / h as f64),
+            geom_km2: best_acc * cell_km2,
+            effective_km2: at_cell.unwrap_or(0.0),
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn network_fragmentation_arid_hot() {
+        let a = report(2048, 25.0);
+        let b = report(8192, 25.0);
+        eprintln!(
+            "\n============  CROSS-RESOLUTION  ============\n\
+             mouth uv        2048^2 ({:.4},{:.4})   8192^2 ({:.4},{:.4})\n\
+             GEOMETRIC km2   2048^2 {:.0}   8192^2 {:.0}   (ratio {:.2})\n\
+             EFFECTIVE km2   2048^2 {:.0}   8192^2 {:.0}   (ratio {:.2})",
+            a.uv.0,
+            a.uv.1,
+            b.uv.0,
+            b.uv.1,
+            a.geom_km2,
+            b.geom_km2,
+            b.geom_km2 / a.geom_km2.max(1e-6),
+            a.effective_km2,
+            b.effective_km2,
+            b.effective_km2 / a.effective_km2.max(1e-6),
+        );
+    }
+}
