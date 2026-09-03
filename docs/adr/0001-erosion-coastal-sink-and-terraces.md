@@ -4000,3 +4000,77 @@ noting for when the terrain is restored:
   the flow does continue — but it means a system's `kind` comes from its MOUTH, so a system
   containing a spillway reach lists as a `Watercourse`. Deliberate and documented, not a bug;
   the per-segment `kind` in `rivers.json` is unaffected.
+
+## Finding 45b — the `dscale` patch REVERTED, and why it must not come back
+
+### What was decided and why it was decided wrongly the first time
+
+The patch applied Finding 7's `dscale = (HILLSLOPE_REF_CELL_M/cell_m)²` to the linear diffusion
+branch, closing a real dimensional inconsistency. It was kept on my report that its effect was
+**"+17 m on the 8192² mean, small and in the unhelpful direction"**. That measurement was
+CORRECT on the hypsometry and **missed the actual effect entirely**.
+
+| 8192², same seed / domain / config | before the patch | after the patch |
+|---|---|---|
+| mean land altitude | 685 m | 702 m (**+2.5 %**) |
+| **below-sea basins (spillways)** | **43** | **1994** (**×46**) |
+| microscope entries / rivers | 792 / 749 | 2523 / 529 |
+| biggest river catchment | 110 km² | 48 km² |
+
+**The patch did not change the altitude — it destroyed the drainage.** Two properties of the
+SAME field, one instrumented and one not: the altitude distribution barely moved while the
+drainage topology collapsed.
+
+### The result is more interesting than the patch
+
+**A CORRECTLY NORMALISED DIFFUSION DESTROYS DRAINAGE INTEGRITY.** This confirms by a second,
+independent route what the patch measurement first suggested: a linear Laplacian is
+MASS-CONSERVING — it fills valleys exactly as much as it lowers crests — and with
+`diffuse_channels = true` it runs on every cell, so it backfills the channels the incision has
+just cut. At 16× strength (which is what "correct" means at 8192²) it backfills them
+completely, and a backfilled channel is a closed depression. Finding 41's pathology,
+manufactured at scale.
+
+That is a discovery about **the term**, not a reason to ship 1994 closed depressions.
+
+### The dimensional debt, REFORMULATED so the patch cannot resurrect
+
+Finding 7's fix genuinely lives in only one arm of an `if`, and `relief_v3` takes the other. In
+six months that will look like an obvious omission and someone — including me — will be tempted
+to "finally fix it". **It will not close by reinstating `dscale`.** The measurement above is the
+counter-example, and the code now carries it at the exact line, in a comment that names the
+numbers.
+
+The debt closes only when **the hillslope term changes NATURE: transport-limited with an
+explicit sediment flux** — the only kind of agent that REMOVES mass from hillslopes and delivers
+it to the channel network, which is what mechanism 1 needs (Finding 43: `A_c` is a correct
+threshold feeding an inert branch, and 90 % of fine-grid land is handed to that branch). **When
+that term replaces the Laplacian, the units question disappears with it** — a conservative
+smoother and a transport law do not have the same dimensional problem, because they are not the
+same equation.
+
+Option 2 considered and rejected on the author's call: keeping `dscale` and switching
+`diffuse_channels` to `false` would also change 2048², so it forfeits the byte-identity at the
+reference cell and requires recalibrating both resolutions. **That is a model change disguised
+as a dimensional correction**, and it should be taken as a model change or not at all.
+
+### Method rule 7 — verify what a change is NOT supposed to affect
+
+Rule 3 said to decompose a measured factor before quoting it. This is its complement, and it
+cost a shipped regression:
+
+> **Verifying a fix on the property it is SUPPOSED to affect is not enough. Verify the ones it
+> is NOT supposed to affect.**
+
+The patch was judged on the hypsometry because hypsometry was the chantier's subject. Nothing
+about a diffusion normalisation is *supposed* to change the closed-basin count — which is
+exactly why nobody looked, and exactly why that is where the damage went. A change to a term in
+the erosion touches the whole field; the minimum verification set for one is:
+
+1. the hypsometry (mean and percentiles, in METRES — rule 2);
+2. the **closed-depression / below-sea basin count** — the playability-critical observable, and
+   the one that moved ×46 here;
+3. the drainage network extent (channel length, which is resolution-stable when healthy —
+   Finding 42 measured 14 605 vs 14 284 km).
+
+Two of those three would have caught this in the same run that produced the +17 m.
