@@ -224,6 +224,35 @@ endoréiques se rétractent d'eux-mêmes (mesuré 1798 → 483 km² en tropical,
 appliqué**). Le rayon d'impact est donc bien plus petit qu'anticipé — **résultat direct de
 l'ordre H-1 puis H-2**.
 
+**⚠️ CORRECTION AU CADRAN DE H-2 — le « cadran temporel » France↔Écosse ne peut pas exister
+comme durée** (ADR Finding 44, mesuré). `K` et la durée ne sont **pas observables séparément**
+dans le modèle : à `k_time = K·dt·iterations` fixé, choisir n'importe quel `T` donne
+`K = k_time/T` et `dt = T/iterations`, donc `k·dt = k_time/iterations` — tout ce que lit
+l'incision est inchangé et **`T` s'annule**. 10⁴ ans avec un `K` cent fois plus grand produit
+**exactement le même terrain**. Épinglé par `duration_cancels_out_of_the_incision` à
+T = 10⁴, 10⁶ et 10⁸ ans.
+
+Conséquence, énoncée **visiblement** parce qu'elle invalide la conception initiale du cadran
+(portée sur plusieurs tours, y compris le nom de la branche) : **le contrôle exposé au joueur
+n'est pas « combien d'années » mais « combien d'érosion cumulée »** — un produit
+érodabilité×temps intégré. Traduire `k_time` en années exige de fixer `K` indépendamment, ce
+que fournissent les multiplicateurs par lithologie de C-3 plus **un** ancrage absolu Stock &
+Montgomery (ordre 10⁷–10⁸ ans à érodabilité de roche dure, réserve m = 0,4 vs m = 0,5 énoncée).
+
+**Ce que ça ne détruit pas :** l'incision de seuil reste le **seul** mécanisme qui vide les
+lacs, et le périmètre de H-2 est intact. Seule la **nature du paramètre** change.
+
+**Et une question structurelle ouverte, plus grande qu'un calibrage — à ne PAS ouvrir avec
+H-2** (ADR Finding 44) : le nombre de Courant de la config livrée est **1353 à 2048² et 3699 à
+8192²**. Le schéma implicite est *stable* à n'importe quel Courant, mais la stabilité n'est pas
+l'intégration : avec `f = K·dt·A^m/dist_m ≫ 1`, la mise à jour pose chaque cellule sur la
+hauteur de son récepteur en **un** pas. Le terrain livré est donc **le point fixe de deux
+relaxations locales, pas le résultat d'un épisode d'érosion** — le modèle n'intègre aucun temps,
+à aucune des deux résolutions. C'est une façon légitime de fabriquer du terrain ; ce n'est pas
+une façon d'exprimer une durée. Le compte de pas que la borne CFL exige serait de 2706 à 2048²
+et 7399 à 8192² (contre 2 livrés), soit ~7400 recalculs de flux sur 67 M cellules : dériver le
+compte honnêtement ne corrige pas le modèle, ça révèle qu'il ne fait pas ce qu'on croyait.
+
 **Le critère de jugement de H-2 est prêt** (et il a fallu le réparer d'abord) : la métrique
 naïve de plaine contiguë n'était pas une propriété du continent mais du pas de grille
 (×4.97 entre 2048² et 8192²). La métrique retenue — **fermeture morphologique à 200 m de

@@ -3846,3 +3846,82 @@ replacement characters remain. **Use the Write tool or Python for any append to 
 non-ASCII content; `Add-Content` is not safe here.** Recorded because it was silent: the files
 compiled and read fine to a grep, and the corruption only surfaced when a `cat -A` was needed
 for an unrelated reason.
+
+## Method rules earned in the hypsometry chantier — to be applied by default
+
+These are not observations about the terrain; they are rules about how to measure it. Each one
+cost at least one wrong conclusion of mine.
+
+### 1. A pinning test needs a NEGATIVE CONTROL before it can assert byte-identity
+
+`timescale_naming_changes_no_output` asserts the shipped numbers are untouched. On its own
+that is **potentially vacuous** — a test that checks constants can pass while the thing it is
+supposed to protect has changed underneath, and a test that compares a value to itself always
+passes. So it also proves it WOULD SEE a change of the relevant kind: incising a fixed
+synthetic field with `1 × 9000` instead of `2 × 4500` (identical `k_time`) must differ, and
+does. Only then does "the units were named at unchanged output" mean anything.
+
+**Default from now on: every byte-identity claim carries a control that fails.** State what
+change the test can detect, and demonstrate it detecting one. A byte-identity assertion without
+a control is a statement about the test, not about the code.
+
+### 2. A RATIO IS ONLY VALID AT COMPARABLE TOTAL EFFECT
+
+`iterations = 1` gave the best 8192²/2048² ratio (1.32 against a 1.85 baseline) while removing
+almost none of the divergence (19 m of 147 m of excess). Lowering total erosion moves BOTH
+grids toward the invariant un-eroded limit, where the ratio → 1.00 **trivially**. Proof by
+combination: adding `iters = 1` to MFD-off makes the excess WORSE (73 → 102 m) while the ratio
+still improves (1.63 → 1.30).
+
+The instrument is the **excess in metres** — and it is also what the consumers experience,
+since temperature is a lapse rate on ABSOLUTE altitude (the 287/693 m gap is 2.62 °C, not a
+percentage). This whole chantier was reasoned in ratios and the ratio was the wrong instrument.
+
+### 3. Decompose a measured factor before quoting it
+
+`dt_max` falls ×2.73 between the two grids. Quoting that as the cell-size effect would have
+been **the same fault as ratio-versus-excess**: it is ×4 from the cell size (the CFL bound is
+linear in `cell_m`) times ×0.68 from `A_max` itself dropping 3447 → 1611 km² (Finding 41 —
+more closed basins capture more catchment at a finer grid). Holding `A_max` fixed gives exactly
+×4, pinned by a unit test. **When a measured factor could contain two effects, separate them
+before it enters a sentence** — and pin the isolated one with a test so the decomposition is
+not just an argument.
+
+### 4. State the reservation on a borrowed constant, in the same breath as the number
+
+The `K` anchoring uses Stock & Montgomery's table, which is fitted at **m = 0.4** while Ymir
+ships **m = 0.5**. A tabulated `K` is only valid at the exponent it was fitted with, so the
+result is an ORDER OF MAGNITUDE and not a calibration. What is now sayable and was not before:
+**the lumped constant is not absurd when read dimensionally** (10⁷–10⁸ years at hard-rock
+erodibility, a plausible orogenic-to-cratonic episode). That is a real gain; presenting it as a
+calibration would have been a fabrication.
+
+### 5. Cite a finding's MEASUREMENT; re-derive its mechanism against current code
+
+An observation and its explanation do not have the same lifespan, and **only the observation is
+protected by the measurement**. Finding 3's cause ("the FBM detail resolving sharper gradients
+on finer cells") was correct when written and was silently invalidated by C-1 flow conditioning,
+which caps the FBM's whole contribution to ±2 m. It survived because nothing re-checks an
+explanation when its premise moves, and the observation kept being true. **That is how a wrong
+model survives — not through a false measurement, but through a true measurement dragging a
+dead explanation.** Never chain two findings' explanations without checking that both premises
+still hold.
+
+### 6. Tooling: the PowerShell append that corrupted the documentation silently
+
+`Get-Content -Raw` piped into `Add-Content -Encoding utf8` **double-encodes every non-ASCII
+character** (PowerShell 5.1 reads UTF-8 as cp1252, then re-encodes). It corrupted **275 lines**
+across this ADR and two source files. It is silent in every direction that matters: the code
+still compiled, the markdown still rendered, and `grep` matched nothing unusual — it surfaced
+only because a `cat -A` was needed for an unrelated reason.
+
+Worse, the damage is **not fully reversible**: cp1252 leaves `0x81/0x8D/0x8F/0x90/0x9D`
+undefined, so those bytes are DESTROYED rather than transformed. `∝`, `↔` and the superscripts
+could not be recovered by inverting the encoding and had to be retyped. The pattern is now
+banned in `CLAUDE.md`; use the Write/Edit tools or Python with an explicit
+`encoding='utf-8'`.
+
+The general point, which is why this belongs beside the others: **a tool that corrupts its
+output silently is worse than one that fails**, and documentation has no test suite to catch
+it. Any bulk edit of a prose file needs a post-check — here, `grep -c $'\\ufffd'` and a scan
+for the classic mojibake digraphs.
