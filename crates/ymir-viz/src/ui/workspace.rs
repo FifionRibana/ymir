@@ -3166,20 +3166,67 @@ fn classify_sink(hd: &HdResult, wc: &[u8], x: u32, y: u32) -> (Sink, Option<u32>
 /// (discharge / width / catchment / points) — nothing is recomputed. `ratio` (the current
 /// geographic-scale slider) signifies the trunk length, consistent with the exported
 /// width/discharge. Sorted by discharge (biggest rivers first).
-fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Watercourse> {
+/// `chain_lakes`: link an inflow reach to its exorheic lake's outlet reach so an entry is a
+/// river SYSTEM (ADR Finding 45). `false` reproduces the pre-Finding-45 behaviour, where an
+/// entry was a reach between two water bodies — kept so the bench can measure both on one run.
+fn aggregate_watercourses_opt(
+    hd: &HdResult,
+    domain_km: f32,
+    ratio: f32,
+    chain_lakes: bool,
+) -> Vec<Watercourse> {
     let d = &hd.drainage;
     let wc = ymir_core::lakes::connectivity::water_class(&hd.eroded, 0.5);
     let segs = &d.rivers.segments;
     let n = segs.len();
     let q = |i: usize| d.segment_discharge_m3s.get(i).copied().unwrap_or(0.0);
-    // root(i): follow downstream to the terminal (mouth); guard against any cycle.
+    // ── CHAIN THROUGH AN EXORHEIC LAKE (ADR Finding 45). A reach that ends at a lake shore
+    //    gets `downstream = None`, so 87–92 % of terminals are lake INFLOWS and an entry was
+    //    a REACH BETWEEN TWO WATER BODIES rather than a river SYSTEM — which is why the head
+    //    of the discharge sort showed a fragment. Water physically continues through an
+    //    EXORHEIC lake (it has an outflow), so for aggregation the inflow reach is linked to
+    //    that lake's outlet reach. NOT for an endorheic lake (the water dies there — a true
+    //    terminus) nor for a below-sea basin (its outflow is a typed `Spillway`, no hierarchy).
+    let wc_class = ymir_core::lakes::connectivity::water_class(&hd.eroded, 0.5);
+    // lake id → the outlet reach: a segment whose FIRST cell borders that lake. Several can
+    // qualify on a wide shore; take the highest-discharge one (the main outflow).
+    let mut outlet_of: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+    for (i, sg) in segs.iter().enumerate() {
+        let (sx, sy) = sg.points[0];
+        if let (Sink::ExoLake, Some(id)) = classify_sink(hd, &wc_class, sx, sy) {
+            let better = outlet_of.get(&id).map_or(true, |&j| q(i) > q(j));
+            if better {
+                outlet_of.insert(id, i);
+            }
+        }
+    }
+    // The continuation of a terminal reach, if it dies on an exorheic lake that has an outlet.
+    let across_lake = |i: usize| -> Option<usize> {
+        let (mx, my) = *segs[i].points.last()?;
+        match classify_sink(hd, &wc_class, mx, my) {
+            (Sink::ExoLake, Some(id)) => outlet_of.get(&id).copied().filter(|&o| o != i),
+            _ => None,
+        }
+        .filter(|_| chain_lakes)
+    };
+
+    // root(i): follow downstream to the terminal (mouth), crossing exorheic lakes; guard
+    // against any cycle (a lake link could close one — two lakes spilling into each other).
     let mut root = vec![0usize; n];
     for i in 0..n {
         let mut j = i;
-        for _ in 0..=n {
+        let mut seen = 0usize;
+        loop {
+            seen += 1;
+            if seen > n {
+                break;
+            }
             match segs[j].downstream {
                 Some(k) if k < n => j = k,
-                _ => break,
+                _ => match across_lake(j) {
+                    Some(o) => j = o,
+                    None => break,
+                },
             }
         }
         root[i] = j;
@@ -3220,6 +3267,31 @@ fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Wate
             }
         }
     }
+    // The longest reach flowing INTO the lake an outlet reach starts on — the trunk's
+    // continuation upstream. Needs `pathlen`, hence defined after it.
+    let inflow_to_lake_of = |i: usize| -> Option<usize> {
+        let (sx, sy) = segs[i].points[0];
+        if !chain_lakes {
+            return None;
+        }
+        let id = match classify_sink(hd, &wc_class, sx, sy) {
+            (Sink::ExoLake, Some(id)) => id,
+            _ => return None,
+        };
+        segs
+            .iter()
+            .enumerate()
+            .filter(|&(j, sg)| {
+                j != i
+                    && sg.downstream.is_none()
+                    && sg.points.last().is_some_and(|&(mx, my)| {
+                        matches!(classify_sink(hd, &wc_class, mx, my), (Sink::ExoLake, Some(k)) if k == id)
+                    })
+            })
+            .max_by_key(|&(j, _)| pathlen[j])
+            .map(|(j, _)| j)
+    };
+
     let mut out = Vec::with_capacity(groups.len());
     for (r, members) in groups {
         // Trunk: from the mouth, climb the LONGEST tributary at each confluence.
@@ -3230,7 +3302,13 @@ fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Wate
             match segs[cur].upstream.iter().copied().filter(|&u| u < n).max_by_key(|&u| pathlen[u])
             {
                 Some(next) => cur = next,
-                None => break,
+                // Symmetric to `across_lake`: at the head of an outlet reach, continue up the
+                // LONGEST reach that flows INTO the same lake, so the trunk is the whole main
+                // stem rather than the segment below the lake.
+                None => match inflow_to_lake_of(cur) {
+                    Some(up) => cur = up,
+                    None => break,
+                },
             }
         }
         let source = *trunk.last().unwrap();
@@ -3267,6 +3345,11 @@ fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Wate
         )
     });
     out
+}
+
+/// THE shipped aggregation: chains through exorheic lakes, so a list entry is a river SYSTEM.
+fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Watercourse> {
+    aggregate_watercourses_opt(hd, domain_km, ratio, true)
 }
 
 fn sink_label(s: Sink) -> (&'static str, C) {
@@ -4787,6 +4870,70 @@ mod network_fragmentation_bench {
             geom_km2: best_acc * cell_km2,
             effective_km2: at_cell.unwrap_or(0.0),
         }
+    }
+
+    /// ADR Finding 45 — MICROSCOPE SEMANTICS, before and after, on ONE production run so the
+    /// comparison is exact (both aggregations read the same `HdResult`).
+    ///
+    /// The defect: a reach ending at a lake shore gets `downstream = None`, so 87–92 % of
+    /// terminals were lake INFLOWS and a list entry was a REACH BETWEEN TWO WATER BODIES, not
+    /// a river SYSTEM. The head of the discharge sort therefore showed a fragment. Chaining an
+    /// inflow reach to its EXORHEIC lake's outlet reach makes an entry a system again — not for
+    /// endorheic lakes (the water dies there) nor for below-sea basins (typed `Spillway`).
+    ///
+    /// Run: cargo test -p ymir-viz --release microscope_semantics -- --ignored --nocapture
+    fn semantics_before_after(target: usize, lat: f32) {
+        let hd = production_run(target, lat);
+        eprintln!("\n=====  MICROSCOPE SEMANTICS — {lat} deg @ {target}^2  =====");
+        for (label, chain) in
+            [("BEFORE (reach between water bodies)", false), ("AFTER (river system)", true)]
+        {
+            let wcs = aggregate_watercourses_opt(&hd, DOMAIN_KM, 1.0, chain);
+            let rivers: Vec<&Watercourse> =
+                wcs.iter().filter(|w| w.kind == SegmentKind::Watercourse).collect();
+            let n_sw = wcs.len() - rivers.len();
+            eprintln!(
+                "\n{label}\n  entries {} (rivers {}, spillways {})",
+                wcs.len(),
+                rivers.len(),
+                n_sw
+            );
+            eprintln!("  head of the discharge sort:");
+            for (i, w) in rivers.iter().take(5).enumerate() {
+                eprintln!(
+                    "    #{:<3} Q {:>8.1} m3/s | A {:>8.0} km2 | S{} | {:>4} trib | {:>4} seg | \
+                     {:>7.0} km | {}",
+                    i + 1,
+                    w.discharge_m3s,
+                    w.catchment_km2,
+                    w.order,
+                    w.tributaries,
+                    w.segments.len(),
+                    w.length_km,
+                    sink_label(w.sink).0
+                );
+            }
+            let biggest = rivers.iter().map(|w| w.segments.len()).max().unwrap_or(0);
+            let longest = rivers.iter().map(|w| w.length_km).fold(0.0f32, f32::max);
+            eprintln!(
+                "  largest system: {biggest} segments | longest trunk {longest:.0} km | \
+                 mean segments/entry {:.1}",
+                rivers.iter().map(|w| w.segments.len()).sum::<usize>() as f32
+                    / rivers.len().max(1) as f32
+            );
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn microscope_semantics_arid_hot_2048() {
+        semantics_before_after(2048, 25.0);
+    }
+
+    #[test]
+    #[ignore]
+    fn microscope_semantics_arid_hot_8192() {
+        semantics_before_after(8192, 25.0);
     }
 
     #[test]

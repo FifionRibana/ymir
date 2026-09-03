@@ -3925,3 +3925,78 @@ The general point, which is why this belongs beside the others: **a tool that co
 output silently is worse than one that fails**, and documentation has no test suite to catch
 it. Any bulk edit of a prose file needs a post-check — here, `grep -c $'\\ufffd'` and a scan
 for the classic mojibake digraphs.
+
+## Finding 45 — microscope semantics: an entry is a river SYSTEM, not a reach between water bodies
+
+A reach ending on a lake shore gets `downstream = None`, so 87–92 % of terminals were lake
+INFLOWS (Finding 42) and a microscope entry was a REACH BETWEEN TWO WATER BODIES. That is why
+the head of the discharge sort showed a fragment: the largest ENTRY was a 1-segment, 2 km stub
+carrying its parent's inherited area, not the trunk it belonged to.
+
+**The fix, in the viz only** (`aggregate_watercourses`, no core change, no cache bump): an
+inflow reach is linked to the outlet reach of the EXORHEIC lake it dies on — water physically
+continues through a lake that has an outflow. NOT for an endorheic lake (the water dies there,
+a true terminus) nor for a below-sea basin (its outflow is a typed `Spillway` with no
+hierarchy). The trunk climb is extended symmetrically, or the main stem would still stop at the
+shore. Both directions are gated on one flag so the bench measures BEFORE and AFTER on the SAME
+`HdResult` in a single production run — an exact comparison rather than two builds.
+
+### 2048² — exactly the intended effect
+
+| | entries | head of the discharge sort |
+|---|---|---|
+| before | 1359 (1343 rivers) | **#1 = S1, 0 trib, 1 segment, 2 km**, A 1087 km² → mer |
+| after | 1095 (1080 rivers) | **#1 = S4, 394 trib, 395 segments, 146 km**, A 1087 km² → mer |
+
+264 entries merged into the systems they belonged to; mean segments per entry 7.6 → 8.5. The
+head is now the trunk instead of the stub that shared its inherited area. The 1-segment stub is
+still present at #2 — that is the SEPARATE defect (isolated fragments inheriting the parent's
+area, Finding 42), which lives in `clip_rivers_to_lakes` in core and was deliberately not
+folded in here.
+
+### 8192² — the measurement exposes a REGRESSION, and it is not this change
+
+| 8192² | entries | rivers | spillways | biggest river |
+|---|---|---|---|---|
+| **before the `dscale` patch** (Finding 43 bench) | 792 | 749 | **43** | 110 km² |
+| after the patch, before chaining | 2523 | 529 | **1994** | 48 km² |
+| after the patch, after chaining | 1202 | 280 | 922 | 9 km² |
+
+**The below-sea basin population went 43 → 1994 (×46).** Both benches use identical parameters
+(seed, domain, latitude, span, relief-v3 triple, lithology, fracture, infiltration) and the only
+change to the terrain between the two measurements is the linear-diffusion `dscale`
+normalisation. So the attribution is sound by construction, without needing an A/B rerun (which
+would cost hours — the 8192² arm of this bench alone took 3.7 h on a cold cache).
+
+**Why it happens is exactly the mechanism already identified and it should have been predicted.**
+A linear Laplacian is MASS-CONSERVING: it lowers crests and FILLS hollows. With
+`diffuse_channels = true` it runs on every cell. Making it 16× stronger at 8192² therefore
+backfills drainage — and a backfilled channel is a CLOSED DEPRESSION. Finding 41's pathology,
+manufactured at scale.
+
+**My verification was too narrow, and that is the lesson.** I measured the patch on the
+hypsometry alone (+17 m on the mean, ratio 2.43 → 2.49) and reported it as "small, in the
+unhelpful direction". The mean moved 2.5 % while the closed-basin population moved ×46. A
+single scalar chosen because it was the metric under investigation is not a verification of a
+change to the erosion.
+
+**New method rule, rule 7: verify a change on every observable it could plausibly move, not
+only on the one being investigated.** For an erosion change the minimum set is the hypsometry,
+the closed-depression / below-sea basin count, and the drainage network extent — the first two
+moved in opposite proportions here, and only the second matters for playability.
+
+### What the 8192² head shows once the terrain is set aside
+
+Even on the regressed terrain the chaining does its job (2523 → 1202 entries, and the head goes
+from five reaches all dying in lakes to systems reaching the sea), but two things are worth
+noting for when the terrain is restored:
+
+- a `Sink::Unknown` mouth ("→ ?") appears at rank #2 — a mouth that is neither sea, lake nor
+  sub-sea sink. Finding 42 counted only 3 of these at 8192², all carrying 0 km²; one at the head
+  of the list means the regressed terrain produces them with real discharge. To re-check on a
+  restored terrain rather than diagnosed here;
+- chaining absorbs a spillway into a river system when the basin spills into an exorheic lake
+  whose outlet reaches the sea (spillway entries 1994 → 922). Hydrologically that is correct —
+  the flow does continue — but it means a system's `kind` comes from its MOUTH, so a system
+  containing a spillway reach lists as a `Watercourse`. Deliberate and documented, not a bug;
+  the per-segment `kind` in `rivers.json` is unaffected.
