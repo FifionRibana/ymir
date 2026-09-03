@@ -56,7 +56,13 @@ pub const ALGO_TECTONICS: u32 = 1;
 /// phantom-craters. Bumping gives old entries a different digest so they are never
 /// read by the new bundle codec (chosen over a tolerant legacy read, which would
 /// outlive its usefulness).
-pub const ALGO_UPSCALE_EROSION: u32 = 2;
+///
+/// v3 (ADR Finding 43): the LINEAR hillslope diffusion branch now carries Finding 7's
+/// `dscale = (HILLSLOPE_REF_CELL_M/cell_m)²` normalisation, which relief-v3 was bypassing by
+/// setting `critical_slope = 0`. Output is byte-identical at the reference cell (2048² over
+/// 400 km, where `dscale == 1.0`) but CHANGES at every other resolution — measured +17 m on
+/// the 8192² mean land altitude. Any v2 entry at a non-reference resolution is stale.
+pub const ALGO_UPSCALE_EROSION: u32 = 3;
 
 /// Version of the drainage build (`c1_drainage`). ⚠️ BUMP on ANY code change to
 /// that step (see above).
