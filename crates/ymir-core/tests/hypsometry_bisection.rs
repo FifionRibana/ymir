@@ -451,3 +451,153 @@ fn regime_split_is_the_carrier() {
         );
     }
 }
+
+/// MECHANISM-2 SPLIT. With the regime partition removed (`A_c = 0`, mechanism 1 out of the
+/// way) a residual Ã—1.85 remains â€” 37 % of the excess. Two candidates were visible in the
+/// first sub-bisection and this separates them:
+///
+///  - **MFD dispersal**: the partition is applied PER CELL, so over the same physical path it
+///    composes 4Ã— more often at 8192Â², diluting `A` and hence `f = KÂ·dtÂ·A^m/dist_m`.
+///  - **Iteration saturation**: a fixed 2 sweeps, whose reach in the landscape is not a
+///    physical quantity.
+///
+/// Each variant sits ON TOP of `A_c = 0`, so whatever moves the ratio toward 1.00 owns the
+/// residual. `A_c = 0` remains a DIAGNOSTIC instrument and is never a candidate config (it
+/// planes 2048Â² from 282 m to 172 m).
+#[derive(Clone, Copy)]
+enum Mech2 {
+    NoSplit,
+    NoSplitMfdOff,
+    NoSplitIters1,
+    NoSplitMfdOffIters1,
+}
+
+impl Mech2 {
+    fn label(self) -> &'static str {
+        match self {
+            Mech2::NoSplit => "A_c=0 (residual baseline)",
+            Mech2::NoSplitMfdOff => "A_c=0 + MFD off",
+            Mech2::NoSplitIters1 => "A_c=0 + iterations=1",
+            Mech2::NoSplitMfdOffIters1 => "A_c=0 + MFD off + iters=1",
+        }
+    }
+    fn apply(self, sp: &mut ymir_core::erosion::stream_power::StreamPowerConfig) {
+        sp.min_area_cells = 0.0;
+        match self {
+            Mech2::NoSplit => {}
+            Mech2::NoSplitMfdOff => sp.mfd_exponent = None,
+            Mech2::NoSplitIters1 => sp.iterations = 1,
+            Mech2::NoSplitMfdOffIters1 => {
+                sp.mfd_exponent = None;
+                sp.iterations = 1;
+            }
+        }
+    }
+}
+
+fn build_mech2(target: usize, v: Mech2) -> ymir_core::grid::GridF32 {
+    let ss = SteinSteinParams::default();
+    let run_cfg = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: 300,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: IsostasyConfig::c1_default(),
+        drainage_max_distance: 30,
+    };
+    let mut state = init_c1_state_phase_2_r7(64, PSEED, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    run_with_closures(&mut state, &mut kin, &run_cfg, &C1Closures::default(), |_, _| {});
+    let seed = WorldSeed::new(PSEED);
+    let volc = VolcanismConfig { enabled: true, domain_km: DOMAIN_KM, ..Default::default() };
+    let edifices = place_edifices(&state, &kin, &seed, DOMAIN_KM, &volc);
+    let mut cfg = production_hd_config(&ProductionHdOpts {
+        target_size: target,
+        domain_km: DOMAIN_KM,
+        depth_scale_m: ss.depth_scale_m as f32,
+        sample_origin: [0.0, 0.578_125],
+        sample_size: 1.0,
+        amplitude_base: 0.04,
+        mfd_p: 2.0,
+        lithology: LithologyConfig {
+            enabled: true,
+            soft_multiplier: 10.0,
+            volcanic_multiplier: 3.0,
+            rift_age_threshold: 1.0,
+        },
+        fracture: FractureConfig {
+            enabled: true,
+            amplitude: 6.0,
+            decay_km: 25.0,
+            domain_km: DOMAIN_KM,
+            ..Default::default()
+        },
+    });
+    if let Some(sp) = cfg.stream_power.as_mut() {
+        v.apply(sp);
+    }
+    let (up, _) = upscale_from_c1_with_progress(
+        &state,
+        &run_cfg.iso_config,
+        &ss,
+        &seed,
+        &cfg,
+        &edifices,
+        &volc,
+        Some(&kin),
+        &mut |_| {},
+        &|| false,
+    );
+    up.heightmap
+}
+
+#[test]
+#[ignore]
+fn mechanism2_split() {
+    let ss = SteinSteinParams::default();
+    let ref_2048 = hypsometry(&build(2048, Stage::PlusFbm), &ss).mean_m;
+    let ref_8192 = hypsometry(&build(8192, Stage::PlusFbm), &ss).mean_m;
+    eprintln!(
+        "\n=====  MECHANISM-2 SPLIT (MFD dilution vs iteration saturation)  =====\n\
+         pre-incision {ref_2048:.0} m @ 2048Â² | {ref_8192:.0} m @ 8192Â²\n\
+         every variant sits on A_c = 0, so mechanism 1 is out of the way. Whatever pulls the\n\
+         RATIO toward 1.00 owns the residual (baseline Ã—1.85). 'excess' = mean8192 âˆ’ mean2048.\n"
+    );
+    eprintln!(
+        "{:<30} {:>9} {:>9} {:>8} {:>9} {:>9} {:>9}",
+        "variant", "mean2048", "mean8192", "RATIO", "excess m", "ret.2048", "ret.8192"
+    );
+    let mut base_excess = 0.0f64;
+    for (i, v) in
+        [Mech2::NoSplit, Mech2::NoSplitMfdOff, Mech2::NoSplitIters1, Mech2::NoSplitMfdOffIters1]
+            .into_iter()
+            .enumerate()
+    {
+        let a = hypsometry(&build_mech2(2048, v), &ss);
+        let b = hypsometry(&build_mech2(8192, v), &ss);
+        let excess = b.mean_m - a.mean_m;
+        if i == 0 {
+            base_excess = excess;
+        }
+        eprintln!(
+            "{:<30} {:>9.0} {:>9.0} {:>8.2} {:>9.0} {:>8.1}% {:>8.1}%",
+            v.label(),
+            a.mean_m,
+            b.mean_m,
+            b.mean_m / a.mean_m.max(1e-9),
+            excess,
+            100.0 * a.mean_m / ref_2048,
+            100.0 * b.mean_m / ref_8192
+        );
+        if i > 0 {
+            eprintln!(
+                "{:<30} â†’ removes {:.0}% of the residual excess ({:.0} m of {:.0} m)",
+                "",
+                100.0 * (base_excess - excess) / base_excess.max(1e-9),
+                base_excess - excess,
+                base_excess
+            );
+        }
+    }
+    // Diagnostic only: report, never gate.
+}
