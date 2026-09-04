@@ -4173,3 +4173,145 @@ All match their pre-change values (the below-sea counts read 15/40 rather than 1
 Finding 45's lake chaining absorbs a spillway whose basin spills into an exorheic lake — a
 counting effect in the microscope, not a change to the basin population). The change touches
 per-segment arrays only, and the control block confirms it.
+
+## Finding 47 — `catchment_km2`, the never-applied thresholds, and which quantity navigability should read
+
+### The shared-mouth convention, settled and applied
+
+The author's call: **a system reports ITS OWN catchment, never the union.** A system whose mouth
+happens to share a coastal cell with another is not draining that other basin. Applied in
+`aggregate_watercourses`: when the root reach's terminus is also another reach's terminus, read
+the last point that is NOT the shared confluence (one index back in the per-point discharge
+profile from Finding 46). It was a few lines, so it landed here rather than being scoped out.
+
+| head of the discharge sort, 2048² | before | after |
+|---|---|---|
+| #1 | S4, 394 trib, **1087 km²** | S4, 394 trib, **1085 km²** |
+| #2 | **S1, 0 trib, 1 seg, 1087 km²** | S3, 85 trib, 86 seg, 643 km² |
+| #3 | S3, 85 trib, 645 km² | S2, 24 trib, 596 km² |
+| #4 | **S1, 0 trib, 1 seg, 645 km²** | … |
+
+**Every stump is gone from the head**, and the trunk now reports 1085 km² — its own catchment
+just above the confluence — instead of 1087, the union. Verified deterministic over two runs.
+
+### THE HEADLINE: the recalibration was never applied — and would not have sufficed
+
+The code still ships `stream 20 / small_boat 500 / barge 5 000 / ship 50 000 km²`. The ADR
+records the author's re-anchored proposal — `10 / 100 / 1 000 / 8 000` — with the words
+**"Not applied (default unchanged) pending review"**. So it was not lost; it was parked
+awaiting a review that never came. Stated plainly, since the consequence has been visible in
+every export since.
+
+Measured class split over all reaches (arid-hot 25°, 2048²), classified as the code classifies
+— on the runoff-equivalent quantity:
+
+| thresholds | non-nav | small boat | barge | ship |
+|---|---|---|---|---|
+| **code today** 20/500/5 000/50 000 | 10 081 | 105 | **0** | **0** |
+| author's proposal 10/100/1 000/8 000 | 9 606 | 555 | **25** | **0** |
+
+**"Only small boats, not even barges" is reproduced exactly** by the shipped thresholds. And
+the proposal, had it landed, would have produced 25 barge reaches and **still zero ships** —
+because 8 000 km² exceeds the measured maximum in either quantity (1 459 km² geometric,
+1 087 runoff-equivalent). The proposal was anchored on a measured max of "~12–13 000 km²
+(Thames-scale)"; **the terrain changed under the calibration.** Third instance of method rule 5
+(a premise moved and nothing re-checked the conclusion).
+
+### Which quantity was it fitted to? The runoff one, by distribution match
+
+The proposal's anchors were "p50 ~50, p90 ~300–500 km²". Measured today:
+
+| at the sea mouths | arid 25° | humid 45° | 8192² arid |
+|---|---|---|---|
+| GEOMETRIC km² p50 / p90 / max | 34 / 167 / 1 459 | **34 / 167 / 1 459** | 28 / 102 / 1 379 |
+| RUNOFF-EQ km² p50 / p90 / max | 59 / 287 / 1 087 | 61 / 515 / 6 247 | 0 / 14 / 110 |
+| DISCHARGE m³/s p50 / p90 / max | 0.56 / 2.73 / **10.33** | 0.58 / 4.90 / **59.39** | 0.00 / 0.13 / **1.04** |
+
+The p50/p90 anchors (50, 300–500) match the RUNOFF-EQUIVALENT figures (59, 287–515), not the
+geometric ones (34, 167). **So the calibration was fitted to the runoff quantity while its
+rationale was written about areas** — "navigability is physical river size", "absolute, not
+domain-scaled, because a given river size should classify the same on any map".
+
+### And that rationale needs correcting, which the humid column proves
+
+Look at the geometric row: **34 / 167 / 1 459 in the arid AND the humid run — identical.** Same
+terrain, so the same geometry. Yet the discharge goes 10.33 → 59.39 m³/s (×5.8). Therefore:
+
+- **an area-based class cannot tell an arid trickle from a Thames-scale river on the same
+  terrain.** Area is blind to the thing that decides navigability;
+- so "the same river size should classify the same on any map" was the wrong principle. It is
+  the same DISCHARGE that should classify the same — and a river's navigability *should* differ
+  between an arid and a humid world. That is not an inconsistency to design away; it is the
+  physics.
+
+**Recommendation on the variable: DISCHARGE, in m³/s.** The author's reading is right and the
+measurement now supports it.
+
+### But the thresholds cannot be calibrated yet, and the reason matters
+
+The discharge is **not resolution-stable**: max 10.33 m³/s at 2048² against **1.04 at 8192²**
+(×10), same seed and config — Finding 43's hypsometry defect propagating all the way to the
+navigability class. The class split shows it starkly: the shipped thresholds give 105 small-boat
+reaches at 2048² and **2** at 8192². A class assignment that moves ×50 with the render
+resolution is not a property of the world.
+
+Meanwhile the GEOMETRIC distribution is resolution-stable (p50 34 → 28, p90 167 → 102,
+max 1 459 → 1 379).
+
+**So: the right variable is unusable until the hypsometry converges, and the stable variable is
+the wrong physics.** Calibrating m³/s thresholds now would bake in the 2048² numbers — exactly
+the mistake the parked proposal already made once. The layered recommendation:
+
+1. **Now** — export `catchment_km2` (the geometric area, done) so a consumer has a stable
+   figure, and leave the thresholds untouched, DOCUMENTED as classifying a runoff surrogate.
+   Changing them now would be a second calibration against a moving premise.
+2. **Recorded now so it is not parked-and-lost a second time** — the intended thresholds in
+   m³/s, anchored on real navigation rather than on this map's distribution: **small boat ≥ 1,
+   barge ≥ 50, ship ≥ 300 m³/s** (Thames ~65 m³/s is barge-navigable in its lower reaches;
+   Seine ~560 is ship-capable; Rhine ~2 300). Under those: humid 45° yields a barge-class trunk
+   at the top and no ships; arid 25° yields small boats only.
+3. **After the hypsometry converges** — apply (2) and re-measure. Not before.
+
+### The honest scale statement
+
+The largest river is **10.3 m³/s in the arid band — 6.3× smaller than the Thames** — and
+**59.4 m³/s in the humid band, essentially Thames-scale (×1.1)**. So:
+
+- "only small boats" is the CORRECT answer for a 400 km island at 25°, not a calibration bug;
+- **the lever is the climate, and it is sufficient**: the same continent at 45° produces a
+  Thames-scale trunk. No terrain change, no threshold change — the water.
+
+That reframes the original complaint entirely. Nothing was miscalibrated about the river sizes;
+the map was arid.
+
+### The export
+
+`rivers.json` gains `catchment_km2` — the geometric contributing area in km², from
+`flow.accumulation` at each reach's own downstream-most cell. `drainage_km2` is retained for
+continuity but its docstring now says plainly that it is **not an area**: it is
+`runoff_accumulation / 300 mm`, a discharge surrogate, and `discharge_m3s` is the same
+information in honest units. Core keeps the catchment in CELLS
+(`segment_catchment_cells`) so no interior stage needs a `cell_km2` it does not have; the
+conversion happens once, in `rivers_json`, at the point of use. `ALGO_DRAINAGE` 3→4,
+`ALGO_HD_DRAINAGE` 5→6.
+
+### The completeness trap, FIFTH occurrence — and eliminated structurally this time
+
+Adding `segment_catchment_cells` I forgot the spillway append, exactly as I had forgotten
+`segment_discharge_profile_m3s` one finding earlier. The strict sidecar check caught it again
+(`index out of bounds: the len is 10170 but the index is 10170`). Two consecutive occurrences
+of the same mistake by the same person is a design problem, not a discipline problem, so the
+class is now closed:
+
+**`SegmentRow` + `C1DrainageResult::push_segment`.** One struct holding every per-segment value,
+one method that pushes them together and asserts the invariant. Adding a field to `SegmentRow`
+is a **compile error at every call site** — which is the guard the runtime invariant could only
+report after the fact. Sites that append a segment must now use it.
+
+### RULE-7 CONTROL BLOCK
+
+This round touches per-segment arrays and one viz aggregation; nothing in the height field.
+Confirmed unchanged at 2048²: hypsometry mean 287 m / p50 167 / max 2 684; below-sea basins 15;
+network extent 74 897 cells = 14 628 km; lake cells 99 344 (3 790 km²), 43 inventoried lakes.
+The geometric mouth distribution is identical between the arid and humid runs (34/167/1 459),
+which is itself a control: the change did not touch geometry.

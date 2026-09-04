@@ -217,7 +217,13 @@ fn ship_seed8_full_pipeline() {
     writer.add_raster_u8("biome", &biome).unwrap();
     writer.add_raster_u32("lake_mask", &drainage.lake_map).unwrap();
     writer.add_raster_f32("flow_accumulation", &drainage.flow.accumulation.data).unwrap();
-    writer.add_vector_file("rivers", "rivers.json", &hydro::rivers_json(&drainage)).unwrap();
+    writer
+        .add_vector_file(
+            "rivers",
+            "rivers.json",
+            &hydro::rivers_json(&drainage, 400.0 / 8192.0 * (400.0 / 8192.0)),
+        )
+        .unwrap();
     writer.add_vector_file("lakes", "lakes.json", &hydro::lakes_json(&drainage)).unwrap();
     let water = connectivity::water_class(&eroded, vector::SEA_LEVEL_NORM);
     writer.add_raster_u8("water_class", &water).unwrap();

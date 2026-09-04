@@ -431,6 +431,7 @@ impl RawCodec for C1DrainageResult {
             "seg_width": self.segment_width_m,
             "seg_profile": self.segment_profile_m,
             "seg_qprof": self.segment_discharge_profile_m3s,
+            "seg_catch": self.segment_catchment_cells,
             "seg_kind": self.segment_kind,
             "seg_src_lake": self.segment_source_lake,
             "lakes": self.lakes,
@@ -494,6 +495,18 @@ impl RawCodec for C1DrainageResult {
             .map_err(|e| format!("drainage sidecar lakes: {e}"))?;
 
         let n_seg = rivers.segments.len();
+        let mut segment_catchment_cells: Vec<f32> = shape
+            .get("seg_catch")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        if segment_catchment_cells.is_empty() {
+            segment_catchment_cells = vec![0.0; n_seg];
+        } else if segment_catchment_cells.len() != n_seg {
+            return Err(format!(
+                "drainage sidecar seg_catch: {} entries for {n_seg} segments",
+                segment_catchment_cells.len()
+            ));
+        }
         if segment_discharge_profile_m3s.is_empty() {
             segment_discharge_profile_m3s = vec![Vec::new(); n_seg];
         } else if segment_discharge_profile_m3s.len() != n_seg {
@@ -541,6 +554,7 @@ impl RawCodec for C1DrainageResult {
             segment_discharge_m3s,
             segment_width_m,
             segment_profile_m,
+            segment_catchment_cells,
             segment_discharge_profile_m3s,
             segment_kind,
             segment_source_lake,

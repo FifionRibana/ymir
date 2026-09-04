@@ -19,9 +19,22 @@ pub const COORDINATE_SPACE: &str = "erosion_grid_cells";
 struct RiverSegmentView<'a> {
     #[serde(flatten)]
     segment: &'a RiverSegment,
-    /// Upstream drainage area in km² (`segment_drainage_km2[i]`).
+    /// GEOMETRIC upstream catchment in km² — the contributing AREA, from the flow
+    /// accumulation at this reach's own downstream-most cell (ADR Finding 47). This is the
+    /// field to read as "how big is this river's basin".
+    catchment_km2: f32,
+    /// ⚠️ NOT AN AREA, despite the name and the unit. `segment_drainage_km2[i]` is
+    /// `runoff_accumulation / 300 mm` — a runoff-EQUIVALENT area at a reference depth, so it
+    /// carries the climate and the infiltration and can EXCEED the geometric catchment where
+    /// local runoff beats 300 mm/yr (measured: summed over sea mouths it is 1.278× the
+    /// geometric total at 2048² and 0.094× at 8192², ADR Finding 42). It is a discharge
+    /// surrogate; prefer `discharge_m3s`, which is the same information in honest units.
+    /// Retained for continuity with existing consumers, and because `navigability` is
+    /// classified from it.
     drainage_km2: f32,
-    /// Navigability class (`segment_navigability[i]`).
+    /// Navigability class (`segment_navigability[i]`). ⚠️ Classified from `drainage_km2` (the
+    /// runoff surrogate above) against thresholds written as AREAS — see ADR Finding 47 for the
+    /// measured class split and the recommendation to express them in m³/s instead.
     navigability: Navigability,
     /// Mean discharge in m³/s (`segment_discharge_m3s[i]`) — runoff × catchment.
     discharge_m3s: f32,
@@ -53,9 +66,11 @@ struct RiversView<'a> {
     segments: Vec<RiverSegmentView<'a>>,
 }
 
-/// Serialize `drainage.rivers` as `rivers.json` bytes, attaching each segment's
-/// parallel `drainage_km2` and `navigability`. Deterministic (segment order).
-pub fn rivers_json(drainage: &C1DrainageResult) -> Vec<u8> {
+/// Serialize `drainage.rivers` as `rivers.json` bytes, attaching each segment's parallel
+/// quantities. Deterministic (segment order). `cell_km2` converts the geometric catchment,
+/// which core keeps in CELLS so that no interior stage needs a cell area it does not have —
+/// the conversion happens once, here, at the point of use.
+pub fn rivers_json(drainage: &C1DrainageResult, cell_km2: f32) -> Vec<u8> {
     let segments = drainage
         .rivers
         .segments
@@ -64,6 +79,8 @@ pub fn rivers_json(drainage: &C1DrainageResult) -> Vec<u8> {
         .map(|(i, segment)| RiverSegmentView {
             segment,
             // The arrays are parallel by contract; `get` stays defensive.
+            catchment_km2: drainage.segment_catchment_cells.get(i).copied().unwrap_or(0.0)
+                * cell_km2,
             drainage_km2: drainage.segment_drainage_km2.get(i).copied().unwrap_or(0.0),
             navigability: drainage
                 .segment_navigability
@@ -136,6 +153,7 @@ mod tests {
             segment_width_m: vec![114.0],
             segment_profile_m: vec![vec![1200.0, 1150.0, 1130.0]],
             segment_discharge_profile_m3s: vec![vec![500.0, 510.0, 520.0]],
+            segment_catchment_cells: vec![1_440_000.0],
             segment_kind: vec![SegmentKind::Watercourse],
             segment_source_lake: vec![None],
             lakes: vec![lake],
@@ -150,7 +168,7 @@ mod tests {
     #[test]
     fn rivers_view_round_trips_strahler_and_navigability() {
         let d = synthetic_drainage();
-        let v: Value = serde_json::from_slice(&rivers_json(&d)).unwrap();
+        let v: Value = serde_json::from_slice(&rivers_json(&d, 0.0381)).unwrap();
         assert_eq!(v["coordinate_space"], "erosion_grid_cells");
         let seg = &v["segments"][0];
         assert_eq!(seg["strahler_order"], 4, "flattened segment keeps strahler_order");

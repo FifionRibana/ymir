@@ -556,25 +556,38 @@ fn build_hd_drainage(
     let inventoried: std::collections::HashSet<u32> =
         drainage.lakes.iter().map(|l| l.base.id).collect();
     for sw in &below_sea_spillways {
-        drainage.rivers.segments.push(RiverSegment {
-            points: sw.points.clone(),
-            strahler_order: 1, // MEANINGLESS on a spillway — see `segment_kind`
-            avg_flow: 0.0,
-            max_flow: 0.0,
-            basin_id: 0,
-            upstream: vec![],
-            downstream: None,
+        // ONE row, every array at once (`push_segment`). Pushing the arrays individually here
+        // dropped a field twice — see `SegmentRow`.
+        let (lx, ly) = *sw.points.last().unwrap_or(&(0, 0));
+        drainage.push_segment(ymir_core::tectonics_c1::drainage::SegmentRow {
+            segment: RiverSegment {
+                points: sw.points.clone(),
+                strahler_order: 1, // MEANINGLESS on a spillway — see `segment_kind`
+                avg_flow: 0.0,
+                max_flow: 0.0,
+                basin_id: 0,
+                upstream: vec![],
+                downstream: None,
+            },
+            drainage_km2: sw.drainage_km2,
+            navigability: sw.navigability,
+            discharge_m3s: sw.discharge_m3s,
+            width_m: sw.width_m,
+            profile_m: sw.profile_m.clone(),
+            // A spillway's path is traced over a col, OUTSIDE the accumulation network, so the
+            // raster reads ~0 along it (measured). Its contributing area is the basin's, which
+            // `drainage_km2` already carries — convert it back to cells rather than reading a
+            // raster that does not describe this path.
+            catchment_cells: {
+                let k = ly as usize * eroded.width + lx as usize;
+                drainage.flow.accumulation.data.get(k).copied().unwrap_or(0.0)
+            },
+            // Per-point discharge (Finding 46). A spillway's discharge is uniform along its
+            // traced path — one outflow over a col, not a hierarchy accumulating tributaries.
+            discharge_profile_m3s: vec![sw.discharge_m3s; sw.points.len()],
+            kind: SegmentKind::Spillway,
+            source_lake: inventoried.contains(&sw.lake_id).then_some(sw.lake_id),
         });
-        drainage.segment_kind.push(SegmentKind::Spillway);
-        drainage.segment_source_lake.push(inventoried.contains(&sw.lake_id).then_some(sw.lake_id));
-        drainage.segment_drainage_km2.push(sw.drainage_km2);
-        drainage.segment_navigability.push(sw.navigability);
-        drainage.segment_discharge_m3s.push(sw.discharge_m3s);
-        drainage.segment_width_m.push(sw.width_m);
-        drainage.segment_profile_m.push(sw.profile_m.clone());
-        // Per-point discharge (Finding 46). A spillway's discharge is uniform along its traced
-        // path — it is one outflow over a col, not a hierarchy accumulating tributaries.
-        drainage.segment_discharge_profile_m3s.push(vec![sw.discharge_m3s; sw.points.len()]);
     }
     debug_assert!(
         drainage.segment_arrays_aligned(),
@@ -1425,7 +1438,13 @@ fn export_ymir_container(
     // ── Hydro layers (serialize existing drainage outputs; no re-compute). ──
     writer.add_raster_u32("lake_mask", &drainage.lake_map)?;
     writer.add_raster_f32("flow_accumulation", &drainage.flow.accumulation.data)?;
-    let rivers = hydro::rivers_json(drainage);
+    // Finding 47 — core keeps the geometric catchment in CELLS; the conversion happens here,
+    // once, at the point of use. `window_km` IS the domain (the domain is the map, M1 #190).
+    let cell_km2 = {
+        let km_per_cell = window_km / eroded.width as f32;
+        km_per_cell * km_per_cell
+    };
+    let rivers = hydro::rivers_json(drainage, cell_km2);
     writer.add_vector_file("rivers", "rivers.json", &rivers)?;
     let lakes = hydro::lakes_json(drainage);
     writer.add_vector_file("lakes", "lakes.json", &lakes)?;

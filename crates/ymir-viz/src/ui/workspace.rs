@@ -3298,6 +3298,19 @@ fn aggregate_watercourses_opt(
     // discharge, the head of the list between two equal-discharge entries was decided by hash
     // order — so "the head is the trunk" would have been luck, not a property. Iterate by root
     // index instead.
+    // Which reaches END on a cell that another reach also ends on (the shared-mouth case).
+    let mut terminus_count: std::collections::HashMap<(u32, u32), usize> = Default::default();
+    for sg in segs.iter().filter(|sg| sg.downstream.is_none()) {
+        *terminus_count.entry(*sg.points.last().unwrap()).or_insert(0) += 1;
+    }
+    let shared_terminus: Vec<bool> = segs
+        .iter()
+        .map(|sg| {
+            sg.downstream.is_none()
+                && terminus_count.get(sg.points.last().unwrap()).copied().unwrap_or(0) > 1
+        })
+        .collect();
+
     let mut group_list: Vec<(usize, Vec<usize>)> = groups.into_iter().collect();
     group_list.sort_by_key(|(r, _)| *r);
     for (r, members) in group_list {
@@ -3328,10 +3341,39 @@ fn aggregate_watercourses_opt(
             tributaries: members.len().saturating_sub(1),
             segments: members,
             order: segs[r].strahler_order,
-            discharge_m3s: q(r),
+            discharge_m3s: if shared_terminus[r] {
+                d.segment_discharge_profile_m3s
+                    .get(r)
+                    .filter(|p| p.len() >= 2)
+                    .map(|p| p[p.len() - 2])
+                    .unwrap_or_else(|| q(r))
+            } else {
+                q(r)
+            },
             width_mouth_m: d.segment_width_m.get(r).copied().unwrap_or(0.0),
             width_source_m: d.segment_width_m.get(source).copied().unwrap_or(0.0),
-            catchment_km2: d.segment_drainage_km2.get(r).copied().unwrap_or(0.0),
+            // SHARED-MOUTH ATTRIBUTION (ADR Finding 47, the author's call): a system reports
+            // ITS OWN catchment, never the union. When the root's terminus is also another
+            // reach's terminus, that cell's accumulation is the sum of both branches — 46 of 46
+            // duplicated-terminal groups at 2048² were each claiming the whole. Read the last
+            // point of the root reach that is NOT the shared confluence instead; with a
+            // per-point discharge profile that is one index back. A reach of a single point at
+            // a shared mouth has nothing unshared to read and keeps the cell value (flagged in
+            // the ADR as the residual case, ~0 at both resolutions).
+            catchment_km2: {
+                let own = if shared_terminus[r] {
+                    d.segment_discharge_profile_m3s
+                        .get(r)
+                        .filter(|p| p.len() >= 2)
+                        .map(|p| p[p.len() - 2])
+                } else {
+                    None
+                };
+                match own {
+                    Some(q) => q / ymir_core::tectonics_c1::drainage::runoff_km2_to_m3s(300.0),
+                    None => d.segment_drainage_km2.get(r).copied().unwrap_or(0.0),
+                }
+            },
             mouth_xy: (mx, my),
             sink,
             sink_lake_id,
@@ -5101,6 +5143,134 @@ ANATOMY of the largest duplicated terminal, at cell {cell:?}:"
             d.lakes.len()
         );
         let _ = wc;
+    }
+
+    /// ADR Finding 47 — the navigability question, in three columns so the choice is made on
+    /// numbers: the thresholds the CODE ships, the ones the author PROPOSED (and which were
+    /// never applied), and ones re-anchored on the measured GEOMETRIC distribution.
+    ///
+    /// Run: cargo test -p ymir-viz --release navigability_columns -- --ignored --nocapture
+    fn navigability_report(target: usize, lat: f32) {
+        let hd = production_run(target, lat);
+        let d = &hd.drainage;
+        let (w, h) = (hd.width, hd.height);
+        let cell_km2 = (DOMAIN_KM / w as f32) * (DOMAIN_KM / h as f32);
+        let segs = &d.rivers.segments;
+        let wc = ymir_core::lakes::connectivity::water_class(&hd.eroded, 0.5);
+
+        eprintln!("\n=====  NAVIGABILITY — {lat} deg @ {target}^2  =====");
+
+        // The three quantities, per reach: geometric catchment, runoff-equivalent area, discharge.
+        let geo: Vec<f32> =
+            (0..segs.len()).map(|i| d.segment_catchment_cells[i] * cell_km2).collect();
+        let runoff: Vec<f32> = d.segment_drainage_km2.clone();
+        let disch: Vec<f32> = d.segment_discharge_m3s.clone();
+
+        // At the MOUTHS (sea-terminating reaches) — the population the calibration was anchored on.
+        let mouths: Vec<usize> = (0..segs.len())
+            .filter(|&i| {
+                segs[i].downstream.is_none() && {
+                    let (mx, my) = *segs[i].points.last().unwrap();
+                    classify_sink(&hd, &wc, mx, my).0 == Sink::Sea
+                }
+            })
+            .collect();
+        let pct = |v: &mut Vec<f32>, f: f32| {
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            v[((v.len() as f32 - 1.0) * f).max(0.0) as usize]
+        };
+        let mut mg: Vec<f32> = mouths.iter().map(|&i| geo[i]).collect();
+        let mut mr: Vec<f32> = mouths.iter().map(|&i| runoff[i]).collect();
+        let mut md: Vec<f32> = mouths.iter().map(|&i| disch[i]).collect();
+        eprintln!(
+            "\nAT THE {} SEA MOUTHS — the two 'areas' side by side\n  \
+             GEOMETRIC km2  p50 {:>8.0} | p90 {:>8.0} | max {:>8.0}\n  \
+             RUNOFF-EQ km2  p50 {:>8.0} | p90 {:>8.0} | max {:>8.0}   <- what navigability reads\n  \
+             DISCHARGE m3/s p50 {:>8.2} | p90 {:>8.2} | max {:>8.2}",
+            mouths.len(),
+            pct(&mut mg, 0.50),
+            pct(&mut mg, 0.90),
+            pct(&mut mg, 1.0),
+            pct(&mut mr, 0.50),
+            pct(&mut mr, 0.90),
+            pct(&mut mr, 1.0),
+            pct(&mut md, 0.50),
+            pct(&mut md, 0.90),
+            pct(&mut md, 1.0),
+        );
+
+        // THREE COLUMNS. Each threshold set applied to the quantity it was written for.
+        let sets: [(&str, [f32; 4]); 3] = [
+            ("code today (never changed)", [20.0, 500.0, 5_000.0, 50_000.0]),
+            ("author's proposal (parked)", [10.0, 100.0, 1_000.0, 8_000.0]),
+            ("re-anchored on GEOMETRIC", {
+                // Anchored the way the author anchored his: ship just under the measured max,
+                // then decade steps down, so every class is populated.
+                let mx = pct(&mut mg.clone(), 1.0).max(1.0);
+                [mx / 1000.0, mx / 100.0, mx / 10.0, mx / 1.5]
+            }),
+        ];
+        eprintln!(
+            "\nCLASS SPLIT over all {} reaches (non-nav / small boat / barge / ship)",
+            segs.len()
+        );
+        for (label, th) in &sets {
+            for (qlabel, q) in [("runoff-eq", &runoff), ("geometric", &geo)] {
+                let mut c = [0usize; 4];
+                for &v in q.iter() {
+                    let k = if v >= th[3] {
+                        3
+                    } else if v >= th[2] {
+                        2
+                    } else if v >= th[1] {
+                        1
+                    } else {
+                        0
+                    };
+                    c[k] += 1;
+                }
+                eprintln!(
+                    "  {:<28} on {:<10} [{:>6.0}/{:>6.0}/{:>6.0}/{:>6.0}] -> non-nav {:>6} | \
+                     boat {:>5} | barge {:>4} | ship {:>4}",
+                    label, qlabel, th[0], th[1], th[2], th[3], c[0], c[1], c[2], c[3]
+                );
+            }
+        }
+
+        // What a DISCHARGE-based set would need, anchored on real rivers.
+        eprintln!(
+            "\nIF THE THRESHOLDS WERE IN m3/s (the quantity a boat actually cares about)\n  \
+             measured mouth discharge: p50 {:.2} | p90 {:.2} | max {:.2} m3/s\n  \
+             Earth anchors: Thames ~65 m3/s (barge), Seine ~560 (ship-capable), Rhine ~2300.\n  \
+             So this continent's LARGEST river ({:.1} m3/s) is {:.1}x smaller than the Thames.",
+            pct(&mut md.clone(), 0.50),
+            pct(&mut md.clone(), 0.90),
+            pct(&mut md.clone(), 1.0),
+            pct(&mut md.clone(), 1.0),
+            65.0 / pct(&mut md.clone(), 1.0).max(1e-6)
+        );
+        let _ = h;
+    }
+
+    /// Is the absence of barge/ship rivers a THRESHOLD problem or a CONTINENT problem? The
+    /// arid-hot band (25 deg, span 10) is the driest production config. Measure the same
+    /// continent under the humid band and see whether discharge moves by the order needed.
+    #[test]
+    #[ignore]
+    fn navigability_humid_2048() {
+        navigability_report(2048, 45.0);
+    }
+
+    #[test]
+    #[ignore]
+    fn navigability_columns_2048() {
+        navigability_report(2048, 25.0);
+    }
+
+    #[test]
+    #[ignore]
+    fn navigability_columns_8192() {
+        navigability_report(8192, 25.0);
     }
 
     #[test]

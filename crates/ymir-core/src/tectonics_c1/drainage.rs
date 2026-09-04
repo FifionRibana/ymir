@@ -239,6 +239,14 @@ pub struct C1DrainageResult {
     /// Per-segment LONG PROFILE: bed elevation (metres) at each of the segment's
     /// points, upstream→downstream (parallel to `rivers.segments[i].points`).
     pub segment_profile_m: Vec<Vec<f32>>,
+    /// GEOMETRIC upstream catchment in CELLS at the segment's own downstream-most point, read
+    /// from `flow.accumulation` (ADR Finding 47). This is a pure cell count of the contributing
+    /// area — distinct from `segment_drainage_km2`, which is `runoff_accumulation / 300 mm`, a
+    /// runoff-EQUIVALENT area that carries the climate and the infiltration and can exceed the
+    /// geometric catchment where local runoff beats the reference depth (measured: 1.278 at
+    /// 2048² against 0.094 at 8192², Finding 42). Kept in CELLS so nothing in core needs a
+    /// `cell_km2` it does not already have; the export multiplies by the cell area.
+    pub segment_catchment_cells: Vec<f32>,
     /// Discharge (m³/s) at each `segment.points`, upstream→downstream — parallel to
     /// `segment_profile_m`. Exists so a run produced by [`clip_rivers_to_lakes`] can read the
     /// discharge at ITS OWN downstream-most cell instead of inheriting the parent segment's
@@ -262,7 +270,48 @@ pub struct C1DrainageResult {
     pub height: usize,
 }
 
+/// ONE ROW of the segment table — every per-segment array, in one place.
+///
+/// Exists because appending a segment by pushing to each parallel array individually has now
+/// gone wrong FIVE times (ADR: the sidecar codec, `AmplitudeTerms`, `clip_rivers_to_lakes`,
+/// the spillway append twice). A struct makes the set exhaustive BY CONSTRUCTION: adding a
+/// field here is a compile error at every call site, which is the guard the invariant check
+/// could only report after the fact.
+#[derive(Debug, Clone)]
+pub struct SegmentRow {
+    pub segment: RiverSegment,
+    /// Runoff-EQUIVALENT area (`runoff_accumulation / 300 mm`), NOT a geometric area.
+    pub drainage_km2: f32,
+    pub navigability: Navigability,
+    pub discharge_m3s: f32,
+    pub width_m: f32,
+    /// Bed elevation (m) per point.
+    pub profile_m: Vec<f32>,
+    /// GEOMETRIC catchment in CELLS at the reach's own downstream-most point.
+    pub catchment_cells: f32,
+    /// Discharge (m³/s) per point.
+    pub discharge_profile_m3s: Vec<f32>,
+    pub kind: SegmentKind,
+    pub source_lake: Option<u32>,
+}
+
 impl C1DrainageResult {
+    /// Append one segment and EVERY parallel value together. The only way a caller should add
+    /// a segment — see [`SegmentRow`] for why.
+    pub fn push_segment(&mut self, row: SegmentRow) {
+        self.rivers.segments.push(row.segment);
+        self.segment_drainage_km2.push(row.drainage_km2);
+        self.segment_navigability.push(row.navigability);
+        self.segment_discharge_m3s.push(row.discharge_m3s);
+        self.segment_width_m.push(row.width_m);
+        self.segment_profile_m.push(row.profile_m);
+        self.segment_catchment_cells.push(row.catchment_cells);
+        self.segment_discharge_profile_m3s.push(row.discharge_profile_m3s);
+        self.segment_kind.push(row.kind);
+        self.segment_source_lake.push(row.source_lake);
+        debug_assert!(self.segment_arrays_aligned(), "push_segment left an array behind");
+    }
+
     /// EVERY per-segment array has exactly one row per `rivers.segments` entry. Adding a
     /// parallel array and forgetting one of the places that rebuilds them silently shifts
     /// every row past the split — call this after any structural mutation of the network.
@@ -274,6 +323,7 @@ impl C1DrainageResult {
             && self.segment_discharge_m3s.len() == n
             && self.segment_width_m.len() == n
             && self.segment_profile_m.len() == n
+            && self.segment_catchment_cells.len() == n
             && self.segment_discharge_profile_m3s.len() == n
             && self.segment_kind.len() == n
             && self.segment_source_lake.len() == n
@@ -535,6 +585,18 @@ pub fn c1_drainage_windowed_infil(
         })
         .collect();
 
+    // Finding 47 — the GEOMETRIC catchment, at each segment's own downstream-most cell.
+    let segment_catchment_cells: Vec<f32> = rivers
+        .segments
+        .iter()
+        .map(|s| {
+            s.points
+                .last()
+                .map(|&(x, y)| flow.accumulation.data[y as usize * w + x as usize])
+                .unwrap_or(0.0)
+        })
+        .collect();
+
     // Everything the drainage extraction produces is a hierarchised watercourse; spillways
     // are appended later (they come from the below-sea pass) and carry their own kind.
     let n_seg = rivers.segments.len();
@@ -546,6 +608,7 @@ pub fn c1_drainage_windowed_infil(
         segment_discharge_m3s,
         segment_width_m,
         segment_profile_m,
+        segment_catchment_cells,
         segment_discharge_profile_m3s,
         segment_kind: vec![SegmentKind::Watercourse; n_seg],
         segment_source_lake: vec![None; n_seg],
@@ -571,7 +634,11 @@ const SECONDS_PER_YEAR: f32 = 3.155_76e7;
 
 /// Convert an accumulated runoff volume in `mm·km²/yr` (the unit of
 /// `runoff_accumulation`) to a mean discharge in m³/s: 1 mm over 1 km² = 1000 m³.
-fn runoff_km2_to_m3s(mm_km2_yr: f32) -> f32 {
+///
+/// Public because a consumer that reads a DISCHARGE and needs the runoff-equivalent AREA
+/// behind it divides by `runoff_km2_to_m3s(REFERENCE_RUNOFF_MM)` — the conversion is linear,
+/// so that ratio is exact and no second constant has to be duplicated (ADR Finding 47).
+pub fn runoff_km2_to_m3s(mm_km2_yr: f32) -> f32 {
     mm_km2_yr * 1000.0 / SECONDS_PER_YEAR
 }
 
@@ -603,6 +670,7 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
         .collect();
     let in_lake = |&(x, y): &(u32, u32)| lake_map[y as usize * w + x as usize];
 
+    let dr_accum = dr.flow.accumulation.data.clone(); // read-only; `dr` is mutated below
     let src = std::mem::take(&mut dr.rivers.segments);
     let src_km2 = std::mem::take(&mut dr.segment_drainage_km2);
     let src_nav = std::mem::take(&mut dr.segment_navigability);
@@ -614,6 +682,7 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     // measurement: the 16 `Spillway` tags landed at indices 13149..13165 while the segments
     // they described sat at 10170..10186 (see ADR, the completeness trap for composites).
     let src_qprof = std::mem::take(&mut dr.segment_discharge_profile_m3s);
+    let src_catch = std::mem::take(&mut dr.segment_catchment_cells);
     let src_kind = std::mem::take(&mut dr.segment_kind);
     let src_srclake = std::mem::take(&mut dr.segment_source_lake);
 
@@ -665,6 +734,7 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     let mut width_m = Vec::with_capacity(offset[src.len()]);
     let mut profile_m = Vec::with_capacity(offset[src.len()]);
     let mut qprof = Vec::with_capacity(offset[src.len()]);
+    let mut catch_cells = Vec::with_capacity(offset[src.len()]);
     let mut kind = Vec::with_capacity(offset[src.len()]);
     let mut source_lake = Vec::with_capacity(offset[src.len()]);
 
@@ -728,6 +798,25 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
             // A clipped run IS what its parent was: splitting a watercourse at a lake shore
             // yields watercourses, splitting a spillway yields spillway reaches.
             qprof.push(src_qprof.get(i).map(|q| q[a..b].to_vec()).unwrap_or_default());
+            // GEOMETRIC catchment at the run's own last cell — read straight from the
+            // accumulation raster, which needs no per-segment inheritance at all. The
+            // Finding 22 exception does NOT apply here: unlike the runoff accumulation, the
+            // geometric accumulation is a pure D8 cell count and is already carried across a
+            // filled lake by the routing, so the outlet run's own cell reads the right figure.
+            catch_cells.push({
+                let (lx, ly) = s.points[b - 1];
+                let k = ly as usize * w + lx as usize;
+                if inherits {
+                    // Outlet run: its first cells sit on the pool, whose accumulation is the
+                    // filled surface's, so take the max over the run to reach the true value.
+                    s.points[a..b]
+                        .iter()
+                        .map(|&(x, y)| dr_accum[y as usize * w + x as usize])
+                        .fold(0.0f32, f32::max)
+                } else {
+                    dr_accum[k]
+                }
+            });
             kind.push(src_kind.get(i).copied().unwrap_or(SegmentKind::Watercourse));
             source_lake.push(src_srclake.get(i).copied().flatten());
         }
@@ -740,6 +829,7 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     dr.segment_width_m = width_m;
     dr.segment_profile_m = profile_m;
     dr.segment_discharge_profile_m3s = qprof;
+    dr.segment_catchment_cells = catch_cells;
     dr.segment_kind = kind;
     dr.segment_source_lake = source_lake;
     debug_assert!(dr.segment_arrays_aligned(), "clip desynchronised a parallel array");
@@ -2373,6 +2463,7 @@ mod tests {
             },
             rivers: RiverNetwork { segments: vec![seg] },
             segment_drainage_km2: vec![100.0],
+            segment_catchment_cells: vec![100.0],
             segment_navigability: vec![Navigability::NonNavigable],
             segment_discharge_m3s: vec![25.0],
             segment_width_m: vec![25.0],
@@ -2456,6 +2547,7 @@ mod tests {
                 num_basins: 1,
             },
             segment_drainage_km2: vec![1.0; segs.len()],
+            segment_catchment_cells: vec![1.0; segs.len()],
             segment_navigability: vec![Navigability::NonNavigable; segs.len()],
             segment_discharge_m3s: vec![1.0; segs.len()],
             segment_width_m: vec![1.0; segs.len()],
