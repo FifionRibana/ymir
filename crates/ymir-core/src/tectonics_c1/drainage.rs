@@ -239,6 +239,12 @@ pub struct C1DrainageResult {
     /// Per-segment LONG PROFILE: bed elevation (metres) at each of the segment's
     /// points, upstream→downstream (parallel to `rivers.segments[i].points`).
     pub segment_profile_m: Vec<Vec<f32>>,
+    /// Discharge (m³/s) at each `segment.points`, upstream→downstream — parallel to
+    /// `segment_profile_m`. Exists so a run produced by [`clip_rivers_to_lakes`] can read the
+    /// discharge at ITS OWN downstream-most cell instead of inheriting the parent segment's
+    /// maximum (ADR Finding 46: a 1-cell middle fragment was reporting the whole trunk's
+    /// catchment). NOT exported — an internal per-point quantity the clip consumes.
+    pub segment_discharge_profile_m3s: Vec<Vec<f32>>,
     /// Per-segment KIND (parallel to `rivers.segments`). A below-sea basin's outflow is a
     /// real flow but NOT a hierarchised watercourse: giving it a Strahler order produced the
     /// absurdity the author caught — "order 1 draining 88 468 km²" at the head of the
@@ -268,6 +274,7 @@ impl C1DrainageResult {
             && self.segment_discharge_m3s.len() == n
             && self.segment_width_m.len() == n
             && self.segment_profile_m.len() == n
+            && self.segment_discharge_profile_m3s.len() == n
             && self.segment_kind.len() == n
             && self.segment_source_lake.len() == n
     }
@@ -430,11 +437,12 @@ pub fn c1_drainage_windowed_infil(
     // routed to the reach) — the physical quantity the channel-width law needs (see
     // Finding 22). `dr_km2` stays the effective-area proxy that drives the km²
     // navigability thresholds; discharge drives width.
-    let (segment_drainage_km2, segment_navigability, segment_discharge_m3s): (
-        Vec<f32>,
-        Vec<Navigability>,
-        Vec<f32>,
-    ) = match climate {
+    let (
+        segment_drainage_km2,
+        segment_navigability,
+        segment_discharge_m3s,
+        segment_discharge_profile_m3s,
+    ): (Vec<f32>, Vec<Navigability>, Vec<f32>, Vec<Vec<f32>>) = match climate {
         Some(clim) => {
             let mut endorheic = vec![false; w * h];
             for lk in &lakes {
@@ -465,26 +473,45 @@ pub fn c1_drainage_windowed_infil(
             // kills propagation), so its channel width is 0.
             let mut dr_km2 = Vec::with_capacity(rivers.segments.len());
             let mut q_m3s = Vec::with_capacity(rivers.segments.len());
+            // PER-POINT discharge (ADR Finding 46). `clip_rivers_to_lakes` splits a segment at
+            // lake crossings, and every run used to INHERIT this segment's maximum — so a
+            // 1-cell middle fragment reported the whole trunk's catchment (the author saw an
+            // S1 row with 0 tributaries showing 1087 km² beside the real 395-segment S4 trunk).
+            // Keeping the profile lets each run read the value at ITS OWN downstream-most cell.
+            let mut q_profile: Vec<Vec<f32>> = Vec::with_capacity(rivers.segments.len());
             for s in &rivers.segments {
-                let q = s
-                    .points
-                    .iter()
-                    .map(|&(x, y)| discharge[y as usize * w + x as usize])
-                    .fold(0.0f32, f32::max);
+                let per_point: Vec<f32> =
+                    s.points.iter().map(|&(x, y)| discharge[y as usize * w + x as usize]).collect();
+                let q = per_point.iter().copied().fold(0.0f32, f32::max);
                 dr_km2.push(q / REFERENCE_RUNOFF_MM); // discharge → effective km² at reference depth
                 q_m3s.push(runoff_km2_to_m3s(q));
+                q_profile.push(per_point.iter().map(|&v| runoff_km2_to_m3s(v)).collect());
             }
             let nav = dr_km2.iter().map(|&km2| cfg.thresholds.classify(km2)).collect();
-            (dr_km2, nav, q_m3s)
+            (dr_km2, nav, q_m3s, q_profile)
         }
         None => {
             let dr_km2: Vec<f32> = rivers.segments.iter().map(|s| s.max_flow * cell_km2).collect();
             let nav = dr_km2.iter().map(|&km2| cfg.thresholds.classify(km2)).collect();
             // No climate → assume the reference runoff depth over the geometric area so a
             // discharge-consistent width still results (Q = REFERENCE_RUNOFF · area).
-            let q_m3s =
+            let q_m3s: Vec<f32> =
                 dr_km2.iter().map(|&km2| runoff_km2_to_m3s(REFERENCE_RUNOFF_MM * km2)).collect();
-            (dr_km2, nav, q_m3s)
+            // Per-point equivalent, from the GEOMETRIC accumulation at each cell.
+            let q_profile: Vec<Vec<f32>> = rivers
+                .segments
+                .iter()
+                .map(|s| {
+                    s.points
+                        .iter()
+                        .map(|&(x, y)| {
+                            let a = flow.accumulation.data[y as usize * w + x as usize] * cell_km2;
+                            runoff_km2_to_m3s(REFERENCE_RUNOFF_MM * a)
+                        })
+                        .collect()
+                })
+                .collect();
+            (dr_km2, nav, q_m3s, q_profile)
         }
     };
 
@@ -519,6 +546,7 @@ pub fn c1_drainage_windowed_infil(
         segment_discharge_m3s,
         segment_width_m,
         segment_profile_m,
+        segment_discharge_profile_m3s,
         segment_kind: vec![SegmentKind::Watercourse; n_seg],
         segment_source_lake: vec![None; n_seg],
         lakes,
@@ -585,6 +613,7 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     // `rivers.segments` and every consumer reads the wrong row. Forgetting these two cost a
     // measurement: the 16 `Spillway` tags landed at indices 13149..13165 while the segments
     // they described sat at 10170..10186 (see ADR, the completeness trap for composites).
+    let src_qprof = std::mem::take(&mut dr.segment_discharge_profile_m3s);
     let src_kind = std::mem::take(&mut dr.segment_kind);
     let src_srclake = std::mem::take(&mut dr.segment_source_lake);
 
@@ -635,6 +664,7 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     let mut discharge = Vec::with_capacity(offset[src.len()]);
     let mut width_m = Vec::with_capacity(offset[src.len()]);
     let mut profile_m = Vec::with_capacity(offset[src.len()]);
+    let mut qprof = Vec::with_capacity(offset[src.len()]);
     let mut kind = Vec::with_capacity(offset[src.len()]);
     let mut source_lake = Vec::with_capacity(offset[src.len()]);
 
@@ -645,7 +675,28 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
             let reaches_end = b == n; // run reaches the parent's downstream end
             // Endorheic outlet runs were dropped; any surviving run that starts at a
             // lake shore is an exorheic outlet → inherit the parent discharge.
-            let q_km2 = src_km2.get(i).copied().unwrap_or(0.0);
+            // ADR Finding 46 — READ THE RUN'S OWN DOWNSTREAM VALUE, do not inherit the
+            // parent's maximum. A parent split at a lake crossing yields runs whose catchments
+            // differ; inheriting gave every fragment the whole trunk's figure (an S1 reach with
+            // 0 tributaries advertising 1087 km² next to the real 395-segment S4 trunk).
+            //
+            // ⚠️ THE EXCEPTION IS DELIBERATE AND MUST NOT BE "SIMPLIFIED" AWAY (Finding 22):
+            // an EXORHEIC LAKE OUTLET run inherits the parent's value on purpose. Such a reach
+            // starts at a lake shore and evacuates the WHOLE upstream catchment, which arrived
+            // through the lake; the runoff accumulation is carried across an exorheic pool, so
+            // its own first cells legitimately read the full figure — but a fragment that
+            // merely happens to start mid-parent does not. `is_outlet` (a > 0) distinguishes
+            // them: the run begins just after a lake cell. Removing this branch would drop a
+            // trunk's width to zero across every lake it crosses, which was the author's bug.
+            let own_q_m3s =
+                src_qprof.get(i).and_then(|prof| prof.get(b - 1).or_else(|| prof.last())).copied();
+            let inherits = a > 0; // outlet run: starts just after a lake cell (Finding 22)
+            let (q_km2, q_m3s_run) = match (inherits, own_q_m3s) {
+                (false, Some(q)) => {
+                    (q / crate::tectonics_c1::drainage::runoff_km2_to_m3s(REFERENCE_RUNOFF_MM), q)
+                }
+                _ => (src_km2.get(i).copied().unwrap_or(0.0), src_q.get(i).copied().unwrap_or(0.0)),
+            };
             let upstream = if is_first {
                 s.upstream.iter().filter_map(|&u| tail(u)).collect()
             } else {
@@ -670,11 +721,13 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
             // Inherit the parent's DISCHARGE + discharge-based width (Finding 22) — an
             // exorheic outlet reach keeps the full upstream catchment's width; recomputing
             // from the reach's local area would drop it across the lake (the author's bug).
-            discharge.push(src_q.get(i).copied().unwrap_or(0.0));
-            width_m.push(src_width.get(i).copied().unwrap_or(0.0));
+            discharge.push(q_m3s_run);
+            // Width follows the DISCHARGE (Finding 22), so it must follow the run's discharge.
+            width_m.push(CHANNEL_WIDTH_A * q_m3s_run.max(0.0).powf(CHANNEL_WIDTH_B));
             profile_m.push(src_prof.get(i).map(|p| p[a..b].to_vec()).unwrap_or_default());
             // A clipped run IS what its parent was: splitting a watercourse at a lake shore
             // yields watercourses, splitting a spillway yields spillway reaches.
+            qprof.push(src_qprof.get(i).map(|q| q[a..b].to_vec()).unwrap_or_default());
             kind.push(src_kind.get(i).copied().unwrap_or(SegmentKind::Watercourse));
             source_lake.push(src_srclake.get(i).copied().flatten());
         }
@@ -686,6 +739,7 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     dr.segment_discharge_m3s = discharge;
     dr.segment_width_m = width_m;
     dr.segment_profile_m = profile_m;
+    dr.segment_discharge_profile_m3s = qprof;
     dr.segment_kind = kind;
     dr.segment_source_lake = source_lake;
     debug_assert!(dr.segment_arrays_aligned(), "clip desynchronised a parallel array");
@@ -2323,6 +2377,7 @@ mod tests {
             segment_discharge_m3s: vec![25.0],
             segment_width_m: vec![25.0],
             segment_profile_m: vec![(0..w).map(|x| x as f32).collect()],
+            segment_discharge_profile_m3s: vec![vec![1.0; w]],
             segment_kind: vec![SegmentKind::Watercourse],
             segment_source_lake: vec![None],
             lakes: vec![C1Lake { base, level_m: 0.0, depth_m: 1.0, area_km2: 1.0, lake_type }],
@@ -2405,6 +2460,7 @@ mod tests {
             segment_discharge_m3s: vec![1.0; segs.len()],
             segment_width_m: vec![1.0; segs.len()],
             segment_profile_m: segs.iter().map(|s| vec![0.0; s.points.len()]).collect(),
+            segment_discharge_profile_m3s: segs.iter().map(|s| vec![1.0; s.points.len()]).collect(),
             segment_kind: vec![SegmentKind::Watercourse; segs.len()],
             segment_source_lake: vec![None; segs.len()],
             rivers: RiverNetwork { segments: segs },

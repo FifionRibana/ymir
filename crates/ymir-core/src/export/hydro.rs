@@ -135,6 +135,7 @@ mod tests {
             segment_discharge_m3s: vec![520.0],
             segment_width_m: vec![114.0],
             segment_profile_m: vec![vec![1200.0, 1150.0, 1130.0]],
+            segment_discharge_profile_m3s: vec![vec![500.0, 510.0, 520.0]],
             segment_kind: vec![SegmentKind::Watercourse],
             segment_source_lake: vec![None],
             lakes: vec![lake],

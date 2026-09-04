@@ -60,7 +60,7 @@ pub const ALGO_UPSCALE_EROSION: u32 = 2;
 
 /// Version of the drainage build (`c1_drainage`). ⚠️ BUMP on ANY code change to
 /// that step (see above).
-pub const ALGO_DRAINAGE: u32 = 2; // H-1e: segments carry a KIND (Watercourse|Spillway) + source basin
+pub const ALGO_DRAINAGE: u32 = 3; // Finding 46: per-point discharge profile; clipped runs read their OWN area
 
 /// Version of the climate build (`c1_climate_placed` / `c1_climate_windowed`).
 /// ⚠️ BUMP on ANY code change to that step (see above).
@@ -87,7 +87,7 @@ pub const ALGO_BREACH: u32 = 1;
 /// evaporative equilibrium (level + footprint), draining the exposed floor from `lake_map` —
 /// the GEOMETRY half of the same discard H-1 fixed for the classification. Lake outlines,
 /// river clipping, wetlands and biomes all move.
-pub const ALGO_HD_DRAINAGE: u32 = 4;
+pub const ALGO_HD_DRAINAGE: u32 = 5;
 
 // ── Cache key ──────────────────────────────────────────────────────────────
 

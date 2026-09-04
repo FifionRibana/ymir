@@ -4074,3 +4074,102 @@ the erosion touches the whole field; the minimum verification set for one is:
    Finding 42 measured 14 605 vs 14 284 km).
 
 Two of those three would have caught this in the same run that produced the +17 m.
+
+## Finding 46 — fragment areas: a per-point discharge, a refuted attribution, and a broken determinism
+
+### The fix
+
+`clip_rivers_to_lakes` gave every run of a split segment the PARENT'S maximum discharge, area
+and width. The parent's maximum sits at the parent's downstream end, so a run cut off earlier
+advertised a catchment it does not have. The remedy needed a per-point quantity, since the clip
+needs a value at an INTERIOR point of a segment:
+
+- `C1DrainageResult::segment_discharge_profile_m3s` — discharge (m³/s) at each `segment.points`,
+  parallel to `segment_profile_m`, built in the drainage extraction from the same runoff
+  accumulation the per-segment figures come from (no recompute, no second derivation to drift);
+- each clipped run reads the value at ITS OWN downstream-most point, and the width follows from
+  it (`w = a·Q^b`, Finding 22 — a width taken from an inherited discharge was the same defect);
+- `ALGO_DRAINAGE` 2→3 and `ALGO_HD_DRAINAGE` 4→5.
+
+**The Finding 22 exception, kept and stated at the line** (the asymmetry a later reader would
+"simplify"): an EXORHEIC LAKE OUTLET run, i.e. one starting just after a lake cell (`a > 0`),
+inherits on purpose. It evacuates the whole upstream catchment, which arrived through the lake.
+Removing that branch drops a trunk's width to zero across every lake it crosses — the author's
+original bug.
+
+**The strict sidecar length check earned its keep immediately.** The spillway append in
+`hd.rs` did not push the new array, so it was 10170 long for 10186 segments. Under the OLD
+tolerant `resize` that would have shipped silently (Finding 45's `resize` lesson); instead the
+next run failed with `drainage sidecar seg_qprof: 10170 entries for 10186 segments`. Fourth
+occurrence of the composite-completeness trap, first one caught by a guard instead of by a
+measurement three rounds later.
+
+### An attribution of mine, refuted by the measurement
+
+I had filed the head-of-list stump as an inherited-area defect. **It is not.** Its anatomy, at
+2048², cell (1087, 1188):
+
+| segment | points | order | area | upstream | first → last |
+|---|---|---|---|---|---|
+| #5186 | 4 | S4 | 1087 km² | 1 | (1084,1188) → (1087,1188) |
+| #7256 | 11 | S1 | 1087 km² | 0 | (1083,1198) → (1087,1188) |
+
+Shared points: **1 of 4 and 11** — two DISJOINT paths converging on one coastal cell. The stump
+reaches the mouth, so **its area was already correct**: the accumulation at that cell really is
+1087 km². The defect is that the cell's accumulation is the UNION of both catchments and both
+reaches read it.
+
+**So this is a distinct, newly-characterised defect: two reaches terminating on the same cell
+both report that cell's accumulation.** 46 of 46 duplicated-terminal groups at 2048² still
+claim identical areas; 24 of 26 at 8192² (the two exceptions are spillways, whose profile is
+uniform by construction — 1572 km² against 8 km² on the same cell, which is the per-point fix
+visibly working).
+
+Proposed rule, **not implemented** — it is a semantic choice for the author: a reach's own
+catchment is the accumulation at its last point that is NOT shared with another reach's
+terminus (in practice the penultimate point at a confluence). Whether a reach ending at a
+shared coastal cell should report its own catchment or the cell's is a decision, not a bug fix.
+
+### And a determinism break, found by doubting my own result
+
+After the fix the head became the S4 trunk (395 segments) instead of the stump — but the two
+TIE on discharge (10.3 m³/s, same mouth cell), and `aggregate_watercourses` iterated its groups
+from a **`HashMap`**, whose order is randomised per process. With a stable sort and a tie, the
+head was decided by hash order. **"The head is now the trunk" would have been luck, not a
+property** — and non-determinism is a core project invariant, violated here in the instrument
+the author judges with.
+
+Fixed: the groups are collected and sorted by root index, and the final comparator gains a
+deterministic, MEANINGFUL tie-break — more segments first (a system outranks a stump sharing its
+mouth), then the mouth cell, so the order is total. Verified by running the bench twice with
+identical output. This is rule 1 (the negative control) applied to a result rather than a test:
+I doubted the mechanism behind a favourable outcome and it was not the one I had assumed.
+
+### The verdict, both resolutions, on RESTORED terrain
+
+| | 2048² | 8192² |
+|---|---|---|
+| **head of the discharge sort** | **#1 S4, 394 trib, 395 seg, 146 km, → mer** | **#1 S3, 98 trib, 99 seg, 27 km, → mer** |
+| (before Finding 45's chaining) | #1 S1, 0 trib, 1 seg, 2 km | #1 S2, 43 trib, → lac |
+| entries (rivers / spillways) | 1095 (1080 / 15) | 659 (619 / 40) |
+| fragments (no up, no down) | 666 (6.5 %) | 560 (4.5 %) |
+| fragments claiming > half the max area | 4 | 2 |
+| duplicated terminals (same area) | 46 (46) | 26 (24) |
+
+At 8192² the whole top five are now multi-tributary systems; not one 1-segment stump. **The
+8192² figure owed from Finding 45 is delivered here, on restored terrain** — and the terrain is
+verifiably restored: mean land altitude 693 m, exactly the pre-`dscale` value.
+
+### RULE-7 CONTROL BLOCK — the observables this change must NOT move
+
+| | 2048² | 8192² |
+|---|---|---|
+| hypsometry mean / p50 / max (m) | 287 / 167 / 2684 | 693 / 447 / 4145 |
+| below-sea basins | 15 | 40 |
+| network extent | 74 897 cells = 14 628 km | 291 508 cells = 14 234 km |
+| lake cells / inventoried lakes | 99 344 (3790 km²) / 43 | 681 405 (1625 km²) / 56 |
+
+All match their pre-change values (the below-sea counts read 15/40 rather than 16/43 because
+Finding 45's lake chaining absorbs a spillway whose basin spills into an exorheic lake — a
+counting effect in the microscope, not a change to the basin population). The change touches
+per-segment arrays only, and the control block confirms it.

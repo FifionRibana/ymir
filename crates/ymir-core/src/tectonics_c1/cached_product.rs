@@ -430,6 +430,7 @@ impl RawCodec for C1DrainageResult {
             "seg_q": self.segment_discharge_m3s,
             "seg_width": self.segment_width_m,
             "seg_profile": self.segment_profile_m,
+            "seg_qprof": self.segment_discharge_profile_m3s,
             "seg_kind": self.segment_kind,
             "seg_src_lake": self.segment_source_lake,
             "lakes": self.lakes,
@@ -482,10 +483,25 @@ impl RawCodec for C1DrainageResult {
             .get("seg_profile")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
+        // ADR Finding 46 — the per-point discharge the clip reads. Same strict policy as
+        // `seg_kind`: an absent array is a legacy sidecar (tolerated, ALGO_DRAINAGE is bumped);
+        // a WRONG length is an error, never silently padded.
+        let mut segment_discharge_profile_m3s: Vec<Vec<f32>> = shape
+            .get("seg_qprof")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
         let lakes = serde_json::from_value(shape["lakes"].clone())
             .map_err(|e| format!("drainage sidecar lakes: {e}"))?;
 
         let n_seg = rivers.segments.len();
+        if segment_discharge_profile_m3s.is_empty() {
+            segment_discharge_profile_m3s = vec![Vec::new(); n_seg];
+        } else if segment_discharge_profile_m3s.len() != n_seg {
+            return Err(format!(
+                "drainage sidecar seg_qprof: {} entries for {n_seg} segments",
+                segment_discharge_profile_m3s.len()
+            ));
+        }
         // Old sidecars predate the segment KIND (H-1e); default them to watercourses, which
         // is what the drainage extraction alone produces. ALGO_DRAINAGE is bumped so this
         // path is not silently relied on.
@@ -525,6 +541,7 @@ impl RawCodec for C1DrainageResult {
             segment_discharge_m3s,
             segment_width_m,
             segment_profile_m,
+            segment_discharge_profile_m3s,
             segment_kind,
             segment_source_lake,
             lakes,

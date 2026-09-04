@@ -3293,7 +3293,14 @@ fn aggregate_watercourses_opt(
     };
 
     let mut out = Vec::with_capacity(groups.len());
-    for (r, members) in groups {
+    // DETERMINISM (a core project invariant, and it was broken here): `groups` is a HashMap,
+    // whose iteration order is randomised per process. Combined with a stable sort that TIES on
+    // discharge, the head of the list between two equal-discharge entries was decided by hash
+    // order — so "the head is the trunk" would have been luck, not a property. Iterate by root
+    // index instead.
+    let mut group_list: Vec<(usize, Vec<usize>)> = groups.into_iter().collect();
+    group_list.sort_by_key(|(r, _)| *r);
+    for (r, members) in group_list {
         // Trunk: from the mouth, climb the LONGEST tributary at each confluence.
         let mut trunk = Vec::new();
         let mut cur = r;
@@ -3340,9 +3347,18 @@ fn aggregate_watercourses_opt(
     // at the tail, where their discharge is honest but their rank no longer misleads.
     out.sort_by(|a, b| {
         let key = |w: &Watercourse| u8::from(w.kind == SegmentKind::Spillway);
-        key(a).cmp(&key(b)).then(
-            b.discharge_m3s.partial_cmp(&a.discharge_m3s).unwrap_or(std::cmp::Ordering::Equal),
-        )
+        key(a)
+            .cmp(&key(b))
+            .then(
+                b.discharge_m3s.partial_cmp(&a.discharge_m3s).unwrap_or(std::cmp::Ordering::Equal),
+            )
+            // TIE-BREAK, deterministic and meaningful: a river SYSTEM outranks a stump that
+            // shares its mouth cell and therefore reads the same discharge (ADR Finding 46 —
+            // two disjoint reaches ending on one cell both read that cell's accumulation, which
+            // is the union of their catchments). More segments = the actual system. Then the
+            // mouth cell, so the order is total and reproducible.
+            .then(b.segments.len().cmp(&a.segments.len()))
+            .then(a.mouth_xy.cmp(&b.mouth_xy))
     });
     out
 }
@@ -4922,6 +4938,181 @@ mod network_fragmentation_bench {
                     / rivers.len().max(1) as f32
             );
         }
+    }
+
+    /// ADR Finding 46 — the fragment area-inheritance fix, plus the RULE-7 CONTROL BLOCK
+    /// (hypsometry in metres, closed-depression / below-sea count, network extent) because
+    /// this touches a field every consumer reads, whatever the subject of the round.
+    ///
+    /// Run: cargo test -p ymir-viz --release fragment_areas -- --ignored --nocapture
+    fn fragment_report(target: usize, lat: f32) {
+        let hd = production_run(target, lat);
+        let d = &hd.drainage;
+        let (w, h) = (hd.width, hd.height);
+        let n = w * h;
+        let cell_km2 = (DOMAIN_KM / w as f32) * (DOMAIN_KM / h as f32);
+        let segs = &d.rivers.segments;
+        let wc = ymir_core::lakes::connectivity::water_class(&hd.eroded, 0.5);
+
+        eprintln!("\n=====  FRAGMENT AREAS + RULE-7 CONTROL — {lat} deg @ {target}^2  =====");
+
+        // ── the defect's own metric: fragments (no upstream, no downstream) and what they claim
+        let frags: Vec<usize> = (0..segs.len())
+            .filter(|&i| segs[i].upstream.is_empty() && segs[i].downstream.is_none())
+            .collect();
+        let frag_max = frags.iter().map(|&i| d.segment_drainage_km2[i]).fold(0.0f32, f32::max);
+        let global_max = d.segment_drainage_km2.iter().copied().fold(0.0f32, f32::max);
+        let frag_over_half: usize =
+            frags.iter().filter(|&&i| d.segment_drainage_km2[i] > 0.5 * global_max).count();
+        eprintln!(
+            "\nFRAGMENTS (no upstream AND no downstream): {} of {} segments ({:.1} %)\n  \
+             largest fragment area {frag_max:.0} km2 | largest area anywhere {global_max:.0} km2\n  \
+             fragments claiming > half the largest area: {frag_over_half}  <-- the defect's \
+             signature (an inherited trunk figure on a 1-cell reach)",
+            frags.len(),
+            segs.len(),
+            100.0 * frags.len() as f32 / segs.len().max(1) as f32
+        );
+
+        // ── duplicated terminals
+        let terminals: Vec<usize> =
+            (0..segs.len()).filter(|&i| segs[i].downstream.is_none()).collect();
+        let distinct: std::collections::HashSet<(u32, u32)> =
+            terminals.iter().map(|&i| *segs[i].points.last().unwrap()).collect();
+        // A duplicate is only a READING problem when the two rows claim the same area.
+        let mut by_cell: std::collections::HashMap<(u32, u32), Vec<usize>> = Default::default();
+        for &i in &terminals {
+            by_cell.entry(*segs[i].points.last().unwrap()).or_default().push(i);
+        }
+        let same_area_pairs = by_cell
+            .values()
+            .filter(|v| v.len() > 1)
+            .filter(|v| {
+                let a = d.segment_drainage_km2[v[0]];
+                v.iter().all(|&j| (d.segment_drainage_km2[j] - a).abs() < 0.5)
+            })
+            .count();
+        eprintln!(
+            "DUPLICATED TERMINALS: {} terminals for {} distinct last cells ({} duplicated), of \
+             which {same_area_pairs} groups still claim the SAME area",
+            terminals.len(),
+            distinct.len(),
+            terminals.len() - distinct.len()
+        );
+
+        // ── DUPLICATE TERMINAL ANATOMY. My first attribution (inherited area on a middle
+        //    fragment) was refuted by the measurement: the head stump reaches the MOUTH, so its
+        //    full area is CORRECT. The defect is that two segments end on the same mouth cell.
+        //    Print the biggest such group so the cause is read, not guessed.
+        if let Some((cell, group)) = by_cell.iter().filter(|(_, v)| v.len() > 1).max_by(|a, b| {
+            d.segment_drainage_km2[a.1[0]]
+                .partial_cmp(&d.segment_drainage_km2[b.1[0]])
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }) {
+            eprintln!(
+                "
+ANATOMY of the largest duplicated terminal, at cell {cell:?}:"
+            );
+            for &i in group {
+                let sg = &segs[i];
+                eprintln!(
+                    "  seg #{i:<6} pts {:<5} S{} | A {:>8.0} km2 | Q {:>7.1} | up {:?} | down {:?}
+                         first {:?} last {:?}",
+                    sg.points.len(),
+                    sg.strahler_order,
+                    d.segment_drainage_km2[i],
+                    d.segment_discharge_m3s[i],
+                    sg.upstream.len(),
+                    sg.downstream,
+                    sg.points.first(),
+                    sg.points.last()
+                );
+            }
+            // Is one a suffix of the other (the clip emitting a run twice), or are they two
+            // genuinely different paths converging on the same cell?
+            if group.len() == 2 {
+                let (x, y) = (&segs[group[0]].points, &segs[group[1]].points);
+                let shared = x.iter().filter(|p| y.contains(p)).count();
+                eprintln!(
+                    "  shared points: {shared} of {}/{} -> {}",
+                    x.len(),
+                    y.len(),
+                    if shared == x.len().min(y.len()) {
+                        "ONE IS A SUBSET of the other (the same run emitted twice)"
+                    } else if shared == 0 {
+                        "DISJOINT paths converging on one cell (two tributaries, legitimate)"
+                    } else {
+                        "PARTIAL overlap"
+                    }
+                );
+            }
+        }
+
+        // ── the head of the discharge sort (the author's test)
+        let wcs = aggregate_watercourses(&hd, DOMAIN_KM, 1.0);
+        let rivers: Vec<&Watercourse> =
+            wcs.iter().filter(|x| x.kind == SegmentKind::Watercourse).collect();
+        eprintln!(
+            "\nMICROSCOPE — {} entries ({} rivers, {} spillways); head of the discharge sort:",
+            wcs.len(),
+            rivers.len(),
+            wcs.len() - rivers.len()
+        );
+        for (i, x) in rivers.iter().take(5).enumerate() {
+            eprintln!(
+                "  #{:<3} Q {:>8.1} m3/s | A {:>8.0} km2 | S{} | {:>4} trib | {:>4} seg | \
+                 {:>6.0} km | {}",
+                i + 1,
+                x.discharge_m3s,
+                x.catchment_km2,
+                x.order,
+                x.tributaries,
+                x.segments.len(),
+                x.length_km,
+                sink_label(x.sink).0
+            );
+        }
+
+        // ── RULE-7 CONTROL BLOCK: the observables this change is NOT supposed to move.
+        let ss = ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams::default();
+        let to_m = |v: f32| {
+            ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres(v, &ss)
+        };
+        let mut alts: Vec<f32> =
+            (0..n).filter(|&k| hd.eroded.data[k] > 0.5).map(|k| to_m(hd.eroded.data[k])).collect();
+        alts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let q = |f: f32| alts[((alts.len() as f32 - 1.0) * f) as usize];
+        let below_sea_basins = wcs.iter().filter(|x| x.kind == SegmentKind::Spillway).count();
+        let river_cells: usize = segs.iter().map(|s| s.points.len()).sum();
+        eprintln!(
+            "\nRULE-7 CONTROL BLOCK (must be unchanged — this touches per-segment arrays only)\n  \
+             hypsometry (m): mean {:.0} | p10 {:.0} | p50 {:.0} | p90 {:.0} | max {:.0}\n  \
+             below-sea basins (spillway entries): {below_sea_basins}\n  \
+             network extent: {river_cells} river cells = {:.0} km of channel\n  \
+             lake cells: {} ({:.0} km2) | inventoried lakes: {}",
+            alts.iter().map(|&v| v as f64).sum::<f64>() / alts.len().max(1) as f64,
+            q(0.10),
+            q(0.50),
+            q(0.90),
+            alts[alts.len() - 1],
+            river_cells as f32 * (DOMAIN_KM / w as f32),
+            d.lake_map.iter().filter(|&&x| x != 0).count(),
+            d.lake_map.iter().filter(|&&x| x != 0).count() as f32 * cell_km2,
+            d.lakes.len()
+        );
+        let _ = wc;
+    }
+
+    #[test]
+    #[ignore]
+    fn fragment_areas_2048() {
+        fragment_report(2048, 25.0);
+    }
+
+    #[test]
+    #[ignore]
+    fn fragment_areas_8192() {
+        fragment_report(8192, 25.0);
     }
 
     #[test]

@@ -572,6 +572,9 @@ fn build_hd_drainage(
         drainage.segment_discharge_m3s.push(sw.discharge_m3s);
         drainage.segment_width_m.push(sw.width_m);
         drainage.segment_profile_m.push(sw.profile_m.clone());
+        // Per-point discharge (Finding 46). A spillway's discharge is uniform along its traced
+        // path — it is one outflow over a col, not a hierarchy accumulating tributaries.
+        drainage.segment_discharge_profile_m3s.push(vec![sw.discharge_m3s; sw.points.len()]);
     }
     debug_assert!(
         drainage.segment_arrays_aligned(),
