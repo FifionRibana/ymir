@@ -4729,3 +4729,133 @@ different chantiers with an order-of-magnitude difference in cost. **For a visua
 bisect on the toggles that exist, then on the stages of the build. Attribution before remedy,
 in both cases.** Neither needed a new mechanism to be hypothesised first, which is why neither
 could be led astray by one.
+
+## Finding 52 — a fringe metric that measures fringes; and the 43.5 % figure, which I cannot reproduce
+
+### The number that would have turned the subject over — and does not
+
+The claim was: the coarse field is already at 43.5 % fringing on a 172-vertex 64² coastline, so
+the fringes come from TECTONICS and everything downstream moves it by ±1 point. That conclusion
+was flagged in advance as the one that changes every estimate, so it had to be checked first.
+
+**I cannot reproduce it.** Tracing the sea-level isoline on the raw 64² normalised altitude —
+the same `c1_coarse_normalized_altitude` production upscales, `target_land_fraction: None` as
+shipped — gives **18 rings, 314 vertices, 30 of 278 turns above 80° = 10.8 %**. Not 172
+vertices, not 43.5 %, and *lower* than the 20.1 % of the finished 2048² product rather than
+four times higher. I do not know how the 43.5 % was obtained and I am not able to build on it.
+
+**And the inference would not follow even if the figure were right**, because the turn rate is a
+function of vertex spacing. Taking ONE fixed 2048² coastline — the shape never changes — and
+keeping every k-th vertex:
+
+| vertex step | 1 | 2 | 4 | 8 | 16 | 32 | 64 |
+|---|---|---|---|---|---|---|---|
+| spacing (km) | 0.14 | 0.27 | 0.55 | 1.09 | 2.19 | 4.38 | 8.75 |
+| turns > 80° | **20.1 %** | 26.3 % | 26.1 % | **30.0 %** | 29.7 % | 28.6 % | 25.7 % |
+
+The same curve reads 20 % or 30 % depending only on how finely it is sampled — a 50 % relative
+swing from resampling. **So a turn rate measured at 6 km spacing cannot be compared with one
+measured at 0.14 km spacing**, and "the coarse field is already at X %" cannot attribute
+anything to a stage.
+
+**What this does NOT invalidate:** Finding 51's stage table was measured at ONE FIXED sampling
+throughout (every stage rendered at 2048², then again at 8192²). Within a fixed grid the
+comparison is sound, and it stands.
+
+### The real point, which is right and which I had missed
+
+The turn count **cannot see fringe LENGTH**. A spur one kilometre long and a spur ten kilometres
+long have the same two sharp turns. So the metric that attributed the stage correctly is unfit
+to judge the appearance, and evaluating a remedy with it would repeat the relaxation episode:
+a −0.4 % announced, nothing visible, no information gained.
+
+### The metric
+
+Three quantities, in kilometres, at an explicit physical scale. A SPUR is an excursion that
+comes back on itself: an arc of at least 1 km whose endpoints lie within 0.6 km of each other —
+a neck. That is the definition of "a fringe running out from the shore body", and it is what the
+turn count is blind to.
+
+- **length** — median and p90 of the spur arc, plus the share of the whole coastline inside a
+  spur;
+- **regularity** — the coefficient of variation of the spacing between consecutive spurs. A COMB
+  is regular (low CV); a ria coast is irregular (high CV);
+- **parallelism** — the axial concentration `R` of the spur axes. Parallel spurs read as
+  manufactured.
+
+**Validation, on the one ranking that can be sourced** — the author judges the current export
+worse than the pre-chantier state (same relief, C-3 and C-3b off):
+
+| 2048² | coast km | spurs | med km | p90 km | in-spur | spacing CV | axis R |
+|---|---|---|---|---|---|---|---|
+| pre-chantier (closures OFF) | 3 835 | 1 146 | 1.39 | 2.58 | 50.0 % | 0.88 | 0.023 |
+| current export (both ON) | 4 860 | **1 262** | **1.63** | **3.48** | **53.9 %** | 0.93 | 0.052 |
+
+The metric puts them in his order — more spurs, longer spurs (**p90 +35 %**), more coastline
+inside a spur. It is fit to judge a remedy.
+
+**And it settles the description.** "Long parallel fringes": the LENGTH is confirmed (p90 2.58 →
+3.48 km). The PARALLELISM is **refuted** — the axis concentration is 0.023 and 0.052, which is
+isotropic. Whatever reads as parallel is the REPETITION of similar spurs, not a common
+direction. The spacing CV even RISES (0.88 → 0.93): the fringes become slightly more irregular,
+not more comb-like. Worth knowing before anyone tries to remove a periodicity that is not there.
+
+### Where the spurs enter — the attribution survives its metric being replaced
+
+| stage (2048²) | coast km | spurs | med km | p90 km | in-spur | axis R |
+|---|---|---|---|---|---|---|
+| 1 coarse upscaled (no FBM) | 1 581 | **14** | 1.82 | 7.67 | **2.4 %** | 0.453 |
+| 2 + FBM | 1 581 | **14** | 1.82 | 7.67 | **2.4 %** | 0.453 |
+| **3 + relief-v2** | 3 686 | **1 512** | 1.29 | 2.31 | **64.2 %** | 0.046 |
+| 4 + relief-v3 | 3 835 | 1 146 | 1.39 | 2.58 | 50.0 % | 0.023 |
+| 5 final (+ C-3 + C-3b) | 4 860 | 1 262 | 1.63 | 3.48 | 53.9 % | 0.052 |
+
+**Same stage. Spurs 14 → 1 512, in-spur share 2.4 % → 64.2 %.** Two metrics built on different
+principles — one counting turns, one measuring necked excursions in kilometres — locate the
+jump at the same place. Finding 51's attribution survives the replacement of the instrument that
+produced it, which is the strongest form the attribution could take.
+
+### Defect or property: the coarse angularity is a PROPERTY, and the upscale handles it
+
+The hypothesis was that the upscale manufactures long fringes by interpolating an already
+angular contour 128×. **It does not.** The upscaled coarse field carries **14 spurs and a 2.4 %
+in-spur share** — bilinear interpolation SMOOTHS the 64² contour rather than amplifying it,
+which is also why stage 1 reads 0.35 % on the turn metric while the raw 64² reads 10.8 %.
+
+So: a 314-vertex coastline on a 64² grid over 400 km is angular **by necessity** — 6.25 km
+between samples — and that is a property of the grid, not a defect in the tectonics. The
+upscale's job is to interpolate it, and it does so without creating spurs. **The remedy belongs
+in NEITHER the upscale NOR the tectonic stage.**
+
+The only sign of manufactured geometry anywhere is the coarse stage's axis R of 0.453 — those 14
+spurs ARE grid-aligned. But they are 14, they carry 2.4 % of the coastline, and after the
+incision R collapses to 0.046. The grid signature does not survive into the product.
+
+### Ranked remedy — unchanged, now on a metric that measures the symptom
+
+1. **The hillslope term** (Findings 43–44). Stage 3 creates the spurs by carving valleys to sea
+   level; stage 4 and the closures then LENGTHEN them (p90 2.31 → 2.58 → 3.48 km) on the
+   low-slope apron the incision leaves undenuded. Cost HIGH, timescale prerequisite.
+2. **C-4 coastal erosion.** Wave attack shortens and truncates spurs — the exact quantity this
+   metric now measures, so C-4 becomes falsifiable: it must cut the p90 spur length. Cost
+   MODERATE, planned, does not touch the calibrated relief.
+3. **Accept.** Cost zero.
+
+### Method — three consecutive attributions to the wrong layer
+
+Worth naming, because it is a pattern and not three accidents:
+
+- my "symptom of near-flat terrain at sea level" assumed erosion was flattening the shores;
+- the C-3 remedy assumed an abrupt lithological contact;
+- the toggle bisection correctly saw C-3 making things worse, but inside a false premise about
+  why.
+
+None was about the right stage, and all three were **mechanism arguments made before a stage
+bisection**. The cost of reasoning about mechanism first is that a plausible mechanism will
+always be available for the wrong layer. Two bisections — toggles, then stages — settled in two
+passes what three rounds of mechanism could not.
+
+**And a corollary about instruments:** a metric can be RIGHT FOR ATTRIBUTION and UNFIT FOR
+JUDGEMENT, and those are separate questions to ask of it. The turn count located the stage
+correctly three times and could never have judged a remedy. The right response was not to
+distrust its attribution but to build the second metric and check whether they agree — they do.
