@@ -4631,3 +4631,101 @@ the end. Invisible at 2048² (4 M entries, well inside the mantissa). Fixed to i
 arithmetic in both coastal benches. **A percentile helper is exactly where this hides**: it is
 trivial, it is copied between benches, and it only fails above 16.7 M elements — which is to
 say, only at the resolution that matters.
+
+## Finding 51 — stage bisection: the INCISION introduces 100 % of the coastal fringing
+
+Same instrument that attributed 90 682 depressions to the FBM in one table: measure the metric
+after each stage and read where it jumps. No argument, no candidate ranking beforehand.
+
+| stage | 2048² rings / fringes / rate / coast km | 8192² rings / fringes / rate / coast km |
+|---|---|---|
+| 1 coarse (no FBM, no incision) | 14 / 35 / **0.35 %** / 1 581 | 46 / 60 / **0.15 %** / 1 602 |
+| 2 + FBM upscale | 14 / 35 / **0.35 %** / 1 581 | 46 / 60 / **0.15 %** / 1 602 |
+| **3 + relief-v2 incision** | 664 / 5 582 / **22.14 %** / 3 686 | 431 / 11 740 / **12.31 %** / 3 696 |
+| 4 + relief-v3 incision | 1 163 / 5 685 / 20.86 % / 3 834 | **4 713** / 25 573 / **18.84 %** / 4 821 |
+| 5 final (+ C-3 + C-3b) | 1 618 / 6 926 / 20.13 % / 4 860 | 6 703 / 30 885 / 17.78 % / 6 206 |
+
+**Three results close three lines of enquiry:**
+
+1. **The coarse field does not fringe.** 14 rings at 2048², 46 at 8192², rate 0.35 % / 0.15 %.
+   **The subject is not tectonic** — which was the outcome that would have moved the chantier
+   upstream and multiplied every subsequent estimate. It does not.
+2. **The FBM adds EXACTLY NOTHING.** +0 rings, +0 fringes, +0 km, at both resolutions, to the
+   digit. Third independent exoneration (Finding 43 stage 2: ±2 m contribution; Finding 50:
+   `amplitude_base = 0` moves it 0.5 % the wrong way; this one). The FBM can be struck off the
+   list of suspects for coastal geometry permanently.
+3. **The incision introduces the whole baseline.** Everything the author sees enters between
+   stage 2 and stage 4.
+
+### The mechanism splits in two, and only the second is the "flat terrain" one
+
+The near-zero slope distribution — land within 20 m of sea level — separates them:
+
+| stage | 2048² cells / <0.5° / median | 8192² cells / <0.5° / median |
+|---|---|---|
+| 1–2 coarse & FBM | 4 338 / 16.4 % / 1.40° | 17 367 / 17.7 % / 1.20° |
+| 3 relief-v2 | 12 149 / 8.3 % / **2.58°** | 44 020 / 9.4 % / **2.75°** |
+| 4 relief-v3 | 24 034 / 30.4 % / **0.86°** | 49 915 / 20.5 % / **1.45°** |
+| 5 final | 28 714 / 36.4 % / 0.75° | 56 754 / 24.3 % / 1.33° |
+
+- **Stage 3 is NOT flattening** — it makes the coastal terrain STEEPER (1.40° → 2.58°) while the
+  fringe rate jumps 22 points. It is the incision **carving valleys down to sea level**: near-sea
+  land ×2.8, coastline length ×2.3, rings ×47. Drowned valley mouths, a real landform.
+- **Stage 4 IS the flattening**, and it is the mechanism flagged before measuring: median slope
+  falls back to 0.86° / 1.45°, the share under 0.5° doubles, and the rings multiply (×1.8 at
+  2048², **×10.9 at 8192²**). This is the "near-flat terrain at sea level" verdict, now
+  attributed to a stage.
+
+The per-class table makes it sharper still: **in the coarse field the low-slope classes are
+EMPTY** (no `<0.5°`, `0.5–2°` or even `2–5°` shore exists at 8192²). The incision manufactures
+the low-slope shore, and the fringes then live on it — 86.9 % of turns above 80° in the `<0.5°`
+class at stage 4.
+
+### And relief-v3's contribution is resolution-amplified
+
+At 2048² relief-v3 does not raise the rate (−1.28 points) and merely doubles the rings. At
+8192² it adds **+6.53 points and multiplies the rings ×10.9** (431 → 4 713). Same pattern as
+Findings 43 and 50: **a contribution measured at one resolution is not a contribution.** The
+fringing is markedly worse at 8192² *because of relief-v3 specifically*, and that is the same
+resolution-dependence Finding 43 traced to the fluvial/hillslope regime partition.
+
+### Ranked remedies, with cost — attribution first, as agreed
+
+**RANK 1 — the hillslope term (Findings 43–44). Same root, and the third chantier to converge
+on it.** Stage 4 flattens the near-sea land and leaves it: that IS "a correct threshold feeding
+an inert branch". A transport-limited hillslope law with an explicit sediment flux would denude
+those flats and deliver the material to the network instead of leaving a 0.86° apron for the
+contour to fringe through. Cost: HIGH — design work, and it needs the explicit timescale
+(Finding 44) first, since a diffusivity in m²/yr has nothing to multiply. But it addresses the
+mechanism rather than a symptom, and hypsometry, H-2's dial and the coastal fringes now all
+point at it.
+
+**RANK 2 — C-4 coastal erosion, already on the roadmap.** The physically correct agent: wave
+attack straightens coasts, removes islets and cuts platforms — precisely the drowned valley
+mouths and flat shores this measurement found. Cost: MODERATE, a planned closure, and crucially
+**it does not touch the relief calibrated over eighteen rounds**. Note the roadmap put C-4 after
+H-1/H-2 because H-2 moves the coastline; that ordering still holds, and this finding gives C-4
+a second, measured justification it did not have.
+
+**RANK 3 — accept.** Cost zero, and not unreasonable: an indented coast with islets is not
+wrong in itself. What the author objects to is the scale and regularity, not the existence.
+
+**EXCLUDED, each by measurement rather than by preference:**
+
+| candidate | why not |
+|---|---|
+| smooth the `K` field | no discontinuity exists to smooth — `K` is continuous at HD, 0 cells at the reference (Finding 50) |
+| contour relaxation | refuted by measurement AND by eye (Finding 48) |
+| `min_slope` / stream-power parameters | blast radius covers the whole calibrated relief, and it would tune the agent rather than supply the missing counter-agent |
+| the FBM | exonerated three times over |
+| the coarse / tectonic stage | 0.15–0.35 %, it does not fringe |
+
+### Method rule 8, completed — toggles first, then stages
+
+The author's TOGGLE BISECTION found in one screenshot what a bench had not shown. This STAGE
+BISECTION is its measured counterpart, and between them they took the subject from "the
+lithological contact is too abrupt" to "the incision manufactures the low-slope shore" — two
+different chantiers with an order-of-magnitude difference in cost. **For a visual defect:
+bisect on the toggles that exist, then on the stages of the build. Attribution before remedy,
+in both cases.** Neither needed a new mechanism to be hypothesised first, which is why neither
+could be led astray by one.
