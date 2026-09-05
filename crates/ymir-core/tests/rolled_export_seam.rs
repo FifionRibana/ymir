@@ -238,7 +238,7 @@ fn rolled_export_is_one_contiguous_continent() {
 
     // ACCEPTANCE 2 — the coastline's main ring is a CLOSED loop (a split continent
     // yields open curves terminating at opposite borders).
-    let (len, closed) = longest_ring_closed(&coastline_geojson(&rolled));
+    let (len, closed) = longest_ring_closed(&coastline_geojson(&rolled, None));
     eprintln!("coastline: longest ring {len} pts, closed = {closed}");
     assert!(closed, "the main coastline ring must be a closed loop on the rolled export");
 

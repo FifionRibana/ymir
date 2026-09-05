@@ -11,7 +11,10 @@ use serde_json::{Value, json};
 use crate::grid::GridF32;
 use crate::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use crate::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
-use crate::terrain::contour::{Polyline, marching_squares, slope_degree_field};
+use crate::terrain::contour::{
+    COASTLINE_SMOOTH_PASSES, Polyline, SMOOTH_RELAX_BELOW_DEG, marching_squares,
+    slope_deg_to_norm_gradient, slope_degree_field, smooth_polylines_on_isoline,
+};
 
 /// Sea level in the C1 normalized altitude field. The vertical contract
 /// ([`c1_altitude_norm_to_metres`]) pins sea to `0.5` (0 m), so tracing the
@@ -45,9 +48,40 @@ pub fn polylines_to_geojson(polylines: &[Polyline], properties: Value) -> Vec<u8
 /// Trace the coastline (sea-level isoline) of the normalized eroded heightmap
 /// and serialize it as `coastline.geojson` bytes. Documented choice: run on the
 /// NORMALIZED field at [`SEA_LEVEL_NORM`] (equivalent to metric altitude 0).
-pub fn coastline_geojson(eroded_norm: &GridF32) -> Vec<u8> {
-    let polylines = marching_squares(eroded_norm, SEA_LEVEL_NORM);
+///
+/// `smooth` opts into the gradient-weighted contour relaxation (ADR Finding 48).
+/// **It ships OFF, and the measurement is why**: on the flattest shores it removes 19 % of the
+/// >80° turns, but it ADDS 15 % at 2–5°, and the TOTAL over all classes moves 20.13 % → 20.04 %
+/// — a −0.4 % change, i.e. nothing. It redistributes barbs rather than removing them. What it
+/// does change is the axial concentration (0.377 → 0.246), so the contour is measurably less
+/// axis-aligned; whether that is visible is a judgement for the author, which is exactly why
+/// this is a flag and not a default.
+pub fn coastline_geojson(eroded_norm: &GridF32, smooth: Option<CoastlineSmoothing>) -> Vec<u8> {
+    let mut polylines = marching_squares(eroded_norm, SEA_LEVEL_NORM);
+    if let Some(o) = smooth {
+        let gate = slope_deg_to_norm_gradient(
+            SMOOTH_RELAX_BELOW_DEG,
+            o.m_per_cell,
+            2.0 * 1.13 * o.depth_scale_m,
+        );
+        polylines = smooth_polylines_on_isoline(
+            eroded_norm,
+            SEA_LEVEL_NORM,
+            &polylines,
+            COASTLINE_SMOOTH_PASSES,
+            gate,
+        );
+    }
     polylines_to_geojson(&polylines, json!({ "id": "coastline", "level_m": 0.0 }))
+}
+
+/// The two physical quantities the coastline relaxation needs to turn a slope in DEGREES into a
+/// gradient in normalised units per cell. Passing them explicitly keeps the unit conversion at
+/// the caller, which is the only place that knows them.
+#[derive(Debug, Clone, Copy)]
+pub struct CoastlineSmoothing {
+    pub m_per_cell: f32,
+    pub depth_scale_m: f32,
 }
 
 /// Trace cliff edges: build the metric height (via the vertical contract), the
@@ -97,7 +131,7 @@ mod tests {
             }
         }
         let grid = GridF32::from_vec(w, h, data);
-        let bytes = coastline_geojson(&grid);
+        let bytes = coastline_geojson(&grid, None);
 
         assert!(feature_line_count(&bytes) > 0, "coastline must have geometry");
 
@@ -109,7 +143,7 @@ mod tests {
         assert_eq!(v["features"][0]["properties"]["level_m"], json!(0.0));
 
         // Byte-identical across two runs.
-        assert_eq!(bytes, coastline_geojson(&grid), "coastline bytes must be deterministic");
+        assert_eq!(bytes, coastline_geojson(&grid, None), "coastline bytes must be deterministic");
     }
 
     /// A vertical step: cliffs appear below the step angle, none above it.

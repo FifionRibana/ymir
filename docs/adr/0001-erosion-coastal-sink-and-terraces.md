@@ -4315,3 +4315,114 @@ Confirmed unchanged at 2048²: hypsometry mean 287 m / p50 167 / max 2 684; belo
 network extent 74 897 cells = 14 628 km; lake cells 99 344 (3 790 km²), 43 inventoried lakes.
 The geometric mouth distribution is identical between the arid and humid runs (34/167/1 459),
 which is itself a control: the change did not touch geometry.
+
+## Finding 48 — the coastline contour: the mechanism is confirmed, the geometric remedy is not
+
+### First, what the defect is NOT
+
+Marching squares **already interpolates sub-cell** along each crossed edge
+(`t = (iso − va)/(vb − va)`), so the barbs are not blockiness and "sub-cellular interpolation"
+was not the missing piece. The measured sea-level offset before any change is **median +0.000 m,
+|p90| 0.001 m** — the raw contour sits exactly on the isoline. Whatever is wrong is not the
+placement of a vertex along its edge.
+
+### The falsifiable prediction, and its verdict
+
+The diagnosis on record is GRADIENT PINNING: where the field is nearly flat at the iso value,
+WHICH edges get crossed is decided by tiny fluctuations, so the contour zig-zags. That predicts
+the fix must improve the LOW-SLOPE shores most.
+
+The baseline confirms the diagnosis's premise — the defect is where it says:
+
+| turns > 80° | <0.5° | 0.5–2° | 2–5° | 5–15° | >15° |
+|---|---|---|---|---|---|
+| 2048² baseline | **82.5 %** | 54.4 % | 15.9 % | 10.2 % | **1.4 %** |
+| 8192² baseline | **83.5 %** | 67.5 % | 55.6 % | 19.2 % | **2.5 %** |
+
+**PREDICTION CONFIRMED on location.** Paired before/after (same vertices, classified at their
+ORIGINAL positions):
+
+| relative change in turns > 80° | <0.5° | 0.5–2° | 2–5° | 5–15° | >15° |
+|---|---|---|---|---|---|
+| 2048² | **−19 %** | −0 % | +15 % | −0 % | 0 % |
+| 8192² | **−12 %** | **−10 %** | −1 % | 0 % | **+77 %** |
+
+The improvement is exclusively on the flat classes at both resolutions. Nothing lands on the
+steep shores except degradation.
+
+### But the aggregate says the remedy does not work
+
+| | 2048² | 8192² |
+|---|---|---|
+| TOTAL turns > 80° | 20.13 % → **20.04 %** (**−0.4 %**) | 17.78 % → **17.73 %** (**−0.1 %**) |
+| axial concentration R | 0.377 → **0.246** | 0.369 → **0.274** |
+| mean step (cells) | 0.691 → 0.703 | 0.705 → 0.719 |
+| rings/lines | 1618 → 1618 | 6703 → 6703 |
+
+**The smoothing REDISTRIBUTES barbs; it does not remove them.** At 8192² the flattest class
+sheds 1 606 turns above 80° and the steepest class gains 1 889 — the total is flat because a
+relaxed vertex changes the turn angle at its NEIGHBOURS, and at a finer grid far more steep
+vertices sit next to flat ones. A per-class table alone would have shown a −12 % headline and
+hidden this; the aggregate is what makes it legible, which is method rule 3 applied to my own
+bench.
+
+What DOES improve is the **axial concentration, 0.377 → 0.246** — the contour is measurably
+less axis-and-diagonal aligned even though the turn count is unchanged. Whether that is visible
+is a judgement the numbers cannot make.
+
+**Verdict: the mechanism is confirmed as the LOCATION of the defect, and the geometric remedy is
+refuted as a cure.** Gradient pinning is a symptom of the terrain being nearly flat at sea level
+over long stretches of shore; a contour filter cannot supply information the field does not
+contain. The real lever is upstream — the same hypsometry that Findings 42–44 leave open.
+
+### The sea-level offset — and the two bugs the check caught
+
+The offset is the end-to-end coherence check between P3-A, the export roll and the Living
+Landz reader, so it was measured at every step. **Final: median +0.000 m at 2048² and −0.000 m
+at 8192²; |p90| 0.537 m and 1.422 m** against 0.001 / 0.005 m raw. The median does not drift —
+it is in fact tighter than the −0.06 m on record — and the tail is sub-metre. **It caught two
+real bugs in my own algorithm before either could be reported as a result:**
+
+1. **Ordering.** Capping the vertex displacement AFTER the Newton reprojection dragged 10 % of
+   vertices back OFF the isoline, by up to 11 m. The reprojection must be the last thing that
+   touches a vertex — now stated at the line.
+2. **The wrong gradient, which is the instructive one.** `gradient_at` used a ±1 cell central
+   difference, which smooths over two cells and is therefore NOT the gradient of the bilinear
+   function the Newton step is trying to zero. The iteration stalled rather than converged:
+   raising the step count from 3 to **12 made the residual WORSE (7.1 → 8.2 m)**, which is the
+   signature of descending on the wrong slope, not of needing more steps. A ±0.25 cell
+   difference collapsed the residual from **7.07 m to 0.745 m** in one change.
+
+Both were found because a *second* invariant was being watched alongside the metric under
+improvement — method rule 7, and it paid twice in one round.
+
+### An intermediate result that looked better and was worse
+
+Before the gradient fix, the barb numbers were BETTER (−37 % at <0.5°, −21 % at 0.5–2°) — and
+that improvement came from vertices drifting off the isoline by up to 11 m. **The prettier
+metric was produced by breaking the constraint the layer exists to satisfy.** Recorded because
+it is the exact shape of a result one would ship by accident: the headline number improved and
+the thing it was measured against had quietly stopped being true.
+
+### What ships
+
+`smooth_polylines_on_isoline` (gradient-weighted normal-only relaxation, damped Newton
+reprojection, displacement cap) plus `slope_deg_to_norm_gradient`, and
+`coastline_geojson(field, Option<CoastlineSmoothing>)`. **It ships OFF**, per the measurement
+rather than per caution: a −0.4 % change in the total is not worth a cache-invalidating export
+change. Flipping the flag is a one-line experiment when the author wants to judge the axial-R
+difference visually.
+
+The relaxation gate is a PHYSICAL slope (`SMOOTH_RELAX_BELOW_DEG = 2.0`), not a percentile of
+the contour's own gradient distribution: a percentile follows the coast it measures, so when
+half the coastline sat at 2–5° the gate spilled onto shores that were never barbed (+24 % there,
+measured, then fixed to +15 %).
+
+### RULE-7 CONTROL BLOCK — and why the usual one does not apply
+
+Contour smoothing **does not touch the height field**: it reads `eroded` and emits polylines, so
+hypsometry, closed-depression counts and network extent cannot move — not by measurement but by
+construction, which is stronger. The relevant invariants are the coastline layer's own, and
+those were measured: **ring/line count unchanged** (1618 → 1618, 6703 → 6703), vertex count
+unchanged, mean step ±2 %, and the sea-level offset above. Determinism verified by two identical
+runs.

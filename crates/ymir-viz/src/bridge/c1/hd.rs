@@ -1403,7 +1403,10 @@ fn export_ymir_container(
 
     // ── Y-B vector layers (traced from the same eroded field). ──
     // Coastline: sea-level isoline on the normalized field (sea = 0.5).
-    let coastline = vector::coastline_geojson(eroded);
+    // Finding 48: the relaxation ships OFF — it redistributes barbs without removing them
+    // (total >80° turns 20.13 % → 20.04 %). Flip to `Some(CoastlineSmoothing { .. })` to
+    // evaluate it visually.
+    let coastline = vector::coastline_geojson(eroded, None);
     writer.add_vector_file("coastline", "coastline.geojson", &coastline)?;
     writer.set_level_m("coastline", 0.0)?;
 

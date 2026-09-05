@@ -207,6 +207,194 @@ pub fn slope_degree_field(height_m: &GridF32, cell_size_m: f32) -> GridF32 {
     GridF32::from_vec(w, h, out)
 }
 
+/// The physical slope under which the contour is treated as PINNED and gets relaxed. The
+/// measured defect is concentrated there: 82.5 % of turns above 80° on shores under 0.5°,
+/// 54.4 % at 0.5–2°, and only 1.4 % above 15°.
+pub const SMOOTH_RELAX_BELOW_DEG: f32 = 2.0;
+
+/// Convert a physical slope in degrees to a gradient magnitude in NORMALISED units per cell —
+/// what [`smooth_polylines_on_isoline`] gates on. `norm_to_m` is the vertical contract's
+/// metres-per-normalised-unit (`2·1.13·depth_scale_m`).
+#[must_use]
+pub fn slope_deg_to_norm_gradient(deg: f32, m_per_cell: f32, norm_to_m: f32) -> f32 {
+    deg.to_radians().tan() * m_per_cell / norm_to_m.max(1e-9)
+}
+
+/// Maximum relaxation weight, reached where the gradient vanishes (a fully pinned vertex).
+pub const SMOOTH_LAMBDA_MAX: f32 = 0.5;
+/// Newton steps per pass. One left 10 % of vertices >16 m off the isoline; three converge.
+pub const SMOOTH_NEWTON_STEPS: usize = 3;
+/// Each Newton step is clamped to this, so the reprojection is a descent and not a leap.
+pub const SMOOTH_NEWTON_MAX_STEP_CELLS: f32 = 0.25;
+/// A vertex may never move further than this from where marching squares put it. Smoothing is
+/// a local regulariser, not a redrawing of the coast.
+pub const SMOOTH_MAX_SHIFT_CELLS: f32 = 0.75;
+
+/// Number of smoothing+reprojection passes used by the shipped coastline. Three is where the
+/// >80° turn share stops falling materially (measured; see ADR Finding 48).
+pub const COASTLINE_SMOOTH_PASSES: usize = 3;
+
+/// Bilinear sample of `grid` at a sub-cell position, clamped at the borders.
+fn sample_bilinear(grid: &GridF32, x: f32, y: f32) -> f32 {
+    let (w, h) = (grid.width as i32, grid.height as i32);
+    let x = x.clamp(0.0, (w - 1) as f32);
+    let y = y.clamp(0.0, (h - 1) as f32);
+    let (x0, y0) = (x.floor() as i32, y.floor() as i32);
+    let (x1, y1) = ((x0 + 1).min(w - 1), (y0 + 1).min(h - 1));
+    let (fx, fy) = (x - x0 as f32, y - y0 as f32);
+    let g = |xi: i32, yi: i32| grid.data[yi as usize * grid.width + xi as usize];
+    let top = g(x0, y0) * (1.0 - fx) + g(x1, y0) * fx;
+    let bot = g(x0, y1) * (1.0 - fx) + g(x1, y1) * fx;
+    top * (1.0 - fy) + bot * fy
+}
+
+/// Gradient of the BILINEAR INTERPOLANT at a sub-cell position, per cell.
+///
+/// ⚠️ The half-width matters and cost a measurement. A ±1 cell central difference smooths over
+/// two cells, so it is NOT the gradient of the function `sample_bilinear` evaluates — and the
+/// Newton reprojection below is trying to zero exactly that function. With the mismatched
+/// gradient the iteration stalled instead of converging: raising the step count from 3 to 12
+/// made the residual offset WORSE (7.1 → 8.2 m), which is the signature of descending on the
+/// wrong slope rather than of needing more steps. A narrow difference tracks the local
+/// bilinear patch.
+const GRAD_H: f32 = 0.25;
+
+fn gradient_at(grid: &GridF32, x: f32, y: f32) -> (f32, f32) {
+    let inv = 0.5 / GRAD_H;
+    let gx = inv * (sample_bilinear(grid, x + GRAD_H, y) - sample_bilinear(grid, x - GRAD_H, y));
+    let gy = inv * (sample_bilinear(grid, x, y + GRAD_H) - sample_bilinear(grid, x, y - GRAD_H));
+    (gx, gy)
+}
+
+/// SMOOTH A CONTOUR WITHOUT LEAVING THE ISOLINE (ADR Finding 48).
+///
+/// Marching squares already interpolates sub-cell along each crossed edge, so the barbs are NOT
+/// blockiness. The mechanism is GRADIENT PINNING: where the field is nearly flat at the iso
+/// value, WHICH edges get crossed is decided by tiny fluctuations, so the contour zig-zags —
+/// measured at 82.5 % of turns above 80° on shores under 0.5°, against 1.4 % above 15°.
+///
+/// Three properties follow from that diagnosis, and all three are in the algorithm:
+///
+/// 1. **Relax only where the data is weak.** The relaxation weight is
+///    `λ = λ_max · g_med/(g_med + |∇f|)`, with `g_med` the median gradient magnitude along the
+///    contour. Where the gradient is strong the contour position is well determined by the
+///    field and must be left alone; where it vanishes there is no defensible sub-cell position
+///    and the smoothed one is at least not a fluctuation artefact. A uniform λ made the steep
+///    shores WORSE (>15°: 1.4 % → 5.9 % of turns above 80°) — measured, then fixed.
+/// 2. **Put every vertex back on the isoline.** Each pass ends with Newton steps along the
+///    gradient, `p -= (f(p) − iso)/|∇f|² · ∇f`. Without them the coastline stops meaning
+///    "altitude 0", which is the end-to-end coherence check with the consumer. A single step
+///    per pass left 10 % of vertices more than 16 m off; three converge.
+/// 3. **Never let a vertex wander.** Total displacement from the ORIGINAL position is capped at
+///    [`SMOOTH_MAX_SHIFT_CELLS`]. Smoothing is a local regulariser, not a redrawing.
+///
+/// Closed rings (first point == last point) are smoothed cyclically; open lines keep their
+/// endpoints fixed, so topology and the ring/line distinction are preserved exactly.
+pub fn smooth_polylines_on_isoline(
+    grid: &GridF32,
+    iso: f32,
+    polylines: &[Polyline],
+    passes: usize,
+    relax_below_gradient: f32,
+) -> Vec<Polyline> {
+    // Reference gradient: the median along the whole contour, so the weighting is scale-free
+    // and needs no cell size or vertical contract.
+    // The gate is a PHYSICAL slope supplied by the caller, not a percentile of this contour's
+    // own gradient distribution. A percentile follows the coast it is measuring: when half the
+    // coastline sits at 2–5°, the low quartile lands inside that class and the relaxation
+    // spills onto shores that were never barbed — measured, +24 % of >80° turns at 2–5° while
+    // the flattest class improved. The diagnosis names a slope (the defect is under ~2°), so
+    // the remedy takes a slope.
+    let g_lo = relax_below_gradient.max(1e-9);
+
+    polylines
+        .iter()
+        .map(|pl| {
+            let n = pl.len();
+            if n < 3 {
+                return pl.clone();
+            }
+            let closed = pl[0] == pl[n - 1];
+            let orig: Vec<(f32, f32)> = if closed { pl[..n - 1].to_vec() } else { pl.clone() };
+            let m = orig.len();
+            if m < 3 {
+                return pl.clone();
+            }
+            let mut pts = orig.clone();
+            for _ in 0..passes {
+                // 1. Gradient-weighted Laplacian relaxation.
+                let src = pts.clone();
+                for i in 0..m {
+                    if !closed && (i == 0 || i == m - 1) {
+                        continue; // open line: endpoints pinned
+                    }
+                    let (gx, gy) = gradient_at(grid, src[i].0, src[i].1);
+                    let g = (gx * gx + gy * gy).sqrt();
+                    let lambda = SMOOTH_LAMBDA_MAX * g_lo / (g_lo + g);
+                    let prev = src[(i + m - 1) % m];
+                    let next = src[(i + 1) % m];
+                    let mid = ((prev.0 + next.0) * 0.5, (prev.1 + next.1) * 0.5);
+                    let (mut dx, mut dy) =
+                        (lambda * (mid.0 - src[i].0), lambda * (mid.1 - src[i].1));
+                    // NORMAL COMPONENT ONLY. A plain Laplacian also moves vertices ALONG the
+                    // curve, which bunches them: the mean step went 0.69 → 2.65 cells and the
+                    // sampling itself changed, so the "after" metric was measuring a different
+                    // polygon rather than a smoother one. The isoline's normal IS the gradient
+                    // direction, so keep only the component across the curve — that removes a
+                    // barb and cannot redistribute the vertices.
+                    if g > 1e-9 {
+                        let (nx, ny) = (gx / g, gy / g);
+                        let dn = dx * nx + dy * ny;
+                        dx = dn * nx;
+                        dy = dn * ny;
+                    }
+                    pts[i] = (src[i].0 + dx, src[i].1 + dy);
+                }
+                // 2. DAMPED Newton reprojection onto the isoline. Undamped, a step of
+                //    `d/|∇f|` DIVERGES where the gradient is small — it overshoots to a place
+                //    where the field is more wrong, and three steps carry the vertex far away
+                //    (measured: mean segment 0.69 → 2.65 cells, and 10 % of vertices left more
+                //    than 8 m off the isoline they were supposed to be projected onto).
+                //    Clamping each step to `SMOOTH_NEWTON_MAX_STEP_CELLS` makes it a descent.
+                for p in pts.iter_mut() {
+                    for _ in 0..SMOOTH_NEWTON_STEPS {
+                        let (gx, gy) = gradient_at(grid, p.0, p.1);
+                        let g2 = gx * gx + gy * gy;
+                        if g2 <= 1e-12 {
+                            break; // flat: no defensible direction, keep the relaxed point
+                        }
+                        let d = sample_bilinear(grid, p.0, p.1) - iso;
+                        let (mut sx, mut sy) = (d * gx / g2, d * gy / g2);
+                        let sl = (sx * sx + sy * sy).sqrt();
+                        if sl > SMOOTH_NEWTON_MAX_STEP_CELLS {
+                            let k = SMOOTH_NEWTON_MAX_STEP_CELLS / sl;
+                            sx *= k;
+                            sy *= k;
+                        }
+                        p.0 -= sx;
+                        p.1 -= sy;
+                    }
+                }
+                // 3. Cap the wander from the ORIGINAL position, LAST — a vertex may never
+                //    be redrawn, only nudged.
+                // from the ORIGINAL position.
+                for (i, p) in pts.iter_mut().enumerate() {
+                    let (dx, dy) = (p.0 - orig[i].0, p.1 - orig[i].1);
+                    let d = (dx * dx + dy * dy).sqrt();
+                    if d > SMOOTH_MAX_SHIFT_CELLS {
+                        let k = SMOOTH_MAX_SHIFT_CELLS / d;
+                        *p = (orig[i].0 + dx * k, orig[i].1 + dy * k);
+                    }
+                }
+            }
+            if closed {
+                pts.push(pts[0]);
+            }
+            pts
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

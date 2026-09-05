@@ -190,7 +190,7 @@ fn ship_seed8_full_pipeline() {
         .set_metric_range("height", height_layer.min_m as f64, height_layer.max_m as f64)
         .unwrap();
 
-    let coastline = vector::coastline_geojson(&eroded);
+    let coastline = vector::coastline_geojson(&eroded, None);
     writer.add_vector_file("coastline", "coastline.geojson", &coastline).unwrap();
     writer.set_level_m("coastline", 0.0).unwrap();
     let cell_size_m = window_km / w as f32 * 1000.0;
