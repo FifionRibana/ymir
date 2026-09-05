@@ -439,57 +439,15 @@ pub fn upscale_from_c1_with_progress(
         // incision. Registered with the SAME (sample_origin, sample_size) mapping as
         // the altitude, so it aligns with the terrain. Disabled → `None`, uniform K,
         // byte-identical.
-        let mut k_field = if cfg.lithology.enabled {
-            use crate::tectonics_c1::closures::lithology;
-            let (w, h) = (result.heightmap.width, result.heightmap.height);
-            let coarse_k = lithology::build_coarse_k(state, &cfg.lithology);
-            let mut kf =
-                lithology::upscale_k_to_hd(&coarse_k, w, h, cfg.sample_origin, cfg.sample_size);
-            if volcanism.enabled && !edifices.is_empty() {
-                let km_per_hd_cell = cfg.sample_size as f32 * volcanism.domain_km / w as f32;
-                lithology::stamp_volcanic_k(
-                    &mut kf,
-                    edifices,
-                    cfg.sample_origin,
-                    cfg.sample_size,
-                    km_per_hd_cell,
-                    w,
-                    h,
-                    &cfg.lithology,
-                );
-            }
-            Some(kf)
-        } else {
-            None
-        };
-        // C-3b inherited structure — fold the ISOTROPIC fracture-density erodibility
-        // (K = 1 + amplitude · density, causal from proximity to plate contacts +
-        // sutures) into the same per-cell K field. Intact craton → density 0 → ×1
-        // reference; belts near contacts erode more. Needs `kin` (boundary
-        // classification); disabled or no `kin` → unchanged, byte-identical.
-        let (w, h) = (result.heightmap.width, result.heightmap.height);
-        if cfg.fracture.enabled {
-            if let Some(kinm) = kin {
-                let dk = crate::tectonics_c1::closures::fracture::build_hd_density_k(
-                    state,
-                    kinm,
-                    &cfg.fracture,
-                    None, // Phase B: suture mask
-                    w,
-                    h,
-                    cfg.sample_origin,
-                    cfg.sample_size,
-                );
-                match &mut k_field {
-                    Some(kf) => {
-                        for (v, d) in kf.iter_mut().zip(dk.iter()) {
-                            *v *= *d;
-                        }
-                    }
-                    None => k_field = Some(dk),
-                }
-            }
-        }
+        let k_field = production_k_field(
+            state,
+            kin,
+            cfg,
+            edifices,
+            volcanism,
+            result.heightmap.width,
+            result.heightmap.height,
+        );
         result.heightmap = crate::erosion::stream_power::incise_lithology(
             &result.heightmap,
             sp,
@@ -562,6 +520,70 @@ pub fn upscale_from_c1_with_progress(
     }
 
     (result, craters)
+}
+
+/// THE per-cell erodibility multiplier the shipped incision reads — C-3 lithology (bilinear
+/// from the coarse 64² classes) × the volcanic stamp × C-3b fracture density.
+///
+/// Extracted so a bench measures the SAME field production incises with, rather than rebuilding
+/// it (the reconstruction trap, ADR: a rebuilt terrain misled the diagnosis six times). Returns
+/// `None` when every contributing closure is off, which is the byte-identical uniform-K path.
+#[allow(clippy::too_many_arguments)]
+#[must_use]
+pub fn production_k_field(
+    state: &crate::tectonics_c1::state::C1State,
+    kin: Option<&crate::tectonics_c1::kinematics::PlateKinematics>,
+    cfg: &FbmUpscaleConfig,
+    edifices: &[crate::tectonics_c1::closures::volcanism::Edifice],
+    volcanism: &crate::tectonics_c1::closures::volcanism::VolcanismConfig,
+    w: usize,
+    h: usize,
+) -> Option<Vec<f32>> {
+    use crate::tectonics_c1::closures::lithology;
+    let mut k_field = if cfg.lithology.enabled {
+        let coarse_k = lithology::build_coarse_k(state, &cfg.lithology);
+        let mut kf =
+            lithology::upscale_k_to_hd(&coarse_k, w, h, cfg.sample_origin, cfg.sample_size);
+        if volcanism.enabled && !edifices.is_empty() {
+            let km_per_hd_cell = cfg.sample_size as f32 * volcanism.domain_km / w as f32;
+            lithology::stamp_volcanic_k(
+                &mut kf,
+                edifices,
+                cfg.sample_origin,
+                cfg.sample_size,
+                km_per_hd_cell,
+                w,
+                h,
+                &cfg.lithology,
+            );
+        }
+        Some(kf)
+    } else {
+        None
+    };
+    if cfg.fracture.enabled {
+        if let Some(kinm) = kin {
+            let dk = crate::tectonics_c1::closures::fracture::build_hd_density_k(
+                state,
+                kinm,
+                &cfg.fracture,
+                None, // Phase B: suture mask
+                w,
+                h,
+                cfg.sample_origin,
+                cfg.sample_size,
+            );
+            match &mut k_field {
+                Some(kf) => {
+                    for (v, d) in kf.iter_mut().zip(dk.iter()) {
+                        *v *= *d;
+                    }
+                }
+                None => k_field = Some(dk),
+            }
+        }
+    }
+    k_field
 }
 
 #[cfg(test)]

@@ -4497,3 +4497,137 @@ keep in the first export that followed it.
 
 The two scaled arrays change the exported values, so the file the author has must be
 regenerated to be read as coherent. `ALGO_DRAINAGE` 4→5 and `ALGO_HD_DRAINAGE` 6→7.
+
+## Finding 50 — the coastal fringes: `K` is continuous, so the light remedy has no target
+
+Finding 48 is CLOSED: the contour relaxation goes back to `None`. The author's three-way
+comparison came back nearly identical, which is what the numbers predicted (−0.4 % / −0.1 % on
+the total). Mechanism confirmed, geometric remedy refuted by measurement AND by eye. The
+function stays in core, unused, for when the hypsometry converges and the flat shores need
+re-measuring.
+
+### The measurement that decides the remedy: `K` is NOT class-wise at HD
+
+Measured on the SAME field production incises with — the assembly was extracted to
+`production_k_field` so the bench cannot drift from it (the reconstruction trap).
+
+| `K` over the whole map | p1 | p25 | p50 | p75 | p99 | max | cells at exactly 1.000 |
+|---|---|---|---|---|---|---|---|
+| 2048² and 8192² | 1.049 | 1.379 | 2.210 | 3.878 | 13.63 | 56.73 | **0 (0.0 %)** |
+
+**Not one cell sits at the reference value.** The lithology classes are binary on the coarse
+64² grid but reach HD through `sample_bilinear_periodic` — a ramp over one coarse cell, 6.25 km
+— and the C-3b fracture density (`1 + amplitude·exp(−d/decay)`) multiplies every cell by a
+continuous factor. There are no class boundaries at HD to smooth.
+
+And the fringes do not sit on the steep parts of `K` either. Fringe rate by |∇K| quintile:
+
+| | Q1 | Q2 | Q3 | Q4 | Q5 |
+|---|---|---|---|---|---|
+| 2048² | 21.2 % | 23.1 % | 17.5 % | 20.2 % | 18.7 % |
+| 8192² | 15.8 % | 19.4 % | 15.1 % | 17.8 % | 20.8 % |
+
+Flat and slightly declining at 2048²; weakly rising but NON-MONOTONE at 8192². No correlation
+worth a remedy.
+
+**VERDICT, per the decision rule set before measuring: `K` is already continuous, so the cause
+is elsewhere and the remedy is heavier.** Smoothing the `K` field would be treating a
+discontinuity that does not exist. The graduated-contact idea is physically sound and would be
+the right fix IF `K` were class-wise — it is not, and saying so is worth more than shipping a
+fix that could only work by coincidence. `stamp_volcanic_k` IS hard-edged (a disc where
+`K = max(K, 3)` with no taper), and it is the one genuine discontinuity in the assembly — but
+it is a bounded number of small discs, and the quintile table says the shoreline does not
+follow them.
+
+### But the author's observation is CONFIRMED — my first metric hid it
+
+My first pass used the fringe RATE and found the closures made no difference (20.86 % off,
+20.13 % on). That was method rule 2 again, by me, one round after writing it down: **a rate is
+only valid at comparable total effect, and the coastline itself changes length.**
+
+In ABSOLUTE terms the degradation is real and large:
+
+| 2048² | rings | tiny (<20 pts) | fringes | coast km | main ring km |
+|---|---|---|---|---|---|
+| all OFF | 1163 | 1152 | 5 685 | 3 835 | 2 264 |
+| C-3 only | 1428 (+265) | 1405 | 6 345 (**+660**) | 4 227 (+393) | 2 433 |
+| C-3b only | 1552 (+389) | 1530 | 6 884 (**+1 199**) | 4 627 (+793) | 2 712 |
+| C-3 + C-3b | 1618 (+455) | 1579 | 6 926 (+1 241) | 4 860 (+1 025) | 2 772 |
+
+| 8192² | rings | tiny | fringes | coast km | main ring km |
+|---|---|---|---|---|---|
+| all OFF | 4713 | 4664 | 25 573 | 4 821 | 2 783 |
+| C-3 only | 5979 (+1266) | 5917 | 29 073 (**+3 500**) | 5 461 (+640) | 3 057 |
+| C-3b only | 5797 (+1084) | 5737 | 29 061 (**+3 488**) | 5 619 (+798) | 3 378 |
+| C-3 + C-3b | 6703 (+1990) | 6628 | 30 885 (+5 312) | 6 206 (+1 385) | 3 632 |
+
+The main ring alone grows **2 264 → 2 772 km at 2048² and 2 783 → 3 632 km at 8192²** — the
+shoreline really is more crenellated, which is what the eye reports.
+
+### The attribution, corrected — and it FLIPS with resolution
+
+- at **2048²** C-3b dominates: +1 199 fringes against C-3's +660, nearly double;
+- at **8192²** they are **equal**: +3 488 against +3 500, and C-3 adds MORE RINGS (+1 266 vs
+  +1 084).
+
+So **neither closure is "the" dominant contributor** — the ranking depends on the grid. The
+author's attribution of C-3 holds at 8192², where it adds the most rings, and his observation
+that C-3-alone is markedly worse than all-off is confirmed at both resolutions. What does not
+survive is "C-3 is dominant" as a general statement; and I would have shipped the mirror-image
+error (C-3b is dominant) had I measured only at 2048². **A cause attributed at one resolution
+is not a cause.**
+
+They are also SUB-additive: +660 and +1 199 alone, +1 241 together at 2048². The two closures
+are largely fringing the same shores.
+
+### The pre-existing baseline: quantified, and scoped to a stage — not fixed
+
+| | 2048² | 8192² |
+|---|---|---|
+| fringes with EVERY closure off | 5 685 of 6 926 = **82.1 %** | 25 573 of 30 885 = **82.8 %** |
+| rings with every closure off | 1 163 of 1 618 = 71.9 % | 4 713 of 6 703 = 70.3 % |
+| of those rings, under 20 vertices | 1 152 = **99.1 %** | 4 664 = **99.0 %** |
+
+**About 82 % of the fringing pre-exists every closure, at both resolutions**, and the coastline
+is one main ring plus a swarm of ~1 150 (2048²) or ~4 700 (8192²) specks. The pre-existing
+defect is a SPECKLE, not a fringe — a different thing from what the closures add, which is why
+it must be attributed separately.
+
+**Scoped to a stage:** it is NOT the FBM. With `amplitude_base = 0` and every closure off, the
+2048² coastline is 1 171 rings / 5 707 fringes against 1 163 / 5 685 — a difference under
+0.5 %, and in the wrong direction. Consistent with Finding 43 stage 2, where the C-1
+relief-budget cap crushes the FBM's whole contribution to ±2 m. So the speckle comes from the
+**bilinearly upscaled coarse field plus the incision**, and the FBM is exonerated. Scoped here,
+deliberately not fixed — mixing it with the closure contribution would make neither
+attributable.
+
+### Method rule 8 — for a VISUAL defect, bisect on the existing toggles first
+
+The author's three-column screenshot did in one pass what a bench had not shown, and it was
+right about the existence and the direction of the effect while my first quantitative metric
+said "no difference". No code, no bench, no build: flipping the toggles that already exist
+attributes a visual defect directly, and it costs one generation per column.
+
+The corollary matters as much: **a rate can contradict the eye and the eye be right.** When a
+visual report and a metric disagree, suspect the metric's normalisation before suspecting the
+observer — here the rate was constant precisely because the denominator, the coastline itself,
+was what the closures had changed.
+
+### RULE-7 CONTROL BLOCK
+
+The only production change touching the height path is the extraction of `production_k_field`
+— a pure refactor, same operations in the same order. Byte-identity evidence rather than
+assertion: the terrain built through the refactored path yields **1 618 rings and 37 650
+coastline vertices at 2048²**, exactly the figures Finding 48 measured before the extraction.
+The coastline flag returning to `None` restores the previously measured export. Hypsometry,
+closed-depression counts and network extent are untouched by construction (no incision
+parameter changed).
+
+### A bug in the bench, worth its line
+
+`v[((v.len() - 1) as f32 * f) as usize]` panicked at 8192²: with 67 108 864 entries,
+`67 108 863` exceeds f32's 24-bit mantissa and rounds UP to `67 108 864.0`, indexing one past
+the end. Invisible at 2048² (4 M entries, well inside the mantissa). Fixed to integer/f64
+arithmetic in both coastal benches. **A percentile helper is exactly where this hides**: it is
+trivial, it is copied between benches, and it only fails above 16.7 M elements — which is to
+say, only at the resolution that matters.

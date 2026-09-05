@@ -50,3 +50,6 @@ Thumbs.db
 .env
 # Generation step cache (internal, disposable, content-addressed)
 .ymir_cache/
+
+# Generated .ymir containers — large binary rasters, never committed.
+exports/

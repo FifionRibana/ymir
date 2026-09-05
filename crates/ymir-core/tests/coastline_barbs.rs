@@ -189,7 +189,11 @@ fn measure(
     let mut abs_off: Vec<f32> = offsets.iter().map(|v| v.abs()).collect();
     abs_off.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let med = |v: &Vec<f32>, f: f32| {
-        if v.is_empty() { 0.0 } else { v[((v.len() as f32 - 1.0) * f) as usize] }
+        if v.is_empty() {
+            0.0
+        } else {
+            v[(((v.len() - 1) as f64 * f as f64).round() as usize).min(v.len() - 1)]
+        }
     };
     // Signed median, the figure the coherence check reports.
     let mut signed = offsets.clone();
