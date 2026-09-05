@@ -1403,10 +1403,25 @@ fn export_ymir_container(
 
     // ── Y-B vector layers (traced from the same eroded field). ──
     // Coastline: sea-level isoline on the normalized field (sea = 0.5).
-    // Finding 48: the relaxation ships OFF — it redistributes barbs without removing them
-    // (total >80° turns 20.13 % → 20.04 %). Flip to `Some(CoastlineSmoothing { .. })` to
-    // evaluate it visually.
-    let coastline = vector::coastline_geojson(eroded, None);
+    // ⚠️ EXPERIMENT, ON for the author's visual judgement — the NUMBERS argue against it
+    // (ADR Findings 48–49) and are recorded here so the flag is never flipped by habit:
+    //   • total turns > 80° move 20.13 % → 20.04 % at 2048² and 17.78 % → 17.73 % at 8192².
+    //     The relaxation REDISTRIBUTES barbs between slope classes; it does not remove them.
+    //   • the only real gain is the axial concentration, 0.369 → 0.274 — the contour is less
+    //     axis-aligned. Whether that reads as a better coastline is exactly what the numbers
+    //     cannot say, which is why this is ON rather than settled.
+    //   • the cost is the coherence check: the sea-level offset |p90| goes from the export's
+    //     own u16 QUANTISATION FLOOR (0.148 m per step, so ±0.06 m is as good as it can get)
+    //     to 1.42 m at 8192² — about 10× the vertical resolution of the file, so it becomes
+    //     visible in the raster instead of being lost in rounding.
+    // Set back to `None` to ship the raw contour.
+    let coastline = vector::coastline_geojson(
+        eroded,
+        Some(vector::CoastlineSmoothing {
+            m_per_cell: window_km * 1000.0 / eroded.width as f32,
+            depth_scale_m: ss.depth_scale_m as f32,
+        }),
+    );
     writer.add_vector_file("coastline", "coastline.geojson", &coastline)?;
     writer.set_level_m("coastline", 0.0)?;
 
