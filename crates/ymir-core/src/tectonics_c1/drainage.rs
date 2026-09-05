@@ -903,6 +903,17 @@ pub fn apply_geo_scale_ratio(
         dr.segment_discharge_m3s[i] = q;
         dr.segment_width_m[i] = CHANNEL_WIDTH_A * q.max(0.0).powf(CHANNEL_WIDTH_B);
         dr.segment_navigability[i] = thresholds.classify(km2);
+        // ⚠️ EVERY SIGNIFIED QUANTITY, or the export ships two scales at once (ADR Finding 49).
+        // These two were added later and missed here, so `catchment_km2` came out REAL while
+        // `drainage_km2` came out SIGNIFIED — an 8192² export at ratio 7.5 had a top reach
+        // reading 1 610 km² of catchment against 1 962 km² of "drainage", quantities 56× apart
+        // in scale and therefore not comparable. The per-point profile matters just as much:
+        // the microscope's shared-mouth attribution reads it, so half the list would have been
+        // real and half signified.
+        dr.segment_catchment_cells[i] *= area_scale;
+        for v in dr.segment_discharge_profile_m3s[i].iter_mut() {
+            *v *= area_scale;
+        }
     }
 }
 
@@ -2683,5 +2694,69 @@ mod tests {
         assert_eq!(t.classify(1_000.0), Navigability::SmallBoat);
         assert_eq!(t.classify(8_000.0), Navigability::Barge);
         assert_eq!(t.classify(80_000.0), Navigability::Ship);
+    }
+
+    /// ADR Finding 49 — GEOGRAPHIC SCALE: every per-segment array must be listed here with its
+    /// expected behaviour under the ratio. Two were missed when they were added
+    /// (`segment_catchment_cells`, `segment_discharge_profile_m3s`) and the export shipped two
+    /// scales at once. `push_segment` cannot catch this: it guards APPENDS, and this is a
+    /// MUTATION. Enumerating the fields in a test is the guard for the mutation case — adding a
+    /// field makes this test's list incomplete, and the reviewer has to decide.
+    #[test]
+    fn geo_scale_ratio_scales_every_signified_quantity() {
+        let (w, h) = (8usize, 8usize);
+        let seg = RiverSegment {
+            points: vec![(1, 1), (2, 2)],
+            strahler_order: 2,
+            avg_flow: 1.0,
+            max_flow: 2.0,
+            basin_id: 0,
+            upstream: vec![],
+            downstream: None,
+        };
+        let mut dr = C1DrainageResult {
+            flow: FlowResult {
+                filled: GridF32::new(w, h, 0.0),
+                direction: vec![0; w * h],
+                accumulation: GridF32::new(w, h, 0.0),
+                basins: vec![0; w * h],
+                num_basins: 1,
+            },
+            rivers: RiverNetwork { segments: vec![seg] },
+            segment_drainage_km2: vec![100.0],
+            segment_navigability: vec![Navigability::NonNavigable],
+            segment_discharge_m3s: vec![10.0],
+            segment_width_m: vec![5.0],
+            segment_profile_m: vec![vec![120.0, 110.0]],
+            segment_catchment_cells: vec![400.0],
+            segment_discharge_profile_m3s: vec![vec![4.0, 10.0]],
+            segment_kind: vec![SegmentKind::Watercourse],
+            segment_source_lake: vec![None],
+            lakes: vec![],
+            lake_map: vec![0; w * h],
+            width: w,
+            height: h,
+        };
+        let ratio = 2.0f32; // area_scale = 4
+        apply_geo_scale_ratio(&mut dr, ratio, &DrainageThresholds::default());
+
+        // SCALED by ratio² — the signified hydrology.
+        assert!((dr.segment_drainage_km2[0] - 400.0).abs() < 1e-3, "drainage_km2 × ratio²");
+        assert!((dr.segment_discharge_m3s[0] - 40.0).abs() < 1e-3, "discharge × ratio²");
+        assert!((dr.segment_catchment_cells[0] - 1600.0).abs() < 1e-3, "catchment × ratio²");
+        assert!(
+            (dr.segment_discharge_profile_m3s[0][1] - 40.0).abs() < 1e-3,
+            "the PER-POINT discharge scales like the per-segment one, or the microscope's \
+             shared-mouth attribution mixes scales inside one list"
+        );
+        // DERIVED from the scaled discharge.
+        let expect_w = CHANNEL_WIDTH_A * 40.0f32.powf(CHANNEL_WIDTH_B);
+        assert!((dr.segment_width_m[0] - expect_w).abs() < 1e-3, "width from the scaled Q");
+        // SCALE-INVARIANT by nature — geometry, identity and typing.
+        assert_eq!(dr.segment_profile_m[0], vec![120.0, 110.0], "bed elevation is not an area");
+        assert_eq!(dr.segment_kind[0], SegmentKind::Watercourse, "the kind is not a magnitude");
+        assert_eq!(dr.segment_source_lake[0], None, "an id is not a magnitude");
+        assert_eq!(dr.rivers.segments[0].points.len(), 2, "geometry is DRAWN, never scaled");
+        assert!(dr.segment_arrays_aligned(), "arrays stay aligned");
     }
 }

@@ -60,7 +60,7 @@ pub const ALGO_UPSCALE_EROSION: u32 = 2;
 
 /// Version of the drainage build (`c1_drainage`). ⚠️ BUMP on ANY code change to
 /// that step (see above).
-pub const ALGO_DRAINAGE: u32 = 4; // Finding 47: geometric catchment (cells) exported as catchment_km2
+pub const ALGO_DRAINAGE: u32 = 5; // Finding 49: geo_scale_ratio now scales the catchment + per-point discharge
 
 /// Version of the climate build (`c1_climate_placed` / `c1_climate_windowed`).
 /// ⚠️ BUMP on ANY code change to that step (see above).
@@ -87,7 +87,7 @@ pub const ALGO_BREACH: u32 = 1;
 /// evaporative equilibrium (level + footprint), draining the exposed floor from `lake_map` —
 /// the GEOMETRY half of the same discard H-1 fixed for the classification. Lake outlines,
 /// river clipping, wetlands and biomes all move.
-pub const ALGO_HD_DRAINAGE: u32 = 6;
+pub const ALGO_HD_DRAINAGE: u32 = 7;
 
 // ── Cache key ──────────────────────────────────────────────────────────────
 

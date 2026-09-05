@@ -4426,3 +4426,74 @@ construction, which is stronger. The relevant invariants are the coastline layer
 those were measured: **ring/line count unchanged** (1618 → 1618, 6703 → 6703), vertex count
 unchanged, mean step ±2 %, and the sea-level offset above. Determinism verified by two identical
 runs.
+
+## Finding 49 — the export caught two scales in one file, and a bench of mine that was not production
+
+The author exported at 8192² and the file refuted two things I had reported.
+
+### The bug: `catchment_km2` was REAL while `drainage_km2` was SIGNIFIED
+
+`apply_geo_scale_ratio` (Finding 24) multiplies the SIGNIFIED hydrology by `ratio²` — the map
+draws `real_km` and signifies `real_km · ratio`. It scales `segment_drainage_km2`,
+`segment_discharge_m3s`, `segment_width_m` and re-classifies `segment_navigability`. The two
+arrays added in Findings 46–47 were **not** in that list, so at the author's shipped
+`geographic_scale_ratio = 7.5` (area ×56.25) the export carried:
+
+| top reach by geometric catchment | value | scale |
+|---|---|---|
+| `catchment_km2` | 1 610 | REAL |
+| `drainage_km2` | 1 962 | SIGNIFIED (×56.25) |
+
+Two "areas" in one row, 56× apart in meaning, with nothing saying so. Worse for
+`segment_discharge_profile_m3s`: the microscope's shared-mouth attribution reads it, so entries
+with a shared mouth would have carried a REAL area while every other entry carried a signified
+one — **an inconsistency INSIDE one list**.
+
+Fixed: both arrays scale in `apply_geo_scale_ratio`.
+
+**Sixth occurrence of the completeness trap, and it is a DIFFERENT shape.** `SegmentRow` +
+`push_segment` (Finding 47) closes the APPEND case by making omission a compile error. This is
+a MUTATION — an existing array not updated — and no constructor guards it. The guard for the
+mutation case is `geo_scale_ratio_scales_every_signified_quantity`, which ENUMERATES every
+per-segment array with its expected behaviour: scaled by `ratio²`, derived from a scaled
+quantity, or scale-invariant by nature. Adding a field leaves the list incomplete and forces
+the decision. Weaker than a compile error, but it is the strongest guard available for "an
+existing loop should have grown a line".
+
+### The correction: my navigability verdict was measured at the wrong ratio
+
+I reported "barges and ships will not appear, and that is expected". **The author's export
+has 996 barge-class watercourses and 3 404 small-boat**, out of 7 498. My benches all passed
+`geo_scale_ratio: 1.0`; the shipped config uses **7.5**. So Finding 47's three-column table
+describes a configuration the author does not run.
+
+| in the author's 8192² export (ratio 7.5, lat 45°, span 40°) | count |
+|---|---|
+| SmallBoat | 3 404 |
+| NonNavigable | 3 098 |
+| Barge | 996 |
+| Ship | 0 watercourses (8 total, all SPILLWAYS) |
+
+**Method rule 3, violated by me, on a parameter I had listed and set myself.** `geo_scale_ratio`
+is in `HdParams`; I wrote `1.0` into every bench and never questioned it, because it is
+documented as a "presentation multiplier" that touches nothing physical — true of the terrain,
+false of the exported hydrology, which is precisely what the navigability question was about.
+The lesson is narrower and sharper than "reproduce the whole chain": **a parameter documented as
+not affecting X may still affect the QUANTITY YOU ARE MEASURING.** Read what it touches, not
+what it is called.
+
+What survives from Finding 47 unchanged, because it is measured on quantities the ratio scales
+uniformly: the geometric distribution is identical between arid and humid (the ratio does not
+create water), the discharge is not resolution-stable, and the thresholds in the code were never
+those the author proposed. What does NOT survive is the conclusion "no barges" — at ratio 7.5
+the class spread is already populated, and the parked 10/100/1000/8000 proposal would make it
+far MORE generous, not less.
+
+**And the 8 Ship-class entries are all spillways** — the exact mischaracterisation Finding 45
+typed away. A consumer filtering `kind == "Watercourse"` never sees them. The typing earned its
+keep in the first export that followed it.
+
+### Re-export required
+
+The two scaled arrays change the exported values, so the file the author has must be
+regenerated to be read as coherent. `ALGO_DRAINAGE` 4→5 and `ALGO_HD_DRAINAGE` 6→7.
