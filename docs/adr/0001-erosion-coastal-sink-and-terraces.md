@@ -4859,3 +4859,125 @@ passes what three rounds of mechanism could not.
 JUDGEMENT, and those are separate questions to ask of it. The turn count located the stage
 correctly three times and could never have judged a remedy. The right response was not to
 distrust its attribution but to build the second metric and check whether they agree — they do.
+
+## Finding 53 — the two sweeps, an anchored target, and the one thing that is actually wrong
+
+### First, three corrections to the premises
+
+**`smooth_iterations` does not exist.** There is no such parameter in core; the only `smooth*`
+knob is `smoothing_width` in `tectonics_v2/cratonic`, unrelated. What does not run in production
+is the contour relaxation of Finding 48, passed as `Option<CoastlineSmoothing> = None` — set
+that way deliberately two rounds ago because the measurement refuted it, not an undiscovered
+piece of wiring.
+
+**`coast_warp_strength = 1.5` IS active**, and it is the right suspect: its own docstring says
+it displaces the coarse-altitude sampling position "so the sea-level contour meanders instead of
+following the blocky 64² polygon". It had never been measured. That instinct was correct, on the
+correct parameter.
+
+**Two sets of figures could not be sourced.** "10.55 cells median fringe length at 8192² against
+1.90 at coarse, regularity 0 % → 47.8 %" contradicts the committed Part C, which measures the
+upscaled coarse field at **14 spurs / 2.4 % of coastline** and the jump at relief-v2 (1512 /
+64.2 %). And if those lengths are in CELLS they are not comparable across resolutions at all —
+128× of cell size, the exact trap Part A documented. Likewise "the validation test was
+unpassable, the toggles barely move the metric (0.80 % vs 0.73 %)": the validation RAN AND
+PASSED — 1 146 → 1 262 spurs, p90 2.58 → 3.48 km, in the author's order. There is no ill-posed
+test to record, and the metric was validated before use.
+
+### The anchoring — derived reference values, not invented ones
+
+The requirement was "indentations of varied lengths and regularity near zero". Both have exact
+references, which is what makes the target defensible:
+
+| quantity | reference | why | target |
+|---|---|---|---|
+| **spacing CV** | **1.0** | a POISSON process — spurs placed at random along the shore — has gap CV of exactly 1 | ≈ 1, and not below ~0.6 |
+| **length variety** `p90/median` | **3.32** | an EXPONENTIAL distribution, the maximum-entropy choice for a positive quantity with a given mean: "as varied as possible without further structure". ln(10)/ln(2) | ≈ 3.3; under ~2 is suspiciously uniform |
+| **axis R** | **0** | isotropic | < 0.1 |
+
+**Which metric is optimised, stated so the recommendation cannot be misread:** the LENGTH
+VARIETY and the spacing CV are optimised. **Coastline length and spur count are REPORTED ONLY** —
+reducing the warp shortens the coast mechanically and a shorter coast is not a better one.
+
+### And the anchoring immediately isolates the defect
+
+| shipped product | 2048² | 8192² | target | verdict |
+|---|---|---|---|---|
+| spacing CV | 0.93 | 0.71 | ≈ 1.0 | **in range** |
+| axis R | 0.052 | 0.033 | < 0.1 | **in range** |
+| **length variety p90/med** | **2.14** | **2.02** | **≥ 3.3** | **OUT** |
+
+**The coast is not regularly spaced and not parallel. Every spur is simply about the same
+length.** That is the single anchored quantity that fails, and it is the first number in this
+whole chantier that isolates what "manufactured" means. It also explains why the parallelism
+hypothesis kept feeling right and measuring wrong: uniform LENGTH reads as repetition, and
+repetition reads as a comb, without any common direction being involved.
+
+### Sweep 1 — `coast_warp_strength`
+
+| warp | 2048² coast km / variety / CV | 8192² coast km / variety / CV |
+|---|---|---|
+| **1.50 (shipped)** | 4 860 / **2.14** / 0.93 | 6 206 / **2.02** / 0.71 |
+| 1.00 | 4 994 / 2.17 / 0.85 | 6 903 / 2.13 / 0.69 |
+| 0.50 | 4 989 / 2.27 / 0.81 | 7 225 / 2.26 / 0.69 |
+| 0.25 | 4 753 / 2.49 / 0.88 | 6 942 / 2.55 / 0.72 |
+| **0.00** | 5 001 / **2.53** / 0.80 | 6 870 / **2.57** / 0.73 |
+
+**The warp works against its own purpose.** It exists to make the contour meander, and it makes
+the spur lengths MORE UNIFORM: variety rises monotonically as the warp is removed, 2.14 → 2.53
+and 2.02 → 2.57. The trend is monotone at both resolutions, which is what makes it a result
+rather than noise.
+
+**The length trap does not even apply here.** Removing the warp does NOT shorten the coast —
+4 860 → 5 001 km and 6 206 → 6 870 km, it slightly LENGTHENS it. So the recommendation cannot be
+read as "shorter is better"; the coast gets marginally longer AND more varied.
+
+**And the feature's stated fear is checked, not assumed.** Turning the warp off was supposed to
+leave the contour "following the blocky 64² polygon" — the axis concentration would catch that
+immediately, since a grid-following contour is axis-aligned. At warp 0 it is **0.060 and 0.025**,
+fully isotropic. The coast does not fall back onto the grid.
+
+Cost on the CV: 0.93 → 0.80 at 2048² (mildly further from the Poisson reference, still in
+range), flat at 8192² (0.71 → 0.73). A real but small trade.
+
+### Sweep 2 — the contour relaxation, on the metric that can see it
+
+Finding 48 evaluated the relaxation with the TURN COUNT and got −0.4 %, a number with no
+meaning, since the turn count cannot see spur length. Re-run on the spur metric — nearly free,
+since the relaxation only post-processes the polyline, so all four settings come from one build:
+
+| passes | 2048² variety / CV / spurs | 8192² variety / CV / spurs |
+|---|---|---|
+| 0 (shipped) | 2.14 / 0.93 / 1 262 | 2.02 / 0.71 / 1 951 |
+| 1 | 2.15 / 0.93 / 1 263 | 2.02 / 0.71 / 1 953 |
+| 2 | 2.15 / 0.92 / 1 261 | 2.02 / 0.71 / 1 952 |
+| 4 | 2.12 / 0.93 / 1 238 | 2.02 / 0.71 / 1 953 |
+
+**Flat on everything.** Finding 48's refutation stands, and it now stands on the right
+instrument — which was the open question. The relaxation stays `None`, definitively.
+
+### Ranked recommendation — and the honest answer to "is any setting credible"
+
+**No setting produces a credible coast.** The best available closes about 40 % of the gap: at
+8192², variety 2.02 → 2.57 against a 3.32 target. That is worth saying first, because the
+recommendation below is an improvement and not a fix.
+
+1. **`coast_warp_strength: 1.5 → 0`.** The only measured setting that moves the anchored metric,
+   monotone at both resolutions, at no cost in coastline length, no parallelism cost, and a
+   small CV cost at 2048². Cost: ONE CONSTANT, plus an `ALGO_UPSCALE_EROSION` bump and a
+   re-export. It removes a feature that measurably works against its stated purpose.
+   ⚠️ It changes the terrain, so the rule-7 control block applies before it ships — not measured
+   in this read-only pass.
+2. **The remaining 60 % is the incision** (Findings 51–52), and therefore the hillslope term
+   (Findings 43–44). Unchanged ranking, now with a quantified share.
+3. **The relaxation: closed.** Not `None`-for-now — `None` on two independent metrics.
+
+### Method — the anchor is what turned a preference into a measurement
+
+Every previous round asked "is it better?" and could only answer "the number moved". With a
+Poisson CV of 1.0 and an exponential p90/median of 3.32, "better" has a direction AND a
+destination, and two of the three quantities turn out to have been fine all along. **Without the
+anchoring the obvious optimisation would have been to reduce the spur count — the one quantity
+that must NOT be optimised**, since a coast with few indentations is the soft trace already
+rejected. That is exactly the failure the anchoring was demanded to prevent, and it would have
+happened.

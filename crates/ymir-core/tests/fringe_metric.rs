@@ -410,3 +410,185 @@ fn spur_stage_bisection() {
            if the two agree, the earlier attribution survives its metric being replaced."
     );
 }
+
+// ─────────────────────────────── PART D ────────────────────────────────
+// THE WARP SWEEP, and the anchoring the metric was missing.
+//
+// ANCHORING — what an organic coast looks like, in reference values that are DERIVED rather
+// than invented. The author's requirement was "indentations of VARIED lengths and regularity
+// near zero"; both have exact mathematical references:
+//
+//   • SPACING REGULARITY. For a POISSON process — events placed completely at random along the
+//     shore — the coefficient of variation of the gaps is EXACTLY 1.0. So CV ≈ 1 means "as
+//     irregular as chance"; CV ≪ 1 is a comb (evenly spaced teeth); CV > 1 is clustered.
+//     TARGET: CV ≈ 1, and certainly not below ~0.6.
+//   • LENGTH VARIETY. For an exponential length distribution — the maximum-entropy choice for a
+//     positive quantity with a given mean, i.e. "as varied as it can be without further
+//     structure" — p90/median = ln(10)/ln(2) = 3.32. A ratio near 1 means every spur is the
+//     SAME length, which is the signature of a manufactured comb.
+//     TARGET: p90/median ≈ 3.3; a ratio under ~2 is suspiciously uniform.
+//   • PARALLELISM. Axial concentration R = 0 is isotropic. TARGET: R < 0.1.
+//
+// WHICH METRIC IS BEING OPTIMISED, stated so the recommendation cannot be misread:
+//   OPTIMISED → the LENGTH VARIETY ratio p90/median, towards 3.3, and the spacing CV towards 1.
+//   REPORTED ONLY → coastline length and spur count. Reducing the warp shortens the coast
+//   MECHANICALLY, and a shorter coast is NOT a better one — a too-smooth trace is as wrong as a
+//   combed one, and the author has already rejected one.
+
+const EXP_P90_OVER_MEDIAN: f32 = 3.322; // ln(10)/ln(2)
+const POISSON_CV: f32 = 1.0;
+
+fn hd_warp(target: usize, warp: f64) -> GridF32 {
+    let ss = SteinSteinParams::default();
+    let (state, kin, run_cfg) = coarse_state();
+    let seed = WorldSeed::new(PSEED);
+    let volc = VolcanismConfig { enabled: true, domain_km: DOMAIN_KM, ..Default::default() };
+    let edifices = place_edifices(&state, &kin, &seed, DOMAIN_KM, &volc);
+    let mut cfg = production_hd_config(&ProductionHdOpts {
+        target_size: target,
+        domain_km: DOMAIN_KM,
+        depth_scale_m: ss.depth_scale_m as f32,
+        sample_origin: [0.0, 0.578_125],
+        sample_size: 1.0,
+        amplitude_base: 0.04,
+        mfd_p: 2.0,
+        lithology: LithologyConfig {
+            enabled: true,
+            soft_multiplier: 10.0,
+            volcanic_multiplier: 3.0,
+            rift_age_threshold: 1.0,
+        },
+        fracture: FractureConfig {
+            enabled: true,
+            amplitude: 6.0,
+            decay_km: 25.0,
+            domain_km: DOMAIN_KM,
+            ..Default::default()
+        },
+    });
+    cfg.coast_warp_strength = warp;
+    let (up, _) = upscale_from_c1_with_progress(
+        &state,
+        &run_cfg.iso_config,
+        &ss,
+        &seed,
+        &cfg,
+        &edifices,
+        &volc,
+        Some(&kin),
+        &mut |_| {},
+        &|| false,
+    );
+    up.heightmap
+}
+
+fn sweep_row(label: &str, s: &Spurs) {
+    let variety = if s.med_len_km > 0.0 { s.p90_len_km / s.med_len_km } else { 0.0 };
+    let flag = |ok: bool| if ok { " " } else { "!" };
+    eprintln!(
+        "{label:<26} {:>9.0} {:>7} {:>8.2} {:>8.2} {:>8.2}{} {:>8.2}{} {:>7.3}{}",
+        s.coast_km,
+        s.count,
+        s.med_len_km,
+        s.p90_len_km,
+        variety,
+        flag(variety >= 2.0),
+        s.spacing_cv,
+        flag(s.spacing_cv >= 0.6),
+        s.axis_r,
+        flag(s.axis_r < 0.1),
+    );
+}
+
+fn sweep_header() {
+    eprintln!(
+        "{:<26} {:>9} {:>7} {:>8} {:>8} {:>9} {:>9} {:>8}",
+        "coast_warp_strength", "coast km", "spurs", "med km", "p90 km", "VARIETY", "CV", "axis R"
+    );
+    eprintln!(
+        "{:<26} {:>9} {:>7} {:>8} {:>8} {:>9} {:>9} {:>8}",
+        "  ORGANIC TARGET", "-", "-", "-", "-", ">= 3.3", "~ 1.0", "< 0.1"
+    );
+}
+
+#[test]
+#[ignore]
+fn warp_strength_sweep() {
+    let (min_spur_km, neck_km) = (1.0f32, 0.6f32);
+    eprintln!(
+        "\n=====  PART D — coast_warp_strength SWEEP  =====\n\n\
+         OPTIMISED: length VARIETY (p90/median, exponential reference {EXP_P90_OVER_MEDIAN:.2}) \
+         and spacing CV\n            (Poisson reference {POISSON_CV:.1}). REPORTED ONLY: coastline \
+         length and spur count —\n            a shorter coast is not a better one.\n\
+         '!' marks a value outside the organic range."
+    );
+    for target in [2048usize, 8192] {
+        let km = DOMAIN_KM / target as f32;
+        eprintln!("\n--- {target}² ({:.0} m/cell) ---", km * 1000.0);
+        sweep_header();
+        for warp in [1.5f64, 1.0, 0.5, 0.25, 0.0] {
+            let polys = marching_squares(&hd_warp(target, warp), SEA);
+            let s = spurs(&polys, km, min_spur_km, neck_km);
+            let tag = if (warp - 1.5).abs() < 1e-9 {
+                format!("{warp:.2} (SHIPPED)")
+            } else {
+                format!("{warp:.2}")
+            };
+            sweep_row(&tag, &s);
+        }
+    }
+}
+
+/// PART E — the CONTOUR RELAXATION, re-measured with the metric that sees the symptom.
+///
+/// Finding 48 evaluated it with the TURN COUNT and got −0.4 %, a number with no meaning: the
+/// turn count cannot see spur length, which is the thing the relaxation would have to shorten.
+/// The relaxation only post-processes the polyline, so all four settings come from ONE terrain
+/// build — the sweep is nearly free, and it closes the question properly rather than on an
+/// instrument now known to be unfit.
+#[test]
+#[ignore]
+fn relaxation_passes_sweep() {
+    use ymir_core::terrain::contour::{
+        SMOOTH_RELAX_BELOW_DEG, slope_deg_to_norm_gradient, smooth_polylines_on_isoline,
+    };
+    let (min_spur_km, neck_km) = (1.0f32, 0.6f32);
+    eprintln!(
+        "
+=====  PART E — contour relaxation passes, on the spur metric  =====
+
+         Same OPTIMISED / REPORTED split as Part D. The relaxation would have to raise the
+         length VARIETY towards 3.3 to be worth anything; Finding 48 could not see that."
+    );
+    for target in [2048usize, 8192] {
+        let km = DOMAIN_KM / target as f32;
+        let ss = SteinSteinParams::default();
+        let field = hd_field(target, true);
+        let raw = marching_squares(&field, SEA);
+        let gate = slope_deg_to_norm_gradient(
+            SMOOTH_RELAX_BELOW_DEG,
+            km * 1000.0,
+            2.0 * 1.13 * ss.depth_scale_m as f32,
+        );
+        eprintln!(
+            "
+--- {target}² ({:.0} m/cell) ---",
+            km * 1000.0
+        );
+        sweep_header();
+        for passes in [0usize, 1, 2, 4] {
+            let polys = if passes == 0 {
+                raw.clone()
+            } else {
+                smooth_polylines_on_isoline(&field, SEA, &raw, passes, gate)
+            };
+            let s = spurs(&polys, km, min_spur_km, neck_km);
+            let tag = if passes == 0 {
+                "0 (SHIPPED, relaxation off)".to_string()
+            } else {
+                format!("{passes} pass(es)")
+            };
+            sweep_row(&tag, &s);
+        }
+    }
+}
