@@ -220,16 +220,32 @@ struct Spurs {
     /// Coefficient of variation of the spacing between consecutive spur roots.
     spacing_cv: f32,
     /// Circular concentration of the spur axes (axial, doubled-angle). 1 = all parallel.
+    ///
+    /// ⚠️ GLOBAL, and therefore BLIND to the actual defect. The renders show the spurs arranged
+    /// in BUNDLES, each bundle internally parallel but pointing a different way from the next —
+    /// so the global resultant cancels to ~0.03 and reads "isotropic" while the picture shows a
+    /// comb. Use `local_axis_r` to judge parallelism.
     axis_r: f32,
+    /// MEDIAN over spurs of the axial concentration among each spur and its 8 nearest
+    /// neighbours. This is what "parallel fringes" means: locally aligned, globally scattered.
+    local_axis_r: f32,
 }
 
 /// A spur is an excursion that comes back on itself: an arc of at least `min_spur_km` whose
 /// endpoints are within `neck_km` of each other. `neck_km` is the width of the isthmus that
 /// makes it a spur rather than a bay.
+/// ⚠️ `MAX_SPUR_KM` is the search WINDOW, and it is an instrument ceiling: a spur longer than
+/// this cannot be found, so every length statistic saturates at it. The first version used
+/// `min_spur_km * 8` = 8 km and the `max` column read 7.99–8.00 km at EVERY setting including
+/// the reference — a constant, not a measurement. The `max` column is what exposed it, which is
+/// the argument for reporting a tail rather than a median alone.
+const MAX_SPUR_KM: f32 = 50.0;
+
 fn spurs(polys: &[Polyline], km_per_cell: f32, min_spur_km: f32, neck_km: f32) -> Spurs {
     let neck_cells = neck_km / km_per_cell;
     let min_arc_cells = min_spur_km / km_per_cell;
     let mut lens: Vec<f32> = Vec::new();
+    let mut axes: Vec<(f32, f32, f32)> = Vec::new(); // (mid x, mid y, axis angle)
     let mut roots: Vec<f32> = Vec::new(); // arc position of each spur root, for the spacing CV
     let (mut c2, mut s2, mut naxis) = (0.0f64, 0.0f64, 0usize);
     let mut coast_cells = 0.0f32;
@@ -252,7 +268,7 @@ fn spurs(polys: &[Polyline], km_per_cell: f32, min_spur_km: f32, neck_km: f32) -
         while i < pl.len() {
             let mut best: Option<usize> = None;
             let mut j = i + 1;
-            while j < pl.len() && arc[j] - arc[i] < min_arc_cells * 8.0 {
+            while j < pl.len() && (arc[j] - arc[i]) * km_per_cell < MAX_SPUR_KM {
                 if arc[j] - arc[i] >= min_arc_cells {
                     let d = ((pl[j].0 - pl[i].0).powi(2) + (pl[j].1 - pl[i].1).powi(2)).sqrt();
                     if d <= neck_cells {
@@ -280,6 +296,7 @@ fn spurs(polys: &[Polyline], km_per_cell: f32, min_spur_km: f32, neck_km: f32) -
                     c2 += (2.0 * th).cos();
                     s2 += (2.0 * th).sin();
                     naxis += 1;
+                    axes.push((mid.0, mid.1, th as f32));
                     i = j; // no overlap
                 }
                 None => i += 1,
@@ -309,6 +326,38 @@ fn spurs(polys: &[Polyline], km_per_cell: f32, min_spur_km: f32, neck_km: f32) -
         (m, if m > 0.0 { var.sqrt() / m } else { 0.0 })
     };
     let _ = mean;
+    // LOCAL parallelism: for each spur, the axial resultant over itself and its 8 nearest
+    // neighbours by midpoint. Bundles that are internally parallel score high here even when
+    // the global resultant is ~0.
+    const K: usize = 8;
+    let mut local: Vec<f32> = Vec::new();
+    for (i, a) in axes.iter().enumerate() {
+        let mut d: Vec<(f32, usize)> = axes
+            .iter()
+            .enumerate()
+            .filter(|(j, _)| *j != i)
+            .map(|(j, b)| (((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt(), j))
+            .collect();
+        if d.len() < K {
+            continue;
+        }
+        d.select_nth_unstable_by(K - 1, |x, y| {
+            x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let (mut cc, mut sc) = (2.0 * a.2, 0.0f32);
+        cc = cc.cos();
+        sc = (2.0 * a.2).sin();
+        let (mut cs, mut ss_) = (cc, sc);
+        for (_, j) in d.iter().take(K) {
+            cs += (2.0 * axes[*j].2).cos();
+            ss_ += (2.0 * axes[*j].2).sin();
+        }
+        let n = (K + 1) as f32;
+        local.push(((cs / n).powi(2) + (ss_ / n).powi(2)).sqrt());
+    }
+    local.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let local_axis_r = if local.is_empty() { 0.0 } else { local[local.len() / 2] };
+
     Spurs {
         coast_km: coast_cells * km_per_cell,
         count: lens.len(),
@@ -321,6 +370,7 @@ fn spurs(polys: &[Polyline], km_per_cell: f32, min_spur_km: f32, neck_km: f32) -
         } else {
             (((c2 / naxis as f64).powi(2) + (s2 / naxis as f64).powi(2)).sqrt()) as f32
         },
+        local_axis_r,
     }
 }
 
@@ -591,4 +641,220 @@ fn relaxation_passes_sweep() {
             sweep_row(&tag, &s);
         }
     }
+}
+
+// ─────────────────────────────── PART F ────────────────────────────────
+// THE WARP SWEEP WITH FRINGE LENGTH AS THE PRIMARY METRIC, and a PNG per setting.
+//
+// PRIMARY (optimised): FRINGE LENGTH — p50, p90 and MAX. It is the LONG spurs that are visible,
+//   and a median can improve while the tail stays, so the tail is reported.
+// REPORTED ONLY (never optimised): regularity CV, axis R, coastline length, spur count. A
+//   shorter coast is not a better one and a more regular one is not either — those numbers are
+//   here to catch a remedy that trades the symptom for a different defect.
+//
+// AND A PNG PER SETTING. Three wrong attributions and two remedies evaluated against metrics
+// that did not measure the symptom; a picture per setting would have caught each sooner. The
+// crop is chosen ONCE, on the shipped config, as the window with the most spur vertices, and
+// then held FIXED for every panel — otherwise the panels are not comparable.
+
+const CROP: usize = 640;
+
+/// Land/sea render with the contour drawn on top: sea 0, land 0.65, coastline 1.0.
+fn render_crop(
+    field: &GridF32,
+    polys: &[Polyline],
+    ox: usize,
+    oy: usize,
+    path: &std::path::Path,
+) -> Result<(), String> {
+    let mut img = GridF32::new(CROP, CROP, 0.0);
+    for y in 0..CROP {
+        for x in 0..CROP {
+            let (sx, sy) = (ox + x, oy + y);
+            if sx < field.width && sy < field.height && field.data[sy * field.width + sx] > SEA {
+                img.set(x, y, 0.65);
+            }
+        }
+    }
+    for pl in polys {
+        for &(px, py) in pl.iter() {
+            let (ix, iy) = (px.round() as isize - ox as isize, py.round() as isize - oy as isize);
+            if ix >= 0 && iy >= 0 && (ix as usize) < CROP && (iy as usize) < CROP {
+                img.set(ix as usize, iy as usize, 1.0);
+            }
+        }
+    }
+    img.save_png_u8(path)
+}
+
+/// The window holding the most spur vertices — chosen once, then held fixed.
+fn densest_window(polys: &[Polyline], w: usize, h: usize, km_per_cell: f32) -> (usize, usize) {
+    let (min_spur_km, neck_km) = (1.0f32, 0.6f32);
+    let _ = spurs(polys, km_per_cell, min_spur_km, neck_km); // same parameters as the metric
+    let step = CROP / 2;
+    let (mut best, mut bxy) = (0usize, (0usize, 0usize));
+    let mut oy = 0;
+    while oy + CROP <= h {
+        let mut ox = 0;
+        while ox + CROP <= w {
+            let mut n = 0usize;
+            for pl in polys {
+                for &(px, py) in pl.iter() {
+                    let (x, y) = (px as usize, py as usize);
+                    if x >= ox && x < ox + CROP && y >= oy && y < oy + CROP {
+                        n += 1;
+                    }
+                }
+            }
+            if n > best {
+                best = n;
+                bxy = (ox, oy);
+            }
+            ox += step;
+        }
+        oy += step;
+    }
+    bxy
+}
+
+fn len_row(label: &str, s: &Spurs, km_per_cell: f32, max_km: f32) {
+    eprintln!(
+        "{label:<24} {:>8.2} {:>8.2} {:>8.2} | {:>7.1} {:>7.1} {:>7.1} | {:>7} {:>8.0} {:>6.2} {:>6.3}",
+        s.med_len_km,
+        s.p90_len_km,
+        max_km,
+        s.med_len_km / km_per_cell,
+        s.p90_len_km / km_per_cell,
+        max_km / km_per_cell,
+        s.count,
+        s.coast_km,
+        s.spacing_cv,
+        s.local_axis_r
+    );
+}
+
+fn len_header() {
+    eprintln!(
+        "{:<24} {:>27} | {:>25} | {:>32}",
+        "", "PRIMARY: fringe length km", "the same, in CELLS", "REPORTED ONLY (not optimised)"
+    );
+    eprintln!(
+        "{:<24} {:>8} {:>8} {:>8} | {:>7} {:>7} {:>7} | {:>7} {:>8} {:>6} {:>6}",
+        "coast_warp_strength",
+        "p50",
+        "p90",
+        "max",
+        "p50",
+        "p90",
+        "max",
+        "spurs",
+        "coast km",
+        "CV",
+        "LOCAL R"
+    );
+}
+
+/// Longest spur, needed for the `max` column the median can hide.
+fn max_spur_km(polys: &[Polyline], km_per_cell: f32, min_spur_km: f32, neck_km: f32) -> f32 {
+    let neck = neck_km / km_per_cell;
+    let min_arc = min_spur_km / km_per_cell;
+    let mut best = 0.0f32;
+    for pl in polys {
+        let mut arc = vec![0.0f32; pl.len()];
+        for i in 1..pl.len() {
+            arc[i] = arc[i - 1]
+                + ((pl[i].0 - pl[i - 1].0).powi(2) + (pl[i].1 - pl[i - 1].1).powi(2)).sqrt();
+        }
+        let mut i = 0usize;
+        while i < pl.len() {
+            let mut hit = None;
+            let mut j = i + 1;
+            while j < pl.len() && (arc[j] - arc[i]) * km_per_cell < MAX_SPUR_KM {
+                if arc[j] - arc[i] >= min_arc {
+                    let d = ((pl[j].0 - pl[i].0).powi(2) + (pl[j].1 - pl[i].1).powi(2)).sqrt();
+                    if d <= neck {
+                        hit = Some(j);
+                    }
+                }
+                j += 1;
+            }
+            match hit {
+                Some(j) => {
+                    best = best.max((arc[j] - arc[i]) * km_per_cell);
+                    i = j;
+                }
+                None => i += 1,
+            }
+        }
+    }
+    best
+}
+
+#[test]
+#[ignore]
+fn warp_sweep_fringe_length_with_renders() {
+    let (min_spur_km, neck_km) = (1.0f32, 0.6f32);
+    // A test's cwd is the CRATE root, not the workspace root — the first run wrote to
+    // `crates/ymir-core/exports/` where nobody would look for it.
+    let out = std::path::Path::new("../../exports/coastal_fringes");
+    std::fs::create_dir_all(out).expect("output dir");
+    eprintln!(
+        "\n=====  PART F — warp sweep, FRINGE LENGTH primary, with renders  =====\n\n\
+         PRIMARY (optimised): fringe length p50 / p90 / MAX. The tail is reported because a\n\
+         median can improve while the long spurs the author sees remain.\n\
+         REPORTED ONLY: spur count, coastline length, CV, axis R — a shorter or more regular\n\
+         coast is NOT a better one; these are here to catch a remedy that trades one defect for\n\
+         another.\n\
+         PNGs: exports/coastal_fringes/ — sea black, land grey, coastline white; ONE fixed crop."
+    );
+
+    for target in [2048usize, 8192] {
+        let km = DOMAIN_KM / target as f32;
+        eprintln!("\n--- {target}² ({:.0} m/cell) ---", km * 1000.0);
+        len_header();
+
+        // The crop, chosen once on the shipped config and then held fixed.
+        let shipped = hd_warp(target, 1.5);
+        let shipped_polys = marching_squares(&shipped, SEA);
+        let (ox, oy) = densest_window(&shipped_polys, target, target, km);
+        eprintln!(
+            "{:<24} crop {CROP}×{CROP} at ({ox},{oy}) — the densest spur window, FIXED for every panel",
+            ""
+        );
+
+        for warp in [1.5f64, 1.0, 0.5, 0.25, 0.0] {
+            let field =
+                if (warp - 1.5).abs() < 1e-9 { shipped.clone() } else { hd_warp(target, warp) };
+            let polys = marching_squares(&field, SEA);
+            let s = spurs(&polys, km, min_spur_km, neck_km);
+            let mx = max_spur_km(&polys, km, min_spur_km, neck_km);
+            let tag = if (warp - 1.5).abs() < 1e-9 {
+                "1.50 (SHIPPED)".to_string()
+            } else {
+                format!("{warp:.2}")
+            };
+            len_row(&tag, &s, km, mx);
+            if target == 8192 {
+                let p = out.join(format!("warp_{:.2}_8192.png", warp));
+                render_crop(&field, &polys, ox, oy, &p).expect("render");
+            }
+        }
+
+        // THE REFERENCE PANEL: the coarse field upscaled, no FBM, no incision — what a coast
+        // with no manufactured spurs looks like at this resolution.
+        let coarse = hd_stage(target, false, 0.0, 0);
+        let cpolys = marching_squares(&coarse, SEA);
+        let cs = spurs(&cpolys, km, min_spur_km, neck_km);
+        let cmx = max_spur_km(&cpolys, km, min_spur_km, neck_km);
+        len_row("REFERENCE coarse", &cs, km, cmx);
+        if target == 8192 {
+            render_crop(&coarse, &cpolys, ox, oy, &out.join("reference_coarse_8192.png"))
+                .expect("render");
+        }
+    }
+    eprintln!(
+        "\n⇒ The question: does any warp bring the fringe LENGTH near the coarse reference\n  \
+         WITHOUT erasing the indentation? Read the p90 and max columns against the REFERENCE row,\n  \
+         then look at the panels."
+    );
 }

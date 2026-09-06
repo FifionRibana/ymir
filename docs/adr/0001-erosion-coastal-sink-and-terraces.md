@@ -4981,3 +4981,124 @@ anchoring the obvious optimisation would have been to reduce the spur count — 
 that must NOT be optimised**, since a coast with few indentations is the soft trace already
 rejected. That is exactly the failure the anchoring was demanded to prevent, and it would have
 happened.
+
+## Finding 54 — the renders overturn three of my own results, and the target was inverted
+
+The instruction to produce a PNG per setting, and to report a length TAIL rather than a median,
+caught four defects in one round — three in my measurements and one in the target we were both
+aiming at. None was visible in the indicators I had been producing. **A render per setting is
+now the default output of any coastline sweep.**
+
+### The primary metric was inverted: it is DENSITY, not length
+
+With the search ceiling raised (see below), the reference row finally reads:
+
+| 2048² | p50 km | p90 km | max km | spurs | coast km | spurs / 100 km |
+|---|---|---|---|---|---|---|
+| **1.50 (shipped)** | 1.63 | 3.50 | 17.80 | 1 254 | 4 860 | **25.8** |
+| 1.00 | 1.73 | 3.86 | 38.67 | 1 356 | 4 994 | 27.2 |
+| 0.50 | 1.70 | 3.89 | 27.65 | 1 416 | 4 989 | 28.4 |
+| 0.25 | 1.60 | 3.98 | 33.34 | 1 317 | 4 753 | 27.7 |
+| 0.00 | 1.55 | 3.90 | 47.75 | 1 441 | 5 001 | 28.8 |
+| **REFERENCE coarse** | **3.08** | **24.68** | 46.06 | **15** | 1 581 | **0.95** |
+
+8192² tells the same story: shipped 1 848 spurs / 6 206 km = **29.8 per 100 km** against the
+reference's 20 / 1 602 = **1.25**.
+
+**The reference has spurs SEVEN TIMES LONGER than production (p90 24.68 vs 3.50 km) and
+TWENTY-FIVE TIMES FEWER.** A few large bays against a swarm of small teeth — exactly what the
+two renders show.
+
+So "bring the fringe length back near the coarse value" would have optimised in the WRONG
+DIRECTION: the spurs need to be LONGER and far fewer, not shorter. **The anchored target,
+measured rather than assumed:**
+
+| | production | REFERENCE (target) |
+|---|---|---|
+| indentation density | 25.8–29.8 / 100 km | **~1 / 100 km** |
+| p90 spur length | 3.5–4.6 km | **~24 km** |
+| local parallelism | 0.52 | **~0.33** |
+
+### The parallelism: my "refuted" verdict was itself wrong
+
+Findings 52 and 53 recorded "the PARALLELISM is refuted — axial concentration 0.023 to 0.052,
+isotropic". **The render shows unmistakable bundles of thin, straight, mutually parallel
+spurs.** The metric was GLOBAL: bundles pointing different ways cancel in a single circular
+mean, so the number reads 0.03 while the picture shows a comb.
+
+Replaced by a LOCAL measure — the axial concentration among each spur and its 8 nearest
+neighbours, median over spurs:
+
+| | 2048² | 8192² |
+|---|---|---|
+| shipped | **0.515** | **0.525** |
+| reference coarse | 0.330 | 0.363 |
+| (the old GLOBAL figure) | 0.054 | 0.036 |
+
+**Production is markedly more locally parallel than the reference**, and the global figure was
+an order of magnitude away from saying so. The author's description was right and my refutation
+of it was an artefact of measuring at the wrong scale.
+
+This also identifies the mechanism candidate: thin, straight, locally parallel, regularly
+spaced teeth is the signature of **Smith–Bretherton parallel rilling** — the comb already
+documented in Findings 8, 9 and 11 and believed cured by MFD. Here it reaches SEA LEVEL, on the
+low-slope apron the incision manufactures (Finding 51, stage 4). That ties the coastal comb to a
+known defect rather than a new one.
+
+### `coast_warp_strength`: the Finding 53 recommendation is WITHDRAWN
+
+I recommended `1.5 → 0` on the length-variety metric. **The render refutes it**: at warp 0 the
+comb becomes dense and continuous all round the landmass and the outline loses its meanders.
+The numbers agree once read on the right quantities — lowering the warp RAISES the density
+(1 254 → 1 441 at 2048², 1 848 → 2 076 at 8192²) and RAISES the local parallelism
+(0.515 → 0.557, 0.525 → 0.596).
+
+**The warp is not the lever in either direction, and it is mildly counteracting the defect.**
+Leave `coast_warp_strength = 1.5` alone.
+
+### The search ceiling: a constant reported as a measurement
+
+The first run's `max` column read **7.99–8.00 km at every setting including the reference** —
+that was `min_spur_km × 8`, the search WINDOW, not a measurement. Worse, it saturated the
+REFERENCE row's p90 (7.67 / 7.89), which is the comparison target, so the target itself was
+unreadable. Raised to 50 km, and the reference's true p90 turns out to be **24.68 km** — the
+number that inverted the whole objective.
+
+**The `max` column existed only because a tail was demanded rather than a median.** Without it
+the ceiling would have stayed invisible and the target would have stayed inverted.
+
+### And a fourth: a silent `.replace()` produced a constant column
+
+The local-parallelism figure came out as **0.000 at every setting** on its first run — my
+patch's anchor had not matched, so the axis array was never filled, and `median of empty` is
+0.0. I had asserted the anchor on every other edit that round and omitted it on that one.
+
+**Both defects have the same signature, and it is a test worth applying to every reported
+column: does this number MOVE when something moves?** `max` = 7.99 everywhere and local R =
+0.000 everywhere were both constants across configurations that were themselves varying. A
+quantity that refuses to vary is measuring the instrument, not the terrain.
+
+### Method rule 9 — render every setting of a visual sweep
+
+Three wrong attributions (Findings 50–52) and two remedies evaluated against metrics blind to
+the symptom (the relaxation, then the warp), then in a single round: a global metric that
+contradicted the eye and the eye was right, a ceiling masking the target, and a constant column.
+**Every one of them was caught by a picture or by a tail, and none by the summary statistics.**
+
+For any defect the author reports VISUALLY: render one panel per setting, hold the crop fixed,
+and include a reference panel of what "absent" looks like. The reference panel is what made the
+target legible here — it is not decoration, it is the anchor.
+
+Panels: `exports/coastal_fringes/` — sea black, land grey, coastline white, one fixed 640×640
+crop at 8192² on the densest spur window, one per warp value plus `reference_coarse_8192.png`.
+
+### Ranked recommendation
+
+1. **Change nothing about the warp.** Withdrawn.
+2. **The lever remains the incision** (Findings 51–52), and specifically whatever makes the
+   parallel rilling reach sea level. The target is now quantified: **density ~1 per 100 km,
+   p90 ~24 km, local R ~0.33** — the coarse field's own values, so it is a reachable anchor and
+   not an aspiration.
+3. **C-4 coastal erosion** gains a second falsifiable criterion: it must lower the indentation
+   DENSITY while raising the p90 length. A remedy that shortens spurs would be moving away from
+   the target.
