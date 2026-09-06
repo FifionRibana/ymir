@@ -5102,3 +5102,100 @@ crop at 8192² on the densest spur window, one per warp value plus `reference_co
 3. **C-4 coastal erosion** gains a second falsifiable criterion: it must lower the indentation
    DENSITY while raising the p90 length. A remedy that shortens spurs would be moving away from
    the target.
+
+## Finding 55 — the coastal comb: MFD does not reach the apron, and no uniform parameter is a remedy
+
+### The apron, characterised
+
+| | 2048² | 8192² |
+|---|---|---|
+| area within 50 m of sea level | 6 748 km² | 3 553 km² |
+| mean width inland | 1.39 km | 0.57 km |
+| slope p10 / p50 / p90 | 0.19 / **1.29** / 5.52° | 0.31 / **2.14** / 17.93° |
+| share under 0.5° | 24.3 % | 16.0 % |
+| **comb spacing** | **3.875 km** | **3.358 km** |
+| spacing in CELLS | 19.8 | 68.8 |
+| spacing / √A_c | 12.25 | 10.62 |
+
+**The comb spacing is PHYSICAL, not a discretisation artefact** — ~3.4–3.9 km at both
+resolutions while the cell count changes ×3.5. And it holds a near-constant ratio to `√A_c`
+(12.3 and 10.6), which points at the channel-head threshold rather than at the grid.
+
+### MFD does not reach this regime — confirmed by number and by eye
+
+| lever | density /100 km (2048² / 8192²) | p90 km |
+|---|---|---|
+| **SHIPPED** | 25.8 / 29.8 | 3.50 / 4.62 |
+| MFD off (D8) | 31.3 / 27.3 | 4.02 / 5.41 |
+| MFD p = 1.1 (dispersed) | 24.1 / 30.5 | 3.78 / 4.64 |
+| MFD p = 4.0 (concentrated) | 28.0 / 29.5 | 3.44 / 4.72 |
+| **TARGET (coarse ref)** | **0.9 / 1.2** | **24.68 / 23.34** |
+
+Nothing moves. And the mosaic makes it plainer than the table: **tiles 2–5 — shipped and all
+three MFD settings — are visually indistinguishable.** The lever that cured the hillslope comb
+(Findings 8/9/11) does nothing at low gradient, in any setting including switched off. The
+nuance stated before measuring holds: this is the same Smith–Bretherton instability in a regime
+MFD was never tested in, not an MFD regression.
+
+### `A_c` sets the comb — and no uniform value is a remedy
+
+| lever | density | p90 km | mean land altitude |
+|---|---|---|---|
+| SHIPPED | 25.8 | 3.50 | **282 m** |
+| A_c ×0.1 | 24.7 | 2.69 | — |
+| A_c ×10 | 13.3 | 4.72 | **753 m** |
+| A_c ×100 | **3.9** | **9.80** | **860 m** |
+| **REFERENCE, no incision at all** | 0.9 | 24.68 | **865 m** |
+
+`A_c × 100` reaches density 3.9 and p90 9.80 — most of the way to the target — and its panel is
+indistinguishable from the reference. **The rule-7 control block shows why: its hypsometry is
+860 m against the un-incised reference's 865 m.** Mean, p50 (669 vs 679) and p90 (1833 vs 1836)
+all match the reference to within one percent. It has not fixed the coast; **it has switched the
+incision off**, and the coastline metrics could not see that. Neither could the picture — an
+un-eroded terrain has a beautiful coast.
+
+Even `× 10` sits at 753 m against 282 shipped: it already disables most of the incision, and its
+density gain is bought by not eroding.
+
+**So there is no uniform `A_c` that removes the comb while preserving the incision**, and the
+mosaic reads as one continuum from tile 2 (fully incised, combed) through 6, 7 to 8 (not
+incised, no comb). **The comb IS the incision arriving at the coast.**
+
+### Hillslope diffusion is not a lever either
+
+`× 10` helps at 2048² (25.8 → 9.4) and **hurts at 8192² (29.8 → 38.6)** — resolution-incoherent,
+which is Finding 45b's missing `dscale` on the linear branch showing up again. `× 100` dissolves
+the land entirely (tile 10: specks). Not usable in either direction.
+
+### The remedy the measurement points at, and it is regime-dependent by construction
+
+`A_c` is a CONSTANT in the model. Montgomery & Dietrich put the channel-head threshold at
+**`A_c · S² ≈ constant`** — the threshold must RISE as the slope falls. Between a hillslope at
+~15° (S = 0.268) and this apron at 1.29° (S = 0.0225) the law demands a ratio of
+**(0.268/0.0225)² ≈ 140** — the order of the `× 100` that suppresses the comb.
+
+The uniform test therefore does two things at once: it **confirms the mechanism** (`A_c` sets the
+comb spacing) and **proves a uniform value unusable** (it disables the hillslopes too). Only a
+slope-dependent threshold can be high on the apron and low on the hillslopes simultaneously,
+which is exactly the answer to "does the low-gradient regime need its own treatment rather than
+a parameter change": **yes, and no parameter change can substitute for it.**
+
+**Ranked:**
+1. **`A_c(S) = C/S²`** — literature-anchored, regime-dependent, and the only candidate the
+   uniform sweep corroborates rather than refutes. Cost: one term in `incise`, an `ALGO` bump,
+   recalibration of the affected regime only, and a mandatory rule-7 control block.
+2. **C-4 coastal erosion**, with its falsifiable criterion unchanged: lower the DENSITY while
+   RAISING the p90.
+3. **Refuted by measurement:** MFD (any setting), uniform `A_c`, hillslope diffusion,
+   `coast_warp_strength` (Finding 54), the contour relaxation (Findings 48 and 53).
+
+### Tooling promoted, per rule 9
+
+`terrain::coast_metrics` — `coast_shape`, `render_coast_crop`, `densest_window` — moved out of a
+test file into the library so every sweep uses ONE definition, with the anchored target and the
+`MAX_SPUR_KM` ceiling documented at the constant that caused the saturation.
+
+`tests/coastal_mosaic.rs` assembles the panels into a single comparison image with a numbered
+legend. Judging ten separate files means comparing from recollection, which is how three wrong
+attributions survived; side by side with the REFERENCE first, the differences are direct.
+`exports/coastal_fringes/mosaic_levers.png` and `mosaic_warp.png`.
