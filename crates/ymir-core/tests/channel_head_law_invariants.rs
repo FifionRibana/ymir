@@ -25,10 +25,11 @@
 //! any reported quantity that did not respond, and any invariant checked over an empty
 //! population, fails the test loudly.
 //!
-//! Climate: the arid-hot test bed (25°, span 10) — the standing config for below-sea basins.
-//! Note the TERRAIN is climate-independent (`upscale_from_c1_with_progress` takes no climate),
-//! so the coastline results elsewhere are the same at any latitude; climate matters HERE,
-//! because the lakes and the discharge depend on it.
+//! Climate: BOTH beds, `arid-hot` (25°, span 10) and `humid` (45°, span 40). The terrain is
+//! climate-independent, so the coastline results elsewhere hold at any latitude — but the lakes
+//! and the discharge are climate RESULTS, and arid-hot is the only bed that produces endorheic
+//! below-sea basins. A lake verdict read on one bed says nothing about the other, which is why
+//! both are here rather than the arid one alone.
 //!
 //! Run: cargo test -p ymir-core --release --test channel_head_law_invariants -- --ignored --nocapture
 
@@ -61,9 +62,16 @@ use ymir_core::terrain::upscale::{ProductionHdOpts, production_hd_config};
 
 const PSEED: u64 = 10_481_999_410_520_546_993;
 const DOMAIN_KM: f32 = 400.0;
-const LAT: f32 = 25.0;
-const SPAN: f32 = 10.0;
 const SEA: f32 = 0.5;
+
+/// The two climate beds, because the lake population is a CLIMATE result and a channel-head
+/// verdict read on one bed says nothing about the other. `arid-hot` (25°, span 10) is the only
+/// configuration that produces endorheic below-sea basins — `net_evap = max(0, PE − precip)`
+/// needs `PE > precip` — and `humid` (45°, span 40) is the production default, where every
+/// below-sea basin overflows. The TERRAIN is climate-independent
+/// (`upscale_from_c1_with_progress` takes no climate), so both beds reuse the same field and
+/// only the hydrology is recomputed.
+const BEDS: [(&str, f32, f32); 2] = [("arid-hot", 25.0, 10.0), ("humid", 45.0, 40.0)];
 /// Production ships the geographic-scale dial at 1.0 (`Workspace::default`), so that is what
 /// the invariants must be measured at. It scales the SIGNIFIED hydrology, never the terrain.
 const GEO_SCALE_RATIO: f32 = 1.0;
@@ -151,7 +159,7 @@ struct Hydro {
 
 /// The production hydro chain, end to end: pre-breach drainage → breach conditioning → climate
 /// → [`assemble_hd_drainage`] (which is the code production runs, not a copy of it).
-fn hydro(raw: &GridF32, ss: &SteinSteinParams) -> Hydro {
+fn hydro(raw: &GridF32, ss: &SteinSteinParams, lat: f32, span: f32) -> Hydro {
     let mut dcfg = C1DrainageConfig::default();
     dcfg.thresholds.head_km2 = ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2;
     dcfg.thresholds.full_tree = false;
@@ -165,7 +173,7 @@ fn hydro(raw: &GridF32, ss: &SteinSteinParams) -> Hydro {
     let pre_lakes = pre.lakes.len();
 
     let field = breach_monotone(raw, &pre.flow.filled, &pre.lake_map, SEA, w, h);
-    let climate = c1_climate_placed(&field, ss, LAT, SPAN, &PrecipParams::default(), DOMAIN_KM);
+    let climate = c1_climate_placed(&field, ss, lat, span, &PrecipParams::default(), DOMAIN_KM);
     let dclim = DrainageClimate {
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
@@ -457,8 +465,12 @@ fn report(
     let n_lakes = dr.lakes.len() as u64;
     let n_foot = foot.values().map(|v| v.len()).sum::<usize>() as u64;
     sw.push("lakes total", dr.lakes.len() as f64);
-    sw.push("lakes exorheic", exo as f64);
-    sw.push("lakes endorheic", endo as f64);
+    // SUB-COUNTS, not free-standing quantities: in the humid bed the endorheic category is
+    // structurally near-empty (2 of 86, 2 of 76) because `net_evap = max(0, PE − precip)` is
+    // ~0 there. That is a climate result, not an unwired measurement, so what gets guarded is
+    // the population it is a part of.
+    sw.part("lakes exorheic", exo as u64, dr.lakes.len() as u64);
+    sw.part("lakes endorheic", endo as u64, dr.lakes.len() as u64);
     sw.push("lake water km2", water_km2);
     sw.push("pre-breach lakes detected", hy.pre_lakes as f64);
     sw.push("pre-breach closed depression cells", hy.pre_pits as f64);
@@ -629,10 +641,13 @@ fn report(
             pct(&mut wd.clone(), 0.5),
             wd.len()
         );
-        // Registered: the wet SHARE and the MAXIMUM width. Both are defined for a dry order
-        // (0 % and 0 m) yet still respond to the law, so neither can go flat-at-zero silently
-        // the way a conditional percentile can go undefined.
-        sw.push(&format!("Q>0 share S{o}"), wet_pct);
+        // The wet COUNT with its order population, not the SHARE: the share SATURATES at
+        // 100 % for orders 4-5 in the humid bed (both settings), so registering it would demand
+        // movement from a quantity at its ceiling. The count stays live because the number of
+        // reaches in the order moves even when the share cannot — method rule 2 again, a rate
+        // read without its denominator. The maximum width is registered as a plain quantity: it
+        // is defined for a dry order (0 m) and still responds.
+        sw.part(&format!("wet reaches S{o}"), n_wet as u64, n_o as u64);
         sw.push(&format!("channel width max m S{o}"), wmax);
         sw.push(&format!("valley W/D S{o}"), pct(&mut wd.clone(), 0.5));
         sw.push(&format!("valley depth m S{o}"), pct(&mut vd.clone(), 0.5));
@@ -716,41 +731,52 @@ fn report(
 #[ignore]
 fn channel_head_law_invariants() {
     let ss = SteinSteinParams::default();
-    eprintln!(
-        "\n==========  CHANNEL-HEAD LAW — INVARIANT SUITE (arid-hot {LAT}°/span {SPAN})  =========="
-    );
-    // One sweep PER RESOLUTION: the two grids legitimately differ on almost every quantity
-    // (that IS the Findings 42–44 defect), so pooling them would let a resolution difference
-    // stand in for the law's effect and rule 10 would pass on nothing.
-    let mut sweeps: Vec<(usize, Sweep)> = Vec::new();
+    eprintln!("\n==========  CHANNEL-HEAD LAW — INVARIANT SUITE  ==========");
+    // One sweep PER (RESOLUTION, CLIMATE BED). The two grids legitimately differ on almost
+    // every quantity (that IS the Findings 42–44 defect) and the two beds differ on every
+    // hydrological one, so pooling any of them would let a resolution or climate difference
+    // stand in for the law's effect — and rule 10 would then pass on nothing.
+    let mut sweeps: Vec<(String, Sweep)> = Vec::new();
     for target in [2048usize, 8192] {
         eprintln!("\n╔══════ {target}² ══════╗");
-        let mut sw = Sweep::new(format!("channel-head law @ {target}²"));
+        let mut sw: Vec<Sweep> = BEDS
+            .iter()
+            .map(|(bed, _, _)| Sweep::new(format!("channel-head law @ {target}² / {bed}")))
+            .collect();
         for law in [false, true] {
+            // ONE terrain per (resolution, law) — it is climate-independent, so both beds read
+            // the same field and only the hydrology is recomputed.
             let raw = terrain(target, law);
-            let hy = hydro(&raw, &ss);
-            report(
-                if law { "law ON" } else { "shipped (law off)" },
-                target,
-                &raw,
-                &hy,
-                &ss,
-                &mut sw,
-            );
+            for (i, (bed, lat, span)) in BEDS.iter().enumerate() {
+                let hy = hydro(&raw, &ss, *lat, *span);
+                report(
+                    &format!(
+                        "{bed} ({lat}°/span {span}) — {}",
+                        if law { "law ON" } else { "shipped (law off)" }
+                    ),
+                    target,
+                    &raw,
+                    &hy,
+                    &ss,
+                    &mut sw[i],
+                );
+            }
         }
-        sweeps.push((target, sw));
+        for ((bed, _, _), s) in BEDS.iter().zip(sw) {
+            sweeps.push((format!("{target}² / {bed}"), s));
+        }
     }
-    // Rule 10 LAST, so the whole report is on screen when it fires, and over BOTH resolutions
-    // so one grid's failure does not hide the other's.
+    // Rule 10 LAST, so the whole report is on screen when it fires, and over EVERY sweep so
+    // one grid's or one bed's failure does not hide another's.
     eprintln!("\n══════ RULE 10 — did every reported quantity respond? ══════");
     let mut bad = 0usize;
-    for (target, sw) in &sweeps {
+    for (what, sw) in &sweeps {
         let f = sw.failures();
         if f.is_empty() {
-            eprintln!("  {target}²: OK");
+            eprintln!("  {what}: OK");
         } else {
             bad += f.len();
-            eprintln!("  {target}²: {} column(s) measured NOTHING", f.len());
+            eprintln!("  {what}: {} column(s) measured NOTHING", f.len());
             for (name, why) in f {
                 eprintln!("    · {name}: {why}");
             }

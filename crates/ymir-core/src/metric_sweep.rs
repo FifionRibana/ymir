@@ -34,6 +34,11 @@
 //!   zero is a good result, so the thing that must be guarded is the DENOMINATOR. `0
 //!   violations out of 0 lakes` reads exactly like `0 out of 4 000` and is not a pass; an
 //!   empty population is an unrun check.
+//! - [`Sweep::part`] — a **sub-count with the population it is part of**. The general form of
+//!   `checked`, and what a bare `push` gets wrong about any category count: a category can be
+//!   structurally near-empty (endorheic lakes in a humid bed) and a share can SATURATE (the
+//!   wet-reach share at 100 % for high orders in a humid bed). Register the count, guard the
+//!   denominator — method rule 2 as a type.
 //! - [`Sweep::pinned`] — the narrow escape hatch: the bench states in writing that a quantity
 //!   is not expected to respond (a thresholded classification whose thresholds the model
 //!   cannot reach yet). The reason is mandatory and reprinted, and **a pinned column at zero
@@ -140,8 +145,34 @@ impl Sweep {
     /// NON-EMPTY in every configuration. An empty population is never a clean invariant; it
     /// is an unrun check.
     pub fn checked(&mut self, name: &str, violations: u64, population: u64) {
-        self.record(name, violations as f64, Guard::Free, "");
-        self.record(&format!("{name} [population]"), population as f64, Guard::MustBeNonZero, "");
+        self.sub_count(name, violations, population, "population");
+    }
+
+    /// Record a SUB-COUNT with the population it is a part of: `count` of `of`.
+    ///
+    /// The generalisation of [`checked`](Sweep::checked), and the answer to the trap a bare
+    /// [`push`](Sweep::push) walks into on any count of a category. Two shapes recur:
+    ///
+    /// - **a sub-count that legitimately stays flat.** Endorheic lakes number 2 of 86 and 2 of
+    ///   76 in the humid bed — because `net_evap = max(0, PE − precip)` is ~0 there, so the
+    ///   category is structurally near-empty. That is a RESULT about the climate, not an
+    ///   unwired measurement, and it must not be forced to move.
+    /// - **a SHARE that saturates.** The wet-reach share hits 100 % at orders 4 and 5 in the
+    ///   humid bed, both settings. Registering the share would demand movement from a quantity
+    ///   pinned at its ceiling — while registering the COUNT keeps the guard live, because the
+    ///   number of reaches in the order moves even when the share cannot.
+    ///
+    /// So: the count is free to be flat or zero, and **the population is what must be
+    /// non-empty.** This is method rule 2 as a type — *a rate is only readable beside its
+    /// denominator* — after that rule was reproduced three times (the ratio-vs-excess of
+    /// Finding 43, the per-100 km spur density of Finding 56, and the wet SHARE here).
+    pub fn part(&mut self, name: &str, count: u64, of: u64) {
+        self.sub_count(name, count, of, "of");
+    }
+
+    fn sub_count(&mut self, name: &str, count: u64, population: u64, suffix: &str) {
+        self.record(name, count as f64, Guard::Free, "");
+        self.record(&format!("{name} [{suffix}]"), population as f64, Guard::MustBeNonZero, "");
     }
 
     /// Record a quantity the bench does NOT claim will respond, stating `why` in writing.
@@ -382,6 +413,46 @@ mod tests {
         let f = sw.failures();
         assert_eq!(f.len(), 1, "{f:?}");
         assert!(f[0].1.contains("[on]"), "{}", f[0].1);
+    }
+
+    /// A category that is structurally near-empty must not be forced to move — but its
+    /// population must still be real. Both halves, in one test.
+    #[test]
+    fn a_flat_sub_count_passes_but_an_empty_population_does_not() {
+        let mut ok = Sweep::new("t");
+        for cfg in ["off", "on"] {
+            ok.config(cfg);
+            ok.part("lakes endorheic", 2, 86); // humid: net_evap ~ 0, the category barely exists
+        }
+        assert!(ok.failures().is_empty(), "{:?}", ok.failures());
+
+        let mut bad = Sweep::new("t");
+        for cfg in ["off", "on"] {
+            bad.config(cfg);
+            bad.part("lakes endorheic", 0, 0);
+        }
+        let f = bad.failures();
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert!(f[0].1.contains("EMPTY POPULATION"), "{}", f[0].1);
+    }
+
+    /// The saturation case: a SHARE at its ceiling would fail as a `push`, and the COUNT keeps
+    /// the guard live because the population moves even when the share cannot.
+    #[test]
+    fn a_saturated_share_is_registered_as_a_count() {
+        let mut share = Sweep::new("t");
+        share.config("off");
+        share.push("wet share S5", 100.0);
+        share.config("on");
+        share.push("wet share S5", 100.0);
+        assert_eq!(share.failures().len(), 1, "a share pinned at 100 % must fail as a push");
+
+        let mut count = Sweep::new("t");
+        count.config("off");
+        count.part("wet reaches S5", 39, 39);
+        count.config("on");
+        count.part("wet reaches S5", 104, 104);
+        assert!(count.failures().is_empty(), "{:?}", count.failures());
     }
 
     #[test]

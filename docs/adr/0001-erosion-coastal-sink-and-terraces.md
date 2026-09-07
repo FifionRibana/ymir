@@ -3926,6 +3926,61 @@ output silently is worse than one that fails**, and documentation has no test su
 it. Any bulk edit of a prose file needs a post-check — here, `grep -c $'\\ufffd'` and a scan
 for the classic mojibake digraphs.
 
+#### EXTENSION (Finding 56b) — verify a written artefact NON-EMPTY before declaring it delivered
+
+The rule above is a prohibition on one tool, and that is not enough. **The failure class is
+"the artefact reports the instrument instead of the subject", and an empty or truncated document
+is that class in documentary form** — the exact counterpart of a metric column constant at zero.
+So the rule now reads:
+
+> **A written artefact is not delivered until it has been verified non-empty, decodable and
+> un-mangled.** Not inspected — verified, by reading back what was written. An empty note, like
+> a column constant at zero, measures only the tool. And "documentation has no test suite" was
+> a description of a gap, not a licence.
+
+This is the **fourth instance on this campaign** of the same class, which is why it stops being
+a reminder:
+
+1. the **global axial R**, blind to local parallelism (0.03–0.05 global against 0.52 local) — it
+   reported the instrument's aperture, not the coast, and my "parallelism refuted" verdict was
+   wrong until the renders contradicted it;
+2. the **8 km spur-length cap**, reading 7.99–8.00 in *every* configuration including the
+   reference, hiding the target completely;
+3. **`channel width p50` constant at 0.000 m** at every order, both grids, both settings —
+   rule 10's first catch, and it took two refusals to fix because switching to p90 still read
+   0.000 for an order with no wet reach at all;
+4. **a report file reported empty.** It was not (6 805 bytes, 129 lines, valid UTF-8, no BOM, no
+   double-encoding — and identical in `HEAD`), but *"I looked and it seemed fine"* is exactly the
+   inspection this rule says is insufficient, in either direction. **The question is now settled
+   by measurement**, and the measurement runs on every `cargo test`.
+
+**Made mechanical**, the way rule 10 became a type rather than a paragraph:
+`crates/ymir-core/tests/doc_artifacts.rs` walks every Markdown file under `docs/` (161 at the
+time of writing) and fails on any that is empty, under a 200-byte floor, not valid UTF-8,
+carrying a cp1252 round-trip signature, or holding unresolved conflict markers. Two details make
+it more than decoration:
+
+- **it asserts its own population** (`files.len() >= 10`) — a walk that silently matched nothing
+  would otherwise report "0 problems out of 0 files", which is rule 10's defect wearing a
+  different hat;
+- **its negative control builds the corruption instead of trusting a literal**: it runs a real
+  cp1252 round trip over `hypsométrie ↔ 25°` and asserts that at least one signature matches, so
+  a signature list that could never fire on the real defect fails the test rather than passing
+  it quietly. The five undefined cp1252 slots are encoded there too, as the reason the damage is
+  irrecoverable rather than merely reversible.
+
+**A second prerequisite made mechanical in the same round**, because it has the same shape — a
+claim that would have failed silently and produced a confident wrong answer. The author's
+regeneration step assumes the `A_c(S)` toggle invalidates the `eroded` and `drainage` caches.
+If it did not, enabling the law and regenerating would return the SHIPPED terrain from cache and
+the visual verdict would be passed on the wrong picture, with nothing in the log to say so —
+precisely the defect `eroded_key_full`'s own doc comment records for volcanism ("the terrain
+differs, the drainage would not"). `crates/ymir-core/tests/channel_head_law_cache_key.rs` proves
+it instead: the digests move (`5a735ac0 → a84ac294` eroded, `9770ded0 → f1d20f47` drainage), both
+law parameters reach the key so a recalibration of `S_ref` or of the `S_min` proxy cannot be
+served stale, and a negative control asserts the key is STABLE across identical calls — without
+which the test would pass for the wrong reason on a key that folded a timestamp.
+
 ## Finding 45 — microscope semantics: an entry is a river SYSTEM, not a reach between water bodies
 
 A reach ending on a lake shore gets `downstream = None`, so 87–92 % of terminals were lake
@@ -5398,6 +5453,12 @@ with the raw pre-breach field (13–19).** That is the right way round — a con
 `lakes.json` against the height raster finds them coherent. It follows from H-1c recomputing
 `level_m`/`depth_m` on the breached field while adopting the pre-breach footprint.
 
+> **CORRECTED by Finding 56c: true of the ARID bed, FALSE of the production one.** H-1c
+> recomputes the depth only for the lakes it RE-SETTLES, i.e. the endorheic ones — 27–28 of
+> 41–56 in arid, but only 2–5 of 80–86 in humid. In the humid (production) bed **44–59 of the
+> lakes disagree with the EXPORTED field** and only 2–5 with the raw one. The relation inverts
+> with the climate, and the shipped climate is the bad side of it.
+
 ### Three that do NOT hold — and one is a regression the law introduces
 
 | | 2048² off → on | 8192² off → on | population |
@@ -5414,6 +5475,11 @@ sub-bowls at comparable depths becomes two patches under one id. That covers the
 (15–22). **The 8–12 EXORHEIC cases are NOT covered**: H-1c leaves exorheic geometry untouched, so
 they come from the pre-breach detection and are **UNATTRIBUTED**. Filed, not fixed. Unchanged by
 the law, so it does not block this decision.
+
+> **RESIZED by Finding 56c.** In the humid (production) bed the disconnected footprints are 52–65
+> per configuration and **almost all EXORHEIC** (1–4 endorheic). So the H-1c truncation explains a
+> SMALLER share than written here and the unattributed part is LARGER — in the shipped climate it
+> is essentially the whole defect.
 
 **(b) The dangling ids are ALL below-sea, none detected**, and this is a documented trade rather
 than a discovery: `below_sea_basin_lakes_infil` MARKS every below-sea sink in `lake_map` for sink
@@ -5569,3 +5635,132 @@ Still gated OFF pending the author's visual judgement — the note is at
 `coast_warp_strength` 1.5, contour relaxation `None`, both unchanged. `A_c = 0` remains a
 diagnostic. **The orphan-mouth regression (c) must be closed before the law could ship even on a
 favourable verdict**, and it is independent work.
+
+## Finding 56c — the HUMID bed, which refutes three figures; and rule 6 extended to the artefact
+
+Finding 56b measured the lake invariants on the arid-hot bed alone, because that is the bed the
+below-sea work was built on. **That was a scope error in the same family as the ones this ADR
+keeps recording:** the hydrology is a CLIMATE result, and `humid` (45°, span 40) is the
+PRODUCTION default. A lake verdict read on the arid bed says nothing about the shipped one. The
+suite now runs both beds at both resolutions — the terrain is climate-independent, so the field
+is computed once per (resolution, law) and only the hydrology is recomputed.
+
+### It refutes three figures, one of them mine
+
+| claim | measured |
+|---|---|
+| "the population goes from 55 to 30 in humid" | **80 → 68 at 2048², 86 → 76 at 8192²** — a 15 % / 12 % fall, not 45 % |
+| "+6 endorheic in arid-hot" | **−4 at both grids** (27 → 23, 28 → 24). The raise-only clamp raises `A_c` on FLATS, so it incises the low-gradient ground LESS, not more |
+| "zero navigable at 8192² before and after" | **2 → 2 in arid** (not zero), and in the production humid bed **35 → 11 small boat, 3 → 2 barge** |
+| "network densified 35 %" | **+49 % in humid at 8192²**, +33 % in arid. The 35 % was the unclipped-network figure corrected in 56b |
+
+**And the third one convicts my own validation note**, which said the navigability spread would
+not move. It does not move on the arid bed and I wrote the note from that bed:
+
+| navigable reaches | 2048² off → on | 8192² off → on |
+|---|---|---|
+| small boat, **humid** | 214 → **175** (−18 %) | 35 → **11** (−69 %) |
+| barge, humid | 2 → 3 | 3 → **2** |
+| small boat, arid-hot | 108 → 103 | 2 → 2 |
+| discharge p90 m³/s, humid | 1.759 → 1.983 | 1.017 → 1.386 |
+
+**In the production climate the law cuts navigable reaches by 18 % and 69 %** — while the
+discharge p90 RISES. So it is not less water: it is the same water spread over a denser network,
+so fewer individual reaches clear a threshold. That is a real consequence the author must weigh,
+and I had told him not to look for it. Method rule 3's shape again — *decompose a measured
+factor before quoting it* — here applied to a climate rather than to a term.
+
+### Two invariant failures that only the humid bed exposes
+
+| | humid 2048² off → on | humid 8192² off → on | arid, for contrast |
+|---|---|---|---|
+| **exorheic without a traced outlet** | **5 → 2** | **2 → 2** | **0 everywhere** |
+| `depth != level − floor`, EXPORTED field | **59 of 80 → 48 of 68** | **44 of 86 → 40 of 76** | 0–4 |
+| `depth != level − floor`, raw pre-breach field | 5 → 4 | 2 → 2 | 13–19 |
+| footprint not 4-connected (of which endorheic) | 52 (4) → 48 (2) | 65 (1) → 51 (1) | 24 (16) → 28 (16) |
+
+**(a) `exorheic without outlet` is a MASS-BALANCE violation** — an exorheic label *requires* an
+outlet, which is the whole premise of the `Spillway` type ("a basin receiving more than it
+evaporates MUST overflow"). It reads 0 in every arid configuration and 2–5 in every humid one.
+Unchanged in kind by the law (5 → 2, 2 → 2), so it is pre-existing, and it would have stayed
+invisible for as long as the suite ran one bed.
+
+**(b) The depth/raster incoherence INVERTS between beds, and the production bed is the bad
+one.** In arid the depths agree with the exported breached field (0–4 failures of 39–56) and
+disagree with the raw one (13–19). **In humid it is the other way round: 44–59 of 68–86 disagree
+with the EXPORTED field** and only 2–5 with the raw one.
+
+The mechanism is exact: H-1c recomputes `level_m`/`depth_m` on the breached field **only for the
+lakes it re-settles, i.e. the endorheic ones**; exorheic geometry is adopted untouched from the
+pre-breach detection. Arid is 27–28 endorheic of 41–56; humid is 2–5 of 80–86. So **in the
+production climate most of `lakes.json`'s depths are pre-breach values published beside a
+post-breach raster.** Finding 56b's "that is the right way round for a consumer" was true of the
+bed it was measured on and false of the shipped one — recorded as a correction, not a footnote.
+
+**(c) The disconnected footprints are almost entirely EXORHEIC in humid** (65 of them, 1
+endorheic). Finding 56b flagged the exorheic cases as unattributed and treated them as the
+minority; in the production bed they are essentially the whole population of the defect. The
+H-1c altitude-sorted truncation therefore explains a *smaller* share than 56b implied, and the
+unattributed part is *larger*. Still filed, still not fixed, now correctly sized.
+
+### `Sweep::part` — rule 2 turned into a type, after reproducing rule 2 a third time
+
+Rule 10 fired again on the humid bed, on three columns, and it was right about all three being
+mis-registered rather than unmeasured:
+
+- **`Q>0 share` constant at 100 %** for orders 4–5 in humid 2048², both settings. In a wet
+  climate every large reach is wet, so the SHARE sits at its ceiling and cannot respond.
+- **`lakes endorheic` constant at 2** in humid 8192². The category is structurally near-empty
+  there — `net_evap = max(0, PE − precip)` is ~0 — which is a climate result, not a dead wire.
+
+Both are the SAME mistake I have now made three times: **reading a rate without its
+denominator** (the ratio-vs-excess of Finding 43, the per-100 km spur density of Finding 56, the
+wet share here). Writing rule 2 down did not stop the third instance either. So it becomes
+`Sweep::part(name, count, of)`: **the count is free to be flat or zero, and the POPULATION is
+what must be non-empty.** The number of reaches in an order moves even when the share is pinned
+at 100 %, so the guard stays live exactly where a share would have gone blind — and
+`Sweep::checked` is now the same mechanism with violation semantics.
+
+Note what was NOT done: the share is still printed. The fix is to register the quantity that can
+respond, not to delete the one that reads well.
+
+### Rule 6, EXTENDED — verify a written artefact NON-EMPTY before declaring it delivered
+
+Recorded in full beside rule 6 itself. In short: rule 6 was a prohibition on one tool, and the
+failure class is wider — *the artefact reports the instrument instead of the subject*, of which
+an empty or truncated document is the documentary form and a column constant at zero the
+numerical one. Fourth instance on this campaign (global R blind to local parallelism; the
+saturating 8 km cap; `channel width p50` at 0.000; a report file reported empty).
+
+Made mechanical in `crates/ymir-core/tests/doc_artifacts.rs`: every Markdown file under `docs/`
+(161 at the time of writing) must be non-empty, above a 200-byte floor, valid UTF-8, free of
+cp1252 round-trip signatures and of conflict markers. It **asserts its own population** so a
+broken walk cannot report "0 problems out of 0 files", and its negative control **builds the
+corruption** by running a real cp1252 round trip rather than trusting a literal, so a signature
+list that could never fire fails the test instead of passing quietly.
+
+**The instance that prompted it did not reproduce.** `VALIDATION_NOTE.md` was reported empty; it
+was 6 805 bytes, 129 lines, valid UTF-8, no BOM, no double-encoding, and byte-identical in `HEAD`
+— and it was written with the Write tool, never through the banned pipeline. That does not weaken
+the rule: *"I looked and it seemed fine"* is the inspection the rule says is insufficient, in
+either direction, and the question is now settled by an assertion that runs on every
+`cargo test`.
+
+### And the author's regeneration prerequisite, also made mechanical
+
+The prerequisite "enable the toggle and regenerate; the `eroded` and `drainage` caches
+invalidate" is a claim about a content-addressed key, and a false one would produce a confident
+wrong answer in silence — the author would pass a visual verdict on the SHIPPED terrain, which is
+precisely the defect `eroded_key_full`'s own doc comment records for volcanism ("the terrain
+differs, the drainage would not"). `crates/ymir-core/tests/channel_head_law_cache_key.rs` proves
+it: eroded `5a735ac0 → a84ac294`, drainage `9770ded0 → f1d20f47`, both law parameters reach the
+key so recalibrating `S_ref` or the `S_min` proxy cannot be served stale, and a negative control
+asserts the key is STABLE across identical calls — without which the test would pass for the
+wrong reason on a key that folded a timestamp.
+
+### Standing
+
+Unchanged: gated OFF, `coast_warp_strength` 1.5, contour relaxation `None`, `A_c = 0` a
+diagnostic. The blockers before the law could ship are now TWO, both in the reporting layer and
+both independent of the channel head: the orphan-mouth regression (56b) and the depth/raster
+incoherence in the production climate (56c/b above).
