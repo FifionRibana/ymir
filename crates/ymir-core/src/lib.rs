@@ -12,6 +12,8 @@
 pub mod cache;
 pub mod config;
 pub mod grid;
+/// ADR method rule 10 — the guard that makes a metric block prove it measured something.
+pub mod metric_sweep;
 pub mod morphology;
 pub mod seed;
 

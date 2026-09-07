@@ -291,10 +291,21 @@ c'est la raison de l'inscrire ici plutôt que de la redécouvrir une cinquième 
 4. **le seuil de tête de chenal** (Finding 56) — `S_ref` vaut 0,3319 à 2048² contre 0,1128 à
    8192², donc **aucune calibration de tête de chenal ne peut tenir aux deux grilles** tant que
    l'hypsométrie ne converge pas. La loi comble 56 % / 71 % de l'écart de franges côtières ; le
-   reste est hérité de ce défaut, pas de la loi.
+   reste est hérité de ce défaut, pas de la loi ;
+5. **la FORME DES VALLÉES** (Finding 56b) — le W/D de vallée mesuré sur un transect
+   perpendiculaire à l'écoulement donne 35–98 à 2048² contre 17–42 à 8192², et **la loi le
+   resserre à la grille grossière tout en l'élargissant à la grille fine**. Les deux grilles ne
+   sont pas dans le même régime morphologique, et aucune calibration de forme de vallée ne peut
+   être ancrée tant que c'est le cas. Cinquième chemin indépendant vers le même verrou.
 
 Ce n'est donc plus un chantier parmi d'autres : **c'est le nœud qui bloque la convergence de
 tout ce qui dépend de la pente.**
+
+**Un corollaire mesuré (Finding 56b), qui bloque aussi la largeur des chenaux :** dans le banc
+d'essai aride, **aucun des 51 tronçons d'ordre 5 à 8192² ne porte de débit** et le chenal le plus
+large de toute la grille fine fait 5,2 m. Le tronc de la hiérarchie est à sec pendant que l'eau
+reste dans les tronçons côtiers d'ordre bas. C'est cohérent pour un continent désertique, mais
+cela veut dire que **`w = 5·Q^0,5` n'a rien à calibrer ici** — même verrou, par le débit.
 
 ### Ce qui est DÉJÀ SU — à ne pas re-dériver
 

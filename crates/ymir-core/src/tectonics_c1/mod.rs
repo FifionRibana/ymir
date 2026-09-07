@@ -81,6 +81,7 @@ pub mod closures;
 pub mod debug_labels;
 pub mod distance_field;
 pub mod drainage;
+pub mod hd_assembly;
 pub mod init;
 pub mod init_r7;
 pub mod kinematics;

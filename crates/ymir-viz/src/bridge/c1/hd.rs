@@ -50,16 +50,15 @@ use ymir_core::tectonics_c1::cached_product::{
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
-    C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, SegmentKind,
-    apply_geo_scale_ratio, apply_lake_water_balance, below_sea_basin_lakes_infil,
-    c1_drainage_windowed_infil, clip_rivers_to_lakes, exorheic_lakes_missing_outlet,
+    C1DrainageConfig, C1DrainageResult, DrainageClimate, exorheic_lakes_missing_outlet,
 };
+use ymir_core::tectonics_c1::hd_assembly::assemble_hd_drainage;
 use ymir_core::tectonics_c1::land_topology::{
     IslandEval, LandTopology, evaluate_island, land_topology,
 };
 use ymir_core::tectonics_c1::production_upscale::EroProgress;
 use ymir_core::tectonics_c1::time_loop::C1TimeLoopConfig;
-use ymir_core::terrain::flow::{RiverSegment, breach_monotone_protected};
+use ymir_core::terrain::flow::breach_monotone_protected;
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
 use super::events::C1Event;
@@ -400,15 +399,11 @@ pub fn preview_shape(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>) 
     let _ = tx.send(C1Event::PreviewReady { preview, elapsed: t.elapsed() });
 }
 
-/// Drive the HD chain on the worker thread, emitting per-phase events.
-/// Cancellable BETWEEN phases (the cached/opaque calls have no interior
-/// cancel hook — adding one would reopen `ymir-core`). On any core error,
-/// emits `HdFailed` and returns.
-/// #190 — build the FINAL HD drainage + wetland mask (the climate-dependent tail of the pipeline):
-/// base drainage with real discharge, the below-sea water-balance merge + cleanup (Findings 18/39),
-/// the river clip, the spillway append and the geographic-scale post-process. A PURE function of
-/// exactly the inputs `hd_drainage_key` folds — so caching it under that key is stale-proof.
-#[allow(clippy::too_many_arguments)]
+/// #190 — the FINAL HD drainage + wetland mask. The assembly itself now lives in
+/// [`ymir_core::tectonics_c1::hd_assembly::assemble_hd_drainage`]: it is all core logic, and
+/// keeping it private here made it unreachable from a test, which is how two benches
+/// re-implemented the chain and both dropped the pre-breach lake carry (ADR Finding 56). This
+/// wrapper only adapts `ClimateResult` to `DrainageClimate`.
 fn build_hd_drainage(
     eroded: &GridF32,
     climate: &ClimateResult,
@@ -424,185 +419,23 @@ fn build_hd_drainage(
         precip_internal: &climate.precipitation,
         temperature: &climate.temperature,
     };
-    // relief-v3: final drainage on the breached field, carrying the pre-breach lakes; legacy path
-    // (prebreach None): plain drainage on the raw eroded. Both with the climate discharge (Finding 22).
-    let (mut drainage, carried_geometric_lakes) = if let Some(prebreach) = prebreach {
-        let mut dr =
-            c1_drainage_windowed_infil(eroded, Some(&dclim), dcfg, ss, window_km, infiltration);
-        // The pre-breach lakes are the GEOMETRICALLY correct ones (the breach destroys the
-        // depressions) — but they were detected with `climate = None`, so they carry NO
-        // water balance. Their geometry is adopted; their classification is fixed below.
-        dr.lakes = prebreach.lakes;
-        dr.lake_map = prebreach.lake_map;
-        (dr, true)
-    } else {
-        (c1_drainage_windowed_infil(eroded, Some(&dclim), dcfg, ss, window_km, infiltration), false)
-    };
-    // H-1 — THE MISSING LINK, and a CORRECTION, so it runs BY DEFAULT (not gated): lakes
-    // classified without ever seeing the climate are simply wrong. The relief-v3 path
-    // carries the climate-free pre-breach lakes, so they were exorheic by pure geometry
-    // ("the outlet reaches the sea"). Run the balance on them and adopt the CLASSIFICATION
-    // ONLY — geometry, levels and footprints stay untouched (adopting an endorheic
-    // equilibrium LEVEL would be H-2 by the back door). Crater types (C-2) are never
-    // overwritten. The optional H-1 INFILTRATION rides in `infiltration` (measured a
-    // secondary term: 0–3 lakes, against 53–100 % from this reclassification alone).
-    if carried_geometric_lakes {
-        let (w, h) = (eroded.width, eroded.height);
-        let cell_km2 = (window_km / w as f32).powi(2);
-        let before_n = drainage.lakes.len();
-        let before_km2: f32 = drainage.lakes.iter().map(|l| l.area_km2).sum();
-        // H-1c — APPLY the balance: classify AND settle endorheic basins at their
-        // evaporative equilibrium (level + footprint), draining the exposed floor from
-        // `lake_map`. Runs BEFORE `below_sea_basin_lakes_infil` and BEFORE
-        // `clip_rivers_to_lakes` so both see the FINAL footprint — river tracks are clipped
-        // to the retreated outline instead of ending in the void (the orphaned-mouth defect
-        // already fixed twice: enumerate inlets AFTER the footprint is known).
-        let lakes_in = std::mem::take(&mut drainage.lakes);
-        drainage.lakes = apply_lake_water_balance(
-            eroded,
-            &drainage.flow,
-            &dclim,
-            cell_km2,
-            ss,
-            &lakes_in,
-            &mut drainage.lake_map,
-            infiltration,
-            w,
-            h,
-        );
-        let endo = drainage.lakes.iter().filter(|l| l.lake_type == LakeType::Endorheic).count();
-        let after_km2: f32 = drainage.lakes.iter().map(|l| l.area_km2).sum();
-        eprintln!(
-            "[HD] H-1c surface water balance APPLIED: {} → {} lakes | {:.0} → {:.0} km² water ({:.0} km² floor exposed) | {} endorheic",
-            before_n,
-            drainage.lakes.len(),
-            before_km2,
-            after_km2,
-            (before_km2 - after_km2).max(0.0),
-            endo
-        );
-    }
-    let (wetland_mask, below_sea_spillways) = {
-        let bs = below_sea_basin_lakes_infil(
-            eroded,
-            &dclim,
-            dcfg,
-            ss,
-            window_km,
-            Some(&drainage.lake_map),
-            infiltration,
-        );
-        let (mut endo, mut exo) = (0usize, 0usize);
-        for lk in &bs.lakes {
-            match lk.lake_type {
-                LakeType::Endorheic => endo += 1,
-                LakeType::Exorheic => exo += 1,
-                // Crater types are assigned later (post-drainage), never here.
-                LakeType::CraterAcidic | LakeType::CraterNeutral => {}
-            }
-        }
-        use std::collections::{HashMap, HashSet};
-        let mut det_before: HashMap<u32, usize> = HashMap::new();
-        for &id in &drainage.lake_map {
-            if id != 0 && id < 1_000_001 {
-                *det_before.entry(id).or_default() += 1;
-            }
-        }
-        let mut det_after: HashMap<u32, usize> = HashMap::new();
-        for k in 0..bs.lake_map.len() {
-            if bs.lake_map[k] != 0 {
-                drainage.lake_map[k] = bs.lake_map[k];
-            } else if drainage.lake_map[k] != 0 && drainage.lake_map[k] < 1_000_001 {
-                *det_after.entry(drainage.lake_map[k]).or_default() += 1;
-            }
-        }
-        let absorbed: HashSet<u32> = det_before
-            .keys()
-            .copied()
-            .filter(|id| det_after.get(id).copied().unwrap_or(0) == 0)
-            .collect();
-        let n_absorbed = absorbed.len();
-        drainage.lakes.retain(|lk| lk.base.id >= 1_000_001 || !absorbed.contains(&lk.base.id));
-        let (to_sea, chained) = (
-            bs.spillways.iter().filter(|s| s.chained_into.is_none()).count(),
-            bs.spillways.iter().filter(|s| s.chained_into.is_some()).count(),
-        );
-        drainage.lakes.extend(bs.lakes);
-        if n_absorbed > 0 {
-            eprintln!(
-                "[HD] below-sea cleanup: {n_absorbed} detected lake(s) submerged by a filled below-sea lake -> dropped"
-            );
-        }
-        eprintln!(
-            "[HD] below-sea basins: {} lakes ({exo} exorheic, {endo} endorheic); {} spillways ({to_sea} -> sea, {chained} chained)",
-            exo + endo,
-            bs.spillways.len()
-        );
-        (bs.wetland, bs.spillways)
-    };
-    let before_seg = drainage.rivers.segments.len();
-    clip_rivers_to_lakes(&mut drainage);
-    eprintln!(
-        "[HD] rivers clipped to lakes: {before_seg} -> {} segments (terminate at sinks)",
-        drainage.rivers.segments.len()
-    );
-    // A below-sea basin's outflow is a REAL flow and must stay on the map, but it is not a
-    // hierarchised watercourse — giving it a Strahler order produced "order 1 draining
-    // 88 468 km²" at the head of the discharge sort. It is tagged `Spillway`: the KIND is
-    // authoritative, `strahler_order` must not be read for it, and `width_m` (from
-    // discharge) is what to render. `segment_source_lake` is `None` when the source basin
-    // sits BELOW the lake-inventory floor, so the consumer is never handed an id absent
-    // from `lakes.json`.
-    let inventoried: std::collections::HashSet<u32> =
-        drainage.lakes.iter().map(|l| l.base.id).collect();
-    for sw in &below_sea_spillways {
-        // ONE row, every array at once (`push_segment`). Pushing the arrays individually here
-        // dropped a field twice — see `SegmentRow`.
-        let (lx, ly) = *sw.points.last().unwrap_or(&(0, 0));
-        drainage.push_segment(ymir_core::tectonics_c1::drainage::SegmentRow {
-            segment: RiverSegment {
-                points: sw.points.clone(),
-                strahler_order: 1, // MEANINGLESS on a spillway — see `segment_kind`
-                avg_flow: 0.0,
-                max_flow: 0.0,
-                basin_id: 0,
-                upstream: vec![],
-                downstream: None,
-            },
-            drainage_km2: sw.drainage_km2,
-            navigability: sw.navigability,
-            discharge_m3s: sw.discharge_m3s,
-            width_m: sw.width_m,
-            profile_m: sw.profile_m.clone(),
-            // A spillway's path is traced over a col, OUTSIDE the accumulation network, so the
-            // raster reads ~0 along it (measured). Its contributing area is the basin's, which
-            // `drainage_km2` already carries — convert it back to cells rather than reading a
-            // raster that does not describe this path.
-            catchment_cells: {
-                let k = ly as usize * eroded.width + lx as usize;
-                drainage.flow.accumulation.data.get(k).copied().unwrap_or(0.0)
-            },
-            // Per-point discharge (Finding 46). A spillway's discharge is uniform along its
-            // traced path — one outflow over a col, not a hierarchy accumulating tributaries.
-            discharge_profile_m3s: vec![sw.discharge_m3s; sw.points.len()],
-            kind: SegmentKind::Spillway,
-            source_lake: inventoried.contains(&sw.lake_id).then_some(sw.lake_id),
-        });
-    }
-    debug_assert!(
-        drainage.segment_arrays_aligned(),
-        "spillway append desynchronised a parallel array"
-    );
-    apply_geo_scale_ratio(&mut drainage, geo_scale_ratio, &dcfg.thresholds);
-    if geo_scale_ratio != 1.0 {
-        eprintln!(
-            "[HD] geographic scale ratio {geo_scale_ratio:.2} -> hydrology signifies x{:.1} area",
-            geo_scale_ratio * geo_scale_ratio
-        );
-    }
-    HdDrainageBundle { drainage, wetland: wetland_mask }
+    assemble_hd_drainage(
+        eroded,
+        &dclim,
+        prebreach,
+        dcfg,
+        ss,
+        window_km,
+        geo_scale_ratio,
+        infiltration,
+        true,
+    )
 }
 
+/// Drive the HD chain on the worker thread, emitting per-phase events.
+/// Cancellable BETWEEN phases (the cached/opaque calls have no interior
+/// cancel hook — adding one would reopen `ymir-core`). On any core error,
+/// emits `HdFailed` and returns.
 pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel: &Arc<AtomicBool>) {
     cancel.store(false, Ordering::Relaxed);
     let _ = tx.send(C1Event::HdStarted { spec: spec.clone(), params: params.clone() });

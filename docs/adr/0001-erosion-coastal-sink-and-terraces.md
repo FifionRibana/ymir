@@ -5300,7 +5300,12 @@ absolute count now AGREE, which the amended rule 9 requires before a visual verd
 
 **Visible in the export?** The steep shares move 5–11 % relative — at the edge of noticeable. The
 drainage density rises 7 % / 35 %, and the hierarchy DEEPENS (S5 117 → 194, 59 → 139): more
-tributaries reaching higher order. **Navigability barely moves** (167 → 198 small-boat reaches at
+tributaries reaching higher order.
+
+> **CORRECTED by Finding 56b: this table was measured on the UNCLIPPED network**, before
+> `clip_rivers_to_lakes` and the spillway append. On production's clipped network the 2048²
+> density rises 1.3 % (not 7 %) and the confluences FALL 3 % — at the coarse grid the law
+> reorganises the hierarchy without densifying it. The 8192² conclusion stands (+33 %). **Navigability barely moves** (167 → 198 small-boat reaches at
 2048², none at either setting at 8192²), so the barge/ship question is untouched by this — it
 remains blocked on the discharge, i.e. on the hypsometry.
 
@@ -5316,7 +5321,251 @@ change**, not verified-and-clean, and they must be re-run against the pre-breach
 carried forward the way `build_hd_drainage` does it. `W/D per order` is likewise uninformative as
 computed (sub-metre widths without `geo_scale_ratio` give ratios of ~0.0).
 
+> **CLOSED by Finding 56b, with two of the sentences above corrected.** The invariants were
+> re-run against production's population (39–56 lakes; three of them do NOT hold, one being a
+> regression this law introduces). And the W/D diagnosis here is **WRONG**: `geo_scale_ratio` is
+> 1.0 in production, so it was never the cause — the metric divided a hydraulic channel width by
+> a valley relief, two different objects, and was not a ratio of anything. See Finding 56b.
+
 ### Standing
 
 Gated OFF pending the author's visual validation. `coast_warp_strength` 1.5, contour relaxation
 `None`, both unchanged.
+
+## Finding 56b — the lake invariants against PRODUCTION's population; three do not hold; and rule 10 as a type
+
+Finding 56 shipped a metric block that measured nothing and I read it as clean. This closes it,
+and the closing produced four results I did not expect.
+
+### The instrument first, because that is what made the mistake repeatable
+
+`build_hd_drainage` was a **private** function in `ymir-viz::bridge::c1::hd`, and every line of
+it was core logic — `c1_drainage_windowed_infil`, `apply_lake_water_balance`,
+`below_sea_basin_lakes_infil`, `clip_rivers_to_lakes`, `push_segment`, `apply_geo_scale_ratio`.
+Private in the binary crate means **production's lake carry is unreachable from a test**, so any
+bench wanting production's lakes had to re-implement the chain by hand. Two did. Both dropped the
+same step — adopting the pre-breach lake geometry — and both reported `lakes 0`.
+
+It now lives in `ymir_core::tectonics_c1::hd_assembly::assemble_hd_drainage`; the viz side is a
+wrapper that only adapts `ClimateResult` to `DrainageClimate`. **There is one carry and the bench
+calls it.** It cannot be dropped by a copy that forgot it, because there is no copy.
+
+The order is load-bearing and is now documented at the function: final drainage on the breached
+field WITH the climate discharge (Finding 22) → adopt the **pre-breach** lake geometry → H-1c
+water balance → below-sea merge and submerged-lake cleanup → **then** clip the rivers → append
+the spillways → geographic scale. Clipping before the footprint is final is the orphaned-mouth
+defect, already fixed twice.
+
+### The population, OFF against ON, at both resolutions
+
+Production config (`production_hd_config`, `geo_scale_ratio = 1.0`), arid-hot bed (25°, span 10),
+seed 10 481 999 410 520 546 993, 400 km domain. Two independent runs agree on every number below.
+
+| | 2048² off | 2048² **on** | 8192² off | 8192² **on** |
+|---|---|---|---|---|
+| lakes in the inventory | 41 | **39** | 56 | **48** |
+| exorheic / endorheic | 14 / 27 | 16 / 23 | 28 / 28 | 24 / 24 |
+| water surface km² | 3 795 | 3 788 | 1 638 | **1 323** |
+| footprint cells | 99 496 | 99 300 | 687 073 | 554 889 |
+| lakes DETECTED pre-breach | 67 | 61 | 58 | 50 |
+| closed depressions, RAW field | 68 431 cells (2 610 km²) | 72 642 (2 771) | 1 236 459 (2 948) | 1 011 245 (2 411) |
+
+**The law REDUCES the lake population** — −5 % at 2048², **−14 % at 8192²**, water surface −19 %
+at the fine grid. That is the expected direction for a denser channel network (more basins
+acquire an outlet), and it answers the question that made this rerun precede the visual
+judgement: **the basins moved, and at 8192² they moved by more than the coastline did.**
+
+The closed depressions are counted on the **RAW** field, the only place they exist — the breach
+removes them by construction, so counting them after it was the second half of the same mistake.
+
+### The full invariant set — the ones that hold, over real populations
+
+| invariant | 2048² off → on | 8192² off → on |
+|---|---|---|
+| footprint at or below its level | 0 → 0 | 0 → 0 |
+| exorheic ⇒ a traced outlet reaching a sink | 0 → 0 | 0 → 0 |
+| monotone long profiles (flat lake crossings tolerated) | 0 → 0 | 0 → 0 |
+| no duplicate id, no empty footprint | 0 / 0 | 0 / 0 |
+| `area_km2` == footprint | 1 → 1 | 0 → 0 |
+| `depth == level − floor` on the **EXPORTED** (breached) field | 3 → 4 | 0 → 0 |
+| `depth == level − floor` on the raw pre-breach field | 19 → 19 | 14 → 13 |
+
+Populations, printed next to their numerators because that is the point of rule 10: 39–56 lakes,
+99 300–687 073 footprint cells, 702–1 724 inlets, 10 183–15 966 long profiles, 14–28 exorheic.
+
+**One result worth keeping: the depths agree with the field that is EXPORTED (0–4) and disagree
+with the raw pre-breach field (13–19).** That is the right way round — a consumer reading
+`lakes.json` against the height raster finds them coherent. It follows from H-1c recomputing
+`level_m`/`depth_m` on the breached field while adopting the pre-breach footprint.
+
+### Three that do NOT hold — and one is a regression the law introduces
+
+| | 2048² off → on | 8192² off → on | population |
+|---|---|---|---|
+| footprint **not 4-connected** from its lowest cell | **24 → 24** | **38 → 28** | 41/39/56/48 lakes |
+| **dangling `lake_map` ids** (below-sea / detected) | **6 → 6** (6/0) | **16 → 18** (16/0, 18/0) | 47/45/72/66 ids |
+| **orphan mouths** — a terminus on an id absent from the inventory | **1 → 46** | **2 → 26** | 10 183/10 281/12 442/15 966 termini |
+| level > inlet arrival altitude | 5 → 4 | 9 → 5 | 1 325/1 724/702/1 221 inlets |
+
+**(a) More than half of every lake population has a disconnected footprint** (24 of 41, 28 of
+48). PARTLY attributed: `apply_lake_water_balance` settles an endorheic basin by keeping its
+`n_eq` **lowest cells sorted by altitude**, which is not a connected set — a basin with two
+sub-bowls at comparable depths becomes two patches under one id. That covers the endorheic share
+(15–22). **The 8–12 EXORHEIC cases are NOT covered**: H-1c leaves exorheic geometry untouched, so
+they come from the pre-breach detection and are **UNATTRIBUTED**. Filed, not fixed. Unchanged by
+the law, so it does not block this decision.
+
+**(b) The dangling ids are ALL below-sea, none detected**, and this is a documented trade rather
+than a discovery: `below_sea_basin_lakes_infil` MARKS every below-sea sink in `lake_map` for sink
+validity but only INVENTORIES those clearing `INVENTORY_MIN_CELLS = 4`. Its own unit test asserts
+it in those words — "the 2-cell pit is below the 4-cell floor → marked, not listed". Finding 33
+Part A lowered the floor from 5 km² to 4 cells precisely to shrink this residual; 6–18 remain.
+
+**(c) Orphan mouths 1 → 46 and 2 → 26 — a 46× and 13× regression that the law introduces.** This
+is (b) multiplied by the denser network: far more river termini land in a sub-4-cell below-sea
+sink that `lakes.json` does not contain, so a consumer resolving the terminus's lake id gets
+nothing and the river ends in open ground.
+
+**It is the strongest argument against shipping the law as it stands — and it is not a terrain
+defect.** The fix is in the reporting layer and is independent of the channel head: either raise
+those sinks into the inventory, or attribute such a terminus to `None` the way the spillway
+append already does for a source basin below the floor (`segment_source_lake`). Until one lands,
+the law would ship 46 unresolvable termini at 2048².
+
+**(d) `level > inlet arrival` is small and IMPROVES with the law** (5 → 4, 9 → 5). Pre-existing.
+
+### W/D per Strahler order — the metric was replaced, not just recomputed
+
+Finding 56 divided a **hydraulic channel width** (metres, from discharge) by a **1 km window
+relief** (hundreds of metres). Those are two different objects — a channel dimension over a
+valley dimension — and every order printed `0.0`. I attributed that to the missing
+`geo_scale_ratio`; **that attribution was wrong.** The number was unusable because it was not a
+ratio of anything, and `geo_scale_ratio` is 1.0 in production anyway, so it was never the cause.
+
+Replaced by a genuine **valley cross-section**: a transect perpendicular to the flow at the
+segment midpoint, walked out one cell at a time on each side tracking a running maximum, the
+shoulder called where the ground has dropped 10 m below that maximum (we are descending the far
+side) or at 2 km. `W` is the sum of the two half-widths; `D` is the **shallower** of the two
+rises, so one high flank cannot inflate an asymmetric valley. Spillways are excluded — a
+spillway's path is traced over a col, outside the accumulation network, and has no valley.
+
+| valley W/D (p50) | 2048² off → on | 8192² off → on |
+|---|---|---|
+| S1 | 56.2 → 51.0 | 21.6 → 34.4 |
+| S2 | 96.2 → 84.3 | 18.2 → 25.7 |
+| S3 | 97.7 → 84.2 | 26.9 → 36.5 |
+| S4 | 84.1 → 64.8 | 42.1 → 57.8 |
+| S5 | 34.6 → 76.8 | 16.8 → 50.1 |
+
+**The two grids are in opposite regimes, again.** At 2048² the valleys are broad (W/D 35–98) and
+the law NARROWS them at every order but S5; at 8192² they are three to five times tighter
+(17–42) and the law WIDENS them at every order. Neither is a defect of the law — it is the
+Findings 42–44 hypsometry split showing up in valley form, and it is a fourth independent path to
+the same blocker.
+
+### The channel widths, and a result that only appeared because rule 10 refused the column
+
+Channel width comes from `w = 5·Q^0.5` on the discharge, and in this test bed:
+
+| | 2048² off → on | 8192² off → on |
+|---|---|---|
+| share of reaches with Q > 0 | 23–48 % | **0–17 %** |
+| channel width p50 \| max, wet reaches only | 0.9–2.2 \| 16.1 m | 0.65–1.9 \| **5.2 m** |
+| **orders with NO wet reach at all** | none | **S5 (all 51 reaches), shipped** |
+
+**At 8192² not one of the 51 order-5 reaches carries any discharge**, and the widest channel
+anywhere on the fine grid is 5.2 m. The trunk of the hierarchy is dry while the water sits in
+low-order coastal reaches — which is coherent for a desert continent (no exotic rivers) but is
+also why no width or navigability calibration can be anchored on this bed.
+
+### Rule 10 — recorded, and made a TYPE rather than a paragraph
+
+**The rule.** *Any bench reporting more than one configuration must assert that each reported
+quantity responded to the sweep, and must fail loudly on a column constant at zero.*
+
+**Scope: any bench reporting more than one configuration.** With one configuration there is
+nothing to vary against and the rule cannot apply.
+
+**Why it is a type.** The rule was already written down in this ADR, after the first H-1 bench
+made the mistake. Writing it down did not prevent the second occurrence — by me, on the suite
+whose entire purpose was to catch what the coastal metrics could not see. **A recorded rule does
+not protect if it is not executable.** So it is `ymir_core::metric_sweep::Sweep`, the same move as
+`SegmentRow`/`push_segment` and `segment_arrays_aligned()`: the correct behaviour is the only one
+the type permits.
+
+Four registrations, because the failure mode is not the same for every kind of number:
+
+| | what the bench promises | fails when |
+|---|---|---|
+| `push` | the sweep should MOVE this | constant — at zero, or at anything |
+| `invariant` | a rule-7 control: it must NOT move | it moved, **or it is flat at zero** — an invariant that holds at nothing is not evidence that it holds |
+| `checked(v, n)` | `v` violations over a population of `n` | **`n == 0` in any configuration.** `v` itself is free: zero violations is the desired result |
+| `pinned(v, why)` | it cannot respond, and here is why, in writing | it is zero everywhere — the reason never covers that |
+
+**`checked` is the pair that catches the defect in its real shape.** A violation counter flat at
+zero is a good result, so guarding it for variation would be wrong; what was wrong both times was
+the **denominator**. `0 violations out of 0 lakes` prints identically to `0 out of 4 000`. Every
+violation count is now printed next to its population and the population must be non-empty.
+
+`pinned` is a deliberately narrow escape, because a guard with no escape gets satisfied by
+deleting the metric. The reason is mandatory and is reprinted in the report, and **a pinned
+column at zero still fails** — so it cannot swallow the case the rule exists for.
+
+**It fired on its first real run — 13 columns — and it was right three times:**
+
+1. **`channel width p50` was 0.000 m at every order, both grids, both settings**, because most of
+   the network carries a discharge of exactly 0.000 m³/s. The median was measuring the dry
+   majority. Switched to p90 — **still 0.000 for S5 at 8192²**, because that order has no wet
+   reach at all. A percentile of a mostly-zero distribution is not a channel width; it is a
+   restatement of the dry fraction. Now conditional on `Q > 0`, printing `n/a` for a dry order
+   (a printed `n/a` cannot be mistaken for a measured zero, which `0.000` was) with the wet share
+   and the maximum registered instead. **The dry-trunk result above exists only because the
+   column was refused twice.**
+2. **`max Strahler order`** was constant at 5 — not a quantity expected to respond but an
+   **invariant claim**, and exactly the one the two-sided form violated (S5 59 → 0 at 8192², i.e.
+   max order 5 → 4). Re-registered `invariant`.
+3. **`navigable boat reaches`** was constant at 2 at 8192². Not a measurement failure: the classes
+   are thresholds in m³/s and the discharge is 2–3 orders below them (Finding 47). `pinned` with
+   that reason in writing.
+
+### Two CORRECTIONS to Finding 56, made visibly
+
+**1. The network table was measured on the UNCLIPPED network.** Finding 56 read the bench's own
+`c1_drainage_windowed` result, before `clip_rivers_to_lakes` and before the spillway append.
+**Production's network is the clipped one.**
+
+| | 2048² off → on | *(F56 reported)* | 8192² off → on | *(F56 reported)* |
+|---|---|---|---|---|
+| segments | 10 183 → 10 281 | *13 149 → 14 053* | 12 442 → 15 966 | *13 737 → 18 746* |
+| confluences | **3 102 → 3 002** | *4 419 → 4 688* | 5 086 → 6 106 | *6 049 → 7 434* |
+| drainage density km/km² | **0.611 → 0.619** | *0.746 → 0.798* | 0.540 → **0.721** | *0.561 → 0.756* |
+| Strahler S5 | 54 → 128 | *117 → 194* | 51 → 131 | *59 → 139* |
+| spillways | 17 → 18 | *(not reported)* | 44 → 40 | *(not reported)* |
+
+**One claim changes sign.** At 2048² the confluences **fall 3 %** where I reported a 6 % rise, and
+the density rises **1.3 %** where I reported 7 %. So "a denser network at both resolutions" was
+wrong at the coarse grid: at 2048² the law **reorganises** the hierarchy (S5 ×2.4) **without
+densifying** it. The 8192² conclusion stands and strengthens — density +33 %, confluences +20 %,
+S5 ×2.6.
+
+**2. My own new control block was wrong before it was published, and cross-checking two benches
+caught it.** The rule-7 hypsometry mean read 672.2 m at 8192² where `coastal_comb_levers` reported
+685. Same seed, same config, and the p50 (445), p90 (1 606) and land share (16.4 %) matched
+exactly — so it was not the field. It was an **f32 accumulator**: summing 1.8 M altitudes in f32
+saturates, because once the partial sum passes ~10⁹ adding 700 m stops changing it. Fixed to f64,
+and the two benches now agree to the printed digit at all four points (282.3/304.5 and
+685.3/697.2 raw). Method rule 7's sibling: *a quantity that two benches compute must be compared
+across them; agreeing to three digits and diverging on the fourth statistic is a bug, not noise.*
+
+The block also now reports the hypsometry of **both** fields, which prices the breach: it lowers
+79–6 446 cells below sea level, and because those are the LOWEST cells, removing them from the
+land mask RAISES the mean of the remainder by 4.7–7.4 m. That is why the raw and breached means
+differ in the direction they do, and it is why the two benches were never comparable before.
+
+### Standing
+
+Still gated OFF pending the author's visual judgement — the note is at
+`docs/reports/c1_continental_buoyancy/closure_morphology/channel_head_law/VALIDATION_NOTE.md`.
+`coast_warp_strength` 1.5, contour relaxation `None`, both unchanged. `A_c = 0` remains a
+diagnostic. **The orphan-mouth regression (c) must be closed before the law could ship even on a
+favourable verdict**, and it is independent work.
