@@ -5086,7 +5086,17 @@ contradicted the eye and the eye was right, a ceiling masking the target, and a 
 **Every one of them was caught by a picture or by a tail, and none by the summary statistics.**
 
 For any defect the author reports VISUALLY: render one panel per setting, hold the crop fixed,
-and include a reference panel of what "absent" looks like. The reference panel is what made the
+and include a reference panel of what "absent" looks like.
+
+**AMENDMENT (Finding 56).** A fixed crop is chosen on ONE configuration — normally the shipped
+one — and a remedy that DISPLACES the defect rather than removing it will then render a
+flatteringly clean panel. It happened: the channel-head law's 8192² panel showed a clean coast
+while the global density was 27.9 per 100 km against 29.8 shipped. So:
+
+- **re-choose the crop if the defect moves**, and say which configuration the crop was chosen on;
+- **the panel and an ABSOLUTE count must agree before a visual verdict is accepted.** Here they
+  reconciled only once the count was read in absolute terms (spurs 1849 → 905) instead of per
+  100 km — the rate had a moving denominator. The reference panel is what made the
 target legible here — it is not decoration, it is the anchor.
 
 Panels: `exports/coastal_fringes/` — sea black, land grey, coastline white, one fixed 640×640
@@ -5199,3 +5209,114 @@ test file into the library so every sweep uses ONE definition, with the anchored
 legend. Judging ten separate files means comparing from recollection, which is how three wrong
 attributions survived; side by side with the REFERENCE first, the differences are direct.
 `exports/coastal_fringes/mosaic_levers.png` and `mosaic_warp.png`.
+
+## Finding 56 — the slope-dependent channel head, implemented; and the two-sided form measured and rejected
+
+`A_c(S) = A_c_ref · max(1, (S_ref/S)²)`, Montgomery & Dietrich's `A_c·S² = C`, in `incise`,
+**OFF by default** (`a_c_slope_law: None` keeps the constant threshold, byte-identical).
+
+### Calibration — measured, and pinned to one resolution for a stated reason
+
+`C = A_c_ref · S_ref²` is anchored on the HILLSLOPE regime, where the present threshold is
+correct, so the apron inherits the ratio the law imposes instead of a chosen factor.
+
+`S_ref = 0.3319` is the MEDIAN gradient over the 159 134 cells whose accumulation sits within
+±25 % of `A_c = 0.1 km²` — the channel heads the model currently produces — in the production
+config at **2048²**.
+
+⚠️ **It is not resolution-stable: 0.3319 (18.4°) at 2048² against 0.1128 (6.4°) at 8192².** A
+constant `A_c` puts channel heads on quite different topography depending on the grid, which is
+itself the Findings 42–44 hypsometry defect surfacing in the calibration. 2048² is pinned because
+the project already treats it as the calibration resolution (`HILLSLOPE_REF_CELL_M`). **The
+residual gap at 8192² is inherited from that, not from the law.**
+
+### `S_min` — a PROXY, labelled, with its cost measured
+
+Montgomery & Dietrich constrain the relationship over roughly `S = 0.1–1.0`. **There is no
+published lower bound for channel initiation**, so extrapolating `A_c ∝ S⁻²` onto a near-flat
+apron leaves the fitted range and needs a floor. `CHANNEL_HEAD_S_MIN = tan(0.5°) = 0.0087` is
+that floor and it is labelled a proxy in the code and here.
+
+Chosen so the BOUND does not do the LAW's work: it covers **8.6 % of land at 2048² and 3.6 % at
+8192²**, and caps `A_c` near 145 km² — no channel ORIGINATES on the flattest ground, which is
+the right picture for a coastal plain where rivers cross the plain rather than being born on it.
+A 2° floor would cover 27.7 % of land and let the clamp, not the law, set the apron's threshold.
+
+### The two-sided form: implemented, measured, REJECTED
+
+The plain law also LOWERS the threshold where `S > S_ref`, channelising steep ground. The
+invariant suite caught it, and it is exactly the bad trade a coastal metric cannot see:
+
+| | 2048² off → two-sided | 8192² off → two-sided |
+|---|---|---|
+| slope > 30 % | 14.50 → **0.76 %** | 23.68 → **15.59 %** |
+| slope > 45 % | 1.21 → **0.00 %** | 8.70 → **1.70 %** |
+| Strahler S5 | 117 → 237 | 59 → **0 (gone)** |
+| hypsometry mean | 282 → 216 m | 685 → 388 m |
+
+**The arêtes relief-v2/v3 exist to produce were erased, and at 8192² the top of the network
+hierarchy vanished.** The calibration is anchored AT `s_ref` and nothing says the steep regime
+needs a lower threshold — the shipped relief was validated with the constant. So the law is
+clamped **RAISE-ONLY**: it corrects the regime it was derived for, the flats, and leaves the
+hillslopes exactly as calibrated.
+
+### The verdict, raise-only, at both resolutions
+
+**PRIMARY** — and reported in ABSOLUTE terms, because the per-100 km density has a moving
+denominator (rule 2, which I reproduced in choosing it):
+
+| | 2048² | 8192² |
+|---|---|---|
+| spurs, shipped → law (target) | 1 254 → **560** (15) | 1 849 → **544** (19) |
+| **share of the gap closed** | **56 %** | **71 %** |
+| coastline km, shipped → law (target) | 4 860 → 3 333 (1 581) | 6 206 → **2 692** (1 602) |
+| length p90 km | 3.50 → 4.78 (24.68) | 4.62 → 3.81 (23.34) |
+| local parallelism | 0.515 → 0.513 (0.330) | 0.525 → **0.430** (0.363) |
+
+**RULE-7 CONTROL BLOCK — the incision is alive**, which is how `A_c × 100` failed:
+
+| | mean | p50 | p90 | land % |
+|---|---|---|---|---|
+| shipped 2048² | 282 | 161 | 787 | 15.0 |
+| **law 2048²** | **304** | 193 | 770 | 16.0 |
+| shipped 8192² | 685 | 445 | 1 606 | 16.4 |
+| **law 8192²** | **697** | 460 | 1 606 | 16.7 |
+| un-eroded reference | 865 | 679 | 1 836 | 16.9 |
+
+Hypsometry moves +8 % and +2 % — nowhere near the un-eroded field. And the panel and the
+absolute count now AGREE, which the amended rule 9 requires before a visual verdict.
+
+### What else moved in the network
+
+| | 2048² off → on | 8192² off → on |
+|---|---|---|
+| slope > 30° | 14.50 → 12.84 % | 23.68 → 21.56 % |
+| slope > 45° | 1.21 → 1.11 % | 8.70 → 8.27 % |
+| drainage density km/km² | 0.746 → **0.798** | 0.561 → **0.756** |
+| confluences | 4 419 → 4 688 | 6 049 → 7 434 |
+| Strahler S5 | 117 → 194 | 59 → **139** |
+| navigability (boat) | 167 → 198 | 0 → 0 |
+| floor/local-ridge p50 (1 km) | 0.240 → 0.352 | 0.526 → 0.391 |
+
+**Visible in the export?** The steep shares move 5–11 % relative — at the edge of noticeable. The
+drainage density rises 7 % / 35 %, and the hierarchy DEEPENS (S5 117 → 194, 59 → 139): more
+tributaries reaching higher order. **Navigability barely moves** (167 → 198 small-boat reaches at
+2048², none at either setting at 8192²), so the barge/ship question is untouched by this — it
+remains blocked on the discharge, i.e. on the hypsometry.
+
+### Two blocks of my own suite that measured NOTHING, said plainly
+
+**Lakes and closed depressions both read 0 in every configuration.** `hydro()` measures the lakes
+of the POST-BREACH drainage, which production discards, and a breached field has no depressions
+by construction. **That is the exact mistake the first H-1 bench made and which this ADR already
+records** — reproduced by me, on a suite whose whole purpose was to catch what the coastal
+metrics cannot see. The lake invariants (footprint ≤ level, depth = level − floor,
+exorheic ⇒ outlet, no orphan mouth, monotone profiles) are therefore **UNVERIFIED for this
+change**, not verified-and-clean, and they must be re-run against the pre-breach population
+carried forward the way `build_hd_drainage` does it. `W/D per order` is likewise uninformative as
+computed (sub-metre widths without `geo_scale_ratio` give ratios of ~0.0).
+
+### Standing
+
+Gated OFF pending the author's visual validation. `coast_warp_strength` 1.5, contour relaxation
+`None`, both unchanged.

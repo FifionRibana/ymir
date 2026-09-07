@@ -50,13 +50,22 @@ struct Lever {
     mfd_p: Option<Option<f32>>, // Some(None) = D8, Some(Some(p)) = MFD with exponent p
     a_c_km2: Option<f32>,
     diffusion: Option<f32>,
+    /// ADR Finding 56 — the slope-dependent channel head.
+    a_c_law: bool,
     /// Coarse reference: no FBM, no incision.
     reference: bool,
 }
 
 impl Lever {
     const fn shipped() -> Self {
-        Lever { label: "SHIPPED", mfd_p: None, a_c_km2: None, diffusion: None, reference: false }
+        Lever {
+            label: "SHIPPED",
+            mfd_p: None,
+            a_c_km2: None,
+            diffusion: None,
+            a_c_law: false,
+            reference: false,
+        }
     }
 }
 
@@ -110,6 +119,12 @@ fn build(target: usize, lv: Lever) -> GridF32 {
         }
         if let Some(d) = lv.diffusion {
             sp.diffusion = d;
+        }
+        if lv.a_c_law {
+            sp.a_c_slope_law = Some(ymir_core::erosion::stream_power::ChannelHeadLaw {
+                s_ref: ymir_core::erosion::stream_power::CHANNEL_HEAD_S_REF,
+                s_min: ymir_core::erosion::stream_power::CHANNEL_HEAD_S_MIN,
+            });
         }
     }
     let (up, _) = upscale_from_c1_with_progress(
@@ -347,4 +362,77 @@ fn comb_levers_control_block() {
            value must NOT ship. That would leave a SLOPE-DEPENDENT A_c as the only form that can
            raise the threshold on the apron while leaving the hillslopes calibrated."
     );
+}
+
+/// ADR Finding 56 — the LAW, judged on the three things together: primary metrics, the rule-7
+/// control block proving the incision is alive, and a panel. None is sufficient alone: the
+/// uniform `A_c × 100` passed the metrics AND the panel while having switched erosion off.
+#[test]
+#[ignore]
+fn channel_head_law_verdict() {
+    let ss = SteinSteinParams::default();
+    for target in [2048usize, 8192] {
+        let km = DOMAIN_KM / target as f32;
+        eprintln!(
+            "
+==========  CHANNEL-HEAD LAW — {target}²  =========="
+        );
+        header();
+        let mut fields = Vec::new();
+        for lv in [
+            Lever::shipped(),
+            Lever { label: "A_c(S) LAW", a_c_law: true, ..Lever::shipped() },
+            Lever { label: "REFERENCE coarse", reference: true, ..Lever::shipped() },
+        ] {
+            let f = build(target, lv);
+            let polys = marching_squares(&f, SEA);
+            row(lv.label, &coast_shape(&polys, km));
+            fields.push((lv.label, f, polys));
+        }
+        // RULE-7 CONTROL BLOCK — the incision must still be alive.
+        eprintln!(
+            "
+RULE-7 CONTROL BLOCK  (shipped 282/161/787 m · un-eroded reference 865/679/1836 m)"
+        );
+        eprintln!("{:<26} {:>9} {:>9} {:>9} {:>10}", "", "mean m", "p50 m", "p90 m", "land %");
+        for (label, f, _) in &fields {
+            let mut a: Vec<f32> = f
+                .data
+                .iter()
+                .filter(|&&v| v > SEA)
+                .map(|&v| c1_altitude_norm_to_metres(v, &ss))
+                .collect();
+            a.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+            let m = a.len().max(1);
+            let q = |p: f32| a[(((m - 1) as f64 * p as f64).round() as usize).min(m - 1)];
+            eprintln!(
+                "{label:<26} {:>9.0} {:>9.0} {:>9.0} {:>9.1}%",
+                a.iter().map(|&v| v as f64).sum::<f64>() / m as f64,
+                q(0.5),
+                q(0.9),
+                100.0 * m as f32 / f.data.len() as f32
+            );
+        }
+        if target == 8192 {
+            let out = std::path::Path::new("../../exports/coastal_fringes");
+            let _ = std::fs::create_dir_all(out);
+            let (ox, oy) = densest_window(&fields[0].2, target, target, CROP);
+            for (label, f, polys) in &fields {
+                let n = label.replace([' ', '(', ')', '/'], "_");
+                let _ = render_coast_crop(
+                    f,
+                    polys,
+                    SEA,
+                    ox,
+                    oy,
+                    CROP,
+                    &out.join(format!("law_{n}_8192.png")),
+                );
+            }
+            eprintln!(
+                "
+panels: exports/coastal_fringes/law_*_8192.png (crop fixed at ({ox},{oy}))"
+            );
+        }
+    }
 }

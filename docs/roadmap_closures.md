@@ -275,6 +275,52 @@ perchées, falaise contre plage au rendu).
 **Note :** `erosion/coastal.rs` est un fichier vide marqué M5, comme `thermal.rs`,
 `aeolian.rs` et `glacial.rs`.
 
+
+## ⛔ L'HYPSOMÉTRIE EST LE VERROU — priorité 1, devant tout le reste
+
+**Quatre chantiers indépendants sont venus buter dessus**, chacun par un chemin différent, et
+c'est la raison de l'inscrire ici plutôt que de la redécouvrir une cinquième fois :
+
+1. **la navigabilité** (ADR Finding 47) — le débit n'est pas stable en résolution (max 10,3 m³/s
+   à 2048² contre 1,04 à 8192², la classe « petite embarcation » ×50), donc les seuils en m³/s
+   ne peuvent pas être calibrés ;
+2. **le mécanisme 1 du Finding 43** — l'incision laisse 90 % des terres à grille fine à une
+   branche de versant inerte ;
+3. **le cadran temporel de H-2** (Finding 44) — il lui faut une échelle de temps explicite, et
+   celle-ci n'a de sens qu'une fois le terme de versant refait ;
+4. **le seuil de tête de chenal** (Finding 56) — `S_ref` vaut 0,3319 à 2048² contre 0,1128 à
+   8192², donc **aucune calibration de tête de chenal ne peut tenir aux deux grilles** tant que
+   l'hypsométrie ne converge pas. La loi comble 56 % / 71 % de l'écart de franges côtières ; le
+   reste est hérité de ce défaut, pas de la loi.
+
+Ce n'est donc plus un chantier parmi d'autres : **c'est le nœud qui bloque la convergence de
+tout ce qui dépend de la pente.**
+
+### Ce qui est DÉJÀ SU — à ne pas re-dériver
+
+- **Attribution 63 / 18 / 18** (Finding 43) : 63 % de l'excès d'altitude à 8192² vient de la
+  **partition de régime fluvial/versant**, ~18 % de la dispersion MFD, et **~50 % du résidu
+  (73 m) reste NON ATTRIBUÉ** — il survit à `A_c = 0` **et** à MFD éteint.
+- **Le mécanisme 1 est « un seuil correct alimentant une branche inerte »** : `A_c = 0,1 km²` est
+  juste en km², mais la fraction de terres qu'il couvre passe de 55,4 % à 2048² à 10,1 % à 8192²
+  (loi aire-fréquence sous-linéaire), et les 90 % restants sont confiés à un terme de versant qui
+  ne fait rien (`diffusion = 0` change le résultat de 3 m).
+- **Le remède n'est PAS un laplacien plus fort.** Mesuré et réfuté (Finding 45b) : le laplacien
+  est **conservatif** — il remplit les vallées autant qu'il abaisse les crêtes — et le renforcer
+  a fait passer les bassins sous-marins de 43 à 1994 à 8192² tout en n'élevant l'altitude
+  moyenne que de 17 m. Il faut un terme **transport-limited à flux sédimentaire explicite**, le
+  seul type d'agent qui **retire** de la masse des versants et la **livre** au réseau.
+- **Ce terme exige l'échelle de temps explicite** que le Finding 44 a **spécifiée sans
+  l'implémenter** : une diffusivité en m²/an n'a rien à multiplier tant que `dt = 1.0` est un
+  simple placeholder d'unité. Et le Finding 44 a montré au passage que `K` et la durée ne sont
+  **pas observables séparément** — l'observable est `k_time = K·dt·iterations`.
+
+### Ordre imposé par ces dépendances
+
+`échelle de temps explicite (F44)` → `terme de versant transport-limited (F43 méc. 1)` →
+`hypsométrie convergente` → puis, redevenus calibrables : les seuils de navigabilité en m³/s,
+le cadran de H-2, et la calibration de tête de chenal aux deux résolutions.
+
 ## Reste en attente (hors closures)
 
 - **Séparation tronc/affluents** façon Azgaar : un tronc nommé portant un profil ordonné

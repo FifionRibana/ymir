@@ -21,6 +21,45 @@ use crate::terrain::flow::{
     D8_DIST, D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow, mfd_accumulation,
 };
 
+/// Montgomery & Dietrich channel-initiation law: `A_c(S) = A_c_ref * (S_ref/S)^2`.
+///
+/// Equivalent to `A_c * S^2 = C` with `C = A_c_ref * S_ref^2`; expressed as a RATIO to the
+/// existing threshold so the calibration point stays explicit and `C` never has to be written
+/// down as a bare number.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChannelHeadLaw {
+    /// The slope at which `min_area_cells` is the CORRECT threshold — the calibration point,
+    /// and the only place the law is anchored. See [`CHANNEL_HEAD_S_REF`].
+    pub s_ref: f32,
+    /// PROXY — the slope below which no channel initiates. See [`CHANNEL_HEAD_S_MIN`].
+    pub s_min: f32,
+}
+
+/// Slope at the channel heads the model currently produces — **MEASURED, not chosen**: the
+/// median gradient over cells whose accumulation sits within ±25 % of `A_c = 0.1 km²`
+/// (159 134 cells), production config, seed 10481999410520546993, 400 km, at **2048²**.
+///
+/// 2048² is the calibration resolution by project convention ([`HILLSLOPE_REF_CELL_M`]), and it
+/// has to be pinned to one, because the measurement is NOT resolution-stable: 0.3319 (18.4°) at
+/// 2048² against 0.1128 (6.4°) at 8192². That spread is itself a symptom — a CONSTANT `A_c` puts
+/// channel heads on quite different topography depending on the grid — and the law should reduce
+/// it, which is one of the things to check after it lands (ADR Finding 56).
+pub const CHANNEL_HEAD_S_REF: f32 = 0.3319;
+
+/// **PROXY.** The slope below which the law is frozen and no channel initiates.
+///
+/// Montgomery & Dietrich's source-area/slope data constrains the relationship over roughly
+/// `S = 0.1–1.0`; there is **no published lower bound** for channel initiation, so extrapolating
+/// `A_c ∝ S⁻²` down to a near-flat apron leaves the fitted range and needs a floor. This is that
+/// floor, and it is a proxy, not a law.
+///
+/// `tan(0.5°) = 0.0087`, chosen so the BOUND does not do the LAW's work: it covers 8.6 % of land
+/// at 2048² and 3.6 % at 8192². At the bound `A_c` caps near 145 km², i.e. no channel ORIGINATES
+/// on the flattest ground — the right picture for a coastal plain, where rivers cross the plain
+/// rather than being born on it. A higher floor (2° covers 27.7 % of land) would make the clamp,
+/// not the law, set the apron's threshold.
+pub const CHANNEL_HEAD_S_MIN: f32 = 0.0087;
+
 /// Stream-power incision tunables (prototype).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -68,6 +107,18 @@ pub struct StreamPowerConfig {
     /// because `E = K·A^m·S^n` has no lower bound — those cells are physically
     /// hillslopes, not channels). `0` (default) = fluvial everywhere (legacy).
     pub min_area_cells: f32,
+    /// **SLOPE-DEPENDENT CHANNEL HEAD** (ADR Finding 56) — `None` = the constant
+    /// `min_area_cells` (shipped, byte-identical). `Some(law)` applies Montgomery & Dietrich's
+    /// `A_c · S² = constant`: the area needed to start a channel RISES as the slope falls.
+    ///
+    /// Why a constant threshold is wrong, measured rather than argued: it produces a comb of
+    /// ~30 parallel spurs per 100 km of coast against ~1 on the un-incised reference, because on
+    /// the 1.39 km-wide, 1.29°-median apron the incision itself builds, `A_c = 0.1 km²` starts a
+    /// channel every ~0.3 km and every one of them reaches the sea. A UNIFORM `A_c × 100` removes
+    /// the comb — and switches the incision off with it (hypsometry 860 m against 865 for the
+    /// un-eroded field). Only a slope-dependent threshold can be high on the apron and low on the
+    /// hillslopes at once.
+    pub a_c_slope_law: Option<ChannelHeadLaw>,
     /// **Incision threshold `θ`** — `E = K·max(0, A^m·S^n − θ)`: no incision below a
     /// critical stream power, so low-energy cells (again, headwaters) do not carve.
     /// `0` (default) = no threshold (legacy).
@@ -178,6 +229,7 @@ impl StreamPowerConfig {
             diffusion: 0.05,
             diffusion_substeps: 4,
             min_area_cells: RELIEF_V1_A_C_KM2 / cell_km2,
+            a_c_slope_law: None, // ADR Finding 56 — opt-in; None keeps the constant
             threshold: 0.0,
             cell_km,
             depth_scale_m,
@@ -273,6 +325,7 @@ pub const RELIEF_V1_K: f32 = 1500.0;
 impl Default for StreamPowerConfig {
     fn default() -> Self {
         Self {
+            a_c_slope_law: None, // ADR Finding 56 — opt-in
             k: 1.0,
             m: 0.5,
             n: 1.0,
@@ -410,18 +463,40 @@ pub fn incise_with_progress(
                 continue; // base level, fixed
             }
             let area = acc.data[k].max(1.0);
-            if area < cfg.min_area_cells {
-                continue; // A_c: hillslope regime — no fluvial incision (channel head)
+            let hr = field.data[r];
+            let ho = field.data[k];
+            let dist_m = dist[k] * cell_m;
+            // The local gradient, computed BEFORE the channel-head gate because the gate can
+            // depend on it. Same quantity the stream-power law uses below, so the two cannot
+            // disagree about what the slope is.
+            let s_now = (ho - hr).max(0.0) * norm_to_m / dist_m;
+            // A_c: hillslope regime — no fluvial incision below the channel head. CONSTANT by
+            // default; with the law (ADR Finding 56) the threshold RISES as the slope falls,
+            // `A_c(S) = A_c_ref·(S_ref/S)²`, frozen below `s_min` where the fit no longer reaches.
+            let a_c_cells = match &cfg.a_c_slope_law {
+                Some(law) => {
+                    // RAISE-ONLY (`max(1, …)`). The two-sided law was implemented, measured and
+                    // rejected: `A_c(S) = A_c_ref·(S_ref/S)²` also LOWERS the threshold where
+                    // `S > S_ref`, which channelises the steep ground and destroys the arêtes
+                    // relief-v2/v3 exist to produce — the >45° share went 1.21 % → 0.00 % at
+                    // 2048² and 8.70 % → 1.70 % at 8192², and Strahler S5 vanished entirely at
+                    // 8192². The calibration is anchored AT `s_ref`, and nothing says the steep
+                    // regime needs a lower threshold: the shipped relief was validated with the
+                    // constant. So the law corrects the regime it was derived for — the flats —
+                    // and leaves the hillslopes exactly as calibrated (ADR Finding 56).
+                    let ratio = (law.s_ref / s_now.max(law.s_min)).max(1.0);
+                    cfg.min_area_cells * ratio * ratio
+                }
+                None => cfg.min_area_cells,
+            };
+            if area < a_c_cells {
+                continue;
             }
             // C-3 lithology + C-3b fracture density: per-cell erodibility multiplier.
             // None → uniform (kf = 1, byte-identical).
             let kdt = k_base_dt * k_field.map_or(1.0, |kf| kf[k]);
-            let hr = field.data[r];
-            let ho = field.data[k];
             let am = (area * cell_km2).powf(cfg.m); // A_km²^m
-            let dist_m = dist[k] * cell_m;
             // Threshold gate: physical stream power A_km²^m · S_phys^n vs θ.
-            let s_now = (ho - hr).max(0.0) * norm_to_m / dist_m;
             if am * s_now.powf(cfg.n) <= cfg.threshold {
                 continue;
             }
