@@ -91,11 +91,17 @@ struct Spec {
     octaves: Option<usize>,
     /// `None` = the shipped `RELIEF_V1_A_C_KM2 = 0.1`; `Some(a)` overrides (C1's sweep).
     a_c_km2: Option<f32>,
+    /// D1 — the HILLSLOPE ANCHOR, borrowed by hand: multiply `diffusion` by this factor, on the
+    /// shipped LINEAR branch, and raise `diffusion_substeps` to hold the stability bound the
+    /// config documents (`diffusion / substeps <= 0.2`). `Some((HILLSLOPE_REF_CELL_M/cell_m)^2)`
+    /// is numerically what "borrowing the rescaling that only exists in the NONLINEAR branch"
+    /// means. Diagnostic sign test; nothing in production changes.
+    diffusion_scale: Option<f32>,
 }
 
 impl Spec {
     fn of(v: Variant) -> Self {
-        Spec { v, amplitude_base: None, octaves: None, a_c_km2: None }
+        Spec { v, amplitude_base: None, octaves: None, a_c_km2: None, diffusion_scale: None }
     }
 }
 
@@ -106,6 +112,10 @@ struct Geometry {
     cell_km2: f32,
     min_area_cells: f32,
     octaves: usize,
+    /// Read back, because the E inventory quoted 0.05 (relief-v1) where production ships
+    /// relief-v3's 0.08 — a figure that must come from the config, not from a doc comment.
+    diffusion: f32,
+    diffusion_substeps: usize,
 }
 
 fn terrain_spec(target: usize, sp: Spec) -> (GridF32, Geometry) {
@@ -170,6 +180,15 @@ fn build(target: usize, sp: Spec) -> (GridF32, Geometry) {
             spw.min_area_cells = a / cell_km2;
         }
     }
+    if let Some(scale) = sp.diffusion_scale {
+        if let Some(spw) = cfg.stream_power.as_mut() {
+            spw.diffusion *= scale;
+            // Hold `diffusion / substeps <= 0.2`, the bound the field's own doc states.
+            while spw.diffusion / spw.diffusion_substeps as f32 > 0.2 {
+                spw.diffusion_substeps *= 2;
+            }
+        }
+    }
     let geo = {
         let cell_km = DOMAIN_KM / target as f32;
         Geometry {
@@ -179,6 +198,8 @@ fn build(target: usize, sp: Spec) -> (GridF32, Geometry) {
             // the number that governs the incision.
             min_area_cells: cfg.stream_power.as_ref().map_or(f32::NAN, |x| x.min_area_cells),
             octaves: cfg.octaves,
+            diffusion: cfg.stream_power.as_ref().map_or(f32::NAN, |x| x.diffusion),
+            diffusion_substeps: cfg.stream_power.as_ref().map_or(0, |x| x.diffusion_substeps),
         }
     };
     let f = upscale_from_c1_with_progress(
@@ -539,4 +560,223 @@ fn c1_channel_head_area_sweep() {
             lo / hi.max(1e-9)
         );
     }
+}
+
+/// Blocks A1/A2/B1/C1/D1/E — the intensive / extensive decomposition, on a DEFINED denominator.
+///
+/// ## The denominator, and why this one
+///
+/// The decomposition was first built on "land lowered by more than 1 m", a proxy with an
+/// arbitrary threshold. The regime AUTHORITY is the criterion the incision actually applies:
+/// `accumulation >= min_area_cells`. It is evaluated on the **PRE-INCISION** field, on purpose:
+///
+/// - it is the INPUT partition, so it cannot be moved by the outcome being measured;
+/// - evaluating it on the eroded field would make the denominator a function of the numerator,
+///   which is exactly what made the "network extent" control column unusable on an `A_c` sweep
+///   (read at a FIXED threshold on the RESULTING field).
+///
+/// Run: cargo test -p ymir-core --release --test hypsometry_work_attribution -- --ignored --nocapture decomposition
+#[test]
+#[ignore]
+fn intensive_extensive_decomposition() {
+    use ymir_core::terrain::flow::{FlowConfig, compute_flow, mfd_accumulation};
+    let ss = SteinSteinParams::default();
+    let to_m = |x: f32| c1_altitude_norm_to_metres(x, &ss);
+    eprintln!("\n==========  A1/A2/B1/C1/D1/E — decomposition on the REGIME criterion  ==========");
+
+    struct Pre {
+        field: GridF32,
+        acc_cells: GridF32,
+        pits: usize,
+        cell_km2: f32,
+    }
+    let mut pre: Vec<(usize, Pre)> = Vec::new();
+    for target in [2048usize, 8192] {
+        let (field, g) = terrain_spec(target, Spec::of(Variant::NoIncision));
+        let flow = compute_flow(&field, &FlowConfig { sea_level: SEA, ..Default::default() });
+        let pits = flow
+            .filled
+            .data
+            .iter()
+            .zip(field.data.iter())
+            .filter(|(a, b)| **a > **b + 1e-6)
+            .count();
+        let acc_cells =
+            mfd_accumulation(&flow.filled, &flow.direction, SEA, 2.0, field.width, field.height);
+        pre.push((target, Pre { field, acc_cells, pits, cell_km2: g.cell_km2 }));
+    }
+
+    // ── C1 · the accumulation field itself, never measured before ───────────────────
+    eprintln!("\n── C1 · PRE-INCISION accumulation over land, km² (then A^m, m = 0.5) ──");
+    eprintln!(
+        "  {:<8} {:>10} {:>10} {:>10} {:>10} {:>10} {:>11} {:>12}",
+        "grid", "p10", "p25", "p50", "p75", "p90", "p99", "= 1 cell"
+    );
+    for (target, p) in &pre {
+        let mut a: Vec<f32> = (0..p.field.data.len())
+            .filter(|&k| p.field.data[k] > SEA)
+            .map(|k| p.acc_cells.data[k] * p.cell_km2)
+            .collect();
+        let one = 100.0 * a.iter().filter(|&&x| x <= p.cell_km2 * 1.001).count() as f32
+            / a.len().max(1) as f32;
+        let qs: Vec<f32> =
+            [0.10, 0.25, 0.50, 0.75, 0.90, 0.99].iter().map(|&f| q(&mut a.clone(), f)).collect();
+        eprintln!(
+            "  {target:<8} {:>10.6} {:>10.6} {:>10.6} {:>10.6} {:>10.5} {:>11.4} {:>11.2} %",
+            qs[0], qs[1], qs[2], qs[3], qs[4], qs[5], one
+        );
+        eprintln!(
+            "  {:<8} {:>10.6} {:>10.6} {:>10.6} {:>10.6} {:>10.5} {:>11.4}   (A^0.5)",
+            "",
+            qs[0].sqrt(),
+            qs[1].sqrt(),
+            qs[2].sqrt(),
+            qs[3].sqrt(),
+            qs[4].sqrt(),
+            qs[5].sqrt()
+        );
+    }
+    eprintln!("\n── E · closed depressions on the PRE-INCISION field ──");
+    for (target, p) in &pre {
+        eprintln!(
+            "  {target}²: pre-incision pits {:>9} ({:>7.0} km²)",
+            p.pits,
+            p.pits as f32 * p.cell_km2
+        );
+    }
+
+    // ── A1 / A2 / B1 / D1 ───────────────────────────────────────────────────────────
+    eprintln!("\n── A1/A2/B1/D1 · work conditioned on the REGIME (acc_pre >= A_c) ──");
+    let cases: [(&str, f32, bool, Option<f32>); 6] = [
+        ("A_c 0.025 km2   [A2]", 0.025, false, None),
+        ("A_c 0.100 km2   [shipped]", 0.1, false, None),
+        ("A_c 0.400 km2", 0.4, false, None),
+        ("A_c 1.000 km2", 1.0, false, None),
+        // B1 — `A_c` held at 2.6214 CELLS on both grids: 0.1 km² at 2048², 0.00625 at 8192².
+        ("A_c 2.62 CELLS  [B1]", 2.6214, true, None),
+        // D1 — the anchor borrowed by hand. The scale is 1 at 2048² (it IS the reference cell)
+        // and (195.31/48.83)^2 = 16 at 8192².
+        ("A_c 0.100 + ANCHOR [D1]", 0.1, false, Some(0.0)),
+    ];
+    let mut rows: Vec<(String, usize, f64, f64, f64, f32)> = Vec::new();
+    for (label, val, in_cells, anchor) in cases {
+        for (target, p) in &pre {
+            let a_c_km2 = if in_cells { val * p.cell_km2 } else { val };
+            let a_c_cells = a_c_km2 / p.cell_km2;
+            let scale = anchor.map(|_| {
+                let cell_m = DOMAIN_KM / *target as f32 * 1000.0;
+                (195.3125f32 / cell_m).powi(2)
+            });
+            let (f, g) = build(
+                *target,
+                Spec {
+                    a_c_km2: Some(a_c_km2),
+                    diffusion_scale: scale,
+                    ..Spec::of(Variant::Shipped)
+                },
+            );
+            let (mut sc, mut nc, mut sh, mut nh, mut n_moved) =
+                (0.0f64, 0usize, 0.0f64, 0usize, 0usize);
+            for k in 0..f.data.len() {
+                if p.field.data[k] <= SEA || f.data[k] <= SEA {
+                    continue;
+                }
+                let d = (to_m(p.field.data[k]) - to_m(f.data[k])) as f64;
+                if d > 1.0 {
+                    n_moved += 1;
+                }
+                if p.acc_cells.data[k] >= a_c_cells {
+                    sc += d;
+                    nc += 1;
+                } else {
+                    sh += d;
+                    nh += 1;
+                }
+            }
+            let n = nc + nh;
+            let ext = 100.0 * nc as f64 / n.max(1) as f64;
+            let (ic, ih) = (sc / nc.max(1) as f64, sh / nh.max(1) as f64);
+            let total = (sc + sh) / n.max(1) as f64;
+            eprintln!(
+                "  [{label}] {target}²  A_c {a_c_km2:.6} km2 = {a_c_cells:>8.2} cells | \
+                 diffusion {:.3}/{} substeps\n      extensive(channel) {ext:>6.2} % | intensive \
+                 CHANNEL {ic:>7.1} m | intensive HILLSLOPE {ih:>7.1} m | total {total:>7.1} m | \
+                 >1 m {:>6.2} %",
+                g.diffusion,
+                g.diffusion_substeps,
+                100.0 * n_moved as f32 / n.max(1) as f32
+            );
+            rows.push((label.to_string(), *target, ic, ih, total, ext as f32));
+        }
+    }
+    eprintln!("\n── the INTENSIVE ratios, 2048sq / 8192sq ──");
+    eprintln!(
+        "  {:<28} {:>10} {:>10} {:>12} {:>18}",
+        "case", "CHANNEL", "hillslope", "total(raw)", "extensive lo/hi %"
+    );
+    for (label, _, _, _) in cases.iter().map(|(l, a, b, c)| (l, a, b, c)) {
+        let g = |t: usize| rows.iter().find(|r| r.0 == *label && r.1 == t).cloned();
+        if let (Some(lo), Some(hi)) = (g(2048), g(8192)) {
+            eprintln!(
+                "  {label:<28} {:>10.2} {:>10.2} {:>12.2} {:>8.2} / {:<8.2}",
+                lo.2 / hi.2.abs().max(1e-9),
+                lo.3 / hi.3.abs().max(1e-9),
+                lo.4 / hi.4.abs().max(1e-9),
+                lo.5,
+                hi.5
+            );
+        }
+    }
+}
+
+/// A2bis' negative control at the SCALE OF THE CLAIM, not at the scale of the biggest lever.
+///
+/// The first control only fired on FBM on/off — a change of 674 433 cells and 37 m — while the
+/// reading it licensed lives at 3–4 % on the slope tails. A control that only proves sensitivity
+/// to the largest available change does not license a per-cent reading. This one perturbs the
+/// PRE-INCISION field with a deterministic checkerboard sized to move the D8 p90 slope by
+/// roughly 5 %, and asserts the instrument reports it.
+///
+/// It is a synthetic perturbation on purpose: it isolates the instrument's sensitivity from any
+/// question about what the pipeline would do with a rougher input.
+#[test]
+#[ignore]
+fn a2bis_control_sees_a_five_percent_roughness_shift() {
+    let ss = SteinSteinParams::default();
+    let target = 2048usize;
+    let (base, _) = terrain_spec(target, Spec::of(Variant::NoIncision));
+    let m_per_cell = DOMAIN_KM / target as f32 * 1000.0;
+    let norm_to_m = 2.0 * 1.13 * ss.depth_scale_m as f32;
+
+    let (_, mut d0) = slopes(&base, &ss, target);
+    let p90_0 = q(&mut d0, 0.90);
+    // A one-cell-wavelength perturbation adds a gradient of about `2·amp/cell_m` where it is
+    // resolved, so to lift p90 by ~5 % the amplitude is set from the measured p90 itself.
+    let target_delta = 0.05 * p90_0;
+    let amp_m = target_delta * m_per_cell / 2.0;
+    let amp_norm = amp_m / norm_to_m;
+    let mut bumped = base.clone();
+    let w = bumped.width;
+    for k in 0..bumped.data.len() {
+        if bumped.data[k] > SEA {
+            let (x, y) = (k % w, k / w);
+            let sign = if (x + y) % 2 == 0 { 1.0 } else { -1.0 };
+            bumped.data[k] += sign * amp_norm;
+        }
+    }
+    let (_, mut d1) = slopes(&bumped, &ss, target);
+    let p90_1 = q(&mut d1, 0.90);
+    let rel = (p90_1 - p90_0) / p90_0;
+    eprintln!(
+        "[A2bis control] D8 p90 {p90_0:.4} → {p90_1:.4} ({:+.2} %) for a {amp_m:.2} m \
+         one-cell perturbation",
+        100.0 * rel
+    );
+    assert!(
+        rel.abs() > 0.02,
+        "the slope instrument does not register a perturbation designed to move p90 by 5 % \
+         (measured {:+.2} %). The 3–4 % reading in A2bis is then unlicensed and must not be \
+         used to argue that the pre-incision field is invariant.",
+        100.0 * rel
+    );
 }

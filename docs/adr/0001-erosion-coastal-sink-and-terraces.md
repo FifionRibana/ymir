@@ -5941,7 +5941,7 @@ that the "threshold" is the stencil. `A_c` scores 2.62.
 | `small_boat_km2` | 500 km² | 13 107 cells | 209 715 cells | ✅ |
 | `INVENTORY_MIN_CELLS` | **4 cells** | 0.153 km² | 0.0095 km² | ⛔ **the MIRROR case** — dimensioned in cells, so its PHYSICAL meaning varies 16×, and it is the documented cause of the orphan-mouth regression (Finding 56b) |
 | `SMOOTH_MAX_SHIFT_CELLS` | 0.75 cells | 146 m | 37 m | ⚠️ mirror case, contour only |
-| `diffusion` = 0.05 | dimensionless at `HILLSLOPE_REF_CELL_M` = 195.3 m | — | — | ⛔ the `(ref/cell)²` scaling that anchors it exists **only in the NONLINEAR branch**, and relief-v3 takes the LINEAR one (`critical_slope = 0`). Anchored by declaration, unanchored on the shipped path |
+| `diffusion` = **0.08** (relief-v3; 0.05 is relief-v1 — corrected in Finding 58) | dimensionless at `HILLSLOPE_REF_CELL_M` = 195.3 m | — | — | ⛔ the `(ref/cell)²` scaling that anchors it exists **only in the NONLINEAR branch**, and relief-v3 takes the LINEAR one (`critical_slope = 0`). Anchored by declaration, unanchored on the shipped path |
 | `lake_min_depth_m` 10 m · `SAME_WATER_BODY_TOL_M` 0.10 m | vertical | — | — | ✅ no cell count applies |
 
 Two entries are ⛔ and both are already implicated in a recorded defect. Nothing is corrected
@@ -5951,3 +5951,186 @@ here — this is attribution.
 
 `A_c(S)` still gated OFF, no recalibration, no hillslope term, no timescale work. Two guards
 added for the quantities this finding attributes, and nothing else.
+
+## Finding 58 — `A_c`'s DISCRETISATION carries almost the whole divergence; the intensive/extensive split is not population-invariant
+
+Correction first, because it is mine and it is structural. Finding 57 concluded *"`A_c` is a LEVEL
+knob, not the discriminant"*, on a criterion — *ratio ≥ 3 at every sweep point* — that tests one
+direction only and conflates "discriminant" with "converges when raised". Applying it to the
+letter was accommodation, not refutation. **A ratio that moves from 3.18 to 10.89 under `A_c`
+alone proves the opposite of the conclusion I drew from it.**
+
+### B1 — the experiment the "sub-cell" pattern commanded, and the decisive number
+
+The Finding 57 sweep varied `A_c` **in km²**, so its cell count moved by the same 16× on both
+grids: it could not answer the question the pattern poses. Holding `A_c` at **2.6214 cells on
+both grids** (0.1 km² at 2048², 0.00625 km² at 8192²):
+
+| | extensive (channel) | intensive CHANNEL | intensive HILLSLOPE | total work | **raw ratio** |
+|---|---|---|---|---|---|
+| `A_c` 0.1 km² — 2048² | 90.25 % | 662.0 m | 364.5 m | 633.0 m | — |
+| `A_c` 0.1 km² — 8192² | 52.40 % | 342.9 m | 40.7 m | 199.0 m | **3.18** |
+| **`A_c` 2.62 cells — 2048²** | 90.25 % | 662.0 m | 364.6 m | 633.0 m | — |
+| **`A_c` 2.62 cells — 8192²** | **93.72 %** | 524.5 m | 338.3 m | **512.8 m** | **1.23** |
+
+**The work ratio collapses from 3.18 to 1.23, and the extensive gap INVERTS** (90.25 % against
+93.72 % — the fine grid now has *more* channel). At a matched cell-count threshold the two grids
+do **81 %** of the same work.
+
+So `A_c` is the discriminant after all, and specifically **its discretisation is**: the same
+physical threshold spans 2.62 cells at 2048² and 41.94 at 8192², and that single fact carries
+the divergence. It is not only a gate on the cells below it — removing it at HD raises the
+channel-conditioned work from 342.9 m to 524.5 m, i.e. it also **truncates the base-level
+propagation for everything above it**.
+
+### A1 / A2 — and the decomposition is NOT population-invariant
+
+Measured on the regime AUTHORITY (`accumulation ≥ min_area_cells`, evaluated on the
+**pre-incision** field so the denominator cannot be moved by the numerator — the defect that
+made the network-extent control unusable):
+
+| `A_c` | extensive lo / hi | **intensive CHANNEL ratio** | **intensive HILLSLOPE ratio** | raw ratio |
+|---|---|---|---|---|
+| 0.025 km² | 100.00 / 86.02 % | **1.67** | n/a (no hillslope at 2048²) | 1.84 |
+| 0.100 km² | 90.25 / 52.40 % | **1.93** | 8.96 | 3.18 |
+| 0.400 km² | 57.18 / 11.78 % | **1.93** | 10.84 | 8.46 |
+| 1.000 km² | 24.45 / 4.25 % | **2.12** | 10.41 | 10.89 |
+| **2.62 cells** | 90.25 / 93.72 % | **1.26** | 1.08 | 1.23 |
+
+Two things follow, and the second is a stop.
+
+**(a) The hillslope regime diverges by an ORDER OF MAGNITUDE (≈ 9–11×), the channel regime by
+≈ 2×.** That split is new and it is the useful half of the decomposition. The hillslope-conditioned
+work is 364.5 m per cell at 2048² against 40.7 m at 8192².
+
+**(b) The claim "the intensive part is ~2.2× and demonstrably independent of `A_c`" is
+REFUTED.** It drifts monotonically 1.67 → 1.93 → 1.93 → 2.12 with `A_c` (a 27 % range), and it
+**collapses to 1.26 when `A_c` is held in cells**. The quantity is 2.14–2.32 on the ">1 m" proxy,
+1.67–2.12 on the km² regime criterion, and 1.26 on the cells criterion. **It is a property of the
+denominator, not of the model.** Nothing is built on it here.
+
+### C1 — the term that had never been measured, and where the ≈2× actually comes from
+
+Pre-incision MFD accumulation over land, in km²:
+
+| grid | p10 | p25 | p50 | p75 | p90 | p99 | = 1 cell |
+|---|---|---|---|---|---|---|---|
+| 2048² | 0.11444 | 0.26050 | 0.51135 | 1.05395 | 2.46303 | 20.1019 | 1.41 % |
+| 8192² | 0.01587 | 0.05252 | 0.10942 | 0.21864 | 0.47750 | 4.1463 | 1.26 % |
+| **ratio** | **7.21** | **4.96** | **4.67** | **4.82** | **5.16** | **4.85** | |
+| `A^0.5` ratio | 2.69 | 2.23 | 2.16 | 2.20 | 2.27 | 2.20 | |
+
+**`A` is NOT resolution-invariant in physical units: it diverges by ≈ 4.7–5.2× across the whole
+distribution**, 7.2× in the low decile. Both predictions on the table were wrong — it is not 16×
+at p10 (mine and the author's) and it does **not** converge at p90 (both again). The cell-area
+floor binds on only 1.3–1.4 % of land, so this is not a floor effect: it is **MFD dispersion
+(p = 2) accumulating over 4× more cells at HD**, which spreads the accumulation and lowers it
+everywhere.
+
+And with production's `m = 0.5`, the `A^m` ratio is **2.16–2.27, flat across p25–p99** — which is
+the channel-conditioned intensive ratio measured at a fixed km² threshold (1.93–2.12). `S` is
+invariant to 3–4 % and `n = 1`. So:
+
+> **`E = K·A^m·S^n` — the ≈2× intensive term in the channel regime IS the `A^m` term, and the
+> divergence of `A` is a resolution artefact of the MFD accumulation, not of the terrain.**
+
+That is the attribution the previous two rounds were missing, and it closes the term that was
+never measured. It also explains why the intensive ratio is denominator-dependent: changing the
+threshold changes which part of the `A` distribution is averaged.
+
+### D1 — the diffusion anchor: real defect, ≈4 % effect, and the SIGN prediction refuted
+
+`diffusion` is dimensionless at `HILLSLOPE_REF_CELL_M = 195.31 m`, and the `(ref/cell)²`
+rescaling that anchors it exists **only in the NONLINEAR branch** while relief-v3 takes the
+LINEAR one (`critical_slope = 0`). So the shipped hillslope operator is 16× weaker at 8192².
+
+⚠️ **Correction to the Finding 57 inventory: the value is `RELIEF_V3_DIFFUSION = 0.08`, not 0.05.**
+0.05 is relief-v1's. Read back from the built config here rather than from a doc comment.
+
+Borrowing the anchor by hand on the shipped linear branch (`diffusion` 0.08 → **1.28** at 8192²,
+`diffusion_substeps` 4 → 8 to hold the documented `diffusion / substeps ≤ 0.2`), at `A_c` = 0.1:
+
+| 8192² | shipped | ANCHORED |
+|---|---|---|
+| total work | 199.0 m | **206.7 m** |
+| intensive CHANNEL | 342.9 m | 347.5 m |
+| intensive HILLSLOPE | 40.7 m | **52.8 m** |
+| land lowered > 1 m | 66.52 % | **75.62 %** |
+| **raw ratio 2048²/8192²** | 3.18 | **3.06** |
+| hillslope intensive ratio | 8.96 | **6.91** |
+
+**The prediction on the table was that the ratio would RISE; it FALLS, 3.18 → 3.06. Refuted — and
+I had agreed with it, so refuted twice.** The reasoning was that weaker HD diffusion leaves
+steeper slopes hence more incision, so the anchor would remove work; measured, the anchor *adds*
+a little (199.0 → 206.7 m) because it spreads the operator over 9 % more land while barely
+changing the channel term.
+
+**The magnitude is the result: a 16× change in the hillslope coefficient moves the divergence by
+4 %.** The unanchored diffusion is a genuine defect — it closes 23 % of the hillslope-regime gap
+(8.96 → 6.91) — but it is **not** masking the divergence and correcting it would not converge the
+grids. Not corrected this round, and now priced.
+
+**File consequence, unchanged in force:** a transport-limited hillslope term cannot be built on
+an operator whose strength varies 16× with the grid. That anchor has to be borrowed first.
+
+### E — the default control block had two unusable columns
+
+**The pit column is neither inherited nor saturating — it is NON-MONOTONE.** Pre-incision:
+54 869 pits at 2048², 720 630 at 8192². Across the `A_c` sweep: 68 431 → 82 439 → 69 387 at
+2048² (+25 %, +50 %, +27 % over the pre-incision baseline) while the work falls 4.8×; and
+1 236 459 → 772 015 → 599 567 at 8192², crossing the baseline. The incision both *creates* closed
+depressions (by carving) and *removes* them (by breaching), and the balance is non-monotone in
+`A_c`. **The column is unusable as a control on an `A_c` sweep** and must be read against the
+pre-incision baseline, which it now is.
+
+**The network-extent column is withdrawn for this sweep type.** It was measured at a FIXED
+0.1 km² accumulation threshold on the RESULTING field, so it confounds the change it monitors —
+which is why it grew as `A_c` rose. Either read at the current `A_c` or removed; removed here,
+declared.
+
+**The climate assertion, widened as demanded.** It previously covered
+`upscale_from_c1_with_progress` — the pre-incision terrain — while the claim needed the ERODED
+field. Named: the incision is `incise(height: &GridF32, cfg: &StreamPowerConfig)` (and its
+`incise_lithology` / `incise_with_progress` variants), and `StreamPowerConfig` carries exactly
+`n, m, k, dt, iterations, sea_level, diffusion, diffusion_substeps, min_area_cells,
+a_c_slope_law, threshold, cell_km, depth_scale_m, critical_slope, lateral_erosion,
+mfd_exponent` — **no precipitation, no temperature, no runoff, no discharge.** The `A` it reads
+is the pure cell-count MFD accumulation.
+
+> Worth stating as a fact in its own right: **the erosion uses GEOMETRIC drainage area while the
+> hydrology uses CLIMATIC discharge.** They are different quantities, and the one that carves the
+> terrain never sees the climate.
+
+**The A2bis negative control now fires at the scale of its claim.** The old one only responded to
+FBM on/off — 674 433 cells, 37 m — for a reading that lives at 3–4 %. A deterministic one-cell
+perturbation of **1.30 m** moves the D8 p90 slope by **+2.97 %**, which is the same size as the
+8192²-versus-2048² excess (+3.2 %). The per-cent reading is licensed, and the FBM's extra HD
+roughness now has a scale: it is worth about 1.3 m of one-cell noise.
+
+**The sub-cell assertion is inverted so that it guards.** An `#[ignore]`d test does not run and
+protects nothing. It now pins the CURRENT state — 2.6214 cells, under the 10-cell floor — so it
+passes today and **fails the day anyone touches `A_c`**, which is when the finding needs reading.
+
+### The reference-grid conclusion, written rather than noted
+
+Finding 57 called this "recorded, not resolved". That was too modest, and it is decidable by
+arithmetic: `A_c = 0.1 km²` implies a hillslope length of `√0.1 km = 316 m`, which is **1.62
+cells at 2048²**.
+
+> **The calibration grid cannot carry the hillslope regime that `A_c` defines.** Not "does not",
+> *cannot*: a hillslope 1.6 cells wide is not representable. And three anchors are pinned to that
+> grid — `HILLSLOPE_REF_CELL_M` (defined as `400 km / 2048`), `S_ref` (pinned there "by project
+> convention"), and `diffusion` (dimensionless at that cell size). **All three calibrate a regime
+> that does not exist on the grid they are calibrated on.**
+
+`S_ref`'s circularity (Finding 57) is therefore the second layer of a deeper one: the law is
+calibrated on a quantity produced by the defect, *on a grid that cannot represent the regime the
+law partitions*.
+
+### Standing
+
+Nothing corrected. `A_c(S)` gated OFF, no recalibration, no hillslope term, no timescale work,
+no diffusion fix. The decomposition that motivated this round is refuted as population-dependent,
+so no remedy is built on it; what replaces it is the `A^m` attribution (C1) and the discretisation
+result (B1), both of which point at the same object — **the accumulation field and the cell count
+of the threshold read against it** — and neither of which is a physics change.

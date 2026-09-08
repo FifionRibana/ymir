@@ -184,27 +184,41 @@ fn f1_can_detect_a_field_that_is_not_invariant() {
     assert!((l0 - l1).abs() < 1e-12, "the control must move the ALTITUDE, not the land mask");
 }
 
-/// F2 — an area constant that is physically dimensioned may still be SUB-CELL.
+/// F2 — `A_c` is SUB-CELL on the calibration grid, and this test **pins that known state**.
 ///
-/// This test is expected to FAIL for `A_c = 0.1 km²`, and that failure is the attribution:
-/// 2.62 cells at 2048². It is written as an `#[ignore]`d assertion rather than a passing one
-/// because the defect is real, measured, and NOT being fixed this round — a green test here
-/// would claim a property the code does not have. Un-ignore it when `A_c` is re-anchored.
+/// The first version was an `#[ignore]`d assertion of the property the code *ought* to have.
+/// That guards nothing: an ignored test does not run, so it protects neither against a drift
+/// nor against a silent correction. Inverted here — it asserts the CURRENT, measured,
+/// documented state, so it **passes today and fails the day anyone touches `A_c`**, which is
+/// when someone needs to read the finding.
+///
+/// The state being pinned: 2.6214 cells at 2048², under the declared 10-cell floor, and the
+/// hillslope length it implies is `√0.1 km² = 316 m = 1.62 cells`. That is not a convention
+/// question — a hillslope 1.6 cells wide cannot exist on the grid, by arithmetic.
 #[test]
-#[ignore = "FAILS BY DESIGN: A_c = 0.1 km² is 2.62 cells at 2048². Attribution, not a fix."]
-fn an_area_constant_must_be_resolvable_on_the_coarsest_grid() {
+fn a_c_is_known_to_be_sub_cell_on_the_calibration_grid() {
     let cell_km2 = (DOMAIN_KM / COARSEST_TARGET as f32).powi(2);
+    let cell_m = DOMAIN_KM / COARSEST_TARGET as f32 * 1000.0;
     let cells = RELIEF_V1_A_C_KM2 / cell_km2;
+    let hillslope_len_m = RELIEF_V1_A_C_KM2.sqrt() * 1000.0;
+    let hillslope_cells = hillslope_len_m / cell_m;
     eprintln!(
-        "[F2] A_c = {RELIEF_V1_A_C_KM2} km² = {cells:.2} cells at {COARSEST_TARGET}² \
-         ({cell_km2:.7} km²/cell)"
+        "[F2] A_c = {RELIEF_V1_A_C_KM2} km² = {cells:.4} cells at {COARSEST_TARGET}² \
+         ({cell_km2:.7} km²/cell); implied hillslope length {hillslope_len_m:.1} m = \
+         {hillslope_cells:.2} cells"
     );
     assert!(
-        cells >= MIN_AREA_CELLS_FLOOR,
-        "A_c = {RELIEF_V1_A_C_KM2} km² is {cells:.2} cells at {COARSEST_TARGET}², under the \
-         declared floor of {MIN_AREA_CELLS_FLOOR}. It passes every dimensional audit and is \
-         still not a threshold: a D8 neighbourhood is 9 cells, so at {cells:.2} cells the \
-         'channel head' IS the stencil. The hillslope regime does not exist on this grid."
+        cells < MIN_AREA_CELLS_FLOOR,
+        "A_c is NO LONGER sub-cell at {COARSEST_TARGET}² ({cells:.4} cells, floor \
+         {MIN_AREA_CELLS_FLOOR}). If that is deliberate, ADR Findings 57-58 and this test must \
+         be updated together — the 'physically dimensioned but sub-cell' attribution, the \
+         `S_ref` circularity and the B1 result (holding A_c in CELLS collapses the work ratio \
+         from 3.18 to 1.23) all rest on this number."
+    );
+    assert!(
+        hillslope_cells < 2.0,
+        "the hillslope length implied by A_c is now {hillslope_cells:.2} cells; the claim that \
+         the calibration grid cannot carry a hillslope regime needs re-deriving"
     );
 }
 
