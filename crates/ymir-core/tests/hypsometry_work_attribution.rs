@@ -97,11 +97,25 @@ struct Spec {
     /// is numerically what "borrowing the rescaling that only exists in the NONLINEAR branch"
     /// means. Diagnostic sign test; nothing in production changes.
     diffusion_scale: Option<f32>,
+    /// Block 4 — set `diffusion` ABSOLUTELY (0.0 switches the hillslope stage off). Distinct
+    /// from `diffusion_scale`, which multiplies it.
+    diffusion_abs: Option<f32>,
+    /// Block 1b — `Some(None)` = pure D8, `Some(Some(p))` = MFD with exponent `p`, `None` =
+    /// the shipped value. DIAG only; production is never touched.
+    mfd: Option<Option<f32>>,
 }
 
 impl Spec {
     fn of(v: Variant) -> Self {
-        Spec { v, amplitude_base: None, octaves: None, a_c_km2: None, diffusion_scale: None }
+        Spec {
+            v,
+            amplitude_base: None,
+            octaves: None,
+            a_c_km2: None,
+            diffusion_scale: None,
+            diffusion_abs: None,
+            mfd: None,
+        }
     }
 }
 
@@ -178,6 +192,16 @@ fn build(target: usize, sp: Spec) -> (GridF32, Geometry) {
         let cell_km2 = (DOMAIN_KM / target as f32).powi(2);
         if let Some(spw) = cfg.stream_power.as_mut() {
             spw.min_area_cells = a / cell_km2;
+        }
+    }
+    if let Some(d) = sp.diffusion_abs {
+        if let Some(spw) = cfg.stream_power.as_mut() {
+            spw.diffusion = d;
+        }
+    }
+    if let Some(p) = sp.mfd {
+        if let Some(spw) = cfg.stream_power.as_mut() {
+            spw.mfd_exponent = p;
         }
     }
     if let Some(scale) = sp.diffusion_scale {
@@ -779,4 +803,308 @@ fn a2bis_control_sees_a_five_percent_roughness_shift() {
          used to argue that the pre-incision field is invariant.",
         100.0 * rel
     );
+}
+
+/// Blocks 1a / 1b / 2 / 4 — is the MFD accumulation field's divergence a failure to CONVERGE,
+/// or a per-cell PARTITION of a conserved quantity?
+///
+/// The quantile comparison of Finding 58 compares two different cell populations (11 M against
+/// 627 k). The outlet of a matched basin compares the same object, and the basin's cell count is
+/// the physical area both grids must agree on. Run first, because it can invalidate the
+/// quantile reading.
+///
+/// Run: cargo test -p ymir-core --release --test hypsometry_work_attribution -- --ignored --nocapture accumulation_convergence
+#[test]
+#[ignore]
+fn accumulation_convergence() {
+    use ymir_core::terrain::flow::{FlowConfig, compute_flow, mfd_accumulation};
+    let ss = SteinSteinParams::default();
+    let to_m = |x: f32| c1_altitude_norm_to_metres(x, &ss);
+    eprintln!("\n==========  1a / 1b / 2 / 4 — the accumulation operator  ==========");
+
+    struct G {
+        target: usize,
+        cell_km2: f32,
+        field: GridF32,
+        filled: GridF32,
+        dir: Vec<u8>,
+        basins: Vec<u32>,
+        acc: GridF32,
+        land: usize,
+    }
+    let mut gs: Vec<G> = Vec::new();
+    for target in [2048usize, 8192] {
+        let (field, g) = terrain_spec(target, Spec::of(Variant::NoIncision));
+        let flow = compute_flow(&field, &FlowConfig { sea_level: SEA, ..Default::default() });
+        let acc =
+            mfd_accumulation(&flow.filled, &flow.direction, SEA, 2.0, field.width, field.height);
+        let land = field.data.iter().filter(|&&x| x > SEA).count();
+        gs.push(G {
+            target,
+            cell_km2: g.cell_km2,
+            field,
+            filled: flow.filled,
+            dir: flow.direction,
+            basins: flow.basins,
+            acc,
+            land,
+        });
+    }
+    for g in &gs {
+        eprintln!(
+            "  {}²: land {} cells = {:.0} km² (both grids must drain the same physical area)",
+            g.target,
+            g.land,
+            g.land as f32 * g.cell_km2
+        );
+    }
+
+    // ── 1a · outlet-matched basins ──────────────────────────────────────────────────
+    //
+    // MATCHING METHOD, declared: for each of the largest basins at 2048² (by CELL COUNT, the
+    // physical area), take its outlet — the land cell of that basin with maximum accumulation —
+    // and convert to normalised domain coordinates. At 8192², search a window of ±8 HD cells
+    // (±390 m, i.e. ±2 coarse cells) around that position for the maximum accumulation, and
+    // report the DISPLACEMENT of the match. A match landing on the window edge is flagged: it
+    // means the tolerance, not the topography, chose the point.
+    const WIN_HD: i32 = 8;
+    eprintln!(
+        "\n── 1a · outlet-matched basins (matching: ±{WIN_HD} HD cells = ±{:.0} m around the \
+         2048² outlet's normalised position) ──",
+        WIN_HD as f32 * 400_000.0 / 8192.0
+    );
+    let lo = &gs[0];
+    let hi = &gs[1];
+    let mut by_basin: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+    for k in 0..lo.field.data.len() {
+        if lo.field.data[k] > SEA && lo.basins[k] != 0 {
+            *by_basin.entry(lo.basins[k]).or_default() += 1;
+        }
+    }
+    let mut ranked: Vec<(u32, usize)> = by_basin.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1));
+    // and the same census at HD, for the cell-count areas
+    let mut hi_cells: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+    for k in 0..hi.field.data.len() {
+        if hi.field.data[k] > SEA && hi.basins[k] != 0 {
+            *hi_cells.entry(hi.basins[k]).or_default() += 1;
+        }
+    }
+    eprintln!(
+        "  {:>3} {:>12} {:>12} {:>8} {:>12} {:>12} {:>8} {:>9}",
+        "#",
+        "acc_lo km²",
+        "acc_hi km²",
+        "ratio",
+        "cells_lo km²",
+        "cells_hi km²",
+        "ratio",
+        "shift m"
+    );
+    let (mut acc_ratios, mut area_ratios) = (Vec::new(), Vec::new());
+    for (rank, (bid, ncells)) in ranked.iter().take(10).enumerate() {
+        // outlet at 2048²: max accumulation within the basin
+        let (mut best_k, mut best_a) = (usize::MAX, -1.0f32);
+        for k in 0..lo.field.data.len() {
+            if lo.basins[k] == *bid && lo.field.data[k] > SEA && lo.acc.data[k] > best_a {
+                best_a = lo.acc.data[k];
+                best_k = k;
+            }
+        }
+        if best_k == usize::MAX {
+            continue;
+        }
+        let (ox, oy) = (best_k % lo.field.width, best_k / lo.field.width);
+        // normalised position → HD cell
+        let fx = (ox as f32 + 0.5) / lo.field.width as f32;
+        let fy = (oy as f32 + 0.5) / lo.field.height as f32;
+        let (cx, cy) = ((fx * hi.field.width as f32) as i32, (fy * hi.field.height as f32) as i32);
+        let (mut hk, mut ha) = (usize::MAX, -1.0f32);
+        for dy in -WIN_HD..=WIN_HD {
+            for dx in -WIN_HD..=WIN_HD {
+                let (x, y) = (cx + dx, cy + dy);
+                if x < 0 || y < 0 || x as usize >= hi.field.width || y as usize >= hi.field.height {
+                    continue;
+                }
+                let k = y as usize * hi.field.width + x as usize;
+                if hi.field.data[k] > SEA && hi.acc.data[k] > ha {
+                    ha = hi.acc.data[k];
+                    hk = k;
+                }
+            }
+        }
+        if hk == usize::MAX {
+            eprintln!("  {:>3}  NO LAND in the match window — unmatched", rank + 1);
+            continue;
+        }
+        let (hx, hy) = (hk % hi.field.width, hk / hi.field.width);
+        let shift_m = (((hx as i32 - cx).pow(2) + (hy as i32 - cy).pow(2)) as f32).sqrt()
+            * 400_000.0
+            / 8192.0;
+        let edge = (hx as i32 - cx).abs() == WIN_HD || (hy as i32 - cy).abs() == WIN_HD;
+        let (a_lo, a_hi) = (best_a * lo.cell_km2, ha * hi.cell_km2);
+        let c_lo = *ncells as f32 * lo.cell_km2;
+        let c_hi = hi_cells.get(&hi.basins[hk]).copied().unwrap_or(0) as f32 * hi.cell_km2;
+        acc_ratios.push(a_lo / a_hi.max(1e-9));
+        area_ratios.push(c_lo / c_hi.max(1e-9));
+        eprintln!(
+            "  {:>3} {:>12.2} {:>12.2} {:>8.3} {:>12.0} {:>12.0} {:>8.3} {:>9.0}{}",
+            rank + 1,
+            a_lo,
+            a_hi,
+            a_lo / a_hi.max(1e-9),
+            c_lo,
+            c_hi,
+            c_lo / c_hi.max(1e-9),
+            shift_m,
+            if edge { "  ⚠ AT WINDOW EDGE" } else { "" }
+        );
+    }
+    let med = |v: &mut Vec<f32>| q(v, 0.5);
+    eprintln!(
+        "  MEDIAN over the matched basins:  outlet accumulation ratio {:.3} | basin cell-count \
+         area ratio {:.3}",
+        med(&mut acc_ratios.clone()),
+        med(&mut area_ratios.clone())
+    );
+
+    // ── 1b · the exponent sweep, on the SAME pre-incision fields (no rebuild) ───────
+    eprintln!("\n── 1b · MFD exponent sweep — accumulation quantiles in km², and the ratio ──");
+    eprintln!(
+        "  {:<12} {:>10} {:>10} {:>10} {:>10} {:>10} {:>11}",
+        "scheme", "p10", "p25", "p50", "p75", "p90", "p99"
+    );
+    for label in ["D8", "p = 2", "p = 4", "p = 8"] {
+        let mut qq: Vec<Vec<f32>> = Vec::new();
+        for g in &gs {
+            let a = match label {
+                "D8" => {
+                    // the plain D8 accumulation `compute_flow` already produced
+                    let f = compute_flow(
+                        &g.field,
+                        &FlowConfig { sea_level: SEA, ..Default::default() },
+                    );
+                    f.accumulation
+                }
+                other => {
+                    let p: f32 = other.trim_start_matches("p = ").parse().unwrap();
+                    mfd_accumulation(&g.filled, &g.dir, SEA, p, g.field.width, g.field.height)
+                }
+            };
+            let mut v: Vec<f32> = (0..g.field.data.len())
+                .filter(|&k| g.field.data[k] > SEA)
+                .map(|k| a.data[k] * g.cell_km2)
+                .collect();
+            qq.push(
+                [0.10, 0.25, 0.50, 0.75, 0.90, 0.99]
+                    .iter()
+                    .map(|&f| q(&mut v.clone(), f))
+                    .collect(),
+            );
+        }
+        for (i, g) in gs.iter().enumerate() {
+            eprintln!(
+                "  {:<12} {:>10.6} {:>10.6} {:>10.6} {:>10.6} {:>10.5} {:>11.4}   [{}²]",
+                label, qq[i][0], qq[i][1], qq[i][2], qq[i][3], qq[i][4], qq[i][5], g.target
+            );
+        }
+        eprintln!(
+            "  {:<12} {:>10.2} {:>10.2} {:>10.2} {:>10.2} {:>10.2} {:>11.2}   RATIO lo/hi",
+            "",
+            qq[0][0] / qq[1][0],
+            qq[0][1] / qq[1][1],
+            qq[0][2] / qq[1][2],
+            qq[0][3] / qq[1][3],
+            qq[0][4] / qq[1][4],
+            qq[0][5] / qq[1][5]
+        );
+    }
+
+    // ── 2 · the threshold that EQUALISES the channel-regime share, both directions ──
+    //
+    // Pure arithmetic on the pre-incision accumulation — no terrain rebuild. Note this uses
+    // each grid's OWN land mask rather than the land-in-both mask of Finding 58's table, which
+    // is why the shares differ slightly from it.
+    eprintln!("\n── 2 · the A_c that equalises the channel-regime share ──");
+    let share = |g: &G, a_c_km2: f32| -> f32 {
+        let cells = a_c_km2 / g.cell_km2;
+        let n = (0..g.field.data.len())
+            .filter(|&k| g.field.data[k] > SEA && g.acc.data[k] >= cells)
+            .count();
+        100.0 * n as f32 / g.land.max(1) as f32
+    };
+    let bisect = |g: &G, target_share: f32| -> f32 {
+        let (mut a, mut b) = (1e-4f32, 100.0f32);
+        for _ in 0..40 {
+            let m = (a * b).sqrt(); // geometric bisection: the quantity spans decades
+            if share(g, m) > target_share {
+                a = m;
+            } else {
+                b = m;
+            }
+        }
+        (a * b).sqrt()
+    };
+    let (s_lo, s_hi) = (share(lo, 0.1), share(hi, 0.1));
+    eprintln!("  shipped A_c = 0.1 km²: channel share {s_lo:.2} % at 2048², {s_hi:.2} % at 8192²");
+    let up = bisect(lo, s_hi);
+    let down = bisect(hi, s_lo);
+    eprintln!(
+        "  RAISING 2048² to match HD's {s_hi:.2} %:  A_c = {up:.5} km² = {:.2} cells  → factor \
+         {:.2}× on the shipped 0.1",
+        up / lo.cell_km2,
+        up / 0.1
+    );
+    eprintln!(
+        "  LOWERING 8192² to match 2048²'s {s_lo:.2} %:  A_c = {down:.5} km² = {:.2} cells  → \
+         factor {:.2}× on the shipped 0.1",
+        down / hi.cell_km2,
+        0.1 / down
+    );
+    eprintln!(
+        "  the two directions disagree by {:.2}× — that asymmetry IS the result, not either value",
+        // BUG FIXED: this multiplied the two factors (giving 0.57) instead of taking their
+        // ratio. The asymmetry is 8.17 / 4.67 = 1.75x.
+        (0.1 / down) / (up / 0.1)
+    );
+
+    // ── 4 · orientation: is the hillslope-conditioned work diffusion, or incision? ──
+    eprintln!("\n── 4 · hillslope-conditioned work with the DIFFUSION SWITCHED OFF ──");
+    eprintln!(
+        "  `incise` does `continue` on a sub-threshold cell, so it never writes one; but the \
+         accumulation is\n  recomputed at EACH of the 2 iterations, so a cell labelled hillslope \
+         on the PRE-INCISION field can\n  still pass the gate later. That residual is what this \
+         separates."
+    );
+    for g in &gs {
+        let a_c_cells = 0.1 / g.cell_km2;
+        for (tag, diff) in [("shipped (diffusion 0.08)", None), ("diffusion 0.0", Some(0.0f32))] {
+            let (f, gg) = build(
+                g.target,
+                Spec { a_c_km2: Some(0.1), diffusion_abs: diff, ..Spec::of(Variant::Shipped) },
+            );
+            let (mut sh, mut nh, mut sc, mut nc) = (0.0f64, 0usize, 0.0f64, 0usize);
+            for k in 0..f.data.len() {
+                if g.field.data[k] <= SEA || f.data[k] <= SEA {
+                    continue;
+                }
+                let d = (to_m(g.field.data[k]) - to_m(f.data[k])) as f64;
+                if g.acc.data[k] >= a_c_cells {
+                    sc += d;
+                    nc += 1;
+                } else {
+                    sh += d;
+                    nh += 1;
+                }
+            }
+            eprintln!(
+                "  {}²  [{tag}, read back {:.3}]  intensive HILLSLOPE {:>7.1} m | intensive \
+                 CHANNEL {:>7.1} m",
+                g.target,
+                gg.diffusion,
+                sh / nh.max(1) as f64,
+                sc / nc.max(1) as f64
+            );
+        }
+    }
 }

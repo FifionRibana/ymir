@@ -117,6 +117,13 @@ discharge p90 *rises*, so this is not less water — it is the same water spread
 network, so fewer individual reaches clear a threshold. Whether that is a defect or a truer
 picture is a judgement call, but it is not "no change", and barges do exist in humid (2–3).
 
+⚠️ **And ADR Finding 60 gives a reason to distrust the classification itself, independently of
+the law.** Navigability classifies on the **climatic discharge**, while the channels it classifies
+were carved by the **geometric drainage area** — the incision provably takes no climatic input.
+Two quantities that ought to be one, and here they move in opposite directions. So this table may
+be measuring the decoupling rather than the channel-head law. **Do not use it to accept or reject
+the law**; §1, §2 and §4 are the criteria.
+
 In the arid bed navigability genuinely does not move (108 → 103, 2 → 2), and there the
 classification is pinned: the thresholds are in m³/s and the discharge sits 2–3 orders below
 them (Finding 47). At 8192² arid **not one of the 51 order-5 reaches carries any discharge at

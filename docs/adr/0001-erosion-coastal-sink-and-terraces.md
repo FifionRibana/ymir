@@ -6003,6 +6003,14 @@ Two things follow, and the second is a stop.
 ≈ 2×.** That split is new and it is the useful half of the decomposition. The hillslope-conditioned
 work is 364.5 m per cell at 2048² against 40.7 m at 8192².
 
+> ⛔ **RETRACTED IN FULL by Finding 59.** The whole intensive/extensive decomposition above —
+> both columns, at every sweep point — is withdrawn. It follows its denominator (2.14–2.32 on the
+> ">1 m" proxy, 1.67–2.12 on the km² criterion, 1.26 on the cells criterion), and Finding 59 §4
+> adds the decisive reason: the regime LABEL does not describe the population the incision acted
+> on, because the accumulation is recomputed at each iteration and the partition moves during the
+> run. **Do not build on the numbers in this table.** What survives is the `A^m` arithmetic of
+> C1 below — with its explanation corrected in Finding 59 §1b — and the B1 discretisation result.
+
 **(b) The claim "the intensive part is ~2.2× and demonstrably independent of `A_c`" is
 REFUTED.** It drifts monotonically 1.67 → 1.93 → 1.93 → 2.12 with `A_c` (a 27 % range), and it
 **collapses to 1.26 when `A_c` is held in cells**. The quantity is 2.14–2.32 on the ">1 m" proxy,
@@ -6033,6 +6041,13 @@ invariant to 3–4 % and `n = 1`. So:
 
 > **`E = K·A^m·S^n` — the ≈2× intensive term in the channel regime IS the `A^m` term, and the
 > divergence of `A` is a resolution artefact of the MFD accumulation, not of the terrain.**
+
+> ⚠️ **HALF-CORRECTED by Finding 59 §1b.** The arithmetic stands. The words "of the MFD
+> accumulation" do not: the divergence is **flat at 4.6–5.1 across p = 2, 4, 8 and pure D8**, so
+> it is not an MFD artefact and no routing-scheme choice repairs it. The mechanism is the drainage
+> network's area-frequency law on a finite grid — a fixed physical basin shared among a cell count
+> that scales with the grid. Per-cell `A` therefore cannot be resolution-invariant under ANY
+> scheme, and neither can per-cell `E`.
 
 That is the attribution the previous two rounds were missing, and it closes the term that was
 never measured. It also explains why the intensive ratio is denominator-dependent: changing the
@@ -6083,6 +6098,14 @@ depressions (by carving) and *removes* them (by breaching), and the balance is n
 `A_c`. **The column is unusable as a control on an `A_c` sweep** and must be read against the
 pre-incision baseline, which it now is.
 
+**And it is now interpretable rather than merely restored, which matters because a non-monotone
+column reads as noise on the next pass.** The incision does two opposite things to the closed-
+depression population at once: it **carves** new ones (a channel cutting across a col leaves the
+ground behind it enclosed) and it **breaches** existing ones (a channel reaching a basin drains
+it). Raising `A_c` weakens both, and their difference has no reason to be monotone. So the column
+measures a *balance*, not a level, and the only readings it supports are (i) against the
+pre-incision baseline and (ii) at a FIXED `A_c` across some other change. It is not noise.
+
 **The network-extent column is withdrawn for this sweep type.** It was measured at a FIXED
 0.1 km² accumulation threshold on the RESULTING field, so it confounds the change it monitors —
 which is why it grew as `A_c` rose. Either read at the current `A_c` or removed; removed here,
@@ -6105,7 +6128,9 @@ is the pure cell-count MFD accumulation.
 FBM on/off — 674 433 cells, 37 m — for a reading that lives at 3–4 %. A deterministic one-cell
 perturbation of **1.30 m** moves the D8 p90 slope by **+2.97 %**, which is the same size as the
 8192²-versus-2048² excess (+3.2 %). The per-cent reading is licensed, and the FBM's extra HD
-roughness now has a scale: it is worth about 1.3 m of one-cell noise.
+roughness now has a scale: it is worth about 1.3 m of one-cell noise. That formulation is kept
+deliberately — it is the only place in this campaign where a per-cent slope reading has been given
+a physical size, and a percentage without one is what made the first A2 table unreadable.
 
 **The sub-cell assertion is inverted so that it guards.** An `#[ignore]`d test does not run and
 protects nothing. It now pins the CURRENT state — 2.6214 cells, under the 10-cell floor — so it
@@ -6134,3 +6159,211 @@ no diffusion fix. The decomposition that motivated this round is refuted as popu
 so no remedy is built on it; what replaces it is the `A^m` attribution (C1) and the discretisation
 result (B1), both of which point at the same object — **the accumulation field and the cell count
 of the threshold read against it** — and neither of which is a physics change.
+
+## Finding 59 — the accumulation operator CONVERGES; per-cell `A` cannot, under any scheme; and the hillslope label is void
+
+Four measurements, three refutations of the round's premises, and the retraction of a
+decomposition. All DIAG; nothing in production changed.
+
+### RETRACTION — the intensive/extensive decomposition (Finding 58 §A1) is withdrawn
+
+The intensive ratio reads 2.14–2.32 on the ">1 m" proxy, 1.67–2.12 on the km² regime criterion
+and 1.26 on the cells criterion: **it follows its denominator.** Its apparent agreement with
+Finding 43's "~50 % surviving `A_c = 0`" was a numerical coincidence promoted to a confirmation —
+the same defect this ADR records against the `S_ref` reading. Nothing is built on it, here or
+anywhere. Block 4 below adds a third, independent reason it could not have worked.
+
+### 1a — the operator DOES converge. Basins agree to 1.6 %; the divergence is upstream, per cell
+
+Matching method, declared: the largest basins at 2048² by CELL COUNT (the physical area); the
+outlet is the basin's maximum-accumulation land cell; at 8192² the maximum accumulation is sought
+in a ±8 HD-cell (±391 m) window around that normalised position, and the displacement is
+reported. **Matches landing on the window edge are flagged** — there, the tolerance chose the
+point, not the topography.
+
+| # | acc 2048² km² | acc 8192² km² | ratio | basin cells 2048² km² | 8192² km² | **ratio** | shift m |
+|---|---|---|---|---|---|---|---|
+| 1 | 495.52 | 33.08 | 14.98 | 3 786 | 437 | 8.66 | 391 ⚠ edge |
+| 2 | 355.26 | 250.96 | 1.42 | 2 377 | 2 264 | **1.050** | 98 |
+| 3 | 338.11 | 280.18 | 1.21 | 1 476 | 1 373 | **1.075** | 355 |
+| 4 | 131.96 | 83.92 | 1.57 | 1 060 | 1 058 | **1.002** | 352 |
+| 5 | 808.41 | 753.77 | 1.07 | 973 | 964 | **1.009** | 244 |
+| 6 | 120.92 | 33.88 | 3.57 | 749 | 753 | **0.994** | 417 ⚠ edge |
+| 7 | 176.76 | 23.57 | 7.50 | 531 | 530 | **1.002** | 297 |
+| 8 | 432.23 | 429.00 | 1.01 | 474 | 481 | **0.984** | 69 |
+| 9 | 59.83 | 53.82 | 1.11 | 464 | 449 | **1.033** | 249 |
+| 10 | 235.14 | 237.08 | 0.99 | 424 | 417 | **1.016** | 244 |
+| | | | **median 1.42** | | | **median 1.016** | |
+
+Total drained land is 27 009 km² at 2048² and 27 008 km² at 8192² — identical, as conservation
+requires.
+
+**The basin cell-count areas agree to 1.6 % on the median and to under 8 % on every basin whose
+match is not flagged.** So the two grids delineate the *same basins*, and the outlet accumulation
+ratio is 1.0–1.6 on eight of ten (basin 7's 7.50 comes with a cell-count ratio of 1.002 — the
+basin matched, the *outlet* did not; the window found a local maximum that is not the mouth).
+
+⇒ **"The accumulation operator does not converge" is REFUTED.** It converges on the basin
+footprint and at the outlet. What diverges is the **per-cell partition upstream** — and by
+conservation it must: the same fixed physical area is shared among 16× more cells.
+
+This does **not** refute the quantile reading; it relocates it. The quantiles are a true
+statement about *what the incision sees per cell* and a false statement about drained area as a
+physical quantity. The stop rule therefore does not fire.
+
+### 1b — the exponent sweep REFUTES both readings: the divergence survives pure D8
+
+| scheme | p10 | p25 | p50 | p75 | p90 | p99 |
+|---|---|---|---|---|---|---|
+| **D8** ratio lo/hi | **8.00** | 7.11 | **5.14** | 5.00 | **5.33** | 9.91 |
+| **p = 2** ratio | 7.21 | 4.96 | **4.67** | 4.82 | 5.16 | 4.85 |
+| **p = 4** ratio | 7.72 | 4.99 | **4.64** | 4.74 | 5.09 | 5.20 |
+| **p = 8** ratio | 8.08 | 5.06 | **4.63** | 4.70 | 4.99 | 5.74 |
+
+**The ratio does not fall with `p`. It is flat at 4.6–5.1 on p50 across every scheme, pure D8
+included**, and D8 is the *worst* at both tails (8.00 and 9.91). The prediction that it would
+decay monotonically and reach ~1 at D8 is refuted; so is my own prediction of a rotation with
+p90 → 1.0–1.5.
+
+The negative control holds, so the sweep is not blind: D8 → p = 2 moves p50 from 0.3433 to
+0.5114 km² at 2048² (+49 %) and 0.0668 → 0.1094 at 8192² (+64 %). The scheme change IS visible;
+the **ratio** is simply insensitive to it.
+
+⇒ **This is not an MFD artefact and there is no scheme choice that repairs it.** Under D8 the
+median cell drains 9.0 cells at 2048² and 28.0 at 8192² — in cell units the median accumulation
+*rises* 3.1× when the grid refines 4× linearly, and 16 / 3.11 = 5.14 is the km² ratio. That is
+the drainage network's area-frequency law meeting a finite grid.
+
+> **The per-cell drained area cannot be resolution-invariant, for any routing scheme, because a
+> fixed physical basin is shared among a number of cells that scales with the grid. Therefore
+> `E = K·A^m·S^n` evaluated PER CELL cannot be resolution-invariant either.** This is a property
+> of the discretised stream-power law, not of a scheme.
+
+**Correction to Finding 58's C1 interpretation.** Its arithmetic stands — `A^0.5` ratio 2.16–2.27
+against a channel intensive ratio 1.93–2.12 — but its explanation, *"A's divergence is an artefact
+of the MFD accumulation"*, is **wrong**: the divergence survives D8 unchanged. The mechanism is
+the area-frequency law on a finite grid.
+
+### 2 — three routes to the divergence factor, and two of them coincide exactly
+
+Pure arithmetic on the pre-incision accumulation, each grid using its own land mask (hence the
+shares differ slightly from Finding 58's land-in-both table): channel share at the shipped
+`A_c = 0.1 km²` is **91.36 %** at 2048² and **53.62 %** at 8192².
+
+| direction | equalising `A_c` | in cells | factor on 0.1 km² |
+|---|---|---|---|
+| RAISE 2048² to match HD | **0.46738 km²** | 12.25 | **4.67×** |
+| LOWER 8192² to match 2048² | **0.01224 km²** | 5.13 | **8.17×** |
+
+**The asymmetry is 8.17 / 4.67 = 1.75×** — reported because the answer depends on which grid is
+moved, which is the same denominator lesson as the retracted decomposition.
+
+And the coincidence that matters: **the raise-direction factor 4.67× equals the p50 accumulation
+ratio 4.67× to three digits.** Two independent routes — a threshold bisection on the channel
+share, and a quantile of the accumulation distribution — land on the same number. The outlet
+route (1.42) measures a different object and is not a third estimate of the same thing.
+
+⚠️ **An error in my own bench output**, corrected here: the line printing "the two directions
+disagree by 0.57×" multiplied the two factors instead of dividing them. The asymmetry is 1.75×.
+
+### 4 — the hillslope regime is a VOID label, and the diffusion stage is inert
+
+Switching the hillslope diffusion off **entirely** (0.08 → 0.0), at `A_c = 0.1 km²`:
+
+| | intensive HILLSLOPE | intensive CHANNEL |
+|---|---|---|
+| 2048² shipped | 364.5 m | 662.0 m |
+| 2048² **diffusion 0.0** | **358.5 m** (−1.6 %) | 662.3 m |
+| 8192² shipped | 40.7 m | 342.9 m |
+| 8192² **diffusion 0.0** | **40.6 m** (−0.2 %) | 341.6 m |
+
+**My prediction that the hillslope work is ≥ 80 % diffusion is REFUTED, decisively: it is 1.6 %
+and 0.2 %.**
+
+And the mechanism is not what was proposed either. `incise` executes `continue` on a sub-threshold
+cell and never writes it, so incision **cannot** act below the threshold. But the accumulation is
+recomputed at **each of the two iterations** on the evolving surface, and 662 m of channel
+incision reorganises the routing — so cells labelled hillslope on the PRE-INCISION field pass the
+gate later. **The partition moves during the run.**
+
+⇒ **"Hillslope regime" is a void label as measured, and there is effectively one regime** — the
+conclusion proposed, reached by a different route (not "incision below the threshold", which the
+code forbids, but "the threshold's population is redefined between iterations"). This is the
+third and strongest reason the intensive/extensive decomposition could not work: **its
+denominator did not describe the population the incision acted on.**
+
+**The diffusion stage, correctly labelled at last.** Finding 58 measured a 16× coefficient change
+moving the divergence by 4 %; switching the stage OFF moves the hillslope work by 1.6 % and the
+channel work by 0.05 %. An operator insensitive to its own total removal is **INERT**, not weak.
+
+> The irony belongs in the record: this ADR **removed** the "inert branch" label from Finding 43
+> where it was wrong — the Laplacian there displaces two thirds of the land at mass-neutrality,
+> which is *conservative* — and the label was **missing** here, where it is exactly right.
+
+**File consequence, strengthened twice:** a transport-limited hillslope term cannot be built on a
+stage now measured inert to its own removal. Before any hillslope physics, the measurement owed is
+*why* this stage does nothing — and the candidate is that `diffusion·∇²h` on a cell-based
+Laplacian is dominated by the incision's own 662 m per cell at every iteration.
+
+### The standing picture after this round
+
+- the pre-incision **field** is resolution-invariant (Finding 57);
+- the accumulation **operator** converges on basins and outlets (1a);
+- per-cell **`A`** cannot converge, under any scheme, and drags `A^m` with it (1b);
+- `A_c`'s **discretisation** converts that into the 3.18× work ratio (Finding 58 B1: holding
+  `A_c` in cells collapses it to 1.23);
+- the **hillslope stage is inert** and its regime label is void (4).
+
+No remedy follows from this round, and none is proposed. What it removes is the hope stated at the
+start of it — that the remedy would be a scheme choice.
+
+## Finding 60 — the terrain and the water are DECOUPLED: the erosion never sees the climate
+
+An observation that surfaced while widening the climate assertion, and it deserves its own entry
+because its consequences reach past the resolution blocker.
+
+### The measurement, which is a code enumeration
+
+The incision is `incise(height: &GridF32, cfg: &StreamPowerConfig)` (and its `incise_lithology`
+/ `incise_with_progress` variants). `StreamPowerConfig` carries exactly `n, m, k, dt, iterations,
+sea_level, diffusion, diffusion_substeps, min_area_cells, a_c_slope_law, threshold, cell_km,
+depth_scale_m, critical_slope, lateral_erosion, mfd_exponent`. **No precipitation, no
+temperature, no runoff, no discharge.** The `A` it reads is the pure cell-count MFD accumulation
+of the height field.
+
+> **The erosion consumes a GEOMETRIC drainage area. The hydrology consumes a CLIMATIC discharge.
+> They are different quantities, and the term that carves the channels never sees the climate.**
+
+### What follows, and it is not only about the blocker
+
+**1. The climate assertion is now correctly scoped.** It previously covered
+`upscale_from_c1_with_progress` — the pre-incision terrain — while the claim it served was about
+the eroded field. It now covers both, because the incision provably takes no climatic input.
+That is why the `A_c` sweep's control block can be climate-free by construction, and why one
+pass suffices there.
+
+**2. Navigability classifies on a discharge that did not shape the channels it classifies.**
+The thresholds (`stream_km2` 20, `small_boat_km2` 500, `barge_km2` 5 000, `ship_km2` 50 000) are
+applied to the climatic discharge computed by the drainage stage. But the channel *geometry* —
+where a channel is, how deep, how the network branches — was set by the geometric accumulation,
+with no knowledge of where the rain falls. So a reach can be wide-and-deep in an arid interior
+because its geometric catchment is large, and be classed non-navigable because its climatic
+discharge is nil; and the converse in a wet coastal strip. **Finding 56c's measurement is exactly
+that signature**: in the humid bed the law cut navigable reaches by 18 % and 69 % *while the
+discharge p90 rose*. Two quantities that ought to be one, moving in opposite directions.
+
+**3. It bounds what any hillslope or timescale work can achieve.** A transport-limited hillslope
+term is normally driven by runoff. On this pipeline there is no runoff at the incision stage to
+drive it with — the erosion's only water proxy is a cell count. Coupling them is a design
+decision that has never been taken explicitly, and it is upstream of the roadmap's next item.
+
+### Not a defect claim
+
+This is a **decoupling**, not a bug: a geometric-area stream-power law is a standard, defensible
+LEM formulation, and the discharge stage was added later for the hydrology export. Nothing here
+says either stage is wrong. What it says is that **the project has two different answers to "how
+much water is here" and has never reconciled them**, and that at least one published verdict
+(navigability, Finding 56c) is a consequence of the gap rather than of the change it was
+attributed to.
+
+Recorded, not resolved, and no measurement is requested by it this round.
