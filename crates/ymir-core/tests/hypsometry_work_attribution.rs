@@ -80,7 +80,44 @@ impl Variant {
     }
 }
 
+/// A full build spec, so A2bis and C1 can perturb one knob at a time from the same builder.
+#[derive(Clone, Copy)]
+struct Spec {
+    v: Variant,
+    /// `None` = the bench default (0.04, matching `coastal_comb_levers`); `Some(a)` overrides.
+    amplitude_base: Option<f64>,
+    /// `None` = `FbmUpscaleConfig::default()`'s fixed 7; `Some(n)` overrides. The NEGATIVE
+    /// CONTROL for A2bis — the instrument must be able to see a roughness change at all.
+    octaves: Option<usize>,
+    /// `None` = the shipped `RELIEF_V1_A_C_KM2 = 0.1`; `Some(a)` overrides (C1's sweep).
+    a_c_km2: Option<f32>,
+}
+
+impl Spec {
+    fn of(v: Variant) -> Self {
+        Spec { v, amplitude_base: None, octaves: None, a_c_km2: None }
+    }
+}
+
+/// Effective geometry of a build, read back from the config that was actually constructed —
+/// block C's arithmetic verified by measurement rather than by recomputation.
+struct Geometry {
+    cell_km: f32,
+    cell_km2: f32,
+    min_area_cells: f32,
+    octaves: usize,
+}
+
+fn terrain_spec(target: usize, sp: Spec) -> (GridF32, Geometry) {
+    build(target, sp)
+}
+
 fn terrain(target: usize, v: Variant) -> GridF32 {
+    build(target, Spec::of(v)).0
+}
+
+fn build(target: usize, sp: Spec) -> (GridF32, Geometry) {
+    let v = sp.v;
     let ss = SteinSteinParams::default();
     let run_cfg = C1TimeLoopConfig {
         rigid_continental_crust: true,
@@ -103,7 +140,7 @@ fn terrain(target: usize, v: Variant) -> GridF32 {
         depth_scale_m: ss.depth_scale_m as f32,
         sample_origin: [0.0, 0.578_125],
         sample_size: 1.0,
-        amplitude_base: if coarse { 0.0 } else { 0.04 },
+        amplitude_base: sp.amplitude_base.unwrap_or(if coarse { 0.0 } else { 0.04 }),
         mfd_p: 2.0,
         lithology: LithologyConfig {
             enabled: !coarse,
@@ -119,10 +156,32 @@ fn terrain(target: usize, v: Variant) -> GridF32 {
             ..Default::default()
         },
     });
+    if let Some(n) = sp.octaves {
+        cfg.octaves = n;
+    }
     if v != Variant::Shipped {
         cfg.stream_power = None; // the ONE lever that separates `NoIncision` from `Shipped`
+    } else if let Some(a) = sp.a_c_km2 {
+        // C1's sweep. `min_area_cells` is a CELL COUNT derived from a km² constant, which is
+        // the whole point of block C: the same physical threshold is 2.6 cells at 2048² and
+        // 41.9 at 8192².
+        let cell_km2 = (DOMAIN_KM / target as f32).powi(2);
+        if let Some(spw) = cfg.stream_power.as_mut() {
+            spw.min_area_cells = a / cell_km2;
+        }
     }
-    upscale_from_c1_with_progress(
+    let geo = {
+        let cell_km = DOMAIN_KM / target as f32;
+        Geometry {
+            cell_km,
+            cell_km2: cell_km * cell_km,
+            // READ BACK from the config, not recomputed — if the two ever disagree, this is
+            // the number that governs the incision.
+            min_area_cells: cfg.stream_power.as_ref().map_or(f32::NAN, |x| x.min_area_cells),
+            octaves: cfg.octaves,
+        }
+    };
+    let f = upscale_from_c1_with_progress(
         &state,
         &run_cfg.iso_config,
         &ss,
@@ -135,7 +194,8 @@ fn terrain(target: usize, v: Variant) -> GridF32 {
         &|| false,
     )
     .0
-    .heightmap
+    .heightmap;
+    (f, geo)
 }
 
 fn q(v: &mut Vec<f32>, f: f64) -> f32 {
@@ -276,12 +336,24 @@ fn hypsometry_work_attribution() {
             );
         }
 
-        eprintln!("\n── A2 · slope of the UN-ERODED field, dimensionless (tan) ──");
+        // A2bis — the POPULATION IS NAMED on every row. The first version of this table said
+        // only "non érodé", and the row it reported was the FBM-bearing `NoIncision` build;
+        // the `Coarse` row was skipped by a `continue`. Reporting a slope quantile without its
+        // variant is the same defect as the "865 m" control quoted without its resolution, so
+        // both rows are printed here and labelled.
+        eprintln!("\n── A2bis · slope of each PRE-INCISION field, dimensionless (tan) ──");
         for (v, f) in &fields {
-            if *v == Variant::Coarse {
-                continue; // the coarse field is a different object; kept out of the comparison
+            if *v == Variant::Shipped {
+                continue;
             }
-            eprintln!("  {}", v.label());
+            eprintln!("  [{}]", v.label());
+            let (mut c, mut d) = slopes(f, &ss, target);
+            report_slopes("central", &mut c);
+            report_slopes("D8 (s_now)", &mut d);
+        }
+        eprintln!("  [shipped (production) — for scale]");
+        {
+            let f = &fields.iter().find(|(v, _)| *v == Variant::Shipped).unwrap().1;
             let (mut c, mut d) = slopes(f, &ss, target);
             report_slopes("central", &mut c);
             report_slopes("D8 (s_now)", &mut d);
@@ -331,6 +403,140 @@ fn hypsometry_work_attribution() {
             100.0 * diff.iter().filter(|&&d| d > 1.0).count() as f32 / diff.len().max(1) as f32;
         eprintln!(
             "  share of common land LOWERED by more than 1 m by the incision: {eroded_frac:.2} %"
+        );
+    }
+}
+
+/// A2bis' NEGATIVE CONTROL, plus block C's arithmetic read back from the built config.
+///
+/// Two controls, because the obvious one may legitimately move nothing. `flow_conditioning =
+/// 0.1` caps the FBM's total downslope rise via `flow_budget_divisor = nscale · Σ(p·l)^o`, and
+/// `Σ` runs over the octave count — so adding an octave RESCALES the amplitude to hold the same
+/// total rise, and octave-invariance would be a correct property of the code rather than a blind
+/// instrument. `amplitude_base × 4` is therefore the second control: if NEITHER moves the
+/// quantiles, the measurement is void and A2bis proves nothing.
+#[test]
+#[ignore]
+fn a2bis_roughness_negative_control() {
+    let ss = SteinSteinParams::default();
+    eprintln!(
+        "\n==========  A2bis — NEGATIVE CONTROL: can this instrument see roughness?  =========="
+    );
+    for target in [2048usize, 8192] {
+        eprintln!("\n╔══════ {target}² ══════╗");
+        for (tag, sp) in [
+            ("fbm, octaves 7 (shipped)", Spec::of(Variant::NoIncision)),
+            ("fbm, octaves 8 (+1)", Spec { octaves: Some(8), ..Spec::of(Variant::NoIncision) }),
+            (
+                "fbm, amplitude_base x4",
+                Spec { amplitude_base: Some(0.16), ..Spec::of(Variant::NoIncision) },
+            ),
+        ] {
+            let (f, geo) = terrain_spec(target, sp);
+            let (mean, _, p50, p90, _, land) = hypsometry(&f, &ss);
+            let (_, mut d) = slopes(&f, &ss, target);
+            eprintln!(
+                "  [{tag}]  octaves {} | mean {mean:.1} m | alt p50 {p50:.0} p90 {p90:.0} | \
+                 land {land:.2} %",
+                geo.octaves
+            );
+            report_slopes("D8", &mut d);
+        }
+    }
+}
+
+/// Block C — the cell arithmetic READ BACK from the built config, then the `A_c` sweep.
+///
+/// The control block runs on every sweep point and is deliberately CLIMATE-FREE, so no climate
+/// bed has to be chosen: the hypsometry, the closed-depression population, the enclosed
+/// below-sea regions (a `water_class` geometry, not a water balance) and the network extent are
+/// all functions of the height field alone. The rule "never one bed" applies when climate enters
+/// the chain; here it does not, and that is why one pass suffices.
+#[test]
+#[ignore]
+fn c1_channel_head_area_sweep() {
+    use ymir_core::lakes::connectivity::water_class;
+    use ymir_core::terrain::flow::{FlowConfig, compute_flow, mfd_accumulation};
+    let ss = SteinSteinParams::default();
+    let to_m = |x: f32| c1_altitude_norm_to_metres(x, &ss);
+    eprintln!("\n==========  BLOCK C — A_c is physically dimensioned but SUB-CELL  ==========");
+
+    // ── C · the arithmetic, from the config that was actually constructed ────────────
+    eprintln!("\n── C · effective geometry, read back from the built StreamPowerConfig ──");
+    eprintln!(
+        "  {:<8} {:>12} {:>14} {:>18} {:>18}",
+        "grid", "cell km", "cell km²", "A_c=0.1 km² cells", "A_c=1.0 km² cells"
+    );
+    for target in [2048usize, 8192] {
+        let (_, g1) = terrain_spec(target, Spec::of(Variant::Shipped));
+        let (_, g2) =
+            terrain_spec(target, Spec { a_c_km2: Some(1.0), ..Spec::of(Variant::Shipped) });
+        eprintln!(
+            "  {target:<8} {:>12.6} {:>14.7} {:>18.4} {:>18.4}",
+            g1.cell_km, g1.cell_km2, g1.min_area_cells, g2.min_area_cells
+        );
+    }
+
+    // ── C1 · the sweep ──────────────────────────────────────────────────────────────
+    let mut work: Vec<(usize, f32, f64)> = Vec::new();
+    for target in [2048usize, 8192] {
+        eprintln!("\n╔══════ {target}² ══════╗");
+        // The pre-incision control, once per grid — the reference every work figure is against.
+        let (control, _) = terrain_spec(target, Spec::of(Variant::NoIncision));
+        let (mc, _, _, _, _, land_c) = hypsometry(&control, &ss);
+        eprintln!("  control (no incision): mean {mc:.1} m | land {land_c:.2} %");
+        for a_c in [0.1f32, 0.4, 1.0] {
+            let (f, g) =
+                terrain_spec(target, Spec { a_c_km2: Some(a_c), ..Spec::of(Variant::Shipped) });
+            let (mean, _, _, _, _, land) = hypsometry(&f, &ss);
+            // paired work over the cells that are land in BOTH
+            let (mut sum, mut n_both, mut n_moved) = (0.0f64, 0usize, 0usize);
+            for k in 0..f.data.len() {
+                if control.data[k] > SEA && f.data[k] > SEA {
+                    let d = to_m(control.data[k]) - to_m(f.data[k]);
+                    sum += d as f64;
+                    n_both += 1;
+                    if d > 1.0 {
+                        n_moved += 1;
+                    }
+                }
+            }
+            let w = sum / n_both.max(1) as f64;
+            let moved = 100.0 * n_moved as f32 / n_both.max(1) as f32;
+            work.push((target, a_c, w));
+            // ── control block, climate-free ──
+            let flow = compute_flow(&f, &FlowConfig { sea_level: SEA, ..Default::default() });
+            let pits = flow
+                .filled
+                .data
+                .iter()
+                .zip(f.data.iter())
+                .filter(|(a, b)| **a > **b + 1e-6)
+                .count();
+            let wc = water_class(&f, SEA);
+            let below = wc.iter().filter(|&&c| c == 2).count();
+            let acc = mfd_accumulation(&flow.filled, &flow.direction, SEA, 2.0, f.width, f.height);
+            let head_cells = 0.1 / g.cell_km2; // the SHIPPED channel head, held fixed
+            let chan = acc.data.iter().filter(|&&x| x >= head_cells).count();
+            eprintln!(
+                "  A_c {a_c:>4.1} km² ({:>7.2} cells)  mean {mean:>7.1} m | work {w:>7.1} m | \
+                 >1 m {moved:>6.2} % | land {land:>6.2} %\n      control: pits {pits:>9} \
+                 ({:>7.0} km²) | below-sea cells {below:>8} ({:>7.0} km²) | network {chan:>9} \
+                 cells ({:>8.0} km)",
+                g.min_area_cells,
+                pits as f32 * g.cell_km2,
+                below as f32 * g.cell_km2,
+                chan as f32 * g.cell_km
+            );
+        }
+    }
+    eprintln!("\n── C1 · work ratio 2048² / 8192², per A_c ──");
+    for a_c in [0.1f32, 0.4, 1.0] {
+        let lo = work.iter().find(|(t, a, _)| *t == 2048 && *a == a_c).map(|x| x.2).unwrap_or(0.0);
+        let hi = work.iter().find(|(t, a, _)| *t == 8192 && *a == a_c).map(|x| x.2).unwrap_or(0.0);
+        eprintln!(
+            "  A_c {a_c:>4.1} km²   2048² {lo:>7.1} m   8192² {hi:>7.1} m   ratio {:>6.2}",
+            lo / hi.max(1e-9)
         );
     }
 }

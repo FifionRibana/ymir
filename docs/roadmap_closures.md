@@ -312,6 +312,21 @@ cela veut dire que **`w = 5·Q^0,5` n'a rien à calibrer ici** — même verrou,
 - **Attribution 63 / 18 / 18** (Finding 43) : 63 % de l'excès d'altitude à 8192² vient de la
   **partition de régime fluvial/versant**, ~18 % de la dispersion MFD, et **~50 % du résidu
   (73 m) reste NON ATTRIBUÉ** — il survit à `A_c = 0` **et** à MFD éteint.
+- ⚠️ **CORRIGÉ par le bloc A — deux étiquettes périmées dans les lignes qui suivent.**
+  1. **`S_ref` n'est pas une trace de la cause.** 0,3319 / 0,1128 est mesuré sur le champ
+     **ÉRODÉ**, aux têtes de chenal. Le champ **avant incision** a la même distribution de pente
+     D8 aux deux grilles à 3–4 % près sur les queues. L'écart de `S_ref` est donc une
+     **conséquence** de la divergence, et la circularité de la loi `A_c(S)` est **démontrée** :
+     elle est calibrée sur une grandeur produite par le défaut qu'elle contourne.
+  2. **« Branche inerte » est trop fort : l'opérateur est CONSERVATIF.** 66,5 % des terres
+     communes déplacées de plus d'1 m à 8192² pour ~3 m de moyenne. Il fait beaucoup, tout
+     à masse nulle.
+  3. **La rugosité de l'upscale ×128 n'est PAS la cause racine** : le champ avant incision est
+     invariant en résolution en moyenne (865,4 / 865,5 m), en quantiles d'altitude et en
+     fraction émergée (16,88 % / 16,88 %). Ajouter une octave ne change rien (< 0,5 %) et
+     `amplitude_base ×4` ne change **rien du tout** — le budget de relief C-1 borne la
+     rugosité à une valeur invariante en résolution, par construction.
+
 - **Le mécanisme 1 est « un seuil correct alimentant une branche inerte »** : `A_c = 0,1 km²` est
   juste en km², mais la fraction de terres qu'il couvre passe de 55,4 % à 2048² à 10,1 % à 8192²
   (loi aire-fréquence sous-linéaire), et les 90 % restants sont confiés à un terme de versant qui

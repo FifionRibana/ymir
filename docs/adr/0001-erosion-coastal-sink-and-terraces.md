@@ -3610,6 +3610,15 @@ carrying the physical duration.** That conflation IS the gap.
 
 ### Why two chantiers need it
 
+> **RELABELLED by block A: "inert" is too strong — the branch is CONSERVATIVE.** Measured:
+> at 8192² the incision-off/incision-on comparison moves **66.5 % of common land by more than
+> 1 m** while shifting the mean by ~3 m when `diffusion` is switched off entirely. An operator
+> that displaces two thirds of the land and removes no mass is the operational definition of a
+> **conservative** operator, not an inert one — the Laplacian fills valleys exactly as much as
+> it lowers ridges. The consequence for the remedy is unchanged (a transport-limited term is
+> still what is needed); the consequence for the DIAGNOSIS is that "the branch does nothing" is
+> false and should not be repeated — it does a great deal, all of it mass-neutral.
+
 - **The hypsometry remedy (Finding 43).** Mechanism 1 is a correct threshold feeding an inert
   hillslope branch. Making that branch work means giving it a real diffusivity `κ`, and
   `∂h/∂t = κ∇²h` has `[κ] = m²/yr`. **There is no year for it to multiply.** Calibrating a
@@ -5285,6 +5294,19 @@ itself the Findings 42–44 hypsometry defect surfacing in the calibration. 2048
 the project already treats it as the calibration resolution (`HILLSLOPE_REF_CELL_M`). **The
 residual gap at 8192² is inherited from that, not from the law.**
 
+> **CORRECTED by block A (measurement).** This paragraph reads the 0.3319 / 0.1128 spread as a
+> TRACE of the divergence's cause. It is not: `S_ref` is measured on the **ERODED** field, at the
+> channel heads the incision has already produced. Block A measured the **PRE-INCISION** field
+> and found its D8 slope distribution grid-invariant to within 3–4 % on the tails (p50 0.0906 vs
+> 0.0905, p90 0.2658 vs 0.2744, >30° 2.02 vs 2.22 %). So the input topography is the SAME at
+> both grids and the 3× spread in `S_ref` is a **CONSEQUENCE** of the erosion-work divergence,
+> downstream of it.
+>
+> **And that makes the circularity demonstrated rather than suspected:** `A_c(S)` is calibrated
+> on a quantity *produced by the defect it is meant to work around*. Recalibrating `S_ref` per
+> grid would fit the symptom; it cannot converge the grids, and block C shows why — raising
+> `A_c` makes the work ratio WORSE (3.18 → 8.46 → 10.89 for `A_c` = 0.1 / 0.4 / 1.0 km²).
+
 ### `S_min` — a PROXY, labelled, with its cost measured
 
 Montgomery & Dietrich constrain the relationship over roughly `S = 0.1–1.0`. **There is no
@@ -5764,3 +5786,168 @@ Unchanged: gated OFF, `coast_warp_strength` 1.5, contour relaxation `None`, `A_c
 diagnostic. The blockers before the law could ship are now TWO, both in the reporting layer and
 both independent of the channel head: the orphan-mouth regression (56b) and the depth/raster
 incoherence in the production climate (56c/b above).
+
+## Finding 57 — the blocker is EROSION WORK, and `A_c` sets its level without being able to converge it
+
+Three attributions and one new method pattern. Every number below is from
+`crates/ymir-core/tests/hypsometry_work_attribution.rs` (`DIAG`, asserts nothing), production
+config, seed 10 481 999 410 520 546 993, 400 km domain.
+
+### The control that did not exist
+
+`Lever { reference: true }` removes FOUR things (FBM, lithology, fracture, stream power), so the
+published `865 − 282 = 583 m` could not be attributed to the incision as written, and the figure
+came from a **hard-coded 2048²-only string**. Both defects are corrected in place. But the
+measurement refutes the objection's consequence: the three extra levers change 16 % of cells by
+up to 37 m locally and leave the hypsometric MEAN identical to under 0.1 m (the FBM is
+zero-mean), so **the 583 m IS the incision's**.
+
+### A1 / A2bis — the PRE-INCISION field is resolution-invariant, in altitude AND in slope
+
+| pre-incision (`stream_power = None`) | 2048² | 8192² |
+|---|---|---|
+| mean / p10 / p50 / p90 altitude | 865.4 / 95 / 679 / 1836 m | **865.5** / 95 / 679 / 1836 m |
+| emerged fraction | 16.88 % | **16.88 %** |
+| D8 slope p50 / p90 / p99 | 0.0906 / 0.2658 / 0.7580 | 0.0905 / **0.2744** / **0.7900** |
+| D8 slope > 30° / > 45° | 2.02 / 0.33 % | **2.22** / 0.39 % |
+
+**The population is NAMED on every row**, because the first version of this table said only
+"un-eroded" and reported the FBM-bearing build while skipping the coarse one — the same defect as
+the 865 quoted without its resolution. The coarse (no-FBM) rows are 0.0905 / 0.2644 / 0.7575 at
+2048² and 0.0900 / 0.2689 / 0.7781 at 8192².
+
+**Not "identical", as I first wrote: invariant to 3–4 % on the tails.** The FBM does add
+roughness, and slightly more of it at 8192² (p90 +0.53 % over coarse at 2048², +2.0 % at 8192²) —
+the direction predicted against me. But with `n = 1` a 3–4 % difference in `S` cannot produce a
+**218 %** difference in work. The magnitude argument survives; the invariance claim was
+overstated and is corrected.
+
+**Negative controls.** `octaves` 7 → 8 moves the quantiles by < 0.5 %, and `amplitude_base` ×4
+(0.04 → 0.16) moves **nothing at all, to six digits** — the C-1 relief budget caps the FBM's
+total downslope rise, and `flow_budget_divisor = nscale · Σ(p·l)^o` rescales the amplitude when
+the octave count changes. So `amplitude_base` is the recorded DEAD KNOB, now measured at both
+grids, and the octave count is neutralised by construction. The control that *does* move the
+instrument is FBM on/off (674 433 differing cells at 2048², 10.8 M at 8192²), which is what
+licenses the comparison above.
+
+⇒ **The root cause "roughness of the ×128 upscale" is DEAD.** The upscale's output is invariant
+in mean, in altitude quantiles, in emerged fraction, and to within 3–4 % in slope.
+
+Related code fact, since it was the live hypothesis: the FBM octave count is a **fixed 7**
+(`FbmUpscaleConfig::default`; `c1_hd_production` never overrides it) and the frequency is
+anchored to the SOURCE grid — `nscale = base_frequency · 1024 / src_max²` over the coarse 64²,
+sampled in coarse-pixel coordinates. `target_size` appears in neither `nscale`, `octaves`, nor
+`flow_budget_divisor`. Octaves *generated* is grid-independent; octaves *resolvable* is not
+(octave 6 lands at ~390 m, exactly the 2048² Nyquist) — and with `persistence · lacunarity = 1`
+every octave contributes the same gradient, so that would have mattered. The relief budget is
+what neutralises it.
+
+### A3 — the work, and why the framing was one-sided
+
+| | 2048² | 8192² |
+|---|---|---|
+| erosion work, PAIRED over land-in-both | **633.0 m** | **199.0 m** |
+| work p50 / p90 | 483.8 / 1292.5 m | 71.5 / 556.4 m |
+| difference of means | 583.1 m | 180.2 m |
+| common land lowered > 1 m | **98.80 %** | **66.52 %** |
+| land lost to the sea by the erosion | 16.88 → 14.95 % (**−11.4 %**) | 16.88 → 16.44 % (−2.6 %) |
+
+**Which grid is the reference? Neither is validated against the real world, and the programme had
+been treating 8192² as the defective one.** The same numbers support the opposite reading: at
+2048² `A_c = 0.1 km²` is **2.62 cells**, so there is no hillslope regime at all — 98.8 % of land
+is channel — and the grid drowns 11.4 % of its own land in the process. **2048² is the DEGENERATE
+grid**, and it is also the calibration resolution (`HILLSLOPE_REF_CELL_M = 400 km / 2048`) and the
+grid `S_ref` is pinned to. That circularity is recorded here, not resolved.
+
+### C — `A_c` in cells, read back from the built config
+
+| grid | cell km | cell km² | `A_c` = 0.1 km² | `A_c` = 1.0 km² |
+|---|---|---|---|---|
+| 2048² | 0.195312 | 0.0381470 | **2.6214 cells** | 26.2144 |
+| 8192² | 0.048828 | 0.0023842 | **41.9430 cells** | 419.4304 |
+
+A ratio of exactly 16 = (8192/2048)². Verified by reading `StreamPowerConfig::min_area_cells`
+back from the constructed config rather than by recomputing the arithmetic.
+
+### C1 — the sweep REFUTES the convergence hypothesis, in the opposite direction
+
+| `A_c` | work 2048² | work 8192² | **ratio** | > 1 m 2048² | > 1 m 8192² |
+|---|---|---|---|---|---|
+| 0.1 km² (shipped) | 633.0 m | 199.0 m | **3.18** | 98.80 % | 66.52 % |
+| 0.4 km² | 336.5 m | 39.8 m | **8.46** | 83.87 % | 22.19 % |
+| 1.0 km² | 131.8 m | 12.1 m | **10.89** | 51.67 % | 11.02 % |
+
+The prediction on the table was that the ratio would fall **below 2.0** at `A_c = 1.0 km²`. It
+**rises monotonically to 10.89**. Raising the channel head starves the fine grid faster than the
+coarse one, because the area-frequency law is sub-linear and the same km² threshold excludes far
+more land at HD.
+
+**By the stated criterion — ratio ≥ 3 at every sweep point — `A_c` is not the DISCRIMINANT.** It
+is a LEVEL knob: it sets how much work happens, monotonically, on both grids. The convergent
+direction is *lowering* it, not raising it, and Finding 43 already measured that ~50 % of the
+residual survives `A_c = 0`. So a second mechanism exists and remains **UNATTRIBUTED**.
+
+**The hard consequence for the law under review:** no channel-head calibration can make the two
+grids agree, `A_c(S)` included. It was already known that `S_ref` cannot hold at both grids; C1
+shows the threshold *itself* cannot either, in either direction.
+
+Control block on every sweep point — deliberately **climate-free by construction** (hypsometry,
+pit population, enclosed below-sea regions from `water_class`, network extent are all functions
+of the height field alone), which is why one pass suffices and no climate bed has to be chosen:
+pits 68 431 → 69 387 at 2048² and 1 236 459 → 599 567 at 8192²; below-sea cells 41 025 → 31 292
+and 453 249 → 395 675; network extent 80 107 → 115 857 km and 45 573 → 262 788 km. **The network
+extent GROWS as `A_c` rises**, which is only paradoxical until one notices it is measured at a
+FIXED 0.1 km² accumulation threshold on the *resulting* field: less incision means less
+concentration, so more cells clear a modest threshold under MFD dispersion.
+
+### The correction to my own logic, invalid independently of any measurement
+
+I wrote: *"a slope-sensitive law fed the same slope cannot produce a factor 3.2 on the work."*
+`E = K·A^m·S^n` has **two** field terms. Showing `S` invariant says nothing about `A`. The
+proximal cause was not eliminated, it was **displaced from `S` to `A`** — and the measurement
+that closes it was three lines further down my own report (`A_c` covering 55.4 % of land against
+10.1 %) and I failed to connect it. Method rule 3's defect in its purest form: a factor quoted
+without being decomposed.
+
+The area term itself is dimensionally clean at the point of use — `am = (area · cell_km2)^m`, so
+km², with `area` in cells and `f = kdt · am / dist_m` in the Braun–Willett implicit update. It is
+not a cells-versus-km² bug.
+
+### METHOD PATTERN — "physically dimensioned but SUB-CELL"
+
+`A_c = 0.1 km²` is in physical units, passes every dimensional audit, and therefore **escapes the
+"cells instead of metres" pattern this ADR has now listed six times.** Its effect is still
+resolution-dependent, because its value *relative to the cell area* changes by 16×.
+
+> **The test is not "is the constant in physical units". It is "how many cells does it span at
+> the COARSEST resolution in its validity domain".**
+
+Guarded in `crates/ymir-core/tests/resolution_invariants.rs`, where the assertion is `#[ignore]`d
+**because it fails by design**: a green test there would claim a property the code does not have.
+The floor is DECLARED at 10 cells, not derived — a D8 neighbourhood is 9 cells, so at or under
+that the "threshold" is the stencil. `A_c` scores 2.62.
+
+### Inventory — every area / length constant touching the height field
+
+| constant | value | at 2048² | at 8192² | verdict |
+|---|---|---|---|---|
+| `RELIEF_V1_A_C_KM2` | 0.1 km² | **2.62 cells** | 41.94 cells | ⛔ **SUB-CELL at the calibration grid** |
+| `NECK_KM` (spur detector) | 0.6 km | **3.07 cells** | 12.29 cells | ⚠️ 3 cells — at the grid limit |
+| `MIN_SPUR_KM` | 1.0 km | 5.12 cells | 20.48 cells | ⚠️ marginal at 2048² |
+| `lake_min_area_km2` | 5.0 km² | 131 cells | 2 097 cells | ✅ |
+| `fracture decay_km` | 25 km | 128 cells | 512 cells | ✅ |
+| `MAX_SPUR_KM` | 50 km | 256 cells | 1 024 cells | ✅ |
+| `stream_km2` (navigability) | 20 km² | 524 cells | 8 389 cells | ✅ |
+| `small_boat_km2` | 500 km² | 13 107 cells | 209 715 cells | ✅ |
+| `INVENTORY_MIN_CELLS` | **4 cells** | 0.153 km² | 0.0095 km² | ⛔ **the MIRROR case** — dimensioned in cells, so its PHYSICAL meaning varies 16×, and it is the documented cause of the orphan-mouth regression (Finding 56b) |
+| `SMOOTH_MAX_SHIFT_CELLS` | 0.75 cells | 146 m | 37 m | ⚠️ mirror case, contour only |
+| `diffusion` = 0.05 | dimensionless at `HILLSLOPE_REF_CELL_M` = 195.3 m | — | — | ⛔ the `(ref/cell)²` scaling that anchors it exists **only in the NONLINEAR branch**, and relief-v3 takes the LINEAR one (`critical_slope = 0`). Anchored by declaration, unanchored on the shipped path |
+| `lake_min_depth_m` 10 m · `SAME_WATER_BODY_TOL_M` 0.10 m | vertical | — | — | ✅ no cell count applies |
+
+Two entries are ⛔ and both are already implicated in a recorded defect. Nothing is corrected
+here — this is attribution.
+
+### Standing
+
+`A_c(S)` still gated OFF, no recalibration, no hillslope term, no timescale work. Two guards
+added for the quantities this finding attributes, and nothing else.

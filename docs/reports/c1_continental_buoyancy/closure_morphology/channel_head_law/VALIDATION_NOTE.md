@@ -144,9 +144,13 @@ collapsing. **If the crests look intact, the clamp did its job.** (Note the S5 f
 
 ## 5. What the metrics already certify, so you need not look for it
 
-- The incision is **alive** — hypsometry mean 282 → 305 m at 2048² and 685 → 697 m at 8192²
-  (raw eroded field), against 865 m un-eroded. That is the control block that caught
-  `A_c × 100`, where the coast looked cured because erosion had stopped happening.
+- The incision is **alive, and doing 3.2× less work at 8192²** — the right measure is the WORK,
+  not the 23 m rise in the mean. Erosion work (pre-incision field minus eroded field, paired
+  over the cells that are land in both): **633 m at 2048² against 199 m at 8192²**, lowering
+  98.80 % of common land at 2048² but only 66.52 % at 8192². A mean that goes UP is precisely
+  the signature already on file for a mechanism that clears nothing, so quoting the rise was
+  the wrong evidence even though the conclusion held. The pre-incision reference is 865 m at
+  BOTH grids (resolution-invariant to 0.01 %, block A).
 - Lake invariants that hold over the real population in both beds: footprint at or below its
   level, monotone long profiles, no duplicate id, no empty footprint, `area_km2` == footprint.
 - Three that do not, all pre-existing and none made worse by the law except (a) above:

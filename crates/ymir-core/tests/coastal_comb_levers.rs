@@ -392,7 +392,13 @@ fn channel_head_law_verdict() {
         // RULE-7 CONTROL BLOCK — the incision must still be alive.
         eprintln!(
             "
-RULE-7 CONTROL BLOCK  (shipped 282/161/787 m · un-eroded reference 865/679/1836 m)"
+RULE-7 CONTROL BLOCK
+  reference values, PRE-INCISION field (production config, stream_power = None), measured in
+  `hypsometry_work_attribution`: mean/p50/p90 = 865/679/1836 m at BOTH 2048² and 8192² — the
+  pre-incision field is resolution-invariant to 0.01 %, so one figure serves both grids.
+  shipped, RAW eroded field: 282/161/787 m at 2048² and 685/445/1606 m at 8192².
+  The gap is EROSION WORK, not a distance to a reference: 633 m at 2048² against 199 m at
+  8192² (paired over the cells that are land in both fields), a ratio of 3.18."
         );
         eprintln!("{:<26} {:>9} {:>9} {:>9} {:>10}", "", "mean m", "p50 m", "p90 m", "land %");
         for (label, f, _) in &fields {
