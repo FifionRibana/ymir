@@ -5846,7 +5846,7 @@ what neutralises it.
 
 | | 2048² | 8192² |
 |---|---|---|
-| erosion work, PAIRED over land-in-both | **633.0 m** | **199.0 m** |
+| erosion work, PAIRED over land-in-both **[at `iterations = 2`]** | **633.0 m** | **199.0 m** |
 | work p50 / p90 | 483.8 / 1292.5 m | 71.5 / 556.4 m |
 | difference of means | 583.1 m | 180.2 m |
 | common land lowered > 1 m | **98.80 %** | **66.52 %** |
@@ -5858,6 +5858,14 @@ been treating 8192² as the defective one.** The same numbers support the opposi
 is channel — and the grid drowns 11.4 % of its own land in the process. **2048² is the DEGENERATE
 grid**, and it is also the calibration resolution (`HILLSLOPE_REF_CELL_M = 400 km / 2048`) and the
 grid `S_ref` is pinned to. That circularity is recorded here, not resolved.
+
+> ⚠️ **REFRAMED by Finding 61, and the reframing is stronger than this claim.** `iterations` is a
+> DURATION dial, and the 2048² land fraction falls 15.68 → 13.35 % across an iteration sweep while
+> 8192² holds 16.53 → 16.38 %. So the drowning is a **rate** effect, not a property of the grid:
+> at equal iteration count the coarse grid has effectively eroded far longer, because 91 % of its
+> land sits above the channel head against 54 %. **Neither grid is degenerate — they are at
+> different points on the same decay**, and the programme has been comparing them at equal
+> COMPUTE rather than at equal EROSION.
 
 ### C — `A_c` in cells, read back from the built config
 
@@ -5972,6 +5980,10 @@ both grids** (0.1 km² at 2048², 0.00625 km² at 8192²):
 | `A_c` 0.1 km² — 8192² | 52.40 % | 342.9 m | 40.7 m | 199.0 m | **3.18** |
 | **`A_c` 2.62 cells — 2048²** | 90.25 % | 662.0 m | 364.6 m | 633.0 m | — |
 | **`A_c` 2.62 cells — 8192²** | **93.72 %** | 524.5 m | 338.3 m | **512.8 m** | **1.23** |
+
+⚠️ **Budget-conditional (Finding 61): every number in this table is at `iterations = 2`, and
+the shipped ratio itself spans 2.72–3.38 over iters 1–8.** The conclusion below is not
+contradicted; its magnitude is conditional.
 
 **The work ratio collapses from 3.18 to 1.23, and the extensive gap INVERTS** (90.25 % against
 93.72 % — the fine grid now has *more* channel). At a matched cell-count threshold the two grids
@@ -6239,6 +6251,13 @@ the drainage network's area-frequency law meeting a finite grid.
 > `E = K·A^m·S^n` evaluated PER CELL cannot be resolution-invariant either.** This is a property
 > of the discretised stream-power law, not of a scheme.
 
+**And no single scale factor can repair it, which constrains every future remedy.** The
+distribution of `A` does not TRANSLATE between grids — its SHAPE changes. The per-quantile ratios
+say so directly: 7.21 at p10, 4.67 at p50, 4.85 at p99, the tails diverging more than the centre;
+and the two directions of the equalising-threshold bisection disagree by 1.75× for the same
+reason. **So rescaling `A_c`, `K`, or `A` by any constant will correct one quantile and miss
+another.** A reformulation is required, not a coefficient.
+
 **Correction to Finding 58's C1 interpretation.** Its arithmetic stands — `A^0.5` ratio 2.16–2.27
 against a channel intensive ratio 1.93–2.12 — but its explanation, *"A's divergence is an artefact
 of the MFD accumulation"*, is **wrong**: the divergence survives D8 unchanged. The mechanism is
@@ -6258,10 +6277,19 @@ shares differ slightly from Finding 58's land-in-both table): channel share at t
 **The asymmetry is 8.17 / 4.67 = 1.75×** — reported because the answer depends on which grid is
 moved, which is the same denominator lesson as the retracted decomposition.
 
-And the coincidence that matters: **the raise-direction factor 4.67× equals the p50 accumulation
-ratio 4.67× to three digits.** Two independent routes — a threshold bisection on the channel
-share, and a quantile of the accumulation distribution — land on the same number. The outlet
-route (1.42) measures a different object and is not a third estimate of the same thing.
+⛔ **DEMOTED ON TWO COUNTS — do not cite this as a corroboration.**
+>
+> **(1) It is one object read twice, not two routes.** Bisecting a threshold to equalise a share
+> of a population, and reading the ratio of that same distribution's medians, are two readings of
+> the same distribution. The agreement validates the arithmetic and attributes nothing.
+>
+> **(2) The shares it equalises are the INPUT partition** (Finding 61): the delivered field's
+> channel share is 64.24 % at 2048² and **8.40 %** at 8192², against the 91.36 % / 53.62 % used
+> here. So these thresholds equalise a partition the shipped field does not have.
+
+The arithmetic, for the record and not as evidence: the raise-direction factor 4.67× equals the
+p50 accumulation ratio 4.67× to three digits. The outlet route (1.42) measures a different object
+and was never a third estimate of the same thing.
 
 ⚠️ **An error in my own bench output**, corrected here: the line printing "the two directions
 disagree by 0.57×" multiplied the two factors instead of dividing them. The asymmetry is 1.75×.
@@ -6367,3 +6395,142 @@ much water is here" and has never reconciled them**, and that at least one publi
 attributed to.
 
 Recorded, not resolved, and no measurement is requested by it this round.
+
+## Finding 61 — BLOCKING: the delivered field is a computational snapshot, not a state. The work does not converge at 8192², and the inter-grid ratio is budget-dependent
+
+`iterations = 2` with `dt = 1.0` a unit placeholder (Finding 44), and the accumulation recomputed
+each iteration. The question: of what state is the shipped field the state?
+
+One thing is settled before any measurement, by reading the equation. `E = K·A^m·S^n` carries
+**no uplift term**, so the only fixed point of `h ← (h + f·h_r)/(1+f)` is `h = h_r` everywhere,
+i.e. base level. The config says so itself — *"iterations: 2 // bounded incision … iters=3 planed
+them toward base level"*. **So `iterations` is a DURATION dial, and "convergence" here can only
+mean planation.** This is Finding 44's `k_time = K·dt·iterations` seen from the other side.
+
+### The sweep
+
+| 2048² | k_time | work | Δ | mean | land % | OUT channel (IN 91.36 %) | pits / pre |
+|---|---|---|---|---|---|---|---|
+| iters 1 | 4 500 | 455.7 m | — | 447.4 m | 15.68 | **78.06 %** | ×0.82 |
+| **iters 2 (shipped)** | 9 000 | **633.0 m** | +177.3 | **282.3 m** | **14.95** | **64.24 %** | ×1.25 |
+| iters 4 | 18 000 | 757.5 m | +124.5 | 176.6 m | 14.06 | 49.17 % | ×1.69 |
+| iters 8 | 36 000 | 835.9 m | +78.5 | 106.7 m | 13.35 | 40.05 % | ×2.13 |
+
+| 8192² | k_time | work | Δ | mean | land % | OUT channel (IN 53.62 %) | pits / pre |
+|---|---|---|---|---|---|---|---|
+| iters 1 | 4 500 | 167.4 m | — | 713.3 m | 16.53 | **19.93 %** | ×1.37 |
+| **iters 2 (shipped)** | 9 000 | **199.0 m** | +31.6 | **685.3 m** | **16.44** | **8.40 %** | ×1.72 |
+| iters 4 | 18 000 | 223.9 m | +24.9 | 662.3 m | 16.40 | 6.03 % | ×1.79 |
+| iters 8 | 36 000 | 262.0 m | **+38.1** | 624.9 m | 16.38 | 5.71 % | ×1.75 |
+
+### It does NOT converge, and the two grids fail differently
+
+**At 2048² the increment decays** — +177.3, +124.5, +78.5, a ratio of ~0.65 per doubling. A limit
+is extrapolable and it is **planation**: the mean falls 447 → 282 → 177 → 107 m toward sea level,
+and the land fraction falls 15.68 → 13.35 % as the continent progressively drowns.
+
+**At 8192² the increment DECAYS THEN GROWS AGAIN** — +31.6, +24.9, **+38.1**. There is no
+extrapolable limit at the fine grid. The pit count is non-monotone with it (×1.37, ×1.72, ×1.79,
+×1.75), which is the mechanism: `compute_flow` re-fills depressions each iteration, a planating
+surface grows more of them, filling creates flats where MFD disperses maximally, and a burst of
+breaching then releases a new round of incision. **The fine grid's trajectory is a reorganisation,
+not a relaxation.**
+
+**Predictions, both refuted.** That the Δ would decay geometrically at both grids (mine) is false
+at 8192². That the Δ "would not decay fast enough to extrapolate a limit" (the author's) is false
+at 2048² and **true at 8192²** — so the author's reading is the one the fine grid supports, and
+the fine grid is the one the programme cares about.
+
+### The corollary: the inter-grid ratio IS budget-dependent
+
+| iterations | 1 | **2 (shipped)** | 4 | 8 |
+|---|---|---|---|---|
+| work ratio 2048²/8192² | **2.72** | **3.18** | **3.38** | **3.19** |
+
+**Non-monotone, spanning 2.72–3.38 — a 24 % range.** Both predictions were that it would FALL with
+iterations; it rises then falls. So the blocker's headline ratio is **not a clean function of the
+budget, and not a pure property of the model either**: it is a property of the model *at a chosen
+stopping point*, and the shipped stopping point happens to sit mid-range.
+
+### The finding that compounds everything: the partition COLLAPSES, it does not merely move
+
+Finding 59 §4 established that the channel/hillslope partition moves during the run. This measures
+the direction and it is one-way:
+
+| | input share (pre-incision) | output share (delivered field) | factor |
+|---|---|---|---|
+| 2048² at iters 2 | 91.36 % | **64.24 %** | ×0.70 |
+| 8192² at iters 2 | 53.62 % | **8.40 %** | **×0.157** |
+
+and it keeps falling with the budget (2048²: 78 → 64 → 49 → 40 %; 8192²: 20 → 8.4 → 6.0 → 5.7 %).
+
+**So every quantity in this dossier conditioned on the "channel regime" used a label that
+overstates the channel population by 1.4× at 2048² and 6.4× at 8192².** The mechanism is
+consistent with the pits: as the surface planates, relief falls, depression filling creates flats,
+MFD disperses maximally on flats, peak accumulation per cell drops, and fewer cells clear
+0.1 km².
+
+### NAMED LIST — what this invalidates, weakens, and leaves standing
+
+**Standing, untouched.** These are measured on the PRE-INCISION field or are code enumerations,
+so no erosion budget enters them:
+
+- Finding 57 A1 / A2bis — the pre-incision field's resolution invariance (865.4 / 865.5 m,
+  16.88 % / 16.88 %, D8 slope quantiles within 3–4 %), and therefore the conclusion that **the
+  ×128 upscale is not the root cause**;
+- Finding 57's negative controls (`octaves` inert, `amplitude_base` inert — the DEAD KNOB);
+- Finding 58's cell arithmetic (`A_c` = 2.6214 / 41.9430 cells, ratio exactly 16) and the
+  **"physically dimensioned but sub-cell"** method pattern;
+- Finding 59 §1a — basin footprints agreeing to 1.6 %, outlets to 1.0–1.6 (pre-incision field);
+- Finding 59 §1b — the accumulation ratio flat at 4.6–5.1 across p = 2/4/8/**D8**, and hence
+  **per-cell `A` cannot be resolution-invariant under any routing scheme**. This rests on
+  conservation and the area-frequency law, with no free parameter and no budget;
+- Finding 60 — the terrain/water decoupling (an enumeration of `StreamPowerConfig`);
+- Finding 59 §4's *diffusion* result — the stage is inert to its own total removal (1.6 % / 0.2 %
+  at iterations = 2; the claim is about a comparison at fixed budget, which this does not disturb).
+
+**WEAKENED — must now carry `iterations = 2` explicitly:**
+
+- **Finding 57 A3, "erosion work 633 m against 199 m, ratio 3.18"** — true at the shipped budget;
+  the ratio spans 2.72–3.38 over iters 1–8. Every future quotation must attach the budget.
+- **Finding 57's "2048² is the DEGENERATE grid, it drowns 11.4 % of its land"** — this needs
+  **reframing, and the reframing is stronger than the original claim.** The 2048² land fraction
+  falls 15.68 → 13.35 % across the sweep while 8192² holds 16.53 → 16.38 %. The drowning is a
+  **rate** effect, not a defect of the grid: *at equal iteration count the coarse grid has
+  effectively eroded far longer*, because 91 % of its land is above the channel head against
+  54 %. Neither grid is degenerate; **they are at different points on the same decay**, and the
+  programme has been comparing them at equal compute rather than at equal erosion.
+- **Finding 58 B1, "holding `A_c` in cells collapses the ratio 3.18 → 1.23"** — measured at
+  iterations = 2 only, untested at other budgets. The conclusion (`A_c`'s discretisation carries
+  the divergence) is not contradicted, but its magnitude is budget-conditional.
+- **Finding 58 C1 / Finding 59 — the `A^0.5` ratio (2.16–2.27) matching the channel intensive
+  ratio (1.93–2.12)** — conditional on iterations = 2 **and** on the input-based label below.
+
+**INVALIDATED AS STATED:**
+
+- **Every quantity conditioned on the channel/hillslope regime via the PRE-INCISION
+  accumulation.** That includes Finding 58 §A1's table (already retracted for a different
+  reason — this is the fourth), Finding 59 §2's channel shares (91.36 % / 53.62 %), and Finding
+  59 §4's channel-versus-hillslope intensive split. The label overstates the channel population
+  by ×1.4 and ×6.4 against the delivered field.
+- **Finding 59 §2's equalising thresholds** (0.46738 km² = 12.25 cells; 0.01224 km² = 5.13 cells)
+  — computed on input shares, so they equalise a partition the delivered field does not have.
+  Combined with the author's separate objection that the "4.67× = p50 4.67×" agreement is **one
+  object read twice rather than two independent routes**, this is demoted on two counts and must
+  not be cited as a corroboration.
+
+### What this means for the programme, stated plainly
+
+The resolution-convergence question as posed — *do the two grids agree?* — is **ill-posed at a
+fixed iteration count**, because `iterations` is a duration and the two grids traverse the decay
+at different speeds. A well-posed comparison needs the grids matched on **eroded state** (equal
+work, or equal hypsometric mean) rather than on equal compute, and that requires the explicit
+timescale Finding 44 specified without implementing.
+
+And it changes the priority of the formulation review that was queued behind this block: **any
+candidate stream-power reformulation that assumes a steady state is out of domain here**, because
+there is no steady state to assume — the equation has no uplift term and its attractor is
+planation. That constraint has to be carried into the review rather than discovered inside it.
+
+Nothing corrected, nothing implemented. `iterations`, `dt`, `mfd_exponent`, `min_area_cells`, the
+diffusion anchor and the `A_c(S)` gate are all untouched.

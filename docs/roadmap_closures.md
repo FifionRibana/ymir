@@ -301,6 +301,20 @@ c'est la raison de l'inscrire ici plutôt que de la redécouvrir une cinquième 
 Ce n'est donc plus un chantier parmi d'autres : **c'est le nœud qui bloque la convergence de
 tout ce qui dépend de la pente.**
 
+> ⛔ **BLOQUANT, Finding 61 : la question de convergence en résolution est MAL POSÉE à compte
+> d'itérations fixe.** `iterations` est un cadran de DURÉE (`E = K·A^m·S^n` n'a pas de terme de
+> soulèvement, donc pas d'état stationnaire : l'attracteur est le niveau de base). Mesuré : à
+> 2048² le travail croît 455,7 → 633,0 → 757,5 → 835,9 m avec un Δ décroissant, et l'altitude
+> moyenne tombe 447 → 107 m ; à **8192² le Δ décroît puis REMONTE** (+31,6, +24,9, **+38,1**),
+> donc aucune limite n'y est extrapolable. Et le rapport inter-grilles vaut 2,72 / 3,18 / 3,38 /
+> 3,19 selon le budget — **24 % d'amplitude**.
+>
+> Conséquence : comparer les deux grilles à compute égal n'est pas les comparer à érosion égale.
+> Il faut les apparier sur un **état** (travail égal, ou moyenne hypsométrique égale), ce qui
+> exige l'échelle de temps explicite que le Finding 44 a spécifiée sans l'implémenter. Et toute
+> reformulation candidate du stream power **qui suppose un état stationnaire est hors domaine
+> ici**.
+
 **Un corollaire mesuré (Finding 56b), qui bloque aussi la largeur des chenaux :** dans le banc
 d'essai aride, **aucun des 51 tronçons d'ordre 5 à 8192² ne porte de débit** et le chenal le plus
 large de toute la grille fine fait 5,2 m. Le tronc de la hiérarchie est à sec pendant que l'eau

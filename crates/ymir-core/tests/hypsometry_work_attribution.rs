@@ -103,6 +103,10 @@ struct Spec {
     /// Block 1b — `Some(None)` = pure D8, `Some(Some(p))` = MFD with exponent `p`, `None` =
     /// the shipped value. DIAG only; production is never touched.
     mfd: Option<Option<f32>>,
+    /// Iteration-convergence block — override `iterations`. `iterations` is a DURATION dial
+    /// (Finding 44: the observable is `k_time = K·dt·iterations`), so this sweeps the erosion
+    /// budget, not a numerical tolerance.
+    iterations: Option<usize>,
 }
 
 impl Spec {
@@ -115,6 +119,7 @@ impl Spec {
             diffusion_scale: None,
             diffusion_abs: None,
             mfd: None,
+            iterations: None,
         }
     }
 }
@@ -130,6 +135,9 @@ struct Geometry {
     /// relief-v3's 0.08 — a figure that must come from the config, not from a doc comment.
     diffusion: f32,
     diffusion_substeps: usize,
+    k: f32,
+    dt: f32,
+    iterations: usize,
 }
 
 fn terrain_spec(target: usize, sp: Spec) -> (GridF32, Geometry) {
@@ -194,6 +202,11 @@ fn build(target: usize, sp: Spec) -> (GridF32, Geometry) {
             spw.min_area_cells = a / cell_km2;
         }
     }
+    if let Some(it) = sp.iterations {
+        if let Some(spw) = cfg.stream_power.as_mut() {
+            spw.iterations = it;
+        }
+    }
     if let Some(d) = sp.diffusion_abs {
         if let Some(spw) = cfg.stream_power.as_mut() {
             spw.diffusion = d;
@@ -224,6 +237,9 @@ fn build(target: usize, sp: Spec) -> (GridF32, Geometry) {
             octaves: cfg.octaves,
             diffusion: cfg.stream_power.as_ref().map_or(f32::NAN, |x| x.diffusion),
             diffusion_substeps: cfg.stream_power.as_ref().map_or(0, |x| x.diffusion_substeps),
+            k: cfg.stream_power.as_ref().map_or(f32::NAN, |x| x.k),
+            dt: cfg.stream_power.as_ref().map_or(f32::NAN, |x| x.dt),
+            iterations: cfg.stream_power.as_ref().map_or(0, |x| x.iterations),
         }
     };
     let f = upscale_from_c1_with_progress(
@@ -1107,4 +1123,101 @@ fn accumulation_convergence() {
             );
         }
     }
+}
+
+/// BLOCKING BLOCK — of what state is the delivered field the state?
+///
+/// `iterations = 2` is fixed, `dt = 1.0` is a unit placeholder (Finding 44), and the accumulation
+/// is recomputed at each iteration, so the channel/hillslope partition is reorganised between
+/// them (Finding 59 §4). The question this answers: does the erosion STABILISE over the iteration
+/// count, or is the shipped field a snapshot of an unconverged trajectory?
+///
+/// The answer changes what the resolution-convergence programme is comparing, so it is measured
+/// before anything else this round.
+///
+/// Note what CANNOT converge here by construction: `E = K·A^m·S^n` carries **no uplift term**, so
+/// the only fixed point of the implicit update `h ← (h + f·h_r)/(1+f)` is `h = h_r` everywhere,
+/// i.e. base level. The config says so itself ("iters=3 planed them toward base level"). So this
+/// sweep measures a DURATION, and "convergence" would mean planation.
+///
+/// Run: cargo test -p ymir-core --release --test hypsometry_work_attribution -- --ignored --nocapture iteration_convergence
+#[test]
+#[ignore]
+fn iteration_convergence() {
+    use ymir_core::lakes::connectivity::water_class;
+    use ymir_core::terrain::flow::{FlowConfig, compute_flow, mfd_accumulation};
+    let ss = SteinSteinParams::default();
+    let to_m = |x: f32| c1_altitude_norm_to_metres(x, &ss);
+    eprintln!(
+        "\n==========  BLOCKING — is the delivered field converged in ITERATIONS?  =========="
+    );
+
+    for target in [2048usize, 8192] {
+        eprintln!("\n╔══════ {target}² ══════╗");
+        // the pre-incision control, and its own accumulation + pit baseline
+        let (pre, g0) = terrain_spec(target, Spec::of(Variant::NoIncision));
+        let flow0 = compute_flow(&pre, &FlowConfig { sea_level: SEA, ..Default::default() });
+        let acc0 =
+            mfd_accumulation(&flow0.filled, &flow0.direction, SEA, 2.0, pre.width, pre.height);
+        let pits0 =
+            flow0.filled.data.iter().zip(pre.data.iter()).filter(|(a, b)| **a > **b + 1e-6).count();
+        let a_c_cells = 0.1 / g0.cell_km2;
+        let n_in =
+            (0..pre.data.len()).filter(|&k| pre.data[k] > SEA && acc0.data[k] >= a_c_cells).count();
+        let land0 = pre.data.iter().filter(|&&x| x > SEA).count();
+        let (m0, _, _, _, _, l0) = hypsometry(&pre, &ss);
+        eprintln!(
+            "  control (no incision): mean {m0:.1} m | land {l0:.2} % | INPUT channel share \
+             {:.2} % | pits {pits0}",
+            100.0 * n_in as f32 / land0.max(1) as f32
+        );
+
+        let mut prev_work: Option<f64> = None;
+        for iters in [1usize, 2, 4, 8] {
+            let (f, g) = terrain_spec(
+                target,
+                Spec { iterations: Some(iters), ..Spec::of(Variant::Shipped) },
+            );
+            // paired work over land-in-both, as Finding 58
+            let (mut sum, mut n_both) = (0.0f64, 0usize);
+            for k in 0..f.data.len() {
+                if pre.data[k] > SEA && f.data[k] > SEA {
+                    sum += (to_m(pre.data[k]) - to_m(f.data[k])) as f64;
+                    n_both += 1;
+                }
+            }
+            let work = sum / n_both.max(1) as f64;
+            let (mean, _, _, _, _, land) = hypsometry(&f, &ss);
+            // OUTPUT channel share: the accumulation of the DELIVERED field, which is the
+            // partition the last iteration actually acted on.
+            let fl = compute_flow(&f, &FlowConfig { sea_level: SEA, ..Default::default() });
+            let acc1 = mfd_accumulation(&fl.filled, &fl.direction, SEA, 2.0, f.width, f.height);
+            let land1 = f.data.iter().filter(|&&x| x > SEA).count();
+            let n_out =
+                (0..f.data.len()).filter(|&k| f.data[k] > SEA && acc1.data[k] >= a_c_cells).count();
+            let pits =
+                fl.filled.data.iter().zip(f.data.iter()).filter(|(a, b)| **a > **b + 1e-6).count();
+            let below = water_class(&f, SEA).iter().filter(|&&c| c == 2).count();
+            let d = prev_work.map(|p| work - p);
+            eprintln!(
+                "  iters {iters:>2} (k_time = K·dt·it = {:.0})  work {work:>7.1} m{}  | mean \
+                 {mean:>7.1} m | land {land:>6.2} % | OUT channel {:>6.2} % (IN {:>6.2} %)\n      \
+                 control: pits {pits:>9} (pre {pits0}, ×{:.2}) | below-sea {below:>8} cells",
+                g.k * g.dt * g.iterations as f32,
+                match d {
+                    Some(x) => format!("  Δ {x:+7.1}"),
+                    None => "          ".to_string(),
+                },
+                100.0 * n_out as f32 / land1.max(1) as f32,
+                100.0 * n_in as f32 / land0.max(1) as f32,
+                pits as f32 / pits0.max(1) as f32
+            );
+            prev_work = Some(work);
+        }
+    }
+    eprintln!(
+        "\n  READING: the ratio 2048²/8192² at each iteration count is the corollary — if it \
+         moves,\n  the blocker's ×2.42 is partly a compute-budget artefact rather than a model \
+         property."
+    );
 }
