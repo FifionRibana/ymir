@@ -223,6 +223,15 @@ impl StreamPowerConfig {
             m: 0.5,
             n: 1.0,
             dt: 1.0,
+            // **PROXY — the DURATION of erosion, set by a morphometric target with no
+            // external anchor.** Traced to ADR Finding 6: `iters 3→2` with `K 3000→1500` was
+            // chosen because it lifts floor/local-ridge from 0.21 to ~0.48 ("floors at about
+            // half the local ridge, not planed"), validated at 8192². The METHOD was a
+            // measurement, but the TARGET ~0.5 cites no publication and no measured range from
+            // real terrain — so the erosion duration of this pipeline rests on a chosen number.
+            // And there is no equilibrium to stop at instead: with no uplift term the only fixed
+            // point is base level (ADR Findings 61-62), so SOME stopping rule is required and
+            // this is it. `iterations` is therefore the `k_time` dial of Finding 44.
             iterations: 2, // bounded incision → floors sit at a plausible fraction of
             // the local ridge (iters=3 planed them toward base level). See ADR §sculpt.
             sea_level: 0.5,

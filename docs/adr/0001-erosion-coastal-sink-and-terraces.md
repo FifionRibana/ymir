@@ -5866,6 +5866,14 @@ grid `S_ref` is pinned to. That circularity is recorded here, not resolved.
 > land sits above the channel head against 54 %. **Neither grid is degenerate — they are at
 > different points on the same decay**, and the programme has been comparing them at equal
 > COMPUTE rather than at equal EROSION.
+>
+> ⚠️ **TOO GENEROUS — corrected by Finding 62.** They are NOT on the same decay. The fine grid's
+> decay **terminates at 311.2 m of work** (measured: `dt` over a 40 000× span reaches
+> [5.6, 311.2] m) while the coarse grid's shipped state is 633.0 m. No duration brings them
+> together. The two grids have **different attainable sets**, and the ceiling is `A_c`'s cell
+> count seen from the far end of the duration dial. And at equal work below the ceiling, the
+> MASS matches (land 16.325 % against 16.443 %) while the FORM does not (channel share 80.75 %
+> against 8.40 %, a factor 9.6).
 
 ### C — `A_c` in cells, read back from the built config
 
@@ -5929,6 +5937,14 @@ resolution-dependent, because its value *relative to the cell area* changes by 1
 
 > **The test is not "is the constant in physical units". It is "how many cells does it span at
 > the COARSEST resolution in its validity domain".**
+
+⚠️ **NOVELTY WITHDRAWN (Finding 62).** The OBSERVATION was already in this ADR, at **Finding 6**,
+in these words: *"NOTE: A_c must be resolvable — 0.1 km² is sub-cell below ~2048² (it needs ~2.6
+cells @2048², 42 @8192²)."* Same constant, same two cell counts. It was recorded once, at the
+beginning, and lost for fifty findings while four rounds hunted the same blocker from different
+directions. What is new here is the **naming of the pattern** and its promotion to an executable
+guard — and that a recorded instance could go missing for that long is precisely the argument for
+naming patterns instead of recording instances.
 
 Guarded in `crates/ymir-core/tests/resolution_invariants.rs`, where the assertion is `#[ignore]`d
 **because it fails by design**: a green test there would claim a property the code does not have.
@@ -6215,6 +6231,17 @@ match is not flagged.** So the two grids delineate the *same basins*, and the ou
 ratio is 1.0–1.6 on eight of ten (basin 7's 7.50 comes with a cell-count ratio of 1.002 — the
 basin matched, the *outlet* did not; the window found a local maximum that is not the mouth).
 
+> ⚠️ **RESTATED by Finding 62 §2(a), narrower than written below.** The footprint and the
+> accumulation are produced by **two different operators**: `basins` is labelled by tracing D8
+> receivers, while `mfd_accumulation` recomputes its own multi-flow partition from `filled` and
+> does not route on `direction`. So the 1.016 ratio is NOT self-consistency — but what it
+> establishes is *"the D8 basin DELINEATION of the pre-incision filled surface is grid-invariant
+> to 1.6 %"*, **not** *"the accumulation operator converges"*. The only column speaking to the
+> accumulation is the outlet value, whose median is **1.42, not 1.0**, and whose 42 % is
+> UNATTRIBUTED (window width, outlet-cell size, incomplete recombination all remain candidates).
+> Read the sentence below as: the basin delineation is grid-invariant, and the outlet accumulation
+> agrees to within ~40 %.
+
 ⇒ **"The accumulation operator does not converge" is REFUTED.** It converges on the basin
 footprint and at the outlet. What diverges is the **per-cell partition upstream** — and by
 conservation it must: the same fixed physical area is shared among 16× more cells.
@@ -6448,7 +6475,13 @@ the fine grid is the one the programme cares about.
 | work ratio 2048²/8192² | **2.72** | **3.18** | **3.38** | **3.19** |
 
 **Non-monotone, spanning 2.72–3.38 — a 24 % range.** Both predictions were that it would FALL with
-iterations; it rises then falls. So the blocker's headline ratio is **not a clean function of the
+iterations; it rises then falls.
+
+**And the shipped point is not merely mid-range — it is NEAR THE MAXIMUM**: 3.18 is the
+second-highest of the four, against a maximum of 3.38 and a minimum of 2.72. The number that
+defined the campaign's priority blocker sits close to the worst case of the dial. This is not an
+allegation of selection — `iterations = 2` was fixed years earlier for an unrelated morphometric
+reason (Finding 6, traced in Finding 62) — and it is recorded exactly as stated. So the blocker's headline ratio is **not a clean function of the
 budget, and not a pure property of the model either**: it is a property of the model *at a chosen
 stopping point*, and the shipped stopping point happens to sit mid-range.
 
@@ -6534,3 +6567,202 @@ planation. That constraint has to be carried into the review rather than discove
 
 Nothing corrected, nothing implemented. `iterations`, `dt`, `mfd_exponent`, `min_area_cells`, the
 diffusion anchor and the `A_c(S)` gate are all untouched.
+
+## Finding 62 — the grids do not match at equal work, and 8192² has a WORK CEILING of 311 m. Plus: Finding 6 already knew
+
+### Method, declared before the numbers
+
+**Nothing is interpolated.** Interpolating a scalar between two unmatched fields does not produce
+the field at the intermediate state, so every matched point below is a field that was BUILT.
+`iterations` stays at the shipped **2 on both sides** — identical scheme, identical number of
+sweeps — and only `dt` moves, `dt` being the continuous form of the same duration dial
+(`k_time = K·dt·iterations`, Finding 44), bisected geometrically on the paired work.
+
+And one requested check is **not independent**: paired work is `mean(pre) − mean(eroded)` over the
+common land, so at equal work the hypsometric MEAN agrees almost by construction. It is reported
+as a match verification, not as evidence. The independent checks are the emerged fraction, the
+output channel share and the altitude quantiles.
+
+### A correction to the premise of the round, before measuring
+
+The round's block 1 compares 2048² at work **455.7 m** with 8192² at work **262.0 m** — a 1.74×
+difference — and reads "the least-eroded coarse point already has less land than the most-eroded
+fine point" as a contradiction. On a common trajectory, **more work → less land is the EXPECTED
+ordering**, and the coarse point has 1.74× more work. **The pair is consistent, and the inference
+does not hold.** Only an equal-work comparison can decide it, which is what was asked for and
+what follows.
+
+### Measure 1 — matched at 199 m: the MASS matches, the FORM does not
+
+| | 2048² matched (`dt` 0.0888) | 8192² matched (`dt` 0.9795) | |
+|---|---|---|---|
+| paired work | 201.5 m | 197.6 m | the match |
+| hypsometric mean | 685.7 m | 686.5 m | agrees to 0.12 % (near-tautological) |
+| **emerged fraction** | **16.325 %** | **16.443 %** | **agrees to 0.118 points (0.7 % rel.)** |
+| **OUT channel share** | **80.75 %** | **8.40 %** | **factor 9.6** |
+| altitude p10 / p50 / p90 | 51 / 519 / 1507 m | 29 / 446 / 1607 m | +76 % / +16 % / **−6 %** |
+
+**The emerged fraction agrees.** So the round's block-1 claim — that the grids would not match on
+land even at equal work — is **refuted by measurement**: 16.325 % against 16.443 %.
+
+**And the network does not.** A factor 9.6 on the channel share at identical eroded mass. The
+altitude quantiles say the same thing in a different currency: the coarse field is **compressed**
+(floor 51 m against 29, peaks 1507 against 1607) while the fine field is **spread**. Same mean,
+same land, different distribution shape and a tenfold different network.
+
+⇒ **Equal erosion matches the MASS and not the FORM.** So "erosion equal" is a necessary but
+insufficient matching criterion, and a duration dial alone cannot make the grids agree.
+
+### And the result I did not predict: the fine grid has a CEILING
+
+Targeting the coarse grid's shipped state (633.0 m of work) at 8192²:
+
+> **UNREACHABLE.** `dt ∈ [0.005, 200]` — a 40 000× span of the duration dial — spans work
+> **[5.6, 311.2] m**. The fine grid saturates at **311.2 m** and cannot reach 633 m at any
+> duration.
+
+The mechanism is exact and it closes the loop with Finding 58 B1. As `dt → ∞`, `f = K·dt·A^m/dist
+→ ∞` and `h → h_r` for every cell that passes the channel-head gate — but **only for those
+cells**. The ceiling is therefore "every channel cell collapsed onto its receiver, every other
+cell left at its pre-incision height", and the channel share sets it: 80.75 % of cells at 2048²
+against **8.40 %** at 8192². **The work ceiling is `A_c`'s cell count, seen from the far end of
+the duration dial.**
+
+⇒ Finding 61's reformulation — *"neither grid is degenerate, they are at different points on the
+same decay"* — was **TOO GENEROUS, and the author is right to reject it.** They are not on the
+same decay: the fine grid's decay **terminates at 311 m** while the coarse grid's shipped state is
+633 m. There is no duration, and no `dt`, that brings them together. The correct statement is that
+**the two grids have different attainable sets**, and the shipped comparison is between a state
+one grid can reach and one the other cannot.
+
+### Measure 2 — the collapse is in `A` ITSELF; the feedback loop is confirmed
+
+Output accumulation quantiles, km² (INPUT row for reference):
+
+| 2048² | p10 | p25 | p50 | p75 | p90 | p99 |
+|---|---|---|---|---|---|---|
+| INPUT (pre) | 0.11444 | 0.26050 | **0.51135** | 1.05395 | 2.46303 | 20.102 |
+| OUT iters 1 | 0.05726 | 0.11328 | 0.23942 | 0.52424 | 1.45086 | 26.680 |
+| **OUT iters 2 (shipped)** | 0.04148 | 0.07366 | **0.14878** | 0.31859 | 0.87350 | 19.202 |
+| OUT iters 4 | 0.03897 | 0.05050 | 0.09643 | 0.20283 | 0.55155 | 8.045 |
+| OUT iters 8 | 0.03875 | 0.04595 | **0.07086** | 0.15465 | 0.42463 | 5.000 |
+
+| 8192² | p10 | p25 | p50 | p75 | p90 | p99 |
+|---|---|---|---|---|---|---|
+| INPUT (pre) | 0.01587 | 0.05252 | **0.10942** | 0.21864 | 0.47750 | 4.146 |
+| OUT iters 1 | 0.00477 | 0.01599 | 0.04511 | 0.08275 | 0.20569 | 3.051 |
+| **OUT iters 2 (shipped)** | 0.00407 | 0.00828 | **0.02492** | 0.05366 | 0.08518 | 1.507 |
+| OUT iters 4 | 0.00381 | 0.00704 | 0.01841 | 0.04219 | 0.06947 | 1.125 |
+| OUT iters 8 | 0.00378 | 0.00649 | **0.01492** | 0.03293 | 0.05915 | 1.199 |
+
+**The distribution of `A` collapses**, monotonically, at both grids: p50 falls ×7.2 at 2048²
+(0.5114 → 0.0709) and ×7.3 at 8192² (0.1094 → 0.0149) over the sweep, and ×3.4 / ×4.4 by the
+shipped point.
+
+**So the channel share does not fall because fewer cells cross an unchanged threshold on an
+unchanged distribution — it falls because the distribution itself moves out from under the
+threshold.** At 8192² the median cell goes from 0.1094 km² (just above `A_c` = 0.1) to
+0.0249 km² — **four times below it** — at the shipped point. The positive feedback proposed is
+confirmed: a cell that leaves the channel regime stops being incised, concentration falls,
+fewer cells clear the threshold next pass.
+
+**Negative control, as required.** D8 on the same shipped field moves the quantiles plainly —
+at 2048², p25 0.0737 (MFD) against 0.0381 (D8), p50 0.1488 against 0.1144, p99 19.20 against
+**50.62** (×2.6). The sweep is measuring the distribution, not an artefact of its own.
+
+And the inter-grid ratio **grows** at the output: p50 0.1488 / 0.0249 = **5.97**, against 4.67 at
+the input.
+
+### The two consequences the author asked to be written if the loop held
+
+**1. "The work ratio is 3.18" compares two systems of different kinds, not two magnitudes of one
+kind.** At the shipped point the coarse grid runs a network over 80.75 % of its land while the
+fine grid runs one over 8.40 % and falling — 5.71 % at eight iterations. The fine grid's network
+is **going out**. A ratio between a live network and an extinguishing one is not a magnitude
+difference on a common object, and it should stop being quoted as though it were.
+
+**2. The cross-check against Finding 56's drainage density does NOT reconcile — factor 5.25 — and
+that is definitional, not a contradiction.** 0.337 km/km² over 26 285 km² is 181 360 channel
+cells over 11.33 M land cells = **1.60 %**, against **8.40 %** by `acc_out ≥ A_c`. The two count
+different things: Finding 56 counts cells on **D8-traced river segments** emitted by the drainage
+stage at its own `head_km2`, this counts cells whose **MFD p = 2** accumulation clears `A_c` on
+the eroded field. Neither is wrong; they are not comparable as stated, and the prediction that
+they would not reconcile is confirmed.
+
+**But they agree on the thing that matters, and the stricter number is the worse one:** by the
+river-network definition **98.4 %** of the fine-grid terrain carries no channel, against my
+91.6 %. Whichever definition is used, the overwhelming majority of production terrain at 8192²
+is untouched by any channel.
+
+### 3/2(a) — answered against the code, and §1a must be RESTATED rather than upheld
+
+`mfd_accumulation` computes its own multi-flow partition **directly from `filled`** — weights
+`(drop / D8_DIST)^p` over all eight neighbours — and does not route on the `direction` field it
+receives. `basins` is labelled by **tracing each land cell downstream along the D8 receiver path**
+to a sink and labelling the whole path. **Two different routing operators**, sharing only the
+depression-filled surface.
+
+So the 1.016 footprint ratio is **not** self-consistency with the accumulation in question — the
+prediction that it would be is refuted. But it establishes something **narrower than Finding 59
+§1a claims**:
+
+> What is established: **the D8 basin decomposition of the depression-filled PRE-INCISION surface
+> is resolution-invariant to 1.6 %.** What is NOT established by it: that the MFD accumulation
+> converges. The only column in §1a that speaks to the accumulation is the outlet value, and its
+> median is **1.42, not 1.0** — reported as such, and its 42 % is not attributed (window width,
+> outlet-cell size, incomplete recombination all remain candidates). The formulation "the
+> accumulation operator converges" is accordingly weakened to "the basin DELINEATION is
+> grid-invariant; the accumulation at the outlet agrees to within ~40 %".
+
+`2(b)` — the two flagged basins are **not** instructed here; that needs a measurement and is
+carried forward as owed.
+
+### `iterations = 2` — traceable, and to something better than an eye
+
+**Both predictions refuted: the origin is neither untraceable nor eye-calibrated.** It is
+**Finding 6** of this ADR, and it is explicit: *"No incision bound (floors planed to base level).
+Stream power ran on a static field with no uplift, so channels graded down to sea level. Since
+Ymir's tectonics already did the uplift, the fix is to LIMIT total incision, not add U: iters 3→2
+and K 3000→1500 lifts floor/local-ridge from 0.21 to ~0.48."*
+
+So it was calibrated on a **measured morphometric target** — floor/local-ridge ≈ 0.5, "floors at
+about half the local ridge, not planed" — validated at 8192². Not by eye.
+
+**The PROXY label is still owed, but on the TARGET, not on the method.** `floor/local-ridge ≈ 0.5`
+carries no external anchor: no publication, no measured range from real terrain. It is a chosen
+morphometric objective, and the duration of erosion in this pipeline is set by it. That belongs
+in the code and in the ADR as a proxy.
+
+### ⚠️ AND FINDING 6 ALREADY KNEW — a dossier-hygiene failure that is mine
+
+Finding 6 also contains, verbatim: *"NOTE: A_c must be resolvable — 0.1 km² is sub-cell below
+~2048² (**it needs ~2.6 cells @2048², 42 @8192²**)."*
+
+**Those are the exact numbers Finding 57 presented as a new discovery and Finding 58 re-derived
+by reading them back from the config.** And Finding 6 states the no-uplift / base-level attractor
+that Finding 61 rediscovered fifty findings later, as its own justification for `iters 3→2`.
+
+So the honest accounting: the **observations** were not new — they were recorded once, at the
+beginning, and lost. What was new was the **naming of the pattern** ("physically dimensioned but
+sub-cell") and its promotion to an executable test — and the fact that an observation could sit
+in this ADR for fifty findings while four separate rounds hunted the same blocker is itself the
+argument for naming patterns rather than recording instances. Finding 57's claim of novelty is
+withdrawn; its pattern and its guard stand.
+
+### Where this leaves the queue
+
+The round's own rule stops here — measure 1 shows the grids do not match, so the reclassification
+(block 4) and the bibliographic review (block 5) are deferred, and what they must now take as
+given is:
+
+- **equal erosion is not a sufficient matching criterion** (mass matches, form does not, 9.6×);
+- **the fine grid cannot reach the coarse grid's shipped state at any duration** (ceiling 311 m
+  against 633 m), so a timescale dial cannot be the remedy — it can only place a grid within its
+  own attainable set;
+- **the ceiling is `A_c`'s cell count**, which makes the sub-cell threshold the single object
+  that all four rounds have converged on from different directions;
+- **the fine grid's network is extinguishing**, so any comparison of the two must say which
+  regime each grid is in before quoting a ratio.
+
+Nothing corrected, nothing implemented. `iterations`, `dt`, `mfd_exponent`, `min_area_cells`, the
+diffusion anchor and the `A_c(S)` gate are untouched.

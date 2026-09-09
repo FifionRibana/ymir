@@ -107,6 +107,10 @@ struct Spec {
     /// (Finding 44: the observable is `k_time = K·dt·iterations`), so this sweeps the erosion
     /// budget, not a numerical tolerance.
     iterations: Option<usize>,
+    /// Equal-work matching — override `dt`. This is the CONTINUOUS duration dial, used instead of
+    /// `iterations` so the two sides of a matched pair run the IDENTICAL scheme (same number of
+    /// sweeps) and differ only in erosion magnitude.
+    dt: Option<f32>,
 }
 
 impl Spec {
@@ -120,6 +124,7 @@ impl Spec {
             diffusion_abs: None,
             mfd: None,
             iterations: None,
+            dt: None,
         }
     }
 }
@@ -200,6 +205,11 @@ fn build(target: usize, sp: Spec) -> (GridF32, Geometry) {
         let cell_km2 = (DOMAIN_KM / target as f32).powi(2);
         if let Some(spw) = cfg.stream_power.as_mut() {
             spw.min_area_cells = a / cell_km2;
+        }
+    }
+    if let Some(t) = sp.dt {
+        if let Some(spw) = cfg.stream_power.as_mut() {
+            spw.dt = t;
         }
     }
     if let Some(it) = sp.iterations {
@@ -1220,4 +1230,190 @@ fn iteration_convergence() {
          moves,\n  the blocker's ×2.42 is partly a compute-budget artefact rather than a model \
          property."
     );
+}
+
+/// Measures 1 and 2 — do the grids match at EQUAL WORK, and does the accumulation collapse?
+///
+/// ## How the matching is done, declared
+///
+/// **Nothing is interpolated.** Interpolating a scalar between two unmatched fields does not
+/// produce the field at the intermediate state, so each matched point is a field that was
+/// BUILT. `iterations` stays at the shipped 2 on both sides — so both run the identical scheme,
+/// the same number of sweeps — and only `dt` moves. `dt` is the continuous form of the same
+/// duration dial (`k_time = K·dt·iterations`, Finding 44), bisected geometrically on the paired
+/// work until it reaches the target.
+///
+/// One check in the requested list is NOT independent and is reported as such: paired work is
+/// `mean(pre) − mean(eroded)` over the common land, so at equal work the hypsometric MEAN agrees
+/// almost by construction. The independent checks are the emerged fraction, the output channel
+/// share and the altitude quantiles.
+///
+/// Run: cargo test -p ymir-core --release --test hypsometry_work_attribution -- --ignored --nocapture equal_work
+#[test]
+#[ignore]
+fn equal_work_matching_and_accumulation_collapse() {
+    use ymir_core::terrain::flow::{FlowConfig, compute_flow, mfd_accumulation};
+    let ss = SteinSteinParams::default();
+    let to_m = |x: f32| c1_altitude_norm_to_metres(x, &ss);
+    eprintln!("\n==========  1 · equal-work matching   2 · the accumulation collapse  ==========");
+
+    struct Base {
+        target: usize,
+        cell_km2: f32,
+        pre: GridF32,
+        acc_in: GridF32,
+        land: usize,
+    }
+    let mut bases: Vec<Base> = Vec::new();
+    for target in [2048usize, 8192] {
+        let (pre, g) = terrain_spec(target, Spec::of(Variant::NoIncision));
+        let fl = compute_flow(&pre, &FlowConfig { sea_level: SEA, ..Default::default() });
+        let acc_in = mfd_accumulation(&fl.filled, &fl.direction, SEA, 2.0, pre.width, pre.height);
+        let land = pre.data.iter().filter(|&&x| x > SEA).count();
+        bases.push(Base { target, cell_km2: g.cell_km2, pre, acc_in, land });
+    }
+
+    // paired work of a candidate field against its own pre-incision control
+    let work_of = |b: &Base, f: &GridF32| -> f64 {
+        let (mut sum, mut n) = (0.0f64, 0usize);
+        for k in 0..f.data.len() {
+            if b.pre.data[k] > SEA && f.data[k] > SEA {
+                sum += (to_m(b.pre.data[k]) - to_m(f.data[k])) as f64;
+                n += 1;
+            }
+        }
+        sum / n.max(1) as f64
+    };
+
+    // full report at a matched point
+    let describe = |b: &Base, f: &GridF32, tag: &str, dt: f32| {
+        let a_c_cells = 0.1 / b.cell_km2;
+        let fl = compute_flow(f, &FlowConfig { sea_level: SEA, ..Default::default() });
+        let acc_out = mfd_accumulation(&fl.filled, &fl.direction, SEA, 2.0, f.width, f.height);
+        let land1 = f.data.iter().filter(|&&x| x > SEA).count();
+        let n_out =
+            (0..f.data.len()).filter(|&k| f.data[k] > SEA && acc_out.data[k] >= a_c_cells).count();
+        let mut alt: Vec<f32> = f.data.iter().filter(|&&x| x > SEA).map(|&x| to_m(x)).collect();
+        let mean = alt.iter().map(|&x| x as f64).sum::<f64>() / alt.len().max(1) as f64;
+        eprintln!(
+            "  {tag}  dt {dt:.4}  work {:.1} m | mean {mean:.1} m | land {:.3} % | OUT channel \
+             {:.2} % | alt p10 {:.0} p50 {:.0} p90 {:.0}",
+            work_of(b, f),
+            100.0 * land1 as f32 / f.data.len() as f32,
+            100.0 * n_out as f32 / land1.max(1) as f32,
+            q(&mut alt.clone(), 0.10),
+            q(&mut alt.clone(), 0.50),
+            q(&mut alt.clone(), 0.90)
+        );
+    };
+
+    // ── 1 · match by bisecting dt at iterations = 2 ─────────────────────────────────
+    eprintln!(
+        "\n── 1 · EQUAL-WORK matching (fields BUILT, `iterations` = 2 on both sides, only `dt` \
+         moves) ──"
+    );
+    for (tag, target_work) in
+        [("target = shipped 8192² work", 199.0f64), ("target = shipped 2048² work", 633.0)]
+    {
+        eprintln!("\n  ┄┄ {tag} = {target_work:.1} m ┄┄");
+        for b in &bases {
+            // is the target reachable? bracket dt geometrically
+            let (mut a, mut c) = (0.005f32, 200.0f32);
+            let w_lo = work_of(
+                b,
+                &terrain_spec(b.target, Spec { dt: Some(a), ..Spec::of(Variant::Shipped) }).0,
+            );
+            let w_hi = work_of(
+                b,
+                &terrain_spec(b.target, Spec { dt: Some(c), ..Spec::of(Variant::Shipped) }).0,
+            );
+            if target_work < w_lo || target_work > w_hi {
+                eprintln!(
+                    "  {}²  UNREACHABLE: dt ∈ [{a}, {c}] spans work [{w_lo:.1}, {w_hi:.1}] m, \
+                     target {target_work:.1} m",
+                    b.target
+                );
+                continue;
+            }
+            let mut best = (f32::NAN, f64::NAN);
+            for _ in 0..9 {
+                let m = (a * c).sqrt();
+                let f =
+                    terrain_spec(b.target, Spec { dt: Some(m), ..Spec::of(Variant::Shipped) }).0;
+                let w = work_of(b, &f);
+                best = (m, w);
+                if w < target_work {
+                    a = m;
+                } else {
+                    c = m;
+                }
+            }
+            let f =
+                terrain_spec(b.target, Spec { dt: Some(best.0), ..Spec::of(Variant::Shipped) }).0;
+            describe(b, &f, &format!("{}² MATCHED", b.target), best.0);
+        }
+    }
+
+    // ── 2 · the OUTPUT accumulation distribution over the iteration sweep ───────────
+    eprintln!("\n── 2 · OUTPUT accumulation quantiles in km² (input row for reference) ──");
+    for b in &bases {
+        eprintln!("  ┄┄ {}² ┄┄", b.target);
+        let mut v: Vec<f32> = (0..b.pre.data.len())
+            .filter(|&k| b.pre.data[k] > SEA)
+            .map(|k| b.acc_in.data[k] * b.cell_km2)
+            .collect();
+        eprintln!(
+            "    {:<16} {:>10.6} {:>10.6} {:>10.6} {:>10.6} {:>10.5} {:>11.4}",
+            "INPUT (pre)",
+            q(&mut v.clone(), 0.10),
+            q(&mut v.clone(), 0.25),
+            q(&mut v.clone(), 0.50),
+            q(&mut v.clone(), 0.75),
+            q(&mut v.clone(), 0.90),
+            q(&mut v.clone(), 0.99)
+        );
+        for iters in [1usize, 2, 4, 8] {
+            let f = terrain_spec(
+                b.target,
+                Spec { iterations: Some(iters), ..Spec::of(Variant::Shipped) },
+            )
+            .0;
+            let fl = compute_flow(&f, &FlowConfig { sea_level: SEA, ..Default::default() });
+            let acc = mfd_accumulation(&fl.filled, &fl.direction, SEA, 2.0, f.width, f.height);
+            let mut o: Vec<f32> = (0..f.data.len())
+                .filter(|&k| f.data[k] > SEA)
+                .map(|k| acc.data[k] * b.cell_km2)
+                .collect();
+            eprintln!(
+                "    {:<16} {:>10.6} {:>10.6} {:>10.6} {:>10.6} {:>10.5} {:>11.4}",
+                format!("OUT iters {iters}"),
+                q(&mut o.clone(), 0.10),
+                q(&mut o.clone(), 0.25),
+                q(&mut o.clone(), 0.50),
+                q(&mut o.clone(), 0.75),
+                q(&mut o.clone(), 0.90),
+                q(&mut o.clone(), 0.99)
+            );
+            // NEGATIVE CONTROL on the shipped point: a known accumulation change (D8 vs p = 2)
+            // must move these quantiles, or the sweep is not measuring the distribution.
+            if iters == 2 {
+                let mut d8: Vec<f32> = (0..f.data.len())
+                    .filter(|&k| f.data[k] > SEA)
+                    .map(|k| fl.accumulation.data[k] * b.cell_km2)
+                    .collect();
+                eprintln!(
+                    "    {:<16} {:>10.6} {:>10.6} {:>10.6} {:>10.6} {:>10.5} {:>11.4}   \
+                     [control: D8 on the SAME field]",
+                    "  D8 control",
+                    q(&mut d8.clone(), 0.10),
+                    q(&mut d8.clone(), 0.25),
+                    q(&mut d8.clone(), 0.50),
+                    q(&mut d8.clone(), 0.75),
+                    q(&mut d8.clone(), 0.90),
+                    q(&mut d8.clone(), 0.99)
+                );
+            }
+        }
+        let _ = v;
+    }
 }

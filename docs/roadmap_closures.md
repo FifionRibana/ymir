@@ -314,6 +314,23 @@ tout ce qui dépend de la pente.**
 > exige l'échelle de temps explicite que le Finding 44 a spécifiée sans l'implémenter. Et toute
 > reformulation candidate du stream power **qui suppose un état stationnaire est hors domaine
 > ici**.
+>
+> ⛔ **ET L'APPARIEMENT À ÉROSION ÉGALE NE SUFFIT PAS NON PLUS (Finding 62).** Mesuré à travail
+> égal (201,5 contre 197,6 m, `iterations` = 2 des deux côtés, seul `dt` bougé) : la **masse**
+> s'apparie — terre 16,325 % contre 16,443 %, moyenne 685,7 contre 686,5 m — et la **forme** non :
+> part chenal **80,75 % contre 8,40 %**, un facteur 9,6, avec des quantiles d'altitude de formes
+> différentes (p10 51 contre 29, p90 1507 contre 1607).
+>
+> **Et 8192² a un PLAFOND de travail de 311,2 m** : `dt` sur 40 000× d'amplitude ne dépasse pas
+> cette valeur, alors que l'état livré à 2048² vaut 633,0 m. **Aucune durée n'apparie les deux
+> grilles** — elles n'ont pas le même ensemble atteignable, et le plafond est le compte de
+> cellules d'`A_c` vu de l'autre bout du cadran. Donc **une échelle de temps ne peut pas être le
+> remède** : elle ne peut que placer une grille dans son propre ensemble atteignable.
+>
+> Corollaire à porter dans toute comparaison future : à 8192² la part chenal tombe de 53,62 % en
+> entrée à 8,40 % au point livré et 5,71 % à huit itérations — **le réseau s'éteint**. Un rapport
+> entre un réseau vivant et un réseau qui s'éteint n'est pas un écart de magnitude sur un même
+> objet.
 
 **Un corollaire mesuré (Finding 56b), qui bloque aussi la largeur des chenaux :** dans le banc
 d'essai aride, **aucun des 51 tronçons d'ordre 5 à 8192² ne porte de débit** et le chenal le plus
