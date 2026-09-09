@@ -6240,7 +6240,10 @@ basin matched, the *outlet* did not; the window found a local maximum that is no
 > accumulation is the outlet value, whose median is **1.42, not 1.0**, and whose 42 % is
 > UNATTRIBUTED (window width, outlet-cell size, incomplete recombination all remain candidates).
 > Read the sentence below as: the basin delineation is grid-invariant, and the outlet accumulation
-> agrees to within ~40 %.
+> agrees to within ~40 %. — **UPDATED by Finding 63 §2b: re-matching by footprint overlap
+> instead of a search window brings the median to 1.207**, so about half the 42 % was the
+> window. The remaining 20.7 % is still unattributed, and one flagged basin (98.9 % overlap,
+> footprint ratio 0.994) is 2.43× apart at the outlet — not an artefact at all.
 
 ⇒ **"The accumulation operator does not converge" is REFUTED.** It converges on the basin
 footprint and at the outlet. What diverges is the **per-cell partition upstream** — and by
@@ -6602,6 +6605,14 @@ what follows.
 | **OUT channel share** | **80.75 %** | **8.40 %** | **factor 9.6** |
 | altitude p10 / p50 / p90 | 51 / 519 / 1507 m | 29 / 446 / 1607 m | +76 % / +16 % / **−6 %** |
 
+> ⚠️ **The 9.6× is ROUTE-DEPENDENT (Finding 63 §2a).** Matching at the same work with
+> `iterations` = 1 instead of 2 gives **4.46**, not 9.6 — a factor 2.15 between routes. The MASS
+> conclusion below is robust (land agrees on both routes: 16.325/16.443 % and 16.379/16.445 %);
+> the FORM conclusion survives qualitatively and NOT quantitatively. **Do not quote a single
+> number** — read it as "a factor between 4 and 10, depending on the matching route". And at
+> matched work the Courant numbers are **129 against 4033**: the two grids cannot be placed at
+> equal work AND comparable numerical fidelity with the dials that exist.
+
 **The emerged fraction agrees.** So the round's block-1 claim — that the grids would not match on
 land even at equal work — is **refuted by measurement**: 16.325 % against 16.443 %.
 
@@ -6766,3 +6777,231 @@ given is:
 
 Nothing corrected, nothing implemented. `iterations`, `dt`, `mfd_exponent`, `min_area_cells`, the
 diffusion anchor and the `A_c(S)` gate are untouched.
+
+## Finding 63 — the closed-form ceiling FAILS by 27 %, and the failure is a population mismatch in my own derivation
+
+### The derivation, and the reservations declared before comparing
+
+As `dt → ∞`, `f = K·dt·A^m/dist → ∞`, so `h ← (h + f·h_r)/(1+f) → h_r` for every cell passing the
+channel-head gate **and only those**. Accumulation being non-decreasing downstream makes the
+channel set downstream-closed, so a channel cell's collapse target is sea level:
+
+```
+work_ceiling  =  channel_share × mean(h_pre | channel)
+```
+
+evaluated on the pre-incision field — the set sweep 1's gate actually reads. **Declared before
+comparing, admissible error 15 %:** MFD splits flow so accumulation can fall downstream and break
+downstream-closure; and sweep 2 re-gates on a changed surface. **Both reservations push the true
+ceiling ABOVE the formula**, so it was offered as a lower bound.
+
+### It fails, and in the direction the reservations excluded
+
+| | channel share | mean(h \| channel) | formula | measured |
+|---|---|---|---|---|
+| 2048² | 91.36 % | 855.8 m | **781.8 m** | ships at 633.0 m (inside its set) |
+| 8192² | 53.62 % | 738.0 m | **395.7 m** | **311.2 m** |
+
+**Error +27.2 %, outside the declared 15 %, and ABOVE the measurement — the opposite of what both
+declared reservations predicted.** So the reservations I wrote down were not the operative ones.
+
+**The operative one is a population mismatch, and it is this campaign's own recurring defect
+committed in my own derivation.** The measured quantity is the **paired** work, averaged over
+cells that are land in **both** fields. A cell that collapses to sea level *leaves the land mask*
+and is dropped from the measurement — and those are precisely the cells carrying the **largest**
+work (`h_pre − 0`). The formula averages over all pre-incision land; the measurement averages over
+surviving land. Different denominators, and the excluded cells are the extreme of the
+distribution.
+
+**Consequence for the block's premise: the ceiling is NOT free.** Respecting the paired-work
+population requires knowing which cells drown, which requires the collapse target per cell, which
+requires the network. *"Le plafond est analytique, donc gratuit"* is refuted — by an error of my
+own making, not by the physics.
+
+**What survives, and it is one-sided.** The formula over-counts by including cells the measurement
+drops, so it is an **upper bound on the paired work**. That is still usable in exactly one
+direction: **a work target above the table value is definitely unreachable.** The table is kept
+with that label and no other.
+
+| `A_c` km² | 1024² | 2048² | 4096² | 8192² |
+|---|---|---|---|---|
+| 0.025 | 865 m (100.0 %) | 865 m (100.0 %) | 801 m (93.6 %) | 703 m (86.6 %) |
+| **0.100** | 865 m (100.0 %) | **782 m (91.4 %)** | 637 m (79.1 %) | **396 m (53.6 %)** |
+| 0.400 | 715 m (84.7 %) | 475 m (59.9 %) | 224 m (30.2 %) | 85 m (12.3 %) |
+| 1.000 | 435 m (54.9 %) | 194 m (26.4 %) | 71 m (10.7 %) | **27 m (4.5 %)** |
+
+*(upper bounds on the paired work, with the channel share each comes from)*
+
+The trend prediction is confirmed and it is severe: the bound falls with `A_c` and with
+resolution, both because both cut the channel share, and at `A_c = 1.0 km²` the fine grid's bound
+is **27 m** — 3 % of the available relief. Note also that at `A_c = 0.025 km²` the channel share
+saturates at 100 % on the two coarse grids, so `A_c` stops being a threshold there at all.
+
+**The feasibility ASSERTION is not written.** A guard built on a formula that misses its own
+validation point by 27 % would encode the error. It waits on a corrected derivation.
+
+### 2a — the second route: the 9.6× is NOT robust, and the reservation is vindicated
+
+There is no fully independent matching route with the shipped dials: `iterations` is
+integer-quantised and its minimum step overshoots (2048² at iters 1, dt 1 already gives 455.7 m
+against a 199 m target), and `K` and `dt` are the **same observable** (Finding 44). What is
+available is a *different scheme at the same work* — one sweep instead of two.
+
+| route | grid | `dt` | work | land | **OUT channel** | **Courant** |
+|---|---|---|---|---|---|---|
+| A — iters 2 | 2048² | 0.0888 | 201.5 m | 16.325 % | 80.75 % | — |
+| A — iters 2 | 8192² | 0.9795 | 197.6 m | 16.443 % | 8.40 % | — |
+| **B — iters 1** | 2048² | 0.1962 | 200.2 m | **16.379 %** | **83.88 %** | **129** |
+| **B — iters 1** | 8192² | 1.5939 | 199.2 m | **16.445 %** | **18.80 %** | **4033** |
+
+**Route A gives a channel-share ratio of 9.6; route B gives 4.46 — a factor 2.15 between
+routes.** Both predictions (±20 %) are **refuted**, and the author's reservation is **vindicated**:
+part of what Finding 62 measured as "form" was the matching path.
+
+What survives and what does not:
+
+- **The MASS conclusion is robust.** Land agrees on both routes — 16.325 / 16.443 % on A,
+  16.379 / 16.445 % on B.
+- **The FORM conclusion survives qualitatively and NOT quantitatively.** Both routes show a large
+  gap (9.6 and 4.46) but the magnitude is route-dependent, so **no single number should be
+  quoted.** Finding 62's "factor 9.6" must be read as "a factor between 4 and 10, depending on
+  the matching route".
+- **The truncation reservation cannot be lifted, only quantified — and it is large.** At matched
+  work on route B the Courant numbers are **129 against 4033**, a factor 31. The two grids cannot
+  be placed at equal work *and* comparable numerical fidelity with the dials that exist.
+
+### 2b — the flagged basins, re-matched by footprint overlap: half the 42 % was the window
+
+Method: no search window at all. For each of the largest 2048² basins, map every one of its cells
+to the HD grid, take the **modal HD basin id**, then compare each basin's own maximum
+accumulation.
+
+| # | acc ratio, window → **overlap** | footprint ratio | overlap | verdict |
+|---|---|---|---|---|
+| 1 | 14.98 → **1.156** | 8.66 → 1.760 | **56.5 %** | matching failure **and** a genuine decomposition difference — the basin does not correspond one-to-one between grids |
+| 6 | 3.57 → **2.428** | 0.994 | **98.9 %** | ⚠️ **NOT a matching failure.** Same basin, and the outlet accumulation is still **2.4× apart** |
+| 7 | 7.50 → **1.291** | 1.002 | **99.0 %** | mostly window artefact; 1.29 residual |
+| | **median 1.416 → 1.207** | | | |
+
+**Both mechanisms are present, as predicted at 50/50** — #1 and #7 are matching artefacts, **#6 is
+a real accumulation difference at 98.9 % footprint overlap.** The prediction that the median would
+barely move is refuted: it falls from 1.416 to **1.207**, so **about half of the 42 % excess was
+the search window**.
+
+**What remains, and it now carries weight:** a **20.7 %** median excess in outlet accumulation
+between grids, still unattributed, on the quantity that feeds `A_c` — the parameter four
+independent routes have converged on. Basin #6 is the clean witness: same basin by every
+footprint test, 2.43× apart at the outlet.
+
+And Finding 59 §1a is weakened once more: its outlet column now reads **1.207**, not 1.42 and not
+1.0, and the flag population it set aside contained one case that was not an artefact at all.
+
+### The convergence that distinguishes this attribution from a correlation
+
+`A_c` is now the object that **four independent routes** have arrived at, and it is worth stating
+because nothing else in this dossier has more than two:
+
+1. its **discretisation** — 2.62 cells against 41.94, and holding it constant in CELLS collapses
+   the work ratio from 3.18 to 1.23 (Finding 58 B1);
+2. the **partition collapse** — the channel share falls ×0.70 and ×0.157 from input to delivered
+   field, because the distribution of `A` moves out from under the threshold (Findings 59, 62);
+3. the **network extinction** — 53.62 % → 8.40 % → 5.71 % at 8192² as the budget rises
+   (Finding 61);
+4. the **upper bound of the attainable set** — the ceiling is `channel_share × mean(h|channel)`,
+   so `A_c` sets what the grid can ever reach (this finding, as a one-sided bound).
+
+Four routes, one object, and no free parameter shared between them.
+
+### Method rule 11 — interrogate the dossier before measuring, and grep the IDENTIFIER, not the symbol
+
+`A_c` sub-cell at 2.6 and 42 cells, and the base-level attractor for want of an uplift term, were
+both written in **Finding 6** — the finding that justifies `iterations = 2` — and were
+rediscovered fifty findings later, across four rounds, by two people hunting the same blocker.
+
+Naming patterns (Finding 57) is a real improvement and it is **not a fix**: the pattern
+"physically dimensioned but sub-cell" would have made the same fact be *rediscovered faster*, not
+*retrieved*. The defect is that **the dossier is not interrogable** — nothing in the method
+prescribes asking whether a quantity has already been measured.
+
+> **Rule 11. Before the first measurement of a round, grep the ADR for every constant and target
+> quantity the round will touch, and record the result — including "nothing found".**
+
+**Tested rather than asserted**, because the rule is only worth what its query is worth:
+
+| query | hits in the ADR | first hit | would it have retrieved Finding 6? |
+|---|---|---|---|
+| `A_c` | **131** | line 21 | ❌ noise — the informal symbol is everywhere |
+| `min_area_cells` | 11 | line 201 | ✅ the code identifier |
+| `resolvable` | 5 | **line 234** | ✅ **first hit IS the sentence** |
+| `sub-cell` | 15 | **line 234** | ✅ **first hit IS the sentence** |
+
+So the rule works, and the discriminating factor is **specificity, not constant-ness**:
+
+- **grep the CODE IDENTIFIER** (`min_area_cells`), not the informal symbol (`A_c`, 131 hits of
+  noise) — this is the correction to my own prediction that "constants" were the answer;
+- **grep the PHENOMENON PHRASE** (`sub-cell`, `resolvable`) as well as the name — it is what
+  actually put the answer in the first hit;
+- **read the EARLIEST hit first.** The ADR is append-only, so hit order is chronological and the
+  first hit is the original recording. Both winning queries land on line 234 — Finding 6 — as
+  their very first result.
+
+Cost: four greps. Against four rounds.
+
+## Finding 65 — THREE incompatible answers to "is there a channel here", and the one that carved the terrain is used by nothing
+
+Independent of the resolution blocker, and it reaches the consumers.
+
+### The three definitions, named against the code
+
+| # | definition | operator | who uses it |
+|---|---|---|---|
+| 1 | `accumulation ≥ min_area_cells` | **MFD**, `mfd_exponent = 2` — `mfd_accumulation` recomputes its own multi-flow partition from `filled` | **`incise` — it CARVES THE TERRAIN**, and nothing else |
+| 2 | `accumulation ≥ head_threshold` | **D8** — `extract_rivers` reads `flow_result.accumulation` and `flow_result.direction`, both single-direction | `rivers.json`, drainage density, `catchment_km2`, `drainage_km2`, Strahler order, the microscope |
+| 3 | climatic **discharge** m³/s | runoff accumulation with precipitation and evaporation | `navigability`, `width_m`, the lake water balance |
+
+At 8192², definitions 1 and 2 disagree by **5.25×** on the same shipped field: **8.40 %** of land
+by the MFD criterion, **1.60 %** by the D8 river network (181 360 traced cells over 11.33 M land).
+Finding 59 measured the underlying cause directly — D8 against MFD p = 2 moves the accumulation
+p50 by +49 % at 2048² and +64 % at 8192², and p99 by ×2.6 — so the two operators select different
+cell sets at the *same numeric threshold*, and `head_km2` is set to `RELIEF_V1_A_C_KM2` in the
+benches precisely so the thresholds match. **Matching the number does not match the set.**
+
+### The statement that matters
+
+> **The definition that shaped the land is used by nothing downstream. The definition used by
+> everything downstream shaped nothing.**
+
+`incise` carves on MFD. Every exported hydrological product reads D8 or discharge. No stage
+reconciles them, and no test asserts they agree — because until now nobody had asked them the same
+question.
+
+This is the same shape as Finding 60 (geometric drainage area against climatic discharge) and it
+compounds with it: the project has **three** answers to "how much water is here", one per stage,
+and the three have never been reconciled.
+
+### What it costs the consumers
+
+- **Navigability** classifies with definition 3 on segments delineated by definition 2, over
+  terrain carved by definition 1. Three definitions in one verdict. Finding 60 already flagged the
+  climatic half; this adds that the *geometry* is also not the carving geometry.
+- **Drainage density** is definition 2 throughout — self-consistent, but it does **not** describe
+  the network the erosion built. Finding 56's 0.337 km/km² is a true statement about `rivers.json`
+  and not about the terrain's channels.
+- **`catchment_km2` and `drainage_km2`** are definition 2. `drainage_km2` is already documented in
+  the code as "NOT AN AREA"; this adds that even the area-like one is on the wrong operator to
+  describe what carved the valley it labels.
+- **Resource placement and river/mouth inspection** consume definition 2, so they see a network
+  5.25× sparser than the one that cut the terrain they are placed on.
+
+**And the strict number is the one to quote to a consumer: 98.4 % of production terrain at 8192²
+carries no channel in `rivers.json`.** By the carving definition it is 91.6 %. Both are extreme;
+they disagree by a factor 5 on how extreme.
+
+### Not a defect claim, and no fix this round
+
+MFD for the incision is a defensible choice (it is what cured the parallel-rilling comb, Findings
+8/9/11) and D8 for a traced, hierarchised river network is equally defensible — a Strahler order
+needs a tree, and MFD does not give one. **Neither stage is wrong on its own terms.** What is
+missing is any statement of how they relate, and any test that they do.
+
+Recorded, not resolved. No consumer is changed, no threshold is touched.

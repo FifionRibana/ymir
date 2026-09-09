@@ -1417,3 +1417,278 @@ fn equal_work_matching_and_accumulation_collapse() {
         let _ = v;
     }
 }
+
+/// Blocks 1 / 2a / 2b — the closed-form work CEILING, a second matching route, and the two
+/// flagged basins.
+///
+/// ## The closed form, derived before it is compared
+///
+/// As `dt → ∞`, `f = K·dt·A^m/dist → ∞`, so `h ← (h + f·h_r)/(1+f) → h_r` for every cell that
+/// passes the channel-head gate **and only those**. Accumulation is non-decreasing downstream, so
+/// the channel set is DOWNSTREAM-CLOSED: a channel cell's whole downstream path is channel and
+/// its collapse target is therefore sea level. Hence
+///
+/// ```text
+///   work_ceiling  =  channel_share × mean(h_pre | channel)
+/// ```
+///
+/// evaluated on the PRE-INCISION field — which is exactly the set sweep 1's gate reads. No
+/// erosion run.
+///
+/// **Reservations declared BEFORE comparing, with an admissible error of 15 %:** MFD splits flow,
+/// so accumulation can decrease downstream and break downstream-closure; and with
+/// `iterations = 2` the second sweep re-gates on a changed surface, which the formula ignores.
+/// Both push the true ceiling ABOVE the formula, so it is a lower bound in principle.
+///
+/// Run: cargo test -p ymir-core --release --test hypsometry_work_attribution -- --ignored --nocapture ceiling
+#[test]
+#[ignore]
+fn work_ceiling_and_matching_routes() {
+    use std::collections::HashMap;
+    use ymir_core::terrain::flow::{FlowConfig, compute_flow, mfd_accumulation};
+    let ss = SteinSteinParams::default();
+    let to_m = |x: f32| c1_altitude_norm_to_metres(x, &ss);
+    let sea_m = to_m(SEA);
+    eprintln!(
+        "\n==========  1 · the closed-form CEILING   2a · a second route   2b · the flags  =========="
+    );
+    eprintln!(
+        "  (sea level = {sea_m:.1} m in altitude units; collapse targets are measured against it)"
+    );
+
+    struct B {
+        target: usize,
+        cell_km2: f32,
+        pre: GridF32,
+        acc: GridF32,
+        basins: Vec<u32>,
+        land: usize,
+    }
+    let mut bs: Vec<B> = Vec::new();
+    for target in [1024usize, 2048, 4096, 8192] {
+        let (pre, g) = terrain_spec(target, Spec::of(Variant::NoIncision));
+        let fl = compute_flow(&pre, &FlowConfig { sea_level: SEA, ..Default::default() });
+        let acc = mfd_accumulation(&fl.filled, &fl.direction, SEA, 2.0, pre.width, pre.height);
+        let land = pre.data.iter().filter(|&&x| x > SEA).count();
+        bs.push(B { target, cell_km2: g.cell_km2, pre, acc, basins: fl.basins, land });
+    }
+
+    // ── the closed form ─────────────────────────────────────────────────────────────
+    let ceiling = |b: &B, a_c_km2: f32| -> (f64, f64, f64) {
+        let cells = a_c_km2 / b.cell_km2;
+        let (mut n_ch, mut sum_h) = (0usize, 0.0f64);
+        for k in 0..b.pre.data.len() {
+            if b.pre.data[k] > SEA && b.acc.data[k] >= cells {
+                n_ch += 1;
+                sum_h += (to_m(b.pre.data[k]) - sea_m) as f64;
+            }
+        }
+        let share = n_ch as f64 / b.land.max(1) as f64;
+        let mean_h = sum_h / n_ch.max(1) as f64;
+        (share * mean_h, 100.0 * share, mean_h)
+    };
+
+    eprintln!("\n── 1 · validation against the two measured points (admissible error 15 %) ──");
+    eprintln!(
+        "  measured: 8192² saturates at 311.2 m (dt over a 40 000× span). 2048² ships at 633.0 m."
+    );
+    for b in &bs {
+        if b.target != 2048 && b.target != 8192 {
+            continue;
+        }
+        let (c, sh, mh) = ceiling(b, 0.1);
+        eprintln!(
+            "  {}²  A_c 0.1 km²:  channel share {sh:.2} % × mean(h|channel) {mh:.1} m = \
+             CEILING {c:.1} m",
+            b.target
+        );
+        if b.target == 8192 {
+            let err = 100.0 * (c - 311.2).abs() / 311.2;
+            eprintln!(
+                "      against the measured 311.2 m → error {err:.1} % — {}",
+                if err <= 15.0 { "WITHIN the declared 15 %" } else { "OUTSIDE: the formula FAILS" }
+            );
+        }
+    }
+
+    eprintln!("\n── 1 · the ceiling table (analytic; no erosion run) ──");
+    eprint!("  {:<10}", "A_c km²");
+    for b in &bs {
+        eprint!("{:>18}", format!("{}²", b.target));
+    }
+    eprintln!();
+    for a_c in [0.025f32, 0.1, 0.4, 1.0] {
+        eprint!("  {a_c:<10.3}");
+        for b in &bs {
+            let (c, sh, _) = ceiling(b, a_c);
+            eprint!("{:>18}", format!("{c:.0} m ({sh:.1} %)"));
+        }
+        eprintln!();
+    }
+    eprintln!("  (each cell: ceiling, and the channel share it comes from)");
+
+    // ── 2a · a second matching route: iterations = 1 on both sides ──────────────────
+    eprintln!(
+        "\n── 2a · second matching route — SAME target work, `iterations` = 1 on both sides ──"
+    );
+    eprintln!(
+        "  There is no fully independent route: `iterations` is integer-quantised and its minimum\n  \
+         step overshoots (2048² at iters 1, dt 1 already gives 455.7 m > 199), and `K` and `dt` are\n  \
+         the SAME observable (Finding 44). What IS available is a DIFFERENT SCHEME at the same\n  \
+         work — one sweep instead of two. If the 9.6× survives, the form conclusion is not an\n  \
+         artefact of the matching path. Courant is reported at every point: the reservation about\n  \
+         truncation error cannot be lifted by re-matching, only quantified."
+    );
+    let work_of = |b: &B, f: &GridF32| -> f64 {
+        let (mut sum, mut n) = (0.0f64, 0usize);
+        for k in 0..f.data.len() {
+            if b.pre.data[k] > SEA && f.data[k] > SEA {
+                sum += (to_m(b.pre.data[k]) - to_m(f.data[k])) as f64;
+                n += 1;
+            }
+        }
+        sum / n.max(1) as f64
+    };
+    let mut shares: Vec<(usize, f64)> = Vec::new();
+    for b in &bs {
+        if b.target != 2048 && b.target != 8192 {
+            continue;
+        }
+        let a_c_cells = 0.1 / b.cell_km2;
+        let max_a_km2 = b.acc.data.iter().fold(0.0f32, |m, &x| m.max(x)) * b.cell_km2;
+        let (mut lo, mut hi) = (0.002f32, 300.0f32);
+        let mut best = f32::NAN;
+        for _ in 0..9 {
+            let m = (lo * hi).sqrt();
+            let f = terrain_spec(
+                b.target,
+                Spec { iterations: Some(1), dt: Some(m), ..Spec::of(Variant::Shipped) },
+            )
+            .0;
+            best = m;
+            if work_of(b, &f) < 199.0 {
+                lo = m;
+            } else {
+                hi = m;
+            }
+        }
+        let (f, g) = terrain_spec(
+            b.target,
+            Spec { iterations: Some(1), dt: Some(best), ..Spec::of(Variant::Shipped) },
+        );
+        let fl = compute_flow(&f, &FlowConfig { sea_level: SEA, ..Default::default() });
+        let acc1 = mfd_accumulation(&fl.filled, &fl.direction, SEA, 2.0, f.width, f.height);
+        let land1 = f.data.iter().filter(|&&x| x > SEA).count();
+        let n_out =
+            (0..f.data.len()).filter(|&k| f.data[k] > SEA && acc1.data[k] >= a_c_cells).count();
+        let share = 100.0 * n_out as f64 / land1.max(1) as f64;
+        shares.push((b.target, share));
+        let mut spw = ymir_core::erosion::stream_power::StreamPowerConfig::relief_v3(
+            b.cell_km2,
+            ss.depth_scale_m as f32,
+        );
+        spw.dt = best;
+        spw.iterations = 1;
+        spw.cell_km = g.cell_km;
+        eprintln!(
+            "  {}²  iters 1, dt {best:.4}  work {:.1} m | land {:.3} % | OUT channel {share:.2} % \
+             | Courant {:.0} (A_max {max_a_km2:.0} km²)",
+            b.target,
+            work_of(b, &f),
+            100.0 * land1 as f32 / f.data.len() as f32,
+            spw.courant(max_a_km2)
+        );
+    }
+    if shares.len() == 2 {
+        eprintln!(
+            "  ⇒ channel-share ratio by ROUTE B (iters 1): {:.2}   [route A (iters 2) gave 9.6]",
+            shares[0].1 / shares[1].1.max(1e-9)
+        );
+    }
+
+    // ── 2b · the flagged basins, re-matched by FOOTPRINT OVERLAP (no window) ────────
+    eprintln!(
+        "\n── 2b · basins re-matched by FOOTPRINT OVERLAP — the window is removed entirely ──"
+    );
+    eprintln!(
+        "  Method: for each of the largest 2048² basins, map every one of its cells to the HD grid\n  \
+         and take the MODAL HD basin id. Then compare each basin's OWN maximum accumulation. No\n  \
+         search window, so no window artefact — this is what the flags were reporting."
+    );
+    let (lo, hi) = (&bs[1], &bs[3]); // 2048², 8192²
+    let mut cells_lo: HashMap<u32, usize> = HashMap::new();
+    for k in 0..lo.pre.data.len() {
+        if lo.pre.data[k] > SEA && lo.basins[k] != 0 {
+            *cells_lo.entry(lo.basins[k]).or_default() += 1;
+        }
+    }
+    let mut ranked: Vec<(u32, usize)> = cells_lo.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1));
+    // per-HD-basin max accumulation and cell count, in one pass
+    let mut hi_max: HashMap<u32, f32> = HashMap::new();
+    let mut hi_n: HashMap<u32, usize> = HashMap::new();
+    for k in 0..hi.pre.data.len() {
+        if hi.pre.data[k] > SEA && hi.basins[k] != 0 {
+            let e = hi_max.entry(hi.basins[k]).or_insert(0.0);
+            if hi.acc.data[k] > *e {
+                *e = hi.acc.data[k];
+            }
+            *hi_n.entry(hi.basins[k]).or_default() += 1;
+        }
+    }
+    let ratio = hi.pre.width / lo.pre.width;
+    eprintln!(
+        "  {:>3} {:>12} {:>12} {:>8} {:>12} {:>12} {:>8} {:>9}",
+        "#",
+        "acc_lo km²",
+        "acc_hi km²",
+        "ratio",
+        "cells_lo km²",
+        "cells_hi km²",
+        "ratio",
+        "overlap %"
+    );
+    let mut accr: Vec<f32> = Vec::new();
+    for (rank, (bid, ncell)) in ranked.iter().take(10).enumerate() {
+        let (mut best_acc, mut votes) = (0.0f32, HashMap::<u32, usize>::new());
+        for k in 0..lo.pre.data.len() {
+            if lo.basins[k] != *bid || lo.pre.data[k] <= SEA {
+                continue;
+            }
+            if lo.acc.data[k] > best_acc {
+                best_acc = lo.acc.data[k];
+            }
+            let (x, y) = (k % lo.pre.width, k / lo.pre.width);
+            let hk = (y * ratio) * hi.pre.width + x * ratio;
+            if hi.pre.data[hk] > SEA && hi.basins[hk] != 0 {
+                *votes.entry(hi.basins[hk]).or_default() += 1;
+            }
+        }
+        let total_votes: usize = votes.values().sum();
+        let Some((&hb, &v)) = votes.iter().max_by_key(|e| *e.1) else { continue };
+        let a_lo = best_acc * lo.cell_km2;
+        let a_hi = hi_max.get(&hb).copied().unwrap_or(0.0) * hi.cell_km2;
+        accr.push(a_lo / a_hi.max(1e-9));
+        eprintln!(
+            "  {:>3} {:>12.2} {:>12.2} {:>8.3} {:>12.0} {:>12.0} {:>8.3} {:>8.1} %{}",
+            rank + 1,
+            a_lo,
+            a_hi,
+            a_lo / a_hi.max(1e-9),
+            *ncell as f32 * lo.cell_km2,
+            hi_n.get(&hb).copied().unwrap_or(0) as f32 * hi.cell_km2,
+            *ncell as f32 * lo.cell_km2
+                / (hi_n.get(&hb).copied().unwrap_or(1) as f32 * hi.cell_km2).max(1e-9),
+            100.0 * v as f32 / total_votes.max(1) as f32,
+            if rank + 1 == 1 || rank + 1 == 6 || rank + 1 == 7 {
+                "  ← was flagged / aberrant"
+            } else {
+                ""
+            }
+        );
+    }
+    eprintln!(
+        "  MEDIAN outlet-accumulation ratio, overlap-matched: {:.3}   [window-matched gave 1.416]",
+        q(&mut accr.clone(), 0.5)
+    );
+}
