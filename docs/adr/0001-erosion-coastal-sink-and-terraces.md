@@ -7668,6 +7668,14 @@ sum alone is 117 % of the budget, so along a chain A → B → C the same water 
 link's spillway and summing them over-counts. The naive sum of all spillways plus watercourses is
 **×1.359** of budget in humid.
 
+> ⚠️ **WEAKENED by Finding 72.** `water_class` has three values — 0 land, 1 ocean, 2 enclosed
+> below-sea — and **a detected surface lake above sea level is class 0**. So `wc = 0` does not
+> mean dry land; it means "neither ocean nor an enclosed below-sea region", which includes every
+> surface lake. Read this as **three spillways ending in a class `water_class` cannot
+> represent** — the Finding 65 pattern again: the raster consulted to classify termini cannot
+> see the water bodies the machinery delivers into. Which of the three are surface lakes is
+> the measurement Finding 72's stop rule prevented.
+
 **(3) Three of the eight largest spillways end on a LAND cell** (`water_class = 0`): 21.21, 11.67
 and 11.06 m³/s. The code's own assertion says that should be impossible unless the spillway is
 chained — and a chained spillway should end in class 2, not class 0. **~44 m³/s is delivered to dry
@@ -7765,3 +7773,111 @@ derived from them, and 81 % of the budget is unaccounted. B is independent and r
 
 Nothing changed: no production edit, no export field added, no renderer. The leak is attributed,
 not fixed.
+
+## Finding 72 — the ledger is NOT READ: the blocking control could not be built in three attempts, and the failure is the instrument's
+
+Rule 11 first: `extra_inflow` **2** ADR hits (earliest 1788) · `next_extra` **1** (1792) ·
+`chained_into` **3** (1792) · `water_balance_lakes` **2** (2277) · `below_sea_basin_lakes_infil`
+**5** (2822) · `absorb` **6** (1665) · `REFERENCE_RUNOFF_MM` **1** (7632, i.e. Finding 71 itself) ·
+**`pe_lake`: nothing found** (recorded).
+
+### The perimeter — measured, bounded, and NOT the explanation
+
+| | humid | arid-hot |
+|---|---|---|
+| A0 budget population (`field > SEA`) | 11 024 627 cells ⇒ **502.1 m³/s** | same cells ⇒ **172.6 m³/s** |
+| of which DETECTED-LAKE footprints | 817 919 cells = **24.0 m³/s (4.8 %)** | 12 966 cells = **0.0 m³/s** |
+| rain surplus over ENCLOSED BELOW-SEA (wc = 2) | 457 698 cells = **11.9 m³/s** | **0.0 m³/s** |
+
+Both biases are named and bounded:
+
+- lake footprints **are** in the budget — the breach removed the depressions, so those cells read
+  `> SEA` — and open-water PE is never deducted, so **A0 overstates by at most 24.0 m³/s (4.8 %)**;
+- rain over below-sea footprints is **out** of the budget *and* out of the basins' inflow:
+  `runoff_accumulation` seeds only cells with `heightmap > C1_SEA_LEVEL_NORM`, so a below-sea cell
+  contributes zero. **11.9 m³/s is counted nowhere at all** — a third, smaller leak, now named.
+
+**Together 35.9 m³/s against a 409 m³/s hole: 8.8 %.** The prediction that the perimeter
+correction moves the hole by less than 15 % is **confirmed**. **The leak is not a population
+artefact.**
+
+### A3 — the blocking control, three constructions, three artefacts. All mine.
+
+| attempt | construction | why it could not pass |
+|---|---|---|
+| 1 | accumulation one step downstream of `lk.base.outlet` | `base.outlet` is the **PRE-BREACH sill** — a saddle on the rim — and `flow.direction` was read on the **BREACHED** field where that depression no longer exists. A saddle carries almost no accumulation. Ratios 0.001 / 0.000 / 0.000 |
+| 2 | start at the footprint's own **max-accumulation** cell, walk downstream until leaving the footprint | still fails: 0.004 / 0.021 / 0.000. Under D8 accumulation is monotone downstream, so a 2 770× drop in one step is **impossible** unless the cell landed on is not downstream — which it is not, because the exit cell is **at or below sea level** and `runoff_accumulation` leaves those at zero by construction |
+| 3 | (arid bed, either construction) | ⚠️ **EMPTY POPULATION: there is no exorheic DETECTED lake with a footprint in the arid bed at all.** The control did not run. A rule-10 failure in my own control |
+
+> **I do not have a validated instrument, so the ledger is not readable, and the stop rule fires.
+> A1, A2, §3's cross-check, 4a, 4b and C were NOT executed.**
+
+**And the failure is mine, not the machinery's.** Nothing above licenses the sentence "the
+instrument does not carry flow across an exorheic surface lake". Each attempt measured a
+different artefact of my own construction: a sill instead of an outlet, a water cell instead of a
+land cell, and an empty set. The code's own claim — *"`runoff_accumulation` carries flow ACROSS an
+exorheic lake (flat, routed to the outlet), so a lake's outlet reach inherits the whole upstream
+catchment automatically"* — is **neither confirmed nor refuted here.**
+
+What a fourth construction has to do, stated so the next round does not repeat these three: compare
+the discharge of the **segment leaving** the lake (from `segment_discharge_m3s`, on the clipped
+network, `SegmentKind::Watercourse`, population *inherited*) against the maximum discharge of the
+segments **entering** it. That works on the object the code's claim is about — an *outlet reach* —
+instead of on a raster whose zeros are load-bearing. It also requires that such a reach exist,
+which is itself part of the question.
+
+### The three "dry land" spillways of Finding 71 — the classification stands unverified
+
+The six-class typology was built and is in the bench, but it sits after the stop and was not read.
+What **is** settled, from the code alone:
+
+**B1 — the guard could not fire, and it is worse than a log line.** `#[cfg(test)]` begins at
+`drainage.rs:1965`, so the `assert!(wc[end] == 1 || sw.chained_into.is_some())` at **2024 is inside
+the test module** — an assertion over a synthetic fixture. On the production path there is only an
+`eprintln!` at `hd_assembly.rs:169`, gated on `verbose`, which every bench in this dossier calls
+with `false`. **The relation is asserted on a fixture and logged on production; it has never been
+checked on real data.** Both predictions were right; mine was sharper (it *is* an `assert!`, just
+not where it matters).
+
+**CORRECTION to Finding 71 at the point of claim.** Finding 71 reported "three of the eight
+largest spillways end on a LAND cell (`water_class = 0`)" and called it unattributed. The claim
+must be weakened: `water_class` has three values — 0 land, 1 ocean, 2 enclosed below-sea — and **a
+detected surface lake above sea level is class 0**. So `wc = 0` does not mean dry land; it means
+*"not ocean and not an enclosed below-sea region"*, which includes every surface lake. The finding
+should read **"three spillways end in a class `water_class` cannot represent"**. This is the
+Finding 65 pattern again: **the raster consulted to classify termini cannot see the water bodies
+the machinery delivers into.** Whether those three are in fact surface lakes is the measurement
+that the stop rule prevented.
+
+### D — the contract, two occurrences of a new family, and the guard cannot carry them
+
+Confirmed from the code:
+
+- **`Spillway::width_m` exists** (`drainage.rs:1826`, `CHANNEL_WIDTH_A · Q^CHANNEL_WIDTH_B` on the
+  spillway's own discharge). **This closes the C1 question left open last round: spillways are
+  drawable.**
+- **`Spillway::chained_into`** — computed, used in the fixpoint, logged, dropped.
+- **`BasinSummary` in full** — 17 fields per basin including the entire water balance
+  (`inflow_m3s`, `evaporation_m3s`, `a_eq_km2`, `a_spill_km2`, `has_sill`,
+  `predicted_exorheic`, …). `assemble_hd_drainage` reads `bs.lakes`, `bs.lake_map`, `bs.wetland`
+  and `bs.spillways`; **`bs.basins` is never read at all.**
+
+**Can the Finding 68 guard carry this family? No, and the reason is structural.** That guard
+enumerates the **export surface** and requires every unit-bearing field on it to be declared. A
+computed-not-exported field is *by definition absent from the export surface*, so the enumeration
+cannot see it — the guard runs in the wrong direction.
+
+> A second guard is needed and it runs the **opposite** way: *every field a consumer REQUIRES must
+> be present in the export.* Its input is a **declared requirements list**, and that list is not
+> derivable from this repository — it is the consumer's statement of need. So the second guard
+> cannot be written from the code side alone, which is precisely why this family has stayed
+> invisible while the first guard passes.
+
+Not implemented, per the round's constraint.
+
+### Standing
+
+Nothing changed: no production edit, no export field, no threshold, no renderer, no C3. The 81 %
+remains **unattributed**, the perimeter is eliminated as its explanation (8.8 %), and the next
+round's first item is a fourth construction of the A3 control on the segment network rather than
+on the raster.
