@@ -901,7 +901,15 @@ the drainage cache sidecar): `segment_width_m` from the Leopold & Maddock hydrau
 drainage area — so a dry/endorheic reach → 0 width, no channel), and `segment_profile_m`, the bed
 elevation (m) along each segment's own points, upstream→downstream. Both surface in `rivers.json`
 (`width_m`, `profile_m`). Per-Strahler-order median width (2048², post-clip) grows downstream —
-**S1 13 m · S2 21 m · S3 37 m · S4 68 m · S5 114 m** — sanity-matching a Thames-scale trunk
+**S1 13 m · S2 21 m · S3 37 m · S4 68 m · S5 114 m**
+
+> ⚠️ **BOTH THE COEFFICIENT AND THESE MEDIANS ARE OBSOLETE (Finding 69).** The code now has
+> `CHANNEL_WIDTH_A = 5.0` — ×4.2 from the 1.2 recorded here, with **no finding recording the
+> change**, so `a` is a PROXY in practice whatever this paragraph says. `b = 0.5` keeps its
+> Leopold & Maddock anchor. And these per-order medians were measured with `a = 1.2` AND with
+> `Q` proxied by AREA, both since replaced (Finding 22). Measured at 8192², humid, ratio 7.5:
+> S1 11.5 m · S2 25.8 m · S3 12.5 m · S4 10.6 m · S5 2.3 m — **not monotone, and the trunk
+> the narrowest.** Nothing in this paragraph describes what ships. — sanity-matching a Thames-scale trunk
 (~16 000 km² → ~150 m) and metre-scale headwaters.
 
 ## Finding 22 — DEFECT C corrected: width from DISCHARGE (m³/s), not drainage area
@@ -7428,3 +7436,181 @@ may or may not survive; that is a measurement, not a deduction, and it is not ma
 Nothing else is invalidated. In particular **no terrain result is affected**, because the ratio is
 excluded from every stage that shapes the height field — by three explicit comments and by the
 absence of any read in `stream_power.rs`.
+
+## Finding 69 — river width in render cells: the widest river in the world is 1.4 cells, and the exponent is the lever
+
+Rule 11 first, and it paid off twice.
+
+| identifier | ADR hits | earliest | outcome |
+|---|---|---|---|
+| `width_m` | 17 | **899** | ✅ **Finding 21: the law is Leopold & Maddock `w = a·Q^b`, with `CHANNEL_WIDTH_A = 1.2`** |
+| `discharge_m3s` | 7 | 921 | Finding 22 (Q from discharge, not area) |
+| `geo_scale_ratio` | 26 | 971 | Finding 24/68 |
+| `buildable` | 6 | **28** | ✅ **the acceptance criterion, already written** |
+| `constructib` | **0** | — | **nothing found** (recorded) |
+| `slope_deg` | 1 | 4474 | — |
+
+**(a) The coefficient has drifted and no finding records it.** Finding 21 states `CHANNEL_WIDTH_A
+= 1.2`; the code has **`5.0`** (`drainage.rs:629`). The **exponent** `b = 0.5` has genuine
+antecedence — it is Leopold & Maddock's classic width exponent — but **`a` is a PROXY in
+practice**, ×4.2 from its recorded value, with no measurement and no entry. Finding 21's per-order
+medians (S1 13 m … S5 114 m) were also taken with `a = 1.2` **and** `Q` proxied by area, both
+since replaced; they describe nothing that ships.
+
+**(b) The buildability criterion was already in the ADR at line 28**, and it pre-empts the
+connectivity-not-flatness reframing: *"The acceptance CRITERION is a LEGIBLE landscape — buildable
+valley floors + sharply-delimited steep flanks + moderate interfluves — NOT minimal steep ground.
+An earlier 'minimise unbuildable land' framing was WRONG and cost a pass: steep ground is gameplay
+content."*
+
+### The measurement — 8192², 48.83 m render cell, watercourses only (spillways excluded)
+
+| bed · ratio | < 1 cell (count / length) | 1–2 | 2–5 | > 5 | p50 | p90 | p99 | **max** |
+|---|---|---|---|---|---|---|---|---|
+| arid · 1.0 | 100.00 / 100.00 % | 0 | 0 | 0 | 0.000 | 0.007 | 0.050 | 0.105 |
+| arid · **7.5** | **100.00 / 100.00 %** | 0 | 0 | 0 | 0.000 | 0.050 | 0.376 | **0.785** |
+| humid · 1.0 | 100.00 / 100.00 % | 0 | 0 | 0 | 0.056 | 0.103 | 0.151 | 0.185 |
+| humid · **7.5** | **97.60 / 98.03 %** | 2.40 % | **0** | **0** | 0.421 | 0.773 | 1.135 | **1.385** |
+
+> **At the shipped ratio, in the wet climate, the widest river on the map is 1.385 cells and
+> 97.6 % of the network is sub-cell. Nothing anywhere reaches 2 cells.** The author's target — a
+> `fleuve` at 4–5 cells — is short by a factor 3.6 on the single widest reach and by ~10× on the
+> median. In the arid bed no watercourse reaches even one cell.
+
+**Control: exact.** 1.0 → 7.5 moves p50 ×7.52, p90 ×7.50, max ×7.49. The shipped law is `5.0·Q^0.5`
+as declared.
+
+**The Strahler breakdown has no hierarchy, and the trunk is the THINNEST thing on the map**
+(humid, 7.5, p50 in cells):
+
+| S1 | S2 | S3 | S4 | S5 |
+|---|---|---|---|---|
+| 0.235 | **0.529** | 0.256 | 0.217 | **0.047** |
+
+Order 5 is **11× narrower than order 2**. In the arid bed order 5's maximum width is **0.00** — it
+is dry (Finding 58's dry-trunk result, now visible in the exported render hint). **A consumer
+drawing width-proportional strokes would draw the main stem as the faintest line in its own
+basin.**
+
+### And a correction to how Finding 56c's discharge maximum should be read
+
+I predicted a maximum of ~11.9 cells from Finding 56c's "discharge max 240.8 m³/s" (humid 8192²).
+Measured: 1.385 cells, i.e. a maximum **watercourse** discharge of 3.25 m³/s. The 240.8 was a
+**SPILLWAY** — the whole outflow of a below-sea basin over a col, which is exactly what Finding 45
+warned tops the discharge sort and must not be read as a river. **My prediction was refuted
+because I quoted a number about a different object.** Every "max discharge" in this dossier needs
+`SegmentKind` stated beside it.
+
+### The lever is the EXPONENT, not the coefficient — and I had that backwards
+
+I predicted `a` was the lever, on the ground that the width spread was already 28×. **That 28×
+was computed from the spillway maximum and is wrong.** Measured over watercourses:
+
+- width contrast max/p50 = 1.385/0.421 = **3.3×**;
+- p99/p50 = **2.7×**, so even the top percentile is nearly flat;
+- the underlying discharge contrast is therefore 3.3² = **11×**, not 1000×.
+
+The requested contrast is ≥ 5× (a `fleuve` at 4–5 cells beside a `ruisseau` under 1). With
+`b = 0.5` and an 11× discharge range the width range is fixed at 3.3× **whatever `a` is**: raising
+`a` by 3.6 puts the maximum at 5 cells and drags the median to 1.5, so every brook becomes a cell
+wide and the hierarchy flattens further.
+
+> **`a` sets the LEVEL, `b` sets the CONTRAST. To get 5× of width contrast out of an 11× discharge
+> range needs `b ≈ log 5 / log 11 = 0.67`** — and `b = 0.5` is the one part of this law that has a
+> published anchor. So the honest options are: widen the discharge range (which is the dry-trunk
+> problem, Finding 58), or depart from Leopold & Maddock's exponent and label it PROXY.
+
+**Not recommended here, and no value proposed.** The measurement is the deliverable.
+
+## Finding 70 — buildable land is fragmented into ~43 000 components by the drainage skeleton, and the slope threshold is NOT the dominant parameter
+
+Criterion: **8-connected components of cells whose local slope is below a threshold, with no
+constraint on internal relief** — a terraced city is acceptable, and ADR line 28 already says the
+criterion is a legible landscape rather than minimal steep ground. 8192², the exported (breached)
+field, dimensionless central-difference slope in physical units.
+
+**Extent, declared, because the verdict depends on it entirely:** the **diameter of the largest
+inscribed disc** — an 8-connected chamfer transform (weights 1, √2) from the non-buildable set,
+then `2 × max` per component. A one-cell ribbon scores 2 cells however long it is. This choice
+also makes the measure **immune to the 8-connectivity chaining artefact**: two pockets joined by a
+single diagonal pixel form one component with an inflated *area*, but the inscribed disc still
+sits in one pocket and reports that pocket's size.
+
+TDD §2.2 gives these as VALLEY WIDTHS, the same quantity: ravine 50–100 m · hameau 150–250 m ·
+village/bourg 300–600 m · ville 800 m–1.2 km · **cité 2 km+** (the round's brief said 1.5–2 km;
+the TDD's 2 km+ is used as the authority).
+
+### The sweep
+
+| slope < | buildable | components | largest | largest share | **cité ⌀≥2 km** | **ville ≥800 m** | village ≥300 | hameau ≥150 |
+|---|---|---|---|---|---|---|---|---|
+| **10 %** (5.71°) | 39.5 % | 39 183 | 611 km² | 5.9 % | **108** | 464 | 1 333 | 2 628 |
+| **15 %** (8.53°) | 48.9 % | 42 952 | 787 km² | 6.1 % | **117** | 416 | 1 305 | 2 685 |
+| **20 %** (11.31°) | 55.3 % | 43 683 | 849 km² | 5.8 % | **93** | 357 | 1 235 | 2 681 |
+| **25 %** (14.04°) | 59.9 % | 40 194 | **2 100 km²** | **13.3 %** | **74** | 322 | 1 202 | 2 552 |
+
+Component size, cells: p50 **2**, p90 16–18, p99 657–1 000, max 256 k–881 k at every threshold.
+
+### Two predictions refuted, one of them mine and badly
+
+**(1) No percolation.** I predicted that at ~50 % occupancy with 8-connectivity we would be above
+the site-percolation threshold and one giant component would hold **> 80 %** of the buildable
+land. Measured at 48.9 %: the largest holds **6.1 %**, and there are **42 952** components.
+**Refuted outright.**
+
+The reason is structural and worth keeping: the buildable mask is **not a random lattice**. The
+steep cells are the valley walls of the drainage network, which is itself a connected, percolating
+object. **The drainage network is a partitioning skeleton** — it cuts the buildable land into tens
+of thousands of pieces, and no site-percolation intuition applies.
+
+**(2) The slope threshold is NOT the dominant parameter.** The round predicted the count of
+city-sized components would vary by **more than an order of magnitude** between 10 % and 25 %.
+Measured: **108 → 117 → 93 → 74**, a factor **1.6**, and **non-monotone** — it peaks at 15 %.
+
+And the mechanism is instructive: raising the threshold adds *area* (39.5 → 59.9 %) but **reduces**
+the number of city-sized sites, because the cells it adds are on the flanks and they **merge**
+previously separate components into large, elongated, ribbon-like shapes. At 20 % an 849 km²
+component has an inscribed ⌀ of 14 505 m; at 25 % a 2 100 km² component has only 8 660 m. **Bigger
+area, smaller inscribed disc** — which is precisely the discrimination the extent measure was
+chosen for, doing its job.
+
+⚠️ **Control-block note (rule 10):** the component *count* is nearly threshold-invariant
+(39 183 → 43 683 → 40 194, ±6 %, non-monotone). It is a weak column and should not be read as a
+response. The columns that do respond are the buildable fraction (39.5 → 59.9 %) and the
+largest-component share (5.9 → 13.3 %).
+
+### The answer to the consumer's question
+
+**There is no shortage of city sites.** At the 15 % threshold: **117 components with an inscribed
+diameter ≥ 2 km**, 416 at ville scale, 1 305 at village scale, 2 685 at hameau scale — and the
+largest inscribed diameters are **3–14.7 km**, far above the TDD's 2 km cité threshold.
+
+The top eight at 15 % (largest first), showing the cross-tabs:
+
+| cells | km² | ⌀ m | alt p50 m | coast km | internal relief m |
+|---|---|---|---|---|---|
+| 330 197 | 787 | **14 150** | 1 372 | 2.4 | 1 867 |
+| 270 014 | 644 | 5 752 | 189 | **0.0** | 908 |
+| 219 464 | 523 | 9 976 | 292 | 2.9 | 881 |
+| 203 819 | 486 | 5 086 | 182 | **0.0** | 944 |
+| 198 449 | 473 | 11 466 | 394 | 0.1 | 1 162 |
+| 187 154 | 446 | 11 915 | 377 | 0.1 | 833 |
+| 168 835 | 403 | 8 584 | 570 | 0.3 | 1 132 |
+| 165 027 | 393 | 3 947 | 1 738 | 4.3 | 1 170 |
+
+**Majority COASTAL and low, not interior plateau** — six of the top eight sit within 3 km of the
+coast with a median altitude of 155–570 m. The round predicted the opposite; **refuted**. Two are
+high-altitude (1 372 and 1 738 m) with 1.2–1.9 km of internal relief, which is the terraced-city
+case the reframing was meant to admit.
+
+**Internal relief is reported, not filtering, as asked** — and it is large: 500–2 500 m inside a
+single buildable component. That is the gameplay information: these are not plains, they are
+connected networks of gentle ground threading through steep terrain.
+
+### What the numbers cannot settle
+
+A component with an inscribed diameter of 14 150 m, a median altitude of 1 372 m and 1 867 m of
+internal relief is either a broad upland basin or a dendritic web of valley floors stitched
+together. **The inscribed diameter says a 14 km disc of sub-8.5° ground exists somewhere in it; it
+does not say that disc is a plain rather than a locally-flat shoulder.** That is a judgement, and
+it is posed as such in the validation request rather than answered here.
