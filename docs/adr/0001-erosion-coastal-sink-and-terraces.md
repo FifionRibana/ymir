@@ -7614,3 +7614,154 @@ internal relief is either a broad upland basin or a dendritic web of valley floo
 together. **The inscribed diameter says a 14 km disc of sub-8.5° ground exists somewhere in it; it
 does not say that disc is a plain rather than a locally-flat shoulder.** That is a judgement, and
 it is posed as such in the validation request rather than answered here.
+
+## Finding 71 — the 240.8 m³/s is NONE of the three worlds: it is water moving between two inland sinks, and 81 % of the continent's runoff never reaches an outlet
+
+Rule 11 first: `spillway` **95** ADR hits (earliest 1145) · `shore` **46** (71) · `water_class`
+**31** (760) · `bank` 8 (387) · `SegmentKind` 3 (3016) · `source_lake_id` 6 (3024) · `lake_mask`
+**1** (1349) · **`berge` and `riverbank`: nothing found** (recorded).
+
+### A0 — the budget, and it is twice the reference in humid
+
+| bed | land | generated runoff | ×reference (300 mm) | **budget** |
+|---|---|---|---|---|
+| humid | 26 285 km² | **602.9 mm/yr** | **×2.01** | **502.1 m³/s** |
+| arid-hot | 26 285 km² | **207.3 mm/yr** | ×0.69 | **172.6 m³/s** |
+
+The round predicted 120–250 mm/yr in humid; measured **602.9**. **Refuted.** My 350–650 holds for
+humid; my 30–120 for arid is **refuted** (207.3). `REFERENCE_RUNOFF_MM = 300` is a factor 2 low
+for the humid bed, which matters because `drainage_km2` — the field navigability classifies on —
+is `discharge / 300 mm`. **The "effective area" is inflated ×2 in humid by a proxy that is off by
+×2.**
+
+### A1 — the closure fails by a factor 5, and my first terminal test was the reason it looked worse
+
+⚠️ **My own measurement defect, corrected in the same round.** The first pass tested "the
+downstream-most cell's D8 receiver is sea" and reported ×0.018. That test **structurally excludes
+spillways**: a spillway's path is traced over a col, outside the accumulation network, so its last
+cell has no D8 sea receiver. The code supplies the right discriminator itself —
+`drainage.rs:2024` asserts `wc[end] == 1 || chained_into.is_some()`, so **`water_class` at the
+last cell is 1 (ocean) exactly when the spillway is terminal.**
+
+Corrected, humid (budget 502.1 m³/s):
+
+| class | segments | Σ m³/s | % of budget |
+|---|---|---|---|
+| Watercourse → sea | 82 | 46.5 | 9.3 % |
+| **Spillway → OCEAN** (wc = 1) | 37 | 46.6 | 9.3 % |
+| **Spillway → CHAINED** (wc = 2) | 17 | **589.5** | **117.4 %** |
+| **TERMINAL TOTAL** | 119 | **93.1** | **×0.185 — OUTSIDE the declared factor 2** |
+
+Arid (budget 172.6): watercourse-to-sea 10.8, spillway-to-ocean 1.3, **chained 28.2**, terminal
+total 12.1 = **×0.070**.
+
+**So the verdict is NONE of the three worlds**, and the leak has three named components:
+
+**(1) The water disappears into a CHAIN of below-sea basins.** 589.5 m³/s — 117 % of the whole
+continental budget — flows out of one enclosed below-sea basin into another, and the terminal
+outlets carry only 93.1. **Water enters the chain and does not come out.**
+
+**(2) Double counting exists, and it is INSIDE the chain, not at a multi-outlet lake.** The
+hypothesised mechanism — a lake with N outlets each inheriting the whole upstream — is **absent**:
+**0 of 38** inventoried spillway sources has more than one spillway, at both beds. But the chained
+sum alone is 117 % of the budget, so along a chain A → B → C the same water is carried by each
+link's spillway and summing them over-counts. The naive sum of all spillways plus watercourses is
+**×1.359** of budget in humid.
+
+**(3) Three of the eight largest spillways end on a LAND cell** (`water_class = 0`): 21.21, 11.67
+and 11.06 m³/s. The code's own assertion says that should be impossible unless the spillway is
+chained — and a chained spillway should end in class 2, not class 0. **~44 m³/s is delivered to dry
+land and stops there.** Unattributed.
+
+### The answer to the round's single question
+
+> **The 240.82 m³/s spillway drains below-sea basin `1000056` into ANOTHER enclosed below-sea
+> basin — `water_class = 2` at its last cell — and it is 2 CELLS LONG.**
+
+It is not a continental collector (no *terminal* outlet exceeds 27.63 m³/s = 5.5 % of budget), not
+the terminus of a trunk (see A3), and not a multi-outlet artefact. **It is a two-cell transfer
+between two inland sinks, carrying 48 % of the continent's runoff.** The second, 228.74 m³/s, is
+the same thing.
+
+For the consumer this settles the "spillways are the rivers of this map" hypothesis: **the two
+biggest are not rivers at all.** They are 2 and 40 cells long and they end inland.
+
+### A2 — the dead column, recorded, then the instrument that works
+
+Executed once as asked, to enter it as a dead column: **100 % of spillways sit at Strahler order 1
+at both beds** (54 of 4271 S1 segments in humid, 0 at every higher order), by construction —
+`strahler_order: 1 // MEANINGLESS on a spillway`. **The column measures the constant.**
+
+The decile replacement is **also weak**, as predicted: 54 spillways diluted into 754-segment
+deciles give 1.86 % of the top decile by count and 3.44 % by length. The **named top 20** is the
+instrument that reads: **11 of the top 20 by discharge are Spillway in humid** (ranks 1–10 and 15),
+3 of 20 in arid. Prediction was ≥ 15; **measured 11 — refuted, but the substance holds**: the top
+ten are all spillways and the best watercourse is rank 11 at 3.25 m³/s.
+
+| kind | n | length | p50 | p90 | p99 | **max** |
+|---|---|---|---|---|---|---|
+| humid Watercourse | 7 492 | 8 822 km | 0.301 | 1.014 | 2.184 | **3.252** |
+| humid **Spillway** | **54** | **34 km** | 0.116 | 12.950 | 228.741 | **240.821** |
+| arid Watercourse | 12 398 | 14 192 km | 0.000 | 0.004 | 0.240 | **1.045** |
+| arid **Spillway** | **44** | **9 km** | 0.014 | 0.313 | 15.106 | **15.106** |
+
+**54 spillways carry the top of the distribution over 34 km of the 8 856 km network — 0.4 % of
+its length.**
+
+### A3 — the trunk trace: smooth, and it refutes the jump
+
+From A1's biggest **terminal** outlet (1.11 m³/s, **Watercourse**), humid:
+
+- length **242 cells = 11.8 km**; 92.6 % of it lies on a mapped segment;
+- **kind alternations: 1**; longest continuous Watercourse run **224 cells = 92.6 %** of the trace;
+- discharge downstream→upstream: 1.11 → 0.93 → 0.51 → 0.48 → 0.41 → 0.32 → 0.31 → 0.15 → 0.09 →
+  0.01 → 0.00 — **a smooth monotone decay**;
+- **biggest step ×2.0**, at 88 % along the trace, Watercourse→Watercourse.
+
+**My ≤ 4 alternations and > 50 % continuous are confirmed. The round's > 10 alternations and
+< 20 % continuous are refuted. And the predicted single 50–80× jump does not occur — the largest
+step is ×2.0.** Arid is the same shape: 146 cells, 2 alternations, 65.1 % continuous, max step
+×5.2 in the near-zero tail.
+
+The trunk is real, continuous and **tiny**: 11.8 km long, draining 61.2 km², carrying 1.11 m³/s —
+and 61.2 km² × 602.9 mm/yr = **1.17 m³/s**, so the discharge is internally consistent with its own
+catchment to 5 %. **Nothing is wrong with the watercourses; there simply are no large ones.**
+
+### A4 — the ~28 "missing" spillways never existed
+
+| bed | lakes | detected | below-sea | exorheic | endorheic | spillways | naming a source | naming none |
+|---|---|---|---|---|---|---|---|---|
+| humid | 86 | 48 | **38** | 84 | 2 | **54** | **38** | **16** |
+| arid | 56 | 17 | 39 | 28 | 28 | 44 | 28 | 16 |
+
+**The premise is false and the count is exact.** Spillways are produced *only* by
+`below_sea_basin_lakes_infil`, so the number to reconcile against is the **below-sea basin** count,
+not the exorheic lake count. In humid: **38 inventoried below-sea basins ↔ 38 spillways naming a
+source, exactly.** An exorheic lake above sea level overflows through an ordinary `Watercourse`, so
+the other 46 exorheic lakes need no spillway. **There is no hole.**
+
+**And the 16 spillways naming no source ARE Finding 56b's dangling `lake_map` ids** — the same
+population seen twice, as the round suspected. They are below-sea basins under
+`INVENTORY_MIN_CELLS = 4`, marked in `lake_map`, absent from `lakes.json`, and here they are the
+sources of 16 spillways whose `source_lake_id` is therefore `null`. Confirmed.
+
+### ⛔ The export-contract gap that made this un-measurable
+
+`Spillway::chained_into` is computed, used inside `below_sea_basin_lakes_infil`, and **logged** at
+`hd_assembly.rs:169` as the "to sea / chained" split — then **dropped**. It never reaches
+`C1DrainageResult` and never reaches `rivers.json`.
+
+> **The single field needed to tell a terminal outlet from an interior transfer is computed and
+> thrown away.** Neither a consumer nor this bench can build the terminal set from the export; it
+> has to be reconstructed from the `water_class` raster, and only because the code happens to
+> assert the relation. A consumer drawing "the biggest rivers" from `rivers.json` today would draw
+> two 2-cell and 40-cell inland transfers as the map's principal watercourses.
+
+### Standing, and what is NOT done
+
+The round's stop rule fires: A1 concludes a leak **with double counting inside it**, so blocks B
+and C are not run. **C3 must not run on these discharges** — the width gauge it would rasterise is
+derived from them, and 81 % of the budget is unaccounted. B is independent and remains owed.
+
+Nothing changed: no production edit, no export field added, no renderer. The leak is attributed,
+not fixed.
