@@ -1692,3 +1692,135 @@ fn work_ceiling_and_matching_routes() {
         q(&mut accr.clone(), 0.5)
     );
 }
+
+/// BLOCKING — "work" has meant two different quantities, and one of them has a population bias.
+///
+/// The paired work of Findings 57-62 averages `h_pre - h_eroded` over the cells that are land in
+/// BOTH fields. A cell that erosion pushes below sea level leaves the mask and is dropped. Those
+/// cells are the LOWEST land cells, so the paired metric drops small-work cells and therefore
+/// OVER-states — the opposite of what Finding 63 claimed without checking.
+///
+/// Three conventions are reported side by side so the dossier can pick one and keep it:
+///   PAIRED    — land in both (the published convention)
+///   FULL@0    — all pre-incision land; a drowned cell counted at `h_pre - 0` (a LOWER bound on
+///               its true drop, since its final height is below sea level)
+///   FULL@true — all pre-incision land; a drowned cell counted at `h_pre - h_final`, its actual
+///               drop, which is the physically honest number
+///
+/// Run: cargo test -p ymir-core --release --test hypsometry_work_attribution -- --ignored --nocapture population_bias
+#[test]
+#[ignore]
+fn population_bias_in_the_work_metric() {
+    let ss = SteinSteinParams::default();
+    let to_m = |x: f32| c1_altitude_norm_to_metres(x, &ss);
+    let sea_m = to_m(SEA);
+    eprintln!("\n==========  BLOCKING — the work metric's population bias  ==========");
+    eprintln!("  sea level = {sea_m:.2} m; a drowned cell is land pre-incision and sea after");
+
+    struct R {
+        target: usize,
+        iters: usize,
+        paired: f64,
+        full0: f64,
+        full_true: f64,
+        drowned: usize,
+        pre_land: usize,
+        mean_h_drowned: f64,
+        mean_depth_drowned: f64,
+    }
+    let mut rows: Vec<R> = Vec::new();
+
+    for target in [2048usize, 8192] {
+        let (pre, _g) = terrain_spec(target, Spec::of(Variant::NoIncision));
+        let pre_land = pre.data.iter().filter(|&&x| x > SEA).count();
+        for iters in [1usize, 2, 4, 8] {
+            let f = terrain_spec(
+                target,
+                Spec { iterations: Some(iters), ..Spec::of(Variant::Shipped) },
+            )
+            .0;
+            let (mut s_pair, mut n_pair) = (0.0f64, 0usize);
+            let (mut s_dry_h, mut s_dry_true, mut n_dry) = (0.0f64, 0.0f64, 0usize);
+            for k in 0..f.data.len() {
+                if pre.data[k] <= SEA {
+                    continue;
+                }
+                let hp = to_m(pre.data[k]) as f64;
+                if f.data[k] > SEA {
+                    s_pair += hp - to_m(f.data[k]) as f64;
+                    n_pair += 1;
+                } else {
+                    // drowned: land before, sea after
+                    s_dry_h += hp - sea_m as f64;
+                    s_dry_true += hp - to_m(f.data[k]) as f64;
+                    n_dry += 1;
+                }
+            }
+            let np = n_pair.max(1) as f64;
+            let nall = (n_pair + n_dry).max(1) as f64;
+            rows.push(R {
+                target,
+                iters,
+                paired: s_pair / np,
+                full0: (s_pair + s_dry_h) / nall,
+                full_true: (s_pair + s_dry_true) / nall,
+                drowned: n_dry,
+                pre_land,
+                mean_h_drowned: s_dry_h / n_dry.max(1) as f64,
+                mean_depth_drowned: s_dry_true / n_dry.max(1) as f64,
+            });
+        }
+    }
+
+    eprintln!(
+        "\n  {:<7} {:>6} {:>10} {:>10} {:>11} {:>9} {:>8} {:>12} {:>12}",
+        "grid",
+        "iters",
+        "PAIRED",
+        "FULL@0",
+        "FULL@true",
+        "drowned",
+        "% land",
+        "mean h drwn",
+        "mean drop"
+    );
+    for r in &rows {
+        eprintln!(
+            "  {:<7} {:>6} {:>10.1} {:>10.1} {:>11.1} {:>9} {:>7.2} % {:>11.1} m {:>11.1} m",
+            format!("{}²", r.target),
+            r.iters,
+            r.paired,
+            r.full0,
+            r.full_true,
+            r.drowned,
+            100.0 * r.drowned as f64 / r.pre_land.max(1) as f64,
+            r.mean_h_drowned,
+            r.mean_depth_drowned
+        );
+    }
+
+    eprintln!("\n  ── the RATIO 2048²/8192², in each convention ──");
+    eprintln!(
+        "  {:<8} {:>12} {:>12} {:>12} {:>16}",
+        "iters", "PAIRED", "FULL@0", "FULL@true", "shift vs PAIRED"
+    );
+    for iters in [1usize, 2, 4, 8] {
+        let g = |t: usize| rows.iter().find(|r| r.target == t && r.iters == iters).unwrap();
+        let (lo, hi) = (g(2048), g(8192));
+        let rp = lo.paired / hi.paired;
+        let r0 = lo.full0 / hi.full0;
+        let rt = lo.full_true / hi.full_true;
+        eprintln!(
+            "  {:<8} {:>12.3} {:>12.3} {:>12.3} {:>14.1} % / {:.1} %",
+            iters,
+            rp,
+            r0,
+            rt,
+            100.0 * (r0 - rp) / rp,
+            100.0 * (rt - rp) / rp
+        );
+    }
+    eprintln!(
+        "\n  (the shipped point is iters = 2: PAIRED there is the 3.18 the dossier publishes)"
+    );
+}

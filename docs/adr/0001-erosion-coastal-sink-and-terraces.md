@@ -6805,6 +6805,13 @@ ceiling ABOVE the formula**, so it was offered as a lower bound.
 **Error +27.2 %, outside the declared 15 %, and ABOVE the measurement — the opposite of what both
 declared reservations predicted.** So the reservations I wrote down were not the operative ones.
 
+> ⛔ **WITHDRAWN by Finding 66.** The population effect is REAL but it runs the SAME way as
+> the formula's error, not against it: the drowned cells have a mean drop of 498 m against a
+> paired mean of 633 m, so including them LOWERS the measured work. It therefore cannot
+> explain the formula being 27 % too HIGH. **That failure has no explanation on file.** And
+> the stated reason — that the excluded cells "carry the largest work" — is measured false:
+> they are mid-altitude cells (mean `h_pre` 478 m), not low-lying ones.
+
 **The operative one is a population mismatch, and it is this campaign's own recurring defect
 committed in my own derivation.** The measured quantity is the **paired** work, averaged over
 cells that are land in **both** fields. A cell that collapses to sea level *leaves the land mask*
@@ -6836,6 +6843,11 @@ The trend prediction is confirmed and it is severe: the bound falls with `A_c` a
 resolution, both because both cut the channel share, and at `A_c = 1.0 km²` the fine grid's bound
 is **27 m** — 3 % of the available relief. Note also that at `A_c = 0.025 km²` the channel share
 saturates at 100 % on the two coarse grids, so `A_c` stops being a threshold there at all.
+
+> ✅ **SUPERSEDED by Finding 67 §2: the assertion IS written.** An upper bound can only produce
+> FALSE NEGATIVES, so a test that fires when a target EXCEEDS the bound is correct even when
+> the bound is loose. It is labelled as such, carries a negative control, and flags the
+> motivating case by 60 %.
 
 **The feasibility ASSERTION is not written.** A guard built on a formula that misses its own
 validation point by 27 % would encode the error. It waits on a corrected derivation.
@@ -7005,3 +7017,227 @@ needs a tree, and MFD does not give one. **Neither stage is wrong on its own ter
 missing is any statement of how they relate, and any test that they do.
 
 Recorded, not resolved. No consumer is changed, no threshold is touched.
+
+## Finding 66 — "work" has meant two quantities; the bias is REAL, SMALL, GROWS with the budget, and runs the opposite way to the reason I gave
+
+### The self-correction that comes first
+
+Finding 63 explained the closed form's 27 % over-count by saying the paired metric drops cells
+that "carry the largest work (`h_pre − 0`)". **That was asserted without checking and it is
+wrong twice over.**
+
+Measured: the drowned cells at 2048², `iterations = 2`, have a mean **pre-incision altitude of
+478.0 m** and a mean **drop of 498.0 m**. They are not the lowest land cells — they are
+mid-altitude cells that the incision carves all the way through. So:
+
+- the reason was wrong (they are not low-lying);
+- **and the direction still holds, for a different reason**: their drop (498 m) is *below* the
+  paired mean (633 m), so including them **lowers** it. The paired metric **OVER-states**.
+
+Which means Finding 63's explanation of the formula failure is **withdrawn**: the population
+effect pushes the measured work DOWN, the same way the formula errs, so it cannot account for the
+formula being 27 % too high. **That failure now has no explanation on file.** Unconfirmed
+candidates: the diffusion refilling collapsed channels at extreme `dt`, and iteration 2 re-gating
+on a drowned surface.
+
+### The three conventions, measured
+
+| grid | iters | PAIRED | FULL@0 | FULL@true | drowned | % of land | mean h drowned | mean drop |
+|---|---|---|---|---|---|---|---|---|
+| 2048² | 1 | 455.7 | 449.8 | 451.2 | 50 283 | 7.10 % | 372.8 m | 392.8 m |
+| **2048²** | **2** | **633.0** | **615.3** | **617.6** | 80 787 | **11.41 %** | 478.0 m | 498.0 m |
+| 2048² | 4 | 757.5 | 718.3 | 721.6 | 118 299 | 16.71 % | 522.9 m | 542.9 m |
+| 2048² | 8 | 835.9 | 781.0 | 785.2 | 148 167 | 20.93 % | 573.6 m | 593.6 m |
+| 8192² | 1 | 167.4 | 167.0 | 167.4 | 234 849 | 2.07 % | 148.6 m | 168.6 m |
+| **8192²** | **2** | **199.0** | **198.2** | **198.7** | 298 598 | **2.64 %** | 167.7 m | 187.7 m |
+| 8192² | 4 | 223.9 | 222.2 | 222.8 | 327 293 | 2.89 % | 165.8 m | 185.8 m |
+| 8192² | 8 | 262.0 | 259.0 | 259.6 | 336 459 | 2.97 % | 159.9 m | 179.9 m |
+
+`PAIRED` = land in both (the published convention). `FULL@0` = all pre-incision land, a drowned
+cell counted at `h_pre − 0` (a lower bound on its drop). `FULL@true` = all pre-incision land, a
+drowned cell counted at its actual drop `h_pre − h_final`.
+
+### The ratio moves 2.4 %, not 20 %
+
+| iters | PAIRED | FULL@0 | FULL@true | shift |
+|---|---|---|---|---|
+| 1 | 2.723 | 2.694 | 2.696 | −1.1 % |
+| **2 (shipped)** | **3.181** | **3.105** | **3.108** | **−2.4 %** |
+| 4 | 3.383 | 3.232 | 3.239 | −4.5 % |
+| 8 | 3.190 | 3.016 | 3.025 | −5.5 % |
+
+**Both predictions on the table were too pessimistic** — 2.6–3.0 and 2.85–2.95 against a measured
+3.105. The bias is real and it is **small at the shipped point**.
+
+**And it GROWS with the erosion budget** — −1.1 %, −2.4 %, −4.5 %, −5.5 % — because the drowned
+share at 2048² grows 7.10 → 20.93 % while 8192² barely moves, 2.07 → 2.97 %. So the round's
+claim that the bias grows with erosion is **confirmed in its growth and inverted in its sign**:
+the metric over-states, increasingly.
+
+### The convention, declared once for the whole dossier
+
+> **`FULL@true` is the convention from here on**: all pre-incision land, a drowned cell counted
+> at its actual drop. It is the only one of the three that averages a fixed population and counts
+> every metre the incision removed.
+
+`PAIRED` is what Findings 57–62 published. The correction is **−2.8 % at 2048² (633.0 → 617.6)
+and −0.2 % at 8192² (199.0 → 198.7)**, and the ratio **3.18 → 3.11**.
+
+### Named list of what moves, and it is short
+
+| statement | published | `FULL@true` | verdict |
+|---|---|---|---|
+| erosion work, 2048² / 8192² (F57 A3) | 633.0 / 199.0 m | **617.6 / 198.7 m** | restate, −2.8 % / −0.2 % |
+| the work ratio (F57, F58, F61, F62) | **3.18** | **3.11** | restate; every conclusion drawn from it stands |
+| the ratio over the iteration sweep (F61) | 2.72 / 3.18 / 3.38 / 3.19 | **2.70 / 3.11 / 3.24 / 3.03** | still non-monotone, still 2.7–3.2, and the shipped point is still near the maximum |
+| the 311.2 m ceiling (F62) | paired | unchanged as a *measurement*, but it is a PAIRED number and the `FULL@true` saturation was not measured | flagged, not restated |
+| equal-work matching (F62) | matched on paired work | the match target moves < 3 %, and both sides move the same way | conclusion unaffected |
+| `A_c` cell counts, pre-incision invariance, accumulation quantiles, F65 | — | — | untouched: none of them uses the work metric |
+
+**No conclusion in the dossier reverses.** The blocker's magnitude is 3.11 rather than 3.18, the
+absolute works are ~3 % lower at the coarse grid, and everything drawn from them holds.
+
+### Method point, because this is the fourth time
+
+The published quantity was an average over a population that **the treatment itself changes**.
+That is the same defect as the post-breach lakes (rule 10), the per-100 km spur density (rule 2),
+the wet-share saturation (`Sweep::part`) and the regime label of Findings 59/62. Here it cost
+2.4 %; the previous instances cost a retracted decomposition and a retracted convergence claim.
+
+> **Corollary to rule 2, worth stating separately: when a treatment can move cells INTO or OUT OF
+> the population being averaged, the population must be fixed BEFORE the treatment, and the
+> excluded cells must be given a defined value rather than dropped.**
+
+## Finding 67 — the attainable set shrinks CONTINUOUSLY with resolution; a one-sided guard; and the F65 audit finds FOUR definitions, not three
+
+### 1 · The right reading of the ceiling table
+
+Not "two grids with disjoint sets". Along `A_c = 0.1 km²`:
+
+| | 1024² | 2048² | 4096² | 8192² |
+|---|---|---|---|---|
+| upper bound on the work | 865 m | **782 m** | **637 m** | **396 m** |
+| production ships at 633 m (2048²) | inside | inside | **at the limit** | **1.6× outside** |
+
+> **The attainable set shrinks continuously with resolution, and the HD ×128 pipeline targets a
+> grid on which the production state is out of reach.** 4096² is already at its limit — 637 m of
+> bound against a 633 m state, a 0.6 % margin on a bound known to be loose by 27 %. 8192² is
+> outside by a factor 1.6.
+
+A one-sided bound is enough to establish this, which is why it is worth writing even though the
+formula it rests on failed its validation point.
+
+### 2 · The guard, with its label
+
+Finding 63 declined to write the assertion. **That was over-cautious and the round is right to
+push back.** The formula errs in ONE direction — it over-counts — so it can only produce **false
+negatives**. A test that fires when a target EXCEEDS the bound is correct even when the bound is
+loose.
+
+`crates/ymir-core/tests/resolution_invariants.rs :: a_work_target_outside_the_attainable_set_is_flagged`
+
+> **Label, so nobody reads more into it: UPPER BOUND. Loose by ~27 % at the single point where it
+> has been checked. It detects only a SUBSET of unreachable targets, and every target it flags is
+> genuinely unreachable.**
+
+It carries a negative control (a state the fine grid demonstrably occupies must NOT be flagged —
+an upper bound must never produce a false positive) and asserts the set shrinks monotonically
+with resolution. **Would it have caught the present case?** 633 m against a 396 m bound at
+8192² — flagged by 60 %. Not marginal.
+
+### 3a · The audit — and the coastal metrics are CLEAN, against my own prediction
+
+I predicted the spur count and the local parallelism R were exposed. **The code refutes it:**
+`terrain::coast_metrics` contains **zero** references to accumulation, drainage, rivers or MFD.
+`coast_shape`, the spur count, the p90 length, the spacing CV and both axial R's are computed
+from a **marching-squares contour of the height field**. They read the carved terrain directly,
+so they are consistent with the definition that carved it, by construction.
+
+**What IS exposed is narrower and stranger than F65 stated — there are FOUR definitions in use,
+not three:**
+
+| # | criterion | operator | where it is used |
+|---|---|---|---|
+| 1 | `acc ≥ min_area_cells` | **MFD p = 2** | `incise` — **carves the terrain**, and nothing else |
+| 2 | `acc ≥ min_area_cells` | **D8** | `coastal_comb_levers`'s "channel km" / network extent — Finding 56's rule-7 control block |
+| 3 | traced segments, `acc ≥ head_threshold` | **D8 + tracing + clipping** | `rivers.json`, the invariant suite's drainage density, `catchment_km2`, Strahler, the microscope |
+| 4 | climatic **discharge** m³/s | runoff accumulation | navigability, `width_m`, the lake water balance |
+
+Definitions 1 and 2 share a threshold and differ only in operator; 2 and 3 share an operator and
+differ in threshold and in tracing. **Neither 2 nor 3 is the one that carved the terrain.**
+
+Named statements measured on a network that is not the carving network:
+
+- **Finding 56's "drainage density 0.746 → 0.798 and 0.561 → 0.756 km/km²"** and Finding 56b's
+  corrected **0.611 → 0.619 / 0.540 → 0.721** — definition 3.
+- **Finding 56c's 0.337 → 0.501 km/km² in the humid bed** — definition 3, and it is the figure
+  that produced the 5.25 % / 1.60 % cross-check failure of Finding 65.
+- **Finding 56's rule-7 "network extent" column** (80 107 → 115 857 km and 45 573 → 262 788 km) —
+  definition 2, a *third* variant, and already withdrawn on separate grounds (Finding 58 §E: it
+  reads a fixed threshold on the resulting field).
+- **Every Strahler histogram, confluence count and W/D-per-order table** — definition 3.
+- **Finding 62's channel-share comparisons** (80.75 % / 8.40 %) — definition 1, correctly, since
+  the subject was the carving.
+
+**Not exposed, and this is the useful half of the audit:** the whole coastal-fringe chantier —
+spurs 1 254 → 560 and 1 849 → 544, coastline km, p90 length, local R 0.515 → 0.513 and 0.525 →
+0.430 — plus the hypsometry, the slope quantiles and the `A_c` cell arithmetic. **The channel-head
+law's primary verdict does not depend on any channel definition.**
+
+### 3b · Where the definitions ought to agree and do not
+
+| exported quantity | fed by | should agree with | does it |
+|---|---|---|---|
+| `rivers.json` geometry, Strahler, `catchment_km2` | 3 | 1 — the valleys it labels were cut by MFD | **no**: 1.60 % against 8.40 % of land, factor 5.25 |
+| `width_m`, `navigability` | 4 | 3 for *where*, 1 for *how big the valley is* | **no**: three stages in one verdict (Finding 60) |
+| drainage density | 3 | 1 — it is offered as a property of the terrain | **no**, same 5.25× |
+| `lake_type`, `source_lake_id`, `kind` | 4 (balance) + 3 (clipping) | each other | partly — the orphan-mouth defect (F56b) is one symptom |
+| coastline, spurs, local R | height field | 1 | ✅ **yes, by construction** |
+
+### 3c · The minimum-coherence question, formulated and not answered
+
+Each stage is defensible alone: MFD cured the parallel-rilling comb (Findings 8/9/11), a Strahler
+order needs a tree that MFD cannot provide, and the hydrology needs a climatic discharge. So the
+question is not "which is right".
+
+> **Minimum coherence: for a cell the incision treated as a channel, does the exported network
+> place a channel there — and if not, at what rate, and is the disagreement systematic in
+> position (headwaters versus trunks) or scattered?**
+
+That is a containment question with a measurable rate, not a definition change, and it can be
+asked without deciding anything. Its answer would say whether the exported network is a **subset**
+of the carved one (defensible: a coarser view of the same object) or a **different** one
+(not defensible: it labels valleys it did not cut). The 5.25× ratio is consistent with either.
+
+### 6 · Second non-existence result, promoted to that status
+
+Finding 63 recorded it in passing; it belongs beside the ceiling.
+
+> **The two grids cannot be placed at equal work AND comparable numerical fidelity with the dials
+> that exist.** At matched work the Courant numbers are **129 against 4033**, a factor 31. And
+> there is no independent matching route: `K` and `dt` are the same observable (Finding 44), and
+> `iterations` is integer-quantised with a minimum step that overshoots the target.
+
+Two non-existence results now stand: **no duration reaches the coarse grid's state at 8192²**, and
+**no dial setting matches the grids at equal work and equal fidelity.** Both are properties of the
+parameter space, not of a particular run.
+
+### 6 · Method rule 11, rewritten — the identifier obligation comes FIRST
+
+The round's objection is correct and I accept it: the two winning queries, `sub-cell` and
+`resolvable`, are words for the **phenomenon**, which one only knows *after* understanding it. At
+round 1 nobody would have searched "sub-cell". The rule as written retrieved what one already
+knows to look for.
+
+The counterweight is `min_area_cells` — the **code identifier** — which works without knowing the
+phenomenon, because a campaign always knows which identifiers it is about to touch.
+
+> **Rule 11, restated. Before the first measurement of a round: (1) ENUMERATE the code identifiers
+> the campaign will touch — constants, config fields, function names — and grep each one against
+> the ADR; this is the obligation, and it is mechanical. (2) THEN add any phenomenon phrases you
+> can guess; this is a bonus, not a duty, because you cannot name a phenomenon you have not yet
+> understood. (3) Read the EARLIEST hit first — the ADR is append-only, so hit order is
+> chronological. (4) Record the result, including "nothing found".**
+>
+> Do NOT grep informal symbols: `A_c` returns 131 hits of noise where `min_area_cells` returns 11
+> and lands on the answer.

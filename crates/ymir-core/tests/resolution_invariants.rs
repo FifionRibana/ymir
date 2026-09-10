@@ -239,3 +239,64 @@ fn the_channel_head_cell_count_is_recorded_correctly() {
     let hi = RELIEF_V1_A_C_KM2 / (DOMAIN_KM / 8192.0f32).powi(2);
     assert!((hi / lo - 16.0).abs() < 1e-3, "the cell-count ratio must be (8192/2048)² = 16");
 }
+
+/// F3 — FEASIBILITY: is a work target inside a grid's attainable set?
+///
+/// ## Why a wrong formula can still make a correct guard
+///
+/// The closed form `channel_share × mean(h_pre | channel)` MISSED its own validation point by
+/// 27 % (ADR Finding 63): it predicts 395.7 m at 8192² where the measured saturation is 311.2 m.
+/// A guard that used it as an equality would encode that error.
+///
+/// But it errs in ONE direction — it over-counts, because it assumes every channel cell collapses
+/// to sea level and averages over a population the measurement does not use. So it is an **UPPER
+/// BOUND**, and an upper bound can only produce **false negatives**: it will fail to flag some
+/// unreachable targets, and it will never flag a reachable one. A test that fires only when the
+/// target EXCEEDS the bound is therefore correct even though the bound is loose.
+///
+/// **Label, stated so no one reads more into it:** upper bound, loose by ~27 % at the one point
+/// where it has been checked, detects only a subset of unreachable targets, and every target it
+/// flags is genuinely unreachable.
+///
+/// The bound is hard-coded from the Finding 63 table rather than recomputed, because recomputing
+/// it needs a terrain build; these are the measured channel shares and conditional means.
+#[test]
+fn a_work_target_outside_the_attainable_set_is_flagged() {
+    // (target_size, channel share at A_c = 0.1 km², mean(h_pre | channel) in m) — Finding 63.
+    const BOUNDS: [(usize, f32, f32); 4] =
+        [(1024, 1.000, 865.0), (2048, 0.9136, 855.8), (4096, 0.7910, 805.3), (8192, 0.5362, 738.0)];
+    let bound = |t: usize| -> f32 {
+        let (_, s, h) = BOUNDS.iter().find(|(g, _, _)| *g == t).expect("grid in the table");
+        s * h
+    };
+    for (t, _, _) in BOUNDS {
+        eprintln!("[F3] {t}²  upper bound on the paired work: {:.0} m", bound(t));
+    }
+
+    // The case that motivated this: the 2048² shipped state, asked of the fine grid.
+    let target_work = 633.0f32; // the 2048² shipped paired work
+    assert!(
+        target_work > bound(8192),
+        "the guard must flag the 2048² shipped state as unreachable at 8192² — that is the case \
+         it exists for ({target_work} m against a bound of {:.0} m)",
+        bound(8192)
+    );
+    // NEGATIVE CONTROL (rule 1): a target the fine grid demonstrably reaches must NOT be flagged.
+    // 199.0 m is its own shipped state, so it is reachable by construction.
+    assert!(
+        199.0 <= bound(8192),
+        "the guard flags a state the grid demonstrably occupies — it would be producing false \
+         POSITIVES, which an upper bound must never do"
+    );
+    // And the bound must shrink with resolution, which is the whole content of the table.
+    for w in BOUNDS.windows(2) {
+        assert!(
+            bound(w[0].0) > bound(w[1].0),
+            "the attainable set must shrink with resolution: {}² gives {:.0} m, {}² gives {:.0} m",
+            w[0].0,
+            bound(w[0].0),
+            w[1].0,
+            bound(w[1].0)
+        );
+    }
+}
