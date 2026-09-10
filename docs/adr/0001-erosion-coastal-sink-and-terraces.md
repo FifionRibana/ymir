@@ -7241,3 +7241,190 @@ phenomenon, because a campaign always knows which identifiers it is about to tou
 >
 > Do NOT grep informal symbols: `A_c` returns 131 hits of noise where `min_area_cells` returns 11
 > and lands on the answer.
+
+## Finding 68 — `geo_scale_ratio` is a post-hoc multiplier on FOUR segment arrays; the erosion never sees it; and the export ships two scales at once ACROSS object types
+
+Code reading and enumeration only. No measurement, no run, no change.
+
+### Rule 11's first genuine success, and it must be recorded as such
+
+Applied before anything else, on the identifiers this campaign touches:
+
+| identifier | ADR hits | earliest line | outcome |
+|---|---|---|---|
+| `geo_scale_ratio` | **17** | **968** | ✅ **the mechanism, the exact scaled/not-scaled lists, AND a ratio-7.5 table were already recorded** |
+| `min_area_cells` | 18 | 201 | Finding 6 (already known, Finding 62) |
+| `cell_km` | 12 | 310 | — |
+| `HILLSLOPE_REF_CELL_M` | 11 | 414 | — |
+| `domain_km` | 8 | 968 | same passage |
+| `window_km` | 0 | — | **nothing found** (recorded, per the rule) |
+
+**The answer to the decisive question was in the dossier and one grep away.** This is the first
+time rule 11 has retrieved a result instead of confirming one, and it did so on the *identifier*
+query — which is the half of the rule the last round moved to the front, correctly.
+
+### 1 · The call chain, with lines
+
+| site | role | relative to the incision |
+|---|---|---|
+| `drainage.rs:890` `apply_geo_scale_ratio` | the only implementation | — |
+| `hd_assembly.rs:240` | the only production call, **last statement** of the assembly, after the spillway append | **downstream** |
+| `cached_product.rs:772,781` | folded into `hd_drainage_key` as `hd_dr_geo_scale` | downstream (keying only) |
+| `viz hd.rs:120,174` | `HdParams` field, **default 1.0** | downstream |
+| `viz hd.rs:818,1003,1100` | threaded into the key and the assembly | downstream |
+| `viz hd.rs:1223` | `ContinentMeta::geographic_scale_ratio` — **declared in the manifest** | downstream (export) |
+| `workspace.rs:366,1226` | UI state, default 1.0, slider 1.0–15.0 | downstream |
+| `drainage.rs:2706` | the enumerating guard test | — |
+| `fracture/mod.rs:69` · `production_upscale.rs:413` · `upscale.rs:271` | **negative assertions in comments: "NEVER `geo_scale_ratio`"** | **upstream — deliberately excluded** |
+
+**Nothing upstream of or inside the incision reads it.** The three upstream mentions exist only to
+forbid it, which is a deliberate and documented design decision, not an omission.
+
+### 2 · The decisive answer: NONE of branches A/B/C — it is branch D
+
+`geo_scale_ratio` **does not reach `cell_km` in `StreamPowerConfig`.** It is never read by
+`erosion/stream_power.rs` at all.
+
+> **Branch D. A pure post-process on the drainage RESULT, applied as the final statement of the
+> assembly. It multiplies exactly four segment arrays and re-derives two more. NO STAGE ANYWHERE
+> USES A SCALED CELL SIZE.**
+
+So branch A is refuted, branch B is correct *for the erosion*, and **branch C's premise is false**:
+there is no 366.2 m hydrology cell — the hydrology *computation* runs entirely at 48.83 m too.
+Only four reported numbers change afterwards.
+
+Arithmetic verified before use: 400 × 7.5 = 3000 km; 3000/8192 = 0.366211 km; 0.134111 km²;
+0.1/0.134111 = 0.7457 cells; and B: 0.048828 km, 0.0023842 km², 41.943 cells. All correct.
+**But the branch-A row never occurs: at 8192², `A_c = 0.1 km²` is 41.94 cells at every ratio.**
+Everything Findings 57–67 measured about `A_c`'s cell count is therefore ratio-independent.
+
+What `apply_geo_scale_ratio` does (`drainage.rs:890`, `ratio == 1.0` → early return):
+
+| quantity | treatment |
+|---|---|
+| `segment_drainage_km2` | × ratio² = **×56.25** |
+| `segment_discharge_m3s` | × ratio² |
+| `segment_catchment_cells` | × ratio² *(added by Finding 49)* |
+| `segment_discharge_profile_m3s` | × ratio², per point *(Finding 49)* |
+| `segment_width_m` | **re-derived** as `5·Q^0.5` → × ratio = ×7.5 |
+| `segment_navigability` | **re-classified** on the scaled `drainage_km2` |
+
+### 3 · Which stage sees it — the Finding 65 table, with the column added
+
+| # | channel definition | operator | sees `geo_scale_ratio`? |
+|---|---|---|---|
+| 1 | `acc ≥ min_area_cells` | MFD p=2 | ❌ **no** — carves the terrain, ratio-blind |
+| 2 | `acc ≥ min_area_cells` | D8 (`coastal_comb_levers` network extent) | ❌ no |
+| 3 | traced segments `≥ head_threshold` | D8 + tracing | ❌ **the GEOMETRY is not scaled** — only four attribute arrays on it are |
+| 4 | climatic discharge | runoff accumulation | ❌ the **computation** is unscaled; the **reported** discharge is ×56.25 |
+
+And the constants:
+
+| quantity | scaled? | consequence at ratio 7.5 |
+|---|---|---|
+| `catchment_km2`, `drainage_km2`, `discharge_m3s`, discharge profile | ✅ ×56.25 | signified |
+| `width_m` | ✅ ×7.5 | signified |
+| `navigability` | ✅ re-classified on signified area | coherent **within** `rivers.json` |
+| `stream_km2` 20 · `small_boat_km2` 500 · `barge_km2` 5 000 · `ship_km2` 50 000 | compared against the **scaled** area | ✅ coherent |
+| **lake `area_km2`, `level_m`, `depth_m`, `lake_type`** | ❌ **NOT scaled** | ⛔ **real, beside signified rivers** |
+| `lake_min_area_km2` = 5 km² · `INVENTORY_MIN_CELLS` = 4 | applied in-stage, unscaled | the inventory floor is 5 **real** km² = 281 signified |
+| `NECK_KM` 0.6 · `MIN_SPUR_KM` 1.0 · `MAX_SPUR_KM` 50 | ❌ no (`coast_shape` takes `km_per_cell` from the caller) | a "1 km spur" is **7.5 signified km** |
+| `RELIEF_V1_A_C_KM2`, `HILLSLOPE_REF_CELL_M`, `diffusion` | ❌ no | terrain, correctly ratio-blind |
+| coastline km, spur counts, hypsometry, slope quantiles | ❌ no | Ymir-km throughout |
+
+### ⛔ The defect: Finding 49's own rule was applied WITHIN `rivers.json` and never ACROSS to `lakes.json`
+
+Finding 49 states it in capitals at the code: *"EVERY SIGNIFIED QUANTITY, or the export ships two
+scales at once."* It was enforced across the six segment arrays. **It was never asked of the other
+exported object types.**
+
+`export/hydro.rs:103` — `lakes_json` serialises `drainage.lakes` verbatim, so `area_km2`,
+`level_m` and `depth_m` leave as **real 400 km values**. At ratio 7.5 a consumer can read:
+
+> a river with `catchment_km2` = 5 625 terminating in a lake with `area_km2` = 100, linked
+> explicitly by `source_lake_id` — **two numbers 56.25× apart in scale, describing one junction.**
+
+Any consumer check of the form "is this lake plausible as the sink of this catchment", or any
+water-balance recomputation downstream, is wrong by 56.25×. This is the same defect Finding 49
+diagnosed, one level up: **it is not within an object, it is between object types.**
+
+The ADR's justification for not touching lakes is sound for the **physics** — the water balance,
+levels and footprints ran upstream on real quantities and must not be re-scaled. It does not
+cover the **reported area**, which is a signified quantity by exactly the argument that makes
+`drainage_km2` one.
+
+**Mitigation that exists:** `ContinentMeta::geographic_scale_ratio` is written into the manifest
+(`hd.rs:1223`), so a consumer is *told* the ratio. **What is missing is any statement of WHICH
+fields are already scaled** — and with rivers pre-scaled and lakes not, a consumer applying the
+manifest ratio uniformly would double-scale the rivers and correct the lakes.
+
+Not fixed here. No change of any kind this round.
+
+### 4 · Finding 47's "2–3 orders below the thresholds" was measured at ratio 1.0
+
+It is a **ratio-1.0 statement about a product that runs at 7.5**, and the ADR's own table at line
+~980 (2048², seed reference) already shows what the ratio does:
+
+| ratio | small boat | barge | ship | largest Q, width |
+|---|---|---|---|---|
+| 1.0 | 742 | 1 | 0 | 48 m³/s, 35 m |
+| **7.5** | 811 | **1 661** | **403** | **2 688 m³/s, 259 m** |
+
+56.25× is **1.75 orders of magnitude**, which consumes almost all of "2–3 orders". So:
+
+- ⛔ **"the discharge sits 2–3 orders below the navigability thresholds" does NOT hold at the
+  ratio the product uses.** At 7.5 there are 403 ship reaches where there were none.
+- ✅ **Finding 47's other and more important claim SURVIVES**: the discharge is not
+  resolution-stable (10.33 m³/s at 2048² against 1.04 at 8192², the small-boat class ×50). The
+  ratio multiplies both grids by the same 56.25, so the **instability is untouched** — thresholds
+  still cannot be calibrated across grids, for the reason Finding 47 gave second rather than first.
+
+**And this propagates to Finding 56c**, whose navigability verdict (small boat 214 → 175 at
+2048², 35 → 11 at 8192², barges 2–3) was measured at ratio 1.0. At 7.5 the classes would shift
+upward by 1.75 orders, so **the absolute counts and classes in that table describe a
+configuration the product does not ship.** The *relative* effect of the channel-head law on them
+may or may not survive; that is a measurement, not a deduction, and it is not made here.
+
+### 5 · Named list
+
+**STANDING — ratio-blind by construction** (nothing in them reads a scaled quantity):
+
+- everything about the terrain: the pre-incision field's resolution invariance, the hypsometry,
+  the slope quantiles, the erosion work, the work ratio, the attainable-set ceiling and its table
+  (Findings 57, 58, 61, 62, 63, 66, 67);
+- **`A_c`'s cell counts — 2.6214 and 41.9430 — at every ratio** (Finding 58, and the guard);
+- the accumulation quantiles and the D8/MFD divergence (Finding 59);
+- the whole coastal-fringe chantier: spurs 1 254 → 560 and 1 849 → 544, coastline km, p90 length,
+  local R — `coast_metrics` reads only the height field (Findings 50–56, audited in Finding 67);
+- the arêtes / steep-slope shares, the `A_c(S)` law's primary verdict;
+- the lake INVARIANTS of Finding 56b/56c (footprint, connectivity, depth-vs-raster, orphan
+  mouths) — all computed on real geometry, which the ratio does not touch;
+- Finding 60 and Finding 65 (the decoupling and the four definitions) — strengthened rather than
+  weakened, since the ratio adds a fifth axis of disagreement.
+
+**WEAKENED — must now carry `geo_scale_ratio = 1.0` in the statement:**
+
+- **Finding 47's "2–3 orders below the thresholds"** — false at 7.5, as above;
+- **Finding 56c's navigability table** — 214/175, 35/11, barge 2–3, and the discharge p90 figures
+  (1.759/1.983, 1.017/1.386 m³/s): all ratio-1.0, and the classes move by 1.75 orders at 7.5;
+- **Finding 56b's W/D-per-order channel widths** — 0.4–5.2 m and the "Q > 0 share": widths ×7.5
+  at the shipped ratio, so "the widest channel on the fine grid is 5.2 m" becomes 39 m signified.
+  The `Q > 0` **share** is ratio-invariant (a multiplier cannot change a sign), so the
+  "not one of the 51 order-5 reaches is wet" result stands;
+- **Finding 56b's `catchment_km2` and `drainage_km2` figures**, and any absolute km² quoted from
+  `rivers.json`;
+- the validation note's header, which declares `geo_scale_ratio = 1.0` as *the production
+  condition*. It is the **code's default** (`HdParams`, `Workspace`, `thread.rs` all initialise
+  1.0) and **not the author's practice** (7.5). Same shape as `production_hd_config` versus
+  `c1_hd_production`: the shipped default was mistaken for the shipped configuration.
+
+**INVALIDATED — demonstrably, and it is one item:**
+
+- **the claim that the export is internally scale-coherent.** Finding 49 established it for the
+  segment arrays and it is false across object types: `rivers.json` signified, `lakes.json` real,
+  linked by `source_lake_id`, 56.25× apart. Finding 49's own stated rule is violated at the level
+  above the one it audited.
+
+Nothing else is invalidated. In particular **no terrain result is affected**, because the ratio is
+excluded from every stage that shapes the height field — by three explicit comments and by the
+absence of any read in `stream_power.rs`.

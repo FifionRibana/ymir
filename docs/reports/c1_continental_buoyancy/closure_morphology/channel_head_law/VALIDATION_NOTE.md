@@ -4,7 +4,10 @@ ADR 0001, Findings 56 / 56b / 56c. **The law is gated OFF** (`StreamPowerConfig:
 None`, byte-identical to the shipped relief). It stays off until this visual judgement is made.
 
 Seed 10 481 999 410 520 546 993 · 400 km domain · production config (`production_hd_config`) ·
-`geo_scale_ratio = 1.0`. **Two climate beds**, because the hydrology is a climate result:
+`geo_scale_ratio = 1.0` — ⚠️ **which is the CODE's default, not the author's practice (7.5).**
+See ADR Finding 68: the ratio is excluded from every stage that shapes the height field, so §1,
+§2 and §4 below are ratio-blind and stand as measured. **§3 (navigability) is NOT**: its classes
+and counts are ratio-1.0 values and move by 1.75 orders at 7.5. **Two climate beds**, because the hydrology is a climate result:
 `humid` (45°, span 40) is the production default; `arid-hot` (25°, span 10) is the only bed that
 produces endorheic below-sea basins. The terrain is climate-independent, so the coastline
 figures hold at any latitude.
