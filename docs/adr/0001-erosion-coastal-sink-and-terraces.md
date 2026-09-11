@@ -8038,3 +8038,222 @@ No production edit, no export field, no threshold, no renderer, no promotion of 
 C3. Block 1 **fails**, blocks 2 and 3 are not delivered, block 4 is. What the round produced
 instead is the first **attributed** term of the leak since Finding 71: the accumulation order,
 worth 8.5 %, with a negative control that closes it and a named blast radius.
+
+## Finding 74 — the order fix, measured in both code states; and the real mechanism of the hole is the CYCLE-BREAKER, not the surface lakes
+
+Rule 11 first, and it holds the answer: **`resolve_flats` 0 ADR hits · `flat_grad` 0 · `compute_accumulation` 0 — NOTHING FOUND, recorded.** `pit_fill` **3** (earliest 689) · `priority-flood` **13** (673).
+
+Three identifiers at zero hits, and they are the ones that held the fix. `terrain/flow.rs:709`
+`compute_accumulation` has always sorted on `(filled desc, flat_grad desc)`, with the comment
+*"so flat cells are processed from the inflow side down to the outlet (correct topological order
+on flats where `filled` ties)"*. **The correct order existed from the start, in `flow.rs`, and
+`runoff_accumulation` was a copy of that loop with the tiebreak dropped.** The comparator is
+TRIPLED — `flow.rs:723`, `flow.rs:520`, and the broken half at `drainage.rs:963`. Finding 13's
+*"fills to the EXACT sill — no epsilon increment, so flats are truly flat"* is what makes the
+missing tiebreak fatal rather than cosmetic: the flats are exact **by design**.
+
+### The implementation choice, instructed before writing
+
+Kahn over the D8 in-degree, hosted as `terrain::flow::propagation_order`, **not** the `flat_grad`
+reuse. Cost: no new `FlowResult` field and no 537 MB `f64` export, and O(n) against the O(n log n)
+sort it replaces. Coupling: a `(filled, flat_grad)` key is only topological if it came from the
+**same** `flat_grad` that built `direction`, and **six sites reconstruct a `FlowResult` from a
+cache sidecar with `direction` but no `flat_grad`** — an empty order there is a silently-zero
+accumulation, this campaign's signature defect. Kahn derives the order from the field it must
+agree with. Consumers of `resolve_flats`: four functions, all private inside `flow.rs`, nobody
+outside — so reuse would mean widening a private surface for one caller.
+
+> **DEBT, NAMED.** The flat comparator stays duplicated between `flow.rs:723` and `flow.rs:520`,
+> and Kahn is now a THIRD ordering scheme beside them. They are not unified, because
+> `compute_accumulation` feeds stream-power incision and changing its order would change the
+> delivered terrain.
+
+`ALGO_DRAINAGE` 5→6 and `ALGO_HD_DRAINAGE` 7→8: every discharge, width and lake inflow moves.
+
+### The guards, before any result
+
+**The control block is BIT-IDENTICAL.** The same bench ran in both code states (the fix stashed,
+then restored). FNV-1a over the raw `f32` bits:
+
+| field | before | after |
+|---|---|---|
+| eroded | `0x6b10a0c5fdf467a3` | **`0x6b10a0c5fdf467a3`** |
+| breached | `0x2cce4ea2fb761a12` | **`0x2cce4ea2fb761a12`** |
+| pre-filled | `0x5bd35562ba4fb9ab` | **`0x5bd35562ba4fb9ab`** |
+
+Means, min/max, land counts and land p10/p50/p90 identical to nine decimals; 1 238 085 cells
+raised by `pit_fill`, 457 698 below-sea, 55 626 539 ocean — unchanged. **The stop rule does not
+fire: the Finding 73 blast radius was right, the height field is not downstream of this.**
+
+**The 42-lake instrument is promoted to a guard, twice.** `accumulation_order.rs` holds a
+**default-running synthetic fixture** — a filled pit fed by a known tributary — and an `#[ignore]`d
+8192² test on `assemble_hd_drainage`. The split is deliberate: a four-minute test does not protect
+a default suite, and *a rule that is not executable does not protect*.
+
+| the same flat, five readings (192-cell synthetic pit) | IN | OUT | OUT/IN |
+|---|---|---|---|
+| topological order (the fix) | 1825.00 | 2688.00 | **1.4729** |
+| `filled`-only order (PRE-FIX) — **negative control** | 1825.00 | 8.00 | **0.0044** |
+| `flow.accumulation` (geometric, never broken) | 1825.00 | 2688.00 | 1.4729 |
+| `runoff_accumulation` (production) | 4 094 635 | 6 030 893 | **1.4729** |
+| `mfd_accumulation` (incision) | 1571.37 | 185.56 | **0.1181** |
+
+The broken order reproduces the 8192² defect on 192 cells (0.0044 against 0.007) — a **×336
+separation**, so the guard is not vacuous — and the fix lands **exactly** on the geometric
+accumulation's value, which is the proof that the two orders now agree.
+
+Production path, humid, old → new: median OUT/IN **0.052 → 4.185**, share ≥ 0.95 **7.1 % → 100.0 %**,
+min **0.002 → 1.254**, population 42 → 44. The `#[ignore]`d guard on `assemble_hd_drainage` reads
+n 44, median 4.185, share 100.0 %, min 1.254, max 689.101 — **identical to the digit** to the
+bench's independently replicated tail, which is the rule-7 cross-check on the replication itself.
+
+Lake invariants (56b/56c) pass at both beds and both resolutions. Lakes move as expected from more
+inflow: humid **84 exorheic / 2 endorheic → 86 / 0**, Σ area 5970.4 → 6219.4 km² (+4.2 %); arid 56
+→ 61 lakes, 28/28 → 31/30, 1638.0 → 1703.7 km². **The five largest lakes are IDENTICAL to the
+decimal in level and area at both beds** — so the "> 30 % of lakes move" prediction is neither
+confirmed nor refuted here: a per-lake diff was not measured and is not claimed.
+
+### The Finding 71 table, re-derived on sane numbers (humid, old → new)
+
+| | before | after |
+|---|---|---|
+| budget | 502.1 | **502.1** (unchanged, as predicted — a per-cell sum) |
+| `Watercourse` → sea (65 runs) | 37.5 | **75.9** |
+| `Spillway` → ocean (37) | 46.6 | **82.5** |
+| TERMINAL | 84.1 (×0.168) | **158.4 (×0.315)** |
+| **HOLE** | 418.0 | **343.7** |
+| `Spillway` → `wc = 2` (13) | 538.4 (107 % of budget) | **1052.4 (210 %)** |
+| **max `Watercourse`** | **3.252 m³/s** | **21.785 m³/s** |
+| max `Spillway` | 240.821 | **380.514** |
+| Spillways in the named top 20 | 11 of 20 | **5 of 20** |
+| `Watercourse` p50 / p90 / p99 | 0.301 / 1.014 / 2.184 | **0.477 / 2.406 / 19.200** |
+
+Arid: TERMINAL ×0.039 → ×0.048, max `Watercourse` **1.045 → 1.045 (unchanged)**, network 12 398 →
+12 275 runs. C is untouched by the fix, as predicted: measured runoff **602.9 mm/yr** humid /
+207.3 arid against the 300 mm proxy ⇒ effective area ×0.498 / ×1.447.
+
+> **The consumer-facing result: the map now has a river hierarchy. The largest `Watercourse` goes
+> from 3.25 to 21.79 m³/s — ×6.7 — and the p99 from 2.18 to 19.20, ×8.8.** Finding 71's "nothing
+> is wrong with the watercourses; there simply are no large ones" is **corrected**: there were
+> large ones, and the accumulation order was deleting them.
+
+### The discriminant REFUTES both bets, and names the mechanism it was not looking for
+
+Σ discharge of spillways ending on a surface lake (`did ≠ 0`) = **73.7 m³/s** against the measured
+hole of 343.7 ⇒ **coverage ×0.214**, far outside the declared factor 1.5.
+
+**My mechanism at 65 % is refuted as the explanation.** It is real and it is 21.4 %, not the
+answer. My predicted coverage of ×0.7–1.3 is refuted; so is the round's expectation that the
+discriminant would confirm it.
+
+And the largest class was mislabelled by MY OWN classifier: 8 spillways, **1048.8 m³/s**, came out
+as `true DRY LAND` — the third time this campaign has been tempted by that sentence. Tested rather
+than read, by comparing the 8-connected `wc == 2` COMPONENT of the terminal cell against the
+component(s) of the source basin's own footprint:
+
+| Q m³/s | source | own cmp | end cmp | #cmps | verdict |
+|---|---|---|---|---|---|
+| 380.51 | 1000056 | 56 | 58 | 2 | **MERGED half** |
+| 376.80 | 1000021 | 21 | 29 | 2 | **MERGED half** |
+| 276.80 | 1000035 | 35 | 44 | 2 | **MERGED half** |
+| 9.62 · 3.21 · 0.88 · 0.63 · 0.33 | 1000016/04/53/14/08 | | | 2 each | **MERGED half** |
+
+**Σ: LOOP 0.0 · MERGED-half 1048.8 · true dry land 0.0.** Eight of eight. **8 of 54 below-sea ids
+span more than one region** — `[1000004, 1000008, 1000014, 1000016, 1000021, 1000035, 1000053,
+1000056]` — and every one of them is the source of one of these spillways.
+
+> **THE MECHANISM.** `break_reciprocal_spill_cycles` resolves a reciprocal pair by **merging** the
+> two regions under one id (`lake_map[absorb] = keep`), **dropping the absorbed basin's spillway**
+> (`spillways.retain`), and **resetting `chained_into = None`** ("its receiver was absorbed; treat
+> as an open outflow"). The surviving spillway then routes its whole outflow into the OTHER HALF of
+> its own merged id — a physically distinct below-sea region whose own outlet has just been
+> deleted. **Water is delivered to a region that, by construction, no longer has an outflow.**
+> The function whose job was to break cycles creates the terminal sink instead.
+>
+> **The author's reset-1932 bet, at 10 %, WINS. Mine at 65 % loses. The measurement decides and it
+> decides against me.** The scoring is the author's; the figures are 8 of 8 and 1048.8 m³/s against
+> 3 of 54 and 73.7 m³/s.
+
+The function's own doc comment already conceded the half of this it knew: *"the fixed point above
+still propagated the cyclic `extra_inflow` while both directions existed… removing it inside the
+iteration is a deeper change, measured and reported separately."* **This is that separate
+measurement**, and it finds a second consequence the comment does not mention: the merge leaves a
+half-region with inflow and no outlet.
+
+### The one-basin cross-check: the ledger IS readable, the CHAIN is not
+
+Basin 1000056, after the fix, with the label bug of Finding 73 corrected:
+
+- **(a) watershed** — 1 024 541 above-sea cells over 8026 D8 labels × measured surplus = **47.56 m³/s**;
+- **(c) shoreline sum** re-derived from the same `runoff` array = **47.56 m³/s** ⇒ **ratio (a)/(c) = 1.000**;
+- `BasinSummary::inflow_m3s` = **380.51 m³/s** ⇒ isolated `extra_inflow` = **332.95 m³/s (87.5 %)**;
+- **(b) Σ spillways naming it in `chained_into` = 0.00 m³/s.**
+
+The headline ratio (a+b)/reported is **0.125**, which trips the declared ±25 %. But the two halves
+say opposite things and must not be averaged:
+
+> **Stop rule 2's arithmetic fires and its premise is refuted.** The LOCAL ledger is confirmed to
+> **1.000** by a route independent of `runoff_accumulation`, so `BasinSummary` is readable. What is
+> unreadable is the CHAIN: **332.95 m³/s is routed into this basin by `chained_region` and 0.00 is
+> named by `chained_into`.** The routing key and the display id are different fields and they
+> disagree completely at the largest basin. That is the computed-not-exported family again, now
+> with a number on it.
+
+Only **4 chaining edges** exist in the whole export (`1000024→1000023`, `1000025→1000027`,
+`1000041→1000045`, `1000059→1000057`), no cycles, and the 380.51 m³/s chain is **one link long**.
+
+### B2, 4a, 4b, C — reported, with the conditional explicitly NOT met
+
+The round made these conditional on the discriminant confirming. It did not (×0.214), so they are
+inventory, not the closure of an attribution.
+
+**B2 — the `wc = 0` termini, settled.** 4 spillways, Σ 86.2 m³/s (25.1 % of the hole): **3 surface
+lake · 1 basin with spillway · 0 absorbed receiver · 0 true dry land.** The Finding 72 prediction
+(3 of 3 surface lakes, 0 dry, 0 absorbed) is **confirmed** — and per the round's rule this counts
+as **one** confirmation with A1, not two, and A1's own mechanism claim lost.
+
+**4a — the surface-lake deficit, lake by lake** (dropped Q is a RECONSTRUCTION, the outlet Q is
+measured): lake 46 dropped 34.45 / own outlet 2.185; lake 13 dropped 21.21 / own 3.286; lake 52
+dropped 18.05 / own 11.551.
+
+**4b — arithmetic only, ratio 7.5, no recommendation attached.** Lake 46: Q 36.63 → 227.0 m → 4.65
+cells. Lake 52: 29.60 → 204.0 m → 4.18 cells. Lake 13: 24.50 → 185.6 m → 3.80 cells. **No repaired
+outlet reaches 8 cells; the largest is 4.65.** The author's prediction of ≥ 8 cells is refuted —
+because the fix already moved the *real* discharges up, so the hypothetical repair adds less.
+
+### Block 4 — MFD carries by a SPECIAL PATH, and the order under it is broken too
+
+`mfd_accumulation` weights by `drop` on `filled`, so on a flat every weight is zero — and
+`flow.rs:906` has a fallback: `if cnt == 0 || wsum <= 0.0` it routes the whole flow to
+`direction[c]`, which IS flat-resolved. **So the ROUTING has a named special path.** But
+`flow.rs:877` sorts `land` by `(filled desc, INDEX desc)` — an index tiebreak, not `flat_grad`. So
+the routing can cross the flat and the order does not let it: measured on the fixture, **OUT/IN
+0.1181** — it carries **11.8 %**, neither 0 nor 1.
+
+> **Verdict: the third outcome. It carries by a special path (the `cnt == 0` D8 fallback) whose
+> benefit is then mostly destroyed by an index-tiebreak sort.** Per the round's instruction,
+> **NOTHING is corrected**: this accumulation shaped the delivered terrain, so changing it is a
+> change of terrain, not a bug fix.
+>
+> **And it gives Finding 66 a new meaning.** F66 recorded that the field is re-filled at every
+> incision iteration. Combined with this: **every filled pit is a partial wall to the incision's
+> drainage area** — `A` downstream of a depression is understated by ~88 % on the fixture, at every
+> iteration. The delivered relief was incised with that. Consequence recorded, not acted on.
+
+### Score
+
+Mine: population 42 ✓ · bit-identical field ✓ · guard median 2–8 → 4.185 ✓ · share ≥ 90 % → 100 % ✓
+· budget unchanged ✓ · max `Watercourse` 8–40 → 21.785 ✓ · max `Spillway` 250–450 → 380.5 ✓ ·
+MFD "does not carry, no special path" ✗ (it carries 11.8 % by a named path) · `Watercourse`→sea
+90–160 → **75.9 ✗** · closure ×0.35–0.50 → **×0.315 ✗** · discriminant ×0.7–1.3 → **×0.214 ✗** ·
+implementation > 30 net lines ✓ (123 lines, ~45 of them code).
+
+**The meta-prediction holds a further round: several were false, and the biggest one — the
+mechanism of the hole — was mine.**
+
+### Standing
+
+One production change: the accumulation order, plus the two cache bumps. No promotion of the
+three-state invariant, no export field, no threshold, no C3, no correction to
+`mfd_accumulation`, no conservation-vs-representation recommendation. The hole is **343.7 m³/s**
+and now has a dominant named mechanism — the cycle-breaker's merge — which is **not fixed**.

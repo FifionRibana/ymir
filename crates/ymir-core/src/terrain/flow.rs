@@ -706,6 +706,108 @@ fn resolve_flats(
     flat_grad
 }
 
+/// The propagation order that ANY downstream accumulation over [`FlowResult::direction`]
+/// must follow: every cell appears strictly after every cell that drains into it.
+///
+/// ## Why this exists (ADR 0001 Finding 73)
+///
+/// [`compute_accumulation`] gets the order right by sorting on `(filled desc, flat_grad
+/// desc)` — the `flat_grad` tiebreak is load-bearing, because `pit_fill` fills a depression
+/// to its EXACT sill (no epsilon), so `filled` is genuinely FLAT over a filled pit and
+/// cannot order those cells at all. `runoff_accumulation` in the drainage module was a
+/// second copy of that loop which **sorted on `filled` alone**. Measured consequence: over
+/// the 605 046 footprint cells of the 42 exorheic surface lakes of the production seed,
+/// 100.0 % route to a cell whose `filled` is not strictly lower, so `sort_unstable_by`
+/// ordered them arbitrarily and a cell was routinely processed BEFORE its own donor. The
+/// median outlet/inlet discharge ratio across a lake read **0.007** instead of ≥ 1, and
+/// 34.8 m³/s of 502.1 never reached the ocean.
+///
+/// The order is derived from `direction` ITSELF (Kahn over the D8 in-degree) rather than
+/// from an elevation-plus-gradient sort key, and that is the point: a sort key is only
+/// topological if it was built from the same `flat_grad` that built `direction`, a coupling
+/// that is invisible at the call site and silently wrong when violated — and six sites in
+/// this crate reconstruct a [`FlowResult`] from a cache sidecar with `direction` but no
+/// `flat_grad`. Kahn cannot disagree with the receiver field it reads.
+///
+/// `is_land` selects the population that both seeds and propagates; a cell outside it may
+/// still RECEIVE (an ocean mouth accumulates) but never passes anything on, exactly as the
+/// accumulation loops already behave.
+///
+/// Returns `(order, n_unreached)`. `n_unreached > 0` means `direction` contains a **cycle**
+/// over the land population, which no elevation-derived field can legitimately have; those
+/// cells are appended in index order so that no water is silently dropped, and the count is
+/// returned so a guard can fail on it instead of a bench quietly under-reading. Measured 0
+/// on the production seed at 8192² (11 024 627 of 11 024 627 cells reached).
+///
+/// O(n) — strictly cheaper than the O(n log n) sort it replaces.
+pub fn propagation_order(
+    direction: &[u8],
+    is_land: impl Fn(usize) -> bool,
+    w: usize,
+    h: usize,
+) -> (Vec<u32>, usize) {
+    let n = w * h;
+    let receiver = |k: usize| -> Option<usize> {
+        let d = direction[k];
+        if d == DIR_NONE {
+            return None;
+        }
+        let (i, j) = (k % w, k / w);
+        let ni = ((i as i32 + D8_DX[d as usize]).rem_euclid(w as i32)) as usize;
+        let nj = ((j as i32 + D8_DY[d as usize]).rem_euclid(h as i32)) as usize;
+        Some(nj * w + ni)
+    };
+    // In-degree from LAND donors only: a non-land cell never propagates, so it must not
+    // hold its receiver back (this is also why `sinks` can be honoured by skipping the
+    // ADDITION while still walking the order — the order does not depend on them).
+    let mut indeg = vec![0u8; n];
+    let mut land = vec![false; n];
+    let mut n_land = 0usize;
+    for k in 0..n {
+        if is_land(k) {
+            land[k] = true;
+            n_land += 1;
+        }
+    }
+    for k in 0..n {
+        if land[k] {
+            if let Some(r) = receiver(k) {
+                // D8 gives at most 8 donors, so u8 cannot overflow.
+                indeg[r] = indeg[r].saturating_add(1);
+            }
+        }
+    }
+    let mut order: Vec<u32> = Vec::with_capacity(n_land);
+    let mut stack: Vec<u32> = Vec::new();
+    for k in 0..n {
+        if land[k] && indeg[k] == 0 {
+            stack.push(k as u32);
+        }
+    }
+    while let Some(kk) = stack.pop() {
+        let k = kk as usize;
+        order.push(kk);
+        if let Some(r) = receiver(k) {
+            indeg[r] = indeg[r].saturating_sub(1);
+            if indeg[r] == 0 && land[r] {
+                stack.push(r as u32);
+            }
+        }
+    }
+    let n_unreached = n_land - order.len();
+    if n_unreached > 0 {
+        // A cycle in `direction` over land. Append the residue so the caller still
+        // accumulates every cell's own runoff instead of dropping it.
+        let placed: std::collections::HashSet<u32> = order.iter().copied().collect();
+        for k in 0..n {
+            if land[k] && !placed.contains(&(k as u32)) {
+                order.push(k as u32);
+            }
+        }
+    }
+    (order, n_unreached)
+}
+
 fn compute_accumulation(
     filled: &GridF32,
     flat_grad: &[f64],

@@ -959,11 +959,32 @@ pub fn runoff_accumulation(
             acc[k] = (p - pe).max(0.0) * cell_km2 * (1.0 - f_infil);
         }
     }
-    let mut order: Vec<usize> = (0..n).filter(|&k| heightmap.data[k] > C1_SEA_LEVEL_NORM).collect();
-    order.sort_unstable_by(|&a, &b| {
-        flow.filled.data[b].partial_cmp(&flow.filled.data[a]).unwrap_or(std::cmp::Ordering::Equal)
-    });
-    for &k in &order {
+    // ADR Finding 73 — THE ORDER IS THE WHOLE CORRECTNESS OF THIS LOOP, and this is why it
+    // is no longer derived here. The previous version sorted the above-sea cells by
+    // `flow.filled` DESCENDING and nothing else. `pit_fill` fills a depression to its EXACT
+    // sill (Finding 13: "no epsilon increment, so flats are truly flat"), so `filled` is
+    // constant over a filled pit and that key orders NONE of its cells: measured, 100.0 % of
+    // the 605 046 footprint cells of the 42 exorheic surface lakes route to a cell whose
+    // `filled` is not strictly lower, `sort_unstable_by` broke the ties arbitrarily, and a
+    // cell was routinely processed before its own donor — whose contribution was then never
+    // propagated. The median outlet/inlet ratio across a surface lake read 0.007.
+    //
+    // `terrain::flow::compute_accumulation` never had the defect: it breaks the tie on
+    // `flat_grad` (Garbrecht-Martz). This loop was a SECOND COPY of it that dropped the
+    // tiebreak. The order now comes from one shared place, derived from `direction` itself so
+    // it cannot silently disagree with the receiver field (`propagation_order`).
+    //
+    // `sinks` does not enter the order: an endorheic cell still occupies its topological
+    // position, it simply contributes nothing downstream.
+    let (order, n_cyclic) = crate::terrain::flow::propagation_order(
+        &flow.direction,
+        |k| heightmap.data[k] > C1_SEA_LEVEL_NORM,
+        w,
+        h,
+    );
+    debug_assert_eq!(n_cyclic, 0, "`direction` has a cycle over land: the order is degraded");
+    for &kk in &order {
+        let k = kk as usize;
         if sinks.is_some_and(|s| s[k]) {
             continue; // endorheic sink: water dies here, no downstream discharge
         }
