@@ -7881,3 +7881,160 @@ Nothing changed: no production edit, no export field, no threshold, no renderer,
 remains **unattributed**, the perimeter is eliminated as its explanation (8.8 %), and the next
 round's first item is a fourth construction of the A3 control on the segment network rather than
 on the raster.
+
+## Finding 73 — the fourth construction WORKS and it refutes the machinery: `runoff_accumulation` does not carry flow across a filled depression, because its sort key cannot order a flat
+
+Rule 11 first: `segment_discharge_m3s` **5** ADR hits (earliest 929) · `clipped` **8** (1696) ·
+`.basins` **2** (1415) · `has_sill` **2** (1516) · `inflow_m3s` **1** and `evaporation_m3s` **1**
+(both 7861, i.e. Finding 72 itself — nothing antecedent). Reading the earliest hits first paid
+twice, before any measurement:
+
+- **L4162 / `drainage.rs:756`** — the Finding 22 exception: an outlet run does not read its own
+  downstream value, it **inherits `src_q[i]`, the parent's MAXIMUM over its points**
+  (`drainage.rs:534`), taken downstream of the lake. So the out/in ratio does test the carry — the
+  inherited value is only large if the accumulation crossed — but **its magnitude above 1 is not
+  interpretable** (the parent gains catchment below the lake). Declared one-sided before measuring.
+- **L1415, Finding 37 POINT 1** — *"detect_lakes 28 exorheic / 0 without an outlet"*. The
+  population A3 needed had already been counted once, fifty findings ago.
+
+### A3-four — the control finally runs, and it FAILS on its object
+
+Humid only, declared in advance (the arid world has no exorheic surface lake; Finding 72
+attempt 3). Population declared before measuring at 20–45; **measured 42** (excluded: 3
+spillway-fed, 1 with no outlet run). Tolerance declared before measuring: pass iff median r ≥ 1.00
+**and** ≥ 80 % at r ≥ 0.95.
+
+| | prediction (2026-09-10, non-blind) | measured |
+|---|---|---|
+| population | 20–45 | **42** ✓ |
+| median r = OUT/IN | 1.0–1.6 | **0.052** ✗ |
+| share r ≥ 0.95 | ≥ 90 % | **7.1 %** ✗ |
+
+**My prediction is refuted and the measurement wins.** p10 0.007 · p25 0.018 · p75 0.253 · p90
+0.579 · min 0.002 · max 129.9.
+
+The **sensitivity** half passes: at a below-sea basin/spillway interface the same instrument reads
+1000056 → **160.9**, 1000021 → 228.6, 1000035 → 77.5; median **17.1** over the 15 spillway basins
+with an identifiable inlet run, against 0.052 at an ordinary surface lake. **Dynamic range ×328**
+— the instrument is not flat, so the 0.052 is a reading, not a null.
+
+> **Stop rule 1 fires. Blocks 2 and 3 were NOT executed** — no ledger, no discriminant, no A1, no
+> A2, no B2, no 4a, no 4b, no C. Both beds: the arid ledger cannot be more readable than the
+> instrument that would read it, so it inherits the humid verdict rather than being waved through.
+
+### But this time the failure is NOT the instrument's — and here is the proof
+
+The three earlier constructions each measured an artefact of my own. This one does not, and the
+round's obligation ("say how the specification was wrong") turned into an attribution. Two
+measurements separate the only two things the ratio could conflate.
+
+**A3-four-BIS — the raster against the network, same 42 lakes.**
+
+| lake | IN raster | IN pool | OUT raster | r | exits below sea | run on the exit cell | r_seg |
+|---|---|---|---|---|---|---|---|
+| 26 | 18 770.8 | 18 881.4 | **62.1** | 0.003 | **0 / 5** | 0.0015 m³/s | 0.002 |
+| 6 | 91 674.4 | 91 726.1 | **114.5** | 0.001 | **0 / 1** | 0.0078 | 0.003 |
+| 25 | 58 927.3 | 58 930.5 | **66.3** | 0.001 | **0 / 1** | 0.0121 | 0.007 |
+
+(mm·km²/yr.) Median raster ratio **0.007**, share ≥ 0.95 **4.8 %**. And: **a mapped `Watercourse`
+run covers the exit cell for 42 of 42 lakes, and that run's FIRST point IS the exit cell for 40 of
+42.** So the segment layer is doing its job — the outlet run exists, in the right place, and it
+advertises the value it was given. **The raster is the carrier that fails.**
+
+This also **refutes my own Finding 72 explanation of attempt 2**: I wrote that construction 2
+failed because "the exit cell is at or below sea level where `runoff_accumulation` leaves zero".
+Measured: **0 of the exit cells of these 42 lakes is below sea level.** That explanation was wrong.
+
+**A3-four-TER — the mechanism, and a negative control on it.**
+
+`runoff_accumulation` (`drainage.rs:962`) accumulates in **one pass over cells sorted by
+`flow.filled` DESCENDING**. That is a valid topological order of `flow.direction` only where the
+terrain strictly descends. Inside a filled depression `filled` is **flat**, so the key cannot order
+those cells, `sort_unstable_by` breaks the ties arbitrarily, and a cell is routinely processed
+**before its own donor** — whose contribution is then never propagated.
+
+- Over the **605 046** footprint cells of the 42 lakes, **605 046 — 100.0 %** send their water to a
+  cell whose `filled` is **not strictly lower**. The sort key orders none of them.
+- Negative control: re-accumulate with a **true topological order** (Kahn over the D8 in-degree) —
+  same field, same directions, same per-cell runoff, **only the order changed**. The Kahn pass
+  processes 11 024 627 of 11 024 627 above-sea cells, so the D8 land graph is acyclic.
+
+| | shipped order | correct order |
+|---|---|---|
+| median OUT/IN over the 42 lakes | **0.007** | **4.126** |
+| share ≥ 0.95 | 4.8 % | **100.0 %** |
+| p10 · p90 | 0.001 · 0.065 | 1.815 · 10.128 |
+
+**ATTRIBUTED.** The ratios exceed 1 by 2–14× in the corrected order, which is the expected sign:
+the exit cell is downstream and gains catchment. The one-sided prediction was right about the sign
+and wrong about the shipped field.
+
+### What it costs, measured — and what it does NOT explain
+
+**Σ accumulation delivered to OCEAN cells: 167.3 m³/s shipped, 202.1 m³/s in the correct order**,
+against a 502.1 m³/s budget — closure **×0.333 → ×0.403**.
+
+> **+34.8 m³/s, i.e. 8.5 % of the Finding 71 hole (409 m³/s). This is a THIRD named leak, sized —
+> not the explanation of the 81 %.** Perimeter 8.8 %, accumulation order 8.5 %, and the rest still
+> unattributed. Correcting the order does not close the budget: **59.7 % of the runoff still
+> terminates without ever reaching an ocean cell**, which is the Finding 71 chain and remains the
+> open question.
+
+**Blast radius, from the call sites and not from imagination.** `runoff_accumulation` feeds
+`segment_discharge_m3s` (hence `width_m` via Leopold, `drainage_km2` and the navigability class),
+the lake water balance's inflow, and `BasinSummary::inflow_m3s` — which sums `runoff[nk]` cell by
+cell at the shoreline (`drainage.rs:1478`). **So the ledger's own source numbers are downstream of
+this defect**, which is a second, independent reason block 2 could not have been read this round
+even if block 1 had passed.
+
+**And it hits `A_c` too, in the same direction as Finding 65.** Every threshold of the form
+"discharge ≥ X" is evaluated on a field that loses water at every filled depression, so a channel
+head test downstream of one fires later than the physics says. Not measured here; named.
+
+### ⚠️ CORRECTION to Finding 22, at the point of claim
+
+Finding 22's exception is justified in the code by the sentence *"`runoff_accumulation` carries
+flow ACROSS an exorheic lake (flat, routed to the outlet), so a lake's outlet reach inherits the
+whole upstream catchment automatically"* (`drainage.rs:520`). **The premise is false as shipped**:
+measured, the accumulation loses 99.3 % of it (median). The exception itself is still the right
+thing to do — it is the only reason the outlet run advertises anything at all — but it is
+compensating for a defect one layer down, not expressing a property of the accumulation. **A
+correct fix is upstream of it, in the ordering, not in the clip.** Not implemented, per the
+round's constraint.
+
+### My own instrument, corrected a fourth time — and disowned before it was reported
+
+Route (a) of the block-2 cross-check read `flow.basins` **on the footprint cells**. `compute_flow`
+treats every cell at or below sea level as `is_ocean` and `compute_basins` skips those, so a
+below-sea cell carries label **0**: the watershed came back empty and (a) read 0.00 m³/s. Left
+alone that would have been published as "the machinery's accounting is not confirmed" when the only
+broken thing was my label lookup. Corrected to collect the labels of the **shoreline entry cells**;
+**not executed**, because stop rule 1 forbids it. The pattern is now four for four: **a raster whose
+zeros are load-bearing, read as if a zero meant "no water".**
+
+### Block 4 — the invariant, as a SPECIFICATION (not implemented)
+
+Delivered, because it depends on the code and not on the ledger. Finding 72 established that the
+existing `assert!(wc[end] == 1 || sw.chained_into.is_some())` sits at `drainage.rs:2024`, **inside
+the `#[cfg(test)]` module that begins at 1965** — an assertion over a synthetic fixture, with only
+a `verbose`-gated `eprintln!` on the production path. One sentence to replace it:
+
+> **Every spillway must terminate in exactly one of three states — an OCEAN cell (`wc == 1`), a
+> DIFFERENT below-sea region (`region_of[end] ≠ 0` and `≠ own_label`, the case that sets
+> `chained_region` and therefore routes the surplus), or a DETECTED SURFACE LAKE
+> (`detected_lake_map[end] ≠ 0`, the case that sets `chained_into` but NOT `chained_region`, so
+> the surplus is dropped) — and the third case must be counted and reported, never silently
+> accepted.**
+
+Cost: one pass over the 54 spillways, at the end of `below_sea_basin_lakes_infil`, reading three
+arrays it already holds. Note what the wording deliberately does **not** do: it does not use
+`water_class` to name the third case, because Finding 72 established `water_class` cannot represent
+a surface lake above sea level (`wc = 0` means "neither ocean nor enclosed below-sea"). Promotion
+is the author's call and is out of scope here.
+
+### Standing
+
+No production edit, no export field, no threshold, no renderer, no promotion of the invariant, no
+C3. Block 1 **fails**, blocks 2 and 3 are not delivered, block 4 is. What the round produced
+instead is the first **attributed** term of the leak since Finding 71: the accumulation order,
+worth 8.5 %, with a negative control that closes it and a named blast radius.

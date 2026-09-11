@@ -22,15 +22,15 @@ use ymir_core::tectonics_c1::closures::lithology::LithologyConfig;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::closures::volcanism::{VolcanismConfig, place_edifices};
 use ymir_core::tectonics_c1::drainage::{
-    C1DrainageConfig, DrainageClimate, LakeType, apply_lake_water_balance,
-    below_sea_basin_lakes_infil, c1_drainage_windowed, potential_evaporation_mm,
-    runoff_accumulation, runoff_km2_to_m3s,
+    C1DrainageConfig, DrainageClimate, LakeType, SegmentKind, SegmentRow, apply_lake_water_balance,
+    below_sea_basin_lakes_infil, c1_drainage_windowed, clip_rivers_to_lakes,
+    potential_evaporation_mm, runoff_accumulation, runoff_km2_to_m3s,
 };
 use ymir_core::tectonics_c1::init_r7::{Phase2InitParams, init_c1_state_phase_2_r7};
 use ymir_core::tectonics_c1::kinematics::PlateKinematics;
 use ymir_core::tectonics_c1::production_upscale::upscale_from_c1_with_progress;
 use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
-use ymir_core::terrain::flow::{DIR_NONE, FlowConfig, breach_monotone, compute_flow};
+use ymir_core::terrain::flow::{DIR_NONE, FlowConfig, RiverSegment, breach_monotone, compute_flow};
 use ymir_core::terrain::upscale::{ProductionHdOpts, production_hd_config};
 
 const PSEED: u64 = 10_481_999_410_520_546_993;
@@ -135,6 +135,10 @@ fn basin_ledger() {
     let flow = compute_flow(&field, &FlowConfig { sea_level: SEA, ..Default::default() });
     let wc = water_class(&field, SEA);
 
+    // A3-four is defined on the HUMID bed (the arid world has no exorheic surface lake at all),
+    // so its verdict governs BOTH beds: the arid ledger cannot be more readable than the
+    // instrument that would read it. Humid runs first.
+    let mut a3_validated = false;
     for (bed, lat, span) in BEDS {
         eprintln!("\n╔═══════════════ {bed} ({lat}°/span {span}) ═══════════════╗");
         let climate =
@@ -209,115 +213,835 @@ fn basin_ledger() {
             runoff_km2_to_m3s(b_belowsea as f32)
         );
 
+        // The map the SPILLWAY TRACE saw: production passes `Some(&drainage.lake_map)` BEFORE the
+        // below-sea merge, so `did` inside the trace (`drainage.rs:1631`) is read from this one.
+        let premerge_lake_map = dr.lake_map.clone();
         let bs = below_sea_basin_lakes_infil(
             &field,
             &dclim,
             &dcfg,
             &ss,
             DOMAIN_KM,
-            Some(&dr.lake_map),
+            Some(&premerge_lake_map),
             None,
         );
+        // Same call, same arguments, as inside `below_sea_basin_lakes_infil` (sinks None,
+        // infiltration None) ⇒ this array is the one the basin inflows were summed from.
         let runoff = runoff_accumulation(&field, &flow, &dclim, cell_km2, None, None, w, h);
 
-        // ── A3 · BLOCKING instrument control on an ordinary exorheic SURFACE lake ──
+        // ── production's tail, replicated so the network is the CLIPPED one ────────
+        // `assemble_hd_drainage` lines 144–235: merge the below-sea water over the detected
+        // map, drop the detected lakes it submerged, THEN clip, THEN append the spillways.
+        // Replicated here (not called) because `assemble_hd_drainage` discards `BasinSummary`
+        // and `chained_into` — the two fields the ledger is made of (the computed-not-exported
+        // family, Finding 72). `geo_scale_ratio` stays 1.0, the code's default: identity.
+        let mut det_before: HashMap<u32, usize> = HashMap::new();
+        for &id in &dr.lake_map {
+            if id != 0 && id < 1_000_001 {
+                *det_before.entry(id).or_default() += 1;
+            }
+        }
+        let mut det_after: HashMap<u32, usize> = HashMap::new();
+        for k in 0..n {
+            if bs.lake_map[k] != 0 {
+                dr.lake_map[k] = bs.lake_map[k];
+            } else if dr.lake_map[k] != 0 && dr.lake_map[k] < 1_000_001 {
+                *det_after.entry(dr.lake_map[k]).or_default() += 1;
+            }
+        }
+        let absorbed: HashSet<u32> = det_before
+            .keys()
+            .copied()
+            .filter(|id| det_after.get(id).copied().unwrap_or(0) == 0)
+            .collect();
+        dr.lakes.retain(|lk| lk.base.id >= 1_000_001 || !absorbed.contains(&lk.base.id));
+        dr.lakes.extend(bs.lakes.iter().cloned());
+        let before_seg = dr.rivers.segments.len();
+        clip_rivers_to_lakes(&mut dr);
+        let after_clip = dr.rivers.segments.len();
+        let inventoried: HashSet<u32> = dr.lakes.iter().map(|l| l.base.id).collect();
+        for sw in &bs.spillways {
+            let (lx, ly) = *sw.points.last().unwrap_or(&(0, 0));
+            dr.push_segment(SegmentRow {
+                segment: RiverSegment {
+                    points: sw.points.clone(),
+                    strahler_order: 1,
+                    avg_flow: 0.0,
+                    max_flow: 0.0,
+                    basin_id: 0,
+                    upstream: vec![],
+                    downstream: None,
+                },
+                drainage_km2: sw.drainage_km2,
+                navigability: sw.navigability,
+                discharge_m3s: sw.discharge_m3s,
+                width_m: sw.width_m,
+                profile_m: sw.profile_m.clone(),
+                catchment_cells: {
+                    let k = ly as usize * w + lx as usize;
+                    dr.flow.accumulation.data.get(k).copied().unwrap_or(0.0)
+                },
+                discharge_profile_m3s: vec![sw.discharge_m3s; sw.points.len()],
+                kind: SegmentKind::Spillway,
+                source_lake: inventoried.contains(&sw.lake_id).then_some(sw.lake_id),
+            });
+        }
+        assert!(dr.segment_arrays_aligned(), "the replicated tail desynchronised an array");
         eprintln!(
-            "\n── A3 · BLOCKING CONTROL — does the instrument carry flow ACROSS an exorheic surface lake? ──"
+            "   network: {before_seg} pre-clip → {after_clip} clipped → {} with {} spillways \
+             appended | {} detected lake(s) absorbed by the merge",
+            dr.rivers.segments.len(),
+            bs.spillways.len(),
+            absorbed.len()
         );
+
+        // footprints on the FINAL (merged) map — the one the clip ran against
         let mut foot: HashMap<u32, Vec<usize>> = HashMap::new();
         for k in 0..n {
             let id = dr.lake_map[k];
-            if id != 0 && id < 1_000_001 {
+            if id != 0 {
                 foot.entry(id).or_default().push(k);
             }
         }
-        let mut cands: Vec<&ymir_core::tectonics_c1::drainage::C1Lake> = dr
-            .lakes
-            .iter()
-            .filter(|l| l.base.id < 1_000_001 && l.lake_type == LakeType::Exorheic)
-            .collect();
-        cands.sort_by(|a, b| {
-            b.area_km2.partial_cmp(&a.area_km2).unwrap_or(std::cmp::Ordering::Equal)
-        });
-        // CORRECTED CONTROL. The first version read `lk.base.outlet` — the PRE-BREACH sill, a
-        // saddle on the rim — and followed `flow.direction` on the BREACHED field, where that
-        // depression no longer exists. A saddle carries almost no accumulation, so the control
-        // could not pass: it measured the wrong cell. Corrected: start at the footprint's OWN
-        // maximum-accumulation cell and walk downstream until leaving the footprint. That tests
-        // "does flow continue past the lake" without depending on where the sill was.
-        let mut a3_ok = false;
-        let mut a3_n = 0usize;
-        for lk in cands.iter().take(3) {
-            let Some(cells) = foot.get(&lk.base.id) else { continue };
-            let member: std::collections::HashSet<usize> = cells.iter().copied().collect();
-            let (mut kmax, mut inside) = (cells[0], 0.0f32);
-            for &k in cells {
-                if runoff[k] > inside {
-                    inside = runoff[k];
-                    kmax = k;
+        // 8-neighbour lake ids of a cell, on the final map
+        let nb_ids = |k: usize| -> Vec<u32> {
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            let mut v = Vec::new();
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
+                        let id = dr.lake_map[ny as usize * w + nx as usize];
+                        if id != 0 && !v.contains(&id) {
+                            v.push(id);
+                        }
+                    }
                 }
             }
-            let mut cur = kmax;
-            let mut steps = 0usize;
-            let down = loop {
-                steps += 1;
-                if steps > 10_000 {
-                    break None;
+            v
+        };
+        // Per lake: max discharge of a WATERCOURSE run whose SOURCE borders it (an outlet, the
+        // Finding 37 definition) and of one whose MOUTH borders it (an inlet). A run that is
+        // both is counted in NEITHER — declared, and reported.
+        let mut out_q: HashMap<u32, f32> = HashMap::new();
+        let mut in_q: HashMap<u32, f32> = HashMap::new();
+        let (mut n_out, mut n_in, mut n_both) = (0usize, 0usize, 0usize);
+        for (i, s) in dr.rivers.segments.iter().enumerate() {
+            if dr.segment_kind[i] != SegmentKind::Watercourse {
+                continue;
+            }
+            let q = dr.segment_discharge_m3s[i];
+            let (&(sx, sy), &(ex, ey)) = (s.points.first().unwrap(), s.points.last().unwrap());
+            let src = nb_ids(sy as usize * w + sx as usize);
+            let mouth = nb_ids(ey as usize * w + ex as usize);
+            let both: Vec<u32> = src.iter().copied().filter(|id| mouth.contains(id)).collect();
+            for id in &src {
+                if both.contains(id) {
+                    continue;
                 }
-                let d = flow.direction[cur];
-                if d == DIR_NONE {
-                    break None;
+                n_out += 1;
+                let e = out_q.entry(*id).or_insert(0.0);
+                *e = e.max(q);
+            }
+            for id in &mouth {
+                if both.contains(id) {
+                    continue;
                 }
-                let (x, y) = (
-                    (cur % w) as i32 + ymir_core::terrain::flow::D8_DX[d as usize],
-                    (cur / w) as i32 + ymir_core::terrain::flow::D8_DY[d as usize],
+                n_in += 1;
+                let e = in_q.entry(*id).or_insert(0.0);
+                *e = e.max(q);
+            }
+            n_both += both.len();
+        }
+        // lakes a spillway lands in (either map: the trace read the pre-merge one)
+        let mut spill_fed: HashSet<u32> = HashSet::new();
+        for sw in &bs.spillways {
+            let &(lx, ly) = sw.points.last().unwrap();
+            let k = ly as usize * w + lx as usize;
+            for id in [dr.lake_map[k], premerge_lake_map[k]] {
+                if id != 0 {
+                    spill_fed.insert(id);
+                }
+            }
+        }
+
+        // ── A3-FOUR · BLOCKING CONTROL, on the SEGMENT network ─────────────────────
+        //
+        // FOURTH construction, to the specification written in Finding 72 after three of my own
+        // failures: discharge of the run LEAVING the lake against the max discharge of the runs
+        // ENTERING it — clipped network, `SegmentKind::Watercourse`, population INHERITED.
+        //
+        // The three that failed, so this is not repeated:
+        //   1. one step downstream of `lk.base.outlet` — the PRE-BREACH sill, read on the
+        //      BREACHED field where that depression is gone. A saddle carries no accumulation.
+        //   2. the footprint's own max-accumulation cell, walked downstream — lands at or below
+        //      sea level, where `runoff_accumulation` leaves zero BY CONSTRUCTION.
+        //   3. either of those on the arid bed — EMPTY POPULATION, a rule-10 failure of mine.
+        //
+        // Why the segment network instead: `clip_rivers_to_lakes` (`drainage.rs:756`) makes an
+        // outlet run INHERIT `src_q[i]`, the parent's value at the PARENT'S MOUTH, downstream
+        // of the lake. That value is only large if the accumulation actually crossed the lake,
+        // so the ratio does test the carry — but its MAGNITUDE above 1 is not interpretable
+        // (the parent gains catchment below the lake). One-sided test, declared as such.
+        //
+        // HUMID ONLY, declared in advance: attempt 3 established that the arid bed has no
+        // exorheic detected surface lake at all. That is a property of that world.
+        if bed != "humid" {
+            eprintln!(
+                "\n── A3-four · SKIPPED ON THIS BED, DECLARED IN ADVANCE ──\n   the arid bed has \
+                 no exorheic detected surface lake (Finding 72, attempt 3): an empty population, \
+                 a property of the world, not an accident. The control is defined on humid, and \
+                 **this bed inherits the humid verdict** ({}).",
+                if a3_validated { "VALIDATED" } else { "NOT VALIDATED" }
+            );
+        }
+        let mut a3_ok = if bed == "humid" { false } else { a3_validated };
+        if bed == "humid" {
+            eprintln!(
+                "\n── A3-four · BLOCKING CONTROL — does the CLIPPED NETWORK carry flow across an \
+                 exorheic surface lake? ──"
+            );
+            eprintln!(
+                "   endpoint bookkeeping: {n_out} (run source, lake) pairs · {n_in} (run mouth, \
+                 lake) pairs · {n_both} pairs excluded because the SAME run both starts and ends \
+                 on the same lake"
+            );
+            // VALIDATION population: exorheic detected lakes, NOT fed by a spillway, with both
+            // an outlet run and an inlet run carrying non-zero discharge.
+            let mut rows: Vec<(u32, f32, f32, f32, f32)> = Vec::new(); // id, area, in, out, r
+            let mut excluded_spill = 0usize;
+            let mut excluded_noinlet = 0usize;
+            let mut excluded_nooutlet = 0usize;
+            for lk in dr.lakes.iter() {
+                if lk.base.id >= 1_000_001 || lk.lake_type != LakeType::Exorheic {
+                    continue;
+                }
+                if !foot.contains_key(&lk.base.id) {
+                    continue;
+                }
+                if spill_fed.contains(&lk.base.id) {
+                    excluded_spill += 1;
+                    continue;
+                }
+                let qi = in_q.get(&lk.base.id).copied().unwrap_or(0.0);
+                let qo = out_q.get(&lk.base.id).copied().unwrap_or(0.0);
+                if qi <= 0.0 {
+                    excluded_noinlet += 1;
+                    continue;
+                }
+                if out_q.get(&lk.base.id).is_none() {
+                    excluded_nooutlet += 1;
+                    continue;
+                }
+                rows.push((lk.base.id, lk.area_km2, qi, qo, qo / qi));
+            }
+            eprintln!(
+                "   POPULATION {} lakes  (excluded: {excluded_spill} spillway-fed, \
+                 {excluded_noinlet} with no inlet run, {excluded_nooutlet} with no outlet run)",
+                rows.len()
+            );
+            if rows.len() < 5 {
+                eprintln!(
+                    "   ⚠️ POPULATION UNDER 5 — rule 10 on my own control: this cannot be read."
                 );
-                if x < 0 || y < 0 || x as usize >= w || y as usize >= h {
-                    break None;
-                }
-                let nk = y as usize * w + x as usize;
-                if !member.contains(&nk) {
-                    break Some(nk);
-                }
-                cur = nk;
+            }
+            rows.sort_by(|a, b| a.4.partial_cmp(&b.4).unwrap_or(std::cmp::Ordering::Equal));
+            let np = rows.len();
+            let median = if np == 0 { 0.0 } else { rows[np / 2].4 };
+            let share_ok =
+                rows.iter().filter(|r| r.4 >= 0.95).count() as f64 / np.max(1) as f64 * 100.0;
+            let pct = |p: f64| -> f32 {
+                if np == 0 { 0.0 } else { rows[((np as f64 - 1.0) * p) as usize].4 }
             };
-            a3_n += 1;
-            let dq = down.map(|k| runoff[k]).unwrap_or(0.0);
-            let ratio = dq / inside.max(1e-9);
             eprintln!(
-                "   lake {:>8} area {:>8.1} km² | max runoff INSIDE {:>10.1} → one step \
-                 DOWNSTREAM of the outlet {:>10.1} mm·km²/yr | ratio {ratio:.3} ({:.3} vs \
-                 {:.3} m³/s)",
-                lk.base.id,
-                lk.area_km2,
-                inside,
-                dq,
-                runoff_km2_to_m3s(inside),
-                runoff_km2_to_m3s(dq)
+                "   ratio OUT/IN  [Watercourse, clipped, discharge population INHERITED at the \
+                 outlet run]\n   p10 {:.3} · p25 {:.3} · **median {median:.3}** · p75 {:.3} · p90 \
+                 {:.3} · min {:.3} · max {:.3}\n   share with r ≥ 0.95: **{share_ok:.1} %**  \
+                 (declared threshold: median ≥ 1.00 AND share ≥ 80 %)",
+                pct(0.10),
+                pct(0.25),
+                pct(0.75),
+                pct(0.90),
+                rows.first().map(|r| r.4).unwrap_or(0.0),
+                rows.last().map(|r| r.4).unwrap_or(0.0)
             );
-            if ratio >= 0.9 {
-                a3_ok = true;
+            eprintln!(
+                "   the 6 LOWEST ratios (where a failure would show) and the 3 largest lakes:\n   \
+                 {:>8} {:>10} {:>12} {:>12} {:>8}",
+                "lake", "area km²", "max IN m³/s", "OUT m³/s", "r"
+            );
+            for r in rows.iter().take(6) {
+                eprintln!("   {:>8} {:>10.2} {:>12.4} {:>12.4} {:>8.3}", r.0, r.1, r.2, r.3, r.4);
+            }
+            let mut by_area = rows.clone();
+            by_area.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            for r in by_area.iter().take(3) {
+                eprintln!(
+                    "   {:>8} {:>10.2} {:>12.4} {:>12.4} {:>8.3}  ← by area",
+                    r.0, r.1, r.2, r.3, r.4
+                );
+            }
+            a3_ok = np >= 5 && median >= 1.00 && share_ok >= 80.0;
+            a3_validated = a3_ok;
+
+            // SENSITIVITY — the same instrument on an interface Finding 71 knows is unbalanced:
+            // a below-sea basin and its spillway. An instrument reading ≈ 1 everywhere measures
+            // nothing, so this must read the gap.
+            eprintln!(
+                "\n   SENSITIVITY — the same ratio at a BELOW-SEA basin / spillway interface \
+                 (F71 knows these unbalanced):\n   {:>10} {:>14} {:>16} {:>10} {:>12}",
+                "basin", "max IN m³/s", "spillway OUT m³/s", "r", "chained_into"
+            );
+            let mut sens: Vec<(u32, f32, f32, f32)> = bs
+                .spillways
+                .iter()
+                .map(|sw| {
+                    let qi = in_q.get(&sw.lake_id).copied().unwrap_or(0.0);
+                    (sw.lake_id, qi, sw.discharge_m3s, sw.discharge_m3s / qi.max(1e-9))
+                })
+                .collect();
+            sens.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+            for s in sens.iter().take(5) {
+                let ci = bs
+                    .spillways
+                    .iter()
+                    .find(|sw| sw.lake_id == s.0)
+                    .and_then(|sw| sw.chained_into)
+                    .map_or("None".to_string(), |v| v.to_string());
+                eprintln!(
+                    "   {:>10} {:>14.4} {:>16.2} {:>10.1} {:>12}",
+                    s.0,
+                    s.1,
+                    s.2,
+                    if s.1 > 0.0 { s.3 } else { f32::INFINITY },
+                    ci
+                );
+            }
+            let with_inlet: Vec<f32> =
+                sens.iter().filter(|s| s.1 > 0.0).map(|s| s.3).collect::<Vec<_>>();
+            let mut wi = with_inlet.clone();
+            wi.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            eprintln!(
+                "   {} of {} spillway basins have an identifiable inlet run; median r there \
+                 **{:.1}** against **{median:.3}** at an ordinary surface lake ⇒ dynamic range \
+                 ×{:.0}",
+                wi.len(),
+                sens.len(),
+                wi.get(wi.len() / 2).copied().unwrap_or(0.0),
+                wi.get(wi.len() / 2).copied().unwrap_or(0.0) / median.max(1e-9)
+            );
+
+            eprintln!(
+                "\n   ⇒ {}",
+                if a3_ok {
+                    "VALIDATES: the clipped network DOES carry flow across an exorheic surface \
+                     lake, and the instrument has range. The ledger is readable."
+                } else {
+                    "DOES NOT VALIDATE"
+                }
+            );
+
+            // ── A3-four-BIS · WHICH of the two carries: the RASTER or the NETWORK? ──
+            //
+            // Stop rule 1 says "say HOW the specification was wrong", and that cannot be said
+            // without separating the two objects the ratio conflates. `segment_discharge_m3s`
+            // is `max over the parent's points of the discharge RASTER` (`drainage.rs:534`),
+            // and an outlet run inherits that max (`:756`). So a small OUT can mean either:
+            //   (i) the raster does not carry across the pool — then Finding 22's exception,
+            //       whose stated justification is "the runoff accumulation is carried across an
+            //       exorheic pool", rests on a false premise; or
+            //  (ii) the raster carries and NO RUN IS EMITTED on the far side — then the defect
+            //       is in the clip/tracing and the export loses the trunk below every lake.
+            // These have opposite remedies, so the round must not guess between them.
+            if !a3_ok && !rows.is_empty() {
+                eprintln!(
+                    "\n   ── A3-four-BIS · the RASTER against the NETWORK, same population ──"
+                );
+                // every cell that RECEIVES from a footprint cell = an exit; every above-sea
+                // cell that DRAINS INTO one = an inlet (the `drainage.rs:1478` definition).
+                let mut exit_of: HashMap<usize, u32> = HashMap::new();
+                let mut in_r: HashMap<u32, f32> = HashMap::new();
+                let mut inside_r: HashMap<u32, f32> = HashMap::new();
+                let mut out_r: HashMap<u32, f32> = HashMap::new();
+                let mut out_r_dry: HashMap<u32, f32> = HashMap::new();
+                let mut exits_below_sea: HashMap<u32, usize> = HashMap::new();
+                let mut exits_total: HashMap<u32, usize> = HashMap::new();
+                let pop: HashSet<u32> = rows.iter().map(|r| r.0).collect();
+                let recv = |k: usize| -> Option<usize> {
+                    let d = flow.direction[k];
+                    if d == DIR_NONE {
+                        return None;
+                    }
+                    let (x, y) = ((k % w) as i32, (k / w) as i32);
+                    let nx = (x + ymir_core::terrain::flow::D8_DX[d as usize]).rem_euclid(w as i32);
+                    let ny = (y + ymir_core::terrain::flow::D8_DY[d as usize]).rem_euclid(h as i32);
+                    Some(ny as usize * w + nx as usize)
+                };
+                for k in 0..n {
+                    let id = dr.lake_map[k];
+                    if pop.contains(&id) {
+                        let e = inside_r.entry(id).or_insert(0.0);
+                        *e = e.max(runoff[k]);
+                        if let Some(nk) = recv(k) {
+                            if dr.lake_map[nk] != id {
+                                *exits_total.entry(id).or_default() += 1;
+                                exit_of.insert(nk, id);
+                                let e = out_r_dry.entry(id).or_insert(0.0);
+                                *e = e.max(runoff[nk]);
+                                if field.data[nk] > SEA {
+                                    let e = out_r.entry(id).or_insert(0.0);
+                                    *e = e.max(runoff[nk]);
+                                } else {
+                                    *exits_below_sea.entry(id).or_default() += 1;
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                    if field.data[k] <= SEA {
+                        continue;
+                    }
+                    if let Some(nk) = recv(k) {
+                        let tid = dr.lake_map[nk];
+                        if pop.contains(&tid) {
+                            let e = in_r.entry(tid).or_insert(0.0);
+                            *e = e.max(runoff[k]);
+                        }
+                    }
+                }
+                // is there a RUN on the exit cell at all, and what does it advertise?
+                let mut run_at_exit: HashMap<u32, (f32, bool)> = HashMap::new();
+                for (i, s) in dr.rivers.segments.iter().enumerate() {
+                    if dr.segment_kind[i] != SegmentKind::Watercourse {
+                        continue;
+                    }
+                    let q = dr.segment_discharge_m3s[i];
+                    for (pi, &(px, py)) in s.points.iter().enumerate() {
+                        if let Some(&id) = exit_of.get(&(py as usize * w + px as usize)) {
+                            let e = run_at_exit.entry(id).or_insert((0.0, false));
+                            if q >= e.0 {
+                                *e = (q, pi == 0);
+                            }
+                        }
+                    }
+                }
+                eprintln!(
+                    "   {:>6} {:>10} {:>10} {:>10} {:>8} {:>7} {:>10} {:>8} {:>6}",
+                    "lake",
+                    "IN raster",
+                    "IN pool",
+                    "OUT rast",
+                    "r_rast",
+                    "exits",
+                    "run@exit Q",
+                    "r_seg",
+                    "src?"
+                );
+                let mut rr: Vec<f32> = Vec::new();
+                let mut with_run = 0usize;
+                let mut src_at_exit = 0usize;
+                for r in rows.iter() {
+                    let id = r.0;
+                    let (qi, qp, qo) = (
+                        in_r.get(&id).copied().unwrap_or(0.0),
+                        inside_r.get(&id).copied().unwrap_or(0.0),
+                        out_r.get(&id).copied().unwrap_or(0.0),
+                    );
+                    let ratio = qo / qi.max(1e-9);
+                    rr.push(ratio);
+                    let (rq, is_src) = run_at_exit.get(&id).copied().unwrap_or((0.0, false));
+                    if rq > 0.0 {
+                        with_run += 1;
+                    }
+                    if is_src {
+                        src_at_exit += 1;
+                    }
+                    if rr.len() <= 8 {
+                        eprintln!(
+                            "   {:>6} {:>10.1} {:>10.1} {:>10.1} {:>8.3} {:>3}/{:>3} {:>10.4} \
+                             {:>8.3} {:>6}",
+                            id,
+                            qi,
+                            qp,
+                            qo,
+                            ratio,
+                            exits_below_sea.get(&id).copied().unwrap_or(0),
+                            exits_total.get(&id).copied().unwrap_or(0),
+                            rq,
+                            r.4,
+                            if is_src { "yes" } else { "no" }
+                        );
+                    }
+                }
+                rr.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                eprintln!(
+                    "   (units: mm·km²/yr for the raster columns, m³/s for run@exit)\n   \
+                     RASTER ratio OUT/IN over the same {} lakes: p10 {:.3} · **median {:.3}** · \
+                     p90 {:.3} · share ≥ 0.95 **{:.1} %**",
+                    rr.len(),
+                    rr[(rr.len() as f64 * 0.10) as usize],
+                    rr[rr.len() / 2],
+                    rr[((rr.len() - 1) as f64 * 0.90) as usize],
+                    100.0 * rr.iter().filter(|&&v| v >= 0.95).count() as f64 / rr.len() as f64
+                );
+                eprintln!(
+                    "   a mapped Watercourse run covers the exit cell for **{with_run} of {}** \
+                     lakes; the run's FIRST point is the exit cell for **{src_at_exit}**",
+                    rr.len()
+                );
+                eprintln!(
+                    "   ⇒ {}",
+                    if rr[rr.len() / 2] >= 0.95 {
+                        "(ii) THE RASTER CARRIES and the NETWORK does not represent it — the \
+                         defect is in the segment layer, not in the accumulation"
+                    } else {
+                        "(i) THE RASTER ITSELF DOES NOT CARRY across an exorheic surface pool — \
+                         Finding 22's exception rests on a premise that is false here"
+                    }
+                );
+
+                // ── A3-four-TER · WHY the raster does not carry, and a negative control ──
+                //
+                // PREDICTION WRITTEN BEFORE RUNNING (2026-09-11). `runoff_accumulation`
+                // (`drainage.rs:962`) accumulates in ONE pass over cells sorted by
+                // `flow.filled` DESCENDING. Inside a filled depression `filled` is FLAT — every
+                // cell holds the same value — so that sort is NOT a topological order of
+                // `flow.direction`: with `sort_unstable_by` the ties come out arbitrarily and a
+                // cell can be processed BEFORE its own donor, whose contribution is then never
+                // propagated. A pre-breach lake footprint is exactly such a flat on the
+                // breached field (the breach carves a channel; the rest of the bowl re-fills).
+                //
+                // If that is the mechanism, re-accumulating with a TRUE topological order
+                // (Kahn over the D8 in-degree) — same field, same directions, same per-cell
+                // runoff, ONLY the order changed — must lift the median OUT/IN from 0.007 to
+                // ≥ 0.95. If it does not move, this explanation is wrong and I say so.
+                let mut ties = 0u64;
+                let mut foot_cells = 0u64;
+                for k in 0..n {
+                    if !pop.contains(&dr.lake_map[k]) {
+                        continue;
+                    }
+                    foot_cells += 1;
+                    if let Some(nk) = recv(k) {
+                        if flow.filled.data[nk] >= flow.filled.data[k] {
+                            ties += 1;
+                        }
+                    }
+                }
+                eprintln!(
+                    "\n   ── A3-four-TER · the ORDER, and a negative control on it ──\n   \
+                     over the {foot_cells} footprint cells of the 42 lakes, **{ties} \
+                     ({:.1} %)** send their water to a cell whose `filled` is NOT strictly \
+                     lower — i.e. the sort key cannot order them",
+                    100.0 * ties as f64 / foot_cells.max(1) as f64
+                );
+                // Kahn accumulation: identical inputs, correct order.
+                let mut indeg = vec![0u8; n];
+                for k in 0..n {
+                    if field.data[k] > SEA {
+                        if let Some(nk) = recv(k) {
+                            indeg[nk] = indeg[nk].saturating_add(1);
+                        }
+                    }
+                }
+                let mut acc2 = vec![0.0f32; n];
+                let mut stack: Vec<u32> = Vec::new();
+                for k in 0..n {
+                    if field.data[k] > SEA {
+                        acc2[k] = surplus_mm_km2[k];
+                        if indeg[k] == 0 {
+                            stack.push(k as u32);
+                        }
+                    }
+                }
+                let mut processed = 0u64;
+                let above: u64 = (0..n).filter(|&k| field.data[k] > SEA).count() as u64;
+                while let Some(kk) = stack.pop() {
+                    let k = kk as usize;
+                    processed += 1;
+                    if let Some(nk) = recv(k) {
+                        acc2[nk] += acc2[k];
+                        indeg[nk] = indeg[nk].saturating_sub(1);
+                        if indeg[nk] == 0 && field.data[nk] > SEA {
+                            stack.push(nk as u32);
+                        }
+                    }
+                }
+                eprintln!(
+                    "   Kahn pass: {processed} of {above} above-sea cells processed{}",
+                    if processed == above {
+                        " — the D8 graph over land is acyclic, as it must be"
+                    } else {
+                        " — ⚠ UNPROCESSED cells remain: a CYCLE in `flow.direction` (a second \
+                         defect, reported not fixed)"
+                    }
+                );
+                // ONE pass for every lake at once (42 × n would be 2.8e9 iterations)
+                let mut in_r2: HashMap<u32, f32> = HashMap::new();
+                let mut out_r2: HashMap<u32, f32> = HashMap::new();
+                for k in 0..n {
+                    let id = dr.lake_map[k];
+                    if pop.contains(&id) {
+                        if let Some(nk) = recv(k) {
+                            if dr.lake_map[nk] != id && field.data[nk] > SEA {
+                                let e = out_r2.entry(id).or_insert(0.0);
+                                *e = e.max(acc2[nk]);
+                            }
+                        }
+                    } else if field.data[k] > SEA {
+                        if let Some(nk) = recv(k) {
+                            let tid = dr.lake_map[nk];
+                            if pop.contains(&tid) {
+                                let e = in_r2.entry(tid).or_insert(0.0);
+                                *e = e.max(acc2[k]);
+                            }
+                        }
+                    }
+                }
+                let mut rr2: Vec<f32> = Vec::new();
+                eprintln!(
+                    "   {:>6} {:>12} {:>12} {:>8} {:>12} {:>12} {:>8}",
+                    "lake", "IN shipped", "OUT shipped", "r", "IN ordered", "OUT ordered", "r"
+                );
+                for r in rows.iter() {
+                    let id = r.0;
+                    let qi2 = in_r2.get(&id).copied().unwrap_or(0.0);
+                    let qo2 = out_r2.get(&id).copied().unwrap_or(0.0);
+                    rr2.push(qo2 / qi2.max(1e-9));
+                    if rr2.len() <= 8 {
+                        eprintln!(
+                            "   {:>6} {:>12.1} {:>12.1} {:>8.3} {:>12.1} {:>12.1} {:>8.3}",
+                            id,
+                            in_r.get(&id).copied().unwrap_or(0.0),
+                            out_r.get(&id).copied().unwrap_or(0.0),
+                            out_r.get(&id).copied().unwrap_or(0.0)
+                                / in_r.get(&id).copied().unwrap_or(0.0).max(1e-9),
+                            qi2,
+                            qo2,
+                            qo2 / qi2.max(1e-9)
+                        );
+                    }
+                }
+                rr2.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let med2 = rr2[rr2.len() / 2];
+                eprintln!(
+                    "   ORDER-CORRECTED ratio over the same {} lakes: p10 {:.3} · **median \
+                     {med2:.3}** · p90 {:.3} · share ≥ 0.95 **{:.1} %**   (shipped order: median \
+                     {:.3}, share {:.1} %)",
+                    rr2.len(),
+                    rr2[(rr2.len() as f64 * 0.10) as usize],
+                    rr2[((rr2.len() - 1) as f64 * 0.90) as usize],
+                    100.0 * rr2.iter().filter(|&&v| v >= 0.95).count() as f64 / rr2.len() as f64,
+                    rr[rr.len() / 2],
+                    100.0 * rr.iter().filter(|&&v| v >= 0.95).count() as f64 / rr.len() as f64
+                );
+                let tot_ship = runoff_km2_to_m3s(
+                    (0..n).filter(|&k| wc[k] == 1).map(|k| runoff[k] as f64).sum::<f64>() as f32,
+                );
+                let tot_ord = runoff_km2_to_m3s(
+                    (0..n).filter(|&k| wc[k] == 1).map(|k| acc2[k] as f64).sum::<f64>() as f32,
+                );
+                eprintln!(
+                    "   Σ accumulation DELIVERED TO OCEAN cells: shipped order **{tot_ship:.1} \
+                     m³/s**, correct order **{tot_ord:.1} m³/s**, budget {budget:.1} ⇒ closure \
+                     ×{:.3} → ×{:.3}",
+                    tot_ship as f64 / budget,
+                    tot_ord as f64 / budget
+                );
+                eprintln!(
+                    "   ⇒ {}",
+                    if med2 >= 0.95 {
+                        "ATTRIBUTED: the loss is the ACCUMULATION ORDER on flats, and the \
+                         negative control (same inputs, correct order) closes it"
+                    } else {
+                        "NOT the order: the prediction is REFUTED and the loss is elsewhere"
+                    }
+                );
             }
         }
-        if a3_n == 0 {
-            eprintln!(
-                "   ⚠️ EMPTY POPULATION — no exorheic DETECTED lake with a footprint exists in this bed. The control DID NOT RUN: a rule-10 failure in my own control, not a result about the machinery."
-            );
-        }
-        eprintln!(
-            "   ⇒ {} — over {a3_n} lake(s)",
-            if a3_ok {
-                "CLOSES: the instrument DOES carry flow across an exorheic surface lake"
-            } else if a3_n == 0 {
-                "VOID (no population)"
-            } else {
-                "DOES NOT CLOSE"
-            }
-        );
         if !a3_ok {
             eprintln!(
-                "   ⛔ STOP RULE FIRES: the ledger would prove what the machinery wrote. \
-                 Not reading A1."
+                "   ⛔ STOP RULE 1 FIRES: the instrument is still not validated on its own \
+                 object, so the Finding 72 specification was wrong. Not reading the ledger."
+            );
+            continue;
+        }
+
+        // The chain edges, needed by BOTH the cross-check (block 2) and the ledger:
+        // Σ discharge of the spillways that NAME a basin in `chained_into`.
+        let mut in_chain: HashMap<u32, f64> = HashMap::new();
+        for sw in &bs.spillways {
+            if let Some(t) = sw.chained_into {
+                *in_chain.entry(t).or_default() += sw.discharge_m3s as f64;
+            }
+        }
+        let out_of: HashMap<u32, f64> =
+            bs.spillways.iter().map(|s| (s.lake_id, s.discharge_m3s as f64)).collect();
+
+        // ── §3 · BLOCKING · ONE basin reconstructed end to end, independently ─────
+        //
+        // Target: 1000056, the 240.8 m³/s basin of Finding 71. Admissible error DECLARED BEFORE
+        // MEASURING: ±10 % passes, ±10–25 % is marginal and reported as such, **> ±25 % fires
+        // stop rule 2** — the ledger cannot then be read from `BasinSummary`.
+        //
+        // Three routes, kept separate so a gap can be ATTRIBUTED instead of averaged:
+        //  (a) the watershed × the measured runoff surplus — geometric, integrated straight from
+        //      precipitation and PE, and INDEPENDENT of `runoff_accumulation`;
+        //  (b) Σ discharge of the spillways naming it in `chained_into` — the export's chain;
+        //  (c) the shoreline sum re-derived exactly as `drainage.rs:1478` does it, from the
+        //      bench's own `runoff` array (same call, same arguments ⇒ same array). NOT
+        //      independent: it isolates `extra_inflow` = inflow_m3s − (c) so (a) and (b) can be
+        //      tested against the right halves.
+        eprintln!("\n── §3 · BLOCKING CROSS-CHECK — basin 1000056 reconstructed end to end ──");
+        let targets: Vec<u32> = if bs.basins.iter().any(|b| b.id == 1_000_056) {
+            vec![1_000_056]
+        } else {
+            let v: Vec<u32> = bs
+                .basins
+                .iter()
+                .max_by(|a, b| {
+                    a.inflow_m3s.partial_cmp(&b.inflow_m3s).unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map(|b| vec![b.id])
+                .unwrap_or_default();
+            eprintln!(
+                "   ⚠️ basin 1000056 is not present on this bed; falling back to the largest \
+                 `inflow_m3s` basin {v:?} — a DIFFERENT object, stated as such"
+            );
+            v
+        };
+        let mut xcheck_ok = true;
+        for target in targets {
+            // (a) the watershed: the D8 basin labels of the SHORELINE ENTRY CELLS — the
+            // above-sea cells whose receiver is a footprint cell — then every above-sea cell
+            // carrying one of those labels.
+            //
+            // ⚠️ CORRECTED, and it was my bug, not the machinery's. The first version read
+            // `flow.basins` ON the footprint cells. `compute_flow` treats EVERY cell at or
+            // below the sea level as `is_ocean`, and `compute_basins` skips those, so a
+            // below-sea cell carries label 0 — the collection came back EMPTY and route (a)
+            // read 0.00 m³/s. That would have been reported as "the machinery's accounting is
+            // not confirmed" when the only thing not working was my label lookup. Fourth
+            // instrument failure of this campaign; the pattern is always the same, a raster
+            // whose zeros are load-bearing.
+            let labels: HashSet<u32> = (0..n)
+                .filter(|&k| field.data[k] > SEA)
+                .filter(|&k| {
+                    let d = flow.direction[k];
+                    if d == DIR_NONE {
+                        return false;
+                    }
+                    let (x, y) = ((k % w) as i32, (k / w) as i32);
+                    let nx = (x + ymir_core::terrain::flow::D8_DX[d as usize]).rem_euclid(w as i32);
+                    let ny = (y + ymir_core::terrain::flow::D8_DY[d as usize]).rem_euclid(h as i32);
+                    bs.lake_map[ny as usize * w + nx as usize] == target
+                })
+                .map(|k| flow.basins[k])
+                .filter(|&l| l != 0)
+                .collect();
+            let mut recon = 0.0f64;
+            let mut recon_cells = 0usize;
+            for k in 0..n {
+                if field.data[k] > SEA && labels.contains(&flow.basins[k]) {
+                    recon += surplus_mm_km2[k] as f64;
+                    recon_cells += 1;
+                }
+            }
+            let recon_m3s = runoff_km2_to_m3s(recon as f32) as f64;
+            // (c) the shoreline sum, the machinery's own definition, re-derived
+            let mut shore = 0.0f64;
+            for k in 0..n {
+                if bs.lake_map[k] != target || wc[k] != 2 {
+                    continue;
+                }
+                let (x, y) = ((k % w) as i32, (k / w) as i32);
+                for (dx, dy) in
+                    ymir_core::terrain::flow::D8_DX.iter().zip(ymir_core::terrain::flow::D8_DY)
+                {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx as usize >= w || ny as usize >= h {
+                        continue;
+                    }
+                    let nk = ny as usize * w + nx as usize;
+                    if field.data[nk] <= SEA {
+                        continue;
+                    }
+                    let d = flow.direction[nk];
+                    if d == DIR_NONE {
+                        continue;
+                    }
+                    let (tx, ty) = (
+                        nx + ymir_core::terrain::flow::D8_DX[d as usize],
+                        ny + ymir_core::terrain::flow::D8_DY[d as usize],
+                    );
+                    if tx >= 0 && ty >= 0 && (tx as usize) < w && (ty as usize) < h {
+                        if ty as usize * w + tx as usize == k {
+                            shore += runoff[nk] as f64;
+                        }
+                    }
+                }
+            }
+            let shore_m3s = runoff_km2_to_m3s(shore as f32) as f64;
+            let inc = in_chain.get(&target).copied().unwrap_or(0.0);
+            let reported = bs
+                .basins
+                .iter()
+                .find(|b| b.id == target)
+                .map(|b| b.inflow_m3s as f64)
+                .unwrap_or(0.0);
+            let extra = reported - shore_m3s; // what the fixpoint added, isolated
+            let total = recon_m3s + inc;
+            let r = total / reported.max(1e-9);
+            eprintln!(
+                "   basin {target}   [Spillway source · population: local + chain-inherited]\n   \
+                 (a) watershed {recon_cells} above-sea cells over {} D8 label(s) × measured \
+                 surplus = **{recon_m3s:.2} m³/s**  ← independent of `runoff_accumulation`\n   \
+                 (b) Σ spillways naming it in `chained_into`         = **{inc:.2} m³/s**\n   \
+                 (a)+(b)                                            = **{total:.2} m³/s**\n   \
+                 `BasinSummary::inflow_m3s`                          = **{reported:.2} m³/s**  ⇒ \
+                 ratio (a+b)/reported = **{r:.3}**\n   (c) shoreline sum re-derived from the same \
+                 `runoff` array = {shore_m3s:.2} ⇒ `extra_inflow` isolated = **{extra:.2} m³/s** \
+                 ({:.1} % of the inflow)",
+                labels.len(),
+                100.0 * extra / reported.max(1e-9)
+            );
+            eprintln!(
+                "       (a) vs (c) — the same local inflow by two routes: ratio **{:.3}**  \
+                 {}\n       (b) vs the isolated `extra_inflow`: ratio **{:.3}**  {}",
+                recon_m3s / shore_m3s.max(1e-9),
+                if (recon_m3s / shore_m3s.max(1e-9) - 1.0).abs() <= 0.10 {
+                    "— within the declared ±10 %"
+                } else {
+                    "— OUTSIDE ±10 %"
+                },
+                inc / extra.max(1e-9),
+                if (inc / extra.max(1e-9) - 1.0).abs() <= 0.10 {
+                    "— within ±10 %: `chained_into` and `chained_region` agree here"
+                } else {
+                    "— OUTSIDE ±10 %: the DISPLAY id and the ROUTING key disagree (they are \
+                     different fields: `chained_into` a lake id, `chained_region` a region label)"
+                }
+            );
+            let dev = (r - 1.0).abs();
+            eprintln!(
+                "   ⇒ {}",
+                if dev <= 0.10 {
+                    "PASSES — within the declared ±10 %. The ledger can be read from `BasinSummary`."
+                } else if dev <= 0.25 {
+                    "MARGINAL — inside ±25 %, outside ±10 %. Read the ledger, carry the reservation."
+                } else {
+                    "DIVERGES beyond ±25 %"
+                }
+            );
+            if dev > 0.25 {
+                xcheck_ok = false;
+            }
+        }
+        if !xcheck_ok {
+            eprintln!(
+                "   ⛔ STOP RULE 2 FIRES: the ledger cannot be read from `BasinSummary` — an \
+                 independent reconstruction of one basin does not reproduce its `inflow_m3s`. \
+                 Not reading 4a, 4b or C."
             );
             continue;
         }
@@ -329,11 +1053,16 @@ fn basin_ledger() {
             |sw: &ymir_core::tectonics_c1::drainage::Spillway| -> (Terminus, u32, u32, u8) {
                 let &(lx, ly) = sw.points.last().unwrap();
                 let k = ly as usize * w + lx as usize;
-                let did = if dr.lake_map[k] < 1_000_001 { dr.lake_map[k] } else { 0 };
+                // `did_trace` is what the TRACE saw (`drainage.rs:1631` reads the PRE-MERGE
+                // map); `did_final` is what survives in the export. The two differ exactly on
+                // the absorbed class, which is why it is testable at all.
+                let did_trace =
+                    if premerge_lake_map[k] < 1_000_001 { premerge_lake_map[k] } else { 0 };
+                let did_final = if dr.lake_map[k] < 1_000_001 { dr.lake_map[k] } else { 0 };
                 let bid = bs.lake_map[k];
                 let cls = if wc[k] == 1 {
                     Terminus::Ocean
-                } else if did != 0 {
+                } else if did_final != 0 && inventoried.contains(&did_final) {
                     Terminus::SurfaceLake
                 } else if bid != 0 && bid != sw.lake_id {
                     if has_spill.contains(&bid) {
@@ -341,6 +1070,9 @@ fn basin_ledger() {
                     } else {
                         Terminus::BasinWithoutSpillway
                     }
+                } else if did_trace != 0 && !inventoried.contains(&did_trace) {
+                    // the trace stopped on a detected lake the below-sea merge then submerged
+                    Terminus::AbsorbedReceiver
                 } else if let Some(t) = sw.chained_into {
                     if live_bs.contains(&t) || has_spill.contains(&t) {
                         Terminus::BasinWithSpillway
@@ -350,11 +1082,10 @@ fn basin_ledger() {
                 } else {
                     Terminus::DryLand
                 };
-                (cls, did, bid, wc[k])
+                (cls, did_final.max(did_trace), bid, wc[k])
             };
 
         // ── 1 · THE BINARY DISCRIMINANT, reported FIRST ───────────────────────────
-        let hole = budget - 93.1; // the F71 terminal total for humid; recomputed below per bed
         let mut sum_surface = 0.0f64;
         let mut per_cls: HashMap<Terminus, (usize, f64)> = HashMap::new();
         for sw in &bs.spillways {
@@ -366,14 +1097,45 @@ fn basin_ledger() {
                 sum_surface += sw.discharge_m3s as f64;
             }
         }
-        // the bed's own terminal total: watercourse-to-sea is unchanged from F71; recompute the
-        // spillway-to-ocean part here and take the F71 watercourse figure as given per bed.
+        // THE HOLE, MEASURED ON THIS BED — not borrowed from Finding 71. Terminal = a clipped
+        // `Watercourse` run whose mouth is on, or drains directly into, an OCEAN cell (wc == 1)
+        // + a spillway ending in the ocean. The F71 figures (82 runs / 46.5 m³/s in humid) are
+        // printed beside it as a cross-check of the replicated tail (rule 7).
         let sp_ocean: f64 = per_cls.get(&Terminus::Ocean).map(|e| e.1).unwrap_or(0.0);
+        let (mut wc_sea_n, mut wc_sea_q) = (0usize, 0.0f64);
+        for (i, s) in dr.rivers.segments.iter().enumerate() {
+            if dr.segment_kind[i] != SegmentKind::Watercourse || s.downstream.is_some() {
+                continue;
+            }
+            let &(ex, ey) = s.points.last().unwrap();
+            let k = ey as usize * w + ex as usize;
+            let mut sea = wc[k] == 1;
+            let d = flow.direction[k];
+            if !sea && d != DIR_NONE {
+                let (nx, ny) = (
+                    (ex as i32 + ymir_core::terrain::flow::D8_DX[d as usize]).rem_euclid(w as i32),
+                    (ey as i32 + ymir_core::terrain::flow::D8_DY[d as usize]).rem_euclid(h as i32),
+                );
+                sea = wc[ny as usize * w + nx as usize] == 1;
+            }
+            if sea {
+                wc_sea_n += 1;
+                wc_sea_q += dr.segment_discharge_m3s[i] as f64;
+            }
+        }
+        let terminal = wc_sea_q + sp_ocean;
+        let hole = budget - terminal;
         eprintln!(
-            "\n── 1 · THE BINARY DISCRIMINANT ──\n   Σ discharge of spillways ending on a \
-             SURFACE LAKE (did ≠ 0) = **{sum_surface:.1} m³/s**   [Spillway, population: net of \
-             evaporation, local + chain-inherited]\n   the hole ≈ budget − terminal ≈ \
-             {:.1} m³/s ⇒ **coverage ×{:.3}** {}",
+            "\n── the HOLE, measured on THIS bed ──\n   budget {budget:.1} | Watercourse→sea \
+             {wc_sea_n} runs = {wc_sea_q:.1} | Spillway→ocean = {sp_ocean:.1} | TERMINAL \
+             {terminal:.1} (×{:.3} of budget) ⇒ **HOLE {hole:.1} m³/s**",
+            terminal / budget
+        );
+        eprintln!(
+            "\n── 1 · THE BINARY DISCRIMINANT, reported before any table ──\n   Σ discharge of \
+             spillways ending on a SURFACE LAKE (did ≠ 0) = **{sum_surface:.1} m³/s**   \
+             [Spillway, population: net of evaporation, local + chain-inherited]\n   against the \
+             MEASURED hole {:.1} m³/s ⇒ **coverage ×{:.3}** {}",
             hole,
             sum_surface / hole.max(1e-9),
             if (sum_surface / hole.max(1e-9)) >= 1.0 / 1.5 && (sum_surface / hole.max(1e-9)) <= 1.5
@@ -424,6 +1186,66 @@ fn basin_ledger() {
                 sw.chained_into.map_or("None".to_string(), |v| v.to_string())
             );
         }
+
+        // ── B2 · the `wc = 0` termini, classified ─────────────────────────────────
+        // Finding 71 called these "three spillways end on a LAND cell" and Finding 72 corrected
+        // the claim in place: `water_class` has no value for a surface lake above sea level, so
+        // `wc = 0` means "not ocean and not an enclosed below-sea region" — which INCLUDES every
+        // surface lake. This block replaces the guess with the class.
+        let mut b2: Vec<(&ymir_core::tectonics_c1::drainage::Spillway, Terminus, u32, u32)> = bs
+            .spillways
+            .iter()
+            .filter_map(|sw| {
+                let &(lx, ly) = sw.points.last().unwrap();
+                let k = ly as usize * w + lx as usize;
+                if wc[k] != 0 {
+                    return None;
+                }
+                let (cls, did, bid, _) = classify(sw);
+                Some((sw, cls, did, bid))
+            })
+            .collect();
+        b2.sort_by(|a, b| {
+            b.0.discharge_m3s.partial_cmp(&a.0.discharge_m3s).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let b2_q: f64 = b2.iter().map(|e| e.0.discharge_m3s as f64).sum();
+        eprintln!(
+            "\n── B2 · THE `wc = 0` TERMINI, CLASSIFIED ── {} spillway(s), Σ {b2_q:.2} m³/s \
+             ({:.1} % of the hole)\n   {:>10} {:>10} {:>30} {:>10} {:>12} {:>14}",
+            b2.len(),
+            100.0 * b2_q / hole.max(1e-9),
+            "Q m³/s",
+            "source",
+            "terminus class",
+            "did",
+            "below-sea id",
+            "chained_into"
+        );
+        for (sw, cls, did, bid) in b2.iter() {
+            eprintln!(
+                "   {:>10.2} {:>10} {:>30} {:>10} {:>12} {:>14}",
+                sw.discharge_m3s,
+                sw.lake_id,
+                cls_name(*cls),
+                did,
+                bid,
+                sw.chained_into.map_or("None".to_string(), |v| v.to_string())
+            );
+        }
+        let mut b2_cls: HashMap<Terminus, usize> = HashMap::new();
+        for (_, cls, _, _) in b2.iter() {
+            *b2_cls.entry(*cls).or_default() += 1;
+        }
+        eprintln!(
+            "   ⇒ of {} `wc = 0` termini: {} surface lake · {} absorbed receiver · {} basin \
+             with spillway · {} basin without · {} TRUE DRY LAND",
+            b2.len(),
+            b2_cls.get(&Terminus::SurfaceLake).copied().unwrap_or(0),
+            b2_cls.get(&Terminus::AbsorbedReceiver).copied().unwrap_or(0),
+            b2_cls.get(&Terminus::BasinWithSpillway).copied().unwrap_or(0),
+            b2_cls.get(&Terminus::BasinWithoutSpillway).copied().unwrap_or(0),
+            b2_cls.get(&Terminus::DryLand).copied().unwrap_or(0)
+        );
 
         // ── A2 · the chain graph, cycles, and the 240.8 chain ─────────────────────
         eprintln!("\n── A2 · CHAIN GRAPH ──");
@@ -512,14 +1334,6 @@ fn basin_ledger() {
 
         // ── A1 · the ledger, per basin ────────────────────────────────────────────
         eprintln!("\n── A1 · THE LEDGER (source: BasinSummary, post-fixpoint) ──");
-        let mut in_chain: HashMap<u32, f64> = HashMap::new();
-        for sw in &bs.spillways {
-            if let Some(t) = sw.chained_into {
-                *in_chain.entry(t).or_default() += sw.discharge_m3s as f64;
-            }
-        }
-        let out_of: HashMap<u32, f64> =
-            bs.spillways.iter().map(|s| (s.lake_id, s.discharge_m3s as f64)).collect();
         let mut rows: Vec<(u32, f64, f64, f64, f64, f64, f32, bool)> = bs
             .basins
             .iter()
@@ -553,6 +1367,25 @@ fn basin_ledger() {
             100.0 * sum_ev / hole.max(1e-9),
             100.0 * sum_res / hole.max(1e-9)
         );
+        // THE TWO PERIMETER TERMS AS NAMED LINES, so nobody chases residuals beneath them.
+        let pe_open = runoff_km2_to_m3s(b_lakefoot as f32) as f64;
+        let rain_below = runoff_km2_to_m3s(b_belowsea as f32) as f64;
+        eprintln!(
+            "   ── the perimeter, as LINES of the ledger (not residuals) ──\n   \
+             {:<52} {:>10.2} m³/s  ({:.1} % of the hole)\n   {:<52} {:>10.2} m³/s  ({:.1} %)\n   \
+             {:<52} {:>10.2} m³/s  ({:.1} %)\n   NO residual below {:.2} m³/s is interpretable — \
+             it sits under the perimeter floor.",
+            "open-water PE never deducted from the A0 budget",
+            pe_open,
+            100.0 * pe_open / hole.max(1e-9),
+            "rain never seeded below sea level (counted NOWHERE)",
+            rain_below,
+            100.0 * rain_below / hole.max(1e-9),
+            "the two together",
+            pe_open + rain_below,
+            100.0 * (pe_open + rain_below) / hole.max(1e-9),
+            pe_open + rain_below
+        );
         eprintln!(
             "   the 10 largest |residual| rows:\n   {:>10} {:>12} {:>12} {:>10} {:>10} {:>12} \
              {:>10} {:>9}",
@@ -562,41 +1395,6 @@ fn basin_ledger() {
             eprintln!(
                 "   {:>10} {:>12.2} {:>12.2} {:>10.2} {:>10.2} {:>12.2} {:>10.2} {:>9}",
                 r.0, r.1, r.2, r.3, r.4, r.5, r.6, r.7
-            );
-        }
-
-        // ── §3 · ONE basin cross-checked by independent reconstruction ────────────
-        eprintln!(
-            "\n── §3 · INDEPENDENT CROSS-CHECK of one basin (watershed × measured runoff) ──"
-        );
-        if let Some(target) = rows.iter().find(|r| r.1 > 0.0).map(|r| r.0) {
-            // the D8 basin labels present in this below-sea footprint
-            let labels: HashSet<u32> = (0..n)
-                .filter(|&k| bs.lake_map[k] == target)
-                .map(|k| flow.basins[k])
-                .filter(|&l| l != 0)
-                .collect();
-            let mut recon = 0.0f64;
-            for k in 0..n {
-                if field.data[k] > SEA && labels.contains(&flow.basins[k]) {
-                    recon += surplus_mm_km2[k] as f64;
-                }
-            }
-            let recon_m3s = runoff_km2_to_m3s(recon as f32) as f64;
-            let inc = in_chain.get(&target).copied().unwrap_or(0.0);
-            let reported = rows.iter().find(|r| r.0 == target).map(|r| r.1).unwrap_or(0.0);
-            eprintln!(
-                "   basin {target}: {} D8 basin label(s) in its footprint | reconstructed \
-                 watershed runoff {recon_m3s:.2} + upstream chain {inc:.2} = {:.2} m³/s\n   \
-                 against `BasinSummary::inflow_m3s` = {reported:.2} ⇒ ratio {:.3} {}",
-                labels.len(),
-                recon_m3s + inc,
-                reported / (recon_m3s + inc).max(1e-9),
-                if ((reported / (recon_m3s + inc).max(1e-9)) - 1.0).abs() < 0.5 {
-                    "— the machinery's own accounting is CONFIRMED by an independent route"
-                } else {
-                    "— ⚠ the machinery's accounting is NOT confirmed; the ledger is suspect"
-                }
             );
         }
 
