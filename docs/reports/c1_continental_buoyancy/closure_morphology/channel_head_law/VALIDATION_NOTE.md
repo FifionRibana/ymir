@@ -49,9 +49,14 @@ denominator, which is the trap that cost a round):
 than to the shipped one? The counts say 56 % / 71 % of the way. If the picture disagrees, the
 picture wins and the crop should be re-chosen — the defect may have moved.
 
-**Known residual, and its cause.** `S_ref` is 0.3319 at 2048² against 0.1128 at 8192², so **no
-single channel-head calibration can hold at both grids** until the hypsometry converges. The
-remaining gap is inherited from that, not from the law.
+**The residual, and why the old objection is withdrawn.** ⚠️ This paragraph previously said that
+no calibration could hold at both grids until the hypsometry converged, and that the remaining gap
+was inherited from that. **That objection is void**: the delivery target is 8192² alone
+(Findings 67–68), the convergence programme is closed (Findings 61–66), and `S_ref` measured on
+the eroded field is a *consequence* of the incision, not a cause of it (Finding 57). **The
+calibration is therefore single-grid: `S_ref = 0.1128` at the target grid, and the 2048² column
+below is context, not a second calibration to satisfy.** The residual 29 % of the gap to the
+reference is the law's own limit at that calibration, and it is what the panels are for.
 
 ---
 

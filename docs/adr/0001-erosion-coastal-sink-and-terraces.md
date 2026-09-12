@@ -8257,3 +8257,185 @@ One production change: the accumulation order, plus the two cache bumps. No prom
 three-state invariant, no export field, no threshold, no C3, no correction to
 `mfd_accumulation`, no conservation-vs-representation recommendation. The hole is **343.7 m³/s**
 and now has a dominant named mechanism — the cycle-breaker's merge — which is **not fixed**.
+
+## Finding 75 — MARKED now equals LISTED; the coast read at the CELL scale for the first time; and the exported sea is at 0 m, which the big rivers do reach
+
+Rule 11 first: `a_c_slope_law` **3** ADR hits (earliest 5288) · `MIN_SPUR_KM` **2** (5968) ·
+`coast_metrics` **3** (5276) · `INVENTORY_MIN_CELLS` **5** (1242) · `lake_map` **34** (831) ·
+**`sea_level_m`: NOTHING FOUND** (recorded — and the ADR's own title says "terraces").
+
+Two hits, 4700 lines apart, say the same thing and neither noticed the other:
+
+- **L1242 (Finding 33 Part A)** — the below-sea inventory floor was lowered from 5 km² to cells
+  *"reject single-cell noise only, keep every visible lake so no river terminates in a body
+  absent from the export"*;
+- **L5974 (Finding 56b)** — `INVENTORY_MIN_CELLS = 4` is ⛔ **the MIRROR case** of the sub-cell
+  trap, *"the documented cause of the orphan-mouth regression"*.
+
+**The intent was written as 1 and the constant was set to 4.** That gap IS §2(a).
+
+### A1 — VALIDATION_NOTE §1 amended, and the amendment MOVES the table
+
+The "Known residual" paragraph is replaced: the target is 8192² alone (F67–68), the convergence
+programme is closed (F61–66), and `S_ref` on the eroded field is a consequence of the incision,
+not a cause (F57). The calibration is single-grid at **`S_ref = 0.1128`**; the 2048² column is
+context.
+
+> ⚠️ **And that has a consequence the round did not anticipate, measured here.** §1's table
+> (1849 → 544 spurs, *"71 % of the gap to the reference closed"*) was measured with
+> `CHANNEL_HEAD_S_REF = 0.3319` — **the 2048² value**. Re-measured at the calibration the
+> amended note now prescribes: **1848 → 916, i.e. 51 % of the gap**, not 71 %. The SHIPPED
+> figure reproduces F56 exactly (1848 against 1849), so the difference is the calibration and
+> nothing else. **The law is weaker at its own target grid than the note advertises**, and §1's
+> table must carry that flag before the decision is taken.
+>
+> `stream_power::CHANNEL_HEAD_S_REF` still ships 0.3319. Un-gating the law would have to move it.
+> Not this round.
+
+### A2 — the inventory floor, 4 → 1: MARKED now equals LISTED by construction
+
+`INVENTORY_MIN_CELLS: 4 → 1`. The point is not the number, it is the **equality**: every id in
+`lake_map` is now in `lakes`, so a consumer resolving a river terminus can never be handed an id
+the export does not contain — **and no future network density can reopen it.**
+
+The same bench ran with the change stashed and restored:
+
+| | before | after |
+|---|---|---|
+| eroded / breached / pre-filled FNV hash | `0x6b10a0c5fdf467a3` · `0x2cce4ea2fb761a12` · `0x5bd35562ba4fb9ab` | **all three identical** |
+| cells raised by `pit_fill` · below-sea · ocean | 1 238 085 · 457 698 · 55 626 539 | **identical** |
+| dangling `lake_map` ids, humid / arid | **16 / 16** | **0 / 0** |
+| `Spillway` rows with `source_lake = None` | **16** | **0** |
+| lakes, humid 8192² | 86 | **102** |
+| lakes, arid 8192² | 61 | **77** |
+| Σ lake area, humid / arid | 6219.4 / 1703.7 km² | **6219.4 / 1703.7 km²** |
+
+**The height field does not move by a bit** — the breach reads `detect_lakes`' map, not
+`below_sea_basin_lakes_infil`'s, so the raster is untouched as predicted. **+16 lakes at both
+beds, exactly the dangling count**, and **Σ area unchanged to the printed decimal**: the sixteen
+new entries are the sub-4-cell bodies, together under 0.05 km². They cost nothing and they close
+the resolution gap. The 16 unnamed spillways of Finding 71 fall to **0**, as the round required.
+
+⚠️ **What is NOT measured: the note's own 26.** My orphan-mouth instrument ("a `Watercourse`
+terminus touching an id absent from `lakes`") reads **0 for SHIPPED before the fix**, where §2(a)
+reports 2 — so **my definition is not the note's** and I cannot reproduce its 26. What is settled
+is the gap that CAUSES it: 16 → 0, structurally. Whoever owns §2(a)'s instrument should re-run it.
+
+The unit test at `drainage.rs:2444` was **reversed on purpose**: it used to assert "the 2-cell pit
+is below the 4-cell floor → marked, not listed" — it pinned the negation of the invariant. It now
+asserts the equality, with a population guard.
+
+### B — the coast at TWO length scales, and the answer to the sea-level question
+
+`MIN_SPUR_KM` = 1 km = **20.5 cells at 8192²**, so the shipped detector cannot see a 2-to-5-cell
+indentation. `coast_shape` now delegates to `coast_shape_thresholds(polys, km_per_cell,
+min_spur_km, neck_km)` — **one detector, two settings, not two detectors**; the default call is
+asserted to be exactly the parameterised one. Cell scale = spur ≥ 2 cells (0.0977 km), neck
+1 cell (0.0488 km). Measured on the **breached** field, the one the export's coastline is traced
+from (the eroded-field rows are printed beside it for comparability with Finding 56).
+
+| variant | ≥ 1 km count | ≥ 2 cells count | coast km | p90 km (km scale) | R (km scale) |
+|---|---|---|---|---|---|
+| **SHIPPED** | 1 901 | **2 398** | 6 742 | 4.89 | 0.523 |
+| **LAW ON** (`S_ref = 0.1128`) | 952 | **1 439** | 3 953 | 4.49 | 0.429 |
+| **REFERENCE** (coarse, no FBM, no incision) | 23 | **52** | 1 623 | 23.34 | 0.404 |
+
+**Share of the gap to the REFERENCE that the law closes: 50.5 % at the kilometre scale,
+40.9 % at the cell scale.** The round predicted the fur would move by less than 40 %; measured
+**40.9 %** — refuted by a whisker, and my own "< 30 %" refuted outright.
+
+> **The two scales disagree far less than either of us expected, and the interesting number is
+> elsewhere: the cell scale separates SHIPPED from REFERENCE by a factor 46 (2 398 against 52),
+> where the kilometre scale separates them by 83 (1 901 against 23).** So the fur the eye sees is
+> real and enormous at both scales, and the law removes about half of it at both. It is not a
+> kilometre-scale-only remedy, which is what the round's hypothesis expected.
+
+⚠️ **Rule 10 on two columns.** REFERENCE at the cell scale has 52 spurs (8 on the eroded field),
+and its `local_axis_r` reads 1.000 on one field and 0.000 on the other — a degenerate population,
+**not a reading**. The REFERENCE R must be taken from the kilometre scale (0.404) only.
+
+**`sea_level_m` = 0.0**, from `manifest.json` — and it is **hard-coded** at `hd.rs:1227` with the
+comment *"sea anchored to 0 m"*, so it is a contract, not a measurement.
+
+**And the rivers that reach it, reach it.** Of the SHIPPED export's 2 363 terminal `Watercourse`
+segments, the **65 that actually drain into an ocean cell** have mouths at min −20.0, **median
+−0.1**, p90 −0.0, max −0.0 m. **There is no suspended mouth and no terrace.**
+
+> The 197 m river is therefore **not reaching the exported sea at all** — it is a terminus at a
+> lake or a truncation of the traced network, and at a median of **218.4 m** over all 2 363
+> termini that is the TYPICAL terminus. **Only 65 of 2 363 (2.8 %) of terminal watercourses
+> reach the ocean.** That is Finding 71's hole seen from the geometry side rather than the water
+> balance side, and it is the real item behind the author's observation.
+
+Three complete `.ymir` exports written, production seed and config, 8192²,
+**`geo_scale_ratio = 7.5`** (the author's practice and the on-disk manifest's value, not the
+code's 1.0), every layer present:
+`exports/coastal_closure/seed10481999410520546993_8192_{SHIPPED,LAW_ON,REFERENCE}.ymir/`.
+Lakes 102 / 97 / 36. Max `Watercourse` 1225.4 / 1230.3 / 1247.8 m³/s at ratio 7.5 (= 21.79 real
+× 56.25).
+
+### C — the MFD bisection CANNOT be built in a bench, and the seam is named
+
+`mfd_accumulation` is called at **`stream_power.rs:403`, inside the incision loop**, with no
+parameter and no config field to substitute it. A bench cannot re-incise with a corrected carrier
+without a production seam, and this round's budget of two production changes was spent on the
+note and the floor. **Block C is blocked, not skipped.**
+
+> **The seam, specified and not opened:** `StreamPowerConfig` would need one field — an optional
+> flat-aware carrier selector — read at `stream_power.rs:403`, exactly the shape of Finding 74's
+> `propagation_order` call. It changes the delivered terrain the moment it is switched on, so its
+> promotion is an author decision and a full re-validation round, as the round itself said.
+
+What the round said must happen **first** is done: the toggle is proven to move the reading.
+A bench-local copy of `mfd_accumulation` differing **only** in the propagation order, on the
+Finding 74 fixture: **OUT/IN 0.1181 → 1.9686, ×16.7.** The weighting, the `cnt == 0` D8 fallback
+and the seeds are copied verbatim; the shipped carrier's `(filled desc, INDEX desc)` sort
+(`flow.rs:877`) is the only difference. **The toggle is fit to serve a bisection.**
+
+### E — the eight merged ids, in cell coordinates, and the second half is usually ONE CELL
+
+| id | cmp | cells | km² | bbox | centroid | Δ centroids |
+|---|---|---|---|---|---|---|
+| **1000056** | 56 | **69 560** | 165.844 | 3606,4840..4451,5333 | 3933,5094 | **11.44 km** |
+| | 58 | **1** | 0.002 | 4128,5223 | 4128,5223 | |
+| **1000021** | 21 | 135 902 | 324.016 | 3763,3291..4387,3792 | 4062,3511 | **20.54 km** |
+| | 29 | 10 034 | 23.923 | 3509,3442..3773,3884 | 3665,3650 | |
+| **1000035** | 35 | 1 762 | 4.201 | 5131,3606..5365,3943 | 5229,3835 | 2.48 km |
+| | 44 | **1** | 0.002 | 5249,3882 | 5249,3882 | |
+| **1000053** | 53 | 131 | 0.312 | 5419,4697..5448,4722 | 5436,4709 | 0.38 km |
+| | 54 | 16 | 0.038 | 5435,4706..5450,4720 | 5442,4713 | |
+| **1000004** | 4 / 5 | 25 / 5 | 0.060 / 0.012 | 4415,2019.. / 4426,2023.. | 4420,2020 / 4428,2024 | **0.43 km** |
+| **1000014** | 14 / 15 | 13 / 4 | 0.031 / 0.010 | 5661,3103.. / 5665,3108.. | 5664,3106 / 5666,3109 | 0.17 km |
+| **1000016** | 16 / 17 | 3 / 1 | 0.007 / 0.002 | 5768,3240.. / 5762,3246 | 5768,3241 / 5762,3246 | 0.39 km |
+| **1000008** | 8 / 10 | **1 / 1** | 0.002 / 0.002 | 5353,2673 / 5356,2675 | — | 0.18 km |
+
+**7 of 8 pairs are within 2.5 km and 6 of 8 within 0.5 km** — prediction confirmed, and more
+strongly than predicted. But the number that matters is the other column:
+
+> **For 1000056 — the 380.5 m³/s basin, the largest single term in the hydrological hole — the
+> "other half" is ONE CELL of 0.002 km², 11.44 km away from the main body.** The cycle-breaker
+> gave that cell the main basin's id, deleted its own spillway, and the surviving spillway now
+> delivers 380 m³/s into it. Same for 1000035 (276.8 m³/s → 1 cell) and, at 1 cell against 1
+> cell, 1000008.
+>
+> **Only 1000021 is a genuine two-lobe merge** (135 902 + 10 034 cells, 20.54 km apart) — the
+> only one of the eight a renderer would draw as two lakes.
+
+⚠️ The `spill?` column of that table **failed to resolve and is void**: it looked for the
+component of the spillway's FIRST point, which is the saddle — above sea level, so `wc ≠ 2` and
+the component is 0. The direction is known from Finding 74's block 2b instead (own cmp → end
+cmp), not from this column. My instrument, reported as broken rather than read.
+
+### What is NOT delivered
+
+**Block D (C-3 / C-3b bisection) and block F (coast metrics at lake shores) were not run** —
+no budget left after the three 8192² builds. Neither is blocked; both are one bench run each and
+the two-scale detector they need now exists.
+
+### Standing
+
+Two production changes, both authorised: `INVENTORY_MIN_CELLS` 4 → 1, and the note's §1. Plus one
+refactor that is provably not a behaviour change (`coast_shape` delegating to
+`coast_shape_thresholds`, identity asserted). No de-gating of the law, no MFD change, no touch to
+`break_reciprocal_spill_cycles`, no C3, no renderer. The hydrological hole — 343.7 m³/s, mechanism
+attributed at Finding 74 — is untouched, as instructed.

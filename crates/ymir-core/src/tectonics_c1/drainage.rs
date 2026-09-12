@@ -1278,10 +1278,32 @@ fn water_balance_lakes(
 /// a ~0.1–0.3 % shore slope — the wetland signature; deeper cells are a lagoon/inland sea.
 const WETLAND_MAX_DEPTH_M: f32 = 3.0;
 
-/// Finding 33 PART A — minimum below-sea basin size (in CELLS, resolution-independent) to enter
-/// the exported inventory (`lakes.json`). A few cells: reject single/double-cell noise, keep every
-/// visible lake so no river terminates in a body absent from the export.
-const INVENTORY_MIN_CELLS: usize = 4;
+/// Minimum below-sea basin size (in CELLS) to enter the exported inventory (`lakes.json`).
+///
+/// **1 = every basin that is MARKED in `lake_map` is also LISTED.** That equality is the point:
+/// it makes `lake_map` ids ⊆ `lakes` ids true BY CONSTRUCTION, so a consumer resolving a river
+/// terminus can never be handed an id the export does not contain.
+///
+/// ## Why it is no longer 4 (ADR 0001 Finding 75)
+///
+/// Finding 33 PART A lowered this from 5 km² to "a few cells" with the stated intent *"reject
+/// single-cell noise only, keep every visible lake so no river terminates in a body absent from
+/// the export"* — and then set it to 4, which rejects a great deal more than single-cell noise.
+/// The gap between the written intent and the value IS the orphan-mouth regression: a below-sea
+/// sink is marked in `lake_map` for sink validity whatever its size, but only listed above the
+/// floor, so every terminus landing in a sub-floor sink resolved to nothing. Measured at 8192²:
+/// 16 dangling `lake_map` ids in humid and 18 in arid, 16 spillways whose `source_lake` was
+/// forced to `None`, and orphan mouths 2 → 26 with the channel-head law on (VALIDATION_NOTE
+/// §2(a)) — the last hard prerequisite to that law's un-gating.
+///
+/// Finding 56b also recorded this constant as the MIRROR case of the sub-cell trap: dimensioned
+/// in CELLS, its physical meaning varies 16× between 2048² and 8192² (0.153 km² against
+/// 0.0095 km²). At 1 the constant stops being a physical threshold at all and becomes what it
+/// always should have been — the statement that a water body exists.
+///
+/// The old fear (erosion-fabricated parasitic pits flooding `lakes.json`) is handled by the
+/// breach conditioning, as Finding 33 already noted.
+const INVENTORY_MIN_CELLS: usize = 1;
 
 /// A traced OVERFLOW path for an exorheic below-sea basin (ADR 0001 Finding 30). Mass balance:
 /// a basin receiving more than it evaporates MUST overflow, so an `Exorheic` label REQUIRES an
@@ -2437,16 +2459,28 @@ mod tests {
             None,
         );
         let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
-        // Marked as a sink despite being sub-threshold.
+        // Marked as a sink despite being small.
         let marked = r.lake_map.iter().filter(|&&x| x != 0).count();
-        assert!(marked > 0, "a sub-threshold below-sea basin MUST still be marked (sink validity)");
-        // Inventory floor is now a few CELLS (Finding 33 PART A) — reject single-cell noise but
-        // keep visible lakes. The 2-cell pit here is below the 4-cell floor → marked, not listed.
-        let cell_km2 = (24.0f32 / w as f32).powi(2);
+        assert!(marked > 0, "a small below-sea basin MUST still be marked (sink validity)");
+        // ⚠️ REVERSED by ADR Finding 75, deliberately. This assertion used to read "the 2-cell pit
+        // here is below the 4-cell floor → marked, not listed", and it was the decision under
+        // test: that gap between MARKED and LISTED is the orphan-mouth regression. The invariant
+        // is now the equality itself — every id in `lake_map` resolves in `lakes` — which is what
+        // a consumer needs and what the old assertion pinned the negation of.
+        let listed: std::collections::HashSet<u32> = r.lakes.iter().map(|l| l.base.id).collect();
+        let dangling: Vec<u32> = {
+            let mut v: Vec<u32> =
+                r.lake_map.iter().copied().filter(|&id| id != 0 && !listed.contains(&id)).collect();
+            v.sort_unstable();
+            v.dedup();
+            v
+        };
         assert!(
-            r.lakes.iter().all(|l| l.area_km2 >= (INVENTORY_MIN_CELLS as f32 - 0.5) * cell_km2),
-            "the inventory must reject sub-{INVENTORY_MIN_CELLS}-cell noise"
+            dangling.is_empty(),
+            "every MARKED below-sea id must be LISTED (INVENTORY_MIN_CELLS = \
+             {INVENTORY_MIN_CELLS}); dangling: {dangling:?}"
         );
+        assert!(!listed.is_empty(), "population guard: the fixture must produce a basin at all");
         // The SEA authority: a marked basin cell is never ocean.
         for k in 0..r.lake_map.len() {
             if r.lake_map[k] != 0 {

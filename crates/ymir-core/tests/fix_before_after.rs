@@ -929,6 +929,56 @@ fn fix_before_after() {
                 .map(|e| (e.0, (e.1 * 10.0).round() / 10.0, (e.2 * 10.0).round() / 10.0))
                 .collect::<Vec<_>>()
         );
+
+        // ── A2 · the §2(a) prerequisite: MARKED must equal LISTED ─────────────────
+        // Three readings of one gap. `below_sea_basin_lakes_infil` marks every below-sea sink in
+        // `lake_map` for sink validity but only LISTS those clearing `INVENTORY_MIN_CELLS`, so a
+        // consumer resolving a terminus can be handed an id the export does not contain.
+        let listed: HashSet<u32> = dr.lakes.iter().map(|l| l.base.id).collect();
+        let mut dangling: Vec<u32> =
+            dr.lake_map.iter().copied().filter(|&id| id != 0 && !listed.contains(&id)).collect();
+        dangling.sort_unstable();
+        dangling.dedup();
+        let unnamed = (0..dr.rivers.segments.len())
+            .filter(|&i| {
+                dr.segment_kind[i] == SegmentKind::Spillway && dr.segment_source_lake[i].is_none()
+            })
+            .count();
+        // ORPHAN MOUTH: a Watercourse terminus (downstream == None) whose last cell touches a
+        // lake id that `lakes.json` does not contain — the microscope reads it as a river
+        // stopping in open ground.
+        let mut orphan = 0usize;
+        for (i, s) in dr.rivers.segments.iter().enumerate() {
+            if dr.segment_kind[i] != SegmentKind::Watercourse || s.downstream.is_some() {
+                continue;
+            }
+            let &(ex, ey) = s.points.last().unwrap();
+            let (x, y) = (ex as i32, ey as i32);
+            let mut hit = false;
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx as usize >= w || ny as usize >= h {
+                        continue;
+                    }
+                    let id = dr.lake_map[ny as usize * w + nx as usize];
+                    if id != 0 && !listed.contains(&id) {
+                        hit = true;
+                    }
+                }
+            }
+            if hit {
+                orphan += 1;
+            }
+        }
+        eprintln!(
+            "   §2(a) MARKED vs LISTED: **{} dangling `lake_map` id(s)** {:?} | **{unnamed} \
+             Spillway rows with `source_lake = None`** | **{orphan} orphan mouth(s)** \
+             [Watercourse termini touching an unlisted id]",
+            dangling.len(),
+            if dangling.len() <= 20 { format!("{dangling:?}") } else { "…".to_string() }
+        );
+
         eprintln!(
             "\n── 1 · THE BINARY DISCRIMINANT, reported before any table ──\n   Σ discharge of \
              spillways ending on a SURFACE LAKE (did ≠ 0) = **{sum_surface:.1} m³/s**   \
@@ -1156,6 +1206,81 @@ fn fix_before_after() {
              dry {dry_other:.1} m³/s   [Spillway, net of evaporation, local + chain-inherited]"
         );
 
+        // ── E · the eight merged halves, in CELL COORDINATES ──────────────────────
+        // Text, not a panel: the author is looking at #1000004 and cannot tell whether the
+        // second half is in frame.
+        if bed == "humid" {
+            eprintln!("\n── E · the merged ids, both halves, in cell coordinates ──");
+            eprintln!(
+                "   {:>9} {:>4} {:>9} {:>9} {:>21} {:>13} {:>9} {:>7}",
+                "id", "cmp", "cells", "km²", "bbox x0,y0..x1,y1", "centroid", "Δ centr.", "spill?"
+            );
+            let mut ids: Vec<u32> =
+                comps_of_lake.iter().filter(|(_, c)| c.len() > 1).map(|(&id, _)| id).collect();
+            ids.sort_unstable();
+            let spill_of: HashSet<u32> = bs.spillways.iter().map(|s| s.lake_id).collect();
+            for id in ids {
+                // per-component geometry under this id
+                let mut agg: HashMap<u32, (usize, usize, usize, usize, usize, f64, f64)> =
+                    HashMap::new();
+                for k in 0..n {
+                    if bs.lake_map[k] != id || wc[k] != 2 {
+                        continue;
+                    }
+                    let (x, y) = (k % w, k / w);
+                    let e = agg.entry(comp_of[k]).or_insert((
+                        0,
+                        usize::MAX,
+                        usize::MAX,
+                        0,
+                        0,
+                        0.0,
+                        0.0,
+                    ));
+                    e.0 += 1;
+                    e.1 = e.1.min(x);
+                    e.2 = e.2.min(y);
+                    e.3 = e.3.max(x);
+                    e.4 = e.4.max(y);
+                    e.5 += x as f64;
+                    e.6 += y as f64;
+                }
+                let mut rows: Vec<(u32, (usize, usize, usize, usize, usize, f64, f64))> =
+                    agg.into_iter().collect();
+                rows.sort_by_key(|r| std::cmp::Reverse(r.1.0));
+                // which half carries the surviving spillway: the one holding its FIRST point
+                let spill_cmp = bs
+                    .spillways
+                    .iter()
+                    .find(|s| s.lake_id == id)
+                    .map(|s| {
+                        let &(sx, sy) = s.points.first().unwrap();
+                        comp_of[sy as usize * w + sx as usize]
+                    })
+                    .unwrap_or(0);
+                let cen: Vec<(f64, f64)> =
+                    rows.iter().map(|r| (r.1.5 / r.1.0 as f64, r.1.6 / r.1.0 as f64)).collect();
+                let d_km = if cen.len() >= 2 {
+                    (((cen[0].0 - cen[1].0).powi(2) + (cen[0].1 - cen[1].1).powi(2)).sqrt())
+                        * CELL_KM as f64
+                } else {
+                    f64::NAN
+                };
+                for (j, r) in rows.iter().enumerate() {
+                    eprintln!(
+                        "   {:>9} {:>4} {:>9} {:>9.3} {:>21} {:>13} {:>9} {:>7}",
+                        if j == 0 { id.to_string() } else { String::new() },
+                        r.0,
+                        r.1.0,
+                        r.1.0 as f32 * cell_km2,
+                        format!("{},{}..{},{}", r.1.1, r.1.2, r.1.3, r.1.4),
+                        format!("{:.0},{:.0}", cen[j].0, cen[j].1),
+                        if j == 0 { format!("{d_km:.2} km") } else { String::new() },
+                        if r.0 == spill_cmp && spill_of.contains(&id) { "YES" } else { "—" }
+                    );
+                }
+            }
+        }
         // ── A2 · the chain graph, cycles, and the 240.8 chain ─────────────────────
         eprintln!("\n── A2 · CHAIN GRAPH ──");
         let edges: Vec<(u32, u32)> =

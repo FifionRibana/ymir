@@ -211,6 +211,105 @@ use ymir_core::tectonics_c1::production_upscale::upscale_from_c1_with_progress;
 use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_closures};
 use ymir_core::terrain::upscale::{ProductionHdOpts, production_hd_config};
 
+// ── ADR Finding 75 block C · the MFD carrier's NEGATIVE CONTROL ─────────────────────────
+//
+// The round asked for a bench-only bisection of the MFD carrier. **It cannot be built.**
+// `mfd_accumulation` is called at `stream_power.rs:403` INSIDE the incision loop, with no
+// parameter and no config field to substitute it, so a bench cannot re-incise with a corrected
+// carrier without a production seam — and this round's budget is two production changes, both
+// spent (the note, the inventory floor). The seam is specified in the ADR, not opened here.
+//
+// What CAN be built, and is what the round said must come first: the control that the toggle
+// would actually move the reading. Same fixture as Finding 74, same metric — a bench-local copy
+// of `mfd_accumulation` whose ONLY difference is the propagation order.
+
+/// `mfd_accumulation` (`flow.rs:866`) with the order corrected and NOTHING else touched.
+/// Production sorts `land` by `(filled desc, INDEX desc)` — an index tiebreak, which on a flat
+/// is arbitrary. This walks `propagation_order` instead. The weighting, the `cnt == 0` D8
+/// fallback and the seeds are copied verbatim.
+fn mfd_accumulation_ordered(
+    filled: &GridF32,
+    direction: &[u8],
+    sea_level: f32,
+    p: f32,
+    w: usize,
+    h: usize,
+) -> Vec<f32> {
+    let n = w * h;
+    let is_land: Vec<bool> = (0..n).map(|i| filled.data[i] > sea_level).collect();
+    let (order, n_cyclic) = propagation_order(direction, |k| is_land[k], w, h);
+    assert_eq!(n_cyclic, 0, "the fixture's D8 graph must be acyclic");
+    let mut acc = vec![0.0f32; n];
+    for k in 0..n {
+        if is_land[k] {
+            acc[k] = 1.0;
+        }
+    }
+    let nbr = |i: usize, j: usize, d: usize| -> usize {
+        let ni = ((i as i32 + D8_DX[d]).rem_euclid(w as i32)) as usize;
+        let nj = ((j as i32 + D8_DY[d]).rem_euclid(h as i32)) as usize;
+        nj * w + ni
+    };
+    for &kk in &order {
+        let c = kk as usize;
+        let (ci, cj) = (c % w, c / w);
+        let zc = filled.data[c];
+        let (mut wsum, mut cnt) = (0.0f32, 0usize);
+        let (mut wj, mut nj_idx) = ([0.0f32; 8], [0usize; 8]);
+        for d in 0..8 {
+            let m = nbr(ci, cj, d);
+            let drop = zc - filled.data[m];
+            if drop > 0.0 {
+                let slope = drop / ymir_core::terrain::flow::D8_DIST[d];
+                let wgt = slope.powf(p);
+                wj[cnt] = wgt;
+                nj_idx[cnt] = m;
+                wsum += wgt;
+                cnt += 1;
+            }
+        }
+        let flow = acc[c];
+        if cnt == 0 || wsum <= 0.0 {
+            let d = direction[c];
+            if d != DIR_NONE {
+                acc[nbr(ci, cj, d as usize)] += flow;
+            }
+            continue;
+        }
+        for k in 0..cnt {
+            acc[nj_idx[k]] += flow * wj[k] / wsum;
+        }
+    }
+    acc
+}
+
+#[test]
+fn the_mfd_carrier_toggle_moves_the_reading() {
+    let raw = fixture();
+    let flow = compute_flow(&raw, &FlowConfig { sea_level: SEA, ..Default::default() });
+    let flat = flat_of(&raw, &flow.filled);
+    let shipped = mfd_accumulation(&flow.filled, &flow.direction, SEA, 2.0, FW, FH);
+    let fixed = mfd_accumulation_ordered(&flow.filled, &flow.direction, SEA, 2.0, FW, FH);
+    let (i0, o0, r0) = carry(&shipped.data, &flat, &flow.direction, FW, FH);
+    let (i1, o1, r1) = carry(&fixed, &flat, &flow.direction, FW, FH);
+    eprintln!(
+        "
+── block C · the MFD carrier, negative control ──
+   {:<30} {:>12.2} {:>12.2}          {:>9.4}
+   {:<30} {:>12.2} {:>12.2} {:>9.4}",
+        "mfd_accumulation (SHIPPED)", i0, o0, r0, "same, order corrected", i1, o1, r1
+    );
+    assert!(r0 < 0.5, "the shipped carrier must under-read across the flat; got {r0:.4}");
+    assert!(
+        r1 >= 0.95,
+        "the toggle must LIFT the reading to ~1 before it can serve a bisection; got {r1:.4}"
+    );
+    eprintln!(
+        "   ⇒ the toggle moves the fixture {r0:.4} → {r1:.4} (×{:.1}). It is fit to serve a          bisection; the bisection itself needs a production seam at `stream_power.rs:403`.",
+        r1 / r0.max(1e-9)
+    );
+}
+
 // ── the 8192² production-path guard ─────────────────────────────────────────────────────
 //
 // The Finding 73 instrument, PROMOTED. It runs on `assemble_hd_drainage` — production's one

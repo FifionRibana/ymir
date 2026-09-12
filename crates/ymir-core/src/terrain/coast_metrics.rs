@@ -69,8 +69,32 @@ fn pct(sorted: &[f32], f: f32) -> f32 {
 /// [`MIN_SPUR_KM`] whose endpoints lie within [`NECK_KM`] of each other.
 #[must_use]
 pub fn coast_shape(polys: &[Polyline], km_per_cell: f32) -> CoastShape {
-    let neck_cells = NECK_KM / km_per_cell;
-    let min_arc_cells = MIN_SPUR_KM / km_per_cell;
+    coast_shape_thresholds(polys, km_per_cell, MIN_SPUR_KM, NECK_KM)
+}
+
+/// [`coast_shape`] with the two length scales given explicitly, so ONE detector can be read at
+/// more than one scale instead of a second detector being written beside it.
+///
+/// ## Why this exists (ADR 0001 Finding 75)
+///
+/// [`MIN_SPUR_KM`] is 1 km, which is **20.5 cells at 8192²** — so the default instrument cannot
+/// see an indentation 2 to 5 cells across, which is the texture the eye reads as "fur" on the
+/// rendered coast. Reading the same coastline at the kilometre scale and at the cell scale is
+/// two settings of one detector, not two detectors: the spur definition, the arc walk, the
+/// axis and the parallelism are shared, so the two columns are commensurable.
+///
+/// `coast_shape(p, k)` is exactly `coast_shape_thresholds(p, k, MIN_SPUR_KM, NECK_KM)` — asserted
+/// in `coast_shape_default_is_the_parameterised_call`, because a refactor that silently moves the
+/// shipped numbers would invalidate every coastal figure in this dossier.
+#[must_use]
+pub fn coast_shape_thresholds(
+    polys: &[Polyline],
+    km_per_cell: f32,
+    min_spur_km: f32,
+    neck_km: f32,
+) -> CoastShape {
+    let neck_cells = neck_km / km_per_cell;
+    let min_arc_cells = min_spur_km / km_per_cell;
     let mut lens: Vec<f32> = Vec::new();
     let mut roots: Vec<f32> = Vec::new();
     let mut axes: Vec<(f32, f32, f32)> = Vec::new(); // (mid x, mid y, axis angle)
@@ -245,4 +269,38 @@ pub fn densest_window(polys: &[Polyline], w: usize, h: usize, crop: usize) -> (u
         oy += step;
     }
     bxy
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ADR Finding 75 — the parameterised detector must BE the shipped one at the shipped
+    /// thresholds. Every coastal figure in the dossier was measured through `coast_shape`; a
+    /// refactor that moved them silently would invalidate the lot, so the identity is pinned
+    /// rather than assumed. Rule 10: the fixture must actually produce spurs, or the comparison
+    /// is two zeroes agreeing.
+    #[test]
+    fn coast_shape_default_is_the_parameterised_call() {
+        // a ragged closed loop: a circle with a radial spur every few samples
+        let mut pl: Polyline = Vec::new();
+        for i in 0..720 {
+            let t = i as f32 * std::f32::consts::TAU / 720.0;
+            let r = 120.0 + if i % 17 < 4 { 28.0 } else { 0.0 };
+            pl.push((256.0 + r * t.cos(), 256.0 + r * t.sin()));
+        }
+        pl.push(pl[0]);
+        let polys = vec![pl];
+        let km_per_cell = 400.0 / 8192.0;
+        let a = coast_shape(&polys, km_per_cell);
+        let b = coast_shape_thresholds(&polys, km_per_cell, MIN_SPUR_KM, NECK_KM);
+        assert!(a.count > 0, "population guard: the fixture must produce spurs, got {}", a.count);
+        assert_eq!(a.count, b.count);
+        assert_eq!(a.coast_km.to_bits(), b.coast_km.to_bits(), "coast_km moved");
+        assert_eq!(a.p90_len_km.to_bits(), b.p90_len_km.to_bits(), "p90 moved");
+        assert_eq!(a.local_axis_r.to_bits(), b.local_axis_r.to_bits(), "local R moved");
+        // NEGATIVE CONTROL: the thresholds must matter, or the identity above is vacuous.
+        let cell = coast_shape_thresholds(&polys, km_per_cell, 2.0 * km_per_cell, km_per_cell);
+        assert_ne!(cell.count, a.count, "the cell-scale setting changed nothing — not a detector");
+    }
 }
