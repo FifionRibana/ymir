@@ -143,7 +143,7 @@ fn row(name: &str, s: &CoastShape) {
 fn coastal_closure() {
     let ss = SteinSteinParams::default();
     let pp = PrecipParams::default();
-    let out_root = std::path::Path::new("exports/coastal_closure");
+    let out_root = std::path::Path::new("../../exports/coastal_closure");
     eprintln!("\n==========  Finding 75 · three coastal states, two length scales  ==========");
     eprintln!(
         "   cell = {:.4} km = {:.1} m. KILOMETRE scale: spur ≥ 1.00 km ({:.1} cells), neck \
