@@ -8584,3 +8584,179 @@ incision produce a parallel, sub-metre, non-channel texture at a 14-cell wavelen
 near the shoreline".** The candidate now on top is the one Finding 55 tested at the wrong lever:
 the rilling instability, whose wavelength is set by the competition between incision and
 diffusion, not by `A_c`.
+
+## Finding 77 — there is NO water between 0 and −20 m anywhere on the map; the hollows ARE channels, and the fringe's strongest lever is the unanchored diffusion
+
+### The criterion, rewritten as a DIFFERENCE against the pre-incision field
+
+The threshold form (≤ 2× REFERENCE) is withdrawn. The authority is the pre-incision field of the
+same seed — Finding 76-A5 measured it at 20 / 8 / 1 602 km, indistinguishable from the coarse
+REFERENCE — and the criterion is **Δ against it**:
+
+| line | target | SHIPPED | Δ | LAW ON | Δ |
+|---|---|---|---|---|---|
+| spurs ≥ 1 km | **Δ = 0** | 1 848 | **+1 828** | 916 | +896 |
+| spurs ≥ 2 cells | **Δ = 0** | 1 831 | **+1 823** | 1 056 | +1 048 |
+| coastline km | Δ under the u16 quantisation noise, **±3 km (0.2 %)** | 6 206 | **+4 604 (+287 %)** | 3 640 | +2 038 |
+| spectrum | unreadable, as the pre-incision's is (8 spurs ⇒ 0 gaps) | λ 14 at ×3.74 | **readable ⇒ fail** | — | — |
+
+**The incision must add no spur.** The pre-incision's twenty are tectonic geometry, not fringe.
+
+### Rule 11
+
+`is_land` **0 — NOTHING FOUND** · `hypsometry_sweep` **0 — NOTHING FOUND** · `ex-terre` **0 —
+NOTHING FOUND** · `coast_spurs` 1 (8575, Finding 76) · `RELIEF_V3_DIFFUSION` 1 (**6098**) ·
+`diffusion` 89 (22) · `deposition` 16 (**18**).
+
+Two earliest hits carry the round:
+
+- **L6098 (Finding 59 §4)** — the `(ref/cell)²` anchor exists **only in the nonlinear branch**
+  while relief-v3 takes the linear one, so **the shipped hillslope operator is 16× too weak at
+  8192²**, and the anchored value is **1.28** — which is exactly the sweep's fourth point. F59
+  priced that defect at **4 % of the work divergence** and set it aside. Nobody measured it on
+  the coast.
+- **L18** — the droplet erosion *"deposits in channels faster than it incises. It is the common
+  cause of the terraces (depositional flats), the missing valleys, the net-zero mass balance and
+  **the coastal sediment dump**."* Block D tests the deposition CLASS against that line, it does
+  not propose it.
+
+### ⚠️ My own instrument leaked, and the first number it produced is DISOWNED
+
+The mask `pre land ∧ shipped sea` catches **every** cell the incision ever took below sea level:
+**298 598 cells in 360 components, median 44 and p90 2 660 cells** — the drowned valleys, not the
+1 831 teeth of median 4 cells. Its "81.4 % of heads at or above `A_c`" answers a question nobody
+asked. **Restricted** to hollows with at least half their cells within 3 of a spur's own coastline
+samples: **46 components of 360**, and *that* is the population the objection was about.
+
+The objection was correct on its own terms and is upheld: Finding 76's A4 took the polyline sample
+farthest from the neck — a **ridge tip** for 81.4 % of excursions — so "86 % carry no channel"
+measured the ridges. **Corrected below.**
+
+### A — the hollows ARE channels, and the depth is a CONSTANT
+
+| column (46 fringe hollows) | p10 | median | p90 |
+|---|---|---|---|
+| area, cells | 1.00 | **7.00** | 131.00 |
+| depth below sea, m | **−20.00** | **−20.00** | **−20.00** |
+| incised at the head, m | 48.39 | **357.79** | 1 648.70 |
+| HEAD accumulation, cells | 16.00 | **253.00** | 6 564.00 |
+| best NEIGHBOUR accumulation, cells | 29.00 | 476.00 | 22 051.00 |
+
+> **At or above `A_c` = 41.9 cells: HEAD 84.8 %, best neighbour 87.0 %.**
+> Finding 76 read the ridge tips and got 13.7 %. **⚠️ CORRECTION to Finding 76 at the point of
+> claim: the fringe is NOT a "non-channelised texture". The hollows that make it are channels,
+> in 85 % of cases.** My conclusion there was drawn from the complementary population.
+
+**And the depth is not a distribution.** Every one of the **298 598** ex-land cells reads exactly
+**−20.000 m** — p1, p10, median, p90 and max alike, and the same in the spur zone (55 756 cells).
+0.00 % are shallower than −0.5, −1, −2 or −5 m.
+
+### THE FINDING: the ocean has no shallows at all
+
+| population | p1 | median | **max** |
+|---|---|---|---|
+| SHIPPED ocean cells ADJACENT TO LAND (120 807) | −20.000 | −20.000 | **−20.000** |
+| SHIPPED, all 56 077 791 ocean cells | −5 264.0 | −4 620.5 | **−20.000** |
+| PRE-INCISION, all 55 780 901 ocean cells | −5 235.6 | −4 596.7 | **−20.000** |
+
+> **The shallowest water anywhere on the map is exactly −20.000 m, and it is already so BEFORE the
+> incision.** There is a forbidden band 20 m thick immediately under sea level: no intertidal, no
+> shelf gradient, no shallows. **Every shoreline on this continent is a 20 m vertical step.**
+>
+> The 0 m isoline therefore never runs on the sea side — the sea side is a *constant*. The
+> coastline is entirely a threshold crossing of the LAND's own micro-relief against a perfectly
+> flat floor, which is exactly what produces a 2-to-5-cell saw-tooth.
+
+**Origin not located, and the ruled-out list is the useful part**: it is not Stein-Stein (that
+floors at `ridge_depth_m` = 2600 m and gives the −4 620 m median); not the coastal FBM taper
+(`coastal_amplitude_band = 0.30`, `upscale.rs:593` — an amplitude taper, and it damps the FBM to
+~0 **at the waterline by design**, #151, which is *why* Finding 76-A5 found the FBM contributing
+nothing at the coast); not `coast_warp_strength = 1.5` (a horizontal sampling warp). Naming the
+constant is the next round's first item and it is a bounded search.
+
+**This also settles Finding 76's mechanism honestly.** The drag onto the receiver is REAL — 298 598
+cells sit exactly on the shelf value, and the head of a fringe hollow was cut by a **median of
+358 m**, which is Finding 61's relaxation onto base level at Courant 1353, not fluvial incision.
+What was refuted is the *destination*: the drag lands at **−20 m, not at sea level**, so Finding
+76-A1 correctly found no sea-level flat while the drag was happening 20 m below its instrument.
+**A1's filter was `is_land`, and the dragged cells are not land any more.**
+
+### B — λ is NOT set by `A_c`; the COUNT is
+
+| `A_c` km² | spurs ≥ 1 km | ≥ 2 cells | coast km | λ cells | × white |
+|---|---|---|---|---|---|
+| 0.025 | 2 711 | **3 264** | 8 429 | **14** | 3.07 |
+| **0.1 (shipped)** | 1 848 | **1 831** | 6 206 | **14** | 3.74 |
+| 0.4 | 433 | **307** | 2 735 | **11** | 11.17 |
+| 1.0 | 202 | **113** | 2 166 | **10** | 8.00 |
+
+**A ×40 sweep moves λ from 14 to 10 — down 29 %, and the wrong way for either hypothesis.**
+`λ ∝ A_c` (14 → 56) is refuted; `λ ∝ √A_c` (14 → 28) is refuted. My "insensitive within 30 %"
+survives at the edge. But the **count** falls ×29 and the coastline ×3.9: `A_c` governs **how
+many** teeth, not **how far apart**. ⚠️ Rule 10 on the last row: 76 gaps is a thin population and
+its ×8.00 should not be read as a stronger peak than the shipped ×3.74.
+
+### C — λ is not set by the diffusion either, but the FRINGE is
+
+| `diffusion` | spurs ≥ 1 km | ≥ 2 cells | coast km | R cell | λ | × white |
+|---|---|---|---|---|---|---|
+| 0 | 1 907 | **2 893** | 7 325 | 0.939 | 19 | 2.47 (**no peak**) |
+| **0.08 (shipped)** | 1 848 | **1 831** | 6 206 | 0.879 | 14 | 3.74 |
+| 0.32 | 1 718 | **673** | 4 710 | 0.655 | 18 | 3.49 |
+| **1.28 (F59 §4's ANCHORED value)** | 1 275 | **189** | 3 538 | 0.455 | 8 | 4.00 |
+
+λ wanders 19 → 14 → 18 → 8, non-monotone, inside a factor 2.4 — **my "< 20 %" is refuted in
+magnitude**, the qualitative reading (not the controlling term) holds. But:
+
+> **At the diffusion value Finding 59 §4 showed to be the CORRECT one, the cell-scale fringe falls
+> from 1 831 to 189 — −90 % — and the coastline from 6 206 to 3 538 km.** Δ against the
+> pre-incision goes from +1 823 to +181. F59 priced the unanchored diffusion at **4 % of the work
+> divergence** and set it aside; **on the coast the same defect is worth an order of magnitude.**
+> It is not a remedy (Δ is still +181, and the terrain moves — the interior control is owed), but
+> it is the strongest lever this campaign has measured, and it is a defect already on file.
+
+### C-bis — my own named candidate, refuted outright
+
+I named `lateral_erosion` (closure b, `stream_power.rs:549`: banks planed **perpendicular to
+flow** over a physical half-width `K_lat·A^m`, only where `A ≥ A_c` — an operator that lowers
+non-channel cells in a comb at right angles to them) as the mechanism, before measuring.
+
+| variant | ≥ 1 km | ≥ 2 cells | coast km | R | λ | × white |
+|---|---|---|---|---|---|---|
+| SHIPPED | 1 848 | 1 831 | 6 206 | 0.879 | 14 | 3.74 |
+| **`lateral_erosion = 0`** | 1 848 | **1 831** | 6 208 | **0.879** | 14 | 3.73 |
+| `talus_passes = 0` | 2 017 | **2 388** | 7 153 | 0.862 | 14 | 3.19 |
+
+**Turning the banks off changes the coast by two kilometres in six thousand and not one spur.**
+Refuted. The reason is the sub-cell family again: `half_cells = (K_lat·A^m / cell_m).floor()` and
+the code `continue`s at `half_cells < 1`, so near the coast — where `A` is small — the closure
+never fires. And **removing the talus makes the fringe 30 % WORSE**, so it is a mild suppressor,
+not a cause.
+
+### D — the class test could not run, and the reason is block A's constant
+
+0 cells lifted at every threshold {0, 0.5, 1, 2 m}, because **no ex-land cell is within 2 m of
+sea level** — they are all at −20 m. The negative control (threshold 0 m) correctly left the
+counts at SHIPPED's. **The deposition class cannot be tested by filling shallow hollows because
+there are no shallow hollows**: a test of it would have to fill a 20 m step, which is a different
+operation and collides with ADR line 18.
+
+### Score
+
+Mine: λ insensitive to `A_c` (−29 %, at the edge) ✓ · hollow heads ≥ `A_c` 40–75 % → 84.8 %, just
+over ✗ · hollow depth −0.2…−1.5 m → **−20.0 constant** ✗✗ · λ insensitive to diffusion within
+20 % → ×2.4 ✗ · **`lateral_erosion` as the mechanism** ✗ · D −85 % at 1 m → not testable ✗.
+The round's: `λ ∝ A_c` ✗ · λ insensitive to diffusion ✓ (qualitatively) · heads ≥ `A_c` > 70 % ✓ ·
+D-post Δ = 0 at 1 m → not testable ✗.
+
+**The meta-prediction holds again, and my named candidate was the loudest thing I got wrong.**
+
+### Standing
+
+No production change. Bench tooling moved to `tests/common/mod.rs` so the builder and the
+spectrum have one copy rather than a fourth. Eleven 8192² builds. The hydrological hole
+(Finding 74) and the law's gate are untouched.
+
+**Next round's first item is a bounded search: name the constant that forbids water between 0 and
+−20 m.** Until it is named, every coastal remedy is being fitted on top of a 20 m cliff nobody
+chose.

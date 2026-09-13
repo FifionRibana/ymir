@@ -282,14 +282,31 @@ L'objectif n'a jamais été « moins de franges ». Il est : **la chaîne upscal
 incision ne produit AUCUNE frange côtière.** Mesuré à 8192², sur le champ conditionné, avec
 `coast_shape_thresholds` aux deux échelles (≥ 1 km et ≥ 2 cellules) :
 
-| ligne | cible | SHIPPED | LAW ON (S_ref 0,1128) |
-|---|---|---|---|
-| éperons ≥ 1 km | ≤ 2× RÉFÉRENCE = **46** | 1 901 (**×41**) | 952 (×21) |
-| éperons ≥ 2 cellules | ≤ 2× RÉFÉRENCE = **104** | 2 398 (**×23**) | 1 439 (×14) |
-| km de côte | ≤ 1,2× RÉFÉRENCE = **1 950** | 6 742 (×3,5) | 3 953 (×2,0) |
-| p90 des éperons | **≥ 12 km** | 4,89 km (**×0,4**) | 4,49 km (×0,4) |
-| pic spectral / ligne de base blanche | **< 3×** | **×3,75 — ÉCHEC** | non mesuré |
-| et l'intérieur ne bouge pas | hypsométrie ±1 m, part chenal ±1 pt, dépressions ±2 % | — | — |
+⚠️ **Le seuil « ≤ 2× RÉFÉRENCE » est RETIRÉ (Finding 77).** Le critère est une **différence
+contre le champ PRÉ-INCISION de la même seed** — l'autorité, mesurée au F76-A5 : 20 / 8 / 1 602 km,
+indiscernable de la RÉFÉRENCE. **L'incision ne doit ajouter aucun éperon.**
+
+| ligne | cible | SHIPPED | Δ | LAW ON |
+|---|---|---|---|---|
+| éperons ≥ 1 km | **Δ = 0** | 1 848 | **+1 828** | +896 |
+| éperons ≥ 2 cellules | **Δ = 0** | 1 831 | **+1 823** | +1 048 |
+| km de côte | Δ sous le bruit u16, **±3 km (0,2 %)** | 6 206 | **+4 604 (+287 %)** | +2 038 |
+| spectre | illisible, comme celui du pré-incision (8 éperons ⇒ 0 écart) | λ 14 à ×3,74 | **lisible ⇒ ÉCHEC** | — |
+| et l'intérieur ne bouge pas | hypsométrie ±1 m, part chenal ±1 pt, dépressions ±2 % | — | — | — |
+
+Les vingt éperons du pré-incision sont la géométrie tectonique, pas des franges.
+
+> ⛔ **PRÉALABLE NOMMÉ (Finding 77)** — **il n'y a aucune eau entre 0 et −20 m sur toute la carte**,
+> avant comme après incision : le maximum des 56 077 791 cellules océan vaut exactement
+> **−20,000 m**, et les 120 807 cellules océan bordant la terre y sont toutes. Chaque trait de côte
+> est une **marche verticale de 20 m**, sans estran ni pente de plateau. L'isoligne 0 m ne court
+> donc jamais côté mer — le côté mer est une constante — et la côte est entièrement un
+> franchissement de seuil du micro-relief terrestre contre un plancher parfaitement plat.
+> **Localiser cette constante est le premier item, avant tout remède côtier.**
+>
+> **Le levier le plus fort mesuré à ce jour n'est pas côtier** : à la valeur ANCRÉE de la
+> diffusion (1,28 — le défaut du F59 §4, chiffré là-bas à 4 % de la divergence de travail), la
+> fourrure à l'échelle cellulaire passe de **1 831 à 189 (−90 %)** et la côte de 6 206 à 3 538 km.
 
 **Ni l'état livré ni la loi n'approchent d'un ordre de grandeur les quatre premières lignes.**
 Un remède qui passe la côte en changeant le continent n'a rien passé.
