@@ -302,7 +302,28 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 > est une **marche verticale de 20 m**, sans estran ni pente de plateau. L'isoligne 0 m ne court
 > donc jamais côté mer — le côté mer est une constante — et la côte est entièrement un
 > franchissement de seuil du micro-relief terrestre contre un plancher parfaitement plat.
-> **Localiser cette constante est le premier item, avant tout remède côtier.**
+> **LOCALISÉE (Finding 78)** : `BathymetryProfile::shelf_min_depth_m = 20.0`
+> (`terrain/bathymetry.rs:49`), clampée ligne 178, posée par le commit `563198e` du 2026-06-26
+> qui **ne la justifie nulle part** — et `bathymetry.rs:171` prend `.max(1.0)`, donc **1 m suffit
+> à l'invariant énoncé** (« le masque terre/mer ne bouge pas »). C'est un **PROXY**.
+>
+> ⛔ **DEUX ITEMS, à ne plus confondre :**
+>
+> **(1) La falaise de 20 m est un défaut consommateur à part entière.** Marche terre−mer p50
+> **22,00 m** ; **0,0 %** du trait de côte est sous 15 % de pente et **100,0 %** est au-dessus de
+> 25 %. Berges, plages et quais ne sont pas difficiles : ils sont **impossibles**. À
+> `shelf_min_depth_m = 1`, la marche p50 tombe à **3,00 m** et **71,4 %** du trait passe sous 15 %
+> — **avec le continent bit-identique** (masque 0 cellule déplacée, hypsométrie 685,32 m, puits,
+> travail d'érosion : identiques au dernier chiffre). **Ce point ne dépend pas de la question des
+> franges.**
+>
+> **(2) Le clamp CACHE 43 % de la fourrure.** Éperons ≥ 2 cellules : 1 291 (200 m) → **1 831
+> (20 m livré)** → 2 705 (5 m) → **3 190 (1 m)**. Marching-squares croise à
+> `t = (0,5 − h_mer)/(h_terre − h_mer)` : une mer plus profonde est un dénominateur plus grand,
+> donc un tracé moins sensible au micro-relief terrestre. **Le compte d'éperons à l'échelle
+> cellulaire n'est pas une propriété de la terre seule.** Idem pour λ : 28 → 14 → 15 → **6**, et le
+> pic passe sous la ligne des 3× à 1 m. **Baisser le plancher AGGRAVE la mesure avant que tout
+> remède ne l'améliore ; les deux items ne se jugent pas sur un seul chiffre.**
 >
 > **Le levier le plus fort mesuré à ce jour n'est pas côtier** : à la valeur ANCRÉE de la
 > diffusion (1,28 — le défaut du F59 §4, chiffré là-bas à 4 % de la divergence de travail), la

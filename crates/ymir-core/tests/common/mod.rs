@@ -44,6 +44,14 @@ pub struct Knobs {
     pub diffusion_substeps: Option<usize>,
     pub lateral_erosion: Option<f32>,
     pub talus_passes: Option<usize>,
+    /// `BathymetryProfile::shelf_min_depth_m` — the clamp of ADR Finding 78. ⚠️ the production
+    /// code takes `shelf_min_depth_m.max(1.0)` (`bathymetry.rs:171`), so a bench point below
+    /// 1 m is CLAMPED TO 1 and must be declared, not silently swept.
+    pub shelf_min_depth_m: Option<f32>,
+    /// Drop the bathymetry re-map entirely — this is the field the INCISION actually produced,
+    /// before the sub-sea overwrite. `apply_bathymetry_profile` runs at
+    /// `production_upscale.rs:506`, i.e. AFTER `incise_lithology` at :451.
+    pub bathymetry_off: bool,
 }
 
 impl Knobs {
@@ -96,6 +104,13 @@ pub fn build_field(k: Knobs) -> GridF32 {
             ..Default::default()
         },
     });
+    if k.bathymetry_off {
+        cfg.bathymetry = None;
+    } else if let Some(d) = k.shelf_min_depth_m {
+        if let Some(b) = cfg.bathymetry.as_mut() {
+            b.shelf_min_depth_m = d;
+        }
+    }
     if k.no_incision {
         cfg.stream_power = None;
     } else if let Some(sp) = cfg.stream_power.as_mut() {

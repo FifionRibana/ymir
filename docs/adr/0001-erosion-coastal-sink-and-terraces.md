@@ -8760,3 +8760,187 @@ spectrum have one copy rather than a fourth. Eleven 8192² builds. The hydrologi
 **Next round's first item is a bounded search: name the constant that forbids water between 0 and
 −20 m.** Until it is named, every coastal remedy is being fitted on top of a 20 m cliff nobody
 chose.
+
+## Finding 78 — the 20 m shelf clamp is a PROXY, it runs AFTER the incision, it suppresses 43 % of the fur, and it makes every shoreline a cliff
+
+### Rule 11, EXTENDED — grep the VALUE, not only the name
+
+`shelf_min_depth` · `shelf_min_depth_m` · `BathymetryProfile` · `apply_bathymetry_profile` ·
+`bathymetry` — **0, 0, 0, 0, 0 ADR hits. NOTHING FOUND, all five.**
+
+The **value** `−20 m`, grepped with the words sea/ocean/shelf/depth, gives **six traces across
+five findings**, in one command:
+
+| line | finding | what is written there |
+|---|---|---|
+| 1248 | **F33** | "a deep bowl (floor −20 m, rim +20 m)" |
+| 1272 | **F34** | "Lake #1000104: 61 km², level −20 m, MAX DEPTH 0 m — **a surface with no water**" |
+| 1305/1308 | **F35** | "MAX DEPTH 633 m (floor −20 m)" · "a −20 m coastal pocket needing a 613 m crossing is absurd" |
+| 1402 | **F36** | "reinstate the **−20 m altitude proxy** Finding 31 removed" |
+| 1758 | **F38** | "2 depth-0 lakes (#1000018, #1000003 at −20 m, 420 / 316 km²) — **on a FLAT floor**" |
+
+> **The constant signed five findings and nobody recognised it as a constant, because we grepped
+> identifiers.** ⇒ **Rule 11 is extended: when a symptom is a REPEATED VALUE, grep the value, with
+> the domain words, not only the name.** F38's "on a FLAT floor" is the clamp described in full
+> without being named.
+
+### A1 — the intent: a real invariant, an arbitrary number
+
+`git log -S"shelf_min_depth_m: 20.0"` → **one commit, `563198e`, 2026-06-26**, *"FEAT : submarine
+bathymetry — plateau→slope→abyss re-map (fix the slab)"*. A long, careful message. **It never
+justifies the 20.** What it does justify is the invariant: *"fraction ocean IDENTIQUE avant/apres
+sur les 6 seeds → cote / masque terre-mer / hypsometrie terrestre inchanges"*.
+
+The field's own docstring states the intent — *"Depth at the coastline — the shelf is shallow but
+submerged (**stays ocean**)"* — and the header anchors the profile on real passive-margin
+morphology: shelf −130 m, break −200 m, abyss −4500 m, width 70 km. **20 is in none of those
+anchors**; Earth's depth at the coastline is 0 m, that is what a beach is. And `bathymetry.rs:171`
+takes `shelf_min_depth_m.max(1.0)`, which says in code that **1 m satisfies the stated invariant**.
+
+**Verdict: a real numerical safety (keep the land/sea mask) with an arbitrary value — a PROXY, and
+it has been one since the day it was written.**
+
+### ⚠️ CORRECTION, to the round's premise AND to my own Finding 77
+
+**The clamp runs AFTER the incision, not before.** `incise_lithology` is called at
+`production_upscale.rs:451`; `apply_bathymetry_profile` at `:506`. The commit message says the
+same ("applique … apres erosion"). Measured, on the receivers of coastal channel cells
+(`A ≥ A_c`, receiver is ocean):
+
+| field | cells | p1 | p10 | **median** | p90 | max | **distinct values** |
+|---|---|---|---|---|---|---|---|
+| SHIPPED (post-clamp) | 7 051 | −20.000 | −20.000 | **−20.000** | −20.000 | −20.000 | **1** |
+| **pre-bathymetry** | 7 064 | −44.515 | −5.557 | **−0.109** | −0.004 | 0.000 | **3 041** |
+
+> **During the incision the sea at the shore sits at a median of −0.109 m, in 3 041 distinct
+> values.** The single −20.000 is the clamp overwriting the result afterwards.
+>
+> **Finding 77 wrote that the relaxation "lands on the shelf value". That is REFUTED by this
+> measurement.** And the corollary matters more: Finding 76's original mechanism — coastal cells
+> relaxing onto a base level **at sea level** — is what the pre-bathymetry field actually shows
+> (median receiver −0.1 m). Finding 76-A1 looked for it on the SHIPPED field, **where the clamp
+> had already overwritten the evidence 20 m down.** The mechanism was not wrong; the field it was
+> measured on was the wrong one.
+>
+> Likewise Finding 77's "the head of a fringe hollow was cut by a median of 358 m" is **not what
+> the incision removed** — it is incision plus the clamp's overwrite.
+
+### B — the sweep: the interior does not move at all, and the mask never moves
+
+`shelf_min_depth_m` ∈ {20, 5, 1, 0.5→1, 200}. ⚠️ the 0.5 m point is **clamped to 1 m by production
+code** (`.max(1.0)`) and is reported as the duplicate it is.
+
+| shelf | ≥ 1 km | **≥ 2 cells** | coast km | p90 | R | λ | × white |
+|---|---|---|---|---|---|---|---|
+| 200 m (neg. control) | 1 870 | **1 291** | 6 198 | 4.64 | 0.896 | 28 | 4.16 |
+| **20 m (SHIPPED)** | 1 848 | **1 831** | 6 206 | 4.62 | 0.879 | 14 | 3.74 |
+| 5 m | 1 829 | **2 705** | 6 173 | 4.39 | 0.823 | 15 | 2.11 |
+| **1 m** | 1 776 | **3 190** | 5 927 | 4.15 | 0.846 | **6** | **1.86** |
+
+**Control block, every point, identical to the last digit**: land 11 031 073 (16.4376 %),
+**mask moved vs SHIPPED = 0**, hypsometry mean **685.32 m**, p50 444.55, pits 1 238 085, erosion
+work 199.02 m, channel share 11.489–11.493 %. **The docstring's invariant holds exactly, and the
+sweep does not touch the continent.** No stop rule.
+
+Hollow depth follows `−shelf_min` **exactly**: −20.000 / −5.000 / −1.000 / −200.000, p10 = p50 =
+p90 = max in every case. Prediction confirmed.
+
+> **THE BINARY QUESTION, answered against the round: the tooth count moves by 74 %, not by
+> "under 10 %".** ≥ 2 cells goes 1 291 → 1 831 → 2 705 → **3 190** as the floor rises from 200 m to
+> 1 m. **The shipped 20 m clamp is SUPPRESSING about 43 % of the cell-scale fur.**
+>
+> The mechanism, predicted before measuring: marching squares crosses at
+> `t = (0.5 − h_sea)/(h_land − h_sea)`. A deeper sea is a **larger denominator**, so the crossing
+> point is less sensitive to the land-side micro-relief and the traced line is smoother.
+> **The cell-scale spur count is therefore NOT a property of the land alone — it depends on the
+> value of the water beside it**, which no land cell can see. Part of what this campaign has been
+> calling "fur" is a contouring artefact of a sub-sea constant.
+>
+> And the same applies to the wavelength: λ goes 28 → 14 → 15 → **6**, and ×white 4.16 → 3.74 →
+> 2.11 → **1.86 (below the 3× line: no readable wavelength at all)**. **Finding 77 found λ was set
+> neither by `A_c` nor by the diffusion. It is set by the clamp depth.** The spectral peak we have
+> been chasing is largely an artefact of the water value.
+
+### The consumer number: every shoreline is a cliff
+
+Population: LAND cells 8-adjacent to sea (145 665 of them, identical at every point).
+
+| shelf | step land−sea p10 | **p50** | p90 | slope < 15 % | slope > 25 % |
+|---|---|---|---|---|---|
+| **20 m (SHIPPED)** | 20.13 | **22.00 m** | 39.22 | **0.0 %** | **100.0 %** |
+| 5 m | 5.13 | 7.00 m | 24.22 | 52.9 % | 26.4 % |
+| **1 m** | 1.13 | **3.00 m** | 20.22 | **71.4 %** | 18.9 % |
+| 200 m | 200.13 | 202.00 m | 219.22 | 0.0 % | 100.0 % |
+
+> **At the shipped value, 100 % of the shoreline is steeper than 25 % and 0.0 % is gentler than
+> 15 %. Banks, beaches and quays are not hard on this product — they are impossible.** At 1 m,
+> 71.4 % of the shoreline is gentler than 15 %. **One constant, and the requirement goes from
+> impossible to mostly satisfied, with the continent bit-identical.**
+
+### C — the anchored damper, priced
+
+`shelf 1 m + diffusion 1.28`: ≥ 1 km **1 173**, ≥ 2 cells **383**, coast **3 434 km**, p90 2.86,
+R 0.738, λ 4 at ×4.04.
+
+Control block: **mask moved vs SHIPPED 86 615 cells**, land 11 031 073 → 10 991 458, hypsometry
+mean 685.32 → **680.08 m (−5.24 m)**, p50 444.55 → 442.84, pits 1 238 085 → **1 335 100 (+7.8 %)**,
+channel share 11.489 → **10.654 % (−0.84 pt)**, work 199.02 → 206.70 m (+3.9 %).
+
+> **The terrain moves, and by less than either of us predicted: −5.24 m of hypsometry, not
+> 10–60.** Against the campaign's own interior tolerance (±1 m, ±1 pt, ±2 %) it **fails the
+> hypsometry line and the depression line, and passes the channel-share line.** It is a change of
+> continent, but a cheap one — and it is a defect already on file (Finding 59 §4), not a new knob.
+
+Δ against the pre-incision authority: **+1 153 / +375 / +1 832 km.** My 150–400 range holds (375);
+the round's "under 100" is refuted. **The residual is still periodic (×4.04), so it is not noise.**
+Whether those 383 teeth are channels was **not measured** — one build short, and it is not
+inferred.
+
+### D — Δ ≈ 0 for the first time, and the test is DEGENERATE
+
+On `shelf 1 m + diff 1.28`, lifting ex-land cells shallower than a threshold to `sea + ε`:
+
+| threshold | cells lifted | ≥ 1 km | ≥ 2 cells | coast km | **Δ vs pre-incision** |
+|---|---|---|---|---|---|
+| 0 m (neg. control) | **0** | 1 173 | 383 | 3 434 | +1 153 / +375 / +1 832 |
+| 0.5 m | **0** | 1 173 | 383 | 3 434 | +1 153 / +375 / +1 832 |
+| **1 m** | **337 998** | 20 | 9 | 1 627 | **+0 / +1 / +25 km (+1.5 %)** |
+| 2 m | 337 999 | 20 | 9 | 1 627 | **+0 / +1 / +25 km** |
+
+**The criterion is met: Δ(≥ 1 km) = 0, Δ(≥ 2 cells) = +1, Δ(coast) = +25 km, spectrum unreadable
+— exactly the pre-incision's signature.** My prediction that Δ would not fall to 0 is **refuted**;
+the round's is confirmed.
+
+> ⚠️ **And the test is degenerate, which must be said in the same breath.** On a 1 m floor every
+> ex-land cell sits at exactly −1.000 m, so the threshold sweep has **two states and no
+> resolution**: 0.5 m lifts nothing, 1 m lifts **all 337 998**. "Fill the shallow hollows" and
+> "undo every cell the incision drowned" are the same operation here, and Δ = 0 follows almost by
+> arithmetic. **What is proved is that the drowned cells are the whole fringe; what is NOT proved
+> is that a transport-limited deposition — which fills some and not others — would do it.**
+>
+> The non-degenerate version is on the **pre-bathymetry** field, where the drowned cells have a
+> real depth distribution (3 041 distinct receiver values, p10 −5.6, median −0.1 m). That is one
+> bench run and it is the next round's first item.
+
+### Score
+
+Mine: ordering correction ✓ · pre-bathymetry receivers a broad distribution ✓ · mask 0 cells ✓ ·
+hollow depth follows `−shelf_min` ✓ · **tooth count moves > 10 %, and upward** ✓ (+74 %, above my
++15…+60 band) · Δ(≥2 cells) 150–400 at shelf1+diff1.28 ✓ (375) · hypsometry 10–60 m **✗** (5.24) ·
+**D does not reach 0 ✗✗**.
+The round's: A1 a proxy ✓ · A2 one value ✓ (on the delivered field) · mask unchanged ✓ · step
+20 → ~1 m ✓ · **tooth count under 10 % ✗** (74 %) · hypsometry > 10 m ✗ · **D → 0 ✓**.
+
+**Meta holds: several were false on both sides.**
+
+### Standing
+
+No production change. The clamp, the diffusion and the fill are all bench variants; promotion is
+the author's call and now has prices attached. Eleven 8192² builds across two benches.
+
+**Two items are now separable, and they were being confused:**
+1. **The 20 m cliff** — a PROXY with no antecedence, a 22 m median step, banks structurally
+   impossible, fixable at zero cost to the continent (mask and hypsometry bit-identical). This is
+   a consumer defect in its own right and does **not** need the fringe question resolved.
+2. **The fringe** — which the clamp was *hiding* 43 % of. Lowering the floor makes the measured
+   fur worse before any remedy improves it, so the two must not be judged on one number.
