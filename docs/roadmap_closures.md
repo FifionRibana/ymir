@@ -276,6 +276,32 @@ perchées, falaise contre plage au rendu).
 `aeolian.rs` et `glacial.rs`.
 
 
+## ⛔ CRITÈRE D'ACCEPTATION DES FRANGES CÔTIÈRES — opposable, écrit avant mesure (ADR Finding 76)
+
+L'objectif n'a jamais été « moins de franges ». Il est : **la chaîne upscale + closures +
+incision ne produit AUCUNE frange côtière.** Mesuré à 8192², sur le champ conditionné, avec
+`coast_shape_thresholds` aux deux échelles (≥ 1 km et ≥ 2 cellules) :
+
+| ligne | cible | SHIPPED | LAW ON (S_ref 0,1128) |
+|---|---|---|---|
+| éperons ≥ 1 km | ≤ 2× RÉFÉRENCE = **46** | 1 901 (**×41**) | 952 (×21) |
+| éperons ≥ 2 cellules | ≤ 2× RÉFÉRENCE = **104** | 2 398 (**×23**) | 1 439 (×14) |
+| km de côte | ≤ 1,2× RÉFÉRENCE = **1 950** | 6 742 (×3,5) | 3 953 (×2,0) |
+| p90 des éperons | **≥ 12 km** | 4,89 km (**×0,4**) | 4,49 km (×0,4) |
+| pic spectral / ligne de base blanche | **< 3×** | **×3,75 — ÉCHEC** | non mesuré |
+| et l'intérieur ne bouge pas | hypsométrie ±1 m, part chenal ±1 pt, dépressions ±2 % | — | — |
+
+**Ni l'état livré ni la loi n'approchent d'un ordre de grandeur les quatre premières lignes.**
+Un remède qui passe la côte en changeant le continent n'a rien passé.
+
+**Ce qui est ÉLIMINÉ** (Finding 76) : le plat au niveau de la mer (r = 0,051, 98,5 % des éperons
+sur un plat de longueur nulle), la classification du zéro (0 cellule exactement à `sea_level`),
+et le FBM/les closures (×229 entre « sans incision » et « livré » à l'échelle cellulaire).
+**Ce qui reste** : une texture parallèle (R 0,879 contre 0,000), sub-métrique (encoche médiane
+0,84 m), non chenalisée (86,3 % des pointes sous `A_c`), **à longueur d'onde fixe de 14 cellules
+(684 m) à ×3,75 le blanc**. C'est une instabilité de rilling (Finding 10), pas un réseau de
+drainage — et sa longueur d'onde est fixée par la compétition incision/diffusion, pas par `A_c`.
+
 ## ⛔ L'HYPSOMÉTRIE EST LE VERROU — priorité 1, devant tout le reste
 
 **Quatre chantiers indépendants sont venus buter dessus**, chacun par un chemin différent, et

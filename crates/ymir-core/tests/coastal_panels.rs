@@ -112,138 +112,156 @@ fn coastal_panels() {
     // is Finding 56's own convention. Choosing it on the law panel would flatter a remedy that
     // merely displaces the defect.
     let shipped = fields.iter().find(|e| e.0 == "SHIPPED").unwrap();
-    let (ox, oy) = densest_window(&shipped.2, shipped.3, shipped.3, CROP);
-    eprintln!(
-        "\n   CROP (densest spur window of SHIPPED, used on ALL THREE): cells \
-         **{ox},{oy} .. {},{}** — {CROP}×{CROP} = {:.1} × {:.1} km",
-        ox + CROP,
-        oy + CROP,
-        CROP as f32 * CELL_KM,
-        CROP as f32 * CELL_KM
-    );
-
-    let mut crops: Vec<GridF32> = Vec::new();
-    eprintln!(
-        "\n   {:<12} {:>14} {:>16} {:>12} {:>14} {:>16}",
-        "panel", "≥1 km (whole)", "≥2 cells (whole)", "coast km", "≥1 km (CROP)", "≥2 cells (CROP)"
-    );
-    for (v, f, polys, _) in &fields {
-        let whole_km = coast_shape_thresholds(polys, CELL_KM, 1.0, NECK_KM);
-        let whole_cell = coast_shape_thresholds(polys, CELL_KM, 2.0 * CELL_KM, CELL_KM);
-        // the crop's OWN counts, so the picture and a number are comparable at the same extent
-        let clipped: Vec<Vec<(f32, f32)>> = polys
-            .iter()
-            .map(|pl| {
-                pl.iter()
-                    .filter(|(x, y)| {
-                        *x >= ox as f32
-                            && *x < (ox + CROP) as f32
-                            && *y >= oy as f32
-                            && *y < (oy + CROP) as f32
-                    })
-                    .copied()
-                    .collect()
-            })
-            .filter(|pl: &Vec<(f32, f32)>| pl.len() >= 8)
-            .collect();
-        let crop_km = coast_shape_thresholds(&clipped, CELL_KM, 1.0, NECK_KM);
-        let crop_cell = coast_shape_thresholds(&clipped, CELL_KM, 2.0 * CELL_KM, CELL_KM);
-        let path = out.join(format!("panel_{v}_{CROP}.png"));
-        let img = crop_image(f, polys, SEA_M, ox, oy);
-        img.save_png_u8(&path).unwrap();
-        crops.push(img);
+    let lawon = fields.iter().find(|e| e.0 == "LAW_ON").unwrap();
+    // TWO crops (ADR Finding 76): the Finding 75 one, chosen on SHIPPED, and a second chosen on
+    // LAW_ON — where the residual saw-tooth actually is, and therefore where the residual has
+    // to be judged. Same three panels at each.
+    let crops_xy = [
+        ("denseSHIPPED", densest_window(&shipped.2, shipped.3, shipped.3, CROP)),
+        ("denseLAWON", densest_window(&lawon.2, lawon.3, lawon.3, CROP)),
+    ];
+    for (tag, (ox, oy)) in crops_xy {
         eprintln!(
-            "   {v:<12} {:>14} {:>16} {:>12.0} {:>14} {:>16}   → {}",
-            whole_km.count,
-            whole_cell.count,
-            whole_km.coast_km,
-            crop_km.count,
-            crop_cell.count,
-            path.display()
+            "\n   CROP (densest spur window of SHIPPED, used on ALL THREE): cells \
+         **{ox},{oy} .. {},{}** — {CROP}×{CROP} = {:.1} × {:.1} km",
+            ox + CROP,
+            oy + CROP,
+            CROP as f32 * CELL_KM,
+            CROP as f32 * CELL_KM
         );
-        // rule 6, mechanical: a panel that was not written is not a deliverable
-        let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-        assert!(bytes > 1024, "panel {v} is {bytes} bytes on disk — not written");
-    }
 
-    // ── the two lake crops of block E, same treatment ─────────────────────────
-    // 1000004: both halves fit in one small frame. 1000056: the main body plus the single
-    // cell 11.44 km away that receives 380 m³/s — the question is whether it is visible at all.
-    let dir = root.join(format!("{SEED}_SHIPPED.ymir"));
-    let (f, w) = (&shipped.1, shipped.3);
-    let lake = raw::load_u32(&dir.join("lake_mask.u32"), w * w).unwrap();
-    for (name, cx, cy, crop) in
-        [("lake_1000004", 4422usize, 2022usize, 64usize), ("lake_1000056", 4029, 5086, 1024)]
-    {
-        let (lox, loy) = (cx.saturating_sub(crop / 2), cy.saturating_sub(crop / 2));
-        let mut img = GridF32::new(crop, crop, 0.0);
-        let (mut n_lake, mut n_land) = (0usize, 0usize);
-        for y in 0..crop {
-            for x in 0..crop {
-                let (sx, sy) = (lox + x, loy + y);
-                if sx >= w || sy >= w {
-                    continue;
-                }
-                let k = sy * w + sx;
-                if lake[k] != 0 {
-                    img.set(x, y, 1.0); // water body, whatever its id
-                    n_lake += 1;
-                } else if f.data[k] > SEA_M {
-                    img.set(x, y, 0.55); // land
-                    n_land += 1;
-                }
-            }
+        let mut crops: Vec<GridF32> = Vec::new();
+        eprintln!(
+            "
+   ───── crop {tag} ─────"
+        );
+        eprintln!(
+            "\n   {:<12} {:>14} {:>16} {:>12} {:>14} {:>16}",
+            "panel",
+            "≥1 km (whole)",
+            "≥2 cells (whole)",
+            "coast km",
+            "≥1 km (CROP)",
+            "≥2 cells (CROP)"
+        );
+        for (v, f, polys, _) in &fields {
+            let whole_km = coast_shape_thresholds(polys, CELL_KM, 1.0, NECK_KM);
+            let whole_cell = coast_shape_thresholds(polys, CELL_KM, 2.0 * CELL_KM, CELL_KM);
+            // the crop's OWN counts, so the picture and a number are comparable at the same extent
+            let clipped: Vec<Vec<(f32, f32)>> = polys
+                .iter()
+                .map(|pl| {
+                    pl.iter()
+                        .filter(|(x, y)| {
+                            *x >= ox as f32
+                                && *x < (ox + CROP) as f32
+                                && *y >= oy as f32
+                                && *y < (oy + CROP) as f32
+                        })
+                        .copied()
+                        .collect()
+                })
+                .filter(|pl: &Vec<(f32, f32)>| pl.len() >= 8)
+                .collect();
+            let crop_km = coast_shape_thresholds(&clipped, CELL_KM, 1.0, NECK_KM);
+            let crop_cell = coast_shape_thresholds(&clipped, CELL_KM, 2.0 * CELL_KM, CELL_KM);
+            let path = out.join(format!("panel_{tag}_{v}_{CROP}.png"));
+            let img = crop_image(f, polys, SEA_M, ox, oy);
+            img.save_png_u8(&path).unwrap();
+            crops.push(img);
+            eprintln!(
+                "   {v:<12} {:>14} {:>16} {:>12.0} {:>14} {:>16}   → {}",
+                whole_km.count,
+                whole_cell.count,
+                whole_km.coast_km,
+                crop_km.count,
+                crop_cell.count,
+                path.display()
+            );
+            // rule 6, mechanical: a panel that was not written is not a deliverable
+            let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            assert!(bytes > 1024, "panel {v} is {bytes} bytes on disk — not written");
         }
-        // A single cell is invisible at this scale, and that IS the question, so it is MARKED
-        // rather than left to be hunted: a hollow crosshair around cell 4128,5223 — the 0.002 km²
-        // half of id 1000056 that receives 380.5 m³/s (Finding 75 block E).
-        if name == "lake_1000056" {
-            let (mx, my) = (4128i64 - lox as i64, 5223i64 - loy as i64);
-            for d in 4..12i64 {
-                for (px, py) in [(mx + d, my), (mx - d, my), (mx, my + d), (mx, my - d)] {
-                    if px >= 0 && py >= 0 && (px as usize) < crop && (py as usize) < crop {
-                        img.set(px as usize, py as usize, 0.0);
+
+        // ── the two lake crops of block E, same treatment ─────────────────────────
+        // 1000004: both halves fit in one small frame. 1000056: the main body plus the single
+        // cell 11.44 km away that receives 380 m³/s — the question is whether it is visible at all.
+        let dir = root.join(format!("{SEED}_SHIPPED.ymir"));
+        let (f, w) = (&shipped.1, shipped.3);
+        let lake = raw::load_u32(&dir.join("lake_mask.u32"), w * w).unwrap();
+        for (name, cx, cy, crop) in
+            [("lake_1000004", 4422usize, 2022usize, 64usize), ("lake_1000056", 4029, 5086, 1024)]
+        {
+            let (lox, loy) = (cx.saturating_sub(crop / 2), cy.saturating_sub(crop / 2));
+            let mut img = GridF32::new(crop, crop, 0.0);
+            let (mut n_lake, mut n_land) = (0usize, 0usize);
+            for y in 0..crop {
+                for x in 0..crop {
+                    let (sx, sy) = (lox + x, loy + y);
+                    if sx >= w || sy >= w {
+                        continue;
+                    }
+                    let k = sy * w + sx;
+                    if lake[k] != 0 {
+                        img.set(x, y, 1.0); // water body, whatever its id
+                        n_lake += 1;
+                    } else if f.data[k] > SEA_M {
+                        img.set(x, y, 0.55); // land
+                        n_land += 1;
                     }
                 }
             }
+            // A single cell is invisible at this scale, and that IS the question, so it is MARKED
+            // rather than left to be hunted: a hollow crosshair around cell 4128,5223 — the 0.002 km²
+            // half of id 1000056 that receives 380.5 m³/s (Finding 75 block E).
+            if name == "lake_1000056" {
+                let (mx, my) = (4128i64 - lox as i64, 5223i64 - loy as i64);
+                for d in 4..12i64 {
+                    for (px, py) in [(mx + d, my), (mx - d, my), (mx, my + d), (mx, my - d)] {
+                        if px >= 0 && py >= 0 && (px as usize) < crop && (py as usize) < crop {
+                            img.set(px as usize, py as usize, 0.0);
+                        }
+                    }
+                }
+                eprintln!(
+                    "     ↑ the isolated 1-cell half is at PANEL pixel {mx},{my}, marked with a                  crosshair (the cell itself is 1 px)"
+                );
+            }
+            let path = out.join(format!("{name}_{crop}.png"));
+            img.save_png_u8(&path).unwrap();
             eprintln!(
-                "     ↑ the isolated 1-cell half is at PANEL pixel {mx},{my}, marked with a                  crosshair (the cell itself is 1 px)"
-            );
-        }
-        let path = out.join(format!("{name}_{crop}.png"));
-        img.save_png_u8(&path).unwrap();
-        eprintln!(
-            "   {name:<14} crop {crop}×{crop} at cells {lox},{loy} ({:.2} × {:.2} km) | \
+                "   {name:<14} crop {crop}×{crop} at cells {lox},{loy} ({:.2} × {:.2} km) | \
              {n_lake} lake cells, {n_land} land cells → {}",
-            crop as f32 * CELL_KM,
-            crop as f32 * CELL_KM,
-            path.display()
-        );
-        assert!(n_lake > 0, "rule 10: {name}'s crop contains no lake cell at all");
-        assert!(std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) > 256);
-    }
+                crop as f32 * CELL_KM,
+                crop as f32 * CELL_KM,
+                path.display()
+            );
+            assert!(n_lake > 0, "rule 10: {name}'s crop contains no lake cell at all");
+            assert!(std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) > 256);
+        }
 
-    // ── the MOSAIC (rule 9: judging three files means judging from recollection) ──
-    // REFERENCE first, left to right, so "absent" anchors the eye before the defect.
-    {
-        let gap = 8usize;
-        let mw = CROP * 3 + gap * 2;
-        let mut m = GridF32::new(mw, CROP, 0.25);
-        for (i, g) in crops.iter().enumerate() {
-            let x0 = i * (CROP + gap);
-            for y in 0..CROP {
-                for x in 0..CROP {
-                    m.set(x0 + x, y, g.data[y * g.width + x]);
+        // ── the MOSAIC (rule 9: judging three files means judging from recollection) ──
+        // REFERENCE first, left to right, so "absent" anchors the eye before the defect.
+        {
+            let gap = 8usize;
+            let mw = CROP * 3 + gap * 2;
+            let mut m = GridF32::new(mw, CROP, 0.25);
+            for (i, g) in crops.iter().enumerate() {
+                let x0 = i * (CROP + gap);
+                for y in 0..CROP {
+                    for x in 0..CROP {
+                        m.set(x0 + x, y, g.data[y * g.width + x]);
+                    }
                 }
             }
-        }
-        let mp = out.join(format!("mosaic_REFERENCE_SHIPPED_LAW_{CROP}.png"));
-        m.save_png_u8(&mp).unwrap();
-        eprintln!(
-            "
+            let mp = out.join(format!("mosaic_{tag}_{CROP}.png"));
+            m.save_png_u8(&mp).unwrap();
+            eprintln!(
+                "
    MOSAIC (left→right: REFERENCE · SHIPPED · LAW_ON, same crop) → {}",
-            mp.display()
-        );
-        assert!(std::fs::metadata(&mp).map(|f| f.len()).unwrap_or(0) > 4096);
+                mp.display()
+            );
+            assert!(std::fs::metadata(&mp).map(|f| f.len()).unwrap_or(0) > 4096);
+        }
     }
 }

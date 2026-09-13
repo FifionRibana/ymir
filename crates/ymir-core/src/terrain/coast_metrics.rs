@@ -86,22 +86,42 @@ pub fn coast_shape(polys: &[Polyline], km_per_cell: f32) -> CoastShape {
 /// `coast_shape(p, k)` is exactly `coast_shape_thresholds(p, k, MIN_SPUR_KM, NECK_KM)` — asserted
 /// in `coast_shape_default_is_the_parameterised_call`, because a refactor that silently moves the
 /// shipped numbers would invalidate every coastal figure in this dossier.
+/// ONE detected spur, with the geometry the aggregates are built from — exposed because the
+/// spectral instrument (ADR Finding 76 block C) needs the spurs' POSITIONS along the curvilinear
+/// abscissa, which no aggregate can carry. [`coast_shape_thresholds`] is computed from exactly
+/// this list, so a spectrum and a count can never describe different populations.
+#[derive(Debug, Clone, Copy)]
+pub struct Spur {
+    /// Index into the `polys` slice.
+    pub poly: usize,
+    /// First and last sample of the excursion, into that polyline.
+    pub i: usize,
+    pub j: usize,
+    /// Curvilinear abscissa of the spur's root along its polyline, km.
+    pub root_km: f32,
+    pub len_km: f32,
+    /// Midpoint of the neck, in CELL coordinates.
+    pub mid: (f32, f32),
+    /// Axial angle of the excursion (neck midpoint -> farthest sample), radians.
+    pub axis_rad: f32,
+}
+
+/// The spur walk itself. Returns the spurs and the total coastline length in CELLS.
+///
+/// A SPUR is an excursion that returns on itself: an arc of at least `min_spur_km` whose
+/// endpoints lie within `neck_km` of each other, capped at [`MAX_SPUR_KM`].
 #[must_use]
-pub fn coast_shape_thresholds(
+pub fn coast_spurs(
     polys: &[Polyline],
     km_per_cell: f32,
     min_spur_km: f32,
     neck_km: f32,
-) -> CoastShape {
+) -> (Vec<Spur>, f32) {
     let neck_cells = neck_km / km_per_cell;
     let min_arc_cells = min_spur_km / km_per_cell;
-    let mut lens: Vec<f32> = Vec::new();
-    let mut roots: Vec<f32> = Vec::new();
-    let mut axes: Vec<(f32, f32, f32)> = Vec::new(); // (mid x, mid y, axis angle)
-    let (mut c2, mut s2) = (0.0f64, 0.0f64);
-    let (mut coast_cells, mut in_spur_cells) = (0.0f32, 0.0f32);
-
-    for pl in polys {
+    let mut out: Vec<Spur> = Vec::new();
+    let mut coast_cells = 0.0f32;
+    for (pi, pl) in polys.iter().enumerate() {
         let mut arc = vec![0.0f32; pl.len()];
         for i in 1..pl.len() {
             arc[i] = arc[i - 1]
@@ -126,9 +146,6 @@ pub fn coast_shape_thresholds(
             }
             match best {
                 Some(j) => {
-                    lens.push((arc[j] - arc[i]) * km_per_cell);
-                    roots.push(arc[i] * km_per_cell);
-                    in_spur_cells += arc[j] - arc[i];
                     let mid = ((pl[i].0 + pl[j].0) * 0.5, (pl[i].1 + pl[j].1) * 0.5);
                     let mut far = (0.0f32, (0.0f32, 0.0f32));
                     for p in &pl[i..=j] {
@@ -137,15 +154,43 @@ pub fn coast_shape_thresholds(
                             far = (d, *p);
                         }
                     }
-                    let th = ((far.1.1 - mid.1) as f64).atan2((far.1.0 - mid.0) as f64);
-                    c2 += (2.0 * th).cos();
-                    s2 += (2.0 * th).sin();
-                    axes.push((mid.0, mid.1, th as f32));
+                    let th = ((far.1.1 - mid.1) as f64).atan2((far.1.0 - mid.0) as f64) as f32;
+                    out.push(Spur {
+                        poly: pi,
+                        i,
+                        j,
+                        root_km: arc[i] * km_per_cell,
+                        len_km: (arc[j] - arc[i]) * km_per_cell,
+                        mid,
+                        axis_rad: th,
+                    });
                     i = j;
                 }
                 None => i += 1,
             }
         }
+    }
+    (out, coast_cells)
+}
+
+#[must_use]
+pub fn coast_shape_thresholds(
+    polys: &[Polyline],
+    km_per_cell: f32,
+    min_spur_km: f32,
+    neck_km: f32,
+) -> CoastShape {
+    // ONE walk, shared with `coast_spurs`, so the spectrum and the count are the same
+    // population by construction (ADR Finding 76).
+    let (spurs, coast_cells) = coast_spurs(polys, km_per_cell, min_spur_km, neck_km);
+    let mut lens: Vec<f32> = spurs.iter().map(|s| s.len_km).collect();
+    let roots: Vec<f32> = spurs.iter().map(|s| s.root_km).collect();
+    let axes: Vec<(f32, f32, f32)> = spurs.iter().map(|s| (s.mid.0, s.mid.1, s.axis_rad)).collect();
+    let in_spur_cells: f32 = spurs.iter().map(|s| s.len_km / km_per_cell).sum();
+    let (mut c2, mut s2) = (0.0f64, 0.0f64);
+    for sp in &spurs {
+        c2 += (2.0 * sp.axis_rad as f64).cos();
+        s2 += (2.0 * sp.axis_rad as f64).sin();
     }
     lens.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 

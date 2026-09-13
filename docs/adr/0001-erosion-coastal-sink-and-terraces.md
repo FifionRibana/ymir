@@ -8439,3 +8439,148 @@ refactor that is provably not a behaviour change (`coast_shape` delegating to
 `coast_shape_thresholds`, identity asserted). No de-gating of the law, no MFD change, no touch to
 `break_reciprocal_spill_cycles`, no C3, no renderer. The hydrological hole — 343.7 m³/s, mechanism
 attributed at Finding 74 — is untouched, as instructed.
+
+## Finding 76 — the sea-level-flat mechanism is REFUTED (r = 0.05); the fur is a periodic, parallel, non-channel tooth of the incision, and it has a wavelength
+
+### The acceptance criterion, written before the measurements and not met by anything shipped
+
+The objective was never "fewer fringes". It is: **the upscale + closures + incision chain
+produces NO coastal fringe.** Opposable, at 8192², on the conditioned field:
+
+| line | target | SHIPPED | LAW ON (0.1128) |
+|---|---|---|---|
+| spurs ≥ 1 km | ≤ 2× REFERENCE = **46** | 1 901 (**×41**) | 952 (×21) |
+| spurs ≥ 2 cells | ≤ 2× REFERENCE = **104** | 2 398 (**×23**) | 1 439 (×14) |
+| coastline km | ≤ 1.2× REFERENCE = **1 950** | 6 742 (×3.5) | 3 953 (×2.0) |
+| spur p90 length | **≥ 12 km** | 4.89 km (**×0.4**) | 4.49 km (×0.4) |
+| spectral peak vs white | **< 3×** | **×3.75 — FAILS** | not measured |
+| interior unmoved | hypsometry ±1 m, channel share ±1 pt, depressions ±2 % | — | — |
+
+**Neither the shipped state nor the law comes within an order of magnitude of any of the first
+four lines.** The law is not a candidate remedy for this criterion; it is a partial reduction.
+
+### Rule 11, and the earliest hit was the candidate mechanism
+
+`sea_level` **9** (earliest 70) · `h_r` **4** (3789) · `implicit` **8** (149) · `is_ocean` **1**
+(8008) · `coast_shape_thresholds` **2** (8331) · `S_min` **3** (3997) · **`s_min`: NOTHING FOUND**.
+
+L3789 (Finding 61) states the candidate exactly: *"With `f = K·dt·A^m/dist_m ≫ 1` the update
+`h ← (h + f·h_r)/(1 + f)` drives each cell essentially onto its receiver's height in ONE step"*,
+Courant 1353. Combined with `stream_power.rs:410` — `receiver[k] = k` whenever
+`field <= sea_level`, so the ocean is a fixed base node and a land cell draining into it takes
+`hr` = that ocean cell's height — the prediction is that the coast is dragged onto sea level, one
+cell per iteration, along every channel. **It is a clean, code-level derivation. It is also
+wrong, and the measurement says so in four independent ways.**
+
+### A — the mechanism is REFUTED, and stop rule 1 fires
+
+**A1 — dent length against flat length.** Over the **1 831** spurs ≥ 2 cells, each matched to its
+nearest channel mouth (0 unmatched), the flat = the run of consecutive cells at or below
+`sea + 0.01 m` walked upstream from the mouth along the highest-accumulation donor:
+
+> **FLAT length: p10 0.0 · median 0.0 · p90 0.0 · max 3.0 cells — 98.5 % of spurs sit on a
+> ZERO-LENGTH flat.** Spur length: p10 2.0 · median 4.1 · p90 14.7 cells.
+> **r = 0.051.** Mean flat 0.02 cells against a mean spur of 7.78.
+
+**Stop rule 1 fires. The seam was NOT written.** My own prediction (r ∈ [0.5, 0.85]) is refuted,
+the round's (r > 0.8) is refuted, and the measurement wins.
+
+**A2 — the near-shore bed rises from the first cell.** Median height above sea, by flow distance
+to the sea: **1 cell → 1.997 m · 2 → 6.881 · 3 → 11.088 · 5 → 18.977 · 10 → 34.970 · 20 →
+65.272 m** (145 665 land cells drain directly into an ocean cell; 100 % of land has a flow path
+to the sea). That is the alternative A2 named — *a regular slope from the first cell* — not a
+plateau then a rise. My "≤ 0.05 m at 1–2 cells" is refuted by a factor 40.
+
+**A3 — the counter-hypothesis dies too, and harder.** Over the 267 100 land cells within 3 of the
+sea: **exactly `sea_level`: 0 (0.00 %)** · in `(sea−0.01, sea]`: **0** · in `(sea, sea+0.01]`:
+2 235 (0.8 %) · **above sea + 0.01 m: 264 865 (99.2 %)**. And of the 145 665 mouth cells,
+**0 sit exactly on their receiver's height** — the `clamp(hr, ho)` signature of the drag is
+**totally absent**. Both the mechanism and its counter-hypothesis are dead; the near-shore
+terrain is ordinary sloping ground.
+
+Why the code reading was wrong: a mouth cell only reaches the implicit update if it clears
+`A_c = 41.94 cells`. There are 145 665 mouth cells and the coastline-wide median accumulation is
+**1 cell**, so the overwhelming majority `continue` out of the loop before any drag can happen.
+**A correct reading of one code path is not a measurement of the population that traverses it** —
+the same error class as Finding 73's "the exit cell is below sea level", which was also a correct
+sentence about the wrong cells.
+
+### A4 — what the spurs ARE, since stop rule 1 demands it
+
+| question | answer |
+|---|---|
+| does the excursion enclose land or sea? | **LAND for 1 491 (81.4 %)**, sea for 340 (18.6 %) ⇒ **TEETH, land slivers pointing seaward**, not bays |
+| is the tip a channel? | tip accumulation p10 **0** · median **1** · p90 103 cells (coastline-wide median 1). **Only 250 of 1 831 (13.7 %) reach `A_c` = 41.9 cells** |
+| how deep is the notch? | neck − tip: p10 **−20.45** · median **0.84** · p90 +28.46 m |
+
+> **The fur is made of ~4-cell land slivers that carry no channel (86.3 % below the channel
+> head) and have under a metre of relief between their neck and their tip.** It is not a
+> drowned valley, not a ria, and not a drag — it is a sub-metre wiggle in a gently sloping
+> surface, read by a contour tracer at 48.8 m per cell.
+
+### A5 — and it is 100 % the incision's, at the CELL scale too
+
+Finding 51 attributed the fringe entirely to the incision, measured at the **kilometre** scale —
+the one that cannot see a 2-cell tooth. Re-measured at the cell scale, FBM and both closures ON,
+**only `stream_power` removed**:
+
+| field | ≥ 1 km | **≥ 2 cells** | coast km | p90 km | R (cell) |
+|---|---|---|---|---|---|
+| SHIPPED (FBM + incision) | 1 848 | **1 831** | 6 206 | 4.62 | **0.879** |
+| FBM + closures, **NO incision** | 20 | **8** | 1 602 | 23.34 | **0.000** |
+
+**×229 at the cell scale, and the parallelism goes from 0.000 to 0.879.** Finding 51's conclusion
+survives the change of scale intact: the FBM and the closures contribute **nothing** to the
+coastal texture, and these figures are indistinguishable from Finding 75's REFERENCE (20 / 8 /
+1602 on the eroded field) — i.e. **removing the FBM on top of the incision changes the coast by
+zero.**
+
+### C — the fur has a WAVELENGTH, and that is the finding
+
+Gaps between consecutive spur roots along each continuous coast segment > 20 km, against a white
+baseline (same counts, uniform positions, 64 draws):
+
+> **SHIPPED: 10 segments, 1 647 gaps, median gap 26.4 cells — dominant spacing **14 cells**
+> (684 m) at **×3.75** the white baseline.** Above the criterion's 3× line: **a wavelength
+> exists.** The no-incision field yields 0 gaps (8 spurs in total) — rule 10, reported as not a
+> reading rather than as a flat spectrum.
+
+14 cells is **not** √A_c (6.5 cells at 8192²), so the spacing is not the channel-head threshold's
+own scale. My prediction (2–5 cells) and the round's (3–6) are both refuted. **A periodic,
+parallel, sub-metre, non-channel texture at a fixed wavelength is an INSTABILITY of the incision,
+not a drainage pattern** — which is the Smith–Bretherton rilling comb of Finding 10 reaching the
+shoreline, now measured at the shoreline with a wavelength attached for the first time.
+
+### The rule-9 trap, at full strength: the crop swings the verdict from −60 % to −8 %
+
+Three panels at **two** crops, rendered from the exported rasters:
+
+| | spurs ≥ 1 km | ≥ 2 cells | | |
+|---|---|---|---|---|
+| | SHIPPED | LAW ON | SHIPPED | LAW ON |
+| whole grid | 1 902 | 943 (**−50 %**) | 2 394 | 1 350 (**−44 %**) |
+| crop on SHIPPED's densest window (5120,4480) | 129 | 50 (**−61 %**) | 113 | 45 (**−60 %**) |
+| **crop on LAW ON's densest window (4160,1600)** | 81 | 75 (**−7 %**) | 152 | 140 (**−8 %**) |
+
+> **The same remedy reads −60 % or −8 % depending on which 31 km square you look at.** At the
+> second crop SHIPPED and LAW ON are visually near-identical, both heavily furred, against a
+> smooth REFERENCE. The author's instinct — that the saw-tooth he saw is where the law's densest
+> residue is — is confirmed, and Finding 75's in-crop figure was flattering by ×1.4 at one crop
+> and by ×7 relative to the other.
+
+### Standing
+
+**No production change.** The seam was not written because stop rule 1 fired first, which is what
+the stop rule is for. One refactor that is provably not a behaviour change:
+`coast_shape_thresholds` now delegates its walk to `coast_spurs`, which the spectral instrument
+needs (no aggregate can carry positions) — verified GOLDEN on the real 8192² coastline, all nine
+whole-grid figures and all six in-crop figures identical to the digit before and after.
+
+Not run: B (the seam and its variants), D (lake shores under a floor that does not exist). The
+hydrological hole (343.7 m³/s, Finding 74) is untouched as instructed.
+
+**What the next round has to explain is no longer "why is the coast flat" — it is "why does the
+incision produce a parallel, sub-metre, non-channel texture at a 14-cell wavelength, and why only
+near the shoreline".** The candidate now on top is the one Finding 55 tested at the wrong lever:
+the rilling instability, whose wavelength is set by the competition between incision and
+diffusion, not by `A_c`.
