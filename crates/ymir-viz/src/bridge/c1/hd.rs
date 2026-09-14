@@ -108,6 +108,17 @@ pub struct HdParams {
     pub mfd: bool,
     /// MFD partition exponent when `mfd` is on (lower = more dispersed; p≈2 recommended).
     pub mfd_p: f32,
+    /// EXPERIMENTAL (ADR 0001, Finding 80): the BASE LEVEL the incision may not cut
+    /// below, in metres above sea level. `None` (default) is the shipped behaviour --
+    /// channels grade to their receiver, which at the coast is the sea, and land cells
+    /// drown. `Some(0.5)` bounds the relaxation target and brings the coastal fringe to
+    /// the pre-incision authority (Finding 80: delta(mask, >=2 cells) = +0 on all four
+    /// consumer grids). A UI opt-in; the PRODUCTION default is unchanged.
+    ///
+    /// It is NOT hydrologically neutral (Finding 81): below-sea basins 62 -> 20, the
+    /// Finding 74 terminal table moves on every line. The toggle exists so the author can
+    /// see both worlds before deciding, not so the decision can be skipped.
+    pub base_level_m: Option<f32>,
     /// EXPERIMENTAL: override the FBM `amplitude_base` for this run (`None` = the
     /// production 0.16). Lets the author flip through the striation amplitude ladder
     /// (0.16/0.08/0.04/0.02) with stream-power ON to see the striations shrink.
@@ -170,6 +181,7 @@ impl Default for HdParams {
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
+            base_level_m: None,
             fbm_amplitude: None,
             geo_scale_ratio: 1.0,
             latitude_span_deg: None,
@@ -494,6 +506,21 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             if upscale.lithology.enabled { "ON" } else { "off" },
             if upscale.fracture.enabled { "ON" } else { "off" }
         );
+    }
+    // ADR 0001 Finding 80 -- the base-level bound, on the SHIPPED path. It has to be here
+    // and not in the relief-v1/v2 branch below, which is the legacy opt-in chain that
+    // never ships. `epsilon_m` reaches the cache key (tested in `base_level_floor.rs`), so
+    // flipping the box re-derives the eroded field AND, through `eroded_key`, the
+    // drainage: lakes and rivers are recomputed, not just the raster.
+    if let Some(eps) = params.base_level_m {
+        if let Some(sp) = upscale.stream_power.as_mut() {
+            sp.base_level_floor =
+                Some(ymir_core::erosion::stream_power::BaseLevelFloor { epsilon_m: eps });
+            eprintln!(
+                "[HD] BASE-LEVEL BOUND ON (ADR Finding 80): incision floored at sea + {eps} m \
+                 -- the hydrology moves too (Finding 81), this is not a raster-only change"
+            );
+        }
     }
     if params.stream_power && !ships_relief_v3 {
         let km_per_cell = window_km / params.target_size as f32; // window_km == domain_km

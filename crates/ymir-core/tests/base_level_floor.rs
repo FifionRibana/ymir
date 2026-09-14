@@ -145,3 +145,46 @@ fn the_bound_holds_and_its_negative_control_drowns() {
     // the bound may stop erosion; it must never deposit
     assert_eq!(lifted, 0, "the bound LIFTED {lifted} cells — it is depositing, not bounding");
 }
+
+/// ADR Finding 82 — **the toggle must move the HYDROLOGY, not only the raster.**
+///
+/// A UI switch that re-derived the eroded field but served a cached HD drainage would show a
+/// bounded coast with unbounded lakes and rivers: a screen that lies. The guarantee is
+/// structural — `hd_drainage_key` is `derived_from(eroded)` (`cached_product.rs:775`), and
+/// `breach_key` likewise — so it is asserted here rather than trusted.
+#[test]
+fn the_toggle_moves_the_whole_hydrology_chain() {
+    use ymir_core::climate::precipitation::PrecipParams;
+    use ymir_core::tectonics_c1::cached_product::{conditioned_eroded_key, hd_drainage_key};
+
+    let ss = SteinSteinParams::default();
+    let volc = VolcanismConfig::default();
+    let tectonic = CacheKey::root().with("seed", &10_481_999_410_520_546_993u64);
+    let key = |floor: Option<f32>| {
+        let ek = eroded_key_full(&tectonic, &ss, &upscale_cfg(floor), &volc);
+        let bk = conditioned_eroded_key(&ek);
+        let hk = hd_drainage_key(
+            &ek,
+            &C1DrainageConfig::default(),
+            &ss,
+            45.0,
+            &PrecipParams::default(),
+            Some(40.0),
+            7.5,
+            400.0,
+        );
+        (ek.digest().to_string(), bk.digest().to_string(), hk.digest().to_string())
+    };
+    let (e0, b0, h0) = key(None);
+    let (e1, b1, h1) = key(Some(0.5));
+    eprintln!(
+        "   eroded   {e0} -> {e1}
+   breach   {b0} -> {b1}
+   hd drain {h0} -> {h1}"
+    );
+    assert_ne!(e0, e1, "the eroded field would be served from cache");
+    assert_ne!(b0, b1, "the BREACH would be served from cache: lakes on an unbounded field");
+    assert_ne!(h0, h1, "the HD DRAINAGE would be served from cache: rivers and lakes would lie");
+    // negative control: without it, a key folding a timestamp passes the three above
+    assert_eq!(key(None).2, h0, "the hd drainage key is not stable across identical calls");
+}

@@ -9563,3 +9563,181 @@ and where the residual drowning sits.**
 No production change; the bound stays `None`. **A1 is green, so the decision page is written.**
 Two items are now explicitly owed and neither is done here: **Finding 74 re-derived under the
 bound** (its every line moved), and **Finding 69's river widths under the bound** (one read).
+
+## Finding 82 — the toggle, verified on the key chain; the budget loss is coastal; and the hole's mechanism SURVIVES the bound
+
+One code change: a viz toggle. The production default stays `None`. Everything else is bench.
+
+### Rule 11 + 11b
+
+`a_c_slope_law` 4 (5288) · `c1_climate_placed` 3 (**1002**) · `orographic` 5 (**780**) · `precip`
+42 (776) · `runoff` 69 (839) · `budget` 62 (288). By value: `502.1` **7**, `172.6` **4**,
+`474.7` **1** (Finding 81, yesterday).
+
+**L780 armed block C1 before it ran**: *"Ocean advection works (windward 1923 vs leeward 597 mm/yr
+— strong orographic contrast)"*. A ×3.2 windward/leeward ratio is already on file, so a shoreline
+raised by a metre can move a rain shadow well past the coast — the round's "interior loss" outcome
+had an antecedent. **L1002** (Finding 25): the wind belt and the frontal base are evaluated **per
+row** from (`centre_deg`, `span_deg`), which is why the arid bed reacts differently.
+
+### Voie 1 — the toggle, and the check is on the KEYS, not on a screen
+
+Checkbox **"Niveau de base (F80, exp.)"**, under "Closures relief-v2". It sets
+`sp.base_level_floor = Some(BaseLevelFloor { epsilon_m: 0.5 })` on the **shipped path**
+(`ships_relief_v3`, `hd.rs:460`) — deliberately not in the relief-v1/v2 branch below it, which is
+the legacy opt-in chain that never ships. `BASE_LEVEL_EPS_M` carries its justification at the
+constant. **The production default is untouched.**
+
+The round required proof that the toggle moves the hydrology and not only the raster. Asserted in
+`base_level_floor.rs::the_toggle_moves_the_whole_hydrology_chain`:
+
+| key | off → on |
+|---|---|
+| eroded | `a68cb86847eccb75` → `5f5cbb5feca97d5e` |
+| **breach** (`conditioned_eroded_key`) | `e5b23264524ce1c0` → `733ccaf39bdcc96f` |
+| **HD drainage** (`hd_drainage_key`) | `aaba1bd6d5c76d36` → `d1efeff772f7fdb9` |
+
+`hd_drainage_key` is `derived_from(eroded)` (`cached_product.rs:775`), so **lakes and rivers are
+recomputed**. Stability negative control included; `none_is_byte_identical` still passes, so the
+box unchecked is the delivered field to the bit.
+
+**The reading table for the author** (rule 9: if the picture contradicts the count, the picture
+wins):
+
+| where | what | the count that must agree |
+|---|---|---|
+| dense-LAW-ON crop, 8192² `4160,1600..4800,2240` (→ 2048² `1040,400..1200,560`) | the saw-tooth | Δ(mask ≥ 2 cells) = **+0**; land components of 4–8 cells **504 → 63** |
+| the furred peninsula of the original capture | the fur | idem; terrain-2048 sand band **16 426 → 9 900 px** |
+| image 1 — the two big lakes, the river | lakes and river | below-sea basins **62 → 20**; terminal **×0.315 → ×0.446**; max `Watercourse` **21.785 → 19.243 m³/s** |
+| any shore, close up | beach or cliff | step p50 **3 m**; cross-section with **no bench** at +ε |
+
+### C1 — the budget loss is COASTAL, and the interior GAINS
+
+Δ(P − PE) per band, delivered → bounded. (Measured on the **eroded** field, so the totals read
+487.6 → 451.1 humid where Finding 81 read 502.1 → 474.7 on the **breached** one; same direction,
+same magnitude, different stage — both are stated.)
+
+| humid | delivered | bounded | Δ m³/s | share of Δ |
+|---|---|---|---|---|
+| **0–1 km from the coast** | 135.01 | 67.24 | **−67.77** | **185.3 %** |
+| 1–5 km | 122.29 | 125.52 | +3.23 | −8.8 % |
+| 5–20 km | 210.23 | 226.43 | **+16.20** | −44.3 % |
+| > 20 km | 20.10 | 31.87 | +11.77 | −32.2 % |
+| by altitude: < 10 m | 36.71 | 29.74 | −6.97 | 19.1 % |
+| **10–100 m** | 116.70 | 94.26 | **−22.43** | **61.4 %** |
+
+Arid: budget **163.1 → 122.9 (−24.7 %)**; 0–1 km **−69.20 (171.9 %)**; 1–5 km **+24.87**.
+
+> **The loss is almost entirely in the first kilometre, and every band beyond it GAINS.** My
+> prediction (> 60 % coastal) holds; the round's (half-and-half, with the arid bed's interior
+> share dominating) is refuted — **the arid bed is MORE coastal than the humid one, not less.**
+> The orographic term L780 predicted is real and visible as the inland gain (+16.2 and +11.8 in
+> humid), but it is **compensating**, not causing: it is a third of the coastal loss, with the
+> opposite sign.
+>
+> ⚠️ **A confound I name rather than bury.** The bands are recomputed on each field, so a cell can
+> **change band** when the coast advances by 290 895 cells. The totals (−7.5 %, −24.7 %) are
+> robust; the per-band split carries that reservation, and **the paired decomposition — the same
+> population on both sides — is still owed.** It is the same population bias as Findings 63–64 and
+> 81-B3, in its third costume.
+
+### C4 — the coastal residual: centimetric AND concentrated
+
+The 6 764 residual drowned cells within 3 of the ocean, depth read on the **pre-clamp** bounded
+field: p10 0.0108 · **median 0.0953 m** · p90 1.7717 · p99 12.99 · max 27.38 m below sea.
+**51.4 % are shallower than 10 cm, 86.9 % shallower than 50 cm.**
+
+Spread over **346 tiles of 64×64 cells; the densest 10 % of tiles hold 32.7 %** of them, against
+10 % for a uniform spread — **a ×3.3 concentration.**
+
+> Both halves of my prediction hold (centimetric **and** concentrated); the round's holds on
+> centimetric and is refuted on uniform. **So this is not a shoreline retreating evenly — it is
+> localised nibbling on a third of the coastal tiles.** What that is worth for the word of the
+> criterion is the author's call, and it is not made here.
+
+### B — the hole's dominant term under the bound: the pathology SURVIVES
+
+The four largest spillways, humid, with the receiver's footprint in cells:
+
+| | Q m³/s | from | → receiver | wc |
+|---|---|---|---|---|
+| **DELIVERED** | 380.51 | 1000056 (102 389 c) | **its OWN id** (102 389 c) | 2 |
+| | 376.80 | 1000021 (350 032 c) | **its OWN id** | 2 |
+| | 276.80 | 1000035 (2 876 c) | **its OWN id** | 2 |
+| | 56.09 | 1000052 | ocean | 1 |
+| **BOUNDED** | **360.34** | 1000001 (349 800 c) | **its OWN id** (349 800 c) | 2 |
+| | **136.38** | 1000009 (**4 cells**) | **its OWN id** (4 cells) | 2 |
+| | 55.44 | 1000015 | ocean | 1 |
+| | 46.73 | 1000017 | ocean | 1 |
+
+> **The bound does not fix Finding 74.** The largest spillway still discharges into its own merged
+> id, and the second sends **136.38 m³/s into a 4-cell basin** — which Finding 81 identified as one
+> of the three surviving merged ids, with components `[2, 2]`. The pathology is **smaller** (three
+> "huge body + 1 cell" pairs become one 4-cell pair, and Finding 81's size ratios are all under
+> 100, as the round predicted) but it is **not gone**.
+>
+> My prediction that the dominant term would become a spillway into a basin over 1 000 cells is
+> **half right**: the first is 349 800 cells, the second is 4. **The bound is a coastal remedy, and
+> the leak's mechanism is not coastal.**
+>
+> ⚠️ The footprint counts here are `bs.lake_map` cells (bowl included) and Finding 81's were
+> `wc == 2` cells; **the two are not the same population and must not be cross-compared.**
+
+### C3 — the widths go DOWN under the bound
+
+| humid, ratio 7.5 | max `Watercourse` | p50 cells | p90 | p99 | max | share > 1 cell |
+|---|---|---|---|---|---|---|
+| DELIVERED | **21.785 m³/s** | 0.530 | 1.191 | 3.365 | **3.58** | **14.14 %** |
+| **BOUNDED** | **19.243 m³/s** | 0.518 | 1.022 | 2.920 | **3.37** | **10.71 %** |
+
+> **Both predictions are refuted, and in the wrong direction**: mine said 22–28 m³/s, the round's
+> 25–35, and the measurement says **19.2 — it falls 11.7 %.** The mechanism is C1's: the bound
+> prevents coastal incision and the budget drops 7.5 %, so there is less water in the same network.
+> The share of reaches wider than a render cell goes **14.14 % → 10.71 %**. The author's river
+> loses about a fifth of a cell; it does not gain one.
+
+### C2 — the edge, written, and no finding requalified
+
+**The chain model carried one edge and needed two.** Finding 60: *the terrain never sees the
+climate*. Finding 81: **the climate sees the terrain** — `c1_climate_placed(&field, …)` evaluates
+precipitation on the field it is handed, so any change to the terrain changes the orography,
+the precipitation and therefore the runoff budget. Both are true; only the first was written.
+
+The retroactive re-read, one line per candidate:
+
+| finding | changed the terrain | read the hydrology | verdict |
+|---|---|---|---|
+| **F58** (`A_c` sweep) | yes | **no** — `hypsometry_work_attribution.rs` has **0** climate calls and is absent from the list of benches touching lakes | **holds, no exposure** |
+| **F66** (iterations) | yes | **no**, same bench | **holds, no exposure** |
+| **F78-C** (diffusion 1.28) | yes | **no** — `coastal_shelf.rs`, 0 climate calls, coast metrics only | **holds, no exposure** |
+| **F56 / 56b / 56c** (the law) | yes | **yes** | **holds** — `channel_head_law_invariants.rs:176` calls `c1_climate_placed(&field, …)` inside the `for law in [false, true]` loop, on the law-modified field |
+| F74 / 75 / 77 / 79 / 81 | yes | yes | **hold** — every bench computes the climate from its own `&field` |
+
+> **Nothing needs requalifying — and my prediction was right for the wrong reason.** I said F58,
+> F66 and F78-C recomputed the climate on the modified terrain; they do not. **They never read the
+> water at all**, which is a stronger exemption than the one I claimed. The benches that DID read
+> the water all honoured the edge in code, years before it was written down.
+
+### Score
+
+Mine: the toggle moves the whole chain ✓ · hole 240–280 ✓ (262.7, Finding 81) · **dominant term
+into a basin > 1 000 cells — half ✗** (the second is 4 cells) · cycle-breaker ratios < 100 ✓ ·
+**C1 coastal > 60 % ✓** (185 %) · C2 conclusion ✓ / **reason ✗** · **C3 max 22–28 ✗✗** (19.2, it
+falls) · C4 centimetric ✓ **and concentrated ✓**.
+The round's: toggle ✓ · **hole under 200 ✗** · dominant term > 1 000 cells — half ✗ · ratios ✓ ·
+**C1 mixed, arid interior-dominated ✗✗** · C2 ✓ conclusion · **C3 25–35 ✗✗** · C4 centimetric ✓,
+**uniform ✗**.
+
+**Meta holds. The two worst misses were the same on both sides again: what the bound does to the
+river widths, and whether it touches the leak.**
+
+### Standing
+
+The toggle is the only code change; production is unchanged. **The decision is the author's, and
+this Finding does not make it.** The question is put as the round put it: Δ(≥ 2 cells) = 0 holds,
+the coast retreats by 6 764 cells of centimetric, concentrated diffusion, the contour is +5 km,
+and no spur is added. Is that "no fringe", or is a frozen coast required?
+
+Owed, and not done here: the paired decomposition of C1, and the Finding 74 remedy — which now
+has to be designed on a world where the bound is a choice, not a given, since **the leak's
+mechanism survives it**.
