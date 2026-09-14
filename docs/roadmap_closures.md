@@ -341,6 +341,26 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 > ligne des 3×) : c'était le traceur. **Question ouverte à l'auteur : Living Landz trace-t-il la
 > côte depuis le masque ou depuis l'isoligne ?**
 >
+> ✅ **CRITÈRE ATTEINT (Finding 80) — pour la première fois du chantier.**
+> `StreamPowerConfig::base_level_floor`, **gatée `None`, octet-identique**, borne la CIBLE de
+> relaxation : `h_r_eff = max(h_r, min(h_o, sea + ε))`. À ε = 0,5 m (3,4 pas u16) :
+> **Δ(masque, post-u16) = +0 à l'échelle cellulaire sur les quatre grilles** (f32 8192, u16 8192,
+> terrain 2048, océan 1024), Δ(≥ 1 km) = −2 / −1 / −1 / +0, contour 1 634 → 1 639 km (+0,3 %).
+> Le F6 avait nommé le défaut (*« No incision bound — floors planed to base level »*) et choisi un
+> cadran de DURÉE ; `base_level` n'avait jamais été écrit.
+>
+> **Le prix, mesuré au bon étage** (pré-clamp) : incision refusée p50 **1,08 m**, p90 5,58 m, sur
+> **14 554** cellules, en biefs de **1 à 2 cellules** — pas de banquette plane à +ε. Intérieur :
+> hypsométrie **appariée +0,30 m** (la −17,26 m non appariée est l'effet de population des
+> 290 903 cellules rendues à la terre, à 2,32 m de moyenne), dépressions +0,41 %, part chenal
+> +0,36 pt. Shader : composantes terrestres de 4–8 cellules **504 → 63** (pré-incision 50),
+> îlots d'un pixel 5 → 0, bande de sable 16 426 → 9 900 px (pré-incision 9 874).
+>
+> **Résidu attribué** : 7 738 cellules franchissent encore zéro (−97,4 %), portées à **88,7 % par
+> la diffusion de versant** (`diffuse_channels: true`, elle ne saute que la mer) et à 3,2 % par le
+> talus ; 11,3 % non attribués. **Non mesuré, non revendiqué** : la table terminale du F74 sous la
+> borne.
+>
 > ⛔ **LA CLASSE « DÉPÔT » EST ÉCARTÉE (Finding 79).** Sur le champ pré-clamp, les cellules noyées
 > ont une médiane de **0,88 m** mais un p90 de **18,7 m** : moitié centimétrique, moitié lits
 > sous-marins réels. Combler les plus faibles **aggrave** la mesure (Δ masque +3 627 → **+4 800**

@@ -9150,3 +9150,185 @@ The fringe is **3 623 cell-scale spurs on the mask**, against a pre-incision aut
 criterion is Δ = +3 610 and the clamp never touched it. The two levers that do touch it are the
 channel-head law (−55 %) and the anchored diffusion (−84 %), neither of which is a remedy on its
 own and both of which change the continent. **The deposition class is out.**
+
+## Finding 80 — the base-level bound closes the coastal fringe: Δ(mask, u16) = +0 at the cell scale, on every consumer grid
+
+### Rule 11, and 11b found the antecedent
+
+`h_r` 6 (3789) · `receiver` 37 (101) · `sea_level` 12 (70) · `is_ocean` 2 (8045) · `talus_passes`
+2 (**541**) · `lateral_erosion` 8 (439) · **`base_level`: NOTHING FOUND.**
+
+11b, on the phrase, gives the antecedent exactly — **L235, Finding 6**:
+
+> *"**No incision bound (floors planed to base level).** Stream power ran on a static field with
+> no uplift, so channels graded down to sea level. Since Ymir's tectonics already did the uplift,
+> the fix is to LIMIT total incision, not add U: iters 3→2 and K 3000→1500."*
+
+**The defect was named in Finding 6 and the remedy chosen was a DURATION dial, not a bound.**
+`base_level` at zero hits: the bound was never written. This round writes the one Finding 6 set
+aside — 74 findings later.
+
+### A — the seam, gated, and its four tests
+
+`StreamPowerConfig::base_level_floor: Option<BaseLevelFloor { epsilon_m }>`, default `None`.
+**The TARGET is bounded, not the result** — declared before writing:
+
+```text
+h_r_eff = max(h_r, min(h_o, sea_level + epsilon))
+```
+
+The rate law and the slope still read the real receiver; only the height the cell relaxes toward
+moves. The inner `min(h_o, …)` freezes a cell already within ε of the sea instead of lifting it,
+so **the bound can stop erosion and can never deposit** — asserted, not assumed.
+
+| test | result |
+|---|---|
+| `None` byte-identical | **0 cells differ** |
+| the parameter reaches the cache key | eroded `a68cb868 → 5f5cbb5f`, drainage `2ec4f08f → 86d09bdc`; **`epsilon_m` itself moves the key** |
+| negative control on the key | stable across identical calls (a key folding a timestamp would fail here) |
+| the fixture (f ≈ 1000, land +2 m, receiver −0.1 m) | free run drowns **96 of 1008** land cells; bounded drowns **0**, **0** under the floor, **0 lifted** |
+
+⚠️ The fixture's own negative control fired first and saved the test: my initial ramp drowned
+**zero** cells without the bound, so the assertion would have passed on a fixture that exercised
+nothing. Dialling `k`, `cell_km` and `iterations` to the Courant regime Finding 61 measured is
+what made it a test.
+
+### B0 — the consumer view
+
+`height.u16` step = **0.1477 m** on the production seed, so **ε = 0.5 m is 3.4 steps** — above the
+two-step floor the encoder demands.
+
+### B1 — the criterion, on five masks
+
+Δ against the PRE-INCISION authority **on the same grid**:
+
+| grid | stage | ≥ 1 km | ≥ 2 cells | coast km | **Δ ≥ 1 km** | **Δ ≥ 2 cells** |
+|---|---|---|---|---|---|---|
+| f32 8192 | delivered | 1 758 | 3 623 | 7 056 | +1 738 | +3 610 |
+| | **base level** | 19 | 13 | 1 639 | **−1** | **+0** |
+| **u16 8192** | delivered | 1 757 | 3 609 | 7 051 | +1 737 | +3 597 |
+| | **base level** | 18 | 12 | 1 639 | **−2** | **+0** |
+| terrain 2048 | delivered | 531 | 342 | 2 736 | +510 | +334 |
+| | **base level** | 20 | 8 | 1 620 | **−1** | **+0** |
+| ocean 1024 | delivered | 53 | 44 | 2 084 | +43 | +35 |
+| | **base level** | 10 | 9 | 1 591 | **+0** | **+0** |
+
+> **Δ(≥ 2 cells) = +0 on all four grids, and Δ(≥ 1 km) is −2, −1, −1, +0.** Not "about zero":
+> the cell scale is exactly zero and the kilometre scale is **two spurs SHORT of the authority**
+> on the delivered grid — the bound also freezes two kilometre-scale features the incision had
+> been deepening. That is a real, small over-correction and it is reported as one.
+>
+> Coastline length 1 634 → **1 639 km, +0.3 %**, against a declared u16 quantisation noise of
+> 0.2 %. At the edge of the bar, not inside it.
+
+**The XOR of the two consumer shorelines** (terrain 2048 against ocean 1024, on the 2048 grid):
+pre-incision **3 556** cells, delivered **6 016**, base level **3 552**. The "two coasts" cost is
+structural — 3 552 cells, 0.085 % — and **the incision was nearly doubling it**; the bound
+restores it to the structural figure.
+
+### B1b — which operator drowns the residual, and it is NOT the talus
+
+**7 738 cells still cross zero under the bound**, against 298 598 delivered (**−97.4 %**).
+
+| variant | drowned |
+|---|---|
+| bound alone | 7 738 |
+| bound + **talus OFF** | 7 487 (talus carries **251**, i.e. **3.2 %**) |
+| bound + **diffusion OFF** | **871** (the diffusion carries **6 867**, i.e. **88.7 %**) |
+
+**The hillslope diffusion is the second drowning operator**, because it skips only sea cells
+(`stream_power.rs:687`) and relief-v3 ships `diffuse_channels: true`, so it runs on the coastal
+channels too. The round predicted the talus; I predicted the diffusion; the measurement says
+diffusion 88.7 % against talus 3.2 %. **871 cells (11.3 %) remain unattributed to either** and
+are not assigned to anything here.
+
+And the residual does not cost the criterion: 7 738 cells drown and **Δ is still +0**, so the
+drowned-cell count is not itself the metric — a lesson worth keeping.
+
+### B2 — the price, measured at the right stage (corrected)
+
+⚠️ **The first pass measured the clamp, not the incision** — it compared the bounded field to the
+DELIVERED one, whose bathymetry clamp puts every drowned cell at exactly −1.0 m, so "incision
+prevented" read a constant **1.500 m** at p10, p50, p90 and max alike. **Method rule 12 applied to
+my own instrument, the same day it was written.** Both sides rebuilt with `bathymetry_off`:
+
+| | p10 | **median** | **p90** | p99 | max |
+|---|---|---|---|---|---|
+| incision PREVENTED at the 14 554 pinned cells, m | 0.545 | **1.077** | **5.578** | 38.50 | 83.31 |
+
+| | count | p50 | p90 | max |
+|---|---|---|---|---|
+| PINNED REACHES, consecutive pinned cells along the flow | 10 577 | **1** | **2** | 22 cells |
+
+> **The bound refuses a median of 1.08 m of incision, at 14 554 cells, in runs 1 to 2 cells long.**
+> Both the round and I predicted long planed benches (p50 3–6 and 2–5 cells, p90 > 15); measured
+> **1 and 2**. There is no flat bench at +ε to see — the bound pins isolated cells, not reaches.
+
+### B3 — the control block, and the hypsometry decomposed (rule 3)
+
+| | delivered | base level |
+|---|---|---|
+| land cells | 11 031 073 | **11 321 968 (+290 895)** |
+| **hypsometry mean, UNPAIRED** | 685.32 m | **668.06 m (−17.26 m)** |
+| **hypsometry mean, PAIRED** (the 11 031 065 cells land in both) | 685.32 m | **685.61 m (+0.30 m)** |
+| depressions | 1 238 085 | 1 243 209 (**+0.41 %**) |
+| channel share | 11.493 % | 11.851 % (**+0.36 pt**) |
+| erosion work (paired) | 199.02 m | 197.97 m (−1.05 m) |
+
+> **The −17.26 m is a POPULATION effect, not an erosion one**: 290 903 cells rejoin the land at a
+> mean of **2.32 m**, and they pull the unpaired mean down. Paired over the cells that are land in
+> both, the interior moves **+0.30 m** — inside the ±1 m tolerance, as are ±2 % on depressions
+> (0.41 %) and ±1 pt on channel share (0.36 pt).
+>
+> **This is Findings 63–64's population bias, on my own side of the table.** Reported both ways so
+> the author judges the criterion they wrote, not the one I would have preferred.
+
+### B4 — the shader metrics, on the consumer grids
+
+| grid | stage | contour km | sand d < 1 px | foam d < 1 px | 1-px islands |
+|---|---|---|---|---|---|
+| terrain 2048 | pre-incision | 1 618 | 9 874 | 9 726 | **0** |
+| | delivered | 2 736 | 16 426 | 14 719 | **5** |
+| | **base level** | **1 620** | **9 900** | **9 747** | **0** |
+| ocean 1024 | pre-incision | 1 582 | 4 829 | 4 719 | 0 |
+| | delivered | 2 084 | 6 467 | 5 952 | 1 |
+| | **base level** | **1 591** | **4 858** | **4 743** | **0** |
+
+And the population never isolated before — **8192² land components of 4 to 8 cells**, the lace the
+shader turns into a ribbon: pre-incision **50**, delivered **504**, base level **63**. Of 1 to 3
+cells: 133 / 952 / **120**.
+
+### B5 — ε, and the quantisation does not re-drown
+
+| ε | u16 steps | Δ(f32) | **Δ(u16)** | pinned cells |
+|---|---|---|---|---|
+| 0.2 m | 1.4 | +0 | **−1** | 14 437 |
+| **0.5 m** | 3.4 | +1 | **+0** | 14 554 |
+| 1.0 m | 6.8 | +1 | **+1** | 15 551 |
+
+All three sit within ±1 of the authority. **The prediction that ε = 0.2 m would be re-drowned by
+the encoder is refuted on both sides** — at 1.4 steps Δ(u16) is −1, not worse than Δ(f32). The
+two-step rule still stands as a design bound; it is simply not binding on this seed.
+
+### Score
+
+Mine: the four gate tests ✓ · the diffusion carries the residual, not the talus ✓ (88.7 vs 3.2) ·
+prevented incision p50 0.5–1.5 ✓ (1.08) · **p90 10–25 m ✗** (5.58) · **pinned reaches 2–5 / 10–40
+✗✗** (1 / 2) · **Δ(u16) worse at ε = 0.2 ✗** · contour within ±15 % ✓ (+0.1 %) · 1-px islands
+< 100 ✓ (0, but I predicted ~2 000 as the baseline and it was 5).
+The round's: gate tests ✓ · **residual carried by talus ✗** · p50 0.6–1.2 ✓ · **p90 12–20 ✗** ·
+**reaches 3–6 / > 15 ✗** · hypsometry < 1 m ✓ (paired) · channel ±0.5 pt ✓ (0.36) · **F74 table
+moves > 5 % ✗ — not measured this round, and not claimed** · contour within 5 % ✓ (+0.1 %).
+
+**Meta holds.**
+
+### Standing
+
+One production change, gated `None` and byte-identical. **The criterion the campaign has carried
+since Finding 76 is met for the first time: Δ(mask, post-u16) = +0 at the cell scale on all four
+grids**, at a paired interior cost of +0.30 m and a median of 1.08 m of refused incision.
+
+**Not measured and not claimed**: the Finding 74 terminal table under the bound. The bound gives
+290 895 cells back to the land, and the rims of the below-sea basins are among them, so the chain
+accounting can move — that is the one control block column this round did not read, and it is the
+first item of the next.

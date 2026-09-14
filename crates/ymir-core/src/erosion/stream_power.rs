@@ -21,6 +21,43 @@ use crate::terrain::flow::{
     D8_DIST, D8_DX, D8_DY, DIR_NONE, FlowConfig, compute_flow, mfd_accumulation,
 };
 
+/// The BASE LEVEL a detachment-limited incision cannot cut below (ADR Finding 80).
+///
+/// ## Why this exists, and why it is a BOUND and not another duration dial
+///
+/// Finding 6 named the defect in one line -- *"No incision bound (floors planed to base level).
+/// Stream power ran on a static field with no uplift, so channels graded down to sea level"* --
+/// and chose to **limit total incision** instead (`iterations` 3 -> 2, `K` 3000 -> 1500). That is
+/// a duration dial: it makes the planing slower, not impossible. Measured since: the receivers of
+/// coastal channel cells sit at a median of **-0.109 m** before the bathymetry clamp overwrites
+/// them (Finding 79), and at Courant 1353 the implicit update drives a cell essentially onto its
+/// receiver in ONE step (Finding 61), so land cells cross zero and drown. On the delivered 8192
+/// field **298 598 cells** are land before the incision and sea after it, and undoing exactly
+/// those cells is the ONLY operation that brings the coastal fringe back to the pre-incision
+/// authority (Finding 79-C).
+///
+/// A detachment-limited river does not cut below its base level. This states that, as a bound on
+/// the relaxation TARGET rather than on the result:
+///
+/// ```text
+/// h_r_eff = max(h_r, min(h_o, sea_level + epsilon))
+/// ```
+///
+/// **The target, not the result**: the rate law `E = K*A^m*S^n` is untouched and the slope is
+/// still read from the real receiver; only the height the cell relaxes TOWARD is bounded. The
+/// inner `min(h_o, ...)` freezes a cell already within `epsilon` of the sea instead of lifting
+/// it, so the bound can stop erosion and can never deposit.
+///
+/// `epsilon_m` must clear the export quantisation or the bound is undone downstream:
+/// `height.u16` has a step of `(max_m - min_m)/65535`, about 0.15 m on the production seed, so
+/// anything under two steps is re-drowned by the encoder.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BaseLevelFloor {
+    /// Metres above sea level the bound sits at. Two u16 steps minimum; 0.5 m on the
+    /// production seed is about 3.4 steps.
+    pub epsilon_m: f32,
+}
+
 /// Montgomery & Dietrich channel-initiation law: `A_c(S) = A_c_ref * (S_ref/S)^2`.
 ///
 /// Equivalent to `A_c * S^2 = C` with `C = A_c_ref * S_ref^2`; expressed as a RATIO to the
@@ -119,6 +156,11 @@ pub struct StreamPowerConfig {
     /// un-eroded field). Only a slope-dependent threshold can be high on the apron and low on the
     /// hillslopes at once.
     pub a_c_slope_law: Option<ChannelHeadLaw>,
+    /// ADR Finding 80 -- the base level the incision may not cut below. `None` (default) is
+    /// byte-identical to the legacy behaviour: channels grade to their receiver, which at the
+    /// coast is the sea itself, and land cells drown.
+    #[serde(default)]
+    pub base_level_floor: Option<BaseLevelFloor>,
     /// **Incision threshold `θ`** — `E = K·max(0, A^m·S^n − θ)`: no incision below a
     /// critical stream power, so low-energy cells (again, headwaters) do not carve.
     /// `0` (default) = no threshold (legacy).
@@ -238,7 +280,8 @@ impl StreamPowerConfig {
             diffusion: 0.05,
             diffusion_substeps: 4,
             min_area_cells: RELIEF_V1_A_C_KM2 / cell_km2,
-            a_c_slope_law: None, // ADR Finding 56 — opt-in; None keeps the constant
+            a_c_slope_law: None,
+            base_level_floor: None, // ADR Finding 80 -- opt-in; None keeps the legacy planing // ADR Finding 56 — opt-in; None keeps the constant
             threshold: 0.0,
             cell_km,
             depth_scale_m,
@@ -334,7 +377,8 @@ pub const RELIEF_V1_K: f32 = 1500.0;
 impl Default for StreamPowerConfig {
     fn default() -> Self {
         Self {
-            a_c_slope_law: None, // ADR Finding 56 — opt-in
+            a_c_slope_law: None,
+            base_level_floor: None, // ADR Finding 80 -- opt-in; None keeps the legacy planing // ADR Finding 56 — opt-in
             k: 1.0,
             m: 0.5,
             n: 1.0,
@@ -472,8 +516,20 @@ pub fn incise_with_progress(
                 continue; // base level, fixed
             }
             let area = acc.data[k].max(1.0);
-            let hr = field.data[r];
             let ho = field.data[k];
+            // ADR Finding 80 -- BASE LEVEL. Bound the relaxation TARGET, never the
+            // result: the rate law and the slope below still read the REAL receiver,
+            // only the height this cell may grade toward is floored. `min(ho, ..)`
+            // freezes a cell already within `epsilon` of the sea instead of lifting it,
+            // so the bound can stop erosion and can never deposit. Sea cells never reach
+            // here (`receiver[k] == k`, tested just above).
+            let hr = match &cfg.base_level_floor {
+                Some(b) => {
+                    let floor = cfg.sea_level + b.epsilon_m / norm_to_m;
+                    field.data[r].max(floor.min(ho))
+                }
+                None => field.data[r],
+            };
             let dist_m = dist[k] * cell_m;
             // The local gradient, computed BEFORE the channel-head gate because the gate can
             // depend on it. Same quantity the stream-power law uses below, so the two cannot

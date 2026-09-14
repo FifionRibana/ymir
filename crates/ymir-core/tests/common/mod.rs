@@ -55,6 +55,8 @@ pub struct Knobs {
     /// `a_c_slope_law` at the TARGET-GRID calibration of VALIDATION_NOTE section 1 as amended
     /// (`S_ref = 0.1128`). The production gate stays OFF; this is a bench variant.
     pub a_c_law: bool,
+    /// ADR Finding 80 -- `base_level_floor`, in metres above sea level.
+    pub base_level_m: Option<f32>,
 }
 
 impl Knobs {
@@ -131,6 +133,10 @@ pub fn build_field(k: Knobs) -> GridF32 {
         }
         if let Some(t) = k.talus_passes {
             sp.talus_passes = t;
+        }
+        if let Some(e) = k.base_level_m {
+            sp.base_level_floor =
+                Some(ymir_core::erosion::stream_power::BaseLevelFloor { epsilon_m: e });
         }
         if k.a_c_law {
             sp.a_c_slope_law = Some(ymir_core::erosion::stream_power::ChannelHeadLaw {
