@@ -55,13 +55,28 @@ pub struct Knobs {
     /// `a_c_slope_law` at the TARGET-GRID calibration of VALIDATION_NOTE section 1 as amended
     /// (`S_ref = 0.1128`). The production gate stays OFF; this is a bench variant.
     pub a_c_law: bool,
-    /// ADR Finding 80 -- `base_level_floor`, in metres above sea level.
+    /// ADR Finding 80/83 -- OVERRIDE the base-level epsilon, in metres above sea level.
+    /// `None` = the SHIPPED `RELIEF_V3_BASE_LEVEL_M` (0.5 m). Since Finding 83 the bound
+    /// is production, so `None` no longer means "no bound" -- use `base_level_off`.
     pub base_level_m: Option<f32>,
+    /// ADR Finding 83 -- the A/B control: drop the shipped bound and rebuild the
+    /// pre-Finding-83 world (the one with the coastal fringe). This is what the benches
+    /// must use for the "DELIVERED (pre-83)" column; `Knobs::shipped()` is now BOUNDED.
+    pub base_level_off: bool,
+    /// ADR Finding 83-B2 -- `BaseLevelFloor::free_above_km2`, the estuary gate, in km2 of
+    /// the SIMULATED grid. **PROXY**, bench-only; production is `None`.
+    pub a_est_km2: Option<f32>,
 }
 
 impl Knobs {
+    /// The SHIPPED relief. Since ADR Finding 83 that includes the base-level bound.
     pub fn shipped() -> Self {
         Self::default()
+    }
+    /// The pre-Finding-83 world: every shipped knob, bound OFF. This is the field every
+    /// "delivered" column of Findings 76-82 was measured on.
+    pub fn pre83() -> Self {
+        Self { base_level_off: true, ..Self::default() }
     }
     pub fn no_incision() -> Self {
         Self { no_incision: true, ..Self::default() }
@@ -134,9 +149,22 @@ pub fn build_field(k: Knobs) -> GridF32 {
         if let Some(t) = k.talus_passes {
             sp.talus_passes = t;
         }
-        if let Some(e) = k.base_level_m {
-            sp.base_level_floor =
-                Some(ymir_core::erosion::stream_power::BaseLevelFloor { epsilon_m: e });
+        // ADR Finding 83 -- `relief_v3` now ARRIVES bounded, so the knobs edit what is
+        // there rather than installing it. `base_level_off` wins over the others.
+        if k.base_level_off {
+            sp.base_level_floor = None;
+        } else {
+            let mut b = sp.base_level_floor.clone().unwrap_or(
+                ymir_core::erosion::stream_power::BaseLevelFloor {
+                    epsilon_m: ymir_core::erosion::stream_power::RELIEF_V3_BASE_LEVEL_M,
+                    free_above_km2: None,
+                },
+            );
+            if let Some(e) = k.base_level_m {
+                b.epsilon_m = e;
+            }
+            b.free_above_km2 = k.a_est_km2;
+            sp.base_level_floor = Some(b);
         }
         if k.a_c_law {
             sp.a_c_slope_law = Some(ymir_core::erosion::stream_power::ChannelHeadLaw {
@@ -242,4 +270,220 @@ pub fn spectrum(polys: &[Vec<(f32, f32)>]) -> Option<(usize, usize, f32, usize, 
     }
     let g = sorted(gaps.clone());
     Some((used, gaps.len(), g[g.len() / 2], peak, ratio))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR Finding 83 — the RICHARDSON instrument, shared.
+//
+// It lives here and not in a bench because two benches need it (B1's baseline and B2's sweep)
+// and the ADR has already had to name one instrument duplication as debt (Finding 75).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Divider start offsets averaged over. A single start point makes the step count depend on where
+/// the walk began, which is a property of the instrument and not of the coast.
+pub const RICHARDSON_OFFSETS: usize = 8;
+/// Log-spaced rulers over the declared range (2 cells to `max_km`).
+pub const RICHARDSON_RULERS: usize = 13;
+/// A polygon must carry the biggest ruler several times over or its contribution is a rounding
+/// error that moves with the ruler. Declared, and FIXED across variants.
+pub const RICHARDSON_MIN_POLY_KM: f32 = 20.0;
+
+/// One divider ("compass") walk around a closed polyline: how many rulers of length `eps` (in the
+/// polygon's own units, i.e. CELLS) fit around it, starting at vertex `start`.
+///
+/// CHORD distance, not arc — the dividers' two points are `eps` apart in a straight line, which is
+/// Richardson's own instrument. The final partial step counts as a fraction, so the result is
+/// continuous in `eps`; without that the curve is a staircase of integers at the large rulers and
+/// the regression reads the staircase instead of the coast.
+pub fn divider_steps(poly: &[(f32, f32)], eps: f32, start: usize) -> f64 {
+    let n = poly.len();
+    if n < 4 || eps <= 0.0 {
+        return 0.0;
+    }
+    let at = |i: usize| poly[i % n];
+    let p0 = at(start);
+    let (mut px, mut py) = p0;
+    let mut k = start;
+    let mut cur = (px, py);
+    let mut steps = 0.0f64;
+    let mut advanced = 0usize;
+    let e2 = (eps * eps) as f64;
+    loop {
+        let mut hit: Option<(f32, f32)> = None;
+        while advanced < n {
+            let b = at(k + 1);
+            let (fx, fy) = ((cur.0 - px) as f64, (cur.1 - py) as f64);
+            let (dx, dy) = ((b.0 - cur.0) as f64, (b.1 - cur.1) as f64);
+            let a = dx * dx + dy * dy;
+            if a > 1e-18 {
+                let bq = fx * dx + fy * dy;
+                let c = fx * fx + fy * fy - e2;
+                let disc = bq * bq - a * c;
+                if disc >= 0.0 {
+                    let t = (-bq + disc.sqrt()) / a;
+                    if t > 0.0 && t <= 1.0 {
+                        hit = Some((
+                            cur.0 + t as f32 * (b.0 - cur.0),
+                            cur.1 + t as f32 * (b.1 - cur.1),
+                        ));
+                        break;
+                    }
+                }
+            }
+            cur = b;
+            k += 1;
+            advanced += 1;
+        }
+        match hit {
+            Some(q) => {
+                steps += 1.0;
+                px = q.0;
+                py = q.1;
+                cur = q;
+            }
+            None => {
+                let d = (((p0.0 - px).powi(2) + (p0.1 - py).powi(2)).sqrt() / eps) as f64;
+                return steps + d.min(1.0);
+            }
+        }
+    }
+}
+
+/// Perimeter of a polyline in CELLS at the finest ruler (its own vertex spacing).
+pub fn perimeter_cells(poly: &[(f32, f32)]) -> f32 {
+    let mut s = 0.0f32;
+    for i in 1..poly.len() {
+        s += ((poly[i].0 - poly[i - 1].0).powi(2) + (poly[i].1 - poly[i - 1].1).powi(2)).sqrt();
+    }
+    s
+}
+
+/// The Richardson curve: `(ruler_km, length_km)` for `RICHARDSON_RULERS` log-spaced rulers from
+/// 2 cells to `max_km`, averaged over `RICHARDSON_OFFSETS` start points, summed over `polys`.
+pub fn richardson(polys: &[&Vec<(f32, f32)>], cell_km: f32, max_km: f32) -> Vec<(f64, f64)> {
+    let lo = 2.0f64;
+    let hi = (max_km / cell_km) as f64;
+    (0..RICHARDSON_RULERS)
+        .map(|i| {
+            let eps = lo * (hi / lo).powf(i as f64 / (RICHARDSON_RULERS - 1) as f64);
+            let mut total = 0.0f64;
+            for pl in polys {
+                let n = pl.len();
+                let mut acc = 0.0f64;
+                for o in 0..RICHARDSON_OFFSETS {
+                    acc += divider_steps(pl, eps as f32, o * n / RICHARDSON_OFFSETS);
+                }
+                total += acc / RICHARDSON_OFFSETS as f64;
+            }
+            (eps * cell_km as f64, total * eps * cell_km as f64)
+        })
+        .collect()
+}
+
+/// Least squares on `log10 L = c + s * log10(eps)`; returns `(D, R2, worst_residual_pct)` with
+/// `D = 1 - s`.
+///
+/// ⚠️ On a nearly FLAT curve (a smooth coast) the total sum of squares is tiny, so `R2` is small
+/// for reasons that have nothing to do with linearity. Judge linearity by the residual per cent,
+/// and read `R2` only when D is far from 1.
+pub fn richardson_fit(pts: &[(f64, f64)]) -> (f64, f64, f64) {
+    if pts.len() < 3 {
+        return (f64::NAN, f64::NAN, f64::NAN);
+    }
+    let x: Vec<f64> = pts.iter().map(|p| p.0.log10()).collect();
+    let y: Vec<f64> = pts.iter().map(|p| p.1.max(1e-9).log10()).collect();
+    let n = x.len() as f64;
+    let (mx, my) = (x.iter().sum::<f64>() / n, y.iter().sum::<f64>() / n);
+    let sxy: f64 = x.iter().zip(&y).map(|(a, b)| (a - mx) * (b - my)).sum();
+    let sxx: f64 = x.iter().map(|a| (a - mx) * (a - mx)).sum();
+    let s = sxy / sxx;
+    let c = my - s * mx;
+    let sst: f64 = y.iter().map(|b| (b - my) * (b - my)).sum();
+    let mut sse = 0.0;
+    let mut worst = 0.0f64;
+    for (a, b) in x.iter().zip(&y) {
+        let r = b - (c + s * a);
+        sse += r * r;
+        worst = worst.max((10f64.powf(r.abs()) - 1.0) * 100.0);
+    }
+    (1.0 - s, if sst > 0.0 { 1.0 - sse / sst } else { f64::NAN }, worst)
+}
+
+/// The DELIVERED land mask: encode with the production encoder, decode, threshold at 0 m. This is
+/// the raster Living Landz reads, and the criterion is written on it.
+pub fn land_u16(f: &GridF32, ss: &SteinSteinParams) -> Vec<bool> {
+    let hl = ymir_core::export::height::metric_height_u16(f, ss);
+    hl.codes
+        .iter()
+        .map(|&c| hl.min_m + (c as f32 / 65535.0) * (hl.max_m - hl.min_m) > 0.0)
+        .collect()
+}
+
+/// Land/sea as a field the contour tracer can read; tracing at 0.5 gives the mask staircase.
+pub fn to_mask(land: &[bool], w: usize) -> GridF32 {
+    let mut m = GridF32::new(w, w, 0.0);
+    for k in 0..w * w {
+        if land[k] {
+            m.data[k] = 1.0;
+        }
+    }
+    m
+}
+
+/// Binary majority downsample — the author's declared consumer method (Finding 80-B0): threshold
+/// at 8192² then resample the MASK, not the heights. Ties go to SEA, declared.
+pub fn majority(land: &[bool], w: usize, f: usize) -> (Vec<bool>, usize) {
+    let nw = w / f;
+    let mut out = vec![false; nw * nw];
+    let half = f * f / 2;
+    for y in 0..nw {
+        for x in 0..nw {
+            let mut c = 0usize;
+            for dy in 0..f {
+                for dx in 0..f {
+                    if land[(y * f + dy) * w + x * f + dx] {
+                        c += 1;
+                    }
+                }
+            }
+            out[y * nw + x] = c > half;
+        }
+    }
+    (out, nw)
+}
+
+/// One Richardson line: traces the mask, keeps the fixed polygon population, and reports D over
+/// the whole range, under 1 km, over 1 km, and on the LARGEST polygon alone (a paired population
+/// across variants — the whole-population D also moves when the number of islands does).
+pub fn richardson_line(tag: &str, land: &[bool], w: usize, cell_km: f32, max_km: f32) {
+    use ymir_core::terrain::contour::marching_squares;
+    let polys = marching_squares(&to_mask(land, w), 0.5);
+    let keep: Vec<&Vec<(f32, f32)>> =
+        polys.iter().filter(|p| perimeter_cells(p) * cell_km >= RICHARDSON_MIN_POLY_KM).collect();
+    let biggest = polys
+        .iter()
+        .max_by(|a, b| {
+            perimeter_cells(a).partial_cmp(&perimeter_cells(b)).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .cloned()
+        .unwrap_or_default();
+    let all = richardson(&keep, cell_km, max_km);
+    let one = richardson(&[&biggest], cell_km, max_km);
+    let sub: Vec<(f64, f64)> = all.iter().copied().filter(|p| p.0 <= 1.001).collect();
+    let sup: Vec<(f64, f64)> = all.iter().copied().filter(|p| p.0 >= 0.999).collect();
+    let (d_all, r2_all, res_all) = richardson_fit(&all);
+    let (d_sub, _, _) = richardson_fit(&sub);
+    let (d_sup, _, _) = richardson_fit(&sup);
+    let (d_one, _, res_one) = richardson_fit(&one);
+    eprintln!(
+        "   {tag:<26} polys {:>5} (of {:>6}) | **D {d_all:.3}** R2 {r2_all:.4} worst resid \
+         {res_all:.2} % | D(<1 km) {d_sub:.3} | D(>1 km) {d_sup:.3} | D(largest, PAIRED) \
+         {d_one:.3} resid {res_one:.2} %",
+        keep.len(),
+        polys.len()
+    );
+    eprintln!(
+        "      L(km) by ruler: {}",
+        all.iter().map(|(e, l)| format!("{e:.3}km:{l:.0}")).collect::<Vec<_>>().join("  ")
+    );
 }

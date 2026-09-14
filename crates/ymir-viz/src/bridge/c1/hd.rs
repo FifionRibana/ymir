@@ -108,17 +108,24 @@ pub struct HdParams {
     pub mfd: bool,
     /// MFD partition exponent when `mfd` is on (lower = more dispersed; p≈2 recommended).
     pub mfd_p: f32,
-    /// EXPERIMENTAL (ADR 0001, Finding 80): the BASE LEVEL the incision may not cut
-    /// below, in metres above sea level. `None` (default) is the shipped behaviour --
-    /// channels grade to their receiver, which at the coast is the sea, and land cells
-    /// drown. `Some(0.5)` bounds the relaxation target and brings the coastal fringe to
-    /// the pre-incision authority (Finding 80: delta(mask, >=2 cells) = +0 on all four
-    /// consumer grids). A UI opt-in; the PRODUCTION default is unchanged.
+    /// OVERRIDE the base-level epsilon (metres above sea) for this run. `None` (default)
+    /// = the SHIPPED `RELIEF_V3_BASE_LEVEL_M` (0.5 m, ADR Finding 83). Ignored when
+    /// `base_level_off` is set.
     ///
-    /// It is NOT hydrologically neutral (Finding 81): below-sea basins 62 -> 20, the
-    /// Finding 74 terminal table moves on every line. The toggle exists so the author can
-    /// see both worlds before deciding, not so the decision can be skipped.
+    /// ⚠️ The meaning of this field CHANGED at Finding 83. While the bound was gated
+    /// (Findings 80-82) `None` meant "no bound"; the bound now ships, so `None` means
+    /// "the production bound". The way to get the pre-Finding-83 world is
+    /// [`HdParams::base_level_off`], never `None`.
     pub base_level_m: Option<f32>,
+    /// A/B CONTROL (ADR 0001, Finding 83): turn the shipped base-level bound OFF and
+    /// reproduce the pre-Finding-83 world — the one with the coastal fringe. `false`
+    /// (default) = production.
+    ///
+    /// It is NOT hydrologically neutral in either direction (Finding 81): flipping it
+    /// moves below-sea basins 20 -> 62, the runoff budget +5.8 % and every line of the
+    /// Finding 74 terminal table. It reaches `eroded_key`, so lakes and rivers are
+    /// re-derived and not served from cache (asserted in `base_level_floor.rs`).
+    pub base_level_off: bool,
     /// EXPERIMENTAL: override the FBM `amplitude_base` for this run (`None` = the
     /// production 0.16). Lets the author flip through the striation amplitude ladder
     /// (0.16/0.08/0.04/0.02) with stream-power ON to see the striations shrink.
@@ -182,6 +189,7 @@ impl Default for HdParams {
             mfd: true,
             mfd_p: 2.0,
             base_level_m: None,
+            base_level_off: false,
             fbm_amplitude: None,
             geo_scale_ratio: 1.0,
             latitude_span_deg: None,
@@ -507,19 +515,26 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             if upscale.fracture.enabled { "ON" } else { "off" }
         );
     }
-    // ADR 0001 Finding 80 -- the base-level bound, on the SHIPPED path. It has to be here
-    // and not in the relief-v1/v2 branch below, which is the legacy opt-in chain that
-    // never ships. `epsilon_m` reaches the cache key (tested in `base_level_floor.rs`), so
-    // flipping the box re-derives the eroded field AND, through `eroded_key`, the
-    // drainage: lakes and rivers are recomputed, not just the raster.
-    if let Some(eps) = params.base_level_m {
-        if let Some(sp) = upscale.stream_power.as_mut() {
-            sp.base_level_floor =
-                Some(ymir_core::erosion::stream_power::BaseLevelFloor { epsilon_m: eps });
+    // ADR 0001 Finding 83 -- the base-level bound SHIPS (`relief_v3`), so this block no
+    // longer turns it on: it turns it OFF for the A/B control, or re-points epsilon. It
+    // has to sit here and not in the relief-v1/v2 branch below, which is the legacy
+    // opt-in chain that never ships. Both reach the cache key (tested in
+    // `base_level_floor.rs`), so flipping the box re-derives the eroded field AND,
+    // through `eroded_key`, the drainage: lakes and rivers are recomputed, not just the
+    // raster.
+    if let Some(sp) = upscale.stream_power.as_mut() {
+        if params.base_level_off {
+            sp.base_level_floor = None;
             eprintln!(
-                "[HD] BASE-LEVEL BOUND ON (ADR Finding 80): incision floored at sea + {eps} m \
-                 -- the hydrology moves too (Finding 81), this is not a raster-only change"
+                "[HD] BASE-LEVEL BOUND OFF (ADR Finding 83 A/B): the PRE-Finding-83 world \
+                 -- coastal fringe back, below-sea basins 20 -> 62, budget +5.8 %"
             );
+        } else if let Some(eps) = params.base_level_m {
+            sp.base_level_floor = Some(ymir_core::erosion::stream_power::BaseLevelFloor {
+                epsilon_m: eps,
+                free_above_km2: None,
+            });
+            eprintln!("[HD] base level epsilon overridden: sea + {eps} m (shipped: 0.5)");
         }
     }
     if params.stream_power && !ships_relief_v3 {

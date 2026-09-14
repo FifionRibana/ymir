@@ -252,8 +252,9 @@ struct WorkspaceState {
     /// EXPERIMENTAL (ADR 0001, Finding 11): MFD incision — dendritic valleys, no solver.
     mfd: bool,
     mfd_p: f32,
-    /// ADR 0001 Finding 80 -- the base-level bound, a SESSION opt-in. Production stays
-    /// `None`; this only sets `HdParams::base_level_m` for the runs this UI launches.
+    /// ADR 0001 Finding 83 -- the base-level bound, now the PRODUCTION default, kept here
+    /// as the A/B control the author asked not to remove. `true` (default) = production;
+    /// UNCHECKING sets `HdParams::base_level_off` and reproduces the pre-Finding-83 world.
     base_level: bool,
     /// EXPERIMENTAL: FBM amplitude_base for the striation ladder (0.16 = production).
     fbm_amplitude: f32,
@@ -384,7 +385,7 @@ impl Default for WorkspaceState {
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
-            base_level: false,
+            base_level: true,    // ADR Finding 83 -- production ships the bound
             fbm_amplitude: 0.04, // #190 — the production seed's amplitude (fine relief detail)
             volcanism: false,    // C-2 opt-in (Expert); production byte-identical
             lithology: false,    // C-3 opt-in (Expert); production byte-identical
@@ -910,7 +911,8 @@ fn left_panel(
                             cross_rill_d: ws.cross_rill_d,
                             mfd: ws.mfd,
                             mfd_p: ws.mfd_p,
-                            base_level_m: ws.base_level.then_some(BASE_LEVEL_EPS_M),
+                            base_level_m: None, // shipped epsilon (Finding 83)
+                            base_level_off: !ws.base_level,
                             fbm_amplitude: Some(ws.fbm_amplitude as f64),
                             geo_scale_ratio: ws.geo_scale_ratio,
                             // At the geographic span → None (byte-identical windowed climate);
@@ -1006,14 +1008,21 @@ fn left_panel(
                                 );
                                 ui.checkbox(
                                     &mut ws.base_level,
-                                    egui::RichText::new("Niveau de base (F80, exp.)")
+                                    egui::RichText::new("Niveau de base (F83, production)")
                                         .color(DIM2)
                                         .size(11.0),
                                 )
                                 .on_hover_text(
-                                    "ADR 0001 Finding 80 — borne l'incision au niveau de base: \n                                     elle ne creuse plus sous sea + 0,5 m. La frange côtière \n                                     revient à l'autorité pré-incision (Δ éperons ≥ 2 cellules = 0 \n                                     aux quatre résolutions).
-
-⚠ Finding 81 — ce N'EST PAS \n                                     neutre pour l'eau: cuvettes sous-marines 62 → 20, budget \n                                     −5,5 %, somme chaînée −50 %. Lacs et rivières sont \n                                     recalculés, pas seulement le raster. Production inchangée \n                                     (défaut = off).",
+                                    "ADR 0001 Finding 83 — le niveau de base EST la production \
+                                     depuis le 2026-09-15: l'incision ne creuse plus sous \
+                                     sea + 0,5 m, et la frange côtière est à l'autorité \
+                                     pré-incision (Δ éperons ≥ 2 cellules = 0 aux quatre \
+                                     résolutions).\n\n\
+                                     DÉCOCHER = LE MONDE D'AVANT (contrôle A/B): la frange \
+                                     revient, cuvettes sous-marines 20 → 62, budget +5,8 %, \
+                                     largeurs de rivière +13 %.\n\n\
+                                     ⚠ Lacs et rivières sont recalculés dans les deux sens, \
+                                     pas seulement le raster (Findings 81-82).",
                                 );
                                 ui.checkbox(
                                     &mut ws.cross_rill,
@@ -1911,16 +1920,12 @@ fn framed_coarse(ws: &WorkspaceState) -> Option<GridF32> {
     ws.preview.as_ref().map(|p| roll_grid(&p.coarse, ws.offset_cells[0], ws.offset_cells[1]))
 }
 
-/// ADR 0001 Finding 80 -- the base level the incision may not cut below, in metres above
-/// sea level, when the UI toggle is on. 0.5 m is 3.4 steps of the `height.u16` encoder
-/// (step 0.1477 m on the production seed), above the two-step floor the encoder demands.
-const BASE_LEVEL_EPS_M: f32 = 0.5;
-
 /// Params for a coarse preview: NO manual offset (the preview computes the auto
 /// offset; the UI applies the roll at render time). Never runs the HD pipeline.
 fn preview_params(ws: &WorkspaceState) -> HdParams {
     HdParams {
-        base_level_m: None, // the preview never runs the HD pipeline
+        base_level_m: None,    // the preview never runs the HD pipeline
+        base_level_off: false, // idem -- and `false` is production, not "no bound"
         target_size: ws.resolution,
         latitude_deg: ws.latitude,
         domain_km: ws.domain_km,

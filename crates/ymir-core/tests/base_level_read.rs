@@ -8,6 +8,11 @@
 //!     drainage stage. Printing these twice "per bed" would print the same numbers twice.
 //!   * `base_level_hydrology` — A1, A2, B1, B2, which genuinely differ per bed.
 //!
+//!
+//! ⚠️ REPOINTED at ADR Finding 83: the base-level bound SHIPS, so `Knobs::shipped()` is now
+//! the BOUNDED field and the pre-Finding-83 "delivered" world is `Knobs::pre83()`. The
+//! columns below mean what they did; only the knob that produces them moved.
+//!
 //! Run: cargo test -p ymir-core --release --test base_level_read -- --ignored --nocapture
 
 mod common;
@@ -21,6 +26,7 @@ use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
 use ymir_core::terrain::coast_metrics::{NECK_KM, coast_shape_thresholds, coast_spurs};
 use ymir_core::terrain::contour::marching_squares;
 
+#[allow(dead_code)] // ADR Finding 83: shipped, so no longer passed explicitly
 const EPS: f32 = 0.5;
 const TRANSECTS: usize = 200;
 const REACH: i32 = 20;
@@ -127,8 +133,8 @@ fn base_level_terrain() {
     eprintln!("\n==========  Finding 81 · the terrain-side columns  ==========");
 
     let pre = build_field(Knobs::no_incision());
-    let del = build_field(Knobs::shipped());
-    let bnd = build_field(Knobs { base_level_m: Some(EPS), ..Knobs::shipped() });
+    let del = build_field(Knobs::pre83());
+    let bnd = build_field(Knobs::shipped());
     let (w, n) = (del.width, del.data.len());
 
     // ── A3 · the climate-independence proof ───────────────────────────────────
@@ -328,10 +334,9 @@ fn base_level_hydrology() {
     dcfg.thresholds.head_km2 = ymir_core::erosion::stream_power::RELIEF_V1_A_C_KM2;
     dcfg.thresholds.full_tree = false;
 
-    for (vnm, kn) in [
-        ("DELIVERED", Knobs::shipped()),
-        ("BOUNDED", Knobs { base_level_m: Some(EPS), ..Knobs::shipped() }),
-    ] {
+    for (vnm, kn) in
+        [("DELIVERED (pre-83)", Knobs::pre83()), ("BOUNDED (production)", Knobs::shipped())]
+    {
         let raw = build_field(kn);
         let (w, h) = (raw.width, raw.height);
         let n = w * h;

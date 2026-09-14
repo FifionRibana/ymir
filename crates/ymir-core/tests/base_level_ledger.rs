@@ -1,6 +1,11 @@
 //! ADR Finding 82 voie 2 — B (the hole re-read under the bound), C1 (the −5.5 % budget,
 //! decomposed), C3 (river widths), C4 (the 6 764 coastal residual cells).
 //!
+//!
+//! ⚠️ REPOINTED at ADR Finding 83: the base-level bound SHIPS, so `Knobs::shipped()` is now
+//! the BOUNDED field and the pre-Finding-83 "delivered" world is `Knobs::pre83()`. The
+//! columns below mean what they did; only the knob that produces them moved.
+//!
 //! Run: cargo test -p ymir-core --release --test base_level_ledger -- --ignored --nocapture
 
 mod common;
@@ -19,6 +24,7 @@ use ymir_core::tectonics_c1::drainage::{
 use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
 use ymir_core::terrain::flow::{FlowConfig, RiverSegment, breach_monotone, compute_flow};
 
+#[allow(dead_code)] // ADR Finding 83: shipped, so no longer passed explicitly
 const EPS: f32 = 0.5;
 const DOMAIN_KM: f32 = 400.0;
 
@@ -78,10 +84,9 @@ fn base_level_ledger() {
     let cell_km2 = CELL_KM * CELL_KM;
     eprintln!("\n==========  Finding 82 voie 2 · the ledger under the bound  ==========");
 
-    let del = build_field(Knobs::shipped());
-    let bnd = build_field(Knobs { base_level_m: Some(EPS), ..Knobs::shipped() });
-    let bnd_pre =
-        build_field(Knobs { base_level_m: Some(EPS), bathymetry_off: true, ..Knobs::shipped() });
+    let del = build_field(Knobs::pre83());
+    let bnd = build_field(Knobs::shipped());
+    let bnd_pre = build_field(Knobs { bathymetry_off: true, ..Knobs::shipped() });
     let (w, n) = (del.width, del.data.len());
 
     // ── C1 · the budget, decomposed by distance to coast and by altitude ──────

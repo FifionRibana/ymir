@@ -6984,6 +6984,15 @@ characteristic value the symptom keeps showing (a depth, a count, a ratio) and g
 two or three domain words to cut the noise. Record the result, including "nothing found". Cost: one
 command. It found in one round what five findings had circled without touching.
 
+**Refinement (Finding 83) — grep the value in the DOSSIER'S number format, not only as bare
+digits.** Finding 83's round named three coastline lengths as being on file: `1639`, `7056`,
+`1634`. Grepped as written, all three returned **nothing found**, and that negative was duly
+recorded. They are in fact six lines apart in Finding 80-B1, written **`1 639`**, **`7 056`**,
+**`1 634`** — this dossier separates thousands with a space. **A bare-digit grep for any quantity
+over 999 is a negative that means nothing**, and recording it as a negative is worse than not
+grepping at all, because it licenses "never measured" about something measured three days
+earlier. Grep both forms, or grep the leading digits with a domain word.
+
 ### Method rule 12 — the export is authoritative for the SYMPTOM; a MECHANISM is measured at the stage where it acts
 
 Findings 76 and 77 hunted a coastal mechanism on the delivered field and concluded, twice, that it
@@ -9741,3 +9750,482 @@ and no spur is added. Is that "no fringe", or is a frozen coast required?
 Owed, and not done here: the paired decomposition of C1, and the Finding 74 remedy — which now
 has to be designed on a world where the bound is a choice, not a given, since **the leak's
 mechanism survives it**.
+
+## Finding 83 — the bound ships; and the Richardson curve says the fringe was fractal and the coast we kept is not
+
+One production change: `relief_v3` now carries the base-level bound. Everything else is bench.
+
+### Rule 11 + 11b
+
+`Richardson` **0** · `richardson` **0** · `fractal` **0** · `box_count` **0** · `box-count` **0** ·
+`estuary` **0** · `estuaire` **0** · `A_est` **0** · `coastal_amplitude_band` **1 (L8709)** —
+nine strings for six distinct identifiers, counting the case and language variants. **Five of
+the six have never appeared in the 9 700 lines of this dossier**, and that is recorded as the
+useful negative it is: no fractal instrument has ever been built here, and no estuary has ever
+been discussed.
+
+**L8709 (Finding 78) armed block B before it ran.** It is a rule-out list, and the ruled-out item
+is the lead: *"not the coastal FBM taper (`coastal_amplitude_band = 0.30`, `upscale.rs:593` — an
+amplitude taper, and it damps the FBM to ~0 **at the waterline by design**, #151, which is *why*
+Finding 76-A5 found the FBM contributing nothing at the coast)"*. Finding 78 ruled it out **as a
+cause of the fringe**, correctly. Block B3 below concludes that what the coast is missing is
+sub-kilometre variability, and L8709 names a constant that removes sub-kilometre variability at
+the waterline on purpose. **It is not the cause of the old defect; it is the first suspect for the
+new one.**
+
+**A refinement to rule 11b, earned the hard way this round.** The round named three coastline
+lengths as being on file — `1639`, `7056`, `1634`. Grepped as written, all three return **nothing
+found**, and I recorded that. They are in fact six lines apart in Finding 80-B1, written **`1 639`,
+`7 056`, `1 634`**: this dossier separates thousands with a space. **A bare-digit grep for any
+quantity over 999 is a negative that means nothing**, and recording it as a negative is worse than
+not grepping, because it licenses "never measured" about something measured three days earlier.
+Grep both forms. The rule is amended in the method section.
+
+### A — the bound in production, and the sixteen guards it had to clear first
+
+`StreamPowerConfig::relief_v3` now carries
+`base_level_floor: Some(BaseLevelFloor { epsilon_m: RELIEF_V3_BASE_LEVEL_M })` with
+`free_above_km2: None` — **no estuaries in production**, as the round required.
+`ALGO_UPSCALE_EROSION` **3 → 4**. The justification lives at the constant, including what the
+bound costs and what it does not fix.
+
+The bench harness moved with it: `Knobs::shipped()` is now the BOUNDED field and the
+pre-Finding-83 world is `Knobs::pre83()`. Every "delivered" column of Findings 76–82 is reachable
+by that knob and by no other, which is why the four `base_level_*` benches were repointed rather
+than left to quietly measure something else.
+
+**The viz toggle becomes the A/B control**, as instructed: the box is now **checked by default**
+(it is production), and unchecking it sets `HdParams::base_level_off` and rebuilds the old world.
+`base_level_m` changed meaning — `None` used to mean "no bound" and now means "the shipped
+epsilon" — and that reversal is written at the field, because a silent one would be a trap.
+⚠️ The hover text my Finding 82 patch left in the file rendered literal `\n` escapes followed by
+37 spaces; it is rewritten here.
+
+| guard | the record it must reproduce | production path, 2026-09-15 | verdict |
+|---|---|---|---|
+| Δ(mask) f32 8192 | 19 / 13 / 1 639, Δ −1 / **+0** | 19 / 13 / 1 639, Δ −1 / **+0** | ✅ identical |
+| Δ(mask) **u16 8192** | 18 / 12 / 1 639, Δ −2 / **+0** | 18 / 12 / 1 639, Δ −2 / **+0** | ✅ identical |
+| Δ(mask) terrain 2048 | 20 / 8 / 1 620, Δ −1 / **+0** | 20 / 8 / 1 620, Δ −1 / **+0** | ✅ identical |
+| Δ(mask) ocean 1024 | 10 / 9 / 1 591, Δ +0 / **+0** | 10 / 9 / 1 591, Δ +0 / **+0** | ✅ identical |
+| two-shoreline XOR | 3 556 / 6 016 / **3 552** | 3 556 / 6 016 / **3 552** | ✅ |
+| residual drowned, talus, diffusion | 7 738 / 7 487 / 871 | 7 738 / 7 487 / 871 | ✅ |
+| price, PRE-CLAMP | 14 554 pinned, p50 **1.077 m** | 14 554 pinned, p50 **1.077 m** | ✅ |
+| hypsometry | unpaired **−17.26 m**, paired **+0.30 m** | unpaired **−17.26**, paired **+0.30** | ✅ |
+| shader (4–8 cell components, 1-px islands) | 504 → 63, 5 → 0 | 504 → 63, 5 → 0 | ✅ |
+| ε sweep 0.2 / 0.5 / 1.0 | Δ(u16) −1 / **+0** / +1 | −1 / **+0** / +1 | ✅ |
+| **F74 terminal, humid** | 474.7 · 82/81.0 · 5/130.9 · 8/522.1 · 211.9 (×0.446) · hole **262.7** | **identical, every field** | ✅ |
+| **F74 terminal, arid** | 137.7 · ×0.101 · hole **123.8** · basins 17 | **identical** | ✅ |
+| lake invariants, 2 beds | 0 / 0 / 0 / 0 / 0, exorheic-no-outlet **1** humid, **0** arid | idem | ✅ |
+| `BasinSummary` | 20 basins, area p50 **31.278**, Σ 4 947.4 | idem | ✅ |
+| merged ids | `[121234, 6245] [1,1] [2,2]` | idem | ✅ |
+| **field FNV-1a** | pre `0xc359c555ec22175c` · delivered `0x4719ff260186645a` · bounded `0x1a022c8785c47eed` | **identical, all three** | ✅ **bit-exact** |
+
+> **The production path IS the Finding 81 bench, to the digit, on every line the round named.**
+> No stop rule fires, and the promotion stands on a reproduction rather than on a re-measurement.
+
+### B0 — the criterion for an ORGANIC coast, written before the first number
+
+An organic coast has **no wavelength and no visible generator**. On the CONSUMER mask (post-u16
+land/sea, `marching_squares` at 0.5 — the coast Living Landz draws):
+
+1. **linearity** — `log L` against `log(ruler)` is a straight line over 100 m – 10 km, residual
+   declared;
+2. **dimension** — the slope gives **D ∈ [1.10 ; 1.30]** (Great Britain ≈ 1.25, a smooth coast
+   1.00);
+3. **no generator** — the spectrum of excursion positions has no peak above **3× white**
+   (Finding 76's instrument, on the mask);
+4. **nothing manufactured** — **Δ(spurs ≥ 2 cells) against pre-incision stays 0 for everything
+   that is not an estuary**; every excursion added must carry a channel of A ≥ A_est at its head;
+5. **and the author's eye**, in Living Landz, with the counts beside it.
+
+**The instrument is the DIVIDER (compass), not box-counting, and the reason is not taste.** The
+divider returns a LENGTH at each ruler — the quantity already on file (1 634 / 7 056 / 1 639 km) —
+so the curve and the dossier are the same measurement at different rulers. Box-counting returns a
+dimension for a point set and is contaminated by the one-pixel thickness of a mask contour, which
+is a property of the encoding. Chord distance, 8 start offsets averaged, 13 log-spaced rulers,
+polygons ≥ 20 km perimeter (fixed across variants).
+
+### B1 — the two controls first, because a D without them is a number with no scale
+
+| shape | true D | measured D (100 m – 10 km) | bias | worst residual |
+|---|---|---|---|---|
+| rasterised **circle**, r = 3 000 px | 1.0000 | **1.002** | **+0.002** | 0.65 % |
+| rasterised **Koch snowflake**, g7 | 1.2619 | **1.244** | **−0.017** | 18.94 % |
+
+> **The instrument has essentially no floor, and my prediction of one is refuted.** I expected the
+> staircase to inflate D at the 2-cell ruler to ~1.05; the circle reads **1.004** below 1 km.
+> `marching_squares` interpolates, so the mask contour is not a raw staircase and the divider does
+> not see one. The round's ±0.05 tolerance on Koch and mine of ±0.03 both hold (−0.017).
+>
+> The Koch curve's 18.94 % worst residual is **not** a defect: a divider on a strictly self-similar
+> fractal oscillates log-periodically. It is a useful warning — **R² and residual are read
+> differently on a fractal than on a smooth curve**, and on a nearly flat curve R² is small for
+> reasons that have nothing to do with linearity (the circle's R² is 0.50 at a residual of 0.65 %).
+> **Linearity is judged by the residual per cent; R² is reported and not leaned on.**
+
+Both controls are used as a two-point calibration: linear in D between the two known shapes, so
+`true = 1.000 + (measured − D_circle) · (1.2619 − 1.000) / (D_koch − D_circle)`, applied per
+ruler range with that range's own control values. **It is arithmetic on the two control rows,
+not a bench output** — `f83_richardson` prints raw D, and both columns are given below so the
+correction can be checked or discarded.
+
+#### The three worlds, u16 8192 mask
+
+| stage | D (100 m – 10 km) | **calibrated** | worst resid | D (< 1 km) | **cal.** | D (> 1 km) | **cal.** | D largest poly (paired) |
+|---|---|---|---|---|---|---|---|---|
+| PRE-INCISION | 1.051 | **1.053** | 8.16 % | 1.013 | 1.012 | 1.115 | 1.136 | 1.040 |
+| **DELIVERED (pre-83, the fur)** | **1.273** | **1.293** | **4.74 %** | **1.292** | **1.372** | 1.229 | 1.271 | 1.245 |
+| **PRODUCTION (bounded)** | 1.051 | **1.053** | 8.07 % | 1.013 | 1.012 | 1.116 | 1.137 | 1.041 |
+
+Contour polygons traced: pre-incision **27**, delivered **13 671**, production **27**.
+
+**And a number on file turns out to be ruler-dependent.** At the 2-cell ruler (97.7 m) the
+divider reads **1 543 / 4 166 / 1 547 km**, where `coast_shape_thresholds.coast_km` reads
+**1 634 / 7 051 / 1 639**. The two disagree because `coast_km` sums the marching-squares
+polyline at its OWN vertex spacing, which is sub-cell — a finer ruler than any in the sweep.
+On the smooth coasts the gap is 6 %; **on the fur it is 41 %**, because that is precisely what
+a high D means. The dossier's "+287 % of coastline" (Finding 76) was never a scale-free
+statement, and this is the first round in a position to say so.
+
+#### And the same three on the two consumer grids
+
+| grid | PRE-INCISION | DELIVERED | PRODUCTION |
+|---|---|---|---|
+| u16 8192 | 1.051 | **1.273** | 1.051 |
+| terrain 2048 | 1.076 | **1.166** | 1.077 |
+| ocean 1024 | 1.095 | **1.146** | 1.096 |
+
+> **The gap closes as the consumer coarsens** — 0.222 at 8192², 0.089 at 2048², **0.050** at 1024².
+> The majority downsample averages the fur away and leaves the lobes, so the ocean map was always
+> seeing the least of it. That is worth knowing for what the author judged where.
+
+#### The other two legs, u16 8192
+
+| variant | ≥ 1 km | ≥ 2 cells | coast km | spectral peak | × white |
+|---|---|---|---|---|---|
+| PRE-INCISION | 20 | 12 | 1 634 | n/a (< 32 gaps, rule 10) | — |
+| DELIVERED (pre-83) | 1 757 | 3 609 | 7 051 | 9 cells | **2.43** |
+| PRODUCTION | 18 | 12 | 1 639 | n/a (< 32 gaps) | — |
+
+#### The result, and it is not the one either of us predicted
+
+| criterion leg | PRE-INCISION | **DELIVERED (the fur)** | **PRODUCTION (bounded)** |
+|---|---|---|---|
+| 1 · linear over two decades | 8.16 % | **4.74 % — the most linear of the three** ✅ | 8.07 % |
+| 2 · D ∈ [1.10 ; 1.30] | 1.05 ❌ | **1.29 ✅** | 1.05 ❌ |
+| 3 · no spectral peak > 3× | unreadable | **2.43× ✅** | unreadable |
+| 4 · Δ(≥ 2 cells) = 0 | +0 (it IS the authority) | **+3 597 ❌** | **+0 ✅** |
+
+> **BOTH predictions are refuted, and in the same direction.** I said D(delivered) ≈ 1.55 below
+> 500 m with a break; the round said > 1.5 below 500 m with a break near 700 m. The measurement
+> says **1.29 over the whole two decades with the smallest residual of the three curves** — no
+> break, no knee, no generator scale. **The fringe is not a broken power law. It is a clean one,
+> and its dimension sits inside the window we wrote for a real coast.**
+>
+> And the converse, which is the uncomfortable half: **the coast the bound gives us fails leg 2.**
+> D = 1.05 calibrated, and below 1 km it is **1.012** — a straight line with a staircase on it.
+> So does the pre-incision authority, at the same 1.05: **the reference the campaign has used
+> since Finding 76 to define "no fringe" was never an organic coast.** The round said as much in
+> words ("l'ancrage de « absent », pas l'objectif"); this is the number.
+>
+> **What this says about the criterion I wrote.** Legs 1, 2 and 3 — the whole fractal apparatus —
+> do NOT discriminate the fringe from a plausible coast; the fringe passes all three. Only leg 4
+> rejects it, and leg 4 is the author's criterion, not the geometer's. **Had this instrument
+> existed at Finding 76 it would have exonerated the fringe.** The thing that actually decided
+> this campaign was an eye and a count of manufactured spurs, and the measurement says so.
+
+### B3 — what the baseline says with no lever at all
+
+The round's precondition: *"Si D(borné) est déjà dans [1,1 ; 1,3] au-dessus de 1 km et plat en
+dessous, le manque de variabilité est sub-kilométrique — c'est C-4."*
+
+**It is met, almost exactly as stated.** D(production, > 1 km) = **1.116 raw / 1.137 calibrated**,
+inside the window; D(production, < 1 km) = **1.013 raw / 1.012 calibrated**, flat to three
+decimals. **My prediction that the precondition would NOT be met is refuted.**
+
+> **So the missing variability is sub-kilometric, and it is the whole of it.** Above one kilometre
+> this coast already has the dimension of a real one; below one kilometre it has none. And rule
+> 11's single hit names a constant that removes sub-kilometre relief at the waterline **by design**
+> — `coastal_amplitude_band = 0.30`, `upscale.rs:593`, damping the FBM to ~0 at the shore (#151).
+> **That is where C-4 starts, and nothing else is built here.**
+
+### B2 — the estuary lever, swept; it does not work, and the way it fails is informative
+
+`BaseLevelFloor::free_above_km2` — **PROXY**, labelled at the field, `None` in production —
+releases the bound above a drainage area `A_est`, so a trunk grades to its real receiver again and
+cuts the drowned valley a ria is. Binary, as instructed. The gate's own control: `free_above_km2 =
+0` reproduces the UNBOUNDED field bit for bit (`the_estuary_gate_is_inert_unless_it_bites`), so the
+knob is exactly the release of the bound and nothing else.
+
+Sweep in km² of the SIMULATED grid (50 km² = 20 972 cells at 8192², 1 000 km² = 419 430).
+
+| | Δ ≥ 1 km | **Δ ≥ 2 cells** | coast km | **D** | D < 1 km | D > 1 km | drowned vs pre |
+|---|---|---|---|---|---|---|---|
+| PRODUCTION (A_est none) | −2 | **+0** | 1 639 | 1.051 | 1.013 | 1.116 | 7 738 |
+| A_est = **50 km²** | +12 | **+43** | 1 717 | **1.054** | 1.015 | 1.120 | 8 769 |
+| A_est = **200 km²** | −1 | **+2** | 1 641 | **1.051** | 1.013 | 1.116 | 7 762 |
+| A_est = **1 000 km²** | −2 | **+0** | 1 639 | **1.051** | 1.013 | 1.116 | 7 738 |
+
+**The head test — does every added excursion carry a channel?** (D8 accumulation over the whole
+excursion arc dilated by 6 cells; ⚠️ the GATE reads the MFD accumulation the incision builds, which
+disperses, so this is a lower bound on the gate's own view.)
+
+| A_est | added excursions | with A ≥ A_est at the head | share |
+|---|---|---|---|
+| 50 km² | 44 | 13 | **29.5 %** |
+| 200 km² | 2 | 2 | **100.0 %** (head A 371.8 and 487.1 km²) |
+| 1 000 km² | 0 | 0 | — |
+
+**The estuaries themselves**, as geometry, against real rias:
+
+| A_est | estuaries | length inland p50 / max | mouth width p50 / max | depth p50 / max (PRE-CLAMP) |
+|---|---|---|---|---|
+| 50 km² | **16** | **1.46 / 5.18 km** | **0.049 / 0.537 km** | **0.20 / 1.16 m** |
+| 200 km² | **3** | 0.20 / 0.49 km | 0.049 / 0.049 km | 0.24 / 0.44 m |
+| 1 000 km² | **0** | — | — | — |
+
+> Rance ≈ 20 km long, 0.5–2 km wide, tens of metres deep. Aber Wrac'h ≈ 9 km, 0.3–1 km.
+> Ria de Vigo ≈ 35 km, 3–7 km.
+
+> **The lever fails, and it fails three times over.**
+>
+> 1. **It does not move the dimension.** D goes 1.051 → 1.054 at the most permissive setting and
+>    does not move at all at the other two. My prediction was "at most +0.03" — correct, but for
+>    the wrong reason: I expected a small real effect and there is essentially none. The round's
+>    "+0.03 to +0.08" is refuted by an order of magnitude.
+> 2. **What it adds is mostly not estuary.** At 50 km², **70.5 % of the 44 added excursions have
+>    no channel of the required size at their head** — the head areas are p50 **7.1 km²** against a
+>    gate of 50. The mechanism is the one Finding 80-B1b already named: the released trunk lowers
+>    its mouth, and the LEM-correct **hillslope diffusion** then takes the neighbours under. The
+>    round forbade "any lever that adds roughness without a channel at its head — that is the fur";
+>    at A_est = 50 km² **that is what this lever mostly is.** Both of us were wrong on the head
+>    share: I said 1–3 exceptions, the round said 100 % clean; the measurement says **31 of 44 are
+>    exceptions.**
+> 3. **And the setting where the head test is clean produces nothing.** At 200 km² the two added
+>    excursions both carry 370–490 km² at the head — a perfect score — and they are **two**
+>    excursions, three notches, 24 cells, 0.2 km long, one cell wide, 24 cm deep. At 1 000 km²
+>    **not one cell changes**: no cell where the bound binds carries that much MFD area.
+>
+> **The geometry says why, and it is not a tuning problem.** A mouth one cell wide (49 m) against
+> the Rance's 0.5–2 km is **10 to 40× too narrow**; 1.46 km of penetration against 20 km is **14×
+> too short**; 20 cm of depth against tens of metres is not the same kind of object. Releasing the
+> bound lets the trunk cut *a channel*, because a channel is what this incision cuts —
+> `lateral_erosion = 4.0` gives trunks sub-kilometre floors and headwaters sub-cell gorges by
+> design. **A ria is a valley drowned by a sea that rose. Ymir's sea has never moved, and no
+> function of drainage area can stand in for a history.** The PROXY label is not a formality here;
+> it is the whole diagnosis.
+>
+> **Counts predicted against counts measured**: at 200 km² I said 8–25 estuaries and the round said
+> 15–40 — measured **3**. At 50 km² I said 40–120 — measured **16**. At 1 000 km² I said 1–5 —
+> measured **0**. All six numbers wrong, and wrong the same way: we both assumed a 160 000 km²
+> domain with an 27 000 km² continent has more large coastal catchments than it has.
+>
+> **No point of the sweep passes B0**, so by the round's own instruction there is **no viz panel**
+> and the criterion has already said it.
+
+### C1 — one budget, labelled; and the paired decomposition reverses a claim of Finding 82
+
+**The two figures are not a contradiction and neither is wrong: they are two STAGES.** Measured
+side by side in one bench, on the same seed, same beds:
+
+| stage | what reads it | humid | arid |
+|---|---|---|---|
+| **ERODED** (Finding 82) | nothing downstream — it is the incision's own output | 487.6 → 451.1 (**−7.5 %**) | 163.1 → 122.9 (−24.7 %) |
+| **BREACHED** (Finding 81) | **`c1_drainage_windowed`, i.e. every river, lake and width that ships** | 502.1 → 474.7 (**−5.5 %**) | 172.6 → 137.7 (−20.3 %) |
+
+> **The retained figure is −5.5 % humid / −20.3 % arid, on the BREACHED field**, because that is
+> the field the drainage actually reads (`breach_monotone` runs between the two, and the land mask
+> moves by 6 446 cells across it). The −7.5 % is the eroded stage and no consumer sees it. Both
+> stay on file with their stage attached; neither is withdrawn.
+
+**And now the confound Finding 82 named rather than buried.** There, the distance bands were
+recomputed on each field, so a cell could change band when the coast advanced. Here the bands are
+assigned **once, on the delivered field**, and the population is partitioned three ways, so the
+pieces sum to the unpaired Δ by construction (residual < 0.0001 m³/s on all four runs).
+
+| breached, humid | cells | Δ m³/s | share of \|Δ\| |
+|---|---|---|---|
+| **paired core** (land in BOTH) | 11 023 415 | **−36.95** | 134.6 % |
+| CEDED (land delivered, sea bounded) | **1 212** | −0.08 | **0.3 %** |
+| GAINED (sea delivered, land bounded) | 288 178 | **+9.58** | — |
+| total | | **−27.46** | 100 % |
+
+| breached, humid — PAIRED core, FIXED bands | delivered | bounded | Δ m³/s | share of Δcore |
+|---|---|---|---|---|
+| **dist 0–1 km** | 153.61 | 119.07 | **−34.54** | **93.5 %** |
+| dist 1–5 km | 136.50 | 134.68 | **−1.82** | 4.9 % |
+| dist 5–20 km | 203.94 | 203.37 | **−0.57** | 1.5 % |
+| dist > 20 km | 8.00 | 7.97 | −0.03 | 0.1 % |
+| alt < 10 m | 37.94 | 26.43 | −11.51 | 31.1 % |
+| **alt 10–100 m** | 121.50 | 100.92 | **−20.58** | **55.7 %** |
+| alt 100–500 m | 136.12 | 131.92 | −4.20 | 11.4 % |
+| alt > 500 m | 206.48 | 205.82 | −0.66 | 1.8 % |
+
+Arid, breached: core −42.04, ceded −0.07 (**0.2 %**), gained +7.14; **0–1 km carries 95.7 %**;
+1–5 km −1.77, 5–20 km −0.04.
+
+> **Finding 82's sub-claim is REFUTED by the paired measurement and I withdraw it.** It said *"the
+> loss is almost entirely in the first kilometre, and every band beyond it GAINS"*, and offered the
+> orographic term of L780 as the mechanism of that gain. **Paired, there is no inland gain to
+> explain** — every band loses: −1.82, −0.57, −0.03 against the unpaired +3.23, +16.20, +11.77.
+> The "inland gain" was the 290 895 cells rejoining the land pushing the coastline seaward and
+> **re-banding the cells behind it**. It was the population, in its fourth costume, and the
+> orographic explanation I attached to it is withdrawn with it.
+>
+> What survives, and now cleanly: **the loss is monotone away from the shore — 93.5 % in the first
+> kilometre, 4.9 % in the next four, 1.5 % beyond** — and the altitude view puts 55.7 % of it in
+> the 10–100 m band, which is the coastal ramp, not the interior. **My prediction (0–1 km at
+> 90–140 % of Δ) holds at 93.5 % of Δcore; my prediction that the ceded cells carry 25–45 % is
+> refuted by two orders of magnitude — they carry 0.3 %, and there are 1 212 of them.** The bound
+> gives land back; it essentially never takes any.
+
+### C2 — the cycle-breaker on the bounded world, and a remedy specification that refutes both families the round proposed
+
+Humid, production field, `wc == 2` components 8-connected.
+
+| | |
+|---|---|
+| below-sea regions | **20** |
+| ids spanning more than one component (MERGED) | **3** |
+| of those, size ratio > 100 | **0 (0.0 %)** |
+| merged ids' share of all spillway discharge | **501.99 of 751.08 m³/s = 66.8 %** |
+| spillways discharging into their OWN id | **3**, carrying **501.99 m³/s** = 96.2 % of the chained total (522.05) |
+
+| id | bodies (cells) | ratio | Q out m³/s | **lands in** |
+|---|---|---|---|---|
+| 1000001 | `[121 234, 6 245]` | 19.4 | **360.34** | the **6 245**-cell body |
+| 1000004 | `[1, 1]` | 1.0 | 5.28 | — |
+| 1000009 | `[2, 2]` | 1.0 | **136.38** | a **2**-cell body |
+
+`SegmentKind::Spillway` for all of them — they are pushed as such at the tail of the chain, so the
+hole is not a `Watercourse` accounting problem. **My prediction that the dominant term would stay
+the 136.38 as a `Watercourse` is wrong twice: the dominant term is the 360.34 and the kind is
+`Spillway`.**
+
+> **The decisive column, added after the first pass and worth the second run.** Both
+> self-discharging spillways land **inside ONE of the two disconnected bodies that share their
+> label** — the 360.34 in the **6 245**-cell lobe of a `[121 234, 6 245]` pair, the 136.38 in one
+> of two 2-cell bodies. **Which of the two the spillway LEFT cannot be recovered: the merge
+> erased that too**, and I will not assert it.
+>
+> The two readings are genuinely different and both are pathologies:
+> * it lands in the **other** body → a legitimate chained link, basin A into basin B, made
+>   unreadable because A and B wear one label. The accounting sees "discharges into itself",
+>   finds no next link, and the water leaves the terminal sum.
+> * it lands in the body it **left** → a genuine routing cycle: the spillway returns water to
+>   its own source.
+>
+> **One remedy covers both, which is why the ambiguity does not block it**: stop sharing the
+> label. In the first case the chain becomes traceable; in the second the cycle becomes
+> *detectable* — an invariant that can be asserted instead of a number that quietly goes missing.
+
+**The two families the round asked me to compare, measured against these numbers:**
+
+**(a) a spillway may not terminate in a basin below a cell threshold.**
+The 136.38's receiving body is **2 cells**; the 360.34's is **6 245**. Any threshold between 3 and
+6 244 kills the first and leaves the second — it buys **136.38 of the 501.99 m³/s** (27.2 %), and
+only if the re-route then reaches the ocean rather than another basin. **Why not 4 cells**: 4 is
+this seed's number. `INVENTORY_MIN_CELLS` was moved 4 → 1 at Finding 75 precisely because a cell
+floor on lakes was hiding real water, and there is no physical size below which a depression cannot
+receive a spillway. The threshold would carry a **PROXY** label with nothing behind it.
+
+**(b) a reciprocal merge keeps the spillway of the LARGER and re-addresses the smaller's to the
+larger's receiver.** **It does not remove the 136.38 — it cannot even be evaluated on it.** That
+id's bodies are `[2, 2]`: "the larger" is undefined, and a tie-break by scan order reintroduces
+exactly the label-dependence Finding 81 had to withdraw a claim over. And for the 360.34, family
+(b) is a rule about a PAIR OF IDS while the measured pathology is **one id with two bodies** — the
+merge has already happened, so there is no second spillway to re-address. **The round's preferred
+family is inapplicable to both dominant terms.**
+
+**(c) what the measurement actually points at — do not give one id to two disconnected bodies.**
+Split any below-sea id whose footprint spans more than one 8-connected `wc == 2` component, at the
+end of `below_sea_basin_lakes_infil`, and let the chain accounting run on the split ids. Then the
+360.34 either reads as a chained link into a named neighbour, or trips the invariant **"no
+spillway terminates in its own id"** — and either outcome is a fact the pipeline can state,
+which is what this campaign is short of.
+**Its cost, named**: the merge exists to break a reciprocal cycle (`break_reciprocal_spill_cycles`),
+so splitting re-creates the cycle it broke. (c) is therefore not "split" alone but "split, and
+resolve the cycle by a rule" — lowest sill wins, the other becomes the pair's terminal — which is a
+decision the merge currently avoids by erasing the question.
+**What it would buy is NOT 501.99 m³/s of the 262.7 m³/s hole**: the chained sum double-counts water
+already carried by upstream `Watercourse` segments, which is why 522.05 exceeds the hole in the
+first place. (c) is the prerequisite for closing the chain sum, not a quantity recovered. Stating a
+recovery figure here would be arithmetic theatre.
+
+**Not implemented, as instructed.**
+
+### Score
+
+Predictions were written and dated **2026-09-15 before the first measurement of this round**,
+declared non-blind on Findings 73–82 and on the bench sources (I wrote both) and blind on every
+figure below — which the rule-11 grep then confirmed, since no fractal instrument and no estuary
+existed in this repository.
+
+**Mine.** A guards green and the production path equal to the bench ✓ (and bit-exact, which I did
+not claim) · D(pre-incision) 1.02 ± 0.03 **✗** (1.051) · D(bounded) 1.04 ± 0.03 ✓ (1.051) ·
+**D(delivered) 1.55 ± 0.15 below 500 m, with a break ✗✗** (1.29 over two decades, no break, the
+most linear of the three) · Koch within ±0.03 ✓ (−0.017) · **an instrument floor of up to 1.05 at
+the 2-cell ruler ✗** (the circle reads 1.004: there is no floor) · the three coast lengths at the
+2-cell ruler **✗✗✗** (1 543 / 1 547 / **4 166** against ≈1 640 / 1 650 / 7 000) · estuary counts
+8–25 / 40–120 / 1–5 **✗✗✗** (3 / 16 / 0) · **head exceptions "1 to 3" ✗✗** (31 of 44 at 50 km²) ·
+D rises by at most 0.03 ✓ (+0.003) · mouths "1–3 cells, an order of magnitude too narrow" ✓ ·
+length median 2–6 km ✗ (1.46) · depth < 2 m ✓ (0.20) · **B3's precondition will NOT be met ✗** (it
+is met) · C1 retained −5.5 % ✓ · 0–1 km at 90–140 % of Δ ✓ (93.5 %) · **ceded cells 25–45 % of Δ
+✗✗** (0.3 %, and 1 212 cells) · ratio > 100 at 0 % ✓ · **the dominant term is the 136.38 as a
+`Watercourse` ✗✗** (360.34, `Spillway`) · family (a) unanchorable ✓ · **family (b) removes the
+136.38 ✗** (it cannot be evaluated on `[2, 2]`).
+
+**The round's.** A guards ✓ · production = bench ✓ · D(pre) ≈ 1.02 ✗ · D(bounded) ≈ 1.05 ✓, flat
+below ✓ · **D(delivered) > 1.5 below 500 m with a break near 700 m ✗✗** · Koch within ±0.05 ✓ ·
+**15–40 estuaries at 200 km² ✗✗** (3) · **100 % with a channel at the head ✓ at A_est = 200**
+(exactly 100.0 %) **and ✗ at 50** (29.5 %) · D up by 0.03–0.08 ✗ (0.003) · **"the estuaries are not
+enough, the sub-kilometre variability is C-4's work" ✓✓ — confirmed to the letter** · C1 retained
+−5.5 % ✓ · **"mixed loss, interior-dominated in the arid bed" ✗✗** (93.5 % humid and **95.7 %**
+arid in the first kilometre — the arid bed is the more coastal of the two, for the second round
+running) · fewer than 5 % of merges above ratio 100 ✓ (zero) · **"but they carry more than 60 % of
+the merged discharge" ✗** (they carry 0 %; it is the merged ids **as a class** that carry 66.8 %) ·
+**family (b) removes the 136.38 without side effects ✗✗** · family (a) needs an unanchorable
+threshold ✓.
+
+**Meta holds on both sides, again.** And the two worst misses are joint for the third round
+running: **what the fringe's Richardson curve looks like** (both of us said a broken power law
+above 1.5; it is a clean one at 1.29) and **how many large coastal catchments a 27 000 km²
+continent has** (both of us said tens; it has three).
+
+### Standing
+
+**One production change, and it is the one the campaign has been walking toward since Finding 6.**
+`relief_v3` ships the base-level bound. Sixteen guards reproduce Findings 80 and 81 to the digit on
+the production path, and the field reproduces to the **bit** — `0x1a022c8785c47eed` for production,
+`0x4719ff260186645a` when the A/B control turns the bound off. The word of the criterion is the
+author's: **no spur ADDED**.
+
+**And the round that promoted it also wrote a criterion the product fails.** B0 says an organic
+coast has D ∈ [1.10 ; 1.30] over two decades. Production reads **1.05**, and **1.01 below one
+kilometre**. So does the pre-incision authority. The fringe read **1.29**, cleanly, and failed only
+the leg that counts manufactured spurs. **The fractal apparatus does not distinguish the fringe
+from a real coast; the author's eye did.** That is worth keeping as a result about instruments, not
+only about coasts.
+
+**B3, and it is the next chantier's whole statement**: the missing variability is **sub-kilometric,
+and it is all of it**. Above 1 km this coast already has the dimension of a real one (1.116 raw,
+1.137 calibrated). Below, it has none. The first suspect is named, deliberate and on file since
+#151: `coastal_amplitude_band = 0.30` (`upscale.rs:593`) damps the FBM to ~0 **at the waterline by
+design**. **C-4 starts there, and nothing else is built here.**
+
+**Owed, and not done here**: the Finding 74 remedy is now SPECIFIED (family (c): do not give one id
+to two disconnected bodies, and resolve the reciprocal cycle by a rule instead of by erasing the
+question) and deliberately not implemented. The graded estuary lever is **not** owed — the round
+said graded only if binary works, and binary does not.
+
+### À VALIDER VISUELLEMENT
+
+**Nothing, and the reason is the round's own rule.** No point of the B2 sweep passes B0 — D moves
+by +0.003 at most, at 50 km² seven tenths of what it adds has no channel at its head, and at
+200 km² it adds three notches of 24 cm — so there is no panel to look at: *"si aucun point ne passe
+B0, pas de panneau : le critère l'a déjà dit."* Block A was validated visually at Finding 82 and is
+not re-asked.
+
+One thing is worth stating rather than shown: **the Richardson result argues that the author's eye
+cannot be replaced by this instrument**, since the instrument would have exonerated the fringe. The
+next chantier's acceptance will still need a look, whatever the curve says.

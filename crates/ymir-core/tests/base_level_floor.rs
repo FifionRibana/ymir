@@ -23,7 +23,7 @@ const NORM_TO_M: f32 = 11302.0;
 fn upscale_cfg(floor: Option<f32>) -> FbmUpscaleConfig {
     let mut c = FbmUpscaleConfig::default();
     let mut sp = c.stream_power.unwrap_or_default();
-    sp.base_level_floor = floor.map(|epsilon_m| BaseLevelFloor { epsilon_m });
+    sp.base_level_floor = floor.map(|epsilon_m| BaseLevelFloor { epsilon_m, free_above_km2: None });
     c.stream_power = Some(sp);
     c
 }
@@ -76,7 +76,7 @@ fn cfg(floor: Option<f32>) -> StreamPowerConfig {
     c.diffusion_substeps = 1;
     c.talus_passes = 0;
     c.lateral_erosion = 0.0;
-    c.base_level_floor = floor.map(|epsilon_m| BaseLevelFloor { epsilon_m });
+    c.base_level_floor = floor.map(|epsilon_m| BaseLevelFloor { epsilon_m, free_above_km2: None });
     c
 }
 
@@ -187,4 +187,57 @@ fn the_toggle_moves_the_whole_hydrology_chain() {
     assert_ne!(h0, h1, "the HD DRAINAGE would be served from cache: rivers and lakes would lie");
     // negative control: without it, a key folding a timestamp passes the three above
     assert_eq!(key(None).2, h0, "the hd drainage key is not stable across identical calls");
+}
+
+/// ADR Finding 83 — **the bound is the product now.** `relief_v3` is the config the shipped path
+/// builds (`production_hd_config`, `upscale.rs:310`), so this is where a silent revert would show.
+#[test]
+fn relief_v3_ships_the_bound() {
+    use ymir_core::erosion::stream_power::RELIEF_V3_BASE_LEVEL_M;
+    let cfg = StreamPowerConfig::relief_v3(400.0 * 400.0 / (8192.0 * 8192.0), 5000.0);
+    let floor = cfg.base_level_floor.expect("relief_v3 no longer ships the base-level bound");
+    assert_eq!(floor.epsilon_m, RELIEF_V3_BASE_LEVEL_M);
+    assert_eq!(floor.epsilon_m, 0.5, "the shipped epsilon moved without the ADR moving");
+    assert_eq!(
+        floor.free_above_km2, None,
+        "ESTUARIES ARE IN PRODUCTION — they are not meant to be"
+    );
+    // relief-v1 is the legacy reference config and must stay unbounded, or every historical
+    // comparison against it silently changes meaning.
+    assert_eq!(
+        StreamPowerConfig::relief_v1(400.0 * 400.0 / (8192.0 * 8192.0), 5000.0).base_level_floor,
+        None,
+        "relief_v1 picked up the bound: the pre-Finding-80 reference is no longer reachable"
+    );
+}
+
+/// ADR Finding 83-B2 — the estuary gate is a BENCH knob and must be inert until it is asked for.
+///
+/// Three points, and the third is the negative control: without it the first two would pass on a
+/// field that never changes for any value of `free_above_km2`.
+#[test]
+fn the_estuary_gate_is_inert_unless_it_bites() {
+    let g = ramp(64, 16, 0.1);
+    let with = |free: Option<f32>| {
+        let mut c = cfg(Some(0.5));
+        c.base_level_floor = Some(BaseLevelFloor { epsilon_m: 0.5, free_above_km2: free });
+        incise(&g, &c)
+    };
+    let base = with(None);
+    let moved = |a: &GridF32, b: &GridF32| {
+        (0..a.data.len()).filter(|&k| a.data[k].to_bits() != b.data[k].to_bits()).count()
+    };
+    // a threshold no cell reaches: the gate never fires, the field must not move one bit
+    let huge = with(Some(1.0e9));
+    assert_eq!(moved(&base, &huge), 0, "a never-firing estuary gate moved the field");
+    // NEGATIVE CONTROL: a threshold every cell clears must reproduce the UNBOUNDED run exactly,
+    // because releasing the bound everywhere is the same thing as not having one.
+    let all = with(Some(0.0));
+    let free = incise(&g, &cfg(None));
+    assert_eq!(
+        moved(&all, &free),
+        0,
+        "`free_above_km2 = 0` is not the unbounded field: the gate does something else"
+    );
+    assert!(moved(&base, &all) > 0, "the fixture never exercises the gate — it tests nothing");
 }

@@ -56,6 +56,34 @@ pub struct BaseLevelFloor {
     /// Metres above sea level the bound sits at. Two u16 steps minimum; 0.5 m on the
     /// production seed is about 3.4 steps.
     pub epsilon_m: f32,
+    /// **PROXY** — the drainage area (km2) above which the bound is RELEASED, so a trunk
+    /// grades to its real receiver again and cuts the drowned valley a ria is. `None`
+    /// (production, ADR Finding 83) = the bound applies everywhere.
+    ///
+    /// It is a proxy because **Ymir has no sea-level history**. A real estuary is a valley
+    /// cut at a low stand and flooded at a high one; this model runs at one stand, so the
+    /// only thing available to say "this valley would have been drowned" is how much water
+    /// it carries. That is a correlate of the real cause, not the cause. Anyone raising
+    /// this to production owes the substitution an argument.
+    ///
+    /// Area is compared in **km2 of the SIMULATED grid**, not of the signified world: the
+    /// geographic scale ratio (Finding 24) is a presentation multiplier and never reaches
+    /// the incision.
+    #[serde(default)]
+    pub free_above_km2: Option<f32>,
+}
+
+impl BaseLevelFloor {
+    /// `true` when the bound is RELEASED at this drainage area — the estuary gate.
+    /// Always `false` in production, where `free_above_km2` is `None`.
+    #[inline]
+    #[must_use]
+    pub fn freed(&self, area_km2: f32) -> bool {
+        match self.free_above_km2 {
+            Some(a_est) => area_km2 >= a_est,
+            None => false,
+        }
+    }
 }
 
 /// Montgomery & Dietrich channel-initiation law: `A_c(S) = A_c_ref * (S_ref/S)^2`.
@@ -339,6 +367,12 @@ impl StreamPowerConfig {
             talus_passes: 4,
             talus_factor: 0.5,
             mfd_exponent: Some(RELIEF_V3_MFD_P),
+            // ADR 0001 Finding 83 — THE BOUND IS NOW THE PRODUCT. See
+            // [`RELIEF_V3_BASE_LEVEL_M`] for what it costs and what it does not fix.
+            base_level_floor: Some(BaseLevelFloor {
+                epsilon_m: RELIEF_V3_BASE_LEVEL_M,
+                free_above_km2: None, // estuaries are NOT in production (Finding 83-B2)
+            }),
             ..Self::relief_v2(cell_km2, depth_scale_m)
         }
     }
@@ -350,6 +384,46 @@ pub const RELIEF_V3_MFD_P: f32 = 2.0;
 pub const RELIEF_V3_K_MULT: f32 = 3.0;
 /// `relief-v3` light linear hillslope diffusion (explicit; grades flanks, no backfill at 0.08).
 pub const RELIEF_V3_DIFFUSION: f32 = 0.08;
+
+/// `relief-v3` BASE LEVEL — metres above sea level the incision may not cut below.
+///
+/// **ADR 0001 Finding 83: promoted to production on 2026-09-15**, after the author read the
+/// two worlds side by side in Living Landz with every closure on. Before it, the incision
+/// took 298 598 cells of land under the sea and manufactured a 2-to-5-cell saw-tooth the
+/// campaign called the FRINGE; the criterion — Delta(spurs >= 2 cells) against the
+/// PRE-INCISION field of the same seed, on the post-u16 mask — was never met by anything
+/// else tried (Findings 76-79).
+///
+/// **What it buys** (Finding 80): Delta(>= 2 cells) = **+0** on all four consumer grids
+/// (f32 8192, u16 8192, terrain 2048, ocean 1024); coastline 1 634 -> 1 639 km.
+///
+/// **What it costs, all measured, none of it hidden:**
+/// * the hydrology moves — below-sea basins 62 -> 20, runoff budget -5.5 % (Finding 81);
+/// * river widths go DOWN, max `Watercourse` 21.79 -> 19.24 m3/s (Finding 82-C3);
+/// * 7 738 cells still cross zero, 88.7 % of them taken by the LEM-correct hillslope
+///   diffusion, which is a deliberate choice (Finding 80-B1b, Finding 81 L502);
+/// * the coast still retreats by 6 764 centimetric, spatially concentrated cells
+///   (Finding 82-C4). The accepted word of the criterion is **no spur ADDED**, not a
+///   frozen shoreline.
+///
+/// **What it does NOT fix**: the Finding 74 chained-sum leak. Under the bound the largest
+/// spillway still discharges into its own merged id and a second sends 136 m3/s into a
+/// four-cell basin (Finding 82-B). That remedy is owed and is not this one.
+///
+/// **Why 0.5 and not less**: `height.u16` steps 0.1477 m on the production seed, so 0.5 m
+/// is 3.4 steps — anything under two steps is re-drowned by the encoder. Finding 81-B5
+/// swept 0.2 / 0.5 / 1.0 m and all three land within +/-1 spur of the authority; 0.5 is
+/// kept because it is the one the author validated.
+///
+/// **And what it leaves open** (Finding 83-B1/B3): the coast it produces has a Richardson
+/// dimension of **1.05** over 100 m - 10 km and **1.01 below one kilometre** — flat. It is
+/// not an organic coast, and neither was the pre-incision authority it is measured against.
+/// Above one kilometre it already reads 1.116, inside the [1.10 ; 1.30] window; the missing
+/// variability is entirely sub-kilometric and is C-4's work, not this constant's.
+///
+/// Finding 6 (L235) had already named base level as the missing term and chose to limit
+/// the DURATION of erosion instead. This is that term, seventy-seven findings later.
+pub const RELIEF_V3_BASE_LEVEL_M: f32 = 0.5;
 
 /// `relief-v2` critical slope — `tan(33°)`, a mid-range angle of repose for fractured
 /// rock. Above it the nonlinear flux diverges and the slope cannot steepen further.
@@ -377,7 +451,7 @@ pub const RELIEF_V1_K: f32 = 1500.0;
 impl Default for StreamPowerConfig {
     fn default() -> Self {
         Self {
-            a_c_slope_law: None, // ADR Finding 56 — opt-in
+            a_c_slope_law: None,    // ADR Finding 56 — opt-in
             base_level_floor: None, // ADR Finding 80 -- opt-in; None keeps the legacy planing
             k: 1.0,
             m: 0.5,
@@ -523,12 +597,15 @@ pub fn incise_with_progress(
             // freezes a cell already within `epsilon` of the sea instead of lifting it,
             // so the bound can stop erosion and can never deposit. Sea cells never reach
             // here (`receiver[k] == k`, tested just above).
+            // ADR Finding 83 -- the ESTUARY gate (`free_above_km2`, PROXY, `None` in
+            // production): above `A_est` the bound is released and the trunk grades to
+            // its real receiver again, which is how a ria gets cut.
             let hr = match &cfg.base_level_floor {
-                Some(b) => {
+                Some(b) if !b.freed(area * cell_km2) => {
                     let floor = cfg.sea_level + b.epsilon_m / norm_to_m;
                     field.data[r].max(floor.min(ho))
                 }
-                None => field.data[r],
+                _ => field.data[r],
             };
             let dist_m = dist[k] * cell_m;
             // The local gradient, computed BEFORE the channel-head gate because the gate can

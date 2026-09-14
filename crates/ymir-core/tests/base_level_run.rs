@@ -3,6 +3,11 @@
 //! Every quantity carries its POPULATION and its STAGE (pre-incision / delivered / bounded) and
 //! its GRID (f32 8192 / u16 8192 / terrain 2048 / ocean 1024).
 //!
+//!
+//! ⚠️ REPOINTED at ADR Finding 83: the base-level bound SHIPS, so `Knobs::shipped()` is now
+//! the BOUNDED field and the pre-Finding-83 "delivered" world is `Knobs::pre83()`. The
+//! columns below mean what they did; only the knob that produces them moved.
+//!
 //! Run: cargo test -p ymir-core --release --test base_level_run -- --ignored --nocapture
 
 mod common;
@@ -204,8 +209,8 @@ fn base_level_run() {
     eprintln!("\n==========  Finding 80 · the base-level bound, eps = {EPS} m  ==========");
 
     let pre = build_field(Knobs::no_incision());
-    let shipped = build_field(Knobs::shipped());
-    let bounded = build_field(Knobs { base_level_m: Some(EPS), ..Knobs::shipped() });
+    let shipped = build_field(Knobs::pre83());
+    let bounded = build_field(Knobs::shipped());
     let w = shipped.width;
 
     // ── B0 · the consumer view, and the u16 step ──────────────────────────────
@@ -294,14 +299,8 @@ fn base_level_run() {
     );
     if !resid.is_empty() {
         for (nm, kn) in [
-            (
-                "bound + talus OFF",
-                Knobs { base_level_m: Some(EPS), talus_passes: Some(0), ..Knobs::shipped() },
-            ),
-            (
-                "bound + diffusion OFF",
-                Knobs { base_level_m: Some(EPS), diffusion: Some(0.0), ..Knobs::shipped() },
-            ),
+            ("bound + talus OFF", Knobs { talus_passes: Some(0), ..Knobs::shipped() }),
+            ("bound + diffusion OFF", Knobs { diffusion: Some(0.0), ..Knobs::shipped() }),
         ] {
             let f = build_field(kn);
             let d = (0..n).filter(|&k| pre.data[k] > SEA && f.data[k] <= SEA).count();
@@ -434,9 +433,8 @@ fn base_level_price_preclamp() {
         "
 ==========  Finding 80 B2 corrected · the price, on the PRE-CLAMP field  =========="
     );
-    let free = build_field(Knobs { bathymetry_off: true, ..Knobs::shipped() });
-    let bound =
-        build_field(Knobs { bathymetry_off: true, base_level_m: Some(EPS), ..Knobs::shipped() });
+    let free = build_field(Knobs { bathymetry_off: true, ..Knobs::pre83() });
+    let bound = build_field(Knobs { bathymetry_off: true, ..Knobs::shipped() });
     let pre = build_field(Knobs::no_incision());
     let (w, n) = (free.width, free.data.len());
     let floor_norm = SEA + EPS / n2m;
@@ -493,8 +491,8 @@ fn base_level_price_preclamp() {
 
     // the PAIRED hypsometry: only cells that are land in BOTH, so the -17.26 m of B3 can be
     // split into "erosion changed" and "290 895 low cells rejoined the population".
-    let shipped = build_field(Knobs::shipped());
-    let bounded_clamped = build_field(Knobs { base_level_m: Some(EPS), ..Knobs::shipped() });
+    let shipped = build_field(Knobs::pre83());
+    let bounded_clamped = build_field(Knobs::shipped());
     let both: Vec<usize> =
         (0..n).filter(|&k| shipped.data[k] > SEA && bounded_clamped.data[k] > SEA).collect();
     let mean = |f: &GridF32, set: &[usize]| {

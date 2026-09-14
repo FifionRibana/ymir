@@ -15,6 +15,7 @@ use ymir_core::export::height::metric_height_u16;
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 
+#[allow(dead_code)] // ADR Finding 83: shipped, so no longer passed explicitly
 const EPS: f32 = 0.5;
 /// 8192 crop 4160,1600 .. 4800,2240 mapped to the 2048 grid.
 const OX2: usize = 1040;
@@ -126,8 +127,8 @@ fn base_level_panels() {
 
     for (col, (nm, kn)) in [
         ("PRE-INCISION", Knobs::no_incision()),
-        ("DELIVERED", Knobs::shipped()),
-        ("BASE LEVEL", Knobs { base_level_m: Some(EPS), ..Knobs::shipped() }),
+        ("DELIVERED (pre-83)", Knobs::pre83()),
+        ("BASE LEVEL (production)", Knobs::shipped()),
     ]
     .into_iter()
     .enumerate()

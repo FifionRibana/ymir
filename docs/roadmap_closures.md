@@ -386,6 +386,72 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 > diffusion (1,28 — le défaut du F59 §4, chiffré là-bas à 4 % de la divergence de travail), la
 > fourrure à l'échelle cellulaire passe de **1 831 à 189 (−90 %)** et la côte de 6 206 à 3 538 km.
 
+> ✅ **PROMU EN PRODUCTION (Finding 83), 2026-09-15.** `relief_v3` embarque désormais
+> `base_level_floor: Some(BaseLevelFloor { epsilon_m: 0,5 })`, `free_above_km2: None` ;
+> `ALGO_UPSCALE_EROSION` 3 → 4. Le mot du critère, fixé par l'auteur après lecture des deux
+> mondes dans Living Landz toutes closures actives : **aucun éperon AJOUTÉ**, le recul diffusif
+> (6 764 cellules centimétriques, +5 km de contour) est accepté comme une côte qui vit.
+>
+> **Les seize gardes rejouées sur le CHEMIN DE PRODUCTION reproduisent le banc du Finding 81
+> au chiffre**, et le champ au BIT : FNV pré-incision `0xc359c555ec22175c`, borne désactivée
+> `0x4719ff260186645a` (le monde d'avant, octet pour octet), production `0x1a022c8785c47eed`.
+> Table terminale F74 humide 474,7 / 82:81,0 / 5:130,9 / 8:522,1 / 211,9 (×0,446) / trou 262,7 ;
+> aride 137,7 / ×0,101 / 123,8 ; invariants de lacs verts ; `BasinSummary` 20 ; fusions
+> `[121234, 6245] [1,1] [2,2]`. **Le toggle viz devient le contrôle A/B** (coché = production ;
+> décocher = `base_level_off`, le monde d'avant).
+
+
+## ⛔ CRITÈRE « CÔTE ORGANIQUE » — écrit avant mesure (ADR Finding 83)
+
+La cible du chantier suivant n'est pas « indentée », elle est **organique** : une côte organique
+n'a **ni longueur d'onde ni générateur visible**. Sur le masque CONSOMMATEUR (u16 post-export,
+`marching_squares` à 0,5), instrument = **courbe de Richardson au compas** (distance de corde,
+8 origines moyennées, 13 règles log-espacées de 100 m à 10 km, polygones ≥ 20 km) :
+
+1. **linéarité** — `log L` contre `log(règle)` droite sur les deux décades, résidu déclaré ;
+2. **dimension** — la pente donne **D ∈ [1,10 ; 1,30]** (Grande-Bretagne ≈ 1,25 ; côte lisse 1,00) ;
+3. **pas de générateur** — le spectre des positions d'excursions sans pic au-dessus de **3× le blanc** ;
+4. **rien de fabriqué** — **Δ(éperons ≥ 2 cellules) contre le pré-incision reste 0** hors estuaire,
+   et toute excursion ajoutée porte à sa tête un chenal d'aire ≥ A_est ;
+5. **et l'œil de l'auteur**, dans Living Landz, avec les comptes à côté.
+
+**L'instrument est étalonné, pas supposé** : cercle rastérisé D vrai 1,000 → mesuré **1,002** ;
+flocon de Koch g7 D vrai 1,2619 → mesuré **1,244**. Le plancher d'instrument est nul (le
+`marching_squares` interpole, le contour n'est pas un escalier). ⚠️ Sur une courbe quasi plate le
+R² est petit pour des raisons étrangères à la linéarité : **la linéarité se juge au résidu %**.
+
+| étage (u16 8192²) | D | **étalonné** | résidu | D < 1 km | D > 1 km |
+|---|---|---|---|---|---|
+| pré-incision | 1,051 | **1,053** | 8,16 % | 1,013 | 1,115 |
+| **livré (pré-83, la fourrure)** | **1,273** | **1,293** | **4,74 %** | **1,292** | 1,229 |
+| **production (bornée)** | 1,051 | **1,053** | 8,07 % | **1,013** | **1,116** |
+
+> ⚠️ **ET LE RÉSULTAT EST INCONFORTABLE, il est écrit tel quel.** La fourrure passe les pattes
+> 1, 2 et 3 : loi de puissance **propre** sur deux décades (le plus petit résidu des trois), D
+> **1,29** — dans la fenêtre écrite pour une vraie côte — et spectre à 2,43× seulement. Elle
+> n'échoue qu'à la patte 4 (Δ ≥ 2 cellules = +3 597). **Tout l'appareil fractal ne distingue pas
+> la frange d'une côte plausible ; seul le Δ contre le pré-incision le fait**, et c'est le
+> critère de l'auteur, pas celui du géomètre.
+> Et la côte que la borne nous donne **échoue à la patte 2** : D = 1,05, et sous 1 km **1,013**.
+> Le pré-incision aussi : **l'autorité que le chantier utilise depuis le F76 n'a jamais été une
+> côte organique.**
+
+**⇒ B3 : le manque est SUB-KILOMÉTRIQUE, et c'est tout le manque.** Au-dessus d'un kilomètre la
+côte bornée a déjà D = 1,116 (1,137 étalonné), dans la fenêtre ; en dessous, 1,013 — plate. Le
+premier suspect est nommé et il est délibéré : **`coastal_amplitude_band = 0.30`,
+`upscale.rs:593`**, qui amortit le FBM à ~0 **au trait d'eau par conception** (#151). C'est là
+que C-4 commence.
+
+**⛔ LE LEVIER ESTUAIRE EST MESURÉ ET IL ÉCHOUE (Finding 83-B2).** `free_above_km2` (PROXY,
+hors production) libère la borne au-dessus de A_est. Balayage 50 / 200 / 1 000 km² :
+D bouge de **+0,003 au plus** ; à 50 km² **70,5 % des 44 excursions ajoutées n'ont aucun chenal
+à leur tête** (c'est la fourrure sous un autre nom, par la diffusion de versant du F80-B1b) ; à
+200 km² la tête est propre à **100 %** mais l'effet est **3 entailles de 0,2 km de long, 1
+cellule de large, 24 cm de fond** ; à 1 000 km² **rien ne bouge du tout**. Contre la Rance
+(≈ 20 km × 0,5–2 km) c'est **10 à 40× trop étroit et 14× trop court**. **Une ria est une vallée
+noyée par une mer qui est montée ; la mer d'Ymir n'a jamais bougé, et aucune fonction de l'aire
+drainée ne remplace une histoire.**
+
 **Ni l'état livré ni la loi n'approchent d'un ordre de grandeur les quatre premières lignes.**
 Un remède qui passe la côte en changeant le continent n'a rien passé.
 

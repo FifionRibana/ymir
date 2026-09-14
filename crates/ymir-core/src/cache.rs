@@ -56,7 +56,7 @@ pub const ALGO_TECTONICS: u32 = 1;
 /// phantom-craters. Bumping gives old entries a different digest so they are never
 /// read by the new bundle codec (chosen over a tolerant legacy read, which would
 /// outlive its usefulness).
-pub const ALGO_UPSCALE_EROSION: u32 = 3; // Finding 79: shelf_min_depth_m 20 -> 1 m (beach, not cliff)
+pub const ALGO_UPSCALE_EROSION: u32 = 4; // Finding 83: relief-v3 ships the BASE-LEVEL bound (0.5 m)
 
 /// Version of the drainage build (`c1_drainage`). ⚠️ BUMP on ANY code change to
 /// that step (see above).
