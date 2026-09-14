@@ -9332,3 +9332,234 @@ grids**, at a paired interior cost of +0.30 m and a median of 1.08 m of refused 
 290 895 cells back to the land, and the rims of the below-sea basins are among them, so the chain
 accounting can move — that is the one control block column this round did not read, and it is the
 first item of the next.
+
+## Finding 81 — the silent columns, read: the bound is NOT hydrologically neutral; it deletes two thirds of the below-sea basins and moves every line of the Finding 74 table
+
+No production change, no tuning, the bound stays `None`. This round reads.
+
+### Rule 11 + 11b
+
+`chained_into` 11 (1792) · `BasinSummary` 7 (1221) · `exorheic` 106 (844) · **`diffuse_channels`
+9 (502)** · `Spillway` 26 (1203). 11b on the returned population: `298 598` **7 hits**, `7 738`
+**3**, `290 895` **2**, `290 903` **1** — already named, reused rather than recounted.
+
+**L502 reframes Finding 80-B1b**: `diffuse_channels = true` was introduced as *"remedy (i) — the
+LEM-correct diffusion on every cell, removing the regime split's non-physical channel exclusion"*.
+That the diffusion carries 88.7 % of the residual drowning is the consequence of a **deliberate,
+justified** choice, not a bug. Anyone proposing a second seam there has to answer L502 first.
+
+### A3 — there is no second bed on the terrain side, and that is structural
+
+`common::build_field` takes **no climate**. The eroded field is `upscale_from_c1_with_progress`;
+the climate enters at `c1_climate_placed`, in the DRAINAGE stage. **So Δ(mask) at four
+resolutions, contour, components, XOR, hypsometry, channel share and depressions are identical
+between beds BY CONSTRUCTION** — one field per variant, not one per bed:
+
+| variant | field FNV-1a |
+|---|---|
+| pre-incision | `0xc359c555ec22175c` |
+| delivered | `0x4719ff260186645a` |
+| bounded (ε = 0.5) | `0x1a022c8785c47eed` |
+
+Printing those columns twice per bed would have printed the same numbers twice and called it a
+measurement. What genuinely differs per bed is the hydrology — A1, A2, B1, B2 — and it is below.
+
+### C — the bar, re-measured on the observable it judges, and the +5 km is OUTSIDE it
+
+| variant | f32 km | u16 km | Δ km | Δ % |
+|---|---|---|---|---|
+| pre-incision | 1 633.6 | 1 633.7 | +0.06 | **+0.004** |
+| delivered | 7 055.5 | 7 051.3 | −4.20 | **−0.060** |
+| bounded | 1 639.0 | 1 638.7 | −0.32 | **−0.020** |
+
+> **The bar on the mask contour is 0.060 %**, not the 0.2 % borrowed from Finding 75's isoline
+> counts. Finding 80's **+5.02 km (+0.307 %) is therefore 5× OUTSIDE the bar** — it is not noise,
+> and I said so before measuring against the round's 0.3–0.6 % guess, which is refuted.
+>
+> **Named**: the mask XOR between pre-incision and bounded is **9 837 cells** (against 299 917 for
+> delivered). The bound leaves 14 554 coastal cells 1.08 m higher than the free run, and 9 837 of
+> them end up on a different side of sea level than the pre-incision field does. **The +5 km is
+> real geometry, not quantisation.**
+
+**The Δ(≥ 1 km) = −2, named** (the round asked for position and length): two excursions,
+at cells **2 180, 6 362** (1.00 km) and **2 776, 6 281** (1.06 km), with **no spur within 8 cells**
+in the bounded field. **Both sit at the detector's own 1 km cut** — 1.00 and 1.06 against a
+threshold of 1.00 — so they are threshold-marginal excursions that fell under the bar, not
+features destroyed. That is an observation; the interpretation follows from it and not the
+reverse.
+
+### B3 — the 7 738 residual drowned cells are COASTAL, not interior
+
+| population | cells | share |
+|---|---|---|
+| within 3 cells of the **OCEAN** (wc = 1) | **6 764** | **87.4 %** |
+| within 3 cells of an enclosed below-sea basin (wc = 2) | **974** | **12.6 %** |
+| neither | **0** | 0 % |
+
+The two classes partition exactly (6 764 + 974 = 7 738). ⚠️ My printed "neither" line repeated the
+basin figure — an arithmetic slip in the formatting, corrected here; the partition above is what
+the counts say.
+
+> **My prediction (> 80 % near basins, < 5 % near ocean) is refuted, and so is the round's — it is
+> inverted.** The residual is at the shoreline: the hillslope diffusion is still taking coastal
+> land under, a few cells from the ocean, in the 2.6 % of cases the target bound does not cover.
+> **That is where a second seam would have to act, and it is a coastal one, not an interior one.**
+
+### A4 — the cross-section: a regular rise, no bench at +ε, and the flattening survives
+
+Median over 200 transects, metres above sea. ⚠️ **Negative offsets are INLAND, positive are
+SEAWARD** — the Finding 78 print had that legend inverted and it is corrected at the source here.
+
+| | −20 (inland) | −10 | −4 | −2 | **0** | **+2** | +6 | +12 | +20 (sea) |
+|---|---|---|---|---|---|---|---|---|---|
+| pre-incision | 37.0 | 17.1 | 7.6 | 3.7 | 0.1 | −1.0 | −1.0 | −1.0 | −1.0 |
+| delivered | 5.6 | 2.3 | 1.5 | 0.9 | 0.1 | −1.0 | **0.0** | **0.2** | **0.2** |
+| **bounded** | 6.1 | 1.3 | 0.6 | 0.5 | 0.2 | −1.0 | −1.0 | −1.0 | −1.0 |
+
+> **No plateau at +ε.** The bounded profile rises 0.2 · 0.5 · 0.6 · 0.8 · 1.1 · 1.3 · 1.9 · 3.2 ·
+> 4.9 · 5.6 · 6.1 — a regular climb from the first cell, which is what Finding 80's "pinned runs
+> of 1 to 2 cells" predicted. **Plage, not falaise, and no bench.**
+>
+> **And the fretwork is gone**: the delivered row reads 0.0 / 0.2 / 0.2 at +6 … +20 seaward —
+> transects that re-cross land because the coast is a lace. The bounded row is −1.0 all the way.
+>
+> **But the coastal strip stays flattened.** At 20 cells inland: pre-incision 37.0 m, delivered
+> 5.6 m (×6.58), bounded 6.1 m (×6.05) ⇒ **98 % of Finding 78's ×6 flattening remains.** The bound
+> stops the drowning; it does not restore the relief the incision removed above sea level. Both my
+> prediction (> 80 %) and the round's (> 70 %) hold, and the number is 98 %.
+
+### A1 — the lake invariants are GREEN, both variants, both beds
+
+| | duplicate id | empty footprint | footprint above level | area vs footprint | dangling ids | exorheic without outlet |
+|---|---|---|---|---|---|---|
+| delivered / humid | 0 | 0 | 0 | 0 | 0 | **2** |
+| delivered / arid | 0 | 0 | 0 | 0 | 0 | 0 |
+| **bounded / humid** | 0 | 0 | 0 | 0 | 0 | **1** |
+| **bounded / arid** | 0 | 0 | 0 | 0 | 0 | 0 |
+
+⚠️ Scope declared: this is the invariant set run on **one configuration per bed** (8192², law OFF)
+rather than `channel_head_law_invariants`' full 2×2×2 sweep, which costs 8 802 s. It is a subset,
+and Finding 37's lesson is that a subset can pass where the population fails.
+
+**No stop rule fires.** The mass-balance violation even improves: 2 exorheic lakes without a
+traced outlet become 1.
+
+### A2 and B1 — and this is the round's real result
+
+| humid | DELIVERED | **BOUNDED** | change |
+|---|---|---|---|
+| **budget** | 502.1 | **474.7** | **−5.5 %** |
+| Watercourse → sea | 65 / 75.9 | 82 / 81.0 | +26 % runs, +6.7 % |
+| Spillway → ocean | 37 / 82.5 | **5 / 130.9** | **runs ÷7.4, +58.7 %** |
+| Spillway → chained (wc = 2) | 13 / 1 052.4 | **8 / 522.1** | **−50.4 %** |
+| **TERMINAL** | 158.4 (×0.315) | **211.9 (×0.446)** | **+33.8 %** |
+| **HOLE** | 343.7 | **262.7** | **−23.6 %** |
+| **below-sea basins (`BasinSummary`)** | **62** | **20** | **−68 %** |
+| inventoried below-sea lakes ↔ spillways naming a source | 54 ↔ 54 | **17 ↔ 17** | unnamed **0** both |
+| basin area: p50 / Σ km² | 0.021 / 4 304.7 | **31.278** / 4 947.4 | p50 **×1 490**, Σ +14.9 % |
+
+Arid: budget 172.6 → 137.7; terminal ×0.048 → **×0.101**; hole 164.3 → 123.8; basins 62 → **17**;
+exorheic 51 → 7.
+
+> **Verdict: the round's SECOND grid line, and not marginally.** Every line moves by far more than
+> 5 %. **The budget itself moves −5.5 %** — the round said "unchanged by construction, verify", and
+> verifying refutes it: the climate is computed on the terrain (`c1_climate_placed(&field, …)`), so
+> a changed terrain changes the orographic precipitation and therefore the runoff budget. That
+> coupling was not in anybody's model of this change.
+>
+> **Finding 74 must be re-derived under the bound before its remedy is designed.** Not this round.
+
+**The mechanism of the collapse, stated plainly.** A below-sea basin is an enclosed `wc == 2`
+region. Its rim was made of cells the incision had drowned; the bound returns 290 895 of them to
+the land, so **rims reappear and the small basins they enclosed stop existing** — 62 → 20. The
+survivors are far larger (median area 0.021 → 31.3 km²): the many tiny basins were artefacts of
+drowned rims, and the ones that remain are genuine depressions. **The F71-A4 reconciliation holds
+in FORM** — every spillway still names an inventoried basin, unnamed = 0 at both beds and both
+variants — while the count it reconciles falls by two thirds.
+
+### B2 — the merged halves, and a comparison that is NOT valid
+
+Delivered / humid reproduces Finding 75-E **exactly**: 8 ids spanning more than one component,
+with cells `[25,5] [1,1] [13,4] [3,1] [135902,10034] [1762,1] [131,16] [69560,1]`. That exact
+reproduction is the instrument's own control.
+
+Bounded / humid: **3** ids span more than one component — `[121234, 6245]`, `[1, 1]`, `[2, 2]`.
+
+> ⚠️ **The id-by-id comparison the round asked for cannot be made, and printing it would have been
+> misleading.** Below-sea ids are assigned by scan order inside
+> `below_sea_basin_lakes_infil`, so with the count going 62 → 20 **every id is re-assigned**.
+> "`1000056` is absent" is a statement about a label, not about a place. My bench printed that
+> line and it is withdrawn.
+>
+> What IS comparable is the structure, and it says the pathology is gone: **the delivered field
+> pairs a huge body with a SINGLE CELL three times (69 560 + 1, 1 762 + 1, 1 + 1); the bounded
+> field pairs nothing larger than 2 cells with anything smaller than 2.** The largest merged pair
+> is 121 234 + 6 245 — two real lobes, the case Finding 75 said was the only legitimate one.
+>
+> Since the 380.5 m³/s spillway of Finding 74 discharged into one of those single cells, **the
+> dominant term of the hole changes shape under the bound without anyone touching
+> `break_reciprocal_spill_cycles`.** Reported, not corrected, as the round required.
+
+### D — THE DECISION PAGE (no recommendation)
+
+> ## Δ = 0 — the incision adds no spur
+> **2026-09-15, seed 10 481 999 410 520 546 993, 8192², ε = 0.5 m, both beds.**
+> Δ(mask ≥ 2 cells) against the pre-incision authority = **+0** on f32 8192², u16 8192², terrain
+> 2048² and ocean 1024². Terrain-side columns are bed-independent by construction (A3).
+> **Two exceptions, named and not in a footnote:** Δ(≥ 1 km) = **−2** on the delivered grid — two
+> threshold-marginal excursions at 1.00 and 1.06 km against a 1.00 km cut, at cells 2180,6362 and
+> 2776,6281; and the contour is **+5.02 km (+0.307 %)** against a re-measured bar of **0.060 %**,
+> i.e. outside it, accounted for by 9 837 cells of mask XOR.
+
+**What the bound does.** Δ(mask ≥ 2 cells) = +0 at all four resolutions. Returns **290 895 cells**
+(≈ 694 km²) to the land. Land components of 4–8 cells 504 → 63 (pre-incision 50); of 1–3 cells
+952 → 120; single-pixel islands 5 → 0. Terrain-2048 sand band 16 426 → 9 900 px (pre-incision
+9 874). Shoreline XOR of the two consumer grids 6 016 → 3 552 cells (structural value 3 552).
+Removes the seaward fretwork from the cross-section entirely.
+
+**What it costs.** Incision refused: median **1.077 m**, p90 5.578 m, max 83.31 m, at **14 554**
+pinned cells, in runs of **1 to 2** cells (max 22) — no bench at +ε. Interior, **paired** over the
+11 031 065 cells that are land in both: **+0.30 m** of hypsometry, +0.41 % depressions, +0.36 pt
+channel share (the unpaired −17.26 m is the population effect of 290 903 cells rejoining the land
+at a mean of 2.32 m — both figures are reported, neither is preferred). Residual drowning **7 738**
+cells (−97.4 %), **87.4 % of them within 3 cells of the ocean**, carried 88.7 % by the hillslope
+diffusion and 3.2 % by the talus, 11.3 % unattributed. **And the hydrology moves:** budget −5.5 %,
+terminal +33.8 %, chained sum −50.4 %, below-sea basins **62 → 20**, all far outside 5 %.
+
+**What it does not do.** Nothing to the interior (paired +0.30 m). Nothing to the 98 % of the
+coastal strip flattening the incision had already done above sea level. Nothing to river widths —
+**not measured this round and not claimed** (Finding 69's max `Watercourse` under the bound is a
+one-line read that is still owed). Nothing to the hydrological hole except what B1 shows, which is
+that the hole and its mechanism both move and must be re-derived.
+
+**Its physics.** A detachment-limited incision does not cut below its base level. Finding 6 named
+exactly this at **L235** — *"No incision bound (floors planed to base level)"* — and chose a
+duration dial instead (`iterations` 3→2, `K` 3000→1500). The bound is the option it set aside.
+
+**Its design value.** ε = 0.5 m = **3.4 u16 steps** (step 0.1477 m). The two-step rule is a design
+bound and is **not binding on this seed** (Finding 80-B5: ε = 0.2 m at 1.4 steps also reads
+Δ = −1). **ε is a PROXY**, with a justified lower bound and no upper anchor: 1.0 m reads Δ = +1 and
+pins 15 551 cells instead of 14 554.
+
+**Artefacts.** Cross-section above (A4). Mosaic `exports/coastal_closure/panels/
+F80_mosaic_MASK_HALO_XOR.png`, already judged by its counts.
+
+### Score
+
+Mine: A1 green ✓ · A2 > 15 basins change ✓ (62 → 20) · reconciliation holds in form ✓ · A3
+identical by construction ✓ · A4 no plateau ✓ and flattening > 80 % ✓ (98 %) · B1 chained > 5 % ✓
+· **B1 terminal and hole < 5 % ✗✗** (+33.8 %, −23.6 %) · **budget unchanged ✗** (−5.5 %) · B2
+single-cell pairs gone ✓ · **B3 > 80 % near basins ✗✗** (12.6 %; it is 87.4 % near the ocean) ·
+C bar ≤ 0.15 % ✓ (0.060) and +5 km outside ✓.
+The round's: A1 green ✓ · 5–15 basins change area ✗ (42 basins cease to exist) · reconciliation ✓
+· A3 arid Δ = +0 ✓ (by construction) · A4 ✓ · **B1 terminal and hole < 5 % ✗** · B2 ✓ · **B3 ✗** ·
+**C bar 0.3–0.6 % ✗** and +5 km inside ✗.
+
+**Meta holds on both sides, and the two biggest misses were the same two: the hole's accounting,
+and where the residual drowning sits.**
+
+### Standing
+
+No production change; the bound stays `None`. **A1 is green, so the decision page is written.**
+Two items are now explicitly owed and neither is done here: **Finding 74 re-derived under the
+bound** (its every line moved), and **Finding 69's river widths under the bound** (one read).

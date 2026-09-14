@@ -341,6 +341,21 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 > ligne des 3×) : c'était le traceur. **Question ouverte à l'auteur : Living Landz trace-t-il la
 > côte depuis le masque ou depuis l'isoligne ?**
 >
+> ⛔ **ET LA BORNE N'EST PAS NEUTRE HYDROLOGIQUEMENT (Finding 81).** Toutes les lignes de la
+> table terminale du F74 bougent bien au-delà de 5 % en humide : **budget 502,1 → 474,7 (−5,5 %,
+> le climat est calculé SUR le terrain)**, terminal 158,4 → 211,9 (**+33,8 %**, ×0,315 → ×0,446),
+> somme chaînée 1 052,4 → 522,1 (**−50,4 %**), trou 343,7 → 262,7 (−23,6 %). Et surtout :
+> **cuvettes sous-marines 62 → 20** (aride 62 → 17), aire médiane 0,021 → **31,3 km²** — les
+> rebords rendus à la terre font cesser d'exister les petites cuvettes, qui étaient des artefacts
+> de rebords noyés. Réconciliation F71-A4 **tenue en forme** (spillway sans source nommée = 0
+> partout), sur un compte divisé par trois. Invariants de lacs **verts** aux deux lits et aux deux
+> variantes ; exorhéique-sans-exutoire 2 → 1.
+>
+> **⇒ Le F74 doit être re-dérivé SOUS la borne avant que son remède ne soit conçu.** Et le
+> résidu de noyage (7 738 cellules) est **côtier à 87,4 %**, pas intérieur : une seconde couture,
+> si elle est un jour écrite, serait côtière — et devra répondre au L502 (`diffuse_channels = true`
+> est un choix LEM-correct délibéré).
+>
 > ✅ **CRITÈRE ATTEINT (Finding 80) — pour la première fois du chantier.**
 > `StreamPowerConfig::base_level_floor`, **gatée `None`, octet-identique**, borne la CIBLE de
 > relaxation : `h_r_eff = max(h_r, min(h_o, sea + ε))`. À ε = 0,5 m (3,4 pas u16) :
