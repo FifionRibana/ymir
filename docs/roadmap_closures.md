@@ -325,6 +325,28 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 > pic passe sous la ligne des 3× à 1 m. **Baisser le plancher AGGRAVE la mesure avant que tout
 > remède ne l'améliore ; les deux items ne se jugent pas sur un seul chiffre.**
 >
+> ✅ **CORRIGÉ EN PRODUCTION (Finding 79)** : `shelf_min_depth_m` **20 → 1,0 m**,
+> `ALGO_UPSCALE_EROSION` 2 → 3, intention écrite à la ligne. Marche terre−mer p50 **22,00 → 3,00 m**,
+> part du trait sous 15 % de pente **0,0 % → 71,4 %**. Gardes verts : masque terre/mer, hypsométrie
+> terrestre, puits, invariants de lacs et **table terminale du F74 identiques** (aride ≤ 0,9 %).
+> Deux conséquences à juger, pas des no-ops : la profondeur des cuvettes sous-marines tombe
+> (p50 26,7 → 8,4 m — le clamp inventait 19 m sous chaque cuvette) et le masque de marécages
+> monte ×9,2 en aride (`WETLAND_MAX_DEPTH_M = 3 m`).
+>
+> ⛔ **ET LE CRITÈRE CHANGE DE COLONNE (Finding 79).** Tracée depuis le **masque** (ce qu'un
+> consommateur qui dessine des tags voit), la frange livrée vaut **3 623 éperons ≥ 2 cellules**,
+> pas 1 831 : l'isoligne interpolée en cachait **49 %**. Le masque **ne bouge pas d'un chiffre**
+> quand le plancher passe de 20 m à 1 m. Δ(masque) contre le pré-incision = **+1 738 / +3 610**.
+> **Et la longueur d'onde λ = 14 des F76–F78 n'existe pas sur le masque** (λ 9 à ×2,37, sous la
+> ligne des 3×) : c'était le traceur. **Question ouverte à l'auteur : Living Landz trace-t-il la
+> côte depuis le masque ou depuis l'isoligne ?**
+>
+> ⛔ **LA CLASSE « DÉPÔT » EST ÉCARTÉE (Finding 79).** Sur le champ pré-clamp, les cellules noyées
+> ont une médiane de **0,88 m** mais un p90 de **18,7 m** : moitié centimétrique, moitié lits
+> sous-marins réels. Combler les plus faibles **aggrave** la mesure (Δ masque +3 627 → **+4 800**
+> à 5 cm : un creux comblé devient un isthme d'une cellule), et à 5 m — trois quarts des cellules
+> relevées — **43 % de la frange subsiste**. Seul « tout relever » atteint Δ = 0.
+>
 > **Le levier le plus fort mesuré à ce jour n'est pas côtier** : à la valeur ANCRÉE de la
 > diffusion (1,28 — le défaut du F59 §4, chiffré là-bas à 4 % de la divergence de travail), la
 > fourrure à l'échelle cellulaire passe de **1 831 à 189 (−90 %)** et la côte de 6 206 à 3 538 km.

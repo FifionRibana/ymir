@@ -108,6 +108,11 @@ enum Terminus {
     DryLand,
 }
 
+fn sorted(mut v: Vec<f32>) -> Vec<f32> {
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    v
+}
+
 fn cls_name(t: Terminus) -> &'static str {
     match t {
         Terminus::Ocean => "ocean (wc=1)",
@@ -929,6 +934,114 @@ fn fix_before_after() {
                 .map(|e| (e.0, (e.1 * 10.0).round() / 10.0, (e.2 * 10.0).round() / 10.0))
                 .collect::<Vec<_>>()
         );
+
+        // ── the 56b/56c LAKE INVARIANT SET, on THIS configuration ─────────────
+        // ⚠️ SCOPE, declared: `channel_head_law_invariants` sweeps 2 resolutions x 2 beds x
+        // law on/off and costs 8 802 s. This runs the same assertions on the configuration this
+        // bench already has in memory (8192, this bed, law OFF) so a shelf change is guarded
+        // without a 2.5 h run. It is a SUBSET of the population, and Finding 37's whole lesson
+        // is that a subset can pass where the population fails — so it is reported as a subset.
+        {
+            let mut foot_cells: HashMap<u32, usize> = HashMap::new();
+            let mut foot_max: HashMap<u32, f32> = HashMap::new();
+            for k in 0..n {
+                let id = dr.lake_map[k];
+                if id != 0 {
+                    *foot_cells.entry(id).or_default() += 1;
+                    let e = foot_max.entry(id).or_insert(f32::MIN);
+                    *e = e.max(field.data[k]);
+                }
+            }
+            let mut ids: HashSet<u32> = HashSet::new();
+            let (mut dup, mut empty, mut above_level, mut area_mismatch) = (0, 0, 0, 0);
+            for lk in &dr.lakes {
+                if !ids.insert(lk.base.id) {
+                    dup += 1;
+                }
+                let c = foot_cells.get(&lk.base.id).copied().unwrap_or(0);
+                if c == 0 {
+                    empty += 1;
+                    continue;
+                }
+                // footprint at or below its level (1 cm tolerance in metres)
+                let lvl_norm = lk.level_m
+                    / (ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres(
+                        1.0, &ss,
+                    ) - ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres(
+                        0.0, &ss,
+                    ))
+                    + SEA;
+                if foot_max.get(&lk.base.id).copied().unwrap_or(f32::MIN) > lvl_norm + 1e-6 {
+                    above_level += 1;
+                }
+                if (lk.area_km2 - c as f32 * cell_km2).abs() > 0.5 * cell_km2 {
+                    area_mismatch += 1;
+                }
+            }
+            let no_outlet =
+                ymir_core::tectonics_c1::drainage::exorheic_lakes_missing_outlet(&dr).len();
+            eprintln!(
+                "   LAKE INVARIANTS (subset: 8192, this bed, law OFF) — duplicate id {dup} | \
+                 empty footprint {empty} | footprint ABOVE its level {above_level} | area_km2 vs \
+                 footprint mismatch {area_mismatch} | exorheic WITHOUT a traced outlet \
+                 **{no_outlet}**"
+            );
+            // the wetland mask: WETLAND_MAX_DEPTH_M = 3 m, so a shallower shelf flips it
+            let wet = bs.wetland.iter().filter(|&&v| v != 0).count();
+            eprintln!(
+                "   WETLAND cells (depth under {} m under the surface): **{wet}** — the shelf \
+                 clamp sets every sub-sea floor, so this flips with it",
+                3.0
+            );
+            // below-sea basin depth / level, the population the clamp actually shapes
+            let mut dep = sorted(
+                dr.lakes
+                    .iter()
+                    .filter(|l| l.base.id >= 1_000_001)
+                    .map(|l| l.depth_m)
+                    .collect::<Vec<f32>>(),
+            );
+            let mut lev = sorted(
+                dr.lakes
+                    .iter()
+                    .filter(|l| l.base.id >= 1_000_001)
+                    .map(|l| l.level_m)
+                    .collect::<Vec<f32>>(),
+            );
+            if dep.is_empty() {
+                dep.push(f32::NAN);
+                lev.push(f32::NAN);
+            }
+            let q = |v: &Vec<f32>, p: f64| v[(((v.len() - 1) as f64) * p) as usize];
+            eprintln!(
+                "   BELOW-SEA BASINS {} | depth_m p10 {:.2} p50 **{:.2}** p90 {:.2} | level_m p10 \
+                 {:.2} p50 {:.2} p90 {:.2}",
+                dep.len(),
+                q(&dep, 0.10),
+                q(&dep, 0.50),
+                q(&dep, 0.90),
+                q(&lev, 0.10),
+                q(&lev, 0.50),
+                q(&lev, 0.90)
+            );
+            let mut inf = sorted(bs.basins.iter().map(|b| b.inflow_m3s).collect::<Vec<f32>>());
+            let mut evp = sorted(bs.basins.iter().map(|b| b.evaporation_m3s).collect::<Vec<f32>>());
+            if inf.is_empty() {
+                inf.push(f32::NAN);
+                evp.push(f32::NAN);
+            }
+            eprintln!(
+                "   BasinSummary {} | inflow_m3s p50 {:.3} SUM {:.2} | evaporation_m3s p50 {:.3} \
+                 SUM {:.2} | exorheic {} of {}",
+                bs.basins.len(),
+                q(&inf, 0.50),
+                inf.iter().map(|&x| x as f64).sum::<f64>(),
+                q(&evp, 0.50),
+                evp.iter().map(|&x| x as f64).sum::<f64>(),
+                bs.basins.iter().filter(|b| b.exorheic).count(),
+                bs.basins.len()
+            );
+        }
 
         // ── A2 · the §2(a) prerequisite: MARKED must equal LISTED ─────────────────
         // Three readings of one gap. `below_sea_basin_lakes_infil` marks every below-sea sink in

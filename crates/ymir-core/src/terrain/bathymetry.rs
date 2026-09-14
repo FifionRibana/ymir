@@ -25,6 +25,25 @@ use crate::grid::GridF32;
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct BathymetryProfile {
     /// Depth at the coastline — the shelf is shallow but submerged (stays ocean).
+    ///
+    /// **A BEACH, NOT A CLIFF (ADR Finding 79).** This was `20.0` from the day it was written
+    /// (commit `563198e`, 2026-06-26) and that commit never justified it. The header's anchors
+    /// are the shelf (-130 m), the break (-200 m), the abyss (-4500 m) and the width (70 km),
+    /// and 20 is none of them: Earth's depth at the coastline is 0 m, which is what a beach is.
+    /// The only thing 20 bought is the invariant stated on `apply_bathymetry_profile`, and
+    /// `min_depth = shelf_min_depth_m.max(1.0)` below says in code that **1 m already buys it**.
+    ///
+    /// Measured at 20 m (Finding 78): the land-sea step had a median of **22.00 m**, **0.0 %**
+    /// of the shoreline was gentler than 15 % and **100.0 %** steeper than 25 % -- banks,
+    /// beaches and quays were not hard on this product, they were impossible. At 1 m: step
+    /// median 3.00 m, 71.4 % gentler than 15 %, and the continent bit-identical (land/sea mask
+    /// 0 cells moved; hypsometry, pits and erosion work identical to the last digit across a
+    /// 200 / 20 / 5 / 1 sweep).
+    ///
+    /// NOT only the coast: `apply_bathymetry_profile` takes `ocean = h <= sea_norm`, so every
+    /// enclosed below-sea basin floor is clamped too. Findings 33 ("a deep bowl, floor -20 m"),
+    /// 34 ("level -20 m, MAX DEPTH 0 m -- a surface with no water") and 38 ("depth-0 lakes at
+    /// -20 m -- on a FLAT floor") were all describing this constant without naming it.
     pub shelf_min_depth_m: f32,
     /// Depth at the shelf break (the shelf edge; Earth ~130-200 m).
     pub shelf_break_depth_m: f32,
@@ -46,7 +65,7 @@ pub struct BathymetryProfile {
 impl Default for BathymetryProfile {
     fn default() -> Self {
         Self {
-            shelf_min_depth_m: 20.0,
+            shelf_min_depth_m: 1.0,
             shelf_break_depth_m: 200.0,
             // #submarine — DELIBERATE GAMEPLAY CHOICE, not a calibration miss. At
             // 30 km the shelf lands at ~11.6 % of ocean area (measured, 6 seeds) —

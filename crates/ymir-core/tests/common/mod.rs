@@ -52,6 +52,9 @@ pub struct Knobs {
     /// before the sub-sea overwrite. `apply_bathymetry_profile` runs at
     /// `production_upscale.rs:506`, i.e. AFTER `incise_lithology` at :451.
     pub bathymetry_off: bool,
+    /// `a_c_slope_law` at the TARGET-GRID calibration of VALIDATION_NOTE section 1 as amended
+    /// (`S_ref = 0.1128`). The production gate stays OFF; this is a bench variant.
+    pub a_c_law: bool,
 }
 
 impl Knobs {
@@ -128,6 +131,12 @@ pub fn build_field(k: Knobs) -> GridF32 {
         }
         if let Some(t) = k.talus_passes {
             sp.talus_passes = t;
+        }
+        if k.a_c_law {
+            sp.a_c_slope_law = Some(ymir_core::erosion::stream_power::ChannelHeadLaw {
+                s_ref: 0.1128,
+                s_min: ymir_core::erosion::stream_power::CHANNEL_HEAD_S_MIN,
+            });
         }
     }
     upscale_from_c1_with_progress(

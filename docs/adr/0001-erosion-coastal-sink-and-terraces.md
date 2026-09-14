@@ -6967,6 +6967,43 @@ So the rule works, and the discriminating factor is **specificity, not constant-
 
 Cost: four greps. Against four rounds.
 
+
+### Method rule 11b — when a symptom is a REPEATED VALUE, grep the value, not only the name
+
+Rule 11 says to enumerate the code identifiers and grep each against the ADR. That is necessary and
+it is not sufficient. `shelf_min_depth_m`, `BathymetryProfile`, `apply_bathymetry_profile`,
+`bathymetry` and `shelf_min_depth` return **zero ADR hits between them**. The value they produce,
+`−20 m`, grepped once with its domain words (sea / ocean / shelf / depth), returns **six traces
+across five findings** — F33 *"a deep bowl, floor −20 m"*, F34 *"level −20 m, MAX DEPTH 0 m — a
+surface with no water"*, F35 *"a −20 m coastal pocket … is absurd"*, F36 *"the −20 m altitude proxy
+Finding 31 removed"*, F38 *"2 depth-0 lakes at −20 m — **on a FLAT floor**"*.
+
+**The constant signed five findings and was never recognised as a constant, because a dossier
+records SYMPTOMS in numbers and CAUSES in names.** So: after the identifier greps, take the
+characteristic value the symptom keeps showing (a depth, a count, a ratio) and grep **that**, with
+two or three domain words to cut the noise. Record the result, including "nothing found". Cost: one
+command. It found in one round what five findings had circled without touching.
+
+### Method rule 12 — the export is authoritative for the SYMPTOM; a MECHANISM is measured at the stage where it acts
+
+Findings 76 and 77 hunted a coastal mechanism on the delivered field and concluded, twice, that it
+was absent — "no sea-level flat" (r = 0.051), then "the drag lands on the shelf value". Both were
+measured **after** `apply_bathymetry_profile` (`production_upscale.rs:513`) had overwritten every
+sub-sea cell, and the incision runs at `:451`. On the pre-clamp field the receivers of coastal
+channel cells have **3 041 distinct values with a median of −0.109 m**; on the delivered field they
+have **one**, −20.000. The mechanism was there the whole time, 20 m under the instrument.
+
+So, two different questions and two different fields:
+
+- **"Does the consumer see the defect, and how big is it?"** → measure the EXPORT. It is what
+  ships; nothing else is authoritative for a symptom.
+- **"What produces it?"** → measure at the stage where the term acts, **before every
+  post-processing that touches the same cells**. Enumerate what runs after it — here one line of
+  `production_upscale` — and build the field without them.
+
+The corollary is the cheap part: when a stage is gated by an `Option`, turning it off is a
+one-field bench knob, and that knob is the difference between a refutation and an attribution.
+
 ## Finding 65 — THREE incompatible answers to "is there a channel here", and the one that carved the terrain is used by nothing
 
 Independent of the resolution blocker, and it reaches the consumers.
@@ -8944,3 +8981,172 @@ the author's call and now has prices attached. Eleven 8192² builds across two b
    a consumer defect in its own right and does **not** need the fringe question resolved.
 2. **The fringe** — which the clamp was *hiding* 43 % of. Lowering the floor makes the measured
    fur worse before any remedy improves it, so the two must not be judged on one number.
+
+## Finding 79 — the shelf floor goes to 1 m in production; the fringe on the MASK is 3 623, not 1 831; and the deposition class does NOT converge
+
+### Open question to the author, asked and not inferred
+
+**Does Living Landz draw the coast from the cell mask / tag (as it does lakes), or by interpolating
+the 0 m isoline of the raster?** Everything below is reported in **both** definitions, because they
+disagree by a factor 2 and the answer decides which column is the product.
+
+### Rule 11, and its extension — see method rules 11b and 12
+
+`depth_m` 10 (5484) · `BasinSummary` 6 (1221) · `water_class` 42 (760) · `is_land` 2 (8607, my own
+F77) · `chained_region` 3 (8024). The value greps found `lake_min_depth_m = 10.0` and
+`WETLAND_MAX_DEPTH_M = 3.0` — **two depth thresholds the clamp sits astride**, which is why block A
+had to read the lakes and not only the coast.
+
+### A — PRODUCTION: `shelf_min_depth_m` 20.0 → **1.0**, with its intent written at the line
+
+`ALGO_UPSCALE_EROSION` 2 → 3. The docstring now carries the reason the original never had.
+
+**Guards, all read before any coastal number.** ⚠️ The field HASH is not the right check here: the
+change is *designed* to move ocean cells, so the eroded hash moves `0x6b10a0c5fdf467a3 →
+0x4719ff260186645a` by construction. The check is the LAND-only statistics:
+
+| | before (20 m) | after (1 m) |
+|---|---|---|
+| land cells | 11 031 073 | **11 031 073** |
+| land p10 / p50 / p90 (norm) | 0.502560 / 0.539340 / 0.642129 | **identical to six decimals** |
+| cells raised by `pit_fill` | 1 238 085 | **1 238 085** |
+| below-sea (wc=2) / ocean (wc=1) | 457 698 / 55 626 539 | **identical** |
+| lake invariants (subset: 8192², law OFF, both beds) | dup 0, empty 0, above-level 0, area 0, exorheic-without-outlet 2 / 0 | **all identical** |
+| **F74 terminal table, humid** | budget 502.1, W→sea 65/75.9, S→ocean 82.5, TERMINAL 158.4, HOLE 343.7, chained 13/1052.4 | **identical, every figure** |
+| F74 terminal table, arid | chained 32.5, Σ inflow 119.31, Σ evap 57.97 | 32.8 (+0.9 %), 119.92 (+0.5 %), 57.79 (−0.3 %) |
+
+> **Stop rule A does not fire: no lake invariant moves, and the terminal table moves by at most
+> 0.9 % against a 5 % bar.** The negative control is already in the dossier — the 20 m build
+> reproduces `0x6b10a0c5fdf467a3`, the hash Findings 74, 75, 77 and 78 all recorded.
+
+⚠️ **Two consequences that are NOT no-ops and must be judged, not buried.**
+
+1. **Below-sea basin `depth_m` collapses**: humid p10/p50/p90 **20.69 / 26.68 / 69.27 → 1.69 / 8.41
+   / 52.49 m**; arid 20.62 / 26.31 / 34.82 → 1.69 / 7.68 / 17.14. `level_m` is **unchanged to the
+   centimetre** (6.68 → 6.68), so this is the floor moving and nothing else — the clamp was
+   inventing 19 m of depth under every basin. F33's "deep bowl, floor −20 m" and F38's "depth-0
+   lakes at −20 m, on a FLAT floor" were this.
+2. **The wetland mask moves, and in the arid bed it moves a lot**: humid 42 754 → 44 366 (+3.8 %),
+   **arid 38 306 → 353 630 (×9.2)**. `WETLAND_MAX_DEPTH_M = 3.0` (`drainage.rs:1777`) classes a
+   cell under 3 m of water as wetland, and a 1 m floor puts every below-sea basin under that bar.
+   **Physically a 1 m-deep pan IS a wetland**, so this is arguably the correction and not the
+   regression — but it is a large change to an exported classification and it is the author's call,
+   not mine.
+
+**The consumer number, on the production path**: land−sea step median **22.00 m → 3.00 m**; share
+of the shoreline gentler than 15 % **0.0 % → 71.4 %**; steeper than 25 % **100.0 % → 18.9 %**.
+
+### B1 — the mask instrument, and its control
+
+`marching_squares` on a BINARY land/sea field at 0.5 interpolates to the exact midpoint of every
+crossed edge, so it traces the boundary staircase and **cannot see the value of the water**. No new
+detector: the same `coast_spurs` / `coast_shape_thresholds` run on it.
+
+| | shelf 20 m | shelf 1 m | verdict |
+|---|---|---|---|
+| **MASK** | 1 758 / **3 623** / 7 056 km | 1 758 / **3 623** / 7 056 km | **IDENTICAL — the instrument does not read the sea** |
+| ISOLINE | 1 848 / **1 831** / 6 206 km | 1 776 / **3 190** / 5 927 km | −72 / **+1 359 (+74.2 %)** |
+
+### B2 — the re-read of Findings 75–78, and three verdicts
+
+| variant | ISO ≥1 km | **ISO ≥2 cells** | MASK ≥1 km | **MASK ≥2 cells** | MASK R |
+|---|---|---|---|---|---|
+| PRE-INCISION (authority) | 18 | **11** | 20 | **13** | 0.280 |
+| **SHIPPED (shelf 20)** | 1 848 | **1 831** | 1 758 | **3 623** | **0.920** |
+| **PRODUCTION (shelf 1)** | 1 776 | 3 190 | 1 758 | **3 623** | 0.920 |
+| LAW ON (shelf 20) | 916 | 1 056 | 939 | **1 614** | 0.887 |
+| diffusion 1.28 (shelf 20) | 1 275 | 189 | 1 289 | **567** | 0.751 |
+
+**Verdicts, one per claim:**
+
+- **"the 20 m clamp hides 43 % of the fur" — HELD TO THE TRACER, and it was worse than 43 %.** On
+  the mask the shelf change does **nothing at all**; the true cell-scale count of the shipped
+  product is **3 623**, and the isoline was reporting **1 831**. The clamp was hiding **49 %** of it
+  from an interpolating consumer, and **0 %** from a tag-drawing one.
+- **"λ = 14 at ×3.74" — DOES NOT SURVIVE.** On the mask: λ 9 at **×2.37, below the 3× line — not a
+  wavelength.** The isoline on the same field gives λ 14 at ×3.74. **The spectral peak of Findings
+  76, 77 and 78 is an artefact of the isoline tracer.** (Pre-incision mask: under 32 gaps, rule 10,
+  not a reading — as the pre-incision isoline also was.)
+- **"the law removes 44 %" — HOLDS, and it is stronger on the mask: −55.4 %** (3 623 → 1 614)
+  against the isoline's −42.3 %.
+- **"the anchored diffusion removes 90 %" — HOLDS, at −84.3 %** (3 623 → 567).
+- **The parallelism is NOT a tracer artefact**: mask R 0.920 against isoline 0.879, on a
+  pre-incision baseline of 0.280.
+
+> **The Δ of the criterion is therefore Δ(mask) = +1 738 / +3 610 against the pre-incision
+> authority, and it does not move when the shelf does.** The isoline column stays in the dossier
+> only until the author answers which one the product draws.
+
+### C — the pre-clamp depths: BOTH written outcomes are true, of different halves
+
+Population: pre-incision LAND and pre-clamp SEA — the cells the incision drowned, read **before**
+the bathymetry overwrote them. **298 598 cells.**
+
+| p1 | p10 | **median** | p90 | p99 | max |
+|---|---|---|---|---|---|
+| 0.0020 | 0.0384 | **0.8803 m** | **18.7383 m** | 47.46 | 99.91 m |
+
+| shallower than | 0.05 m | 0.2 m | 0.5 m | 1 m | 2 m | 5 m |
+|---|---|---|---|---|---|---|
+| share | 11.9 % | 25.7 % | 39.8 % | **52.3 %** | 63.6 % | 74.8 % |
+
+**Half of them barely cross zero (p10 is 3.8 cm) and the other half are real sub-sea beds (p90
+18.7 m, max 100 m).** The round wrote two outcomes and expected one; both are true, of different
+halves. My prediction (p50 2–30 cm, p90 < 2 m) is refuted; the round's (p50 1–20 cm, p90 < 1 m) is
+refuted harder.
+
+### C-bis — D, non-degenerate: the class does NOT converge
+
+Lifting drowned cells shallower than a threshold to `sea + ε`, on the pre-clamp field:
+
+| threshold | lifted | ISO ≥1 km | ISO ≥2 cells | **Δ mask ≥1 km** | **Δ mask ≥2 cells** |
+|---|---|---|---|---|---|
+| 0 m (control) | 722 | 1 770 | 3 568 | +1 741 | **+3 627** |
+| 0.05 m | 35 541 | 1 752 | 3 979 | +1 780 | **+4 800** |
+| 0.2 m | 76 835 | 1 689 | 3 287 | +1 724 | +4 653 |
+| 0.5 m | 118 756 | 1 541 | 2 472 | +1 523 | +4 088 |
+| 1 m | 156 231 | 1 320 | 1 810 | +1 250 | +3 232 |
+| 2 m | 189 788 | 1 002 | 1 277 | +961 | +2 246 |
+| 5 m | 223 214 | 633 | 716 | +640 | **+1 556** |
+| **ALL** | 298 598 | **18** | **9** | **−1** | **+0** |
+
+> **Filling the shallowest cells makes the mask fringe WORSE before it makes it better**: +3 627 →
+> **+4 800** at 5 cm. Lifting a centimetric hollow creates a one-cell isthmus or islet, and the
+> boundary staircase gets longer, not shorter. The curve only turns after 0.2 m, and at **5 m —
+> three quarters of all drowned cells lifted — 57 % of the fringe is gone and 43 % remains.**
+> **Only "lift everything" reaches Δ = 0 (−1 / +0), which is the identity the degenerate test of
+> Finding 78 had already shown.**
+>
+> **So the deposition class is refuted as a short path.** A transport-limited term fills the
+> shallow ones and not the deep ones, and that is precisely the region where the metric gets
+> worse. My "Δ reaches 90 % at 0.5 m" is refuted by its sign; the round's "the short path exists"
+> is refuted by the same table.
+
+⚠️ The 0 m control lifted **722 cells**, not 0 — `depth ≤ 0.0` catches cells sitting exactly at sea
+level. It moved the mask count by 17 in 3 610 (0.5 %), so the control is impure and harmless, and
+it is reported rather than rounded away.
+
+### Score
+
+Mine: mask identical across the shelf sweep ✓ · no readable λ on the mask ✓ · the clamp's swing was
+entirely the tracer ✓ (I said > 95 %, measured 100 %) · law on the mask −30…−55 % ✓ (−55.4, at the
+edge) · diffusion −70…−92 % ✓ (−84.3) · lake invariants green ✓ · terminal table under 5 % ✓ ·
+**pre-clamp p50 2–30 cm ✗** (0.88 m) · **p90 < 2 m ✗✗** (18.7 m) · **Δ reaches 90 % at 0.5 m ✗✗**
+(it is worse than baseline there).
+The round's: A1 a proxy ✓ · basin depths move ✓ · terminal table under 5 % ✓ · step 22 → ~3 ✓ ·
+mask identical ✓ · **λ = 14 absent from the mask ✓** · law −40…−50 % ✗ (−55.4) · diffusion −60…−75 %
+✗ (−84.3) · "the 43 % was > 80 % tracer" ✓ · **pre-clamp p50 1–20 cm ✗, p90 < 1 m ✗** · **the short
+path exists ✗**.
+
+**Meta holds on both sides.**
+
+### Standing
+
+One production change (`shelf_min_depth_m` 20 → 1, `ALGO_UPSCALE_EROSION` 2 → 3), its intent
+written at the line, all guards green. Everything else is bench. Two method rules earned (11b, 12).
+
+**What is now settled and what is not.** The 20 m cliff is fixed and cost the continent nothing.
+The fringe is **3 623 cell-scale spurs on the mask**, against a pre-incision authority of 13 — the
+criterion is Δ = +3 610 and the clamp never touched it. The two levers that do touch it are the
+channel-head law (−55 %) and the anchored diffusion (−84 %), neither of which is a remedy on its
+own and both of which change the continent. **The deposition class is out.**
