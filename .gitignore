@@ -53,3 +53,6 @@ Thumbs.db
 
 # Generated .ymir containers — large binary rasters, never committed.
 exports/
+
+# debug artefact swept in twice by a broad git add (Findings 79, 80)
+*.rs.dbg
