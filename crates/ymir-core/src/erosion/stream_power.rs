@@ -280,8 +280,8 @@ impl StreamPowerConfig {
             diffusion: 0.05,
             diffusion_substeps: 4,
             min_area_cells: RELIEF_V1_A_C_KM2 / cell_km2,
-            a_c_slope_law: None,
-            base_level_floor: None, // ADR Finding 80 -- opt-in; None keeps the legacy planing // ADR Finding 56 — opt-in; None keeps the constant
+            a_c_slope_law: None, // ADR Finding 56 — opt-in; None keeps the constant
+            base_level_floor: None, // ADR Finding 80 -- opt-in; None keeps the legacy planing
             threshold: 0.0,
             cell_km,
             depth_scale_m,
@@ -377,8 +377,8 @@ pub const RELIEF_V1_K: f32 = 1500.0;
 impl Default for StreamPowerConfig {
     fn default() -> Self {
         Self {
-            a_c_slope_law: None,
-            base_level_floor: None, // ADR Finding 80 -- opt-in; None keeps the legacy planing // ADR Finding 56 — opt-in
+            a_c_slope_law: None, // ADR Finding 56 — opt-in
+            base_level_floor: None, // ADR Finding 80 -- opt-in; None keeps the legacy planing
             k: 1.0,
             m: 0.5,
             n: 1.0,
