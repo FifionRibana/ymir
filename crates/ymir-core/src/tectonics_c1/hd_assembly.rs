@@ -33,7 +33,7 @@ use crate::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use crate::tectonics_c1::drainage::{
     C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, SegmentKind, SegmentRow,
     apply_geo_scale_ratio, apply_lake_water_balance, below_sea_basin_lakes_infil,
-    c1_drainage_windowed_infil, clip_rivers_to_lakes,
+    c1_drainage_windowed_infil, clip_rivers_to_lakes, resolve_exorheic_without_outlet,
 };
 use crate::terrain::flow::RiverSegment;
 
@@ -138,7 +138,9 @@ pub fn assemble_hd_drainage(
                 LakeType::Endorheic => endo += 1,
                 LakeType::Exorheic => exo += 1,
                 // Crater types are assigned later (post-drainage), never here.
-                LakeType::CraterAcidic | LakeType::CraterNeutral => {}
+                // `Unresolved` likewise: ADR Finding 86 posts it at the END of the chain, after
+                // the segments are final, so a below-sea lake cannot carry it at this point.
+                LakeType::CraterAcidic | LakeType::CraterNeutral | LakeType::Unresolved => {}
             }
         }
         use std::collections::{HashMap, HashSet};
@@ -242,6 +244,21 @@ pub fn assemble_hd_drainage(
         eprintln!(
             "[HD] geographic scale ratio {geo_scale_ratio:.2} -> hydrology signifies x{:.1} area",
             geo_scale_ratio * geo_scale_ratio
+        );
+    }
+    // ADR 0001 Finding 86 — the LAST thing before the bundle leaves: an exorheic lake has an
+    // outlet reach, or it is not exorheic. It has to be here and not in the balance, because the
+    // question is whether a REACH was emitted, which is only knowable once the segments are final
+    // (`clip_rivers_to_lakes` and the spillway append have both run). Finding 29 named the defect
+    // as H2, Finding 30 forbade relabelling it Endorheic, Finding 39 closed it on the below-sea
+    // path only, and `apply_lake_water_balance` (H-1c, drainage.rs:1078) still posts `Exorheic`
+    // from `a_eq >= a_sill` with no trace.
+    let unresolved = resolve_exorheic_without_outlet(&mut drainage);
+    if verbose && !unresolved.is_empty() {
+        eprintln!(
+            "[HD] ADR Finding 86: {} lake(s) claimed Exorheic with no outlet reach and are now \
+             Unresolved: {unresolved:?}",
+            unresolved.len()
         );
     }
     HdDrainageBundle { drainage, wetland: wetland_mask }

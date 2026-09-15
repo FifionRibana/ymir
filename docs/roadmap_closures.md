@@ -405,6 +405,41 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 > `a_spill` à la troisième décimale, qui ne peuvent ni déborder (aucun exutoire ne se trace) ni
 > évaporer (il pleut plus qu'il n'évapore). **Aucune couture comptable ne fermera cela.**
 >
+> ✅ **PROMU, ET LE TROU EST RETIRÉ COMME MÉTRIQUE DE CONSERVATION (Finding 86).** Deux
+> changements de production, aucun gaté :
+>
+> 1. **La ligne H2** — `LakeType::Unresolved` + `resolve_exorheic_without_outlet`, en fin de
+>    `assemble_hd_drainage`. Le F29 avait nommé le défaut, le F30 avait **interdit de le
+>    relabelliser endorhéique** (« ce serait affirmer un bassin qui gagne plus qu'il ne perd »),
+>    le F39 l'avait fermé **sur la moitié sous-marine seulement** : `apply_lake_water_balance`
+>    (`drainage.rs:1078`, H-1c, écrite après) pose encore `Exorheic` depuis `a_eq ≥ a_sill`
+>    **sans tracé**. Un seul lac viole : **id 55, un lac de SURFACE** de 19,2 km² à 51,05 m.
+>    exorhéique-sans-exutoire **1 → 0** (humide), 0 → 0 (aride). ⚠️ **Item de contrat** : la
+>    variante est sérialisée dans `lakes.json` et a cassé **quatre** `match` exhaustifs, dont
+>    trois dans le viz — qui affichent désormais « ⚠ sans exutoire (F86) » en rouge.
+> 2. **Le relevel du F85, promu** — `ALGO_DRAINAGE` 6 → 7, `ALGO_HD_DRAINAGE` 8 → 9. Le point
+>    fixe converge (**8** et **11** passes contre la borne de 16) et épuiser la borne est
+>    désormais une assertion. **La non-convergence livrée est attribuée** : une **alternance de
+>    période 2** entre deux classes, d'amplitude constante **23,472 m³/s** (humide) et **4,149**
+>    (aride) — une paire réciproque qui se nourrit mutuellement à chaque passe, exactement ce que
+>    le L2911 avait nommé (« l'hypothèse DAG du F40 était ASSERTÉE, jamais vérifiée ») en ne
+>    corrigeant que la SORTIE, jamais la boucle.
+>
+> **⇒ `TERMINAL` / `TROU` ne sont plus des chiffres de conservation** : ils mesurent « la part du
+> budget qui atteint l'océan **par un tronçon terminal** ». L'instrument de conservation est le
+> **budget à cinq termes**, et il ferme : **102,5 % en aride**, **92,5 % en humide** contre
+> **70,6 %** pour le contrôle A/B. Le terme qui le ferme n'était dans aucune de nos deux listes :
+> **le ruissellement qui ARRIVE physiquement à la côte — 180,5 m³/s (38 %) humide et 90,6 (66 %)
+> aride — contre 81,0 (17 %) et 13,1 (9,5 %) crédités par la somme des tronçons terminaux.**
+> Les F71 et F74 mesuraient la résolution du réseau et l'appelaient un trou.
+>
+> **Reste UNE cuvette** : 45,04 m³/s (apport LOCAL ; les 65,2 du F85 étaient un chiffre chaîné)
+> dans la cuvette humide 1000001, fond à −10,60 m, pleine à ras d'un seuil à 76,25 m dont la
+> première cellule aval est **douze pas u16 plus HAUT**. Elle ne peut ni déborder ni évaporer.
+> **Nommé, non corrigé** : le côté SORTIE est encore chaîné (le système sous-marin sur-ferme à
+> 131,5 % humide), et `a_eq_km2` rapporte `a_spill` quand `a_eq` est infini — l'ambiguïté qui a
+> trompé le F85.
+>
 > ✅ **CRITÈRE ATTEINT (Finding 80) — pour la première fois du chantier.**
 > `StreamPowerConfig::base_level_floor`, **gatée `None`, octet-identique**, borne la CIBLE de
 > relaxation : `h_r_eff = max(h_r, min(h_o, sea + ε))`. À ε = 0,5 m (3,4 pas u16) :

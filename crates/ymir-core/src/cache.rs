@@ -60,7 +60,7 @@ pub const ALGO_UPSCALE_EROSION: u32 = 4; // Finding 83: relief-v3 ships the BASE
 
 /// Version of the drainage build (`c1_drainage`). ⚠️ BUMP on ANY code change to
 /// that step (see above).
-pub const ALGO_DRAINAGE: u32 = 6; // Finding 73: runoff_accumulation now propagates in a TOPOLOGICAL order (flats)
+pub const ALGO_DRAINAGE: u32 = 7; // Finding 86: the below-sea fixed point converges; lakes gain Unresolved
 
 /// Version of the climate build (`c1_climate_placed` / `c1_climate_windowed`).
 /// ⚠️ BUMP on ANY code change to that step (see above).
@@ -87,7 +87,7 @@ pub const ALGO_BREACH: u32 = 1;
 /// evaporative equilibrium (level + footprint), draining the exposed floor from `lake_map` —
 /// the GEOMETRY half of the same discard H-1 fixed for the classification. Lake outlines,
 /// river clipping, wetlands and biomes all move.
-pub const ALGO_HD_DRAINAGE: u32 = 8; // Finding 73: every discharge, width and lake inflow moves
+pub const ALGO_HD_DRAINAGE: u32 = 9; // Finding 86: merged_union_relevel ships + the H2 line
 
 // ── Cache key ──────────────────────────────────────────────────────────────
 

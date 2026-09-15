@@ -89,6 +89,35 @@ pub enum LakeType {
     Exorheic,
     /// Terminal — no path to the sea (requires climate to actually occur).
     Endorheic,
+    /// **ADR 0001 Finding 86** — the balance says this lake overflows (`a_eq >= a_sill`) and **no
+    /// outlet reach was emitted for it**. It asserts nothing about the water balance; it asserts
+    /// that the two halves of the model disagree, and it says so to the consumer instead of
+    /// letting them read "Exorheic" on a lake with no exit.
+    ///
+    /// # Why not simply relabel it Endorheic — the answer is Finding 30's and it still holds
+    ///
+    /// Finding 29 found the defect (*"declares exorheic from `a_eq >= a_spill` … WITHOUT tracing a
+    /// spill path to a sink, so the 'exorheic' label has no outlet behind it. Verdict H2"*) and
+    /// proposed relabelling. **Finding 30 rejected that and was right**: *"RELABELLING it endorheic
+    /// would assert a basin that gains more than it loses and never overflows — a mass-balance
+    /// violation. Don't relabel — TRACE."* `Endorheic` is a physical claim and it would be false.
+    ///
+    /// `Unresolved` is not the state Finding 30 refused. It makes no claim about the balance. It
+    /// is the honest name for "the balance and the traced network disagree", and it exists so the
+    /// disagreement is countable, exportable and visible rather than silently mislabelled.
+    ///
+    /// # Where the label is actually posted, and why the defect survived Finding 39
+    ///
+    /// Finding 39 closed this on the BELOW-SEA path by construction — `below_sea_basin_lakes_infil`
+    /// sets `Exorheic` only when `traced.is_some()`. **`apply_lake_water_balance`, written later
+    /// for H-1c and running on the DETECTED surface lakes, does not**: at `drainage.rs:1078` it
+    /// posts `Exorheic` from `a_eq_km2 >= a_sill_km2` alone and never revisits it. The lesson was
+    /// learned on one half of the code and not carried to the other.
+    ///
+    /// ⚠️ **CONTRACT ITEM.** This variant is serialised in `lakes.json`. A consumer matching
+    /// `lake_type` exhaustively must add a case. That is the intended cost: the alternative is a
+    /// consumer reading "Exorheic" and drawing an outlet that does not exist.
+    Unresolved,
     /// C-2 — a lake sitting in the crater of an ACTIVELY degassing volcano.
     /// Hyperacidic (Varekamp: pH < 2): no fish, undrinkable, distinct from the
     /// saline endorheic case. Assigned by [`crate::tectonics_c1::closures::volcanism`]
@@ -207,7 +236,13 @@ impl Default for C1DrainageConfig {
         Self {
             thresholds: DrainageThresholds::default(),
             merged_basin_outlet: None, // ADR Finding 84 -- opt-in; None is the shipped leak
-            merged_union_relevel: None, // ADR Finding 85 -- opt-in; None freezes the union's level
+            // ADR 0001 Finding 86 B2 -- PROMOTED. `None` is the pre-Finding-86 world and is kept
+            // as the A/B control; it is the state that does NOT converge (16 passes, a period-2
+            // alternation between two classes).
+            merged_union_relevel: Some(MergedUnionRelevel {
+                max_passes: 16,
+                route_through_detected_lakes: true,
+            }),
             lake_min_depth_m: 10.0,
             lake_min_area_km2: 5.0,
             flat_perturbation: Some(FlatPerturbation::default()),
@@ -886,6 +921,28 @@ pub fn exorheic_lakes_missing_outlet(dr: &C1DrainageResult) -> Vec<u32> {
         .collect()
 }
 
+/// ADR 0001 Finding 86 — **an exorheic lake has an outlet reach, or it is not exorheic.**
+///
+/// Relabels every lake that claims [`LakeType::Exorheic`] but has no river segment STARTING on its
+/// footprint to [`LakeType::Unresolved`], and returns their ids. The population is exactly
+/// [`exorheic_lakes_missing_outlet`]'s, so the invariant and the remedy cannot drift apart — the
+/// same walk decides both.
+///
+/// It runs at the END of the chain, in [`crate::tectonics_c1::hd_assembly::assemble_hd_drainage`],
+/// and not inside the balance, because the question is not "does a path exist geometrically" but
+/// **"was an outlet REACH emitted"** — which is what the consumer reads and what Finding 29's H2
+/// was about. No gate: this is a classification correction, not a mechanism. It moves no water,
+/// no footprint and no level; the per-basin mass balance is identical to the m³/s across it.
+pub fn resolve_exorheic_without_outlet(dr: &mut C1DrainageResult) -> Vec<u32> {
+    let ids = exorheic_lakes_missing_outlet(dr);
+    for lk in dr.lakes.iter_mut() {
+        if ids.contains(&lk.base.id) {
+            lk.lake_type = LakeType::Unresolved;
+        }
+    }
+    ids
+}
+
 /// ADR 0001 Finding 24 — GEOGRAPHIC SCALE RATIO (hydrology only). A pure PRESENTATION
 /// multiplier: the map DRAWS `real_km` of terrain but SIGNIFIES `real_km · ratio` (a
 /// Skyrim-style compression). It is NOT a physical quantity and touches NOTHING that
@@ -1344,6 +1401,12 @@ pub struct BasinSummary {
     pub area_km2: f32,
     pub exorheic: bool,
     pub inflow_m3s: f32,
+    /// **ADR 0001 Finding 86** — the basin's OWN catchment inflow, before Finding 40's chained
+    /// `extra_inflow` is added. [`Self::inflow_m3s`] is the chained one, so summing it over basins
+    /// counts the same water once per link and **cannot be used to build a conservation budget** —
+    /// which is exactly how Finding 86's first four-term decomposition came out at 154.8 % of the
+    /// budget. This is the quantity that sums.
+    pub local_inflow_m3s: f32,
     pub evaporation_m3s: f32,
     /// The two numbers the regime compared (in km²): equilibrium area vs sill area.
     pub a_eq_km2: f32,
@@ -1546,6 +1609,11 @@ pub struct SpillwayTermination {
     pub q_routed_through_lake_m3s: f64,
     /// ADR Finding 85 — the fixed point did NOT converge within `max_passes`.
     pub not_converged: bool,
+    /// ADR Finding 86 — one entry per pass: `(pass, regions whose `extra_inflow` changed, the
+    /// largest change in m³/s, the CLASS that change is on)`. The shipped loop exits on its
+    /// 16-pass safety bound (Finding 85); this is what it is doing while it spins, and it costs
+    /// one vector of at most 16 tuples.
+    pub pass_trace: Vec<(u32, usize, f32, u32)>,
     /// ADR Finding 85 — surplus whose path ended at a DETECTED surface lake and for which no
     /// receiver could be found, so it really is dropped, m³/s. ⚠️ Not the same population as
     /// [`Self::q_detected_lake_m3s`], which counts every path ending at a lake — routed or not.
@@ -1697,6 +1765,7 @@ pub fn below_sea_basin_lakes_infil(
     let mut classes_merged = 0usize;
     let mut q_routed_through_lake = 0.0f64;
     let mut q_lake_unrouted = 0.0f64;
+    let mut pass_trace: Vec<(u32, usize, f32, u32)> = Vec::new();
     for _pass in 0..max_passes {
         passes_used += 1;
         // ADR Finding 85 — these are STATE, not a running total: summing them over the passes of a
@@ -1784,6 +1853,7 @@ pub fn below_sea_basin_lakes_infil(
             // Finding 40 — add the SPILL fed by upstream basins that chain into this one (0 on the first
             // pass; filled in by the previous pass's chained spills). This is what makes a downstream basin
             // see its full inflow and possibly flip endorheic → exorheic.
+            let local_inflow = inflow; // ADR Finding 86 — before the chain is added
             let inflow = inflow + extra_inflow[own_label as usize];
             // 2+3. LOCAL SILL + BOWL in one priority-flood outward from the floor (Barnes 2014). Pop the
             // lowest reachable cell; the FIRST cell with a NOT-YET-FINALISED strictly-lower neighbour is
@@ -2109,6 +2179,7 @@ pub fn below_sea_basin_lakes_infil(
                 area_km2: area_km2_bs,
                 exorheic: lake_type == LakeType::Exorheic,
                 inflow_m3s: runoff_km2_to_m3s(inflow),
+                local_inflow_m3s: runoff_km2_to_m3s(local_inflow),
                 evaporation_m3s: runoff_km2_to_m3s(net_evap * area_km2_bs),
                 a_eq_km2: if a_eq.is_finite() { a_eq } else { a_spill }, // humid ⇒ ∞; report the sill area it fills
                 a_spill_km2: a_spill,
@@ -2219,6 +2290,22 @@ pub fn below_sea_basin_lakes_infil(
                 class_changed = true;
             }
         }
+        // ADR Finding 86 — what the loop is doing while it spins, recorded before the early-out.
+        {
+            let (mut changed, mut worst, mut worst_r) = (0usize, 0.0f32, 0u32);
+            for r in 0..next_extra.len() {
+                let d = (next_extra[r] - extra_inflow[r]).abs();
+                if d > 0.0 {
+                    changed += 1;
+                    let q = runoff_km2_to_m3s(d);
+                    if q > worst {
+                        worst = q;
+                        worst_r = r as u32;
+                    }
+                }
+            }
+            pass_trace.push((passes_used, changed, worst, worst_r));
+        }
         // Converged when this pass's spills equal the ones it was fed (deterministic sum, exact eq)
         // AND the class partition stopped moving (ADR Finding 85 — a half-folded partition means
         // the levels reported are from a half-solved state).
@@ -2256,7 +2343,10 @@ pub fn below_sea_basin_lakes_infil(
     termination.classes_merged = classes_merged;
     termination.q_routed_through_lake_m3s = q_routed_through_lake;
     termination.q_lake_unrouted_m3s = q_lake_unrouted;
-    termination.not_converged = relevel.is_some() && !converged;
+    termination.pass_trace = pass_trace;
+    // ADR Finding 86 — this said `relevel.is_some() && !converged`, so the shipped (non-
+    // converging) loop reported "converged true". It is a property of the loop, not of the gate.
+    termination.not_converged = !converged;
     termination.multi_region_classes = {
         let mut per: std::collections::HashMap<u32, usize> = Default::default();
         for r in 1..=num_regions {
@@ -2687,14 +2777,8 @@ mod tests {
         let precip = GridF32::new(w, h, 1.0);
         let temp = GridF32::new(w, h, 10.0);
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
-        let r = below_sea_basin_lakes(
-            &hm,
-            &clim,
-            &C1DrainageConfig::default(),
-            &SteinSteinParams::default(),
-            80.0,
-            None,
-        );
+        let r =
+            below_sea_basin_lakes(&hm, &clim, &pre86(), &SteinSteinParams::default(), 80.0, None);
         let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
         // The INVARIANT over EVERY basin (any area): exorheic ⟹ a traced spillway reaching a sink.
         let exo = r.basins.iter().filter(|b| b.exorheic).count();
@@ -2777,7 +2861,7 @@ mod tests {
         let temp = GridF32::new(w, h, 10.0);
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
         let ss = SteinSteinParams::default();
-        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 30.0, None);
+        let r = below_sea_basin_lakes(&hm, &clim, &pre86(), &ss, 30.0, None);
         let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
         assert!(!r.lakes.is_empty(), "the below-sea pit must be inventoried");
         // REGRESSION: the pit filled to its LOCAL sill (~0.52), NOT the 0.9 ocean barrier. In metres
@@ -2918,7 +3002,7 @@ mod tests {
         let temp = GridF32::new(w, h, 10.0);
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
         let ss = SteinSteinParams::default();
-        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0, None);
+        let r = below_sea_basin_lakes(&hm, &clim, &pre86(), &ss, 24.0, None);
         assert!(!r.lakes.is_empty(), "the enclosed pit must be a below-sea lake");
         let lk = &r.lakes[0];
         assert_eq!(
@@ -2961,7 +3045,7 @@ mod tests {
         }
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
         let ss = SteinSteinParams::default();
-        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0, None);
+        let r = below_sea_basin_lakes(&hm, &clim, &pre86(), &ss, 24.0, None);
         assert!(!r.lakes.is_empty(), "the fed pit must still be a (terminal) below-sea lake");
         let lk = &r.lakes[0];
         assert_eq!(
@@ -3023,7 +3107,7 @@ mod tests {
         let temp = GridF32::new(w, h, 10.0);
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
         let ss = SteinSteinParams::default();
-        let r = below_sea_basin_lakes(&hm, &clim, &C1DrainageConfig::default(), &ss, 24.0, None);
+        let r = below_sea_basin_lakes(&hm, &clim, &pre86(), &ss, 24.0, None);
         let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
         assert!(!r.lakes.is_empty(), "the fed below-sea pit must be inventoried");
         // Invariant 1 — no inventoried lake is dry: each has inflow > 0 OR a positive depth.
@@ -3095,14 +3179,8 @@ mod tests {
         let precip = GridF32::new(w, h, 1.0);
         let temp = GridF32::new(w, h, 10.0);
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
-        let r = below_sea_basin_lakes(
-            &hm,
-            &clim,
-            &C1DrainageConfig::default(),
-            &SteinSteinParams::default(),
-            24.0,
-            None,
-        );
+        let r =
+            below_sea_basin_lakes(&hm, &clim, &pre86(), &SteinSteinParams::default(), 24.0, None);
         let wc = water_class(&hm, C1_SEA_LEVEL_NORM);
         // Marked as a sink despite being small.
         let marked = r.lake_map.iter().filter(|&&x| x != 0).count();
@@ -3291,6 +3369,99 @@ mod tests {
         );
     }
 
+    /// ADR 0001 Finding 86 — the H2 LINE, on the same fixture as the invariant above, because the
+    /// remedy and the invariant must share a population or they will drift.
+    ///
+    /// The round asked for a fixture where `a_eq >= a_spill` and the col has no descent. That is
+    /// the CAUSE; the line acts on the CONSEQUENCE — no outlet REACH was emitted — because that is
+    /// what the consumer reads and what Finding 29's H2 was about. Lake B here is a lake that
+    /// claims to overflow with nothing emitted for it; lake A is the same claim with a reach.
+    #[test]
+    fn an_exorheic_lake_without_a_reach_becomes_unresolved() {
+        use crate::terrain::flow::{FlowResult, RiverNetwork};
+        let (w, h) = (12usize, 1usize);
+        let mut lake_map = vec![0u32; w * h];
+        lake_map[4] = 7;
+        lake_map[5] = 7;
+        lake_map[9] = 9;
+        lake_map[1] = 11;
+        let mk_lake = |id: u32, lake_type: LakeType| C1Lake {
+            base: Lake {
+                id,
+                surface_elevation: 0.5,
+                max_depth: 0.1,
+                area: 1,
+                basin_id: 1,
+                outlet: (0, 0),
+                shallow: false,
+            },
+            level_m: 0.0,
+            depth_m: 1.0,
+            area_km2: 1.0,
+            lake_type,
+        };
+        let outlet_seg = |sx: u32| RiverSegment {
+            points: vec![(sx, 0), (sx + 1, 0)],
+            strahler_order: 1,
+            avg_flow: 1.0,
+            max_flow: 1.0,
+            basin_id: 1,
+            upstream: vec![],
+            downstream: None,
+        };
+        let mk = |segs: Vec<RiverSegment>| C1DrainageResult {
+            flow: FlowResult {
+                filled: GridF32::new(w, h, 0.0),
+                direction: vec![0; w * h],
+                accumulation: GridF32::new(w, h, 0.0),
+                basins: vec![0; w * h],
+                num_basins: 1,
+            },
+            rivers: RiverNetwork { segments: segs },
+            segment_drainage_km2: vec![],
+            segment_navigability: vec![],
+            segment_discharge_m3s: vec![],
+            segment_width_m: vec![],
+            segment_profile_m: vec![],
+            segment_catchment_cells: vec![],
+            segment_discharge_profile_m3s: vec![],
+            segment_kind: vec![],
+            segment_source_lake: vec![],
+            lakes: vec![
+                mk_lake(7, LakeType::Exorheic),
+                mk_lake(9, LakeType::Exorheic),
+                mk_lake(11, LakeType::Endorheic),
+            ],
+            lake_map: lake_map.clone(),
+            width: w,
+            height: h,
+        };
+        // B (id 9) claims Exorheic with no reach → Unresolved. A and C untouched.
+        let mut dr = mk(vec![outlet_seg(6)]);
+        let moved = resolve_exorheic_without_outlet(&mut dr);
+        assert_eq!(moved, vec![9], "only the reach-less exorheic lake may move: {moved:?}");
+        let ty = |id: u32, d: &C1DrainageResult| {
+            d.lakes.iter().find(|l| l.base.id == id).unwrap().lake_type
+        };
+        assert_eq!(ty(7, &dr), LakeType::Exorheic, "a lake WITH a reach must stay Exorheic");
+        assert_eq!(ty(9, &dr), LakeType::Unresolved);
+        assert_eq!(
+            ty(11, &dr),
+            LakeType::Endorheic,
+            "an endorheic lake is never required to have a reach and must not move"
+        );
+        // and the line is IDEMPOTENT and leaves the invariant satisfied
+        assert!(exorheic_lakes_missing_outlet(&dr).is_empty(), "the invariant must now hold");
+        assert!(resolve_exorheic_without_outlet(&mut dr).is_empty(), "not idempotent");
+
+        // NEGATIVE CONTROL — give B a reach too: nothing may move. Without this the test above
+        // would pass on a line that relabels every exorheic lake it sees.
+        let mut dr2 = mk(vec![outlet_seg(6), outlet_seg(8)]);
+        let before: Vec<LakeType> = dr2.lakes.iter().map(|l| l.lake_type).collect();
+        assert!(resolve_exorheic_without_outlet(&mut dr2).is_empty());
+        assert_eq!(dr2.lakes.iter().map(|l| l.lake_type).collect::<Vec<_>>(), before);
+    }
+
     /// A tilted plane draining to an ocean edge: the stack runs at sea=0.5,
     /// produces rivers, and km² drainage areas are finite + monotone with
     /// max_flow.
@@ -3305,8 +3476,7 @@ mod tests {
                 hm.set(i, j, 0.85 - t * 0.6);
             }
         }
-        let out =
-            c1_drainage(&hm, None, &C1DrainageConfig::default(), &SteinSteinParams::default());
+        let out = c1_drainage(&hm, None, &pre86(), &SteinSteinParams::default());
         assert_eq!(out.width, n);
         assert_eq!(out.segment_drainage_km2.len(), out.rivers.segments.len());
         assert!(out.segment_drainage_km2.iter().all(|v| v.is_finite() && *v >= 0.0));
@@ -3359,14 +3529,8 @@ mod tests {
         precip.set(4, 0, 600.0 / unit); // B's tiny tributary (wall cell above B's pit)
         temp.set(4, 0, 5.0); // cool → runoff ≈ 70, drains down into B; B alone is endorheic
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
-        let r = below_sea_basin_lakes(
-            &hm,
-            &clim,
-            &C1DrainageConfig::default(),
-            &SteinSteinParams::default(),
-            30.0,
-            None,
-        );
+        let r =
+            below_sea_basin_lakes(&hm, &clim, &pre86(), &SteinSteinParams::default(), 30.0, None);
         // Identify B = the lake occupying the pit at x∈[2,6] (its outlet floor is a low-x cell).
         let b_id = r.lake_map[1 * w + 4];
         assert_ne!(b_id, 0, "pit B must be a below-sea lake");
@@ -3441,9 +3605,15 @@ mod tests {
         (hm, precip, temp)
     }
 
+    /// The Finding 84 gate ALONE. ⚠️ `merged_union_relevel` must be pinned `None` here since
+    /// Finding 86 promoted it: with the relevel on, the pair is folded into one class inside the
+    /// loop and the Finding 84 retrace has nothing left to do (`unions_retraced` = 0, `to_ocean`
+    /// already 1). **That these two tests only pass with the relevel off is the unit-level proof
+    /// of Finding 85's claim that it subsumes Finding 84.**
     fn gate_on() -> C1DrainageConfig {
         C1DrainageConfig {
             merged_basin_outlet: Some(MergedBasinOutlet { rule: ReciprocalRule::LevelThenMerge }),
+            merged_union_relevel: None,
             ..Default::default()
         }
     }
@@ -3457,7 +3627,7 @@ mod tests {
         let r = below_sea_basin_lakes_infil(
             &hm,
             &clim,
-            &C1DrainageConfig::default(),
+            &pre86(),
             &SteinSteinParams::default(),
             30.0,
             None,
@@ -3518,15 +3688,7 @@ mod tests {
         let (hm, precip, temp) = reciprocal_fixture();
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
         let ss = SteinSteinParams::default();
-        let off = below_sea_basin_lakes_infil(
-            &hm,
-            &clim,
-            &C1DrainageConfig::default(),
-            &ss,
-            30.0,
-            None,
-            None,
-        );
+        let off = below_sea_basin_lakes_infil(&hm, &clim, &pre86(), &ss, 30.0, None, None);
         let on = below_sea_basin_lakes_infil(&hm, &clim, &gate_on(), &ss, 30.0, None, None);
         assert_eq!(off.lake_map, on.lake_map, "the gate moved the lake footprints");
         assert_eq!(off.wetland, on.wetland, "the gate moved the wetland mask");
@@ -3580,7 +3742,7 @@ mod tests {
         let r = below_sea_basin_lakes_infil(
             &hm,
             &clim,
-            &C1DrainageConfig::default(),
+            &pre86(),
             &SteinSteinParams::default(),
             24.0,
             None,
@@ -3684,6 +3846,17 @@ mod tests {
         (hm, precip, temp)
     }
 
+    /// ADR Finding 86 B2 — the PRE-promotion world. `C1DrainageConfig::default()` now ships the
+    /// Finding 85 relevel, so every test that used the default to mean "the gate off" has to say
+    /// so explicitly. That is what a promotion costs, and the tests are where it is paid.
+    fn pre86() -> C1DrainageConfig {
+        C1DrainageConfig {
+            merged_union_relevel: None,
+            merged_basin_outlet: None,
+            ..Default::default()
+        }
+    }
+
     fn relevel_on() -> C1DrainageConfig {
         C1DrainageConfig {
             merged_union_relevel: Some(MergedUnionRelevel::default()),
@@ -3702,7 +3875,7 @@ mod tests {
     /// the fixture has stopped building the case and every test below is vacuous.
     #[test]
     fn the_union_stays_frozen_without_the_gate() {
-        let off = run(&C1DrainageConfig::default(), false);
+        let off = run(&pre86(), false);
         let t = &off.termination;
         assert_eq!(t.pairs_merged, 1, "the fixture does not build a merged reciprocal pair: {t:?}");
         assert_eq!(t.to_own_body, 1, "the fixture does not exhibit the frozen union: {t:?}");
@@ -3744,7 +3917,7 @@ mod tests {
             "the union should sit at its EXTERNAL col ({external:.1} m), got {:.1}",
             lake.level_m
         );
-        let off = run(&C1DrainageConfig::default(), false);
+        let off = run(&pre86(), false);
         let (a, b) = (
             off.lake_map.iter().filter(|&&i| i != 0).count(),
             on.lake_map.iter().filter(|&&i| i != 0).count(),
@@ -3766,7 +3939,7 @@ mod tests {
     /// spill area, so it stops BELOW the external col, endorheic, with NO spillway.
     #[test]
     fn the_hot_union_stops_below_its_external_col_with_no_spillway() {
-        let off = run(&C1DrainageConfig::default(), true);
+        let off = run(&pre86(), true);
         assert_eq!(
             off.termination.pairs_merged, 1,
             "the HOT fixture must still build a reciprocal pair, or it tests the wrong branch: \
@@ -3936,15 +4109,7 @@ mod tests {
         }
         let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
         let ss = SteinSteinParams::default();
-        let off = below_sea_basin_lakes_infil(
-            &hm,
-            &clim,
-            &C1DrainageConfig::default(),
-            &ss,
-            24.0,
-            None,
-            None,
-        );
+        let off = below_sea_basin_lakes_infil(&hm, &clim, &pre86(), &ss, 24.0, None, None);
         let on = below_sea_basin_lakes_infil(&hm, &clim, &relevel_on(), &ss, 24.0, None, None);
         assert_eq!(off.lake_map, on.lake_map, "the gate moved a footprint with nothing to merge");
         assert_eq!(off.wetland, on.wetland);

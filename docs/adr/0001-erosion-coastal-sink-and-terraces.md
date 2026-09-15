@@ -10946,7 +10946,12 @@ The residual is not spread: it sits in a handful of named basins.
 >
 > **What is NOT an artefact is the humid 65.2 m³/s**, and it is now localised: two basins,
 > `exorheic = false` (honestly endorheic), `a_eq` equal to `a_spill` **to the third decimal**
-> (660.808 against 660.808), in a climate with **Σ evaporation = 0.00**. They are brim-full, they
+> (660.808 against 660.808), in a climate with **Σ evaporation = 0.00**.
+>
+> ⚠️ **CORRECTED at Finding 86, twice.** (1) `a_eq == a_spill` is not a knife-edge: `drainage.rs:2170`
+> reports `a_spill` when `a_eq` is **infinite**, so the equality means `net_evap = 0` — the physical
+> reading above is right, the razor's-edge framing was wrong. (2) **65.2 is a CHAINED figure**; on
+> `local_inflow_m3s` (added at Finding 86) it is **45.04 m³/s in ONE basin**, not two. They are brim-full, they
 > cannot spill because no outlet traces, and they cannot evaporate because it rains more than it
 > evaporates. **That is the physical inconsistency Finding 84 named, down by 87 % and reduced to
 > two names.** It is not closed and no seam in the accounting will close it.
@@ -11061,3 +11066,320 @@ five?* At the second — *was the 14.58-cell line a river or a canal, and is the
 better?* That second one matters beyond this round: **at gate OFF the widest watercourse-looking
 line in the product is a spillway three times the 4–5-cell target of Finding 69**, and nobody has
 looked at it.
+
+## Finding 86 — H2 was alive in the OTHER half of the code; the oscillation is a period-2 alternation; and the chain cannot be summed
+
+Two production changes, neither gated: the H2 line, and the promotion of Finding 85's relevel.
+
+### Rule 11 + 11b, three clauses
+
+`Exorheic` **13** (first L840) · `a_spill` **19** (L1105) · `a_eq` **40** (L1105) · `passes_used`
+**2** (L10802, my own Finding 85) · `MAX_PASSES` **0 — nothing found** · `trace_spillway` **0** ·
+`spill_col` **0** · `same level` **0** · `same-level` **0**.
+11b: `660.808` **2** (mine) · `660,808` **0** · **`88 468` 6 against `88468` 1** · `88 449` **2**
+against `88449` **1**.
+
+**The separator clause pays for the third round running**: `88 468` finds six traces and `88468`
+finds one. The earliest, L2891–2917, is the one that matters.
+
+Findings 29, 30, 38, 39 and 40 read in full before writing. Three of them speak directly:
+
+* **L2911, "Reciprocal spill cycles — Finding 40's DAG assumption was ASSERTED, not verified"**:
+  *"7 reciprocal pairs (A → B and B → A) = 14 of 51 spillways … A 2-cycle is not a DAG — the
+  assumption was never checked. **It also explains the near-equal-but-not-equal figures (88 468 vs
+  88 449): a cycle does not converge exactly**"*. That section then fixed the OUTPUT — it runs
+  `break_reciprocal_spill_cycles` **after** the loop — and **never fixed the loop**. Finding 85's
+  non-convergence is that omission, and the dossier had named its cause five hundred lines before
+  Finding 74 existed.
+* **L1105, Finding 29**: *"declares exorheic from `a_eq ≥ a_spill` … WITHOUT tracing a spill path
+  to a sink, so the 'exorheic' label has no outlet behind it. **Verdict H2**"*, and the pattern
+  named as *"a regime labelled without verifying it against the traced network"*.
+* **Finding 30, and it is the stop condition this round warned me about**: *"The Finding 29 remedy
+  was backwards. … **RELABELLING it endorheic would assert a basin that gains more than it loses
+  and never overflows — a mass-balance violation. Don't relabel — TRACE.**"*
+
+### A0 — the answer is the round's first reading, in the half of the code Finding 39 never touched
+
+Not one of the three readings applied where I expected it. **`below_sea_basin_lakes_infil` is
+clean**: `drainage.rs:2001` reads `let lake_type = if traced.is_some() { Exorheic } else {
+Endorheic }`. Finding 39 really did close H2 by construction, and correctly.
+
+**`apply_lake_water_balance` does not**, and it is the function the production carry runs on the
+DETECTED surface lakes (H-1c, written later):
+
+```rust
+// drainage.rs:1078
+if a_eq_km2 >= a_sill_km2 {
+    // Overflows its sill → EXORHEIC, geometry unchanged (the sill IS its level).
+    let mut e = lk.clone();
+    e.lake_type = LakeType::Exorheic;   // ← no trace, ever
+```
+
+That is Finding 29's sentence, executable. **The lesson was learned on one half of the code and
+not carried to the other**, and the measurement confirms it: the single violator on the production
+seed is **id 55, a DETECTED SURFACE LAKE** — level 51.05 m, 19.224 km², 8 063 cells — not a
+below-sea basin, at both gate positions, humid; arid has none.
+
+**And Finding 30's refusal stands, but it is not a refusal of this.** `Endorheic` is a physical
+claim ("gains less than it loses") and would be false here. `Unresolved` claims nothing about the
+balance: it says the balance and the traced network disagree. The round's own instruction was to
+stop if a prior finding had written and rejected this state — it rejected **relabelling to
+Endorheic**, which this is not, and the distinction is written at the variant so the next round
+does not have to rediscover it.
+
+### A1 — the line
+
+`LakeType::Unresolved`, and one function:
+
+```rust
+pub fn resolve_exorheic_without_outlet(dr: &mut C1DrainageResult) -> Vec<u32>
+```
+
+It relabels every lake claiming `Exorheic` with **no river segment starting on its footprint**, and
+its population is exactly `exorheic_lakes_missing_outlet`'s — **the invariant and the remedy share
+one walk**, so they cannot drift. It runs at the END of `assemble_hd_drainage`, not inside the
+balance, because the question is not "does a path exist geometrically" but **"was a reach
+emitted"** — which is what the consumer reads. No gate, no threshold, no tolerance.
+
+| guard | result |
+|---|---|
+| `an_exorheic_lake_without_a_reach_becomes_unresolved` | the reach-less lake moves, the one with a reach does not, the endorheic one does not, the line is idempotent, and the **negative control** (give the second lake a reach too) moves nothing |
+| `exorheic-without-outlet` on the production seed | humid **1 → 0**, arid **0 → 0**, at BOTH gate positions |
+| `Unresolved` | **1** humid, **0** arid; exactly **1** lake's type moves |
+| field hash, ocean mask, per-basin balance | unchanged — the line names, it does not move water |
+
+**⚠️ CONTRACT ITEM, and the compiler made it visible immediately.** `lake_type` is serialised in
+`lakes.json`. Adding a variant broke **four** exhaustive matches: one in `hd_assembly` and **three
+in the viz** — the cell inspector, the lake list and the river-source button. All three now read
+**"⚠ sans exutoire (F86)"** in warning red rather than "exoréique" in river blue. That is the cost
+the round accepted in advance, and the first consumer paid it in the same commit.
+
+### B1 — the oscillation, named
+
+The shipped loop's per-pass trace, `(pass · classes whose `extra_inflow` changed · the largest
+change · the class it is on)`:
+
+| bed | gate OFF | gate ON |
+|---|---|---|
+| humid | passes 1–16, `changed` settles at **6**, `worst` **23.472 m³/s, constant**, class **2, 1, 2, 1, 2, 1 …** | 11 → 9 → 3 → 3 → 3 → 3 → 1 → **0**, converged at pass **8** |
+| arid | passes 1–16, `changed` **3**, `worst` **4.149 m³/s, constant**, class **10, 9, 10, 9 …** | ends at `changed` **0**, pass **11** |
+
+> **It is a period-2 alternation between two region classes, at a constant amplitude.** A
+> reciprocal pair feeds each other's `extra_inflow` every pass, so `next_extra` never equals
+> `extra_inflow` — it swaps between two vectors and the exact-equality early-out can never fire.
+> **My prediction holds**, and the amplitude is the pair's own discharge: 23.472 m³/s humid,
+> 4.149 arid.
+>
+> L2917 said *"a cycle does not converge exactly"* about the DRAINAGE AREAS 88 468 / 88 449 — a
+> different quantity, the same cycle. The round guessed those two numbers were the loop's two
+> states; they are not, they are the two near-equal catchment areas the same pair produced. **The
+> round's identification is wrong and its mechanism is right.**
+>
+> ⚠️ **And one of my own instruments lied while I read it.** `not_converged` was
+> `relevel.is_some() && !converged`, so with the gate off — the case that does not converge — it
+> printed **"converged true"**. It is a property of the loop, not of the gate; corrected to
+> `!converged`. The pass count was right throughout, which is why Finding 85's headline survives.
+>
+> **The assertion the round asked for is now in production and is satisfied by the promotion**:
+> exhausting `max_passes` panics **when the relevel is on**, which after B2 is the default. With
+> the relevel explicitly `None` — the A/B control, the pre-Finding-86 world — the loop still exits
+> on its bound, and asserting there would panic on a state we are deliberately keeping reachable.
+
+### B2 — the relevel is PROMOTED
+
+The stop rule holds: `exorheic-without-outlet` = **0** at both beds and at both gate positions once
+the H2 line runs. So `C1DrainageConfig::default()` now carries
+`merged_union_relevel: Some(..)`; `ALGO_DRAINAGE` **6 → 7**, `ALGO_HD_DRAINAGE` **8 → 9**; `None`
+becomes the A/B control and is the pre-Finding-86 world.
+
+**What a promotion costs, paid in the tests.** Seven suite failures, every one of them "the default
+moved": six fixtures used `C1DrainageConfig::default()` to mean *the gate off*, and one cache-key
+test asserted that `None` does not serialise — the exact opposite of what must now be true. They
+are repointed to an explicit `pre86()` helper, and the key test is rewritten to assert the new
+contract (the default serialises; the A/B control has a different digest).
+
+> **And two of them could not be made to pass with the relevel on, which is the unit-level proof of
+> Finding 85's claim.** `the_gate_retraces_the_union_to_the_sea` and
+> `the_gate_changes_only_the_merged_union_spillway` are Finding 84's; with the relevel on, the pair
+> is folded into one class inside the loop, so the Finding 84 retrace finds **nothing to do**
+> (`unions_retraced` = 0, `to_ocean` already 1). They now pin `merged_union_relevel: None`. **Finding
+> 85 said it subsumed Finding 84 from an 8192² table; here the two mechanisms are shown not to
+> co-exist on a twelve-cell fixture.**
+
+### C1 — the TROU retired, and the budget closed on five terms
+
+**C1a — first, why no sum over basins could ever have closed.** `BasinSummary::inflow_m3s` is
+Finding 40's CHAINED inflow: the same water is counted once per link of the chain. Finding 86 adds
+`local_inflow_m3s`, the basin's own catchment, which is the only one that sums.
+
+| | Σ LOCAL | Σ chained | ratio | spillways out + evap + retained | as % of Σ local |
+|---|---|---|---|---|---|
+| humid, control | 294.2 | **1 271.8** | **×4.32** | 751.1 + 0.00 + 21.6 | **263 %** |
+| humid, **shipped** | 294.2 | **407.1** | **×1.38** | 341.9 + 0.00 + 45.1 | **131.5 %** |
+| arid, control | 47.1 | 110.7 | ×2.35 | 34.7 + 47.87 + 0.0 | 175.2 % |
+| arid, **shipped** | 47.1 | **51.3** | **×1.09** | 4.9 + 47.94 + 0.0 | **112.1 %** |
+
+> **The relevel's effect, stated as conservation for the first time: the chain double-count falls
+> from ×4.32 to ×1.38 (humid) and from ×2.35 to ×1.09 (arid).** That is what folding a reciprocal
+> pair into one water body does — it stops the pair counting each other's water. The residual
+> over-count (131.5 %, 112.1 %) is the outflow side: a spillway's discharge is computed from the
+> CHAINED inflow, so it carries the same duplication out again. **The below-sea system cannot close
+> on itself while discharges are chained**, and that is the next seam, not this one.
+
+**C1c — the fifth term, MEASURED rather than named.** The budget is a per-CELL sum;
+`Watercourse → sea` is a per-SEGMENT sum over terminal segments. They are not the same population.
+
+| | runoff ARRIVING at the coast | % of budget | `Watercourse → sea` | % | **the gap** |
+|---|---|---|---|---|---|
+| humid | **180.5 m³/s** | **38.0 %** | 81.0 over 82 segments | 17.1 % | **99.5 m³/s** |
+| arid | **90.6 m³/s** | **65.8 %** | 13.1 over 82 segments | 9.5 % | **77.4 m³/s** |
+
+> **The network credits the sea with 81.0 m³/s where 180.5 physically arrive — a factor 2.2, and
+> 6.9 in the arid bed.** The missing water reaches the coast on cells that carry no terminal
+> segment: below the channel-head threshold, or on a reach that still has a downstream link. **That
+> is the fifth term, and it is not a leak — it is the network's resolution.** Finding 71's TERMINAL
+> and Finding 74's HOLE have been measuring this all along, and calling it a hole.
+
+**C1d — five terms against the breached budget.**
+
+| | coastal arrival | Spillway→ocean | evap below-sea | evap surface lakes | retained | **Σ** | **% of budget** |
+|---|---|---|---|---|---|---|---|
+| humid, control | 180.5 | 130.9 | 0.00 | 1.97 | 21.6 | 334.9 | **70.6 %** |
+| humid, **shipped** | 180.5 | **211.4** | 0.00 | 1.97 | **45.1** | **438.9** | **92.5 %** |
+| arid, control | 90.6 | 0.7 | 47.87 | 1.93 | 0.0 | 141.1 | **102.5 %** |
+| arid, **shipped** | 90.6 | 0.7 | **47.94** | 1.93 | 0.0 | **141.1** | **102.5 %** |
+
+> **The arid bed CLOSES to +2.5 %**, and the humid reaches **92.5 %** against **70.6 %** for the
+> control — the relevel accounts for **104 m³/s** that the shipped pipeline did not. The remaining
+> 7.5 % humid is the outflow-side duplication named in C1a: `Spillway → ocean` is a chained figure
+> and slightly over-credits. **I am not forcing it to 100 %; the residual has a named cause and a
+> named seam.**
+>
+> ⚠️ The round's own four-term version (without the coastal arrival) reads **49.6 / 71.5 / 46.2 /
+> 46.3 %** and closes nothing. **Its "fifth term to name" exists, is 38–66 % of the budget, and is
+> the one term neither of us thought to put in the list.**
+
+**C2 — the surface lakes, and they are NOT the missing term.** Humid: **59** lakes, Σ area
+**2 207.7 km²**, Σ net evaporation **1.97 m³/s** (0.4 % of budget), every one of them `Exorheic`.
+Arid: 22 lakes, 91.9 km², **1.93 m³/s** (1.4 %), types `Endorheic` and `Exorheic`.
+
+> **Both of us were wrong about this one and in the same direction.** I predicted surface-lake
+> evaporation would be the missing fifth term and would exceed the below-sea evaporation in the
+> arid bed; the round predicted the same shape. Measured: **1.93 against 47.94 — four per cent of
+> it.** 2 207 km² of humid lake surface evaporates 1.97 m³/s because in a humid climate
+> `net_evap = max(0, PE − precip)` is ~0 over water too. **A big lake in a wet climate destroys
+> almost no water**, which is Finding 39's law working exactly as written.
+
+### D — the two basins, geometrised; one of the two is now zero
+
+On local inflow, the population is **one** basin in the humid bed and **zero** in the arid.
+
+| | humid, shipped |
+|---|---|
+| id | **1000001** |
+| LOCAL inflow / evaporation | **45.04** / **0.00** m³/s |
+| `a_eq` / `a_spill` | 660.808 / 660.808 |
+| level / sill / floor | 76.25 / 76.25 / **−10.60** m |
+| `has_sill` / `exorheic` | true / **false** |
+| the col | (4349, 3590), **76.25 m** |
+| drop from the col to its lowest outside neighbour | **−12.06 u16 steps** — the neighbour is HIGHER |
+| where the descent leads | **BACK INTO ITS OWN footprint: the trace is a loop** |
+
+> **The round's second written outcome, measured**: the basin is brim-full at a sill it cannot get
+> over, because the cell beyond the col is twelve quantisation steps *above* it. There is no flat,
+> no surface lake, no third basin missing from the reciprocity — **the geometry simply closes**.
+> My prediction (re-enters its own bowl) holds; the round's (a surface lake at the same level)
+> does not.
+>
+> ⚠️ **And `a_eq == a_spill` is a REPORTING CONVENTION, not a knife-edge — Finding 85 read it as
+> one and I am correcting my own text.** `drainage.rs:2170` reads
+> `a_eq_km2: if a_eq.is_finite() { a_eq } else { a_spill }` with the comment *"humid ⇒ ∞; report the
+> sill area it fills"*. So "660.808 equals 660.808 to the third decimal", which Finding 85 presented
+> as a razor's edge, means **`a_eq` is INFINITE**: `net_evap = 0`, evaporation 0.00 m³/s, the basin
+> genuinely cannot destroy its inflow. The physical reading Findings 84 and 85 gave is right; the
+> *knife-edge* framing was wrong, and the field is ambiguous by construction — a consumer cannot
+> distinguish "infinite" from "exactly equal". **That ambiguity is a reporting defect worth its own
+> line and it is not fixed here.**
+>
+> **And the 65.2 m³/s of Finding 85 is 45.1 on local inflow** — the same chained-quantity artefact,
+> corrected: Finding 85 summed `inflow_m3s`, which counts the chain.
+
+### Score
+
+Predictions written and dated **2026-09-15 before the first measurement**; non-blind on Findings
+73–85 and on `below_sea_basin_lakes_infil`'s body, blind on Findings 29/30/38/40 and on every
+figure.
+
+**Mine.** A0 "**none** of the round's three readings — the violation comes from a dropped spillway"
+**✗**: it is the FIRST reading, and I was looking at the wrong function. What I got right is that
+`below_sea_basin_lakes_infil` is clean and Finding 39 really closed it there · "the fix is a
+re-classification at the END of the chain, not a change to the regime test" **✓ exactly** ·
+"`LakeType` gains a variant, and it is a contract change that breaks exhaustive matches" **✓✓** —
+four of them, three in the viz · `Unresolved` = 1 / 1 / 0 **✓✓✓** · B1 "a period-2 alternation,
+2–6 classes changed, amplitude = the pair's own discharge" **✓✓** (6 and 3 classes, constant
+23.472 and 4.149) · "88 468 / 88 449 are the loop's two states" **✗** — they are two catchment
+areas · B2 promoted **✓** · **C1 "humid closes within 5 %" ✗** (49.6 % on four terms) · **C2
+"surface-lake evaporation is the missing term and exceeds the below-sea evaporation in the arid
+bed" ✗✗** (1.93 against 47.94) · D "the trace re-enters its own bowl" **✓** · "one of `a_eq` /
+`evaporation_m3s` is not what its name says" **✗ — and my arithmetic was the error**: the field is
+documented to report `a_spill` when `a_eq` is infinite, and inverting it as a rate is meaningless.
+
+**The round's.** A0 "`exorheic` is posted from `a_eq ≥ a_spill` **before** the trace and never
+revised — Finding 39 closed the over-flood, not the classification" **✓✓ — exactly right, and
+better than mine** · `Unresolved` = 2 ON **✗** (1) · B1 "a pair whose fusion undoes and redoes
+itself from pass to pass" **✗ in mechanism** (the fusion runs after the loop and cannot undo
+anything) **✓ in kind** (it is a reciprocal pair) · "88 468 / 88 449 are its two states" **✗** ·
+B2 "stop rule 0, relevel promoted" **✓✓** · **C1 "four terms close within 2 % humid" ✗** and "arid
+misses by more than 20 % until C2" **✗ in cause** (the arid bed misses by 54 % and C2 supplies
+1.4 % of it) · D "the surface-lake case" **✗**.
+
+**Meta holds on both sides.** And the round's A0 is the best single call of the campaign: it named
+the mechanism, the wrong-half-of-the-code shape, and the reason Finding 39 did not cover it, all
+before anyone opened the function.
+
+### Standing
+
+**Two production changes, neither gated.**
+
+1. **The H2 line.** `LakeType::Unresolved` + `resolve_exorheic_without_outlet`, run at the end of
+   the production carry. `exorheic-without-outlet` goes **1 → 0** (humid) and stays 0 (arid), at
+   both gate positions. One lake moves: **id 55**, a detected surface lake of 19.2 km² at 51.05 m
+   that claimed to overflow with nothing emitted for it, since H-1c was written.
+2. **Finding 85's relevel, PROMOTED.** `ALGO_DRAINAGE` 6 → 7, `ALGO_HD_DRAINAGE` 8 → 9. The
+   below-sea fixed point now converges (8 and 11 passes against the 16-pass bound), and exhausting
+   the bound is an assertion failure on the shipped path.
+
+**What this round replaced.** `TERMINAL` and `HOLE` are no longer conservation numbers. The
+conservation instrument is the **five-term budget**, and it closes: **102.5 %** in the arid bed,
+**92.5 %** humid against **70.6 %** for the pre-Finding-86 control. The term that makes it close is
+the one neither of us listed — **runoff physically arriving at the coast, 38 % of the budget humid
+and 66 % arid, against the 17 % and 9.5 % the terminal-segment sum credits.** Findings 71 and 74
+were measuring the network's resolution and calling it a hole.
+
+**What is left, and it is one basin.** **45.04 m³/s** (local inflow, not the chained 65.2 Finding 85
+quoted) in humid basin **1000001**: floor at −10.60 m, brim-full at a 76.25 m sill, `net_evap = 0`,
+and the first cell beyond its col is **twelve u16 steps above it**. It cannot spill and it cannot
+evaporate. The arid bed has none.
+
+**Named and not fixed:**
+* the outflow side is still chained — a spillway's discharge is computed from
+  `inflow + extra_inflow`, so the below-sea system over-closes at 131.5 % (humid) and 112.1 %
+  (arid) on its own local inflow. That is the next seam;
+* `BasinSummary::a_eq_km2` reports `a_spill` when `a_eq` is infinite, so a consumer cannot
+  distinguish "infinite" from "exactly equal" — which is precisely what misled Finding 85;
+* B0: **no real coastline raster in the repository**, so the organic-coast thresholds stay
+  unwritable. Third round asking.
+
+### À VALIDER VISUELLEMENT — four objects
+
+The A/B control is `merged_union_relevel: None` (the pre-Finding-86 world); checked is production.
+
+| # | object | the counts beside it | the binary question |
+|---|---|---|---|
+| 1 | **the widest blue line**, at its mouth and at mid-course | control **360.34 m³/s = 14.58 render cells** @ratio 7.5 · shipped **92.97 = 7.40** · max `Watercourse` **3.37** either way | a river, or a canal between two lakes? **And must a `Spillway` be DRAWN like a river at all** — that is the `kind` question of the contract |
+| 2 | **five lakes that become one** | shipped id `1000004`, **47.581 km²**, level 0.44 m, 19 957 cells; basins **17 → 13** | one lake or five — which is credible? |
+| 3 | **the 623.6 m-deep lake at level 614.9 m** | identical control/shipped; floor at **−8.7 m**; Finding 39 justified it by inflow and nobody has seen it | is it in image 1? a crater lake, or an error? |
+| 4 | **NEW — lake id 55**, 19.2 km² at 51.05 m | now reads **"⚠ sans exutoire (F86)"** in warning red instead of "exoréique" in river blue, in all three viz panels | does the warning read as information or as a bug? it is the first `Unresolved` the product has ever shown |
+
+Object 4 is the one this round created, and it is the cheapest to judge: it is a label change on a
+lake the author can click.

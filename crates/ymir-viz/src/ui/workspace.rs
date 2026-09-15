@@ -1573,6 +1573,8 @@ fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
                 LakeType::Endorheic => "Lac (endoréique)".to_string(),
                 LakeType::CraterAcidic => "Lac de cratère (acide)".to_string(),
                 LakeType::CraterNeutral => "Lac de cratère (eau douce)".to_string(),
+                // ADR Finding 86 — the balance says it overflows and no outlet reach exists.
+                LakeType::Unresolved => "⚠ Lac SANS EXUTOIRE tracé (F86)".to_string(),
             },
             None => "—".to_string(),
         },
@@ -3555,6 +3557,11 @@ fn microscope_list(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                     LakeType::CraterNeutral => {
                         ("cratère (eau douce)", C::from_rgb(0x6a, 0x8a, 0xc0))
                     }
+                    // ADR Finding 86 — drawn in warning red, because it is a disagreement between
+                    // the water balance and the traced network, not a kind of lake.
+                    LakeType::Unresolved => {
+                        ("⚠ sans exutoire (F86)", C::from_rgb(0xd0, 0x6a, 0x5a))
+                    }
                 };
                 let txt = format!(
                     "#{} · {:.0} km² · {:.0} m · {}",
@@ -3776,6 +3783,8 @@ fn river_profile_panel(
                 LakeType::Endorheic => ("endoréique", C::from_rgb(0x3a, 0xb0, 0xa0)),
                 LakeType::CraterAcidic => ("cratère (acide)", C::from_rgb(0xc9, 0xc0, 0x3a)),
                 LakeType::CraterNeutral => ("cratère (eau douce)", C::from_rgb(0x6a, 0x8a, 0xc0)),
+                // ADR Finding 86
+                LakeType::Unresolved => ("⚠ sans exutoire (F86)", C::from_rgb(0xd0, 0x6a, 0x5a)),
             };
             ui.label(egui::RichText::new("Source ").color(DIM).size(10.5));
             if ui
