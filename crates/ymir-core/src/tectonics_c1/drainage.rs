@@ -193,6 +193,12 @@ pub struct C1DrainageConfig {
     /// keys unchanged at `None`. `Some(..)` moves both keys. See [`MergedBasinOutlet`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub merged_basin_outlet: Option<MergedBasinOutlet>,
+    /// **ADR Finding 85** — make a merged reciprocal pair ONE region for the next pass of the
+    /// Finding 40 fixed point, so Finding 39's balance sees the union. `None` (default) → the
+    /// shipped behaviour, byte-identical, and `skip_serializing_if` keeps the drainage cache keys
+    /// unchanged at `None`. See [`MergedUnionRelevel`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merged_union_relevel: Option<MergedUnionRelevel>,
 }
 
 impl Default for C1DrainageConfig {
@@ -201,6 +207,7 @@ impl Default for C1DrainageConfig {
         Self {
             thresholds: DrainageThresholds::default(),
             merged_basin_outlet: None, // ADR Finding 84 -- opt-in; None is the shipped leak
+            merged_union_relevel: None, // ADR Finding 85 -- opt-in; None freezes the union's level
             lake_min_depth_m: 10.0,
             lake_min_area_km2: 5.0,
             flat_perturbation: Some(FlatPerturbation::default()),
@@ -1430,6 +1437,64 @@ pub struct MergedBasinOutlet {
     pub rule: ReciprocalRule,
 }
 
+/// ADR 0001 Finding 85 — **make a merged pair ONE REGION for the next pass**, so Finding 39's
+/// water balance and Finding 40's chaining fixed point see the union instead of its halves.
+/// `None` (default) is the shipped behaviour, byte-identical.
+///
+/// # Why this shape and not "raise the level to the external sill"
+///
+/// The Finding 85 round asked for a re-level: compute `a_eq`, compare it with the area available
+/// under the external rim, raise the surface to that rim and re-flood. **That is the FIRST CUT of
+/// Finding 39's law, and Finding 39 measured it and rejected it**: *"in a humid climate net_evap
+/// is 0 everywhere, so a_eq is ∞ and EVERY basin fills to its sill — and Finding 38's `wc != 2`
+/// escape test ABSORBED neighbouring below-sea regions, pushing the sill up to the 613 m
+/// continental ocean pass"* — MAX level 613 m, claimed/valid **1.952×**, three lakes over-flooded.
+/// The fix was precisely to stop absorbing neighbours: the escape is the lowest neighbour outside
+/// **this region's own component**.
+///
+/// So the level is not raised by hand. What changes is **which cells are "this region's own
+/// component"**: a reciprocal pair that the level rule declares to be one water body (equal free
+/// surfaces over a shared col, Finding 40b) becomes one CLASS, and the next pass floods the class.
+/// Then
+/// * the sill is the class's lowest EXTERNAL col — not the internal one, and not the continental
+///   pass, because the exclusion set is the class and not all below-sea water;
+/// * the level follows from Finding 39's law on the class's own bowl and inflow, with no new
+///   physics and no new hypsometry: `fcells` sorted floor→sill IS the area-vs-level table
+///   (Finding 39, precaution 3), so the round's "hypsométrie à construire par flood incrémental"
+///   already exists;
+/// * the footprint is that bowl, so `claimed == valid` survives by construction (Finding 39,
+///   precaution 2) — the over-flood net that caught Finding 38b still stands.
+///
+/// **The risk this carries, named before it is measured**: merging can CASCADE. A class's new,
+/// higher sill may put it in a reciprocal pair with a third region, which merges, which raises the
+/// sill again. Each round is legitimate on its own terms and the end of the chain could still be
+/// the continental pass Finding 39 fought off. That is what `max_passes` bounds and what the
+/// MAX below-sea level and `claimed/valid` guards are for.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MergedUnionRelevel {
+    /// Bound on the fixed-point passes. The shipped loop already uses 16 as a safety net; with
+    /// this gate on, exhausting the bound is an **assertion failure** and not a silent exit,
+    /// because a non-converged merge partition means the reported levels are from a half-solved
+    /// state.
+    pub max_passes: u32,
+    /// Route the surplus of a spillway that terminates in a DETECTED SURFACE LAKE by continuing
+    /// the walk THROUGH the lake to the lake's own sink — for the ROUTING only, never for the
+    /// path. Finding 74 block 4 named this as the third termination state, the one that *"sets
+    /// `chained_into` but NOT `chained_region`, so the surplus is dropped"*; Finding 84 counted it
+    /// at **85.86 m³/s** on the production seed, humid.
+    ///
+    /// The path still stops at the lake (Finding 39: a spillway must not run UNDER a basin it
+    /// reaches). Separating the displayed PATH from the mass ROUTING is exactly the distinction
+    /// Finding 74's wording drew and the code never made.
+    pub route_through_detected_lakes: bool,
+}
+
+impl Default for MergedUnionRelevel {
+    fn default() -> Self {
+        Self { max_passes: 16, route_through_detected_lakes: true }
+    }
+}
+
 /// ADR 0001 Finding 74 block 4's three-state specification, plus the states it did not name.
 ///
 /// Finding 74 wrote: *"Every spillway must terminate in exactly one of three states — an OCEAN
@@ -1469,6 +1534,22 @@ pub struct SpillwayTermination {
     /// fragility of the level rule against quantisation can be read rather than assumed
     /// (Finding 84 A3).
     pub merge_level_gaps_m: Vec<f32>,
+    /// ADR Finding 85 — fixed-point passes actually used (1 means "converged on the first").
+    pub passes_used: u32,
+    /// ADR Finding 85 — regions folded into a class by the level rule, over all passes.
+    pub classes_merged: usize,
+    /// ADR Finding 85 — how many classes span more than one region at the fixed point.
+    pub multi_region_classes: usize,
+    /// ADR Finding 85 — surplus re-routed by continuing the walk through a DETECTED surface lake
+    /// to its own sink, m³/s. Zero when `route_through_detected_lakes` is off, and then the same
+    /// water appears in `q_detected_lake_m3s` as dropped.
+    pub q_routed_through_lake_m3s: f64,
+    /// ADR Finding 85 — the fixed point did NOT converge within `max_passes`.
+    pub not_converged: bool,
+    /// ADR Finding 85 — surplus whose path ended at a DETECTED surface lake and for which no
+    /// receiver could be found, so it really is dropped, m³/s. ⚠️ Not the same population as
+    /// [`Self::q_detected_lake_m3s`], which counts every path ending at a lake — routed or not.
+    pub q_lake_unrouted_m3s: f64,
 }
 
 pub struct BelowSeaResult {
@@ -1591,7 +1672,39 @@ pub fn below_sea_basin_lakes_infil(
     // `extra_inflow[region]`, so after ≤ chain-depth passes every basin sees its FULL inflow (local +
     // all upstream spill). Flow is downhill (a DAG) → this converges; the 16-pass bound is a safety net.
     let mut extra_inflow = vec![0.0f32; num_regions + 1];
-    for _pass in 0..16 {
+    // ADR 0001 Finding 85 — the CLASS partition over regions. Identity while
+    // `merged_union_relevel` is `None`, so every read through it is byte-identical to the shipped
+    // behaviour; with the gate on, a reciprocal pair the level rule calls ONE water body is folded
+    // into one class and the NEXT pass floods the class as one region. See [`MergedUnionRelevel`]
+    // for why the level is not raised by hand (Finding 39 measured that and rejected it).
+    let relevel = cfg.merged_union_relevel.clone();
+    let route_through_lakes = relevel.as_ref().is_some_and(|r| r.route_through_detected_lakes);
+    let max_passes = relevel.as_ref().map_or(16usize, |r| (r.max_passes.max(1)) as usize);
+    let mut class_of: Vec<u32> = (0..=num_regions as u32).collect();
+    // cells per region, so folding a class costs its own size and not a grid sweep
+    let cells_of_region: Vec<Vec<u32>> = {
+        let mut v: Vec<Vec<u32>> = vec![Vec::new(); num_regions + 1];
+        for k in 0..n {
+            let r = region_of[k] as usize;
+            if r != 0 {
+                v[r].push(k as u32);
+            }
+        }
+        v
+    };
+    let mut converged = false;
+    let mut passes_used = 0u32;
+    let mut classes_merged = 0usize;
+    let mut q_routed_through_lake = 0.0f64;
+    let mut q_lake_unrouted = 0.0f64;
+    for _pass in 0..max_passes {
+        passes_used += 1;
+        // ADR Finding 85 — these are STATE, not a running total: summing them over the passes of a
+        // fixed point produced 729.98 m³/s of "routed" water against a 474.7 m³/s budget in the
+        // first run of the bench. Reset every pass; only the converged pass's values survive.
+        q_routed_through_lake = 0.0;
+        q_lake_unrouted = 0.0;
+        let mut lake_class: Vec<(u32, u32)> = Vec::new();
         let mut next_extra = vec![0.0f32; num_regions + 1];
         lake_map.iter_mut().for_each(|v| *v = 0);
         out.clear();
@@ -1604,7 +1717,9 @@ pub fn below_sea_basin_lakes_infil(
             if seen[s] || wc[s] != 2 {
                 continue;
             }
-            let own_label = region_of[s];
+            // ADR Finding 85 — the region's CLASS. `class_of` is the identity while the gate is
+            // off, so this is the shipped `region_of[s]` bit for bit.
+            let own_label = class_of[region_of[s] as usize];
             // 1. the PIT = the connected enclosed-below-sea component (8-conn) — the real depression.
             let mut comp = Vec::new();
             let mut q = VecDeque::new();
@@ -1619,6 +1734,18 @@ pub fn below_sea_basin_lakes_infil(
                         if wc[nk] == 2 && !seen[nk] {
                             seen[nk] = true;
                             q.push_back(nk);
+                        }
+                    }
+                }
+            }
+            // ADR Finding 85 — fold in the OTHER regions of this class. A no-op while `class_of`
+            // is the identity, so no branch is needed and none is taken when the gate is off.
+            for r in 1..=num_regions {
+                if class_of[r] == own_label && r as u32 != region_of[s] {
+                    for &c in &cells_of_region[r] {
+                        if !seen[c as usize] {
+                            seen[c as usize] = true;
+                            comp.push(c as usize);
                         }
                     }
                 }
@@ -1760,7 +1887,7 @@ pub fn below_sea_basin_lakes_infil(
             // connected to the floor), so `claimed == valid` by construction (no over-flood).
             let fills_to_sill = a_eq >= a_spill;
             let overflow = fills_to_sill; // candidate; confirmed EXORHEIC only if an outlet also traces
-            let traced: Option<(Vec<usize>, Option<u32>, Option<u32>)> = if overflow {
+            let traced: Option<(Vec<usize>, Option<u32>, Option<u32>, u8)> = if overflow {
                 // Re-entry into THIS lake's own water body = its flood bowl `fcells` (the loop / case A).
                 let in_bowl: std::collections::HashSet<usize> = fcells.iter().copied().collect();
                 // Finding 37c — the spillway starts at the SADDLE, crosses to its lowest EXTERIOR escape
@@ -1774,6 +1901,7 @@ pub fn below_sea_basin_lakes_infil(
                         let mut path = vec![s0, e0];
                         let (mut cur, mut chained, mut chained_region, mut steps, mut valid) =
                             (e0, None, None, 0usize, false);
+                        let mut lake_exit = 0u8; // 0 none · 1 routed through · 2 dropped
                         loop {
                             if wc[cur] == 1 {
                                 valid = true; // reached the OCEAN
@@ -1785,11 +1913,47 @@ pub fn below_sea_basin_lakes_infil(
                             // (`next_extra`) topologically. Finding 39 — also stop at a DETECTED lake so the
                             // spillway halts at the FIRST basin it reaches, not run UNDER it (river #11 under
                             // the 211 m lake #17). `chained` is the DISPLAY id (0 until the target is marked).
-                            let rid = region_of[cur];
+                            let rid = class_of[region_of[cur] as usize];
                             let did = detected_lake_map.map_or(0, |d| d[cur]);
                             if (rid != 0 && rid != own_label) || did != 0 {
                                 if rid != 0 && rid != own_label {
                                     chained_region = Some(rid);
+                                } else if did != 0 {
+                                    lake_exit = 2; // provisional: a lake exit with nowhere to go
+                                }
+                                if lake_exit == 2 && route_through_lakes {
+                                    // ADR Finding 85 — the PATH stops here, because Finding 39
+                                    // forbids running a spillway UNDER a basin it reaches. The MASS
+                                    // must not stop: Finding 74 block 4 named this the third
+                                    // termination state, the one whose surplus is dropped, and
+                                    // Finding 84 counted it at 85.86 m³/s. So walk on, for the
+                                    // ROUTING only, until the lake's own sink is reached.
+                                    let (mut rc, mut rsteps) = (cur, 0usize);
+                                    loop {
+                                        if wc[rc] == 1 {
+                                            break; // the sea: terminal, nothing left to route
+                                        }
+                                        let r2 = class_of[region_of[rc] as usize];
+                                        if r2 != 0 && r2 != own_label {
+                                            chained_region = Some(r2);
+                                            lake_exit = 1;
+                                            break;
+                                        }
+                                        let d2 = flow.direction[rc];
+                                        if d2 == DIR_NONE {
+                                            break;
+                                        }
+                                        let (rx, ry) = ((rc % w) as i32, (rc / w) as i32);
+                                        let nx2 =
+                                            (rx + D8_DX[d2 as usize]).rem_euclid(w as i32) as usize;
+                                        let ny2 =
+                                            (ry + D8_DY[d2 as usize]).rem_euclid(h as i32) as usize;
+                                        rc = ny2 * w + nx2;
+                                        rsteps += 1;
+                                        if rsteps > n {
+                                            break;
+                                        }
+                                    }
                                 }
                                 let lid = lake_map[cur];
                                 chained = if lid != 0 {
@@ -1819,7 +1983,7 @@ pub fn below_sea_basin_lakes_infil(
                                 break;
                             }
                         }
-                        if valid { Some((path, chained, chained_region)) } else { None }
+                        if valid { Some((path, chained, chained_region, lake_exit)) } else { None }
                     }
                     _ => None,
                 }
@@ -1879,6 +2043,7 @@ pub fn below_sea_basin_lakes_infil(
             // can reach another region, so `comp`s never merge.
             let mark_level = surface;
             let id = next_id;
+            lake_class.push((id, own_label)); // ADR Finding 85 — lake id -> class
             next_id += 1;
             let mut water = 0usize;
             let mut floor = f32::MAX;
@@ -1959,7 +2124,7 @@ pub fn below_sea_basin_lakes_infil(
             // Finding 37 POINT 2 — the spillway was ALREADY traced (before the regime decision), and its
             // existence is WHY this basin is exorheic. Emit it from the traced path — no second trace, no
             // way for an exorheic label to stand without one.
-            if let Some((path, chained, chained_region)) = &traced {
+            if let Some((path, chained, chained_region, lake_exit)) = &traced {
                 let points: Vec<(u32, u32)> =
                     path.iter().map(|&k| ((k % w) as u32, (k / w) as u32)).collect();
                 let profile: Vec<f32> = path
@@ -1973,6 +2138,15 @@ pub fn below_sea_basin_lakes_infil(
                 // A → B → … solves in topological order (each basin sees local + all upstream spill).
                 if let Some(m) = chained_region {
                     next_extra[*m as usize] += surplus;
+                    if *lake_exit == 1 {
+                        q_routed_through_lake += runoff_km2_to_m3s(surplus) as f64;
+                    }
+                } else if *lake_exit == 2 {
+                    // ADR Finding 74 block 4's third state, MEASURED: the path ends at a detected
+                    // surface lake and no receiver could be found for the mass, so this much really
+                    // is dropped. Distinct from `q_detected_lake_m3s`, which counts every path
+                    // ending at a lake whether its mass was routed or not.
+                    q_lake_unrouted += runoff_km2_to_m3s(surplus) as f64;
                 }
                 let discharge_m3s = runoff_km2_to_m3s(surplus);
                 let drainage_km2 = surplus / REFERENCE_RUNOFF_MM;
@@ -2000,11 +2174,69 @@ pub fn below_sea_basin_lakes_infil(
                 }
             }
         }
-        // Converged when this pass's spills equal the ones it was fed (deterministic sum, exact eq).
-        if next_extra == extra_inflow {
+        // ── ADR Finding 85 — the level rule, INSIDE the fixed point ──────────────────────
+        // A reciprocal pair whose free surfaces are equal within `SAME_WATER_BODY_TOL_M` is ONE
+        // water body (Finding 40b). Folding the two into one CLASS here means the NEXT pass floods
+        // the union: its sill becomes the lowest EXTERNAL col, Finding 39's balance runs on the
+        // union's own bowl and inflow, and its footprint is that bowl — so `claimed == valid`
+        // survives. The shipped code does this AFTER the loop, where nothing can act on it.
+        let mut class_changed = false;
+        if relevel.is_some() {
+            use std::collections::HashMap as HM;
+            let level_of: HM<u32, f32> = out.iter().map(|l| (l.base.id, l.level_m)).collect();
+            let class_of_lake: HM<u32, u32> = lake_class.iter().copied().collect();
+            let target: HM<u32, u32> = spillways
+                .iter()
+                .filter_map(|sp| sp.chained_into.map(|t| (sp.lake_id, t)))
+                .collect();
+            let mut pairs: Vec<(u32, u32)> = Vec::new();
+            for (&a, &b) in &target {
+                if a >= b || target.get(&b) != Some(&a) {
+                    continue; // each pair once, and only reciprocal ones
+                }
+                match (level_of.get(&a), level_of.get(&b)) {
+                    // levels differ ⇒ the higher spills into the lower; NOT one water body, and
+                    // the uphill direction is dropped after the loop as it always was.
+                    (Some(&la), Some(&lb)) if (la - lb).abs() > SAME_WATER_BODY_TOL_M => {}
+                    _ => pairs.push((a, b)),
+                }
+            }
+            pairs.sort_unstable(); // determinism: a HashMap walk is not an order
+            for (a, b) in pairs {
+                let (Some(&ca), Some(&cb)) = (class_of_lake.get(&a), class_of_lake.get(&b)) else {
+                    continue;
+                };
+                let (keep, drop) = (ca.min(cb), ca.max(cb));
+                if keep == drop {
+                    continue; // already one class
+                }
+                for c in class_of.iter_mut() {
+                    if *c == drop {
+                        *c = keep;
+                    }
+                }
+                classes_merged += 1;
+                class_changed = true;
+            }
+        }
+        // Converged when this pass's spills equal the ones it was fed (deterministic sum, exact eq)
+        // AND the class partition stopped moving (ADR Finding 85 — a half-folded partition means
+        // the levels reported are from a half-solved state).
+        if next_extra == extra_inflow && !class_changed {
+            converged = true;
             break;
         }
         extra_inflow = next_extra;
+    }
+    // ADR Finding 85 — exhausting the bound is an assertion failure with the gate on, not a silent
+    // exit: the shipped 16 is a safety net over a DAG, and a cascading merge is not a DAG.
+    if relevel.is_some() {
+        assert!(
+            converged,
+            "ADR Finding 85: the level/outlet/balance fixed point did not converge in \
+             {max_passes} passes ({classes_merged} class merges) — the reported levels are from a \
+             half-solved state"
+        );
     }
     let mut termination = break_reciprocal_spill_cycles(
         &mut out,
@@ -2020,6 +2252,18 @@ pub fn below_sea_basin_lakes_infil(
         ss,
         cfg.merged_basin_outlet.as_ref(),
     );
+    termination.passes_used = passes_used;
+    termination.classes_merged = classes_merged;
+    termination.q_routed_through_lake_m3s = q_routed_through_lake;
+    termination.q_lake_unrouted_m3s = q_lake_unrouted;
+    termination.not_converged = relevel.is_some() && !converged;
+    termination.multi_region_classes = {
+        let mut per: std::collections::HashMap<u32, usize> = Default::default();
+        for r in 1..=num_regions {
+            *per.entry(class_of[r]).or_default() += 1;
+        }
+        per.values().filter(|&&c| c > 1).count()
+    };
     classify_spillway_terminations(
         &spillways,
         &lake_map,
@@ -3369,6 +3613,351 @@ mod tests {
         )
         .expect("the re-derivation must find the same outflow");
         assert_eq!(mine, inline, "the duplicated flood/trace disagrees with the inline one");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════════════
+    // ADR 0001 Finding 85 — the level/outlet/balance fixed point.
+    //
+    // The geometry adds a SHELF above sea level around the two pits, so the union's bowl is much
+    // larger than either half's. Without it the endorheic-after-merge case has almost no window:
+    // a union of two similar pits plus their col has barely more than twice a half's area, and
+    // both halves must already overflow for the pair to be reciprocal at all.
+    //
+    //  row 1  x: 0     1       2..6    7        8..12    13..28      29
+    //            ocean sea-col pit B   int.col  pit A    ramp up     wall
+    //            0.20  0.518   0.498   0.508    0.498    0.520+      0.9
+    //  rows 0,2  x = 2..12 at 0.512 -> the SHELF: land that the union drowns when it rises.
+    // ══════════════════════════════════════════════════════════════════════════════════════
+
+    /// `(heightmap, precip, temperature)`. `hot` makes the pit floors evaporative
+    /// (`net_evap > 0`) and sizes the shelf's rain so each HALF overflows its internal col while
+    /// the UNION's `a_eq` stays under the union's much larger spill area.
+    fn relevel_fixture(hot: bool) -> (GridF32, GridF32, GridF32) {
+        let (w, h) = (30usize, 3usize);
+        let mut hm = GridF32::new(w, h, 0.9);
+        hm.set(0, 1, 0.20); // ocean
+        hm.set(1, 1, 0.518); // the UNION's external col
+        for x in 2..=6 {
+            hm.set(x, 1, 0.498); // pit B
+        }
+        hm.set(7, 1, 0.508); // the INTERNAL col, lowest rim of both halves
+        for x in 8..=12 {
+            hm.set(x, 1, 0.498); // pit A
+        }
+        for (i, x) in (13..=28).enumerate() {
+            hm.set(x, 1, 0.520 + 0.006 * i as f32);
+        }
+        hm.set(29, 1, 0.9);
+        for x in 2..=12 {
+            hm.set(x, 0, 0.512); // the shelf, above sea, drowned only if the union rises
+            hm.set(x, 2, 0.512);
+        }
+        let unit = crate::climate::precipitation::PRECIP_MM_PER_UNIT;
+        let mut precip = GridF32::new(w, h, 0.0);
+        let mut temp = GridF32::new(w, h, 5.0);
+        let pe5 = potential_evaporation_mm(5.0);
+        if hot {
+            // Evaporative floors, and shelf rain sized so a_eq(half) is about 1.3x a_spill(half)
+            // = 5 cells: both halves overflow at pass 1 (so the pair IS reciprocal), and the
+            // union's a_eq (their sum) stays well under the union's 33-cell bowl.
+            for x in 2..=12 {
+                temp.set(x, 1, 30.0);
+            }
+            let pe30 = potential_evaporation_mm(30.0);
+            let per_cell = 0.65 * pe30; // 10 shelf cells per half -> a_eq(half) ~ 6.5 km2
+            for x in 2..=12 {
+                precip.set(x, 0, (pe5 + per_cell) / unit);
+                precip.set(x, 2, (pe5 + per_cell) / unit);
+            }
+        } else {
+            // Wet floors: net_evap = max(0, PE - precip) = 0 -> a_eq is infinite, both halves and
+            // then the union MUST fill to their sill (Finding 39).
+            for x in 2..=12 {
+                precip.set(x, 1, 3000.0 / unit);
+                precip.set(x, 0, 3000.0 / unit);
+                precip.set(x, 2, 3000.0 / unit);
+            }
+            for x in 13..=28 {
+                precip.set(x, 1, 3000.0 / unit);
+            }
+        }
+        (hm, precip, temp)
+    }
+
+    fn relevel_on() -> C1DrainageConfig {
+        C1DrainageConfig {
+            merged_union_relevel: Some(MergedUnionRelevel::default()),
+            ..Default::default()
+        }
+    }
+
+    fn run(cfg: &C1DrainageConfig, hot: bool) -> BelowSeaResult {
+        let (hm, precip, temp) = relevel_fixture(hot);
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        below_sea_basin_lakes_infil(&hm, &clim, cfg, &SteinSteinParams::default(), 30.0, None, None)
+    }
+
+    /// NEGATIVE CONTROL FIRST (ADR Finding 85 A1): without the gate the union stays frozen at the
+    /// INTERNAL col and its spillway terminates inside the body it drains. If this ever passes,
+    /// the fixture has stopped building the case and every test below is vacuous.
+    #[test]
+    fn the_union_stays_frozen_without_the_gate() {
+        let off = run(&C1DrainageConfig::default(), false);
+        let t = &off.termination;
+        assert_eq!(t.pairs_merged, 1, "the fixture does not build a merged reciprocal pair: {t:?}");
+        assert_eq!(t.to_own_body, 1, "the fixture does not exhibit the frozen union: {t:?}");
+        assert_eq!(t.to_ocean, 0, "nothing should reach the sea without the gate: {t:?}");
+        assert_eq!(t.classes_merged, 0, "the class partition must not move at `None`");
+        assert_eq!(t.passes_used, off.termination.passes_used); // (recorded, see the report below)
+        // one id over two water bodies, at the INTERNAL col
+        let lake = off.lakes.iter().find(|l| l.base.id >= 1_000_001).expect("a below-sea lake");
+        let n2m = c1_altitude_norm_to_metres(1.0, &SteinSteinParams::default())
+            - c1_altitude_norm_to_metres(0.0, &SteinSteinParams::default());
+        let internal = (0.508 - 0.5) * n2m;
+        assert!(
+            (lake.level_m - internal).abs() < 0.5,
+            "the frozen level should be the INTERNAL col ({internal:.1} m), got {:.1}",
+            lake.level_m
+        );
+    }
+
+    /// ADR Finding 85 A1 fixture 1 — `net_evap = 0`, so the union cannot stop: it rises to its
+    /// EXTERNAL col, overflows, and its single spillway reaches the sea.
+    #[test]
+    fn the_wet_union_rises_to_its_external_col_and_reaches_the_sea() {
+        let on = run(&relevel_on(), false);
+        let t = &on.termination;
+        assert!(!t.not_converged, "the fixed point did not converge: {t:?}");
+        assert_eq!(t.classes_merged, 1, "the two regions were not folded into one class: {t:?}");
+        assert_eq!(t.multi_region_classes, 1, "{t:?}");
+        assert_eq!(t.to_own_body, 0, "a spillway still ends inside its own body: {t:?}");
+        assert_eq!(t.to_ocean, 1, "the union's spillway does not reach the sea: {t:?}");
+        assert_eq!(on.spillways.len(), 1, "one water body, one outflow: {:?}", on.spillways.len());
+        assert!(t.passes_used >= 2, "a merge cannot be seen before the second pass: {t:?}");
+        // the level is the EXTERNAL col, and the footprint has grown onto the shelf
+        let ss = SteinSteinParams::default();
+        let n2m = c1_altitude_norm_to_metres(1.0, &ss) - c1_altitude_norm_to_metres(0.0, &ss);
+        let external = (0.518 - 0.5) * n2m;
+        let lake = on.lakes.iter().find(|l| l.base.id >= 1_000_001).expect("a below-sea lake");
+        assert!(
+            (lake.level_m - external).abs() < 0.5,
+            "the union should sit at its EXTERNAL col ({external:.1} m), got {:.1}",
+            lake.level_m
+        );
+        let off = run(&C1DrainageConfig::default(), false);
+        let (a, b) = (
+            off.lake_map.iter().filter(|&&i| i != 0).count(),
+            on.lake_map.iter().filter(|&&i| i != 0).count(),
+        );
+        assert!(b > a, "the union did not drown anything: footprint {a} -> {b}");
+        // and the shelf is what it drowned
+        let (hm, _, _) = relevel_fixture(false);
+        let drowned = (0..hm.data.len())
+            .filter(|&k| on.lake_map[k] != 0 && off.lake_map[k] == 0 && hm.data[k] > 0.5)
+            .count();
+        assert!(
+            drowned >= 20,
+            "the shelf should be under water: only {drowned} land cells drowned"
+        );
+    }
+
+    /// ADR Finding 85 A1 fixture 2 — evaporative floors: both halves overflow their internal col
+    /// (so the pair is reciprocal and merges), and then the UNION's `a_eq` is under the union's
+    /// spill area, so it stops BELOW the external col, endorheic, with NO spillway.
+    #[test]
+    fn the_hot_union_stops_below_its_external_col_with_no_spillway() {
+        let off = run(&C1DrainageConfig::default(), true);
+        assert_eq!(
+            off.termination.pairs_merged, 1,
+            "the HOT fixture must still build a reciprocal pair, or it tests the wrong branch: \
+             {:?}",
+            off.termination
+        );
+        let on = run(&relevel_on(), true);
+        let t = &on.termination;
+        assert!(!t.not_converged, "{t:?}");
+        assert_eq!(t.classes_merged, 1, "{t:?}");
+        assert_eq!(
+            on.spillways.len(),
+            0,
+            "an endorheic union must have NO spillway: {:?}",
+            on.spillways.len()
+        );
+        assert_eq!(t.to_ocean, 0, "{t:?}");
+        assert_eq!(t.to_own_body, 0, "{t:?}");
+        let ss = SteinSteinParams::default();
+        let n2m = c1_altitude_norm_to_metres(1.0, &ss) - c1_altitude_norm_to_metres(0.0, &ss);
+        let external = (0.518 - 0.5) * n2m;
+        let lake = on.lakes.iter().find(|l| l.base.id >= 1_000_001).expect("a below-sea lake");
+        assert!(
+            lake.level_m < external - 0.5,
+            "the union must stop BELOW the external col ({external:.1} m), got {:.1}",
+            lake.level_m
+        );
+        assert_eq!(lake.lake_type, LakeType::Endorheic, "regime: {:?}", lake.lake_type);
+    }
+
+    /// ADR Finding 85 A1 fixture 3 — the external col descends into a DETECTED SURFACE LAKE.
+    /// Finding 74 block 4: that case sets `chained_into` but not `chained_region`, so the surplus
+    /// is dropped. With `route_through_detected_lakes` the PATH still stops at the lake and the
+    /// MASS walks on to the lake's own sink.
+    #[test]
+    fn the_surplus_walks_through_a_detected_lake_instead_of_vanishing() {
+        let (w, h) = (30usize, 3usize);
+        let mut hm = GridF32::new(w, h, 0.9);
+        hm.set(0, 1, 0.20); // ocean
+        hm.set(1, 1, 0.502); // C's sill to the sea — LOWER than its sill toward the lake, so C
+        hm.set(2, 1, 0.498); // pit C spills to the OCEAN and is never reciprocal with the union
+        hm.set(3, 1, 0.505); // a DETECTED surface lake, above sea
+        hm.set(4, 1, 0.518); // the UNION's external col
+        for x in 5..=9 {
+            hm.set(x, 1, 0.498); // pit B
+        }
+        hm.set(10, 1, 0.508); // the internal col
+        for x in 11..=15 {
+            hm.set(x, 1, 0.498); // pit A
+        }
+        for (i, x) in (16..=28).enumerate() {
+            hm.set(x, 1, 0.520 + 0.006 * i as f32);
+        }
+        let unit = crate::climate::precipitation::PRECIP_MM_PER_UNIT;
+        let mut precip = GridF32::new(w, h, 0.0);
+        let temp = GridF32::new(w, h, 5.0);
+        for x in 5..=28 {
+            precip.set(x, 1, 3000.0 / unit);
+        }
+        let mut detected = vec![0u32; w * h];
+        detected[1 * w + 3] = 77;
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let ss = SteinSteinParams::default();
+        let call = |cfg: &C1DrainageConfig| {
+            below_sea_basin_lakes_infil(&hm, &clim, cfg, &ss, 30.0, Some(&detected), None)
+        };
+        // routing ON
+        let on = call(&relevel_on());
+        let t = &on.termination;
+        assert!(!t.not_converged, "{t:?}");
+        assert_eq!(t.classes_merged, 1, "the pair did not merge: {t:?}");
+        assert!(
+            t.q_routed_through_lake_m3s > 0.0,
+            "no surplus was routed through the detected lake: {t:?}"
+        );
+        assert_eq!(t.to_detected_lake, 1, "the PATH must still stop at the lake: {t:?}");
+        // routing OFF — the same water is dropped, which is the state Finding 74 named
+        let off_route = call(&C1DrainageConfig {
+            merged_union_relevel: Some(MergedUnionRelevel {
+                route_through_detected_lakes: false,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        assert_eq!(
+            off_route.termination.q_routed_through_lake_m3s, 0.0,
+            "routing fired with the flag off: {:?}",
+            off_route.termination
+        );
+        assert!(
+            off_route.termination.q_detected_lake_m3s > 0.0,
+            "the control does not exhibit the dropped surplus: {:?}",
+            off_route.termination
+        );
+    }
+
+    /// ADR Finding 85 — **the CASCADE, measured.** The first build of the fixture above had no
+    /// outlet for pit C, so the union's outflow reached C, C and the union became reciprocal, and
+    /// they merged too: `classes_merged = 2`, one class over three regions, no spillway anywhere
+    /// and `passes_used = 6`. That is the risk [`MergedUnionRelevel`] names in its docstring, and
+    /// it is kept as a test rather than as a paragraph: the fixed point must still CONVERGE, and
+    /// the whole chain collapsing into one endorheic body must be a reported state, not a hang.
+    #[test]
+    fn a_cascade_folds_the_whole_chain_and_still_converges() {
+        let (w, h) = (30usize, 3usize);
+        let mut hm = GridF32::new(w, h, 0.9);
+        hm.set(1, 1, 0.498); // pit C, with NO way out
+        hm.set(2, 1, 0.505);
+        hm.set(3, 1, 0.518);
+        for x in 4..=8 {
+            hm.set(x, 1, 0.498);
+        }
+        hm.set(9, 1, 0.508);
+        for x in 10..=14 {
+            hm.set(x, 1, 0.498);
+        }
+        for (i, x) in (15..=28).enumerate() {
+            hm.set(x, 1, 0.520 + 0.006 * i as f32);
+        }
+        let unit = crate::climate::precipitation::PRECIP_MM_PER_UNIT;
+        let mut precip = GridF32::new(w, h, 0.0);
+        let temp = GridF32::new(w, h, 5.0);
+        for x in 4..=28 {
+            precip.set(x, 1, 3000.0 / unit);
+        }
+        let mut detected = vec![0u32; w * h];
+        detected[1 * w + 2] = 77;
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let on = below_sea_basin_lakes_infil(
+            &hm,
+            &clim,
+            &relevel_on(),
+            &SteinSteinParams::default(),
+            30.0,
+            Some(&detected),
+            None,
+        );
+        let t = &on.termination;
+        assert!(!t.not_converged, "the cascade did not converge: {t:?}");
+        assert_eq!(t.classes_merged, 2, "the cascade should fold TWO pairs: {t:?}");
+        assert_eq!(t.multi_region_classes, 1, "all three regions should be one class: {t:?}");
+        assert_eq!(on.spillways.len(), 0, "a fully folded chain with no rim has no outflow");
+        assert!(t.passes_used <= 16, "{t:?}");
+        assert_eq!(t.to_own_body, 0, "the invariant must hold even in the collapsed state: {t:?}");
+    }
+
+    /// ADR Finding 85 A1 — the no-op guard: on a basin with nothing to merge, the gate must not
+    /// move one bit. `class_of` is the identity there, so this is a statement about the code
+    /// having no other side effect.
+    #[test]
+    fn the_gate_is_a_no_op_where_there_is_nothing_to_merge() {
+        let (w, h) = (24usize, 3usize);
+        let mut hm = GridF32::new(w, h, 0.9);
+        hm.set(0, 1, 0.20);
+        hm.set(1, 1, 0.510);
+        for x in 2..=8 {
+            hm.set(x, 1, 0.498);
+        }
+        for (i, x) in (9..=22).enumerate() {
+            hm.set(x, 1, 0.520 + 0.006 * i as f32);
+        }
+        let unit = crate::climate::precipitation::PRECIP_MM_PER_UNIT;
+        let mut precip = GridF32::new(w, h, 0.0);
+        let temp = GridF32::new(w, h, 5.0);
+        for x in 2..=22 {
+            precip.set(x, 1, 3000.0 / unit);
+        }
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let ss = SteinSteinParams::default();
+        let off = below_sea_basin_lakes_infil(
+            &hm,
+            &clim,
+            &C1DrainageConfig::default(),
+            &ss,
+            24.0,
+            None,
+            None,
+        );
+        let on = below_sea_basin_lakes_infil(&hm, &clim, &relevel_on(), &ss, 24.0, None, None);
+        assert_eq!(off.lake_map, on.lake_map, "the gate moved a footprint with nothing to merge");
+        assert_eq!(off.wetland, on.wetland);
+        assert_eq!(off.spillways.len(), on.spillways.len());
+        for (a, b) in off.spillways.iter().zip(&on.spillways) {
+            assert_eq!(a.points, b.points, "the gate moved a path");
+            assert_eq!(a.discharge_m3s.to_bits(), b.discharge_m3s.to_bits());
+        }
+        for (a, b) in off.lakes.iter().zip(&on.lakes) {
+            assert_eq!(a.level_m.to_bits(), b.level_m.to_bits(), "the gate moved a level");
+            assert_eq!(a.area_km2.to_bits(), b.area_km2.to_bits());
+        }
+        assert_eq!(on.termination.classes_merged, 0, "nothing to merge, yet something merged");
     }
 
     /// Navigability classification is monotone in drainage area.

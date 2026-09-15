@@ -15,7 +15,9 @@ use ymir_core::tectonics_c1::cached_product::{
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig;
-use ymir_core::tectonics_c1::drainage::{C1DrainageConfig, MergedBasinOutlet, ReciprocalRule};
+use ymir_core::tectonics_c1::drainage::{
+    C1DrainageConfig, MergedBasinOutlet, MergedUnionRelevel, ReciprocalRule,
+};
 use ymir_core::terrain::upscale::FbmUpscaleConfig;
 
 fn cfg(gate: bool) -> C1DrainageConfig {
@@ -84,4 +86,80 @@ fn none_leaves_the_key_where_it_was() {
         !json.contains("merged_basin_outlet"),
         "`None` is serialised: every cached drainage product would be invalidated for nothing\n{json}"
     );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR 0001 Finding 85 — the same two questions for `merged_union_relevel`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn cfg85(gate: bool) -> C1DrainageConfig {
+    C1DrainageConfig {
+        merged_union_relevel: gate.then(MergedUnionRelevel::default),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn the_relevel_gate_reaches_both_drainage_keys() {
+    let ss = SteinSteinParams::default();
+    let tectonic = CacheKey::root().with("seed", &10_481_999_410_520_546_993u64);
+    let ek =
+        eroded_key_full(&tectonic, &ss, &FbmUpscaleConfig::default(), &VolcanismConfig::default());
+    let key = |gate: bool| {
+        let dk = drainage_key_windowed(&ek, &cfg85(gate), &ss, None, 400.0);
+        let hk = hd_drainage_key(
+            &ek,
+            &cfg85(gate),
+            &ss,
+            45.0,
+            &PrecipParams::default(),
+            Some(40.0),
+            7.5,
+            400.0,
+        );
+        (dk.digest().to_string(), hk.digest().to_string())
+    };
+    let (d_off, h_off) = key(false);
+    let (d_on, h_on) = key(true);
+    eprintln!(
+        "   windowed {d_off} -> {d_on}
+   hd       {h_off} -> {h_on}"
+    );
+    assert_ne!(d_off, d_on, "the windowed drainage key does not see `merged_union_relevel`");
+    assert_ne!(h_off, h_on, "the HD drainage key does not see it: lakes.json would be stale");
+    // NEGATIVE CONTROL: without these the test passes on a key that folds a timestamp.
+    assert_eq!(key(false).0, d_off, "the drainage key is not stable across identical calls");
+    assert_eq!(key(true).1, h_on, "the HD drainage key is not stable across identical calls");
+    // and the two gates of Findings 84 and 85 must not collide into one digest
+    let both = C1DrainageConfig {
+        merged_basin_outlet: Some(MergedBasinOutlet { rule: ReciprocalRule::LevelThenMerge }),
+        merged_union_relevel: Some(MergedUnionRelevel::default()),
+        ..Default::default()
+    };
+    let d_both = drainage_key_windowed(&ek, &both, &ss, None, 400.0).digest().to_string();
+    assert_ne!(d_both, d_on, "the Finding 84 and 85 gates are indistinguishable in the key");
+    assert_ne!(d_both, d_off);
+}
+
+#[test]
+fn relevel_none_leaves_the_key_where_it_was() {
+    let json = serde_json::to_string(&C1DrainageConfig::default()).expect("serialise");
+    assert!(
+        !json.contains("merged_union_relevel"),
+        "`None` is serialised: every cached drainage product would be invalidated for nothing
+{json}"
+    );
+    // and `max_passes` reaches the key, or a re-bound is served stale
+    let ss = SteinSteinParams::default();
+    let tectonic = CacheKey::root().with("seed", &10_481_999_410_520_546_993u64);
+    let ek =
+        eroded_key_full(&tectonic, &ss, &FbmUpscaleConfig::default(), &VolcanismConfig::default());
+    let with = |p: u32| {
+        let c = C1DrainageConfig {
+            merged_union_relevel: Some(MergedUnionRelevel { max_passes: p, ..Default::default() }),
+            ..Default::default()
+        };
+        drainage_key_windowed(&ek, &c, &ss, None, 400.0).digest().to_string()
+    };
+    assert_ne!(with(16), with(8), "`max_passes` does not reach the key");
 }

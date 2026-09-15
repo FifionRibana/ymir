@@ -10635,3 +10635,429 @@ survivors cannot be given a threshold until a real coast is on disk.
 more real coastline rasters (GSHHG or Natural Earth; Brittany, Galicia, southern Norway) at
 48.83 m over a 400 km window. Without them B2 cannot set a single threshold, and the campaign has
 now twice written a criterion in advance that the defect passed.
+
+## Finding 85 — the round asked for Finding 39's first cut; the shape that survives is "one water body, one region"
+
+One code change, gated `None`. Rule 11 changed the design before a line was written, for the
+second round running.
+
+### Rule 11 + 11b, three clauses
+
+`a_eq` **25** (first L1105) · `net_evap` **18** (L1636) · `Exorheic` **10** (L840) · `level_m` **8**
+(L5484) · `sill` **101** (L659) · `priority_flood` **0 — nothing found**, and `priority-flood`
+**14** (L673): the dossier hyphenates · `re-flood` **2** (L10439, my own Finding 84) ·
+`equilibrium` **14** (L337) · `SAME_WATER_BODY_TOL_M` **4** (L2926).
+11b: `365.62` **6**, `365,62` **0**, `365 62` **0** — all six are Finding 84's, so the figure is
+mine and one round old.
+
+**The third clause of rule 11b earns its keep immediately**: `priority_flood` returns nothing and
+`priority-flood` returns fourteen hits starting at Finding 13. A word can be separated the way a
+number can.
+
+**And the decisive hit is L1618, Finding 39 — which already measured the seam this round asked for
+and rejected it.**
+
+> *"The first cut of the law re-opened the over-flood on the loaded terrain (**MAX level 613 m,
+> claimed/valid 1.952×, 3 lakes over-flooded**): in a humid climate net_evap is 0 everywhere, so
+> a_eq is ∞ and EVERY basin 'fills to its sill' — and Finding 38's `wc != 2` escape test ABSORBED
+> neighbouring below-sea regions, pushing the sill up to the 613 m continental ocean pass. Fix: the
+> escape is the lowest neighbour OUTSIDE THIS region's OWN component."*
+
+The round's A0 is that first cut, almost word for word: *"`a_eq` ≥ l'aire disponible sous le rebord
+externe → le niveau monte jusqu'au seuil externe et l'union déborde"*. With `net_evap = 0` — which
+Finding 84 measured as the humid bed's actual state, Σ evaporation **0.00 m³/s** over twenty basins
+— `a_eq` is infinite, so that condition is **always true** and every merged body climbs to whatever
+external col it can reach. That is how a lake got to 613 m.
+
+Two more antecedents, read before writing:
+
+* **L1105 (Finding 29)** already named the invariant Finding 84's stop rule tripped: *"declares
+  exorheic from `a_eq ≥ a_spill` … WITHOUT tracing a spill path to a sink, so the 'exorheic' label
+  has no outlet behind it. Verdict **H2**."* Exorheic-without-an-outlet is not a new regression; it
+  is a defect class this dossier has carried since Finding 29 and closed by construction at
+  Finding 39 (*"below_sea now labels Exorheic only when `traced.is_some()`"*). Finding 84 re-opened
+  it by dropping a spillway after that decision was taken.
+* **Finding 39's precaution 3** already holds the level↔area table: *"`fcells` (floor→sill) sorted
+  by elevation IS the area-vs-level table: `area(level = sorted[i]) = (i+1)·cell_km2`; the
+  endorheic level is `sorted[⌊a_eq/cell⌋−1]`. No separate sweep, monotone, non-iterative."*
+  **So the round's "la relation niveau ↔ aire … à construire par flood incrémental" does not need
+  building. It has existed since Finding 39 and the code reads it.**
+
+### A0 — the physics, declared, and it is not the round's
+
+**The level is not raised by hand, and no tolerance on `a_eq` is introduced.** What changes is
+*which cells are "this region's own component"*.
+
+A reciprocal pair whose free surfaces are equal within `SAME_WATER_BODY_TOL_M` is **one water
+body** — Finding 40b's rule, and Finding 84 measured the gap at exactly **0.0000 m** on every pair,
+structurally, because both halves fill to the shared col. This round makes that declaration
+operative: the pair becomes one **CLASS**, and the next pass of Finding 40's fixed point floods the
+class. Then, with no new physics and no new constant:
+
+* the sill is the class's lowest **EXTERNAL** col — not the internal one, and **not the continental
+  pass**, because the exclusion set is the class and not all below-sea water. Finding 39's
+  refinement is preserved exactly;
+* the level follows from Finding 39's law on the class's own bowl and inflow, read off the bowl's
+  own hypsometry (precaution 3);
+* the footprint **is** that bowl, so `claimed == valid` survives by construction (precaution 2) —
+  the over-flood net that caught Finding 38b still stands, and it is measured below rather than
+  assumed.
+
+**The three cases the round asked me to declare:**
+
+| the external col descends into | what happens |
+|---|---|
+| the **ocean** | `wc == 1`: terminal. The surplus leaves the model. |
+| **another below-sea region** | Finding 40 already routes it — `chained_region` feeds `next_extra[class]` on the next pass, and if the two turn out to be reciprocal they merge in their turn |
+| a **DETECTED surface lake** | Finding 74 block 4's third state, *"sets `chained_into` but NOT `chained_region`, so the surplus is dropped"*, measured by Finding 84 at **85.86 m³/s**. The round said do not let it be lost. So the **PATH still stops at the lake** (Finding 39 forbids running a spillway under a basin it reaches) and the **MASS walks on**, route-only, to the lake's own sink. Separating the displayed path from the mass routing is the distinction Finding 74's wording drew and the code never made. |
+
+**And the risk, named before it is measured: the merge can CASCADE.** A class's new, higher sill can
+put it in a reciprocal pair with a third region, which merges, which raises the sill again. Every
+round of that is legitimate on its own terms, and the end of the chain could still be the
+continental pass Finding 39 fought off. That is what `max_passes` bounds, what the MAX-level and
+footprint-above-level guards are for — and it is **exhibited by a fixture**, not left as a
+paragraph (`a_cascade_folds_the_whole_chain_and_still_converges`: three regions, two merges, six
+passes, converged, no outflow anywhere).
+
+### A1 — the seam and its seven guards
+
+`C1DrainageConfig::merged_union_relevel: Option<MergedUnionRelevel { max_passes,
+route_through_detected_lakes }>`, `#[serde(default, skip_serializing_if = "Option::is_none")]`,
+default `None`.
+
+The implementation is one indirection: a `class_of: Vec<u32>` over regions, **the identity while
+the gate is off**, read at the three places the scan asks "which region is this?" — so the `None`
+path takes no branch and is byte-identical by construction rather than by test. The reciprocal
+level rule moves **inside** the pass loop (where it can act) and only folds classes; the
+level-differing case is still resolved after the loop, exactly as shipped. Convergence now requires
+both `next_extra` and the class partition to stop moving, and **exhausting `max_passes` is an
+assertion failure with the gate on** — a half-folded partition means the reported levels come from
+a half-solved state.
+
+| guard | what it proves |
+|---|---|
+| `relevel_none_leaves_the_key_where_it_was` | `None` serialises away; `max_passes` reaches the key |
+| `the_relevel_gate_reaches_both_drainage_keys` | `Some` moves both drainage keys, with a stability control, **and** the Finding 84 and 85 gates are distinguishable in the digest |
+| `the_union_stays_frozen_without_the_gate` | **the negative control, first**: at `None` the union sits at the INTERNAL col, one id over two bodies, its spillway ends in itself, nothing reaches the sea |
+| `the_wet_union_rises_to_its_external_col_and_reaches_the_sea` | `net_evap = 0` ⇒ the union rises to the EXTERNAL col, one class, ONE spillway, to the sea; ≥ 20 land cells of shelf drowned |
+| `the_hot_union_stops_below_its_external_col_with_no_spillway` | evaporative floors ⇒ both halves overflow (so the pair is reciprocal and merges) and the union then stops BELOW the external col, `Endorheic`, **zero** spillways |
+| `the_surplus_walks_through_a_detected_lake_instead_of_vanishing` | the path stops at the lake, the mass reaches the third basin; with the flag off the same water is counted as dropped |
+| `a_cascade_folds_the_whole_chain_and_still_converges` | the cascade, measured: 2 merges, one class over three regions, 6 passes, converged |
+| `the_gate_is_a_no_op_where_there_is_nothing_to_merge` | footprints, levels, areas, paths and discharges bit-identical where no pair exists |
+
+The fixtures needed a **shelf** above sea level around the two pits, and the reason is worth
+recording: without it the endorheic-after-merge case has almost no window. Both halves must already
+overflow for the pair to be reciprocal, so the union's `a_eq` is at least the sum of two
+half-spill areas, while a union of two similar pits plus their col is barely more than twice a half.
+**The physics only has room for "merged and still closed" when the union's rim encloses
+substantially more area than its halves do** — which is a statement about real basins, not about
+the fixture.
+
+### A2 — the measurement, and its first result is about the shipped product, not about the seam
+
+8192², production field (base-level bound ON), two beds. Eroded FNV-1a **`0x1a022c8785c47eed`** —
+Finding 81's bounded field, unchanged; breached `0xb982e9b16f976707`; **ocean cells 55 409 561,
+identical**, because the coastal mask is derived from `field` and the gate is not on that path.
+u16 step **0.1473 m**.
+
+| humid | **GATE OFF** (shipped) | **GATE ON** |
+|---|---|---|
+| budget m³/s | 474.7 | 474.7 |
+| `Watercourse` → sea | 82 / 81.0 | 82 / 81.0 |
+| `Spillway` → ocean | 5 / 130.9 | 5 / **211.4** (+61 %) |
+| `Spillway` → chained | 8 / **522.1** | 2 / **20.1** (−96 %) |
+| **TERMINAL** | 211.9 (**×0.446**) | 292.4 (**×0.616**) |
+| **HOLE** | **262.7** | **182.2** (−30.7 %) |
+| Σ evaporation | **0.00** | **0.00** |
+| paths ENDING at a detected lake | 85.86 | 98.12 |
+| of which really DROPPED | **98.12** | **17.60** |
+| routed THROUGH a lake to its sink | 0.00 | **92.78** |
+| spillways into their OWN body | 3 / **501.99** | **0 / 0.00** |
+| **fixed-point passes** | **16** (the safety-net bound) | **8** |
+| class merges / multi-region classes | 0 / 0 | **7 / 3** |
+| pairs merged AFTER the loop | 3 | **0** |
+| basins | 17 | 13 |
+| MAX below-sea level / depth | **614.9 / 623.6 m** | **614.9 / 623.6 m** |
+| 🛑 footprint ABOVE level | **0** | **0** |
+| 🛑 exorheic WITHOUT outlet | **1** | **1** |
+| max `Watercourse` m³/s / cells | 19.243 / 3.37 | **19.243 / 3.37** |
+| max `Spillway` m³/s / cells | **360.34 / 14.58** | **92.97 / 7.40** |
+| widths p50 / max / > 1 cell | 0.518 / 3.37 / 10.7 % | 0.516 / 3.37 / 10.8 % |
+
+| arid-hot | **GATE OFF** | **GATE ON** |
+|---|---|---|
+| budget | 137.7 | 137.7 |
+| `Spillway` → chained | 4 / 34.0 | 2 / **4.2** |
+| **TERMINAL / HOLE** | 13.8 (×0.101) / **123.8** | 13.8 (×0.101) / **123.8 — unchanged** |
+| Σ evaporation | 47.87 | 47.94 |
+| own body | 2 / 29.80 | **0 / 0.00** |
+| **passes** / merges / multi | **16** / 0 / 0 | **11** / 6 / 2 |
+| basins | 15 | 14 |
+| MAX level / depth | 19.4 / 27.7 | 19.4 / 27.7 |
+| exorheic WITHOUT outlet | 0 | 0 |
+| max `Watercourse` | 1.160 / 0.83 | **1.160 / 0.83** |
+| max `Spillway` | 29.11 / 4.14 | **4.09 / 1.55** |
+
+> **🛑 THE FIRST RESULT IS NOT ABOUT THE SEAM: the shipped Finding 40 fixed point DOES NOT
+> CONVERGE.** `passes_used = 16` at both beds with the gate off — sixteen is the loop's own bound,
+> the *"safety net"* Finding 40 described over a graph it argued was a DAG. It is not a net here,
+> it is the exit. **Every below-sea figure in Findings 71 through 84 — the terminal table, the
+> hole, the basin counts, the 360.34 — was read from a state that had not converged**, and I did
+> not think to print the pass count until this round. With the gate on it converges in **8** passes
+> (humid) and **11** (arid), because folding a reciprocal pair removes the oscillation that was
+> keeping it spinning: Finding 74's L8211 already noted *"such a pair does not converge exactly
+> (88 468 vs 88 449)"* and nobody followed the sentence to its conclusion.
+>
+> **The hole does NOT close.** Humid 262.7 → 182.2 (−30.7 %); **arid 123.8 → 123.8, not one
+> tenth.** The round's last line is therefore the operative one, and the answer is in the balance
+> below.
+>
+> **Nothing is drowned, and this is where both predictions die.** New water cells: **730** (humid),
+> **737** (arid), essentially all of them land — **1.7 km² at both beds**. I predicted 1 000 to
+> 8 000 km²; the round predicted over 1 000 km² and called it "la ligne qui fera discuter la
+> promotion". It is **three orders of magnitude** out. And in the humid bed the footprint *shrinks*:
+> 2 075 082 → 2 003 166 cells, with **72 646 cells freed**.
+>
+> **The over-flood guard holds and it also tells us something about the product.** `footprint ABOVE
+> level = 0` at both gates, so `claimed == valid` — Finding 39's net is intact and the seam does not
+> re-open Finding 38b. And the MAX below-sea level is **614.9 m with a 623.6 m depth in the SHIPPED
+> product, unchanged by the gate.** That is not a regression: it is Finding 39's own
+> justified-by-inflow case (*"a deep-rimmed basin fed by rivers in a HUMID climate fills to the col
+> and spills — that high level is now JUSTIFIED BY INFLOW"*). But it is worth writing down that the
+> production continent carries a 614.9 m inland water surface over a floor 8.7 m below sea level,
+> and that no round since Finding 39 has looked at it.
+>
+> **Finding 84's invariant is satisfied by this seam, and better.** Spillways into their own body go
+> 3 → 0 (humid) and 2 → 0 (arid) — without Finding 84's gate, without retracing anything and
+> **without dropping a single spillway**: `pairs merged AFTER the loop` goes 3 → 0, i.e. the
+> post-loop merge has nothing left to do because the pairs were already one class. **Finding 85
+> subsumes Finding 84**, which is why `exorheic WITHOUT outlet` stays at **1** instead of going to 2.
+>
+> ⚠️ **The round's stop rule "exorhéique-sans-exutoire > 0" is RED — on the shipped state.** It is 1
+> with the gate off and 1 with it on, in the humid bed. It has been 1 since Finding 81 measured it,
+> and Finding 29 (L1105) diagnosed the class in 2024 terms as **H2**. So the rule as written fires
+> on the product, not on the change. **No promotion**, which is the round's instruction and also
+> mine: a seam that does not close the hole should not ship on the strength of a pass count.
+>
+> **Finding 74's third termination state, recovered.** The surplus of a spillway whose path ends at
+> a detected surface lake was dropped: **98.12 m³/s**. Routing the MASS on to the lake's own sink
+> while the PATH still stops at the lake recovers **92.78** and leaves **17.60** genuinely dropped —
+> **82 %**. ⚠️ "paths ENDING at a lake" is a different population (path endings in the final
+> spillway set, after the post-loop merge drops one) and must not be subtracted from the other two.
+>
+> **And the river the round expected to widen gets thinner.** max `Watercourse` is bit-identical
+> (19.243 m³/s, 2 024 km², **3.37 render cells**) — my prediction, and the round's own, both ✓. The
+> biggest `Spillway` goes **360.34 → 92.97 m³/s**, i.e. **14.58 → 7.40 render cells**. The round
+> predicted the biggest spillway would exceed 7 cells and it does — but as a **fall from 14.58**,
+> not a gain. Worth recording for Finding 69: at gate OFF the widest blue line on the map is
+> already **three times** the 4–5-cell target, and it is a spillway, not a river.
+
+#### The two lines of that table I had to correct before publishing
+
+| | first print | corrected |
+|---|---|---|
+| surplus routed THROUGH a detected lake | **729.98 m³/s** | **92.78 m³/s** |
+| level rise, humid: p50 / p90 / max | **49.04 / 244.92 / 604.46 m** | **0.21 / 0.29 / 0.29 m** |
+
+> **Both were my instruments, not the model.** The first accumulated a per-pass quantity across
+> every pass of a fixed point, which is how a routed volume came out at 729.98 against a 474.7 m³/s
+> budget — the number refuted itself and I fixed the counter (reset each pass; only the converged
+> pass survives).
+>
+> The second is **Finding 81's trap, in its own dossier, one round later**: I paired basins **by
+> id**, and below-sea ids are assigned by scan order, so folding 17 basins into 13 shifts every id
+> after the first merge. "Level 10.43 → 614.89" was two different basins. Re-paired by **FLOOR
+> CELL** — the lowest cell of the footprint, which is stable through a merge — the real rise is
+> **0.29 m at most, on 5 basins of 17** (arid: 0.29 m on 2 of 15).
+>
+> Finding 81 withdrew a claim over exactly this and wrote *"'id 1000056 is absent' is a statement
+> about a label, not about a place"*. It cost one extra 8-minute run to catch it this time instead
+> of a retraction, which is the whole point of writing the lesson down.
+
+### A3 — the price, and there is almost none
+
+| | humid | arid |
+|---|---|---|
+| **fixed-point passes, OFF → ON** | **16 → 8** | **16 → 11** |
+| class merges / multi-region classes | 7 / 3 | 6 / 2 |
+| basins | 17 → 13 | 15 → 14 |
+| **levels moved (of the paired population)** | **5 of 17** | **2 of 15** |
+| **rise p50 / p90 / max** | **0.21 / 0.29 / 0.29 m** (2.0 u16 steps) | **0.29 / 0.29 / 0.29 m** |
+| footprint cells | 2 075 082 → 2 003 166 | 557 658 → 558 392 |
+| **terrain drowned** | 730 cells = **1.7 km²** | 732 cells = **1.7 km²** |
+| cells freed | 72 646 | 3 |
+| MAX below-sea level | 614.9 m → **614.9 m** | 19.4 → **19.4 m** |
+| footprint above level (over-flood) | 0 → **0** | 0 → **0** |
+
+The merge is visible in the paired table as five OFF basins — `1000006/7/8/9/11` — all landing in
+**one** ON basin at level 0.44 m and 47.581 km²: five water bodies the level rule had already
+declared to be one, finally treated as one.
+
+> **"Changement de monde" is not reached and is not close.** The round expected a p90 above 30 m
+> and over 1 000 km² drowned, and reserved the phrase for that case; I expected worse. The answer
+> is **0.29 m and 1.7 km²**. The reason is the one Finding 39 built the law around: a reciprocal
+> pair spills over a **shared col**, so the union's external sill is the *next* col up the same
+> rim, not a continental pass — and on this seed the next col up is a fraction of a metre higher.
+> **Finding 39's escape refinement is doing exactly what it was written to do, and the merge does
+> not defeat it.**
+
+### The balance — where the water actually goes, which is the round's last question
+
+Per-basin mass balance at the fixed point: `inflow − evaporation − spillway out`.
+
+| | basins | Σ inflow | Σ evap | Σ out | **Σ RESIDUAL** |
+|---|---|---|---|---|---|
+| humid, **OFF** | 20 | 1 271.8 | **0.00** | 751.1 | **520.7** (40.9 % of inflow) |
+| humid, **ON** | 13 | 407.1 | **0.00** | 341.9 | **65.2** (16.0 %) |
+| arid, **OFF** | 17 | 110.7 | 47.87 | 34.7 | **28.1** (25.4 %) |
+| arid, **ON** | 14 | 51.3 | **47.94** | 4.9 | **−1.5** (−2.9 %) |
+
+The residual is not spread: it sits in a handful of named basins.
+
+| bed / gate | id | inflow | out | residual | `exorheic` | `a_eq` km² | `a_spill` km² |
+|---|---|---|---|---|---|---|---|
+| humid OFF | 1000002 | **360.34** | **0.00** | **360.34** | **true** | 173.2 | 173.199 |
+| humid OFF | 1000010 | 155.72 | 0.00 | **155.72** | **true** | 0.0 | 0.007 |
+| humid **ON** | 1000001 | 45.04 | 0.00 | **45.04** | **false** | 660.8 | 660.808 |
+| humid **ON** | 1000003 | 20.13 | 0.00 | **20.13** | **false** | 0.0 | 0.012 |
+| arid OFF | 1000007 | 33.20 | 0.00 | **33.20** | **true** | **917.5** | **0.007** |
+
+> **So here is where the water goes, and the shipped answer is Finding 29's H2 verbatim.** At gate
+> OFF the residual sits in basins flagged **`exorheic = true` with `out = 0.00`** — a basin that
+> declares it overflows and has no spillway. Finding 29 (L1105) diagnosed that exact class:
+> *"declares exorheic from `a_eq ≥ a_spill` … WITHOUT tracing a spill path to a sink, so the
+> 'exorheic' label has no outlet behind it. Verdict H2."* The worst of them, arid `1000007`, is a
+> **0.007 km²** basin with an equilibrium area of **917.5 km²** and no outflow.
+>
+> **With the gate on, two things happen and the second is the important one.** Σ basin inflow falls
+> **1 271.8 → 407.1**, because the chain was counting the same water through several labels of one
+> water body; and the residual falls **520.7 → 65.2 (−87 %)** in the humid bed and **28.1 → −1.5**
+> in the arid bed. **The arid below-sea balance CLOSES**, to −2.9 %, by evaporation — which is
+> exactly the mechanism the round predicted for the arid bed, and the one prediction of the round's
+> that lands.
+>
+> **And yet the Finding 74 "HOLE" metric does not move in the arid bed at all: 123.8 → 123.8.** The
+> two instruments disagree because they measure different things. `TERMINAL` counts
+> `Watercourse → sea` plus `Spillway → ocean`; **it does not count evaporation and it does not
+> count endorheic termination.** In an arid climate that is most of the answer. **A large part of
+> the Finding 74 hole has always been a metric artefact, and the per-basin mass balance is the
+> instrument that shows it.** That is not a small correction to the campaign: the hole has been the
+> headline number since Finding 71.
+>
+> **What is NOT an artefact is the humid 65.2 m³/s**, and it is now localised: two basins,
+> `exorheic = false` (honestly endorheic), `a_eq` equal to `a_spill` **to the third decimal**
+> (660.808 against 660.808), in a climate with **Σ evaporation = 0.00**. They are brim-full, they
+> cannot spill because no outlet traces, and they cannot evaporate because it rains more than it
+> evaporates. **That is the physical inconsistency Finding 84 named, down by 87 % and reduced to
+> two names.** It is not closed and no seam in the accounting will close it.
+>
+> **The detected-lake leak, quantified and mostly recovered.** Surplus routed through a detected
+> lake to its own sink: **92.78 m³/s**; still dropped for want of a receiver: **17.60 m³/s**,
+> against **98.12** at gate OFF. So Finding 74's third termination state loses **17.60 instead of
+> 98.12 — 82 % recovered.** ⚠️ The row "paths ENDING at a lake" (85.86 OFF / 98.12 ON) is a
+> **different population**: it counts path endings in the final spillway set, after the post-loop
+> merge has dropped one, while the dropped-surplus figure comes from the converged pass. The two
+> must not be subtracted from each other.
+
+### B0 — the data is still not here
+
+Searched again: `*.shp`, `*gshhg*`, `*gshhs*`, `*natural_earth*`, `*ne_10m*`, `*ne_50m*` — nothing
+outside `.git`, and no file in the tree changed in the last two hours outside the scratchpad. **B2
+does not run.** One line, as the round asked. My prediction (85 %) holds.
+
+### Score
+
+Predictions written and dated **2026-09-15 before the first measurement**; non-blind on Findings
+73–84 and the bench sources, blind on every figure, and blind on Findings 39/40 beyond the two
+fragments Finding 84 quoted — which the rule-11 grep then made moot by handing me Finding 39's own
+verdict on the round's design.
+
+**Mine.** "Finding 40 holds the chaining fixed point, Finding 39 holds `a_eq` and the hypsometry,
+and no line raises a level above the sill the flood found" **✓** (and Finding 39's precaution 3
+already holds the level↔area table, so the round's "à construire" was already built) · the seam is
+a re-flood of the union with no new physics **✓** · "the two humid unions overflow" — **✗**, they do
+not: the merged class is `exorheic = false` and stays brim-full · "the hole does not close to under
+5 m³/s, and the reason is a CASCADE of 1 to 3 rounds" — **the conclusion ✓** (it does not close:
+182.2 humid, 123.8 arid) **and the count ✗** (7 class merges over 8 passes, not 1–3) · "a humid
+residual hole of 20 to 90 m³/s" — **✓ on the mass balance** (65.2) and **✗ on the F74 metric**
+(182.2), which is the distinction I did not draw when I wrote it · "the big union's flood finds no
+escape because its col leads into another below-sea region" **✓** · **"level rise p50 5–40 m,
+p90 20–120 m" ✗✗✗** (0.21 / 0.29) · **"1 000 to 8 000 km² drowned" ✗✗✗** (1.7 km²) · **"the words
+'changement de monde' ARE reached" ✗** · "arid closes by evaporation, drowned < 500 km², at most one
+new spillway" **✓✓✓** (−1.5 m³/s residual, 1.7 km², zero new spillways) · exorheic-without-outlet 0
+**✗** (1 humid, and it was already 1) · field and climate identical, ocean mask unmoved **✓** ·
+**"max `Watercourse` identical to the bit: 19.243 m³/s, 3.37 cells" ✓ exactly** · "the biggest
+`Spillway` becomes 300–420 m³/s reaching the ocean, 8–11 cells" **✗✗** (92.97 m³/s, 7.40 cells —
+and it FALLS from 14.58) · "fixed point in 2 to 6 iterations" **✗** (8 and 11) · B0 **✓**.
+
+**The round's.** "Finding 40 has the chaining loop; Finding 39 has `a_eq` but no code raises a level
+beyond the detection sill — that is the missing line" **✓, and it is the line Finding 39 deliberately
+did not write** · "the hole CLOSES in the humid bed, residual < 5 m³/s" **✗** · "both unions
+overflow, since `net_evap = 0` means they cannot stop" **✗** — they are brim-full endorheic, because
+no outlet traces and Finding 39 demotes an untraced overflow · "the main union rises 5 to 20 m and
+drowns 500–3 000 km²" **✗✗✗** (0.29 m, 1.7 km²) · "its surplus reaches the ocean in under three
+links" **✗** · "the biggest `Spillway` then exceeds 7 cells at ratio 7.5" **✓** (7.40) **— but as a
+fall from 14.58, not a gain** · exorheic-without-outlet 0 **✗** · "fixed point in ≤ 4 passes" **✗**
+(8, 11) · "max `Watercourse` identical to the bit" **✓** · **"the arid hole closes by EVAPORATION,
+the basins rise to `a_eq` and stop, < 200 km² drowned, no new spillway" ✓✓✓✓ — the round's best
+prediction of the campaign, four for four** · "p90 under 30 m" ✓ in the letter (0.29) and ✗ in the
+spirit — it was offered as the reassuring half of a change the round expected to be large · "the
+drowned terrain will be the line that makes the promotion arguable" **✗**: 1.7 km² argues nothing.
+
+**Meta holds on both sides.** And the round's arid paragraph is the first time in this campaign that
+one side has called four consecutive numbers right.
+
+### Standing
+
+**One code change, gated `None`, eight guards, NOT promoted.** The round's stop rule
+"exorhéique-sans-exutoire > 0" is red — **on the shipped state, at both gate positions**. It has
+been 1 since Finding 81 measured it and Finding 29 diagnosed the class; the seam leaves it at 1
+rather than taking it to 2 as Finding 84's did. Promotion is refused on that, and on the plainer
+ground that a seam which does not close the hole should not ship on the strength of a pass count.
+
+**Three results this round produced that were not asked for:**
+
+1. **The shipped Finding 40 fixed point does not converge.** `passes_used = 16` — the loop's own
+   safety-net bound — at both beds. **Every below-sea figure in Findings 71 to 84 was read from a
+   non-converged state**, and no round printed the pass count. With the gate on it converges in 8
+   and 11.
+2. **A large part of the Finding 74 "hole" is a metric artefact.** `TERMINAL` counts
+   `Watercourse → sea` + `Spillway → ocean` and counts neither evaporation nor endorheic
+   termination. The arid below-sea mass balance **closes to −1.5 m³/s** with the gate on while the
+   hole metric does not move one tenth. The hole has been the campaign's headline number since
+   Finding 71.
+3. **The production continent carries a below-sea water body at 614.9 m with a 623.6 m depth**, at
+   both gate positions, with zero cells above its own level. That is Finding 39's
+   justified-by-inflow case and not a regression — and no round since Finding 39 has looked at it.
+
+**What remains, and it is small and physical.** 65.2 m³/s in the humid bed, in **two** basins whose
+`a_eq` equals their `a_spill` to the third decimal, which cannot spill because no outlet traces and
+cannot evaporate because it rains more than it evaporates. Down 87 % from 520.7. **No accounting
+seam will close that**; it needs either an outlet the geometry does not have or a climate that can
+destroy the water.
+
+**Owed**: whether `exorheic = true` should be allowed at all when `out = 0.00` — the invariant
+Finding 29 named H2, Finding 39 closed *"by construction"*, and this bench finds violated in the
+shipped product at 520.7 m³/s. That is the next seam and it is one line of classification, not a
+model change.
+
+### À VALIDER VISUELLEMENT
+
+**Non-empty, but not the panel the round expected — because nothing rises.** The levels move by
+**0.29 m** and the drowned terrain is **1.7 km²**: at 48.83 m per cell that is 730 cells scattered
+over a 400 km map, and no eye will find them. The round's binary question — *"un lac qui a trouvé sa
+sortie, ou un continent inondé ?"* — has a third answer the round did not offer: **neither, the
+water body barely moved.**
+
+What IS visible, and worth the toggle at two places:
+
+| where | what changes | the counts beside it |
+|---|---|---|
+| the group of five basins that become one (ON id `1000004`, level 0.44 m, **47.581 km²**, 19 957 cells) | **five separate lakes become one lake** — different outlines, one colour, one label | basins 17 → 13; the five OFF ids `1000006/7/8/9/11` all land in one |
+| the biggest spillway | the widest blue line on the map **halves**: 360.34 → 92.97 m³/s, **14.58 → 7.40 render cells** at ratio 7.5 | max `Watercourse` unchanged at 3.37 cells, so the comparison is spillway against river |
+
+**The binary question, restated so it can be answered:** at the first place — *is it one lake or
+five?* At the second — *was the 14.58-cell line a river or a canal, and is the 7.40-cell one
+better?* That second one matters beyond this round: **at gate OFF the widest watercourse-looking
+line in the product is a spillway three times the 4–5-cell target of Finding 69**, and nobody has
+looked at it.

@@ -377,6 +377,34 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 > `None`. Et le retracé referme un 2-cycle explicite (136,38 aller, 19,37 retour) parce qu'il
 > tourne APRÈS le détecteur de réciprocité : une couture complète itère les deux.
 >
+> ⛔ **ET LE POINT FIXE LIVRÉ NE CONVERGE PAS (Finding 85).** `C1DrainageConfig::merged_union_relevel`
+> (gatée `None`) fait d'une paire réciproque **une seule région** pour la passe suivante, donc le
+> bilan du F39 voit l'union. Résultat mesuré à 8192², deux lits :
+>
+> * **passes du point fixe 16 → 8 (humide) et 16 → 11 (aride).** Seize est la borne de sécurité
+>   de la boucle : **le produit livré en sort par la borne, pas par la convergence.** Tous les
+>   chiffres sous-marins des F71 à F84 ont été lus dans un état non convergé ;
+> * déversoirs dans leur propre corps **3 → 0** (humide) et **2 → 0** (aride), sans rien retracer
+>   et sans supprimer un seul déversoir — **le F85 subsume le F84** et laisse
+>   exorhéique-sans-exutoire à 1 au lieu de 2 ;
+> * **le trou du F74 ne ferme pas** : humide 262,7 → 182,2 (−31 %), **aride 123,8 → 123,8** ;
+> * mais **le BILAN par cuvette ferme** : résidu Σ humide **520,7 → 65,2 m³/s (−87 %)**, aride
+>   **28,1 → −1,5** — l'aride se ferme **par évaporation**. **Une grande part du « trou » est un
+>   artefact de métrique** : `TERMINAL` ne compte ni l'évaporation ni la terminaison endorhéique ;
+> * **le prix est nul** : niveaux +**0,29 m au plus** (5 cuvettes sur 17), terrain noyé **1,7 km²**,
+>   `footprint above level` 0 → 0, masque océan inchangé, max `Watercourse` **bit-identique**
+>   (19,243 m³/s, 3,37 cases). Le plus gros `Spillway` **baisse** : 360,34 → 92,97 m³/s, **14,58 →
+>   7,40 cases** — à porte fermée la plus large ligne bleue du produit est un déversoir à **trois
+>   fois** la cible 4–5 cases du F69, et personne ne l'a regardée ;
+> * **le F29 (H2) est vivant dans le produit** : à porte fermée le résidu est porté par des
+>   cuvettes marquées `exorheic = true` avec `out = 0,00` — dont une de **0,007 km²** avec une aire
+>   d'équilibre de **917,5 km²**. Le F39 disait cette classe fermée « par construction ».
+>
+> **⇒ Rien n'est promu (stop rule : exorhéique-sans-exutoire = 1, ROUGE sur l'état livré, aux deux
+> positions de porte).** Reste 65,2 m³/s en humide dans **deux** cuvettes dont `a_eq` égale
+> `a_spill` à la troisième décimale, qui ne peuvent ni déborder (aucun exutoire ne se trace) ni
+> évaporer (il pleut plus qu'il n'évapore). **Aucune couture comptable ne fermera cela.**
+>
 > ✅ **CRITÈRE ATTEINT (Finding 80) — pour la première fois du chantier.**
 > `StreamPowerConfig::base_level_floor`, **gatée `None`, octet-identique**, borne la CIBLE de
 > relaxation : `h_r_eff = max(h_r, min(h_o, sea + ε))`. À ε = 0,5 m (3,4 pas u16) :
