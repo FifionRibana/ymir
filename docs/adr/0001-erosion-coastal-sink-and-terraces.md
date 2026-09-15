@@ -6993,6 +6993,12 @@ over 999 is a negative that means nothing**, and recording it as a negative is w
 grepping at all, because it licenses "never measured" about something measured three days
 earlier. Grep both forms, or grep the leading digits with a domain word.
 
+**Second clause (Finding 84) — and the DECIMAL separator does the same thing in reverse.**
+This dossier is written in English and uses a decimal **point**; the rounds are written in
+French and use a **comma**. `1 052,4` returns nothing; `1052.4` returns the Finding 74 table the
+figure came from. Two consecutive rounds, two near-misses, one command: **grep the value in the
+dossier's number format AND in the prompt's.**
+
 ### Method rule 12 — the export is authoritative for the SYMPTOM; a MECHANISM is measured at the stage where it acts
 
 Findings 76 and 77 hunted a coastal mechanism on the delivered field and concluded, twice, that it
@@ -10229,3 +10235,403 @@ not re-asked.
 One thing is worth stating rather than shown: **the Richardson result argues that the author's eye
 cannot be replaced by this instrument**, since the instrument would have exonerated the fringe. The
 next chantier's acceptance will still need a look, whatever the curve says.
+
+## Finding 84 — the leak is not a bookkeeping error: 365.62 m³/s enters a basin the model can neither drain nor evaporate
+
+One code change: a gated seam in the below-sea stage. **Stop rule A fired** (a lake invariant
+regresses), so nothing is promoted and the gate stays `None`.
+
+### Rule 11 + 11b, and it decided the round's design before a line was written
+
+`below_sea_basin_lakes_infil` **10** (first L2822) · `break_reciprocal_spill_cycles` **4**
+(L8211) · `chained_region` **4** (L8070) · `label` **78** (L108) · `components` **22** (L837) ·
+`sill` **91** (L659) · `curvature` **3** (L426) · `normal` **21** (L310) · `anisotropy` **7**
+(L292).
+
+11b, in both number formats: `360,34` **0** / `360.34` **8** · `1 052,4` **0** / `1052.4` **2**
+(L8171, L9024) · `6 245` **4** / `6245` **2** · `121 234` **3** / `121234` **2**.
+
+> **The Finding 83 amendment earns a second clause.** The thousands-separator form found the
+> figures the bare digits missed; here the *decimal* separator does the same thing in reverse.
+> This dossier is written in English and uses a decimal **point**; the round's prompts are in
+> French and use a **comma**. `1 052,4` returns nothing, `1052.4` returns the Finding 74 table it
+> came from. **Grep the value in BOTH the dossier's number format and the prompt's.** Two rounds,
+> two near-misses, one command.
+
+**L8070 (Finding 74 block 4) and L8211 (Finding 74's attribution) between them settle A0 and
+refute (c) — which was my own proposal at Finding 83-C2.**
+
+* **L8211 already knew which half the spillway leaves.** *"`break_reciprocal_spill_cycles`
+  resolves a reciprocal pair by MERGING the two regions under one id, DROPPING the absorbed
+  basin's spillway, and RESETTING `chained_into = None`. The surviving spillway then routes its
+  whole outflow into the OTHER HALF of its own merged id — a physically distinct below-sea region
+  whose own outlet has just been deleted."* **My Finding 83-C2 wrote that this was
+  unrecoverable — "the merge erased that too, and I will not assert it". It was recoverable, in
+  this dossier, seventy lines of it, because I did not grep
+  `break_reciprocal_spill_cycles` that round.** The measurement wins and the withdrawal is
+  unconditional.
+* **L8070 already wrote the invariant**, with THREE legitimate terminations — an ocean cell, a
+  DIFFERENT below-sea region (sets `chained_region`, routes the surplus), or a DETECTED SURFACE
+  LAKE (sets `chained_into` but not `chained_region`, **so the surplus is dropped**). It has
+  never been implemented on the production path. It is now.
+
+### A0 — the design question, answered by the code, not by me
+
+**The rule the round proposed ("the lower sill wins") is already in the code and the code's is
+better.** `break_reciprocal_spill_cycles` compares the two **FREE SURFACES**, not the two cols:
+levels differing by more than `SAME_WATER_BODY_TOL_M` → the higher spills into the lower and the
+uphill direction is dropped; equal within tolerance → **one water body over a shared col**, merged.
+A free surface is what a hydraulic connection is made of; a col is where it happens to be.
+
+**And the tie-break the round asked me to declare is not needed, because the case it worries about
+is not a tie.** Measured: `pairs_by_level` = **0** at both beds, `pairs_merged` = **3** (humid) and
+**2** (arid), and **every merge is decided on a level gap of exactly 0.0000 m = 0.00 u16 steps.**
+That is structural, not lucky: a reciprocal pair spills *over the same col*, so both basins fill to
+the same sill and both levels are the same number. The `> tol` branch cannot fire for a true
+reciprocal pair, and the tolerance arbitrates nothing. **Both A3 predictions are refuted — mine
+("0 of them within 2 u16 steps") and the round's ("under 5 % on less than 2 steps"): it is
+100 %, at zero steps — and the conclusion the round feared (a rule fragile to quantisation) does
+not follow, because identical numbers are not a near-tie.**
+
+**Therefore (c) as worded is wrong, and I withdraw it.** Splitting "any label covering more than one
+8-connected `wc == 2` component" would undo a merge made for a correct physical reason. And the
+round's companion invariant — *"aucun id ne couvre deux corps"* — **would fire on correct output**:
+the col between two below-sea basins is above sea level by construction (otherwise they would be one
+basin), so two bodies sharing a free surface over their col are ALWAYS 8-disconnected in `wc == 2`.
+A merged pair looks exactly like the thing that invariant forbids.
+
+**What the code actually never does is re-derive the union's outflow.** The surviving spillway is
+the crossing of the pair's INTERNAL col; after the merge that col is interior to one water body. So
+the seam below runs the code's own priority flood and downhill trace on the UNION — the same
+algorithm with the exclusion set widened from one component to both, which is what the flood's own
+comment already prescribes for *"another sub-pocket of this region"*.
+
+### A1 — the seam, and its four gates
+
+`C1DrainageConfig::merged_basin_outlet: Option<MergedBasinOutlet { rule: ReciprocalRule }>`,
+`#[serde(default, skip_serializing_if = "Option::is_none")]`, default `None`.
+
+| gate test | what it proves |
+|---|---|
+| `none_leaves_the_key_where_it_was` | `None` serialises away entirely — the drainage keys do not move, so no cached product is invalidated for nothing (asserted on the JSON, not just the digest) |
+| `the_gate_reaches_both_drainage_keys` | `Some` moves `drainage_key_windowed` AND `hd_drainage_key`, + a stability negative control on both |
+| `reciprocal_pair_leaks_without_the_gate` | **the negative control, first**: the fixture really builds a merged reciprocal pair (`pairs_merged` = 1) that really leaks (`to_own_body` = 1, discharge > 0) and really gives one id to two bodies |
+| `the_gate_retraces_the_union_to_the_sea` | with the gate on: `unions_retraced` = 1, `to_own_body` = 0, the path starts at the UNION's rim (x = 1) and not at the internal col (x = 7), and ends on an ocean cell |
+| `the_gate_changes_only_the_merged_union_spillway` | `lake_map`, the wetland mask, every lake level and area, and every spillway's **discharge / width / drainage area** are bit-identical; only the path moves |
+| `merged_outflow_agrees_with_the_inline_flood` | the duplication guard: on a single-component basin the re-derivation reproduces the inline flood and trace **exactly** |
+
+The fixture is the geometry the production seed contains and no earlier fixture did: a 1-D channel
+whose two pits share a col that is the LOWEST rim of BOTH, so neither can escape except into the
+other, and whose union has a higher way out to the sea.
+
+**And Finding 74 block 4's invariant is now on the production path, not in a `#[cfg(test)]` module
+(Finding 72's lesson).** It cannot be an `assert!` with the gate off — the shipped output violates
+it — so it is an `assert!` when the gate is on and a **counted, printed** line when it is off,
+which is what block 4 asked for and never got:
+
+```text
+[drainage] ADR Finding 74/84: 3 spillway(s) terminate inside their OWN below-sea body,
+carrying 501.99 m3/s that leaves the terminal sum.
+```
+
+⚠️ Two scope decisions, both declared at the code:
+* the seam moves the spillway's **path and termination only**. The discharge is left alone: the
+  fixed point above has already routed the surplus by REGION, double-counting the cyclic term
+  while both directions existed, as the function's own note concedes. Re-deriving the magnitude
+  means re-running the fixed point;
+* `HdDrainageBundle` is **not** touched. It is a cached artifact with a `RawCodec`, and threading
+  the report through it would change the on-disk format for every key, stale or not. The bench
+  calls `below_sea_basin_lakes_infil` directly.
+
+### A2 — the measurement, and the result is that the accounting was not the problem
+
+8192², production field (base-level bound ON), two beds, gate OFF / ON. The field is the same
+OBJECT for both states, not two objects that hash alike: `merged_basin_outlet` is a field of
+`C1DrainageConfig` and `FbmUpscaleConfig` has no path to it. Eroded FNV-1a
+**`0x1a022c8785c47eed`** — Finding 81's bounded field, unchanged. Breached FNV-1a
+`0xb982e9b16f976707`. Climate per bed, one per bed and not one per gate (precip
+`0x9768e725f18d873b` / temp `0x7707eca7b1d6bd52` humid).
+
+| humid | **GATE OFF** (shipped) | **GATE ON** |
+|---|---|---|
+| budget | 474.7 | 474.7 |
+| `Watercourse` → sea | 82 / 81.0 | 82 / 81.0 |
+| `Spillway` → ocean | 5 / 130.9 | 5 / 130.9 |
+| `Spillway` → chained (`wc` = 2) | 8 / **522.1** | 6 / **156.4** (−70 %) |
+| **TERMINAL** | 211.9 (**×0.446**) | 211.9 (**×0.446**) |
+| **HOLE** | **262.7** | **262.7** |
+| termination: ocean / other body / detected lake / **own body** / nothing | 5 / 6 / 3 / **3** / 0 | 5 / 7 / 3 / **0** / 0 |
+| discharge into its OWN body | **501.99 m³/s** | **0.00** |
+| discharge into a DETECTED lake (surplus dropped, F74 state 3) | **85.86 m³/s** | **85.86 m³/s** |
+| unions retraced / endorheic | 0 / 0 | **1 / 2 (365.62 m³/s unterminated)** |
+| basins · area p50 · Σ km² · Σ evap | 20 · 31.278 · 4 947.4 · **0.00** | identical |
+| ids over more than one body | 3 | 3 (correctly — the merge stands) |
+| inventoried ↔ spillways naming a source | 17 ↔ 17 | 17 ↔ **15** |
+| **exorheic WITHOUT outlet** | **1** | **2** ← 🛑 |
+
+Arid: chained 4 / 34.0 → 3 / 33.3; **TERMINAL ×0.101 and HOLE 123.8 both unchanged**; own body
+2 / **29.80 m³/s** → 0; retraced 1, endorheic 1 (0.70 m³/s); exorheic-without-outlet 0 → 0.
+
+**The named terms, which is what the round asked for.**
+
+| | GATE OFF | **GATE ON** |
+|---|---|---|
+| **360.34 m³/s** (from 1000001, 349 800 cells) | → its OWN id | **spillway DROPPED — the union has NO outlet at all.** Its 360.34 is 98.6 % of the 365.62 m³/s counted as unterminated |
+| **136.38 m³/s** (from 1000009, **4** cells) | → its OWN id | → **1000011, a named neighbour of 19 216 cells** (`wc` = 2) |
+| and the reverse link | — | **19.37 m³/s from 1000011 (19 216) → 1000009 (4)** |
+
+> **🛑 STOP RULE A FIRES, on the lake invariant**: exorheic lakes without a traced outlet go
+> **1 → 2** in the humid bed. The cause is direct and is not a bug in the seam: when the union has
+> no outflow the seam drops its spillway, while the lake stays classified `Exorheic` by the water
+> balance that ran before. A lake that says "I overflow" and has no outlet is exactly the
+> violation the invariant is for. **No promotion. The gate stays `None`.** The measurement below
+> was already complete when the rule fired — the bench measures in one pass — so it is reported in
+> full, which is also what the round asked for in its last line.
+>
+> **And the round's expected headline does not happen.** `TERMINAL` and `HOLE` do not move — not by
+> a tenth — at either bed. **The 360.34 m³/s does not reach the ocean; there is no ocean for it to
+> reach.** Its union's rim, taken as a union, lets nothing out: the seam floods the whole union and
+> finds no escape that does not come back. The round predicted the ocean, a terminal above ×0.8 and
+> a hole under 100 m³/s; I predicted a named neighbour, ×0.50–0.65 and 150–240. **The round is
+> refuted on all three. I am right about the neighbour for the 136.38 and wrong about every
+> number** — because I assumed the water went somewhere.
+>
+> **The gate also creates a defect of its own, and it is the one the round's A0 foresaw in another
+> form.** Re-pointing 1000009's spillway at 1000011 closes an explicit 2-cycle — 136.38 one way,
+> 19.37 back — and the reciprocal detector has already run, so nothing breaks it. Same in the arid
+> bed (29.11 ⇄ 4.09). **"Scinder les ids recrée le cycle" was right; it is the RETRACE that
+> recreates it.** A complete seam has to iterate the reciprocal resolution and the retrace to a
+> fixed point, and this one does not.
+
+### A3 — the price, and what it says about the rule
+
+| | humid | arid |
+|---|---|---|
+| pairs resolved by the LEVEL rule | **0** | **0** |
+| pairs MERGED | **3** | **2** |
+| level gaps the merges were decided on | **0.0000 m = 0.00 u16 steps** (×3) | **0.0000 m** (×2) |
+| unions re-derived to a sink | 1 | 1 |
+| unions with NO outlet | **2** | 1 |
+| discharge left unterminated | **365.62 m³/s** | 0.70 m³/s |
+
+u16 step on the production field: **0.1473 m** (ε = 0.5 m is 3.39 steps; Finding 80 read 0.1477 m
+on the pre-Finding-83 field, and the step moved because the field did).
+
+> **100 % of the merges are decided on a gap of zero, and that is the opposite of fragile.** The
+> round's worry was quantisation; the answer is that the two levels are the SAME NUMBER, not two
+> numbers that happen to round together, because both are set to the shared col. `SAME_WATER_BODY_TOL_M`
+> has never arbitrated anything on this seed, and the "levels differ" branch of the rule is dead
+> code for the population the detector produces.
+
+### The physical result, which is worth more than the seam
+
+**`Σ evap = 0.00 m³/s` over all twenty below-sea basins, humid.** `net_evap = max(0, PE − precip)`
+is zero in a humid climate, so `a_eq = inflow / net_evap = ∞`: Finding 39's law says such a basin
+**must** overflow. And the largest one, taken as the single water body the merge correctly says it
+is, **has no rim it can overflow through**.
+
+> So: **365.62 m³/s of water enters a closed basin, in a climate that cannot evaporate it, through
+> a geometry that cannot drain it.** The Finding 74 "hole" is not an accounting error and never
+> was — it is the symptom of a model state with no consistent answer. Renaming where the spillway
+> points does not create an outlet, which is precisely why `TERMINAL` did not move.
+>
+> **And the seam's declined scope is the whole remedy.** Its docstring says the union's new sill is
+> higher than the internal col, so a complete fix would **raise the surface and re-flood**, and
+> that it is owed. The measurement now says it is not owed as a refinement — it is the only thing
+> that can close this. Raise the union to its new sill and one of two physical things happens: it
+> reaches the higher rim and spills (the water leaves), or its surface grows until evaporation
+> balances inflow (the water leaves as vapour). Either terminates the water. **A 4-cell basin
+> receiving 136.38 m³/s at a fixed level is the same statement in miniature: 0.0095 km² cannot
+> absorb 4.3 km³/yr at any depth the model is allowed to give it.**
+>
+> That is H-2 (threshold incision / lake levels) arriving from the other side, and it is named
+> here rather than attempted.
+
+### B0 — the data is not here, so B2 does not run
+
+**There is no real coastline raster in this repository.** Searched: `*.shp`, `*gshhg*`, `*gshhs*`,
+`*natural_earth*`, `*coastline*`. Every `coastline.geojson` under `exports/` is Ymir's own output;
+`docs/refs/` holds fourteen papers and no data. **My prediction (90 %) holds.** So B stops where
+the round said it must: *"un instrument d'organique étalonné sur rien innocenterait la fourrure une
+seconde fois"*. B1 runs in full — it is entirely synthetic — and **B2 does not**.
+
+### B1 — five candidates, two negative controls, and the first pair of controls was VOID
+
+The two negative controls had to be built twice, and the first attempt is on the record because it
+is a measurement:
+
+| the FIRST controls | what they read | why they are void |
+|---|---|---|
+| PERIODIC as a polygon: 2-cell teeth at a 14-cell period | **0 excursions**, R = 0.000 | a 2-cell tooth at a 14-cell period has a 7-cell NECK; `coast_spurs` needs ≤ 1 cell. The control could not exercise the instruments it was built for |
+| ISOTROPIC as a radial fBm lobe, D = 1.25, amplitude 5 % | **D = 1.008** | correct arithmetic: an fBm excursion over an arc `Δs` scales as `Δs^H`, so over 2 px of an 18 850 px circumference it is `150·(2/18850)^0.75 ≈ 0.16` px — **sub-pixel**. A D = 1.25 fBm lobe of moderate amplitude is SMOOTH at the cell scale. Reaching 2 px of roughness at 2 px of arc needs ~64 % of the radius, i.e. a self-intersecting blob |
+
+Rebuilt: **PERIODIC** = a filled circle with one-cell-wide radial spikes **3 cells long every 14
+cells** (Finding 76's measured fur geometry, built on the GRID); **ISOTROPIC** = a **randomised
+Koch** g7, apex thrown to a random side, so D stays 1.2619 with no periodicity and no preferred
+axis, rough down to 2.5 cells.
+
+| shape | D | **R** | H(norm) | wins | Rc s=2 | inv<3c s=2 | Rc s=8 | inv<3c s=8 | exc p50 | **exc CV** | exc n |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| CIRCLE (true D 1.000) | 1.002 | — | 0.2221 | 48 | 3.26 | **55.8 %** | 52.20 | 0.0 % | — | — | **0** |
+| SQUARE rot 30 (true 1.000) | 1.003 | — | 0.1426 | 52 | 3.26 | **81.7 %** | 52.20 | 0.0 % | — | — | **0** |
+| KOCH g7 (true 1.2619) | 1.244 | — | 0.9042 | 278 | 1.77 | 12.7 % | 4.64 | 0.0 % | — | — | **0** |
+| **PERIODIC** spikes 3c/14c | **1.038** | **0.947** | 0.7668 | 67 | 2.24 | 37.8 % | 7.89 | 0.03 % | 5.54 | **0.293** | 1 128 |
+| **ISOTROPIC** random Koch | **1.254** | **0.668** | 0.9589 | 227 | 1.77 | 13.5 % | 6.02 | 0.02 % | 6.24 | **2.693** | 863 |
+| *(void)* periodic teeth 2c | 1.022 | — | 0.6202 | 56 | 2.24 | 29.6 % | 10.00 | 0.0 % | — | — | 0 |
+| *(void)* fBm lobe D 1.25 | 1.008 | — | 0.5752 | 50 | 3.26 | 56.7 % | 45.70 | — | — | — | 0 |
+
+**Does the quantity separate PERIODIC from ISOTROPIC — the only question B1 asks?**
+
+| quantity | periodic | isotropic | ratio | verdict |
+|---|---|---|---|---|
+| **excursion-size CV** | **0.293** | **2.693** | **0.11** | **KEPT — the strongest, ×9.2** |
+| **R** (local axial concentration) | **0.947** | **0.668** | 1.42 | **KEPT** |
+| **D** (Richardson) | 1.038 | 1.254 | 0.83 | **KEPT** |
+| **H** (normal axis entropy) | 0.767 | 0.959 | 0.80 | **KEPT, weakest** |
+| curvature radius p50, s = 8 | 7.89 | 6.02 | 1.31 | **STRUCK OUT** of the criterion, kept as description |
+| curvature inversions < 3 cells | 0.030 % | 0.020 % | 1.50 | **STRUCK OUT** |
+| excursion size p50 | 5.54 | 6.24 | 0.89 | **STRUCK OUT** |
+
+> **The curvature instrument is struck out and the reason is the round's own rule.** There is no
+> stencil at which it is both calibrated and sensitive. At `s = 2` a rasterised circle — one
+> constant curvature sign, zero inversions by construction — reads **55.8 %** of its inversions
+> inside three cells, and the square reads **81.7 %**: the instrument is measuring the raster's
+> sub-cell wobble. At `s = 8` the circle correctly reads 0.0 %, and so does everything else (the
+> largest reading anywhere is 0.2 %, on the fur) — no dynamic range. Its radius column has a
+> ceiling too: a 3 000-cell circle and a straight edge both read **52.2 cells**, so nothing flatter
+> than ~52 cells is visible to it. My prediction that the inversion share would be the hardest
+> separator (> 60 % vs < 25 %) is **refuted twice over** — by the floor and by the range.
+>
+> **And one result matters more than the ranking: a GENERATOR DOES NOT RAISE D.** The periodic
+> control reads **D = 1.038**. Finding 83 found the fur at D = 1.288 and concluded the fractal
+> apparatus cannot see it; this says something sharper — **regular teeth on a smooth lobe are not
+> fractal at all**, so D would have caught a *clean* fringe. It did not catch Ymir's because
+> Ymir's fringe is not clean: its teeth vary.
+
+### B2 does not run — but the two Ymir coasts on the same instruments say what the bounded one LACKS
+
+Context only. **No threshold is written and no criterion is declared**; that is what Finding 83 did
+and the fringe passed it.
+
+| | D | **R** | H(norm) | exc p50 | exc p90 | **exc CV** | **exc n** |
+|---|---|---|---|---|---|---|---|
+| **YMIR delivered (the fur)** | **1.288** | **0.919** | 0.9256 | 6.36 | 21.41 | 1.493 | **3 609** |
+| **YMIR production (bounded)** | 1.053 | 0.266 | 0.7738 | 17.90 | 479.32 | 1.488 | **12** |
+| PERIODIC control | 1.038 | 0.947 | 0.7668 | 5.54 | 8.24 | 0.293 | 1 128 |
+| ISOTROPIC control | 1.254 | 0.668 | 0.9589 | 6.24 | 33.21 | 2.693 | 863 |
+
+> **Exactly ONE of the four survivors puts the fur with the generator, and it is R.** Fur 0.919
+> against the periodic control's 0.947 and the isotropic control's 0.668. D (1.288 vs 1.254), H
+> (0.926 vs 0.959) and the excursion CV (1.49 vs 2.69) all put the fur nearer the ISOTROPIC
+> control. **R is the F52 instrument — "une texture parallèle, R 0.879 contre 0.000" — and it is
+> still the only quantity in the drawer that sees the defect the author saw.** That is the third
+> round in a row where the fractal apparatus abstains and the parallelism measure does not.
+>
+> ⚠️ **And R is the one I can least afford to set a threshold on.** The isotropic control already
+> reads **0.668**, which is not far from the fur's 0.919. If a real coast reads 0.7, R cannot
+> separate them with any margin. **The margin is exactly what the real data is for**, and this is
+> the reason the round forbade thresholds in advance.
+>
+> **What the BOUNDED coast lacks, per quantity** — the C-4 input specification the round asked for:
+> * **excursions: 12 against 863 on the isotropic control — 72× too few.** That is the deficit, in
+>   one number;
+> * **and none of them small**: p50 **17.90 cells (874 m)** against 6.24, p90 **479 cells (23 km)**
+>   against 33. Its few excursions are all headland-scale;
+> * D 1.053 against 1.254 (**−0.20**), H 0.774 against 0.959 (−0.19) — both are consequences of the
+>   first two, not independent findings.
+>
+> This is Finding 83-B3 in different units, and it agrees with it: **the missing variability is
+> sub-kilometric, and what is missing is COUNT, not amplitude.**
+
+### B3 — what B did not do
+
+No lever. No `coastal_amplitude_band`. No estuaries. No C-4. Five candidate quantities, seven
+calibration shapes (two of them built twice), three strike-outs, and a refusal to set a threshold
+on data that is not here.
+
+### Score
+
+Predictions written and dated **2026-09-15, before the first measurement**; declared non-blind on
+Findings 73–83 and the bench sources, blind on every figure — which the rule-11 grep then
+confirmed for the instruments and a filesystem search confirmed for the coastline data.
+
+**Mine.** A0: "no sill height stored, recoverable from `profile_m`" **✗ — and the premise was
+wrong, not just the answer**: the code never reads a sill, it reads the LAKE LEVEL, which is
+stored · "the lower sill wins, plus a declared tie-break" **✗** (free surfaces, and no tie-break is
+needed) · "under 10 % of cycles resolve on less than 2 u16 steps, I expect 0" **✗✗ maximally**
+(100 %, at **zero** steps) · the four gate tests ✓ · "ids over more than one body = 0" **✗** (3 —
+and I had already refuted that invariant myself in A0, so the prediction was stale when it was
+written) · self-spilling 0 ✓ · **"the 360.34 goes to a named neighbour, not the ocean" — HALF ✗**:
+it goes NOWHERE, its union has no outlet; the 136.38 does go to a named neighbour ✓ · "terminal
+×0.50–0.65, hole 150–240" **✗✗** (0.446 and 262.7, unmoved) · **"the max `Watercourse` does not
+move, and what appears is a `Spillway`" ✓ exactly** · field and climate identical ✓ · "lake
+invariants green" **✗** (1 → 2) · "basins 20 → 22–26" **✗** (20) · 1–3 cycles tranched ✓ · B0 no
+data ✓ · R separates ✓ · **H's two numbers ✓✓** (periodic ≤ 0.80 → 0.767; isotropic ≥ 0.90 →
+0.959) · "curvature inversions separate hardest" **✗✗** (struck out at both stencils) ·
+"excursion-size distribution separates least clearly" **✗✗** (its **CV** is the strongest separator
+of all seven, ×9.2 — though its p50 is indeed the weakest, which is the half I got) · "D separates
+not at all" **✗**.
+
+**The round's.** A0: "no sill height stored, it must be re-read from the trace" ✗ · "fewer than
+5 % of cycles on less than 2 steps" **✗✗** (100 %) · ids over more than one body 0 ✗ ·
+self-spilling 0 ✓ · **"the 360.34 reaches the OCEAN, not a neighbour" ✗✗** · **"terminal above
+×0.8" ✗✗** (×0.446) · **"the hole falls under 100 m³/s" ✗✗** (262.7) · **"the new max
+`Watercourse` exceeds 150 m³/s real, i.e. more than 9 render cells" ✗✗✗** (19.243 m³/s and 3.37
+cells — *unchanged*) · field and climate bit-identical ✓ · "arid hole under 30" **✗✗** (123.8) ·
+"R and the normal isotropy separate periodic from isotropic" **✓✓** · "the curvature radii too" ✗ ·
+"the excursion size less clearly" ✓ on the p50, ✗ on the CV.
+
+**Meta holds on both sides.** And the joint miss is the largest of the campaign so far: **both of
+us predicted that naming the receiver correctly would move the water, and it moves nothing at
+all.** The round staked its own À VALIDER VISUELLEMENT on a river appearing; no river appears.
+
+### Standing
+
+**One code change, gated `None`, byte-identical, six tests, and NOT promoted** — Stop rule A fired
+on the lake invariant (exorheic lakes without a traced outlet, 1 → 2 humid) and the round's
+instruction was arrêt and rapport. The report is complete because the bench measures in one pass.
+
+**The Finding 74 leak is attributed, and the attribution kills the class of remedy it belonged
+to.** (a), (b) and (c) — the last one mine — were all about *where the spillway points*. Pointing
+it correctly changes `Spillway → chained` by −70 % and changes `TERMINAL` and `HOLE` by **nothing**,
+at either bed, because the water has nowhere to go: `Σ evap = 0.00 m³/s` over twenty below-sea
+basins in the humid bed, and the largest union has no rim it can overflow. **365.62 m³/s enters a
+closed basin in a climate that cannot evaporate it through a geometry that cannot drain it.**
+
+**What closes it is the scope this seam declined**, and the measurement promoted that from a
+footnote to the remedy: **raise the merged union to its new sill and re-flood.** Then it either
+reaches the higher rim and spills, or its surface grows until evaporation balances inflow. Either
+terminates the water. That is H-2 arriving from the lake side, and it is specified here and not
+attempted.
+
+**Two defects named that this round created or exposed:**
+* the retrace closes an explicit 2-cycle (136.38 one way, 19.37 back; arid 29.11 ⇄ 4.09) because it
+  runs AFTER the reciprocal detector. A complete seam iterates the two to a fixed point;
+* dropping the spillway of an endorheic union leaves the lake classified `Exorheic` with no outlet.
+  The classification and the outflow are decided in two different passes, and the second one can no
+  longer reach the first.
+
+**On the instrument side**, four of seven candidate quantities survive their calibration, the
+curvature pair is struck out for having no stencil at which it is both calibrated and sensitive,
+and **exactly one of the survivors — R, the Finding 52 parallelism measure — classifies the fringe
+with a generator.** D, H and the excursion CV all put it with an isotropic fractal. **No threshold
+is written.** B2 needs a real coastline raster and there is none in this repository.
+
+### À VALIDER VISUELLEMENT
+
+**The round expected this section to be non-empty in A — "la rivière qui apparaît" — and there is
+no river.** `max Watercourse` is **19.243 m³/s, 2 024.2 km², 3.37 render cells at ratio 7.5,
+4.05 % of the budget**, and those five figures are **bit-identical between the two gate states**:
+the seam is downstream of the incision, of `compute_flow` and of the accumulation, so no
+`Watercourse` can move. The object that changes is a `Spillway`, and the largest one changes by
+being **deleted** — its union has no outlet. Putting a toggle on screen for that would show the
+author two identical rivers and one missing blue line in a basin whose footprint and level are also
+identical. **There is nothing to look at, and saying so is the deliverable.**
+
+For B: no panel, as instructed — the instrument is not yet a criterion, and one of its four
+survivors cannot be given a threshold until a real coast is on disk.
+
+**What WOULD be worth the author's eye, and it is a request for data, not for a look:** one or
+more real coastline rasters (GSHHG or Natural Earth; Brittany, Galicia, southern Norway) at
+48.83 m over a 400 km window. Without them B2 cannot set a single threshold, and the campaign has
+now twice written a criterion in advance that the defect passed.

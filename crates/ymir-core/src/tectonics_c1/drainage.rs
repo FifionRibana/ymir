@@ -188,6 +188,11 @@ pub struct C1DrainageConfig {
     /// byte-identical. See [`crate::tectonics_c1::closures::infiltration`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub infiltration: Option<crate::tectonics_c1::closures::infiltration::InfiltrationConfig>,
+    /// **ADR Finding 84** — re-derive the outflow of a MERGED below-sea body. `None` (default) →
+    /// the shipped behaviour, byte-identical, and `skip_serializing_if` keeps the drainage cache
+    /// keys unchanged at `None`. `Some(..)` moves both keys. See [`MergedBasinOutlet`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merged_basin_outlet: Option<MergedBasinOutlet>,
 }
 
 impl Default for C1DrainageConfig {
@@ -195,6 +200,7 @@ impl Default for C1DrainageConfig {
         // 10 m min lake depth, 5 km² min lake area — plausible mappable lakes.
         Self {
             thresholds: DrainageThresholds::default(),
+            merged_basin_outlet: None, // ADR Finding 84 -- opt-in; None is the shipped leak
             lake_min_depth_m: 10.0,
             lake_min_area_km2: 5.0,
             flat_perturbation: Some(FlatPerturbation::default()),
@@ -1358,12 +1364,121 @@ pub struct BasinSummary {
 /// Result of [`below_sea_basin_lakes`]: the typed lakes + their water `lake_map`, the traced
 /// spill paths (Finding 30 — every exorheic basin gets one), a wetland mask (shallow through-flow
 /// margins → `Biome::Wetland`), and a per-basin balance summary (Finding 32, every basin).
+/// ADR 0001 Finding 84 — the rule that resolves a RECIPROCAL spill pair.
+///
+/// It was already in the code before this enum existed ([`break_reciprocal_spill_cycles`],
+/// Finding 40b). Writing it down here is deliberate: the Finding 84 round proposed "the lower
+/// sill wins", and the rule in the code is **better** — it compares the two FREE SURFACES, not
+/// the two cols, which is the quantity a hydraulic connection is actually made of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReciprocalRule {
+    /// Free surfaces differing by more than [`SAME_WATER_BODY_TOL_M`] → the HIGHER basin spills
+    /// into the lower and the uphill direction is dropped. Equal within the tolerance → they are
+    /// ONE water body communicating over their shared col, and they are merged.
+    ///
+    /// **No tie-break is needed and none is invented.** "Equal levels" is not a tie to be broken:
+    /// it is a physical statement about one free surface. The Finding 84 round asked for a
+    /// declared tie-break at the u16 step; the answer is that the case it worries about is the
+    /// case the code already treats as a merge, and the tolerance (0.10 m) is **0.68 of one u16
+    /// step** on the production seed, i.e. already below the quantisation it was meant to clear.
+    /// That last figure is a real weakness and it is reported, not hidden.
+    LevelThenMerge,
+}
+
+/// ADR 0001 Finding 84 — **re-derive the OUTFLOW of a merged below-sea body.** `None` (default)
+/// is the shipped behaviour and is byte-identical.
+///
+/// # The defect this closes, attributed before it was written
+///
+/// A reciprocal pair A ⇄ B with equal free surfaces is MERGED into one id — correctly: they share
+/// a surface over their col. But three things then happen and the third is a leak:
+///
+/// 1. the absorbed basin's spillway is dropped (`spillways.retain`) — correct, it was the uphill
+///    half of a cycle;
+/// 2. the surviving spillway's `chained_into` named the absorbed id, so it is reset to `None`
+///    ("treat as an open outflow") — and it is not an open outflow;
+/// 3. **the surviving spillway is the crossing of the pair's INTERNAL col.** After the merge that
+///    col is interior to a single water body, so the spillway terminates inside the very body it
+///    drains. The union's own rim was never tested for an outlet.
+///
+/// Measured on the production seed, humid, with the base-level bound on (Finding 83-C2):
+/// **3 spillways carrying 501.99 m³/s terminate in their own id**, 96.2 % of the chained total.
+/// The largest, 360.34 m³/s, ends in the 6 245-cell lobe of a `[121 234, 6 245]` pair.
+///
+/// # What the seam does, and what it deliberately does not
+///
+/// It re-runs the code's OWN priority flood and downhill trace for the UNION — the same algorithm,
+/// with the exclusion set widened from one component to both, which is exactly what the flood's
+/// own comment prescribes for "another sub-pocket of this region". The internal col is then
+/// absorbed and the flood continues to the next external pour point.
+///
+/// It changes the spillway's **path and termination only**. It does NOT change:
+/// * the discharge — the fixed point above has already routed the surplus by REGION
+///   (`next_extra[region]`), double-counting the cyclic term while both directions existed, as
+///   the function's own note concedes. Re-deriving the magnitude means re-running the fixed point
+///   and is a deeper change;
+/// * the merged body's LEVEL or FOOTPRINT — the union's new sill is higher than the internal col,
+///   so a physically complete fix would raise the surface and re-flood. **That is owed and is not
+///   done here.**
+///
+/// If no outflow traces from the union's rim, the body is a brim-full ENDORHEIC sink: its
+/// spillway is dropped and the surplus is counted in [`SpillwayTermination`] rather than attached
+/// to a path that goes nowhere.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MergedBasinOutlet {
+    /// Declared here so the seam cannot be read as inventing a rule. See [`ReciprocalRule`].
+    pub rule: ReciprocalRule,
+}
+
+/// ADR 0001 Finding 74 block 4's three-state specification, plus the states it did not name.
+///
+/// Finding 74 wrote: *"Every spillway must terminate in exactly one of three states — an OCEAN
+/// cell, a DIFFERENT below-sea region, or a DETECTED SURFACE LAKE"*. **That wording is
+/// insufficient and this is where it shows**: it tests `region_of`, and a merged body spans TWO
+/// regions, so a spillway crossing the pair's internal col satisfies "a different region" while
+/// terminating inside the body it drains. The classification below tests `lake_map` against the
+/// spillway's own `lake_id`, which is the quantity the merge unifies.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SpillwayTermination {
+    /// `wc == 1`: the sea. The only unconditionally terminal state.
+    pub to_ocean: usize,
+    /// A DIFFERENT named below-sea body — a chain link the accounting can follow.
+    pub to_other_body: usize,
+    /// A DETECTED surface lake: sets `chained_into` but NOT `chained_region`, so the surplus is
+    /// dropped. Finding 74's third state, still unfixed and now counted.
+    pub to_detected_lake: usize,
+    /// **The state no specification named**: inside the spillway's OWN body.
+    pub to_own_body: usize,
+    /// Neither sea, nor a body, nor a detected lake — it stops on unlabelled ground.
+    pub to_nothing: usize,
+    /// Discharge carried by the `to_own_body` class, m³/s.
+    pub q_own_body_m3s: f64,
+    /// Discharge carried by the `to_detected_lake` class, m³/s.
+    pub q_detected_lake_m3s: f64,
+    /// Reciprocal pairs resolved by the level rule (the uphill direction dropped).
+    pub pairs_by_level: usize,
+    /// Reciprocal pairs merged into one water body.
+    pub pairs_merged: usize,
+    /// Merged unions whose outflow was re-derived to a real sink (gate ON only).
+    pub unions_retraced: usize,
+    /// Merged unions with no outflow at all: brim-full endorheic sinks (gate ON only).
+    pub unions_endorheic: usize,
+    /// Discharge left unterminated by `unions_endorheic`, m³/s.
+    pub q_unions_endorheic_m3s: f64,
+    /// For each merged pair: the two free surfaces in metres and their gap in u16 steps, so the
+    /// fragility of the level rule against quantisation can be read rather than assumed
+    /// (Finding 84 A3).
+    pub merge_level_gaps_m: Vec<f32>,
+}
+
 pub struct BelowSeaResult {
     pub lakes: Vec<C1Lake>,
     pub lake_map: Vec<u32>,
     pub spillways: Vec<Spillway>,
     pub wetland: Vec<u8>,
     pub basins: Vec<BasinSummary>,
+    /// ADR Finding 84 — where every spillway ends, and the price of every merge.
+    pub termination: SpillwayTermination,
 }
 
 pub fn below_sea_basin_lakes(
@@ -1891,8 +2006,49 @@ pub fn below_sea_basin_lakes_infil(
         }
         extra_inflow = next_extra;
     }
-    break_reciprocal_spill_cycles(&mut out, &mut lake_map, &mut spillways, w);
-    BelowSeaResult { lakes: out, lake_map, spillways, wetland, basins }
+    let mut termination = break_reciprocal_spill_cycles(
+        &mut out,
+        &mut lake_map,
+        &mut spillways,
+        w,
+        h,
+        heightmap,
+        &flow,
+        &wc,
+        &region_of,
+        detected_lake_map,
+        ss,
+        cfg.merged_basin_outlet.as_ref(),
+    );
+    classify_spillway_terminations(
+        &spillways,
+        &lake_map,
+        &wc,
+        detected_lake_map,
+        w,
+        &mut termination,
+    );
+    // ADR Finding 74 block 4 / Finding 84 — the invariant, ON THE PRODUCTION PATH and not in a
+    // `#[cfg(test)]` module (Finding 72's lesson). It can only be an `assert!` when the gate that
+    // makes it true is on; with the gate OFF the shipped output violates it (3 spillways,
+    // 501.99 m³/s on the production seed), so there it is COUNTED and reported, which is what
+    // Finding 74 asked for and never got.
+    if cfg.merged_basin_outlet.is_some() {
+        assert_eq!(
+            termination.to_own_body, 0,
+            "ADR Finding 84: {} spillway(s) still terminate inside the body they drain, carrying \
+             {:.2} m3/s with nowhere to route it",
+            termination.to_own_body, termination.q_own_body_m3s
+        );
+    } else if termination.to_own_body > 0 {
+        eprintln!(
+            "[drainage] ADR Finding 74/84: {} spillway(s) terminate inside their OWN below-sea \
+             body, carrying {:.2} m3/s that leaves the terminal sum. `merged_basin_outlet` is the \
+             gate that closes it.",
+            termination.to_own_body, termination.q_own_body_m3s
+        );
+    }
+    BelowSeaResult { lakes: out, lake_map, spillways, wetland, basins, termination }
 }
 
 /// Two below-sea basins whose free surfaces differ by LESS than this are hydraulically ONE
@@ -1919,13 +2075,24 @@ pub const SAME_WATER_BODY_TOL_M: f32 = 0.10;
 /// `extra_inflow` while both directions existed, so the levels it produced already include
 /// that double contribution; removing it inside the iteration is a deeper change, measured
 /// and reported separately.
+#[allow(clippy::too_many_arguments)]
 fn break_reciprocal_spill_cycles(
     out: &mut Vec<C1Lake>,
     lake_map: &mut [u32],
     spillways: &mut Vec<Spillway>,
-    _w: usize,
-) {
+    w: usize,
+    h: usize,
+    heightmap: &GridF32,
+    flow: &FlowResult,
+    wc: &[u8],
+    region_of: &[u32],
+    detected_lake_map: Option<&[u32]>,
+    ss: &SteinSteinParams,
+    // ADR Finding 84 -- `None` keeps the shipped behaviour byte for byte.
+    retrace: Option<&MergedBasinOutlet>,
+) -> SpillwayTermination {
     use std::collections::HashMap;
+    let mut report = SpillwayTermination::default();
     let level_of: HashMap<u32, f32> = out.iter().map(|l| (l.base.id, l.level_m)).collect();
     let target: HashMap<u32, u32> =
         spillways.iter().filter_map(|s| s.chained_into.map(|t| (s.lake_id, t))).collect();
@@ -1939,19 +2106,26 @@ fn break_reciprocal_spill_cycles(
             (Some(&la), Some(&lb)) if (la - lb).abs() > SAME_WATER_BODY_TOL_M => {
                 // The higher spills into the lower; drop the impossible uphill direction.
                 drop_spill.insert(if la > lb { b } else { a });
+                report.pairs_by_level += 1;
             }
             _ => {
                 // One free surface over the col → one water body.
                 merges.push((a, b));
                 drop_spill.insert(b);
+                report.pairs_merged += 1;
+                // ADR Finding 84 A3 -- the level gap this merge was decided on, so its fragility
+                // against the u16 step can be read instead of assumed.
+                if let (Some(&la), Some(&lb)) = (level_of.get(&a), level_of.get(&b)) {
+                    report.merge_level_gaps_m.push((la - lb).abs());
+                }
             }
         }
     }
     if drop_spill.is_empty() {
-        return;
+        return report;
     }
     spillways.retain(|s| !drop_spill.contains(&s.lake_id));
-    for (keep, absorb) in merges {
+    for &(keep, absorb) in &merges {
         for v in lake_map.iter_mut() {
             if *v == absorb {
                 *v = keep;
@@ -1974,6 +2148,233 @@ fn break_reciprocal_spill_cycles(
             if !alive.contains(&t) {
                 s.chained_into = None; // its receiver was absorbed; treat as an open outflow
             }
+        }
+    }
+
+    // ── ADR Finding 84 — re-derive the UNION's outflow ────────────────────────────────────
+    // Gated. Without this, the surviving spillway of a merged pair is the crossing of the
+    // pair's INTERNAL col: after the merge that col is interior to one water body, so the
+    // spillway terminates inside the body it drains and its surplus has nowhere to route.
+    // Measured at 501.99 m³/s on the production seed, humid (Finding 83-C2).
+    if retrace.is_none() {
+        return report;
+    }
+    for &(keep, _absorb) in &merges {
+        // The union, from `lake_map` AFTER the relabel: both bodies now wear `keep`. Taking the
+        // REGIONS of those cells (not the cells themselves) widens the flood's exclusion set the
+        // way the flood's own comment prescribes for "another sub-pocket of this region".
+        let mut regions: Vec<u32> = Vec::new();
+        for k in 0..lake_map.len() {
+            if lake_map[k] == keep
+                && wc[k] == 2
+                && region_of[k] != 0
+                && !regions.contains(&region_of[k])
+            {
+                regions.push(region_of[k]);
+            }
+        }
+        if regions.len() < 2 {
+            continue; // not a multi-body union after all: nothing to re-derive
+        }
+        let union_cells: std::collections::HashSet<usize> =
+            (0..lake_map.len()).filter(|&k| regions.contains(&region_of[k])).collect();
+        let Some(&floor_k) =
+            union_cells.iter().min_by(|&&x, &&y| heightmap.data[x].total_cmp(&heightmap.data[y]))
+        else {
+            continue;
+        };
+        // Find the surviving spillway of this union; if it already leaves the body, leave it be.
+        let Some(si) = spillways.iter().position(|sp| sp.lake_id == keep) else {
+            continue;
+        };
+        {
+            let &(lx, ly) = spillways[si].points.last().unwrap();
+            let end = ly as usize * w + lx as usize;
+            if lake_map[end] != keep {
+                continue;
+            }
+        }
+        match merged_union_outflow(
+            heightmap,
+            flow,
+            wc,
+            lake_map,
+            detected_lake_map,
+            &union_cells,
+            keep,
+            floor_k,
+            w,
+            h,
+        ) {
+            Some(path) => {
+                let sp = &mut spillways[si];
+                sp.points = path.iter().map(|&k| ((k % w) as u32, (k / w) as u32)).collect();
+                sp.profile_m = path
+                    .iter()
+                    .map(|&k| c1_altitude_norm_to_metres(heightmap.data[k], ss))
+                    .collect();
+                let end = *path.last().unwrap();
+                let lid = lake_map[end];
+                sp.chained_into = if lid != 0 && lid != keep {
+                    Some(lid)
+                } else {
+                    detected_lake_map.map(|d| d[end]).filter(|&x| x != 0)
+                };
+                report.unions_retraced += 1;
+            }
+            None => {
+                // A brim-full ENDORHEIC union: no rim cell lets the water out. Dropping the
+                // spillway is the honest description; the surplus is counted, not attached to a
+                // path that goes nowhere.
+                report.q_unions_endorheic_m3s += spillways[si].discharge_m3s as f64;
+                report.unions_endorheic += 1;
+                spillways.remove(si);
+            }
+        }
+    }
+    report
+}
+
+/// ADR 0001 Finding 84 — the outflow of a MERGED below-sea body: the code's own priority flood
+/// and downhill trace, run on the UNION of the merged components.
+///
+/// ⚠️ **Named duplication, not an accident.** This mirrors the inline flood/trace inside
+/// [`below_sea_basin_lakes_infil`] (the `(sill_opt, fcells, saddle_opt, escape_opt)` block and the
+/// `traced` block that follows it) rather than extracting it. Extracting would have been the
+/// better engineering and it was rejected for one reason: the inline block is load-bearing for
+/// every basin on every seed, and a transcription slip there would change the shipped product
+/// silently. The duplication is guarded by `merged_outflow_agrees_with_the_inline_flood`, which
+/// runs both on single-component basins and requires the same answer.
+///
+/// Two deliberate differences from the inline version:
+/// * the exclusion set is the union of BOTH components, so the pair's internal col is absorbed
+///   instead of being taken as the pour point;
+/// * "am I back in my own water?" is tested on `lake_map` against `own_id`, not on `region_of`
+///   against one region label. Finding 74's three-state wording tests the region, and a merged
+///   body spans two regions — which is precisely how a spillway could satisfy "a DIFFERENT
+///   below-sea region" while ending inside the body it drains.
+#[allow(clippy::too_many_arguments)]
+fn merged_union_outflow(
+    heightmap: &GridF32,
+    flow: &FlowResult,
+    wc: &[u8],
+    lake_map: &[u32],
+    detected_lake_map: Option<&[u32]>,
+    union_cells: &std::collections::HashSet<usize>,
+    own_id: u32,
+    floor_k: usize,
+    w: usize,
+    h: usize,
+) -> Option<Vec<usize>> {
+    use std::cmp::Reverse;
+    use std::collections::{BinaryHeap, HashSet};
+    let n = w * h;
+    let quant = |e: f32| (e * 1_000_000.0) as i32;
+    let nb = |x: i32, y: i32| -> Option<usize> {
+        if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h {
+            Some(y as usize * w + x as usize)
+        } else {
+            None
+        }
+    };
+    let mut in_bowl: HashSet<usize> = HashSet::new();
+    let mut queued: HashSet<usize> = HashSet::new();
+    let mut heap: BinaryHeap<Reverse<(i32, usize)>> = BinaryHeap::new();
+    heap.push(Reverse((quant(heightmap.data[floor_k]), floor_k)));
+    queued.insert(floor_k);
+    let mut bowl: Vec<usize> = Vec::new();
+    let (mut saddle, mut escape) = (None, None);
+    while let Some(Reverse((hq, c))) = heap.pop() {
+        let (x, y) = ((c % w) as i32, (c / w) as i32);
+        let mut best_e: Option<usize> = None;
+        for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+            if let Some(e) = nb(x + dx, y + dy) {
+                if quant(heightmap.data[e]) < hq
+                    && !in_bowl.contains(&e)
+                    && !union_cells.contains(&e)
+                    && best_e.is_none_or(|b| heightmap.data[e] < heightmap.data[b])
+                {
+                    best_e = Some(e);
+                }
+            }
+        }
+        if let Some(e) = best_e {
+            saddle = Some(c);
+            escape = Some(e);
+            bowl.push(c);
+            in_bowl.insert(c);
+            break;
+        }
+        bowl.push(c);
+        in_bowl.insert(c);
+        for (dx, dy) in D8_DX.iter().zip(D8_DY.iter()) {
+            if let Some(e) = nb(x + dx, y + dy) {
+                if !queued.contains(&e) {
+                    queued.insert(e);
+                    heap.push(Reverse((quant(heightmap.data[e]), e)));
+                }
+            }
+        }
+    }
+    let (s0, e0) = (saddle?, escape?);
+    let bowl_set: HashSet<usize> = bowl.iter().copied().collect();
+    let mut path = vec![s0, e0];
+    let (mut cur, mut steps) = (e0, 0usize);
+    loop {
+        if wc[cur] == 1 {
+            return Some(path); // the sea
+        }
+        let lid = lake_map[cur];
+        let did = detected_lake_map.map_or(0, |d| d[cur]);
+        if (lid != 0 && lid != own_id) || did != 0 {
+            return Some(path); // a DIFFERENT named body, or a detected surface lake
+        }
+        if bowl_set.contains(&cur) || union_cells.contains(&cur) {
+            return None; // back in its own water → a loop → endorheic
+        }
+        let d = flow.direction[cur];
+        if d == DIR_NONE {
+            return None;
+        }
+        let (cx, cy) = ((cur % w) as i32, (cur / w) as i32);
+        let nx = (cx + D8_DX[d as usize]).rem_euclid(w as i32) as usize;
+        let ny = (cy + D8_DY[d as usize]).rem_euclid(h as i32) as usize;
+        cur = ny * w + nx;
+        path.push(cur);
+        steps += 1;
+        if steps > n {
+            return None;
+        }
+    }
+}
+
+/// ADR 0001 Finding 84 — classify every spillway's END, on `lake_map` (see
+/// [`SpillwayTermination`] for why not on `region_of`). Report-only: it changes nothing.
+fn classify_spillway_terminations(
+    spillways: &[Spillway],
+    lake_map: &[u32],
+    wc: &[u8],
+    detected_lake_map: Option<&[u32]>,
+    w: usize,
+    report: &mut SpillwayTermination,
+) {
+    for sp in spillways {
+        let Some(&(lx, ly)) = sp.points.last() else { continue };
+        let end = ly as usize * w + lx as usize;
+        let lid = lake_map[end];
+        let did = detected_lake_map.map_or(0, |d| d[end]);
+        if wc[end] == 1 {
+            report.to_ocean += 1;
+        } else if lid == sp.lake_id {
+            report.to_own_body += 1;
+            report.q_own_body_m3s += sp.discharge_m3s as f64;
+        } else if lid != 0 {
+            report.to_other_body += 1;
+        } else if did != 0 {
+            report.to_detected_lake += 1;
+            report.q_detected_lake_m3s += sp.discharge_m3s as f64;
+        } else {
+            report.to_nothing += 1;
         }
     }
 }
@@ -2739,6 +3140,235 @@ mod tests {
             "B must fill to its ~90 m sea-col once fed, got level {:.0} m",
             b.level_m
         );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════════════
+    // ADR 0001 Finding 84 — the gated union-outflow seam.
+    //
+    // The fixture builds the case the production seed contains and no previous fixture did: a
+    // RECIPROCAL pair whose shared col is the LOWEST rim of BOTH basins, so neither can escape
+    // except into the other, and whose union HAS a higher way out to the sea. That is the
+    // geometry `break_reciprocal_spill_cycles` merges — and the geometry whose outflow it then
+    // never re-derives.
+    // ══════════════════════════════════════════════════════════════════════════════════════
+
+    /// `(heightmap, precip, temperature)` for the reciprocal fixture. A 1-D channel, walls at 0.9.
+    ///
+    /// ```text
+    ///  x:   0      1       2..6     7       8..12    13..28        29
+    ///     ocean  sea col   pit B  INTERNAL   pit A   ramp up      wall
+    ///     0.20    0.518    0.498   0.508     0.498   0.520+       0.9
+    /// ```
+    /// B's rims are 0.518 (sea) and 0.508 (the col) → B spills into A.
+    /// A's rims are 0.508 (the col) and 0.520 (the ramp) → A spills into B. **Reciprocal.**
+    /// Both fill to the same sill (0.508) → equal free surfaces → MERGED.
+    /// The UNION's lowest external rim is the 0.518 sea col, which the pair's own floods never
+    /// reach because each stops at the internal col first.
+    fn reciprocal_fixture() -> (GridF32, GridF32, GridF32) {
+        let (w, h) = (30usize, 3usize);
+        let mut hm = GridF32::new(w, h, 0.9);
+        hm.set(0, 1, 0.20); // ocean
+        hm.set(1, 1, 0.518); // the UNION's sea col
+        for x in 2..=6 {
+            hm.set(x, 1, 0.498); // pit B
+        }
+        hm.set(7, 1, 0.508); // the INTERNAL col, lowest rim of both
+        for x in 8..=12 {
+            hm.set(x, 1, 0.498); // pit A
+        }
+        for (i, x) in (13..=28).enumerate() {
+            hm.set(x, 1, 0.520 + 0.006 * i as f32); // ramp ascending away from A → drains into A
+        }
+        hm.set(29, 1, 0.9);
+        let unit = crate::climate::precipitation::PRECIP_MM_PER_UNIT;
+        let mut precip = GridF32::new(w, h, 0.0);
+        let mut temp = GridF32::new(w, h, 5.0);
+        // The pits are WET so `net_evap = max(0, PE - precip) = 0` at both floors: a humid basin
+        // cannot close itself, `a_eq` is infinite, and both MUST fill to the sill. That is the
+        // Finding 39 regime in which the reciprocal pair exists at all.
+        for x in 2..=12 {
+            precip.set(x, 1, 3000.0 / unit);
+        }
+        // A's catchment: the ramp. B's: one wall cell, so neither is dry.
+        for x in 13..=28 {
+            precip.set(x, 1, 3000.0 / unit);
+        }
+        precip.set(4, 0, 900.0 / unit);
+        (hm, precip, temp)
+    }
+
+    fn gate_on() -> C1DrainageConfig {
+        C1DrainageConfig {
+            merged_basin_outlet: Some(MergedBasinOutlet { rule: ReciprocalRule::LevelThenMerge }),
+            ..Default::default()
+        }
+    }
+
+    /// NEGATIVE CONTROL FIRST. Without it the test below would pass on a fixture that never
+    /// builds the defect, which is exactly how the Finding 80 base-level fixture nearly slipped.
+    #[test]
+    fn reciprocal_pair_leaks_without_the_gate() {
+        let (hm, precip, temp) = reciprocal_fixture();
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let r = below_sea_basin_lakes_infil(
+            &hm,
+            &clim,
+            &C1DrainageConfig::default(),
+            &SteinSteinParams::default(),
+            30.0,
+            None,
+            None,
+        );
+        assert_eq!(
+            r.termination.pairs_merged, 1,
+            "the fixture does not build a MERGED reciprocal pair: {:?}",
+            r.termination
+        );
+        assert_eq!(
+            r.termination.to_own_body, 1,
+            "the fixture does not exhibit the leak (spillway ending in its own body): {:?}",
+            r.termination
+        );
+        assert!(
+            r.termination.q_own_body_m3s > 0.0,
+            "the leaking spillway carries no water, so the fixture proves nothing about the leak"
+        );
+        // and the shipped output really does give one id to two disconnected water bodies
+        let ids: std::collections::HashSet<u32> =
+            r.lake_map.iter().copied().filter(|&i| i != 0).collect();
+        assert_eq!(ids.len(), 1, "after the merge there must be exactly one below-sea id");
+    }
+
+    /// ADR Finding 84 A1 — with the gate on, the union's outflow is re-derived and reaches the sea.
+    #[test]
+    fn the_gate_retraces_the_union_to_the_sea() {
+        let (hm, precip, temp) = reciprocal_fixture();
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let ss = SteinSteinParams::default();
+        let r = below_sea_basin_lakes_infil(&hm, &clim, &gate_on(), &ss, 30.0, None, None);
+        let t = &r.termination;
+        assert_eq!(t.pairs_merged, 1, "{t:?}");
+        assert_eq!(t.unions_retraced, 1, "the union's outflow was not re-derived: {t:?}");
+        assert_eq!(t.unions_endorheic, 0, "{t:?}");
+        assert_eq!(t.to_own_body, 0, "the invariant still fails with the gate on: {t:?}");
+        assert_eq!(t.to_ocean, 1, "the union's spillway does not reach the sea: {t:?}");
+        // the path really ends on an ocean cell, and it starts at the UNION's rim (x = 1), not at
+        // the internal col (x = 7)
+        let sp = r.spillways.iter().find(|s| !s.points.is_empty()).expect("one spillway");
+        assert_eq!(
+            sp.points.first().copied(),
+            Some((1, 1)),
+            "not the union's rim: {:?}",
+            sp.points
+        );
+        assert_eq!(sp.points.last().copied(), Some((0, 1)), "not the ocean: {:?}", sp.points);
+        assert_eq!(sp.chained_into, None, "an ocean outlet must chain into nothing");
+        assert_eq!(sp.profile_m.len(), sp.points.len(), "profile and path must agree in length");
+    }
+
+    /// ADR Finding 84 A1 — the seam changes the PATH and the TERMINATION and nothing else.
+    /// `lake_map`, the lake inventory and every other spillway must be identical, because the
+    /// merge and the water balance both run before it.
+    #[test]
+    fn the_gate_changes_only_the_merged_union_spillway() {
+        let (hm, precip, temp) = reciprocal_fixture();
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let ss = SteinSteinParams::default();
+        let off = below_sea_basin_lakes_infil(
+            &hm,
+            &clim,
+            &C1DrainageConfig::default(),
+            &ss,
+            30.0,
+            None,
+            None,
+        );
+        let on = below_sea_basin_lakes_infil(&hm, &clim, &gate_on(), &ss, 30.0, None, None);
+        assert_eq!(off.lake_map, on.lake_map, "the gate moved the lake footprints");
+        assert_eq!(off.wetland, on.wetland, "the gate moved the wetland mask");
+        assert_eq!(off.lakes.len(), on.lakes.len());
+        for (a, b) in off.lakes.iter().zip(&on.lakes) {
+            assert_eq!(a.base.id, b.base.id);
+            assert_eq!(a.level_m.to_bits(), b.level_m.to_bits(), "the gate moved a lake LEVEL");
+            assert_eq!(a.area_km2.to_bits(), b.area_km2.to_bits());
+        }
+        assert_eq!(off.spillways.len(), on.spillways.len(), "the gate added or dropped a spillway");
+        for (a, b) in off.spillways.iter().zip(&on.spillways) {
+            assert_eq!(a.lake_id, b.lake_id);
+            assert_eq!(
+                a.discharge_m3s.to_bits(),
+                b.discharge_m3s.to_bits(),
+                "the gate moved a DISCHARGE — it is only allowed to move the path"
+            );
+            assert_eq!(a.width_m.to_bits(), b.width_m.to_bits());
+            assert_eq!(a.drainage_km2.to_bits(), b.drainage_km2.to_bits());
+        }
+        assert_ne!(
+            off.spillways[0].points, on.spillways[0].points,
+            "the gate did not move the path at all — it is doing nothing"
+        );
+    }
+
+    /// ADR Finding 84 — the duplication guard the doc comment on [`merged_union_outflow`] promises:
+    /// on a SINGLE-component basin the re-derivation must reproduce the inline flood and trace
+    /// exactly. If this ever fails, the two copies have drifted and the copy is the suspect.
+    #[test]
+    fn merged_outflow_agrees_with_the_inline_flood() {
+        // one pit, one sea col, one ramp: the plain exorheic case the inline code handles
+        let (w, h) = (24usize, 3usize);
+        let mut hm = GridF32::new(w, h, 0.9);
+        hm.set(0, 1, 0.20);
+        hm.set(1, 1, 0.510);
+        for x in 2..=8 {
+            hm.set(x, 1, 0.498);
+        }
+        for (i, x) in (9..=22).enumerate() {
+            hm.set(x, 1, 0.520 + 0.006 * i as f32);
+        }
+        hm.set(23, 1, 0.9);
+        let unit = crate::climate::precipitation::PRECIP_MM_PER_UNIT;
+        let mut precip = GridF32::new(w, h, 0.0);
+        let temp = GridF32::new(w, h, 5.0);
+        for x in 2..=22 {
+            precip.set(x, 1, 3000.0 / unit);
+        }
+        let clim = DrainageClimate { precip_internal: &precip, temperature: &temp };
+        let r = below_sea_basin_lakes_infil(
+            &hm,
+            &clim,
+            &C1DrainageConfig::default(),
+            &SteinSteinParams::default(),
+            24.0,
+            None,
+            None,
+        );
+        assert_eq!(r.spillways.len(), 1, "the control fixture must produce exactly one spillway");
+        let inline: Vec<usize> =
+            r.spillways[0].points.iter().map(|&(x, y)| y as usize * w + x as usize).collect();
+        let wc = crate::lakes::connectivity::water_class(&hm, C1_SEA_LEVEL_NORM);
+        let flow =
+            compute_flow(&hm, &FlowConfig { sea_level: C1_SEA_LEVEL_NORM, ..Default::default() });
+        let union_cells: std::collections::HashSet<usize> =
+            (0..w * h).filter(|&k| wc[k] == 2).collect();
+        let &floor_k = union_cells
+            .iter()
+            .min_by(|&&a, &&b| hm.data[a].total_cmp(&hm.data[b]))
+            .expect("a below-sea cell");
+        let own = r.spillways[0].lake_id;
+        let mine = super::merged_union_outflow(
+            &hm,
+            &flow,
+            &wc,
+            &r.lake_map,
+            None,
+            &union_cells,
+            own,
+            floor_k,
+            w,
+            h,
+        )
+        .expect("the re-derivation must find the same outflow");
+        assert_eq!(mine, inline, "the duplicated flood/trace disagrees with the inline one");
     }
 
     /// Navigability classification is monotone in drainage area.

@@ -23,8 +23,8 @@ mod common;
 
 use common::{
     CELL_KM, DOMAIN_KM, Knobs, RICHARDSON_MIN_POLY_KM, RICHARDSON_OFFSETS, RICHARDSON_RULERS, SEA,
-    build_field, land_u16, majority, richardson, richardson_fit, richardson_line, spectrum,
-    to_mask,
+    build_field, circle_polygon, fill_polygon, koch_polygon, land_u16, majority, richardson,
+    richardson_fit, richardson_line, spectrum, to_mask,
 };
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::terrain::coast_metrics::{NECK_KM, coast_shape_thresholds};
@@ -33,85 +33,6 @@ use ymir_core::terrain::contour::marching_squares;
 // ─────────────────────────────────────────────────────────────────────────────
 // The two synthetic controls
 // ─────────────────────────────────────────────────────────────────────────────
-
-/// Fill a closed polygon into a `w x w` binary mask by even-odd scanline. Edges are bucketed by
-/// row, so the cost is the perimeter and not `rows x edges`.
-fn fill_polygon(pts: &[(f64, f64)], w: usize) -> Vec<bool> {
-    let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); w];
-    let n = pts.len();
-    for i in 0..n {
-        let (a, b) = (pts[i], pts[(i + 1) % n]);
-        let (y0, y1) = if a.1 < b.1 { (a.1, b.1) } else { (b.1, a.1) };
-        let lo = (y0.floor().max(0.0)) as usize;
-        let hi = (y1.ceil().min((w - 1) as f64)) as usize;
-        for row in buckets.iter_mut().take(hi + 1).skip(lo) {
-            row.push(i);
-        }
-    }
-    let mut out = vec![false; w * w];
-    let mut xs: Vec<f64> = Vec::new();
-    for y in 0..w {
-        let yc = y as f64 + 0.5;
-        xs.clear();
-        for &i in &buckets[y] {
-            let (a, b) = (pts[i], pts[(i + 1) % n]);
-            if (a.1 <= yc) != (b.1 <= yc) {
-                xs.push(a.0 + (yc - a.1) / (b.1 - a.1) * (b.0 - a.0));
-            }
-        }
-        xs.sort_by(|p, q| p.partial_cmp(q).unwrap_or(std::cmp::Ordering::Equal));
-        for pair in xs.chunks_exact(2) {
-            let (x0, x1) = (pair[0].max(0.0) as usize, (pair[1].min((w - 1) as f64)) as usize);
-            for x in x0..=x1 {
-                out[y * w + x] = true;
-            }
-        }
-    }
-    out
-}
-
-/// A Koch snowflake of known dimension `log 4 / log 3 = 1.2619`, `generations` rounds from an
-/// equilateral triangle of side `side` pixels, centred in a `w x w` grid.
-fn koch(w: usize, side: f64, generations: usize) -> Vec<(f64, f64)> {
-    let c = w as f64 / 2.0;
-    let r = side / 3f64.sqrt();
-    let mut pts: Vec<(f64, f64)> = (0..3)
-        .map(|i| {
-            let a = std::f64::consts::TAU * i as f64 / 3.0 - std::f64::consts::FRAC_PI_2;
-            (c + r * a.cos(), c + r * a.sin())
-        })
-        .collect();
-    for _ in 0..generations {
-        let n = pts.len();
-        let mut next = Vec::with_capacity(n * 4);
-        for i in 0..n {
-            let (a, b) = (pts[i], pts[(i + 1) % n]);
-            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-            let p = (a.0 + dx / 3.0, a.1 + dy / 3.0);
-            let q = (a.0 + 2.0 * dx / 3.0, a.1 + 2.0 * dy / 3.0);
-            let (ux, uy) = (q.0 - p.0, q.1 - p.1);
-            let (co, si) = (0.5f64, -(3f64.sqrt() / 2.0));
-            let m = (p.0 + ux * co - uy * si, p.1 + ux * si + uy * co);
-            next.push(a);
-            next.push(p);
-            next.push(m);
-            next.push(q);
-        }
-        pts = next;
-    }
-    pts
-}
-
-fn circle(w: usize, r: f64) -> Vec<(f64, f64)> {
-    let c = w as f64 / 2.0;
-    let n = 8192usize;
-    (0..n)
-        .map(|i| {
-            let a = std::f64::consts::TAU * i as f64 / n as f64;
-            (c + r * a.cos(), c + r * a.sin())
-        })
-        .collect()
-}
 
 /// D of a synthetic mask, on the whole-population curve.
 fn synth_d(land: &[bool], w: usize) -> f64 {
@@ -140,8 +61,8 @@ fn f83_richardson() {
     // ── the instrument's own floor and its own ceiling ────────────────────────
     eprintln!("\n-- B1 control · the instrument on two shapes of KNOWN dimension (8192 grid) --");
     let w = 8192usize;
-    let circ = fill_polygon(&circle(w, 3000.0), w);
-    let kch = fill_polygon(&koch(w, 5400.0, 7), w);
+    let circ = fill_polygon(&circle_polygon(w, 3000.0), w);
+    let kch = fill_polygon(&koch_polygon(w, 5400.0, 7), w);
     richardson_line("CIRCLE (true D = 1.000)", &circ, w, CELL_KM, 10.0);
     richardson_line("KOCH g7 (true D = 1.2619)", &kch, w, CELL_KM, 10.0);
     let dc = synth_d(&circ, w);

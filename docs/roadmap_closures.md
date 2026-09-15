@@ -356,6 +356,27 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 > si elle est un jour écrite, serait côtière — et devra répondre au L502 (`diffuse_channels = true`
 > est un choix LEM-correct délibéré).
 >
+> ⛔ **ET LE TROU DU F74 N'EST PAS UNE ERREUR DE COMPTABILITÉ (Finding 84).** La couture gatée
+> `C1DrainageConfig::merged_basin_outlet` re-dérive l'exutoire d'une cuvette FUSIONNÉE (le
+> déversoir survivant traversait le col INTERNE de la paire, donc il terminait dans le corps
+> qu'il drainait : **3 déversoirs, 501,99 m³/s** en humide). Avec la porte ouverte : déversoirs
+> dans leur propre corps **3 → 0**, chaîné **522,1 → 156,4 (−70 %)** — et **terminal ×0,446 et
+> trou 262,7 INCHANGÉS**, aux deux lits.
+>
+> La raison : **Σ évaporation = 0,00 m³/s** sur les vingt cuvettes sous-marines en humide
+> (`net_evap = max(0, PE − précip) = 0`), et la plus grande union **n'a aucun rebord par lequel
+> déborder**. **365,62 m³/s entrent dans une cuvette fermée, dans un climat qui ne peut pas les
+> évaporer, par une géométrie qui ne peut pas les drainer.** Les trois familles de remède
+> (a)/(b)/(c) portaient toutes sur *où pointe le déversoir* ; le pointer juste ne déplace rien.
+>
+> **⇒ Ce qui ferme le trou est H-2 vu du côté des lacs : remonter l'union à son NOUVEAU seuil et
+> re-inonder.** Elle atteint alors le rebord supérieur et déborde, ou sa surface croît jusqu'à
+> l'équilibre évaporatoire — les deux terminent l'eau. **Stop rule tirée au F84** (exorhéique
+> sans exutoire 1 → 2 : la classification du lac et son exutoire sont décidés en deux passes et
+> la seconde ne peut plus atteindre la première), donc **rien n'est promu** ; la porte reste
+> `None`. Et le retracé referme un 2-cycle explicite (136,38 aller, 19,37 retour) parce qu'il
+> tourne APRÈS le détecteur de réciprocité : une couture complète itère les deux.
+>
 > ✅ **CRITÈRE ATTEINT (Finding 80) — pour la première fois du chantier.**
 > `StreamPowerConfig::base_level_floor`, **gatée `None`, octet-identique**, borne la CIBLE de
 > relaxation : `h_r_eff = max(h_r, min(h_o, sea + ε))`. À ε = 0,5 m (3,4 pas u16) :

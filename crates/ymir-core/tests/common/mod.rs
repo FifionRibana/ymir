@@ -487,3 +487,385 @@ pub fn richardson_line(tag: &str, land: &[bool], w: usize, cell_km: f32, max_km:
         all.iter().map(|(e, l)| format!("{e:.3}km:{l:.0}")).collect::<Vec<_>>().join("  ")
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR Finding 84 block B1 — the candidate "organic" quantities, and the SHAPES that calibrate
+// them. Shared because B1 needs them and Finding 83's Richardson bench already needed two of
+// them; a third copy is what the ADR has twice named as debt.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Fill a closed polygon into a `w x w` binary mask by even-odd scanline. Edges are bucketed by
+/// row, so the cost is the perimeter and not `rows x edges`.
+pub fn fill_polygon(pts: &[(f64, f64)], w: usize) -> Vec<bool> {
+    let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); w];
+    let n = pts.len();
+    for i in 0..n {
+        let (a, b) = (pts[i], pts[(i + 1) % n]);
+        let (y0, y1) = if a.1 < b.1 { (a.1, b.1) } else { (b.1, a.1) };
+        let lo = (y0.floor().max(0.0)) as usize;
+        let hi = (y1.ceil().min((w - 1) as f64)) as usize;
+        for row in buckets.iter_mut().take(hi + 1).skip(lo) {
+            row.push(i);
+        }
+    }
+    let mut out = vec![false; w * w];
+    let mut xs: Vec<f64> = Vec::new();
+    for y in 0..w {
+        let yc = y as f64 + 0.5;
+        xs.clear();
+        for &i in &buckets[y] {
+            let (a, b) = (pts[i], pts[(i + 1) % n]);
+            if (a.1 <= yc) != (b.1 <= yc) {
+                xs.push(a.0 + (yc - a.1) / (b.1 - a.1) * (b.0 - a.0));
+            }
+        }
+        xs.sort_by(|p, q| p.partial_cmp(q).unwrap_or(std::cmp::Ordering::Equal));
+        for pair in xs.chunks_exact(2) {
+            let (x0, x1) = (pair[0].max(0.0) as usize, (pair[1].min((w - 1) as f64)) as usize);
+            for x in x0..=x1 {
+                out[y * w + x] = true;
+            }
+        }
+    }
+    out
+}
+
+/// A Koch snowflake, D = log 4 / log 3 = 1.2619, `generations` rounds from a triangle of `side` px.
+pub fn koch_polygon(w: usize, side: f64, generations: usize) -> Vec<(f64, f64)> {
+    let c = w as f64 / 2.0;
+    let r = side / 3f64.sqrt();
+    let mut pts: Vec<(f64, f64)> = (0..3)
+        .map(|i| {
+            let a = std::f64::consts::TAU * i as f64 / 3.0 - std::f64::consts::FRAC_PI_2;
+            (c + r * a.cos(), c + r * a.sin())
+        })
+        .collect();
+    for _ in 0..generations {
+        let n = pts.len();
+        let mut next = Vec::with_capacity(n * 4);
+        for i in 0..n {
+            let (a, b) = (pts[i], pts[(i + 1) % n]);
+            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+            let p = (a.0 + dx / 3.0, a.1 + dy / 3.0);
+            let q = (a.0 + 2.0 * dx / 3.0, a.1 + 2.0 * dy / 3.0);
+            let (ux, uy) = (q.0 - p.0, q.1 - p.1);
+            let (co, si) = (0.5f64, -(3f64.sqrt() / 2.0));
+            let m = (p.0 + ux * co - uy * si, p.1 + ux * si + uy * co);
+            next.push(a);
+            next.push(p);
+            next.push(m);
+            next.push(q);
+        }
+        pts = next;
+    }
+    pts
+}
+
+/// A circle of radius `r` px, sampled finely. True D = 1.000, zero curvature inversions.
+pub fn circle_polygon(w: usize, r: f64) -> Vec<(f64, f64)> {
+    let c = w as f64 / 2.0;
+    let n = 8192usize;
+    (0..n)
+        .map(|i| {
+            let a = std::f64::consts::TAU * i as f64 / n as f64;
+            (c + r * a.cos(), c + r * a.sin())
+        })
+        .collect()
+}
+
+/// A square rotated 30°, side `s` px. True D = 1.000 with FOUR corners — the control that says
+/// whether a curvature instrument fires on corners that are content rather than noise.
+pub fn rotated_square_polygon(w: usize, s: f64, deg: f64) -> Vec<(f64, f64)> {
+    let c = w as f64 / 2.0;
+    let t = deg.to_radians();
+    let corners = [(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)];
+    let mut out = Vec::new();
+    for i in 0..4 {
+        let (ax, ay) = corners[i];
+        let (bx, by) = corners[(i + 1) % 4];
+        for j in 0..2048 {
+            let u = j as f64 / 2048.0;
+            let (x, y) = ((ax + u * (bx - ax)) * s, (ay + u * (by - ay)) * s);
+            out.push((c + x * t.cos() - y * t.sin(), c + x * t.sin() + y * t.cos()));
+        }
+    }
+    out
+}
+
+/// **The PERIODIC negative control**: a smooth circle carrying regular radial teeth of
+/// `amp` px at a spacing of `lambda_px` along the circumference. Built to Finding 76's measured
+/// fur geometry (amplitude 2–5 cells, λ ≈ 14 cells). A quantity that claims to detect "a
+/// generator" must fire on this.
+pub fn periodic_polygon(w: usize, r: f64, amp: f64, lambda_px: f64) -> Vec<(f64, f64)> {
+    let c = w as f64 / 2.0;
+    let teeth = (std::f64::consts::TAU * r / lambda_px).round().max(4.0);
+    let n = 65536usize;
+    (0..n)
+        .map(|i| {
+            let a = std::f64::consts::TAU * i as f64 / n as f64;
+            let saw = if (teeth * a).cos() >= 0.0 { amp } else { 0.0 };
+            let rr = r + saw;
+            (c + rr * a.cos(), c + rr * a.sin())
+        })
+        .collect()
+}
+
+/// A radial fractional-Brownian boundary, `r(θ) = R₀ (1 + a · Σ k^-(H+1/2) cos(kθ + φ_k))`,
+/// with `H = 2 − D`. Deterministic phases from a fixed xorshift.
+///
+/// ⚠️ **KEPT AS A MEASURED NEGATIVE, not used as the isotropic control.** Built at
+/// `r = 3000` px, `D = 1.25`, amplitude 5 %, it MEASURES **D = 1.008** over 100 m – 10 km —
+/// and that is correct arithmetic, not a bug: an fBm curve's excursion over an arc `Δs`
+/// scales as `Δs^H`, so over 2 px of a 18 850 px circumference it is `150 · (2/18850)^0.75
+/// ≈ 0.16` px. **Sub-pixel.** A D = 1.25 fBm lobe of moderate amplitude is SMOOTH at the
+/// cell scale, so it cannot calibrate a cell-scale instrument; reaching 2 px of roughness
+/// at 2 px of arc would need an amplitude of ~64 % of the radius, i.e. a self-intersecting
+/// blob. Use [`random_koch_polygon`] instead, which is rough down to `side / 3^g`.
+pub fn fbm_polygon(w: usize, r: f64, d_target: f64, amp_frac: f64, kmax: usize) -> Vec<(f64, f64)> {
+    let c = w as f64 / 2.0;
+    let hurst = 2.0 - d_target;
+    let mut st = 0x9E37_79B9_7F4A_7C15u64;
+    let mut rnd = || {
+        st ^= st << 13;
+        st ^= st >> 7;
+        st ^= st << 17;
+        (st >> 11) as f64 / (1u64 << 53) as f64
+    };
+    let phase: Vec<f64> = (0..=kmax).map(|_| rnd() * std::f64::consts::TAU).collect();
+    let coef: Vec<f64> =
+        (0..=kmax).map(|k| if k == 0 { 0.0 } else { (k as f64).powf(-(hurst + 0.5)) }).collect();
+    let norm = coef.iter().map(|x| x * x).sum::<f64>().sqrt() * std::f64::consts::SQRT_2.recip();
+    let n = 65536usize;
+    (0..n)
+        .map(|i| {
+            let a = std::f64::consts::TAU * i as f64 / n as f64;
+            let mut s = 0.0;
+            for k in 1..=kmax {
+                s += coef[k] * (k as f64 * a + phase[k]).cos();
+            }
+            let rr = r * (1.0 + amp_frac * s / norm.max(1e-12));
+            (c + rr * a.cos(), c + rr * a.sin())
+        })
+        .collect()
+}
+
+/// Windows of `win_km` of arc length along every polygon at least that long, as index ranges.
+fn arc_windows(poly: &[(f32, f32)], cell_km: f32, win_km: f32) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let (mut i0, mut acc) = (0usize, 0.0f32);
+    for i in 1..poly.len() {
+        acc += ((poly[i].0 - poly[i - 1].0).powi(2) + (poly[i].1 - poly[i - 1].1).powi(2)).sqrt()
+            * cell_km;
+        if acc >= win_km {
+            out.push((i0, i));
+            i0 = i;
+            acc = 0.0;
+        }
+    }
+    out
+}
+
+/// **Normal-orientation entropy.** The contour normal's AXIAL angle (mod π) binned into 18 bins
+/// per 20 km window; Shannon entropy divided by `ln 18`, so 1.0 is a perfectly isotropic window
+/// and 0.0 a window whose normal never turns. Returns the MEDIAN over windows and the count.
+///
+/// Axial (mod π), not directional (mod 2π): a fringe tooth's two flanks have opposite normals and
+/// the same axis, and it is the axis that "perpendicular to the coast everywhere" is about.
+pub fn normal_entropy(polys: &[Vec<(f32, f32)>], cell_km: f32, win_km: f32) -> (f64, usize) {
+    const BINS: usize = 18;
+    let mut vals: Vec<f64> = Vec::new();
+    for pl in polys {
+        if pl.len() < 32 {
+            continue;
+        }
+        for (a, b) in arc_windows(pl, cell_km, win_km) {
+            let mut hist = [0.0f64; BINS];
+            let mut tot = 0.0f64;
+            let mut i = a + 4;
+            while i + 4 < b {
+                let (ax, ay) = pl[i - 4];
+                let (bx, by) = pl[i + 4];
+                let (tx, ty) = (bx - ax, by - ay);
+                let len = (tx * tx + ty * ty).sqrt();
+                if len > 1e-6 {
+                    let ang = (-ty as f64).atan2(tx as f64).rem_euclid(std::f64::consts::PI);
+                    let bin = ((ang / std::f64::consts::PI) * BINS as f64) as usize;
+                    hist[bin.min(BINS - 1)] += 1.0;
+                    tot += 1.0;
+                }
+                i += 1;
+            }
+            if tot < BINS as f64 * 2.0 {
+                continue; // rule 10: too few samples in the window to read a histogram
+            }
+            let mut e = 0.0;
+            for c in hist {
+                if c > 0.0 {
+                    let p = c / tot;
+                    e -= p * p.ln();
+                }
+            }
+            vals.push(e / (BINS as f64).ln());
+        }
+    }
+    let n = vals.len();
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    (if n == 0 { f64::NAN } else { vals[n / 2] }, n)
+}
+
+/// **Curvature radii and inversions.** Signed curvature from the circle through
+/// `p[i-stencil], p[i], p[i+stencil]`. Returns
+/// `(r_p10, r_p50, r_p90 in CELLS, share of sign inversions closer than `near_cells` of arc,
+/// inversion count)`.
+///
+/// ⚠️ **This instrument has a RESOLUTION CEILING and it is not optional.** A circle of radius `R`
+/// has a sagitta of `(2·stencil)²/(8R)` cells over the stencil; when that is below the contour's
+/// own sub-cell wobble the fitted radius and the curvature SIGN are both raster noise. At
+/// `stencil = 2` a rasterised 3 000-cell circle — curvature of one constant sign, by
+/// construction — measures **55.8 %** of its inversions closer than 3 cells and a median radius
+/// of **3.3 cells**. Both figures are noise. Read this only against the circle's reading at the
+/// same stencil, and treat the circle's value as the FLOOR.
+pub fn curvature_stats(
+    polys: &[Vec<(f32, f32)>],
+    near_cells: f32,
+    stencil: usize,
+) -> (f32, f32, f32, f64, usize) {
+    let s_st = stencil.max(1);
+    let mut radii: Vec<f32> = Vec::new();
+    let (mut gaps_near, mut gaps_all) = (0usize, 0usize);
+    for pl in polys {
+        if pl.len() < 4 * s_st + 8 {
+            continue;
+        }
+        let mut last_sign = 0i8;
+        let mut arc_since = 0.0f32;
+        for i in s_st..pl.len() - s_st {
+            let (a, b, c) = (pl[i - s_st], pl[i], pl[i + s_st]);
+            let cross = (b.0 - a.0) * (c.1 - b.1) - (b.1 - a.1) * (c.0 - b.0);
+            let (ab, bc, ca) = (
+                ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt(),
+                ((c.0 - b.0).powi(2) + (c.1 - b.1).powi(2)).sqrt(),
+                ((a.0 - c.0).powi(2) + (a.1 - c.1).powi(2)).sqrt(),
+            );
+            arc_since += ab;
+            if cross.abs() < 1e-9 {
+                continue; // collinear: infinite radius, no sign
+            }
+            radii.push((ab * bc * ca / (2.0 * cross.abs())).min(1.0e6));
+            let sign = if cross > 0.0 { 1i8 } else { -1i8 };
+            if last_sign != 0 && sign != last_sign {
+                gaps_all += 1;
+                if arc_since < near_cells {
+                    gaps_near += 1;
+                }
+                arc_since = 0.0;
+            }
+            if sign != last_sign {
+                last_sign = sign;
+            }
+        }
+    }
+    let r = sorted(radii);
+    (
+        pct(&r, 0.10),
+        pct(&r, 0.50),
+        pct(&r, 0.90),
+        if gaps_all == 0 { 0.0 } else { 100.0 * gaps_near as f64 / gaps_all as f64 },
+        gaps_all,
+    )
+}
+
+/// **Excursion-size distribution**, from the same `coast_spurs` walk the counts use: lengths in
+/// CELLS, as `(p10, p50, p90, CV, count)`. A periodic fringe is a delta; a real coast is broad.
+pub fn excursion_sizes(polys: &[Vec<(f32, f32)>], cell_km: f32) -> (f32, f32, f32, f64, usize) {
+    let (sp, _) = coast_spurs(polys, cell_km, 2.0 * cell_km, cell_km);
+    let l = sorted(sp.iter().map(|s| s.len_km / cell_km).collect::<Vec<f32>>());
+    if l.is_empty() {
+        return (f32::NAN, f32::NAN, f32::NAN, f64::NAN, 0);
+    }
+    let m = l.iter().map(|&x| x as f64).sum::<f64>() / l.len() as f64;
+    let var = l.iter().map(|&x| (x as f64 - m).powi(2)).sum::<f64>() / l.len() as f64;
+    (pct(&l, 0.10), pct(&l, 0.50), pct(&l, 0.90), var.sqrt() / m.max(1e-9), l.len())
+}
+
+/// **The PERIODIC negative control, built ON THE GRID** and not as a polygon.
+///
+/// ⚠️ The first attempt built it as a polygon with `periodic_polygon` and it was DEGENERATE: a
+/// 2-px tooth at a 14-px period has a neck 7 px wide, so `coast_spurs` (neck ≤ 1 cell) found
+/// **zero** excursions on it and R came out 0.000 — the control could not exercise the very
+/// instruments it was built to calibrate. Finding 76 measured the fur as excursions **2–5 cells
+/// long with a neck at or under one cell**, i.e. narrow SPIKES, and that is what this builds:
+/// a filled circle plus one-cell-wide radial spikes of `spike_cells`, spaced `lambda_cells` apart
+/// along the circumference.
+pub fn spiky_circle_mask(w: usize, r: f64, spike_cells: f64, lambda_cells: f64) -> Vec<bool> {
+    let c = w as f64 / 2.0;
+    let mut m = vec![false; w * w];
+    for y in 0..w {
+        for x in 0..w {
+            let (dx, dy) = (x as f64 + 0.5 - c, y as f64 + 0.5 - c);
+            if dx * dx + dy * dy <= r * r {
+                m[y * w + x] = true;
+            }
+        }
+    }
+    let teeth = (std::f64::consts::TAU * r / lambda_cells).round().max(4.0) as usize;
+    for j in 0..teeth {
+        let a = std::f64::consts::TAU * j as f64 / teeth as f64;
+        let (ca, sa) = (a.cos(), a.sin());
+        let mut t = 0.0f64;
+        while t <= spike_cells {
+            let (px, py) = (c + (r + t) * ca, c + (r + t) * sa);
+            let (ix, iy) = (px.round() as i64, py.round() as i64);
+            if ix >= 0 && iy >= 0 && (ix as usize) < w && (iy as usize) < w {
+                m[iy as usize * w + ix as usize] = true;
+            }
+            t += 0.4; // sub-cell stepping so the spike is continuous on the raster
+        }
+    }
+    m
+}
+
+/// **The ISOTROPIC negative control**: a RANDOMISED Koch snowflake — same 1/3 subdivision, so the
+/// dimension is still `log 4 / log 3 = 1.2619`, but the apex is thrown to a random SIDE of each
+/// edge. That removes the periodicity and the preferred orientation while keeping roughness at
+/// every scale down to the smallest generation (`side / 3^g`), which is what a cell-scale
+/// instrument needs and what a low-amplitude fBm lobe cannot give it (see
+/// [`fbm_polygon`]'s note).
+pub fn random_koch_polygon(w: usize, side: f64, generations: usize, seed: u64) -> Vec<(f64, f64)> {
+    let c = w as f64 / 2.0;
+    let r = side / 3f64.sqrt();
+    let mut st = seed | 1;
+    let mut rnd = || {
+        st ^= st << 13;
+        st ^= st >> 7;
+        st ^= st << 17;
+        (st >> 11) as f64 / (1u64 << 53) as f64
+    };
+    let mut pts: Vec<(f64, f64)> = (0..3)
+        .map(|i| {
+            let a = std::f64::consts::TAU * i as f64 / 3.0 - std::f64::consts::FRAC_PI_2;
+            (c + r * a.cos(), c + r * a.sin())
+        })
+        .collect();
+    for _ in 0..generations {
+        let n = pts.len();
+        let mut next = Vec::with_capacity(n * 4);
+        for i in 0..n {
+            let (a, b) = (pts[i], pts[(i + 1) % n]);
+            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+            let p = (a.0 + dx / 3.0, a.1 + dy / 3.0);
+            let q = (a.0 + 2.0 * dx / 3.0, a.1 + 2.0 * dy / 3.0);
+            let (ux, uy) = (q.0 - p.0, q.1 - p.1);
+            // the apex, thrown to one side or the other with equal probability
+            let sgn = if rnd() < 0.5 { 1.0f64 } else { -1.0 };
+            let (co, si) = (0.5f64, sgn * (3f64.sqrt() / 2.0));
+            let m = (p.0 + ux * co - uy * si, p.1 + ux * si + uy * co);
+            next.push(a);
+            next.push(p);
+            next.push(m);
+            next.push(q);
+        }
+        pts = next;
+    }
+    pts
+}
