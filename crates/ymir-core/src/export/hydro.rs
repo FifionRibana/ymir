@@ -137,6 +137,7 @@ mod tests {
             depth_m: 90.0,
             area_km2: 12.5,
             lake_type: LakeType::Endorheic,
+            unresolved_reason: None,
         };
         C1DrainageResult {
             flow: FlowResult {

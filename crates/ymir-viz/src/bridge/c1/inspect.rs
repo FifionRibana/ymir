@@ -21,7 +21,8 @@ use ymir_core::climate::biomes::Biome;
 use ymir_core::climate::precipitation::precip_mm_per_year;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
 use ymir_core::tectonics_c1::drainage::{
-    C1_SEA_LEVEL_NORM, C1DrainageResult, LakeType, Navigability, potential_evaporation_mm,
+    C1_SEA_LEVEL_NORM, C1DrainageResult, LakeType, Navigability, UnresolvedReason,
+    potential_evaporation_mm,
 };
 use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
 
@@ -93,6 +94,9 @@ pub struct LakeCellInfo {
     pub level_m: f32,
     pub depth_m: f32,
     pub area_km2: f32,
+    /// ADR 0001 Finding 88-C — set iff `lake_type == Unresolved`. The panel renders the reason,
+    /// because "no outlet" was the same words for two different defects until it was counted.
+    pub unresolved_reason: Option<UnresolvedReason>,
 }
 
 /// Every HD quantity at one cell — the single access point for step d's
@@ -146,6 +150,7 @@ pub fn inspect_cell(hd: &HdResult, river_map: &RiverCellMap, x: usize, y: usize)
                 level_m: l.level_m,
                 depth_m: l.depth_m,
                 area_km2: l.area_km2,
+                unresolved_reason: l.unresolved_reason,
             })
         }
     };

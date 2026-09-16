@@ -11478,7 +11478,8 @@ Arid, the same instrument on its own deepest body (id 1000006, level 19.4 m, dep
 a **median cut of 161.30 m** over the footprint, rim p50 **27.5°**.
 
 > **Verdict: INCISION, at both beds, and by a wide margin.** The median cell of the basin lost
-> **165.8 m** (humid) and **161.3 m** (arid). This is Finding 77's 358 m of relaxation at Courant
+> **165.8 m** (humid) and **161.3 m** (arid). ⛔ **Finding 88-D1: 165.8 m is the DIFFERENCE OF
+> MEDIANS; the paired statistic — the median of the per-cell cuts — is 158.31 m.** This is Finding 77's 358 m of relaxation at Courant
 > 1353, one order down and inside a closed depression, and Finding 6's "no incision bound — floors
 > planed to base level" is the sentence it belongs to.
 >
@@ -11599,6 +11600,12 @@ round wrote — *"aucun autre lac ne change"* — fired.
 > lake on the production seed. What D needs is Finding 37c's saddle/escape for detected lakes, and
 > that is a mechanism, which this round forbids.
 >
+> ⛔ **Finding 88-E withdraws this block's reason.** With the saddle searched correctly (the lowest
+> rim cell *that has a way out*, not simply the lowest — see Finding 88-C) the escape carries a D8
+> direction on BOTH fields and the descent reaches the sea in **44 steps**. The 0.0142 m step is
+> reproduced to the digit; "then hits `DIR_NONE`" is wrong. The open item is that production emits
+> no spillway for a basin whose escape traces to the ocean in 3 km.
+>
 > ⚠️ **And the reason took three runs to read, because my verifier was on the wrong flow field.**
 > For fifteen of the nineteen my re-check reported "the trace succeeds" while production said it
 > failed. The difference was **`FlatPerturbation`**: production routes on `dr.flow`, which carries
@@ -11634,6 +11641,18 @@ reports **`f32::INFINITY`** instead of `a_spill`, with `a_eq_is_infinite` beside
 | arid, shipped | 90.6 | 0.7 | 47.94 | 1.93 | 0.0 | 0.9 | **142.1** | **103.2 %** |
 | arid, control | 90.6 | 0.7 | 47.87 | 1.93 | 0.0 | 0.9 | **142.0** | **103.1 %** |
 
+> ⛔ **AMENDED BY FINDING 88-B — THIS IS A PARTITION VERIFIED, NOT CONSERVATION, AND THE SIXTH
+> TERM IS A DOUBLE COUNT.** Finding 88 measured the two head terms against the budget directly:
+> `coastal arrival + Σ below-sea LOCAL inflow = 474.7` against a budget of `474.7`, **Δ −0.00, at
+> both beds**. Every drop of land surplus either crosses the coast or enters a below-sea basin —
+> which is what a runoff accumulation *is* — so this table **cannot** measure conservation along
+> the routing, and any figure above 100 % in it is a term counted twice. The sixth term was exactly
+> that: **every `Unresolved` lake routes across its own flat surface to the ocean**, so its inflow
+> was already inside the 180.5. Read with the chain at its END (which recovers 98.1 m³/s the
+> first-hop reading hides) the routing closes at **96.3 %** humid and **98.4 %** arid, and the gap
+> is **one spillway per bed terminating nowhere identifiable** — 19.5 and 4.1 m³/s,
+> `SpillwayTermination::to_nothing == 1`. Read the paragraph below as the partition it is.
+>
 > **The budget closes to within ±3.3 % in all four cases** — two beds, both gate positions. That is
 > the strongest conservation statement this campaign has produced, and it took replacing one
 > chained quantity with its local twin: the same table with the **chained** ocean term reads
@@ -11690,7 +11709,9 @@ sixty-five metres.
 
 * **F ships**: `BasinSummary::local_outflow_m3s`, and `a_eq_km2` reporting **infinity as infinity**
   with `a_eq_is_infinite` beside it — the ambiguity that misled Finding 85 is gone from the type.
-  **The six-term budget now closes to within ±3.3 % in both beds and at both gate positions.**
+  The six-term budget reads ±3.3 % in both beds and at both gate positions — ⛔ **and Finding 88-B
+  showed that figure to be a PARTITION with a double-counted sixth term, not a conservation
+  closure. See the amendment at the claim point above.**
 * **D is withdrawn**: the trace-before-label line failed the round's own guard (19 lakes moved, not
   1), because a detected lake's surface is flat and a D8 walk started inside it cannot leave.
   `surface_lake_outlet_trace` stays as the instrument that proved it.
@@ -11724,3 +11745,401 @@ round.
 to the next round by its own answer: block B concluded **incision**, so the 623.6 m lake with its
 42.8° rim and its 418 m waterfall outlet is now the first object to look at, and the numbers that
 send it there are 165.8 m of median cut and a pre-incision floor 21.3 m above the delivered one.
+
+## Finding 88 — the sixth term was water counted twice, the saddle was the wrong cell, and rule 12 fired on its first outing
+
+Two production changes, neither gated, both invariants Finding 87 had named: evaporation in local
+terms (A) and Finding 37c's saddle/escape ported to detected surface lakes (C). **Both were
+measured, one of them was WRONG on its first write, and the measurement is what found it.**
+
+### Rule 11 + 11b, three clauses — and the identifier that matters is the one with no antecedent
+
+`F37c` **0 — NOTHING FOUND** (the dossier writes "Finding 37c", L1541) · `escape` **32** (L1250) ·
+`FlatPerturbation` **3** — *all three mine, in Finding 87* · `DIR_NONE` **1**, mine · `dr.flow`
+**2**, mine · `evaporation_m3s` **3** (L7913) · `chained` **58** (L1145) · `clip` **44** (L874) ·
+`head_threshold` **6** (L7031) · `Tanganyika` **2** (L11396, mine).
+11b: `132.1` 4 / `132,1` 0 · `112.1` 8 / `112,1` 0 · `0.014` 8 / `0,014` 0 · `19.6` 4 · `4 850` 2 /
+`4850` 0 · `165.8` 7 · `623.6` 9 · `42.8` 7 · `45.04` 7 · **`Whipple` 0 · `450 000` 0 ·
+`flat_perturbation` 0 / `flat-perturbation` 0**.
+
+> **`FlatPerturbation` HAS NO ANTECEDENT IN THIS DOSSIER.** The six `perturbation` hits (L471) are
+> the Smith–Bretherton instability and unrelated. So **the flat-cell tie-break that production
+> routes on has never been characterised here** — and it is the operator that broke Finding 87-D's
+> verifier. The nearest thing is L733 (Finding 24): *"the MFD dominant-flow receiver ≡ D8 steepest
+> (92.9 % of land cells; **the rest are flat-cell tie-breaks**)"* — 7.1 % of land, measured without
+> naming the operator that decides them. That is a named debt, not a finding.
+
+Three hits decided three blocks before they ran, and one of them contradicted the round:
+
+* **L874 (Finding 20) answers block F outright.** The exported network is selected by
+  `is_river = acc ≥ stream_threshold`, and the finding's own title is *"clip the exported network
+  to the lake surfaces"*. Finding 87-G's tail of ~4 850 cells tops out at **19.6 km²** — a maximum
+  sitting just under a round number is the signature of a threshold, and `stream_km2` is **20**.
+* **L1541 (Finding 37c) gives block C its construction AND a contradiction to settle.** Its own
+  conclusion is *"a basin that fills to its sill but whose downhill trace cannot reach a sink is
+  ENDORHEIC (a genuine closed basin), not exorheic without an outlet"*. That is exactly the label
+  **Finding 30 refused** (*"it would assert a basin that gains more than it loses — a mass-balance
+  violation"*). The port therefore takes F37c's **instrument** and not its **verdict**: a failed
+  trace yields `Unresolved` with its reason. Where the two disagree, F30 wins — it argues from mass.
+* **L7913 frames A's risk**: `BasinSummary` is export-only (*"`bs.basins` is never read at all"*),
+  so adding a term to it cannot move the field. It also cannot be verified by a field hash, which
+  is why A's guard is the identity assertion and not a digest.
+
+### Rule 12, written as code this round
+
+`common::flow_field_hash` (FNV-1a over `direction` and `accumulation`, not `DefaultHasher`, so the
+digest is reproducible) and `common::declared_flow(label, candidate, production)`, which prints both
+digests and **panics** if they differ. Third instance in eight findings: Finding 80-B2 read the
+clamp for the incision, Finding 85 paired basins by scan-order id, Finding 87-D traced on a plain
+`compute_flow` where production carries `FlatPerturbation`.
+
+> **It fired on its first outing, on my own numbers.** `dr.flow` and the Finding 87 bench's
+> `compute_flow` differ on **512 130 D8 directions (0.763 % of cells)**, and their `DIR_NONE` counts
+> differ by 18. **So every Finding 87 figure read off `flow` rather than `dr.flow` was read on a
+> field production does not route on** — blocks F and G included.
+>
+> **And the number survives it.** Re-measured on `dr.flow`, the coastal arrival is **180.5 m³/s
+> against 180.5** (Δ 0.0), and the ungauged tail is 4 843 cells against 4 850 with the same p50,
+> p90 and max to the digit. The guard is right on the principle and the conclusion was unharmed —
+> both halves are the result. Rule 12 stays because next time the Δ will not be zero.
+
+### A — evaporation in local terms, and the closure it produces is an IDENTITY
+
+`BasinSummary::local_evaporation_m3s = min(evaporation, local_inflow)`. The remainder evaporates
+water that arrived through Finding 40's chain and is counted at its owner.
+
+| below-sea, local on all three terms | Σ local in | Σ local out | Σ evap CHAINED | Σ evap LOCAL | chained excess | closure |
+|---|---|---|---|---|---|---|
+| humid, shipped / control | 294.2 | 294.2 | 0.00 | 0.00 | **0.00** | 100.0 % |
+| arid, shipped | 47.1 | 4.9 | 47.94 | **42.24** | **5.70** | 112.1 % → **100.0 %** |
+| arid, control | 47.1 | 4.9 | 47.87 | **42.18** | **5.70** | 112.1 % → **100.0 %** |
+
+> **⚠️ Rule 10, and the round asked for it in writing: the 100.0 % is DEDUCED, not measured.**
+> With `local_evap = min(evap, local_in)` and `local_out = max(0, local_in − evap)`, the two sum to
+> `local_in` **in both branches of the max**, per basin, by algebra. So the arid closure could not
+> have come out at anything else, and **Finding 87-F's humid 100.0 % was already that same
+> identity** — a fact that finding stated as a measurement. The assertion is now in the bench
+> (`|closure − 100| < 0.2`) *as an algebra check*, and the note is in the docstring of
+> `local_outflow_m3s` so the next reader cannot repeat the claim.
+>
+> **What A actually measures is the chained excess: 5.70 m³/s** (arid, both gate positions, stable
+> to the centilitre) — the water the below-sea system destroys that belongs to another basin's
+> inflow. And the partition it measures is real: arid sends **10.4 %** of its local inflow out and
+> evaporates **89.6 %**; humid sends 100 % out and evaporates nothing.
+
+### C — Finding 37c ported, and the first write was wrong
+
+`surface_lake_escape` + `surface_lake_escape_trace` + a shared `walk_to_sink`, and
+`apply_lake_water_balance` now labels **from the trace**. `UnresolvedReason` carries the failure as
+a closed seven-variant enum — not a string, because `CellInspection` is `Copy` in the viz and
+because *"all nineteen give the same reason"* was Finding 87's own result and was invisible until
+the reason was counted.
+
+| humid, shipped | detected lakes the BALANCE calls exorheic | remain `Unresolved` after the trace | reasons |
+|---|---|---|---|
+| **first write** — saddle = the lowest rim cell | 59 | **35** | 35 × `SaddleHasNoLowerNeighbour` |
+| **corrected** — saddle = the lowest rim cell WITH a way out | 59 | **2** | 2 × `ReturnsIntoOwnFootprint` |
+| arid, shipped | 3 | **3** | 3 × `ReturnsIntoOwnFootprint` |
+
+> **The measurement found the defect in my own seam, and the defect was one word.** Finding 37c
+> says *"the saddle and its lowest EXTERIOR escape neighbour"*; I implemented "the lowest rim cell,
+> and then require it to have an escape". On a **breached** field those differ constantly: the
+> lowest cell adjacent to a footprint is often a pit inside a breach channel, with no lower
+> neighbour at all. **35 of 59 lakes failed for that reason, and so did basin 1000001** — where
+> Finding 87-E's *bench* instrument had already used the right definition and found a real escape.
+> The dossier had the answer in two places and the production seam had it in neither.
+>
+> The corrected search sorts the rim by height and takes the lowest cell **from which the water can
+> leave**. `57 of 59` detected lakes then resolve, and the two that do not both report
+> `ReturnsIntoOwnFootprint` — Finding 37c's *"true loop"*.
+>
+> **Stop rule C did not fire**: **0** below-sea lakes changed label (the round allowed 2), at both
+> beds and both gate positions, and the guard that no below-sea lake even reaches this function is
+> asserted (`0`, by construction — their labels are set downstream).
+>
+> Cost of the contract: `C1Lake` gains `unresolved_reason`, eleven struct literals across three
+> files, and three viz renderings now print the reason ("⚠ boucle sur son empreinte", "⚠ plat
+> (DIR_NONE)", "⚠ col sans échappée") instead of one shared "sans exutoire".
+
+### B — the sixth term was water counted twice, and the closure was a partition all along
+
+Every `Unresolved` lake, routed on production's own field with its hash declared, from the
+footprint's deepest cell, re-entry allowed — because this asks *where does production put this
+water*, which is a different question from *can this lake be labelled exorheic* and must not be
+answered with the same walk.
+
+| | lakes | their local inflow | where production's field takes it |
+|---|---|---|---|
+| humid, shipped AND control | **2** | **2.2 m³/s** | **the SEA, both of them** (284 and 947 steps) |
+| arid, shipped AND control | 0 | 0.0 | — |
+| humid, before the block-C correction | 35 | **184.4 m³/s** | **the SEA, all thirty-five** |
+
+> **The sixth term is a DOUBLE COUNT, without exception.** Every lake in it routes to the ocean
+> across its own flat surface, so its inflow is *already inside the 180.5 m³/s coastal arrival*.
+> My prediction (*"the majority terminate inside their own footprint, ≤ 7 reach the sea"*) is
+> **refuted on both counts**; the round's (*"more than 12 drain to the sea"*) is **confirmed**, and
+> it was right for the right reason.
+>
+> **The negative control passes** in all four cases: the largest traced `Exorheic` lake (humid: id
+> 8, 270.8 km², local inflow 8.6 m³/s) routes 977 steps to the sea and the accumulation at its
+> terminus is 21.7 m³/s — above its own inflow, because the trunk collects more on the way down.
+
+**And then the arithmetic says something larger than the round asked.**
+
+| | coastal arrival | Σ below-sea LOCAL inflow | sum | budget | Δ |
+|---|---|---|---|---|---|
+| humid | 180.5 | 294.2 | **474.7** | **474.7** | **−0.00 (100.00 %)** |
+| arid | 90.6 | 47.1 | **137.7** | **137.7** | **−0.00 (100.00 %)** |
+
+> ⚠️ **The two head terms already exhaust the budget EXACTLY, at both beds.** Every drop of land
+> surplus either crosses the coast or enters a below-sea basin — that is what a runoff accumulation
+> *is*. So a "six-term budget" built on those two **cannot measure conservation along the routing**;
+> it restates the accumulation's own partition, and any figure above 100 % in it is a term counted
+> twice. **Finding 87-F's ±3.3 % was exactly that**: term 6 added on top of a closed partition.
+>
+> **The round's instruction is honoured: Finding 87's claim point is retitled from "conservation"
+> to "partition verified", in place, with the measurement that forced it.**
+
+**What the below-sea system does with its 294.2, read at the END of each chain and not at the first
+hop** — the distinction is itself worth 98.1 m³/s:
+
+| humid, shipped | m³/s | |
+|---|---|---|
+| → the OCEAN, own spillway | **130.9** | |
+| → a DETECTED surface lake | **98.1** | which block B has just shown routes on to the sea |
+| → retained (no spillway at the end of the chain) | **45.7** | |
+| → **nowhere identifiable** | **19.5** | `to_nothing 1` in Finding 84's own counters |
+| humid, control | | 130.9 · 98.1 · 21.6 retained · **43.6 into its OWN body** (the Finding 74/84 leak, with the gate off) |
+| arid, shipped | | 0.7 ocean · 0.1 retained · **4.1 nowhere identifiable** |
+
+| six terms, ocean and retained read at the end of the chain | Σ | % of budget |
+|---|---|---|
+| humid, shipped | **457.2** | **96.3 %** |
+| humid, control | 433.1 | 91.2 % |
+| arid, shipped | **135.5** | **98.4 %** |
+| arid, control | 135.4 | 98.3 % |
+
+> **The residual is no longer a percentage, it is a spillway.** Humid: **19.5 m³/s** terminating on
+> a cell that is neither the sea nor any water body — Finding 38's orphan-sliver family, and
+> `SpillwayTermination::to_nothing` counts exactly **1** of them. Arid: **4.1 m³/s**, same cause.
+> Reading the chain at its first hop instead of its end hides **98.1 m³/s** and was what made the
+> same table read 75.5 %.
+>
+> **So the honest statement of the conservation question, after this round**: the partition is
+> exact; the routing closes to **96.3 %** (humid) and **98.4 %** (arid) with the gate on; and the
+> gap is **one spillway per bed whose last point is nowhere**. That is a named object, not a
+> residual — and it is the next seam, not this round's.
+
+### E — basin 1000001 is NOT stuck on a flat, and Finding 87-E's reason is withdrawn
+
+With the corrected saddle search, on production's own field, hash declared:
+
+| humid, shipped | |
+|---|---|
+| basin 1000001, local outflow | **45.0 m³/s** |
+| saddle | (3779, 3569) at **76.2607 m** |
+| escape | (3778, 3570) at **76.2466 m** — **Δ 0.0142 m = 0.08 u16 steps** |
+| `DIR_NONE` at the escape | **false on production's field · false on the bench's** |
+| the descent from the escape | **44 steps → the SEA** |
+
+> **Finding 87-E said the escape "hits `DIR_NONE`". It does not.** The escape cell carries a
+> direction on both fields, and the descent from it reaches the ocean in forty-four steps. The
+> 0.0142 m step is real and reproduced to the digit; the **reason** attached to it was wrong, and it
+> was wrong for the same cause as block C's first write — the saddle was being read off the lowest
+> rim cell.
+>
+> **So the open item changes shape.** It is no longer "45 m³/s waiting on a quantisation step with
+> no D8 direction". It is: **the geometry offers an escape that traces to the sea in 3 km, and
+> production's own below-sea flood does not emit a spillway for it.** The defect is in the
+> spillway-emitting path, not in the terrain and not in the flow field. That is a sharper item than
+> the one Finding 87 left, and it is still not fixed — this round forbids the mechanism.
+>
+> My prediction (`DIR_NONE` persists with the perturbation) is **refuted**. So is the premise the
+> round handed me. The perturbation is not involved at all: both fields agree here.
+
+### D — the 623.6 m lake, pass by pass, and then sixteen of them
+
+**D1 — the floor lands early, the bowl lands earlier.** The incision is climate-free, so these
+numbers are a property of the FIELD and identical in both beds; reporting them twice would be
+reporting them once.
+
+| | pass 0 (no incision) | pass 1 | pass 2 (shipped) | pass 1's share |
+|---|---|---|---|---|
+| the floor cell (3487, 5902) | **+12.63 m** | **+0.81 m** | **−8.67 m** | **55.5 %** |
+| the footprint, median cut | 0 | **148.29 m** | **158.31 m** | **93.7 %** |
+
+> **Pass 1 carries 93.7 % of the footprint's cut and only 55.5 % of the floor's.** The prediction
+> ("> 80 %", mine and the round's) holds for the body and fails for the cell that named it. At
+> Courant 1353 the bowl lands in one step; the floor keeps going because what is still moving there
+> is not the relaxation (see D2).
+>
+> ⚠️ **Population note, and it corrects Finding 87-B's own figure.** The **median of the per-cell
+> cuts** is **158.31 m**; the **difference of the medians** (pre p50 526.7 − delivered p50 360.9) is
+> **165.80 m**. Finding 87-B published the second and called it "the median cut". The paired
+> statistic is the first. Findings 63–64's lesson, one round later, in my own table.
+
+**D2 — what it relaxes toward.**
+
+| humid, shipped, footprint = 234 724 cells | |
+|---|---|
+| cells where the Finding 83 bound COULD bind (receiver's pre-incision height < sea + 0.5 m) | **868 (0.37 %)** |
+| cells that landed within 1 m of their receiver's pre-incision height | **4 748 (2.0 %)** |
+| median cut where A ≥ 1 km² (n = 10 755) | **308.9 m** |
+| median cut where A < 0.01 km² (n = 106 039) | **151.6 m** |
+
+> **It is not a one-step landing onto the receiver: only 2.0 % of the bowl did that.** And the cut
+> **scales with drainage area** — ×2.0 between the two decades measured — which is `E = K·A^m·S^n`
+> behaving exactly as written: the channelised cells relax, the hillslope cells creep. My D2
+> prediction is right on the mechanism and wrong on its "0 cells" for the bound (0.37 %, small but
+> not zero).
+
+**D3 — the rock is ordinary and there is no volcano.**
+
+| | |
+|---|---|
+| C-3 erodibility multiplier, LAND p50 | **1.273** |
+| the same over this footprint | **1.165** (p10 1.126, p90 1.238) ⇒ ratio **0.92×** |
+| C-2 edifices placed / nearest to the floor cell | 15 / **61.6 km** |
+
+> **So: not a caldera and not a rift — a drowned canyon**, which is what both predictions said.
+> ⚠️ And the first reading of this table said **0.53×** because my p50 was taken over the WHOLE
+> GRID, 55.8 M sea cells included. Finding 63's bias, in my own instrument, caught by asking what
+> population the denominator was.
+
+**D4 — and it is not one object.**
+
+| | delivered bodies ≥ 1 km² | median cut > 50 m AND rim p50 > 30° |
+|---|---|---|
+| humid, shipped | 53 | **16 — a POPULATION** |
+| arid, shipped | 25 | 2 |
+
+The promoted body reproduces Finding 87-B exactly: **median cut 158.3 m, rim p50 42.7°** on a
+deduplicated outside ring of 9 257 cells, **42.8°** with Finding 87-B's own multiset weighting
+(23 036 entries), p90 60.2 / 60.4°. And it is **not the extreme case**:
+
+| humid body | area | median cut | rim p50 |
+|---|---|---|---|
+| **1** | 33.4 km² | **862.2 m** | **74.9°** |
+| 15 | 53.2 km² | 457.8 m | 35.5° |
+| 36 | 14.4 km² | 441.9 m | 36.0° |
+| 56 | 15.1 km² | 422.0 m | 47.4° |
+| 23 | 6.8 km² | 419.7 m | 47.4° |
+| 1000013 (the promoted one) | 559.6 km² | 158.3 m | 42.7° |
+
+> **Sixteen bodies are in this class and the promoted lake is the twelfth deepest cut of them.**
+> Body 1 lost **862 m** with a **75°** wall. The round wrote the consequence in advance: *"if D4
+> finds ten, you are not judging a lake, you are judging whether the continent should have ten."*
+> It found sixteen, and the eye is now asked about a **class**, not an object.
+>
+> ⚠️ The instrument that returned **0** on the first run divided a NORM height difference by a
+> distance in METRES — 11 300× too small, so every rim read as 0°. A unit mismatch inside an
+> instrument is indistinguishable from a result about the world until you reproduce a known number,
+> and the known number was Finding 87-B's 42.8°.
+
+### F — one cause, and it is Finding 20's
+
+| | ungauged coastal arrival | cells | at or above `head_threshold` 0.1 km² | cause |
+|---|---|---|---|---|
+| humid, shipped | 114.2 m³/s | 39 458 | **4 843** | **100.0 % below `stream_km2` = 20 km²** |
+| arid, shipped | 80.6 m³/s | 39 460 | **4 844** | **100.0 %**, same |
+
+Area distribution, identical in both beds: p50 **0.0143 km²**, p90 **0.117**, max **19.65**.
+
+> **A single cause, at 100.0 %, and Finding 20 wrote it in 2024**: the exported network is selected
+> by `acc ≥ stream_threshold`, and `stream_km2` is **20**. The tail's maximum is **19.65 km²** —
+> the distribution is cut off by the threshold, which is why it looked like a mystery and is a
+> definition. **0 cells** are lost to the segment/raster seam and **0** to `clip_rivers_to_lakes`.
+> My prediction ("a clip, > 60 %") holds at 100 %; the useful part is that the OTHER two causes are
+> exactly zero, so there is nothing to fix and one number to decide: whether a 19 km² catchment
+> should carry an exported river. That is the consumer's call and the round forbids touching it.
+
+### Score
+
+Predictions written and dated **2026-09-16 before the first measurement**. Reading declaration:
+non-blind on Findings 73–87 and on this round's prompt — **the author's predictions arrive in the
+same message as the task, so I cannot claim independence from them and do not**. Blind on every
+F88 figure, on the escape construction, on the lithology at (3487, 5902), and on the clip rule.
+
+**Mine.** A1 "the arid closure becomes an IDENTITY, 100.0 %, and the informative number is the
+chained excess" **✓✓** — and it also convicts Finding 87-F's humid 100.0 % · A2 "chained excess
+4–6 m³/s" **✓** (5.70) · A3 "arid six-term 99–101 %" **✗** (98.4) · **B1 "the majority terminate
+inside their own footprint, ≤ 7 reach the sea" ✗✗** — every one of them reaches the sea · B2 "the
+table falls less than 8 points" **✗** (103.3 → 75.5 at the first hop) · B3 the control passes
+**✓** · C1 "≤ 4 remain Unresolved, 0–1 arid" **✓✓** (2 and 0) — *after* the correction; the first
+write gave 35 · C2 "0 below-sea lakes change" **✓** · C3 "at least one `DIR_NONE` and one fall-back
+among the survivors" **✗** (both are fall-backs) · D1 "pass 1 ≥ 85 %" **✓ for the footprint**
+(93.7) **✗ for the floor cell** (55.5) · D2 "the cut scales with area; the bound fires on 0 cells"
+**✓ then ✗** (0.37 %) · D3 "neither hard rock nor volcanism, 0.9–1.1×" **✓** (0.92×, 61.6 km) ·
+D4 "12 in the class, ≥ 5 is a population" **✓** (16) · **E1 "`DIR_NONE` persists with the
+perturbation" ✗** — it is not `DIR_NONE` at all, on either field · F1 "a clip, > 60 %" **✓**
+(100.0 %).
+
+**The round's.** A **✓** · **B "more than 12 of the 19 drain to the sea; the table falls to
+100 ± 2" ✓ then ✗** — all of them drain to the sea, and the table falls to 75.5 because the ocean
+term was being read at the first hop · C "≤ 3 remain, 0 arid, no below-sea change" **✓✓✓** ·
+D1 "> 80 %" **✓** (footprint) · D2 **✓** · D3 "canyon" **✓** · D4 "more than five" **✓** (16) ·
+E "`DIR_NONE` with the perturbation" **✗** · F "mostly clipped" **✓**.
+
+**Meta holds on both sides.** Seven of mine wrong, and **the two that matter are B1 and E1**: I
+predicted that the water stood still in those lakes and that a basin was trapped on a flat. In both
+cases the water was moving and I had read a failed *label* as a failed *route*.
+
+### Standing
+
+**Two production changes ship. One of them was wrong when first written and the bench found it.**
+
+* **A ships**: `BasinSummary::local_evaporation_m3s`. The arid below-sea closure goes 112.1 % →
+  100.0 % — **and the docstring says, in production, that this figure is an identity**. The measured
+  quantity is the **chained excess, 5.70 m³/s**.
+* **C ships**: `surface_lake_escape` / `surface_lake_escape_trace` / `walk_to_sink`, and
+  `apply_lake_water_balance` labels from the trace. **57 of 59** detected lakes resolve; the 2 that
+  do not name `ReturnsIntoOwnFootprint`. `UnresolvedReason` is a seven-variant enum carried in
+  `C1Lake`, in `lakes.json` and into three viz renderings. `ALGO_DRAINAGE` 7 → 8,
+  `ALGO_HD_DRAINAGE` 9 → 10.
+* **Rule 12 is code**: `flow_field_hash` + `declared_flow`, and two unit tests pin the saddle
+  distinction that cost a run.
+
+**Three corrections to the record, all of them to my own previous rounds.**
+
+1. **Finding 87-F's "conservation to ±3.3 %" is a PARTITION, and its sixth term was a double
+   count.** The two head terms exhaust the budget exactly (Δ −0.00 at both beds). Retitled in place.
+2. **Finding 87-E's "the escape hits `DIR_NONE`" is withdrawn.** The escape has a direction on both
+   fields and traces to the sea in 44 steps. The 0.0142 m step is real; the reason was not.
+3. **Finding 87-B's "median cut 165.80 m" is a difference of medians, not a median of
+   differences** (158.31 m). Both are in the table now, with which is which.
+
+**And three of my own instruments were wrong this round, each caught by reproducing a known
+number**: a rim slope in norm units (11 300× small, returned 0 bodies in D4 until it reproduced
+Finding 87-B's 42.8°); an erodibility p50 taken over sea cells (0.53× → 0.92×); a chain classifier
+that could not see detected lakes (117.6 m³/s mislabelled "nowhere identifiable", of which 98.1 was
+a lake). Rule 12 covers the flow field. **It does not cover units, populations, or maps** — and
+those cost three of the four re-runs.
+
+**Named and not fixed.** `FlatPerturbation` has no antecedent in this dossier and decides 7.1 % of
+land cells (L733). Basin 1000001's 45.0 m³/s has a traced escape to the sea and **no emitted
+spillway** — the defect is in the spillway path. One spillway per bed terminates **nowhere
+identifiable** (19.5 m³/s humid, 4.1 arid), which is Finding 38's family and the whole remaining
+routing gap. `stream_km2 = 20` is the single reason 4 843 coastal cells with catchments up to
+19.65 km² carry no exported river — a consumer decision, untouched. And B0: **still no real
+coastline raster**, fifth round.
+
+### À VALIDER VISUELLEMENT — a CLASS, not an object
+
+The round promoted one lake and D4 promoted fifteen more. **The question is no longer "crater lake
+or drowned canyon?" but "should this continent have sixteen of these?"**
+
+**The object**, as asked: the 623.6 m body (floor (3487, 5902), level 614.9 m, 559.6 km²), in LL,
+with the Finding 83 toggle as A/B, pre-incision beside it if the viz allows. Three looks: the wall
+(**p50 42.7°**, p90 60.2°), the outlet in cascade (418 m over 2.4 km, Finding 87-A), the floor
+(**−8.67 m** under a surface at +615). Counts beside it: median cut **158.31 m** (median of
+differences) and pre-incision floor **+12.63 m**, of which pass 1 carried 93.7 % of the body's and
+55.5 % of the floor's.
+
+**The class**, which the numbers force: **16 of 53 delivered bodies ≥ 1 km² have a median cut above
+50 m and a wall above 30°**, and the promoted lake is **not** the extreme case — body 1 lost
+**862.2 m** with a **74.9°** wall on 33.4 km². The rock is ordinary (0.92× the land median
+erodibility) and the nearest volcano is 61.6 km away, so none of this is C-2 or C-3. What it is, is
+`E = K·A^m·S^n` at Courant 1353 inside closed depressions, landing in one pass, with no incision
+bound (Finding 6) and a base-level bound that governs only the relaxation target (Finding 87-B).
+**If the eye says sixteen is too many, the item is the time scale — Finding 44's, still specified
+and still unimplemented.**

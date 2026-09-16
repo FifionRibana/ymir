@@ -24,6 +24,61 @@ use ymir_core::tectonics_c1::time_loop::{C1Closures, C1TimeLoopConfig, run_with_
 use ymir_core::terrain::coast_metrics::coast_spurs;
 use ymir_core::terrain::upscale::{ProductionHdOpts, production_hd_config};
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// ADR 0001 Finding 88 — RULE 12, as code: a bench that TRACES declares its field and proves by
+// hash that it is production's, BEFORE it reads a single reason off it.
+//
+// Third instance in eight findings, which is why it stops being a habit and becomes a function:
+//   * Finding 80-B2 read the CLAMP where it meant the incision;
+//   * Finding 85 paired basins BY ID where ids are scan-order (Finding 81's own trap);
+//   * Finding 87-D traced on a plain `compute_flow` where production routes on
+//     `C1DrainageResult::flow`, which carries `FlatPerturbation` — and reported the WRONG REASON
+//     for fifteen of nineteen lakes until it was re-run on the right field.
+//
+// The cost of the error is always the same shape: a number that looks like a measurement and is
+// an artefact of the instrument. `declared_flow` makes the declaration mechanical.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/// A stable 64-bit digest of every byte of a flow field that a trace can depend on: the D8
+/// direction of each cell and its accumulation. FNV-1a, so the value is reproducible across runs
+/// and machines (`DefaultHasher` is explicitly not).
+pub fn flow_field_hash(flow: &ymir_core::terrain::flow::FlowResult) -> u64 {
+    let mut hv: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut eat = |b: u8| {
+        hv ^= b as u64;
+        hv = hv.wrapping_mul(0x0000_0100_0000_01b3);
+    };
+    for &d in &flow.direction {
+        eat(d);
+    }
+    for &a in &flow.accumulation.data {
+        for b in a.to_bits().to_le_bytes() {
+            eat(b);
+        }
+    }
+    hv
+}
+
+/// Rule 12. Returns the field to trace on, having PRINTED its hash and that of production's, and
+/// PANICKED if they differ. `label` names the candidate in the failure message.
+///
+/// Use it at the top of every bench block that walks `flow.direction`. If the two fields are the
+/// same object the hashes trivially agree and the line is still worth its cost: it puts the field's
+/// identity in the transcript beside the numbers read off it, which is what Finding 87-D lacked.
+pub fn declared_flow<'a>(
+    label: &str,
+    candidate: &'a ymir_core::terrain::flow::FlowResult,
+    production: &ymir_core::terrain::flow::FlowResult,
+) -> &'a ymir_core::terrain::flow::FlowResult {
+    let (hc, hp) = (flow_field_hash(candidate), flow_field_hash(production));
+    println!("  [rule 12] field `{label}` 0x{hc:016x} | production 0x{hp:016x}");
+    assert_eq!(
+        hc, hp,
+        "RULE 12: the bench would trace on `{label}` (0x{hc:016x}) while production routes on          0x{hp:016x}. Finding 87-D paid three runs for exactly this."
+    );
+    candidate
+}
+
 pub const PSEED: u64 = 10_481_999_410_520_546_993;
 pub const DOMAIN_KM: f32 = 400.0;
 pub const SEA: f32 = 0.5;
@@ -66,6 +121,11 @@ pub struct Knobs {
     /// ADR Finding 83-B2 -- `BaseLevelFloor::free_above_km2`, the estuary gate, in km2 of
     /// the SIMULATED grid. **PROXY**, bench-only; production is `None`.
     pub a_est_km2: Option<f32>,
+    /// ADR Finding 88-D1 -- `StreamPowerConfig::iterations`. Production ships **2**; the point of
+    /// the knob is to read the field AFTER ONE pass, because at Courant 1353 (Finding 61) a cell
+    /// relaxes onto its receiver in a single step and "how much of the cut is the first pass" is
+    /// the only way to tell a one-shot landing from a rhythm.
+    pub iterations: Option<usize>,
 }
 
 impl Knobs {
@@ -81,6 +141,67 @@ impl Knobs {
     pub fn no_incision() -> Self {
         Self { no_incision: true, ..Self::default() }
     }
+    /// ADR Finding 88-D1 -- the shipped relief after exactly `it` incision passes.
+    pub fn passes(it: usize) -> Self {
+        Self { iterations: Some(it), ..Self::default() }
+    }
+}
+
+/// ADR 0001 Finding 88-D3 — the C-3 erodibility multiplier field and the C-2 edifices, built by
+/// the SAME calls `build_field` makes, so block D3 reads the field production incised and does not
+/// rebuild one. `None` for the K field means every contributing closure was off (it never is here).
+///
+/// This repeats the 300-step coarse run, which is the price of not reconstructing: the ADR records
+/// six diagnoses misled by a rebuilt terrain.
+pub fn production_k_and_edifices()
+-> (Option<Vec<f32>>, Vec<ymir_core::tectonics_c1::closures::volcanism::Edifice>) {
+    let ss = SteinSteinParams::default();
+    let run_cfg = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: 300,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: IsostasyConfig::c1_default(),
+        drainage_max_distance: 30,
+    };
+    let mut state = init_c1_state_phase_2_r7(64, PSEED, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    run_with_closures(&mut state, &mut kin, &run_cfg, &C1Closures::default(), |_, _| {});
+    let seed = WorldSeed::new(PSEED);
+    let volc = VolcanismConfig { enabled: true, domain_km: DOMAIN_KM, ..Default::default() };
+    let edifices = place_edifices(&state, &kin, &seed, DOMAIN_KM, &volc);
+    let cfg = production_hd_config(&ProductionHdOpts {
+        target_size: TARGET,
+        domain_km: DOMAIN_KM,
+        depth_scale_m: ss.depth_scale_m as f32,
+        sample_origin: [0.0, 0.578_125],
+        sample_size: 1.0,
+        amplitude_base: 0.04,
+        mfd_p: 2.0,
+        lithology: LithologyConfig {
+            enabled: true,
+            soft_multiplier: 10.0,
+            volcanic_multiplier: 3.0,
+            rift_age_threshold: 1.0,
+        },
+        fracture: FractureConfig {
+            enabled: true,
+            amplitude: 6.0,
+            decay_km: 25.0,
+            domain_km: DOMAIN_KM,
+            ..Default::default()
+        },
+    });
+    let k = ymir_core::tectonics_c1::production_upscale::production_k_field(
+        &state,
+        Some(&kin),
+        &cfg,
+        &edifices,
+        &volc,
+        TARGET,
+        TARGET,
+    );
+    (k, edifices)
 }
 
 /// Build the 8192² field at the production seed and config, with `k` applied to the
@@ -142,6 +263,9 @@ pub fn build_field(k: Knobs) -> GridF32 {
         }
         if let Some(s) = k.diffusion_substeps {
             sp.diffusion_substeps = s;
+        }
+        if let Some(it) = k.iterations {
+            sp.iterations = it;
         }
         if let Some(l) = k.lateral_erosion {
             sp.lateral_erosion = l;

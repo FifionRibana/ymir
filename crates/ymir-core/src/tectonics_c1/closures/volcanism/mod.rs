@@ -551,6 +551,7 @@ pub fn detect_crater_lakes(
             depth_m: level_m - floor_m,
             area_km2: n as f32 * cell_km2,
             lake_type: LakeType::CraterAcidic,
+            unresolved_reason: None,
         });
         held += 1;
     }
@@ -663,6 +664,7 @@ mod tests {
             depth_m: 20.0,
             area_km2: 5.0,
             lake_type: LakeType::Exorheic,
+            unresolved_reason: None,
         }];
         let cr = |cx, cy, active| CraterRecord { center_px: (cx, cy), radius_px: 2.0, active };
         let craters = vec![cr(5.0, 5.0, true), cr(15.0, 15.0, false)];

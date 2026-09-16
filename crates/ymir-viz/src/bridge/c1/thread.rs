@@ -199,6 +199,9 @@ mod tests {
                     latitude_deg: 45.0,
                     domain_km: 1024.0,
                     manual_offset: None,
+                    // ADR Finding 83 — the bound SHIPS; these bench literals predate it.
+                    base_level_m: None,
+                    base_level_off: false,
                     stream_power: false,
                     closures: false,
                     cross_rill: false,

@@ -252,6 +252,54 @@ impl Default for C1DrainageConfig {
     }
 }
 
+/// ADR 0001 Finding 88-C — **why a lake is [`LakeType::Unresolved`]**, as a closed set rather than
+/// a message, so that the viz, `lakes.json` and the benches all read the same object.
+///
+/// Finding 86 added the state; Finding 87 measured nineteen lakes in it and found **all nineteen
+/// giving the same reason**, which is a fact about the instrument and was invisible until the
+/// reason was counted. A `String` would not do: [`C1Lake`] travels through a `Copy` inspection
+/// struct in the viz, and a free-text reason cannot be grouped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum UnresolvedReason {
+    /// The footprint has no 8-neighbour outside itself — it covers the whole grid, or the map is
+    /// inconsistent. Never observed; kept because the search can return it.
+    NoExteriorNeighbour,
+    /// The rim's lowest cell has no lower neighbour outside the footprint: the spill point is a
+    /// local pit, so there is no "far side of the divide" to step onto (Finding 37c's escape).
+    SaddleHasNoLowerNeighbour,
+    /// The descent left the footprint and came back into it — Finding 37c's *"true loop"*, and the
+    /// single reason all nineteen of Finding 87-D's lakes returned when the walk started INSIDE.
+    ReturnsIntoOwnFootprint,
+    /// The descent reached a cell with `DIR_NONE`: a flat or a pit the flow field does not route
+    /// out of. This is basin 1000001's failure (Finding 87-E) seen on the surface path.
+    NoD8Direction,
+    /// The walk ran for a whole grid of steps without reaching a sink. A cycle the loop bound
+    /// caught rather than a named defect.
+    NoSinkInOneGrid,
+    /// The trace starts outside the grid. Guard, not a measurement.
+    OutletOffGrid,
+    /// **Not a trace failure**: the geometric trace succeeds but no river segment of the exported
+    /// network STARTS on this lake's footprint ([`resolve_exorheic_without_outlet`], Finding 86).
+    /// The two populations differ by construction — L7031's 5.25x.
+    NoOutletReach,
+}
+
+impl UnresolvedReason {
+    /// A short English label, for logs and for the viz to translate.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NoExteriorNeighbour => "the footprint has no exterior neighbour",
+            Self::SaddleHasNoLowerNeighbour => "the saddle has no lower exterior neighbour",
+            Self::ReturnsIntoOwnFootprint => "the descent returns into its own footprint",
+            Self::NoD8Direction => "no D8 direction: the descent stops on a flat",
+            Self::NoSinkInOneGrid => "no sink within one grid of steps",
+            Self::OutletOffGrid => "the outlet cell is outside the grid",
+            Self::NoOutletReach => "no outlet reach starts on its footprint",
+        }
+    }
+}
+
 /// A lake enriched with the C1 coordinate contract (metres + area km² + type).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct C1Lake {
@@ -265,6 +313,16 @@ pub struct C1Lake {
     pub area_km2: f32,
     /// Drainage type (Exorheic geometric default; Endorheic needs climate).
     pub lake_type: LakeType,
+    /// **ADR 0001 Finding 88-C** — why this lake is [`LakeType::Unresolved`], in the words of the
+    /// pass that could not resolve it. `None` for every other type.
+    ///
+    /// Finding 86 introduced `Unresolved` and Finding 87 measured nineteen of them **all giving
+    /// the same reason**, which is only legible if the reason travels with the lake. Two passes
+    /// write it: [`surface_lake_escape_trace`] (the Finding 37c port, in
+    /// [`apply_lake_water_balance`]) and [`resolve_exorheic_without_outlet`] (the end-of-chain
+    /// network check). It is carried into `lakes.json` and rendered by the viz.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unresolved_reason: Option<UnresolvedReason>,
 }
 
 /// Full C1 drainage product: flow field, rivers (+ per-segment navigability /
@@ -516,6 +574,7 @@ pub fn c1_drainage_windowed_infil(
                     depth_m: level_m - floor_m,
                     area_km2: lk.area as f32 * cell_km2,
                     lake_type,
+                    unresolved_reason: None,
                 }
             })
             .collect(),
@@ -946,13 +1005,132 @@ pub fn surface_lake_outlet_trace(
     lake_map: &[u32],
     w: usize,
     h: usize,
-) -> Result<usize, &'static str> {
-    let n = w * h;
-    let (mut x, mut y) = (outlet.0 as usize, outlet.1 as usize);
-    if x >= w || y >= h {
-        return Err("the outlet cell is outside the grid");
+) -> Result<usize, UnresolvedReason> {
+    if outlet.0 as usize >= w || outlet.1 as usize >= h {
+        return Err(UnresolvedReason::OutletOffGrid);
     }
-    let mut left_own = false;
+    let start = outlet.1 as usize * w + outlet.0 as usize;
+    walk_to_sink(start, lake_id, flow, heightmap, lake_map, w, h)
+}
+
+/// ADR 0001 Finding 88-C - **Finding 37c's SADDLE and ESCAPE, ported to a detected surface lake.**
+///
+/// Finding 37c (L1541) fixed the below-sea spillways by recording, per basin, the **saddle** (the
+/// lowest cell of the rim) and its lowest **exterior escape neighbour** (the far side of the
+/// divide), then following `flow.direction` downhill from the escape. The detected-lake path never
+/// had that construction, which is the whole reason Finding 87-D's trace-from-the-outlet failed on
+/// all nineteen of its lakes: **a filled lake surface is flat**, so a walk started inside it has no
+/// gradient to leave by.
+///
+/// Returns `(saddle, escape)` as flat indices.
+///
+/// The saddle is **the lowest cell of the rim THAT HAS a strictly lower exterior neighbour** — not
+/// simply the lowest rim cell. The distinction is the whole construction and it cost one measured
+/// run: with "the lowest rim cell" the search reported
+/// [`UnresolvedReason::SaddleHasNoLowerNeighbour`] on **35 of 59** detected lakes and on basin
+/// 1000001, because on a BREACHED field the lowest cell adjacent to a footprint is often a pit
+/// inside a breach channel, which has no lower neighbour at all. Finding 87-E's own bench
+/// instrument already had the right definition and this function did not; it does now.
+///
+/// The escape is that saddle's lowest non-footprint neighbour, strictly lower than the saddle:
+/// **water does not climb**, which was Finding 37c's root cause for the minimax path it removed.
+/// Finding 87-E also showed the lowest rim cell is *at the lake level by construction* — which is
+/// why comparing it to the level is a tautology and why jumping ACROSS it is not.
+pub fn surface_lake_escape(
+    lake_id: u32,
+    footprint: &[usize],
+    heightmap: &GridF32,
+    lake_map: &[u32],
+    w: usize,
+    h: usize,
+) -> Result<(usize, usize), UnresolvedReason> {
+    let nb = |k: usize, d: usize| -> usize {
+        let (x, y) = ((k % w) as i32, (k / w) as i32);
+        let nx = (x + D8_DX[d]).rem_euclid(w as i32) as usize;
+        let ny = (y + D8_DY[d]).rem_euclid(h as i32) as usize;
+        ny * w + nx
+    };
+    // the rim: every non-footprint 8-neighbour of the footprint, deduplicated
+    let mut rim: Vec<(usize, f32)> = Vec::new();
+    {
+        let mut seen: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        for &k in footprint {
+            for d in 0..8 {
+                let nk = nb(k, d);
+                if lake_map[nk] == lake_id {
+                    continue;
+                }
+                if seen.insert(nk) {
+                    rim.push((nk, heightmap.data[nk]));
+                }
+            }
+        }
+    }
+    if rim.is_empty() {
+        return Err(UnresolvedReason::NoExteriorNeighbour);
+    }
+    rim.sort_by(|a, b| a.1.total_cmp(&b.1));
+    // the lowest rim cell FROM WHICH THE WATER CAN LEAVE — see the doc comment
+    for &(sk, sh) in &rim {
+        let mut escape: Option<(usize, f32)> = None;
+        for d in 0..8 {
+            let nk = nb(sk, d);
+            if lake_map[nk] == lake_id || nk == sk {
+                continue;
+            }
+            let hn = heightmap.data[nk];
+            if hn < sh && escape.is_none_or(|(_, he)| hn < he) {
+                escape = Some((nk, hn));
+            }
+        }
+        if let Some((ek, _)) = escape {
+            return Ok((sk, ek));
+        }
+    }
+    Err(UnresolvedReason::SaddleHasNoLowerNeighbour)
+}
+
+/// ADR 0001 Finding 88-C - **trace a detected surface lake's outlet from its ESCAPE**, the way the
+/// below-sea path has done since Finding 37c. See [`surface_lake_escape`] for the construction and
+/// [`walk_to_sink`] for the walk. This is the instrument [`apply_lake_water_balance`] labels from.
+pub fn surface_lake_escape_trace(
+    lake_id: u32,
+    footprint: &[usize],
+    flow: &FlowResult,
+    heightmap: &GridF32,
+    lake_map: &[u32],
+    w: usize,
+    h: usize,
+) -> Result<usize, UnresolvedReason> {
+    let (_saddle, escape) = surface_lake_escape(lake_id, footprint, heightmap, lake_map, w, h)?;
+    walk_to_sink(escape, lake_id, flow, heightmap, lake_map, w, h)
+}
+
+/// The D8 descent shared by [`surface_lake_outlet_trace`] and [`surface_lake_escape_trace`]:
+/// follow `flow.direction` from `start` until it reaches a sink, and NAME the failure otherwise.
+///
+/// `Ok(k)` on the SEA or a DIFFERENT water body (a chain, Finding 37c). `Err` on re-entry into the
+/// lake's own footprint (Finding 37c: *"it re-enters its own hollow only for a true loop"*), on
+/// `DIR_NONE`, or on exhausting one grid of steps. The reason is RETURNED, never swallowed:
+/// Finding 86's point is that a failed trace must be counted and named, and Finding 88-C carries
+/// the name into [`C1Lake::unresolved_reason`].
+///
+/// ⚠️ `flow` must be the field PRODUCTION routes on (`C1DrainageResult::flow`, which carries
+/// `FlatPerturbation`), not a fresh `compute_flow`. Finding 87-D reported the wrong reason for
+/// fifteen of nineteen lakes for exactly that error; Finding 88's rule 12 makes the bench declare
+/// and hash its field before reading anything off it.
+pub fn walk_to_sink(
+    start: usize,
+    lake_id: u32,
+    flow: &FlowResult,
+    heightmap: &GridF32,
+    lake_map: &[u32],
+    w: usize,
+    h: usize,
+) -> Result<usize, UnresolvedReason> {
+    let n = w * h;
+    let (mut x, mut y) = (start % w, start / w);
+    let mut left_own = lake_map[start] != lake_id;
     for _ in 0..=n {
         let k = y * w + x;
         if heightmap.data[k] <= C1_SEA_LEVEL_NORM {
@@ -963,19 +1141,19 @@ pub fn surface_lake_outlet_trace(
         }
         if lake_map[k] == lake_id {
             if left_own {
-                return Err("the descent returns into its own footprint");
+                return Err(UnresolvedReason::ReturnsIntoOwnFootprint);
             }
         } else {
             left_own = true;
         }
         let d = flow.direction[k];
         if d == DIR_NONE {
-            return Err("no D8 direction: the descent stops on a flat");
+            return Err(UnresolvedReason::NoD8Direction);
         }
         x = ((x as i32 + D8_DX[d as usize]).rem_euclid(w as i32)) as usize;
         y = ((y as i32 + D8_DY[d as usize]).rem_euclid(h as i32)) as usize;
     }
-    Err("no sink within one grid of steps")
+    Err(UnresolvedReason::NoSinkInOneGrid)
 }
 
 /// ADR 0001 Finding 86 — **an exorheic lake has an outlet reach, or it is not exorheic.**
@@ -995,6 +1173,8 @@ pub fn resolve_exorheic_without_outlet(dr: &mut C1DrainageResult) -> Vec<u32> {
     for lk in dr.lakes.iter_mut() {
         if ids.contains(&lk.base.id) {
             lk.lake_type = LakeType::Unresolved;
+            // ADR Finding 88-C - the reason travels with the lake.
+            lk.unresolved_reason = Some(UnresolvedReason::NoOutletReach);
         }
     }
     ids
@@ -1170,23 +1350,30 @@ pub fn apply_lake_water_balance(
     let n = w * h;
     let runoff_accum =
         runoff_accumulation(heightmap, flow, climate, cell_km2, None, infiltration, w, h);
-    // ⚠️ ADR Finding 87-D — THE TRACE-BEFORE-LABEL LINE WAS WRITTEN HERE AND WITHDRAWN.
+    // ADR Finding 88-C — THIS PATH NOW TRACES BEFORE IT LABELS, with the right instrument.
     //
-    // Finding 86 found H2 alive on this path: `Exorheic` is posted from `a_eq >= a_sill` with no
-    // trace. Finding 87 wrote the trace ([`surface_lake_outlet_trace`], kept below as the
-    // instrument that produced the measurement) and it FAILED ITS OWN GUARD: the round required
-    // that only lake 55 change state, and **19 lakes changed**, all nineteen with the same
-    // reason — *"the descent returns into its own footprint"*.
+    // The history, because it took five findings: Finding 29 named the defect (a regime labelled
+    // without checking it against the traced network); Finding 30 FORBADE relabelling such a lake
+    // endorheic (*"that would assert a basin that gains more than it loses and never overflows -
+    // a mass-balance violation"*) and said **"Don't relabel - TRACE"**; Finding 39 did exactly that
+    // on the below-sea half; Finding 86 found the H2 still alive HERE and added `Unresolved` as the
+    // honest third state; Finding 87 wrote the trace and it FAILED ITS OWN GUARD - 19 lakes moved
+    // instead of 1, all nineteen reporting *"the descent returns into its own footprint"*, because
+    // a filled lake surface is FLAT and a D8 walk started inside it cannot leave. It was withdrawn
+    // and the diagnosis written down: what it needs is Finding 37c's SADDLE and ESCAPE.
     //
-    // The diagnosis, measured: **a detected lake's surface is FLAT**, so walking D8 from a cell
-    // inside it cannot leave it. The below-sea path does not have this problem because Finding 37c
-    // starts its trace at the SADDLE and jumps to the exterior ESCAPE; the detected-lake path
-    // computes no saddle. So the line is right in principle and its trace is the wrong instrument:
-    // it would convert one silent mislabel into eighteen loud ones.
+    // That is what [`surface_lake_escape_trace`] is. The walk starts OUTSIDE the footprint, on the
+    // far side of the divide, so the flatness of the surface is no longer in its way.
     //
-    // What it needs is Finding 37c's saddle/escape construction for detected lakes. Not written
-    // here. `resolve_exorheic_without_outlet` (Finding 86) still has the last word at the end of
-    // the chain, and on the production seed it moves exactly one lake.
+    // ⚠️ Finding 37c's own conclusion was *"a basin that fills to its sill but whose downhill trace
+    // cannot reach a sink is ENDORHEIC (a genuine closed basin), not exorheic without an outlet"*.
+    // That is precisely the label Finding 30 refused, and this code does NOT post it: a failed
+    // trace yields `Unresolved` WITH ITS REASON, which claims nothing about the balance. Where
+    // F37c and F30 disagree, F30 wins - it is the one arguing from mass.
+    //
+    // `resolve_exorheic_without_outlet` (Finding 86) still has the last word at the end of the
+    // chain: this trace is GEOMETRIC, and the river network is a different population (L7031: the
+    // D8 export criterion selects 1.60 % of land where the MFD incision criterion selects 8.40 %).
     let mut out = Vec::with_capacity(lakes.len());
     for lk in lakes {
         // Crater lakes carry C-2 chemistry and their own balance — never touched here.
@@ -1207,10 +1394,22 @@ pub fn apply_lake_water_balance(
         let a_sill_km2 = lk.base.area as f32 * cell_km2;
 
         if a_eq_km2 >= a_sill_km2 {
-            // Overflows its sill → EXORHEIC, geometry unchanged (the sill IS its level).
-            // See the Finding 87-D note at the top of this function for why the trace is NOT here.
+            // Overflows its sill → the BALANCE says exorheic. ADR Finding 88-C: now TRACE it, from
+            // the escape, and let the trace have the last word on the label. Geometry is unchanged
+            // either way (the sill IS its level) - only the label and its reason move.
+            let footprint: Vec<usize> = cells.iter().map(|&(k, _)| k).collect();
             let mut e = lk.clone();
-            e.lake_type = LakeType::Exorheic;
+            match surface_lake_escape_trace(lk.base.id, &footprint, flow, heightmap, lake_map, w, h)
+            {
+                Ok(_) => {
+                    e.lake_type = LakeType::Exorheic;
+                    e.unresolved_reason = None;
+                }
+                Err(why) => {
+                    e.lake_type = LakeType::Unresolved;
+                    e.unresolved_reason = Some(why);
+                }
+            }
             out.push(e);
         } else {
             // ENDORHEIC: settle at the equilibrium surface, drain the cells above it.
@@ -1237,6 +1436,7 @@ pub fn apply_lake_water_balance(
                 depth_m: level_m - floor_m,
                 area_km2: n_eq as f32 * cell_km2,
                 lake_type: LakeType::Endorheic,
+                unresolved_reason: None,
             });
         }
     }
@@ -1377,6 +1577,7 @@ fn water_balance_lakes(
                 depth_m: level_m - floor_m,
                 area_km2: a_sill_km2,
                 lake_type: LakeType::Exorheic,
+                unresolved_reason: None,
             });
         } else {
             // ENDORHEIC: shrink to A_eq; drain the cells above the equilibrium.
@@ -1404,6 +1605,7 @@ fn water_balance_lakes(
                 depth_m: level_m - floor_m,
                 area_km2: n_eq as f32 * cell_km2,
                 lake_type: LakeType::Endorheic,
+                unresolved_reason: None,
             });
         }
     }
@@ -1490,7 +1692,24 @@ pub struct BasinSummary {
     ///
     /// ⚠️ It is a BUDGET term, not the discharge the river carries: the spillway really does move
     /// the chained water downstream. The two answer different questions and both are reported.
+    ///
+    /// ⚠️⚠️ **ADR Finding 88-A, rule 10 - `local_outflow + local_evaporation == local_inflow` is an
+    /// IDENTITY**, in both branches of the `max`/`min`, for every basin. So a "closure" computed
+    /// from these three terms alone MEASURES NOTHING: it is 100.0 % by algebra, and the Finding
+    /// 87-F humid figure of 100.0 % already was that. What the triple does measure is the
+    /// **partition** of the local inflow between leaving and evaporating, and the CHAINED excess
+    /// `evaporation_m3s - local_evaporation_m3s` - the water this basin destroys that arrived
+    /// through the chain and therefore belongs to another basin's inflow.
     pub local_outflow_m3s: f32,
+    /// **ADR 0001 Finding 88-A** - the part of [`Self::evaporation_m3s`] chargeable to this basin's
+    /// OWN local inflow: `min(evaporation, local_inflow)`. The remainder evaporates water that
+    /// arrived through Finding 40's chain, and is counted at its owner.
+    ///
+    /// This was the last CHAINED quantity in the six-term budget. Finding 87-F closed that budget
+    /// to ±3.3 % with both flow terms local and this one still chained, which is exactly why the
+    /// arid below-sea system read **112.1 %**: its evaporation (47.94 m³/s) exceeded its own local
+    /// inflow (47.1). See [`Self::local_outflow_m3s`] for what the resulting closure is and is not.
+    pub local_evaporation_m3s: f32,
     pub evaporation_m3s: f32,
     /// The two numbers the regime compared (in km²): equilibrium area vs sill area.
     ///
@@ -2252,6 +2471,7 @@ pub fn below_sea_basin_lakes_infil(
                     depth_m: level_m - floor_m,
                     area_km2: water as f32 * cell_km2,
                     lake_type,
+                    unresolved_reason: None,
                 });
             }
             // Per-basin balance summary for EVERY basin (Finding 32), in real units.
@@ -2276,6 +2496,9 @@ pub fn below_sea_basin_lakes_infil(
                 local_inflow_m3s: runoff_km2_to_m3s(local_inflow),
                 local_outflow_m3s: runoff_km2_to_m3s(
                     (local_inflow - net_evap * area_km2_bs).max(0.0),
+                ),
+                local_evaporation_m3s: runoff_km2_to_m3s(
+                    (net_evap * area_km2_bs).min(local_inflow),
                 ),
                 evaporation_m3s: runoff_km2_to_m3s(net_evap * area_km2_bs),
                 // ADR Finding 87-F — report infinity AS infinity; the bool carries it too.
@@ -3359,7 +3582,14 @@ mod tests {
             segment_discharge_profile_m3s: vec![vec![1.0; w]],
             segment_kind: vec![SegmentKind::Watercourse],
             segment_source_lake: vec![None],
-            lakes: vec![C1Lake { base, level_m: 0.0, depth_m: 1.0, area_km2: 1.0, lake_type }],
+            lakes: vec![C1Lake {
+                base,
+                level_m: 0.0,
+                depth_m: 1.0,
+                area_km2: 1.0,
+                lake_type,
+                unresolved_reason: None,
+            }],
             lake_map,
             width: w,
             height: h,
@@ -3416,6 +3646,7 @@ mod tests {
             depth_m: 1.0,
             area_km2: 1.0,
             lake_type,
+            unresolved_reason: None,
         };
         let outlet_seg = |sx: u32| RiverSegment {
             points: vec![(sx, 0), (sx + 1, 0)],
@@ -3467,6 +3698,56 @@ mod tests {
             "every exorheic lake now has a bordering outlet"
         );
     }
+    /// ADR 0001 Finding 88-C — **the saddle is the lowest rim cell YOU CAN LEAVE FROM**, not the
+    /// lowest rim cell. The two differ exactly when the lowest rim cell is a pit, which on a
+    /// breached field is common: the first version of [`surface_lake_escape`] took the lowest and
+    /// reported "no lower exterior neighbour" on **35 of 59** detected lakes and on basin 1000001,
+    /// where Finding 87-E's bench instrument had already found a real escape 0.0142 m down.
+    ///
+    /// The fixture is one row: a two-cell lake, a rim cell that is LOWER than the true saddle but
+    /// is a pit (both its neighbours are higher), and the true saddle with a downhill escape.
+    #[test]
+    fn the_saddle_is_the_lowest_rim_cell_the_water_can_leave_from() {
+        let (w, h) = (9usize, 1usize);
+        //             0     1     2     3      4      5     6     7     8
+        // cell 3 is the PIT rim cell (0.20) — lower than the saddle, and a dead end because
+        // cell 2 (0.90) and the lake (cell 4) are both higher. Cell 6 is the true saddle (0.40)
+        // with cell 7 (0.30) downhill of it.
+        let hs = [0.90f32, 0.90, 0.90, 0.20, 0.30, 0.30, 0.40, 0.30, 0.10];
+        let field = GridF32 { width: w, height: h, data: hs.to_vec() };
+        let mut lake_map = vec![0u32; w * h];
+        lake_map[4] = 5;
+        lake_map[5] = 5;
+        let footprint = vec![4usize, 5];
+
+        let (saddle, escape) =
+            surface_lake_escape(5, &footprint, &field, &lake_map, w, h).expect("an escape exists");
+        assert_eq!(saddle, 6, "the saddle must be the lowest rim cell WITH a way out, not cell 3");
+        assert_eq!(escape, 7, "the escape is the saddle's lowest exterior neighbour");
+
+        // and the pit rim cell really is lower — this is the trap, not a contrivance
+        assert!(
+            field.data[3] < field.data[saddle],
+            "the fixture is pointless unless the pit is lower than the saddle"
+        );
+    }
+
+    /// ADR 0001 Finding 88-C — a lake with no way out at all keeps `Unresolved` AND names why.
+    /// Finding 86 added the state; Finding 87 showed that counting the reason is what made
+    /// "all nineteen give the same reason" visible; this pins that the reason is reported.
+    #[test]
+    fn a_lake_walled_in_on_every_side_says_so() {
+        let (w, h) = (5usize, 1usize);
+        // a bowl with no exit anywhere: every rim cell is higher than everything around it
+        let hs = [0.90f32, 0.90, 0.30, 0.90, 0.90];
+        let field = GridF32 { width: w, height: h, data: hs.to_vec() };
+        let mut lake_map = vec![0u32; w * h];
+        lake_map[2] = 3;
+        let err = surface_lake_escape(3, &[2usize], &field, &lake_map, w, h)
+            .expect_err("a walled bowl has no escape");
+        assert_eq!(err, UnresolvedReason::SaddleHasNoLowerNeighbour);
+        assert_eq!(err.as_str(), "the saddle has no lower exterior neighbour");
+    }
 
     /// ADR 0001 Finding 86 — the H2 LINE, on the same fixture as the invariant above, because the
     /// remedy and the invariant must share a population or they will drift.
@@ -3498,6 +3779,7 @@ mod tests {
             depth_m: 1.0,
             area_km2: 1.0,
             lake_type,
+            unresolved_reason: None,
         };
         let outlet_seg = |sx: u32| RiverSegment {
             points: vec![(sx, 0), (sx + 1, 0)],

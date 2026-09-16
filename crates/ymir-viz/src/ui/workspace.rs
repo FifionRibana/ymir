@@ -36,7 +36,7 @@ use ymir_core::climate::precipitation::{precip_mm_per_year, wind_zonal_dir};
 use ymir_core::climate::temperature::sea_level_temperature;
 use ymir_core::grid::GridF32;
 use ymir_core::tectonics_c1::closures::oceanic_bathymetry::params::SteinSteinParams;
-use ymir_core::tectonics_c1::drainage::{LakeType, Navigability, SegmentKind};
+use ymir_core::tectonics_c1::drainage::{LakeType, Navigability, SegmentKind, UnresolvedReason};
 use ymir_core::tectonics_c1::land_topology::domain_metrics;
 use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
 use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
@@ -1510,6 +1510,40 @@ fn right_panel(ctx: &egui::Context, ws: &mut WorkspaceState) {
         });
 }
 
+/// ADR 0001 Finding 88-C — the `Unresolved` reason in full, for the cell panel.
+fn unresolved_reason_fr(r: Option<UnresolvedReason>) -> &'static str {
+    match r {
+        Some(UnresolvedReason::NoExteriorNeighbour) => "l'empreinte n'a aucun voisin extérieur",
+        Some(UnresolvedReason::SaddleHasNoLowerNeighbour) => {
+            "le col n'a aucun voisin extérieur plus bas (pas d'échappée, F37c)"
+        }
+        Some(UnresolvedReason::ReturnsIntoOwnFootprint) => {
+            "la descente retombe dans sa propre empreinte (boucle, F37c)"
+        }
+        Some(UnresolvedReason::NoD8Direction) => "la descente s'arrête sur un plat (DIR_NONE)",
+        Some(UnresolvedReason::NoSinkInOneGrid) => "aucun puits en une grille de pas",
+        Some(UnresolvedReason::OutletOffGrid) => "exutoire hors grille",
+        Some(UnresolvedReason::NoOutletReach) => {
+            "aucun tronçon exporté ne part de son empreinte (F86)"
+        }
+        None => "raison non renseignée",
+    }
+}
+
+/// The same, abbreviated for the lake list and the river source chip.
+fn unresolved_reason_short_fr(r: Option<UnresolvedReason>) -> &'static str {
+    match r {
+        Some(UnresolvedReason::NoExteriorNeighbour) => "⚠ aucun voisin extérieur",
+        Some(UnresolvedReason::SaddleHasNoLowerNeighbour) => "⚠ col sans échappée",
+        Some(UnresolvedReason::ReturnsIntoOwnFootprint) => "⚠ boucle sur son empreinte",
+        Some(UnresolvedReason::NoD8Direction) => "⚠ plat (DIR_NONE)",
+        Some(UnresolvedReason::NoSinkInOneGrid) => "⚠ aucun puits",
+        Some(UnresolvedReason::OutletOffGrid) => "⚠ exutoire hors grille",
+        Some(UnresolvedReason::NoOutletReach) => "⚠ aucun tronçon exporté",
+        None => "⚠ sans exutoire",
+    }
+}
+
 fn kv(ui: &mut egui::Ui, k: &str, v: String) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(k).color(DIM).size(12.0));
@@ -1573,8 +1607,12 @@ fn inspection(ui: &mut egui::Ui, c: &CellInspection) {
                 LakeType::Endorheic => "Lac (endoréique)".to_string(),
                 LakeType::CraterAcidic => "Lac de cratère (acide)".to_string(),
                 LakeType::CraterNeutral => "Lac de cratère (eau douce)".to_string(),
-                // ADR Finding 86 — the balance says it overflows and no outlet reach exists.
-                LakeType::Unresolved => "⚠ Lac SANS EXUTOIRE tracé (F86)".to_string(),
+                // ADR Finding 86 — the balance says it overflows and the trace does not resolve.
+                // Finding 88-C: say WHICH failure, because two different defects wore these words.
+                LakeType::Unresolved => format!(
+                    "⚠ Lac SANS EXUTOIRE tracé — {}",
+                    unresolved_reason_fr(l.unresolved_reason)
+                ),
             },
             None => "—".to_string(),
         },
@@ -3559,9 +3597,10 @@ fn microscope_list(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
                     }
                     // ADR Finding 86 — drawn in warning red, because it is a disagreement between
                     // the water balance and the traced network, not a kind of lake.
-                    LakeType::Unresolved => {
-                        ("⚠ sans exutoire (F86)", C::from_rgb(0xd0, 0x6a, 0x5a))
-                    }
+                    LakeType::Unresolved => (
+                        unresolved_reason_short_fr(lk.unresolved_reason),
+                        C::from_rgb(0xd0, 0x6a, 0x5a),
+                    ),
                 };
                 let txt = format!(
                     "#{} · {:.0} km² · {:.0} m · {}",
@@ -3784,7 +3823,10 @@ fn river_profile_panel(
                 LakeType::CraterAcidic => ("cratère (acide)", C::from_rgb(0xc9, 0xc0, 0x3a)),
                 LakeType::CraterNeutral => ("cratère (eau douce)", C::from_rgb(0x6a, 0x8a, 0xc0)),
                 // ADR Finding 86
-                LakeType::Unresolved => ("⚠ sans exutoire (F86)", C::from_rgb(0xd0, 0x6a, 0x5a)),
+                LakeType::Unresolved => (
+                    unresolved_reason_short_fr(lk.unresolved_reason),
+                    C::from_rgb(0xd0, 0x6a, 0x5a),
+                ),
             };
             ui.label(egui::RichText::new("Source ").color(DIM).size(10.5));
             if ui
@@ -4367,6 +4409,9 @@ mod spillway_typing_bench {
             latitude_span_deg: Some(10.0),
             domain_km: DOMAIN_KM,
             manual_offset: None,
+            // ADR Finding 83 — the bound SHIPS; these bench literals predate it.
+            base_level_m: None,
+            base_level_off: false,
             // relief-v3 = the shipped triple (stream_power + closures + mfd, cross_rill off).
             stream_power: true,
             closures: true,
@@ -4529,6 +4574,9 @@ mod network_fragmentation_bench {
             latitude_span_deg: Some(10.0),
             domain_km: DOMAIN_KM,
             manual_offset: None,
+            // ADR Finding 83 — the bound SHIPS; these bench literals predate it.
+            base_level_m: None,
+            base_level_off: false,
             stream_power: true,
             closures: true,
             cross_rill: false,

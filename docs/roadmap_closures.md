@@ -485,6 +485,69 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 > routage sur plat) ; et le col que le F86 avait opposé au F36 était **mon propre instrument** — le
 > plus bas voisin de l'empreinte est au niveau **par construction** (F36 PART B, L1250).
 >
+> ⛔ **LE BILAN DU F87 EST UNE PARTITION, PAS UNE CONSERVATION (Finding 88).** Deux changements de
+> production, aucun gaté, et **l'un des deux était faux à la première écriture — c'est la mesure qui
+> l'a trouvé.**
+>
+> 1. **A, livré** — `BasinSummary::local_evaporation_m3s = min(évaporation, apport local)`. Le
+>    sous-marin aride passe de 112,1 % à **100,0 %** ; l'excès chaîné mesuré vaut **5,70 m³/s**.
+>    ⚠️ Et la docstring le dit **en production** : `local_out + local_evap == local_in` est une
+>    **identité algébrique**, donc ce 100,0 % *se déduit*. Le « 100,0 % » humide du F87-F était déjà
+>    cette identité, énoncée comme une mesure (règle 10).
+> 2. **C, livré** — le **col/échappée du F37c porté aux lacs de surface** : `surface_lake_escape`,
+>    `surface_lake_escape_trace`, un `walk_to_sink` partagé, et `apply_lake_water_balance` qui
+>    **trace avant d'étiqueter**. **57 des 59** lacs se résolvent ; les 2 restants nomment
+>    `ReturnsIntoOwnFootprint`. `UnresolvedReason` (enum à sept variantes) voyage dans `C1Lake`,
+>    dans `lakes.json` et jusqu'aux trois rendus du viz. `ALGO_DRAINAGE` 7 → 8, `ALGO_HD_DRAINAGE`
+>    9 → 10. ⚠️ **Première écriture : 35 lacs sur 59 en échec**, tous sur
+>    `SaddleHasNoLowerNeighbour`, parce que je prenais *la plus basse cellule du rebord* au lieu de
+>    *la plus basse cellule du rebord depuis laquelle l'eau peut sortir*. Sur un champ breaché la
+>    première est souvent un puits dans un chenal de percée. Le F37c le disait et l'instrument du
+>    F87-E l'avait déjà implémenté correctement.
+>
+> **Le résultat qui déclasse le bilan du F87.** `arrivée côtière + Σ apport LOCAL sous-marin =
+> **474,7** contre un budget de **474,7**, **Δ −0,00, aux deux lits**. Les deux premiers termes
+> épuisent le budget **exactement** — c'est ce qu'une accumulation de ruissellement *est*. Donc ce
+> tableau **ne mesure pas la conservation le long du routage** : il redit la partition, et tout
+> chiffre au-dessus de 100 % y est un terme compté deux fois. Le sixième terme en était un :
+> **tous** les lacs `Unresolved` routent, en traversant leur propre surface plate, **jusqu'à la
+> mer** — leur apport était déjà dans les 180,5. **Le point de claim du F87 est réécrit sur place
+> en « partition vérifiée ».**
+>
+> **Et lu à la FIN de chaque chaîne** (ce que le premier saut cachait : **98,1 m³/s**), le routage
+> ferme à **96,3 %** (humide) et **98,4 %** (aride), et le reste n'est plus un pourcentage mais un
+> objet : **un déversoir par lit qui termine « nulle part d'identifiable »** — 19,5 m³/s humide,
+> 4,1 aride, `SpillwayTermination::to_nothing == 1`, la famille du F38.
+>
+> **Trois corrections au dossier, toutes à mes propres tours.** Le F87-F ci-dessus ; le **F87-E
+> retiré** (l'échappée de 1000001 porte une direction D8 sur **les deux** champs et descend à la mer
+> en **44 pas** — le défaut est dans le chemin qui **émet** le déversoir, pas dans le terrain) ; et
+> le « 165,8 m » du F87-B qui est une **différence de médianes**, la statistique appariée valant
+> **158,31 m**.
+>
+> **Règle 12, écrite en code ce tour** : `flow_field_hash` + `declared_flow` — tout banc qui trace
+> déclare son champ et le prouve par empreinte. **Elle a tiré à sa première sortie** : `dr.flow` et
+> le `compute_flow` du banc du F87 diffèrent sur **512 130 directions (0,763 %)**. ⚠️ Et le chiffre
+> du F87 y survit : l'arrivée côtière vaut **180,5 sur les deux** (Δ 0,0). Le garde a raison sur le
+> principe, la conclusion était intacte. **Elle ne couvre ni les unités, ni les populations, ni les
+> cartes** — et ce sont eux qui ont coûté trois des quatre re-runs (une pente en unités normalisées,
+> 11 300× trop petite ; un p50 d'érodabilité pris sur 55,8 M de cellules de mer ; un classifieur de
+> chaîne aveugle aux lacs détectés).
+>
+> **Nommé, non corrigé** : `FlatPerturbation` **n'a aucun antécédent dans ce dossier** et décide
+> 7,1 % des cellules de terre (L733) ; les 45,0 m³/s de 1000001 ont une échappée tracée mais aucun
+> déversoir émis ; `stream_km2 = 20` est la **seule** cause (100,0 %) des 4 843 cellules côtières à
+> bassin jusqu'à 19,65 km² sans rivière exportée — décision consommateur, non touchée.
+>
+> ⛔ **ET LE LAC DE 623,6 M N'EST PAS UN OBJET, C'EST UNE CLASSE (Finding 88-D4).** **16 des 53**
+> corps livrés ≥ 1 km² ont une coupe médiane > 50 m **et** une paroi p50 > 30° — et le lac promu
+> n'est pas le cas extrême : **le corps 1 a perdu 862,2 m avec une paroi à 74,9°** sur 33,4 km². La
+> roche y est ordinaire (**0,92×** l'érodabilité médiane des terres) et le volcan le plus proche est
+> à **61,6 km** : ni C-2 ni C-3. C'est `E = K·A^m·S^n` à Courant 1353 dans des cuvettes fermées,
+> atterrissant en **une** passe (la passe 1 porte **93,7 %** de la coupe du corps, 55,5 % de celle
+> du fond). **Si l'œil dit que seize est trop, l'item est l'échelle de temps du F44** — spécifiée,
+> jamais implémentée.
+>
 > ✅ **CRITÈRE ATTEINT (Finding 80) — pour la première fois du chantier.**
 > `StreamPowerConfig::base_level_floor`, **gatée `None`, octet-identique**, borne la CIBLE de
 > relaxation : `h_r_eff = max(h_r, min(h_o, sea + ε))`. À ε = 0,5 m (3,4 pas u16) :

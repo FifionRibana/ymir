@@ -119,7 +119,8 @@ fn f87_coherence() {
                     h,
                 )
                 .err()
-                .unwrap_or("(the trace SUCCEEDS on the final map — see the note)");
+                // ADR Finding 88-C — the reason is a typed `UnresolvedReason` now.
+                .map_or("(the trace SUCCEEDS on the final map — see the note)", |r| r.as_str());
                 unres_surface.push((l.base.id, l.area_km2, runoff_km2_to_m3s(inflow), reason));
             }
             eprintln!(
