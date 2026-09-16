@@ -751,11 +751,65 @@ cela veut dire que **`w = 5·Q^0,5` n'a rien à calibrer ici** — même verrou,
   simple placeholder d'unité. Et le Finding 44 a montré au passage que `K` et la durée ne sont
   **pas observables séparément** — l'observable est `k_time = K·dt·iterations`.
 
-### Ordre imposé par ces dépendances
+### Ordre imposé par ces dépendances — ⛔ RÉVISÉ AU FINDING 89
 
 `échelle de temps explicite (F44)` → `terme de versant transport-limited (F43 méc. 1)` →
 `hypsométrie convergente` → puis, redevenus calibrables : les seuils de navigabilité en m³/s,
 le cadran de H-2, et la calibration de tête de chenal aux deux résolutions.
+
+> ⛔ **LE PREMIER MAILLON EST DÉJÀ LIVRÉ, ET LE VRAI BLOQUEUR EST AILLEURS (Finding 89).** Aucun
+> changement de production ce tour ; trois lectures et deux mesures.
+>
+> 1. **Le F44 n'est pas « spécifié sans être implémenté ».** Ses items 1 (`dt` en années,
+>    `T = iterations·dt`) et 4 (la borne CFL, `dt_max = cell_m / c`) **ont été livrés** —
+>    `SHIPPED_K_TIME`, `k_time()`, `dt_max_yr()`, `cfl_iterations()`, `courant()`,
+>    `timescale_plan()` dans `erosion/stream_power.rs`, avec deux tests d'épinglage. Seuls les
+>    items 2 et 3 (dériver le nombre de passes d'une durée et d'une borne) manquent. **Le chantier
+>    citait une phrase de la note de reprise, pas le finding.**
+> 2. **Le bloqueur est le terme de SOULÈVEMENT absent, et le F61 l'avait prouvé** : sans lui, le
+>    seul point fixe de `h ← (h + f·h_r)/(1+f)` est le niveau de base, donc *« "convergence" ne peut
+>    signifier que planation »*. **Tout critère qui demande un relief conservé demande à l'équation
+>    ce qu'elle ne peut pas produire.** Nommé, non décidé.
+> 3. **L'objection de coût du F44 est RÉFUTÉE.** Une passe d'incision coûte **22,1 s** à 8192²
+>    (l'incision est **94 %** du pipeline : 44,2 s sur 47,0), le coût marginal est **constant à
+>    4,6 %** sur 2→3→4, et les **7 399 passes** que le F44 dérivait font **1,9 jour**. Mille passes :
+>    **6,3 h**. Son objection d'identifiabilité tient, elle : la littérature ne borne `T` qu'entre
+>    **4,5·10⁵ et 3,6·10⁸ ans**.
+> 4. **La boucle temporelle n'a qu'UN étage.** Le F60 (*« l'érosion ne voit jamais le climat »*) rend
+>    le climat, le bilan des lacs, les rivières et la bathymétrie tous en queue, une fois :
+>    `N × 22,1 s + 12 s`. La question « tous les N pas ? » n'a pas lieu.
+>
+> **Le temps zéro, chiffré (lit humide, livré).** **56** plans d'eau, **6 487 km² = 24,05 %** des
+> 26 969 km² de terre, **586,3 km³** — le 23 % de l'auteur confirmé, soit **24×** le critère
+> (< 1 %) et **80×** la France. ⚠️ **Mais le même champ donne 5,28 % en aride** : le terrain est
+> climato-indépendant, donc **les quatre cinquièmes du 24 % sont le bilan hydrique humide** (F39 :
+> `net_evap = 0` ⇒ `a_eq = ∞` ⇒ remplissage au seuil **par construction**), pas le relief. Et
+> **70,4 % de l'aire et 86,8 % du volume** sont dans des corps de **plus de 100 m** de fond ; les
+> corps sous 30 m ne portent que **2,9 %** de l'aire. Les **16** corps de la classe canyon (F88-D4,
+> reproduit) portent **30,0 % de l'aire et 65,4 % du volume**.
+>
+> ⛔ **ET LE CRITÈRE CÔTIER A SA PREMIÈRE MESURE SUR LE PRODUIT PROMU : Δ(éperons ≥ 1 km) = +115**
+> à 8192² (135 livrés contre **20** pré-incision — l'instrument reproduit au chiffre les « vingt »
+> du F80). Contre les **+1 828** du F80 sur le même instrument, c'est une réduction **×16** ; ce
+> n'est pas zéro, et la jambe 4 (« l'incision ne doit ajouter aucun éperon ») **n'est pas tenue**.
+> Invisible à 2048² (Δ = 0), pire à 4096² (+184) qu'à 8192².
+>
+> **Trois corrections au dossier, toutes à mes tours.** Le **F87-B est retiré** : le fond à
+> −8,67 m est l'œuvre de **`breach_monotone`**, pas de la diffusion — le champ **érodé** est à
+> **+0,50 m**, soit exactement le plancher du F83, et à **−1,00 m** plancher coupé : **le plancher
+> mord et fait ce pour quoi il a été promu**. Le **F88-D1 mélangeait deux populations** dans sa
+> ligne du fond (passes 0-1 érodé, passe 2 breaché) : la part de l'incision est 12,13 m dont la
+> passe 1 porte **97,4 %**. Et **« Courant 1353 » est la valeur à 2048²** — le livré à 8192² est
+> **3699**, et cinq lignes du dossier attachent le chiffre grossier au monde fin.
+>
+> **Et une passe de plus supprime le trou** : à `iterations = 3` le fond livré de (3487, 5902) est
+> **+0,50 m** au lieu de −8,67 m.
+>
+> **Nommé, non corrigé** : le soulèvement ; la cellule `to_nothing` (3203, 3586) à −1,000 m,
+> `water_class 2`, dans aucun plan d'eau, qui reçoit **19,5 m³/s** (famille du F38, un survivant
+> des 68) ; la conséquence du F66 (`A` sous-estimé de ~88 % en aval de chaque dépression, **à chaque
+> itération** — une boucle temporelle la multiplie par N) ; et les cibles des critères B1/B2 qui
+> restent **PROXY** faute de source primaire, là où `K` en a trois avec leurs pages.
 
 ## Reste en attente (hors closures)
 

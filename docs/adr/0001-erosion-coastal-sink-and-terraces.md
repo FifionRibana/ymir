@@ -11483,6 +11483,14 @@ a **median cut of 161.30 m** over the footprint, rim p50 **27.5°**.
 > 1353, one order down and inside a closed depression, and Finding 6's "no incision bound — floors
 > planed to base level" is the sentence it belongs to.
 >
+> ⛔ **THE MECHANISM BELOW IS WITHDRAWN BY FINDING 89-D.** Measured on one population at a time:
+> the ERODED field has this cell at **+0.50 m**, which is *exactly* `RELIEF_V3_BASE_LEVEL_M`, and
+> **−1.00 m with the bound off** — so the Finding 83 bound BINDS here and does what it was promoted
+> to do. The operator that carries the cell to **−8.67 m** is **`breach_monotone`**, the drainage
+> conditioning (in production: `ALGO_BREACH`, and `hd_assembly` delivers the breached field), not
+> the hillslope diffusion. The incision's own share is 12.63 → 0.50 m. The paragraph below
+> attributes 9.17 m of breach to the diffusion and is wrong about which stage did it.
+>
 > **My prediction is refuted, and the mechanism I used to argue it is the interesting part.** I
 > argued *tectonic* because since Finding 83 the incision cannot cut a cell below `sea + 0.5 m` —
 > which is true of the **relaxation** and false of the field: the pre-incision floor was **+12.63 m,
@@ -11968,6 +11976,12 @@ reporting them once.
 | the floor cell (3487, 5902) | **+12.63 m** | **+0.81 m** | **−8.67 m** | **55.5 %** |
 | the footprint, median cut | 0 | **148.29 m** | **158.31 m** | **93.7 %** |
 
+> ⛔ **FINDING 89-D: THE FLOOR ROW MIXES TWO POPULATIONS.** Passes 0 and 1 are read on the ERODED
+> field and pass 2 on the BREACHED one. On the eroded field alone the floor runs
+> **+12.63 → +0.81 → +0.50 m**, so the incision's share is 12.13 m of which **pass 1 carries
+> 97.4 %**, and `breach_monotone` adds the remaining −9.17 m. The footprint row (93.7 %) is
+> unaffected — it is eroded-vs-eroded throughout.
+>
 > **Pass 1 carries 93.7 % of the footprint's cut and only 55.5 % of the floor's.** The prediction
 > ("> 80 %", mine and the round's) holds for the body and fails for the cell that named it. At
 > Courant 1353 the bowl lands in one step; the floor keeps going because what is still moving there
@@ -12143,3 +12157,475 @@ erodibility) and the nearest volcano is 61.6 km away, so none of this is C-2 or 
 bound (Finding 6) and a base-level bound that governs only the relaxation target (Finding 87-B).
 **If the eye says sixteen is too many, the item is the time scale — Finding 44's, still specified
 and still unimplemented.**
+
+## Finding 89 — Finding 44 was IMPLEMENTED; what blocks the time chantier is the missing uplift term, and the price of a pass is 23.5 s
+
+No production change. Block A reads Finding 44, B writes six criteria with their sources, C measures
+them on the delivered continent, D prices a pass.
+
+### Rule 11 + 11b — and the round's premise does not survive it
+
+`F44` **0 — NOTHING FOUND** (the dossier writes "Finding 44"; same negative as `F37c` last round) ·
+`Finding 44` **11** (L3600) · `dt` **151** (L158) · `k_time` **14** (L3738) · `Courant` **13**
+(L3776) · `iterations` **61** (L21) · `implicit` **10** (L149) · `uplift` **9** (L236) · `H-2`
+**28** (L2662) · `sill` **128** (L659) · **`spillway incision` 0** · **`lake fraction` 0** ·
+`drain` **208**. `f ≫ 1` / `f >> 1` / `f ~ 1`: **0, 0, 0** — the dossier writes `f = K·dt·A^m/dist_m`.
+11b: `1353` **7** / `1 353` 0 · `9000` **6** (L3740) / `9 000` 2 · `4.5` 33 / `4,5` 0 ·
+`2 iterations` 4 / `2 itérations` 0 · `dt = 1.0` **6** (L3500) / `dt=1.0` 0.
+
+> **`lake fraction` has never been written in this dossier.** The 23 % the author measured by eye
+> is a NEW quantity in the campaign, which is why block C1 is a first measurement and not a
+> reproduction.
+>
+> ⚠️ **And the 1353 is a resolution error propagated through five findings, three of them mine.**
+> Finding 44's own table reads Courant **1353 at 2048²** and **3699 at 8192²**, and its sentence is
+> *"Courant 1353 **even at 2048²**"* — the point being that even the coarse grid is far past the
+> bound. L8521, L8731, L11483, L11973 and L12142 all attach 1353 to the shipped 8192² world.
+> **The shipped Courant is 3699.** The conclusion is unchanged and strengthened; the number was
+> wrong, and it is exactly the failure mode Finding 44's own method note describes.
+>
+> ⚠️ **The ADR's Finding 44 text carries DESTROYED characters** from the encoding incident
+> `CLAUDE.md` records: `10â´`, `10â¶`, `mÂ·yrâ»Â¹Â·kmâ»Â¹`, `KÂ·dt`. They are recoverable by
+> inverting cp1252 (`10⁴`, `10⁶`, `m·yr⁻¹·km⁻¹`, `K·dt`) and are quoted repaired below, marked.
+
+### A1 — what Finding 44 actually says, quoted
+
+Its title is **"STRUCTURAL GAP: the model has no explicit TIMESCALE"**, and its first line is
+*"Specified, not implemented."* On the four questions the round asked:
+
+* **`dt`.** *"The natural definition: `dt` is the duration, IN YEARS, modelled by one
+  drainage↔incision iteration; total modelled duration `T = iterations · dt`."*
+* **The step count.** *"Separating the two roles of `iterations`. Today one integer serves both the
+  physical duration and the flow-field staleness bound. They must be decoupled: the author (or
+  H-2) sets the target `T`, and the iteration count is DERIVED as `ceil(T / dt_max)`."*
+* **The Courant bound.** *"the CFL bound for the detachment-limited erosion wave: for `n = 1` the
+  knickpoint celerity is `c = K·A_km²^m` (m/yr), and the wave must not cross more than one cell per
+  step, so `dt_max = cell_m / c`. **Linear in cell size**."*
+* **What must be conserved between steps.** Not addressed. `iterations`' documented purpose is
+  quoted as *"recompute flow between each, so the network can reorganise as the terrain changes —
+  the staleness handling"*, and that is all the finding says about inter-step state.
+* **A stop criterion.** **None proposed.** My prediction that it fixes neither a duration nor a
+  stop criterion holds.
+
+**And the round's premise is wrong: Finding 44 WAS implemented, and the dossier says so 135 lines
+later.** *"### Finding 44 — IMPLEMENTED: units named at unchanged output, and the derived step
+count"*. Verified in the code this round, all present in `erosion/stream_power.rs`:
+`SHIPPED_K_TIME = 9000` (L899), `COURANT_INTEGRATING = 1.0` (L904), `k_time()` (L939),
+`k_for_duration()` (L946), `celerity_m_per_yr()` (L953), `dt_max_yr()` (L965), `cfl_iterations()`
+(L980), `courant()` (L992), `timescale_plan()` (L1003), plus the pinning tests
+`timescale_naming_changes_no_output` and `cfl_bound_scales_with_cell_size`.
+
+So the accurate statement is: **items (1) and (4) of the specification shipped; items (2) and (3) —
+deriving the count from a duration and a stability bound — did not.** "Specified without
+implementing" is the phrase the resumption note carried, and it is too strong.
+
+### A2 — what it leaves open, and what the dossier has since closed
+
+| the round's question | the dossier's state |
+|---|---|
+| total duration | **Nothing in F44.** The anchoring report now gives three values spanning **three orders of magnitude** (below) — so still open, but bounded. |
+| the lakes between steps | **Not open — MEASURED and not acted on.** Finding 66 recorded *"the field is re-filled at every incision iteration"*, and a later block added *"**every filled pit is a partial wall to the incision's drainage area** — `A` downstream of a depression is understated by ~88 % on the fixture, at every iteration. The delivered relief was incised with that. Consequence recorded, not acted on."* (L8290) |
+| uplift | **Not open either — SETTLED, and it is the blocker.** Finding 61, before any measurement: *"`E = K·A^m·S^n` carries **no uplift term**, so the only fixed point of `h ← (h + f·h_r)/(1+f)` is `h = h_r` everywhere, i.e. base level. … **So `iterations` is a DURATION dial, and 'convergence' here can only mean planation.**"* |
+| climate coupling | **The round has it backwards.** Finding 60's title is *"the terrain and the water are DECOUPLED: the erosion never sees the climate"* (L6386), and L6161: *"terrain never sees the climate"*. The climate reads the terrain one-way. So in a time loop the climate runs **once, at the end** — not every N steps. |
+
+### A3 — why it went no further, and whether the reason still holds
+
+**Not "the hypsometry blocker first".** That was my prediction and the round's, and the dossier says
+otherwise: the hypsometry work *depends on* the timescale (L4771: *"it needs the explicit timescale
+(Finding 44) first, since a diffusivity in m²/yr has nothing to multiply"*), it does not precede it.
+The four reasons actually on the record:
+
+1. **"A duration dial alone is NOT a dial."** *"Hold `k_time` and the step count, pick any `T`:
+   then `k = k_time/T` and `dt = T/iterations`, so `k·dt = k_time/iterations` — every quantity
+   `incise` reads is unchanged and `T` cancels."* Pinned at T = 10⁴, 10⁶, 10⁸ yr by
+   `duration_cancels_out_of_the_incision`. **STILL VALID.** Mitigated, not removed, by the K
+   anchoring: the literature narrows `T` only to **4.5·10⁵ – 10⁸ yr**, and the anchoring report
+   says so in those words — *"`k_time = 9000` cannot be factorised into a physical `(K, dt)` pair
+   by appeal to the literature — the literature does not narrow it enough."*
+2. **"The derived count is NOT an adoptable configuration."** *"7399 steps at 8192², each a full
+   flow recompute plus incision over 67 M cells."* **This is a cost claim and block D tests it.**
+3. **The attractor.** Finding 61: no uplift ⇒ the only fixed point is base level ⇒ integrating in
+   time **planes the continent**. **STILL VALID, and it is the real blocker.**
+4. **Two non-existence results.** Finding 62 / Finding 67: *"no duration reaches the coarse grid's
+   state at 8192²"* and *"no dial setting matches the grids at equal work and equal fidelity"* —
+   at matched work the Courant numbers are **129 against 4033**. **STILL VALID.**
+
+> **Does the round stop here? No — but the item must be re-scoped, and that is the answer to A3.**
+> The round's stop rule is *"we do not reopen an item against the reason that closed it without
+> refuting it"*. Reason 1 is not refuted (three decades of `T`), reason 3 is not refuted at all, and
+> reason 2 is what D measures. **So the item to open is NOT "give the model a timescale" — that
+> shipped at Finding 44 and is in the code. It is "give the model an UPLIFT term", because without
+> one, time is planation and every criterion in block B that asks for relief conserved is asking
+> for something the equation cannot produce.** The round forbids deciding uplift here; naming it as
+> the blocker is the deliverable.
+
+### A4 — what Finding 44 could not know
+
+| since then | does the spec change? |
+|---|---|
+| **F87/F89**: the base-level bound floors the relaxation TARGET only | **No** — it is downstream of `dt`, and block D's control shows the bound binding at exactly sea + 0.5 m |
+| **F88-D1 / F89-D**: the relaxation lands ~97 % of its cut in ONE pass | **No — it CONFIRMS F44's own diagnosis**: *"at Courant ≫ 1 the implicit update is STABLE but not INTEGRATING — stability is not accuracy"* |
+| **the anchoring report**: `K_Ymir = 4.5 yr⁻¹` against W&T's `2.00·10⁻⁵`, factor **2.25·10⁵** | **Yes, on one line**: F44 read the K debt as "closed to an order of magnitude". It is three. |
+| **F60**: the erosion never sees the climate | **Yes** — F44's *"which parameters become dimensionally meaningful"* list should say the climate is not among them, and the time loop needs no climate step |
+| **F61**: no uplift ⇒ base-level attractor | **Yes, and it is the amendment that matters** — F44's plan derives a step count for a wave that has nothing to erode against |
+| **F86**: the spill fixed point converges (8 / 11 passes) | **No** — it removes an obstacle to a per-step lake balance, it does not change the spec |
+
+### B — the six criteria, written before the baseline, with what each is actually anchored to
+
+The round's instruction: *"if a criterion cannot be anchored, it is PROXY and says so"*. Applied
+honestly, **two of the six are anchored to a primary source in this repository and four are not.**
+
+| # | criterion | target | anchor | status |
+|---|---|---|---|---|
+| B1 | lake area / land area | **< 1 %** | France ≈ 0.3 %, Scotland ≈ 2 %, Finland ≈ 10 % — **author-supplied orders of magnitude; no primary source is in this repository** | **PROXY** |
+| B2 | drowned-canyon class (median cut > 50 m AND rim p50 > 30°, bodies ≥ 1 km²) | **0** | non-glacial French lakes < 30 m deep; rift flanks 5–15°, caldera walls 20–40° — **author-supplied (Finding 87's round), no primary source here** | **PROXY**; the *instrument* is anchored (it reproduces Finding 87-B's 42.8° to 0.1°) |
+| B3 | drainage integration, humid | every body ≥ 1 km² `Exorheic` to the sea; `to_nothing` → 0 | internal invariant (Findings 29/30/37c/86), not an outside number | **anchored to the dossier**, not to the world |
+| B4 | relief conserved | paired hypsometric p50 within **X = ±10 %** | see the declaration below | **declared, PROXY** |
+| B5 | coast | **Δ(spurs ≥ 1 km) = 0** at four resolutions, at every duration tested | Findings 80/83's own acceptance leg — and ⚠️ the leg is at a **1 km** minimum length, not "≥ 2 cells" | **anchored to the dossier** |
+| B6 | duration | expressed in years through a pinned `K` | **Whipple & Tucker 1999 Table 2 p. 17,666; Harel 2016; Stock & Montgomery via `stream_power.rs`** — all three in `docs/reports/erosion_literature_anchoring.md` with page marks | **ANCHORED** (the only fully anchored line) |
+
+> **Why X = ±10 % and not ±5 %.** The paired p50 is 432.3 m (C4). The u16 quantisation of the
+> delivered raster is 11 300 / 65 535 = **0.172 m**, so quantisation is not the floor. The floor is
+> the *between-bed and between-gate* spread of the same quantity in this campaign, which Findings
+> 80–83 measured at a few metres, and the *pass-to-pass* spread, which C4/D show is tens of metres.
+> ±5 % of 432 m is 21.6 m — smaller than one incision pass moves the median (66.2 m). A tolerance
+> tighter than the discretisation of the dial is not a tolerance. **±10 % = ±43 m**, still under
+> one pass, and it is declared as PROXY because no outside number sets it.
+>
+> **And B1–B2's PROXY status is not a formality.** The campaign has now asked five rounds for a real
+> coastline raster and has never had one; the lake-fraction and lake-depth anchors are in the same
+> position. The one place where the dossier DOES hold primary sources — `erosion_literature_anchoring.md`,
+> with DOIs and page marks — is the K line, and that is the line B6 stands on. **The asymmetry is
+> the finding: this chantier can express its duration against the literature and cannot yet express
+> its target against it.**
+
+### C — the six numbers at time zero
+
+⚠️ **The export in `exports/seed10481999410520546993_8192.ymir/` is NOT the baseline.** It is dated
+5 September: **13 water bodies, 2 209 km², all below-sea, no `Unresolved`, no base-level bound** —
+it predates Findings 83, 86 and 88. Everything below is measured on the current chain.
+
+**C1 — the lake fraction, and it is a WATER-BALANCE number, not a geometry one.**
+
+| | bodies | area | % of land (26 969 km²) | volume |
+|---|---|---|---|---|
+| **humid, shipped** | **56** | **6 487 km²** | **24.05 %** | **586.3 km³** |
+| **arid, shipped** | 36 | 1 423 km² | **5.28 %** | 4.8 km³ |
+
+| humid, by type | | | arid, by type | |
+|---|---|---|---|---|
+| 51 × `Exorheic` | 5 785.2 km² (89.2 %) | | 30 × `Endorheic` | 1 349.4 km² (94.8 %) |
+| 2 × `Endorheic` | 660.8 km² (10.2 %) | | 3 × `Unresolved` | 48.0 km² (3.4 %) |
+| 3 × `Unresolved` | 40.9 km² (0.6 %) | | 3 × `Exorheic` | 25.8 km² (1.8 %) |
+
+| humid, by depth | bodies | area | volume |
+|---|---|---|---|
+| < 5 m | 6 | 19.7 km² (0.3 %) | 0.0 km³ (0.0 %) |
+| 5–30 m | 8 | 169.0 km² (2.6 %) | 0.3 km³ (0.1 %) |
+| 30–100 m | 12 | 1 734.3 km² (26.7 %) | 76.9 km³ (13.1 %) |
+| **> 100 m** | **30** | **4 563.9 km² (70.4 %)** | **509.1 km³ (86.8 %)** |
+
+> **The author's 23 % is confirmed at 24.05 %**, and B1's target is < 1 %: the continent is **24×**
+> over its own criterion and **80×** over France's ≈ 0.3 %.
+>
+> ⚠️ **But the same field gives 5.28 % in the arid bed, and that changes what the number is.** The
+> terrain is identical — Finding 60: the erosion never sees the climate — so **four fifths of the
+> 24 % is the humid water balance, not the relief.** Finding 39's law says why: `net_evap = 0` in a
+> humid climate ⇒ `a_eq = ∞` ⇒ every basin fills to its sill, by construction. So "all the lakes
+> are filled to their sill" is not a symptom of missing time; **it is the correct answer to the
+> balance the climate poses**, and a time loop would have to drain them by incising sills against a
+> relaxation that already lands in one pass.
+>
+> **My prediction is badly refuted**: I said more than 55 % of the lake AREA would sit in bodies
+> under 30 m. It is **2.9 %**. Seventy per cent of the area and **87 % of the volume** are in bodies
+> **deeper than 100 m**. The arid bed has **no body over 100 m at all**. The lakes are not shallow
+> ponds waiting to be drained; they are deep holes.
+
+**C2 — the drowned-canyon class, reproduced then extended.**
+
+| | bodies ≥ 1 km² | in the class | their area | their volume |
+|---|---|---|---|---|
+| humid | 53 | **16** (Finding 88-D4 reproduced exactly) | **1 943 km² = 30.0 %** | **383.4 km³ = 65.4 %** |
+| arid | 25 | **2** | 16 km² = 1.1 % | 0.0 km³ = 0.0 % |
+
+Cut × rim, all 53 humid bodies (rim = the outside ring, p50):
+
+| median cut ↓ / rim p50 → | 0–15° | 15–30° | 30–45° | 45–90° |
+|---|---|---|---|---|
+| 0–50 m | 8 | 4 | 2 | 0 |
+| 50–200 m | 3 | 7 | **4** | **1** |
+| 200–500 m | 2 | 3 | **8** | **2** |
+| 500 m + | 0 | 2 | 0 | **1** |
+
+> **Sixteen bodies, 30 % of the lake area, and 65.4 % of the water.** Both predictions had the
+> volume share right (mine > 55 %, the round's > 60 %) and both had the area share too low (mine
+> < 25 %, the round's < 20 %; it is 30.0 %). **So the class is not a curiosity at the margin: two
+> thirds of the water on this continent sits in holes the incision dug.**
+
+**C3 — integration is nearly complete, and the two failures are named.**
+
+| humid, bodies ≥ 1 km² | count | local inflow |
+|---|---|---|
+| `Exorheic` | **49** | 230.2 m³/s |
+| `Unresolved` | 3 | 5.5 m³/s |
+| `Endorheic` | 1 | 2.6 m³/s |
+| arid | 21 `Endorheic` (5.2) · 3 `Exorheic` (1.0) · 1 `Unresolved` (0.7) | |
+
+The three `Unresolved`: **lake 22 and lake 41 `ReturnsIntoOwnFootprint`, lake 55 `NoOutletReach`** —
+the two Finding 88-C left plus the one Finding 86's end-of-chain pass moves.
+
+**And `to_nothing` is named, cell by cell**, which Finding 88-B left as an object:
+
+| | |
+|---|---|
+| the spillway | basin **1000004**, discharge **19.5 m³/s** |
+| its last point | **(3203, 3586)**, height **−1.000 m** |
+| `water_class` | **2** — below sea, NOT land |
+| `bs.lake_map` / detected `lake_map` / final `dr.lake_map` | **0 / 0 / 0** — in no water body at all |
+| D8 direction there | **`DIR_NONE`** |
+
+> **This is Finding 38's orphan sliver, exactly**: a sub-sea cell that no lake covers, at −1.000 m,
+> with no outgoing direction. F38 measured 68 of them in 2024 and closed them by filling each
+> enclosed below-sea region as ONE body; **one has come back**, and 19.5 m³/s terminates on it.
+> **My prediction (a LAND cell, `water_class = 0`) is refuted**, and so is the round's (a relevel
+> relabelling): `lake_map` is 0 in all three maps, so nothing was relabelled — the cell was never
+> in a body.
+
+**C4 — relief, paired.** n = **11 309 850** cells that are land in both fields.
+
+| | p10 | p50 | p90 |
+|---|---|---|---|
+| delivered | 18.7 m | **432.3 m** | 1 589.0 m |
+| pre-incision | 96.3 m | **680.7 m** | 1 837.2 m |
+
+Median of the per-cell cuts **66.2 m**, mean cut **191.2 m**, erosion work **5.156·10⁶ m·km²**, of
+which **12.7 %** on cells with A ≥ 0.1 km² — **the channel share**.
+
+> The incision removes **36.5 %** of the median altitude. And the channel share is the number that
+> matters for the next chantier: **87.3 % of the erosion work happens off the channel network**,
+> on cells the stream-power term barely touches, which is Finding 43's mechanism 1 measured on the
+> delivered field rather than on a sweep. ⚠️ Unpaired p50 = paired p50 = 432.3 m to the decimal, so
+> Findings 63–64's bias does **not** bite on the altitude here — it bites on the *cut* (Finding
+> 88-D1: 158.31 m paired against 165.80 m unpaired).
+
+**C5 — the coast, and the criterion is NOT met.**
+
+| resolution | cell | delivered spurs ≥ 1 km | pre-incision | **Δ** | (≥ 2 cells, for comparison) |
+|---|---|---|---|---|---|
+| 8192² | 48.8 m | **135** | **20** | **+115** | 3 442 vs 2 383 → +1 059 |
+| 4096² | 97.7 m | 204 | 20 | **+184** | 2 867 vs 2 437 → +430 |
+| 2048² | 195.3 m | 21 | 21 | **0** | 2 656 vs 2 653 → +3 |
+| 1024² | 390.6 m | 11 | 10 | +1 | 20 vs 19 → +1 |
+
+> **The instrument reproduces the authority exactly**: Finding 80 wrote *"The pre-incision's
+> **twenty** are tectonic geometry, not fringe"* and this measurement reads **20** at 8192². Same
+> field, same threshold, same count.
+>
+> ⛔ **And on that authority the delivered product adds 115 spurs, so leg 4 of the criterion —
+> "the incision must add no spur" — is NOT met.** Finding 83 promoted the bound with the words
+> *"The word of the criterion is the author's: no spur ADDED"*, and the dossier carries no measured
+> Δ for the promoted product. **This is that measurement, and it is +115.** Against Finding 80's
+> **+1 828** on the same instrument that is a **×16 reduction**, which is the real achievement of
+> Findings 80–83; it is not zero, which is the real state.
+>
+> ⚠️ **It is invisible at 2048² (Δ = 0) and worst at 4096² (Δ = +184), not at the finest grid.**
+> Any acceptance run at a coarse grid would have passed this leg.
+>
+> ⚠️ And my first pass measured "≥ 2 cells" (98 m at 8192²) where the criterion is **≥ 1 km** —
+> a threshold conflation of my own, which is why both columns are printed.
+
+**C6 — the age of time zero, and the literature does not narrow it.**
+
+`k_time = 9000` in Ymir's km² convention. The bridge to every published `K` is
+`K_ours = 10^(6m)·K_lit`: **×1000 at m = 0.5**, ×251 at the m = 0.4 the Stock & Montgomery table
+was fitted with.
+
+| `K` pinned at | K_ours | **T = k_time / K_ours** |
+|---|---|---|
+| Whipple & Tucker 1999 Table 2 (n = 1, m/n = 0.50) `2.00·10⁻⁵` | 2.00·10⁻² | **4.50·10⁵ yr = 0.5 Myr** |
+| Harel 2016, back-derived from ⟨E⟩ = 242 mm/ky at A = 1085 km², S = 0.01 | 7.50·10⁻⁴ | **1.20·10⁷ yr = 12 Myr** |
+| Stock & Montgomery hard rock, HIGH (`10⁻⁶`) | 2.51·10⁻⁴ | **3.59·10⁷ yr = 36 Myr** |
+| Stock & Montgomery hard rock, LOW (`10⁻⁷`) | 2.51·10⁻⁵ | **3.59·10⁸ yr = 359 Myr** |
+
+These reproduce `erosion_literature_anchoring.md` §4.1 and Finding 44's own table to three digits.
+
+> **Three orders of magnitude, and the report already said so**: *"`k_time = 9000` cannot be
+> factorised into a physical `(K, dt)` pair by appeal to the literature — the literature does not
+> narrow it enough."* So the delivered continent is **half a million years old under one anchor and
+> a third of a billion under another**, and Finding 44's reason 1 stands.
+>
+> ⚠️ My first run of this block divided 9000 by a literature `K` **directly** and printed
+> **4.5·10⁸ yr** where the report says 4.5·10⁵ — a factor 10³, the `km²` → `m²` bridge. **Third
+> unit error in three rounds** (Finding 88's rim slope in norm units, Finding 88's erodibility p50
+> over sea cells, this one), and all three were caught by reproducing a number already on file.
+
+### D — the price of a pass, and it is cheaper than either of us thought
+
+Whole pipeline, 8192², release, same machine, three runs agreeing within 6 %:
+
+| `iterations` | wall time | marginal |
+|---|---|---|
+| no incision | **2.8 s** | — |
+| 2 (shipped) | **47.0 s** | — |
+| 3 | **69.6 s** | **+22.6 s** |
+| 4 | **91.2 s** | **+21.6 s** |
+
+The incision stage alone is **44.2 s for two passes ⇒ 22.1 s/pass**, and the marginal cost is
+**constant within 4.6 %** across 2 → 3 → 4.
+
+| extrapolation at 22.1–22.6 s/pass | |
+|---|---|
+| 100 passes | **0.63 h** |
+| 1 000 passes | **6.3 h** |
+| **Finding 44's derived 7 399 passes** | **46.5 h = 1.9 days** |
+
+> **Both predictions are wrong, and in the same direction.** I said one pass costs 20–40 % of the
+> total and that the ROUTING dominates; the round said a thousand passes lands in days. Measured:
+> **the incision is 94 % of the pipeline** (44.2 s of 47.0), one pass is **48 %** of the shipped
+> total, a thousand passes is **six hours**, and Finding 44's own 7 399-step plan is **under two
+> days**. **Finding 44's reason 2 — "the derived count is NOT an adoptable configuration" — is
+> REFUTED on cost.** It is an overnight batch.
+>
+> I also predicted the per-pass cost would FALL as the terrain smooths (Finding 43's area-frequency
+> law). It is flat to 4.6 %.
+
+**What must run at every step, and what must not** — the devis the round asked for:
+
+| stage | measured | frequency | why |
+|---|---|---|---|
+| incision + its internal re-fill | **22.1 s** | **every step** | Finding 66: `compute_flow` re-fills depressions inside each iteration already; it is inside the 22.1 s |
+| final drainage (flow + rivers + lakes) | **11.0 s** | **ONCE, at the end** | nothing the incision reads comes from it |
+| `compute_flow` standalone | 9.2 s | — | already counted inside the incision |
+| climate | **0.6 s** | **ONCE, at the end** | ⛔ **Finding 60: "the erosion never sees the climate"** — the coupling is one-way, so "every N steps" is the wrong question |
+| lake water balance | inside the 11.0 s | **ONCE, at the end** | same reason: the incision reads no lake level |
+| bathymetry re-map | inside the builds | **ONCE, after** | Finding 78 |
+
+> **So a time loop is `N × 22.1 s` plus a fixed ~12 s tail, and nothing else.** The round asked
+> "what must run at every step and what can run every N?" — **the answer is that nothing needs a
+> cadence, because only one stage is in the loop at all.** That is a consequence of Finding 60's
+> decoupling, and it is the cheapest possible architecture. It is also why the loop cannot drain a
+> lake by climate: the lake level is not in it.
+
+**The control the round wrote — and it FIRED, which is the round's most useful result.**
+
+*"Pass 3 must reproduce Finding 88-D1's pass-by-pass cut at (3487, 5902) as its starting point — if
+the floor is not at −8.67 m before pass 3, it is not the same world."* **It is not −8.67 m.**
+
+| at (3487, 5902) | pass 0 | pass 1 | pass 2 (shipped) | pass 3 | pass 4 |
+|---|---|---|---|---|---|
+| **the ERODED field** | **+12.63 m** | **+0.81 m** | **+0.50 m** | +0.50 m | +0.50 m |
+| **the BREACHED field (delivered)** | — | — | **−8.67 m** | **+0.50 m** | **+0.50 m** |
+| eroded, Finding 83 bound OFF | — | — | **−1.00 m** | — | — |
+
+> ⛔ **Finding 88-D1 put two populations in one row**, and Finding 87-B drew a mechanism from it.
+> Passes 0 and 1 were read on the **eroded** field, pass 2 on the **breached** one. The corrected
+> attribution:
+>
+> * **the INCISION takes the floor 12.63 → 0.50 m** (−12.13 m), of which **pass 1 carries 97.4 %** —
+>   even more one-shot than Finding 88-D1's 55.5 %, and 0.50 m is **exactly `RELIEF_V3_BASE_LEVEL_M`**;
+> * **`breach_monotone` then takes 0.50 → −8.67 m** (−9.17 m), and **that** is what puts the cell
+>   below sea level;
+> * with the Finding 83 bound OFF the eroded floor is **−1.00 m**, so **the bound BINDS at this
+>   cell, exactly at sea + 0.5 m, and does precisely what it was promoted to do.**
+>
+> ⛔ **So Finding 87-B's mechanism is withdrawn.** It read *"a cell can still be carried below sea
+> level after Finding 83 — by diffusion, not by the stream power"* and attributed the −8.67 m to
+> the hillslope diffusion escaping the bound. The eroded field has that cell **at the bound**. The
+> operator that carries it under is **`breach_monotone`, the drainage conditioning** — which is in
+> production (`ALGO_BREACH` has its own cache version, `hd_assembly` delivers the breached field),
+> so −8.67 m is genuinely delivered, but by a different stage than the one named.
+>
+> **And one more pass removes the hole.** At `iterations = 3` the delivered floor is **+0.50 m**:
+> the depression the breach cut through is no longer there to breach. A single extra pass changes
+> the delivered geometry at this cell from −8.67 m to +0.50 m.
+
+### Score
+
+Predictions written and dated **2026-09-16 before reading Finding 44 and before any measurement**.
+Reading declaration: non-blind on Findings 73–88 and on this round's prompt, which carries the
+author's predictions in the same message — no independence is claimed. **Blind on Finding 44's
+text** (every earlier round cited it second-hand through the phrase "specified without being
+implemented"), blind on every F89 figure, on the on-disk export, and on the timings.
+
+**Mine.** A1 "it fixes neither a total duration nor a stop criterion" **✓**; "it may be a
+measurement finding rather than a design spec" **✗** — it is a full specification in four numbered
+items · **A1 "specified, not implemented" ✗✗ — it WAS implemented**, items 1 and 4, in the code,
+with pinning tests · A2 "three of the four are simply absent" **✗** — two are settled elsewhere
+(F60, F61) and one is measured and shelved (F66) · **A3 "the reason is the hypsometry blocker" ✗** —
+the hypsometry work *depends on* the timescale; the real reasons are the non-identifiability of
+`(K, T)`, the base-level attractor, and two non-existence results · A4 "at least three items force
+an amendment" **✓** (four do) · **C1 "23 ± 2 %" ✓** (24.05) but **"> 55 % of the area under 30 m"
+✗✗** (2.9 %) · C2 "volume > 55 %" **✓** (65.4), "area < 25 %" **✗** (30.0) · **C3 "a land cell,
+`water_class = 0`" ✗** — `water_class = 2`, below sea, in no body · C4 "p50 in 350–450 m" **✓**
+(432.3) · C5 "Δ = 0 at all four resolutions" **✗✗** — +115 / +184 / 0 / +1 · C6 "4.5·10⁵ under W&T"
+**✓**, "~9·10⁶ under the high decade" **≈** (1.2·10⁷ Harel, 3.6·10⁷ S&M high) · **D1 "the routing
+dominates, one pass is 20–40 % of the total" ✗** — the incision is 94 %, one pass is 48 % · **D2
+"the per-pass cost falls ≥ 10 %" ✗** — flat to 4.6 % · **D3 "a thousand passes lands in days" ✗** —
+6.3 hours · D4 the frequency table **✗ on climate** (it needs no cadence at all, F60).
+
+**The round's.** A1 "f ~ O(1) and a `dt` in years, no total duration, no stop criterion" **✓ on the
+duration and the criterion**, ✗ on f (the dossier writes `f = K·dt·A^m/dist_m` and never `f ~ 1`) ·
+**A3 "the reason is the hypsometry blocker, dead since F67" ✗** · A4 "at least two items force an
+amendment" **✓** · C1 "23 ± 2 %" **✓**, "more than half the area in bodies under 30 m of floor"
+**✗** · C2 "< 20 % of area, > 60 % of volume" **✗ then ✓** · **C3 "a land cell whose `lake_map` was
+relabelled by the relevel" ✗** — nothing was relabelled · C6 **✓✓** (its own report) · **D "a pass
+costs 40–70 % of the total, the routing dominates" ✓ on the fraction (48 %), ✗ on the cause** ·
+**D "a thousand passes in days, not hours" ✗** — 6.3 hours.
+
+**Meta holds on both sides.** Nine of mine wrong. **The two that matter are A3 and C5**: I predicted
+the time chantier was blocked by a dead reason, and it is blocked by a live one; and I predicted the
+coast criterion was met, when the first measurement of it on the promoted product says +115.
+
+### Standing
+
+**No production change, as the round required.** What the round produced instead:
+
+1. **Finding 44 is not an unimplemented specification.** Items 1 (`dt` in years, `T = iterations·dt`)
+   and 4 (the CFL bound, `dt_max = cell_m / c`) shipped, in `erosion/stream_power.rs`, with
+   `timescale_naming_changes_no_output` and `cfl_bound_scales_with_cell_size` pinning them. Items 2
+   and 3 — derive the count from a duration and a stability bound — did not. **The campaign has
+   been citing a phrase from the resumption note, not the finding.**
+2. **The blocker is the missing UPLIFT term, and Finding 61 proved it before any of this.** No
+   uplift ⇒ the only fixed point of `h ← (h + f·h_r)/(1+f)` is base level ⇒ *"'convergence' here
+   can only mean planation"*. **Every criterion in block B that asks for relief to be conserved is
+   asking the equation for something it cannot produce.** Naming it is this round's deliverable;
+   deciding it is forbidden here.
+3. **Finding 44's cost objection is refuted.** 7 399 passes at 22.1 s is **1.9 days**, not an
+   impossibility. Its identifiability objection is not refuted: the literature pins `T` only to
+   **4.5·10⁵ – 3.6·10⁸ yr**.
+4. **The time loop needs exactly one stage.** Finding 60's decoupling means the climate, the lake
+   balance, the rivers and the bathymetry are all one-off tails. `N × 22.1 s + 12 s`.
+5. **Three corrections to the record**, all to my own rounds:
+   * **Finding 87-B's mechanism is withdrawn** — the −8.67 m floor is `breach_monotone`, not the
+     hillslope diffusion; the eroded floor sits **exactly at the Finding 83 bound**, which binds
+     (−1.00 m with it off);
+   * **Finding 88-D1 mixed two populations in one row** (passes 0–1 eroded, pass 2 breached); the
+     incision's own share of the cut is 12.13 m of which pass 1 carries **97.4 %**;
+   * **"Courant 1353" is the 2048² value** — the shipped 8192² Courant is **3699**, and five lines
+     of the dossier, three of them mine, attach the coarse number to the fine world.
+6. **The coast criterion has its first measurement on the promoted product: Δ(spurs ≥ 1 km) = +115**
+   at 8192², against Finding 80's +1 828 on the same instrument. A ×16 reduction, and a failed leg.
+
+**Named and not fixed.** The uplift term. The `to_nothing` cell (3203, 3586) at −1.000 m,
+`water_class 2`, in no body, carrying 19.5 m³/s — Finding 38's family, one survivor. Three
+`Unresolved` lakes (5.5 m³/s). The Finding 66 consequence: `A` downstream of a depression understated
+by ~88 % at every iteration, *"recorded, not acted on"*, and a time loop multiplies it by N.
+`FlatPerturbation` still has no antecedent. And B1/B2 are **PROXY**: the repository holds primary
+sources for `K` and for none of the targets.
+
+**Method debt found this round.** The ADR's Finding 44 text carries characters destroyed by the
+encoding incident `CLAUDE.md` records (`10â´`, `mÂ·yrâ»Â¹Â·kmâ»Â¹`). They are recoverable by
+inverting cp1252 and are quoted repaired here; the source lines are still damaged. A repair pass is
+a one-file job and is not this round's.
+
+### À VALIDER VISUELLEMENT
+
+**Nothing required** — the round said so, and C1/C2 are the numbers under the image the author has
+already seen. Two of them are worth carrying to the next round's panel, because they change what
+the image means:
+
+* the 24.05 % is **24×** the criterion, but the same field reads **5.28 %** in the arid bed — so
+  four fifths of it is the humid water balance (Finding 39), not the relief;
+* **70 % of the lake area and 87 % of its volume are in bodies deeper than 100 m**, and 65.4 % of
+  the water is in the sixteen bodies of the canyon class. Draining the shallow ones would move
+  **2.9 %** of the area.
