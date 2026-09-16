@@ -11383,3 +11383,344 @@ The A/B control is `merged_union_relevel: None` (the pre-Finding-86 world); chec
 
 Object 4 is the one this round created, and it is the cheapest to judge: it is a label change on a
 lake the author can click.
+
+## Finding 87 — the drops are coherent, the 623 m lake is incised, and the 45 m³/s is stuck behind a tenth of a quantisation step
+
+Two production changes, neither gated: trace-before-label on the detected-lake path (D), and the
+outflow side in local terms with `a_eq` exported as what it is (F).
+
+### Rule 11 + 11b, three clauses, and the useful answer is a negative
+
+`head` **115** (first L27) · `drop_m` **0 — nothing found** · `level_m` **9** (L5484) ·
+`spillway_len` **0** · `escape` **25** (L1250) · `neighbors8` **0** · `neighbors4` **0** ·
+`receiver` **46** (L101) · **`Tanganyika` 0 · `Baikal` 0** · `Crater` **9** (L2160) ·
+`WETLAND_MAX_DEPTH_M` **3** (L1156) · `head_threshold` **3** (L7031).
+11b: `92.97` 5 / `92,97` 0 · `614.9` 6 / `614,9` 0 · `623.6` 4 · `76.25` 3 · `47.581` 3 ·
+**`Detroit` 0 · `2e-5` 0** · `0.1 km²` 29 / `0,1 km²` 0.
+
+> **The negative is the result: this dossier has never contained a real-world anchor for a LAKE or
+> for an OUTLET SLOPE.** It has anchored channel widths (hydraulic geometry), the angle of repose
+> (tan 33°), K, Montgomery–Dietrich's channel-initiation law, Stein–Stein's ocean floor — and never
+> once a lake depth or a river gradient. **The round supplies the first ones** (Detroit River
+> 2·10⁻⁵, rock sill 10⁻², waterfall > 10⁻¹; Tanganyika 1 470 m, Baikal 1 642, Crater Lake 594), and
+> blocks A and B are the first measurements in this campaign read against an outside number rather
+> than against another Ymir field.
+
+**Three hits decided three blocks before they ran.**
+
+* **L1250 (Finding 36, PART B) answers block E outright**: *"An enclosed basin's sill is ABOVE sea
+  … `spill` = the ocean priority-flood BARRIER at the basin (the least-max-elevation to escape —
+  the true sill). A basin now fills to its rim. … **0 unfilled-yet-exorheic** by construction
+  (`level = spill` for exorheic; verified)."* So `spill_level_m == level_m` is the design, and a
+  "col" defined as *the lowest cell adjacent to the footprint* is **at or above the level by
+  construction** — because the footprint IS every cell at or below the level.
+* **L1156 (Finding 30, TASK 3) answers block C**: the wetland criterion is `depth <
+  WETLAND_MAX_DEPTH_M = 3 m` and it drives a **per-cell biome mask**; `lake_type` describes the
+  **body**. Two objects, two questions.
+* **L7031 frames block G**: the D8 river network selects **1.60 %** of land where the MFD incision
+  criterion selects **8.40 %** — *"Matching the number does not match the set."*
+
+### A — the drops, and the author's question gets a number
+
+Every spillway, both beds, both gate states. Drop = the source body's level minus the receiving
+body's (sea = 0 m); slope = drop / path length.
+
+| shipped, humid | Q m³/s | from → to | up m | down m | **drop m** | cells | **slope** | width, cells |
+|---|---|---|---|---|---|---|---|---|
+| | **92.97** | 1000010 → **SEA** | 115.33 | 0 | **115.33** | 61 | **3.36·10⁻²** | **7.40** |
+| | 55.44 | 1000008 → SEA | 49.27 | 0 | 49.27 | 12 | 6.66·10⁻² | 5.72 |
+| | 46.23 | 1000011 → lake 47 | 245.06 | 127.27 | 117.79 | 50 | 3.66·10⁻² | 5.22 |
+| | 37.43 | 1000006 → SEA | 10.43 | 0 | 10.43 | 43 | 4.18·10⁻³ | 4.70 |
+| | **34.29** | 1000005 → lake 20 | 367.52 | 29.76 | **337.76** | 26 | **2.10·10⁻¹** | 4.50 |
+| | **17.60** | 1000013 → lake 53 | **614.89** | 196.52 | **418.37** | 50 | **1.44·10⁻¹** | 3.22 |
+
+**Spillways with Q > 0 and drop ≤ 0** — a strait, not a river:
+
+| | shipped | A/B control |
+|---|---|---|
+| humid | **0** of 11 | **4** of 17 |
+| arid | **0** of 3 | **3** of 5 |
+
+> **The negative control fires and it is BIGGER than I predicted.** I predicted exactly 3 (humid)
+> and the control gives **4**. The fourth is not a self-spilling basin: it is **19.37 m³/s from
+> 1000011 into 1000009, two DISTINCT bodies both at 0.15 m**. So the instrument catches a class
+> wider than Findings 84–86 named: **a strait is any link between two water bodies at the same free
+> surface**, not only a body spilling into itself. The exact integer was wrong and the refutation is
+> the useful part.
+>
+> **The author's question, answered with a number.** The 92.97 m³/s runs **1000010 → the SEA**, a
+> **115.33 m drop over 61 cells (≈ 3.0 km)**, slope **3.36·10⁻²**. Against the anchors that is
+> **above a rock sill (10⁻²) and below a waterfall (10⁻¹)**: a steep, short outlet river. **It is
+> coherent** — not a strait, not a cascade. **My prediction that it went to a named neighbour with
+> a 0.3–5 m drop is refuted on both counts.**
+>
+> **And two spillways ARE waterfalls, named as the round asked.** 34.29 m³/s falling **337.8 m in
+> 26 cells** (slope 2.10·10⁻¹) and 17.60 m³/s falling **418.4 m in 50 cells** (1.44·10⁻¹) — the
+> second is the outlet of the 614.9 m lake of block B. A 34 m³/s, 338 m fall is physically
+> possible (Angel Falls is 979 m) but as the *outlet of a lake* it is an extreme object, and it is
+> now on the record with its slope rather than as an impression.
+>
+> Slope distribution, shipped humid: p10 1.44·10⁻³ · **p50 3.36·10⁻²** · p90 1.44·10⁻¹ · max
+> 2.10·10⁻¹. **Arid is a different world**: 3 spillways at 9.14·10⁻⁵, 1.44·10⁻³ and 1.22·10⁻², i.e.
+> from Detroit-River-flat to a rock sill.
+
+### B — the 623.6 m lake is INCISED, and my reading was wrong
+
+| humid, shipped | |
+|---|---|
+| id | 1000013 — level **614.9 m**, depth **623.6 m**, 234 724 cells = **559.6 km²** |
+| the FLOOR cell (3487, 5902) | delivered **−8.67 m** · **pre-incision +12.63 m** ⇒ the incision cut **21.31 m** |
+| the whole footprint | delivered p50 **360.9 m** · pre-incision p50 **526.7 m** ⇒ **median cut 165.80 m** (p90 553.5 against 1 015.8) |
+| rim slope, degrees | p10 16.2 · **p50 42.8** · p90 60.4 |
+
+Arid, the same instrument on its own deepest body (id 1000006, level 19.4 m, depth 27.7 m,
+57.0 km²): floor **−8.38 m** delivered against **+120.00 m** pre-incision — **128.38 m cut** — and
+a **median cut of 161.30 m** over the footprint, rim p50 **27.5°**.
+
+> **Verdict: INCISION, at both beds, and by a wide margin.** The median cell of the basin lost
+> **165.8 m** (humid) and **161.3 m** (arid). This is Finding 77's 358 m of relaxation at Courant
+> 1353, one order down and inside a closed depression, and Finding 6's "no incision bound — floors
+> planed to base level" is the sentence it belongs to.
+>
+> **My prediction is refuted, and the mechanism I used to argue it is the interesting part.** I
+> argued *tectonic* because since Finding 83 the incision cannot cut a cell below `sea + 0.5 m` —
+> which is true of the **relaxation** and false of the field: the pre-incision floor was **+12.63 m,
+> above sea**, and it is **−8.67 m** now. The bound floors the relaxation TARGET; it does not bound
+> the **hillslope diffusion or the talus**, which Finding 80-B1b measured as carrying **88.7 %** of
+> the residual drowning for exactly this reason (`diffuse_channels = true`, it skips only sea
+> cells). **So a cell can still be carried below sea level after Finding 83 — by diffusion, not by
+> the stream power.** That is worth writing down plainly: the base-level bound is a bound on one
+> operator, not on the pipeline.
+>
+> **The rim does not read as a rift.** p50 **42.8°** against the round's anchors (crater wall
+> 20–40°, rift flank 5–15°) — above the crater wall, though this is a **max-of-8-neighbours**
+> gradient and therefore an upper bound. The comparable number in this code is the talus repose
+> angle, **tan 33° = 33°**, which the relief-v3 closure grades flanks to; 42.8° is above it, so the
+> rim is steeper than the closure's own target.
+
+### C — the marsh: both labels, and that is the design
+
+| largest shallow below-sea union (humid AND arid) | |
+|---|---|
+| area / level | **0.327 km²** / 0.17 m |
+| `lake_type` | **Exorheic** |
+| depth p50 / p90 / max | **0.35 m** / 0.80 / 1.34 |
+| share of the footprint with `wetland = 1` | **100.0 %** (137 of 137 cells) |
+
+> **Both labels sit on every cell of the footprint, and L1156 says that is intended**: `wetland` is
+> a **per-cell biome mask** (`depth < 3 m`, Finding 30's measured criterion, feeding
+> `Biome::Wetland`), `lake_type` is the **body's regime**. A shallow through-flow basin is
+> *supposed* to be a marsh that overflows, and Finding 30 wrote the reason on the wire —
+> *"they are fresh because water FLOWS THROUGH them"*. **There is no contract contradiction and the
+> Finding 79 item does not return.**
+>
+> ⚠️ **The 47.581 km² union of Finding 85 is not addressable here and I will not pretend it is.**
+> Below-sea ids are scan-order, and this bench's drainage configuration produces a different
+> partition — the Finding 81 lesson, third appearance. What is reported is the largest shallow union
+> **this** configuration contains.
+
+### E — the col: Finding 86's instrument, and the real saddle
+
+| basin 1000001, humid, shipped | |
+|---|---|
+| level / `spill_level_m` | **76.25 m / 76.25 m** (Finding 36: `level = spill`, by construction) |
+| `a_eq` / `a_spill` | **INFINITE** / 660.808 km² |
+| local inflow / outflow | 45.04 / **45.04 m³/s** |
+| the NAIVE col (Finding 86's instrument) | 76.25 m — **0.00 m above the level** |
+| **the REAL saddle** | **(3779, 3569) at 76.26 m**, escaping to **(3778, 3570) at 76.25 m** |
+| the escape's drop | **0.014 m = 0.095 u16 steps** |
+| where the descent leads | **a FLAT — `DIR_NONE`, no D8 direction at all** |
+
+> **The third reading, and it is my own instrument.** Finding 86 defined "the col" as the lowest
+> cell adjacent to the footprint and not in it. The footprint is every cell at or below the level,
+> so that cell is **at or above the level by construction** — here exactly at it — and its lowest
+> outside neighbour is higher again. **"The escape is 12 u16 steps above the col" was an artefact of
+> the definition, not a contradiction in the code**, and Finding 36's L1250 had already said why.
+> My prediction holds.
+>
+> **And the real saddle gives the round's other outcome, measured.** It exists (which is why
+> `has_sill = true`), its escape is **one tenth of a quantisation step lower**, and the descent from
+> it **dies on a flat with no D8 direction**. So the 45.04 m³/s is retained not because the geometry
+> closes but because **its outlet crosses a 0.014 m step into a cell the flow router cannot leave**.
+> That is a flat-routing and quantisation item — `FlatPerturbation` and D∞ exist in the config for
+> this class — and it is named, not fixed.
+>
+> **D and E do NOT return the same reason**, which the round asked me to check: **all nineteen**
+> of D's lakes fail with *"the descent returns into its own footprint"*, and E fails with
+> *"no D8 direction at all"*. The same family — a descent that cannot leave the body — and two
+> distinct terminations: one loops, one stops dead.
+
+### G — the diffuse arrival is coherent, and there is a tail that is not
+
+| | coastal arrival | **ungauged** (on cells carrying no segment) | cells | D8 area p50 / p90 / p99 / max km² | **≥ head_threshold 0.1 km²** |
+|---|---|---|---|---|---|
+| humid | 180.5 m³/s | **114.2 (63.3 %)** | 39 458 | 0.0143 / 0.117 / 1.836 / **19.6** | **12.3 %** |
+| arid | 90.6 m³/s | **80.6 (89.0 %)** | 39 460 | 0.0143 / 0.117 / 1.838 / 19.6 | **12.3 %** |
+
+> **87.7 % of the ungauged arrival is below the channel head — it is hillslope runoff reaching the
+> sea, and that is coherent.** The distribution is *identical* between the two beds because it is
+> **geometric**: the same cells arrive at the same coast with the same D8 catchments; only the water
+> they carry differs. **My prediction (> 70 % below, both beds) holds; the round's "arid > 30 %
+> above threshold" is refuted at 12.3 %, and the reason it is refuted is that the question was
+> climatic and the answer is geometric.**
+>
+> **The tail is not coherent, and it is 4 850 cells.** 12.3 % of 39 458 sit at or above the
+> threshold with no segment, p99 **1.84 km²**, max **19.6 km²**. **A 19.6 km² catchment reaching
+> the sea with no traced river is a river the map omits.** L7031 already measured the frame: the D8
+> river criterion selects 1.60 % of land where the MFD criterion that CARVED the terrain selects
+> 8.40 % — *"matching the number does not match the set"*. **The diffuse majority is physics; the
+> tail is the network's resolution, and it is the same 5.25× in another costume.**
+
+### D — the trace was written, it failed its own guard, and it is WITHDRAWN
+
+The line went in exactly as the round specified: in `apply_lake_water_balance`, `a_eq ≥ a_sill`
+triggers a **trace**, and `Exorheic` survives only if the trace reaches a sink. Then the guard the
+round wrote — *"aucun autre lac ne change"* — fired.
+
+| humid, shipped | |
+|---|---|
+| detected lakes the balance leaves `Unresolved` | **19**, not 1 |
+| the reason, for **all nineteen** | **"the descent returns into its own footprint"** |
+| the largest of them | lake 8, **270.8 km²**; lake 3, 259.0; lake 31, 255.6 |
+| their local inflow, summed | **132.1 m³/s** |
+| arid | **2** (lakes 9 and 21) |
+
+> **The diagnosis, and it is structural: a detected lake's surface is FLAT.** After filling, every
+> cell of the footprint sits at the same level, so a D8 walk started from a cell *inside* it has no
+> gradient to follow out and wanders until it re-enters. The below-sea path does not have this
+> problem because **Finding 37c** starts its trace at the **SADDLE** and jumps to the exterior
+> **ESCAPE** across the divide — a construction the detected-lake path simply does not have.
+>
+> So the line is **right in principle and wrong in instrument**: it would turn one silent mislabel
+> into nineteen loud ones, eighteen of which are probably genuinely exorheic. **It fails the round's
+> own guard and it is withdrawn.** `surface_lake_outlet_trace` stays, public and documented as the
+> diagnostic that produced this measurement and not yet the right instrument;
+> `resolve_exorheic_without_outlet` (Finding 86) keeps the last word and still moves exactly **one**
+> lake on the production seed. What D needs is Finding 37c's saddle/escape for detected lakes, and
+> that is a mechanism, which this round forbids.
+>
+> ⚠️ **And the reason took three runs to read, because my verifier was on the wrong flow field.**
+> For fifteen of the nineteen my re-check reported "the trace succeeds" while production said it
+> failed. The difference was **`FlatPerturbation`**: production routes on `dr.flow`, which carries
+> it, and my bench traced on a plain `compute_flow`. On a flat lake surface that is precisely where
+> the two differ. Re-run on `&dr.flow`, all nineteen agree on one reason. **Reading a reason off
+> the wrong field is reading nothing**, and the campaign has now paid for that twice (Finding 80-B2
+> measured the clamp instead of the incision).
+>
+> **D and E do not share a failure.** D's nineteen loop back into their own footprint; E's basin
+> stops dead on a flat with no D8 direction. The same *family* — a descent that cannot leave the
+> body — and two distinct terminations.
+
+### F — the outflow side in local terms, and the budget closes in all four cases
+
+`BasinSummary` gains `local_outflow_m3s` = `max(0, local_inflow − evaporation)`, and `a_eq_km2` now
+reports **`f32::INFINITY`** instead of `a_spill`, with `a_eq_is_infinite` beside it.
+
+**The below-sea system, local on BOTH sides:**
+
+| | Σ local in | Σ local out | Σ evap | retained (no spillway) | **closure** |
+|---|---|---|---|---|---|
+| humid, shipped | 294.2 | **294.2** | 0.00 | 45.1 | **100.0 %** |
+| humid, control | 294.2 | **294.2** | 0.00 | 21.6 | **100.0 %** |
+| arid, shipped | 47.1 | 4.9 | **47.94** | 0.0 | **112.1 %** |
+| arid, control | 47.1 | 4.9 | 47.87 | 0.0 | **112.1 %** |
+
+**The six-term budget**, with the ocean term in local units:
+
+| | coastal arrival | Spillway→ocean **local** | evap below | evap surface | retained | Unresolved lakes | **Σ** | **% of budget** |
+|---|---|---|---|---|---|---|---|---|
+| humid, shipped | 180.5 | **130.9** | 0.00 | 1.97 | 45.1 | 132.1 | **490.5** | **103.3 %** |
+| humid, control | 180.5 | 130.9 | 0.00 | 1.97 | 21.6 | 132.1 | **467.0** | **98.4 %** |
+| arid, shipped | 90.6 | 0.7 | 47.94 | 1.93 | 0.0 | 0.9 | **142.1** | **103.2 %** |
+| arid, control | 90.6 | 0.7 | 47.87 | 1.93 | 0.0 | 0.9 | **142.0** | **103.1 %** |
+
+> **The budget closes to within ±3.3 % in all four cases** — two beds, both gate positions. That is
+> the strongest conservation statement this campaign has produced, and it took replacing one
+> chained quantity with its local twin: the same table with the **chained** ocean term reads
+> **120.3 %** (humid, shipped). **Finding 86's residual 7.5 % was not a missing term at all; it was
+> `Spillway → ocean` over-crediting by 80.5 m³/s**, and my prediction that the residual was lake
+> 55's inflow is refuted — the sixth term is the same 132.1 in every case and does not move with
+> the gate.
+>
+> **The arid below-sea closure stays at 112.1 %, and the reason is nameable**: Σ evaporation
+> (47.94) **exceeds** Σ local inflow (47.1), because some basins evaporate water that arrived
+> through the chain. The evaporation term is still chained even though both flow terms are local.
+> **That is the last chained quantity in the balance** and it is the next one-line seam.
+
+### Score
+
+Predictions written and dated **2026-09-16 before the first measurement**; non-blind on Findings
+73–86 and on the below-sea and balance paths, blind on every figure and on
+`apply_bathymetry_profile`.
+
+**Mine.** A "every shipped spillway has a drop > 0" **✓** (0 of 11 humid, 0 of 3 arid) · "**exactly
+3** at drop 0 in the control" **✗** — 4, and the fourth is a link between two distinct bodies at
+the same level, a wider class than Findings 84–86 named · "the 92.97 goes to a named neighbour with
+a 0.3–5 m drop, slope 10⁻³–10⁻¹, coherent" — **✗ on both destination and drop** (the SEA, 115.33 m)
+**✓ on the verdict** (3.36·10⁻², coherent) · "two-cell spillways above 10⁻²" **✓** (1.22·10⁻²) ·
+**B "tectonic, the incision adds < 50 m" ✗** — 165.8 m median cut, humid, and 161.3 arid; right at
+the floor cell (21.3 m), wrong about the body · **and the mechanism I argued it with was the
+error**: the Finding 83 bound floors the RELAXATION, not the diffusion, so a cell can still be
+carried below sea level · "flanks 10–25°" **✗** (p50 42.8°) · C "both labels on the same footprint,
+depth p50 0.2–0.4 m" **✓✓** (Exorheic + 100 % wetland, p50 0.35 m) · D "it stays Unresolved, and D
+and E return the same reason" — **✓ on the first** (and 18 more with it) **✗ on the second** · E
+"the third reading, my own instrument" **✓** · F "below-sea 100 ± 5 %" **✓** (100.0 % humid) ·
+"lake 55's inflow is < 30 % of the 7.5 %" **✗ — the framing was wrong**: the residual was the
+chained ocean term, not a missing term · G "> 70 % below `head_threshold` in BOTH beds" **✓✓**
+(87.7 %, identical in both).
+
+**The round's.** A "all shipped spillways with a drop > 0 except 1000001's class" **✓** · "exactly
+three at drop 0 in the control" **✗** (4) · "the 92.97 goes to a named basin with 0.3–3 m of drop —
+coherent like a sill cascade" **✗ on the numbers, ✓ on the word** · B "tectonic, the floor is
+already below sea pre-incision, the incision adds < 30 m, flanks 10–25°, rift or caldera"
+**✗✗✗** — the pre-incision floor is **+12.63 m**, the body lost **165.8 m**, the rim is 42.8° ·
+C "marsh by depth AND Exorheic, both labels coexisting" **✓✓** · D "lake 55 traces once you try,
+the label was the only failure" **✗** · E "the diagonal reading" **✗** · F "below-sea at 100 ± 3 %"
+**✓** humid, ✗ arid (112.1 %) · G "the majority is below threshold, but arid has > 30 % above"
+**✓ then ✗** — 12.3 % above, and **identical** in both beds because the question was climatic and
+the answer is geometric.
+
+**Meta holds on both sides.** And block B is the round's worst call and mine both at once: we each
+argued tectonics from a different premise and the field says the basin lost a hundred and
+sixty-five metres.
+
+### Standing
+
+**One production change survives, one was written and withdrawn.**
+
+* **F ships**: `BasinSummary::local_outflow_m3s`, and `a_eq_km2` reporting **infinity as infinity**
+  with `a_eq_is_infinite` beside it — the ambiguity that misled Finding 85 is gone from the type.
+  **The six-term budget now closes to within ±3.3 % in both beds and at both gate positions.**
+* **D is withdrawn**: the trace-before-label line failed the round's own guard (19 lakes moved, not
+  1), because a detected lake's surface is flat and a D8 walk started inside it cannot leave.
+  `surface_lake_outlet_trace` stays as the instrument that proved it.
+
+**Three numbers that answer questions the campaign had been carrying as impressions.**
+
+1. **The widest blue line is coherent.** 92.97 m³/s, **115.33 m of drop over 3.0 km**, slope
+   **3.36·10⁻²** — steeper than a rock sill, gentler than a waterfall. **Not a strait.** And the
+   instrument that proves it also finds **two genuine waterfalls** in the shipped product: 34.29
+   m³/s over 337.8 m and 17.60 m³/s over 418.4 m, both above 10⁻¹.
+2. **The 623.6 m lake is INCISED**, at both beds, by ~165 m of median relaxation inside a closed
+   depression — and its floor is below sea level because the **hillslope diffusion** has no
+   base-level bound, only the relaxation does. That is a correction to how Finding 83 has been
+   described ever since: the bound is a bound on **one operator**.
+3. **The diffuse coastal arrival is physics, and its tail is not.** 87.7 % of the ungauged arrival
+   cells are below the channel head — hillslope runoff reaching the sea. The other 12.3 %, about
+   **4 850 cells**, carry catchments up to **19.6 km²** with no traced river. Finding 87's rule-11
+   read already had the frame: **1.60 % of land by the D8 river criterion against 8.40 % by the MFD
+   criterion that carved the terrain.**
+
+**Named and not fixed.** The evaporation term is the last chained quantity in the balance (the arid
+below-sea closure is 112.1 % for that reason alone). A detected lake needs Finding 37c's
+saddle/escape before its outlet can be traced. The 45.04 m³/s of basin 1000001 is stuck behind a
+**0.014 m** step whose far side has no D8 direction — a flat-routing item, with `FlatPerturbation`
+and D∞ already in the config for that class. And B0: **still no real coastline raster**, fourth
+round.
+
+### À VALIDER VISUELLEMENT
+
+**Nothing required, as the round said — every question here had a number.** One item is *promoted*
+to the next round by its own answer: block B concluded **incision**, so the 623.6 m lake with its
+42.8° rim and its 418 m waterfall outlet is now the first object to look at, and the numbers that
+send it there are 165.8 m of median cut and a pre-incision floor 21.3 m above the delivered one.

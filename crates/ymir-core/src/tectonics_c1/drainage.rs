@@ -921,6 +921,63 @@ pub fn exorheic_lakes_missing_outlet(dr: &C1DrainageResult) -> Vec<u32> {
         .collect()
 }
 
+/// ADR 0001 Finding 87-D — **trace a DETECTED surface lake's outlet, and say why if it fails.**
+///
+/// The below-sea path has traced before labelling since Finding 39 (`drainage.rs`'s
+/// `traced.is_some()`); `apply_lake_water_balance` never did, which is the H2 that Finding 86
+/// found still alive. This is Finding 30's instruction — *"Don't relabel — TRACE"* — applied to
+/// the half of the code that never got it.
+///
+/// Walks D8 from the lake's outlet and returns `Ok(sink cell)` when it reaches the SEA or a
+/// DIFFERENT lake, and `Err(reason)` otherwise. The reason is returned rather than swallowed
+/// because Finding 86's whole point is that a failure must be counted and named, and because
+/// block E of the same round asks whether the two failures have the same cause.
+///
+/// ⚠️ This is a GEOMETRIC trace. A lake can pass it and still have no outlet REACH in
+/// `rivers.json` — the network is a different population (Finding 87's rule-11 read of L7031: the
+/// D8 river criterion selects 1.60 % of land against the MFD incision criterion's 8.40 %, a 5.25x
+/// disagreement at the same numeric threshold). So `resolve_exorheic_without_outlet` still runs at
+/// the end of the chain and still has the last word.
+pub fn surface_lake_outlet_trace(
+    lake_id: u32,
+    outlet: (u32, u32),
+    flow: &FlowResult,
+    heightmap: &GridF32,
+    lake_map: &[u32],
+    w: usize,
+    h: usize,
+) -> Result<usize, &'static str> {
+    let n = w * h;
+    let (mut x, mut y) = (outlet.0 as usize, outlet.1 as usize);
+    if x >= w || y >= h {
+        return Err("the outlet cell is outside the grid");
+    }
+    let mut left_own = false;
+    for _ in 0..=n {
+        let k = y * w + x;
+        if heightmap.data[k] <= C1_SEA_LEVEL_NORM {
+            return Ok(k); // the sea
+        }
+        if lake_map[k] != 0 && lake_map[k] != lake_id {
+            return Ok(k); // a DIFFERENT water body
+        }
+        if lake_map[k] == lake_id {
+            if left_own {
+                return Err("the descent returns into its own footprint");
+            }
+        } else {
+            left_own = true;
+        }
+        let d = flow.direction[k];
+        if d == DIR_NONE {
+            return Err("no D8 direction: the descent stops on a flat");
+        }
+        x = ((x as i32 + D8_DX[d as usize]).rem_euclid(w as i32)) as usize;
+        y = ((y as i32 + D8_DY[d as usize]).rem_euclid(h as i32)) as usize;
+    }
+    Err("no sink within one grid of steps")
+}
+
 /// ADR 0001 Finding 86 — **an exorheic lake has an outlet reach, or it is not exorheic.**
 ///
 /// Relabels every lake that claims [`LakeType::Exorheic`] but has no river segment STARTING on its
@@ -1113,6 +1170,23 @@ pub fn apply_lake_water_balance(
     let n = w * h;
     let runoff_accum =
         runoff_accumulation(heightmap, flow, climate, cell_km2, None, infiltration, w, h);
+    // ⚠️ ADR Finding 87-D — THE TRACE-BEFORE-LABEL LINE WAS WRITTEN HERE AND WITHDRAWN.
+    //
+    // Finding 86 found H2 alive on this path: `Exorheic` is posted from `a_eq >= a_sill` with no
+    // trace. Finding 87 wrote the trace ([`surface_lake_outlet_trace`], kept below as the
+    // instrument that produced the measurement) and it FAILED ITS OWN GUARD: the round required
+    // that only lake 55 change state, and **19 lakes changed**, all nineteen with the same
+    // reason — *"the descent returns into its own footprint"*.
+    //
+    // The diagnosis, measured: **a detected lake's surface is FLAT**, so walking D8 from a cell
+    // inside it cannot leave it. The below-sea path does not have this problem because Finding 37c
+    // starts its trace at the SADDLE and jumps to the exterior ESCAPE; the detected-lake path
+    // computes no saddle. So the line is right in principle and its trace is the wrong instrument:
+    // it would convert one silent mislabel into eighteen loud ones.
+    //
+    // What it needs is Finding 37c's saddle/escape construction for detected lakes. Not written
+    // here. `resolve_exorheic_without_outlet` (Finding 86) still has the last word at the end of
+    // the chain, and on the production seed it moves exactly one lake.
     let mut out = Vec::with_capacity(lakes.len());
     for lk in lakes {
         // Crater lakes carry C-2 chemistry and their own balance — never touched here.
@@ -1134,6 +1208,7 @@ pub fn apply_lake_water_balance(
 
         if a_eq_km2 >= a_sill_km2 {
             // Overflows its sill → EXORHEIC, geometry unchanged (the sill IS its level).
+            // See the Finding 87-D note at the top of this function for why the trace is NOT here.
             let mut e = lk.clone();
             e.lake_type = LakeType::Exorheic;
             out.push(e);
@@ -1407,9 +1482,28 @@ pub struct BasinSummary {
     /// which is exactly how Finding 86's first four-term decomposition came out at 154.8 % of the
     /// budget. This is the quantity that sums.
     pub local_inflow_m3s: f32,
+    /// **ADR 0001 Finding 87-F** — the discharge this basin's OWN spillway carries, in m³/s, as a
+    /// LOCAL quantity: `max(0, local_inflow − evaporation)`. [`crate::tectonics_c1::drainage`]'s
+    /// emitted spillway discharge is computed from the CHAINED inflow, so summing it re-introduces
+    /// the duplication `local_inflow_m3s` was added to remove — Finding 86 measured the below-sea
+    /// system over-closing at 131.5 % (humid) for exactly that reason.
+    ///
+    /// ⚠️ It is a BUDGET term, not the discharge the river carries: the spillway really does move
+    /// the chained water downstream. The two answer different questions and both are reported.
+    pub local_outflow_m3s: f32,
     pub evaporation_m3s: f32,
     /// The two numbers the regime compared (in km²): equilibrium area vs sill area.
+    ///
+    /// ⚠️ **ADR Finding 87-F — CONTRACT CHANGE.** This used to report `a_spill` when `a_eq` was
+    /// INFINITE (`drainage.rs`, "humid ⇒ ∞; report the sill area it fills"), which made
+    /// "it fills to its sill" and "it will always overflow" indistinguishable — and that ambiguity
+    /// is what made Finding 85 read `a_eq == a_spill` as a knife-edge. It now reports
+    /// **`f32::INFINITY`**, and [`Self::a_eq_is_infinite`] carries the same fact as a bool for any
+    /// consumer that cannot hold a non-finite float.
     pub a_eq_km2: f32,
+    /// ADR Finding 87-F — `net_evap == 0`: the basin cannot destroy its inflow at any surface, so
+    /// it must overflow. See [`Self::a_eq_km2`].
+    pub a_eq_is_infinite: bool,
     pub a_spill_km2: f32,
     pub spill_level_m: f32,
     pub floor_m: f32,
@@ -2180,8 +2274,13 @@ pub fn below_sea_basin_lakes_infil(
                 exorheic: lake_type == LakeType::Exorheic,
                 inflow_m3s: runoff_km2_to_m3s(inflow),
                 local_inflow_m3s: runoff_km2_to_m3s(local_inflow),
+                local_outflow_m3s: runoff_km2_to_m3s(
+                    (local_inflow - net_evap * area_km2_bs).max(0.0),
+                ),
                 evaporation_m3s: runoff_km2_to_m3s(net_evap * area_km2_bs),
-                a_eq_km2: if a_eq.is_finite() { a_eq } else { a_spill }, // humid ⇒ ∞; report the sill area it fills
+                // ADR Finding 87-F — report infinity AS infinity; the bool carries it too.
+                a_eq_km2: a_eq,
+                a_eq_is_infinite: !a_eq.is_finite(),
                 a_spill_km2: a_spill,
                 spill_level_m: c1_altitude_norm_to_metres(spill, ss),
                 floor_m,

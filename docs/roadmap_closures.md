@@ -440,6 +440,51 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 > 131,5 % humide), et `a_eq_km2` rapporte `a_spill` quand `a_eq` est infini — l'ambiguïté qui a
 > trompé le F85.
 >
+> ✅ **LE BUDGET FERME À ±3,3 % DANS LES QUATRE CAS (Finding 87).** Un changement de production
+> survit, un a été écrit puis **retiré**.
+>
+> 1. **F, livré** — `BasinSummary::local_outflow_m3s` = `max(0, apport local − évaporation)`, et
+>    `a_eq_km2` rapporte enfin **l'infini comme un infini**, avec `a_eq_is_infinite` à côté :
+>    l'ambiguïté qui avait trompé le F85 est sortie du type. Le système sous-marin, local **des
+>    deux côtés**, ferme à **100,0 %** (humide, les deux positions de porte). Et le **budget à six
+>    termes** (arrivée côtière + `Spillway→océan` **local** + évaporation sous la mer + évaporation
+>    de surface + retenu + lacs `Unresolved`) ferme à **103,3 / 98,4 / 103,2 / 103,1 %** — deux
+>    lits climatiques, deux positions de porte. Les **7,5 %** résiduels du F86 n'étaient pas un
+>    terme manquant : c'était `Spillway → océan` qui sur-créditait de **80,5 m³/s** parce qu'il
+>    était chaîné (la même table en chaîné lit **120,3 %**).
+> 2. **D, retiré** — tracer avant d'étiqueter sur le chemin des lacs *détectés* a échoué à la garde
+>    du tour même (« aucun autre lac ne change ») : **19** lacs changent d'état, pas 1, et **les
+>    dix-neuf** pour la même raison — *« la descente revient dans sa propre empreinte »*. La
+>    surface d'un lac détecté est **plate**, donc une marche D8 partie de l'intérieur n'a aucun
+>    gradient pour en sortir. Ce chemin a besoin du **col/échappée du F37c**, qui est un mécanisme.
+>    `surface_lake_outlet_trace` reste comme l'instrument qui l'a prouvé.
+>
+> **Trois nombres qui remplacent trois impressions.**
+>
+> - **La plus large ligne bleue est cohérente** : les 92,97 m³/s vont **à la MER**, **115,33 m de
+>   chute sur 61 cellules (≈ 3,0 km)**, pente **3,36·10⁻²** — au-dessus d'un seuil rocheux (10⁻²),
+>   en dessous d'une cascade (10⁻¹). **Aucun déversoir livré n'a une chute ≤ 0** (0 sur 11 humide,
+>   0 sur 3 aride) ; le contrôle A/B en donne **4** (et non 3 : le quatrième est un lien entre deux
+>   corps *distincts* au même niveau — un détroit est plus large que « un corps qui se déverse en
+>   lui-même »). Deux déversoirs livrés **sont** de vraies chutes d'eau : 34,29 m³/s sur 337,8 m
+>   (2,10·10⁻¹) et 17,60 m³/s sur 418,4 m (1,44·10⁻¹).
+> - **Le lac de 623,6 m est INCISÉ**, aux deux lits : coupe médiane de **165,80 m** (humide) et
+>   **161,30 m** (aride) sur l'empreinte, fond livré à **−8,67 m** contre **+12,63 m** avant
+>   incision. ⚠️ **Correction à la description du F83 tenue depuis** : le plancher borne la CIBLE de
+>   **relaxation**, pas la **diffusion de versant** ni le talus — donc une cellule peut encore être
+>   portée sous le niveau de la mer après le F83, et c'est ce que le F80-B1b mesurait à **88,7 %**.
+> - **L'arrivée côtière diffuse est de la physique, sa queue ne l'est pas** : **87,7 %** des
+>   cellules d'arrivée non jaugées sont sous `head_threshold` — du ruissellement de versant —, et
+>   ce chiffre est **identique dans les deux lits** : la question était climatique, la réponse est
+>   géométrique. Les **12,3 %** restants, ~**4 850 cellules**, portent des bassins jusqu'à
+>   **19,6 km²** sans rivière tracée.
+>
+> **Nommé, non corrigé** : l'**évaporation est la dernière grandeur chaînée** du bilan (le
+> sous-marin aride ferme à **112,1 %** pour cette seule raison) ; la cuvette 1000001 est bloquée
+> derrière une marche de **0,014 m** dont l'autre côté n'a **aucune direction D8** (un item de
+> routage sur plat) ; et le col que le F86 avait opposé au F36 était **mon propre instrument** — le
+> plus bas voisin de l'empreinte est au niveau **par construction** (F36 PART B, L1250).
+>
 > ✅ **CRITÈRE ATTEINT (Finding 80) — pour la première fois du chantier.**
 > `StreamPowerConfig::base_level_floor`, **gatée `None`, octet-identique**, borne la CIBLE de
 > relaxation : `h_r_eff = max(h_r, min(h_o, sea + ε))`. À ε = 0,5 m (3,4 pas u16) :
