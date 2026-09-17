@@ -909,6 +909,61 @@ le cadran de H-2, et la calibration de tête de chenal aux deux résolutions.
 > itération** — une boucle temporelle la multiplie par N) ; et les cibles des critères B1/B2 qui
 > restent **PROXY** faute de source primaire, là où `K` en a trois avec leurs pages.
 
+## ⛔ LE CLIP N'EST PAS LE DÉFAUT — l'inconsistance rivière/lac l'est (Finding 93)
+
+Le log `rivers clipped to lakes: 14708 -> 7265` n'est **pas** un compte de suppressions : le F20 a
+bâti le clip pour **découper** chaque parent en ses suites maximales de points hors lac.
+
+| sort de la suite | compte | part de 7 780 |
+|---|---|---|
+| **GARDÉE** (≥ 2 points hors lac) | **7 265** | **93,4 %** |
+| rejetée : suite de **< 2 points** | **515** | 6,6 % — **417,1 m³/s** de débit parent |
+| rejetée : exutoire d'un lac **ENDORHÉIQUE** | **0** | 0,0 % |
+| rejetée : exutoire d'une cuvette **SOUS-MARINE** | **0** | 0,0 % |
+| parents n'émettant **aucune** suite | **7 448** | leur polyligne entière est dans des lacs |
+
+Le recensement reproduit le clip **exactement** (7 265 = le compte gardé), ce qui est son propre
+contrôle.
+
+> ⛔ **ZÉRO faux positif du type supposé** : aucune suite n'est coupée parce que sa destination est
+> un plan d'eau couvert — les deux clauses qui le pourraient tirent **0 fois**. **La réduction, ce
+> sont 7 448 parents entièrement à l'intérieur des lacs** : c'est le défaut du F20 lui-même
+> (*« 44 segments traversant un polygone de lac »* à 2048²) devenu, à 8192², **44,6 % de tous les
+> points de rivière dans de l'eau stagnante** — les lacs couvrent 6 660 km² et le réseau est tracé
+> sur le champ **breaché**, qui draine toutes les cuvettes.
+>
+> ⛔ **Le fleuve fantôme n'est pas clippé.** La plus grande portion de ≤ 4 points post-clip est la
+> 2612 : **2 022 km², 19,2 m³/s, 4 points = 0,15 km**, `downstream = Some(2613)`, et **son parent
+> 5166 faisait déjà 4 points — le clip en a gardé 100 %**, avec **0** point dans un lac. Avec la
+> signification géographique (ratio 7,5, aires ×56,25) cela fait **113 762 km², 1 081 m³/s,
+> 1,10 km** — à **1,2 %** près des « 1 095 m³/s, 115 181 km², 1 km » de l'écran. **#381 est une
+> portion de quatre points d'un tronc correctement chaîné, affichée en unités signifiées.**
+>
+> **Les deux vrais ingrédients étaient déjà au dossier.** L'aire est **héritée** du parent — défaut
+> du **F42**, dont le remède est écrit et chiffré depuis 2024 (*« quelques lignes dans
+> `clip_rivers_to_lakes` : lire l'aire à la cellule aval de la suite elle-même au lieu de l'hériter,
+> SAUF pour une suite d'exutoire exorhéique où le F22 exige l'héritage, plus un bump
+> `ALGO_DRAINAGE`. Coût faible, effet cosmétique »*) et **toujours pas fait**. Et le panneau montre
+> une **portion** là où l'œil attend un **système** — la sémantique du **F45**, dont le chaînage
+> exclut **délibérément** les cuvettes sous-marines (*« son écoulement est un `Spillway` typé sans
+> hiérarchie »*), ce qui est aussi la raison des connexions « coupées » de #64/#212.
+>
+> **Et la famille tracé-de-lac est TROIS mécanismes, pas un** : les lacs **22** et **41** ont une
+> échappée à **0,00 m** et **0,01 m** sous leur col — le port du F37c rencontre un rebord sans
+> gradient et la descente y retombe ; le lac **55** voit son tracé **réussir** (échappée 3,58 m plus
+> bas, déjà dans un autre plan d'eau) et ne manque que d'un **tronçon exporté** (test réseau du F86,
+> l'écart ×5,25 du L7031) ; et **1000001** (660,79 km², 45,04 m³/s) et **1000002** (173,19 km²,
+> 21,57 m³/s) n'ont **aucun déversoir émis** — et **aucune suite de carve rejetée** non plus, donc
+> il n'y avait rien à couper.
+>
+> ⚠️ **Deux erreurs d'instrument de ma part, corrigées et consignées** : un rattachement de parent
+> par égalité d'aire (ambigu — plusieurs parents partagent 2 022 km²) qui donnait la conclusion
+> inverse, et l'**oubli de l'ajout des déversoirs** avant le test du F86, qui faisait lire **9** lacs
+> `Unresolved` et 7 relabels au lieu de **3** et **1**. Le F92 n'est pas régressé.
+>
+> **Nommé, non fait** : les 515 suites de moins de deux points (**417,1 m³/s**), et **le 44,6 %** —
+> le chiffre qui compte, et qu'aucun tour n'a encore demandé de changer.
+
 ## Reste en attente (hors closures)
 
 - **Séparation tronc/affluents** façon Azgaar : un tronc nommé portant un profil ordonné

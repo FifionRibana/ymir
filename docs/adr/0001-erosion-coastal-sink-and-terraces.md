@@ -13494,3 +13494,240 @@ definition if a spillway ever links them). Basin 1000001's 45.04 m³/s, which no
 on one of its lobes and still no emitted spillway (Finding 89-D: its escape traces to the sea in 44
 steps). And Finding 90's 7 299 remaining passes to Courant 1, at which both orphans vanish anyway —
 which does not replace the fix, it confirms it.
+
+## Finding 93 — the clip deletes no valid connection, the ghost river is a signified 4-point reach, and 44.6 % of the network lies inside lakes
+
+Attribution only, no production change. **The round's premise does not survive**: the clip's two
+sink clauses fire **zero** times, the ghost river is not clipped at all, and the dossier had already
+written the real remedy — in the right function, with the right exception and a cost estimate — in
+2024.
+
+### Rule 11 + 11b, and the dossier answers three of the four blocks before the bench runs
+
+`clip` **51** (first L874) · `clipped` **10** (L1696) · **`terminate at sink` 0 — NOTHING FOUND**
+(the string is in the code's log, never in the dossier) · `Sink` **9** (L1402) · `stream_threshold`
+**3** (L877) · `head_threshold` **8** (L7041) · `clip_rivers_to_lakes` **14** (L886).
+11b: **`7290` 0 · `14747` 0 · `14 747` 0 · `115181` 0 · `115 181` 0 — none of the round's numbers is
+in the dossier** · `7457` **1** (L7367) — a **value collision**, `0.1/0.134111 = 0.7457 cells` ·
+`1095` **2**, first **L4031 — inside Finding 45**.
+
+> ⛔ **Finding 20 says the clip SPLITS, so "14 747 → 7 290 = 7 457 deleted" is not a deletion
+> count.** Verbatim: *"`drainage::clip_rivers_to_lakes` splits each segment into its maximal runs of
+> NON-lake points (profile sliced in parallel); a run that begins at a lake shore is that lake's
+> outlet — kept (with the parent discharge) for an EXORHEIC lake, dropped for an ENDORHEIC one (the
+> water dies in the closed basin). Links are remapped so `downstream = None` exactly when a reach
+> ends at a sink."* A parent can emit zero, one or several children; the net count is a balance of
+> splits and drops.
+>
+> ⛔ **And "kept WITH THE PARENT DISCHARGE" is the ghost river, named in the fix itself.**
+>
+> ⛔ **Finding 42 already wrote the remedy, and costed it** (L3248): *"**Duplicate terminals /
+> isolated fragments inheriting a parent's area** — a few lines in `clip_rivers_to_lakes` (read the
+> area at the run's OWN downstream-most cell instead of inheriting, EXCEPT for an exorheic outlet
+> run where Finding 22 requires inheritance) plus an `ALGO_DRAINAGE` bump. Low cost, cosmetic
+> effect: it removes the phantom high-area rows."* And L3197 measured the population: *"666/560
+> **isolated fragments** which each become a list entry carrying their PARENT'S inherited area —
+> which is how an S1, 0-tributary row shows 1087 km² beside the genuine S4, 394-tributary trunk."*
+>
+> ⛔ **Finding 45 explains the cut connections, deliberately** (L4018): the viz links an inflow
+> reach to the outlet reach of the EXORHEIC lake it dies on, *"NOT for an endorheic lake (the water
+> dies there, a true terminus) nor for a below-sea basin (its outflow is a typed `Spillway` with no
+> hierarchy)"*. So a river dying on a below-sea body shows as its own entry **by design**.
+
+### A — the taxonomy of every run, and the two sink clauses never fire
+
+Census written against the clip's own three clauses, then checked against the real call.
+
+| | |
+|---|---|
+| pre-clip segments | **14 708** |
+| lakes at clip time | 58 (4 `Endorheic`, 15 below-sea), covering **6 660 km²** |
+| river points | 317 347, of which **141 458 = 44.6 % INSIDE a lake footprint** |
+
+| run outcome | count | share of 7 780 runs | |
+|---|---|---|---|
+| **KEPT** (≥ 2 non-lake points) | **7 265** | **93.4 %** | |
+| dropped: run of **< 2 points** | **515** | 6.6 % | carrying **417.1 m³/s** of parent discharge — the sub-resolution clause, **not** about sinks |
+| dropped: outlet of an **ENDORHEIC** lake | **0** | 0.0 % | the clause exists and never fires |
+| dropped: outlet of a **BELOW-SEA** body | **0** | 0.0 % | idem |
+| **parents emitting NO run** | **7 448** | | their whole polyline is inside lakes, or their only run was < 2 points |
+| parents emitting MORE than one | **3** | | |
+
+**The census reproduces the clip exactly: 14 708 → 7 265, and 7 265 = the kept count.** That equality
+is the instrument's own control; without it the taxonomy would be a story about the clip rather than
+the clip.
+
+> ⛔ **THE DECISIVE ANSWER: there are ZERO false positives of the kind the round posited.** No
+> segment is dropped because its destination is a covered water body — the two clauses that could
+> do that fire **0 times** on the delivered seed. The round's *"> 60 % arrive at a covered body and
+> are false positives"* is refuted at **0 %**, and my *"> 55 % are legitimate, inside lake
+> footprints"* holds: **7 448 of the 7 451 vanished parents lie entirely inside lakes.**
+>
+> **And that is Finding 20's own defect, at 8192² scale.** F20 measured *"44 segments crossing a
+> lake polygon and 4 sourced inside a lake"* at 2048². At 8192², with the lakes covering 24.7 % of
+> land (Finding 92's 6 660 km²) and the network traced on the **breached** field that drains every
+> basin, **44.6 % of all river points are inside standing water**. The clip is not too aggressive;
+> the field inconsistency it was built to hide is now half the network.
+>
+> ⚠️ **The one clause worth a second look is the one neither of us listed**: 515 runs dropped for
+> being shorter than two points, carrying **417.1 m³/s** of parent discharge. They are not sinks,
+> not lakes, and not below threshold — they are one-cell runs between two lake cells. Named, not
+> fixed.
+
+### B — the referential, and the question is moot
+
+The clip reads `dr.lake_map` **as it stands when it is called**, and in `assemble_hd_drainage` that
+is after `apply_lake_water_balance` **and** after the below-sea merge — so it sees β's lakes
+(Finding 92), not stale sinks. My B1 prediction holds and the round's suspicion is refuted on the
+order, for the third round running: the suspected stage runs later than assumed (Finding 91-B3,
+Finding 89-B3, this).
+
+* **lake 1000006 is `lake_map != 0` for the clip**, and no run of any segment was dropped for
+  landing on it — the clause fired 0 times.
+* **`Unresolved` lakes are in `lake_map`**: Finding 86 changes the *type*, never the map, so the
+  clip treats lake 55 as a lake and clips into it. Its *"no exported reach"* is Finding 86's
+  outlet-reach test, a different mechanism — confirmed in block D below.
+
+### C — the ghost river is not clipped, and the numbers identify it exactly
+
+| post-clip reaches of ≤ 4 points | **1 701** |
+|---|---|
+| of those, carrying > 50 000 km² **in grid units** | **0** |
+| the largest | **reach 2612: 2 022 km², 19.2 m³/s, 4 points = 0.15 km**, `downstream` **`Some(2613)`**, `source_lake` `None`, kind `Watercourse` |
+| its pre-clip parent | **5166, of 4 points**, run `[0..4)` ⇒ **the clip kept 100 % of it**, and **0** of its points were inside lakes |
+
+> ⛔ **The clip did not touch it.** It was a 4-point segment in `extract_rivers`'s output — one reach
+> between two confluences — and the five largest are a **consecutive chain**: 2608 → 2609 → 2610 →
+> 2611 → 2612, each 3–4 points, each `downstream` pointing at the next. **The link is not cut in the
+> data.**
+>
+> ⛔ **And the screenshot's numbers are these numbers, signified.** With `geo_scale_ratio = 7.5`,
+> areas carry ×56.25: reach 2612's **2 022 km² → 113 762 km²**, its **19.2 m³/s → 1 081 m³/s**, its
+> **0.15 km → 1.10 km**. Against the panel's *"1 095 m³/s, 115 181 km², longueur 1 km"* that is
+> **within 1.2 % on all three**. **#381 is a four-point reach of a properly linked trunk, displayed
+> in signified units.**
+>
+> **So the ghost has two ingredients, both already on the record and neither of them the clip.**
+> The **catchment is inherited** from the parent (Finding 42's defect, remedy written and costed in
+> 2024, still not done), and the **panel is showing a REACH where the eye expects a SYSTEM**
+> (Finding 45's semantics; `aggregate_watercourses` assembles systems, so whether this panel calls
+> it is a viz question the core cannot answer). **The round's escape clause applies and the tour
+> pivots: the ghost has another cause.**
+>
+> ⚠️ **My own instrument, corrected.** The first pass attributed parents by matching catchments
+> within 1 km², which is ambiguous — several parents share 2 022 km² — and it named parent 8961 with
+> 66 points, implying the clip had cut 94 % of it. The exact child → parent map (the clip reserves a
+> contiguous index block per parent) says **parent 5166, 4 points, 100 % kept**. The heuristic is
+> withdrawn; it would have produced the opposite conclusion.
+
+### D — the lake-trace family is THREE mechanisms, not one
+
+⚠️ **First, an instrument failure of mine that would have reported a false regression.** The first
+pass omitted the **spillway append** before `resolve_exorheic_without_outlet`, which in
+`assemble_hd_drainage` runs after it — and reported **9 `Unresolved` lakes with 7 end-of-chain
+relabels**, including 867 km², 305 km² and 288 km² below-sea bodies. With the 11 spillway segments
+appended as production appends them: **1 relabel, 3 `Unresolved`.** Finding 92 is not regressed.
+**Reading an invariant off an incomplete chain is reading nothing** — the fourth time this campaign
+has paid for a missing stage.
+
+| lake | saddle → escape | drop | the trace from the escape |
+|---|---|---|---|
+| **22** (12.49 km²) | (4365,3903) **1 148.18 m** → (4366,3903) **1 148.18 m** | **0.00 m** | **FAILS — returns into its own footprint** |
+| **41** (9.21 km²) | (2877,4746) **755.25 m** → (2878,4745) **755.24 m** | **0.01 m** | **FAILS — returns into its own footprint** |
+| **55** (19.22 km²) | (2291,5724) **51.05 m** → (2290,5723) **47.47 m** | **3.58 m** | **REACHES** (2290,5723) — the escape is already inside another water body |
+
+| below-sea bodies with NO emitted spillway | area | level | local in / out |
+|---|---|---|---|
+| **1000001** | 660.79 km² | 76.25 m | 45.04 / 45.04 m³/s |
+| **1000002** (Finding 92's new lake) | 173.19 km² | 76.25 m | 21.57 / 21.57 |
+| 1000004 / 1000005 | 0.01 km² each | 0.43 m | 0.04 / 0.02 |
+
+> **THREE mechanisms, and the round's "one defect" is refuted:**
+>
+> 1. **Lakes 22 and 41 — the flat rim.** Their escape sits **0.00 m and 0.01 m** below their saddle,
+>    so Finding 88-C's construction has found a cell that is nominally lower and hydrologically
+>    identical, and the descent flows straight back in. This is the F37c port meeting its limit on a
+>    rim that has no gradient — **one defect, and the only one the round's description fits.**
+> 2. **Lake 55 — not a trace failure at all.** Its escape is **3.58 m down and already inside
+>    another water body**, so the trace succeeds and the lake is geometrically exorheic. What it
+>    lacks is an exported REACH, which is Finding 86's network test and L7031's 5.25× population
+>    gap between the MFD criterion that carved the terrain and the D8 criterion that exports rivers.
+> 3. **1000001 and 1000002 — no spillway emitted, and nothing dropped either.** ⚠️ My own print
+>    claimed *"its carve reach is dropped by the clip"*; block A measured **0** below-sea outlet
+>    runs dropped, so **there was never a carve reach to drop**. They are lakes at 76.25 m with
+>    local outflow equal to local inflow and nothing emitted — the item Finding 89-E left open after
+>    showing their escape reaches the sea in 44 steps. The wording is corrected here rather than
+>    repeated.
+>
+> My D2 prediction (1000001 is no longer in this family) holds; my D1 ("one defect, two
+> terminations") is **wrong** — lake 55 is a third thing and I said so in the same breath, which is
+> the half that holds.
+
+### Score
+
+Predictions written and dated **2026-09-17 before any measurement**; non-blind on Findings 73–92
+and on this round's prompt, and on the clip's call position, which I have written in every bench of
+this campaign.
+
+**Mine.** A1 "the majority are legitimate, > 55 % inside lake footprints" **✓✓** (7 448 of 7 451
+parents) · A2 "arrivals are < 15 % and the only candidate false positives" **✓ and better — they
+are 0** · A3 "`stream_threshold` is not in this population" **✓** · B1 "the clip reads the map after
+β, the round is wrong on the order" **✓** · B3 "`Unresolved` lakes are in `lake_map` and are clipped
+into" **✓** · **C1 "#381 has > 150 segments before the clip and keeps 1 to 3" ✗✗ — its parent had
+FOUR points and the clip kept all of them** · C2 "the surviving kilometre is the lake's outlet
+reach" **✗** — it is a mid-trunk reach with `downstream = Some` · **C3 "the ghost is Finding 45's
+aggregation, not the clip" ✓**, and the signification is the second ingredient I had not named ·
+C4 "the connection exists in `downstream`" **✓✓** · D1 "one defect, two terminations, #55 strictly a
+third thing" **✓ on the third thing, ✗ on the one defect** · D2 "1000001 is no longer in the family"
+**✓**.
+
+**The round's.** A "> 60 % arrive at a covered body — false positives" **✗✗ (0)** · B "the clip
+reads `lake_map` before β, or a `Sink` enum that includes covered basins" **✗** · B "lake 1000006 is
+still classed a sink" **✗** · C "#381 has > 200 segments before the clip, keeps 1 to 3" **✗** ·
+C "#64/#212 are cut by destination = covered lake" **✗** — nothing is cut by that · D "one defect,
+the F37c closes all of them" **✗** (three mechanisms) · and its own escape clause — *"if the
+majority of the clipped are legitimate, the ghost has another cause and the tour pivots"* — **✓, and
+it applies.**
+
+**Meta holds on both sides.** My worst miss is C1/C2: I assumed a truncated trunk and the trunk was
+never truncated. And the round's premise — half the network deleted by an over-aggressive clip — is
+wrong in every leg, while the thing it was reacting to is real: **the export shows 7 265 reaches
+where the computation has 14 708 segments, because 44.6 % of the computed network runs through
+standing water.**
+
+### Standing
+
+**No production change.** What the round established, and what the next one has to choose between:
+
+1. **The clip is not the defect.** Its two sink clauses fire 0 times; 93.4 % of runs are kept; the
+   census reproduces it exactly. **The reduction is 7 448 parents lying entirely inside lakes** —
+   Finding 20's river/lake field inconsistency, grown from 44 segments at 2048² to 44.6 % of all
+   points at 8192².
+2. **The ghost river is Finding 42's inherited catchment plus the ×56.25 signification**, on a
+   4-point reach the clip kept whole. F42 wrote the remedy in 2024 — *read the area at the run's own
+   downstream-most cell, except for an exorheic outlet run where Finding 22 requires inheritance* —
+   and costed it *"a few lines plus an `ALGO_DRAINAGE` bump, low cost, cosmetic"*. **It is still the
+   right fix and it is still not done.**
+3. **The cut connections are Finding 45's deliberate exclusion**: the viz does not chain across a
+   below-sea basin because its outflow is a typed `Spillway` with no hierarchy.
+4. **Three lake-trace mechanisms**, not one: the flat rim (22, 41), the missing exported reach (55),
+   and the un-emitted spillway (1000001, 1000002).
+
+**Named and not fixed.** The 515 sub-2-point runs carrying 417.1 m³/s. The 44.6 % — which is the
+number that actually matters, and which no round has yet asked to change. And two bodies at 76.25 m
+holding 66.6 m³/s between them with nothing emitted.
+
+### À VALIDER VISUELLEMENT
+
+**The binary question is answered by numbers and does not need the image: the 115 000 km² river
+exists in the computation AND in the export, and it is linked.** Reach 2612 carries
+`downstream = Some(2613)` and is one of a consecutive chain 2608 → 2612; the clip kept 100 % of its
+parent; and 113 762 km² / 1 081 m³/s / 1.10 km are its 2 022 km² / 19.2 m³/s / 0.15 km in signified
+units, within 1.2 % of the panel.
+
+**What the image would settle is a different question, and it is a viz one**: whether the panel is
+showing a **reach** or a **system**. Finding 45's `aggregate_watercourses` assembles systems, so if
+the entry reads 1 km the panel is either not using it or is reporting the selected reach's own
+length. Core cannot answer that, and the round forbade a fix, so it is recorded as the one thing to
+look at next — with the count beside it: **1 701 post-clip reaches of ≤ 4 points**, all of them
+legitimate, most of them links in a chain.
