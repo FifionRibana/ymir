@@ -3869,6 +3869,16 @@ for an unrelated reason.
 These are not observations about the terrain; they are rules about how to measure it. Each one
 cost at least one wrong conclusion of mine.
 
+> ⚠️ **Rule 13, added at Finding 92 and earned outside this chantier: AN INVARIANT YOU CLOSE GETS A
+> PERMANENT ASSERTION, OR IT IS NOT CLOSED.** Finding 38 closed *"every enclosed below-sea component
+> is covered by a water body"* in 2024 for 68 orphan mouths and left no guard. Finding 86 promoted
+> `MergedUnionRelevel` and re-opened it for two components carrying 34.8 m³/s. Finding 86's guards
+> were not weak — they asserted the field was unchanged (true) and `exorheic_lakes_missing_outlet`
+> was 0 (true) — they simply did not enumerate *that* invariant. **What found it, two years and six
+> findings later, was a viz screenshot.** The bill for a closed-and-unpinned invariant is paid by
+> the next promotion, and it arrives as an image instead of a red test. The assertion must be
+> PRODUCTION (rule: Finding 72) and must have its own negative control (rule 1).
+
 ### 1. A pinning test needs a NEGATIVE CONTROL before it can assert byte-identity
 
 `timescale_naming_changes_no_output` asserts the shipped numbers are untouched. On its own
@@ -13272,3 +13282,215 @@ it is the absence of a tag, not a regime.
 `below_sea_basin_lakes_infil` that still advertises a `lake_min_area` filter the code removed. And
 Finding 90's open item, the 7 299 remaining passes to Courant 1 — at 100 passes both orphans already
 disappear along with `to_nothing`, which is consistent with this attribution and does not replace it.
+
+## Finding 92 — β ships, Finding 38's invariant is pinned at last, and "évaporatif" loses a word it never earned
+
+Three production changes: **B** the coverage invariant as a production assertion (no gate, with its
+own negative control), **C** the relevel fix in variant **β** (the author's choice, made against
+block A's table), **D** the viz label. The remedy was chosen from measurements, not from either
+reading — and **both readings were wrong about the shape of the problem**.
+
+### Rule 11 + 11b, and the dossier corrects the round's own premise
+
+`MergedUnionRelevel` **2** (L10724) · `class_of` **3** · `seen` **13** (L1472) · `claim` **80** ·
+`surface` **117** · **`wc == 2 covered` 0 — NOTHING FOUND** · `SubSeaSink` **3** (L1402) · `Sink`
+**5** · `invariant` **128**.
+11b: `121 234` **4** (L9512) / `121234` **3** (L9501) · `6 245` **8** / `6245` **3** · `14.89` **6**
+· `15.3` **8**.
+
+> ⚠️ **"The eight fusions" is the PRE-BOUND population.** L9501 reproduces Finding 75-E on the
+> *delivered* field — *"8 ids spanning more than one component"* — and the very next line reads
+> **"Bounded / humid: **3** ids span more than one component — `[121234, 6245]`, `[1, 1]`,
+> `[2, 2]`"**. On the world this round is fixing there are **three** merged classes, not eight, and
+> the round's α/β arithmetic ("6 to 8 pixel lakes") was computed on the wrong one.
+>
+> **And L10102 names the pair before the bench runs**: `| 1000001 | [121 234, 6 245] | ratio 19.4 |
+> Q out 360.34 | lands in the 6 245-cell body |`. The 6 245-cell lobe **is** Finding 91's untagged
+> #0 (6 245 × 0.002384 = 14.89 km²), and the basin is **1000001** — the one Finding 87-E and
+> Finding 89 left stuck behind a 0.014 m step with 45.04 m³/s. My A1 prediction is confirmed by the
+> dossier, before measuring.
+
+### A — the two variants, measured before the choice
+
+**The one class that merges more than one component works.** Body 1000006 (level 0.44 m, 47.58 km²
+marked) spans **six** components — five of 1–2 cells at −1.00 m and one of 18 954 cells (45.19 km²)
+— and **all six are marked**. The flood grows over land to its sill (Finding 38), so it bridges the
+land between them.
+
+**The two uncovered regions are in no claimed class at all:**
+
+| | region 1 | region 4 |
+|---|---|---|
+| size | **6 245 cells = 14.8892 km²** | **1 cell = 0.0024 km²** |
+| heights | −6.94 → −0.00 m | −1.00 m |
+| tagged body adjacent (8-conn) | **NONE** | **NONE** |
+| local inflow | **15.29 m³/s** | 0.02 m³/s |
+| with the relevel OFF it belongs to | body 1000001, **833.99 km², level 76.25 m** | body 1000004, 0.0143 km², 0.43 m |
+
+> **A3 confirmed, and it renames the mechanism.** Every cell of both regions is below sea, hence
+> below any possible `surface = level.max(sea)`. **The claim fails on CONNECTIVITY, not on height**
+> — a connected flood seeded at another region's floor cannot reach a disconnected component unless
+> the surface is high enough to bridge the land between. That is Finding 85's *"two real lobes"*
+> exactly.
+
+| | **α (merged)** | **β (separate)** |
+|---|---|---|
+| uncovered `wc == 2` components | 0 | **0** |
+| below-sea bodies | 13 | **15** |
+| lakes of ≤ 2 cells created | 0 | **1** |
+| the two-lobe pair `[121234, 6245]` | one body on **two disjoint footprints** | **two bodies** |
+
+⚠️ **And "relevel OFF" is NOT β.** OFF re-opens Finding 85's non-convergence (16 passes, not
+converged) and Finding 74's leak (`to_own_body` **3** carrying **501.99 m³/s**). β keeps the
+relevel and changes only the absorption. OFF was used as the *content* of the β column — what each
+region is worth on its own — and that is stated rather than implied.
+
+> **Both readings were wrong, and the measurement moved my recommendation across the table.** The
+> round expected six to eight big-body-plus-pixel classes for α to repair; **α had nothing to
+> repair** — the one multi-component class already claims every region. And the two orphans are
+> precisely the case the round reserved for β. Three measured reasons against α:
+> * the 14.89 km² region has **15.29 m³/s of its own local inflow** and is larger than eight of
+>   the thirteen delivered bodies;
+> * α puts **one `lake_map` id on two spatially disconnected footprints**;
+> * **α turns Finding 85's 360.34 m³/s basin-A-into-basin-B link into a `to_own_body`
+>   self-discharge** — the shape of the leak the relevel was promoted to close (L10113).
+>
+> And the round's own fallback collapses: Finding 85 measured *"of those, size ratio > 100: 0
+> (0.0 %)"* and this pair's ratio is **19.4**, so a ratio threshold at 100 returns **β everywhere**.
+> ⚠️ Finally the round's scope boundary does not survive: it put orphan #1 (`to_nothing`) out of
+> reach, but Finding 91-B5b measured 0 uncovered with the relevel OFF — **#1 is a relevel victim
+> too**, and any fix that covers every region covers it.
+>
+> **The author chose β**, on this table.
+
+### B — Finding 38's invariant, pinned, with its negative control FIRST
+
+`uncovered_below_sea_components(heightmap, lake_map, sea_level, w, h) -> Vec<(floor, size)>`, and a
+**production assertion** (not `#[cfg(test)]`, Finding 72) at the end of `assemble_hd_drainage`, so
+it holds on every path that builds a bundle. The components are 8-connected on a **bounds-checked**
+neighbourhood, matching `region_of` (Finding 40) rather than a periodic one.
+
+**The negative control is a permanent unit test and it ran before the fix**:
+`the_coverage_guard_sees_an_uncovered_below_sea_component` builds the Finding 91 shape by hand — an
+ocean column reachable from the border (class 1, never reported), a covered two-cell pocket, and a
+one-cell orphan — and asserts the finder returns **exactly** the orphan with its floor and size,
+then returns **nothing** once it is covered. A guard that cannot see its own defect guards nothing.
+
+**RULE 13, earned here and written at the format of the others:**
+
+> **An invariant you close gets a permanent assertion, or it is not closed.** Finding 38 closed
+> "every enclosed below-sea component is covered by a water body" in 2024 for 68 orphan mouths and
+> left no guard. Finding 86 promoted a gate that re-opened it. Finding 86's guards were not weak —
+> they asserted the field was unchanged (true) and `exorheic_lakes_missing_outlet == 0` (true) —
+> they simply did not enumerate *this* invariant. **What found it, two years and six findings
+> later, was a viz screenshot.** The cost of a closed-and-unpinned invariant is that the next
+> promotion pays for it, and the bill arrives as an image rather than a red test.
+
+### C — β, red then green, on the delivered product
+
+`MergedUnionRelevel::separate_unclaimed_regions` (default **true** — a fix, not a gate; `false`
+reproduces the pre-Finding-92 footprints bit for bit). Two lines: the absorption pushes a cell into
+the class's `comp` **without marking it `seen`**, and the outer scan skips cells a flood already
+claimed (`lake_map[s] != 0`). A reachable region still merges; an unreachable one becomes its own
+body. **The chain is untouched** — `own_label` still drives `extra_inflow`, so Finding 85's
+convergence and Finding 86's closure do not depend on the cell absorption.
+
+| | the F92-B guard | bodies | passes | `to_own_body` | `to_nothing` |
+|---|---|---|---|---|---|
+| **RED** — `separate_unclaimed_regions: false` | **2 uncovered**: `((3656,3691), 6245)`, `((3203,3586), 1)` | 13 | 8, converged | 0 / 0.00 m³/s | **1** |
+| **GREEN** — shipped | **0 uncovered** | **15** | **8, converged** | **0 / 0.00** | **0** |
+| control — relevel OFF | 0 uncovered | 17 | **16, NOT converged** | **3 / 501.99 m³/s** | 0 |
+
+> **The guard fires red on the known regression, naming both cells at their floors with their
+> sizes, and green after the fix.** The sequence was run in that order, which is the only order in
+> which it proves anything.
+>
+> **And β closes `to_nothing` as well: 1 → 0.** Basin 1000004's 19.5 m³/s spillway now terminates
+> in a real water body. That is Finding 89-C3's named-and-unfixed item, closed by a fix aimed at
+> something else — and the round had put it out of scope.
+>
+> **Stop rule C holds**: the footprint delta RED → GREEN is **+72 646 cells covered (173.20 km²)
+> and 0 cells un-claimed**. β only adds; it takes nothing away.
+
+**What β made of the two orphans, and the price is an order of magnitude larger than I predicted:**
+
+| region | on its own becomes | |
+|---|---|---|
+| region 1, 6 245 cells, 15.29 m³/s | body **1000002**: **173.19 km², level 76.25 m, depth 83.20 m, `Endorheic`** | |
+| region 4, 1 cell, 0.02 m³/s | body 1000005: 0.0072 km², level 0.43 m, depth 1.43 m, `Endorheic` | |
+
+> ⚠️ **The 14.89 km² component becomes a 173.19 km² lake, because on its own it fills to its own
+> sill at 76.25 m** and submerges the land up to it — the same 76.25 m sill Finding 86 reported for
+> basin 1000001 and Finding 87-E measured the 0.014 m step on. **I predicted the price would be
+> +14.89 km²; it is +173.20 km²**, and below-sea water goes **4 775.9 → 4 949.1 km² (+3.6 %)**.
+> Against 26 969 km² of land the below-sea bodies alone move **17.71 % → 18.35 %**, so Finding
+> 89-C1's 24.05 % lake fraction moves to about **24.69 %** — the wrong direction for Finding 89-B1's
+> < 1 % criterion, by a small amount, for a correct reason: the water was always there and was not
+> being counted.
+>
+> ⚠️ **One thing to watch, named not measured**: the delivered world now carries **two distinct
+> bodies at the same free surface** (76.25 m), which is exactly Finding 87-A's definition of a
+> STRAIT. No spillway links them on this seed (`to_own_body` 0, `to_nothing` 0), so the instrument
+> does not fire — but a future seed where one does would read as a strait and would be right to.
+
+### D — "évaporatif", the word the condition cannot support
+
+The viz label is replaced, with the reason at the line:
+
+| | |
+|---|---|
+| the condition, unchanged | `if !sea && wc[mk] == Some(2) { Sink::SubSeaSink }` |
+| what it reads | `water_class` **only** — never `net_evap`, never `a_eq`, never `lake_type` |
+| before | *"→ puits sous-marin (évaporatif)"*, teal |
+| **after** | **"→ cuvette sous-marine SANS exutoire tracé"**, warning red |
+
+> In a humid bed `net_evap = 0 ⇒ a_eq = ∞` (Finding 39), so nothing there evaporates; and the state
+> is the **absence of a tag**, which is Finding 89's `to_nothing`. Since C every enclosed component
+> carries a body, so what can still reach this branch is a mouth on a cell outside every
+> inventory. `Sink` is a viz-side enum, so **the export has no variant to change** — the five
+> `LakeType`s are untouched.
+
+### Score
+
+Predictions written and dated **2026-09-17 before any measurement**; non-blind on Findings 73–91
+and on this round's prompt, and on Finding 91's figures, which are mine.
+
+**Mine.** **A1 "the pair [121 234, 6 245] IS the orphan" ✓✓** (confirmed from the dossier before
+the bench) · **A2 "only 2 classes leave an uncovered region, not 6–8" ✓** — and better: only **one**
+class merges at all, and it claims everything · **A3 "the failure is connectivity, not height" ✓✓**
+· A4 "α 13 bodies, β 15 with exactly one single-cell lake" **✓✓✓** · **A5 "α has an unnamed
+contract cost — one id on two disjoint footprints" ✓**, and the dossier supplied a second cost I
+had not seen (the 360.34 becoming a self-discharge) · A6 the control **✓** · my recommendation
+**changed from α to β after A**, and I say so rather than pretending it was β all along ·
+B "the guard fires on exactly 2 before and 0 after" **✓✓** · C "field bit-identical, budget
+unchanged" **✓** but **"#0 joins a neighbouring body, +14.89 km²" ✗✗ — it becomes its OWN 173.19 km²
+lake, +173.20 km²** · C "`SubSeaSink` for #0 disappears" **✓** · D **✓** · and my note that "#1 is
+not out of scope" **✓** — β closes it.
+
+**The round's.** "6 to 8 classes are big-body-plus-pixel" **✗** (one class, and it works) ·
+"β creates 6 to 8 pixel lakes" **✗** (one) · "α is correct for seven of the eight" **✗** — α has
+nothing to repair · "the pair [121234, 6245] is the only case where β is defensible" **✓ and then
+some**: it is the only case at all · "α folds it into a ~127 000-cell lake, perhaps too big" — **✗
+on the variant**: β gives it its own **173.19 km²** body, which is bigger than the number the round
+feared from α · the ratio-< 100 fallback **✗** (collapses to β everywhere) · "don't touch #1" **✗**
+(it is a relevel victim and β closes it) · B "2 then 0" **✓✓** · D **✓**.
+
+**Meta holds on both sides.** My worst miss is the price of β — an order of magnitude — and it is
+the same class of error as Finding 91's: I assumed a footprint would be the component, when the
+footprint is the flood to the sill.
+
+### Standing
+
+* **B ships**: `uncovered_below_sea_components` + a production assertion in `assemble_hd_drainage`,
+  with a permanent negative-control unit test. **Rule 13** is on the record.
+* **C ships**: `separate_unclaimed_regions`, default `true`. **0 uncovered components, 15 bodies,
+  8 passes converged, `to_own_body` 0, `to_nothing` 0.** Finding 89-C3's orphan spillway closes.
+* **D ships**: the viz says what the condition can see.
+* **The price, stated**: **+173.20 km²** of below-sea water (+3.6 %), a new **173.19 km²
+  `Endorheic`** lake at 76.25 m, and the lake fraction 24.05 % → ≈ 24.69 %.
+
+**Named and not fixed.** The two bodies at the same free surface (a strait by Finding 87-A's
+definition if a spillway ever links them). Basin 1000001's 45.04 m³/s, which now has a 173 km² lake
+on one of its lobes and still no emitted spillway (Finding 89-D: its escape traces to the sea in 44
+steps). And Finding 90's 7 299 remaining passes to Courant 1, at which both orphans vanish anyway —
+which does not replace the fix, it confirms it.

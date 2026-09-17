@@ -71,9 +71,15 @@ enum Sink {
     Sea,
     ExoLake,
     EndoLake,
-    /// A below-sea ENCLOSED cell (water_class == 2) that is NOT an inventoried lake — a sub-sea
-    /// evaporative sink (Finding 36). Distinct from Sea: tagging it "→ mer" would contradict
-    /// water_class (the authority) and reinstate the very altitude proxy Finding 31 removed.
+    /// A below-sea ENCLOSED cell (water_class == 2) that is NOT an inventoried lake. Distinct
+    /// from Sea: tagging it "→ mer" would contradict water_class (the authority) and reinstate the
+    /// very altitude proxy Finding 31 removed.
+    ///
+    /// ⚠️ **ADR Finding 91-D: this was labelled "évaporatif" and the condition cannot support the
+    /// word.** It reads `water_class` alone — never `net_evap`, never `a_eq`, never `lake_type` —
+    /// so it says "enclosed below sea and in no inventory", which is Finding 89's `to_nothing`,
+    /// not a regime. Finding 92-C removed the population that made it common; what can still
+    /// reach it is a mouth on a cell no body covers.
     SubSeaSink,
     Unknown,
 }
@@ -3482,7 +3488,15 @@ fn sink_label(s: Sink) -> (&'static str, C) {
         Sink::Sea => ("→ mer", C::from_rgb(0x5a, 0x9a, 0xd0)),
         Sink::ExoLake => ("→ lac exoréique", C::from_rgb(0x5a, 0x9a, 0xd0)),
         Sink::EndoLake => ("→ bassin endoréique", C::from_rgb(0x3a, 0xb0, 0xa0)),
-        Sink::SubSeaSink => ("→ puits sous-marin (évaporatif)", C::from_rgb(0x3a, 0xb0, 0xa0)),
+        // ADR Finding 91-D / 92-D — the condition is `!sea && water_class == 2`: an enclosed
+        // below-sea cell that NO water body covers. It never reads `net_evap`, `a_eq` or
+        // `lake_type`, so "évaporatif" asserted a process it cannot see — and in a humid bed
+        // `net_evap = 0 ⇒ a_eq = ∞` (Finding 39), so nothing there evaporates. Since Finding 92-C
+        // every enclosed component carries a body, so what remains in this branch is a mouth on a
+        // cell outside every inventory: Finding 89's `to_nothing`, named as what it is.
+        Sink::SubSeaSink => {
+            ("→ cuvette sous-marine SANS exutoire tracé", C::from_rgb(0xd0, 0x6a, 0x5a))
+        }
         Sink::Unknown => ("→ ?", WARN_ORANGE),
     }
 }

@@ -242,6 +242,8 @@ impl Default for C1DrainageConfig {
             merged_union_relevel: Some(MergedUnionRelevel {
                 max_passes: 16,
                 route_through_detected_lakes: true,
+                // ADR Finding 92-C — the fix (variant β), not a gate.
+                separate_unclaimed_regions: true,
             }),
             lake_min_depth_m: 10.0,
             lake_min_area_km2: 5.0,
@@ -1612,6 +1614,70 @@ fn water_balance_lakes(
     out
 }
 
+/// ADR 0001 Finding 92-B — **every enclosed below-sea component is covered by a water body.**
+///
+/// Finding 38 closed this in 2024: 68 river mouths terminated on `water_class == 2`,
+/// `lake_map == 0` slivers — *"neither lake nor sea"* — and the fix was to fill each enclosed
+/// below-sea region as ONE body. **It was closed and never pinned.** Finding 86 then promoted
+/// `MergedUnionRelevel`, whose guards asserted the height field was unchanged (true) and that
+/// `exorheic_lakes_missing_outlet` was 0 (true), and neither enumerates this invariant. Finding 91
+/// found it broken again: 2 of the 20 components of the delivered seed carried no tag, with
+/// 34.8 m³/s of river and spillway water terminating on them.
+///
+/// Returns `(floor cell, size in cells)` for every uncovered component, so a failure names the
+/// place and not only the count. The components are 8-connected, grown with a BOUNDS-CHECKED
+/// neighbourhood to match `region_of` (Finding 40) — not a periodic one.
+///
+/// **Method rule 13, earned here: an invariant you close gets a permanent assertion, or it is not
+/// closed.** Finding 38's was re-opened by a gate promoted two years later because nothing tested
+/// it; the measurement that found it was a viz screenshot, not the suite.
+#[must_use]
+pub fn uncovered_below_sea_components(
+    heightmap: &GridF32,
+    lake_map: &[u32],
+    sea_level: f32,
+    w: usize,
+    h: usize,
+) -> Vec<(usize, usize)> {
+    let n = w * h;
+    let wc = crate::lakes::connectivity::water_class(heightmap, sea_level);
+    let mut seen = vec![false; n];
+    let mut out = Vec::new();
+    for s0 in 0..n {
+        if wc[s0] != 2 || seen[s0] {
+            continue;
+        }
+        let mut stack = vec![s0];
+        seen[s0] = true;
+        let (mut size, mut covered, mut floor) = (0usize, false, s0);
+        while let Some(k) = stack.pop() {
+            size += 1;
+            if lake_map[k] != 0 {
+                covered = true;
+            }
+            if heightmap.data[k] < heightmap.data[floor] {
+                floor = k;
+            }
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            for d in 0..8 {
+                let (nx, ny) = (x + D8_DX[d], y + D8_DY[d]);
+                if nx < 0 || ny < 0 || nx as usize >= w || ny as usize >= h {
+                    continue;
+                }
+                let nk = ny as usize * w + nx as usize;
+                if wc[nk] == 2 && !seen[nk] {
+                    seen[nk] = true;
+                    stack.push(nk);
+                }
+            }
+        }
+        if !covered {
+            out.push((floor, size));
+        }
+    }
+    out
+}
+
 /// BELOW-SEA INLAND basins as water bodies (ADR 0001 Finding 18). `pit_fill`/`detect_lakes`
 /// treat every below-sea cell as ocean, so an enclosed below-sea basin (a `water_class`
 /// class-2 component) never enters the lake path. This finds those basins (≥ `lake_min_area`),
@@ -1848,6 +1914,29 @@ pub struct MergedBasinOutlet {
 /// MAX below-sea level and `claimed/valid` guards are for.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MergedUnionRelevel {
+    /// **ADR 0001 Finding 92-C (variant β, the author's choice)** — a region folded into a class
+    /// whose flood CANNOT REACH IT keeps its own water body instead of vanishing.
+    ///
+    /// Finding 85's class merge pushes every region of a class into one `comp` and marks it
+    /// `seen`. The body is then a CONNECTED priority flood from the class's floor, which grows
+    /// over land to its sill (Finding 38) — so it reaches a disconnected region only when the
+    /// surface is high enough to bridge the land between them. When it is not, the region was
+    /// `seen` and never claimed: it fell out of the inventory entirely. Finding 91 measured two
+    /// such regions on the delivered seed, **14.89 km² carrying 15.29 m³/s of its own local
+    /// inflow** and one cell at −1.00 m receiving a 19.5 m³/s spillway.
+    ///
+    /// With this `true`, the absorption no longer marks `seen`, and the outer scan skips cells the
+    /// flood already claimed — so a reachable region still merges (the `[1,1]`/`[2,2]`-style
+    /// classes are unchanged) and an unreachable one becomes its own body.
+    ///
+    /// ⚠️ The CHAIN is untouched: the class label `own_label` still drives `extra_inflow`, so
+    /// Finding 85's convergence and Finding 86's closure of the Finding 74 leak do not depend on
+    /// the cell absorption. Turning this `false` restores the pre-Finding-92 footprints for the
+    /// A/B, and the author chose β over α because α would put one `lake_map` id on two spatially
+    /// disconnected footprints and turn Finding 85's 360.34 m³/s basin-A-into-basin-B link into a
+    /// `to_own_body` self-discharge — the shape of the very leak the relevel closed.
+    #[serde(default = "default_true")]
+    pub separate_unclaimed_regions: bool,
     /// Bound on the fixed-point passes. The shipped loop already uses 16 as a safety net; with
     /// this gate on, exhausting the bound is an **assertion failure** and not a silent exit,
     /// because a non-converged merge partition means the reported levels are from a half-solved
@@ -1867,7 +1956,11 @@ pub struct MergedUnionRelevel {
 
 impl Default for MergedUnionRelevel {
     fn default() -> Self {
-        Self { max_passes: 16, route_through_detected_lakes: true }
+        Self {
+            max_passes: 16,
+            route_through_detected_lakes: true,
+            separate_unclaimed_regions: true,
+        }
     }
 }
 
@@ -2060,6 +2153,9 @@ pub fn below_sea_basin_lakes_infil(
     // for why the level is not raised by hand (Finding 39 measured that and rejected it).
     let relevel = cfg.merged_union_relevel.clone();
     let route_through_lakes = relevel.as_ref().is_some_and(|r| r.route_through_detected_lakes);
+    // ADR Finding 92-C (β) — with the relevel OFF this is false and every read below is the
+    // shipped path bit for bit; the regression it fixes only exists when a class merges.
+    let separate_unclaimed = relevel.as_ref().is_some_and(|r| r.separate_unclaimed_regions);
     let max_passes = relevel.as_ref().map_or(16usize, |r| (r.max_passes.max(1)) as usize);
     let mut class_of: Vec<u32> = (0..=num_regions as u32).collect();
     // cells per region, so folding a class costs its own size and not a grid sweep
@@ -2096,7 +2192,9 @@ pub fn below_sea_basin_lakes_infil(
         seen.iter_mut().for_each(|v| *v = false);
         next_id = 1_000_001;
         for s in 0..n {
-            if seen[s] || wc[s] != 2 {
+            // ADR Finding 92-C — `lake_map[s] != 0` is the companion of releasing the absorbed
+            // cells below: a cell a flood already claimed must never seed a second body.
+            if seen[s] || wc[s] != 2 || (separate_unclaimed && lake_map[s] != 0) {
                 continue;
             }
             // ADR Finding 85 — the region's CLASS. `class_of` is the identity while the gate is
@@ -2126,7 +2224,15 @@ pub fn below_sea_basin_lakes_infil(
                 if class_of[r] == own_label && r as u32 != region_of[s] {
                     for &c in &cells_of_region[r] {
                         if !seen[c as usize] {
-                            seen[c as usize] = true;
+                            // ADR Finding 92-C (β) — push the cell into the PIT so the class's
+                            // floor and flood see it, but do NOT mark it `seen`. If the flood
+                            // reaches it the outer scan skips it on `lake_map != 0`; if the flood
+                            // cannot reach it, the scan finds it and gives it its own body instead
+                            // of dropping it. With `separate_unclaimed` false this is the
+                            // pre-Finding-92 behaviour, bit for bit.
+                            if !separate_unclaimed {
+                                seen[c as usize] = true;
+                            }
                             comp.push(c as usize);
                         }
                     }
@@ -3698,6 +3804,43 @@ mod tests {
             "every exorheic lake now has a bordering outlet"
         );
     }
+    /// ADR 0001 Finding 92-B — **the guard's NEGATIVE CONTROL.** A guard that cannot see the
+    /// defect it was written for guards nothing, so this builds the Finding 91 shape by hand: two
+    /// enclosed below-sea components, one covered by a body and one not, and asserts the finder
+    /// returns exactly the uncovered one with its floor and its size.
+    ///
+    /// The fixture also pins what must NOT be reported: the OCEAN (`water_class == 1`, reachable
+    /// from a border) is not a component this invariant is about, and a covered component is not a
+    /// finding.
+    #[test]
+    fn the_coverage_guard_sees_an_uncovered_below_sea_component() {
+        // 9x3. Column 0 is below sea and touches the border ⇒ OCEAN (class 1), never reported.
+        // Cells (3,1) and (4,1) are an enclosed pocket, COVERED. Cell (7,1) is enclosed, NOT.
+        let (w, h) = (9usize, 3usize);
+        let mut d = vec![0.9f32; w * h];
+        for y in 0..h {
+            d[y * w] = 0.2; // the ocean column
+        }
+        d[1 * w + 3] = 0.3;
+        d[1 * w + 4] = 0.25; // the covered pocket, floor at (4,1)
+        d[1 * w + 7] = 0.1; // the orphan, deepest cell of the grid
+        let field = GridF32 { width: w, height: h, data: d };
+        let mut lake_map = vec![0u32; w * h];
+        lake_map[1 * w + 3] = 42;
+        lake_map[1 * w + 4] = 42;
+
+        let out = uncovered_below_sea_components(&field, &lake_map, 0.5, w, h);
+        assert_eq!(out.len(), 1, "exactly one component is uncovered, got {out:?}");
+        assert_eq!(out[0], (1 * w + 7, 1), "the orphan is cell (7,1) and it is one cell");
+
+        // and with it covered, the guard reports nothing — the other half of the control
+        lake_map[1 * w + 7] = 43;
+        assert!(
+            uncovered_below_sea_components(&field, &lake_map, 0.5, w, h).is_empty(),
+            "a covered component must not be reported"
+        );
+    }
+
     /// ADR 0001 Finding 88-C — **the saddle is the lowest rim cell YOU CAN LEAVE FROM**, not the
     /// lowest rim cell. The two differ exactly when the lowest rim cell is a pit, which on a
     /// breached field is common: the first version of [`surface_lake_escape`] took the lowest and

@@ -34,6 +34,7 @@ use crate::tectonics_c1::drainage::{
     C1DrainageConfig, C1DrainageResult, DrainageClimate, LakeType, SegmentKind, SegmentRow,
     apply_geo_scale_ratio, apply_lake_water_balance, below_sea_basin_lakes_infil,
     c1_drainage_windowed_infil, clip_rivers_to_lakes, resolve_exorheic_without_outlet,
+    uncovered_below_sea_components,
 };
 use crate::terrain::flow::RiverSegment;
 
@@ -261,5 +262,27 @@ pub fn assemble_hd_drainage(
             unresolved.len()
         );
     }
+    // ADR 0001 Finding 92-B — **THE FINDING 38 INVARIANT, PINNED AT LAST.** Every enclosed
+    // below-sea component must be covered by a water body. Finding 38 closed this in 2024 (68
+    // river mouths on `water_class == 2`, `lake_map == 0` slivers — "neither lake nor sea") and
+    // left no permanent guard; Finding 86's relevel re-opened it for two components carrying
+    // 34.8 m³/s, and the thing that found it was a viz screenshot. A production assertion, not a
+    // `#[cfg(test)]` one (Finding 72: the ledger that is not read is not a ledger), so it holds on
+    // every path that builds a bundle and not only on the ones a bench remembers to call.
+    let uncovered = uncovered_below_sea_components(
+        eroded,
+        &drainage.lake_map,
+        crate::tectonics_c1::drainage::C1_SEA_LEVEL_NORM,
+        eroded.width,
+        eroded.height,
+    );
+    assert!(
+        uncovered.is_empty(),
+        "ADR Finding 38/92-B: {} enclosed below-sea component(s) carry no water body. \
+         (floor cell, cells): {:?}. This is the invariant Finding 38 closed and Finding 86's \
+         `MergedUnionRelevel` re-opened; see `separate_unclaimed_regions`.",
+        uncovered.len(),
+        uncovered.iter().take(8).collect::<Vec<_>>()
+    );
     HdDrainageBundle { drainage, wetland: wetland_mask }
 }

@@ -427,7 +427,40 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 >    restants. Les gardes du F86 vérifiaient le **champ** (inchangé — le relevel ne déplace aucune
 >    hauteur) et `exorheic_lakes_missing_outlet` (0) ; **aucun n'énumère l'invariant du F38 : toute
 >    composante `wc == 2` est couverte par un plan d'eau.** Fermé en 2024 pour 68 embouchures
->    orphelines, jamais épinglé. — `ALGO_DRAINAGE` 6 → 7, `ALGO_HD_DRAINAGE` 8 → 9. Le point
+>    orphelines, jamais épinglé. — `ALGO_DRAINAGE` 6 → 7, `ALGO_HD_DRAINAGE` 8 → 9.
+>    ✅ **CORRIGÉ AU FINDING 92 (variante β, choix de l'auteur).**
+>    `MergedUnionRelevel::separate_unclaimed_regions`, défaut `true` — un correctif, pas une porte.
+>    Deux lignes : l'absorption pousse la cellule dans le `comp` de la classe **sans la marquer
+>    `seen`**, et le balayage extérieur saute les cellules qu'une inondation a déjà revendiquées.
+>    Une région atteignable fusionne encore ; une région inatteignable devient **son propre corps**.
+>    La chaîne est intacte (`own_label` pilote toujours `extra_inflow`), donc la convergence du F85
+>    et la fermeture du F86 ne dépendaient pas de l'absorption des cellules.
+>
+>    | | garde F92-B | corps | passes | `to_own_body` | `to_nothing` |
+>    |---|---|---|---|---|---|
+>    | **ROUGE** (`separate_unclaimed_regions: false`) | **2 non couvertes** : `(3656,3691)` 6 245 c., `(3203,3586)` 1 c. | 13 | 8, converge | 0 | **1** |
+>    | **VERT** (livré) | **0** | **15** | **8, converge** | **0** | **0** |
+>    | contrôle (relevel OFF) | 0 | 17 | **16, ne converge pas** | **3 / 501,99 m³/s** | 0 |
+>
+>    **Le garde d'abord, rouge, puis le correctif, vert** — le seul ordre qui prouve quelque chose.
+>    Et β ferme aussi le **`to_nothing` 1 → 0** : les 19,5 m³/s du bassin 1000004 atterrissent enfin
+>    dans un plan d'eau réel (l'item nommé-non-corrigé du F89-C3).
+>
+>    ⚠️ **Le prix, dit et non enfoui** : la composante de 14,89 km² devient **son propre lac de
+>    173,19 km², niveau 76,25 m, profondeur 83,20 m, `Endorheic`** — parce que seule, elle se remplit
+>    jusqu'à son propre seuil. L'eau sous-marine passe de **4 775,9 à 4 949,1 km² (+3,6 %)** et la
+>    fraction de lacs du F89-C1 va de 24,05 % à ≈ **24,69 %** : la mauvaise direction pour le critère
+>    < 1 %, pour une bonne raison — cette eau était là et n'était pas comptée. **Ma prédiction
+>    (+14,89 km²) est fausse d'un ordre de grandeur.**
+>
+>    ⛔ **Et le garde du F38 est enfin épinglé** : `uncovered_below_sea_components` + une
+>    **assertion de production** en fin de `assemble_hd_drainage` (pas `#[cfg(test)]`, F72), avec son
+>    **contrôle négatif** en test unitaire permanent. **Règle de méthode 13 : un invariant qu'on
+>    ferme reçoit une assertion permanente, ou il n'est pas fermé.**
+>
+>    Et le viz dit enfin ce que la condition voit : « → cuvette sous-marine SANS exutoire tracé »
+>    remplace « puits sous-marin (évaporatif) », qui affirmait un processus que
+>    `if !sea && wc == 2` ne peut pas lire (F39 : en humide `net_evap = 0 ⇒ a_eq = ∞`). Le point
 >    fixe converge (**8** et **11** passes contre la borne de 16) et épuiser la borne est
 >    désormais une assertion. **La non-convergence livrée est attribuée** : une **alternance de
 >    période 2** entre deux classes, d'amplitude constante **23,472 m³/s** (humide) et **4,149**
