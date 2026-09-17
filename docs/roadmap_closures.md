@@ -788,6 +788,61 @@ le cadran de H-2, et la calibration de tête de chenal aux deux résolutions.
 > corps sous 30 m ne portent que **2,9 %** de l'aire. Les **16** corps de la classe canyon (F88-D4,
 > reproduit) portent **30,0 % de l'aire et 65,4 % du volume**.
 >
+> ⛔ **ET LE +115 EST `breach_monotone`, PAS L'INCISION (Finding 90).** Bissection par étage,
+> aucun changement de production.
+>
+> | étage, Δ(≥ 1 km) vs pré-incision | 8192² | 4096² | 2048² | 1024² |
+> |---|---|---|---|---|
+> | **ÉRODÉ** (sortie d'incision) | **−1** | 0 | −1 | 0 |
+> | **BRÈCHÉ** (`hd_assembly`) | **+110** | +176 | 0 | +1 |
+> | la ligne du F89-C5 (étages mixtes) | **+115** | +184 | 0 | +1 |
+>
+> **L'incision n'ajoute aucun éperon** — la jambe 4 est tenue à l'étage sur lequel elle a été
+> écrite. Les 115 se décomposent en **+110** (la brèche) et **+5** (l'autorité lue **non brèchée**
+> face à un livré brèché : le pré-incision brèché a **25** éperons, pas 20). **117 ajoutés, dont
+> 113 — 96,6 % — ont à moins de 4 cellules une cellule TERRE dans l'érodé et MER dans le brèché.**
+> Le « −2 » du F80 n'était jamais un Δ contre pré-incision : c'était un Δ de Δ entre deux variantes
+> **livrées**.
+>
+> **Et ce qui a déplacé le chiffre est le plancher du F83, pas le relevel** : plancher coupé
+> **1 816** éperons (le +1 828 du F80 reproduit à **+1 791**), plancher mis **135** — soit **×13,5**.
+> Relevel coupé : **135, identique à l'unité**. La chaîne relevel → brèche est **réfutée**.
+>
+> **`breach_monotone` n'a aucun plancher, par construction** : `is_base` arrête la marche **à** une
+> cellule déjà sous la mer et ne borne **jamais** la cible, donc tout chemin d'exutoire d'un puits
+> sous-marin y descend. Elle **noie 10 375 cellules** (24,74 km², p50 **0,44 m**, max 11,91 m — le
+> −8,67 du F89-D est au **99,4ᵉ centile**) et n'en relève aucune. ⚠️ **Mais elle ne crée que 1,6 %
+> des cuvettes sous-marines encloses** (6 100 sur 387 710) : **aucune ligne n'est due au point de
+> claim des F71–F88**, la machinerie des chaînes travaillait sur de vraies dépressions.
+>
+> ⛔ **ET LE CHAMP LIVRÉ EST SUR-ÉRODÉ PAR SA PROPRE NUMÉRIQUE (Finding 90-C).** À `k_time` **tenu
+> à 9 000** — même budget d'érosion, seule la distribution change — le F44 item 2 mesuré :
+>
+> | jalon | Courant | côte érodée | côte brèchée | noyées | relief p50 | lacs | classe canyon |
+> |---|---|---|---|---|---|---|---|
+> | **2** (livré) | 3 699 | 19 (Δ −1) | 135 (**Δ +115**) | 10 375 | 424,2 m | 24,05 % | **16 / 53** |
+> | **10** | 740 | 18 (Δ −2) | 106 (**Δ +86**) | 15 549 | **503,4 m (+18,7 %)** | 18,99 % | **5 / 30** |
+> | **100** | 74 | 17 (Δ −3) | **47 (Δ +27)** | **2 880** | **505,2 m (+19,1 %)** | **17,87 %** | **3 / 22** |
+>
+> **Le relief MONTE de 19 %**, et nos deux prédictions le voyaient descendre de 15 à 35 %. À budget
+> tenu, intégrer fidèlement **retire moins de masse** : c'est le « stable mais pas intégrant » du
+> F44 lu par l'autre bout. **Donc la classe canyon est NUMÉRIQUE** (16 → 3, −81 %, à budget
+> constant) et le soulèvement ne sert pas à la corriger — il sert à augmenter `T`. Cela ne réfute
+> pas le F61, qui parle de `T → ∞`. Et **deux items ouverts se ferment seuls** à 100 passes :
+> `to_nothing` **1 → 0** (la dernière écharde du F38) et `Unresolved` **3 → 0**.
+> ⚠️ **La fraction de lacs, elle, ne bouge presque pas** (24,05 → 17,87 %, encore **18×** le
+> critère) : c'est un bilan hydrique que l'incision ne lit jamais (F39, F60).
+>
+> **Le devis D dit que le correctif de la brèche est le mauvais** : un plancher à `sea + 0,5 m`
+> empêche **152 des 169** tranchées d'atteindre leur cible, qui retombent alors sur le FILL et
+> deviennent des **mares plates** — l'option que le F13 avait proposée et que l'auteur avait
+> refusée. Et **tous les gardes de la fonction resteraient verts** (ils vérifient la monotonie, que
+> le fill garantit). **Le correctif est le bloc C**, pas D : à 100 passes la brèche noie 2 880
+> cellules au lieu de 10 375, sans toucher à `breach_monotone`.
+>
+> **Nommé, non fait** : les 7 299 passes restantes jusqu'à Courant 1 (~47 h hors session), qui
+> diraient si le critère côtier est tenu par la seule intégration.
+
 > ⛔ **ET LE CRITÈRE CÔTIER A SA PREMIÈRE MESURE SUR LE PRODUIT PROMU : Δ(éperons ≥ 1 km) = +115**
 > à 8192² (135 livrés contre **20** pré-incision — l'instrument reproduit au chiffre les « vingt »
 > du F80). Contre les **+1 828** du F80 sur le même instrument, c'est une réduction **×16** ; ce

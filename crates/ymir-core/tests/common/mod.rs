@@ -121,6 +121,12 @@ pub struct Knobs {
     /// ADR Finding 83-B2 -- `BaseLevelFloor::free_above_km2`, the estuary gate, in km2 of
     /// the SIMULATED grid. **PROXY**, bench-only; production is `None`.
     pub a_est_km2: Option<f32>,
+    /// ADR Finding 90-C -- `StreamPowerConfig::k`. Used ONLY with [`Knobs::integrating`], which
+    /// holds `k_time = k * dt * iterations` at the shipped 9000 while raising the pass count, so
+    /// the sweep changes the DISTRIBUTION of the erosion work and not its quantity. That is what
+    /// makes the Finding 44 item-2 experiment well posed (Finding 44: "`K` and the duration are
+    /// not separately observable" -- holding `k_time` is the only way to move one dial alone).
+    pub k: Option<f32>,
     /// ADR Finding 88-D1 -- `StreamPowerConfig::iterations`. Production ships **2**; the point of
     /// the knob is to read the field AFTER ONE pass, because at Courant 1353 (Finding 61) a cell
     /// relaxes onto its receiver in a single step and "how much of the cut is the first pass" is
@@ -144,6 +150,17 @@ impl Knobs {
     /// ADR Finding 88-D1 -- the shipped relief after exactly `it` incision passes.
     pub fn passes(it: usize) -> Self {
         Self { iterations: Some(it), ..Self::default() }
+    }
+    /// ADR Finding 90-C -- `n` passes at the SHIPPED `k_time` (9000): `k = 9000 / n` with
+    /// `dt = 1.0`. The integrated erosion budget is identical to the delivered field's; only the
+    /// Courant number falls, by `n / 2`. At `n = 7399` the configuration sits at Courant 1.0,
+    /// which is Finding 44's item 2 and the whole point.
+    pub fn integrating(n: usize) -> Self {
+        Self {
+            iterations: Some(n),
+            k: Some(ymir_core::erosion::stream_power::SHIPPED_K_TIME / n as f32),
+            ..Self::default()
+        }
     }
 }
 
@@ -266,6 +283,9 @@ pub fn build_field(k: Knobs) -> GridF32 {
         }
         if let Some(it) = k.iterations {
             sp.iterations = it;
+        }
+        if let Some(kk) = k.k {
+            sp.k = kk;
         }
         if let Some(l) = k.lateral_erosion {
             sp.lateral_erosion = l;

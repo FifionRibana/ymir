@@ -12421,6 +12421,14 @@ which **12.7 %** on cells with A ≥ 0.1 km² — **the channel share**.
 > **twenty** are tectonic geometry, not fringe"* and this measurement reads **20** at 8192². Same
 > field, same threshold, same count.
 >
+> ⛔ **AMENDED BY FINDING 90-A: THE INCISION ADDS NO SPUR — `breach_monotone` DOES.** Measured
+> stage by stage, Δ(≥ 1 km) on the ERODED field is **−1 / 0 / −1 / 0** across the four grids, and
+> the whole +110 appears at the BREACH. The remaining **+5** of this table's +115 is a stage
+> mismatch of its own: the authority was read UNBREACHED while the delivered side was breached
+> (the breached pre-incision has **25** spurs, not 20). And 96.6 % of the 117 added spurs have a
+> cell within 4 cells that is LAND in the eroded field and SEA in the breached one. So leg 4 is not
+> met by the PRODUCT, and it is met by the INCISION — which is what the leg was written about.
+>
 > ⛔ **And on that authority the delivered product adds 115 spurs, so leg 4 of the criterion —
 > "the incision must add no spur" — is NOT met.** Finding 83 promoted the bound with the words
 > *"The word of the criterion is the author's: no spur ADDED"*, and the dossier carries no measured
@@ -12538,6 +12546,12 @@ the floor is not at −8.67 m before pass 3, it is not the same world."* **It is
 > **And one more pass removes the hole.** At `iterations = 3` the delivered floor is **+0.50 m**:
 > the depression the breach cut through is no longer there to breach. A single extra pass changes
 > the delivered geometry at this cell from −8.67 m to +0.50 m.
+>
+> ⛔ **FINDING 90-B3: TRUE OF THIS CELL, FALSE OF THE POPULATION.** At three passes the breach
+> drowns **32 368** cells against 10 375 at two — **+212 %** — and makes 15 657 enclosed-below-sea
+> against 6 100. A relaxation that lands harder leaves MORE depressions to trench, not fewer. The
+> collapse only comes much later: at 100 passes it is **2 880** cells (Finding 90-C). Reading this
+> paragraph as "more passes calm the breach" is the opposite of the curve.
 
 ### Score
 
@@ -12629,3 +12643,414 @@ the image means:
 * **70 % of the lake area and 87 % of its volume are in bodies deeper than 100 m**, and 65.4 % of
   the water is in the sixteen bodies of the canyon class. Draining the shallow ones would move
   **2.9 %** of the area.
+
+## Finding 90 — the +115 is `breach_monotone`, the incision adds no spur, and the enclosed basins are not a conditioning artefact
+
+No production change. A bisects Finding 89-C5 by stage, B measures what the breach does below sea
+level, C runs Finding 44's item 2 at the shipped `k_time`, D is a quote and not a patch.
+
+### Rule 11 + 11b, three clauses
+
+`breach_monotone` **11** (first L697) · `ALGO_BREACH` **2** (L11490) · `breach` **108** (L665) ·
+`carve` **49** (L9) · `below sea` **26** (L769) · `sea_level` **14** (L70) · `coast_spurs` **4**
+(L8627) · `MIN_SPUR_KM` **4** (L5968) · `Finding 80` **15** (L6990) · `Finding 83` **21** (L6987).
+11b: `+115` **5** (L12415, my own F89) · `-2` 79 / `−2` 79 (both collide with ordinary minus signs) ·
+**`20 spurs` 0 — nothing found** (the dossier writes *"The pre-incision's twenty"*) · `135` 32 ·
+`≥ 1 km` **30** (L2319) / `>= 1 km` 0.
+
+**Two of this round's four questions were already answered in the code, and reading it first saved a
+measurement.**
+
+* **`MIN_SPUR_KM = 1.0` and its docstring gives A4's arithmetic outright**: *"1 km, which is **20.5
+  cells at 8192²** — so the default instrument cannot see an indentation 2 to 5 cells across, which
+  is the texture the eye reads as 'fur'"*. So "≥ 1 km" and "≥ 2 cells" are the **kilometre** and the
+  **cell** column of one detector (Finding 75), not two criteria, and 1 km is 20.5 / 10.2 / 5.1 /
+  2.6 cells at the four grids.
+* **`breach_monotone`'s carve has no floor, and the code says exactly where it stops.** Finding 14
+  introduced it (L697): *"every OTHER cell is given a monotone-descending path to the ocean or a lake
+  by CARVING a trench along its outlet path (never filling)"*. The loop:
+
+  ```rust
+  let mut target = height.data[nb] - EPS;          // nb is the pit being breached
+  let mut cur = ci;
+  while cur != usize::MAX && !is_base(cur, &z) && z[cur] > target {
+      z[cur] = target;  target -= EPS;  cur = backlink[cur];
+  }
+  ```
+
+  with `is_base(k, z) = z[k] <= sea_level || lake_map[k] != 0`. **The guard stops the walk AT a cell
+  already at or below sea level; it never bounds the TARGET.** So whenever the pit `nb` sits below
+  sea level, every land cell on its outlet path is set below sea level, by construction, with no
+  floor. That is B2 answered from the source, and it is the mechanism A3 then confirms.
+
+### A0 — the six lines, and the answer is the stage
+
+Δ(delivered − pre-incision) **at the same stage**, four resolutions, two length scales:
+
+| stage | ≥ 1 km: 8192² / 4096² / 2048² / 1024² | ≥ 2 cells: same order |
+|---|---|---|
+| **ERODED** (incision out, f32) | 19/20 **Δ −1** · 18/18 Δ 0 · 20/21 Δ −1 · 10/10 Δ 0 | 2389/2381 Δ +8 · 2443/2437 Δ +6 · 2659/2651 Δ +8 · 18/19 Δ −1 |
+| **BREACHED** (`hd_assembly`, f32) | 135/25 **Δ +110** · 202/26 Δ +176 · 21/21 Δ 0 · 11/10 Δ +1 | 3438/2424 **Δ +1 014** · 2866/2454 Δ +412 · 2659/2651 Δ +8 · 20/19 Δ +1 |
+| **u16** (the export mask) | 135/25 **Δ +110** · 204/28 Δ +176 · 21/21 Δ 0 · 11/10 Δ +1 | 3442/2426 Δ +1 016 · 2867/2454 Δ +413 · 2656/2653 Δ +3 · 20/19 Δ +1 |
+| **the Finding 89-C5 line, reproduced** (breached+u16 delivered vs **unbreached** pre-incision) | 135/20 **Δ +115** · 204/20 **Δ +184** · 21/21 Δ 0 · 11/10 Δ +1 | 3442/2383 **Δ +1 059** · 2867/2437 Δ +430 · 2656/2653 Δ +3 · 20/19 Δ +1 |
+
+> ⛔ **A1 settles it and A2 is not needed: THE INCISION ADDS NO SPUR.** On the eroded field the
+> criterion is **met** — Δ(≥ 1 km) = **−1, 0, −1, 0** across the four grids. Every one of the added
+> spurs appears at the **BREACH**, a stage downstream of everything Findings 76–83 were about.
+>
+> **And the +115 decomposes exactly.** +110 is the breach acting on the delivered field; the other
+> **+5** is the authority being read **unbreached** while the delivered side is breached — Finding
+> 89-C5 compared two stages, and five spurs of its number are that mismatch. The breached
+> pre-incision has **25** spurs, not 20.
+>
+> **The stop rule is satisfied.** The +115 reproduces to the digit on the mixed line, and Finding
+> 80's own Δ against pre-incision (+1 828) reproduces at **+1 791** in the bound-off world (A2
+> below) — within 2 % across four findings and a promotion. The **"−2"** of Finding 80 was never a
+> Δ against pre-incision: it was the difference between two *delivered* variants (pre-F83 against
+> bounded), i.e. a Δ of Δs. Both instruments are the same; the comparisons were not.
+>
+> ⚠️ **The "≥ 2 cells" zero of Finding 80 does not reproduce on the delivered product at any
+> stage** — it is **+1 014** on the breached field and **+8 even on the eroded one**. My prediction
+> (+900 to +1 200 on the breached) holds; the round's (+40 to +200) is refuted. At the cell scale
+> the fur is still there, and the round's own reminder that this leg was "not re-read" was right to
+> ask.
+
+### A2 — the two knobs, one variable each, and the relevel is innocent
+
+Rather than a commit bisection, the same instrument under the two knobs that actually changed the
+geometry between Finding 80 and today — one variable at a time, which a commit diff cannot give:
+
+| world | u16 8192², spurs ≥ 1 km | Δ vs the breached authority (25) | ≥ 2 cells |
+|---|---|---|---|
+| **shipped** (bound ON, relevel ON) | **135** | **+110** | 3 442 (+1 016) |
+| **bound OFF** (the pre-Finding-83 world) | **1 816** | **+1 791** | 3 893 (+1 467) |
+| **relevel OFF** (the pre-Finding-86 world) | **135** | **+110** | 3 442 (+1 016) |
+
+> **The relevel changes the number by exactly ZERO**, at both length scales, to the unit. The
+> round's hypothesis — *"the relevel→breach chain is the cause, and A2 would confirm it at the F86
+> commit"* — is **refuted**, and my prediction (moves it by less than 30) holds at 0.
+>
+> **What moved the number is the Finding 83 bound: 1 816 → 135, i.e. it removed 1 681 spurs.**
+> Reading that against Finding 80's shipped 1 848 (this bench: 1 816, −1.7 %) the bound is worth a
+> **×13.5 reduction** and it is the single reason the criterion is anywhere near met. The residue it
+> leaves is the +110, and the bound cannot reach it — because the bound floors the *relaxation
+> target* and the breach is a different stage, which is the fifth instance of "same invariant, two
+> functions" and the point Finding 87-B obscured by blaming the diffusion.
+
+### A3 — the 117 added spurs, attributed
+
+| | |
+|---|---|
+| delivered spurs ≥ 1 km (u16 8192²) | **135** |
+| the Finding 80/83 authority (unbreached pre-incision) | **20** |
+| **ADDED** (no counterpart within 1 km of the neck midpoint) | **117** |
+| of those, with a **breach-drowned cell within 4 cells** of the neck midpoint | **113 = 96.6 %** |
+
+> **The mechanism is attributed at 96.6 %, population entire, no sampling.** A breach-drowned cell
+> is one that is LAND in the eroded field and SEA in the breached field — the Finding 89-D motif,
+> now counted rather than inferred. The round's threshold was *"if > 80 % are cells only the breach
+> put under the sea, the mechanism is attributed"*: it is **96.6 %**. My prediction (50–80 %) is
+> refuted; the round's (> 80 %) holds.
+
+### A4 — the non-monotonicity is the detector, and the criterion is still at the source
+
+Added-spur length, in 8192² cells: p10 **20.8** · p50 **26.8** · p90 **48.8** · max **70.2**.
+Median **1.31 km**. The ≥ 1 km threshold is 20.5 cells at 8192², and in 8192²-cell units it is 41 at
+4096², 82 at 2048², 164 at 1024².
+
+| grid | share of the added spurs BELOW the threshold there |
+|---|---|
+| 4096² | **82.1 %** |
+| 2048² | **100.0 %** |
+| 1024² | **100.0 %** |
+
+> **They cluster just above the detector's floor** — p10 is 20.8 cells against a 20.5-cell
+> threshold. So **Δ = 0 at 2048² is a property of the detector, not of the coast**: not one of the
+> 117 can be counted there. Both predictions hold (mine 20–60 cells, the round's 20–40 in the
+> majority; p50 is 26.8 and p90 48.8).
+>
+> ⚠️ **But the downsample does not merely filter — it RESHAPES**, and that is why 4096² reads
+> **+176**, more than 8192²'s +110, while 82 % of the spurs are individually too short there. The
+> majority rule merges neighbouring inlets into single longer excursions. So the resolution curve
+> 0 / +176 / +110 / +1 is two effects (threshold and merging), and reporting it as one would be the
+> mistake Finding 44's note names.
+>
+> **And the criterion stays at the source, as the round said.** The reason LL will not show these is
+> that they are 1.3 km excursions at 49 m/cell; the reason they matter is that the acceptance leg is
+> written on the 8192² mask.
+
+### B — what `breach_monotone` does below sea level
+
+**B1 — it drowns land, and the depth is small except in the tail.**
+
+| humid, shipped, 2 passes | |
+|---|---|
+| cells `h ≤ sea`: eroded → breached | 55 786 896 → 55 797 271 (**+10 375**) |
+| **cells the breach DROWNS** (land → sea) | **10 375 = 24.74 km²** |
+| cells it raises out of the sea | **0** |
+| their depth below sea | p50 **0.44 m** · p90 **3.24 m** · max **11.91 m** |
+| where Finding 89-D's −8.67 m sits in that distribution | the **99.4th centile** |
+
+> **The carve is one-way: it drowns 10 375 cells and raises none**, which is what a trench-only
+> conditioning must do. **And −8.67 m is an extreme, not a typical value** — the median drowned cell
+> is **0.44 m** under water, i.e. **2.6 u16 steps**. Both predictions on the depth are refuted (mine
+> 1–4 m, the round's 2–6 m); the true answer is that half of it is under half a metre, which is why
+> it went unnoticed for ninety findings and why it still moves 117 kilometre-scale spurs.
+
+**B1b — and the enclosed below-sea basins are NOT a conditioning artefact.**
+
+| `wc == 2` (enclosed below sea) | eroded | breached | created by the breach |
+|---|---|---|---|
+| cells | **381 610** | 387 710 | **6 100 = 1.6 %** |
+
+> ⛔ **The round's hypothesis is refuted and it matters for the record**: it asked whether *"the
+> breach creates the interior below-sea basins, in which case a line goes at the claim point of
+> Findings 71–88 — the chain machinery was working on depressions a conditioning stage dug"*. It
+> creates **1.6 %** of them. **The other 98.4 % are already in the eroded field**, so Findings
+> 36–38 and 71–88 were working on real depressions and no such line is owed. My prediction (20–50 %)
+> is refuted too, in the same direction — we both over-estimated the conditioning.
+
+**B2 — no floor, and it is the fifth instance.** Answered from the code above: `is_base` stops the
+walk at a cell already below sea level and never bounds the target. Finding 14's text promises *"a
+monotone-descending path to the sea BY CONSTRUCTION"* and says nothing about how deep the trench may
+go. **The base-level invariant of Finding 83 is carried by the relaxation and by no downstream
+stage** — which is exactly what Finding 87-B's wrong attribution hid for two rounds.
+
+**B3 — three passes do not calm the breach; they treble it.**
+
+| | 2 passes | 3 passes |
+|---|---|---|
+| cells the breach drowns | 10 375 | **32 368 (+212 %)** |
+| cells it makes enclosed-below-sea | 6 100 | **15 657 (+157 %)** |
+
+> **Both predictions are refuted, mine flatly** (I said the count would FALL by more than 30 %; the
+> round said there would be no depression left to pierce there). Finding 89-D's observation — that
+> at three passes the 623 m lake's floor is no longer carved to −8.67 m — is true **of that cell**
+> and false **of the population**: the extra pass moves the hole and multiplies the carving
+> threefold. **A relaxation that lands harder leaves MORE depressions for the breach to trench, not
+> fewer** — which is the opposite of the reading Finding 89-D invited, and it is a warning for
+> block C.
+
+### C — Finding 44's item 2 at the shipped `k_time`, and the shipped field is OVER-eroded
+
+**Precondition met**: block A attributed the +115 to `breach_monotone`, so the milestones below
+report the coast criterion on **both** stages — the stage is where the criterion lives.
+
+**C0 — the configuration, read from the code.** ⚠️ `StreamPowerConfig::default()` is
+`k = 1, dt = 1, iterations = 4` — **not** the shipped relief; the first run of this block read it and
+its own assert caught it at `k_time = 4`. The delivered config is
+`relief_v3(cell_km2, depth_scale_m)`:
+
+| | |
+|---|---|
+| `k` / `dt` / `iterations` | **4 500 / 1 / 2** |
+| `k_time()` | **9 000** — the shipped constant, to the digit |
+| celerity at `A_max` = 1 611 km² | **180 618 m/yr** |
+| `dt_max_yr` | **2.703·10⁻⁴ yr** |
+| **`cfl_iterations`** | **7 399** |
+| **`courant`** | **3 699** |
+
+Finding 44's own table reproduced exactly. Both predictions ✓.
+
+**The experiment.** `Knobs::integrating(n)` sets `iterations = n` and `k = 9000 / n`, so `k_time`
+is held at 9 000 and **the integrated erosion budget is identical to the delivered field's**. Only
+the Courant number moves, by `2 / n`. Finding 44 proved `K` and the duration are not separately
+observable; holding `k_time` is the only way to move one dial alone. The implied duration is
+therefore **unchanged at every milestone, by construction** — 4.50·10⁵ yr (W&T), 1.20·10⁷ (Harel),
+3.59·10⁷–3.59·10⁸ (Stock & Montgomery).
+
+The authority for the coast column: pre-incision spurs ≥ 1 km on the u16 8192² mask — **20**
+unbreached (Finding 80's twenty) and **25** breached.
+
+**C1/C2 — the three milestones.** Humid bed, 8192², `k_time` held at 9 000 throughout.
+
+| | **2 passes (delivered)** | **10 passes** | **100 passes** |
+|---|---|---|---|
+| `k` | 4 500 | 900 | 90 |
+| **Courant** | **3 699** | **740** | **74** |
+| build | 0.1 s (cached) | 230.8 s | **2 505.8 s** |
+| coast ≥ 1 km, **ERODED** | 19 (**Δ −1**) | 18 (**Δ −2**) | 17 (**Δ −3**) |
+| coast ≥ 1 km, **BREACHED + u16** | 135 (**Δ +115**) | 106 (**Δ +86**) | **47 (Δ +27)** |
+| cells the breach drowns | 10 375 | 15 549 | **2 880** |
+| relief paired p10 / **p50** / p90 | 17.5 / **424.2** / 1 588.7 m | 40.6 / **503.4** / 1 588.9 | 50.9 / **505.2** / 1 512.7 |
+| vs the delivered p50, tolerance ±10 % | reference | **+18.7 % OUTSIDE** | **+19.1 % OUTSIDE** |
+| median per-cell cut | 69.5 m | 64.5 m | 73.0 m |
+| water bodies / area / **% of land** | 56 / 6 487 km² / **24.05 %** | 34 / 5 117 / **18.99 %** | 26 / 4 823 / **17.87 %** |
+| lake types | 51 Exo · 2 Endo · **3 Unresolved** | 30 Exo · 3 Endo · 1 Unresolved | **22 Exo · 4 Endo · 0 Unresolved** |
+| **CANYON CLASS** | **16 of 53** | **5 of 30** | **3 of 22** |
+| `to_nothing` | 1 | 1 | **0** |
+| end-of-chain relabels | 1 | 0 | 0 |
+| `wc == 2` cells | 387 710 | 390 838 | 385 569 |
+| implied duration | 4.50·10⁵ – 3.59·10⁸ yr | identical | identical |
+
+> ⛔ **THE SHIPPED FIELD IS OVER-ERODED BY ITS OWN NUMERICS, AND BOTH PREDICTIONS HAVE THE SIGN
+> WRONG.** I said the paired p50 would fall 20–35 %; the round said 15–25 %. It **RISES 19 %**, and
+> it rises at 10 passes and then stops. At a held `k_time` there is no extra time — only a
+> faithful integration of the same budget — and a faithful integration **removes less mass**. That
+> is Finding 44's *"at Courant ≫ 1 the implicit update is STABLE but not INTEGRATING"* read from the
+> other end: at Courant 3 699 the update drives each cell onto its receiver and overshoots into the
+> planation fixed point; at Courant 74 it integrates. **The delivered relief is 19 % lower than its
+> own erosion budget justifies.**
+>
+> **This does NOT refute Finding 61.** F61's statement is about `T → ∞` with no uplift term, and `T`
+> is held fixed here by construction. What the milestone says is narrower and more useful: **the
+> canyon class is NUMERICAL, not a consequence of missing uplift.** 16 → 5 → 3 while the erosion
+> budget never moves. So the round's outcome (ii) — *"canyons → 0 but relief outside ±10 % ⇒ uplift
+> is the next chantier"* — is **half right and needs its sign flipped**: the canyons are an
+> artefact of the step size, and uplift is needed only if one wants to *raise* `T`, not to fix them.
+>
+> **The coast criterion is on a trajectory to being met by integration alone: +115 → +86 → +27.**
+> On the ERODED stage it is already met at every milestone and gets cleaner (−1 → −2 → −3). The
+> breach's drowning collapses from 10 375 to **2 880** cells, which is *why* the spurs go: fewer
+> pits below sea level to trench toward. ⚠️ And the count is **not monotone** — 10 375 at 2 passes,
+> **15 549 at 10**, 2 880 at 100 — so Finding 90-B3's +212 % at three passes and this collapse are
+> the same curve read at two ends. **A little integration makes the breach worse; a lot makes it
+> nearly disappear.**
+>
+> **Two named open items close by themselves at 100 passes**: `to_nothing` goes **1 → 0** (Finding
+> 38's last orphan sliver, Finding 89-C3's 19.5 m³/s) and `Unresolved` goes **3 → 0**. Neither was
+> touched; both were symptoms of a terrain the incision had not finished draining.
+>
+> **And the lake fraction is NOT fixed by integration: 24.05 → 18.99 → 17.87 %**, still **18×** the
+> < 1 % criterion. Which is exactly what Finding 89-C1 predicted from the other side — four fifths
+> of it is the humid water balance (Finding 39: `net_evap = 0 ⇒ a_eq = ∞ ⇒ fills to sill`), and no
+> amount of faithful incision changes a balance the incision never reads (Finding 60).
+
+**C3 — the question C was written to decide, answered.**
+
+| the round's three outcomes | verdict |
+|---|---|
+| (i) canyons → 0 **and** relief inside ±10 % ⇒ uplift waits, the lever was numerical | **no** — relief is outside |
+| (ii) canyons → 0 **but** relief outside ±10 % ⇒ uplift is the next chantier | **the closest, with its sign reversed**: canyons 16 → 3 (81 % gone, not 0), relief **+19.1 %**, not −20 % |
+| (iii) canyons persist ⇒ the landing was not the cause | **no** — they fall by 81 % at a held budget |
+
+> **So: the lever WAS numerical, and it is not spent.** At Courant 74 — still 74× past the wave
+> bound — the canyon class is down 81 %, the coast defect down 76 %, two open items are closed, and
+> the relief is 19 % HIGHER than delivered. **The remaining 7 299 passes to Courant 1 are the
+> experiment that would say whether the criterion is met**, and block D of Finding 89 priced them at
+> **1.9 days**. What uplift is for is raising `T`; what this measured is that `T` is currently spent
+> badly.
+>
+> ⚠️ **Feasibility, stated rather than promised.** The three milestones cost **46 min** of wall
+> time. 1 000 passes is ~6.3 h and 7 399 is ~47 h — an offline batch, not a session. The milestones
+> reported here are the ones that exist; the round asked me to launch and report what the bench
+> writes, and 2 / 10 / 100 is what it wrote.
+
+### D — the quote for a floor in `breach_monotone`, and it is the wrong repair
+
+Nothing written, nothing gated, nothing promoted. The candidate is one clause inside
+`breach_monotone_protected`:
+
+```rust
+let mut target = (height.data[nb] - EPS).max(sea_level + eps_floor);   // Finding 83's 0.5 m
+```
+
+| | |
+|---|---|
+| cells the breach drowns | **10 375** (24.74 km²) |
+| ⚠️ of those, below the candidate floor | 10 375 = **100.0 % — a TAUTOLOGY**: every drowned cell is ≤ sea, hence below sea + 0.5 m. My instrument proved nothing on that line and says so. |
+| **distinct drowned trenches** | **169** · size in cells p50 **39** · p90 154 · max 372 |
+| their deepest point below sea | p50 **1.85 m** · p90 5.23 m · max **11.91 m** |
+| **trenches deeper than the floor, whose carve could NOT reach its target** | **152 = 89.9 %** |
+| the below-sea population it would move | **at most 1.6 %** (the breach makes 6 100 of 387 710 `wc == 2` cells) |
+| land cells the priority-flood calls pits, eroded field | **1 240 677 = 10.96 % of land** |
+
+> **The quote's verdict is that this repair trades a measured defect for an unmeasured one.** With
+> the floor, **152 of 169 trenches cannot reach their target**, so their pits fall through to the
+> FILL mop-up and become **flat ponds** — which is precisely the option Finding 13 put to the author
+> and the author rejected: *"the pit becomes a flat pond rather than a drained channel (the author
+> asked for carve)"*.
+>
+> ⛔ **And no existing guard would see it.** Finding 14's permanent non-ignored
+> `breach_leaves_no_interior_pit` and the `river_climbs` acceptance test both check
+> **monotonicity**, which the fill still guarantees. They would stay green while the terrain
+> silently gained 152 flat ponds. **A repair whose cost is invisible to every guard that covers the
+> function is not a repair, it is a trade.**
+>
+> **The alternative is block C and the numbers are on its side.** At 100 passes, at the same
+> erosion budget, the breach drowns **2 880** cells instead of 10 375 and the coast Δ falls to
+> **+27** — without touching `breach_monotone` at all. The round's own framing said it: *"or the
+> breach keeps its depth but a three-pass relaxation makes it unnecessary (B3) — in which case the
+> fix is block C, not D."* **B3 said no at three passes (+212 %) and C said yes at a hundred
+> (−72 %).** The fix is C.
+
+### Score
+
+Predictions written and dated **2026-09-17 before any measurement**. Reading declaration: non-blind
+on Findings 73–89 and on this round's prompt, which carries the author's predictions in the same
+message — no independence claimed. Blind on `breach_monotone`'s body and docstring, on Finding 14
+and Finding 38's text, and on every F90 figure.
+
+**Mine.** A0/A1 "the eroded reads +5 to +40" **✗** — it reads −1, i.e. the incision adds *nothing*;
+"the breached reads +100 to +130" **✓** (+110); "the stage carries most of it" **✓** · A0b
+"Δ(≥ 2 cells) on the breached is +900 to +1 200, and Finding 80's zero does not reproduce"
+**✓✓** (+1 014) · A2 "the relevel moves it by less than 30" **✓✓** (by 0) · **A3 "50–80 % are
+breach-drowned" ✗** (96.6 %) · A3 "carved depth p50 1–4 m" **✗** (0.44 m) · A4 "20–60 cells, p50
+≈ 30" **✓** (p50 26.8) · **B1 "the breach creates 20–50 % of the `wc == 2` cells" ✗** (1.6 %) ·
+B2 "no floor" **✓** · **B3 "the count falls by more than 30 % at three passes" ✗✗** (+212 %) ·
+C0 **✓✓** · **C3 "outcome (ii), paired p50 falls 20–35 %" ✗ on the sign** — it rises 19.1 % ·
+C1 "10 and 100 are feasible in-session, 1 000 and 7 399 are not" **✓**.
+
+**The round's.** A0/A1 "the eroded reads −5 to +10" **✓** (−1) · **"it is the stage, not a commit"
+✓✓** · **"the relevel→breach chain is the cause, A2 would confirm it at the F86 commit" ✗✗** — the
+relevel moves the number by zero; it is the **Finding 83 bound** that moved it, 1 816 → 135 ·
+"Δ(≥ 2 cells) on the breached is +40 to +200" **✗** (+1 014) · A3 "> 80 % breach-drowned" **✓**
+(96.6 %) · "carved depth p50 2–6 m" **✗** (0.44 m) · A4 "20–40 cells in the majority" **✓** ·
+**B1 "the breach creates more than half the `wc == 2` cells" ✗✗** (1.6 %) · B2 "no floor" **✓** ·
+B3 "no depression left to pierce there at three passes" **✗** (the population trebles) ·
+C0 **✓✓** · **C3 "outcome (ii), p50 falls 15–25 %" ✗ on the sign**.
+
+**Meta holds on both sides.** Seven of mine wrong. **The two that matter are B1 and C3**: I expected
+the conditioning to have manufactured the below-sea basins (it made 1.6 % of them) and I expected
+faithful integration to plane the continent (it raises it 19 %). Both times I assumed a stage was
+doing more than it does.
+
+### Standing
+
+**No production change, as the round required.** What the round established:
+
+1. **The +115 is `breach_monotone`, at 96.6 % of the population.** The incision adds **no** spur —
+   Δ(≥ 1 km) on the eroded field is −1 / 0 / −1 / 0 across four grids. Findings 76–83 were about a
+   stage that is now clean; the residue lives one stage downstream.
+2. **The Finding 83 bound is worth ×13.5 on this criterion** (1 816 → 135 spurs) and **the relevel
+   is worth exactly nothing** (135 → 135). The pre-F83 world reproduces Finding 80's +1 828 at
+   +1 791.
+3. **Finding 80's "−2" was a Δ of Δs**, between two delivered variants, not against pre-incision.
+   Both instruments are identical; the comparisons never were. And **Finding 89-C5's +115 contains
+   +5 of stage mismatch** — the authority was read unbreached against a breached delivered.
+4. **The enclosed below-sea basins are NOT a conditioning artefact: the breach makes 1.6 % of
+   them.** No line is owed at the claim point of Findings 71–88.
+5. **`breach_monotone` has no base-level floor, by construction**, and `is_base` stops the walk at a
+   cell already below sea without ever bounding the target. The Finding 83 invariant is carried by
+   the relaxation and by **no** downstream stage — fifth instance of "same invariant, two
+   functions", and the thing Finding 87-B's wrong attribution hid for two rounds.
+6. **The shipped field is over-eroded by its own numerics.** At a held `k_time`, integrating at
+   Courant 74 instead of 3 699 gives **+19.1 %** paired relief, **81 %** fewer canyon-class bodies
+   (16 → 3), **76 %** less coast defect (+115 → +27), and closes `to_nothing` (1 → 0) and
+   `Unresolved` (3 → 0) without touching either. **The canyon class is numerical.**
+7. **The lake fraction is not: 24.05 → 17.87 %**, still 18× the criterion, because it is a water
+   balance the incision never reads (Findings 39 and 60).
+8. **D is the wrong repair**: a floor in the breach stops 152 of 169 trenches, converting them to
+   flat ponds Finding 13 rejected, and **every guard covering the function stays green** while it
+   happens.
+
+**Named and not fixed.** The last 7 299 passes to Courant 1 (~47 h offline) — the experiment that
+would say whether the coast criterion is met by integration alone. The lake fraction, which needs
+the water balance and not the incision. Uplift, which is for raising `T` and not for the canyons.
+`FlatPerturbation`, still without an antecedent. And B1/B2 of Finding 89 are still **PROXY**.
+
+### À VALIDER VISUELLEMENT
+
+**A3 placed the 117**, so the crop the round asked for is worth rendering: the dense-LAW-ON crop of
+Finding 75, **ERODED against BREACHED**, same mask, with the added excursions marked.
+
+**The binary question, as the round posed it — do you see them, and is it the breach's lacework
+(narrow inland notches) or Finding 76's fur?** The numbers say **lacework**, and they say it three
+ways: the added spurs are **1.31 km** long at the median (p10 20.8 cells, just above the detector's
+20.5-cell floor); **96.6 %** of them have a cell within 4 cells that is LAND in the eroded field and
+SEA in the breached one; and the median such cell is **0.44 m** under water — **2.6 u16 steps**. A
+fur is a texture of the coastline; this is 169 trenches, p50 39 cells long, that reach the sea and
+flood.
+
+**Nothing for C this round.** The 1 000-pass milestone will come with its own mosaic when it exists;
+what exists now is 2 / 10 / 100, and the trend it draws is +115 → +86 → +27.
