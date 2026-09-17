@@ -417,7 +417,17 @@ Les vingt éperons du pré-incision sont la géométrie tectonique, pas des fran
 >    exorhéique-sans-exutoire **1 → 0** (humide), 0 → 0 (aride). ⚠️ **Item de contrat** : la
 >    variante est sérialisée dans `lakes.json` et a cassé **quatre** `match` exhaustifs, dont
 >    trois dans le viz — qui affichent désormais « ⚠ sans exutoire (F86) » en rouge.
-> 2. **Le relevel du F85, promu** — `ALGO_DRAINAGE` 6 → 7, `ALGO_HD_DRAINAGE` 8 → 9. Le point
+> 2. **Le relevel du F85, promu** — ⛔ **ET IL A EMBARQUÉ UNE RÉGRESSION (Finding 91)** :
+>    avec le relevel, **2 des 20 composantes sous-marines encloses du livré ne portent AUCUNE
+>    étiquette de plan d'eau** (13 corps) ; sans lui, **0** (17 corps). La fusion est par
+>    **réciprocité, pas par adjacence** : la classe s'inonde d'un seul fond vers une seule surface
+>    et marque `seen` sur toutes les régions qu'elle absorbe — une région au-dessus de cette surface
+>    n'est jamais traitée ni revendiquée. **34,8 m³/s de rivière et de déversoir terminent sur ces
+>    cellules**, et la plus grande des deux fait **14,89 km²**, plus que huit des treize corps
+>    restants. Les gardes du F86 vérifiaient le **champ** (inchangé — le relevel ne déplace aucune
+>    hauteur) et `exorheic_lakes_missing_outlet` (0) ; **aucun n'énumère l'invariant du F38 : toute
+>    composante `wc == 2` est couverte par un plan d'eau.** Fermé en 2024 pour 68 embouchures
+>    orphelines, jamais épinglé. — `ALGO_DRAINAGE` 6 → 7, `ALGO_HD_DRAINAGE` 8 → 9. Le point
 >    fixe converge (**8** et **11** passes contre la borne de 16) et épuiser la borne est
 >    désormais une assertion. **La non-convergence livrée est attribuée** : une **alternance de
 >    période 2** entre deux classes, d'amplitude constante **23,472 m³/s** (humide) et **4,149**

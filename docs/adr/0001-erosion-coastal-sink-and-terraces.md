@@ -11187,6 +11187,18 @@ change · the class it is on)`:
 
 ### B2 — the relevel is PROMOTED
 
+> ⛔ **AMENDED BY FINDING 91-B5 — THIS PROMOTION SHIPPED A REGRESSION ITS GUARDS COULD NOT SEE.**
+> With the relevel ON, **2 of the 20 enclosed below-sea (`wc == 2`) components of the delivered
+> field carry NO water-body tag at all** and there are **13** below-sea bodies; with it OFF, **0**
+> are untagged and there are **17**. The merge is by RECIPROCITY, not adjacency: the class floods
+> from one floor to one surface and marks `seen` on every region it absorbs, so a region whose cells
+> sit above that surface is never processed and never claimed. **34.8 m³/s of river and spillway
+> water terminates on those cells**, and the larger of the two is **14.89 km²** — bigger than eight
+> of the thirteen bodies that remain. The guards below assert the FIELD is unchanged (true — the
+> relevel moves no heights) and that `exorheic_lakes_missing_outlet` is 0 (true); **neither
+> enumerates Finding 38's invariant, that every `wc == 2` component is covered by some body.** That
+> invariant was closed in 2024 for 68 orphan mouths and was never pinned by a permanent guard.
+
 The stop rule holds: `exorheic-without-outlet` = **0** at both beds and at both gate positions once
 the H2 line runs. So `C1DrainageConfig::default()` now carries
 `merged_union_relevel: Some(..)`; `ALGO_DRAINAGE` **6 → 7**, `ALGO_HD_DRAINAGE` **8 → 9**; `None`
@@ -13054,3 +13066,209 @@ flood.
 
 **Nothing for C this round.** The 1 000-pass milestone will come with its own mosaic when it exists;
 what exists now is 2 / 10 / 100, and the trend it draws is +115 → +86 → +27.
+
+## Finding 91 — the untagged depression is the Finding 86 relevel dropping a region it absorbed
+
+Attribution only, no production change. Three of the round's candidates are settled from the code,
+my own fourth candidate is refuted by measurement, and the cause is a regression I shipped at
+Finding 86 — invisible to its own guards because they checked the FIELD and the exorheic invariant,
+not the set of tagged components.
+
+### Rule 11 + 11b
+
+`apply_bathymetry_profile` **5** (first L6974) · `shelf_min_depth` **8** (L6974) ·
+`lake_min_area_km2` **4** (L2336) · `water_class` **47** (L760) · `wc == 2` **14** (L1575) ·
+`evaporative` **19** (L838) · `below_sea_sink` **1** (L1187) · `assemble_hd_drainage` **5** (L5434).
+11b: `lake_min_area` **5** (L837) · `5.0` 31 · `-1 m` **1** (L289) / `−1 m` **0**.
+
+**Finding 79's own rule-11 read handed this round a fourth threshold**: *"the value greps found
+`lake_min_depth_m = 10.0` and `WETLAND_MAX_DEPTH_M = 3.0` — **two depth thresholds the clamp sits
+astride**"*. Checked in the code: `lake_min_depth_m` is **not a filter** —
+`lakes/detection.rs:59` says *"`min_depth` is now only the deep/shallow TYPE threshold"*, and it
+sets `shallow: max_depth < config.min_depth`. So it cannot untag anything. Recorded and eliminated.
+
+### B2 and B3 — two candidates answered by reading, before any measurement
+
+* **B2. The "sea" tag is a flood from the BORDER, so an interior basin can never get it — and that
+  is correct.** `lakes/connectivity.rs:36`: `water_class` seeds a BFS *"from every below-sea cell on
+  the four borders"*; class **1** is border-reachable (ocean), class **2** is enclosed. Both
+  predictions ✓. The defect is not that the orphan fails to be "sea"; it is that it fails to be
+  "lake" either.
+* **B3. The round's suspect is refuted on the ORDER.** `apply_bathymetry_profile` runs at
+  `production_upscale.rs:513`, inside `upscale_from_c1_with_progress`, right after
+  `incise_lithology` at :451 — i.e. **in the terrain build, two modules upstream of any drainage
+  code**. `hd_assembly` (and with it `detect_lakes`, `apply_lake_water_balance`,
+  `below_sea_basin_lakes_infil`) runs on the field the clamp has already produced. **The −1 m is an
+  INPUT to the classifier, never something applied after it**, so "clamped too late to become a
+  lake" cannot be the mechanism. My B3 prediction ✓.
+
+### A — the two basins at four stages, and there are TWO orphans, not one
+
+| | floor cell | TECTONIC (pre-bath) | ERODED (pre-bath) | ERODED+BATH (pipeline out) | BREACHED (delivered) | `water_class` at the four | detected / below-sea `lake_map` |
+|---|---|---|---|---|---|---|---|
+| **TAGGED** — the largest below-sea body, id **1000008**, 867.1 km², level 49.3 m, `Exorheic` | (2281, 4750) | **+0.75 m** | +0.32 | +0.32 | **−10.46** | 0 / 0 / 0 / **2** | 0 / **1000008** |
+| **UNTAGGED #0** — component 2, **6 245 cells = 14.89 km²**, local inflow **15.29 m³/s** | (3656, 3691) | **+0.16 m** | +0.16 | +0.16 | **−6.94** | 0 / 0 / 0 / **2** | 0 / **0** |
+| **UNTAGGED #1** — component 5, **1 cell**, local inflow 0.02 m³/s | (3203, 3586) | **−0.26 m** | −0.26 | **−1.00** | −1.00 | **2 / 2 / 2 / 2** | 0 / **0** |
+
+> **The three floors are within one metre of each other at the tectonic stage** (+0.75, +0.16,
+> −0.26), so the divergence is not inherited from the relief. **My A1 prediction (the orphan already
+> 50 m deeper) is refuted; the round's (comparable) holds.**
+>
+> **And the two orphans are different objects, which the round's single image conflated.**
+> Component 2 is a **14.89 km² region with 15.3 m³/s of real local inflow** whose floor the breach
+> deepened by 7.1 m (573 of its 6 245 cells — 9.2 % — are land in the pipeline output and sea only
+> after `breach_monotone`; the other 91 % were already below sea). Component 5 is **one cell**, and
+> it is the only one where the **clamp** did anything: −0.26 → **−1.00 m**, the `shelf_min_depth`
+> value of Finding 79. But it was **already `wc == 2` at every stage including the tectonic one**,
+> so the clamp deepened a hole that existed; it did not create the classification failure. It is
+> also Finding 89-C3's `to_nothing` cell, and the 19.5 m³/s spillway of basin 1000004 terminates on
+> it.
+
+### B1 and B4 — the area threshold is not it, and neither is my own candidate
+
+| | |
+|---|---|
+| `lake_min_area_km2` | **5.0** ⇒ **2 098 cells** at 8192² |
+| the largest untagged component | 6 245 cells = **297.7 % of the threshold** |
+| untagged components at or above the threshold | **1 of 2** |
+| ⚠️ and the below-sea path discards it anyway | `let _ = cfg.lake_min_area_km2; // (kept for the detected-lake path; below-sea uses the cell floor)` |
+
+> **B1 is eliminated twice over**: the big orphan is three times the threshold, and the function
+> that would have applied it doesn't. ⚠️ Its own docstring says it does — *"This finds those basins
+> (**≥ `lake_min_area`**)"* — which is a docstring that describes a filter the code deleted. Both
+> predictions ✓ on the verdict.
+
+**B4 — my own candidate, named before measuring, and refuted.** I predicted Finding 37 TASK 2's
+drop rule (`let is_dry = inflow <= 0.0; if is_dry { continue; }`, kept by Finding 38 as *"a region
+with NO supply is a DRY salt flat regardless of how deep its rim is: exclude on inflow alone"*).
+Measured, reading the inflow exactly as the below-sea path does (max runoff accumulation at the
+region's LAND 4-neighbours):
+
+| | |
+|---|---|
+| untagged components with local inflow **= 0** ⇒ dropped as dry | **0 of 2** |
+| their actual local inflow | **15.29** and **0.02 m³/s** |
+
+> **Neither is dry, so the drop rule never fired.** My B4 is refuted at 0 of 2, and the reasoning
+> behind it — that a pocket fed only by a chained spillway would read zero — was a plausible
+> mechanism for a defect that is not this one.
+
+### B5 — the cause, isolated by one variable: the Finding 86 relevel
+
+| one variable changed, everything else shipped | untagged `wc == 2` components | below-sea bodies |
+|---|---|---|
+| **shipped** (relevel ON, detected map `Some`) | **2** | **13** |
+| **relevel OFF** (`merged_union_relevel: None`) | **0** | **17** |
+| detected map `None` | 2 | 13 |
+
+> ⛔ **`MergedUnionRelevel` — the gate I promoted at Finding 86 — is what leaves the two components
+> untagged.** With it off, **all twenty** enclosed below-sea components carry a tag and there are
+> **17** bodies instead of 13. Four regions stop being separate bodies; two of them end up with no
+> water at all.
+>
+> **The mechanism, from the code.** The relevel makes a reciprocal pair ONE REGION for the next pass
+> via `class_of`, and the region loop then does `seen[c] = true` for every cell of every region in
+> the class:
+> ```rust
+> if class_of[r] == own_label && r as u32 != region_of[s] { ... if !seen[c as usize] { ... } }
+> ```
+> The merged body then floods from **one** floor to **one** surface (`surface = level.max(sea)`,
+> footprint = the bowl `fcells` up to that surface, *"claim only free cells"*). **A region of the
+> class whose cells sit above that surface is marked `seen` — so it is never processed on its own —
+> and is never claimed by the flood.** It falls out of the inventory entirely. And the merge is by
+> **reciprocity, not adjacency**, which is why component 2 *touches zero tagged bodies*: it was
+> absorbed by class, not by contact.
+>
+> ⚠️ **This is my regression, and it is worth saying why its guards missed it.** Finding 86's
+> promotion block asserted the **field** was identical (the relevel moves no heights — Finding 90-A2
+> measured the spur count moving by exactly 0 under this same knob) and that
+> **`exorheic_lakes_missing_outlet` → 0**. Neither guard enumerates *"every `wc == 2` component is
+> covered by some lake"*. **Finding 38 closed that invariant in 2024 for 68 orphan mouths, and no
+> permanent guard was left behind to hold it.** That is the second-order finding here: the
+> invariant existed, was closed, and was not pinned.
+
+### C — the count, and it is a boundary case with one big member
+
+| | |
+|---|---|
+| enclosed below-sea components in the delivered field | **20** |
+| carrying a lake tag | **18** |
+| **carrying none** | **2** |
+| inventoried below-sea bodies / detected surface lakes | **13** / **59** |
+| spillways terminating on an untagged component | **1**, carrying **19.5 m³/s** |
+| river mouths ≥ 1 m³/s terminating on one | **1**, carrying **15.3 m³/s** |
+
+> **Two of twenty, so it is a boundary case and not a whole missed class** — my C3 verdict holds,
+> the round's *"systematic for small-and-deep"* does not. My C1 (1–4) holds, the round's (3–8) does
+> not. **But the water involved is not marginal: 34.8 m³/s arrives at cells that carry no water
+> body**, and one of the two orphans is 14.89 km² — larger than eight of the thirteen inventoried
+> bodies.
+
+### D — "évaporatif" is a geometric default, and it is a viz label
+
+The condition, verbatim, `ymir-viz/src/ui/workspace.rs:3222`:
+
+```rust
+let mk = y as usize * w + x as usize;
+if !sea && wc.get(mk).copied() == Some(2) {
+    return (Sink::SubSeaSink, None);
+}
+```
+
+with `Sink::SubSeaSink` rendered *"→ puits sous-marin (évaporatif)"* (:3485).
+
+> **It never reads `net_evap`, never reads `a_eq`, and never reads `lake_type`.** It is posted
+> whenever a mouth's own cell is `water_class == 2` with no class-1 neighbour — i.e. **"enclosed
+> below sea and not an inventoried lake"**, which is precisely the orphan condition block C counts.
+> Both predictions ✓, including the second half of mine: **`Sink` is a viz-side enum, not a
+> `LakeType`**, so the export carries no "Evaporative" variant at all (the five are `Exorheic`,
+> `Endorheic`, `CraterAcidic`, `CraterNeutral`, `Unresolved`).
+>
+> **So the word is wrong twice.** In a humid bed `net_evap = 0 ⇒ a_eq = ∞` (Finding 39), so nothing
+> there evaporates; and the label is not a regime at all but the **absence of a tag**. The honest
+> rendering of this state is Finding 89's `to_nothing`: *a mouth on an enclosed below-sea cell that
+> no water body covers*. The viz's own docstring is careful about the geometry (*"Distinct from Sea:
+> tagging it '→ mer' would contradict water_class"*) and then the user-facing string asserts a
+> physical process the condition cannot see.
+
+### Score
+
+Predictions written and dated **2026-09-17 before any measurement**, with one figure declared
+non-blind (Finding 89-C3's cell, because it shaped B4).
+
+**Mine.** A1 "the orphan is already > 50 m deeper at the tectonic stage" **✗** (all three floors
+within 1 m) · A2 "they diverge at the tagging stage, not the bathymetry" **✓** · B1 "not the cause"
+**✓✓** (297.7 % of the threshold, and the path discards it) · B2 **✓** · **B3 "the round's suspect
+is refuted on the order" ✓** · **B4, my own named candidate: ✗ — 0 of 2 are dry** · C1 "1–4" **✓**
+(2) · C2 "1 river, 19.5 m³/s" **✓ then partial** (1 spillway at 19.5 AND 1 river at 15.3) ·
+C3 "a boundary case, not a missed class" **✓** · D1 **✓✓** (a default on `wc == 2`, and a viz enum
+rather than a `LakeType`).
+
+**The round's.** A "comparable altitudes before, divergence at the bathymetry" **✓ then ✗** — the
+clamp moved only the one-cell orphan, and moved it *before* the classifier · B1 "contributes"
+**✗** · B2 **✓** · **B3, its own 60 % suspect: ✗ on the order** · C "3–8, systematic for
+small-and-deep" **✗** (2, a boundary case) · D **✓✓**.
+
+**Meta holds on both sides. And neither of us named the cause**: the round suspected the clamp, I
+suspected the drop rule, and it is the **Finding 86 relevel** — which is to say the most recent
+thing either of us promoted. That is the lesson worth keeping: when a classification defect appears,
+the first suspect should be the last gate opened, not the oldest stage in the chain.
+
+### Standing
+
+**No production change, as the round required.** The remedy is next round's and it has two parts,
+both named here and neither written:
+
+1. **The relevel must claim every region of a class it absorbs**, or must not mark them `seen`.
+   Today a class floods from one floor to one surface and silently abandons the regions above it.
+2. **Finding 38's invariant needs a permanent guard**: *every `wc == 2` component is covered by some
+   water body*. It was closed once for 68 orphan mouths and never pinned; it is now broken again by
+   a gate whose own guards all passed.
+
+And separately, cheaply: **the "évaporatif" string is a geometric default and should say so** —
+it is the absence of a tag, not a regime.
+
+**Named and not fixed.** The 34.8 m³/s arriving on untagged cells. The docstring of
+`below_sea_basin_lakes_infil` that still advertises a `lake_min_area` filter the code removed. And
+Finding 90's open item, the 7 299 remaining passes to Courant 1 — at 100 passes both orphans already
+disappear along with `to_nothing`, which is consistent with this attribution and does not replace it.
