@@ -3889,6 +3889,22 @@ cost at least one wrong conclusion of mine.
 > BETTER on every one of them, because it genuinely is smoother — just wrongly smoother. Finding
 > 96's χ floor passed all of them and was refuted by **one look at one 1024² tile**. A texture
 > claim needs an image, or it is a claim about magnitude only.
+>
+> ⚠️ **AMENDED AT FINDING 97, which built the missing column and then found the image had been
+> misread too.** The rule is not "add an image": it is **an image from a CALIBRATED renderer, plus
+> a directional statistic with its scale fixed at both ends**, and when the two disagree, neither
+> wins by default — you find out which one is lying.
+>
+>  * the renderer: a **hillshade**, not an altitude ramp. Finding 96 read a u8 altitude ramp and
+>    attributed to its candidate a texture that belongs to the shipped product.
+>  * the statistic: **`R8 = |⟨e^{8iθ}⟩|`** on the structure-tensor orientation. **Not** the
+>    dossier's `axis R` (the 2nd harmonic, zero by symmetry on a 4-fold D8 pattern), **not** the
+>    coherence `C` (higher for the smooth un-incised field than for the delivered one), **not** the
+>    orientation entropy (0.996–0.999 for every real field measured). Finding 97 tried all four;
+>    one works.
+>  * both ends of the scale, every time: an isotropic synthetic **and** a striped one. Finding 97's
+>    best candidate came in BELOW the isotropic control, which is a statement that cannot be made
+>    without it.
 
 A1's first form did exactly that, and it scored beautifully: canyon class **0 of 29** (the
 oracle's own value), lake fraction **17.51 %** (closer to the oracle's 15.92 % than any other
@@ -14602,3 +14618,298 @@ result I had to withdraw entirely. The pattern of the round is not populations f
 a floor above the cell instead of below it (A1), a law applied below its own threshold (B1), and
 one label covering two stages of the same field (the coast column, float against u16). Rule 12
 covers the flow field and covers none of the three.
+
+## Finding 97 — the D8 comb is the DELIVERED field's, and Finding 96 read its own image backwards; every cheap closure buys its criterion with half the erosion
+
+An instrument round. **One seam added to production** (`slope_floor_uk`, additive, `None` by
+default, byte-identical), everything else in bench. The round's own stop rule is examined and
+NOT applied, for a reason given below.
+
+### Rule 11 + 11b — case-insensitive this time, and the case is what Finding 96 got wrong
+
+`structure tensor` **0 — NOTHING FOUND** · `anisotrop` **15** (L292) · `coherence` **8** (L2365,
+C-2's "threshold coherence", unrelated) · `cohérence` **1** (L1127) · `orientation` **6** (L451) ·
+`entrop` **2** (L5014) · `graded` **7** (L189, "graded trunks", unrelated) · `S_min` **5** (L4044) ·
+**`sea + S_min` 0 — NOTHING FOUND** · `Finding 52` 2 · `Finding 84` 20 · `Finding 76` 17 ·
+`Finding 41` 13 · `Finding 88` 17.
+
+**Three hits change the design of block A before a line of it is written.**
+
+- ⛔ **L292 — the dossier has ALREADY tried an anisotropy metric on striations, and it failed.**
+  *"The anisotropy knobs do NOT move the striation metric … either the visual striations are not
+  controlled by these knobs, or the ±8-cell asymmetry metric is too coarse to isolate them — an
+  honest gap."* A new instrument therefore gets negative controls at **both** ends of its scale,
+  not only the striped one the round asked for.
+- ⛔ **L5015 — the dossier already owns an isotropy statistic, `axis R`, with a calibrated
+  reference (0 = isotropic, target < 0.1), and Finding 76 measured its coast version at 0.000
+  un-incised against 0.879 shipped. It CANNOT see a D8 imprint.** `axis R` is the **second**
+  circular harmonic, and orientations spread over the four D8 axes {0°, 45°, 90°, 135°} give
+  `⟨e^{2iθ}⟩ = (1 + i − 1 − i)/4 = 0` — **zero by symmetry, not by isotropy**. The harmonic that
+  resonates with a 45° period is the **eighth**. This finding's instrument reports both, and the
+  gap between them is a result about the dossier's existing statistic, not only about mine.
+- **C-3b, "The orientation was BUILT, MEASURED, and dropped"** — rate anisotropy cannot re-route
+  drainage (`|flow·strike|` FELL 0.639 → 0.536 under a mean-preserving law, and closed depressions
+  rose 1001 → 2146); the lock is flow ROUTING, and a continent-wide grain would be *"an artefact as
+  visible as the Smith–Bretherton comb"*. The dossier's own benchmark for a visible directional
+  artefact is therefore the comb — which is exactly what block A ends up measuring.
+
+**Finding 76, read in full, answers the round's question about B2 directly.** *"Not run: B (the
+seam and its variants)"* — **the graded clamp was never rejected, it was never tested**: stop rule 1
+fired on the sea-level-flat mechanism first. Finding 76 also supplies three things this round uses:
+the fur is **periodic, parallel, non-channel, at a 14-cell (684 m) wavelength, ×3.75 the white
+baseline** — a rilling instability; `A_c = 41.94 cells` while the **coastline-wide median
+accumulation is 1 cell**, so most coastal cells never enter the implicit update at all; and the
+**rule-9 crop trap**, *"the same remedy reads −60 % or −8 % depending on which 31 km square you look
+at"*, which is why block A chooses its tile per field and prints the coordinates.
+
+**Finding 41, read in full, bounds what A1 may claim.** 16 tectonic pits → **90 682** after the FBM
+→ 75 060 after relief-v3; **every** erosion sub-process REDUCES the count (talus −30 k, diffusion
+−25 k, MFD −4.5 k) and none creates any; the maturity curve 78 464 / 75 060 / 64 936 / 53 379 /
+47 777 plateaus near **~45 k**, still ~3 000× the tectonic 16. And ⚠️ **the threshold-fill knob is
+described there and DELIBERATELY NOT TAKEN** — *"it MASKS the non-physical FBM noise instead of
+removing its cause"*. A1 is not that knob (it fills nothing and moves no cell), but the same
+question — mask or remove the cause — has been ruled on once by the author, and A1 inherits it.
+
+### A — the instrument, and its scale fixed at both ends before it judges anything
+
+Structure tensor `J = Σ∇h∇hᵀ` over **non-overlapping** windows (so the population is exactly "every
+fully-land window of side `w`", declarable and reproducible, and no 8192²-sized smoothing buffer is
+needed). `C = (λ₁−λ₂)/(λ₁+λ₂)`, `θ = ½·atan2(2J_xy, J_xx−J_yy)` mod π. Reported: `C` p50, the share
+above 0.7, the normalised entropy `H(θ)` over 36 bins, `R2 = |⟨e^{2iθ}⟩|` (the dossier's `axis R`)
+and **`R8 = |⟨e^{8iθ}⟩|`** (the D8-lattice harmonic).
+
+| w = 16, land-only | C p50 | C > 0.7 | H(θ) | R2 | **R8** |
+|---|---|---|---|---|---|
+| **SYNTH isotropic** (64 plane waves, random directions) | 0.767 | 59.9 % | 0.9971 | 0.061 | **0.0402** |
+| **SYNTH striped** (45°, 14-cell wavelength — Finding 76's own) | 0.988 | 100.0 % | 0.0505 | 0.969 | **0.9999** |
+| pre-incision | 0.981 | 94.9 % | 0.9989 | 0.052 | **0.0131** |
+| delivered | 0.790 | 62.4 % | 0.9963 | 0.029 | **0.0924** |
+| B3, the χ floor | 0.835 | 67.1 % | 0.9986 | 0.020 | **0.0617** |
+
+> **The instrument works**: 0.0402 on a provably isotropic field, 0.9999 on a striped one, and it
+> separates the delivered field from the un-incised one by **×7**. ⚠️ **But `C` and `H(θ)` are
+> useless here** — `C` is *higher* for the smooth un-incised field than for the delivered one
+> (0.981 against 0.790), because at small windows every smooth field is locally coherent, and
+> `H(θ)` never leaves 0.996–0.999. **`R8` is the only discriminator, and my prediction that the
+> tail of `C` and `H(θ)` would carry the signal is wrong on both.**
+>
+> ⛔ **And `R8` says B3 moves the WRONG WAY: 0.0924 → 0.0617.** The χ field is LESS D8-aligned than
+> the delivered field, not more.
+
+### A3 — the three checks the stop rule demanded before it could be honoured
+
+**A3a — on the tile the eye was actually shown at Finding 96, (5120, 3072):**
+
+| R8 | w = 4 | w = 8 | w = 16 |
+|---|---|---|---|
+| **delivered** | **0.0710** | **0.0990** | **0.1382** |
+| **B3 χ floor** | **0.0079** | 0.0313 | 0.0779 |
+| pre-incision | 0.0020 | 0.0071 | 0.0324 |
+
+> ⛔ **On the very tile I called striped, B3 is 2 to 9× LESS D8-aligned than the delivered field,
+> and the ordering is pre-incision (0.002) < B3 (0.008) < delivered (0.071).** The axis-aligned
+> texture on that tile belongs to the **delivered product**, and it is Finding 76's comb. **The χ
+> floor reduces it by a factor 9 at the 4-cell scale.**
+
+**A3b — the IMPRINT, `B3 − delivered`, i.e. what the floor actually did:**
+R8 **0.2205 / 0.2232 / 0.1871** at w = 8/16/32 (C-weighted up to **0.2789**), against the delivered
+field's 0.092 and the isotropic synthetic's 0.040.
+
+> **So the floor's ACTION is D8-structured — the path integral really does carry the lattice — but
+> its EFFECT is to reduce the terrain's net anisotropy, because what it fills in is a stronger
+> pre-existing D8 structure.** Both statements are true and they are not in tension; Finding 96
+> asserted the first and inferred the second, which does not follow.
+
+**A3c — directional semivariogram** on the same tile, four axial directions, lags 1…24. Anisotropy
+ratio (max/mean): delivered **1.13–1.18** · B3 **1.11–1.18** · **IMPRINT 1.16–1.28 and rising with
+lag**. The imprint is the most directional of the three; B3 is not more directional than the
+delivered field. A second instrument, a different question, the same answer.
+
+**The render, with a calibrated renderer.** ⚠️ I raised the hypothesis that Finding 96's image was
+**u8 quantisation banding** (`save_png_u8` over 1 m…3 250 m = 13.8 m per grey level). **It is
+wrong and the measurement says so**: the tile spans 1…3 831 m, all **237 of 237** available codes
+are used, and a ramp stretched to the tile's own p1..p99 is not finer (16.3 m/code). A **hillshade**
+of the same tile — which reads the slope and cannot band on altitude at all — shows the delivered
+field **saturated with strictly vertical and horizontal striations**, and B2's the same structure
+**softened**. **The image and the R8 column now agree, and they agree against Finding 96.**
+
+> ⛔ **FINDING 96'S VISUAL ATTRIBUTION IS WITHDRAWN AT ITS CLAIM POINT.** I wrote *"χ is a D8 path
+> integral, so clamping to it prints the D8 axes into the relief"*. The clamping does not print
+> them: **they were already there, in the shipped product, and χ removes most of them.** What I saw
+> was the incision's own comb (Finding 76) made legible because the floor had removed the dendritic
+> texture that masked it. The correct statement is the narrower one A3b measures: **the floor's
+> action is anisotropic; the field it produces is less anisotropic than the one it corrects.**
+
+**The stop rule, examined and not applied.** The round says: *if A2 does not separate B3 from the
+delivered field, the instrument is false and the round stops*. It does not separate them **upward**
+— but the instrument demonstrably sees D8 structure: 0.9999 on a striped synthetic, 0.0402 on an
+isotropic one, and a **×35 separation between the delivered and the un-incised field on the disputed
+tile** (0.0710 against 0.0020). The rule's purpose — *"we do not measure closures with an instrument
+that cannot see the defect we are looking for"* — is satisfied. **What fails is the premise about
+which field carries the defect.** The round continues, and this is recorded as a judgement call.
+
+⚠️ **One design error of mine, corrected.** `worst_tile` selected by **maximum R8**, which finds the
+tile that is anisotropic in *every* field (2048, 6144 for three candidates of five) and is therefore
+blind to the difference. **To compare candidates the selection must be max Δ(R8).** That is why
+block A2's per-tile reading separated nothing, and it is the second time in two rounds that a
+reduction, not an instrument, was the defect.
+
+### B — two isotropic candidates, one per defect
+
+- **B1, the area cap** `h_r_eff = max(h_r, min(h_pre − c·A^q, h_o))`. **No production change at
+  all**: a pure function of the pre-incision surface and the pre-incision accumulation, passed
+  through the `incision_floor` seam Finding 96 opened. `c` and `q` from Finding 88-D2 —
+  **c = 308.9 m** at A = 1 km², 151.6 m at 0.01 km² ⇒ **q = 0.1546**, allowing **121.5 m** of cut at
+  one cell and **898.5 m** at 1 000 km². ⚠️ Population declared: those medians are over ONE bowl's
+  footprint (234 724 cells, humid, shipped), so this is an order-of-magnitude reading of how the cut
+  scales, which is all Finding 88-D2 claims for it.
+- **B2, the local equilibrium-slope floor** `h_r_eff = min(h_r + S_eq(A)·dx, h_o)`,
+  `S_eq = (U/K)^{1/n}·A^{−m/n}`, `m/n = 0.5`, applied only at or above `A_c`. The differential form
+  of χ: **nothing accumulates, so nothing can inherit the path's quantisation.** ⚠️ This one needs a
+  seam (`slope_floor_uk`), because it is relative to the receiver at run time. Calibration
+  **declared**: `k_s = median over the DELIVERED channel cells of S·√A = 0.0451` (n = 153 859,
+  stride 7) — the delivered field's own Flint intercept, so the floor imports no relief target from
+  outside. For comparison Finding 96's χ used 0.0719.
+- **A1 + B2** — the two defects' owners together, on disjoint populations.
+
+### C — the table, with the column that was missing
+
+| candidate | canyon class (rate) | `to_nothing` | lakes % | paired p50 | vs oracle | **erosion permitted** | **R8** (w16) | cost |
+|---|---|---|---|---|---|---|---|---|
+| **delivered** | 16/54 (**29.6 %**) | 0 | 24.70 | 424.2 m | −13.1 % | 100 % (ref.) | 0.0924 | (see ⚠️) |
+| **B1** area cap | **0/37 (0.0 %)** | 0 | 22.09 | 571.5 m | +17.1 % | ⛔ **43.7 %** | 0.1048 | 68.2 s |
+| **A1** exclusion | 7/32 (21.9 %) | 0 | 22.67 | **447.6 m** | **−8.3 %** | **88.4 %** | 0.0870 | 66.4 s |
+| **B2** slope floor | 10/38 (26.3 %) | 0 | **18.90** | 537.6 m | +10.1 % | ⛔ 59.0 % | **0.0367** | 67.7 s |
+| **A1 + B2** | **1/29 (3.4 %)** | 0 | 19.21 | 552.4 m | +13.2 % | ⛔ 51.2 % | **0.0304** | 67.4 s |
+| **ORACLE** (F95, 300 passes) | 0/24 (0.0 %) | 0 | 15.92 | 488.1 m | — | **above 100 %** | n/a | 6 210 s |
+
+Coast, spurs ≥ 1 km, **breached + u16** (Δ against the authority's 20): delivered **+115** ·
+B1 **+58** · A1 **+104** · **B2 +3** · **A1+B2 +3** · oracle at 300 passes +29.
+
+> ⛔ **B2 RECOVERS χ's COAST EXACTLY: Δ +3, with no accumulated quantity anywhere.** My structural
+> prediction of this round — *"χ's coastal power comes from ACCUMULATION, not from the local law;
+> B2 will land at +70 to +110"* — **is refuted.** The local differential constraint integrates
+> itself along the ordered descent, which is the branch of my own fork I judged least likely.
+>
+> ⛔ **And B2's field is the most isotropic thing measured in this finding: R8 = 0.0367**, below the
+> delivered field's 0.0924 and below the **provably isotropic synthetic's 0.0402**. A1+B2 reaches
+> **0.0304**. The anisotropy column, built this round against a scale fixed at both ends, clears
+> both local candidates.
+>
+> ⛔ **But RULE 14 FIRES ON ITS FIRST USE, and it is the finding.** B1 reaches the oracle's canyon
+> class **exactly** — 0 of 37, 0.0 % — **by removing 56 % of the erosion**. That is the failure mode
+> rule 14 was written for at Finding 96, recurring one round later on a different parameter.
+> Against the round's gate (erosion permitted > 70 %), **only A1 passes, at 88.4 %** — and A1
+> closes neither defect. Every candidate that closes one pays for it: B2 **−41 %**, A1+B2 **−49 %**,
+> B1 **−56 %**.
+>
+> ⛔ **So, at this `k_time`, the defects and the erosion are the same quantity.** No bound on the
+> incision is strong enough to close the coast or the canyons without removing about half the cut.
+> **And the oracle does the opposite**: Finding 95 measured its median cut RISING (69.5 → 88.3 m),
+> so its erosion permitted is **above** 100 % — it removes the defects by **redistributing** the
+> same budget over more passes, not by withholding it. ⚠️ The "100 %" written for the oracle in the
+> round's own table is a placeholder and is corrected here.
+>
+> **What that points at, stated as a direction and not a result:** the only measured route that
+> removes the defects while keeping the erosion is integration at held `k_time` (Finding 44 item 2,
+> Finding 95), priced at 6 399 further passes. A closure that **redistributes** rather than
+> withholds is a transport-limited deposition term — which Finding 96's block A3 ruled out of
+> domain on the dossier's own numbers (L4129: it must be posed in a regime where the model
+> integrates, and the shipped configuration runs at Courant 3 699). **Those two facts together are
+> the wall this chantier is now against, and they should be stated as such rather than worked
+> around again.**
+
+⚠️ **The cost column of this run is CONTAMINATED and must not be quoted as a marginal cost.** The
+delivered reference built in **116.5 s** here against 45.5 s at Finding 96, because it ran first and
+in contention with a compile. The four candidates all land within **1.8 s of each other**
+(66.4–68.2 s), so their costs are equal to each other within noise; the marginal cost against the
+delivered field is **not readable from this run**. Finding 96's own measurements stand: +2.2 s for
+the χ floor, +7.2 s for A1.
+
+### À VALIDER VISUELLEMENT — done, and it is what settled the round
+
+`f97_render` (`#[ignore]`d) rebuilds the four fields and writes three renders of tile
+(5120, 3072) each to `docs/reports/c1_continental_buoyancy/f97_render/`: Finding 96's own global u8
+ramp reproduced as a control, the same stretched to the tile's own range, and a **hillshade**. The
+hillshade is the one that matters and it is now the dossier's reference render for texture
+questions: it reads the slope, so no altitude quantisation can band it.
+
+**What the author should look at, in one pair:** `delivered_hillshade.png` against
+`b2_hillshade.png`. The delivered tile is crossed by strictly vertical and horizontal straight
+striations over roughly a quarter of its area; B2's carries the same structure, softened. **The
+striations are the shipped product's.** ⚠️ **And that is the first image in this dossier of the
+Finding 76 comb on the terrain** — Finding 76 measured it on the coastline and gave it a wavelength;
+nobody had looked at it inland.
+
+**Still owed, and now overdue by six rounds**: a real coastline raster (asked at Findings 76, 80,
+83, 89, 90, 96). Every coastal number in this finding, including B2's Δ +3, is a spur COUNT on a
+`marching_squares` contour of a u16 mask.
+
+### Score
+
+Predictions written and dated **2026-09-18, before the rule-11 grep and any measurement**. Reading
+declaration as recorded: non-blind on Findings 73–96 and on this round's prompt (the author's
+predictions arrived in the same message, in a `<details>` block not opened); blind on Finding 76's
+and Finding 41's text, on Finding 88-D2's numbers beyond the two quoted, on whether `incise`
+relaxes in stack order in place, and on every figure.
+
+**Mine.**
+
+- **A2a "the median C separates weakly; the TAIL and H(θ) carry the signal" ✗✗ on all three.**
+  The median does not separate (0.790 → 0.835, and the *un-incised* field is highest at 0.981);
+  the tail does not separate; H(θ) never leaves 0.996–0.999. **`R8` alone discriminates**, and I
+  predicted a drop of 0.07 in H(θ) that is 0.002.
+- **A2b "a global statistic cannot see a localised defect; report per tile; this is the outcome I
+  consider most likely" ✓ on the diagnosis, ✓✓ on the consequence** — the per-tile reading is
+  exactly what overturned the round, and my warning that the stop rule needed a caveat written in
+  advance is what let me not stop on it.
+- **A2c "the instrument has an axis-bias floor above zero; an isotropic synthetic is needed and
+  the round lists only the striped one" ✓✓** — 0.0402 at w=16, and **B2 comes in BELOW it**, which
+  could not have been said at all without that control.
+- **B1 "it will NOT touch the canyons, against the round's 8–11, because A is largest exactly
+  where the canyons are" ✗✗ — it takes them to ZERO (0/37).** My mechanism reasoning was right
+  about the sign of the floor and wrong about what dominates: the cap binds on the *trunks*, and
+  the canyon class is a lake statistic that the trunk cut drives. · B1 "erosion permitted 80–95 %"
+  **✗ (43.7 %)** · "isotropic" **✓** (0.1048, delivered 0.0924).
+- **B2 — the fork was the right structure and I picked the wrong branch.** I wrote: *"if `incise`
+  relaxes in stack order in place, Δ breached +3 to +20; if not, +70 to +110"*, and called the
+  second the likely one. **It is +3.** · "canyons unchanged" **✓** (29.6 → 26.3 %) · "erosion
+  permitted > 85 %" **✗ (59.0 %)** · "anisotropy above the delivered and well below B3" **✗ —
+  BELOW the delivered, and below an isotropic synthetic.**
+- ⛔ **My structural claim of the round — "χ's coastal power comes from ACCUMULATION, not the local
+  law; any isotropic replacement must carry an accumulated quantity" — is REFUTED.** The local law
+  alone gives the same +3. That was the one claim I put forward as the round's real prediction.
+- "A1 + B2 additive on disjoint populations" **✓ on the coast** (+3, B2's) **and ✓ on the canyons**
+  (3.4 %, better than A1's 21.9 % alone) — they compose, where Finding 96's A1+B3 did not.
+- "the coast column and the anisotropy column will move TOGETHER" **✓✓, and it is the round's
+  cleanest confirmation**: B2 and A1+B2 have both the best coast (+3) and the lowest R8
+  (0.037, 0.030); B1 has the worst of the two coasts (+58) and the highest R8 (0.105).
+- **The u8-banding hypothesis I raised mid-round: ✗, refuted by its own measurement** (237/237
+  codes used, the local ramp no finer). Raised, tested, dropped in the same round.
+
+**The round's.**
+
+- A2 "B3 separates from the delivered at > 5σ on w=16; C median 0.3 → 0.6; H(θ) 0.9 → 0.6" **✗✗✗**
+  — no separation upward at all, C 0.790 → 0.835, H(θ) 0.996 → 0.999.
+- **A2's stop rule "if B3 does not separate, the instrument is false" — the premise is what
+  failed, not the instrument.** Examined and not applied, with the reasoning recorded.
+- B1 "canyons 16 → 8–11, erosion permitted 85 %, isotropic, ~3 s" — **canyons ✗✗ (0)**, erosion
+  **✗ (43.7 %)**, isotropic **✓**.
+- B2 "Δ breached +10 to +25, worse than B3 because the local form is weaker than the integral"
+  **✗ — it EQUALS the integral at +3** · "canyons unchanged" **✓** · "erosion permitted > 90 %"
+  **✗ (59.0 %)** · "isotropic" **✓✓**.
+- **"A1 + B2 is the first candidate that passes the whole table" ✗** — it passes the coast, the
+  canyons (3.4 %), the isotropy and the cost, and **fails rule 14 at 51.2 %** and ±10 % at +13.2 %.
+  The author's fourth bottom-line prediction in a row, and the author's own meta ("at least one of
+  the four is wrong") holds for the fourth time.
+- **"the graded clamp may already have been rejected by Finding 76" — it was not**: *"Not run: B
+  (the seam and its variants)"*. Untested territory, correctly identified as worth testing.
+
+**Meta.** My worst miss is the structural one, and it is instructive rather than embarrassing: I
+reasoned that a bound comparing a cell only to its receiver cannot hold a profile up, and forgot
+that the solver visits receivers before donors, which turns a local constraint into an integrated
+one for free. **The dossier has the same lesson written at Finding 76 in the opposite direction** —
+*"a correct reading of one code path is not a measurement of the population that traverses it"* —
+and here it is a correct reading of one code line that is not a measurement of the loop that runs
+it. Two rounds running, my error class is **the order in which the code visits things**, not
+populations.

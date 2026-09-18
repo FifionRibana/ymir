@@ -1153,3 +1153,87 @@ h_o` puisque `filled ≥ h`). Seules deux grandeurs non-critères l'ont dénonc�
 et un p50 égal à celui du champ non incisé. **Le dossier avait déjà enregistré ce mode d'échec une
 fois, en production** (`a_c_slope_law` : `A_c × 100` *« retire le peigne — et éteint l'incision avec
 lui »*). Un mode d'échec qui revient sur deux paramètres différents est une règle, pas une anecdote.
+
+## ⛔ LE PEIGNE D8 EST CELUI DU PRODUIT LIVRÉ — ET TOUTE CLOSURE BON MARCHÉ PAIE SON CRITÈRE AVEC LA MOITIÉ DE L'ÉROSION (Finding 97)
+
+Tour d'instrument. **Une couture ajoutée en production** (`slope_floor_uk`, additive, `None` par
+défaut, byte-identique, épinglée par le test d'inertie — règle 13). Le reste en banc.
+
+**L'instrument**, neuf au dossier (`structure tensor` : 0 occurrence) : tenseur de structure sur
+fenêtres disjointes, et surtout **R8 = |⟨e^{8iθ}⟩|**, la huitième harmonique circulaire de
+l'orientation. ⛔ **La statistique d'isotropie que le dossier possède déjà, `axis R` (F84), est la
+DEUXIÈME harmonique — elle est aveugle par symétrie à un motif D8 à quatre axes** : {0°, 45°, 90°,
+135°} donne ⟨e^{2iθ}⟩ = 0, zéro par symétrie et non par isotropie. Échelle fixée aux deux bouts
+avant tout jugement : **0,0402** sur un synthétique prouvé isotrope, **0,9999** sur un rayé à 45° et
+14 cellules — la longueur d'onde même que le F76 a mesurée pour la fourrure.
+
+| R8, tuile (5120, 3072) — celle que l'œil avait vue au F96 | w=4 | w=8 | w=16 |
+|---|---|---|---|
+| **livré** | **0,0710** | **0,0990** | **0,1382** |
+| **B3, le plancher χ** | **0,0079** | 0,0313 | 0,0779 |
+| pré-incision | 0,0020 | 0,0071 | 0,0324 |
+
+> ⛔ **L'ATTRIBUTION VISUELLE DU F96 EST RETIRÉE.** J'avais écrit *« χ imprime les axes D8 dans le
+> relief »*. Sur la tuile même, **B3 est 9× MOINS aligné que le livré**, et l'ordre est
+> pré-incision (0,002) < B3 (0,008) < **livré (0,071)**. Les striations appartiennent au **produit
+> livré** : c'est **le peigne du F76** — périodique, parallèle, non-chenal, 14 cellules — et le
+> plancher χ en **retire** la majeure partie. Ce que l'œil avait vu, c'était l'artefact préexistant
+> rendu lisible parce que le plancher avait enlevé la texture dendritique qui le masquait.
+>
+> Ce qui reste vrai est plus étroit, et la mesure le donne : **l'IMPRINT** (B3 − livré) a R8 =
+> **0,22**, contre 0,092 pour le livré. **L'action du plancher est anisotrope ; le champ qu'elle
+> produit l'est moins que celui qu'elle corrige.** Le F96 affirmait la première et en déduisait la
+> seconde, ce qui ne suit pas.
+>
+> ⚠️ **Et l'hypothèse de repli que j'avais posée — des bandes de quantification u8 — est fausse
+> aussi** : la tuile couvre 1–3 831 m, les **237 codes sur 237** sont utilisés, une rampe locale
+> n'est pas plus fine. C'est un **hillshade** qui a tranché, et il montre le champ livré saturé de
+> striations strictement verticales et horizontales. **Première image du peigne du F76 sur le
+> terrain** — le F76 l'avait mesuré sur le trait de côte et lui avait donné une longueur d'onde ;
+> personne n'était allé le regarder à l'intérieur des terres.
+
+**La table, avec la colonne qui manquait, et la règle 14 qui mord à son premier emploi :**
+
+| | livré | **B1** plafond d'aire | **A1** exclusion | **B2** pente locale | **A1+B2** | ORACLE 300 p. |
+|---|---|---|---|---|---|---|
+| classe canyon (taux) | 29,6 % | **0,0 %** | 21,9 % | 26,3 % | **3,4 %** | 0,0 % |
+| **côte brèchée + u16** | **+115** | +58 | +104 | **+3** | **+3** | +29 |
+| relief apparié vs oracle | −13,1 % | +17,1 % | **−8,3 %** | +10,1 % | +13,2 % | — |
+| **érosion permise (règle 14)** | 100 % | ⛔ **43,7 %** | **88,4 %** | ⛔ 59,0 % | ⛔ 51,2 % | **> 100 %** |
+| **R8 (w16)** | 0,0924 | 0,1048 | 0,0870 | **0,0367** | **0,0304** | n/a |
+| fraction de lacs | 24,70 % | 22,09 | 22,67 | **18,90** | 19,21 | 15,92 |
+
+> ⛔ **B2 récupère exactement la côte de χ — Δ +3 — sans aucune grandeur accumulée.** La contrainte
+> différentielle s'intègre d'elle-même le long de la descente ordonnée (le solveur visite les
+> récepteurs avant les donneurs). **Et B2 est le champ le plus isotrope mesuré, R8 = 0,0367, sous
+> le livré ET sous le synthétique prouvé isotrope.** Le clamp gradé n'avait jamais été testé : le
+> F76 dit *« Not run: B (the seam and its variants) »*, sa règle d'arrêt 1 avait tiré avant.
+>
+> ⛔ **B1 atteint la classe canyon de l'oracle — 0 sur 37, exactement 0 % — en supprimant 56 % de
+> l'érosion.** C'est le mode d'échec pour lequel la règle 14 a été écrite au F96, revenu un tour
+> plus tard sur un autre paramètre. Contre le seuil du tour (> 70 %), **seul A1 passe (88,4 %)**, et
+> A1 ne ferme aucun des deux défauts.
+>
+> ⛔ **DONC, à ce `k_time`, les défauts ET l'érosion sont la même grandeur.** Aucune borne sur
+> l'incision n'est assez forte pour fermer la côte ou les canyons sans retirer la moitié de la
+> coupe. **L'oracle fait l'inverse** : le F95 mesure sa coupe médiane qui MONTE (69,5 → 88,3 m), donc
+> son « érosion permise » est **au-dessus** de 100 % — il retire les défauts en **redistribuant** le
+> même budget sur plus de passes, pas en le retenant.
+>
+> ⇒ **Le mur, nommé.** La seule route mesurée qui retire les défauts *sans* retirer l'érosion est
+> l'intégration à `k_time` tenu (F44 item 2, F95), à 6 399 passes. Une closure qui **redistribue**
+> au lieu de retenir serait un terme de dépôt transport-limited — que le F96-A3 a écarté sur les
+> chiffres du dossier (L4129 : il doit être posé dans un régime où le modèle intègre, et la
+> configuration livrée tourne à Courant 3 699). **Ces deux faits ensemble sont le mur contre lequel
+> ce chantier se trouve maintenant, et il vaut mieux le dire que le contourner une fois de plus.**
+
+⚠️ **La colonne coût de ce run est contaminée** (le livré y prend 116,5 s contre 45,5 s au F96 :
+construit en premier, en contention avec une compilation). Les quatre candidats tiennent en **1,8 s
+les uns des autres**, donc ils sont équivalents entre eux ; le marginal contre le livré n'est pas
+lisible ici. Les mesures du F96 tiennent : +2,2 s pour le plancher χ, +7,2 s pour A1.
+
+**Règle 14b amendée** : une revendication de texture demande **un rendu CALIBRÉ (hillshade, pas une
+rampe d'altitude) ET une statistique directionnelle étalonnée aux deux bouts** — et quand les deux
+divergent, aucune ne gagne d'office, on cherche laquelle ment. Le F97 a essayé quatre statistiques ;
+**une seule marche** : ni `axis R` (aveugle par symétrie), ni la cohérence C (plus haute pour le
+champ lisse non incisé que pour le livré), ni l'entropie d'orientation (0,996–0,999 partout).

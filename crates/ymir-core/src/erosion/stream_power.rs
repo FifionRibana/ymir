@@ -203,6 +203,23 @@ pub struct StreamPowerConfig {
     /// integrating 6 399 more passes (ADR Finding 95).
     #[serde(default)]
     pub depression_floor: bool,
+    /// ADR Finding 97 B2 -- **the local equilibrium-slope floor**: the Flint intercept
+    /// `(U/K)^(1/n) = k_s`, with `A` in km2. `None` (default, and every production path) is
+    /// byte-identical.
+    ///
+    /// The DIFFERENTIAL form of ADR Finding 96's chi floor. Instead of an absolute height built
+    /// by integrating `(A0/A)^(m/n)` down a D8 chain -- which printed the D8 axes into the
+    /// terrain -- this bounds each STEP: `h_r_eff = min(h_r + S_eq(A)·dx, h_o)` with
+    /// `S_eq(A) = (U/K)^(1/n)·A^(-m/n)`. Nothing accumulates, so nothing can inherit the
+    /// quantisation of the path. ADR Finding 97's prediction is that nothing accumulating is also
+    /// the price: a bound that only compares a cell to its immediate receiver cannot stop a whole
+    /// profile from sliding down together.
+    ///
+    /// Applies only where the incision applies, i.e. at or above the channel head
+    /// [`RELIEF_V1_A_C_KM2`]: below it the fluvial law is outside its calibrated domain, which is
+    /// the error ADR Finding 96's B1 made and its B1' corrected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slope_floor_uk: Option<f32>,
     /// **Incision threshold `θ`** — `E = K·max(0, A^m·S^n − θ)`: no incision below a
     /// critical stream power, so low-energy cells (again, headwaters) do not carve.
     /// `0` (default) = no threshold (legacy).
@@ -325,6 +342,7 @@ impl StreamPowerConfig {
             a_c_slope_law: None, // ADR Finding 56 — opt-in; None keeps the constant
             base_level_floor: None, // ADR Finding 80 -- opt-in; None keeps the legacy planing
             depression_floor: false, // ADR Finding 96 A1 -- opt-in; false is byte-identical
+            slope_floor_uk: None, // ADR Finding 97 B2 -- opt-in; None is byte-identical
             threshold: 0.0,
             cell_km,
             depth_scale_m,
@@ -469,6 +487,7 @@ impl Default for StreamPowerConfig {
             a_c_slope_law: None,     // ADR Finding 56 — opt-in
             base_level_floor: None,  // ADR Finding 80 -- opt-in; None keeps the legacy planing
             depression_floor: false, // ADR Finding 96 A1 -- opt-in; false is byte-identical
+            slope_floor_uk: None,    // ADR Finding 97 B2 -- opt-in; None is byte-identical
             k: 1.0,
             m: 0.5,
             n: 1.0,
@@ -667,6 +686,15 @@ pub fn incise_with_floor(
                 hr = hr.max(f[k].min(ho));
             }
             let dist_m = dist[k] * cell_m;
+            // ADR Finding 97 B2 -- the local equilibrium-slope floor. Placed AFTER `dist_m`
+            // because it needs the link length, and a diagonal link is 1.41x longer -- the one
+            // axis-dependent term this closure carries. `min(ho)` as everywhere at this seam: it
+            // can stop the incision, it cannot deposit.
+            if let Some(uk) = cfg.slope_floor_uk {
+                let a_km2 = (area * cell_km2).max(RELIEF_V1_A_C_KM2);
+                let s_eq = uk / a_km2.sqrt(); // m/m, at m/n = 0.5
+                hr = hr.max((hr + s_eq * dist_m / norm_to_m).min(ho));
+            }
             // The local gradient, computed BEFORE the channel-head gate because the gate can
             // depend on it. Same quantity the stream-power law uses below, so the two cannot
             // disagree about what the slope is.
@@ -1359,7 +1387,7 @@ mod tests {
     /// this test fails before the terrain does -- and every number the dossier quotes for the
     /// delivered field was measured through this path.
     #[test]
-    fn the_two_finding_96_seams_are_inert_when_off() {
+    fn the_finding_96_and_97_seams_are_inert_when_off() {
         // The SAME synthetic field `timescale_naming_changes_no_output` uses: a tilted plane with
         // a groove every 7th column. Reused deliberately -- my first attempt at this test built a
         // radial cone instead, and the cone does not incise at all at the shipped config, so the
@@ -1376,6 +1404,15 @@ mod tests {
         let f = GridF32 { width: w, height: h, data: d };
         let cfg = StreamPowerConfig::relief_v3(0.0381, 5000.0);
         assert!(!cfg.depression_floor, "the shipped config must arrive with A1's gate OFF");
+        assert!(cfg.slope_floor_uk.is_none(), "and with Finding 97 B2's gate OFF");
+
+        // ADR Finding 97 -- the third gate, same claim, same proof. A slope floor of ZERO adds
+        // `0·dx` to every target, so it must be byte-identical too; that is the negative control
+        // for the gate itself (a gate that did nothing when ON would make this test vacuous).
+        let zero_floor =
+            incise(&f, &StreamPowerConfig { slope_floor_uk: Some(0.0), ..cfg.clone() });
+        let real_floor =
+            incise(&f, &StreamPowerConfig { slope_floor_uk: Some(0.05), ..cfg.clone() });
 
         let reference = incise(&f, &cfg);
         let through_the_new_entry_point = incise_with_floor(&f, &cfg, None, None, &mut |_, _| {});
@@ -1398,6 +1435,15 @@ mod tests {
         //     `h_o` is the CURRENT one, so at iteration 2 a cell the diffusion lifted above its
         //     original height can be incised back DOWN to the floor. That is correct behaviour
         //     for a bound on total incision, and it is not "no incision".
+        assert_eq!(
+            reference.data, zero_floor.data,
+            "Finding 97: a slope floor of 0 must be byte-identical -- otherwise the gate itself              changes the result and the inertness claim is about the wrong thing"
+        );
+        assert_ne!(
+            reference.data, real_floor.data,
+            "Finding 97: and a NON-zero slope floor must change the field, or the gate is dead              and the byte-identity above proves nothing"
+        );
+
         let cut_of = |floor: Option<&[f32]>| -> f32 {
             let g = incise_with_floor(&f, &cfg, None, floor, &mut |_, _| {});
             (0..w * h).map(|k| f.data[k] - g.data[k]).sum()

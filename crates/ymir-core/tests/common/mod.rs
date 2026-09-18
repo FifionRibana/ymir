@@ -114,6 +114,9 @@ pub struct Knobs {
     /// `None` = the SHIPPED `RELIEF_V3_BASE_LEVEL_M` (0.5 m). Since Finding 83 the bound
     /// is production, so `None` no longer means "no bound" -- use `base_level_off`.
     pub base_level_m: Option<f32>,
+    /// ADR Finding 97 B2 -- `StreamPowerConfig::slope_floor_uk`: the local equilibrium-slope
+    /// floor, `h_r_eff = min(h_r + S_eq(A)·dx, h_o)`. `None` = shipped.
+    pub slope_floor_uk: Option<f32>,
     /// ADR Finding 96 A1 -- `StreamPowerConfig::depression_floor`: the incision may not cut a
     /// cell below the SPILL LEVEL of the depression it sits in. `false` = shipped.
     pub depression_floor: bool,
@@ -304,6 +307,7 @@ pub fn build_field_with_floor(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>)
             sp.talus_passes = t;
         }
         sp.depression_floor = k.depression_floor; // ADR Finding 96 A1
+        sp.slope_floor_uk = k.slope_floor_uk; // ADR Finding 97 B2
         // ADR Finding 83 -- `relief_v3` now ARRIVES bounded, so the knobs edit what is
         // there rather than installing it. `base_level_off` wins over the others.
         if k.base_level_off {
@@ -1024,4 +1028,410 @@ pub fn random_koch_polygon(w: usize, side: f64, generations: usize, seed: u64) -
         pts = next;
     }
     pts
+}
+
+// ══ ADR Finding 95's criteria chain, and ADR Finding 97's anisotropy reader ══
+//
+// Finding 96 copied the criteria chain verbatim out of `f95_long_run.rs:159-310` and recorded
+// that it WAS a copy. Finding 97 needs the same instrument, so it moves here and both benches
+// read the same code. `f95_long_run` itself is NOT refactored to call it — that bench costs 5 h
+// and must not be touched to serve a later round — so this is still a copy of it, and any drift
+// is a defect of THIS file.
+use std::collections::{HashMap, HashSet};
+use ymir_core::climate::c1_climate_placed;
+use ymir_core::climate::precipitation::PrecipParams;
+use ymir_core::lakes::connectivity::water_class;
+use ymir_core::tectonics_c1::drainage::{
+    C1DrainageConfig, DrainageClimate, LakeType, SegmentKind, SegmentRow, apply_lake_water_balance,
+    below_sea_basin_lakes_infil, c1_drainage_windowed, clip_rivers_to_lakes,
+    resolve_exorheic_without_outlet, runoff_accumulation, runoff_km2_to_m3s,
+};
+use ymir_core::tectonics_c1::production_upscale::c1_altitude_norm_to_metres;
+use ymir_core::terrain::flow::{D8_DX, D8_DY};
+
+const CELL_M: f32 = 400_000.0 / 8192.0;
+
+fn median(v: &[f32]) -> f32 {
+    pct(&sorted(v.to_vec()), 0.50)
+}
+
+/// Max-of-8 slope in degrees, in metres. Shared by the Finding 96 and 97 benches.
+pub fn slope_deg(f: &GridF32, k: usize, n2m: f32, w: usize, h: usize) -> f32 {
+    let (x, y) = ((k % w) as i32, (k / w) as i32);
+    let mut best = 0.0f32;
+    for d in 0..8 {
+        let nx = (x + D8_DX[d]).rem_euclid(w as i32) as usize;
+        let ny = (y + D8_DY[d]).rem_euclid(h as i32) as usize;
+        let diag = D8_DX[d] != 0 && D8_DY[d] != 0;
+        let dist: f32 = if diag { CELL_M * std::f32::consts::SQRT_2 } else { CELL_M };
+        best = best.max((f.data[k] - f.data[ny * w + nx]).abs() * n2m / dist);
+    }
+    best.atan().to_degrees()
+}
+
+/// One reading of the instrument over one population of windows.
+#[derive(Clone, Default)]
+pub struct Aniso {
+    pub windows: usize,
+    pub c_p50: f32,
+    pub c_p90: f32,
+    pub share_hi: f32,
+    /// normalised Shannon entropy of the orientation histogram, 36 bins, 1.0 = uniform
+    pub h_theta: f32,
+    /// |<e^{2iθ}>| -- the dossier's own `axis R` (Finding 84): ONE preferred axis
+    pub r2: f32,
+    /// |<e^{8iθ}>| -- the D8-lattice harmonic: four axes 45° apart
+    pub r8: f32,
+    /// r8 weighted by coherence, so incoherent windows cannot vote on orientation
+    pub r8_w: f32,
+}
+
+/// Structure tensor over NON-OVERLAPPING `win`-sized windows: the population is then exactly
+/// "every fully-land window of side `win`", which is declarable and reproducible, and it needs no
+/// 8192²-sized smoothing buffer.
+///
+/// `J = Σ ∇h ∇hᵀ` over the window; `C = (λ₁−λ₂)/(λ₁+λ₂) = d / mean` with
+/// `d = √(((Jxx−Jyy)/2)² + Jxy²)`; `θ = ½·atan2(2Jxy, Jxx−Jyy)` is the dominant gradient
+/// orientation, defined mod π (axial data).
+pub fn aniso(f: &GridF32, land: &[bool], win: usize) -> Aniso {
+    let (w, h) = (f.width, f.height);
+    let nb = 36usize;
+    let mut cs: Vec<f32> = Vec::new();
+    let mut hist = vec![0f64; nb];
+    let (mut s2r, mut s2i, mut s8r, mut s8i) = (0f64, 0f64, 0f64, 0f64);
+    let (mut s8rw, mut s8iw, mut wsum) = (0f64, 0f64, 0f64);
+    for by in (0..h.saturating_sub(win)).step_by(win) {
+        'win: for bx in (0..w.saturating_sub(win)).step_by(win) {
+            let (mut jxx, mut jyy, mut jxy) = (0f64, 0f64, 0f64);
+            for y in by..by + win {
+                for x in bx..bx + win {
+                    // a window touching water is dropped entirely: the coastline's own step is
+                    // not a terrain orientation, and Finding 76 measured the coast separately
+                    if !land[y * w + x] {
+                        continue 'win;
+                    }
+                    let (gx, gy) = f.gradient_at(x, y);
+                    jxx += (gx * gx) as f64;
+                    jyy += (gy * gy) as f64;
+                    jxy += (gx * gy) as f64;
+                }
+            }
+            let mean = 0.5 * (jxx + jyy);
+            if mean <= 1e-20 {
+                continue;
+            }
+            let d = (0.25 * (jxx - jyy) * (jxx - jyy) + jxy * jxy).sqrt();
+            let c = (d / mean) as f32;
+            let theta = 0.5 * (2.0 * jxy).atan2(jxx - jyy); // (-π/2, π/2]
+            let t = if theta < 0.0 { theta + std::f64::consts::PI } else { theta };
+            cs.push(c);
+            hist[((t / std::f64::consts::PI * nb as f64) as usize).min(nb - 1)] += 1.0;
+            s2r += (2.0 * t).cos();
+            s2i += (2.0 * t).sin();
+            s8r += (8.0 * t).cos();
+            s8i += (8.0 * t).sin();
+            s8rw += c as f64 * (8.0 * t).cos();
+            s8iw += c as f64 * (8.0 * t).sin();
+            wsum += c as f64;
+        }
+    }
+    let n = cs.len().max(1) as f64;
+    let tot: f64 = hist.iter().sum::<f64>().max(1.0);
+    let hh: f64 = hist
+        .iter()
+        .filter(|&&v| v > 0.0)
+        .map(|&v| {
+            let p = v / tot;
+            -p * p.ln()
+        })
+        .sum();
+    let s = sorted(cs.clone());
+    Aniso {
+        windows: cs.len(),
+        c_p50: pct(&s, 0.50),
+        c_p90: pct(&s, 0.90),
+        share_hi: 100.0 * cs.iter().filter(|&&c| c > 0.7).count() as f32 / cs.len().max(1) as f32,
+        h_theta: (hh / (nb as f64).ln()) as f32,
+        r2: ((s2r / n).hypot(s2i / n)) as f32,
+        r8: ((s8r / n).hypot(s8i / n)) as f32,
+        r8_w: ((s8rw / wsum.max(1e-9)).hypot(s8iw / wsum.max(1e-9))) as f32,
+    }
+}
+
+/// The worst 1024² tile by `r8` at window 16 -- Finding 76's rule-9 crop trap says a fixed crop
+/// flatters whichever candidate it was not chosen on, so the tile is chosen PER FIELD and its
+/// coordinates are printed.
+pub fn worst_tile(f: &GridF32, land: &[bool]) -> (usize, usize, Aniso) {
+    let (w, h) = (f.width, f.height);
+    let mut best = (0usize, 0usize, Aniso::default());
+    for by in (0..h).step_by(1024) {
+        for bx in (0..w).step_by(1024) {
+            let mut sub = GridF32::new(1024, 1024, 0.0);
+            let mut sl = vec![false; 1024 * 1024];
+            for y in 0..1024 {
+                for x in 0..1024 {
+                    sub.data[y * 1024 + x] = f.data[(by + y) * w + bx + x];
+                    sl[y * 1024 + x] = land[(by + y) * w + bx + x];
+                }
+            }
+            let a = aniso(&sub, &sl, 16);
+            if a.windows >= 64 && a.r8 > best.2.r8 {
+                best = (bx, by, a);
+            }
+        }
+    }
+    best
+}
+
+/// A `side`-sized tile at a FIXED corner, with its land mask.
+pub fn tile(f: &GridF32, land: &[bool], bx: usize, by: usize, side: usize) -> (GridF32, Vec<bool>) {
+    let w = f.width;
+    let mut g = GridF32::new(side, side, 0.0);
+    let mut l = vec![false; side * side];
+    for y in 0..side {
+        for x in 0..side {
+            g.data[y * side + x] = f.data[(by + y) * w + bx + x];
+            l[y * side + x] = land[(by + y) * w + bx + x];
+        }
+    }
+    (g, l)
+}
+
+/// **Directional semivariogram**, the A3 instrument: `gamma(lag, dir) = mean((h(x+lag·d) − h(x))²)/2`
+/// along the four axial D8 directions. Stripes with a wavelength show up twice over — as an
+/// ANISOTROPY RATIO between the four directions, and as a "hole effect" (a dip in gamma at the
+/// wavelength). Reported normalised by the omnidirectional gamma at the same lag, so the terrain's
+/// own relief scale divides out.
+pub fn variogram(
+    f: &GridF32,
+    land: &[bool],
+    n2m: f32,
+    lags: &[usize],
+) -> Vec<(usize, [f32; 4], f32)> {
+    let (w, h) = (f.width, f.height);
+    let dirs: [(i32, i32); 4] = [(1, 0), (1, 1), (0, 1), (-1, 1)];
+    let mut out = Vec::new();
+    for &lag in lags {
+        let mut g = [0f64; 4];
+        for (di, &(dx, dy)) in dirs.iter().enumerate() {
+            let (mut s, mut c) = (0f64, 0usize);
+            for y in (0..h).step_by(3) {
+                for x in (0..w).step_by(3) {
+                    let (nx, ny) = (x as i32 + dx * lag as i32, y as i32 + dy * lag as i32);
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        continue;
+                    }
+                    let (a, b) = (y * w + x, ny as usize * w + nx as usize);
+                    if !land[a] || !land[b] {
+                        continue;
+                    }
+                    let d = ((f.data[b] - f.data[a]) * n2m) as f64;
+                    s += d * d;
+                    c += 1;
+                }
+            }
+            // the diagonals span 1.41x the distance: normalise to distance so the four are
+            // comparable, otherwise the diagonals read rougher for a trivial reason
+            let scale = if dx != 0 && dy != 0 { 2.0f64 } else { 1.0 };
+            g[di] = 0.5 * s / (c.max(1) as f64) / scale;
+        }
+        let mean = g.iter().sum::<f64>() / 4.0;
+        let ratio =
+            if mean > 0.0 { (g.iter().cloned().fold(0.0, f64::max) / mean) as f32 } else { 0.0 };
+        out.push((lag, [g[0] as f32, g[1] as f32, g[2] as f32, g[3] as f32], ratio));
+    }
+    out
+}
+
+/// Finding 95's criteria chain, **copied VERBATIM** from `f95_long_run.rs:159-310` (commit
+/// `751e0bf`) so table C reads the SAME instruments as the oracle row. Deliberately NOT
+/// refactored into a shared helper: `f95_long_run` costs 5 h and must not be touched to serve
+/// this round. If the two ever drift, this is a COPY and the drift is a defect of this bench.
+///
+/// `f` = the eroded field before the breach - `bf` = its breach - `pre` = the pre-incision
+/// reference the cut is measured against.
+#[allow(clippy::too_many_arguments)]
+pub fn f95_criteria(
+    f: &GridF32,
+    bf: &GridF32,
+    pre: &GridF32,
+    ref_p50: f32,
+    ss: &SteinSteinParams,
+    on: &C1DrainageConfig,
+    cell_km2: f32,
+    n2m: f32,
+    w: usize,
+    h: usize,
+) -> Crit {
+    let n = w * h;
+    let m = |g: &GridF32, k: usize| c1_altitude_norm_to_metres(g.data[k], ss);
+    // ── paired relief against the DELIVERED reference ──
+    let com: Vec<usize> = (0..n).filter(|&k| f.data[k] > SEA && pre.data[k] > SEA).collect();
+    let dd = sorted(com.iter().map(|&k| m(&f, k)).collect::<Vec<f32>>());
+    let cut: Vec<f32> = com.iter().map(|&k| m(&pre, k) - m(&f, k)).collect();
+    let p50 = pct(&dd, 0.50);
+    eprintln!(
+        "   RELIEF paired (n = {}): p10/p50/p90 **{:.1} / {:.1} / {:.1} m** · median cut \
+         {:.1} m · **{:+.1} % against the delivered {ref_p50:.1} m ⇒ {}**",
+        com.len(),
+        pct(&dd, 0.10),
+        p50,
+        pct(&dd, 0.90),
+        median(&cut),
+        100.0 * (p50 - ref_p50) / ref_p50,
+        if (100.0 * (p50 - ref_p50) / ref_p50).abs() <= 10.0 {
+            "INSIDE ±10 %"
+        } else {
+            "**OUTSIDE ±10 %**"
+        }
+    );
+
+    // ── the lake inventory: fraction, canyon class, integration ──
+    let climate = c1_climate_placed(&bf, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+    let dclim = DrainageClimate {
+        precip_internal: &climate.precipitation,
+        temperature: &climate.temperature,
+    };
+    let pre_d = c1_drainage_windowed(&f, None, &on, &ss, DOMAIN_KM);
+    let mut dr = c1_drainage_windowed(&bf, Some(&dclim), &on, &ss, DOMAIN_KM);
+    dr.lakes = pre_d.lakes;
+    dr.lake_map = pre_d.lake_map;
+    let li = std::mem::take(&mut dr.lakes);
+    dr.lakes = apply_lake_water_balance(
+        &bf,
+        &dr.flow,
+        &dclim,
+        cell_km2,
+        &ss,
+        &li,
+        &mut dr.lake_map,
+        None,
+        w,
+        h,
+    );
+    let racc = runoff_accumulation(&bf, &dr.flow, &dclim, cell_km2, None, None, w, h);
+    let pm = dr.lake_map.clone();
+    let bs = below_sea_basin_lakes_infil(&bf, &dclim, &on, &ss, DOMAIN_KM, Some(&pm), None);
+    let mut d_before: HashMap<u32, usize> = HashMap::new();
+    for &id in &dr.lake_map {
+        if id != 0 && id < 1_000_001 {
+            *d_before.entry(id).or_default() += 1;
+        }
+    }
+    let mut d_after: HashMap<u32, usize> = HashMap::new();
+    for k in 0..n {
+        if bs.lake_map[k] != 0 {
+            dr.lake_map[k] = bs.lake_map[k];
+        } else if dr.lake_map[k] != 0 && dr.lake_map[k] < 1_000_001 {
+            *d_after.entry(dr.lake_map[k]).or_default() += 1;
+        }
+    }
+    let absorbed: HashSet<u32> =
+        d_before.keys().copied().filter(|id| d_after.get(id).copied().unwrap_or(0) == 0).collect();
+    dr.lakes.retain(|l| l.base.id >= 1_000_001 || !absorbed.contains(&l.base.id));
+    dr.lakes.extend(bs.lakes.iter().cloned());
+    clip_rivers_to_lakes(&mut dr);
+    let inv: HashSet<u32> = dr.lakes.iter().map(|l| l.base.id).collect();
+    for sw in &bs.spillways {
+        let (lx, ly) = *sw.points.last().unwrap_or(&(0, 0));
+        dr.push_segment(SegmentRow {
+            segment: ymir_core::terrain::flow::RiverSegment {
+                points: sw.points.clone(),
+                strahler_order: 1,
+                avg_flow: 0.0,
+                max_flow: 0.0,
+                basin_id: 0,
+                upstream: vec![],
+                downstream: None,
+            },
+            drainage_km2: sw.drainage_km2,
+            navigability: sw.navigability,
+            discharge_m3s: sw.discharge_m3s,
+            width_m: sw.width_m,
+            profile_m: sw.profile_m.clone(),
+            catchment_cells: {
+                let kk = ly as usize * w + lx as usize;
+                dr.flow.accumulation.data.get(kk).copied().unwrap_or(0.0)
+            },
+            discharge_profile_m3s: vec![sw.discharge_m3s; sw.points.len()],
+            kind: SegmentKind::Spillway,
+            source_lake: inv.contains(&sw.lake_id).then_some(sw.lake_id),
+        });
+    }
+    let relab = resolve_exorheic_without_outlet(&mut dr);
+
+    let land_km2 = (0..n).filter(|&k| bf.data[k] > SEA).count() as f32 * cell_km2;
+    let water_cells = (0..n).filter(|&k| dr.lake_map[k] != 0).count();
+    let water_km2 = water_cells as f32 * cell_km2;
+    let mut klass = 0usize;
+    let mut scanned = 0usize;
+    let mut ty: HashMap<String, usize> = HashMap::new();
+    for l in &dr.lakes {
+        *ty.entry(format!("{:?}", l.lake_type)).or_default() += 1;
+    }
+    for l in dr.lakes.iter().filter(|l| l.area_km2 >= 1.0) {
+        let cells: Vec<usize> = (0..n).filter(|&k| dr.lake_map[k] == l.base.id).collect();
+        if cells.is_empty() {
+            continue;
+        }
+        scanned += 1;
+        let cuts: Vec<f32> = cells.iter().map(|&k| m(&pre, k) - m(&bf, k)).collect();
+        let inside: HashSet<usize> = cells.iter().copied().collect();
+        let mut ring: HashSet<usize> = HashSet::new();
+        for &k in &cells {
+            for d in 0..8 {
+                let nx = ((k % w) as i32 + D8_DX[d]).rem_euclid(w as i32) as usize;
+                let ny = ((k / w) as i32 + D8_DY[d]).rem_euclid(h as i32) as usize;
+                let nk = ny * w + nx;
+                if !inside.contains(&nk) {
+                    ring.insert(nk);
+                }
+            }
+        }
+        let rim: Vec<f32> = ring.iter().map(|&k| slope_deg(&bf, k, n2m, w, h)).collect();
+        if median(&cuts) > 50.0 && !rim.is_empty() && median(&rim) > 30.0 {
+            klass += 1;
+        }
+    }
+    let q_unres: f64 = dr
+        .lakes
+        .iter()
+        .filter(|l| l.lake_type == LakeType::Unresolved)
+        .map(|l| {
+            let c: Vec<usize> = (0..n).filter(|&k| dr.lake_map[k] == l.base.id).collect();
+            runoff_km2_to_m3s(c.iter().map(|&k| racc[k]).fold(0.0f32, f32::max)) as f64
+        })
+        .sum();
+    let wc = water_class(&bf, SEA);
+    eprintln!(
+        "   LAKES: **{} bodies · {water_km2:.0} km² = {:.2} % of {land_km2:.0} km² of \
+         land** · {:?} · CANYON CLASS **{klass} of {scanned}** · relabels {} · \
+         `to_nothing` {} · Unresolved inflow {q_unres:.1} m³/s · wc==2 cells {}",
+        dr.lakes.len(),
+        100.0 * water_km2 / land_km2,
+        ty,
+        relab.len(),
+        bs.termination.to_nothing,
+        (0..n).filter(|&k| wc[k] == 2).count()
+    );
+    Crit {
+        p50,
+        klass,
+        scanned,
+        to_nothing: bs.termination.to_nothing,
+        lake_pct: 100.0 * water_km2 / land_km2,
+        unresolved: dr.lakes.iter().filter(|l| l.lake_type == LakeType::Unresolved).count(),
+        q_unres,
+    }
+}
+
+/// Finding 95's criteria, as one row of table C.
+pub struct Crit {
+    pub p50: f32,
+    pub klass: usize,
+    pub scanned: usize,
+    pub to_nothing: usize,
+    pub lake_pct: f32,
+    pub unresolved: usize,
+    pub q_unres: f64,
 }
