@@ -12508,6 +12508,7 @@ The incision stage alone is **44.2 s for two passes ⇒ 22.1 s/pass**, and the m
 | 100 passes | **0.63 h** |
 | 1 000 passes | **6.3 h** |
 | **Finding 44's derived 7 399 passes** | **46.5 h = 1.9 days** |
+| ⛔ **AMENDED BY FINDING 95** | the loop runs at **0.99 of 24 cores** — measured, sustained. The 7 399 passes are **≈ 42 h of ONE core** and **adding cores does not help**: the per-pass cost is dominated by sequential stages (`compute_flow`'s priority flood is a binary heap, the D8 accumulation an ordered descent). "An overnight batch" is right, on one core. |
 
 > **Both predictions are wrong, and in the same direction.** I said one pass costs 20–40 % of the
 > total and that the ROUTING dominates; the round said a thousand passes lands in days. Measured:
@@ -12946,6 +12947,11 @@ unbreached (Finding 80's twenty) and **25** breached.
 | (ii) canyons → 0 **but** relief outside ±10 % ⇒ uplift is the next chantier | **the closest, with its sign reversed**: canyons 16 → 3 (81 % gone, not 0), relief **+19.1 %**, not −20 % |
 | (iii) canyons persist ⇒ the landing was not the cause | **no** — they fall by 81 % at a held budget |
 
+> ⛔ **FINDING 95 CARRIES THIS TO 1 000 PASSES.** The canyon class reaches **0** at 300 and holds;
+> Δ(≥ 1 km) on the ERODED stage reaches **exactly 0**; `to_nothing` and `Unresolved` both reach 0.
+> But the relief **peaks near Courant 74 and then falls**: +18.7 → +19.1 → **+15.1** → **+10.2 %**,
+> so the plateau this block reads at 100 passes is a maximum, not a limit.
+>
 > **So: the lever WAS numerical, and it is not spent.** At Courant 74 — still 74× past the wave
 > bound — the canyon class is down 81 %, the coast defect down 76 %, two open items are closed, and
 > the relief is 19 % HIGHER than delivered. **The remaining 7 299 passes to Courant 1 are the
@@ -13601,6 +13607,14 @@ Finding 89-B3, this).
 > 2611 → 2612, each 3–4 points, each `downstream` pointing at the next. **The link is not cut in the
 > data.**
 >
+> ⛔ **AMENDED BY FINDING 94-B — THIS IS THE WRONG OBJECT.** #381 is **root 7266**, a
+> `SegmentKind::Spillway`: **115 211 km² signified against the screenshot's 115 181 (0.03 %)**,
+> **1 095 m³/s exact**, **0.7 km**, trunk of ONE reach, mouth **(3203, 3586)** — Finding 89-C3's
+> `to_nothing` cell. It is basin 1000004's spillway, appended with `upstream: vec![]`, so its trunk
+> is one reach by construction. Reach 2612 below is 1.2 % off on the catchment and is a
+> `Watercourse`; the mechanism named for it (Finding 42's inheritance plus the signification) is
+> right about REACHES and is not what #381 is.
+>
 > ⛔ **And the screenshot's numbers are these numbers, signified.** With `geo_scale_ratio = 7.5`,
 > areas carry ×56.25: reach 2612's **2 022 km² → 113 762 km²**, its **19.2 m³/s → 1 081 m³/s**, its
 > **0.15 km → 1.10 km**. Against the panel's *"1 095 m³/s, 115 181 km², longueur 1 km"* that is
@@ -13731,3 +13745,370 @@ the entry reads 1 km the panel is either not using it or is reporting the select
 length. Core cannot answer that, and the round forbade a fix, so it is recorded as the one thing to
 look at next — with the count beside it: **1 701 post-clip reaches of ≤ 4 points**, all of them
 legitimate, most of them links in a chain.
+
+## Finding 94 — the panel is coherent by design; the trunk cannot climb, and #381 is a spillway
+
+A viz audit, no production change and no viz change. **Blocks A, B and D are measured; block C — the
+remedy — awaits the author's choice and is not written.** The round's framing ("a local length beside
+an integrated catchment") is refuted: only one field is integrated, and the defect is upstream of
+the panel, in the links the clip does not rebuild.
+
+### Rule 11 + 11b
+
+`microscope` **23** (L1066) · `panel` **27** · `inspect` **18** · **`RiverEntry` 0 · `length_km` 0 ·
+`bassin` 0 · `Longueur` 0 — NOTHING FOUND** (viz identifiers, never in the dossier) · `catchment`
+**77** (L775) · `assemble` **16** (L3086) · `system` **22** · `chain` **174** · `downstream` **86**
+(L101).
+11b: `347` **3**, first L3433 — a **collision** (`347 578` cells clearing `A_c`, Finding 43) ·
+`115 181` / `115181` **1**, L13510 — **my own Finding 93 line** · `1 km` 140, unusable.
+
+Finding 42 and Finding 45, read in full, had already written half of this round — recorded at
+Finding 93 and not repeated here.
+
+### A — the panel, field by field
+
+All six numeric fields come from one `Watercourse` (`workspace.rs:3823-3830`):
+
+| panel field | reads | population |
+|---|---|---|
+| **Débit** | `q(root)`, one index back at a shared terminus (Finding 47) | **mouth reach** |
+| **Bassin** | `segment_drainage_km2[root]` | **mouth reach** — inherited by the clip (Finding 42) |
+| **Longueur** | Σ points of the **trunk** | **trunk** |
+| **Ordre** | `segs[root].strahler_order` | mouth reach |
+| **Largeur embouchure** | `segment_width_m[root]` | mouth reach |
+| **Largeur au 1er point** | `segment_width_m[source]` | **trunk's source reach** |
+| Affluents / segments | `members.len() − 1` | **whole system** |
+| Exutoire / Source | `classify_sink(mouth)` | mouth |
+
+> **Exactly ONE field is integrated: `Longueur`.** Every other number is read at the mouth reach —
+> and for a real river that IS the system's figure, because the accumulation at the mouth is the
+> catchment of everything above it. **The mixture is coherent by design; the panel displays a
+> badly-built object, it does not mix two populations.**
+>
+> ⚠️ **My prediction A1 is wrong**: I expected Débit and Bassin to be integrated. They are
+> mouth-local, and that is correct. My A2 (the defect is an aggregation that stopped after one
+> reach, not a stray local field) holds, and it withdraws my own Finding 93 wording — *"the panel
+> mixes a local length beside an integrated catchment"* — which was the round's framing and is not
+> what the code does.
+
+### B — the list is made of SYSTEMS, and the trunk cannot climb
+
+| | |
+|---|---|
+| pre-clip `upstream` LINKS | **14 502** |
+| of those, pointing at a parent that emits NO run | **7 336 = 50.6 %**, dropped by `filter_map(tail)` |
+| post-clip segments retaining an `upstream` | **2 931 / 7 276 = 40.3 %** |
+| terminals (`downstream == None`) | **2 477** |
+| **ENTRIES** with Finding 45's chaining replicated | **401** (the viz's list shows **347**) |
+| **entries whose trunk is ONE reach** | **280 / 401 = 69.8 %** |
+| trunk length | p50 **1.37 km** · p90 14.3 · max 37.1 |
+| terminals dying on a lake footprint | **2 388** over **57** lakes — **2 102** exorheic (bridged), **286** never bridged |
+
+> **The microscope lists systems, not reaches** — my B1 holds and the round's premise
+> (*"347 rivières = portions"*) is refuted. ⚠️ My replication gives **401** against the viz's
+> **347**: close, not exact (I do not reproduce every branch of `classify_sink`, and the viz
+> separates `Spillway` entries from its "rivers" count). **The gap is my instrument, not a finding**,
+> and it is stated rather than used.
+>
+> **The cause is one line of the clip:**
+> ```rust
+> let upstream = if is_first { s.upstream.iter().filter_map(|&u| tail(u)).collect() }
+>                else { Vec::new() };
+> ```
+> **Two losses.** `filter_map(tail)` silently drops every link to one of the **7 448 parents that
+> emit no run** (Finding 93: their whole polyline is inside lakes) — **50.6 % of all links**. And
+> any run that is not the first of its parent is born with no upstream at all, which is every
+> lake-outlet run.
+>
+> **The consequence is precisely the panel's symptom.** Grouping into systems survives (it follows
+> `downstream`), but the TRUNK CLIMB uses `upstream` — so for **69.8 % of entries** the trunk is
+> the mouth reach alone, `Longueur` reports its 1.37 km median, and `Bassin` reports a catchment
+> that is correct. **Nothing is mixed; the trunk is truncated.**
+
+**And #381 is identified to the digit — it is not what Finding 93 said it was:**
+
+| root 7266 | |
+|---|---|
+| signified catchment | **115 211 km²** against the screenshot's 115 181 (**0.03 %**) |
+| signified discharge | **1 095 m³/s** — exact |
+| length | **0.7 km** signified |
+| trunk | **ONE reach** |
+| mouth | **(3203, 3586)** — Finding 89-C3's `to_nothing` cell, Finding 91's one-cell orphan |
+| `SegmentKind` | **`Spillway`** |
+
+> ⛔ **#381 is not a `Watercourse` at all: it is basin 1000004's SPILLWAY.** It is appended to the
+> network with `upstream: vec![]` and `downstream: None`, so its trunk is one reach **by
+> construction**, and its `drainage_km2` is the below-sea basin's whole catchment. **Both of its
+> numbers are right for a spillway**; the error is presenting it as a river — which the
+> `Watercourse` docstring already forbids in writing: *"`Spillway` = the outflow of a closed
+> below-sea basin over its col — a real flow with NO hierarchy, so `order` is meaningless for it
+> and **the list must not present it as a river**."*
+>
+> **And the other seven largest entries DO climb** (14, 68, 4, 6, 31, 43, 67 reaches), so #381 is
+> not representative of the trunk defect — it is an object of another kind that the list does not
+> filter.
+>
+> ⛔ **Finding 93's identification is withdrawn at its claim point.** It named reach 2612
+> (113 762 km², 1.2 % off). Root 7266 is 0.03 % off and is a `Spillway`. The mechanism Finding 93
+> attributed — Finding 42's inherited catchment plus the signification — is right for the *reaches*;
+> it is not what #381 is.
+
+### D — the panel does not lie more widely
+
+| | |
+|---|---|
+| lakes for which the panel would print "oui → aval" | **54** |
+| with a real outlet REACH | **47** |
+| with no reach but a SPILLWAY | **6** |
+| **with neither** | **1 — lake 55 (19.22 km², `Unresolved`)** |
+
+> **53 of 54 claims are backed by the data.** The single exception is lake 55, already isolated by
+> Finding 93-D (its trace succeeds; its exported reach is missing). So the answer to *"does the
+> panel lie only about river length, or more widely?"* is: **only about length, plus one lake.**
+>
+> ⚠️ **And the list indices are not addressable.** "#341", "#298", "#381" are MICROSCOPE LIST
+> INDICES — the list is sorted by discharge and re-indexed every run — so a bench cannot look them
+> up. #381 was identified by its NUMBERS, and block D therefore checks the claim for **every** lake
+> instead of three indices that do not survive a re-run. That is a method point worth keeping: a
+> screenshot's `#n` is not an identifier.
+>
+> For the "évaporatif" label: Finding 92-D replaced it with *"cuvette sous-marine SANS exutoire
+> tracé"* in commit `e60fa54`. A screenshot still showing the old string was taken on an earlier
+> binary — **nothing to re-fix.**
+
+### C — not written
+
+The round required a stop after B for the author's choice between (i) a coherent panel and (ii) a
+system-assembling microscope. **The measurement moves the fork and neither option addresses the
+cause:** the list already assembles systems, and the panel is already coherent. What is broken is
+the `upstream` link set, in core. **The candidate the measurement points at is a third one:**
+
+> **(iii) rebuild the `upstream` links in `clip_rivers_to_lakes`** — one core change with an
+> `ALGO_DRAINAGE` bump, which repairs `Longueur`, `Largeur au 1er point`, the long profile and the
+> painted trunk at once, and touches no viz. Plus, separately and cheaply, **filter `Spillway`
+> entries out of the "rivers" list**, which the `Watercourse` docstring already asks for.
+
+Awaiting the decision; nothing is coded.
+
+### Score
+
+Predictions written and dated **2026-09-17 before any measurement**.
+
+**Mine.** **A1 "Débit and Bassin are integrated" ✗** — they are mouth-local, and correctly so ·
+**A2 "the defect is an aggregation that stopped after one reach, not a stray local field" ✓✓**, and
+it withdraws my own Finding 93 wording · A3 "at most 2 fields are local by mistake" **✓** (zero
+are) · **B1 "the 347 are already SYSTEMS" ✓✓** · B2 "#381 appears once" **✓** · **B3 "a large share
+of the 347 are inter-lake fragments; 30 to 90 true systems" ✗** — 401 entries, and 2 102 of 2 388
+lake terminals ARE bridged; the fragments are folded, the trunks are not · C1 "the fork is neither
+(i) nor (ii)" **✓** · D1 the lake outlets are correct **✓** · **D2 "the évaporatif label is already
+corrected and a stale screenshot is the explanation" ✓** · D3 "the panel does not lie more widely"
+**✓** (one lake of 54).
+
+**The round's.** A "Débit and Bassin integrated, Longueur/Largeur-1er-point/Ordre local, incoherent
+on at least 3 of 9" **✗** — one field is integrated and the mixture is coherent · **B "the 347 are
+reaches; 30-80 real systems; #381 appears several times" ✗✗✗** · C "the author will choose (ii)"
+**— moot**, the fork moved · D "the panel lies about other rivers' lengths too" **✓** (69.8 % of
+entries) · D "the lake outlets are correct" **✓** · D "the évaporatif label may not have followed"
+**✓ in the sense that the binary had not**.
+
+**Meta holds on both sides.** My worst miss is B3, and it is the same shape as the round's: we both
+assumed the aggregation was failing to assemble. It assembles correctly — 2 102 of 2 388 lake
+terminals are bridged — and what fails is one level down, in the links.
+
+**Four instrument corrections of mine this round, all recorded**: a lake probe on the mouth cell
+instead of `classify_sink`'s 3×3 neighbourhood (2 474 entries against 401); a count of distinct
+LAKES printed as terminals (6 against 2 388); trunk statistics computed over the 2 477 terminals
+instead of the 401 entries (81.8 % against 69.8 %); and a denominator left on `terminals` after the
+numerator moved. **Rule 12 covers the flow field and covers none of these** — the pattern, four
+rounds running, is populations.
+
+## Finding 95 — integrated at the shipped budget: the canyons go, the incision adds no spur, and the relief is still falling at 1 000 passes
+
+The long run of Finding 44's item 2, at `k_time` held. No production change. **Three of the four
+criteria the time was meant to fix are fixed; the fourth is still moving, and that is the finding.**
+
+### Rule 11 + 11b
+
+`cfl_iterations` **3** (L3739) · `timescale_plan` **2** · `dt_max` **14** (L3646) · `k_time` **31**
+(L3738) · `k_for_duration` **2** · `uplift` **24** (L236) · **`soulèvement` 0 — NOTHING FOUND** (the
+dossier is in English) · `Finding 44` **40** (L3600) · `Finding 61` **14** (L5880; the finding itself
+at L6447). 11b: `7399` **3** (L3779) · `7 399` **6** · `9000` **13** · `9 000` **6** · `3699` **4**.
+
+### A — the configuration, reproduced, and the budget IS held
+
+| `timescale_plan()` at the shipped config, `A_max` = 1 611 km² | |
+|---|---|
+| `k` / `dt` / `iterations` | **4 500 / 1 / 2** |
+| **`k_time`** | **9 000** — to the digit, so the run measures the delivered budget |
+| knickpoint celerity | **180 618 m/yr** |
+| **`dt_max`** | **2.703·10⁻⁴ yr** |
+| **`cfl_iterations`** | **7 399** |
+| **Courant** | **3 699** |
+
+> ⚠️ **`dt_max` is 2.7·10⁻⁴ yr, not "60 to 120 years"** — five to six orders of magnitude below the
+> round's prediction, and the reason is in Finding 44's own formula: `dt_max = cell_m / c` with
+> `c = K·A^m = 180 618 m/yr`. **At the shipped K a knickpoint crosses a 400 km continent in a little
+> over two years.** That is the diagnostic absurdity Finding 44 names about the `dt = 1.0`
+> placeholder, seen from the time end.
+>
+> And **T = `iterations · dt` = 2 years** at the shipped config. Holding `k_time` and raising the
+> pass count does **not** change T; the physical duration comes from pinning K (Finding 89-C6).
+> **"T in years" is a choice, not an output** — which is why the duration row below is constant.
+>
+> **Finding 61, read in full, confirms the round's framing with a warning.** Its planation — *"the
+> mean falls 447 → 282 → 177 → 107 m toward sea level"* — was measured by raising `iterations` at
+> **fixed `k`**, i.e. by raising `k_time`: more erosion, not finer integration. This round holds
+> `k_time`, so F61 does not apply directly. ⚠️ But its warning does: *"At 8192² the increment DECAYS
+> THEN GROWS AGAIN — +31.6, +24.9, **+38.1**. There is no extrapolable limit at the fine grid …
+> **The fine grid's trajectory is a reorganisation, not a relaxation**"*, the mechanism being
+> `compute_flow` re-filling depressions every iteration.
+
+### B / C — the milestones, and the six criteria at each
+
+Humid bed, 8192², `k_time` = 9 000 throughout, so every column carries the **same erosion budget**
+and only the Courant number falls.
+
+| | **2 (delivered)** | **10** | **100** | **300** | **1 000** |
+|---|---|---|---|---|---|
+| `k` | 4 500 | 900 | 90 | 30 | **9** |
+| **Courant** | 3 699 | 740 | 74 | 24.7 | **7.4** |
+| **1. lake fraction** | **24.05 %** | 18.99 | 17.87 | **15.92** | **18.05 %** |
+| water bodies | 56 | 34 | 26 | 32 | **29** (22 Exo, 7 Endo) |
+| **2. CANYON CLASS** | **16 / 53** | 5 / 30 | 3 / 22 | **0 / 24** | **0 / 24** |
+| **3. `to_nothing` / `Unresolved`** | 1 / 3 | 1 / 1 | 0 / 0 | 0 / 1 | **0 / 0** |
+| **4. relief paired p50** | 424.2 m | 503.4 | 505.2 | 488.1 | **467.5 m** |
+| … against the delivered, ±10 % | reference | +18.7 % | **+19.1 %** | +15.1 % | **+10.2 %** |
+| median per-cell cut | 69.5 m | 64.5 | 73.0 | 82.7 | **88.3 m** |
+| **5. Δ(≥ 1 km), ERODED stage** | −1 | −2 | −3 | −2 | **+0** |
+| **5. Δ(≥ 1 km), breached + u16** | +115 | +86 | +27 | +29 | **+26** |
+| breach-drowned cells | 10 375 | 15 549 | 2 880 | 2 235 | **2 383** |
+| **6. duration (three K)** | 4.5·10⁵ / 1.2·10⁷ / 3.6·10⁷–3.6·10⁸ yr | | | | **identical, by construction** |
+
+> ⛔ **The canyon class is GONE and stays gone: 16 → 5 → 3 → 0 → 0**, at a constant erosion budget.
+> Criterion 2 is **met**, and it was numerical.
+>
+> ⛔ **And the incision adds NO spur at 1 000 passes: Δ(≥ 1 km) on the ERODED field is exactly 0** —
+> 20 against the pre-incision authority's 20. That is the stage Findings 76–83 wrote the criterion
+> about (Finding 90-A), and it is now exactly met. The breached stage plateaus at **+26**, so
+> Finding 90's residue — `breach_monotone` trenching below sea level — **survives the integration**
+> and is confirmed as a separate defect with its own cause.
+>
+> ⛔ **`to_nothing` and `Unresolved` both reach 0.** The three `Unresolved` lakes of the delivered
+> field and the orphan spillway destination were symptoms of an under-integrated terrain, not of the
+> labelling — which is consistent with Finding 92-C having had to fix the labelling anyway (a
+> terrain that no longer produces the shape does not retire the invariant).
+>
+> ⚠️ **The lake fraction does not track the integration: 24.05 → 18.99 → 17.87 → 15.92 → 18.05 %.**
+> Non-monotone, and still **18×** the < 1 % criterion. Exactly as Finding 39 and Finding 60 predict:
+> it is a water balance the incision never reads. Both predictions agreed on this and both hold.
+>
+> ⛔ **And the relief is STILL FALLING at 1 000 passes: +18.7 → +19.1 → +15.1 → +10.2 %.** It peaked
+> near Courant 74 and is now converging downward, 0.2 points outside the declared ±10 %. **My
+> prediction that it would plateau at +18–21 % — and therefore that 1 000 was unnecessary — is
+> refuted**, and the round's design was right to insist on the milestone. The median per-cell cut
+> rises monotonically with the pass count (69.5 → 88.3 m) while the p50 altitude falls, which is the
+> signature of a field being worked more evenly rather than harder.
+
+### D — the verdict, read in the table the round wrote in advance
+
+| the round's three outcomes | measured at 1 000 |
+|---|---|
+| (i) canyons → 0 **and** relief inside ±10 % **and** Δ(≥ 1 km) → ~0 ⇒ uplift waits, the lever was numerical | **canyons 0 ✓ · Δ on the eroded stage exactly 0 ✓ · relief +10.2 %, outside by 0.2 points ✗** |
+| (ii) canyons → 0 **but** relief outside ±10 % (**planed**) ⇒ uplift is the next chantier | the relief is outside, but **ABOVE** the delivered field, not planed — the premise of the line does not hold |
+| (iii) canyons persist ⇒ the landing was not the only cause | **no** — they are 0 at 300 and at 1 000 |
+
+> **Neither line as written, and the reason is that the relief is not a state here — it is still
+> moving.** Three of the four criteria are met (canyon class 0, Δ(≥ 1 km) = 0 on the incision,
+> `to_nothing` and `Unresolved` 0) and **the lever was numerical for all three**. The fourth,
+> relief, sits **0.2 points** outside a symmetric ±10 % tolerance, on the **high** side, while
+> descending 19.1 → 15.1 → 10.2 %. A tolerance is a test on a converged quantity; this one is not
+> converged.
+>
+> **So the decision this round can honestly make is narrower than the table asked for, and it is
+> this: the canyons and the coast criterion did not need uplift — they needed integration, and they
+> have it.** Whether uplift is needed is now a question about **one** quantity, with a **known
+> trajectory** and a **known cost to settle**: the remaining **6 399 passes to Courant 1**, at the
+> measured 20.4 s/pass, are **36 h of awake single-core time**. If the relief crosses below −10 %
+> there, Finding 61's planation is real at held budget and uplift is the chantier; if it flattens
+> inside ±10 %, outcome (i) holds and uplift only ever mattered for *raising* T.
+>
+> ⚠️ **And the ±10 % itself is now suspect for a second reason, which I declared at Finding 89-B4
+> and can now measure against.** It was set symmetric on the assumption that integrating could only
+> remove relief. The measurement says a faithful integration of the same budget first *retains* 19 %
+> more and then gives it back. **A symmetric band around the delivered field tests conformity to an
+> under-integrated reference, not conformity to the world** — and the reference it is anchored on is
+> the one this round has shown to be the artefact.
+
+### The cost, corrected twice
+
+| | |
+|---|---|
+| 1 000 passes, clean wall time | **20 387.7 s = 5.66 h ⇒ 20.4 s/pass** |
+| confirms Finding 89-D's | 22.1 s/pass |
+| ⚠️ the 300-pass figure printed by the bench | **28 335 s — CONTAMINATED**: `Instant::elapsed()` counted the machine's sleep. Its real cost was ~6 200 s CPU ≈ 20.7 s/pass. **Do not quote the 28 335.** |
+| ⚠️ **measured parallelism** | **0.99 core of 24**, sustained over 60 s |
+
+> ⛔ **The loop is SERIAL, and that amends Finding 89-D's quote.** The 7 399 passes are not "1.9 days
+> of machine" but **≈ 42 h of one core**, and **adding cores does not help** as the code stands: the
+> per-pass cost is dominated by sequential stages (`compute_flow`'s priority flood is a binary heap,
+> the D8 accumulation is an ordered descent). Finding 89-D said "an overnight batch"; it is, on one
+> core. **That is the number a time chantier has to design against**, and it is the first thing this
+> round measured that Finding 44 could not have known.
+
+### Score
+
+Predictions written and dated **2026-09-18 before any measurement**.
+
+**Mine.** A1 "7 399 / 3 699 / 9 000 reproduce" **✓✓✓** · **A2 "`dt_max` is 2.7·10⁻⁴ yr, not 60–120
+years" ✓✓** · A3 "T is a choice, not an output" **✓** · B1 "the coast trend continues to +3…+12"
+**✗** — it plateaus at +26…+29 on the breached stage, and reaches **exactly 0** on the eroded one,
+which is better than I predicted and on a stage I did not name · **B2 "the relief plateaus at
++18–21 %, so 1 000 is unnecessary" ✗✗** — it falls to +10.2 % and 1 000 is exactly what was needed ·
+C1 lake fraction 16–18 % **✓** (18.05) · C2 canyons 0–2 **✓** (0) · C3 `to_nothing` 0, `Unresolved`
+0–1 **✓✓** (0 / 0) · **C4 relief +18–21 % ✗** (+10.2) · C5 Δ(≥ 1 km) +3…+12 **✗** (+26 breached,
+0 eroded) · C6 durations unchanged **✓** · **D "outcome (ii) by the high side, and the ±10 % is what
+is wrong" ✗ on the outcome** — no line of the table holds, because the quantity has not converged —
+**and the ±10 % criticism survives for a different reason than I gave**.
+
+**The round's.** A "7 399, Courant 3 699, `k_time` 9 000" **✓✓✓** · **A "`dt_max` of order 60–120
+years" ✗** · A "T ≈ 4.5·10⁵ yr under W&T" **✓** (as a choice of K) · B "convergence by 1 000; the
+trend continues to ~+5, not 0" **✗ on the number, ✓ on 'not 0'** for the breached stage · C canyons
+"1 or 2" **✗** (0) · **C relief "+10 to +20 %, out of ±10 % by the HIGH side" ✓** — +10.2 %, and the
+sign is right · C Δ(≥ 1 km) ~+5 **✗** · C lake fraction ~16 % **✓** (18.05) · **D "outcome (ii) by
+the high side; uplift is not the remedy; the real verdict may be 'recalibrate the X'" — the closest
+reading of the four, and still not the table's line**, because the relief is mid-descent · and its
+own instruction, *"the lake fraction will stay > 1 % whatever happens — do not expect it from time"*
+**✓✓**.
+
+**Meta holds on both sides.** My worst miss is B2, and it is the one that mattered: I argued the
+1 000-pass milestone was unnecessary and it is the only one that moved the verdict. The round was
+right to require it.
+
+### Standing
+
+* **No production change.** The run is bench-side, at `iterations` = 300 and 1 000 with `k` scaled
+  to hold `k_time`.
+* **The canyon class, the coast criterion on the incision, `to_nothing` and `Unresolved` are all
+  fixed by integration alone, at a constant erosion budget.** The lever was numerical.
+* **`breach_monotone`'s residue is confirmed independent**: +26 spurs at 1 000 passes, against +115
+  delivered — Finding 90's attribution stands and integration does not remove it.
+* **The relief is undecided and its trajectory is monotone downward** (19.1 → 15.1 → 10.2 %). The
+  question "is uplift necessary?" now rests on one quantity, and settling it costs **36 h of one
+  core** (6 399 passes to Courant 1).
+* **The loop is single-threaded**: 0.99 of 24 cores. Finding 89-D's cost quote is amended from
+  "1.9 days" to **≈ 42 h of one core, not reducible by adding cores**.
+
+**Named and not fixed.** The ±10 % tolerance, which tests conformity to the delivered field — the
+very field this round shows to be under-integrated. The lake fraction, which needs the water balance
+and not the incision. And the last 6 399 passes.
+
+### À VALIDER VISUELLEMENT
+
+The 1 000-pass continent against the delivered one, same crop as the image the author looked at for
+Finding 88's 24 % of lakes. **The binary question — the France-like map, or a planed plain? — now
+has numbers on both sides of it, and they do not agree with either word.** The field is **10.2 %
+HIGHER** than delivered at the median, its canyon class is **0** where the delivered has **16**, its
+incision adds **no coastal spur at all**, and it holds **18.05 %** of its land under water against
+24.05 %. It is neither the delivered relief nor a plain: it is the same erosion budget spent evenly
+instead of in two shocks. **That is what the eye should be asked to judge, and the count to put
+beside it is 0 canyons against 16.**

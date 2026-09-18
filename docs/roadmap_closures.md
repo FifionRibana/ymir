@@ -909,6 +909,58 @@ le cadran de H-2, et la calibration de tête de chenal aux deux résolutions.
 > itération** — une boucle temporelle la multiplie par N) ; et les cibles des critères B1/B2 qui
 > restent **PROXY** faute de source primaire, là où `K` en a trois avec leurs pages.
 
+## ⛔ LE TEMPS INTÉGRÉ : LES CANYONS PARTENT, LA CÔTE PASSE, LE RELIEF DESCEND ENCORE (Finding 95)
+
+Le F44 item 2 mesuré au bout, à `k_time` **tenu à 9 000** — même budget d'érosion, seule la
+distribution change. `cfl_iterations` **7 399**, Courant livré **3 699**, `dt_max` **2,703·10⁻⁴ an**
+(et non « 60 à 120 ans » : `dt_max = cell_m / c` avec `c = 180 618 m/yr` — au K livré un knickpoint
+traverse 400 km en deux ans).
+
+| | **2 (livré)** | **10** | **100** | **300** | **1 000** |
+|---|---|---|---|---|---|
+| Courant | 3 699 | 740 | 74 | 24,7 | **7,4** |
+| fraction de lacs | **24,05 %** | 18,99 | 17,87 | 15,92 | **18,05 %** |
+| **classe canyon** | **16 / 53** | 5 / 30 | 3 / 22 | **0 / 24** | **0 / 24** |
+| `to_nothing` / `Unresolved` | 1 / 3 | 1 / 1 | 0 / 0 | 0 / 1 | **0 / 0** |
+| relief apparié p50 | 424,2 m | +18,7 % | **+19,1 %** | +15,1 % | **+10,2 %** |
+| **Δ(≥ 1 km), champ ÉRODÉ** | −1 | −2 | −3 | −2 | **+0** |
+| Δ(≥ 1 km), brèché + u16 | +115 | +86 | +27 | +29 | **+26** |
+
+> ⛔ **Trois des quatre critères sont atteints, et le levier était numérique pour les trois.** La
+> **classe canyon tombe à 0** et y reste ; **Δ(≥ 1 km) sur le champ érodé atteint exactement 0** —
+> le stade sur lequel les F76–83 ont écrit le critère (F90-A) ; `to_nothing` **et** `Unresolved`
+> tombent à **0**. Le résidu de brèche du F90, lui, **survit à l'intégration** (+26 éperons sur le
+> brèché) : son attribution tient et c'est un défaut séparé.
+>
+> ⛔ **Mais le relief n'a pas convergé : il culmine vers Courant 74 puis redescend** — +18,7 → +19,1
+> → +15,1 → **+10,2 %**, soit **0,2 point** hors du ±10 % déclaré, et **par le HAUT**, pas en
+> planation. **Aucune des trois lignes de décision ne s'applique telle qu'écrite** : le quantité
+> n'est pas un état, elle est en descente. La coupe médiane par cellule, elle, monte de façon
+> monotone (69,5 → 88,3 m) pendant que l'altitude p50 baisse — la signature d'un champ travaillé
+> plus uniformément, non plus fort.
+>
+> **Donc la décision honnête est plus étroite que la table ne le demandait** : les canyons et le
+> critère côtier **n'avaient pas besoin du soulèvement**, ils avaient besoin de l'intégration.
+> Reste **une** grandeur, avec une trajectoire connue et un coût connu pour la trancher : les
+> **6 399 passes restantes jusqu'à Courant 1**, soit **36 h d'un cœur éveillé**.
+>
+> ⚠️ **Et le ±10 % est suspect pour une raison neuve** : il a été posé symétrique en supposant que
+> l'intégration ne pouvait que retirer du relief. La mesure dit qu'elle en **retient 19 % de plus**
+> d'abord, puis les rend. **Une bande symétrique autour du champ livré teste la conformité à une
+> référence sous-intégrée** — celle que ce tour montre être l'artefact.
+>
+> ⚠️ **La fraction de lacs ne suit pas l'intégration** (24,05 → 18,99 → 17,87 → 15,92 → **18,05 %**,
+> non monotone) et reste **18×** le critère : c'est un bilan hydrique que l'incision ne lit jamais
+> (F39, F60). Prédit des deux côtés, vérifié.
+>
+> ⛔ **Et le devis du F89-D est amendé : la boucle est SÉRIELLE.** Parallélisme mesuré **0,99 cœur
+> sur 24**, soutenu. Les 7 399 passes ne font pas « 1,9 jour de machine » mais **≈ 42 h d'un seul
+> cœur**, et **ajouter des cœurs n'y change rien** tel que le code est écrit (le priority-flood de
+> `compute_flow` est un tas binaire, l'accumulation D8 une descente ordonnée). Coût propre mesuré à
+> 1 000 passes : **20 387,7 s = 20,4 s/passe**, ce qui confirme les 22,1 s/passe du F89-D.
+> ⚠️ Le « 28 335 s » imprimé au jalon 300 est **contaminé** : `Instant::elapsed()` a compté la veille
+> de la machine — ne pas le citer.
+
 ## ⛔ LE CLIP N'EST PAS LE DÉFAUT — l'inconsistance rivière/lac l'est (Finding 93)
 
 Le log `rivers clipped to lakes: 14708 -> 7265` n'est **pas** un compte de suppressions : le F20 a
