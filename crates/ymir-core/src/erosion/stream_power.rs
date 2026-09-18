@@ -189,6 +189,20 @@ pub struct StreamPowerConfig {
     /// coast is the sea itself, and land cells drown.
     #[serde(default)]
     pub base_level_floor: Option<BaseLevelFloor>,
+    /// ADR Finding 96 A1 -- **the closed-depression floor**. `false` (default) is byte-identical.
+    ///
+    /// A closed depression at equilibrium is filled to its SPILL LEVEL: with no outlet there is
+    /// nowhere for the sediment to go, so the basin aggrades to its col and the channel that ends
+    /// in it cannot deepen it further. The priority flood already computes that surface every
+    /// iteration -- `flow.filled` IS the per-depression spill level, by construction -- so this
+    /// floor costs nothing and needs no extra field. It bounds the relaxation TARGET at
+    /// `min(filled, h_o)` exactly like ADR Finding 80's base level, which means it can stop the
+    /// incision and can never deposit or lift a cell.
+    ///
+    /// This is the A1 candidate: an equilibrium POSED on the depression, instead of reached by
+    /// integrating 6 399 more passes (ADR Finding 95).
+    #[serde(default)]
+    pub depression_floor: bool,
     /// **Incision threshold `θ`** — `E = K·max(0, A^m·S^n − θ)`: no incision below a
     /// critical stream power, so low-energy cells (again, headwaters) do not carve.
     /// `0` (default) = no threshold (legacy).
@@ -310,6 +324,7 @@ impl StreamPowerConfig {
             min_area_cells: RELIEF_V1_A_C_KM2 / cell_km2,
             a_c_slope_law: None, // ADR Finding 56 — opt-in; None keeps the constant
             base_level_floor: None, // ADR Finding 80 -- opt-in; None keeps the legacy planing
+            depression_floor: false, // ADR Finding 96 A1 -- opt-in; false is byte-identical
             threshold: 0.0,
             cell_km,
             depth_scale_m,
@@ -451,8 +466,9 @@ pub const RELIEF_V1_K: f32 = 1500.0;
 impl Default for StreamPowerConfig {
     fn default() -> Self {
         Self {
-            a_c_slope_law: None,    // ADR Finding 56 — opt-in
-            base_level_floor: None, // ADR Finding 80 -- opt-in; None keeps the legacy planing
+            a_c_slope_law: None,     // ADR Finding 56 — opt-in
+            base_level_floor: None,  // ADR Finding 80 -- opt-in; None keeps the legacy planing
+            depression_floor: false, // ADR Finding 96 A1 -- opt-in; false is byte-identical
             k: 1.0,
             m: 0.5,
             n: 1.0,
@@ -504,6 +520,34 @@ pub fn incise_with_progress(
     height: &GridF32,
     cfg: &StreamPowerConfig,
     k_field: Option<&[f32]>,
+    progress: &mut dyn FnMut(usize, &GridF32),
+) -> GridF32 {
+    incise_with_floor(height, cfg, k_field, None, progress)
+}
+
+/// [`incise_with_progress`] with an **external per-cell incision floor** (ADR Finding 96 B3):
+/// a height the incision may not cut below, supplied by the caller and constant across the
+/// iterations. `None` (every production path) is byte-identical to [`incise_with_progress`].
+///
+/// The floor bounds the relaxation TARGET at `min(floor, h_o)` -- the same seam ADR Finding 80
+/// opened for the base level, and for the same reason: **the INCISION can stop and can never
+/// deposit**. That is what makes it a legitimate reading of ADR Finding 6's prescription --
+/// *"the fix is to LIMIT total incision, not add U"* -- with a limit whose SHAPE comes from a
+/// physical profile instead of from a smaller global K.
+///
+/// ⚠️ **This does NOT mean no cell can rise.** [`incise`] also runs a MASS-CONSERVING linear
+/// diffusion and the talus sweep (ADR Findings 7, 45b: *"a linear Laplacian lowers crests and
+/// FILLS hollows"*), and those still act when the incision is fully bounded -- the unit test
+/// below caught me claiming otherwise and measured a groove cell rising 4.7 m. The one-sidedness
+/// is a property of the INCISION TERM, not of `incise`.
+///
+/// The intended floor is the chi profile `z = z_base + (U/K)^(1/n)·chi`, which is the relief a
+/// steady continent would carry under the same law; see ADR 0001 Finding 96.
+pub fn incise_with_floor(
+    height: &GridF32,
+    cfg: &StreamPowerConfig,
+    k_field: Option<&[f32]>,
+    floor: Option<&[f32]>,
     progress: &mut dyn FnMut(usize, &GridF32),
 ) -> GridF32 {
     let (w, h) = (height.width, height.height);
@@ -600,13 +644,28 @@ pub fn incise_with_progress(
             // ADR Finding 83 -- the ESTUARY gate (`free_above_km2`, PROXY, `None` in
             // production): above `A_est` the bound is released and the trunk grades to
             // its real receiver again, which is how a ria gets cut.
-            let hr = match &cfg.base_level_floor {
+            let mut hr = match &cfg.base_level_floor {
                 Some(b) if !b.freed(area * cell_km2) => {
                     let floor = cfg.sea_level + b.epsilon_m / norm_to_m;
                     field.data[r].max(floor.min(ho))
                 }
                 _ => field.data[r],
             };
+            // ADR Finding 96 A1 -- the closed depression is at EQUILIBRIUM: the channel that
+            // ends in it may not deepen it. This is a POPULATION EXCLUSION, not a floor, and the
+            // first pass of Finding 96 got that wrong: `filled >= field` everywhere (with
+            // equality outside a depression), so `min(filled, ho)` collapses to `ho`, the target
+            // is never below the cell, and the incision switches off EVERYWHERE -- measured, it
+            // reproduced the un-incised field exactly (median cut 0.0 m, paired p50 679.1 m).
+            // A floor whose value is ABOVE the cell cannot be expressed at this seam; the
+            // equilibrium it states is "no incision here" and that is what this does.
+            if cfg.depression_floor && flow.filled.data[k] > field.data[k] {
+                continue;
+            }
+            // ADR Finding 96 B3 -- the external floor (chi profile). `None` in production.
+            if let Some(f) = floor {
+                hr = hr.max(f[k].min(ho));
+            }
             let dist_m = dist[k] * cell_m;
             // The local gradient, computed BEFORE the channel-head gate because the gate can
             // depend on it. Same quantity the stream-power law uses below, so the two cannot
@@ -1290,6 +1349,71 @@ mod tests {
         assert!(
             coarse.courant(a_max) > COURANT_INTEGRATING,
             "the shipped config is not integrating even at 2048² — it relaxes"
+        );
+    }
+    /// ADR 0001 Finding 96, **method rule 13** -- the round CLAIMS both new seams are additive and
+    /// inert, so the claim is an assertion and not a sentence.
+    ///
+    /// `depression_floor: false` and `incision_floor: None` (i.e. `floor = None`) must reproduce
+    /// [`incise`] BYTE FOR BYTE. If a future edit makes either gate leak into the shipped path,
+    /// this test fails before the terrain does -- and every number the dossier quotes for the
+    /// delivered field was measured through this path.
+    #[test]
+    fn the_two_finding_96_seams_are_inert_when_off() {
+        // The SAME synthetic field `timescale_naming_changes_no_output` uses: a tilted plane with
+        // a groove every 7th column. Reused deliberately -- my first attempt at this test built a
+        // radial cone instead, and the cone does not incise at all at the shipped config, so the
+        // test's own negative control (`cut_ref > 0`) failed and caught it. A field that erodes is
+        // a precondition of this test, not an incidental detail.
+        let (w, h) = (48usize, 48usize);
+        let mut d = vec![0.0f32; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                let t = y as f32 / (h as f32 - 1.0);
+                d[y * w + x] = 0.9 - 0.45 * t + if x % 7 == 0 { -0.004 } else { 0.0 };
+            }
+        }
+        let f = GridF32 { width: w, height: h, data: d };
+        let cfg = StreamPowerConfig::relief_v3(0.0381, 5000.0);
+        assert!(!cfg.depression_floor, "the shipped config must arrive with A1's gate OFF");
+
+        let reference = incise(&f, &cfg);
+        let through_the_new_entry_point = incise_with_floor(&f, &cfg, None, None, &mut |_, _| {});
+        assert_eq!(
+            reference.data, through_the_new_entry_point.data,
+            "Finding 96: `incise_with_floor(.., None, ..)` must be byte-identical to `incise`"
+        );
+
+        // ── the floor's SIGN, which is the property method rule 14 says to pin ────
+        //
+        // The exactly-true statement is MONOTONICITY: raise the floor and the run cuts less.
+        // Two weaker statements were tried first and BOTH were refuted by this test, which is
+        // why they are recorded here instead of in a comment somewhere else:
+        //
+        //  1. "no cell may end up above the input" -- FIRED, cell 55 rose 4.7 m. It is a groove
+        //     cell and the mass-conserving Laplacian fills hollows (ADR Findings 7, 45b). The
+        //     one-sidedness belongs to the INCISION TERM, not to `incise`.
+        //  2. "a floor at the surface is byte-identical to `k = 0`" -- FIRED too, and for a
+        //     subtler reason worth keeping: the floor is relative to the ORIGINAL surface while
+        //     `h_o` is the CURRENT one, so at iteration 2 a cell the diffusion lifted above its
+        //     original height can be incised back DOWN to the floor. That is correct behaviour
+        //     for a bound on total incision, and it is not "no incision".
+        let cut_of = |floor: Option<&[f32]>| -> f32 {
+            let g = incise_with_floor(&f, &cfg, None, floor, &mut |_, _| {});
+            (0..w * h).map(|k| f.data[k] - g.data[k]).sum()
+        };
+        let sea = cfg.sea_level;
+        let mid: Vec<f32> = f.data.iter().map(|&z| sea + 0.5 * (z - sea)).collect();
+        let cut_ref = cut_of(None);
+        let cut_mid = cut_of(Some(&mid));
+        let cut_held = cut_of(Some(&f.data));
+        assert!(
+            cut_ref > 0.0,
+            "the control must actually incise, otherwise this test proves nothing (cut {cut_ref})"
+        );
+        assert!(
+            cut_held < cut_mid && cut_mid < cut_ref,
+            "raising the floor must cut strictly LESS, at every height: surface {cut_held} <              half-way {cut_mid} < unbounded {cut_ref}"
         );
     }
 }

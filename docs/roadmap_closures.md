@@ -1038,3 +1038,118 @@ plus petite.
 
 **Un terrain reconstruit n'est pas le produit.** Il a trompé le diagnostic **six fois**,
 y compris un `merge_verify` masqué par la quantification u16. L'export fait foi.
+
+## ⛔ LA FRANGE CÔTIÈRE EST DE LA SUR-INCISION LE LONG DES CHENAUX — ET LE PLANCHER QUI LE PROUVE IMPRIME D8 DANS LE TERRAIN (Finding 96)
+
+Recherche d'une closure bon marché pour l'âge du continent, après le F95 (6 210 s d'intégration).
+**Deux coutures ajoutées en production, additives et éteintes par défaut** (`depression_floor:
+false`, `incision_floor: None`), épinglées par un test d'inertie byte-à-byte (règle 13). Tout le
+reste en banc.
+
+**La construction χ est neuve au dossier** (`chi`, `Flint`, `Perron`, `Royden`, `stationnaire` :
+**0 occurrence**). Elle est **valide comme profil et invalide comme champ** :
+
+| | |
+|---|---|
+| l'intégrale `χ = ∫(A₀/A)^{m/n} dx`, une descente ordonnée | **0,37 s** sur 11 327 660 cellules, 0 non atteinte |
+| **contrôle de Flint** (666 293 points) | `θ = 0,4998` pour 0,5 · l'ordonnée redonne `(U/K)^{1/n}` ⇒ **passe** |
+| cuvettes | **0** contre 1 240 677 au livré |
+| **mais** σ local 3×3 | **44,73 m** contre 6,28 au livré ⇒ **7,1× plus RUGUEUX** |
+| part de terre > 30° | **79,07 %** contre 28,53 |
+
+> ⛔ **La cause n'est pas un bug, elle est arithmétique** : le gradient du profil est
+> `(U/K)^{1/n}(A₀/A)^{m/n}`, soit **52,9° à une cellule de bassin** avec A₀ = 1 km². J'appliquais la
+> loi fluviale **trois décades sous son propre seuil de chenal** (`A_c = 0,1 km²`, F43/F65, ancré).
+> Brider A à `A_c` ramène ce gradient à 12,8° et la part > 30° à 60,87 % — **un tiers de l'excès,
+> pas plus.**
+>
+> ⛔ **Le reste a une autre cause, que la mesure permet de nommer : χ est DISCONTINU EN TRAVERS DES
+> LIGNES DE PARTAGE.** Deux cellules voisines de part et d'autre d'une crête ont des intégrales
+> qui diffèrent de centaines de mètres, et `z = z_base + C·χ` en fait une falaise (à C = 0,0719 et
+> 48,8 m de cellule, 45° ne demande que Δχ = 679 m). **χ n'a aucun mécanisme pour faire s'accorder
+> deux bassins voisins sur leur crête commune** — la propriété même qui fait du χ-mapping un
+> diagnostic de capture dans la littérature. Donc χ fournit une **borne**, jamais une surface — ce
+> qui est exactement où pointait le F6 : *« la tectonique d'Ymir a déjà fait le soulèvement, le
+> correctif est de LIMITER l'incision totale, pas d'ajouter U »*. ⛔ **Et « une borne, jamais une
+> surface » ne suffit pas non plus : voir la validation visuelle plus bas — une borne construite
+> sur une intégrale de chemin D8 imprime les axes D8 dans le terrain.**
+
+**La table de décision, en coût marginal (la porte « 30 s » recale le champ livré lui-même, 45,5 s) :**
+
+| | **livré** | **A1** exclusion | **B3** plancher χ | **A1+B3** | **ORACLE** (300 p.) |
+|---|---|---|---|---|---|
+| classe canyon, **en taux** | 29,6 % | **21,9 %** | 29,8 % | 26,8 % | **0 %** |
+| **côte, brèché + u16** | **Δ +115** | Δ +104 | **Δ +3** | Δ +4 | Δ +29 |
+| relief apparié p50 | 424,2 m | **447,6 (−8,3 %)** | 535,7 (+9,8 %) | 546,6 (+12,0 %) | **488,1 m** |
+| fraction de lacs | 24,70 % | 22,67 | 20,19 | **19,72** | **15,92** |
+| `to_nothing` / `Unresolved` | 0 / 3 | 0 / **1** | 0 / 4 | 0 / 4 | **0 / 1** |
+| **coût marginal** | — | +7,2 s | **+2,2 s** | +3,0 s | **6 210 s** |
+
+> ⛔ **Les deux défauts sont séparables et n'ont pas le même propriétaire.** La **frange côtière est
+> de la sur-incision le long des chenaux** : B3 la ferme (+115 → **+3**) et A1 ne l'effleure pas
+> (+104). La **classe canyon est de l'incision dans les cuvettes fermées** : A1 la mord (29,6 →
+> **21,9 %**) et B3 ne la bouge pas (29,8 %) — χ est construit sur le champ pré-incision **brèché**,
+> où les futures empreintes de lac ont été percées, donc à l'intérieur χ est bas et le plancher
+> autorise l'entaille qu'il devrait arrêter.
+>
+> ⛔ **Et elles ne se composent pas** : l'union prend la côte de B3 mais seulement une partie des
+> canyons d'A1 (26,8 %), et c'est le seul candidat hors ±10 %. Les deux closures se disputent le
+> même budget de relief.
+>
+> ⛔ **B3 bat l'oracle sur le critère côtier d'un ordre de grandeur, pour 0,04 % de son coût** :
+> Δ +3 contre Δ +29 à 300 passes (+26 à 1 000). **Le résidu de brèche du F90, que le F95 avait
+> explicitement laissé ouvert comme « survivant à l'intégration », se ferme ici — et par le côté
+> incision, pas par le côté brèche.**
+>
+> ⚠️ **Ce qu'aucun candidat ne fait** : atteindre la classe canyon 0 de l'oracle, ni sa fraction de
+> lacs (meilleur 19,72 %, encore **20×** le critère — le bilan hydrique que l'incision ne lit jamais,
+> F39/F60/F95). **La réponse est partielle et doit être dite ainsi.**
+>
+> ⛔ **ET LA VALIDATION VISUELLE RÉFUTE B3 COMME CHAMP LIVRABLE — ce qu'aucun chiffre de la table
+> ne voyait.** Sur une tuile de 1024², le champ livré est dendritique ; le champ B3 porte des
+> **striations horizontales et verticales et des terrasses en blocs qui suivent les axes D8**, et
+> son quadrant inférieur gauche a **perdu son réseau** au profit d'une rampe lisse. La cause est
+> structurelle : **χ est une intégrale de chemin D8**, donc ses iso-niveaux héritent de la
+> quantification à huit directions, et brider le terrain dessus **imprime ces axes dans le relief**.
+> L'union est **visuellement identique** : A1 n'y change rien.
+>
+> ⚠️ **Et le point de méthode est la moitié la plus tranchante.** La table dit que la texture de B3
+> est **meilleure** que celle du livré (p90 38,1° contre 44,6 ; > 30° 23,07 % contre 28,53). Les
+> deux chiffres sont justes, et les deux sont des **statistiques de MAGNITUDE isotropes** : elles
+> mesurent la raideur, jamais les directions ni la survie du réseau. **Un champ rayé et
+> dé-dendritisé marque MIEUX sur toutes**, parce qu'il est vraiment plus lisse — mal lisse. Toutes
+> les mesures de texture du dossier (σ local, quantiles de pente, part > 30°, percentiles
+> hypsométriques) partagent cet aveuglement. **Un regard sur une tuile a trouvé ce que neuf tours
+> de chiffres n'avaient pas soulevé.**
+>
+> ⇒ **Donc B3 est un INSTRUMENT D'ATTRIBUTION valide et une CLOSURE invalide.** Ce qu'il prouve
+> tient (la frange côtière est de la sur-incision le long des chenaux) ; ce qu'il ne peut pas, c'est
+> être livré. **Le candidat suivant est moins cher que χ et n'a besoin d'aucune intégrale de
+> chemin** : le F6 lu littéralement, un **plafond sur l'ENTAILLE en fonction de l'aire drainée**,
+> `h_r_eff = max(h_r, min(h_pre − c·A^q, h_o))` — même couture (`incision_floor` existe déjà et est
+> déjà inerte), **isotrope par construction**, un ou deux paramètres libres. **Non mesuré ce
+> tour**, posé comme candidat et pas comme résultat.
+
+**Deux voies fermées, chiffrées :**
+
+- ⛔ **`talus_passes` ne supprime pas les murs.** 4 → 16 → 64 passes : p90 44,6 → 37,1 → **33,7°**,
+  mais **la part > 30° MONTE** (28,82 → 32,96 %) et **le maximum ne bouge pas** (85,2 → 86,3°), pour
+  **268,7 s** — 6,5× l'incision livrée. Le F6 avait raison : *« les faces quasi-verticales sont les
+  murs des fentes de 1 px »*, et un balayage local ne relaxe pas une fente d'une cellule sans la
+  combler.
+- ⛔ **Un champ sans dépression ne rachète pas la brèche** : **−6,8 / −8,7 / −11,3 s** sur trois
+  runs, pas les ~155 s espérés. Le coût de la brèche est le **parcours**, qui visite chaque cellule
+  qu'il y ait quelque chose à creuser ou non.
+- ⛔ **Le dépôt intra-boucle (transport-limited) est hors domaine pour un tour « bon marché »**, sur
+  les chiffres du dossier lui-même : *« le plus gros changement (un budget sédimentaire) »* (L487),
+  *« consigné comme spécification, pas construit »* (L2514), et surtout *« cette loi doit être posée
+  dans un régime où le modèle intègre, **ce que la configuration livrée ne fait pas** »* (L4129) —
+  à Courant 3 699. **Sa propre précondition est le régime intégrant que ce tour refuse.**
+
+**Règle de méthode 14, gagnée ce tour** : *une closure qui BORNE l'érosion doit publier l'érosion
+qu'elle a permise.* La première forme d'A1 marquait **4 des 6 critères du F95** — canyons 0/29,
+lacs 17,51 %, côte +2, `to_nothing` 0 — **en éteignant l'incision partout** (`min(filled, h_o) =
+h_o` puisque `filled ≥ h`). Seules deux grandeurs non-critères l'ont dénoncée : `median cut 0,0 m`
+et un p50 égal à celui du champ non incisé. **Le dossier avait déjà enregistré ce mode d'échec une
+fois, en production** (`a_c_slope_law` : `A_c × 100` *« retire le peigne — et éteint l'incision avec
+lui »*). Un mode d'échec qui revient sur deux paramètres différents est une règle, pas une anecdote.

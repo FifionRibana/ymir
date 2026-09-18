@@ -114,6 +114,9 @@ pub struct Knobs {
     /// `None` = the SHIPPED `RELIEF_V3_BASE_LEVEL_M` (0.5 m). Since Finding 83 the bound
     /// is production, so `None` no longer means "no bound" -- use `base_level_off`.
     pub base_level_m: Option<f32>,
+    /// ADR Finding 96 A1 -- `StreamPowerConfig::depression_floor`: the incision may not cut a
+    /// cell below the SPILL LEVEL of the depression it sits in. `false` = shipped.
+    pub depression_floor: bool,
     /// ADR Finding 83 -- the A/B control: drop the shipped bound and rebuild the
     /// pre-Finding-83 world (the one with the coastal fringe). This is what the benches
     /// must use for the "DELIVERED (pre-83)" column; `Knobs::shipped()` is now BOUNDED.
@@ -225,6 +228,13 @@ pub fn production_k_and_edifices()
 /// stream-power stage only. Everything upstream (tectonics, upscale, FBM, closures) is the
 /// production path, so a sweep point differs from SHIPPED in exactly one term.
 pub fn build_field(k: Knobs) -> GridF32 {
+    build_field_with_floor(k, None)
+}
+
+/// [`build_field`] with ADR Finding 96 B3's external incision floor (norm units, one entry per
+/// target cell). `None` is byte-identical. Separate entry point because [`Knobs`] is `Copy` and
+/// a grid cannot live in it -- the same constraint ADR Finding 88 hit on `LakeCellInfo`.
+pub fn build_field_with_floor(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>) -> GridF32 {
     let ss = SteinSteinParams::default();
     let run_cfg = C1TimeLoopConfig {
         rigid_continental_crust: true,
@@ -293,6 +303,7 @@ pub fn build_field(k: Knobs) -> GridF32 {
         if let Some(t) = k.talus_passes {
             sp.talus_passes = t;
         }
+        sp.depression_floor = k.depression_floor; // ADR Finding 96 A1
         // ADR Finding 83 -- `relief_v3` now ARRIVES bounded, so the knobs edit what is
         // there rather than installing it. `base_level_off` wins over the others.
         if k.base_level_off {
@@ -317,6 +328,7 @@ pub fn build_field(k: Knobs) -> GridF32 {
             });
         }
     }
+    cfg.incision_floor = floor; // ADR Finding 96 B3
     upscale_from_c1_with_progress(
         &state,
         &run_cfg.iso_config,

@@ -448,10 +448,14 @@ pub fn upscale_from_c1_with_progress(
             result.heightmap.width,
             result.heightmap.height,
         );
-        result.heightmap = crate::erosion::stream_power::incise_lithology(
+        // ADR Finding 96 B3 -- `cfg.incision_floor` is `None` in every production path, and
+        // `incise_with_floor(.., None, ..)` is byte-identical to `incise_lithology`.
+        result.heightmap = crate::erosion::stream_power::incise_with_floor(
             &result.heightmap,
             sp,
             k_field.as_deref(),
+            cfg.incision_floor.as_ref().map(|f| f.as_slice()),
+            &mut |_, _| {},
         );
     }
 

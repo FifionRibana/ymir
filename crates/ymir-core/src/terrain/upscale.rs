@@ -131,6 +131,23 @@ pub struct FbmUpscaleConfig {
     /// erases the carved valleys (measured relief 323 → 24 m).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stream_power: Option<crate::erosion::stream_power::StreamPowerConfig>,
+    /// ADR Finding 96 B3 -- an **external per-cell incision floor**, one entry per cell of the
+    /// TARGET grid, in norm units. `None` (default, and every production path) is byte-identical.
+    ///
+    /// `#[serde(skip)]`: this is a full 8192² field, it has no business in a serialized config,
+    /// and it is bench-only until a finding promotes it.
+    ///
+    /// ⚠️ **Because it is skipped, it is INVISIBLE to the cache digest** ([`crate::cache`]: *"a
+    /// code change with no config change is invisible to the digest unless its `ALGO_*` is
+    /// bumped"*). That is harmless today — the benches call
+    /// [`upscale_from_c1_with_progress`](crate::tectonics_c1::production_upscale::upscale_from_c1_with_progress)
+    /// directly and never through the cache — but **if this floor is ever promoted it must either
+    /// be folded into the digest or carry an `ALGO_UPSCALE_EROSION` bump**, or two runs differing
+    /// only by their floor will collide on the same cache key. See
+    /// [`incise_with_floor`](crate::erosion::stream_power::incise_with_floor) for what the floor
+    /// does -- it bounds the relaxation target, so it can stop the incision and can never deposit.
+    #[serde(skip)]
+    pub incision_floor: Option<std::sync::Arc<Vec<f32>>>,
     /// **Submarine bathymetry re-map** (#submarine). When `Some`,
     /// [`upscale_from_c1`](crate::tectonics_c1::production_upscale::upscale_from_c1)
     /// re-maps the ocean floor toward the plateau→slope→abyss envelope AFTER the
@@ -204,6 +221,7 @@ fn is_zero_f64(v: &f64) -> bool {
 impl Default for FbmUpscaleConfig {
     fn default() -> Self {
         Self {
+            incision_floor: None, // ADR Finding 96 B3 -- bench-only; None is byte-identical
             target_size: 1024,
             octaves: 7,
             lacunarity: 2.0,

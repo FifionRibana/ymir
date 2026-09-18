@@ -3879,6 +3879,43 @@ cost at least one wrong conclusion of mine.
 > the next promotion, and it arrives as an image instead of a red test. The assertion must be
 > PRODUCTION (rule: Finding 72) and must have its own negative control (rule 1).
 
+> ⚠️ **Rule 14, added at Finding 96: A CLOSURE THAT BOUNDS THE EROSION MUST REPORT THE EROSION IT
+> PERMITTED.** Every criterion in this dossier measures erosion DAMAGE, so a closure that simply
+> switches the erosion off scores well on all of them at once — and looks like a win.
+>
+> **Rule 14b, from the same round: the texture statistics cannot see STRUCTURE.** Local σ, the
+> slope quantiles, the > 30° share and the hypsometric percentiles are all **isotropic magnitude**
+> measures. A field that is striped along the D8 axes and has lost its dendritic network scores
+> BETTER on every one of them, because it genuinely is smoother — just wrongly smoother. Finding
+> 96's χ floor passed all of them and was refuted by **one look at one 1024² tile**. A texture
+> claim needs an image, or it is a claim about magnitude only.
+
+A1's first form did exactly that, and it scored beautifully: canyon class **0 of 29** (the
+oracle's own value), lake fraction **17.51 %** (closer to the oracle's 15.92 % than any other
+candidate), coastal spurs **+2** against the delivered **+115**, slope p90 **15.5°**, `to_nothing`
+**0**. Four of Finding 95's six criteria, at **+0.5 s**. Two quantities gave it away, and neither
+is a criterion:
+
+- **`median cut 0.0 m`** — the field was not eroded at all;
+- **paired p50 `679.1 m`** — byte-equal, at printed precision, to the un-incised field's own
+  679.1 m from block B1's table.
+
+⚠️ **And the dossier had already recorded this exact failure mode, once, in production code**: the
+`a_c_slope_law` docstring (`stream_power.rs:180-185`) says a uniform `A_c × 100` *"removes the comb
+— and switches the incision off with it (hypsometry 860 m against 865 for the un-eroded field)"*.
+I walked into it again with a different knob. **A failure mode that recurs across two different
+parameters, two years apart, is a rule and not an anecdote.**
+
+The mechanical cause is worth keeping too, because it is one line: I reused Finding 83's seam,
+whose guard is `floor.min(h_o)`. That guard is **correct for a floor BELOW the cell** — it freezes
+a cell already near the bound instead of lifting it, so the bound can stop erosion and can never
+deposit. Applied to a floor whose value is **ABOVE** the cell — and `filled ≥ h` everywhere, by
+definition of a fill — it collapses to `h_o`, the relaxation target is never below the cell, and
+the incision stops on **every cell of the grid**. **A floor's sign must be checked against the
+quantity it bounds before the seam is reused.** A closed depression's equilibrium is not
+expressible as a floor at this seam at all; it is a **population exclusion** ("no incision here"),
+and that is what A1's corrected form does.
+
 ### 1. A pinning test needs a NEGATIVE CONTROL before it can assert byte-identity
 
 `timescale_naming_changes_no_output` asserts the shipped numbers are untouched. On its own
@@ -14127,3 +14164,441 @@ incision adds **no coastal spur at all**, and it holds **18.05 %** of its land u
 24.05 %. It is neither the delivered relief nor a plain: it is the same erosion budget spent evenly
 instead of in two shocks. **That is what the eye should be asked to judge, and the count to put
 beside it is 0 canyons against 16.**
+
+## Finding 96 — χ is a valid PROFILE and an invalid FIELD, twice over: the coastal fringe is over-incision along the CHANNELS, and the floor that proves it prints D8 into the terrain
+
+A search round, **two seams added to production, both additive and inert by default** (`depression_floor: false`, `incision_floor: None` — byte-identical), everything measured in bench. The
+oracle is a ROW OF NUMBERS from Finding 95's 300-pass milestone, not a rebuilt field: the field
+costs 1 h 43 of one core and the author refused it.
+
+### Rule 11 + 11b — block B0
+
+`chi` **0** · `χ` **0** · `Flint` **0** · `Perron` **0** · `Royden` **0** · `Willett` **0** ·
+`integral` **0** · `stationnaire` **0** — **NOTHING FOUND. The χ construction is entirely new to
+the dossier: never written, never rejected.**
+
+⚠️ **RULE 11 WAS VIOLATED ON THIS GREP AND THE VIOLATION COST SOMETHING.** I reported `steady`
+as **2** hits, both at L6585. Case-insensitively there are **3**, and the one I missed — L1807,
+written in capitals — is **the EARLIEST**, which is precisely the one rule 11 says to read first.
+It is **Finding 41**, whose title already answers half of block A1: *"the closed-depression
+population: the FBM is the sole creator; **maturity is not the cure**"*, asking *"are the hollows a
+TRANSIENT that erosion maturity removes … or a STEADY STATE that a process regenerates each
+pass?"*
+
+> **What Finding 41 contributes to A1, and I should have had it before building A1:** the FBM
+> creates the depressions (~thousands against tectonics' ~15) and **more passes do not remove
+> them** — which Finding 95 then confirmed from the other end (the lake fraction does not follow
+> integration: 24.05 → 18.99 → 17.87 → 15.92 → 18.05 %, non-monotone). **So A1 was never going to
+> remove the depressions, and it does not: it stops the incision from OVER-DEEPENING them.** That
+> is exactly the quantity the canyon class measures (median cut > 50 m inside a footprint with a
+> rim above 30°), and it is why A1 moves the canyon rate (29.6 → 21.9 %) while barely moving the
+> lake fraction (24.70 → 22.67 %). The two are different claims and Finding 41 separates them.
+
+`steady`, case-sensitively **2**, both at L6585, and both are **Finding 62's constraint**, not a
+rejection of χ:
+*"any candidate stream-power reformulation that assumes a steady state is out of domain here,
+because there is no steady state to assume — the equation has no uplift term and its attractor is
+planation."* ⚠️ **That is the constraint χ SATISFIES rather than violates**: χ does not assume a
+steady state, it *supplies* the missing uplift as its one free parameter `(U/K)^{1/n}`. My
+prediction that `steady` would hit on exactly this text is confirmed.
+
+`Finding 6` **L237, L6754** — and this one **is a partial rejection, which the round must carry**:
+*"Ymir's tectonics already did the uplift, the fix is to LIMIT total incision, not add U."* So
+**B1 as a SHIPPED FIELD is out of domain** (it would re-do the uplift Ymir's tectonics already
+did), and the same sentence **PRESCRIBES B3**: a bound on total incision. Direction B therefore
+enters this round as Finding 6's own remedy with a limit whose *shape* comes from a physical
+profile instead of from a smaller global K.
+
+`talus_passes` · `angle of repose` · `repose` — `relief_v3` ships `talus_slope = tan(33°)` and
+`talus_passes: 4`, so A2's "impose 35°" is not a change of angle. `deposition` /
+`transport-limited` — L487(iii), L2514, L3829, L4126, read in full and used in block A3.
+`priority_flood`, `spill_level`, `depression` — `compute_flow` already returns `filled`, which IS
+the per-depression spill level. `Finding 79`, `Finding 43` read.
+
+11b: `0.0646` / `0,0646` **0** · `488.1` / `488,1` **1** (Finding 95's own oracle line) ·
+`0.1 km²` **7**, first L3433 — Finding 43's `A_c`, which block B1' turns out to need.
+
+### B1 — the χ integral works, and its control passes on BOTH parameters
+
+`χ(k) = χ(receiver) + (A₀/A)^{m/n}·dx`, χ = 0 at the sea, `z_χ = z_base + (U/K)^{1/n}·χ`, with
+`m/n = 0.5` (Harel, anchored), `n = 1`, and `propagation_order` (Finding 74) as the traversal.
+
+| | |
+|---|---|
+| cost | **0.37 s** over **11 327 660** land cells, **0 unreached** (no cycle) |
+| χ (metres of integral) | p10 2 433 · p50 **7 552** · p90 15 735 · max 46 714 |
+| the one free parameter | **`(U/K)^{1/n} = 0.0646`**, set to put the paired p50 at the oracle's 488.1 m |
+| **Flint control** (666 293 samples) | `log S = −2.7382 − 0.4998·log A` ⇒ **θ = 0.4998** for 0.5 required · `k_s = exp(intercept) = 6.4684e-2` against `(U/K)^{1/n} = 0.0646` ⇒ **PASSES** |
+| paired hypsometry (n = 11 327 660) | χ **157.2 / 488.1 / 1017.0 m** · delivered 18.1 / 432.3 / 1587.9 · pre-incision 95.2 / 679.1 / 1836.3 |
+| pits (cells the priority flood must raise) | **χ 0 · delivered 1 240 677** |
+
+> The control is not vacuous: it recovers the **intercept** as well as the slope, so the integral
+> is right and the calibration is self-consistent. χ is depression-free by construction, and its
+> hypsometry is far NARROWER than the delivered field's (p10 ×8.7, p90 ×0.64).
+
+### B2 — the price, and my prediction is refuted IN THE OPPOSITE DIRECTION
+
+I predicted the local σ of the χ field **2 to 5× LOWER** than the delivered field's, *"to the eye:
+a profile"*. The round predicted the same thing in other words (*"the spectrum loses its high
+frequencies"*).
+
+| population: land, stride 37 | local 3×3 σ (m) | slope p50 / p90 / max | share > 30° |
+|---|---|---|---|
+| **χ** | **44.73** (p90 155.83) | **60.5 / 81.8 / 88.4°** | **79.07 %** |
+| delivered | 6.28 (p90 36.73) | 10.2 / 45.1 / 88.5° | 28.53 % |
+| pre-incision | 3.70 (p90 11.00) | — | — |
+
+> ⛔ **χ is 7.1× ROUGHER than the delivered field at the cell scale, not smoother, and 79 % of its
+> land is steeper than 30°.** It is a field of cliffs. **Both predictions are refuted, and in the
+> direction neither of us considered.**
+>
+> ⚠️ The bench's own first line printed *"χ is 0.1× smoother"* — that is the ratio inverted
+> (`σ_del / σ_χ`). The honest statement is 7.1× rougher, and the line is corrected in the bench
+> before anything quotes it.
+
+Coast, spurs ≥ 1 km at 8192²: authority (pre-incision u16) **20** · χ **24 (Δ +4)** · delivered
+breached+u16 135 (Δ +115) · delivered eroded 19 (Δ −1).
+
+### B1′ — the repair costs one clamp, removes a THIRD of the excess, and the residue names the mechanism
+
+The cause is arithmetic, not a bug. The profile's gradient is `(U/K)^{1/n}·(A₀/A)^{m/n}`; at **one
+cell** of drainage area (0.00238 km² at 8192²) with A₀ = 1 km² that is
+`0.0646 × 20.5 = 1.324 m/m = 52.9°`, **by construction**. I was applying the fluvial law **three
+decades below its own channel threshold** — `A_c = 0.1 km²`, Finding 43/65's fluvial–debris-flow
+break, which the anchoring report calls ANCHORED (Whipple & Tucker Table 1: 0.059–0.140 km²).
+
+Clamp `A` at `A_c` (cost **0.08 s**): the gradient at one cell falls to **0.227 m/m = 12.8°**.
+
+| | χ all-land | **χ clamped at `A_c`** | delivered |
+|---|---|---|---|
+| local σ p50 | 44.73 | **22.36** | 6.28 |
+| slope p50 / p90 / max | 60.5 / 81.8 / 88.4° | **42.5 / 78.8 / 88.3°** | 10.2 / 45.1 / 88.5° |
+| share > 30° | 79.07 % | **60.87 %** | 28.53 % |
+| paired p10/p50/p90 | 157.2 / 488.1 / 1017.0 | **154.7 / 488.1 / 995.1 m** | 18.1 / 432.3 / 1587.9 |
+| pits | 0 | **0** | 1 240 677 |
+| `(U/K)^{1/n}` | 0.0646 | **0.0719** | — |
+| coast spurs ≥ 1 km | 24 (Δ +4) | **25 (Δ +5)** | 135 (Δ +115) |
+
+> ⛔ **The clamp removes only a third of the excess, and the residue has a different cause that the
+> measurement lets me name: χ IS DISCONTINUOUS ACROSS DRAINAGE DIVIDES.** χ integrates along the
+> flow path to the sea; two adjacent cells on opposite sides of a divide have path integrals that
+> differ by hundreds of metres, and `z = z_base + C·χ` turns that difference into a cliff. At
+> `C = 0.0719` and a 48.8 m cell, a 45° face needs only `Δχ = 679 m` of integral — routine across a
+> divide. **χ has no mechanism to make two neighbouring basins agree on their shared crest.** The
+> very property that makes χ-mapping a divide-migration diagnostic in the literature is what
+> disqualifies it as a field generator.
+>
+> **So: χ is a VALID PROFILE (the Flint control passes) and an INVALID FIELD.** That is the finding
+> of direction B, and it was also the argument for B3: the delivered field already has the lateral
+> coupling — the Laplacian and the talus — that χ structurally lacks, so χ should supply a bound
+> and never a surface. Which is where Finding 6 pointed in the first place.
+>
+> ⛔ **AMENDED AT THIS CLAIM POINT BY THIS ROUND'S OWN VISUAL VALIDATION.** "A bound, never a
+> surface" is **not enough**: a bound built from a **D8 path integral** carries D8's eight-direction
+> quantisation, and clamping the terrain to it **stamps the D8 axes into the relief** — visible in
+> one look at one 1024² tile, invisible to every statistic in table C. What χ supplies is an
+> **ATTRIBUTION**, and what a shippable bound needs is to be **isotropic in construction**. See the
+> visual validation section for the image and for the candidate that follows (a cap on the cut as a
+> function of drainage area, which needs no path integral at all).
+
+### B4 — a depression-free field does NOT buy the breach back
+
+| | |
+|---|---|
+| `breach_monotone` + its drainage on the **χ** field | **47.0 / 46.9 / 49.2 s** (three runs) |
+| on the **delivered eroded** field | **53.7 / 55.6 / 60.5 s** |
+| **Δ** | **−6.8 / −8.7 / −11.3 s** |
+
+> ⛔ **My B4 prediction — *"`run_hd` drops from 279 s to ~130 s"* — is refuted.** The breach's cost
+> is the **traversal**, which must visit every cell whether or not there is anything to carve;
+> removing 1.24 M pits buys **under 12 seconds in all three measurements**, not 155. The round's premise that B1 was *"the only
+> candidate that could reduce the delivered cost"* falls with it.
+
+### A2 — `talus_passes` brings the tail down, pushes the SHARE up, and never touches the maximum
+
+| `talus_passes` | slope p50 | p90 | **max** | share > 30° | paired p50 | cost |
+|---|---|---|---|---|---|---|
+| **4 (shipped)** | 11.6° | 44.6° | **85.2°** | 28.82 % | 424.2 m | 45.5 s |
+| 16 | — | 37.1° | **86.4°** | 31.28 % | 430.2 m (+1.4 %) | 89.2 s |
+| 64 | — | 33.7° | **86.3°** | 32.96 % | 436.5 m (+2.9 %) | **268.7 s** |
+
+> The p90 walks down toward the 33° repose angle, **the share above 30° goes UP** (more cells are
+> pushed *to* the repose angle than are pulled below it), **the maximum never moves**, and 64
+> passes cost **6.5× the whole delivered incision**. ⛔ **My A2 prediction (class 2–6 for 5–20 s) is
+> wrong on cost by a factor 13.** Finding 6's diagnosis is confirmed from a second direction:
+> *"the near-vertical faces are the walls of the 1-px slits"* — and a local high→low sweep cannot
+> relax a one-cell slit without filling it, however many times it runs.
+
+### A3 — stopped on the dossier's own numbers, as the round allowed
+
+The round asked for A3's feasibility rather than its measurement. The dossier has already costed
+it, three times, and the third one is disqualifying for THIS round:
+
+- **L487 (iii)** — *"a transport-limited / depositional term … the largest change (a sediment
+  budget)"*, recommended **third** of three, after the two cheaper dampers.
+- **L2514** — real sedimentary basins *"would need a deposition stage (a transport-limited erosion
+  pass or a flexural-subsidence + fill model) — **recorded as the specification, not built**"*.
+- **L4126-4130** — *"The debt closes only when the hillslope term changes NATURE: transport-limited
+  with an explicit sediment flux … **but that law must be posed in a regime where the model
+  integrates, which the shipped configuration does not.**"*
+
+> ⛔ **A3's own precondition is the integrating regime this round explicitly refuses.** The shipped
+> configuration runs at Courant **3 699** (Finding 90-C), and a deposition term posed there would
+> be integrating a flux 10³× past its wave bound. A3 is not a cheap closure — by the dossier's
+> accounting it is the most expensive change on the list, and it cannot be posed without the very
+> passes the round rules out. **Stopped, cited, not measured.** My prediction that I would stop A3
+> on the dossier's numbers holds.
+
+### A1 and B3 — the two closures, through one seam
+
+Both go through the Finding 80/83 site in `incise`, and both are **gated OFF in production**
+(`depression_floor: false`, `incision_floor: None`), which method rule 13 pins with a permanent
+byte-identity test (`the_two_finding_96_seams_are_inert_when_off`).
+
+- **A1** — a closed depression is at equilibrium: the channel that ends in it may not deepen it.
+  Expressed as a **population exclusion** (`filled[k] > field[k]` ⇒ no incision at `k`), for the
+  reason method rule 14 records. `flow.filled` IS the per-depression spill level and is already
+  computed every iteration, so the closure needs no new field. ⚠️ **And Finding 41 fixes what A1
+  can and cannot claim**: the FBM is the sole creator of those depressions and *"maturity is not
+  the cure"*, so A1 does not REMOVE them — it stops the incision from OVER-DEEPENING them. That is
+  why it moves the canyon rate (29.6 → 21.9 %) and barely moves the lake fraction (24.70 →
+  22.67 %).
+- **B3** — the χ profile as a **floor on the relaxation target**, `h_r_eff = max(h_r, min(z_χ, h_o))`.
+  This is Finding 6's prescription — *"LIMIT total incision, not add U"* — with a limit whose shape
+  comes from block B1' instead of from a smaller global K. `(U/K)^{1/n} = 0.0719`, calibrated once
+  on the oracle's median.
+- **the union** — A1's exclusion on top of B3's floor, because χ **cannot see** the population A1
+  excludes: χ is built on the BREACHED pre-incision field, where the future lake footprints have
+  been carved through, so inside them χ is low and the floor permits the very cut it should stop.
+
+### C — the decision table, filled
+
+Stage and population, declared once: relief is **paired** over the cells that are land in both the
+candidate and the pre-incision reference; the canyon class and the lake fraction come from Finding
+95's chain, **copied verbatim**, on the **breached** field with the climate bed
+`c1_climate_placed(45°, 40° span)`; the coast is counted twice, once on the **breached + u16**
+stage (the stage Finding 90 attributed the +115 to) and once on the **eroded, u16-quantised**
+stage; cost is the **marginal** cost of the closure over the delivered build.
+
+| candidate | canyon class | **as a RATE** | `to_nothing` | `Unresolved` | lakes % | paired p50 | **vs oracle** | slope p90 | > 30° | pits | **coast, breached+u16** | coast, eroded u16 | **marginal cost** |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **delivered** | 16 / 54 | 29.6 % | 0 | 3 | 24.70 | 424.2 m | −13.1 % | 44.6° | 28.82 % | 1 240 677 | **135 (Δ +115)** | 18 (Δ −2) | — (45.5 s build) |
+| **A1** exclusion | **7 / 32** | **21.9 %** | 0 | **1** | 22.67 | **447.6 m** | **−8.3 %** | 41.7° | 25.16 % | 983 995 | 124 (Δ +104) | 18 (Δ −2) | **+7.2 s** |
+| **B3** χ floor ⛔ | 17 / 57 | 29.8 % | 0 | 4 | 20.19 | 535.7 m | **+9.8 %** | 38.1° | 23.07 % | 1 102 720 | **23 (Δ +3)** | 19 (Δ −1) | **+2.2 s** |
+| **A1 + B3** union ⛔ | 11 / 41 | 26.8 % | 0 | 4 | 19.72 | 546.6 m | +12.0 % | **36.0°** | **20.43 %** | 1 028 820 | **24 (Δ +4)** | 19 (Δ −1) | **+3.0 s** |
+| **ORACLE** (F95, 300 passes) | **0 / 24** | **0 %** | **0** | 1 | **15.92** | **488.1 m** | — | n/a | n/a | n/a | +29 | −2 | **6 210 s** |
+
+⛔ The two rows marked ⛔ are **refuted by the visual validation below** — they carry a
+rectilinear D8 artefact that none of these columns can see. Their numbers are kept because the
+ATTRIBUTION they establish is sound; the fields are not shippable.
+
+**The copy is controlled.** The delivered row reproduces Finding 95's own delivered row to within
+**one lake** (16/54 against 16/53), **0.65 points** of lake fraction (24.70 against 24.05) and
+**one spur** on the eroded stage (−2 against −1) — and the breached+u16 **+115 is EXACT**. So the
+verbatim copy of the criteria chain is reading what Finding 95 read.
+
+> ⛔ **NO CANDIDATE WINS THE TABLE AS WRITTEN**, and two of the gates need saying out loud before
+> the result is read.
+>
+> ⚠️ **The canyon class must be read as a RATE, not a count.** The four candidates scan 54, 32, 57
+> and 41 lakes — the inventories differ because the closures change which depressions survive — so
+> the raw counts are not comparable. As a rate the delivered field is at 29.6 %, **B3 does not move
+> it at all (29.8 %)**, the union takes it to 26.8 % and **A1 to 21.9 %**. The population trap,
+> fifth round running.
+>
+> ⚠️ **The cost gate "under 30 s" fails the delivered field itself** (45.5 s to build). Read as the
+> marginal cost of the closure — which is what the round's framing implies — every candidate passes
+> with room: **+2.2 s, +3.0 s, +7.2 s**.
+
+**What the table does establish, and it is the round's result:**
+
+> ⛔ **The two defects are SEPARABLE and they have DIFFERENT owners.**
+>
+> - **The coastal fringe is over-incision along the CHANNELS, and B3 closes it: Δ +115 → Δ +3, for
+>   +2.2 s.** A1 barely touches it (Δ +104), so the closed depressions are not its cause.
+> - **The canyon class is incision inside the CLOSED DEPRESSIONS, and A1 owns it: 29.6 % → 21.9 %,
+>   for +7.2 s.** B3 does not move it (29.8 %), exactly as predicted from χ's blindness inside the
+>   footprints the breach removed before χ was built.
+> - **And they do not compose.** The union gets B3's coast (+4) but only part of A1's canyons
+>   (26.8 % against A1's 21.9 %), and it is the only candidate that falls OUTSIDE ±10 % of the
+>   oracle on relief (+12.0 %). ⚠️ **My hypothesis that "the union should fix what B3 alone cannot"
+>   is refuted**: the two closures compete for the same relief budget — B3 retains 546.6 m where A1
+>   retains 447.6, and a higher-standing surface offers deeper cuts to the lakes A1 is protecting.
+
+> ⛔ **And one number in this table beats the oracle by an order of magnitude at 0.04 % of its
+> cost.** Finding 95's 300-pass milestone leaves the coastal criterion at **Δ +29** on the
+> breached+u16 stage (+26 at 1 000 passes), and Finding 95 recorded that residue as *"surviving
+> integration — its attribution holds and it is a separate defect"*. **B3 gives Δ +3.** The
+> mechanisms differ and that is why: integration flattens the terrain so the breach has less to
+> drag under the sea, whereas the χ floor stops the deep coastal pits from being cut at all.
+> **Finding 90's breach residue, which Finding 95 explicitly left open, closes here — and it closes
+> from the incision side, not the breach side.**
+
+**What no candidate does.** None reaches the oracle's canyon class of **0**, and none reaches its
+lake fraction of **15.92 %** (best: the union at 19.72 %, still **20×** the criterion). The lake
+fraction is the quantity Findings 39, 60 and 95 have all named as a **water balance the incision
+never reads** — no closure on the incision can be expected to move it, and none did. **The answer
+to the round's question is therefore PARTIAL, and precisely so:
+
+- **ONE criterion is ATTRIBUTED and closed in the bench** — the coastal fringe, by B3, at +2.2 s,
+  better than the oracle itself. ⛔ **But the visual validation below refutes B3 as a shippable
+  FIELD** (it prints the D8 axes into the terrain), so what is closed is the *attribution*, not the
+  product. Read that section before quoting the +3;
+- **ONE has a named owner and a partial remedy** — the canyon class, by A1: the rate falls by a
+  quarter (29.6 → 21.9 %), not to the oracle's zero;
+- **ONE is untouched and was predicted untouchable** — the lake fraction, a water balance the
+  incision never reads;
+- **and the question Finding 95 actually left open is not answered by any of this.** Finding 95's
+  relief was at +10.2 % **and still falling** after 1 000 passes; A1 lands at −8.3 % and B3 at
+  +9.8 % of the oracle's 488.1 m, both inside ±10 % — but **the oracle was itself in motion**, so
+  agreeing with it is not evidence of convergence. **Whether Ymir needs an uplift term still costs
+  6 399 passes to settle, and nothing in this round changes that price.**
+
+### The visual validation — DONE, and it refutes the χ floor as a shippable field
+
+`f96_export` (`crates/ymir-core/tests/f96_export.rs`, `#[ignore]`d) rebuilt the χ floor
+**independently** of `f96_closure` and recovered the same calibration to four digits
+(`(U/K)^{1/n} = 0.0719`) — a reproducibility control on the integral worth having. It then built
+the delivered field, B3 and the union and wrote seven PNGs to
+`docs/reports/c1_continental_buoyancy/f96_closure/` in **208.9 s** of one core, against the
+**1 h 43** a Finding 95 oracle field would have cost. Shared ramp **1 m .. 3 250 m** so the three
+images are comparable rather than each self-normalised. The signed difference: **p50 +9.7 m ·
+p99 +497.9 m · max +1 639.0 m**. The tile the floor changed most: **(5120, 3072)**.
+
+> ⛔ **THE IMAGE REFUTES B3, AND NO STATISTIC IN TABLE C COULD SEE IT.** Side by side at 1024², the
+> delivered crop is dendritic — feathered, branching valley networks over the whole tile. The B3
+> crop has **two defects that are obvious to the eye and invisible to every number in this
+> finding**:
+>
+> 1. **A RECTILINEAR, AXIS-ALIGNED ARTEFACT.** The mid-left of the tile is crossed by horizontal
+>    and vertical striations and blocky step-terraces that follow the **D8 axes**. The cause is
+>    structural and I should have predicted it: **χ is a D8 PATH INTEGRAL**, so its iso-levels
+>    inherit D8's eight-direction quantisation, and clamping the terrain to that floor **prints the
+>    D8 axes into the relief**. Finding 7's washboard was diagonal striations from a different
+>    cause; this is the same *class* of defect arriving from the closure instead of the noise.
+> 2. **LOSS OF THE DENDRITIC NETWORK where the floor binds hard.** The lower-left quadrant's
+>    feathered valleys are replaced by a **smooth ramp carrying a few thin lines** — the drainage
+>    texture is gone, not reduced.
+>
+> **And the union is visually IDENTICAL to B3**: A1's exclusion does not touch the artefact,
+> because the artefact is the floor's own geometry.
+
+⚠️ **The methodological point is the sharper half of this.** Table C says B3's texture is
+**better** than the delivered field's — slope p90 38.1° against 44.6°, share above 30° 23.07 %
+against 28.53 %. Both numbers are correct, and both are **isotropic MAGNITUDE statistics**: they
+measure how steep the field is, never in which directions or whether the drainage structure
+survives. **A striped, de-dendrified field scores BETTER on all of them, because it genuinely is
+smoother — just wrongly smoother.** Every texture number this dossier owns (local σ, slope
+quantiles, the > 30° share, the hypsometric percentiles) shares that blindness. The two defects
+above were found in **one look at one tile**, after nine rounds of numbers did not surface them.
+This is the strongest case the campaign has produced for the author's standing "À VALIDER
+VISUELLEMENT" requirement, and it should be quoted the next time a round is tempted to skip it.
+
+> **So the round's conclusion has to be narrower than table C reads, and it is:**
+>
+> ⛔ **B3 is a valid ATTRIBUTION INSTRUMENT and an INVALID CLOSURE.** What it proves is real and
+> stands: **the coastal fringe is over-incision along the channels** (Δ +115 → Δ +3, measured, and
+> better than the 300-pass oracle's +29). What it cannot do is ship, because its bound carries D8's
+> anisotropy into the terrain.
+>
+> **The candidate that follows is cheaper than χ and needs no path integral at all.** Finding 6's
+> prescription read literally — *"LIMIT total incision"* — is a **cap on the CUT as a function of
+> drainage area**: `h_r_eff = max(h_r, min(h_pre[k] − c·A^q, h_o))`, where `h_pre` is the
+> pre-incision surface. It is the same seam (`incision_floor` already exists and is already inert),
+> it is **isotropic by construction** — `A` is the MFD area the incision already computes, and no
+> D8 chain enters — and it has one or two free parameters instead of χ's one. **Not measured this
+> round**, and stated as the next candidate rather than as a result.
+
+**Still owed from earlier rounds, still not produced**: a real coastline raster (asked at Findings
+76, 80, 83, 89 and 90). Every coastal number in this finding, including the Δ +115 → Δ +3 that is
+its headline, is a **spur COUNT on a `marching_squares` contour of a u16 mask** — an instrument
+this dossier has never seen an image of. Given what one look at one tile just did to B3, that debt
+is now the most expensive unpaid item in the campaign.
+
+⚠️ **And nothing here is wired into the viz.** `incision_floor` is bench-only by design
+(`#[serde(skip)]`, and therefore invisible to the cache digest — documented as a promotion hazard
+at the field itself), so `cargo run -p ymir-viz` shows the DELIVERED field and cannot show B3. The
+PNGs above are the only way to look at these candidates today, and the round asked for exactly
+that: *"tout en banc, gaté"*.
+
+### Score
+
+Predictions written and dated **2026-09-18, before the rule-11 grep and any measurement**.
+Reading declaration as recorded: non-blind on Findings 73–95 and on this round's prompt (the
+author's predictions arrive in the same message, no independence claimed); non-blind on the
+Finding 83 seam, on `relief_v3`'s `talus_slope = tan(33°)` and on `compute_flow` returning
+`filled`; blind on Finding 6's full text, on `talus_passes`' body, on whether χ was in the
+dossier, and on every figure.
+
+**Mine.**
+
+- **B0 "χ is new, and `steady` will hit on Finding 62's constraint rather than on a rejection"
+  ✓✓** — 0 hits for χ and its whole literature, 2 for `steady`, both L6585, both the constraint.
+- A1 "it is FREE, because `spill_of_depression` is already `flow.filled`" **✓ on the field, ✗ on
+  the cost**: it needs no new grid, but the CORRECTED form costs **+7.2 s**, not the "< 1 s" I
+  predicted — protecting the depressions keeps relief, and a higher-standing field makes the next
+  pass's priority flood and routing more expensive.
+  **A1 "its SIGN is a fill, not a bound" ✓ as a mechanism and ✗ as a number**: I flagged the danger
+  and then wrote the seam with Finding 83's `min(h_o)` guard, which turns the fill into a **total
+  switch-off** — `filled ≥ h` everywhere, so `min(filled, h_o) = h_o`, the target is never below
+  the cell, and the incision stops on **every** cell. Measured: median cut **0.0 m**, paired p50
+  **679.1 m** = the un-incised field. My +25 to +45 % band is wrong (it is +60.1 %) and the
+  reason is my own guard.
+- A2 "a population exclusion, not an angle" **✓ in spirit** (the angle is already `tan(33°)`), but
+  **A2's cost prediction ✗ by a factor 13** (5–20 s predicted, **268.7 s** measured at 64 passes),
+  and the maximum never moving at all is a fact neither of us predicted.
+- **A3 "I stop on the dossier's own numbers" ✓** — three citations, the third disqualifying.
+- **B1 "cost < 5 s" ✓✓** (0.37 s) · **"Flint θ = 0.50 ± 0.02, and if not my integral is wrong"
+  ✓✓** (0.4998, and the intercept checks too) · "depression-free by construction" **✓** (0 pits
+  against 1 240 677) · ⚠️ "lake fraction < 3 %" **NOT MEASURED** — χ-as-a-field has no lake
+  inventory in this bench, and I will not score a prediction I did not test.
+- **B2 "σ 2 to 5× LOWER than the delivered field" ✗✗ — it is 7.1× HIGHER.** My worst miss of the
+  round, and the round made the same one. ⚠️ "Richardson D ≈ 1.00–1.05" **NOT MEASURED** (the
+  coast was read with the criterion's own spur instrument instead).
+- B3 "the same one-line seam as Finding 83, with `z_χ` for `sea + ε`" **✓** (it is literally that
+  site) · ⛔ **"texture of the delivered field" ✓ ON THE NUMBERS AND ✗ ON THE IMAGE**: 23.07 %
+  above 30° against the delivered 28.53 %, and a 1024² crop shows a rectilinear D8 artefact and a
+  de-dendrified quadrant. **The numbers were right and the claim they supported was wrong** — see
+  the visual section. ·
+  "relief within ±10 % of the oracle" **✓** (+9.8 %) · "cost ≈ 2 s over the delivered" **✓✓**
+  (**+2.2 s**) · **"canyons 0–2" ✗✗** — 17/57, a rate of **29.8 %** against the delivered 29.6 %,
+  i.e. **no movement at all** · **"B3 wins the table" ✗** — and I had flagged that prediction as
+  the least independent of mine, which did not stop it being wrong. B3 wins the COAST, which
+  neither of us predicted it would.
+- **B4 "`run_hd` drops from 279 s to ~130 s" ✗✗** — **−6.8 / −8.7 / −11.3 s** across three runs.
+  · "B3 does not inherit the gain" **✓** (B3 keeps 1 102 720 pits).
+- ⛔ **And one prediction made DURING the round, after A1 was corrected, is also refuted: "the
+  union should fix what B3 alone cannot".** The union's canyon rate is **26.8 %** against A1's
+  **21.9 %** alone — adding B3's floor makes the canyons WORSE, because the two closures compete
+  for the same relief budget. Written before the union was built, refuted by it.
+
+**The round's.**
+
+- "If χ or a steady construction has already been written or rejected, stop and cite" — **partially
+  triggered and correctly resolved**: Finding 6 IS a partial rejection, it rules out B1 as a
+  shipped field, and **the same sentence prescribes B3**. The round did not have to stop.
+- A1 "pose the equilibrium of a closed depression" — **inexpressible as a floor at this seam** (a
+  floor whose value is above the cell collapses), expressible as an exclusion.
+- A2 "impose the repose angle" — **the angle is already `tan(33°)`**; the question was never the
+  angle and more passes do not remove the walls.
+- B1 "build an old continent's relief directly" — **valid as a profile, invalid as a field**, for a
+  reason the round did not anticipate (divide discontinuity, not smoothness).
+- B4 "the only candidate that could reduce the delivered cost" — **✗, under 12 s in all three
+  measurements**.
+- C's cost gate "**under 30 s**" — ⚠️ **as literally applied it fails the delivered field itself**
+  (44.7 s to build). Read as the MARGINAL cost of the closure, which is what the round's framing
+  implies, A1 costs **+7.2 s**, B3 **+2.2 s** and the union **+3.0 s**, and all three pass with
+  room. Both readings are in the table; I am not silently choosing the flattering one.
+
+⛔ **And the round's own requirement is what caught the worst error of the round.** The author has
+demanded an "À VALIDER VISUELLEMENT" section every round, empty or not. This round it was not
+empty, and **one look at one tile refuted the candidate nine rounds of statistics had just crowned**.
+Table C's texture columns are isotropic magnitude statistics and are structurally blind to
+anisotropy. I record that as the round's most useful outcome after the coastal attribution.
+
+**Meta.** **Five of my predictions are refuted** — B2's sign, B4's magnitude, A2's cost, "B3 wins
+the table", and the union hypothesis I wrote mid-round — and one of my instruments produced a null
+result I had to withdraw entirely. The pattern of the round is not populations for once — it is **stages and signs**:
+a floor above the cell instead of below it (A1), a law applied below its own threshold (B1), and
+one label covering two stages of the same field (the coast column, float against u16). Rule 12
+covers the flow field and covers none of the three.
