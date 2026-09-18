@@ -14104,7 +14104,22 @@ and not the incision. And the last 6 399 passes.
 
 ### À VALIDER VISUELLEMENT
 
-The 1 000-pass continent against the delivered one, same crop as the image the author looked at for
+⛔ **DEFERRED BY THE AUTHOR, 2026-09-18: the field does not exist anywhere and will not be rebuilt
+for now.** The bench built the 1 000-pass field in memory, measured the six criteria and dropped it
+at the end of the test — there is no PNG, no cache entry, no `.ymir` bundle, and `HdParams` carries
+no `iterations`/`k` override, so the viz cannot regenerate it either. Seeing it costs the build
+again: **≈ 5.7 h of one core** (the loop is serial — 0.99 of 24 cores). Three routes were priced and
+none taken: a `HdParams::integrating` knob (~10 lines, then the app regenerates and LL shows it with
+the panel and the toggles), a bench PNG mosaic in `exports/coastal_closure/panels/` (the Finding 80
+convention), or a full `.ymir` export (which would also replace the 5 September bundle, itself older
+than Findings 83–95).
+
+⚠️ **The method point, cheaply learned: a bench that spends hours building a field and drops it has
+to spend them again to show it.** Every earlier round measured fields worth seconds, so this never
+cost anything before. If a run is priced in hours, persist its field in the same run.
+
+**What the image would have shown**, for whenever it is built: the 1 000-pass continent against the
+delivered one, same crop as the image the author looked at for
 Finding 88's 24 % of lakes. **The binary question — the France-like map, or a planed plain? — now
 has numbers on both sides of it, and they do not agree with either word.** The field is **10.2 %
 HIGHER** than delivered at the median, its canyon class is **0** where the delivered has **16**, its
