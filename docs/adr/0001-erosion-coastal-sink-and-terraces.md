@@ -16032,3 +16032,166 @@ chantier owns.** ⚠️ That is the third consecutive round in which the defect 
 name rather than a mechanism (`below_sea_basins`, the ±20 % on a count of 11, and now three
 absolute gates), and it is the thing the template should be made to catch: **line 4 should require
 every gate to state whether it is absolute or relative, and against what it was calibrated.**
+
+## Finding 103 — the intersection is empty, and exactly ONE gate closes it: at ×0.6 every seed passes everything except `erosion ≥ 70 %`
+
+**No production change. Nothing promoted.** A re-read of Findings 100 and 102 under declared gates,
+plus the two builds the round allowed. 7 minutes of one core.
+
+### Template line 1 — the grep, and rule 11b demonstrating itself
+
+`Finding 102` **1** (L15814, mine) · **`F102` 0 — NOTHING FOUND** (a `F<n>` identifier again, the
+third round running) · `largest basin` **2** (earliest L6293, a **collision**: Finding 60's
+cross-resolution basin matching, a different sense) · `plus grand bassin` **0** ·
+`oracle = livré` **0** · `proxy` **77** (L260) · `R8` **84** (L3916, the rule-14b amendment) ·
+`−30 %` **1**, `-30 %` and `-30%` **0**.
+
+> ⛔ **And the seed values demonstrate rule 11b on themselves.** `3699308789514581511` greps to
+> **0**; `3 699 308 789 514 581 511` greps to **1**. I wrote the seeds into the dossier **with
+> thousands separators**, so a grep of the raw value a bench would print returns nothing. ⚠️ **Four
+> rounds, four grep failure modes**: a collision that paid (Finding 62), a false negative on a
+> block identifier (`F90-D`), a substring collision (`D_L` in `channel_head_law`), and now a
+> separator mismatch on a value I wrote myself. **Rule 11b already has the separator clause; what
+> it lacks is the word-boundary clause and the instruction to grep block HEADINGS for `F<n>-<X>`.**
+
+### A — the gate table, signed, with two corrections
+
+The round's table is adopted as written, with two amendments the numbers force:
+
+- ⚠️ **"largest basin ↑ or =" is DIRECTIONAL WITH NO TOLERANCE, so it rejects on noise.** Seed 1
+  at ×0.3 reads **−0.3 %** and would be "Finding 45" on the letter. It needs a band; **±2 %** is
+  proposed and used below, and everything in the sweep except that one row grows by +0.4 to +15.6 %.
+- ⚠️ **`erosion ≥ 70 %` is the only gate that decides this round**, and the round's own table
+  labels it a PROXY. Finding 101 measured why: at ×0.4 the **median** cut per cell falls **81 %**
+  while the total falls **28 %** — **a threshold on the total does not say what it appears to say.**
+
+### B — the re-read: the intersection is EMPTY, and the failing gate is named per row
+
+Gates: coast ≤ +5 · canyons ≤ 25 % of the seed's delivered rate · R8 ≤ −30 % · erosion ≥ 70 % ·
+components unchanged · largest basin ≥ −2 % · relief +10…+25 % · D_L share > 5 → 0.
+
+| factor | **seed 1** | **seed 2** | **seed 3** |
+|---|---|---|---|
+| ×0.3 | ✗ coast +10, canyons 10.0 % | ✗ coast +23, canyons 8.6 %, R8 −27.7 % | ✗ coast +24, canyons 12.5 %, R8 −14.7 %, relief +8.6 % |
+| ×0.4 | **✓ all** | **✓ all** | ✗ coast +6, canyons 13.3 %, **R8 −21.0 %** |
+| ×0.5 | ✗ **erosion 67.8 %** | **✓ all** | ✗ **R8 −24.8 %** |
+| ×0.6 | ✗ **erosion 64.1 %** | ✗ **erosion 68.6 %**, D_L 3 % | **✓ all** |
+| ×0.7 | ✗ erosion 60.6 % | — | — |
+
+> ⛔ **THE INTERSECTION IS EMPTY, and the structure of the emptiness is the finding.** The gates
+> split into two families that pull opposite ways on the one cursor: **raising the factor improves
+> the coast, the canyons and R8, and spends the erosion.** Seed 3 needs **×0.6** to clear R8; seeds
+> 1 and 2 refuse **×0.6** on erosion. **No invariant can reconcile two criteria that point in
+> opposite directions on a single-parameter dial** — which is why block D is not the way out.
+>
+> ⛔ **And at ×0.6 exactly ONE gate stands.** Seed 1: everything passes except erosion, **by 5.9
+> points**. Seed 2: everything except erosion, **by 1.4 points**, plus a D_L share of **3 % — which
+> is ONE lake of about 34**. Seed 3: everything passes.
+>
+> ⚠️ **My prediction B2 is confirmed and the round's is not: the gate that eliminates the low
+> factors is R8 and the canyons, not the coast.** Seed 3's coast at ×0.5 is **+4** and passes; what
+> kills ×0.4 and ×0.5 there is R8 at **−21.0 %** and **−24.8 %** against ≤ −30 %. The round's
+> prediction named the coast (+6 to +8).
+
+### C — the two builds, spent where they decide
+
+Finding 102 already swept seeds 2 and 3 at 0.3–0.6 and Finding 100 swept seed 1 at 0.3–0.7, so the
+round's assumed gaps did not exist. **What was missing was seed 1's `wc == 2` COMPONENT count and
+`D_L` at ×0.5 and ×0.6** — Finding 100 pre-dates both columns.
+
+| seed 1 | relief | canyons | erosion | R8 | **components** | catchment | **D_L p50 (share > 5)** |
+|---|---|---|---|---|---|---|---|
+| ×0.5 | 504.9 m (+19.0 %) | 6.9 % | 67.8 % | 0.0496 (−46.3 %) | **20** | 9 819 (+0.4 %) | **1.79 (0 %)** |
+| ×0.6 | 515.7 m (+21.6 %) | 3.4 % | 64.1 % | 0.0459 (−50.3 %) | **20** | 9 848 (+0.7 %) | **1.76 (0 %)** |
+
+> **Both rows reproduce Finding 100 to the digit** on the five columns it carried, so the two new
+> columns are readable. **Seed 1's components never move (20 → 20 → 20) and its D_L share above 5
+> goes 32 % → 0 %** at both factors. ⇒ **Seed 1 passes every gate at ×0.5 and ×0.6 except erosion.**
+
+### D — DECLINED, and the second reason is better than the first
+
+1. **Budget.** The three invariants are properties of the **tectonic** field, which exists for no
+   seed; it would be three further builds against a two-build round.
+2. ⛔ **Three points that order do not make an invariant.** A monotone candidate orders three seeds
+   correctly by chance **1 time in 6**; with **three** candidates, the chance that at least one does
+   is **≈ 42 %**. And the minimal passing factor per seed is **0.4 / 0.4 / 0.6** — **two distinct
+   values**, so there is not even a strict order to reproduce. **A candidate that "orders" this data
+   is a coin that came up heads.**
+3. **And block B says D is not the question.** The intersection is empty because two gates oppose
+   each other on one cursor, not because a factor rule is missing.
+
+### E — the seam, not written, and now for a stated reason
+
+⛔ **No common factor exists under the declared gates, so there is no number to write.** The seam
+itself is unchanged from Finding 101's specification (both gates already exist in
+`StreamPowerConfig` and are already inert; promotion is `relief_v3` turning them on, an
+`ALGO_UPSCALE_EROSION` 4 → 5 bump, and the guards). ⚠️ **And Finding 102's result stands against
+block E's guard list: `Finding 80 (Δ ≥ 2 cells = 0)` cannot be claimed** — the residue is 2 448 to
+3 343 across the three seeds against an un-incised reference of 8.
+
+**The four exits, priced, for the author's decision — this is the round's product:**
+
+| exit | what it costs | what it gives |
+|---|---|---|
+| **relax `erosion ≥ 70 %` to ≥ 64 %** | one author gate down 6 points | **×0.6 becomes common to all three seeds** (modulo seed 2's one lake of D_L) |
+| relax `R8 ≤ −30 %` to ≤ −24 % | one author gate down 6 points | ×0.5 becomes common on R8 — but seed 1's erosion is still 67.8 %, so **this exit alone does not close it** |
+| **a factor per seed** | the closure carries a number that does not transfer | and **nothing predicts it**: three points, two values |
+| **a second parameter** | the closure stops being a one-cursor closure | the only exit that **decouples** R8 from the erosion instead of trading them |
+
+> ⚠️ **The first exit is the cheapest and the most suspect at the same time**, and both halves have
+> to be said. It is cheapest because 64 % is not "the erosion switched off" — Finding 99's area cap,
+> which rule 14 was written to catch, sat at **43.7 %**. It is suspect because **the threshold is
+> being moved after seeing which side of it the answer fell on**, which is the one move this
+> campaign's method exists to prevent. ⛔ **If that gate moves, it should move for a stated reason
+> about what erosion permitted MEASURES — Finding 101 showed the scalar hides an 81 % fall in the
+> median cell — and not because 64 is close to 70.**
+
+### Score
+
+Predictions written and dated **2026-09-19, before the grep and the re-read**. ⚠️ **This is the
+weakest scoring position of the campaign and I said so in advance**: most of block B re-reads
+tables I wrote myself, so "predicting" them is not forecasting. Only the structural claims count.
+
+**Mine.**
+
+- **B1 "the intersection is empty with the erosion gate and non-empty without it" ✓ on the first
+  half, ✗ on the second** — without the erosion gate ×0.6 still fails seed 2 on the D_L share
+  (3 %, i.e. one lake). I predicted a clean split on one gate; it is one gate plus a one-unit
+  threshold, which is the same pattern three rounds running.
+- ⛔ **B2 "the eliminating gate is R8 and the canyons, not the coast" ✓✓** — seed 3's coast at ×0.5
+  is +4 and passes; R8 at −21.0 % and −24.8 % is what kills ×0.4 and ×0.5. **The round predicted
+  the coast (+6 to +8) and it is the one substantive disagreement I got right.**
+- **B3 "the intersection without erosion is {0.6} and nothing else" ✓ on the factor**, ✗ on
+  "nothing else fails" (seed 2's D_L).
+- **B4 "×0.6 fails erosion on TWO seeds, not one" ✓✓** — 64.1 % and 68.6 %. The round's prediction
+  named only seed 1.
+- **C1 "no build is needed for the intersection; what is missing is seed 1's components and D_L"
+  ✓✓** — the round's assumed gaps (seed 2 ×0.6, seed 3 ×0.5) already existed, and the two builds
+  went where they decided.
+- **D1 "the ordering test is worth ~42 % by chance and I will refuse to call it a rule" — held**,
+  and strengthened by a fact I had not predicted: the minimal factors are **0.4 / 0.4 / 0.6**, two
+  distinct values, so there is no strict order to reproduce at all.
+- **E1 "`erosion ≥ 70 %` is the gate the author has to rule on" ✓✓.**
+
+**The round's.**
+
+- B "×0.5 passes seeds 1 and 2; seed 3 fails at ×0.5 **on the coast** (+6 to +8)" — **✗ on the seed
+  and on the gate**: seed 1 fails ×0.5 on erosion (67.8 %), and seed 3's ×0.5 coast is **+4**,
+  passing; it fails on **R8**.
+- B "×0.6 passes seeds 3 and 2, seed 1 fails on erosion" — **✓ for seeds 1 and 3, ✗ for seed 2**,
+  which also fails erosion (68.6 %) and the D_L share.
+- **B "intersection with erosion: empty; without it: {0.6}" ✓✓** — the bottom line is right even
+  though two of the three details under it are not.
+- C "the two missing builds do not change the intersection" — **the builds were not the ones the
+  round thought were missing**, and the two that were actually missing confirmed seed 1 passes
+  everything but erosion.
+- E "the seam at ×0.6 passes all of A on the three seeds except erosion on seed 1" — **✗, seed 2
+  too.**
+- Meta "at least one of four is wrong" **✓ — three are.**
+
+**Meta.** ⛔ **Four rounds, four different grep failure modes, and this round's was a value I wrote
+myself** (`3699308789514581511` returns 0; the dossier has it with thousands separators). ⚠️ And the
+substantive pattern is now unmistakable and worth stating as the campaign's standing risk: **the
+last four blocking results have each been a threshold at the resolution of its own quantity** — one
+spur on seed 3's coast, one lake on seed 2's D_L, a ±20 % bound on a count of 11, and `R8 < 0.06`
+rounded up from 0.0563. **The closure keeps passing; the gates keep failing to be measurements.**

@@ -1653,3 +1653,61 @@ forme**, donc ces D_L ne se comparent qu'entre eux.
 > ou un nom, pas un mécanisme** (`below_sea_basins`, les ±20 % sur un compte de 11, et maintenant
 > trois portes absolues). ⇒ **La ligne 4 du gabarit devrait exiger que chaque porte déclare si elle
 > est absolue ou relative, et contre quoi elle a été calibrée.**
+
+## ⛔ L'INTERSECTION EST VIDE, ET UNE SEULE PORTE LA FERME : À ×0,6 CHAQUE SEED PASSE TOUT SAUF `ÉROSION ≥ 70 %` (Finding 103)
+
+Aucun changement de production. **Rien de promu.** Relecture des F100/F102 sous portes déclarées,
+plus les deux constructions autorisées. 7 minutes d'un cœur.
+
+| facteur | **seed 1** | **seed 2** | **seed 3** |
+|---|---|---|---|
+| ×0,3 | ✗ côte +10, canyons 10,0 % | ✗ côte +23, canyons 8,6 %, R8 −27,7 % | ✗ côte +24, canyons 12,5 %, R8 −14,7 %, relief +8,6 % |
+| ×0,4 | **✓ tout** | **✓ tout** | ✗ côte +6, canyons 13,3 %, **R8 −21,0 %** |
+| ×0,5 | ✗ **érosion 67,8 %** | **✓ tout** | ✗ **R8 −24,8 %** |
+| ×0,6 | ✗ **érosion 64,1 %** | ✗ **érosion 68,6 %**, D_L 3 % | **✓ tout** |
+
+> ⛔ **La structure du vide est le résultat.** Les portes se répartissent en deux familles qui tirent
+> en sens inverse sur le même curseur : **monter le facteur améliore la côte, les canyons et R8, et
+> dépense l'érosion.** La seed 3 exige ×0,6 pour R8 ; les seeds 1 et 2 refusent ×0,6 pour l'érosion.
+> ⇒ **Aucun invariant ne peut réconcilier deux critères opposés sur un curseur à un paramètre** —
+> et c'est pourquoi le bloc D n'est pas la sortie.
+>
+> ⛔ **À ×0,6 il ne reste qu'UNE porte debout** : seed 1 rate l'érosion **de 5,9 points**, seed 2
+> **de 1,4 point** plus un D_L à 3 % qui vaut **UN lac sur ~34**, seed 3 passe tout.
+>
+> ⚠️ **Et la porte qui élimine les facteurs bas est R8 et les canyons, pas la côte** : la côte de la
+> seed 3 à ×0,5 vaut **+4** et passe ; ce sont les **−21,0 %** et **−24,8 %** de R8 qui tuent ×0,4
+> et ×0,5.
+
+**Les deux constructions** (seed 1 à ×0,5 et ×0,6) reproduisent le F100 au chiffre et complètent les
+colonnes que le F100 n'avait pas : **composantes 20 → 20 → 20** et **D_L part > 5 : 32 % → 0 %** aux
+deux facteurs. ⇒ **La seed 1 passe toutes les portes sauf l'érosion.**
+
+**Deux corrections au tableau A :** la porte « plus grand bassin ↑ ou = » est **directionnelle sans
+tolérance**, donc elle rejette sur du bruit (seed 1 à ×0,3 : **−0,3 %** serait « F45 ») — il lui faut
+une bande. Et **`érosion ≥ 70 %` est la seule porte qui décide le tour**, celle que le tableau
+étiquette déjà PROXY : le F101 a mesuré qu'à ×0,4 la coupe **médiane** par cellule tombe de **81 %**
+pendant que le total n'en perd que 28 % — **un seuil sur le total ne dit pas ce qu'on croit.**
+
+**Bloc D décliné, deux raisons.** Les trois invariants sont du champ tectonique, absent pour les
+trois seeds (trois constructions de plus contre un budget de deux). Et surtout : **trois points qui
+s'ordonnent ne sont pas un invariant** — un candidat monotone ordonne trois seeds par hasard **1 fois
+sur 6**, et avec trois candidats la probabilité qu'au moins un y arrive est **≈ 42 %**. Les facteurs
+minimaux valent **0,4 / 0,4 / 0,6** : **deux valeurs**, il n'y a même pas d'ordre strict à reproduire.
+
+**Les quatre sorties, chiffrées — c'est le produit du tour :**
+
+| sortie | coût | effet |
+|---|---|---|
+| **assouplir `érosion ≥ 70 %` à ≥ 64 %** | une porte auteur descend de 6 points | **×0,6 devient commun aux trois seeds** |
+| assouplir `R8 ≤ −30 %` à ≤ −24 % | idem | ×0,5 passe R8 partout — mais la seed 1 reste à 67,8 % d'érosion : **cette sortie seule ne ferme pas** |
+| **un facteur par seed** | la closure porte un nombre non transférable | et **rien ne le prédit** : trois points, deux valeurs |
+| **un second paramètre** | la closure cesse d'être à un curseur | seule sortie qui **découple** R8 de l'érosion au lieu de les échanger |
+
+> ⚠️ **La première sortie est la moins chère et la plus suspecte, et les deux moitiés doivent être
+> dites.** Moins chère parce que 64 % n'est pas « l'érosion éteinte » — le plafond d'aire du F99, que
+> la règle 14 a été écrite pour attraper, était à **43,7 %**. Suspecte parce qu'**on déplacerait le
+> seuil après avoir vu de quel côté tombe la réponse**, ce que la méthode de cette campagne existe
+> précisément pour empêcher. ⛔ **Si cette porte bouge, qu'elle bouge pour une raison énoncée sur ce
+> que « érosion permise » MESURE — le F101 a montré que le scalaire cache une chute de 81 % de la
+> cellule médiane — et pas parce que 64 est proche de 70.**
