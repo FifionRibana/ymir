@@ -1405,3 +1405,88 @@ Et `diffuse_channels` est **déjà `true`** dans `relief_v3`.
 
 ⚠️ **La colonne coût est utilisable ce tour** — tous les champs construits côte à côte dans un seul
 run tiennent en **4,6 s** (64,1–68,7 s). Le point de méthode du F98 est vérifié dans les deux sens.
+
+## ⛔ LA FENÊTRE EXISTE : À ×0,4 LA CLOSURE TOMBE SUR L'ORACLE, TIENT LA CÔTE À +2, ET PASSE LA RÈGLE 14 POUR LA PREMIÈRE FOIS DE LA CAMPAGNE (Finding 100)
+
+Aucun changement de production. Sept champs, six chaînes de critères, 21 minutes d'un cœur.
+Premier tour sous le gabarit de proposition.
+
+| `k_time` ×1 | relief | ratio ×1 | **ratio ORACLE** | côte | canyons | **érosion** | R8 | densité (A médian) | **bassins** | **plus gd bassin** |
+|---|---|---|---|---|---|---|---|---|---|---|
+| livré | 424,2 m | 0,7679 | 0,8691 (−13,1 %) | +115 | 29,6 % | 100 % | 0,0924 | 2,569 (0,0143) | **11** | **9 779** |
+| **×0,3** | 481,6 m | 0,8718 | **0,9867 (−1,3 %)** | +10 | 10,0 % | **75,7 %** | 0,0635 | 2,921 (0,0167) | **11 (+0 %)** | 9 748 |
+| **×0,4** | **493,4 m** | 0,8931 | **1,0108 (+1,1 %)** | **+2** | 6,9 % | **71,7 %** | 0,0563 | 3,122 (0,0167) | 14 (**+27 %**) | 9 780 |
+| ×0,5 | 504,9 m | 0,9139 | 1,0343 (+3,4 %) | **+1** | 6,9 % | 67,8 % | 0,0496 | 3,316 (0,0191) | 14 (+27 %) | 9 819 |
+| ×0,6 | 515,7 m | 0,9336 | 1,0566 (+5,7 %) | **+1** | 3,4 % | 64,1 % | 0,0459 | 3,510 (0,0191) | 13 (+18 %) | 9 848 |
+| ×0,7 (contrôle) | 525,9 m | 0,9521 | 1,0775 (+7,7 %) | +2 | 3,4 % | 60,6 % | 0,0393 | 3,714 (0,0215) | 13 (+18 %) | 9 877 |
+
+> **Le contrôle ×0,7 reproduit le F99 au chiffre** (525,9 · +2 · 3,4 % · 0,0393 · 13). Tout le reste
+> est lisible.
+>
+> ⛔ **LA FENÊTRE EXISTE, À ×0,4** : relief **+1,1 % de l'oracle** — dessus, pas près —, côte **+2**,
+> canyons 6,9 %, lacs 19,84 %, **érosion permise 71,7 %, au-dessus de la barre des 70 %**, R8
+> 0,0563 contre 0,0924. **Première ligne de la campagne à passer la règle 14 en tenant les
+> défauts**, et toutes les portes écrites à la table C du F97 sont désormais franchies par une
+> seule ligne.
+>
+> ⛔ **La côte est NON MONOTONE, et les deux prédictions étaient trop pessimistes** : +2 → +1 → +1 →
+> +2 → +10 de 0,7 à 0,3. **L'optimum côtier est au MILIEU du balayage (×0,5–0,6, +1)**, meilleur
+> que tout ce qui avait été mesuré. Ni le relecteur ni moi n'avions prévu un optimum interne.
+>
+> ⛔ **Les canyons rouvrent (3,4 → 10,0 %), mais PAS par le mécanisme proposé.** A1 est une
+> exclusion de population — `if depression_floor && filled[k] > field[k] { continue; }` — donc les
+> cellules de cuvette quittent la boucle **avant** le plancher de pente, et le facteur ne les touche
+> jamais. La vraie cause est un **désaccord de population** : **A1 protège les cellules en cuvette
+> AU MOMENT DE L'INCISION ; la classe canyon note l'entaille dans une empreinte de lac APRÈS la
+> brèche.** Deux ensembles différents. ⚠️ Et la colonne est en petits nombres : le « triplement »
+> vaut **1 lac → 3 lacs** sur 29–30. Elle ne peut pas porter seule une décision.
+
+⚠️ **UNE PORTE DU TOUR EST RATÉE PAR LA LIGNE GAGNANTE, ET L'ARBITRAGE VOUS REVIENT.** Le tour pose :
+*« bassins sous mer et plus grand bassin ne doivent pas bouger de plus de 20 % — sinon c'est le F45
+sous un autre nom »*. ×0,4 et ×0,5 déplacent les bassins **11 → 14 = +27 %**. **À la lettre, ×0,4
+est disqualifié et ×0,3 ne l'est pas** (11 → 11).
+
+> Ce que je peux mettre à côté de la porte sans la réécrire : une borne **relative** de ±20 % sur un
+> compte de **11** vaut ±2,2 bassins, et **±1 bassin fait déjà ±9 %** — la porte est à la résolution
+> de sa propre grandeur. Le déplacement absolu est **+3 bassins**, contre **+1 951** au F45 ; l'autre
+> colonne d'intégrité, le plus grand bassin, bouge de **+0 %** sur la même ligne ; et les comptes du
+> balayage sont **non monotones** (11, 14, 14, 13, 13), ce à quoi ressemble un compte à cette
+> résolution. **Je ne déclare pas la porte satisfaite en la réinterprétant : les nombres sont
+> ci-dessus, et savoir si +3 bassins sur 11 disqualifie ×0,4 est un seuil que vous avez posé.**
+
+**Le bloc B, et pourquoi R8 seul ne pouvait pas répondre.** Un champ **vide** marque aussi R8 ≈ 0,
+donc j'ai imprimé **σ local à côté** :
+
+| tuile (2048, 5120) | R8 entière | **σ entière** | R8 tiers ouest | **σ tiers ouest** |
+|---|---|---|---|---|
+| livré | 0,1190 | **7,34 m** | 0,1139 | **0,73 m** |
+| **×0,4** | 0,0584 (**−51 %**) | 5,41 m (**−26 %**) | 0,0566 | 0,59 m |
+| ×0,7 | 0,0465 (−61 %) | 5,29 m (−28 %) | 0,0960 | 0,56 m |
+
+> ⛔ **Réponse par la colonne σ : dans le champ LIVRÉ, le tiers ouest porte σ = 0,73 m. Il n'y a pas
+> de relief à y perdre.** Ce que la closure retire, c'est 0,14–0,17 m de texture sub-métrique sur un
+> sol déjà plat, et R8 dit que cette texture est **du peigne**. ⇒ **Peigne parti, pas relief perdu**
+> — et aucune statistique de la table ne pouvait le dire sans σ à côté de R8. Sur la tuile entière :
+> **R8 −51 % contre σ −26 %**, la part anisotrope part deux fois plus vite que la texture totale.
+> À l'œil, ×0,4 est **dendritique** et **visiblement plus détaillé que ×1 au F99** — ce à quoi
+> ressemblent 71,7 % d'érosion contre 51,1 %.
+
+**Et la ligne 1 du gabarit a payé dès son premier tour, par une COLLISION.** `0.0451` a un hit plus
+ancien que le mien (L6751, **Finding 62**) : c'est un percentile d'aire drainée, pas une intercept
+de Flint — mais la table qui le contient mesure ce que le F99 n'avait qu'inféré :
+
+> *« La part de chenaux ne baisse pas parce que moins de cellules franchissent un seuil inchangé —
+> **c'est la distribution qui se déplace sous le seuil**. La cellule médiane passe de 0,1094 km² à
+> **0,0249 km², quatre fois sous `A_c`**. Une cellule qui quitte le régime de chenal cesse d'être
+> incisée, la concentration baisse, moins de cellules franchissent le seuil à la passe suivante. »*
+
+⇒ **Le mécanisme de B2 gagne une phrase : le plancher ne borne pas seulement la profondeur de
+l'incision, il ARRÊTE la rétroaction de dé-chenalisation du F62.** Re-mesuré ici (population
+différente de celle du F62, les nombres ne sont pas interchangeables) : A médian **pré 0,0596 →
+livré 0,0143**, et le balayage le remonte **0,0167 → 0,0215**.
+
+⚠️ **Deux réserves.** La colonne coût est plus bruitée qu'au F99 (81,4 / 43,7 / 52,1 / 52,6 / 52,8 s
+— la première construction repaie le warm-up du F98, et les quatre autres s'étalent sur 20 %) : tout
+ce qu'on peut en lire, c'est que **le facteur ne change pas le coût**. Et le R8 du tiers ouest est
+**plus bas à ×0,4 (0,0566) qu'à ×0,7 (0,0960)** — la case la plus bruitée de la table (320², ~400
+fenêtres) et **je n'ai pas de mécanisme pour elle ; je ne l'habille pas.**

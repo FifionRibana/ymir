@@ -15379,3 +15379,222 @@ Two rounds ago the error class was framing; this round it is **not reading my ow
 ⚠️ Against that, the thing that made this round work was also a citation: the below-sea basin
 column exists because the rule-11 grep surfaced Finding 45, and **without it block C would have
 reported a winner on four criteria.**
+
+## Finding 100 — the window exists: at factor ×0.4 the closure lands ON the oracle, holds the coast at +2, and passes rule 14 for the first time in the campaign
+
+**No production change.** Seven fields, six criteria chains, 21 minutes of one core. First round run
+under the proposal template.
+
+### Template line 1 — the grep, and a COLLISION that paid
+
+`slope floor` **2** (L14782, my own Finding 97) · `slope_floor` **2** (L14640) · `S_eq` **2**
+(L14782) · `graded clamp` **2** (L14673) · **`Finding 76 B` / `F76-B` — 0, NOTHING FOUND** (the
+content exists at Finding 76, *"Not run: B (the seam and its variants)"*, the identifier does not) ·
+`Finding 99` **1** (L15150, mine) · `525.9` **2** / `525,9` **0** · ⚠️ the bare factor values
+`0.3` / `0.4` / `0.5` / `0.6` give **253 / 282 / 313 / 231** hits and are unusable, which is rule
+11b's own caveat · **negative declared on the factors 0.3–0.6: never built.**
+
+⛔ **`0.0451` has 2 hits and the EARLIEST is not mine: L6751, inside Finding 62.** It is a
+**collision** — `0.04511` there is a drainage-area percentile, not a Flint intercept — **and the
+collision paid, because the table it sits in measures what Finding 99 could only infer**:
+
+> *"The channel share does not fall because fewer cells cross an unchanged threshold on an
+> unchanged distribution — **it falls because the distribution itself moves out from under the
+> threshold**. At 8192² the median cell goes from 0.1094 km² (just above `A_c` = 0.1) to
+> **0.0249 km² — four times below it** — at the shipped point. The positive feedback proposed is
+> confirmed: **a cell that leaves the channel regime stops being incised, concentration falls,
+> fewer cells clear the threshold next pass.**"* — Finding 62, with a D8 negative control.
+
+> **Finding 99's drainage-density column IS this collapse**, and the mechanism of B2 gains a
+> sentence it did not have: **the floor does not only bound the incision's depth, it arrests
+> Finding 62's de-channelisation feedback.** Re-measured here on a stride-7 land sample (a
+> different population from Finding 62's, so the two numbers are not interchangeable): median
+> drainage area **pre-incision 0.0596 km² → delivered 0.0143 km²**, and the sweep walks it back
+> **0.0167 → 0.0215** as the factor rises. Density: pre **8.460**, delivered **2.569**, sweep
+> **2.921 → 3.714**.
+
+### Template lines 2–4
+
+**Domain.** `S_eq = (U/K)^{1/n}·A^{−m/n}` holds only for `A ≥ A_c` (Finding 96-B1′: below it the
+fluvial law is outside its calibrated domain, W&T 0.059–0.140 km²); the bound acts on the
+**relaxation target** (the Finding 80/83 seam); ⚠️ **the total relief is NOT in its domain** —
+Finding 99 measured that the floor governs ~255 m of ~550.
+
+**Instrument.** ⛔ **The ×0.7 control reproduces Finding 99 to the digit**: 525.9 m · coast +2 ·
+canyons 1/29 = 3.4 % · R8 0.0393 · erosion 60.6 % · 13 below-sea basins. Everything below is
+readable. Tile chosen by **max Δ(R8)**; erosion as a per-cell **intensity** at the same budget.
+
+⚠️ **And an arithmetic correction to block A's own target.** The round asks where the relief
+*"crosses the oracle (ratio 1.000; F99: 0.952 at ×0.7)"*. Those are two different quantities:
+Finding 99's ratio is against the **×1 calibration (552.4 m)**, and the oracle is **488.1 m**, i.e.
+**ratio 0.8836**. Both columns are printed below so the target cannot be read off the wrong one.
+
+### A — the sweep
+
+| | relief | ratio ×1 | **ratio ORACLE** | coast | canyons | lakes % | **erosion** | R8 | density (median A) | **basins** | **catchment** | cost |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| delivered | 424.2 m | 0.7679 | 0.8691 (−13.1 %) | +115 | 16/54 (29.6 %) | 24.70 | 100 % | 0.0924 | 2.569 (0.0143) | **11** | **9 779** | — |
+| **×0.3** | 481.6 m | 0.8718 | **0.9867 (−1.3 %)** | +10 | 3/30 (10.0 %) | 20.36 | **75.7 %** | 0.0635 | 2.921 (0.0167) | **11 (+0 %)** | 9 748 (−0 %) | 81.4 s |
+| **×0.4** | **493.4 m** | 0.8931 | **1.0108 (+1.1 %)** | **+2** | 2/29 (6.9 %) | 19.84 | **71.7 %** | 0.0563 | 3.122 (0.0167) | 14 (**+27 %**) | 9 780 (+0 %) | 43.7 s |
+| ×0.5 | 504.9 m | 0.9139 | 1.0343 (+3.4 %) | **+1** | 2/29 (6.9 %) | 19.43 | 67.8 % | 0.0496 | 3.316 (0.0191) | 14 (+27 %) | 9 819 (+0 %) | 52.1 s |
+| ×0.6 | 515.7 m | 0.9336 | 1.0566 (+5.7 %) | **+1** | 1/29 (3.4 %) | 19.06 | 64.1 % | 0.0459 | 3.510 (0.0191) | 13 (+18 %) | 9 848 (+1 %) | 52.6 s |
+| ×0.7 (control) | 525.9 m | 0.9521 | 1.0775 (+7.7 %) | +2 | 1/29 (3.4 %) | 18.74 | 60.6 % | 0.0393 | 3.714 (0.0215) | 13 (+18 %) | 9 877 (+1 %) | 52.8 s |
+
+**The three thresholds, as asked:**
+
+| question | answer |
+|---|---|
+| where the coast leaves +2/+3 | **×0.3 only** (+10). ⚠️ And it is **NON-MONOTONE**: +2 → +1 → +1 → +2 → +10 from 0.7 down to 0.3, with the **minimum at ×0.5 and ×0.6 (+1)** — better than anything measured before. |
+| where the relief crosses the ORACLE | **between ×0.3 and ×0.4** (481.6 m ⇒ −1.3 %, 493.4 m ⇒ +1.1 %) |
+| where the canyons reopen | **×0.5** on the 6 % line — rate 3.4 → 6.9 → 10.0 % going down |
+| rule 14's 70 % reached | **×0.4** (71.7 %), and again at ×0.3 (75.7 %) |
+| **drainage integrity** | basins **11 / 14 / 14 / 13 / 13** against the delivered 11 · catchments **9 748–9 877** against 9 779 (**±1 %**) ⇒ **HELD; no Finding 45 anywhere in the sweep** |
+
+> ⛔ **THE WINDOW EXISTS, AND IT IS ×0.4** — and my own prediction that it would not
+> (*"NO ROW IN 0.3–0.7 PASSES BOTH"*) is **refuted**.
+>
+> At ×0.4: relief **+1.1 % of the oracle** — on it, not near it; coast **+2**, best-class; canyons
+> 6.9 %; lakes 19.84 %; **erosion permitted 71.7 %, over rule 14's 70 % line**; R8 **0.0563**
+> against the delivered 0.0924; drainage integrity intact on the catchment column and +3 basins on
+> the other. **This is the first candidate in the campaign to pass rule 14 while holding the
+> defects**, and every gate Finding 97's table C wrote is now met by one row.
+>
+> ⛔ **My extrapolation was close and wrong where it mattered.** I predicted the oracle crossing at
+> factor **0.25–0.28** from Finding 99's measured 83 m per unit; it is at **≈0.35**, inside the
+> range. I predicted ×0.3 → 488–505 m; it is **481.6 m**, just below my band — the response is
+> slightly steeper than the two-point extrapolation implied, and that steepness is exactly what
+> puts the crossing inside the swept range. The round's *"between 0.5 and 0.6"* is refuted in the
+> other direction.
+>
+> ⛔ **The coast is NON-MONOTONE and both of us were too pessimistic.** I predicted it leaves
+> +2/+3 at 0.5 and reaches +40…+100 at 0.3; the round predicted it breaks at 0.4 and badly at 0.3.
+> Measured, it **improves** as the factor falls from 0.7 to 0.5 (+2 → +1) and only degrades at 0.3
+> (+10). **There is a coastal optimum in the middle of the sweep, and neither prediction allowed
+> for one.**
+>
+> ⛔ **The canyons DO reopen — and the mechanism the round proposed still cannot be it.** The round
+> wrote *"the floor descends into the depressions — does A1 follow?"*. It cannot: A1 is a
+> **population exclusion**, `if cfg.depression_floor && flow.filled[k] > field[k] { continue; }`,
+> so depression cells leave the loop **before** the slope floor is read, and the factor never
+> touches them. The real mechanism is the one I said in advance would have to be named if they
+> reopened anyway, and it is **a population mismatch**: **A1 protects cells that are in a depression
+> AT INCISION TIME; the canyon class scores the cut inside a lake footprint AFTER the breach.** The
+> two populations are not the same set, and a weaker floor lets the incision cut the cells that are
+> in the second but not the first.
+>
+> ⚠️ **And the canyon column is small-number statistics, which has to be said before it is
+> weighed**: the "tripling" from 3.4 % to 10.0 % is **1 lake → 3 lakes**, on a denominator of 29–30.
+> Two lakes crossed a threshold. That column cannot carry a decision on its own.
+
+> ⚠️ **ONE GATE OF THE ROUND'S OWN IS FAILED BY THE WINNING ROW, AND THE CALL IS THE AUTHOR'S.**
+> The round writes: *"below-sea basins and biggest catchment must not move by more than 20 % —
+> otherwise it is Finding 45 under another name"*. ×0.4 and ×0.5 move the basins **11 → 14 =
+> +27 %**. **On the letter of that gate they are disqualified and ×0.3 is not** (11 → 11, +0 %).
+>
+> What I can put beside the gate, without overriding it: a ±20 % *relative* bound on a count of
+> **11** means ±2.2 basins, and **±1 basin is already ±9 %** — the gate is at the resolution of its
+> own quantity. The absolute move is **+3 basins**, against Finding 45's **+1 951**; the other
+> integrity column, the biggest catchment, moves **+0 %** at the same row; and the sweep's basin
+> counts are **non-monotone** (11, 14, 14, 13, 13), which is what a count at this resolution looks
+> like. **I am not going to declare the gate satisfied by reinterpreting it. The measured numbers
+> are above, and whether +3 basins on 11 disqualifies ×0.4 is a threshold the author set and the
+> author should re-set or confirm.**
+
+### B — the image, and why R8 alone could not have answered the question
+
+⚠️ **The round's block B asks whether the smoothed western third is a loss or comb removed, and R8
+cannot answer that**: a field with *nothing* in it also scores R8 ≈ 0. The honest instrument is R8
+**beside the local relief σ** — σ holding while R8 falls means the comb went; σ collapsing with it
+means the relief went. Both are printed.
+
+| tile (2048, 5120) | whole: R8 | whole: **σ** | western third (320²): R8 | western third: **σ** |
+|---|---|---|---|---|
+| delivered | 0.1190 | **7.34 m** | 0.1139 | **0.73 m** |
+| **×0.4** | 0.0584 (**−51 %**) | 5.41 m (**−26 %**) | 0.0566 (−50 %) | 0.59 m (−19 %) |
+| ×0.7 | 0.0465 (−61 %) | 5.29 m (−28 %) | 0.0960 (−16 %) | 0.56 m (−23 %) |
+
+> ⛔ **The question is answered, and by the σ column**: in the **delivered** field, the western
+> third carries **σ = 0.73 m**. **There is no relief there to lose.** What the closure removes is
+> 0.14–0.17 m of sub-metre texture on ground that was already flat, and R8 says that texture is
+> **comb** (0.1139 in a region where the whole tile reads 0.1190). **Comb removed, not relief
+> lost** — and no statistic in the campaign's table could have said so without σ standing next to
+> R8.
+>
+> Over the whole tile the same pair reads **R8 −51 % against σ −26 %**: the anisotropic part is
+> removed at twice the rate of the total texture. My prediction was σ < −30 % **✓** and R8 > −70 %
+> **✗** (it is −51 %).
+>
+> **To the eye**, ×0.4 reads **dendritic** — valleys with crests and clean interfluves — and
+> visibly **more detailed than ×1 was at Finding 99**, which is what 71.7 % of the erosion against
+> 51.1 % looks like. The delivered panel at the same tile is **combed** across its whole area.
+>
+> ⚠️ **One figure in that table is unexplained and is flagged rather than dressed up**: the western
+> third's R8 is **lower at ×0.4 (0.0566) than at ×0.7 (0.0960)**, i.e. the *weaker* floor leaves
+> *less* comb in that region. The sub-region is 320² (≈ 400 windows at w = 16) against the tile's
+> ≈ 3 900, so it is the noisiest cell in the table — but I have no mechanism for it and I am not
+> inventing one.
+
+⚠️ **The cost column is noisier than Finding 99's** and should not be read finely: 81.4 / 43.7 /
+52.1 / 52.6 / 52.8 s, where the **first build of the sweep again pays the warm-up** (Finding 98's
+method point) and the remaining four spread **20 %** against Finding 99's 7 %. All that can be read
+is that the factor does not change the cost.
+
+### Score
+
+Predictions written and dated **2026-09-19, before the grep line and any measurement**; the
+reviewer's were under `<details>` and **not opened**, so both sides are independent this round —
+unlike Finding 98, and the difference is recorded because it changes what a score is worth.
+
+**Mine.**
+
+- ⛔ **A1 "the relief does NOT cross the oracle anywhere in 0.3–0.7; the crossing sits at 0.25–0.28"
+  ✗.** It crosses at **≈0.35**. My ×0.3 band (488–505 m) missed low at **481.6 m** — the response
+  is steeper than Finding 99's two-point slope implied, and that steepness is precisely what puts
+  the crossing inside the swept range. **The convexity argument was right and the extrapolation
+  was not, and the error is in the direction that changes the answer.**
+- ⛔ **A2 "the coast leaves +2/+3 at 0.5 and reaches +40…+100 at 0.3" ✗✗.** Measured **+2 / +1 /
+  +1 / +2 / +10** from 0.7 down to 0.3: **non-monotone, with an optimum at ×0.5–0.6 better than
+  anything previously measured**. I allowed only for monotone degradation.
+- ⛔ **A3 "the canyons HOLD, ≤ 6 %, and the round's mechanism cannot fire" — ✗ on the number, ✓✓ on
+  the mechanism.** They reach **10.0 %** at ×0.3. But the round's proposed cause (the floor
+  descending into the depressions) still cannot be it, for the reason I gave in advance: A1
+  `continue`s before the floor is read. **The cause is the population mismatch I said would have to
+  be named — protected at incision time, scored after the breach** — and naming it in advance is
+  the only part of A3 worth anything.
+- **A4 "erosion crosses 70 % at about factor 0.4" ✓✓ — it crosses at exactly ×0.4 (71.7 %)**, and
+  the ladder 63 / 66 / 70 / 73–75 % I predicted for 0.6 / 0.5 / 0.4 / 0.3 measures
+  **64.1 / 67.8 / 71.7 / 75.7 %**. The closest prediction I have made in this campaign.
+- ⛔ **A5, my bottom line — "NO ROW IN 0.3–0.7 PASSES BOTH; the sweep is a trade-off curve with no
+  window" ✗✗.** ×0.4 passes rule 14 **and** holds the coast at +2 **and** lands +1.1 % from the
+  oracle. **The window exists and I predicted it would not.** I also wrote *"if a window does exist,
+  my A2 is too pessimistic and I will say so"* — A2 is too pessimistic, and that is why.
+- **A6 "integrity holds: basins 10–15, catchment ±5 %" ✓✓** — 11–14 and ±1 %.
+- **A7 "the ×0.7 control reproduces Finding 99 to the digit" ✓✓.**
+- **B1 "both candidates dendritic, the delivered one combed" ✓✓.**
+- **B2 "R8 alone cannot settle loss-versus-comb; print σ beside it" ✓✓ — and it is what answered
+  the round's question.** The numeric half is split: σ **−26 %** ✓ (predicted < 30 %), R8 **−51 %**
+  ✗ (predicted > 70 %).
+
+**The reviewer's.**
+
+- "coast holds to 0.5, breaks at 0.4 (Δ > +10), badly at 0.3 (Δ > +40)" **✗✗** — +1 at 0.5, **+2 at
+  0.4**, +10 at 0.3. Right that 0.3 is where it turns, wrong by an order of magnitude on how far.
+- "relief crosses the oracle between 0.5 and 0.6" **✗** — between **0.3 and 0.4**.
+- "canyons ≤ 5 % to 0.5, then 8–15 % at 0.3" **✓ on the number at 0.3 (10.0 %)**, ✗ at 0.5 (6.9 %),
+  and **✗ on the stated cause**.
+- "integrity: basins 10–14, catchment ±10 %, no Finding 45" **✓✓** (11–14, ±1 %).
+- **"best row: 0.5 or 0.6, relief within ±5 %, coast ≤ +5, canyons ≤ 5 %, erosion 65–70 %" ✗ — the
+  best row is ×0.4**, and the reason it is 0.4 and not 0.5 is the one column the reviewer's band
+  got right but placed too low: erosion **must clear 70 %**, and only 0.4 and 0.3 do.
+- "the western third is comb, local R8 of the delivered > 0.15" **✓ on the verdict, ✗ on the
+  number** — it is **0.1139**, and the verdict is carried by σ = 0.73 m, not by R8 exceeding a
+  threshold.
+- **Meta "at least one of the six is wrong" ✓** — three are.
+
+**Meta.** ⛔ **My worst miss is A5, and it is the same shape as Finding 98's**: I took the round's
+framing (a trade-off with no window) and spent my effort sharpening it instead of testing whether
+it was the right shape. Two of the last three rounds, the refuted prediction has been **a structure
+I assumed rather than a number I estimated**. ⚠️ Against that, the two things that made this round
+work were both template lines: **line 1** turned a collision into Finding 62's mechanism, and
+**line 3's σ-beside-R8** is what answered block B — neither came from a prediction, and both came
+from an earlier finding asking to be read.
