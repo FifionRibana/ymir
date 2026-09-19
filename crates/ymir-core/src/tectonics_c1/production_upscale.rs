@@ -377,6 +377,58 @@ pub fn upscale_from_c1(
 /// early, leaving a partial heightmap the caller must discard). Byte-identical
 /// to `upscale_from_c1` when `progress`/`cancel` are the no-op defaults.
 #[allow(clippy::too_many_arguments)]
+/// ADR Finding 105 -- the Flint intercept `k_s = median(S·√A)` over a field's channel cells.
+///
+/// ⚠️ **THE POPULATION IS PART OF THE DEFINITION, not an optimisation.** Stride 7, `A ≥ A_c`,
+/// `S > 0`, on the D8 accumulation of `c1_drainage_windowed` at `head_km2 = A_c` and
+/// `full_tree = false`, with the median taken as `v[((len-1)/2) as usize]` of the ascending sort.
+/// Finding 97 wrote this as a MEASUREMENT; Finding 105 makes it a SPECIFICATION, because the
+/// shipped terrain now depends on it. **Changing the stride changes the terrain.**
+pub fn flint_intercept(
+    f: &GridF32,
+    ss: &SteinSteinParams,
+    sea_level: f32,
+    cell_km2: f32,
+    domain_km: f32,
+) -> f32 {
+    use crate::erosion::stream_power::RELIEF_V1_A_C_KM2;
+    use crate::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let (w, h) = (f.width, f.height);
+    let cell_m = domain_km * 1000.0 / w as f32;
+    let n2m = c1_altitude_norm_to_metres(1.0, ss) - c1_altitude_norm_to_metres(0.0, ss);
+    let mut on = crate::tectonics_c1::drainage::C1DrainageConfig::default();
+    on.thresholds.head_km2 = RELIEF_V1_A_C_KM2;
+    on.thresholds.full_tree = false;
+    let d = crate::tectonics_c1::drainage::c1_drainage_windowed(f, None, &on, ss, domain_km);
+    let mut v: Vec<f32> = Vec::new();
+    for k in (0..w * h).step_by(7) {
+        if f.data[k] <= sea_level {
+            continue;
+        }
+        let a = d.flow.accumulation.data[k] * cell_km2;
+        if a < RELIEF_V1_A_C_KM2 {
+            continue;
+        }
+        let dir = d.flow.direction[k];
+        if dir == DIR_NONE {
+            continue;
+        }
+        let nx = ((k % w) as i32 + D8_DX[dir as usize]).rem_euclid(w as i32) as usize;
+        let ny = ((k / w) as i32 + D8_DY[dir as usize]).rem_euclid(h as i32) as usize;
+        let diag = D8_DX[dir as usize] != 0 && D8_DY[dir as usize] != 0;
+        let dx_m = if diag { cell_m * std::f32::consts::SQRT_2 } else { cell_m };
+        let s = (f.data[k] - f.data[ny * w + nx]).max(0.0) * n2m / dx_m;
+        if s > 0.0 {
+            v.push(s * a.sqrt());
+        }
+    }
+    if v.is_empty() {
+        return 0.0;
+    }
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v[((v.len() - 1) as f64 * 0.5) as usize]
+}
+
 pub fn upscale_from_c1_with_progress(
     state: &C1State,
     iso: &IsostasyConfig,
@@ -450,13 +502,35 @@ pub fn upscale_from_c1_with_progress(
         );
         // ADR Finding 96 B3 -- `cfg.incision_floor` is `None` in every production path, and
         // `incise_with_floor(.., None, ..)` is byte-identical to `incise_lithology`.
-        result.heightmap = crate::erosion::stream_power::incise_with_floor(
-            &result.heightmap,
-            sp,
-            k_field.as_deref(),
-            cfg.incision_floor.as_ref().map(|f| f.as_slice()),
-            &mut |_, _| {},
-        );
+        let once = |src: &GridF32, c: &crate::erosion::stream_power::StreamPowerConfig| {
+            crate::erosion::stream_power::incise_with_floor(
+                src,
+                c,
+                k_field.as_deref(),
+                cfg.incision_floor.as_ref().map(|f| f.as_slice()),
+                &mut |_, _| {},
+            )
+        };
+        result.heightmap = match cfg.slope_floor_factor {
+            // ADR Finding 105 -- the TWO-PASS bootstrap. Pass 1 IS the un-closured incision and is
+            // byte-identical to the `None` branch; `k_s` is measured on its output and pass 2
+            // re-incises the SAME input with the closure configured from it.
+            Some(factor) if factor > 0.0 => {
+                let delivered = once(&result.heightmap, sp);
+                let k_s = flint_intercept(
+                    &delivered,
+                    ss,
+                    sp.sea_level,
+                    sp.cell_km * sp.cell_km,
+                    volcanism.domain_km,
+                );
+                let mut closed = sp.clone();
+                closed.slope_floor_uk = Some(k_s * factor);
+                closed.depression_floor = true;
+                once(&result.heightmap, &closed)
+            }
+            _ => once(&result.heightmap, sp),
+        };
     }
 
     // #155 méso — HD hydraulic erosion (the dendritic dissection that makes

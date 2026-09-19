@@ -1780,3 +1780,76 @@ milieu — l'auteur), et ⛔ **la correction permanente du F102 : le garde F80 (
 peut pas être revendiqué** — le résidu vaut 2 448 à 3 343 sur les trois seeds contre une référence
 non incisée de 8. **L'échelle cellulaire n'est pas touchée par cette closure, et une promotion doit
 le dire au lieu de lister ce garde.**
+
+## ⛔ LA PROMOTION N'A PAS LIEU : LA CLOSURE A BESOIN DU TERRAIN FINI POUR SE CONFIGURER — LA LIVRER, C'EST PRODUIRE LE MONDE DEUX FOIS (Finding 105)
+
+**Rien n'est promu.** `relief_v3` inchangé, pas de bump `ALGO_UPSCALE_EROSION`, pas de toggle viz.
+Ce qui est commité est une **couture gatée et inerte** (`slope_floor_factor`, `None` par défaut,
+byte-identique) dont la docstring dit **qu'elle n'est pas la closure mesurée**, plus les trois
+mesures qui l'expliquent.
+
+**Le point structurel, posé avant la première ligne de code :** `k_s` est mesuré sur le champ
+**livré** — la sortie de l'incision que la closure modifie. La forme livrable ne peut donc pas être
+une constante ; il faut **deux passes**. Les deux lectures moins chères étaient déjà réfutées par la
+table du F102 : `k_s` pré-incision donne des rapports **0,96 / 1,22 / 1,51** ; une constante absolue
+vaut un facteur effectif de **0,91** et **0,98** sur les seeds 2 et 3, hors de toute plage balayée.
+
+**Les deux règles d'arrêt ont tiré :**
+
+| seed | `k_s` banc / helper production | hash | coût |
+|---|---|---|---|
+| 1 | 0,045095 / 0,045095 **identique** | ⛔ **DIFFÉRENT** (5 925 185 cellules) | **+56,2 s** |
+| 2 | 0,029563 / 0,029563 **identique** | ⛔ **DIFFÉRENT** (7 792 069) | **+78,9 s** |
+| 3 | 0,027710 / 0,027710 **identique** | ⛔ **DIFFÉRENT** (6 638 602) | **+58,8 s** |
+
+> Le coût rate le budget de **26 à 49 s**. Le hash diffère sur les trois seeds — et le **F83 avait
+> établi que la production PEUT être le banc au bit**, donc en dessous de ce standard on ne promeut
+> pas. ⚠️ **`k_s` est pourtant bit-identique entre les deux implémentations** : le défaut est dans
+> **l'étage où la fonction est appelée**, pas dans la fonction.
+
+**L'attribution, et ma première hypothèse est réfutée par sa propre mesure :**
+
+| étage où `k_s` est lu (seed 1) | valeur |
+|---|---|
+| incision seule | **0,045144** |
+| pré-bathymétrie, gouttes incluses | **0,045144** — identique ⇒ **les gouttes ne changent rien** |
+| post-bathymétrie = le **livré** | **0,045095** |
+
+Reconstruire le candidat depuis le `k_s` pré-bathymétrie l'**éloigne** de la production (45 579 007
+cellules contre 5 925 185), et la calibration incision-seule rate **exactement pareil**. ⇒ **La
+production n'utilise ni l'une ni l'autre** : sa passe 1 lit un **étage intermédiaire** qu'aucun
+bouton du banc ne reproduit (entre `:451` et `:506` il y a aussi les cratères et un recalcul de
+pente).
+
+> ⛔ **Et les amplitudes durcissent la conclusion au lieu de l'adoucir** : le désaccord vaut **2 mm
+> à la médiane** (p99 0,20 m, max 85,9 m). Ce ne sont pas deux terrains différents — c'est le même
+> terrain construit depuis un plancher qui diffère de **0,11 %**.
+>
+> **Contrôle, lancé parce qu'il fallait exclure l'autre explication : le pipeline EST
+> bit-reproductible.** Construire deux fois le livré, deux fois la passe double, deux fois la forme
+> du banc donne **0 cellule** de différence à chaque fois. ⇒ Le résidu est un vrai désaccord de
+> calcul, et le standard du F83 est atteignable ici. **C'est ce contrôle qui autorise à appeler les
+> 2 mm un désaccord plutôt qu'un bruit.**
+
+⛔ **La conclusion dépasse la promotion.** Le correctif n'est pas de trouver le bon étage : c'est que
+**la passe 1 doit produire un champ COMPLET** — tout le pipeline restant — avant de calibrer, puis
+ré-inciser et le refaire tourner. ⇒ **Deux pipelines entiers, pas deux incisions, et les +56 à
++79 s mesurés sont une BORNE INFÉRIEURE.**
+
+> **La closure a besoin du produit fini pour se configurer. La livrer, c'est produire le monde deux
+> fois.** Ce n'est pas un jugement sur sa qualité — elle tient sur trois seeds (côte +115 → +2,
+> canyons 29,6 → 3,4 %, composantes inchangées, D_L part > 5 de 42 % à 0 %). **Ce qui échoue, ce
+> n'est pas le terrain : c'est qu'une closure auto-calibrée ne peut pas être un drapeau de
+> configuration.**
+
+**Trois sorties, chiffrées :** accepter le coût (`run_hd` 279 → ~400 s, ce qui tient encore dans
+« quelques minutes » mais pas dans votre porte à +30 s) ; **chercher un `k_s` calculable avant
+l'incision** sur le champ **tectonique** (le bloc décliné au F103 à 42 % de hasard sur trois points —
+avec une 4ᵉ et une 5ᵉ seed il devient une vraie question) ; ou renoncer au facteur par seed, ⛔ mais
+la constante absolue est hors plage balayée et devrait être mesurée avant d'être envisagée.
+
+⚠️ **Deux faits d'architecture pour la note** : le pipeline livré contiendrait une **passe de
+calibration**, et `docs/tdd.md` décrit six phases dont aucune n'est « mesurer la sortie puis la
+reconstruire ». Et **`ALGO_UPSCALE_EROSION` ne protégerait pas le cache pour ce champ** : le
+résultat dépend aussi de `C1DrainageConfig::default()` et de `RELIEF_V1_A_C_KM2`, qui ne sont dans
+aucun digest — **si `A_c` bouge, le terrain livré bouge sans que le cache le voie.**

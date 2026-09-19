@@ -148,6 +148,39 @@ pub struct FbmUpscaleConfig {
     /// does -- it bounds the relaxation target, so it can stop the incision and can never deposit.
     #[serde(skip)]
     pub incision_floor: Option<std::sync::Arc<Vec<f32>>>,
+    /// ADR Finding 105 -- **the slope-floor closure, as a FACTOR**, because it cannot ship as a
+    /// constant. `None` (default, and every path before Finding 105) is byte-identical.
+    ///
+    /// ⛔ **This field triggers a TWO-PASS incision, and the reason is structural.** The closure
+    /// measured across Findings 97-104 is `slope_floor_uk = k_s × factor`, where `k_s` is the
+    /// Flint intercept over the channel cells **of the DELIVERED field** -- the output of the very
+    /// incision the closure modifies. So the pipeline must incise once with the closure off,
+    /// measure `k_s` on that field, and incise again from the same input.
+    ///
+    /// ⚠️ Finding 102 refuted both cheaper readings. `k_s` from the PRE-incision field gives
+    /// 0.0431 / 0.0361 / 0.0419 against the delivered 0.0451 / 0.0296 / 0.0277 -- ratios 0.96,
+    /// 1.22, **1.51**, so it is not a substitute. And a shipped ABSOLUTE value (seed 1's 0.0451 ×
+    /// 0.6) is an effective factor of **0.91 on seed 2** and **0.98 on seed 3**, outside every
+    /// range anyone has swept.
+    ///
+    /// ⛔ **AS IMPLEMENTED THIS IS NOT THE MEASURED CLOSURE, AND THAT IS WHY NOTHING IS
+    /// PROMOTED.** Pass 1 hands the calibration the incision's IMMEDIATE output, while every
+    /// number of Findings 97-104 was measured with `k_s` taken from the DELIVERED field -- the
+    /// pipeline's output, several stages later. Finding 105 measured the gap: `k_s` reads
+    /// **0.045144** on the incision-only field and **0.045095** on the delivered one (seed 1),
+    /// and the resulting terrains differ on **5.9 M cells** (median 2 mm, max 85.9 m) with
+    /// **different hashes on all three seeds**. The pipeline is bit-reproducible (Finding 105
+    /// control: 0 cells differ when the same config is built twice), so that gap is a real
+    /// disagreement and not float noise.
+    ///
+    /// ⇒ **The correct form runs the WHOLE remaining pipeline before calibrating**, so the price
+    /// is two complete pipelines rather than two incisions, and Finding 105's measured
+    /// **+56 to +79 s** is a LOWER BOUND against a budget of +30 s.
+    ///
+    /// Left gated and inert so the measurement is reproducible; **do not enable it expecting the
+    /// Findings 97-104 terrain.**
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slope_floor_factor: Option<f32>,
     /// **Submarine bathymetry re-map** (#submarine). When `Some`,
     /// [`upscale_from_c1`](crate::tectonics_c1::production_upscale::upscale_from_c1)
     /// re-maps the ocean floor toward the plateau→slope→abyss envelope AFTER the
@@ -222,6 +255,7 @@ impl Default for FbmUpscaleConfig {
     fn default() -> Self {
         Self {
             incision_floor: None, // ADR Finding 96 B3 -- bench-only; None is byte-identical
+            slope_floor_factor: None, // ADR Finding 105 -- None is byte-identical
             target_size: 1024,
             octaves: 7,
             lacunarity: 2.0,

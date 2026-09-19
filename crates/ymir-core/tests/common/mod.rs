@@ -114,6 +114,13 @@ pub struct Knobs {
     /// `None` = the SHIPPED `RELIEF_V3_BASE_LEVEL_M` (0.5 m). Since Finding 83 the bound
     /// is production, so `None` no longer means "no bound" -- use `base_level_off`.
     pub base_level_m: Option<f32>,
+    /// ADR Finding 105 -- drop the droplet pass (`cfg.erosion = None`), to isolate the field the
+    /// incision itself produces from the one the pipeline delivers.
+    pub erosion_off: bool,
+    /// ADR Finding 105 -- `FbmUpscaleConfig::slope_floor_factor`: the TWO-PASS closure, the
+    /// shipped form. Mutually exclusive with `slope_floor_uk` in practice (that one is the
+    /// bench's manual form, with `k_s` supplied from outside).
+    pub slope_floor_factor: Option<f32>,
     /// ADR Finding 97 B2 -- `StreamPowerConfig::slope_floor_uk`: the local equilibrium-slope
     /// floor, `h_r_eff = min(h_r + S_eq(A)·dx, h_o)`. `None` = shipped.
     pub slope_floor_uk: Option<f32>,
@@ -319,6 +326,13 @@ fn build_field_inner(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>, pseed: u
         }
         sp.depression_floor = k.depression_floor; // ADR Finding 96 A1
         sp.slope_floor_uk = k.slope_floor_uk; // ADR Finding 97 B2
+    }
+    cfg.slope_floor_factor = k.slope_floor_factor; // ADR Finding 105
+    if k.erosion_off {
+        cfg.erosion = None; // ADR Finding 105
+    }
+    if cfg.stream_power.is_some() {
+        let sp = cfg.stream_power.as_mut().unwrap();
         // ADR Finding 83 -- `relief_v3` now ARRIVES bounded, so the knobs edit what is
         // there rather than installing it. `base_level_off` wins over the others.
         if k.base_level_off {

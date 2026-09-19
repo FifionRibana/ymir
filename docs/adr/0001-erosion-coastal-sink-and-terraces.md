@@ -16351,3 +16351,112 @@ written at Finding 97) and Finding 103's objection to moving the erosion thresho
 guessed number, wrong for a control-derived one). ⚠️ **The campaign's error rate has not fallen; what
 has changed is that the errors are now caught by its own earlier rules rather than by new
 measurements.** That is what the two new rules are for.
+
+## Finding 105 — the promotion does not happen: the closure needs the FINISHED terrain to configure itself, so shipping it means producing the world twice. Both stop rules fired
+
+**Nothing is promoted.** `relief_v3` is unchanged, `ALGO_UPSCALE_EROSION` is unchanged, no viz
+toggle was added. What is committed is a **gated, inert seam** (`slope_floor_factor`, `None` by
+default, byte-identical) whose docstring records that **it is not the measured closure**, plus the
+three measurements that say why.
+
+### The structural point, raised before any code was written
+
+`k_s` — the Flint intercept the closure is built from — is measured on the **delivered field**,
+which is the output of the very incision the closure modifies. So the shipped form cannot be a
+constant; it needs a **two-pass bootstrap**. Finding 102's own table already refuted the two
+cheaper readings:
+
+| reading | what it needs | verdict |
+|---|---|---|
+| `k_s` from the PRE-incision field | nothing | ⛔ **refuted**: pre/delivered = 0.0431/0.0451 · 0.0361/0.0296 · 0.0419/**0.0277**, ratios 0.96, 1.22, **1.51** |
+| a shipped ABSOLUTE constant (0.0451 × 0.6) | nothing | ⚠️ **untested**, and it is an effective factor of **0.91 on seed 2** and **0.98 on seed 3**, outside every swept range |
+| the **two-pass** | one extra incision + one drainage | implemented and measured below |
+
+### A — the promotion gate: both stop rules fire
+
+| seed | `k_s` bench vs production helper | hash | cost against delivered |
+|---|---|---|---|
+| 1 | 0.045095 / 0.045095 — **bit-identical** | ⛔ **DIFFERENT**, 5 925 185 cells | **+56.2 s** |
+| 2 | 0.029563 / 0.029563 — **bit-identical** | ⛔ **DIFFERENT**, 7 792 069 cells | **+78.9 s** |
+| 3 | 0.027710 / 0.027710 — **bit-identical** | ⛔ **DIFFERENT**, 6 638 602 cells | **+58.8 s** |
+
+> ⛔ **The cost misses the author's +30 s budget by 26 to 49 s**, and ⛔ **the hash differs on all
+> three seeds**. Finding 83 established that production CAN be the bench bit for bit; below that
+> standard nothing is promoted. **My prediction P3 is confirmed and was too generous** (+35 to
+> +50 s predicted, +56 to +79 measured); **B1 — "my first attempt will get the `k_s` definition
+> wrong" — is confirmed too.**
+>
+> ⚠️ **`k_s` itself is bit-identical between the bench and the production helper on all three
+> seeds**, so the defect is not in the function. It is in the **stage at which it is called**.
+
+### B — the attribution, and the first hypothesis is refuted by its own measurement
+
+| stage at which `k_s` is measured (seed 1) | value |
+|---|---|
+| the incision alone, no droplets, no bathymetry | **0.045144** |
+| pre-bathymetry, droplets on | **0.045144** — identical, ⇒ **the droplet pass changes nothing** |
+| post-bathymetry, i.e. the DELIVERED field (what the bench used) | **0.045095** |
+
+⚠️ **My hypothesis was the bathymetry stage, and it is refuted**: rebuilding the bench candidate
+from the pre-bathymetry `k_s` moves it **further** from production (45 579 007 cells against
+5 925 185), and the incision-only calibration gives **exactly the same miss**. ⇒ **Production uses
+neither value.** Its pass 1 hands the calibration the output of an *intermediate* stage that no
+bench knob reproduces — between `incise_lithology` (`:451`) and `apply_bathymetry_profile`
+(`:506`) the pipeline also stamps craters and recomputes slope.
+
+⛔ **And the magnitudes make the conclusion sharper, not softer.** The disagreement is **2 mm at
+the median** (p99 0.20 m, max 85.9 m) — this is not two different terrains, it is the same terrain
+built from a floor that differs by **0.11 %**. The gap is small and it is real:
+
+> **Control, run because the alternative explanation had to be excluded: the pipeline is
+> bit-reproducible.** Building the delivered field twice, the two-pass twice, and the bench form
+> twice each give **0 cells differing**. ⇒ The residual is a genuine computational difference and
+> the Finding 83 standard is attainable on this path. **That control is the reason the 2 mm can be
+> called a disagreement rather than noise.**
+
+### The conclusion, which is bigger than the promotion
+
+⛔ **The correct form does not chase the stage; it moves where the calibration reads.** Pass 1 must
+produce a **complete** field — the whole remaining pipeline — then measure, then re-incise and run
+the remaining pipeline again. ⇒ **Two complete pipelines, not two incisions, and the measured
++56 to +79 s is a LOWER BOUND.**
+
+> **The closure needs the finished product in order to configure itself. Shipping it means
+> producing the world twice.**
+
+That is a fact about the closure's *shape*, not about its quality: across Findings 97–104 it holds
+on three seeds — coast +115 → +2, canyons 29.6 → 3.4 %, `wc == 2` components unchanged, D_L share
+above 5 going 42 % → 0 %. **What fails is not the terrain; it is that a self-calibrating closure
+cannot be a configuration flag.**
+
+### What is committed, and what is not
+
+| | |
+|---|---|
+| ✅ | `FbmUpscaleConfig::slope_floor_factor`, **gated, `None` by default, byte-identical**, with the non-equivalence written at the field |
+| ✅ | `flint_intercept`, public, **with its population written as a SPECIFICATION** — stride 7, `A ≥ A_c`, `S > 0`, `head_km2 = A_c`, `full_tree = false`, median as `v[((len−1)/2)]`. Finding 97 wrote it as a measurement; it is now part of the definition of a terrain, and a future reader will otherwise "optimise" the stride |
+| ✅ | `Knobs::slope_floor_factor` and `Knobs::erosion_off` in the bench harness |
+| ⛔ | **NOT** `relief_v3`; **NOT** the `ALGO_UPSCALE_EROSION` bump; **NOT** a viz toggle; **NOT** a guard table — nothing is promoted |
+
+### The three exits, priced
+
+1. **Accept the cost.** `run_hd` 279 s → ~400 s if pass 1 must be a full pipeline. The author's C1
+   criterion was *"the expected thing in a few minutes"*, which 400 s still meets; the +30 s gate
+   says otherwise. **Now measured, and the author's call.**
+2. **Find a `k_s` computable before the incision.** The pre-incision field is refuted (ratios up to
+   1.51). What remains is a predictor on the **tectonic** field — the block I declined at Finding
+   103 because three points order by chance 42 % of the time. **With a fourth and fifth seed it
+   becomes a real question.**
+3. **Give up the per-seed factor** and ship an absolute constant — ⛔ but 0.0451 × 0.6 is an
+   effective factor of 0.91 and 0.98 on seeds 2 and 3, outside everything swept. **It would have to
+   be measured first, not assumed.**
+
+### ⚠️ And two standing facts for the note, which are architecture rather than parameters
+
+- **The shipped pipeline would contain a CALIBRATION PASS.** `docs/tdd.md` describes six phases and
+  none of them is "measure the output, then rebuild it". That is a design fact and it belongs in
+  the TDD before it belongs in the code.
+- **`ALGO_UPSCALE_EROSION` would not protect the cache for this field.** `slope_floor_factor` is
+  serialised so it enters the digest, but the RESULT also depends on `C1DrainageConfig::default()`
+  and on `RELIEF_V1_A_C_KM2`, neither of which is in any digest. **If `A_c` ever moves, the shipped
+  terrain moves and the cache does not see it.**
