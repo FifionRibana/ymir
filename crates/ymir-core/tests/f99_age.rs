@@ -12,7 +12,7 @@
 //!    patch did not change the altitude — it destroyed the drainage"*. The production comment at
 //!    `stream_power.rs:937` says why: with `diffuse_channels = true` a 16× Laplacian *"backfills
 //!    the channels the incision just cut, and a backfilled channel IS a closed depression"*.
-//!    So block C is run **with Finding 45's own column added** (`Crit::below_sea_basins`), because
+//!    So block C is run **with Finding 45's own column added** (`Crit::below_sea_spillways`), because
 //!    measuring only R8 / relief / erosion would reproduce Finding 45's original error exactly.
 //!
 //! Run: cargo test -p ymir-core --release --test f99_age -- --ignored --nocapture
@@ -205,7 +205,7 @@ fn f99_age() {
             c.lake_pct,
             inten,
             100.0 * inten / i_del,
-            c.below_sea_basins,
+            c.below_sea_spillways,
             c.max_catchment_km2
         );
         rows.push((label, c, cost, inten, r8, sp));
@@ -259,7 +259,7 @@ fn f99_age() {
             c.p50,
             c.p50 / base,
             100.0 * inten / i_del,
-            c.below_sea_basins
+            c.below_sea_spillways
         );
     }
     eprintln!(

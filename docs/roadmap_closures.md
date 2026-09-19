@@ -1490,3 +1490,91 @@ livré 0,0143**, et le balayage le remonte **0,0167 → 0,0215**.
 ce qu'on peut en lire, c'est que **le facteur ne change pas le coût**. Et le R8 du tiers ouest est
 **plus bas à ×0,4 (0,0566) qu'à ×0,7 (0,0960)** — la case la plus bruitée de la table (320², ~400
 fenêtres) et **je n'ai pas de mécanisme pour elle ; je ne l'habille pas.**
+
+## ⛔ IL N'Y A PAS TROIS BASSINS : LA GÉOGRAPHIE SOUS LA MER EST IDENTIQUE, ET « 11 → 14 » COMPTE DES EXUTOIRES. LE CANYON EST CELUI DE L'INCISION. ET LA VUE CONTINENT RÉPOND « FRANCE » PAR LA FORME (Finding 101)
+
+Aucun changement de production. **Rien de promu.** Cinq champs, 7 minutes d'un cœur. Le contrôle
+×0,4 reproduit le balayage **au chiffre** (493,4 m · 2/29 · 14 · 9 780 · 0,0563).
+
+**A — il n'y a aucun bassin neuf.**
+
+| composantes `wc == 2`, par CELLULE DE FOND (jamais par id — F81, F85) | |
+|---|---|
+| livré | **20** |
+| ×0,4 | **20** |
+| **appariées par cellule de fond** | **20 sur 20** |
+| présentes à ×0,4 et absentes du livré | **AUCUNE** |
+| seul mouvement | deux composantes **rétrécissent** de −11 % et −9 % |
+| fonds p10/p50/p90 | ×0,4 **−1,000 / −1,000 / −1,000 m** · livré **−1,000 / −1,000 / −1,000 m** |
+
+> ⛔ **Alors qu'est-ce que « 11 → 14 » ?** `Crit::below_sea_basins` valait `bs.spillways.len()` — **le
+> nombre d'EXUTOIRES** tracés des cuvettes sous la mer par-dessus leur col. **Ce n'a jamais été un
+> compte de bassins.** Le nom que je lui ai donné au F99 est faux ; il est corrigé et le champ est
+> **renommé `below_sea_spillways`**, avec la mesure du 20-sur-20 écrite à la ligne. ⚠️ **Votre porte
+> d'intégrité (« ±20 % ou c'est le F45 ») portait donc sur la mauvaise grandeur** — et celle sur
+> laquelle elle aurait dû porter (les composantes, et le plus grand bassin) bouge de **0 %** et
+> **+0 %**.
+>
+> ⛔ **Et votre test de réfutation ne pouvait pas trancher, le dossier le prouve à son plus ancien
+> hit.** Le F38 (L1570) rapporte *« floor −19,9 m »* pour **chaque** région — l'ancien clamp à 20 m,
+> ramené à 1 m par le F79. `apply_bathymetry_profile` tourne **après** l'incision avec
+> `min_depth = max(shelf_min_depth_m, 1.0)`, donc **tous les fonds lisent −1,000 m, neufs et anciens
+> confondus** : « réfuté s'ils sont à −1,000 m » aurait condamné **le champ livré** aussi.
+>
+> ⚠️ **Conséquence produit, plus grosse que ce tour** : **l'export ne peut rapporter la profondeur
+> d'aucune cuvette sous la mer** — le re-mapping bathymétrique l'écrase. Le F38 avait vu la même
+> chose à −19,9 m et l'avait lue comme du terrain.
+
+**B — le canyon est celui de l'INCISION, et la brèche le rend moins profond.**
+
+| étage | classe canyon | corps | cellules | coupe médiane | paroi p50 |
+|---|---|---|---|---|---|
+| **ÉRODÉ** | **1** | id 9 | 2 308 (5,50 km²) | **403,6 m** | 38,7° |
+| **BRÈCHÉ** | **1** | id 9 | 2 308 (5,50 km²) | **344,5 m** | 38,6° |
+
+> ⛔ **« érodé 0, brèché 2 » est réfuté des deux côtés.** L'érodé porte déjà le corps, à **403,6 m**
+> de coupe médiane, et la brèche ne le creuse pas : elle le **remonte de 59 m**, parce que le
+> mop-up en priority-flood **remplit** les corps qu'elle ne perce pas. Le canyon survit au
+> remplissage. ⇒ **Le mécanisme du F100 est confirmé** : ces cellules sont une empreinte de lac
+> **post-brèche** qui n'était pas en cuvette **au moment de l'incision**, donc A1 ne les protégeait
+> pas. ⚠️ Inventaire déclaré : plus simple que celui de la table (26 corps contre 29), donc le
+> compte absolu n'est pas le 2 de la table — seul l'A/B vaut.
+
+**C — la tuile ne peut pas trancher ; le continent le peut, et il tranche sur la FORME.**
+
+| tuile (2048, 5120) | R8 | σ | **coupe médiane par cellule** |
+|---|---|---|---|
+| livré | 0,1190 | 7,34 m | **69,5 m** |
+| ×0,4 | **0,0584** | **5,41 m** | **13,1 m** |
+| ×0,5 | **0,0581** | **5,34 m** | **6,9 m** |
+
+> ⛔ **La colonne qui sépare est neuve et elle change la description de la closure.** La coupe
+> **médiane** par cellule passe de 69,5 à **13,1 m**, pendant que la moyenne (F100) passe de 198,0 à
+> 141,9. Le rapport moyenne/médiane va de **2,85 à 10,8** : **la cellule médiane perd 81 % de son
+> érosion pendant que le total en garde 72 %.** ⇒ **La closure ne réduit pas l'érosion, elle la
+> CONCENTRE dans les chenaux** — la rétroaction de dé-chenalisation du F62 arrêtée, vue de l'autre
+> côté, et la raison mécanique des +75 % de densité du F100.
+>
+> ⛔ **Vue continent** : les lacs du **livré** sont **déchiquetés** — dendritiques, en araignée, avec
+> de longs bras fins et une poussière de taches sur tout le continent. Ceux de **×0,4** sont
+> **compacts et arrondis**, la poussière a disparu. Les lacs du livré sont des **vallées incisées
+> noyées** ; ceux de ×0,4 sont des **cuvettes**. ⚠️ **Et la FRACTION de lacs bouge à peine (24,70 →
+> 19,84 %) : le progrès est dans la FORME, pas dans la surface** — aucune colonne de fraction ne
+> pouvait le montrer, et « France, pas Écosse » a toujours été un énoncé sur la forme.
+
+**D — la couture de promotion : spécifiée, NON écrite.** Les deux portes existent déjà et sont déjà
+inertes (`depression_floor`, `slope_floor_uk`, couvertes par le test d'inertie et son contrôle
+négatif). Promouvoir, c'est : `relief_v3` allume les deux avec le facteur en constante nommée ;
+**`ALGO_UPSCALE_EROSION` 4 → 5** ; les gardes F80/F86/F92 rejouées plus les six critères épinglés au
+chiffre du balayage ; le viz expose le facteur sur le patron du toggle F83. ⛔ **La seule chose qui
+manque au code est le nombre que vous n'avez pas donné**, et l'écrire avec un défaut arbitraire
+mettrait un choix non fait dans `relief_v3`. **Rien n'est écrit.**
+
+> **La question, telle que le tour la pose : ×0,4 ou ×0,5 ?** Elles diffèrent sur trois colonnes et
+> sont **identiques à l'image** : ×0,4 est la seule à franchir la règle 14 (71,7 % contre 67,8 %) ;
+> ×0,5 a la meilleure côte (+1 contre +2) et le champ le plus calme. **Ce n'est pas une mesure.**
+
+⚠️ **Et une note pour le gabarit** : `Finding 90-D` / `F90-D` donne **0 occurrence** alors que le
+contenu existe (le F90 porte bien un `### D`). Deuxième tour de suite qu'un identifiant de bloc en
+`F<n>-<X>` rend un **faux négatif** (`F76-B` au tour précédent). ⇒ **La ligne 1 doit retomber sur
+les titres de bloc du finding**, sinon elle fabrique des négatifs à chaque tour.

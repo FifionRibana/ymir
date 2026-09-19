@@ -1416,7 +1416,7 @@ pub fn f95_criteria(
     );
     Crit {
         p50,
-        below_sea_basins: bs.spillways.len(),
+        below_sea_spillways: bs.spillways.len(),
         max_catchment_km2: dr.segment_drainage_km2.iter().copied().fold(0.0f32, f32::max),
         klass,
         scanned,
@@ -1430,14 +1430,22 @@ pub fn f95_criteria(
 /// Finding 95's criteria, as one row of table C.
 pub struct Crit {
     pub p50: f32,
-    /// ADR Finding 45's DRAINAGE-INTEGRITY column: the below-sea basin (spillway) count.
+    /// ADR Finding 45's DRAINAGE-INTEGRITY column: the number of SPILLWAYS -- the traced outflows
+    /// of below-sea basins over their cols, i.e. `bs.spillways.len()`.
+    ///
+    /// ⚠️ **It does NOT count basins, and Finding 101 had to prove that the hard way.** Finding 99
+    /// named it `below_sea_basins`, Finding 100 built an admissibility gate on it (+-20 % or it is
+    /// Finding 45 again), and that gate nearly disqualified the campaign's best row on a move from
+    /// 11 to 14. Finding 101 then counted the `wc == 2` COMPONENTS by bottom cell: **20 in the
+    /// delivered field, 20 in the candidate, 20 of 20 matched, none new**. The terrain did not
+    /// change; the ROUTING did. A column that decides admissibility must say what it counts.
     ///
     /// Added at Finding 99 because Finding 45 measured a 16x diffusion, saw the hypsometry move
     /// +17 m ("small and in the unhelpful direction"), reported it as harmless -- and this number
     /// had gone 43 -> 1994. Its own verdict: *"the patch did not change the altitude, it destroyed
     /// the drainage"*. Any row that changes the hillslope term must show this column or it is
     /// repeating that error.
-    pub below_sea_basins: usize,
+    pub below_sea_spillways: usize,
     /// The largest river catchment, km2 (signified). Finding 45 watched it fall 110 -> 48 km2
     /// while the altitude held: the second half of the same collapse.
     pub max_catchment_km2: f32,

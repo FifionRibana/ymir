@@ -15598,3 +15598,215 @@ I assumed rather than a number I estimated**. ⚠️ Against that, the two thing
 work were both template lines: **line 1** turned a collision into Finding 62's mechanism, and
 **line 3's σ-beside-R8** is what answered block B — neither came from a prediction, and both came
 from an earlier finding asking to be read.
+
+## Finding 101 — there are no three basins: the below-sea geography is IDENTICAL, and "11 → 14" counts spillways. The canyon is the incision's. And the continent view answers "France, not Scotland" by SHAPE
+
+**No production change. Nothing promoted.** Five fields, 7 minutes of one core. The round's block A
+has no referent and block B's expected answer is refuted; block C is presented and the binary
+question is put to the author.
+
+### Template line 1 — the grep, and two things it settled before any measurement
+
+`below_sea_basins` **1** (L15190, mine) · `wc == 2` **24**, earliest **L1570** ·
+`uncovered_below_sea_components` **2** (L13443) · `Finding 89-D` **11** (L11577) ·
+`lake_min_area_km2` **8** (L2336) · `493.4` **2** / `493,4` **0** · `14 bassins` **0** ·
+⛔ **`Finding 90-D` / `F90-D` — 0, NOTHING FOUND.**
+
+⚠️ **The content the round cites exists; the identifier does not.** Finding 90 carries
+`### D — the quote for a floor in breach_monotone, and it is the wrong repair`, which says exactly
+what the round says it says. **This is the second round running that a `F<n>-<X>` block identifier
+greps to zero** (`F76-B` last round). ⇒ **Block identifiers of that form are used in prompts and
+essentially never written into the dossier, so a rule-11 grep on one returns a FALSE NEGATIVE and
+must fall back to the finding's block headings.** That belongs in the template.
+
+Finding 90-D, read, supplies three numbers block A needed: the breach drowns **10 375 cells** in
+**169 trenches** (p50 **39** cells, deepest point p50 **1.85 m** below sea), **152 of 169 could not
+reach their target** under a floor, and ⛔ **the breach itself makes 6 100 of 387 710 `wc == 2`
+cells** — **a third possible origin for a "new" basin that the round does not list.**
+
+⛔ **And the earliest `wc == 2` hit kills the round's own refutation test.** Finding 38 (L1570)
+reports *"floor −19.9 m"* for every below-sea region — the **old 20 m shelf clamp**, which Finding
+79 took to 1 m. `apply_bathymetry_profile` runs AFTER the incision with
+`min_depth = shelf_min_depth_m.max(1.0)`, so every below-sea floor should read ≈ **−1.000 m for old
+and new alike**. The round's *"refuted if they are at −1.000 m (the clamp)"* would therefore have
+condemned the **delivered** field too. Two `bathymetry_off` fields were built as the only stage
+where a terrain depth survives the clamp.
+
+### Instrument line — the ×0.4 control
+
+relief **493.4 m** (sweep 493.4) · canyons **2/29** (2/29) · basins **14** (14) · catchment
+**9 780** (9 780) · R8 **0.0563** (0.0563). **Reproduced to the digit.**
+
+### A — there are no three basins. There are no new basins at all.
+
+| `wc == 2` components, by BOTTOM CELL (never by id — Findings 81, 85) | |
+|---|---|
+| delivered | **20** |
+| ×0.4 | **20** |
+| **matched by bottom cell** | **20 of 20** |
+| components present at ×0.4 and absent from the delivered field | **NONE** |
+| the only movement | two components change area by **−11 %** (18 → 16 cells, at 5219, 3861) and **−9 %** (22 → 20 cells, at 2671, 5132) |
+| floors, p10 / p50 / p90 | ×0.4 **−1.000 / −1.000 / −1.000 m** · delivered **−1.000 / −1.000 / −1.000 m** |
+
+> ⛔ **THE BELOW-SEA GEOGRAPHY IS IDENTICAL.** Twenty components in both fields, all twenty matched
+> by their bottom cell, every floor at the clamp. Block A asked which three basins ×0.4 created; it
+> created **none**, and the two bodies that moved got **smaller**.
+>
+> ⛔ **So what is "11 → 14"?** `Crit::below_sea_basins` is `bs.spillways.len()` — **the number of
+> SPILLWAYS**, the traced outflows of below-sea basins over their cols, from
+> `below_sea_basin_lakes_infil`. **It was never a count of basins.** The name I gave the column at
+> Finding 99 is wrong and is corrected here: it is a **routing and detection** quantity, and the
+> terrain under it does not change. ⚠️ **The round's own integrity gate — "±20 % or it is Finding
+> 45 under another name" — was therefore applied to the wrong quantity**, and the quantity it
+> should have been applied to (the components, and the biggest catchment) moved by **0 %** and
+> **+0 %**.
+>
+> **My A1 is confirmed and exceeded** (I predicted at least one of the three would be marginal; all
+> three are not there). **My A2 is confirmed exactly**: the floors are the clamp.
+>
+> ⚠️ **And one standing consequence for the product, which is bigger than this round**: every
+> below-sea floor in the shipped export reads **−1.000 m**. **The export cannot report the depth of
+> any below-sea basin** — the bathymetry re-map overwrites it. Finding 38 saw the same thing at
+> −19.9 m and read it as terrain. Anyone reading a basin depth off the export is reading
+> `shelf_min_depth_m`.
+
+### B — the canyon is the INCISION's, and the breach makes it SHALLOWER
+
+Same inventory, two stages. ⚠️ **Declared**: the inventory is `c1_drainage_windowed` on the breached
+field, **simpler** than `f95_criteria`'s (no water balance, no below-sea merge) — 26 bodies ≥ 1 km²
+against the table's 29 — so the **absolute count is not the table's 2**; only the A/B is valid.
+
+| stage | canyon class | the body | cells | median cut | rim p50 |
+|---|---|---|---|---|---|
+| **ERODED** | **1** | id 9 | 2 308 (5.50 km²) | **403.6 m** | 38.7° |
+| **BREACHED** | **1** | id 9 | 2 308 (5.50 km²) | **344.5 m** | 38.6° |
+
+> ⛔ **The round's expected answer — "eroded 0, breached 2" — is refuted on both halves.** The
+> eroded field already carries the body, at **403.6 m of median cut**, and the breach does not
+> deepen it: it **raises it by 59 m**, because `breach_monotone`'s priority-flood mop-up FILLS the
+> bodies it does not carve. The canyon survives the filling.
+>
+> **This confirms Finding 100's mechanism exactly.** A1 protects cells that are in a depression **at
+> incision time**; this body is a **post-breach lake footprint** whose cells were not, so nothing
+> protected them and the incision cut them 403.6 m deep. **My B1 predicted the eroded field would
+> carry 1–2 bodies and it carries 1.**
+>
+> ⇒ **The round's constraint "no floor in the breach even if B says breach" is not tested here,
+> because B does not say breach.** Finding 90-D's verdict stands untouched and unneeded.
+
+### C — the tile cannot decide; the continent can, and it decides on SHAPE
+
+| tile (2048, 5120) | R8 | σ | **median cut per cell** |
+|---|---|---|---|
+| delivered | 0.1190 | 7.34 m | **69.5 m** |
+| **×0.4** | **0.0584** | **5.41 m** | **13.1 m** |
+| **×0.5** | **0.0581** | **5.34 m** | **6.9 m** |
+
+> **×0.4 and ×0.5 are indistinguishable on the tile**: R8 differs by 0.0003 and σ by 0.07 m. My C1
+> predicted the author could not choose on it, and they cannot.
+>
+> ⛔ **The column that does separate them is new, and it revises how the closure is described.** The
+> **median** cut per cell is 69.5 m delivered, **13.1 m** at ×0.4, **6.9 m** at ×0.5 — while the
+> **mean** intensity (Finding 100) is 198.0 and 141.9 m. So the cut distribution's mean/median ratio
+> goes **2.85 → 10.8**: **the median cell loses 81 % of its erosion while the total keeps 72 %.**
+> **The closure does not scale the erosion down — it CONCENTRATES it into the channels.** That is
+> Finding 62's de-channelisation feedback arrested, seen from the other side, and it is the
+> mechanical reason the drainage density rose 75 % at Finding 100.
+
+**The continent view, at the scale the criterion was set:**
+
+> ⛔ **The delivered field's lakes are RAGGED — dendritic, spidery, with long thin arms and a
+> scatter of specks over the whole continent. ×0.4's are COMPACT and ROUNDED, and the specks are
+> largely gone.** The delivered lakes are **drowned incised valleys**: the water fills a dissected
+> topography so its shoreline follows the drainage fingers. ×0.4's read as **basins**.
+>
+> ⚠️ **And the lake FRACTION barely moved: 24.70 → 19.84 %.** The improvement is in **shape**, not
+> in area — **no fraction column could have shown it**, and the author's "France, not Scotland" was
+> always a statement about shape. This is the first image in the dossier that puts that criterion
+> and a candidate in the same frame.
+
+### D — the promotion seam, specified and NOT written
+
+⚠️ **There is less code here than the round assumes.** `depression_floor` (Finding 96 A1) and
+`slope_floor_uk` (Finding 97 B2) **already exist in `StreamPowerConfig`**, both `#[serde]`-defaulted
+OFF, both covered by the byte-identity test with its own negative control
+(`the_finding_96_and_97_seams_are_inert_when_off`). Promotion is therefore:
+
+1. `relief_v3` sets `depression_floor: true` and `slope_floor_uk: Some(KS × factor)`, with the
+   factor a named constant beside `RELIEF_V3_BASE_LEVEL_M`;
+2. `ALGO_UPSCALE_EROSION` **4 → 5** (a behaviour change, so the cache must miss);
+3. the guards replayed: Findings 80, 86, 92 and the inertness test, plus the six criteria pinned at
+   the sweep's digits for the chosen factor;
+4. the viz exposes the factor on the Finding 83 toggle pattern.
+
+⛔ **The one thing the code needs is the number the author has not given**, and writing it with a
+placeholder would put an unchosen default into `relief_v3`. **Nothing is written.**
+
+> **The question, as the round put it: ×0.4 or ×0.5?**
+>
+> | | ×0.4 | ×0.5 |
+> |---|---|---|
+> | relief vs oracle | **+1.1 %** | +3.4 % |
+> | coast (breached u16) | +2 | **+1** |
+> | erosion permitted | **71.7 %** — over rule 14's line | 67.8 % — under it |
+> | canyons | 6.9 % | 6.9 % |
+> | lakes | 19.84 % | 19.43 % |
+> | R8 / σ on the tile | 0.0584 / 5.41 m | 0.0581 / 5.34 m |
+> | median cut per cell | 13.1 m | 6.9 m |
+>
+> **They differ on three columns and are identical on the image.** ×0.4 is the only one that clears
+> rule 14; ×0.5 has the better coast and the quieter field. **The choice is between a closure that
+> permits more erosion and one that produces a cleaner coast, and it is not a measurement.**
+
+### Score
+
+Predictions written and dated **2026-09-19, before the grep and any measurement**; the reviewer's
+were under `<details>` and not opened.
+
+**Mine.**
+
+- ⛔ **A1 "at least one of the three is marginal rather than a new basin" ✓✓ and further than I
+  dared**: not one of three, **all** of them — twenty components in each field, twenty matched, none
+  new. I still framed it as "×0.4 created fewer basins than claimed"; the answer is that the
+  quantity is not basins.
+- ⛔ **A2 "the floors cluster at −1.000 m because of the clamp, so depth cannot discriminate, and
+  this would condemn the delivered field too" ✓✓✓.** p10 = p50 = p90 = −1.000 m in **both** fields.
+  **This is the prediction that made the round readable**, and it came from the earliest grep hit
+  rather than from any reasoning about the candidate.
+- **A3 "interior rather than coastal" — MOOT**, there is nothing to locate.
+- **A4 "the delivered 11 are all found again, ±5 % area" ✓ on the control** (20 of 20), **✗ on the
+  tolerance**: two bodies moved −11 % and −9 %, outside my ±5 %.
+- ⛔ **B1 "the ERODED field already carries 1–2 bodies, against the round's 0" ✓✓** — it carries
+  **1**, at 403.6 m of median cut.
+- **B2 "the breach's contribution is small by construction because it carves a path, not an area"
+  ✓ and sharpened by the measurement**: the breach does not add, it **subtracts** 59 m of cut by
+  filling the body.
+- **B3 "the bodies are among the delivered field's 16" — NOT MEASURED.** I did not check the
+  identity against the delivered inventory, and I am not scoring a prediction I did not test.
+- **C1 "×0.4 and ×0.5 are visually near-identical and the author cannot choose on the tile" ✓✓**
+  (R8 0.0584 vs 0.0581, σ 5.41 vs 5.34). **C2 "I will not predict the author's choice" — held.**
+- **D "the seam is mostly naming and config exposure, not new code" ✓** — both gates already exist
+  and are already inert.
+
+**The reviewer's.**
+
+- **A "the three are interior, 5–200 cells, floor between −0.5 and −4 m (not −1.000 exact), inflow
+  > 0, covered by the Finding 92 guard; their floor in the delivered field was already below zero
+  but not enclosed — the lower floor closed their col. Assumed shape: holds." ✗✗ on every clause,
+  because there is no referent.** ⚠️ And the assumed shape carried its own refutation condition —
+  *"the data would refute it if they are one cell, at −1.000 m (the clamp), or without inflow"* —
+  which **fires on the clamp clause for every component in both fields**. The shape was falsifiable
+  and it is falsified.
+- **B "eroded 0, breached 2 — the breach. The two bodies are among the delivered 16, reduced." ✗✗**
+  on the stage (eroded 1) and on the direction (the breach raises the body).
+- **C "the author chooses ×0.5"** — not scorable by me, and put to the author unweighted.
+
+**Meta.** ⛔ **The round's block A spent its whole structure on a quantity that was misnamed — by
+me, at Finding 99.** I called `bs.spillways.len()` "below-sea basins", the reviewer built an
+integrity gate on it, and Finding 100's winning row was nearly disqualified by a ±20 % bound on a
+count of spillways. **The column was right to exist and its name was wrong**, and a wrong name
+survived two findings and one gate because the number behaved plausibly. ⚠️ That is a new error
+class for this campaign and it is worth a rule: **a column that decides admissibility must state
+what it counts, in the code, at the field.** **Done this round rather than deferred**: the field is
+renamed `below_sea_spillways` and its docstring now carries Finding 101's 20-of-20 measurement at
+the line, so the next reader cannot repeat the mistake by reading the name.

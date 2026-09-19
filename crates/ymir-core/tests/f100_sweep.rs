@@ -207,8 +207,8 @@ fn f100_sweep() {
             c.lake_pct,
             inten,
             100.0 * inten / i_del,
-            c.below_sea_basins,
-            100.0 * (c.below_sea_basins as f32 / 11.0 - 1.0),
+            c.below_sea_spillways,
+            100.0 * (c.below_sea_spillways as f32 / 11.0 - 1.0),
             c.max_catchment_km2,
             100.0 * (c.max_catchment_km2 / 9779.0 - 1.0)
         );
@@ -236,12 +236,12 @@ fn f100_sweep() {
         rule14.map_or("NOT IN 0.3-0.7".into(), |v| format!("x{v}"))
     );
     let integrity_ok = sw.iter().all(|r| {
-        (r.1.below_sea_basins as f32 / 11.0 - 1.0).abs() <= 0.2 || r.1.below_sea_basins <= 15
+        (r.1.below_sea_spillways as f32 / 11.0 - 1.0).abs() <= 0.2 || r.1.below_sea_spillways <= 15
     });
     eprintln!(
         "   ⛔ DRAINAGE INTEGRITY across the sweep: basins {:?} (delivered 11) . catchments {:?} \
          (delivered 9779) ⇒ **{}**",
-        sw.iter().map(|r| r.1.below_sea_basins).collect::<Vec<_>>(),
+        sw.iter().map(|r| r.1.below_sea_spillways).collect::<Vec<_>>(),
         sw.iter().map(|r| r.1.max_catchment_km2 as i32).collect::<Vec<_>>(),
         if integrity_ok {
             "HELD -- no candidate disqualified"
