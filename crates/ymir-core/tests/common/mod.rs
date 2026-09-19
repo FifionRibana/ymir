@@ -234,10 +234,21 @@ pub fn build_field(k: Knobs) -> GridF32 {
     build_field_with_floor(k, None)
 }
 
+/// [`build_field`] on an ARBITRARY seed. ADR Finding 102: every measurement of this chantier
+/// before that finding was made on `PSEED` alone, and Finding 92 asked for a second seed without
+/// getting one. The seed drives both the tectonic init and [`WorldSeed`], as production does.
+pub fn build_field_seed(k: Knobs, seed: u64) -> GridF32 {
+    build_field_inner(k, None, seed)
+}
+
 /// [`build_field`] with ADR Finding 96 B3's external incision floor (norm units, one entry per
 /// target cell). `None` is byte-identical. Separate entry point because [`Knobs`] is `Copy` and
 /// a grid cannot live in it -- the same constraint ADR Finding 88 hit on `LakeCellInfo`.
 pub fn build_field_with_floor(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>) -> GridF32 {
+    build_field_inner(k, floor, PSEED)
+}
+
+fn build_field_inner(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>, pseed: u64) -> GridF32 {
     let ss = SteinSteinParams::default();
     let run_cfg = C1TimeLoopConfig {
         rigid_continental_crust: true,
@@ -247,10 +258,10 @@ pub fn build_field_with_floor(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>)
         iso_config: IsostasyConfig::c1_default(),
         drainage_max_distance: 30,
     };
-    let mut state = init_c1_state_phase_2_r7(64, PSEED, &Phase2InitParams::default());
+    let mut state = init_c1_state_phase_2_r7(64, pseed, &Phase2InitParams::default());
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     run_with_closures(&mut state, &mut kin, &run_cfg, &C1Closures::default(), |_, _| {});
-    let seed = WorldSeed::new(PSEED);
+    let seed = WorldSeed::new(pseed);
     let volc = VolcanismConfig { enabled: true, domain_km: DOMAIN_KM, ..Default::default() };
     let edifices = place_edifices(&state, &kin, &seed, DOMAIN_KM, &volc);
     let mut cfg = production_hd_config(&ProductionHdOpts {

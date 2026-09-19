@@ -1578,3 +1578,78 @@ mettrait un choix non fait dans `relief_v3`. **Rien n'est écrit.**
 contenu existe (le F90 porte bien un `### D`). Deuxième tour de suite qu'un identifiant de bloc en
 `F<n>-<X>` rend un **faux négatif** (`F76-B` au tour précédent). ⇒ **La ligne 1 doit retomber sur
 les titres de bloc du finding**, sinon elle fabrique des négatifs à chaque tour.
+
+## ⛔ LA FENÊTRE NE TRANSFÈRE PAS : ELLE EST VIDE SUR LES DEUX SEEDS NEUVES. MAIS TOUT CE QUE LA CLOSURE RÉPARE TRANSFÈRE — CE QUI NE TRANSFÈRE PAS, CE SONT DEUX SEUILS ABSOLUS LUS SUR LA SEED 1 (Finding 102)
+
+Aucun changement de production. **Rien de promu. Le tour s'arrête au bloc B**, comme sa propre règle
+l'exige. Trois seeds, onze constructions lourdes, neuf chaînes de critères, 38 minutes d'un cœur.
+
+⚠️ **Les seeds sont DÉRIVÉES, pas choisies** : `splitmix64(PSEED)` et `splitmix64²(PSEED)`. Et
+`multi-seed` / `plusieurs seeds` / `second seed` / `other seed` donnent **0 occurrence, quatre
+fois** : **aucune mesure de ce chantier n'avait jamais touché une deuxième seed.**
+
+**A — les trois seeds portent le défaut, et ce sont de vrais continents différents.**
+
+| livré | relief | côte ≥1 km | **≥2 cellules** | canyons | R8 | composantes | plus gd bassin | **D_L p50 (>5)** |
+|---|---|---|---|---|---|---|---|---|
+| seed 1 | 424,2 m | +115 | 3 442 | 29,6 % | 0,0924 | 20 | 9 779 km² | — |
+| seed 2 | **246,9 m** | +209 | 5 258 | 29,4 % | 0,1109 | 43 | 735 km² | **4,58 (42 %)** |
+| seed 3 | 363,0 m | +221 | 5 016 | 33,3 % | 0,1095 | 15 | 5 215 km² | **3,65 (24 %)** |
+
+**B — la fenêtre est vide sur les deux seeds neuves.** seed 1 **[×0,4]** · seed 2 **[ ]** · seed 3
+**[ ]**.
+
+> ⛔ **Mais QUATRE des sept lignes échouent sur `R8 < 0,06` ET RIEN D'AUTRE** (seed 2 à ×0,4 et
+> ×0,5 ; seed 3 à ×0,5 et ×0,6). Et ce seuil est **absolu, lu sur le 0,0563 de la seed 1**, appliqué
+> à des seeds dont le livré vaut **0,1109** et **0,1095** contre **0,0924**. **La porte est absolue
+> là où la grandeur ne l'est pas.** En relatif, la meilleure ligne de chaque seed donne **−39,1 % ·
+> −39,7 % · −31,2 %** : **la suppression du peigne transfère ; le nombre 0,06 non.**
+>
+> ⚠️ Et la seed 3 à ×0,4 échoue en plus la porte côtière **d'un seul éperon** (+6 contre ≤ +5) —
+> un troisième seuil absolu à la résolution de sa propre grandeur.
+
+**Ce qui transfère, et c'est l'essentiel de la closure :**
+
+| | seed 1 (×0,4) | seed 2 (×0,5) | seed 3 (×0,6) |
+|---|---|---|---|
+| côte ≥ 1 km | **+115 → +2** | **+209 → −1** | **+221 → +4** |
+| taux canyon | 29,6 → 6,9 % | 29,4 → 5,9 % | 33,3 → 7,1 % |
+| érosion permise | 71,7 % | 71,8 % | 75,6 % |
+| R8, en relatif | −39 % | −40 % | −31 % |
+| **composantes `wc == 2`** | **20 → 20** | **43 → 43** | **15 → 15** |
+| **D_L p50 (part > 5)** | — | **4,58 (42 %) → 1,91 (0 %)** | **3,65 (24 %) → 2,04 (0 %)** |
+
+> ⛔ **Le correctif côtier transfère magnifiquement** (+209 → −1, +221 → +4, sur des côtes livrées
+> deux fois pires que celle de la seed 1). **L'intégrité de drainage est PARFAITE sur tous les
+> facteurs de toutes les seeds** : le compte de composantes ne bouge jamais. Et **la transition
+> vallée-noyée → cuvette transfère** : la part de lacs au-dessus de D_L 5 passe de **42 % à 0 %** et
+> de **24 % à 0 %**.
+>
+> ⚠️ Le plus grand bassin **grossit** au lieu de tenir (+7 % et **+16 %**) : du drainage plus
+> intégré, pas un effondrement, mais hors des ±5 % demandés — rapporté tel quel.
+>
+> ⛔ **Et l'échelle cellulaire n'est touchée sur aucune seed** : éperons ≥ 2 cellules 3 442 → 2 448,
+> 5 258 → 3 303, 5 016 → 3 143 (−29 à −37 %), contre la référence non incisée de **8** du F76. ⇒
+> **Le garde F80 (Δ ≥ 2 c = 0) ne pourra pas être revendiqué à la promotion**, et le bloc D le
+> listait comme acquis.
+
+**C — le rapport que le bloc C demande est INDÉFINI, et celui qui existe est vide de sens.** La
+fenêtre étant vide sur deux seeds, `facteur_fenêtre` n'existe pas. Ce qui se calcule :
+`k_s / pente médiane` = **0,622 · 0,584 · 0,578** — constant à **±4 %**. ⚠️ **Ce qui rend
+l'invariant vacant pour la question posée** : normaliser par `k_s` et normaliser par la pente sont
+la même opération, et le balayage l'avait déjà faite. Le facteur qui met le relief sur la cible vaut
+**0,40 · 0,31 · 0,61** — il couvre toute la plage. Il est monotone en coupe médiane du livré
+(148,9 → 198,0 → 238,1 m), ce qui est une **hypothèse pour une quatrième seed**, pas une loi : trois
+points, et le rapport facteur/coupe lit 0,00208 · 0,00202 · 0,00256.
+
+**E — l'instrument de forme, étalonné d'abord** : disque **1,284** (continuum 1,000 — c'est 4/π à
+1 % près, le biais d'escalier), rectangle 10:1 aligné **1,963** (exact). ⚠️ **Le biais dépend de la
+forme**, donc ces D_L ne se comparent qu'entre eux.
+
+> ⛔ **Le vrai résultat du tour n'est pas « la closure ne transfère pas » — c'est que trois de ses
+> quatre portes sont des nombres de la seed 1 déguisés en seuils physiques.** `R8 < 0,06` est le
+> 0,0563 de la seed 1 arrondi ; `érosion ≥ 70 %` est 1,7 point sous sa meilleure ligne ; la porte
+> côtière recale la seed 3 **d'un éperon**. ⚠️ **Troisième tour de suite où le défaut est un seuil
+> ou un nom, pas un mécanisme** (`below_sea_basins`, les ±20 % sur un compte de 11, et maintenant
+> trois portes absolues). ⇒ **La ligne 4 du gabarit devrait exiger que chaque porte déclare si elle
+> est absolue ou relative, et contre quoi elle a été calibrée.**

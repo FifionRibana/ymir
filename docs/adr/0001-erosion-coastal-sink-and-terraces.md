@@ -15810,3 +15810,225 @@ class for this campaign and it is worth a rule: **a column that decides admissib
 what it counts, in the code, at the field.** **Done this round rather than deferred**: the field is
 renamed `below_sea_spillways` and its docstring now carries Finding 101's 20-of-20 measurement at
 the line, so the next reader cannot repeat the mistake by reading the name.
+
+## Finding 102 — the window does NOT transfer: it is empty on both new seeds. Everything the closure fixes transfers; what does not is two ABSOLUTE gates read off seed 1
+
+**No production change. Nothing promoted. The round stops at block B, as its own stop rule
+requires.** Three seeds, eleven heavy builds, nine criteria chains, 38 minutes of one core.
+
+### Template line 1 — the grep, and a third collision in three rounds
+
+`multi-seed` **0** · `plusieurs seeds` **0** · `second seed` **0** · `other seed` **0** —
+**NOTHING FOUND, four times.** ⇒ **No measurement in this chantier has ever touched a second
+seed**, which confirms the round's premise exactly. The single `6 seeds` (L8923) is inside Finding
+78's quotation of the *bathymetry* commit, not this chantier.
+
+⛔ **`D_L` is NEW: 0 hits case-sensitive with word boundaries.** Its 9 case-insensitive hits are
+**all collisions** — `channel_head_law` and `detected_lake` both contain the substring `d_l`. And
+`perimeter` (5 hits) is Finding 71's **water-budget** perimeter, a different sense.
+
+> ⚠️ **Third collision in three rounds** — `0.0451` → a Finding 62 drainage-area percentile (which
+> paid), `F90-D` → a false negative on a block identifier, `D_L` → `channel_head_law`. **Rule 11b
+> needs a word-boundary clause**, or the grep line manufactures antecedents that do not exist and
+> misses ones that do.
+
+### Template line 2/3 — two design decisions, declared before the run
+
+**The seeds are DERIVED, not chosen**: `splitmix64(PSEED)` and `splitmix64²(PSEED)` —
+**3 699 308 789 514 581 511** and **4 091 494 333 681 208 221**. There is no way to have picked
+them for their looks.
+
+⚠️ **"Apply ×0.4 to a new seed" has two readings and they are different experiments.** `k_s` is
+**already per-seed by construction** (Finding 97: the median of `S·√A` over the DELIVERED channel
+cells). So **(a)** the absolute floor `0.0451 × 0.4`, or **(b)** the rule `k_s(seed) × 0.4`. **(b)
+is the closure as built and is what was swept**; every `k_s` is printed so (a) can be read off it.
+
+⚠️ **The oracle does not exist for a new seed** (1 h 43 each, refused). **Declared PROXY**: the
+relief target is each seed's own delivered field **× 1.151**, Finding 99's oracle/delivered ratio on
+seed 1. On seed 1 the proxy reproduces the oracle to 0.1 m (488.2 against 488.1), which is the only
+check available for it.
+
+### A — the controls: all three seeds carry the defect, and they are genuinely different continents
+
+| delivered | relief | coast ≥ 1 km | **≥ 2 cells** | canyons | lakes | R8 | components | biggest catchment | **D_L p50 (share > 5)** | cut/cell |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **seed 1** | 424.2 m | +115 | **3 442** | 29.6 % | 24.70 % | 0.0924 | 20 | 9 779 km² | — | 198.0 m |
+| **seed 2** | **246.9 m** | +209 | **5 258** | 29.4 % | 12.20 % | 0.1109 | 43 | 735 km² | **4.58 (42 %)** | 148.9 m |
+| **seed 3** | 363.0 m | +221 | **5 016** | 33.3 % | 13.31 % | 0.1095 | 15 | 5 215 km² | **3.65 (24 %)** | 238.1 m |
+
+> **The defect is the scheme's, not the seed's** — canyon rate 29–33 % on all three, coast +115 to
+> +221, R8 0.092–0.111. And the three continents are **not variants of one another**: relief 424 /
+> 247 / 363 m, biggest catchment 735 to 9 779 km², lake fraction 12 to 25 %. The transfer is being
+> tested against real contrast.
+
+### B — the window is EMPTY on both new seeds, and the round stops
+
+Gates: relief within ±5 % of the proxy target · coast ≤ +5 · erosion ≥ 70 % · R8 < 0.06.
+
+| seed | window |
+|---|---|
+| seed 1 | **[×0.4]** |
+| seed 2 | **[ ]** |
+| seed 3 | **[ ]** |
+
+⛔ **My prediction B1 — "the window moves by at least one step on at least one seed" — is
+confirmed, and further than I said: it does not move, it vanishes.** The reviewer's assumed shape
+("the constant transfers; ×0.4 is in all three") is refuted.
+
+**But the attribution is the finding, and it is one gate:**
+
+| seed | factor | relief % | coast | erosion | R8 | **which gate fails** |
+|---|---|---|---|---|---|---|
+| 2 | 0.3 | −0.2 ✓ | +23 ✗ | 78.9 ✓ | 0.0802 ✗ | coast, R8 |
+| 2 | **0.4** | +2.3 ✓ | +5 ✓ | 75.3 ✓ | 0.0737 ✗ | **R8 ALONE** |
+| 2 | **0.5** | +4.7 ✓ | −1 ✓ | 71.8 ✓ | 0.0669 ✗ | **R8 ALONE** |
+| 2 | 0.6 | +7.1 ✗ | +2 ✓ | 68.6 ✗ | 0.0595 ✓ | relief, erosion |
+| 3 | 0.4 | −3.8 ✓ | **+6 ✗** | 81.3 ✓ | 0.0865 ✗ | coast (**by one spur**), R8 |
+| 3 | **0.5** | −2.0 ✓ | +4 ✓ | 78.4 ✓ | 0.0823 ✗ | **R8 ALONE** |
+| 3 | **0.6** | −0.2 ✓ | +4 ✓ | 75.6 ✓ | 0.0753 ✗ | **R8 ALONE** |
+
+> ⛔ **FOUR OF THE SEVEN ROWS FAIL ON `R8 < 0.06` AND NOTHING ELSE.** And that threshold is
+> **absolute, read off seed 1's 0.0563**, applied to seeds whose DELIVERED R8 is **0.1109** and
+> **0.1095** against seed 1's **0.0924**. **The gate is absolute where the quantity is not.**
+>
+> Read as a relative improvement, the best row of each seed gives **−39.1 % (seed 1, ×0.4)**,
+> **−39.7 % (seed 2, ×0.5)**, **−31.2 % (seed 3, ×0.6)** — consistent within a quarter. **The comb
+> suppression transfers; the number 0.06 does not.**
+>
+> ⚠️ **This is the same error class as `below_sea_basins` and the ±20 % bound on a count of 11**,
+> three rounds running: **a gate whose threshold was read off one seed's value and then applied as
+> if it were a property of the world.** Two of the four gates here (`R8 < 0.06`, `erosion ≥ 70 %`)
+> are of that kind. ⚠️ And seed 3's ×0.4 additionally fails the coast gate **by one spur** (+6
+> against ≤ +5) — a third absolute threshold at the resolution of its own quantity.
+
+**What DOES transfer, and it is most of the closure:**
+
+| | seed 1 (×0.4) | seed 2 (×0.5) | seed 3 (×0.6) |
+|---|---|---|---|
+| coast ≥ 1 km | **+115 → +2** | **+209 → −1** | **+221 → +4** |
+| canyon rate | 29.6 → 6.9 % | 29.4 → 5.9 % | 33.3 → 7.1 % |
+| erosion permitted | 71.7 % | 71.8 % | 75.6 % |
+| R8, relative | −39 % | −40 % | −31 % |
+| **`wc == 2` components** | **20 → 20 (+0 %)** | **43 → 43 (+0 %)** | **15 → 15 (+0 %)** |
+| **D_L p50 (share > 5)** | — | **4.58 (42 %) → 1.91 (0 %)** | **3.65 (24 %) → 2.04 (0 %)** |
+
+> ⛔ **The coastal fix transfers superbly** — +209 → −1 and +221 → +4, on seeds whose delivered
+> coasts are twice seed 1's. **The canyon reduction transfers.** **The drainage integrity is
+> PERFECT on every factor of every seed: the component count never moves.** And **the drowned-valley
+> → basin transition transfers**: the share of lakes above D_L 5 goes **42 % → 0 %** and **24 % →
+> 0 %**.
+>
+> ⚠️ **The biggest catchment grows rather than holds**: seed 2 735 → 789 km² (+7 %), seed 3
+> 5 215 → 6 030 km² (**+16 %**). That is drainage becoming *more* integrated, not collapsing, but it
+> is outside the ±5 % the round asked for and is reported as measured.
+>
+> ⛔ **And the cell scale is untouched on every seed.** Spurs ≥ 2 cells: seed 1 3 442 → 2 448
+> (−29 %), seed 2 5 258 → 3 303 (−37 %), seed 3 5 016 → 3 143 (−37 %). **My prediction D1 is
+> confirmed: the Finding 80 guard (Δ ≥ 2 cells = 0) CANNOT be claimed at promotion** — the residue
+> is in the thousands against Finding 76's un-incised reference of 8. ⚠️ My count (3 442 delivered)
+> is not Finding 76's (1 831): a different spur threshold, so it is my instrument and not a
+> re-measurement of theirs.
+
+### C — the invariant: the ratio the round asked for is UNDEFINED, and the one that exists is vacuous
+
+The window is empty on two seeds, so `factor_window` does not exist and
+`factor_window / median_slope` cannot be computed. What can:
+
+| | median channel slope (delivered) | `k_s` | **ratio** |
+|---|---|---|---|
+| seed 1 | 0.0725 | 0.0451 | **0.622** |
+| seed 2 | 0.0507 | 0.0296 | **0.584** |
+| seed 3 | 0.0479 | 0.0277 | **0.578** |
+
+> **`k_s` is a fixed multiple of the median channel slope, to ±4 %.** ⚠️ **Which makes block C's
+> invariant vacuous for the question it was built for**: normalising by `k_s` and normalising by the
+> median slope are the same operation, and the sweep had already done it. The ratio cannot say which
+> factor to pick because it has been divided out.
+>
+> **The factor that puts the relief on the proxy target** is ≈ **0.40** (seed 1), **0.31** (seed 2),
+> **0.61** (seed 3) — **it spans the whole swept range.** It is monotone in the delivered field's
+> median cut per cell (148.9 → 198.0 → 238.1 m for 0.31 → 0.40 → 0.61), which is a **hypothesis for
+> a fourth seed**, not a law: three points, and the ratio factor/cut reads 0.00208 / 0.00202 /
+> 0.00256, so the first two agree to 3 % and the third is 25 % away.
+>
+> ⛔ **And my own C2 prediction is refuted by my own design**: I predicted the invariant would be
+> the **relief gap** — but the declared proxy fixes that gap at exactly 15.1 % for all three seeds
+> by construction, so it cannot possibly discriminate. **A proxy chosen to make the target
+> comparable made one of my predictions untestable, and I did not notice when I wrote both.**
+
+### D — not written, and now for a second reason
+
+The round gated block D on block B. B says the window is empty on two of three seeds, so **nothing
+is written**. ⛔ **And block D's own guard list has a hole the measurement just exposed**: it lists
+*"Finding 80 (Δ ≥ 2 c = 0 — to be re-read on the seam)"*, and the answer is that it reads **2 448
+to 3 343**, not 0. **A promotion claiming the Finding 80 guard would be claiming something false.**
+
+### E — the shape instrument, calibrated first
+
+| | measured | continuum |
+|---|---|---|
+| disk, r = 64 | **1.284** | 1.000 |
+| rectangle 10:1, axis-aligned | **1.963** | 1.963 |
+
+> ⛔ **The disk does not read 1.00, it reads 4/π = 1.273 to within 1 %** — the staircase bias of a
+> perimeter counted on cell edges — **while the axis-aligned rectangle is exact.** ⚠️ **The bias is
+> shape-dependent**, so these `D_L` values cannot be compared with textbook figures, only between
+> fields measured identically. My prediction E1 (disk 1.20–1.30, rectangle 1.95–2.00) is confirmed
+> on both.
+>
+> With that caveat, the instrument does what the Finding 101 image showed: **delivered 4.58 and
+> 3.65 with 42 % and 24 % of lakes above D_L 5 (drowned valley networks), against 1.91–2.38 with
+> 0 % above 5 for every candidate on every seed.** The "spidery versus compact" of Finding 101's
+> continent panel now has a number, on three seeds.
+
+### Score
+
+Predictions written and dated **2026-09-19, before the grep and any measurement**; the reviewer's
+were under `<details>` and not opened.
+
+**Mine.**
+
+- **A1 "both new seeds carry the defect: canyons 15–35 %, coast +60 to +200, R8 0.07–0.12" ✓✓** —
+  29.4 / 33.3 %, +209 / +221, 0.1109 / 0.1095. All three inside, the coast at the top edge.
+- ⛔ **B1 "the window moves by at least one step on at least one seed, against the reviewer's
+  constant" ✓✓ and understated** — it does not move, it is **empty on both**.
+- **B2 "at least one window is one factor wide or empty" ✓** — both empty.
+- ⛔ **C1 "`factor_window / median_slope` is not constant to ±10 %" — UNDEFINED, not scorable.**
+  The window is empty on two seeds, so the ratio the prediction was about does not exist. What can
+  be computed, `k_s / median_slope`, is constant to **±4 %** — tighter than anything I predicted,
+  and **vacuous** for choosing a factor because the sweep already divides by it.
+- ⛔ **C2 "the invariant that works is the relief GAP" ✗ — and refuted by my own design.** The
+  declared proxy fixes the gap at 15.1 % for all three seeds by construction, so it cannot
+  discriminate. **I wrote the proxy and the prediction in the same session and did not notice they
+  were incompatible.** That is the sharpest self-inflicted error of the round.
+- ⛔ **D1 "the Finding 80 guard FAILS; the ≥ 2-cell count is in the hundreds" ✓✓ on the verdict,
+  ✗ low on the number** — it is in the **thousands** (2 448 to 3 343 against a reference of 8).
+  The verdict is what matters: a promotion cannot claim that guard.
+- **E1 "the disk will not calibrate to 1.00; 1.20–1.30, and the axis-aligned rectangle exact"
+  ✓✓✓** — 1.284 (4/π to 1 %) and 1.963 exactly.
+- **E2 "delivered D_L 2.5–4.5, candidates 1.8–2.8, the share above 5 at least halves" ✓** —
+  4.58 / 3.65 (one just above my band) → 1.91–2.38, and the share above 5 goes 42 % → **0 %**.
+
+**The reviewer's.**
+
+- A "canyons 10–25 %, coast +60 to +150, R8 0.07–0.11" — **✓ on the shape, ✗ on two bands**:
+  canyons 29–33 % (above), coast +209 / +221 (above). The defect is worse on the new seeds than
+  either of us allowed.
+- ⛔ **B "the three windows overlap on {0.4, 0.5}; ×0.4 is in all three; one seed narrower.
+  Assumed shape: holds, narrowly." ✗✗✗** — two windows are empty and ×0.4 is in one.
+- C "the ratio is constant to ±15 %; the constant ×0.4 does as well" — **undefined**.
+- ⛔ **D "the Finding 80 guard reads 0 or +1 — B2 does not reopen the cell scale" ✗✗✗** — it reads
+  **2 448–3 343**. B2 never closed the cell scale; it was never measured there until now.
+- E "D_L delivered 4.5–7, ×0.4 1.8–2.6, share > 5 from 40 % to < 10 %" — **✓ on seed 2 (4.58),
+  ✗ on seed 3 (3.65)**, candidates ✓, share ✓✓ (42 % → 0 %).
+- Meta "at least one of five is wrong" **✓ — three are.**
+
+**Meta.** ⛔ **The round's real result is not "the closure does not transfer" — it is that three of
+its four gates are seed-1 numbers wearing the clothes of physical thresholds.** `R8 < 0.06` is
+seed 1's 0.0563 rounded up; `erosion ≥ 70 %` sits 1.7 points under seed 1's best row; the coast
+gate rejects seed 3 by **one spur**. When the same closure is measured relatively — comb −31 to
+−40 %, coast +209 → −1, canyons to 6–7 %, components +0 % — **it transfers on every criterion the
+chantier owns.** ⚠️ That is the third consecutive round in which the defect was a threshold or a
+name rather than a mechanism (`below_sea_basins`, the ±20 % on a count of 11, and now three
+absolute gates), and it is the thing the template should be made to catch: **line 4 should require
+every gate to state whether it is absolute or relative, and against what it was calibrated.**
