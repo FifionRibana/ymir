@@ -1237,3 +1237,82 @@ rampe d'altitude) ET une statistique directionnelle étalonnée aux deux bouts**
 divergent, aucune ne gagne d'office, on cherche laquelle ment. Le F97 a essayé quatre statistiques ;
 **une seule marche** : ni `axis R` (aveugle par symétrie), ni la cohérence C (plus haute pour le
 champ lisse non incisé que pour le livré), ni l'entropie d'orientation (0,996–0,999 partout).
+
+## ⛔ LE MUR N'EN EST PAS UN : LE CADRAN TIENT TOUS LES DÉFAUTS ET RAMÈNE LE RELIEF DANS LA BANDE DE L'ORACLE — MAIS LA CLOSURE TAXE L'ÉROSION DE MOITIÉ PARTOUT, ET LE CADRAN SATURE (Finding 98)
+
+Aucun changement de production. Neuf champs, six chaînes de critères, 1 h 50 d'un cœur.
+
+**Le contrôle tire, et fort.** Monter `k_time` sans closure aggrave **tous** les défauts :
+
+| | canyons | côte brèchée | relief vs oracle | R8 |
+|---|---|---|---|---|
+| livré ×1 | 29,6 % | +115 | −13,1 % | 0,0924 |
+| **CONTRÔLE livré ×1,5** | **40,4 %** | **+147** | **−20,3 %** | **0,1017** |
+
+**Et la closure tient à travers le cadran** — c'est le résultat du tour :
+
+| A1+B2 | canyons | côte | relief vs oracle | lacs % | **érosion permise (même `k_time`)** | R8 |
+|---|---|---|---|---|---|---|
+| ×1 | 3,4 % | **+3** | +13,2 % | 19,21 | 51,1 % | 0,0303 |
+| ×1,5 | **3,4 %** | **+3** | **+10,3 %** | 19,44 | 50,0 % | 0,0319 |
+| ×2 | 6,7 % | **+3** | **+8,6 % — DANS ±10 %** | 19,60 | 49,2 % | 0,0317 |
+
+> ⛔ **LE MUR NOMMÉ AU F97 EST RETIRÉ.** Le F97 écrivait *« à ce `k_time`, les défauts et l'érosion
+> sont la même grandeur »*. **Ils ne le sont pas** : A1+B2 à ×2 tient chacun de ses défauts à sa
+> valeur de ×1 **et** entre dans la bande ±10 % de l'oracle, ce qu'aucun candidat n'avait fait. La
+> closure **découple le où du combien**, et `k_time` redevient le cadran de l'âge.
+>
+> ⚠️ **Ce qui survit du mur est plus étroit et stable : la taxe.** Contre le livré **au même
+> `k_time`**, l'érosion permise vaut **51,1 → 50,0 → 49,2 %** — plate. Contre le livré ×1 elle
+> *monte* (51,1 → 56,3 → 59,4 %), uniquement parce que le budget a grossi : **c'est le piège
+> comptable, et les deux dénominateurs sont imprimés pour qu'on ne puisse pas lire le flatteur.**
+>
+> ⛔ **Et c'est la SATURATION qui rend la taxe chère.** `k_time` ×2 n'achète que **×1,21** de coupe
+> réelle (2,241e9 → 2,705e9 m). Rattraper la moitié manquante par le seul cadran demanderait, à ce
+> taux de change, de l'ordre de **×6 à ×8**, à un Courant déjà 3 699 fois au-delà de la borne
+> d'onde. **Le mur n'est pas « défauts contre érosion » : c'est le TAUX DE CHANGE du cadran.**
+
+**La carte de l'érosion retirée — et la réponse est « partout ».**
+
+| | retiré | (i) chenal sous χ | (ii) cuvette | **(iii) reste** | **porte : AUCUNE** |
+|---|---|---|---|---|---|
+| A1+B2 | 1,101e9 m | 7,8 % | 3,3 % | **88,9 %** | **91,5 %** |
+| B1 plafond d'aire | 1,265e9 m | 7,2 % | 2,0 % | **90,7 %** | **94,0 %** |
+| B2 seul | 9,369e8 m | 8,4 % | 1,8 % | **89,8 %** | **93,2 %** |
+
+> ⛔ **Le discriminant du tour ne discrimine pas — et le mien non plus.** Les trois candidats
+> tiennent en **1,2 point** sur (iii) et **2,5** sur « aucune porte ». Ma partition par les portes
+> ne les sépare pas mieux que celle par χ.
+>
+> ⛔ **Normalisé par le nombre de cellules, le résultat est plus fort que ce que les deux
+> partitions cherchaient.** Les classes de porte couvrent 6,4 % (cuvette), 5,8 % (le plancher
+> mordrait) et 87,9 % (aucune) des terres, pour 3,4 / 5,0 / 91,5 % du volume retiré : **intensité
+> par cellule 0,53 · 0,87 · 1,04**. **Le retrait est UNIFORME sur le paysage, et plutôt plus FAIBLE
+> là où les closures agissent.** En clair : le livré coupe **198 m par cellule** en moyenne, A1+B2
+> en retire **97 m, par cellule, partout**.
+>
+> **Le mécanisme est la transmission.** Les deux closures tiennent le CHENAL en hauteur ; le chenal
+> est le niveau de base local de chaque versant au-dessus, donc la diffusion et le talus — qui
+> agissent sur toutes les cellules et portent l'essentiel du volume — déplacent beaucoup moins de
+> matière. **Une closure branchée sur 12 % des cellules divise par deux l'érosion sur 100 %
+> d'entre elles.** Ce n'est ni « empêcher » ni « supprimer » : c'est relever le plancher sous tout
+> le paysage.
+
+**Le bloc C ne mesurait pas ce qu'il croyait**, et le code le disait d'avance : `anti-peigne` a
+**0 occurrence** au dossier ; le levier du F78 est le **clamp de plateau**, il tourne **après**
+l'incision (`:451` puis `:506`), et le **F79 l'a ramené de 20 m à 1 m en production** avec un bump
+`ALGO_UPSCALE_EROSION`. Mesuré quand même, comme contrôle négatif : **identique sur chaque
+colonne** (canyons 29,6 %, côte +115, relief 424,2 m, érosion 100 %, R8 0,0924 → 0,0926). La côte
+ne bouge pas non plus, et ce n'est pas une contradiction avec les 43 % de fourrure du F78 : le F78
+compte les **éperons ≥ 2 cellules** sur le champ érodé, cette table compte les **≥ 1 km sur le
+brèché u16** que le F90 attribue à la traînée de brèche. **Séparation d'échelle, pas désaccord.**
+
+**Règle 14 amendée, deux fois** : (a) le dénominateur doit être la référence **au même budget** —
+sinon une closure « permet plus d'érosion » dès qu'on monte le cadran tout en en permettant la même
+fraction ; (b) la carte doit être une **intensité par cellule**, pas une part de volume — une part
+de volume ne fait que dire où sont les cellules.
+
+⚠️ **La colonne coût est inutilisable pour le deuxième tour de suite**, et c'est désormais un point
+de méthode : les temps de construction tombent de façon monotone au fil d'un run (146,4 → 128,5 →
+74,1 → 64,8 s pour un travail de taille identique). **Ils ne sont comparables que mesurés côte à
+côte.**

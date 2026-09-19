@@ -3883,6 +3883,22 @@ cost at least one wrong conclusion of mine.
 > PERMITTED.** Every criterion in this dossier measures erosion DAMAGE, so a closure that simply
 > switches the erosion off scores well on all of them at once — and looks like a win.
 >
+> ⚠️ **AMENDED AT FINDING 98, twice, and both amendments are about the ARITHMETIC of the
+> report rather than about closures:**
+>
+>  * **the denominator must be the reference at the SAME budget.** Measured against a fixed
+>    reference, a closure appears to permit more erosion the moment the `k_time` dial is turned up,
+>    while permitting exactly the same fraction. Finding 98 reads 51.1 → 56.3 → 59.4 % against a
+>    fixed reference and **51.1 → 50.0 → 49.2 %** against the matched one. Only the second is a
+>    property of the closure.
+>  * **the map must be per-cell INTENSITY, not share of volume.** A share of volume mostly reports
+>    where the cells are. Finding 98's three closures each put ~90 % of their removed volume
+>    OUTSIDE their own gates, which looks damning and means nothing; the intensity
+>    (0.53 / 0.87 / **1.04**) shows the removal is uniform across the landscape and *lower* where
+>    the closures act. **A closure gated on 12 % of the cells halved the erosion on 100 % of
+>    them** — by holding up the channel that is their base level — and no share-of-volume
+>    partition could have said so.
+>
 > **Rule 14b, from the same round: the texture statistics cannot see STRUCTURE.** Local σ, the
 > slope quantiles, the > 30° share and the hypsometric percentiles are all **isotropic magnitude**
 > measures. A field that is striped along the D8 axes and has lost its dendritic network scores
@@ -14913,3 +14929,220 @@ one for free. **The dossier has the same lesson written at Finding 76 in the opp
 and here it is a correct reading of one code line that is not a measurement of the loop that runs
 it. Two rounds running, my error class is **the order in which the code visits things**, not
 populations.
+
+## Finding 98 — the wall is not a wall: the dial holds every defect and walks the relief into the oracle's band. But the closure taxes the erosion by half EVERYWHERE, and the dial itself saturates
+
+**No production change.** Nine fields built, six criteria chains, 1 h 50 of one core.
+
+### Rule 11 + 11b, case-insensitive, and block C is not what it says it is
+
+`anti-comb` **0** · `anti-peigne` **0** — **NOTHING FOUND** · `comb` 63 (L445) · `Smith` /
+`Bretherton` / `rilling` 11 / 11 / 14, all first at L445 · `striation` 25 (L284) · `washboard` 4
+(L490) · `Finding 78` 7 (L8879) · `k_time` 43 (L3738) · `1.5` 294, unusable.
+
+⛔ **There is no anti-comb in this dossier, and Finding 78's lever is not one.** Finding 78 is
+*"the 20 m shelf clamp is a PROXY, it runs AFTER the incision, it suppresses 43 % of the fur, and
+it makes every shoreline a cliff"*. Three consequences follow from the code before any
+measurement:
+
+1. **It runs after the incision** — `incise_lithology` at `production_upscale.rs:451`,
+   `apply_bathymetry_profile` at `:506` — so it **cannot** move R8 on land, the paired relief, or
+   the erosion permitted. Three of block C's four columns are decided by the call order.
+2. It re-maps **sub-sea cells only**, so the one criterion it can move is the coastline, through
+   the mask.
+3. ⛔ **Finding 79 deliberately took it from 20 m to 1 m in production**, with an
+   `ALGO_UPSCALE_EROSION` 2 → 3 bump. "Anti-comb ON" therefore means **restoring a value the
+   dossier removed one finding later**, because it *"makes every shoreline a cliff"*.
+
+Finding 78 also carries the rule-11 extension this round used: *"when a symptom is a REPEATED
+VALUE, grep the value with the domain words, not only the name"* — the `−20 m` had signed five
+findings without being recognised as a constant.
+
+### A — where the removed erosion went, and the answer is "everywhere"
+
+Δ = cut(delivered) − cut(candidate), per cell, in metres, over land common to both. Two
+partitions: the round's (position relative to χ) and one drawn **on the closures' own gates**
+(⚠️ both gate populations are declared PROXIES — A1 re-evaluates its gate on the current surface
+each iteration, and B2's "would bind" is read on the delivered field's own slope).
+
+Populations: channel cells `A ≥ A_c` **1 192 985** · pre-incision pit cells **720 860** ·
+delivered cells below χ **6 297 955** · cells where B2's floor would bind **652 560** · land
+≈ 11.32 M.
+
+| | removed | (i) below-χ channel | (ii) pit | **(iii) rest** | gate: pit | gate: floor binds | **gate: NONE** |
+|---|---|---|---|---|---|---|---|
+| **A1+B2** | 1.101e9 m | 7.8 % | 3.3 % | **88.9 %** | 3.4 % | 5.0 % | **91.5 %** |
+| **B1** area cap | 1.265e9 m | 7.2 % | 2.0 % | **90.7 %** | 2.1 % | 3.9 % | **94.0 %** |
+| **B2** alone | 9.369e8 m | 8.4 % | 1.8 % | **89.8 %** | 1.9 % | 5.0 % | **93.2 %** |
+
+> ⛔ **The round's discriminator does not discriminate — and neither does mine.** The three
+> candidates are within **1.2 points** of each other on (iii) and within **2.5** on "no gate". B1
+> was supposed to show a dominant (iii) and A1+B2 a dominant (i)+(ii); **(iii) dominates for all
+> three, at ~90 %.** My own refinement — partition by the gates instead — separates them no better.
+>
+> ⛔ **And normalising by cell count says something stronger than either partition was built to
+> ask.** The gate classes hold 6.4 % (pit), 5.8 % (floor binds) and 87.9 % (neither) of the land.
+> Their shares of the removed volume are 3.4 %, 5.0 % and 91.5 %, so the **removal intensity per
+> cell** is **0.53 · 0.87 · 1.04** — **the removal is essentially UNIFORM over the landscape, and
+> if anything slightly LOWER where the closures actually act.** In round numbers: the delivered
+> field cuts **198 m per land cell** on average and A1+B2 removes **97 m of it, per cell,
+> everywhere.**
+>
+> **The mechanism is transmission, and it makes the round's dichotomy the wrong frame.** Both
+> closures hold the CHANNEL up. The channel is the local base level of every hillslope above it,
+> so the diffusion and the talus — which act on every cell and carry most of the volume — move
+> much less mass. **A closure gated on 12 % of the cells halves the erosion on 100 % of them.**
+> That is neither "preventing" nor "suppressing" in the round's sense; it is raising the floor
+> under the whole landscape. ⚠️ **Rule 14 should be amended accordingly** and it is, below: the map
+> is worth having, but the map that matters is **per-cell intensity**, not share of volume — a
+> share of volume mostly reports where the cells are.
+
+### B — the dial, and the control fires hard
+
+`k_time` is moved by `k` at `iterations = 2` held, so only the budget changes. ⚠️ **First, the
+budget dial is not linear and that is a result in itself:**
+
+| delivered | ×1 | ×1.5 | ×2 |
+|---|---|---|---|
+| total cut | 2.241e9 m | 2.525e9 m (**×1.13**) | 2.705e9 m (**×1.21**) |
+
+> **`k_time` ×2 buys ×1.21 of actual cut.** The dial saturates, which is Finding 61's planation
+> saturation and Finding 90-C's Courant 3 699 showing up as an exchange rate.
+
+| | canyons | coast breached | relief (vs oracle) | lakes % | erosion permitted vs delivered at the **same** `k_time` | R8 |
+|---|---|---|---|---|---|---|
+| delivered ×1 | 16/54 (29.6 %) | **+115** | 424.2 m (−13.1 %) | 24.70 | 100 % | 0.0924 |
+| **CONTROL delivered ×1.5** | **23/57 (40.4 %)** | **+147** | **389.0 m (−20.3 %)** | 26.38 | 100 % | **0.1017** |
+| **A1+B2 ×1** | 1/29 (3.4 %) | **+3** | 552.4 m (+13.2 %) | 19.21 | 51.1 % | 0.0303 |
+| **A1+B2 ×1.5** | **1/29 (3.4 %)** | **+3** | 538.3 m (**+10.3 %**) | 19.44 | 50.0 % | 0.0319 |
+| **A1+B2 ×2** | 2/30 (6.7 %) | **+3** | **530.3 m (+8.6 %, INSIDE ±10 %)** | 19.60 | 49.2 % | 0.0317 |
+
+> ⛔ **The control fires, hard, and the round's premise holds.** Turning the dial up with no
+> closure makes **every** defect worse: canyons 29.6 → **40.4 %**, coast +115 → **+147**, relief
+> −13.1 → **−20.3 %**, R8 0.0924 → 0.1017. The dial was not stuck; it was pointed the wrong way.
+>
+> ⛔ **AND THE CLOSURE HOLDS ACROSS IT.** Coast **+3 at all three settings**. Canyons 3.4 / 3.4 /
+> 6.7 %. R8 0.030 / 0.032 / 0.032. Lakes 19.2 / 19.4 / 19.6 %. **Meanwhile the relief walks into
+> the oracle's band: +13.2 → +10.3 → +8.6 %.**
+>
+> ⛔ **SO THE WALL FINDING 97 NAMED IS NOT A WALL.** Finding 97 wrote *"at this `k_time` the
+> defects and the erosion are the same quantity"*. **They are not.** A1+B2 at ×2 holds every defect
+> at its ×1 value AND lands inside ±10 % of the oracle's relief, which no candidate had done. The
+> closure **decouples where from how much**, and `k_time` is the age dial it frees. Finding 97's
+> sentence was written before these two measurements and it is withdrawn at its claim point.
+>
+> ⚠️ **What survives of it is narrower, stable, and still unexplained: the tax.** Erosion permitted
+> against the delivered field at the **same** `k_time` is **51.1 → 50.0 → 49.2 %** — flat. The
+> closure removes half the erosion at every setting, and the dial does not buy that back. Against
+> the ×1 delivered the number rises (51.1 → 56.3 → 59.4 %) purely because the budget grew; **that
+> is the accounting trap my B5 prediction named in advance, and both denominators are printed so
+> it cannot be read the flattering way.**
+>
+> ⛔ **And the saturation is what makes the tax expensive.** Since `k_time` ×2 buys only ×1.21 of
+> cut, recovering the missing half by the dial alone would need a `k_time` far beyond ×2 — on this
+> exchange rate, roughly **×6 to ×8** for ×2 of cut, at a Courant already 3 699× past the wave
+> bound. **The wall is not "defects versus erosion"; it is the EXCHANGE RATE of the dial.**
+
+### C — the shelf clamp moves nothing, and the code said so first
+
+| `shelf_min_depth_m = 20 m` vs shipped 1 m | canyons | coast breached | relief | lakes % | erosion | R8 |
+|---|---|---|---|---|---|---|
+| shipped (1 m) | 16/54 (29.6 %) | +115 | 424.2 m | 24.70 | 100 % | 0.0924 |
+| **clamp at 20 m** | **16/54 (29.6 %)** | **+115** | **424.2 m** | 24.69 | **100 %** | **0.0926** |
+
+> **Identical on every column, to the digit where it matters.** Three of them were decided by the
+> call order and the measurement is a **negative control on that reasoning, which passes**. The
+> fourth — the coast — does not move either, and that needs saying rather than assuming: Finding
+> 78 measured the clamp suppressing **43 % of the fur**, but its fur is **spurs ≥ 2 cells** on the
+> eroded field, while this table's criterion is **spurs ≥ 1 km on the breached u16 field**, which
+> Finding 90 attributed to the breach's drag. **The clamp acts on the 2-cell fur and cannot touch
+> the 1 km spurs: a scale separation, not a contradiction between the two findings.**
+>
+> ⛔ **My C2 prediction is refuted**: I expected the clamp to reduce R8 further than B2 does. It
+> moves R8 by **+0.0002**, which is nothing, and it could not have done otherwise — it never
+> touches a land cell.
+
+⚠️ **The cost column is unusable again, for the second round running, and this time it is a method
+point.** Build times fell monotonically through the run (146.4 → 128.5 → 74.1 → 64.8 s for
+identical-sized work), so the first build always pays a warm-up and contention cost. **Build
+timings in this harness are comparable only when measured adjacently.** ⚠️ And the shelf row's
+"146.4 s" is my bench reusing the delivered field's timer — a label defect, not a measurement.
+
+### Method rule 14, amended at its claim point
+
+> **Rule 14 (Finding 96): a closure that BOUNDS the erosion must report the erosion it permitted.**
+>
+> ⚠️ **Amended at Finding 98, twice:**
+>
+> * **the denominator must be the reference at the SAME budget.** A closure measured against a
+>   fixed reference appears to permit more erosion as soon as the budget dial is turned up, while
+>   permitting exactly the same fraction. Finding 98 reads 51.1 → 56.3 → 59.4 % against a fixed
+>   reference and **51.1 → 50.0 → 49.2 %** against the matched one. Only the second is a property
+>   of the closure.
+> * **the map must be per-cell INTENSITY, not share of volume.** A share of volume mostly reports
+>   where the cells are: Finding 98's three closures all put ~90 % of their removal outside their
+>   own gates, and only the intensity (0.53 / 0.87 / 1.04) shows that the removal is uniform and
+>   *lower* where they act. A closure gated on 12 % of the cells halved the erosion on 100 % of
+>   them, and no share-of-volume partition could have said so.
+
+### Score
+
+Predictions written and dated **2026-09-19, before the rule-11 grep and any measurement**.
+
+⚠️ **This round scores weaker than the others BY CONSTRUCTION and I said so before measuring**:
+the author's predictions were in the prompt body, not behind a `<details>` block, so mine were
+written knowing them. **Only the places where I disagreed are worth anything**, and they are
+marked.
+
+**Mine — the disagreements, which are the only scorable part.**
+
+- ⛔ **A1 "the round's discriminator will not discriminate" ✓✓ — and my REASON was wrong.** I
+  predicted (i) would be **large for everyone** because most land already sits below χ
+  (6.3 M cells do). Measured, (i) is **7.8 %** — small for everyone. Right conclusion, wrong
+  mechanism, and the real one is better: the removal is not concentrated anywhere.
+- ⛔ **A3 "B1's ungated share > 45 %, A1+B2's < 15 %, and THAT is the difference between
+  preventing and suppressing" ✗✗.** Ungated is **94.0 %** for B1 and **91.5 %** for A1+B2 — two
+  and a half points apart. **My gate partition separates them no better than the round's.** The
+  frame was wrong on both sides: there is no "where the closure suppressed" to find, because the
+  removal is transmitted to cells no gate covers.
+- **B1 "the control may not fire; the canyon class is two-clause and more budget flattens the rim
+  while deepening the cut; 14–24" — the number lands at 23, inside my band, but my doubt is
+  refuted**: the rise is unambiguous (29.6 → 40.4 % as a rate) and every other defect worsens with
+  it. ✗ on the hedge, ✓ on the interval.
+- **B2 "canyons hold under A1+B2, and this is close to a tautology" ✓, declared as such.**
+- **B3 "relief +2 to +9 % at ×1.5 and −6 to +3 % at ×2" ✗** — **+10.3 %** and **+8.6 %**. Both
+  above my band: the relief comes down more slowly than I predicted, which is the saturation.
+- **B4 "coast +3 to +10, R8 < 0.05 at both" ✓✓** — +3 at every setting, R8 0.0319 / 0.0317.
+- ⛔ **B5 "erosion permitted will rise against a fixed reference purely because the budget grew;
+  the honest denominator is the same `k_time`" ✓✓.** 51.1 → 56.3 → 59.4 % against the fixed one,
+  **51.1 → 50.0 → 49.2 %** against the matched one. **This is the prediction that earned its
+  keep**, and it is now written into rule 14.
+- **C1 "an anti-comb is most likely more diffusion" ✗ — there is no anti-comb**; Finding 78's
+  lever is a post-incision bathymetry clamp. · **C2 "it reduces R8, plausibly further than B2"
+  ✗✗** — it moves R8 by +0.0002 and cannot do otherwise, since it never touches a land cell.
+
+**The round's.**
+
+- A "(i)+(ii) > 70 % for A1+B2, < 40 % for B1" **✗✗** — 11.1 % and 9.2 %. The partition's premise
+  was that the removal sits where the closure acts; it does not.
+- **A's conclusion, "a scalar does not distinguish suppressing from preventing", ✓✓ and for a
+  better reason than the block supposed**: no *partition* distinguishes them either. What does is
+  the per-cell intensity, and it says both closures do the same thing — hold the base level up.
+- B "relief inside ±10 % of the oracle at ×1.5" **✗ narrowly (+10.3 %)**, reached at **×2**
+  (+8.6 %) · "coast +3" **✓✓** · "canyons < 5 %" **✓ at ×1 and ×1.5 (3.4 %), ✗ at ×2 (6.7 %)** ·
+  "R8 < 0.05" **✓✓** · "erosion permitted > 80 % of the delivered" **✗✗ — 49–51 %, flat.**
+- **B's control, "the delivered at ×1.5 goes above 20 canyons" ✓✓ — 23.** The load-bearing
+  measurement of the round, and it fires.
+- **B's stop rule** — *"if `k_time` ×1.5 reopens the canyons under A1+B2, stop and write the
+  wall"*. **It does not** (3.4 %, unchanged). The round continues and the wall is withdrawn
+  instead, which is the outcome the stop rule was written to make possible.
+- C "the anti-comb does worse than B2 on R8 at a higher cost" — **right in direction, wrong in
+  kind**: it does not do worse, it does **nothing**, at no cost.
+
+**Meta.** My error class changed again. Two rounds ago it was populations, last round it was the
+order in which the code visits things, and this round it is **framing**: I accepted the round's
+"prevent versus suppress" dichotomy and only tried to sharpen its instrument, when the measurement
+says neither term applies. ⚠️ The one thing that saved the round from that was a **negative
+control I added because the code told me to** — the shelf clamp, measured precisely because I
+could prove in advance it must do nothing. **It did nothing, which is what makes the rest of the
+table readable.**
