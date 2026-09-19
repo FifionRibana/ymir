@@ -16195,3 +16195,159 @@ substantive pattern is now unmistakable and worth stating as the campaign's stan
 last four blocking results have each been a threshold at the resolution of its own quantity** — one
 spur on seed 3's coast, one lake on seed 2's D_L, a ±20 % bound on a count of 11, and `R8 < 0.06`
 rounded up from 0.0563. **The closure keeps passing; the gates keep failing to be measurements.**
+
+## Finding 104 — the channel/hillslope split carries NO information; but its negative control produces the number six rounds of gates were missing, and the tile re-read overturns Finding 103's rejection of seed 3
+
+**No production change. Nothing promoted.** ⚠️ **The round asked for "no construction, on the
+existing fields" and that is impossible: no field in this campaign is persisted.** `build_field`
+re-runs the tectonics, the upscale and the incision every time; `cache.rs` covers the HD pipeline,
+not this path. Seventeen fields were rebuilt, and the departure is declared rather than hidden.
+⇒ **Persisting the fields (~268 MB each) would make rounds of this shape genuinely free**, and that
+is a standing decision worth taking rather than paying the cost a fifth time.
+
+### A — the split, and it refutes its own premise
+
+Population **fixed on the delivered field's network** (`A ≥ A_c`), so the channel set is the same
+for every candidate — otherwise the ratio mixes a population change with a cut change, the
+unpaired-comparison trap of Findings 63, 64, 81 and 88.
+
+| | **channels** | **hillslopes** | total |
+|---|---|---|---|
+| delivered (positive control) | 100.0 % | 100.0 % | 100.0 % |
+| ⛔ **B1 area cap (NEGATIVE control)** | **43.8 %** | **43.6 %** | 43.7 % |
+| seed 1 ×0.4 / ×0.5 / ×0.6 | 71.0 / 67.3 / **63.8** | 71.8 / 67.9 / **64.2** | 71.7 / 67.8 / 64.1 |
+| seed 2 ×0.4 / ×0.5 / ×0.6 | 75.2 / 71.9 / **68.8** | 75.3 / 71.8 / **68.6** | 75.3 / 71.8 / 68.6 |
+| seed 3 ×0.4 / ×0.5 / ×0.6 | **80.8** / 78.0 / 75.5 | 81.4 / 78.5 / 75.7 | 81.3 / 78.4 / 75.7 |
+
+> ⛔ **Channel retention and hillslope retention are identical to within 0.8 points on all TEN rows,
+> the negative control included.** The `A_c` split carries no information: "channel-cut retention"
+> **is** "erosion permitted", with a different threshold. **The round replaced a scalar with the
+> same scalar.**
+>
+> **The premise was that the total hides what the split would reveal.** But Finding 101's result was
+> about the **median against the mean**, not about channels against hillslopes: the skew lives
+> *inside* each class, not between them. ⚠️ **My own predictions A2 and A3 are refuted in exactly
+> the same way — I predicted a split that does not exist** (70–85 against 55–65 at ×0.6; it is 63.8
+> against 64.2).
+>
+> ⛔ **And the gate at 80 % rejects 8 of the 9 candidate rows** — only seed 3 at ×0.4 passes. It is
+> **stricter than the gate it replaces** and eliminates rows that `erosion ≥ 70 %` accepted.
+
+### ⛔ But the negative control produced the number that six rounds of gates were missing
+
+| | value |
+|---|---|
+| **B1**, the closure rule 14 exists to catch | **43.8 %** |
+| **the candidates**, all seeds, all factors | **63.8 % to 80.8 %** |
+
+> **A twenty-point separation, measured.** ⇒ **A threshold can now be set FROM the measurement
+> instead of before it**: the negative control fixes the floor, the candidates fix the range, the
+> author fixes the margin. At **55 %** — the midpoint — every candidate passes on every seed and B1
+> still fails by **11 points**.
+>
+> ⚠️ **What the measurement forbids is a threshold above 63.8 %**, because there it no longer
+> separates the candidates from anything: it rejects all of them, including the fields just
+> measured to repair the coast, the canyons, the lakes and the drainage integrity on three seeds.
+>
+> ⛔ **And this retires my own objection from Finding 103.** I wrote there that relaxing
+> `erosion ≥ 70 %` to 64 % would be *"moving the threshold after seeing which side the answer fell
+> on"*. **That objection stands for 64 and falls for a control-derived value**, and the difference
+> is not rhetorical: **43.8 % is a measurement of what rule 14 wants to catch**, while 64 was only
+> "just under the candidate". ⇒ **Method rule 15: a gate that decides admissibility is set FROM its
+> negative control, never before it.**
+
+### B — the eye, and it overturns Finding 103's rejection of seed 3
+
+Seed 3's tile of maximum Δ(R8), **(7168, 6144)**, chosen by Finding 97's corrected rule:
+
+| | R8 | vs delivered | σ |
+|---|---|---|---|
+| delivered | **0.1186** | — | 5.12 m |
+| ×0.4 | 0.0482 | **−59 %** | 4.89 m |
+| ×0.5 | 0.0337 | **−72 %** | 4.93 m |
+| ×0.6 | 0.0247 | **−79 %** | 4.95 m |
+
+> ⛔ **On the tile where the comb is, seed 3 loses 59 to 79 % of its R8 — against the whole-field
+> −21 / −25 / −31 % that Finding 103's gate rejected.** ⇒ **Seed 3's R8 "failure" was DILUTION, not
+> a weakness of the closure there.**
+>
+> ⛔ **Finding 103's block B is amended at its claim point.** I let seed 3's whole-field R8 reject
+> ×0.4 and ×0.5 **without re-reading it on the tile — and Finding 97 had already established that a
+> global statistic cannot see a localised defect, in a section I wrote myself.** The rejection does
+> not survive the re-read. ⇒ **Method rule 16: a global statistic that REJECTS a candidate must be
+> re-read on the population where the defect lives, before the rejection stands.**
+>
+> **And σ holds while R8 falls** — 5.12 → 4.89 / 4.93 / 4.95 m, i.e. −4 to −2 % — which is Finding
+> 100's discriminator: the comb goes, the relief stays.
+>
+> **To the eye**: the delivered tile carries fine parallel hatching across its ridges and flanks;
+> ×0.5 shows the same landforms with the hatching largely gone, the ridges clean and the valleys
+> reading as valleys. ⚠️ **Residual striation survives in both**, most visibly on the upper ridges —
+> "dendritic" here is relative to the delivered field, not absolute.
+
+### C — the intersection, with the two corrections, is NOT EMPTY
+
+| gate | ×0.5 (seeds 1 / 2 / 3) | ×0.6 (seeds 1 / 2 / 3) |
+|---|---|---|
+| erosion, control-derived ≥ 55 % | ✓ 67.3 / 71.9 / 78.0 | ✓ 63.8 / 68.8 / 75.5 |
+| coast ≤ +5 | ✓ +1 / −1 / +4 | ✓ +1 / +2 / +4 |
+| canyons ≤ 25 % of delivered | ✓ 6.9 / 5.9 / 7.1 | ✓ 3.4 / 5.7 / 7.1 |
+| relief +10…+25 % | ✓ +19.0 / +20.5 / +12.8 | ✓ +21.6 / +23.2 / +14.9 |
+| components unchanged | ✓ 20 / 43 / 15 | ✓ 20 / 43 / 15 |
+| largest basin ↑ or = ±2 % | ✓ | ✓ |
+| D_L share > 5 → 0 (±1 lake) | ✓ 0 / 0 / 0 % | ✓ 0 / **3 % = one lake** / 0 % |
+| R8 — reported, the eye gates | dendritic | dendritic |
+
+> ⛔ **{0.5, 0.6}, on all three seeds.** ×0.4 remains **AMBIGUOUS on seed 3**: its coast is +6
+> against a ≤ +5 gate with ±1 spur of declared noise, and its canyon rate is **2 bodies of 15**,
+> which ±1 body spans from 6.7 % to 20 % — **a ±1 tolerance on a denominator of 15 is not a
+> tolerance**, and the row is reported as unusable rather than passed or failed.
+>
+> **Two corrections got here, and neither is an indulgence**: the erosion threshold **derived from
+> its negative control** (43.8 % measured, not 70 or 80 guessed), and **R8 re-read on the tile**
+> instead of the whole field — the lesson Finding 97 wrote and Finding 103 failed to apply.
+
+### D — the seam, and what is still owed before it can be written
+
+A common factor now exists, so the blocker is no longer measurement. ⚠️ **What is still owed:**
+
+- **the ×0.5 / ×0.6 choice**, which is the author's and is not a measurement: ×0.6 is cleaner
+  (R8 −79 % on the tile, canyons 3.4 % on seed 1) and spends 4 more points of erosion; ×0.5 keeps
+  more erosion and leaves more comb;
+- **the erosion threshold**, anywhere in 45–63 % on the measurement, with 55 % as the midpoint —
+  also the author's;
+- ⛔ **and Finding 102's standing correction to any promotion: `Finding 80 (Δ ≥ 2 cells = 0)` cannot
+  be claimed.** The residue is 2 448 to 3 343 across the three seeds against an un-incised
+  reference of 8. **The cell-scale fringe is untouched by this closure, on every seed, and a
+  promotion must say so rather than list that guard as available.**
+
+### Score
+
+Predictions written and dated **2026-09-19, before any measurement**.
+
+**Mine.** **A0 "no field is persisted, so the round's no-construction premise fails" ✓✓**, declared
+before the run. · **A1 "the population must be fixed on one network" ✓**, and it is why the table is
+readable. · ⛔ **A2 "B1 hits channels harder: 25–45 % channels, 45–60 % hillslopes" ✗✗** — 43.8 and
+43.6, no split at all. · ⛔ **A3 "A1+B2 goes the other way: channels 70–85, hillslopes 55–65" ✗✗** —
+63.8 and 64.2. **Both of my split predictions are refuted identically: I predicted a difference that
+does not exist**, and I built both on Finding 98's per-cell intensities (0.53 / 0.87 / 1.04) whose
+classes were **pits / floor-binds / ungated**, not channels / hillslopes. **I reused a real result
+across the wrong partition.** · **A4 "at least one seed reads below 80 % at ×0.6" ✓✓** — all three
+do, and eight of nine rows fail. · **"the gate has a negative control and no positive one, and the
+number was chosen before measuring where candidates sit" ✓✓** — and that is the round's most useful
+outcome. · **C2 "±1 on a denominator of 15 is a coin flip, and seed 3's ×0.4 canyon rate is
+unusable" ✓✓.**
+
+**The reviewer's.** "B1 fails channel retention < 60 %" **✓** (43.8) but the mechanism ("the area
+cap hits high-A channels first") **✗ — it hits everything equally**. · "×0.6 passes at > 88 % on all
+three seeds" **✗✗** — 63.8 / 68.8 / 75.5. · "hillslopes 30–50 %" **✗** — 64 to 81 % for the
+candidates. · "×0.5 borderline, ×0.6 dendritic" — **✓ in direction**, and the tile shows ×0.5 already
+dendritic at −72 % of R8. · "C = {0.6}, seed 2 at one lake of noise" — **✓ on seed 2's one lake,
+and the intersection is {0.5, 0.6}** once R8 is read where the defect is.
+
+**Meta.** ⛔ **Two of this round's three results are corrections of my own earlier work**: Finding
+103's rejection of seed 3 (a global statistic I failed to re-read on its tile, against a rule I had
+written at Finding 97) and Finding 103's objection to moving the erosion threshold (correct for a
+guessed number, wrong for a control-derived one). ⚠️ **The campaign's error rate has not fallen; what
+has changed is that the errors are now caught by its own earlier rules rather than by new
+measurements.** That is what the two new rules are for.

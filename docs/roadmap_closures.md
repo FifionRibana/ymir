@@ -1711,3 +1711,72 @@ minimaux valent **0,4 / 0,4 / 0,6** : **deux valeurs**, il n'y a même pas d'ord
 > précisément pour empêcher. ⛔ **Si cette porte bouge, qu'elle bouge pour une raison énoncée sur ce
 > que « érosion permise » MESURE — le F101 a montré que le scalaire cache une chute de 81 % de la
 > cellule médiane — et pas parce que 64 est proche de 70.**
+
+## ⛔ LE DÉCOUPAGE CHENAUX/VERSANTS NE PORTE AUCUNE INFORMATION — MAIS SON CONTRÔLE NÉGATIF DONNE LE NOMBRE QUI MANQUAIT DEPUIS SIX TOURS, ET LA RELECTURE PAR TUILE ANNULE LE REJET DE LA SEED 3 (Finding 104)
+
+Aucun changement de production. **Rien de promu.** ⚠️ **« Aucune construction, sur les champs
+existants » était impossible : aucun champ n'est persisté** — dix-sept reconstruits, l'écart déclaré.
+⇒ **Persister les champs (~268 Mo) rendrait ce type de tour réellement gratuit.**
+
+| population FIXÉE sur le réseau du livré | **chenaux** | **versants** | total |
+|---|---|---|---|
+| livré (contrôle positif) | 100,0 % | 100,0 % | 100,0 % |
+| ⛔ **B1 plafond d'aire (contrôle NÉGATIF)** | **43,8 %** | **43,6 %** | 43,7 % |
+| seed 1 ×0,4 / ×0,5 / ×0,6 | 71,0 / 67,3 / 63,8 | 71,8 / 67,9 / 64,2 | 71,7 / 67,8 / 64,1 |
+| seed 2 ×0,4 / ×0,5 / ×0,6 | 75,2 / 71,9 / 68,8 | 75,3 / 71,8 / 68,6 | 75,3 / 71,8 / 68,6 |
+| seed 3 ×0,4 / ×0,5 / ×0,6 | 80,8 / 78,0 / 75,5 | 81,4 / 78,5 / 75,7 | 81,3 / 78,4 / 75,7 |
+
+> ⛔ **Chenaux et versants sont identiques à 0,8 point près sur les DIX lignes, contrôle négatif
+> compris.** « Rétention de coupe des chenaux » **EST** « érosion permise » : la porte remplace un
+> scalaire par le même. La prémisse était que le total cachait ce que le découpage révélerait — mais
+> le F101 mesurait **médiane contre moyenne**, pas chenaux contre versants : le biais vit *dans*
+> chaque classe. ⚠️ **Mes prédictions A2 et A3 sont réfutées de la même façon : j'ai prédit un écart
+> qui n'existe pas**, en réutilisant les intensités du F98 (0,53 / 0,87 / 1,04) dont les classes
+> étaient **cuvettes / plancher-mord / non gaté**, pas chenaux / versants. **Un vrai résultat
+> transporté sur la mauvaise partition.**
+>
+> **Et la porte à 80 % recale 8 des 9 lignes** — plus sévère que celle qu'elle remplace.
+
+⛔ **Mais le contrôle négatif a produit le nombre qui manquait :** B1 = **43,8 %**, candidats
+**63,8 à 80,8 %**. **Vingt points d'écart, mesurés.** ⇒ **Un seuil se pose désormais À PARTIR de la
+mesure** : le contrôle fixe le plancher, les candidats la plage, l'auteur la marge. À **55 %**, tous
+les candidats passent sur les trois seeds et B1 échoue encore de **11 points**. ⚠️ Ce que la mesure
+**interdit**, c'est un seuil au-dessus de **63,8 %** : il ne sépare alors plus rien.
+
+> ⛔ **Cela retire mon objection du F103.** J'y écrivais qu'assouplir à 64 % serait *« déplacer le
+> seuil après avoir vu de quel côté tombe la réponse »*. **L'objection tient pour 64 et tombe pour
+> une valeur dérivée du contrôle** : 43,8 % est une **mesure** de ce que la règle 14 veut attraper ;
+> 64 n'était que « juste sous le candidat ». ⇒ **Règle de méthode 15 : une porte qui décide
+> l'admissibilité se pose À PARTIR de son contrôle négatif, jamais avant lui.**
+
+**L'œil, et il annule le rejet de la seed 3.** Tuile de Δ(R8) maximal (7168, 6144) :
+
+| | R8 | vs livré | σ |
+|---|---|---|---|
+| livré | **0,1186** | — | 5,12 m |
+| ×0,4 | 0,0482 | **−59 %** | 4,89 m |
+| ×0,5 | 0,0337 | **−72 %** | 4,93 m |
+| ×0,6 | 0,0247 | **−79 %** | 4,95 m |
+
+> ⛔ **Là où le peigne est, la seed 3 perd 59 à 79 % de son R8** — contre les −21 / −25 / −31 % en
+> champ entier que la porte du F103 avait rejetés. **C'était une DILUTION.** ⛔ **Le bloc B du F103
+> est amendé à son point de revendication** : j'ai laissé une statistique globale rejeter ×0,4 et
+> ×0,5 **sans la relire sur la tuile, alors que le F97 avait établi exactement cet effet dans une
+> section que j'ai écrite**. ⇒ **Règle de méthode 16 : une statistique globale qui REJETTE un
+> candidat doit être relue sur la population où vit le défaut, avant que le rejet tienne.**
+>
+> Et **σ tient pendant que R8 chute** (5,12 → 4,89 / 4,93 / 4,95 m) : le peigne part, le relief
+> reste. À l'œil, le livré porte une hachure parallèle fine sur ses crêtes ; ×0,5 montre les mêmes
+> reliefs, hachure largement partie. ⚠️ **Des striations résiduelles subsistent dans les deux.**
+
+⛔ **L'INTERSECTION EST NON VIDE : {0,5 ; 0,6} sur les trois seeds**, une fois les deux corrections
+appliquées. ×0,4 reste **ambigu sur la seed 3** (côte +6 à ±1 éperon ; canyons **2 corps sur 15**,
+que ±1 fait varier de 6,7 à 20 % — **une tolérance de ±1 sur un dénominateur de 15 n'est pas une
+tolérance**).
+
+**Ce qui reste dû avant d'écrire la couture** : le choix **×0,5 ou ×0,6** (l'auteur ; ×0,6 est plus
+propre et dépense 4 points d'érosion de plus), le **seuil d'érosion** (45–63 % sur la mesure, 55 % au
+milieu — l'auteur), et ⛔ **la correction permanente du F102 : le garde F80 (Δ ≥ 2 cellules = 0) ne
+peut pas être revendiqué** — le résidu vaut 2 448 à 3 343 sur les trois seeds contre une référence
+non incisée de 8. **L'échelle cellulaire n'est pas touchée par cette closure, et une promotion doit
+le dire au lieu de lister ce garde.**
