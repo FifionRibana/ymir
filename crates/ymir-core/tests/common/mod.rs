@@ -1416,6 +1416,8 @@ pub fn f95_criteria(
     );
     Crit {
         p50,
+        below_sea_basins: bs.spillways.len(),
+        max_catchment_km2: dr.segment_drainage_km2.iter().copied().fold(0.0f32, f32::max),
         klass,
         scanned,
         to_nothing: bs.termination.to_nothing,
@@ -1428,6 +1430,17 @@ pub fn f95_criteria(
 /// Finding 95's criteria, as one row of table C.
 pub struct Crit {
     pub p50: f32,
+    /// ADR Finding 45's DRAINAGE-INTEGRITY column: the below-sea basin (spillway) count.
+    ///
+    /// Added at Finding 99 because Finding 45 measured a 16x diffusion, saw the hypsometry move
+    /// +17 m ("small and in the unhelpful direction"), reported it as harmless -- and this number
+    /// had gone 43 -> 1994. Its own verdict: *"the patch did not change the altitude, it destroyed
+    /// the drainage"*. Any row that changes the hillslope term must show this column or it is
+    /// repeating that error.
+    pub below_sea_basins: usize,
+    /// The largest river catchment, km2 (signified). Finding 45 watched it fall 110 -> 48 km2
+    /// while the altitude held: the second half of the same collapse.
+    pub max_catchment_km2: f32,
     pub klass: usize,
     pub scanned: usize,
     pub to_nothing: usize,

@@ -1316,3 +1316,92 @@ de volume ne fait que dire où sont les cellules.
 de méthode : les temps de construction tombent de façon monotone au fil d'un run (146,4 → 128,5 →
 74,1 → 64,8 s pour un travail de taille identique). **Ils ne sont comparables que mesurés côte à
 côte.**
+
+## ⛔ LE FACTEUR EST UN CADRAN D'ÉROSION, PAS UN CADRAN D'ÂGE — ET LE BLOC C EST L'EXPÉRIENCE RETIRÉE DU F45, QUI PASSE QUATRE CRITÈRES ET DÉTRUIT LE DRAINAGE (Finding 99)
+
+Aucun changement de production. Six champs, six chaînes de critères, 49 minutes d'un cœur.
+**Les deux lectures que le tour opposait sont réfutées**, et la meilleure ligne de la campagne a été
+trouvée en tournant le facteur **vers le bas**.
+
+| `k_time` tenu à ×1 | relief | vs oracle | **ratio ×1** | côte | canyons | lacs % | **érosion m/cellule (%)** | R8 | **bassins sous mer** |
+|---|---|---|---|---|---|---|---|---|---|
+| livré | 424,2 m | −13,1 % | 0,768 | +115 | 29,6 % | 24,70 | 198,0 (100 %) | 0,0924 | **11** |
+| **A1+B2 ×0,7** | 525,9 m | **+7,7 %** | **0,952** | **+2** | 3,4 % | 18,74 | **119,9 (60,6 %)** | 0,0393 | 13 |
+| ×0,85 | 539,5 m | +10,5 % | 0,977 | +3 | 3,4 % | 19,57 | 110,1 (55,6 %) | 0,0330 | 10 |
+| ×1 (contrôle) | 552,4 m | +13,2 % | 1,000 | +3 | 3,4 % | 19,21 | 101,2 (51,1 %) | 0,0303 | 10 |
+| ×1,2 | 567,4 m | +16,2 % | 1,027 | +3 | **0,0 %** | 18,86 | 90,6 (45,7 %) | **0,0216** | 10 |
+
+> Le contrôle **reproduit la ligne du F98 au chiffre** (552,4 m, +3, 3,4 %, 0,0303, 51,1 %).
+>
+> ⛔ **LE FACTEUR N'EST PAS LE CADRAN DE L'ÂGE.** Il parcourt **×1,71** (0,7 → 1,2) et le relief
+> **×1,079**. Une variation de 71 % du seul paramètre libre déplace le relief de **7,9 %**. La
+> raison n'est pas subtile : le relief p50 appartient à la tectonique et au FBM, et le plancher ne
+> gouverne que ce que l'incision aurait retiré — 255 m d'amplitude en tout (424,2 livré → 679,1 non
+> incisé), dont A1+B2 en détient déjà 128.
+>
+> ⛔ **MAIS C'EST UN BON CADRAN D'ÉROSION, et c'est la vraie trouvaille.** L'érosion permise va de
+> **60,6 → 45,7 %** : **15 points** pour 7,9 % de relief. Le cadran `k_time` du F98, lui, laissait
+> l'érosion **plate à 49,2 %** pour ×2 de budget. **Il existe donc un cadran qui rachète de
+> l'érosion — c'est le facteur.**
+>
+> ⛔ **Et la meilleure ligne de la campagne est au facteur le PLUS BAS**, l'inverse de ce que
+> « plus d'âge = plus de relief » suggère. À **×0,7** : relief **+7,7 %, DANS ±10 %** de l'oracle ;
+> côte **+2**, le meilleur chiffre côtier jamais mesuré ici ; canyons 3,4 % ; R8 0,0393 ; **érosion
+> 60,6 %**, le plus qu'une closure ait permis ; bassins sous la mer 13 contre 11 pour le livré.
+> **Elle passe tous les critères de la campagne sauf la barre des 70 % de la règle 14, ratée de
+> 9 points.**
+>
+> **Ce que cela désigne, comme extrapolation et non comme résultat** : le relief perd ≈ 90 m par
+> unité de facteur, donc les 488,1 m de l'oracle sont **sous 0,7**, et la côte doit casser quelque
+> part entre là et le +115 du livré. **La plage 0,3–0,7 est celle où le relief croise l'oracle et où
+> la côte lâche — quatre constructions.**
+
+**L'image, sur la tuile de Δ(R8) maximal** — la sélection que le F97 avait prescrite sans
+l'appliquer : **(2048, 5120)**, R8 livré **0,1190** contre A1+B2 **0,0250**, **Δ −0,0940**, facteur
+**4,8** (la sélection par max R8 du F97 ne donnait que +0,012 : **8× moins de séparation**).
+
+> ⛔ **La question binaire a une troisième réponse, meilleure que les deux proposées.** Le livré
+> n'est pas « dendritique » : il est **PEIGNÉ**, striations parallèles denses sur tout le carré.
+> A1+B2 est **DENDRITIQUE** : le peigne est parti, les vallées sont des vallées, les crêtes sont
+> nettes. **La closure retire un artefact, elle ne lisse pas le paysage.** ⚠️ Réserve honnête tirée
+> de la même image : le tiers ouest, texturé dans le livré, devient presque lisse — R8 dit que cette
+> texture était du peigne, et c'est là qu'il était le plus dense, mais un peu de relief fin part
+> avec.
+
+**La densité de drainage ne mesure pas ce que le bloc croyait.** pré-incision **8,487** · livré
+**2,581** · A1+B2 ×1 **4,508 (+75 %)** · ×0,7 3,842 · diffusion ×16 2,576. Les deux prédictions
+(±10 % et ±15 %) sont réfutées — et **le champ NON INCISÉ a la densité la plus haute de tous** :
+à `A_c` fixe la densité mesure la **concentration de l'écoulement**, pas la dendriticité.
+
+**⛔ Le bloc C est l'expérience retirée du F45, et le piège se referme exactement.**
+
+| | relief | lacs % | érosion | R8 | côte | canyons | **bassins sous mer** | **plus grand bassin** |
+|---|---|---|---|---|---|---|---|---|
+| livré | 424,2 m (−13,1 %) | 24,70 | 100 % | 0,0924 | +115 | 29,6 % | **11** | **9 779 km²** |
+| **diffusion ×16** | **440,8 m (−9,7 %)** | **10,05** | **101,0 %** | **0,0711** | ⛔ **+1 464** | ⛔ **41,1 %** | ⛔ **2 767 (×252)** | ⛔ **2 347 km² (−76 %)** |
+
+> ⛔ **QUATRE COLONNES DÉSIGNENT LE MEILLEUR CANDIDAT DU TOUR** : relief **dans ±10 %** de l'oracle
+> (mieux que n'importe quel facteur), fraction de lacs **10,05 %** (la plus basse jamais atteinte),
+> **règle 14 passée à 101,0 %** — aucune érosion retirée, ce qu'aucune autre closure n'a réussi —
+> et R8 amélioré de 23 %.
+>
+> ⛔ **ET TROIS DISENT CATASTROPHE.** Côte ×12,7. Canyons pires que le produit livré. **Bassins sous
+> la mer ×252** — le F45 mesurait ×46 à sa configuration ; **à la production 8192² c'est cinq fois
+> pire.** Le mécanisme est écrit en production sous une bannière `⚠️ DO NOT "FIX" THIS` : un
+> Laplacien linéaire conserve la masse, donc avec `diffuse_channels = true` *« à 16× il remblaie les
+> chenaux que l'incision vient de creuser, et un chenal remblayé EST une dépression fermée »*.
+>
+> **C'est l'argument le plus fort que la campagne ait produit pour sa propre méthode.** Le F45
+> écrivait : *« cette mesure était CORRECTE sur l'hypsométrie et a manqué l'effet entièrement »*.
+> Le bloc C tel que spécifié aurait annoncé un gagnant. **La colonne qui le rend lisible a été
+> ajoutée parce que le grep de la règle 11 a remonté le F45 — aucun critère de la table ne la
+> suggérait.** ⚠️ Et elle est gratuite : 68,7 s contre 64–67 s. **Une closure catastrophique ne
+> coûte rien.**
+
+⚠️ **Le toggle viz « Anti-peigne (diffusion partout) » n'est ni `diffuse_channels` ni
+`RELIEF_V3_DIFFUSION`** : c'est **`cross_rill`**, la branche de versant non linéaire Gauss-Seidel
+du F9 (coefficient propre 0,25/0,40/0,55, défaut OFF, aide admettant « solveur GS non convergé »).
+Et `diffuse_channels` est **déjà `true`** dans `relief_v3`.
+
+⚠️ **La colonne coût est utilisable ce tour** — tous les champs construits côte à côte dans un seul
+run tiennent en **4,6 s** (64,1–68,7 s). Le point de méthode du F98 est vérifié dans les deux sens.

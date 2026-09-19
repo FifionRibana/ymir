@@ -15146,3 +15146,236 @@ says neither term applies. ⚠️ The one thing that saved the round from that w
 control I added because the code told me to** — the shelf clamp, measured precisely because I
 could prove in advance it must do nothing. **It did nothing, which is what makes the rest of the
 table readable.**
+
+## Finding 99 — the factor is an EROSION dial, not an age dial; and block C is Finding 45's reverted experiment, which passes four criteria and destroys the drainage
+
+**No production change.** Six fields, six criteria chains, 49 minutes of one core. ⛔ **Both
+readings the round posed are refuted**, and the round's best row was found by turning the factor
+**down**.
+
+### Rule 11 + 11b — block C was settled before a field was built
+
+`anti-comb` / `anti-peigne` **0 — NOTHING FOUND** · `comb` 63 (L445) · `Smith` / `Bretherton` /
+`rilling` 11 / 11 / 14, all L445 · `striation` 25 (L284) · `diffuse_channels` **12** ·
+`RELIEF_V3_DIFFUSION` **2** · **`F78-C` 2 (L9806)**.
+
+**The toggle is neither of the round's two candidates.** *"Anti-peigne (diffusion partout)"*
+(`workspace.rs:1035`) binds `ws.cross_rill` — the **nonlinear Gauss-Seidel hillslope branch**
+(Finding 9, STEP 2b), with its own coefficient `cross_rill_d ∈ {0.25, 0.40, 0.55}`, default 0.40,
+default **OFF**, and its own hover text admitting *"solveur GS non convergé"*. And
+`diffuse_channels` is **already `true` in `relief_v3`** (`stream_power.rs:398`), so had it been the
+toggle, switching it on would have been a no-op.
+
+⛔ **And the sweep the round asks for — `RELIEF_V3_DIFFUSION` 0.08 → 1.28, i.e. ×16 — is an
+experiment this dossier has already run and disqualified, twice.**
+
+| Finding 45, 8192², same seed / domain / config | before | after |
+|---|---|---|
+| mean land altitude | 685 m | 702 m (**+2.5 %**) |
+| **below-sea basins (spillways)** | **43** | **1 994 (×46)** |
+| microscope entries / rivers | 792 / 749 | 2 523 / 529 |
+| biggest river catchment | 110 km² | **48 km²** |
+
+> Finding 45's own verdict: *"The patch did not change the altitude — it DESTROYED THE DRAINAGE.
+> Two properties of the SAME field, one instrumented and one not: the altitude distribution barely
+> moved while the drainage topology collapsed."* And the production comment at
+> `stream_power.rs:937`, under a **`⚠️ DO NOT "FIX" THIS`** banner, states the mechanism: a linear
+> Laplacian is mass-conserving, so with `diffuse_channels = true` *"at 16× strength it backfills
+> the channels the incision just cut, and a backfilled channel IS a closed depression"*.
+> `F78-C (diffusion 1.28)` also appears in Finding 81's retroactive audit table as already-run.
+
+⛔ **So the dossier named in advance both the flattering number block C would produce and the
+disqualifying one — and the disqualifying one was in no column of this campaign's table.**
+Measuring only R8 / relief / erosion / cost, as block C asks, would have reproduced Finding 45's
+original error exactly. **`Crit` therefore gained two columns this round — `below_sea_basins` and
+`max_catchment_km2` — and they are printed on EVERY row, not only the diffusion one.**
+
+### A — the factor sweep, `k_time` held at ×1
+
+| | relief | vs oracle | **ratio to ×1** | coast | canyons | lakes % | **erosion m/cell (% of delivered)** | R8 | **below-sea basins** | cost |
+|---|---|---|---|---|---|---|---|---|---|---|
+| delivered | 424.2 m | −13.1 % | 0.768 | +115 | 29.6 % | 24.70 | 198.0 (100 %) | 0.0924 | **11** | — |
+| **A1+B2 ×0.7** | 525.9 m | **+7.7 %** | **0.952** | **+2** | 3.4 % | 18.74 | **119.9 (60.6 %)** | 0.0393 | 13 | 66.5 s |
+| A1+B2 ×0.85 | 539.5 m | +10.5 % | 0.977 | +3 | 3.4 % | 19.57 | 110.1 (55.6 %) | 0.0330 | 10 | 66.3 s |
+| **A1+B2 ×1 (control)** | **552.4 m** | **+13.2 %** | **1.000** | **+3** | **3.4 %** | 19.21 | 101.2 (**51.1 %**) | **0.0303** | 10 | 66.4 s |
+| A1+B2 ×1.2 | 567.4 m | +16.2 % | 1.027 | +3 | **0.0 %** | 18.86 | 90.6 (45.7 %) | **0.0216** | 10 | 64.1 s |
+
+> **The control reproduces Finding 98's row to the digit** — 552.4 m, coast +3, canyons 3.4 %,
+> R8 0.0303, erosion 51.1 %. Everything below is readable.
+>
+> ⛔ **THE FACTOR IS NOT THE AGE DIAL.** It spans **×1.71** (0.7 → 1.2) and the relief spans
+> **×1.079** (0.952 → 1.027). A 71 % change in the one free parameter moves the relief by **7.9 %**.
+> The reviewer's reading — *"the age is the factor `(U/K)^{1/n}` of B2, not `k_time`"* — is refuted,
+> and the round's own near-proportional prediction (0.72 / 0.86 / 1.00 / 1.18) is refuted with it.
+> My prediction had the right direction and was still **about twice too generous** (0.89 / 0.96 /
+> 1.00 / 1.05).
+>
+> **The reason is not subtle and it should have been predicted exactly**: the relief p50 is the
+> landscape's altitude, set by the tectonics and the FBM, and the floor only governs the part the
+> incision would otherwise remove. The whole available range is 424.2 m (delivered) to 679.1 m
+> (un-incised) — **255 m**, of which A1+B2 already holds 128. The factor cannot move what it does
+> not own.
+>
+> ⛔ **BUT THE FACTOR IS A GOOD EROSION DIAL, and that is the round's real find.** Erosion permitted
+> goes **60.6 → 55.6 → 51.1 → 45.7 %** across the sweep — a **15-point** swing for a 7.9 % move in
+> relief. Compare Finding 98's `k_time` dial: ×2 of budget left the erosion at **49.2 %**, flat.
+> **So there IS a dial that buys erosion back; it is the factor, and it buys twice as much erosion
+> per point of relief as `k_time` buys of anything.**
+>
+> ⛔ **And the best row of this campaign is at the LOWEST factor, which is the opposite of what
+> "more age, more relief" suggests.** At **×0.7**: relief **+7.7 %, INSIDE ±10 % of the oracle**;
+> coast **+2**, the best coastal number ever measured here; canyons 3.4 %; R8 0.0393; **erosion
+> 60.6 %**, the most any closure has permitted; below-sea basins 13 against the delivered field's
+> 11. **It passes every criterion the campaign owns except rule 14's 70 % line, which it misses by
+> 9 points.**
+>
+> **What that points at, as an extrapolation and not a result:** the relief falls ≈ 90 m per unit of
+> factor across the measured range, so the oracle's 488.1 m sits **below 0.7**, and the coast must
+> break somewhere between there and the delivered field's +115. **The unmeasured range 0.3–0.7 is
+> where the relief crosses the oracle and where the coast fails, and it is one sweep of four
+> builds.** That is the next measurement, and it is cheap.
+
+### B — the image, and a density instrument that does not measure what the block thought
+
+**Drainage density** (channel km per km² of land, `A ≥ A_c`, per quadrant, mean printed):
+
+| pre-incision | delivered | A1+B2 ×1 | A1+B2 ×0.7 | diffusion ×16 |
+|---|---|---|---|---|
+| **8.487** | **2.581** | **4.508 (+75 %)** | 3.842 (+49 %) | 2.576 (−0.2 %) |
+
+> ⛔ **Both predictions are refuted: A1+B2 is +75 % against the delivered field, not ±10 % (mine)
+> or ±15 % (the round's).**
+>
+> ⚠️ **And the instrument does not measure "dendriticness" — it measures flow CONCENTRATION.** The
+> **un-incised** field has the highest density of all (8.487), because at a fixed `A_c` a field that
+> has not been incised spreads its accumulation over more cells, while deep incision captures flow
+> into fewer, larger trunks. So a high density is not a healthy network and a low one is not a lost
+> one: **this column cannot answer block B's question**, and — see block C — it does not see a
+> drainage collapse either (2.576 against 2.581 while the below-sea basins went ×252).
+
+**The image, on the tile of maximum Δ(R8)** — the selection Finding 97 said to use and did not:
+**(2048, 5120)**, delivered R8 **0.1190** against A1+B2 **0.0250**, **Δ −0.0940**, a factor **4.8**.
+⚠️ For comparison, Finding 97's max-R8 selection gave Δ **+0.012** on its tile; **the corrected
+selection separates the fields 8× better**, and that vindicates the design error Finding 97
+recorded without fixing.
+
+> ⛔ **The binary question has a third answer, and it is better than both options.** The delivered
+> tile is not "dendritic" — it is **COMBED**: dense parallel striations over the whole square,
+> including the flat western third. A1+B2's is **DENDRITIC**: the comb is gone, the valleys read as
+> valleys with clean interfluves, the crests are sharp. **The closure removes an artefact; it does
+> not smooth the landscape away** — which is exactly what R8 0.1190 → 0.0250 says in a number.
+>
+> ⚠️ **One honest reservation from the same image**: the western third, which carried fine texture
+> in the delivered field, is nearly featureless under A1+B2. R8 says that texture was comb, and the
+> region is where the striations were densest — but some genuine small-scale relief goes with it,
+> and the image shows it going.
+>
+> ⚠️ **The fourth panel the round asked for, the oracle, does not exist as a field.** Finding 95
+> recorded numbers; rebuilding the 300-pass field costs 1 h 43 and the author refused it at Finding
+> 95. The panel written is the **pre-incision** field, declared as the substitute.
+
+### C — the trap fires exactly as the dossier said it would
+
+| | relief | lakes % | erosion | R8 | coast | canyons | **below-sea basins** | **max catchment** |
+|---|---|---|---|---|---|---|---|---|
+| delivered | 424.2 m (−13.1 %) | 24.70 | 100 % | 0.0924 | +115 | 29.6 % | **11** | **9 779 km²** |
+| **diffusion ×16** | **440.8 m (−9.7 %)** | **10.05** | **101.0 %** | **0.0711** | ⛔ **+1 464** | ⛔ **41.1 %** | ⛔ **2 767 (×252)** | ⛔ **2 347 km² (−76 %)** |
+
+> ⛔ **FOUR COLUMNS CALL THIS THE BEST CANDIDATE OF THE ROUND.** The relief is **inside ±10 % of the
+> oracle** — better than any factor setting. The lake fraction is **10.05 %**, the lowest anything
+> has reached. **Rule 14 passes at 101.0 %**: the closure removes no erosion at all, which no other
+> candidate has managed. And R8 improves by 23 %.
+>
+> ⛔ **AND THREE SAY CATASTROPHE.** The coast goes **+115 → +1 464**, a factor 12.7. The canyon rate
+> goes **29.6 → 41.1 %**, worse than the shipped product. And the below-sea basin count goes
+> **11 → 2 767**, a factor **252** — Finding 45 measured ×46 at its configuration; **at the
+> production 8192² it is five times worse than that.** The biggest catchment falls **9 779 → 2 347
+> km²**, the same collapse Finding 45 saw at 110 → 48 km².
+>
+> **This row is the strongest argument the campaign has produced for its own method.** Finding 45
+> wrote *"that measurement was CORRECT on the hypsometry and missed the actual effect entirely"*,
+> and block C as specified would have reported a winner. **The column that makes it readable was
+> added because the rule-11 grep found the earlier finding — not because any criterion in the table
+> suggested it.**
+>
+> ⚠️ **And the cost is nothing**: 68.7 s against 64–67 s for every other field. A catastrophic
+> closure is free. ⛔ My prediction that the diffusion would beat B2 on R8 (45–70 % reduction) is
+> **refuted at 23 %**; the round's *"less than 30 %"* is right. And my prediction that it would cost
+> **relief** is refuted in the wrong direction — the relief **rose** 16.6 m, which **Finding 45's
+> table already said** (685 → 702 m) in the passage I had quoted three paragraphs earlier.
+
+⚠️ **The cost column is usable this round**, and the reason is Finding 98's own method point applied:
+every field was built adjacently in one run, and they land within **4.6 s** of each other
+(64.1–68.7 s). **Build timings are comparable only when measured side by side**, which is now
+demonstrated in both directions.
+
+### Score
+
+Predictions written and dated **2026-09-19, before the rule-11 grep and any measurement**. ⚠️ The
+author's were under `<details>` this round **and I did not open them**, so unlike Finding 98 these
+are independent again — recorded because Finding 98's were not, and the difference matters when
+reading both scores.
+
+**Mine.**
+
+- **A1 "the relief follows the factor SUB-LINEARLY, against the round's near-proportional reading"
+  ✓✓ on direction, ✗ on magnitude — by a factor two.** I predicted 0.89 / 0.96 / 1.00 / 1.05;
+  measured **0.952 / 0.977 / 1.000 / 1.027**. My reasoning (the relief is owned by the tectonics and
+  the FBM, the floor governs only the 255 m the incision would remove) was right and I still
+  doubled the effect.
+- ⛔ **A2 "the COAST breaks first, +20 to +80 at factor 0.7" ✗✗.** It is **+2** at 0.7 — the best
+  coastal number the campaign has measured, better than at ×1. The criterion I named as fragile is
+  the one that improved.
+- **A3 "canyons hold at every factor, ≤ 8 %, near-tautological" ✓**, declared as such (3.4 / 3.4 /
+  3.4 / 0.0 %).
+- **A4 "R8 < 0.05 everywhere, rising as the factor falls" ✓✓** — 0.0393 / 0.0330 / 0.0303 / 0.0216,
+  monotone in the predicted direction.
+- ⛔ **A5 "erosion permitted moves the other way from the relief, 65–75 % at 0.7 … 40–45 % at 1.2"
+  ✓ on structure, close on the numbers (60.6 % and 45.7 %) — and it is the round's real result.**
+  The speculation I attached to it — *"if so, the factor buys erosion back more cheaply than
+  `k_time` does"* — is **confirmed**: 15 points of erosion for 7.9 % of relief, against `k_time`'s
+  zero points for 22 m.
+- **A6 "the control reproduces Finding 98 to the digit" ✓✓** — 552.4 m, +3, 3.4 %, 0.0303, 51.1 %.
+- ⛔ **B1 "drainage density within ±10 % of the delivered" ✗✗ — +75 %.** And the instrument turns
+  out not to measure what block B wanted: the **un-incised** field has the highest density of all.
+- **B2 "the oracle is not available and must be declared a gap" ✓**, declared in advance.
+- **B3 "all three read dendritic; the interesting panel is 0.7" — ✗ on the framing.** The delivered
+  field does not read dendritic; it reads **combed**, which is a third answer neither the round nor
+  I allowed for, and it makes the ×1 panel the interesting one.
+- **C1 "`diffuse_channels` is already `true` in `relief_v3`" ✓ — but "the toggle is
+  `diffuse_channels`" ✗.** It is `cross_rill`, a third thing. Half right, and the half that was
+  right is the half that mattered less.
+- ⛔ **C2 "the diffusion beats B2 on R8, 45–70 % reduction, against the round's < 30 %" ✗✗ — 23 %.
+  The round is right and I am wrong.**
+- ⛔ **C3 "it pays in relief, −30 to −90 m" ✗✗ — the relief ROSE 16.6 m**, and **Finding 45's table
+  said so** (685 → 702 m) in the very passage I quoted before predicting. A self-inflicted miss of
+  the worst kind: the answer was in a table I had already read aloud. · "erosion permitted
+  95–110 %" **✓✓ (101.0 %)** · "cost +5 to +40 s" **✗ (+2 s)** · "flag a CFL stability risk" —
+  **no instability; the field is perfectly well-behaved and catastrophic anyway**, which is worse
+  than the failure I was watching for.
+
+**The round's.**
+
+- A "relief ≈ 0.72 / 0.86 / 1.00 / 1.18, quasi-linear — **c'est l'âge en un nombre**" **✗✗✗.**
+  ×1.71 of factor buys ×1.079 of relief. **The factor is not the age.**
+- A "coast +3 at all four" **✓✓** · "canyons ≤ 5 % except at 0.7 where they rise to 8–12 % because
+  the floor descends into the depressions" **✗ — 3.4 % at 0.7, unchanged**; A1's gate does not read
+  the factor, which is why · "R8 < 0.04 everywhere" **✓ (0.0216–0.0393)** · "cost identical" **✓✓**
+  (64.1–68.7 s).
+- B "density within ±15 %" **✗✗ (+75 %)** · "hillshade reads dendritic at all three" — **✗ for the
+  delivered field**, which is the one that matters.
+- C "the toggle is `diffuse_channels`" **✗** · **"the diffusion reduces R8 by less than 30 % against
+  B2's ×3" ✓✓ (23 %)** · "and costs 5 m of relief" **✗ — it GAINS 16.6 m**, and destroys the
+  drainage instead.
+- **The round's two readings, both refuted.** *"The real wall is the exchange rate"* (mine, from
+  Finding 98) — the factor **does** buy erosion back, so the exchange rate is not the only dial.
+  *"The age is the factor of B2"* (the reviewer's) — it moves the relief by 7.9 % over a 71 %
+  range. **Neither survives. What the measurement supports is a third thing: the factor is an
+  EROSION dial and a weak relief dial, and `k_time` is neither.**
+
+**Meta.** My worst miss is C3, and it is not a modelling error — **the number that refutes it was
+in a table I had quoted in the same message, three paragraphs before I predicted the opposite.**
+Two rounds ago the error class was framing; this round it is **not reading my own citation**.
+⚠️ Against that, the thing that made this round work was also a citation: the below-sea basin
+column exists because the rule-11 grep surfaced Finding 45, and **without it block C would have
+reported a winner on four criteria.**
