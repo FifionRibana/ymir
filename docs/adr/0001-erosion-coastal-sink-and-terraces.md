@@ -11477,6 +11477,15 @@ lake the author can click.
 
 ## Finding 87 — the drops are coherent, the 623 m lake is incised, and the 45 m³/s is stuck behind a tenth of a quantisation step
 
+> ⛔ **AMENDED BY FINDING 108 (author, 2026-09-20).** Every "canyon class" number in
+> Findings 87–106 is the **CUT** column. Finding 107 replaced it with a topological fill, and
+> **Finding 108 replaced that in turn with the DIFFERENTIAL class**: `Δ(fill) > 50 m` at the
+> floor, rim p50 > 30° — "the incision dug a hole". The topological form counted PRE-EXISTING
+> tectonic hollows (all eight below-sea basins of the delivered field read `Δ < 10 m`, several
+> negative because the erosion made them *shallower*). ⚠️ And the fill below sea level was
+> BLIND before Finding 108: the priority flood takes `h ≤ sea` as base level, so `filled − raw`
+> read 0 there whatever the hollow.
+
 > ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
 > "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
 > delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
@@ -11856,6 +11865,15 @@ to the next round by its own answer: block B concluded **incision**, so the 623.
 send it there are 165.8 m of median cut and a pre-incision floor 21.3 m above the delivered one.
 
 ## Finding 88 — the sixth term was water counted twice, the saddle was the wrong cell, and rule 12 fired on its first outing
+
+> ⛔ **AMENDED BY FINDING 108 (author, 2026-09-20).** Every "canyon class" number in
+> Findings 87–106 is the **CUT** column. Finding 107 replaced it with a topological fill, and
+> **Finding 108 replaced that in turn with the DIFFERENTIAL class**: `Δ(fill) > 50 m` at the
+> floor, rim p50 > 30° — "the incision dug a hole". The topological form counted PRE-EXISTING
+> tectonic hollows (all eight below-sea basins of the delivered field read `Δ < 10 m`, several
+> negative because the erosion made them *shallower*). ⚠️ And the fill below sea level was
+> BLIND before Finding 108: the priority flood takes `h ≤ sea` as base level, so `filled − raw`
+> read 0 there whatever the hollow.
 
 > ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
 > "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
@@ -14013,6 +14031,15 @@ rounds running, is populations.
 
 ## Finding 95 — integrated at the shipped budget: the canyons go, the incision adds no spur, and the relief is still falling at 1 000 passes
 
+> ⛔ **AMENDED BY FINDING 108 (author, 2026-09-20).** Every "canyon class" number in
+> Findings 87–106 is the **CUT** column. Finding 107 replaced it with a topological fill, and
+> **Finding 108 replaced that in turn with the DIFFERENTIAL class**: `Δ(fill) > 50 m` at the
+> floor, rim p50 > 30° — "the incision dug a hole". The topological form counted PRE-EXISTING
+> tectonic hollows (all eight below-sea basins of the delivered field read `Δ < 10 m`, several
+> negative because the erosion made them *shallower*). ⚠️ And the fill below sea level was
+> BLIND before Finding 108: the priority flood takes `h ≤ sea` as base level, so `filled − raw`
+> read 0 there whatever the hollow.
+
 > ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
 > "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
 > delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
@@ -14228,6 +14255,15 @@ instead of in two shocks. **That is what the eye should be asked to judge, and t
 beside it is 0 canyons against 16.**
 
 ## Finding 96 — χ is a valid PROFILE and an invalid FIELD, twice over: the coastal fringe is over-incision along the CHANNELS, and the floor that proves it prints D8 into the terrain
+
+> ⛔ **AMENDED BY FINDING 108 (author, 2026-09-20).** Every "canyon class" number in
+> Findings 87–106 is the **CUT** column. Finding 107 replaced it with a topological fill, and
+> **Finding 108 replaced that in turn with the DIFFERENTIAL class**: `Δ(fill) > 50 m` at the
+> floor, rim p50 > 30° — "the incision dug a hole". The topological form counted PRE-EXISTING
+> tectonic hollows (all eight below-sea basins of the delivered field read `Δ < 10 m`, several
+> negative because the erosion made them *shallower*). ⚠️ And the fill below sea level was
+> BLIND before Finding 108: the priority flood takes `h ≤ sea` as base level, so `filled − raw`
+> read 0 there whatever the hollow.
 
 > ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
 > "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
@@ -14676,6 +14712,15 @@ one label covering two stages of the same field (the coast column, float against
 covers the flow field and covers none of the three.
 
 ## Finding 97 — the D8 comb is the DELIVERED field's, and Finding 96 read its own image backwards; every cheap closure buys its criterion with half the erosion
+
+> ⛔ **AMENDED BY FINDING 108 (author, 2026-09-20).** Every "canyon class" number in
+> Findings 87–106 is the **CUT** column. Finding 107 replaced it with a topological fill, and
+> **Finding 108 replaced that in turn with the DIFFERENTIAL class**: `Δ(fill) > 50 m` at the
+> floor, rim p50 > 30° — "the incision dug a hole". The topological form counted PRE-EXISTING
+> tectonic hollows (all eight below-sea basins of the delivered field read `Δ < 10 m`, several
+> negative because the erosion made them *shallower*). ⚠️ And the fill below sea level was
+> BLIND before Finding 108: the priority flood takes `h ≤ sea` as base level, so `filled − raw`
+> read 0 there whatever the hollow.
 
 > ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
 > "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
@@ -15432,6 +15477,15 @@ reported a winner on four criteria.**
 
 ## Finding 100 — the window exists: at factor ×0.4 the closure lands ON the oracle, holds the coast at +2, and passes rule 14 for the first time in the campaign
 
+> ⛔ **AMENDED BY FINDING 108 (author, 2026-09-20).** Every "canyon class" number in
+> Findings 87–106 is the **CUT** column. Finding 107 replaced it with a topological fill, and
+> **Finding 108 replaced that in turn with the DIFFERENTIAL class**: `Δ(fill) > 50 m` at the
+> floor, rim p50 > 30° — "the incision dug a hole". The topological form counted PRE-EXISTING
+> tectonic hollows (all eight below-sea basins of the delivered field read `Δ < 10 m`, several
+> negative because the erosion made them *shallower*). ⚠️ And the fill below sea level was
+> BLIND before Finding 108: the priority flood takes `h ≤ sea` as base level, so `filled − raw`
+> read 0 there whatever the hollow.
+
 > ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
 > "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
 > delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
@@ -15660,6 +15714,15 @@ work were both template lines: **line 1** turned a collision into Finding 62's m
 from an earlier finding asking to be read.
 
 ## Finding 101 — there are no three basins: the below-sea geography is IDENTICAL, and "11 → 14" counts spillways. The canyon is the incision's. And the continent view answers "France, not Scotland" by SHAPE
+
+> ⛔ **AMENDED BY FINDING 108 (author, 2026-09-20).** Every "canyon class" number in
+> Findings 87–106 is the **CUT** column. Finding 107 replaced it with a topological fill, and
+> **Finding 108 replaced that in turn with the DIFFERENTIAL class**: `Δ(fill) > 50 m` at the
+> floor, rim p50 > 30° — "the incision dug a hole". The topological form counted PRE-EXISTING
+> tectonic hollows (all eight below-sea basins of the delivered field read `Δ < 10 m`, several
+> negative because the erosion made them *shallower*). ⚠️ And the fill below sea level was
+> BLIND before Finding 108: the priority flood takes `h ≤ sea` as base level, so `filled − raw`
+> read 0 there whatever the hollow.
 
 > ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
 > "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
@@ -16268,6 +16331,15 @@ rounded up from 0.0563. **The closure keeps passing; the gates keep failing to b
 
 ## Finding 104 — the channel/hillslope split carries NO information; but its negative control produces the number six rounds of gates were missing, and the tile re-read overturns Finding 103's rejection of seed 3
 
+> ⛔ **AMENDED BY FINDING 108 (author, 2026-09-20).** Every "canyon class" number in
+> Findings 87–106 is the **CUT** column. Finding 107 replaced it with a topological fill, and
+> **Finding 108 replaced that in turn with the DIFFERENTIAL class**: `Δ(fill) > 50 m` at the
+> floor, rim p50 > 30° — "the incision dug a hole". The topological form counted PRE-EXISTING
+> tectonic hollows (all eight below-sea basins of the delivered field read `Δ < 10 m`, several
+> negative because the erosion made them *shallower*). ⚠️ And the fill below sea level was
+> BLIND before Finding 108: the priority flood takes `h ≤ sea` as base level, so `filled − raw`
+> read 0 there whatever the hollow.
+
 > ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
 > "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
 > delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
@@ -16544,6 +16616,15 @@ cannot be a configuration flag.**
 
 ## Finding 106 — the absolute constant has a window on three seeds, and the round's own control was ill-posed
 
+> ⛔ **AMENDED BY FINDING 108 (author, 2026-09-20).** Every "canyon class" number in
+> Findings 87–106 is the **CUT** column. Finding 107 replaced it with a topological fill, and
+> **Finding 108 replaced that in turn with the DIFFERENTIAL class**: `Δ(fill) > 50 m` at the
+> floor, rim p50 > 30° — "the incision dug a hole". The topological form counted PRE-EXISTING
+> tectonic hollows (all eight below-sea basins of the delivered field read `Δ < 10 m`, several
+> negative because the erosion made them *shallower*). ⚠️ And the fill below sea level was
+> BLIND before Finding 108: the priority flood takes `h ≤ sea` as base level, so `filled − raw`
+> read 0 there whatever the hollow.
+
 **⚠️ INCOMPLETE ROUND.** The author's redefinition of the canyon gate arrived while block A was
 running and is primordial, so blocks **B (the author's gates re-read), C (the eye, rule 14b),
 D (two new seeds) and E (the `SlopeFloor::Absolute` seam)** were never done. **Nothing is
@@ -16629,6 +16710,15 @@ each row falls in the range Findings 99–104 swept (0.3–0.7):
 > as Finding 99 established for the factor.
 
 ## Finding 107 — the gate was measuring the wrong thing, and the river it would have killed reads 4.5 cm
+
+> ⛔ **AMENDED BY FINDING 108 (author, 2026-09-20).** Every "canyon class" number in
+> Findings 87–106 is the **CUT** column. Finding 107 replaced it with a topological fill, and
+> **Finding 108 replaced that in turn with the DIFFERENTIAL class**: `Δ(fill) > 50 m` at the
+> floor, rim p50 > 30° — "the incision dug a hole". The topological form counted PRE-EXISTING
+> tectonic hollows (all eight below-sea basins of the delivered field read `Δ < 10 m`, several
+> negative because the erosion made them *shallower*). ⚠️ And the fill below sea level was
+> BLIND before Finding 108: the priority flood takes `h ≤ sea` as base level, so `filled − raw`
+> read 0 there whatever the hollow.
 
 **Author redefinition, 2026-09-20, primordial.** The class Findings 87–104 scored under the name
 "canyon" is the class of **OVER-DUG DEPRESSIONS** (Finding 87's *"canyon noyé"*): a body ≥ 1 km²
@@ -16977,3 +17067,177 @@ What is genuinely worth an eye, with its file:
    white bodies against none.
 
 **Unchanged and still asked, seventh round: no real coastline raster.**
+
+## Finding 108 — the class is DIFFERENTIAL, the archetype belongs to the BREACH, and the window survives all of it
+
+**Author redefinition, 2026-09-20.** Finding 107's topological class counts pre-existing tectonic
+hollows. The complete definition is **`Δ(fill) = fill(delivered) − fill(pre-incision) > 50 m` at
+the body's floor**, with rim p50 > 30° — *"l'incision a creusé un trou"*.
+
+⚠️ **Reading declaration, unfavourable to me.** Non-blind on Findings 73–107 **and on the
+reviewer's predictions**: they were in a `<details>` block rendered as prompt text and I read them
+before writing mine. This is the Finding 98 situation and it weakens my score the same way.
+
+### The gabarit, five lines
+
+1. **Grep (rule 11/11b, case-insensitive, point AND comma).** `pre_incision` **0** · `différentiel`
+   **0** · `F88-D4` **0** · `blind under` / `aveugle sous` **0** — ⇒ **the differential vocabulary
+   is NEW to the dossier**. `pre-incision` 122 · `spill.level` 5 · `1000001` 28 · `1000012` 5 ·
+   `122.46` 3 · `623.6` 12 · `12.63` 9 · `8.67` 16 · `Finding 88-D4` 1.
+   **The earliest decisive hit, read in full, is L11573 (Finding 87-B) and it pre-chiffres the
+   round:** the floor cell **(3487, 5902)**, pre-incision **+12.63 m**, and — L11590-11592 — *"the
+   operator that carries the cell to −8.67 m is `breach_monotone` … the incision's own share is
+   12.63 → 0.50 m"*. It also corrects an error I would have made: the 623.6 m body is **`1000013`**
+   at Finding 87 and **`1000015`** at Finding 107-D. **Only the floor cell is stable.**
+2. **Domain / STAGE (rule 12/17), declared AND asserted.** Pre-incision = `Knobs::no_incision()`
+   (tectonics + FBM, no stream power, no droplets). The bench re-measures its spur count and
+   **asserts 20** — Finding 106's `coast authority`, i.e. the Findings 76–80 reference field. It
+   passes. Δ is read at `argmin(raw)` over the footprint with **both fills at that same cell**.
+3. **Instrument.** `fill = sill − raw`; sill = `flow.filled` above sea, **`BasinSummary::
+   spill_level_m`** (the Finding 85 levels) below it, because the priority flood takes `h ≤ sea`
+   as base level and never raises a below-sea cell.
+4. **Columns.** cut · fill(delivered) · fill(pre) · **Δ** · rim p50 with a **declared ±1°** ·
+   area · floor (x,y) · **population split** (ordinary / below-sea) · gate `0.25 × delivered`
+   at **±1 body**.
+5. **Assumed shapes.** Reviewer: the Δ class equals the cut class **to ±1 body**, refuted beyond
+   ±2. Mine: **control 1 FAILS and the Δ class is 12**, from L11573's +12.63 → +0.50 m.
+
+### The instrument validates against the dossier, to the centimetre
+
+| the archetype cell (3487, 5902) | bench | ADR L11573 |
+|---|---|---|
+| pre-incision altitude | **12.63 m** | +12.63 |
+| eroded altitude | **0.50 m** | +0.50 |
+| breached altitude | **−8.67 m** | −8.67 |
+| **fill, breached** | **623.56 m** | **623.6 m** (Finding 87 depth) |
+
+> ⛔ **AND IT SETTLES THE STAGE QUESTION THE ROUND ASKED.** `Δ(eroded) = 0.02 m` ·
+> `Δ(breached) = 623.56 m`. **The 623.6 m hollow is `breach_monotone`'s.** On the ERODED field —
+> the stage the round specifies and the one `f95_criteria` reads — there is no hollow there at
+> all (fill 0.02 m, and the pre-incision fill is 0.00 m). **The archetype leaves the class by
+> STAGE, not by provenance**, and that is the one arbitration the measurement cannot make.
+
+### The three controls
+
+| | verdict |
+|---|---|
+| **1 — the sixteen of Finding 88-D4 read Δ > 50 m** | ⛔ **FAILS on all three seeds**: 12 of 16, 10 of 15, 7 of 10. Tightest: **1000009 Δ −109.68 m**, **1000015 Δ −104.91 m**, **1000011 Δ −37.70 m** — all below-sea, all NEGATIVE |
+| **2 — 1000001 and 1000012 read Δ < 10 m** | ✓ **PASSES**, and so do all eight below-sea bodies: **1000012 +1.34 m**, **1000001 −75.73 m**, range −125.54 to +1.34 |
+| **3 — the Finding 87-A river reads Δ ≈ 0** | ✓ **PASSES**: **61 cells** (the F87-A length, reproduced), **Δ p50 0.0000 m · max 0.0451 m**; biggest watercourse **0.0000 m**; **body 10 Δ 2.88 m** |
+
+> **Control 1's failure is the round's finding, not its defeat.** The sixteen are **not one class**:
+> 12 ordinary lakes the incision dug, and 4 below-sea basins it did not. Those four read Δ ≤ 0
+> because **the erosion made them SHALLOWER** — their col sits **46–127 m** above the floor before
+> incision and **1.5 m** after. The cut column counted them; Δ does not.
+>
+> ⚠️ **And a correction I owe.** Seeing 1.5 m on every delivered basin I wrote that
+> `C1Lake::level_m` was *"a rainfall measurement, not a hollow measurement"* and swapped to
+> `spill_level_m`. **That diagnosis was wrong**: keyed correctly the two return the SAME eight
+> numbers, and the dossier already said so — L11515 *"`level = spill` for exorheic; verified"*,
+> L11636 *"level / `spill_level_m`: 76.25 / 76.25, by construction"*. The only real bug was mine,
+> introduced between the two runs: a two-hop lookup through `Lake::basin_id` that resolved
+> nothing and printed `fill 0.00` on BOTH sides of all eight bodies — **a perfectly clean,
+> perfectly meaningless Δ of exactly zero.** The 1.5 m is real.
+
+### A / B — the Δ class and the window, three seeds
+
+| seed | scanned | cut class | **Δ class** | ordinary | below-sea | ±1° rim | gate `0.25 × delivered` |
+|---|---|---|---|---|---|---|---|
+| 1 | 54 | 16 | **12** | 12 | **0** | ±2 | 5.6 % |
+| 2 | 51 | 15 | **10** | 10 | **0** | ±0 | 4.9 % |
+| 3 | 30 | 10 | **7** | 7 | **0** | ±1 | 5.8 % |
+
+| seed | c = 0.021 | c = 0.024 | c = 0.027 |
+|---|---|---|---|
+| 1 | **0** bodies · PASS | **0** · PASS | **0** · PASS |
+| 2 | **2** · 5.6 % · PASS ±1 | **2** · 5.6 % · PASS ±1 | **2** · 5.7 % · PASS ±1 |
+| 3 | **1** · 6.7 % · PASS ±1 | **1** · 6.7 % · PASS ±1 | **1** · 6.7 % · PASS ±1 |
+
+> ⛔ **THE WINDOW UNDER Δ IS `{0.021, 0.024, 0.027}` — NON-EMPTY ON ALL THREE SEEDS**, the whole of
+> Finding 106's window, with the ±1-body tolerance applied. The class goes **12 → 0**, **10 → 2**,
+> **7 → 1**. The reviewer's B is confirmed; so is my A.
+>
+> ⛔ **The reviewer's assumed shape is REFUTED on all three seeds.** The Δ/cut gap is **−4, −5,
+> −3**, outside the ±2 bound. What the two columns caught differently is **not** body 10: it is
+> **the below-sea basins**. My own P1 is confirmed in its conclusion (control 1 fails, the class
+> is 12) and **refuted in its mechanism** — I predicted Δ ≈ +12 m from a pre-existing hollow
+> deepened a little; the truth is Δ ≤ 0 from hollows made *shallower*, and for the ordinary bodies
+> **9 of 12 have `fill(pre) = 0.00 m`**: the pre-incision field has no depression at those floors
+> at all.
+
+### C — what the cut was measuring, and it is 30 bodies, not 2
+
+**30 of 54** bodies on seed 1 have `cut − Δ > 50 m`. Ranked:
+
+| body | km² | cut | Δ | gap | catchment at the floor | |
+|---|---|---|---|---|---|---|
+| **10** | 5.63 | **1 034.23** | 2.88 | **1 031.35** | **0.155 km²** | ⇒ **CHANNEL** (A_c = 0.1) |
+| 4 | 17.58 | 624.48 | 121.25 | 503.24 | 0.002 km² | hillslope |
+| **21** | 8.53 | **393.21** | 0.91 | 392.30 | **0.007 km²** | ⇒ **hillslope** |
+| 15 | 53.22 | 457.84 | 125.96 | 331.88 | 0.005 km² | hillslope |
+| 1000014 | 288.27 | 252.80 | **−56.25** | 309.05 | 0.069 km² | hillslope, below-sea |
+| 19 | 6.27 | 347.46 | 73.95 | 273.52 | 0.002 km² | hillslope |
+
+> **The reviewer's C is confirmed on body 10 and refuted on body 21.** Body 10's floor carries
+> **0.155 km²** of catchment, past `RELIEF_V1_A_C_KM2 = 0.1`: it is a **channel**, the cut there
+> is real fluvial incision, and it is the relief to keep — exactly as predicted. **Body 21 is not**:
+> **0.007 km²**, twenty times under the channel head. Its 393 m of cut is hillslope diffusion and
+> talus, not a through-cut bed. ⇒ **"the cut was measuring real incision" is true for one of the
+> two named bodies**, and the divergence is a population of thirty, not a pair of outliers.
+>
+> The other end of the ranking is as informative: **Δ exceeds the cut** on body 7 (589 vs 171),
+> body 1 (1 197 vs 862), body 33 (443 vs 310). The median cut is taken over the whole footprint;
+> Δ is taken at the floor. A hollow is deeper than its body's median.
+
+### D — the gate, written
+
+`common::over_dug_depression(delta_fill_m, rim_p50_deg) = delta > 50 m && rim > 30°`, with its
+provenance at the definition site and **two permanent controls in the ordinary suite** (no field
+build): **negative** — the Finding 87-A spillway's worst cell, `Δ 0.0451 m`, paired with a 74.9°
+rim so the DEPTH clause is what carries it; **positive** — body **51**, `Δ 125.75 m`, rim
+**32.7°**, the tightest member of seed 1's class that sits outside the declared ±1° band (body 30
+is tighter on Δ at 116.65 m but its rim is 30.1° and may not anchor anything). Two further
+assertions pin the differential clause itself: `1000001` at **−75.73 m** and `1000012` at
+**+1.34 m** must both stay OUT.
+
+### The eye — Finding 106 block C, six continent panels
+
+`docs/reports/c1_continental_buoyancy/f108_eye/`, delivered against c = 0.024, three seeds:
+
+| seed | D_L > 5 | Δ class | R8 |
+|---|---|---|---|
+| 1 | **32 % → 0 %** | **12 → 0** | 0.0924 → 0.0484 |
+| 2 | **42 % → 0 %** | **10 → 2** | 0.1109 → 0.0481 |
+| 3 | **24 % → 0 %** | **7 → 1** | 0.1095 → 0.0638 |
+
+### Prediction accountability
+
+| | verdict |
+|---|---|
+| **P1** control 1 fails, Δ class = 12 (vs reviewer's 16/15) | ✓ **conclusion confirmed on three seeds** |
+| **P1a** Δ(archetype) ≈ 12–21 m | ✗ **0.02 m** — and for the wrong reason: the pre field has NO hollow there |
+| **P1b** the archetype is sorted out by PROVENANCE | ✗ it is sorted out by **STAGE** |
+| **P2a** the six below-sea read fill ≫ 50 m with the fix | ✗ they read **≈ 1.5 m** — broad flat pans |
+| **P2b** withdraw Finding 107-D's two claims | ✓ right to withdraw; the conclusion survives, the number did not |
+| **P3** 1000012 Δ ∈ [0.5, 5] m | ✓ **+1.34 m** |
+| **P3** 1000001 Δ ∈ [0, 1.5] m | ✗ **−75.73 m** |
+| **P3** river Δ p50 0.00, max < 0.5 m | ✓ **0.0000 / 0.0451** |
+| **P3** body 10 Δ < 3 m | ✓ **2.88 m** |
+| **A** window intact | ✓ · candidates 2/2/1 predicted, measured **0/0/0 · 2/2/2 · 1/1/1** |
+| **B** seed 2 ≈ 29.4 %, seed 3 ≈ 33.3 % | ✗ **19.6 %** and **23.3 %** — I flagged this as my weakest prediction and it was |
+| **B** intersection non-empty containing 0.024 | ✓ |
+
+**No promotion. No production change. Nothing built outside the bench.**
+
+### À VALIDER VISUELLEMENT — one arbitration, and it is not about an image
+
+The six panels are in `f108_eye/`. But the question this round leaves open is **not** visual:
+
+⛔ **Which stage does Δ read?** On the **eroded** field the archetype scores **0.02 m**; on the
+**breached** field, **623.56 m**. `f95_criteria` and every gate in this campaign read the eroded
+field. If the class is meant to contain Finding 87's 623.6 m lake — the object six rounds have
+called the archetype — **the gate must read the breached field**, and every number in this entry
+is then against the wrong stage. If it is not meant to contain it, the archetype needs a new name.
+**The measurement cannot choose; it can only say the two answers differ by 623.54 m.**
+
+**Unchanged and still asked, eighth round: no real coastline raster.**

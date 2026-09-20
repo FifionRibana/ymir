@@ -1559,6 +1559,47 @@ pub fn f95_criteria(
 /// redefinition read the SAME `dr` the class is scored on, so they cannot drift from the gate.
 static DUMP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// **ADR Finding 108 — THE GATE. `over_dug_depression`.**
+///
+/// A body >= 1 km2 is an OVER-DUG DEPRESSION when its floor lies more than **50 m below its own
+/// sill AND THAT DEPTH WAS DUG BY THE INCISION**:
+///
+/// ```text
+/// delta = fill(delivered, floor) - fill(pre-incision, floor) > 50 m   AND   rim p50 > 30 deg
+/// fill  = (sill - raw), sill = `flow.filled` above sea, `BasinSummary::spill_level_m` below it
+/// floor = argmin(raw) over the footprint; BOTH fills read AT THAT CELL, never matched by id
+/// ```
+///
+/// **Why each clause exists, with the measurement that earned it:**
+/// * **`fill`, not `cut`** (Finding 107). The cut (`pre-incision - delivered` altitude) cannot
+///   tell an over-dug hollow from a deep valley the drainage runs through. Finding 108-C: **30 of
+///   54** bodies on seed 1 have `cut - delta > 50 m`, body 10 by **1 031 m**.
+/// * **`delta`, not `fill` alone** (Finding 108). The topological fill counts PRE-EXISTING
+///   tectonic hollows. Finding 108 control 2: all eight below-sea basins of the delivered field
+///   read `delta < 10 m` -- several NEGATIVE, because the erosion made them SHALLOWER (their col
+///   sits 46-127 m above the floor before incision and **1.5 m** after).
+/// * **below-sea sill from Finding 85, not the priority flood.** The flood takes `h <= sea` as
+///   base level and never raises a below-sea cell, so `filled - raw` reads 0 there whatever the
+///   hollow -- which is the whole of Finding 107-D's "fill p50 exactly 0.00 m on all six
+///   below-sea basins", an instrument blindness read as a terrain fact.
+/// * **rim p50 > 30 deg, with a DECLARED +-1 deg.** A body in [29, 31] does not decide: seed 1
+///   carries 2 such, seed 3 one.
+///
+/// **The two permanent controls** (`f108_delta.rs`):
+/// * NEGATIVE -- Finding 87-A's spillway, 92.97 m3/s over **61 cells**: `delta` p50 **0.0000 m**,
+///   max **0.0451 m**. A through-cut bed has `filled == raw` however deep the valley.
+/// * POSITIVE -- the tightest unambiguous member of seed 1's class, body **51**: `delta`
+///   **125.75 m** against 50, rim **32.7 deg** against 30.
+///
+/// ⚠️ **STAGE MATTERS AND THE AUTHOR MUST RULE.** Read on the ERODED field -- what
+/// `f95_criteria` uses -- Finding 87's 623.6 m archetype scores `delta` **0.02 m**; read on the
+/// BREACHED field it scores **623.56 m**. The hollow is `breach_monotone`'s. The bench reproduces
+/// all three stage altitudes to the centimetre (12.63 / 0.50 / -8.67 m, ADR L11573).
+#[must_use]
+pub fn over_dug_depression(delta_fill_m: f32, rim_p50_deg: f32) -> bool {
+    delta_fill_m > 50.0 && rim_p50_deg > 30.0
+}
+
 /// Turn the Finding 107 per-body dump on.
 pub fn set_dump(on: bool) {
     DUMP.store(on, std::sync::atomic::Ordering::Relaxed);
