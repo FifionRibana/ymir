@@ -1388,7 +1388,9 @@ pub fn f95_criteria(
     let land_km2 = (0..n).filter(|&k| bf.data[k] > SEA).count() as f32 * cell_km2;
     let water_cells = (0..n).filter(|&k| dr.lake_map[k] != 0).count();
     let water_km2 = water_cells as f32 * cell_km2;
+    let dump = DUMP.load(std::sync::atomic::Ordering::Relaxed);
     let mut klass = 0usize;
+    let mut cut_class = 0usize;
     let mut scanned = 0usize;
     let mut ty: HashMap<String, usize> = HashMap::new();
     for l in &dr.lakes {
@@ -1400,7 +1402,21 @@ pub fn f95_criteria(
             continue;
         }
         scanned += 1;
+        // ADR Finding 107 -- TWO columns, and the GATE is the second.
+        //
+        // **CUT** (`pre-incision − delivered`) is what Findings 87-104 called the canyon class. It
+        // cannot tell an over-dug closed depression from a deep valley the drainage cuts straight
+        // through, because a through-cut valley has a large cut too.
+        //
+        // **FILL** (`filled − raw`, the priority flood on the ERODED field) is topological: it is
+        // how far the floor lies BELOW ITS OWN SILL. A through-cut valley has `filled == raw` along
+        // its bed whatever its depth, so it scores 0 and is not in the class — which is what must
+        // hold the day an uplift or a glaciation digs a real one.
         let cuts: Vec<f32> = cells.iter().map(|&k| m(&pre, k) - m(&bf, k)).collect();
+        let fill = cells
+            .iter()
+            .map(|&k| (pre_d.flow.filled.data[k] - f.data[k]) * n2m)
+            .fold(0.0f32, f32::max);
         let inside: HashSet<usize> = cells.iter().copied().collect();
         let mut ring: HashSet<usize> = HashSet::new();
         for &k in &cells {
@@ -1414,8 +1430,68 @@ pub fn f95_criteria(
             }
         }
         let rim: Vec<f32> = ring.iter().map(|&k| slope_deg(&bf, k, n2m, w, h)).collect();
-        if median(&cuts) > 50.0 && !rim.is_empty() && median(&rim) > 30.0 {
+        let steep = !rim.is_empty() && median(&rim) > 30.0;
+        let (is_cut, is_dug) = (median(&cuts) > 50.0 && steep, fill > 50.0 && steep);
+        if is_cut {
+            cut_class += 1;
+        }
+        if is_dug {
             klass += 1;
+        }
+        if dump {
+            eprintln!(
+                "     body {:>7} · {:>8.2} km² · cut p50 **{:>8.2} m** · fill **{:>8.2} m** · rim \
+                 p50 {:>5.1}° ⇒ cut {} / over-dug {}",
+                l.base.id,
+                cells.len() as f32 * cell_km2,
+                median(&cuts),
+                fill,
+                median(&rim),
+                if is_cut { "YES" } else { " no" },
+                if is_dug { "YES" } else { " no" },
+            );
+        }
+    }
+    if dump {
+        // ── the second control: a THROUGH-CUT bed must read fill ~ 0 ──────────
+        // Finding 107's discriminant only earns the rename if it clears the river the gate must
+        // never kill. `filled == raw` along a bed however deep the valley; `filled - raw` is the
+        // depth below the bed's OWN sill, which a through-flowing course does not have.
+        for want in [SegmentKind::Spillway, SegmentKind::Watercourse] {
+            let Some(i) =
+                (0..dr.rivers.segments.len()).filter(|&i| dr.segment_kind[i] == want).max_by(
+                    |&a, &b| dr.segment_discharge_m3s[a].total_cmp(&dr.segment_discharge_m3s[b]),
+                )
+            else {
+                continue;
+            };
+            let pts = &dr.rivers.segments[i].points;
+            let fl: Vec<f32> = pts
+                .iter()
+                .map(|&(x, y)| {
+                    let k = y as usize * w + x as usize;
+                    (pre_d.flow.filled.data[k] - f.data[k]) * n2m
+                })
+                .collect();
+            let drop = match (pts.first(), pts.last()) {
+                (Some(&(ax, ay)), Some(&(bx, by))) => {
+                    m(&f, ay as usize * w + ax as usize) - m(&f, by as usize * w + bx as usize)
+                }
+                _ => 0.0,
+            };
+            let p50 = median(&fl);
+            eprintln!(
+                "     {:?} max **{:.2} m³/s** · {} cells · drop **{drop:.1} m** · FILL along                  the bed: p50 **{p50:.4} m** · max **{:.4} m** ⇒ **{}**",
+                want,
+                dr.segment_discharge_m3s[i],
+                fl.len(),
+                fl.iter().copied().fold(0.0f32, f32::max),
+                if p50 <= 1.0 {
+                    "NOT in the class -- the bed is through-cut"
+                } else {
+                    "**IN the class -- the discriminant FAILS**"
+                }
+            );
         }
     }
     let q_unres: f64 = dr
@@ -1430,7 +1506,7 @@ pub fn f95_criteria(
     let wc = water_class(&bf, SEA);
     eprintln!(
         "   LAKES: **{} bodies · {water_km2:.0} km² = {:.2} % of {land_km2:.0} km² of \
-         land** · {:?} · CANYON CLASS **{klass} of {scanned}** · relabels {} · \
+         land** · {:?} · OVER-DUG **{klass} of {scanned}** (old cut class {cut_class}) · relabels {} · \
          `to_nothing` {} · Unresolved inflow {q_unres:.1} m³/s · wc==2 cells {}",
         dr.lakes.len(),
         100.0 * water_km2 / land_km2,
@@ -1441,6 +1517,7 @@ pub fn f95_criteria(
     );
     Crit {
         p50,
+        cut_class,
         below_sea_spillways: bs.spillways.len(),
         max_catchment_km2: dr.segment_drainage_km2.iter().copied().fold(0.0f32, f32::max),
         klass,
@@ -1452,9 +1529,23 @@ pub fn f95_criteria(
     }
 }
 
+/// ADR Finding 107 -- when set, `f95_criteria` prints ONE LINE PER BODY (both columns) and the
+/// fill profile of the highest-discharge spillway and watercourse. The controls for the gate
+/// redefinition read the SAME `dr` the class is scored on, so they cannot drift from the gate.
+static DUMP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Turn the Finding 107 per-body dump on.
+pub fn set_dump(on: bool) {
+    DUMP.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Finding 95's criteria, as one row of table C.
 pub struct Crit {
     pub p50: f32,
+    /// ADR Finding 107 -- the OLD, cut-based count that Findings 87-104 printed as "canyon class".
+    /// Kept so the redefinition is auditable rather than silent: every historical number in the
+    /// dossier is this column, and `klass` is now the topological one.
+    pub cut_class: usize,
     /// ADR Finding 45's DRAINAGE-INTEGRITY column: the number of SPILLWAYS -- the traced outflows
     /// of below-sea basins over their cols, i.e. `bs.spillways.len()`.
     ///
@@ -1474,6 +1565,15 @@ pub struct Crit {
     /// The largest river catchment, km2 (signified). Finding 45 watched it fall 110 -> 48 km2
     /// while the altitude held: the second half of the same collapse.
     pub max_catchment_km2: f32,
+    /// ADR Finding 107 -- **the OVER-DUG DEPRESSION count**, the gate. A body >= 1 km2 whose floor
+    /// sits more than 50 m below its OWN sill (`filled - raw`, the priority flood of Findings
+    /// 13/14 on the ERODED field) behind walls at p50 > 30 deg.
+    ///
+    /// ⚠️ It is NOT what Findings 87-104 printed under this name: those scored the **cut**,
+    /// `pre-incision - delivered`, which is [`Crit::cut_class`]. A deep valley the drainage runs
+    /// straight through has a large cut and a fill of ZERO, and a cut-based gate would kill it --
+    /// including the day an uplift or a glaciation digs a real gorge. The discriminant is
+    /// topological, and it was free: the chain already computes `filled`.
     pub klass: usize,
     pub scanned: usize,
     pub to_nothing: usize,

@@ -153,11 +153,18 @@ fn components(f: &GridF32, wc: &[u8], w: usize, h: usize, ss: &SteinSteinParams)
     out
 }
 
-/// The canyon class of Finding 88-D4, computed on an ARBITRARY stage with a FIXED lake inventory,
+/// ⚠️ **ADR Finding 107 RENAMED THE CLASS.** What this function computes is the **CUT** column,
+/// `pre-incision − delivered`, which is what Findings 87-104 printed as "the canyon class". The
+/// gate is now the **over-dug depression**: `filled − raw > 50 m`, the floor below its OWN sill.
+/// A valley the drainage runs through has a large cut and a fill of zero, so the two columns are
+/// not the same class. This function is kept unrenamed in spirit -- it reproduces a historical
+/// number -- but it is `cut_class`, not the gate.
+///
+/// The cut class of Finding 88-D4, computed on an ARBITRARY stage with a FIXED lake inventory,
 /// so "eroded vs breached" is an A/B on one population. ⚠️ This inventory comes straight from
 /// `c1_drainage_windowed` on the breached field and is SIMPLER than `f95_criteria`'s (no water
 /// balance, no below-sea merge), so its absolute count is not the table's — only the A/B is.
-fn canyon_class(
+fn cut_class(
     stage: &GridF32,
     pre: &GridF32,
     lake_map: &[u32],
@@ -352,8 +359,8 @@ fn f101_promote() {
         v.sort_unstable();
         v
     };
-    let (ke, se, ne) = canyon_class(&f04, &pre, &d04.lake_map, &ids, cell_km2, n2m, w, h);
-    let (kb, sb, nb) = canyon_class(&bf04, &pre, &d04.lake_map, &ids, cell_km2, n2m, w, h);
+    let (ke, se, ne) = cut_class(&f04, &pre, &d04.lake_map, &ids, cell_km2, n2m, w, h);
+    let (kb, sb, nb) = cut_class(&bf04, &pre, &d04.lake_map, &ids, cell_km2, n2m, w, h);
     eprintln!(
         "\n-- B . the canyon class at x0.4, one FIXED inventory, two stages --\n   ⚠️ inventory \
          from `c1_drainage_windowed` on the breached field, SIMPLER than `f95_criteria`'s (no \

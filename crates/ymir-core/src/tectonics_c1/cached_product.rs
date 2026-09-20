@@ -112,8 +112,30 @@ pub fn eroded_key_full(
     };
     // C-3b fracture — same pattern: config rides in `upscale_cfg`, append the ALGO only
     // when enabled so a disabled key is byte-identical to pre-C-3b.
-    if upscale_cfg.fracture.enabled {
+    let key = if upscale_cfg.fracture.enabled {
         key.with("fracture_algo", &super::closures::fracture::FRACTURE_ALGO)
+    } else {
+        key
+    };
+    // ── ADR Finding 105's cache debt, ATTRIBUTED at Finding 107 ─────────────────────────────
+    //
+    // Finding 105 recorded that the eroded product "also depends on `C1DrainageConfig::default()`
+    // and `RELIEF_V1_A_C_KM2`, neither of which is in any digest". **Half of that is wrong, and
+    // the grep says so.** `RELIEF_V1_A_C_KM2` reaches the digest already: `StreamPowerConfig`
+    // rides inside `FbmUpscaleConfig` (not `serde(skip)`) and `min_area_cells =
+    // RELIEF_V1_A_C_KM2 / cell_km2` is a plain serialized field, so moving the constant moves the
+    // key. Same for `slope_floor_uk`. There was never a latent bug there.
+    //
+    // What IS real is the other half, and only on one path. `flint_intercept` builds a
+    // `C1DrainageConfig::default()` and overrides exactly two thresholds; **every other default in
+    // that struct silently conditions the calibration**, and it is reachable only through
+    // `slope_floor_factor`. Appended CONDITIONALLY — the volcanism/lithology/fracture pattern —
+    // so every key of every run shipped to date is byte-identical.
+    if upscale_cfg.slope_floor_factor.is_some() {
+        key.with_debug(
+            "calib_drainage",
+            &crate::tectonics_c1::drainage::C1DrainageConfig::default(),
+        )
     } else {
         key
     }
@@ -791,6 +813,44 @@ mod tests {
     use super::*;
     use crate::tectonics::isostasy::IsostasyConfig;
     use std::cell::Cell;
+
+    /// ADR Finding 107, rule 13 — the closure you close gets a permanent assertion.
+    ///
+    /// Two claims, and the SECOND is the one that would go silently wrong. (1) turning the
+    /// calibration on must move the digest, or a calibrated and an uncalibrated run share a cache
+    /// entry and the terrain differs while the key does not. (2) leaving it off must move NOTHING:
+    /// every product cached by every run to date keys on `slope_floor_factor: None`, and a digest
+    /// fix that invalidates them is a cache wipe wearing a bug fix's clothes.
+    #[test]
+    fn the_calibration_digest_is_conditional() {
+        let (init, run, closures, ss, cfg) = inputs();
+        let tect = tectonic_key(7, 32, &init, &run, &closures);
+        let off = eroded_key_full(&tect, &ss, &cfg, &VolcanismConfig::default());
+        let mut on = cfg.clone();
+        on.slope_floor_factor = Some(0.6);
+        let with = eroded_key_full(&tect, &ss, &on, &VolcanismConfig::default());
+        assert_ne!(
+            off.digest(),
+            with.digest(),
+            "the calibration pass reads C1DrainageConfig::default() and must be in the digest"
+        );
+
+        // ⚠️ The control that makes the first assertion mean something: `slope_floor_factor` is
+        // ALSO a serialized field of `FbmUpscaleConfig`, so `with` would differ even if the new
+        // entry did nothing. Rebuild `off`'s key from `off`'s own config and require byte-identity
+        // with the pre-Finding-107 form -- `eroded_key` plus the three enabled-only entries.
+        let mut base = eroded_key(&tect, &ss, &cfg);
+        if VolcanismConfig::default().enabled {
+            base = base
+                .with("volcanism", &VolcanismConfig::default())
+                .with("volc_algo", &crate::tectonics_c1::closures::volcanism::VOLCANISM_ALGO);
+        }
+        assert_eq!(
+            off.digest(),
+            base.digest(),
+            "an uncalibrated key must be byte-identical to its pre-Finding-107 form"
+        );
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("ymir_cached_product_{name}"));

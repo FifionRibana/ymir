@@ -11477,6 +11477,16 @@ lake the author can click.
 
 ## Finding 87 — the drops are coherent, the 623 m lake is incised, and the 45 m³/s is stuck behind a tenth of a quantisation step
 
+> ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
+> "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
+> delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
+> asking about is the **OVER-DUG DEPRESSION** (Finding 87's *"canyon noyé"*): a floor more than
+> 50 m below **its own sill**, i.e. `filled − raw > 50 m` on the priority flood (Findings 13/14)
+> of the ERODED field. **A deep valley the drainage runs straight through has a large cut and a
+> fill of ZERO**, so the cut column cannot tell the two apart, and a gate built on it would kill
+> a real gorge the day an uplift or a glaciation dug one. Finding 107 re-reads these rows with
+> **both columns**; the gate is the fill.
+
 Two production changes, neither gated: trace-before-label on the detected-lake path (D), and the
 outflow side in local terms with `a_eq` exported as what it is (F).
 
@@ -11846,6 +11856,16 @@ to the next round by its own answer: block B concluded **incision**, so the 623.
 send it there are 165.8 m of median cut and a pre-incision floor 21.3 m above the delivered one.
 
 ## Finding 88 — the sixth term was water counted twice, the saddle was the wrong cell, and rule 12 fired on its first outing
+
+> ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
+> "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
+> delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
+> asking about is the **OVER-DUG DEPRESSION** (Finding 87's *"canyon noyé"*): a floor more than
+> 50 m below **its own sill**, i.e. `filled − raw > 50 m` on the priority flood (Findings 13/14)
+> of the ERODED field. **A deep valley the drainage runs straight through has a large cut and a
+> fill of ZERO**, so the cut column cannot tell the two apart, and a gate built on it would kill
+> a real gorge the day an uplift or a glaciation dug one. Finding 107 re-reads these rows with
+> **both columns**; the gate is the fill.
 
 Two production changes, neither gated, both invariants Finding 87 had named: evaporation in local
 terms (A) and Finding 37c's saddle/escape ported to detected surface lakes (C). **Both were
@@ -13993,6 +14013,16 @@ rounds running, is populations.
 
 ## Finding 95 — integrated at the shipped budget: the canyons go, the incision adds no spur, and the relief is still falling at 1 000 passes
 
+> ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
+> "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
+> delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
+> asking about is the **OVER-DUG DEPRESSION** (Finding 87's *"canyon noyé"*): a floor more than
+> 50 m below **its own sill**, i.e. `filled − raw > 50 m` on the priority flood (Findings 13/14)
+> of the ERODED field. **A deep valley the drainage runs straight through has a large cut and a
+> fill of ZERO**, so the cut column cannot tell the two apart, and a gate built on it would kill
+> a real gorge the day an uplift or a glaciation dug one. Finding 107 re-reads these rows with
+> **both columns**; the gate is the fill.
+
 The long run of Finding 44's item 2, at `k_time` held. No production change. **Three of the four
 criteria the time was meant to fix are fixed; the fourth is still moving, and that is the finding.**
 
@@ -14198,6 +14228,16 @@ instead of in two shocks. **That is what the eye should be asked to judge, and t
 beside it is 0 canyons against 16.**
 
 ## Finding 96 — χ is a valid PROFILE and an invalid FIELD, twice over: the coastal fringe is over-incision along the CHANNELS, and the floor that proves it prints D8 into the terrain
+
+> ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
+> "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
+> delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
+> asking about is the **OVER-DUG DEPRESSION** (Finding 87's *"canyon noyé"*): a floor more than
+> 50 m below **its own sill**, i.e. `filled − raw > 50 m` on the priority flood (Findings 13/14)
+> of the ERODED field. **A deep valley the drainage runs straight through has a large cut and a
+> fill of ZERO**, so the cut column cannot tell the two apart, and a gate built on it would kill
+> a real gorge the day an uplift or a glaciation dug one. Finding 107 re-reads these rows with
+> **both columns**; the gate is the fill.
 
 A search round, **two seams added to production, both additive and inert by default** (`depression_floor: false`, `incision_floor: None` — byte-identical), everything measured in bench. The
 oracle is a ROW OF NUMBERS from Finding 95's 300-pass milestone, not a rebuilt field: the field
@@ -14636,6 +14676,16 @@ one label covering two stages of the same field (the coast column, float against
 covers the flow field and covers none of the three.
 
 ## Finding 97 — the D8 comb is the DELIVERED field's, and Finding 96 read its own image backwards; every cheap closure buys its criterion with half the erosion
+
+> ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
+> "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
+> delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
+> asking about is the **OVER-DUG DEPRESSION** (Finding 87's *"canyon noyé"*): a floor more than
+> 50 m below **its own sill**, i.e. `filled − raw > 50 m` on the priority flood (Findings 13/14)
+> of the ERODED field. **A deep valley the drainage runs straight through has a large cut and a
+> fill of ZERO**, so the cut column cannot tell the two apart, and a gate built on it would kill
+> a real gorge the day an uplift or a glaciation dug one. Finding 107 re-reads these rows with
+> **both columns**; the gate is the fill.
 
 An instrument round. **One seam added to production** (`slope_floor_uk`, additive, `None` by
 default, byte-identical), everything else in bench. The round's own stop rule is examined and
@@ -15382,6 +15432,16 @@ reported a winner on four criteria.**
 
 ## Finding 100 — the window exists: at factor ×0.4 the closure lands ON the oracle, holds the coast at +2, and passes rule 14 for the first time in the campaign
 
+> ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
+> "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
+> delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
+> asking about is the **OVER-DUG DEPRESSION** (Finding 87's *"canyon noyé"*): a floor more than
+> 50 m below **its own sill**, i.e. `filled − raw > 50 m` on the priority flood (Findings 13/14)
+> of the ERODED field. **A deep valley the drainage runs straight through has a large cut and a
+> fill of ZERO**, so the cut column cannot tell the two apart, and a gate built on it would kill
+> a real gorge the day an uplift or a glaciation dug one. Finding 107 re-reads these rows with
+> **both columns**; the gate is the fill.
+
 **No production change.** Seven fields, six criteria chains, 21 minutes of one core. First round run
 under the proposal template.
 
@@ -15600,6 +15660,16 @@ work were both template lines: **line 1** turned a collision into Finding 62's m
 from an earlier finding asking to be read.
 
 ## Finding 101 — there are no three basins: the below-sea geography is IDENTICAL, and "11 → 14" counts spillways. The canyon is the incision's. And the continent view answers "France, not Scotland" by SHAPE
+
+> ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
+> "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
+> delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
+> asking about is the **OVER-DUG DEPRESSION** (Finding 87's *"canyon noyé"*): a floor more than
+> 50 m below **its own sill**, i.e. `filled − raw > 50 m` on the priority flood (Findings 13/14)
+> of the ERODED field. **A deep valley the drainage runs straight through has a large cut and a
+> fill of ZERO**, so the cut column cannot tell the two apart, and a gate built on it would kill
+> a real gorge the day an uplift or a glaciation dug one. Finding 107 re-reads these rows with
+> **both columns**; the gate is the fill.
 
 **No production change. Nothing promoted.** Five fields, 7 minutes of one core. The round's block A
 has no referent and block B's expected answer is refuted; block C is presented and the binary
@@ -16198,6 +16268,16 @@ rounded up from 0.0563. **The closure keeps passing; the gates keep failing to b
 
 ## Finding 104 — the channel/hillslope split carries NO information; but its negative control produces the number six rounds of gates were missing, and the tile re-read overturns Finding 103's rejection of seed 3
 
+> ⛔ **AMENDED BY FINDING 107 (author, 2026-09-20) — what "canyon" names here.** Every
+> "canyon class" number in Findings 87–104 is the **CUT** column: `median(pre-incision −
+> delivered) > 50 m` inside a body ≥ 1 km² with rim p50 > 30°. The class the author was ever
+> asking about is the **OVER-DUG DEPRESSION** (Finding 87's *"canyon noyé"*): a floor more than
+> 50 m below **its own sill**, i.e. `filled − raw > 50 m` on the priority flood (Findings 13/14)
+> of the ERODED field. **A deep valley the drainage runs straight through has a large cut and a
+> fill of ZERO**, so the cut column cannot tell the two apart, and a gate built on it would kill
+> a real gorge the day an uplift or a glaciation dug one. Finding 107 re-reads these rows with
+> **both columns**; the gate is the fill.
+
 **No production change. Nothing promoted.** ⚠️ **The round asked for "no construction, on the
 existing fields" and that is impossible: no field in this campaign is persisted.** `build_field`
 re-runs the tectonics, the upscale and the incision every time; `cache.rs` covers the HD pipeline,
@@ -16460,3 +16540,294 @@ cannot be a configuration flag.**
   serialised so it enters the digest, but the RESULT also depends on `C1DrainageConfig::default()`
   and on `RELIEF_V1_A_C_KM2`, neither of which is in any digest. **If `A_c` ever moves, the shipped
   terrain moves and the cache does not see it.**
+
+
+## Finding 106 — the absolute constant has a window on three seeds, and the round's own control was ill-posed
+
+**⚠️ INCOMPLETE ROUND.** The author's redefinition of the canyon gate arrived while block A was
+running and is primordial, so blocks **B (the author's gates re-read), C (the eye, rule 14b),
+D (two new seeds) and E (the `SlopeFloor::Absolute` seam)** were never done. **Nothing is
+promoted.** What is recorded here is block A, measured in full, and the point-3 control — because
+they exist and would otherwise live only in a run log. Finding 107 re-reads block A's canyon
+column under the redefined gate.
+
+**My predictions, written before the grep** (`f106_predictions.md`): **P0** the point-3 control is
+ill-posed and must not stop the round; **A1** the window is all four constants, against the
+reviewer's `{0.021, 0.024}`; **A2** the low-end failure the reviewer expects on seed 1 is on the
+wrong seed; **A3** erosion 58–72 %.
+
+### The point-3 control: ill-posed, repaired, declared
+
+The round required `c = 0.6 × 0.045095 = 0.027057` to reproduce the ×0.6 row **bit for bit**, or
+stop before block A.
+
+| | |
+|---|---|
+| `k_s × 0.6`, unrounded | **0.027056737** (bits `3cdda617`) |
+| the round's decimal | **0.027057000** (bits `3cdda6a4`) |
+| ⇒ | **DIFFERENT f32** — the decimal is a six-digit printing of a full-precision `f32` |
+| the two fields | **4 109 207 cells differ** · \|Δ\| **p50 0.002021 m** · max 113.9038 m |
+
+> **P0 is confirmed: the control cannot pass as written, and the reason is a decimal rounding, not
+> a different closure.** A floor differing by 1e-9 gives a field differing by **2 mm at the
+> median**. The round was continued on that reading, declared rather than silently.
+>
+> ⛔ **And my own pass/fail test was wrong in the same way the campaign keeps catching.** It read
+> `max < 0.01 m` — 113.9 m — and printed **"the control passes NOT AT ALL"**, when the statistic
+> that carries the claim is the **median, 2 mm**. A threshold read at the resolution of its own
+> quantity, in my instrument, one round before Finding 107 found it again in my conclusion.
+
+### Block A — the sweep: three seeds, four constants, twelve rows
+
+`k_s` per seed: **0.04509456 / 0.02956299 / 0.02771009**. The effective factor `c / k_s` says where
+each row falls in the range Findings 99–104 swept (0.3–0.7):
+
+| c | seed 1 | seed 2 | seed 3 |
+|---|---|---|---|
+| **0.018** | ×0.399 **PASS** | ×0.609 ⛔ **FAIL** | ×0.650 **PASS** |
+| **0.021** | ×0.466 **PASS** | ×0.710 ⚠️ **PASS** | ×0.758 ⚠️ **PASS** |
+| **0.024** | ×0.532 **PASS** | ×0.812 ⚠️ **PASS** | ×0.866 ⚠️ **PASS** |
+| **0.027** | ×0.599 **PASS** | ×0.913 ⚠️ **PASS** | ×0.974 ⚠️ **PASS** |
+
+⚠️ = outside the swept 0.3–0.7, i.e. an extrapolation measured for the first time. Total 2 339.6 s.
+
+| seed | c | coast | canyons (cut) | components | catchment | D_L>5 | relief | R8 | **erosion** |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 0.018 | **+2** | 6.9 % (≤ 7.4) | 20 | 9 779 (+0.0 %) | 0 % | 493.3 m | 0.0566 | **71.7 %** |
+| 1 | 0.021 | **+2** | 6.9 % | 20 | 9 805 (+0.3 %) | 0 % | 501.0 m | 0.0524 | **69.1 %** |
+| 1 | 0.024 | **+1** | 6.9 % | 20 | 9 830 (+0.5 %) | 0 % | 508.3 m | 0.0484 | **66.6 %** |
+| 1 | 0.027 | **+1** | 3.4 % | 20 | 9 848 (+0.7 %) | 0 % | 515.6 m | 0.0455 | **64.1 %** |
+| 2 | **0.018** | +2 | 5.7 % (≤ 7.3) | 43 | 791 (+7.7 %) | ⛔ **3 %** | 305.0 m | 0.0584 | 68.3 % |
+| 2 | 0.021 | +2 | 5.6 % | 43 | 814 (+10.7 %) | 0 % | 312.2 m | 0.0544 | **65.0 %** |
+| 2 | 0.024 | **+0** | 5.6 % | 43 | 830 (+12.9 %) | 0 % | 319.1 m | 0.0481 | **61.9 %** |
+| 2 | 0.027 | **+0** | 5.7 % | 43 | 844 (+14.9 %) | 0 % | 325.8 m | 0.0448 | **58.9 %** |
+| 3 | 0.018 | +4 | 7.1 % (≤ 8.3) | 15 | 6 029 (+15.6 %) | 0 % | 420.8 m | 0.0721 | **74.3 %** |
+| 3 | 0.021 | +3 | 6.7 % | 15 | 6 032 (+15.7 %) | 0 % | 429.8 m | 0.0681 | **71.4 %** |
+| 3 | 0.024 | +3 | 6.7 % | 15 | 6 032 (+15.7 %) | 0 % | 438.4 m | 0.0638 | **68.6 %** |
+| 3 | 0.027 | +3 | 6.7 % | 15 | 6 044 (+15.9 %) | 0 % | 447.0 m | 0.0610 | **65.9 %** |
+
+> ⛔ **THE WINDOW IS `{0.021, 0.024, 0.027}` — non-empty on all three seeds, three constants
+> wide.** After Finding 102 found the factor window EMPTY on two new seeds and Finding 103 found
+> the intersection closed by exactly one gate, an absolute constant with no calibration pass
+> intersects on three seeds. **A constant transfers where the calibrated factor did not.**
+>
+> **My A1 is REFUTED and the reviewer is half right.** I predicted all four constants; **c = 0.018
+> fails**, and the failing gate is the shoreline-development share: **seed 2 reads D_L > 5 on 3 %
+> of its lakes against a gate of 0.1 %**. Every other column on that row passes. The reviewer's
+> `{0.021, 0.024}` named the failing constant correctly and missed that 0.027 also passes.
+>
+> **My A2 is confirmed in its substance**: the reviewer expected the low end to fail on seed 1,
+> and seed 1 passes at ×0.399 — the failure is on **seed 2**. My A3 is confirmed: erosion 58.9 to
+> 74.3 %, no row within reach of the Finding 104 B1 alert at 43.8 %.
+>
+> ⚠️ **Eight of the twelve rows are extrapolations.** Seeds 2 and 3 sit at effective ×0.71 to
+> ×0.97, outside everything Findings 99–104 swept, and they are the rows carrying the window. The
+> table says they pass; it does not say the range between the measured points behaves.
+>
+> ⚠️ **Rule 14, the erosion this permits, is REPORTED and not gated** (the round's instruction):
+> 58.9–74.3 %, monotonically decreasing with c on every seed. **The constant is an erosion dial**,
+> as Finding 99 established for the factor.
+
+## Finding 107 — the gate was measuring the wrong thing, and the river it would have killed reads 4.5 cm
+
+**Author redefinition, 2026-09-20, primordial.** The class Findings 87–104 scored under the name
+"canyon" is the class of **OVER-DUG DEPRESSIONS** (Finding 87's *"canyon noyé"*): a body ≥ 1 km²
+whose floor sits more than 50 m **below its own sill**, behind walls at p50 > 30°. The instrument
+scored something else — the **CUT**, `median(pre-incision − delivered)` — and *"une vallée
+traversée a `filled == raw` le long de son lit, quelle que soit sa profondeur, et n'est pas dans la
+classe — le jour où un soulèvement ou une glaciation en creusera une, la porte ne doit pas la
+tuer."*
+
+⚠️ **Protocol deviation, declared rather than retrofitted: this round has NO dated numeric
+predictions.** It was handed down as a redefinition, not asked as a question, and I went to the
+instrument without writing a prediction block first. The one claim I did put in writing before any
+measurement was qualitative — *"la redéfinition est structurelle, pas cosmétique : l'implémentation
+actuelle mesure la coupe, qui ne distingue pas une cuvette sur-creusée d'une vallée profonde
+traversée"* — and it is confirmed below at 1 031 m. That is not a substitute for numbers.
+
+⚠️ **Rule 11 / 11b, before the first measurement.** `over-dug`, `sur-creusé`, `canyon noyé` (as
+`noy`), `filled − raw`, `raw − filled`, `own sill`, `propre col`: **NOTHING FOUND** — the
+vocabulary is new to the dossier, which is itself the finding: ten rounds used a word the
+instrument never defined. `drowned` 60 hits, earliest **L1306 (Finding 35)**, a DIFFERENT sense
+(submerged by a lake). `priority flood` 28 hits, earliest **L673 Finding 13**, read first: the
+conditioning the new gate rests on, introduced as *"(b) fill flooded cells to sill — it IS
+`pit_fill`, already computed"*. And **L14265, Finding 96, already measured the population**:
+*"pits (cells the priority flood must raise): χ 0 · delivered 1 240 677"*. `92.97` 11 hits,
+earliest L10863. `115 m` **2 hits, NEITHER is the river** (L1715 a lake altitude, L1818 a table
+cell) ⇒ the control river had to be found by its DISCHARGE, not by its drop.
+
+### The instrument, and the one line that makes it free
+
+`filled − raw` on the priority flood of the **ERODED** field, which `f95_criteria` already
+computes as `pre_d.flow.filled`. Two columns everywhere from here: **cut** (`pre-incision −
+delivered`, p50 over the body) and **fill** (`filled − raw`, max over the body). `Crit::klass` is
+now the over-dug count; `Crit::cut_class` is the number every historical Finding printed, kept so
+the redefinition is auditable rather than silent.
+
+⚠️ **Declared**: the per-body dump reads the SAME `dr` the class is scored on, from inside
+`f95_criteria`. Finding 101-B had to declare that its simpler re-derived inventory gave 26 bodies
+against the table's 29 and that only the A/B survived; a control that re-derives its population
+cannot check a gate.
+
+### CONTROL 1 — Finding 88's sixteen: PASSES, and the class does not shrink, it GROWS
+
+| | delivered field, seed 1 |
+|---|---|
+| bodies ≥ 1 km² scanned | **54** |
+| **cut class** (the dossier's number) | **16 of 54 = 29.6 %** ⇒ reproduces Findings 88 / 102 **at the digit** |
+| **over-dug class** (the gate) | **18 of 54 = 33.3 %** |
+| in cut, NOT over-dug | **∅** |
+| min fill among the sixteen | **122.46 m**, against a 50 m threshold |
+
+> ⛔ **The control passes and the instrument is the dossier's.** The cut column reproduces
+> **16 of 54 = 29.6 %** — Finding 102's cited figure, exactly — so the two columns are being read
+> off the same population Findings 87–104 read, and the comparison is valid. **Every one of the
+> sixteen reads fill > 50 m**, the closest at 122.46 m: the redefinition keeps all of them, with
+> margin. The set inclusion is total, not statistical.
+>
+> ⚠️ **And it is a WIDENING, which the author has to rule on.** Two bodies are over-dug and were
+> never in the cut class: **1000001 (660.79 km², cut 3.40 m, fill 237.97 m, rim 31.0°)** and
+> **1000012 (757.43 km², cut 34.16 m, fill 277.29 m, rim 30.7°)**. Both are below-sea basin ids;
+> both have a cut of essentially zero. **They are hollows the incision did not dig** — they were
+> already there. That is correct under the author's definition, which is purely topological and
+> says nothing about provenance. But it changes what the gate *means*: from "the incision made a
+> hole" to "there is a hole", and the two extra bodies are 1 418 km² of pre-existing basin that
+> no erosion setting can remove. **A gate that no candidate can pass is not a gate.** ⇒ see
+> À VALIDER.
+
+### CONTROL 2 — the river: 4.5 centimetres over its whole bed
+
+Found by discharge alone, the `115 m` grep having returned nothing:
+
+| the highest-discharge segment | discharge | cells | drop | **fill p50** | **fill max** |
+|---|---|---|---|---|---|
+| **`Spillway`** — Finding 87-A's | **92.97 m³/s** | **61** = **2.98 km** | **114.8 m** | **0.0000 m** | **0.0451 m** |
+| **`Watercourse`** | 19.24 m³/s | 43 = 2.10 km | **278.6 m** | **0.0000 m** | 16.2470 m |
+
+> ⛔ **The author's river is identified independently, at the digit, and the discriminant spares
+> it.** *"le 92,97 m³/s, chute 115 m sur 3 km"* — the bench, searching only for the maximum
+> `Spillway` discharge, returns **92.97 m³/s, 114.8 m, 61 cells × 48.83 m = 2.98 km**. Its bed
+> reads **4.5 cm of fill at the maximum**, on a threshold of 50 m: three orders of magnitude of
+> margin. The control is not marginal, it is categorical.
+>
+> **The second row is the stronger one.** The biggest watercourse drops **278.6 m in 2.1 km** — a
+> genuinely steep valley, the exact landform the author says the gate must never kill — and reads
+> **fill p50 0.0000 m**. A cut-based gate would have scored that bed heavily. The topological one
+> scores it zero, because it is through-cut.
+
+### What the two columns disagree about, ranked
+
+| body | km² | **cut p50** | **fill** | rim p50 | the two columns disagree by |
+|---|---|---|---|---|---|
+| **10** | 5.63 | **1 034.23 m** | **2.88 m** | 19.5° | **1 031 m** |
+| 4 | 17.58 | 624.48 m | 121.25 m | 28.5° | 503 m |
+| **21** | 8.53 | **393.21 m** | **0.91 m** | 5.5° | 392 m |
+| 19 | 6.27 | 347.46 m | 73.95 m | 27.0° | 274 m |
+
+> **Body 10 is the whole finding in one row.** The cut column sees **a kilometre of incision**;
+> topologically there is **no hollow at all** — 2.88 m below its own sill. Body 21: 393 m of cut,
+> **91 centimetres** of fill. Neither enters either class (both fail the rim), so neither ever
+> changed a verdict — but the two columns were never measuring the same object, and nothing in
+> ten rounds would have revealed it, because the cut column was never read against anything.
+
+### The window of Finding 106, re-read — and rule 16 REFUTES my first reading of it
+
+Seed 1, the three constants Finding 106's sweep passed:
+
+| c | **over-dug** (the gate) | **cut** (what Finding 106 printed) | Δ | composition of the over-dug class |
+|---|---|---|---|---|
+| **0.021** | 3 of 29 = 10.3 % | 2 of 29 = 6.9 % | **+1** | **0 ordinary + 3 below-sea** |
+| **0.024** | 3 of 29 = 10.3 % | 2 of 29 = 6.9 % | **+1** | **0 ordinary + 3 below-sea** |
+| **0.027** | 2 of 29 = 6.9 % | 1 of 29 = 3.4 % | **+1** | **0 ordinary + 2 below-sea** |
+| *delivered* | *18 of 54 = 33.3 %* | *16 of 54 = 29.6 %* | *+2* | ***12 ordinary + 6 below-sea*** |
+
+**Δ is +1 on every candidate row and +2 on the delivered — the redefinition adds a CONSTANT, not
+a factor.** It is not rescaling the column; it is finding a fixed handful of bodies the cut column
+could not see.
+
+> ⛔ **I wrote, off the rate alone, that "the redefinition moves Finding 106's answer: on seed 1
+> the window collapses from three constants to {0.027}". THE RULE-16 RE-READ REFUTES THAT, and the
+> measurement wins.** The rate rises past the gate (`0.25 × 33.3 = 8.3 %` against 10.3 %) — but
+> naming the bodies instead of counting them shows the arithmetic is empty twice over.
+>
+> **First: one rim slope decides it, by 0.7°.** Below-sea ids are assigned by scan order and are
+> NOT comparable between rows (Finding 101's lesson on "11 → 14"); sorted by AREA they are. The
+> ~625 km² body reads rim **30.1° at c = 0.021, 30.1° at 0.024, and 29.4° at 0.027** — its fill is
+> 218 / 222 / 168 m throughout, always far past 50 m. **The entire 3 → 2 step, and therefore the
+> entire "collapse", is one body crossing a 30.0° threshold by seven tenths of a degree.** That is
+> a threshold read at the resolution of its own quantity — the trap this campaign named at Finding
+> 106, in my own instrument, and it is here again in my own conclusion.
+>
+> **Second, and this is the real finding: the numerator and the denominator are DIFFERENT
+> POPULATIONS.** The delivered class is **12 ordinary lakes + 6 below-sea basins**. Every candidate
+> row is **0 ordinary + 2–3 below-sea**. A rate of one against the other is not a comparison.
+>
+> ⇒ **What the closure actually does, on all three constants alike: it takes the ordinary over-dug
+> class from TWELVE to ZERO.** Every hollow the incision dug is gone at every constant in the
+> window. The residual is below-sea basins with cuts of **0.00 to 148 m** — several exactly
+> `0.00` — i.e. **hollows the incision never made**. So the redefinition does not move Finding
+> 106's answer; **it strengthens it**, and it does so identically at 0.021, 0.024 and 0.027.
+>
+> ⚠️ **What it does move is the gate's meaning**, which is the author's call. `rate ≤ 0.25 ×
+> delivered` now counts pre-existing tectonic basins that no erosion setting removes: at c = 0.027
+> the two survivors are 475.00 km² (fill 287.36 m, cut 16.52 m) and 259.69 km² (218.65 m, 126.57
+> m). **A gate whose floor is set by terrain the dial cannot reach is not a dial's gate.** Either
+> the class is restricted to bodies the incision dug — a provenance clause the author's definition
+> deliberately does not have — or the gate reads the ORDINARY bodies only, where the answer is a
+> clean 12 → 0.
+
+### The Finding 105 cache debt — ATTRIBUTED, and half of it does not exist
+
+Finding 105 recorded, as a standing fact, that the eroded product *"also depends on
+`C1DrainageConfig::default()` and `RELIEF_V1_A_C_KM2`, neither of which is in any digest"*. The
+grep the round asked for refutes half of that.
+
+| claim | verdict |
+|---|---|
+| `RELIEF_V1_A_C_KM2` is in no digest | ⛔ **FALSE.** `StreamPowerConfig` rides inside `FbmUpscaleConfig` (**not** `serde(skip)`; only `incision_floor` is) and `min_area_cells = RELIEF_V1_A_C_KM2 / cell_km2` is a plain serialized field, `stream_power.rs:341`. Moving the constant moves the key. Same for the `:694` use, which reads `slope_floor_uk` — also serialized. **There was never a latent bug there.** |
+| `C1DrainageConfig::default()` is in no digest | ✓ **TRUE, on one path only.** `production_upscale.rs:399`, inside `flint_intercept`, which overrides exactly two thresholds and inherits every other default. Reachable **only** through `slope_floor_factor`. |
+
+⇒ Fixed under the pattern the file already uses for volcanism, lithology and fracture: the entry
+is appended **only when `slope_floor_factor.is_some()`**, so every key of every run shipped to
+date is byte-identical and nothing is invalidated. **Rule 13**: `the_calibration_digest_is_
+conditional` asserts both halves — that turning the calibration on moves the digest, and that
+leaving it off reproduces the pre-Finding-107 key exactly. The second assertion needed its own
+control, written at the site: `slope_floor_factor` is itself a serialized field, so the first
+assertion would pass even if the new entry did nothing.
+
+### What changed in the code
+
+- `f95_criteria` computes **both columns**; `Crit::klass` is the over-dug count, `Crit::cut_class`
+  the historical one; the printed line reads `OVER-DUG **n of m** (old cut class k)`.
+- `f101_promote.rs::canyon_class` → **`cut_class`**, with the amendment at its docstring: it
+  reproduces a historical number and is **not** the gate.
+- The amendment banner is inserted at **eight claim points** — Findings 87, 88, 95, 96, 97, 100,
+  101, 104 — saying which column their "canyon class" numbers are.
+- `eroded_key_full` gains the conditional calibration entry, with its rule-13 test.
+- **No production terrain change.** `relief_v3` is untouched; `slope_floor_factor` is still `None`
+  by default and still byte-identical; nothing is promoted.
+- `f107_transfer` is written and `#[ignore]`d: the delivered over-dug rate (which SETS the gate)
+  and the three candidate rows, on seeds 2 and 3. **Not yet run** — the {0.027} claim it was built
+  to test is withdrawn above, but the transfer question survives the withdrawal: whether the
+  ordinary class goes 12 → 0 on the other two seeds is unmeasured.
+
+### À VALIDER VISUELLEMENT — the two bodies the redefinition ADDS, and the two it leaves
+
+**The question is not whether the discriminant works.** Control 2 settles that at 4.5 cm. The
+question is **what population the gate should count**, and it is a judgement about the product, not
+a measurement:
+
+1. **The widening, on the delivered field**: bodies **1000001** (660.79 km², cut **3.40 m**, fill
+   237.97 m, rim 31.0°) and **1000012** (757.43 km², cut **34.16 m**, fill 277.29 m, rim 30.7°).
+   Both below-sea, both with a cut of essentially zero. **The incision did not dig them.** Are
+   they the "cuvettes sur-creusées" the gate is for, or are they the continent's tectonic
+   bathymetry and none of the gate's business?
+2. **The residual, at c = 0.027**: the two survivors at **475.00 km²** (fill 287.36 m) and
+   **259.69 km²** (fill 218.65 m). These are what a passing candidate still contains. If they read
+   as legitimate basins in LL, the gate should not be counting them and the answer at every
+   constant in the window is a clean **12 → 0**.
+3. **The 0.7° body**, ~625 km², whose rim reads 30.1° / 30.1° / 29.4° across the three constants.
+   Whether it is a steep-walled basin or a gentle one is a look, not a number — and one look
+   decides whether that threshold is measuring anything at all.
+
+**Unchanged and still asked, seventh round: no real coastline raster.**
