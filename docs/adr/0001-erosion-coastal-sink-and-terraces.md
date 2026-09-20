@@ -16811,23 +16811,169 @@ assertion would pass even if the new entry did nothing.
   to test is withdrawn above, but the transfer question survives the withdrawal: whether the
   ordinary class goes 12 → 0 on the other two seeds is unmeasured.
 
-### À VALIDER VISUELLEMENT — the two bodies the redefinition ADDS, and the two it leaves
+### Finding 107-B — the transfer, and it refutes TWO of the claims above
 
-**The question is not whether the discriminant works.** Control 2 settles that at 4.5 cm. The
-question is **what population the gate should count**, and it is a judgement about the product, not
-a measurement:
+Seeds 2 and 3, the delivered field (which SETS the gate: it is the denominator) and the three
+constants of Finding 106's window:
 
-1. **The widening, on the delivered field**: bodies **1000001** (660.79 km², cut **3.40 m**, fill
-   237.97 m, rim 31.0°) and **1000012** (757.43 km², cut **34.16 m**, fill 277.29 m, rim 30.7°).
-   Both below-sea, both with a cut of essentially zero. **The incision did not dig them.** Are
-   they the "cuvettes sur-creusées" the gate is for, or are they the continent's tectonic
-   bathymetry and none of the gate's business?
-2. **The residual, at c = 0.027**: the two survivors at **475.00 km²** (fill 287.36 m) and
-   **259.69 km²** (fill 218.65 m). These are what a passing candidate still contains. If they read
-   as legitimate basins in LL, the gate should not be counting them and the answer at every
-   constant in the window is a clean **12 → 0**.
-3. **The 0.7° body**, ~625 km², whose rim reads 30.1° / 30.1° / 29.4° across the three constants.
-   Whether it is a steep-walled basin or a gentle one is a look, not a number — and one look
-   decides whether that threshold is measuring anything at all.
+| seed | field | **over-dug** | **cut** | Δ | gate `0.25 × delivered` |
+|---|---|---|---|---|---|
+| 2 | delivered | **15 of 51 = 29.4 %** | 15 of 51 = 29.4 % | **0** | cut 7.4 % · over-dug **7.4 %** |
+| 2 | c = 0.021 | 3 of 36 = 8.3 % | 2 of 36 = 5.6 % | +1 | PASS (cut) · ⛔ **FAIL** (over-dug) |
+| 2 | c = 0.024 | 3 of 36 = 8.3 % | 2 of 36 = 5.6 % | +1 | PASS · ⛔ **FAIL** |
+| 2 | c = 0.027 | 2 of 35 = 5.7 % | 2 of 35 = 5.7 % | **0** | PASS · ✓ **PASS** |
+| 3 | delivered | **9 of 30 = 30.0 %** | **10 of 30 = 33.3 %** | **−1** | cut 8.3 % · over-dug **7.5 %** |
+| 3 | c = 0.021 | 2 of 15 = 13.3 % | 1 of 15 = 6.7 % | +1 | PASS · ⛔ **FAIL** |
+| 3 | c = 0.024 | 2 of 15 = 13.3 % | 1 of 15 = 6.7 % | +1 | PASS · ⛔ **FAIL** |
+| 3 | c = 0.027 | 2 of 15 = 13.3 % | 1 of 15 = 6.7 % | +1 | PASS · ⛔ **FAIL** |
+
+> ⛔ **REFUTED (1): "Δ is +1 on every candidate row and +2 on the delivered — the redefinition
+> adds a CONSTANT."** That was seed 1. On the delivered field Δ is **+2, 0 and −1**. There is no
+> constant offset, and there is no monotone direction either.
+>
+> ⛔ **And the −1 is the most useful number this round produced.** On seed 3's delivered field a
+> body has **cut > 50 m, rim p50 > 30°, and fill ≤ 50 m**: a deep, steep-walled valley the
+> drainage runs straight through, which the CUT gate counted as a canyon. **That is exactly the
+> landform the author said the gate must never kill — and the old gate was killing one.** Control
+> 2 showed the discriminant spares a river; this shows the old instrument did not.
+>
+> ⛔ **REFUTED (2): "the redefinition does not move Finding 106's answer, it strengthens it."**
+> Under the redefined gate the three-seed intersection is **EMPTY**: seed 1 {0.027}, seed 2
+> {0.027}, seed 3 {}. Under the cut gate all twelve rows pass. **The redefinition closes Finding
+> 106's window**, which is what Finding 103 found for the calibrated factor — and I had just
+> written the opposite, on one seed.
+>
+> ⚠️ **What survives of the rule-16 objection, and it is not settled.** On seed 1 the candidate
+> class was **100 % below-sea basins** while the denominator was **67 % ordinary lakes** — the
+> rate compares different populations, so an "empty intersection" read off it may be that artefact
+> rather than a defect. **The composition on seeds 2 and 3 is NOT measured** (`f107_transfer` does
+> not dump). Until it is, the empty intersection is a fact about the RATE, not about the terrain.
+>
+> ⚠️ **And seed 3 is decided by one body again**: 2 of 15 = 13.3 % against a gate of 7.5 %, i.e.
+> a budget of **1.1 bodies**. Two against one, on a denominator of fifteen.
+
+### Finding 107-D — the panels were rendered, and the FIRST ONE OPENED refuted the round's own column
+
+The author asked where the bodies of the À VALIDER list could be looked at. The honest answer was
+**nowhere** — the list was ids and numbers with no coordinate — so `f107_eye` was written to
+produce a locator, a per-body hillshade, the discriminant drawn as a field, and the footprint mask,
+all on the **gate's own captured footprints** rather than a re-derived inventory.
+
+⛔ **The first panel opened was `delivered_body1000001_fill.png`, a body this round scored at
+237.97 m, and it came out BLACK.** No basin. Thin filaments, on a local ramp whose own printed
+range was `0 .. 427.83 m` — so the bright pixels existed and were threadlike.
+
+**The cause is my statistic, and it is the campaign's own recurring defect.** The gate reads
+`max(filled − raw)` over the footprint. That is the LITERAL reading of *"le fond est creusé de
+> 50 m sous son propre col"* — over a body flooded to a flat sill, `filled` is constant and `raw`
+is least at the floor, so the max IS sill-minus-floor. **But it is a ONE-CELL statistic**, and
+where a footprint is not one closed depression — a below-sea basin draining to the ocean has no
+sill at all — it reports an unrelated pit that happens to lie inside it.
+
+`deep share` — the percentage of the body's cells more than 50 m below its sill — is the control
+the picture demanded:
+
+| body | km² | cut p50 | **fill MAX** | **fill p50** | **deep share** | rim |
+|---|---|---|---|---|---|---|
+| **the twelve ordinary lakes** (ids 1–56) | 5.0–53.2 | 146–862 m | 126–1 197 m | **53–875 m** | **52.6 – 98.2 %** | 30.1–74.9° |
+| 1000015 | 559.63 | 158.31 | 360.21 | **0.00** | **12.8 %** | 42.7° |
+| 1000007 | 605.36 | 172.84 | 221.17 | **0.00** | **10.2 %** | 31.9° |
+| 1000012 | 757.43 | 34.16 | 277.29 | **0.00** | **1.0 %** | 30.7° |
+| 1000014 | 288.27 | 252.80 | 214.93 | **0.00** | **0.6 %** | 43.4° |
+| 1000009 | 305.57 | 78.04 | 122.46 | **0.00** | **0.3 %** | 31.0° |
+| 1000001 | 660.79 | 3.40 | 237.97 | **0.00** | **0.2 %** | 31.0° |
+
+> ⛔ **The population separates by a factor of three and a gap, not by a threshold.** Every
+> ordinary lake lies **52.6 % to 98.2 %** deep; every below-sea basin lies **0.2 % to 12.8 %**
+> deep with a **fill p50 of exactly 0.00 m**. Any cut between 17 % and 52 % gives the same answer.
+> Unlike the 30.0° rim and the 50 m fill, this is NOT a threshold read at the resolution of its own
+> quantity.
+>
+> ⛔ **THREE OF THIS ROUND'S CLAIMS FALL, and the corrections all point the same way.**
+>
+> 1. **"The class does not shrink, it GROWS to 18"** — ✗. The two added bodies, **1000001 (0.2 %)
+>    and 1000012 (1.0 %)**, are the max crossing a filament. Read robustly the delivered over-dug
+>    class is **12**, all of them ordinary lakes.
+> 2. **"It is a WIDENING, which the author has to rule on"** — ✗, and the À VALIDER item built on
+>    it was pointing the author at an artefact. **It is a NARROWING**: the cut class of 16 is
+>    **12 ordinary + 4 below-sea** (1000007, 1000009, 1000014, 1000015 — every one with fill p50
+>    `0.00`), and the redefinition removes those four. Which is exactly what seed 3's **Δ = −1**
+>    showed independently at Finding 107-B: **the cut gate has false positives, and they are
+>    below-sea basins**.
+> 3. **"Under the redefined gate the three-seed intersection is EMPTY" (Finding 107-B)** — ✗. The
+>    residual class in the candidates is the SAME artefact: at c = 0.027 the two survivors read
+>    **0.3 % and 16.3 %** deep, fill p50 `0.00` both. **Read robustly the candidate over-dug class
+>    is ZERO**, and the gate passes with nothing in it.
+>
+> ⇒ **The corrected result, seed 1: the closure takes the over-dug class from TWELVE to ZERO**,
+> and the rule-16 objection raised at Finding 107 — that numerator and denominator were different
+> populations — was right, but understated: the candidate numerator was not a different
+> population, it was **not a population at all**.
+>
+> ⚠️ **NOT measured, and not claimed**: the deep share on seeds 2 and 3. Finding 107-B's table was
+> computed with `max`, so every one of its rows inherits this defect and **its verdict column must
+> not be read**. The 12 → 0 result is seed 1 only.
+>
+> ⚠️ **The definition is not wrong; it is under-specified.** *"Le fond sous son propre col"*
+> presupposes a closed depression, and a below-sea basin draining to the ocean has no col. The
+> question for the author is whether the class should be restricted to bodies that ARE closed
+> depressions — which the deep share tests directly — or whether below-sea basins should be
+> excluded by kind before the geometry is read at all.
+
+### The panels — `docs/reports/c1_continental_buoyancy/f107_eye/`
+
+Rule 14b: every ramp is LOCAL and its metres-per-code is printed at write time.
+
+> ⛔ **And the third defect is the one rule 14b was written against: for three renderings the
+> calibration line was a FICTION.** `GridF32::save_png_u8` clamps to `0..1` and multiplies by 255;
+> it does not stretch. The fill grids are in NORMALISED altitude, so a hollow 875 m below its sill
+> wrote code **20** instead of 186 — the discriminant rendered at a thirteenth of its dynamic
+> range — while the console printed `1.539 m/code`. **A renderer that states a calibration it does
+> not perform is worse than an uncalibrated one, because the statement is what a reader trusts.**
+> Fixed by normalising to the crop's own min/max before writing.
+>
+> ⚠️ This also weakens, without overturning, how Finding 107-D was FOUND: "the first panel opened
+> came out black" was partly this bug. **The substance stands on the deep-share numbers, which are
+> measured on the field and owe nothing to the renderer** — fill p50 `0.00 m` on all six below-sea
+> basins against 53–875 m on the twelve ordinary lakes.
+
+**Two further framing defects were found the same way, by opening the output rather than by
+reasoning about it**, and both are the
+same failure in miniature: selecting the zooms BY AREA gave six panels of which not one was an
+ordinary lake — the entire real class had no image — and a fixed 50 km frame left body 1 filling
+**1.3 %** of its own picture. The selection is now three by area AND three by deep share (disjoint
+populations here), and the frame scales to its body.
+
+| file | what it shows |
+|---|---|
+| `{delivered,c0.027}_locator.png` | the continent in Finding 97's hillshade, over-dug bodies burnt **white**, cut-only **black** — where to look |
+| `*_fill_global.png` | `filled − raw` over the whole field (delivered `7.311 m/code`, c0.027 `4.436`) |
+| `*_body<id>_hillshade.png` | **frame scaled to the body** (~3 body-widths: 17 km for a 33 km² lake, 75 km for a 757 km² basin) — whether a 30.1° rim is a wall or a ramp |
+| `*_body<id>_fill.png` | **the discriminant drawn**; black is through-cut, bright is deep below its own sill |
+| `*_body<id>_mask.png` | the exact footprint the gate scored |
+
+⚠️ **The ids are not stable between rows; the CENTRES are.** Delivered `1000015` (3564, 5955) is
+c0.027's `1000017` (3571, 5939); delivered `1000014` (2653, 5768) is c0.027's `1000016` (2649,
+5765). **The two survivors at c = 0.027 are geographically two of the delivered field's six
+below-sea basins** — which, per 107-D, are not over-dug at all.
+
+### À VALIDER VISUELLEMENT — corrected by 107-D: the artefact is gone, one question remains
+
+⛔ **The previous list is WITHDRAWN.** It asked the author to rule on bodies 1000001 and 1000012 as
+a "widening" of the class; Finding 107-D shows they are a one-cell maximum crossing a filament
+(deep share 0.2 % and 1.0 %, fill p50 `0.00 m`). **Asking for a look at an artefact wastes the one
+instrument the dossier cannot automate.**
+
+What is genuinely worth an eye, with its file:
+
+1. **One ordinary over-dug body, to confirm the class is real** — body **1** (33.44 km², deep share
+   **98.2 %**, rim 74.9°) in `delivered_locator.png`, or body **30** at the class boundary (52.6 %,
+   rim 30.1°). If these read as over-dug hollows, the twelve are the class and 12 → 0 is the result.
+2. **`delivered_body1000015_fill.png` and `..._hillshade.png`** — the below-sea basin with the
+   HIGHEST deep share (12.8 %) and a 42.7° rim, i.e. the hardest case for the exclusion. If it
+   reads as a real basin rather than a hollow, the rule "below-sea basins are not in the class" is
+   confirmed at its worst point rather than its easiest.
+3. **`c0.027_locator.png` against `delivered_locator.png`** — the whole point, side by side: twelve
+   white bodies against none.
 
 **Unchanged and still asked, seventh round: no real coastline raster.**

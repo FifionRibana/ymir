@@ -1413,10 +1413,22 @@ pub fn f95_criteria(
         // its bed whatever its depth, so it scores 0 and is not in the class — which is what must
         // hold the day an uplift or a glaciation digs a real one.
         let cuts: Vec<f32> = cells.iter().map(|&k| m(&pre, k) - m(&bf, k)).collect();
-        let fill = cells
-            .iter()
-            .map(|&k| (pre_d.flow.filled.data[k] - f.data[k]) * n2m)
-            .fold(0.0f32, f32::max);
+        let fills: Vec<f32> =
+            cells.iter().map(|&k| (pre_d.flow.filled.data[k] - f.data[k]) * n2m).collect();
+        // ⚠️ ADR Finding 107-D -- `max` is the LITERAL reading of "the floor below its
+        // OWN sill": over a body flooded to a flat sill `filled` is constant and `raw` is
+        // least at the floor, so `max(filled - raw)` IS sill-minus-floor. **But it is a
+        // ONE-CELL statistic**, and this campaign has now been bitten three times by a
+        // threshold read at the resolution of its own quantity. If a footprint is NOT one
+        // closed depression -- a below-sea basin draining to the ocean, say -- `max` reports
+        // an unrelated pit that happens to lie inside it.
+        //
+        // `share` is the control THE FIRST RENDERING DEMANDED: body 1000001 scored 237.97 m
+        // and its fill zoom came out BLACK -- no basin, thin filaments. The deep share is the
+        // fraction of the body actually lying below its sill, which separates a real hollow
+        // (a blob) from a filament the max crossed.
+        let fill = fills.iter().copied().fold(0.0f32, f32::max);
+        let share = 100.0 * fills.iter().filter(|&&v| v > 50.0).count() as f32 / fills.len() as f32;
         let inside: HashSet<usize> = cells.iter().copied().collect();
         let mut ring: HashSet<usize> = HashSet::new();
         for &k in &cells {
@@ -1439,13 +1451,26 @@ pub fn f95_criteria(
             klass += 1;
         }
         if dump {
+            BODIES.lock().expect("bodies").push(Body {
+                id: l.base.id,
+                cells: cells.clone(),
+                km2: cells.len() as f32 * cell_km2,
+                cut: median(&cuts),
+                fill,
+                share,
+                rim: if rim.is_empty() { 0.0 } else { median(&rim) },
+                is_cut,
+                is_dug,
+            });
             eprintln!(
-                "     body {:>7} · {:>8.2} km² · cut p50 **{:>8.2} m** · fill **{:>8.2} m** · rim \
-                 p50 {:>5.1}° ⇒ cut {} / over-dug {}",
+                "     body {:>7} · {:>8.2} km² · cut p50 **{:>8.2} m** · fill max **{:>8.2} \
+                 m** · fill p50 {:>7.2} m · **deep share {:>5.1} %** · rim p50 {:>5.1}° ⇒ cut {} / over-dug {}",
                 l.base.id,
                 cells.len() as f32 * cell_km2,
                 median(&cuts),
                 fill,
+                median(&fills),
+                share,
                 median(&rim),
                 if is_cut { "YES" } else { " no" },
                 if is_dug { "YES" } else { " no" },
@@ -1537,6 +1562,34 @@ static DUMP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(
 /// Turn the Finding 107 per-body dump on.
 pub fn set_dump(on: bool) {
     DUMP.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// ADR Finding 107 — one scored body, with the FOOTPRINT the gate used.
+///
+/// The author asked where the bodies the round talks about can be LOOKED AT, and the honest
+/// answer was "nowhere": the À VALIDER list was ids and numbers with no coordinate. A renderer
+/// that re-derives its own inventory would draw a different set of bodies from the one the gate
+/// scored (Finding 101-B: 26 against 29), so the footprints are captured HERE, inside the scoring
+/// loop, and handed to the renderer verbatim.
+pub struct Body {
+    pub id: u32,
+    pub cells: Vec<usize>,
+    pub km2: f32,
+    pub cut: f32,
+    pub fill: f32,
+    /// ADR Finding 107-D -- percentage of the body's cells lying more than 50 m below its sill.
+    /// The control on [`Body::fill`], which is a ONE-CELL maximum.
+    pub share: f32,
+    pub rim: f32,
+    pub is_cut: bool,
+    pub is_dug: bool,
+}
+
+static BODIES: std::sync::Mutex<Vec<Body>> = std::sync::Mutex::new(Vec::new());
+
+/// Drain the bodies captured by the last dumping `f95_criteria` call.
+pub fn take_bodies() -> Vec<Body> {
+    std::mem::take(&mut BODIES.lock().expect("bodies"))
 }
 
 /// Finding 95's criteria, as one row of table C.
