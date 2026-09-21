@@ -126,6 +126,17 @@ pub struct HdParams {
     /// Finding 74 terminal table. It reaches `eroded_key`, so lakes and rivers are
     /// re-derived and not served from cache (asserted in `base_level_floor.rs`).
     pub base_level_off: bool,
+    /// **ADR 0001 Finding 109 — "Âge du continent" (the absolute constant).** `None` (default) =
+    /// the delivered world, byte-identical. `Some(s_eq)` = A1 + the absolute slope floor, ONE
+    /// incision, no calibration pass.
+    ///
+    /// Only Finding 106's measured window is offered: **{0.021, 0.024, 0.027}**, 0.024 being its
+    /// middle. Outside it nothing was measured, on any seed, under either class definition.
+    ///
+    /// ⚠️ Like [`HdParams::base_level_off`] it reaches `eroded_key`, so flipping it re-derives the
+    /// eroded field AND the drainage: lakes, rivers, biomes and spillways are recomputed, not
+    /// redrawn from a cache entry belonging to the other terrain.
+    pub slope_floor_s_eq: Option<f32>,
     /// EXPERIMENTAL: override the FBM `amplitude_base` for this run (`None` = the
     /// production 0.16). Lets the author flip through the striation amplitude ladder
     /// (0.16/0.08/0.04/0.02) with stream-power ON to see the striations shrink.
@@ -186,6 +197,8 @@ impl Default for HdParams {
             closures: true,
             cross_rill: false,
             cross_rill_d: 0.40,
+            // ADR Finding 109 — the age closure is OFF by default. Nothing is promoted.
+            slope_floor_s_eq: None,
             mfd: true,
             mfd_p: 2.0,
             base_level_m: None,
@@ -522,6 +535,18 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // `base_level_floor.rs`), so flipping the box re-derives the eroded field AND,
     // through `eroded_key`, the drainage: lakes and rivers are recomputed, not just the
     // raster.
+    // ADR Finding 109 — the absolute floor, as a config value rather than a knob edit: the
+    // branch lives in `upscale_from_c1`, so the viz and the bench reach the SAME code path.
+    upscale.slope_floor = params
+        .slope_floor_s_eq
+        .map(|s_eq| ymir_core::terrain::upscale::SlopeFloor::Absolute { s_eq });
+    if let Some(s_eq) = params.slope_floor_s_eq {
+        eprintln!(
+            "[HD] AGE OF THE CONTINENT ON (ADR Finding 109): absolute slope floor S_eq = \
+             {s_eq}·A^(-1/2) + A1. Window {{0.021, 0.024, 0.027}} (Findings 106/108). Lakes, \
+             rivers and biomes are re-derived."
+        );
+    }
     if let Some(sp) = upscale.stream_power.as_mut() {
         if params.base_level_off {
             sp.base_level_floor = None;

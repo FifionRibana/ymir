@@ -255,6 +255,11 @@ struct WorkspaceState {
     /// damp the Smith–Bretherton comb; `cross_rill_d` is its coefficient.
     cross_rill: bool,
     cross_rill_d: f32,
+    /// ADR 0001 Finding 109 -- "Age du continent": the absolute slope floor toggle.
+    /// `false` = the delivered world, byte-identical.
+    age_closure: bool,
+    /// Its constant, restricted to Finding 106's MEASURED window {0.021, 0.024, 0.027}.
+    age_s_eq: f32,
     /// EXPERIMENTAL (ADR 0001, Finding 11): MFD incision — dendritic valleys, no solver.
     mfd: bool,
     mfd_p: f32,
@@ -388,6 +393,8 @@ impl Default for WorkspaceState {
             stream_power: true,
             closures: true,
             cross_rill: false,
+            age_closure: false, // ADR Finding 109 -- off ships
+            age_s_eq: 0.024,    // the middle of the Finding 106 window
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
@@ -914,6 +921,7 @@ fn left_panel(
                             stream_power: ws.stream_power,
                             closures: ws.closures,
                             cross_rill: ws.cross_rill,
+                            slope_floor_s_eq: ws.age_closure.then_some(ws.age_s_eq),
                             cross_rill_d: ws.cross_rill_d,
                             mfd: ws.mfd,
                             mfd_p: ws.mfd_p,
@@ -1030,13 +1038,71 @@ fn left_panel(
                                      ⚠ Lacs et rivières sont recalculés dans les deux sens, \
                                      pas seulement le raster (Findings 81-82).",
                                 );
+                                // ADR 0001 Finding 109 — the AGE closure, on the Finding 83
+                                // toggle pattern: the box reaches `eroded_key`, so lakes, rivers,
+                                // biomes and spillways are RE-DERIVED rather than redrawn from the
+                                // other terrain's cache entry.
                                 ui.checkbox(
-                                    &mut ws.cross_rill,
-                                    egui::RichText::new("Anti-peigne (diffusion partout)").color(DIM2).size(11.0),
+                                    &mut ws.age_closure,
+                                    egui::RichText::new("Âge du continent — constante (F109)")
+                                        .color(DIM2)
+                                        .size(11.0),
                                 )
                                 .on_hover_text(
-                                    "STEP 2b (ADR 0001, Finding 9): diffusion de versant PARTOUT pour \
-                                     amortir le rilling de Smith–Bretherton. Solveur GS non convergé.",
+                                    "ADR 0001 Findings 106/108/109 — le plancher de pente ABSOLU: \
+                                     S_eq = s_eq·A^(-1/2), plus A1 (exclusion des cellules en \
+                                     dépression au moment de l'incision, F104). UNE passe, AUCUNE \
+                                     calibration, aucun étage à nommer.\n\n\
+                                     COCHER = le continent a VIEILLI: la classe sur-creusée tombe \
+                                     12 → 0 (seed 1), la part de lacs D_L > 5 va de 32 % à 0 %, R8 \
+                                     de 0,092 à 0,048.\n\n\
+                                     DÉCOCHER = le livré, AU BIT (garde sur trois seeds).\n\n\
+                                     ⚠ Lacs, rivières, biomes et spillways sont RECALCULÉS dans \
+                                     les deux sens — la clé de cache contient s_eq — pas seulement \
+                                     le raster.\n\n\
+                                     ⚠ RIEN N'EST PROMU: relief_v3 est inchangé, le défaut est \
+                                     décoché.",
+                                );
+                                if ws.age_closure {
+                                    // ⚠️ The measured WINDOW and nothing else. Outside
+                                    // {0.021, 0.024, 0.027} no row was measured, on any seed,
+                                    // under either class definition — a free slider here would
+                                    // invite exactly the extrapolation Findings 106-108 refused.
+                                    let sv = [0.021f32, 0.024, 0.027];
+                                    let sc = sv
+                                        .iter()
+                                        .position(|&v| (v - ws.age_s_eq).abs() < 1e-6)
+                                        .unwrap_or(1);
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("s_eq").color(DIM2).size(11.0),
+                                        )
+                                        .on_hover_text(
+                                            "La FENÊTRE mesurée (F106, relue au F108 sous la \
+                                             classe différentielle) — non vide sur les trois \
+                                             seeds. 0,024 en est le milieu. Rien n'est offert en \
+                                             dehors: aucune ligne n'y a jamais été mesurée.",
+                                        );
+                                        if let Some(i) =
+                                            seg_row(ui, &["0.021", "0.024", "0.027"], sc)
+                                        {
+                                            ws.age_s_eq = sv[i];
+                                        }
+                                    });
+                                }
+                                ui.checkbox(
+                                    &mut ws.cross_rill,
+                                    egui::RichText::new("cross_rill (GS non convergé, F9)").color(DIM2).size(11.0),
+                                )
+                                .on_hover_text(
+                                    "STEP 2b (ADR 0001, Finding 9) — `cross_rill`: diffusion de \
+                                     versant PARTOUT (on abandonne l'exclusion des chenaux du split \
+                                     de régime) pour amortir le rilling de Smith–Bretherton.\n\n\
+                                     ⚠ RENOMMÉE au F109. Elle s'appelait « Anti-peigne », ce qui \
+                                     décrivait une INTENTION et non le code: l'ADR L15258 enregistre \
+                                     que cette case lie la branche de versant GAUSS-SEIDEL NON \
+                                     CONVERGÉE (F9), une troisième chose. Le peigne, lui, est traité \
+                                     à sa cause par relief-v3 (MFD).",
                                 );
                                 if ws.cross_rill {
                                     let dv = [0.25f32, 0.40, 0.55];
@@ -1979,6 +2045,7 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         stream_power: false, // preview is coarse-only; SP applies to the HD run
         closures: false,
         cross_rill: false,
+        slope_floor_s_eq: None, // ADR Finding 109
         cross_rill_d: 0.40,
         mfd: false,
         mfd_p: 2.0,
@@ -4430,6 +4497,7 @@ mod spillway_typing_bench {
             stream_power: true,
             closures: true,
             cross_rill: false,
+            slope_floor_s_eq: None, // ADR Finding 109
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
@@ -4594,6 +4662,7 @@ mod network_fragmentation_bench {
             stream_power: true,
             closures: true,
             cross_rill: false,
+            slope_floor_s_eq: None, // ADR Finding 109
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,

@@ -131,13 +131,21 @@ pub fn eroded_key_full(
     // that struct silently conditions the calibration**, and it is reachable only through
     // `slope_floor_factor`. Appended CONDITIONALLY — the volcanism/lithology/fracture pattern —
     // so every key of every run shipped to date is byte-identical.
-    if upscale_cfg.slope_floor_factor.is_some() {
+    let key = if upscale_cfg.slope_floor_factor.is_some() {
         key.with_debug(
             "calib_drainage",
             &crate::tectonics_c1::drainage::C1DrainageConfig::default(),
         )
     } else {
         key
+    };
+    // ADR Finding 109 -- the absolute floor changes the TERRAIN, so it must change the key, or a
+    // toggled-on run would be served the toggled-off drainage: lakes, rivers, biomes and
+    // spillways drawn from a cache entry belonging to a different continent. Conditional, so
+    // every key written by every run to date (`slope_floor: None`) is byte-identical.
+    match upscale_cfg.slope_floor {
+        Some(sf) => key.with_debug("slope_floor", &sf),
+        None => key,
     }
 }
 

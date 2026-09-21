@@ -511,25 +511,45 @@ pub fn upscale_from_c1_with_progress(
                 &mut |_, _| {},
             )
         };
-        result.heightmap = match cfg.slope_floor_factor {
-            // ADR Finding 105 -- the TWO-PASS bootstrap. Pass 1 IS the un-closured incision and is
-            // byte-identical to the `None` branch; `k_s` is measured on its output and pass 2
-            // re-incises the SAME input with the closure configured from it.
-            Some(factor) if factor > 0.0 => {
-                let delivered = once(&result.heightmap, sp);
-                let k_s = flint_intercept(
-                    &delivered,
-                    ss,
-                    sp.sea_level,
-                    sp.cell_km * sp.cell_km,
-                    volcanism.domain_km,
-                );
+        // ADR Finding 109 -- the ABSOLUTE floor. It takes precedence over Finding 105's
+        // calibrated factor when both are set, because it is the one with a measured window
+        // ({0.021, 0.024, 0.027} on three seeds, Findings 106/108). It is ONE call to `once`,
+        // exactly like the `None` branch, with two knobs pre-set: there is no pass 1 and
+        // therefore no intermediate stage for a bench to fail to reproduce -- which is precisely
+        // what sank the two-pass form at Finding 105.
+        let absolute = match cfg.slope_floor {
+            Some(crate::terrain::upscale::SlopeFloor::Absolute { s_eq }) if s_eq > 0.0 => {
+                Some(s_eq)
+            }
+            _ => None,
+        };
+        result.heightmap = match (absolute, cfg.slope_floor_factor) {
+            (Some(s_eq), _) => {
                 let mut closed = sp.clone();
-                closed.slope_floor_uk = Some(k_s * factor);
-                closed.depression_floor = true;
+                closed.slope_floor_uk = Some(s_eq);
+                closed.depression_floor = true; // A1, ADR Finding 104
                 once(&result.heightmap, &closed)
             }
-            _ => once(&result.heightmap, sp),
+            _ => match cfg.slope_floor_factor {
+                // ADR Finding 105 -- the TWO-PASS bootstrap. Pass 1 IS the un-closured incision and is
+                // byte-identical to the `None` branch; `k_s` is measured on its output and pass 2
+                // re-incises the SAME input with the closure configured from it.
+                Some(factor) if factor > 0.0 => {
+                    let delivered = once(&result.heightmap, sp);
+                    let k_s = flint_intercept(
+                        &delivered,
+                        ss,
+                        sp.sea_level,
+                        sp.cell_km * sp.cell_km,
+                        volcanism.domain_km,
+                    );
+                    let mut closed = sp.clone();
+                    closed.slope_floor_uk = Some(k_s * factor);
+                    closed.depression_floor = true;
+                    once(&result.heightmap, &closed)
+                }
+                _ => once(&result.heightmap, sp),
+            },
         };
     }
 

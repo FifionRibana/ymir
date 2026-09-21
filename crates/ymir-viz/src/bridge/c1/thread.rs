@@ -205,6 +205,7 @@ mod tests {
                     stream_power: false,
                     closures: false,
                     cross_rill: false,
+                    slope_floor_s_eq: None, // ADR Finding 109 — None is the delivered world
                     cross_rill_d: 0.40,
                     mfd: false,
                     mfd_p: 2.0,

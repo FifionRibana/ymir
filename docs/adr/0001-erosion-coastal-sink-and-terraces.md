@@ -7011,6 +7011,30 @@ because nothing else in this dossier has more than two:
 
 Four routes, one object, and no free parameter shared between them.
 
+### Method rule 18 — a closure REVEALS the defects the defect it fixed was masking
+
+Earned three times before it was written, and written only after the third cost a whole round.
+
+| round | what the closure fixed | what "appeared" | what it actually was |
+|---|---|---|---|
+| **Finding 96 → 97** | the coastal fringe (χ floor) | a **D8 comb** in the terrain, read off the image as the floor's doing | **the DELIVERED field's own comb**, at R8 0.0924; the χ floor read 0.0617, i.e. *less* combed. Finding 96 read its own image backwards |
+| **Finding 97** | — | the "wall" at k_time ×1.5 | withdrawn at Finding 98: not a wall |
+| **Finding 109 → 111** | the over-dug depressions (12 → 0) | a **comb on the river layer**, 384 → 667 rivers | the terrain on that tile was **already anisotropic without the closure** (R8 0.1501 → 0.1532, +0.003), and the network sits on a D8 grid that was always there |
+
+> **The rule.** A closure that removes a dominant defect does not create the defects that become
+> visible afterwards; it **stops masking them**. Before attributing anything to a closure, measure
+> the same quantity with the closure OFF on the same tile. If the OFF value is already high, the
+> closure is a witness, not a cause.
+>
+> The cost of not having this rule is measured: Finding 96 spent a round concluding the χ floor
+> "prints D8 into the terrain" and Finding 97 had to build an anisotropy instrument to withdraw
+> it; Findings 110–111 spent two rounds on a river comb whose terrain component pre-dated the
+> closure by construction.
+>
+> ⚠️ **The converse is not licensed.** "It was already there" does not mean "it is harmless" —
+> Finding 111's D8 signature is real and 12× the isotropic floor. It means the OWNER is elsewhere,
+> and the closure's own ledger must not be charged for it.
+
 ### Method rule 11 — interrogate the dossier before measuring, and grep the IDENTIFIER, not the symbol
 
 `A_c` sub-cell at 2.6 and 42 cells, and the base-level attractor for want of an uplift term, were
@@ -17241,3 +17265,232 @@ is then against the wrong stage. If it is not meant to contain it, the archetype
 **The measurement cannot choose; it can only say the two answers differ by 623.54 m.**
 
 **Unchanged and still asked, eighth round: no real coastline raster.**
+
+## Finding 109 — the constant ships as a gated TOGGLE, and it passes the bit-test Finding 105 failed
+
+**Author's round: wire the constant closure as a gated toggle for the viz and LL — the Finding 82
+path — with no promotion.** `relief_v3` unchanged, default off, byte-identical.
+
+### What is wired
+
+`FbmUpscaleConfig::slope_floor: Option<SlopeFloor>` with one variant, `Absolute { s_eq }`. An enum
+rather than a bare `Option<f32>` **because the campaign has two live candidates for the same
+closure and they are not interchangeable**: this constant, and Finding 105's self-calibrating
+`slope_floor_factor`, which needs the finished terrain before it can configure itself. Naming the
+shape in the type stops a config file confusing them. The production branch is **one call to
+`once`**, exactly like the `None` branch, with `slope_floor_uk = s_eq` and `depression_floor = true`
+(A1, Finding 104) pre-set — no pass 1, no stage to name.
+
+The digest entry is **conditional** (the volcanism/lithology/fracture pattern), so every key ever
+written is byte-identical and flipping the box re-derives lakes, rivers, biomes and spillways
+instead of drawing a stale drainage over a new terrain. The viz box is *"Âge du continent —
+constante (F109)"*, off by default, with `s_eq` restricted to the **measured window**
+`{0.021, 0.024, 0.027}` — a free slider there would invite exactly the extrapolation Findings
+106–108 refused.
+
+**And the neighbouring box is renamed**: *"Anti-peigne (diffusion partout)"* → **`cross_rill (GS non
+convergé, F9)`**. The old label described an intention, not the code: ADR L15258 records that it
+binds the **non-converged Gauss-Seidel hillslope branch**, a third thing, while the comb is handled
+at its cause by relief-v3's MFD.
+
+### The guards — green, on three seeds, and guard 2 is the one that matters
+
+| | seed 1 | seed 2 | seed 3 |
+|---|---|---|---|
+| **1 · `None` == delivered** | `316ca8f727ca6f62` ✓ | `c59f23b0e088ca55` ✓ | `28b526cd841de61e` ✓ |
+| **2 · `Absolute(0.024)` == the bench at c = 0.024** | ✓ **0 cells differ** | ✓ **0 cells** | ✓ **0 cells** |
+| **3 · `Absolute(0.024)` != delivered** | 62 621 232 cells | 60 794 885 | 62 538 541 |
+
+> ⛔ **Guard 2 is the test Finding 105's two-pass form FAILED** — 5.9 / 7.8 / 6.6 M cells differing,
+> because the calibration reads an intermediate stage no bench knob reproduces. **A constant has no
+> calibration pass, therefore no stage to misalign**, and the prediction that it would pass is
+> confirmed on all three seeds at zero cells.
+>
+> **Guard 3 exists because guards 1 and 2 are jointly vacuous without it**: a branch that never
+> fires would make both hashes equal `delivered` and both guards pass.
+
+### The Finding 108 gates, re-read on the PRODUCTION output
+
+Seed 1, `s_eq = 0.024`: Δ class **0** of 29 · coast **+1** · D_L > 5 **0 %** · R8 **0.0484** ·
+components **20** · largest catchment **9 830 km²** · lakes **19.32 %** · `to_nothing` **0**. Every
+number reproduces the bench at the digit, which is what guard 2 predicts by construction.
+
+### ⛔ The cost is NOT measurable on this machine, and I reported it wrongly twice
+
+| attempt | seed 1 | seed 2 | seed 3 |
+|---|---|---|---|
+| during the guard run (concurrent compile) | +1.8 s | +17.3 s | +15.2 s |
+| "clean", three alternating rounds, seed 1 | **+2.8 s** | **−4.1 s** | **−46.5 s** |
+
+> The third round reports the toggled build **46.5 s FASTER** than the delivered one, which is
+> physically impossible: the toggle adds a `max` inside an existing loop and removes nothing. The
+> spread among three supposedly identical DELIVERED builds is **14.4 s**, and one of them ran in
+> 88.4 s against 149.3 s for another.
+>
+> ⇒ **The wall-clock cost is unmeasured.** I first reported +15 to +17 s as if real, then reported
+> "+2.8 / −4.1, within noise, prediction confirmed" after two of three rounds — both premature.
+> What can be said without a clock: the branch performs **one incision, not two**, which is the
+> whole structural difference from Finding 105's +56 to +79 s.
+
+### The exports, and the coast table says something the eroded field does not
+
+`exports/f109_age/`, seed 1, 8192², two files (`SHIPPED` and `AGE_F109_s0.024`) — two rather than
+the one asked for, because every line of the author's looking instruction is comparative and an A/B
+in LL needs two files.
+
+| detector / field | SHIPPED | AGE (s_eq 0.024) |
+|---|---|---|
+| ≥ 1 km · **eroded** | 18 spurs, 1 606 km, 10.57 % | 17, 1 588 km, 10.58 % |
+| ≥ 2 cells · **eroded** | 9, 7.25 % | 11, 7.31 % |
+| ≥ 1 km · **breached (EXPORTED)** | **201**, 2 536 km, **28.46 %** | **21**, 1 615 km, **10.84 %** |
+| ≥ 2 cells · **breached (EXPORTED)** | **832**, **25.82 %** | **63**, **8.67 %** |
+
+> ⛔ **On the eroded field the two worlds are the same (18 against 17). On the BREACHED field — the
+> one the export ships and the author opens — the closure takes spurs 201 → 21 and 832 → 63.**
+> Every gate of Findings 95–108 reads the eroded field; the object the author looks at is the other
+> one. Same stage dissociation as Finding 108's archetype (Δ 0.02 m eroded against 623.56 m
+> breached), now at continental scale.
+>
+> ⚠️ Two reservations posted with the result: `≥ 2 cells · AGE breached` reads **R = 1.000** exactly
+> on **63** spurs — a perfect anisotropy on that count is more likely degenerate than real, and is
+> not claimed. And these are **different instruments** from Finding 105's "≥ 2 cells"
+> (`coast_shape_thresholds` here, `coast_spurs` there, different field): **832 is not compared to
+> that round's 2 448–3 343.**
+>
+> Beside it: lakes **58 → 36**, Watercourse termini 2 466 → 2 855 with mouth altitude p50
+> **204.1 → 127.5 m**, the 82 that reach an ocean cell **−0.1 → −1.0 m**, max discharge
+> 1 082 → 1 169 m³/s. Cells more than 50 m below their own sill: **eroded 448 760 · breached
+> 1 140 133** — the export carries 2.5× the hollows the gates are measured on.
+
+
+## Finding 110 — the river comb is not a mat of order-1 lines: the network grows PROPORTIONALLY, most at the HIGH orders
+
+The author saw, in the viz with Finding 109 ON, **384 → 667 rivers and 60 → 38 lakes** — both
+targets — and a comb on the drainage layer. Block A was settled by the author before this bench ran:
+`cross_rill` OFF, **the comb survives**.
+
+⚠️ **Declared (rule 12)**: 8192², the export chain, `head_km2 = 0.1`, `full_tree = false`,
+`stream_km2 = 20` — **byte-for-byte the viz's own config** (`hd.rs:701-702` + the threshold
+defaults). But the viz runs at **2048²**, so the author's 384 → 667 is **not reproduced and not
+claimed**; the Δ below is this bench's.
+
+⛔ **Rule 11 found the frame already written, at Finding 65**: *"THREE incompatible answers to 'is
+there a channel here', and the one that carved the terrain is used by nothing"* — MFD
+(`mfd_accumulation`, p = 2) **carves and nothing else**; **D8** (`extract_rivers`) feeds
+`rivers.json`, Strahler, the catchments, the microscope and the viz layer; the two disagree by
+**5.25×**. Finding 11 (L583) bounded the MFD remedy on purpose: *"MFD for the incision only, **D8
+kept for rivers/lakes (blast radius contained)**"*.
+
+### The measurement
+
+| | F109 OFF | F109 ON |
+|---|---|---|
+| segments | 7 276 (7 265 Watercourse) | **11 862** (11 848) |
+| bed slope p50, order ≥ 2 | 7.24° | **3.27°** |
+| **σ(slope) p50, order ≥ 2** | 3.89° | **1.28°** |
+| below `A_c` (0.1 km²) | **0** of 7 265 | **0** of 11 848 |
+| comb tile (5120, 4096) R(network) | 0.0747 | **0.3114** |
+| comb tile **TERRAIN R8** | **0.1501** | **0.1532** |
+
+| Strahler, `full_tree = true` | OFF | ON | Δ | Δ relative |
+|---|---|---|---|---|
+| 1 | 30 082 | 38 814 | +8 732 | **+29 %** |
+| 2 | 13 697 | 17 077 | +3 380 | +25 % |
+| 3 | 5 348 | 7 832 | +2 484 | +46 % |
+| 4 | 2 988 | 5 367 | +2 379 | **+80 %** |
+| 5 | 1 095 | 2 019 | +924 | **+84 %** |
+
+> ⛔ **The round's hypothesis is refuted.** Order 1 carries **41 %** of the increase under
+> `full_tree = false` and **48 %** under `true` — stable across two configurations, so not a
+> threshold artefact — against the reviewer's *"> 70 %"* and my *"> 90 %, essentially all"*. **Both
+> wrong.** And the RELATIVE increase is largest at the HIGH orders: +80 % and +84 % at orders 4 and
+> 5 against +29 % at order 1. The network becomes denser and **more** convergent, not a comb of
+> unconnected lines.
+>
+> ⛔ **The catchment column refutes both sides too.** The reviewer predicted `A` above
+> `stream_threshold` but under 5 × A_c; I predicted 20–50 % of segments below A_c. **Zero** are
+> below A_c, and the median "order 1" catchment is **1 235 → 1 608 km²**. Nobody had the scale.
+>
+> ⛔ **And the terrain on the comb tile is already anisotropic without the closure** — R8 0.1501
+> OFF against 0.1532 ON, +0.003, on a field whose whole-field value is 0.0484. This is method
+> rule 18's third instance.
+
+### ⚠️ A retraction, mine
+
+I reported to the author that the biggest `Watercourse` — **79 669 km²** — read **Strahler 1** with
+the closure on and **5** with it off, and called it an impossibility. **It is not.** `max_by`
+returns the LAST maximum and the discriminator bench used the first; the two picked different
+fragments of the same catchment, and `clip_rivers_to_lakes` (drainage.rs:771) copies the parent's
+order onto every fragment. Scanned consistently the biggest reads **order 5** in both worlds, and
+**order 7** under `full_tree = true`. The alarm was a tie-break in my code.
+
+What does survive of the instrument caveat: **`full_tree = false` omits ~86 % of the tree** (7 265
+segments against 53 473), so Strahler order on the exported layer ranks *extracted* segments, not
+the hierarchy.
+
+
+## Finding 111 — there is no piedmont, because there is no slope: the terrain under the comb is ISOTROPIC
+
+The question: is the river comb a **D8 routing artefact** (to fix) or a **piedmont** — a regular
+slope drained by parallel channels, real geomorphology (to keep)?
+
+⚠️ **Rule 11: `piedmont`, `piémont`, `alluvial`, `fan`, and every real-world reference —
+NOTHING FOUND.** Ten rounds of "comb" and the dossier never once asked whether it was a landform.
+The question is new; the measurement is not.
+
+### ⛔ P0 — block B is not answerable as written, stated before measuring and confirmed exactly
+
+*"A D8 artefact: θ_network peaks at 0/45/90°"* — **every river point lies on the D8 grid**, so every
+consecutive step is a multiple of 45° **by construction**, in any world. Measured:
+
+| chord | 1 (0.05 km) | 8 (0.39) | 16 (0.78) | 32 (1.56) |
+|---|---|---|---|---|
+| **R8 network, continent** | **1.0000** | 0.4697 | 0.4057 | **0.3258** |
+| R8 network, comb tile | 1.0000 | 0.6922 | 0.4941 | **0.4661** |
+
+Against Finding 97's isotropic calibration of **0.0402**. ⇒ The quantisation dies with scale, and
+what is left is not noise: at **1.5 km** the comb tile's network carries a 4-axis signature **12×
+the isotropic floor**.
+
+### The number that decides, and it needs no θ
+
+> **On the comb tile the TERRAIN has no axis at all: R2 = 0.0291, H(θ) = 0.9835** (uniform = 1.0),
+> against the delivered field's own 0.029 (Finding 97). C p50 0.934, R8 0.1532, θ 76.3°.
+
+⇒ **There is no slope for channels to be parallel to.** A piedmont requires a regular slope; this
+tile has none. The round's own criterion for "D8 artefact" — network on the axes, terrain not — is
+**met**, without needing the θ comparison at all.
+
+### ⚠️ What is NOT answerable, and I failed to predict it
+
+Block A's discriminant `|θ_net − θ_terr|` is **undefined wherever the terrain is isotropic**: θ_terr
+is an angle read off noise. Over 28 land tiles (≥ 90 % land) the Spearman of R(network) against
+R8(terrain) is **0.032** — nil, not the "weak 0.2–0.45" I predicted nor the reviewer's "moderate" —
+and on the 13 high-R tiles `|Δθ|` reads p50 **61.2°**, within 20° on **8 %**. On the comb tile
+itself `|Δθ| = 12.4°`, which *satisfies* the piedmont criterion and **means nothing**, because one
+of the two angles does not exist. I predicted `|Δθ| < 20°` as though θ_terr were meaningful; that
+prediction was ill-posed in the same way block B was, and I did not catch it.
+
+### ⚠️ Two blocks I announced and did not deliver
+
+1. **The cross-slope SPACING measurement** — the discriminator between a D8 artefact and the
+   **Smith–Bretherton parallel rilling** that ADR L460 already records as **CONFIRMED** (*"on a
+   SMOOTH plane tilted 30° off the grid… rills running straight downslope, **following the slope,
+   NOT the grid axes**; v1 and v2 give the identical R = 0.19, **exonerating the solver**"*). I
+   announced it and did not write it. **So this round does not separate S–B from D8**, and S–B
+   remains a live third hypothesis that Finding 110's flattening (σ 3.89° → 1.28°) actively
+   predicts, since S–B is an instability *of smooth slopes*.
+2. **The negative control is invalid.** The tile chosen — the start of the biggest `Watercourse` —
+   is **nearly empty**: a uniform flat with network only at its edges, 19 chords at scale 32. Its
+   R2 of 0.67 supports nothing.
+
+### For the eye
+
+`docs/reports/c1_continental_buoyancy/f111_eye/comb_network.png` (network burnt over height, 25 km).
+My reading, which the author corrects: on the right, **bundles of short straight parallel strokes
+that do not merge**; on the left, ordinary dendritic drainage that converges. Both in one tile. A
+real piedmont's channels curve and join downstream; these stay straight and separate.
+
+⚠️ **I cannot supply the reference photograph** (Front Range, Death Valley, the Po plain). The
+comparison with the real world is the author's.
+

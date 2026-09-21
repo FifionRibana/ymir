@@ -121,6 +121,12 @@ pub struct Knobs {
     /// shipped form. Mutually exclusive with `slope_floor_uk` in practice (that one is the
     /// bench's manual form, with `k_s` supplied from outside).
     pub slope_floor_factor: Option<f32>,
+    /// ADR Finding 109 -- `FbmUpscaleConfig::slope_floor = Some(Absolute { s_eq })`, the GATED
+    /// TOGGLE the viz exposes. Distinct from [`Knobs::slope_floor_uk`], which sets the same
+    /// physical floor directly on `StreamPowerConfig` from the bench side: the two must produce
+    /// BIT-IDENTICAL fields, and `f109_toggle` asserts exactly that on three seeds. That
+    /// assertion is the whole point -- it is the test Finding 105's two-pass form failed.
+    pub slope_floor_abs: Option<f32>,
     /// ADR Finding 97 B2 -- `StreamPowerConfig::slope_floor_uk`: the local equilibrium-slope
     /// floor, `h_r_eff = min(h_r + S_eq(A)·dx, h_o)`. `None` = shipped.
     pub slope_floor_uk: Option<f32>,
@@ -328,6 +334,8 @@ fn build_field_inner(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>, pseed: u
         sp.slope_floor_uk = k.slope_floor_uk; // ADR Finding 97 B2
     }
     cfg.slope_floor_factor = k.slope_floor_factor; // ADR Finding 105
+    cfg.slope_floor =
+        k.slope_floor_abs.map(|s_eq| ymir_core::terrain::upscale::SlopeFloor::Absolute { s_eq }); // F109
     if k.erosion_off {
         cfg.erosion = None; // ADR Finding 105
     }
@@ -1109,6 +1117,11 @@ pub struct Aniso {
     pub r8: f32,
     /// r8 weighted by coherence, so incoherent windows cannot vote on orientation
     pub r8_w: f32,
+    /// ADR Finding 111 -- the DOMINANT axis, degrees in [0, 180): `0.5*atan2(<sin 2t>, <cos 2t>)`.
+    /// Added because Finding 111 has to ask whether the river network and the terrain point the
+    /// SAME WAY -- a piedmont has channels parallel to the slope, a grid artefact does not care
+    /// what the slope does. `r2` says how concentrated the axis is; this says where it points.
+    pub theta2_deg: f32,
 }
 
 /// Structure tensor over NON-OVERLAPPING `win`-sized windows: the population is then exactly
@@ -1179,6 +1192,11 @@ pub fn aniso(f: &GridF32, land: &[bool], win: usize) -> Aniso {
         h_theta: (hh / (nb as f64).ln()) as f32,
         r2: ((s2r / n).hypot(s2i / n)) as f32,
         r8: ((s8r / n).hypot(s8i / n)) as f32,
+        theta2_deg: {
+            let t = 0.5 * (s2i).atan2(s2r);
+            let d = t.to_degrees() as f32;
+            if d < 0.0 { d + 180.0 } else { d }
+        },
         r8_w: ((s8rw / wsum.max(1e-9)).hypot(s8iw / wsum.max(1e-9))) as f32,
     }
 }
@@ -1558,6 +1576,53 @@ pub fn f95_criteria(
 /// fill profile of the highest-discharge spillway and watercourse. The controls for the gate
 /// redefinition read the SAME `dr` the class is scored on, so they cannot drift from the gate.
 static DUMP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// **ADR Finding 108 — the FILL field, in metres, with the below-sea blindness repaired.**
+///
+/// Above sea `flow.filled` IS the per-depression spill level (ADR L14432, Finding 96). Below sea
+/// the priority flood is a no-op — it takes `h <= sea` as base level and never raises a below-sea
+/// cell — so the level comes from the Finding 85 below-sea inventory,
+/// [`BasinSummary::spill_level_m`]. Finding 107-D read `fill p50 exactly 0.00 m` on all six
+/// below-sea basins and took it for a terrain fact; it was this blindness.
+///
+/// ⚠️ **Shared deliberately.** Finding 109 needs the same fill Finding 108's gate was measured
+/// with, and Finding 101-B is the standing warning about what a re-derived instrument costs (26
+/// bodies against the table's 29, only the A/B surviving). One copy, two benches.
+///
+/// Returns `(fill_m, below_sea_mask)`.
+pub fn fill_field_m(
+    f: &GridF32,
+    on: &C1DrainageConfig,
+    ss: &SteinSteinParams,
+    dclim: &DrainageClimate,
+    domain_km: f32,
+) -> (Vec<f32>, Vec<bool>) {
+    use ymir_core::tectonics_c1::drainage::below_sea_basin_lakes_infil;
+    let n = f.width * f.height;
+    let dr = c1_drainage_windowed(f, None, on, ss, domain_km);
+    let bs = below_sea_basin_lakes_infil(f, dclim, on, ss, domain_km, None, None);
+    // `BasinSummary::id` IS the `lake_map` id (`drainage.rs`: `let id = next_id; ... lake_map[k] =
+    // id; ... basins.push(BasinSummary { id, .. })`). Going through `Lake::basin_id` resolves
+    // nothing and yields a silent, perfectly clean Delta of exactly zero -- so a miss PANICS here.
+    let spill: std::collections::HashMap<u32, f32> =
+        bs.basins.iter().map(|b| (b.id, b.spill_level_m)).collect();
+    let mut fill = vec![0.0f32; n];
+    let mut under = vec![false; n];
+    for k in 0..n {
+        let raw_m = c1_altitude_norm_to_metres(f.data[k], ss);
+        let top_m = match bs.lake_map[k] {
+            0 => c1_altitude_norm_to_metres(dr.flow.filled.data[k], ss),
+            id => {
+                under[k] = true;
+                *spill.get(&id).unwrap_or_else(|| {
+                    panic!("below-sea cell {k} carries lake id {id} with no BasinSummary")
+                })
+            }
+        };
+        fill[k] = (top_m - raw_m).max(0.0);
+    }
+    (fill, under)
+}
 
 /// **ADR Finding 108 — THE GATE. `over_dug_depression`.**
 ///

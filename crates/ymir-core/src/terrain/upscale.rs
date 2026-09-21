@@ -6,6 +6,23 @@ use serde::{Deserialize, Serialize};
 
 use super::noise::SeededNoise;
 use crate::erosion::hydraulic::ErosionConfig;
+
+/// **ADR 0001 Finding 109** — how the equilibrium-slope floor is configured, when it is.
+///
+/// One variant today. It is an enum rather than a bare `Option<f32>` because the campaign has two
+/// live candidates for the same closure and they are NOT interchangeable: the absolute constant
+/// below, and Finding 105's self-calibrating `slope_floor_factor`, which measures `k_s` on the
+/// delivered field and therefore needs the whole pipeline to run first. Naming the shape in the
+/// type stops the two being confused in a config file.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum SlopeFloor {
+    /// `S_eq = s_eq · A^(-1/2)`, with `s_eq` a **constant**, no calibration pass.
+    ///
+    /// Finding 106's window is `{0.021, 0.024, 0.027}` on three seeds and Finding 108 confirmed it
+    /// under the differential class; **0.024 is its middle**. The viz exposes those three values
+    /// and nothing else — outside the window the row was never measured.
+    Absolute { s_eq: f32 },
+}
 use crate::grid::GridF32;
 use crate::seed::WorldSeed;
 
@@ -181,6 +198,30 @@ pub struct FbmUpscaleConfig {
     /// Findings 97-104 terrain.**
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slope_floor_factor: Option<f32>,
+    /// **ADR 0001 Finding 109 — the ABSOLUTE slope floor, as a GATED TOGGLE. `None` ships.**
+    ///
+    /// Findings 97-104 built the closure `S_eq = (U/K)^(1/n) · A^(-m/n)` and measured it as an
+    /// erosion dial; Finding 105 found its self-calibrating form cannot be a configuration flag
+    /// (it needs the finished terrain to configure itself, so shipping it means producing the
+    /// world twice, +56 to +79 s against a +30 s budget); Finding 106 found an **absolute
+    /// constant** whose window `{0.021, 0.024, 0.027}` is non-empty on three seeds; Finding 108
+    /// re-read that window under the differential over-dug class and it survived intact.
+    ///
+    /// ⇒ **This is the constant form, and it has no calibration pass**: one incision, the floor
+    /// read straight out of the config. `Some(Absolute { s_eq })` sets `slope_floor_uk = s_eq`
+    /// and `depression_floor = true` (A1, Finding 104) on the shipped `relief_v3`.
+    ///
+    /// **`None` is the default and is byte-identical to the delivered field** — asserted on three
+    /// seeds in `f109_toggle.rs`, which also asserts that the `Absolute` branch reproduces the
+    /// bench at `c = 0.024` **bit for bit**. That second assertion is the one that matters: it is
+    /// the test Finding 105's two-pass form FAILED (5.9 / 7.8 / 6.6 M cells differing), and it can
+    /// only pass here because a constant has no stage to misalign.
+    ///
+    /// ⚠️ **It reaches `eroded_key`** (conditionally, so every `None` key ever written is
+    /// unchanged), which is what makes the viz re-derive lakes, rivers, biomes and spillways when
+    /// the box is flipped instead of drawing a stale drainage over a new terrain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slope_floor: Option<SlopeFloor>,
     /// **Submarine bathymetry re-map** (#submarine). When `Some`,
     /// [`upscale_from_c1`](crate::tectonics_c1::production_upscale::upscale_from_c1)
     /// re-maps the ocean floor toward the plateau→slope→abyss envelope AFTER the
@@ -256,6 +297,7 @@ impl Default for FbmUpscaleConfig {
         Self {
             incision_floor: None, // ADR Finding 96 B3 -- bench-only; None is byte-identical
             slope_floor_factor: None, // ADR Finding 105 -- None is byte-identical
+            slope_floor: None,    // ADR Finding 109 -- None is byte-identical
             target_size: 1024,
             octaves: 7,
             lacunarity: 2.0,

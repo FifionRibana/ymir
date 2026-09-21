@@ -131,60 +131,16 @@ fn dl_share(lake_map: &[u32], w: usize, h: usize, cell_km2: f32) -> f32 {
     100.0 * hi as f32 / n.max(1) as f32
 }
 
-/// **The fill field, in metres, with the below-sea blindness repaired.**
-///
-/// Above sea: `flow.filled` IS the per-depression spill level (ADR L14432, Finding 96). Below sea
-/// the priority flood is a no-op, so the level comes from the Finding 85 below-sea inventory.
-///
-/// `BasinSummary::spill_level_m` — the round's *"spill_level(bassin), les niveaux du F85"*.
-///
-/// ⚠️ **A correction to my own diagnosis, because the measurement settled it.** Seeing the first
-/// run read ~1.5 m above the floor of every delivered basin from 288 to 867 km², I concluded
-/// `C1Lake::level_m` was "a rainfall measurement, not a hollow measurement" and swapped fields.
-/// **It was not.** Keyed correctly, `spill_level_m` returns the SAME eight numbers, and the
-/// dossier already said why: ADR L11515 *"`level = spill` for exorheic; verified"* and L11636
-/// *"level / `spill_level_m`: 76.25 m / 76.25 m, by construction"*. The 1.5 m is real — the
-/// delivered field's below-sea basins are broad flat pans whose col sits a metre and a half above
-/// their floor. `spill_level_m` is kept because it is what the round names, not because the other
-/// was wrong.
-///
-/// The climate is the FIELD'S OWN (rule 12): the first run computed it once on the pre-incision
-/// field and reused it everywhere. It does not change the fill — `spill_level_m` is geometric —
-/// but the two populations being differenced must still be built the same way.
+/// ADR Finding 109 — the fill instrument moved to `common::fill_field_m` so this bench and
+/// `f109_toggle` read the SAME one. The documentation of why it exists, and the correction to my
+/// own diagnosis of `C1Lake::level_m`, live at the definition site.
 fn fill_field(
     f: &GridF32,
     on: &C1DrainageConfig,
     ss: &SteinSteinParams,
     dclim: &DrainageClimate,
 ) -> (Vec<f32>, Vec<bool>) {
-    let n = f.width * f.height;
-    let dr = c1_drainage_windowed(f, None, on, ss, DOMAIN_KM);
-    let bs = below_sea_basin_lakes_infil(f, dclim, on, ss, DOMAIN_KM, None, None);
-    // ⛔ ONE hop, not two. `BasinSummary::id` IS the `lake_map` id — `drainage.rs` does
-    // `let id = next_id; next_id += 1; … lake_map[k] = id; … basins.push(BasinSummary { id, … })`.
-    // Going through `Lake::basin_id` (the geometric region label) resolved nothing, so every
-    // lookup fell through `unwrap_or(raw_m)` and the second run printed `fill 0.00` on BOTH sides
-    // of all eight below-sea bodies — a perfect, meaningless Δ of exactly zero. A fallback that
-    // silently returns "no hollow" is the worst possible default for this gate.
-    let spill: HashMap<u32, f32> = bs.basins.iter().map(|b| (b.id, b.spill_level_m)).collect();
-    let mut fill = vec![0.0f32; n];
-    let mut under = vec![false; n];
-    for k in 0..n {
-        let raw_m = c1_altitude_norm_to_metres(f.data[k], ss);
-        let top_m = match bs.lake_map[k] {
-            0 => c1_altitude_norm_to_metres(dr.flow.filled.data[k], ss),
-            id => {
-                under[k] = true;
-                // ⚠️ A miss here must be LOUD, not a silent "no hollow": the bench asserts the
-                // basin is resolvable rather than defaulting to `raw_m`.
-                *spill.get(&id).unwrap_or_else(|| {
-                    panic!("below-sea cell {k} carries lake id {id} with no BasinSummary")
-                })
-            }
-        };
-        fill[k] = (top_m - raw_m).max(0.0);
-    }
-    (fill, under)
+    common::fill_field_m(f, on, ss, dclim, DOMAIN_KM)
 }
 
 /// One scored body, with its differential column.
