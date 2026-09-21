@@ -17494,3 +17494,104 @@ real piedmont's channels curve and join downstream; these stay straight and sepa
 ⚠️ **I cannot supply the reference photograph** (Front Range, Death Valley, the Po plain). The
 comparison with the real world is the author's.
 
+## Finding 112 — MFD is less combed and has NO TRUNK: the remedy trades the comb for the rivers
+
+**Measured, not wired.** The question Finding 111 left: the drawn network carries a 4-axis
+signature of **0.4661 at 1.5 km** against an isotropic floor of **0.0402**, over a terrain with no
+axis of its own. Is the candidate remedy — stop drawing the network on D8 — worth writing?
+
+### The round's stop-question has a "yes, but"
+
+⛔ **The remedy WAS evaluated, at the production grid, with a reason** — Finding 11, TASK 5
+(L623): *"at 8192² the D8 rivers sit in the MFD valleys (**median offset 6 m, only 18 % above a
+carved hollow**) — **acceptable**. At 2048² they diverge (30 m, 61 %)… At the 8192² production
+grid it is a minor issue."* Finding 12 (L668) restates it: *"(ii) snap D8 segments to the MFD
+thalweg (or route rivers on MFD) for the 39 % misalignment"* — the 39 % being the **2048²** figure.
+
+⚠️ **But that measured WHERE the rivers are, not WHAT SHAPE they have.** A river can sit in the
+right valley to 6 m and still be drawn as a staircase of 45° steps. Finding 111's R8 is a statement
+about form; Finding 11's 6 m is a statement about position. **The recorded dismissal does not cover
+this defect**, so the round proceeded — with the dismissal read and quoted, which is what rule 11
+is for. ⇒ My prediction *"never tried, no reasoned rejection to read"* is **partially refuted**,
+and so is the reviewer's identical one.
+
+### ⛔ P0 — two remedies under one name, and only one is reachable
+
+`mfd_accumulation` (flow.rs:866) returns a **`GridF32` accumulation field**. `grep "fn .*mfd"` over
+`ymir-core/src` returns **exactly that one function**: there is **no MFD path and no D∞ tracer in
+the crate**. MFD has no single successor per cell, so `extract_rivers` — which walks
+`flow_result.direction` — cannot consume it.
+
+1. **Threshold on MFD, trace on D8** — no new code, but the geometry still comes from eight
+   directions.
+2. **Threshold AND trace on a single-path field** — the only form that can move the shape, and it
+   does not exist.
+
+⇒ This bench measures **the FIELD**, because the field decides whether (2) is worth writing.
+
+### The discriminant: `R8(log A)`, same instrument, same windows
+
+| | **D8** | **MFD (p = 2)** | |
+|---|---|---|---|
+| **comb tile (5120, 4096)** | **R8 0.3303** · R2 0.190 · C 0.638 · H 0.9469 | **R8 0.1640** · R2 0.163 · C 0.799 · H 0.9744 | **halved** |
+| whole continent | R8 0.3317 · R2 0.032 · C 0.569 | R8 0.2391 · R2 0.032 · C 0.743 | −28 % |
+| calibration, **re-run not cited** | isotropic **0.0312** | striped 45° **0.9999** | (Finding 97: 0.0402 / 0.9999) |
+
+> **The flow field IS less axis-locked under MFD** — 0.3303 → 0.1640 on the tile that started this.
+> But **0.1640 is still 5× the isotropic floor**, so even a perfect MFD tracer would not reach an
+> isotropic network. That ceiling lands near the reviewer's hoped 0.08–0.15 and well below my
+> 0.35–0.45; ⚠️ neither prediction is properly tested, because both were about the **network** and
+> this is the **field**.
+
+### ⛔ And then the control killed it: MFD HAS NO TRUNK
+
+| | |
+|---|---|
+| cell of maximum **D8** accumulation, (5218, 3859) | **2 267 km²** |
+| **MFD** at that same cell | **4 km²** |
+| max MFD within r = 1 / 4 / 16 cells of it | **4.3 / 15.2 / 92.6 km²** |
+| the continent's maximum **MFD** cell, (3613, 3728) | **603 km²**, **1 605 cells (78 km) away** |
+
+> ⛔ **The trunk is DISSOLVED, not displaced.** MFD's largest accumulation anywhere on the
+> continent is **603 km², 27 % of D8's 2 267**, and it belongs to a different river 78 km away. At
+> the D8 trunk's own location MFD reads **4.3 km² within one cell and 92.6 km² within 16** — 4 % of
+> the D8 value. This is MFD doing exactly what MFD is for: on the flat beds Finding 110 measured
+> (σ 3.89° → 1.28°), the flow spreads over the floodplain instead of concentrating in a line.
+>
+> ⇒ **A network thresholded or traced on MFD would have no main stem.** That breaks the round's
+> own control (*"the Finding 87-A river stays a river"*), and with it `catchment_km2`,
+> navigability, `width_m`, the microscope, and Living Landz's use of `strahler_order`.
+
+### Verdict
+
+**The MFD remedy is rejected, and now with a number rather than Finding 11's deferral.** It buys
+R8 0.330 → 0.164 on the drawn network's field and pays with the continent's biggest river. The two
+things D8 is bad at and good at are the same thing: **it concentrates**. The comb is the price of
+having trunks.
+
+⚠️ **What this does NOT settle.** A tracer that thresholds on **D8** (keeping the hierarchy) while
+smoothing the *path* — the "snap to the MFD thalweg" half of Finding 12's (ii), which was never
+tried either — is untouched by this result: it changes geometry without touching concentration.
+That is the remedy the next round should price, not MFD extraction.
+
+⚠️ **And one dossier number needs care.** Finding 65 reports the two channel definitions
+disagreeing by **5.25×** (8.40 % MFD against 1.60 % D8). On this field, at the same threshold, the
+two **accumulation masks** agree to **×1.04** (13.90 % against 14.40 % of land). The difference is
+that Finding 65's 1.60 % is the **traced network** (181 360 cells), not the D8 mask — so most of
+that 5.25× is `stream_km2 = 20` and `full_tree = false`, i.e. the **extraction thresholds**, not
+the routing operator. ⚠️ Declared: different field (Finding 109 ON, not delivered), so this is a
+flag for a future round, not a refutation of Finding 65.
+
+### Prediction accountability
+
+| | verdict |
+|---|---|
+| **P0** two remedies, no tracer exists | ✓ confirmed — one `mfd` function in the whole crate |
+| grep: never tried, no reasoned rejection | ✗ **both of us** — Finding 11 evaluated it at 8192² and called it minor, for position |
+| mine: the channel count RISES ~5× | ✗ the masks agree to ×1.04 |
+| reviewer: count 667 → 500–580 | untestable — no tracer to re-extract with |
+| mine: R8 0.35–0.45 · reviewer: 0.08–0.15 | neither tested (network vs field); the field ceiling is **0.164** |
+| reviewer: Strahler ≥ 4 survives · the F87-A river stays | untestable, and the trunk control says the second would **fail** |
+
+**No production change. Nothing wired.**
+
