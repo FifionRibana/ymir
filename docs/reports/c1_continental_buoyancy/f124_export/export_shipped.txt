@@ -1,0 +1,26 @@
+==========  Finding 124-3 . does the export tell the truth?  ==========
+test f124_export has been running for over 60 seconds
+
+   (i) river cells **383516** · in more than one object **550 (0.14 %)** · object pairs sharing cells 19
+          297 cells · [Watercourse S2 4917 km² signified, mouth (3824,4757)] × [Spillway S1 286808 km² signified, mouth (3824,4757)]
+          172 cells · [Watercourse S2 4592 km² signified, mouth (4936,3051)] × [Spillway S1 393 km² signified, mouth (4936,3051)]
+           68 cells · [Watercourse S3 2272 km² signified, mouth (4623,4339)] × [Spillway S1 14081 km² signified, mouth (4623,4339)]
+            2 cells · [Watercourse S1 2272 km² signified, mouth (4623,4339)] × [Spillway S1 14081 km² signified, mouth (4623,4339)]
+            1 cells · [Watercourse S2 1084 km² signified, mouth (2996,3503)] × [Watercourse S1 1084 km² signified, mouth (2996,3503)]
+            1 cells · [Watercourse S4 30203 km² signified, mouth (3290,2702)] × [Watercourse S1 30203 km² signified, mouth (3290,2702)]
+   (ii) land **27008 km²** drawn (= 1519205 signified) · Σ catchments: watercourses **16939** (0.63× land) · spillways **22017** (0.82× land) · the biggest object Spillway **559989 km² signified = 9955 km² drawn**
+   (iv) domain diagonal **566 km drawn = 4243 km signified** · the longest trunks:
+       1173 km signified = **156 km drawn** · 63 segments, 3202 points (3188 distinct cells) · lake hops 0 · 4701 km² signified
+       1093 km signified = **146 km drawn** · 82 segments, 2984 points (2965 distinct cells) · lake hops 0 · 4592 km² signified
+       806 km signified = **108 km drawn** · 79 segments, 2202 points (2143 distinct cells) · lake hops 0 · 45511 km² signified
+       806 km signified = **108 km drawn** · 65 segments, 2202 points (2182 distinct cells) · lake hops 0 · 4917 km² signified
+       615 km signified = **82 km drawn** · 99 segments, 1679 points (1598 distinct cells) · lake hops 0 · 32267 km² signified
+   (v) blocks of river points (every 3×3 neighbour a river point), ≥ 50 cells: **118**
+       2459 cells · bbox (4818,2979)–(4876,3026) 59×48 · fill 87 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 3 % · carved 100 % · 66 segments · D8 A p50 0.16 km²
+       1124 cells · bbox (3689,4512)–(3732,4644) 44×133 · fill 19 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 0 % · carved 0 % · 36 segments · D8 A p50 0.22 km²
+       1090 cells · bbox (1384,4563)–(1488,4687) 105×125 · fill 8 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 0 % · carved 0 % · 32 segments · D8 A p50 0.23 km²
+       844 cells · bbox (2633,4930)–(2708,4943) 76×14 · fill 79 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 0 % · carved 0 % · 14 segments · D8 A p50 0.18 km²
+       800 cells · bbox (3930,4178)–(3947,4241) 18×64 · fill 69 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 0 % · carved 0 % · 18 segments · D8 A p50 0.16 km²
+       756 cells · bbox (2096,4527)–(2111,4591) 16×65 · fill 73 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 23 % · carved 100 % · 95 segments · D8 A p50 0.12 km²
+
+==========  end 124-3 . 353.9 s  ==========

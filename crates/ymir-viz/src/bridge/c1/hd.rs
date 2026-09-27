@@ -308,6 +308,10 @@ pub struct HdResult {
     /// The window sampling the overlays register against (same as the terrain upscale).
     pub sample_origin: [f64; 2],
     pub sample_size: f64,
+    /// **ADR Finding 123 — the identity guard.** The eroded field of this run against the bench's
+    /// field at the same settings (the eroded cache digest). `Mismatch` ⇒ the UI refuses to show a
+    /// number: a world that is not the measured one must not be read against its Finding.
+    pub bench_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus,
     /// Physical km per HD cell (`sample_size · domain_km / width`) — for the basal-disc
     /// radius of the volcaniclastic overlay.
     pub km_per_cell: f32,
@@ -863,6 +867,10 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     // through the cache, so a HIT carries its craters too (no silent mistyping).
     let craters = eroded.craters;
     let eroded = eroded.heightmap;
+    // ADR Finding 123 — the identity guard, on the eroded field (pre-breach), keyed by the SAME
+    // digest the cache uses: equal digest ⇒ equal configuration, equal hash ⇒ the same world.
+    let bench_guard = ymir_core::tectonics_c1::bench_guard::check(&ekey.digest(), &eroded);
+    eprintln!("[HD] bench guard ({}): {bench_guard:?}", ekey.digest());
     if volc.enabled {
         // Always log when enabled (0 records at a coarse target ≠ "did not run" —
         // per-mechanism edifice counts print from the core miss path above).
@@ -1251,6 +1259,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
         sample_origin: upscale.sample_origin,
         sample_size: upscale.sample_size,
         km_per_cell,
+        bench_guard,
     });
     eprintln!(
         "[HD timing] run_hd TOTAL {:.1}s (render is separate, on the UI thread)",

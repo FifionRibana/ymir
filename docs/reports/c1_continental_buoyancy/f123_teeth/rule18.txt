@@ -1,0 +1,18 @@
+==========  Finding 123 . rule 18 on the teeth, and the trunk identity  ==========
+
+   ── 1 · rule 18: 1787 teeth · paired in A1+B2 (own mouth ≤ 3 cells, own area ×/÷ 1.5): **82 (4.6 %)** ──
+   population                         sinuosity p50          p90     R8 chord 8
+   C2/10 teeth (paired)                      1.000        1.068    0.6840 (n 221)
+   their A1+B2 pairs                         1.044        1.149    0.3747 (n 162)
+   every A1+B2 segment (reference)           1.055        1.137    0.4745 (n 30025)
+
+   ── 2 · trunk identity: shipped longest-path climb vs max-A climb (Finding 93's columns) ──
+   world            rule           entries  one-reach    len p50    len p90   len max km  lake-hops Σ
+   delivered        longest            379      69.7%       10.3      103.3        272.5            7
+   delivered        max-A              379      69.7%        7.7       33.3        134.8            5
+   delivered        entries whose trunk crossed a lake under the shipped rule and NO LONGER does: **3**
+   C2/10            longest            647      58.7%       20.5      137.0       1522.7            0
+   C2/10            max-A              647      58.7%       16.8       82.4        317.1            0
+   C2/10            entries whose trunk crossed a lake under the shipped rule and NO LONGER does: **0**
+
+==========  end Finding 123 rule 18 . 643.9 s  ==========

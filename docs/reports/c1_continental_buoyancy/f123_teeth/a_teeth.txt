@@ -1,0 +1,28 @@
+==========  Finding 123-A . the teeth of the comb  ==========
+
+   drawn Watercourse segments **12609** (16981 km in-domain) · on walls (≥ 50 %) **2902** · TEETH (≥ 80 %) **1787** = **61.6 %** of the on-wall ones · teeth length **2094 km = 12.3 %** of the network
+   teeth: A max p10/p50/p90 **0.122 / 0.269 / 2.277 km²** (A_c = 0.1) · length p50 **0.93 km** · angle to the parent p10/p50/p90 **0 / 56 / 86°** · Strahler [(1, 1075), (2, 673), (3, 35), (4, 4)]
+   CONTROL · trunk segments (A max ≥ 10 km², 4886): wall share p50 **0.0 %**, p90 0.0 %
+   off-wall segments (9707): angle to the parent p50 **23°** · A max p50 **7.114 km²**
+
+   the microscope's S2 entries closest to (580 km², 654 km), signified:
+   · 459 km² · trunk **300 km** in 12 segments (0 repeated, 0 teeth) · members 18 (0 teeth) · sink Sea · score 0.750
+     trunk WITHOUT its teeth **300 km** · max-A trunk (C2 identity) **22 km in 2 segments**
+   · 798 km² · trunk **299 km** in 3 segments (0 repeated, 1 teeth) · members 1 (0 teeth) · sink EndoLake · score 0.918
+     trunk WITHOUT its teeth **298 km** · max-A trunk (C2 identity) **299 km in 3 segments**
+   · 839 km² · trunk **209 km** in 35 segments (0 repeated, 12 teeth) · members 186 (42 teeth) · sink Sea · score 1.126
+     trunk WITHOUT its teeth **103 km** · max-A trunk (C2 identity) **21 km in 2 segments**
+   · 469 km² · trunk **37 km** in 1 segments (0 repeated, 0 teeth) · members 1 (0 teeth) · sink ExoLake · score 1.135
+     trunk WITHOUT its teeth **37 km** · max-A trunk (C2 identity) **37 km in 1 segments**
+   · 982 km² · trunk **304 km** in 51 segments (0 repeated, 6 teeth) · members 92 (20 teeth) · sink Sea · score 1.228
+     trunk WITHOUT its teeth **215 km** · max-A trunk (C2 identity) **36 km in 2 segments**
+
+   identity (C2 read, NOT applied): max-A trunk vs shipped longest-path trunk over 647 watercourses: same **557** · shorter **90** · longer **0** · length ratio p10/p50/p90 0.21 / 1.00 / 1.00
+
+   ── C1 (read, not applied) · the drawn layer at a threshold ──
+   A ≥ 0.1 km²    segments kept **12609 of 12609** · teeth kept **1787 of 1787** · S2 watercourses to the sea that vanish entirely **0 of 55**
+   A ≥ 0.5 km²    segments kept **7308 of 12609** · teeth kept **616 of 1787** · S2 watercourses to the sea that vanish entirely **0 of 55**
+   A ≥ 1 km²      segments kept **6299 of 12609** · teeth kept **370 of 1787** · S2 watercourses to the sea that vanish entirely **0 of 55**
+   Strahler ≥ 2   segments kept **6646 of 12609** · teeth kept **712 of 1787** · S2 watercourses to the sea that vanish entirely **0 of 55**
+
+==========  end 123-A . 272.1 s  ==========

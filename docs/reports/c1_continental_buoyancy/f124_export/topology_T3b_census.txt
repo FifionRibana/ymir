@@ -1,0 +1,16 @@
+==========  Finding 124-3 . topology census  ==========
+test f124_topology has been running for over 60 seconds
+
+   C2/10: 16226 reaches · upstream links 13964: **0 asymmetric** (0 naming a reach whose downstream is None) · downstream links 13964: **0 whose water enters the named reach nowhere**
+   (T3) reaches ending on the FIRST cell of a reach that has no upstream, linked elsewhere: **0** (orphaned heads 0)
+   (T3b) reaches ending on a cell INSIDE another reach, linked elsewhere: **0** held by a watercourse (0 of them watercourses, 0 spillways) · 293 held by a spillway only
+   reaches with a downstream: 13964 · ENDING ON THE RECEIVER'S CONFLUENCE **13161** (5697 of them with an own area < 1 km² drawn)
+   union / own — geometric area p50 15.94 p90 385.8 (> 2×: 55 %) · runoff area p50 1.00 p90 1.0 (> 2×: 0 %) · width p50 1.00 p90 1.0 (> 2×: 0 %)
+
+   delivered: 7297 reaches · upstream links 4817: **0 asymmetric** (0 naming a reach whose downstream is None) · downstream links 4817: **0 whose water enters the named reach nowhere**
+   (T3) reaches ending on the FIRST cell of a reach that has no upstream, linked elsewhere: **0** (orphaned heads 0)
+   (T3b) reaches ending on a cell INSIDE another reach, linked elsewhere: **0** held by a watercourse (0 of them watercourses, 0 spillways) · 54 held by a spillway only
+   reaches with a downstream: 4817 · ENDING ON THE RECEIVER'S CONFLUENCE **4658** (1867 of them with an own area < 1 km² drawn)
+   union / own — geometric area p50 5.30 p90 411.6 (> 2×: 52 %) · runoff area p50 1.00 p90 1.0 (> 2×: 0 %) · width p50 1.00 p90 1.0 (> 2×: 0 %)
+
+==========  end 124-3 topology  ==========

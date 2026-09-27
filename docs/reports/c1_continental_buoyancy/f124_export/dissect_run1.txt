@@ -1,0 +1,173 @@
+==========  Finding 124-3 . dissection  ==========
+test f124_dissect has been running for over 60 seconds
+
+   C2/10: geometric partition Σ / land 0.860 + uncaptured 0.140 = 1.000 · Σ displayed / Σ geometric **1.51** (runoff-equivalent / area)
+   -- the four longest corrected trunks
+      object #12: 95 trunk segments, 1437 points, 1343 distinct cells, 0 trunk segments OUTSIDE the object, 1026 members, geometric 1289.3 km² drawn, displayed 536.9 km² drawn
+         0 seg   1704 Watercourse 90pts (4277,2655)→(4248,2739) down Some(1705) own A 21.720 km² · body start None end None · object same · 
+         1 seg   1705 Watercourse 11pts (4248,2739)→(4238,2740) down Some(1706) own A 22.194 km² · body start None end None · object same · 
+         2 seg   1706 Watercourse 3pts (4238,2740)→(4236,2738) down Some(1707) own A 59.972 km² · body start None end None · object same · 
+         3 seg   1707 Watercourse 4pts (4236,2738)→(4233,2735) down Some(1708) own A 60.141 km² · body start None end None · object same · 
+         4 seg   1708 Watercourse 4pts (4233,2735)→(4230,2734) down Some(1709) own A 60.630 km² · body start None end None · object same · 
+         5 seg   1709 Watercourse 5pts (4230,2734)→(4226,2732) down Some(1710) own A 61.095 km² · body start None end None · object same · 
+         6 seg   1710 Watercourse 5pts (4226,2732)→(4222,2730) down Some(1711) own A 61.474 km² · body start None end None · object same · 
+         7 seg   1711 Watercourse 4pts (4222,2730)→(4219,2728) down Some(1712) own A 61.738 km² · body start None end None · object same · 
+         8 seg   1712 Watercourse 5pts (4219,2728)→(4215,2726) down Some(1713) own A 62.232 km² · body start None end None · object same · 
+         9 seg   1713 Watercourse 7pts (4215,2726)→(4209,2723) down Some(1714) own A 63.725 km² · body start None end None · object same · 
+        10 seg   1714 Watercourse 4pts (4209,2723)→(4206,2722) down Some(1715) own A 64.621 km² · body start None end None · object same · 
+        11 seg   1715 Watercourse 3pts (4206,2722)→(4204,2722) down Some(1716) own A 64.828 km² · body start None end None · object same · 
+        12 seg   1716 Watercourse 10pts (4204,2722)→(4195,2717) down Some(1717) own A 65.205 km² · body start None end None · object same · 
+        13 seg   1717 Watercourse 5pts (4195,2717)→(4191,2716) down Some(1965) own A 65.522 km² · body start None end None · object same · 
+      object #85: 5 trunk segments, 924 points, 924 distinct cells, 4 trunk segments OUTSIDE the object, 1 members, geometric 0.4 km² drawn, displayed 1.3 km² drawn
+         0 seg   3788 Watercourse 57pts (3509,3303)→(3509,3359) down None own A 0.458 km² · body start None end Some(1000021) · object #50 · 
+         1 seg   4023 Watercourse 412pts (3930,3359)→(3519,3385) down None own A 5.705 km² · body start None end Some(1000021) · object #71 · 
+         2 seg   3794 Watercourse 54pts (3507,3307)→(3507,3360) down None own A 0.226 km² · body start None end Some(1000021) · object #52 · 
+         3 seg   4091 Watercourse 279pts (3796,3387)→(3518,3387) down None own A 0.763 km² · body start None end Some(1000021) · object #84 · 
+         4 seg   4094 Watercourse 122pts (3640,3388)→(3519,3388) down None own A 0.389 km² · body start None end Some(1000021) · object same · 
+      object #255: 15 trunk segments, 866 points, 866 distinct cells, 14 trunk segments OUTSIDE the object, 1 members, geometric 0.3 km² drawn, displayed 0.3 km² drawn
+         0 seg   4653 Watercourse 33pts (2714,3516)→(2746,3516) down None own A 0.176 km² · body start None end Some(1000027) · object #233 · 
+         1 seg   4670 Watercourse 41pts (2706,3517)→(2746,3517) down None own A 0.265 km² · body start None end Some(1000027) · object #234 · 
+         2 seg   4273 Watercourse 77pts (2846,3437)→(2770,3513) down None own A 0.281 km² · body start None end Some(1000027) · object #111 · 
+         3 seg   4274 Watercourse 77pts (2847,3437)→(2771,3513) down None own A 0.281 km² · body start None end Some(1000027) · object #112 · 
+         4 seg   4275 Watercourse 78pts (2848,3437)→(2771,3514) down None own A 0.284 km² · body start None end Some(1000027) · object #113 · 
+         5 seg   4683 Watercourse 3pts (2745,3521)→(2747,3521) down None own A 0.105 km² · body start None end Some(1000027) · object #237 · 
+         6 seg   4707 Watercourse 47pts (2702,3523)→(2748,3523) down None own A 0.269 km² · body start None end Some(1000027) · object #242 · 
+         7 seg   4253 Watercourse 84pts (2855,3432)→(2772,3515) down None own A 0.298 km² · body start None end Some(1000027) · object #104 · 
+         8 seg   4284 Watercourse 79pts (2850,3438)→(2772,3516) down None own A 0.286 km² · body start None end Some(1000027) · object #118 · 
+         9 seg   4285 Watercourse 79pts (2851,3438)→(2773,3516) down None own A 0.286 km² · body start None end Some(1000027) · object #119 · 
+        10 seg   4728 Watercourse 48pts (2701,3526)→(2748,3526) down None own A 0.277 km² · body start None end Some(1000027) · object #249 · 
+        11 seg   4286 Watercourse 80pts (2852,3438)→(2773,3517) down None own A 0.288 km² · body start None end Some(1000027) · object #120 · 
+        12 seg   4733 Watercourse 44pts (2706,3528)→(2749,3528) down None own A 0.203 km² · body start None end Some(1000027) · object #251 · 
+        13 seg   4736 Watercourse 45pts (2705,3529)→(2749,3529) down None own A 0.205 km² · body start None end Some(1000027) · object #253 · 
+      object #42: 8 trunk segments, 861 points, 861 distinct cells, 7 trunk segments OUTSIDE the object, 1 members, geometric 0.3 km² drawn, displayed 0.2 km² drawn
+         0 seg   3725 Watercourse 84pts (3525,3276)→(3525,3359) down None own A 0.298 km² · body start None end Some(1000021) · object #40 · 
+         1 seg   4062 Watercourse 250pts (3782,3378)→(3534,3371) down None own A 1.426 km² · body start None end Some(1000021) · object #79 · 
+         2 seg   3730 Watercourse 82pts (3523,3278)→(3523,3359) down None own A 0.293 km² · body start None end Some(1000021) · object #41 · 
+         3 seg   4061 Watercourse 106pts (3637,3378)→(3532,3373) down None own A 0.443 km² · body start None end Some(1000021) · object #78 · 
+         4 seg   3651 Watercourse 117pts (3521,3244)→(3521,3360) down None own A 0.377 km² · body start None end Some(1000021) · object #28 · 
+         5 seg   4065 Watercourse 67pts (3596,3379)→(3530,3375) down None own A 0.257 km² · body start None end Some(1000021) · object #80 · 
+         6 seg   4068 Watercourse 76pts (3604,3380)→(3529,3376) down None own A 0.279 km² · body start None end Some(1000021) · object #81 · 
+         7 seg   3734 Watercourse 79pts (3519,3282)→(3519,3360) down None own A 0.286 km² · body start None end Some(1000021) · object same · 
+   -- the old trunk at mouth (4936,3051): now 1 km drawn
+      object #612: 2 trunk segments, 16 points, 15 distinct cells, 0 trunk segments OUTSIDE the object, 160 members, geometric 101.7 km² drawn, displayed 88.6 km² drawn
+         0 seg   2514 Watercourse 3pts (4922,3038)→(4924,3040) down Some(2515) own A 97.320 km² · body start None end None · object same · 
+         1 seg   2515 Watercourse 13pts (4924,3040)→(4936,3051) down None own A 98.200 km² · body start None end None · object same · 
+   -- the old trunk at mouth (3758,4737): now 6 km drawn
+      object #583: 10 trunk segments, 131 points, 122 distinct cells, 0 trunk segments OUTSIDE the object, 155 members, geometric 73.2 km² drawn, displayed 83.6 km² drawn
+         0 seg  10794 Watercourse 3pts (3734,4665)→(3734,4667) down Some(11999) own A 66.504 km² · body start None end None · object same · 
+         1 seg  11999 Watercourse 3pts (3732,4668)→(3734,4668) down Some(10795) own A 0.103 km² · body start None end None · object same · 
+         2 seg  10795 Watercourse 4pts (3734,4667)→(3735,4670) down Some(10796) own A 66.884 km² · body start None end None · object same · 
+         3 seg  10796 Watercourse 27pts (3735,4670)→(3745,4696) down Some(10797) own A 70.264 km² · body start None end None · object same · 
+         4 seg  10797 Watercourse 17pts (3745,4696)→(3752,4712) down Some(10798) own A 71.392 km² · body start None end None · object same · 
+         5 seg  10798 Watercourse 15pts (3752,4712)→(3754,4726) down Some(10799) own A 71.928 km² · body start None end None · object same · 
+         6 seg  10799 Watercourse 6pts (3754,4726)→(3755,4731) down Some(10800) own A 72.153 km² · body start None end None · object same · 
+         7 seg  10800 Watercourse 4pts (3755,4731)→(3758,4734) down Some(12080) own A 72.625 km² · body start None end None · object same · 
+         8 seg  12080 Watercourse 48pts (3711,4691)→(3758,4735) down Some(10801) own A 0.408 km² · body start None end None · object same · 
+         9 seg  10801 Watercourse 4pts (3758,4734)→(3758,4737) down None own A 73.171 km² · body start None end None · object same · 
+   -- trunks that lose a lake crossing against the pre-F123 longest path
+
+   delivered: geometric partition Σ / land 0.844 + uncaptured 0.156 = 1.000 · Σ displayed / Σ geometric **1.52** (runoff-equivalent / area)
+   -- the four longest corrected trunks
+      object #273: 56 trunk segments, 628 points, 579 distinct cells, 0 trunk segments OUTSIDE the object, 103 members, geometric 112.7 km² drawn, displayed 203.0 km² drawn
+         0 seg   4131 Watercourse 126pts (2198,4363)→(2247,4248) down Some(3696) own A 20.092 km² · body start None end None · object same · 
+         1 seg   3696 Watercourse 5pts (2247,4248)→(2251,4247) down Some(3894) own A 20.385 km² · body start None end None · object same · 
+         2 seg   3894 Watercourse 117pts (2148,4288)→(2252,4246) down Some(3697) own A 9.136 km² · body start None end None · object same · 
+         3 seg   3697 Watercourse 12pts (2251,4247)→(2262,4239) down Some(3684) own A 29.993 km² · body start None end None · object same · 
+         4 seg   3684 Watercourse 20pts (2261,4239)→(2279,4222) down Some(3601) own A 31.562 km² · body start None end None · object same · 
+         5 seg   3601 Watercourse 17pts (2278,4223)→(2292,4207) down Some(3555) own A 32.828 km² · body start None end None · object same · 
+         6 seg   3555 Watercourse 18pts (2291,4207)→(2306,4191) down Some(3504) own A 34.060 km² · body start None end None · object same · 
+         7 seg   3504 Watercourse 15pts (2306,4191)→(2320,4181) down Some(3505) own A 34.895 km² · body start None end None · object same · 
+         8 seg   3505 Watercourse 12pts (2320,4181)→(2323,4170) down Some(3462) own A 51.773 km² · body start None end None · object same · 
+         9 seg   3462 Watercourse 6pts (2323,4170)→(2325,4165) down Some(3440) own A 52.176 km² · body start None end None · object same · 
+        10 seg   3440 Watercourse 12pts (2325,4165)→(2326,4154) down Some(3441) own A 53.177 km² · body start None end None · object same · 
+        11 seg   3441 Watercourse 6pts (2326,4154)→(2327,4149) down Some(3366) own A 54.607 km² · body start None end None · object same · 
+        12 seg   3366 Watercourse 6pts (2328,4149)→(2328,4145) down Some(3367) own A 54.946 km² · body start None end None · object same · 
+        13 seg   3367 Watercourse 5pts (2328,4145)→(2329,4141) down Some(3340) own A 55.292 km² · body start None end None · object same · 
+      object #2: 45 trunk segments, 625 points, 586 distinct cells, 0 trunk segments OUTSIDE the object, 87 members, geometric 75.8 km² drawn, displayed 79.2 km² drawn
+         0 seg    430 Watercourse 227pts (4138,2324)→(4065,2134) down Some(258) own A 20.175 km² · body start None end None · object same · 
+         1 seg    258 Watercourse 6pts (4065,2134)→(4062,2129) down Some(251) own A 20.390 km² · body start None end None · object same · 
+         2 seg    251 Watercourse 5pts (4063,2128)→(4065,2124) down Some(233) own A 22.812 km² · body start None end None · object same · 
+         3 seg    233 Watercourse 5pts (4065,2123)→(4065,2119) down Some(228) own A 23.639 km² · body start None end None · object same · 
+         4 seg    228 Watercourse 5pts (4065,2119)→(4064,2115) down Some(225) own A 23.909 km² · body start None end None · object same · 
+         5 seg    225 Watercourse 9pts (4064,2115)→(4060,2107) down Some(222) own A 24.261 km² · body start None end None · object same · 
+         6 seg    222 Watercourse 3pts (4059,2108)→(4061,2106) down Some(216) own A 24.428 km² · body start None end None · object same · 
+         7 seg    216 Watercourse 4pts (4061,2106)→(4064,2105) down Some(217) own A 25.287 km² · body start None end None · object same · 
+         8 seg    217 Watercourse 10pts (4064,2105)→(4072,2097) down Some(218) own A 26.097 km² · body start None end None · object same · 
+         9 seg    218 Watercourse 4pts (4072,2097)→(4075,2094) down Some(214) own A 26.262 km² · body start None end None · object same · 
+        10 seg    214 Watercourse 5pts (4076,2093)→(4076,2089) down Some(212) own A 26.665 km² · body start None end None · object same · 
+        11 seg    212 Watercourse 3pts (4076,2089)→(4076,2087) down Some(206) own A 27.313 km² · body start None end None · object same · 
+        12 seg    206 Watercourse 4pts (4076,2087)→(4076,2084) down Some(203) own A 27.668 km² · body start None end None · object same · 
+        13 seg    203 Watercourse 8pts (4076,2084)→(4082,2078) down Some(204) own A 28.179 km² · body start None end None · object same · 
+      object #282: 30 trunk segments, 538 points, 513 distinct cells, 0 trunk segments OUTSIDE the object, 83 members, geometric 486.1 km² drawn, displayed 289.8 km² drawn
+         0 seg   4047 Watercourse 132pts (2480,4338)→(2560,4254) down Some(3726) own A 21.207 km² · body start None end None · object same · 
+         1 seg   3726 Watercourse 11pts (2560,4254)→(2550,4249) down Some(3710) own A 22.075 km² · body start None end None · object same · 
+         2 seg   3710 Watercourse 9pts (2549,4248)→(2541,4240) down Some(3711) own A 28.136 km² · body start None end None · object same · 
+         3 seg   3711 Watercourse 24pts (2541,4240)→(2519,4224) down Some(3626) own A 31.285 km² · body start None end None · object same · 
+         4 seg   3626 Watercourse 12pts (2518,4225)→(2508,4222) down Some(3588) own A 32.287 km² · body start None end None · object same · 
+         5 seg   3588 Watercourse 7pts (2508,4221)→(2502,4217) down Some(3582) own A 33.708 km² · body start None end None · object same · 
+         6 seg   3582 Watercourse 51pts (2501,4218)→(2455,4174) down Some(3458) own A 38.044 km² · body start None end None · object same · 
+         7 seg   3458 Watercourse 12pts (2456,4175)→(2446,4164) down Some(3459) own A 38.462 km² · body start None end None · object same · 
+         8 seg   3459 Watercourse 3pts (2446,4164)→(2446,4162) down Some(3434) own A 77.100 km² · body start None end None · object same · 
+         9 seg   3434 Watercourse 6pts (2446,4162)→(2446,4157) down Some(3406) own A 77.517 km² · body start None end None · object same · 
+        10 seg   3406 Watercourse 8pts (2446,4157)→(2446,4150) down Some(3722) own A 77.825 km² · body start None end None · object same · 
+        11 seg   3722 Watercourse 123pts (2387,4248)→(2445,4149) down Some(3407) own A 4.981 km² · body start None end None · object same · 
+        12 seg   3407 Watercourse 3pts (2446,4150)→(2445,4148) down Some(3363) own A 87.104 km² · body start None end None · object same · 
+        13 seg   3363 Watercourse 15pts (2446,4148)→(2437,4135) down Some(3307) own A 87.833 km² · body start None end None · object same · 
+      object #10: 16 trunk segments, 483 points, 470 distinct cells, 0 trunk segments OUTSIDE the object, 29 members, geometric 54.5 km² drawn, displayed 63.3 km² drawn
+         0 seg   1061 Watercourse 299pts (4483,2895)→(4405,2621) down Some(707) own A 20.056 km² · body start None end None · object same · 
+         1 seg    707 Watercourse 7pts (4406,2621)→(4405,2616) down Some(678) own A 20.373 km² · body start None end None · object same · 
+         2 seg    678 Watercourse 7pts (4405,2616)→(4411,2612) down Some(679) own A 21.710 km² · body start None end None · object same · 
+         3 seg    679 Watercourse 5pts (4411,2612)→(4413,2608) down Some(680) own A 25.508 km² · body start None end None · object same · 
+         4 seg    680 Watercourse 14pts (4413,2608)→(4409,2595) down Some(681) own A 27.313 km² · body start None end None · object same · 
+         5 seg    681 Watercourse 26pts (4409,2595)→(4408,2570) down Some(674) own A 29.197 km² · body start None end None · object same · 
+         6 seg    674 Watercourse 7pts (4408,2570)→(4409,2564) down Some(670) own A 30.859 km² · body start None end None · object same · 
+         7 seg    670 Watercourse 6pts (4409,2564)→(4410,2559) down Some(667) own A 32.582 km² · body start None end None · object same · 
+         8 seg    667 Watercourse 7pts (4410,2559)→(4411,2553) down Some(629) own A 33.827 km² · body start None end None · object same · 
+         9 seg    629 Watercourse 11pts (4411,2553)→(4411,2543) down Some(618) own A 34.845 km² · body start None end None · object same · 
+        10 seg    618 Watercourse 24pts (4411,2543)→(4413,2520) down Some(619) own A 36.330 km² · body start None end None · object same · 
+        11 seg    619 Watercourse 8pts (4413,2520)→(4413,2513) down Some(611) own A 38.857 km² · body start None end None · object same · 
+        12 seg    611 Watercourse 10pts (4422,2519)→(4413,2512) down Some(606) own A 0.288 km² · body start None end None · object same · 
+        13 seg    606 Watercourse 13pts (4412,2511)→(4413,2500) down Some(607) own A 51.765 km² · body start None end None · object same · 
+   -- trunks that lose a lake crossing against the pre-F123 longest path
+      pre-F123: 1 hops, 34 km drawn, 32 trunk segs, mouth (4000, 1743) · corrected object: 0 hops, 7 km drawn, mouth (4000, 1743)
+      object #1: 18 trunk segments, 135 points, 120 distinct cells, 0 trunk segments OUTSIDE the object, 68 members, geometric 142.7 km² drawn, displayed 107.5 km² drawn
+         0 seg     51 Watercourse 3pts (4016,1818)→(4016,1816) down Some(46) own A 134.795 km² · body start None end None · object same · 
+         1 seg     46 Watercourse 3pts (4017,1815)→(4016,1814) down Some(47) own A 135.579 km² · body start None end None · object same · 
+         2 seg     47 Watercourse 5pts (4016,1814)→(4016,1810) down Some(45) own A 135.884 km² · body start None end None · object same · 
+         3 seg     45 Watercourse 11pts (4008,1812)→(4015,1809) down Some(44) own A 0.398 km² · body start None end None · object same · 
+         4 seg     44 Watercourse 5pts (4016,1810)→(4015,1806) down Some(42) own A 136.816 km² · body start None end None · object same · 
+         5 seg     42 Watercourse 4pts (4015,1806)→(4014,1803) down Some(40) own A 137.167 km² · body start None end None · object same · 
+         6 seg     40 Watercourse 5pts (4014,1803)→(4013,1799) down Some(37) own A 137.508 km² · body start None end None · object same · 
+         7 seg     37 Watercourse 4pts (4014,1799)→(4013,1796) down Some(36) own A 137.813 km² · body start None end None · object same · 
+         8 seg     36 Watercourse 6pts (4013,1796)→(4011,1791) down Some(34) own A 138.257 km² · body start None end None · object same · 
+         9 seg     34 Watercourse 10pts (4020,1794)→(4011,1790) down Some(33) own A 0.196 km² · body start None end None · object same · 
+        10 seg     33 Watercourse 5pts (4011,1791)→(4010,1787) down Some(29) own A 138.676 km² · body start None end None · object same · 
+        11 seg     29 Watercourse 11pts (4010,1787)→(4006,1777) down Some(30) own A 139.170 km² · body start None end None · object same · 
+        12 seg     30 Watercourse 11pts (4006,1777)→(4003,1767) down Some(14) own A 140.705 km² · body start None end None · object same · 
+        13 seg     14 Watercourse 4pts (4003,1767)→(4003,1764) down Some(12) own A 141.025 km² · body start None end None · object same · 
+      pre-F123: 1 hops, 36 km drawn, 66 trunk segs, mouth (3285, 2694) · corrected object: 0 hops, 9 km drawn, mouth (3285, 2694)
+      object #7: 18 trunk segments, 184 points, 167 distinct cells, 0 trunk segments OUTSIDE the object, 522 members, geometric 1388.3 km² drawn, displayed 819.4 km² drawn
+         0 seg    360 Watercourse 3pts (3358,2624)→(3356,2626) down Some(361) own A 1371.396 km² · body start None end None · object same · 
+         1 seg    361 Watercourse 5pts (3356,2626)→(3352,2628) down Some(362) own A 1371.918 km² · body start None end None · object same · 
+         2 seg    362 Watercourse 3pts (3352,2628)→(3350,2630) down Some(725) own A 1372.249 km² · body start None end None · object same · 
+         3 seg    725 Watercourse 12pts (3360,2636)→(3349,2631) down Some(363) own A 0.153 km² · body start None end None · object same · 
+         4 seg    363 Watercourse 7pts (3350,2630)→(3344,2634) down Some(364) own A 1372.659 km² · body start None end None · object same · 
+         5 seg    364 Watercourse 5pts (3344,2634)→(3340,2638) down Some(365) own A 1373.913 km² · body start None end None · object same · 
+         6 seg    365 Watercourse 5pts (3340,2638)→(3336,2642) down Some(366) own A 1374.474 km² · body start None end None · object same · 
+         7 seg    366 Watercourse 3pts (3336,2642)→(3334,2644) down Some(701) own A 1374.731 km² · body start None end None · object same · 
+         8 seg    701 Watercourse 29pts (3322,2617)→(3333,2645) down Some(367) own A 2.193 km² · body start None end None · object same · 
+         9 seg    367 Watercourse 4pts (3334,2644)→(3331,2647) down Some(368) own A 1377.254 km² · body start None end None · object same · 
+        10 seg    368 Watercourse 4pts (3331,2647)→(3329,2650) down Some(369) own A 1377.776 km² · body start None end None · object same · 
+        11 seg    369 Watercourse 27pts (3329,2650)→(3307,2675) down Some(720) own A 1379.271 km² · body start None end None · object same · 
+        12 seg    720 Watercourse 46pts (3296,2631)→(3306,2676) down Some(370) own A 0.799 km² · body start None end None · object same · 
+        13 seg    370 Watercourse 5pts (3307,2675)→(3303,2679) down Some(784) own A 1383.364 km² · body start None end None · object same · 
+      pre-F123: 1 hops, 13 km drawn, 10 trunk segs, mouth (1921, 3588) · corrected object: 0 hops, 2 km drawn, mouth (1921, 3588)
+      object #153: 6 trunk segments, 46 points, 41 distinct cells, 0 trunk segments OUTSIDE the object, 47 members, geometric 256.5 km² drawn, displayed 437.6 km² drawn
+         0 seg   2036 Watercourse 3pts (1911,3612)→(1912,3610) down Some(2051) own A 253.129 km² · body start None end None · object same · 
+         1 seg   2051 Watercourse 8pts (1906,3607)→(1913,3609) down Some(2037) own A 0.257 km² · body start None end None · object same · 
+         2 seg   2037 Watercourse 4pts (1912,3610)→(1914,3607) down Some(2065) own A 253.613 km² · body start None end None · object same · 
+         3 seg   2065 Watercourse 10pts (1921,3615)→(1915,3606) down Some(2038) own A 0.119 km² · body start None end None · object same · 
+         4 seg   2038 Watercourse 13pts (1914,3607)→(1921,3595) down Some(2039) own A 254.333 km² · body start None end None · object same · 
+         5 seg   2039 Watercourse 8pts (1921,3595)→(1921,3588) down None own A 256.495 km² · body start None end None · object same · 
+
+==========  end 124-3 dissection  ==========

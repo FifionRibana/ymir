@@ -1,0 +1,5 @@
+[HD] bench guard (f61ef23f4f4e9d94): Match { label: "livré" }
+   livré: Match { label: "livré" }
+[HD] bench guard (ba7a1a85a85c6b92): Match { label: "C2 /10 col" }
+   C2 /10 col: Match { label: "C2 /10 col" }
+test ui::workspace::f123_viz_guard::f123_viz_guard ... ok

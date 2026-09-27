@@ -1,0 +1,11 @@
+==========  Finding 124 . the first non-periodic stage  ==========
+   stage                             bit-identical     share    max |Δ| m columns ≠ / 8192
+   S1 bicubic only                        60846603   90.669%      218.338              768
+   S2 + FBM                               60846603   90.669%      218.338              768
+   S3 + C-2 craters stamped               60844834   90.666%      218.338              784
+   S4 + incision, uniform K               60844834   90.666%      218.338              784
+   S5 + C-3 lithology in K                60844834   90.666%      218.338              784
+   S6 + C-3b fracture in K                60844834   90.666%      218.338              784
+   S7 + bathymetry (= delivered)          14967984   22.304%      382.855             8192
+
+==========  end Finding 124 frame . 870.1 s  ==========

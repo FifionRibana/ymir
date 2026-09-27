@@ -638,10 +638,12 @@ pub fn c1_drainage_windowed_infil(
             // S1 row with 0 tributaries showing 1087 km² beside the real 395-segment S4 trunk).
             // Keeping the profile lets each run read the value at ITS OWN downstream-most cell.
             let mut q_profile: Vec<Vec<f32>> = Vec::with_capacity(rivers.segments.len());
-            for s in &rivers.segments {
+            for (i, s) in rivers.segments.iter().enumerate() {
                 let per_point: Vec<f32> =
                     s.points.iter().map(|&(x, y)| discharge[y as usize * w + x as usize]).collect();
-                let q = per_point.iter().copied().fold(0.0f32, f32::max);
+                // ADR Finding 124-3 -- over the reach's OWN points: the confluence is the receiver's
+                let own = &per_point[..=own_end(&rivers.segments, i)];
+                let q = own.iter().copied().fold(0.0f32, f32::max);
                 dr_km2.push(q / REFERENCE_RUNOFF_MM); // discharge → effective km² at reference depth
                 q_m3s.push(runoff_km2_to_m3s(q));
                 q_profile.push(per_point.iter().map(|&v| runoff_km2_to_m3s(v)).collect());
@@ -650,7 +652,16 @@ pub fn c1_drainage_windowed_infil(
             (dr_km2, nav, q_m3s, q_profile)
         }
         None => {
-            let dr_km2: Vec<f32> = rivers.segments.iter().map(|s| s.max_flow * cell_km2).collect();
+            // ADR Finding 124-3 -- not `max_flow`, which includes the confluence (the receiver's)
+            let dr_km2: Vec<f32> = (0..rivers.segments.len())
+                .map(|i| {
+                    rivers.segments[i].points[..=own_end(&rivers.segments, i)]
+                        .iter()
+                        .map(|&(x, y)| flow.accumulation.data[y as usize * w + x as usize])
+                        .fold(0.0f32, f32::max)
+                        * cell_km2
+                })
+                .collect();
             let nav = dr_km2.iter().map(|&km2| cfg.thresholds.classify(km2)).collect();
             // No climate → assume the reference runoff depth over the geometric area so a
             // discharge-consistent width still results (Q = REFERENCE_RUNOFF · area).
@@ -694,13 +705,13 @@ pub fn c1_drainage_windowed_infil(
         })
         .collect();
 
-    // Finding 47 — the GEOMETRIC catchment, at each segment's own downstream-most cell.
-    let segment_catchment_cells: Vec<f32> = rivers
-        .segments
-        .iter()
-        .map(|s| {
-            s.points
-                .last()
+    // Finding 47 — the GEOMETRIC catchment, at each segment's own downstream-most cell
+    // (Finding 124-3: not the confluence cell it shares with its receiver).
+    let segment_catchment_cells: Vec<f32> = (0..rivers.segments.len())
+        .map(|i| {
+            rivers.segments[i]
+                .points
+                .get(own_end(&rivers.segments, i))
                 .map(|&(x, y)| flow.accumulation.data[y as usize * w + x as usize])
                 .unwrap_or(0.0)
         })
@@ -737,6 +748,27 @@ pub fn c1_drainage_windowed_infil(
 /// a headwater (~0.1 m³/s) ~1.5 m — the trunk/headwater RATIO (~50×) is the point.
 const CHANNEL_WIDTH_A: f32 = 5.0;
 const CHANNEL_WIDTH_B: f32 = 0.5;
+
+/// ADR Finding 124-3 — the index of reach `i`'s OWN downstream-most point.
+///
+/// `trace_segment` ends a tributary ON the confluence cell: its last point is its receiver's first
+/// ("Include the junction cell as last point of this segment"). That cell's accumulation is the
+/// UNION of every branch meeting there, so each per-reach value read at the last point, or as a
+/// maximum over the points — the runoff area, the discharge and the width it drives, the geometric
+/// catchment — was the RECEIVER's. The author's Finding 47 call applies: a reach reports its own
+/// catchment, never the union. One point back when the last point is that shared confluence, the
+/// last point otherwise (a reach that stopped short of an already-traced cell ends on its own).
+pub fn own_end(segs: &[RiverSegment], i: usize) -> usize {
+    let s = &segs[i];
+    let n = s.points.len();
+    // the confluence may be the receiver's first cell OR one it runs through (T3b)
+    let on_confluence = s
+        .downstream
+        .and_then(|d| segs.get(d))
+        .zip(s.points.last())
+        .is_some_and(|(d, l)| d.points.contains(l));
+    if on_confluence && n >= 2 { n - 2 } else { n.saturating_sub(1) }
+}
 
 /// Seconds per (Julian) year — runoff volume/yr → mean discharge (m³/s).
 const SECONDS_PER_YEAR: f32 = 3.155_76e7;
@@ -833,8 +865,41 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
     for i in 0..src.len() {
         offset[i + 1] = offset[i] + runs[i].len();
     }
-    let head = |i: usize| runs[i].first().map(|_| offset[i]);
     let tail = |i: usize| runs[i].last().map(|_| offset[i] + runs[i].len() - 1);
+    // ADR Finding 124-3 (T1) -- WHERE each reach's water enters its receiver, as an index on the
+    // receiver's points: 0 when the reach ends ON the confluence (its last point is the receiver's
+    // first, `trace_segment`), else the D8 receiver of its last point (a reach that stopped short
+    // of an already-traced cell joins MID-reach, `extract_rivers`' linking). Links go to the RUN
+    // holding that index. They used to go to the receiver's HEAD run and, symmetrically, a head run
+    // listed the TAIL of every parent -- including a tail dying on the shore of a basin whose outlet
+    // run is dropped here, so a run named as upstream a reach that never flows into it, and the
+    // microscope's trunk climbed from tooth to tooth of a comb dying in one below-sea basin.
+    let dir = &dr.flow.direction;
+    let hgt = dr.height;
+    let join_at: Vec<Option<usize>> = src
+        .iter()
+        .map(|s| {
+            let ds = src.get(s.downstream?)?;
+            let &(lx, ly) = s.points.last()?;
+            // it ends ON the receiver (its first cell, or one it runs through, T3b)
+            if let Some(j) = ds.points.iter().position(|&p| p == (lx, ly)) {
+                return Some(j);
+            }
+            let d = *dir.get(ly as usize * w + lx as usize)?;
+            if d == DIR_NONE || hgt == 0 {
+                return None;
+            }
+            let rx = (lx as i32 + D8_DX[d as usize]).rem_euclid(w as i32) as u32;
+            let ry = (ly as i32 + D8_DY[d as usize]).rem_euclid(hgt as i32) as u32;
+            ds.points.iter().position(|&p| p == (rx, ry))
+        })
+        .collect();
+    // the run of reach `d` holding its point `j` (`None`: `j` lies in a lake or a dropped run)
+    let run_at = |d: usize, j: usize| -> Option<usize> {
+        runs[d].iter().position(|&(a, b)| a <= j && j < b).map(|r| offset[d] + r)
+    };
+    // a reach's water reaches its receiver only through a tail run that reaches the reach's end
+    let tail_reaches_end = |u: usize| runs[u].last().is_some_and(|&(_, b)| b == src[u].points.len());
 
     let mut segments = Vec::with_capacity(offset[src.len()]);
     let mut km2 = Vec::with_capacity(offset[src.len()]);
@@ -849,9 +914,13 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
 
     for (i, s) in src.iter().enumerate() {
         let n = s.points.len();
+        // ADR Finding 124-3 (T2) -- the parent's own last point (its last may be the confluence)
+        let parent_end = own_end(&src, i);
         for (ri, &(a, b)) in runs[i].iter().enumerate() {
-            let is_first = a == 0; // run holds the parent's true source
             let reaches_end = b == n; // run reaches the parent's downstream end
+            // the run's own downstream-most index: one back when it ends on the confluence
+            let own_b =
+                if reaches_end && parent_end < n - 1 && parent_end >= a { parent_end } else { b - 1 };
             // Endorheic outlet runs were dropped; any surviving run that starts at a
             // lake shore is an exorheic outlet → inherit the parent discharge.
             // ADR Finding 46 — READ THE RUN'S OWN DOWNSTREAM VALUE, do not inherit the
@@ -868,7 +937,7 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
             // them: the run begins just after a lake cell. Removing this branch would drop a
             // trunk's width to zero across every lake it crosses, which was the author's bug.
             let own_q_m3s =
-                src_qprof.get(i).and_then(|prof| prof.get(b - 1).or_else(|| prof.last())).copied();
+                src_qprof.get(i).and_then(|prof| prof.get(own_b).or_else(|| prof.last())).copied();
             let inherits = a > 0; // outlet run: starts just after a lake cell (Finding 22)
             let (q_km2, q_m3s_run) = match (inherits, own_q_m3s) {
                 (false, Some(q)) => {
@@ -876,13 +945,21 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
                 }
                 _ => (src_km2.get(i).copied().unwrap_or(0.0), src_q.get(i).copied().unwrap_or(0.0)),
             };
-            let upstream = if is_first {
-                s.upstream.iter().filter_map(|&u| tail(u)).collect()
-            } else {
-                Vec::new()
-            };
+            // ADR Finding 124-3 (T1) -- the parents whose water enters THIS run (the exact inverse
+            // of `downstream` below), and the run this one's water enters
+            let upstream = s
+                .upstream
+                .iter()
+                .copied()
+                .filter(|&u| {
+                    src.get(u).is_some_and(|us| us.downstream == Some(i))
+                        && tail_reaches_end(u)
+                        && join_at[u].is_some_and(|j| a <= j && j < b)
+                })
+                .filter_map(tail)
+                .collect();
             let downstream = if reaches_end && ri == runs[i].len() - 1 {
-                s.downstream.and_then(head)
+                s.downstream.zip(join_at[i]).and_then(|(d, j)| run_at(d, j))
             } else {
                 None // ends at a lake shore (its sink)
             };
@@ -913,12 +990,12 @@ pub fn clip_rivers_to_lakes(dr: &mut C1DrainageResult) {
             // geometric accumulation is a pure D8 cell count and is already carried across a
             // filled lake by the routing, so the outlet run's own cell reads the right figure.
             catch_cells.push({
-                let (lx, ly) = s.points[b - 1];
+                let (lx, ly) = s.points[own_b];
                 let k = ly as usize * w + lx as usize;
                 if inherits {
                     // Outlet run: its first cells sit on the pool, whose accumulation is the
                     // filled surface's, so take the max over the run to reach the true value.
-                    s.points[a..b]
+                    s.points[a..=own_b]
                         .iter()
                         .map(|&(x, y)| dr_accum[y as usize * w + x as usize])
                         .fold(0.0f32, f32::max)
@@ -3721,6 +3798,106 @@ mod tests {
         clip_rivers_to_lakes(&mut en);
         assert_eq!(en.rivers.segments.len(), 1, "endorheic: phantom outlet dropped");
         assert!(en.rivers.segments[0].points.iter().all(|&(x, _)| x < 4));
+    }
+
+    /// ADR Finding 124-3 — **the clip's links go where the water goes, and a reach reports its own
+    /// value.** Four reaches on a 16×2 torus. U crosses an ENDORHEIC lake before its confluence with
+    /// D (its outlet run is dropped); T ends ON D's first cell (the `trace_segment` confluence); D
+    /// crosses an EXORHEIC lake; M stops short and joins D mid-reach, beyond that lake. Before the
+    /// fix, D's head run listed U's dying inflow run and M as upstream, M pointed at D's head run,
+    /// and T read D's accumulation and discharge at the confluence.
+    #[test]
+    fn the_clip_links_where_the_water_goes_and_reads_the_own_value() {
+        use crate::terrain::flow::{FlowResult, RiverNetwork};
+        let (w, h) = (16usize, 2usize);
+        let mut lake_map = vec![0u32; w * h];
+        lake_map[4] = 7; // endorheic, on U
+        lake_map[5] = 7;
+        lake_map[10] = 8; // exorheic, on D
+        lake_map[11] = 8;
+        let seg = |points: Vec<(u32, u32)>, upstream: Vec<usize>, downstream: Option<usize>| RiverSegment {
+            points,
+            strahler_order: 1,
+            avg_flow: 1.0,
+            max_flow: 1.0,
+            basin_id: 1,
+            upstream,
+            downstream,
+        };
+        let u = seg((0..=8).map(|x| (x, 0)).collect(), vec![], Some(2));
+        let t = seg(vec![(6, 1), (7, 1), (8, 0)], vec![], Some(2));
+        let d = seg((8..16).map(|x| (x, 0)).collect(), vec![0, 1, 3], None);
+        let m = seg(vec![(12, 1), (13, 1)], vec![], Some(2));
+        let segs = vec![u, t, d, m];
+        let mut direction = vec![DIR_NONE; w * h];
+        direction[w + 13] = 0; // (13,1) → north → (13,0), D's point 5 (beyond the exorheic lake)
+        let mut acc = GridF32::new(w, h, 1.0);
+        acc.data[w + 7] = 5.0; // T's own last cell
+        acc.data[8] = 100.0; // the confluence: the union
+        let mk_lake = |id: u32, lake_type: LakeType| C1Lake {
+            base: Lake {
+                id,
+                surface_elevation: 0.5,
+                max_depth: 0.1,
+                area: 2,
+                basin_id: 1,
+                outlet: (0, 0),
+                shallow: false,
+            },
+            level_m: 0.0,
+            depth_m: 1.0,
+            area_km2: 1.0,
+            lake_type,
+            unresolved_reason: None,
+        };
+        let mut dr = C1DrainageResult {
+            flow: FlowResult {
+                filled: GridF32::new(w, h, 0.0),
+                direction,
+                accumulation: acc,
+                basins: vec![0; w * h],
+                num_basins: 1,
+            },
+            segment_drainage_km2: vec![1.0; 4],
+            segment_catchment_cells: vec![1.0; 4],
+            segment_navigability: vec![Navigability::NonNavigable; 4],
+            segment_discharge_m3s: vec![1.0; 4],
+            segment_width_m: vec![1.0; 4],
+            segment_profile_m: segs.iter().map(|s| vec![0.0; s.points.len()]).collect(),
+            segment_discharge_profile_m3s: vec![vec![1.0; 9], vec![1.0, 2.0, 50.0], vec![50.0; 8], vec![1.0; 2]],
+            segment_kind: vec![SegmentKind::Watercourse; 4],
+            segment_source_lake: vec![None; 4],
+            rivers: RiverNetwork { segments: segs },
+            lakes: vec![mk_lake(7, LakeType::Endorheic), mk_lake(8, LakeType::Exorheic)],
+            lake_map,
+            width: w,
+            height: h,
+        };
+        assert_eq!(own_end(&dr.rivers.segments, 1), 1, "T ends on the confluence: one point back");
+        assert_eq!(own_end(&dr.rivers.segments, 3), 1, "M stops short: its own last point");
+        assert_eq!(own_end(&dr.rivers.segments, 2), 7, "D is a terminus: its last point");
+        clip_rivers_to_lakes(&mut dr);
+        let s = &dr.rivers.segments;
+        // U0 (x0..3) · T · D0 (x8..9) · D1 (x12..15, the exorheic outlet) · M
+        assert_eq!(s.len(), 5, "U's endorheic outlet run is dropped: {s:?}");
+        let (u0, t, d0, d1, m) = (0, 1, 2, 3, 4);
+        assert_eq!(s[u0].downstream, None, "U's inflow run dies in the endorheic lake");
+        assert_eq!(s[t].downstream, Some(d0), "T enters D at its first cell");
+        assert_eq!(s[m].downstream, Some(d1), "M enters D beyond the exorheic lake, in its outlet run");
+        assert_eq!(s[d0].upstream, vec![t], "D's head run receives T only -- never U's dying run, nor M");
+        assert_eq!(s[d1].upstream, vec![m], "D's outlet run receives M");
+        for (i, si) in s.iter().enumerate() {
+            for &j in &si.upstream {
+                assert_eq!(s[j].downstream, Some(i), "upstream is the exact inverse of downstream");
+            }
+            if let Some(k) = si.downstream {
+                assert!(s[k].upstream.contains(&i), "downstream is the exact inverse of upstream");
+            }
+        }
+        assert_eq!(dr.segment_catchment_cells[t], 5.0, "T's own catchment, not the confluence's 100");
+        let q300 = runoff_km2_to_m3s(REFERENCE_RUNOFF_MM);
+        assert!((dr.segment_discharge_m3s[t] - 2.0).abs() < 1e-6, "T's own discharge, not D's 50");
+        assert!((dr.segment_drainage_km2[t] - 2.0 / q300).abs() < 1e-3, "T's own runoff area");
     }
 
     /// Finding 37 INVARIANT (permanent, non-ignored) — the exorheic-outlet guard over the WHOLE

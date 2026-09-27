@@ -85,9 +85,10 @@ enum Sink {
 }
 
 /// An aggregated WATERCOURSE (a trunk + its tributaries), assembled UI-side from the
-/// exported per-segment drainage — NOT recomputed. `segments` are every segment that
-/// drains to the same terminal; `trunk` is the source→sink main stem (the max-discharge
-/// choice at each confluence). Everything read from `C1DrainageResult`.
+/// exported per-segment drainage — NOT recomputed. `segments` are every segment of one river
+/// SYSTEM (ADR Finding 124-3: each reach in exactly one); `trunk` is the source→sink main stem
+/// (the max-area climb, Finding 123); `catchment_km2` is its share of the geometric partition
+/// of the land (an AREA, signified). Everything read from `C1DrainageResult`.
 #[derive(Clone)]
 struct Watercourse {
     segments: Vec<usize>,
@@ -715,6 +716,10 @@ fn draw_workspace(
         let is_new = ws.current.as_ref().map(|c| !Arc::ptr_eq(c, result)).unwrap_or(true);
         if is_new {
             ws.current = Some(result.clone());
+            GUARD_REFUSES.store(
+                result.bench_guard.refuses_numbers(),
+                std::sync::atomic::Ordering::Relaxed,
+            );
             ws.river_map = Some(RiverCellMap::from_drainage(&result.drainage));
             let wcs = aggregate_watercourses(result, ws.domain_km, ws.geo_scale_ratio);
             let mut seg2wc = vec![usize::MAX; result.drainage.rivers.segments.len()];
@@ -1146,13 +1151,16 @@ fn left_panel(
                                          (F89-C5).\n\n\
                                          ⚠ RIEN N'EST PROMU: le défaut est off.",
                                     );
-                                    if let Some(i) = seg_row(
-                                        ui,
-                                        &["off", "C1 nue", "C2 /10", "C2 /3", "C2 /10 col"],
-                                        ws.valley_mode.min(4),
-                                    ) {
-                                        ws.valley_mode = i;
-                                    }
+                                    // ADR Finding 123 — a combo box: a five-button row was
+                                    // clipped to three states in a narrow panel.
+                                    let names = ["off", "C1 nue", "C2 /10", "C2 /3", "C2 /10 col"];
+                                    egui::ComboBox::from_id_salt("valley_mode")
+                                        .selected_text(names[ws.valley_mode.min(4)])
+                                        .show_ui(ui, |ui| {
+                                            for (i, nm) in names.iter().enumerate() {
+                                                ui.selectable_value(&mut ws.valley_mode, i, *nm);
+                                            }
+                                        });
                                 });
                                 if ws.valley_mode > 0 {
                                     ui.horizontal(|ui| {
@@ -1161,7 +1169,7 @@ fn left_panel(
                                         )
                                         .on_hover_text(
                                             "Les trois âges MESURÉS au bloc C3 du F121: \
-                                             k × {0,7 ; 1 ; 1,4}, k = 0,07186 (PROXY calé sur \
+                                             k × {0,7 ; 1 ; 1,4}, k = 0,07183 (PROXY calé sur \
                                              l'oracle F95, 488 m). Rien d'autre n'est offert.",
                                         );
                                         if let Some(i) =
@@ -1695,7 +1703,17 @@ fn unresolved_reason_short_fr(r: Option<UnresolvedReason>) -> &'static str {
     }
 }
 
+/// ADR Finding 123 — set when the displayed world FAILED the identity guard: every key/value number
+/// of the microscope is then replaced by "≠ banc" (the author's rule: the viz refuses to display a
+/// number when the viz and bench hashes differ).
+static GUARD_REFUSES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn kv(ui: &mut egui::Ui, k: &str, v: String) {
+    let v = if GUARD_REFUSES.load(std::sync::atomic::Ordering::Relaxed) {
+        "≠ banc".to_string()
+    } else {
+        v
+    };
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new(k).color(DIM).size(12.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -3388,6 +3406,9 @@ fn classify_sink(hd: &HdResult, wc: &[u8], x: u32, y: u32) -> (Sink, Option<u32>
 /// `chain_lakes`: link an inflow reach to its exorheic lake's outlet reach so an entry is a
 /// river SYSTEM (ADR Finding 45). `false` reproduces the pre-Finding-45 behaviour, where an
 /// entry was a reach between two water bodies — kept so the bench can measure both on one run.
+///
+/// **HISTORICAL since ADR Finding 124-3** (Findings 45–123's rule, kept for the benches that
+/// measure it): the shipped aggregation is [`aggregate_watercourses`].
 fn aggregate_watercourses_opt(
     hd: &HdResult,
     domain_km: f32,
@@ -3486,6 +3507,20 @@ fn aggregate_watercourses_opt(
             }
         }
     }
+    // ADR Finding 123-C2 -- the drained area of a reach (signified km², the exported array).
+    let area_of = |i: usize| d.segment_drainage_km2.get(i).copied().unwrap_or(0.0);
+    // Two areas within 1 % (PROXY) are a TIE -- an area a clipped fragment inherited from its parent
+    // (Findings 42/93) or two branches of one catchment differing by a few cells -- and the tie goes
+    // to the longest-path rule this replaces. Without it, 3 then 2 delivered trunks lost their lake
+    // crossing on ties of 0.00-0.05 %; with it, 0 (f123_identity_control).
+    let by_area = |a: usize, b: usize| -> std::cmp::Ordering {
+        let (x, y) = (area_of(a), area_of(b));
+        if (x - y).abs() <= 0.01 * x.max(y) {
+            pathlen[a].cmp(&pathlen[b])
+        } else {
+            x.total_cmp(&y)
+        }
+    };
     // The longest reach flowing INTO the lake an outlet reach starts on — the trunk's
     // continuation upstream. Needs `pathlen`, hence defined after it.
     let inflow_to_lake_of = |i: usize| -> Option<usize> {
@@ -3507,7 +3542,13 @@ fn aggregate_watercourses_opt(
                         matches!(classify_sink(hd, &wc_class, mx, my), (Sink::ExoLake, Some(k)) if k == id)
                     })
             })
-            .max_by_key(|&(j, _)| pathlen[j])
+            .max_by(|&(a, _), &(b, _)| {
+                if TRUNK_BY_MAX_AREA {
+                    by_area(a, b)
+                } else {
+                    pathlen[a].cmp(&pathlen[b])
+                }
+            })
             .map(|(j, _)| j)
     };
 
@@ -3538,8 +3579,13 @@ fn aggregate_watercourses_opt(
         let mut cur = r;
         for _ in 0..=n {
             trunk.push(cur);
-            match segs[cur].upstream.iter().copied().filter(|&u| u < n).max_by_key(|&u| pathlen[u])
-            {
+            let ups = segs[cur].upstream.iter().copied().filter(|&u| u < n);
+            let next = if TRUNK_BY_MAX_AREA {
+                ups.max_by(|&a, &b| by_area(a, b))
+            } else {
+                ups.max_by_key(|&u| pathlen[u])
+            };
+            match next {
                 Some(next) => cur = next,
                 // Symmetric to `across_lake`: at the head of an outlet reach, continue up the
                 // LONGEST reach that flows INTO the same lake, so the trunk is the whole main
@@ -3624,9 +3670,477 @@ fn aggregate_watercourses_opt(
     out
 }
 
-/// THE shipped aggregation: chains through exorheic lakes, so a list entry is a river SYSTEM.
+/// **ADR Finding 123-C2 — the trunk is the path of MAX drained area** from the mouth to the source,
+/// at every confluence and at every exorheic-lake crossing; two areas within 1 % (PROXY) tie, and
+/// the tie goes to the longest-path climb (in points) this replaces. That climb followed a long
+/// MINOR branch wherever one existed. Finding 93's control, measured before/after in
+/// `f123_identity_control` (trunks of one reach, lengths, lake crossings): 0 trunks lose a lake
+/// crossing on the delivered world or on C2/10, the one-reach share is unchanged.
+const TRUNK_BY_MAX_AREA: bool = true;
+
+/// ADR Finding 124-3 — the water BODIES: every lake id and every connected enclosed below-sea
+/// component (`water_class == 2`, 8-connectivity, torus), UNIFIED where they overlap — a lake
+/// flooding a below-sea basin up to its spill level is one body. `body[k]` is the canonical body of
+/// cell k, `u32::MAX` on land and on the open sea. PORTED in `ymir-core/tests/f124_export.rs`.
+fn water_bodies(
+    d: &ymir_core::tectonics_c1::drainage::C1DrainageResult,
+    wc: &[u8],
+    w: usize,
+    h: usize,
+) -> Vec<u32> {
+    let n = w * h;
+    let max_lake = d.lake_map.iter().copied().max().unwrap_or(0) as usize;
+    let mut comp = vec![u32::MAX; n];
+    let mut nc = 0u32;
+    for s in 0..n {
+        if wc[s] != 2 || comp[s] != u32::MAX {
+            continue;
+        }
+        comp[s] = nc;
+        let mut st = vec![s];
+        while let Some(k) = st.pop() {
+            let (x, y) = ((k % w) as i32, (k / w) as i32);
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    let nk = (y + dy).rem_euclid(h as i32) as usize * w
+                        + (x + dx).rem_euclid(w as i32) as usize;
+                    if wc[nk] == 2 && comp[nk] == u32::MAX {
+                        comp[nk] = nc;
+                        st.push(nk);
+                    }
+                }
+            }
+        }
+        nc += 1;
+    }
+    let mut p: Vec<usize> = (0..max_lake + 1 + nc as usize).collect();
+    fn find(p: &mut [usize], x: usize) -> usize {
+        let mut r = x;
+        while p[r] != r {
+            r = p[r];
+        }
+        let mut c = x;
+        while p[c] != r {
+            let nx = p[c];
+            p[c] = r;
+            c = nx;
+        }
+        r
+    }
+    for k in 0..n {
+        if d.lake_map[k] != 0 && comp[k] != u32::MAX {
+            let a = find(&mut p, d.lake_map[k] as usize);
+            let b = find(&mut p, max_lake + 1 + comp[k] as usize);
+            if a != b {
+                p[a] = b;
+            }
+        }
+    }
+    (0..n)
+        .map(|k| {
+            if d.lake_map[k] != 0 {
+                find(&mut p, d.lake_map[k] as usize) as u32
+            } else if comp[k] != u32::MAX {
+                find(&mut p, max_lake + 1 + comp[k] as usize) as u32
+            } else {
+                u32::MAX
+            }
+        })
+        .collect()
+}
+
+/// The water body a point touches (its 3×3), if any.
+fn body_near(body: &[u32], w: usize, h: usize, x: u32, y: u32) -> Option<u32> {
+    for dy in -1i32..=1 {
+        for dx in -1i32..=1 {
+            let k = (y as i32 + dy).rem_euclid(h as i32) as usize * w
+                + (x as i32 + dx).rem_euclid(w as i32) as usize;
+            if body[k] != u32::MAX {
+                return Some(body[k]);
+            }
+        }
+    }
+    None
+}
+
+/// A reach's points without the confluence cell it shares with its receiver (Finding 124-3).
+fn own_points(s: &ymir_core::terrain::flow::RiverSegment) -> &[(u32, u32)] {
+    if s.downstream.is_some() && s.points.len() >= 2 {
+        &s.points[..s.points.len() - 1]
+    } else {
+        &s.points[..]
+    }
+}
+
+/// **ADR Finding 124-3 — THE shipped aggregation: one object per river SYSTEM, and every cell of
+/// the network in exactly one.** Three gestures on top of Findings 45 / 47 / 123:
+/// - **one reach, one object** — systems whose reaches share a cell are ONE object (union of their
+///   terminals): the common downstream is one trunk. The rule it replaces grouped by terminal, and
+///   a spillway running down a watercourse's valley to the same mouth made two objects claiming the
+///   same cells (550 cells, 19 pairs on C2/10);
+/// - **the chain crosses every body that overflows** — a reach dying in a water body that has a
+///   SPILLWAY is chained to it, as Finding 45 chains an exorheic lake to its outlet; the climb back
+///   up is the exact inverse of that chaining (a climb rebuilt separately walked into reaches the
+///   chaining gave to another object);
+/// - **the basin is an AREA** — `catchment_km2` is the object's share of the GEOMETRIC partition of
+///   the land (every land cell follows D8 to the first river cell or water body it meets), so the
+///   objects' basins are disjoint and sum to at most the land. It was the runoff-equivalent area
+///   (`runoff / 300 mm`), 1.5× the area on average, and its sum read 1.30–1.40× the land.
+/// The trunk is Finding 123's max-area climb; since Finding 124-3 the core reads each reach's area
+/// at its OWN end (the confluence cell is its receiver's), so the climb no longer ties the teeth of
+/// a comb to their collector. PORTED in `ymir-core/tests/f124_export.rs::aggregate_v2`.
 fn aggregate_watercourses(hd: &HdResult, domain_km: f32, ratio: f32) -> Vec<Watercourse> {
-    aggregate_watercourses_opt(hd, domain_km, ratio, true)
+    let d = &hd.drainage;
+    let (w, h) = (hd.width, hd.height);
+    let wc = ymir_core::lakes::connectivity::water_class(&hd.eroded, 0.5);
+    let body = water_bodies(d, &wc, w, h);
+    let segs = &d.rivers.segments;
+    let n = segs.len();
+    let q = |i: usize| d.segment_discharge_m3s.get(i).copied().unwrap_or(0.0);
+    let is_spill = |i: usize| d.segment_kind.get(i) == Some(&SegmentKind::Spillway);
+    // a spillway's body: where it starts, else the lake it names
+    let mut body_of_lake: std::collections::HashMap<u32, u32> = Default::default();
+    for k in 0..w * h {
+        if d.lake_map[k] != 0 {
+            body_of_lake.entry(d.lake_map[k]).or_insert(body[k]);
+        }
+    }
+    let mut outlet_of: std::collections::HashMap<u32, usize> = Default::default();
+    let mut spill_of: std::collections::HashMap<u32, usize> = Default::default();
+    for (i, sg) in segs.iter().enumerate() {
+        let (sx, sy) = sg.points[0];
+        if is_spill(i) {
+            let b = body_near(&body, w, h, sx, sy).or_else(|| {
+                d.segment_source_lake.get(i).copied().flatten().and_then(|id| body_of_lake.get(&id).copied())
+            });
+            if let Some(b) = b {
+                if spill_of.get(&b).is_none_or(|&j| q(i) > q(j)) {
+                    spill_of.insert(b, i);
+                }
+            }
+        } else if let (Sink::ExoLake, Some(id)) = classify_sink(hd, &wc, sx, sy) {
+            if outlet_of.get(&id).is_none_or(|&j| q(i) > q(j)) {
+                outlet_of.insert(id, i);
+            }
+        }
+    }
+    let end_body = |i: usize| -> Option<u32> {
+        let &(x, y) = segs[i].points.last()?;
+        body_near(&body, w, h, x, y)
+    };
+    // the continuation of a terminal reach: the spillway of the body it dies in, else (Finding 45)
+    // the outlet of the exorheic lake it dies in
+    let across = |i: usize| -> Option<usize> {
+        if let Some(&s) = end_body(i).and_then(|b| spill_of.get(&b)) {
+            return Some(s).filter(|&o| o != i);
+        }
+        let &(mx, my) = segs[i].points.last()?;
+        match classify_sink(hd, &wc, mx, my) {
+            (Sink::ExoLake, Some(id)) => outlet_of.get(&id).copied().filter(|&o| o != i),
+            _ => None,
+        }
+    };
+    let mut root = vec![0usize; n];
+    for i in 0..n {
+        let (mut j, mut seen) = (i, 0usize);
+        loop {
+            seen += 1;
+            if seen > n {
+                break; // a cycle through bodies: stop, never loop
+            }
+            match segs[j].downstream {
+                Some(k) if k < n => j = k,
+                _ => match across(j) {
+                    Some(o) => j = o,
+                    None => break,
+                },
+            }
+        }
+        root[i] = j;
+    }
+    // one reach, one object: the terminals of reaches sharing a cell are unified
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn find(p: &mut [usize], x: usize) -> usize {
+        let mut r = x;
+        while p[r] != r {
+            r = p[r];
+        }
+        let mut c = x;
+        while p[c] != r {
+            let nx = p[c];
+            p[c] = r;
+            c = nx;
+        }
+        r
+    }
+    let mut owner: std::collections::HashMap<usize, usize> = Default::default();
+    for i in 0..n {
+        for &(x, y) in own_points(&segs[i]) {
+            let k = y as usize * w + x as usize;
+            match owner.get(&k) {
+                Some(&o) => {
+                    let (a, b) = (find(&mut parent, root[o]), find(&mut parent, root[i]));
+                    if a != b {
+                        parent[a] = b;
+                    }
+                }
+                None => {
+                    owner.insert(k, i);
+                }
+            }
+        }
+    }
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = Default::default();
+    for i in 0..n {
+        let g = find(&mut parent, root[i]);
+        groups.entry(g).or_default().push(i);
+    }
+    let km_per_cell = if w > 0 { domain_km / w as f32 } else { 0.0 };
+    let mut pathlen = vec![0u32; n];
+    {
+        let mut order: Vec<usize> = (0..n).collect();
+        order.sort_by_key(|&i| segs[i].strahler_order);
+        for _ in 0..16 {
+            let mut changed = false;
+            for &i in &order {
+                let up = segs[i]
+                    .upstream
+                    .iter()
+                    .copied()
+                    .filter(|&u| u < n)
+                    .map(|u| pathlen[u])
+                    .max()
+                    .unwrap_or(0);
+                let v = up + segs[i].points.len() as u32;
+                if v != pathlen[i] {
+                    pathlen[i] = v;
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+    // Finding 123-C2's max-area climb and its 1 % tie (PROXY), on the reach's OWN area (core, F124-3)
+    let area_of = |i: usize| d.segment_drainage_km2.get(i).copied().unwrap_or(0.0);
+    let by_area = |a: usize, b: usize| -> std::cmp::Ordering {
+        let (x, y) = (area_of(a), area_of(b));
+        if (x - y).abs() <= 0.01 * x.max(y) { pathlen[a].cmp(&pathlen[b]) } else { x.total_cmp(&y) }
+    };
+    // the climb across a body: the exact inverse of `across`
+    let mut chained_to: std::collections::HashMap<usize, Vec<usize>> = Default::default();
+    for j in 0..n {
+        if segs[j].downstream.is_none() {
+            if let Some(o) = across(j) {
+                chained_to.entry(o).or_default().push(j);
+            }
+        }
+    }
+    // Finding 47's shared-mouth attribution: a terminal on a cell another terminal ends on reads
+    // one point back
+    let mut terminus_count: std::collections::HashMap<(u32, u32), usize> = Default::default();
+    for sg in segs.iter().filter(|sg| sg.downstream.is_none()) {
+        *terminus_count.entry(*sg.points.last().unwrap()).or_insert(0) += 1;
+    }
+    let own_q = |r: usize| -> f32 {
+        let shared = terminus_count.get(segs[r].points.last().unwrap()).copied().unwrap_or(0) > 1;
+        if shared {
+            d.segment_discharge_profile_m3s
+                .get(r)
+                .filter(|p| p.len() >= 2)
+                .map(|p| p[p.len() - 2])
+                .unwrap_or_else(|| q(r))
+        } else {
+            q(r)
+        }
+    };
+    let mut group_list: Vec<(usize, Vec<usize>)> = groups.into_iter().collect();
+    group_list.sort_by_key(|(r, _)| *r); // determinism: never the HashMap's order
+    let mut out = Vec::with_capacity(group_list.len());
+    let mut seg_obj = vec![u32::MAX; n];
+    for (o, (_, members)) in group_list.iter().enumerate() {
+        for &s in members {
+            seg_obj[s] = o as u32;
+        }
+    }
+    for (_, members) in group_list {
+        let mut roots: Vec<usize> = members.iter().map(|&i| root[i]).collect();
+        roots.sort_unstable();
+        roots.dedup();
+        let rep = *roots.iter().max_by(|&&a, &&b| by_area(a, b)).unwrap();
+        let mut trunk = Vec::new();
+        let mut cur = rep;
+        let mut visited = std::collections::HashSet::new();
+        while visited.insert(cur) {
+            trunk.push(cur);
+            let next = segs[cur].upstream.iter().copied().filter(|&u| u < n).max_by(|&a, &b| by_area(a, b));
+            match next {
+                Some(nx) => cur = nx,
+                None => match chained_to.get(&cur).and_then(|v| v.iter().copied().max_by(|&a, &b| by_area(a, b))) {
+                    Some(up) => cur = up,
+                    None => break,
+                },
+            }
+        }
+        let source = *trunk.last().unwrap();
+        trunk.reverse(); // source → sink
+        let path_cells = trunk_length_cells(segs, &trunk, w, h);
+        let (mx, my) = *segs[rep].points.last().unwrap();
+        let (sink, sink_lake_id) = classify_sink(hd, &wc, mx, my);
+        // a system is a RIVER as soon as one of its reaches is a watercourse (a spillway running
+        // down a valley, or a basin fed by rivers); its order is then a watercourse's
+        let river = members.iter().any(|&s| !is_spill(s));
+        let order = if !is_spill(rep) {
+            segs[rep].strahler_order
+        } else {
+            members.iter().filter(|&&s| !is_spill(s)).map(|&s| segs[s].strahler_order).max().unwrap_or(1)
+        };
+        out.push(Watercourse {
+            trunk,
+            tributaries: members.len().saturating_sub(1),
+            segments: members,
+            order,
+            discharge_m3s: roots.iter().map(|&r| own_q(r)).sum(),
+            width_mouth_m: d.segment_width_m.get(rep).copied().unwrap_or(0.0),
+            width_source_m: d.segment_width_m.get(source).copied().unwrap_or(0.0),
+            catchment_km2: 0.0, // the geometric partition, below
+            mouth_xy: (mx, my),
+            sink,
+            sink_lake_id,
+            length_km: path_cells * km_per_cell * ratio,
+            kind: if river { SegmentKind::Watercourse } else { SegmentKind::Spillway },
+            source_lake_id: d.segment_source_lake.get(rep).copied().flatten(),
+        });
+    }
+    // ── the geometric partition: every land cell takes the object of the first river cell or water
+    //    body its D8 path meets; a body belongs to the object of the reach LEAVING it (outlet or
+    //    spillway), else of the largest reach dying in it. The open sea and the coastal fringe no
+    //    river captures belong to no object.
+    let cells = catchment_partition(d, &wc, &body, &seg_obj, out.len());
+    let cell_km2 = km_per_cell * (domain_km / h.max(1) as f32);
+    for (o, x) in out.iter_mut().enumerate() {
+        x.catchment_km2 = cells[o] as f32 * cell_km2 * ratio * ratio;
+    }
+    out.sort_by(|a, b| {
+        let key = |w: &Watercourse| u8::from(w.kind == SegmentKind::Spillway);
+        key(a)
+            .cmp(&key(b))
+            .then(b.discharge_m3s.partial_cmp(&a.discharge_m3s).unwrap_or(std::cmp::Ordering::Equal))
+            .then(b.segments.len().cmp(&a.segments.len()))
+            .then(a.mouth_xy.cmp(&b.mouth_xy))
+    });
+    out
+}
+
+/// ADR Finding 124-3 — the LENGTH of a trunk, in cells: the path through its reaches' points in
+/// order, each step Euclidean on the torus (1 or √2 on D8, a crossed water body by its chord), the
+/// confluence cell a reach shares with its receiver counted ONCE. It was `points × cell`, which
+/// counted every confluence twice (+7.6 % on a 61 km trunk) and a diagonal step as one cell.
+fn trunk_length_cells(segs: &[ymir_core::terrain::flow::RiverSegment], trunk: &[usize], w: usize, h: usize) -> f32 {
+    let (mut len, mut prev): (f32, Option<(u32, u32)>) = (0.0, None);
+    for &s in trunk {
+        for &p in &segs[s].points {
+            if let Some(q) = prev {
+                if q != p {
+                    let dx = (p.0 as i64 - q.0 as i64).rem_euclid(w as i64);
+                    let dy = (p.1 as i64 - q.1 as i64).rem_euclid(h as i64);
+                    let (dx, dy) = (dx.min(w as i64 - dx) as f32, dy.min(h as i64 - dy) as f32);
+                    len += (dx * dx + dy * dy).sqrt();
+                }
+            }
+            prev = Some(p);
+        }
+    }
+    len
+}
+
+/// ADR Finding 124-3 — cells per object of the GEOMETRIC partition of the land (see
+/// `aggregate_watercourses`). Counted in CELLS (u64): 67 M f32 increments of a 0.0024 km² cell lose
+/// the sum. PORTED in `ymir-core/tests/f124_export.rs::geometric_partition`.
+fn catchment_partition(
+    d: &ymir_core::tectonics_c1::drainage::C1DrainageResult,
+    wc: &[u8],
+    body: &[u32],
+    seg_obj: &[u32],
+    n_obj: usize,
+) -> Vec<u64> {
+    let (w, h) = (d.width, d.height);
+    let n = w * h;
+    let segs = &d.rivers.segments;
+    const UNK: u32 = u32::MAX;
+    const NONE: u32 = u32::MAX - 1;
+    let mut obj = vec![UNK; n];
+    // a body: the object leaving it (outlet / spillway, largest discharge), else the largest dying in it
+    let mut body_obj: std::collections::HashMap<u32, (bool, f32, u32)> = Default::default();
+    for (i, s) in segs.iter().enumerate() {
+        let a = d.segment_discharge_m3s.get(i).copied().unwrap_or(0.0);
+        let (sx, sy) = s.points[0];
+        if let Some(b) = body_near(body, w, h, sx, sy) {
+            let e = body_obj.entry(b).or_insert((true, a, seg_obj[i]));
+            if !e.0 || a > e.1 {
+                *e = (true, a, seg_obj[i]);
+            }
+        }
+        if s.downstream.is_none() {
+            let &(mx, my) = s.points.last().unwrap();
+            if let Some(b) = body_near(body, w, h, mx, my) {
+                let e = body_obj.entry(b).or_insert((false, a, seg_obj[i]));
+                if !e.0 && a > e.1 {
+                    *e = (false, a, seg_obj[i]);
+                }
+            }
+        }
+    }
+    for (i, s) in segs.iter().enumerate() {
+        for &(x, y) in own_points(s) {
+            let k = y as usize * w + x as usize;
+            if obj[k] == UNK {
+                obj[k] = seg_obj[i];
+            }
+        }
+    }
+    for k in 0..n {
+        if obj[k] == UNK {
+            if body[k] != u32::MAX {
+                obj[k] = body_obj.get(&body[k]).map_or(NONE, |e| e.2);
+            } else if wc[k] == 1 {
+                obj[k] = NONE;
+            }
+        }
+    }
+    let dir = &d.flow.direction;
+    let mut path = Vec::new();
+    for s in 0..n {
+        if obj[s] != UNK {
+            continue;
+        }
+        path.clear();
+        let mut cur = s;
+        let res = loop {
+            if obj[cur] != UNK {
+                break obj[cur];
+            }
+            path.push(cur);
+            let dd = dir[cur];
+            if dd == DIR_NONE || path.len() > n {
+                break NONE;
+            }
+            let (x, y) = ((cur % w) as i32, (cur / w) as i32);
+            cur = (y + D8_DY[dd as usize]).rem_euclid(h as i32) as usize * w
+                + (x + D8_DX[dd as usize]).rem_euclid(w as i32) as usize;
+        };
+        for &k in &path {
+            obj[k] = res;
+        }
+    }
+    let mut cells = vec![0u64; n_obj];
+    for k in 0..n {
+        if wc[k] != 1 && (obj[k] as usize) < n_obj {
+            cells[obj[k] as usize] += 1;
+        }
+    }
+    cells
 }
 
 fn sink_label(s: Sink) -> (&'static str, C) {
@@ -3655,6 +4169,36 @@ fn microscope_list(ui: &mut egui::Ui, ws: &mut WorkspaceState) {
         None => return,
     };
     let wcs = ws.watercourses.clone();
+    {
+        // ADR Finding 123 — the identity guard, stated before any number.
+        use ymir_core::tectonics_c1::bench_guard::GuardStatus;
+        let (txt, col, tip) = match &hd.bench_guard {
+            GuardStatus::Match { label } => (
+                format!("= banc ({label})"),
+                C::from_rgb(0x5a, 0xc0, 0x7a),
+                "Ce monde est BIT À BIT celui qu'un banc a mesuré à ce réglage: ses nombres se \
+                 lisent contre le Finding correspondant."
+                    .to_string(),
+            ),
+            GuardStatus::Mismatch { label, bench, viz } => (
+                format!("≠ banc ({label}) — nombres masqués"),
+                C::from_rgb(0xe0, 0x60, 0x50),
+                format!(
+                    "Même réglage que le banc « {label} », mais le champ DIFFÈRE (banc {bench}, \
+                     viz {viz}). Aucun nombre n'est affiché: ce monde n'est pas le monde mesuré."
+                ),
+            ),
+            GuardStatus::NoReference { viz } => (
+                "non gardé — aucun banc à ce réglage".to_string(),
+                C::from_rgb(0xd0, 0xb0, 0x50),
+                format!(
+                    "Aucun banc n'a mesuré ce réglage exact (seed, résolution, cadrage, états). Les \
+                     nombres sont ceux de CE monde et ne se comparent à aucun Finding. Champ {viz}."
+                ),
+            ),
+        };
+        ui.label(egui::RichText::new(txt).color(col).size(10.5)).on_hover_text(tip);
+    }
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("MICROSCOPE").color(TEXT_BRIGHT).strong().size(11.5));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -5564,5 +6108,208 @@ ANATOMY of the largest duplicated terminal, at cell {cell:?}:"
             b.effective_km2,
             b.effective_km2 / a.effective_km2.max(1e-6),
         );
+    }
+}
+
+/// ADR Finding 123 — **the identity guard, end to end through `run_hd`**: the viz's own pipeline, with
+/// the HdParams the workspace sends for seed 1 at 8192² (auto framing, C-2/C-3/C-3b/H-1 on,
+/// latitude 45°, span 40°, ratio 7.5), must read `Match` against the bench's reference for the
+/// delivered world and for "C2 /10 col". A `NoReference` here means the viz's configuration is not
+/// the bench's; a `Mismatch` means the same configuration yields another world.
+///
+/// Run: cargo test -p ymir-viz --release f123_viz_guard -- --ignored --nocapture
+#[cfg(test)]
+mod f123_viz_guard {
+    use super::*;
+    use crate::bridge::c1::C1RunSpec;
+    use crate::bridge::c1::events::C1Event;
+    use crate::bridge::c1::hd::{HdParams, run_hd};
+    use crossbeam_channel::bounded;
+    use std::sync::atomic::AtomicBool;
+    use ymir_core::tectonics_c1::bench_guard::GuardStatus;
+    use ymir_core::tectonics_c1::closures::fracture::FractureConfig;
+    use ymir_core::tectonics_c1::closures::infiltration::InfiltrationConfig;
+    use ymir_core::tectonics_c1::closures::lithology::LithologyConfig;
+    use ymir_core::tectonics_c1::closures::volcanism::VolcanismConfig;
+    use ymir_core::tectonics_c1::valley_construction::{F121_AGE_K, ValleyConstruction};
+
+    const PSEED: u64 = 10_481_999_410_520_546_993;
+
+    fn run(label: &str, slope: Option<f32>, valley: Option<ValleyConstruction>) -> GuardStatus {
+        let spec = C1RunSpec { seed: PSEED, ..C1RunSpec::default() };
+        // the workspace's own literal (workspace.rs, the "Générer HD" handler), seed 1 auto-framed
+        let params = HdParams {
+            target_size: 8192,
+            latitude_deg: 45.0,
+            domain_km: 400.0,
+            manual_offset: Some([6.0 / 64.0, 37.0 / 64.0]),
+            stream_power: true,
+            closures: true,
+            cross_rill: false,
+            slope_floor_s_eq: slope,
+            valley_construction: valley,
+            cross_rill_d: 0.40,
+            mfd: true,
+            mfd_p: 2.0,
+            base_level_m: None,
+            base_level_off: false,
+            geo_scale_ratio: 7.5,
+            latitude_span_deg: Some(40.0),
+            export_dir: None,
+            volcanism: Some(VolcanismConfig { enabled: true, ..Default::default() }),
+            lithology: Some(LithologyConfig {
+                enabled: true,
+                soft_multiplier: 10.0,
+                volcanic_multiplier: 3.0,
+                rift_age_threshold: 1.0,
+            }),
+            fracture: Some(FractureConfig {
+                enabled: true,
+                amplitude: 6.0,
+                decay_km: 25.0,
+                ..Default::default()
+            }),
+            infiltration: Some(InfiltrationConfig { enabled: true, ..Default::default() }),
+            emit_tectonic_labels: false,
+        };
+        let (tx, rx) = bounded(256);
+        let cancel = Arc::new(AtomicBool::new(false));
+        std::thread::spawn(move || run_hd(&spec, &params, &tx, &cancel));
+        while let Ok(e) = rx.recv() {
+            match e {
+                C1Event::HdCompleted { result, .. } => {
+                    eprintln!("   {label}: {:?}", result.bench_guard);
+                    return result.bench_guard.clone();
+                }
+                C1Event::HdFailed { error } => panic!("HD run failed: {error}"),
+                _ => {}
+            }
+        }
+        panic!("the HD worker hung up")
+    }
+
+    #[test]
+    #[ignore]
+    fn f123_viz_guard() {
+        eprintln!("\n==========  Finding 123 . the guard through run_hd  ==========");
+        let a = run("livré", None, None);
+        let b = run("C2 /10 col", Some(0.024), Some(ValleyConstruction::f122(F121_AGE_K, Some(0.1))));
+        assert!(matches!(a, GuardStatus::Match { .. }), "livré: {a:?}");
+        assert!(matches!(b, GuardStatus::Match { .. }), "C2 /10 col: {b:?}");
+    }
+}
+
+/// ADR Finding 124-3 — the shipped aggregation's three gestures on a hand-built world (permanent,
+/// fast). 12×6: the open sea is column 11, an enclosed below-sea basin sits at (2,4). W0 runs along
+/// row 1 to the sea; S1 is the basin's SPILLWAY, running down W0's valley to the same mouth (the
+/// Watercourse × Spillway pair that shared 297 cells on C2/10); I2 dies in the basin; W3 runs along
+/// row 5 on its own. Expected: two objects — {W0, S1, I2}, a RIVER — and {W3}; every reach in
+/// exactly one; the basins disjoint and summing to at most the land.
+#[cfg(test)]
+mod f124_objects {
+    use super::*;
+    use ymir_core::terrain::flow::{FlowResult, RiverNetwork, RiverSegment};
+
+    #[test]
+    fn one_reach_one_object_and_the_basins_are_a_partition() {
+        let (w, h) = (12usize, 6usize);
+        let n = w * h;
+        let mut z = vec![0.8f32; n];
+        for y in 0..h {
+            z[y * w + 11] = 0.2; // the open sea (touches the grid edge)
+        }
+        z[4 * w + 2] = 0.3; // an enclosed below-sea basin
+        let eroded = GridF32::from_vec(w, h, z);
+        let seg = |points: Vec<(u32, u32)>| RiverSegment {
+            points,
+            strahler_order: 1,
+            avg_flow: 1.0,
+            max_flow: 1.0,
+            basin_id: 0,
+            upstream: vec![],
+            downstream: None,
+        };
+        let w0 = seg((5..=10).map(|x| (x, 1)).collect());
+        let s1 = seg([(3, 4), (4, 3), (5, 2)].into_iter().chain((6..=10).map(|x| (x, 1))).collect());
+        let i2 = seg(vec![(0, 4), (1, 4)]);
+        let w3 = seg((0..=10).map(|x| (x, 5)).collect());
+        let segs = vec![w0, s1, i2, w3];
+        let m = segs.len();
+        let mut direction = vec![DIR_NONE; n];
+        for y in 0..h {
+            for x in 0..11 {
+                if (x, y) != (2, 4) {
+                    direction[y * w + x] = 2; // east, to the sea
+                }
+            }
+        }
+        let drainage = ymir_core::tectonics_c1::drainage::C1DrainageResult {
+            flow: FlowResult {
+                filled: GridF32::new(w, h, 0.0),
+                direction,
+                accumulation: GridF32::new(w, h, 1.0),
+                basins: vec![0; n],
+                num_basins: 1,
+            },
+            segment_drainage_km2: vec![10.0, 50.0, 5.0, 8.0],
+            segment_catchment_cells: vec![1.0; m],
+            segment_navigability: vec![Navigability::NonNavigable; m],
+            segment_discharge_m3s: vec![1.0, 5.0, 0.5, 0.8],
+            segment_width_m: vec![1.0; m],
+            segment_profile_m: segs.iter().map(|s| vec![0.0; s.points.len()]).collect(),
+            segment_discharge_profile_m3s: segs.iter().map(|s| vec![1.0; s.points.len()]).collect(),
+            segment_kind: vec![
+                SegmentKind::Watercourse,
+                SegmentKind::Spillway,
+                SegmentKind::Watercourse,
+                SegmentKind::Watercourse,
+            ],
+            segment_source_lake: vec![None; m],
+            rivers: RiverNetwork { segments: segs },
+            lakes: vec![],
+            lake_map: vec![0; n],
+            width: w,
+            height: h,
+        };
+        let hd = HdResult {
+            width: w,
+            height: h,
+            land_topology: ymir_core::tectonics_c1::land_topology::land_topology(&eroded, 0.5),
+            eroded,
+            temperature: GridF32::new(w, h, 10.0),
+            precipitation: GridF32::new(w, h, 0.0),
+            drainage,
+            biomes: vec![Biome::Ocean; n],
+            volcanoes: vec![],
+            tectonic: None,
+            edifices: vec![],
+            sample_origin: [0.0, 0.0],
+            sample_size: 1.0,
+            bench_guard: ymir_core::tectonics_c1::bench_guard::GuardStatus::NoReference { viz: String::new() },
+            km_per_cell: 1.0,
+        };
+        let wcs = aggregate_watercourses(&hd, w as f32, 1.0);
+        assert_eq!(wcs.len(), 2, "two systems: {:?}", wcs.iter().map(|x| &x.segments).collect::<Vec<_>>());
+        let mut owner = vec![usize::MAX; m];
+        for (o, x) in wcs.iter().enumerate() {
+            for &s in &x.segments {
+                assert_eq!(owner[s], usize::MAX, "reach {s} in two objects");
+                owner[s] = o;
+            }
+        }
+        assert!(owner.iter().all(|&o| o != usize::MAX), "every reach in an object");
+        assert_eq!(owner[0], owner[1], "the spillway down W0's valley is W0's system");
+        assert_eq!(owner[2], owner[1], "the reach dying in the basin is chained to its spillway");
+        assert_ne!(owner[3], owner[0], "W3 is its own system");
+        let merged = &wcs[owner[0]];
+        assert_eq!(merged.kind, SegmentKind::Watercourse, "a system with a watercourse is a river");
+        // the trunk climbs from the mouth to the spillway (largest own area) and across the basin
+        assert_eq!(merged.trunk, vec![2, 1], "trunk source → mouth: I2, then the spillway");
+        // the viz's cell area: (domain / w) · (domain / h), 1 × 2 km here
+        let cell_km2 = (w as f32 / w as f32) * (w as f32 / h as f32);
+        let land = (0..n).filter(|&k| k % w != 11).count() as f32 * cell_km2;
+        let sum: f32 = wcs.iter().map(|x| x.catchment_km2).sum();
+        assert!(sum <= land + 1e-3, "the basins are a partition: Σ {sum} > land {land}");
+        assert!(wcs.iter().all(|x| x.catchment_km2 > 0.0), "every system drains an area");
     }
 }

@@ -1287,6 +1287,20 @@ pub fn extract_rivers(
         let last = segments[seg_idx].points.last().copied();
         if let Some((lx, ly)) = last {
             let lidx = ly as usize * width + lx as usize;
+            // ADR Finding 124-3 (T3b) -- a reach that ENDS ON a junction held by another reach (one
+            // starting there, or running through it: a reach of one point does not stop at a
+            // junction) enters THAT reach. Linking by the junction's RECEIVER named the next reach
+            // instead, so the reach read its receiver's value on the confluence it shares: the
+            // teeth of a comb joining a collector mid-reach exported the collector's 33 m³/s and
+            // 29 m width for 0.2-1.1 km² of their own.
+            let held = cell_to_segment[lidx].filter(|&o| {
+                o != seg_idx && segments[o].points.last() != Some(&(lx, ly))
+            });
+            if let Some(ds_seg) = held {
+                segments[seg_idx].downstream = Some(ds_seg);
+                segments[ds_seg].upstream.push(seg_idx);
+                continue;
+            }
             let d = dir[lidx];
             if d != DIR_NONE {
                 let ni = ((lx as i32 + D8_DX[d as usize]) % width as i32 + width as i32) as usize
@@ -1355,7 +1369,15 @@ fn trace_segment(
         if upstream_count[nidx] >= 2 && points.len() > 1 {
             // Include the junction cell as last point of this segment
             points.push((ni as u32, nj as u32));
-            cell_to_segment[nidx] = Some(seg_idx);
+            // ADR Finding 124-3 (T3) -- CLAIM the junction only if no reach holds it yet. It used
+            // to be overwritten by every tributary ending on it, stealing it from the reach that
+            // STARTS there or passes through it (a reach of one point runs through a junction) --
+            // and the links below read `cell_to_segment` at each reach's receiver, so a tributary
+            // was linked to ANOTHER tributary and the true receiver lost it: measured on the
+            // delivered world, a reach starting with 1 369 km² drawn and no upstream.
+            if cell_to_segment[nidx].is_none() {
+                cell_to_segment[nidx] = Some(seg_idx);
+            }
             let f = acc.data[nidx];
             flow_sum += f;
             max_flow = max_flow.max(f);
@@ -1461,6 +1483,61 @@ fn compute_strahler(segments: &mut [RiverSegment]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ADR Finding 124-3 (T3) — **a tributary links to the reach its water enters.** T1 and T2 meet
+    /// at J, D's first cell; T' joins D at its SECOND cell P2, itself a junction D runs through
+    /// (a reach of one point does not stop at one). Before the fix, T2 and T' overwrote the claims
+    /// on J and P2, so T1 and T2 were linked to T' (a tributary) and D received T' only.
+    #[test]
+    fn a_tributary_links_to_the_reach_its_water_enters() {
+        let (w, h) = (6usize, 4usize);
+        let idx = |x: usize, y: usize| y * w + x;
+        let mut direction = vec![DIR_NONE; w * h];
+        let mut acc = GridF32::new(w, h, 0.0);
+        // (cell, D8 direction): 0 N, 1 NE, 2 E, 3 SE, 7 NW
+        for ((x, y), d) in [
+            ((0, 0), 2u8), // T1
+            ((1, 0), 3),
+            ((0, 2), 2), // T2
+            ((1, 2), 1),
+            ((2, 1), 2), // J → P2
+            ((3, 1), 2), // P2
+            ((4, 1), 2),
+            ((4, 3), 7), // T'
+            ((3, 2), 0),
+            ((5, 3), 7), // T'' -- makes (4,1) a junction: D stops there, E starts
+            ((4, 2), 0),
+        ] {
+            direction[idx(x, y)] = d;
+            acc.data[idx(x, y)] = 10.0;
+        }
+        acc.data[idx(5, 1)] = 10.0; // D's last cell, no receiver
+        let flow = FlowResult {
+            filled: GridF32::new(w, h, 0.0),
+            direction,
+            accumulation: acc,
+            basins: vec![0; w * h],
+            num_basins: 1,
+        };
+        let cfg = RiverConfig { stream_threshold: 5.0, head_threshold: 0.0, ..Default::default() };
+        let net = extract_rivers(&flow, &cfg, w, h);
+        let by_start = |p: (u32, u32)| {
+            net.segments.iter().position(|s| s.points[0] == p).unwrap_or_else(|| panic!("no reach at {p:?}"))
+        };
+        let (t1, t2, d, tp) = (by_start((0, 0)), by_start((0, 2)), by_start((2, 1)), by_start((4, 3)));
+        let (e, tpp) = (by_start((4, 1)), by_start((5, 3)));
+        assert_eq!(net.segments[t1].downstream, Some(d), "T1 enters D at J: {:?}", net.segments);
+        assert_eq!(net.segments[t2].downstream, Some(d), "T2 enters D at J");
+        // (T3b) P2 is INSIDE D, and its receiver (4,1) is E's first cell: T' still enters D
+        assert_eq!(net.segments[tp].downstream, Some(d), "T' enters D at P2, not E");
+        assert_eq!(net.segments[tpp].downstream, Some(e), "T'' enters E at its first cell");
+        assert_eq!(net.segments[d].downstream, Some(e), "D enters E");
+        let mut up = net.segments[d].upstream.clone();
+        up.sort_unstable();
+        let mut want = vec![t1, t2, tp];
+        want.sort_unstable();
+        assert_eq!(up, want, "D receives all three");
+    }
 
     #[test]
     fn cone_flow_accumulation() {

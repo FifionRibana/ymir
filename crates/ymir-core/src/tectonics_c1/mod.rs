@@ -76,6 +76,7 @@
 //! is `1.6e-14` (machine precision, well below the threshold).
 
 pub mod boundary_classification;
+pub mod bench_guard;
 pub mod cached_product;
 pub mod closures;
 pub mod debug_labels;

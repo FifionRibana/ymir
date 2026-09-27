@@ -1,0 +1,111 @@
+==========  Finding 124-3 . does the export tell the truth?  ==========
+
+   (i) river cells **383525** · in more than one object **551 (0.14 %)** · object pairs sharing cells 20
+          297 cells · [Watercourse S2 4917 km² signified, mouth (3824,4757)] × [Spillway S1 286808 km² signified, mouth (3824,4757)]
+          172 cells · [Watercourse S2 4592 km² signified, mouth (4936,3051)] × [Spillway S1 393 km² signified, mouth (4936,3051)]
+           68 cells · [Watercourse S3 2272 km² signified, mouth (4623,4339)] × [Spillway S1 14081 km² signified, mouth (4623,4339)]
+            2 cells · [Watercourse S1 2272 km² signified, mouth (4623,4339)] × [Spillway S1 14081 km² signified, mouth (4623,4339)]
+            1 cells · [Watercourse S4 30203 km² signified, mouth (3290,2702)] × [Watercourse S1 30203 km² signified, mouth (3290,2702)]
+            1 cells · [Watercourse S1 1516 km² signified, mouth (2771,3421)] × [Watercourse S2 1516 km² signified, mouth (2771,3421)]
+   (ii) land **27008 km²** drawn (= 1519205 signified) · Σ catchments: watercourses **15277** (0.57× land) · spillways **22017** (0.82× land) · the biggest object Spillway **559989 km² signified = 9955 km² drawn**
+   (iv) domain diagonal **566 km drawn = 4243 km signified** · the longest trunks:
+       526 km signified = **70 km drawn** · 95 segments, 1437 points (1343 distinct cells) · lake hops 0 · 30203 km² signified
+       387 km signified = **52 km drawn** · 36 segments, 1056 points (1028 distinct cells) · lake hops 0 · 45511 km² signified
+       384 km signified = **51 km drawn** · 110 segments, 1049 points (978 distinct cells) · lake hops 0 · 842 km² signified
+       304 km signified = **41 km drawn** · 52 segments, 831 points (789 distinct cells) · lake hops 0 · 992 km² signified
+       300 km signified = **40 km drawn** · 12 segments, 820 points (816 distinct cells) · lake hops 0 · 459 km² signified
+   (v) blocks of river points (every 3×3 neighbour a river point), ≥ 50 cells: **118**
+       2459 cells · bbox (4818,2979)–(4876,3026) 59×48 · fill 87 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 3 % · carved 100 % · 66 segments · D8 A p50 0.16 km² · width exported p50 29.7 m p90 30.6 m · at the last point (pre-F124) p50 29.7 m p90 30.6 m
+       1124 cells · bbox (3689,4512)–(3732,4644) 44×133 · fill 19 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 0 % · carved 0 % · 36 segments · D8 A p50 0.22 km² · width exported p50 28.2 m p90 29.0 m · at the last point (pre-F124) p50 28.2 m p90 29.0 m
+       1090 cells · bbox (1384,4563)–(1488,4687) 105×125 · fill 8 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 0 % · carved 0 % · 32 segments · D8 A p50 0.23 km² · width exported p50 27.0 m p90 45.9 m · at the last point (pre-F124) p50 27.0 m p90 45.9 m
+       844 cells · bbox (2633,4930)–(2708,4943) 76×14 · fill 79 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 0 % · carved 0 % · 14 segments · D8 A p50 0.18 km² · width exported p50 86.8 m p90 89.8 m · at the last point (pre-F124) p50 86.8 m p90 89.8 m
+       800 cells · bbox (3930,4178)–(3947,4241) 18×64 · fill 69 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 0 % · carved 0 % · 18 segments · D8 A p50 0.16 km² · width exported p50 1.7 m p90 1.9 m · at the last point (pre-F124) p50 1.7 m p90 1.9 m
+       756 cells · bbox (2096,4527)–(2111,4591) 16×65 · fill 73 % · lake 0 % · inland below-sea 0 % · flat 0 % · constructed floor 23 % · carved 100 % · 95 segments · D8 A p50 0.12 km² · width exported p50 46.0 m p90 47.0 m · at the last point (pre-F124) p50 46.0 m p90 47.0 m
+
+==========  end 124-3 . 488.3 s  ==========
+==========  Finding 124-3 . heads that carry area  ==========
+
+   corrected trunk heads with no upstream and no body at their start: 360 · with > 10 km² drawn AT THEIR FIRST POINT: **37**
+
+   head seg 360 (a Finding 93 LOSER) · 3 pts · start (3358,2624) A 1369.3 km² drawn · strahler 1 · segment_kind Watercourse
+        c0       c0       c0r      c0       c0       
+        c0       c0       c0r      c0       c0r      
+        c0r      c0       c0r      c0r      c0       
+        c0r      c0r      c0       c0       c0       
+        c0r      c0       c0r      c0       c0       
+        donor (3358,2623) A 0.2 km² · lake 0 · class 0 · reach Some(705) (Watercourse, 4 pts, down Some(710), ends (3358,2624))
+        donor (3359,2623) A 0.1 km² · lake 0 · class 0 · reach None
+        donor (3359,2624) A 1369.0 km² · lake 0 · class 0 · reach Some(359) (Watercourse, 6 pts, down Some(710), ends (3358,2624))
+
+   head seg 2585 · 3 pts · start (1326,4501) A 1009.8 km² drawn · strahler 1 · segment_kind Watercourse
+        c0       c0       c0       c0r      c0r      
+        c0       c0       c0r      c0       c0       
+        c0       c0       c0r      c0r      c0r      
+        c0r      c0r      c0       c0       c0       
+        c0       c0r      c0r      c0       c0       
+        donor (1326,4500) A 1009.7 km² · lake 0 · class 0 · reach Some(2584) (Watercourse, 3 pts, down Some(4500), ends (1326,4501))
+        donor (1327,4501) A 0.1 km² · lake 0 · class 0 · reach Some(4517) (Watercourse, 5 pts, down Some(4500), ends (1326,4501))
+        donor (1327,4502) A 0.0 km² · lake 0 · class 0 · reach None
+
+   head seg 3833 · 3 pts · start (3512,4759) A 457.0 km² drawn · strahler 1 · segment_kind Watercourse
+        c0r      c0       c0       c0       c0r      
+        c0       c0r      c0r      c0r      c0r      
+        c0r      c0r      c0r      c0       c0       
+        c0       c0       c0r      c0       c0       
+        c0       c0       c0r      c0       c0       
+        donor (3511,4759) A 455.8 km² · lake 0 · class 0 · reach Some(3832) (Watercourse, 4 pts, down Some(5247), ends (3512,4759))
+        donor (3511,4760) A 0.0 km² · lake 0 · class 0 · reach None
+        donor (3512,4760) A 1.2 km² · lake 0 · class 0 · reach Some(5366) (Watercourse, 64 pts, down Some(5247), ends (3512,4759))
+
+   head seg 1786 · 3 pts · start (2128,3429) A 302.5 km² drawn · strahler 1 · segment_kind Watercourse
+        c1r      c0       c0       c0       c0       
+        c0r      c0r      c0       c0       c0       
+        c0r      c0r      c0r      c0       c0       
+        c0       c0r      c0r      c0r      c0       
+        c0r      c0       c0r      c0r      c0r      
+        donor (2129,3429) A 0.0 km² · lake 0 · class 0 · reach None
+        donor (2128,3430) A 0.1 km² · lake 0 · class 0 · reach Some(1809) (Watercourse, 13 pts, down Some(1804), ends (2128,3429))
+        donor (2129,3430) A 302.3 km² · lake 0 · class 0 · reach Some(1785) (Watercourse, 3 pts, down Some(1804), ends (2128,3429))
+
+   head seg 2036 (a Finding 93 LOSER) · 3 pts · start (1911,3612) A 253.0 km² drawn · strahler 1 · segment_kind Watercourse
+        c0r      c0r      c0r      c0r      c0       
+        c0       c0       c0       c0r      c0       
+        c0       c0       c0r      c0       c0r      
+        c0       c0       c0r      c0       c0       
+        c0       c0r      c0       c0       c0       
+        donor (1910,3612) A 0.0 km² · lake 0 · class 0 · reach None
+        donor (1910,3613) A 0.0 km² · lake 0 · class 0 · reach None
+        donor (1911,3613) A 252.9 km² · lake 0 · class 0 · reach Some(2035) (Watercourse, 11 pts, down Some(2064), ends (1911,3612))
+        donor (1912,3613) A 0.1 km² · lake 0 · class 0 · reach None
+
+   head seg 2432 · 3 pts · start (4102,4062) A 158.3 km² drawn · strahler 1 · segment_kind Watercourse
+        c0       c0       c0r      c0       c0       
+        c0r      c0       c0r      c0       c0       
+        c0r      c0r      c0r      c0r      c0       
+        c0       c0r      c0       c0       c0r      
+        c0       c0       c0       c0       c0r      
+        donor (4101,4062) A 0.3 km² · lake 0 · class 0 · reach Some(3010) (Watercourse, 7 pts, down Some(3031), ends (4102,4062))
+        donor (4101,4063) A 158.0 km² · lake 0 · class 0 · reach Some(2431) (Watercourse, 14 pts, down Some(3031), ends (4102,4062))
+
+   head seg 156 · 3 pts · start (3641,2130) A 150.8 km² drawn · strahler 1 · segment_kind Watercourse
+        c0r      c0       c0       c0       c0       
+        c0r      c0       c0       c0       c0r      
+        c0       c0r      c0r      c0r      c0r      
+        c0       c0r      c0r      c0r      c0       
+        c0       c0       c0r      c0r      c0r      
+        donor (3641,2129) A 0.0 km² · lake 0 · class 0 · reach None
+        donor (3642,2130) A 150.6 km² · lake 0 · class 0 · reach Some(155) (Watercourse, 3 pts, down Some(270), ends (3641,2130))
+        donor (3641,2131) A 0.2 km² · lake 0 · class 0 · reach Some(271) (Watercourse, 17 pts, down Some(270), ends (3641,2130))
+
+   head seg 51 (a Finding 93 LOSER) · 3 pts · start (4016,1818) A 134.5 km² drawn · strahler 1 · segment_kind Watercourse
+        c0r      c0r      c0r      c0       c0       
+        c0r      c0r      c0r      c0       c0       
+        c0       c0       c0r      c0r      c0       
+        c0       c0       c0       c0r      c0r      
+        c0       c0       c0       c0       c0r      
+        donor (4015,1818) A 0.1 km² · lake 0 · class 0 · reach None
+        donor (4017,1818) A 0.9 km² · lake 0 · class 0 · reach Some(60) (Watercourse, 39 pts, down Some(52), ends (4016,1818))
+        donor (4016,1819) A 0.2 km² · lake 0 · class 0 · reach None
+        donor (4017,1819) A 133.3 km² · lake 0 · class 0 · reach Some(50) (Watercourse, 5 pts, down Some(52), ends (4016,1818))
+
+==========  end 124-3 heads  ==========

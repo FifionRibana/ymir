@@ -6063,6 +6063,11 @@ here — this is attribution.
 `A_c(S)` still gated OFF, no recalibration, no hillslope term, no timescale work. Two guards
 added for the quantities this finding attributes, and nothing else.
 
+> **Bound added by Finding 124-P1.** Invariant in RESOLUTION, not in FRAMING: the upscale samples its
+> coast warp and its FBM at the unwrapped torus coordinate, and the bathymetry normalises by the
+> ocean's global mean depth — two framings of one torus are two worlds (Finding 123: 22.3 %
+> bit-identical after the 768-cell roll).
+
 ## Finding 58 — `A_c`'s DISCRETISATION carries almost the whole divergence; the intensive/extensive split is not population-invariant
 
 Correction first, because it is mine and it is structural. Finding 57 concluded *"`A_c` is a LEVEL
@@ -7676,6 +7681,11 @@ wide and the hierarchy flattens further.
 > problem, Finding 58), or depart from Leopold & Maddock's exponent and label it PROXY.
 
 **Not recommended here, and no value proposed.** The measurement is the deliverable.
+
+> ⛔ **Read under T2 (Finding 124-P3).** Every tributary's discharge and width in this finding was read
+> at its confluence cell — its RECEIVER's value (48 % of the reaches ending on a confluence exported a
+> width over twice their own). What concerns the trunks holds; the median and the contrast, which the
+> tributaries dominate, are to be re-read.
 
 ## Finding 70 — buildable land is fragmented into ~43 000 components by the drainage skeleton, and the slope threshold is NOT the dominant parameter
 
@@ -17998,3 +18008,209 @@ basin-draining trunk shallower. **C — the tile** (renders in the report folder
 author's eye: straight parallel river runs filling flats in every world, polygonal cells where
 planar walls meet, and a filled rectangle of river points. The viz gains "C2 /10 col".
 Bench: `tests/f122_brush.rs`. **Nothing promoted.**
+
+## Finding 123 — the teeth are on the constructed walls; the viz gets an identity guard; rule 18 says the walls CREATE the teeth; the trunk becomes the max-area path
+
+Reports: `docs/reports/c1_continental_buoyancy/f123_teeth/finding_123_A.md` and
+`finding_123_guard_rule18_identity.md`. Seed 1, 8192², C2/10 (Finding 121), the export layer
+(`full_tree = false`). Grep: `Genevaux hierarchical`, `hillslope profile`, `mur`, `river id` — 0.
+
+### A — the teeth
+
+A tooth = a drawn `Watercourse` segment with ≥ 80 % of its cells on a constructed WALL (`carved &&
+!floor` of the PRE carve). ⚠ The first run read A at the segment's last point, which is the junction
+ON the parent (teeth p50 29.4 km²); corrected to the segment's own cells before any reading.
+
+| | value |
+|---|---|
+| drawn segments | 12 609 (16 981 km, domain) |
+| on walls (≥ 50 %) / **teeth (≥ 80 %)** | 2 902 / **1 787 = 61.6 %** |
+| teeth length | 2 094 km (domain) = 12.3 % of the network |
+| teeth A p10 / p50 / p90 | 0.122 / **0.269** / 2.277 km² (domain; A_c 0.1) |
+| angle to the parent p10 / p50 / p90 | 0 / **56** / 86° (off-wall segments: p50 23°) |
+| control: trunks A ≥ 10 km² — wall share p50 / p90 | **0.0 % / 0.0 %** |
+
+None of the round's three clauses holds (≥ 70 %, ~90°, A median < A_c): the teeth ARE on the walls,
+but they are not sub-A_c perpendicular lines (a drawn segment exists only above the extraction
+threshold). C1 (a drawing threshold) read, not applied: at A ≥ 1 km² 370 teeth remain and 0 of 55
+S2 watercourses to the sea vanish — hiding is not correcting.
+
+### The identity guard (`tectonics_c1::bench_guard`)
+
+The viz's eroded field (pre-breach) against the bench's field at the SAME settings, keyed by the
+eroded product's cache digest (`eroded_key_full`, the viz's own cache key). Reference
+`crates/ymir-core/data/bench_field_hashes.json` (FNV-1a field hash + digest), embedded at compile
+time, written by `f123_guard`. Verdicts `Match` / `Mismatch` (the viz then shows "≠ banc" in place
+of every microscope number, `GUARD_REFUSES` in `kv()`) / `NoReference` ("non gardé"); a badge states
+it at the top of the microscope. Controls: the delivered field at the benches' framing hashes to
+Finding 109's recorded value bit for bit (every seam since is inert by default); end to end through
+`run_hd` (`f123_viz_guard`), `Match` for "livré" and "C2 /10 col". ⛔ **A framing is NOT a
+translation**: the viz frames seed 1 at x = 0.09375, the benches of Findings 107–123 at 0.0; rolled
+by 768 cells the two delivered fields are 22.3 % bit-identical, max |Δ| 382.9 m. Findings 107–123's
+numbers belong to the benches' framing (Finding 124 moves the benches to the viz's).
+
+### Rule 18 on the teeth
+
+| population | sinuosity p50 | p90 | R8 at chord 8 cells |
+|---|---|---|---|
+| C2/10 teeth with an A1+B2 counterpart (82) | **1.000** | 1.068 | **0.684** |
+| their A1+B2 counterparts (82) | 1.044 | 1.149 | 0.375 |
+| every A1+B2 segment | 1.055 | 1.137 | 0.475 |
+
+**Only 82 of 1 787 teeth (4.6 %) have a counterpart**: the planar walls CREATE the teeth where the
+incised world draws nothing, and where one exists the tooth is dead straight. The remedy this
+names is B2 (hierarchy, which dissects the walls), with B1 (profile + noise) to compare.
+
+### The trunk identity (C2), applied
+
+The microscope's trunk is the path of **maximum drained area** from the mouth to the source, at every
+confluence and exorheic-lake crossing (`TRUNK_BY_MAX_AREA`, `workspace.rs`). Two corrections the
+control forced: plain max-A lost the lake crossing of 3 delivered trunks on EXACT ties of inherited
+areas (a clipped fragment carries its parent's, Findings 42/93); ties to the longest path left 2
+near-ties (0.05 %, 0.004 %) ⇒ **two areas within 1 % (PROXY) tie**, the tie going to the longest
+path. Finding 93's control (`f123_identity_control`): 0 trunks stop crossing a lake, delivered and
+C2/10; one-reach share unchanged. ⚠ **Superseded in part by Finding 124-3**: the areas this climb
+compared were read at the confluence (T2), and the links it climbed carried stolen junctions (T3).
+
+The "S2, 580 km², 654 km" entry was not reproduced at either framing (closed by Finding 124).
+
+## Finding 124-P1 — the canonical framing is the viz's, and the first non-periodic stage is named
+
+**The benches now run at the viz's framing** — the author's world is the authority.
+`tests/common::CANONICAL_ORIGIN = [0.09375, 0.578125]` is the default `sample_origin`;
+`FINDINGS_107_123_ORIGIN = [0.0, 0.578125]` reproduces the earlier benches. The guard reference is
+regenerated at the canonical framing for the six states the viz shows, so the badge reads "= banc" on
+each. The age k re-calibrated there: **0.07183** (0.07186 at Findings 121–123's framing).
+
+**The first non-periodic stage** (`f124_frame`, the delivered field built stage by stage at both
+framings, the benches' rolled by 768 cells; output `f124_frame/stages.txt`):
+
+| stage | bit-identical | columns that differ (of 8 192) |
+|---|---|---|
+| S1 bicubic only | 90.669 % | 768 |
+| S2 + FBM | 90.669 % | 768 |
+| S3–S6 + craters, incision, lithology, fracture | 90.666 % | 784 |
+| S7 + bathymetry (= delivered) | 22.304 % | 8 192 |
+
+> **Invariant in resolution (Finding 57), not in framing (Finding 123) — because the upscale samples
+> its coast warp and its FBM at the UNWRAPPED coordinate `sx = origin + i·scale` (768 columns run past
+> the seam at S1), and the bathymetry normalises by the ocean's mean depth, which is global (every
+> ocean cell differs at S7).** Land outside the 768-column strip and the craters is bit-identical.
+> "The framing is only a view" does not hold: it is a non-periodic stage.
+
+**Finding 108's window holds at the canonical framing**: delivered Δ class excavation / breach
+12 / 4; A1+B2 at s_eq 0.021 / 0.024 / 0.027 → 0 / 3, 0 / 3, 0 / 2.
+
+**The "654 km" entry — closed by the author**: *not reproduced, same cause as the 1 093 km* — 654 km
+(signified) = 87 km (domain), a climb through the teeth (below, T2 / T3). No further search.
+
+## Finding 124-P3 — the export told four lies: every tributary read its receiver's values, the links went where the water does not, and the "Bassin" was not an area
+
+Report: `docs/reports/c1_continental_buoyancy/f124_export/finding_124.md` (with outputs). C2/10 on the
+definition (basin base), canonical framing, 8192². **Units: every length, area and discharge below
+says domain or signified** (the microscope shows the geographic scale, lengths × 7.5, areas and
+discharges × 56.25).
+
+### What the shipped export said
+
+| | shipped | what it was |
+|---|---|---|
+| river cells in more than one object | 550 of 383 516 (19 pairs) | a Watercourse × Spillway pair to one mouth (297 / 172 / 68 cells) |
+| Σ catchments / land | 0.63 + 0.82 = **1.45** | the biggest object a spillway, 559 989 km² (signified) = 9 955 km² (domain) |
+| longest trunks | 1 173 / 1 093 km (signified) = 156 / 146 km (domain) | a **10–15 km (domain) straight line**, sinuosity 10–14 |
+| the rectangle | a block of 2 459 river cells, (4818,2979)–(4876,3026) | § below |
+
+### Four defects in the network itself (`rivers.json` and everything built on it)
+
+Census `f124_topology`, dissections `f124_heads` / `f124_block`. **None changes the terrain**: the
+terrain's consumers of the drainage (`flint_intercept`, the valley skeleton) read `flow.accumulation`,
+`flow.direction` and the detection's `lake_map`, which no fix touches; the C2/10 reference row after
+the fixes reproduces the pre-fix replay to the digit (R8 terrain 0.0451, σ 5.57 m, lake 12.93 %,
+relief p50 515.4 m). The guard reference stays valid.
+
+| | before | after |
+|---|---|---|
+| **T2** — reaches ending ON their receiver's confluence (C2/10 / delivered) | 57 % / 73 %; exported area / own **p50 1.38, p90 339×**; width > 2× its own on **48 % / 47 %** | ratios **1.00** at p50 and p90 |
+| **T1** — lake-clip links naming a reach the water never reaches | **791 / 14 770 (5.4 %)** and 255 / 5 072 (5.0 %) upstream links asymmetric; 22 / 2 downstream links entering nothing | **0 / 0** |
+| **T3** — junction cells stolen in `trace_segment` | a reach starting with **1 369 km² (domain)** and no upstream; trunk heads > 10 km² at their first point: 37 | **0** |
+| **T3b** — a reach ending on a cell its receiver RUNS THROUGH | teeth of 0.2–1.1 km² (domain) exporting **32–37 m³/s (signified), 28–30 m** | 0 held by a watercourse |
+
+- **T2**: `trace_segment` ends a tributary ON the confluence cell, and the per-reach values were read
+  at the last point or as a max over the points — the union of every branch. Fix: `drainage::own_end`.
+- **T1**: the clip listed as a head run's upstream the tail of EVERY parent (including a tail dying
+  on a basin shore whose outlet run is dropped) and sent a downstream link to the receiver's HEAD
+  run. Fix: the join index on the receiver, the link to the RUN holding it, the upstream the exact
+  inverse.
+- **T3**: every tributary ending on a junction overwrote `cell_to_segment` there; the links read it
+  at each receiver, so a tributary was linked to ANOTHER tributary. Fix: claim a junction only if
+  no reach holds it. Found on the delivered world's Finding 93 residual (3 trunks losing a lake
+  under the corrected objects, 0 after).
+- **T3b**: a reach of one point runs through a junction, so a tooth ending there was linked to the
+  collector's NEXT reach and `own_end` missed the confluence. Fix: a reach ending on a junction
+  another reach holds enters that reach. 293 / 54 reaches end on a cell only a SPILLWAY runs through
+  (a spillway is traced over a col outside D8): the Watercourse × Spillway overlap the objects handle.
+
+Permanent tests, each failing on the old code: `drainage::the_clip_links_where_the_water_goes_and_reads_the_own_value`,
+`flow::a_tributary_links_to_the_reach_its_water_enters`. `ALGO_DRAINAGE` 8 → 9, `ALGO_HD_DRAINAGE` 10 → 11.
+
+⛔ **Every tributary discharge / width / catchment read since Finding 60 was read under T2** (and the
+tributary links under T1 / T3): what concerned TRUNKS holds, what concerned TRIBUTARIES is to be
+re-read. Finding 69 carries the line.
+
+### The objects (the microscope's aggregation, `aggregate_watercourses`)
+
+One entry per river SYSTEM (the author: *"le tronc est une ligne continue, tout le reste est
+secondaire"* — the tributaries are its members, not entries of their own): **one reach, one object**
+(systems sharing a cell are unified — the common downstream is one trunk); **the chain crosses every
+body that overflows** (a reach dying in a water body with a spillway is chained to it, the climb back
+up the exact inverse of the chaining); **the "Bassin" is an AREA** — the object's share of the
+geometric partition of the land (each land cell follows D8 to the first river cell or water body it
+meets). It was the runoff-equivalent area (runoff / 300 mm), 1.51× the area on average. Permanent
+test `f124_objects::one_reach_one_object_and_the_basins_are_a_partition` (fails on the old rule).
+
+| | C2/10 shipped | C2/10 F124 | delivered shipped | delivered F124 |
+|---|---|---|---|---|
+| river cells in > 1 object | 550 | **0** | 266 | **0** |
+| Σ "Bassin" / land | 1.40 (runoff) | **0.860** (area) | 1.34 | **0.844** |
+| uncaptured coastal fringe | — | 0.140 | — | 0.156 |
+| trunks losing a lake crossing vs pre-F123 | — | **0** | — | **0** |
+
+**Length** is the length of the max-area path: Euclidean steps on the torus, the confluence cell
+counted once (it was counted twice: +7.6 % on a 61 km (domain) trunk), a crossed body by its chord;
+**asserted ≤ the domain diagonal, 566 km (domain)**. Longest C2/10 trunk 151 km (domain) = 1 132 km
+(signified), straight line 102 km, sinuosity 1.5; delivered 103 km (domain), 1.7. **What the
+1 093 km summed**: the points of 82 reaches climbing a comb of wall columns — T2 made the teeth tie
+with their collector, T3 linked teeth to teeth (the pre-F123 longest-path rule's 224 km (domain)
+trunk fell to 61 km with T3 fixed).
+
+**The rectangle, attributed.** A collector running east along y = 3026 (reaches of 3 points, own
+area 64–78 km² (domain), 28–31 m wide) fed by a comb of teeth running SOUTH (D8 south on 2 557 of the
+block's 2 632 river cells), 0.2–1.1 km² (domain) each, on constructed walls: **the comb is the
+FIELD's** (part 4's B), **its width was the EXPORT's** (T3b): the teeth now read 1.4 / 4.5 m p50 /
+p90, the collector keeps its 28–31 m.
+
+**The author's two confirmations, verified from the bench output.** **#3** (S4, 2 639 m³/s signified,
+210 287 km² signified, 981 km signified) is the object whose mouth is **(3824, 4757)**: geometric
+210 287 km² (signified) = 3 738 km² (domain), trunk 981 km (signified) = 131 km (domain) ≤ 151 —
+the image 4–5 pair is fused, the partition works. **#76** (S2, 5 721 km² signified, 119 km signified)
+is, by its area to four digits — 5 721 km² (signified) = 101.7 km² (domain) — the object whose mouth
+is (4936, 3051), the old 1 093 km trunk's, whose trunk ran through the block. ⚠ Its **17 m³/s
+(signified)** is below the 38.3 m³/s (signified) the collector carries at (4880, 3026) in the bench;
+not explained from the logs (38.3 / 17 ≈ 2.25 = (7.5 / 5)², a hint of a discharge signified at another
+ratio than the area — to check, not this round).
+
+### Units — a viz debt, written, not fixed
+
+The microscope shows the geographic scale (lengths × 7.5, areas and discharges × 56.25), the banner
+the domain. Yesterday's "impossibles" stacked the T2 inflation (fixed) and that display. **Rule: one
+view, one system of units.** For the record: 981 km (signified) = 131 km (domain) ≤ 151 (the
+assertion holds); 210 287 km² (signified) = 3 738 km² (domain).
+
+**Predictions** (dated before each run; scored in the report): P1-a half (the first non-periodic
+stage is S1's coast warp — not the FBM, which adds no column, and not the reviewer's mask), P1-b held; P3-b refuted (0.14 %, not 1–5 %); P3-c refuted (a comb on walls, flat 0 %);
+P3-e refuted as stated (the unit, not the partition); P3-f refuted (3 on delivered → T3 found);
+P3-g refuted (5.4 % / 5.0 %, not 1–3 %); P3-i … P3-p held. The reviewer's P3 (5–10 % shared, Σ ≈ 1.6,
+a flat-floor rectangle) — refuted on the first and the third.
+
+**Promoted: the export corrections only** (the round's "aucune promotion hors des corrections
+d'export").

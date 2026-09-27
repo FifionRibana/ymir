@@ -1,0 +1,20 @@
+==========  Finding 123 . the viz / bench identity guard  ==========
+   0 · delivered at the benches' origin: 316ca8f727ca6f62 vs Finding 109's 316ca8f727ca6f62 ⇒ **BIT-IDENTICAL — every seam since F109 is inert**
+   2 · livré       viz origin: digest f61ef23f4f4e9d94 · field 14953e8337bcd394 (48 s)
+   1 · framing = translation? viz-origin field vs the benches' field rolled by 768 cells: **14967984 of 67108864 cells bit-identical (22.304 %)**, max |Δ| **382.86 m**
+   2 · A1+B2       viz origin: digest e05628c2eb1c1c22 · field b07eabbe4773016a (48 s)
+   2 · C1 nue      viz origin: digest 569743ed9cad64cb · field e701cd7b03535787 (73 s)
+   2 · C2 /10      viz origin: digest 13e12ad0b4c179f7 · field 278e3d3ed9a27819 (94 s)
+   3 · the S2 entries closest to (580 km², 654 km) in C2 /10 AT THE VIZ'S ORIGIN:
+       459 km² · trunk 300 km in 12 segments · sink Sea · mouth (viz frame) (3511, 2109)
+       798 km² · trunk 299 km in 3 segments · sink EndoLake · mouth (viz frame) (3200, 3828)
+       842 km² · trunk 209 km in 35 segments · sink Sea · mouth (viz frame) (3968, 1755)
+   2 · C2 /10 col  viz origin: digest ba7a1a85a85c6b92 · field 0c6209aaa5b79a3b (145 s)
+   2 · livré       viz origin: digest bf6cc8fa106d5e56 · field 316ca8f727ca6f62 (48 s)
+   2 · A1+B2       viz origin: digest 72055fe428087b88 · field e562d9db8d14b260 (47 s)
+   2 · C1 nue      viz origin: digest c8f26cff723e602f · field d0170207b738b879 (72 s)
+   2 · C2 /10      viz origin: digest a80fd322cd0e642b · field fe9c8a0d7e5f566a (94 s)
+   2 · C2 /10 col  viz origin: digest 6140a30312c0e709 · field cc630443a14a36e7 (145 s)
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core\data/bench_field_hashes.json (10 entries)
+
+==========  end Finding 123 guard . 949.7 s  ==========

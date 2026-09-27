@@ -1,0 +1,40 @@
+==========  Finding 124-3 . the corrected objects  ==========
+test f124_objects has been running for over 60 seconds
+
+   C2/10     longest-path (pre-F123)  objects 636 · cells in > 1 object **550** · Σ displayed catchments / land **1.40** · geometric partition Σ / land **0.987** (uncaptured fringe 0.162) · lake hops Σ 10 · trunks losing a lake vs pre-F123 **-**
+        1682 km sig = ** 224 km drawn** · straight line   24 km · sinuosity   9.3 · 156 trunk segments · Spillway · displayed   14081 km² sig · geometric   17304 km² sig · mouth (4623,4339)
+        1523 km sig = ** 203 km drawn** · straight line   14 km · sinuosity  14.9 · 98 trunk segments · Watercourse · displayed    4701 km² sig · geometric    4115 km² sig · mouth (3758,4737)
+        1131 km sig = ** 151 km drawn** · straight line   12 km · sinuosity  12.6 · 98 trunk segments · Watercourse · displayed    4592 km² sig · geometric    5482 km² sig · mouth (4936,3051)
+        1036 km sig = ** 138 km drawn** · straight line   27 km · sinuosity   5.0 · 50 trunk segments · Spillway · displayed  327511 km² sig · geometric  169001 km² sig · mouth (1252,4895)
+
+   C2/10     shipped (F123 max-A)     objects 636 · cells in > 1 object **550** · Σ displayed catchments / land **1.40** · geometric partition Σ / land **0.987** (uncaptured fringe 0.162) · lake hops Σ 11 · trunks losing a lake vs pre-F123 **-**
+        1682 km sig = ** 224 km drawn** · straight line   24 km · sinuosity   9.3 · 156 trunk segments · Spillway · displayed   14081 km² sig · geometric   17304 km² sig · mouth (4623,4339)
+        1173 km sig = ** 156 km drawn** · straight line   15 km · sinuosity  10.5 · 63 trunk segments · Watercourse · displayed    4701 km² sig · geometric    4115 km² sig · mouth (3758,4737)
+        1093 km sig = ** 146 km drawn** · straight line   10 km · sinuosity  14.0 · 82 trunk segments · Watercourse · displayed    4592 km² sig · geometric    5482 km² sig · mouth (4936,3051)
+         806 km sig = ** 108 km drawn** · straight line   26 km · sinuosity   4.2 · 79 trunk segments · Watercourse · displayed   45511 km² sig · geometric   36874 km² sig · mouth (2448,3842)
+
+   C2/10     corrected (F124)         objects 619 · cells in > 1 object **0** · Σ displayed catchments / land **1.30** · geometric partition Σ / land **0.987** (uncaptured fringe 0.162) · lake hops Σ 14 · trunks losing a lake vs pre-F123 **0**
+         526 km sig = **  70 km drawn** · straight line   48 km · sinuosity   1.5 · 95 trunk segments · Watercourse · displayed   30202 km² sig · geometric   72791 km² sig · mouth (3290,2702)
+         338 km sig = **  45 km drawn** · straight line    4 km · sinuosity  10.8 · 5 trunk segments · Watercourse · displayed      71 km² sig · geometric      22 km² sig · mouth (3519,3388)
+         317 km sig = **  42 km drawn** · straight line    2 km · sinuosity  23.0 · 15 trunk segments · Watercourse · displayed      17 km² sig · geometric      16 km² sig · mouth (2749,3530)
+         315 km sig = **  42 km drawn** · straight line    4 km · sinuosity  10.2 · 8 trunk segments · Watercourse · displayed      11 km² sig · geometric      16 km² sig · mouth (3519,3360)
+
+   delivered longest-path (pre-F123)  objects 384 · cells in > 1 object **266** · Σ displayed catchments / land **1.34** · geometric partition Σ / land **0.970** (uncaptured fringe 0.181) · lake hops Σ 12 · trunks losing a lake vs pre-F123 **-**
+         278 km sig = **  37 km drawn** · straight line   28 km · sinuosity   1.3 · 68 trunk segments · Spillway · displayed  328044 km² sig · geometric  158887 km² sig · mouth (1252,4895)
+         272 km sig = **  36 km drawn** · straight line   43 km · sinuosity   0.8 · 66 trunk segments · Watercourse · displayed   46093 km² sig · geometric   78493 km² sig · mouth (3285,2694)
+         256 km sig = **  34 km drawn** · straight line   30 km · sinuosity   1.2 · 32 trunk segments · Watercourse · displayed    6047 km² sig · geometric    7998 km² sig · mouth (4000,1743)
+         241 km sig = **  32 km drawn** · straight line   17 km · sinuosity   1.9 · 55 trunk segments · Watercourse · displayed   12326 km² sig · geometric    8036 km² sig · mouth (3935,5632)
+
+   delivered shipped (F123 max-A)     objects 384 · cells in > 1 object **266** · Σ displayed catchments / land **1.34** · geometric partition Σ / land **0.970** (uncaptured fringe 0.181) · lake hops Σ 18 · trunks losing a lake vs pre-F123 **-**
+         330 km sig = **  44 km drawn** · straight line   53 km · sinuosity   0.8 · 70 trunk segments · Spillway · displayed  550083 km² sig · geometric  298097 km² sig · mouth (3822,4898)
+         315 km sig = **  42 km drawn** · straight line   50 km · sinuosity   0.8 · 64 trunk segments · Watercourse · displayed   46093 km² sig · geometric   78493 km² sig · mouth (3285,2694)
+         278 km sig = **  37 km drawn** · straight line   28 km · sinuosity   1.3 · 68 trunk segments · Spillway · displayed  328044 km² sig · geometric  158887 km² sig · mouth (1252,4895)
+         241 km sig = **  32 km drawn** · straight line   17 km · sinuosity   1.9 · 55 trunk segments · Watercourse · displayed   12326 km² sig · geometric    8036 km² sig · mouth (3935,5632)
+
+   delivered corrected (F124)         objects 362 · cells in > 1 object **0** · Σ displayed catchments / land **1.28** · geometric partition Σ / land **0.970** (uncaptured fringe 0.181) · lake hops Σ 22 · trunks losing a lake vs pre-F123 **3**
+         230 km sig = **  31 km drawn** · straight line   21 km · sinuosity   1.5 · 56 trunk segments · Watercourse · displayed   11417 km² sig · geometric    6335 km² sig · mouth (2363,3969)
+         229 km sig = **  31 km drawn** · straight line   23 km · sinuosity   1.3 · 45 trunk segments · Watercourse · displayed    4455 km² sig · geometric    4263 km² sig · mouth (4099,1847)
+         197 km sig = **  26 km drawn** · straight line   15 km · sinuosity   1.8 · 30 trunk segments · Watercourse · displayed   16303 km² sig · geometric   27307 km² sig · mouth (2388,4045)
+         177 km sig = **  24 km drawn** · straight line   21 km · sinuosity   1.1 · 16 trunk segments · Watercourse · displayed    3560 km² sig · geometric    3063 km² sig · mouth (4415,2463)
+
+==========  end 124-3 objects . 543.2 s  ==========

@@ -1,0 +1,105 @@
+==========  Finding 124-3 (d) . the rectangle, reach by reach  ==========
+
+   90 reaches touch the bbox (own area in km² drawn; Q and width signified)
+      seg   2509 S2    5 pts (1 in) (4876,3026)→(4880,3026) · own A   78.561 km² · Q   38.27 m³/s · width  30.9 m · implied runoff       273 mm/yr · up 4 · down Some(2510)
+      seg   2508 S2    3 pts (3 in) (4874,3026)→(4876,3026) · own A   78.070 km² · Q   37.71 m³/s · width  30.7 m · implied runoff       271 mm/yr · up 3 · down Some(2509)
+      seg   2507 S2    3 pts (3 in) (4872,3026)→(4874,3026) · own A   77.724 km² · Q   37.65 m³/s · width  30.7 m · implied runoff       272 mm/yr · up 3 · down Some(2508)
+      seg   2506 S2    3 pts (3 in) (4870,3026)→(4872,3026) · own A   77.341 km² · Q   37.57 m³/s · width  30.6 m · implied runoff       273 mm/yr · up 3 · down Some(2507)
+      seg   2505 S2    3 pts (3 in) (4868,3026)→(4870,3026) · own A   76.931 km² · Q   37.46 m³/s · width  30.6 m · implied runoff       273 mm/yr · up 3 · down Some(2506)
+      seg   2504 S2    3 pts (3 in) (4866,3026)→(4868,3026) · own A   75.569 km² · Q   36.64 m³/s · width  30.3 m · implied runoff       272 mm/yr · up 3 · down Some(2505)
+      seg   2503 S2    3 pts (3 in) (4864,3026)→(4866,3026) · own A   75.159 km² · Q   36.49 m³/s · width  30.2 m · implied runoff       272 mm/yr · up 3 · down Some(2504)
+      seg   2502 S2    3 pts (3 in) (4862,3026)→(4864,3026) · own A   74.747 km² · Q   36.34 m³/s · width  30.1 m · implied runoff       273 mm/yr · up 3 · down Some(2503)
+      seg   2501 S2    3 pts (3 in) (4860,3026)→(4862,3026) · own A   74.332 km² · Q   36.19 m³/s · width  30.1 m · implied runoff       273 mm/yr · up 3 · down Some(2502)
+      seg   2500 S2    3 pts (3 in) (4858,3026)→(4860,3026) · own A   73.917 km² · Q   36.03 m³/s · width  30.0 m · implied runoff       274 mm/yr · up 3 · down Some(2501)
+      seg   2499 S2    3 pts (3 in) (4856,3026)→(4858,3026) · own A   73.502 km² · Q   35.88 m³/s · width  30.0 m · implied runoff       274 mm/yr · up 3 · down Some(2500)
+      seg   2498 S2    3 pts (3 in) (4854,3026)→(4856,3026) · own A   73.082 km² · Q   35.73 m³/s · width  29.9 m · implied runoff       274 mm/yr · up 3 · down Some(2499)
+      seg   2497 S2    3 pts (3 in) (4852,3026)→(4854,3026) · own A   72.663 km² · Q   35.57 m³/s · width  29.8 m · implied runoff       275 mm/yr · up 3 · down Some(2498)
+      seg   2496 S2    3 pts (3 in) (4850,3026)→(4852,3026) · own A   72.243 km² · Q   35.42 m³/s · width  29.8 m · implied runoff       275 mm/yr · up 3 · down Some(2497)
+      seg   2495 S2    3 pts (3 in) (4848,3026)→(4850,3026) · own A   71.821 km² · Q   35.26 m³/s · width  29.7 m · implied runoff       275 mm/yr · up 3 · down Some(2496)
+      seg   2494 S2    3 pts (3 in) (4846,3026)→(4848,3026) · own A   71.397 km² · Q   35.10 m³/s · width  29.6 m · implied runoff       276 mm/yr · up 3 · down Some(2495)
+      seg   2493 S2    3 pts (3 in) (4844,3026)→(4846,3026) · own A   70.972 km² · Q   34.94 m³/s · width  29.6 m · implied runoff       276 mm/yr · up 3 · down Some(2494)
+      seg   2492 S2    3 pts (3 in) (4842,3026)→(4844,3026) · own A   70.548 km² · Q   34.79 m³/s · width  29.5 m · implied runoff       277 mm/yr · up 3 · down Some(2493)
+      seg   2491 S2    3 pts (3 in) (4840,3026)→(4842,3026) · own A   70.124 km² · Q   34.63 m³/s · width  29.4 m · implied runoff       277 mm/yr · up 3 · down Some(2492)
+      seg   2490 S2    3 pts (3 in) (4838,3026)→(4840,3026) · own A   69.695 km² · Q   34.47 m³/s · width  29.4 m · implied runoff       277 mm/yr · up 3 · down Some(2491)
+      seg   2489 S2    3 pts (3 in) (4836,3026)→(4838,3026) · own A   69.265 km² · Q   34.31 m³/s · width  29.3 m · implied runoff       278 mm/yr · up 3 · down Some(2490)
+      seg   2488 S2    3 pts (3 in) (4834,3026)→(4836,3026) · own A   68.836 km² · Q   34.14 m³/s · width  29.2 m · implied runoff       278 mm/yr · up 3 · down Some(2489)
+      seg   2487 S2    3 pts (3 in) (4832,3026)→(4834,3026) · own A   68.407 km² · Q   33.98 m³/s · width  29.1 m · implied runoff       279 mm/yr · up 3 · down Some(2488)
+      seg   2486 S2    3 pts (3 in) (4830,3026)→(4832,3026) · own A   67.978 km² · Q   33.82 m³/s · width  29.1 m · implied runoff       279 mm/yr · up 3 · down Some(2487)
+      seg   2485 S2    3 pts (3 in) (4828,3026)→(4830,3026) · own A   67.549 km² · Q   33.65 m³/s · width  29.0 m · implied runoff       280 mm/yr · up 3 · down Some(2486)
+      seg   2484 S2    3 pts (3 in) (4826,3026)→(4828,3026) · own A   67.120 km² · Q   33.49 m³/s · width  28.9 m · implied runoff       280 mm/yr · up 3 · down Some(2485)
+      seg   2483 S2    3 pts (3 in) (4824,3026)→(4826,3026) · own A   66.690 km² · Q   33.33 m³/s · width  28.9 m · implied runoff       280 mm/yr · up 3 · down Some(2484)
+      seg   2482 S2    3 pts (3 in) (4822,3026)→(4824,3026) · own A   66.261 km² · Q   33.16 m³/s · width  28.8 m · implied runoff       281 mm/yr · up 3 · down Some(2483)
+      seg   2481 S2    3 pts (3 in) (4820,3026)→(4822,3026) · own A   65.720 km² · Q   32.92 m³/s · width  28.7 m · implied runoff       281 mm/yr · up 3 · down Some(2482)
+      seg   2480 S2    3 pts (3 in) (4818,3026)→(4820,3026) · own A   64.318 km² · Q   32.02 m³/s · width  28.3 m · implied runoff       279 mm/yr · up 3 · down Some(2481)
+      seg   2479 S2    3 pts (1 in) (4816,3026)→(4818,3026) · own A   63.617 km² · Q   31.76 m³/s · width  28.2 m · implied runoff       280 mm/yr · up 2 · down Some(2480)
+      seg   2561 S1   51 pts (48 in) (4817,2976)→(4821,3026) · own A    1.140 km² · Q   32.92 m³/s · width  28.7 m · implied runoff     16204 mm/yr · up 0 · down Some(2482)
+      seg   2604 S1   47 pts (47 in) (4871,2980)→(4868,3026) · own A    1.113 km² · Q    0.73 m³/s · width   4.3 m · implied runoff       369 mm/yr · up 0 · down Some(2505)
+      seg   2585 S1   48 pts (39 in) (4809,2979)→(4819,3026) · own A    0.436 km² · Q   32.02 m³/s · width  28.3 m · implied runoff     41172 mm/yr · up 0 · down Some(2481)
+      seg   2563 S1   49 pts (48 in) (4821,2978)→(4822,3026) · own A    0.324 km² · Q    0.16 m³/s · width   2.0 m · implied runoff       283 mm/yr · up 0 · down Some(2482)
+      seg   2664 S1   33 pts (33 in) (4818,2994)→(4818,3026) · own A    0.260 km² · Q    0.04 m³/s · width   1.0 m · implied runoff        91 mm/yr · up 0 · down Some(2480)
+      seg   2586 S1   48 pts (42 in) (4812,2979)→(4820,3026) · own A    0.257 km² · Q    0.10 m³/s · width   1.6 m · implied runoff       218 mm/yr · up 0 · down Some(2481)
+      seg   2618 S1   44 pts (44 in) (4875,2983)→(4869,3026) · own A    0.243 km² · Q   37.46 m³/s · width  30.6 m · implied runoff     86419 mm/yr · up 0 · down Some(2506)
+      seg   2564 S1   49 pts (48 in) (4823,2978)→(4823,3026) · own A    0.212 km² · Q   33.16 m³/s · width  28.8 m · implied runoff     87680 mm/yr · up 0 · down Some(2483)
+      seg   2565 S1   49 pts (48 in) (4824,2978)→(4824,3026) · own A    0.212 km² · Q    0.08 m³/s · width   1.4 m · implied runoff       217 mm/yr · up 0 · down Some(2483)
+
+   D8 directions of the 2632 river cells in the bbox (0 N, 1 NE, 2 E, 3 SE, 4 S, 5 SW, 6 W, 7 NW, none): [0, 0, 59, 7, 2557, 9, 0, 0, 0]
+   accumulation on those cells (km² drawn): p10 0.11 · p50 0.16 · p90 0.23 · max 78.22
+
+==========  end 124-3 (d) block  ==========
+==========  Finding 124-3 . heads that carry area  ==========
+
+   corrected trunk heads with no upstream and no body at their start: 360 · with > 10 km² drawn AT THEIR FIRST POINT: **0**
+
+==========  end 124-3 heads  ==========
+==========  Finding 124-3 . the corrected objects  ==========
+
+   C2/10     longest-path (pre-F123)  objects 639 · cells in > 1 object **553** · Σ displayed catchments / land **1.36** · geometric partition Σ / land **0.860** (uncaptured fringe 0.140) · lake hops Σ 11 · trunks losing a lake vs pre-F123 **-**
+         455 km sig = **  61 km drawn** · straight line   50 km · sinuosity   1.2 · 98 trunk segments · Watercourse · displayed   30203 km² sig · geometric   71906 km² sig · mouth (3290,2702)
+         413 km sig = **  55 km drawn** · straight line   37 km · sinuosity   1.5 · 91 trunk segments · Watercourse · displayed   32267 km² sig · geometric   20539 km² sig · mouth (1912,3430)
+         371 km sig = **  50 km drawn** · straight line   27 km · sinuosity   1.8 · 128 trunk segments · Watercourse · displayed    1781 km² sig · geometric    9207 km² sig · mouth (4098,1749)
+         349 km sig = **  46 km drawn** · straight line   30 km · sinuosity   1.5 · 114 trunk segments · Watercourse · displayed   50621 km² sig · geometric   80795 km² sig · mouth (4216,3537)
+
+   C2/10     shipped (F123 max-A)     objects 639 · cells in > 1 object **553** · Σ displayed catchments / land **1.36** · geometric partition Σ / land **0.860** (uncaptured fringe 0.140) · lake hops Σ 16 · trunks losing a lake vs pre-F123 **-**
+         293 km sig = **  39 km drawn** · straight line   27 km · sinuosity   1.5 · 47 trunk segments · Watercourse · displayed   30203 km² sig · geometric   71906 km² sig · mouth (3290,2702)
+         267 km sig = **  36 km drawn** · straight line   16 km · sinuosity   2.2 · 90 trunk segments · Watercourse · displayed    1781 km² sig · geometric    9207 km² sig · mouth (4098,1749)
+         267 km sig = **  36 km drawn** · straight line   42 km · sinuosity   0.9 · 47 trunk segments · Spillway · displayed  327511 km² sig · geometric  165087 km² sig · mouth (1252,4895)
+         245 km sig = **  33 km drawn** · straight line   54 km · sinuosity   0.6 · 29 trunk segments · Watercourse · displayed   66672 km² sig · geometric   99386 km² sig · mouth (3538,6103)
+
+   C2/10     corrected (F124)         objects 479 · cells in > 1 object **0** · Σ displayed catchments / land **1.24** · geometric partition Σ / land **0.860** (uncaptured fringe 0.140) · lake hops Σ 17 · trunks losing a lake vs pre-F123 **0**
+         591 km sig = **  79 km drawn** · straight line   91 km · sinuosity   0.9 · 138 trunk segments · Watercourse · displayed  291725 km² sig · geometric  210287 km² sig · mouth (3824,4757)
+         455 km sig = **  61 km drawn** · straight line   50 km · sinuosity   1.2 · 98 trunk segments · Watercourse · displayed   30202 km² sig · geometric   72522 km² sig · mouth (3290,2702)
+         330 km sig = **  44 km drawn** · straight line   61 km · sinuosity   0.7 · 57 trunk segments · Watercourse · displayed   66672 km² sig · geometric   99386 km² sig · mouth (3538,6103)
+         250 km sig = **  33 km drawn** · straight line   26 km · sinuosity   1.3 · 75 trunk segments · Watercourse · displayed   19788 km² sig · geometric   16683 km² sig · mouth (2137,3438)
+
+   delivered longest-path (pre-F123)  objects 385 · cells in > 1 object **267** · Σ displayed catchments / land **1.34** · geometric partition Σ / land **0.844** (uncaptured fringe 0.156) · lake hops Σ 13 · trunks losing a lake vs pre-F123 **-**
+         229 km sig = **  31 km drawn** · straight line   30 km · sinuosity   1.0 · 28 trunk segments · Watercourse · displayed    6047 km² sig · geometric    8005 km² sig · mouth (4000,1743)
+         200 km sig = **  27 km drawn** · straight line   44 km · sinuosity   0.6 · 37 trunk segments · Watercourse · displayed   46093 km² sig · geometric   78090 km² sig · mouth (3285,2694)
+         188 km sig = **  25 km drawn** · straight line   32 km · sinuosity   0.8 · 30 trunk segments · Watercourse · displayed   85530 km² sig · geometric   68327 km² sig · mouth (2937,3942)
+         179 km sig = **  24 km drawn** · straight line   32 km · sinuosity   0.8 · 5 trunk segments · Spillway · displayed  105873 km² sig · geometric   71316 km² sig · mouth (3792,4667)
+
+   delivered shipped (F123 max-A)     objects 385 · cells in > 1 object **267** · Σ displayed catchments / land **1.34** · geometric partition Σ / land **0.844** (uncaptured fringe 0.156) · lake hops Σ 26 · trunks losing a lake vs pre-F123 **-**
+         229 km sig = **  31 km drawn** · straight line   30 km · sinuosity   1.0 · 28 trunk segments · Watercourse · displayed    6047 km² sig · geometric    8005 km² sig · mouth (4000,1743)
+         202 km sig = **  27 km drawn** · straight line   47 km · sinuosity   0.6 · 55 trunk segments · Spillway · displayed  328044 km² sig · geometric  156600 km² sig · mouth (1252,4895)
+         177 km sig = **  24 km drawn** · straight line   21 km · sinuosity   1.1 · 16 trunk segments · Watercourse · displayed    3560 km² sig · geometric    3063 km² sig · mouth (4415,2463)
+         166 km sig = **  22 km drawn** · straight line   19 km · sinuosity   1.2 · 50 trunk segments · Watercourse · displayed   11417 km² sig · geometric    6339 km² sig · mouth (2363,3969)
+
+   delivered corrected (F124)         objects 362 · cells in > 1 object **0** · Σ displayed catchments / land **1.28** · geometric partition Σ / land **0.844** (uncaptured fringe 0.156) · lake hops Σ 33 · trunks losing a lake vs pre-F123 **0**
+         236 km sig = **  31 km drawn** · straight line   53 km · sinuosity   0.6 · 61 trunk segments · Watercourse · displayed  550083 km² sig · geometric  292547 km² sig · mouth (3822,4898)
+         229 km sig = **  31 km drawn** · straight line   30 km · sinuosity   1.0 · 28 trunk segments · Watercourse · displayed    6047 km² sig · geometric    8025 km² sig · mouth (4000,1743)
+         207 km sig = **  28 km drawn** · straight line   23 km · sinuosity   1.2 · 42 trunk segments · Watercourse · displayed    4455 km² sig · geometric    4264 km² sig · mouth (4099,1847)
+         206 km sig = **  27 km drawn** · straight line   49 km · sinuosity   0.6 · 62 trunk segments · Watercourse · displayed   46093 km² sig · geometric   78090 km² sig · mouth (3285,2694)
+
+==========  end 124-3 objects . 498.5 s  ==========
+==========  Finding 124-3 . topology census  ==========
+
+   C2/10: 16226 reaches · upstream links 13955: **0 asymmetric** (0 naming a reach whose downstream is None) · downstream links 13955: **0 whose water enters the named reach nowhere**
+   (T3) reaches ending on the FIRST cell of a reach that has no upstream, linked elsewhere: **0** (orphaned heads 0)
+   reaches with a downstream: 13955 · ENDING ON THE RECEIVER'S CONFLUENCE **11259** (4213 of them with an own area < 1 km² drawn)
+   union / own — geometric area p50 1.40 p90 348.0 (> 2×: 49 %) · runoff area p50 1.00 p90 1.0 (> 2×: 0 %) · width p50 1.00 p90 1.0 (> 2×: 0 %)
+
+   delivered: 7297 reaches · upstream links 4815: **0 asymmetric** (0 naming a reach whose downstream is None) · downstream links 4815: **0 whose water enters the named reach nowhere**
+   (T3) reaches ending on the FIRST cell of a reach that has no upstream, linked elsewhere: **0** (orphaned heads 0)
+   reaches with a downstream: 4815 · ENDING ON THE RECEIVER'S CONFLUENCE **4226** (1561 of them with an own area < 1 km² drawn)
+   union / own — geometric area p50 1.27 p90 373.3 (> 2×: 48 %) · runoff area p50 1.00 p90 1.0 (> 2×: 0 %) · width p50 1.00 p90 1.0 (> 2×: 0 %)
+
+==========  end 124-3 topology  ==========

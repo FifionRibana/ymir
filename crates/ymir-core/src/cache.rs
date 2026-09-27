@@ -60,7 +60,7 @@ pub const ALGO_UPSCALE_EROSION: u32 = 4; // Finding 83: relief-v3 ships the BASE
 
 /// Version of the drainage build (`c1_drainage`). ⚠️ BUMP on ANY code change to
 /// that step (see above).
-pub const ALGO_DRAINAGE: u32 = 8; // Finding 88: surface lakes trace from the F37c escape before labelling
+pub const ALGO_DRAINAGE: u32 = 9; // Finding 124-3: own-end reach values; a junction cell is never stolen
 
 /// Version of the climate build (`c1_climate_placed` / `c1_climate_windowed`).
 /// ⚠️ BUMP on ANY code change to that step (see above).
@@ -87,7 +87,7 @@ pub const ALGO_BREACH: u32 = 1;
 /// evaporative equilibrium (level + footprint), draining the exposed floor from `lake_map` —
 /// the GEOMETRY half of the same discard H-1 fixed for the classification. Lake outlines,
 /// river clipping, wetlands and biomes all move.
-pub const ALGO_HD_DRAINAGE: u32 = 10; // Finding 88: lakes carry `unresolved_reason`; basins carry local evaporation
+pub const ALGO_HD_DRAINAGE: u32 = 11; // Finding 124-3: own-end reach values; the clip links where the water goes
 
 // ── Cache key ──────────────────────────────────────────────────────────────
 

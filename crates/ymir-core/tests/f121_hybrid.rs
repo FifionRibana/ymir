@@ -657,6 +657,9 @@ fn f121_hybrid() {
     for (tag, name, knobs) in [
         ("off", "OFF (delivered)", Knobs::passes(2)),
         ("on", "ON A1+B2 (control)", Knobs { slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) }),
+        // ADR Finding 124 -- Finding 108's window, re-read at the canonical framing
+        ("on021", "A1+B2 s_eq 0.021", Knobs { slope_floor_abs: Some(0.021), ..Knobs::passes(2) }),
+        ("on027", "A1+B2 s_eq 0.027", Knobs { slope_floor_abs: Some(0.027), ..Knobs::passes(2) }),
     ] {
         if !want(tag) {
             continue;

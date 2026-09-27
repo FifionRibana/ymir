@@ -49,11 +49,12 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-/// **PROXY — the age `k` calibrated by `f121_hybrid`** (seed 1, 8192², 400 km): the floor surface
+/// **PROXY — the age `k` calibrated by `f121_hybrid`** (seed 1, 8192², 400 km, at the CANONICAL
+/// framing since Finding 124 — 0.07186 at Findings 121–123's framing): the floor surface
 /// `base + k·χ` over the paired land of the pre-incision field has p50 = **488.1 m**, Finding 95's
 /// oracle. Finding 96 calibrated its χ field on the same oracle and found 0.0719 with `A` clamped
 /// at `A_c`; this skeleton gives 0.07186. A calibration on a TARGET, not a measurement of an age.
-pub const F121_AGE_K: f32 = 0.07186;
+pub const F121_AGE_K: f32 = 0.07183;
 
 /// The construction's parameters, all in physical units. See the module table for each label.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]

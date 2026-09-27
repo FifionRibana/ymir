@@ -80,6 +80,14 @@ pub fn declared_flow<'a>(
 }
 
 pub const PSEED: u64 = 10_481_999_410_520_546_993;
+/// ADR Finding 124 -- the CANONICAL framing is the viz's auto-framing of seed 1 (torus offset
+/// x = 6/64): the author's world is the authority. Findings 107-123 were measured at
+/// [`FINDINGS_107_123_ORIGIN`], and a framing is not a translation (Finding 124: the coast warp and
+/// the FBM are sampled at unwrapped torus coordinates, and the bathymetry normalises by the whole
+/// ocean's mean depth), so their numbers belong to that other world.
+pub const CANONICAL_ORIGIN: [f64; 2] = [0.093_75, 0.578_125];
+/// The framing every bench used up to Finding 123.
+pub const FINDINGS_107_123_ORIGIN: [f64; 2] = [0.0, 0.578_125];
 pub const DOMAIN_KM: f32 = 400.0;
 pub const SEA: f32 = 0.5;
 pub const TARGET: usize = 8192;
@@ -141,6 +149,9 @@ pub struct Knobs {
     /// `None` is byte-identical. It goes through the SAME config field the viz sets, so a bench
     /// world and a viz world with the same parameters are the same world.
     pub valley: Option<ymir_core::tectonics_c1::valley_construction::ValleyConstruction>,
+    /// ADR Finding 123/124 -- the framing origin in the torus. `None` is [`CANONICAL_ORIGIN`], the
+    /// viz's (Finding 124); [`FINDINGS_107_123_ORIGIN`] reproduces the benches of Findings 107-123.
+    pub origin: Option<[f64; 2]>,
     /// ADR Finding 117 -- stage switches for the per-module pit attribution. Each turns ONE
     /// production closure off so the pipeline can be walked stage by stage in ITS order
     /// (`upscale_from_c1`: bicubic+FBM -> C-2 craters stamped -> incision with the C-3/C-3b
@@ -292,32 +303,14 @@ pub fn build_field_with_floor(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>)
     build_field_inner(k, floor, PSEED, None)
 }
 
-fn build_field_inner(
+/// The benches' upscale configuration for `k` (ADR Finding 123: split out of `build_field_inner` so
+/// the identity guard can compute the SAME cache digest the viz computes, without building).
+fn bench_cfg(
     k: Knobs,
     floor: Option<std::sync::Arc<Vec<f32>>>,
-    pseed: u64,
     a1_exempt: Option<std::sync::Arc<Vec<bool>>>,
-) -> GridF32 {
+) -> ymir_core::terrain::upscale::FbmUpscaleConfig {
     let ss = SteinSteinParams::default();
-    let run_cfg = C1TimeLoopConfig {
-        rigid_continental_crust: true,
-        n_steps: 300,
-        dx: 1.0 / 64.0,
-        dy: 1.0 / 64.0,
-        iso_config: IsostasyConfig::c1_default(),
-        drainage_max_distance: 30,
-    };
-    let mut state = init_c1_state_phase_2_r7(64, pseed, &Phase2InitParams::default());
-    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
-    run_with_closures(&mut state, &mut kin, &run_cfg, &C1Closures::default(), |_, _| {});
-    let seed = WorldSeed::new(pseed);
-    let volc =
-        VolcanismConfig { enabled: !k.volcanism_off, domain_km: DOMAIN_KM, ..Default::default() };
-    let edifices = if k.volcanism_off {
-        Vec::new()
-    } else {
-        place_edifices(&state, &kin, &seed, DOMAIN_KM, &volc)
-    };
     assert!(
         k.target.is_none() || k.a_c_km2.is_none(),
         "`a_c_km2` is converted at the 8192 cell size and cannot be combined with `target`"
@@ -326,7 +319,7 @@ fn build_field_inner(
         target_size: k.target.unwrap_or(TARGET),
         domain_km: DOMAIN_KM,
         depth_scale_m: ss.depth_scale_m as f32,
-        sample_origin: [0.0, 0.578_125],
+        sample_origin: k.origin.unwrap_or(CANONICAL_ORIGIN),
         sample_size: 1.0,
         amplitude_base: k.fbm_amp.unwrap_or(0.04),
         mfd_p: 2.0,
@@ -415,6 +408,57 @@ fn build_field_inner(
     if let Some(sp) = cfg.stream_power.as_mut() {
         sp.a1_exempt = a1_exempt; // ADR Finding 119 -- `None` is byte-identical
     }
+    cfg
+}
+
+/// ADR Finding 123 -- the eroded product's cache digest for `k` at `pseed`, computed exactly as the
+/// viz computes its own (`tectonic_key` → `eroded_key_full`), with the benches' tectonic run.
+pub fn bench_eroded_digest(k: Knobs, pseed: u64) -> String {
+    use ymir_core::tectonics_c1::cached_product::{eroded_key_full, tectonic_key};
+    let ss = SteinSteinParams::default();
+    let run_cfg = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: 300,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: IsostasyConfig::c1_default(),
+        drainage_max_distance: 30,
+    };
+    let volc =
+        VolcanismConfig { enabled: !k.volcanism_off, domain_km: DOMAIN_KM, ..Default::default() };
+    let cfg = bench_cfg(k, None, None);
+    let tkey =
+        tectonic_key(pseed, 64, &Phase2InitParams::default(), &run_cfg, &C1Closures::default());
+    eroded_key_full(&tkey, &ss, &cfg, &volc).digest()
+}
+
+fn build_field_inner(
+    k: Knobs,
+    floor: Option<std::sync::Arc<Vec<f32>>>,
+    pseed: u64,
+    a1_exempt: Option<std::sync::Arc<Vec<bool>>>,
+) -> GridF32 {
+    let ss = SteinSteinParams::default();
+    let run_cfg = C1TimeLoopConfig {
+        rigid_continental_crust: true,
+        n_steps: 300,
+        dx: 1.0 / 64.0,
+        dy: 1.0 / 64.0,
+        iso_config: IsostasyConfig::c1_default(),
+        drainage_max_distance: 30,
+    };
+    let mut state = init_c1_state_phase_2_r7(64, pseed, &Phase2InitParams::default());
+    let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
+    run_with_closures(&mut state, &mut kin, &run_cfg, &C1Closures::default(), |_, _| {});
+    let seed = WorldSeed::new(pseed);
+    let volc =
+        VolcanismConfig { enabled: !k.volcanism_off, domain_km: DOMAIN_KM, ..Default::default() };
+    let edifices = if k.volcanism_off {
+        Vec::new()
+    } else {
+        place_edifices(&state, &kin, &seed, DOMAIN_KM, &volc)
+    };
+    let cfg = bench_cfg(k, floor, a1_exempt);
     upscale_from_c1_with_progress(
         &state,
         &run_cfg.iso_config,
