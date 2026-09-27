@@ -22,7 +22,7 @@
     ]
   },
   {
-    "digest": "54545be015b5ff19",
+    "digest": "e2a5b05da6eed1fb",
     "label": "C1 nue · cadrage canonique (viz)",
     "field_hash": "c876c200e92e0f60",
     "seed": 10481999410520546993,
@@ -33,7 +33,7 @@
     ]
   },
   {
-    "digest": "71a1d832683583d1",
+    "digest": "cf1d4539c7afe588",
     "label": "C2 /10 col (défaut) · cadrage canonique (viz)",
     "field_hash": "a8d2d538d692c2f0",
     "seed": 10481999410520546993,
@@ -44,7 +44,7 @@
     ]
   },
   {
-    "digest": "111a7705c9a4131c",
+    "digest": "70cf2dc92822681b",
     "label": "C2 /3 · cadrage canonique (viz)",
     "field_hash": "c2eb1cb3b24ebccb",
     "seed": 10481999410520546993,
@@ -55,7 +55,7 @@
     ]
   },
   {
-    "digest": "01c18a31ec7d0fc0",
+    "digest": "3552097350b238c8",
     "label": "C2 /10 niveau mer · cadrage canonique (viz)",
     "field_hash": "35e1bc8123049d8c",
     "seed": 10481999410520546993,

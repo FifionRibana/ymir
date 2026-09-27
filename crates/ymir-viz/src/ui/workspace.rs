@@ -6225,14 +6225,32 @@ mod f123_viz_guard {
         panic!("the HD worker hung up")
     }
 
+    /// ADR Finding 125 — all SIX states the menu offers, each with the params the workspace sends
+    /// for it (age k × 1, W(k) γ 0; the hybrid modes force the closure at 0.024, "C1 nue" follows
+    /// the age box, off by default), must read `Match`.
     #[test]
     #[ignore]
     fn f123_viz_guard() {
-        eprintln!("\n==========  Finding 123 . the guard through run_hd  ==========");
-        let a = run("livré", None, None);
-        let b = run("C2 /10 col (défaut)", Some(0.024), Some(ValleyConstruction::new(F121_AGE_K, Some(0.1))));
-        assert!(matches!(a, GuardStatus::Match { .. }), "livré: {a:?}");
-        assert!(matches!(b, GuardStatus::Match { .. }), "C2 /10: {b:?}");
+        eprintln!("\n==========  Finding 123/125 . the guard through run_hd, six states  ==========");
+        let k = F121_AGE_K;
+        let states: [(&str, Option<f32>, Option<ValleyConstruction>); 6] = [
+            ("livré", None, None),
+            ("A1+B2", Some(0.024), None),
+            ("C1 nue", None, Some(ValleyConstruction::new(k, None))),
+            ("C2 /10 col (défaut)", Some(0.024), Some(ValleyConstruction::new(k, Some(0.1)))),
+            ("C2 /3", Some(0.024), Some(ValleyConstruction::new(k, Some(1.0 / 3.0)))),
+            ("C2 /10 niveau mer", Some(0.024), Some(ValleyConstruction::f121(k, Some(0.1)))),
+        ];
+        let mut verdicts = Vec::new();
+        for (label, slope, valley) in states {
+            verdicts.push((label, run(label, slope, valley)));
+        }
+        for (label, v) in &verdicts {
+            eprintln!("   {label:<22} {}", if matches!(v, GuardStatus::Match { .. }) { "= banc" } else { "≠ / non gardé" });
+        }
+        for (label, v) in verdicts {
+            assert!(matches!(v, GuardStatus::Match { .. }), "{label}: {v:?}");
+        }
     }
 }
 

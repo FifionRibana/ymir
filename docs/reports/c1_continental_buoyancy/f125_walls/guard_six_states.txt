@@ -1,0 +1,6 @@
+   livré                  = banc
+   A1+B2                  = banc
+   C1 nue                 = banc
+   C2 /10 col (défaut)    = banc
+   C2 /3                  = banc
+   C2 /10 niveau mer      = banc

@@ -148,8 +148,13 @@ pub fn eroded_key_full(
         None => key,
     };
     // ADR Finding 121 -- the valley construction changes the terrain: same conditional pattern.
+    // ADR Finding 125 -- by its SERDE form, not its Debug string: a gated field left `None` is
+    // skipped by `skip_serializing_if`, so adding one never moves the key of a world it does not
+    // change. The Debug form printed `wall_profile: None, width_age_gamma: None`, and when Finding
+    // 124 added those two gated fields every construction key moved: the identity guard read "non
+    // gardé" on four worlds that were bit-identical to the bench's.
     match upscale_cfg.valley_construction {
-        Some(vc) => key.with_debug("valley_construction", &vc),
+        Some(vc) => key.with("valley_construction", &vc),
         None => key,
     }
 }
@@ -863,6 +868,43 @@ mod tests {
             base.digest(),
             "an uncalibrated key must be byte-identical to its pre-Finding-107 form"
         );
+    }
+
+    /// ADR Finding 125, rule 13 -- **a GATED-OFF construction field does not move the eroded key.**
+    /// Three claims: every gated field left off is ABSENT from the construction's serialised form;
+    /// the key's construction entry IS that serialised form (rebuilt by hand, as the Finding 107 test
+    /// does -- it fails on the Debug form, which printed every `None`); and turning a gated field ON
+    /// does move the key (negative control).
+    #[test]
+    fn a_gated_off_construction_field_does_not_move_the_eroded_key() {
+        use crate::tectonics_c1::valley_construction::{F121_AGE_K, ValleyConstruction, WallProfile};
+        let (init, run, closures, ss, cfg) = inputs();
+        let tect = tectonic_key(7, 32, &init, &run, &closures);
+        let vc = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+        let js = serde_json::to_value(vc).expect("serialisable");
+        for f in ["wall_profile", "width_age_gamma"] {
+            assert!(js.get(f).is_none(), "the gated-off `{f}` is serialised: {js}");
+        }
+        let volc = VolcanismConfig::default();
+        let key_of = |vc: ValleyConstruction| {
+            let mut c = cfg.clone();
+            c.valley_construction = Some(vc);
+            (c.clone(), eroded_key_full(&tect, &ss, &c, &volc))
+        };
+        let (c_on, key) = key_of(vc);
+        let mut rebuilt = eroded_key(&tect, &ss, &c_on);
+        if volc.enabled {
+            rebuilt = rebuilt
+                .with("volcanism", &volc)
+                .with("volc_algo", &crate::tectonics_c1::closures::volcanism::VOLCANISM_ALGO);
+        }
+        if let Some(sf) = c_on.slope_floor {
+            rebuilt = rebuilt.with_debug("slope_floor", &sf);
+        }
+        let rebuilt = rebuilt.with("valley_construction", &vc);
+        assert_eq!(key.digest(), rebuilt.digest(), "the construction entry must be its serde form");
+        let (_, key_b1) = key_of(ValleyConstruction { wall_profile: Some(WallProfile::f124()), ..vc });
+        assert_ne!(key.digest(), key_b1.digest(), "a gated field turned ON must move the key");
     }
 
     fn tmp(name: &str) -> PathBuf {

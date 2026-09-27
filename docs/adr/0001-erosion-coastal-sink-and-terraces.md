@@ -18350,3 +18350,67 @@ PROXY", EXPERT mode, beside the age), γ 0 keeping the bench's digest (the badge
 P5-d held (γ 1 at k × 1.4 not visibly "too wide"); the reviewer's "γ 1 too wide at k × 1.4" not borne
 out at this scale; "γ 0.5 reads old without invented" is the author's eye. **Gated, off, nothing
 promoted.**
+
+## Finding 125 — attribute before remedying: B1's teeth need both halves, its spurs are the profile's and coastal; B2's stripes are the sub-valleys' own walls; planarity is a step, not a law
+
+No remedy, no primitive modified. Bench `tests/f125_walls.rs` (11 656 s); outputs
+`docs/reports/c1_continental_buoyancy/f125_walls/` (`walls_attribution.txt`, `guard_six_states.txt`,
+`finding_125.md` with every table). **Units**: 1 cell = 48.8 m (domain); signified = ×7.5 lengths,
+×56.25 areas; drained-area bands are domain km².
+
+**Prerequisite — the guard read 2 / 6, and the key was the cause.** The four construction states read
+`NoReference` while their field hashes equalled the reference's to the bit. `eroded_key_full` folded
+the construction by its Debug string, and C3 (Finding 124-P4/P5) added two gated fields that print
+`None`: a gated-off field moved every construction key. Fixed (the author's choice): the construction
+enters the key by its serde form (`skip_serializing_if` drops a gated `None`); permanent test
+`a_gated_off_construction_field_does_not_move_the_eroded_key` (fails on the Debug form — negative
+control verified; turning `wall_profile` on moves the key); four digests refreshed, field hashes
+unchanged. **Then 6 / 6 "= banc".** The bench reproduces Finding 124-P4 (teeth exactly; R8 terrain
+within 0.0006; its "+91 spurs" is against the delivered world, +88 against the témoin, read here).
+
+**A — B1 split.** Teeth: témoin 1 440; profile alone 2 130 (+48 %); noise alone 1 681 (+17 %); both
+4 719 (+228 %) — **superadditive** (+3 279 against +690 + +241), every mouth on a trunk ≥ 10 wall.
+Neither half carries the teeth; their interaction does. New spurs (eroded; > 2 km domain from every
+témoin spur): profile 42, noise 8, both 81 — **the profile's**, present at the ERODED stage (the
+breach adds ±2), **all within 2 km (domain) of a coastal wall**, the listed ones at 49–488 m (domain).
+The stop rule does not fire: "mur ↔ mer" stands. The discriminating control is not the 100 % (B1
+touches only walls; no coastline base rate) but **B2 alone: more walls, coastal ones included, ZERO
+new spurs** — while B2 (A_c) + B1 makes 195. B1 multiplies the lake bodies × 3.2–4.1 at unchanged lake
+area (not located).
+
+**B — B2's R8, by population (témoin on the same cells).** At 1 km²: **91 % of the Δ (+0.0597) is in
+the sub-valleys** — 1–3 km² 63 %, 3–10 km² 28 %, their class R8 3–4 × the témoin's on the same cells;
+the big walls −8 %; the interfluves +65 % (11 % of the Δ, possibly mixed windows). The témoin's own R8
+was already 90 % in its big walls: the terrain's anisotropy is the carved walls', B2 adds walls. The
+exported network's R8 FALLS (0.5613 → 0.5060): the stripes are in the terrain, not the routing.
+**Skeleton × planarity is not a law**: the 1–3 km² skeleton reads R8 0.635 / 0.615 / 0.644 over the
+three most planar quartiles (plane residual ≤ 1.3 / 2.5 / 4.6 m over 1 km domain) and 0.494 on the
+roughest; Q1 / Q4 1.29 (3–10 km²: 1.13; trunks 2.7). The small branches are more axis-aligned than
+the trunks at every quartile (0.62–0.64 against 0.41–0.50) — the tracé's, not the terrain's. A
+hierarchy stopped "where D8 is straight" would stop on 75 % of the 1–3 km² skeleton.
+
+**C — the four canyons of B2 → A_c**, all on constructed floors: (3892, 2310) on a < 1 km² floor,
+(4588, 3240), (2281, 4563) and (1835, 4562) on trunk ≥ 10 floors; Δfill 107–359 m, rims 31–32°;
+absent at 1 km² and in the témoin; the two largest recur with B1. The cone count (34–170) cannot
+separate an intersection and has no baseline: "intersections" UNDECIDED.
+
+**D — Finding 38 in B2 (A_c) + B1**: floors (4257, 2006) and (4613, 2860), 1 and 2 cells, both at
+−1.00 m (PRE 98.7 / 182.6 m), both WALL cells (carved, not floor) of < 1 km² valleys, 23.2 and
+18.6 km (domain) from the nearest canyon — **not C**. Each ingredient alone leaves them above the sea
+(lowest 1.95 m and 4.57 m). The instrument's "distance to the sea 0" is tautological (the pit is itself
+≤ SEA): **coastal is NOT measured**. The exact −1.00 m: first grep for a clamp, NOTHING FOUND.
+
+**E — the clauses (written, not measured).** Teeth: *bruit ↔ seuil conditioned on the profile* (not the
+noise alone). Spurs: *mur ↔ mer* (supported, not proven). B2 R8: **not** *hiérarchie ↔ planéité* —
+*hiérarchie ↔ tracé* (smooth the skeleton, named, not built; no D8 baseline). Canyons: *fond ↔ fond*
+at a trunk (undecided). F38: *the sea's threshold on a lowered wall* (consistent; coastal unmeasured).
+
+**Predictions.** Mine: P0 refuted; P-A1 refuted; P-A2 refuted on the gesture, held on the place; P-B1
+mostly held (interfluves outside); P-B2 refuted where B2 adds R8; P-C trivially held; P-D half (walls,
+not canyons; coastal unmeasured). Two of my scorings were corrected on re-reading (−8 %, not −5 %;
+D's "coastal"). The reviewer's: A teeth-from-noise refuted, spurs-from-profile held; B > 80 % in
+1–3 km² refuted in degree, the planarity law refuted; C undecided; D = A + C half (C's part refuted);
+meta held. **Limitations** (in the report): no spur base rate, no cone baseline, D's coastal distance,
+projection vs class R8, mixed windows, the chord's band read off-trunk, no D8 baseline, the −1.00 m,
+teeth located by mouth only (the position along the wall decides the reviewer's two B1 mechanisms).
+**Nothing promoted.**
