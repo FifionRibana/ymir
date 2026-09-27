@@ -267,6 +267,9 @@ struct WorkspaceState {
     valley_mode: usize,
     /// Index into the three measured ages {0.7, 1, 1.4} × `F121_AGE_K`.
     valley_age: usize,
+    /// ADR Finding 124-5 (E) -- W(k)'s γ, index into {0, 0.5, 1}: `W = a₀·(k/k₀)^γ·A^0.3`. γ = 0 is
+    /// the ungated width (`None`, the bench's digest). PROXY.
+    valley_width_gamma: usize,
     /// EXPERIMENTAL (ADR 0001, Finding 11): MFD incision — dendritic valleys, no solver.
     mfd: bool,
     mfd_p: f32,
@@ -403,6 +406,7 @@ impl Default for WorkspaceState {
             age_s_eq: 0.024,    // the middle of the Finding 106 window
             valley_mode: 0,     // ADR Finding 121 -- off ships
             valley_age: 1,      // k × 1
+            valley_width_gamma: 0, // ADR Finding 124-5 -- γ 0: the width ignores the age
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
@@ -953,6 +957,13 @@ fn left_panel(
                                     4 => Some(ValleyConstruction::f121(k, Some(0.1))),
                                     _ => None,
                                 }
+                                // ADR Finding 124-5 (E) -- W(k); γ 0 stays `None` (same width, and
+                                // the digest the guard knows)
+                                .map(|vc| ValleyConstruction {
+                                    width_age_gamma: [None, Some(0.5), Some(1.0)]
+                                        [ws.valley_width_gamma.min(2)],
+                                    ..vc
+                                })
                             },
                             cross_rill_d: ws.cross_rill_d,
                             mfd: ws.mfd,
@@ -1179,6 +1190,29 @@ fn left_panel(
                                             seg_row(ui, &["×0.7", "×1", "×1.4"], ws.valley_age)
                                         {
                                             ws.valley_age = i;
+                                        }
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("W(k) γ · PROXY")
+                                                .color(DIM2)
+                                                .size(11.0),
+                                        )
+                                        .on_hover_text(
+                                            "ADR Finding 124-5 (E) — la vallée s'élargit avec \
+                                             l'âge: W = a₀·(k/k₀)^γ·A^0,3, k₀ = 0,07183.\n\n\
+                                             γ est un PROXY: l'élargissement latéral est une \
+                                             affaire de TEMPS, et le a de Clubb 2022 est un \
+                                             instantané des vallées actuelles, pas un taux — rien \
+                                             n'ancre γ.\n\n\
+                                             γ 0 = la largeur des F121–F124 (indépendante de k). \
+                                             γ 0,5 et 1 ne sont gardés par aucun banc: le badge \
+                                             dira « non gardé ».",
+                                        );
+                                        if let Some(i) =
+                                            seg_row(ui, &["0", "0,5", "1"], ws.valley_width_gamma)
+                                        {
+                                            ws.valley_width_gamma = i;
                                         }
                                     });
                                 }

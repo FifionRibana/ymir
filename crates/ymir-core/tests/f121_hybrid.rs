@@ -229,6 +229,54 @@ fn overlay(
     (sh(0.0), sh(5.0), p(&s1, 0.5), p(&s1, 0.9), p(&s2, 0.9), ma.len(), matched)
 }
 
+/// ADR Finding 124-5 (E) — hillshade + sea + lakes + rivers of a crop, NORTH UP (Finding 122's
+/// render), written to `docs/reports/c1_continental_buoyancy/f124_width/`.
+fn e_render(
+    name: &str,
+    g: &GridF32,
+    dr: &ymir_core::tectonics_c1::drainage::C1DrainageResult,
+    (x0, y0, cw, ch): (usize, usize, usize, usize),
+    ss: &SteinSteinParams,
+) {
+    let out = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/reports/c1_continental_buoyancy/f124_width");
+    let (w, h) = (g.width, g.height);
+    let m = |k: usize| c1_altitude_norm_to_metres(g.data[k], ss);
+    let river: HashSet<usize> =
+        dr.rivers.segments.iter().flat_map(|s| s.points.iter().map(|&(x, y)| y as usize * w + x as usize)).collect();
+    let (az, alt) = (315f32.to_radians(), 45f32.to_radians());
+    let mut img = image::RgbImage::new(cw as u32, ch as u32);
+    for yy in 0..ch {
+        for xx in 0..cw {
+            let (x, y) = ((x0 + xx) % w, (y0 + yy) % h);
+            let k = y * w + x;
+            let at = |dx: i32, dy: i32| {
+                m(((y as i32 + dy).rem_euclid(h as i32) as usize) * w + (x as i32 + dx).rem_euclid(w as i32) as usize)
+            };
+            let gx = (at(1, 0) - at(-1, 0)) / (2.0 * CELL_M);
+            let gy = (at(0, 1) - at(0, -1)) / (2.0 * CELL_M);
+            let (lx, ly, lz) = (alt.cos() * az.sin(), alt.cos() * az.cos(), alt.sin());
+            let shade = ((-gx * lx - gy * ly + lz) / (1.0 + gx * gx + gy * gy).sqrt()).clamp(0.0, 1.0);
+            let mut c = if g.data[k] <= SEA && dr.lake_map[k] == 0 {
+                [150.0f32, 185.0, 220.0]
+            } else {
+                let v = 55.0 + 200.0 * shade;
+                [v, v, v]
+            };
+            if dr.lake_map[k] != 0 {
+                c = [c[0] * 0.35 + 40.0 * 0.65, c[1] * 0.35 + 110.0 * 0.65, c[2] * 0.35 + 210.0 * 0.65];
+            }
+            if river.contains(&k) {
+                c = [20.0, 45.0, 150.0];
+            }
+            img.put_pixel(xx as u32, (ch - 1 - yy) as u32, image::Rgb([c[0] as u8, c[1] as u8, c[2] as u8]));
+        }
+    }
+    std::fs::create_dir_all(out).expect("report dir");
+    let path = std::path::Path::new(out).join(name);
+    img.save(&path).expect("png");
+    eprintln!("   wrote {}", path.display());
+}
+
 fn breached_flow(f: &GridF32, ss: &SteinSteinParams) -> (GridF32, FlowResult) {
     let (w, h) = (f.width, f.height);
     let pre = c1_drainage_windowed(f, None, &dcfg(false), ss, DOMAIN_KM);
@@ -767,6 +815,39 @@ fn f121_hybrid() {
             let vc = ValleyConstruction::new(k_age * mult, Some(0.1));
             let (g, secs) = build_c(vc, true);
             rows.extend(try_read(name, &g, secs, false));
+        }
+        // ── ADR Finding 124-5 (E) — W(k) = a₀·(k/k₀)^γ·A^0.3, γ PROXY: three ages × three γ at
+        //    k_time/10, run only when asked (`YMIR_F121_WORLDS=e`); each with the law's W over the
+        //    trunks and two renders for the eye ──
+        if asked("e") {
+            for mult in [0.7f32, 1.0, 1.4] {
+                for gamma in [0.0f32, 0.5, 1.0] {
+                    let vc = ValleyConstruction {
+                        width_age_gamma: Some(gamma),
+                        ..ValleyConstruction::new(k_age * mult, Some(0.1))
+                    };
+                    let wl: Vec<f32> = (0..n)
+                        .filter(|&c| a_scale[c] >= vc.a_min_km2)
+                        .map(|c| vc.width_m(a_scale[c]))
+                        .collect();
+                    let wl = sorted(wl);
+                    let name = format!("E k×{mult} γ {gamma}");
+                    eprintln!(
+                        "\n   {name}: law W over A ≥ 10 km² p10/p50/p90 **{:.0} / {:.0} / {:.0} m**",
+                        p(&wl, 0.10),
+                        p(&wl, 0.50),
+                        p(&wl, 0.90)
+                    );
+                    let (g, secs) = build_c(vc, true);
+                    rows.extend(try_read(&name, &g, secs, false));
+                    let dd = c1_drainage_windowed(&g, None, &dcfg(false), &ss, DOMAIN_KM);
+                    let file = format!("k{:02}_g{:02}", (mult * 10.0).round() as u32, (gamma * 10.0).round() as u32);
+                    let (tx, ty, ts) = COMB_TILE;
+                    e_render(&format!("tile_{file}.png"), &g, &dd, (tx, ty, ts, ts), &ss);
+                    // lake 1000011's floor cell at the canonical framing (Finding 124, part 2)
+                    e_render(&format!("lake_1000011_{file}.png"), &g, &dd, (4451 - 400, 3861 - 400, 800, 800), &ss);
+                }
+            }
         }
     }
 

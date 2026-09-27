@@ -18256,3 +18256,97 @@ before), and the guard reference and `f123_guard` carry the same labels (labels 
 not move).
 
 **Promoted: the definition of a gated construction** (the construction itself stays off by default).
+
+## Finding 124-P4 — break the plane: no remedy makes the teeth fall without raising the terrain's R8; B2 alone passes the gates
+
+`f124_walls`, on the CORRECTED export (part 3 first: *"un export qui ment sur les troncs ne peut pas
+juger des tributaires"*), the definition, canonical framing, k_time/10 + A1+B2. Teeth = watercourse
+reaches with ≥ 80 % of their cells on the world's OWN walls (Finding 123-A); ex-teeth = C2/10's
+teeth paired in each world (Finding 123's pairing: own mouth ≤ 3 cells, own area ×/÷ 1.5). Gated:
+**B2** is `a_min_km2` below 10 km² (the tributaries are built as valleys too, same laws, smaller W);
+**B1** is `ValleyConstruction::wall_profile` (`WallProfile::f124`: a 300 m concave foot, a 20 m convex
+crest, the field's detail below 500 m put back at gain 1 — every value PROXY; permanent test
+`the_wall_profile_lowers_only_and_bends_the_walls`). Output `f124_walls/walls.txt`.
+
+| world | teeth | length share | ex-teeth sin p50 | ex-teeth R8 c8 | R8 terrain | σ p50 | Δ e/b | coast | skeleton ≤ 5 at 1 km² | relief p50 | build |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| C2/10 (reference) | 1 440 | 8.8 % | 1.027 | 0.347 | 0.045 | 5.6 m | 0/0 | +3 | 74.2 % | 515 m | 157 s |
+| **B2, tributaries ≥ 1 km²** | **262 (−82 %)** | 1.5 % | 1.049 | **0.098** | **0.105** | 9.4 m | 0/0 | +4 | **91.0 %** | 446 m | 177 s |
+| B2, down to A_c 0.1 km² | 73 (−95 %) | 0.5 % | 1.070 | 0.357 | 0.125 | 12.3 m | **4/0** | +2 | 91.6 % | 420 m | 154 s |
+| B1, wall profile + detail | **4 719 (+228 %)** | 16.3 % | 1.030 | 0.403 | 0.048 | 5.5 m | 0/0 | **+91** | 74.9 % | 500 m | 140 s |
+| B2 (A_c) + B1 | ⛔ Finding 38 | | | | | | | | | 407 m | |
+
+References (same instrument): delivered R8 terrain 0.092, A1+B2 0.048, PRE 0.013; the teeth's A1+B2
+homologues (Finding 123): sinuosity 1.044.
+
+> **No remedy makes the teeth fall without raising the terrain's R8.** **B2 at 1 km² is the only one
+> that passes the gates**: −82 % teeth, the paired ex-teeth no longer straight parallel lines (R8 c8
+> 0.347 → 0.098, sinuosity 1.049 — their homologues' 1.044), canyons 0, coast +4, the skeleton at 1 km²
+> STABLE (91 %; Finding 120 had measured it only at 100 and 1 000 km²), relief 446 m (inside ±10 % of
+> the delivered 424 m for the first time in a construction world), +13 % build time. **But R8 terrain
+> doubles** (0.045 → 0.105, above the delivered 0.092) and σ rises 5.6 → 9.4 m — **not attributed.**
+
+**B2 down to A_c fails the canyons gate** (four over-dug bodies). **B1 fails twice**: its detail term
+roughens the walls so MORE D8 lines run on them (teeth × 3.3) without bending the old ones
+(sinuosity 1.030), and it reaches the coast (+91 spurs). **B2 + B1 violates Finding 38/92-B's
+production invariant** (`hd_assembly.rs:279`): two enclosed below-sea components of 1 and 2 cells,
+floor cells (4257, 2006) and (4613, 2860), carry no water body — B1's detail digs micro-pits below the
+sea on B2's walls. The invariant did its job; the world is not measured beyond its relief and its
+284 lakes.
+
+**B2's skeleton was taken AFTER T1–T3b — and could not have depended on them.** The walls bench was
+launched after the last network fix (T3b) was compiled and its census run; and the construction never
+reads the river network: `valley_construction::skeleton` uses `c1_drainage_windowed` only for
+`flow.filled` and the detection's `lake_map`, then its own `compute_flow` on the breached field, trunks
+= D8 cells with A ≥ `a_min_km2`, polylines of its own. T1–T3b live in `extract_rivers`' links, the
+per-reach values and the lake clip — none of which it touches; the C2/10 reference row reproduces the
+pre-fix replay to the digit (R8 terrain 0.0451, σ 5.57 m, relief 515.4 m). What T1–T3b DID change in
+this table is the teeth column (it reads the exported network) — measured on the corrected export.
+⇒ **B2's R8 × 2 is not the error's; no replay is needed for that reason.** The reviewer's
+"taken before T3, to replay, R8 halves" is refuted by the timeline and by the construction.
+
+<details>
+<summary>Hypothesis for B2's R8 × 2 — written, NOT measured</summary>
+
+Sub-valleys constructed along a D8 network at 1 km² engrave the comb of the LOW orders (Finding 111;
+Finding 120-A measured the drawn network's R8 at 1–10 km² at 0.385) into the terrain: the skeleton is stable (91 %), but it
+is straight where it already was — B2 builds planar walls one scale down. **The test**: B2's R8
+terrain by band of the sub-valley's drained area (1–3, 3–10 km²) — is the comb in the smallest?
+</details>
+
+Not run, a suggestion only: B2 with B1's PROFILE but no detail (`detail_gain` 0) — the detail is what
+broke the coast and dug the pits. **Predictions**: mine — B2 > 70 % held (82 / 95 %), B1 < 50 %
+refuted in sign (+228 %), skeleton 70–85 % half (74 % / 91 %). The reviewer's — B2 > 80 % and
+ex-teeth sinuosity ~1.04 held; B1 ~−40 % refuted; cost ×2–3 refuted (×1.13); the skeleton at ~70 %
+refuted (91 %). **Gated, off, nothing promoted.**
+
+## Finding 124-P5 — W(k): the width moves the relief by ±5 m at most, six times less than the age
+
+`W = a₀·(k/k₀)^γ·A^0.3`, `k₀ = F121_AGE_K` — the age knob that deepens the floors also widens them.
+**γ is a PROXY**: lateral widening is a matter of time, and Clubb 2022's `a` is a snapshot, not a
+rate. Gated: `ValleyConstruction::width_age_gamma`, `None` = the width of Findings 121–124
+(permanent test `the_width_widens_with_age_only_when_asked`). Measured with Finding 121's instrument
+(`f121_hybrid`, tag `e`, run only when asked), C2 /10, three ages × three γ. Output
+`f124_width/width.txt`; renders `f124_width/tile_k*_g*.png` (the comb tile) and
+`lake_1000011_k*_g*.png`, NORTH UP. ⚠ The renders draw the PRE-CLIP network, not the corrected
+export, and the lake crops do NOT show lake 1000011 (a below-sea basin lake made by the HD assembly;
+the renders read the pre-breach detection's `lake_map`).
+
+| k | γ | law W p10 / p50 / p90 | relief p50 | lake % | lakes ≥ 1 km² | Δ e/b | D_L > 5 | coast | R8 terrain |
+|---|---|---|---|---|---|---|---|---|---|
+| × 0.7 | 0 | 212 / 274 / 524 m | 501.0 m | 12.76 | 17 | 0/0 | 0 % | +4 | 0.0477 |
+| × 0.7 | 0.5 | 178 / 229 / 438 m | 503.6 m | 12.77 | 17 | 0/0 | 0 % | +5 | 0.0467 |
+| × 0.7 | 1 | 149 / 192 / 367 m | 505.8 m | 12.77 | 17 | 0/0 | 0 % | +5 | 0.0465 |
+| × 1 | any | 212 / 274 / 524 m | 515.4 m | 12.93 | 18 | 0/0 | 0 % | +3 | 0.0451 |
+| × 1.4 | 0 | 212 / 274 / 524 m | 533.3 m | 13.10 | 19 | 0/0 | 0 % | +3 | 0.0405 |
+| × 1.4 | 0.5 | 251 / 325 / 620 m | 530.9 m | 13.10 | 19 | 0/0 | 0 % | +3 | 0.0418 |
+| × 1.4 | 1 | 297 / 384 / 733 m | 528.1 m | 13.10 | 19 | 0/0 | 0 % | +3 | 0.0432 |
+
+**W(k) moves the relief by ±5 m at most** (+4.8 m at k × 0.7, −5.2 m at k × 1.4, γ 1) — **six times
+less than the age's own effect** (501 → 533 m through the floors); nothing else moves. By eye, at the
+tile's 50 km, γ 0 and γ 1 at k × 1.4 are hard to tell apart. The author's dial is in the viz ("W(k) γ ·
+PROXY", EXPERT mode, beside the age), γ 0 keeping the bench's digest (the badge reads "non gardé" for
+γ 0.5 and 1). **Predictions**: P5-b held (+4.8 within 2–8; −5.2 at the edge of 5–15), P5-c held,
+P5-d held (γ 1 at k × 1.4 not visibly "too wide"); the reviewer's "γ 1 too wide at k × 1.4" not borne
+out at this scale; "γ 0.5 reads old without invented" is the author's eye. **Gated, off, nothing
+promoted.**

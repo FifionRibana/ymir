@@ -1,0 +1,108 @@
+   ── k, the age (PROXY on Finding 95's oracle) ──
+   floor surface paired p50 = 488.1 m at **k = 0.07183** (Finding 96: 0.0646 all-land, 0.0719 clamped at A_c) · skeleton 90.5 s · trunk cells 70897 (3462 km) · 636 polylines · law W p10/p50/p90 **212 / 274 / 524 m**
+   carve of PRE at k: 2.6 s · carved **9739 km²** (36.1 % of land) · floors 1206 km² · walls 8533 km²
+   C1 not rebuilt (world selection) — its skeleton control PASSED at Finding 121 (PRE→C1 p90 5 cells, mouths 155 of 184)
+   E k×0.7 γ 0: law W over A ≥ 10 km² p10/p50/p90 **212 / 274 / 524 m**
+   RELIEF paired (n = 11326973): p10/p50/p90 **73.5 / 501.0 / 1468.2 m** · median cut 7.1 m · **+18.1 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     Spillway max **94.35 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.26 m³/s** · 25 cells · drop **19.7 m** · FILL along                  the bed: p50 **0.0000 m** · max **14.8898 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **24 bodies · 3445 km² = 12.76 % of 27007 km² of land** · {"Endorheic": 4, "Unresolved": 1, "Exorheic": 19} · OVER-DUG **0 of 17** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 28.6 m³/s · wc==2 cells 381029
+   ROW E k×0.7 γ 0            | coast +4 · Δ e/b 0/0 of 17 · lakes≥1 17 (fam1 5, exo 13) · D_L>5 0 % · lake 12.76 % · relief p50 501.0 m · to_nothing 0 · unresolved 1 · build 208 s
+   ROW E k×0.7 γ 0            | R8 terr 0.0477 · R8 net 0.3854 (≥10 km² 0.5352) · comb tile terr 0.0859 net 0.2581 · σ p50/p90 5.70/21.44 m · in-thalweg 25.4 % (≥10 km² 58.9 %) · transverse p50 +0.31 m · interfluve Δ p10/p50/p90 -68.4/-0.0/0.0 m · wall slope p50 27.9°
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\tile_k07_g00.png
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\lake_1000011_k07_g00.png
+   E k×0.7 γ 0.5: law W over A ≥ 10 km² p10/p50/p90 **178 / 229 / 438 m**
+   RELIEF paired (n = 11327000): p10/p50/p90 **74.3 / 503.6 / 1469.9 m** · median cut 6.7 m · **+18.7 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     Spillway max **94.42 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.28 m³/s** · 25 cells · drop **19.7 m** · FILL along                  the bed: p50 **0.0000 m** · max **14.8898 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **24 bodies · 3448 km² = 12.77 % of 27007 km² of land** · {"Unresolved": 2, "Endorheic": 4, "Exorheic": 18} · OVER-DUG **0 of 17** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 41.6 m³/s · wc==2 cells 381010
+   ROW E k×0.7 γ 0.5          | coast +5 · Δ e/b 0/0 of 17 · lakes≥1 17 (fam1 5, exo 12) · D_L>5 0 % · lake 12.77 % · relief p50 503.6 m · to_nothing 0 · unresolved 2 · build 214 s
+   ROW E k×0.7 γ 0.5          | R8 terr 0.0467 · R8 net 0.3908 (≥10 km² 0.5489) · comb tile terr 0.0823 net 0.2743 · σ p50/p90 5.75/21.46 m · in-thalweg 25.5 % (≥10 km² 64.7 %) · transverse p50 +0.36 m · interfluve Δ p10/p50/p90 -68.4/-0.0/0.0 m · wall slope p50 27.9°
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\tile_k07_g05.png
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\lake_1000011_k07_g05.png
+   E k×0.7 γ 1: law W over A ≥ 10 km² p10/p50/p90 **149 / 192 / 367 m**
+   RELIEF paired (n = 11327004): p10/p50/p90 **75.0 / 505.8 / 1471.4 m** · median cut 6.4 m · **+19.2 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     Spillway max **94.47 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.46 m³/s** · 17 cells · drop **18.9 m** · FILL along                  the bed: p50 **0.0000 m** · max **14.8898 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **24 bodies · 3450 km² = 12.77 % of 27007 km² of land** · {"Exorheic": 19, "Endorheic": 4, "Unresolved": 1} · OVER-DUG **0 of 17** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 28.7 m³/s · wc==2 cells 381024
+   ROW E k×0.7 γ 1            | coast +5 · Δ e/b 0/0 of 17 · lakes≥1 17 (fam1 5, exo 13) · D_L>5 0 % · lake 12.77 % · relief p50 505.8 m · to_nothing 0 · unresolved 1 · build 213 s
+   ROW E k×0.7 γ 1            | R8 terr 0.0465 · R8 net 0.3992 (≥10 km² 0.5421) · comb tile terr 0.0836 net 0.2794 · σ p50/p90 5.78/21.53 m · in-thalweg 25.6 % (≥10 km² 71.6 %) · transverse p50 +0.41 m · interfluve Δ p10/p50/p90 -68.2/-0.0/0.0 m · wall slope p50 27.9°
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\tile_k07_g10.png
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\lake_1000011_k07_g10.png
+   E k×1 γ 0: law W over A ≥ 10 km² p10/p50/p90 **212 / 274 / 524 m**
+   RELIEF paired (n = 11326996): p10/p50/p90 **76.3 / 515.4 / 1479.9 m** · median cut 5.7 m · **+21.5 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     Spillway max **94.64 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **17.69 m³/s** · 149 cells · drop **16.9 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **25 bodies · 3492 km² = 12.93 % of 27008 km² of land** · {"Endorheic": 4, "Exorheic": 20, "Unresolved": 1} · OVER-DUG **0 of 18** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 29.1 m³/s · wc==2 cells 381010
+   ROW E k×1 γ 0              | coast +3 · Δ e/b 0/0 of 18 · lakes≥1 18 (fam1 6, exo 14) · D_L>5 0 % · lake 12.93 % · relief p50 515.4 m · to_nothing 0 · unresolved 1 · build 210 s
+   ROW E k×1 γ 0              | R8 terr 0.0451 · R8 net 0.4092 (≥10 km² 0.4894) · comb tile terr 0.0883 net 0.3094 · σ p50/p90 5.57/21.47 m · in-thalweg 25.7 % (≥10 km² 64.7 %) · transverse p50 +0.37 m · interfluve Δ p10/p50/p90 -67.2/-0.0/0.0 m · wall slope p50 27.7°
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\tile_k10_g00.png
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\lake_1000011_k10_g00.png
+   E k×1 γ 0.5: law W over A ≥ 10 km² p10/p50/p90 **212 / 274 / 524 m**
+   RELIEF paired (n = 11326996): p10/p50/p90 **76.3 / 515.4 / 1479.9 m** · median cut 5.7 m · **+21.5 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     Spillway max **94.64 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **17.69 m³/s** · 149 cells · drop **16.9 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **25 bodies · 3492 km² = 12.93 % of 27008 km² of land** · {"Exorheic": 20, "Unresolved": 1, "Endorheic": 4} · OVER-DUG **0 of 18** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 29.1 m³/s · wc==2 cells 381010
+   ROW E k×1 γ 0.5            | coast +3 · Δ e/b 0/0 of 18 · lakes≥1 18 (fam1 6, exo 14) · D_L>5 0 % · lake 12.93 % · relief p50 515.4 m · to_nothing 0 · unresolved 1 · build 184 s
+   ROW E k×1 γ 0.5            | R8 terr 0.0451 · R8 net 0.4093 (≥10 km² 0.4893) · comb tile terr 0.0883 net 0.3094 · σ p50/p90 5.57/21.47 m · in-thalweg 25.7 % (≥10 km² 64.7 %) · transverse p50 +0.37 m · interfluve Δ p10/p50/p90 -67.2/-0.0/0.0 m · wall slope p50 27.7°
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\tile_k10_g05.png
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\lake_1000011_k10_g05.png
+   E k×1 γ 1: law W over A ≥ 10 km² p10/p50/p90 **212 / 274 / 524 m**
+   RELIEF paired (n = 11326996): p10/p50/p90 **76.3 / 515.4 / 1479.9 m** · median cut 5.7 m · **+21.5 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     Spillway max **94.64 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **17.69 m³/s** · 149 cells · drop **16.9 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **25 bodies · 3492 km² = 12.93 % of 27008 km² of land** · {"Unresolved": 1, "Endorheic": 4, "Exorheic": 20} · OVER-DUG **0 of 18** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 29.1 m³/s · wc==2 cells 381010
+   ROW E k×1 γ 1              | coast +3 · Δ e/b 0/0 of 18 · lakes≥1 18 (fam1 6, exo 14) · D_L>5 0 % · lake 12.93 % · relief p50 515.4 m · to_nothing 0 · unresolved 1 · build 215 s
+   ROW E k×1 γ 1              | R8 terr 0.0451 · R8 net 0.4092 (≥10 km² 0.4893) · comb tile terr 0.0883 net 0.3094 · σ p50/p90 5.57/21.47 m · in-thalweg 25.7 % (≥10 km² 64.7 %) · transverse p50 +0.37 m · interfluve Δ p10/p50/p90 -67.2/-0.0/0.0 m · wall slope p50 27.7°
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\tile_k10_g10.png
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\lake_1000011_k10_g10.png
+   E k×1.4 γ 0: law W over A ≥ 10 km² p10/p50/p90 **212 / 274 / 524 m**
+   RELIEF paired (n = 11327010): p10/p50/p90 **78.3 / 533.3 / 1495.6 m** · median cut 4.3 m · **+25.7 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     Spillway max **94.96 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.56 m³/s** · 13 cells · drop **3.2 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **26 bodies · 3539 km² = 13.10 % of 27008 km² of land** · {"Exorheic": 21, "Endorheic": 4, "Unresolved": 1} · OVER-DUG **0 of 19** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 29.6 m³/s · wc==2 cells 380995
+   ROW E k×1.4 γ 0            | coast +3 · Δ e/b 0/0 of 19 · lakes≥1 19 (fam1 7, exo 15) · D_L>5 0 % · lake 13.10 % · relief p50 533.3 m · to_nothing 0 · unresolved 1 · build 203 s
+   ROW E k×1.4 γ 0            | R8 terr 0.0405 · R8 net 0.4158 (≥10 km² 0.4966) · comb tile terr 0.0784 net 0.3211 · σ p50/p90 5.42/21.51 m · in-thalweg 25.9 % (≥10 km² 68.2 %) · transverse p50 +0.40 m · interfluve Δ p10/p50/p90 -66.0/-0.0/0.0 m · wall slope p50 26.8°
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\tile_k14_g00.png
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\lake_1000011_k14_g00.png
+   E k×1.4 γ 0.5: law W over A ≥ 10 km² p10/p50/p90 **251 / 325 / 620 m**
+   RELIEF paired (n = 11327013): p10/p50/p90 **77.9 / 530.9 / 1493.6 m** · median cut 4.7 m · **+25.1 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     Spillway max **94.91 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.51 m³/s** · 13 cells · drop **3.2 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **26 bodies · 3538 km² = 13.10 % of 27008 km² of land** · {"Exorheic": 22, "Endorheic": 4} · OVER-DUG **0 of 19** (old cut class 1) · relabels 0 · `to_nothing` 0 · Unresolved inflow -0.0 m³/s · wc==2 cells 380991
+   ROW E k×1.4 γ 0.5          | coast +3 · Δ e/b 0/0 of 19 · lakes≥1 19 (fam1 7, exo 16) · D_L>5 0 % · lake 13.10 % · relief p50 530.9 m · to_nothing 0 · unresolved 0 · build 147 s
+   ROW E k×1.4 γ 0.5          | R8 terr 0.0418 · R8 net 0.4194 (≥10 km² 0.4966) · comb tile terr 0.0795 net 0.3282 · σ p50/p90 5.38/21.46 m · in-thalweg 26.6 % (≥10 km² 65.8 %) · transverse p50 +0.37 m · interfluve Δ p10/p50/p90 -66.1/-0.0/0.0 m · wall slope p50 26.6°
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\tile_k14_g05.png
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\lake_1000011_k14_g05.png
+   E k×1.4 γ 1: law W over A ≥ 10 km² p10/p50/p90 **297 / 384 / 733 m**
+   RELIEF paired (n = 11327003): p10/p50/p90 **77.3 / 528.1 / 1491.2 m** · median cut 5.0 m · **+24.5 % against the delivered 424.2 m ⇒ **OUTSIDE ±10 %****
+     Spillway max **94.86 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **18.47 m³/s** · 13 cells · drop **3.2 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **26 bodies · 3537 km² = 13.10 % of 27008 km² of land** · {"Endorheic": 4, "Unresolved": 1, "Exorheic": 21} · OVER-DUG **0 of 19** (old cut class 1) · relabels 1 · `to_nothing` 0 · Unresolved inflow 29.5 m³/s · wc==2 cells 380991
+   ROW E k×1.4 γ 1            | coast +3 · Δ e/b 0/0 of 19 · lakes≥1 19 (fam1 7, exo 15) · D_L>5 0 % · lake 13.10 % · relief p50 528.1 m · to_nothing 0 · unresolved 1 · build 156 s
+   ROW E k×1.4 γ 1            | R8 terr 0.0432 · R8 net 0.4103 (≥10 km² 0.5010) · comb tile terr 0.0800 net 0.3202 · σ p50/p90 5.34/21.43 m · in-thalweg 27.6 % (≥10 km² 64.5 %) · transverse p50 +0.32 m · interfluve Δ p10/p50/p90 -66.1/-0.0/0.0 m · wall slope p50 26.3°
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\tile_k14_g10.png
+   wrote D:\Personnel\Projects\ymir\crates\ymir-core/../../docs/reports/c1_continental_buoyancy/f124_width\lake_1000011_k14_g10.png
+   ── the columns (8192², seed 1; Δ class = Finding 108 gate, eroded / breached) ──
+   world                     coast   Δ e/b   lakes≥1   fam1   exo  D_L  lake %  p50 m  to_noth build s
+   E k×0.7 γ 0                  +4   0/0          17      5    13   0%   12.76    501        0     208
+   E k×0.7 γ 0.5                +5   0/0          17      5    12   0%   12.77    504        0     214
+   E k×0.7 γ 1                  +5   0/0          17      5    13   0%   12.77    506        0     213
+   E k×1 γ 0                    +3   0/0          18      6    14   0%   12.93    515        0     210
+   E k×1 γ 0.5                  +3   0/0          18      6    14   0%   12.93    515        0     184
+   E k×1 γ 1                    +3   0/0          18      6    14   0%   12.93    515        0     215
+   E k×1.4 γ 0                  +3   0/0          19      7    15   0%   13.10    533        0     203
+   E k×1.4 γ 0.5                +3   0/0          19      7    16   0%   13.10    531        0     147
+   E k×1.4 γ 1                  +3   0/0          19      7    15   0%   13.10    528        0     156
+   world                     R8 terr   R8 net R8 net≥10 comb terr  comb net   σ p50 m   σ p90 m inthalw % ≥10 km² % interfluve Δ p10/50/90   wall °
+   E k×0.7 γ 0                0.0477   0.3854    0.5352    0.0859    0.2581      5.70     21.44      25.4      58.9  -68.4/  -0.0/   0.0     27.9
+   E k×0.7 γ 0.5              0.0467   0.3908    0.5489    0.0823    0.2743      5.75     21.46      25.5      64.7  -68.4/  -0.0/   0.0     27.9
+   E k×0.7 γ 1                0.0465   0.3992    0.5421    0.0836    0.2794      5.78     21.53      25.6      71.6  -68.2/  -0.0/   0.0     27.9
+   E k×1 γ 0                  0.0451   0.4092    0.4894    0.0883    0.3094      5.57     21.47      25.7      64.7  -67.2/  -0.0/   0.0     27.7
+   E k×1 γ 0.5                0.0451   0.4093    0.4893    0.0883    0.3094      5.57     21.47      25.7      64.7  -67.2/  -0.0/   0.0     27.7
+   E k×1 γ 1                  0.0451   0.4092    0.4893    0.0883    0.3094      5.57     21.47      25.7      64.7  -67.2/  -0.0/   0.0     27.7
+   E k×1.4 γ 0                0.0405   0.4158    0.4966    0.0784    0.3211      5.42     21.51      25.9      68.2  -66.0/  -0.0/   0.0     26.8
+   E k×1.4 γ 0.5              0.0418   0.4194    0.4966    0.0795    0.3282      5.38     21.46      26.6      65.8  -66.1/  -0.0/   0.0     26.6
+   E k×1.4 γ 1                0.0432   0.4103    0.5010    0.0800    0.3202      5.34     21.43      27.6      64.5  -66.1/  -0.0/   0.0     26.3
+   (transverse offset p50 m: +0.31 / +0.36 / +0.41 / +0.37 / +0.37 / +0.37 / +0.40 / +0.37 / +0.32) · (unresolved: 1 / 2 / 1 / 1 / 1 / 1 / 1 / 0 / 1) · (bodies scanned: 17 / 17 / 17 / 18 / 18 / 18 / 19 / 19 / 19)
+==========  end Finding 121 . 3976.6 s  ==========

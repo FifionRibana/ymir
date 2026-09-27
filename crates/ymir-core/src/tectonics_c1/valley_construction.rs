@@ -91,6 +91,42 @@ pub struct ValleyConstruction {
     /// whose col stays at 459 m.
     #[serde(default = "basin_base_default")]
     pub basin_base: bool,
+    /// **ADR Finding 124-B1 — break the plane.** `None` = the planar 28° wall (Findings 121–123,
+    /// byte-identical). `Some` gives the wall a hillslope PROFILE (concave foot, straight colluvial
+    /// segment, convex crest — the form Whipple & Tucker 1999 p. 17,663 describe for colluvial
+    /// slopes) and puts back the tectonic + FBM detail the wall replaced. Finding 123's rule 18: the
+    /// planar walls create the comb's teeth (4.6 % have an A1+B2 counterpart).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wall_profile: Option<WallProfile>,
+    /// **ADR Finding 124-5 (E) — W(k), the valley widens with age.** `None` = Findings 121–124's
+    /// width, independent of k (byte-identical). `Some(γ)`: `W = a₀·(k/k₀)^γ·A^b` with
+    /// `k₀ = F121_AGE_K`, so the age knob that deepens the floors also widens them. **γ is a PROXY**:
+    /// lateral widening is a matter of TIME, and Clubb 2022's `a` is a snapshot of present valleys,
+    /// not a rate — nothing anchors γ. `Some(0.0)` is `None`'s width.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width_age_gamma: Option<f32>,
+}
+
+/// ADR Finding 124-B1 — the wall's profile and its texture. Every value is a **PROXY**.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WallProfile {
+    /// Concave FOOT: the slope ramps linearly from 0 at the floor edge to the colluvial slope over
+    /// this horizontal length (m). PROXY.
+    pub foot_m: f32,
+    /// Convex CREST: a smooth minimum of the wall and the terrain, of this height scale (m). PROXY.
+    pub crest_m: f32,
+    /// Radius (m) of the box blur that defines the field's local TREND; the detail put back on the
+    /// wall is `field − trend`. PROXY.
+    pub detail_radius_m: f32,
+    /// Gain of the detail put back on the wall (1 = the replaced field's own detail). PROXY.
+    pub detail_gain: f32,
+}
+
+impl WallProfile {
+    /// Finding 124's first setting: a 300 m foot, a 20 m crest, the detail below 500 m at gain 1.
+    pub fn f124() -> Self {
+        Self { foot_m: 300.0, crest_m: 20.0, detail_radius_m: 500.0, detail_gain: 1.0 }
+    }
 }
 
 impl ValleyConstruction {
@@ -116,6 +152,8 @@ impl ValleyConstruction {
             smooth_m: 250.0,
             light_k_time_fraction,
             basin_base: false,
+            wall_profile: None,
+            width_age_gamma: None,
         }
     }
 
@@ -124,9 +162,11 @@ impl ValleyConstruction {
         Self::new(age_k, light_k_time_fraction)
     }
 
-    /// Valley floor width (m) at drained area `a_km2`.
+    /// Valley floor width (m) at drained area `a_km2`: `a·A^b`, times `(k/k₀)^γ` under Finding
+    /// 124-5's W(k).
     pub fn width_m(&self, a_km2: f32) -> f32 {
-        self.width_coef_m * a_km2.max(0.0).powf(self.width_exp)
+        let age = self.width_age_gamma.map_or(1.0, |g| (self.age_k / F121_AGE_K).max(0.0).powf(g));
+        self.width_coef_m * age * a_km2.max(0.0).powf(self.width_exp)
     }
 }
 
@@ -455,6 +495,31 @@ fn ocean_flood(bf: &GridF32) -> Vec<f32> {
     f
 }
 
+/// ADR Finding 124-B1 -- a separable box blur of radius `r` cells on the torus (the field's trend).
+fn box_blur_torus(z: &[f32], w: usize, h: usize, r: i64) -> Vec<f32> {
+    let pass = |src: &[f32], horizontal: bool| -> Vec<f32> {
+        let mut out = vec![0f32; w * h];
+        let (len, lines) = if horizontal { (w, h) } else { (h, w) };
+        let at = |line: usize, i: i64| -> usize {
+            let i = i.rem_euclid(len as i64) as usize;
+            if horizontal { line * w + i } else { i * w + line }
+        };
+        let win = (2 * r + 1) as f64;
+        for line in 0..lines {
+            let mut acc = 0f64;
+            for i in -r..=r {
+                acc += src[at(line, i)] as f64;
+            }
+            for i in 0..len as i64 {
+                out[at(line, i)] = (acc / win) as f32;
+                acc += src[at(line, i + r + 1)] as f64 - src[at(line, i - r)] as f64;
+            }
+        }
+        out
+    };
+    pass(&pass(z, true), false)
+}
+
 /// What the carve did, per cell.
 pub struct CarveMasks {
     /// The cell was lowered by the construction.
@@ -507,8 +572,9 @@ pub fn carve(
             line_of.push(li as u32);
         }
     }
-    // (distance m, cone value m, on the floor?)
-    let geo = |s: usize, c: usize| -> (f32, f32, bool) {
+    // (distance m, cone value m, on the floor?, u = distance beyond the floor edge m)
+    let foot = vc.wall_profile.map_or(0.0, |p| p.foot_m.max(0.0));
+    let geo = |s: usize, c: usize| -> (f32, f32, bool, f32) {
         let (sx, sy, zf, hw) = src[s];
         let (cx, cy) = ((c % w) as f32 + 0.5, (c / w) as f32 + 0.5);
         let mut dx = (cx - sx).rem_euclid(w as f32);
@@ -520,7 +586,14 @@ pub fn carve(
             dy -= h as f32;
         }
         let d = (dx * dx + dy * dy).sqrt() * sk.cell_m;
-        (d, zf + (d - hw).max(0.0) * tan, d <= hw)
+        let u = (d - hw).max(0.0);
+        // ADR Finding 124-B1 -- the concave foot: slope ramping 0 → tan over `foot` metres
+        let rise = if foot > 0.0 && u < foot {
+            tan * u * u / (2.0 * foot)
+        } else {
+            tan * (u - 0.5 * foot)
+        };
+        (d, zf + rise, d <= hw, u)
     };
     let mut bestd = vec![f32::INFINITY; n];
     let mut who = vec![u32::MAX; n];
@@ -529,7 +602,7 @@ pub fn carve(
         let cx = (sp.0.floor() as i64).rem_euclid(w as i64) as usize;
         let cy = (sp.1.floor() as i64).rem_euclid(h as i64) as usize;
         let c = cy * w + cx;
-        let (d, v, _) = geo(i, c);
+        let (d, v, _, _) = geo(i, c);
         if d < bestd[c] && v < zfield[c] {
             bestd[c] = d;
             who[c] = i as u32;
@@ -549,7 +622,7 @@ pub fn carve(
                 }
                 let nb = (y + dy).rem_euclid(h as i32) as usize * w
                     + (x + dx).rem_euclid(w as i32) as usize;
-                let (dd, vv, _) = geo(s, nb);
+                let (dd, vv, _, _) = geo(s, nb);
                 if dd < bestd[nb] && vv < zfield[nb] {
                     bestd[nb] = dd;
                     who[nb] = s as u32;
@@ -558,6 +631,10 @@ pub fn carve(
             }
         }
     }
+    let trend: Option<Vec<f32>> = vc.wall_profile.filter(|p| p.detail_gain != 0.0).map(|p| {
+        let r = (p.detail_radius_m / sk.cell_m).round().max(1.0) as i64;
+        box_blur_torus(&zfield, w, h, r)
+    });
     let mut out = field.clone();
     let mut carved = vec![false; n];
     let mut floor = vec![false; n];
@@ -567,7 +644,7 @@ pub fn carve(
         }
         let me = who[c] as usize;
         let (x, y) = ((c % w) as i32, (c / w) as i32);
-        let (_, mut v, mut on_floor) = geo(me, c);
+        let (_, mut v, mut on_floor, _) = geo(me, c);
         // continuity across the line where two DIFFERENT valleys meet
         for dy in -1i32..=1 {
             for dx in -1i32..=1 {
@@ -575,12 +652,23 @@ pub fn carve(
                     + (x + dx).rem_euclid(w as i32) as usize;
                 let o = who[nb];
                 if o != u32::MAX && line_of[o as usize] != line_of[me] {
-                    let (_, vv, f) = geo(o as usize, c);
+                    let (_, vv, f, _) = geo(o as usize, c);
                     if vv < v {
                         v = vv;
                         on_floor = f;
                     }
                 }
+            }
+        }
+        // ADR Finding 124-B1 -- the convex crest (a smooth minimum with the terrain) and the detail
+        if let Some(p) = vc.wall_profile
+            && !on_floor
+            && v < zfield[c]
+        {
+            let k = p.crest_m.max(1e-3);
+            v -= k * (1.0 + (-(zfield[c] - v) / k).exp()).ln();
+            if let Some(t) = &trend {
+                v += p.detail_gain * (zfield[c] - t[c]);
             }
         }
         if v < zfield[c] {
@@ -599,6 +687,29 @@ pub fn carve(
 mod tests {
     use super::*;
 
+    /// ADR Finding 124-5 (E) — W(k) is gated and scales as `(k/k₀)^γ`: `None` and `Some(0)` give
+    /// Findings 121–124's width at every age; `Some(1)` at k × 1.4 gives 1.4× that width, `Some(0.5)`
+    /// √1.4×; at k₀ every γ gives the same width.
+    #[test]
+    fn the_width_widens_with_age_only_when_asked() {
+        let at = |mult: f32, g: Option<f32>| {
+            ValleyConstruction { width_age_gamma: g, ..ValleyConstruction::new(F121_AGE_K * mult, None) }
+                .width_m(10.0)
+        };
+        let w0 = ValleyConstruction::new(F121_AGE_K, None).width_m(10.0);
+        assert!((w0 - 200.0).abs() < 1e-3, "W(10 km²) = 200 m, got {w0}");
+        for mult in [0.7f32, 1.0, 1.4] {
+            assert_eq!(at(mult, None), w0, "no W(k): the width ignores the age");
+            assert!((at(mult, Some(0.0)) - w0).abs() < 1e-4, "γ = 0 is the ungated width");
+        }
+        assert!((at(1.4, Some(1.0)) / w0 - 1.4).abs() < 1e-4, "γ = 1: W ∝ k");
+        assert!((at(1.4, Some(0.5)) / w0 - 1.4f32.sqrt()).abs() < 1e-4, "γ = 0.5: W ∝ √k");
+        assert!((at(1.0, Some(1.0)) - w0).abs() < 1e-3, "at k₀ every γ gives W₀");
+        // gated in the serialised config (the cache digest): absent unless asked
+        let js = serde_json::to_string(&ValleyConstruction::new(F121_AGE_K, None)).unwrap();
+        assert!(!js.contains("width_age_gamma"), "{js}");
+    }
+
     /// A 96×96 V-shaped basin draining north into a sea band: the flow converges on the centre
     /// column, which becomes the trunk.
     fn basin(ss: &SteinSteinParams) -> GridF32 {
@@ -615,6 +726,36 @@ mod tests {
             }
         }
         GridF32 { width: w, height: h, data: d }
+    }
+
+    /// ADR Finding 124-B1, rule 13 — the wall profile only LOWERS, never raises, and changes the
+    /// walls (negative control: it must not be a no-op) while leaving the floor cells alone.
+    #[test]
+    fn the_wall_profile_lowers_only_and_bends_the_walls() {
+        let ss = SteinSteinParams::default();
+        let f = basin(&ss);
+        let mut vc = ValleyConstruction::f121(0.02, None);
+        vc.a_min_km2 = 0.5;
+        vc.smooth_m = 0.0;
+        let sk = skeleton(&f, &vc, &ss, 4.8);
+        let (plain, m0) = carve(&f, &sk, &vc, &ss);
+        vc.wall_profile = Some(WallProfile::f124());
+        let (bent, m1) = carve(&f, &sk, &vc, &ss);
+        for k in 0..f.data.len() {
+            assert!(bent.data[k] <= f.data[k], "cell {k} RAISED by the wall profile");
+        }
+        let walls_changed = (0..f.data.len())
+            .filter(|&k| m0.carved[k] && !m0.floor[k] && bent.data[k] != plain.data[k])
+            .count();
+        assert!(
+            walls_changed > 20,
+            "negative control: the profile must bend the walls ({walls_changed})"
+        );
+        for k in 0..f.data.len() {
+            if m0.floor[k] && m1.floor[k] {
+                assert_eq!(bent.data[k], plain.data[k], "floor cell {k} moved");
+            }
+        }
     }
 
     /// ADR Finding 122-B, rule 13 — with `basin_base`, no constructed floor upstream of an inland
