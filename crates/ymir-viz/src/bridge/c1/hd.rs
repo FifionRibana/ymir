@@ -137,10 +137,14 @@ pub struct HdParams {
     /// eroded field AND the drainage: lakes, rivers, biomes and spillways are recomputed, not
     /// redrawn from a cache entry belonging to the other terrain.
     pub slope_floor_s_eq: Option<f32>,
-    /// EXPERIMENTAL: override the FBM `amplitude_base` for this run (`None` = the
-    /// production 0.16). Lets the author flip through the striation amplitude ladder
-    /// (0.16/0.08/0.04/0.02) with stream-power ON to see the striations shrink.
-    pub fbm_amplitude: Option<f64>,
+    /// **ADR 0001 Finding 121 — "Vallées construites".** `None` (default) = the delivered world,
+    /// byte-identical. `Some(vc)` lays valleys along the pre-incision trunks of `A ≥ 10 km²` BEFORE
+    /// the incision stage and replaces the shipped incision by one light pass (or none: the bare
+    /// construction). The SAME config field the `f121_hybrid` bench sets, so a world seen here is
+    /// the world measured there when the rest of the parameters match (seed 1, 8192², 400 km).
+    /// It reaches `eroded_key`, so lakes, rivers and biomes are re-derived.
+    pub valley_construction:
+        Option<ymir_core::tectonics_c1::valley_construction::ValleyConstruction>,
     /// ADR 0001 Finding 24 — GEOGRAPHIC SCALE RATIO (hydrology only). The map DRAWS
     /// `domain_km` but SIGNIFIES `domain_km · ratio` for the EXPORT-DERIVED hydrology
     /// (catchment ×ratio², discharge ×ratio², channel width ×ratio, navigability
@@ -199,11 +203,12 @@ impl Default for HdParams {
             cross_rill_d: 0.40,
             // ADR Finding 109 — the age closure is OFF by default. Nothing is promoted.
             slope_floor_s_eq: None,
+            // ADR Finding 121 — no construction by default. Nothing is promoted.
+            valley_construction: None,
             mfd: true,
             mfd_p: 2.0,
             base_level_m: None,
             base_level_off: false,
-            fbm_amplitude: None,
             geo_scale_ratio: 1.0,
             latitude_span_deg: None,
             export_dir: None,
@@ -498,9 +503,9 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
                 depth_scale_m: ss.depth_scale_m as f32,
                 sample_origin: [0.0, 0.0], // set below, once the framing roll is known
                 sample_size: 1.0,
-                // ⚠️ INERT on this path (the C-1 relief-budget cap binds everywhere) — kept
-                // so the config states the intended level. See ADR "The DEAD KNOB".
-                amplitude_base: params.fbm_amplitude.unwrap_or(0.04),
+                // The production level. INERT on this path (the C-1 relief-budget cap binds
+                // everywhere, ADR "The DEAD KNOB"); the viz no longer pretends to move it.
+                amplitude_base: 0.04,
                 mfd_p: params.mfd_p,
                 lithology: params.lithology.clone().unwrap_or_default(),
                 fracture: {
@@ -511,11 +516,7 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
             },
         )
     } else {
-        let mut u = FbmUpscaleConfig::c1_hd_production(params.target_size);
-        if let Some(a) = params.fbm_amplitude {
-            u.amplitude_base = a; // striation-ladder override — INERT while conditioning is on
-        }
-        u
+        FbmUpscaleConfig::c1_hd_production(params.target_size)
     };
     // EXPERIMENTAL opt-in (ADR 0001): swap the droplet pass for routed stream-power
     // incision + hillslope regime split. A_c is 7.6 km² expressed in cells at THIS
@@ -540,6 +541,22 @@ pub fn run_hd(spec: &C1RunSpec, params: &HdParams, tx: &Sender<C1Event>, cancel:
     upscale.slope_floor = params
         .slope_floor_s_eq
         .map(|s_eq| ymir_core::terrain::upscale::SlopeFloor::Absolute { s_eq });
+    // ADR Finding 121 — the valley construction, as a config value on the same path.
+    upscale.valley_construction = params.valley_construction;
+    if let Some(vc) = params.valley_construction {
+        eprintln!(
+            "[HD] VALLEY CONSTRUCTION ON (ADR Finding 121): trunks A >= {} km2, age k = {:.5} \
+             (PROXY), W = {:.0} m at 10 km2, walls {} deg, then {}",
+            vc.a_min_km2,
+            vc.age_k,
+            vc.width_m(10.0),
+            vc.wall_deg,
+            match vc.light_k_time_fraction {
+                None => "NO incision (bare construction)".to_string(),
+                Some(f) => format!("ONE light pass at {f:.3} x k_time"),
+            }
+        );
+    }
     if let Some(s_eq) = params.slope_floor_s_eq {
         eprintln!(
             "[HD] AGE OF THE CONTINENT ON (ADR Finding 109): absolute slope floor S_eq = \

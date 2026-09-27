@@ -1,0 +1,7 @@
+   floor surface paired p50 = 488.1 m at **k = 0.07186** (Finding 96: 0.0646 all-land, 0.0719 clamped at A_c) · skeleton 130.2 s · trunk cells 70208 (3428 km) · 628 polylines · law W p10/p50/p90 **212 / 272 / 525 m**
+   ROW PRE (no incision)      | coast +5 · Δ e/b 0/0 of 29 · lakes≥1 29 (fam1 18, exo 26) · D_L>5 0 % · lake 16.54 % · relief p50 679.1 m · to_nothing 0 · unresolved 1 · build 4 s
+   ROW PRE (no incision)      | R8 terr 0.0131 · R8 net 0.5990 (≥10 km² 0.6064) · comb tile terr 0.0400 net 0.6344 · σ p50/p90 3.70/11.00 m · in-thalweg 7.0 % (≥10 km² 22.0 %) · transverse p50 +0.75 m · interfluve Δ p10/p50/p90 0.0/0.0/0.0 m · wall slope p50 5.8°
+   skeleton PRE vs C2/10 + basin base F122: A ≥ 10 km² ≤5 90.5 % · p90 5/12 · mouths 152 of 184
+   ROW C2/10 + basin base F122 | coast +5 · Δ e/b 0/0 of 18 · lakes≥1 18 (fam1 6, exo 14) · D_L>5 0 % · lake 12.92 % · relief p50 515.9 m · to_nothing 0 · unresolved 1 · build 162 s
+   ROW C2/10 + basin base F122 | R8 terr 0.0461 · R8 net 0.4176 (≥10 km² 0.5293) · comb tile terr 0.0450 net 0.4680 · σ p50/p90 5.56/21.44 m · in-thalweg 25.7 % (≥10 km² 64.8 %) · transverse p50 +0.37 m · interfluve Δ p10/p50/p90 -67.3/-0.0/0.0 m · wall slope p50 27.7°
+   skeleton PRE vs C2/10 + basin base F122 A ≥ 10 km²: exact 24.9 % · ≤5 90.5 % · p50/p90 1/5 · back p90 12 · mouths 152 of 184

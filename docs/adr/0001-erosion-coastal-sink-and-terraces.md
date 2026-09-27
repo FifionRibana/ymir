@@ -17595,3 +17595,406 @@ flag for a future round, not a refutation of Finding 65.
 
 **No production change. Nothing wired.**
 
+## Finding 113 — the snap is refuted by Finding 15, the path smoothing does nothing, and rule 18 finds the river comb IS the ageing
+
+**Measured, nothing wired.** The round asked to promote the age closure (A1) and to attribute the
+river comb to the path (B: snap the D8 polyline to the MFD thalweg).
+
+**Rule 11 stopped B before its first measurement.** Finding 15 (L727) had settled it 98 rounds
+earlier: *"the MFD dominant receiver ≡ the steepest D8 one (92.9 % of land cells) … extracting the
+rivers from MFD returns the same polyline"*, and *"the offset metric was wrong … the right test is
+TRANSVERSE"* — on the breached field, 94 % in-thalweg, transverse offset p50 −1.8 m, p90 0.0 m.
+There is nothing to snap to. Both grep predictions ("the snap was never tried") are refuted, and my
+P1 (a snap searching perpendicular to the flow) is a reinvention of Finding 15's correction.
+
+⚠️ **Amendment to Finding 112.** Its *"median offset 6 m, acceptable"* (quoted from Finding 11) is
+the OMNIDIRECTIONAL metric Finding 15 retired. The transverse metric is the one to read.
+
+### The two controls, and the only remedy left
+
+| | value |
+|---|---|
+| control 1 — MFD dominant receiver ≡ D8, 8192², closure ON | **93.16 %** of 11 326 784 routed land cells (Finding 15 at 2048²: 92.9 %) |
+| control 2 — in-thalweg, transverse (Finding 15's metric) | **50.5 %** of 275 829 river points, offset p50 −0.02 m, p90 +2.02 m |
+| path smoothing (moving average, endpoints pinned) ±1 / 2 / 4 / 8 cells | comb tile R8 **0.4661 → 0.4681 → 0.4658 → 0.4589 → 0.4515**, continent 0.3258 → 0.3233, deviation p50 **0.00 cell** |
+
+⇒ **The last remedy is refuted by its own measurement**: moving no cell and changing no threshold,
+the polyline is already where it can be, and smoothing it changes nothing.
+
+### Rule 18 on my own control
+
+Control 2's 50.5 % against Finding 15's 94 % differs in TWO ways at once (resolution, and the
+closure), so the closure-OFF control was run:
+
+| | **closure OFF** | **closure ON** |
+|---|---|---|
+| MFD ≡ D8 | 89.86 % | 93.16 % |
+| **in-thalweg** | **69.3 %** | **50.5 %** |
+| **transverse offset p50** | **−5.02 m** | **−0.02 m** |
+| river points | 161 387 | 275 829 |
+
+> **The closure halves the thalweg residence and brings the median incision below the banks from
+> 5 m to 2 cm.** That is what `slope_floor_uk` does by design — it raises the bed toward a graded
+> profile. A channel at the level of its banks has no valley to follow, and its D8 path is then
+> decided by tie-breaks on a plane. The chain holds end to end: σ(slope) 3.89° → 1.28° (Finding 110)
+> · incision below the banks −5.02 → −0.02 m · R network 0.075 → 0.311 (Finding 110) · R8 network 12×
+> its floor (Finding 111).
+
+⚠️ **The premise "the closure is innocent of the comb (Finding 111)" is not supported.** Finding 111
+showed the TERRAIN's anisotropy predates the closure (R8 0.1501 OFF against 0.1532 ON); the RIVERS'
+comb does not (Finding 110: 0.0747 OFF against 0.3114 ON, ×4.2). **The river comb is not a separate
+extraction defect: it is the ageing, seen on another layer.** The lever left is `s_eq` (Finding
+108's window), not the extraction: MFD has no trunk (Finding 112), there is nothing to snap to, and
+smoothing moves nothing.
+
+Bench: `tests/f113_snap.rs`. **No production change.**
+
+## Finding 114 — the threshold incision (H-2) computes exactly ZERO, and the lakes split into two families
+
+**Measured.** The round asked whether a threshold incision at the col would empty the lakes.
+
+| lakes ≥ 1 km² (8192², closure ON) | 29 |
+|---|---|
+| depth p10 / p50 / p90 | 50.4 / **157.2** / 451.1 m |
+| under 30 m / above 100 m | **2** / 19 of 29 |
+| cols invisible to the law (`A < A_c`) | 10 of 29 (34 %) |
+| lakes emptied by one pass | **0** |
+| drop from the "col" to its receiver, eroded / breached | **0.00 m on 25 / 28 of 29** |
+
+The downstream profile splits the lakes into two families nobody predicted: **family 1 (16 lakes)**
+— the drop exists but lies DOWNSTREAM (d@10 2.8–465 m, d@200 85–975 m, max S 0.20–1.40); **family 2
+(13 lakes)** — no drop at all over 200 cells (max S 0.0000), floors at −1.0 to −1.2 m: the inland
+below-sea basins, whose outlet runs to the sea. Emptying those is bathymetry, not ageing.
+
+⛔ **AMENDED by Finding 119: the "col" of this finding is the lake's last WATER cell** (`Lake::outlet`,
+the lake cell whose D8 direction leaves the lake). Its height is 0.00 m under the level, so the
+HEIGHTS read here stand; the SLOPES do not: "S = 0 at the col" was the slope of a water cell toward
+the spill point above it, clamped to zero — a tautology. At the true col (that cell's receiver)
+S > 0 on 17 of 18 family-1 lakes (Finding 119).
+
+**Predictions.** Mine: P0 ✓ (no interior equilibrium), A2 ✓ (the deep end is family 2), A1 ✗ (≥ 60 %
+under 30 m: it is 7 %), B1 ✗ (60–85 % emptied: 0). The reviewer's: "many shallow lakes" ✗ (two),
+B1 ✗ (40–60 %: 0), C2 ✓ (the 614.9 m lake resists — family 2). Block D not run: with E = 0 there is
+no emptied field to measure. Bench: `tests/f114_sill.rs`. **No production change.**
+
+## Finding 115 — knickpoint retreat is NOT absent: the wave arrives in a fraction of a pass; what holds the lakes is a gate, not a speed
+
+**Measured.** The retreat along the 200-cell (9.8 km, domain) outlet paths of the family-1 lakes:
+
+| | value |
+|---|---|
+| T_col p10 / p50 / p90, the whole path | **0.034 / 0.161 / 0.351 pass** (delivered budget: 2 passes) |
+| retreat rate, Courant | 180 618 m/yr, **3 699** |
+
+The wave crosses the whole path twelve times within the budget: the reviewer's "5–20 k_time" is
+refuted by about a hundred, my "under a pass" in the other direction (it is under a sixth).
+
+**The gates on those paths** (flags, first run in `if / else if` — see below):
+
+| | **closure OFF** | **closure ON** |
+|---|---|---|
+| lakes ≥ 1 km² | **54** | **29** |
+| cells walked | 8 651 | 3 456 |
+| `A < A_c` | 15 (0.2 %) | 7 (0.2 %) |
+| **`depression_floor` (A1)** | **0 (0.0 %)** | **1 603 (46.4 %)** |
+| **flat** (receiver already at the level) | **3 422 (39.6 %)** | 10 (0.3 %) |
+| incisable | 5 214 (60.3 %) | 1 836 (53.1 %) |
+
+A1 is entirely the closure (0 → 1 603, by construction). **But the delivered world already has
+39.6 % of its outlet path flat**: both worlds block the same fraction, OFF because the profile is
+already graded, ON because A1 forbids it. ⇒ *"the age closure is what keeps the lakes from
+emptying"* does NOT hold: without it the incision would not do better, for lack of material.
+**The wave arrives fast; it has nothing to carry.** And a line for the closure's ledger: 54 → 29
+lakes ≥ 1 km².
+
+⚠️ **Instrument defect, mine**: the four gates were tested in `if / else if`, so a cell both in a
+depression and flat counted as "depression"; the 1 603 and the 10 are not disjoint (Finding 116's
+bench uses independent flags). ⛔ Finding 119's amendment applies: the paths start at the lake's
+last water cell, not at the col. Blocks B and C (a retreat mechanism) have no object.
+Bench: `tests/f115_knick.rs`. **No production change.**
+
+## Finding 116 — the FBM amplitude knob is DEAD (as the dossier said since C-1), and the bicubic upscale creates pits too
+
+**Measured.** The round swept the FBM amplitude to test "the FBM is the sole creator of the pits"
+(Finding 41: 16 coarse pits → 90 682 after the FBM upscale → 75 060 after the incision).
+
+⛔ **Rule 11 failure, mine.** "The DEAD KNOB" (L2009): *"`amplitude_base` — and with it the viz's
+`fbm_amplitude` selector … and every amplitude sweep since C-1 — act on a parameter WITHOUT EFFECT
+as soon as `flow_conditioning > 0` … Every amplitude sweep after C-1 measured nothing."* The line
+was in my own grep output. The sweep reproduces it: 0.08 / 0.04 / 0.02 / 0.01 give columns identical
+to the digit. Only `amp = 0` moves (the `min` with the cap is then zero).
+
+| without incision | pits > 0.1 m | ≤ 2 cells | > 5 m | > 20 m | spurs |
+|---|---|---|---|---|---|
+| FBM on (any amplitude) | **6 895** | 5 552 | 684 | 49 | 20 |
+| **FBM = 0** | **437** | 297 | 46 | **34** | 20 |
+
+| delivered (closure ON) | pits > 0.1 m | > 5 m | > 20 m | relief p50 | R8 | σ local | spurs |
+|---|---|---|---|---|---|---|---|
+| FBM on | **10 867** | 3 897 | 1 383 | 508.2 m | 0.0484 | 5.261 | 19 |
+| **FBM = 0** | **4 387** | 2 005 | **921** | 494.8 m | 0.0486 | 5.029 | 19 |
+
+1. **The bicubic upscale is a creator, not only the FBM**: 437 pits with no FBM at all (⚠ against
+   the coarse field's 16 of Finding 41: two instruments, two stages; the internal comparison that
+   holds is 437 against 6 895). "The FBM is the sole creator" is false in the strict sense.
+2. **Cutting the FBM entirely costs almost nothing**: relief p50 −2.6 %, σ −4.4 %, R8 and coast
+   unchanged.
+3. **It does not deliver France**: with no FBM the delivered field keeps 4 387 pits and 921 > 20 m.
+
+The round's verdict line "the initial terrain, lever FBM amplitude" is doubly refuted — the lever
+does not exist, and at its one effective setting the count stays in the thousands. Bench:
+`tests/f116_fbm.rs`, bench knob `Knobs::fbm_amp`. **No production change.**
+
+## Finding 117 — the pits, module by module in the code's order: the FBM makes the noise, the INCISION makes the deep hollows, and the closure removes half of them
+
+**Measured**, with stage switches (`Knobs::{volcanism_off, lithology_off, fracture_off}`, bench
+only) walking `upscale_from_c1` in its own order. Control: S7 is bit-identical to the delivered
+field (0 cells differ).
+
+| stage | pits > 0.1 m | Δ | ≤ 2 cells | depth p50 | > 20 m | Δ |
+|---|---|---|---|---|---|---|
+| S1 bicubic only | 445 | **+445** | 312 | 0.66 m | 27 | +27 |
+| S2 + FBM | 6 999 | **+6 554** | 5 650 | 0.87 m | 35 | **+8** |
+| S3 + C-2 craters | 6 895 | −104 | 5 552 | 0.86 m | 49 | +14 |
+| S4 + incision, uniform K (+ C-2 rims) | 10 716 | **+3 821** | 6 702 | 2.26 m | 1 307 | **+1 258** |
+| S5 + C-3 lithology | 10 759 | +43 | | | 1 323 | +16 |
+| S6 + C-3b fractures | 10 867 | +108 | | | 1 383 | +60 |
+| S7 + bathymetry (≡ delivered) | 10 867 | +0 | | | 1 383 | +0 |
+
+**The FBM makes 60 % of the pits (+6 554) but only 8 of those deeper than 20 m** (p50 0.87 m, 5 650 of
+6 999 within 2 cells): noise, not lakes. **The incision makes 91 % of the deep pits** (+1 258 of
+1 383). S8 (the breach) reads 0 pits: an instrument artefact — a breached field is monotone by
+construction.
+
+**Rule 18 control — the incision on S3 without the closure:**
+
+| | pits > 0.1 m | Δ | > 20 m | Δ |
+|---|---|---|---|---|
+| closure OFF, full K | **15 449** | **+8 554** | **2 599** | **+2 550** |
+| closure OFF, uniform K | 16 642 | +9 747 | 2 490 | +2 441 |
+| closure ON (S7) | 10 867 | +3 972 | 1 383 | +1 334 |
+
+1. **The incision creates the deep pits, closure or not** (49 → 2 599 without it, → 1 383 with it).
+   Finding 41's *"each erosion process REDUCES the count; none creates"* is refuted for the population
+   that becomes lakes: it read the total count on a base 13× mine, dominated by the FBM's 0.87 m pits
+   the incision erases, and never isolated the > 20 m.
+2. **My attribution of the +3 821 to A1 was wrong, and reversed**: the closure REMOVES ~4 600 pits
+   and ~1 200 deep ones (2 599 → 1 383, −47 %) — a CREDIT on its ledger, beside Finding 113 (thalweg
+   residence halved) and Finding 115 (54 → 29 lakes).
+3. **The K field (C-3/C-3b) is marginal**: −1 193 shallow, +109 deep.
+
+**The drainable of the 18 family-1 lakes** (block A):
+
+| terminal base | n | drainable, delivered (m) |
+|---|---|---|
+| a family-2 basin | 8 | 47 – 1 207 |
+| a downstream lake (one hop) | 5 | 82 – 991 |
+| the sea | 5 | 122 – 409 |
+| **all** | **18** | p10 / p50 / p90 **54 / 200 / 917** · > 100 m: 13 · **< 10 m: 0** |
+
+Closed world (− Σ S_eq·dx): one lake under 10 m (23.67 km², −4.5 m). No lake sits at its geometric
+floor; time is not the constraint (Finding 115); ⇒ **what holds the lakes is REACHABILITY** — the
+local law produces no erosion at the one place that would lower the lake — and the hollows it
+holds, the incision dug.
+
+The viz's dead `fbm_amplitude` selector and its `HdParams` field are removed (Finding 116's knob;
+`amplitude_base` stays 0.04, stated as inert). **Predictions**: B2 sign ✓ cause ✗; B3 undecided
+(instrument blind on a breached field); B4 ✓; B5 ✓; A1 ✓ (13 > 100 m); A2 ✗ (8 held by family 2,
+the reviewer's ~6 closer); the reviewer's low mode (< 10 m) ✗ — it does not exist. Benches:
+`tests/f117_{ctrl,drain,stages}.rs`. **No production change** beyond the removed dead knob.
+
+## Finding 118 — the zero at the "col" has four layers (AMENDED by Finding 119: it was the lake's last water cell)
+
+**Measured** on the 18 family-1 lakes.
+
+| | of 18 |
+|---|---|
+| S = 0 at the future col already on the pre-incision field | 12 |
+| depression already present on the pre-incision field | 9 |
+| S = 0 at the col on the eroded field (ON) | 18 |
+| col cut by the incision ON (> 1 m) | 2 (23.67 km²: 15.7 m; 8.05 km²: 391 m) |
+| col cut by the incision OFF (> 20 m) | 8 — from 18 to 702 m |
+| the col's receiver is land | 18 |
+| S_1 = 0 / S_10 > 0 | 18 / 18 — the break within 10 cells (< 490 m, domain) |
+| what the law would remove in one pass if it read S over 10 cells | p10 / p50 / p90 / max **1.3 / 34.5 / 199 / 462 m**; at 50 cells up to 889 m |
+| the breach RAISES the col | 18 of 18, +0.02 to +2.33 m, p50 +0.48 m |
+
+F87-A control: 0 flat steps of 70; 5 256 m³/s (signified) = 92.97 m³/s (domain) × 7.5², the same
+river. The reading was: the terrain put S = 0 there on 12/18, A1 preserves it (the closure freezes
+the col where the OFF world would cut it by hundreds of metres), the breach raises it half a metre,
+and the law reads S over one cell while the drop is within ten.
+
+⛔ **AMENDED by Finding 119.** The "col" here is `Lake::outlet`, the lake's last WATER cell. So:
+"S = 0 at the col" is a tautology (Finding 114's amendment); "A1 freezes the col" is A1 freezing a
+lake cell — its job, protecting the floor; "OFF cuts the col by 18–702 m" is OFF cutting the lake's
+RIM — the defect A1 corrects; the breach's +0.48 m was measured on the water cell (at the true col:
+0.00 m). What survives: the heights, the receiver on land, and the distance to the break.
+Bench: `tests/f118_sill_flat.rs`. **No production change.**
+
+## Finding 119 — lifting A1 at the TRUE col empties no lake; and the instrument of Findings 114–118 is refuted
+
+**The col, re-defined.** In `lakes/detection.rs`, `Lake::outlet` is the lake cell whose D8 direction
+leaves the lake — under water by definition, on 18 of 18 lakes. The TRUE col is that cell's
+receiver on the inventory's own flow. At the true col **S > 0 on 17 of 18** lakes of the eroded
+field (ON); S = 0 only on the breached field, for 7. The first run of this bench used the water
+cell and was stopped (its masks would have lifted A1 on water, which the round forbade); retracted.
+
+**The line responsible.** The A1 test is `filled > field` — STRICT — and the pit fill is exact, so
+**A1 never fires on the spill cell itself**; it protects the col INDIRECTLY, through the chain of
+receivers the implicit sweep relaxes toward. On the surfaces the incision sees, the true col is
+still inside a depression on 11 of 18 lakes before the incision (~pass 1) and 6 of 18 on the eroded
+field (~pass 2); the breach dries it only afterwards. The incision reads neither `lake_map` nor
+Finding 92's relevel class (grep: NOTHING FOUND). The reviewer's prediction A is refuted.
+
+**The seam.** `StreamPowerConfig::a1_exempt: Option<Arc<Vec<bool>>>` — cells exempt from A1,
+**`None` in production**, `#[serde(skip)]` like `incision_floor` (invisible to the cache digest,
+harmless only because no production path sets it); built from the DELIVERED inventory, so not a
+promotion candidate as written (the Finding 105 problem). Permanent test
+`the_a1_exemption_mask_interpolates_between_on_and_off`: no mask and an all-false mask are A1 ON, an
+all-true mask is A1 OFF, on a field where A1 provably bites.
+
+| world | lakes emptied | levels lowered | max drop | lakes ≥ 1 km² | canyons e / b | R8 |
+|---|---|---|---|---|---|---|
+| OFF | 2 (read at one cell) | | | 54 | 12 / 4 | 0.0924 |
+| ON | 0 | 0 | 0 | 29 | 0 / 3 | 0.0484 |
+| A1 lifted at the col, k = 0 | 0 | 0 | 0.06 m | 29 | 0 / 3 | 0.0484 |
+| k = 1 (col + d@1) | 0, by footprint | 3 | 6.00 m | 29 | 0 / 3 | 0.0485 |
+| k = 3 | 0, by footprint | 5 | 6.00 m | 29 | 0 / 3 | 0.0485 |
+| A1 nowhere | 5 (read at one cell) | | | 36 | 10 / 4 | 0.0573 |
+
+⚠️ **Retracted: the first table's "3 then 6 emptied"** were read at the single floor cell; by
+footprint those lakes stay 89.7–100 % water. **The freed cells dig a NOTCH instead of emptying the
+lake**; the water fills it and the level barely moves — of the 5 cols that move at k = 3, 4 end
+under the new level (48.83 km²: col −32.74 m, level −0.73 m; 35.81: −27.67 / −2.77; 7.58: −84.33 /
+−2.78; 6.22: −20.74 / −2.48). The one real lowering is the 8.05 km² lake (its col becomes the new
+spill, 6 m lower). The stop rule does not fire to the letter (Finding 108's gate stays 0), but an
+82 m notch at a spillway is the mechanism it fears, in small. Positive control: 4 of the 9 cols OFF
+cuts descend at k = 3. The F87-A river is unchanged (71 cells, Δz 0.000 m; 71 against Finding 87-A's
+61 cells, not reconciled). Coast unchanged.
+
+C (a non-local slope at the col) not run: its premise is false — the break is at the col itself on
+17 of 18. D: the breach does not raise the true col (median 0.00 m). E not triggered.
+**Predictions**: mine "A1 never hits the col" ✗; amended "0–2 emptied" ✓, "canyons 0" ✓, "new lakes
+keep the count" ✗. The reviewer's "k = 0 < 5 m" ✓, "canyons 0" ✓; 4–6 emptied, 29 → 22–25 lakes and
+a +0.5 m breach ✗. Bench: `tests/f119_sill_free.rs`. **No production change.**
+
+## Finding 120 — the valley construction, read before it is built: the laws, anchored; and the skeleton the construction would stand on
+
+**Reading** (`docs/reports/c1_continental_buoyancy/f120_construction/reading_and_laws.md`,
+sources in `docs/refs/`): Génevaux et al. 2013 build the network first and the relief to fit it —
+the inverse of Ymir's problem, on domains 47–165× smaller, and the paper's own fourth limitation is
+Ymir's case (*"the generated river network cannot easily adapt to large mountains with clearly
+articulated valleys"*). What transfers: a river profile along a skeleton and a cross-profile
+perpendicular to it.
+
+| law | form | status |
+|---|---|---|
+| floor profile | `z = z_base + k·χ`, `χ = ∫ (A0/A)^0.5 dx` | ANCHORED — Harel et al. 2016 eqs. (4)–(7), PDF p. 15 (a PROFILE along one channel; Finding 96: not a FIELD) |
+| age `k` | one number | a calibration on a target (Finding 96: 0.0646 all-land) |
+| floor width | `W = K_v·A^c_v`, `c_v = 0.3 ± 0.06` | exponent ANCHORED — Clubb et al. 2022 p. 437; ⛔ `K_v` NOT anchored: Table 2 p. 452 is unit-inconsistent with the paper's own widths |
+| walls | planar, colluvial slope 0.54 ± 0.11 m/m (28°) | ANCHORED — Whipple & Tucker 1999 Table 1 p. 17,663 |
+| angle of repose 30–35° | `talus_slope = tan 33°` in the code | ⛔ no page in the dossier |
+
+The planar wall is chosen over a hand-laid convex–concave profile (that profile is what diffusion
+PRODUCES; laying it would be laying a second model's output), and the cross-section is laid by the
+distance to a SMOOTHED polyline, not to the D8 cells (Finding 96's stamping).
+
+**A0 — is the skeleton tectonic?** By drained area (the author's amendment: physical units only,
+the threshold in km² with ≥ 40 cells, no verdict at 2048²), trunks A ≥ A_t within 5 cells:
+
+| A_t | OFF vs ON (A1+B2) | PRE-incision vs ON |
+|---|---|---|
+| 1 km² | 87.5 %, p90 7 / 5 | 78.1 %, p90 9 / 19 |
+| 10 km² | 81.3 %, p90 10 / 18, mouths 79 of 279 | **78.4 %, p90 10 / 34, mouths 97 of 184** |
+| 100 km² | 67.5 %, p90 37 / 66 | 86.6 %, p90 7 / 14 |
+| 1 000 km² | 79.4 %, p90 441 / 537 | 85.4 %, p90 10 / 9 |
+
+⛔ The stop rule fired on OFF vs ON (the trunks move: p90 37–537 cells at A ≥ 100–1 000 km²), so the
+laws were read and not used in this round; the PRE-incision skeleton is the stable one (p90 ≤ 10 at
+≥ 100 km²) and the construction stands on it (Finding 121). By band (ON, full tree), R8 of the
+network is 0.6335 at 0.1–1 km², 0.3853 at 1–10, 0.4056 at 10–100 (isotropic floor 0.0402). Control:
+the F87-A spillway (5 256 m³/s, signified) reads a D8 area of 0.0–1.3 km² (domain) along its path.
+Benches: `tests/f120_{area,skeleton}.rs`. **No production change.**
+
+## Finding 121 — the hybrid at 8192²: the shape constructed along the pre-incision trunks, the texture left to a light incision
+
+**Gated, nothing promoted.** `FbmUpscaleConfig::valley_construction` (`None` by default,
+byte-identical) runs `tectonics_c1::valley_construction` BEFORE the incision stage and replaces the
+shipped incision by ONE light pass at `f × k_time` (or none: the bare construction). It changes the
+terrain, so it reaches `eroded_key_full` conditionally. The viz gains "Vallées construites"
+(`HdParams::valley_construction`), the benches `Knobs::valley`. Report:
+`docs/reports/c1_continental_buoyancy/f121_hybrid/finding_121.md`.
+
+**The laws, as coded** (every one labelled in the module): floor `z = z_base + k·χ`, A clamped at
+0.1 km² (ANCHORED, Harel 2016); **k = 0.07186** (PROXY, calibrated so the floor surface's paired
+p50 = 488.1 m, Finding 95's oracle; Finding 96: 0.0719); `W = a·A^0.3` with W(10 km²) = 200 m (exponent
+ANCHORED, coefficient PROXY; law W p10/p50/p90 over the trunks 212 / 272 / 525 m); walls 28°
+(ANCHORED); base sea + 0.5 m (ANCHORED, Finding 83); skeleton smoothing ±250 m (PROXY); trunks
+A ≥ 10 km² in-domain = 4 194 cells (DECISION, Finding 120). Two corrections the rule-13 test
+(`the_valley_construction_lowers_only_and_lays_its_floor`) forced: the cross-section is laid from
+the NEAREST skeleton sample (a minimum over every cone flattened the long profile), and a wall
+stops where it meets the terrain.
+
+**Skeleton control, declared first, PASSES**: PRE vs C1 bare, trunks ≥ 10 km² within 5 cells
+90.6 %, p90 5 / 4, mouths 155 of 184 (ON's own: p90 10, 97 of 184).
+
+| world | coast | Δ class e/b | lakes ≥ 1 km² (fam1) | D_L > 5 | lake % | relief p50 | R8 terrain | σ p50 | transverse p50 |
+|---|---|---|---|---|---|---|---|---|---|
+| PRE | +5 | 0/0 | 29 (18) | 0 % | 16.54 | 679.1 m | 0.0131 | 3.70 m | +0.75 m |
+| OFF delivered | +115 | 12/4 | 54 (43) | 35 % | 24.70 | 424.2 m | 0.0924 | 6.96 m | −5.06 m |
+| ON A1+B2 | +1 | 0/3 | 29 (18) | 10 % | 19.32 | 508.3 m | 0.0484 | 5.27 m | −0.01 m |
+| **C1 bare** | +2 | 0/0 | 16 (5) | 19 % | 14.72 | 519.0 m | 0.0798 | 5.36 m | +0.55 m |
+| **C2 /10** | +3 | 0/0 | 16 (4) | 19 % | 15.92 | 457.1 m | 0.0608 | 6.34 m | +0.39 m |
+| **C2 /3** | +3 | 0/2 | 16 (4) | 25 % | 16.99 | 405.4 m | 0.0618 | 6.73 m | +0.24 m |
+
+- **C1: neither too smooth nor combed, but STRIPED at the scale of the valleys** — σ at ON's level,
+  R8 terrain 6× PRE's (planar walls oriented by trunks still D8 lines above 250 m).
+- **C2 lowers the anisotropy instead of raising it** (R8 terrain 0.0798 → 0.0608; the comb tile
+  0.0331 at /3, the lowest of every world).
+- **Canyons 0** at the eroded stage everywhere; **entrenchment does not appear** (transverse offset
+  stays positive); **29 → 16 lakes** (a trunk crossing a hollow cuts its sill — not checked lake by
+  lake).
+- **C3, three ages at /10**: relief p50 439.5 / 457.1 / 480.7 m for k × 0.7 / 1 / 1.4 — monotone; W
+  does not move (the law has no k). ⛔ The k × 0.7 world tripped Finding 38/92-B's production
+  invariant (one enclosed below-sea component uncovered, 120 300 cells, `hd_assembly.rs:279`) —
+  reproduced, not attributed.
+- **E, the F87-A object**: basin 1000015's spillway, 5 256.41 m³/s (signified), 71 cells,
+  `segment_drainage_km2` 552 932 km² (signified) = 9 829.9 km² (domain), against a D8 area of 1.3 km²
+  (domain) along its path — a spillway is traced over the col, outside the D8 network.
+
+Against the C1 design doc's three reasons for rejecting Option A: (1) chronology — `k` is monotone,
+necessary not sufficient; (2) calibration — every law labelled, the one PROXY on a target lands on
+Finding 96's value; (3) "looks invented" — the author's eye (block D). Bench: `tests/f121_hybrid.rs`.
+
+## Finding 122 — the "brush" lakes are constructed valleys drowned by inland below-sea basins; χ from the col removes them, and it is not a local gesture
+
+Report: `docs/reports/c1_continental_buoyancy/f122_brush/finding_122.md`. Grep: a χ base per closed
+depression was never considered (Finding 96 integrates χ from the sea only) — NOTHING FOUND.
+
+**A — the brush, attributed.** The named lake is **1000011**, a family-2 lake (an inland below-sea
+basin), 947 km² at 459.3 m on C2/10. The overlap instrument alone cannot separate a brush from an
+ordinary lake (the delivered world's lakes read up to 100 % carved over the same masks); what
+separates them is **the same basin across worlds**: 1000011 is the one that GREW (+342 km²; carved
+cells under water ~217 → ~617 km²). **The mechanism**: the skeleton takes `h ≤ sea` as its base, so
+a trunk ending in an inland below-sea basin is laid down to sea + 0.5 m — while the basin's water
+stands at its col (459.3 m), which no constructed valley ever reaches (the basin's outflow is a
+spillway traced over the col, Finding 121-E). A drowned valley with a flat floor, planar walls and a
+semicircular head is the brush.
+
+**B — χ from the col** (`ValleyConstruction::basin_base`, gated): a priority flood seeded on the OPEN
+OCEAN only gives every closed depression its spill level; a trunk entering one takes that spill as
+its base. ⛔ **Local by its rule, not by its effect**: it moves the floor on 50 087 of 70 208 trunk
+cells (71 %), Δfloor p10/p50/p90 +48.8 / **+174.4** / +458.8 m. Permanent test
+`basin_base_keeps_the_floors_above_the_water_of_a_closed_basin`.
+
+| world | coast | Δ e/b | lakes (fam1) | D_L > 5 | lake % | relief p50 | R8 terrain | σ p50 |
+|---|---|---|---|---|---|---|---|---|
+| C2/10 (Finding 121) | +3 | 0/0 | 16 (4) | 19 % | 15.92 | 457.1 m | 0.0608 | 6.34 m |
+| **C2/10 + basin base** | +5 | 0/0 | 18 (6) | **0 %** | 12.92 | **515.9 m** | **0.0461** | **5.56 m** |
+
+Every family-2 lake becomes a bowl at an UNCHANGED level; **1000011: 947 → 494 km², carved share 65.2
+→ 0.2 %, D_L 7.89 → 2.29**. The price: relief p50 +12.9 %, σ −12 %, the valleys of every
+basin-draining trunk shallower. **C — the tile** (renders in the report folder) shows, for the
+author's eye: straight parallel river runs filling flats in every world, polygonal cells where
+planar walls meet, and a filled rectangle of river points. The viz gains "C2 /10 col".
+Bench: `tests/f122_brush.rs`. **Nothing promoted.**

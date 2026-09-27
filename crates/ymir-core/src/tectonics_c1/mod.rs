@@ -90,5 +90,6 @@ pub mod production_upscale;
 pub mod state;
 pub mod stats;
 pub mod time_loop;
+pub mod valley_construction;
 
 pub use stats::C1StepStats;

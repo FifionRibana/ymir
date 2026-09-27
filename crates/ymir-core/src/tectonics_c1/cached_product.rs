@@ -143,8 +143,13 @@ pub fn eroded_key_full(
     // toggled-on run would be served the toggled-off drainage: lakes, rivers, biomes and
     // spillways drawn from a cache entry belonging to a different continent. Conditional, so
     // every key written by every run to date (`slope_floor: None`) is byte-identical.
-    match upscale_cfg.slope_floor {
+    let key = match upscale_cfg.slope_floor {
         Some(sf) => key.with_debug("slope_floor", &sf),
+        None => key,
+    };
+    // ADR Finding 121 -- the valley construction changes the terrain: same conditional pattern.
+    match upscale_cfg.valley_construction {
+        Some(vc) => key.with_debug("valley_construction", &vc),
         None => key,
     }
 }

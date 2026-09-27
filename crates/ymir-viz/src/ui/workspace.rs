@@ -260,6 +260,12 @@ struct WorkspaceState {
     age_closure: bool,
     /// Its constant, restricted to Finding 106's MEASURED window {0.021, 0.024, 0.027}.
     age_s_eq: f32,
+    /// ADR 0001 Finding 121 -- "Vallées construites": 0 = off (the delivered world), 1 = C1 bare
+    /// construction, 2 = C2 hybrid at k_time/10, 3 = C2 hybrid at k_time/3, 4 = C2 /10 with
+    /// Finding 122-B's `basin_base` (χ from the col of each closed depression).
+    valley_mode: usize,
+    /// Index into the three measured ages {0.7, 1, 1.4} × `F121_AGE_K`.
+    valley_age: usize,
     /// EXPERIMENTAL (ADR 0001, Finding 11): MFD incision — dendritic valleys, no solver.
     mfd: bool,
     mfd_p: f32,
@@ -268,7 +274,6 @@ struct WorkspaceState {
     /// UNCHECKING sets `HdParams::base_level_off` and reproduces the pre-Finding-83 world.
     base_level: bool,
     /// EXPERIMENTAL: FBM amplitude_base for the striation ladder (0.16 = production).
-    fbm_amplitude: f32,
     /// EXPERIMENTAL (C-2, closures roadmap §2): inject volcanic edifices (arcs /
     /// hotspot chains / rifts) derived from the tectonic state. Off by default
     /// (production byte-identical). Arc volcanism is barely visible on seeds with
@@ -395,11 +400,12 @@ impl Default for WorkspaceState {
             cross_rill: false,
             age_closure: false, // ADR Finding 109 -- off ships
             age_s_eq: 0.024,    // the middle of the Finding 106 window
+            valley_mode: 0,     // ADR Finding 121 -- off ships
+            valley_age: 1,      // k × 1
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
             base_level: true,    // ADR Finding 83 -- production ships the bound
-            fbm_amplitude: 0.04, // #190 — the production seed's amplitude (fine relief detail)
             volcanism: false,    // C-2 opt-in (Expert); production byte-identical
             lithology: false,    // C-3 opt-in (Expert); production byte-identical
             fracture: false,     // C-3b opt-in (Expert); production byte-identical
@@ -921,13 +927,33 @@ fn left_panel(
                             stream_power: ws.stream_power,
                             closures: ws.closures,
                             cross_rill: ws.cross_rill,
-                            slope_floor_s_eq: ws.age_closure.then_some(ws.age_s_eq),
+                            // ADR Finding 121 -- the hybrid (modes 2/3) carries A1+B2 as its
+                            // finish, exactly as the bench does, whatever the age box says.
+                            slope_floor_s_eq: if ws.valley_mode >= 2 {
+                                Some(0.024)
+                            } else {
+                                ws.age_closure.then_some(ws.age_s_eq)
+                            },
+                            valley_construction: {
+                                use ymir_core::tectonics_c1::valley_construction::{
+                                    F121_AGE_K, ValleyConstruction,
+                                };
+                                let k = F121_AGE_K * [0.7f32, 1.0, 1.4][ws.valley_age.min(2)];
+                                match ws.valley_mode {
+                                    1 => Some(ValleyConstruction::f121(k, None)),
+                                    2 => Some(ValleyConstruction::f121(k, Some(0.1))),
+                                    3 => Some(ValleyConstruction::f121(k, Some(1.0 / 3.0))),
+                                    // ADR Finding 122-B -- C2 /10 with χ from the col of every
+                                    // closed depression (the "brush" remedy, gated)
+                                    4 => Some(ValleyConstruction::f122(k, Some(0.1))),
+                                    _ => None,
+                                }
+                            },
                             cross_rill_d: ws.cross_rill_d,
                             mfd: ws.mfd,
                             mfd_p: ws.mfd_p,
                             base_level_m: None, // shipped epsilon (Finding 83)
                             base_level_off: !ws.base_level,
-                            fbm_amplitude: Some(ws.fbm_amplitude as f64),
                             geo_scale_ratio: ws.geo_scale_ratio,
                             // At the geographic span → None (byte-identical windowed climate);
                             // otherwise the explicit span drives the placed (per-belt) climate.
@@ -1090,6 +1116,61 @@ fn left_panel(
                                         }
                                     });
                                 }
+                                // ADR 0001 Finding 121 — the constructed valleys. Four states
+                                // with the age box: livré / A1+B2 / C1 nue / C2 hybride.
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("Vallées construites (F121)")
+                                            .color(DIM2)
+                                            .size(11.0),
+                                    )
+                                    .on_hover_text(
+                                        "ADR 0001 Finding 121 — la FORME construite le long des \
+                                         troncs du réseau pré-incision (A ≥ 10 km²), la TEXTURE \
+                                         laissée à une incision légère.\n\n\
+                                         off = le livré, AU BIT.\n\
+                                         C1 nue = vallées posées (fond χ, largeur W = a·A^0,3, \
+                                         versants 28°), AUCUNE incision.\n\
+                                         C2 /10, /3 = C1 puis UNE passe de stream power à \
+                                         k_time/10 ou k_time/3, avec A1+B2 (s_eq 0,024) comme \
+                                         finition — forcé, comme au banc.\n\
+                                         C2 /10 col = C2 /10, et χ recompté depuis le col de \
+                                         chaque dépression fermée (F122-B): les vallées ne \
+                                         descendent plus sous l'eau d'un bassin — le « pinceau » \
+                                         du lac 1000011 disparaît.\n\n\
+                                         Lois: fond ANCRÉ (Harel 2016), exposant de largeur \
+                                         ANCRÉ (Clubb 2022), 28° ANCRÉ (Whipple & Tucker 1999); \
+                                         l'âge k et le coefficient de largeur sont des PROXY.\n\n\
+                                         ⚠ Le monde vu ici est celui du banc f121_hybrid à seed 1, \
+                                         8192², 400 km. À une autre résolution, AUCUN verdict \
+                                         (F89-C5).\n\n\
+                                         ⚠ RIEN N'EST PROMU: le défaut est off.",
+                                    );
+                                    if let Some(i) = seg_row(
+                                        ui,
+                                        &["off", "C1 nue", "C2 /10", "C2 /3", "C2 /10 col"],
+                                        ws.valley_mode.min(4),
+                                    ) {
+                                        ws.valley_mode = i;
+                                    }
+                                });
+                                if ws.valley_mode > 0 {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("âge k").color(DIM2).size(11.0),
+                                        )
+                                        .on_hover_text(
+                                            "Les trois âges MESURÉS au bloc C3 du F121: \
+                                             k × {0,7 ; 1 ; 1,4}, k = 0,07186 (PROXY calé sur \
+                                             l'oracle F95, 488 m). Rien d'autre n'est offert.",
+                                        );
+                                        if let Some(i) =
+                                            seg_row(ui, &["×0.7", "×1", "×1.4"], ws.valley_age)
+                                        {
+                                            ws.valley_age = i;
+                                        }
+                                    });
+                                }
                                 ui.checkbox(
                                     &mut ws.cross_rill,
                                     egui::RichText::new("cross_rill (GS non convergé, F9)").color(DIM2).size(11.0),
@@ -1197,15 +1278,13 @@ fn left_panel(
                         }
                         // Tuning exposed in BOTH modes (only when the recipe is on).
                         if ws.stream_power {
-                            let vals = [0.16f32, 0.08, 0.04, 0.02, 0.01];
-                            let cur =
-                                vals.iter().position(|&v| (v - ws.fbm_amplitude).abs() < 1e-4).unwrap_or(2);
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("FBM amp").color(DIM2).size(11.0));
-                                if let Some(i) = seg_row(ui, &["0.16", "0.08", "0.04", "0.02", "0.01"], cur) {
-                                    ws.fbm_amplitude = vals[i];
-                                }
-                            });
+                            // ADR Finding 117 -- the "FBM amp" selector that stood here was INERT:
+                            // since C-1 the relief-budget cap binds at every cell and
+                            // `amplitude_base` changes nothing (ADR "The DEAD KNOB"; Finding 116
+                            // re-proved it byte-identical at 8x). A dead control in the author's
+                            // panel is a defect dressed as configuration. The real lever is
+                            // `flow_conditioning` (beta), which carries two roles and must be
+                            // split before it is exposed -- not this round.
                             if ws.mfd {
                                 let pv = [4.0f32, 2.0, 1.1];
                                 let pc = pv
@@ -2046,10 +2125,10 @@ fn preview_params(ws: &WorkspaceState) -> HdParams {
         closures: false,
         cross_rill: false,
         slope_floor_s_eq: None, // ADR Finding 109
+        valley_construction: None, // ADR Finding 121
         cross_rill_d: 0.40,
         mfd: false,
         mfd_p: 2.0,
-        fbm_amplitude: None,
         geo_scale_ratio: 1.0,
         latitude_span_deg: None,
         export_dir: None,
@@ -4498,10 +4577,10 @@ mod spillway_typing_bench {
             closures: true,
             cross_rill: false,
             slope_floor_s_eq: None, // ADR Finding 109
+            valley_construction: None, // ADR Finding 121
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
-            fbm_amplitude: None,
             geo_scale_ratio: 1.0,
             export_dir: None,
             volcanism: Some(VolcanismConfig {
@@ -4663,10 +4742,10 @@ mod network_fragmentation_bench {
             closures: true,
             cross_rill: false,
             slope_floor_s_eq: None, // ADR Finding 109
+            valley_construction: None, // ADR Finding 121
             cross_rill_d: 0.40,
             mfd: true,
             mfd_p: 2.0,
-            fbm_amplitude: None,
             geo_scale_ratio: 1.0,
             export_dir: None,
             volcanism: Some(VolcanismConfig {

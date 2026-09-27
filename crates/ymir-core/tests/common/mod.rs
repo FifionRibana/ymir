@@ -127,6 +127,27 @@ pub struct Knobs {
     /// BIT-IDENTICAL fields, and `f109_toggle` asserts exactly that on three seeds. That
     /// assertion is the whole point -- it is the test Finding 105's two-pass form failed.
     pub slope_floor_abs: Option<f32>,
+    /// ADR Finding 116 -- `ProductionHdOpts::amplitude_base`, the FBM amplitude. `None` = the
+    /// shipped **0.04**. Finding 41 measured 16 closed depressions after isostasy against 90 682
+    /// "after the FBM upscale" -- but that single step crosses TWO operators, the bicubic
+    /// interpolation to 8192 squared AND the FBM. `Some(0.0)` separates them for the first time.
+    pub fbm_amp: Option<f64>,
+    /// ADR Finding 120 -- the target grid size. `None` is [`TARGET`] (8192), byte-identical. The
+    /// round's prototype runs at 2048 squared for cost. Only `production_hd_config`'s own
+    /// `target_size` follows it; every knob expressed in cells at [`CELL_KM2`] (`a_c_km2`) is
+    /// NOT rescaled, so none of those may be combined with it.
+    pub target: Option<usize>,
+    /// ADR Finding 121 -- the valley construction (`FbmUpscaleConfig::valley_construction`).
+    /// `None` is byte-identical. It goes through the SAME config field the viz sets, so a bench
+    /// world and a viz world with the same parameters are the same world.
+    pub valley: Option<ymir_core::tectonics_c1::valley_construction::ValleyConstruction>,
+    /// ADR Finding 117 -- stage switches for the per-module pit attribution. Each turns ONE
+    /// production closure off so the pipeline can be walked stage by stage in ITS order
+    /// (`upscale_from_c1`: bicubic+FBM -> C-2 craters stamped -> incision with the C-3/C-3b
+    /// K-field -> C-2 rim reconstruction -> bathymetry; the breach is applied by the benches).
+    pub volcanism_off: bool,
+    pub lithology_off: bool,
+    pub fracture_off: bool,
     /// ADR Finding 97 B2 -- `StreamPowerConfig::slope_floor_uk`: the local equilibrium-slope
     /// floor, `h_r_eff = min(h_r + S_eq(A)·dx, h_o)`. `None` = shipped.
     pub slope_floor_uk: Option<f32>,
@@ -212,7 +233,7 @@ pub fn production_k_and_edifices()
         depth_scale_m: ss.depth_scale_m as f32,
         sample_origin: [0.0, 0.578_125],
         sample_size: 1.0,
-        amplitude_base: 0.04,
+        amplitude_base: 0.04, // no Knobs here -- this helper only derives k_field/edifices
         mfd_p: 2.0,
         lithology: LithologyConfig {
             enabled: true,
@@ -251,17 +272,32 @@ pub fn build_field(k: Knobs) -> GridF32 {
 /// before that finding was made on `PSEED` alone, and Finding 92 asked for a second seed without
 /// getting one. The seed drives both the tectonic init and [`WorldSeed`], as production does.
 pub fn build_field_seed(k: Knobs, seed: u64) -> GridF32 {
-    build_field_inner(k, None, seed)
+    build_field_inner(k, None, seed, None)
+}
+
+/// ADR Finding 119 -- [`build_field_seed`] with an A1-exemption mask (one bool per target cell).
+/// Separate entry point for the same reason as [`build_field_with_floor`]: `Knobs` is `Copy`.
+pub fn build_field_with_a1_exempt(
+    k: Knobs,
+    seed: u64,
+    exempt: std::sync::Arc<Vec<bool>>,
+) -> GridF32 {
+    build_field_inner(k, None, seed, Some(exempt))
 }
 
 /// [`build_field`] with ADR Finding 96 B3's external incision floor (norm units, one entry per
 /// target cell). `None` is byte-identical. Separate entry point because [`Knobs`] is `Copy` and
 /// a grid cannot live in it -- the same constraint ADR Finding 88 hit on `LakeCellInfo`.
 pub fn build_field_with_floor(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>) -> GridF32 {
-    build_field_inner(k, floor, PSEED)
+    build_field_inner(k, floor, PSEED, None)
 }
 
-fn build_field_inner(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>, pseed: u64) -> GridF32 {
+fn build_field_inner(
+    k: Knobs,
+    floor: Option<std::sync::Arc<Vec<f32>>>,
+    pseed: u64,
+    a1_exempt: Option<std::sync::Arc<Vec<bool>>>,
+) -> GridF32 {
     let ss = SteinSteinParams::default();
     let run_cfg = C1TimeLoopConfig {
         rigid_continental_crust: true,
@@ -275,24 +311,33 @@ fn build_field_inner(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>, pseed: u
     let mut kin = PlateKinematics::preset_phase_1_1(state.num_plates);
     run_with_closures(&mut state, &mut kin, &run_cfg, &C1Closures::default(), |_, _| {});
     let seed = WorldSeed::new(pseed);
-    let volc = VolcanismConfig { enabled: true, domain_km: DOMAIN_KM, ..Default::default() };
-    let edifices = place_edifices(&state, &kin, &seed, DOMAIN_KM, &volc);
+    let volc =
+        VolcanismConfig { enabled: !k.volcanism_off, domain_km: DOMAIN_KM, ..Default::default() };
+    let edifices = if k.volcanism_off {
+        Vec::new()
+    } else {
+        place_edifices(&state, &kin, &seed, DOMAIN_KM, &volc)
+    };
+    assert!(
+        k.target.is_none() || k.a_c_km2.is_none(),
+        "`a_c_km2` is converted at the 8192 cell size and cannot be combined with `target`"
+    );
     let mut cfg = production_hd_config(&ProductionHdOpts {
-        target_size: TARGET,
+        target_size: k.target.unwrap_or(TARGET),
         domain_km: DOMAIN_KM,
         depth_scale_m: ss.depth_scale_m as f32,
         sample_origin: [0.0, 0.578_125],
         sample_size: 1.0,
-        amplitude_base: 0.04,
+        amplitude_base: k.fbm_amp.unwrap_or(0.04),
         mfd_p: 2.0,
         lithology: LithologyConfig {
-            enabled: true,
+            enabled: !k.lithology_off,
             soft_multiplier: 10.0,
             volcanic_multiplier: 3.0,
             rift_age_threshold: 1.0,
         },
         fracture: FractureConfig {
-            enabled: true,
+            enabled: !k.fracture_off,
             amplitude: 6.0,
             decay_km: 25.0,
             domain_km: DOMAIN_KM,
@@ -336,6 +381,7 @@ fn build_field_inner(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>, pseed: u
     cfg.slope_floor_factor = k.slope_floor_factor; // ADR Finding 105
     cfg.slope_floor =
         k.slope_floor_abs.map(|s_eq| ymir_core::terrain::upscale::SlopeFloor::Absolute { s_eq }); // F109
+    cfg.valley_construction = k.valley; // ADR Finding 121
     if k.erosion_off {
         cfg.erosion = None; // ADR Finding 105
     }
@@ -366,6 +412,9 @@ fn build_field_inner(k: Knobs, floor: Option<std::sync::Arc<Vec<f32>>>, pseed: u
         }
     }
     cfg.incision_floor = floor; // ADR Finding 96 B3
+    if let Some(sp) = cfg.stream_power.as_mut() {
+        sp.a1_exempt = a1_exempt; // ADR Finding 119 -- `None` is byte-identical
+    }
     upscale_from_c1_with_progress(
         &state,
         &run_cfg.iso_config,

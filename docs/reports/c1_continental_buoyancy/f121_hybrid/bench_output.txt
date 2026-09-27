@@ -1,0 +1,68 @@
+==========  Finding 121 . the hybrid at 8192²  ==========
+   trunk threshold A ≥ 10 km² = 4194 cells at 8192² (≥ 40: resolved)
+
+   ── k, the age (PROXY on Finding 95's oracle) ──
+   floor surface paired p50 = 488.1 m at **k = 0.07186** (Finding 96: 0.0646 all-land, 0.0719 clamped at A_c) · skeleton 74.1 s · trunk cells 70208 (3428 km) · 628 polylines · law W p10/p50/p90 **212 / 272 / 525 m**
+   carve of PRE at k: 2.1 s · carved **9714 km²** (36.0 % of land) · floors 1198 km² · walls 8516 km²
+
+   ROW PRE (no incision)      | coast +5 · Δ e/b 0/0 of 29 · lakes≥1 29 (fam1 18, exo 26) · D_L>5 0 % · lake 16.54 % · relief p50 679.1 m · to_nothing 0 · unresolved 1 · build 3 s
+   ROW PRE (no incision)      | R8 terr 0.0131 · R8 net 0.5990 (≥10 km² 0.6064) · comb tile terr 0.0400 net 0.6344 · σ p50/p90 3.70/11.00 m · in-thalweg 7.0 % (≥10 km² 22.0 %) · transverse p50 +0.75 m · interfluve Δ p10/p50/p90 0.0/0.0/0.0 m · wall slope p50 5.8°
+
+   ROW OFF (delivered)        | coast +115 · Δ e/b 12/4 of 54 · lakes≥1 54 (fam1 43, exo 49) · D_L>5 35 % · lake 24.70 % · relief p50 424.2 m · to_nothing 0 · unresolved 3 · build 51 s
+   ROW OFF (delivered)        | R8 terr 0.0924 · R8 net 0.2056 (≥10 km² 0.2014) · comb tile terr 0.1190 net 0.2576 · σ p50/p90 6.96/36.29 m · in-thalweg 69.3 % (≥10 km² 93.2 %) · transverse p50 -5.06 m · interfluve Δ p10/p50/p90 -401.2/-30.5/0.0 m · wall slope p50 14.9°
+
+   E · the highest-discharge spillway on ON A1+B2 (control): **5256.41 m³/s**, 71 cells · `segment_drainage_km2` **552932 km²** signified = **9829.9 km²** in-domain (÷ 7.5²) · D8 area along its path p50 **1.3 km²** · source lake Some(1000015) ⇒ a below-sea basin's spillway, traced over its col OUTSIDE the D8 network (hd_assembly.rs: "the raster reads ~0 along it")
+
+   ROW ON A1+B2 (control)     | coast +1 · Δ e/b 0/3 of 29 · lakes≥1 29 (fam1 18, exo 25) · D_L>5 10 % · lake 19.32 % · relief p50 508.3 m · to_nothing 0 · unresolved 1 · build 50 s
+   ROW ON A1+B2 (control)     | R8 terr 0.0484 · R8 net 0.3271 (≥10 km² 0.2496) · comb tile terr 0.0599 net 0.3525 · σ p50/p90 5.27/30.27 m · in-thalweg 50.4 % (≥10 km² 90.3 %) · transverse p50 -0.01 m · interfluve Δ p10/p50/p90 -277.0/-0.2/0.0 m · wall slope p50 10.6°
+
+   ── C1 · SKELETON CONTROL · PRE vs C1, trunks A ≥ A_t (chessboard cells) ──
+   A ≥ 10 km²: exact **14.6 %** · ≤ 5 **90.6 %** · PRE→C1 p50/p90 **1 / 5** · C1→PRE p90 **4** · mouths **155 of 184** matched
+   A ≥ 100 km²: exact **8.4 %** · ≤ 5 **90.1 %** · PRE→C1 p50/p90 **2 / 5** · C1→PRE p90 **13** · mouths **18 of 32** matched
+   (Finding 120, PRE vs ON at 10 km²: exact 32.0 %, ≤5 78.4 %, p90 10 / 34, mouths 97 of 184)
+   ⇒ skeleton control (PRE→C1 p90 ≤ 10 cells AND mouths matched ≥ 52.7 %, ON's own values): **PASSES**
+
+   ROW C1 bare construction   | coast +2 · Δ e/b 0/0 of 16 · lakes≥1 16 (fam1 5, exo 13) · D_L>5 19 % · lake 14.72 % · relief p50 519.0 m · to_nothing 0 · unresolved 1 · build 78 s
+   ROW C1 bare construction   | R8 terr 0.0798 · R8 net 0.4875 (≥10 km² 0.5691) · comb tile terr 0.0698 net 0.6007 · σ p50/p90 5.36/21.20 m · in-thalweg 23.9 % (≥10 km² 91.4 %) · transverse p50 +0.55 m · interfluve Δ p10/p50/p90 0.0/0.0/0.0 m · wall slope p50 28.0°
+   skeleton PRE vs C2 hybrid k_time/10: A ≥ 10 km² ≤5 91.4 % · p90 4/9 · mouths 168 of 184
+
+   ROW C2 hybrid k_time/10    | coast +3 · Δ e/b 0/0 of 16 · lakes≥1 16 (fam1 4, exo 12) · D_L>5 19 % · lake 15.92 % · relief p50 457.1 m · to_nothing 0 · unresolved 1 · build 105 s
+   ROW C2 hybrid k_time/10    | R8 terr 0.0608 · R8 net 0.3783 (≥10 km² 0.5316) · comb tile terr 0.0486 net 0.4612 · σ p50/p90 6.34/22.60 m · in-thalweg 26.2 % (≥10 km² 64.0 %) · transverse p50 +0.39 m · interfluve Δ p10/p50/p90 -74.1/-0.0/0.0 m · wall slope p50 28.0°
+   skeleton PRE vs C2 hybrid k_time/3: A ≥ 10 km² ≤5 91.3 % · p90 4/14 · mouths 165 of 184
+
+   ROW C2 hybrid k_time/3     | coast +3 · Δ e/b 0/2 of 16 · lakes≥1 16 (fam1 4, exo 13) · D_L>5 25 % · lake 16.99 % · relief p50 405.4 m · to_nothing 0 · unresolved 0 · build 109 s
+   ROW C2 hybrid k_time/3     | R8 terr 0.0618 · R8 net 0.3477 (≥10 km² 0.5261) · comb tile terr 0.0331 net 0.3576 · σ p50/p90 6.73/26.73 m · in-thalweg 32.2 % (≥10 km² 66.1 %) · transverse p50 +0.24 m · interfluve Δ p10/p50/p90 -209.4/-0.1/0.0 m · wall slope p50 28.0°
+
+thread 'f121_hybrid' (40060) panicked at crates\ymir-core\src\tectonics_c1\hd_assembly.rs:279:5:
+ADR Finding 38/92-B: 1 enclosed below-sea component(s) carry no water body. (floor cell, cells): [(28970982, 120300)]. This is the invariant Finding 38 closed and Finding 86's `MergedUnionRelevel` re-opened; see `separate_unclaimed_regions`.
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+   ROW C3 age k×0.7 (/10)     | ⛔ THE READ PANICKED — the world is reported, not skipped: ADR Finding 38/92-B: 1 enclosed below-sea component(s) carry no water body. (floor cell, cells): [(28970982, 120300)]. This is the invariant Finding 38 closed and Finding 86's `MergedUnionRelevel` re-opened; see `separate_unclaimed_regions`.
+
+   ROW C3 age k×1.4 (/10)     | coast +1 · Δ e/b 0/0 of 17 · lakes≥1 17 (fam1 5, exo 13) · D_L>5 12 % · lake 15.40 % · relief p50 480.7 m · to_nothing 0 · unresolved 1 · build 110 s
+   ROW C3 age k×1.4 (/10)     | R8 terr 0.0544 · R8 net 0.3905 (≥10 km² 0.5345) · comb tile terr 0.0422 net 0.4578 · σ p50/p90 6.10/22.52 m · in-thalweg 26.0 % (≥10 km² 67.8 %) · transverse p50 +0.42 m · interfluve Δ p10/p50/p90 -71.6/-0.0/0.0 m · wall slope p50 28.0°
+
+   ── the columns (8192², seed 1; Δ class = Finding 108 gate, eroded / breached) ──
+   world                     coast   Δ e/b   lakes≥1   fam1   exo  D_L  lake %  p50 m  to_noth build s
+   PRE (no incision)            +5   0/0          29     18    26   0%   16.54    679        0       3
+   OFF (delivered)            +115  12/4          54     43    49  35%   24.70    424        0      51
+   ON A1+B2 (control)           +1   0/3          29     18    25  10%   19.32    508        0      50
+   C1 bare construction         +2   0/0          16      5    13  19%   14.72    519        0      78
+   C2 hybrid k_time/10          +3   0/0          16      4    12  19%   15.92    457        0     105
+   C2 hybrid k_time/3           +3   0/2          16      4    13  25%   16.99    405        0     109
+   C3 age k×1.4 (/10)           +1   0/0          17      5    13  12%   15.40    481        0     110
+
+   world                     R8 terr   R8 net R8 net≥10 comb terr  comb net   σ p50 m   σ p90 m inthalw % ≥10 km² % interfluve Δ p10/50/90   wall °
+   PRE (no incision)          0.0131   0.5990    0.6064    0.0400    0.6344      3.70     11.00       7.0      22.0    0.0/   0.0/   0.0      5.8
+   OFF (delivered)            0.0924   0.2056    0.2014    0.1190    0.2576      6.96     36.29      69.3      93.2 -401.2/ -30.5/   0.0     14.9
+   ON A1+B2 (control)         0.0484   0.3271    0.2496    0.0599    0.3525      5.27     30.27      50.4      90.3 -277.0/  -0.2/   0.0     10.6
+   C1 bare construction       0.0798   0.4875    0.5691    0.0698    0.6007      5.36     21.20      23.9      91.4    0.0/   0.0/   0.0     28.0
+   C2 hybrid k_time/10        0.0608   0.3783    0.5316    0.0486    0.4612      6.34     22.60      26.2      64.0  -74.1/  -0.0/   0.0     28.0
+   C2 hybrid k_time/3         0.0618   0.3477    0.5261    0.0331    0.3576      6.73     26.73      32.2      66.1 -209.4/  -0.1/   0.0     28.0
+   C3 age k×1.4 (/10)         0.0544   0.3905    0.5345    0.0422    0.4578      6.10     22.52      26.0      67.8  -71.6/  -0.0/   0.0     28.0
+   (transverse offset p50 m: +0.75 / -5.06 / -0.01 / +0.55 / +0.39 / +0.24 / +0.42) · (unresolved: 1 / 3 / 1 / 1 / 1 / 0 / 1) · (bodies scanned: 29 / 54 / 29 / 16 / 16 / 16 / 17)
+   skeleton PRE vs C1 bare construction   A ≥ 10 km²: exact 14.6 % · ≤5 90.6 % · p50/p90 1/5 · back p90 4 · mouths 155 of 184
+   skeleton PRE vs C2 hybrid k_time/10    A ≥ 10 km²: exact 17.7 % · ≤5 91.4 % · p50/p90 1/4 · back p90 9 · mouths 168 of 184
+   skeleton PRE vs C2 hybrid k_time/3     A ≥ 10 km²: exact 18.4 % · ≤5 91.3 % · p50/p90 1/4 · back p90 14 · mouths 165 of 184
+
+==========  end Finding 121 . 2603.0 s  ==========

@@ -481,6 +481,21 @@ pub fn upscale_from_c1_with_progress(
         craters = applied.craters;
     }
 
+    // ADR Finding 121 -- the valley construction (bench / viz seam, `None` in production). It
+    // runs on the field the incision would receive (FBM + C-2 craters), and the stream-power block
+    // below then runs ONE light pass, or none, instead of the shipped incision.
+    if let Some(vc) = &cfg.valley_construction {
+        let domain_km = cfg.sample_size as f32 * volcanism.domain_km;
+        let sk = crate::tectonics_c1::valley_construction::skeleton(
+            &result.heightmap,
+            vc,
+            ss,
+            domain_km,
+        );
+        result.heightmap =
+            crate::tectonics_c1::valley_construction::carve(&result.heightmap, &sk, vc, ss).0;
+    }
+
     // ADR 0001 — routed stream-power incision (prototype), applied AFTER the FBM and
     // BEFORE droplet erosion: carve valleys along the drainage network, then let a
     // (weak) droplet pass add hillslope texture. `None` (default) → skipped,
@@ -523,34 +538,50 @@ pub fn upscale_from_c1_with_progress(
             }
             _ => None,
         };
-        result.heightmap = match (absolute, cfg.slope_floor_factor) {
-            (Some(s_eq), _) => {
-                let mut closed = sp.clone();
-                closed.slope_floor_uk = Some(s_eq);
-                closed.depression_floor = true; // A1, ADR Finding 104
-                once(&result.heightmap, &closed)
+        if let Some(vc) = &cfg.valley_construction {
+            // ADR Finding 121 -- the hybrid: the construction above replaced the heavy incision.
+            // `None` = bare (no incision); `Some(f)` = ONE pass at `f × k_time`, carrying A1+B2
+            // when the absolute floor is set (the closure as a finish).
+            if let Some(frac) = vc.light_k_time_fraction {
+                let mut light = sp.clone();
+                light.k = sp.k_time() * frac / sp.dt;
+                light.iterations = 1;
+                if let Some(s_eq) = absolute {
+                    light.slope_floor_uk = Some(s_eq);
+                    light.depression_floor = true;
+                }
+                result.heightmap = once(&result.heightmap, &light);
             }
-            _ => match cfg.slope_floor_factor {
-                // ADR Finding 105 -- the TWO-PASS bootstrap. Pass 1 IS the un-closured incision and is
-                // byte-identical to the `None` branch; `k_s` is measured on its output and pass 2
-                // re-incises the SAME input with the closure configured from it.
-                Some(factor) if factor > 0.0 => {
-                    let delivered = once(&result.heightmap, sp);
-                    let k_s = flint_intercept(
-                        &delivered,
-                        ss,
-                        sp.sea_level,
-                        sp.cell_km * sp.cell_km,
-                        volcanism.domain_km,
-                    );
+        } else {
+            result.heightmap = match (absolute, cfg.slope_floor_factor) {
+                (Some(s_eq), _) => {
                     let mut closed = sp.clone();
-                    closed.slope_floor_uk = Some(k_s * factor);
-                    closed.depression_floor = true;
+                    closed.slope_floor_uk = Some(s_eq);
+                    closed.depression_floor = true; // A1, ADR Finding 104
                     once(&result.heightmap, &closed)
                 }
-                _ => once(&result.heightmap, sp),
-            },
-        };
+                _ => match cfg.slope_floor_factor {
+                    // ADR Finding 105 -- the TWO-PASS bootstrap. Pass 1 IS the un-closured incision and is
+                    // byte-identical to the `None` branch; `k_s` is measured on its output and pass 2
+                    // re-incises the SAME input with the closure configured from it.
+                    Some(factor) if factor > 0.0 => {
+                        let delivered = once(&result.heightmap, sp);
+                        let k_s = flint_intercept(
+                            &delivered,
+                            ss,
+                            sp.sea_level,
+                            sp.cell_km * sp.cell_km,
+                            volcanism.domain_km,
+                        );
+                        let mut closed = sp.clone();
+                        closed.slope_floor_uk = Some(k_s * factor);
+                        closed.depression_floor = true;
+                        once(&result.heightmap, &closed)
+                    }
+                    _ => once(&result.heightmap, sp),
+                },
+            };
+        }
     }
 
     // #155 méso — HD hydraulic erosion (the dendritic dissection that makes

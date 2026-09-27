@@ -222,6 +222,15 @@ pub struct FbmUpscaleConfig {
     /// the box is flipped instead of drawing a stale drainage over a new terrain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub slope_floor: Option<SlopeFloor>,
+    /// **ADR Finding 121 — valley construction (the hybrid's shape stage). `None` in production,
+    /// byte-identical.** `Some` lays valleys along the pre-incision trunks of `A ≥ a_min_km2`
+    /// (floor on the χ law, width `W = a·A^0.3`, walls at 28°) BEFORE the incision stage, and then
+    /// replaces the shipped incision by ONE light pass at `light_k_time_fraction × k_time`, or by
+    /// none at all (the bare construction). See
+    /// [`crate::tectonics_c1::valley_construction`], whose table labels every law ANCHORED or
+    /// PROXY. It changes the terrain, so it reaches `eroded_key` (conditionally).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valley_construction: Option<crate::tectonics_c1::valley_construction::ValleyConstruction>,
     /// **Submarine bathymetry re-map** (#submarine). When `Some`,
     /// [`upscale_from_c1`](crate::tectonics_c1::production_upscale::upscale_from_c1)
     /// re-maps the ocean floor toward the plateau→slope→abyss envelope AFTER the
@@ -298,6 +307,7 @@ impl Default for FbmUpscaleConfig {
             incision_floor: None, // ADR Finding 96 B3 -- bench-only; None is byte-identical
             slope_floor_factor: None, // ADR Finding 105 -- None is byte-identical
             slope_floor: None,    // ADR Finding 109 -- None is byte-identical
+            valley_construction: None, // ADR Finding 121 -- None is byte-identical
             target_size: 1024,
             octaves: 7,
             lacunarity: 2.0,

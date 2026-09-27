@@ -299,6 +299,22 @@ pub struct StreamPowerConfig {
     /// `A`, so `K` usually needs raising to keep trunk incision.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mfd_exponent: Option<f32>,
+    /// **ADR Finding 119 — cells EXEMPT from A1 (`depression_floor`). `None` in production.**
+    ///
+    /// Finding 118 measured that A1 freezes the sill of every family-1 lake at its input height
+    /// (cut ≈ 0 on 16/18 with the closure ON, against 18–702 m on 8/18 with it OFF). Finding 119
+    /// read why: the A1 test is `filled > field` — STRICT — and a spill cell has `filled ==
+    /// field`, so **A1 never fires on the sill itself**. It protects the sill INDIRECTLY: the
+    /// implicit sweep relaxes each cell toward its receiver's already-updated height, and a cell
+    /// on the outlet path that A1 skips keeps its height and stops the retreat wave there.
+    ///
+    /// `Some(mask)` lets the incision run on `mask[k] == true` cells even inside a depression. A
+    /// bench seam: the mask is built from the DELIVERED lake inventory, which a production form
+    /// could not do without a second pipeline (the Finding 105 problem), so it is not a candidate
+    /// for promotion as written. `#[serde(skip)]` — like `incision_floor`, it is invisible to the
+    /// cache digest, which is harmless only because no production path sets it.
+    #[serde(skip)]
+    pub a1_exempt: Option<std::sync::Arc<Vec<bool>>>,
 }
 
 /// Relief-v1 reference: physical critical drainage area (km²) for the channel head.
@@ -356,6 +372,7 @@ impl StreamPowerConfig {
             talus_passes: 1,
             talus_factor: 0.5,
             mfd_exponent: None,
+            a1_exempt: None,
         }
     }
 
@@ -400,6 +417,7 @@ impl StreamPowerConfig {
             talus_passes: 4,
             talus_factor: 0.5,
             mfd_exponent: Some(RELIEF_V3_MFD_P),
+            a1_exempt: None,
             // ADR 0001 Finding 83 — THE BOUND IS NOW THE PRODUCT. See
             // [`RELIEF_V3_BASE_LEVEL_M`] for what it costs and what it does not fix.
             base_level_floor: Some(BaseLevelFloor {
@@ -509,6 +527,7 @@ impl Default for StreamPowerConfig {
             talus_passes: 1,
             talus_factor: 0.5,
             mfd_exponent: None,
+            a1_exempt: None,
         }
     }
 }
@@ -678,7 +697,13 @@ pub fn incise_with_floor(
             // reproduced the un-incised field exactly (median cut 0.0 m, paired p50 679.1 m).
             // A floor whose value is ABOVE the cell cannot be expressed at this seam; the
             // equilibrium it states is "no incision here" and that is what this does.
-            if cfg.depression_floor && flow.filled.data[k] > field.data[k] {
+            // ADR Finding 119 -- `a1_exempt` lifts A1 on chosen cells only (bench seam, `None` in
+            // production). Note the STRICT `>`: a spill cell (`filled == field`) is never skipped
+            // here, so any protection of a sill is transmitted through its receivers.
+            if cfg.depression_floor
+                && flow.filled.data[k] > field.data[k]
+                && !cfg.a1_exempt.as_deref().is_some_and(|m| m[k])
+            {
                 continue;
             }
             // ADR Finding 96 B3 -- the external floor (chi profile). `None` in production.
@@ -1252,6 +1277,7 @@ mod tests {
             talus_passes: 30,
             talus_factor: 0.5,
             mfd_exponent: None,
+            a1_exempt: None,
             ..Default::default()
         };
         let f1 = incise(&f0, &cfg);
@@ -1386,6 +1412,52 @@ mod tests {
     /// [`incise`] BYTE FOR BYTE. If a future edit makes either gate leak into the shipped path,
     /// this test fails before the terrain does -- and every number the dossier quotes for the
     /// delivered field was measured through this path.
+    /// ADR Finding 119, rule 13 -- the A1-exemption mask must interpolate EXACTLY between the two
+    /// worlds it sits between: no mask and an all-false mask are A1 ON, an all-true mask is A1 OFF.
+    /// The field carries a real closed bowl, and the test first asserts ON != OFF on it: on a field
+    /// where A1 never bites, "all-true == OFF" would pass vacuously.
+    #[test]
+    fn the_a1_exemption_mask_interpolates_between_on_and_off() {
+        let (w, h) = (48usize, 48usize);
+        let mut d = vec![0.0f32; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                let t = y as f32 / (h as f32 - 1.0);
+                let (dx, dy) = (x as f32 - 24.0, y as f32 - 20.0);
+                // Deeper than the plane's drop across it (0.45/47 per row, ~0.08 over the bowl's
+                // diameter): the first version used 0.03, which is LESS than that drop, so the
+                // "bowl" was an open steepening, `filled == raw` everywhere, and the negative
+                // control below fired -- A1 had nothing to protect.
+                let bowl = -0.2 * (-(dx * dx + dy * dy) / 18.0).exp();
+                d[y * w + x] = 0.9 - 0.45 * t + if x % 7 == 0 { -0.004 } else { 0.0 } + bowl;
+            }
+        }
+        let f = GridF32 { width: w, height: h, data: d };
+        let off = StreamPowerConfig::relief_v3(0.0381, 5000.0);
+        let on = StreamPowerConfig { depression_floor: true, ..off.clone() };
+        let r_off = incise(&f, &off);
+        let r_on = incise(&f, &on);
+        assert_ne!(r_on.data, r_off.data, "negative control: A1 must bite on a field with a bowl");
+        let none_mask = incise(&f, &StreamPowerConfig { a1_exempt: None, ..on.clone() });
+        let all_false = incise(
+            &f,
+            &StreamPowerConfig {
+                a1_exempt: Some(std::sync::Arc::new(vec![false; w * h])),
+                ..on.clone()
+            },
+        );
+        let all_true = incise(
+            &f,
+            &StreamPowerConfig {
+                a1_exempt: Some(std::sync::Arc::new(vec![true; w * h])),
+                ..on.clone()
+            },
+        );
+        assert_eq!(none_mask.data, r_on.data, "`a1_exempt: None` must be byte-identical to A1 ON");
+        assert_eq!(all_false.data, r_on.data, "an all-false mask must be byte-identical to A1 ON");
+        assert_eq!(all_true.data, r_off.data, "an all-true mask must be byte-identical to A1 OFF");
+    }
+
     #[test]
     fn the_finding_96_and_97_seams_are_inert_when_off() {
         // The SAME synthetic field `timescale_naming_changes_no_output` uses: a tilted plane with
