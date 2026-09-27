@@ -18214,3 +18214,45 @@ a flat-floor rectangle) — refuted on the first and the third.
 
 **Promoted: the export corrections only** (the round's "aucune promotion hors des corrections
 d'export").
+
+## Finding 124-P2 — the col base is the definition
+
+**The author's decision D**, on "C2 /10 col" in the viz: *"uniquement leur bassin, bien plus propre"*
+— the valleys of a closed depression are counted from its col. **The price, accepted**: floors
++174 m at p50 on the trunks that drain a basin (Finding 122-B: +48.8 / +174.4 / +458.8 m p10/p50/p90,
+71 % of the trunk cells), relief p50 +13 %.
+
+`ValleyConstruction::new` IS the definition (`basin_base = true`); a config serialised before it
+reads the definition too (`#[serde(default = "basin_base_default")]`). `f121()` keeps Finding 121's
+sea base for the record; `f122()` is kept as `new`'s old name. The benches and the viz states follow
+(`f121_hybrid`: C2 rows on `new`, the sea base as "c2sea"; `f123_guard`'s states).
+
+**Permanent test** (`f122_brush::f124_lake_1000011_is_a_bowl`, canonical framing, bench path): lake
+1000011's counterpart reads **494.3 km² (domain), level 459.3 m, D_L 2.29, 0 constructed floor cells
+below its col** — it fails loudly if the definition ever drifts back to the sea base. **On the viz
+path it holds by identity**: when the badge reads "= banc (C2 /10 col (défaut))" the viz's eroded
+field IS the bench's, bit for bit. ⚠ The end-to-end guard test through `run_hd` (`f123_viz_guard`)
+last ran in Finding 123, before the reference was regenerated at the canonical framing; it was not
+re-run in this commit ("rien d'autre ne tourne") and is the first thing to run next.
+
+**Finding 121/122's table replayed at the canonical framing** (`f124_frame/replay_canonical.txt`):
+
+| world | coast | Δ e/b | lakes ≥ 1 km² | D_L > 5 | lake % | relief p50 |
+|---|---|---|---|---|---|---|
+| C1 bare | +5 | 0/0 | 17 | 0 % | 12.33 | 565.8 m |
+| **C2 /10 (the definition)** | +3 | 0/0 | 18 | 0 % | 12.93 | 515.4 m |
+| C2 /3 | +3 | 0/0 | 18 | 6 % | 13.64 | 467.2 m |
+| C2 /10 sea base (Finding 121) | +3 | 0/0 | 16 | 25 % | 15.97 | 456.2 m |
+
+C3 (k × 0.7 / × 1.4): relief p50 501.0 / 533.3 m; the k × 0.7 world no longer trips Finding 38/92-B.
+The skeleton controls pass for every world (PRE → C p90 ≤ 5 cells, 149–169 of 184 mouths matched).
+
+### Stable names — a viz debt, written; applied to the two named states
+
+The state the author validated keeps its name when the default changes; the guard protects against
+an unmeasured world, not against a wrong name. The menu lists the default AND the variant by name:
+**"C2 /10 col (défaut)"** and **"C2 /10 niveau mer"** (they read "C2 /10" and "C2 /10 base mer (F121)"
+before), and the guard reference and `f123_guard` carry the same labels (labels only — the hashes do
+not move).
+
+**Promoted: the definition of a gated construction** (the construction itself stays off by default).

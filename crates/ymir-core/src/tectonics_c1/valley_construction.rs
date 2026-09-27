@@ -89,12 +89,20 @@ pub struct ValleyConstruction {
     /// the depression will hold. Outside closed depressions nothing changes. Finding 122-A attributed
     /// the author's "brush" lake to exactly that: valleys built down to sea + 0.5 m inside a basin
     /// whose col stays at 459 m.
-    #[serde(default)]
+    #[serde(default = "basin_base_default")]
     pub basin_base: bool,
 }
 
 impl ValleyConstruction {
-    /// Finding 121's values, with the age and the light-incision fraction supplied.
+    /// **THE DEFINITION** (ADR Finding 124, the author's decision D: "uniquement leur bassin"):
+    /// Finding 121's laws with Finding 122-B's `basin_base` — χ from the col of every closed
+    /// depression. What the viz's "Vallées construites" states build.
+    pub fn new(age_k: f32, light_k_time_fraction: Option<f32>) -> Self {
+        Self { basin_base: true, ..Self::f121(age_k, light_k_time_fraction) }
+    }
+
+    /// Finding 121's HISTORICAL values (χ from the sea everywhere), kept so Findings 121–123 can be
+    /// reproduced and so the viz can show the old definition beside the new one.
     pub fn f121(age_k: f32, light_k_time_fraction: Option<f32>) -> Self {
         Self {
             a_min_km2: 10.0,
@@ -111,15 +119,20 @@ impl ValleyConstruction {
         }
     }
 
-    /// Finding 121's values with Finding 122-B's `basin_base` on.
+    /// Finding 122-B's name for [`Self::new`], kept for the benches that used it.
     pub fn f122(age_k: f32, light_k_time_fraction: Option<f32>) -> Self {
-        Self { basin_base: true, ..Self::f121(age_k, light_k_time_fraction) }
+        Self::new(age_k, light_k_time_fraction)
     }
 
     /// Valley floor width (m) at drained area `a_km2`.
     pub fn width_m(&self, a_km2: f32) -> f32 {
         self.width_coef_m * a_km2.max(0.0).powf(self.width_exp)
     }
+}
+
+/// A config serialised before Finding 124 carries no `basin_base`: it reads the definition.
+fn basin_base_default() -> bool {
+    true
 }
 
 /// The skeleton a construction stands on: the D8 network of the BREACHED input field (Finding

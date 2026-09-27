@@ -536,3 +536,68 @@ fn f122_bc() {
     }
     eprintln!("\n==========  end 122-B/C . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
 }
+
+/// ADR Finding 124, part 2 — **PERMANENT: the brush lake is a bowl under the definition.** At the
+/// canonical framing, the C2/10 world built with `ValleyConstruction::new` (basin base): the family-2
+/// lake at Finding 122's brush lake (bench floor cell (5219, 3861), i.e. viz x 5219 − 768 = 4451)
+/// must read **D_L < 3** and hold **no constructed floor cell below its level**. It fails loudly if
+/// the definition ever drifts back to the sea base.
+///
+/// Run: cargo test -p ymir-core --release --test f122_brush -- --ignored f124_lake --nocapture
+#[test]
+#[ignore]
+fn f124_lake_1000011_is_a_bowl() {
+    let ss = SteinSteinParams::default();
+    let vc = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let pre = build_field_seed(Knobs::no_incision(), PSEED);
+    let (w, h) = (pre.width, pre.height);
+    let n = w * h;
+    let sk = skeleton(&pre, &vc, &ss, DOMAIN_KM);
+    let (_, masks) = carve(&pre, &sk, &vc, &ss);
+    drop(pre);
+    let trunk_src: Vec<usize> = (0..n).filter(|&k| sk.trunk[k]).collect();
+    let near = bfs(&trunk_src, &|_| true, w, h, 2);
+    let trunk_near: Vec<bool> = near.iter().map(|&d| d <= 2).collect();
+    drop(near);
+    let g = build_field_seed(
+        Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) },
+        PSEED,
+    );
+    let dr = inventory(&g, &ss);
+    // the family-2 lake nearest the brush lake's floor, viz frame
+    let (tx, ty) = (4451usize, 3861usize);
+    let lakes = read_lakes(&dr, &g, &sk, &masks.floor, &masks.carved, &trunk_near, &vc, &ss);
+    let l = lakes
+        .iter()
+        .filter(|l| l.id >= 1_000_001 && l.km2 >= 10.0)
+        .min_by(|a, b| {
+            let d = |l: &LakeRead| {
+                let (fx, fy) = ((l.floor_cell % w) as f32, (l.floor_cell / w) as f32);
+                (fx - tx as f32).powi(2) + (fy - ty as f32).powi(2)
+            };
+            d(a).total_cmp(&d(b))
+        })
+        .expect("a family-2 lake near the brush lake");
+    let below = (0..n)
+        .filter(|&k| {
+            dr.lake_map[k] == l.id
+                && masks.floor[k]
+                && !sk.chi_m[k].is_nan()
+                && sk.floor_m(k, vc.age_k) < l.level_m - 0.5
+        })
+        .count();
+    eprintln!(
+        "\n   the brush lake under the definition: id {} · {:.1} km² · level {:.1} m · floor cell ({}, {}) \
+         · D_L **{:.2}** · carved share {:.1} % · constructed floor cells below its level **{below}**",
+        l.id,
+        l.km2,
+        l.level_m,
+        l.floor_cell % w,
+        l.floor_cell / w,
+        l.dl,
+        100.0 * l.carved_share
+    );
+    let _ = h;
+    assert!(l.dl < 3.0, "the brush lake reads D_L {:.2} ≥ 3: the brush is back", l.dl);
+    assert_eq!(below, 0, "{below} constructed floor cells lie below the lake's level");
+}

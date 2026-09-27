@@ -578,15 +578,15 @@ fn f123_guard() {
         slope_floor_abs: Some(S_EQ),
         ..Knobs::passes(2)
     };
-    // ADR Finding 124 -- the viz's states: the construction's DEFINITION (`f122`, basin base) and
+    // ADR Finding 124 -- the viz's states: the construction's DEFINITION (`new`, basin base) and
     // Finding 121's historical sea base beside it
     let states: [(&str, Knobs); 6] = [
         ("livré", Knobs::passes(2)),
         ("A1+B2", Knobs { slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) }),
-        ("C1 nue", Knobs { valley: Some(ValleyConstruction::f122(k, None)), ..Knobs::passes(2) }),
-        ("C2 /10", with_closure(ValleyConstruction::f122(k, Some(0.1)))),
-        ("C2 /3", with_closure(ValleyConstruction::f122(k, Some(1.0 / 3.0)))),
-        ("C2 /10 base mer (F121)", with_closure(ValleyConstruction::f121(k, Some(0.1)))),
+        ("C1 nue", Knobs { valley: Some(ValleyConstruction::new(k, None)), ..Knobs::passes(2) }),
+        ("C2 /10 col (défaut)", with_closure(ValleyConstruction::new(k, Some(0.1)))),
+        ("C2 /3", with_closure(ValleyConstruction::new(k, Some(1.0 / 3.0)))),
+        ("C2 /10 niveau mer", with_closure(ValleyConstruction::f121(k, Some(0.1)))),
     ];
     let mut out: Vec<GuardEntry> = Vec::new();
     // Both framings: the viz's auto-framing, and the benches' — the one EVERY Finding from 107 to
@@ -630,7 +630,7 @@ fn f123_guard() {
                     100.0 * same as f64 / (w * h) as f64
                 );
             }
-            if label == "C2 /10" && origin == VIZ_ORIGIN {
+            if label == "C2 /10 col (défaut)" && origin == VIZ_ORIGIN {
                 // 3 · the 654 km entry, at the viz's origin
                 let (dr, bre) = inventory(&g, &ss);
                 let agg = aggregate(&dr, &bre, false);

@@ -329,7 +329,7 @@ fn f121_hybrid() {
         p(&ws, 0.90)
     );
     // the masks, from a carve of the PRE build at the retained k (declared)
-    let vc1 = ValleyConstruction::f121(k_age, None);
+    let vc1 = ValleyConstruction::new(k_age, None);
     let t = Instant::now();
     let (pre_carved, masks) = carve(&pre, &sk, &vc1, &ss);
     let carve_secs = t.elapsed().as_secs_f64();
@@ -739,11 +739,11 @@ fn f121_hybrid() {
     if pass {
         // ── C2, two light settings ──
         for (tag, name, vc) in [
-            ("c2a", "C2 hybrid k_time/10", ValleyConstruction::f121(k_age, Some(0.1))),
-            ("c2b", "C2 hybrid k_time/3", ValleyConstruction::f121(k_age, Some(1.0 / 3.0))),
-            ("c2basin", "C2/10 + basin base F122", ValleyConstruction::f122(k_age, Some(0.1))),
+            ("c2a", "C2 hybrid k_time/10", ValleyConstruction::new(k_age, Some(0.1))),
+            ("c2b", "C2 hybrid k_time/3", ValleyConstruction::new(k_age, Some(1.0 / 3.0))),
+            ("c2sea", "C2/10 SEA base (F121)", ValleyConstruction::f121(k_age, Some(0.1))),
         ] {
-            if (tag == "c2basin" && !asked(tag)) || (tag != "c2basin" && !want(tag)) {
+            if (tag == "c2sea" && !asked(tag)) || (tag != "c2sea" && !want(tag)) {
                 continue;
             }
             let (g, secs) = build_c(vc, true);
@@ -764,7 +764,7 @@ fn f121_hybrid() {
             if !want("c3") {
                 continue;
             }
-            let vc = ValleyConstruction::f121(k_age * mult, Some(0.1));
+            let vc = ValleyConstruction::new(k_age * mult, Some(0.1));
             let (g, secs) = build_c(vc, true);
             rows.extend(try_read(name, &g, secs, false));
         }

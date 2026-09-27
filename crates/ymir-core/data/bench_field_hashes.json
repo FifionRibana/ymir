@@ -34,7 +34,7 @@
   },
   {
     "digest": "71a1d832683583d1",
-    "label": "C2 /10 · cadrage canonique (viz)",
+    "label": "C2 /10 col (défaut) · cadrage canonique (viz)",
     "field_hash": "a8d2d538d692c2f0",
     "seed": 10481999410520546993,
     "target": 8192,
@@ -56,7 +56,7 @@
   },
   {
     "digest": "01c18a31ec7d0fc0",
-    "label": "C2 /10 base mer (F121) · cadrage canonique (viz)",
+    "label": "C2 /10 niveau mer · cadrage canonique (viz)",
     "field_hash": "35e1bc8123049d8c",
     "seed": 10481999410520546993,
     "target": 8192,

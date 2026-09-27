@@ -277,7 +277,7 @@ fn f124_export() {
     let cell_km2 = CELL_KM * CELL_KM;
     let r2 = GEO_RATIO * GEO_RATIO;
     eprintln!("\n==========  Finding 124-3 . does the export tell the truth?  ==========");
-    let vc = ValleyConstruction::f122(F121_AGE_K, Some(0.1));
+    let vc = ValleyConstruction::new(F121_AGE_K, Some(0.1));
     // the constructed floor mask (Findings 121-123's approximation), for the rectangle's census
     let pre = build_field_seed(Knobs::no_incision(), PSEED);
     let (w, h) = (pre.width, pre.height);
@@ -521,7 +521,7 @@ fn f124_export() {
 #[ignore]
 fn f124_trunk() {
     let ss = SteinSteinParams::default();
-    let vc = ValleyConstruction::f122(F121_AGE_K, Some(0.1));
+    let vc = ValleyConstruction::new(F121_AGE_K, Some(0.1));
     let g = build_field_seed(
         Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) },
         PSEED,
@@ -1031,7 +1031,7 @@ fn f124_objects() {
         (
             "C2/10",
             Knobs {
-                valley: Some(ValleyConstruction::f122(F121_AGE_K, Some(0.1))),
+                valley: Some(ValleyConstruction::new(F121_AGE_K, Some(0.1))),
                 slope_floor_abs: Some(S_EQ),
                 ..Knobs::passes(2)
             },
@@ -1142,7 +1142,7 @@ fn f124_dissect() {
         (
             "C2/10",
             Knobs {
-                valley: Some(ValleyConstruction::f122(F121_AGE_K, Some(0.1))),
+                valley: Some(ValleyConstruction::new(F121_AGE_K, Some(0.1))),
                 slope_floor_abs: Some(S_EQ),
                 ..Knobs::passes(2)
             },
@@ -1272,7 +1272,7 @@ fn f124_topology() {
         (
             "C2/10",
             Knobs {
-                valley: Some(ValleyConstruction::f122(F121_AGE_K, Some(0.1))),
+                valley: Some(ValleyConstruction::new(F121_AGE_K, Some(0.1))),
                 slope_floor_abs: Some(S_EQ),
                 ..Knobs::passes(2)
             },
@@ -1571,7 +1571,7 @@ fn f124_block() {
     eprintln!("\n==========  Finding 124-3 (d) . the rectangle, reach by reach  ==========");
     let g = build_field_seed(
         Knobs {
-            valley: Some(ValleyConstruction::f122(F121_AGE_K, Some(0.1))),
+            valley: Some(ValleyConstruction::new(F121_AGE_K, Some(0.1))),
             slope_floor_abs: Some(S_EQ),
             ..Knobs::passes(2)
         },

@@ -945,12 +945,12 @@ fn left_panel(
                                 };
                                 let k = F121_AGE_K * [0.7f32, 1.0, 1.4][ws.valley_age.min(2)];
                                 match ws.valley_mode {
-                                    1 => Some(ValleyConstruction::f121(k, None)),
-                                    2 => Some(ValleyConstruction::f121(k, Some(0.1))),
-                                    3 => Some(ValleyConstruction::f121(k, Some(1.0 / 3.0))),
-                                    // ADR Finding 122-B -- C2 /10 with χ from the col of every
-                                    // closed depression (the "brush" remedy, gated)
-                                    4 => Some(ValleyConstruction::f122(k, Some(0.1))),
+                                    // ADR Finding 124 -- `new` IS the definition (basin base, the
+                                    // author's decision D); mode 4 keeps Finding 121's sea base
+                                    1 => Some(ValleyConstruction::new(k, None)),
+                                    2 => Some(ValleyConstruction::new(k, Some(0.1))),
+                                    3 => Some(ValleyConstruction::new(k, Some(1.0 / 3.0))),
+                                    4 => Some(ValleyConstruction::f121(k, Some(0.1))),
                                     _ => None,
                                 }
                             },
@@ -1139,10 +1139,10 @@ fn left_panel(
                                          C2 /10, /3 = C1 puis UNE passe de stream power à \
                                          k_time/10 ou k_time/3, avec A1+B2 (s_eq 0,024) comme \
                                          finition — forcé, comme au banc.\n\
-                                         C2 /10 col = C2 /10, et χ recompté depuis le col de \
-                                         chaque dépression fermée (F122-B): les vallées ne \
-                                         descendent plus sous l'eau d'un bassin — le « pinceau » \
-                                         du lac 1000011 disparaît.\n\n\
+                                         Depuis le F124, la base au col est la DÉFINITION \
+                                         (χ recompté depuis le col de chaque dépression fermée: \
+                                         les vallées ne descendent plus sous l'eau d'un bassin). \
+                                         « C2 /10 niveau mer » montre l'ancienne définition (F121).\n\n\
                                          Lois: fond ANCRÉ (Harel 2016), exposant de largeur \
                                          ANCRÉ (Clubb 2022), 28° ANCRÉ (Whipple & Tucker 1999); \
                                          l'âge k et le coefficient de largeur sont des PROXY.\n\n\
@@ -1153,7 +1153,10 @@ fn left_panel(
                                     );
                                     // ADR Finding 123 — a combo box: a five-button row was
                                     // clipped to three states in a narrow panel.
-                                    let names = ["off", "C1 nue", "C2 /10", "C2 /3", "C2 /10 col"];
+                                    let names =
+                                        // ADR Finding 124 -- STABLE names: the state the author
+                                        // validated keeps its name when the default changes
+                                        ["off", "C1 nue", "C2 /10 col (défaut)", "C2 /3", "C2 /10 niveau mer"];
                                     egui::ComboBox::from_id_salt("valley_mode")
                                         .selected_text(names[ws.valley_mode.min(4)])
                                         .show_ui(ui, |ui| {
@@ -6114,7 +6117,7 @@ ANATOMY of the largest duplicated terminal, at cell {cell:?}:"
 /// ADR Finding 123 — **the identity guard, end to end through `run_hd`**: the viz's own pipeline, with
 /// the HdParams the workspace sends for seed 1 at 8192² (auto framing, C-2/C-3/C-3b/H-1 on,
 /// latitude 45°, span 40°, ratio 7.5), must read `Match` against the bench's reference for the
-/// delivered world and for "C2 /10 col". A `NoReference` here means the viz's configuration is not
+/// delivered world and for "C2 /10 col (défaut)" (the definition, basin base). A `NoReference` here means the viz's configuration is not
 /// the bench's; a `Mismatch` means the same configuration yields another world.
 ///
 /// Run: cargo test -p ymir-viz --release f123_viz_guard -- --ignored --nocapture
@@ -6193,9 +6196,9 @@ mod f123_viz_guard {
     fn f123_viz_guard() {
         eprintln!("\n==========  Finding 123 . the guard through run_hd  ==========");
         let a = run("livré", None, None);
-        let b = run("C2 /10 col", Some(0.024), Some(ValleyConstruction::f122(F121_AGE_K, Some(0.1))));
+        let b = run("C2 /10 col (défaut)", Some(0.024), Some(ValleyConstruction::new(F121_AGE_K, Some(0.1))));
         assert!(matches!(a, GuardStatus::Match { .. }), "livré: {a:?}");
-        assert!(matches!(b, GuardStatus::Match { .. }), "C2 /10 col: {b:?}");
+        assert!(matches!(b, GuardStatus::Match { .. }), "C2 /10: {b:?}");
     }
 }
 
