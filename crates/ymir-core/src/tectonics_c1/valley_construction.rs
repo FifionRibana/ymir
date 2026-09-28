@@ -105,6 +105,24 @@ pub struct ValleyConstruction {
     /// not a rate — nothing anchors γ. `Some(0.0)` is `None`'s width.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width_age_gamma: Option<f32>,
+    /// **ADR Finding 126-B — mur ↔ mer, the coast clause.** `None` = Findings 121–125: nothing
+    /// floors a WALL cell, so the profile's foot, its crest and its signed detail can lay a wall
+    /// below the sea (Finding 126-A: the bathymetry then reposes it at −1.00 m, and an enclosed one
+    /// fires Finding 38's invariant). `Some(ε)`: no wall cell is laid below `sea + ε` m — the floors'
+    /// own base (Finding 83's `base_m`) transposed to the walls, so a wall that reaches the coast
+    /// stops at the coast. The clause's other half ("nothing raises a coastal cell above the
+    /// original terrain") needs no code: `carve` only lowers (`out = min(field, V)`, asserted).
+    /// DECISION, on the ANCHORED `base_m`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wall_sea_floor_m: Option<f32>,
+    /// **ADR Finding 126-D — the skeleton smoothed in units of the valley's width.** `None` = the
+    /// ±`smooth_m` moving average (Findings 121–125: a half-window pinned at each end, and a line
+    /// shorter than `2·half + 3` samples left exactly as D8 drew it). `Some(c)`: at every sample the
+    /// half-length is `c·W(A)` of THAT sample — a law in W, never in cells — and the window shrinks
+    /// symmetrically toward the ends, so only the two endpoints stay pinned and every line is
+    /// smoothed. **PROXY**.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smooth_w: Option<f32>,
 }
 
 /// ADR Finding 124-B1 — the wall's profile and its texture. Every value is a **PROXY**.
@@ -154,6 +172,8 @@ impl ValleyConstruction {
             basin_base: false,
             wall_profile: None,
             width_age_gamma: None,
+            wall_sea_floor_m: None,
+            smooth_w: None,
         }
     }
 
@@ -370,7 +390,6 @@ pub fn skeleton(
             raw_lines.push(line);
         }
     }
-    let half_k = (vc.smooth_m / cell_m).round().max(0.0) as usize;
     let polylines = raw_lines
         .iter()
         .map(|line| {
@@ -398,23 +417,7 @@ pub fn skeleton(
                 let zf = base[c] + vc.age_k * chi[c];
                 pts.push((x, y, zf, 0.5 * vc.width_m(area_km2[c])));
             }
-            // moving average of the POSITION only, endpoints pinned
-            let sm = if half_k > 0 && pts.len() >= 2 * half_k + 3 {
-                let mut o = pts.clone();
-                for i in half_k..pts.len() - half_k {
-                    let (mut sx, mut sy) = (0f32, 0f32);
-                    for p in &pts[i - half_k..=i + half_k] {
-                        sx += p.0;
-                        sy += p.1;
-                    }
-                    let d = (2 * half_k + 1) as f32;
-                    o[i].0 = sx / d;
-                    o[i].1 = sy / d;
-                }
-                o
-            } else {
-                pts
-            };
+            let sm = smooth_positions(pts, line, &area_km2, vc, cell_m);
             // densify to ≤ 0.5 cell between samples
             let mut dense = Vec::with_capacity(sm.len() * 2);
             for i in 0..sm.len() {
@@ -446,6 +449,54 @@ pub fn skeleton(
         base_alt_m: base,
         trunk,
         polylines,
+    }
+}
+
+/// The moving average of a trunk line's POSITIONS (floor altitude and width untouched). `line` is
+/// the line's D8 cells, `pts` their unwrapped samples, one per cell.
+///
+/// `smooth_w` `None` (Findings 121–125, byte-identical): a fixed half-window of `smooth_m`, pinned
+/// over `half` samples at each end, and a line shorter than `2·half + 3` samples left as D8 drew
+/// it. ADR Finding 126-D, `Some(c)`: the half-window at sample `i` is `c·W(A_i)` metres, shrunk to
+/// `min(i, len − 1 − i)` so the window stays symmetric; only the two endpoints are pinned.
+fn smooth_positions(
+    pts: Vec<(f32, f32, f32, f32)>,
+    line: &[usize],
+    area_km2: &[f32],
+    vc: &ValleyConstruction,
+    cell_m: f32,
+) -> Vec<(f32, f32, f32, f32)> {
+    let mean = |pts: &[(f32, f32, f32, f32)], i: usize, hk: usize| -> (f32, f32) {
+        let (mut sx, mut sy) = (0f32, 0f32);
+        for p in &pts[i - hk..=i + hk] {
+            sx += p.0;
+            sy += p.1;
+        }
+        let d = (2 * hk + 1) as f32;
+        (sx / d, sy / d)
+    };
+    if let Some(c) = vc.smooth_w {
+        let len = pts.len();
+        let mut o = pts.clone();
+        for i in 1..len.saturating_sub(1) {
+            let want = (c * vc.width_m(area_km2[line[i]]) / cell_m).round().max(0.0) as usize;
+            let hk = want.min(i).min(len - 1 - i);
+            if hk > 0 {
+                (o[i].0, o[i].1) = mean(&pts, i, hk);
+            }
+        }
+        return o;
+    }
+    // moving average of the POSITION only, endpoints pinned
+    let half_k = (vc.smooth_m / cell_m).round().max(0.0) as usize;
+    if half_k > 0 && pts.len() >= 2 * half_k + 3 {
+        let mut o = pts.clone();
+        for i in half_k..pts.len() - half_k {
+            (o[i].0, o[i].1) = mean(&pts, i, half_k);
+        }
+        o
+    } else {
+        pts
     }
 }
 
@@ -635,6 +686,7 @@ pub fn carve(
         let r = (p.detail_radius_m / sk.cell_m).round().max(1.0) as i64;
         box_blur_torus(&zfield, w, h, r)
     });
+    let sea_m = c1_altitude_norm_to_metres(C1_SEA_LEVEL_NORM, ss);
     let mut out = field.clone();
     let mut carved = vec![false; n];
     let mut floor = vec![false; n];
@@ -670,6 +722,12 @@ pub fn carve(
             if let Some(t) = &trend {
                 v += p.detail_gain * (zfield[c] - t[c]);
             }
+        }
+        // ADR Finding 126-B -- mur ↔ mer: no WALL cell is laid below sea + ε
+        if let Some(eps) = vc.wall_sea_floor_m
+            && !on_floor
+        {
+            v = v.max(sea_m + eps);
         }
         if v < zfield[c] {
             let nv = c1_metres_to_altitude_norm(v, ss);
@@ -754,6 +812,85 @@ mod tests {
         for k in 0..f.data.len() {
             if m0.floor[k] && m1.floor[k] {
                 assert_eq!(bent.data[k], plain.data[k], "floor cell {k} moved");
+            }
+        }
+    }
+
+    /// ADR Finding 126-B, rule 13 — the coast clause keeps every WALL cell at or above `sea + ε`,
+    /// and changes nothing else: every cell the unclamped carve left above `sea + ε` is bit-identical.
+    /// Negative control FIRST: without the clause, the profile and its signed detail lay at least one
+    /// wall cell below the sea (a 60 m dimple on a wall near the sea band, which the detail puts back).
+    #[test]
+    fn the_coast_clause_keeps_every_wall_above_the_sea() {
+        let ss = SteinSteinParams::default();
+        let mut f = basin(&ss);
+        let w = f.width;
+        for y in 0..f.height {
+            for x in 0..w {
+                let d2 = ((x as f32 - 52.0).powi(2) + (y as f32 - 9.0).powi(2)) / 4.0;
+                if d2 < 9.0 {
+                    let k = y * w + x;
+                    let m = c1_altitude_norm_to_metres(f.data[k], &ss) - 60.0 * (-d2).exp();
+                    f.data[k] = c1_metres_to_altitude_norm(m, &ss);
+                }
+            }
+        }
+        let mut vc = ValleyConstruction::f121(0.02, None);
+        vc.a_min_km2 = 0.5;
+        vc.smooth_m = 0.0;
+        vc.wall_profile = Some(WallProfile::f124());
+        let sk = skeleton(&f, &vc, &ss, 4.8);
+        let (free, m0) = carve(&f, &sk, &vc, &ss);
+        let sea = c1_altitude_norm_to_metres(C1_SEA_LEVEL_NORM, &ss);
+        let land_in = |k: usize| f.data[k] > C1_SEA_LEVEL_NORM;
+        let drowned = (0..f.data.len())
+            .filter(|&k| land_in(k) && m0.carved[k] && !m0.floor[k] && free.data[k] <= C1_SEA_LEVEL_NORM)
+            .count();
+        assert!(drowned > 0, "negative control: without the clause a wall must drown ({drowned})");
+        let eps = 0.5;
+        let (held, m1) = carve(&f, &sk, &ValleyConstruction { wall_sea_floor_m: Some(eps), ..vc }, &ss);
+        for k in 0..f.data.len() {
+            if land_in(k) && m1.carved[k] && !m1.floor[k] {
+                let z = c1_altitude_norm_to_metres(held.data[k], &ss);
+                assert!(z >= sea + eps - 1e-3, "wall cell {k} at {z} m, below sea + ε");
+            }
+            assert!(held.data[k] <= f.data[k], "cell {k} RAISED by the clause");
+            if c1_altitude_norm_to_metres(free.data[k], &ss) >= sea + eps {
+                assert_eq!(held.data[k], free.data[k], "cell {k} moved though it was above sea + ε");
+            }
+        }
+    }
+
+    /// ADR Finding 126-D, rule 13 — the width law smooths a line the fixed half-window leaves as
+    /// D8 drew it. A 9-sample D8 staircase: under `smooth_m` 250 m at 50 m cells (half 5, so a line
+    /// needs 13 samples) it is untouched — the negative control; under `smooth_w` 2 (W = 100 m at
+    /// 1 km², a 200 m = 4-cell half-window) its interior moves and its two endpoints do not. A
+    /// straight line stays exactly straight under both.
+    #[test]
+    fn the_width_law_smooths_a_line_the_fixed_window_leaves_raw() {
+        let vc = ValleyConstruction::f121(0.02, None); // W(1 km²) = 200/10^0.3 ≈ 100 m
+        let cell_m = 50.0;
+        let stair: Vec<(f32, f32, f32, f32)> = (0..9)
+            .map(|i| (0.5 + (i / 2) as f32, 0.5 + i as f32, 10.0, 50.0))
+            .collect();
+        let line: Vec<usize> = (0..9).collect();
+        let area = vec![1.0f32; 9];
+        let fixed = smooth_positions(stair.clone(), &line, &area, &vc, cell_m);
+        assert_eq!(fixed, stair, "negative control: the fixed window must leave a 9-sample line raw");
+        let wlaw = smooth_positions(stair.clone(), &line, &area, &ValleyConstruction { smooth_w: Some(2.0), ..vc }, cell_m);
+        assert_eq!((wlaw[0], wlaw[8]), (stair[0], stair[8]), "the endpoints stay pinned");
+        let moved = (1..8).filter(|&i| wlaw[i].0 != stair[i].0).count();
+        assert!(moved >= 3, "the width law must smooth the interior ({moved} moved)");
+        for i in 0..9 {
+            assert_eq!((wlaw[i].2, wlaw[i].3), (stair[i].2, stair[i].3), "only the position moves");
+        }
+        let straight: Vec<(f32, f32, f32, f32)> = (0..30).map(|i| (0.5, 0.5 + i as f32, 1.0, 50.0)).collect();
+        let l30: Vec<usize> = (0..30).collect();
+        let a30 = vec![5.0f32; 30];
+        for v in [vc, ValleyConstruction { smooth_w: Some(2.0), ..vc }] {
+            let s = smooth_positions(straight.clone(), &l30, &a30, &v, cell_m);
+            for (a, b) in s.iter().zip(&straight) {
+                assert!((a.0 - b.0).abs() < 1e-5 && (a.1 - b.1).abs() < 1e-4, "a straight line bent");
             }
         }
     }

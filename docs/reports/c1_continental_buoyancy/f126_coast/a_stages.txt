@@ -1,0 +1,41 @@
+==========  Finding 126-A . the −1.00 m, walked stage by stage  ==========
+   S1 built in 3 s
+   S2 + construction built in 141 s
+   S3 + light pass (k/10, A1+B2) built in 160 s
+   S4 + droplet erosion built in 161 s
+   S5 + bathymetry (the world) built in 166 s
+   | stage | (4257, 2006) | (4613, 2860) | the world's census (cells land in S1) |
+   |---|---|---|---|
+   | S1 input (FBM + craters) | 98.72 m · land | 182.61 m · land | — |
+   | S2 + construction | -1.55 m · INLAND (enclosed) | -10.52 m · INLAND (enclosed) | land → ≤ sea: **6331** cells (15.09 km², domain) · edge-connected OCEAN 4216 · ENCLOSED 2115 in **300** components (167 of ≤ 4 cells) · at exactly −1.00 m 0 |
+   | S3 + light pass (k/10, A1+B2) | -1.55 m · INLAND (enclosed) | -6.18 m · INLAND (enclosed) | land → ≤ sea: **7719** cells (18.40 km², domain) · edge-connected OCEAN 5950 · ENCLOSED 1769 in **306** components (193 of ≤ 4 cells) · at exactly −1.00 m 3 |
+   | S4 + droplet erosion | -1.55 m · INLAND (enclosed) | -6.18 m · INLAND (enclosed) | land → ≤ sea: **7719** cells (18.40 km², domain) · edge-connected OCEAN 5950 · ENCLOSED 1769 in **306** components (193 of ≤ 4 cells) · at exactly −1.00 m 3 |
+   | S5 + bathymetry (the world) | -1.00 m · INLAND (enclosed) | -1.00 m · INLAND (enclosed) | land → ≤ sea: **7719** cells (18.40 km², domain) · edge-connected OCEAN 5950 · ENCLOSED 1769 in **306** components (193 of ≤ 4 cells) · at exactly −1.00 m 7719 |
+   | S6 + breach (the HD assembly's input) | -1.00 m · INLAND (enclosed) | -1.00 m · INLAND (enclosed) | land → ≤ sea: **8165** cells (19.47 km², domain) · edge-connected OCEAN 6075 · ENCLOSED 2090 in **307** components (193 of ≤ 4 cells) · at exactly −1.00 m 7719 |
+   cell (4257, 2006): lake_map id at S5 0 · filled at S5 -1.00 m · distance to the OPEN OCEAN: S1 2 cells (0.11 km domain) · S5 2 cells (0.10 km domain)
+   cell (4613, 2860): lake_map id at S5 0 · filled at S5 -1.00 m · distance to the OPEN OCEAN: S1 3 cells (0.15 km domain) · S5 2 cells (0.10 km domain)
+   IDENTITY: the direct carve(skeleton(S1)) against the pipeline's S2 — 203352 cells differ of 67108864 ⇒ ⚠ NOT the pipeline's construction
+      at (4257, 2006): direct -1.55 m · S2 -1.55 m
+      at (4613, 2860): direct -10.52 m · S2 -10.52 m
+   construction census · planar (B2 → A_c): land → ≤ sea: **0** cells (0.00 km², domain) · on walls 0 / on floors 0 / uncarved 0 · edge-connected OCEAN 0 · ENCLOSED 0 in **0** components (0 of ≤ 4 cells) · at exactly −1.00 m 0
+   construction census · profile only (B1a on A_c): land → ≤ sea: **3247** cells (7.74 km², domain) · on walls 3247 / on floors 0 / uncarved 0 · edge-connected OCEAN 1941 · ENCLOSED 1306 in **216** components (133 of ≤ 4 cells) · at exactly −1.00 m 3
+   construction census · noise only (B1b on A_c): land → ≤ sea: **761** cells (1.81 km², domain) · on walls 761 / on floors 0 / uncarved 0 · edge-connected OCEAN 429 · ENCLOSED 332 in **152** components (132 of ≤ 4 cells) · at exactly −1.00 m 0
+   construction census · both (B2 (A_c) + B1): land → ≤ sea: **6331** cells (15.09 km², domain) · on walls 6331 / on floors 0 / uncarved 0 · edge-connected OCEAN 4216 · ENCLOSED 2115 in **300** components (167 of ≤ 4 cells) · at exactly −1.00 m 0
+   cell (4257, 2006) · input 98.72 m · nearest sample: line 1203 · floor zf 11.54 m · half-width 48.7 m · distance 48.8 m · u = beyond the floor edge 0.2 m (on the wall)
+      planar zf + tan·u = 11.63 m · the profile's rise 0.00 m (planar 0.09) → 11.54 m · crest −0.25 m → 11.29 m · detail -4.15 m → **7.13 m**
+      carve outputs: planar 4.71 m · profile only 2.60 m · noise only 0.55 m · both -1.55 m · (recomposed planar ≠ the carve's, recomposed both ≠ the carve's)
+      carved true / floor false
+   cell (4613, 2860) · input 182.61 m · nearest sample: line 9501 · floor zf 42.64 m · half-width 25.7 m · distance 0.0 m · u = beyond the floor edge 0.0 m (ON the floor)
+      planar zf + tan·u = 42.64 m · the profile's rise 0.00 m (planar 0.00) → 42.64 m · crest −0.02 m → 42.63 m · detail -32.43 m → **10.20 m**
+      carve outputs: planar 42.19 m · profile only 21.90 m · noise only 9.76 m · both -10.52 m · (recomposed planar ≠ the carve's, recomposed both ≠ the carve's)
+      carved true / floor false
+   construction census · témoin C2/10 col: land → ≤ sea: **0** cells (0.00 km², domain) · on walls 0 / on floors 0 / uncarved 0 · edge-connected OCEAN 0 · ENCLOSED 0 in **0** components (0 of ≤ 4 cells) · at exactly −1.00 m 0
+      at the two cells: 98.72 m · 4.67 m
+   construction census · B1a profile only: land → ≤ sea: **1385** cells (3.30 km², domain) · on walls 1385 / on floors 0 / uncarved 0 · edge-connected OCEAN 499 · ENCLOSED 886 in **69** components (15 of ≤ 4 cells) · at exactly −1.00 m 1
+      at the two cells: 98.72 m · 4.67 m
+   construction census · B1b noise only: land → ≤ sea: **365** cells (0.87 km², domain) · on walls 365 / on floors 0 / uncarved 0 · edge-connected OCEAN 147 · ENCLOSED 218 in **72** components (63 of ≤ 4 cells) · at exactly −1.00 m 0
+      at the two cells: 98.72 m · 4.67 m
+   construction census · B1 both: land → ≤ sea: **3205** cells (7.64 km², domain) · on walls 3205 / on floors 0 / uncarved 0 · edge-connected OCEAN 1884 · ENCLOSED 1321 in **94** components (31 of ≤ 4 cells) · at exactly −1.00 m 2
+      at the two cells: 98.72 m · 4.67 m
+==========  end Finding 126-A . 1007.6 s  ==========
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1007.80s

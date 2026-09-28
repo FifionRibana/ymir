@@ -7107,6 +7107,27 @@ French and use a **comma**. `1 052,4` returns nothing; `1052.4` returns the Find
 figure came from. Two consecutive rounds, two near-misses, one command: **grep the value in the
 dossier's number format AND in the prompt's.**
 
+### Method rule 11c — every grep on the dossier covers its TYPOGRAPHIC variants (added at Finding 127)
+
+Earned in Finding 126, which spent part of a round rediscovering a constant the dossier had named in
+Finding 80. Finding 125 grepped for "−1.00 m" with an ASCII hyphen-minus. The dossier writes the minus
+sign U+2212: Finding 80 B2, L9379, *"the bathymetry clamp puts every drowned cell at exactly −1.0 m"*.
+So the grep returned "nothing found" about a sentence on file. Rule 11b's two refinements covered the
+thousands and the decimal separators; this is the same trap one character wider. **Every grep on the
+ADR and the reports is run with each variant class expanded**:
+
+| symbol | variants to include | in this ADR (counted at Finding 127) |
+|---|---|---|
+| minus / dash | `−` (U+2212), `–` (U+2013), `-` | 717 / 665 / 10 992 |
+| times | `×` (U+00D7), `x` | 794 `×` |
+| greater / less or equal | `≥` and `>=`, `≤` and `<=` | 275 / 8, 96 / 5 |
+| apostrophe | `’` (U+2019), `'` | 0 / 1 938 |
+| infinity | `∞`, `inf`, `infinity` (and `D∞`, `Dinf`, `D-infinity`) | 20 `∞` |
+| thin spaces | U+2009, U+202F, U+00A0, and the plain space used as thousands separator | 0 / 0 / 0 (plain space) |
+
+A negative is recorded only after the expanded grep. A grep that expanded nothing is not a negative,
+and it must not be written as one.
+
 ### Method rule 12 — the export is authoritative for the SYMPTOM; a MECHANISM is measured at the stage where it acts
 
 Findings 76 and 77 hunted a coastal mechanism on the delivered field and concluded, twice, that it
@@ -18414,3 +18435,79 @@ meta held. **Limitations** (in the report): no spur base rate, no cone baseline,
 projection vs class R8, mixed windows, the chord's band read off-trunk, no D8 baseline, the −1.00 m,
 teeth located by mouth only (the position along the wall decides the reviewer's two B1 mechanisms).
 **Nothing promoted.**
+
+## Finding 126 — the −1.00 m is the bathymetry's clamp and the construction drowns the coastal walls; mur ↔ mer is PROVED by its clause; the teeth sit in the concave foot; the sub-valleys' stripes are the D8 lattice's, and no smoothing removes them
+
+**Units**: 1 cell = 48.8 m (domain); signified = ×7.5 lengths, ×56.25 areas. Bench
+`tests/f126_coast.rs`; report and raw outputs in `docs/reports/c1_continental_buoyancy/f126_coast/`.
+One clause and one skeleton variant were built, **both gated and off; nothing promoted**. Finding 125
+committed (`5fb84c9`); the guard reads 6 / 6 "= banc". A fresh uncached build of the definition hashes to
+the reference `a8d2d538d692c2f0`: this round's code is bit-neutral when off.
+
+**A — the constant, then why.** `bathymetry.rs:190` `min_depth = shelf_min_depth_m.max(1.0)`, applied
+at `:199` to every cell `≤ sea` (enclosed or not), LAST in the upscale (`production_upscale.rs:635`).
+**The dossier had it**: Finding 80 B2 (L9379), "the bathymetry clamp puts every drowned cell at exactly
+−1.0 m". Finding 125's "unexplained" was my rule-11b failure: I grepped the code with an ASCII minus and
+not the VALUE in the dossier (U+2212). Walked through the pipeline's own stages, the two cells are
+98.7 / 182.6 m at the input and **−1.55 / −10.52 m right after the CONSTRUCTION**. They reach −1.00 at
+the bathymetry, 0.10–0.15 km (domain) from the open ocean. **They are coastal**, which Finding 125
+could not say. Profile and noise ADD, to the centimetre (foot −1.95 / −20.28 m, noise −4.16 / −32.43 m,
+on planar walls 4.7 / 42.2 m above the sea). World-wide, by switching one term at a time:
+- a planar wall never drowns (0: `V ≥ zf ≥ sea + 0.5 m`), and neither does the **foot alone** (0);
+- the **crest** drowns low rims (the input terrain there p50 13.5 m, up to `crest_m·ln 2` = 13.9 m off);
+- the **noise** drowns high coastal walls (p50 199 m);
+- foot + crest drown 8× the crest alone. The foot is a multiplier, not a cause.
+
+Every drowned cell is a WALL, never a floor, within 1.12 km (p90, domain) of the open ocean. B1 alone
+drowns 3 205 wall cells at the construction (1 884 edge-connected, 1 321 enclosed); F38 fired only
+where a component of them carried no water body. Caveat: the bench's direct carve differs from the
+pipeline's S2 on 0.30 % of cells, S1 carrying the C-2 rims being my unverified guess. The two cells and
+the census are identical, and only they are read.
+
+**B — mur ↔ mer, base rate then clause.** Spurs per km of coastline near a coastal wall (≤ 2 km,
+domain) / elsewhere:
+- témoin **0.0142** / 0.0119 (walls make no spurs); B2 (A_c) 0.0067 (3.5× more coastal wall, FEWER
+  spurs);
+- B1a 0.1174 (×8.3), B1b 0.0403 (×2.8), B1 0.1769 (×12.5), elsewhere unchanged (0.0119–0.0122).
+
+**The clause** `wall_sea_floor_m = Some(base_m)` (no wall cell below sea + 0.5 m; the other half,
+"never raise a coastal cell", is `carve`'s own `min`). Permanent test
+`the_coast_clause_keeps_every_wall_above_the_sea`, negative control first. Near-wall spurs fall to
+**0.0126 (B1a), 0.0095 (B1), 0.0066 (B2 (A_c) + B1, against B2's own 0.0067)**, with 0 new spurs;
+**Finding 38 no longer fires**. Teeth move +0.7 / +1.8 %, their positions not at all; the canyons
+(floors) and both R8s are unchanged. **⇒ mur ↔ mer PROVED (seed 1, 8192²); F38 is the same clause at
+an enclosed cell.**
+
+**C — the teeth on their wall.** Every tooth point is placed by the planar geometry of its nearest
+sample, with the wall's area as the base rate. **Under B1 only, the teeth live in the concave FOOT**:
+mouths 89.6 %, heads 59.3 %, points 48.9 % = 2.26× the foot's share. Under the profile alone ×1.29,
+under the noise alone ×1.10, in the témoin ×0.96. The superadditivity of Finding 125 is thus located.
+The mouth alone does not discriminate (≥ 95 % at floor + foot everywhere). **Located; the clause is
+not built**, and its candidate is named: *bruit ↔ pied*.
+
+**D — the skeleton.** Not Finding 113's snap: that moved the EXPORTED river line, and here the geometry
+is changed before the construction digs.
+- **D1**: on isotropic synthetics (random-direction plane waves on a draining dome, terrain R8 ≤ 0.025,
+  under Finding 97's 0.040), the D8 skeleton's 1–3 km² R8 is 0.986 / 0.796 / 0.362 / 0.240 at
+  roughness ratios 0.07 / 0.21 / 0.61 / 1.07. There is **no single floor**. The real terrain's ratio is
+  0.379 (PRE = S1), where the floor interpolates to 0.56–0.61; the real branches read 0.601, **AT the
+  floor** (the lattice, given the terrain's smoothness). The real trunks are below theirs (0.394,
+  deflected by topography). My first roughness instrument let the sea into its blur and was not read.
+- **D2**: the 250 m smoothing DOES apply to the sub-valleys (82 % of 1–3 km² chords; the raw 18 % are
+  less aligned). **No L in {250 m, 0.5 / 1 / 2 W} lowers the 1–3 km² R8 beyond 5 %**; on 200 m chords,
+  every smoothing raises it.
+- **D3**: B2 on the 1 W skeleton (gated `smooth_w`, permanent test
+  `the_width_law_smooths_a_line_the_fixed_window_leaves_raw`) keeps **R8 terrain ×2.34** (against
+  ×2.32). Teeth 278, skeleton pairing 90.8 %, 0 canyons.
+- **⇒ "hiérarchie ↔ tracé" as a moving average is REFUTED**, and so is the reviewer's "hiérarchie ↔
+  planéité" (Finding 125). The candidate is named, not built: a tracé off the D8 lattice.
+
+**E — the canyons' cones.** Against 200 random trunk floors of the témoin the counts are beyond its p99
+(5), but trivially: 636 polylines against 103 080, and at the same cells the témoin counts 1–3. Against
+the canyons' own world: 170 → p94, 39 → p73, 34 → p70, and 168 → p96 of its sub < 1 floors. **The norm
+of a deep floor: "intersection" refuted as the cause.** Look at the SILL, not the floor.
+
+**Predictions.** Mine: P0, A, D1, E held; B, C, D2, D3 half. The reviewer's: A held; the témoin's base
+rate refuted, B1a ×8, the clause ×1.5, F38 → 0 and teeth ±5 % held; C held; the D1 floor ~0.45, D2 and
+D3's ×1.3 refuted, D3's teeth and skeleton held; E refuted; the metas held. **Gated, off, nothing
+promoted.**

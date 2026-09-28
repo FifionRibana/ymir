@@ -1,0 +1,17 @@
+==========  Finding 126-A2 . foot, crest or noise: which term drowns a wall  ==========
+   C2/10 col skeleton (≥ 10 km²):
+      planar                           drowned     0 (walls 0, edge-connected OCEAN 0, enclosed 0) · input terrain there p50 NaN / p90 NaN m · to the open ocean p50 NaN / p90 NaN km (domain) · at the two cells 98.72 m · 4.67 m
+      foot only (crest 0, gain 0)      drowned     0 (walls 0, edge-connected OCEAN 0, enclosed 0) · input terrain there p50 NaN / p90 NaN m · to the open ocean p50 NaN / p90 NaN km (domain) · at the two cells 98.72 m · 4.67 m
+      crest only (foot 0, gain 0)      drowned   173 (walls 173, edge-connected OCEAN 18, enclosed 155) · input terrain there p50 13.5 / p90 19.8 m · to the open ocean p50 0.29 / p90 0.78 km (domain) · at the two cells 98.72 m · 4.67 m
+      noise only (foot 0, crest 0)     drowned   365 (walls 365, edge-connected OCEAN 147, enclosed 218) · input terrain there p50 198.7 / p90 637.5 m · to the open ocean p50 0.34 / p90 1.07 km (domain) · at the two cells 98.72 m · 4.67 m
+      profile = foot + crest (gain 0)  drowned  1385 (walls 1385, edge-connected OCEAN 499, enclosed 886) · input terrain there p50 13.1 / p90 24.8 m · to the open ocean p50 0.24 / p90 0.78 km (domain) · at the two cells 98.72 m · 4.67 m
+      all three (B1)                   drowned  3205 (walls 3205, edge-connected OCEAN 1884, enclosed 1321) · input terrain there p50 39.8 / p90 500.8 m · to the open ocean p50 0.34 / p90 1.12 km (domain) · at the two cells 98.72 m · 4.67 m
+   A_c skeleton (≥ 0.1 km², B2):
+      planar                           drowned     0 (walls 0, edge-connected OCEAN 0, enclosed 0) · input terrain there p50 NaN / p90 NaN m · to the open ocean p50 NaN / p90 NaN km (domain) · at the two cells 4.71 m · 42.19 m
+      foot only (crest 0, gain 0)      drowned     0 (walls 0, edge-connected OCEAN 0, enclosed 0) · input terrain there p50 NaN / p90 NaN m · to the open ocean p50 NaN / p90 NaN km (domain) · at the two cells 2.76 m · 21.91 m
+      crest only (foot 0, gain 0)      drowned   385 (walls 385, edge-connected OCEAN 171, enclosed 214) · input terrain there p50 13.6 / p90 20.0 m · to the open ocean p50 0.10 / p90 0.54 km (domain) · at the two cells 4.53 m · 42.17 m
+      noise only (foot 0, crest 0)     drowned   761 (walls 761, edge-connected OCEAN 429, enclosed 332) · input terrain there p50 71.6 / p90 345.8 m · to the open ocean p50 0.15 / p90 0.59 km (domain) · at the two cells 0.55 m · 9.76 m
+      profile = foot + crest (gain 0)  drowned  3247 (walls 3247, edge-connected OCEAN 1941, enclosed 1306) · input terrain there p50 13.6 / p90 21.8 m · to the open ocean p50 0.10 / p90 0.49 km (domain) · at the two cells 2.60 m · 21.90 m
+      all three (B1)                   drowned  6331 (walls 6331, edge-connected OCEAN 4216, enclosed 2115) · input terrain there p50 28.1 / p90 160.7 m · to the open ocean p50 0.15 / p90 0.59 km (domain) · at the two cells -1.55 m · -10.52 m
+==========  end Finding 126-A2 . 342.0 s  ==========
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 342.04s
