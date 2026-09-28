@@ -1,0 +1,54 @@
+==========  Finding 127-C . the canyons at their true col  ==========
+   RELIEF paired (n = 11326869): p10/p50/p90 **77.4 / 420.2 / 981.4 m** · median cut 100.6 m · **-1.0 % against the delivered 424.2 m ⇒ INSIDE ±10 %**
+     body       3 ·     1.49 km² · cut p50 ** 2294.42 m** · fill max **  107.53 m** · fill p50   31.29 m · **deep share  25.4 %** · rim p50  31.9° ⇒ cut YES / over-dug YES
+     body       4 ·     7.56 km² · cut p50 **  729.81 m** · fill max **   90.17 m** · fill p50   35.87 m · **deep share  33.1 %** · rim p50  26.5° ⇒ cut  no / over-dug  no
+     body       5 ·    50.94 km² · cut p50 ** 1087.47 m** · fill max **  155.10 m** · fill p50   46.85 m · **deep share  47.2 %** · rim p50  28.0° ⇒ cut  no / over-dug  no
+     body       6 ·    18.07 km² · cut p50 **  694.85 m** · fill max **   87.52 m** · fill p50   21.91 m · **deep share  12.8 %** · rim p50  28.3° ⇒ cut  no / over-dug  no
+     body       7 ·    10.55 km² · cut p50 ** 1635.84 m** · fill max **  140.58 m** · fill p50   55.04 m · **deep share  54.6 %** · rim p50  31.9° ⇒ cut YES / over-dug YES
+     body      10 ·     6.05 km² · cut p50 **  748.04 m** · fill max **   67.87 m** · fill p50   12.81 m · **deep share   3.0 %** · rim p50  29.1° ⇒ cut  no / over-dug  no
+     body      11 ·    28.37 km² · cut p50 **  -40.14 m** · fill max **  178.06 m** · fill p50   40.13 m · **deep share  32.7 %** · rim p50   4.3° ⇒ cut  no / over-dug  no
+     body      12 ·    44.20 km² · cut p50 **  -29.06 m** · fill max **   74.50 m** · fill p50   29.05 m · **deep share  24.4 %** · rim p50  11.3° ⇒ cut  no / over-dug  no
+     body      13 ·    15.37 km² · cut p50 ** 1075.22 m** · fill max **  208.31 m** · fill p50   85.03 m · **deep share  70.0 %** · rim p50  31.2° ⇒ cut YES / over-dug YES
+     body      14 ·    41.97 km² · cut p50 **  815.84 m** · fill max **  358.69 m** · fill p50  155.32 m · **deep share  82.8 %** · rim p50  32.1° ⇒ cut YES / over-dug YES
+     body      16 ·    76.75 km² · cut p50 **  -60.78 m** · fill max **  139.83 m** · fill p50   60.77 m · **deep share  59.7 %** · rim p50   3.5° ⇒ cut  no / over-dug  no
+     body      17 ·    11.60 km² · cut p50 **  -16.75 m** · fill max **   55.46 m** · fill p50   16.73 m · **deep share   0.9 %** · rim p50   2.7° ⇒ cut  no / over-dug  no
+     body      21 ·    37.10 km² · cut p50 **  -26.96 m** · fill max **  111.67 m** · fill p50   26.96 m · **deep share  22.4 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body      22 ·     7.60 km² · cut p50 **   -9.06 m** · fill max **   46.39 m** · fill p50    9.01 m · **deep share   0.0 %** · rim p50   3.4° ⇒ cut  no / over-dug  no
+     body 1000001 ·   458.45 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.7° ⇒ cut  no / over-dug  no
+     body 1000007 ·    94.74 km² · cut p50 **    0.00 m** · fill max **   15.13 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   5.8° ⇒ cut  no / over-dug  no
+     body 1000009 ·    44.90 km² · cut p50 **    0.00 m** · fill max **    0.00 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   2.0° ⇒ cut  no / over-dug  no
+     body 1000010 ·   482.73 km² · cut p50 **    0.01 m** · fill max **  156.03 m** · fill p50    0.00 m · **deep share   4.4 %** · rim p50   8.2° ⇒ cut  no / over-dug  no
+     body 1000011 ·    10.70 km² · cut p50 **    0.00 m** · fill max **    0.27 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   1.3° ⇒ cut  no / over-dug  no
+     body 1000012 ·   152.51 km² · cut p50 **    0.00 m** · fill max **    6.23 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   3.6° ⇒ cut  no / over-dug  no
+     body 1000013 ·   626.08 km² · cut p50 **    0.00 m** · fill max **   17.64 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50   4.1° ⇒ cut  no / over-dug  no
+     body 1000015 ·   495.04 km² · cut p50 **    0.00 m** · fill max **   73.96 m** · fill p50    0.00 m · **deep share   1.0 %** · rim p50   8.5° ⇒ cut  no / over-dug  no
+     body 1000016 ·   336.71 km² · cut p50 **    0.00 m** · fill max **   97.55 m** · fill p50    0.00 m · **deep share   2.7 %** · rim p50   6.6° ⇒ cut  no / over-dug  no
+     body 1000017 ·   179.76 km² · cut p50 **   17.37 m** · fill max **   40.18 m** · fill p50    0.00 m · **deep share   0.0 %** · rim p50  13.1° ⇒ cut  no / over-dug  no
+     body 1000018 ·   374.05 km² · cut p50 **    0.00 m** · fill max **  281.68 m** · fill p50    0.00 m · **deep share  19.6 %** · rim p50  12.9° ⇒ cut  no / over-dug  no
+     Spillway max **89.18 m³/s** · 71 cells · drop **116.3 m** · FILL along                  the bed: p50 **0.0000 m** · max **0.0000 m** ⇒ **NOT in the class -- the bed is through-cut**
+     Watercourse max **16.90 m³/s** · 26 cells · drop **27.1 m** · FILL along                  the bed: p50 **0.0000 m** · max **19.7992 m** ⇒ **NOT in the class -- the bed is through-cut**
+   LAKES: **33 bodies · 3613 km² = 13.38 % of 27006 km² of land** · {"Exorheic": 26, "Endorheic": 6, "Unresolved": 1} · OVER-DUG **4 of 25** (old cut class 4) · relabels 1 · `to_nothing` 0 · Unresolved inflow 25.1 m³/s · wc==2 cells 380972
+   B2 → A_c built and read in 501 s · 4 over-dug bodies
+   témoin and B2 ≥ 1 km² built and read in 812 s
+   CANYON body 3 · 1.49 km² (domain) · floor (3892,2310) · lake level 405.2 m · outlet (water) (3851,2336) · TRUE COL (3852,2337) · S at the col 0.0000 m/m · instrument: floor in the lake true · outlet in the lake false · col outside true
+      PRE (pre-incision): floor 2179.3 m · col 1730.5 m · PRE's own fill at the floor 0.0 m (depth below PRE's sill) · at the col 0.0 m
+      témoin C2/10 col       floor 272.6 m (breached 272.6) · col 294.5 m (breached 294.5) · fill above PRE at the floor Δ +0.0 m · lake at the floor none · the col is a WALL of trunk ≥ 10 · the floor is a FLOOR of trunk ≥ 10
+      B2 ≥ 1 km²             floor 296.3 m (breached 296.3) · col 295.0 m (breached 295.0) · fill above PRE at the floor Δ +0.0 m · lake at the floor none · the col is a WALL of trunk ≥ 10 · the floor is a FLOOR of trunk ≥ 10
+      B2 → A_c (the canyon)  floor 297.7 m (breached 405.2) · col 405.2 m (breached 405.2) · fill above PRE at the floor Δ +107.5 m · lake at the floor id 3, level 405.2 m · the col is a FLOOR of sub < 1 · the floor is a FLOOR of sub < 1
+   CANYON body 7 · 10.55 km² (domain) · floor (4588,3240) · lake level 787.6 m · outlet (water) (4551,3279) · TRUE COL (4551,3280) · S at the col 0.0205 m/m · instrument: floor in the lake true · outlet in the lake true · col outside true
+      PRE (pre-incision): floor 2321.7 m · col 1818.5 m · PRE's own fill at the floor 0.0 m (depth below PRE's sill) · at the col 0.0 m
+      témoin C2/10 col       floor 646.7 m (breached 646.7) · col 623.6 m (breached 623.6) · fill above PRE at the floor Δ +0.0 m · lake at the floor none · the col is a FLOOR of trunk ≥ 10 · the floor is a FLOOR of trunk ≥ 10
+      B2 ≥ 1 km²             floor 646.7 m (breached 646.7) · col 623.6 m (breached 623.6) · fill above PRE at the floor Δ +0.0 m · lake at the floor none · the col is a FLOOR of trunk ≥ 10 · the floor is a FLOOR of trunk ≥ 10
+      B2 → A_c (the canyon)  floor 647.0 m (breached 787.6) · col 787.6 m (breached 787.6) · fill above PRE at the floor Δ +140.6 m · lake at the floor id 7, level 787.6 m · the col is a FLOOR of sub < 1 · the floor is a FLOOR of trunk ≥ 10
+   CANYON body 13 · 15.37 km² (domain) · floor (2281,4563) · lake level 537.3 m · outlet (water) (2253,4494) · TRUE COL (2253,4495) · S at the col 0.0000 m/m · instrument: floor in the lake true · outlet in the lake true · col outside true
+      PRE (pre-incision): floor 1478.8 m · col 1620.1 m · PRE's own fill at the floor 0.0 m (depth below PRE's sill) · at the col 0.0 m
+      témoin C2/10 col       floor 328.4 m (breached 328.4) · col 970.2 m (breached 970.2) · fill above PRE at the floor Δ +0.0 m · lake at the floor none · the col is a WALL of trunk ≥ 10 · the floor is a FLOOR of trunk ≥ 10
+      B2 ≥ 1 km²             floor 328.4 m (breached 328.4) · col 771.8 m (breached 771.8) · fill above PRE at the floor Δ +0.0 m · lake at the floor none · the col is a WALL of sub 1–3 · the floor is a FLOOR of trunk ≥ 10
+      B2 → A_c (the canyon)  floor 329.0 m (breached 537.3) · col 537.3 m (breached 537.3) · fill above PRE at the floor Δ +208.3 m · lake at the floor id 13, level 537.3 m · the col is a WALL of sub < 1 · the floor is a FLOOR of trunk ≥ 10
+   CANYON body 14 · 41.97 km² (domain) · floor (1835,4562) · lake level 493.7 m · outlet (water) (1806,4579) · TRUE COL (1805,4580) · S at the col 0.0368 m/m · instrument: floor in the lake true · outlet in the lake true · col outside true
+      PRE (pre-incision): floor 1222.6 m · col 1017.9 m · PRE's own fill at the floor 0.0 m (depth below PRE's sill) · at the col 0.0 m
+      témoin C2/10 col       floor 134.2 m (breached 134.2) · col 119.6 m (breached 119.6) · fill above PRE at the floor Δ +0.0 m · lake at the floor none · the col is a FLOOR of trunk ≥ 10 · the floor is a FLOOR of trunk ≥ 10
+      B2 ≥ 1 km²             floor 134.2 m (breached 134.2) · col 119.6 m (breached 119.6) · fill above PRE at the floor Δ +0.0 m · lake at the floor none · the col is a FLOOR of trunk ≥ 10 · the floor is a FLOOR of trunk ≥ 10
+      B2 → A_c (the canyon)  floor 135.0 m (breached 493.7) · col 493.7 m (breached 493.7) · fill above PRE at the floor Δ +358.7 m · lake at the floor id 14, level 493.7 m · the col is a FLOOR of trunk ≥ 10 · the floor is a FLOOR of trunk ≥ 10
+==========  end Finding 127-C . 1339.1 s  ==========
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 1339.30s

@@ -123,6 +123,66 @@ pub struct ValleyConstruction {
     /// smoothed. **PROXY**.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub smooth_w: Option<f32>,
+    /// **ADR Finding 127-B — the off-grid tracé.** `None` = Findings 120–126: every trunk polyline is
+    /// its D8 cell chain. `Some(t)`: the MEDIAN LINE of each segment with `a_min_km2 ≤ A <
+    /// t.below_km2` is retraced by continuous steepest descent on the INPUT field (interpolated by
+    /// `t.interp`), half a cell per step, from the segment's source down to the entry of its D8
+    /// receiver's corridor (± W/2). The accumulation, the junctions and the choice of trunks stay D8
+    /// (the concentration, Finding 112). Where the gradient is below `t.flat_slope` the step falls back
+    /// on the D8 path, declared and counted; a trace that reaches another corridor, the sea, or runs out
+    /// of steps keeps its D8 geometry, counted. Not Finding 113's snap (that moved an EXPORTED river
+    /// toward a thalweg): this replaces the skeleton's geometry before the construction digs, at a
+    /// continuous angle. **PROXY** (`flat_slope`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skeleton_trace: Option<SkeletonTrace>,
+}
+
+/// ADR Finding 127-B — the interpolant whose gradient the tracé descends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TraceInterp {
+    /// Catmull-Rom bicubic (Keys, a = −0.5), with its analytic gradient.
+    Bicubic,
+    /// Bilinear: its gradient is piecewise constant per cell — the negative control (axis artefacts).
+    Bilinear,
+}
+
+/// ADR Finding 127-B — the tracé's parameters.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SkeletonTrace {
+    pub interp: TraceInterp,
+    /// The retraced segments: `A < below_km2` (km², domain). DECISION (Finding 126: the 1–10 km²
+    /// sub-valleys carry B2's R8).
+    pub below_km2: f32,
+    /// Below this slope (m/m) a step falls back on the D8 path. **PROXY**.
+    pub flat_slope: f32,
+}
+
+impl SkeletonTrace {
+    /// Finding 127's setting: the 1–10 km² segments, a 1 m/km flat threshold.
+    pub fn f127(interp: TraceInterp) -> Self {
+        Self { interp, below_km2: 10.0, flat_slope: 1e-3 }
+    }
+}
+
+/// ADR Finding 127-B — what the tracé did.
+#[derive(Clone, Debug, Default)]
+pub struct TraceStats {
+    /// Segments retraced (≥ 2 own cells below `below_km2`).
+    pub segments: usize,
+    /// ... that entered their D8 receiver's corridor first (kept).
+    pub same_receiver: usize,
+    /// ... that entered ANOTHER line's corridor, or the sea, first (their D8 geometry kept).
+    pub other_receiver: usize,
+    /// ... that ran out of steps (their D8 geometry kept).
+    pub lost: usize,
+    /// Continuous half-cell steps, and D8 fallback steps on flats (all retraced segments).
+    pub steps: usize,
+    pub flat_steps: usize,
+    /// Every traced sample's distance to its own D8 path, in W of the nearest D8 cell (kept segments).
+    pub dev_w: Vec<f32>,
+    /// DIAGNOSTIC (Finding 127-B0): every retraced path as the descent drew it, whatever its outcome
+    /// (`true` = it reached its own receiver and was kept). Nothing reads it to build.
+    pub paths: Vec<(bool, Vec<(f32, f32)>)>,
 }
 
 /// ADR Finding 124-B1 — the wall's profile and its texture. Every value is a **PROXY**.
@@ -138,12 +198,20 @@ pub struct WallProfile {
     pub detail_radius_m: f32,
     /// Gain of the detail put back on the wall (1 = the replaced field's own detail). PROXY.
     pub detail_gain: f32,
+    /// **ADR Finding 127-A — bruit ↔ pied, the foot clause.** `None` = Findings 124–126: the detail
+    /// is put back on the whole wall, foot included (Finding 126-C: under B1 the teeth live in the
+    /// concave foot, 89.6 % of their mouths). `Some(τ)`: the detail's amplitude is ZERO on the foot
+    /// (`u < foot_m`), FULL beyond `u = (1 + τ)·foot_m`, with a smoothstep between — the transition
+    /// is declared as a fraction τ of the foot's own length. With `foot_m` 0 (no foot) it is a no-op.
+    /// **PROXY** (τ).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub foot_quiet: Option<f32>,
 }
 
 impl WallProfile {
     /// Finding 124's first setting: a 300 m foot, a 20 m crest, the detail below 500 m at gain 1.
     pub fn f124() -> Self {
-        Self { foot_m: 300.0, crest_m: 20.0, detail_radius_m: 500.0, detail_gain: 1.0 }
+        Self { foot_m: 300.0, crest_m: 20.0, detail_radius_m: 500.0, detail_gain: 1.0, foot_quiet: None }
     }
 }
 
@@ -174,6 +242,7 @@ impl ValleyConstruction {
             width_age_gamma: None,
             wall_sea_floor_m: None,
             smooth_w: None,
+            skeleton_trace: None,
         }
     }
 
@@ -213,6 +282,8 @@ pub struct Skeleton {
     /// Smoothed, densified trunk polylines: (x, y) in continuous cell units (cell centres at
     /// +0.5, UNWRAPPED along each line), floor altitude (m), half floor width (m).
     pub polylines: Vec<Vec<(f32, f32, f32, f32)>>,
+    /// ADR Finding 127-B — what the off-grid tracé did (`None` when it is off).
+    pub trace_stats: Option<TraceStats>,
 }
 
 impl Skeleton {
@@ -390,56 +461,23 @@ pub fn skeleton(
             raw_lines.push(line);
         }
     }
-    let polylines = raw_lines
-        .iter()
-        .map(|line| {
-            // unwrap the torus along the line
-            let mut pts: Vec<(f32, f32, f32, f32)> = Vec::with_capacity(line.len());
-            let (mut px, mut py) = (0f32, 0f32);
-            for (i, &c) in line.iter().enumerate() {
-                let (mut x, mut y) = ((c % w) as f32 + 0.5, (c / w) as f32 + 0.5);
-                if i > 0 {
-                    while x - px > w as f32 / 2.0 {
-                        x -= w as f32;
-                    }
-                    while px - x > w as f32 / 2.0 {
-                        x += w as f32;
-                    }
-                    while y - py > h as f32 / 2.0 {
-                        y -= h as f32;
-                    }
-                    while py - y > h as f32 / 2.0 {
-                        y += h as f32;
-                    }
-                }
-                px = x;
-                py = y;
-                let zf = base[c] + vc.age_k * chi[c];
-                pts.push((x, y, zf, 0.5 * vc.width_m(area_km2[c])));
-            }
-            let sm = smooth_positions(pts, line, &area_km2, vc, cell_m);
-            // densify to ≤ 0.5 cell between samples
-            let mut dense = Vec::with_capacity(sm.len() * 2);
-            for i in 0..sm.len() {
-                dense.push(sm[i]);
-                if i + 1 < sm.len() {
-                    let (a, b) = (sm[i], sm[i + 1]);
-                    let len = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
-                    let steps = (len / 0.5).ceil() as usize;
-                    for s in 1..steps {
-                        let t = s as f32 / steps as f32;
-                        dense.push((
-                            a.0 + t * (b.0 - a.0),
-                            a.1 + t * (b.1 - a.1),
-                            a.2 + t * (b.2 - a.2),
-                            a.3 + t * (b.3 - a.3),
-                        ));
-                    }
-                }
-            }
-            dense
-        })
-        .collect();
+    let (polylines, trace_stats) = match vc.skeleton_trace {
+        None => (
+            raw_lines
+                .iter()
+                .map(|line| {
+                    let pts = line_samples(line, w, h, &base, &chi, &area_km2, vc);
+                    densify(smooth_positions(pts, line, &area_km2, vc, cell_m))
+                })
+                .collect(),
+            None,
+        ),
+        Some(tr) => {
+            let (p, st) =
+                traced_polylines(&raw_lines, field, ss, cell_m, &base, &chi, &area_km2, vc, tr);
+            (p, Some(st))
+        }
+    };
     Skeleton {
         width: w,
         height: h,
@@ -449,7 +487,372 @@ pub fn skeleton(
         base_alt_m: base,
         trunk,
         polylines,
+        trace_stats,
     }
+}
+
+/// A trunk line's samples: its D8 cells UNWRAPPED along the torus (cell centres at +0.5), each with
+/// its floor altitude (m) and half floor width (m).
+fn line_samples(
+    line: &[usize],
+    w: usize,
+    h: usize,
+    base: &[f32],
+    chi: &[f32],
+    area_km2: &[f32],
+    vc: &ValleyConstruction,
+) -> Vec<(f32, f32, f32, f32)> {
+    let mut pts: Vec<(f32, f32, f32, f32)> = Vec::with_capacity(line.len());
+    let (mut px, mut py) = (0f32, 0f32);
+    for (i, &c) in line.iter().enumerate() {
+        let (mut x, mut y) = ((c % w) as f32 + 0.5, (c / w) as f32 + 0.5);
+        if i > 0 {
+            while x - px > w as f32 / 2.0 {
+                x -= w as f32;
+            }
+            while px - x > w as f32 / 2.0 {
+                x += w as f32;
+            }
+            while y - py > h as f32 / 2.0 {
+                y -= h as f32;
+            }
+            while py - y > h as f32 / 2.0 {
+                y += h as f32;
+            }
+        }
+        px = x;
+        py = y;
+        let zf = base[c] + vc.age_k * chi[c];
+        pts.push((x, y, zf, 0.5 * vc.width_m(area_km2[c])));
+    }
+    pts
+}
+
+/// Densify a polyline to ≤ 0.5 cell between samples (linear in position, floor and width).
+fn densify(sm: Vec<(f32, f32, f32, f32)>) -> Vec<(f32, f32, f32, f32)> {
+    let mut dense = Vec::with_capacity(sm.len() * 2);
+    for i in 0..sm.len() {
+        dense.push(sm[i]);
+        if i + 1 < sm.len() {
+            let (a, b) = (sm[i], sm[i + 1]);
+            let len = ((b.0 - a.0).powi(2) + (b.1 - a.1).powi(2)).sqrt();
+            let steps = (len / 0.5).ceil() as usize;
+            for s in 1..steps {
+                let t = s as f32 / steps as f32;
+                dense.push((
+                    a.0 + t * (b.0 - a.0),
+                    a.1 + t * (b.1 - a.1),
+                    a.2 + t * (b.2 - a.2),
+                    a.3 + t * (b.3 - a.3),
+                ));
+            }
+        }
+    }
+    dense
+}
+
+/// ADR Finding 127-B — the value (m) and gradient (m/m) of `zm` (metres) at continuous cell
+/// coordinates `(x, y)` (cell centres at +0.5), on the torus.
+pub fn interp_grad(
+    zm: &[f32],
+    w: usize,
+    h: usize,
+    cell_m: f32,
+    how: TraceInterp,
+    x: f32,
+    y: f32,
+) -> (f32, f32, f32) {
+    let at = |ix: i64, iy: i64| {
+        zm[iy.rem_euclid(h as i64) as usize * w + ix.rem_euclid(w as i64) as usize]
+    };
+    let (fx, fy) = (x - 0.5, y - 0.5);
+    let (x0, y0) = (fx.floor(), fy.floor());
+    let (tx, ty) = (fx - x0, fy - y0);
+    let (ix, iy) = (x0 as i64, y0 as i64);
+    match how {
+        TraceInterp::Bilinear => {
+            let (z00, z10, z01, z11) = (at(ix, iy), at(ix + 1, iy), at(ix, iy + 1), at(ix + 1, iy + 1));
+            let v = (z00 * (1.0 - tx) + z10 * tx) * (1.0 - ty) + (z01 * (1.0 - tx) + z11 * tx) * ty;
+            let gx = ((z10 - z00) * (1.0 - ty) + (z11 - z01) * ty) / cell_m;
+            let gy = ((z01 - z00) * (1.0 - tx) + (z11 - z10) * tx) / cell_m;
+            (v, gx, gy)
+        }
+        TraceInterp::Bicubic => {
+            let cubic = |t: f32| -> ([f32; 4], [f32; 4]) {
+                let (t2, t3) = (t * t, t * t * t);
+                (
+                    [
+                        0.5 * (-t3 + 2.0 * t2 - t),
+                        0.5 * (3.0 * t3 - 5.0 * t2 + 2.0),
+                        0.5 * (-3.0 * t3 + 4.0 * t2 + t),
+                        0.5 * (t3 - t2),
+                    ],
+                    [
+                        0.5 * (-3.0 * t2 + 4.0 * t - 1.0),
+                        0.5 * (9.0 * t2 - 10.0 * t),
+                        0.5 * (-9.0 * t2 + 8.0 * t + 1.0),
+                        0.5 * (3.0 * t2 - 2.0 * t),
+                    ],
+                )
+            };
+            let ((wx, dwx), (wy, dwy)) = (cubic(tx), cubic(ty));
+            let (mut v, mut gx, mut gy) = (0f32, 0f32, 0f32);
+            for (j, (&wyj, &dwyj)) in wy.iter().zip(&dwy).enumerate() {
+                for (i, (&wxi, &dwxi)) in wx.iter().zip(&dwx).enumerate() {
+                    let z = at(ix - 1 + i as i64, iy - 1 + j as i64);
+                    v += wxi * wyj * z;
+                    gx += dwxi * wyj * z;
+                    gy += wxi * dwyj * z;
+                }
+            }
+            (v, gx / cell_m, gy / cell_m)
+        }
+    }
+}
+
+enum Outcome {
+    Same,
+    Other,
+    Lost,
+}
+
+/// One retraced line: its polyline, its outcome (`None` = not retraced), continuous steps, flat
+/// steps, and its samples' deviations from its D8 path (in W).
+type Traced = (Vec<(f32, f32, f32, f32)>, Option<Outcome>, usize, usize, Vec<f32>, Vec<(f32, f32)>);
+
+/// ADR Finding 127-B — the polylines with every `a_min`–`below_km2` segment's median line retraced
+/// off the D8 lattice, and what the tracé did.
+#[allow(clippy::too_many_arguments)]
+fn traced_polylines(
+    raw_lines: &[Vec<usize>],
+    field: &GridF32,
+    ss: &SteinSteinParams,
+    cell_m: f32,
+    base: &[f32],
+    chi: &[f32],
+    area_km2: &[f32],
+    vc: &ValleyConstruction,
+    tr: SkeletonTrace,
+) -> (Vec<Vec<(f32, f32, f32, f32)>>, TraceStats) {
+    use rayon::prelude::*;
+    use std::collections::HashSet;
+    let (w, h) = (field.width, field.height);
+    let n = w * h;
+    let zm: Vec<f32> = field.data.par_iter().map(|&v| c1_altitude_norm_to_metres(v, ss)).collect();
+    let sea_m = c1_altitude_norm_to_metres(C1_SEA_LEVEL_NORM, ss);
+    // the owner of every trunk cell: the first line to visit it (a later line ENDS on it: a junction)
+    let mut owner = vec![u32::MAX; n];
+    for (li, l) in raw_lines.iter().enumerate() {
+        for &c in l {
+            if owner[c] == u32::MAX {
+                owner[c] = li as u32;
+            }
+        }
+    }
+    // the junction a line ends on: (the owning line, the index of that cell in it)
+    let parent: Vec<Option<(u32, u32)>> = raw_lines
+        .iter()
+        .enumerate()
+        .map(|(li, l)| {
+            let last = *l.last().expect("a line has ≥ 2 cells");
+            let o = owner[last];
+            (o != li as u32).then(|| {
+                let j = raw_lines[o as usize]
+                    .iter()
+                    .position(|&c| c == last)
+                    .expect("the owner holds its cell");
+                (o, j as u32)
+            })
+        })
+        .collect();
+    let d8_poly = |line: &[usize]| {
+        let pts = line_samples(line, w, h, base, chi, area_km2, vc);
+        densify(smooth_positions(pts, line, area_km2, vc, cell_m))
+    };
+    let torus = |a: f32, b: f32, len: usize| -> f32 {
+        let mut d = (a - b).rem_euclid(len as f32);
+        if d > len as f32 / 2.0 {
+            d -= len as f32;
+        }
+        d
+    };
+    let near = |c: usize, px: f32, py: f32| -> (f32, f32) {
+        let (cx, cy) = ((c % w) as f32 + 0.5, (c / w) as f32 + 0.5);
+        (px + torus(cx, px, w), py + torus(cy, py, h))
+    };
+    let results: Vec<Traced> = raw_lines
+        .par_iter()
+        .enumerate()
+        .map(|(li, line)| {
+            let me = li as u32;
+            let own = |c: usize| owner[c] == me;
+            let k_end = line.iter().take_while(|&&c| own(c) && area_km2[c] < tr.below_km2).count();
+            if k_end < 2 {
+                return (d8_poly(line), None, 0, 0, Vec::new(), Vec::new());
+            }
+            // the receiver: this line's own continuation (A reaches below_km2), the line it joins,
+            // or its end (a terminal, the sea)
+            let recv_own = k_end < line.len() && own(line[k_end]);
+            let recv_parent = if recv_own { None } else { parent[li].map(|(p, _)| p) };
+            let prefix: HashSet<usize> = line[..k_end].iter().copied().collect();
+            let upstream = |mut l: u32| -> bool {
+                for _ in 0..100_000 {
+                    match parent[l as usize] {
+                        Some((p, j)) if p == me => return (j as usize) < k_end,
+                        Some((p, _)) => l = p,
+                        None => return false,
+                    }
+                }
+                false
+            };
+            let c0 = line[0];
+            let mut p = ((c0 % w) as f32 + 0.5, (c0 / w) as f32 + 0.5);
+            let mut pts: Vec<(f32, f32)> = vec![p];
+            let (mut prog, mut steps, mut flat) = (0usize, 0usize, 0usize);
+            let mut dev: Vec<f32> = Vec::new();
+            let max_steps = 16 * k_end + 64;
+            let r_max = 6i64;
+            let last = line[line.len() - 1];
+            let outcome = loop {
+                if steps + flat > max_steps {
+                    break Outcome::Lost;
+                }
+                let (cx, cy) = (p.0.rem_euclid(w as f32), p.1.rem_euclid(h as f32));
+                let (ix, iy) = (cx.floor() as i64, cy.floor() as i64);
+                let (mut hit_recv, mut hit_other) = (false, false);
+                for dy in -r_max..=r_max {
+                    for dx in -r_max..=r_max {
+                        let c = (iy + dy).rem_euclid(h as i64) as usize * w
+                            + (ix + dx).rem_euclid(w as i64) as usize;
+                        let o = owner[c];
+                        if o == u32::MAX || (o == me && prefix.contains(&c)) {
+                            continue;
+                        }
+                        let (ccx, ccy) = ((c % w) as f32 + 0.5, (c / w) as f32 + 0.5);
+                        let (ddx, ddy) = (torus(cx, ccx, w), torus(cy, ccy, h));
+                        if (ddx * ddx + ddy * ddy).sqrt() * cell_m > 0.5 * vc.width_m(area_km2[c]) {
+                            continue;
+                        }
+                        if (recv_own && o == me) || recv_parent == Some(o) {
+                            hit_recv = true;
+                        } else if o != me && !upstream(o) {
+                            hit_other = true;
+                        }
+                    }
+                }
+                if hit_recv {
+                    break Outcome::Same;
+                }
+                if hit_other && steps + flat >= 2 {
+                    break Outcome::Other;
+                }
+                let (zp, gx, gy) = interp_grad(&zm, w, h, cell_m, tr.interp, cx, cy);
+                if !recv_own && recv_parent.is_none() {
+                    // the end of a line with no receiver: its terminal cell, or the sea
+                    let (lx, ly) = near(last, p.0, p.1);
+                    let dl = ((lx - p.0).powi(2) + (ly - p.1).powi(2)).sqrt() * cell_m;
+                    if zp <= sea_m || dl <= (0.5 * vc.width_m(area_km2[last])).max(cell_m) {
+                        break Outcome::Same;
+                    }
+                } else if zp <= sea_m {
+                    break Outcome::Other;
+                }
+                // progress on the own D8 prefix: the nearest of its next cells
+                let hi = (prog + 40).min(k_end);
+                let (mut bj, mut bd) = (prog, f32::INFINITY);
+                for (j, &c) in line[prog..hi].iter().enumerate() {
+                    let (qx, qy) = near(c, p.0, p.1);
+                    let d = (qx - p.0).powi(2) + (qy - p.1).powi(2);
+                    if d < bd {
+                        bd = d;
+                        bj = prog + j;
+                    }
+                }
+                prog = bj;
+                dev.push(bd.sqrt() * cell_m / vc.width_m(area_km2[line[prog]]).max(1e-3));
+                let gn = (gx * gx + gy * gy).sqrt();
+                if gn < tr.flat_slope {
+                    // a flat: one step along the D8 path, onto the prefix cell after the nearest one
+                    let j = (prog + 1).min(k_end - 1);
+                    p = near(line[j], p.0, p.1);
+                    pts.push(p);
+                    prog = j;
+                    flat += 1;
+                    if j == k_end - 1 {
+                        break Outcome::Same; // the D8 path's next cell IS the receiver
+                    }
+                    continue;
+                }
+                p = (p.0 - 0.5 * gx / gn, p.1 - 0.5 * gy / gn);
+                pts.push(p);
+                steps += 1;
+            };
+            match outcome {
+                Outcome::Same => {
+                    // floor and width by arclength FRACTION along the D8 prefix (monotone; both ends
+                    // keep their D8 values)
+                    let d8s = line_samples(&line[..k_end], w, h, base, chi, area_km2, vc);
+                    let cum = |q: &[(f32, f32)]| -> Vec<f32> {
+                        let mut a = vec![0f32; q.len()];
+                        for i in 1..q.len() {
+                            a[i] = a[i - 1]
+                                + ((q[i].0 - q[i - 1].0).powi(2) + (q[i].1 - q[i - 1].1).powi(2))
+                                    .sqrt();
+                        }
+                        a
+                    };
+                    let a8 = cum(&d8s.iter().map(|s| (s.0, s.1)).collect::<Vec<_>>());
+                    let at = cum(&pts);
+                    let l8 = *a8.last().expect("≥ 2 samples");
+                    let lt = at.last().copied().unwrap_or(0.0).max(1e-6);
+                    let mut out: Vec<(f32, f32, f32, f32)> = Vec::with_capacity(pts.len() + line.len());
+                    for (i, q) in pts.iter().enumerate() {
+                        let s = at[i] / lt * l8;
+                        let k = a8.partition_point(|&v| v <= s).clamp(1, a8.len() - 1);
+                        let t = ((s - a8[k - 1]) / (a8[k] - a8[k - 1]).max(1e-6)).clamp(0.0, 1.0);
+                        let (za, zb) = (d8s[k - 1], d8s[k]);
+                        out.push((q.0, q.1, za.2 + t * (zb.2 - za.2), za.3 + t * (zb.3 - za.3)));
+                    }
+                    let end = *out.last().expect("a trace has a sample");
+                    let mut tail = if recv_own {
+                        let rest = &line[k_end..];
+                        let rs = line_samples(rest, w, h, base, chi, area_km2, vc);
+                        smooth_positions(rs, rest, area_km2, vc, cell_m)
+                    } else {
+                        line_samples(&line[line.len() - 1..], w, h, base, chi, area_km2, vc)
+                    };
+                    let sx = end.0 + torus(tail[0].0, end.0, w) - tail[0].0;
+                    let sy = end.1 + torus(tail[0].1, end.1, h) - tail[0].1;
+                    for q in &mut tail {
+                        q.0 += sx;
+                        q.1 += sy;
+                    }
+                    out.extend(tail);
+                    (densify(out), Some(Outcome::Same), steps, flat, dev, pts)
+                }
+                o => (d8_poly(line), Some(o), steps, flat, Vec::new(), pts),
+            }
+        })
+        .collect();
+    let mut st = TraceStats::default();
+    let mut polys = Vec::with_capacity(results.len());
+    for (poly, o, steps, flat, dev, path) in results {
+        polys.push(poly);
+        let Some(o) = o else { continue };
+        st.segments += 1;
+        st.steps += steps;
+        st.flat_steps += flat;
+        st.paths.push((matches!(o, Outcome::Same), path));
+        match o {
+            Outcome::Same => {
+                st.same_receiver += 1;
+                st.dev_w.extend(dev);
+            }
+            Outcome::Other => st.other_receiver += 1,
+            Outcome::Lost => st.lost += 1,
+        }
+    }
+    (polys, st)
 }
 
 /// The moving average of a trunk line's POSITIONS (floor altitude and width untouched). `line` is
@@ -569,6 +972,16 @@ fn box_blur_torus(z: &[f32], w: usize, h: usize, r: i64) -> Vec<f32> {
         out
     };
     pass(&pass(z, true), false)
+}
+
+/// ADR Finding 127-A -- the detail's weight at `u` metres beyond the floor edge: 0 on the foot
+/// (`u < foot_m`), 1 beyond `(1 + tau)·foot_m`, a smoothstep between. No foot (`foot_m ≤ 0`): 1.
+fn foot_weight(u: f32, foot_m: f32, tau: f32) -> f32 {
+    if foot_m <= 0.0 {
+        return 1.0;
+    }
+    let t = ((u - foot_m) / (tau.max(1e-6) * foot_m)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// What the carve did, per cell.
@@ -696,7 +1109,7 @@ pub fn carve(
         }
         let me = who[c] as usize;
         let (x, y) = ((c % w) as i32, (c / w) as i32);
-        let (_, mut v, mut on_floor, _) = geo(me, c);
+        let (_, mut v, mut on_floor, mut u_sel) = geo(me, c);
         // continuity across the line where two DIFFERENT valleys meet
         for dy in -1i32..=1 {
             for dx in -1i32..=1 {
@@ -704,10 +1117,11 @@ pub fn carve(
                     + (x + dx).rem_euclid(w as i32) as usize;
                 let o = who[nb];
                 if o != u32::MAX && line_of[o as usize] != line_of[me] {
-                    let (_, vv, f, _) = geo(o as usize, c);
+                    let (_, vv, f, uu) = geo(o as usize, c);
                     if vv < v {
                         v = vv;
                         on_floor = f;
+                        u_sel = uu;
                     }
                 }
             }
@@ -720,7 +1134,9 @@ pub fn carve(
             let k = p.crest_m.max(1e-3);
             v -= k * (1.0 + (-(zfield[c] - v) / k).exp()).ln();
             if let Some(t) = &trend {
-                v += p.detail_gain * (zfield[c] - t[c]);
+                // ADR Finding 127-A -- bruit ↔ pied: no detail on the concave foot
+                let quiet = p.foot_quiet.map_or(1.0, |tau| foot_weight(u_sel, p.foot_m, tau));
+                v += p.detail_gain * quiet * (zfield[c] - t[c]);
             }
         }
         // ADR Finding 126-B -- mur ↔ mer: no WALL cell is laid below sea + ε
@@ -893,6 +1309,110 @@ mod tests {
                 assert!((a.0 - b.0).abs() < 1e-5 && (a.1 - b.1).abs() < 1e-4, "a straight line bent");
             }
         }
+    }
+
+    /// ADR Finding 127-A, rule 13 — the foot clause silences the detail on the concave foot only.
+    /// The weight is 0 on the foot, 1 beyond `(1 + τ)·foot`, monotone between. Negative control
+    /// first: with the clause the carve CHANGES some wall cells. It never raises a cell, and without
+    /// a foot (B1b's planar wall) it is a bit-exact no-op.
+    #[test]
+    fn the_foot_clause_silences_the_detail_on_the_foot_only() {
+        assert_eq!(foot_weight(0.0, 300.0, 0.5), 0.0);
+        assert_eq!(foot_weight(300.0, 300.0, 0.5), 0.0);
+        assert_eq!(foot_weight(450.0, 300.0, 0.5), 1.0);
+        assert_eq!(foot_weight(900.0, 300.0, 0.5), 1.0);
+        assert_eq!(foot_weight(10.0, 0.0, 0.5), 1.0, "no foot: full detail");
+        let mut prev = 0.0;
+        for i in 0..100 {
+            let v = foot_weight(250.0 + 3.0 * i as f32, 300.0, 0.5);
+            assert!(v >= prev, "the weight must be monotone");
+            prev = v;
+        }
+        let ss = SteinSteinParams::default();
+        let f = basin(&ss);
+        let mut vc = ValleyConstruction::f121(0.02, None);
+        vc.a_min_km2 = 0.5;
+        vc.smooth_m = 0.0;
+        let sk = skeleton(&f, &vc, &ss, 4.8);
+        let prof = WallProfile::f124();
+        let with = |wp: WallProfile| carve(&f, &sk, &ValleyConstruction { wall_profile: Some(wp), ..vc }, &ss);
+        let (loud, m0) = with(prof);
+        let (quiet, _) = with(WallProfile { foot_quiet: Some(0.5), ..prof });
+        let changed = (0..f.data.len())
+            .filter(|&k| m0.carved[k] && !m0.floor[k] && loud.data[k] != quiet.data[k])
+            .count();
+        assert!(changed > 0, "negative control: the clause must change the foot's walls ({changed})");
+        for k in 0..f.data.len() {
+            assert!(quiet.data[k] <= f.data[k], "cell {k} RAISED by the foot clause");
+        }
+        let planar = WallProfile { foot_m: 0.0, crest_m: 0.0, ..prof };
+        let (a, _) = with(planar);
+        let (b, _) = with(WallProfile { foot_quiet: Some(0.5), ..planar });
+        assert_eq!(a.data, b.data, "no foot: the clause must be a bit-exact no-op");
+    }
+
+    /// A rounded V valley whose axis runs at 22.5° (between two D8 directions) down to a sea, 192²
+    /// at 50 m: D8 draws its trunk as a staircase of E and SE steps.
+    fn oblique_valley(ss: &SteinSteinParams) -> GridF32 {
+        let n = 192usize;
+        let th = 22.5f32.to_radians();
+        let mut d = vec![0f32; n * n];
+        for y in 0..n {
+            for x in 0..n {
+                let (u, v) = (x as f32 - 16.0, y as f32 - 16.0);
+                let along = u * th.cos() + v * th.sin();
+                let across = -u * th.sin() + v * th.cos();
+                let m = if along > 150.0 {
+                    -30.0
+                } else {
+                    300.0 - 2.0 * along + 8.0 * (across * across + 9.0).sqrt()
+                };
+                d[y * n + x] = c1_metres_to_altitude_norm(m, ss);
+            }
+        }
+        GridF32 { width: n, height: n, data: d }
+    }
+
+    /// Per-cell-of-arclength chord angles of the longest polyline, degrees.
+    fn chord_angles(sk: &Skeleton) -> Vec<f32> {
+        let l = sk.polylines.iter().max_by_key(|l| l.len()).expect("a trunk");
+        let mut out = Vec::new();
+        let (mut i0, mut arc) = (0usize, 0f32);
+        for i in 1..l.len() {
+            arc += ((l[i].0 - l[i - 1].0).powi(2) + (l[i].1 - l[i - 1].1).powi(2)).sqrt();
+            if arc >= 1.0 {
+                out.push((l[i].1 - l[i0].1).atan2(l[i].0 - l[i0].0).to_degrees());
+                i0 = i;
+                arc = 0.0;
+            }
+        }
+        out
+    }
+
+    /// ADR Finding 127-B, rule 13 — the off-grid tracé leaves the D8 lattice and keeps its receiver.
+    /// On the 22.5° valley, every one-cell chord of the D8 trunk is at 0° or 45°, i.e. 22.5° off the
+    /// axis (the negative control). The traced trunk (bicubic, the whole line retraced) stays within
+    /// a few degrees of the axis, and every traced segment reaches its own receiver.
+    #[test]
+    fn the_trace_leaves_the_lattice_and_keeps_its_receiver() {
+        let ss = SteinSteinParams::default();
+        let f = oblique_valley(&ss);
+        let mut vc = ValleyConstruction::f121(0.02, None);
+        vc.a_min_km2 = 0.5;
+        vc.smooth_m = 0.0;
+        let dev = |a: &[f32]| a.iter().map(|&t| (t - 22.5).abs()).sum::<f32>() / a.len().max(1) as f32;
+        let d8 = skeleton(&f, &vc, &ss, 9.6);
+        assert!(d8.trace_stats.is_none(), "the tracé is off by default");
+        let a8 = chord_angles(&d8);
+        assert!(a8.len() > 40, "the trunk must be long ({})", a8.len());
+        assert!(dev(&a8) > 15.0, "negative control: D8 must sit on its lattice ({:.1}°)", dev(&a8));
+        let tr = SkeletonTrace { below_km2: 1.0e6, ..SkeletonTrace::f127(TraceInterp::Bicubic) };
+        let tk = skeleton(&f, &ValleyConstruction { skeleton_trace: Some(tr), ..vc }, &ss, 9.6);
+        let st = tk.trace_stats.as_ref().expect("the tracé's stats");
+        assert!(st.segments >= 1, "a segment must be retraced");
+        assert_eq!(st.same_receiver, st.segments, "every trace must reach its receiver: {st:?}");
+        let at = chord_angles(&tk);
+        assert!(dev(&at) < 8.0, "the tracé must leave the lattice ({:.1}°)", dev(&at));
     }
 
     /// ADR Finding 122-B, rule 13 — with `basin_base`, no constructed floor upstream of an inland

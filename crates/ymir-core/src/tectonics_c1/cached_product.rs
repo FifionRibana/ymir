@@ -882,9 +882,13 @@ mod tests {
         let tect = tectonic_key(7, 32, &init, &run, &closures);
         let vc = ValleyConstruction::new(F121_AGE_K, Some(0.1));
         let js = serde_json::to_value(vc).expect("serialisable");
-        for f in ["wall_profile", "width_age_gamma", "wall_sea_floor_m", "smooth_w"] {
+        for f in ["wall_profile", "width_age_gamma", "wall_sea_floor_m", "smooth_w", "skeleton_trace"] {
             assert!(js.get(f).is_none(), "the gated-off `{f}` is serialised: {js}");
         }
+        // ADR Finding 127 -- a gated field NESTED in the profile is skipped as well, so the key of
+        // every world built with `WallProfile::f124` (Findings 124-126) does not move
+        let wp = serde_json::to_value(WallProfile::f124()).expect("serialisable");
+        assert!(wp.get("foot_quiet").is_none(), "the gated-off `foot_quiet` is serialised: {wp}");
         let volc = VolcanismConfig::default();
         let key_of = |vc: ValleyConstruction| {
             let mut c = cfg.clone();

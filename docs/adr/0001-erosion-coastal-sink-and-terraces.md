@@ -18511,3 +18511,64 @@ of a deep floor: "intersection" refuted as the cause.** Look at the SILL, not th
 rate refuted, B1a ×8, the clause ×1.5, F38 → 0 and teeth ±5 % held; C held; the D1 floor ~0.45, D2 and
 D3's ×1.3 refuted, D3's teeth and skeleton held; E refuted; the metas held. **Gated, off, nothing
 promoted.**
+
+## Finding 127 — the foot clause returns B1's teeth to the profile's own; the off-grid tracé fails its calibration because the D8 tree it must keep is itself the lattice; the canyons are dammed by a floor, not dug
+
+**Units**: 1 cell = 48.8 m (domain); heights in metres. Benches: `tests/f126_coast.rs`, Finding 127's
+section. Report and raw outputs: `docs/reports/c1_continental_buoyancy/f127_foot_trace_sill/`. One
+clause and one method were built, **both gated and off; nothing promoted; mur ↔ mer ON everywhere**.
+Finding 126 and method rule 11c were committed (`8a5d1fc`); the guard reads 6 / 6 "= banc". This
+round's code is bit-neutral when off (a fresh build hashes to `a8d2d538d692c2f0`).
+
+**Rule 11c, applied.** "Tarboton": nothing found. "D∞": 5 hits, all about ROUTING.
+`FlowConfig::dinf` was tried and kept off (`probe_dinf_compare`): its trace re-quantised to D8, and
+its flat gradient was cardinal. No continuous skeleton tracé had been tried.
+
+**A — bruit ↔ pied (`WallProfile::foot_quiet`, τ = 0.5, PROXY)**: no detail on the concave foot,
+full beyond 1.5 × the foot, a smoothstep between. Permanent test
+`the_foot_clause_silences_the_detail_on_the_foot_only`. Two controls, both **bit-identical**: the
+témoin + mur ↔ mer hashes to the reference, and B1b (no foot) hashes the same with and without the
+clause (`bbfad1625373130b`).
+- **B1: teeth 4 805 → 1 986 (−58.7 %)**, the profile-alone level (B1a 2 130), with B1a's positions to
+  the percent (27.8 % of points at the foot).
+- Spurs stay at the base rate; R8 terrain moves +0.0002; no canyon; F38 holds; **σ +0.5 %**.
+- **B2 (A_c) + B1: teeth −25 %, σ +3.3 %, and the clause REVEALS a canyon** (rule 18): B2 → A_c's
+  canyon 3 returns (1.18 km², floor (3895, 2306)).
+- **⇒ bruit ↔ pied PROVED for the interaction**, with its costs measured. The profile's own +38 %
+  over the témoin is left.
+
+**B — the off-grid tracé (`ValleyConstruction::skeleton_trace`).** The median line of each 1–10 km²
+segment is retraced by continuous steepest descent on the input field (bicubic Catmull-Rom with its
+analytic gradient; bilinear as the control), half a cell per step. The D8 tree is kept: accumulation,
+junctions, trunks. A trace that enters another corridor, the sea, or runs out of steps keeps its D8
+geometry. Permanent test `the_trace_leaves_the_lattice_and_keeps_its_receiver` (a 22.5° valley: D8
+chords sit 22.5° off, the trace stays within 8°).
+- **B0, BLOCKING, on Finding 126's isotropic synthetics: FAIL.** The bicubic skeleton R8 at 1–3 km² is
+  0.974 / 0.574 / 0.110 / 0.111 at ρ 0.1 / 0.3 / 1 / 3, against the declared ≤ 0.08. **B1–B3 were not
+  run.**
+- **Where it fails: the constraint, not the interpolant.**
+  - Only 13 / 37 / 43 / 24 % of traces reach the receiver the D8 tree assigns them.
+  - On smooth terrain, 84 % enter another line's corridor: the D8 tree is itself the lattice.
+  - On rough terrain, 71 % are lost in the unbreached field's pits.
+  - The bilinear control does not separate (within 0.03).
+  - The traced paths themselves are mostly near-isotropic (0.04–0.18 at 1–3 km²).
+- **⇒ "a continuous geometry on the D8 tree" REFUTED at calibration.** The remaining candidate, a
+  continuous TREE, is routing, which Finding 112 warns trades the concentration: named, not built.
+
+**C — the canyons at their true col** (Finding 119's: the receiver of `Lake::outlet`). None
+pre-existed: PRE's fill is 0 at all four floors. **The floors are unchanged** across the témoin,
+B2 ≥ 1 km² and B2 → A_c (within 1 m for three). **The COL rises**:
+- body 7: 623.6 → 787.6 m; body 14: 119.6 → 493.7 m. Both cols lie BELOW the floor in the témoin, so
+  the valley drained there. Body 3 rises 294.5 → 405.2 m, and fails the instrument check.
+- The dam is a FLOOR (of a < 1 km² valley in two; in the trunk's band in one), still far below PRE: a
+  cell lowered LESS.
+- By the code: `carve` lays a cell from its NEAREST sample. A 0.1 km² tributary's floor rises about 11 m
+  per cell (χ grows by (A₀/A)^0.5·dx), so a trunk cell taken by such a sample is laid high.
+- Body 13 is a side spill; its dam is not located.
+- **⇒ "dug" and "a wall/rim barrage" are both refuted: dammed by a floor.** The *confluence clause* is
+  named, not built.
+
+**Predictions.** Mine: P0, P-A2 held; P-A1 narrowly refuted (−58.7 against −45 to −56 %); P-A3 and P-A4
+half; P-B0 and P-C refuted; B1–B3 unscored. The reviewer's: A's range narrowly refuted, its σ refuted
+in sign, its spurs and R8 held; B0 refuted; C's barrage count held but by a floor; C's 4th refuted.
+**Gated, off, nothing promoted.**

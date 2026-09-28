@@ -1625,3 +1625,557 @@ fn f126_rough() {
         eprintln!("   {label}: roughness ratio **{r:.3}** ({k2} sample cells)");
     }
 }
+
+// ════════════════════════════════ Finding 127 ════════════════════════════════
+//
+// The same file holds Finding 127's benches: they read Finding 126's instruments (the coast, the
+// buckets, the classes, the synthetics), which a second file would have to copy.
+//
+// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f127_b0 --nocapture
+//      cargo test -p ymir-core --release --test f126_coast -- --ignored f127_b12 --nocapture
+
+/// Finding 127's chord R8 by band, the band read at the NEAREST TRUNK CELL (≤ 3 cells) of the chord's
+/// middle sample — an off-grid sample would otherwise read a hillslope's area. Chords with no trunk
+/// cell within 3 cells are not counted.
+fn chord_r8_nt(sk: &Skeleton, chord: Chord) -> [(usize, f64, f64); NCLS] {
+    chord_r8_polys(sk, &sk.polylines, chord)
+}
+
+/// [`chord_r8_nt`] over ANY polylines, the band read on `sk`'s trunk cells.
+fn chord_r8_polys(sk: &Skeleton, polys: &[Vec<(f32, f32, f32, f32)>], chord: Chord) -> [(usize, f64, f64); NCLS] {
+    let (w, h) = (sk.width, sk.height);
+    let band_at = |mid: (f32, f32)| -> Option<usize> {
+        let (mx, my) = (mid.0.rem_euclid(w as f32), mid.1.rem_euclid(h as f32));
+        let (ix, iy) = (mx.floor() as i64, my.floor() as i64);
+        let mut best: Option<(f32, usize)> = None;
+        for dy in -3i64..=3 {
+            for dx in -3i64..=3 {
+                let c = (iy + dy).rem_euclid(h as i64) as usize * w + (ix + dx).rem_euclid(w as i64) as usize;
+                if !sk.trunk[c] {
+                    continue;
+                }
+                let d = ((dx as f32 + 0.5 - (mx - ix as f32)).powi(2) + (dy as f32 + 0.5 - (my - iy as f32)).powi(2)).sqrt();
+                if best.is_none_or(|(bd, _)| d < bd) {
+                    best = Some((d, c));
+                }
+            }
+        }
+        best.map(|(_, c)| band(sk.area_km2[c]) as usize)
+    };
+    let mut acc = [(0usize, 0f64, 0f64); NCLS];
+    let push = |a: (f32, f32), b: (f32, f32), mid: (f32, f32), acc: &mut [(usize, f64, f64); NCLS]| {
+        let (dx, dy) = ((b.0 - a.0) as f64, (b.1 - a.1) as f64);
+        if dx == 0.0 && dy == 0.0 {
+            return;
+        }
+        let Some(c) = band_at(mid) else { return };
+        let t = dy.atan2(dx);
+        acc[c].0 += 1;
+        acc[c].1 += (8.0 * t).cos();
+        acc[c].2 += (8.0 * t).sin();
+    };
+    for l in polys {
+        match chord {
+            Chord::Points(p) => {
+                let mut i = 0usize;
+                while i + p < l.len() {
+                    push((l[i].0, l[i].1), (l[i + p].0, l[i + p].1), (l[i + p / 2].0, l[i + p / 2].1), &mut acc);
+                    i += p;
+                }
+            }
+            Chord::Metres(m) => {
+                let step = m / sk.cell_m;
+                let (mut i0, mut arc) = (0usize, 0f32);
+                let mut arcs = vec![0f32];
+                for i in 1..l.len() {
+                    arc += ((l[i].0 - l[i - 1].0).powi(2) + (l[i].1 - l[i - 1].1).powi(2)).sqrt();
+                    arcs.push(arc);
+                    if arc - arcs[i0] >= step {
+                        let half = arcs[i0] + 0.5 * (arc - arcs[i0]);
+                        let mid = (i0..=i).find(|&j| arcs[j] >= half).unwrap_or(i);
+                        push((l[i0].0, l[i0].1), (l[i].0, l[i].1), (l[mid].0, l[mid].1), &mut acc);
+                        i0 = i;
+                    }
+                }
+            }
+        }
+    }
+    acc
+}
+
+fn r8_of(acc: &[(usize, f64, f64); NCLS], c: usize) -> f32 {
+    let (k, cr, ci) = acc[c];
+    if k < 40 { f32::NAN } else { ((cr * cr + ci * ci).sqrt() / k as f64) as f32 }
+}
+
+/// DIAGNOSTIC — the R8 of the traced PATHS themselves (all outcomes; and the kept ones), bands on the
+/// trunk cells: does the descent print its own lattice?
+fn paths_line(sk: &Skeleton) -> String {
+    let Some(st) = &sk.trace_stats else { return String::new() };
+    let conv = |keep: bool| -> Vec<Vec<(f32, f32, f32, f32)>> {
+        st.paths.iter().filter(|(k, _)| !keep || *k).map(|(_, p)| p.iter().map(|&(x, y)| (x, y, 0.0, 0.0)).collect()).collect()
+    };
+    let row = |polys: &[Vec<(f32, f32, f32, f32)>]| {
+        let a = chord_r8_polys(sk, polys, Chord::Points(8));
+        format!("3–10 **{:.3}** ({}) · 1–3 **{:.3}** ({})", r8_of(&a, 2), a[2].0, r8_of(&a, 3), a[3].0)
+    };
+    format!("the traced PATHS' own R8: all {} · kept only {}", row(&conv(false)), row(&conv(true)))
+}
+
+fn trace_row(sk: &Skeleton) -> String {
+    let Some(st) = &sk.trace_stats else { return "D8 (no tracé)".into() };
+    let mut dv = st.dev_w.clone();
+    dv.sort_by(f32::total_cmp);
+    let q = |p: f32| if dv.is_empty() { f32::NAN } else { dv[((dv.len() - 1) as f32 * p) as usize] };
+    format!(
+        "retraced {} · SAME receiver {} ({:.1} %) · other {} · lost {} · flat fallback {:.2} % of steps · deviation from D8 p50 {:.2} W / p90 {:.2} W",
+        st.segments,
+        st.same_receiver,
+        100.0 * st.same_receiver as f32 / st.segments.max(1) as f32,
+        st.other_receiver,
+        st.lost,
+        100.0 * st.flat_steps as f32 / (st.steps + st.flat_steps).max(1) as f32,
+        q(0.5),
+        q(0.9)
+    )
+}
+
+fn r8_line(sk: &Skeleton) -> String {
+    let (a8, am) = (chord_r8_nt(sk, Chord::Points(8)), chord_r8_nt(sk, Chord::Metres(200.0)));
+    (1..NCLS - 1)
+        .map(|c| format!("{} **{:.3}** / {:.3} ({})", CLS_NAME[c], r8_of(&a8, c), r8_of(&am, c), a8[c].0))
+        .collect::<Vec<_>>()
+        .join(" · ")
+}
+
+/// ADR Finding 127-B0 — the off-grid tracé's own calibration, BLOCKING: on Finding 126's isotropic
+/// synthetics, at the four roughnesses, the bicubic tracé must read a skeleton R8 ≤ 0.08 in the 1–3
+/// and 3–10 km² bands (8-point chords), where D8 reads 0.24–0.99. The bilinear tracé is the negative
+/// control (its gradient is piecewise constant per cell).
+#[test]
+#[ignore]
+fn f127_b0() {
+    use ymir_core::tectonics_c1::production_upscale::c1_metres_to_altitude_norm;
+    use ymir_core::tectonics_c1::valley_construction::{SkeletonTrace, TraceInterp};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 127-B0 . the off-grid tracé's calibration (blocking)  ==========");
+    eprintln!("   R8 by band: 8-pt chord **bold** / 200 m chord (8-pt chord count); band at the nearest trunk cell");
+    let base = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let b2 = ValleyConstruction { a_min_km2: 1.0, ..base };
+    let ns = 2048usize;
+    let cell_m = CELL_KM * 1000.0;
+    let dom_s = ns as f32 * CELL_KM;
+    let mut worst = 0f32;
+    for rho in [0.1f32, 0.3, 1.0, 3.0] {
+        let zm = synth_dome(ns, cell_m, rho, 0x9E37_79B9_7F4A_7C15);
+        let g = GridF32 { width: ns, height: ns, data: zm.iter().map(|&m| c1_metres_to_altitude_norm(m, &ss)).collect() };
+        eprintln!("\n   synthetic ρ = {rho}:");
+        for (label, vc) in [
+            ("D8 raw", ValleyConstruction { smooth_m: 0.0, ..b2 }),
+            ("D8 + 250 m (the existing)", b2),
+            ("TRACÉ bicubic", ValleyConstruction { skeleton_trace: Some(SkeletonTrace::f127(TraceInterp::Bicubic)), ..b2 }),
+            ("TRACÉ bilinear (neg. control)", ValleyConstruction { skeleton_trace: Some(SkeletonTrace::f127(TraceInterp::Bilinear)), ..b2 }),
+        ] {
+            let t = Instant::now();
+            let sk = skeleton(&g, &vc, &ss, dom_s);
+            eprintln!("      {label:<30} {} · {:.1} s", r8_line(&sk), t.elapsed().as_secs_f64());
+            if sk.trace_stats.is_some() {
+                eprintln!("      {:<30} {}", "", trace_row(&sk));
+                eprintln!("      {:<30} {}", "", paths_line(&sk));
+            }
+            if label.starts_with("TRACÉ bicubic") {
+                let a8 = chord_r8_nt(&sk, Chord::Points(8));
+                for c in [2usize, 3] {
+                    let v = r8_of(&a8, c);
+                    worst = worst.max(if v.is_nan() { f32::INFINITY } else { v });
+                }
+            }
+        }
+    }
+    eprintln!(
+        "\n   B0 VERDICT: the bicubic tracé's worst 1–3 / 3–10 km² R8 over the four roughnesses = {worst:.3} → {}",
+        if worst <= 0.08 { "**PASS** (≤ 0.08)" } else { "**FAIL** (> 0.08): STOP, no B1–B3" }
+    );
+    eprintln!("\n==========  end Finding 127-B0 . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// ADR Finding 127-B1 and B2 — the tracé on the real skeleton (B2 at 1 km²): its topology (the share
+/// of retraced segments that reach their D8 receiver first), its R8 against D1's floor, its deviation
+/// from the D8 path in W, its flat fallback. On S1 (the construction's input) and on PRE (Findings
+/// 125–126's instrument).
+#[test]
+#[ignore]
+fn f127_b12() {
+    use ymir_core::tectonics_c1::valley_construction::{SkeletonTrace, TraceInterp};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    eprintln!("\n==========  Finding 127-B1/B2 . the tracé on the real skeleton  ==========");
+    eprintln!("   R8 by band: 8-pt chord **bold** / 200 m chord (8-pt chord count); band at the nearest trunk cell");
+    let base = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let b2 = ValleyConstruction { a_min_km2: 1.0, ..base };
+    let s1 = build_field_seed(Knobs { no_incision: true, erosion_off: true, bathymetry_off: true, ..Knobs::passes(2) }, PSEED);
+    let pre = build_field_seed(Knobs::no_incision(), PSEED);
+    for (fname, f) in [("S1 (the construction's input)", &s1), ("PRE (Findings 125–126's instrument)", &pre)] {
+        eprintln!("\n   on {fname}:");
+        for (label, vc) in [
+            ("D8 raw", ValleyConstruction { smooth_m: 0.0, ..b2 }),
+            ("D8 + 250 m (the existing)", b2),
+            ("TRACÉ bicubic", ValleyConstruction { skeleton_trace: Some(SkeletonTrace::f127(TraceInterp::Bicubic)), ..b2 }),
+            ("TRACÉ bilinear (neg. control)", ValleyConstruction { skeleton_trace: Some(SkeletonTrace::f127(TraceInterp::Bilinear)), ..b2 }),
+        ] {
+            let t = Instant::now();
+            let sk = skeleton(f, &vc, &ss, DOMAIN_KM);
+            eprintln!("      {label:<30} {} · {:.0} s", r8_line(&sk), t.elapsed().as_secs_f64());
+            if sk.trace_stats.is_some() {
+                eprintln!("      {:<30} {}", "", trace_row(&sk));
+            }
+        }
+    }
+    eprintln!("\n==========  end Finding 127-B1/B2 . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// Finding 124's σ: the p50 over land (every 37th cell) of the 3×3 standard deviation of heights (m).
+fn sigma_p50(g: &GridF32, ss: &SteinSteinParams) -> f32 {
+    let (w, h) = (g.width, g.height);
+    let m = |k: usize| c1_altitude_norm_to_metres(g.data[k], ss);
+    let mut sig = Vec::new();
+    for k in (0..w * h).step_by(37) {
+        let (x, y) = (k % w, k / w);
+        if g.data[k] <= SEA || x == 0 || y == 0 || x + 1 >= w || y + 1 >= h {
+            continue;
+        }
+        let mut v = [0f32; 9];
+        let mut i = 0;
+        for dy in 0..3 {
+            for dx in 0..3 {
+                v[i] = m((y + dy - 1) * w + x + dx - 1);
+                i += 1;
+            }
+        }
+        let mu = v.iter().sum::<f32>() / 9.0;
+        sig.push((v.iter().map(|a| (a - mu) * (a - mu)).sum::<f32>() / 9.0).sqrt());
+    }
+    sig.sort_by(f32::total_cmp);
+    sig[sig.len() / 2]
+}
+
+/// ADR Finding 127-A — the foot clause (`WallProfile::foot_quiet`, τ = 0.5), mur ↔ mer ON everywhere.
+/// B1 and B2 (A_c) + B1 with and without it; the témoin; B1b with and without it (the control: no
+/// foot, so the clause must be a bit-exact no-op). Finding 126's instruments.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f127_a --nocapture
+#[test]
+#[ignore]
+fn f127_a() {
+    use ymir_core::tectonics_c1::bench_guard::field_hash;
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let n2m = c1_altitude_norm_to_metres(1.0, &ss) - c1_altitude_norm_to_metres(0.0, &ss);
+    let cell_km2 = CELL_KM * CELL_KM;
+    eprintln!("\n==========  Finding 127-A . bruit ↔ pied, the foot clause (mur ↔ mer ON everywhere)  ==========");
+    let pre = build_field_seed(Knobs::no_incision(), PSEED);
+    let (w, h) = (pre.width, pre.height);
+    let n = w * h;
+    let zpre: Vec<f32> = (0..n).map(|k| c1_altitude_norm_to_metres(pre.data[k], &ss)).collect();
+    let fill_pre = {
+        let cl = c1_climate_placed(&pre, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc = DrainageClimate { precip_internal: &cl.precipitation, temperature: &cl.temperature };
+        fill_field_m(&pre, &dcfg(), &ss, &dc, DOMAIN_KM).0
+    };
+    let prof = WallProfile::f124();
+    let quiet = WallProfile { foot_quiet: Some(0.5), ..prof };
+    let (foot_m, crest_zone_m) = (prof.foot_m, 3.0 * prof.crest_m);
+    let mm = Some(0.5f32);
+    let base = ValleyConstruction { wall_sea_floor_m: mm, ..ValleyConstruction::new(F121_AGE_K, Some(0.1)) };
+    let knobs = |vc: ValleyConstruction| Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) };
+    // ── the two bit-identity controls first ──
+    let t = Instant::now();
+    let ht = format!("{:016x}", field_hash(&build_field_seed(knobs(base), PSEED)));
+    eprintln!(
+        "   CONTROL 1 · témoin + mur ↔ mer: field hash {ht} (the definition's reference a8d2d538d692c2f0) → {}",
+        if ht == "a8d2d538d692c2f0" { "BIT-IDENTICAL (the clause never binds on a planar wall)" } else { "⚠ DIFFERS" }
+    );
+    let b1b = WallProfile { foot_m: 0.0, crest_m: 0.0, ..prof };
+    let ha = format!("{:016x}", field_hash(&build_field_seed(knobs(ValleyConstruction { wall_profile: Some(b1b), ..base }), PSEED)));
+    let hb = format!(
+        "{:016x}",
+        field_hash(&build_field_seed(knobs(ValleyConstruction { wall_profile: Some(WallProfile { foot_quiet: Some(0.5), ..b1b }), ..base }), PSEED))
+    );
+    eprintln!(
+        "   CONTROL 2 · B1b (no foot) + mur ↔ mer, without / with the foot clause: {ha} / {hb} → {} · {:.0} s",
+        if ha == hb { "BIT-IDENTICAL" } else { "⚠ DIFFERS" },
+        t.elapsed().as_secs_f64()
+    );
+    let worlds: [(&str, ValleyConstruction); 5] = [
+        ("témoin C2/10 col", base),
+        ("B1 + mm", ValleyConstruction { wall_profile: Some(prof), ..base }),
+        ("B1 + mm + FOOT CLAUSE", ValleyConstruction { wall_profile: Some(quiet), ..base }),
+        ("B2 (A_c) + B1 + mm", ValleyConstruction { a_min_km2: 0.1, wall_profile: Some(prof), ..base }),
+        ("B2 (A_c) + B1 + mm + FOOT CLAUSE", ValleyConstruction { a_min_km2: 0.1, wall_profile: Some(quiet), ..base }),
+    ];
+    let near = 2.0 / CELL_KM;
+    let mut g_t: Option<GridF32> = None;
+    let mut summary = Vec::new();
+    for (label, vc) in worlds {
+        let t = Instant::now();
+        let g = build_field_seed(knobs(vc), PSEED);
+        let secs = t.elapsed().as_secs_f64();
+        eprintln!("\n────────── {label} · build {secs:.0} s ──────────");
+        let sk = skeleton(&pre, &vc, &ss, DOMAIN_KM);
+        let (_, mk) = carve(&pre, &sk, &vc, &ss);
+        let cls = classes(&pre, &sk, &mk);
+        let tan = vc.wall_deg.to_radians().tan();
+        let sea: Vec<bool> = (0..n).map(|k| g.data[k] <= SEA).collect();
+        let dsea = dist_from(&sea, w, h);
+        let cw: Vec<bool> = (0..n).map(|k| mk.carved[k] && !mk.floor[k] && g.data[k] > SEA && dsea[k] <= 3).collect();
+        let dwall = dist_from(&cw, w, h);
+        drop((sea, dsea, cw));
+        let co = coast(&g, &ss, &dwall, near);
+        let nn = co.near.iter().filter(|&&b| b).count();
+        let (rn, rf) = (nn as f32 / co.l_near_km.max(1e-6), (co.mids.len() - nn) as f32 / co.l_far_km.max(1e-6));
+        let sig = sigma_p50(&g, &ss);
+        let r8w = r8_terrain(&g, &cls, 16);
+        let r8t = r8_terrain(g_t.as_ref().unwrap_or(&g), &cls, 16);
+        eprintln!(
+            "   COAST: {} spurs · near a coastal wall {nn} over {:.1} km → **{rn:.4} /km** · elsewhere **{rf:.4} /km** · σ p50 **{sig:.3} m** · \
+             R8 terrain {r8w:.4} (témoin on the same classes {r8t:.4})",
+            co.mids.len(),
+            co.l_near_km
+        );
+        let dd = c1_drainage_windowed(&g, None, &dcfg(), &ss, DOMAIN_KM);
+        let bre = breach_monotone(&g, &dd.flow.filled, &dd.lake_map, SEA, w, h);
+        let cl_e = c1_climate_placed(&g, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc_e = DrainageClimate { precip_internal: &cl_e.precipitation, temperature: &cl_e.temperature };
+        let (fill_del, _) = fill_field_m(&g, &dcfg(), &ss, &dc_e, DOMAIN_KM);
+        set_dump(true);
+        let _cr = f95_criteria(&g, &bre, &pre, DELIVERED_P50_M, &ss, &dcfg(), cell_km2, n2m, w, h);
+        set_dump(false);
+        let mut ce = 0usize;
+        for b in take_bodies() {
+            let floor = *b.cells.iter().min_by(|&&a, &&c| g.data[a].total_cmp(&g.data[c])).expect("body");
+            let dfill = fill_del[floor] - fill_pre[floor];
+            if over_dug_depression(dfill, b.rim) {
+                ce += 1;
+                eprintln!(
+                    "   OVER-DUG body {} · {:.2} km² (domain) · floor ({},{}) · Δfill {dfill:.1} m · class {}",
+                    b.id,
+                    b.km2,
+                    floor % w,
+                    floor / w,
+                    CLS_NAME.get(cls[floor] as usize).copied().unwrap_or("sea")
+                );
+            }
+        }
+        drop(fill_del);
+        let cl_b = c1_climate_placed(&bre, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc_b = DrainageClimate { precip_internal: &cl_b.precipitation, temperature: &cl_b.temperature };
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assemble_hd_drainage(&bre, &dc_b, Some(dd), &dcfg(), &ss, DOMAIN_KM, GEO_RATIO, None, false).drainage
+        }));
+        let mut row = format!("{label:<34} spurs {:>4} (near {rn:.4}/km) · σ {sig:.3} m · R8 terr {r8w:.4} · over-dug {ce}", co.mids.len());
+        match res {
+            Ok(dr) => {
+                let segs = &dr.rivers.segments;
+                let wall: Vec<bool> = (0..n).map(|k| mk.carved[k] && !mk.floor[k]).collect();
+                let wc: Vec<usize> = (0..segs.len())
+                    .filter(|&i| dr.segment_kind[i] == SegmentKind::Watercourse && segs[i].points.len() >= 2)
+                    .collect();
+                let teeth: Vec<usize> = wc
+                    .iter()
+                    .copied()
+                    .filter(|&i| {
+                        let p = &segs[i].points;
+                        p.iter().filter(|&&(x, y)| wall[y as usize * w + x as usize]).count() as f32 >= 0.8 * p.len() as f32
+                    })
+                    .collect();
+                let pts: Vec<&[(u32, u32)]> = wc.iter().map(|&i| own(&segs[i])).collect();
+                let bk = Buckets::new(&sk, 32);
+                let pos = |c: usize| bk.position(c, &zpre, tan, sk.cell_m, foot_m, crest_zone_m);
+                let (mut mouth, mut head, mut all) = ([0usize; 4], [0usize; 4], [0usize; 4]);
+                for &i in &teeth {
+                    let o = own(&segs[i]);
+                    let c = |p: &(u32, u32)| p.1 as usize * w + p.0 as usize;
+                    mouth[pos(c(o.last().expect("own")))] += 1;
+                    head[pos(c(&o[0]))] += 1;
+                    for p in o {
+                        all[pos(c(p))] += 1;
+                    }
+                }
+                let mut area = [0usize; 4];
+                for k in (0..n).step_by(13) {
+                    if wall[k] {
+                        area[pos(k)] += 1;
+                    }
+                }
+                eprintln!("   teeth {} · R8 network (chord 8) {:.4} · Finding 38 holds", teeth.len(), r8_chords(&pts, 8));
+                eprintln!("   C · teeth MOUTHS: {}", shares(&mouth));
+                eprintln!("   C · teeth HEADS:  {}", shares(&head));
+                eprintln!("   C · teeth POINTS: {}", shares(&all));
+                eprintln!("   C · the WALL's own area (the base rate): {}", shares(&area));
+                row += &format!(" · teeth {} · R8 net {:.4}", teeth.len(), r8_chords(&pts, 8));
+            }
+            Err(e) => {
+                let msg = e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
+                eprintln!("   ⛔ the HD assembly PANICKED: {}", msg.lines().next().unwrap_or(""));
+                row += " · ⛔ Finding 38";
+            }
+        }
+        row += &format!(" · build {secs:.0} s");
+        summary.push(row);
+        if g_t.is_none() {
+            g_t = Some(g);
+        }
+    }
+    eprintln!("\n   ── summary ──");
+    for s in summary {
+        eprintln!("   {s}");
+    }
+    eprintln!("\n==========  end Finding 127-A . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}
+
+/// ADR Finding 127-C — the four canyons of B2 → A_c at their TRUE col (Finding 119: the receiver of
+/// `Lake::outlet` on the assembly's own flow, not the last water cell), read in the canyons' world
+/// and at the same cells in the témoin and in B2 ≥ 1 km² (where no canyon forms). Planar worlds: the
+/// mur ↔ mer clause never binds there (a planar wall is ≥ its floor ≥ sea + base_m), so these are
+/// Finding 126's worlds bit for bit.
+///
+/// Run: cargo test -p ymir-core --release --test f126_coast -- --ignored f127_c --nocapture
+#[test]
+#[ignore]
+fn f127_c() {
+    use ymir_core::terrain::flow::{D8_DX, D8_DY, DIR_NONE};
+    let t0 = Instant::now();
+    let ss = SteinSteinParams::default();
+    let m = |g: &GridF32, k: usize| c1_altitude_norm_to_metres(g.data[k], &ss);
+    let n2m = c1_altitude_norm_to_metres(1.0, &ss) - c1_altitude_norm_to_metres(0.0, &ss);
+    let cell_km2 = CELL_KM * CELL_KM;
+    eprintln!("\n==========  Finding 127-C . the canyons at their true col  ==========");
+    let pre = build_field_seed(Knobs::no_incision(), PSEED);
+    let (w, h) = (pre.width, pre.height);
+    let fill_pre = {
+        let cl = c1_climate_placed(&pre, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc = DrainageClimate { precip_internal: &cl.precipitation, temperature: &cl.temperature };
+        fill_field_m(&pre, &dcfg(), &ss, &dc, DOMAIN_KM).0
+    };
+    let base = ValleyConstruction::new(F121_AGE_K, Some(0.1));
+    let recv = |dir: &[u8], c: usize| -> Option<usize> {
+        let d = dir[c];
+        if d == DIR_NONE {
+            return None;
+        }
+        let nx = ((c % w) as i32 + D8_DX[d as usize]).rem_euclid(w as i32) as usize;
+        let ny = ((c / w) as i32 + D8_DY[d as usize]).rem_euclid(h as i32) as usize;
+        Some(ny * w + nx)
+    };
+    // (world, its eroded field, breached field, lake map, lake levels by id, masks + classes)
+    struct Read {
+        g: GridF32,
+        bre: GridF32,
+        lake_map: Vec<u32>,
+        levels: std::collections::HashMap<u32, (f32, usize)>,
+        carved: Vec<bool>,
+        floor: Vec<bool>,
+        cls: Vec<u8>,
+        dir: Vec<u8>,
+        fill_del: Vec<f32>,
+    }
+    let read = |vc: ValleyConstruction| -> Read {
+        let g = build_field_seed(Knobs { valley: Some(vc), slope_floor_abs: Some(S_EQ), ..Knobs::passes(2) }, PSEED);
+        let sk = skeleton(&pre, &vc, &ss, DOMAIN_KM);
+        let (_, mk) = carve(&pre, &sk, &vc, &ss);
+        let cls = classes(&pre, &sk, &mk);
+        let dd = c1_drainage_windowed(&g, None, &dcfg(), &ss, DOMAIN_KM);
+        let bre = breach_monotone(&g, &dd.flow.filled, &dd.lake_map, SEA, w, h);
+        let cl_e = c1_climate_placed(&g, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc_e = DrainageClimate { precip_internal: &cl_e.precipitation, temperature: &cl_e.temperature };
+        let (fill_del, _) = fill_field_m(&g, &dcfg(), &ss, &dc_e, DOMAIN_KM);
+        let cl_b = c1_climate_placed(&bre, &ss, 45.0, 40.0, &PrecipParams::default(), DOMAIN_KM);
+        let dc_b = DrainageClimate { precip_internal: &cl_b.precipitation, temperature: &cl_b.temperature };
+        let dr = assemble_hd_drainage(&bre, &dc_b, Some(dd), &dcfg(), &ss, DOMAIN_KM, GEO_RATIO, None, false).drainage;
+        let levels = dr
+            .lakes
+            .iter()
+            .map(|l| (l.base.id, (l.level_m, l.base.outlet.1 as usize * w + l.base.outlet.0 as usize)))
+            .collect();
+        Read { g, bre, lake_map: dr.lake_map, levels, carved: mk.carved, floor: mk.floor, cls, dir: dr.flow.direction, fill_del }
+    };
+    let prim = |r: &Read, c: usize| -> String {
+        let what = if !r.carved[c] { "UNCARVED (the terrain: a rim)" } else if r.floor[c] { "a FLOOR" } else { "a WALL" };
+        format!("{what} of {}", CLS_NAME.get(r.cls[c] as usize).copied().unwrap_or("sea"))
+    };
+    // ── the canyons' world first: the bodies, their lakes, their outlets, their true cols ──
+    let t = Instant::now();
+    let ac = read(ValleyConstruction { a_min_km2: 0.1, ..base });
+    let dd_ac = c1_drainage_windowed(&ac.g, None, &dcfg(), &ss, DOMAIN_KM);
+    let bre_ac = breach_monotone(&ac.g, &dd_ac.flow.filled, &dd_ac.lake_map, SEA, w, h);
+    drop(dd_ac);
+    set_dump(true);
+    let _cr = f95_criteria(&ac.g, &bre_ac, &pre, DELIVERED_P50_M, &ss, &dcfg(), cell_km2, n2m, w, h);
+    set_dump(false);
+    drop(bre_ac);
+    let mut canyons: Vec<(u32, f32, usize)> = Vec::new(); // (id, km², floor)
+    for b in take_bodies() {
+        let floor = *b.cells.iter().min_by(|&&a, &&c| ac.g.data[a].total_cmp(&ac.g.data[c])).expect("body");
+        if over_dug_depression(ac.fill_del[floor] - fill_pre[floor], b.rim) {
+            canyons.push((b.id, b.km2, floor));
+        }
+    }
+    eprintln!("   B2 → A_c built and read in {:.0} s · {} over-dug bodies", t.elapsed().as_secs_f64(), canyons.len());
+    let t = Instant::now();
+    let tm = read(base);
+    let b1 = read(ValleyConstruction { a_min_km2: 1.0, ..base });
+    eprintln!("   témoin and B2 ≥ 1 km² built and read in {:.0} s", t.elapsed().as_secs_f64());
+    for (id, km2, floor) in canyons {
+        // the lake the assembly gave the body; `Lake::outlet` is its last WATER cell; the true col is
+        // that cell's receiver on the assembly's own flow (Finding 119)
+        let in_lake = |c: usize| ac.lake_map[c] == id;
+        let Some(&(level, outlet)) = ac.levels.get(&id) else {
+            eprintln!("\n   body {id}: not in the assembly's lakes (instrument check FAILED)");
+            continue;
+        };
+        let Some(col) = recv(&ac.dir, outlet) else {
+            eprintln!("\n   body {id}: its outlet has no receiver (instrument check FAILED)");
+            continue;
+        };
+        let below = recv(&ac.dir, col);
+        let s_col = below.map_or(f32::NAN, |r| {
+            let diag = (col % w != r % w) && (col / w != r / w);
+            (m(&ac.bre, col) - m(&ac.bre, r)) / (CELL_KM * 1000.0 * if diag { std::f32::consts::SQRT_2 } else { 1.0 })
+        });
+        eprintln!(
+            "\n   CANYON body {id} · {km2:.2} km² (domain) · floor ({},{}) · lake level {level:.1} m · outlet (water) ({},{}) · TRUE COL ({},{}) · S at the col {s_col:.4} m/m · instrument: floor in the lake {} · outlet in the lake {} · col outside {}",
+            floor % w,
+            floor / w,
+            outlet % w,
+            outlet / w,
+            col % w,
+            col / w,
+            in_lake(floor),
+            in_lake(outlet),
+            !in_lake(col)
+        );
+        eprintln!(
+            "      PRE (pre-incision): floor {:.1} m · col {:.1} m · PRE's own fill at the floor {:.1} m (depth below PRE's sill) · at the col {:.1} m",
+            m(&pre, floor),
+            m(&pre, col),
+            fill_pre[floor],
+            fill_pre[col]
+        );
+        for (wname, r) in [("témoin C2/10 col", &tm), ("B2 ≥ 1 km²", &b1), ("B2 → A_c (the canyon)", &ac)] {
+            let lid = r.lake_map[floor];
+            eprintln!(
+                "      {wname:<22} floor {:.1} m (breached {:.1}) · col {:.1} m (breached {:.1}) · fill above PRE at the floor Δ {:+.1} m · lake at the floor {} · the col is {} · the floor is {}",
+                m(&r.g, floor),
+                m(&r.bre, floor),
+                m(&r.g, col),
+                m(&r.bre, col),
+                r.fill_del[floor] - fill_pre[floor],
+                if lid == 0 { "none".to_string() } else { format!("id {lid}, level {:.1} m", r.levels.get(&lid).map_or(f32::NAN, |v| v.0)) },
+                prim(r, col),
+                prim(r, floor)
+            );
+        }
+    }
+    eprintln!("\n==========  end Finding 127-C . {:.1} s  ==========\n", t0.elapsed().as_secs_f64());
+}

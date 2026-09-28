@@ -1,0 +1,2 @@
+   C2 /10 col (défaut), fresh build: field hash a8d2d538d692c2f0 (reference a8d2d538d692c2f0)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 165.31s

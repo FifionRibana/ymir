@@ -1,0 +1,41 @@
+==========  Finding 127-B0 . the off-grid tracé's calibration (blocking)  ==========
+   R8 by band: 8-pt chord **bold** / 200 m chord (8-pt chord count); band at the nearest trunk cell
+   synthetic ρ = 0.1:
+      D8 raw                         trunk ≥ 10 **0.772** / 0.765 (899) · sub 3–10 **0.879** / 0.873 (9333) · sub 1–3 **0.986** / 0.985 (160614) · 3.8 s
+      D8 + 250 m (the existing)      trunk ≥ 10 **0.617** / 0.674 (960) · sub 3–10 **0.786** / 0.823 (9676) · sub 1–3 **0.977** / 0.981 (161431) · 3.6 s
+      TRACÉ bicubic                  trunk ≥ 10 **0.616** / 0.664 (1008) · sub 3–10 **0.768** / 0.808 (9764) · sub 1–3 **0.974** / 0.980 (160870) · 3.7 s
+                                     retraced 2979 · SAME receiver 383 (12.9 %) · other 2495 · lost 101 · flat fallback 0.01 % of steps · deviation from D8 p50 1.00 W / p90 7.13 W
+                                     the traced PATHS' own R8: all 3–10 **0.716** (733) · 1–3 **0.087** (6674) · kept only 3–10 **0.918** (94) · 1–3 **0.668** (295)
+      TRACÉ bilinear (neg. control)  trunk ≥ 10 **0.615** / 0.670 (1010) · sub 3–10 **0.762** / 0.804 (9700) · sub 1–3 **0.970** / 0.978 (160769) · 3.7 s
+                                     retraced 2979 · SAME receiver 487 (16.3 %) · other 2492 · lost 0 · flat fallback 0.12 % of steps · deviation from D8 p50 1.22 W / p90 6.45 W
+                                     the traced PATHS' own R8: all 3–10 **0.756** (716) · 1–3 **0.105** (6432) · kept only 3–10 **0.914** (156) · 1–3 **0.709** (639)
+   synthetic ρ = 0.3:
+      D8 raw                         trunk ≥ 10 **0.733** / 0.722 (12050) · sub 3–10 **0.749** / 0.724 (18365) · sub 1–3 **0.797** / 0.784 (32505) · 3.6 s
+      D8 + 250 m (the existing)      trunk ≥ 10 **0.559** / 0.614 (13116) · sub 3–10 **0.553** / 0.613 (20038) · sub 1–3 **0.663** / 0.710 (34707) · 3.7 s
+      TRACÉ bicubic                  trunk ≥ 10 **0.556** / 0.609 (13934) · sub 3–10 **0.511** / 0.579 (19951) · sub 1–3 **0.574** / 0.640 (34795) · 3.7 s
+                                     retraced 1902 · SAME receiver 702 (36.9 %) · other 1048 · lost 152 · flat fallback 0.08 % of steps · deviation from D8 p50 0.65 W / p90 2.60 W
+                                     the traced PATHS' own R8: all 3–10 **0.115** (3998) · 1–3 **0.039** (13388) · kept only 3–10 **0.220** (1232) · 1–3 **0.121** (3357)
+      TRACÉ bilinear (neg. control)  trunk ≥ 10 **0.555** / 0.609 (13969) · sub 3–10 **0.500** / 0.570 (19928) · sub 1–3 **0.543** / 0.614 (34959) · 3.7 s
+                                     retraced 1902 · SAME receiver 853 (44.8 %) · other 1048 · lost 1 · flat fallback 0.31 % of steps · deviation from D8 p50 0.73 W / p90 3.06 W
+                                     the traced PATHS' own R8: all 3–10 **0.132** (3886) · 1–3 **0.041** (13185) · kept only 3–10 **0.159** (1584) · 1–3 **0.104** (4563)
+   synthetic ρ = 1:
+      D8 raw                         trunk ≥ 10 **0.271** / 0.239 (8687) · sub 3–10 **0.320** / 0.282 (8474) · sub 1–3 **0.363** / 0.317 (13529) · 3.8 s
+      D8 + 250 m (the existing)      trunk ≥ 10 **0.101** / 0.124 (9831) · sub 3–10 **0.117** / 0.144 (9778) · sub 1–3 **0.178** / 0.209 (15380) · 3.7 s
+      TRACÉ bicubic                  trunk ≥ 10 **0.100** / 0.119 (9905) · sub 3–10 **0.104** / 0.126 (9981) · sub 1–3 **0.110** / 0.139 (16169) · 3.8 s
+                                     retraced 1815 · SAME receiver 773 (42.6 %) · other 253 · lost 789 · flat fallback 0.07 % of steps · deviation from D8 p50 0.25 W / p90 0.94 W
+                                     the traced PATHS' own R8: all 3–10 **0.029** (3166) · 1–3 **0.179** (13483) · kept only 3–10 **0.071** (917) · 1–3 **0.037** (3262)
+      TRACÉ bilinear (neg. control)  trunk ≥ 10 **0.101** / 0.119 (9907) · sub 3–10 **0.107** / 0.122 (10362) · sub 1–3 **0.098** / 0.122 (17043) · 3.9 s
+                                     retraced 1815 · SAME receiver 928 (51.1 %) · other 253 · lost 634 · flat fallback 0.28 % of steps · deviation from D8 p50 0.24 W / p90 0.91 W
+                                     the traced PATHS' own R8: all 3–10 **0.104** (19787) · 1–3 **0.072** (53534) · kept only 3–10 **0.038** (1525) · 1–3 **0.040** (4753)
+   synthetic ρ = 3:
+      D8 raw                         trunk ≥ 10 **0.240** / 0.199 (7048) · sub 3–10 **0.186** / 0.154 (7109) · sub 1–3 **0.240** / 0.209 (11282) · 4.4 s
+      D8 + 250 m (the existing)      trunk ≥ 10 **0.092** / 0.125 (7564) · sub 3–10 **0.061** / 0.083 (7781) · sub 1–3 **0.126** / 0.144 (12404) · 4.3 s
+      TRACÉ bicubic                  trunk ≥ 10 **0.092** / 0.125 (7610) · sub 3–10 **0.062** / 0.084 (7808) · sub 1–3 **0.111** / 0.135 (12646) · 4.5 s
+                                     retraced 1766 · SAME receiver 417 (23.6 %) · other 94 · lost 1255 · flat fallback 0.13 % of steps · deviation from D8 p50 0.21 W / p90 0.49 W
+                                     the traced PATHS' own R8: all 3–10 **0.296** (986) · 1–3 **0.160** (7310) · kept only 3–10 **0.121** (74) · 1–3 **0.125** (885)
+      TRACÉ bilinear (neg. control)  trunk ≥ 10 **0.091** / 0.126 (7606) · sub 3–10 **0.058** / 0.080 (7866) · sub 1–3 **0.114** / 0.127 (13305) · 4.6 s
+                                     retraced 1766 · SAME receiver 549 (31.1 %) · other 103 · lost 1114 · flat fallback 0.33 % of steps · deviation from D8 p50 0.19 W / p90 0.50 W
+                                     the traced PATHS' own R8: all 3–10 **0.099** (12562) · 1–3 **0.095** (75723) · kept only 3–10 **0.193** (237) · 1–3 **0.166** (1861)
+   B0 VERDICT: the bicubic tracé's worst 1–3 / 3–10 km² R8 over the four roughnesses = 0.974 → **FAIL** (> 0.08): STOP, no B1–B3
+==========  end Finding 127-B0 . 64.5 s  ==========
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 64.49s
